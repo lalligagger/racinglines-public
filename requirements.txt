@@ -1,0 +1,17 @@
+# Runtime dependencies for download_chronorace.py, parser.py and predictor.py.
+# Pinned to the versions the pipeline and backtests were run with (Python 3.14).
+#   pip install -r requirements.txt
+# Docs site: pip install -r requirements-docs.txt
+
+# data + model
+numpy==2.5.3
+pandas==3.0.6
+scikit-learn==1.9.1      # older per-race model (predictor.py fit/predict)
+joblib==1.6.0            # saves/loads the per-race model
+
+# downloading
+requests==2.34.2
+
+# parser.py HTML input path
+beautifulsoup4==4.15.0
+lxml==6.1.3

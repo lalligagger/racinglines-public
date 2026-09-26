@@ -30,7 +30,7 @@ with three input paths, auto-detected by file extension:
                        Filenames like "uci:event:20260821_mtb:DHI:CG1:dh:91:res.md"
                        are normalized to event_id "20260821_mtb_DHI_CG1_dh_91".
   5. .md (tables)   -> one file per event as written by download_chronorace.py
-                       (data/*.md): "# <event title>", a "Source: ... <slug>"
+                       (data/script-generated/*.md): "# <event title>", a "Source: ... <slug>"
                        line, then one "## <round>" section per round, each a
                        markdown table with Pos | Bib | Rider | Team | Nation |
                        Split 1..N | Time | Gap | Status. Auto-detected by
@@ -75,6 +75,7 @@ import io
 import json
 import re
 import sys
+import unicodedata
 from pathlib import Path
 
 import pandas as pd
@@ -159,9 +160,17 @@ def normalize_rider_id(name, uci_id=None):
     name so the same rider merges across events even if IDs are missing."""
     if uci_id and str(uci_id).strip():
         return f"uci:{str(uci_id).strip()}"
-    n = re.sub(r"\s+", " ", str(name or "").strip().lower())
-    n = re.sub(r"[^a-z ]", "", n)
-    return f"name:{n}"
+    # ChronoRace spells the same rider differently across seasons: accents
+    # present or dropped ("Léo"/"Leo"), a trailing " *" marker, double spaces,
+    # apostrophe or space.
+    n = unicodedata.normalize("NFKD", clean_rider_name(name)).encode("ascii", "ignore").decode()
+    n = re.sub(r"[^a-z ]", "", re.sub(r"['’`]", " ", n.lower()))   # O'CALLAGHAN == O CALLAGHAN
+    return f"name:{re.sub(r' +', ' ', n).strip()}"
+
+
+def clean_rider_name(name):
+    """Display name without ChronoRace's trailing '*' marker or doubled spaces."""
+    return re.sub(r"\s+", " ", str(name or "").replace("*", " ")).strip()
 
 
 def parse_event_meta_from_id(stem):
@@ -542,8 +551,10 @@ TABLE_ROUND_MAP = [
     (re.compile(r"qualif\w*\s*1", re.IGNORECASE), "qual1"),
     (re.compile(r"qualif\w*\s*2", re.IGNORECASE), "qual2"),
     (re.compile(r"semi", re.IGNORECASE), "semi"),
+    (re.compile(r"qualif", re.IGNORECASE), "qual"),   # single-qualifier formats (2023-24 elite, juniors)
     (re.compile(r"final", re.IGNORECASE), "final"),
 ]
+CATEGORY_CODES = {"men elite": "ME", "women elite": "WE", "men junior": "MJ", "women junior": "WJ"}
 SLUG_RE = re.compile(r"\b(\d{8}_[a-z]+)\b")
 SERIES_ROUND_RE = re.compile(r"DHI\s*#\s*(\d+)")
 
@@ -574,11 +585,13 @@ def parse_markdown_tables_file(path, default_round=None):
     sr_m = SERIES_ROUND_RE.search(title)
     series_round = int(sr_m.group(1)) if sr_m else None
     cat_m = re.search(r"^Category:\s*(.+)$", text, re.MULTILINE)
-    category = cat_m.group(1).strip() if cat_m else None
-    # venue from filename "2026-08_les-gets_men-elite" -> "les-gets"
-    stem_parts = Path(path).stem.split("_")
-    venue = stem_parts[1] if len(stem_parts) >= 3 else Path(path).stem
-    event_id = f"{slug}_DHI"
+    cat_name = cat_m.group(1).strip() if cat_m else ""
+    category = CATEGORY_CODES.get(cat_name.lower(), cat_name or None)
+    # venue from the title's last " - " part: "... - Les Gets, August 21-23, FRA" -> "les-gets"
+    venue = title.split(" - ")[-1].split(",")[0].strip() if " - " in title else Path(path).stem
+    venue = re.sub(r"[\s_-]+", "-", venue.lower())
+    # category in the id: elite and junior race the same event on the same day
+    event_id = f"{slug}_DHI_{category}" if category else f"{slug}_DHI"
 
     rows_out = []
     round_ = None
@@ -598,7 +611,7 @@ def parse_markdown_tables_file(path, default_round=None):
             continue
         cells += [""] * (len(header) - len(cells))
         rec = dict(zip(header, cells))
-        rider_name = rec.get("rider", "")
+        rider_name = clean_rider_name(rec.get("rider", ""))
         if not rider_name:
             continue
         split_cols = [h for h in header if h.startswith("split")]

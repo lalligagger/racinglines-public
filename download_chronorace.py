@@ -168,7 +168,9 @@ def discover_event_slugs(year, discipline_id, session):
         slugs_by_discipline.setdefault(disc_code.lower(), set()).add(slug)
 
     wanted = discipline_id.lower()  # e.g. "dhi", "xco", "xcc", "edr"
-    found = slugs_by_discipline.get(wanted, set())
+    # Season pages also cite neighbouring seasons (e.g. the 2026 page links
+    # the 2025 finals); keep only slugs dated in the requested year.
+    found = {s for s in slugs_by_discipline.get(wanted, set()) if s.startswith(str(year))}
     if not found:
         available = {k: len(v) for k, v in slugs_by_discipline.items()}
         raise SystemExit(
@@ -223,7 +225,7 @@ def get_category_rounds(flat, discipline_id, category_code):
         pdf_links = {
             c.get("DisplayName") or c.get("Name"): c.get("Link")
             for c in children
-            if c.get("Type") == "File" and c.get("Link")
+            if c.get("Link")  # "File" nodes; 2019-20 events type them as "Folder"
         }
         out.append({
             "round": r.get("DisplayName") or r.get("Name"),
@@ -275,6 +277,8 @@ def build_round_table(slug, disc_api, key, round_name, session):
               f"(key={key}): {e}")
         return None
 
+    if not isinstance(data, dict):  # endpoint can return a bare JSON null
+        return None
     riders = data.get("Riders") or {}
     results = data.get("Results") or []
     if not results:

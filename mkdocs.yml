@@ -1,0 +1,23 @@
+site_name: racinglines
+site_description: Data pipeline and season simulator for UCI downhill World Cup racing
+docs_dir: docs
+site_dir: site
+theme:
+  name: readthedocs
+  navigation_depth: 3
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - tables
+  - fenced_code
+nav:
+  - Overview: index.md
+  - Data: data.md
+  - Parser: parser.md
+  - Season model: model.md
+  - Evaluation: evaluation.md
+  - Current forecast: forecast.md
+  - CLI reference: cli.md
+  - Project history: history.md
+  - TODO: todo.md
