@@ -23,6 +23,19 @@ with three input paths, auto-detected by file extension:
   3. .json          -> a raw JSON export, e.g. if you captured the XHR
                        response the Angular app makes internally (browser
                        devtools -> Network tab -> XHR -> Save Response).
+  4. .md / .txt     -> a select-all + copy/paste of the rendered results
+                       page saved as text. Each rider is a block of lines:
+                       "1.\tn°100", a blank (flag) line, NAME, optional team,
+                       then "cum_time (rank)" splits interleaved with +/- gaps.
+                       Filenames like "uci:event:20260821_mtb:DHI:CG1:dh:91:res.md"
+                       are normalized to event_id "20260821_mtb_DHI_CG1_dh_91".
+  5. .md (tables)   -> one file per event as written by download_chronorace.py
+                       (data/*.md): "# <event title>", a "Source: ... <slug>"
+                       line, then one "## <round>" section per round, each a
+                       markdown table with Pos | Bib | Rider | Team | Nation |
+                       Split 1..N | Time | Gap | Status. Auto-detected by
+                       content, so .md files of either kind can share a dir.
+                       Adds venue / series_round / nation columns.
 
 Run with --inspect first on one file from each source you have. It won't
 write output — it just prints the columns/keys it detected, so we can adjust
@@ -157,7 +170,7 @@ def parse_event_meta_from_id(stem):
       20260821_mtb_DHI_CG1_dh_91[_qual|_semi|_final]
     Falls back to Nones if the pattern doesn't match — fill in manually.
     """
-    parts = re.split(r"[_/]", stem)
+    parts = re.split(r"[_/:]", stem)
     date = discipline = category = round_hint = None
     for p in parts:
         if re.fullmatch(r"\d{8}", p):
@@ -222,8 +235,22 @@ def inspect_file(path):
         df = pd.read_csv(path, nrows=5)
         print("Columns:", list(df.columns))
         print(df.to_string())
+    elif path.suffix.lower() in (".md", ".txt") and is_markdown_tables_file(path):
+        df = pd.DataFrame(parse_markdown_tables_file(path))
+        fin = df[df["sector_id"] == "FINISH"]
+        print("Event:", fin[["event_id", "event_date", "venue", "series_round", "category"]].iloc[0].to_dict())
+        print(fin.groupby("round")["status"].value_counts().unstack(fill_value=0).to_string())
+        print(df.head(6).to_string())
+    elif path.suffix.lower() in (".md", ".txt"):
+        header, blocks = _split_text_page(path.read_text(errors="ignore"))
+        print("Event id:", normalize_event_id(path.stem))
+        print("Meta (date, discipline, category, round):", parse_event_meta_from_id(path.stem))
+        print("Header lines:", [l for l in header if l.strip()])
+        print(f"Found {len(blocks)} rider block(s).")
+        for rank, bib, lines in blocks[:3]:
+            print(f"  rank={rank} bib={bib} ->", _parse_text_block(lines))
     else:
-        print("Unrecognized extension — expected .html/.htm, .json, or .csv")
+        print("Unrecognized extension — expected .html/.htm, .json, .csv, .md or .txt")
 
 
 def parse_html_file(path, default_round=None):
@@ -393,6 +420,236 @@ def parse_json_file(path, default_round=None):
     return rows_out
 
 
+# --- Copy/pasted text page (.md / .txt) -------------------------------------
+TEXT_BIB_RE = re.compile(r"^(?:(\d+)\.\s+)?n°\s*(\d+)\s*$")   # "1.\tn°100" or "n°71"
+TEXT_SPLIT_RE = re.compile(r"^(\S+)\s*\((\d+)\)$")             # "1:49.498 (5)"
+CLOCK_RE = re.compile(r"^(?:\d+:){0,2}\d+\.\d+$")               # "4:07.776", "35.954"
+TEXT_ROUND_RE = [
+    (re.compile(r"qualif", re.IGNORECASE), "qual"),
+    (re.compile(r"semi", re.IGNORECASE), "semi"),
+    (re.compile(r"seeding", re.IGNORECASE), "seeding"),
+    (re.compile(r"practice|training", re.IGNORECASE), "practice"),
+    (re.compile(r"final", re.IGNORECASE), "final"),
+]
+
+
+def normalize_event_id(stem):
+    """'uci:event:20260821_mtb:DHI:CG1:dh:91:res' -> '20260821_mtb_DHI_CG1_dh_91'."""
+    s = re.sub(r"^uci:event:", "", stem)
+    s = re.sub(r":res$", "", s)
+    return s.replace(":", "_")
+
+
+def _split_text_page(text):
+    """Split a pasted results page into (header_lines, rider_blocks), where each
+    block is (overall_rank_or_None, bib, [lines after the bib line])."""
+    lines = text.splitlines()
+    header, blocks = [], []
+    for line in lines:
+        m = TEXT_BIB_RE.match(line.strip())
+        if m:
+            blocks.append((int(m.group(1)) if m.group(1) else None, m.group(2), []))
+        elif blocks:
+            blocks[-1][2].append(line)
+        else:
+            header.append(line)
+    return header, blocks
+
+
+def _parse_text_block(lines):
+    """Return (rider_name, team, [(cum_s, rank), ...], finish_s, status) for one
+    rider block. Tokens after the name are classified by shape, so a missing
+    team line or missing split columns (DNF/DSQ) doesn't shift anything."""
+    body = [l for l in lines if l.strip()]
+    if not body:
+        return None, None, [], None, None
+    rider_name = body[0].strip()
+    team, splits, finish_s, status = None, [], None, None
+    tokens = [t.strip() for l in body[1:] for t in l.split("\t") if t.strip()]
+    for tok in tokens:
+        if tok[0] in "+-":
+            continue  # gap to leader, recomputable from times
+        if tok.lower() in STATUS_TOKENS:
+            status = STATUS_TOKENS[tok.lower()]
+            continue
+        m = TEXT_SPLIT_RE.match(tok)
+        if m and CLOCK_RE.match(m.group(1)):
+            splits.append((parse_time_to_seconds(m.group(1))[0], int(m.group(2))))
+        elif CLOCK_RE.match(tok):
+            finish_s = parse_time_to_seconds(tok)[0]
+        elif team is None and not splits:
+            team = tok
+    return rider_name, team, splits, finish_s, status
+
+
+def parse_text_file(path, default_round=None):
+    text = Path(path).read_text(errors="ignore")
+    stem = Path(path).stem
+    date, discipline, category, round_hint = parse_event_meta_from_id(stem)
+    header, blocks = _split_text_page(text)
+
+    header_round = None
+    for line in header:
+        if "live timing" in line.lower() or "results" in line.lower():
+            for rx, label in TEXT_ROUND_RE:
+                if rx.search(line):
+                    header_round = label
+                    break
+        if header_round:
+            break
+    round_ = default_round or round_hint or header_round or "unknown"
+    event_id = normalize_event_id(stem)
+
+    n_sectors = max((len(re.findall(r"split\s*\d+", l, re.IGNORECASE)) for l in header), default=0)
+
+    rows_out = []
+    for overall_rank, bib, lines in blocks:
+        rider_name, team, splits, finish_s, status = _parse_text_block(lines)
+        if not rider_name:
+            continue
+        status = status or ("OK" if finish_s is not None else "DNF")
+        common = dict(
+            event_id=event_id, event_date=date, discipline=discipline,
+            category=category, round=round_,
+            rider_id=normalize_rider_id(rider_name), rider_name=rider_name,
+            team=team, bib=bib, start_order=None, track_condition="unknown",
+        )
+        cum = 0.0
+        for i in range(1, max(n_sectors, len(splits)) + 1):
+            if i <= len(splits):
+                secs, rank = splits[i - 1]
+                rows_out.append(dict(
+                    common, sector_id=f"S{i}", split_time_s=secs - cum,
+                    cum_time_s=secs, rank_at_split=rank, status="OK",
+                ))
+                cum = secs
+            else:
+                rows_out.append(dict(
+                    common, sector_id=f"S{i}", split_time_s=None,
+                    cum_time_s=None, rank_at_split=None, status=status,
+                ))
+        rows_out.append(dict(
+            common, sector_id="FINISH",
+            split_time_s=(finish_s - cum) if finish_s is not None else None,
+            cum_time_s=finish_s, rank_at_split=overall_rank, status=status,
+        ))
+    return rows_out
+
+
+# --- Downloaded per-event markdown tables (data/*.md) ------------------------
+TABLE_ROUND_MAP = [
+    (re.compile(r"timed\s*training|practice", re.IGNORECASE), "practice"),
+    (re.compile(r"qualif\w*\s*1", re.IGNORECASE), "qual1"),
+    (re.compile(r"qualif\w*\s*2", re.IGNORECASE), "qual2"),
+    (re.compile(r"semi", re.IGNORECASE), "semi"),
+    (re.compile(r"final", re.IGNORECASE), "final"),
+]
+SLUG_RE = re.compile(r"\b(\d{8}_[a-z]+)\b")
+SERIES_ROUND_RE = re.compile(r"DHI\s*#\s*(\d+)")
+
+
+def is_markdown_tables_file(path):
+    text = Path(path).read_text(errors="ignore")
+    return bool(re.search(r"^\|\s*Pos\s*\|", text, re.MULTILINE))
+
+
+def _table_round_label(heading):
+    for rx, label in TABLE_ROUND_MAP:
+        if rx.search(heading):
+            return label
+    return re.sub(r"\W+", "_", heading.strip().lower())
+
+
+def parse_markdown_tables_file(path, default_round=None):
+    """Parse a data/*.md event file into tidy rows. Split cells look like
+    '1:32.423 (+00.109)' (cumulative time, gap to best in parens); a final
+    split equal to Time is the finish line and isn't repeated as a sector.
+    rank_at_split is recomputed per round/sector from the cumulative times."""
+    text = Path(path).read_text(errors="ignore")
+    lines = text.splitlines()
+    title = next((l[2:].strip() for l in lines if l.startswith("# ")), "")
+    slug_m = SLUG_RE.search(text)
+    slug = slug_m.group(1) if slug_m else Path(path).stem
+    date = f"{slug[0:4]}-{slug[4:6]}-{slug[6:8]}" if slug_m else None
+    sr_m = SERIES_ROUND_RE.search(title)
+    series_round = int(sr_m.group(1)) if sr_m else None
+    cat_m = re.search(r"^Category:\s*(.+)$", text, re.MULTILINE)
+    category = cat_m.group(1).strip() if cat_m else None
+    # venue from filename "2026-08_les-gets_men-elite" -> "les-gets"
+    stem_parts = Path(path).stem.split("_")
+    venue = stem_parts[1] if len(stem_parts) >= 3 else Path(path).stem
+    event_id = f"{slug}_DHI"
+
+    rows_out = []
+    round_ = None
+    header = None
+    for line in lines:
+        if line.startswith("## "):
+            round_ = default_round or _table_round_label(line[3:])
+            header = None
+            continue
+        if not line.startswith("|") or round_ is None:
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if cells and cells[0].lower() == "pos":
+            header = [c.lower() for c in cells]
+            continue
+        if header is None or set(line.replace("|", "").strip()) <= {"-"}:
+            continue
+        cells += [""] * (len(header) - len(cells))
+        rec = dict(zip(header, cells))
+        rider_name = rec.get("rider", "")
+        if not rider_name:
+            continue
+        split_cols = [h for h in header if h.startswith("split")]
+        finish_s, _ = parse_time_to_seconds(rec.get("time"))
+        if not finish_s:  # "00.000" / blank
+            finish_s = None
+        status = STATUS_TOKENS.get(rec.get("status", "").lower()) or (
+            "OK" if finish_s is not None else "DNF")
+        pos = int(rec["pos"]) if rec.get("pos", "").isdigit() else None
+        common = dict(
+            event_id=event_id, event_date=date, discipline="DHI",
+            category=category, round=round_,
+            rider_id=normalize_rider_id(rider_name), rider_name=rider_name,
+            team=rec.get("team") or None, bib=rec.get("bib") or None,
+            nation=rec.get("nation") or None, start_order=None,
+            venue=venue, series_round=series_round, track_condition="unknown",
+        )
+        cum = 0.0
+        sector_i = 0
+        for sc in split_cols:
+            raw = re.sub(r"\s*\(.*\)\s*$", "", rec.get(sc, ""))
+            secs, _ = parse_time_to_seconds(raw)
+            if not secs:
+                secs = None
+            if secs is not None and finish_s is not None and abs(secs - finish_s) < 1e-6:
+                break  # last split column is the finish line
+            sector_i += 1
+            rows_out.append(dict(
+                common, sector_id=f"S{sector_i}",
+                split_time_s=(secs - cum) if secs is not None and cum is not None else None,
+                cum_time_s=secs, rank_at_split=None,
+                status="OK" if secs is not None else status,
+            ))
+            cum = secs
+        rows_out.append(dict(
+            common, sector_id="FINISH",
+            split_time_s=(finish_s - cum) if finish_s is not None and cum is not None else None,
+            cum_time_s=finish_s, rank_at_split=pos, status=status,
+        ))
+
+    if rows_out:
+        df = pd.DataFrame(rows_out)
+        sec = df["sector_id"] != "FINISH"
+        df.loc[sec, "rank_at_split"] = (
+            df[sec].groupby(["event_id", "round", "sector_id"])["cum_time_s"]
+            .rank(method="min")
+        )
+        rows_out = df.to_dict("records")
+    return rows_out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--inspect", help="Print detected structure of a single file and exit.")
@@ -413,7 +670,7 @@ def main():
 
     files = list(args.input_file)
     if args.input_dir:
-        files += [str(p) for p in Path(args.input_dir).glob("*") if p.suffix.lower() in (".html", ".htm", ".csv", ".json")]
+        files += [str(p) for p in Path(args.input_dir).glob("*") if p.suffix.lower() in (".html", ".htm", ".csv", ".json", ".md", ".txt")]
     if not files:
         print("No input files given. Use --inspect FILE first, or --input-dir / --input-file.", file=sys.stderr)
         sys.exit(1)
@@ -428,6 +685,10 @@ def main():
             all_rows += parse_csv_file(f, default_round=args.round)
         elif suffix == ".json":
             all_rows += parse_json_file(f, default_round=args.round)
+        elif suffix in (".md", ".txt") and is_markdown_tables_file(f):
+            all_rows += parse_markdown_tables_file(f, default_round=args.round)
+        elif suffix in (".md", ".txt"):
+            all_rows += parse_text_file(f, default_round=args.round)
 
     out_df = pd.DataFrame(all_rows)
 
