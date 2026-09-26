@@ -116,6 +116,15 @@
   .progress { position: fixed; top: 0; left: 0; height: 3px; background: var(--accent); transition: width .35s ease; z-index: 10; }
   .brand { position: fixed; top: 18px; left: clamp(16px, 8vw, 140px); font: 700 14px Inter, sans-serif; letter-spacing: -.01em; color: var(--muted); z-index: 5; }
   .brand b { color: var(--accent); }
+  .gh { position: fixed; top: 12px; right: clamp(16px, 8vw, 140px); z-index: 5; width: 38px; height: 38px; border-radius: 50%;
+        display: grid; place-items: center; color: var(--ink); background: var(--surface); border: 1px solid var(--line);
+        box-shadow: var(--shadow); transition: transform .2s ease, color .2s ease, border-color .2s ease, box-shadow .2s ease; }
+  .gh:hover { color: var(--accent); border-color: var(--accent); transform: translateY(-1px) rotate(-8deg) scale(1.06);
+              box-shadow: 0 0 0 4px var(--accent-soft), var(--shadow); }
+  .gh:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .gh-inline { display: inline-flex; align-items: center; gap: 8px; text-decoration: none !important; color: var(--ink) !important; }
+  .gh-inline:hover { color: var(--accent) !important; }
+  @media print { .gh { display: none; } }
   @media (max-width: 860px) {
     body { overflow: auto; }
     .g2, .g3, .g4, .flow, .ui { grid-template-columns: 1fr; }
@@ -134,6 +143,7 @@
 <body>
 <div class="progress" id="progress"></div>
 <div class="brand"><b>racing</b>lines</div>
+<a class="gh" href="https://github.com/lalligagger/racinglines" target="_blank" rel="noopener" aria-label="racinglines on GitHub" title="racinglines on GitHub"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
 
 <main class="deck" id="deck">
 
@@ -486,6 +496,7 @@
       <li>Data licence conversations with timing providers</li>
       <li>Regulatory counsel memo on the Phase 2–3 routes</li></ul></div>
   </div>
+  <p class="note"><a class="gh-inline" href="https://github.com/lalligagger/racinglines" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>github.com/lalligagger/racinglines</span></a></p>
   <p class="lead" style="margin-top:26px">We're looking for design partners, data partners and early backers who want to own <span class="accent">liquidity for the long tail of sport</span>.</p>
 </section>
 

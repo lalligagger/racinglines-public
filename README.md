@@ -11,6 +11,19 @@ Current focus: **UCI Mountain Bike World Series downhill, Men Elite**.
 > tunnel, which gets a new address whenever it restarts. Both pages need an admin
 > login.
 
+<!-- include: built-with -->
+<!-- generated from docs/index.md by build_readme.py - edit it there -->
+
+> **Built in one session.** This project is my first (vibe-)coding session with
+> Claude (Claude Code). Everything here was built in a single session, within the
+> session credit limit of a basic paid plan: the data pipeline, the model and
+> backtests, the PostgreSQL database, the admin web app with its house book and
+> Polymarket tools, and these docs.
+>
+> ![Claude Code session limit at 96% near the end of the session](docs/img/session-limit.png)
+
+<!-- /include -->
+
 <!-- Sections between include markers are generated from docs/ by build_readme.py.
      Edit the tagged section in docs/, then run: python build_readme.py -->
 
