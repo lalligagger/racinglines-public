@@ -1,0 +1,106 @@
+"""
+python -m racedb <command>
+
+    init      Create or upgrade the schema to the latest migration (Alembic), then seed reference data.
+    seed      Upsert sports / leagues / competitions / categories / venues from registry.py.
+    ingest    Load downloaded event files (files or directories of *.md) into the database.
+    stats     Row counts and coverage per season and category.
+    export    Write the tidy frame (same columns as parser.py's CSV) for a competition to CSV.
+
+Connection: $DATABASE_URL, or --db URL (default: docker-compose.yml's database).
+"""
+
+import argparse
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))  # parser.py / predictor.py live at the repo root
+
+from sqlalchemy import text  # noqa: E402
+
+from .config import database_url, get_engine, get_session  # noqa: E402
+
+
+def cmd_init(args):
+    from alembic import command
+    from alembic.config import Config
+
+    cfg = Config(str(ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(ROOT / "migrations"))
+    cfg.set_main_option("sqlalchemy.url", database_url(args.db))
+    command.upgrade(cfg, "head")
+    cmd_seed(args)
+
+
+def cmd_seed(args):
+    from .ingest import seed
+
+    with get_session(args.db) as s:
+        seed(s)
+        s.commit()
+    print("Reference data seeded.")
+
+
+def cmd_ingest(args):
+    from .ingest import ingest_paths
+
+    with get_session(args.db) as s:
+        counts = ingest_paths(s, args.paths, competition=args.competition, force=args.force)
+    print("Done: " + ", ".join(f"{k}={v}" for k, v in sorted(counts.items())))
+
+
+STATS_SQL = """
+SELECT co.code AS competition, s.year, c.code AS category, count(DISTINCT e.id) AS events,
+       count(DISTINCT ro.id) AS rounds, count(r.id) AS results
+FROM results r JOIN rounds ro ON ro.id = r.round_id JOIN races ra ON ra.id = ro.race_id
+JOIN events e ON e.id = ra.event_id JOIN seasons s ON s.id = e.season_id
+JOIN competitions co ON co.id = s.competition_id JOIN categories c ON c.id = ra.category_id
+GROUP BY 1, 2, 3 ORDER BY 1, 2, 3
+"""
+
+
+def cmd_stats(args):
+    import pandas as pd
+
+    eng = get_engine(args.db)
+    with eng.connect() as conn:
+        for t in ["sports", "leagues", "competitions", "categories", "venues", "events", "races", "rounds",
+                  "athletes", "athlete_identifiers", "results", "splits", "source_files", "model_runs",
+                  "race_predictions", "standings_predictions"]:
+            print(f"{t:<22} {conn.execute(text(f'SELECT count(*) FROM {t}')).scalar():>8}")
+        print()
+        print(pd.read_sql(text(STATS_SQL), conn).to_string(index=False))
+
+
+def cmd_export(args):
+    from .queries import load_tidy
+
+    df = load_tidy(get_engine(args.db), competition=args.competition)
+    df.to_csv(args.out, index=False)
+    print(f"Wrote {len(df)} rows -> {args.out}")
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="python -m racedb", description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--db", help="Database URL (default: $DATABASE_URL or the docker-compose database).")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("init", help="Migrate schema to latest and seed reference data.").set_defaults(func=cmd_init)
+    sub.add_parser("seed", help="Upsert reference data from registry.py.").set_defaults(func=cmd_seed)
+    p = sub.add_parser("ingest", help="Load downloaded event files.")
+    p.add_argument("paths", nargs="+", help="Files or directories (*.md).")
+    p.add_argument("--competition", default="uci_dhi_wc")
+    p.add_argument("--force", action="store_true", help="Re-ingest even if a file hasn't changed.")
+    p.set_defaults(func=cmd_ingest)
+    sub.add_parser("stats", help="Row counts and coverage.").set_defaults(func=cmd_stats)
+    p = sub.add_parser("export", help="Write the tidy frame for a competition to CSV.")
+    p.add_argument("--competition", default="uci_dhi_wc")
+    p.add_argument("--out", default="splits.csv")
+    p.set_defaults(func=cmd_export)
+    args = ap.parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

@@ -628,6 +628,7 @@ def parse_markdown_tables_file(path, default_round=None):
             team=rec.get("team") or None, bib=rec.get("bib") or None,
             nation=rec.get("nation") or None, start_order=None,
             venue=venue, series_round=series_round, track_condition="unknown",
+            event_name=title, source_key=slug,
         )
         cum = 0.0
         sector_i = 0
