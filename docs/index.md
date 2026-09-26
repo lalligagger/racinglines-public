@@ -9,18 +9,6 @@ These docs cover everything built so far in detail. The top-level `README.md` is
 the short version, and parts of it are generated from sections of these pages
 (see [Docs & README](cli.md#build_readmepy)).
 
-<!-- readme: built-with -->
-
-> **Built in one session.** This project is my first (vibe-)coding session with
-> Claude (Claude Code). Everything here was built in a single session, within the
-> session credit limit of a basic paid plan: the data pipeline, the model and
-> backtests, the PostgreSQL database, the admin web app with its house book and
-> Polymarket tools, and these docs.
->
-> ![Claude Code session limit at 96% near the end of the session](img/session-limit.png)
-
-<!-- /readme -->
-
 ## What it does
 
 <!-- readme: overview -->
