@@ -257,3 +257,104 @@ class StandingsPrediction(Base):
     top3_prob: Mapped[float | None] = mapped_column(Float)
     top10_prob: Mapped[float | None] = mapped_column(Float)
     exp_rank: Mapped[float | None] = mapped_column(Float)
+
+
+class MarketLink(Base):
+    """A prediction-market outcome token linked to one of our model's probabilities.
+
+    prediction: race_win | race_podium | race_top10 | race_make_final   (per race; race_id
+                null = the next unraced round, "remaining_round")
+                champion | standings_top3                               (season standings)
+    invert:     the token pays out when the prediction does NOT happen (e.g. the "No" side),
+                so the model's fair price is 1 - p.
+    """
+    __tablename__ = "market_links"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    exchange: Mapped[str] = mapped_column(String(20), default="polymarket", server_default="polymarket")
+    market_slug: Mapped[str | None] = mapped_column(String(300))
+    question: Mapped[str] = mapped_column(Text)
+    condition_id: Mapped[str | None] = mapped_column(String(80))
+    token_id: Mapped[str] = mapped_column(String(100), index=True)
+    outcome: Mapped[str] = mapped_column(String(200))                   # "Yes", "No", or a named outcome
+    neg_risk: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    tick_size: Mapped[float | None] = mapped_column(Float)
+    min_size: Mapped[float | None] = mapped_column(Float)
+    competition_id: Mapped[int] = mapped_column(ForeignKey("competitions.id"))
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"))
+    athlete_id: Mapped[int] = mapped_column(ForeignKey("athletes.id"))
+    race_id: Mapped[int | None] = mapped_column(ForeignKey("races.id", ondelete="SET NULL"))
+    prediction: Mapped[str] = mapped_column(String(30))
+    invert: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+    note: Mapped[str | None] = mapped_column(Text)
+
+
+class Order(Base):
+    """Every order the app builds: dry runs, submissions (with the exchange's
+    response) and cancellations. Nothing is ever deleted."""
+    __tablename__ = "orders"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    exchange: Mapped[str] = mapped_column(String(20), default="polymarket", server_default="polymarket")
+    market_link_id: Mapped[int | None] = mapped_column(ForeignKey("market_links.id", ondelete="SET NULL"))
+    token_id: Mapped[str] = mapped_column(String(100))
+    side: Mapped[str] = mapped_column(String(4))                        # BUY | SELL
+    price: Mapped[float] = mapped_column(Float)
+    size: Mapped[float] = mapped_column(Float)                          # shares
+    order_type: Mapped[str] = mapped_column(String(8), default="GTC", server_default="GTC")
+    post_only: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+    status: Mapped[str] = mapped_column(String(20))                     # dry_run | submitted | rejected | error | cancelled
+    exchange_order_id: Mapped[str | None] = mapped_column(String(100))
+    model_prob: Mapped[float | None] = mapped_column(Float)
+    best_bid: Mapped[float | None] = mapped_column(Float)
+    best_ask: Mapped[float | None] = mapped_column(Float)
+    model_run_id: Mapped[int | None] = mapped_column(ForeignKey("model_runs.id", ondelete="SET NULL"))
+    response: Mapped[dict | None] = mapped_column(JSONB)
+    error: Mapped[str | None] = mapped_column(Text)
+
+
+class HouseMarket(Base):
+    """A YES/NO market we quote ourselves (private bets), priced from the model.
+
+    kind: race_win | race_podium | race_make_final   (race_id + athlete_id; settle from results)
+          rank_up | rank_down                          (championship rank after the race vs before;
+                                                        settle manually from official standings)
+    Prices are what a counterparty pays per $1 payout:
+        yes_price = fair + spread/2,  no_price = (1 - fair) + spread/2   (a side is not offered
+        if its price would exceed max_price).
+    """
+    __tablename__ = "house_markets"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    race_id: Mapped[int] = mapped_column(ForeignKey("races.id"))
+    athlete_id: Mapped[int] = mapped_column(ForeignKey("athletes.id"))
+    kind: Mapped[str] = mapped_column(String(30))
+    title: Mapped[str] = mapped_column(Text)
+    model_run_id: Mapped[int | None] = mapped_column(ForeignKey("model_runs.id", ondelete="SET NULL"))
+    fair_prob: Mapped[float] = mapped_column(Float)                     # model probability (or admin override)
+    fair_source: Mapped[str] = mapped_column(String(20), default="model", server_default="model")
+    spread: Mapped[float] = mapped_column(Float)                        # e.g. 0.06 = 6 points total
+    yes_price: Mapped[float | None] = mapped_column(Float)
+    no_price: Mapped[float | None] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String(10), default="open", server_default="open")  # open | closed | settled | void
+    outcome: Mapped[bool | None] = mapped_column()                      # True = YES happened
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    settle_note: Mapped[str | None] = mapped_column(Text)
+    context: Mapped[dict | None] = mapped_column(JSONB)                 # e.g. current_rank for rank markets
+    __table_args__ = (UniqueConstraint("race_id", "athlete_id", "kind"),)
+
+
+class HouseBet(Base):
+    """A bet a counterparty took against our quote. Money is handled outside the app."""
+    __tablename__ = "house_bets"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    market_id: Mapped[int] = mapped_column(ForeignKey("house_markets.id"), index=True)
+    counterparty: Mapped[str] = mapped_column(String(120))
+    side: Mapped[str] = mapped_column(String(3))                        # side the counterparty bought: YES | NO
+    price: Mapped[float] = mapped_column(Float)                         # price paid per $1 payout
+    stake: Mapped[float] = mapped_column(Float)                         # amount the counterparty puts up
+    payout: Mapped[float] = mapped_column(Float)                        # stake / price, paid to them if they win
+    status: Mapped[str] = mapped_column(String(10), default="open", server_default="open")  # open | won | lost | void
+    note: Mapped[str | None] = mapped_column(Text)

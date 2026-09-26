@@ -167,12 +167,50 @@ points = QUAL_POINTS[qualifying rank] + FINAL_POINTS[final rank]
     (60/50/40/…/2 for places 1–20) are **placeholders**, and the same tables are
     used for every era. See [TODO](todo.md#points-validation).
 
-## Field for unraced rounds
+## Forecasting the rest of the season
 
-`forecast_season` builds the field from riders who started the first qualifier in
-any of the last `attend_window = 3` target events. Each rider's attendance
-probability is `starts / 3`. So a rider who missed one of the last three rounds
-(e.g. through injury) attends with probability 2/3.
+`forecast_season(raw, target, n_remaining, ...)` simulates `n_remaining` rounds in
+total. Some may already be in the data (a weekend in progress), and the rest are
+unknown.
+
+### Rounds already in the data (weekend in progress)
+
+`completed_events(target)` is the set of target events whose Final has `OK`
+results. Any target event without them (e.g. Timed Training done, Q1 start list
+published) is treated as **in progress**:
+
+- **Field:** its real start list (`event_starters`: first-qualifier entrants not
+  marked DNS, including `START` rows). Attendance is certain.
+- **Training cutoff:** the model is fit only on data dated **before** that weekend,
+  so this weekend's runs aren't counted twice.
+- **Weekend effect:** each rider's `u` is conditioned on this weekend's Timed
+  Training (`weekend_prior`). A rider's residual `e` gives the posterior
+  `mean = τ²·e / (τ² + σₚ²)`, `sd = √(τ²σₚ² / (τ² + σₚ²))`, where
+  `σₚ = 1.5·σ` because training runs are noisier. Riders without a training run
+  keep `N(0, τ²)`; runs slower than `INCIDENT_THRESHOLD` are ignored.
+- **Safety check:** if the session's residual interquartile range is above `max_iqr`
+  (0.08 in log-time), the session isn't a pace signal (e.g. riders held on track)
+  and is ignored with a warning. This happened at Whistler 2026 (IQR 0.71).
+- **Format:** simulated with `DEFAULT_FORMAT` (Q1 top 20 + Q2 top 10).
+- **Output:** a summary per upcoming event (`forecast_<venue>.csv`, and
+  `race_predictions.target = "event:<event_id>"` with its `race_id` when saved),
+  including `tt_pace_adj_pct`.
+
+### Rounds not in the data yet
+
+`n_unknown = n_remaining − len(upcoming)` rounds use a field of riders who started
+the first qualifier in any of the last `attend_window = 3` completed events. Each
+rider attends with probability `starts / 3`, so a rider who missed one of the last
+three rounds (e.g. through injury) attends with probability 2/3. They're saved as
+`target = "remaining_round"`.
+
+### Championship rank movement
+
+For the next upcoming weekend, `rank_moves(current_points, riders, sim_points)`
+compares each rider's championship rank before and after the simulated weekend
+(ranks are "min" style, so tied riders share the better rank). It gives
+`current_rank`, `rank_up_prob`, `rank_down_prob` and `exp_rank_after`, which are
+stored in `race_predictions.extra`. These use the placeholder points tables.
 
 ## Training scope and targets
 

@@ -50,12 +50,30 @@ python parser.py [--input-dir DIR] [--input-file FILE ...] [--out splits.csv]
 | `--round` | Force a round label on every row (rarely needed). |
 | `--conditions-file` | CSV `event_id,round,track_condition` to fill in `track_condition`. |
 
+## python -m racedb
+
+Database commands. The connection comes from `$DATABASE_URL`, or `--db URL` before
+the command. See [Database](database.md).
+
+```
+python -m racedb [--db URL] init                     # alembic upgrade head + seed reference data
+python -m racedb [--db URL] seed                     # re-apply racedb/registry.py
+python -m racedb [--db URL] ingest PATH [PATH ...] [--competition uci_dhi_wc] [--force]
+python -m racedb [--db URL] stats                    # table counts + coverage per season and category
+python -m racedb [--db URL] export [--competition uci_dhi_wc] [--out splits.csv]
+```
+
+`ingest` takes files or directories (non-recursive `*.md`). Unchanged files are
+skipped by content hash, and `--force` re-ingests them. Each ingested file replaces
+its race's rounds, results and splits.
+
 ## predictor.py season
 
 Predict and backtest one target season.
 
 ```
-python predictor.py season --data splits.csv [--out-dir season_out]
+python predictor.py season (--db [URL] | --data splits.csv) [--competition uci_dhi_wc] [--save]
+       [--out-dir season_out]
        [--season YEAR] [--category ME]
        [--train-scope {all,season}] [--half-life-days 120] [--junior-weight 0.5]
        [--walk-forward] [--backtest 2] [--remaining 2]
@@ -64,6 +82,10 @@ python predictor.py season --data splits.csv [--out-dir season_out]
 
 | Option | Default | Meaning |
 |---|---|---|
+| `--db [URL]` | – | Read from the database (`$DATABASE_URL` or the docker-compose default if no URL is given). |
+| `--data` | – | Read a tidy CSV from `parser.py` instead. |
+| `--competition` | `uci_dhi_wc` | Competition code in the database. |
+| `--save` | off | Store the model run, its metrics and predictions in the database (needs `--db`). |
 | `--season` | latest in data | Target season. |
 | `--category` | `ME` | Target category. |
 | `--train-scope` | `all` | `all` = every season and category in `--data`; `season` = target only. |
@@ -71,7 +93,7 @@ python predictor.py season --data splits.csv [--out-dir season_out]
 | `--junior-weight` | 0.5 | Training weight of `MJ` runs relative to elite. |
 | `--walk-forward` | off | Predict and score every target round from everything before it. |
 | `--backtest N` | 2 | Hold out the last N raced rounds; score them and the standings after them. `0` skips. |
-| `--remaining N` | 2 | Forecast N unraced rounds and final standings. `0` skips. |
+| `--remaining N` | 2 | Rounds left in the season, **including** in-progress events already in the data (forecast with their start lists). The rest are simulated as unknown rounds. `0` skips the forecast. |
 | `--sims` | 10000 | Monte Carlo simulations (walk-forward uses at most 5000). |
 | `--seed` | 42 | Random seed. |
 | `--top` | 15 | Rows printed per table. |
@@ -84,16 +106,37 @@ Files written: `walk_forward.csv`, `backtest_<venue>.csv`, `backtest_standings.c
 Walk-forward plus a standings holdout, for several seasons.
 
 ```
-python predictor.py backtest --data splits.csv [--out-dir backtest_out]
+python predictor.py backtest (--db [URL] | --data splits.csv) [--competition uci_dhi_wc] [--save]
+       [--out-dir backtest_out]
        [--seasons 2021 2022 ...] [--category ME]
        [--train-scope all] [--half-life-days 120] [--junior-weight 0.5]
        [--sims 4000] [--seed 42]
 ```
 
-Seasons with fewer than 3 events that have data are skipped. Files written:
+`--db`, `--data`, `--competition` and `--save` work as for `season`. With `--save`, the
+per-season and per-event metrics are stored in `model_runs.metrics`. Seasons with
+fewer than 3 events that have data are skipped. Files written:
 `backtest_events.csv` (one row per predicted round) and `backtest_seasons.csv` (one
 row per season). The printed per-season table includes the actual and predicted
 champion.
+
+## python -m webapp
+
+Admin web app. See [Web app & trading](webapp.md).
+
+```
+ADMIN_USERNAME=admin ADMIN_PASSWORD=... python -m webapp          # http://127.0.0.1:8000
+cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8000     # optional public HTTPS URL
+```
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | `admin` / random, printed at start | Login for every page (sign-in page or HTTP Basic). |
+| `APP_SECRET` | random per start | Signs session cookies and CSRF tokens. Set it to keep sessions across restarts. |
+| `WEB_HOST` / `WEB_PORT` | `127.0.0.1` / `8000` | Listen address. |
+| `WEB_RELOAD` | off | `1` = auto-reload on code changes (development). |
+| `DATABASE_URL` | docker-compose DB | Database connection. |
+| `POLYMARKET_*` | – | Exchange credentials and limits; see [Web app & trading](webapp.md#polymarket). |
 
 ## predictor.py fit / predict (older per-race model)
 

@@ -120,6 +120,81 @@ is about 1%). The 2026 forecast barely changed: Williams at 72.7%.
   `docs/`, so the README summary and the docs can't disagree. See
   [CLI reference](cli.md#build_readmepy).
 
+## 8. PostgreSQL
+
+**Goal:** move to a proper database ahead of a web API, with room for many sports
+and leagues.
+
+**Built:** the `racedb/` package.
+
+- **SQLAlchemy 2 models** organized sport → league → competition → season → event
+  → race → round → result → split.
+- **Athletes** are shared across sports and matched through `(scheme, value)`
+  identifiers. That's ready for UCI IDs.
+- **Venue aliases**, and tables for **points schemes**, **model runs** and
+  **predictions**.
+- Alembic migrations, `docker-compose.yml` (Postgres 17 on port 5433), an
+  idempotent ingest keyed on file hashes, and `python -m racedb` commands.
+- `predictor.py --db` loads the same tidy layout from the database, and `--save`
+  stores runs.
+
+**Checked:**
+
+- Ingest: all 88 files with timing data load in about 8 seconds (18,761 results,
+  69,472 splits, 1,126 athletes). Re-ingesting is a no-op, and forced re-ingests
+  don't duplicate anything.
+- Forecasts and backtests from the database match the CSV pipeline within
+  simulation noise.
+- The full flow was run against the Docker Postgres: `docker compose up`, `init`,
+  `ingest`, `season --db --save`.
+
+## 9. Admin web app, Polymarket, and Whistler
+
+**Built:**
+
+- **`webapp/`:** an admin-only FastAPI app with predictions, events, athletes, model
+  runs/backtests, market linking and maker-only Polymarket orders (preview →
+  confirm, post-only, size cap, dry run unless enabled). New `market_links` and
+  `orders` tables.
+- **Forecasting a weekend in progress:** if an event has a start list but no Final
+  yet, it's forecast with its real field. The model is fit on data before the
+  weekend, and the weekend effect is conditioned on Timed Training, with a sanity
+  check. The parser now keeps not-yet-raced start lists (`NA` → `START`).
+
+**Whistler 2026 (DHI #8, `20260925_mtb`):**
+
+- Downloaded on race weekend: Timed Training done, Q1 start list of 109 riders.
+- The first forecast adjusted everyone about −15% from Timed Training, because
+  riders were held on track and times jumped by minutes. That run was deleted, and
+  the IQR check added so a disrupted session is ignored.
+- The corrected forecast (run 3) has Williams at 6.9% to win, Vermette 5.8%,
+  Max Alran 5.4% and Bruni 4.9%.
+- Polymarket has no downhill markets as of 2026-09-26.
+
+## 10. House book for Whistler
+
+Polymarket has no downhill markets, so the app now quotes its own YES/NO markets
+for private bets: win, podium, make the Final, and championship rank up/down.
+
+- Prices are fair value ± half the spread.
+- Bets are recorded with their exposure and EV, and markets settle automatically
+  from results (rank markets by hand from official standings).
+- The forecast now includes rank-movement probabilities for the next weekend
+  (`rank_moves`).
+- A 75-market Whistler book (top 15 riders per market type, 6-point spread) was
+  generated from model run 4.
+
+## 11. Sign-in, throttling and the Cloudflare tunnel
+
+- **Sign-in:** the app now has a sign-in page and a signed 12-hour session cookie,
+  because embedded browsers don't show HTTP Basic prompts. Basic auth still works
+  for scripts.
+- **Before going public:** failed-login throttling (8 per IP per 15 minutes, using
+  `CF-Connecting-IP`) and `Secure` cookies over HTTPS were added before exposing
+  the app through a quick `cloudflared` tunnel.
+- **New routes:** `/events/by-key/{source_key}` (stable event links) and `/pitch`
+  (serves a static page from the repo root).
+
 ## Reproducing the tuning sweep
 
 The scope, half-life and junior-weight table in [Evaluation](evaluation.md#tuning)

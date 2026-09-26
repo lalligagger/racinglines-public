@@ -456,9 +456,11 @@ def _ranks(t):
     return np.where(np.isfinite(t), r, np.inf)
 
 
-def simulate_weekend(model, riders, n_sims=10000, attend_prob=None, rng=RNG, fmt=None):
+def simulate_weekend(model, riders, n_sims=10000, attend_prob=None, rng=RNG, fmt=None, u_prior=None):
     """Simulate a race weekend for `riders` in format `fmt` (see
-    event_format; default = 2026 format). Returns dict of (n_sims, n) arrays:
+    event_format; default = 2026 format). u_prior = (mean, sd) arrays for each
+    rider's weekend effect, e.g. from this weekend's timed training (see
+    weekend_prior); default N(0, tau). Returns dict of (n_sims, n) arrays:
     qual_rank (the points-paying qualifier), final_rank (inf = didn't run or
     finish), made_final, points."""
     fmt = fmt or DEFAULT_FORMAT
@@ -469,7 +471,8 @@ def simulate_weekend(model, riders, n_sims=10000, attend_prob=None, rng=RNG, fmt
         starts = np.ones((n_sims, n), bool)
     else:
         starts = rng.random((n_sims, n)) < np.asarray(attend_prob)
-    u = rng.normal(0.0, model["tau"], (n_sims, n))
+    u_mean, u_sd = u_prior if u_prior is not None else (0.0, model["tau"])
+    u = rng.normal(u_mean, u_sd, (n_sims, n))
 
     def run(mask):
         t = mu + u + rng.normal(0.0, model["sigma"], (n_sims, n))
@@ -511,14 +514,15 @@ def summarize_weekend(model, riders, sim):
 
 def simulate_standings(model, current_points, weekends, n_sims=10000, rng=RNG):
     """current_points: Series rider_id -> points so far. weekends: list of
-    (riders, attend_prob_or_None, fmt_or_None). Returns (standings_df,
-    per-weekend sims)."""
+    (riders, attend_prob_or_None, fmt_or_None[, u_prior]). Returns
+    (standings_df, per-weekend sims)."""
     all_riders = list(dict.fromkeys(list(current_points.index) + [r for w, *_ in weekends for r in w]))
     col = {r: j for j, r in enumerate(all_riders)}
     total = np.tile(current_points.reindex(all_riders).fillna(0.0).to_numpy(), (n_sims, 1))
     sims = []
-    for riders, attend, fmt in weekends:
-        sim = simulate_weekend(model, riders, n_sims=n_sims, attend_prob=attend, rng=rng, fmt=fmt)
+    for riders, attend, fmt, *prior in weekends:
+        sim = simulate_weekend(model, riders, n_sims=n_sims, attend_prob=attend, rng=rng, fmt=fmt,
+                               u_prior=prior[0] if prior else None)
         total[:, [col[r] for r in riders]] += sim["points"]
         sims.append(sim)
     jitter = rng.random(total.shape) * 1e-3   # random tie-break
@@ -639,26 +643,122 @@ def walk_forward_season(raw, target, min_prior_events=None, n_sims=5000, rng=RNG
     return pd.DataFrame(rows)
 
 
+def rank_moves(current_points, riders, sim_points):
+    """Championship rank movement over one simulated weekend.
+
+    current_points: Series rider_id -> points before the weekend; riders /
+    sim_points: the weekend's field and its (n_sims, n) simulated points. Ranks
+    are "min" style (tied riders share the better rank), before and after.
+    Returns a DataFrame: rider_id, current_rank, rank_up_prob, rank_down_prob,
+    exp_rank_after. Uses the same (placeholder) points tables as everything else."""
+    all_riders = list(dict.fromkeys(list(current_points.index) + list(riders)))
+    col = {r: j for j, r in enumerate(all_riders)}
+    before = current_points.reindex(all_riders).fillna(0.0).to_numpy()
+    total = np.tile(before, (sim_points.shape[0], 1))
+    total[:, [col[r] for r in riders]] += sim_points
+    rank_before = 1 + (before[None, :] > before[:, None]).sum(axis=1)
+    neg_sorted = np.sort(-total, axis=1)
+    rank_after = np.empty_like(total)
+    for i in range(total.shape[0]):
+        rank_after[i] = np.searchsorted(neg_sorted[i], -total[i], side="left") + 1
+    out = pd.DataFrame(dict(rider_id=all_riders, current_rank=rank_before,
+                            rank_up_prob=(rank_after < rank_before).mean(0),
+                            rank_down_prob=(rank_after > rank_before).mean(0),
+                            exp_rank_after=rank_after.mean(0)))
+    return out[out["rider_id"].isin(riders)]
+
+
+def completed_events(target):
+    """Target events whose final has results (upcoming / in-progress ones don't)."""
+    fin = target[(target["round"] == "final") & (target["sector_id"] == "FINISH") & (target["status"] == "OK")]
+    return set(fin["event_id"])
+
+
+def weekend_prior(model, event_rows, riders, practice_sd_mult=1.5, max_iqr=0.08):
+    """Posterior (mean, sd) of each rider's weekend effect u, given this
+    weekend's timed training. Training runs are noisier than race runs (riders
+    hold back, test lines), so their noise is inflated by practice_sd_mult;
+    runs slower than INCIDENT_THRESHOLD are ignored. Riders without a training
+    run keep the prior N(0, tau).
+
+    Safety check: if the session's residuals are far more spread out than
+    normal run-to-run noise (interquartile range > max_iqr in log-time, e.g.
+    riders held on track during a stoppage, as at Whistler 2026), the session
+    isn't a pace signal and is ignored entirely."""
+    tau2, sig2 = model["tau"] ** 2, (model["sigma"] * practice_sd_mult) ** 2
+    tt = event_rows[(event_rows["round"] == "practice") & (event_rows["sector_id"] == "FINISH")
+                    & (event_rows["status"] == "OK") & (event_rows["cum_time_s"] > 0)]
+    mean = pd.Series(0.0, index=riders)
+    sd = pd.Series(model["tau"], index=riders)
+    if len(tt) >= 10:
+        mu = tt["rider_id"].map(model["mu"]).fillna(model["mu_new"])
+        e0 = np.log(tt["cum_time_s"]) - mu
+        iqr = float(e0.quantile(0.75) - e0.quantile(0.25))
+        if iqr > max_iqr:
+            print(f"WARNING: timed training ignored for {event_rows['event_id'].iloc[0]}: residual spread "
+                  f"(IQR {iqr:.3f} log-time) is too large to be pace, e.g. riders held on track. "
+                  f"Using the unconditioned model for this weekend.")
+            return mean.to_numpy(), sd.to_numpy()
+        e = pd.Series((e0 - e0.median()).to_numpy(), index=tt["rider_id"].to_numpy())
+        e = e[e < INCIDENT_THRESHOLD].groupby(level=0).mean()
+        e = e[e.index.isin(riders)]
+        mean[e.index] = tau2 * e / (tau2 + sig2)
+        sd[e.index] = np.sqrt(tau2 * sig2 / (tau2 + sig2))
+    return mean.to_numpy(), sd.to_numpy()
+
+
 def forecast_season(raw, target, n_remaining=2, n_sims=10000, attend_window=3, rng=RNG,
                     train_scope="all", **fit_kw):
-    """Fit on every event, then simulate the n_remaining unraced target rounds.
-    Field = riders who started Q1 in any of the last attend_window events,
-    each attending with probability (starts in that window / window)."""
+    """Simulate the rest of the target season: n_remaining rounds in total.
+
+    - Rounds already in the data without final results (the weekend in
+      progress, e.g. timed training done, Q1 start list published) are
+      simulated with their real start list, and each rider's weekend effect is
+      conditioned on this weekend's timed training (weekend_prior). The model is
+      fit only on data from before that weekend.
+    - Remaining rounds not in the data yet: field = riders who started Q1 in
+      any of the last attend_window completed events, each attending with
+      probability (starts in that window / window).
+    Returns (model, upcoming, per_round, standings): upcoming = [(event_id,
+    summary)] for in-data rounds; per_round = summary for an unknown round (or
+    None)."""
     category = target["category"].iloc[0]
-    events = event_order(target)
-    model = fit_season_model(_training_rows(raw, target, None, train_scope), category=category, **fit_kw)
-    pts = actual_event_points(target)
+    done = completed_events(target)
+    events = [e for e in event_order(target) if e in done]
+    upcoming = [e for e in event_order(target) if e not in done]
+    cutoff = min(_event_date(target, e) for e in upcoming) if upcoming else None
+    model = fit_season_model(_training_rows(raw, target, cutoff, train_scope), category=category, **fit_kw)
+    pts = actual_event_points(target[target["event_id"].isin(done)])
     current = pts.groupby("rider_id")["points"].sum()
+
+    weekends = []
+    for e in upcoming:
+        field = event_starters(target, e)
+        prior = weekend_prior(model, target[target["event_id"] == e], field)
+        weekends.append((field, None, DEFAULT_FORMAT, prior))
+    n_unknown = max(n_remaining - len(upcoming), 0)
     recent = events[-attend_window:]
     starts = pd.Series([r for e in recent for r in event_starters(target, e)]).value_counts()
     field = starts.index.tolist()
-    attend = (starts / len(recent)).to_numpy()
-    standings, sims = simulate_standings(model, current, [(field, attend, DEFAULT_FORMAT)] * n_remaining,
-                                         n_sims=n_sims, rng=rng)
-    per_round = summarize_weekend(model, field, sims[0])
-    per_round["attend_prob"] = per_round["rider_id"].map(starts / len(recent))
+    weekends += [(field, (starts / len(recent)).to_numpy(), DEFAULT_FORMAT)] * n_unknown
+
+    standings, sims = simulate_standings(model, current, weekends, n_sims=n_sims, rng=rng)
+    upcoming_summaries = []
+    for e, (f, *_), sim in zip(upcoming, weekends, sims):
+        summ = summarize_weekend(model, f, sim)
+        prior_mean = dict(zip(f, weekends[upcoming.index(e)][3][0]))
+        summ["tt_pace_adj_pct"] = summ["rider_id"].map(prior_mean) * 100  # + = slower than usual in training
+        if e == upcoming[0]:  # standings move over the next weekend (later ones depend on it)
+            moves = rank_moves(current, f, sim["points"]).set_index("rider_id")
+            for c in ("current_rank", "rank_up_prob", "rank_down_prob", "exp_rank_after"):
+                summ[c] = summ["rider_id"].map(moves[c])
+        upcoming_summaries.append((e, summ))
+    per_round = None
+    if n_unknown:
+        per_round = summarize_weekend(model, field, sims[len(upcoming)])
+        per_round["attend_prob"] = per_round["rider_id"].map(starts / len(recent))
     standings["current_rank"] = standings["current_points"].rank(ascending=False, method="min")
-    return model, per_round, standings
+    return model, upcoming_summaries, per_round, standings
 
 
 # ---------------------------------------------------------------------------
@@ -723,14 +823,44 @@ def cmd_predict(args):
     print(f"\nFull output -> {args.out}")
 
 
-def load_splits(path):
-    raw = pd.read_csv(path)
+def load_splits(args):
+    """Tidy frame from the database (--db) or a parser.py CSV (--data)."""
+    if args.db is not None:
+        from racedb.config import get_engine
+        from racedb.queries import load_tidy
+        raw = load_tidy(get_engine(args.db or None), competition=args.competition, with_splits=False)
+        return raw[raw["round"].isin(RUN_WEIGHTS)]
+    if not args.data:
+        raise SystemExit("Pass --db [URL] (database) or --data splits.csv (parser.py output).")
+    raw = pd.read_csv(args.data)
     return raw[raw["discipline"].eq("DHI") & raw["round"].isin(RUN_WEIGHTS)] if "discipline" in raw else raw
+
+
+def _check_save(args):
+    if args.save and args.db is None:
+        raise SystemExit("--save writes to the database, so it needs --db.")
+
+
+def _save_run(args, raw, target, *, kind, fit_kw, metrics, race_predictions=None, standings=None):
+    from racedb.config import get_session
+    from racedb.queries import save_model_run
+
+    params = {k: v for k, v in fit_kw.items() if k != "category_weights"}
+    params.update(junior_weight=args.junior_weight, sims=args.sims, seed=args.seed, final_points=FINAL_POINTS,
+                  qual_points=QUAL_POINTS, qual_points_round=QUAL_POINTS_ROUND, points_official=False)
+    with get_session(args.db or None) as session:
+        run_id = save_model_run(
+            session, competition=args.competition, season=target["event_date"].astype(str).str[:4].iloc[0]
+            if len(target) else None, category=args.category, kind=kind,
+            data_through=raw["event_date"].max(), params=params, metrics=metrics,
+            race_predictions=race_predictions, standings=standings)
+    print(f"Saved model run {run_id} to the database.")
 
 
 def cmd_backtest(args):
     """Walk-forward + end-of-season standings backtest for several seasons."""
-    raw = load_splits(args.data)
+    _check_save(args)
+    raw = load_splits(args)
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(args.seed)
@@ -745,6 +875,7 @@ def cmd_backtest(args):
     per_event, per_season = [], []
     for season in seasons:
         target = select_target(raw, season, args.category)
+        target = target[target["event_id"].isin(completed_events(target))]
         n_ev = target["event_id"].nunique()
         if n_ev < 3:
             print(f"{season}: {n_ev} event(s) with data, skipped (need 3+).")
@@ -787,16 +918,23 @@ def cmd_backtest(args):
                    "brier_final", "brier_final_base", "top10_hits", "winner_pred_win_prob"]].mean()
     print("\nAll events: " + ", ".join(f"{k}={v:.4f}" for k, v in all_mean.items()))
     print(f"\nCSVs -> {out_dir}/")
+    if args.save:
+        from racedb.queries import records
+        _save_run(args, raw, raw.iloc[0:0], kind="backtest", fit_kw=fit_kw,
+                  metrics=dict(all_events=records(all_mean.to_frame().T)[0], seasons=records(ss),
+                               events=records(ev)))
 
 
 def cmd_season(args):
-    raw = load_splits(args.data)
+    _check_save(args)
+    raw = load_splits(args)
     target = select_target(raw, args.season, args.category)
     if target.empty:
         raise SystemExit(f"No rows for season={args.season} category={args.category}.")
     season = target["event_date"].astype(str).str[:4].iloc[0]
     fit_kw = dict(train_scope=args.train_scope, half_life_days=args.half_life_days,
                   category_weights={"MJ": args.junior_weight})
+    done_target = target[target["event_id"].isin(completed_events(target))]  # for backtests
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(args.seed)
@@ -810,8 +948,9 @@ def cmd_season(args):
           f"Training scope: {args.train_scope} ({n_train_ev} event/category sets), "
           f"half-life {args.half_life_days:.0f} days, junior weight {args.junior_weight}.\n")
 
+    saved_metrics, saved_preds, saved_standings = {}, [], None
     if args.walk_forward:
-        wf = walk_forward_season(raw, target, n_sims=min(args.sims, 5000), rng=rng, **fit_kw)
+        wf = walk_forward_season(raw, done_target, n_sims=min(args.sims, 5000), rng=rng, **fit_kw)
         wf.to_csv(out_dir / "walk_forward.csv", index=False)
         print(f"=== WALK-FORWARD: each {season} round predicted from everything before it ===")
         cols = ["venue", "n_riders", "spearman_points", "brier_win", "brier_win_base", "brier_podium",
@@ -819,10 +958,11 @@ def cmd_season(args):
                 "winner_pred_win_prob"]
         print(wf[cols].to_string(index=False, float_format="{:.4f}".format))
         print("mean: " + ", ".join(f"{c}={wf[c].mean():.4f}" for c in cols[2:10]) + "\n")
+        saved_metrics["walk_forward"] = wf
 
     if args.backtest:
         model, reports, standings, (train_ev, test_ev) = backtest_season(
-            raw, target, n_holdout=args.backtest, n_sims=args.sims, rng=rng, **fit_kw)
+            raw, done_target, n_holdout=args.backtest, n_sims=args.sims, rng=rng, **fit_kw)
         print(f"=== BACKTEST: fit on {len(train_ev)} {season} events (+ history if scope=all), predict {', '.join(test_ev)} ===")
         print(f"model: sigma={model['sigma']:.4f} tau={model['tau']:.4f} (log-time), "
               f"incident rate={model['p0']:.1%}, incidents that are DNF/DSQ={model['dnf_share']:.0%}\n")
@@ -838,6 +978,10 @@ def cmd_season(args):
             print(summ[cols].head(top).to_string(index=False, formatters=fmt, float_format="{:.1f}".format))
             summ.to_csv(out_dir / f"backtest_{metrics['venue']}.csv", index=False)
             print()
+            if "race_id" in target:
+                race_id = target.loc[target["event_id"] == metrics["event_id"], "race_id"].iloc[0]
+                saved_preds.append(summ.assign(target=f"backtest:{metrics['event_id']}", race_id=race_id))
+        saved_metrics["backtest"] = pd.DataFrame([m for m, _ in reports])
         standings.to_csv(out_dir / "backtest_standings.csv", index=False)
         print(f"--- Standings after {test_ev[-1]}: predicted vs actual ---")
         s = standings[standings["actual_points"] > 0]
@@ -848,20 +992,51 @@ def cmd_season(args):
         print()
 
     if args.remaining:
-        model, per_round, standings = forecast_season(
+        model, upcoming, per_round, standings = forecast_season(
             raw, target, n_remaining=args.remaining, n_sims=args.sims, rng=rng, **fit_kw)
-        print(f"=== FORECAST: {args.remaining} remaining round(s), fit on all {len(event_order(target))} {season} events + history ===")
-        print("--- Per remaining round (venue unknown -> same distribution for each) ---")
-        cols = ["rider_name", "attend_prob", "win_prob", "podium_prob", "top10_prob",
-                "make_final_prob", "exp_points"]
-        print(per_round[cols].head(top).to_string(index=False, formatters=fmt, float_format="{:.1f}".format))
-        per_round.to_csv(out_dir / "forecast_per_round.csv", index=False)
+        print(f"=== FORECAST: {args.remaining} remaining round(s) "
+              f"({len(upcoming)} in progress/upcoming with start lists) ===")
+        for event_id, summ in upcoming:
+            rows = target[target["event_id"] == event_id]
+            venue = rows["venue"].iloc[0] if "venue" in rows else event_id
+            print(f"--- {venue} ({event_id}): {len(summ)} starters; model fit on data before this weekend, "
+                  f"weekend pace adjusted from timed training ---")
+            cols = ["rider_name", "win_prob", "podium_prob", "top10_prob", "make_final_prob", "exp_points",
+                    "tt_pace_adj_pct"]
+            print(summ[cols].head(max(top, 15)).to_string(index=False, formatters=fmt,
+                                                          float_format="{:.2f}".format))
+            summ.to_csv(out_dir / f"forecast_{venue}.csv", index=False)
+            race_id = rows["race_id"].iloc[0] if "race_id" in rows else None
+            saved_preds.append(summ.assign(target=f"event:{event_id}", race_id=race_id))
+            print()
+        if per_round is not None:
+            print("--- Per remaining round not yet in the data (venue unknown) ---")
+            cols = ["rider_name", "attend_prob", "win_prob", "podium_prob", "top10_prob",
+                    "make_final_prob", "exp_points"]
+            print(per_round[cols].head(top).to_string(index=False, formatters=fmt, float_format="{:.1f}".format))
+            per_round.to_csv(out_dir / "forecast_per_round.csv", index=False)
+            saved_preds.append(per_round.assign(target="remaining_round"))
         print("\n--- Projected final championship standings ---")
         cols = ["rider_name", "current_rank", "current_points", "exp_points", "points_p10",
                 "points_p90", "champion_prob", "top3_prob", "exp_rank"]
         print(standings[cols].head(top).to_string(index=False, formatters=fmt, float_format="{:.0f}".format))
         standings.to_csv(out_dir / "forecast_standings.csv", index=False)
+        saved_standings = standings
     print(f"\nCSVs -> {out_dir}/")
+    if args.save:
+        from racedb.queries import records
+        _save_run(args, raw, target, kind="forecast" if args.remaining else "backtest", fit_kw=fit_kw,
+                  metrics={k: records(v) for k, v in saved_metrics.items()},
+                  race_predictions=pd.concat(saved_preds, ignore_index=True) if saved_preds else None,
+                  standings=saved_standings)
+
+
+def _add_source_args(p):
+    p.add_argument("--db", nargs="?", const="", default=None, metavar="URL",
+                   help="Read from the database ($DATABASE_URL or the docker-compose default if no URL).")
+    p.add_argument("--data", help="Or read a tidy CSV from parser.py instead of the database.")
+    p.add_argument("--competition", default="uci_dhi_wc", help="Competition code in the database.")
+    p.add_argument("--save", action="store_true", help="Store the model run and predictions in the database.")
 
 
 def main():
@@ -883,7 +1058,7 @@ def main():
 
     season_p = sub.add_parser("season", help="Backtest held-out rounds and forecast remaining "
                                              "rounds + championship standings.")
-    season_p.add_argument("--data", required=True, help="Tidy CSV from parser.py (data/*.md)")
+    _add_source_args(season_p)
     season_p.add_argument("--out-dir", default="season_out")
     season_p.add_argument("--backtest", type=int, default=2,
                           help="Hold out and predict the last N raced events (0 = skip).")
@@ -905,7 +1080,7 @@ def main():
     season_p.set_defaults(func=cmd_season)
 
     bt_p = sub.add_parser("backtest", help="Walk-forward + standings backtest over several seasons.")
-    bt_p.add_argument("--data", required=True, help="Tidy CSV from parser.py")
+    _add_source_args(bt_p)
     bt_p.add_argument("--out-dir", default="backtest_out")
     bt_p.add_argument("--seasons", nargs="+", type=int, help="Seasons to backtest (default: all with data).")
     bt_p.add_argument("--category", default="ME")

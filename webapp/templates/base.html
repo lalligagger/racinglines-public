@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}racinglines{% endblock %} · racinglines admin</title>
+<link rel="stylesheet" href="/static/style.css"></head>
+<body>
+<header>
+  <a class="brand" href="/">racinglines</a>
+  <a href="/">Predictions</a><a href="/events">Events</a><a href="/athletes">Athletes</a>
+  <a href="/runs">Model runs</a><a href="/runs?kind=backtest">Backtests</a>
+  <a href="/house">House book</a><a href="/markets">Polymarket</a><a href="/orders">Orders</a><a href="/pitch">Pitch</a>
+  <a href="/logout" style="margin-left:auto">Log out</a>
+</header>
+<main>
+<div class="banner {% if trading.enabled and trading.has_key %}live{% endif %}">Polymarket: {{ trading.status() }}</div>
+{% block content %}{% endblock %}
+</main></body></html>

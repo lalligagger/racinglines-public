@@ -29,7 +29,10 @@
 
 **Engineering**
 
-- [ ] Tests.
+- [ ] Tests (turn the web-app and house-book smoke tests into a pytest suite).
+- [ ] Refuse house markets (and market links) for junior categories (`categories.age_group = 'junior'`).
+- [ ] Persist login throttling across restarts (it's in memory now), and add a stable named tunnel with Cloudflare Access.
+- [ ] Condition in-weekend forecasts on completed rounds (Q1 results, split times).
 
 <!-- /readme -->
 
@@ -52,8 +55,9 @@ standings, champion odds, `spearman_points`) is approximate.
       score. Also check whether riders who get through Q2 score. Update `QUAL_POINTS`
       and `QUAL_POINTS_ROUND`. If more than one round pays, extend
       `actual_event_points` and `simulate_weekend`.
-- [ ] If points differ by era, make the tables per-season (e.g. a dict keyed by
-      season or format).
+- [ ] Store the tables in the `points_schemes` database table (per competition,
+      era and round kind), and have the model read them from there instead of the
+      constants.
 - [ ] Check the edge cases:
   - [ ] DNF/DSQ in the Final: zero points, or last-place points?
   - [ ] Ties
@@ -69,9 +73,10 @@ standings, champion odds, `spearman_points`) is approximate.
 ## Data
 
 - [ ] **Use UCI rider IDs.** The results JSON has `UciRiderId` for every rider.
-      Write it as a column in the downloaded markdown, re-download, and key
-      `rider_id` on it (`uci:<id>`), falling back to names. This fixes name changes
-      such as `WILLIAMS Robert Jordan` / `WILLIAMS Jordan`.
+      Write it as a column in the downloaded markdown, re-download, and add
+      `athlete_identifiers(scheme="uci")` at ingest, matched before names. This
+      merges name changes such as `WILLIAMS Robert Jordan` / `WILLIAMS Jordan`
+      (existing athletes need a one-off merge).
 - [ ] **Parse the 2021 PDFs** (Leogang, Les Gets). The text layer is readable but has
       repeated letters from bold text (`BBBBRRRROOOO`), and each rider spans two
       lines. The PDFs also have UCI ID, year of birth, weather, temperature and
@@ -108,11 +113,24 @@ standings, champion odds, `spearman_points`) is approximate.
 
 ## Engineering
 
+- [x] Admin web app (`webapp/`): predictions, histories, backtests, Polymarket maker orders.
+- [ ] Public/JSON API endpoints next to the admin pages.
+- [ ] **Condition in-weekend forecasts on completed rounds.** Once Q1 has run, fix
+      who has qualified and use the Q1 times. Also use split times from disrupted
+      Timed Training sessions.
+- [ ] Market-making loop: re-quote linked markets automatically when the model or
+      book moves, within per-market and total exposure limits.
+- [ ] Find a venue that lists downhill markets. Polymarket has none as of 2026-09.
+- [x] In-progress events are forecast with their real start lists and saved against their race.
+- [ ] Have `forecast_season` read `scheduled` events (no start list yet) as named rounds instead of `remaining_round`.
+- [ ] Ingest on a schedule: download, then `racedb ingest` for new rounds.
+- [ ] Ingest the other input formats (copy/paste, HTML, JSON) into the database.
+
 - [x] Pinned `requirements.txt` (pipeline) and `requirements-docs.txt` (mkdocs).
 - [ ] Optionally, a `pyproject.toml`, so the scripts can be installed as a package.
 - [ ] Run `python build_readme.py --check` in CI or a pre-commit hook, so the README
       can't drift from the docs.
 - [ ] Tests: parser fixtures (one file per format era), `event_format`,
       `actual_event_points`, the rider-ID normalization check.
-- [ ] Cache parsed CSVs, or a small database, instead of re-parsing every run.
+- [x] PostgreSQL database instead of re-parsing files every run.
 - [x] `.gitignore` (ignores `data/`, generated outputs, `site/`, Python and editor files).

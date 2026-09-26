@@ -143,6 +143,7 @@ def ingest_file(session, path, competition="uci_dhi_wc", force=False):
         category = _upsert(session, m.Category, dict(competition_id=comp.id, code=first["category"]),
                            name=first["category"])
     event_date = date.fromisoformat(first["event_date"])
+    has_final = bool(((df["round"] == "final") & (df["status"] == "OK")).any())
     season = _upsert(session, m.Season, dict(competition_id=comp.id, year=event_date.year))
     title = first.get("event_name") or ""
     country = title.rsplit(",", 1)[-1].strip() if re.search(r",\s*[A-Z]{3}\s*$", title) else None
@@ -150,9 +151,9 @@ def ingest_file(session, path, competition="uci_dhi_wc", force=False):
     event = _upsert(session, m.Event, dict(season_id=season.id, source=SOURCE, source_key=first["source_key"]),
                     name=title, start_date=event_date, venue_id=venue.id,
                     series_round=None if pd.isna(first["series_round"]) else int(first["series_round"]),
-                    status="completed")
+                    status="completed" if has_final else "in_progress")
     race = _upsert(session, m.Race, dict(event_id=event.id, category_id=category.id))
-    race.format = event_format(df, df["event_id"].iloc[0])
+    race.format = event_format(df, df["event_id"].iloc[0]) if has_final else None
 
     # replace this race's rounds (results and splits cascade)
     session.execute(delete(m.Round).where(m.Round.race_id == race.id))

@@ -1,0 +1,7 @@
+{% extends "base.html" %}{% from "_macros.html" import table %}
+{% block title %}Model runs{% endblock %}
+{% block content %}
+<h1>Model runs{% if kind %} · {{ kind }}{% endif %}</h1>
+<p><a href="/runs">all</a> · <a href="/runs?kind=forecast">forecast</a> · <a href="/runs?kind=backtest">backtest</a></p>
+{{ table(runs, ["id", "created_at", "kind", "model", "competition", "season", "category", "data_through", "code_version", "race_preds", "standings_rows"], {"id": ["/runs/", "id"]}) }}
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% from "_macros.html" import table %}
+{% block title %}{{ ev.venue }} {{ ev.season }}{% endblock %}
+{% block content %}
+<h1>{{ ev.venue }} {{ ev.season }} <span class="muted">· {{ ev.status }}</span></h1>
+<p class="muted">{{ ev.name }} · {{ ev.start_date|fmt }} · {{ ev.source }} {{ ev.source_key }}</p>
+{% if pred_groups %}<h2>Predictions for this event</h2>
+<div class="grid">{% for g in pred_groups %}<div class="card"><h3>Run <a href="/runs/{{ g.run }}">#{{ g.run }}</a> ({{ g.kind }}) · {{ g.category }}</h3>
+{{ table(g.table, ["athlete", "win_prob", "podium_prob", "top10_prob", "make_final_prob", "exp_points", "actual_final_pos"], {"athlete": ["/athletes/", "athlete_id"]}) }}</div>{% endfor %}</div>{% endif %}
+<h2>Results</h2>
+<div class="grid">{% for g in groups %}<div class="card"><h3>{{ g.category }} · {{ g.round }}</h3>
+{{ table(g.table, ["position", "athlete", "nation", "team", "status", "time_s"], {"athlete": ["/athletes/", "athlete_id"]}) }}</div>{% endfor %}</div>
+{% endblock %}

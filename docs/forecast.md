@@ -1,55 +1,61 @@
 # Current forecast: 2026 Men Elite
 
-The model is fit on everything through 2026 round 7 (Les Gets, 21–23 Aug), using
+Model run **#4** (2026-09-26), with data through Whistler Timed Training and the Q1
+start list. The model is fit on everything before the Whistler weekend, using
 2021–2026 elite and junior history.
 
 <!-- readme: forecast-summary -->
 
-2026 title odds with 2 rounds left: **Williams 72.7%**, Vermette 18.5%, Pierron 4.2%,
-Iles 2.8% ([full forecast](#projected-final-standings)).
+2026 title odds with 2 rounds left (Whistler in progress, then one more round):
+**Williams 71.1%**, Vermette 18.8%, Pierron 4.2%, Iles 4.1%
+([full forecast](#projected-final-standings)).
 
 <!-- /readme -->
 
 ```
-python predictor.py season --data splits.csv --out-dir season_out --walk-forward   # 10k sims, seed 42
+python -m racedb ingest data/script-generated
+python predictor.py season --db --save --backtest 0 --remaining 2   # 10k sims, seed 42
 ```
 
 !!! warning "Placeholder points"
-    Expected points, standings and champion odds use placeholder points tables.
-    Win, podium, top-10 and make-Final odds don't.
+    Expected points, standings, champion odds and rank-movement probabilities use
+    placeholder points tables. Win, podium, top-10 and make-Final odds don't.
 
-## Each remaining round (8 and 9)
+## Whistler (DHI #8, 25–27 Sep): in progress
 
-Venues aren't known yet, so both rounds get the same odds. The field is every
-rider who started any of the last 3 rounds, with attendance weighted by how often
-they started. The format is the 2026 Q1/Q2 format.
+There are 109 starters from the Q1 start list. Timed Training was **ignored** by the
+safety check (residual IQR 0.71): riders were held on track, so finish times don't
+reflect pace. These odds therefore carry no Whistler-specific information.
 
-| Rider | Attend | Win | Podium | Top 10 | Make Final | Exp pts |
-|---|---|---|---|---|---|---|
-| WILLIAMS Jordan | 100% | 6.8% | 17.7% | 44.7% | 80.7% | 98 |
-| ALRAN Max | 100% | 6.3% | 16.4% | 42.0% | 78.4% | 93 |
-| VERMETTE Asa | 100% | 6.3% | 15.7% | 39.7% | 78.3% | 90 |
-| PIERRON Amaury | 100% | 5.3% | 13.3% | 36.8% | 74.0% | 82 |
-| ALRAN Till | 100% | 4.7% | 13.2% | 36.8% | 74.2% | 82 |
-| VERGIER Loris | 100% | 4.2% | 12.1% | 34.8% | 73.2% | 78 |
-| PINKERTON Ryan | 100% | 4.4% | 12.4% | 34.4% | 73.0% | 78 |
-| BROSNAN Troy | 100% | 4.1% | 11.9% | 33.9% | 71.2% | 77 |
+| Rider | Win | Podium | Top 10 | Make Final | Exp pts | Rank now | Rank up | Rank down |
+|---|---|---|---|---|---|---|---|---|
+| WILLIAMS Jordan | 6.9% | 16.7% | 41.2% | 75.2% | 91 | 1 | 0.0% | 18.5% |
+| VERMETTE Asa | 5.8% | 15.0% | 38.2% | 74.1% | 85 | 2 | 13.7% | 34.9% |
+| ALRAN Max | 5.4% | 14.5% | 39.0% | 73.9% | 86 | 6 | 29.0% | 50.1% |
+| BRUNI Loic | 4.9% | 13.6% | 34.5% | 70.9% | 78 | 26 | 47.7% | 33.2% |
+| ALRAN Till | 4.7% | 13.1% | 35.0% | 70.1% | 78 | 11 | 39.9% | 39.1% |
+| GOLDSTONE Jackson | 4.6% | 11.7% | 31.7% | 66.7% | 71 | 5 | 17.8% | 59.6% |
+| PINKERTON Ryan | 4.6% | 12.0% | 32.9% | 69.0% | 74 | 8 | 46.0% | 25.4% |
+| VERGIER Loris | 4.4% | 12.4% | 33.5% | 68.1% | 75 | 9 | 19.9% | 59.3% |
+
+Refresh after each session: re-download, ingest and re-run (see
+[Web app](webapp.md#getting-predictions-for-an-event-weekend)).
 
 ## Projected final standings
 
 | Rider | Rank now | Pts now | Exp final pts | p10–p90 | Champion | Top 3 |
 |---|---|---|---|---|---|---|
-| WILLIAMS Jordan | 1 | 1177 | 1372 | 1215–1543 | 72.7% | 99.4% |
-| VERMETTE Asa | 2 | 1042 | 1222 | 1070–1392 | 18.5% | 84.2% |
-| PIERRON Amaury | 4 | 928 | 1093 | 948–1258 | 4.2% | 43.1% |
-| ILES Finn | 3 | 962 | 1071 | 962–1232 | 2.8% | 32.4% |
-| GOLDSTONE Jackson | 5 | 822 | 970 | 836–1132 | 0.7% | 13.7% |
-| ALRAN Max | 6 | 773 | 958 | 808–1123 | 0.6% | 12.9% |
-| BROSNAN Troy | 7 | 760 | 911 | 777–1068 | 0.3% | 6.3% |
-| PINKERTON Ryan | 8 | 743 | 900 | 761–1061 | 0.2% | 5.6% |
+| WILLIAMS Jordan | 1 | 1177 | 1365 | 1207–1539 | 71.1% | 99.3% |
+| VERMETTE Asa | 2 | 1042 | 1218 | 1067–1387 | 18.8% | 83.5% |
+| ILES Finn | 3 | 962 | 1090 | 962–1252 | 4.1% | 39.6% |
+| PIERRON Amaury | 4 | 928 | 1086 | 945–1248 | 4.2% | 40.2% |
+| GOLDSTONE Jackson | 5 | 822 | 967 | 822–1130 | 0.8% | 12.6% |
+| ALRAN Max | 6 | 773 | 951 | 800–1118 | 0.6% | 11.5% |
+| BROSNAN Troy | 7 | 760 | 903 | 771–1060 | 0.2% | 5.4% |
+| PINKERTON Ryan | 8 | 743 | 896 | 758–1056 | 0.2% | 5.6% |
 
-Iles has only a 67% chance of starting each remaining round (he missed one of the
-last three), which caps his upside.
+The remaining unknown round uses the attendance model (riders who started the last
+3 completed rounds).
 
 ## 2026 walk-forward: how this season's rounds were called
 

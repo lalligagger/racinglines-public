@@ -1,0 +1,8 @@
+{% macro table(rows, cols, links={}) -%}
+{% if rows %}<div class="scroll"><table>
+<thead><tr>{% for c in cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+<tbody>{% for r in rows %}<tr>{% for c in cols %}{% set v = r.get(c) %}
+<td>{% if c in links and r.get(links[c][1]) is not none %}<a href="{{ links[c][0] }}{{ r.get(links[c][1]) }}">{{ v|fmt(c) }}</a>{% else %}{{ v|fmt(c) }}{% endif %}</td>{% endfor %}</tr>{% endfor %}</tbody>
+</table></div>{% else %}<p class="muted">Nothing here yet.</p>{% endif %}
+{%- endmacro %}
+{% macro csrf() %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endmacro %}

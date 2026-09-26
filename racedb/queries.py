@@ -88,7 +88,7 @@ def load_tidy(engine, competition="uci_dhi_wc", with_splits=True):
 
 def _git_commit():
     try:
-        return subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
+        return subprocess.run(["git", "describe", "--always", "--dirty"], capture_output=True, text=True,
                               cwd=Path(__file__).resolve().parent.parent, timeout=5).stdout.strip() or None
     except Exception:
         return None
@@ -148,7 +148,7 @@ def save_model_run(session, *, competition, season=None, category=None, model="s
                 race_id=_clean(rec.get("race_id")) if pd.notna(rec.get("race_id", np.nan)) else None,
                 target=str(rec.get("target", "")),
                 **{c: _clean(rec.get(c)) for c in cols},
-                extra={k: _clean(v) for k, v in rec.items() if k not in skip} or None,
+                extra={k: _clean(v) for k, v in rec.items() if k not in skip and _clean(v) is not None} or None,
             ))
         session.execute(insert(m.RacePrediction), rows)
 

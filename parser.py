@@ -618,8 +618,11 @@ def parse_markdown_tables_file(path, default_round=None):
         finish_s, _ = parse_time_to_seconds(rec.get("time"))
         if not finish_s:  # "00.000" / blank
             finish_s = None
-        status = STATUS_TOKENS.get(rec.get("status", "").lower()) or (
-            "OK" if finish_s is not None else "DNF")
+        raw_status = rec.get("status", "").strip().lower()
+        if raw_status == "na" and finish_s is None:
+            status = "START"  # on the start list, not raced yet (round in progress / upcoming)
+        else:
+            status = STATUS_TOKENS.get(raw_status) or ("OK" if finish_s is not None else "DNF")
         pos = int(rec["pos"]) if rec.get("pos", "").isdigit() else None
         common = dict(
             event_id=event_id, event_date=date, discipline="DHI",

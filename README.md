@@ -3,6 +3,14 @@ create databases and build prediction engines for timed race sport disciplines; 
 
 Current focus: **UCI Mountain Bike World Series downhill, Men Elite**.
 
+**Live on the current home server:**
+[App](https://unwrap-prison-reasons-louis.trycloudflare.com) ·
+[Pitch deck](https://unwrap-prison-reasons-louis.trycloudflare.com/pitch)
+
+> These links are subject to change. They run through a temporary Cloudflare quick
+> tunnel, which gets a new address whenever it restarts. Both pages need an admin
+> login.
+
 <!-- Sections between include markers are generated from docs/ by build_readme.py.
      Edit the tagged section in docs/, then run: python build_readme.py -->
 
@@ -13,7 +21,8 @@ Current focus: **UCI Mountain Bike World Series downhill, Men Elite**.
 
 - **Downloads** official split timing from ChronoRace. Men Elite and Men Junior
   2021–2026 have usable data; 2019–20 exist only as PDFs.
-- **Parses** it into one tidy table.
+- **Parses** it and stores it in **PostgreSQL**, in a schema built for many sports
+  and leagues.
 - **Learns** each rider's pace, consistency and crash/DNF rate from every season
   and category.
 - **Simulates** race weekends (qualifying → Final) thousands of times. The output
@@ -21,6 +30,14 @@ Current focus: **UCI Mountain Bike World Series downhill, Men Elite**.
   expected championship points and final standings.
 - **Backtests** itself on every season since 2021, predicting each round only from
   what came before it.
+- **Forecasts a race weekend while it's in progress,** using the real start list, and
+  checks whether Timed Training times are usable before relying on them.
+- **Stores** every model run's settings, metrics and predictions in the database.
+- **Admin web app:** latest predictions for upcoming events, model-run and backtest
+  history, and athlete and event pages. It also has a house book of our own YES/NO
+  markets (fair value ± spread, bet log, exposure, settlement) and maker-only
+  (post-only) Polymarket orders checked against the model's fair price. Sign-in
+  page, login throttling, and it can be exposed through a Cloudflare tunnel.
 
 <!-- /include -->
 
@@ -46,8 +63,9 @@ Per-season and per-round tables: [Evaluation](docs/evaluation.md#results-every-s
 <!-- include: forecast-summary -->
 <!-- generated from docs/forecast.md by build_readme.py - edit it there -->
 
-2026 title odds with 2 rounds left: **Williams 72.7%**, Vermette 18.5%, Pierron 4.2%,
-Iles 2.8% ([full forecast](docs/forecast.md#projected-final-standings)).
+2026 title odds with 2 rounds left (Whistler in progress, then one more round):
+**Williams 71.1%**, Vermette 18.8%, Pierron 4.2%, Iles 4.1%
+([full forecast](docs/forecast.md#projected-final-standings)).
 
 <!-- /include -->
 
@@ -70,11 +88,17 @@ Iles 2.8% ([full forecast](docs/forecast.md#projected-final-standings)).
 
 ```
 pip install -r requirements.txt
+docker compose up -d                            # PostgreSQL on localhost:5433
+python -m racedb init                           # tables + reference data
+python -m racedb ingest data/script-generated   # load results
 
-python parser.py --input-dir data/script-generated --out splits.csv
-python predictor.py season   --data splits.csv --walk-forward   # 2026 forecast + backtests
-python predictor.py backtest --data splits.csv                  # every season since 2021
+python predictor.py season   --db --walk-forward --save   # 2026 forecast + backtests, stored in the db
+python predictor.py backtest --db                        # every season since 2021
+ADMIN_PASSWORD=... python -m webapp                       # admin app on http://127.0.0.1:8000
 ```
+
+No database? `python parser.py --input-dir data/script-generated --out splits.csv`, then use
+`--data splits.csv` instead of `--db`.
 
 <!-- /include -->
 
@@ -106,6 +130,11 @@ python build_readme.py   # refresh README.md from sections tagged in docs/
 | `download_chronorace.py` | Event discovery and download from ChronoRace |
 | `parser.py` | Raw files → tidy CSV |
 | `predictor.py` | Season model: `season`, `backtest`. Older per-race model: `fit`, `predict` |
+| `racedb/` | Database package: models, ingest, queries, `python -m racedb` CLI |
+| `racedb/registry.py` | Sports, leagues, competitions, categories and venues (add new ones here) |
+| `migrations/`, `alembic.ini` | Alembic schema migrations |
+| `docker-compose.yml` | Local PostgreSQL 17 (port 5433) |
+| `webapp/` | Admin web app: predictions, histories, backtests, Polymarket maker orders (`python -m webapp`) |
 | `build_readme.py` | Regenerates README sections from tagged docs sections |
 | `requirements.txt`, `requirements-docs.txt` | Pinned dependencies (pipeline / docs site) |
 | `data/script-generated/` | Downloaded event files (one per event and category) |
@@ -146,6 +175,9 @@ Full list: [`docs/todo.md`](docs/todo.md).
 
 **Engineering**
 
-- [ ] Tests.
+- [ ] Tests (turn the web-app and house-book smoke tests into a pytest suite).
+- [ ] Refuse house markets (and market links) for junior categories (`categories.age_group = 'junior'`).
+- [ ] Persist login throttling across restarts (it's in memory now), and add a stable named tunnel with Cloudflare Access.
+- [ ] Condition in-weekend forecasts on completed rounds (Q1 results, split times).
 
 <!-- /include -->

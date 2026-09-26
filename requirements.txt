@@ -12,6 +12,19 @@ joblib==1.6.0            # saves/loads the per-race model
 # downloading
 requests==2.34.2
 
+# database (racedb/, PostgreSQL)
+SQLAlchemy==2.1.1
+psycopg[binary]==3.3.6
+alembic==1.20.0
+
+# admin web app (webapp/)
+fastapi==0.141.1
+uvicorn[standard]==0.54.0
+python-multipart==0.0.32
+Jinja2==3.1.6
+httpx==0.28.1
+py-clob-client==0.34.6   # Polymarket's official CLOB client (order signing / posting)
+
 # parser.py HTML input path
 beautifulsoup4==4.15.0
 lxml==6.1.3

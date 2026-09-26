@@ -45,7 +45,7 @@ One row per **rider × sector × round**:
 | `split_time_s` | float | Time for this sector alone. On `FINISH` rows it's the last split to the line. |
 | `cum_time_s` | float | Cumulative time at this split. On `FINISH` rows it's the run time. |
 | `rank_at_split` | float | On `FINISH` rows: official `Pos`. On split rows: recomputed rank by cumulative time within the round. |
-| `status` | str | `OK`, `DNF`, `DNS`, `DSQ`. For a DNF, completed splits are `OK` and later ones carry the status. |
+| `status` | str | `OK`, `DNF`, `DNS`, `DSQ`, or `START` (on a published start list, not raced yet: ChronoRace shows `NA`). For a DNF, completed splits are `OK` and later ones carry the status. |
 | `track_condition` | str | `unknown`. Can be backfilled with `--conditions-file` (CSV of `event_id,round,track_condition`). |
 
 ## Round labels
@@ -110,8 +110,9 @@ rider but the downloader doesn't write out yet (see [TODO](todo.md#data)).
 - **Splits:** the gap in brackets is removed from each split cell. If the last split
   equals `Time`, it's treated as the finish line rather than a real sector.
 - **Missing times:** zero or blank times (`00.000`) become missing.
-- **Status:** comes from the `Status` column. A row with no time and no status
-  counts as `DNF`.
+- **Status:** comes from the `Status` column. `NA` with no time means the round
+  hasn't been raced yet, and becomes `START`, so start lists for a weekend in
+  progress are kept. Any other row with no time and no status counts as `DNF`.
 - **Venue:** the last `" - "` part of the title, up to the first comma, turned into
   a slug. So `"... - Les Gets, August 21-23, FRA"` becomes `les-gets`.
 
