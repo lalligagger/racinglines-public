@@ -7,7 +7,7 @@ Current focus: **UCI Mountain Bike World Series downhill, Men Elite**.
 [racinglines.bet](https://racinglines.bet) ·
 [racinglines.bet/pitch](https://racinglines.bet/pitch)
 
-> These links run through a named Cloudflare Tunnel. Both pages need an admin login.
+> Use password="password" for demo app/pitch.
 
 <!-- Sections between include markers are generated from docs/ by build_readme.py.
      Edit the tagged section in docs/, then run: python build_readme.py -->
