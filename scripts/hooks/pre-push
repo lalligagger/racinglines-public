@@ -1,0 +1,20 @@
+#!/bin/sh
+# Pre-push: the docs must build and the README must match them; no data may be pushed.
+# Enable once per clone:  git config core.hooksPath scripts/hooks
+# Skip in an emergency:   git push --no-verify
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+PY=.venv/bin/python
+[ -x "$PY" ] || PY=python3
+
+echo "pre-push: README in sync with docs/"
+"$PY" scripts/build_readme.py --check || {
+    echo "pre-push: run 'python scripts/build_readme.py' and commit README.md"; exit 1; }
+
+echo "pre-push: mkdocs build --strict"
+out=$("$PY" -m mkdocs build --strict -d site 2>&1) || {       # not -q: it hides the warnings strict counts
+    echo "$out" | grep -v "^INFO"
+    echo "pre-push: docs build failed (see above). Needs requirements-docs.txt installed."; exit 1; }
+
+echo "pre-push: no data in git"
+"$PY" -m pytest -q tests/test_no_data_in_git.py || exit 1

@@ -1,4 +1,4 @@
-# Evaluation
+# Downhill evaluation
 
 !!! warning "Placeholder points"
     Metrics measured in points (Spearman on points, standings) use placeholder
@@ -9,8 +9,9 @@
 
 <!-- readme: headline -->
 
-Walk-forward backtest over 43 rounds, 2021–2026. Each round is predicted only from
-data before it.
+**Downhill (UCI World Cup, Men Elite):** walk-forward backtest over 43 rounds,
+2021–2026. Each round is predicted only from data before it, and the model beats
+the uniform baseline on podium and make-Final in every season.
 
 | | Model | Uniform guess |
 |---|---|---|
@@ -19,7 +20,7 @@ data before it.
 | Win probability given to the actual winner (average) | **7.1%** | ~1% |
 | Rank correlation, predicted vs actual points | **0.62** | 0 |
 
-Per-season and per-round tables: [Evaluation](#results-every-season-with-data-20212026).
+Per-season and per-round tables: [Downhill evaluation](#results-every-season-with-data-20212026).
 
 <!-- /readme -->
 
@@ -54,7 +55,7 @@ instead.
 
 ## Results: every season with data (2021–2026)
 
-Command: `racinglines mtb_dh backtest --data splits.csv`. Settings: training scope
+Model run 192 (2026-09-26), command `racinglines mtb_dh backtest --db --save`. Settings: training scope
 `all`, 120-day half-life, junior weight 0.5, 4,000 simulations per round.
 Seasons 2019–2020 have no usable timing data (see [Data](data.md#whats-downloaded)).
 2021's first round (Maribor) has no earlier history, so it isn't predicted.
@@ -63,21 +64,21 @@ Seasons 2019–2020 have no usable timing data (see [Data](data.md#whats-downloa
 
 | Season | Rounds predicted | Format | Spearman | Brier win (model / base) | Brier podium (model / base) | Brier make-Final (model / base) | Top-10 hits | Winner's win prob | Standings Spearman | Actual champion (model prob) | Model favourite (prob) |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 2021 | 3 | single | 0.614 | 0.010 / 0.011 | 0.025 / 0.032 | 0.148 / 0.190 | 4.3 | 10.1% | 0.898 | Bruni (4.3%) | Vergier (76.4%) |
-| 2022 | 8 | single | 0.582 | 0.007 / 0.008 | 0.018 / 0.022 | 0.161 / 0.232 | 5.6 | 11.2% | 0.946 | Pierron (100%) | Pierron (100%) |
-| 2023 | 8 | semi / single | 0.595 | 0.007 / 0.007 | 0.020 / 0.022 | 0.113 / 0.184 | 5.0 | 5.2% | 0.940 | Goldstone (34.7%) | Bruni (38.8%) |
-| 2024 | 7 | semi / single | 0.607 | 0.006 / 0.007 | 0.018 / 0.021 | 0.101 / 0.171 | 6.0 | 7.0% | 0.871 | Bruni (90.6%) | Bruni (90.6%) |
-| 2025 | 10 | q1q2 | 0.637 | 0.010 / 0.011 | 0.028 / 0.032 | 0.132 / 0.219 | 5.2 | 4.9% | 0.959 | Goldstone (6.0%) | Bruni (94.0%) |
-| 2026 | 7 | q1q2 | 0.665 | 0.009 / 0.010 | 0.026 / 0.029 | 0.116 / 0.209 | 5.6 | 6.5% | 0.962 | Williams* (18.1%) | Pierron (51.8%) |
+| 2021 | 3 | single | 0.618 | 0.010 / 0.011 | 0.024 / 0.032 | 0.148 / 0.190 | 4.3 | 10.2% | 0.896 | Bruni (4.2%) | Vergier (76.0%) |
+| 2022 | 8 | single | 0.583 | 0.007 / 0.008 | 0.018 / 0.022 | 0.161 / 0.232 | 5.4 | 11.0% | 0.945 | Pierron (100%) | Pierron (100%) |
+| 2023 | 8 | semi / single | 0.597 | 0.007 / 0.007 | 0.019 / 0.022 | 0.113 / 0.184 | 5.0 | 5.1% | 0.941 | Goldstone (35.2%) | Bruni (40.0%) |
+| 2024 | 7 | semi / single | 0.609 | 0.006 / 0.007 | 0.018 / 0.021 | 0.101 / 0.171 | 5.9 | 7.0% | 0.870 | Bruni (91.1%) | Bruni (91.1%) |
+| 2025 | 10 | q1q2 | 0.637 | 0.010 / 0.011 | 0.028 / 0.032 | 0.132 / 0.219 | 5.0 | 5.0% | 0.960 | Goldstone (6.0%) | Bruni (94.0%) |
+| 2026 | 7 | q1q2 | 0.666 | 0.009 / 0.010 | 0.026 / 0.029 | 0.116 / 0.209 | 5.3 | 6.4% | 0.962 | Williams* (17.7%) | Pierron (51.0%) |
 
 \* 2026 "champion" means the standings leader after round 7; the season isn't over.
 
 **All 43 predicted rounds:**
-- Spearman 0.617;
+- Spearman 0.618;
 - Brier win 0.0082 vs 0.0088;
 - Brier podium 0.0224 vs 0.0259;
 - Brier make-Final 0.127 vs 0.204;
-- top-10 hits 5.4 out of 10;
+- top-10 hits 5.2 out of 10;
 - the actual winner got a **7.1%** win probability on average, against about 1% for
   a uniform guess.
 

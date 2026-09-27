@@ -125,7 +125,7 @@ is about 1%). The 2026 forecast barely changed: Williams at 72.7%.
   was run with. `requirements-docs.txt` covers mkdocs.
 - `build_readme.py` generates parts of the README from sections tagged in
   `docs/`, so the README summary and the docs can't disagree. See
-  [CLI reference](cli.md#build_readmepy).
+  [CLI reference](cli.md#scriptsbuild_readmepy).
 
 ## 8. PostgreSQL
 
@@ -326,14 +326,32 @@ for private bets: win, podium, make the Final, and championship rank up/down.
   test fixtures from FastF1, ChronoRace and Polymarket, replacing the extractor
   that read our own database.
 
+## 20. Refreshed results and layered docs
+
+- **2026 sweep re-priced with the practice prior** (run 191). Every taker
+  strategy improved: update & rebuy went from −$1,313 to −$479, and enter &
+  hold from −$2 to +$214. The maker replay stayed profitable (+$751). Trades
+  after FP2 swung from −$11 to +$1,130, and the model now beats Polymarket's
+  race-winner price mid-weekend.
+- **Downhill backtest re-run** (run 192) reproduced the published numbers to
+  within simulation noise.
+- **Docs reorganized:**
+    - a headline page first;
+    - then one layer at a time: data, models, accuracy, markets, operations,
+      background;
+    - the README is generated from the same tagged sections.
+
 ## Reproducing the tuning sweep
 
 The scope, half-life and junior-weight table in [Evaluation](evaluation.md#tuning)
 came from a short script that calls the library functions directly:
 
 ```python
-import numpy as np, pandas as pd, predictor as P
-raw = P.load_splits("splits.csv")
+import numpy as np
+from racinglines.db.config import get_engine
+from racinglines.db.queries import load_tidy
+from racinglines.models import timed_runs as P
+raw = load_tidy(get_engine())
 target = P.select_target(raw, 2026, "ME")
 for scope, hl, jw in [("season", 75, .5), ("all", 120, 0), ("all", 120, .5), ("all", 240, .5)]:
     wf = P.walk_forward_season(raw, target, min_prior_events=1, n_sims=4000,

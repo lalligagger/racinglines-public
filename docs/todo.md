@@ -4,36 +4,37 @@
 
 <!-- readme: todo-summary -->
 
-**Points validation (highest priority)**
+**F1 model and trading**
+
+- [ ] Fix the front-of-grid weighting: after qualifying, the model loses to a
+      grid-only guess on the win market.
+- [ ] Pre-practice pricing: train the finishing model for the no-practice case too.
+- [ ] Stage-aware taker strategy (stop re-trading after FP3 and qualifying),
+      tested on events after Baku.
+- [ ] Record every race weekend's Polymarket tape and order books, then replay
+      with book depth and a queue model.
+- [ ] Chaotic-race tail (rain, safety cars, multiple DNFs); top-constructor calibration.
+
+**Downhill: points validation (highest priority)**
 
 - [ ] Get the official UCI DHI points scales (Final and qualifying), for 2026 and
-      for past formats.
-- [ ] Replace `FINAL_POINTS` / `QUAL_POINTS` / `QUAL_POINTS_ROUND`, per era if needed.
-- [ ] Settle the edge cases: DNF/DSQ in the Final, ties, protected riders, bonus rounds.
-- [ ] Check our 2026 totals after round 7 against the official standings, and add a
-      test that pins them.
+      past formats, and settle the edge cases.
+- [ ] Check our 2026 totals against the official standings, and pin them in a test.
 - [ ] Re-run and refresh the published numbers.
 
-**Data**
+**Downhill: data and model**
 
-- [ ] Key riders by UCI ID. It's in ChronoRace's JSON; names change across seasons.
-- [ ] Parse the readable 2021 PDFs (Leogang, Les Gets). 2019–20 would need OCR.
-- [ ] Build rounds missing from Wikipedia (probing) into the downloader. Clean up
-      venue names.
-- [ ] Add Women's categories, start order and weather.
+- [ ] Key riders by UCI ID; parse the 2021 PDFs; add Women's categories, start order
+      and weather.
+- [ ] Check calibration (win probabilities look too flat); tune over all 43 rounds.
+- [ ] Find a venue that lists downhill markets (none on Polymarket as of 2026-09).
 
-**Model**
+**Platform**
 
-- [ ] Check calibration: win probabilities look too flat.
-- [ ] Tune over all 43 backtest rounds. Add rider × venue effects.
-
-**Engineering**
-
-- [x] Tests: pinned regression suite for every pipeline stage plus web, private-book and role smoke tests (see [Testing](testing.md)).
-- [ ] Per-maker exposure limits and per-taker daily limits; taker balances or ledgers.
-- [ ] Rate-limit and paginate the activity log view; export the log to CSV.
-- [ ] Refuse house markets (and market links) for junior categories (`categories.age_group = 'junior'`).
-- [ ] Persist login throttling across restarts (it's in memory now), and add a stable named tunnel with Cloudflare Access.
+- [ ] Sport schemas (`sports/*.yaml`) over one shared core, so the differences
+      between sports are configuration, not code.
+- [ ] Kalshi as a second exchange.
+- [ ] Per-maker exposure limits, per-taker limits and ledgers.
 - [ ] Condition in-weekend forecasts on completed rounds (Q1 results, split times).
 
 <!-- /readme -->
@@ -121,7 +122,7 @@ standings, champion odds, `spearman_points`) is approximate.
 - [x] **Practice pace prior** (2026-09-26): large gain before qualifying (backtest in [Formula 1](f1.md#results)).
 - [ ] **Pre-practice pricing got slightly worse** with the practice prior: train the finishing model on
       no-practice paces for pre-FP1 pricing (or on both).
-- [ ] Re-price the 2026 sweep stages with the practice prior and re-run the sweep.
+- [x] Re-price the 2026 sweep stages with the practice prior and re-run the sweep (run 191: update −$1,313 → −$479, hold −$2 → +$214).
 - [ ] **Front of the grid is underweighted.** After qualifying, the model loses to a
       grid-only baseline on win and ties it on podium (backtest run 115, 129 races). Check the finishing
       model's noise and grid terms. Consider a grid-position prior that the
@@ -144,6 +145,9 @@ standings, champion odds, `spearman_points`) is approximate.
       fetch `markets trades` after each race.
 - [ ] Replay with recorded book depth: queue position and competing makers,
       instead of the touch/through bounds.
+- [ ] **Stage-aware taker:** in the 2026 sweep, trades after FP3 and qualifying lost
+      −$2,353 while FP1/FP2/sprint trades made +$1,944. Test a strategy that stops
+      re-trading late in the weekend, on events after Baku (not tuned on these).
 - [ ] Flatten or hedge inventory before qualifying (Baku's biggest losses were
       pre-qualifying shorts).
 - [ ] Replay across every backtest race once their Polymarket tapes are
@@ -167,7 +171,7 @@ standings, champion odds, `spearman_points`) is approximate.
 - [ ] Ingest the other input formats (copy/paste, HTML, JSON) into the database.
 
 - [x] Pinned `requirements.txt` (pipeline) and `requirements-docs.txt` (mkdocs).
-- [ ] Optionally, a `pyproject.toml`, so the scripts can be installed as a package.
+- [x] `pyproject.toml`: `pip install -e .` installs the `racinglines` command.
 - [ ] Run `python scripts/build_readme.py --check` in CI or a pre-commit hook, so the README
       can't drift from the docs.
 - [ ] Tests: parser fixtures (one file per format era), `event_format`,

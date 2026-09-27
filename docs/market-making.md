@@ -1,7 +1,13 @@
-# Market making: as-of diagnostics and maker replay
+# Market making
 
-How we test whether quoting a market is worth it before risking money, and what
-the first test event (the 2026 Azerbaijan GP) showed.
+How we test whether trading a market is worth it before risking money: on one
+event in depth, then on a whole season.
+
+| | What | Result |
+|---|---|---|
+| [Baku diagnostic](#baku-2026-09-26-first-test-event) | One race priced as of every moment, with a maker replay on the minute-level tape | Maker −$303 at default settings |
+| [Season sweep](#season-sweep) | All 15 raced 2026 weekends, re-priced after every session | **Maker +$751**; taker strategies −$479 to +$214 |
+| [Season strategy](#season-strategy-championship-markets) | Championship markets, rebalanced after every race | −$241 (hold: −$532) |
 
 ## How the market works
 
@@ -188,51 +194,119 @@ weekend of a season through its sessions:
    same stages.
 5. **Settlement:** the result is read only after trading, to settle and score.
 
-### 2026, rounds 1–15 (sweep run 96)
+### 2026, rounds 1–15
+
+<!-- readme: f1-trading -->
+
+**Every 2026 weekend through Baku, traded on Polymarket's recorded prices**
+(sweep run 191). Each stage is priced with the current model (shared car,
+practice prior), with a 1¢ cost per share:
 
 | Strategy | P&L | Bought / filled | Weekends up |
 |---|---|---|---|
-| Update & rebuy after each session | **−$1,313** | $11,238 | 6 / 15 |
-| Enter before running, hold | −$2 | $7,325 | 6 / 15 |
-| Enter after qualifying only | −$512 | $3,536 | 5 / 15 |
-| Maker replay (conservative fills, ±2¢) | **+$852** | $8,630 | 8 / 15 |
+| **Maker replay** (conservative fills, ±2¢) | **+$751** | $8,969 | 7 / 15 |
+| Enter before running, hold | +$214 | $6,954 | 7 / 15 |
+| Enter after qualifying only | −$15 | $3,254 | 6 / 15 |
+| Update & rebuy after each session | −$479 | $11,100 | 5 / 15 |
 
-**Taking Polymarket's price with this model loses money,** and updating after
-every session loses the most. P&L of the update strategy's decisions, by
-stage:
+- **Making markets pays; taking doesn't yet.** Earning the spread from flow
+  beats paying it on a model that isn't sharper than the market at every stage.
+- **Mid-weekend the model beats Polymarket.** Race-winner Brier, model vs
+  market:
+
+  | After | FP1 | FP2 | SQ | Sprint | FP3 | Quali |
+  |---|---|---|---|---|---|---|
+  | Model | **0.077** | **0.080** | **0.062** | **0.088** | 0.093 | 0.072 |
+  | Polymarket | 0.078 | 0.084 | 0.067 | 0.101 | **0.085** | **0.060** |
+
+- **Re-trading after FP3 and qualifying is where it loses:** −$1,187 and
+  −$1,166. Trades after FP1, FP2 and the sprint earned +$1,944.
+
+<!-- /readme -->
+
+**What changed with the practice prior.** Run 96 used the same stages without
+the prior:
+
+| Strategy | Run 96 (no practice prior) | Run 191 (practice prior) |
+|---|---|---|
+| Update & rebuy | −$1,313 | **−$479** |
+| Enter & hold | −$2 | **+$214** |
+| After quali only | −$512 | **−$15** |
+| Maker replay | +$852 | +$751 |
+
+The biggest swing is after FP2 (−$11 → +$1,130): our fair value now moves with
+practice, so we're no longer taking the other side of what practice revealed.
+
+**The update strategy's P&L by stage:**
 
 | Stage | Trades | P&L |
 |---|---|---|
-| Pre-weekend | 145 | −$133 |
-| After FP1 | 92 | +$603 |
-| After SQ | 38 | +$11 |
-| After Sprint | 60 | +$179 |
-| After FP2 | 88 | −$11 |
-| After FP3 | 135 | −$916 |
-| After Quali | 145 | −$1,045 |
+| Pre-weekend | 148 | −$206 |
+| After FP1 | 135 | +$320 |
+| After SQ | 41 | +$135 |
+| After Sprint | 50 | +$495 |
+| After FP2 | 95 | +$1,130 |
+| After FP3 | 133 | −$1,187 |
+| After Quali | 116 | −$1,166 |
 
-- **Practice isn't in the model.** Our fair value doesn't move after practice,
-  but the market does. So "after FP3" trades take the other side of what
-  practice revealed. The FP1 gain is most likely noise for the same reason.
-- **After qualifying, the market is sharper than us.** Win Brier 0.060
-  (Polymarket) vs 0.075 (model), consistent with the grid-underweighting in the
-  backtest.
-- **By market:**
-    - head-to-heads were the only taker profit (+$362, the teammate-correlation
-      change pays);
-    - win lost the most (−$905), then pole (−$487).
+**By market:**
 
-**Market making did better than taking,** at +$852 with 8/15 weekends up:
-earning the spread from flow beats paying it on a model that isn't sharper than
-the market. It is noisy, though: Monza (+$768) and Miami (+$527) carry most of
-the total.
+| Market | Trades | P&L |
+|---|---|---|
+| Teammate head-to-head | 31 | **+$392** |
+| Podium | 152 | +$84 |
+| Top-scoring constructor | 36 | −$36 |
+| Win | 333 | −$355 |
+| Pole | 166 | −$564 |
 
-**Next, on the model side:**
+Head-to-heads, which the shared car helps most, are the best market. Win and
+pole are the worst: they are the markets that depend most on the front of the
+grid, which the model underweights.
 
-- a practice-pace prior (like downhill's timed-training prior);
-- the grid weighting;
-- then re-run this sweep. Pricing is cached, so re-running with new trading
-  knobs takes minutes.
+**Per weekend:**
+
+- **Maker:** most of the total comes from Monza (+$447), Austria (+$307) and
+  Silverstone (+$279). Zandvoort (−$171) and Baku (−$140) were the worst.
+- **Update strategy:** best was Silverstone (+$846), worst Spa (−$435).
+
+It's noisy: 15 weekends is a small sample.
+
+**Next:**
+
+- fix the front-of-grid weighting;
+- try a stage-aware strategy that stops re-trading after FP3 and qualifying,
+  checked on the next events, not tuned on these.
+
+Pricing is cached, so re-running with new trading settings takes minutes.
+
+## Season strategy (championship markets)
+
+`racinglines f1 season-strategy --save` replays a default strategy for
+Polymarket's drivers' and constructors' championship markets through 2026. Its
+latest run feeds the Markets board and the race pages.
+
+- **Decisions:** pre-season, then 1 h after every race. At each, an as-of
+  season forecast (only sessions that had ended) gives the fair values.
+- **Trading:**
+    - rebalance to $500 × edge when the edge is at least 3 points, up to $150
+      per market, with $1,500 of capital in total;
+    - execution at Polymarket's price one hour after the decision, plus half
+      the recorded spread and 0.5¢ slippage;
+    - positions are exited even when the price has left the tradeable band.
+- **Markets:** only those with at least $100k traded.
+- **Demo liberty:** the pre-season forecast simulates the published 2026 entry
+  list instead of the 2025 field.
+
+**Run 113** (through Baku, 16 decisions, 102 trades):
+
+| | P&L | Bought | Max drawdown |
+|---|---|---|---|
+| **Update after every race** | **−$241** | $2,276 | −$758 |
+| Enter pre-season and hold | −$532 | $961 | −$532 |
+
+Updating after each race loses less than holding the pre-season view, but it
+still loses: championship prices move on the same information our forecast
+uses, and the market has priced it by the time we trade an hour later.
 
 ## Limits of the Baku test
 
@@ -250,7 +324,11 @@ the total.
 
 ## Tests
 
-`python -m pytest` runs two suites:
+Part of the [regression suite](testing.md):
+
+- **`tests/test_rebalance.py`** and **`tests/test_season_strategy.py`** (no
+  database) check the weekend taker and season strategies on synthetic stages:
+  sizing, edge thresholds, capital caps, exits and P&L accounting.
 
 - **`tests/test_replay.py`** (no database) checks the replay's rules:
     - no lookahead;

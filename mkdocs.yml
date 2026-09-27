@@ -13,16 +13,22 @@ markdown_extensions:
   - fenced_code
 nav:
   - Overview: index.md
-  - Data: data.md
-  - Parser: parser.md
-  - Database: database.md
-  - Web app & trading: webapp.md
-  - Season model: model.md
-  - Formula 1: f1.md
-  - Market making: market-making.md
-  - Evaluation: evaluation.md
-  - Current forecast: forecast.md
-  - CLI reference: cli.md
-  - Testing: testing.md
-  - Project history: history.md
-  - TODO: todo.md
+  - Data:
+      - Sources & layout: data.md
+      - Parser: parser.md
+      - Database: database.md
+  - Models:
+      - Formula 1: f1.md
+      - Downhill model: model.md
+  - Accuracy:
+      - Downhill evaluation: evaluation.md
+      - Downhill forecast: forecast.md
+  - Markets:
+      - Market making: market-making.md
+      - Web app & trading: webapp.md
+  - Operate:
+      - CLI reference: cli.md
+      - Testing: testing.md
+  - Background:
+      - Project history: history.md
+      - TODO: todo.md

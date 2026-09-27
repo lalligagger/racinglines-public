@@ -1,12 +1,21 @@
 # Testing
 
+<!-- readme: validation -->
+
 Three levels, fastest first:
 
-| | What | Time | Needs |
-|---|---|---|---|
-| **Quick check** | `racinglines check` (or `python -m pytest -m quick`) | ~10 s | nothing downloaded; network and Postgres optional |
-| **Regression suite** | `python -m pytest -m "not live"` on fixtures from `scripts/fetch_test_fixtures.py` | ~10 s (+ fixture build once) | Postgres, a one-time download |
-| **Live tests** | `python -m pytest` | ~35 s | the working database |
+| | Command | Checks | Time | Needs |
+|---|---|---|---|---|
+| **Quick check** | `racinglines check` | 21 checks: every pipeline on synthetic data, every data source, the database | ~10 s | nothing downloaded; network and Postgres optional |
+| **Regression suite** | `python -m pytest -m "not live"` | 88 tests: every pipeline stage on pinned F1 and downhill fixtures, compared with golden outputs | ~10 s (+ a one-time fixture build) | Postgres and `scripts/fetch_test_fixtures.py` |
+| **Everything** | `python -m pytest` | 118 tests, adding smoke tests on the working database, the web app and roles | ~35 s | the working database |
+
+- **No data in git:** fixtures are built locally from the public sources (FastF1,
+  ChronoRace, Polymarket). A guard test fails if anything data-like is tracked.
+- **Results can't drift silently:** an intended change is re-baselined with
+  `UPDATE_GOLDEN=1`.
+
+<!-- /readme -->
 
 ## Quick check (new setups)
 
