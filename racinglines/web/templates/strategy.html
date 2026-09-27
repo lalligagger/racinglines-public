@@ -10,10 +10,9 @@
 {% set k = acct.kpis %}
 <div class="kpis">
   <div class="kpi"><div class="l">Running now</div><div class="v" style="font-size:18px">{{ profile.name if profile else "–" }}</div><div class="s">{{ profile.strategy if profile }}{% if show_fair and profile %} · <code>{{ profile.settings.variant }}</code>{% endif %}{% if profile and profile.follow_rate %} · takes about {{ "%.0f"|format(profile.follow_rate * 100) }}% of signals{% endif %}</div></div>
-  {% if k.start %}<div class="kpi"><div class="l">Paper bankroll</div><div class="v {{ 'good' if k.total > 0 else ('bad' if k.total < 0) }}">${{ "{:,.0f}".format(k.balance) }}</div><div class="s">from ${{ "{:,.0f}".format(k.start) }} on {{ k.since }} · <b>{{ "%+.1f"|format(k.ret * 100) }}%</b></div></div>
-  <div class="kpi"><div class="l">Worst drawdown</div><div class="v bad">{{ k.max_dd|money(true) }}</div><div class="s">{{ "%.1f"|format(-k.max_dd_pct * 100) }}% of the starting bankroll</div></div>
-  <div class="kpi"><div class="l">Most capital in use</div><div class="v">${{ "{:,.0f}".format(k.peak_deployed) }}</div><div class="s">in any one weekend · {{ "%.0f"|format(k.peak_deployed / k.start * 100) }}% of the bankroll</div></div>
-  {% else %}<div class="kpi"><div class="l">Paper P&amp;L</div><div class="v {{ 'good' if k.total > 0 else ('bad' if k.total < 0) }}">{{ k.total|money(true) }}</div><div class="s">since the first weekend</div></div>{% endif %}
+  <div class="kpi"><div class="l">Paper P&amp;L</div><div class="v {{ 'good' if k.total > 0 else ('bad' if k.total < 0) }}">{{ k.total|money(true) }}</div><div class="s">cumulative, since the first weekend</div></div>
+  <div class="kpi"><div class="l">Worst drawdown</div><div class="v bad">{{ k.max_dd|money(true) }}</div><div class="s">from a peak of cumulative P&amp;L</div></div>
+  <div class="kpi"><div class="l">Most capital in use</div><div class="v">${{ "{:,.0f}".format(k.peak_deployed) }}</div><div class="s">in any one weekend</div></div>
   <div class="kpi"><div class="l">Weekends up</div><div class="v">{{ k.up }}/{{ k.weekends }}</div><div class="s">{% for y in seasons %}{{ y.year }}: {{ y.pnl|money(true) }}{{ " · " if not loop.last }}{% endfor %}</div></div>
 </div>
 {% if acct.chart %}<div class="card">{{ chart(acct.chart) }}</div>{% endif %}
@@ -58,13 +57,13 @@ market's later signals to the exit. Being choosy keeps its stakes small and give
 {% if record|selectattr('backfill')|list %}{% call demo_context() %}<span class="pill no">backtest replay</span> weekends were replayed from Polymarket's real prices and trades with the strategy this demo account ran then; they weren't traded live. Live paper trading starts with the next race weekend.{% endcall %}{% endif %}
 
 <div class="card"><h2>Track record</h2><div class="scroll"><table>
-<thead><tr><th class="l">Weekend</th><th class="l">Strategy</th><th>{{ "Fills" if is_maker else "Trades taken" }}</th><th title="Markets still held when the race started">Held to the race</th><th>Most in use</th><th>P&amp;L</th><th>{{ "Bankroll" if acct.kpis.start else "Running total" }}</th><th class="l"></th></tr></thead><tbody>
+<thead><tr><th class="l">Weekend</th><th class="l">Strategy</th><th>{{ "Fills" if is_maker else "Trades taken" }}</th><th title="Markets still held when the race started">Held to the race</th><th>Most in use</th><th>P&amp;L</th><th>Running total</th><th class="l"></th></tr></thead><tbody>
 {% for y in seasons %}{% for r in y.rows %}<tr class="{{ 'sel' if r.event_key == event_key }}">
   <td class="l"><a href="?event={{ r.event_key }}{% if viewer.id != user.id %}&user={{ viewer.username }}{% endif %}">{{ r.event_name or r.event_key }}</a> <span class="muted">{{ r.start_date|fmt if r.start_date }}</span></td>
   <td class="l">{{ r.profile }}</td>
   <td>{{ r.fills if r.strategy.startswith('maker') else r.taken }}</td><td>{{ r.positions }}</td><td>${{ "{:,.0f}".format(r.deployed) }}</td>
   <td class="{{ 'good' if r.pnl > 0 else ('bad' if r.pnl < 0) }}">{{ r.pnl|money(true) }}{% if not r.settled %} <span class="muted">open</span>{% endif %}</td>
-  <td>{% if acct.kpis.start %}${{ "{:,.2f}".format(r.balance) }}{% else %}{{ r.cum|money(true) }}{% endif %}</td>
+  <td>{{ r.cum|money(true) }}</td>
   <td class="l">{% if r.backfill %}<span class="pill no">backtest replay</span>{% else %}<span class="pill yes">live paper</span>{% endif %}</td></tr>{% endfor %}
   <tr class="total"><td class="l"><b>{{ y.year }}</b></td><td class="l"></td><td></td><td></td><td></td><td class="{{ 'good' if y.pnl > 0 else ('bad' if y.pnl < 0) }}"><b>{{ y.pnl|money(true) }}</b></td><td></td><td class="l muted">{{ y.up }}/{{ y.weekends }} weekends up</td></tr>
 {% endfor %}

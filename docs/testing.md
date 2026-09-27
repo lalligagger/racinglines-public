@@ -168,6 +168,7 @@ change failed exactly the stages downstream of it:
 | `test_edge.py` | 8 | Edge Finder combo edits (`web/edge.py`); no database. |
 | `test_f1_car.py` | 4 | F1 model: the car is shared by teammates. |
 | `test_http.py` | 5 | Polite HTTP (`sources/http.py`): per-host pacing and retries, with a fake client. |
+| `test_live_dh.py` | 4 | Live downhill finals (`pipelines/live_dh.py`): rank probabilities, quotes, safe riders, the crowd's budgets and P&L; synthetic riders, no network. |
 | `test_marketstore.py` | 5 | Parquet market store: archive from Postgres, merged reads, dedupe (one live retention check). |
 | `test_no_data_in_git.py` | 2 | Guard: no data tracked or about to be, outside the allow-list. |
 | `test_pipeline_f1.py` | 13 | F1 regression suite: every stage on pinned fixtures against golden outputs. |

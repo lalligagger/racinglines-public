@@ -344,6 +344,10 @@ To do (items in [TODO](todo.md#paper-trading)):
 - Walk-forward re-run of A, A-lite, C, B (#06) and A′ (#08) with rounds 16–17 added.
 - Bankroll-aware sizing and a deployed-capital cap per account.
 
+First weekend (Malaysia GP, 4 Oct 2026) also tests the web app's **Live** tab on F1: the taker's calls and
+the maker's quotes session by session, plus a simulated private book, as trialled on the Whistler downhill
+final ([Live events](live-events.md)).
+
 **Done when:** 4–6 live weekends are logged and compared with the backtest, and
 the owner has decided on sizing (e.g. A-lite → A). Real orders need F1-9's CLOB
 V2 item and the owner's explicit approval.

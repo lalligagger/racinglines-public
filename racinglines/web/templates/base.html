@@ -1,11 +1,11 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}racinglines{% endblock %} · racinglines</title>
-<link rel="stylesheet" href="/static/style.css">{% block head %}{% endblock %}</head>
+<link rel="stylesheet" href="/static/style.css?v={{ css_v() }}">{% block head %}{% endblock %}</head>
 <body>
 <header>
   <a class="brand" href="/markets">racinglines</a>
-  {% if user %}<a href="/markets">Markets</a>{% endif %}
+  {% if user %}<a href="/markets">Markets</a>{% if live_nav %}<a href="/live" title="{{ 'A final is running' if live_nav == 'live' else 'The last final, as a replay' }}">Live <span class="pill {{ 'yes' if live_nav == 'live' else 'no' }}">●</span></a>{% endif %}{% endif %}
   {% if signals_nav %}<a href="/strategy">Strategy{% if signals_nav.unread %} <span class="pill new">{{ signals_nav.unread }}</span>{% endif %}</a><a href="/positions">Positions</a>{% endif %}
   {% if user and user.role in ('admin', 'maker') %}<a href="/book">{{ "Books" if user.role == 'admin' else "My Book" }}</a><a href="/lab">Lab</a>{% endif %}
   {% if user and user.role == 'admin' %}<a href="/admin">Admin</a>{% endif %}

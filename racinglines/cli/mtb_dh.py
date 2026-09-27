@@ -306,5 +306,28 @@ def main(argv=None):
     bt_p.add_argument("--seed", type=int, default=42)
     bt_p.set_defaults(func=cmd_backtest)
 
+    live_p = sub.add_parser("live", help="Follow a final live from UCI timing: rank probabilities, the maker's quotes, "
+                                         "the private book's crowd (pipelines/live_dh.py). A demo experiment.")
+    live_p.add_argument("--slug", required=True, help="ChronoRace event slug, e.g. 20260925_mtb")
+    live_p.add_argument("--final", required=True, help="Live-timing key of the final (e.g. 3 = men's final)")
+    live_p.add_argument("--quali", default="2,91", help="Live-timing keys of the qualifying sessions, comma-separated")
+    live_p.add_argument("--conditions", default="", help='Free text, e.g. "clear, rutted" (rutted / wet widen the spread)')
+    live_p.add_argument("--interval", type=int, default=20, help="Seconds between polls")
+    live_p.add_argument("--minutes", type=int, default=0, help="Stop after this many minutes (0 = when the final is over)")
+    live_p.add_argument("--once", action="store_true", help="One update, then exit")
+    live_p.set_defaults(func=cmd_live)
+
     args = ap.parse_args(argv)
     return args.func(args)
+
+
+def cmd_live(args):
+    from racinglines.pipelines import live_dh as L
+    quali = [k for k in args.quali.split(",") if k]
+    if args.once:
+        s = L.update(args.slug, args.final, quali, args.conditions)
+        print(s["ts"], s["counts"], "maker P&L", {k: round(v, 2) for k, v in (s.get("maker_pnl") or {}).items()})
+        return 0
+    L.run(args.slug, args.final, quali, args.conditions, interval=args.interval, minutes=args.minutes,
+          echo=lambda m: print(m, flush=True))
+    return 0

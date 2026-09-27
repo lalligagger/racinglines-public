@@ -3,23 +3,55 @@
 {% block content %}
 <h1>Positions{% if cur %} <span class="muted">· {{ cur.name }}</span>{% endif %}</h1>
 {{ paper_banner(signals_nav) }}
-<p class="sub">Every Polymarket position {{ "your strategy's quotes left you with" if maker else "your strategy's calls put you in" }}, and what it made. Paper only: nothing was sent to Polymarket.
+{% set priv = venue == 'private' %}
+<p class="sub">Every Polymarket position {{ "your strategy's quotes left you with" if maker else "your strategy's calls put you in" }} (paper only: nothing was sent to Polymarket){% if venues.private %}, and the private book {{ "you ran" if maker else "you bet into" }} live (a demo: play money){% endif %}, and what each made.
   What the strategy recommended, and why, is on <a href="/strategy">Strategy</a>.</p>
 
-{% if not paper.n and not my_bets %}<p class="muted">No positions yet.{% if not profile %} This account has no strategy profile.{% endif %}</p>{% else %}
+{% if not paper.n and not my_bets and not venues %}<p class="muted">No positions yet.{% if not profile %} This account has no strategy profile.{% endif %}</p>{% else %}
+{% if venues|length > 1 %}<div class="kpis">
+{% for key, label, sub in [('polymarket', 'Polymarket P&L', 'paper history'), ('private', 'Private book P&L', 'live, play money')] if venues[key] %}{% set v = venues[key] %}
+  <a class="kpi{{ ' sel' if venue == key }}" href="{{ link(venue=None if venue == key else key, event=None) }}" title="{{ 'Show all venues' if venue == key else 'Show only this venue' }}">
+    <div class="l">{{ label }}</div><div class="v {{ 'good' if v.pnl > 0 else ('bad' if v.pnl < 0) }}">{{ v.pnl|money(true) }}</div>
+    <div class="s">{{ sub }} · {% if v.first %}{{ v.first.strftime('%d %b %Y') }}{% if v.last != v.first %} – {{ v.last.strftime('%d %b %Y') }}{% endif %}{% endif %} · {{ v.n }} positions</div></a>
+{% endfor %}
+  <a class="kpi{{ ' sel' if not venue }}" href="{{ link(venue=None, event=None) }}" title="Show all venues">
+    <div class="l">Total P&amp;L</div><div class="v {{ 'good' if vtotal > 0 else ('bad' if vtotal < 0) }}">{{ vtotal|money(true) }}</div>
+    <div class="s">both venues · {{ venues.values()|sum(attribute='n') }} positions</div></a>
+</div>
+<p class="legend">Click a cell to show only that venue below (click again for both).</p>{% endif %}
+
 <div class="kpis">
-  <div class="kpi"><div class="l">Open now</div><div class="v">{{ paper.open }}</div><div class="s">marked to the market: <span class="{{ 'good' if paper.open_value > 0 else ('bad' if paper.open_value < 0) }}">{{ paper.open_value|money(true) }}</span></div></div>
+  <div class="kpi"><div class="l">Open now{% if venue %} · {{ "Polymarket" if venue == 'polymarket' else "private book" }}{% endif %}</div><div class="v">{{ paper.open }}</div><div class="s">marked to the market: <span class="{{ 'good' if paper.open_value > 0 else ('bad' if paper.open_value < 0) }}">{{ paper.open_value|money(true) }}</span></div></div>
   <div class="kpi"><div class="l">Closed and settled</div><div class="v">{{ paper.n - paper.open }}</div><div class="s">{{ paper.won }}/{{ paper.held }} held to the result made money</div></div>
-  {% if acct %}<div class="kpi"><div class="l">Worst drawdown</div><div class="v bad">{{ acct.kpis.max_dd|money(true) }}</div><div class="s">{% if acct.kpis.start %}{{ "%.1f"|format(-acct.kpis.max_dd_pct * 100) }}% of the starting bankroll{% else %}from a peak, over the full history{% endif %}</div></div>
-  <div class="kpi"><div class="l">Sharpe ratio</div><div class="v">{{ "%.2f"|format(acct.kpis.sharpe) if acct.kpis.sharpe is not none else "–" }}</div><div class="s">per season, over {{ acct.kpis.weekends }} weekends: mean ÷ s.d. of weekend P&amp;L × √24</div></div>{% endif %}
-  <div class="kpi"><div class="l">Realised P&amp;L</div><div class="v {{ 'good' if paper.settled_pnl > 0 else ('bad' if paper.settled_pnl < 0) }}">{{ paper.settled_pnl|money(true) }}</div><div class="s"><a href="/strategy">bankroll and track record →</a></div></div>
+  <div class="kpi"><div class="l">Realised P&amp;L</div><div class="v {{ 'good' if paper.settled_pnl > 0 else ('bad' if paper.settled_pnl < 0) }}">{{ paper.settled_pnl|money(true) }}</div><div class="s"><a href="/strategy">track record →</a></div></div>
 </div>
 
-{% if acct and acct.chart %}<div class="card"><h2>P&amp;L history</h2>{{ chart(acct.chart) }}
-<p class="legend">{% if acct.kpis.start %}Paper bankroll from ${{ "{:,.0f}".format(acct.kpis.start) }} on {{ acct.kpis.since }}: now <b>${{ "{:,.0f}".format(acct.kpis.balance) }}</b> ({{ "%+.1f"|format(acct.kpis.ret * 100) }}%), worst drawdown {{ acct.kpis.max_dd|money(true) }}.{% else %}Cumulative paper P&amp;L.{% endif %}
+{% set has_poly = acct and acct.chart and not priv %}{% set has_book = book and book.chart and venue != 'polymarket' %}
+{% if has_poly or has_book %}<div class="card"><h2>P&amp;L history</h2>
+{% if has_poly and has_book %}<div class="tabs toggles" role="group" aria-label="Which P&L to plot">
+  <button type="button" data-plot="polymarket" aria-pressed="{{ 'true' if plot == 'polymarket' else 'false' }}">Polymarket</button>
+  <button type="button" data-plot="private" aria-pressed="{{ 'true' if plot == 'private' else 'false' }}">Private book</button>
+</div>{% endif %}
+{% if has_poly %}<div class="plot" data-plot="polymarket"{% if has_book and plot != 'polymarket' %} hidden{% endif %}>{{ chart(acct.chart) }}
+<p class="legend">Polymarket, paper: cumulative P&amp;L, <b>{{ acct.kpis.total|money(true) }}</b> over {{ acct.kpis.weekends }} weekends.
+Worst drawdown <b class="bad">{{ acct.kpis.max_dd|money(true) }}</b> from a peak;
+Sharpe ratio <b>{{ "%.2f"|format(acct.kpis.sharpe) if acct.kpis.sharpe is not none else "–" }}</b> (per season, over {{ acct.kpis.weekends }} weekends: mean ÷ s.d. of weekend P&amp;L × √24).
 Weekend by weekend, and the strategy behind it: <a href="/strategy">Strategy</a>.</p></div>{% endif %}
+{% if has_book %}<div class="plot" data-plot="private"{% if has_poly and plot != 'private' %} hidden{% endif %}>{{ chart(book.chart) }}
+<p class="legend">Private book: its P&amp;L at every one of the {{ book.polls }} polls of the live event (UTC), marked to fair, settled at the result.
+Worst drawdown <b class="bad">{{ book.max_dd|money(true) }}</b> from a peak, through the day.</p></div>{% endif %}
+</div>
+{% if has_poly and has_book %}<script>
+document.querySelectorAll('[data-plot]').forEach(function (b) {
+  if (b.tagName !== 'BUTTON') return;
+  b.addEventListener('click', function () {
+    document.querySelectorAll('button[data-plot]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+    document.querySelectorAll('div.plot[data-plot]').forEach(function (p) { p.hidden = p.dataset.plot !== b.dataset.plot; });
+  });
+});
+</script>{% endif %}{% endif %}
 
-{% if coming %}<div class="card"><h2>Coming up</h2>
+{% if coming and not priv %}<div class="card"><h2>Coming up</h2>
 {% if open_pos %}<p><b>{{ open_pos|length }}</b> position{{ "s" if open_pos|length != 1 }} still open (below).</p>{% endif %}
 {% for rc in coming.races %}
 <h3>{{ rc.name }}{% if rc.location %} · {{ rc.location }}{% endif %} <span class="muted" style="font-size:13px">· race {{ rc.start|fmt }} UTC</span></h3>
@@ -40,14 +72,20 @@ Weekend by weekend, and the strategy behind it: <a href="/strategy">Strategy</a>
   <td class="{{ 'good' if k.pnl > 0 else ('bad' if k.pnl < 0) }}">{{ k.pnl|money(true) }}</td></tr>{% endfor %}
 </tbody></table></div></div>
 
-<form method="get" class="inline"><label><span>Weekend</span><select name="event" onchange="this.form.submit()">
+<form method="get" class="inline"><label><span>Venue</span><select name="venue" onchange="this.form.submit()">
+  <option value="">all venues</option><option value="polymarket" {{ 'selected' if venue == 'polymarket' }}>Polymarket (paper)</option><option value="private" {{ 'selected' if venue == 'private' }}>Private book</option>
+</select></label>
+<label><span>Weekend</span><select name="event" onchange="this.form.submit()">
   <option value="">all weekends</option>
   {% for w in weekends %}<option value="{{ w.event_key }}" {{ 'selected' if w.event_key == event }}>{{ w.name }} {{ w.event_key[:4] }} · {{ w.n }} · {{ w.pnl|money(true) }}</option>{% endfor %}
+</select></label>
+<label><span>Sort</span><select name="sort" onchange="this.form.submit()">
+  <option value="">by weekend</option><option value="pnl" {{ 'selected' if sort == 'pnl' }}>P&amp;L, best first</option><option value="-pnl" {{ 'selected' if sort == '-pnl' }}>P&amp;L, worst first</option>
 </select></label></form>
 
-<div class="card"><h2>{{ "Positions" if not cur else "Positions this weekend" }}</h2><div class="scroll"><table><thead><tr>{% if not cur %}<th class="l">Weekend</th>{% endif %}<th class="l">Market</th><th class="l">Position</th><th>{{ "Fills" if maker else "Trades" }}</th><th>Cash in / out</th><th>Price now / result</th><th>P&amp;L</th><th class="l"></th></tr></thead><tbody>
-{% for p in shown %}<tr>{% if not cur %}<td class="l"><a href="?event={{ p.event_key }}">{{ p.event_name or p.event_key }}</a> <span class="muted">{{ p.start_date|fmt if p.start_date }}</span></td>{% endif %}
-  <td class="l">{{ p.subject }} <span class="muted">{{ p.kind|replace('race_', '')|replace('_', ' ') }}</span></td>
+<div class="card"><h2>{{ "Positions" if not cur else "Positions this weekend" }}</h2><div class="scroll"><table><thead><tr>{% if not cur %}<th class="l">Weekend</th>{% endif %}<th class="l">Market</th><th class="l">Position</th><th>{{ "Fills" if maker else "Trades" }}</th><th>Cash in / out</th><th>Price now / result</th><th><a href="{{ link(sort='-pnl' if sort == 'pnl' else 'pnl') }}" title="Sort by P&amp;L">P&amp;L {{ "↓" if sort == 'pnl' else ("↑" if sort == '-pnl' else "↕") }}</a></th><th class="l"></th></tr></thead><tbody>
+{% for p in shown %}<tr>{% if not cur %}<td class="l"><a href="{{ link(event=p.event_key) }}">{{ p.event_name or p.event_key }}</a> <span class="muted">{{ p.start_date|fmt if p.start_date }}</span></td>{% endif %}
+  <td class="l">{{ p.subject }} <span class="muted">{{ p.kind|replace('race_', '')|replace('dh_', 'DH ')|replace('_', ' ') }}</span>{% if p.venue == 'private' %} <span class="pill no">private book</span>{% endif %}</td>
   <td class="l">{% if p.side %}{{ "%.0f"|format(p.shares) }} {{ p.side }}{% else %}<span class="muted">closed before the race</span>{% endif %}</td>
   <td>{{ p.trades }}</td><td>{{ p.cash|money(true) }}</td>
   <td>{% if p.outcome is not none %}{{ "YES" if p.outcome else "NO" }}{% elif p.mark is not none %}{{ "%.2f"|format(p.mark) }}{% endif %}</td>

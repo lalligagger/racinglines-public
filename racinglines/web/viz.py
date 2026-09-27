@@ -43,7 +43,7 @@ def price_chart(series, labels, fairs=None, markers=(), w=900, h=220, pad=34):
     return dict(w=w, h=h, pad=pad, lines=lines, yticks=yticks, xticks=xticks, markers=mk)
 
 
-def line_chart(series, labels=None, w=900, h=200, pad=48, money=True, include_zero=True, markers=()):
+def line_chart(series, labels=None, w=900, h=200, pad=48, money=True, include_zero=True, markers=(), highlight=()):
     """series: {key: [(ts, value), ...]} -> dict for the `chart` macro, with a $ axis and a zero line.
     include_zero=False fits the axis to the data (e.g. a bankroll); markers: [(ts, label)] dashed verticals."""
     series = {k: v for k, v in series.items() if len(v) >= 2}
@@ -66,14 +66,19 @@ def line_chart(series, labels=None, w=900, h=200, pad=48, money=True, include_ze
     def y(v):
         return 4 + (plot_h - 8) * (1 - (v - lo) / (hi - lo))
 
-    lines = [dict(label=(labels or {}).get(k, k), color=COLORS[i % len(COLORS)], fair_y=None,
+    lines = [dict(label=(labels or {}).get(k, k), color=COLORS[i % len(COLORS)], fair_y=None, dash=k in highlight,
                   points=" ".join(f"{x(t):.1f},{y(v):.1f}" for t, v in pts)) for i, (k, pts) in enumerate(series.items())]
     ticks = np.linspace(lo, hi, 5)
     yticks = [dict(y=round(y(v), 1), label=(f"${v:,.0f}" if money else f"{v:.2f}")) for v in ticks]
-    months = pd.date_range(pd.Timestamp(t0).ceil("D"), t1, freq="MS")
-    if len(months) < 2:
-        months = pd.date_range(pd.Timestamp(t0).ceil("D"), t1, freq="7D")
-    xticks = [dict(x=round(x(d), 1), label=d.strftime("%b %d")) for d in months]
+    fmt = "%b %d"
+    if span <= 86400:                                   # a day or less (a private book): clock times
+        freq = "15min" if span <= 3 * 3600 else "1h"
+        months, fmt = pd.date_range(pd.Timestamp(t0).ceil(freq), t1, freq=freq), "%H:%M"
+    else:
+        months = pd.date_range(pd.Timestamp(t0).ceil("D"), t1, freq="MS")
+        if len(months) < 2:
+            months = pd.date_range(pd.Timestamp(t0).ceil("D"), t1, freq="7D")
+    xticks = [dict(x=round(x(d), 1), label=d.strftime(fmt)) for d in months]
     mk = [dict(x=round(x(t), 1), label=lab, anchor="end" if x(t) > w * 0.8 else "start")
           for t, lab in markers if t0 <= t <= t1]
     return dict(w=w, h=h, pad=pad, lines=lines, yticks=yticks, xticks=xticks, markers=mk,

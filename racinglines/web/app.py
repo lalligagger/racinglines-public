@@ -227,6 +227,9 @@ templates.env.filters["money"] = money
 DEMO_CONTEXT = {"on": os.environ.get("RACINGLINES_DEMO_CONTEXT", "1") != "0"}
 templates.env.globals["demo_context_on"] = lambda: DEMO_CONTEXT["on"]      # read at render time
 templates.env.globals["csrf_token"] = CSRF_TOKEN
+# the stylesheet's URL carries its mtime, so a CSS change is a new URL: no stale copy from the browser or
+# Cloudflare's edge cache (read at render time)
+templates.env.globals["css_v"] = lambda: int((HERE / "static" / "style.css").stat().st_mtime)
 
 
 def _seen_since(user):
@@ -249,7 +252,10 @@ def _signals_nav(user):
                                             AND (CAST(:since AS timestamptz) IS NULL OR created_at > CAST(:since AS timestamptz))),
                                          (SELECT sum(cash + yes_shares * coalesce(outcome::int, mark)
                                                  + no_shares * (1 - coalesce(outcome::int, mark)))
-                                            FROM paper_positions WHERE user_id = :u)
+                                            FROM paper_positions WHERE user_id = :u AND venue = 'polymarket'),
+                                         (SELECT sum(cash + yes_shares * coalesce(outcome::int, mark)
+                                                 + no_shares * (1 - coalesce(outcome::int, mark)))
+                                            FROM paper_positions WHERE user_id = :u AND venue = 'private')
                                   FROM users WHERE id = :u"""),
                           dict(u=user["id"], since=_seen_since(user))).first()
     except Exception:                                   # noqa: BLE001  the nav never breaks a page
@@ -257,7 +263,7 @@ def _signals_nav(user):
     if r is None or not (r[0] or user["role"] == "admin"):
         return None
     pnl = float(r[4] or 0.0)
-    return dict(unread=int(r[3] or 0), profile=r[1], start=r[2], pnl=pnl,
+    return dict(unread=int(r[3] or 0), profile=r[1], start=r[2], pnl=pnl, private=None if r[5] is None else float(r[5]),
                 balance=(r[2] + pnl) if r[2] else None, ret=(pnl / r[2]) if r[2] else None)
 
 
@@ -265,6 +271,11 @@ def render(request, name, **ctx):
     ctx.setdefault("trading", polymarket.TradingConfig.from_env())
     ctx.setdefault("user", getattr(request.state, "user", None))
     ctx.setdefault("signals_nav", _signals_nav(ctx["user"]))
+    try:                                               # a live final (pipelines/live_dh.py): the Live tab, green while
+        from racinglines.pipelines.live_dh import state   # it runs, grey once it is over (a replay)
+        ctx.setdefault("live_nav", state() if ctx["user"] else None)
+    except Exception:                                  # noqa: BLE001
+        ctx.setdefault("live_nav", False)
     from racinglines.web import demo
     u = ctx["user"]
     ctx.setdefault("storage_ns", f"demo.{u.get('sid')}." if demo.is_demo(u) and u.get("sid") else "")

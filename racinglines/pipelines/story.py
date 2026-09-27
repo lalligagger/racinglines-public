@@ -110,9 +110,11 @@ def decisions(conn):
 # One account's story: bankroll, track record, phases, and what drove them
 # ---------------------------------------------------------------------------
 
-def track_record(conn, uid):
-    """Every weekend with signals: event, strategy run, trades taken (taker) / fills (maker), positions,
-    paper P&L (settled, else marked to the market), backtest replay or live."""
+def track_record(conn, uid, venue="polymarket"):
+    """Every weekend with signals or positions: event, strategy run, trades taken (taker) / fills (maker),
+    positions, paper P&L (settled, else marked to the market), backtest replay or live. venue: 'polymarket'
+    (the default: the strategy's own record), 'private' or 'all'. A private-book event (pipelines/live_dh.py)
+    has positions but no signals: it joins the history on the day the book ran, as its own "Private book" run."""
     import pandas as pd
     from sqlalchemy import text
     q = text("""
@@ -123,15 +125,24 @@ def track_record(conn, uid):
                    FROM strategy_signals WHERE user_id = :u GROUP BY event_key),
              p AS (SELECT event_key, count(*) FILTER (WHERE abs(yes_shares) + abs(no_shares) > 1e-9) AS positions,
                           bool_and(outcome IS NOT NULL OR abs(yes_shares) + abs(no_shares) + abs(cash) < 1e-9) AS settled,
-                          sum(cash + yes_shares * coalesce(outcome::int, mark) + no_shares * (1 - coalesce(outcome::int, mark))) AS pnl
-                   FROM paper_positions WHERE user_id = :u GROUP BY event_key)
-        SELECT s.*, coalesce(p.positions, 0) AS positions, coalesce(p.settled, true) AS settled, coalesce(p.pnl, 0) AS pnl,
-               coalesce(ra.format->>'event_name', e.name) AS event_name, e.start_date
-        FROM s LEFT JOIN p USING (event_key) LEFT JOIN events e ON e.source_key = s.event_key AND e.source = 'f1timing'
-        LEFT JOIN races ra ON ra.event_id = e.id ORDER BY s.event_key""")
-    rows = [dict(r) for r in conn.execute(q, dict(u=uid)).mappings()]
+                          sum(cash + yes_shares * coalesce(outcome::int, mark) + no_shares * (1 - coalesce(outcome::int, mark))) AS pnl,
+                          bool_and(venue = 'private') AS private, max(updated_at) AS updated
+                   FROM paper_positions WHERE user_id = :u AND (:v = 'all' OR venue = :v) GROUP BY event_key)
+        SELECT event_key, s.profile, s.strategy, coalesce(s.signals, 0) AS signals, coalesce(s.taken, 0) AS taken,
+               coalesce(s.fills, 0) AS fills, s.backfill, coalesce(p.private, false) AS private,
+               coalesce(p.positions, 0) AS positions, coalesce(p.settled, true) AS settled, coalesce(p.pnl, 0) AS pnl,
+               coalesce(ra.format->>'event_name', e.name) AS event_name,
+               coalesce(e.start_date, CASE WHEN p.private THEN (p.updated AT TIME ZONE 'UTC')::date END) AS start_date
+        FROM s FULL JOIN p USING (event_key) LEFT JOIN events e ON e.source_key = event_key AND e.source = 'f1timing'
+        LEFT JOIN races ra ON ra.event_id = e.id
+        WHERE (:v <> 'private' AND s.event_key IS NOT NULL) OR (:v <> 'polymarket' AND p.private) ORDER BY event_key""")
+    rows = [dict(r) for r in conn.execute(q, dict(u=uid, v=venue)).mappings()]
+    from racinglines.pipelines.live_dh import event_name
     for r in rows:
         r["pnl"] = float(r["pnl"] or 0.0)
+        if r["private"] and r["profile"] is None:
+            r.update(profile="Private book", strategy="private", fills=r["positions"], taken=r["positions"],
+                     event_name=r["event_name"] or event_name(r["event_key"]))
         r["date"] = pd.Timestamp(r["start_date"]) if r["start_date"] is not None else None
     return rows
 
@@ -215,12 +226,13 @@ def phases(record):
 SEASON_WEEKENDS = 24            # Sharpe per season, as in the params-4h report: mean / s.d. of weekend P&L x sqrt(24)
 
 
-def account(conn, uid, profile, maker, markers=True):
+def account(conn, uid, profile, maker, markers=True, venue="polymarket"):
     """Everything the Strategy page tells about one account: KPIs (with the worst drawdown and the Sharpe
     ratio over the full history), bankroll curve (markers: dashed lines at strategy switches), phases,
-    track record (with running balance), and the maker's decisions or the taker's detail."""
+    track record (with running balance), and the maker's decisions or the taker's detail. venue: as in
+    track_record (the Strategy page: Polymarket only)."""
     from racinglines.web.viz import line_chart
-    record = track_record(conn, uid)
+    record = track_record(conn, uid, venue)
     bank = (profile or {}).get("bankroll") or {}
     start = float(bank.get("start") or 0.0)
     peak = deployed(conn, uid)
@@ -233,12 +245,12 @@ def account(conn, uid, profile, maker, markers=True):
         r["cum"], r["balance"], r["deployed"] = cum, start + cum, peak.get(r["event_key"], 0.0)
     ph = phases(record)
     dated = [r for r in record if r["date"] is not None]
-    series = {"balance": [(r["date"], r["balance"]) for r in dated]}
-    labels = {"balance": "paper bankroll" if start else "cumulative paper P&L"}
+    series = {"pnl": [(r["date"], r["cum"]) for r in dated]}             # cumulative P&L from $0, not a bankroll
+    labels = {"pnl": "cumulative paper P&L"}
     detail = None
-    if not maker and profile:
+    if not maker and profile and venue != "private":
         detail = taker_detail(conn, uid, profile)
-        run, pts = start, []
+        run, pts = 0.0, []
         for r in dated:
             run += detail["all_pnl"].get(r["event_key"], 0.0)
             pts.append((r["date"], run))
@@ -248,7 +260,7 @@ def account(conn, uid, profile, maker, markers=True):
             detail["all_total"] = sum(detail["all_pnl"].get(r["event_key"], 0.0) for r in record)
     marks = [(p["first"]["date"], p["profile"].split(" ")[0]) for p in ph[1:] if p["first"]["date"] is not None] \
         if markers else []
-    chart = line_chart(series, labels, include_zero=not start, markers=marks)
+    chart = line_chart(series, labels, markers=marks)
     pnls = np.array([r["pnl"] for r in record])
     sharpe = float(pnls.mean() / pnls.std(ddof=1) * np.sqrt(SEASON_WEEKENDS)) if len(pnls) > 1 and pnls.std(ddof=1) > 0 else None
     seasons = {}
