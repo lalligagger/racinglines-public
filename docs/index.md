@@ -71,6 +71,7 @@ Without a database, `racinglines/sources/chronorace/parse.py` can still write a 
 <!-- readme: quickstart -->
 
 ```
+python3.14 -m venv .venv && source .venv/bin/activate  # Python 3.11+
 pip install -r requirements.txt && pip install -e .   # dependencies + the `racinglines` command
 docker compose up -d                                   # PostgreSQL on localhost:5433
 racinglines db init                                    # tables + reference data

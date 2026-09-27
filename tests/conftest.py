@@ -15,6 +15,22 @@ FIX = ROOT / "tests" / "fixtures"
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
+def pytest_configure(config):
+    """Fail fast, with the fix, when run under the wrong interpreter or without the dependencies."""
+    fix = ("Use the project environment:  source .venv/bin/activate  "
+           "(or create it: python3.14 -m venv .venv && pip install -r requirements.txt && pip install -e .)")
+    if sys.version_info < (3, 11):
+        pytest.exit(f"Python {sys.version.split()[0]} at {sys.executable} is too old (need 3.11+). {fix}", returncode=4)
+    missing = []
+    for mod in ("sqlalchemy", "pyarrow", "pandas", "fastf1", "fastapi", "httpx"):
+        try:
+            __import__(mod)
+        except ImportError:
+            missing.append(mod)
+    if missing:
+        pytest.exit(f"Missing packages: {', '.join(missing)} ({sys.executable}). {fix}", returncode=4)
+
+
 def need(*parts):
     """Skip (not fail) when the test fixtures haven't been downloaded yet."""
     path = FIX.joinpath(*parts)
