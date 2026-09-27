@@ -18,17 +18,39 @@ Analytics and backtests still run in pandas, loaded from the database.
 
 ## Setup
 
-**Option A: Docker** (the default connection settings expect this):
+The connection comes from `$DATABASE_URL`, or `--db URL` on any command group. The
+default is `postgresql+psycopg://racinglines:racinglines@localhost:5433/racinglines`,
+the same for both local options below. Port 5433 avoids clashing with a Postgres
+already on 5432.
+
+**Option A: Docker** (`docker-compose.yml`: Postgres 17, data in the `pgdata` volume):
 
 ```
 pip install -r requirements.txt
 docker compose up -d                # Postgres 17 on localhost:5433
-racinglines db init               # create tables (migrations) + reference data
+racinglines db init                 # create tables (migrations) + reference data
 racinglines mtb_dh ingest data/raw/mtb_dh/chronorace
 racinglines db stats
 ```
 
-**Option B: any existing Postgres (14+).** Create an empty database and point
+**Option B: Postgres without Docker** (what this machine uses now). A conda env
+holding only Postgres 17, and a cluster in `data/pg/` (git-ignored):
+
+```
+conda create -n racinglines-db -c conda-forge postgresql=17
+PG=~/miniconda3-arm64/envs/racinglines-db/bin
+$PG/initdb -D data/pg -U racinglines -W        # password: racinglines
+$PG/pg_ctl -D data/pg -o "-p 5433 -k /tmp" -l data/runs/logs/postgres.log start
+$PG/createdb -h localhost -p 5433 -U racinglines racinglines
+racinglines db init
+```
+
+- **Stop** it the same way: `$PG/pg_ctl -D data/pg stop`.
+- **Not started on reboot:** run the `start` line again after a restart.
+- **One at a time:** don't run it and the Docker container together; both use port 5433.
+- The log is `data/runs/logs/postgres.log`.
+
+**Option C: any existing Postgres (14+).** Create an empty database and point
 `DATABASE_URL` at it:
 
 ```
@@ -37,10 +59,9 @@ export DATABASE_URL=postgresql+psycopg://USER:PASSWORD@localhost:5432/racingline
 racinglines db init
 ```
 
-The connection comes from `$DATABASE_URL`, or `--db URL` on any command. The
-default is `postgresql+psycopg://racinglines:racinglines@localhost:5433/racinglines`,
-which matches `docker-compose.yml`. Host port 5433 avoids clashing with a Postgres
-already on 5432.
+A new database can be filled from the raw files (`racinglines f1 ingest`,
+`racinglines mtb_dh ingest`, `racinglines f1 pm-sync`) or, as an exact replica, from
+the [snapshot](#snapshot-an-exact-replica).
 
 ## Data model
 
@@ -71,14 +92,18 @@ Competition     uci_dhi_wc               a league's championship in one sport
 | `model_runs` | One row per model run: competition, season, category, kind (`forecast` / `backtest`), data date, git version, `params` and `metrics` (JSONB). |
 | `race_predictions` | Per-athlete probabilities (win, podium, top 10, make Final, expected points) for a race. `race_id` is empty for races that aren't in the database yet (`target = "remaining_round"`). |
 | `standings_predictions` | Per-athlete projected standings for a model run. |
-| `market_links` | An exchange outcome token (Polymarket) linked to one of the model's probabilities: athlete, prediction kind, optional race, and inverted for "No"-type tokens. |
+| `market_links` | An exchange outcome token (Polymarket) linked to one of the model's probabilities: athlete, prediction kind, optional race, and inverted for "No"-type tokens. Also the event slug and title, live bid / ask / price, volume, end date, resolution, `synced_at`, and `first_seen_at`: when a sync first saw the token (null for tokens synced before alerts existed); it drives the "new" badges and [new-market alerts](cli.md#racinglines-markets). |
 | `orders` | Every exchange order the app built: dry run, submitted, rejected or cancelled. Includes the model probability, model run, book at the time and exchange response. |
 | `house_markets` | YES/NO markets quoted in the app (race × athlete × kind × maker), with fair probability, spread, YES/NO prices, status, outcome and `maker_id` (null = legacy house markets). |
 | `house_bets` | Bets against house markets: counterparty, `taker_id` (the taker account, if placed in the app), side, price, stake, payout, status. |
-| `users` | Web-app accounts: username, role (`admin` / `maker` / `taker`), scrypt password hash, active, and `prefs` (JSONB): settings that follow the account to any device, i.e. the Lab's Edge Finder combos and last-used knobs per job type. View state (open sections, filters) stays in the browser; history (jobs, runs, bets) has its own tables. |
+| `users` | Web-app accounts: username, role (`admin` / `maker` / `taker`), scrypt password hash, active, and `prefs` (JSONB, [keys below](#user-preferences)). Besides the demo `maker` / `taker` logins there is one system account, `polymarket-takers` (role `taker`, inactive, no login): the counterparty of recorded replay fills, kept separate from the demo taker (migration `d2b8e5a1c3f7`). |
 | `activity_log` | Audit trail of web-app actions: time, user, role, action, JSON detail, IP, path. |
 | `laps` | One row per lap of a lap-based round: lap and sector ms, speed traps, tyre, stint, pit in/out, track status, position, accuracy. Added for F1. |
 | `track_profiles` | Per-event track features (sector shares, trap speeds, speed index, overtaking, street, weather) used by the F1 model. |
+| `market_price_history`, `market_trades`, `market_book_snapshots` | Exchange time series per outcome token: prices, every taker trade (the tape a maker replay fills against), and recorded order books. Only recent rows stay here; the rest move to Parquet (see [Storage](#storage-postgres-for-the-app-parquet-for-heavy-history)). |
+| `jobs` | Model runs launched from the web app's Lab, run as CLI subprocesses: kind, params, argv, status, progress, log, and the model run they saved. |
+| `strategy_signals` | What a user's strategy profile would do now ([Paper trading](paper-trading.md)): a taker recommendation (`buy` / `sell`), a maker quote starting or stopping (`quote` / `pull`), or a paper `fill`. Never an order. Columns: user, `candidate_id` (the Lab candidate), profile name, strategy, race, `event_key`, `market_key` (taker: token id; maker: condition id), kind, subject, stage, `dedupe` (the stage, or a fill's time), action, side (`YES` / `NO`, or `bid` / `ask`), shares, limit price, fair, market price, edge, `heat` (1–3), target cost, status (`new` / `alerted` / `expired` / `filled_paper`), model run, signal / alerted / seen times, `detail` (JSONB; `backfill` marks demo-history replays). Unique on (user, candidate, market_key, dedupe, action, side), so re-runs are idempotent. |
+| `paper_positions` | A user's paper position in one market under their profile, rebuilt on every signals run: YES / NO shares (maker: YES-equivalent inventory), cash, latest mark, outcome, and for makers the resting bid / ask and quote state. Unique on (user, candidate, market_key). |
 
 ### Multi-sport design
 
@@ -95,6 +120,23 @@ Competition     uci_dhi_wc               a league's championship in one sport
 - **Result kind:** `sports.result_kind` is `time` for timed races. Other kinds
   (score, distance) can reuse `results` with `time_ms` empty and the value in `extra`.
 - **Winter sports:** `seasons.year` plus an optional `label` (e.g. `2025/26`).
+
+### User preferences
+
+`users.prefs` holds settings that follow the account to any device
+(`racinglines/web/prefs.py`; one top-level key per setting). View state (open
+sections, filters) stays in the browser; history (jobs, runs, bets) has its own
+tables. A demo visitor's changes go to a per-session overlay and are never saved.
+
+| Key | Holds | Written by |
+|---|---|---|
+| `edge_finder` | The Lab's Edge Finder combos, `[[ref, strategy], …]` (ref: a variant or `cfg:<settings key>`) | Edge Finder (`racinglines/web/edge.py`) |
+| `edge_year` | The Edge Finder's season | Edge Finder |
+| `job_knobs` | Last-used knobs per Lab job type | Lab job forms |
+| `strategy_profile` | The profile the user runs: `name`, `strategy`, `settings` (full sweep settings), `candidate_id`; optionally `follow_rate` (share of taker recommendations followed, e.g. 0.33 for the demo taker; set in code only) and `bankroll` (`start` in $, `since` date) | `racinglines f1 profiles --assign-demo`, the Lab |
+
+The profile keeps the full settings, so deleting its Lab candidate doesn't break the
+assignment.
 
 ## Ingest
 
@@ -156,7 +198,7 @@ What `--save` stores:
 
 | Command | `model_runs.kind` | Predictions | Metrics (JSONB) |
 |---|---|---|---|
-| `season` | `forecast` | `remaining_round` per athlete, `backtest:<event>` per athlete (linked to the race) | `walk_forward`, `backtest` |
+| `forecast` | `forecast` | `remaining_round` per athlete, `backtest:<event>` per athlete (linked to the race) | `walk_forward`, `backtest` |
 | `backtest` | `backtest` | none | `all_events`, `seasons`, `events` |
 
 Example queries:
@@ -186,7 +228,46 @@ racinglines db init       # alembic upgrade head + seed
 racinglines db seed       # re-apply registry.py (after adding a sport, league or venue)
 racinglines db stats      # table counts + events/rounds/results per season and category
 racinglines db export --out splits.csv   # tidy CSV from the database
+racinglines db snapshot-export           # see Snapshot below
+racinglines db snapshot-import [--force]
 ```
+
+## Snapshot: an exact replica
+
+Rebuilding from the raw files gives the same data under different ids, and the
+pricing code orders drivers by id in places, so seeded simulations would differ at
+the level of simulation noise. The snapshot keeps the ids (`racinglines/db/snapshot.py`):
+
+```
+racinglines db snapshot-export     # -> data/archive/db/<table>.parquet + manifest.json (table list, row counts)
+racinglines db init                # on the fresh database: schema at head
+racinglines db snapshot-import     # replaces these tables, resets the id sequences
+```
+
+- **Tables** (`TABLES`, parents first): the race data (`sports`, `leagues`,
+  `competitions`, `categories`, `seasons`, `points_schemes`, `venues`,
+  `venue_aliases`, `athletes`, `athlete_identifiers`, `events`, `races`, `rounds`,
+  `results`, `splits`, `laps`, `track_profiles`, `source_files`) and `market_links`.
+- **Never exported:** web-app tables (users, books, bets, jobs, signals) and model runs.
+  Market prices and trades aren't in it either: they are the Parquet market archive.
+- **Import** is for a fresh database: it refuses one that already holds model runs
+  unless `--force`.
+- `scripts/cloud/prepare.sh` exports it before a cloud sweep and
+  `scripts/cloud/start.sh` imports it (see [Cloud sweeps](cloud-sweep.md)).
+
+**Rebuilding everything from it.** The snapshot plus the committed Parquet archive
+are enough to rebuild the working database. After `snapshot-import`:
+
+1. `racinglines f1 forecast --save`: the live forecast the web app prices from.
+2. Web-app accounts aren't in the snapshot: create the demo `maker` / `taker`
+   accounts, run `racinglines f1 profiles --assign-demo`, then
+   `racinglines f1 demo-history` for their track record.
+3. Re-run the saved research with `--save`: backtests per model variant (and the
+   downhill backtest), season sweeps per variant and profile (2025 and 2026), the
+   season strategy and the season checkpoints.
+
+This was done on 2026-09-27 (a fresh local cluster, see Setup option B), and every
+result reproduced exactly.
 
 ## Changing the schema
 
@@ -197,7 +278,7 @@ racinglines db export --out splits.csv   # tidy CSV from the database
    as renames and changes to data.
 4. Apply it with `racinglines db init` (or `alembic upgrade head`).
 
-Migrations so far (in order):
+Migrations so far (in order, `migrations/versions/`):
 
 | Revision | File | Adds |
 |---|---|---|
@@ -208,7 +289,13 @@ Migrations so far (in order):
 | `8d64d59a2940` | `20260926_8d64d59a2940_users_roles_activity_log.py` | `users`, `activity_log`, `house_markets.maker_id` (uniqueness now per maker), `house_bets.taker_id` |
 | `d84cd5aa7ce4` | `20260926_d84cd5aa7ce4_polymarket_alignment.py` | `market_links`: optional athlete, `params`, event slug/title, outcome label, live bid/ask/price, volume, end date, closed, resolution, sync time. `house_markets`: optional race/athlete, `market_link_id` (mirrored exchange market), `params`. `standings_predictions.extra` |
 | `8c46493d7cda` | `20260926_8c46493d7cda_house_market_uniqueness_per_mirrored_.py` | House-market uniqueness includes `market_link_id` (several head-to-heads per driver and race) |
+| `50a176ca2955` | `20260926_50a176ca2955_market_price_history.py` | `market_price_history` |
+| `3f94d44a125e` | `20260926_3f94d44a125e_market_trades_and_book_snapshots.py` | `market_trades`, `market_book_snapshots` |
+| `81022900a936` | `20260926_81022900a936_jobs.py` | `jobs` |
 | `5b1e0c7d2a41` | `20260927_5b1e0c7d2a41_user_prefs.py` | `users.prefs` (nullable JSONB) |
+| `9c4d2e8f1a63` | `20260927_9c4d2e8f1a63_market_first_seen.py` | `market_links.first_seen_at` |
+| `c7a1f4e2b9d0` | `20260927_c7a1f4e2b9d0_strategy_signals.py` | `strategy_signals`, `paper_positions` |
+| `d2b8e5a1c3f7` | `20260927_d2b8e5a1c3f7_replay_taker_account.py` | The `polymarket-takers` system account (inactive); recorded replay fills (`house_bets`) move to it from the demo taker (data only) |
 
 ## Not done yet
 
@@ -228,10 +315,11 @@ Migrations so far (in order):
 
 | Data | Where | Why |
 |---|---|---|
-| Everything the app presents: sports, events, results, athletes, market links, model runs (forecasts, backtests, diagnostics, sweep summaries with P&L across weekends), users, books, bets, jobs | Postgres | Small, queried constantly |
+| Everything the app presents: sports, events, results, athletes, market links, model runs (forecasts, backtests, diagnostics, sweep summaries with P&L across weekends), users, books, bets, jobs, paper signals and positions | Postgres | Small, queried constantly |
 | Exchange time series (`market_price_history`, `market_trades`, `market_book_snapshots`) for **upcoming and in-progress races, the latest completed race of each competition, and the last 7 days of open season markets** | Postgres | What the app shows live |
 | All other exchange time series | Parquet, `data/archive/markets/polymarket/{prices,trades,books}/month=YYYY-MM/*.parquet` (zstd) | Heavy and stale; about 20–40× smaller than in Postgres |
 | Raw F1 sessions | Parquet, `data/raw/f1/fastf1/<year>/` | The record; FastF1's HTTP cache is cleared after each fetch |
+| Snapshot of the model tables, market links file | Parquet, `data/archive/db/`, `data/archive/markets/polymarket/links/` | Rebuild or replicate a database without the sources |
 
 - **Reading:** everything goes through `racinglines/markets/store.py` (`read`, `last_before`),
   which merges both stores and drops duplicates. Callers don't need to know

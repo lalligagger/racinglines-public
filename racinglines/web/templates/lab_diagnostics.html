@@ -7,5 +7,5 @@
 <td>{% if e.brier_podium_model is not none %}<span class="{{ 'good' if e.brier_podium_model < e.brier_podium_pm else 'bad' }}">{{ "%.3f"|format(e.brier_podium_model) }}</span> / {{ "%.3f"|format(e.brier_podium_pm) }}{% endif %}</td>
 <td>{{ e.replay_fills if e.replay_fills is not none else "no tape" }}</td><td>{{ e.replay_markout|fmt("markout_60m") if e.replay_markout is not none }}</td>
 <td class="{{ 'good' if e.replay_pnl and e.replay_pnl > 0 else 'bad' }}">{{ e.replay_pnl|fmt("pnl") if e.replay_pnl is not none }}</td>
-<td><a href="/diag/{{ e.run_id }}">details &amp; strategy replay →</a></td></tr>
+<td><a href="/lab/diagnostics/{{ e.run_id }}">details &amp; strategy replay →</a></td></tr>
 {% else %}<tr><td class="l muted" colspan="8">None yet: run an <b>Event diagnostic</b> above.</td></tr>{% endfor %}</tbody></table></div>

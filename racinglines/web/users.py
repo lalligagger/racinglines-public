@@ -48,6 +48,22 @@ def authenticate(session, username, password):
     return u if u and u.active and verify_password(password, u.password_hash) else None
 
 
+# The replay counterparty: Polymarket's takers, whose real trades filled a replayed maker (web/diag.py).
+# A system account, not a person: it can't sign in, and it is NOT the demo `taker` login.
+REPLAY_TAKER = "polymarket-takers"
+
+
+def ensure_replay_taker(session):
+    """The system account that records Polymarket takers' fills of a replayed maker (inactive: no login)."""
+    u = get_user(session, username=REPLAY_TAKER)
+    if u is None:
+        u = m.User(username=REPLAY_TAKER, password_hash="!no-login", role="taker", active=False,
+                   display_name="Polymarket takers (replay counterparty)")
+        session.add(u)
+        session.commit()
+    return u
+
+
 def create_user(session, username, password, role, display_name=None):
     if role not in ROLES:
         raise ValueError(f"role must be one of {ROLES}")

@@ -7,7 +7,7 @@
 <form method="get"><label><span>…or search active events</span><input name="query" value="{{ query }}" size="40"></label><button>Search</button></form>
 </div>
 {% if error %}<p class="bad">{{ error }}</p>{% endif %}
-{% if results %}<div class="card"><h2>Search results</h2><ul>{% for r in results %}<li><a href="/markets/lookup?slug={{ r.slug }}">{{ r.title }}</a> <span class="muted">{{ r.slug }} · ends {{ r.end_date }}</span></li>{% endfor %}</ul></div>
+{% if results %}<div class="card"><h2>Search results</h2><ul>{% for r in results %}<li><a href="/markets/linked/lookup?slug={{ r.slug }}">{{ r.title }}</a> <span class="muted">{{ r.slug }} · ends {{ r.end_date }}</span></li>{% endfor %}</ul></div>
 {% elif query %}<p class="muted">No active events match "{{ query }}".</p>{% endif %}
 {% if slug and not markets and not error %}<p class="muted">No market found for "{{ slug }}".</p>{% endif %}
 {% for mk in markets %}
@@ -15,7 +15,7 @@
 <h2>{{ mk.question }}</h2>
 <p class="muted">{{ mk.slug }} · ends {{ mk.end_date }} · tick {{ mk.tick_size }} · min size {{ mk.min_size }} · {{ "neg-risk" if mk.neg_risk else "binary" }} · {{ "closed" if mk.closed else "open" }}</p>
 {% for o in mk.outcomes %}
-<form method="post" action="/markets" class="card">{{ csrf() }}
+<form method="post" action="/markets/linked" class="card">{{ csrf() }}
   <input type="hidden" name="market_slug" value="{{ mk.slug }}"><input type="hidden" name="question" value="{{ mk.question }}">
   <input type="hidden" name="condition_id" value="{{ mk.condition_id }}"><input type="hidden" name="token_id" value="{{ o.token_id }}">
   <input type="hidden" name="outcome" value="{{ o.outcome }}"><input type="hidden" name="neg_risk" value="{{ mk.neg_risk }}">

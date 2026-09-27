@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Live paper signals of users' strategy profiles, every 5 minutes (racinglines/pipelines/signals.py).
+     Outside a race weekend (Thursday to race end) each run only notes when signals start. Paper only.
+     Install: cp scripts/bet.racinglines.signals.plist ~/Library/LaunchAgents/ &&
+              launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/bet.racinglines.signals.plist -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>bet.racinglines.signals</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/lalligagger/py_dev/racinglines/.venv/bin/racinglines</string>
+    <string>f1</string><string>signals</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/lalligagger/py_dev/racinglines</string>
+  <key>StartInterval</key><integer>300</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/Users/lalligagger/py_dev/racinglines/data/runs/logs/signals.log</string>
+  <key>StandardErrorPath</key><string>/Users/lalligagger/py_dev/racinglines/data/runs/logs/signals.log</string>
+</dict>
+</plist>

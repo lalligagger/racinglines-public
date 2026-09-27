@@ -1,5 +1,10 @@
 # Downhill evaluation
 
+How accurate the [downhill model](model.md) is: a walk-forward backtest over
+every UCI World Cup round with timing data, per season and per event. The live
+projection is on [Downhill forecast](forecast.md). For Formula 1, see
+[F1 evaluation](f1-evaluation.md).
+
 !!! warning "Placeholder points"
     Metrics measured in points (Spearman on points, standings) use placeholder
     points tables, and the same tables for every era. Win, podium, top-10 and
@@ -55,7 +60,7 @@ instead.
 
 ## Results: every season with data (2021–2026)
 
-Model run 192 (2026-09-26), command `racinglines mtb_dh backtest --db --save`. Settings: training scope
+Model run 938 (2026-09-27), command `racinglines mtb_dh backtest --db --save`. Settings: training scope
 `all`, 120-day half-life, junior weight 0.5, 4,000 simulations per round.
 Seasons 2019–2020 have no usable timing data (see [Data](data.md#whats-downloaded)).
 2021's first round (Maribor) has no earlier history, so it isn't predicted.
@@ -103,49 +108,49 @@ Seasons 2019–2020 have no usable timing data (see [Data](data.md#whats-downloa
 
 | Season | Venue | Format | Starters | Final size | Spearman | Brier make-Final (model / base) | Top-10 hits | Winner (win prob) |
 |---|---|---|---|---|---|---|---|---|
-| 2021 | Lenzerheide | single | 132 | 61 | 0.446 | 0.168 / 0.249 | 5 | Vergier (19.5%) |
-| 2021 | Snowshoe | single | 81 | 64 | 0.693 | 0.137 / 0.166 | 4 | Wilson (1.7%) |
-| 2021 | Snowshoe | single | 78 | 63 | 0.704 | 0.140 / 0.155 | 4 | Bruni (9.2%) |
-| 2022 | Lourdes | single | 148 | 60 | 0.525 | 0.152 / 0.240 | 7 | Pierron (10.1%) |
-| 2022 | Fort William | single | 139 | 63 | 0.547 | 0.173 / 0.248 | 7 | Pierron (17.9%) |
+| 2021 | Lenzerheide | single | 132 | 61 | 0.458 | 0.168 / 0.249 | 5 | Vergier (19.3%) |
+| 2021 | Snowshoe | single | 81 | 64 | 0.692 | 0.136 / 0.166 | 4 | Wilson (2.0%) |
+| 2021 | Snowshoe | single | 78 | 63 | 0.704 | 0.139 / 0.155 | 4 | Bruni (9.2%) |
+| 2022 | Lourdes | single | 148 | 60 | 0.521 | 0.153 / 0.240 | 6 | Pierron (10.0%) |
+| 2022 | Fort William | single | 139 | 63 | 0.552 | 0.172 / 0.248 | 7 | Pierron (16.7%) |
 | 2022 | Leogang | single | 171 | 64 | 0.607 | 0.167 / 0.234 | 5 | Walker (6.8%) |
-| 2022 | Lenzerheide | single | 148 | 62 | 0.651 | 0.160 / 0.243 | 5 | Pierron (11.5%) |
-| 2022 | Vallnord | single | 144 | 64 | 0.643 | 0.144 / 0.247 | 5 | Vergier (8.8%) |
-| 2022 | Snowshoe | single | 88 | 63 | 0.582 | 0.153 / 0.203 | 6 | Pierron (14.9%) |
-| 2022 | Mont-Sainte-Anne | single | 87 | 61 | 0.706 | 0.168 / 0.210 | 5 | Iles (8.0%) |
-| 2022 | Val di Sole | single | 167 | 62 | 0.396 | 0.171 / 0.233 | 5 | Vergier (11.7%) |
-| 2023 | Lenzerheide | semi | 180 | 31 | 0.525 | 0.088 / 0.143 | 3 | Williams (0.0%)† |
-| 2023 | Leogang | semi | 170 | 30 | 0.586 | 0.086 / 0.145 | 7 | Kolb (6.3%) |
-| 2023 | Val di Sole | semi | 153 | 32 | 0.575 | 0.101 / 0.165 | 7 | Goldstone (8.8%) |
-| 2023 | Vallnord | single | 159 | 61 | 0.620 | 0.153 / 0.236 | 2 | Daprela (4.5%) |
-| 2023 | Loudenvielle | semi | 141 | 32 | 0.677 | 0.090 / 0.175 | 3 | Bruni (7.1%) |
-| 2023 | Les Gets | semi | 162 | 31 | 0.558 | 0.089 / 0.155 | 7 | Coulanges (6.4%) |
-| 2023 | Snowshoe | semi | 86 | 31 | 0.592 | 0.162 / 0.231 | 5 | O'Callaghan (0.6%) |
-| 2023 | Mont-Sainte-Anne | semi | 90 | 30 | 0.629 | 0.136 / 0.222 | 6 | Goldstone (7.6%) |
-| 2024 | Fort William | semi | 137 | 31 | 0.533 | 0.122 / 0.175 | 7 | Bruni (10.6%) |
-| 2024 | Bielsko-Biała | semi | 152 | 34 | 0.651 | 0.100 / 0.174 | 5 | Dunne (1.9%) |
-| 2024 | Leogang | semi | 173 | 32 | 0.615 | 0.081 / 0.151 | 8 | Bruni (11.6%) |
-| 2024 | Val di Sole | semi | 150 | 32 | 0.639 | 0.089 / 0.168 | 7 | Pierron (4.0%) |
-| 2024 | Les Gets | semi | 160 | 31 | 0.619 | 0.083 / 0.156 | 5 | Pierron (9.1%) |
-| 2024 | Loudenvielle | single | 136 | 30 | 0.583 | 0.103 / 0.172 | 6 | Coulanges (2.1%) |
-| 2024 | Mont-Sainte-Anne | semi | 106 | 30 | 0.611 | 0.130 / 0.203 | 4 | Brosnan (9.9%) |
-| 2025 | Bielsko-Biała | q1q2 | 95 | 30 | 0.602 | 0.136 / 0.216 | 5 | Bruni (10.4%) |
-| 2025 | Loudenvielle | q1q2 | 89 | 30 | 0.592 | 0.150 / 0.223 | 3 | Goldstone (0.7%) |
-| 2025 | Leogang | q1q2 | 104 | 30 | 0.697 | 0.113 / 0.205 | 2 | Goldstone (2.7%) |
-| 2025 | Val di Sole | q1q2 | 92 | 30 | 0.648 | 0.132 / 0.220 | 7 | Goldstone (3.4%) |
-| 2025 | La Thuile | q1q2 | 103 | 30 | 0.598 | 0.127 / 0.206 | 6 | Goldstone (4.9%) |
-| 2025 | Pal Arinsal | q1q2 | 89 | 30 | 0.553 | 0.160 / 0.223 | 6 | Bruni (11.8%) |
-| 2025 | Les Gets | q1q2 | 111 | 30 | 0.629 | 0.114 / 0.197 | 4 | Dunne (3.4%) |
-| 2025 | Lenzerheide | q1q2 | 85 | 30 | 0.689 | 0.122 / 0.228 | 5 | Pierron (5.6%) |
-| 2025 | Lake Placid | q1q2 | 80 | 30 | 0.679 | 0.141 / 0.234 | 7 | Meier-Smith (1.8%) |
-| 2025 | Mont-Sainte-Anne | q1q2 | 78 | 30 | 0.686 | 0.128 / 0.237 | 7 | Goldstone (4.3%) |
-| 2026 | Mona Yongpyong | q1q2 | 83 | 30 | 0.642 | 0.135 / 0.231 | 6 | Vermette (22.9%) |
-| 2026 | Loudenvielle | q1q2 | 100 | 30 | 0.608 | 0.127 / 0.210 | 4 | Shaw (3.1%) |
-| 2026 | Leogang | q1q2 | 107 | 30 | 0.672 | 0.113 / 0.202 | 4 | Iles (2.2%) |
-| 2026 | Lenzerheide | q1q2 | 105 | 30 | 0.682 | 0.109 / 0.204 | 7 | Iles (4.5%) |
-| 2026 | La Thuile | q1q2 | 114 | 30 | 0.670 | 0.100 / 0.194 | 5 | Williams (3.8%) |
-| 2026 | Pal Arinsal | q1q2 | 90 | 30 | 0.681 | 0.120 / 0.222 | 6 | Williams (5.0%) |
-| 2026 | Les Gets | q1q2 | 108 | 30 | 0.697 | 0.106 / 0.201 | 7 | M. Alran (4.1%) |
+| 2022 | Lenzerheide | single | 148 | 62 | 0.649 | 0.161 / 0.243 | 5 | Pierron (11.0%) |
+| 2022 | Vallnord | single | 144 | 64 | 0.648 | 0.144 / 0.247 | 4 | Vergier (8.4%) |
+| 2022 | Snowshoe | single | 88 | 63 | 0.577 | 0.153 / 0.203 | 6 | Pierron (14.8%) |
+| 2022 | Mont-Sainte-Anne | single | 87 | 61 | 0.709 | 0.168 / 0.210 | 5 | Iles (8.4%) |
+| 2022 | Val di Sole | single | 167 | 62 | 0.403 | 0.171 / 0.233 | 5 | Vergier (11.8%) |
+| 2023 | Lenzerheide | semi | 180 | 31 | 0.533 | 0.088 / 0.143 | 3 | Williams (0.0%)† |
+| 2023 | Leogang | semi | 170 | 30 | 0.590 | 0.085 / 0.145 | 7 | Kolb (6.6%) |
+| 2023 | Val di Sole | semi | 153 | 32 | 0.573 | 0.101 / 0.165 | 7 | Goldstone (7.8%) |
+| 2023 | Vallnord | single | 159 | 61 | 0.621 | 0.154 / 0.236 | 2 | Daprela (4.2%) |
+| 2023 | Loudenvielle | semi | 141 | 32 | 0.674 | 0.090 / 0.175 | 2 | Bruni (6.6%) |
+| 2023 | Les Gets | semi | 162 | 31 | 0.560 | 0.089 / 0.155 | 7 | Coulanges (6.4%) |
+| 2023 | Snowshoe | semi | 86 | 31 | 0.598 | 0.161 / 0.231 | 5 | O'Callaghan (0.8%) |
+| 2023 | Mont-Sainte-Anne | semi | 90 | 30 | 0.626 | 0.137 / 0.222 | 7 | Goldstone (8.2%) |
+| 2024 | Fort William | semi | 137 | 31 | 0.538 | 0.122 / 0.175 | 7 | Bruni (10.5%) |
+| 2024 | Bielsko-Biała | semi | 152 | 34 | 0.652 | 0.100 / 0.174 | 5 | Dunne (1.8%) |
+| 2024 | Leogang | semi | 173 | 32 | 0.619 | 0.081 / 0.151 | 8 | Bruni (11.2%) |
+| 2024 | Val di Sole | semi | 150 | 32 | 0.640 | 0.088 / 0.168 | 7 | Pierron (3.6%) |
+| 2024 | Les Gets | semi | 160 | 31 | 0.617 | 0.083 / 0.156 | 5 | Pierron (10.6%) |
+| 2024 | Loudenvielle | single | 136 | 30 | 0.583 | 0.103 / 0.172 | 5 | Coulanges (2.0%) |
+| 2024 | Mont-Sainte-Anne | semi | 106 | 30 | 0.614 | 0.130 / 0.203 | 4 | Brosnan (9.6%) |
+| 2025 | Bielsko-Biała | q1q2 | 95 | 30 | 0.602 | 0.135 / 0.216 | 5 | Bruni (10.0%) |
+| 2025 | Loudenvielle | q1q2 | 89 | 30 | 0.593 | 0.150 / 0.223 | 3 | Goldstone (0.9%) |
+| 2025 | Leogang | q1q2 | 104 | 30 | 0.695 | 0.113 / 0.205 | 2 | Goldstone (2.2%) |
+| 2025 | Val di Sole | q1q2 | 92 | 30 | 0.642 | 0.132 / 0.220 | 7 | Goldstone (3.1%) |
+| 2025 | La Thuile | q1q2 | 103 | 30 | 0.598 | 0.127 / 0.206 | 5 | Goldstone (5.8%) |
+| 2025 | Pal Arinsal | q1q2 | 89 | 30 | 0.553 | 0.159 / 0.223 | 6 | Bruni (12.8%) |
+| 2025 | Les Gets | q1q2 | 111 | 30 | 0.627 | 0.112 / 0.197 | 4 | Dunne (2.9%) |
+| 2025 | Lenzerheide | q1q2 | 85 | 30 | 0.695 | 0.122 / 0.228 | 5 | Pierron (5.6%) |
+| 2025 | Lake Placid | q1q2 | 80 | 30 | 0.676 | 0.140 / 0.234 | 6 | Meier-Smith (1.8%) |
+| 2025 | Mont-Sainte-Anne | q1q2 | 78 | 30 | 0.689 | 0.129 / 0.237 | 7 | Goldstone (5.0%) |
+| 2026 | Mona Yongpyong | q1q2 | 83 | 30 | 0.646 | 0.135 / 0.231 | 6 | Vermette (21.3%) |
+| 2026 | Loudenvielle | q1q2 | 100 | 30 | 0.611 | 0.128 / 0.210 | 4 | Shaw (3.1%) |
+| 2026 | Leogang | q1q2 | 107 | 30 | 0.671 | 0.113 / 0.202 | 4 | Iles (2.6%) |
+| 2026 | Lenzerheide | q1q2 | 105 | 30 | 0.679 | 0.111 / 0.204 | 5 | Iles (4.9%) |
+| 2026 | La Thuile | q1q2 | 114 | 30 | 0.674 | 0.100 / 0.194 | 5 | Williams (4.0%) |
+| 2026 | Pal Arinsal | q1q2 | 90 | 30 | 0.679 | 0.121 / 0.222 | 6 | Williams (4.6%) |
+| 2026 | Les Gets | q1q2 | 108 | 30 | 0.701 | 0.106 / 0.201 | 7 | M. Alran (4.5%) |
 
 † Jordan Williams won 2023 Lenzerheide as `WILLIAMS Robert Jordan`. That name
 doesn't match his other results, so the model treated him as an unknown rider.
@@ -196,7 +201,7 @@ all 43 rounds is a [TODO](todo.md#model).
 
 - **Win probabilities are flat.** Favourites rarely go above 10%, and the average
   winner gets 5–10%. The recent-season base rate is roughly a 25% incident rate
-  (see [Season model](model.md#incidents)). That rate, plus the 4% threshold, may be
+  (see [Downhill model](model.md#incidents)). That rate, plus the 4% threshold, may be
   adding too much randomness at the front of the field. Worth checking calibration
   curves.
 - **No track effects.** A rider's affinity for a venue is only captured through the

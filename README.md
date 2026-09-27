@@ -6,12 +6,19 @@
 <!-- include: tagline -->
 <!-- generated from docs/index.md by build_readme.py - edit it there -->
 
-**Fair prices for race sports, strictly as of any moment, tested on real market
-tapes.** racinglines turns official timing into win, podium, head-to-head and
-championship odds, then trades them against the market:
+**Tools for an edge in race-sport prediction markets.** racinglines turns
+official timing into win, podium, head-to-head and championship odds, priced
+strictly as of any moment and tested on real market tapes, and gives makers and
+takers the tools to find and size an edge inside the existing markets. Two
+sports mark the ends of the range we build for:
 
-- **Formula 1** against Polymarket;
-- **UCI downhill** mountain biking through a private book.
+- **Formula 1**, the big end: priced against Polymarket, with live paper trading
+  from October 2026;
+- **UCI downhill** mountain biking, the small end: modelled and forecast, waiting
+  for an exchange to list it.
+
+New sports qualify when their audience and expected market liquidity sit between
+the two.
 
 <!-- /include -->
 
@@ -26,16 +33,18 @@ maker* / *Try as taker*) · [pitch](https://racinglines.bet/pitch). Demo passwor
 
 | | |
 |---|---|
-| 🏎️ **129 F1 races backtested** | 2021 to Baku 2026. Each race is priced three times: before practice, before qualifying and after qualifying. After qualifying, top-10 Brier is **0.149**, against 0.163 for a grid-only guess. |
-| ⏱️ **Practice pace prior** | Before qualifying, it cuts podium error by **8%** and teammate head-to-head error by **4%**. |
-| 💹 **The full 2026 season on Polymarket's real tape** | 15 weekends, re-priced after every session. **Market making: +$751** on $8,969 filled. After FP1, FP2, sprint qualifying and the sprint, the model's race-winner odds beat Polymarket's. |
-| 🚵 **43 downhill World Cup rounds** | 2021–2026, walk-forward. Error on who makes the Final is **38% lower** than a uniform guess (0.127 vs 0.204). The actual winner got **7.1%** on average, against ~1% for a uniform guess. |
-| ✅ **Checks in seconds** | `racinglines check` runs 21 checks (code, every data source, database) in ~10 s. The **regression suite** runs 108 tests on pinned public fixtures and golden outputs, and **zero data** is in git. |
+| 🏎️ **129 F1 races backtested** | 2021 to Azerbaijan 2026. Each race is priced before practice, before qualifying and after qualifying. After qualifying, top-10 Brier is **0.149** against 0.163 for a grid-only guess; the best variant also beats it on win and podium. |
+| 💹 **Every Polymarket F1 race weekend, replayed** | 38 weekends (2025 and 2026) on the real prices and trade tape. The default maker made **+$751** on $8,969 filled in 2026. |
+| ☁️ **1,161 strategy combinations searched** | A 4-hour cloud search found two setups that held up in both seasons: **A** (a taker, +$1,232 in 2026 / +$1,237 in 2025) and **C** (a maker, +$653 / +$835, the best Sharpe of any combination). |
+| 📡 **Live paper trading** | A and C run on every F1 weekend from Malaysia (4 Oct 2026) through 2027, stage by stage, with heat ratings, alerts and paper positions, through the same code as the backtest (checked trade for trade). |
+| 🚵 **43 downhill World Cup rounds** | 2021–2026, walk-forward. Error on who makes the Final is **38% lower** than a uniform guess (0.127 vs 0.204); the actual winner got **7.1%** on average, against ~1%. |
+| ✅ **Checks in seconds** | `racinglines check` runs 21 checks (code, every data source, database) in ~10 s; the regression suite runs 174 tests on pinned public fixtures and golden outputs. |
 
-What's not there yet: **taking** Polymarket's price after qualifying still loses
-(Polymarket is sharper there, with a win Brier of 0.060 against our 0.072), and
-the season-long championship strategy is down $208 so far. The results below have the
-details.
+The goal isn't to out-predict the market everywhere: on race-winner odds
+Polymarket is about as sharp as the model (sharper after qualifying, and in 2025
+at every stage). The tools act only where the gap is large, and quote where it's
+safe. Nothing is traded with real money until paper trading has validated the
+backtests. The pages below have the details.
 
 <!-- /include -->
 
@@ -44,35 +53,37 @@ details.
 ### Formula 1: how accurate?
 
 <!-- include: f1-accuracy -->
-<!-- generated from docs/f1.md by build_readme.py - edit it there -->
+<!-- generated from docs/f1-evaluation.md by build_readme.py - edit it there -->
 
-**Backtest run 115** (2026-09-26) covers 129 races, 2021 to Baku 2026. Each race
-is priced three times, using only sessions that had ended:
+**Backtest run 931** (2026-09-27) covers 129 races, 2021 to Azerbaijan 2026.
+Each race is priced three times, using only sessions that had ended:
 
-- before any practice;
+- before any practice (2025–26 only, 39 races: the first seasons with practice
+  data);
 - before qualifying (practice known);
 - after qualifying (grid known).
 
-Brier scores, lower is better:
+Brier scores, lower is better. The last model column is the best variant,
+`gridq+pretrain+reset` (run 955):
 
-| | Before practice | Before qualifying | After qualifying | Grid-only guess | Uniform |
-|---|---|---|---|---|---|
-| Win | 0.041 | 0.038 | 0.033 | **0.031** | 0.047 |
-| Podium | 0.091 | 0.088 | **0.071** | **0.071** | 0.127 |
-| Top 10 | 0.187 | 0.175 | **0.149** | 0.163 | 0.250 |
-| Teammate head-to-head | 0.231 | 0.228 | **0.197** | | |
+| | Before practice | Before qualifying | After qualifying | After qualifying, best variant | Grid-only guess | Uniform |
+|---|---|---|---|---|---|---|
+| Win | 0.0413 | 0.0382 | 0.0325 | **0.0307** | 0.0309 | 0.0471 |
+| Podium | 0.0913 | 0.0878 | 0.0712 | **0.0692** | 0.0708 | 0.1265 |
+| Top 10 | 0.187 | 0.175 | **0.149** | 0.150 | 0.163 | 0.250 |
+| Teammate head-to-head | 0.231 | 0.228 | 0.197 | **0.196** | | |
+| Win probability given to the winner (average) | 12.1% | 17.8% | 27.5% | **31.0%** | | about 5% |
 
 - **Every session sharpens the price.** Error falls at each step, from before
   practice to after qualifying.
-- **After qualifying:**
-    - **top 10** clearly beats a grid-only guess;
-    - **podium** ties it;
-    - **win** is still slightly worse: the model underweights the front of the
-      grid (on the [TODO](docs/todo.md#f1-model) list).
-- **Against Polymarket** (2026, race-winner markets), the model beats the
-  market mid-weekend (after FP1, FP2, sprint qualifying and the sprint). The
-  market is sharper after FP3 and qualifying (see
-  [the season sweep](docs/market-making.md#season-sweep)).
+- **After qualifying**, the baseline beats a grid-only guess on top 10, ties it
+  on podium and is slightly worse on win: it underweights the front of the grid.
+  The `gridq` term fixes that, and the best variant beats the grid-only guess on
+  win and podium too ([variants](docs/f1-evaluation.md#model-variants-f1-roadmap-f1-2-f1-3)).
+- **Against Polymarket** the picture is mixed. In 2026 the model's race-winner
+  prices beat the market mid-weekend (after FP1, FP2, sprint qualifying and the
+  sprint) and lose after FP3 and qualifying. In 2025 the market is sharper on
+  race winners at every stage (see [Against Polymarket](docs/f1-evaluation.md#against-polymarket)).
 
 <!-- /include -->
 
@@ -225,6 +236,13 @@ so read them as direction, not size.
 More: the Baku minute-by-minute diagnostic and the championship-market strategy
 are in [Market making](docs/market-making.md).
 
+### Formula 1: live paper trading
+
+Profiles A (a taker) and C (a maker), found by a 1,161-combination cloud search,
+run on every F1 weekend from October 2026 through 2027: stage-by-stage calls with
+heat ratings, maker quotes, alerts and paper positions, through the same code as
+the backtest. No real orders. See [Paper trading](docs/paper-trading.md).
+
 ### Downhill
 
 <!-- include: headline -->
@@ -249,7 +267,7 @@ Per-season and per-round tables: [Downhill evaluation](docs/evaluation.md#result
 <!-- generated from docs/forecast.md by build_readme.py - edit it there -->
 
 2026 title odds with 2 rounds left (Whistler in progress, then one more round):
-**Williams 71.1%**, Vermette 18.8%, Pierron 4.2%, Iles 4.1%
+**Williams 71.4%**, Vermette 18.6%, Iles 4.3%, Pierron 4.0%
 ([full forecast](docs/forecast.md#projected-final-standings)).
 
 <!-- /include -->
@@ -277,11 +295,12 @@ Three levels, fastest first:
 | | Command | Checks | Time | Needs |
 |---|---|---|---|---|
 | **Quick check** | `racinglines check` | 21 checks: every pipeline on synthetic data, every data source, the database | ~10 s | nothing downloaded; network and Postgres optional |
-| **Regression suite** | `python -m pytest -m "not live"` | 108 tests: every pipeline stage on pinned F1 and downhill fixtures, compared with golden outputs | ~10 s (+ a one-time fixture build) | Postgres and `scripts/fetch_test_fixtures.py` |
-| **Everything** | `python -m pytest` | 139 tests, adding smoke tests on the working database, the web app and roles | ~35 s | the working database |
+| **Regression suite** | `python -m pytest -m "not live"` | 174 tests: every pipeline stage on pinned F1 and downhill fixtures, compared with golden outputs | ~10 s (+ a one-time fixture build) | Postgres and `scripts/fetch_test_fixtures.py` |
+| **Everything** | `python -m pytest` | 221 tests, adding 47 live tests on the working database: the web app's pages per role, Baku live data, retention | ~35 s | the working database |
 
-- **No data in git:** fixtures are built locally from the public sources (FastF1,
-  ChronoRace, Polymarket). A guard test fails if anything data-like is tracked.
+- **No test data in git:** fixtures are built locally from the public sources (FastF1,
+  ChronoRace, Polymarket). A guard test fails if any data outside a small
+  allow-list is tracked.
 - **Results can't drift silently:** an intended change is re-baselined with
   `UPDATE_GOLDEN=1`.
 
@@ -301,7 +320,7 @@ racinglines check                                      # code, data endpoints, d
 Then the full pipeline:
 
 ```
-docker compose up -d                                   # PostgreSQL on localhost:5433
+docker compose up -d                                   # PostgreSQL on localhost:5433 (or a conda Postgres: see Database)
 racinglines db init                                    # tables + reference data
 
 racinglines f1 fetch && racinglines f1 ingest          # F1 sessions (FastF1) -> database
@@ -311,6 +330,8 @@ racinglines markets sync                               # Polymarket's F1 markets
 racinglines mtb_dh ingest                              # downhill event files -> database
 racinglines mtb_dh forecast --db --save                # downhill season forecast
 
+racinglines f1 profiles --assign-demo                  # strategy profiles A and C for the demo accounts
+racinglines f1 signals                                 # live paper signals (outside a race weekend: a no-op)
 ADMIN_PASSWORD=... racinglines web                     # the app on http://127.0.0.1:8000
 ```
 
@@ -323,8 +344,8 @@ ADMIN_PASSWORD=... racinglines web                     # the app on http://127.0
 
 ```
 official timing ──> PostgreSQL ──> as-of model ──> simulated weekends ──> fair prices ──> markets
- (FastF1,           (one multi-     (only sessions   & seasons             (win, podium,   (Polymarket,
-  ChronoRace)        sport schema)   ended before     (thousands of runs)   h2h, pole,      private book;
+ (FastF1,           (one multi-     (only sessions   & seasons             (win, podium,   (Polymarket;
+  ChronoRace)        sport schema)   ended before     (thousands of runs)   h2h, pole,      paper trading,
                                      the cutoff)                            titles)         replays, Lab)
 ```
 
@@ -332,29 +353,34 @@ official timing ──> PostgreSQL ──> as-of model ──> simulated weekend
     - F1 via FastF1: every practice, qualifying, sprint and race session since
       2020;
     - downhill split timing from ChronoRace, 2021–2026.
-  
-  Heavy exchange history (prices, trades, order books) goes to a **Parquet
-  archive**.
+
+  Exchange history (prices, trades, order books) goes to a **Parquet archive**.
 - **Models** each sport:
     - **F1:** a sector-aware car model shared by both team drivers, driver
-      offsets, a practice-pace prior, and a grid/overtaking finishing model;
+      offsets, a practice-pace prior, and a grid/overtaking finishing model, with
+      challenger variants behind switches;
     - **Downhill:** a log-time model of each rider's pace, consistency and
       crash/DNF rate.
 - **Simulates** race weekends and seasons thousands of times: win, podium,
   top 10, pole, head-to-head and team markets, plus championships.
 - **Prices strictly as of a moment:** only sessions that have ended before the
-  cutoff are used, and a leakage guard enforces it. Backtests, diagnostics and
-  live forecasts all call the same function.
-- **Tests strategies on real market data:** these all run on Polymarket's
-  recorded prices and trades:
-    - maker replays;
-    - taker strategies that re-trade after every session;
-    - a season-long championship strategy.
+  cutoff are used, and a leakage guard enforces it. Backtests, diagnostics, the
+  live forecast and the signal engine all call the same function.
+- **Tests strategies on real market data:** maker replays, taker strategies that
+  re-trade after every session, and a season-long championship strategy, all on
+  Polymarket's recorded prices and trades; settings searches run locally or in
+  the cloud.
+- **Paper trades live:** strategy profiles (A, a taker; C, a maker) produce
+  signals at every stage of a race weekend, with heat ratings for takers,
+  alerts, paper fills and positions. No real orders are placed.
 - **Web app** ([racinglines.bet](https://racinglines.bet)):
-    - **Markets:** fair price vs each venue;
-    - **My Book:** positions across venues;
-    - **Lab:** launch backtests, scenario forecasts, diagnostics and strategy
-      replays with your own settings; compare and promote them.
+    - **Markets:** makers see our fair price against each venue; takers see
+      every Polymarket market with their strategy's call;
+    - **Strategy** and **Positions:** the account's calls, track record, bankroll,
+      P&L history and holdings;
+    - **My Book:** in-app markets a maker quotes;
+    - **Lab:** the Edge Finder, backtests, scenario forecasts, diagnostics and
+      strategy replays with your own settings.
 
 <!-- /include -->
 
@@ -364,21 +390,25 @@ official timing ──> PostgreSQL ──> as-of model ──> simulated weekend
 <!-- generated from docs/index.md by build_readme.py - edit it there -->
 
 Each layer builds on the one before, so start at the top and stop when you
-have what you need.
+have what you need. Every sport has a model, an evaluation and a forecast page;
+F1, which has exchange markets, also has market pages.
 
 | Layer | Page | What's there |
 |---|---|---|
-| 1. **Data** | [Data](docs/data.md) | Sources, what was downloaded, and the on-disk layout (`data/raw`, `archive`, `runs`, `cache`) |
+| 1. **Data** | [Data](docs/data.md) | Sources, what was downloaded, the on-disk layout, and what's in git |
 | | [Parser](docs/parser.md) | Downhill results formats and the tidy schema |
-| | [Database](docs/database.md) | The multi-sport schema, ingest, stored runs, and what stays in Postgres vs Parquet |
-| 2. **Models** | [Formula 1](docs/f1.md) | Car and driver pace, practice prior, finishing model, as-of pricing |
-| | [Downhill model](docs/model.md) | Log-time rider model, weekend formats, season simulation |
-| 3. **Accuracy** | [Formula 1 → Results](docs/f1.md#results) | 129-race backtest, A/B tests of each model change |
+| | [Database](docs/database.md) | The multi-sport schema, ingest, stored runs, the snapshot, and what stays in Postgres vs Parquet |
+| 2. **Formula 1** | [F1 model](docs/f1.md) | Car and driver pace, practice prior, finishing model, as-of pricing |
+| | [F1 evaluation](docs/f1-evaluation.md) | 129-race backtest, model variants, against Polymarket |
+| | [F1 forecast](docs/f1-forecast.md) | The next race and the championships |
+| | [Market making](docs/market-making.md) | Maker replay, season sweeps, the model × strategy matrix, the cloud settings search, season strategy |
+| | [Paper trading](docs/paper-trading.md) | Profiles A and C, the signal engine, heat, alerts, the demo accounts |
+| 3. **Downhill** | [Downhill model](docs/model.md) | Log-time rider model, weekend formats, season simulation |
 | | [Downhill evaluation](docs/evaluation.md) | 43-round walk-forward, per season and per event |
 | | [Downhill forecast](docs/forecast.md) | The live 2026 title projection |
-| 4. **Markets** | [Market making](docs/market-making.md) | Baku diagnostic, maker replay, full-season sweep, season strategy |
-| | [Web app & trading](docs/webapp.md) | Roles, pages, the Lab, the private book, Polymarket orders |
-| 5. **Operate** | [CLI reference](docs/cli.md) | Every command and option |
+| 4. **Web app** | [Web app](docs/webapp.md) | Pages and routes, roles, demo accounts and sessions, the Lab, the private book, Polymarket orders |
+| 5. **Operate** | [CLI reference](docs/cli.md) | Every command and option, launchd agents, scripts |
+| | [Cloud sweeps](docs/cloud-sweep.md) | Running settings searches on a cloud machine |
 | | [Testing](docs/testing.md) | Quick check, regression suite, fixtures, golden outputs |
 | 6. **Background** | [Project history](docs/history.md) · [TODO](docs/todo.md) | How it got here, and what's next |
 | | [F1 roadmap](docs/f1-roadmap.md) · [F1 reference](docs/f1-reference.md) | The phased F1 plan with its ground rules, and the model and market-making ideas behind it |
@@ -396,7 +426,8 @@ python scripts/build_readme.py   # refresh README.md from sections tagged in doc
 ```
 
 A pre-push hook blocks a push unless the docs build with `--strict`, the README
-matches the docs, and no data files are tracked. Enable it once per clone:
+matches the docs, and no data outside the allow-list is tracked. Enable it once
+per clone:
 
 ```
 git config core.hooksPath scripts/hooks   # skip once with: git push --no-verify
@@ -412,24 +443,33 @@ git config core.hooksPath scripts/hooks   # skip once with: git push --no-verify
 | Path | |
 |---|---|
 | `racinglines/cli/` | The `racinglines` command: `f1`, `mtb_dh`, `markets`, `db`, `web`, `check` |
-| `racinglines/sources/` | Data sources: `fastf1/` (fetch, ingest), `chronorace/` (download, parse, ingest) |
-| `racinglines/models/` | Model families: `position_sim/` (F1: car/driver pace, practice prior, race and season pricing), `timed_runs/` (downhill: log-time model, weekend and season simulation) |
-| `racinglines/markets/` | Exchanges and books: Polymarket `sync`/`trade`, the Parquet `store`, `venues`, the `private_book`, and `strategies/` (maker replay, weekend taker, season) |
-| `racinglines/pipelines/` | Multi-stage runs: `weekend_sweep`, `season_strategy` |
-| `racinglines/db/` | Database: models, reads, queries, shared ingest helpers, registry of sports and venues |
-| `racinglines/web/` | The web app (`racinglines web`): Markets, My Book, Lab, admin |
+| `racinglines/sources/` | Data sources: `fastf1/` (fetch, ingest), `chronorace/` (download, parse, ingest), `http.py` (paced, retried requests for every source) |
+| `racinglines/models/` | Model families: `position_sim/` (F1: car/driver pace, practice prior, variants, race and season pricing), `timed_runs/` (downhill: log-time model, weekend and season simulation) |
+| `racinglines/markets/` | Exchanges and books: Polymarket `sync`/`trade`/`links`, the Parquet `store`, `venues`, the `private_book`, new-market and signal `alerts`, and `strategies/` (maker replay, weekend taker, season) |
+| `racinglines/pipelines/` | Multi-stage runs: `weekend_sweep`, `sweep_settings`, `search` (settings searches), `season_strategy`, `season_checkpoints`, `profiles`, `signals` (live paper trading), `story` and `demo_history` (the demo accounts) |
+| `racinglines/db/` | Database: models, reads, queries, shared ingest helpers, the `snapshot`, registry of sports and venues |
+| `racinglines/web/` | The web app (`racinglines web`): Markets, Strategy, Positions, My Book, Lab, admin; demo sessions (`demo.py`); old-URL redirects (`legacy.py`) |
 | `racinglines/testing/` | Synthetic data and the checks behind `racinglines check` |
 | `sports/*.toml`, `racinglines/sports.py` | Sport schemas: what differs between sports (sessions, points, categories, venues, markets), read by the code |
 | `racinglines/paths.py` | Where data lives (`data/raw`, `data/archive`, `data/runs`, `data/cache`) |
 | `migrations/`, `alembic.ini` | Alembic schema migrations |
 | `tests/`, `scripts/fetch_test_fixtures.py` | Regression suite on fixtures built from public sources, plus golden outputs (see [Testing](docs/testing.md)) |
-| `scripts/build_readme.py` | Regenerates README sections from tagged docs sections |
+| `scripts/` | `build_readme.py`, `signals_parity.py`, `cloud/` (prepare and start a cloud run), launchd agents for the recorder and the signal engine, `hooks/pre-push` |
+| `sweeps/` | Settings-search queues (TOML) |
 | `docker-compose.yml` | Local PostgreSQL 17 (port 5433) |
 | `pyproject.toml`, `requirements.txt`, `requirements-docs.txt` | Package (`pip install -e .` for the `racinglines` command); pinned dependencies (pipeline / docs site) |
-| `data/` (not in git) | Downloads, the market archive, run outputs and caches |
+| `data/` | Downloads, the market archive, run outputs and caches; only an allow-listed minimal set is in git (see [Data](docs/data.md)) |
 | `docs/`, `mkdocs.yml` | Documentation site (MkDocs) |
+| `pitch.html` | The pitch deck, served at `/pitch` (screenshots in `racinglines/web/static/pitch/`) |
 
 <!-- /include -->
+
+## Collaborators and beta testers
+
+This repository is private only because cloud runs need a minimal data set
+committed with the code, and we don't want to publish all of that data yet. We're
+open to beta testers and collaborators, and happy to share the pipeline and
+web-app code with anyone interested: ask for access.
 
 ## TODO
 
@@ -438,32 +478,24 @@ Full list: [`docs/todo.md`](docs/todo.md).
 <!-- include: todo-summary -->
 <!-- generated from docs/todo.md by build_readme.py - edit it there -->
 
-**F1 model and trading** (phased in the [F1 roadmap](docs/f1-roadmap.md))
+**F1: paper trading and exchanges** (phased in the [F1 roadmap](docs/f1-roadmap.md))
 
-- [x] F1-0: CLOB V2 check (it's V1: fix below); market recorder persistent (LaunchAgent).
+- [x] Cloud search `params-4h` (1,161 settings combos, 2025 and 2026): two robust profiles,
+      **A** (update taker, `gridq+pretrain+reset`, min edge 0.10, 0.05 on head-to-head) and
+      **C** (conservative maker on `gbm`, 5-pt disagreement filter, 25-share quotes).
+- [x] Live paper-trading signal engine (`racinglines f1 signals`, every 5 min): A for the demo
+      taker, C for the demo maker; parity with the backtest checked. No orders are placed.
+- [ ] **F1-8: paper-trade validation** on Polymarket, rounds 16–23 of 2026 and 2027: compare
+      live fills and markouts with the backtest; decide on sizing after 4–6 live weekends.
 - [ ] **Migrate order signing to Polymarket CLOB V2** (`py-clob-client-v2`). V1 orders are rejected
-      on production since 2026-04-28. Required before enabling trading.
-- [x] F1-1: `racinglines f1 compare` (paired ± 2 SE tables), log loss, reliability curves.
-- [x] F1-2: fix the front-of-grid weighting: after qualifying, the model loses to a
-      grid-only guess on the win market (`gridq`: 0.0306 vs 0.0309).
-- [ ] **Promote `gridq+pretrain` to the default** (owner's OK: it changes live prices;
-      re-run the sweep and `UPDATE_GOLDEN` in the same change).
-- [x] F1-2: pre-practice pricing: train the finishing model for the no-practice case too.
-- [x] F1-4: stage-aware taker strategy (stop re-trading after FP3 and qualifying): +$1,874, in-sample.
-- [ ] F1-4: confirm the stage-aware taker on events after Baku.
-- [x] F1-4: inventory skew that grows before each session, flatten before quali, widen on bad markouts.
-- [ ] F1-4: replay with recorded book depth and a queue model (needs recorded books: from 2026-09-26).
-- [ ] **Download and backtest 2025 on Polymarket** (~150 events over 25 GPs, $441M traded; minute
-      prices and trades are still served for closed markets, order books are not). Run the weekend
-      sweep, the season strategy and the checkpoints on 2025: an out-of-sample test for the
-      stage-aware taker and `reset` (both came from 2026), and a normal season to contrast with
-      2026's regulation reset. Maker replays run on prices and trades only (no 2025 books).
-- [ ] F1-2: driver layer in a new season: the teammate offset carries last season (2026: Russell
-      priced far above Antonelli after 3 GPs). Candidate: faster forgetting for second-year drivers,
-      judged on every season, not 2026 alone.
-- [ ] Data: ingest pre-season testing (FastF1 testing sessions), so the pre-season forecast sees
-      what the market sees in a new-regulations year.
-- [x] F1-3: chaotic-race tail, correlated DNFs (`tail`: neutral, not promoted).
+      on production since 2026-04-28. Required before any real order.
+- [ ] **F1-9: Kalshi connector** (markets, prices, trade tape; orders behind a flag), then others.
+- [ ] Bankroll-aware sizing and a deployed-capital cap per account.
+- [ ] A Monte Carlo seed setting, so noise replicates are independent.
+- [ ] Fix: an h2h-only market-kinds sweep crashes on 2025 (`KeyError: 'cond'`).
+- [ ] **Promote `gridq+pretrain` to the default** (owner's OK: it changes live prices).
+- [ ] Replay with recorded book depth and a queue model (books recorded from 2026-09-26).
+- [ ] F1-2: driver layer in a new season (teammate offsets carry over); pre-season testing data.
 - [ ] F1-3: safety-car / red-flag / rain props (deferred: no strategy trades them yet).
 
 **Downhill: points validation (highest priority)**
@@ -480,13 +512,14 @@ Full list: [`docs/todo.md`](docs/todo.md).
 - [ ] Check calibration (win probabilities look too flat); tune over all 43 rounds.
 - [ ] Find a venue that lists downhill markets (none on Polymarket as of 2026-09).
 
-**Platform**
+**Business and platform**
 
-- [x] Sport schemas (`sports/*.toml`), read by the existing code, so the differences
-      between sports are configuration. Additive only (see the [F1 roadmap](docs/f1-roadmap.md) decision log).
-- [x] F1 roadmap: F1-0 to F1-4 done (see the [matrix](docs/market-making.md#model-strategy-matrix)); F1-5 deferred.
-- [ ] Kalshi as a second exchange.
-- [ ] Per-maker exposure limits, per-taker limits and ledgers.
-- [ ] Condition in-weekend forecasts on completed rounds (Q1 results, split times).
+- [ ] New sports between the two endpoints (F1 and UCI downhill): rank candidates such as MotoGP,
+      WEC, IndyCar, Formula E, road-cycling classics and grand tours, XC/enduro and alpine skiing by
+      audience, data and exchange listings.
+- [ ] Beta testers and collaborators: onboarding, contributor docs, a code-only share of the repo.
+- [ ] B2B: packaging the prediction models for sale (open).
+- [ ] Before real users: remove the `demo_context` bubbles; admin P&L without the system account.
+- [ ] Condition in-weekend downhill forecasts on completed rounds (Q1 results, split times).
 
 <!-- /include -->

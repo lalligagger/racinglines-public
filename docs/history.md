@@ -258,7 +258,9 @@ for private bets: win, podium, make the Final, and championship rank up/down.
   post-qualifying, overnight) and filled only by real taker trades. At ±2¢ it
   lost $303: it was adversely selected, and pre-qualifying inventory was the
   biggest loss.
-- **Sample taker:** the `taker` account's bets are the replay's fills.
+- **Sample taker:** the replay's fills were recorded as the `taker` account's bets. (Since
+  moved to the `polymarket-takers` system account: they are Polymarket's takers, not the
+  demo taker.)
 - **Tests:** 53 pytest tests. See [Market making](market-making.md).
 
 ## 16. One product: board, race pages, book, lab
@@ -389,3 +391,48 @@ for scope, hl, jw in [("season", 75, .5), ("all", 120, 0), ("all", 120, .5), ("a
                                half_life_days=hl, category_weights={"MJ": jw})
     print(scope, hl, jw, wf[["spearman_points", "brier_podium", "brier_final", "top10_hits"]].mean().round(4).to_dict())
 ```
+
+## 22. Demo accounts, Strategy and Positions, routes that match their pages
+
+- **Demo accounts' story:** the demo maker ($10k from 2025) and taker ($1k) have a track record replayed
+  from real Polymarket weekends, labelled as such. The maker's strategy changes follow a fixed rule on
+  the Edge Finder's walk-forward evidence (`pipelines/story.py`); the taker follows A, taking about a
+  third of its calls. Demo-only explanations sit in `demo_context` bubbles.
+- **Takers trade on Polymarket:** the taker's Markets page is every open Polymarket F1 market with its
+  strategy's call (side, size, limit, heat), with no maker in between.
+- **Strategy and Positions** replace Signals and My bets: Strategy is what the strategy says and how it has
+  done; Positions is what the account holds and has held, with a P&L history and what's coming up.
+- **Routes renamed to match page names** (`/markets`, `/markets/polymarket`, `/markets/linked`, `/strategy`,
+  `/positions`, `/book/quotes`, `/book/markets/{id}`, `/races/{id}`, `/seasons/{code}`,
+  `/lab/diagnostics/{id}`, `/lab/runs/{id}`); every old URL redirects (`web/legacy.py`).
+
+## 23. Cloud search, paper-trading signals, alerts, a rebuilt database
+
+- **Cloud settings search `params-4h`:** four hours on a cloud VM over 1,161 settings combos of the
+  existing model × strategy matrix, tuned on 2026 and confirmed on 2025. Two profiles held up in both
+  seasons: **A** (update taker, `gridq+pretrain+reset`, min edge 0.10, no pre-weekend stage) and **C**
+  (conservative maker on `gbm`, 5-pt disagreement filter, 25-share quotes). A new optional setting,
+  `min_edge_h2h`, lets A take head-to-heads at 0.05; unset optionals stay out of the settings hash, so
+  every earlier key is unchanged.
+- **Database snapshot for cloud runs:** `racinglines db snapshot-export` / `snapshot-import` write and load
+  the model tables with their ids, plus the market links (`f1 pm-links-export`); `scripts/cloud/prepare.sh`
+  gets the committed set ready. A cloud database is now an exact replica, so its results match local ones.
+- **Paper-trading signal engine** (`racinglines f1 signals`, a LaunchAgent every 5 minutes): prices each
+  stage as its data arrives with the backtest's own code, and records each profile's recommendations and
+  paper positions (`strategy_signals`, `paper_positions`). A for the demo taker, C for the demo maker,
+  live from round 16 of 2026. `scripts/signals_parity.py`: a replay of 2026 round 15 equals the sweep
+  (11 of 11 taker trades, 15 maker fills). No order is placed.
+- **Heat and following:** takers see a heat grade (the entry's modelled EV) instead of our fair value or
+  edge. An account can follow a share of the calls, decided once per market, hotter entries more often
+  (the demo taker follows about a third).
+- **Alerts:** the recorder stamps markets it sees for the first time and announces them (macOS
+  notification, optional ntfy push and webhook, a JSON log); new markets carry a "new" badge. Profile
+  signals go out through the same channels.
+- **Demo sessions:** every demo sign-in is a disposable session on top of the account's saved baseline;
+  changes to data are refused, and every request is logged to `activity_log`. The demo accounts'
+  track record is a labelled backtest replay (maker $10,000 → $10,938, taker $1,000 → $1,898).
+- **Postgres without Docker:** the local database runs as a plain PostgreSQL 17 server on port 5433
+  (same connection settings). It was rebuilt on 2026-09-27; some event diagnostics and scenarios from
+  before the rebuild may need re-creating ([TODO](todo.md#data)).
+- **New phases:** [F1-8](f1-roadmap.md#f1-8-live-paper-trade-validation-polymarket) (live paper-trade
+  validation) and [F1-9](f1-roadmap.md#f1-9-more-exchanges-kalshi-others) (Kalshi, other exchanges).

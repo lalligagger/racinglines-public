@@ -299,6 +299,7 @@ class MarketLink(Base):
     closed: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
     resolved_yes: Mapped[bool | None] = mapped_column()                # set when the exchange resolves the market
     synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    first_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # sync's first sight of the token (null: before alerts)
     invert: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
     active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
     note: Mapped[str | None] = mapped_column(Text)
@@ -503,3 +504,62 @@ class Job(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     result_run_id: Mapped[int | None] = mapped_column(ForeignKey("model_runs.id", ondelete="SET NULL"))
     log: Mapped[str | None] = mapped_column(Text)
+
+
+class StrategySignal(Base):
+    """What a user's strategy profile would do now (racinglines/pipelines/signals.py): a paper trade
+    recommendation (taker), a quote starting / stopping or a paper fill (maker). Never an order.
+    One row per (user, profile, market, dedupe, action, side); dedupe is the stage, or a fill's time."""
+    __tablename__ = "strategy_signals"
+    __table_args__ = (UniqueConstraint("user_id", "candidate_id", "market_key", "dedupe", "action", "side"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    candidate_id: Mapped[int | None] = mapped_column(Integer)            # the Lab candidate (may be deleted later)
+    profile: Mapped[str] = mapped_column(String(120))
+    strategy: Mapped[str] = mapped_column(String(20))                    # update | maker | ...
+    race_id: Mapped[int | None] = mapped_column(ForeignKey("races.id", ondelete="SET NULL"))
+    event_key: Mapped[str] = mapped_column(String(20))
+    market_key: Mapped[str] = mapped_column(String(100))                 # taker: token id; maker: condition id
+    kind: Mapped[str] = mapped_column(String(30))
+    subject: Mapped[str | None] = mapped_column(Text)
+    stage: Mapped[str] = mapped_column(String(20))
+    dedupe: Mapped[str] = mapped_column(String(40))
+    action: Mapped[str] = mapped_column(String(12))                      # buy | sell | quote | pull | fill
+    side: Mapped[str] = mapped_column(String(8))                         # YES | NO (taker), bid | ask (maker)
+    shares: Mapped[float | None] = mapped_column(Float)
+    limit_price: Mapped[float | None] = mapped_column(Float)
+    fair: Mapped[float | None] = mapped_column(Float)
+    price: Mapped[float | None] = mapped_column(Float)                   # the market price the rule saw
+    edge: Mapped[float | None] = mapped_column(Float)
+    heat: Mapped[int | None] = mapped_column(Integer)                    # 1-3: modelled EV of the trade, qualitatively
+    target_cost: Mapped[float | None] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String(14), default="new")       # new | alerted | expired | filled_paper
+    run_id: Mapped[int | None] = mapped_column(ForeignKey("model_runs.id", ondelete="SET NULL"))
+    signal_ts: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    alerted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))   # the user opened Signals since
+    detail: Mapped[dict | None] = mapped_column(JSONB)
+
+
+class PaperPosition(Base):
+    """A user's paper position in one market under their strategy profile, rebuilt on every signals run."""
+    __tablename__ = "paper_positions"
+    __table_args__ = (UniqueConstraint("user_id", "candidate_id", "market_key"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    candidate_id: Mapped[int | None] = mapped_column(Integer)
+    race_id: Mapped[int | None] = mapped_column(ForeignKey("races.id", ondelete="SET NULL"))
+    event_key: Mapped[str] = mapped_column(String(20))
+    market_key: Mapped[str] = mapped_column(String(100))
+    kind: Mapped[str] = mapped_column(String(30))
+    subject: Mapped[str | None] = mapped_column(Text)
+    yes_shares: Mapped[float] = mapped_column(Float, default=0.0)        # maker: YES-equivalent inventory
+    no_shares: Mapped[float] = mapped_column(Float, default=0.0)
+    cash: Mapped[float] = mapped_column(Float, default=0.0)               # paid (-) / received (+)
+    mark: Mapped[float | None] = mapped_column(Float)                     # latest market price of YES
+    outcome: Mapped[bool | None] = mapped_column()
+    bid: Mapped[float | None] = mapped_column(Float)                      # maker: resting quotes now
+    ask: Mapped[float | None] = mapped_column(Float)
+    quote_state: Mapped[str | None] = mapped_column(String(30))           # quoting, or why not

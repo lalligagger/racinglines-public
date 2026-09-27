@@ -76,17 +76,19 @@ def recent_results(conn, competition_id, n=3):
 
 
 def board(conn, maker_id):
+    from racinglines.markets import alerts
+    fresh = list(alerts.new_links(conn).values())          # race_id (or None) per new token
     sports = []
     for run in data.latest_forecasts(conn).to_dict("records"):
         comp_id = int(data.q(conn, "SELECT id FROM competitions WHERE code = :c", c=run["competition"])["id"].iloc[0])
         targets = data.run_race_targets(conn, run["id"])
         targets = targets[targets["race_id"].notna() & ~targets["target"].astype(str).str.startswith("backtest:")]
-        upcoming = [_card(conn, int(r), maker_id) for r in targets["race_id"].head(3)]
+        upcoming = [dict(_card(conn, int(r), maker_id), new=fresh.count(int(r))) for r in targets["race_id"].head(3)]
         later = [dict(title=f"{t['venue']} GP" if run["competition"] == "f1_wdc" else t["venue"], event_id=t["event_id"],
-                      race_id=int(t["race_id"]), date=t["start_date"]) for t in targets.iloc[3:].to_dict("records")]
+                      race_id=int(t["race_id"]), date=t["start_date"], new=fresh.count(int(t["race_id"]))) for t in targets.iloc[3:].to_dict("records")]
         s_info, s_pricing, s_df = season_matrix(conn, run["competition"], maker_id)
         from racinglines.web.views import latest_season_strategy
-        season = dict(info=s_info, top=_top(s_df, "champion"), venues=venue_summary(s_df), mine=_mine(s_df),
+        season = dict(new=fresh.count(None), info=s_info, top=_top(s_df, "champion"), venues=venue_summary(s_df), mine=_mine(s_df),
                       outcomes=len(s_df), constructors=_top(s_df, "constructors_champion", 2),
                       strategy=latest_season_strategy(conn, run["competition"]))
         sports.append(dict(code=run["competition"], name=SPORT_NAME.get(run["competition"], run["competition_name"]),

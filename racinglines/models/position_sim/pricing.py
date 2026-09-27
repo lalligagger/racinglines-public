@@ -529,6 +529,8 @@ def save_forecast(engine_url, year, per_event, standings, params, metrics, kind=
             race = _upsert(s, m.Race, dict(event_id=event.id, category_id=cat.id))
             if race.format is None:
                 race.format = dict(kind="f1", sprint=ev["sprint"], event_name=ev["name"])
+            elif ev["name"] and race.format.get("event_name") != ev["name"]:     # repair a stale name
+                race.format = dict(race.format, event_name=ev["name"])
             s.commit()
             preds.append(ev["summary"].assign(rider_id=lambda d: "ath:" + d["athlete_id"].astype(str),
                                               target=ev.get("target", f"event:{key}"), race_id=race.id,

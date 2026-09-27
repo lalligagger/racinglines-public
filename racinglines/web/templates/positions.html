@@ -1,0 +1,75 @@
+{% extends "base.html" %}{% from "_macros.html" import table, paper_banner, demo_context, chart %}
+{% block title %}Positions{% endblock %}
+{% block content %}
+<h1>Positions{% if cur %} <span class="muted">· {{ cur.name }}</span>{% endif %}</h1>
+{{ paper_banner(signals_nav) }}
+<p class="sub">Every Polymarket position {{ "your strategy's quotes left you with" if maker else "your strategy's calls put you in" }}, and what it made. Paper only: nothing was sent to Polymarket.
+  What the strategy recommended, and why, is on <a href="/strategy">Strategy</a>.</p>
+
+{% if not paper.n and not my_bets %}<p class="muted">No positions yet.{% if not profile %} This account has no strategy profile.{% endif %}</p>{% else %}
+<div class="kpis">
+  <div class="kpi"><div class="l">Open now</div><div class="v">{{ paper.open }}</div><div class="s">marked to the market: <span class="{{ 'good' if paper.open_value > 0 else ('bad' if paper.open_value < 0) }}">{{ paper.open_value|money(true) }}</span></div></div>
+  <div class="kpi"><div class="l">Closed and settled</div><div class="v">{{ paper.n - paper.open }}</div><div class="s">{{ paper.won }}/{{ paper.held }} held to the result made money</div></div>
+  {% if acct %}<div class="kpi"><div class="l">Worst drawdown</div><div class="v bad">{{ acct.kpis.max_dd|money(true) }}</div><div class="s">{% if acct.kpis.start %}{{ "%.1f"|format(-acct.kpis.max_dd_pct * 100) }}% of the starting bankroll{% else %}from a peak, over the full history{% endif %}</div></div>
+  <div class="kpi"><div class="l">Sharpe ratio</div><div class="v">{{ "%.2f"|format(acct.kpis.sharpe) if acct.kpis.sharpe is not none else "–" }}</div><div class="s">per season, over {{ acct.kpis.weekends }} weekends: mean ÷ s.d. of weekend P&amp;L × √24</div></div>{% endif %}
+  <div class="kpi"><div class="l">Realised P&amp;L</div><div class="v {{ 'good' if paper.settled_pnl > 0 else ('bad' if paper.settled_pnl < 0) }}">{{ paper.settled_pnl|money(true) }}</div><div class="s"><a href="/strategy">bankroll and track record →</a></div></div>
+</div>
+
+{% if acct and acct.chart %}<div class="card"><h2>P&amp;L history</h2>{{ chart(acct.chart) }}
+<p class="legend">{% if acct.kpis.start %}Paper bankroll from ${{ "{:,.0f}".format(acct.kpis.start) }} on {{ acct.kpis.since }}: now <b>${{ "{:,.0f}".format(acct.kpis.balance) }}</b> ({{ "%+.1f"|format(acct.kpis.ret * 100) }}%), worst drawdown {{ acct.kpis.max_dd|money(true) }}.{% else %}Cumulative paper P&amp;L.{% endif %}
+Weekend by weekend, and the strategy behind it: <a href="/strategy">Strategy</a>.</p></div>{% endif %}
+
+{% if coming %}<div class="card"><h2>Coming up</h2>
+{% if open_pos %}<p><b>{{ open_pos|length }}</b> position{{ "s" if open_pos|length != 1 }} still open (below).</p>{% endif %}
+{% for rc in coming.races %}
+<h3>{{ rc.name }}{% if rc.location %} · {{ rc.location }}{% endif %} <span class="muted" style="font-size:13px">· race {{ rc.start|fmt }} UTC</span></h3>
+{% set calls = [] %}{% for e in rc.events %}{% for r in e.rows if r.call.action %}{% set _ = calls.append(r) %}{% endfor %}{% endfor %}
+{% if not rc.events %}<p class="muted">Polymarket hasn't listed markets for this race yet. {{ "Quotes" if maker else "Calls" }} appear here as soon as it does.</p>
+{% elif not calls %}<p class="muted">{{ rc.events|map(attribute='rows')|map('length')|sum }} markets listed; {{ profile.name.split(' ')[0] }} {{ "wouldn't quote any" if maker else "has no call on any" }} right now. {{ "Quotes" if maker else "Calls" }} update after every session.</p>
+{% else %}<div class="scroll"><table><thead><tr><th class="l">Market</th><th>Price</th>{% if maker %}<th>Bid</th><th>Ask</th><th>Size</th>{% else %}<th class="l">Call</th><th class="l">Heat</th>{% endif %}</tr></thead><tbody>
+{% for r in calls %}<tr><td class="l">{{ r.subject }} <span class="muted">{{ r.prediction|replace('race_', '')|replace('_', ' ') }}</span></td><td>{{ "%.3f"|format(r.mid) if r.mid is not none }}</td>
+  {% if maker %}<td>{{ "%.2f"|format(r.call.bid) if r.call.bid is not none else "–" }}</td><td>{{ "%.2f"|format(r.call.ask) if r.call.ask is not none else "–" }}</td><td>{{ "%.0f"|format(r.call.size) }}</td>
+  {% else %}<td class="l"><b>BUY {{ r.call.side }}</b> {{ "%.0f"|format(r.call.shares) }} sh @ ≤{{ "%.2f"|format(r.call.limit) }} <span class="muted">(${{ "%.0f"|format(r.call.cost) }})</span></td><td class="l">{% if r.heat_label %}<span class="heat h{{ r.call.heat }}">{{ r.heat_label }}</span>{% endif %}</td>{% endif %}</tr>{% endfor %}
+</tbody></table></div>{% endif %}
+{% endfor %}
+<p class="legend">{% if maker %}Where {{ profile.name.split(' ')[0] }} would quote each listed market right now (it re-quotes every 5 minutes through the weekend){% else %}{{ profile.name.split(' ')[0] }}'s current calls{% endif %}. Every market, with or without a {{ "quote" if maker else "call" }}: <a href="{{ '/markets/polymarket' if maker else '/markets' }}">{{ "Polymarket" if maker else "Markets" }}</a>.</p>
+</div>{% endif %}
+
+<div class="card"><h2>By market type</h2><div class="scroll"><table><thead><tr><th class="l">Market type</th><th>Positions</th><th>Open</th><th>Held to the result, made money</th><th>P&amp;L</th></tr></thead><tbody>
+{% for k in by_kind %}<tr><td class="l">{{ k.kind|replace('race_', '')|replace('_', ' ') }}</td><td>{{ k.n }}</td><td>{{ k.open }}</td><td>{{ k.won }}/{{ k.settled }}</td>
+  <td class="{{ 'good' if k.pnl > 0 else ('bad' if k.pnl < 0) }}">{{ k.pnl|money(true) }}</td></tr>{% endfor %}
+</tbody></table></div></div>
+
+<form method="get" class="inline"><label><span>Weekend</span><select name="event" onchange="this.form.submit()">
+  <option value="">all weekends</option>
+  {% for w in weekends %}<option value="{{ w.event_key }}" {{ 'selected' if w.event_key == event }}>{{ w.name }} {{ w.event_key[:4] }} · {{ w.n }} · {{ w.pnl|money(true) }}</option>{% endfor %}
+</select></label></form>
+
+<div class="card"><h2>{{ "Positions" if not cur else "Positions this weekend" }}</h2><div class="scroll"><table><thead><tr>{% if not cur %}<th class="l">Weekend</th>{% endif %}<th class="l">Market</th><th class="l">Position</th><th>{{ "Fills" if maker else "Trades" }}</th><th>Cash in / out</th><th>Price now / result</th><th>P&amp;L</th><th class="l"></th></tr></thead><tbody>
+{% for p in shown %}<tr>{% if not cur %}<td class="l"><a href="?event={{ p.event_key }}">{{ p.event_name or p.event_key }}</a> <span class="muted">{{ p.start_date|fmt if p.start_date }}</span></td>{% endif %}
+  <td class="l">{{ p.subject }} <span class="muted">{{ p.kind|replace('race_', '')|replace('_', ' ') }}</span></td>
+  <td class="l">{% if p.side %}{{ "%.0f"|format(p.shares) }} {{ p.side }}{% else %}<span class="muted">closed before the race</span>{% endif %}</td>
+  <td>{{ p.trades }}</td><td>{{ p.cash|money(true) }}</td>
+  <td>{% if p.outcome is not none %}{{ "YES" if p.outcome else "NO" }}{% elif p.mark is not none %}{{ "%.2f"|format(p.mark) }}{% endif %}</td>
+  <td class="{{ 'good' if p.pnl and p.pnl > 0 else ('bad' if p.pnl and p.pnl < 0) }}">{{ p.pnl|money(true) if p.pnl is not none }}</td>
+  <td class="l">{% if p.state == 'open' %}<span class="pill yes">open</span>{% elif p.state == 'closed' %}<span class="muted">closed</span>{% endif %}{% if p.backfill %} <span class="pill no">backtest replay</span>{% endif %}</td></tr>
+{% else %}<tr><td class="l muted" colspan="8">None.</td></tr>{% endfor %}
+</tbody></table></div></div>
+
+{% if cur %}<div class="card"><h2>{{ "Paper fills" if maker else "Trades taken" }} this weekend</h2>
+<p class="legend">The executions behind these positions, in order. {{ "Each is a real Polymarket taker trade that crossed the maker's quote." if maker else "Each is a call the account took, at the most it would pay." }}</p>
+<div class="scroll"><table><thead><tr><th class="l">When (UTC)</th><th class="l">Stage</th><th class="l">Market</th><th class="l">Trade</th><th>Shares</th><th>Price</th><th>Cash</th></tr></thead><tbody>
+{% for t in trades %}{% set sg = (-1 if (t.action == 'buy' or (t.action == 'fill' and t.side == 'YES')) else 1) %}<tr>
+  <td class="l">{{ t.signal_ts|fmt }}</td><td class="l">{{ t.stage }}</td><td class="l">{{ t.subject }} <span class="muted">{{ t.kind|replace('race_', '')|replace('_', ' ') }}</span></td>
+  <td class="l">{% if t.action == 'fill' %}{{ "bought" if t.side == 'YES' else "sold" }} YES{% else %}{{ t.action }} {{ t.side }}{% endif %}</td>
+  <td>{{ "%.0f"|format(t.shares) }}</td><td>{{ "%.2f"|format(t.limit_price) }}</td><td>{{ (sg * t.shares * t.limit_price)|money(true) }}</td></tr>
+{% else %}<tr><td class="l muted" colspan="7">None.</td></tr>{% endfor %}
+</tbody></table></div></div>{% endif %}
+
+{% if my_bets %}<div class="card"><h2>In-app bets</h2>
+{% if summary %}<p><b>{{ summary.bets }}</b> bets ({{ summary.open }} open) · staked <b>${{ "%.2f"|format(summary.staked) }}</b> · settled P&amp;L <b class="{{ 'good' if summary.pnl >= 0 else 'bad' }}">${{ "%.2f"|format(summary.pnl) }}</b></p>{% endif %}
+{{ table(my_bets, ["id", "created_at", "title", "maker", "side", "price", "stake", "payout", "status", "pnl"]) }}</div>{% endif %}
+{% if maker %}<p class="legend">In-app markets you quote are on <a href="/book">My Book</a>.</p>{% endif %}
+{% if shown|selectattr('backfill')|list %}{% call demo_context() %}<span class="pill no">backtest replay</span> positions come from this demo account's replayed weekends; live paper positions start with the next race weekend.{% endcall %}{% endif %}
+{% endif %}
+{% endblock %}

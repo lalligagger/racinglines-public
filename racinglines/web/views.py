@@ -43,11 +43,14 @@ def _groups(df):
 # Markets (home)
 # ---------------------------------------------------------------------------
 
-@app.get("/", response_class=HTMLResponse)
-def board_page(request: Request, c=Depends(conn)):
+@app.get("/markets", response_class=HTMLResponse)
+def board_page(request: Request, msg: str = "", c=Depends(conn)):
+    """Markets. Makers and admins: every sport's board (fair prices vs the venues). Takers: every open
+    Polymarket market with their strategy's calls (app.bet_markets)."""
     user = request.state.user
     if user["role"] == "taker":
-        return RedirectResponse("/bet", status_code=303)
+        from racinglines.web.app import bet_markets
+        return bet_markets(request, msg=msg, c=c)
     return render(request, "board.html", sports=B.board(c, _maker(user)), h=B.headline(c, _maker(user)))
 
 
@@ -80,11 +83,11 @@ def _race_chart(c, info, pricing, df):
                        markers)
 
 
-@app.get("/race/{race_id}", response_class=HTMLResponse)
+@app.get("/races/{race_id}", response_class=HTMLResponse)
 def race_page(request: Request, race_id: int, msg: str = "", c=Depends(conn)):
     user = request.state.user
     if user["role"] == "taker":
-        return RedirectResponse(f"/bet?race_id={race_id}", status_code=303)
+        return RedirectResponse(f"/markets?race_id={race_id}", status_code=303)
     info, pricing, df = V.event_matrix(c, race_id, _maker(user))
     if info is None:
         raise HTTPException(404)
@@ -113,7 +116,7 @@ def race_page(request: Request, race_id: int, msg: str = "", c=Depends(conn)):
                   quote_kinds=list(V.STANDARD_KINDS.get(info["competition"], ("race_win", "race_podium"))))
 
 
-@app.get("/season/{code}", response_class=HTMLResponse, dependencies=[allow("admin", "maker")])
+@app.get("/seasons/{code}", response_class=HTMLResponse, dependencies=[allow("admin", "maker")])
 def season_page(request: Request, code: str, c=Depends(conn)):
     info, pricing, df = V.season_matrix(c, code, _maker(request.state.user))
     if info is None:
@@ -278,36 +281,38 @@ def _recent_jobs(c, user_id=None):
 
 def _edge_ctx(c, user):
     from racinglines.web import edge
-    cs = edge.combos(c, user["id"])
-    models = list(dict.fromkeys(["baseline"] + edge.swept_variants(c)))
-    return dict(ef=edge.build(c, cs), combos=[list(x) for x in cs], models=models, year=2026,
+    cs = edge.combos(c, user)
+    year = edge.year(c, user)
+    ef = edge.build(c, cs, year)
+    return dict(ef=ef, combos=[list(x) for x in cs], year=year, years=edge.YEARS, candidates=edge.candidates(c),
+                models=[(cf["ref"], cf["label"]) for cf in ef["configs"]] or [("baseline", "baseline")],
                 strategies=[(k, edge.label(k)) for k in edge.STRATEGY_KEYS])
 
 
 @app.get("/lab", response_class=HTMLResponse)
-def lab_page(request: Request, job: str = "", event: str = "", variant: str = "", msg: str = "",
-             user=allow("admin", "maker"), c=Depends(conn)):
+def lab_page(request: Request, job: str = "", event: str = "", variant: str = "", candidate: int = 0, cfg: str = "",
+             msg: str = "", user=allow("admin", "maker"), c=Depends(conn)):
     """The Edge Finder leads (saved runs only, nothing is simulated on a visit); the other sections
     load on demand (/lab/section/{key}). Edge Finder combos and job knobs come from the user's prefs
     (database); which sections are open is a browser view setting."""
     from urllib.parse import urlencode
 
     active = any(j["status"] in ("queued", "running") for j in _recent_jobs(c, user["id"]))
-    open_now = (["run"] if job or event or variant else []) + (["jobs"] if active or msg else [])
-    q = {k: v for k, v in dict(job=job, event=event, variant=variant).items() if v}
+    open_now = (["run"] if job or event or variant or candidate or cfg else []) + (["jobs"] if active or msg else [])
+    q = {k: v for k, v in dict(job=job, event=event, variant=variant, candidate=candidate or "", cfg=cfg).items() if v}
     return render(request, "lab.html", sections=LAB_SECTIONS, open_now=open_now, query="?" + urlencode(q) if q else "",
                   active=active, msg=msg, **_edge_ctx(c, user))
 
 
 @app.get("/lab/section/{key}", response_class=HTMLResponse)
 def lab_section(request: Request, key: str, job: str = "", event: str = "", variant: str = "", scope: str = "",
-                user=allow("admin", "maker"), c=Depends(conn)):
+                candidate: int = 0, cfg: str = "", user=allow("admin", "maker"), c=Depends(conn)):
     from racinglines.web import edge
     from racinglines.web import prefs as P
     if key not in dict(LAB_SECTIONS):
         raise HTTPException(404)
-    pr = P.get(c, user["id"])
-    ctx = dict(combos=[list(x) for x in edge.combos(c, user["id"])])
+    pr = P.get(c, user)
+    ctx = dict(combos=[list(x) for x in edge.combos(c, user)])
     if key == "run":
         evs = _events_for_diagnostic(c)
         for e in evs:
@@ -316,13 +321,26 @@ def lab_section(request: Request, key: str, job: str = "", event: str = "", vari
                                    else f"{pd.Timestamp(e['start_date']) - timedelta(days=1):%Y-%m-%d}T23:59")
         sel_event = event or (evs[0]["key"] if evs else "")
         sel = next((e for e in evs if e["key"] == sel_event), None)
+        from racinglines.pipelines import sweep_settings as SS
         knobs = {code: dict(v) for code, v in (pr.get("job_knobs") or {}).items()}     # last used, per job type
-        if variant:
-            knobs.setdefault("f1_sweep", {})["variant"] = variant
+        cands = edge.candidates(c)
+        # the sweep form starts from: a candidate, a saved configuration, a variant, or the user's last run
+        start = dict(knobs.get("f1_sweep", {}).get("settings") or {})
+        source = ""
+        if candidate and (cd := next((x for x in cands if x["id"] == candidate), None)):
+            start, source = cd["settings"], f"candidate {cd['name']}"
+        elif cfg and (cf := edge.configs(c, edge.year(c, user)).get(edge.ref_key(cfg))):
+            start, source = cf["settings"].to_json(), f"run #{cf['run_id']}"
+        elif variant:
+            start, source = {"variant": variant}, variant
         ctx.update(sports=[(code, V.SPORT_NAME[code], [j for j in jobs.CATALOG.values() if j.sport == sport])
                            for code, sport in (("f1_wdc", "f1"), ("uci_dhi_wc", "mtb_dh"))],
-                   sel_job=job or ("f1_sweep" if variant else ""), events=evs, sel_event=sel_event,
-                   sel_cutoff=sel["default_cutoff"] if sel else "", knobs=knobs)
+                   sel_job=job or ("f1_sweep" if variant or candidate or cfg else ""), events=evs, sel_event=sel_event,
+                   sel_cutoff=sel["default_cutoff"] if sel else "", knobs=knobs, candidates=cands,
+                   sweep_start=SS.Settings.from_dict(start, strict=False).to_json(), sweep_source=source,
+                   sweep_groups=[(g, lab, [x for x in SS.SETTINGS if x.group == g]) for g, lab in SS.GROUPS],
+                   sweep_defaults=SS.Settings.from_dict().to_json(), model_choices=jobs.MODEL_CHOICES,
+                   sel_candidate=candidate)
     elif key == "jobs":
         scope = scope if scope in ("mine", "all") else "mine"
         js = _recent_jobs(c, user["id"] if scope == "mine" else None)
@@ -346,23 +364,58 @@ async def lab_edge(request: Request, user=allow("admin", "maker"), c=Depends(con
     """Edit the user's Edge Finder combos; returns the refreshed Edge Finder."""
     from racinglines.web import edge
     form = await request.form()
+    if form.get("action") == "year":
+        from racinglines.web import prefs as P
+        y = int(form.get("year") or 0)
+        if y not in edge.YEARS:
+            raise HTTPException(400, "unknown season")
+        P.put(c, user, "edge_year", y)
+        return render(request, "lab_edge.html", **_edge_ctx(c, user))
     try:
-        cs = edge.apply(edge.combos(c, user["id"]), form.get("action", ""), form.get("variant", ""),
+        cs = edge.apply(edge.combos(c, user), form.get("action", ""), form.get("variant", ""),
                         form.get("strategy", ""))
     except ValueError as e:
         raise HTTPException(400, str(e))
-    edge.save(c, user["id"], cs)
+    edge.save(c, user, cs)
     return render(request, "lab_edge.html", **_edge_ctx(c, user))
 
 
-def _remember_knobs(user_id, code, params):
+@app.post("/lab/candidate", response_class=HTMLResponse, dependencies=[Depends(check_csrf)])
+async def lab_candidate(request: Request, user=allow("admin", "maker"), c=Depends(conn)):
+    """Star a shown combo as a Lab candidate (action=add: variant=<config ref>, strategy, name, why), or
+    delete one (action=delete, id). Returns the refreshed Edge Finder."""
+    from sqlalchemy import text
+
+    from racinglines.pipelines import search as SR
+    from racinglines.web import edge
+    form = await request.form()
+    if form.get("action") == "delete":
+        cid = int(form.get("id") or 0)
+        c.execute(text("DELETE FROM model_runs WHERE id = :i AND kind = 'candidate'"), dict(i=cid))
+        c.commit()
+        audit(request, "candidate_delete", id=cid)
+    else:
+        year = edge.year(c, user)
+        cf = edge.configs(c, year).get(edge.ref_key(form.get("variant", "")))
+        strategy = form.get("strategy", "")
+        if cf is None or strategy not in edge.STRATEGY_LABEL:
+            raise HTTPException(400, "no saved full-season run for that configuration")
+        name = (form.get("name") or "").strip()[:80] or f"{cf['label']} · {edge.label(strategy)}"
+        cid = SR.add_candidate(c, name, cf["settings"], year, strategy, (form.get("why") or "").strip()[:300],
+                               cf["run_id"], f"lab:{user['username']}")
+        c.commit()
+        audit(request, "candidate_add", id=cid, name=name)
+    return render(request, "lab_edge.html", **_edge_ctx(c, user))
+
+
+def _remember_knobs(user, code, params):
     """Last-used knobs per job type, to prefill the Run forms next time (not the event or cutoff)."""
     from racinglines.db.config import get_engine
     from racinglines.web import prefs as P
     with get_engine().connect() as c:
-        k = dict(P.get(c, user_id).get("job_knobs") or {})
+        k = dict(P.get(c, user).get("job_knobs") or {})
         k[code] = {n: v for n, v in params.items() if n not in ("event", "cutoff")}
-        P.put(c, user_id, "job_knobs", k)
+        P.put(c, user, "job_knobs", k)
 
 
 @app.post("/lab/run", dependencies=[Depends(check_csrf)])
@@ -377,7 +430,7 @@ async def lab_run(request: Request, user=allow("admin", "maker")):
         return RedirectResponse(f"/lab?job={jt.code}&msg=Error: {e}#run", status_code=303)
     job_id = jobs.submit(jt, params, user["id"])
     audit(request, "job_submit", job_id=job_id, kind=jt.code, params=params)
-    _remember_knobs(user["id"], jt.code, params)
+    _remember_knobs(user, jt.code, params)
     return RedirectResponse(f"/lab?msg=Job {job_id} queued: {jt.label}#jobs", status_code=303)
 
 
@@ -392,22 +445,143 @@ def lab_promote(request: Request, run_id: int, user=allow("admin", "maker")):
     return RedirectResponse(f"/lab?msg=Run {run_id} is now the live forecast#scenarios", status_code=303)
 
 
-@app.get("/diag", dependencies=[allow("admin", "maker")])
+@app.get("/lab/diagnostics", dependencies=[allow("admin", "maker")])
 def diag_redirect():
     return RedirectResponse("/lab#diagnostics", status_code=303)
 
 
-@app.get("/runs", dependencies=[allow("admin", "maker")])
+@app.get("/lab/runs", dependencies=[allow("admin", "maker")])
 def runs_redirect():
     return RedirectResponse("/lab", status_code=303)
 
 
-@app.get("/me", response_class=HTMLResponse, dependencies=[allow(*ANY)])
-def me_redirect(request: Request, c=Depends(conn)):
+@app.get("/positions", response_class=HTMLResponse, dependencies=[allow(*ANY)])
+def positions_page(request: Request, event: str = "", c=Depends(conn)):
+    """Positions: the account's ledger. Every paper position its strategy took on Polymarket (open, settled
+    at the race, closed before it), by market type and by weekend; with a weekend picked, the executions
+    behind them (a taker's trades taken, a maker's paper fills). A taker's in-app bets, if any, below."""
+    from racinglines.pipelines import profiles as PF
+    from racinglines.pipelines import weekend_sweep as WS
     user = request.state.user
-    if user["role"] != "taker":
-        return RedirectResponse("/book", status_code=303)
-    my_bets = house.taker_bets(c, user["id"])
+    profile = PF.of_user(c, user["id"])
+    maker = bool(profile and profile.get("strategy") not in WS.TAKER_MODES)
+    pos = rows(data.q(c, """
+        SELECT p.*, coalesce(ra.format->>'event_name', e.name) AS event_name, e.start_date,
+               (SELECT bool_or(detail->>'backfill' = 'true') FROM strategy_signals s
+                 WHERE s.user_id = p.user_id AND s.event_key = p.event_key) AS backfill,
+               (SELECT count(*) FROM strategy_signals s WHERE s.user_id = p.user_id AND s.market_key = p.market_key
+                  AND (s.action = 'fill' OR (s.action IN ('buy', 'sell') AND coalesce(s.detail->>'followed', 'true') = 'true'))) AS trades
+        FROM paper_positions p LEFT JOIN events e ON e.source_key = p.event_key AND e.source = 'f1timing'
+        LEFT JOIN races ra ON ra.event_id = e.id WHERE p.user_id = :u ORDER BY p.event_key DESC, p.kind, p.subject""",
+        u=user["id"]))
+    pos = [p for p in pos if p["trades"]]                     # markets the account actually traded
+    for p in pos:
+        held = abs(p["yes_shares"]) + abs(p["no_shares"]) > 1e-9
+        if maker:
+            p["side"] = "long YES" if p["yes_shares"] > 1e-9 else ("short YES" if p["yes_shares"] < -1e-9 else None)
+            p["shares"] = abs(p["yes_shares"])
+        else:
+            p["side"] = "YES" if p["yes_shares"] > 1e-9 else ("NO" if p["no_shares"] > 1e-9 else None)
+            p["shares"] = p["yes_shares"] if p["side"] == "YES" else p["no_shares"]
+        y = float(p["outcome"]) if p["outcome"] is not None else p["mark"]
+        p["pnl"] = None if y is None else p["cash"] + p["yes_shares"] * y + p["no_shares"] * (1 - y)
+        p["state"] = "settled" if p["outcome"] is not None and held else ("closed" if not held else "open")
+        p["won"] = p["state"] == "settled" and (p["pnl"] or 0) > 0
+    weekends = []
+    for p in pos:
+        if not weekends or weekends[-1]["event_key"] != p["event_key"]:
+            weekends.append(dict(event_key=p["event_key"], name=p["event_name"] or p["event_key"], n=0, pnl=0.0))
+        weekends[-1]["n"] += 1
+        weekends[-1]["pnl"] += p["pnl"] or 0.0
+    shown = [p for p in pos if p["event_key"] == event] if event else pos
+    open_ = [p for p in pos if p["state"] == "open"]
+    done = [p for p in pos if p["state"] != "open"]
+    by_kind = {}
+    for p in pos:
+        k = by_kind.setdefault(p["kind"], dict(kind=p["kind"], n=0, open=0, pnl=0.0, won=0, settled=0))
+        k["n"] += 1
+        k["open"] += p["state"] == "open"
+        k["pnl"] += p["pnl"] or 0.0
+        k["settled"] += p["state"] == "settled"
+        k["won"] += p["won"]
+    paper = dict(n=len(pos), open=len(open_), settled_pnl=sum(p["pnl"] or 0 for p in done),
+                 open_value=sum(p["pnl"] or 0 for p in open_), won=sum(p["won"] for p in done),
+                 held=sum(1 for p in done if p["state"] == "settled"))
+    trades = []
+    if event:
+        trades = rows(data.q(c, """SELECT * FROM strategy_signals WHERE user_id = :u AND event_key = :e
+                                     AND (action = 'fill' OR (action IN ('buy', 'sell')
+                                          AND coalesce(detail->>'followed', 'true') = 'true'))
+                                   ORDER BY signal_ts, id""", u=user["id"], e=event))
+    my_bets = house.taker_bets(c, user["id"]) if user["role"] == "taker" else pd.DataFrame()
     summary = dict(bets=len(my_bets), staked=float(my_bets["stake"].sum()), open=int((my_bets["status"] == "open").sum()),
                    pnl=float(my_bets["pnl"].sum())) if len(my_bets) else None
-    return render(request, "me.html", my_bets=rows(my_bets), my_book=[], summary=summary)
+    from racinglines.pipelines import story
+    from racinglines.web.app import polymarket_calls
+    acct = story.account(c, user["id"], profile, maker, markers=False) if profile else None
+    coming = polymarket_calls(c, profile, n_races=2) if profile else None
+    return render(request, "positions.html", profile=profile, maker=maker, paper=paper, shown=shown,
+                  weekends=weekends, event=event, by_kind=sorted(by_kind.values(), key=lambda k: -k["n"]),
+                  trades=trades, my_bets=rows(my_bets), summary=summary, acct=acct, coming=coming,
+                  open_pos=open_, cur=next((w for w in weekends if w["event_key"] == event), None))
+
+
+# ---------------------------------------------------------------------------
+# Signals: the live paper signals of the user's strategy profile (pipelines/signals.py)
+# ---------------------------------------------------------------------------
+
+@app.get("/strategy", response_class=HTMLResponse, dependencies=[allow(*ANY)])
+def signals_page(request: Request, user: str = "", event: str = "", c=Depends(conn)):
+    """The account's track record (every weekend: profile, trades, paper P&L), then one weekend's signals by
+    stage and its paper positions (default: the latest). Takers see what to do and how hot it is (the
+    modelled EV, graded), never our fair value or edge. Backfilled weekends are backtest replays and are
+    labelled so. Admins can view any user."""
+    from sqlalchemy import text as T
+
+    from racinglines.markets.alerts import signal_line
+    from racinglines.pipelines import profiles as PF
+    from racinglines.pipelines.signals import HEAT_LABEL
+    me = request.state.user
+    uid = me["id"]
+    if user and me["role"] == "admin":
+        uid = c.execute(T("SELECT id FROM users WHERE username = :u"), dict(u=user)).scalar() or uid
+    viewer = c.execute(T("SELECT id, username, role FROM users WHERE id = :u"), dict(u=uid)).mappings().first()
+    profile = PF.of_user(c, uid)
+    show_fair = me["role"] != "taker"
+    from racinglines.pipelines import story
+    is_maker = bool(profile and not profile.get("strategy", "update").startswith(("update", "hold", "last", "early")))
+    acct = story.account(c, uid, profile, is_maker)
+    record, seasons, total = acct["record"], acct["seasons"], acct["kpis"]["total"]
+    ev = event or (record[-1]["event_key"] if record else None)
+    cur = next((r for r in record if r["event_key"] == ev), None)
+    sig = data.q(c, """SELECT * FROM strategy_signals WHERE user_id = :u AND event_key = :e
+                       ORDER BY signal_ts DESC NULLS LAST, id DESC""", u=uid, e=ev) if ev else pd.DataFrame()
+    pos = data.q(c, "SELECT * FROM paper_positions WHERE user_id = :u AND event_key = :e ORDER BY kind, subject",
+                 u=uid, e=ev) if ev else pd.DataFrame()
+    stages = []
+    for lab, g in (sig.groupby("stage", sort=False) if len(sig) else []):
+        items = rows(g)
+        for s in items:
+            s["line"] = signal_line(s)
+            s["heat_label"] = HEAT_LABEL.get(s["heat"]) if s["heat"] else None
+            s["followed"] = (s["detail"] or {}).get("followed")
+        stages.append(dict(stage=lab, signals=items))
+    positions = rows(pos)
+    for p in positions:
+        y = float(p["outcome"]) if p["outcome"] is not None else p["mark"]
+        p["value"] = None if y is None else p["cash"] + p["yes_shares"] * y + p["no_shares"] * (1 - y)
+        p["settled"] = p["outcome"] is not None
+    if uid == me["id"]:
+        from racinglines.web import demo
+        if demo.is_demo(me) and me.get("sid"):                   # a demo session: seen for this session only
+            demo.prefs(me["sid"])["signals_seen_at"] = pd.Timestamp.now(tz="UTC").isoformat()
+        else:
+            with get_session() as s:
+                s.execute(T("UPDATE strategy_signals SET seen_at = now() WHERE user_id = :u AND seen_at IS NULL"), dict(u=uid))
+                s.commit()
+    users = c.execute(T("""SELECT username FROM users WHERE prefs ? 'strategy_profile' ORDER BY id""")).scalars().all() \
+        if me["role"] == "admin" else []
+    maker = bool(cur and not cur["strategy"].startswith(("update", "hold", "last", "early"))) if cur else is_maker
+    return render(request, "strategy.html", viewer=viewer, profile=profile, show_fair=show_fair, stages=stages,
+                  positions=positions, cur=cur, event_key=ev, users=users, maker=maker, record=record,
+                  seasons=seasons, total=total, acct=acct, is_maker=is_maker, heat_label=HEAT_LABEL)

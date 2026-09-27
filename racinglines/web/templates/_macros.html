@@ -23,6 +23,17 @@
 {% for m in c.markers %}<line x1="{{ m.x }}" x2="{{ m.x }}" y1="0" y2="{{ c.h - 14 }}" stroke="var(--muted)" stroke-dasharray="3 3"/><text x="{{ m.x + (-3 if m.anchor == 'end' else 3) }}" y="10" text-anchor="{{ m.anchor }}">{{ m.label }}</text>{% endfor %}
 {% for l in c.lines %}<polyline fill="none" stroke="{{ l.color }}" stroke-width="1.6" points="{{ l.points }}"/>{% if l.fair_y is not none %}<line x1="{{ c.pad }}" x2="{{ c.w }}" y1="{{ l.fair_y }}" y2="{{ l.fair_y }}" stroke="{{ l.color }}" stroke-dasharray="2 4" opacity=".7"/>{% endif %}{% endfor %}
 </svg>
-{% if c.zero_y is defined %}<line x1="{{ c.pad }}" x2="{{ c.w }}" y1="{{ c.zero_y }}" y2="{{ c.zero_y }}" stroke="var(--muted)" stroke-width="1"/>{% endif %}
+{% if c.zero_y is defined and c.zero_y is not none %}<line x1="{{ c.pad }}" x2="{{ c.w }}" y1="{{ c.zero_y }}" y2="{{ c.zero_y }}" stroke="var(--muted)" stroke-width="1"/>{% endif %}
 <div class="legend">{% for l in c.lines %}<i style="background:{{ l.color }}"></i>{{ l.label }}{% endfor %}{% if c.zero_y is not defined %} · solid = Polymarket price, dotted = our fair{% endif %}</div>{% endif %}
 {%- endmacro %}
+
+{% macro new_badge(n=0) %}<span class="pill new" title="first seen on Polymarket in the last 48 hours">{{ n ~ " " if n else "" }}new</span>{% endmacro %}
+
+{% macro paper_banner(n) %}{% if n and n.profile %}<div class="paper-banner"><span>Paper account · <b>{{ n.profile }}</b></span>
+{% if n.balance is not none %}<span>Bankroll <b class="{{ 'good' if n.pnl > 0 else ('bad' if n.pnl < 0) }}">${{ "{:,.0f}".format(n.balance) }}</b> <span class="muted">from ${{ "{:,.0f}".format(n.start) }} · {{ "%+.1f"|format(n.ret * 100) }}%</span></span>{% else %}<span>Paper P&amp;L <b>{{ n.pnl|money(true) }}</b></span>{% endif %}
+<span class="links"><a href="/strategy">Strategy: track record and how it got here →</a> · <a href="/positions">Positions →</a></span></div>{% endif %}{% endmacro %}
+
+{# Demo-only context: an info bubble, tagged invisibly (data-tag="demo-context") so it can be found and
+   dropped for real users: RACINGLINES_DEMO_CONTEXT=0 hides every one; before launch, delete the calls
+   (grep -rn demo_context racinglines/web/templates). Not used on the 101 page, which is the demo's own. #}
+{% macro demo_context(title="") %}{% if demo_context_on() %}<aside class="info-bubble" data-tag="demo-context" role="note"><span class="info-icon" aria-hidden="true">i</span><div>{% if title %}<b>{{ title }}</b> {% endif %}{{ caller() }}</div></aside>{% endif %}{% endmacro %}

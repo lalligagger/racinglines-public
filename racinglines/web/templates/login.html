@@ -8,6 +8,7 @@
   .demo button b { display:block; font-size:15px; margin-bottom:2px; }
   .demo button span { font-size:12px; color:var(--muted); }
   .demo button.maker:hover { border-color:var(--accent); } .demo button.taker:hover { border-color:var(--good); }
+  .confused { text-align:center; margin:10px 0 0; font-size:13px; }
   .or { text-align:center; color:var(--muted); font-size:12px; margin:14px 0 6px; }
 </style></head>
 <body><main style="max-width:420px;margin:60px auto">
@@ -21,6 +22,7 @@
   <form method="post" action="/login"><input type="hidden" name="username" value="taker"><input type="hidden" name="password" value="password"><input type="hidden" name="next" value="{{ next }}">
     <button class="taker"><b>Try as taker</b><span>Browse makers' markets and bet at the quoted price</span></button></form>
 </div>
+<p class="confused"><a href="/racinglines101">I'm already confused.</a></p>
 
 <p class="or">or sign in</p>
 <form method="post" action="/login" class="card">

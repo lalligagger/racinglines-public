@@ -49,14 +49,32 @@ MAKERS = {"maker": {},
 WIDEN = 1.5                          # half-spread multiplier for widened market kinds
 
 
+SCHEDULE_COLS = ["RoundNumber", "EventName", "EventFormat"] + [f"Session{i}{x}" for i in range(1, 6) for x in ("", "DateUtc")]
+
+
+def _event_schedule(year):
+    """FastF1's event schedule, saved next to the raw files (data/raw/f1/fastf1/<year>/schedule.parquet)
+    so a machine without access to FastF1's servers (e.g. a cloud session) can still build the sweep."""
+    import fastf1
+    from racinglines.sources.fastf1.fetch import CACHE, OUT
+    snap = OUT / str(year) / "schedule.parquet"
+    try:
+        logging.getLogger("fastf1").setLevel(logging.ERROR)
+        CACHE.mkdir(parents=True, exist_ok=True)
+        fastf1.Cache.enable_cache(str(CACHE))
+        sch = pd.DataFrame(fastf1.get_event_schedule(year, include_testing=False))[SCHEDULE_COLS]
+        if snap.parent.is_dir():
+            sch.to_parquet(snap, index=False)
+        return sch
+    except Exception:  # noqa: BLE001  (offline: fall back to the saved copy)
+        if snap.is_file():
+            return pd.read_parquet(snap)
+        raise
+
+
 def schedule(year, rounds=None):
     """{round: dict(event_key, name, format, race_start, sessions, stages=[(label, cutoff)])} (naive UTC)."""
-    import fastf1
-    from racinglines.sources.fastf1.fetch import CACHE
-    logging.getLogger("fastf1").setLevel(logging.ERROR)
-    CACHE.mkdir(parents=True, exist_ok=True)
-    fastf1.Cache.enable_cache(str(CACHE))
-    sch = fastf1.get_event_schedule(year, include_testing=False)
+    sch = _event_schedule(year)
     out = {}
     for ev in sch.itertuples():
         rnd = int(ev.RoundNumber)
@@ -83,37 +101,46 @@ def schedule(year, rounds=None):
 
 
 def price_stages(meas, hist, sched, engine, engine_url=None, n_sims=4000, reprice=False, echo=print,
-                 variant="baseline"):
-    """Diagnostic run per (race, stage); reuses stored ones with the same cutoff and model
-    variant unless reprice (runs stored without a variant are the baseline).
+                 variant="baseline", settings=None):
+    """Diagnostic run per (race, stage); a stored one is reused only when it was priced with the same
+    model settings (model_key) from the same data (data_key), unless reprice.
     Returns {event_key: [(label, cutoff, run_id), ...]}."""
     from racinglines.models.position_sim import pricing as run
+    from racinglines.pipelines import sweep_settings as SS
+    st = settings or SS.Settings.from_dict({"variant": variant, "sims": n_sims})
+    mk = st.model_key
     with engine.connect() as c:
-        have = pd.read_sql(text("""SELECT id, params->>'event_key' AS k, params->>'cutoff' AS cutoff
+        have = pd.read_sql(text("""SELECT id, params->>'event_key' AS k, params->>'cutoff' AS cutoff,
+                                          params->>'data_key' AS d
                                    FROM model_runs WHERE kind = 'diagnostic' AND params ? 'sweep_stage'
-                                     AND coalesce(params->>'variant', 'baseline') = :v
-                                   ORDER BY id"""), c, params=dict(v=variant))
-    have = {(k, str(pd.Timestamp(cu))): int(i) for i, k, cu in zip(have["id"], have["k"], have["cutoff"])}
-    out = {}
+                                     AND params->>'model_key' = :m ORDER BY id"""), c, params=dict(m=mk))
+    have = {(k, str(pd.Timestamp(cu)), d): int(i) for i, k, cu, d in zip(have["id"], have["k"], have["cutoff"], have["d"])}
+    out, data_keys = {}, []
     for rnd, w in sched.items():
         ev = meas.res[(meas.res["year"] == int(w["event_key"][:4])) & (meas.res["series_round"] == rnd)]
         if ev.empty or not (ev["round"] == "race").any():
             continue                                     # not raced yet
         runs = []
         for label, cutoff in w["stages"]:
-            k = (w["event_key"], str(pd.Timestamp(cutoff)))
+            dk = SS.data_key(meas.view(cutoff))
+            data_keys.append(dk)
+            k = (w["event_key"], str(pd.Timestamp(cutoff)), dk)
             if k in have and not reprice:
                 runs.append((label, cutoff, have[k]))
                 continue
-            _, summ, ex, _ = run.diagnostic(meas, hist, w["event_key"], cutoff, n_sims=n_sims)
-            extra = {} if variant == "baseline" else dict(variant=variant)
-            rid = run.save_diagnostic(engine_url, w["event_key"], cutoff, summ, ex, n_sims, sweep_stage=label, **extra)
+            _, summ, ex, _ = run.diagnostic(meas, hist, w["event_key"], cutoff, n_sims=st["sims"],
+                                            use_track=st["track_features"])
+            extra = dict(model_key=mk, data_key=dk, model_settings={n: st.to_json()[n] for n in SS.MODEL_NAMES})
+            if st["variant"] != "baseline":
+                extra["variant"] = st["variant"]
+            rid = run.save_diagnostic(engine_url, w["event_key"], cutoff, summ, ex, st["sims"], sweep_stage=label,
+                                      **extra)
             runs.append((label, cutoff, rid))
         out[w["event_key"]] = runs
         echo(f"progress {len(out)}/{len(sched)} priced {w['event_key']} {w['name']}: "
              + ", ".join(f"{lab} #{rid}" for lab, _, rid in runs))
+    price_stages.data_key = __import__("hashlib").sha1("|".join(data_keys).encode()).hexdigest()[:12]
     return out
-
 
 def _token0_links(conn, race_id):
     links = pd.read_sql(text("""SELECT ml.*, a.display_name AS athlete FROM market_links ml
@@ -172,16 +199,19 @@ def _vol24(g, t):
     return float(g["usd"].iloc[a:b].sum())
 
 
-def weekend_markets(conn, w, stage_runs):
+def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None):
     """The weekend's tradeable markets for racinglines/markets/strategies/taker_weekend.py: per market, each stage's fair,
-    exchange price and tradeable flag (what was knowable then) and the outcome (settlement)."""
+    exchange price and tradeable flag (what was knowable then) and the outcome (settlement).
+    price_times: {stage label: time} to read the market at instead of the stage's cutoff (live signals:
+    when the stage was priced, i.e. when its trades could first be made); None = the cutoffs (backtests)."""
+    at = lambda lab, cutoff: (price_times or {}).get(lab, cutoff)          # noqa: E731
     from racinglines.db import reads as D
     from racinglines.markets import private_book as house
     rid = _race_id(conn, w["event_key"])
     links = _token0_links(conn, rid)
     if not len(links):
         return None
-    start, end = stage_runs[0][1] - timedelta(hours=1), w["race_start"]
+    start, end = stage_runs[0][1] - timedelta(hours=1), max([w["race_start"], *(price_times or {}).values()])
     prices, trades = _series(conn, links["token_id"].tolist(), links["condition_id"].tolist(), start, end)
     res = house.race_outcomes(conn, rid)
     cache, markets = {}, []
@@ -194,7 +224,7 @@ def weekend_markets(conn, w, stage_runs):
     for lab, cutoff, _ in stage_runs:
         for kind, target in GROUP_TARGET.items():
             g = links[links["prediction"] == kind]
-            ps = [_price_at_g(prices.get(t), cutoff) for t in g["token_id"]]
+            ps = [_price_at_g(prices.get(t), at(lab, cutoff)) for t in g["token_id"]]
             ps = [p for p in ps if p is not None]
             coherent[(kind, lab)] = bool(ps) and abs(sum(ps) - target) <= COHERENCE_TOL * target
     for link in links.to_dict("records"):
@@ -202,26 +232,32 @@ def weekend_markets(conn, w, stage_runs):
         ath = None if pd.isna(link["athlete_id"]) else int(link["athlete_id"])
         stages = []
         for lab, cutoff, _ in stage_runs:
-            price = _price_at_g(prices.get(link["token_id"]), cutoff)
+            t = at(lab, cutoff)
+            price = _price_at_g(prices.get(link["token_id"]), t)
             f = fair[(link["token_id"], lab)]
-            open_ = not (kind == "race_pole" and w["qual_start"] is not None and cutoff >= w["qual_start"])
+            open_ = not (kind == "race_pole" and w["qual_start"] is not None and t >= w["qual_start"])
             ok = (price is not None and f is not None and open_ and coherent.get((kind, lab), True)
-                  and 0 < price < 1 and _vol24(trades.get(link["condition_id"]), cutoff) >= MIN_VOLUME_24H)
-            stages.append(dict(label=lab, t=cutoff, fair=f, price=price, tradeable=ok))
+                  and 0 < price < 1 and _vol24(trades.get(link["condition_id"]), t)
+                  >= (MIN_VOLUME_24H if min_volume_24h is None else min_volume_24h))
+            stages.append(dict(label=lab, t=t, fair=f, price=price, tradeable=ok))
         subject = link["athlete"] or (link["params"] or {}).get("team") or link["group_title"]
         if kind == "race_h2h":
             subject = f"{link['outcome']} ({link['question'].split(': ')[-1]})"
-        markets.append(dict(key=link["token_id"], kind=kind, subject=subject, stages=stages,
+        markets.append(dict(key=link["token_id"], kind=kind, subject=subject, stages=stages, link=link,
                             outcome=house.outcome_for(kind, ath, link["params"], res)))
     return markets
 
 
-def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=()):
+def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settings=None):
     """Trade one weekend. Returns dict(summary rows per mode, trades, stage scores, makers).
-    widen_kinds: market kinds whose maker fills lost on 60-min markouts in EARLIER weekends."""
-    markets = weekend_markets(conn, w, stage_runs)
+    widen_kinds: market kinds whose maker fills lost on 60-min markouts in EARLIER weekends.
+    settings: sweep_settings.Settings (market kinds, volume filter, maker parameters); None = defaults."""
+    from racinglines.pipelines import sweep_settings as SS
+    st = settings or SS.Settings.from_dict()
+    markets = weekend_markets(conn, w, stage_runs, min_volume_24h=st["min_volume_24h"])
     if markets is None:
         return None
+    markets = [m for m in markets if m["kind"] in st["market_kinds"]]
     out = dict(modes={}, trades={})
     for p in params_list:
         tr, per = RB.run_weekend(markets, p)
@@ -249,14 +285,19 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=()):
 
         from racinglines.markets.strategies import maker_replay as R
         ev = R.load_event(conn, [r for _, _, r in stage_runs])
+        ev = dict(ev, markets=[m for m in ev["markets"] if m.kind in st["market_kinds"]])
     except Exception as ex:  # noqa: BLE001  (no tape for this weekend)
         echo(f"  maker replay skipped: {ex}")
         ev = None
+    base = R.Params(half_spread=st["half_spread"], size=st["size"], max_pos=st["max_pos"], skew=st["skew"],
+                    max_disagree=st["max_disagree"], fill=st["fill"])
     for name, opts in MAKERS.items() if ev is not None else []:
         opts = dict(opts)
-        p = R.Params()
+        p = base
+        if "info_skew" in opts:
+            opts["info_skew"] = st["info_skew"]
         if opts.pop("widen", False):
-            opts["half_spread_by_kind"] = {k: p.half_spread * WIDEN for k in widen_kinds}
+            opts["half_spread_by_kind"] = {k: p.half_spread * st["widen"] for k in widen_kinds}
         rep = R.replay(ev, replace(p, **opts))
         sk = R.summary(rep)
         s = sk.loc["total"]
@@ -269,21 +310,33 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=()):
 
 
 def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, reprice=False, taker=None, echo=print,
-              variant="baseline"):
-    """The whole season. Returns dict(weekends DataFrame, by_stage, by_kind, totals, trades, scores, params)."""
+              variant="baseline", settings=None):
+    """The whole season (every raced weekend unless `rounds`). settings: sweep_settings.Settings, the
+    full description of the combo (model, entry timing, taker, maker, markets); without it, one is
+    built from n_sims / taker / variant. Returns dict(weekends DataFrame, by_stage, by_kind, totals,
+    trades, scores, params)."""
     from racinglines.db.config import get_session
 
     from racinglines.models.position_sim import pricing as run
+    from racinglines.pipelines import sweep_settings as SS
+    if settings is None:
+        t = taker or RB.TakerParams()
+        settings = SS.Settings.from_dict(dict(variant=variant, sims=n_sims, min_edge=t.min_edge,
+                                              stake_per_edge=t.stake_per_edge, max_stake=t.max_stake, cost=t.cost))
+    st = settings
     sched = schedule(year, rounds)
     if fetch:
         with engine.connect() as c, get_session(engine_url) as s:
             fetch_market_data(s, c, sched, echo=echo)
-    echo("progress 0/1 building history")
+    echo(f"progress 0/1 building history ({st.label()})")
     meas = run.Measurements.load(engine)
-    hist = run.history(meas)
-    stage_runs = price_stages(meas, hist, sched, engine, engine_url, n_sims=n_sims, reprice=reprice, echo=echo,
-                              variant=variant)
-    base = taker or RB.TakerParams()
+    with st.applied():
+        hist = run.history(meas, st["track_features"])
+        stage_runs = price_stages(meas, hist, sched, engine, engine_url, reprice=reprice, echo=echo, settings=st)
+    data_key = price_stages.data_key
+    base = RB.TakerParams(min_edge=st["min_edge"], stake_per_edge=st["stake_per_edge"], max_stake=st["max_stake"],
+                          cost=st["cost"], late_stages=st["late_stages"], min_edge_h2h=st["min_edge_h2h"],
+                          stages=None if st["taker_stages"] == SS.STAGES else st["taker_stages"])
     params_list = [RB.TakerParams(**{**base.__dict__, "mode": m}) for m in TAKER_MODES]
     rows, all_trades, all_scores = [], [], []
     markouts = {}                      # market kind -> maker's 60-min markout so far (as of each weekend)
@@ -292,7 +345,8 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
         if not runs:
             continue
         with engine.connect() as c:
-            r = weekend(c, w, runs, params_list, echo=echo, widen_kinds=[k for k, v in markouts.items() if v < 0])
+            r = weekend(c, w, runs, params_list, echo=echo, widen_kinds=[k for k, v in markouts.items() if v < 0],
+                        settings=st)
         if r is None:
             continue
         for k, v in r["markout_by_kind"].items():
@@ -332,5 +386,9 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
                                 weekends_up=int((weekends[col] > 0).sum()), weekends=int(weekends[col].notna().sum()),
                                 bought=float(weekends.get(spent, pd.Series(dtype=float)).fillna(0).sum()))
     return dict(weekends=weekends, by_stage=by_stage, by_kind=RB.by(trades, "kind"), totals=totals, trades=trades,
-                scores=score_stage, params=dict(base.__dict__, n_sims=n_sims, data_lag_min=DATA_LAG.seconds // 60,
-                                                min_volume_24h=MIN_VOLUME_24H, coherence_tol=COHERENCE_TOL))
+                scores=score_stage,
+                params=dict({k: v for k, v in base.__dict__.items() if k != "stages"}, n_sims=st["sims"],
+                            variant=st["variant"], data_lag_min=DATA_LAG.seconds // 60,
+                            min_volume_24h=st["min_volume_24h"], coherence_tol=COHERENCE_TOL,
+                            settings=st.to_json(), settings_key=st.key, model_key=st.model_key, data_key=data_key,
+                            label=st.label(), weekends=len(weekends)))

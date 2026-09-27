@@ -36,6 +36,8 @@ from decimal import Decimal
 
 import httpx
 
+from racinglines.sources import http
+
 CLOB_HOST = os.environ.get("POLYMARKET_CLOB_HOST", "https://clob.polymarket.com")
 GAMMA_HOST = os.environ.get("POLYMARKET_GAMMA_HOST", "https://gamma-api.polymarket.com")
 TIMEOUT = 15
@@ -63,9 +65,9 @@ def lookup(slug_or_url):
     """Markets for a Polymarket market or event slug (a full polymarket.com URL works too)."""
     slug = slug_or_url.strip().rstrip("/").split("/")[-1].split("?")[0]
     with httpx.Client(base_url=GAMMA_HOST, timeout=TIMEOUT) as c:
-        markets = c.get("/markets", params={"slug": slug}).json()
+        markets = http.get(c, "/markets", params={"slug": slug}).json()
         if not markets:
-            events = c.get("/events", params={"slug": slug}).json()
+            events = http.get(c, "/events", params={"slug": slug}).json()
             markets = events[0].get("markets", []) if events else []
     return [_parse_market(m) for m in markets]
 
@@ -73,7 +75,7 @@ def lookup(slug_or_url):
 def search(query, limit=10):
     """Active events matching a text query (Gamma public search)."""
     with httpx.Client(base_url=GAMMA_HOST, timeout=TIMEOUT) as c:
-        r = c.get("/public-search", params={"q": query, "limit_per_type": limit, "events_status": "active"})
+        r = http.get(c, "/public-search", params={"q": query, "limit_per_type": limit, "events_status": "active"})
         r.raise_for_status()
     return [dict(title=e.get("title"), slug=e.get("slug"), end_date=e.get("endDate"))
             for e in (r.json().get("events") or [])]
@@ -82,7 +84,7 @@ def search(query, limit=10):
 def book(token_id):
     """Order book summary: best bid/ask, depth (top 5 each side), tick and min size."""
     with httpx.Client(base_url=CLOB_HOST, timeout=TIMEOUT) as c:
-        r = c.get("/book", params={"token_id": token_id})
+        r = http.get(c, "/book", params={"token_id": token_id})
         r.raise_for_status()
         b = r.json()
     bids = sorted(((float(x["price"]), float(x["size"])) for x in b.get("bids", [])), reverse=True)

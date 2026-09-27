@@ -10,7 +10,7 @@
 <div class="card"><h2>Order log</h2>
 {% if orders %}<div class="scroll"><table><thead><tr><th>id</th><th class="l">created</th><th class="l">market</th><th class="l">outcome</th><th>side</th><th>price</th><th>size</th><th>model</th><th>bid/ask</th><th class="l">status</th><th class="l">exchange id / error</th><th></th></tr></thead><tbody>
 {% for o in orders %}<tr class="{{ 'hl' if highlight == o.id else '' }}">
-<td>{{ o.id }}</td><td class="l">{{ o.created_at|fmt }}</td><td class="l"><a href="/markets/{{ o.market_link_id }}">{{ o.question }}</a></td><td class="l">{{ o.outcome }}</td>
+<td>{{ o.id }}</td><td class="l">{{ o.created_at|fmt }}</td><td class="l"><a href="/markets/linked/{{ o.market_link_id }}">{{ o.question }}</a></td><td class="l">{{ o.outcome }}</td>
 <td>{{ o.side }}</td><td>{{ o.price }}</td><td>{{ o.size }}</td><td>{{ o.model_prob|fmt("model_prob") }}</td><td>{{ o.best_bid|fmt }} / {{ o.best_ask|fmt }}</td>
 <td class="l {{ 'bad' if o.status in ('error', 'rejected') else ('good' if o.status == 'submitted' else '') }}">{{ o.status }}</td>
 <td class="l"><code>{{ o.exchange_order_id or "" }}</code> {{ o.error or "" }}</td>

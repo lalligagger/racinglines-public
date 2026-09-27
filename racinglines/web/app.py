@@ -23,7 +23,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 ROOT = Path(__file__).resolve().parents[2]      # the repository
 
@@ -49,7 +49,7 @@ CSRF_TOKEN = hmac.new(_SECRET.encode(), b"csrf", hashlib.sha256).hexdigest()
 security = HTTPBasic(realm="racinglines", auto_error=False)
 SESSION_COOKIE = "rl_session"
 SESSION_HOURS = 12
-PUBLIC_PATHS = ("/login", "/static")
+PUBLIC_PATHS = ("/login", "/static", "/racinglines101")
 
 # failed-login throttle: per client IP, MAX_FAILURES within FAILURE_WINDOW seconds -> 429
 MAX_FAILURES = 8
@@ -74,20 +74,29 @@ def _record_failure(ip):
     _failures.setdefault(ip, []).append(time.time())
 
 
-def _session_value(user_id, expires):
-    sig = hmac.new(_SECRET.encode(), f"{user_id}|{expires}".encode(), hashlib.sha256).hexdigest()
-    return f"{user_id}|{expires}|{sig}"
+def _session_value(user_id, expires, sid=""):
+    """Signed cookie: user id, expiry, and a per-sign-in session id (a demo session's key, web/demo.py)."""
+    body = f"{user_id}|{expires}|{sid}"
+    sig = hmac.new(_SECRET.encode(), body.encode(), hashlib.sha256).hexdigest()
+    return f"{body}|{sig}"
+
+
+def _session(cookie):
+    """(user id, session id) from a valid, unexpired cookie, else (None, None). Accepts the older
+    three-part cookie (no session id)."""
+    try:
+        parts = cookie.split("|")
+        body, sig = "|".join(parts[:-1]), parts[-1]
+        good = hmac.new(_SECRET.encode(), body.encode(), hashlib.sha256).hexdigest()
+        if secrets.compare_digest(sig, good) and int(parts[1]) > time.time():
+            return int(parts[0]), (parts[2] if len(parts) == 4 else None)
+    except (AttributeError, ValueError, IndexError):
+        pass
+    return None, None
 
 
 def _session_user_id(cookie):
-    try:
-        user_id, expires, sig = cookie.split("|")
-        good = hmac.new(_SECRET.encode(), f"{user_id}|{expires}".encode(), hashlib.sha256).hexdigest()
-        if secrets.compare_digest(sig, good) and int(expires) > time.time():
-            return int(user_id)
-    except (AttributeError, ValueError):
-        pass
-    return None
+    return _session(cookie)[0]
 
 
 def _user_dict(u):
@@ -100,12 +109,12 @@ def authenticate(request: Request, creds: HTTPBasicCredentials | None = Depends(
     deactivating a user or changing a role takes effect immediately."""
     if request.url.path.startswith(PUBLIC_PATHS):
         return None
-    uid = _session_user_id(request.cookies.get(SESSION_COOKIE))
+    uid, sid = _session(request.cookies.get(SESSION_COOKIE))
     if uid is not None:
         with get_session() as s:
             u = U.get_user(s, user_id=uid)
             if u and u.active:
-                request.state.user = _user_dict(u)
+                request.state.user = dict(_user_dict(u), sid=sid)
                 return request.state.user
     ip = client_ip(request)
     if creds:
@@ -167,7 +176,8 @@ def _warm_diagnostics():
         print(f"diagnostics warm-up skipped: {ex}")
 
 
-app = FastAPI(title="racinglines", dependencies=[Depends(authenticate)], docs_url=None, redoc_url=None,
+from racinglines.web import demo as _demo  # noqa: E402
+app = FastAPI(title="racinglines", dependencies=[Depends(authenticate), Depends(_demo.guard)], docs_url=None, redoc_url=None,
               lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 templates = Jinja2Templates(directory=HERE / "templates")
@@ -211,12 +221,53 @@ def money(v, sign=False):
 
 
 templates.env.filters["money"] = money
+# Demo-only explanations (the demo accounts' story, the demo itself) render in `demo_context` bubbles
+# (_macros.html) tagged data-tag="demo-context". RACINGLINES_DEMO_CONTEXT=0 hides them all; for real users,
+# delete every `demo_context` call.
+DEMO_CONTEXT = {"on": os.environ.get("RACINGLINES_DEMO_CONTEXT", "1") != "0"}
+templates.env.globals["demo_context_on"] = lambda: DEMO_CONTEXT["on"]      # read at render time
 templates.env.globals["csrf_token"] = CSRF_TOKEN
+
+
+def _seen_since(user):
+    """A demo session's "signals seen up to" time (web/demo.py overlay), else None (the database's seen_at)."""
+    from racinglines.web import demo
+    return demo.prefs(user["sid"]).get("signals_seen_at") if demo.is_demo(user) and user.get("sid") else None
+
+
+def _signals_nav(user):
+    """The Signals link for the nav (users with a strategy profile, and admins): unread signals, and the
+    account's paper summary (profile, bankroll, P&L) for the banner on the home and trading pages."""
+    if not user:
+        return None
+    try:
+        with get_engine().connect() as c:
+            r = c.execute(text("""SELECT prefs ? 'strategy_profile', prefs->'strategy_profile'->>'name',
+                                         (prefs->'strategy_profile'->'bankroll'->>'start')::float,
+                                         (SELECT count(*) FROM strategy_signals WHERE user_id = :u AND seen_at IS NULL
+                                            AND status <> 'expired'
+                                            AND (CAST(:since AS timestamptz) IS NULL OR created_at > CAST(:since AS timestamptz))),
+                                         (SELECT sum(cash + yes_shares * coalesce(outcome::int, mark)
+                                                 + no_shares * (1 - coalesce(outcome::int, mark)))
+                                            FROM paper_positions WHERE user_id = :u)
+                                  FROM users WHERE id = :u"""),
+                          dict(u=user["id"], since=_seen_since(user))).first()
+    except Exception:                                   # noqa: BLE001  the nav never breaks a page
+        return None
+    if r is None or not (r[0] or user["role"] == "admin"):
+        return None
+    pnl = float(r[4] or 0.0)
+    return dict(unread=int(r[3] or 0), profile=r[1], start=r[2], pnl=pnl,
+                balance=(r[2] + pnl) if r[2] else None, ret=(pnl / r[2]) if r[2] else None)
 
 
 def render(request, name, **ctx):
     ctx.setdefault("trading", polymarket.TradingConfig.from_env())
     ctx.setdefault("user", getattr(request.state, "user", None))
+    ctx.setdefault("signals_nav", _signals_nav(ctx["user"]))
+    from racinglines.web import demo
+    u = ctx["user"]
+    ctx.setdefault("storage_ns", f"demo.{u.get('sid')}." if demo.is_demo(u) and u.get("sid") else "")
     return templates.TemplateResponse(request, name, ctx)
 
 
@@ -248,7 +299,7 @@ STAND_COLS = ["athlete", "current_points", "exp_points", "points_p10", "points_p
               "top3_prob", "exp_rank"]
 
 
-@app.get("/runs/{run_id}", response_class=HTMLResponse, dependencies=[allow("admin", "maker")])
+@app.get("/lab/runs/{run_id}", response_class=HTMLResponse, dependencies=[allow("admin", "maker")])
 def run_detail(request: Request, run_id: int, c=Depends(conn)):
     run = data.model_run(c, run_id)
     if not run:
@@ -300,6 +351,12 @@ def event_by_key(source_key: str, c=Depends(conn)):
     if not len(ev):
         raise HTTPException(404, f"no event {source_key}")
     return RedirectResponse(f"/events/{int(ev['id'].iloc[0])}", status_code=303)
+
+
+@app.get("/racinglines101", response_class=HTMLResponse)
+def racinglines101(request: Request):
+    """Plain-language intro to makers, takers and the paper-trading demo (public, linked from the login page)."""
+    return render(request, "racinglines101.html")
 
 
 @app.get("/pitch", response_class=HTMLResponse)
@@ -367,7 +424,7 @@ def athlete_detail(request: Request, athlete_id: int, c=Depends(conn)):
 # Markets + orders
 # ---------------------------------------------------------------------------
 
-@app.get("/markets", response_class=HTMLResponse, dependencies=[allow("admin")])
+@app.get("/markets/linked", response_class=HTMLResponse, dependencies=[allow("admin")])
 def markets(request: Request, c=Depends(conn)):
     links = rows(data.market_links(c))
     for link in links:
@@ -375,7 +432,7 @@ def markets(request: Request, c=Depends(conn)):
     return render(request, "markets.html", links=links)
 
 
-@app.get("/markets/lookup", response_class=HTMLResponse, dependencies=[allow("admin")])
+@app.get("/markets/linked/lookup", response_class=HTMLResponse, dependencies=[allow("admin")])
 def market_lookup(request: Request, slug: str = "", query: str = "", c=Depends(conn)):
     found, results, error = [], [], None
     try:
@@ -392,7 +449,7 @@ def market_lookup(request: Request, slug: str = "", query: str = "", c=Depends(c
                   predictions=data.PREDICTION_KINDS)
 
 
-@app.post("/markets", dependencies=[Depends(check_csrf), allow("admin")])
+@app.post("/markets/linked", dependencies=[Depends(check_csrf), allow("admin")])
 def create_link(request: Request, market_slug: str = Form(""), question: str = Form(...), condition_id: str = Form(""),
                 token_id: str = Form(...), outcome: str = Form(...), neg_risk: str = Form("false"),
                 tick_size: float = Form(0.01), min_size: float = Form(5), athlete_id: int = Form(...),
@@ -413,16 +470,16 @@ def create_link(request: Request, market_slug: str = Form(""), question: str = F
         s.commit()
         audit(request, "polymarket_link", link_id=link.id, question=question, outcome=outcome, athlete_id=athlete_id,
               prediction=prediction)
-        return RedirectResponse(f"/markets/{link.id}", status_code=303)
+        return RedirectResponse(f"/markets/linked/{link.id}", status_code=303)
 
 
-@app.post("/markets/{link_id}/toggle", dependencies=[Depends(check_csrf), allow("admin")])
+@app.post("/markets/linked/{link_id}/toggle", dependencies=[Depends(check_csrf), allow("admin")])
 def toggle_link(link_id: int):
     with get_session() as s:
         link = s.get(m.MarketLink, link_id)
         link.active = not link.active
         s.commit()
-    return RedirectResponse("/markets", status_code=303)
+    return RedirectResponse("/markets/linked", status_code=303)
 
 
 def _link_context(c, link_id):
@@ -449,7 +506,7 @@ def _link_context(c, link_id):
     return link, prob, run_id, bk, book_error, suggestion
 
 
-@app.get("/markets/{link_id}", response_class=HTMLResponse, dependencies=[allow("admin")])
+@app.get("/markets/linked/{link_id}", response_class=HTMLResponse, dependencies=[allow("admin")])
 def market_detail(request: Request, link_id: int, c=Depends(conn)):
     link, prob, run_id, bk, book_error, suggestion = _link_context(c, link_id)
     past = data.orders(c)
@@ -457,7 +514,7 @@ def market_detail(request: Request, link_id: int, c=Depends(conn)):
                   suggestion=suggestion, orders=rows(past[past["market_link_id"] == link_id]))
 
 
-@app.post("/markets/{link_id}/preview", response_class=HTMLResponse, dependencies=[Depends(check_csrf), allow("admin")])
+@app.post("/markets/linked/{link_id}/preview", response_class=HTMLResponse, dependencies=[Depends(check_csrf), allow("admin")])
 def order_preview(request: Request, link_id: int, side: str = Form(...), price: float = Form(...),
                   size: float = Form(...), c=Depends(conn)):
     link, prob, run_id, bk, book_error, _ = _link_context(c, link_id)
@@ -477,7 +534,7 @@ def order_preview(request: Request, link_id: int, side: str = Form(...), price: 
                   notional=notional, edge=edge, error=error, run_id=run_id)
 
 
-@app.post("/markets/{link_id}/order", dependencies=[Depends(check_csrf), allow("admin")])
+@app.post("/markets/linked/{link_id}/order", dependencies=[Depends(check_csrf), allow("admin")])
 def order_submit(request: Request, link_id: int, side: str = Form(...), price: float = Form(...), size: float = Form(...),
                  confirm: str = Form(""), c=Depends(conn)):
     if confirm != "yes":
@@ -572,7 +629,7 @@ def _own_market(user, market_id):
         return mk
 
 
-@app.get("/house", response_class=HTMLResponse)
+@app.get("/book/quotes", response_class=HTMLResponse)
 def house_book(request: Request, race_id: int | None = None, maker: str = "", msg: str = "", c=Depends(conn),
                user=allow("admin", "maker")):
     races = _races_for_house(c)
@@ -598,7 +655,7 @@ def house_book(request: Request, race_id: int | None = None, maker: str = "", ms
                   kinds=list(house.KINDS) + ["race_top10"], makers=makers, maker=maker)
 
 
-@app.post("/house/generate", dependencies=[Depends(check_csrf)])
+@app.post("/book/quotes/generate", dependencies=[Depends(check_csrf)])
 async def house_generate(request: Request, c=Depends(conn), user=allow("admin", "maker")):
     form = await request.form()
     race_id = int(form["race_id"])
@@ -613,21 +670,21 @@ async def house_generate(request: Request, c=Depends(conn), user=allow("admin", 
     except ValueError as e:
         msg = f"Error: {e}"
     nxt = form.get("next") or ""
-    if nxt.startswith("/race/"):
+    if nxt.startswith("/races/"):
         return RedirectResponse(f"{nxt}?msg={msg}#k-race_win", status_code=303)
-    return RedirectResponse(f"/house?race_id={race_id}&msg={msg}", status_code=303)
+    return RedirectResponse(f"/book/quotes?race_id={race_id}&msg={msg}", status_code=303)
 
 
-@app.post("/house/settle-auto", dependencies=[Depends(check_csrf), allow("admin")])
+@app.post("/book/quotes/settle-auto", dependencies=[Depends(check_csrf), allow("admin")])
 def house_settle_auto(request: Request, race_id: int = Form(...), c=Depends(conn)):
     with get_session() as s:
         done = house.auto_settle(s, c, race_id)
     audit(request, "settle_auto", race_id=race_id, settled=[d[0] for d in done])
     msg = f"Auto-settled {len(done)} markets." if done else "Nothing to settle yet (Final not in the data)."
-    return RedirectResponse(f"/house?race_id={race_id}&msg={msg}", status_code=303)
+    return RedirectResponse(f"/book/quotes?race_id={race_id}&msg={msg}", status_code=303)
 
 
-@app.get("/house/sheet", response_class=HTMLResponse, dependencies=[allow(*ANY)])
+@app.get("/book/quotes/sheet", response_class=HTMLResponse, dependencies=[allow(*ANY)])
 def house_sheet(request: Request, race_id: int, c=Depends(conn)):
     bk = house.book(c, race_id, status="open")
     with get_session() as s:
@@ -637,7 +694,7 @@ def house_sheet(request: Request, race_id: int, c=Depends(conn)):
                   now=pd.Timestamp.now(tz="America/Vancouver").strftime("%a %d %b %H:%M %Z"))
 
 
-@app.get("/house/{market_id}", response_class=HTMLResponse)
+@app.get("/book/markets/{market_id}", response_class=HTMLResponse)
 def house_market(request: Request, market_id: int, msg: str = "", c=Depends(conn), user=allow("admin", "maker")):
     _own_market(user, market_id)
     bk = house.book(c)
@@ -645,7 +702,7 @@ def house_market(request: Request, market_id: int, msg: str = "", c=Depends(conn
     return render(request, "house_market.html", mk=rows(mk)[0], bets=rows(house.bets(c, market_id)), msg=msg)
 
 
-@app.post("/house/{market_id}/bet", dependencies=[Depends(check_csrf), allow("admin")])
+@app.post("/book/markets/{market_id}/bet", dependencies=[Depends(check_csrf), allow("admin")])
 def house_bet(request: Request, market_id: int, counterparty: str = Form(...), side: str = Form(...),
               stake: float = Form(...), price: str = Form(""), note: str = Form("")):
     """Admin records an offline bet for a counterparty without an account."""
@@ -657,20 +714,20 @@ def house_bet(request: Request, market_id: int, counterparty: str = Form(...), s
         msg = f"Recorded: {b.counterparty} {b.side} ${b.stake:.2f} at {b.price:.2f} (pays ${b.payout:.2f})."
     except ValueError as e:
         msg = f"Error: {e}"
-    return RedirectResponse(f"/house/{market_id}?msg={msg}", status_code=303)
+    return RedirectResponse(f"/book/markets/{market_id}?msg={msg}", status_code=303)
 
 
-@app.post("/house/{market_id}/price", dependencies=[Depends(check_csrf)])
+@app.post("/book/markets/{market_id}/price", dependencies=[Depends(check_csrf)])
 def house_price(request: Request, market_id: int, fair_pct: float = Form(...), spread_pct: float = Form(...),
                 user=allow("admin", "maker")):
     _own_market(user, market_id)
     with get_session() as s:
         house.set_price(s, market_id, fair_pct / 100, spread_pct / 100)
     audit(request, "market_price", market_id=market_id, fair=fair_pct / 100, spread=spread_pct / 100)
-    return RedirectResponse(f"/house/{market_id}?msg=Repriced (manual fair value).", status_code=303)
+    return RedirectResponse(f"/book/markets/{market_id}?msg=Repriced (manual fair value).", status_code=303)
 
 
-@app.post("/house/{market_id}/status", dependencies=[Depends(check_csrf)])
+@app.post("/book/markets/{market_id}/status", dependencies=[Depends(check_csrf)])
 def house_status(request: Request, market_id: int, status_: str = Form(..., alias="status"),
                  user=allow("admin", "maker")):
     if status_ not in ("open", "closed"):
@@ -680,10 +737,10 @@ def house_status(request: Request, market_id: int, status_: str = Form(..., alia
         s.get(m.HouseMarket, market_id).status = status_
         s.commit()
     audit(request, "market_status", market_id=market_id, status=status_)
-    return RedirectResponse(f"/house/{market_id}", status_code=303)
+    return RedirectResponse(f"/book/markets/{market_id}", status_code=303)
 
 
-@app.post("/house/{market_id}/settle", dependencies=[Depends(check_csrf), allow("admin")])
+@app.post("/book/markets/{market_id}/settle", dependencies=[Depends(check_csrf), allow("admin")])
 def house_settle(request: Request, market_id: int, outcome: str = Form(...), note: str = Form(""),
                  confirm: str = Form("")):
     if confirm != "yes":
@@ -692,25 +749,106 @@ def house_settle(request: Request, market_id: int, outcome: str = Form(...), not
     with get_session() as s:
         house.settle(s, market_id, value, f"manual: {note}" if note else "manual")
     audit(request, "settle_manual", market_id=market_id, outcome=outcome, note=note)
-    return RedirectResponse(f"/house/{market_id}?msg=Settled {outcome.upper()}.", status_code=303)
+    return RedirectResponse(f"/book/markets/{market_id}?msg=Settled {outcome.upper()}.", status_code=303)
 
 
 # ---------------------------------------------------------------------------
 # Takers: browse open markets from every maker, place bets, see own bets
 # ---------------------------------------------------------------------------
 
-@app.get("/bet", response_class=HTMLResponse, dependencies=[allow(*ANY)])
-def bet_markets(request: Request, race_id: int | None = None, msg: str = "", c=Depends(conn)):
-    races = [r for r in _races_for_house(c) if r["status"] != "completed"]
-    if race_id is None and races:
-        race_id = races[0]["race_id"]
-    bk = house.book(c, race_id, status="open") if race_id is not None else pd.DataFrame()
-    groups = [(kind, rows(g.sort_values(["athlete", "yes_price"])))
-              for kind, g in bk.groupby("kind", sort=False)] if len(bk) else []
-    return render(request, "bet.html", races=races, race_id=race_id, groups=groups, msg=msg, max_stake=MAX_STAKE)
+def bet_markets(request: Request, msg: str = "", c=None):          # served at /markets for takers (views.board_page)
+    """Every open Polymarket F1 market, with the account's strategy profile's current call on each (side,
+    size, most to pay, heat), never our fair value or edge. Upcoming races first (listed or not yet), then
+    season markets, then everything else. There is no maker here: takers trade on Polymarket."""
+    from racinglines.pipelines import profiles as PF
+    from racinglines.pipelines import weekend_sweep as WS
+    user = request.state.user
+    profile = PF.of_user(c, user["id"])
+    if profile is None or profile["strategy"] not in WS.TAKER_MODES:
+        try:
+            profile = PF.load(c, "A")
+        except ValueError:
+            profile = None
+    return render(request, "bet.html", msg=msg, profile=profile, **polymarket_calls(c, profile))
 
 
-@app.post("/bet/{market_id}", dependencies=[Depends(check_csrf)])
+def polymarket_calls(c, profile, n_races=3):
+    """Every open Polymarket F1 market with `profile`'s current call: a taker's side / size / limit / heat
+    (signals.call) or a maker's quotes (signals.maker_call). -> dict(races (the next n, listed or not),
+    season, other, synced, n_markets). Never exposes fair values."""
+    from datetime import timedelta as _td
+
+    from racinglines.markets import store as MS
+    from racinglines.pipelines import signals as SG
+    from racinglines.pipelines import weekend_sweep as WS
+    maker = bool(profile and profile["strategy"] not in WS.TAKER_MODES)
+    call = SG.maker_call if maker else SG.call
+    links = data.q(c, """
+        SELECT ml.*, a.display_name AS athlete, e.source_key AS event_key, e.start_date, e.status AS event_status,
+               coalesce(ra.format->>'event_name', e.name) AS race_name
+        FROM market_links ml LEFT JOIN athletes a ON a.id = ml.athlete_id
+        LEFT JOIN races ra ON ra.id = ml.race_id LEFT JOIN events e ON e.id = ra.event_id
+        WHERE ml.exchange = 'polymarket' AND NOT ml.closed
+        ORDER BY ml.end_date NULLS LAST, ml.event_title, ml.last_price DESC NULLS LAST""")
+    now = pd.Timestamp.now(tz="UTC")
+    vol = {}
+    if len(links):
+        tr = MS.read(c, "trades", conditions=links["condition_id"].dropna().unique().tolist(),
+                     start=now - _td(hours=24), end=now)
+        if len(tr):
+            vol = (tr["price"] * tr["size"]).groupby(tr["condition_id"]).sum().to_dict()
+    runs, cache = {}, {}
+    rows_ = []
+    num = lambda v: None if v is None or pd.isna(v) else float(v)                # noqa: E731
+    for link in links.to_dict("records"):
+        link.update(last_bid=num(link["last_bid"]), last_ask=num(link["last_ask"]), volume=num(link["volume"]))
+        if (link["last_bid"] or 0) <= 0 and (link["last_ask"] is None or link["last_ask"] >= 1):
+            continue                                     # an empty book (e.g. a placeholder "Driver A"): not a bet
+        kind = link["prediction"]
+        ek = link["event_key"] if isinstance(link["event_key"], str) else None
+        fair = None
+        if profile and ek and kind.startswith("race_"):
+            if ek not in runs:
+                runs[ek] = SG.latest_run(c, profile, ek)
+            if runs[ek]:
+                fair = data.model_prob(c, link, cache, run_id=runs[ek])[0]
+        mid = link["last_price"] if link["last_price"] is not None and not pd.isna(link["last_price"]) else None
+        # 24 h volume from the recorded tape (race-weekend markets); None where no tape is recorded
+        v24 = vol.get(link["condition_id"], 0.0) if kind.startswith("race_") else None
+        cl = call(profile, kind, fair, mid, v24) if profile else dict(action=None, why="")
+        subject = link["athlete"] or (link["params"].get("team") if isinstance(link["params"], dict) else None) \
+            or link["group_title"] or link["outcome"]
+        if kind == "race_h2h":
+            subject = f"{link['outcome']} ({link['question'].split(': ')[-1]})"
+        rows_.append(dict(link, subject=subject, mid=mid, call=cl, volume_24h=vol.get(link["condition_id"], 0.0),
+                          heat_label=SG.HEAT_LABEL.get(cl.get("heat")) if cl.get("heat") else None))
+    by_event = {}
+    for r in rows_:
+        by_event.setdefault(r["event_slug"], []).append(r)
+    events = [dict(slug=k, title=v[0]["event_title"], end_date=v[0]["end_date"], event_key=v[0]["event_key"],
+                   kind=v[0]["prediction"], rows=v, calls=sum(1 for r in v if r["call"].get("action")))
+              for k, v in by_event.items()]
+    sched = WS.schedule(now.year)
+    upcoming = [w for _, w in sorted(sched.items()) if w["race_start"].tz_localize("UTC") > now][:n_races]
+    try:
+        from racinglines.models.position_sim.pricing import upcoming_schedule
+        loc = dict(upcoming_schedule(now.year)[["round", "location"]].itertuples(index=False))
+    except Exception:                                   # noqa: BLE001  (offline: names only)
+        loc = {}
+    races = []
+    for w in upcoming:
+        evs = [e for e in events if e["event_key"] == w["event_key"]]
+        races.append(dict(name=w["name"], location=loc.get(int(w["event_key"].split("-")[1])), event_key=w["event_key"], start=w["race_start"], events=evs,
+                          priced=bool(profile and SG.latest_run(c, profile, w["event_key"]))))
+    shown = {e["slug"] for r in races for e in r["events"]}
+    season = [e for e in events if e["slug"] not in shown and e["kind"] in
+              ("champion", "constructors_champion", "season_wins_ge", "standings_h2h")]
+    other = [e for e in events if e["slug"] not in shown and e not in season]
+    synced = data.q(c, "SELECT max(synced_at) AS t FROM market_links WHERE exchange = 'polymarket'")["t"].iloc[0]
+    return dict(races=races, season=season, other=other, synced=synced, n_markets=len(rows_), maker=maker)
+
+
+@app.post("/book/markets/{market_id}/take", dependencies=[Depends(check_csrf)])
 def place_bet(request: Request, market_id: int, side: str = Form(...), stake: float = Form(...),
               quoted: float = Form(...), user=allow("taker")):
     """Taker bets at the current quote. If the maker repriced since the page was
@@ -737,7 +875,7 @@ def place_bet(request: Request, market_id: int, side: str = Form(...), stake: fl
         audit(request, "bet_rejected", market_id=market_id, side=side, stake=stake, reason=str(e))
         msg = f"Error: {e}"
     race_q = f"race_id={race_id}&" if race_id else ""
-    return RedirectResponse(f"/bet?{race_q}msg={msg}", status_code=303)
+    return RedirectResponse(f"/markets?{race_q}msg={msg}", status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -761,20 +899,26 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
         _record_failure(ip)
         U.log(get_engine(), None, "login_failed", request, username=username)
         return RedirectResponse(f"/login?next={next}&error=1", status_code=303)
-    U.log(get_engine(), user, "login", request)
-    default = {"admin": "/", "maker": "/", "taker": "/bet"}[user["role"]]
+    from racinglines.web import demo
+    sid = demo.new_sid()                           # a fresh session: a demo account starts from its baseline
+    U.log(get_engine(), user, "login", request, sid=sid, demo=demo.is_demo(user) or None)
+    default = "/markets"
     target = next if next.startswith("/") and not next.startswith("//") and next != "/" else default
     resp = RedirectResponse(target, status_code=303)
     expires = int(time.time()) + SESSION_HOURS * 3600
     https = request.headers.get("x-forwarded-proto") == "https" or request.url.scheme == "https"
-    resp.set_cookie(SESSION_COOKIE, _session_value(user["id"], expires), max_age=SESSION_HOURS * 3600,
+    resp.set_cookie(SESSION_COOKIE, _session_value(user["id"], expires, sid), max_age=SESSION_HOURS * 3600,
                     httponly=True, samesite="lax", secure=https)
     return resp
 
 
 @app.get("/logout")
 def logout(request: Request):
+    from racinglines.web import demo
     audit(request, "logout")
+    sid = _session(request.cookies.get(SESSION_COOKIE))[1]
+    if sid:
+        demo.reset(sid)
     resp = RedirectResponse("/login", status_code=303)
     resp.delete_cookie(SESSION_COOKIE)
     return resp
@@ -784,7 +928,7 @@ def logout(request: Request):
 # Polymarket page (/pm, makers/admin): every listed event, our fair values, mirror into my book
 # ---------------------------------------------------------------------------
 
-@app.get("/pm", response_class=HTMLResponse)
+@app.get("/markets/polymarket", response_class=HTMLResponse)
 def pm_board(request: Request, event: str = "", show: str = "modeled", closed: int = 0, spread_pct: float = 4.0,
              msg: str = "", c=Depends(conn), user=allow("admin", "maker")):
     links = data.q(c, """
@@ -794,6 +938,8 @@ def pm_board(request: Request, event: str = "", show: str = "modeled", closed: i
         ORDER BY ml.end_date NULLS LAST, ml.event_title, ml.last_price DESC NULLS LAST""", closed=closed, ev=event or None)
     mine = set(data.q(c, "SELECT market_link_id FROM house_markets WHERE maker_id = :u AND market_link_id IS NOT NULL",
                       u=user["id"])["market_link_id"].dropna().astype(int))
+    from racinglines.markets import alerts
+    fresh = alerts.new_links(c)
     cache, out = {}, []
     spread = spread_pct / 100
     for link in links.to_dict("records"):
@@ -803,7 +949,7 @@ def pm_board(request: Request, event: str = "", show: str = "modeled", closed: i
         link.update(fair=fair, edge=(fair - mid) if fair is not None and mid is not None else None,
                     q_bid=(math.floor(round((fair - spread / 2) / tick, 6)) * tick) if fair is not None else None,
                     q_ask=(math.ceil(round((fair + spread / 2) / tick, 6)) * tick) if fair is not None else None,
-                    mirrored=int(link["id"]) in mine,
+                    mirrored=int(link["id"]) in mine, new=link["token_id"] in fresh,
                     subject=link["athlete"] or (link["params"].get("team") if isinstance(link["params"], dict) else None)
                     or link["group_title"])
         if show == "modeled" and fair is None:
@@ -813,14 +959,14 @@ def pm_board(request: Request, event: str = "", show: str = "modeled", closed: i
     for slug, g in pd.DataFrame(out).groupby("event_slug", sort=False) if out else []:
         vol = g.drop_duplicates("market_slug")["volume"].fillna(0).sum()
         events.append(dict(slug=slug, title=g["event_title"].iloc[0], end_date=g["end_date"].iloc[0], volume=vol,
-                           modeled=int(g["fair"].notna().sum()), rows=rows(g.sort_values("last_price", ascending=False,
+                           modeled=int(g["fair"].notna().sum()), new=int(g["new"].sum()), rows=rows(g.sort_values("last_price", ascending=False,
                                                                                          na_position="last"))))
     synced = data.q(c, "SELECT max(synced_at) AS t FROM market_links WHERE exchange = 'polymarket'")["t"].iloc[0]
     return render(request, "pm.html", events=events, show=show, closed=closed, spread_pct=spread_pct, msg=msg,
                   synced=synced, event=event)
 
 
-@app.post("/pm/mirror", dependencies=[Depends(check_csrf)])
+@app.post("/markets/polymarket/mirror", dependencies=[Depends(check_csrf)])
 def pm_mirror(request: Request, event_slug: str = Form(...), spread_pct: float = Form(4.0), c=Depends(conn),
               user=allow("admin", "maker")):
     with get_session() as s:
@@ -828,22 +974,23 @@ def pm_mirror(request: Request, event_slug: str = Form(...), spread_pct: float =
     audit(request, "pm_mirror", event_slug=event_slug, spread=spread_pct / 100, created=created, repriced=repriced,
           skipped=skipped)
     msg = f"Mirrored into your book: {created} new, {repriced} repriced, {skipped} without a model price."
-    return RedirectResponse(f"/pm?spread_pct={spread_pct}&msg={msg}", status_code=303)
+    return RedirectResponse(f"/markets/polymarket?spread_pct={spread_pct}&msg={msg}", status_code=303)
 
 
-@app.post("/pm/sync", dependencies=[Depends(check_csrf)])
+@app.post("/markets/polymarket/sync", dependencies=[Depends(check_csrf)])
 def pm_sync(request: Request, c=Depends(conn), user=allow("admin", "maker")):
-    from racinglines.markets.polymarket.sync import sync
+    from racinglines.markets import alerts
     with get_session() as s:
-        stats = sync(s, c, date.today().year)
+        stats, groups, _ = alerts.sync_and_alert(s, c, date.today().year)
     settled = []
     if user["role"] == "admin":
         with get_session() as s, get_engine().connect() as c2:
             settled = house.settle_from_exchange(s, c2)
     audit(request, "pm_sync", **stats, settled=settled)
     msg = (f"Synced {stats['events']} events / {stats['links']} outcomes ({stats['modeled']} priced by the model)."
+           + (f" New: {', '.join(g['event_title'] for g in groups)}." if groups else "")
            + (f" Settled {len(settled)} mirrored markets from Polymarket." if settled else ""))
-    return RedirectResponse(f"/pm?msg={msg}", status_code=303)
+    return RedirectResponse(f"/markets/polymarket?msg={msg}", status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -853,7 +1000,7 @@ def pm_sync(request: Request, c=Depends(conn), user=allow("admin", "maker")):
 from racinglines.web import diag  # noqa: E402
 
 
-@app.get("/diag/{run_id}", response_class=HTMLResponse, dependencies=[allow("admin", "maker")])
+@app.get("/lab/diagnostics/{run_id}", response_class=HTMLResponse, dependencies=[allow("admin", "maker")])
 def diag_page(request: Request, run_id: int, msg: str = "", fill: str = "through", h: float = 0.02, size: float = 50,
               max_pos: float = 250, cap: float = 1000, skew: float = 1.0, disagree: float = 0.15, min_vol: float = 100,
               pull: int = 15, c=Depends(conn)):
@@ -886,19 +1033,21 @@ def diag_page(request: Request, run_id: int, msg: str = "", fill: str = "through
                   consts=dict(paper_edge=diag.PAPER_EDGE, paper_stake=diag.PAPER_STAKE))
 
 
-@app.post("/diag/{run_id}/example", dependencies=[Depends(check_csrf)])
+@app.post("/lab/diagnostics/{run_id}/example", dependencies=[Depends(check_csrf)])
 def diag_example(request: Request, run_id: int, fill: str = Form("through"), c=Depends(conn),
                  user=allow("admin", "maker")):
-    """Replay fills become the sample 'taker' account's bets on the sample 'maker' account's markets."""
+    """Replay fills become bets by the Polymarket-takers system account (not the demo taker) on the demo
+    'maker' account's markets."""
     with get_session() as s:
-        maker, taker = U.get_user(s, username="maker"), U.get_user(s, username="taker")
-        if maker is None or taker is None:
-            raise HTTPException(400, "needs the sample 'maker' and 'taker' accounts")
+        maker, taker = U.get_user(s, username="maker"), U.ensure_replay_taker(s)
+        if maker is None:
+            raise HTTPException(400, "needs the demo 'maker' account")
         out = diag.create_example(s, c, run_id, maker.id, _user_dict(taker), fill=fill)
     audit(request, "diag_example", run_id=run_id, **out)
-    return RedirectResponse(f"/diag/{run_id}?msg=Recorded {out['bets']} fills as taker bets on {out['markets']} markets",
+    return RedirectResponse(f"/lab/diagnostics/{run_id}?msg=Recorded {out['bets']} fills as Polymarket-taker bets on {out['markets']} markets",
                             status_code=303)
 
 
 from racinglines.web import admin  # noqa: E402,F401  (registers /admin routes)
 from racinglines.web import views  # noqa: E402,F401  (registers the board, race, season, book and lab pages)
+from racinglines.web import legacy  # noqa: E402,F401  (old page URLs redirect to the current routes; register last)

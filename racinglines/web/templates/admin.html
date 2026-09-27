@@ -2,7 +2,7 @@
 {% block title %}Admin{% endblock %}
 {% block content %}
 <h1>Admin</h1>
-<p><a href="/admin/activity">Activity log</a> · <a href="/admin/users">Users</a> · <a href="/admin/db">Database</a> · <a href="/admin/sql">SQL console</a> · <a href="/markets">Polymarket orders</a> · <a href="/orders">Order log</a> · <a href="/bet">Taker market board</a></p>
+<p><a href="/admin/activity">Activity log</a> · <a href="/admin/users">Users</a> · <a href="/admin/db">Database</a> · <a href="/admin/sql">SQL console</a> · <a href="/markets/linked">Polymarket orders</a> · <a href="/orders">Order log</a> · <a href="/markets">Taker market board</a></p>
 <div class="card"><b>{{ totals.markets }}</b> markets ({{ totals.open }} open) · <b>{{ totals.bets }}</b> taker bets · staked <b>${{ "%.2f"|format(totals.staked) }}</b>
  · takers' settled P&amp;L <b>${{ "%.2f"|format(totals.taker_pnl) }}</b> · makers' worst case <b class="bad">${{ "%.2f"|format(totals.worst) }}</b></div>
 <div class="card"><h2>Users</h2>

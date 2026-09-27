@@ -7,11 +7,12 @@ Three levels, fastest first:
 | | Command | Checks | Time | Needs |
 |---|---|---|---|---|
 | **Quick check** | `racinglines check` | 21 checks: every pipeline on synthetic data, every data source, the database | ~10 s | nothing downloaded; network and Postgres optional |
-| **Regression suite** | `python -m pytest -m "not live"` | 108 tests: every pipeline stage on pinned F1 and downhill fixtures, compared with golden outputs | ~10 s (+ a one-time fixture build) | Postgres and `scripts/fetch_test_fixtures.py` |
-| **Everything** | `python -m pytest` | 139 tests, adding smoke tests on the working database, the web app and roles | ~35 s | the working database |
+| **Regression suite** | `python -m pytest -m "not live"` | 174 tests: every pipeline stage on pinned F1 and downhill fixtures, compared with golden outputs | ~10 s (+ a one-time fixture build) | Postgres and `scripts/fetch_test_fixtures.py` |
+| **Everything** | `python -m pytest` | 221 tests, adding 47 live tests on the working database: the web app's pages per role, Baku live data, retention | ~35 s | the working database |
 
-- **No data in git:** fixtures are built locally from the public sources (FastF1,
-  ChronoRace, Polymarket). A guard test fails if anything data-like is tracked.
+- **No test data in git:** fixtures are built locally from the public sources (FastF1,
+  ChronoRace, Polymarket). A guard test fails if any data outside a small
+  allow-list is tracked.
 - **Results can't drift silently:** an intended change is re-baselined with
   `UPDATE_GOLDEN=1`.
 
@@ -50,16 +51,31 @@ UPDATE_GOLDEN=1 python -m pytest                       # re-baseline after an in
 
 ## No data in git
 
-Nothing data-shaped is committed:
+Nothing data-shaped is committed except the minimal allow-listed set cloud sweeps
+need (see [What's in git](data.md#whats-in-git)). Never committed:
 
-- raw downloads (FastF1, ChronoRace, Polymarket);
-- derived tables;
-- test fixtures;
-- golden baselines.
+- test fixtures and golden baselines;
+- downhill downloads, order books, run outputs, logs;
+- derived tables.
 
-`.gitignore` covers `data/`, `tests/fixtures/`, `tests/golden/` and data file
-types, and `tests/test_no_data_in_git.py` fails if anything data-like is tracked
-or about to be added.
+`.gitignore` covers `data/*` (then allow-lists `data/raw/f1`,
+`data/archive/markets/polymarket/{prices,trades,links}`, `data/archive/db` and
+`data/runs/search`), `tests/fixtures/`, `tests/golden/` and data file types.
+`tests/test_no_data_in_git.py` fails if anything data-like outside the allow-list
+is tracked or about to be added.
+
+## Pre-push hook
+
+`scripts/hooks/pre-push` runs before every push. Enable it once per clone with
+`git config core.hooksPath scripts/hooks`; skip it in an emergency with
+`git push --no-verify`. Steps, stopping at the first failure:
+
+1. `python scripts/build_readme.py --check`: `README.md` matches the docs.
+2. `python -m mkdocs build --strict`: the docs build with no warnings (broken links
+   and anchors fail). Needs `requirements-docs.txt`.
+3. `python -m pytest -q tests/test_no_data_in_git.py`: no data outside the allow-list.
+
+It uses `.venv/bin/python` when present, else `python3`.
 
 ## Fixtures: built locally from the public sources
 
@@ -94,8 +110,8 @@ pipeline:
   fixtures.
 - **Ingest tests** build `racinglines_test` from the migrations and never touch
   the live database (`TEST_DATABASE_URL` overrides).
-- **Live tests** read the live database and are marked `live`: page smoke
-  tests, Baku live-data checks, and the hot-token retention check.
+- **Live tests** read the live database and are marked `live` (47 tests): page
+  smoke tests, Baku live-data checks, and the hot-token retention check.
 
 ## Stages covered
 
@@ -140,3 +156,38 @@ change failed exactly the stages downstream of it:
 | Downhill half-life | 5 downhill stages |
 | Maker quoting spread | maker replay |
 | Taker trading cost | weekend trading |
+
+## Test files
+
+`tests/`, with the number of tests in each (`python -m pytest --co`):
+
+| File | Tests | What it covers |
+|---|---|---|
+| `test_alerts.py` | 11 | New-market alerts (`markets/alerts.py`): race matching, grouping, the message, the log. |
+| `test_baku.py` | 16 | Live: the 2026 Azerbaijan GP in the working database (diagnostic runs, Polymarket tape). |
+| `test_edge.py` | 8 | Edge Finder combo edits (`web/edge.py`); no database. |
+| `test_f1_car.py` | 4 | F1 model: the car is shared by teammates. |
+| `test_http.py` | 5 | Polite HTTP (`sources/http.py`): per-host pacing and retries, with a fake client. |
+| `test_marketstore.py` | 5 | Parquet market store: archive from Postgres, merged reads, dedupe (one live retention check). |
+| `test_no_data_in_git.py` | 2 | Guard: no data tracked or about to be, outside the allow-list. |
+| `test_pipeline_f1.py` | 13 | F1 regression suite: every stage on pinned fixtures against golden outputs. |
+| `test_pipeline_mtb.py` | 7 | Downhill regression suite: every stage on pinned fixtures against golden outputs. |
+| `test_practice.py` | 6 | Practice-pace prior: leakage and behaviour on the pinned F1 fixture. |
+| `test_quick.py` | 1 | The quick checks as a test (`racinglines check --offline --no-db`). |
+| `test_rebalance.py` | 8 | Weekend taker strategy (`taker_weekend.py`) on synthetic stages. |
+| `test_replay.py` | 41 | Maker replay (`maker_replay.py`) on synthetic tapes. |
+| `test_search.py` | 6 | Search queue (`pipelines/search.py`): parsing, the automatic baseline, job identity, command lines. |
+| `test_season_strategy.py` | 10 | Season-long strategy replay on synthetic markets. |
+| `test_signals.py` | 23 | Paper signals (`pipelines/signals.py`): heat, taker signals = the backtest taker's trades, maker quote state, stage truncation, idempotent storage, profiles. |
+| `test_sports.py` | 3 | Sport schemas (`sports/*.toml`) and the modules that read them. |
+| `test_story.py` | 4 | The demo maker's decision rules (`pipelines/story.py`) on synthetic evidence. |
+| `test_sweep_settings.py` | 9 | Sweep settings schema: defaults, validation, identity keys, command-line round trip, settings applied and restored. |
+| `test_variants.py` | 9 | Model variants and the comparison tools (paired ± 2 SE, reliability). |
+| `test_views.py` | 30 | Live: web app page smoke tests per role, and job-form validation. |
+
+Helpers: `conftest.py` (pinned inputs and the throwaway test database) and
+`golden.py` (golden-output comparison, `UPDATE_GOLDEN=1`).
+
+Replay-vs-sweep parity on a real weekend needs the full database and minutes of
+pricing, so it is a script, not a test: `scripts/signals_parity.py` (see
+[CLI](cli.md#scripts)).

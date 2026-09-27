@@ -57,12 +57,32 @@ def main(argv=None):
     p.add_argument("--years", default="2026,2025,2024,2023,2022,2021,2020")
     p.add_argument("--sessions", default="Q,S,R", help="Q,S,R and/or practice FP1,FP2,FP3,SQ")
     p.add_argument("--rounds", default=None, help="Only these rounds, e.g. 6-15")
+    p.add_argument("--sprints-from", type=int, default=None, help="Fetch sprint races from this season on (default 2026).")
     p.add_argument("--force", action="store_true")
     p = sub.add_parser("ingest")
     p.add_argument("--years", default="2020-2026")
     p.add_argument("--force", action="store_true")
     p = sub.add_parser("pm-sync")
     p.add_argument("--year", type=int, default=2026)
+    p.add_argument("--closed", action="store_true", help="Also every closed event of that year (e.g. a past season).")
+    p.add_argument("--alert", action="store_true", help="Notify about markets seen for the first time (markets/alerts.py).")
+    p = sub.add_parser("signals", help="Live paper signals of users' strategy profiles (pipelines/signals.py). "
+                                       "Recommendations only: never places an order.")
+    p.add_argument("--profile", default=None, help="Candidate id, name, or A / C (default: each user's own).")
+    p.add_argument("--user", nargs="*", default=None, help="Only these usernames.")
+    p.add_argument("--event", default="next", help="next (default), a round number, or YEAR-ROUND.")
+    p.add_argument("--asof", default=None, help="Replay at this UTC time (prints only; markets read at each "
+                                               "stage's cutoff, like the sweep).")
+    p.add_argument("--no-fetch", action="store_true", help="Don't refresh FastF1 / Polymarket data first.")
+    p.add_argument("--no-alert", action="store_true")
+    p = sub.add_parser("demo-history", help="Backfill the demo accounts' track record from backtest replays "
+                                            "(pipelines/demo_history.py).")
+    p.add_argument("--reset", action="store_true", help="Delete the existing backfill first.")
+    p.add_argument("--user", nargs="*", default=None, help="Only these demo accounts (maker, taker).")
+    sub.add_parser("profiles", help="List strategy profiles; create A / C as Lab candidates if missing.").add_argument(
+        "--assign-demo", action="store_true", help="Demo taker -> A, demo maker -> C.")
+    sub.add_parser("pm-links-export", help="Write market links to data/archive/markets/polymarket/links/ (stable keys).")
+    sub.add_parser("pm-links-import", help="Load that file into this database (no Polymarket access needed).")
     p = sub.add_parser("pm-history")
     p.add_argument("--events", nargs="+", required=True, help="Polymarket event slugs (or a prefix ending in %%).")
     p.add_argument("--start", required=True, help="UTC start, e.g. 2026-09-23T00:00")
@@ -76,6 +96,7 @@ def main(argv=None):
     p.add_argument("--minutes", type=int, default=0, help="Stop after this many minutes (0 = run until stopped).")
     p.add_argument("--sync-every", type=int, default=30, help="Re-sync Polymarket's F1 events every N minutes "
                                                               "so new race markets get recorded (0 = never).")
+    p.add_argument("--no-alerts", action="store_true", help="Don't notify about new markets found by the re-sync.")
     p.add_argument("--year", type=int, default=2026)
     p = sub.add_parser("pm-archive")
     p.add_argument("--hours", type=float, default=None,
@@ -87,14 +108,12 @@ def main(argv=None):
     p = sub.add_parser("sweep")
     p.add_argument("--year", type=int, default=2026)
     p.add_argument("--rounds", default=None, help="e.g. 1-15 (default: every raced round)")
-    p.add_argument("--sims", type=int, default=4000)
     p.add_argument("--no-fetch", action="store_true", help="Don't download Polymarket history/trades.")
+    p.add_argument("--fetch-only", action="store_true", help="Only download the season's Polymarket history/trades.")
     p.add_argument("--reprice", action="store_true", help="Re-price stages even if stored.")
-    p.add_argument("--min-edge", type=float, default=0.05)
-    p.add_argument("--stake-per-edge", type=float, default=250.0)
-    p.add_argument("--max-stake", type=float, default=50.0)
-    p.add_argument("--cost", type=float, default=0.01, help="$ per share per trade (spread + slippage)")
     p.add_argument("--save", action="store_true")
+    from racinglines.pipelines import sweep_settings as _SS
+    _SS.add_arguments(p.add_argument_group("settings (racinglines/pipelines/sweep_settings.py; default = baseline)"))
     p = sub.add_parser("season-strategy")
     p.add_argument("--year", type=int, default=2026)
     p.add_argument("--sims", type=int, default=5000)
@@ -115,6 +134,11 @@ def main(argv=None):
     p.add_argument("--sims", type=int, default=5000)
     p.add_argument("--save", action="store_true")
     p.add_argument("--out", default=None, help="Markdown file (default data/runs/f1/season_checkpoints.md)")
+    p = sub.add_parser("search")
+    p.add_argument("queue", help="Queue file, e.g. sweeps/poc.toml (re-read while running: edit it to steer)")
+    p.add_argument("--leaderboard", action="store_true", help="Only rewrite the leaderboard from state.json")
+    p = sub.add_parser("search-import")
+    p.add_argument("results", help="A search's results.json (e.g. from a cloud session)")
     p = sub.add_parser("replay")
     p.add_argument("--runs", required=True, help="Diagnostic run ids in time order, e.g. 11,9")
     p.add_argument("--sweep", action="store_true", help="Also sweep half-spread and fill rule.")
@@ -165,7 +189,8 @@ def _run(args):
     if args.cmd == "fetch":
         from racinglines.sources.fastf1 import fetch
         sys.argv = (["fetch", "--years", args.years, "--sessions", args.sessions] + (["--force"] if args.force else [])
-                    + (["--rounds", args.rounds] if args.rounds else []))
+                    + (["--rounds", args.rounds] if args.rounds else [])
+                    + (["--sprints-from", str(args.sprints_from)] if args.sprints_from else []))
         return fetch.main()
 
     from racinglines.db.config import get_engine, get_session
@@ -177,10 +202,67 @@ def _run(args):
         with get_session(args.db) as s:
             print("Done:", ingest(s, _years(args.years), force=args.force))
         return
+    if args.cmd in ("pm-links-export", "pm-links-import"):
+        from racinglines import paths
+        from racinglines.markets.polymarket import links as L
+        if args.cmd == "pm-links-export":
+            print(f"exported {L.export(engine)} market links -> {paths.rel(L.PATH)}")
+        else:
+            print(f"imported market links: {L.import_(engine)}")
+        return
+    if args.cmd == "demo-history":
+        from racinglines.pipelines import demo_history as DH
+        from racinglines.pipelines import profiles as PF
+        if args.reset:
+            print(f"deleted {DH.reset(engine, args.user or list(PF.HISTORY))} backfilled signals")
+        rep = DH.backfill(engine, args.db, usernames=args.user, echo=lambda m: print(m, flush=True))
+        for u in sorted({r[0] for r in rep}):
+            for y in ("2025", "2026"):
+                rs = [r for r in rep if r[0] == u and r[2].startswith(y)]
+                if rs:
+                    print(f"{u} {y}: {len(rs)} weekends, paper P&L {sum(r[4] for r in rs):+.2f}")
+        return
+    if args.cmd == "profiles":
+        from racinglines.pipelines import profiles as PF
+        with engine.begin() as c:
+            ids = PF.ensure_candidates(c)
+            if args.assign_demo:
+                print("assigned:", PF.assign_demo(c))
+            for code, i in ids.items():
+                print(f"{code}  candidate #{i}  {PF.PROFILES[code]['name']}")
+            for uid, name, role, prof in PF.assigned(c):
+                print(f"  user {name} ({role}) -> {prof['name']} (#{prof.get('candidate_id')})")
+        return
+    if args.cmd == "signals":
+        from racinglines.pipelines import signals as SG
+        if args.asof:
+            from racinglines.pipelines import profiles as PF
+            with engine.connect() as c:
+                profs = [PF.load(c, args.profile)] if args.profile else [
+                    p for _, n, _, p in PF.assigned(c) if not args.user or n in args.user]
+            for prof in profs:
+                out = SG.compute(engine, args.db, prof, now=args.asof, event=args.event, live=False,
+                                 fetch=not args.no_fetch, echo=lambda m: print(m, flush=True))
+                print(SG.format_replay(out))
+            return
+        rep = SG.run_all(engine, args.db, users=args.user, profile_ref=args.profile, event=args.event,
+                         fetch=not args.no_fetch, alert=not args.no_alert, echo=lambda m: print(m, flush=True))
+        if not rep:
+            print("no user has a strategy profile (racinglines f1 profiles --assign-demo)")
+        return
     if args.cmd == "pm-sync":
         from racinglines.markets.polymarket.sync import sync
         with engine.connect() as c, get_session(args.db) as s:
-            print(sync(s, c, args.year))
+            if args.alert:
+                from racinglines.markets import alerts
+                stats, groups, used = alerts.sync_and_alert(s, c, args.year, include_closed=args.closed)
+                print(stats)
+                for g in groups:
+                    print(f"  new: {g['event_title']} ({g['n']} outcomes{', upcoming race' if g['upcoming'] else ''})")
+                if groups:
+                    print(f"  alerted via {', '.join(used)}")
+            else:
+                print(sync(s, c, args.year, include_closed=args.closed))
         return
     if args.cmd == "pm-archive":
         from datetime import timedelta
@@ -226,7 +308,15 @@ def _run(args):
             try:
                 if args.sync_every and time.time() - last_sync >= args.sync_every * 60:
                     with engine.connect() as c, get_session(args.db) as s:
-                        print(f"{datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} sync {sync(s, c, args.year)}", flush=True)
+                        if args.no_alerts:
+                            st, groups, used = sync(s, c, args.year), [], []
+                        else:
+                            from racinglines.markets import alerts
+                            st, groups, used = alerts.sync_and_alert(s, c, args.year)
+                        print(f"{datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} sync {st}", flush=True)
+                        for g in groups:
+                            print(f"    new: {g['event_title']} ({g['n']} outcomes"
+                                  f"{', upcoming race' if g['upcoming'] else ''}) -> {', '.join(used)}", flush=True)
                     last_sync = time.time()
                 ev = slugs(args.events) or None
                 with engine.connect() as c, get_session(args.db) as s:
@@ -282,6 +372,24 @@ def _run(args):
                                  decisions=[dict(d, t=str(d["t"])) for d in out["decisions"]]))
             print(f"Saved season strategy run {run_id}.")
         return
+    if args.cmd == "search":
+        import json as _json
+        from datetime import datetime, timezone
+
+        from racinglines import paths
+        from racinglines.pipelines import search as SR
+        if args.leaderboard:
+            cfg, _, _ = SR.load(args.queue)
+            out = paths.runs("search", cfg["name"])
+            SR.write_outputs(out, _json.loads((out / "state.json").read_text()), args.queue,
+                             echo=lambda m: print(m, flush=True))
+            return
+        SR.run(args.queue, echo=lambda m: print(f"{datetime.now(timezone.utc):%H:%M:%S} {m}", flush=True))
+        return
+    if args.cmd == "search-import":
+        from racinglines.pipelines import search as SR
+        SR.import_results(args.results, args.db)
+        return
     if args.cmd == "season-checkpoints":
         from racinglines import paths
         from racinglines.pipelines import season_checkpoints as SC
@@ -311,17 +419,18 @@ def _run(args):
             print(f"Saved season checkpoints run {run_id}.")
         return
     if args.cmd == "sweep":
-        from racinglines.markets.strategies.taker_weekend import TakerParams
-
+        from racinglines.pipelines import sweep_settings as SS
         from racinglines.pipelines import weekend_sweep as SW
-        if args.half_life:
-            from racinglines.models.position_sim import model as M_
-            M_.HALF_LIFE_DAYS = args.half_life
+        if args.half_life and args.half_life_days is None:              # the older global flag
+            args.half_life_days = args.half_life
+        settings = SS.from_args(args)
         rounds = _years(args.rounds) if args.rounds else None
-        taker = TakerParams(min_edge=args.min_edge, stake_per_edge=args.stake_per_edge, max_stake=args.max_stake,
-                            cost=args.cost)
-        out = SW.run_sweep(engine, args.db, args.year, rounds, n_sims=args.sims, fetch=not args.no_fetch,
-                           reprice=args.reprice, taker=taker, variant=args.variant, echo=lambda m: print(m, flush=True))
+        if args.fetch_only:
+            with engine.connect() as c, get_session(args.db) as s:
+                SW.fetch_market_data(s, c, SW.schedule(args.year, rounds), echo=lambda m: print(m, flush=True))
+            return
+        out = SW.run_sweep(engine, args.db, args.year, rounds, fetch=not args.no_fetch, reprice=args.reprice,
+                           settings=settings, echo=lambda m: print(m, flush=True))
         w = out["weekends"]
         cols = [c for c in ["event_key", "event", "format", "stages", "tradeable_pre", "tradeable_quali",
                             "update_trades", "update_bought", "update_pnl", "hold_pnl", "last_pnl", "maker_fills",
@@ -346,8 +455,7 @@ def _run(args):
             from racinglines.db.queries import save_model_run
             with get_session(args.db) as s:
                 run_id = save_model_run(s, competition="f1_wdc", season=args.year, category="DRV", model="f1_sector_sim",
-                                        kind="sweep", params=dict(out["params"], year=args.year, rounds=args.rounds,
-                                                                  variant=args.variant),
+                                        kind="sweep", params=dict(out["params"], year=args.year, rounds=args.rounds),
                                         metrics=dict(weekends=records(w), totals=out["totals"],
                                                      by_stage=records(out["by_stage"]), by_kind=records(out["by_kind"]),
                                                      scores=records(out["scores"])))

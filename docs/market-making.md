@@ -8,6 +8,7 @@ event in depth, then on a whole season.
 | [Baku diagnostic](#baku-2026-09-26-first-test-event) | One race priced as of every moment, with a maker replay on the minute-level tape | Maker −$303 at default settings |
 | [Season sweep](#season-sweep) | All 15 raced 2026 weekends, re-priced after every session | **Maker +$751**; taker strategies −$479 to +$214 |
 | [Model × strategy matrix](#model-strategy-matrix) | Every model variant × every trading strategy | Weekends: `gridq+pretrain+reset` makes money with every taker and maker default (+$933); titles: every model loses |
+| [Cloud settings search](#cloud-settings-search-params-4h) | 291 sweeps of settings on the 9 variants, 2026 and 2025 held out | Two profiles robust in both seasons: taker A +$1,232 / +$1,237, maker C +$653 / +$835 |
 | [Season strategy](#season-strategy-championship-markets) | Championship markets, rebalanced after every race | −$208 (hold: −$532) |
 
 ## How the market works
@@ -107,10 +108,12 @@ Results are broken down by pricing stage and market type. The report also shows
 why markets weren't quoted and a sweep of half-spread × fill rule × disagreement
 filter.
 
-**Sample taker.** On the diagnostic page, *Record the replay's fills* writes each
-fill as a bet by the sample `taker` account on the sample `maker`'s in-app
-market. The `taker` account stands in for Polymarket's takers, so taker P&L is
-exactly the maker's P&L reversed.
+**Polymarket's takers in the app.** On the diagnostic page (`/lab/diagnostics/{id}`), *Record the replay's
+fills* writes each fill as a bet by the `polymarket-takers` system account (no
+login) on the demo `maker`'s in-app market. That account stands in for the
+Polymarket traders whose real trades filled the replayed maker, so its P&L is
+exactly the maker's P&L reversed. It is **not** the demo `taker` account, which
+paper trades its own strategy (see [Web app](webapp.md#accounts-demo-users-vs-polymarkets-takers)).
 
 ## Baku, 2026-09-26 (first test event)
 
@@ -396,6 +399,55 @@ Runs: baseline backtest 193 / sweep 574 / season 515; `gridq` 347 / 655 / 515;
 / 549; `gbm` 665 / 741 / 663; `reset` 837 / 867 / 851; `gridq+pretrain+reset` 854 / 943 / 866. The plain `grid` variant (the term at every stage, 194 / 647 / 566) gets
 the same after-quali gains but costs accuracy before quali, so `gridq` replaces
 it.
+
+## Cloud settings search (params-4h)
+
+A 4-hour [cloud search](cloud-sweep.md#the-params-4h-search) (2026-09-27) of **settings only**, on the 9
+existing model variants × the 9 existing strategies: no new variants, strategies or model code. Each
+2026 finding was checked on 2025 (23 weekends, "live from the first race") before it counted. Per-event
+race markets only; championship markets were out of scope. Report and data:
+`data/runs/search/params-4h/`.
+
+- **291 season sweeps** (0 failures), 2,619 strategy backtests, 1,161 distinct 2026 strategy × settings
+  combos.
+- **Held fixed** as realism guards, never tuned: the 1¢-per-share cost, the conservative *through* fill
+  rule, and the $50 floor on 24 h volume.
+- **Noise floor:** re-running the same combo at 8k and 16k simulations moves a season's P&L by about
+  ±$150 for takers and ±$350 for makers. Smaller differences aren't evidence.
+
+**What held in both seasons (robust):**
+
+- **`min_edge` 0.05 → 0.10:** act only on edges of 10 points or more.
+- **Skip the pre-weekend stage:** takers trade after FP1 at the earliest.
+
+**The two recommended profiles** (now [strategy profiles](paper-trading.md#strategy-profiles)):
+
+| Profile | Setup | 2026 (15 weekends) | 2025 (23 weekends) |
+|---|---|---|---|
+| **A · core taker** | Update taker, `gridq+pretrain+reset`, `min_edge` 0.10, no pre-weekend stage | +$1,232 (Sharpe 1.53, max DD $249) | +$1,237 (1.35, $306) |
+| **C · maker sleeve** | Conservative maker, `gbm`, `max_disagree` 0.05, `size` 25 | +$653 (1.78, $279) | +$835 (1.63, $176) |
+| **A + C** | Both | +$1,885 | +$2,072 |
+
+- **A and C are nearly uncorrelated:** weekly P&L correlation −0.03 (2026) and 0.18 (2025).
+- **Noise replicates** (7 simulation counts, 3k to 20k): A +$1,270 ± 67 (2026) and +$1,020 ± 149 (2025);
+  C +$717 ± 72 and +$881 ± 63. Neither goes negative in any replicate.
+- **`gbm` is the only model whose makers make money in both seasons.** C's 2026 P&L matches the default
+  maker's rather than beating it; the case for it is 2025, where the default maker loses.
+- **Head-to-head at 5 points.** Profile A adds `min_edge_h2h` 0.05 (for A, head-to-head was the one
+  market kind that earned in both seasons). With it, A makes +$1,242.9 in 2026 and +$1,363.2 in 2025 (computed
+  locally, not by the search).
+
+**Rejected:**
+
+| Change | Why |
+|---|---|
+| Loosen the $50 volume filter | Looks like +$3k to +$7k, but it's a thin-market artifact: fills at stale prices |
+| Double the stakes | Leverage, not edge: it doubles the 2025 loss too |
+| Stop taking before FP3 | Works only in 2026 |
+| Hold strategies | Lose in 2025 |
+
+Live paper trading of A and C, and how it's checked against these numbers, is in
+[Paper trading](paper-trading.md).
 
 ## Season strategy (championship markets)
 

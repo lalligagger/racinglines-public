@@ -59,6 +59,13 @@ MODEL_CHOICES = ["baseline", "grid", "gridq", "pretrain", "gbm", "tail", "reset"
                  "pretrain+reset", "gridq+pretrain+reset", "gridq+pretrain+tail"]
 
 
+def _sweep_argv(p):
+    from racinglines.pipelines import sweep_settings as SS
+    st = SS.Settings.from_dict(p.get("settings") or {})
+    return ["-m", "racinglines", "f1", "--variant", st["variant"], "sweep", "--year", str(p.get("year", 2026)),
+            "--no-fetch", "--save", *st.argv()]
+
+
 def _f1_common(p):
     return ["-m", "racinglines", "f1", "--half-life", str(p["half_life"])]
 
@@ -94,22 +101,14 @@ CATALOG = {j.code: j for j in [
                                             "--sims", str(p["sims"]), "--save"]
             + (["--no-track"] if p["track"] == "off" else []),
             "~1 min"),
-    JobType("f1_sweep", "f1", "Edge Finder sweep (trade every weekend)", "Every raced weekend of the season, "
-            "priced with the chosen model before any running and after each session, then traded on Polymarket by "
-            "every taker and maker strategy and settled on the result. Adds that model's strategies to the Edge "
-            "Finder. Stages already priced with that model are reused.",
-            [Knob("variant", "Model", "choice", "baseline", choices=MODEL_CHOICES,
-                  help="Model variant (docs: Formula 1 > Model variants). Combos join with +."),
-             Knob("min_edge", "Min edge to act (prob.)", "float", 0.05, 0.01, 0.5),
-             Knob("stake_per_edge", "Stake per unit edge ($)", "float", 250, 10, 5000,
-                  help="Target cost = this x edge, e.g. 250 x 0.10 = $25."),
-             Knob("max_stake", "Max stake per market ($)", "float", 50, 1, 5000),
-             Knob("cost", "Cost per share per trade ($)", "float", 0.01, 0, 0.1)],
-            lambda p, out: ["-m", "racinglines", "f1", "--variant", p.get("variant") or "baseline", "sweep", "--no-fetch",
-                            "--save", "--min-edge", str(p["min_edge"]),
-                            "--stake-per-edge", str(p["stake_per_edge"]), "--max-stake", str(p["max_stake"]),
-                            "--cost", str(p["cost"])],
-            "~1-2 min once stages are priced"),
+    JobType("f1_sweep", "f1", "Edge Finder sweep (every weekend of the season)", "Every raced weekend of the "
+            "season, priced with these settings before any running and after each session, then traded on "
+            "Polymarket by every taker and maker strategy and settled on the result. The run joins the Edge Finder. "
+            "Stages already priced with the same model settings and data are reused.",
+            [Knob("year", "Season", "choice", "2026", choices=["2026", "2025"]),
+             Knob("settings", "Settings", "sweep_settings", None)],
+            lambda p, out: _sweep_argv(p),
+            "a few minutes per season (GBM longer)"),
     JobType("f1_season_strategy", "f1", "Season strategy (championships)", "Replay the default championship-market "
             "strategy through the season on Polymarket's recorded prices: as-of season forecasts pre-season and after "
             "every race, rebalance, settle eliminated markets, mark the rest. Forecasts already computed are reused.",
@@ -147,6 +146,9 @@ def parse(job_type, form):
     """Validate a submitted form against the job's knobs. Returns params or raises ValueError."""
     out = {}
     for k in job_type.knobs:
+        if k.type == "sweep_settings":                 # every field of the sweep settings schema
+            out[k.name] = parse_sweep_settings(form)
+            continue
         raw = (form.get(k.name) or "").strip()
         if raw == "" and k.default is not None:
             raw = str(k.default)
@@ -172,6 +174,31 @@ def parse(job_type, form):
                 raise ValueError(f"{k.label}: letters, numbers and spaces, up to 60 characters")
             out[k.name] = raw
     return out
+
+
+def parse_sweep_settings(form):
+    """{name: value} of the settings that differ from the defaults (validated), from the Lab form: one
+    field per setting; booleans are checkboxes (with a hidden 'false' before each), multi-choice
+    settings are checkbox groups."""
+    from racinglines.pipelines import sweep_settings as SS
+    getlist = form.getlist if hasattr(form, "getlist") else (
+        lambda k: [] if form.get(k) in (None, "") else (form[k] if isinstance(form[k], list) else [form[k]]))
+    d = {}
+    for s in SS.SETTINGS:
+        if s.type == "multi":
+            if form.get(f"{s.name}__present") is None:
+                continue
+            d[s.name] = [v for v in getlist(s.name) if v]
+        elif s.type == "bool":
+            vals = getlist(s.name)
+            if vals:
+                d[s.name] = "true" in vals
+        else:
+            raw = (form.get(s.name) or "").strip()
+            if raw != "":
+                d[s.name] = raw
+    st = SS.Settings.from_dict(d)
+    return {k: (list(v) if isinstance(v, tuple) else v) for k, v in st.changed().items()}
 
 
 def submit(job_type, params, user_id):

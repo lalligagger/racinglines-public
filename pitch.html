@@ -107,6 +107,22 @@
   .ui-input { border: 1px solid var(--line); border-radius: 6px; padding: 1px 8px; background: var(--surface); }
   .ui-cta { margin-top: 12px; text-align: center; background: var(--good); color: #fff; font-weight: 700; border-radius: 10px; padding: 10px; }
   .ui-fine { font-size: 12px; color: var(--muted); margin-top: 12px; line-height: 1.45; }
+  .stats-sm .stat { font-size: clamp(26px, 2.6vw, 38px); }
+  .stats-sm .stat small { display: block; margin-top: 4px; }
+  .shot { display: block; width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--line); box-shadow: var(--shadow); }
+  .shot.cap { width: auto; max-width: 100%; max-height: 31vh; }
+  .split { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .endpoints { margin-top: 4px; }
+  .endpoints .axis { display: flex; justify-content: space-between; font: 600 12px "JetBrains Mono", monospace; color: var(--muted);
+                     text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+  .endpoints .track { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1fr); gap: 12px; align-items: stretch;
+                      background: linear-gradient(90deg, var(--chart-base), var(--accent)); padding: 3px; border-radius: 16px; }
+  .endpoints .end, .endpoints .between { background: var(--surface); border-radius: 13px; padding: 16px; }
+  .endpoints .end b { display: block; color: var(--ink); font-size: 18px; margin-bottom: 6px; }
+  .endpoints .end span { font-size: 14px; color: var(--muted); line-height: 1.4; }
+  .endpoints .end.right b { color: var(--accent); }
+  .endpoints .between { display: flex; flex-wrap: wrap; gap: 8px; align-content: center; justify-content: center; background: var(--bg); }
+  .endpoints .between span { font-size: 13.5px; font-weight: 600; color: var(--ink); border: 1px dashed var(--line); border-radius: 999px; padding: 6px 12px; background: var(--surface); }
   /* chrome */
   .chrome { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; align-items: center;
             background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 6px 8px; box-shadow: var(--shadow); z-index: 10; }
@@ -133,7 +149,7 @@
   @media print { .gh { display: none; } }
   @media (max-width: 860px) {
     body { overflow: auto; }
-    .g2, .g3, .g4, .flow, .ui { grid-template-columns: 1fr; }
+    .g2, .g3, .g4, .flow, .ui, .split, .endpoints .track { grid-template-columns: 1fr; }
     .flow .step:not(:last-child)::after { content: "↓"; right: auto; left: 50%; top: auto; bottom: -14px; transform: translateX(-50%); }
     .bar-row { grid-template-columns: 1fr; }
     .slide { justify-content: flex-start; padding-top: 64px; padding-bottom: 90px; }
@@ -149,7 +165,7 @@
 <body>
 <div class="progress" id="progress"></div>
 <div class="brand"><b>racing</b>lines</div>
-<a class="close" href="/" aria-label="Close pitch and return to racinglines" title="Close pitch">×</a>
+<a class="close" href="/markets" aria-label="Close pitch and return to racinglines" title="Close pitch">×</a>
 <a class="gh" href="https://github.com/lalligagger/racinglines" target="_blank" rel="noopener" aria-label="racinglines on GitHub" title="racinglines on GitHub"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
 
 <main class="deck" id="deck">
@@ -157,372 +173,241 @@
 <!-- 1. Title -->
 <section class="slide">
   <div class="kicker">racinglines · Pitch · September 2026</div>
-  <h1>Betting markets for<br><span class="accent">niche race sports.</span></h1>
-  <p class="lead" style="margin-top:28px">We turn official race timing into fair odds, and give people the tools to offer bets on
-    races that no betting site covers yet. We're starting with downhill mountain biking's World Cup.</p>
+  <h1 style="font-size:clamp(34px, 4.6vw, 64px)">An edge in race-sport prediction markets,<br><span class="accent">from Formula 1 to the downhill World Cup.</span></h1>
+  <p class="lead" style="margin-top:28px">We turn official race timing into fair odds, priced strictly as of each session, and build the tools that help
+    traders find and size an edge inside the existing markets, starting with Polymarket's F1 markets. Downhill is priced and waiting for a market.</p>
   <div class="grid g3" style="margin-top:34px">
-    <div class="card"><h3>💰 What we sell</h3><p>Odds, data and market-making tools for sports the big platforms ignore.</p></div>
-    <div class="card"><h3>🚵 First sport</h3><p>UCI Downhill World Cup, with 6 seasons of every run and split already modelled.</p></div>
-    <div class="card"><h3>📍 Where we are</h3><p>A working model, a quoting and betting tool, and a <a href="/house">live book</a> for this weekend's <a href="/events/by-key/20260925_mtb">Whistler race</a>.</p></div>
+    <div class="card"><h3>What we do</h3><p>Tools for makers and takers on Polymarket: calls with heat ratings, quotes, alerts, an Edge Finder, all driven by as-of race models tested on every real price and trade.</p></div>
+    <div class="card"><h3>Where we are</h3><p>Two robust strategies found by a 1,161-combination search. Live paper trading on Polymarket from the <strong>4 Oct 2026</strong> race through 2027.</p></div>
+    <div class="card"><h3>How we earn</h3><p>The tools, for traders who want an edge; <strong>B2B sales</strong> of the prediction models and pricing; and trading ourselves once paper trading validates the backtests.</p></div>
   </div>
 </section>
 
-<!-- 2. Problem -->
+<!-- 2. Strategy: the endpoints -->
 <section class="slide">
-  <div class="kicker">The problem</div>
-  <h2>Prediction markets stop where the big leagues stop.</h2>
-  <div class="grid g3">
-    <div class="card"><span class="tag">No markets</span><h3>Niche sports go unlisted</h3>
-      <p>On race weekend for UCI Downhill World Cup Round 8 (Whistler, 26 Sep 2026), Polymarket had <strong>zero</strong> markets for
-      "downhill", "Whistler DH", "Crankworx" or "UCI downhill".</p></div>
-    <div class="card"><span class="tag">No pricing</span><h3>Exchanges won't list what they can't price</h3>
-      <p>Listing a market needs someone to make an opening price and hold inventory. For niche sports no one has the model, the data pipeline, or the settlement feed.</p></div>
-    <div class="card"><span class="tag">Wasted knowledge</span><h3>The people with an edge have no venue</h3>
-      <p>Fans, team staff, media and data nerds know these sports deeply. Today their only outlet is private bets between friends.</p></div>
+  <div class="kicker">Where we play</div>
+  <h2>Two endpoints: Formula 1 and the downhill World Cup.</h2>
+  <div class="endpoints">
+    <div class="axis"><span>smaller audience · thinner markets</span><span>bigger audience · deeper markets</span></div>
+    <div class="track">
+      <div class="end left"><b>UCI Downhill World Cup</b><span>Modelled: 6 seasons, 43 rounds backtested. No exchange lists it yet.</span></div>
+      <div class="between">
+        <span>XC / enduro</span><span>alpine ski WC</span><span>road cycling</span><span>Formula E</span><span>IndyCar</span><span>WEC / Le Mans</span><span>MotoGP</span>
+      </div>
+      <div class="end right"><b>Formula 1</b><span>Liquid Polymarket race markets: win, podium, head-to-head, pole, constructors. Traded in paper now.</span></div>
+    </div>
+  </div>
+  <div class="grid g3" style="margin-top:22px">
+    <div class="card"><h3>The rule</h3><p>A new sport qualifies when its audience and expected market liquidity sit <strong>between the two endpoints</strong>. Nothing smaller than the downhill World Cup; F1 is the ceiling we already trade against.</p></div>
+    <div class="card"><h3>The test for each candidate</h3><p>Official timing data we can get, exchange listings (or a clear path to them), and a model that fits the race format.</p></div>
+    <div class="card"><h3>Why both ends</h3><p>F1 proves the trading edge on a deep market. Downhill proves the model on a sport nobody else prices, ready the day a market lists it, and sellable B2B before then.</p></div>
   </div>
 </section>
 
-<!-- 3. Insight -->
+<!-- 3. The edge -->
 <section class="slide">
-  <div class="kicker">The insight</div>
-  <h2>The bottleneck is liquidity, and liquidity comes from pricing.</h2>
-  <div class="grid g2">
-    <div class="card"><h3>Market makers need three things</h3>
-      <ul><li><strong>A fair price</strong> they trust, updated as the weekend unfolds</li>
-          <li><strong>Risk tools</strong>: spread, size caps, exposure and P&amp;L</li>
-          <li><strong>Clean settlement</strong> from official results</li></ul></div>
-    <div class="card"><h3>All three come from data and software</h3>
-      <p>Timed sports publish rich official data: every run and every split, with DNFs, DSQs and qualifying structure.
-        With a proper pipeline and model, <strong>anyone can become a market maker</strong> in a sport they know.</p></div>
+  <div class="kicker">The edge</div>
+  <h2>Markets move after every session. Our tools move with them, on what's known.</h2>
+  <div class="split">
+    <img class="shot" src="/static/pitch/race-azerbaijan.jpg" alt="Azerbaijan GP 2026: Polymarket price against our fair value through the weekend, and the win market">
+    <div class="grid" style="gap:14px">
+      <div class="card"><h3>Priced as of each session</h3><p>Only sessions that have ended feed the price; a leakage guard enforces it. Backtests, the signal engine and the live forecast call the same function.</p></div>
+      <div class="card"><h3>Tested on the real tape</h3><p>Every Polymarket F1 race market since the markets began (2025–26): minute prices and every trade. Maker fills only when a real trade crosses our quote.</p></div>
+      <div class="card"><span class="tag good">The goal</span><p>Not to out-predict the whole market, which on race winners is about as sharp as the model. It's to find the few markets where the price is off, size them sensibly, and quote where it's safe: head-to-head markets made money in both seasons.</p></div>
+    </div>
   </div>
 </section>
 
-<!-- 4. What we built -->
+<!-- 4. What exists -->
 <section class="slide">
   <div class="kicker">Proof, not slides</div>
   <h2>What already exists and runs today.</h2>
   <div class="grid g4">
-    <div class="card"><div class="stat">6<small> seasons</small></div><div class="label">UCI DH World Cup 2021–2026, Men Elite + Junior, parsed from official ChronoRace timing</div></div>
-    <div class="card"><div class="stat">88k<small> rows</small></div><div class="label">18,761 results and 69,472 split times in PostgreSQL. 1,126 athletes matched across seasons</div></div>
-    <div class="card"><div class="stat">43<small> rounds</small></div><div class="label">walk-forward backtest: every race predicted using only data from before it</div></div>
-    <div class="card"><div class="stat">75<small> markets</small></div><div class="label">Whistler house book quoted from the model, hours after the data was published</div></div>
+    <div class="card"><div class="stat">129<small> races</small></div><div class="label">F1 backtested 2021–Baku 2026, each priced before practice, before qualifying and after qualifying</div></div>
+    <div class="card"><div class="stat">38<small> weekends</small></div><div class="label">every Polymarket F1 race weekend of 2025 and 2026, replayed on the real prices and trades</div></div>
+    <div class="card"><div class="stat">1,161<small> combos</small></div><div class="label">model × strategy × settings combinations searched in the cloud, each checked on both seasons</div></div>
+    <div class="card"><div class="stat">43<small> rounds</small></div><div class="label">UCI downhill World Cup walk-forward backtest, 2021–2026</div></div>
   </div>
   <div class="flow" style="margin-top:22px">
-    <div class="step"><b>Ingest</b><span>Event discovery + official timing download; idempotent load into a multi-sport schema</span></div>
-    <div class="step"><b>Model</b><span>Rider pace, weekend form, crash/DNF rates; simulates every qualifying format since 2021</span></div>
-    <div class="step"><b>Forecast</b><span>Win, podium, top 10, make the Final, points and title odds per rider</span></div>
-    <div class="step"><b>Quote</b><span>Fair ± spread, YES/NO both sides, exposure and EV, post-only exchange orders</span></div>
-    <div class="step"><b>Settle</b><span>Automatic from official Final results; audit trail of every quote and bet</span></div>
+    <div class="step"><b>Ingest</b><span>FastF1 sessions since 2020, downhill split timing, Polymarket prices, trades and books</span></div>
+    <div class="step"><b>Model</b><span>F1: shared car + driver pace, practice prior, grid-aware finishing. DH: rider pace, form, crash rates</span></div>
+    <div class="step"><b>Price</b><span>Win, podium, top 10, pole, head-to-head, constructors, championships, re-priced after each session</span></div>
+    <div class="step"><b>Trade</b><span>Maker quotes and taker calls with heat ratings; paper fills, positions and alerts</span></div>
+    <div class="step"><b>Settle</b><span>From official results; every price, signal and fill stored with its inputs</span></div>
   </div>
 </section>
 
 <!-- 5. Model quality -->
 <section class="slide">
   <div class="kicker">Does the pricing hold up?</div>
-  <h2>Backtested on 43 rounds. Honest about where it's strong.</h2>
+  <h2>Accurate where it matters, and measured against the right baselines.</h2>
   <div class="grid g2" style="align-items:start">
     <div class="card">
-      <h3>Error vs a uniform guess (lower is better)</h3>
+      <h3>F1, after qualifying: error vs a grid-only guess (Brier, lower is better)</h3>
       <div class="bars">
-        <div class="bar-row"><div class="name">Makes the Final</div><div class="bar-track">
-          <div class="bar model" style="width:62%">0.127</div><div class="bar base" style="width:100%">0.204</div></div></div>
+        <div class="bar-row"><div class="name">Top 10</div><div class="bar-track">
+          <div class="bar model" style="width:91%">0.149</div><div class="bar base" style="width:100%">0.163</div></div></div>
         <div class="bar-row"><div class="name">Podium</div><div class="bar-track">
-          <div class="bar model" style="width:86%">0.0224</div><div class="bar base" style="width:100%">0.0259</div></div></div>
+          <div class="bar model" style="width:98%">0.0691</div><div class="bar base" style="width:100%">0.0708</div></div></div>
         <div class="bar-row"><div class="name">Win</div><div class="bar-track">
-          <div class="bar model" style="width:93%">0.0082</div><div class="bar base" style="width:100%">0.0088</div></div></div>
+          <div class="bar model" style="width:99%">0.0306</div><div class="bar base" style="width:100%">0.0309</div></div></div>
       </div>
-      <div class="legend"><span><i style="background:var(--accent)"></i>Model (Brier score)</span><span><i style="background:var(--chart-base)"></i>Uniform baseline</span></div>
+      <div class="legend"><span><i style="background:var(--accent)"></i>Model</span><span><i style="background:var(--chart-base)"></i>Grid-only guess</span></div>
+      <p class="note" style="margin-top:12px">129 races, 2021 to Baku 2026. Podium and win: the grid-aware model; top 10: the baseline.</p>
     </div>
     <div class="grid" style="gap:14px">
-      <div class="card"><div class="stat">7.1%<small> vs ~1%</small></div><div class="label">average win probability the model gave the rider who actually won</div></div>
-      <div class="card"><div class="stat">0.87–0.96</div><div class="label">rank correlation between predicted and actual championship standings with two rounds left</div></div>
-      <div class="card"><span class="tag warn">Known limit</span><p>Race winners in downhill are close to random. We quote winners wide and lean on
-        <strong>make-the-Final, podium and season markets</strong>, where the edge is real.</p></div>
+      <div class="card"><div class="stat">Close to the market</div><div class="label">race-winner Brier, all stages: the model 0.0754 against Polymarket's 0.0771 in 2026, 0.0566 against 0.0495 in 2025. Close is the point: the tools act only where the gap is large</div></div>
+      <div class="card"><div class="stat">0.127<small> vs 0.204</small></div><div class="label">downhill: error on who makes the Final, against a uniform guess (43 rounds); the winner got 7.1% on average against ~1%</div></div>
+      <div class="card"><span class="tag warn">Known limit</span><p>Race winners after qualifying (Polymarket sharper), and downhill winners (close to random). We lean on the markets where the edge is real.</p></div>
     </div>
   </div>
-  <p class="note">Walk-forward backtest, 2021–2026 Men Elite, each round predicted only from earlier data. Points-based metrics use placeholder UCI points tables until they're validated.</p>
 </section>
 
-<!-- 6. Vision -->
+<!-- 6. Cloud search: executive summary -->
 <section class="slide">
-  <div class="kicker">The vision</div>
-  <h2>An exchange where users are the market makers.</h2>
-  <div class="grid g3">
-    <div class="card"><span class="tag">Makers</span><h3>Anyone can open a book</h3>
-      <p>Pick an event and a market type. We suggest a fair price and you set the spread. Your quotes go live with size caps and exposure limits built in.</p></div>
-    <div class="card"><span class="tag">Takers</span><h3>Fans trade on what they know</h3>
-      <p>A simple YES/NO price on every rider, updated through the weekend: "Does Vermette make the Final?" "Does Williams keep the lead?"</p></div>
-    <div class="card"><span class="tag">Us</span><h3>Data, pricing, settlement</h3>
-      <p>We run the data feed, the reference price and the settlement from official timing. That makes a thin market tradable.</p></div>
+  <div class="kicker">The cloud search, in one slide</div>
+  <h2>291 sweeps. Two changes held in both seasons.</h2>
+  <div class="grid g4 stats-sm">
+    <div class="card"><div class="stat">2,619</div><div class="label">strategy backtests (291 sweeps, 0 failures), 1,161 distinct 2026 combinations, each checked on 2025</div></div>
+    <div class="card"><div class="stat">+$1,232<small> / +$1,237</small></div><div class="label">profile A (taker), 2026 / 2025; the baseline taker: −$479 / +$220</div></div>
+    <div class="card"><div class="stat">+$653<small> / +$835</small></div><div class="label">profile C (maker), 2026 / 2025; Sharpe 1.78 / 1.63, the best of any combination</div></div>
+    <div class="card"><div class="stat">+$1,885<small> / +$2,072</small></div><div class="label">A and C together, 2026 / 2025; their weekly P&amp;L barely moves together (−0.03 / 0.18)</div></div>
   </div>
-  <div class="card" style="margin-top:18px">
-    <h3>What a maker sees (live from our Whistler book, Men Elite)</h3>
-    <table class="quote-sheet">
-      <thead><tr><th>Market</th><th>Model fair</th><th>YES</th><th>NO</th></tr></thead>
-      <tbody>
-        <tr><td>Williams wins the Final</td><td>6.9%</td><td>0.10</td><td>0.97</td></tr>
-        <tr><td>Pinkerton moves up from #8 in the championship</td><td>46.0%</td><td>0.50</td><td>0.57</td></tr>
-        <tr><td>Williams drops from #1 in the championship</td><td>18.5%</td><td>0.22</td><td>0.85</td></tr>
-      </tbody>
-    </table>
-    <p class="note" style="margin-top:10px">Fair value from the model, plus a 6-point spread set by the maker. Prices are per $1 payout.</p>
+  <div class="grid g3" style="margin-top:18px">
+    <div class="card"><span class="tag good">Held in both seasons</span><ul>
+      <li>Act only on edges of <strong>10 points</strong> or more (was 5)</li>
+      <li><strong>Skip the pre-weekend stage</strong>: trade from FP1 on</li>
+      <li>Makers: only <strong>gbm</strong> made money in both seasons, best with a tight 5-point disagreement filter and 25-share quotes</li></ul></div>
+    <div class="card"><span class="tag">Checked for luck</span><ul>
+      <li>Every candidate re-run at 16,000 simulations</li>
+      <li>7 replicates: A +$1,270 ± 67 / +$1,020 ± 149; C +$717 ± 72 / +$881 ± 63; never negative</li>
+      <li>Two weekends are mostly noise: about a 70% chance of finishing up</li></ul></div>
+    <div class="card"><span class="tag warn">Rejected</span><ul>
+      <li>Loosening the volume filter: a thin-market artifact</li>
+      <li>Doubling stakes: leverage, not edge (doubles 2025's loss too)</li>
+      <li>Stopping before FP3: 2026 only. Hold strategies: lose in 2025</li></ul></div>
   </div>
+  <p class="note">params-4h cloud search, 27 Sep 2026: F1 per-event markets, 2026 (15 weekends) tuned and 2025 (23 weekends, as if live from the first race) held out. Championship markets excluded.</p>
 </section>
 
-<!-- 6b. Vision (user view) -->
+<!-- 7. The two strategies -->
 <section class="slide">
-  <div class="kicker">The vision</div>
-  <h2>An exchange where users are the market makers.</h2>
-  <div class="grid g3">
-    <div class="card"><span class="tag">Makers</span><h3>Anyone can open a book</h3>
-      <p>Pick an event and a market type. We suggest a fair price and you set the spread. Your quotes go live with size caps and exposure limits built in.</p></div>
-    <div class="card"><span class="tag">Takers</span><h3>Fans trade on what they know</h3>
-      <p>A simple YES/NO price on every rider, updated through the weekend: "Does Vermette make the Final?" "Does Williams keep the lead?"</p></div>
-    <div class="card"><span class="tag">Us</span><h3>Data, pricing, settlement</h3>
-      <p>We run the data feed, the reference price and the settlement from official timing. That makes a thin market tradable.</p></div>
+  <div class="kicker">Two strategies</div>
+  <h2>A takes the calls. C makes the market.</h2>
+  <div class="grid g2" style="align-items:start">
+    <div class="card"><span class="tag">A · core taker</span><p>Re-prices every race market after each practice and qualifying session and buys only when the model and the market
+      disagree by 10 points or more (5 on head-to-head), sized by the gap, at most $50 a market. With the head-to-head threshold: <strong>+$1,243 (2026) and +$1,363 (2025)</strong>.</p></div>
+    <div class="card"><span class="tag">C · maker sleeve</span><p>Quotes 2¢ either side of the gbm model's fair price, 25 shares a side, leaning against its inventory, and steps out of any market
+      where the model and the market disagree by more than 5 points. Smallest drawdowns of any setup: $279 / $176.</p></div>
   </div>
-  <div class="card" style="margin-top:18px">
-    <h3>What a user sees (live prices from our Whistler book, Men Elite)</h3>
-    <div class="ui">
-      <div class="ui-market">
-        <div class="ui-head"><b>Whistler DH · Men Elite Final</b><span>Sun 27 Sep · settles from official timing</span></div>
-        <div class="ui-tabs"><span>Win</span><span class="on">Podium</span><span>Make the Final</span><span>Championship</span></div>
-        <div class="ui-row"><span class="ui-name">Jordan Williams</span><span class="ui-btn yes sel">Yes 20¢</span><span class="ui-btn no">No 87¢</span></div>
-        <div class="ui-row"><span class="ui-name">Asa Vermette</span><span class="ui-btn yes">Yes 18¢</span><span class="ui-btn no">No 88¢</span></div>
-        <div class="ui-row"><span class="ui-name">Max Alran</span><span class="ui-btn yes">Yes 18¢</span><span class="ui-btn no">No 89¢</span></div>
-        <div class="ui-row"><span class="ui-name">Loïc Bruni</span><span class="ui-btn yes">Yes 17¢</span><span class="ui-btn no">No 90¢</span></div>
-      </div>
-      <div class="ui-slip">
-        <div class="ui-slip-title">Bet slip</div>
-        <div class="ui-pick"><span class="ui-pill yes">YES</span> Jordan Williams finishes on the podium</div>
-        <div class="ui-line"><span>Price</span><b>20¢</b></div>
-        <div class="ui-line"><span>Stake</span><b class="ui-input">$10</b></div>
-        <div class="ui-line"><span>Pays if YES</span><b>$50.00</b></div>
-        <div class="ui-line muted"><span>Profit</span><b>+$40.00</b></div>
-        <div class="ui-cta">Place bet</div>
-        <div class="ui-fine">Every other outcome has a price too, e.g. <b>Make the Final</b>: Yes 79¢ / No 28¢ · <b>Pinkerton moves up from #8</b>: Yes 50¢ / No 57¢</div>
-      </div>
+  <img class="shot cap" style="margin-top:16px" src="/static/pitch/lab-edge.jpg" alt="The Lab's Edge Finder: 2026 full-season recap of the demo maker's setups">
+  <p class="note">The Lab's Edge Finder (2026): the setups the demo maker tested. In 2026 alone the grid-aware maker (M2) did better than C; C was chosen on 2025's evidence as the steadiest, and its 2026 result is within the noise.</p>
+</section>
+
+<!-- 8. Demo: the maker -->
+<section class="slide">
+  <div class="kicker">The demo · maker account</div>
+  <h2>$10,000 in 2025. Every switch on evidence.</h2>
+  <div class="split">
+    <img class="shot cap" src="/static/pitch/maker-strategy.jpg" alt="Demo maker: paper bankroll, drawdown, capital in use, and the bankroll curve with its strategy switches">
+    <div class="card"><h3>$10,000 → $10,938 (+9.4%)</h3><p>Worst drawdown −$318; at most $785 in use in a weekend. Three setups in 2025, each switch made by a fixed rule on the Edge Finder's walk-forward evidence; C since the first race of 2026.</p>
+      <p class="note" style="margin-top:10px">Backtest replays of real weekends, labelled as such in the app. Below: the decision before 2026. C wasn't the biggest earner; it was the steadiest within the noise.</p></div>
+  </div>
+  <img class="shot cap" style="margin-top:14px" src="/static/pitch/maker-decision.jpg" alt="Demo maker: the decision before 2026, with the evidence table">
+</section>
+
+<!-- 9. Demo: the taker -->
+<section class="slide">
+  <div class="kicker">The demo · taker account</div>
+  <h2>$1,000 in January 2025, taking a third of A's calls.</h2>
+  <div class="split">
+    <img class="shot" src="/static/pitch/taker-strategy.jpg" alt="Demo taker: bankroll against taking every recommendation, and the heat breakdown">
+    <div class="grid" style="gap:14px">
+      <img class="shot" src="/static/pitch/taker-positions.jpg" alt="The taker's Positions: realised P&amp;L, drawdown, Sharpe ratio and P&amp;L history">
+      <div class="card"><h3>What a taker sees</h3><p>What to buy, how many shares, the most to pay, and a <strong>heat</strong> rating (warm, hot, very hot) from the modelled value, never the model's numbers.
+        $1,000 → $1,898 (+89.8%); worst drawdown −$338. Taking every call would have made +$2,606.</p></div>
     </div>
-    <p class="note" style="margin-top:10px">Mock-up of the user app. Prices are the live Whistler quotes (model fair value plus the maker's spread), shown in cents per $1 payout.</p>
   </div>
 </section>
 
-<!-- 7. Partner portal & APIs -->
+<!-- 10. Downhill -->
 <section class="slide">
-  <div class="kicker">Product</div>
-  <h2>Partner portal and data APIs.</h2>
-  <div class="grid g3">
-    <div class="card"><h3>Pricing API</h3><ul>
-      <li>Fair probabilities per rider and market</li><li>Re-priced after every session</li><li>Season and title odds</li></ul></div>
-    <div class="card"><h3>Data feed</h3><ul>
-      <li>Start lists, results, splits</li><li>Athlete identity across seasons and categories</li><li>Historical backfill for modelling</li></ul></div>
-    <div class="card"><h3>Settlement oracle</h3><ul>
-      <li>Outcomes from official timing</li><li>Automatic resolution of race markets</li><li>Signed, auditable results</li></ul></div>
-    <div class="card"><h3>Quoting engine</h3><ul>
-      <li>Fair ± spread, both sides</li><li>Post-only orders, tick and size checks</li><li>Per-market and total caps</li></ul></div>
-    <div class="card"><h3>Risk dashboard</h3><ul>
-      <li>Exposure if YES / if NO</li><li>EV against the model's price</li><li>Settled P&amp;L and audit trail</li></ul></div>
-    <div class="card"><h3>Exchange connectors</h3><ul>
-      <li>Polymarket CLOB (built)</li><li>Other exchanges via adapters</li><li>Private and house books (built)</li></ul></div>
+  <div class="kicker">The other endpoint</div>
+  <h2>Downhill: priced and waiting for a market.</h2>
+  <div class="split">
+    <img class="shot" src="/static/pitch/dh-season.jpg" alt="UCI Downhill World Cup: championship odds from the model">
+    <div class="grid" style="gap:14px">
+      <div class="card"><h3>Ready today</h3><p>Six seasons of every run and split, riders matched across seasons and categories, a live season forecast re-priced as each round is published.</p></div>
+      <div class="card"><h3>No exchange lists it yet</h3><p>On Whistler race weekend (Sep 2026), Polymarket had zero downhill markets. We're ready the day one does, and the model is sellable to media, teams and operators before then.</p></div>
+      <div class="card"><h3>The lower bound</h3><p>Downhill sets the smallest audience we'll build for. Sports between it and F1 reuse the same schema, pricing and trading stack.</p></div>
+    </div>
   </div>
 </section>
 
-<!-- 8. Business model -->
+<!-- 11. Validation -->
+<section class="slide">
+  <div class="kicker">Next: prove it live</div>
+  <h2>Paper trading on Polymarket, then real capital, then more exchanges.</h2>
+  <div class="grid g3">
+    <div class="card phase"><span class="tag">Now · Oct 2026 – 2027</span><h3>Live paper trading</h3>
+      <ul><li>A and C run on every F1 weekend from Malaysia (4 Oct), stage by stage, with alerts</li>
+      <li>Same code path as the backtest; parity checked trade for trade</li>
+      <li>Compare live fills and mark-outs with the backtest; adjust nothing on two weekends of noise</li></ul></div>
+    <div class="card phase p2"><span class="tag">After 4–6 live weekends</span><h3>Real capital, small</h3>
+      <ul><li>Start with the backtested sizes ($50 a market, 25-share quotes)</li>
+      <li>Size up only on live evidence: fills, slippage, order-book depth (recorded from now on)</li>
+      <li>Polymarket's new order-signing (CLOB V2) first</li></ul></div>
+    <div class="card phase p3"><span class="tag">Then</span><h3>More exchanges and sports</h3>
+      <ul><li><strong>Kalshi</strong> next, other exchanges after</li>
+      <li>New sports between the endpoints as they list</li>
+      <li>Downhill the day its markets appear</li></ul></div>
+  </div>
+</section>
+
+<!-- 12. Business model -->
 <section class="slide">
   <div class="kicker">How we make money</div>
-  <h2>Revenue from day one, and more as we grow.</h2>
+  <h2>Sell the tools and the models. Trade later.</h2>
   <table>
     <thead><tr><th>Stream</th><th>Who pays</th><th>Model</th><th>When</th></tr></thead>
     <tbody>
-      <tr><td>Pricing &amp; data API</td><td>Market makers, trading desks, media, fantasy/game operators</td><td>Tiered subscription by sport and request volume</td><td>Phase 1</td></tr>
-      <tr><td>Market-maker tooling</td><td>Pro makers and syndicates</td><td>Per-seat SaaS, or a revenue share on maker P&amp;L</td><td>Phase 1</td></tr>
-      <tr><td>Settlement oracle</td><td>Exchanges listing niche markets</td><td>Per-market resolution fee</td><td>Phase 2</td></tr>
-      <tr><td>White-label books</td><td>Licensed operators wanting niche-sport content</td><td>Platform fee plus revenue share</td><td>Phase 2</td></tr>
-      <tr><td>Exchange fees</td><td>Takers on our venue</td><td>Fee in basis points on matched volume; makers pay reduced or zero fees</td><td>Phase 3</td></tr>
-      <tr><td>League &amp; media partnerships</td><td>Leagues, series organisers, broadcasters</td><td>Integrity services, live odds and graphics feeds; we share revenue from their sport with them</td><td>Phase 1 talks, revenue Phase 2+</td></tr>
+      <tr><td>Edge-finding tools</td><td>Makers and takers on Polymarket (then Kalshi and others)</td><td>Calls with heat, maker quotes, new-market and signal alerts, the Lab and Edge Finder: subscription per seat, pro tier for makers</td><td>After the beta</td></tr>
+      <tr><td>Prediction models &amp; pricing (B2B)</td><td>Exchanges, market makers, trading desks, media, fantasy and game operators</td><td>Licence or subscription per sport: fair prices re-priced after each session, season odds, history</td><td>Open now</td></tr>
+      <tr><td>Trading</td><td>The market</td><td>Maker and taker P&amp;L with our own capital, sized on live evidence</td><td>After paper validation</td></tr>
+      <tr><td>New sports</td><td>As above</td><td>Each sport between the endpoints adds models to sell and markets to trade</td><td>As they list</td></tr>
     </tbody>
   </table>
-  <p class="note">Pricing tiers and fee levels are to be validated with design partners. No revenue has been booked yet.</p>
+  <p class="note">No revenue booked yet. Nothing is traded with real money until paper trading validates the backtests. We don't plan to run our own exchange.</p>
 </section>
 
-<!-- 8b. League partners -->
-<section class="slide">
-  <div class="kicker">League partners from day one</div>
-  <h2>Leagues should want us in the room early.</h2>
-  <div class="grid g2" style="align-items:start">
-    <div class="card"><span class="tag good">What a league gets (e.g. the UCI and the World Series organiser)</span><ul>
-      <li><strong>Integrity monitoring:</strong> we see every quote and every bet, so we can flag suspicious patterns and share alerts with the league</li>
-      <li><strong>A say in the market list:</strong> which markets are offered, and hard limits such as <strong>no markets on junior (under-18) categories</strong></li>
-      <li><strong>New revenue:</strong> a share of data, oracle and exchange revenue from their sport</li>
-      <li><strong>Fan engagement:</strong> live odds and "who makes the Final" stories for broadcasts and social media</li></ul></div>
-    <div class="card"><span class="tag">What we watch for</span><ul>
-      <li>Money arriving just before withdrawals, start-list changes or injury news</li>
-      <li>Bets on outcomes a rider or team controls, such as a rider not making the Final, a DNF or a DNS</li>
-      <li>Price moves that public information (training, qualifying) doesn't explain</li>
-      <li>Bets that are unusually large for the account, or clusters of linked accounts</li>
-      <li>Market design that removes the easiest targets before they're listed</li></ul></div>
-  </div>
-  <div class="card" style="margin-top:16px"><h3>🔁 One playbook, every new league</h3>
-    <p>Each new league gets the same package: <strong>official data agreement → approved market list → integrity dashboard and alerts → revenue share</strong>.
-    The integrity checks work on our shared multi-sport schema, so they apply to any league we add without new code.</p></div>
-  <p class="note">What we get: official data rights (instead of pulling data ourselves), earlier start lists and withdrawals, and credibility with regulators and licensed exchanges.</p>
-</section>
-
-<!-- 8c. Local racing leagues -->
-<section class="slide">
-  <div class="kicker">Local racing leagues</div>
-  <h2>Grassroots series want the podium to matter more.</h2>
-  <p class="lead" style="margin-bottom:22px">Regional cups, club races and weeknight series run hundreds of events a year. They have
-    passionate communities, sponsors looking for reach, and no way to put stakes on the standings.</p>
-  <div class="grid g3">
-    <div class="card"><h3>🏆 Pick-the-podium contests</h3><p>Free-to-enter predictions on each race and on the season standings. Scores are weighted by our odds, so calling an underdog pays off, and there's a live leaderboard with sponsor prizes.</p></div>
-    <div class="card"><h3>💸 Sponsor podium bounties</h3><p>Sponsors fund bonus money for podium results, and our odds size it fairly: a bigger bounty for an underdog podium, a smaller one for the favourite. The league gets a new product to sell to sponsors.</p></div>
-    <div class="card"><h3>⏱️ League dashboard</h3><p>Local timing results go into the same multi-sport schema: standings, rider histories, "who makes the podium" odds, and integrity alerts for organisers.</p></div>
-  </div>
-  <div class="grid g2" style="margin-top:16px">
-    <div class="card"><span class="tag warn">Guardrails</span><ul>
-      <li>No real-money wagering, except through licensed partners</li>
-      <li>Adults only. Riders, officials and their families can't enter contests on their own races</li>
-      <li>Organisers approve every contest and see our integrity alerts</li></ul></div>
-    <div class="card"><span class="tag good">Why it matters to us</span><ul>
-      <li>A long tail of events means more data, more community, and a better model</li>
-      <li>Every local league runs the same playbook, and doesn't need new code</li>
-      <li>A funnel of riders, fans and sponsors toward the bigger leagues</li></ul></div>
-  </div>
-</section>
-
-<!-- 8d. Local league economics -->
-<section class="slide">
-  <div class="kicker">Local league economics</div>
-  <h2>Make better timing affordable. Earn the right to make the market.</h2>
-  <div class="grid g3">
-    <div class="card"><div class="stat">$750–1,500</div><div class="label">CAD for contracted live timing at a typical 75–250 entrant race</div></div>
-    <div class="card"><div class="stat">$10–20k</div><div class="label">CAD timing budget for a 10-round contractor-run series</div></div>
-    <div class="card"><div class="stat">$5–10k</div><div class="label">CAD standalone cost for a 10-round analytics and contest hub, before prizes</div></div>
-  </div>
-  <div class="grid g2" style="margin-top:18px">
-    <div class="card"><span class="tag good">Shared-risk pilot</span><h3>Half-price timing, free hub</h3>
-      <p>On a CAD $1,250/race baseline, the league pays <strong>CAD $625 per race</strong>. We fund the other half, waive the hub fee, and split new sponsor revenue <strong>70% league / 30% racinglines</strong>.</p></div>
-    <div class="card"><span class="tag good">Sponsor-funded timing</span><h3>Free once the partner is sold</h3>
-      <p>A CAD $12,500 title or podium partner funds timing and the hub. The first CAD $12,500 repays timing; surplus sponsor and licensed-market revenue splits <strong>70% league / 30% racinglines</strong>.</p></div>
-  </div>
-  <p class="note">The league supplies prompt official results and approves every contest; racinglines supplies pricing, settlement and sponsor reporting. Planning ranges only: validate against local timing quotes. Free prediction contests and sponsor prizes now; public real-money markets only through a licensed partner.</p>
-</section>
-
-<!-- 9. Phased path -->
-<section class="slide">
-  <div class="kicker">Go to market</div>
-  <h2>Earn the right to run an exchange.</h2>
-  <div class="grid g3">
-    <div class="card phase"><span class="tag">Phase 1 · now – 6 months</span><h3>Data and maker tools on existing venues</h3>
-      <ul><li>Closed friends-and-family beta of the full quote → bet → settle loop</li>
-      <li>League partner talks from the start, beginning with the UCI and the World Series organiser</li>
-      <li>Pricing API + portal for 3–5 timed sports</li><li>Help niche markets get listed on licensed exchanges, and seed their liquidity</li>
-      <li>Private and house-book tooling for clubs and communities</li></ul></div>
-    <div class="card phase p2"><span class="tag">Phase 2 · 6 – 18 months</span><h3>Partner portal at scale</h3>
-      <ul><li>Third-party makers quote through our engine</li><li>Settlement oracle for partner exchanges</li>
-      <li>White-label niche-sport books for licensed operators</li></ul></div>
-    <div class="card phase p3"><span class="tag">Phase 3 · 18 months +</span><h3>Our own venue</h3>
-      <ul><li>A user-maker exchange, through a licensed entity, a partnership or an acquisition</li><li>Launched first in jurisdictions where it's clearly permitted</li>
-      <li>Makers bring the liquidity; we take fees on matched volume</li></ul></div>
-  </div>
-</section>
-
-<!-- 9b. First beta -->
-<section class="slide">
-  <div class="kicker">First beta</div>
-  <h2>A friends-and-family test on a real race weekend.</h2>
-  <div class="grid g2" style="align-items:start">
-    <div class="card"><span class="tag">How it runs</span><ul>
-      <li><strong>Seeded through a local trendsetter's own network:</strong> they personally invite people they know. No public posts, ads or open link</li>
-      <li><strong>Invite-only and capped:</strong> a small, named list of participants for the weekend</li>
-      <li>We quote YES/NO on win, podium, make-the-Final and championship moves from the model, with a set spread</li>
-      <li>Participants take positions over the weekend. Every quote and bet is logged in the house book</li>
-      <li>Markets <strong>settle from official timing</strong> after the Final. Money is handled among participants, outside the app</li>
-      <li><strong>No rake:</strong> this tests the product; it isn't a business yet</li></ul></div>
-    <div class="grid" style="gap:14px">
-      <div class="card"><span class="tag good">What it proves</span><ul>
-        <li>A trusted local voice can bring in real participants through word of mouth alone</li>
-        <li>People understand and act on YES/NO prices for riders</li>
-        <li>How takers behave against a spread, and which market types they want</li>
-        <li>The quote → bet → settle loop and the risk dashboard work under real use</li>
-        <li>Model prices against real flow: where we get picked off, and where we don't</li></ul></div>
-      <div class="card"><span class="tag warn">What it isn't</span><p>It isn't a public launch. The group stays closed and there's no rake; we'll confirm the
-        setup with counsel before running it. Wider access comes through licensed partners (Phase 2), not by opening the house book to the public.</p></div>
-    </div>
-  </div>
-  <p class="note">The tooling for this already exists: the house book, quote sheet, bet log, exposure and EV view, and automatic settlement for race markets. The Whistler 2026 book (75 markets) was generated with it.</p>
-</section>
-
-<!-- 10. Regulation -->
-<section class="slide">
-  <div class="kicker">The hard part, up front</div>
-  <h2>A clone is a licensing project before it's a product.</h2>
-  <div class="grid g2">
-    <div class="card"><span class="tag warn">Reality</span><ul>
-      <li>In the US, event-contract exchanges operate as <strong>CFTC-regulated</strong> markets. Getting there took Kalshi years; Polymarket's US return came through buying an already-licensed exchange.</li>
-      <li>Sports event contracts are <strong>actively contested</strong> by US state gaming regulators.</li>
-      <li>Elsewhere, including Canada's provinces, taking bets from the public is usually licensed gambling.</li>
-      <li>Official timing data has <strong>usage terms</strong>. A commercial product needs data licences from timing providers and series organisers.</li></ul></div>
-    <div class="card"><span class="tag good">Our approach</span><ul>
-      <li>Start <strong>business-to-business</strong>: sell data, pricing and tools, and hold no customer funds.</li>
-      <li>Reach users through <strong>licensed partners</strong> before running our own venue.</li>
-      <li>Get licensing counsel and data agreements early, as Phase 1 milestones.</li>
-      <li>Pick launch markets by legal clarity, not by size.</li>
-      <li>Partner with <strong>leagues</strong> for official data and integrity monitoring, and never list junior-category markets.</li></ul></div>
-  </div>
-  <p class="note">This is a summary for planning, not legal advice. The regulatory picture changes fast and differs by jurisdiction.</p>
-</section>
-
-<!-- 11. Moat -->
-<section class="slide">
-  <div class="kicker">Why us</div>
-  <h2>A data moat in sports nobody else prices.</h2>
-  <div class="grid g2">
-    <div class="card"><h3>Depth</h3><p>Every run and every split, qualifying formats reconstructed season by season, and athletes matched across names and categories (juniors become elites).</p></div>
-    <div class="card"><h3>Speed</h3><p>Whistler 2026 went from official data to a 75-market priced book in hours, including catching and fixing a disrupted training session automatically.</p></div>
-    <div class="card"><h3>Multi-sport from day one</h3><p>The schema goes sport → league → competition → event → race → round, with shared athlete identity. A new timed sport is configuration, not a rewrite.</p></div>
-    <div class="card"><h3>Trust</h3><p>Every model run, price, quote and bet is stored with its inputs, and markets settle from official timing. Makers can check how the prices were made, and leagues get integrity alerts drawn from the same records.</p></div>
-  </div>
-</section>
-
-<!-- 12. Risks -->
+<!-- 13. Risks -->
 <section class="slide">
   <div class="kicker">Risks we're managing</div>
   <h2>What could break, and what we do about it.</h2>
   <table>
     <thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
     <tbody>
-      <tr><td>Regulation</td><td>B2B first, licensed partners, counsel engaged in Phase 1, launch by legal clarity</td></tr>
-      <tr><td>Data rights</td><td>League partnerships and commercial data licences with timing providers and organisers; our own validation layer</td></tr>
-      <tr><td>Integrity (insider or fixed bets)</td><td>Integrity monitoring shared with leagues, market design that avoids easy targets, no junior markets, per-account limits</td></tr>
-      <tr><td>Model risk</td><td>Walk-forward backtests published per sport; wide spreads on hard markets; exposure caps in the engine</td></tr>
-      <tr><td>Cold-start liquidity</td><td>We seed markets as the first maker, and tooling makes quoting cheap for others</td></tr>
-      <tr><td>Small audiences per sport</td><td>Aggregate many timed sports: downhill, enduro, XC, alpine, trail running, and more</td></tr>
+      <tr><td>The backtest doesn't hold live</td><td>Paper trading first; parity with the backtest checked; noise ranges measured; live fills compared with the conservative fill rule before any capital</td></tr>
+      <tr><td>Thin markets</td><td>Volume filters, backtested small sizes, order-book depth recorded to size on evidence; the endpoints rule keeps us in sports with liquidity</td></tr>
+      <tr><td>One weekend dominates</td><td>Profiles chosen for both seasons, not the best 2026 number; a maker and a taker that barely move together</td></tr>
+      <tr><td>Exchanges and regulation</td><td>Trade only where permitted, on regulated or clearly legal venues; B2B sales carry no customer funds</td></tr>
+      <tr><td>Data rights</td><td>Public official timing for research; commercial data licences as B2B sales grow</td></tr>
     </tbody>
   </table>
 </section>
 
-<!-- 13. Next 90 days / ask -->
+<!-- 14. The ask -->
 <section class="slide">
-  <div class="kicker">Next 90 days</div>
-  <h2>Milestones that de-risk the business.</h2>
-  <div class="grid g2">
-    <div class="card"><h3>Build</h3><ul>
-      <li>Validate official points tables; rider identity keyed on UCI IDs</li>
-      <li>Pricing API v1 and partner portal (auth, keys, usage)</li>
-      <li>Second and third sports (e.g. Women's DH, enduro)</li>
-      <li>In-weekend repricing from qualifying results</li></ul></div>
-    <div class="card"><h3>Prove</h3><ul>
-      <li>Model calibration published across two seasons and several sports</li>
-      <li>Friends-and-family beta on one race weekend, with a written debrief</li>
-      <li>3–5 design partners: makers, a media partner, a partner exchange</li>
-      <li>Partnership talks with the UCI and the World Series organiser: data, integrity alerts, market list</li>
-      <li>Data licence conversations with timing providers</li>
-      <li>Regulatory counsel memo on the Phase 2–3 routes</li></ul></div>
+  <div class="kicker">Join us</div>
+  <h2>Beta testers, collaborators, and B2B partners.</h2>
+  <div class="grid g3">
+    <div class="card"><h3>Beta testers</h3><p>Try the maker and taker accounts through the live paper-trading season and tell us what's missing.</p></div>
+    <div class="card"><h3>Collaborators</h3><p>The repository is private only because it carries the data our cloud runs need, which we don't want public yet.
+      We'll gladly share the <strong>pipeline and web-app code</strong> with anyone interested.</p></div>
+    <div class="card"><h3>B2B partners</h3><p>Exchanges, makers, media and data teams who want fair prices for race sports, from F1 to the downhill World Cup.</p></div>
   </div>
-  <p class="note"><a class="gh-inline" href="https://github.com/lalligagger/racinglines" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>github.com/lalligagger/racinglines</span></a></p>
-  <p class="lead" style="margin-top:26px">We're looking for design partners, data partners and early backers who want to own <span class="accent">liquidity for the long tail of sport</span>.</p>
+  <p class="note"><a class="gh-inline" href="https://github.com/lalligagger/racinglines" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>github.com/lalligagger/racinglines</span></a> · private: ask for access</p>
+  <p class="lead" style="margin-top:26px">Try the demo at <a href="/markets">racinglines.bet</a>, or start with <a href="/racinglines101">Racinglines 101</a>.</p>
 </section>
 
 </main>

@@ -7,11 +7,11 @@
 {% for r in races %}<option value="{{ r.race_id }}" {% if r.race_id == race_id %}selected{% endif %}>{{ r.venue }} {{ r.start_date|fmt }} · {{ r.category }} · {{ r.status }} ({{ r.markets }} markets)</option>{% endfor %}
 </select></label>
 {% if user.role == 'admin' %}<label><span>Maker</span><select name="maker" onchange="this.form.submit()"><option value="">all</option><option value="house" {% if maker == 'house' %}selected{% endif %}>house (legacy)</option>{% for mk in makers %}<option {% if mk.username == maker %}selected{% endif %}>{{ mk.username }}</option>{% endfor %}</select></label>{% endif %}
-{% if race_id %} <a href="/house/sheet?race_id={{ race_id }}">Quote sheet →</a> · <a href="/bet?race_id={{ race_id }}">Market board →</a>{% endif %}</form>
+{% if race_id %} <a href="/book/quotes/sheet?race_id={{ race_id }}">Quote sheet →</a> · <a href="/markets?race_id={{ race_id }}">Market board →</a>{% endif %}</form>
 
 {% if race_id %}
 <div class="card"><h2>Create / reprice markets from the latest forecast</h2>
-<form method="post" action="/house/generate">{{ csrf() }}<input type="hidden" name="race_id" value="{{ race_id }}">
+<form method="post" action="/book/quotes/generate">{{ csrf() }}<input type="hidden" name="race_id" value="{{ race_id }}">
   {% for k in kinds %}<label><input type="checkbox" name="kinds" value="{{ k }}" {% if k in ('race_win','race_podium','race_top10','race_make_final') %}checked{% endif %}> {{ k }}</label>{% endfor %}<br>
   <span class="muted">Market types a sport doesn't have (e.g. make-the-Final in F1) are skipped automatically.</span><br>
   <label><span>Riders per market type (top N)</span><input name="top_n" value="15" size="4"></label>
@@ -19,7 +19,7 @@
   <button class="primary">Create / reprice</button>
   <span class="muted">Open markets priced from the model are repriced; bets keep the price they were taken at. Manually priced markets aren't touched.</span>
 </form>
-{% if user.role == 'admin' %}<form method="post" action="/house/settle-auto" class="inline">{{ csrf() }}<input type="hidden" name="race_id" value="{{ race_id }}"><button>Auto-settle from results</button></form>
+{% if user.role == 'admin' %}<form method="post" action="/book/quotes/settle-auto" class="inline">{{ csrf() }}<input type="hidden" name="race_id" value="{{ race_id }}"><button>Auto-settle from results</button></form>
 <span class="muted">Win / podium / top 10 / make-Final settle from the ingested results. Rank markets: settle by hand from the official standings.</span>{% else %}<span class="muted">Markets are created under your account; takers see them on the market board. The admin settles them.</span>{% endif %}
 </div>
 {% endif %}
@@ -32,7 +32,7 @@
 <div class="card"><h2>{{ kind }}</h2><div class="scroll"><table>
 <thead><tr><th class="l">Market</th>{% if user.role == 'admin' %}<th class="l">Maker</th>{% endif %}<th>Fair</th><th>YES price</th><th>NO price</th><th>Spread</th><th class="l">Status</th><th>Bets</th><th>Staked</th><th>P&amp;L if YES</th><th>P&amp;L if NO</th><th>EV</th></tr></thead><tbody>
 {% for mk in ms %}<tr>
-<td class="l"><a href="/house/{{ mk.id }}">{{ mk.title }}</a>{% if mk.fair_source == 'manual' %} <span class="warn">(manual)</span>{% endif %}</td>{% if user.role == 'admin' %}<td class="l">{{ mk.maker }}</td>{% endif %}
+<td class="l"><a href="/book/markets/{{ mk.id }}">{{ mk.title }}</a>{% if mk.fair_source == 'manual' %} <span class="warn">(manual)</span>{% endif %}</td>{% if user.role == 'admin' %}<td class="l">{{ mk.maker }}</td>{% endif %}
 <td>{{ mk.fair_prob|fmt("model_prob") }}</td><td>{{ mk.yes_price if mk.yes_price is not none else "–" }}</td><td>{{ mk.no_price if mk.no_price is not none else "–" }}</td>
 <td>{{ "%.0f"|format(mk.spread * 100) }}</td>
 <td class="l">{{ mk.status }}{% if mk.status == 'settled' %} ({{ "YES" if mk.outcome else "NO" }}){% endif %}</td>

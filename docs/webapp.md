@@ -60,21 +60,57 @@ event: a race, or a competition's season
 
 ## Pages
 
+The nav follows the role:
+
+| Role | Nav |
+|---|---|
+| **taker** | Markets · Strategy · Positions |
+| **maker** | Markets · Strategy · Positions · My Book · Lab · Pitch · Docs |
+| **admin** | Markets · Strategy · Positions · Books (the admin's name for My Book) · Lab · Admin · Pitch · Docs |
+
+Strategy and Positions appear for accounts with a strategy profile, and for admins. The **Strategy** link
+carries a badge with the number of unread signals. A paper-account banner (profile, bankroll, return) on
+the Markets, My Book and Positions pages links to Strategy and Positions.
+
+**Trading (every role with a strategy profile)**
+
 | Page | What it shows |
 |---|---|
-| **Markets** (`/`, makers and admin) | **Headline numbers:** exchange outcomes we price and their volume, order books recording, my open markets and worst case, F1 model vs grid-only baseline, running jobs.<br>**Per sport** (F1 first):<br>• next three races as cards: countdown, venue badges (live / pending / soon / mine), our top-3 win probabilities with the exchange price as a tick;<br>• the season card;<br>• later races;<br>• recent results: winner, our pre-race price, Polymarket at the same time. |
-| **Race** (`/race/{race_id}`) | The core page:<br>• **Header:** where our fair values come from (run and as-of time), the favourite, the result, venue badges, my book here.<br>• **Chart:** Polymarket price history for the top outcomes, with our fair as dotted lines and markers for qualifying, the race and our as-of time.<br>• **One table per market kind** (win, podium, top 10, make the Final, head-to-head, top constructor): fair bar with market tick, a column per venue, gap, my YES/NO quote (or settled P&L), bets, and the result.<br>• **Quote this race** (upcoming): generate private markets from our fair ± spread, or mirror the Polymarket event.<br>• **Classification** (past): with our win and podium prices, plus links to diagnostics. |
-| **Season** (`/season/{competition}`) | The same layout for season-long markets: champion, constructors' champion, season wins, championship head-to-heads. |
-| **My book** (`/book`) | Positions across venues. Totals: open markets, bets against me, stakes, EV at fair and worst case (open markets only), settled P&L. One row per event, linking to the race page and to `/house` for per-market management. Admin can filter by maker. |
-| **Lab** (`/lab`, makers and admin) | **Leads with the Edge Finder,** the headline feature for a maker account. A pinned **benchmark**, the conservative maker (fair ± 2¢, conservative fills) on the baseline model from the default-settings sweep, can't be removed or replaced, and every card shows its P&L against it. Then the model × strategy combos you pick, each from the latest saved season sweep of that model (P&L, volume, weekends up), side by side per weekend, plus where the edge comes from (by stage, by market, model vs Polymarket). Nothing is simulated on a visit; new combos come from an **Edge Finder sweep** job (Run, with a model choice). Combos are added and removed from the Edge Finder itself and from the sections: click a cell in **Model variants**, **+ Edge Finder** on a model in **Backtests** or on a finished sweep in **Jobs**.<br>**Sections, toggled on demand** (each loads from `/lab/section/{key}` the first time it's opened; `/lab#diagnostics` opens one): **Run** (forms start from your last-used knobs); **Jobs** (yours, or everyone's); **Model variants**; **Scenarios** with **Promote to live**; **Backtests**; **Event diagnostics**; **All runs**.<br>**What's stored where:** Edge Finder combos and job knobs in `users.prefs` (the database, per account); open sections and the jobs filter in the browser; jobs, runs and bets in their own tables. |
-| **Event diagnostic** (`/diag/{run}`) | One past event as of a cutoff: our prices vs Polymarket, scoring, the paper taking strategy, and the **maker replay with every strategy knob**. Knobs: fill rule, half-spread, shares per quote, max shares per market, max worst-case loss, inventory skew, disagreement filter, minimum 24 h volume, pull time. Replays take a few seconds. See [Market making](market-making.md). |
-| **Polymarket** (`/pm`, linked from Markets) | Every listed F1 event, including outcomes we don't price, with **Mirror into my book** and refresh. |
-| **Events / Athletes** (`/events`, `/athletes`, linked from Markets and race pages) | Calendar and search; results and prediction history. |
-| **Private book** (`/house`, `/house/{id}`, `/house/sheet`) | Per-market management behind My Book: reprice, close, record offline bets, settle, quote sheet. See [House book](#private-book-markets-we-quote). |
-| **Run detail** (`/runs/{id}`) | One stored run: parameters, metrics, predictions. `/runs` and `/diag` redirect to the Lab; `/me` redirects makers to My book. |
+| **Markets** (`/markets`), **takers** | Every open Polymarket F1 market (upcoming races first, listed or not yet, then season markets and everything else) with the account's strategy profile's current call on each: side, shares, the most to pay, and heat (`signals.call`; see [Paper trading](paper-trading.md#the-current-call-on-any-market)). Never a fair value or edge. |
+| **Strategy** (`/strategy`) | The account's story: paper bankroll (start, now, return), worst drawdown, most capital in use, weekends up, a bankroll curve, and how it has used racinglines. For a maker, every strategy decision with the Edge Finder evidence it had at the time and what the chosen setup then made; for a taker, what it was offered and took by heat, against taking every recommendation. Then the track record (every weekend: strategy, trades or fills, P&L, bankroll; backtest replay or live paper) and any weekend's signals by stage, with a link to its positions. Takers never see fair values or edges, only the heat. Admins can pick any user. |
+| **Positions** (`/positions`) | The account's ledger: open and settled counts, worst drawdown, Sharpe ratio (mean / s.d. of weekend P&L × √24), realised P&L; a **P&L history** chart (the bankroll curve); **Coming up** (the next races' calls for a taker, where it would quote for a maker, from `signals.call` / `maker_call`); totals by market type; every Polymarket paper position (open, settled, closed), and with a weekend picked the executions behind it (trades taken or paper fills). A taker's in-app bets, if any, below. |
+
+**Makers and admin**
+
+| Page | What it shows |
+|---|---|
+| **Markets** (`/markets`; `/` redirects here), makers and admin | **Headline numbers:** exchange outcomes we price and their volume, order books recording, my open markets and worst case, F1 model vs grid-only baseline, running jobs.<br>**Per sport** (F1 first):<br>• next three races as cards: countdown, venue badges (live / pending / soon / mine), a **new** badge for markets first listed in the last 48 hours, our top-3 win probabilities with the exchange price as a tick;<br>• the season card;<br>• later races;<br>• recent results: winner, our pre-race price, Polymarket at the same time. |
+| **Race** (`/races/{race_id}`) | The core page (takers are sent to Markets):<br>• **Header:** where our fair values come from (run and as-of time), the favourite, the result, venue badges, my book here.<br>• **Chart:** Polymarket price history for the top outcomes, with our fair as dotted lines and markers for qualifying, the race and our as-of time.<br>• **One table per market kind** (win, podium, top 10, make the Final, head-to-head, top constructor): fair bar with market tick, a column per venue, gap, my YES/NO quote (or settled P&L), bets, and the result.<br>• **Quote this race** (upcoming): generate private markets from our fair ± spread, or mirror the Polymarket event.<br>• **Classification** (past): with our win and podium prices, plus links to diagnostics. |
+| **Season** (`/seasons/{code}`) | The same layout for season-long markets: champion, constructors' champion, season wins, championship head-to-heads. |
+| **Polymarket** (`/markets/polymarket`, linked from Markets) | Every listed F1 event, including outcomes we don't price, with **new** badges (48 hours), **Mirror into my book** and refresh. |
+| **My Book** (`/book`; **Books** for admin) | Positions across venues. Totals: open markets, bets against me, stakes, EV at fair and worst case (open markets only), settled P&L. One row per event, linking to the race page and to Quotes. Admin can filter by maker. |
+| **Quotes** (`/book/quotes`, `/book/markets/{id}`, `/book/quotes/sheet`) | The private book per race, behind My Book: create and reprice, close, record offline bets, settle, quote sheet. See [Private book](#private-book-markets-we-quote). The quote sheet is open to every role. |
+| **Lab** (`/lab`) | **Leads with the Edge Finder**, the headline feature for a maker account, per season (**2026**: every weekend raced so far; **2025**: as if live from its first race). A pinned **benchmark** (the conservative maker on the baseline at default settings) that nothing replaces; a card per chosen combo (a saved configuration × a strategy) with its P&L vs the baseline priced from the same data and vs the benchmark; a **full-season recap** (P&L, volume, return on volume, weekends up, average and s.d. per weekend, best and worst weekend, max drawdown, consistency, fills and markout for makers); and P&L per weekend with season totals. Nothing is simulated on a visit.<br>**Candidates:** ★ on a card saves that configuration × strategy as a named candidate (searches add theirs on import; strategy profiles are candidates too). **Load in Lab** opens the **Edge Finder sweep** form (Run) with every setting filled in; changed settings are highlighted, and the new run joins the Edge Finder.<br>**Edge Finder sweep form:** every setting of `racinglines/pipelines/sweep_settings.py`, grouped (model, entry timing, taker, maker, markets), with **Start from** (defaults, your last run, or a candidate) and the season.<br>**Sections, toggled on demand** (each loads from `/lab/section/{key}` the first time it's opened; `/lab#diagnostics` opens one): **Run**; **Jobs** (yours, or everyone's); **Model variants** (click a cell to add that combo); **Scenarios** with **Promote to live**; **Backtests** (+ Edge Finder per model); **Event diagnostics**; **All runs**.<br>**What's stored where:** Edge Finder combos, season and job settings in `users.prefs`; candidates as `model_runs` (`kind='candidate'`); open sections and the jobs filter in the browser; jobs, runs and bets in their own tables. |
+| **Event diagnostic** (`/lab/diagnostics/{id}`) | One past event as of a cutoff: our prices vs Polymarket, scoring, the paper taking strategy, and the **maker replay with every strategy knob**. Knobs: fill rule, half-spread, shares per quote, max shares per market, max worst-case loss, inventory skew, disagreement filter, minimum 24 h volume, pull time. Replays take a few seconds. See [Market making](market-making.md). `/lab/diagnostics` opens the Lab's diagnostics section. |
+| **Run detail** (`/lab/runs/{id}`) | One stored run: parameters, metrics, predictions. `/lab/runs` redirects to the Lab. |
+| **Events / Athletes** (`/events`, `/events/{id}`, `/athletes`, `/athletes/{id}`; linked from Markets and race pages) | Calendar and search; results and prediction history. Every role can open them; takers don't see predictions. |
+
+**Admin only**
+
+| Page | What it shows |
+|---|---|
+| **Linked markets** (`/markets/linked`, `/markets/linked/lookup`, `/markets/linked/{id}`) | Polymarket markets linked to our predictions, the lookup to link one, and a market's page with the order book and suggested quotes. See [Linking a market](#linking-a-market). |
+| **Orders** (`/orders`) | The Polymarket order log. |
+| **Admin** (`/admin/…`) | See [Admin pages](#admin-pages) below. |
+
+**Every visitor**
+
+| Page | What it shows |
+|---|---|
+| **Racinglines 101** (`/racinglines101`, public: no sign-in) | A plain-language intro to makers, takers and the paper-trading demo. Linked from the sign-in page as **I'm already confused.** |
 | **Sign in** (`/login`, `/logout`) | Two one-click demo buttons (**Try as maker**, **Try as taker**; the `maker` / `taker` accounts, password `password`) above the standard username/password form, which the admin uses. |
-| `/pitch` | Serves `pitch.html`, behind the same login. |
-| `/docs/` | Serves these docs as built in `site/` (the pre-push hook builds them; or `python -m mkdocs build -d site`), behind the same login. Linked as **Docs** in the nav for every role. |
+| **Pitch** (`/pitch`) | Serves `pitch.html`, behind the same login. |
+| **Docs** (`/docs/`) | Serves these docs as built in `site/` (the pre-push hook builds them; or `python -m mkdocs build -d site`), behind the same login. |
 
 ### Launching runs from the Lab
 
@@ -100,24 +136,61 @@ subprocess with no shell, and stream their progress into the `jobs` table.
 - **Interrupted jobs.** A job running when the app restarts is marked failed
   ("interrupted").
 
+**Routes match page names.** Old URLs (`/`, `/bet`, `/me`, `/signals`, `/pm`, `/house…`, `/race/…`,
+`/season/…`, `/diag…`, `/runs…`, and the admin's `/markets/{id}`) redirect to the current ones
+(`racinglines/web/legacy.py`).
+
 ### Roles
 
 | Role | Can do |
 |---|---|
-| **taker** | Nav: **Markets** (`/bet`) and **My bets** (`/me`). The market board shows open markets from every maker, with YES/NO prices but **no model fair values**; race, season, book and lab pages are closed to takers. Bets are placed at the quoted price, refused if the maker has repriced since the page loaded, with a per-bet cap `MAX_STAKE` (default $100). |
-| **maker** | Nav: **Markets**, **My Book**, **Lab**, **Pitch**, **Docs**. **Own** markets only: generate from the live forecast (fair ± spread), reprice, close, see the bets against them. Can launch Lab jobs and promote scenarios. Can't bet, can't touch other makers' markets, and can't settle. |
-| **admin** | Everything (maker nav plus **Admin**, which links to activity, users, database, SQL, Polymarket orders and the order log), plus the private book across all makers, settlement (auto and manual), offline bets, Polymarket, and the admin pages below. |
+| **taker** | Nav: **Markets**, **Strategy**, **Positions**. **Markets** lists every open Polymarket F1 market with the account's strategy profile's current call on each (side, shares, the most to pay, heat), never a fair value or edge. There is no maker on the other side: takers trade on Polymarket, on paper (see [Paper trading](paper-trading.md)). Race, season, book, Polymarket and Lab pages are closed to takers (a race link sends them to Markets); event and athlete pages show results without predictions. (The in-app private book still exists for makers; a taker's in-app bet is placed at the quoted price, refused if the maker has repriced since the page loaded, with a per-bet cap `MAX_STAKE`, default $100.) |
+| **maker** | Nav: **Markets**, **Strategy**, **Positions**, **My Book**, **Lab**, **Pitch**, **Docs** (Strategy and Positions with a strategy profile). **Own** markets only: generate from the live forecast (fair ± spread), reprice, close, see the bets against them. Can launch Lab jobs and promote scenarios. Can't bet, can't touch other makers' markets, and can't settle. |
+| **admin** | Everything: the maker nav (My Book is called **Books**) plus **Admin**, which links to activity, users, database, SQL, linked Polymarket markets and the order log. Plus the private book across all makers, settlement (auto and manual), offline bets, Polymarket, any user's Strategy page, strategy profiles (on `/admin/users/{id}`), and the admin pages below. |
 
 Every route declares the roles allowed (`allow(...)` in `app.py`); anything else gets 403.
 
-**Admin pages**
+### Accounts: demo users vs Polymarket's takers
+
+Three accounts are easy to mix up. They are separate entities:
+
+| Account | What it is | Its trades |
+|---|---|---|
+| `maker` (demo, **Try as maker**) | Our maker, $10,000 paper bankroll from 2025-01-01. 2025: M1 (the defaults: conservative maker, baseline model), then M2 (grid-aware maker, 10-pt filter) after round 8, then M3 (gbm maker, 7-pt filter) after round 16; profile C since the start of 2026. Each switch follows a fixed rule on the Edge Finder's walk-forward evidence (`pipelines/story.py`) | Its own quotes and paper fills (**Strategy**, **Positions**); the in-app markets it opens |
+| `taker` (demo, **Try as taker**) | Our taker, $1,000 paper bankroll from 2025-01-01: profile A throughout, following about a third of its recommendations (`follow_rate` 0.33, hotter entries more often). Bankrolls and the follow rate are set in code (`profiles.DEMO_BANKROLL`, `DEMO_FOLLOW`), not in the UI. See [Paper trading](paper-trading.md#the-demo-accounts) | Its own paper trades (**Strategy**, **Positions**) and any bets placed in the app |
+| `polymarket-takers` (system, no login) | The Polymarket traders whose real trades filled a replayed maker | Replay fills recorded from a diagnostic page (*Record the replay's fills*); its P&L is that maker's P&L reversed |
+
+Both demo accounts' weekends before live paper trading began are **backtest replays**
+(`racinglines f1 demo-history`, `pipelines/demo_history.py`): real Polymarket prices and trades, the
+strategy the account ran then, flagged in the database (`detail.backfill`) and labelled in the app.
+
+**Demo sessions are disposable** (`racinglines/web/demo.py`; the demo accounts are `RACINGLINES_DEMO_USERS`,
+default `maker,taker`). Every sign-in gets a fresh session id. View settings (Edge Finder combos and season,
+job settings, which signals were seen) live in a per-session overlay on top of the account's saved baseline
+(`profiles.assign_demo` sets it), so a new sign-in starts clean and two visitors never see each other's
+changes; the Lab's browser storage is namespaced by the session. Anything that would create or change data
+(Lab jobs, promotion, candidates, the in-app book, bets, Polymarket sync or mirror, recorded replays) is
+refused with a message. Every request of a demo session is logged to `activity_log` (`demo_view`,
+`demo_post`, `demo_blocked`, with the session id, method, path and query): Admin > Activity.
+
+**Demo-only text.** Explanations that exist only for the demo accounts (their decision rules and habits,
+backtest-replay notes) render as info bubbles from the `demo_context` macro (`_macros.html`), tagged
+invisibly with `data-tag="demo-context"`. `RACINGLINES_DEMO_CONTEXT=0` hides them all; before real users,
+delete every `demo_context` call (`grep -rn demo_context racinglines/web/templates`). The Racinglines 101
+page is the demo's own explainer and uses none. Everything else describes the product.
+
+The demo taker is **not** the maker's counterparty. It trades its own strategy against
+Polymarket's prices, so if it ever ends up on the opposite side of the demo maker, that's a
+coincidence, and the app doesn't pair or net them.
+
+### Admin pages
 
 | Page | Purpose |
 |---|---|
 | `/admin` | Totals (markets, taker bets, stakes, takers' P&L, makers' worst case), users with activity counts, recent activity. |
 | `/admin/activity` | Full activity log, filterable by user and action. Records logins (and failures), market generation, reprices, status changes, bets placed and rejected, settlements, Polymarket links and orders, user changes, database edits and SQL. |
 | `/admin/users` | Create users (any role), change role, display name or password, deactivate. You can't demote or deactivate yourself. |
-| `/admin/users/{id}` | One user's trading: markets made (exposure, EV, settled P&L), bets placed (P&L), activity. |
+| `/admin/users/{id}` | One user's trading: markets made (exposure, EV, settled P&L), bets placed (P&L), activity; and the user's **strategy profile** (assign any Lab candidate, or clear it). |
 | `/admin/db` | Database explorer: every table with row counts. Browse with a column filter and paging, edit or delete a row (confirmation needed; logged with before/after values). Password hashes are never shown. |
 | `/admin/sql` | SQL console. **Read** mode runs in a `READ ONLY` transaction, so Postgres rejects any write, including data-modifying `WITH`. **Write** mode needs the toggle and a confirm box. 15 s timeout, 500 rows max. Every statement is logged in full. |
 
@@ -183,7 +256,7 @@ needs a licence where you operate.
 - A market can be repriced manually (fair value and spread). Manually priced
   markets aren't touched when the rest are repriced.
 
-**Workflow (`/house`):**
+**Workflow (`/book/quotes`):**
 
 1. Pick the race and **Create / reprice**: choose market types, top N riders and
    spread. Win, podium and make-the-Final riders are the top N by win probability;

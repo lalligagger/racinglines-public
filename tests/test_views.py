@@ -27,6 +27,24 @@ def test_job_knobs_rejected(field, value):
         jobs.parse(jobs.CATALOG["f1_backtest"], {field: value})
 
 
+@pytest.mark.parametrize("field,value", [("half_life_days", "5"), ("variant", "nope"), ("sims", "10"),
+                                         ("fill", "maybe"), ("min_edge", "2")])
+def test_sweep_settings_rejected(field, value):
+    with pytest.raises(ValueError):
+        jobs.parse(jobs.CATALOG["f1_sweep"], {"year": "2026", field: value})
+
+
+def test_sweep_form_to_command_line():
+    p = jobs.parse(jobs.CATALOG["f1_sweep"], {"year": "2025", "variant": "gridq", "half_spread": "0.03",
+                                              "practice_prior": "false", "taker_stages__present": "1",
+                                              "taker_stages": ["pre-weekend", "after FP1"]})
+    assert p == {"year": "2025", "settings": {"variant": "gridq", "practice_prior": False,
+                                              "taker_stages": ["pre-weekend", "after FP1"], "half_spread": 0.03}}
+    assert jobs._sweep_argv(p)[3:] == ["--variant", "gridq", "sweep", "--year", "2025", "--no-fetch", "--save",
+                                       "--practice-prior", "false", "--taker-stages", "pre-weekend,after FP1",
+                                       "--half-spread", "0.03"]
+
+
 @pytest.mark.parametrize("label", ["x; rm -rf /", "a" * 61])
 def test_scenario_label_rejected(label):
     with pytest.raises(ValueError):
@@ -75,8 +93,8 @@ def clients():
 def test_maker_pages(clients):
     cl, races = clients
     m = cl["maker"]
-    for path in ["/", "/book", "/lab", "/pm", "/season/f1_wdc", "/season/uci_dhi_wc", "/events", "/athletes"] + \
-            [f"/race/{r}" for r in races]:
+    for path in ["/", "/book", "/lab", "/markets/polymarket", "/seasons/f1_wdc", "/seasons/uci_dhi_wc", "/events", "/athletes"] + \
+            [f"/races/{r}" for r in races]:
         r = m.get(path)
         assert r.status_code == 200, path
         assert not re.search(r">\s*nan\b|\bnan\s*<|\bNan <", r.text, re.I), f"NaN printed in a cell on {path}"
@@ -85,17 +103,24 @@ def test_maker_pages(clients):
 def test_taker_is_kept_to_prices(clients):
     cl, races = clients
     t = cl["taker"]
-    assert t.get("/", follow_redirects=False).headers["location"] == "/bet"
-    assert t.get(f"/race/{races[0]}", follow_redirects=False).status_code == 303
-    for path in ("/lab", "/book", "/season/f1_wdc"):
+    assert t.get("/", follow_redirects=False).headers["location"] == "/markets"
+    assert t.get(f"/races/{races[0]}", follow_redirects=False).status_code == 303
+    for path in ("/lab", "/book", "/seasons/f1_wdc"):
         assert t.get(path).status_code == 403, path
-    assert t.get("/me").status_code == 200
+    assert t.get("/positions").status_code == 200
 
 
 def test_old_urls_redirect(clients):
+    """Routes match page names; every old URL redirects (web/legacy.py), keeping its query string."""
     m = clients[0]["maker"]
-    for old, new in (("/diag", "/lab"), ("/runs", "/lab"), ("/me", "/book")):
-        assert m.get(old, follow_redirects=False).headers["location"].startswith(new)
+    for old, new in (("/", "/markets"), ("/bet", "/markets"), ("/me", "/positions"), ("/signals?event=2026-15", "/strategy?event=2026-15"),
+                     ("/pm", "/markets/polymarket"), ("/house?race_id=5", "/book/quotes?race_id=5"),
+                     ("/house/7", "/book/markets/7"), ("/race/3", "/races/3"), ("/season/f1_wdc", "/seasons/f1_wdc"),
+                     ("/diag/9", "/lab/diagnostics/9"), ("/runs/4", "/lab/runs/4"), ("/markets/12", "/markets/linked/12")):
+        r = m.get(old, follow_redirects=False)
+        assert r.status_code == 308 and r.headers["location"] == new, old
+    for index, new in (("/lab/diagnostics", "/lab"), ("/lab/runs", "/lab")):
+        assert m.get(index, follow_redirects=False).headers["location"].startswith(new)
 
 
 def test_docs_behind_login(clients):
@@ -152,10 +177,9 @@ def test_run_forms_start_from_the_users_last_knobs(clients):
         uid = c.execute(text("SELECT id FROM users WHERE username = 'maker'")).scalar()
         before = P.get(c, uid).get("job_knobs")
     try:
-        _remember_knobs(uid, "f1_sweep", dict(variant="gridq+reset", min_edge=0.07, stake_per_edge=250, max_stake=50,
-                                              cost=0.01))
+        _remember_knobs(uid, "f1_sweep", dict(year="2026", settings=dict(variant="gridq+reset", min_edge=0.07)))
         html = m.get("/lab/section/run").text
-        assert "selected>gridq+reset" in html and 'value="0.07"' in html
+        assert 'name="variant" value="gridq+reset"' in html and 'name="min_edge" type="number" value="0.07"' in html
     finally:
         with get_engine().connect() as c:
             P.put(c, uid, "job_knobs", before or {})
@@ -163,13 +187,131 @@ def test_run_forms_start_from_the_users_last_knobs(clients):
 
 def test_edge_finder_benchmark_is_the_default_settings_conservative_maker(clients):
     from racinglines.db.config import get_engine
+    from racinglines.pipelines import sweep_settings as SS
     from racinglines.web import edge as E
     with get_engine().connect() as c:
-        b = E.benchmark(c)
+        b = E.build(c, [], 2026)["benchmark"]
         if b is None:
             pytest.skip("no default-settings baseline sweep saved")
         params = c.execute(text("SELECT params FROM model_runs WHERE id = :i"), dict(i=b["run_id"])).scalar()
-    assert (b["variant"], b["strategy"]) == ("baseline", "maker")
-    assert params.get("variant", "baseline") == "baseline"
-    assert all(float(params[k]) == v for k, v in E.DEFAULT_SWEEP.items())         # other knobs never replace it
+    assert SS.Settings.from_run_params(params) == SS.Settings.from_dict()        # default settings, baseline model
     assert "Benchmark · " in clients[0]["maker"].get("/lab").text                   # shown even with no combos chosen
+
+
+def test_signals_page_hides_fair_from_takers(clients):
+    """Demo taker sees action, size, limit and heat but never our fair value or edge; the maker sees quotes."""
+    from sqlalchemy import text as T
+
+    from racinglines.db.config import get_engine
+    cl, _ = clients
+    eng = get_engine()
+    with eng.begin() as c:
+        ids = dict(c.execute(T("SELECT username, id FROM users WHERE username IN ('taker', 'maker')")).all())
+        for u, action, side in (("taker", "buy", "YES"), ("maker", "quote", "both")):
+            c.execute(T("""INSERT INTO strategy_signals (user_id, profile, strategy, event_key, market_key, kind, subject,
+                             stage, dedupe, action, side, shares, limit_price, fair, price, edge, heat, status, signal_ts)
+                           VALUES (:u, 'test', :s, '2099-01', 'tok-test', 'race_h2h', 'Zed ahead of Yan', 'after FP2',
+                             'after FP2', :a, :sd, 62, 0.41, 0.5234, 0.40, 0.1234, 2, 'new', now())"""),
+                      dict(u=ids[u], s="update" if u == "taker" else "maker", a=action, sd=side))
+    try:
+        r = cl["taker"].get("/strategy")
+        assert r.status_code == 200 and "Zed ahead of Yan" in r.text and "BUY YES" in r.text
+        assert "hot" in r.text and "Our fair" not in r.text and "0.523" not in r.text and "+12.3 pts" not in r.text
+        r = cl["maker"].get("/strategy")
+        assert r.status_code == 200 and "quoting" in r.text and "Our fair" in r.text
+    finally:
+        with eng.begin() as c:
+            c.execute(T("DELETE FROM strategy_signals WHERE event_key = '2099-01'"))
+
+
+def test_racinglines101_is_public_and_linked_from_login():
+    from fastapi.testclient import TestClient
+
+    from racinglines.web.app import app
+    cl = TestClient(app)
+    r = cl.get("/racinglines101", follow_redirects=False)
+    assert r.status_code == 200 and "Racinglines 101" in r.text and "paper trades" in r.text
+    assert 'href="/racinglines101">I\'m already confused.</a>' in cl.get("/login").text
+
+
+def test_replay_counterparty_is_not_the_demo_taker(test_engine):
+    """Replay fills belong to the polymarket-takers system account: no login, never the demo taker."""
+    from sqlalchemy.orm import Session
+
+    from racinglines.web import users as U
+    with Session(test_engine) as s:
+        u = U.ensure_replay_taker(s)
+        assert U.ensure_replay_taker(s).id == u.id                     # created once
+        assert u.username == U.REPLAY_TAKER != "taker" and not u.active
+        assert U.authenticate(s, U.REPLAY_TAKER, "!no-login") is None
+
+
+def test_demo_context_bubbles_are_tagged_and_switchable():
+    """Demo-only text sits in data-tag="demo-context" bubbles; RACINGLINES_DEMO_CONTEXT=0 hides every one."""
+    from fastapi.testclient import TestClient
+
+    from racinglines.web import app as A
+    cl = TestClient(A.app)
+    cl.post("/login", data=dict(username="taker", password="password"))
+    t = cl.get("/strategy").text
+    assert 'data-tag="demo-context"' in t and "demo context" not in t.lower().replace('data-tag="demo-context"', "")
+    assert "early demo" in cl.get("/racinglines101").text and 'data-tag="demo-context"' not in cl.get("/racinglines101").text
+    A.DEMO_CONTEXT["on"] = False
+    try:
+        t = cl.get("/strategy").text
+        assert 'data-tag="demo-context"' not in t and "This demo taker" not in t and "Track record" in t
+    finally:
+        A.DEMO_CONTEXT["on"] = True
+
+
+def test_taker_markets_are_polymarket_not_a_makers_book(clients):
+    cl, _ = clients
+    r = cl["taker"].get("/markets")
+    assert r.status_code == 200 and "Every open F1 market on Polymarket" in r.text and "Upcoming races" in r.text
+    assert "Our fair" not in r.text and "fair_prob" not in r.text
+    r = cl["taker"].get("/positions")
+    assert r.status_code == 200 and "Every Polymarket position" in r.text and "Coming up" in r.text
+
+
+def test_demo_sessions_are_disposable_and_logged(clients):
+    """Demo accounts (web/demo.py): view changes live in the session only, data changes are refused,
+    each sign-in starts from the saved baseline, and every request is logged with its session id."""
+    import re
+
+    from fastapi.testclient import TestClient
+    from sqlalchemy import text as T
+
+    from racinglines.db.config import get_engine
+    from racinglines.web.app import CSRF_TOKEN, app
+    eng = get_engine()
+
+    def saved():
+        with eng.connect() as c:
+            return c.execute(T("SELECT prefs FROM users WHERE username = 'maker'")).scalar()
+
+    def combos(cl):
+        m = re.search(r"data-combos='([^']*)'", cl.get("/lab").text)
+        return m.group(1) if m else None
+
+    base = saved()
+    a, b = TestClient(app), TestClient(app)
+    for cl in (a, b):
+        cl.post("/login", data=dict(username="maker", password="password"))
+    start = combos(a)
+    assert a.post("/lab/edge", data=dict(csrf_token=CSRF_TOKEN, action="clear")).status_code == 200
+    assert combos(a) == "[]" and combos(b) == start and saved() == base          # session only; other session untouched
+    fresh = TestClient(app)
+    fresh.post("/login", data=dict(username="maker", password="password"))
+    assert combos(fresh) == start                                                # a new sign-in starts from the baseline
+    r = a.post("/lab/candidate", data=dict(csrf_token=CSRF_TOKEN, action="add"), headers={"sec-fetch-mode": "cors"})
+    assert r.status_code == 403 and "demo" in r.text
+    r = a.post("/lab/run", data=dict(csrf_token=CSRF_TOKEN, job="f1_sweep"), follow_redirects=False,
+               headers={"referer": "http://testserver/lab"})
+    assert r.status_code == 303 and "isn't available in the demo" in r.headers["location"]
+    with eng.connect() as c:
+        got = dict(c.execute(T("""SELECT action, count(*) FROM activity_log WHERE username = 'maker'
+                                   AND ts > now() - interval '5 minutes' GROUP BY 1""")).all())
+        sid = c.execute(T("""SELECT detail->>'sid' FROM activity_log WHERE username = 'maker' AND action = 'demo_blocked'
+                             ORDER BY id DESC LIMIT 1""")).scalar()
+    assert got.get("demo_view") and got.get("demo_post") and got.get("demo_blocked") and sid
+    assert saved() == base

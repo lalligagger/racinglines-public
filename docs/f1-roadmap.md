@@ -6,7 +6,7 @@ each phase are in the [F1 reference](f1-reference.md). What already exists is
 documented in [Formula 1](f1.md), [Market making](market-making.md) and
 [Testing](testing.md).
 
-Phases are named **F1-0 … F1-7** so they don't collide with the platform
+Phases are named **F1-0 … F1-9** so they don't collide with the platform
 phases in [Project history](history.md) (data layout, one package, and the
 pending additive sport schemas). Each phase starts only after the owner
 confirms it.
@@ -53,7 +53,8 @@ Decision Log entry and approval first.
 | A finishing-model switch inside `position_sim` (default: the current ridge) | 2 | A challenger must use the same inputs, simulation and pricing to be a fair comparison and to inherit the leakage guards |
 | New files inside existing packages (e.g. `position_sim/finishing_gbm.py`) | 2–4 | New code sits next to the code it extends; no new top-level packages |
 | New model family `racinglines/models/rank_logit/` | 6 (optional) | A different kind of model (fit on finishing orders, sampled with Gumbel-max) that doesn't belong inside `position_sim`. It must feed the same pricing path; if no clean seam exists, propose the smallest one in the Decision Log before coding |
-| New venue package `racinglines/markets/kalshi/` | 5 (optional) | Only if another venue lists F1 with real depth. Mirrors `markets/polymarket/` and registers in `markets/venues` |
+| New venue package `racinglines/markets/kalshi/` | 9 (was 5, optional) | Kalshi lists F1. Mirrors `markets/polymarket/` and registers in `markets/venues`; order placement behind a flag, off by default |
+| A settings schema (`pipelines/sweep_settings.py`), strategy profiles (`pipelines/profiles.py`) and the signal engine (`pipelines/signals.py`, `racinglines f1 signals`) with tables `strategy_signals` and `paper_positions` | 8 | Paper trading must run the backtest's own code on live data, and any combo found must be recreatable. New files and tables only; defaults reproduce the old sweep exactly |
 | New source `racinglines/sources/openf1/` | 7 (optional) | Only for in-race trading, which needs a live feed; FastF1's archive arrives after sessions end |
 
 ### 4. Tests must keep passing
@@ -180,7 +181,7 @@ matrix` summarizes every variant × strategy. No existing golden file changed.
 
 ### F1-2: Finishing-model challengers (reference model A)
 
-**Status:** done 2026-09-27 (promotion awaiting the owner) · **Target:** gap 1 (win after qualifying loses to grid-only) and gap 2 (pre-practice regression)
+**Status:** done 2026-09-27; nothing promoted (owner: iterate first). Paper-trading profile A uses `gridq+pretrain+reset` through its settings · **Target:** gap 1 (win after qualifying loses to grid-only) and gap 2 (pre-practice regression)
 
 **Outcome** (tables in [Formula 1](f1.md#model-variants-f1-roadmap-f1-2-f1-3)):
 
@@ -193,6 +194,9 @@ matrix` summarizes every variant × strategy. No existing golden file changed.
 - follow-up, `reset` (run 837): better in new-regulations seasons, including
   2022; `gridq + pretrain + reset` (run 854) is the most accurate combination.
   Not promoted (owner: iterate first).
+- The `params-4h` cloud search (2025 and 2026) confirmed `gridq+pretrain+reset`
+  as the taker's model (profile A) and found `gbm` best for the conservative
+  maker (profile C), although `gbm` loses on accuracy.
 
 Steps, cheapest first:
 
@@ -234,7 +238,7 @@ head-to-head, plus a calibration check for the props.
 
 ### F1-4: Maker inventory and timing (reference strategies 1 and 3)
 
-**Status:** done 2026-09-27, except the queue model, liquidity rewards and Kelly caps · **Target:** gap 5 (pre-qualifying inventory, adverse selection)
+**Status:** done 2026-09-27, except the queue model, liquidity rewards and Kelly caps; tuned in the `params-4h` search · **Target:** gap 5 (pre-qualifying inventory, adverse selection)
 
 **Outcome:** the maker options and the stage-aware taker are in the sweep, with
 rule tests. Results are in the [model × strategy matrix](market-making.md#model-strategy-matrix).
@@ -262,14 +266,17 @@ stay the default, and `tests/test_replay.py` keeps passing unchanged.
   −$2,353. Judge it on events after Baku, not by tuning on these.
 
 **Precondition for tuning:** the replay has run across every race with a
-recorded tape (TODO).
+recorded tape. Met 2026-09-27: every 2025 and 2026 weekend with a Polymarket
+tape, searched over 1,161 settings combos in the cloud (`params-4h`, see
+[Cloud sweeps](cloud-sweep.md)); tuned on 2026, confirmed on 2025. The
+queue model waits for recorded book depth (F1-8 collects it).
 
 **Done when:** each option has rule tests (in the style of `test_replay.py`) and
 a sweep comparison against the current defaults.
 
 ### F1-5: Linked-market quoting (reference strategy 2)
 
-**Status:** deferred · **Target:** the "re-quote linked markets" TODO
+**Status:** deferred (unchanged 2026-09-27) · **Target:** the "re-quote linked markets" TODO
 
 **Why deferred:** the model's prices are coherent by construction (one
 simulation), and between pricing stages our fair values don't move, so "re-quote
@@ -311,6 +318,53 @@ races
 - **No new live order path by default.** Replay first, and any live trading
   requires the owner's explicit approval.
 
+### F1-8: Live paper-trade validation (Polymarket)
+
+**Status:** running from round 16 of 2026 (Malaysia, 4 Oct) · **Behavior change:**
+none to pricing or the backtest; recommendations and paper fills only
+
+**Built** (2026-09-27): the signal engine (`racinglines f1 signals`, run by the
+LaunchAgent `bet.racinglines.signals` every 5 minutes) prices each stage as its
+session data arrives, with the backtest's own code, and records each profile's
+recommendations and paper positions. Profile **A** (update taker,
+`gridq+pretrain+reset`, min edge 0.10, 0.05 on head-to-head, no pre-weekend
+stage) runs for the demo taker; profile **C** (conservative maker on `gbm`,
+5-pt disagreement filter, 25-share quotes) for the demo maker.
+`scripts/signals_parity.py` checks that a replay of the engine equals the sweep's
+trades on a past weekend (2026 round 15: 11 of 11 taker trades and the maker's
+15 fills identical). No order is placed (`POLYMARKET_TRADING_ENABLED` unset).
+Details: [Paper trading](paper-trading.md).
+
+To do (items in [TODO](todo.md#paper-trading)):
+
+- Run A and C live through rounds 16–23 of 2026 and on into 2027.
+- After each weekend, compare live paper fills and markouts with the backtest's
+  replay of the same weekend under the conservative "through" fill rule; log the
+  markouts.
+- Walk-forward re-run of A, A-lite, C, B (#06) and A′ (#08) with rounds 16–17 added.
+- Bankroll-aware sizing and a deployed-capital cap per account.
+
+**Done when:** 4–6 live weekends are logged and compared with the backtest, and
+the owner has decided on sizing (e.g. A-lite → A). Real orders need F1-9's CLOB
+V2 item and the owner's explicit approval.
+
+### F1-9: More exchanges (Kalshi, others)
+
+**Status:** not started · **Start after** F1-8's first live weekends
+
+- **Kalshi connector** in `racinglines/markets/kalshi/`, mirroring
+  `markets/polymarket/`: markets and resolution rules, prices, trade tape, and
+  order placement behind a flag (off by default). Registered in `markets/venues`,
+  so the sweep, signals and the Markets page read it like Polymarket.
+- Store each market's resolution rules; never treat markets on two venues as
+  linked when the rules differ.
+- **Polymarket CLOB V2:** migrate `markets/polymarket/trade.py` to
+  `py-clob-client-v2` before any real Polymarket order (see F1-0).
+- Other exchanges only if they list motorsport or cycling with real depth.
+
+**Done when:** Kalshi's F1 markets replay in the sweep and appear in paper
+signals, with leakage-rule tests like Polymarket's.
+
 ## Decision log
 
 | Date | Phase | Decision | Why | Supersedes |
@@ -339,12 +393,39 @@ races
 | 2026-09-27 | — | Championship checkpoints (`f1 season-checkpoints`): enter pre-season, after 3 and after 6 GPs (owner's choice), hold, score each over the next 3 GPs and to date with P&L, drift toward our fair value and the edge-closing slope | The update-every-race strategy mostly measures reaction speed; fixed entries and equal windows compare models without picking the windows after the fact | — |
 | 2026-09-27 | 2 | `reset` variant: in a new-regulations season (`sports/f1.toml` `[regulations] resets`), earlier seasons' car pace weighted ×0.25 | The 2026 checkpoints showed the car-pace layer carrying 2025 over (McLaren 84% pre-season). The weight is set a priori, and it's judged on 2022 too, since the idea came from 2026 data | — |
 | 2026-09-27 | — | `users.prefs` (nullable JSONB, migration `5b1e0c7d2a41`) for the Lab's Edge Finder combos and last-used job knobs | Owner: settings follow the account; the database is the source of truth for history and setup, the browser only for view state. Additive column | — |
+| 2026-09-27 | — | Owner: the repo is private; a minimal data set is committed (FastF1 raw files, the Polymarket prices/trades archive, cloud search results), allow-listed in `.gitignore` and `tests/test_no_data_in_git.py` | Cloud sweep sessions clone the repo and can't be copied into; the owner preferred this over a storage bucket. Remove from history before any public release | the "zero data in git" rule |
+| 2026-09-27 | — | 2025 Polymarket markets synced (`pm-sync --closed`): 2025 title formats ("F1 X Grand Prix Winner", "– Pole Winner", "Which Constructor scores the most points?", "Head to Head Matchups") and Grand Prix name aliases (Brazilian → São Paulo, …) added to the classifier, after the 2026 forms | 2025 is the held-out season for everything built on 2026. Every stored 2026 title classifies exactly as before (checked) | — |
+| 2026-09-27 | — | Cloud sweeps: `racinglines f1 search` runs a queue of sweeps in parallel and re-reads the queue so an agent can steer it; protocol in [Cloud sweeps](cloud-sweep.md), with a held-out-season rule for anything tuned | Long unattended searches overfit 15-24 weekends unless tuning and confirmation use different seasons | — |
+| 2026-09-27 | — | One settings schema (`racinglines/pipelines/sweep_settings.py`) drives the sweep flags, the Lab's Edge Finder sweep form, search queues and saved params; stage prices are cached by model settings + the data each stage saw | Owner: any combo found must be recreatable in the Lab; defaults reproduce the old sweep exactly (checked, zero differences) | the four taker knobs |
+| 2026-09-27 | — | Searches: 2026 (every raced weekend) is the primary window; 2025 is "live from its first race", a secondary, stable-rules window; each season's default baseline runs in every search on the same data; the cloud agent may add new switches in code under the ground rules | Owner's choices; results labelled robust / 2026-specific / not better | — |
+| 2026-09-27 | — | All HTTP data sources paced per host and retried with backoff (`racinglines/sources/http.py`); FastF1 keeps its own limiter | Owner: respect API limits; two Polymarket timeouts during the 2025 download | ad-hoc retries |
+| 2026-09-27 | 4 | `min_edge_h2h`: a separate minimum edge for head-to-head markets (empty = same as `min_edge`); unset optional settings are left out of the settings hash | With it, A makes +$1,243 in 2026 and +$1,363 in 2025 (+$1,232 / +$1,237 without). Leaving unset optionals out keeps every earlier run's key, so cached stages and saved runs still match | — |
+| 2026-09-27 | 8 | Paper-trading defaults: profile **A** (update taker, `gridq+pretrain+reset`, min edge 0.10 / 0.05 h2h, no pre-weekend stage) for the demo taker, profile **C** (conservative maker, `gbm`, max disagreement 0.05, 25-share quotes) for the demo maker; live from round 16 of 2026 | The only two `params-4h` candidates profitable in both 2025 and 2026 with small drawdowns. Recommendations and paper fills only; the signal engine reuses the backtest's code, checked by `scripts/signals_parity.py` | — |
+| 2026-09-27 | 8 | Demo accounts' history is evidence-driven: weekends before live paper trading are backtest replays (flagged `detail.backfill`), and the maker's strategy switches follow a fixed rule on walk-forward Edge Finder evidence (`pipelines/story.py`) | A demo track record must be reproducible and must not use hindsight; labelled as a replay in the app | — |
+| 2026-09-27 | — | Web routes renamed to match their pages (Markets, Strategy, Positions, My Book, Lab); every old URL redirects (`web/legacy.py`) | A page's name and its URL should agree; redirects keep bookmarks and links working | the old routes |
+| 2026-09-27 | — | Cloud runs load a database snapshot (`racinglines db snapshot-export` / `snapshot-import`, `data/archive/db/`) plus exported market links, prepared by `scripts/cloud/prepare.sh` | An exact replica (same ids, same prices) makes cloud results identical to local ones and needs no network beyond PyPI and GitHub | `f1 ingest` + `pm-sync` on the VM |
+| 2026-09-27 | 9 | New phases F1-8 (live paper-trade validation) and F1-9 (more exchanges); the Kalshi package moves from F1-5 to F1-9 | Trading on any exchange only after paper-trade validation; Kalshi lists F1 | the Kalshi row under F1-5 |
 
 ## Open questions
 
-- Does another venue list F1 markets with enough depth to justify a second
-  venue adapter?
+- Do live paper fills match the backtest? The replay's "through" rule is
+  conservative, but live queues and competing makers may fill less (F1-8).
+- How much to size up after validation, and on what evidence (A-lite → A)?
+- Kalshi's F1 depth and resolution rules: enough to quote, or only to take (F1-9)?
+- Are the search's noise ranges real? The Monte Carlo seed is fixed, so noise
+  replicates aren't independent until a seed setting exists.
 - Sprint weekends: does the F1-2 stage-specific training need separate
   handling for sprint-format stages?
 - Should maker spreads come from per-market model uncertainty (F1-6) or from
-  measured markouts (F1-4)? F1-4 results should answer this first.
+  measured markouts (F1-4)? F1-4 showed markout-driven widening doesn't help on
+  2026; live markouts from F1-8 are the next evidence.
+- Which sport next? F1 and UCI downhill are the endpoints for audience and
+  expected liquidity; candidates in between are in [TODO](todo.md#business-and-collaborators).
+
+## Collaborators and beta testers
+
+The repository is private on GitHub only because a minimal data set (FastF1 raw
+files, the Polymarket prices and trades archive, the database snapshot) is
+committed so cloud runs can clone it, and that data isn't ours to publish. We
+are open to beta testers and collaborators, and happy to share the pipeline and
+web-app code with anyone interested: ask for invited access or a code-only copy.

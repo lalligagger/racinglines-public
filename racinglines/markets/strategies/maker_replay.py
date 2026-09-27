@@ -342,8 +342,9 @@ def stages_for(runs, sessions):
     return out
 
 
-def load_event(conn, run_ids):
-    """Markets, fair values, public tape and outcomes for one event's diagnostic runs."""
+def load_event(conn, run_ids, sessions=None):
+    """Markets, fair values, public tape and outcomes for one event's diagnostic runs.
+    sessions: [(kind, start)] (naive UTC) instead of the race's stored rounds (an event not yet run)."""
     from sqlalchemy import text
 
     from racinglines.db import reads as D
@@ -359,8 +360,9 @@ def load_event(conn, run_ids):
                   key=lambda r: r["cutoff"])
     race_id = conn.execute(text("SELECT ra.id FROM races ra JOIN events e ON e.id = ra.event_id WHERE e.source_key = :k"),
                            dict(k=key)).scalar()
-    rounds = conn.execute(text("SELECT kind, extra->>'session_date' FROM rounds WHERE race_id = :r "
-                               "AND extra->>'session_date' IS NOT NULL"), dict(r=race_id)).fetchall()
+    rounds = sessions if sessions is not None else conn.execute(text(
+        "SELECT kind, extra->>'session_date' FROM rounds WHERE race_id = :r "
+        "AND extra->>'session_date' IS NOT NULL"), dict(r=race_id)).fetchall()
     sessions = [_ns(s) for _, s in rounds]
     qual_start = next((_ns(s) for k, s in rounds if k == "qual"), None)
     stages = stages_for(runs, sessions)

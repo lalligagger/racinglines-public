@@ -9,19 +9,72 @@ whole tree.
 data/
   raw/<sport>/<source>/...                 immutable downloads: the record
     raw/f1/fastf1/<year>/<rnd>_<session>.{results,laps}.parquet + .meta.json
+    raw/f1/fastf1/<year>/schedule.parquet   the season's FastF1 schedule (used when FastF1 can't be reached)
     raw/mtb_dh/chronorace/*.md              one file per event and category
     raw/mtb_dh/manual/...                   live-timing copy/pastes (not used by the pipeline)
   archive/markets/<exchange>/{prices,trades,books}/month=YYYY-MM/*.parquet
+  archive/markets/polymarket/links/market_links.parquet   market links with stable keys (f1 pm-links-export)
+  archive/db/<table>.parquet + manifest.json               database snapshot (db snapshot-export)
   archive/<sport>/...                       stale heavy race data moved out of Postgres (future)
   runs/<sport>/{backtests,sweeps,...}/      generated outputs
   runs/jobs/                                outputs of jobs launched from the web app
+  runs/search/<name>/                       settings searches (f1 search): leaderboard, results, state, logs
+  runs/alerts/new_markets.jsonl             new-market alerts, one JSON line per event
+  runs/logs/                                logs: web, record (recorder), signals, postgres, long runs
   cache/<tool>/                             disposable (FastF1's HTTP cache, cleared after fetches)
+  pg/                                       local Postgres cluster when not using Docker (see Database)
 ```
 
 - **Downhill source files** are keyed in the database by their path relative to
   `data/` (e.g. `raw/mtb_dh/chronorace/20260925_mtb_dhi_elite-men.md`), so moving
   the tree doesn't cause a re-ingest.
 - **F1 events** are keyed by season and round (`f1:2026-15`).
+- **Snapshot and links file:** see [Database](database.md#snapshot-an-exact-replica)
+  and [CLI](cli.md#racinglines-markets). The snapshot rebuilds an exact replica; the
+  links file loads Polymarket's market links where the API can't be reached.
+- **Local Postgres:** `data/pg/` exists only with the Docker-free setup
+  ([Database](database.md#setup)); its log is `data/runs/logs/postgres.log`.
+
+## What's in git
+
+The repo is private (since 2026-09-27). `.gitignore` ignores `data/*` and data file
+types (`*.parquet`, `*.csv`, …) everywhere, then allow-lists the minimal set a
+[cloud sweep](cloud-sweep.md) needs to rebuild the database without the sources:
+
+| Path | Holds |
+|---|---|
+| `data/raw/f1/` | FastF1 sessions and schedules |
+| `data/archive/markets/polymarket/prices/`, `trades/` | Polymarket price and trade archive |
+| `data/archive/markets/polymarket/links/` | Market links file |
+| `data/archive/db/` | Database snapshot |
+| `data/runs/search/` | Search results brought back from cloud sessions |
+
+- **Everything else in `data/` stays ignored:** downhill downloads, order books,
+  other run outputs, logs, alerts, caches, `data/pg/`, plus `tests/fixtures/` and
+  `tests/golden/`.
+- **Enforced:** `tests/test_no_data_in_git.py` fails if data outside the allow-list is
+  tracked or about to be added (it also runs in the [pre-push hook](testing.md#pre-push-hook)).
+- **If the repo ever goes public,** this data must be removed from the git history
+  first, not just deleted.
+
+## Respecting the sources' limits
+
+Every download goes through one of two guards, so a long unattended run (e.g. a
+[cloud sweep](cloud-sweep.md)) never hammers a source:
+
+| Source | Guard |
+|---|---|
+| Polymarket (Gamma, CLOB, Data API), ChronoRace, Wikipedia | `racinglines/sources/http.py`: a minimum interval between requests to the same host, shared by every thread (CLOB 0.15 s, Gamma and Data API 0.25 s, ChronoRace 0.5 s, Wikipedia 1 s, others 0.25 s), and up to 5 tries with exponential backoff and jitter (2, 4, 8, 16 s …, capped at 120 s) on timeouts, dropped connections, 429 and 5xx, honouring `Retry-After`; other 4xx return at once |
+| FastF1 (F1 live-timing archive) | FastF1's own limiter (500 calls an hour); on its rate-limit error the fetcher waits 5 minutes and tries again |
+
+And nothing is downloaded twice:
+
+- **FastF1:** sessions already on disk are skipped; each season's schedule is saved
+  (`data/raw/f1/fastf1/<year>/schedule.parquet`) and used when FastF1 can't be reached.
+- **Polymarket race weekends:** a weekend whose prices are stored is skipped
+  (`racinglines f1 sweep --fetch-only`); championship history is fetched in 7-day windows, and
+  windows already stored are skipped.
+- **Sweeps** with `--no-fetch` (and every search job) never download; stage prices are cached by model settings and data.
 
 ## Source: ChronoRace
 

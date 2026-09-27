@@ -5,6 +5,8 @@ racinglines db <command>
     seed      Upsert sports / leagues / competitions / categories / venues from registry.py.
     stats     Row counts and coverage per season and category.
     export    Write the tidy frame (same columns as `racinglines mtb_dh parse`'s CSV) for a competition to CSV.
+    snapshot-export  The tables the models read, with ids, to data/archive/db/ (Parquet).
+    snapshot-import  Load that snapshot into a fresh database: an exact replica (same ids, same prices).
 
 Connection: $DATABASE_URL, or --db URL (default: docker-compose.yml's database).
 """
@@ -70,6 +72,19 @@ def cmd_export(args):
     print(f"Wrote {len(df)} rows -> {args.out}")
 
 
+def cmd_snapshot_export(args):
+    from racinglines import paths
+    from racinglines.db import snapshot as S
+    counts = S.export(get_engine(args.db))
+    print(f"exported {sum(counts.values()):,} rows in {len(counts)} tables -> {paths.rel(S.DIR)}")
+
+
+def cmd_snapshot_import(args):
+    from racinglines.db import snapshot as S
+    counts = S.import_(get_engine(args.db), force=args.force)
+    print(f"imported {sum(counts.values()):,} rows in {len(counts)} tables")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="racinglines db", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -82,6 +97,10 @@ def main(argv=None):
     p.add_argument("--competition", default="uci_dhi_wc")
     p.add_argument("--out", default="splits.csv")
     p.set_defaults(func=cmd_export)
+    sub.add_parser("snapshot-export", help="Model tables with ids -> data/archive/db/.").set_defaults(func=cmd_snapshot_export)
+    p = sub.add_parser("snapshot-import", help="Load data/archive/db/ into a fresh database.")
+    p.add_argument("--force", action="store_true", help="Even if the database already holds model runs.")
+    p.set_defaults(func=cmd_snapshot_import)
     args = ap.parse_args(argv)
     args.func(args)
 

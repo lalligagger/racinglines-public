@@ -120,6 +120,13 @@ def season_same(v):
     return "+".join(p for p in v.split("+") if p != "gridq") or "baseline"
 
 
+def plain_sweep(variant):
+    """SQL filter: sweeps at default settings apart from the model variant (sweeps saved before the
+    settings schema had only the variant and the four taker knobs, which weren't varied)."""
+    assert all(ch.isalnum() or ch in "+_" for ch in variant), variant
+    return f"AND (params->'settings' IS NULL OR params->>'label' = '{variant}')"
+
+
 def _latest(conn, kind, variant, extra=""):
     from sqlalchemy import text
     return conn.execute(text(f"""SELECT id, params, metrics FROM model_runs WHERE kind = :k
@@ -135,7 +142,7 @@ def matrix(conn, variants, year=2026):
     acc, pnl, mkt, runs = [], [], [], {}
     for v in variants:
         bt = _latest(conn, "backtest", v, full)
-        sw = _latest(conn, "sweep", v, f"AND (params->>'year')::int = {int(year)}")
+        sw = _latest(conn, "sweep", v, f"AND (params->>'year')::int = {int(year)} {plain_sweep(v)}")
         ss = _latest(conn, "season_strategy", season_same(v), f"AND (params->>'year')::int = {int(year)}")
         runs[v] = dict(backtest=bt[0] if bt else None, sweep=sw[0] if sw else None, season=ss[0] if ss else None)
         row = dict(variant=v)
@@ -236,7 +243,7 @@ def strategy_pnl(conn, year=2026):
                 ladder[v] = float(g["pnl"].sum())                       # later runs overwrite earlier ones
     cells, runs = {}, {}
     for v in variants:
-        sw = _latest(conn, "sweep", v, f"AND (params->>'year')::int = {int(year)}")
+        sw = _latest(conn, "sweep", v, f"AND (params->>'year')::int = {int(year)} {plain_sweep(v)}")
         ss = _latest(conn, "season_strategy", season_same(v), f"AND (params->>'year')::int = {int(year)}")
         runs[v] = dict(sweep=sw[0] if sw else None, season=ss[0] if ss else None)
         totals = (sw[2].get("totals") or {}) if sw else {}

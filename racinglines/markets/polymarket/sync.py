@@ -28,6 +28,7 @@ import httpx
 from sqlalchemy import select, text
 
 from racinglines.db import models as m
+from racinglines.sources import http
 
 GAMMA = "https://gamma-api.polymarket.com"
 MATCH_DAYS = 10     # a race market's end date must be within this many days of the race
@@ -44,13 +45,21 @@ TEAM_NAMES = {
 }
 
 
+# Polymarket's Grand Prix names -> FastF1's (2025 titles use country names and old event names)
+GP_ALIASES = {"brazilian": "sao paulo", "brazil": "sao paulo", "china": "chinese", "italy": "italian",
+              "japan": "japanese", "mexican": "mexico city", "mexico": "mexico city", "australia": "australian",
+              "us": "united states", "usa": "united states", "spain": "spanish", "austria": "austrian",
+              "belgium": "belgian", "hungary": "hungarian", "netherlands": "dutch", "canada": "canadian",
+              "imola": "emilia romagna", "saudi": "saudi arabian"}
+
+
 def _norm(s):
     s = unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode().lower()
     return re.sub(r"[^a-z ]", "", s).strip()
 
 
 def classify(event_title, question):
-    t, q = event_title or "", question or ""
+    t, q = (event_title or "").strip(), (question or "").strip()
     if m_ := re.search(r"^(.*Grand Prix): Driver Winner", t):
         return "race_win", m_.group(1)
     if m_ := re.search(r"^(.*Grand Prix): Driver Podium", t):
@@ -61,6 +70,20 @@ def classify(event_title, question):
         return "race_constructor_top", m_.group(1)
     if m_ := re.search(r"^(.*Grand Prix): Driver Pole Position", t):
         return "race_pole", m_.group(1)
+    # 2025 titles ("F1 Austrian Grand Prix Winner", "China Grand Prix: Pole Winner", "F1 Dutch Grand Prix –
+    # Head to Head Matchups", "...: Which Constructor scores the most points?"); checked after the 2026 forms
+    gp, sep = r"^(?:F1:?\s+)?(.+?Grand Prix)", r"\s*(?::|–|-)?\s*"
+    if m_ := re.search(gp + sep + r"(?:Driver\s+)?Winner$", t):
+        return "race_win", m_.group(1)
+    if m_ := re.search(gp + sep + r"(?:Driver\s+)?Pole\s+(?:Winner|Position)$", t):
+        return "race_pole", m_.group(1)
+    if m_ := re.search(gp + sep + r"Driver\s+Podium(?:\s+Finish)?$", t):
+        return "race_podium", m_.group(1)
+    if m_ := re.search(gp + sep + r"Head[- ]to[- ]Head(?:\s+Matchups)?$", t, re.I):
+        return "race_h2h", m_.group(1)
+    if m_ := re.search(gp + sep + r"(?:Which Constructor Scores (?:the most points|1st)\??|(?:Top|Highest) Scoring Constructor)$",
+                       t, re.I):
+        return "race_constructor_top", m_.group(1)
     if re.search(r"Drivers'? Champion$", t):
         return "champion", None
     if re.search(r"Constructors'? Champion$", t):
@@ -121,6 +144,7 @@ class Resolver:
         """Race by Grand Prix name, and (when the market's end date is known) held within
         MATCH_DAYS of it: a cancelled or rescheduled GP keeps its name but not its date."""
         g = _norm(gp_name).replace(" grand prix", "")
+        g = GP_ALIASES.get(g, g)
         for rid, name, key, start in self.races:
             if not g or g not in _norm(name):
                 continue
@@ -135,12 +159,14 @@ def _events(closed_year=None):
     out = {}
     with httpx.Client(base_url=GAMMA, timeout=30) as c:
         for tag in TAGS:
-            for e in c.get("/events", params={"tag_slug": tag, "active": "true", "closed": "false", "limit": 200}).json():
+            for e in http.get(c, "/events", params={"tag_slug": tag, "active": "true", "closed": "false",
+                                                   "limit": 200}).json():
                 out[e["slug"]] = e
             if closed_year:
                 off = 0
                 while off < 5000:
-                    page = c.get("/events", params={"tag_slug": tag, "closed": "true", "limit": 100, "offset": off}).json()
+                    page = http.get(c, "/events", params={"tag_slug": tag, "closed": "true", "limit": 100,
+                                                          "offset": off}).json()
                     if not page:
                         break
                     for e in page:
@@ -157,14 +183,15 @@ def _f(v):
         return None
 
 
-def sync(session, conn, year=2026, include_closed=False):
+def sync(session, conn, year=2026, include_closed=False, new=None):
     """Fetch every active F1 event (and with include_closed, every closed one of `year`)
-    and upsert one market_links row per outcome token."""
+    and upsert one market_links row per outcome token. Tokens seen for the first time get
+    first_seen_at and, if `new` is a list, are appended to it (markets/alerts.py)."""
     comp = session.scalars(select(m.Competition).filter_by(code="f1_wdc")).one()
     cat = session.scalars(select(m.Category).filter_by(competition_id=comp.id, code="DRV")).one()
     R = Resolver(conn, year)
     now = datetime.now(timezone.utc)
-    stats = dict(events=0, links=0, modeled=0, unmatched=0)
+    stats = dict(events=0, links=0, modeled=0, unmatched=0, new=0)
     for slug, ev in _events(year if include_closed else None).items():
         stats["events"] += 1
         for mk in ev.get("markets", []):
@@ -228,7 +255,10 @@ def sync(session, conn, year=2026, include_closed=False):
                     closed=closed, resolved_yes=resolved, synced_at=now, active=not closed)
                 link = session.scalars(select(m.MarketLink).filter_by(token_id=tokens[i])).first()
                 if link is None:
-                    session.add(m.MarketLink(token_id=tokens[i], **values))
+                    session.add(m.MarketLink(token_id=tokens[i], first_seen_at=now, **values))
+                    stats["new"] += 1
+                    if new is not None:
+                        new.append(dict(values, token_id=tokens[i]))
                 else:
                     for k, v in values.items():
                         setattr(link, k, v)
@@ -254,7 +284,7 @@ def fetch_history(session, conn, event_slugs, start, end, fidelity=60, tokens=No
     n = 0
     with httpx.Client(base_url=CLOB, timeout=20) as c:
         for tok in tokens:
-            r = c.get("/prices-history", params={"market": tok, "startTs": int(start.timestamp()),
+            r = http.get(c, "/prices-history", params={"market": tok, "startTs": int(start.timestamp()),
                                                   "endTs": int(end.timestamp()), "fidelity": fidelity})
             pts = r.json().get("history", []) if r.status_code == 200 else []
             if not pts:
@@ -270,9 +300,10 @@ def fetch_history(session, conn, event_slugs, start, end, fidelity=60, tokens=No
 DATA_API = "https://data-api.polymarket.com"
 
 
-def fetch_trades(session, conn, event_slugs, page=500, max_offset=100_000, modeled_only=False):
+def fetch_trades(session, conn, event_slugs, page=500, max_offset=100_000, modeled_only=False, since=None):
     """Store every taker trade for the markets of the given events (Data API).
-    `side` is the taker's side for `token_id`. Idempotent. Returns trades stored."""
+    `side` is the taker's side for `token_id`. Idempotent. Returns trades stored.
+    since (datetime, UTC): stop paging a market once a page reaches trades this old (newest come first)."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
     conds = conn.execute(text("""SELECT DISTINCT condition_id FROM market_links WHERE event_slug = ANY(:s)
                                  AND condition_id IS NOT NULL AND (NOT CAST(:m AS boolean) OR prediction <> 'unmodeled')"""),
@@ -282,7 +313,7 @@ def fetch_trades(session, conn, event_slugs, page=500, max_offset=100_000, model
         for cond in conds:
             off, rows = 0, []
             while off <= max_offset:
-                r = c.get("/trades", params={"market": cond, "limit": page, "offset": off, "takerOnly": "true"})
+                r = http.get(c, "/trades", params={"market": cond, "limit": page, "offset": off, "takerOnly": "true"})
                 batch = r.json() if r.status_code == 200 else []
                 if not isinstance(batch, list) or not batch:
                     break
@@ -291,6 +322,8 @@ def fetch_trades(session, conn, event_slugs, page=500, max_offset=100_000, model
                               price=float(t["price"]), size=float(t["size"]), tx_hash=t["transactionHash"],
                               wallet=t.get("proxyWallet")) for t in batch]
                 if len(batch) < page:
+                    break
+                if since is not None and min(int(t["timestamp"]) for t in batch) < since.timestamp():
                     break
                 off += page
             for i in range(0, len(rows), 1000):
@@ -323,7 +356,7 @@ def snapshot_books(session, conn, event_slugs=None, depth=10):
     rows = []
     with httpx.Client(base_url=CLOB, timeout=30) as c:
         for i in range(0, len(toks), 100):
-            r = c.post("/books", json=[{"token_id": t} for t in toks[i:i + 100]])
+            r = http.post(c, "/books", json=[{"token_id": t} for t in toks[i:i + 100]])
             for b in (r.json() if r.status_code == 200 else []):
                 bids, asks = _levels(b.get("bids"), True), _levels(b.get("asks"), False)
                 rows.append(dict(token_id=b["asset_id"], ts=datetime.fromtimestamp(int(b["timestamp"]) / 1000, tz=timezone.utc),

@@ -177,7 +177,9 @@ def run_code(sports=("f1", "mtb_dh")):
 
 def _get(url, **params):
     import httpx
-    r = httpx.get(url, params=params, timeout=20, follow_redirects=True, headers={"User-Agent": "racinglines-check"})
+    from racinglines.sources import http
+    with httpx.Client(timeout=20, follow_redirects=True, headers={"User-Agent": "racinglines-check"}) as c:
+        r = http.get(c, url, params=params, tries=2)
     r.raise_for_status()
     return r
 

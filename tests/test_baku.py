@@ -48,9 +48,10 @@ def runs(engine):
 @pytest.fixture(scope="module")
 def event(engine, runs):
     from racinglines.markets.strategies import maker_replay as R
+    from racinglines.markets import store as MS
     with engine.connect() as c:
-        if not c.execute(text("SELECT count(*) FROM market_trades t JOIN market_links ml ON ml.token_id = t.token_id "
-                              "WHERE ml.event_slug LIKE 'f1-azerbaijan%'")).scalar():
+        toks = [r[0] for r in c.execute(text("SELECT token_id FROM market_links WHERE event_slug LIKE 'f1-azerbaijan%'"))]
+        if not toks or not len(MS.read(c, "trades", tokens=toks)):         # Postgres buffer + Parquet archive
             pytest.skip("no Baku trade tape")
         return R.load_event(c, runs["id"].tolist())
 
@@ -168,5 +169,5 @@ def test_diag_page_roles(engine, runs):
     maker, taker = TestClient(app), TestClient(app)
     maker.post("/login", data=dict(username="maker", password="password"))
     taker.post("/login", data=dict(username="taker", password="password"))
-    assert maker.get(f"/diag/{rid}").status_code == 200
-    assert taker.get(f"/diag/{rid}").status_code == 403
+    assert maker.get(f"/lab/diagnostics/{rid}").status_code == 200
+    assert taker.get(f"/lab/diagnostics/{rid}").status_code == 403

@@ -1,7 +1,7 @@
 {% from "_macros.html" import csrf %}
 <h2>Run</h2>
 {% for code, sport, jts in sports %}<h3>{{ sport }}</h3>
-<div class="cards">{% for jt in jts %}
+<div class="cards">{% for jt in jts %}{% if jt.code == 'f1_sweep' %}{% include "lab_sweep_form.html" %}{% else %}
 <form method="post" action="/lab/run" class="ecard" {% if sel_job == jt.code %}style="border-color:var(--accent)"{% endif %}>{{ csrf() }}<input type="hidden" name="job" value="{{ jt.code }}">
   <div><h3>{{ jt.label }}</h3><div class="when">{{ jt.what }}{% if jt.minutes %} · {{ jt.minutes }}{% endif %}</div></div>
   <div class="jobform">{% set mine = knobs.get(jt.code, {}) %}{% for k in jt.knobs %}{% set val = mine.get(k.name, k.default) %}<label title="{{ k.help }}"><span>{{ k.label }}</span>
@@ -11,5 +11,5 @@
     {% elif k.type == 'text' %}<input name="{{ k.name }}" value="{{ val }}" maxlength="60">
     {% else %}<input name="{{ k.name }}" type="number" value="{{ val }}" min="{{ k.min }}" max="{{ k.max }}" step="{{ '1' if k.type == 'int' else 'any' }}">{% endif %}</label>{% endfor %}</div>
   <div><button class="primary">Run</button></div>
-</form>{% endfor %}</div>{% endfor %}
+</form>{% endif %}{% endfor %}</div>{% endfor %}
 <p class="legend">Forms start from the settings you last ran with. Strategy knobs (spread, size, inventory and capital limits, filters, fill rule) replay instantly on an event's real Polymarket tape: open an <a href="#diagnostics" data-open="diagnostics">event diagnostic</a>.</p>

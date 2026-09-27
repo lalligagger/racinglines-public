@@ -137,8 +137,24 @@ def admin_user_detail(request: Request, user_id: int, c=Depends(conn)):
                          settled=float(book["settled_pnl"].dropna().sum())) if len(book) else None
     taker_summary = dict(bets=len(bets), staked=float(bets["stake"].sum()), pnl=float(bets["pnl"].sum()),
                          open=int((bets["status"] == "open").sum())) if len(bets) else None
+    from racinglines.pipelines import profiles as PF
+    cands = [dict(id=i, name=p.get("name"), strategy=p.get("strategy")) for i, p in PF._candidates(c)]
     return render(request, "admin_user.html", u=rows(u)[0], book=rows(book), bets=rows(bets), activity=rows(activity),
-                  maker_summary=maker_summary, taker_summary=taker_summary)
+                  maker_summary=maker_summary, taker_summary=taker_summary, profile=PF.of_user(c, user_id),
+                  candidates=cands)
+
+
+@app.post("/admin/users/{user_id}/profile", dependencies=[Depends(check_csrf), allow("admin")])
+def admin_user_profile(request: Request, user_id: int, candidate_id: str = Form("")):
+    """Assign a Lab candidate as the user's strategy profile (live paper signals), or clear it."""
+    from racinglines.pipelines import profiles as PF
+    with get_engine().begin() as c:
+        old = PF.of_user(c, user_id)
+        new = PF.load(c, candidate_id) if candidate_id else None
+        PF.assign(c, user_id, new)
+    audit(request, "user_profile", user_id=user_id, old=(old or {}).get("name"), new=(new or {}).get("name"),
+          candidate_id=(new or {}).get("candidate_id"))
+    return RedirectResponse(f"/admin/users/{user_id}", status_code=303)
 
 
 # ---------------------------------------------------------------------------

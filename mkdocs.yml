@@ -19,17 +19,20 @@ nav:
       - Sources & layout: data.md
       - Parser: parser.md
       - Database: database.md
-  - Models:
-      - Formula 1: f1.md
+  - Formula 1:
+      - F1 model: f1.md
+      - F1 evaluation: f1-evaluation.md
+      - F1 forecast: f1-forecast.md
+      - Market making: market-making.md
+      - Paper trading: paper-trading.md
+  - Downhill:
       - Downhill model: model.md
-  - Accuracy:
       - Downhill evaluation: evaluation.md
       - Downhill forecast: forecast.md
-  - Markets:
-      - Market making: market-making.md
-      - Web app & trading: webapp.md
+  - Web app: webapp.md
   - Operate:
       - CLI reference: cli.md
+      - Cloud sweeps: cloud-sweep.md
       - Testing: testing.md
   - Background:
       - Project history: history.md

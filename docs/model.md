@@ -1,11 +1,15 @@
-# Season model
+# Downhill model
 
-The season model lives in `racinglines/models/timed_runs/` (section 7) and is driven by
+The downhill season model lives in `racinglines/models/timed_runs/` (section 7) and is driven by
 `racinglines mtb_dh forecast` and `racinglines mtb_dh backtest`. It answers:
 
 - Before a weekend: what's each rider's chance to make the Final, finish top 10,
   reach the podium, or win? How many championship points do they get on average?
 - Mid-season: how will the championship end up?
+
+How accurate it is: [Downhill evaluation](evaluation.md). The live 2026
+projection: [Downhill forecast](forecast.md). Formula 1 uses a different model
+family: [F1 model](f1.md).
 
 ## Overview
 

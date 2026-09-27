@@ -43,16 +43,19 @@ def price_chart(series, labels, fairs=None, markers=(), w=900, h=220, pad=34):
     return dict(w=w, h=h, pad=pad, lines=lines, yticks=yticks, xticks=xticks, markers=mk)
 
 
-def line_chart(series, labels=None, w=900, h=200, pad=48, money=True):
-    """series: {key: [(ts, value), ...]} -> dict for the `chart` macro, with a $ axis and a zero line."""
+def line_chart(series, labels=None, w=900, h=200, pad=48, money=True, include_zero=True, markers=()):
+    """series: {key: [(ts, value), ...]} -> dict for the `chart` macro, with a $ axis and a zero line.
+    include_zero=False fits the axis to the data (e.g. a bankroll); markers: [(ts, label)] dashed verticals."""
     series = {k: v for k, v in series.items() if len(v) >= 2}
     if not series:
         return None
     t0 = min(v[0][0] for v in series.values())
     t1 = max(v[-1][0] for v in series.values())
     span = max((t1 - t0).total_seconds(), 1)
-    lo = min(0.0, min(min(y for _, y in v) for v in series.values()))
-    hi = max(0.0, max(max(y for _, y in v) for v in series.values()))
+    lo = min(min(y for _, y in v) for v in series.values())
+    hi = max(max(y for _, y in v) for v in series.values())
+    if include_zero:
+        lo, hi = min(0.0, lo), max(0.0, hi)
     rng = (hi - lo) or 1.0
     lo, hi = lo - 0.08 * rng, hi + 0.08 * rng
     plot_h = h - 16
@@ -71,5 +74,7 @@ def line_chart(series, labels=None, w=900, h=200, pad=48, money=True):
     if len(months) < 2:
         months = pd.date_range(pd.Timestamp(t0).ceil("D"), t1, freq="7D")
     xticks = [dict(x=round(x(d), 1), label=d.strftime("%b %d")) for d in months]
-    return dict(w=w, h=h, pad=pad, lines=lines, yticks=yticks, xticks=xticks,
-                markers=[dict(x=pad, label="", anchor="start")][:0], zero_y=round(y(0.0), 1))
+    mk = [dict(x=round(x(t), 1), label=lab, anchor="end" if x(t) > w * 0.8 else "start")
+          for t, lab in markers if t0 <= t <= t1]
+    return dict(w=w, h=h, pad=pad, lines=lines, yticks=yticks, xticks=xticks, markers=mk,
+                zero_y=round(y(0.0), 1) if lo <= 0 <= hi else None)

@@ -1,0 +1,72 @@
+"""
+The demo accounts' track record: every past weekend with Polymarket race markets, replayed with the
+profile each account ran then (profiles.HISTORY), stored as that account's paper signals and positions.
+
+These are backtest replays, not live paper trades: real Polymarket prices and trade tapes, our as-of
+pricing, the backtest's strategy code (signals.compute with live=False, the same path as the sweep).
+Every row is flagged detail.backfill and shown as a backtest replay in the app. Live paper signals
+(signals.run_all) take over from the next race weekend.
+
+    racinglines f1 demo-history              # backfill (idempotent: existing rows are kept)
+    racinglines f1 demo-history --reset      # delete the backfill first, then rebuild it
+"""
+
+import pandas as pd
+from sqlalchemy import text
+
+from racinglines.pipelines import profiles as PF
+from racinglines.pipelines import signals as SG
+from racinglines.pipelines import weekend_sweep as WS
+
+SETTLED = pd.Timedelta(days=1)       # replay each weekend as of a day after its race: every stage known, settled
+
+
+def reset(engine, usernames):
+    with engine.begin() as c:
+        ids = c.execute(text("SELECT id FROM users WHERE username = ANY(:u)"), dict(u=list(usernames))).scalars().all()
+        keys = c.execute(text("""SELECT DISTINCT event_key FROM strategy_signals WHERE user_id = ANY(:i)
+                                 AND detail->>'backfill' = 'true'"""), dict(i=ids)).scalars().all()
+        n = c.execute(text("DELETE FROM strategy_signals WHERE user_id = ANY(:i) AND detail->>'backfill' = 'true'"),
+                      dict(i=ids)).rowcount
+        c.execute(text("DELETE FROM paper_positions WHERE user_id = ANY(:i) AND event_key = ANY(:k)"),
+                  dict(i=ids, k=list(keys)))
+    return n
+
+
+def backfill(engine, engine_url=None, usernames=None, now=None, echo=print):
+    """Replay every past weekend of each demo account's history. Returns [(user, profile, event, signals, P&L)]."""
+    now = pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz="UTC").tz_localize(None)
+    plan = {u: h for u, h in PF.HISTORY.items() if not usernames or u in usernames}
+    with engine.begin() as c:
+        ids = PF.ensure_candidates(c, history=True)
+        users = dict(c.execute(text("SELECT username, id FROM users WHERE username = ANY(:u)"),
+                               dict(u=list(plan))).all())
+        profs = {code: PF.load(c, i) for code, i in ids.items()}
+    cache, report, scheds = {}, [], {}
+    for username, phases in plan.items():
+        uid = users.get(username)
+        if uid is None:
+            echo(f"no user {username!r}: skipped")
+            continue
+        rate = PF.DEMO_FOLLOW.get(username)
+        for code, year, r0, r1 in phases:
+            prof = profs[code]
+            sched = scheds.setdefault(year, WS.schedule(year))
+            for rnd in sorted(r for r in sched if r0 <= r <= r1):
+                w = sched[rnd]
+                if w["race_start"] + SETTLED > now:
+                    break                                     # not raced yet: live signals cover it
+                out = SG.compute(engine, engine_url, prof, now=w["race_start"] + SETTLED, event=f"{year}-{rnd}",
+                                 live=False, fetch=False, echo=lambda m: None, cache=cache)
+                if not out["stages"] or not (out["signals"] or out["positions"]):
+                    echo(f"{username} {w['event_key']} {w['name']}: no markets")
+                    continue
+                with engine.begin() as c:
+                    SG.store(c, uid, out, follow_rate=rate, history=True)
+                    pnl = c.execute(text("""SELECT coalesce(sum(cash + yes_shares * outcome::int + no_shares * (1 - outcome::int)), 0)
+                                            FROM paper_positions WHERE user_id = :u AND event_key = :e AND outcome IS NOT NULL"""),
+                                    dict(u=uid, e=w["event_key"])).scalar()
+                report.append((username, prof["name"], w["event_key"], len(out["signals"]), float(pnl)))
+                echo(f"{username} {w['event_key']} {w['name']:28s} {code:2s} {len(out['signals']):4d} signals  "
+                     f"P&L {pnl:+8.2f}")
+    return report

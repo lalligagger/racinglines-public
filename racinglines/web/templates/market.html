@@ -5,7 +5,7 @@
 <p class="muted">Outcome <b>{{ link.outcome }}</b>{% if link.invert %} (pays if the prediction fails){% endif %} · {{ link.athlete }} · {{ link.prediction }} · {{ link.venue or "next round / season" }} · token <code>{{ link.token_id }}</code></p>
 <div class="grid">
 <div class="card"><h2>Model</h2>
-  {% if prob is not none %}<p>Fair price: <b>{{ prob|fmt("model_prob") }}</b> · from run <a href="/runs/{{ run_id }}">#{{ run_id }}</a></p>
+  {% if prob is not none %}<p>Fair price: <b>{{ prob|fmt("model_prob") }}</b> · from run <a href="/lab/runs/{{ run_id }}">#{{ run_id }}</a></p>
   {% else %}<p class="warn">No model probability for this athlete / prediction in the latest forecast run.</p>{% endif %}
   {% if suggestion %}<p class="muted">Maker quotes around fair value (2 ticks of margin): buy ≤ {{ suggestion.buy }} · sell ≥ {{ suggestion.sell }}</p>{% endif %}
 </div>
@@ -19,7 +19,7 @@
 </div>
 </div>
 <div class="card"><h2>Place a maker (post-only) limit order</h2>
-<form method="post" action="/markets/{{ link.id }}/preview">{{ csrf() }}
+<form method="post" action="/markets/linked/{{ link.id }}/preview">{{ csrf() }}
   <label><span>Side</span><select name="side"><option>BUY</option><option>SELL</option></select></label>
   <label><span>Price (0–1)</span><input name="price" size="7" required value="{{ suggestion.buy if suggestion and suggestion.buy else '' }}"></label>
   <label><span>Size (shares)</span><input name="size" size="7" required value="{{ book.min_size if book else 5 }}"></label>

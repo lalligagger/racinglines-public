@@ -78,6 +78,8 @@ from pathlib import Path
 
 import requests
 
+from racinglines.sources import http
+
 USER_AGENT = "Mozilla/5.0 (compatible; chronorace-downloader/1.0)"
 CMS_URL = "https://prod.chronorace.be/api/results/uci/dh/cms/{slug}"
 GENERIC_RESULTS_URL = "https://prod.chronorace.be/api/results/generic/uci/{slug}/{disc_api}?key={key}"
@@ -147,7 +149,7 @@ def discover_event_slugs(year, discipline_id, session):
     the requested discipline. This is the ONLY known way to get a year-level
     event list -- see the module docstring."""
     wiki_url = f"https://en.wikipedia.org/wiki/{year}_UCI_Mountain_Bike_World_Cup"
-    resp = session.get(wiki_url, headers={"User-Agent": USER_AGENT}, timeout=30)
+    resp = http.get(session, wiki_url, headers={"User-Agent": USER_AGENT}, timeout=30)
     if resp.status_code != 200:
         raise SystemExit(
             f"Could not fetch {wiki_url} (status {resp.status_code}). "
@@ -183,7 +185,7 @@ def discover_event_slugs(year, discipline_id, session):
 
 def fetch_cms_tree(slug, session):
     url = CMS_URL.format(slug=slug)
-    resp = session.get(url, headers={"User-Agent": USER_AGENT}, timeout=30)
+    resp = http.get(session, url, headers={"User-Agent": USER_AGENT}, timeout=30)
     resp.raise_for_status()
     data = resp.json()
     flat = []
@@ -267,7 +269,7 @@ def build_round_table(slug, disc_api, key, round_name, session):
     caller can fall back to PDF links)."""
     url = GENERIC_RESULTS_URL.format(slug=slug, disc_api=disc_api, key=key)
     try:
-        resp = session.get(url, headers={"User-Agent": USER_AGENT}, timeout=30)
+        resp = http.get(session, url, headers={"User-Agent": USER_AGENT}, timeout=30)
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:

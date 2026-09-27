@@ -18,7 +18,7 @@ Execution: buy at price + cost, sell at price - cost (cost per share covers spre
 and slippage; the Baku books were a cent or two wide). NO is bought at 1 - price.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import pandas as pd
 from racinglines.markets.strategies.sizing import target_shares
@@ -34,6 +34,8 @@ class TakerParams:
     price_band: tuple = (0.02, 0.98)
     mode: str = "update"
     late_stages: tuple = ("after FP3", "after Quali")    # mode "early" doesn't trade these
+    stages: tuple | None = None                          # entry timing: stages any mode may trade (None = all)
+    min_edge_h2h: float | None = None                    # head-to-head markets' threshold (None = min_edge)
 
 
 def run_market(stages, outcome, p: TakerParams):
@@ -42,6 +44,8 @@ def run_market(stages, outcome, p: TakerParams):
     yes = no = cash = 0.0
     trades, marks = [], []
     idx = [i for i, s in enumerate(stages) if s["tradeable"] and s["fair"] is not None and s["price"] is not None]
+    if p.stages is not None:
+        idx = [i for i in idx if stages[i]["label"] in p.stages]
     if p.mode == "hold":
         idx = idx[:1]
     elif p.mode == "last":
@@ -78,11 +82,16 @@ def run_market(stages, outcome, p: TakerParams):
     return dict(trades=trades, marks=marks, pnl=pnl, yes=yes, no=no, cash=cash)
 
 
+def params_for(kind, p: TakerParams):
+    """The parameters one market is traded with: head-to-head markets may have their own threshold."""
+    return replace(p, min_edge=p.min_edge_h2h) if kind == "race_h2h" and p.min_edge_h2h is not None else p
+
+
 def run_weekend(markets, p: TakerParams):
     """markets: list of dict(key, kind, subject, outcome, stages). -> (trades df, per-market df)."""
     all_trades, per = [], []
     for mk in markets:
-        r = run_market(mk["stages"], mk["outcome"], p)
+        r = run_market(mk["stages"], mk["outcome"], params_for(mk["kind"], p))
         for tr in r["trades"]:
             all_trades.append(dict(tr, key=mk["key"], kind=mk["kind"], subject=mk["subject"]))
         cost_basis = sum(tr["shares"] * tr["price"] for tr in r["trades"] if tr["shares"] > 0)

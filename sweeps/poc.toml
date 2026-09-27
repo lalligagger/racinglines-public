@@ -1,0 +1,100 @@
+# Cloud sweep proof of concept: one hour, one worker session (docs/cloud-sweep.md).
+# `racinglines f1 search sweeps/poc.toml` re-reads this file whenever a slot frees: add, reorder or
+# delete PENDING [[job]] entries to steer it (running/finished ones are never re-run). Any setting of
+# racinglines/pipelines/sweep_settings.py can go in a job; the rest stay at their defaults. The
+# default-settings baseline of each season is added automatically and runs first.
+#
+# Two windows:
+#   2026 (primary): every weekend raced so far. Goal: the best combo for the remaining races, and how
+#                   the championship markets would have gone if entered early.
+#   2025 (secondary): "if we had been live from the first race of 2025": every price uses only data
+#                   from before that moment. Stable regulations, so it tests whether an edge is general
+#                   or a 2026 (new-cars) effect.
+
+[search]
+name = "poc"
+parallel = 3            # 4 vCPUs: three jobs + the database
+hours = 1.0             # no new job after this; running ones stop at hours + grace
+grace_minutes = 10
+
+# --- 2026: models (default trading settings) ------------------------------------------------
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+note = "best 2026 combo so far"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain"
+note = "safest 2026 combo (better nowhere worse)"
+
+# --- 2026: strategy settings on the best model --------------------------------------------------
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+half_spread = 0.03
+note = "wider maker quotes"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+half_spread = 0.015
+note = "tighter maker quotes"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+taker_stages = "pre-weekend,after FP1,after FP2,after SQ,after Sprint"
+note = "entry timing: takers trade only before FP3 (in-sample idea from the 2026 stage split)"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.08
+note = "takers act only on large edges"
+
+# --- 2026: championship markets --------------------------------------------------------------
+[[job]]
+kind = "checkpoints"
+year = 2026
+variants = "baseline,reset,pretrain+reset"
+entries = "0,1,2,3"
+note = "enter the title markets early: pre-season and after each of the first 3 GPs"
+
+[[job]]
+kind = "season_strategy"
+year = 2026
+variant = "pretrain+reset"
+note = "titles, rebalanced after every race, best-season model"
+
+# --- 2025: live from the first race ------------------------------------------------------------
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+note = "2026's best combo (reset does nothing in a stable-rules season)"
+
+[[job]]
+year = 2025
+variant = "pretrain"
+
+[[job]]
+year = 2025
+variant = "gridq"
+
+[[job]]
+year = 2025
+variant = "tail"
+note = "neutral on 2026; should stay neutral"
+
+[[job]]
+kind = "checkpoints"
+year = 2025
+variants = "baseline,pretrain"
+entries = "0,3,6"
+note = "2025 title markets entered at fixed points"
+
+# --- slow: last -------------------------------------------------------------------------------
+[[job]]
+year = 2026
+variant = "gbm"
+note = "worse on the backtest; P&L check"

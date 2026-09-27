@@ -186,10 +186,11 @@ def replay(conn, run_id, with_sweep=True, **knobs):
 
 
 def create_example(session, conn, run_id, maker_id, taker, fill="through"):
-    """The sample taker account stands in for Polymarket's takers: every fill the
-    replayed maker got (from real taker trades) becomes a bet by `taker` on the
-    maker's in-app market for that outcome, at the maker's price. The taker never
-    sees the maker's fair value; taker P&L = -maker P&L. Replaces any earlier example."""
+    """Every fill the replayed maker got (from real Polymarket taker trades) becomes a bet by `taker`, the
+    `polymarket-takers` system account (users.REPLAY_TAKER), on the maker's in-app market for that
+    outcome, at the maker's price; its P&L is the maker's reversed. That account is Polymarket's crowd,
+    not the demo `taker` login, whose paper trades come from its own strategy profile (pipelines/signals.py).
+    Replaces any earlier example."""
     from racinglines.db import models as m
     old = [i for (i,) in conn.execute(text("SELECT id FROM house_markets WHERE params->>'diagnostic_run' = :r"),
                                       dict(r=str(run_id)))]
@@ -269,5 +270,5 @@ def recent_runs(conn, limit=20):
     df["superseded"] = df["superseded"] & (df["kind"] != "diagnostic")
     df["season"] = df["season"].astype("Int64").astype(object).where(df["season"].notna(), None)
     df["cutoff"] = df["cutoff"].str[:16]
-    df["link"] = [f"/diag/{i}" if k == "diagnostic" else f"/runs/{i}" for i, k in zip(df["id"], df["kind"])]
+    df["link"] = [f"/lab/diagnostics/{i}" if k == "diagnostic" else f"/lab/runs/{i}" for i, k in zip(df["id"], df["kind"])]
     return df
