@@ -1,7 +1,7 @@
 # Database
 
 Results, athletes, model runs and predictions live in **PostgreSQL**. The Python
-side is the `racedb/` package: SQLAlchemy 2 models, Alembic migrations, ingest,
+side is `racinglines/db/`: SQLAlchemy 2 models, Alembic migrations, ingest,
 and query helpers.
 
 Why PostgreSQL:
@@ -23,9 +23,9 @@ Analytics and backtests still run in pandas, loaded from the database.
 ```
 pip install -r requirements.txt
 docker compose up -d                # Postgres 17 on localhost:5433
-python -m racedb init               # create tables (migrations) + reference data
-python -m racedb ingest data/script-generated
-python -m racedb stats
+racinglines db init               # create tables (migrations) + reference data
+racinglines mtb_dh ingest data/raw/mtb_dh/chronorace
+racinglines db stats
 ```
 
 **Option B: any existing Postgres (14+).** Create an empty database and point
@@ -34,7 +34,7 @@ python -m racedb stats
 ```
 createdb racinglines
 export DATABASE_URL=postgresql+psycopg://USER:PASSWORD@localhost:5432/racinglines
-python -m racedb init
+racinglines db init
 ```
 
 The connection comes from `$DATABASE_URL`, or `--db URL` on any command. The
@@ -61,7 +61,7 @@ Competition     uci_dhi_wc               a league's championship in one sport
 
 | Table | Purpose |
 |---|---|
-| `sports`, `leagues`, `competitions`, `categories` | Reference data, seeded from `racedb/registry.py`. |
+| `sports`, `leagues`, `competitions`, `categories` | Reference data, seeded from `racinglines/db/registry.py`. |
 | `seasons`, `events`, `venues`, `venue_aliases` | The calendar. Aliases map spellings from source data (e.g. `mont-ste-anne`) to one canonical venue. |
 | `races`, `rounds` | What was raced at each event. `races.format` stores the weekend format (e.g. `{"kind": "q1q2", "q1_to_final": 20, "q2_to_final": 10}`). |
 | `results`, `splits` | One row per athlete per round, and per split. Times are stored as integer milliseconds. |
@@ -73,13 +73,17 @@ Competition     uci_dhi_wc               a league's championship in one sport
 | `standings_predictions` | Per-athlete projected standings for a model run. |
 | `market_links` | An exchange outcome token (Polymarket) linked to one of the model's probabilities: athlete, prediction kind, optional race, and inverted for "No"-type tokens. |
 | `orders` | Every exchange order the app built: dry run, submitted, rejected or cancelled. Includes the model probability, model run, book at the time and exchange response. |
-| `house_markets` | YES/NO markets quoted by the app itself (race × athlete × kind), with fair probability, spread, YES/NO prices, status and outcome. |
-| `house_bets` | Bets recorded against house markets: counterparty, side, price, stake, payout, status. |
+| `house_markets` | YES/NO markets quoted in the app (race × athlete × kind × maker), with fair probability, spread, YES/NO prices, status, outcome and `maker_id` (null = legacy house markets). |
+| `house_bets` | Bets against house markets: counterparty, `taker_id` (the taker account, if placed in the app), side, price, stake, payout, status. |
+| `users` | Web-app accounts: username, role (`admin` / `maker` / `taker`), scrypt password hash, active. |
+| `activity_log` | Audit trail of web-app actions: time, user, role, action, JSON detail, IP, path. |
+| `laps` | One row per lap of a lap-based round: lap and sector ms, speed traps, tyre, stint, pit in/out, track status, position, accuracy. Added for F1. |
+| `track_profiles` | Per-event track features (sector shares, trap speeds, speed index, overtaking, street, weather) used by the F1 model. |
 
 ### Multi-sport design
 
-- **Adding a sport or league is data, not schema.** Add it to `racedb/registry.py`
-  (sport, league, competition, categories, venues) and run `python -m racedb seed`.
+- **Adding a sport or league is data, not schema.** Add it to `racinglines/db/registry.py`
+  (sport, league, competition, categories, venues) and run `racinglines db seed`.
 - **Rounds are generic.** `Round.kind` is free text, so formats like heats, runs
   1/2 or sprint/feature fit without migrations. `ROUND_ORDER` in the registry sets
   the running order.
@@ -92,7 +96,7 @@ Competition     uci_dhi_wc               a league's championship in one sport
 ## Ingest
 
 ```
-python -m racedb ingest data/script-generated [more files or dirs ...] [--competition uci_dhi_wc] [--force]
+racinglines mtb_dh ingest data/raw/mtb_dh/chronorace [more files or dirs ...] [--competition uci_dhi_wc] [--force]
 ```
 
 Each downloaded file is one event × category, and becomes one race:
@@ -110,7 +114,7 @@ Each downloaded file is one event × category, and becomes one race:
 
 Files with no timing tables (PDF-only rounds) are skipped.
 
-Current contents after ingesting `data/script-generated/`:
+Current contents after ingesting `data/raw/mtb_dh/chronorace/`:
 
 | | Rows |
 |---|---|
@@ -131,15 +135,15 @@ progress. The full load takes about 8 seconds.
 
 ## Using it from the model
 
-`predictor.py season` and `predictor.py backtest` read from the database with
+`racinglines mtb_dh forecast` and `racinglines mtb_dh backtest` read from the database with
 `--db`, and store their output with `--save`:
 
 ```
-python predictor.py season   --db --walk-forward --save    # 2026 forecast, stored as a model run
-python predictor.py backtest --db --save                   # 2021–2026 backtest metrics
+racinglines mtb_dh forecast   --db --walk-forward --save    # 2026 forecast, stored as a model run
+racinglines mtb_dh backtest --db --save                   # 2021–2026 backtest metrics
 ```
 
-`racedb.queries.load_tidy()` returns the same tidy layout as `parser.py`'s CSV,
+`racinglines.db.queries.load_tidy()` returns the same tidy layout as `racinglines/sources/chronorace/parse.py`'s CSV,
 with `race_id` and `athlete_id` added and `rider_id = "ath:<athlete id>"`. So the
 model code doesn't change, and athletes merged in the database are one rider to
 the model. The numbers match the CSV pipeline within simulation noise. `--data
@@ -175,20 +179,20 @@ ORDER BY e.start_date;
 ## Other commands
 
 ```
-python -m racedb init       # alembic upgrade head + seed
-python -m racedb seed       # re-apply registry.py (after adding a sport, league or venue)
-python -m racedb stats      # table counts + events/rounds/results per season and category
-python -m racedb export --out splits.csv   # tidy CSV from the database
+racinglines db init       # alembic upgrade head + seed
+racinglines db seed       # re-apply registry.py (after adding a sport, league or venue)
+racinglines db stats      # table counts + events/rounds/results per season and category
+racinglines db export --out splits.csv   # tidy CSV from the database
 ```
 
 ## Changing the schema
 
-1. Edit `racedb/models.py`.
+1. Edit `racinglines/db/models.py`.
 2. Generate a migration:
    `DATABASE_URL=... alembic revision --autogenerate -m "what changed"`.
 3. Review the file in `migrations/versions/`. Autogenerate misses some things, such
    as renames and changes to data.
-4. Apply it with `python -m racedb init` (or `alembic upgrade head`).
+4. Apply it with `racinglines db init` (or `alembic upgrade head`).
 
 Migrations so far (in order):
 
@@ -197,16 +201,40 @@ Migrations so far (in order):
 | `1983462a0695` | `20260926_1983462a0695_initial_schema.py` | Core schema (sports → splits, source files, points schemes, model runs, predictions) |
 | `66d4b92ba307` | `20260926_66d4b92ba307_market_links_and_orders.py` | `market_links`, `orders` |
 | `0e47bb766d0b` | `20260926_0e47bb766d0b_house_markets_and_bets.py` | `house_markets`, `house_bets` |
+| `f3e017071b76` | `20260926_f3e017071b76_laps_track_profiles_round_extra.py` | `laps`, `track_profiles`, `rounds.extra` (Formula 1) |
+| `8d64d59a2940` | `20260926_8d64d59a2940_users_roles_activity_log.py` | `users`, `activity_log`, `house_markets.maker_id` (uniqueness now per maker), `house_bets.taker_id` |
+| `d84cd5aa7ce4` | `20260926_d84cd5aa7ce4_polymarket_alignment.py` | `market_links`: optional athlete, `params`, event slug/title, outcome label, live bid/ask/price, volume, end date, closed, resolution, sync time. `house_markets`: optional race/athlete, `market_link_id` (mirrored exchange market), `params`. `standings_predictions.extra` |
+| `8c46493d7cda` | `20260926_8c46493d7cda_house_market_uniqueness_per_mirrored_.py` | House-market uniqueness includes `market_link_id` (several head-to-heads per driver and race) |
 
 ## Not done yet
 
-- **Public / JSON API.** The admin web app ([Web app](webapp.md)) reads and writes
+- **Public / JSON API.** The web app ([Web app](webapp.md)) reads and writes
   the database; there are no JSON endpoints for outside consumers yet.
 - **UCI IDs:** add `uci` identifiers at ingest once the downloader writes them.
   That merges riders whose name changed.
 - **Points:** fill `points_schemes` with official tables and have the model read
-  points from it instead of the constants in `predictor.py`.
+  points from it instead of the constants in `racinglines/models/timed_runs/`.
 - **Scheduled events in the forecast:** in-progress events are forecast with their
   start lists, and scheduled events can be added in the web app. But
   `forecast_season` doesn't yet read `scheduled` events (with no start list) as
   named rounds; unknown rounds are still saved as `remaining_round`.
+
+
+## Storage: Postgres for the app, Parquet for heavy history
+
+| Data | Where | Why |
+|---|---|---|
+| Everything the app presents: sports, events, results, athletes, market links, model runs (forecasts, backtests, diagnostics, sweep summaries with P&L across weekends), users, books, bets, jobs | Postgres | Small, queried constantly |
+| Exchange time series (`market_price_history`, `market_trades`, `market_book_snapshots`) for **upcoming and in-progress races, the latest completed race of each competition, and the last 7 days of open season markets** | Postgres | What the app shows live |
+| All other exchange time series | Parquet, `data/archive/markets/polymarket/{prices,trades,books}/month=YYYY-MM/*.parquet` (zstd) | Heavy and stale; about 20–40× smaller than in Postgres |
+| Raw F1 sessions | Parquet, `data/raw/f1/fastf1/<year>/` | The record; FastF1's HTTP cache is cleared after each fetch |
+
+- **Reading:** everything goes through `racinglines/markets/store.py` (`read`, `last_before`),
+  which merges both stores and drops duplicates. Callers don't need to know
+  where a row lives.
+- **Moving data:** `racinglines markets archive` applies the retention rule
+  (`hot_tokens`). It moves rows with `DELETE … RETURNING`, and writes and
+  verifies the Parquet before the transaction commits. The recorder
+  (`markets record`) runs it every hour.
+- **Options:** `--vacuum-full` returns freed space to the OS, `--compact`
+  merges each month into one file, and `--stats` shows where the rows are.

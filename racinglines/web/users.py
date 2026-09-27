@@ -1,0 +1,95 @@
+"""
+Accounts, roles and the activity log for the web app.
+
+Roles:
+    admin   everything, plus the activity log, user management and the database explorer
+    maker   predictions/model runs, and their own quoted markets (fair value +- spread)
+    taker   open markets from all makers, placing bets, their own bets and P&L
+
+Passwords are hashed with scrypt (standard library): "scrypt$n$r$p$salt$hash".
+"""
+
+import hashlib
+import hmac
+import json
+import os
+import secrets
+
+from sqlalchemy import insert, select
+
+from racinglines.db import models as m
+
+ROLES = ("admin", "maker", "taker")
+_N, _R, _P = 2 ** 14, 8, 1
+
+
+def hash_password(password):
+    salt = secrets.token_bytes(16)
+    h = hashlib.scrypt(password.encode(), salt=salt, n=_N, r=_R, p=_P, dklen=32)
+    return f"scrypt${_N}${_R}${_P}${salt.hex()}${h.hex()}"
+
+
+def verify_password(password, stored):
+    try:
+        _, n, r, p, salt, h = stored.split("$")
+        got = hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt), n=int(n), r=int(r), p=int(p), dklen=32)
+        return hmac.compare_digest(got.hex(), h)
+    except (ValueError, AttributeError):
+        return False
+
+
+def get_user(session, user_id=None, username=None):
+    q = select(m.User).filter_by(id=user_id) if user_id is not None else select(m.User).filter_by(username=username)
+    return session.scalars(q).first()
+
+
+def authenticate(session, username, password):
+    u = get_user(session, username=username)
+    return u if u and u.active and verify_password(password, u.password_hash) else None
+
+
+def create_user(session, username, password, role, display_name=None):
+    if role not in ROLES:
+        raise ValueError(f"role must be one of {ROLES}")
+    if get_user(session, username=username):
+        raise ValueError(f"user {username!r} already exists")
+    u = m.User(username=username.strip(), password_hash=hash_password(password), role=role,
+               display_name=display_name or username)
+    session.add(u)
+    session.commit()
+    return u
+
+
+def ensure_admin(session):
+    """Create or update the admin account from ADMIN_USERNAME / ADMIN_PASSWORD.
+    If no password is set and the admin doesn't exist yet, generate one and print it."""
+    username = os.environ.get("ADMIN_USERNAME", "admin")
+    password = os.environ.get("ADMIN_PASSWORD")
+    u = get_user(session, username=username)
+    if u is None:
+        if not password:
+            password = secrets.token_urlsafe(16)
+            print(f"Created admin account: {username} / {password}", flush=True)
+        session.add(m.User(username=username, password_hash=hash_password(password), role="admin",
+                           display_name="Admin"))
+    elif password and not verify_password(password, u.password_hash):
+        u.password_hash = hash_password(password)
+        u.role, u.active = "admin", True
+    session.commit()
+
+
+def log(engine, user, action, request=None, **detail):
+    """Append to activity_log. `user` may be None (e.g. failed login)."""
+    with engine.begin() as c:
+        c.execute(insert(m.ActivityLog).values(
+            user_id=user["id"] if user else None, username=(user or {}).get("username") or detail.pop("username", None),
+            role=(user or {}).get("role"), action=action,
+            detail=json.loads(json.dumps(detail, default=str)) if detail else None,
+            ip=_ip(request) if request is not None else None,
+            path=str(request.url.path) if request is not None else None))
+
+
+def _ip(request):
+    return (request.headers.get("cf-connecting-ip")
+            or request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+            or (request.client.host if request.client else None))

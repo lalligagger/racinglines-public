@@ -29,7 +29,9 @@
 
 **Engineering**
 
-- [ ] Tests (turn the web-app and house-book smoke tests into a pytest suite).
+- [x] Tests: pinned regression suite for every pipeline stage plus web, private-book and role smoke tests (see [Testing](testing.md)).
+- [ ] Per-maker exposure limits and per-taker daily limits; taker balances or ledgers.
+- [ ] Rate-limit and paginate the activity log view; export the log to CSV.
 - [ ] Refuse house markets (and market links) for junior categories (`categories.age_group = 'junior'`).
 - [ ] Persist login throttling across restarts (it's in memory now), and add a stable named tunnel with Cloudflare Access.
 - [ ] Condition in-weekend forecasts on completed rounds (Q1 results, split times).
@@ -40,7 +42,7 @@ Details for each item are in the sections below.
 
 ## Points validation
 
-The points tables in `predictor.py` (`FINAL_POINTS`, `QUAL_POINTS`,
+The points tables in `racinglines/models/timed_runs/` (`FINAL_POINTS`, `QUAL_POINTS`,
 `QUAL_POINTS_ROUND`) are **placeholders**, and the same tables are used for every
 season. Until they're fixed, every number measured in points (expected points,
 standings, champion odds, `spearman_points`) is approximate.
@@ -111,9 +113,47 @@ standings, champion odds, `spearman_points`) is approximate.
 - [ ] Decide whether to retire or rebuild the older `fit`/`predict` Elo/GBR model.
       It hasn't been checked against the multi-season data.
 
+## F1 model
+
+- [ ] **Chaotic-race tail:** a mixture with rain, safety-car and multi-DNF races
+      (inflated noise, more DNFs), so backmarkers get realistic points chances.
+      The Sainz–Alonso market showed the gap.
+- [x] **Practice pace prior** (2026-09-26): large gain before qualifying (backtest in [Formula 1](f1.md#results)).
+- [ ] **Pre-practice pricing got slightly worse** with the practice prior: train the finishing model on
+      no-practice paces for pre-FP1 pricing (or on both).
+- [ ] Re-price the 2026 sweep stages with the practice prior and re-run the sweep.
+- [ ] **Front of the grid is underweighted.** After qualifying, the model loses to a
+      grid-only baseline on win and ties it on podium (backtest run 115, 129 races). Check the finishing
+      model's noise and grid terms. Consider a grid-position prior that the
+      model adjusts.
+- [x] Car shared by teammates: car pace from both drivers, teammate-correlated noise
+      (2026-09-26). Teammate head-to-heads improved.
+- [ ] **Top-scoring constructor got slightly worse** with shared noise (+0.0008 Brier).
+      Check team points variance vs reality, and correlated DNFs (teammate DNF
+      correlation +0.11 isn't simulated).
+- [ ] Teammate-battle uncertainty: a larger per-driver season drift, or a
+      driver-form model.
+- [ ] Price fastest lap, safety car / red flag, and sprint markets.
+- [ ] Refresh the Polymarket sync and repricing on a schedule during race
+      weekends.
+
+## Market making
+
+- [x] As-of diagnostics, Polymarket minute prices and trade tape, maker replay, tests (Baku).
+- [ ] Keep `markets record` running through every race weekend (LaunchAgent), then
+      fetch `markets trades` after each race.
+- [ ] Replay with recorded book depth: queue position and competing makers,
+      instead of the touch/through bounds.
+- [ ] Flatten or hedge inventory before qualifying (Baku's biggest losses were
+      pre-qualifying shorts).
+- [ ] Replay across every backtest race once their Polymarket tapes are
+      fetched; only then tune half-spread, limits and the disagreement filter.
+- [ ] Live maker watch list: fair vs book depth and recent flow for upcoming
+      markets, flagging where a quote is +EV.
+
 ## Engineering
 
-- [x] Admin web app (`webapp/`): predictions, histories, backtests, Polymarket maker orders.
+- [x] Web app (`racinglines/web/`): predictions, histories, backtests, Polymarket maker orders.
 - [ ] Public/JSON API endpoints next to the admin pages.
 - [ ] **Condition in-weekend forecasts on completed rounds.** Once Q1 has run, fix
       who has qualified and use the Q1 times. Also use split times from disrupted
@@ -123,12 +163,12 @@ standings, champion odds, `spearman_points`) is approximate.
 - [ ] Find a venue that lists downhill markets. Polymarket has none as of 2026-09.
 - [x] In-progress events are forecast with their real start lists and saved against their race.
 - [ ] Have `forecast_season` read `scheduled` events (no start list yet) as named rounds instead of `remaining_round`.
-- [ ] Ingest on a schedule: download, then `racedb ingest` for new rounds.
+- [ ] Ingest on a schedule: download, then `racinglines mtb_dh ingest` for new rounds.
 - [ ] Ingest the other input formats (copy/paste, HTML, JSON) into the database.
 
 - [x] Pinned `requirements.txt` (pipeline) and `requirements-docs.txt` (mkdocs).
 - [ ] Optionally, a `pyproject.toml`, so the scripts can be installed as a package.
-- [ ] Run `python build_readme.py --check` in CI or a pre-commit hook, so the README
+- [ ] Run `python scripts/build_readme.py --check` in CI or a pre-commit hook, so the README
       can't drift from the docs.
 - [ ] Tests: parser fixtures (one file per format era), `event_format`,
       `actual_event_points`, the rider-ID normalization check.

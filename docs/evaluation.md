@@ -54,7 +54,7 @@ instead.
 
 ## Results: every season with data (2021–2026)
 
-Command: `python predictor.py backtest --data splits.csv`. Settings: training scope
+Command: `racinglines mtb_dh backtest --data splits.csv`. Settings: training scope
 `all`, 120-day half-life, junior weight 0.5, 4,000 simulations per round.
 Seasons 2019–2020 have no usable timing data (see [Data](data.md#whats-downloaded)).
 2021's first round (Maribor) has no earlier history, so it isn't predicted.

@@ -1,0 +1,97 @@
+{% extends "base.html" %}{% from "_macros.html" import csrf %}
+{% block title %}Lab{% endblock %}
+{% block head %}{% if active %}<meta http-equiv="refresh" content="5">{% endif %}{% endblock %}
+{% block content %}
+<h1>Lab</h1>
+<p class="sub">Test the model and the quoting strategy before money is at risk. Everything here prices with a hard as-of cutoff (no future data); forecasts launched here are <b>scenarios</b> and only change live prices when promoted.</p>
+{% if msg %}<p class="{{ 'bad' if msg.startswith('Error') else 'good' }}">{{ msg }}</p>{% endif %}
+<div class="tabs"><a href="#run">Run</a><a href="#jobs">Jobs</a><a href="#scenarios">Scenarios</a><a href="#sweep">Season sweep</a><a href="#backtests">Backtests</a><a href="#diagnostics">Event diagnostics</a><a href="#runs">All runs</a></div>
+
+<div class="card" id="run"><h2>Run</h2>
+{% for code, sport, jts in sports %}<h3>{{ sport }}</h3>
+<div class="cards">{% for jt in jts %}
+<form method="post" action="/lab/run" class="ecard" {% if sel_job == jt.code %}style="border-color:var(--accent)"{% endif %}>{{ csrf() }}<input type="hidden" name="job" value="{{ jt.code }}">
+  <div><h3>{{ jt.label }}</h3><div class="when">{{ jt.what }}{% if jt.minutes %} · {{ jt.minutes }}{% endif %}</div></div>
+  <div class="jobform">{% for k in jt.knobs %}<label title="{{ k.help }}"><span>{{ k.label }}</span>
+    {% if k.type == 'choice' %}<select name="{{ k.name }}">{% for ch in k.choices %}<option {{ 'selected' if ch == k.default }}>{{ ch }}</option>{% endfor %}</select>
+    {% elif k.type == 'event' %}<select name="{{ k.name }}" onchange="this.form.cutoff.value = this.selectedOptions[0].dataset.cutoff">{% for e in events %}<option value="{{ e.key }}" data-cutoff="{{ e.default_cutoff }}" {{ 'selected' if e.key == sel_event }}>{{ e.venue }} {{ e.key }}{{ " · Polymarket" if e.tape }}</option>{% endfor %}</select>
+    {% elif k.type == 'datetime' %}<input name="{{ k.name }}" value="{{ sel_cutoff }}" placeholder="YYYY-MM-DDTHH:MM">
+    {% elif k.type == 'text' %}<input name="{{ k.name }}" value="{{ k.default }}" maxlength="60">
+    {% else %}<input name="{{ k.name }}" type="number" value="{{ k.default }}" min="{{ k.min }}" max="{{ k.max }}" step="{{ '1' if k.type == 'int' else 'any' }}">{% endif %}</label>{% endfor %}</div>
+  <div><button class="primary">Run</button></div>
+</form>{% endfor %}</div>{% endfor %}
+<p class="legend">Strategy knobs (spread, size, inventory and capital limits, filters, fill rule) replay instantly on an event's real Polymarket tape: open an <a href="#diagnostics">event diagnostic</a>.</p>
+</div>
+
+<div class="card" id="jobs"><h2>Jobs</h2>
+{% if not jobs %}<p class="muted">None yet.</p>{% else %}
+<div class="scroll"><table><thead><tr><th>#</th><th class="l">Job</th><th class="l">Knobs</th><th class="l">By</th><th class="l">Status</th><th class="l">Progress</th><th>Started</th><th>Took</th><th class="l">Result</th></tr></thead><tbody>
+{% for j in jobs %}<tr><td>{{ j.id }}</td><td class="l">{{ j.kind|replace('_', ' ') }}</td>
+<td class="l wrap"><code>{% for k, v in (j.params or {}).items() %}{{ k }}={{ v }} {% endfor %}</code></td><td class="l">{{ j.username or "" }}</td>
+<td class="l status-{{ j.status }}">{{ j.status }}</td><td class="l wrap">{{ j.progress or "" }}</td><td>{{ j.started_at|fmt if j.started_at }}</td>
+<td>{% if j.started_at and j.finished_at %}{{ ((j.finished_at - j.started_at).total_seconds())|round|int }} s{% endif %}</td>
+<td class="l">{% if j.result_run_id %}<a href="{{ '/diag/' if 'diagnostic' in j.kind else '/runs/' }}{{ j.result_run_id }}">run #{{ j.result_run_id }}</a>{% endif %}
+{% if j.log %}<details><summary class="legend">log</summary><pre class="log">{{ j.log[-4000:] }}</pre></details>{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>{% endif %}
+{% if active %}<p class="legend">Refreshing every 5 s while a job runs.</p>{% endif %}
+</div>
+
+<div class="card" id="scenarios"><h2>Forecast scenarios</h2>
+<p class="legend">Forward forecasts with custom knobs. Compare with the live forecast, then promote one to make it the fair price everywhere (board, quotes, Polymarket edges).</p>
+{% if not scenarios %}<p class="muted">None yet: run a <b>Forward forecast (scenario)</b> above.</p>{% else %}
+<div class="scroll"><table><thead><tr><th>Run</th><th class="l">Sport</th><th class="l">Name</th><th>Half-life</th><th>Sims</th><th>Track</th><th class="l">Next race: top 3</th><th>Max win-prob change vs live</th><th></th></tr></thead><tbody>
+{% for s in scenarios %}<tr><td><a href="/runs/{{ s.id }}">#{{ s.id }}</a></td><td class="l">{{ s.sport }}</td><td class="l">{{ s.label or "" }}</td><td>{{ s.half_life|fmt if s.half_life }}</td><td>{{ s.sims or "" }}</td><td>{{ {True: "on", False: "off"}.get(s.track, "") }}</td>
+<td class="l">{% for n, w in s.top %}{{ n }} {{ "%.0f%%"|format(w * 100) }}{{ " · " if not loop.last }}{% endfor %}</td>
+<td>{{ "%.1f pts"|format(s.max_diff * 100) if s.max_diff is not none }}</td>
+<td>{% if s.live %}<span class="chip live">live</span>{% else %}<form method="post" action="/lab/promote/{{ s.id }}" class="inline" onsubmit="return confirm('Make run #{{ s.id }} the live fair prices?')">{{ csrf() }}<button>Promote to live</button></form>{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>{% endif %}
+<p class="legend">Live now: {% for f in forecasts %}{{ f.competition_name }} <a href="/runs/{{ f.id }}">#{{ f.id }}</a>{{ " · " if not loop.last }}{% endfor %}</p>
+</div>
+
+<div class="card" id="sweep"><h2>Season sweep: trading every weekend</h2>
+{% if not sweep %}<p class="muted">None yet: run a <b>Season sweep</b> above (or <code>racinglines f1 sweep --save</code>).</p>{% else %}
+<p class="legend">Run <a href="/runs/{{ sweep.id }}">#{{ sweep.id }}</a> · {{ sweep.created_at|fmt }} · act when |fair − Polymarket| ≥ {{ "%.0f"|format(sweep.params.min_edge * 100) }} pts, stake ${{ sweep.params.stake_per_edge|int }} × edge (max ${{ sweep.params.max_stake|int }}/market), {{ "%.0f"|format(sweep.params.cost * 100) }}¢/share trading cost; prices at each stage are Polymarket's at that moment (5-min history); markets need ≥ ${{ sweep.params.min_volume_24h|int }} traded in the prior 24 h and a coherent book.</p>
+<div class="kpis">{% for mode, lab in [('update', 'Update & rebuy after each session'), ('hold', 'Enter before running, hold'), ('last', 'Enter after qualifying only'), ('maker', 'Maker replay (conservative fills)')] %}{% set t = sweep.totals.get(mode) %}{% if t %}
+<div class="kpi"><div class="l">{{ lab }}</div><div class="v {{ 'good' if t.pnl >= 0 else 'bad' }}">{{ t.pnl|money(true) }}</div><div class="s">on ${{ "{:,.0f}".format(t.bought) }} {{ "bought" if mode != 'maker' else "filled" }} · {{ t.weekends_up }}/{{ t.weekends }} weekends up</div></div>{% endif %}{% endfor %}</div>
+<div class="scroll"><table><thead><tr><th class="l">Weekend</th><th class="l">Format</th><th>Stages</th><th>Tradeable pre / after Q</th><th>Trades</th><th>Bought</th><th>Update &amp; rebuy</th><th>Hold</th><th>After quali</th><th>Maker fills</th><th>Maker</th><th></th></tr></thead><tbody>
+{% for w in sweep.weekends %}<tr><td class="l">{{ w.event }} <span class="muted">{{ w.event_key }}</span></td><td class="l">{{ (w.format or "")|replace('_', ' ') }}</td><td>{{ w.stages }}</td><td>{{ w.tradeable_pre }} / {{ w.tradeable_quali }}</td>
+<td>{{ w.update_trades }}</td><td>${{ "%.0f"|format(w.update_bought or 0) }}</td>
+{% for k in ['update_pnl', 'hold_pnl', 'last_pnl'] %}<td class="{{ 'good' if (w[k] or 0) > 0 else ('bad' if (w[k] or 0) < 0 else '') }}">{{ w[k]|money(true) if w[k] is not none }}</td>{% endfor %}
+<td>{{ w.maker_fills if w.maker_fills is not none }}</td><td class="{{ 'good' if (w.maker_pnl or 0) > 0 else ('bad' if (w.maker_pnl or 0) < 0 else '') }}">{{ w.maker_pnl|money(true) if w.maker_pnl is not none }}</td>
+<td><a href="/diag/{{ w.last_run_id }}">weekend →</a></td></tr>{% endfor %}
+</tbody></table></div>
+<div class="grid"><div><h3>Update &amp; rebuy: P&amp;L of the decisions made at each stage</h3><div class="scroll"><table><thead><tr><th class="l">Stage</th><th>Trades</th><th>P&amp;L to result</th></tr></thead><tbody>
+{% for r in sweep.by_stage %}<tr><td class="l">{{ r.stage }}</td><td>{{ r.trades }}</td><td class="{{ 'good' if r.pnl > 0 else 'bad' }}">{{ r.pnl|money(true) }}</td></tr>{% endfor %}</tbody></table></div>
+<h3>By market</h3><div class="scroll"><table><thead><tr><th class="l">Market</th><th>Trades</th><th>P&amp;L</th></tr></thead><tbody>
+{% for r in sweep.by_kind %}<tr><td class="l">{{ r.kind }}</td><td>{{ r.trades }}</td><td class="{{ 'good' if r.pnl > 0 else 'bad' }}">{{ r.pnl|money(true) }}</td></tr>{% endfor %}</tbody></table></div></div>
+<div><h3>Model vs Polymarket at each stage</h3><div class="scroll"><table><thead><tr><th class="l">Market</th><th class="l">Stage</th><th>Outcomes</th><th>Brier model</th><th>Brier Polymarket</th></tr></thead><tbody>
+{% for r in sweep.scores %}<tr><td class="l">{{ r.kind }}</td><td class="l">{{ r.stage }}</td><td>{{ r.n }}</td><td class="{{ 'good' if r.brier_model < r.brier_market else 'bad' }}">{{ "%.4f"|format(r.brier_model) }}</td><td>{{ "%.4f"|format(r.brier_market) }}</td></tr>{% endfor %}</tbody></table></div>
+<p class="legend">Averaged over weekends, on tradeable markets only. Polymarket at the same moment is the benchmark to beat.</p></div></div>
+{% endif %}</div>
+
+<div class="card" id="backtests"><h2>Backtests</h2>
+<p class="legend">Brier score after qualifying (lower is better) against a grid-only baseline; green beats the grid. Each row is one run × track setting, newest first.</p>
+<div class="scroll"><table><thead><tr><th>Run</th><th class="l">Sport</th><th>Created</th><th>Races</th><th>Half-life</th><th>Sims</th><th>Track</th><th>Win</th><th class="muted">grid</th><th>Podium</th><th class="muted">grid</th><th>Top 10</th><th class="muted">grid</th><th>Win before practice</th><th>Win before quali</th></tr></thead><tbody>
+{% for b in backtests %}<tr><td><a href="/runs/{{ b.id }}">#{{ b.id }}</a></td><td class="l">{{ b.sport }}</td><td>{{ b.created_at|fmt }}</td><td>{{ b.races }}</td><td>{{ b.half_life|fmt }}</td><td>{{ b.sims or "" }}</td><td>{{ b.track }}</td>
+{% for k in ['win', 'podium', 'top10'] %}{% set v, g = b[k], b[k ~ '_grid'] %}<td class="{{ 'good' if v is not none and g is not none and v < g else ('bad' if v is not none and g is not none else '') }}">{{ "%.4f"|format(v) if v is not none }}</td><td class="muted">{{ "%.4f"|format(g) if g is not none }}</td>{% endfor %}
+<td>{{ "%.4f"|format(b.pre_weekend_win) if b.pre_weekend_win is not none }}</td><td>{{ "%.4f"|format(b.pre_quali_win) if b.pre_quali_win is not none }}</td></tr>
+{% else %}<tr><td class="l muted" colspan="15">None yet.</td></tr>{% endfor %}</tbody></table></div>
+<p class="legend">Downhill backtests are stored as metrics tables; see the run pages.</p></div>
+
+<div class="card" id="diagnostics"><h2>Event diagnostics</h2>
+<p class="legend">A past event priced as of chosen cutoffs, compared with Polymarket at the same moment and scored on the result, plus a maker replay on Polymarket's real trade tape (conservative fills, ±2¢; tune the strategy knobs on the details page).</p>
+<div class="scroll"><table><thead><tr><th class="l">Event</th><th class="l">As-of runs</th><th>Win Brier: model / PM</th><th>Podium Brier: model / PM</th><th>Replay fills</th><th>Mark-out 60m</th><th>Replay P&amp;L</th><th></th></tr></thead><tbody>
+{% for e in event_diags %}<tr><td class="l">{{ e.venue }} <span class="muted">{{ e.event_key }}</span></td><td class="l">{{ e.runs }} <span class="muted">({{ e.cutoffs }})</span></td>
+<td>{% if e.brier_win_model is not none %}<span class="{{ 'good' if e.brier_win_model < e.brier_win_pm else 'bad' }}">{{ "%.3f"|format(e.brier_win_model) }}</span> / {{ "%.3f"|format(e.brier_win_pm) }}{% endif %}</td>
+<td>{% if e.brier_podium_model is not none %}<span class="{{ 'good' if e.brier_podium_model < e.brier_podium_pm else 'bad' }}">{{ "%.3f"|format(e.brier_podium_model) }}</span> / {{ "%.3f"|format(e.brier_podium_pm) }}{% endif %}</td>
+<td>{{ e.replay_fills if e.replay_fills is not none else "no tape" }}</td><td>{{ e.replay_markout|fmt("markout_60m") if e.replay_markout is not none }}</td>
+<td class="{{ 'good' if e.replay_pnl and e.replay_pnl > 0 else 'bad' }}">{{ e.replay_pnl|fmt("pnl") if e.replay_pnl is not none }}</td>
+<td><a href="/diag/{{ e.run_id }}">details &amp; strategy replay →</a></td></tr>
+{% else %}<tr><td class="l muted" colspan="8">None yet: run an <b>Event diagnostic</b> above.</td></tr>{% endfor %}</tbody></table></div></div>
+
+<details class="card" id="runs"><summary><b>All runs</b> ({{ recent|length }} most recent)</summary>
+<div class="scroll"><table><thead><tr><th>Run</th><th class="l">Kind</th><th class="l">Competition</th><th>Season</th><th class="l">Event / cutoff</th><th>Created</th><th></th></tr></thead><tbody>
+{% for r in recent %}<tr class="{{ 'muted' if r.superseded }}"><td><a href="{{ r.link }}">#{{ r.id }}</a></td><td class="l">{{ r.kind }}</td><td class="l">{{ r.competition }}</td>
+<td>{{ r.season or "" }}</td><td class="l">{{ r.event_key }} {{ r.cutoff }}</td><td>{{ r.created_at|fmt }}</td><td>{{ "superseded" if r.superseded }}</td></tr>{% endfor %}
+</tbody></table></div></details>
+{% endblock %}

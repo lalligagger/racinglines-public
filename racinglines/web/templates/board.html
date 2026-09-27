@@ -1,0 +1,51 @@
+{% extends "base.html" %}{% from "_macros.html" import bar, pct, venue_chips %}
+{% block title %}Markets{% endblock %}
+{% block content %}
+<h1>Markets</h1>
+<p class="sub">Every sport we price: what's next, what's live on each venue, and how we did lately.</p>
+
+<div class="kpis">
+  <div class="kpi"><div class="l">Exchange outcomes we price</div><div class="v">{{ h.outcomes }}</div><div class="s">{{ h.markets }} markets · ${{ "{:,.1f}M".format(h.volume / 1e6) if h.volume >= 1e6 else "{:,.0f}".format(h.volume) }} traded</div></div>
+  <div class="kpi"><div class="l">Order books recording</div><div class="v {{ 'good' if h.recording else 'muted' }}">{{ h.recording or "off" }}</div><div class="s">{% if h.recorded_at %}last {{ h.recorded_at|fmt }} UTC{% else %}start <code>racinglines markets record</code>{% endif %}</div></div>
+  <div class="kpi"><div class="l">My open markets</div><div class="v">{{ h.my_open }}</div><div class="s">staked against me ${{ "%.0f"|format(h.my_staked) }} · worst case <span class="{{ 'bad' if h.my_worst < 0 }}">${{ "%.0f"|format(h.my_worst) }}</span></div></div>
+  <div class="kpi"><div class="l">F1 model vs grid-only (win, after quali)</div><div class="v {{ 'bad' if h.bt_win and h.bt_grid and h.bt_win > h.bt_grid else 'good' }}">{% if h.bt_win %}{{ "%+.4f"|format(h.bt_win - h.bt_grid) }}{% else %}–{% endif %}</div><div class="s">Brier difference, lower is better · <a href="/lab">Lab</a></div></div>
+  <div class="kpi"><div class="l">Model jobs running</div><div class="v">{{ h.jobs_active }}</div><div class="s"><a href="/lab#run">launch a backtest or scenario</a></div></div>
+</div>
+
+{% for s in sports %}
+<div class="sport"><h2>{{ s.name }}</h2><span class="muted">live prices from run <a href="/runs/{{ s.run.id }}">#{{ s.run.id }}</a> · {{ s.run.created_at|fmt }}</span></div>
+<div class="cards">
+  {% for u in s.upcoming %}
+  <div class="ecard">
+    <div><h3><a href="/race/{{ u.info.race_id }}">{{ u.info.title }}</a></h3>
+      <div class="when">{{ u.info.start_date|fmt }} · {% if u.info.status == 'in_progress' %}<span class="warn">in progress</span>{% else %}{{ u.countdown }}{% endif %}{% if loop.first and u.info.status != 'in_progress' %} · <b>next</b>{% endif %}</div></div>
+    {{ venue_chips(u.venues, u.mine) }}
+    <div>{% for o in u.top %}<div class="pr"><span>{{ o.subject }}</span>{{ bar(o.fair, o.pm_mid) }}<span class="num">{{ pct(o.fair) }}</span></div>{% endfor %}
+      <div class="legend">win probability{% if u.top and u.top[0].pm_mid is not none %} · <i style="background:var(--warn)"></i>Polymarket{% endif %}</div></div>
+    <div><a href="/race/{{ u.info.race_id }}">{{ u.outcomes }} outcomes →</a></div>
+  </div>
+  {% endfor %}
+  <div class="ecard">
+    <div><h3><a href="/season/{{ s.code }}">{{ s.run.season }} championship</a></h3><div class="when">season-long markets</div></div>
+    {{ venue_chips(s.season.venues, s.season.mine) }}
+    <div>{% for o in s.season.top %}<div class="pr"><span>{{ o.subject }}</span>{{ bar(o.fair, o.pm_mid) }}<span class="num">{{ pct(o.fair) }}</span></div>{% endfor %}
+      <div class="legend">champion probability{% if s.season.top and s.season.top[0].pm_mid is not none %} · <i style="background:var(--warn)"></i>Polymarket{% endif %}</div></div>
+    {% if s.season.constructors %}<div class="legend">Constructors: {% for o in s.season.constructors %}{{ o.subject }} {{ pct(o.fair) }}{{ " · " if not loop.last }}{% endfor %}</div>{% endif %}
+    {% set st = s.season.strategy %}{% if st %}<div style="border-top:1px solid var(--line); padding-top:8px">
+      <div class="legend">Default season strategy (replayed on Polymarket's prices)</div>
+      <div><b class="{{ 'good' if st.summary.pnl >= 0 else 'bad' }}">{{ st.summary.pnl|money(true) }}</b> <span class="muted">since pre-season · {{ st.summary.open_positions }} open · hold {{ st.hold.pnl|money(true) }}</span></div>
+      {% for a in st.actions[:3] %}<div class="legend">Now: <b>{{ a.action }}</b> {{ a.subject }} ({{ "%+.0f"|format(a.edge * 100) }} pts)</div>{% else %}<div class="legend">Now: no trade (no edge ≥ {{ "%.0f"|format(st.params.min_edge * 100) }} pts)</div>{% endfor %}
+    </div>{% endif %}
+    <div><a href="/season/{{ s.code }}">{{ s.season.outcomes }} outcomes →</a></div>
+  </div>
+</div>
+{% if s.later %}<p class="legend">Later: {% for l in s.later %}<a href="/race/{{ l.race_id }}">{{ l.title }}</a> {{ l.date|fmt }}{{ " · " if not loop.last }}{% endfor %} · <a href="/events">full calendar</a></p>{% endif %}
+{% if s.recent %}<h3>Recent results</h3>
+<div class="recent">{% for r in s.recent %}<div>
+  <a href="/race/{{ r.info.race_id }}"><b>{{ r.info.title }}</b></a> <span class="muted">{{ r.info.start_date|fmt }}</span><br>
+  Winner <b>{{ r.winner }}</b>{% if r.our is not none %} · we had <b>{{ pct(r.our) }}</b>{% endif %}{% if r.pm is not none %} · Polymarket {{ pct(r.pm) }}{% endif %}
+  <div class="legend">{{ r.source }}{% if r.diag %} · <a href="/diag/{{ r.diag }}">diagnostic →</a>{% endif %}</div>
+</div>{% endfor %}</div>{% endif %}
+{% endfor %}
+<p class="legend" style="margin-top:24px">Browse <a href="/pm">all Polymarket markets</a> · <a href="/events">all events</a> · <a href="/athletes">all athletes</a>. Bars: our fair probability; the orange tick is the exchange price.</p>
+{% endblock %}

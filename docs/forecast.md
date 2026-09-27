@@ -13,8 +13,8 @@ start list. The model is fit on everything before the Whistler weekend, using
 <!-- /readme -->
 
 ```
-python -m racedb ingest data/script-generated
-python predictor.py season --db --save --backtest 0 --remaining 2   # 10k sims, seed 42
+racinglines mtb_dh ingest data/raw/mtb_dh/chronorace
+racinglines mtb_dh forecast --db --save --backtest 0 --remaining 2   # 10k sims, seed 42
 ```
 
 !!! warning "Placeholder points"

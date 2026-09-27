@@ -1,5 +1,5 @@
 site_name: racinglines
-site_description: Data pipeline and season simulator for UCI downhill World Cup racing
+site_description: Data pipelines, race simulators and market-making tools for timed racing (UCI downhill, Formula 1)
 docs_dir: docs
 site_dir: site
 theme:
@@ -18,8 +18,11 @@ nav:
   - Database: database.md
   - Web app & trading: webapp.md
   - Season model: model.md
+  - Formula 1: f1.md
+  - Market making: market-making.md
   - Evaluation: evaluation.md
   - Current forecast: forecast.md
   - CLI reference: cli.md
+  - Testing: testing.md
   - Project history: history.md
   - TODO: todo.md

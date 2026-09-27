@@ -1,7 +1,6 @@
 # racinglines
-create databases and build prediction engines for timed race sport disciplines; become a market maker for some niche sport on prediction markets
-
-Current focus: **UCI Mountain Bike World Series downhill, Men Elite**.
+Databases, prediction engines and market-making tools for race sports: **Formula 1**
+(priced against Polymarket) and **UCI downhill** (private book).
 
 **Live:**
 [racinglines.bet](https://racinglines.bet) ·
@@ -10,32 +9,38 @@ Current focus: **UCI Mountain Bike World Series downhill, Men Elite**.
 > Use password="password" for demo app/pitch.
 
 <!-- Sections between include markers are generated from docs/ by build_readme.py.
-     Edit the tagged section in docs/, then run: python build_readme.py -->
+     Edit the tagged section in docs/, then run: python scripts/build_readme.py -->
 
 ## What it does
 
 <!-- include: overview -->
 <!-- generated from docs/index.md by build_readme.py - edit it there -->
 
-- **Downloads** official split timing from ChronoRace. Men Elite and Men Junior
-  2021–2026 have usable data; 2019–20 exist only as PDFs.
-- **Parses** it and stores it in **PostgreSQL**, in a schema built for many sports
-  and leagues.
-- **Learns** each rider's pace, consistency and crash/DNF rate from every season
-  and category.
-- **Simulates** race weekends (qualifying → Final) thousands of times. The output
-  is each rider's chance to win, podium, finish top 10 and make the Final, plus
-  expected championship points and final standings.
-- **Backtests** itself on every season since 2021, predicting each round only from
-  what came before it.
-- **Forecasts a race weekend while it's in progress,** using the real start list, and
-  checks whether Timed Training times are usable before relying on them.
-- **Stores** every model run's settings, metrics and predictions in the database.
-- **Admin web app:** latest predictions for upcoming events, model-run and backtest
-  history, and athlete and event pages. It also has a house book of our own YES/NO
-  markets (fair value ± spread, bet log, exposure, settlement) and maker-only
-  (post-only) Polymarket orders checked against the model's fair price. Sign-in
-  page, login throttling, and it can be exposed through a Cloudflare tunnel.
+- **Collects** official timing: F1 from the live-timing archive via FastF1 (every
+  qualifying, sprint, race and practice session since 2020), and downhill split
+  timing from ChronoRace (2021–2026). Everything is stored in **PostgreSQL**, in
+  one multi-sport schema.
+- **Models** each sport:
+    - **F1:** a sector-aware car model shared by both team drivers, driver
+      offsets, a practice-pace prior, and a grid/overtaking finishing model;
+    - **Downhill:** a log-time model of each rider's pace, consistency and
+      crash/DNF rate.
+- **Simulates** race weekends and seasons thousands of times: win, podium, top
+  10, pole, head-to-head and team markets, plus championships.
+- **Prices strictly as of a moment:** only sessions that have ended before the
+  cutoff are used. Backtests, single-event diagnostics and live forecasts all
+  use the same function.
+- **Tests strategies on real market data:**
+    - Polymarket's recorded prices, trades and order books (Parquet archive);
+    - maker replays, weekend taker strategies traded after every session, and a
+      default season-long strategy for the championship markets.
+- **Web app** ([racinglines.bet](https://racinglines.bet)):
+    - **Markets:** every sport's next races and season, with our fair price
+      against each venue;
+    - **My Book:** positions across venues;
+    - **Lab:** launch backtests, scenario forecasts, diagnostics and strategy
+      replays; compare and promote them.
+    - Takers bet on makers' private markets at the quoted price.
 
 <!-- /include -->
 
@@ -85,25 +90,28 @@ Per-season and per-round tables: [Evaluation](docs/evaluation.md#results-every-s
 <!-- generated from docs/index.md by build_readme.py - edit it there -->
 
 ```
-pip install -r requirements.txt
-docker compose up -d                            # PostgreSQL on localhost:5433
-python -m racedb init                           # tables + reference data
-python -m racedb ingest data/script-generated   # load results
+pip install -r requirements.txt && pip install -e .   # dependencies + the `racinglines` command
+docker compose up -d                                   # PostgreSQL on localhost:5433
+racinglines db init                                    # tables + reference data
 
-python predictor.py season   --db --walk-forward --save   # 2026 forecast + backtests, stored in the db
-python predictor.py backtest --db                        # every season since 2021
-ADMIN_PASSWORD=... python -m webapp                       # admin app on http://127.0.0.1:8000
+racinglines f1 fetch && racinglines f1 ingest          # F1 sessions (FastF1) -> database
+racinglines f1 forecast --save                         # live F1 prices: remaining races + championships
+racinglines markets sync                               # Polymarket's F1 markets
+
+racinglines mtb_dh ingest                              # downhill event files -> database
+racinglines mtb_dh forecast --db --save                # downhill season forecast
+
+ADMIN_PASSWORD=... racinglines web                     # the app on http://127.0.0.1:8000
+racinglines check                                      # quick validation: code, data endpoints, database (~10 s)
 ```
-
-No database? `python parser.py --input-dir data/script-generated --out splits.csv`, then use
-`--data splits.csv` instead of `--db`.
 
 <!-- /include -->
 
 ## Docs
 
-Full documentation covers the data sources and gaps, parser, model, evaluation,
-the current forecast, CLI reference and project history. The source is in
+Full documentation covers data and storage, both sports' models, evaluation,
+market making (diagnostics, replays, sweeps, season strategy), the web app, the CLI,
+testing and project history. The source is in
 [`docs/`](docs/).
 
 <!-- include: docs-build -->
@@ -113,7 +121,7 @@ the current forecast, CLI reference and project history. The source is in
 pip install -r requirements-docs.txt
 mkdocs serve        # live preview at http://127.0.0.1:8000
 mkdocs build        # static HTML in site/
-python build_readme.py   # refresh README.md from sections tagged in docs/
+python scripts/build_readme.py   # refresh README.md from sections tagged in docs/
 ```
 
 <!-- /include -->
@@ -125,18 +133,22 @@ python build_readme.py   # refresh README.md from sections tagged in docs/
 
 | Path | |
 |---|---|
-| `download_chronorace.py` | Event discovery and download from ChronoRace |
-| `parser.py` | Raw files → tidy CSV |
-| `predictor.py` | Season model: `season`, `backtest`. Older per-race model: `fit`, `predict` |
-| `racedb/` | Database package: models, ingest, queries, `python -m racedb` CLI |
-| `racedb/registry.py` | Sports, leagues, competitions, categories and venues (add new ones here) |
+| `racinglines/cli/` | The `racinglines` command: `f1`, `mtb_dh`, `markets`, `db`, `web` groups |
+| `racinglines/sources/` | Data sources: `fastf1/` (fetch, ingest), `chronorace/` (download, parse, ingest) |
+| `racinglines/models/` | Model families: `position_sim/` (F1: car/driver pace, practice prior, race and season pricing), `timed_runs/` (downhill: log-time model, weekend and season simulation) |
+| `racinglines/markets/` | Exchanges and books: Polymarket `sync`/`trade`, the Parquet `store`, `venues`, the `private_book`, and `strategies/` (maker replay, weekend taker, season) |
+| `racinglines/pipelines/` | Multi-stage runs: `weekend_sweep`, `season_strategy` |
+| `racinglines/db/` | Database: models, migrations' target, reads, queries, shared ingest helpers, registry of sports and venues |
+| `racinglines/web/` | The web app (`racinglines web`): Markets, My Book, Lab, admin |
+| `racinglines/paths.py` | Where data lives (`data/raw`, `data/archive`, `data/runs`, `data/cache`) |
 | `migrations/`, `alembic.ini` | Alembic schema migrations |
+| `tests/` | Regression suite on pinned fixtures + golden outputs (see [Testing](docs/testing.md)) |
+| `scripts/build_readme.py` | Regenerates README sections from tagged docs sections |
 | `docker-compose.yml` | Local PostgreSQL 17 (port 5433) |
-| `webapp/` | Admin web app: predictions, histories, backtests, Polymarket maker orders (`python -m webapp`) |
-| `build_readme.py` | Regenerates README sections from tagged docs sections |
-| `requirements.txt`, `requirements-docs.txt` | Pinned dependencies (pipeline / docs site) |
-| `data/script-generated/` | Downloaded event files (one per event and category) |
-| `data/copy-paste/` | Raw live-timing copy/pastes. Duplicates of 2026 data; don't train on them. |
+| `pyproject.toml`, `requirements.txt`, `requirements-docs.txt` | Package (`pip install -e .` for the `racinglines` command); pinned dependencies (pipeline / docs site) |
+| `data/raw/<sport>/<source>/` | Downloads: F1 sessions (FastF1 Parquet), downhill event files (Chronorace) |
+| `data/archive/markets/<exchange>/` | Exchange price / trade / order-book history (Parquet) |
+| `data/runs/`, `data/cache/` | Generated outputs; disposable caches |
 | `docs/`, `mkdocs.yml` | Documentation site (MkDocs) |
 
 <!-- /include -->
@@ -173,7 +185,9 @@ Full list: [`docs/todo.md`](docs/todo.md).
 
 **Engineering**
 
-- [ ] Tests (turn the web-app and house-book smoke tests into a pytest suite).
+- [x] Tests: pinned regression suite for every pipeline stage plus web, private-book and role smoke tests (see [Testing](docs/testing.md)).
+- [ ] Per-maker exposure limits and per-taker daily limits; taker balances or ledgers.
+- [ ] Rate-limit and paginate the activity log view; export the log to CSV.
 - [ ] Refuse house markets (and market links) for junior categories (`categories.age_group = 'junior'`).
 - [ ] Persist login throttling across restarts (it's in memory now), and add a stable named tunnel with Cloudflare Access.
 - [ ] Condition in-weekend forecasts on completed rounds (Q1 results, split times).

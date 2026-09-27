@@ -1,0 +1,65 @@
+# --- Project data: NOTHING below may be committed ----------------------------------
+# No data goes to git: not raw downloads (FastF1, ChronoRace, Polymarket), not derived
+# tables, not test fixtures or golden baselines. Rebuild with:
+#   racinglines <sport> fetch|download ...          (working data, see racinglines/paths.py)
+#   python scripts/fetch_test_fixtures.py [--f1] [--mtb]   (test fixtures)
+data/
+tests/fixtures/
+tests/golden/
+*.parquet
+*.npz
+*.feather
+*.arrow
+*.sqlite
+*.sqlite3
+*.db
+*.csv
+*.pkl
+*.pickle
+*.joblib
+
+# MkDocs build output
+site/
+
+# --- Python -------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.python-version
+
+# Test / type-check / lint caches
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+.pytype/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Environment / secrets
+.env
+.env.*
+
+# --- Editors / OS -------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db

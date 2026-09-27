@@ -1,7 +1,7 @@
 # Season model
 
-The season model lives in `predictor.py` (section 7) and is driven by
-`predictor.py season` and `predictor.py backtest`. It answers:
+The season model lives in `racinglines/models/timed_runs/` (section 7) and is driven by
+`racinglines mtb_dh forecast` and `racinglines mtb_dh backtest`. It answers:
 
 - Before a weekend: what's each rider's chance to make the Final, finish top 10,
   reach the podium, or win? How many championship points do they get on average?

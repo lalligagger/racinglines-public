@@ -14,8 +14,8 @@ What was built so far, in order, with the reasoning behind each step. The
 
 The repo started with two scaffolds written before any real data existed:
 
-- `parser.py` handled HTML, CSV and JSON inputs, with guessed column names.
-- `predictor.py` had the per-race model: Elo ratings, a gradient-boosted `pct_back`
+- `racinglines/sources/chronorace/parse.py` handled HTML, CSV and JSON inputs, with guessed column names.
+- `racinglines/models/timed_runs/` had the per-race model: Elo ratings, a gradient-boosted `pct_back`
   regressor, and Plackett–Luce win probabilities.
 
 ## 1. Copy/paste parser
@@ -23,7 +23,7 @@ The repo started with two scaffolds written before any real data existed:
 **Input:** a select-all copy of the ChronoRace live-timing page for 2026 Les Gets
 elite Qualification 2 (`uci:event:20260821_mtb:DHI:CG1:dh:91:res.md`).
 
-**Built:** a `.md`/`.txt` path in `parser.py`. It splits the page into rider blocks
+**Built:** a `.md`/`.txt` path in `racinglines/sources/chronorace/parse.py`. It splits the page into rider blocks
 on `n°<bib>` lines and classifies each token by its shape (split with rank, finish
 time, gap, status, team). That makes missing team lines and missing splits
 harmless. Also: `normalize_event_id`, and `:` as a separator in the event-ID parser.
@@ -33,7 +33,7 @@ has S1–S4 and FINISH rows, and completed splits are kept for DNFs.
 
 ## 2. 2026 season model
 
-**Input:** `data/*.md` files from `download_chronorace.py`: 2026 Men Elite, rounds 1–7.
+**Input:** `data/*.md` files from `racinglines/sources/chronorace/download.py`: 2026 Men Elite, rounds 1–7.
 
 **Built:**
 
@@ -42,7 +42,7 @@ has S1–S4 and FINISH rows, and completed splits are kept for DNFs.
   ride Q2, and the Q2 top 10 fill the Final. That held in all 7 rounds.
 - The **season model** (see [Season model](model.md)). The existing Elo/GBR model
   wasn't extended, because it doesn't model the qualifying format or points.
-- The `predictor.py season` command: a holdout backtest of the last 2 rounds, and a
+- The `racinglines mtb_dh forecast` command: a holdout backtest of the last 2 rounds, and a
   forecast of the remaining 2 rounds plus final standings.
 - Placeholder points tables. The user chose "Finals + qual points, marked as a
   guess", with official values to follow.
@@ -59,7 +59,7 @@ A README with a "What it does" demo section, and a points-validation checklist.
 **Goal:** still predict only 2026, but learn from older seasons and junior results.
 
 **Downloads:** Men Elite 2023–25 and Men Junior 2023–26 into
-`data/script-generated/`. Two downloader fixes:
+`data/raw/mtb_dh/chronorace/`. Two downloader fixes:
 
 1. Wikipedia season pages also link neighbouring seasons, so discovery keeps only
    the requested year.
@@ -110,7 +110,7 @@ Downloader fix: PDF links typed `Folder` (2019–20) are now captured.
 and field sizes from the event's results, so older seasons are simulated in the
 format actually raced. Qualifying points follow the format too.
 
-**New:** `predictor.py backtest`, covering 2021–2026: 43 rounds, 6 standings holdouts.
+**New:** `racinglines mtb_dh backtest`, covering 2021–2026: 43 rounds, 6 standings holdouts.
 
 **Result:** walk-forward Spearman 0.617 overall (0.58–0.67 by season). Make-Final
 Brier 0.127 vs 0.204. The actual winner averaged a 7.1% win probability (uniform
@@ -141,7 +141,7 @@ and leagues.
 - **Venue aliases**, and tables for **points schemes**, **model runs** and
   **predictions**.
 - Alembic migrations, `docker-compose.yml` (Postgres 17 on port 5433), an
-  idempotent ingest keyed on file hashes, and `python -m racedb` commands.
+  idempotent ingest keyed on file hashes, and `racinglines db` commands.
 - `predictor.py --db` loads the same tidy layout from the database, and `--save`
   stores runs.
 
@@ -201,6 +201,130 @@ for private bets: win, podium, make the Final, and championship rank up/down.
   the app through a quick `cloudflared` tunnel.
 - **New routes:** `/events/by-key/{source_key}` (stable event links) and `/pitch`
   (serves a static page from the repo root).
+
+## 12. Roles: admin, maker, taker
+
+- **Accounts:** the web app now has real accounts (`users`, scrypt hashes) and three
+  roles.
+  - Takers bet on a board of every maker's markets, without seeing fair values.
+  - Makers quote and manage their own markets.
+  - The admin sees and settles everything, and has an activity log, user
+    management, a per-user trading view, a database explorer (row edit and delete)
+    and a SQL console (read-only by default).
+- **Checked end to end:**
+  - the access matrix for all three roles;
+  - maker quoting;
+  - a taker bet;
+  - a stale-price bet refused;
+  - the stake cap;
+  - cross-maker edits and maker settlement blocked;
+  - activity logged;
+  - password hashes hidden;
+  - read-only SQL rejecting `DELETE` and data-modifying `WITH`;
+  - a row edit logged with before and after values.
+
+## 13. Aligning with real Polymarket F1 markets
+
+- **Model:** the F1 forecast now also produces constructors' championship
+  odds, per-race top-scoring constructor, race and championship head-to-heads,
+  season win counts, and a season pace drift.
+- **Sync:** `racinglines/markets/polymarket/sync.py` maps Polymarket's F1 events onto those
+  predictions. The first sync covered 21 events and 336 outcome tokens, 234 of
+  them priced by the model.
+- **Makers** get a Polymarket board with live prices vs fair values, and can
+  mirror a market into their own book in one click.
+- **Takers** see the Polymarket price next to every mirrored quote.
+- **Settlement:** mirrored markets settle from Polymarket's resolution.
+- **Found:** the model's biggest gap to the market (Sainz ahead of Alonso) is a
+  blind spot for chaotic races, not an edge.
+
+## 14. Leakage review and as-of pricing
+
+- **Clean separation:** backtests (`kind='backtest'`), single-event diagnostics
+  (`'diagnostic'`) and live forecasts (`'forecast'`) all price through one
+  function with a hard session-time cutoff, checked by `assert_no_leak`.
+- **Old runs:** runs 5–8 predate this and shouldn't be used.
+- **Season drift:** its size is now estimated as of the cutoff, and it applies
+  only to season totals.
+- **Baku test case:** the Azerbaijan GP priced as of the evening before. Model
+  vs Polymarket at the cutoff, scored on the result, on a maker-side diagnostic
+  page.
+
+## 15. Maker replay on the real Polymarket tape
+
+- **Recording:** Polymarket minute prices and the full trade tape for Baku,
+  plus a book-snapshot recorder for future events.
+- **Replay:** a maker quoting through three as-of stages (pre-qualifying,
+  post-qualifying, overnight) and filled only by real taker trades. At ±2¢ it
+  lost $303: it was adversely selected, and pre-qualifying inventory was the
+  biggest loss.
+- **Sample taker:** the `taker` account's bets are the replay's fills.
+- **Tests:** 53 pytest tests. See [Market making](market-making.md).
+
+## 16. One product: board, race pages, book, lab
+
+- **Standard shape.** Every view reads one structure: event → outcome → our fair,
+  venue quotes (Polymarket, Kalshi coming soon, private book) and result.
+  Upcoming races use the live forecast; past races use the last as-of price,
+  compared with the exchange at the same moment.
+- **Board.** Every sport's next races, season markets and recent results, plus
+  headline numbers.
+- **Race page.** Replaces Predictions, Market board and the event view: price
+  chart, every market kind across venues, quoting actions, classification.
+- **My book.** Replaces My markets: positions across venues.
+- **Lab.** Replaces Diagnostics, Model runs and Backtests. Backtests, scenario
+  forecasts and diagnostics are launched with knobs as background jobs; a
+  scenario is promoted to live explicitly.
+- **Event diagnostic.** The maker replay exposes every strategy knob.
+- **Fixes:**
+    - a phantom "nan" constructor, from two F1 results with no team id;
+    - constructors named by their latest team name.
+- **Tests:** 66.
+
+## 17. Shared car, season sweep, Parquet market store
+
+- **Shared car.** Car pace now comes from both drivers, and teammates share
+  part of the race noise. Teammate head-to-heads improved significantly.
+- **2026 season sweep.** Every weekend priced before any running and after each
+  session, and traded against Polymarket at that moment:
+    - maker replay +$852;
+    - taking −$1,313 (update), −$2 (hold), −$512 (after qualifying only).
+- **Parquet market store.** Heavy exchange history moves to Parquet under an
+  event-aware retention rule:
+    - Postgres went from 975 MB to 228 MB;
+    - 1.9M market rows take 15 MB;
+    - the FastF1 cache (1.2 GB) was cleared, since raw sessions are kept as
+      Parquet;
+    - `data/` went from 1.2 GB to 37 MB.
+
+## 18. Data layout and one package
+
+- **Data layout:** `data/` is organized by lifecycle, then sport:
+  `raw/<sport>/<source>`, `archive/markets/<exchange>`, `runs/<sport>`, `cache/`.
+  Every path comes from `racinglines/paths.py`. Downhill source files are keyed
+  by their path relative to `data/`, so moving the tree doesn't cause a
+  re-ingest.
+- **One package:** the code moved into `racinglines/`:
+    - `sources/`, `models/`, `markets/`, `pipelines/`, `db/`, `web/`;
+    - one `racinglines` command with `f1`, `mtb_dh`, `markets`, `db` and `web`
+      groups, replacing `python -m f1`, `python -m racedb`, `python -m webapp`,
+      `predictor.py`, `parser.py` and `download_chronorace.py`;
+    - the old Elo per-race downhill model (`predictor.py fit`/`predict`) was
+      removed.
+- **No behaviour change:** the pinned regression suite passed with identical
+  golden outputs.
+
+## 19. Cleanup, no data in git
+
+- **Shared helpers:** duplicated helpers were consolidated (`core/stats.py`,
+  `markets/strategies/sizing.py`), and dead code and stale references were
+  removed.
+- **No data in git:** fixtures, raw downloads and golden baselines are ignored,
+  and a guard test enforces it. The downhill files committed earlier are
+  untracked.
+- **Fixtures from public sources:** `scripts/fetch_test_fixtures.py` builds the
+  test fixtures from FastF1, ChronoRace and Polymarket, replacing the extractor
+  that read our own database.
 
 ## Reproducing the tuning sweep
 

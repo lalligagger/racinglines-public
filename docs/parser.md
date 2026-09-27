@@ -1,12 +1,12 @@
 # Parser
 
-`parser.py` turns raw result files into one **tidy long-format CSV**. The predictor
+`racinglines/sources/chronorace/parse.py` turns raw result files into one **tidy long-format CSV**. The predictor
 reads only this CSV, so any new data source only needs a parser path.
 
 ```
-python parser.py --inspect <file>                              # print what was detected, write nothing
-python parser.py --input-dir data/script-generated --out splits.csv
-python parser.py --input-file a.md --input-file b.html --out splits.csv
+racinglines mtb_dh parse --inspect <file>                              # print what was detected, write nothing
+racinglines mtb_dh parse --input-dir data/raw/mtb_dh/chronorace --out splits.csv
+racinglines mtb_dh parse --input-file a.md --input-file b.html --out splits.csv
 ```
 
 ## Input formats

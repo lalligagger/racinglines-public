@@ -1,0 +1,398 @@
+"""
+racinglines f1 <command>: Formula 1.
+
+  Data
+    fetch        Download sessions from the F1 live-timing archive (FastF1) to data/raw/f1/fastf1/.
+    ingest       Load data/raw/f1/fastf1/ into the database (events, results, laps, track profiles).
+    (exchange data: racinglines markets sync | history | trades | record | archive)
+
+  Pricing (all through models.position_sim.pricing.price_race with a hard as-of cutoff)
+    backtest     HISTORICAL: price every past race as of just before qualifying and just
+                 before the race; score against outcomes. Saved as kind='backtest'.
+    diagnostic   ONE PAST EVENT at a chosen cutoff (e.g. yesterday); saved as kind='diagnostic'.
+    sweep        Every race of a season traded through the weekend: price before any running
+                 and after each session, trade Polymarket (update / hold / after-quali taker
+                 strategies, maker replay), settle; per-weekend P&L. Saved as kind='sweep'.
+    season-strategy  Default championship-market strategy through the season: as-of season
+                 forecasts pre-season and after every race, trades at Polymarket's recorded
+                 prices (+ spread and slippage), settles eliminated markets, marks the rest.
+    replay       Replay a maker quoting Polymarket from one or more diagnostic runs against
+                 the real trade tape; fills, inventory, P&L at resolution, mark-outs.
+    forecast     LIVE: cutoff = now; upcoming races + championships. Saved as kind='forecast'
+                 (the only kind the web app uses for live fair prices).
+"""
+
+import argparse
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]      # the repository
+
+
+def _years(spec):
+    if "," in spec:
+        return [int(y) for y in spec.split(",")]
+    a, _, b = spec.partition("-")
+    return list(range(int(a), int(b or a) + 1))
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="racinglines f1", description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--db", default=None, help="Database URL (default: $DATABASE_URL / docker-compose).")
+    ap.add_argument("--half-life", type=float, default=None,
+                    help="Recency half-life in days for the pace models (default: position_sim.model.HALF_LIFE_DAYS).")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    p = sub.add_parser("fetch")
+    p.add_argument("--years", default="2026,2025,2024,2023,2022,2021,2020")
+    p.add_argument("--sessions", default="Q,S,R", help="Q,S,R and/or practice FP1,FP2,FP3,SQ")
+    p.add_argument("--rounds", default=None, help="Only these rounds, e.g. 6-15")
+    p.add_argument("--force", action="store_true")
+    p = sub.add_parser("ingest")
+    p.add_argument("--years", default="2020-2026")
+    p.add_argument("--force", action="store_true")
+    p = sub.add_parser("pm-sync")
+    p.add_argument("--year", type=int, default=2026)
+    p = sub.add_parser("pm-history")
+    p.add_argument("--events", nargs="+", required=True, help="Polymarket event slugs (or a prefix ending in %%).")
+    p.add_argument("--start", required=True, help="UTC start, e.g. 2026-09-23T00:00")
+    p.add_argument("--end", required=True, help="UTC end")
+    p.add_argument("--fidelity", type=int, default=60, help="Minutes per point (1 = minute-level).")
+    p = sub.add_parser("pm-trades")
+    p.add_argument("--events", nargs="+", required=True, help="Polymarket event slugs (or a prefix ending in %%).")
+    p = sub.add_parser("pm-record")
+    p.add_argument("--events", nargs="*", help="Event slugs / prefixes (default: open markets of races not yet run).")
+    p.add_argument("--interval", type=int, default=60)
+    p.add_argument("--minutes", type=int, default=0, help="Stop after this many minutes (0 = run until stopped).")
+    p.add_argument("--sync-every", type=int, default=30, help="Re-sync Polymarket's F1 events every N minutes "
+                                                              "so new race markets get recorded (0 = never).")
+    p.add_argument("--year", type=int, default=2026)
+    p = sub.add_parser("pm-archive")
+    p.add_argument("--hours", type=float, default=None,
+                   help="Archive every row older than this instead of the retention policy (keep upcoming / "
+                        "in-progress races, the latest completed race, the last 7 days of open season markets).")
+    p.add_argument("--vacuum-full", action="store_true", help="Return freed space to the OS (locks the tables briefly).")
+    p.add_argument("--compact", action="store_true", help="Also merge each month into one deduplicated file.")
+    p.add_argument("--stats", action="store_true", help="Only show where the rows are.")
+    p = sub.add_parser("sweep")
+    p.add_argument("--year", type=int, default=2026)
+    p.add_argument("--rounds", default=None, help="e.g. 1-15 (default: every raced round)")
+    p.add_argument("--sims", type=int, default=4000)
+    p.add_argument("--no-fetch", action="store_true", help="Don't download Polymarket history/trades.")
+    p.add_argument("--reprice", action="store_true", help="Re-price stages even if stored.")
+    p.add_argument("--min-edge", type=float, default=0.05)
+    p.add_argument("--stake-per-edge", type=float, default=250.0)
+    p.add_argument("--max-stake", type=float, default=50.0)
+    p.add_argument("--cost", type=float, default=0.01, help="$ per share per trade (spread + slippage)")
+    p.add_argument("--save", action="store_true")
+    p = sub.add_parser("season-strategy")
+    p.add_argument("--year", type=int, default=2026)
+    p.add_argument("--sims", type=int, default=5000)
+    p.add_argument("--no-fetch", action="store_true")
+    p.add_argument("--reforecast", action="store_true")
+    p.add_argument("--min-edge", type=float, default=0.03)
+    p.add_argument("--stake-per-edge", type=float, default=500.0)
+    p.add_argument("--max-stake", type=float, default=150.0)
+    p.add_argument("--capital", type=float, default=1500.0)
+    p.add_argument("--save", action="store_true")
+    p = sub.add_parser("replay")
+    p.add_argument("--runs", required=True, help="Diagnostic run ids in time order, e.g. 11,9")
+    p.add_argument("--sweep", action="store_true", help="Also sweep half-spread and fill rule.")
+    p = sub.add_parser("backtest")
+    p.add_argument("--start-year", type=int, default=2021)
+    p.add_argument("--sims", type=int, default=4000)
+    p.add_argument("--no-track", action="store_true", help="Only the run without track features.")
+    p.add_argument("--out", default=None, help="Per-race rows CSV (default data/runs/f1/backtests/).")
+    p.add_argument("--save", action="store_true", help="Store as a model run (kind='backtest').")
+    p.add_argument("--races", type=int, default=None, help="Only the last N races (quick runs).")
+    p.add_argument("--track", choices=["both", "on", "off"], default="both", help="Track features: compare both, or one.")
+    p = sub.add_parser("diagnostic")
+    p.add_argument("--event", required=True, help="Season-round, e.g. 2026-15")
+    p.add_argument("--cutoff", required=True, help="UTC as-of time, e.g. 2026-09-25T23:59")
+    p.add_argument("--sims", type=int, default=10000)
+    p.add_argument("--no-track", action="store_true")
+    p.add_argument("--save", action="store_true")
+    p = sub.add_parser("forecast")
+    p.add_argument("--year", type=int, default=2026)
+    p.add_argument("--sims", type=int, default=10000)
+    p.add_argument("--save", action="store_true")
+    p.add_argument("--top", type=int, default=10)
+    p.add_argument("--no-track", action="store_true")
+    p.add_argument("--scenario", default=None, metavar="LABEL",
+                   help="Save as kind='scenario' (not used for live prices until promoted in the web app).")
+    args = ap.parse_args(argv)
+
+    import pandas as pd
+    pd.set_option("display.width", 220)
+    fmt = {c: "{:.1%}".format for c in ("win_prob", "podium_prob", "top10_prob", "pole_prob", "dnf_prob",
+                                         "champion_prob", "top3_prob")}
+
+    if args.cmd == "fetch":
+        from racinglines.sources.fastf1 import fetch
+        sys.argv = (["fetch", "--years", args.years, "--sessions", args.sessions] + (["--force"] if args.force else [])
+                    + (["--rounds", args.rounds] if args.rounds else []))
+        return fetch.main()
+
+    from racinglines.db.config import get_engine, get_session
+    from racinglines.db.queries import records
+    engine = get_engine(args.db)
+
+    if args.cmd == "ingest":
+        from racinglines.sources.fastf1.ingest import ingest
+        with get_session(args.db) as s:
+            print("Done:", ingest(s, _years(args.years), force=args.force))
+        return
+    if args.cmd == "pm-sync":
+        from racinglines.markets.polymarket.sync import sync
+        with engine.connect() as c, get_session(args.db) as s:
+            print(sync(s, c, args.year))
+        return
+    if args.cmd == "pm-archive":
+        from datetime import timedelta
+
+        from sqlalchemy import text
+
+        from racinglines.markets import store as MS
+        if not args.stats:
+            for name in MS.STORES:
+                n = (MS.archive(engine, name, older_than=timedelta(hours=args.hours)) if args.hours
+                     else MS.archive(engine, name, policy=True))
+                if args.compact:
+                    MS.compact(name)
+                print(f"{name}: {n:,} rows moved to Parquet", flush=True)
+            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as c:
+                for s in MS.STORES.values():
+                    c.execute(text(f"VACUUM {'FULL ' if args.vacuum_full else ''}{s['table']}"))
+        for name, st in MS.stats(engine).items():
+            print(f"{name:7s} Postgres {st['postgres_rows']:>10,} rows {st['postgres_mb']:8.1f} MB · "
+                  f"Parquet {st['parquet_rows']:>10,} rows {st['parquet_mb']:8.1f} MB in {st['parquet_files']} files")
+        return
+    if args.cmd in ("pm-trades", "pm-record"):
+        from sqlalchemy import text
+
+        from racinglines.markets.polymarket.sync import fetch_trades, snapshot_books, sync
+
+        def slugs(pats):
+            with engine.connect() as c:
+                return [s for pat in pats or [] for s in c.execute(
+                    text("SELECT DISTINCT event_slug FROM market_links WHERE event_slug LIKE :p"), dict(p=pat)).scalars()]
+        if args.cmd == "pm-trades":
+            ev = slugs(args.events)
+            with engine.connect() as c, get_session(args.db) as s:
+                print(f"{len(ev)} events, {fetch_trades(s, c, ev)} trades fetched")
+            return
+        import time
+        from datetime import datetime, timezone
+        from datetime import timedelta
+
+        from racinglines.markets import store as MS
+        t0, last_sync, last_archive = time.time(), 0.0, time.time()
+        while True:
+            try:
+                if args.sync_every and time.time() - last_sync >= args.sync_every * 60:
+                    with engine.connect() as c, get_session(args.db) as s:
+                        print(f"{datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} sync {sync(s, c, args.year)}", flush=True)
+                    last_sync = time.time()
+                ev = slugs(args.events) or None
+                with engine.connect() as c, get_session(args.db) as s:
+                    n = snapshot_books(s, c, ev)
+                print(f"{datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} {n} books", flush=True)
+            except Exception as e:  # keep recording through transient API errors
+                print(f"{datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} error: {e}", flush=True)
+            if time.time() - last_archive >= 3600:
+                try:
+                    moved = {n: MS.archive(engine, n, policy=True) for n in MS.STORES}
+                    print(f"{datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} archived {moved}", flush=True)
+                except Exception as e:  # noqa: BLE001
+                    print(f"archive error: {e}", flush=True)
+                last_archive = time.time()
+            if args.minutes and time.time() - t0 >= args.minutes * 60:
+                return
+            time.sleep(args.interval)
+    if args.cmd == "season-strategy":
+        from racinglines.markets.strategies.season import SeasonParams
+
+        from racinglines.pipelines import season_strategy as SE
+        prm = SeasonParams(min_edge=args.min_edge, stake_per_edge=args.stake_per_edge, max_stake=args.max_stake,
+                           capital=args.capital)
+        out = SE.run_season(engine, args.db, args.year, prm, fetch=not args.no_fetch, reforecast=args.reforecast,
+                            n_sims=args.sims, echo=lambda m: print(m, flush=True))
+        r, h = out["result"], out["hold"]
+        print(f"\n=== Default season strategy, {args.year} ({out['markets']} markets) ===")
+        for k, v in r["summary"].items():
+            print(f"  {k:15s} {v:,.2f}" if isinstance(v, float) else f"  {k:15s} {v}")
+        print(f"  enter pre-season & hold: {h['summary']['pnl']:+,.2f}")
+        print("\n=== Positions ===")
+        print(r["positions"].drop(columns=["key"]).to_string(index=False, float_format="{:.3f}".format) if len(r["positions"]) else "none")
+        print("\n=== Trades by decision ===")
+        if len(r["trades"]):
+            t = r["trades"]
+            print(t.assign(usd=t["shares"] * t["price"]).groupby("decision", sort=False).agg(trades=("usd", "size"), net_usd=("usd", "sum")).to_string())
+        print("\n=== Now (live forecast vs latest price) ===")
+        print(out["now"].drop(columns=["key"]).to_string(index=False, float_format="{:.3f}".format) if len(out["now"]) else "none")
+        if args.save:
+            from racinglines.db.queries import save_model_run
+            eq = r["equity"].merge(h["equity"].rename(columns={"equity": "hold"}), on="t", how="left")
+            with get_session(args.db) as s:
+                run_id = save_model_run(
+                    s, competition="f1_wdc", season=args.year, category="DRV", model="season_strategy", kind="season_strategy",
+                    params=dict({k: (str(v) if hasattr(v, "total_seconds") else v) for k, v in prm.__dict__.items()}, year=args.year,
+                                min_volume=SE.MIN_VOLUME, slippage=SE.SLIPPAGE, default_half_spread=SE.DEFAULT_HALF_SPREAD,
+                                live_run=out["live_run"]),
+                    metrics=dict(summary=r["summary"], hold=h["summary"], equity=records(eq.assign(t=eq["t"].astype(str))),
+                                 positions=records(r["positions"]),
+                                 trades=records(r["trades"].assign(t=r["trades"]["t"].astype(str))) if len(r["trades"]) else [],
+                                 now=records(out["now"]),
+                                 decisions=[dict(d, t=str(d["t"])) for d in out["decisions"]]))
+            print(f"Saved season strategy run {run_id}.")
+        return
+    if args.cmd == "sweep":
+        from racinglines.markets.strategies.taker_weekend import TakerParams
+
+        from racinglines.pipelines import weekend_sweep as SW
+        if args.half_life:
+            from racinglines.models.position_sim import model as M_
+            M_.HALF_LIFE_DAYS = args.half_life
+        rounds = _years(args.rounds) if args.rounds else None
+        taker = TakerParams(min_edge=args.min_edge, stake_per_edge=args.stake_per_edge, max_stake=args.max_stake,
+                            cost=args.cost)
+        out = SW.run_sweep(engine, args.db, args.year, rounds, n_sims=args.sims, fetch=not args.no_fetch,
+                           reprice=args.reprice, taker=taker, echo=lambda m: print(m, flush=True))
+        w = out["weekends"]
+        cols = [c for c in ["event_key", "event", "format", "stages", "tradeable_pre", "tradeable_quali",
+                            "update_trades", "update_bought", "update_pnl", "hold_pnl", "last_pnl", "maker_fills",
+                            "maker_pnl"] if c in w]
+        print("\n=== Weekends ===")
+        print(w[cols].to_string(index=False, float_format="{:.2f}".format))
+        print("\n=== Totals ===")
+        for k, v in out["totals"].items():
+            print(f"{k:7s} P&L {v['pnl']:+9.2f} on ${v['bought']:,.0f} · {v['weekends_up']}/{v['weekends']} weekends up")
+        print("\n=== Update strategy: P&L of the trades made at each stage ===")
+        print(out["by_stage"].to_string(index=False, float_format="{:+.2f}".format))
+        print("\n=== By market ===")
+        print(out["by_kind"].to_string(index=False, float_format="{:+.2f}".format))
+        print("\n=== Model vs Polymarket by stage (Brier, lower is better) ===")
+        print(out["scores"].to_string(index=False, float_format="{:.4f}".format))
+        from racinglines import paths
+        outdir = paths.runs("f1", "sweeps")
+        w.to_csv(outdir / f"sweep_{args.year}_weekends.csv", index=False)
+        if len(out["trades"]):
+            out["trades"].to_csv(outdir / f"sweep_{args.year}_trades.csv", index=False)
+        if args.save:
+            from racinglines.db.queries import save_model_run
+            with get_session(args.db) as s:
+                run_id = save_model_run(s, competition="f1_wdc", season=args.year, category="DRV", model="f1_sector_sim",
+                                        kind="sweep", params=dict(out["params"], year=args.year, rounds=args.rounds),
+                                        metrics=dict(weekends=records(w), totals=out["totals"],
+                                                     by_stage=records(out["by_stage"]), by_kind=records(out["by_kind"]),
+                                                     scores=records(out["scores"])))
+            print(f"Saved sweep run {run_id}.")
+        return
+    if args.cmd == "replay":
+        from racinglines.markets.strategies import maker_replay as R
+        run_ids = [int(x) for x in args.runs.split(",")]
+        with engine.connect() as c:
+            data = R.load_event(c, run_ids)
+        for mode in ("touch", "through"):
+            res = R.replay(data, R.Params(fill=mode))
+            print(f"\n=== fill rule: {mode} ===")
+            print(R.summary(res).to_string())
+        if args.sweep:
+            print("\n=== sweep ===")
+            print(R.sweep(data).to_string(index=False))
+        return
+    if args.cmd == "pm-history":
+        from datetime import timezone
+
+        from sqlalchemy import text
+
+        from racinglines.markets.polymarket.sync import fetch_history
+        start = pd.Timestamp(args.start).tz_localize(timezone.utc).to_pydatetime()
+        end = pd.Timestamp(args.end).tz_localize(timezone.utc).to_pydatetime()
+        with engine.connect() as c:
+            slugs = [s for pat in args.events for s in c.execute(
+                text("SELECT DISTINCT event_slug FROM market_links WHERE event_slug LIKE :p"), dict(p=pat)).scalars()]
+        with engine.connect() as c, get_session(args.db) as s:
+            print(f"{len(slugs)} events, {fetch_history(s, c, slugs, start, end, args.fidelity)} price points stored")
+        return
+
+    from racinglines.models.position_sim import pricing as run
+    meas = run.Measurements.load(engine)
+
+    if args.half_life:
+        run.M.HALF_LIFE_DAYS = args.half_life
+    knobs = dict(half_life_days=run.M.HALF_LIFE_DAYS)
+
+    if args.cmd == "backtest":
+        if args.no_track:
+            args.track = "off"
+        results = []
+        for use_track in {"both": [True, False], "on": [True], "off": [False]}[args.track]:
+            print(f"progress 0/1 building history (track features {'on' if use_track else 'off'})", flush=True)
+            hist = run.history(meas, use_track)
+            bt = run.backtest(meas, hist, args.start_year, args.sims, use_track, last_n=args.races,
+                              echo=lambda m: print(m, flush=True))
+            bt["track_features"] = use_track
+            results.append(bt)
+            print(f"\n=== Track features {'ON' if use_track else 'OFF'}: mean over {bt['event_id'].nunique()} races ===")
+            print(run.summarize_backtest(bt).round(4).T.to_string())
+        out = pd.concat(results, ignore_index=True)
+        from racinglines import paths
+        dest = args.out or paths.runs("f1", "backtests") / f"backtest_{pd.Timestamp.now():%Y%m%d_%H%M}.csv"
+        out.to_csv(dest, index=False)
+        print(f"\nPer-race rows -> {dest}")
+        if args.save:
+            from racinglines.db.queries import save_model_run
+            with get_session(args.db) as s:
+                run_id = save_model_run(s, competition="f1_wdc", category="DRV", model="f1_sector_sim", kind="backtest",
+                                        params=dict(start_year=args.start_year, sims=args.sims, races=args.races,
+                                                    track=args.track, **knobs),
+                                        metrics=dict(summary={f"{m}|track={t}": run.summarize_backtest(g).iloc[0].to_dict()
+                                                              for (m, t), g in out.groupby(["mode", "track_features"])},
+                                                     events=records(out)))
+            print(f"Saved backtest run {run_id}.")
+        return
+
+    use_track = not getattr(args, "no_track", False)
+    hist = run.history(meas, use_track)
+
+    if args.cmd == "diagnostic":
+        cutoff = pd.Timestamp(args.cutoff)
+        event_id, summ, ex, result = run.diagnostic(meas, hist, args.event, cutoff, n_sims=args.sims, use_track=use_track)
+        print("Leakage audit:", ex["audit"])
+        out = summ.merge(result, on="athlete_id")
+        print(out[["driver", "team_key", "win_prob", "podium_prob", "top10_prob", "position", "status"]]
+              .head(args.sims and 12).to_string(index=False, formatters=fmt))
+        if args.save:
+            run_id = run.save_diagnostic(args.db, args.event, cutoff, summ, ex, args.sims, track_features=use_track)
+            print(f"Saved diagnostic run {run_id}.")
+        return
+
+    if args.cmd == "forecast":
+        per_event, standings, extras = run.forecast(meas, hist, args.year, n_sims=args.sims, use_track=use_track)
+        fm = extras["model"]
+        print(f"Cutoff {extras['cutoff']} UTC · latest data used {extras['latest_data']}")
+        print(f"Finishing model coef {dict(zip(run.M.FEATURES, fm.coef.round(3)))} sigma {fm.sigma:.3f}; "
+              f"season drift (as-of) {extras['drift']}")
+        for ev in per_event[:2]:
+            print(f"\n--- R{ev['round']} {ev['name']} ({ev['date']:%d %b}) ---")
+            cols = ["driver", "team_key", "win_prob", "podium_prob", "top10_prob", "dnf_prob", "exp_points"]
+            print(ev["summary"][cols].head(args.top).to_string(index=False, formatters=fmt, float_format="{:.1f}".format))
+        print(f"\n--- {args.year} drivers' championship ---")
+        print(standings[["driver", "current_points", "exp_points", "champion_prob", "top3_prob"]]
+              .head(args.top).to_string(index=False, formatters=fmt, float_format="{:.0f}".format))
+        print(extras["constructors"][["team", "current_points", "exp_points", "champion_prob"]]
+              .head(5).to_string(index=False, formatters=fmt, float_format="{:.0f}".format))
+        if args.save:
+            params = dict(cutoff=extras["cutoff"], half_life_days=run.M.HALF_LIFE_DAYS, sims=args.sims,
+                          track_features=use_track, label=args.scenario,
+                          features=run.M.FEATURES, coef=[float(c) for c in fm.coef], sigma=fm.sigma,
+                          sigma_q=fm.sigma_q, drift=extras["drift"])
+            run_id = run.save_forecast(args.db, args.year, per_event, standings, params, metrics=dict(
+                latest_data=extras["latest_data"], constructors=records(extras["constructors"]),
+                race_constructor_top=extras["race_constructor_top"]), kind="scenario" if args.scenario else "forecast")
+            print(f"\nSaved {'scenario' if args.scenario else 'forecast'} run {run_id}.")
+
+
+if __name__ == "__main__":
+    main()

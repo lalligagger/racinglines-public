@@ -1,17 +1,17 @@
-"""Alembic environment: migrations are generated from racedb.models."""
+"""Alembic environment: migrations are generated from racinglines.db.models."""
 
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from racedb.config import database_url
-from racedb.models import Base
+from racinglines.db.config import database_url
+from racinglines.db.models import Base
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-# an explicit URL (e.g. from `python -m racedb --db ... init`) wins over $DATABASE_URL
+# an explicit URL (e.g. from `racinglines db --db ... init`) wins over $DATABASE_URL
 config.set_main_option("sqlalchemy.url", config.get_main_option("sqlalchemy.url") or database_url())
 target_metadata = Base.metadata
 

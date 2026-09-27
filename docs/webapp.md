@@ -1,10 +1,10 @@
 # Web app & trading
 
-`webapp/` is an **admin-only** web app (FastAPI, server-rendered pages) on top of
-the [database](database.md).
+`racinglines/web/` is the maker/taker web app (FastAPI, server-rendered pages, no
+JavaScript framework) on top of the [database](database.md).
 
 ```
-ADMIN_PASSWORD=choose-one python -m webapp        # http://127.0.0.1:8000, user "admin"
+ADMIN_PASSWORD=choose-one racinglines web        # http://127.0.0.1:8000, user "admin"
 ```
 
 If `ADMIN_PASSWORD` isn't set, a random password is generated and printed at
@@ -20,7 +20,7 @@ startup.
 ## Reaching it from other devices (Cloudflare tunnel)
 
 ```
-ADMIN_PASSWORD=... python -m webapp                                   # still listens on 127.0.0.1
+ADMIN_PASSWORD=... racinglines web                                   # still listens on 127.0.0.1
 cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8000        # prints https://<random>.trycloudflare.com
 ```
 
@@ -38,23 +38,98 @@ cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8000        # prints h
   front of a named tunnel, especially before setting
   `POLYMARKET_TRADING_ENABLED=true`.
 
+## One shape for every sport, race and venue
+
+Every view reads the same structure (`racinglines/markets/venues.py`):
+
+```
+event: a race, or a competition's season
+  └─ outcome: kind + subject (e.g. race_win · George Russell, race_h2h · A ahead of B)
+       ├─ our fair value:
+       │    upcoming: the live forecast
+       │    past: the last as-of price made before the start (diagnostic, else an earlier forecast)
+       ├─ venue quotes: Polymarket · Kalshi (soon) · private book (our own markets)
+       └─ result, once the race has run
+```
+
+- **Past races:** the exchange column shows the price **at the time of our as-of
+  run**, not the resolved 0/1. So "we had 30%, Polymarket 64.5%" compares like
+  with like.
+- **Adding a venue:** add a `VENUES` entry and rows in `market_links` with
+  `exchange = <code>`. Every page then shows its column.
+
 ## Pages
 
 | Page | What it shows |
 |---|---|
-| **Predictions** (`/`) | For each competition and category, the latest forecast run: per-rider win, podium, top-10, make-Final and expected points for each upcoming or in-progress event (and the next unknown round), plus projected championship standings. |
-| **Events** (`/events`, `/events/{id}`) | Calendar with status (`completed`, `in_progress`, `scheduled`). Each event page shows results by category and round, plus every stored prediction for that event next to the actual Final position. You can add a scheduled event here. |
-| **Athletes** (`/athletes`, `/athletes/{id}`) | Search. Each athlete page shows identifiers, qualifying/semi/Final history, and every prediction the model has made for them. |
-| **Model runs / Backtests** (`/runs`, `/runs/{id}`) | Every stored run: parameters, metrics tables (walk-forward, backtest per season and per event), per-race predictions and standings. |
-| **Markets** (`/markets`) | Polymarket outcomes linked to model predictions, with the model's fair price. |
-| **Orders** (`/orders`) | Log of every order the app built (dry run, submitted, rejected, cancelled), open orders on Polymarket, and cancel buttons. |
-| **House book** (`/house`, `/house/{id}`, `/house/sheet`) | Our own YES/NO markets: generate and reprice from the forecast, record bets, exposure and EV, settlement, quote sheet. See [House book](#house-book-private-markets-we-quote). |
-| **Sign in** (`/login`, `/logout`) | Sign-in page and 12-hour session cookie (see below). |
-| `/events/by-key/{source_key}` | Stable link to an event by its source key, e.g. `/events/by-key/20260925_mtb`; redirects to `/events/{id}`. |
-| `/pitch` | Serves `pitch.html` from the repo root, behind the same login. |
+| **Markets** (`/`, makers and admin) | **Headline numbers:** exchange outcomes we price and their volume, order books recording, my open markets and worst case, F1 model vs grid-only baseline, running jobs.<br>**Per sport** (F1 first):<br>• next three races as cards: countdown, venue badges (live / pending / soon / mine), our top-3 win probabilities with the exchange price as a tick;<br>• the season card;<br>• later races;<br>• recent results: winner, our pre-race price, Polymarket at the same time. |
+| **Race** (`/race/{race_id}`) | The core page:<br>• **Header:** where our fair values come from (run and as-of time), the favourite, the result, venue badges, my book here.<br>• **Chart:** Polymarket price history for the top outcomes, with our fair as dotted lines and markers for qualifying, the race and our as-of time.<br>• **One table per market kind** (win, podium, top 10, make the Final, head-to-head, top constructor): fair bar with market tick, a column per venue, gap, my YES/NO quote (or settled P&L), bets, and the result.<br>• **Quote this race** (upcoming): generate private markets from our fair ± spread, or mirror the Polymarket event.<br>• **Classification** (past): with our win and podium prices, plus links to diagnostics. |
+| **Season** (`/season/{competition}`) | The same layout for season-long markets: champion, constructors' champion, season wins, championship head-to-heads. |
+| **My book** (`/book`) | Positions across venues. Totals: open markets, bets against me, stakes, EV at fair and worst case (open markets only), settled P&L. One row per event, linking to the race page and to `/house` for per-market management. Admin can filter by maker. |
+| **Lab** (`/lab`, makers and admin) | **Run:** backtests, forward-forecast scenarios and event diagnostics with knobs, for F1 and downhill (see below).<br>**Also:** jobs with live progress and logs; scenarios compared with the live forecast, with **Promote to live**; every backtest side by side against the grid baseline; event diagnostics with replay P&L; all runs. |
+| **Event diagnostic** (`/diag/{run}`) | One past event as of a cutoff: our prices vs Polymarket, scoring, the paper taking strategy, and the **maker replay with every strategy knob**. Knobs: fill rule, half-spread, shares per quote, max shares per market, max worst-case loss, inventory skew, disagreement filter, minimum 24 h volume, pull time. Replays take a few seconds. See [Market making](market-making.md). |
+| **Polymarket** (`/pm`, linked from Markets) | Every listed F1 event, including outcomes we don't price, with **Mirror into my book** and refresh. |
+| **Events / Athletes** (`/events`, `/athletes`, linked from Markets and race pages) | Calendar and search; results and prediction history. |
+| **Private book** (`/house`, `/house/{id}`, `/house/sheet`) | Per-market management behind My Book: reprice, close, record offline bets, settle, quote sheet. See [House book](#private-book-markets-we-quote). |
+| **Run detail** (`/runs/{id}`) | One stored run: parameters, metrics, predictions. `/runs` and `/diag` redirect to the Lab; `/me` redirects makers to My book. |
+| **Sign in** (`/login`, `/logout`) | Two one-click demo buttons (**Try as maker**, **Try as taker**; the `maker` / `taker` accounts, password `password`) above the standard username/password form, which the admin uses. |
+| `/pitch` | Serves `pitch.html`, behind the same login. |
+
+### Launching runs from the Lab
+
+Each run type is a CLI command with typed, range-checked knobs
+(`racinglines/web/jobs.py`). Jobs run one at a time in a background thread, as a
+subprocess with no shell, and stream their progress into the `jobs` table.
+
+| Job | Knobs | Typical time |
+|---|---|---|
+| F1 backtest | last N races, recency half-life, simulations, track features (on / off / both) | ~6 s for 5 races, a few minutes for all |
+| F1 forward forecast (scenario) | name, half-life, simulations, track features | ~10 s |
+| F1 event diagnostic | event, as-of time, half-life, simulations, track features | ~10 s |
+| Downhill forward forecast (scenario) | name, half-life, junior weight, simulations | ~1 min |
+| Downhill backtest | half-life, junior weight, simulations | a few min |
+
+**Guard rails:**
+
+- **Forecasts from the Lab are saved as `kind='scenario'`.** Live fair prices
+  come from the most recently **promoted** forecast (`params.promoted_at`),
+  falling back to the newest forecast. Promoting is logged in the activity log.
+- **No leakage.** Backtests and diagnostics use the same as-of pricing as the
+  CLI, whatever the knobs.
+- **Interrupted jobs.** A job running when the app restarts is marked failed
+  ("interrupted").
+
+### Roles
+
+| Role | Can do |
+|---|---|
+| **taker** | Nav: **Markets** (`/bet`) and **My bets** (`/me`). The market board shows open markets from every maker, with YES/NO prices but **no model fair values**; race, season, book and lab pages are closed to takers. Bets are placed at the quoted price, refused if the maker has repriced since the page loaded, with a per-bet cap `MAX_STAKE` (default $100). |
+| **maker** | Nav: **Markets**, **My Book**, **Lab**, **Pitch**. **Own** markets only: generate from the live forecast (fair ± spread), reprice, close, see the bets against them. Can launch Lab jobs and promote scenarios. Can't bet, can't touch other makers' markets, and can't settle. |
+| **admin** | Everything (maker nav plus **Admin**, which links to activity, users, database, SQL, Polymarket orders and the order log), plus the private book across all makers, settlement (auto and manual), offline bets, Polymarket, and the admin pages below. |
+
+Every route declares the roles allowed (`allow(...)` in `app.py`); anything else gets 403.
+
+**Admin pages**
+
+| Page | Purpose |
+|---|---|
+| `/admin` | Totals (markets, taker bets, stakes, takers' P&L, makers' worst case), users with activity counts, recent activity. |
+| `/admin/activity` | Full activity log, filterable by user and action. Records logins (and failures), market generation, reprices, status changes, bets placed and rejected, settlements, Polymarket links and orders, user changes, database edits and SQL. |
+| `/admin/users` | Create users (any role), change role, display name or password, deactivate. You can't demote or deactivate yourself. |
+| `/admin/users/{id}` | One user's trading: markets made (exposure, EV, settled P&L), bets placed (P&L), activity. |
+| `/admin/db` | Database explorer: every table with row counts. Browse with a column filter and paging, edit or delete a row (confirmation needed; logged with before/after values). Password hashes are never shown. |
+| `/admin/sql` | SQL console. **Read** mode runs in a `READ ONLY` transaction, so Postgres rejects any write, including data-modifying `WITH`. **Write** mode needs the toggle and a confirm box. 15 s timeout, 500 rows max. Every statement is logged in full. |
+
+Accounts are in the `users` table, with scrypt password hashes from the standard
+library. On startup the admin account is created or updated from
+`ADMIN_USERNAME` / `ADMIN_PASSWORD`, or a password is generated and printed if
+none is set. Other users are created on `/admin/users`.
 
 ### Authentication
 
+- **Accounts:** users come from the `users` table. The session cookie carries the
+  user id, and the user and role are re-read on every request, so a deactivation
+  or role change takes effect immediately.
 - **Browsers:** sent to `/login`. A correct username and password set an HttpOnly,
   SameSite=Lax cookie signed with `APP_SECRET` that lasts 12 hours. It's marked
   `Secure` when the request came over HTTPS (e.g. through the tunnel).
@@ -69,10 +144,10 @@ cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8000        # prints h
 ## Getting predictions for an event weekend
 
 ```
-python download_chronorace.py --events 20260925_mtb --discipline DH --category "Elite Men"  --out-dir data/script-generated/
-python download_chronorace.py --events 20260925_mtb --discipline DH --category "Junior Men" --out-dir data/script-generated/
-python -m racedb ingest data/script-generated
-python predictor.py season --db --save --backtest 0
+racinglines mtb_dh download --events 20260925_mtb --discipline DH --category "Elite Men"  --out-dir data/raw/mtb_dh/chronorace/
+racinglines mtb_dh download --events 20260925_mtb --discipline DH --category "Junior Men" --out-dir data/raw/mtb_dh/chronorace/
+racinglines mtb_dh ingest data/raw/mtb_dh/chronorace
+racinglines mtb_dh forecast --db --save --backtest 0
 ```
 
 An event that's in the data but has no Final results yet (Timed Training done, Q1
@@ -91,7 +166,7 @@ Re-run after each session (e.g. after Q1) to refresh the predictions. **The mode
 doesn't yet use completed rounds within the weekend.** For example, once Q1 is run
 it doesn't lock in who has already qualified.
 
-## House book (private markets we quote)
+## Private book (markets we quote)
 
 For events with no exchange market, the app can quote its own YES/NO markets for
 **private bets**. Money is handled outside the app; it records quotes, bets,
@@ -204,7 +279,7 @@ Using FastAPI's test client against the Docker database:
 - **Blocked orders:** preview blocks crossing BUYs and SELLs, over-cap orders and
   off-tick prices. Submitting without confirmation gets 400.
 - **Dry run:** a dry-run order is signed with a throwaway key and recorded.
-- **House book:**
+- **Private book:**
   - generate 75 markets;
   - quote sheet;
   - YES and NO bets with correct exposure and EV (e.g. $10 YES at 0.10 plus $50

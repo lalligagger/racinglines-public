@@ -1,5 +1,28 @@
 # Data
 
+## Data layout
+
+Every path comes from `racinglines/paths.py`. Set `RACINGLINES_DATA` to move the
+whole tree.
+
+```
+data/
+  raw/<sport>/<source>/...                 immutable downloads: the record
+    raw/f1/fastf1/<year>/<rnd>_<session>.{results,laps}.parquet + .meta.json
+    raw/mtb_dh/chronorace/*.md              one file per event and category
+    raw/mtb_dh/manual/...                   live-timing copy/pastes (not used by the pipeline)
+  archive/markets/<exchange>/{prices,trades,books}/month=YYYY-MM/*.parquet
+  archive/<sport>/...                       stale heavy race data moved out of Postgres (future)
+  runs/<sport>/{backtests,sweeps,...}/      generated outputs
+  runs/jobs/                                outputs of jobs launched from the web app
+  cache/<tool>/                             disposable (FastF1's HTTP cache, cleared after fetches)
+```
+
+- **Downhill source files** are keyed in the database by their path relative to
+  `data/` (e.g. `raw/mtb_dh/chronorace/20260925_mtb_dhi_elite-men.md`), so moving
+  the tree doesn't cause a re-ingest.
+- **F1 events** are keyed by season and round (`f1:2026-15`).
+
 ## Source: ChronoRace
 
 All timing comes from **ChronoRace** (`prod.chronorace.be`), the timing provider for
@@ -45,7 +68,7 @@ Use `--events` to download specific slugs.
 
 ## What's downloaded
 
-116 files in `data/script-generated/`, one per event and category.
+116 files in `data/raw/mtb_dh/chronorace/`, one per event and category.
 
 | Season | Events on file (ME / MJ) | With usable timing (ME / MJ) | Notes |
 |---|---|---|---|
@@ -71,8 +94,8 @@ File naming:
 The parser doesn't rely on file names. It reads the title, `Category:` line and
 slug from inside the file.
 
-`data/copy-paste/` holds raw copy/pastes of 2026 Les Gets live-timing pages. They
-duplicate data in `script-generated/` under different event IDs, so **don't include
+`data/raw/mtb_dh/manual/` holds raw copy/pastes of 2026 Les Gets live-timing pages. They
+duplicate data in `chronorace/` under different event IDs, so **don't include
 them in a training run**.
 
 ### Known gaps and quirks

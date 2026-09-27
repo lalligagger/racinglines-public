@@ -1,0 +1,24 @@
+{% extends "base.html" %}{% from "_macros.html" import csrf %}
+{% block title %}Users{% endblock %}
+{% block content %}
+<h1>Users</h1>
+{% if msg %}<p class="{{ 'bad' if msg.startswith('Error') else 'good' }}">{{ msg }}</p>{% endif %}
+<div class="card"><h2>Add a user</h2>
+<form method="post" action="/admin/users">{{ csrf() }}
+  <label><span>Username</span><input name="username" required size="14"></label>
+  <label><span>Display name</span><input name="display_name" size="16"></label>
+  <label><span>Role</span><select name="role">{% for r in roles %}<option {% if r == 'taker' %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></label>
+  <label><span>Password (8+ chars)</span><input name="password" type="password" required size="14"></label>
+  <button class="primary">Create</button></form></div>
+<div class="card"><h2>Accounts</h2><div class="scroll"><table>
+<thead><tr><th class="l">User</th><th class="l">Role</th><th>Active</th><th class="l">Display name</th><th class="l">New password</th><th></th><th class="l">Last seen</th><th>Markets</th><th>Bets placed</th></tr></thead><tbody>
+{% for u in users %}<tr><form method="post" action="/admin/users/{{ u.id }}">{{ csrf() }}
+<td class="l"><a href="/admin/users/{{ u.id }}">{{ u.username }}</a></td>
+<td class="l"><select name="role">{% for r in roles %}<option {% if r == u.role %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></td>
+<td><input type="checkbox" name="active" value="1" {% if u.active %}checked{% endif %}></td>
+<td class="l"><input name="display_name" value="{{ u.display_name or '' }}" size="14"></td>
+<td class="l"><input name="new_password" type="password" size="12" placeholder="unchanged"></td>
+<td><button>Save</button></td></form>
+<td class="l">{{ u.last_seen|fmt }}</td><td>{{ u.markets_made }}</td><td>{{ u.bets_placed }}</td></tr>{% endfor %}
+</tbody></table></div></div>
+{% endblock %}

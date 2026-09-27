@@ -1,0 +1,39 @@
+{% extends "base.html" %}{% from "_macros.html" import csrf %}
+{% block title %}Polymarket{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/">Markets</a> › Polymarket</p>
+<h1>Polymarket markets</h1>
+<p class="sub">Every F1 event listed on Polymarket, including outcomes we don't price. Mirror an event into my private book, or open a race from the <a href="/">Markets</a> for the full view.</p>
+{% if msg %}<p class="good">{{ msg }}</p>{% endif %}
+
+<form method="get" class="inline">
+  <label><span>Show</span><select name="show" onchange="this.form.submit()"><option value="modeled" {% if show == 'modeled' %}selected{% endif %}>markets we price</option><option value="all" {% if show == 'all' %}selected{% endif %}>all F1 markets</option></select></label>
+  <label><span>Include closed</span><select name="closed" onchange="this.form.submit()"><option value="0">no</option><option value="1" {% if closed %}selected{% endif %}>yes</option></select></label>
+  <label><span>Quote spread (pts)</span><input name="spread_pct" value="{{ '%g'|format(spread_pct) }}" size="3"></label><button>Apply</button>
+</form>
+<form method="post" action="/pm/sync" class="inline">{{ csrf() }}<button>Refresh from Polymarket</button></form>
+<span class="muted">Last sync {{ synced|fmt }}. Edge = our fair − Polymarket mid (positive = we think YES is cheap).
+⚠ marks gaps over 10 pts: usually a model blind spot rather than an edge — check before quoting.</span>
+{% if not events %}<p class="muted">No linked markets yet. Refresh from Polymarket.</p>{% endif %}
+{% for ev in events %}
+<div class="card">
+  <h2><a href="https://polymarket.com/event/{{ ev.slug }}" target="_blank" rel="noopener">{{ ev.title }}</a></h2>
+  <p class="muted">ends {{ ev.end_date|fmt }} · volume ${{ "{:,.0f}".format(ev.volume) }} · {{ ev.modeled }} priced by the model</p>
+  <form method="post" action="/pm/mirror">{{ csrf() }}<input type="hidden" name="event_slug" value="{{ ev.slug }}">
+    <label><span>Spread (pts)</span><input name="spread_pct" value="{{ '%g'|format(spread_pct) }}" size="3"></label>
+    <button class="primary">Mirror into my book</button> <span class="muted">creates / reprices a YES/NO market in my book for every priced outcome</span></form>
+  <div class="scroll"><table>
+  <thead><tr><th class="l">Outcome</th><th class="l">Kind</th><th>PM bid</th><th>PM ask</th><th>PM mid</th><th>Our fair</th><th>Edge</th><th>Quote bid</th><th>Quote ask</th><th>Mine</th></tr></thead><tbody>
+  {% for r in ev.rows %}<tr>
+    <td class="l">{{ r.subject }}{% if r.prediction == 'race_h2h' %} <span class="muted">vs {{ r.question.split(': ')[-1] }}</span>{% endif %}</td>
+    <td class="l"><span class="muted">{{ r.prediction }}</span></td>
+    <td>{{ r.last_bid|fmt }}</td><td>{{ r.last_ask|fmt }}</td><td>{{ "%.3f"|format(r.last_price) if r.last_price is not none else "" }}</td>
+    <td>{{ r.fair|fmt("model_prob") if r.fair is not none else "–" }}</td>
+    <td class="{{ 'warn' if r.edge and (r.edge > 0.10 or r.edge < -0.10) else ('good' if r.edge and r.edge > 0.02 else ('bad' if r.edge and r.edge < -0.02 else '')) }}"
+        {% if r.edge and (r.edge > 0.10 or r.edge < -0.10) %}title="Large gap to the market: check the model before quoting (e.g. tail events such as backmarker points in chaotic races aren't modelled well yet)"{% endif %}>{{ ("%+.1f"|format(r.edge * 100)) ~ " pts" if r.edge is not none else "" }}{% if r.edge and (r.edge > 0.10 or r.edge < -0.10) %} ⚠{% endif %}</td>
+    <td>{{ "%.3f"|format(r.q_bid) if r.q_bid is not none and r.q_bid > 0 else "" }}</td><td>{{ "%.3f"|format(r.q_ask) if r.q_ask is not none and r.q_ask < 1 else "" }}</td>
+    <td>{{ "✓" if r.mirrored else "" }}</td></tr>{% endfor %}
+  </tbody></table></div>
+</div>
+{% endfor %}
+{% endblock %}

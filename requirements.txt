@@ -6,8 +6,7 @@
 # data + model
 numpy==2.5.3
 pandas==3.0.6
-scikit-learn==1.9.1      # older per-race model (predictor.py fit/predict)
-joblib==1.6.0            # saves/loads the per-race model
+scikit-learn==1.9.1      # ridge regressions (F1 finishing model)
 
 # downloading
 requests==2.34.2
@@ -16,6 +15,10 @@ requests==2.34.2
 SQLAlchemy==2.1.1
 psycopg[binary]==3.3.6
 alembic==1.20.0
+
+# Formula 1 (f1/): official F1 live-timing archive via FastF1; parquet storage
+fastf1==3.8.3
+pyarrow==25.0.1
 
 # admin web app (webapp/)
 fastapi==0.141.1
@@ -28,3 +31,6 @@ py-clob-client==0.34.6   # Polymarket's official CLOB client (order signing / po
 # parser.py HTML input path
 beautifulsoup4==4.15.0
 lxml==6.1.3
+
+# tests (python -m pytest tests)
+pytest==9.1.1
