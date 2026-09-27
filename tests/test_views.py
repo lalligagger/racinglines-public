@@ -96,3 +96,80 @@ def test_old_urls_redirect(clients):
     m = clients[0]["maker"]
     for old, new in (("/diag", "/lab"), ("/runs", "/lab"), ("/me", "/book")):
         assert m.get(old, follow_redirects=False).headers["location"].startswith(new)
+
+
+def test_docs_behind_login(clients):
+    from fastapi.testclient import TestClient
+
+    from racinglines.web.app import SITE, app
+    m = clients[0]["maker"]
+    assert TestClient(app).get("/docs/", headers={"accept": "text/html"},
+                               follow_redirects=False).status_code == 303   # not logged in -> /login
+    assert m.get("/docs/%2e%2e/pyproject.toml").status_code == 404           # nothing outside site/
+    if not (SITE / "index.html").is_file():
+        pytest.skip("docs not built (python -m mkdocs build -d site)")
+    for path in ("/docs", "/docs/", "/docs/market-making/"):
+        r = m.get(path)
+        assert r.status_code == 200 and "<html" in r.text.lower(), path
+
+
+def test_lab_leads_with_the_edge_finder_and_loads_sections_on_demand(clients):
+    from racinglines.web.views import LAB_SECTIONS
+    m, t = clients[0]["maker"], clients[0]["taker"]
+    page = m.get("/lab").text
+    assert 'id="edge"' in page and "Edge Finder" in page and 'data-section="run"' in page
+    assert "<table" not in page.split('data-section="run"')[1]                  # other sections not rendered
+    for key, _ in LAB_SECTIONS:
+        r = m.get(f"/lab/section/{key}")
+        assert r.status_code == 200, key
+        assert not re.search(r">\s*nan\b|\bnan\s*<", r.text, re.I), f"NaN printed in lab section {key}"
+    assert m.get("/lab/section/nope").status_code == 404
+    assert t.get("/lab/section/models").status_code == 403
+
+
+def test_edge_finder_combos_are_saved_per_user(clients):
+    from racinglines.web.app import CSRF_TOKEN
+    m, t = clients[0]["maker"], clients[0]["taker"]
+    post = lambda **f: m.post("/lab/edge", data=dict(csrf_token=CSRF_TOKEN, **f))    # noqa: E731
+    try:
+        assert post(action="clear").status_code == 200
+        assert post(action="add", variant="baseline", strategy="maker").status_code == 200
+        assert post(action="add", variant="nonsense", strategy="maker").status_code == 400
+        page = m.get("/lab").text                                                   # a fresh visit, from the database
+        assert "data-combos='[[\"baseline\", \"maker\"]]'" in page
+        assert t.post("/lab/edge", data=dict(csrf_token=CSRF_TOKEN, action="reset")).status_code == 403
+        assert m.post("/lab/edge", data=dict(csrf_token="bad", action="reset")).status_code == 403
+    finally:
+        post(action="reset")
+
+
+def test_run_forms_start_from_the_users_last_knobs(clients):
+    from racinglines.db.config import get_engine
+    from racinglines.web import prefs as P
+    from racinglines.web.views import _remember_knobs
+    m = clients[0]["maker"]
+    with get_engine().connect() as c:
+        uid = c.execute(text("SELECT id FROM users WHERE username = 'maker'")).scalar()
+        before = P.get(c, uid).get("job_knobs")
+    try:
+        _remember_knobs(uid, "f1_sweep", dict(variant="gridq+reset", min_edge=0.07, stake_per_edge=250, max_stake=50,
+                                              cost=0.01))
+        html = m.get("/lab/section/run").text
+        assert "selected>gridq+reset" in html and 'value="0.07"' in html
+    finally:
+        with get_engine().connect() as c:
+            P.put(c, uid, "job_knobs", before or {})
+
+
+def test_edge_finder_benchmark_is_the_default_settings_conservative_maker(clients):
+    from racinglines.db.config import get_engine
+    from racinglines.web import edge as E
+    with get_engine().connect() as c:
+        b = E.benchmark(c)
+        if b is None:
+            pytest.skip("no default-settings baseline sweep saved")
+        params = c.execute(text("SELECT params FROM model_runs WHERE id = :i"), dict(i=b["run_id"])).scalar()
+    assert (b["variant"], b["strategy"]) == ("baseline", "maker")
+    assert params.get("variant", "baseline") == "baseline"
+    assert all(float(params[k]) == v for k, v in E.DEFAULT_SWEEP.items())         # other knobs never replace it
+    assert "Benchmark · " in clients[0]["maker"].get("/lab").text                   # shown even with no combos chosen

@@ -7,8 +7,8 @@ Three levels, fastest first:
 | | Command | Checks | Time | Needs |
 |---|---|---|---|---|
 | **Quick check** | `racinglines check` | 21 checks: every pipeline on synthetic data, every data source, the database | ~10 s | nothing downloaded; network and Postgres optional |
-| **Regression suite** | `python -m pytest -m "not live"` | 88 tests: every pipeline stage on pinned F1 and downhill fixtures, compared with golden outputs | ~10 s (+ a one-time fixture build) | Postgres and `scripts/fetch_test_fixtures.py` |
-| **Everything** | `python -m pytest` | 118 tests, adding smoke tests on the working database, the web app and roles | ~35 s | the working database |
+| **Regression suite** | `python -m pytest -m "not live"` | 108 tests: every pipeline stage on pinned F1 and downhill fixtures, compared with golden outputs | ~10 s (+ a one-time fixture build) | Postgres and `scripts/fetch_test_fixtures.py` |
+| **Everything** | `python -m pytest` | 139 tests, adding smoke tests on the working database, the web app and roles | ~35 s | the working database |
 
 - **No data in git:** fixtures are built locally from the public sources (FastF1,
   ChronoRace, Polymarket). A guard test fails if anything data-like is tracked.
@@ -112,6 +112,10 @@ pipeline:
 | F1 | Weekend taker strategies (update / hold / after-quali) | `test_weekend_trading` |
 | F1 | Maker replay on the Baku tape (touch / through) | `test_maker_replay` |
 | F1 | Season strategy (update / hold) | `test_season_strategy` |
+| F1 | Model variants: switches set and restore, every variant prices through the leakage guards | `test_variants` |
+| F1 | Comparison tools: paired ± 2 SE, reliability bins, calibration error | `test_variants` |
+| F1 | Maker options (flatten before qualifying, info-timed skew, per-kind spreads), stage-aware taker | `test_replay`, `test_rebalance` |
+| All | Sport schemas: required keys, modules read their values | `test_sports` (quick) |
 | Downhill | Parser: results tables | `test_pipeline_mtb::test_parse_results_tables` |
 | Downhill | Ingest into a fresh DB, tidy frame | `test_ingest_and_tidy` |
 | Downhill | Season model fit | `test_season_model` |

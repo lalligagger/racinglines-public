@@ -62,6 +62,7 @@ class Measurements:
     cutoff: pd.Timestamp | None = None
     xmap: dict = field(default_factory=dict)
     audit: dict = field(default_factory=dict)
+    races: pd.DataFrame = None      # per past race: safety car / red flag / rain, disrupted (model.race_disruption)
 
     @classmethod
     def load(cls, engine):
@@ -72,7 +73,8 @@ class Measurements:
         """From the raw SQL frames (see position_sim.model.load_frames), e.g. pinned test fixtures."""
         res, laps, prof = M.prepare(res, laps, prof)
         drivers, sectors = M.event_measurements(res, laps, prof)
-        return cls(res, prof, drivers, sectors, M.practice_measurements(laps), None, M.event_x(prof))
+        return cls(res, prof, drivers, sectors, M.practice_measurements(laps), None, M.event_x(prof),
+                   races=M.race_disruption(laps, prof))
 
     def view(self, cutoff):
         """Everything knowable strictly before `cutoff` (session start times, UTC)."""
@@ -85,7 +87,8 @@ class Measurements:
             sectors=self.sectors[self.sectors["q_ts"] + M.QUAL_DONE < cutoff],
             practice=self.practice[M.session_end(self.practice["round"], self.practice["session_ts"]) < cutoff],
             cutoff=cutoff,
-            xmap={k: x for k, x in self.xmap.items() if k in set(prof["event_id"])})
+            xmap={k: x for k, x in self.xmap.items() if k in set(prof["event_id"])},
+            races=None if self.races is None else self.races[self.races["r_ts"] + M.RACE_DONE < cutoff])
         v.audit = assert_no_leak(v, cutoff)
         return v
 
@@ -102,6 +105,8 @@ def assert_no_leak(v, cutoff):
             "track profiles": v.prof["ready_ts"].max() + M.RACE_DONE if len(v.prof) else None,
             "practice": M.session_end(v.practice["round"], v.practice["session_ts"]).max()
             if v.practice is not None and len(v.practice) else None}
+    if v.races is not None and len(v.races):
+        ends["race disruption"] = v.races["r_ts"].max() + M.RACE_DONE
     for what, ts in ends.items():
         if ts is not None and pd.notna(ts) and ts >= cutoff:
             raise LeakageError(f"{what}: a session ending {ts} is not over before the cutoff {cutoff}")
@@ -150,9 +155,13 @@ def history(meas, use_track=True):
         ent = entry_list(meas, ev.event_id)
         e = M.predict_paces(snap, ent, tf)
         e["qp_nopr"] = e["qp"]                    # before the practice prior (for the no-practice grid noise)
+        e_nopr = e.copy()
         e, _ = PR.apply(e, v.practice, ev.event_id, PR.fit(ptrain, cutoff))
         grid = qualifying_grid(v, ev.event_id, ent)
         e["grid_used"] = grid if grid is not None else np.nan
+        if M.PRE_PRACTICE_TRAIN:                  # the same features from paces before the practice prior
+            nopr = M.design(e_nopr.assign(grid_used=e["grid_used"].to_numpy()), tf, use_track)
+            e = pd.concat([e, nopr.add_suffix("_nopr")], axis=1)
         outcome_rows = meas.drivers[meas.drivers["event_id"] == ev.event_id].drop(columns=["team_key", "driver"])
         e = e.merge(outcome_rows, on="athlete_id", how="left")
         e["status"] = e["status"].fillna("DNS")
@@ -161,6 +170,8 @@ def history(meas, use_track=True):
         for k, val in tf.items():
             e[f"tf_{k}"] = val
         e["cutoff"] = cutoff
+        if meas.races is not None:
+            e["disrupted"] = bool(meas.races.set_index("event_id")["disrupted"].get(ev.event_id, False))
         rows.append(e)
     out = pd.concat(rows, ignore_index=True)
     out.attrs["practice_train"] = ptrain
@@ -186,17 +197,20 @@ def price_race(meas, hist, cutoff, event_id, n_sims=10000, rng=None, use_track=T
         venue = meas.res.loc[meas.res["event_id"] == event_id, "venue"].iloc[0]
     snap = M.snapshot(v.drivers, v.sectors, v.xmap if use_track else {}, v.cutoff, use_track)
     tf = M.venue_track_features(v.prof, venue, v.cutoff)
-    fm = M.fit_finish(hist, v.cutoff, use_track)
     e = M.predict_paces(snap, entrants, tf).reset_index(drop=True)
     from racinglines.models.position_sim import practice as PR
     e, sigma_q = PR.apply(e, v.practice, event_id, PR.fit(hist.attrs.get("practice_train"), v.cutoff))
+    grid = qualifying_grid(v, event_id, e) if event_id is not None else None
+    fm = M.fit_finish(hist, v.cutoff, use_track, no_practice=M.PRE_PRACTICE_TRAIN and sigma_q is None,
+                      grid_known=grid is not None)
     if sigma_q is not None:
         from dataclasses import replace as _replace
         fm = _replace(fm, sigma_q=sigma_q)
-    grid = qualifying_grid(v, event_id, e) if event_id is not None else None
     if grid is not None:
         e["grid"] = grid
-    sim = M.simulate_race(fm, e, tf, n_sims=n_sims, rng=rng, grid_known=grid is not None, points=points)
+    chaos_p = M.chaos_prob(hist, venue, v.cutoff, fm.chaos["p"]) if fm.chaos else None
+    sim = M.simulate_race(fm, e, tf, n_sims=n_sims, rng=rng, grid_known=grid is not None, points=points,
+                          chaos_p=chaos_p)
     summ = M.summarize(e, sim)
     ids = e["athlete_id"].tolist()
     h2h = (sim["pos"][:, :, None] < sim["pos"][:, None, :]).mean(0)
@@ -252,8 +266,10 @@ def outcome(meas, event_id, athlete_ids):
 
 
 def backtest(meas, hist, start_year=2021, n_sims=4000, use_track=True, modes=(PRE_WEEKEND, PRE_QUALI, PRE_RACE), seed=0,
-             echo=None,
-             last_n=None):
+             echo=None, last_n=None, keep_probs=False):
+    """One row per race x mode with Brier / log-loss scores. keep_probs: also keep each
+    driver's win / podium / top-10 probability and outcome (column `pred`), for
+    reliability curves (position_sim/evaluate.py)."""
     rng = np.random.default_rng(seed)
     rows = []
     events = meas.drivers[meas.drivers["year"] >= start_year].drop_duplicates("event_id").sort_values("r_ts")
@@ -285,6 +301,9 @@ def backtest(meas, hist, start_year=2021, n_sims=4000, use_track=True, modes=(PR
                        spearman=float(pd.Series(summ["exp_position"].to_numpy()[ok]).rank().corr(
                            pd.Series(y["position"][ok]).rank())))
             row.update(_teammate_scores(meas, ev.event_id, summ, ex))
+            if keep_probs:
+                row["pred"] = {**{k: summ[f"{k}_prob"].round(5).tolist() for k in ("win", "podium", "top10")},
+                               **{f"y_{k}": y[k].astype(int).tolist() for k in ("win", "podium", "top10")}}
             gb = grid_baseline(hist, cutoff) if mode == PRE_RACE else None
             for k, share in (("win", 1), ("podium", 3), ("top10", 10)):
                 row[f"brier_{k}"] = brier(summ[f"{k}_prob"], y[k])
@@ -420,7 +439,7 @@ def forecast(meas, hist, year, cutoff=None, n_sims=10000, seed=42, schedule=None
     wins = np.tile(wins_now.reindex(ids).fillna(0).to_numpy(float), (n_sims, 1))
     team_total = np.tile(team_now.reindex(teams).fillna(0).to_numpy(), (n_sims, 1))
     drift = M.season_drift(field_, n_sims, rng, team_sd, drv_sd)
-    fm = M.fit_finish(hist, cutoff)
+    fm = M.fit_finish(hist, cutoff, no_practice=M.PRE_PRACTICE_TRAIN, grid_known=False)   # future races: no practice, no grid
     snap = M.snapshot(v.drivers, v.sectors, v.xmap, cutoff)
     per_event, race_constructor_top = [], {}
     from racinglines.db.ingest import _slugify
@@ -442,7 +461,8 @@ def forecast(meas, hist, year, cutoff=None, n_sims=10000, seed=42, schedule=None
         idx = [col[a] for a in e["athlete_id"]]
         tidx = np.array([tcol[t] for t in e["team_key"]])
         for pts in [M.RACE_POINTS] + ([M.SPRINT_POINTS.get(year, M.SPRINT_POINTS_DEFAULT)] if ev.sprint else []):
-            s = M.simulate_race(fm, e, tf, n_sims=n_sims, rng=rng, grid_known=False, points=pts, pace_shock=drift)
+            s = M.simulate_race(fm, e, tf, n_sims=n_sims, rng=rng, grid_known=False, points=pts, pace_shock=drift,
+                                chaos_p=M.chaos_prob(hist, venue, cutoff, fm.chaos["p"]) if fm.chaos else None)
             total[:, idx] += s["points"]
             if pts is M.RACE_POINTS:
                 wins[:, idx] += (s["pos"] == 1) & ~s["dnf"]

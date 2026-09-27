@@ -47,6 +47,7 @@ def recent_results(conn, competition_id, n=3):
                       WHERE ro.race_id = ra.id AND ro.kind IN ('race', 'final'))
         ORDER BY e.start_date DESC LIMIT :n""", c=competition_id, n=n)
     bt = data.q(conn, """SELECT metrics->'events' AS ev FROM model_runs WHERE kind = 'backtest' AND competition_id = :c
+                           AND coalesce(params->>'variant', 'baseline') = 'baseline'
                          ORDER BY id DESC LIMIT 1""", c=competition_id)
     bt_ev = {}
     for e in (bt["ev"].iloc[0] if len(bt) and bt["ev"].iloc[0] else []):
@@ -104,7 +105,7 @@ def headline(conn, maker_id):
                        "WHERE ts > now() - interval '10 minutes'").iloc[0]
     bk = house.book(conn, maker_id=maker_id, status="open")
     bt = data.q(conn, """SELECT metrics->'summary'->'pre_race|track=True' AS s FROM model_runs
-                         WHERE kind = 'backtest' ORDER BY id DESC LIMIT 1""")
+                         WHERE kind = 'backtest' AND coalesce(params->>'variant', 'baseline') = 'baseline' ORDER BY id DESC LIMIT 1""")
     s = bt["s"].iloc[0] if len(bt) else None
     jobs = data.q(conn, "SELECT count(*) FILTER (WHERE status IN ('queued', 'running')) AS active FROM jobs").iloc[0]
     return dict(outcomes=int(ex["outcomes"]), markets=int(ex["markets"]), volume=float(ex["volume"]), synced=ex["synced"],

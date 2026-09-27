@@ -68,14 +68,18 @@ def decision_times(meas, year):
     return out
 
 
-def asof_forecasts(engine, engine_url, meas, hist, year, times, n_sims=5000, reforecast=False, echo=print):
-    """Championship forecast as of each decision (kind='season_asof'); stored ones are reused."""
+def asof_forecasts(engine, engine_url, meas, hist, year, times, n_sims=5000, reforecast=False, echo=print,
+                   variant="baseline"):
+    """Championship forecast as of each decision (kind='season_asof'); stored ones with the
+    same model variant are reused (runs stored without a variant are the baseline)."""
     from racinglines.db.queries import records
 
     from racinglines.models.position_sim import pricing as run
     with engine.connect() as c:
         have = pd.read_sql(text("""SELECT id, params->>'cutoff' AS cutoff FROM model_runs WHERE kind = 'season_asof'
-                                   AND (params->>'year')::int = :y ORDER BY id"""), c, params=dict(y=year))
+                                   AND (params->>'year')::int = :y
+                                   AND coalesce(params->>'variant', 'baseline') = :v ORDER BY id"""), c,
+                           params=dict(y=year, v=variant))
     have = {str(pd.Timestamp(cu)): int(i) for i, cu in zip(have["id"], have["cutoff"])}
     first_event = meas.res[meas.res["year"] == year].sort_values("session_ts")["event_id"].iloc[0]
     schedule = run.upcoming_schedule(year)
@@ -85,11 +89,12 @@ def asof_forecasts(engine, engine_url, meas, hist, year, times, n_sims=5000, ref
         if str(cutoff) in have and not reforecast:
             out.append((label, t, have[str(cutoff)]))
             continue
-        field = run.entry_list(meas, first_event) if i == 0 else None      # demo liberty: published entry list
+        field = run.entry_list(meas, first_event) if label == "pre-season" else None   # demo liberty: published entry list
         _, standings, ex = run.forecast(meas, hist, year, cutoff=cutoff, n_sims=n_sims, schedule=schedule, field=field,
                                         race_prices=False)
         rid = run.save_forecast(engine_url, year, [], standings,
-                                dict(cutoff=str(cutoff), year=year, label=label, sims=n_sims, drift=ex["drift"]),
+                                dict(cutoff=str(cutoff), year=year, label=label, sims=n_sims, drift=ex["drift"],
+                                     **({} if variant == "baseline" else dict(variant=variant))),
                                 dict(constructors=records(ex["constructors"]), latest_data=ex["latest_data"]),
                                 kind="season_asof")
         out.append((label, t, rid))
@@ -135,7 +140,7 @@ def fairs(conn, links, run_id):
 
 
 def run_season(engine, engine_url, year=2026, params=SS.SeasonParams(), fetch=True, reforecast=False, n_sims=5000,
-               echo=print):
+               echo=print, variant="baseline"):
     from racinglines.db.config import get_session
     from racinglines.db import reads as D
 
@@ -150,7 +155,8 @@ def run_season(engine, engine_url, year=2026, params=SS.SeasonParams(), fetch=Tr
     meas = run.Measurements.load(engine)
     hist = run.history(meas)
     times = decision_times(meas, year)
-    runs = asof_forecasts(engine, engine_url, meas, hist, year, times, n_sims=n_sims, reforecast=reforecast, echo=echo)
+    runs = asof_forecasts(engine, engine_url, meas, hist, year, times, n_sims=n_sims, reforecast=reforecast, echo=echo,
+                          variant=variant)
     with engine.connect() as c:
         markets = build_markets(c, links)
         decisions = [dict(t=t, label=label, run_id=rid, fairs=fairs(c, links, rid)) for label, t, rid in runs]

@@ -187,6 +187,7 @@ def backtest_runs(c, limit=12):
             if not pre:
                 continue
             out.append(dict(id=r["id"], created_at=r["created_at"], sport=V.SPORT_NAME.get(r["competition"]),
+                            variant=p.get("variant", "baseline"), f1=r["competition"] == "f1_wdc",
                             races=p.get("races") or "all", half_life=p.get("half_life_days", 120), sims=p.get("sims"),
                             track="on" if track == "True" else "off",
                             win=pre.get("brier_win"), win_grid=pre.get("brier_win_grid"),
@@ -231,7 +232,8 @@ def latest_season_strategy(c, competition="f1_wdc"):
     """The latest saved default season strategy (kind='season_strategy') for a competition."""
     df = data.q(c, """SELECT mr.id, mr.created_at, mr.params, mr.metrics FROM model_runs mr
                       JOIN competitions co ON co.id = mr.competition_id
-                      WHERE mr.kind = 'season_strategy' AND co.code = :c ORDER BY mr.id DESC LIMIT 1""", c=competition)
+                      WHERE mr.kind = 'season_strategy' AND co.code = :c
+                        AND coalesce(mr.params->>'variant', 'baseline') = 'baseline' ORDER BY mr.id DESC LIMIT 1""", c=competition)
     if not len(df):
         return None
     r = df.iloc[0].to_dict()
@@ -252,17 +254,6 @@ def latest_season_strategy(c, competition="f1_wdc"):
                 actions=actions, decisions=m.get("decisions", []), chart=chart)
 
 
-def latest_sweep(c):
-    df = data.q(c, "SELECT id, created_at, params, metrics FROM model_runs WHERE kind = 'sweep' ORDER BY id DESC LIMIT 1")
-    if not len(df):
-        return None
-    r = df.iloc[0].to_dict()
-    m = r["metrics"] or {}
-    return dict(id=int(r["id"]), created_at=r["created_at"], params=r["params"] or {}, weekends=m.get("weekends", []),
-                totals=m.get("totals", {}), by_stage=m.get("by_stage", []), by_kind=m.get("by_kind", []),
-                scores=m.get("scores", []))
-
-
 def _events_for_diagnostic(c):
     return rows(data.q(c, """
         SELECT e.source_key AS key, v.name AS venue, e.start_date,
@@ -275,24 +266,103 @@ def _events_for_diagnostic(c):
         WHERE co.code = 'f1_wdc' AND e.status = 'completed' ORDER BY e.start_date DESC LIMIT 40"""))
 
 
-@app.get("/lab", response_class=HTMLResponse, dependencies=[allow("admin", "maker")])
-def lab_page(request: Request, job: str = "", event: str = "", msg: str = "", c=Depends(conn)):
-    recent_jobs = rows(data.q(c, """SELECT j.*, u.username FROM jobs j LEFT JOIN users u ON u.id = j.user_id
-                                    ORDER BY j.id DESC LIMIT 15"""))
-    active = any(j["status"] in ("queued", "running") for j in recent_jobs)
-    evs = _events_for_diagnostic(c)
-    for e in evs:
-        rs = e["race_start"]
-        e["default_cutoff"] = ((pd.Timestamp(rs) - timedelta(days=1)).strftime("%Y-%m-%dT23:59") if rs is not None
-                               else f"{pd.Timestamp(e['start_date']) - timedelta(days=1):%Y-%m-%d}T23:59")
-    sel_event = event or (evs[0]["key"] if evs else "")
-    sel = next((e for e in evs if e["key"] == sel_event), None)
-    sports = [(code, V.SPORT_NAME[code], [j for j in jobs.CATALOG.values() if j.sport == sport])
-              for code, sport in (("f1_wdc", "f1"), ("uci_dhi_wc", "mtb_dh"))]
-    return render(request, "lab.html", sports=sports, jobs=recent_jobs, active=active, sel_job=job,
-                  events=evs, sel_event=sel_event, sel_cutoff=sel["default_cutoff"] if sel else "",
-                  scenarios=scenarios(c), backtests=backtest_runs(c), forecasts=rows(data.latest_forecasts(c)),
-                  event_diags=diag.event_summaries(c), recent=rows(diag.recent_runs(c)), msg=msg, sweep=latest_sweep(c))
+LAB_SECTIONS = [("run", "Run"), ("jobs", "Jobs"), ("models", "Model variants"), ("scenarios", "Scenarios"),
+                ("backtests", "Backtests"), ("diagnostics", "Event diagnostics"), ("runs", "All runs")]
+
+
+def _recent_jobs(c, user_id=None):
+    """The 15 most recent jobs; only this user's when user_id is given."""
+    return rows(data.q(c, """SELECT j.*, u.username FROM jobs j LEFT JOIN users u ON u.id = j.user_id
+                             WHERE CAST(:u AS integer) IS NULL OR j.user_id = CAST(:u AS integer) ORDER BY j.id DESC LIMIT 15""", u=user_id))
+
+
+def _edge_ctx(c, user):
+    from racinglines.web import edge
+    cs = edge.combos(c, user["id"])
+    models = list(dict.fromkeys(["baseline"] + edge.swept_variants(c)))
+    return dict(ef=edge.build(c, cs), combos=[list(x) for x in cs], models=models, year=2026,
+                strategies=[(k, edge.label(k)) for k in edge.STRATEGY_KEYS])
+
+
+@app.get("/lab", response_class=HTMLResponse)
+def lab_page(request: Request, job: str = "", event: str = "", variant: str = "", msg: str = "",
+             user=allow("admin", "maker"), c=Depends(conn)):
+    """The Edge Finder leads (saved runs only, nothing is simulated on a visit); the other sections
+    load on demand (/lab/section/{key}). Edge Finder combos and job knobs come from the user's prefs
+    (database); which sections are open is a browser view setting."""
+    from urllib.parse import urlencode
+
+    active = any(j["status"] in ("queued", "running") for j in _recent_jobs(c, user["id"]))
+    open_now = (["run"] if job or event or variant else []) + (["jobs"] if active or msg else [])
+    q = {k: v for k, v in dict(job=job, event=event, variant=variant).items() if v}
+    return render(request, "lab.html", sections=LAB_SECTIONS, open_now=open_now, query="?" + urlencode(q) if q else "",
+                  active=active, msg=msg, **_edge_ctx(c, user))
+
+
+@app.get("/lab/section/{key}", response_class=HTMLResponse)
+def lab_section(request: Request, key: str, job: str = "", event: str = "", variant: str = "", scope: str = "",
+                user=allow("admin", "maker"), c=Depends(conn)):
+    from racinglines.web import edge
+    from racinglines.web import prefs as P
+    if key not in dict(LAB_SECTIONS):
+        raise HTTPException(404)
+    pr = P.get(c, user["id"])
+    ctx = dict(combos=[list(x) for x in edge.combos(c, user["id"])])
+    if key == "run":
+        evs = _events_for_diagnostic(c)
+        for e in evs:
+            rs = e["race_start"]
+            e["default_cutoff"] = ((pd.Timestamp(rs) - timedelta(days=1)).strftime("%Y-%m-%dT23:59") if rs is not None
+                                   else f"{pd.Timestamp(e['start_date']) - timedelta(days=1):%Y-%m-%d}T23:59")
+        sel_event = event or (evs[0]["key"] if evs else "")
+        sel = next((e for e in evs if e["key"] == sel_event), None)
+        knobs = {code: dict(v) for code, v in (pr.get("job_knobs") or {}).items()}     # last used, per job type
+        if variant:
+            knobs.setdefault("f1_sweep", {})["variant"] = variant
+        ctx.update(sports=[(code, V.SPORT_NAME[code], [j for j in jobs.CATALOG.values() if j.sport == sport])
+                           for code, sport in (("f1_wdc", "f1"), ("uci_dhi_wc", "mtb_dh"))],
+                   sel_job=job or ("f1_sweep" if variant else ""), events=evs, sel_event=sel_event,
+                   sel_cutoff=sel["default_cutoff"] if sel else "", knobs=knobs)
+    elif key == "jobs":
+        scope = scope if scope in ("mine", "all") else "mine"
+        js = _recent_jobs(c, user["id"] if scope == "mine" else None)
+        ctx.update(jobs=js, scope=scope, active=any(j["status"] in ("queued", "running") for j in js))
+    elif key == "models":
+        from racinglines.models.position_sim import evaluate as EV
+        ctx.update(pnl=EV.strategy_pnl(c))
+    elif key == "scenarios":
+        ctx.update(scenarios=scenarios(c), forecasts=rows(data.latest_forecasts(c)))
+    elif key == "backtests":
+        ctx.update(backtests=backtest_runs(c), swept=set(edge.swept_variants(c)))
+    elif key == "diagnostics":
+        ctx.update(event_diags=diag.event_summaries(c))
+    elif key == "runs":
+        ctx.update(recent=rows(diag.recent_runs(c)))
+    return render(request, f"lab_{key}.html", **ctx)
+
+
+@app.post("/lab/edge", response_class=HTMLResponse, dependencies=[Depends(check_csrf)])
+async def lab_edge(request: Request, user=allow("admin", "maker"), c=Depends(conn)):
+    """Edit the user's Edge Finder combos; returns the refreshed Edge Finder."""
+    from racinglines.web import edge
+    form = await request.form()
+    try:
+        cs = edge.apply(edge.combos(c, user["id"]), form.get("action", ""), form.get("variant", ""),
+                        form.get("strategy", ""))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    edge.save(c, user["id"], cs)
+    return render(request, "lab_edge.html", **_edge_ctx(c, user))
+
+
+def _remember_knobs(user_id, code, params):
+    """Last-used knobs per job type, to prefill the Run forms next time (not the event or cutoff)."""
+    from racinglines.db.config import get_engine
+    from racinglines.web import prefs as P
+    with get_engine().connect() as c:
+        k = dict(P.get(c, user_id).get("job_knobs") or {})
+        k[code] = {n: v for n, v in params.items() if n not in ("event", "cutoff")}
+        P.put(c, user_id, "job_knobs", k)
 
 
 @app.post("/lab/run", dependencies=[Depends(check_csrf)])
@@ -307,6 +377,7 @@ async def lab_run(request: Request, user=allow("admin", "maker")):
         return RedirectResponse(f"/lab?job={jt.code}&msg=Error: {e}#run", status_code=303)
     job_id = jobs.submit(jt, params, user["id"])
     audit(request, "job_submit", job_id=job_id, kind=jt.code, params=params)
+    _remember_knobs(user["id"], jt.code, params)
     return RedirectResponse(f"/lab?msg=Job {job_id} queued: {jt.label}#jobs", status_code=303)
 
 

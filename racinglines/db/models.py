@@ -430,6 +430,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(300))
     active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    prefs: Mapped[dict | None] = mapped_column(JSONB)                   # per-user UI settings (e.g. Edge Finder combos)
 
 
 class ActivityLog(Base):

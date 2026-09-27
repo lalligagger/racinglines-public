@@ -12,7 +12,10 @@ What the maker does every `step`:
   - otherwise rests a post-only bid and ask around fair (skewed against inventory),
     never crossing the market, so YES bid + NO bid (= bid + 1 - ask) < 1;
   - respects a per-market inventory limit and an event-level capital limit;
-  - pulls all quotes `pull` before each session (qualifying, race).
+  - pulls all quotes `pull` before each session (every session: a stage ends at the next
+    session's start), and quotes again once the next pricing stage starts.
+Options (off by default): flatten inventory before qualifying, skew harder as a session
+approaches, per-kind half-spreads (docs/f1-roadmap.md, F1-4).
 
 How it gets filled: only by real taker trades AFTER the quote was placed. A taker
 SELL of YES at price p fills our bid b if p <= b ("touch", optimistic: we're
@@ -46,6 +49,12 @@ class Params:
     price_band: tuple = (0.03, 0.97)   # don't quote long shots / near-certain (near-resolved) markets
     max_disagree: float | None = 0.15  # don't quote when |fair - market| exceeds this
     fill: str = "through"          # "touch" (optimistic) or "through" (conservative)
+    # options (docs/f1-roadmap.md, F1-4); the defaults are the original maker
+    flatten_before_qual: bool = False   # close all inventory at the market (mid +- taker_cost) just before qualifying
+    taker_cost: float = 0.01            # $ per share paid when flattening
+    info_skew: float = 0.0              # skew x (1 + info_skew * exp(-(time to next session) / info_tau_h))
+    info_tau_h: float = 2.0
+    half_spread_by_kind: dict | None = None   # per market kind, e.g. widened where markouts were bad
 
 
 @dataclass
@@ -162,15 +171,20 @@ def replay(data, p: Params = Params()):
     cash = {m.cond: 0.0 for m in data["markets"]}
     inv = {m.cond: 0.0 for m in data["markets"]}
     fills, quotes = [], []
+    by_kind = p.half_spread_by_kind or {}
     for st in data["stages"]:
         t, end = st["start"], st["end"] - (pull if st.get("session_end", True) else 0)
         while t < end:
             t_next = min(t + step, end)
             used = _used(cash, inv)
+            pt = p
+            if p.info_skew and st.get("session_end", True):     # skew harder as the next session approaches
+                pt = replace(p, skew=p.skew * (1 + p.info_skew * np.exp(-(st["end"] - t) / (p.info_tau_h * 3600e9))))
             for mk in data["markets"]:
                 fair = mk.fairs.get(st["run_id"])
                 view = PublicView(mk, t)
-                bid, ask, why = quote(fair, view, inv[mk.cond], p, used)
+                pk = replace(pt, half_spread=by_kind[mk.kind]) if mk.kind in by_kind else pt
+                bid, ask, why = quote(fair, view, inv[mk.cond], pk, used)
                 quotes.append((t, mk.cond, st["run_id"], bid, ask, why))
                 if bid is None and ask is None:
                     continue
@@ -195,6 +209,16 @@ def replay(data, p: Params = Params()):
                             cash[mk.cond] += q * ask
                             fills.append((int(mk.tr_ts[k]), mk.cond, st["run_id"], "sell", ask, q, fair))
             t = t_next
+        if p.flatten_before_qual and st["end"] == data.get("qual_start"):
+            for mk in data["markets"]:           # take the market to go flat before qualifying
+                q, mid = inv[mk.cond], PublicView(mk, end).mid()
+                if abs(q) < 1e-9 or mid is None:
+                    continue
+                px = min(mid + p.taker_cost, 1.0) if q < 0 else max(mid - p.taker_cost, 0.0)
+                cash[mk.cond] += q * px
+                inv[mk.cond] = 0.0
+                fills.append((int(end), mk.cond, st["run_id"], "sell" if q > 0 else "buy", px, abs(q),
+                              mk.fairs.get(st["run_id"])))
     fills = pd.DataFrame(fills, columns=["ts", "cond", "run_id", "side", "price", "qty", "fair"])
     quotes = pd.DataFrame(quotes, columns=["ts", "cond", "run_id", "bid", "ask", "skip"])
     return dict(fills=_score_fills(fills, data), quotes=quotes,
@@ -335,9 +359,10 @@ def load_event(conn, run_ids):
                   key=lambda r: r["cutoff"])
     race_id = conn.execute(text("SELECT ra.id FROM races ra JOIN events e ON e.id = ra.event_id WHERE e.source_key = :k"),
                            dict(k=key)).scalar()
-    sessions = [_ns(s) for s in conn.execute(text(
-        "SELECT extra->>'session_date' FROM rounds WHERE race_id = :r AND extra->>'session_date' IS NOT NULL"),
-        dict(r=race_id)).scalars()]
+    rounds = conn.execute(text("SELECT kind, extra->>'session_date' FROM rounds WHERE race_id = :r "
+                               "AND extra->>'session_date' IS NOT NULL"), dict(r=race_id)).fetchall()
+    sessions = [_ns(s) for _, s in rounds]
+    qual_start = next((_ns(s) for k, s in rounds if k == "qual"), None)
     stages = stages_for(runs, sessions)
     t0 = min(r["cutoff"] for r in runs) - int(48 * 3600e9)
     t1 = max(sessions) + int(6 * 3600e9)
@@ -378,4 +403,5 @@ def load_event(conn, run_ids):
                               tr_ts=_ns(tr["ts"]) if len(tr) else np.array([], dtype="int64"),
                               tr_px=np.asarray(yes_px, float), tr_sz=tr["size"].to_numpy(float), tr_buy=yes_buy,
                               link=link))
-    return dict(event_key=key, race_id=race_id, runs=runs, sessions=sorted(sessions), stages=stages, markets=markets)
+    return dict(event_key=key, race_id=race_id, runs=runs, sessions=sorted(sessions), stages=stages, markets=markets,
+                qual_start=qual_start)

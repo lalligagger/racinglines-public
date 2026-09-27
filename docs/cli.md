@@ -3,7 +3,7 @@
 Everything runs through one command (after `pip install -r requirements.txt && pip install -e .`):
 
 ```
-racinglines f1      fetch | ingest | forecast | backtest | diagnostic | sweep | season-strategy | replay
+racinglines f1      fetch | ingest | forecast | backtest | compare | matrix | diagnostic | sweep | season-strategy | replay
 racinglines mtb_dh  download | parse | ingest | forecast | backtest
 racinglines markets sync | history | trades | record | archive
 racinglines db      init | seed | stats | export
@@ -140,7 +140,9 @@ Formula 1. See [Formula 1](f1.md).
 ```
 racinglines f1 fetch [--years 2026,2025 | 2020-2026] [--sprints-from 2026] [--force]
 racinglines f1 ingest [--years 2020-2026] [--force]
-racinglines f1 [--half-life DAYS] backtest [--start-year 2021] [--races N] [--track both|on|off] [--sims 4000] [--out CSV] [--save]
+racinglines f1 [--variant NAME] [--half-life DAYS] backtest [--start-year 2021] [--races N] [--track both|on|off] [--sims 4000] [--out CSV] [--save]
+racinglines f1 compare BASELINE_RUN CHALLENGER_RUN [--reliability]
+racinglines f1 matrix [--variants baseline,grid,gridq,pretrain,gbm,tail,gridq+pretrain] [--year 2026] [--out MD]
 racinglines f1 [--half-life DAYS] diagnostic --event 2026-15 --cutoff 2026-09-25T13:30 [--sims 10000] [--no-track] [--save]
 racinglines f1 [--half-life DAYS] forecast [--year 2026] [--sims 10000] [--no-track] [--save [--scenario LABEL]] [--top 10]
 racinglines markets sync [--year 2026]
@@ -149,7 +151,7 @@ racinglines markets trades --events 'f1-azerbaijan-grand-prix%'
 racinglines markets record [--events …] [--interval 60] [--minutes 0] [--sync-every 30]
 racinglines f1 replay --runs 11,12,9 [--sweep]
 racinglines markets archive [--stats] [--vacuum-full] [--compact] [--hours H]
-racinglines f1 sweep [--year 2026] [--rounds 1-15] [--sims 4000] [--min-edge 0.05] [--stake-per-edge 250] [--max-stake 50] [--cost 0.01] [--no-fetch] [--reprice] [--save]
+racinglines f1 [--variant NAME] sweep [--year 2026] [--rounds 1-15] [--sims 4000] [--min-edge 0.05] [--stake-per-edge 250] [--max-stake 50] [--cost 0.01] [--no-fetch] [--reprice] [--save]
 ```
 
 | Command | What it does |
@@ -164,8 +166,34 @@ racinglines f1 sweep [--year 2026] [--rounds 1-15] [--sims 4000] [--min-edge 0.0
 | `markets trades` | Store every taker trade for events (the tape the replay fills against). |
 | `markets record` | Record order-book snapshots of every open modeled market once a minute. Re-syncs events every 30 min. Run it through race weekends. |
 | `markets archive` | Move stale exchange data from Postgres to Parquet (see [Database](database.md#storage-postgres-for-the-app-parquet-for-heavy-history)). |
-| `sweep` | Trade every raced weekend of a season: price before any running and after each session, trade Polymarket, settle. See [Market making](market-making.md#season-sweep). |
+| `sweep` | Trade every raced weekend of a season: price before any running and after each session, trade Polymarket, settle. Runs four taker modes and five maker settings side by side. See [Market making](market-making.md#season-sweep). |
+| `compare` | Pair two saved backtest runs by race: challenger − baseline ± 2 standard errors per metric and pricing stage, in the docs' table style. `--reliability` adds calibration bins and the calibration error (runs saved since 2026-09-27 keep each driver's probabilities). |
+| `matrix` | The model × strategy matrix: for each variant, the latest saved backtest (accuracy, marked where it differs from baseline beyond 2 SE) and the latest saved sweep and season strategy (2026 P&L). Writes `data/runs/f1/matrix.md`. See [Model × strategy matrix](market-making.md#model-strategy-matrix). |
+| `season-checkpoints` | Championship markets entered at fixed points (pre-season, after 3 and after 6 grands prix; `--entries`) and held, one $500 book each, per model variant (`--variants`). Scores each entry over the next 3 GPs (`--window`) and to date: P&L, how far the market moved toward our fair value, and the share of our edge it closed. Only the entry forecasts are computed (cached per variant). Writes `data/runs/f1/season_checkpoints.md`; `--save` stores kind `season_checkpoints`. See [Checkpoint entries](market-making.md#checkpoint-entries). |
+
+`--variant` (before the command) prices with a named model variant from
+`racinglines/models/position_sim/variants.py`: `grid`, `gridq`, `pretrain`, `gbm`,
+`tail`, or a combination such as `gridq+pretrain`. The default is `baseline`.
+Saved runs record the variant, and the sweep and season strategy reuse only
+stored pricing from the same variant. The web app always shows baseline runs.
 | `replay` | Replay a maker quoting Polymarket through an event's diagnostic runs, with both fill rules. `--sweep` adds the sensitivity table. |
+
+### Running the recorder persistently
+
+Polymarket has no historical order-book API, so `markets record` must run
+continuously. On macOS it runs as a LaunchAgent that starts at login and
+restarts if it exits. Create `~/Library/LaunchAgents/bet.racinglines.recorder.plist`
+with `ProgramArguments` set to `<repo>/.venv/bin/racinglines markets record
+--interval 60`, `WorkingDirectory` set to the repo, `RunAtLoad` and
+`KeepAlive` set to true, and both output paths set to
+`<repo>/data/runs/logs/record.log`. Then:
+
+```
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/bet.racinglines.recorder.plist   # start
+launchctl print gui/$(id -u)/bet.racinglines.recorder | grep -E 'state|pid'               # status
+launchctl bootout gui/$(id -u)/bet.racinglines.recorder                                  # stop
+tail -f data/runs/logs/record.log
+```
 
 `--half-life` overrides the pace models' recency half-life. `--scenario LABEL`
 saves a forecast as `kind='scenario'`, which live prices ignore until it is

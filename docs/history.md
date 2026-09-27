@@ -340,6 +340,36 @@ for private bets: win, podium, make the Final, and championship rank up/down.
     - then one layer at a time: data, models, accuracy, markets, operations,
       background;
     - the README is generated from the same tagged sections.
+- **F1 roadmap and reference** added to the docs: a phased plan (F1-0 …
+  F1-7) with ground rules (the baseline stays the default, new behavior behind
+  switches, golden files unchanged, a promotion rule), and the model and
+  market-making ideas behind it. The sport-schema phase is now additive only.
+- **Pre-push hook** (`scripts/hooks/pre-push`): the docs must build with
+  `--strict`, the README must match them, and no data may be tracked.
+
+## 21. F1 roadmap F1-1 to F1-4: variants, evaluation, strategy options
+
+- **Sport schemas** (`sports/f1.toml`, `sports/mtb_dh.toml`): points, sessions,
+  rounds and market kinds now live in one file per sport. The code reads them;
+  every constant is unchanged.
+- **Model variants behind switches** (`--variant`): a front-of-grid term
+  (`grid`, `gridq`), a no-practice finishing model (`pretrain`), a
+  gradient-boosted finishing model (`gbm`) and a disrupted-race tail with
+  correlated retirements (`tail`). The baseline stays the default and the golden
+  files are unchanged.
+- **Evaluation:** `racinglines f1 compare` (paired ± 2 SE, reliability bins) and
+  `racinglines f1 matrix`, every variant against every strategy.
+- **Strategy options:** a stage-aware taker (in-sample +$1,874), and three maker
+  options (flatten before quali, info-timed skew, widen on bad markouts).
+- **Championship checkpoints** (`f1 season-checkpoints`): books entered
+  pre-season, after 3 and after 6 GPs, held, and scored on how far the market
+  came to our number. Early 2026 the market knew more (new regulations, winter
+  testing); the new `reset` variant fixes the car ranking but not the driver
+  split.
+- **Docs in the app:** the built docs are served at `/docs/`, linked in the nav.
+- **Result:** `gridq+pretrain` is better than baseline at every stage it touches
+  and lifts every maker strategy (default +$751 → +$874); adding `reset` makes
+  every weekend strategy profitable. The default stays the baseline for now.
 
 ## Reproducing the tuning sweep
 

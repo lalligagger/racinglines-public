@@ -66,7 +66,7 @@ event: a race, or a competition's season
 | **Race** (`/race/{race_id}`) | The core page:<br>• **Header:** where our fair values come from (run and as-of time), the favourite, the result, venue badges, my book here.<br>• **Chart:** Polymarket price history for the top outcomes, with our fair as dotted lines and markers for qualifying, the race and our as-of time.<br>• **One table per market kind** (win, podium, top 10, make the Final, head-to-head, top constructor): fair bar with market tick, a column per venue, gap, my YES/NO quote (or settled P&L), bets, and the result.<br>• **Quote this race** (upcoming): generate private markets from our fair ± spread, or mirror the Polymarket event.<br>• **Classification** (past): with our win and podium prices, plus links to diagnostics. |
 | **Season** (`/season/{competition}`) | The same layout for season-long markets: champion, constructors' champion, season wins, championship head-to-heads. |
 | **My book** (`/book`) | Positions across venues. Totals: open markets, bets against me, stakes, EV at fair and worst case (open markets only), settled P&L. One row per event, linking to the race page and to `/house` for per-market management. Admin can filter by maker. |
-| **Lab** (`/lab`, makers and admin) | **Run:** backtests, forward-forecast scenarios and event diagnostics with knobs, for F1 and downhill (see below).<br>**Also:** jobs with live progress and logs; scenarios compared with the live forecast, with **Promote to live**; every backtest side by side against the grid baseline; event diagnostics with replay P&L; all runs. |
+| **Lab** (`/lab`, makers and admin) | **Leads with the Edge Finder,** the headline feature for a maker account. A pinned **benchmark**, the conservative maker (fair ± 2¢, conservative fills) on the baseline model from the default-settings sweep, can't be removed or replaced, and every card shows its P&L against it. Then the model × strategy combos you pick, each from the latest saved season sweep of that model (P&L, volume, weekends up), side by side per weekend, plus where the edge comes from (by stage, by market, model vs Polymarket). Nothing is simulated on a visit; new combos come from an **Edge Finder sweep** job (Run, with a model choice). Combos are added and removed from the Edge Finder itself and from the sections: click a cell in **Model variants**, **+ Edge Finder** on a model in **Backtests** or on a finished sweep in **Jobs**.<br>**Sections, toggled on demand** (each loads from `/lab/section/{key}` the first time it's opened; `/lab#diagnostics` opens one): **Run** (forms start from your last-used knobs); **Jobs** (yours, or everyone's); **Model variants**; **Scenarios** with **Promote to live**; **Backtests**; **Event diagnostics**; **All runs**.<br>**What's stored where:** Edge Finder combos and job knobs in `users.prefs` (the database, per account); open sections and the jobs filter in the browser; jobs, runs and bets in their own tables. |
 | **Event diagnostic** (`/diag/{run}`) | One past event as of a cutoff: our prices vs Polymarket, scoring, the paper taking strategy, and the **maker replay with every strategy knob**. Knobs: fill rule, half-spread, shares per quote, max shares per market, max worst-case loss, inventory skew, disagreement filter, minimum 24 h volume, pull time. Replays take a few seconds. See [Market making](market-making.md). |
 | **Polymarket** (`/pm`, linked from Markets) | Every listed F1 event, including outcomes we don't price, with **Mirror into my book** and refresh. |
 | **Events / Athletes** (`/events`, `/athletes`, linked from Markets and race pages) | Calendar and search; results and prediction history. |
@@ -74,6 +74,7 @@ event: a race, or a competition's season
 | **Run detail** (`/runs/{id}`) | One stored run: parameters, metrics, predictions. `/runs` and `/diag` redirect to the Lab; `/me` redirects makers to My book. |
 | **Sign in** (`/login`, `/logout`) | Two one-click demo buttons (**Try as maker**, **Try as taker**; the `maker` / `taker` accounts, password `password`) above the standard username/password form, which the admin uses. |
 | `/pitch` | Serves `pitch.html`, behind the same login. |
+| `/docs/` | Serves these docs as built in `site/` (the pre-push hook builds them; or `python -m mkdocs build -d site`), behind the same login. Linked as **Docs** in the nav for every role. |
 
 ### Launching runs from the Lab
 
@@ -104,7 +105,7 @@ subprocess with no shell, and stream their progress into the `jobs` table.
 | Role | Can do |
 |---|---|
 | **taker** | Nav: **Markets** (`/bet`) and **My bets** (`/me`). The market board shows open markets from every maker, with YES/NO prices but **no model fair values**; race, season, book and lab pages are closed to takers. Bets are placed at the quoted price, refused if the maker has repriced since the page loaded, with a per-bet cap `MAX_STAKE` (default $100). |
-| **maker** | Nav: **Markets**, **My Book**, **Lab**, **Pitch**. **Own** markets only: generate from the live forecast (fair ± spread), reprice, close, see the bets against them. Can launch Lab jobs and promote scenarios. Can't bet, can't touch other makers' markets, and can't settle. |
+| **maker** | Nav: **Markets**, **My Book**, **Lab**, **Pitch**, **Docs**. **Own** markets only: generate from the live forecast (fair ± spread), reprice, close, see the bets against them. Can launch Lab jobs and promote scenarios. Can't bet, can't touch other makers' markets, and can't settle. |
 | **admin** | Everything (maker nav plus **Admin**, which links to activity, users, database, SQL, Polymarket orders and the order log), plus the private book across all makers, settlement (auto and manual), offline bets, Polymarket, and the admin pages below. |
 
 Every route declares the roles allowed (`allow(...)` in `app.py`); anything else gets 403.
@@ -255,6 +256,13 @@ model probability, model run, book at the time, and the exchange's response.
 
 The banner on every page shows the mode: **no credentials**, **dry run**, or **LIVE**
 (in red).
+
+!!! danger "Order signing is out of date"
+    `racinglines/markets/polymarket/trade.py` signs with Polymarket's V1 client.
+    Polymarket moved to CLOB V2 on 2026-04-28 and rejects V1-signed orders, so
+    live orders won't be accepted until it's migrated to `py-clob-client-v2`
+    (see [TODO](todo.md#market-making)). Dry runs still sign locally, in the old
+    format.
 
 !!! warning
     Check that your Polymarket account and jurisdiction are eligible before setting

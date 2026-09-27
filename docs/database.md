@@ -75,15 +75,18 @@ Competition     uci_dhi_wc               a league's championship in one sport
 | `orders` | Every exchange order the app built: dry run, submitted, rejected or cancelled. Includes the model probability, model run, book at the time and exchange response. |
 | `house_markets` | YES/NO markets quoted in the app (race × athlete × kind × maker), with fair probability, spread, YES/NO prices, status, outcome and `maker_id` (null = legacy house markets). |
 | `house_bets` | Bets against house markets: counterparty, `taker_id` (the taker account, if placed in the app), side, price, stake, payout, status. |
-| `users` | Web-app accounts: username, role (`admin` / `maker` / `taker`), scrypt password hash, active. |
+| `users` | Web-app accounts: username, role (`admin` / `maker` / `taker`), scrypt password hash, active, and `prefs` (JSONB): settings that follow the account to any device, i.e. the Lab's Edge Finder combos and last-used knobs per job type. View state (open sections, filters) stays in the browser; history (jobs, runs, bets) has its own tables. |
 | `activity_log` | Audit trail of web-app actions: time, user, role, action, JSON detail, IP, path. |
 | `laps` | One row per lap of a lap-based round: lap and sector ms, speed traps, tyre, stint, pit in/out, track status, position, accuracy. Added for F1. |
 | `track_profiles` | Per-event track features (sector shares, trap speeds, speed index, overtaking, street, weather) used by the F1 model. |
 
 ### Multi-sport design
 
-- **Adding a sport or league is data, not schema.** Add it to `racinglines/db/registry.py`
-  (sport, league, competition, categories, venues) and run `racinglines db seed`.
+- **Adding a sport or league is data, not schema.** Each sport has a schema file,
+  `sports/<code>.toml` (sport, league, competition, categories, sessions, points,
+  venues, which markets and venues it uses). `racinglines/db/registry.py` and the
+  models read their constants from it. Add the file (and its code to
+  `racinglines/sports.py`), then run `racinglines db seed`.
 - **Rounds are generic.** `Round.kind` is free text, so formats like heats, runs
   1/2 or sprint/feature fit without migrations. `ROUND_ORDER` in the registry sets
   the running order.
@@ -205,6 +208,7 @@ Migrations so far (in order):
 | `8d64d59a2940` | `20260926_8d64d59a2940_users_roles_activity_log.py` | `users`, `activity_log`, `house_markets.maker_id` (uniqueness now per maker), `house_bets.taker_id` |
 | `d84cd5aa7ce4` | `20260926_d84cd5aa7ce4_polymarket_alignment.py` | `market_links`: optional athlete, `params`, event slug/title, outcome label, live bid/ask/price, volume, end date, closed, resolution, sync time. `house_markets`: optional race/athlete, `market_link_id` (mirrored exchange market), `params`. `standings_predictions.extra` |
 | `8c46493d7cda` | `20260926_8c46493d7cda_house_market_uniqueness_per_mirrored_.py` | House-market uniqueness includes `market_link_id` (several head-to-heads per driver and race) |
+| `5b1e0c7d2a41` | `20260927_5b1e0c7d2a41_user_prefs.py` | `users.prefs` (nullable JSONB) |
 
 ## Not done yet
 

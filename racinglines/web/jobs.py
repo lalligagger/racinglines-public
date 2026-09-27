@@ -54,6 +54,11 @@ class JobType:
     minutes: str = ""
 
 
+# model variants offered for the sweep: each switch alone, and the combinations worth comparing
+MODEL_CHOICES = ["baseline", "grid", "gridq", "pretrain", "gbm", "tail", "reset", "gridq+pretrain", "gridq+reset",
+                 "pretrain+reset", "gridq+pretrain+reset", "gridq+pretrain+tail"]
+
+
 def _f1_common(p):
     return ["-m", "racinglines", "f1", "--half-life", str(p["half_life"])]
 
@@ -89,15 +94,19 @@ CATALOG = {j.code: j for j in [
                                             "--sims", str(p["sims"]), "--save"]
             + (["--no-track"] if p["track"] == "off" else []),
             "~1 min"),
-    JobType("f1_sweep", "f1", "Season sweep (trade every weekend)", "Every raced weekend of the season: price "
-            "before any running and after each session, trade Polymarket (update & rebuy / enter & hold / after "
-            "qualifying only, plus the maker replay), settle on the result. Stages already priced are reused.",
-            [Knob("min_edge", "Min edge to act (prob.)", "float", 0.05, 0.01, 0.5),
+    JobType("f1_sweep", "f1", "Edge Finder sweep (trade every weekend)", "Every raced weekend of the season, "
+            "priced with the chosen model before any running and after each session, then traded on Polymarket by "
+            "every taker and maker strategy and settled on the result. Adds that model's strategies to the Edge "
+            "Finder. Stages already priced with that model are reused.",
+            [Knob("variant", "Model", "choice", "baseline", choices=MODEL_CHOICES,
+                  help="Model variant (docs: Formula 1 > Model variants). Combos join with +."),
+             Knob("min_edge", "Min edge to act (prob.)", "float", 0.05, 0.01, 0.5),
              Knob("stake_per_edge", "Stake per unit edge ($)", "float", 250, 10, 5000,
                   help="Target cost = this x edge, e.g. 250 x 0.10 = $25."),
              Knob("max_stake", "Max stake per market ($)", "float", 50, 1, 5000),
              Knob("cost", "Cost per share per trade ($)", "float", 0.01, 0, 0.1)],
-            lambda p, out: ["-m", "racinglines", "f1", "sweep", "--no-fetch", "--save", "--min-edge", str(p["min_edge"]),
+            lambda p, out: ["-m", "racinglines", "f1", "--variant", p.get("variant") or "baseline", "sweep", "--no-fetch",
+                            "--save", "--min-edge", str(p["min_edge"]),
                             "--stake-per-edge", str(p["stake_per_edge"]), "--max-stake", str(p["max_stake"]),
                             "--cost", str(p["cost"])],
             "~1-2 min once stages are priced"),

@@ -11,6 +11,8 @@ Modes (to see whether updating adds value):
     update   rebalance at every stage (enter before any running, re-price after each session)
     hold     trade once, at the first stage the market is tradeable, then hold
     last     trade once, at the last stage (after qualifying)
+    early    rebalance at every stage except the late ones (after FP3, after qualifying),
+             then hold: the stage-aware taker (docs/f1-roadmap.md, F1-4)
 
 Execution: buy at price + cost, sell at price - cost (cost per share covers spread
 and slippage; the Baku books were a cent or two wide). NO is bought at 1 - price.
@@ -31,6 +33,7 @@ class TakerParams:
     min_trade: float = 2.0         # skip rebalances smaller than $2
     price_band: tuple = (0.02, 0.98)
     mode: str = "update"
+    late_stages: tuple = ("after FP3", "after Quali")    # mode "early" doesn't trade these
 
 
 def run_market(stages, outcome, p: TakerParams):
@@ -43,6 +46,8 @@ def run_market(stages, outcome, p: TakerParams):
         idx = idx[:1]
     elif p.mode == "last":
         idx = [len(stages) - 1] if (len(stages) - 1) in idx else []
+    elif p.mode == "early":
+        idx = [i for i in idx if stages[i]["label"] not in p.late_stages]
     for i, s in enumerate(stages):
         price = s["price"]
         if i in idx:

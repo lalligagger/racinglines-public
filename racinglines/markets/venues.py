@@ -17,6 +17,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from racinglines import sports
 from racinglines.db import reads as data
 from racinglines.markets import private_book as house
 
@@ -42,10 +43,10 @@ KIND_LABEL = {"race_pole": "Pole position", "race_win": "Win", "race_podium": "P
               "champion": "Champion", "constructors_champion": "Constructors' champion",
               "season_wins_ge": "Season wins", "standings_h2h": "Championship head-to-head",
               "rank_up": "Rank up", "rank_down": "Rank down", "standings_top3": "Championship top 3"}
-STANDARD_KINDS = {"f1_wdc": ("race_win", "race_podium", "race_top10"),
-                  "uci_dhi_wc": ("race_win", "race_podium", "race_make_final")}
-SPORT_NAME = {"f1_wdc": "Formula 1", "uci_dhi_wc": "UCI Downhill"}
-SPORT_ORDER = {"f1_wdc": 0, "uci_dhi_wc": 1}
+_SCHEMAS = sorted(map(sports.load, sports.SPORT_CODES), key=lambda s: s["sport"]["display_order"])
+STANDARD_KINDS = {s["competition"]["code"]: tuple(s["markets"]["standard_kinds"]) for s in _SCHEMAS}   # sports/*.toml
+SPORT_NAME = {s["competition"]["code"]: s["competition"].get("display_name", s["sport"]["name"]) for s in _SCHEMAS}
+SPORT_ORDER = {s["competition"]["code"]: s["sport"]["display_order"] for s in _SCHEMAS}
 
 
 TEAM_NAME = {"red_bull": "Red Bull", "rb": "Racing Bulls", "aston_martin": "Aston Martin", "mclaren": "McLaren",

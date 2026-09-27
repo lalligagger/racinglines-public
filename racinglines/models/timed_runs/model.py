@@ -6,9 +6,11 @@ season standings built from simulated weekends.
 
 import numpy as np
 import pandas as pd
+from racinglines import sports
 from racinglines.core.stats import ranks
 
 RNG = np.random.default_rng(42)
+SCHEMA = sports.load("mtb_dh")
 
 # ---------------------------------------------------------------------------
 # 7. Season simulation: full race weekend (Q1 -> Q2 -> Final) Monte Carlo
@@ -33,21 +35,19 @@ RNG = np.random.default_rng(42)
 # per event+category, so junior and elite paces are tied together through
 # riders who raced both (juniors moving up).
 
+# Sport-specific values come from sports/mtb_dh.toml.
 # PLACEHOLDER POINTS: approximate UCI DHI World Cup scales, NOT the official
-# tables. Replace with the real values; everything downstream reads these.
-FINAL_POINTS = [250, 210, 180, 160, 140, 125, 110, 95, 80, 75,
-                70, 65, 60, 55, 50, 45, 40, 35, 30, 25,
-                20, 19, 18, 17, 16, 15, 14, 13, 12, 11]
-QUAL_POINTS = [60, 50, 40, 35, 30, 25, 20, 18, 16, 14,
-               12, 10, 9, 8, 7, 6, 5, 4, 3, 2]
+# tables. Replace them in the schema; everything downstream reads these.
+FINAL_POINTS = list(SCHEMA["points"]["final"])
+QUAL_POINTS = list(SCHEMA["points"]["qual"])
 # Round QUAL_POINTS are paid on, by weekend format (placeholder guesses too)
-QUAL_POINTS_ROUND = {"q1q2": "qual1", "semi": "semi", "single": "qual"}
+QUAL_POINTS_ROUND = dict(SCHEMA["points"]["qual_round"])
 
 # 2026 format, used for unraced rounds. Past events use their own format,
 # inferred from their results by event_format().
-DEFAULT_FORMAT = dict(kind="q1q2", q1_to_final=20, q2_to_final=10)
-RACE_ROUNDS = ("qual", "qual1", "qual2", "semi", "final")
-RUN_WEIGHTS = {"practice": 0.5, "qual": 1.0, "qual1": 1.0, "qual2": 1.0, "semi": 1.0, "final": 1.0}
+DEFAULT_FORMAT = dict(SCHEMA["rounds"]["default_format"])
+RACE_ROUNDS = tuple(SCHEMA["rounds"]["race"])
+RUN_WEIGHTS = dict(SCHEMA["rounds"]["run_weights"])
 CATEGORY_WEIGHTS = {"ME": 1.0, "MJ": 0.5}   # training weight per category (others: 0.5)
 HALF_LIFE_DAYS = 120.0
 INCIDENT_THRESHOLD = 0.04     # finished >4% slower than expected = incident

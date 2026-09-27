@@ -1,0 +1,45 @@
+<div id="edge-root" data-combos='{{ combos|tojson }}'>
+<h2>Edge Finder</h2>
+<p class="sub">Which model, traded which way, made money? Every {{ year }} weekend re-priced after each session and traded on Polymarket's recorded prices and trades, then settled on the result. Add or remove model × strategy combos here or from <a href="#models" data-open="models">Model variants</a>, <a href="#backtests" data-open="backtests">Backtests</a> and <a href="#jobs" data-open="jobs">Jobs</a>; make a new model's combos with an <a href="/lab?job=f1_sweep#run">Edge Finder sweep</a>.</p>
+
+<form class="edge-add jobform" onsubmit="return false">
+  <label><span>Model</span><select name="variant">{% for v in models %}<option>{{ v }}</option>{% endfor %}</select></label>
+  <label><span>Strategy</span><select name="strategy">{% for k, lab in strategies %}<option value="{{ k }}">{{ lab }}</option>{% endfor %}</select></label>
+  <button type="button" class="primary" data-edge="add" data-from-form>Add combo</button>
+  <button type="button" data-edge="add_model" data-from-form title="This model with every strategy already shown">Add model</button>
+  <button type="button" data-edge="add_strategy" data-from-form title="This strategy with every model already shown">Add strategy</button>
+  <button type="button" data-edge="reset" title="Baseline model, every strategy">Reset</button>
+  <button type="button" data-edge="clear">Clear</button>
+</form>
+
+{% if not ef.cards and not ef.missing %}<p class="muted">Nothing selected: add a combo above, or <b>Reset</b> to the baseline with every strategy.</p>{% endif %}
+<div class="kpis">{% set b = ef.benchmark %}{% if b %}<div class="kpi bench" title="Pinned: every combo is compared with it. Always the default-settings baseline sweep, so a sweep with other knobs never replaces it.">
+<div class="l">Benchmark · {{ b.label }}</div><div class="l muted"><a href="/runs/{{ b.run_id }}">{{ b.variant }}, run #{{ b.run_id }}</a></div>
+<div class="v {{ 'good' if b.pnl >= 0 else 'bad' }}">{{ b.pnl|money(true) }}</div><div class="s">on ${{ "{:,.0f}".format(b.volume) }} filled · {{ b.up }}/{{ b.weekends }} weekends up · pinned</div></div>{% endif %}{% for c in ef.cards %}
+<div class="kpi{{ ' best' if c.best }}"><button type="button" class="x" data-edge="remove" data-variant="{{ c.variant }}" data-strategy="{{ c.strategy }}" title="Remove from Edge Finder" aria-label="Remove {{ c.label }} · {{ c.variant }}">×</button>
+<div class="l">{{ c.label }}{{ " *" if c.in_sample }}</div><div class="l muted"><a href="/runs/{{ c.run_id }}">{{ c.variant }}</a></div>
+<div class="v {{ 'good' if c.pnl >= 0 else 'bad' }}">{{ c.pnl|money(true) }}</div><div class="s">on ${{ "{:,.0f}".format(c.volume) }} {{ c.volume_label }} · {{ c.up }}/{{ c.weekends }} weekends up{% if c.vs_bench is not none %} · <span class="{{ 'good' if c.vs_bench > 0 else 'bad' }}">{{ c.vs_bench|money(true) }}</span> vs benchmark{% endif %}</div></div>{% endfor %}</div>
+{% if ef.missing %}<p class="legend">No saved sweep yet for: {% for m in ef.missing %}<b>{{ m.variant }}</b> · {{ m.label }}{{ ", " if not loop.last }}{% endfor %}. <a href="/lab?job=f1_sweep&amp;variant={{ ef.missing[0].variant|urlencode }}#run">Run an Edge Finder sweep →</a></p>{% endif %}
+{% if ef.cards|selectattr("in_sample")|list %}<p class="legend">* In-sample: the stage-aware rule was drawn from this same sweep.</p>{% endif %}
+
+{% if ef.columns %}
+<h3>By weekend</h3>
+<div class="scroll"><table><thead><tr><th class="l">Weekend</th><th class="l">Format</th>{% for c in ef.columns %}<th>{{ c.label }}<br><span class="muted">{{ c.variant }}</span></th>{% endfor %}<th></th></tr></thead><tbody>
+{% for w in ef.weekends %}<tr><td class="l">{{ w.event }} <span class="muted">{{ w.event_key }}</span></td><td class="l">{{ (w.format or "")|replace('_', ' ') }}</td>
+{% for x in w.cells %}<td class="{{ 'good' if (x or 0) > 0 else ('bad' if (x or 0) < 0 else '') }}">{{ x|money(true) if x is not none }}</td>{% endfor %}
+<td>{% if w.last_run_id %}<a href="/diag/{{ w.last_run_id }}">weekend →</a>{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>
+{% endif %}
+
+{% set sweep = ef.detail %}{% if sweep %}{% set m = sweep.metrics %}
+<details><summary><b>Where the edge comes from</b> <span class="muted">({{ ef.detail_variant }}, run #{{ sweep.id }}: update &amp; rebuy by stage and market, and model vs Polymarket)</span></summary>
+<p class="legend">Act when |fair − Polymarket| ≥ {{ "%.0f"|format((sweep.params.min_edge or 0) * 100) }} pts, stake ${{ sweep.params.stake_per_edge|int }} × edge (max ${{ sweep.params.max_stake|int }}/market), {{ "%.0f"|format((sweep.params.cost or 0) * 100) }}¢/share trading cost; prices at each stage are Polymarket's at that moment; markets need ≥ ${{ (sweep.params.min_volume_24h or 0)|int }} traded in the prior 24 h and a coherent book.</p>
+<div class="grid"><div><h3>P&amp;L of the decisions made at each stage</h3><div class="scroll"><table><thead><tr><th class="l">Stage</th><th>Trades</th><th>P&amp;L to result</th></tr></thead><tbody>
+{% for r in m.by_stage or [] %}<tr><td class="l">{{ r.stage }}</td><td>{{ r.trades }}</td><td class="{{ 'good' if r.pnl > 0 else 'bad' }}">{{ r.pnl|money(true) }}</td></tr>{% endfor %}</tbody></table></div>
+<h3>By market</h3><div class="scroll"><table><thead><tr><th class="l">Market</th><th>Trades</th><th>P&amp;L</th></tr></thead><tbody>
+{% for r in m.by_kind or [] %}<tr><td class="l">{{ r.kind }}</td><td>{{ r.trades }}</td><td class="{{ 'good' if r.pnl > 0 else 'bad' }}">{{ r.pnl|money(true) }}</td></tr>{% endfor %}</tbody></table></div></div>
+<div><h3>Model vs Polymarket at each stage</h3><div class="scroll"><table><thead><tr><th class="l">Market</th><th class="l">Stage</th><th>Outcomes</th><th>Brier model</th><th>Brier Polymarket</th></tr></thead><tbody>
+{% for r in m.scores or [] %}<tr><td class="l">{{ r.kind }}</td><td class="l">{{ r.stage }}</td><td>{{ r.n }}</td><td class="{{ 'good' if r.brier_model < r.brier_market else 'bad' }}">{{ "%.4f"|format(r.brier_model) }}</td><td>{{ "%.4f"|format(r.brier_market) }}</td></tr>{% endfor %}</tbody></table></div>
+<p class="legend">Averaged over weekends, on tradeable markets only. Polymarket at the same moment is the benchmark to beat.</p></div></div>
+</details>{% endif %}
+</div>

@@ -167,3 +167,45 @@ def test_deterministic():
     mk = market(trades=[(k * MIN, 0.4 + 0.2 * (k % 2), 7, k % 2) for k in range(1, 60)])
     a, b = R.replay(data(mk), P), R.replay(data(mk), P)
     assert a["fills"].equals(b["fills"])
+
+
+# --- options (F1-4): flatten before qualifying, info-timed skew, per-kind spreads --
+
+def test_flatten_before_qualifying_closes_inventory_at_market():
+    """Filled on the bid, then flattened at the pull before qualifying (mid - taker cost)."""
+    mk = market(fair=0.6, mids=[(0, 0.55)], trades=liquid() + [(10 * MIN, 0.50, 40, 0)])
+    d = dict(data(mk), qual_start=2 * HOUR)
+    p = replace(P, flatten_before_qual=True, taker_cost=0.01)
+    res = R.replay(d, p)
+    f = res["fills"]
+    assert list(f["side"]) == ["buy", "sell"]
+    assert f["price"].iloc[1] == pytest.approx(0.54)                  # mid 0.55 - 1c
+    assert res["positions"]["inventory"].iloc[0] == 0
+    # without the option the position is held to the result
+    assert R.replay(d, P)["positions"]["inventory"].iloc[0] == pytest.approx(40)
+
+
+def test_flatten_only_before_qualifying():
+    mk = market(fair=0.6, mids=[(0, 0.55)], trades=liquid() + [(10 * MIN, 0.50, 40, 0)])
+    d = dict(data(mk), qual_start=9 * HOUR)                           # this stage ends at another session
+    assert R.replay(d, replace(P, flatten_before_qual=True))["positions"]["inventory"].iloc[0] == pytest.approx(40)
+
+
+def test_info_skew_grows_toward_the_session():
+    """Long 40 after an early fill: far from the session the quotes match the plain maker;
+    close to it they sit lower (skewed harder to shed the inventory)."""
+    mk = market(fair=0.5, mids=[(0, 0.5)], trades=liquid() + [(1 * MIN, 0.40, 40, 0)])
+    d = data(mk, end=6 * HOUR)
+    base = replace(P, half_spread=0.04, tick=0.001)
+    plain = R.replay(d, base)["quotes"].dropna(subset=["bid"]).set_index("ts")["bid"]
+    timed = R.replay(d, replace(base, info_skew=3.0, info_tau_h=1.0))["quotes"].dropna(subset=["bid"]).set_index("ts")["bid"]
+    assert timed.iloc[1] == pytest.approx(plain.iloc[1], abs=0.001)     # 5 min in: session far away
+    assert timed.iloc[-1] < plain.iloc[-1] - 0.01                        # just before the session
+
+
+def test_per_kind_half_spread():
+    mk = market(fair=0.5, mids=[(0, 0.5)], trades=liquid(0), kind="race_podium")
+    q = R.replay(data(mk), replace(P, half_spread_by_kind={"race_podium": 0.06}))["quotes"].dropna(subset=["bid"])
+    assert (q["bid"] <= 0.44 + 1e-9).all()
+    q0 = R.replay(data(mk), P)["quotes"].dropna(subset=["bid"])
+    assert (q0["bid"] >= 0.47).all()

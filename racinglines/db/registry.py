@@ -1,71 +1,33 @@
 """
 Reference data: the sports, leagues, competitions and categories the project
-knows about, plus canonical venue names. `racinglines db seed` (and every
-ingest) upserts these, so adding a new sport or league starts here.
+knows about, plus canonical venue names. The values come from the sport
+schemas (sports/*.toml, see racinglines/sports.py); `racinglines db seed` (and every
+ingest) upserts these, so adding a new sport or league starts with a schema.
 """
 
-SPORTS = {
-    # code: (name, result_kind)
-    "mtb_dh": ("Mountain bike downhill", "time"),
-    "f1": ("Formula 1", "position"),
-}
+from racinglines import sports as _S
 
-LEAGUES = {
-    # code: (name, organizer)
-    "uci_mtb": ("UCI Mountain Bike World Series / World Cup", "UCI"),
-    "fia_f1": ("FIA Formula One World Championship", "FIA / Formula One Group"),
-}
+_SCHEMAS = [_S.load(c) for c in _S.SPORT_CODES]
 
-COMPETITIONS = {
-    # code: league, sport, name, categories {code: (name, gender, age_group)}
-    "uci_dhi_wc": dict(
-        league="uci_mtb",
-        sport="mtb_dh",
-        name="UCI Downhill World Cup",
-        categories={
-            "ME": ("Men Elite", "M", "elite"),
-            "WE": ("Women Elite", "W", "elite"),
-            "MJ": ("Men Junior", "M", "junior"),
-            "WJ": ("Women Junior", "W", "junior"),
-        },
-    ),
-    "f1_wdc": dict(
-        league="fia_f1",
-        sport="f1",
-        name="Formula 1 World Championship (Drivers)",
-        categories={"DRV": ("Drivers", "X", "elite")},
-    ),
-}
+SPORTS = {                                     # code: (name, result_kind)
+    s["sport"]["code"]: (s["sport"]["name"], s["sport"]["result_kind"]) for s in _SCHEMAS}
+
+LEAGUES = {                                    # code: (name, organizer)
+    s["league"]["code"]: (s["league"]["name"], s["league"]["organizer"]) for s in _SCHEMAS}
+
+COMPETITIONS = {                               # code: league, sport, name, categories {code: (name, gender, age_group)}
+    s["competition"]["code"]: dict(league=s["league"]["code"], sport=s["sport"]["code"], name=s["competition"]["name"],
+                                   categories={k: tuple(v) for k, v in s["competition"]["categories"].items()})
+    for s in _SCHEMAS}
 
 # F1 circuits (FastF1 "Location" slug) that run on public roads: slower, walls, fewer overtakes
-STREET_CIRCUITS = {"monte-carlo", "monaco", "baku", "marina-bay", "singapore", "jeddah", "las-vegas", "miami",
-                   "miami-gardens", "melbourne", "montreal", "madrid"}
+STREET_CIRCUITS = set(_S.load("f1")["tracks"]["street"])
 
 # canonical venue slug: (display name, country)
-VENUES = {
-    "bielsko-biala": ("Bielsko-Biała", "POL"),
-    "fort-william": ("Fort William", "GBR"),
-    "la-thuile": ("La Thuile", "ITA"),
-    "lake-placid": ("Lake Placid", "USA"),
-    "lenzerheide": ("Lenzerheide", "SUI"),
-    "leogang": ("Leogang", "AUT"),
-    "les-gets": ("Les Gets", "FRA"),
-    "loudenvielle": ("Loudenvielle", "FRA"),
-    "lourdes": ("Lourdes", "FRA"),
-    "maribor": ("Maribor", "SLO"),
-    "mona-yongpyong": ("Mona Yongpyong", "KOR"),
-    "mont-sainte-anne": ("Mont-Sainte-Anne", "CAN"),
-    "pal-arinsal": ("Pal Arinsal (Vallnord)", "AND"),
-    "snowshoe": ("Snowshoe", "USA"),
-    "val-di-sole": ("Val di Sole", "ITA"),
-}
+VENUES = {slug: tuple(v) for slug, v in _S.load("mtb_dh")["venues"].items()}
 
 # other spellings seen in source data -> canonical slug
-VENUE_ALIASES = {
-    "mont-ste-anne": "mont-sainte-anne",
-    "vallnord": "pal-arinsal",
-    "vallnord-pal-arinsal": "pal-arinsal",
-}
+VENUE_ALIASES = dict(_S.load("mtb_dh")["venue_aliases"])
 
 # source-data round labels -> running order within a race
-ROUND_ORDER = {"practice": 0, "seeding": 1, "qual": 2, "qual1": 2, "qual2": 3, "semi": 4, "final": 5}
+ROUND_ORDER = dict(_S.load("mtb_dh")["rounds"]["order"])

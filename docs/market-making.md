@@ -7,7 +7,8 @@ event in depth, then on a whole season.
 |---|---|---|
 | [Baku diagnostic](#baku-2026-09-26-first-test-event) | One race priced as of every moment, with a maker replay on the minute-level tape | Maker −$303 at default settings |
 | [Season sweep](#season-sweep) | All 15 raced 2026 weekends, re-priced after every session | **Maker +$751**; taker strategies −$479 to +$214 |
-| [Season strategy](#season-strategy-championship-markets) | Championship markets, rebalanced after every race | −$241 (hold: −$532) |
+| [Model × strategy matrix](#model-strategy-matrix) | Every model variant × every trading strategy | Weekends: `gridq+pretrain+reset` makes money with every taker and maker default (+$933); titles: every model loses |
+| [Season strategy](#season-strategy-championship-markets) | Championship markets, rebalanced after every race | −$208 (hold: −$532) |
 
 ## How the market works
 
@@ -168,7 +169,7 @@ luck on good trades: the model was wrong on those two positions.
 
 ## Season sweep
 
-`racinglines f1 sweep --save` (or the Lab's **Season sweep** job) trades every raced
+`racinglines f1 sweep --save` (or the Lab's **Edge Finder sweep** job, which adds its combos to the Edge Finder) trades every raced
 weekend of a season through its sessions:
 
 1. **Stages** come from the real session schedule (FastF1):
@@ -279,6 +280,123 @@ It's noisy: 15 weekends is a small sample.
 
 Pricing is cached, so re-running with new trading settings takes minutes.
 
+### Strategy options (F1 roadmap F1-4)
+
+The sweep also replays these, side by side, on every weekend. The settings were
+fixed before looking at results (no tuning on these 15 weekends):
+
+| Strategy | Rule |
+|---|---|
+| **Stage-aware taker** (`early`) | Like update & rebuy, but no new trades after FP3 or qualifying: positions are held through them |
+| **Maker, flatten before quali** | Close all inventory at the market (mid ± 1¢) at the pull before qualifying |
+| **Maker, info-timed skew** | Skew quotes against inventory harder as a session approaches: ×(1 + 2·e^(−t/2h)) |
+| **Maker, widen on bad markouts** | 1.5× half-spread on market kinds whose maker fills lost on 60-min markouts in *earlier* weekends |
+| **Maker, all three** | The three maker options together |
+
+Baseline model, 2026 rounds 1–15 (sweep run 574):
+
+| Strategy | P&L | Bought / filled | Weekends up |
+|---|---|---|---|
+| **Stage-aware taker** | **+$1,874** | $7,859 | 7 / 15 |
+| Maker (default) | +$751 | $8,969 | 7 / 15 |
+| Maker, info-timed skew | +$650 | $9,024 | 7 / 15 |
+| Maker, widen on bad markouts | +$638 | $8,294 | 8 / 15 |
+| Enter before running, hold | +$214 | $6,954 | 7 / 15 |
+| Enter after qualifying only | −$15 | $3,254 | 6 / 15 |
+| Maker, flatten before quali | −$58 | $12,010 | 6 / 15 |
+| Maker, all three | −$86 | $10,921 | 7 / 15 |
+| Update & rebuy | −$479 | $11,100 | 5 / 15 |
+
+- **The stage-aware taker is in-sample.** Its rule came from this sweep's
+  stage split, so +$1,874 is the upper end of what to expect. It has to be
+  confirmed on weekends after Baku before it's trusted.
+- **None of the maker options beats the default maker.** Flattening before
+  qualifying pays the spread twice and gives up positions that were, on
+  average, on the right side. The skew and the widening each give back about
+  $100.
+- **Model vs Polymarket, every market kind** (Brier, lower is better): the model
+  is sharper on head-to-heads (after FP3 0.153 vs 0.344; after qualifying 0.181
+  vs 0.213). On top-scoring constructor it's sharper after FP3 and qualifying,
+  and on podium after FP1 and FP2. Polymarket is sharper on pole and after the
+  sprint.
+
+## Model × strategy matrix
+
+`racinglines f1 matrix` puts every model variant (see
+[Model variants](f1.md#model-variants-f1-roadmap-f1-2-f1-3)) against every
+trading strategy on the same 2026 weekends. Each variant is re-priced at every
+stage, then traded by each strategy on Polymarket's recorded prices.
+
+<!-- readme: f1-matrix -->
+
+**Which model, traded which way?** P&L in $ on 2026 rounds 1–15 (weekends up of
+15 in brackets); season strategy is the championship markets through Baku.
+
+| Strategy | baseline | `gridq` | `pretrain` | **`gridq+pretrain`** | `tail` | `gbm` | `reset` | `gridq+pretrain+reset` |
+|---|---|---|---|---|---|---|---|---|
+| Maker, conservative (default) | +751 (7) | +874 (9) | +750 (7) | **+874 (9)** | +877 (9) | +557 (8) | +703 (8) | +933 (9) |
+| Maker, info-timed skew | +650 (7) | +1,071 (9) | +649 (7) | **+1,070 (9)** | +792 (9) | +576 (9) | +686 (9) | +979 (8) |
+| Maker, widen on bad markouts | +638 (8) | +1,008 (9) | +633 (8) | **+1,003 (9)** | +796 (9) | +434 (9) | +700 (9) | +751 (8) |
+| Maker, flatten before quali | −58 (6) | +236 (10) | −57 (6) | **+237 (10)** | +125 (6) | +148 (7) | −57 (8) | +402 (9) |
+| Maker, all three | −86 (7) | +478 (9) | −86 (7) | **+478 (9)** | +34 (8) | −28 (9) | −123 (7) | +310 (7) |
+| Taker, enter & hold | +214 (7) | +215 (7) | +287 (7) | **+288 (7)** | +279 (7) | +81 (7) | +758 (7) | +835 (7) |
+| Taker, after quali only | −15 (6) | +417 (4) | −15 (6) | **+417 (4)** | −114 (5) | −68 (5) | +117 (6) | +486 (6) |
+| Taker, update every session | −479 (5) | −127 (6) | −395 (5) | **−43 (6)** | −558 (5) | −579 (6) | −140 (6) | +242 (7) |
+| Taker, stage-aware ‡ | +1,874 (7) | +1,874 (7) | +1,953 (7) | **+1,953 (7)** | +1,898 (7) | +1,460 (7) | +2,205 (7) | +2,264 (8) |
+| Season strategy (titles) | −208 | −208 † | −211 | **−211 †** | −220 | −262 | −354 | −349 † |
+
+**And how accurate is each?** Brier, lower is better; ▲ / ▼ = better / worse
+than baseline beyond 2 standard errors, paired over 129 races (2021 to Baku 2026).
+
+| Model | Podium, before practice | Podium, before quali | Win, after quali | Podium, after quali | Top 10, after quali | Teammate h2h, after quali |
+|---|---|---|---|---|---|---|
+| grid-only guess | | | 0.0309 | 0.0708 | 0.1630 | |
+| baseline | 0.0913 | 0.0878 | 0.0325 | 0.0712 | 0.1494 | 0.1971 |
+| `gridq` | 0.0913 | 0.0878 | 0.0306 ▲ | 0.0691 ▲ | 0.1494 | 0.1956 ▲ |
+| `pretrain` | 0.0893 ▲ | 0.0878 | 0.0325 | 0.0712 | 0.1494 | 0.1971 |
+| **`gridq+pretrain`** | **0.0893 ▲** | 0.0878 | **0.0306 ▲** | **0.0691 ▲** | 0.1494 | **0.1956 ▲** |
+| `tail` | 0.0912 | 0.0878 | 0.0325 | 0.0712 | 0.1495 | 0.1971 |
+| `gbm` | 0.0917 | 0.0907 ▼ | 0.0336 | 0.0732 ▼ | 0.1543 ▼ | 0.2055 ▼ |
+| `reset` | 0.0906 | 0.0873 ▲ | 0.0325 | 0.0711 | 0.1495 | 0.1971 |
+| `gridq+pretrain+reset` | 0.0886 ▲ | 0.0873 ▲ | 0.0307 ▲ | 0.0692 ▲ | 0.1495 | 0.1956 ▲ |
+
+- **The grid term is what pays.** Once the real grid is known, `gridq` lifts
+  every maker strategy by $120–$560 and turns "enter after qualifying" from
+  −$15 to +$417. It's the first model that beats the grid-only guess on win
+  odds after qualifying.
+- **`pretrain` fixes pre-practice accuracy** (podium −2% error) but barely moves
+  P&L, since little is traded before practice.
+- **`gridq+pretrain` is the safest row:** better than baseline in every cell
+  where it differs and worse nowhere. The default stays the baseline for now
+  (owner's decision); the variants keep being iterated.
+- **`tail` doesn't earn its place:** neutral on accuracy, mixed on P&L.
+- **`reset` (new-regulations seasons discount earlier car data) adds on top.**
+  With `gridq+pretrain` it is the most accurate model (better than baseline on
+  five of six columns), and the first where every taker strategy makes money:
+  update every session +$242, enter & hold +$835; the default maker makes
+  +$933. It is worse on the championship markets (see
+  [Checkpoint entries](#checkpoint-entries)). Its 2026 P&L is on the season
+  that suggested it; its accuracy gain holds on 2022 too (see
+  [Formula 1](f1.md#model-variants-f1-roadmap-f1-2-f1-3)).
+- **`gbm` is worse on both:** less accurate after practice and qualifying, and
+  below baseline on every strategy but two maker options.
+- **The championship markets lose under every model** (−$208 to −$262): the
+  market prices each race's result before we trade an hour later.
+
+‡ The stage-aware taker's rule came from this sweep, so it is in-sample. †
+`gridq` prices the season the same as baseline (and `gridq+pretrain` as
+`pretrain`): future races have no grid yet. Fifteen weekends are few; the P&L
+differences between variants are not tested for significance, and picking the
+best of ~60 cells flatters it.
+
+<!-- /readme -->
+
+Runs: baseline backtest 193 / sweep 574 / season 515; `gridq` 347 / 655 / 515;
+`pretrain` 195 / 653 / 532; `gridq+pretrain` 423 / 664 / 532; `tail` 196 / 644
+/ 549; `gbm` 665 / 741 / 663; `reset` 837 / 867 / 851; `gridq+pretrain+reset` 854 / 943 / 866. The plain `grid` variant (the term at every stage, 194 / 647 / 566) gets
+the same after-quali gains but costs accuracy before quali, so `gridq` replaces
+it.
+
 ## Season strategy (championship markets)
 
 `racinglines f1 season-strategy --save` replays a default strategy for
@@ -297,16 +415,83 @@ latest run feeds the Markets board and the race pages.
 - **Demo liberty:** the pre-season forecast simulates the published 2026 entry
   list instead of the 2025 field.
 
-**Run 113** (through Baku, 16 decisions, 102 trades):
+**Run 515** (baseline model, through Baku, 16 decisions, 98 trades):
 
 | | P&L | Bought | Max drawdown |
 |---|---|---|---|
-| **Update after every race** | **−$241** | $2,276 | −$758 |
-| Enter pre-season and hold | −$532 | $961 | −$532 |
+| **Update after every race** | **−$208** | $2,172 | −$722 |
+| Enter pre-season and hold | −$532 | $915 | −$532 |
+
+The model variants land between −$262 (`gbm`) and −$208 (baseline): see the
+[matrix](#model-strategy-matrix).
 
 Updating after each race loses less than holding the pre-season view, but it
 still loses: championship prices move on the same information our forecast
 uses, and the market has priced it by the time we trade an hour later.
+
+### Checkpoint entries
+
+`racinglines f1 season-checkpoints` asks a narrower question than the strategy
+above: **if a desk takes a championship position at a fixed point in the season
+and holds it, does the market come to our number?** It separates the model's
+view from how fast the market reacts to each race.
+
+- **Entries,** fixed before looking at results: pre-season, after 3 grands prix,
+  after 6. Each is a separate $500 book (the default sizing) that holds.
+- **Windows:** the next 3 GPs after each entry (the same length for all three,
+  so they compare), and to date.
+- **Scores:**
+    - P&L at liquidation value (price − cost), with eliminated markets settled;
+    - **drift:** how far the market moved toward our fair value, in points,
+      over the markets where we saw ≥ 3 points of edge;
+    - **slope:** the share of our edge the market later closed, over every
+      tradeable market. 1 = it went all the way to our number, 0 = our edge said
+      nothing about the move, negative = it moved away.
+
+<!-- readme: f1-checkpoints -->
+
+**Championship checkpoints, 2026** (33 markets; P&L in $, slope in brackets; runs 751 and 836):
+
+| Model | Pre-season → +3 GPs | After GP 3 → +3 GPs | After GP 6 → +3 GPs | All three, to date |
+|---|---|---|---|---|
+| baseline | −232 (−0.30) | −267 (−0.34) | −11 (−0.21) | −793 |
+| `grid` | −235 (−0.30) | −275 (−0.39) | −8 (−0.23) | −791 |
+| `pretrain` | −229 (−0.28) | −252 (−0.24) | −12 (−0.14) | −779 |
+| `gbm` | −241 (−0.34) | −271 (−0.66) | +11 (−0.27) | −735 |
+| `tail` | −233 (−0.30) | −270 (−0.36) | −11 (−0.19) | −797 |
+| `grid+pretrain` | −232 (−0.29) | −257 (−0.29) | −11 (−0.19) | −777 |
+| `pretrain+tail` | −229 (−0.28) | −255 (−0.26) | −14 (−0.16) | −777 |
+| `grid+pretrain+tail` | −232 (−0.29) | −259 (−0.30) | −17 (−0.19) | −782 |
+| `reset` | −244 (−0.36) | −176 (−1.37) | +2 (−0.40) | −576 |
+| `pretrain+reset` | −252 (−0.35) | −168 (−1.28) | +3 (−0.36) | −572 |
+| `grid+pretrain+reset` | −253 (−0.37) | −166 (−1.38) | +1 (−0.40) | −566 |
+
+- **Early in a new-regulations season, the market knows more than we do.**
+  Pre-season the model priced 2026 like 2025 (McLaren 84% for the
+  constructors' title, Norris 46%); the market, having seen winter testing, had
+  Mercedes at 41%. After 3 GPs the model still had McLaren at 38% against the
+  market's 6%. Every model variant makes the same calls, because they share
+  the car-pace layer.
+- **After 6 GPs the model has caught up.** Its edges are small, and its biggest
+  call (Antonelli at 78% vs the market's 70%) has since gone to 92%: to date,
+  the slope is positive for every variant.
+- **The finishing-model variants barely matter here.** The championship
+  forecast is dominated by the car and driver paces, not the finishing model.
+  `gbm` takes the fewest positions after GP 6 and loses least, by staying out.
+- **`reset` fixes the car, not the driver.** In a season with new technical
+  regulations it counts earlier seasons' car pace a quarter. After 3 GPs it has
+  Mercedes at 72% (market 78%, baseline 49%), and it loses the least over all
+  three entries (−$566 with `grid+pretrain`). But within Mercedes it backs
+  Russell (49%) over Antonelli (16%; market 35%, and 70% three races later):
+  the driver-vs-teammate offset still carries 2025, when Antonelli was a rookie.
+  Every position it took after GP 3 moved against it.
+- **Pre-season, no model can see what the market saw:** winter testing. That's
+  a data gap (see [TODO](todo.md)), not a modelling one.
+
+Slopes have standard errors of 0.15–0.8 (a title's markets are not independent),
+so read them as direction, not size.
+
+<!-- /readme -->
 
 ## Limits of the Baku test
 

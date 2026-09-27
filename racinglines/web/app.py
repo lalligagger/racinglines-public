@@ -309,6 +309,30 @@ def pitch():
     return FileResponse(ROOT / "pitch.html", media_type="text/html")
 
 
+SITE = ROOT / "site"     # the built docs (mkdocs build -d site; the pre-push hook builds it)
+
+
+@app.get("/docs")
+def docs_root():
+    return RedirectResponse("/docs/", status_code=307)
+
+
+@app.get("/docs/{path:path}")
+def docs(path: str):
+    """The built docs (site/), behind the same login."""
+    from fastapi.responses import FileResponse
+    f = (SITE / path).resolve()
+    if not f.is_relative_to(SITE.resolve()):
+        raise HTTPException(404)
+    if f.is_dir():
+        f = f / "index.html"
+    if not f.is_file():
+        if not SITE.is_dir():
+            raise HTTPException(404, "Docs not built: run python -m mkdocs build -d site")
+        raise HTTPException(404)
+    return FileResponse(f)
+
+
 @app.get("/events/{event_id}", response_class=HTMLResponse)
 def event_detail(request: Request, event_id: int, c=Depends(conn)):
     ev = data.event(c, event_id)

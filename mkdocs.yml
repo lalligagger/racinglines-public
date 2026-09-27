@@ -5,6 +5,8 @@ site_dir: site
 theme:
   name: readthedocs
   navigation_depth: 3
+extra_css:
+  - css/wide.css
 markdown_extensions:
   - admonition
   - toc:
@@ -32,3 +34,8 @@ nav:
   - Background:
       - Project history: history.md
       - TODO: todo.md
+      - F1 roadmap: f1-roadmap.md
+      - F1 reference: f1-reference.md
+
+validation:
+  anchors: warn          # broken #anchor links fail `mkdocs build --strict` (pre-push hook)

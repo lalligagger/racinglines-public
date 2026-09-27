@@ -25,20 +25,28 @@ import numpy as np
 import pandas as pd
 from sqlalchemy import text
 
+from racinglines import sports
 from racinglines.markets.strategies import taker_weekend as RB
 from racinglines.core.stats import last_at
 
-SESSION_MINUTES = {"Practice 1": 60, "Practice 2": 60, "Practice 3": 60, "Sprint Qualifying": 45,
-                   "Sprint Shootout": 45, "Sprint": 45, "Qualifying": 60}
-SHORT = {"Practice 1": "FP1", "Practice 2": "FP2", "Practice 3": "FP3", "Sprint Qualifying": "SQ",
-         "Sprint Shootout": "SQ", "Sprint": "Sprint", "Qualifying": "Quali"}
+_SCHEDULE = sports.load("f1")["sessions"]["schedule"]       # FastF1 session name -> [minutes, short label]
+SESSION_MINUTES = {name: m for name, (m, _) in _SCHEDULE.items()}
+SHORT = {name: short for name, (_, short) in _SCHEDULE.items()}
 DATA_LAG = timedelta(minutes=30)     # a session's data is used 30 min after it ends
 PRE = timedelta(hours=1)             # "before any running": 1 h before the first session
-KINDS = ("race_win", "race_podium", "race_h2h", "race_constructor_top", "race_pole")
+KINDS = tuple(sports.load("f1")["markets"]["weekend_kinds"])
 GROUP_TARGET = {"race_win": 1, "race_pole": 1, "race_constructor_top": 1, "race_podium": 3}
 COHERENCE_TOL = 0.25
 STALE = timedelta(hours=6)
 MIN_VOLUME_24H = 50.0                # $ traded in the market over the previous 24 h
+TAKER_MODES = ("update", "hold", "last", "early")
+# maker settings replayed side by side (docs/f1-roadmap.md, F1-4); all chosen a priori, not tuned
+MAKERS = {"maker": {},
+          "maker_flat": dict(flatten_before_qual=True),        # go flat at the market before qualifying
+          "maker_skew": dict(info_skew=2.0),                    # skew harder as each session approaches
+          "maker_widen": dict(widen=True),                      # wider where earlier weekends' markouts were bad
+          "maker_all": dict(flatten_before_qual=True, info_skew=2.0, widen=True)}
+WIDEN = 1.5                          # half-spread multiplier for widened market kinds
 
 
 def schedule(year, rounds=None):
@@ -74,14 +82,17 @@ def schedule(year, rounds=None):
     return out
 
 
-def price_stages(meas, hist, sched, engine, engine_url=None, n_sims=4000, reprice=False, echo=print):
-    """Diagnostic run per (race, stage); reuses stored ones with the same cutoff unless reprice.
+def price_stages(meas, hist, sched, engine, engine_url=None, n_sims=4000, reprice=False, echo=print,
+                 variant="baseline"):
+    """Diagnostic run per (race, stage); reuses stored ones with the same cutoff and model
+    variant unless reprice (runs stored without a variant are the baseline).
     Returns {event_key: [(label, cutoff, run_id), ...]}."""
     from racinglines.models.position_sim import pricing as run
     with engine.connect() as c:
         have = pd.read_sql(text("""SELECT id, params->>'event_key' AS k, params->>'cutoff' AS cutoff
                                    FROM model_runs WHERE kind = 'diagnostic' AND params ? 'sweep_stage'
-                                   ORDER BY id"""), c)
+                                     AND coalesce(params->>'variant', 'baseline') = :v
+                                   ORDER BY id"""), c, params=dict(v=variant))
     have = {(k, str(pd.Timestamp(cu))): int(i) for i, k, cu in zip(have["id"], have["k"], have["cutoff"])}
     out = {}
     for rnd, w in sched.items():
@@ -95,7 +106,8 @@ def price_stages(meas, hist, sched, engine, engine_url=None, n_sims=4000, repric
                 runs.append((label, cutoff, have[k]))
                 continue
             _, summ, ex, _ = run.diagnostic(meas, hist, w["event_key"], cutoff, n_sims=n_sims)
-            rid = run.save_diagnostic(engine_url, w["event_key"], cutoff, summ, ex, n_sims, sweep_stage=label)
+            extra = {} if variant == "baseline" else dict(variant=variant)
+            rid = run.save_diagnostic(engine_url, w["event_key"], cutoff, summ, ex, n_sims, sweep_stage=label, **extra)
             runs.append((label, cutoff, rid))
         out[w["event_key"]] = runs
         echo(f"progress {len(out)}/{len(sched)} priced {w['event_key']} {w['name']}: "
@@ -204,8 +216,9 @@ def weekend_markets(conn, w, stage_runs):
     return markets
 
 
-def weekend(conn, w, stage_runs, params_list, echo=print):
-    """Trade one weekend. Returns dict(summary rows per mode, trades, stage scores, maker)."""
+def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=()):
+    """Trade one weekend. Returns dict(summary rows per mode, trades, stage scores, makers).
+    widen_kinds: market kinds whose maker fills lost on 60-min markouts in EARLIER weekends."""
     markets = weekend_markets(conn, w, stage_runs)
     if markets is None:
         return None
@@ -214,10 +227,10 @@ def weekend(conn, w, stage_runs, params_list, echo=print):
         tr, per = RB.run_weekend(markets, p)
         out["modes"][p.mode] = RB.summarize(tr, per)
         out["trades"][p.mode] = tr
-    # model vs market at each stage, scored on the result (win markets; pole before qualifying)
+    # model vs market at each stage, scored on the result (every kind; pole before qualifying)
     scores = []
     for lab, cutoff, _ in stage_runs:
-        for kind in ("race_win", "race_pole"):
+        for kind in KINDS:
             rows = [(s["fair"], s["price"], float(m["outcome"])) for m in markets if m["kind"] == kind
                     for s in m["stages"] if s["label"] == lab and s["fair"] is not None and s["price"] is not None
                     and m["outcome"] is not None and s["tradeable"]]
@@ -229,21 +242,34 @@ def weekend(conn, w, stage_runs, params_list, echo=print):
     out["markets"] = len(markets)
     out["tradeable_first"] = sum(m["stages"][0]["tradeable"] for m in markets)
     out["tradeable_last"] = sum(m["stages"][-1]["tradeable"] for m in markets)
-    # maker replay through the same stages (conservative fills)
+    # maker replays through the same stages (conservative fills), one per setting
+    out["makers"], out["markout_by_kind"] = {}, {}
     try:
+        from dataclasses import replace
+
         from racinglines.markets.strategies import maker_replay as R
         ev = R.load_event(conn, [r for _, _, r in stage_runs])
-        rep = R.replay(ev, R.Params())
-        s = R.summary(rep).loc["total"]
-        out["maker"] = dict(fills=int(s["fills"]), notional=float(s["notional"]), pnl=float(s["pnl"]),
-                            markout_60m=float(s["markout_60m"]), spread_pnl=float(s["spread_pnl"]))
     except Exception as ex:  # noqa: BLE001  (no tape for this weekend)
         echo(f"  maker replay skipped: {ex}")
-        out["maker"] = None
+        ev = None
+    for name, opts in MAKERS.items() if ev is not None else []:
+        opts = dict(opts)
+        p = R.Params()
+        if opts.pop("widen", False):
+            opts["half_spread_by_kind"] = {k: p.half_spread * WIDEN for k in widen_kinds}
+        rep = R.replay(ev, replace(p, **opts))
+        sk = R.summary(rep)
+        s = sk.loc["total"]
+        out["makers"][name] = dict(fills=int(s["fills"]), notional=float(s["notional"]), pnl=float(s["pnl"]),
+                                   markout_60m=float(s["markout_60m"]), spread_pnl=float(s["spread_pnl"]))
+        if name == "maker":
+            out["markout_by_kind"] = sk.drop(index="total")["markout_60m"].to_dict()
+    out["maker"] = out["makers"].get("maker")
     return out
 
 
-def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, reprice=False, taker=None, echo=print):
+def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, reprice=False, taker=None, echo=print,
+              variant="baseline"):
     """The whole season. Returns dict(weekends DataFrame, by_stage, by_kind, totals, trades, scores, params)."""
     from racinglines.db.config import get_session
 
@@ -255,25 +281,29 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
     echo("progress 0/1 building history")
     meas = run.Measurements.load(engine)
     hist = run.history(meas)
-    stage_runs = price_stages(meas, hist, sched, engine, engine_url, n_sims=n_sims, reprice=reprice, echo=echo)
+    stage_runs = price_stages(meas, hist, sched, engine, engine_url, n_sims=n_sims, reprice=reprice, echo=echo,
+                              variant=variant)
     base = taker or RB.TakerParams()
-    params_list = [RB.TakerParams(**{**base.__dict__, "mode": m}) for m in ("update", "hold", "last")]
+    params_list = [RB.TakerParams(**{**base.__dict__, "mode": m}) for m in TAKER_MODES]
     rows, all_trades, all_scores = [], [], []
+    markouts = {}                      # market kind -> maker's 60-min markout so far (as of each weekend)
     for rnd, w in sched.items():
         runs = stage_runs.get(w["event_key"])
         if not runs:
             continue
         with engine.connect() as c:
-            r = weekend(c, w, runs, params_list, echo=echo)
+            r = weekend(c, w, runs, params_list, echo=echo, widen_kinds=[k for k, v in markouts.items() if v < 0])
         if r is None:
             continue
+        for k, v in r["markout_by_kind"].items():
+            markouts[k] = markouts.get(k, 0.0) + v
         row = dict(round=rnd, event_key=w["event_key"], event=w["name"], format=w["format"], stages=len(runs),
                    markets=r["markets"], tradeable_pre=r["tradeable_first"], tradeable_quali=r["tradeable_last"],
                    last_run_id=runs[-1][2])
         for mode, s in r["modes"].items():
             row.update({f"{mode}_{k}": v for k, v in s.items()})
-        if r["maker"]:
-            row.update({f"maker_{k}": v for k, v in r["maker"].items()})
+        for name, m in r["makers"].items():
+            row.update({f"{name}_{k}": v for k, v in m.items()})
         rows.append(row)
         t = r["trades"]["update"]
         if len(t):
@@ -294,13 +324,13 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
                    .agg({"n": "sum", "brier_model": "mean", "brier_market": "mean"}).reset_index()
                    if len(scores) else scores)
     totals = {}
-    for mode in ("update", "hold", "last", "maker"):
+    for mode in (*TAKER_MODES, *MAKERS):
         col = f"{mode}_pnl"
         if col in weekends:
+            spent = f"{mode}_notional" if mode.startswith("maker") else f"{mode}_bought"
             totals[mode] = dict(pnl=float(weekends[col].fillna(0).sum()),
                                 weekends_up=int((weekends[col] > 0).sum()), weekends=int(weekends[col].notna().sum()),
-                                bought=float(weekends.get(f"{mode}_bought", pd.Series(dtype=float)).fillna(0).sum())
-                                if mode != "maker" else float(weekends.get("maker_notional", pd.Series(dtype=float)).fillna(0).sum()))
+                                bought=float(weekends.get(spent, pd.Series(dtype=float)).fillna(0).sum()))
     return dict(weekends=weekends, by_stage=by_stage, by_kind=RB.by(trades, "kind"), totals=totals, trades=trades,
                 scores=score_stage, params=dict(base.__dict__, n_sims=n_sims, data_lag_min=DATA_LAG.seconds // 60,
                                                 min_volume_24h=MIN_VOLUME_24H, coherence_tol=COHERENCE_TOL))

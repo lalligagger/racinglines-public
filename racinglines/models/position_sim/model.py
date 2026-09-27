@@ -47,7 +47,10 @@ import numpy as np
 import pandas as pd
 from sqlalchemy import text
 
+from racinglines import sports
 from racinglines.db.registry import STREET_CIRCUITS
+
+SCHEMA = sports.load("f1")
 from racinglines.core.stats import ranks
 
 HALF_LIFE_DAYS = 120.0
@@ -58,9 +61,22 @@ CAR_PACE = "mean"      # team sector pace from both drivers ("mean") or the team
 TEAMMATE_CORR = True   # share part of the qualifying/finishing noise between teammates
 FINISH_RHO_SCALE = 1.0 # fraction of the measured teammate finishing correlation used in the simulation
 X_CENTER, X_SCALE = 250.0, 50.0
-RACE_POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
-SPRINT_POINTS = {2021: [3, 2, 1]}
-SPRINT_POINTS_DEFAULT = [8, 7, 6, 5, 4, 3, 2, 1]
+
+# Challenger switches (docs/f1-roadmap.md, F1-2 / F1-3). The defaults reproduce the
+# baseline exactly; position_sim/variants.py names combinations for comparisons.
+FINISH_MODEL = "ridge"       # "ridge" | "gbm": gradient-boosted finishing model, monotone in grid and pace gaps
+GRID_TERMS = False           # front-of-grid term log(grid)/log(n): True = always, "known" = only once the grid is known
+PRE_PRACTICE_TRAIN = False   # before any practice at the event, use a finishing model trained on no-practice paces
+CHAOS = False                # race-level mixture: some simulated races are disrupted (more noise, more DNFs)
+TEAM_DNF_CORR = False        # teammates' retirements correlated at the measured rate
+REG_RESET = False            # in a regulation-reset season, car data from earlier seasons count REG_RESET_WEIGHT
+REG_RESET_WEIGHT = 0.25      # set a priori (= two half-lives older), not fitted
+RESET_YEARS = frozenset(SCHEMA["regulations"]["resets"])       # sports/f1.toml
+# a past race counts as disrupted if it had a red flag, >= 10% of laps behind the safety car, or rain (set a priori)
+DISRUPTED_SC_SHARE, DISRUPTED_RAIN_SHARE, CHAOS_PRIOR_N = 0.10, 0.25, 4.0
+RACE_POINTS = list(SCHEMA["points"]["race"])                       # sports/f1.toml
+SPRINT_POINTS = sports.int_keys(SCHEMA["points"]["sprint_by_year"])
+SPRINT_POINTS_DEFAULT = list(SCHEMA["points"]["sprint"])
 
 # team lineage across renames, so history carries over
 TEAM_ALIASES = {"racing_point": "aston_martin", "renault": "alpine", "toro_rosso": "rb", "alphatauri": "rb",
@@ -190,6 +206,22 @@ def event_measurements(res, laps, prof):
     return drivers, sectors
 
 
+def race_disruption(laps, prof):
+    """Per past race: safety-car lap share, red flag, rain, and whether it counts as
+    disrupted (see DISRUPTED_*). Known once the race has run (r_ts = race start)."""
+    r = laps[laps["round"] == "race"]
+    if r.empty:
+        return pd.DataFrame(columns=["event_id", "r_ts", "sc_share", "red_flag", "rain", "disrupted"])
+    st = r["track_status"].fillna("").astype(str)
+    g = r.assign(sc=st.str.contains("4"), red=st.str.contains("5")).groupby("event_id")
+    out = pd.DataFrame(dict(r_ts=g["session_ts"].first(), sc_share=g["sc"].mean(), red_flag=g["red"].any())).reset_index()
+    rain = prof.set_index("event_id")["race_rain_share"] if "race_rain_share" in prof else pd.Series(dtype=float)
+    out["rain"] = out["event_id"].map(rain).fillna(0.0).astype(float)
+    out["disrupted"] = (out["red_flag"] | (out["sc_share"] >= DISRUPTED_SC_SHARE)
+                        | (out["rain"] >= DISRUPTED_RAIN_SHARE))
+    return out
+
+
 def venue_track_features(prof, venue, before):
     """Track features for a venue from its dry profiles before a date (median),
     falling back to the field median if the venue is new."""
@@ -216,9 +248,9 @@ def venue_track_features(prof, venue, before):
 # Rolling (walk-forward) estimates
 # ---------------------------------------------------------------------------
 
-PRACTICE_KINDS = ("fp1", "fp2", "fp3", "sprint_qual")
+PRACTICE_KINDS = tuple(SCHEMA["sessions"]["practice"])
 # a session's data is usable only once it has ended (a cutoff inside a session sees nothing of it)
-SESSION_MINUTES = {"fp1": 60, "fp2": 60, "fp3": 60, "sprint_qual": 45, "qual": 60, "sprint": 45, "race": 150}
+SESSION_MINUTES = dict(SCHEMA["sessions"]["minutes"])
 QUAL_DONE = pd.Timedelta(minutes=SESSION_MINUTES["qual"])
 RACE_DONE = pd.Timedelta(minutes=SESSION_MINUTES["race"])
 
@@ -253,12 +285,21 @@ def _weights(dates, now):
     return 0.5 ** (age / HALF_LIFE_DAYS)
 
 
+def _car_weights(dates, now):
+    """Recency weights for car (team) pace; with REG_RESET, earlier seasons' data are
+    discounted once `now` is in a season with new technical regulations."""
+    w = _weights(dates, now)
+    if REG_RESET and pd.Timestamp(now).year in RESET_YEARS:
+        w = np.where(pd.to_datetime(dates).dt.year.to_numpy() < pd.Timestamp(now).year, w * REG_RESET_WEIGHT, w)
+    return w
+
+
 def fit_team_sector(sectors, now, use_track=True):
     """{team: (a, b)} from qualifying sector deficits before `now`."""
     s = sectors[sectors["q_ts"] + QUAL_DONE < now]
     if s.empty:
         return {}, 0.02
-    w = _weights(s["start_date"], now)
+    w = _car_weights(s["start_date"], now)
     s = s.assign(w=w, x=(s["v"] - X_CENTER) / X_SCALE)
     a0 = float(np.average(s["def"], weights=s["w"]))
     out = {}
@@ -283,7 +324,7 @@ def fit_team_race(drivers, xmap, now, use_track=True):
         return {}, 0.01
     t = d.groupby(["event_id", "team_key", "start_date"])["r_def"].mean().reset_index()
     t["x"] = t["event_id"].map(xmap).fillna(0.0)
-    t["w"] = _weights(t["start_date"], now)
+    t["w"] = _car_weights(t["start_date"], now)
     c0 = float(np.average(t["r_def"], weights=t["w"]))
     out = {}
     for team, g in t.groupby("team_key"):
@@ -363,6 +404,14 @@ def predict_paces(snap, entrants, tf):
 # ---------------------------------------------------------------------------
 
 FEATURES = ["g", "g_ease", "rp_rel", "rp_ease", "qp_rel", "street_g"]
+MONOTONE = {"g": 1, "g_log": 1, "rp_rel": 1, "qp_rel": 1}   # GBM: a worse grid or pace never improves the finish
+
+
+def features(grid_known=None):
+    """The finishing model's inputs under the current switches (grid_known: whether the
+    race being priced has its real grid; matters for GRID_TERMS = "known")."""
+    use = GRID_TERMS is True or (GRID_TERMS == "known" and grid_known is not False)
+    return FEATURES + (["g_log"] if use else [])
 
 
 def design(df, tf, use_track=True):
@@ -371,6 +420,8 @@ def design(df, tf, use_track=True):
     g = g.where(g > 0, n)
     out = pd.DataFrame(index=df.index)
     out["g"] = (g - 1) / max(n - 1, 1)
+    if GRID_TERMS:
+        out["g_log"] = np.log(g.clip(upper=n)) / np.log(max(n, 2))
     out["rp_rel"] = (df["rp"] - df["rp"].min()) * 100
     out["qp_rel"] = (df["qp"] - df["qp"].min()) * 100
     ease = tf["ease"] if use_track else 1.0
@@ -378,7 +429,7 @@ def design(df, tf, use_track=True):
     out["g_ease"] = out["g"] * (ease - 1)
     out["rp_ease"] = out["rp_rel"] * (ease - 1)
     out["street_g"] = out["g"] * street
-    return out[FEATURES]
+    return out[features()]
 
 
 def event_x(prof):
@@ -398,21 +449,34 @@ class FinishModel:
     use_track: bool = True
     rho_q: float = 0.0     # teammate correlation of qualifying noise
     rho_f: float = 0.0     # teammate correlation of finishing noise
+    features: tuple = tuple(FEATURES)
+    gbm: object = None     # FINISH_MODEL = "gbm": the fitted regressor (replaces coef/intercept)
+    chaos: dict | None = None   # CHAOS: dict(p, sigma_calm, sigma_chaos, dnf_calm, dnf_chaos)
+    rho_dnf: float = 0.0   # TEAM_DNF_CORR: latent correlation of teammates' retirements
 
 
-def fit_finish(hist, before, use_track=True, alpha=1.0):
-    """Ridge on earlier races' classified finishers: normalized finish ~ FEATURES."""
+def fit_finish(hist, before, use_track=True, alpha=1.0, no_practice=False, grid_known=None):
+    """Ridge (or, with FINISH_MODEL = "gbm", gradient boosting) on earlier races'
+    classified finishers: normalized finish ~ features(). no_practice: train on the
+    features computed from paces before the practice prior (PRE_PRACTICE_TRAIN)."""
     from sklearn.linear_model import Ridge
     h = hist[(hist["r_ts"] + RACE_DONE < before)]   # only races whose results were known at the cutoff
     fin = h[h["status"] == "OK"].copy()
     n = fin.groupby("event_id")["athlete_id"].transform("count")
     fin["y"] = (fin["position"] - 1) / (n - 1).clip(lower=1)
     w = _weights(fin["start_date"], before) + 0.05
-    X = fin[FEATURES].fillna(0.0)
+    feats = features(grid_known)
+    X = fin[[f"{f}_nopr" for f in feats]].set_axis(feats, axis=1) if no_practice else fin[feats]
+    X = X.fillna(0.0)
     if not use_track:
         X = X.assign(g_ease=0.0, rp_ease=0.0, street_g=0.0)
-    m = Ridge(alpha=alpha).fit(X, fin["y"], sample_weight=w)
-    resid = fin["y"] - m.predict(X)
+    gbm = None
+    if FINISH_MODEL == "gbm":
+        gbm, resid = _fit_gbm(fin, X, w, feats)
+        m = None
+    else:
+        m = Ridge(alpha=alpha).fit(X, fin["y"], sample_weight=w)
+        resid = fin["y"] - m.predict(X)
     q = h[h["q_def"].notna()]
     qcol = "qp_nopr" if "qp_nopr" in q else "qp"      # grid noise without practice (the prior sets its own)
     sigma_q = float(np.sqrt(np.average((q["q_def"] - q[qcol]) ** 2, weights=_weights(q["start_date"], before) + 0.05)))
@@ -420,8 +484,86 @@ def fit_finish(hist, before, use_track=True, alpha=1.0):
     if TEAMMATE_CORR:
         rho_q = teammate_corr(q.assign(r=q["q_def"] - q[qcol]), "r")
         rho_f = teammate_corr(fin.assign(r=resid), "r") * FINISH_RHO_SCALE
-    return FinishModel(m.coef_, float(m.intercept_), float(np.sqrt(np.average(resid ** 2, weights=w))), sigma_q,
-                       use_track, rho_q, rho_f)
+    ws = pd.Series(w, index=fin.index)
+    if gbm is not None:
+        rw = ws.loc[resid.index]
+        return FinishModel(np.zeros(len(feats)), 0.0, float(np.sqrt(np.average(resid ** 2, weights=rw))), sigma_q,
+                           use_track, rho_q, rho_f, tuple(feats), gbm, _chaos(h, fin, resid, ws), _dnf_corr(h))
+    sigma = float(np.sqrt(np.average(resid ** 2, weights=w)))
+    if feats == FEATURES and not (CHAOS or TEAM_DNF_CORR):
+        return FinishModel(m.coef_, float(m.intercept_), sigma, sigma_q, use_track, rho_q, rho_f)
+    return FinishModel(m.coef_, float(m.intercept_), sigma, sigma_q, use_track, rho_q, rho_f, tuple(feats), None,
+                       _chaos(h, fin, resid, ws), _dnf_corr(h))
+
+
+def _fit_gbm(fin, X, w, feats, holdout=0.2):
+    """Gradient boosting with fixed, a-priori settings (no tuning). The noise sigma
+    comes from out-of-time residuals: fit on the older races, score the most recent
+    `holdout` share, then refit on everything."""
+    from sklearn.ensemble import HistGradientBoostingRegressor
+
+    def model():
+        return HistGradientBoostingRegressor(max_iter=150, learning_rate=0.05, max_leaf_nodes=15, min_samples_leaf=40,
+                                             l2_regularization=1.0, monotonic_cst=[MONOTONE.get(f, 0) for f in feats],
+                                             random_state=0)
+    X = X.to_numpy(float)                     # simulate_race predicts on plain arrays
+    order = fin.groupby("event_id")["r_ts"].first().sort_values()
+    recent = set(order.index[int(len(order) * (1 - holdout)):])
+    late = fin["event_id"].isin(recent).to_numpy()
+    if late.sum() >= 100 and (~late).sum() >= 200:
+        early = model().fit(X[~late], fin["y"][~late], sample_weight=w[~late])
+        resid = fin["y"][late] - early.predict(X[late])
+    else:
+        resid = None
+    final = model().fit(X, fin["y"], sample_weight=w)
+    if resid is None:
+        resid = fin["y"] - final.predict(X)
+    return final, resid
+
+
+def _chaos(h, fin, resid, w):
+    """CHAOS: noise and DNF rates in disrupted vs calm past races (as of the cutoff)."""
+    if not CHAOS or "disrupted" not in h:
+        return None
+    dis = fin.loc[resid.index, "disrupted"].fillna(False).astype(bool)
+    rw = w.loc[resid.index]
+    if dis.sum() < 50 or (~dis).sum() < 50:
+        return None
+    sd = lambda m: float(np.sqrt(np.average(resid[m] ** 2, weights=rw[m])))
+    ev = h.drop_duplicates("event_id")
+    dnf = h["status"].isin(["DNF", "DSQ"])
+    hd = h["disrupted"].fillna(False).astype(bool)
+    base = float(dnf.mean())
+    return dict(p=float(ev["disrupted"].fillna(False).mean()), sigma_calm=sd(~dis), sigma_chaos=sd(dis),
+                dnf_calm=float(dnf[~hd].mean()) / base if base else 1.0,
+                dnf_chaos=float(dnf[hd].mean()) / base if base else 1.0)
+
+
+def chaos_prob(hist, venue, before, field):
+    """Share of disrupted races at a venue before a date, shrunk to the field rate."""
+    ev = hist[(hist["r_ts"] + RACE_DONE < before) & (hist["venue"] == venue)].drop_duplicates("event_id")
+    k = float(ev["disrupted"].fillna(False).sum()) if "disrupted" in ev else 0.0
+    return (k + CHAOS_PRIOR_N * field) / (len(ev) + CHAOS_PRIOR_N)
+
+
+def _dnf_corr(h):
+    """TEAM_DNF_CORR: latent correlation that reproduces the measured teammate DNF correlation."""
+    if not TEAM_DNF_CORR:
+        return 0.0
+    d = h[h["status"] != "DNS"].assign(dnf=h["status"].isin(["DNF", "DSQ"]).astype(float))
+    phi = teammate_corr(d, "dnf")
+    p = float(d["dnf"].mean())
+    if phi <= 0 or not 0 < p < 1:
+        return 0.0
+    from scipy.stats import multivariate_normal, norm
+    z = norm.ppf(p)
+    target = phi * p * (1 - p) + p * p               # P(both retire)
+    lo, hi = 0.0, 0.95
+    for _ in range(25):
+        mid = (lo + hi) / 2
+        both = multivariate_normal.cdf([z, z], cov=[[1, mid], [mid, 1]])
+        lo, hi = (mid, hi) if both < target else (lo, mid)
+    return float((lo + hi) / 2)
 
 
 def teammate_corr(df, col, lo=0.0, hi=0.9):
@@ -465,10 +607,12 @@ def season_drift(e, n_sims, rng, team_sd=TEAM_DRIFT_SD, driver_sd=DRIVER_DRIFT_S
     return team_shock + rng.normal(0, driver_sd, (n_sims, len(teams)))
 
 
-def simulate_race(fm, e, tf, n_sims=10000, rng=None, grid_known=False, points=RACE_POINTS, pace_shock=None):
+def simulate_race(fm, e, tf, n_sims=10000, rng=None, grid_known=False, points=RACE_POINTS, pace_shock=None,
+                  chaos_p=None):
     """e: entrants with qp, rp, p_dnf (and grid if grid_known). pace_shock: optional
-    (n_sims, n) shift of both qualifying and race pace (see season_drift). Returns
-    dict of (n_sims, n) arrays: pos (finishing position, DNFs last), dnf, points, grid."""
+    (n_sims, n) shift of both qualifying and race pace (see season_drift). chaos_p:
+    probability this race is disrupted (fm.chaos). Returns dict of (n_sims, n) arrays:
+    pos (finishing position, DNFs last), dnf, points, grid."""
     rng = rng or np.random.default_rng(0)
     n = len(e)
     shock = pace_shock if pace_shock is not None else 0.0
@@ -487,9 +631,26 @@ def simulate_race(fm, e, tf, n_sims=10000, rng=None, grid_known=False, points=RA
     street = tf["street"] if fm.use_track else 0.0
     feats = {"g": g, "g_ease": g * ease, "rp_rel": rp_rel, "rp_ease": rp_rel * ease, "qp_rel": qp_rel,
              "street_g": g * street}
-    score = fm.intercept + sum(c * feats[f] for c, f in zip(fm.coef, FEATURES))
-    score = score + _noise(rng, fm.sigma, fm.rho_f, teams, n_sims)
-    dnf = rng.random((n_sims, n)) < e["p_dnf"].to_numpy()[None, :]
+    if "g_log" in fm.features:
+        feats["g_log"] = np.log(np.clip(grid, 1, n)) / np.log(max(n, 2))
+    if fm.gbm is not None:
+        X = np.stack([np.broadcast_to(feats[f], (n_sims, n)).ravel() for f in fm.features], axis=1)
+        score = fm.gbm.predict(X).reshape(n_sims, n)
+    else:
+        score = fm.intercept + sum(c * feats[f] for c, f in zip(fm.coef, fm.features))
+    p_dnf = e["p_dnf"].to_numpy()[None, :]
+    if fm.chaos and chaos_p is not None:
+        wild = rng.random((n_sims, 1)) < chaos_p
+        sig = np.where(wild, fm.chaos["sigma_chaos"], fm.chaos["sigma_calm"])
+        score = score + sig * _noise(rng, 1.0, fm.rho_f, teams, n_sims)
+        p_dnf = np.clip(p_dnf * np.where(wild, fm.chaos["dnf_chaos"], fm.chaos["dnf_calm"]), 0, 0.9)
+    else:
+        score = score + _noise(rng, fm.sigma, fm.rho_f, teams, n_sims)
+    if fm.rho_dnf > 0:
+        from scipy.stats import norm
+        dnf = _noise(rng, 1.0, fm.rho_dnf, teams, n_sims) < norm.ppf(np.clip(p_dnf, 1e-6, 1 - 1e-6))
+    else:
+        dnf = rng.random((n_sims, n)) < p_dnf
     score = np.where(dnf, 10 + rng.random((n_sims, n)), score)
     pos = ranks(score)
     pts = np.zeros((n_sims, n))

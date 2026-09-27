@@ -21,11 +21,11 @@ championship odds, then trades them against the market:
 | ⏱️ **Practice pace prior** | Before qualifying, it cuts podium error by **8%** and teammate head-to-head error by **4%**. |
 | 💹 **The full 2026 season on Polymarket's real tape** | 15 weekends, re-priced after every session. **Market making: +$751** on $8,969 filled. After FP1, FP2, sprint qualifying and the sprint, the model's race-winner odds beat Polymarket's. |
 | 🚵 **43 downhill World Cup rounds** | 2021–2026, walk-forward. Error on who makes the Final is **38% lower** than a uniform guess (0.127 vs 0.204). The actual winner got **7.1%** on average, against ~1% for a uniform guess. |
-| ✅ **Checks in seconds** | `racinglines check` runs 21 checks (code, every data source, database) in ~10 s. The **regression suite** runs 88 tests on pinned public fixtures and golden outputs, and **zero data** is in git. |
+| ✅ **Checks in seconds** | `racinglines check` runs 21 checks (code, every data source, database) in ~10 s. The **regression suite** runs 108 tests on pinned public fixtures and golden outputs, and **zero data** is in git. |
 
 What's not there yet: **taking** Polymarket's price after qualifying still loses
 (Polymarket is sharper there, with a win Brier of 0.060 against our 0.072), and
-the season-long championship strategy is down $241 so far. The results below have the
+the season-long championship strategy is down $208 so far. The results below have the
 details.
 
 <!-- /readme -->
@@ -115,10 +115,11 @@ official timing ──> PostgreSQL ──> as-of model ──> simulated weekend
 
 | Question | Answer | Details |
 |---|---|---|
-| How accurate is the F1 model? | Beats uniform everywhere and a grid-only guess on top 10. Loses to the grid on the win market after qualifying. | [Formula 1 → Results](f1.md#results) |
+| How accurate is the F1 model? | Beats uniform everywhere and a grid-only guess on top 10. Baseline loses to the grid on the win market after qualifying; the `gridq` variant beats it. | [Formula 1 → Results](f1.md#results) |
 | Does practice data help? | Yes, a lot, before qualifying. | [Formula 1 → Results](f1.md#results) |
 | Can it make money on Polymarket? | Making markets: +$751 over 2026. Taking: not yet. | [Market making → Season sweep](market-making.md#season-sweep) |
-| What about the championship markets? | Season strategy: −$241 so far (holding does worse: −$532). | [Market making → Season strategy](market-making.md#season-strategy-championship-markets) |
+| Which model, traded which way? | `gridq+pretrain+reset`: the most accurate, and every weekend strategy makes money (default maker +$933). On the championship markets every model loses. Default unchanged for now. | [Market making → Model × strategy matrix](market-making.md#model-strategy-matrix) |
+| What about the championship markets? | Season strategy: −$208 so far (holding does worse: −$532). | [Market making → Season strategy](market-making.md#season-strategy-championship-markets) |
 | How accurate is the downhill model? | Better than uniform on podium and make-Final in every season; win odds too flat. | [Evaluation](evaluation.md) |
 | Who wins the 2026 downhill title? | [Current forecast](forecast.md) | |
 
@@ -146,6 +147,7 @@ have what you need.
 | 5. **Operate** | [CLI reference](cli.md) | Every command and option |
 | | [Testing](testing.md) | Quick check, regression suite, fixtures, golden outputs |
 | 6. **Background** | [Project history](history.md) · [TODO](todo.md) | How it got here, and what's next |
+| | [F1 roadmap](f1-roadmap.md) · [F1 reference](f1-reference.md) | The phased F1 plan with its ground rules, and the model and market-making ideas behind it |
 
 <!-- /readme -->
 
@@ -192,6 +194,7 @@ plus mkdocs's other dependencies, then run `mkdocs build` and open
 | `racinglines/db/` | Database: models, reads, queries, shared ingest helpers, registry of sports and venues |
 | `racinglines/web/` | The web app (`racinglines web`): Markets, My Book, Lab, admin |
 | `racinglines/testing/` | Synthetic data and the checks behind `racinglines check` |
+| `sports/*.toml`, `racinglines/sports.py` | Sport schemas: what differs between sports (sessions, points, categories, venues, markets), read by the code |
 | `racinglines/paths.py` | Where data lives (`data/raw`, `data/archive`, `data/runs`, `data/cache`) |
 | `migrations/`, `alembic.ini` | Alembic schema migrations |
 | `tests/`, `scripts/fetch_test_fixtures.py` | Regression suite on fixtures built from public sources, plus golden outputs (see [Testing](testing.md)) |

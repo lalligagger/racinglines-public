@@ -9,6 +9,10 @@ racinglines f1 <command>: Formula 1.
   Pricing (all through models.position_sim.pricing.price_race with a hard as-of cutoff)
     backtest     HISTORICAL: price every past race as of just before qualifying and just
                  before the race; score against outcomes. Saved as kind='backtest'.
+    compare      Two saved backtest runs, paired by race: challenger − baseline ± 2 SE per metric
+                 and pricing stage (the roadmap's promotion evidence); --reliability adds calibration.
+    matrix       Every model variant x every trading strategy: accuracy (latest saved backtest per
+                 variant, paired vs baseline) and 2026 P&L (latest sweep + season strategy per variant).
     diagnostic   ONE PAST EVENT at a chosen cutoff (e.g. yesterday); saved as kind='diagnostic'.
     sweep        Every race of a season traded through the weekend: price before any running
                  and after each session, trade Polymarket (update / hold / after-quali taker
@@ -16,6 +20,9 @@ racinglines f1 <command>: Formula 1.
     season-strategy  Default championship-market strategy through the season: as-of season
                  forecasts pre-season and after every race, trades at Polymarket's recorded
                  prices (+ spread and slippage), settles eliminated markets, marks the rest.
+    season-checkpoints  Championship markets entered at fixed points (pre-season, after 3 and
+                 after 6 grands prix) and held, per model variant: P&L over the next 3 GPs and
+                 to date, and how far the market moved toward our fair value.
     replay       Replay a maker quoting Polymarket from one or more diagnostic runs against
                  the real trade tape; fills, inventory, P&L at resolution, mark-outs.
     forecast     LIVE: cutoff = now; upcoming races + championships. Saved as kind='forecast'
@@ -40,6 +47,9 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="racinglines f1", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--db", default=None, help="Database URL (default: $DATABASE_URL / docker-compose).")
+    ap.add_argument("--variant", default="baseline",
+                    help="Model variant for pricing (position_sim/variants.py), e.g. grid, gbm, grid+tail. "
+                         "Saved runs record it.")
     ap.add_argument("--half-life", type=float, default=None,
                     help="Recency half-life in days for the pace models (default: position_sim.model.HALF_LIFE_DAYS).")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -95,6 +105,16 @@ def main(argv=None):
     p.add_argument("--max-stake", type=float, default=150.0)
     p.add_argument("--capital", type=float, default=1500.0)
     p.add_argument("--save", action="store_true")
+    p = sub.add_parser("season-checkpoints")
+    p.add_argument("--variants", default=None,
+                   help="Comma-separated model variants (default: every variant whose season forecast "
+                        "differs, and the combos)")
+    p.add_argument("--year", type=int, default=2026)
+    p.add_argument("--entries", default="0,3,6", help="Grands prix completed at each entry")
+    p.add_argument("--window", type=int, default=3, help="Grands prix per scoring window")
+    p.add_argument("--sims", type=int, default=5000)
+    p.add_argument("--save", action="store_true")
+    p.add_argument("--out", default=None, help="Markdown file (default data/runs/f1/season_checkpoints.md)")
     p = sub.add_parser("replay")
     p.add_argument("--runs", required=True, help="Diagnostic run ids in time order, e.g. 11,9")
     p.add_argument("--sweep", action="store_true", help="Also sweep half-spread and fill rule.")
@@ -106,6 +126,15 @@ def main(argv=None):
     p.add_argument("--save", action="store_true", help="Store as a model run (kind='backtest').")
     p.add_argument("--races", type=int, default=None, help="Only the last N races (quick runs).")
     p.add_argument("--track", choices=["both", "on", "off"], default="both", help="Track features: compare both, or one.")
+    p = sub.add_parser("compare")
+    p.add_argument("baseline", type=int, help="Saved backtest run id (the reference)")
+    p.add_argument("challenger", type=int, help="Saved backtest run id to compare against it")
+    p.add_argument("--reliability", action="store_true", help="Also print reliability tables (runs saved with probabilities)")
+    p = sub.add_parser("matrix")
+    p.add_argument("--variants", default="baseline,grid,gridq,pretrain,gbm,tail,gridq+pretrain",
+                   help="Comma-separated model variants (rows)")
+    p.add_argument("--year", type=int, default=2026)
+    p.add_argument("--out", default=None, help="Markdown file (default data/runs/f1/matrix.md)")
     p = sub.add_parser("diagnostic")
     p.add_argument("--event", required=True, help="Season-round, e.g. 2026-15")
     p.add_argument("--cutoff", required=True, help="UTC as-of time, e.g. 2026-09-25T23:59")
@@ -121,7 +150,13 @@ def main(argv=None):
     p.add_argument("--scenario", default=None, metavar="LABEL",
                    help="Save as kind='scenario' (not used for live prices until promoted in the web app).")
     args = ap.parse_args(argv)
+    from racinglines.models.position_sim import variants as V
+    V.switches(args.variant)                         # fail fast on an unknown name
+    with V.use(args.variant):
+        return _run(args)
 
+
+def _run(args):
     import pandas as pd
     pd.set_option("display.width", 220)
     fmt = {c: "{:.1%}".format for c in ("win_prob", "podium_prob", "top10_prob", "pole_prob", "dnf_prob",
@@ -216,7 +251,7 @@ def main(argv=None):
         prm = SeasonParams(min_edge=args.min_edge, stake_per_edge=args.stake_per_edge, max_stake=args.max_stake,
                            capital=args.capital)
         out = SE.run_season(engine, args.db, args.year, prm, fetch=not args.no_fetch, reforecast=args.reforecast,
-                            n_sims=args.sims, echo=lambda m: print(m, flush=True))
+                            n_sims=args.sims, echo=lambda m: print(m, flush=True), variant=args.variant)
         r, h = out["result"], out["hold"]
         print(f"\n=== Default season strategy, {args.year} ({out['markets']} markets) ===")
         for k, v in r["summary"].items():
@@ -237,6 +272,7 @@ def main(argv=None):
                 run_id = save_model_run(
                     s, competition="f1_wdc", season=args.year, category="DRV", model="season_strategy", kind="season_strategy",
                     params=dict({k: (str(v) if hasattr(v, "total_seconds") else v) for k, v in prm.__dict__.items()}, year=args.year,
+                                variant=args.variant,
                                 min_volume=SE.MIN_VOLUME, slippage=SE.SLIPPAGE, default_half_spread=SE.DEFAULT_HALF_SPREAD,
                                 live_run=out["live_run"]),
                     metrics=dict(summary=r["summary"], hold=h["summary"], equity=records(eq.assign(t=eq["t"].astype(str))),
@@ -245,6 +281,34 @@ def main(argv=None):
                                  now=records(out["now"]),
                                  decisions=[dict(d, t=str(d["t"])) for d in out["decisions"]]))
             print(f"Saved season strategy run {run_id}.")
+        return
+    if args.cmd == "season-checkpoints":
+        from racinglines import paths
+        from racinglines.pipelines import season_checkpoints as SC
+        from racinglines.models.position_sim import variants as V
+        variants = [v.strip() for v in args.variants.split(",")] if args.variants else list(SC.VARIANTS)
+        entries = tuple(int(x) for x in args.entries.split(","))
+        for v in variants:
+            V.switches(v)                                  # fail fast on an unknown name
+        df, info = SC.run(engine, args.db, variants, args.year, entries=entries, window=args.window, n_sims=args.sims,
+                          echo=lambda m: print(m, flush=True))
+        md = SC.format_summary(df, args.window) + "\n\n" + SC.format_table(df)
+        print(f"\n=== Championship checkpoints, {args.year} ({info['markets']} markets) ===\n")
+        print(md)
+        cols = ["variant", "entry", "window", "pnl", "bought", "positions", "markets", "edged", "drift", "hit", "slope", "slope_se"]
+        print("\n" + df[cols].to_string(index=False, float_format="{:.3f}".format))
+        dest = Path(args.out) if args.out else paths.runs("f1") / "season_checkpoints.md"
+        dest.write_text(md + "\n")
+        print(f"-> {dest}")
+        if args.save:
+            from racinglines.db.queries import save_model_run
+            with get_session(args.db) as s:
+                run_id = save_model_run(
+                    s, competition="f1_wdc", season=args.year, category="DRV", model="season_checkpoints",
+                    kind="season_checkpoints",
+                    params=dict(year=args.year, entries=list(entries), window=args.window, variants=variants),
+                    metrics=dict(rows=records(df.assign(end=df["end"].astype(str)))))
+            print(f"Saved season checkpoints run {run_id}.")
         return
     if args.cmd == "sweep":
         from racinglines.markets.strategies.taker_weekend import TakerParams
@@ -257,7 +321,7 @@ def main(argv=None):
         taker = TakerParams(min_edge=args.min_edge, stake_per_edge=args.stake_per_edge, max_stake=args.max_stake,
                             cost=args.cost)
         out = SW.run_sweep(engine, args.db, args.year, rounds, n_sims=args.sims, fetch=not args.no_fetch,
-                           reprice=args.reprice, taker=taker, echo=lambda m: print(m, flush=True))
+                           reprice=args.reprice, taker=taker, variant=args.variant, echo=lambda m: print(m, flush=True))
         w = out["weekends"]
         cols = [c for c in ["event_key", "event", "format", "stages", "tradeable_pre", "tradeable_quali",
                             "update_trades", "update_bought", "update_pnl", "hold_pnl", "last_pnl", "maker_fills",
@@ -282,7 +346,8 @@ def main(argv=None):
             from racinglines.db.queries import save_model_run
             with get_session(args.db) as s:
                 run_id = save_model_run(s, competition="f1_wdc", season=args.year, category="DRV", model="f1_sector_sim",
-                                        kind="sweep", params=dict(out["params"], year=args.year, rounds=args.rounds),
+                                        kind="sweep", params=dict(out["params"], year=args.year, rounds=args.rounds,
+                                                                  variant=args.variant),
                                         metrics=dict(weekends=records(w), totals=out["totals"],
                                                      by_stage=records(out["by_stage"]), by_kind=records(out["by_kind"]),
                                                      scores=records(out["scores"])))
@@ -323,6 +388,35 @@ def main(argv=None):
         run.M.HALF_LIFE_DAYS = args.half_life
     knobs = dict(half_life_days=run.M.HALF_LIFE_DAYS)
 
+    if args.cmd == "compare":
+        from racinglines.models.position_sim import evaluate as EV
+        with engine.connect() as c:
+            (pa, a), (pb, b) = EV.load_run(c, args.baseline), EV.load_run(c, args.challenger)
+        print(f"Run {args.baseline} ({pa.get('variant', 'baseline')}) vs run {args.challenger} "
+              f"({pb.get('variant', 'baseline')}): challenger − baseline, ± 2 SE over races\n")
+        print(EV.format_paired(EV.paired(a, b)))
+        if args.reliability:
+            for name, rows in ((args.baseline, a), (args.challenger, b)):
+                rel = pd.concat([EV.reliability(rows, k) for k in ("win", "podium", "top10")], ignore_index=True)
+                if not len(rel):
+                    print(f"\nrun {name}: saved without probabilities (re-run the backtest)")
+                    continue
+                print(f"\n=== Reliability, run {name} ===")
+                print(EV.calibration_error(rel).pivot(index="market", columns="mode", values="ece").round(4).to_string())
+                print(rel.round(4).to_string(index=False))
+        return
+    if args.cmd == "matrix":
+        from racinglines import paths
+        from racinglines.models.position_sim import evaluate as EV
+        with engine.connect() as c:
+            m = EV.matrix(c, [v.strip() for v in args.variants.split(",")], args.year)
+        md = EV.format_matrix(m)
+        print(md)
+        print("\nRuns: " + "; ".join(f"{v}: " + ", ".join(f"{k} {i}" for k, i in r.items() if i) for v, r in m["runs"].items()))
+        dest = Path(args.out) if args.out else paths.runs("f1") / "matrix.md"
+        dest.write_text(md + "\n")
+        print(f"-> {dest}")
+        return
     if args.cmd == "backtest":
         if args.no_track:
             args.track = "off"
@@ -331,7 +425,7 @@ def main(argv=None):
             print(f"progress 0/1 building history (track features {'on' if use_track else 'off'})", flush=True)
             hist = run.history(meas, use_track)
             bt = run.backtest(meas, hist, args.start_year, args.sims, use_track, last_n=args.races,
-                              echo=lambda m: print(m, flush=True))
+                              echo=lambda m: print(m, flush=True), keep_probs=True)
             bt["track_features"] = use_track
             results.append(bt)
             print(f"\n=== Track features {'ON' if use_track else 'OFF'}: mean over {bt['event_id'].nunique()} races ===")
@@ -339,14 +433,14 @@ def main(argv=None):
         out = pd.concat(results, ignore_index=True)
         from racinglines import paths
         dest = args.out or paths.runs("f1", "backtests") / f"backtest_{pd.Timestamp.now():%Y%m%d_%H%M}.csv"
-        out.to_csv(dest, index=False)
+        out.drop(columns=["pred"], errors="ignore").to_csv(dest, index=False)
         print(f"\nPer-race rows -> {dest}")
         if args.save:
             from racinglines.db.queries import save_model_run
             with get_session(args.db) as s:
                 run_id = save_model_run(s, competition="f1_wdc", category="DRV", model="f1_sector_sim", kind="backtest",
                                         params=dict(start_year=args.start_year, sims=args.sims, races=args.races,
-                                                    track=args.track, **knobs),
+                                                    track=args.track, variant=args.variant, **knobs),
                                         metrics=dict(summary={f"{m}|track={t}": run.summarize_backtest(g).iloc[0].to_dict()
                                                               for (m, t), g in out.groupby(["mode", "track_features"])},
                                                      events=records(out)))

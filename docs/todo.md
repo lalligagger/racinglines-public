@@ -4,16 +4,33 @@
 
 <!-- readme: todo-summary -->
 
-**F1 model and trading**
+**F1 model and trading** (phased in the [F1 roadmap](f1-roadmap.md))
 
-- [ ] Fix the front-of-grid weighting: after qualifying, the model loses to a
-      grid-only guess on the win market.
-- [ ] Pre-practice pricing: train the finishing model for the no-practice case too.
-- [ ] Stage-aware taker strategy (stop re-trading after FP3 and qualifying),
-      tested on events after Baku.
-- [ ] Record every race weekend's Polymarket tape and order books, then replay
-      with book depth and a queue model.
-- [ ] Chaotic-race tail (rain, safety cars, multiple DNFs); top-constructor calibration.
+- [x] F1-0: CLOB V2 check (it's V1: fix below); market recorder persistent (LaunchAgent).
+- [ ] **Migrate order signing to Polymarket CLOB V2** (`py-clob-client-v2`). V1 orders are rejected
+      on production since 2026-04-28. Required before enabling trading.
+- [x] F1-1: `racinglines f1 compare` (paired ± 2 SE tables), log loss, reliability curves.
+- [x] F1-2: fix the front-of-grid weighting: after qualifying, the model loses to a
+      grid-only guess on the win market (`gridq`: 0.0306 vs 0.0309).
+- [ ] **Promote `gridq+pretrain` to the default** (owner's OK: it changes live prices;
+      re-run the sweep and `UPDATE_GOLDEN` in the same change).
+- [x] F1-2: pre-practice pricing: train the finishing model for the no-practice case too.
+- [x] F1-4: stage-aware taker strategy (stop re-trading after FP3 and qualifying): +$1,874, in-sample.
+- [ ] F1-4: confirm the stage-aware taker on events after Baku.
+- [x] F1-4: inventory skew that grows before each session, flatten before quali, widen on bad markouts.
+- [ ] F1-4: replay with recorded book depth and a queue model (needs recorded books: from 2026-09-26).
+- [ ] **Download and backtest 2025 on Polymarket** (~150 events over 25 GPs, $441M traded; minute
+      prices and trades are still served for closed markets, order books are not). Run the weekend
+      sweep, the season strategy and the checkpoints on 2025: an out-of-sample test for the
+      stage-aware taker and `reset` (both came from 2026), and a normal season to contrast with
+      2026's regulation reset. Maker replays run on prices and trades only (no 2025 books).
+- [ ] F1-2: driver layer in a new season: the teammate offset carries last season (2026: Russell
+      priced far above Antonelli after 3 GPs). Candidate: faster forgetting for second-year drivers,
+      judged on every season, not 2026 alone.
+- [ ] Data: ingest pre-season testing (FastF1 testing sessions), so the pre-season forecast sees
+      what the market sees in a new-regulations year.
+- [x] F1-3: chaotic-race tail, correlated DNFs (`tail`: neutral, not promoted).
+- [ ] F1-3: safety-car / red-flag / rain props (deferred: no strategy trades them yet).
 
 **Downhill: points validation (highest priority)**
 
@@ -31,8 +48,9 @@
 
 **Platform**
 
-- [ ] Sport schemas (`sports/*.yaml`) over one shared core, so the differences
-      between sports are configuration, not code.
+- [x] Sport schemas (`sports/*.toml`), read by the existing code, so the differences
+      between sports are configuration. Additive only (see the [F1 roadmap](f1-roadmap.md) decision log).
+- [x] F1 roadmap: F1-0 to F1-4 done (see the [matrix](market-making.md#model-strategy-matrix)); F1-5 deferred.
 - [ ] Kalshi as a second exchange.
 - [ ] Per-maker exposure limits, per-taker limits and ledgers.
 - [ ] Condition in-weekend forecasts on completed rounds (Q1 results, split times).
@@ -116,39 +134,53 @@ standings, champion odds, `spearman_points`) is approximate.
 
 ## F1 model
 
-- [ ] **Chaotic-race tail:** a mixture with rain, safety-car and multi-DNF races
+Phased plan and ground rules: [F1 roadmap](f1-roadmap.md). Items tagged
+(F1-n) belong to that roadmap phase.
+
+- [ ] **Evaluation (F1-1):** `racinglines f1 compare RUN_A RUN_B` with paired
+      ± 2 SE tables; log loss and reliability curves per market type and stage;
+      model-vs-Polymarket Brier per stage for every market type.
+- [ ] **Chaotic-race tail (F1-3):** a mixture with rain, safety-car and multi-DNF races
       (inflated noise, more DNFs), so backmarkers get realistic points chances.
       The Sainz–Alonso market showed the gap.
 - [x] **Practice pace prior** (2026-09-26): large gain before qualifying (backtest in [Formula 1](f1.md#results)).
-- [ ] **Pre-practice pricing got slightly worse** with the practice prior: train the finishing model on
+- [ ] **Pre-practice pricing got slightly worse (F1-2)** with the practice prior: train the finishing model on
       no-practice paces for pre-FP1 pricing (or on both).
 - [x] Re-price the 2026 sweep stages with the practice prior and re-run the sweep (run 191: update −$1,313 → −$479, hold −$2 → +$214).
-- [ ] **Front of the grid is underweighted.** After qualifying, the model loses to a
+- [ ] **Front of the grid is underweighted (F1-2).** After qualifying, the model loses to a
       grid-only baseline on win and ties it on podium (backtest run 115, 129 races). Check the finishing
       model's noise and grid terms. Consider a grid-position prior that the
       model adjusts.
 - [x] Car shared by teammates: car pace from both drivers, teammate-correlated noise
       (2026-09-26). Teammate head-to-heads improved.
-- [ ] **Top-scoring constructor got slightly worse** with shared noise (+0.0008 Brier).
+- [ ] **Top-scoring constructor got slightly worse (F1-3)** with shared noise (+0.0008 Brier).
       Check team points variance vs reality, and correlated DNFs (teammate DNF
       correlation +0.11 isn't simulated).
 - [ ] Teammate-battle uncertainty: a larger per-driver season drift, or a
       driver-form model.
-- [ ] Price fastest lap, safety car / red flag, and sprint markets.
+- [ ] Price fastest lap, safety car / red flag, rain (F1-3: per-circuit rates from track status
+      and weather), and sprint markets.
 - [ ] Refresh the Polymarket sync and repricing on a schedule during race
       weekends.
 
 ## Market making
 
 - [x] As-of diagnostics, Polymarket minute prices and trade tape, maker replay, tests (Baku).
-- [ ] Keep `markets record` running through every race weekend (LaunchAgent), then
-      fetch `markets trades` after each race.
-- [ ] Replay with recorded book depth: queue position and competing makers,
+- [ ] **Migrate to CLOB V2** (found in F1-0): `markets/polymarket/trade.py` signs with the V1
+      `py-clob-client==0.34.6`, and V1-signed orders stopped working on 2026-04-28. Move to
+      `py-clob-client-v2` (the order struct and EIP-712 domain version changed), re-test the
+      dry run, and only then enable trading.
+- [x] Keep `markets record` running through every race weekend (LaunchAgent, F1-0).
+- [ ] Fetch `markets trades` after each race.
+- [ ] Replay with recorded book depth (F1-4): queue position and competing makers,
       instead of the touch/through bounds.
-- [ ] **Stage-aware taker:** in the 2026 sweep, trades after FP3 and qualifying lost
+- [ ] **Stage-aware taker (F1-4):** in the 2026 sweep, trades after FP3 and qualifying lost
       −$2,353 while FP1/FP2/sprint trades made +$1,944. Test a strategy that stops
       re-trading late in the weekend, on events after Baku (not tuned on these).
-- [ ] Flatten or hedge inventory before qualifying (Baku's biggest losses were
+- [ ] **Maker options (F1-4):** time-to-next-session inventory skew (Avellaneda-Stoikov style);
+      pull windows for every session type; markout-driven widening; liquidity
+      rewards as a replay P&L line; optional fractional-Kelly caps.
+- [ ] Flatten or hedge inventory before qualifying (F1-4) (Baku's biggest losses were
       pre-qualifying shorts).
 - [ ] Replay across every backtest race once their Polymarket tapes are
       fetched; only then tune half-spread, limits and the disagreement filter.
@@ -162,7 +194,7 @@ standings, champion odds, `spearman_points`) is approximate.
 - [ ] **Condition in-weekend forecasts on completed rounds.** Once Q1 has run, fix
       who has qualified and use the Q1 times. Also use split times from disrupted
       Timed Training sessions.
-- [ ] Market-making loop: re-quote linked markets automatically when the model or
+- [ ] Market-making loop (F1-5): re-quote linked markets automatically when the model or
       book moves, within per-market and total exposure limits.
 - [ ] Find a venue that lists downhill markets. Polymarket has none as of 2026-09.
 - [x] In-progress events are forecast with their real start lists and saved against their race.

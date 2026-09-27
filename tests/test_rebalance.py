@@ -61,3 +61,10 @@ def test_stake_cap_and_flip():
     buys = [t for t in r["trades"] if t["shares"] > 0]
     assert buys[0]["shares"] * buys[0]["price"] == pytest.approx(50)    # capped at max_stake
     assert r["yes"] == 0 and r["no"] > 0                                 # flipped to NO
+
+
+def test_early_mode_skips_late_stages():
+    """The stage-aware taker trades up to FP2 and holds through FP3 and qualifying."""
+    stages = [st("pre-weekend", 0.40, 0.30), st("after FP3", 0.60, 0.40), st("after Quali", 0.70, 0.40)]
+    r = RB.run_market(stages, True, RB.TakerParams(**{**P.__dict__, "mode": "early"}))
+    assert [t["stage"] for t in r["trades"]] == ["pre-weekend"]

@@ -1,0 +1,61 @@
+"""
+Named model variants: combinations of the challenger switches in model.py
+(docs/f1-roadmap.md, F1-2 / F1-3). "baseline" is today's default model.
+
+    with variants.use("grid+pretrain"):
+        hist = pricing.history(meas)          # build history INSIDE the variant: features differ
+        ...
+
+Names combine with "+". Each run that prices with a variant records its name
+(params.variant), so stored sweep stages and backtests are never mixed.
+"""
+
+from contextlib import contextmanager
+
+from racinglines.models.position_sim import model as M
+
+SWITCHES = {
+    "baseline": {},
+    "grid": dict(GRID_TERMS=True),                 # F1-2 step 1: front-of-grid term in the ridge
+    "gridq": dict(GRID_TERMS="known"),             # the same term, only once the real grid is known
+    "pretrain": dict(PRE_PRACTICE_TRAIN=True),     # F1-2 step 2: no-practice training for pre-FP1 pricing
+    "gbm": dict(FINISH_MODEL="gbm"),               # F1-2 step 3: gradient-boosted finishing model
+    "tail": dict(CHAOS=True, TEAM_DNF_CORR=True),  # F1-3: disrupted-race mixture + correlated retirements
+    "reset": dict(REG_RESET=True),                 # earlier seasons' car pace discounted in a new-regulations year
+}
+DESCRIPTION = {
+    "baseline": "current model (shared car, practice prior, ridge finishing model)",
+    "grid": "adds a front-of-grid term, log(grid)/log(n), to the finishing model",
+    "gridq": "the front-of-grid term only once the real grid is known (after qualifying)",
+    "pretrain": "before any practice, uses a finishing model trained on no-practice paces",
+    "gbm": "gradient-boosted finishing model (monotone in grid and pace), out-of-time noise",
+    "tail": "some simulated races are disrupted (more noise and retirements); teammates' retirements correlated",
+    "reset": "in a season with new technical regulations (2022, 2026), earlier seasons' car pace counts a quarter",
+}
+
+
+def switches(name):
+    out = {}
+    for part in name.split("+"):
+        if part not in SWITCHES:
+            raise ValueError(f"unknown variant {part!r}; known: {', '.join(SWITCHES)}")
+        out.update(SWITCHES[part])
+    return out
+
+
+def describe(name):
+    return "; ".join(DESCRIPTION[p] for p in name.split("+"))
+
+
+@contextmanager
+def use(name):
+    """Set the variant's switches on the model module; restore the defaults afterwards."""
+    sw = switches(name)
+    old = {k: getattr(M, k) for k in sw}
+    for k, v in sw.items():
+        setattr(M, k, v)
+    try:
+        yield sw
+    finally:
+        for k, v in old.items():
+            setattr(M, k, v)

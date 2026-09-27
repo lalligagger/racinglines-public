@@ -1,0 +1,11 @@
+{% from "_macros.html" import csrf %}
+<h2>Event diagnostics</h2>
+<p class="legend">A past event priced as of chosen cutoffs, compared with Polymarket at the same moment and scored on the result, plus a maker replay on Polymarket's real trade tape (conservative fills, ±2¢; tune the strategy knobs on the details page).</p>
+<div class="scroll"><table><thead><tr><th class="l">Event</th><th class="l">As-of runs</th><th>Win Brier: model / PM</th><th>Podium Brier: model / PM</th><th>Replay fills</th><th>Mark-out 60m</th><th>Replay P&amp;L</th><th></th></tr></thead><tbody>
+{% for e in event_diags %}<tr><td class="l">{{ e.venue }} <span class="muted">{{ e.event_key }}</span></td><td class="l">{{ e.runs }} <span class="muted">({{ e.cutoffs }})</span></td>
+<td>{% if e.brier_win_model is not none %}<span class="{{ 'good' if e.brier_win_model < e.brier_win_pm else 'bad' }}">{{ "%.3f"|format(e.brier_win_model) }}</span> / {{ "%.3f"|format(e.brier_win_pm) }}{% endif %}</td>
+<td>{% if e.brier_podium_model is not none %}<span class="{{ 'good' if e.brier_podium_model < e.brier_podium_pm else 'bad' }}">{{ "%.3f"|format(e.brier_podium_model) }}</span> / {{ "%.3f"|format(e.brier_podium_pm) }}{% endif %}</td>
+<td>{{ e.replay_fills if e.replay_fills is not none else "no tape" }}</td><td>{{ e.replay_markout|fmt("markout_60m") if e.replay_markout is not none }}</td>
+<td class="{{ 'good' if e.replay_pnl and e.replay_pnl > 0 else 'bad' }}">{{ e.replay_pnl|fmt("pnl") if e.replay_pnl is not none }}</td>
+<td><a href="/diag/{{ e.run_id }}">details &amp; strategy replay →</a></td></tr>
+{% else %}<tr><td class="l muted" colspan="8">None yet: run an <b>Event diagnostic</b> above.</td></tr>{% endfor %}</tbody></table></div>
