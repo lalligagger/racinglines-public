@@ -150,7 +150,16 @@ def load_at(run, t):
 
 
 def book_opened(run):
-    """When the private book that ran opened: its first crowd update's time (ISO), or None."""
+    """When the private book that ran opened: meta.json's opened_at (F1: the pre-weekend update, before any
+    crowd batch), else its first crowd update's time (ISO), or None."""
+    mp = folder(run) / "meta.json"
+    if mp.exists():
+        try:
+            at = json.loads(mp.read_text()).get("opened_at")
+        except ValueError:
+            at = None
+        if at:
+            return at
     p = folder(run) / "crowd.jsonl"
     if not p.exists():
         return None
@@ -257,11 +266,10 @@ def event_name(event_key):
 
 
 def _runs_of(event_key):
+    """The run folders of an event: every registry entry with this event key (a downhill event's finals, an F1
+    weekend's run under any name)."""
     b = base()
-    if not b.exists():
-        return []
-    exact = b / event_key
-    return [exact] if (exact / "meta.json").exists() or (exact / "snaps").exists() else sorted(b.glob(f"{event_key}_*"))
+    return sorted(b / e["run"] for e in events() if e["event_key"] == event_key)
 
 
 def book_curve(event_key, maker=True):
