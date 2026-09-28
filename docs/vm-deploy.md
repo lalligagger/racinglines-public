@@ -80,11 +80,11 @@ gcloud storage buckets update gs://$RACINGLINES_GCS_BUCKET --versioning
 
 **3. The VM's service account** (it reads and writes the bucket; no keys)
 ```sh
-gcloud iam service-accounts create rl-vm --display-name="racinglines VM"
+gcloud iam service-accounts create racinglines-vm --display-name="racinglines VM"
 gcloud storage buckets add-iam-policy-binding gs://$RACINGLINES_GCS_BUCKET \
-  --member=serviceAccount:rl-vm@racinglines.iam.gserviceaccount.com --role=roles/storage.objectUser
+  --member=serviceAccount:racinglines-vm@racinglines.iam.gserviceaccount.com --role=roles/storage.objectUser
 gcloud projects add-iam-policy-binding racinglines \
-  --member=serviceAccount:rl-vm@racinglines.iam.gserviceaccount.com --role=roles/logging.logWriter
+  --member=serviceAccount:racinglines-vm@racinglines.iam.gserviceaccount.com --role=roles/logging.logWriter
 ```
 
 **4. The VM, with SSH only through IAP**
@@ -92,7 +92,7 @@ gcloud projects add-iam-policy-binding racinglines \
 gcloud compute instances create racinglines-vm --zone=us-west1-b --machine-type=e2-small \
   --image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud \
   --boot-disk-size=30GB --boot-disk-type=pd-balanced --shielded-secure-boot \
-  --service-account=rl-vm@racinglines.iam.gserviceaccount.com --scopes=cloud-platform
+  --service-account=racinglines-vm@racinglines.iam.gserviceaccount.com --scopes=cloud-platform
 gcloud compute firewall-rules create allow-iap-ssh --network=default --allow=tcp:22 \
   --source-ranges=35.235.240.0/20
 gcloud compute firewall-rules delete default-allow-ssh default-allow-rdp --quiet
