@@ -169,7 +169,9 @@ points = QUAL_POINTS[qualifying rank] + FINAL_POINTS[final rank]
 !!! warning
     `FINAL_POINTS` (250/210/180/…/11 for places 1–30) and `QUAL_POINTS`
     (60/50/40/…/2 for places 1–20) are **placeholders**, and the same tables are
-    used for every era. See [Roadmap](todo.md#points-validation).
+    used for every era. See [Roadmap](todo.md#points-validation). Official tables, once entered,
+    go in `points_schemes` per era (`racinglines mtb_dh points import`), and `--points db` uses them
+    ([CLI](cli.md#racinglines-mtb_dh-points)).
 
 ## Forecasting the rest of the season
 

@@ -6,6 +6,7 @@ racinglines mtb_dh <command>: UCI downhill.
     ingest     Load downloaded event files into the database
     forecast   Simulate the rest of the season and the championship (was: racinglines mtb_dh forecast)
     backtest   Walk-forward backtest over past seasons (was: racinglines mtb_dh backtest)
+    points     Championship points tables: import the official scales, show them, check against standings
 """
 
 import argparse
@@ -39,14 +40,30 @@ def _check_save(args):
         raise SystemExit("--save writes to the database, so it needs --db.")
 
 
+def _points_scheme(args, season):
+    """The season's points tables with --points db (points_schemes), else None (the schema's placeholders)."""
+    if getattr(args, "points", "schema") == "schema":
+        return None
+    from racinglines.db.config import get_engine
+    from racinglines.models.timed_runs import points as P
+    with get_engine(args.db or None).connect() as c:
+        scheme = P.scheme_for(season, P.load(c, args.competition))
+    args.points_official = scheme.official
+    print(f"Points {season}: {scheme.source}" + (" (official)" if scheme.official else " (placeholder)"))
+    return scheme
+
+
 def _save_run(args, raw, target, *, kind, fit_kw, metrics, race_predictions=None, standings=None):
     from racinglines.db.config import get_session
     from racinglines.db.queries import save_model_run
 
     params = {k: v for k, v in fit_kw.items() if k != "category_weights"}
-    params.update(junior_weight=args.junior_weight, sims=args.sims, seed=args.seed, final_points=FINAL_POINTS,
-                  qual_points=QUAL_POINTS, qual_points_round=QUAL_POINTS_ROUND, points_official=False,
-                  label=getattr(args, "scenario", None))
+    from racinglines.models.timed_runs import model as TM
+    params.update(junior_weight=args.junior_weight, sims=args.sims, seed=args.seed, final_points=TM.FINAL_POINTS,
+                  qual_points=TM.QUAL_POINTS, qual_points_round=TM.QUAL_POINTS_ROUND,
+                  points_official=getattr(args, "points_official", False), label=getattr(args, "scenario", None))
+    if getattr(args, "points", "schema") != "schema":
+        params["points_source"] = args.points
     with get_session(args.db or None) as session:
         run_id = save_model_run(
             session, competition=args.competition, season=target["event_date"].astype(str).str[:4].iloc[0]
@@ -67,40 +84,43 @@ def cmd_backtest(args):
                   category_weights={"MJ": args.junior_weight})
     years = raw.loc[raw["category"] == args.category, "event_date"].astype(str).str[:4]
     seasons = [str(y) for y in args.seasons] if args.seasons else sorted(years.unique())
-    print("NOTE: points use placeholder tables; standings metrics are approximate.")
+    if getattr(args, "points", "schema") == "schema":
+        print("NOTE: points use placeholder tables; standings metrics are approximate.")
     print(f"Category {args.category}, training scope {args.train_scope}, "
           f"half-life {args.half_life_days:.0f} days, junior weight {args.junior_weight}\n")
 
     per_event, per_season = [], []
+    from racinglines.models.timed_runs import points as P
     for season in seasons:
-        target = select_target(raw, season, args.category)
-        target = target[target["event_id"].isin(completed_events(target))]
-        n_ev = target["event_id"].nunique()
-        if n_ev < 3:
-            print(f"{season}: {n_ev} event(s) with data, skipped (need 3+).")
-            continue
-        wf = walk_forward_season(raw, target, n_sims=args.sims, rng=rng, **fit_kw)
-        wf.insert(0, "season", season)
-        per_event.append(wf)
-        _, _, st, (train_ev, test_ev) = backtest_season(raw, target, n_holdout=2, n_sims=args.sims,
-                                                          rng=rng, **fit_kw)
-        champ = st.loc[st["actual_rank"] == 1].iloc[0]
-        fav = st.loc[st["champion_prob"].idxmax()]
-        scored = st[st["actual_points"] > 0]
-        per_season.append(dict(
-            season=season, events=n_ev, predicted=len(wf),
-            formats="/".join(sorted(wf["format"].unique())),
-            spearman_points=wf["spearman_points"].mean(),
-            brier_win=wf["brier_win"].mean(), brier_win_base=wf["brier_win_base"].mean(),
-            brier_podium=wf["brier_podium"].mean(), brier_podium_base=wf["brier_podium_base"].mean(),
-            brier_final=wf["brier_final"].mean(), brier_final_base=wf["brier_final_base"].mean(),
-            top10_hits=wf["top10_hits"].mean(),
-            winner_win_prob=wf["winner_pred_win_prob"].mean(),
-            standings_spearman=_spearman(scored["exp_points"], scored["actual_points"]),
-            champion=champ["rider_name"], champion_prob=champ["champion_prob"],
-            favourite=fav["rider_name"], favourite_prob=fav["champion_prob"],
-        ))
-        print(f"{season}: {len(wf)} rounds predicted, standings holdout = last {len(test_ev)} rounds", flush=True)
+        with P.use(_points_scheme(args, int(season))):
+            target = select_target(raw, season, args.category)
+            target = target[target["event_id"].isin(completed_events(target))]
+            n_ev = target["event_id"].nunique()
+            if n_ev < 3:
+                print(f"{season}: {n_ev} event(s) with data, skipped (need 3+).")
+                continue
+            wf = walk_forward_season(raw, target, n_sims=args.sims, rng=rng, **fit_kw)
+            wf.insert(0, "season", season)
+            per_event.append(wf)
+            _, _, st, (train_ev, test_ev) = backtest_season(raw, target, n_holdout=2, n_sims=args.sims,
+                                                              rng=rng, **fit_kw)
+            champ = st.loc[st["actual_rank"] == 1].iloc[0]
+            fav = st.loc[st["champion_prob"].idxmax()]
+            scored = st[st["actual_points"] > 0]
+            per_season.append(dict(
+                season=season, events=n_ev, predicted=len(wf),
+                formats="/".join(sorted(wf["format"].unique())),
+                spearman_points=wf["spearman_points"].mean(),
+                brier_win=wf["brier_win"].mean(), brier_win_base=wf["brier_win_base"].mean(),
+                brier_podium=wf["brier_podium"].mean(), brier_podium_base=wf["brier_podium_base"].mean(),
+                brier_final=wf["brier_final"].mean(), brier_final_base=wf["brier_final_base"].mean(),
+                top10_hits=wf["top10_hits"].mean(),
+                winner_win_prob=wf["winner_pred_win_prob"].mean(),
+                standings_spearman=_spearman(scored["exp_points"], scored["actual_points"]),
+                champion=champ["rider_name"], champion_prob=champ["champion_prob"],
+                favourite=fav["rider_name"], favourite_prob=fav["champion_prob"],
+            ))
+            print(f"{season}: {len(wf)} rounds predicted, standings holdout = last {len(test_ev)} rounds", flush=True)
 
     ev = pd.concat(per_event, ignore_index=True)
     ss = pd.DataFrame(per_season)
@@ -131,6 +151,12 @@ def cmd_season(args):
     if target.empty:
         raise SystemExit(f"No rows for season={args.season} category={args.category}.")
     season = target["event_date"].astype(str).str[:4].iloc[0]
+    from racinglines.models.timed_runs import points as P
+    with P.use(_points_scheme(args, int(season))):
+        return _season(args, raw, target, season)
+
+
+def _season(args, raw, target, season):
     fit_kw = dict(train_scope=args.train_scope, half_life_days=args.half_life_days,
                   category_weights={"MJ": args.junior_weight})
     done_target = target[target["event_id"].isin(completed_events(target))]  # for backtests
@@ -141,7 +167,8 @@ def cmd_season(args):
     pd.set_option("display.width", 200)
     fmt = {c: "{:.1%}".format for c in ("win_prob", "podium_prob", "top10_prob", "make_final_prob",
                                          "champion_prob", "top3_prob", "attend_prob")}
-    print("NOTE: FINAL_POINTS / QUAL_POINTS are placeholders, not the official UCI tables.")
+    if not getattr(args, "points_official", False):
+        print("NOTE: FINAL_POINTS / QUAL_POINTS are placeholders, not the official UCI tables.")
     n_train_ev = (target if args.train_scope == "season" else raw)["event_id"].nunique()
     print(f"Target: {season} {args.category} ({target['event_id'].nunique()} events). "
           f"Training scope: {args.train_scope} ({n_train_ev} event/category sets), "
@@ -237,6 +264,8 @@ def _add_source_args(p):
     p.add_argument("--data", help="Or read a tidy CSV from `racinglines mtb_dh parse` instead of the database.")
     p.add_argument("--competition", default="uci_dhi_wc", help="Competition code in the database.")
     p.add_argument("--save", action="store_true", help="Store the model run and predictions in the database.")
+    p.add_argument("--points", choices=["schema", "db"], default="schema",
+                   help="Points tables: the schema's placeholders (default) or points_schemes by season (needs --db).")
 
 
 def cmd_ingest(args):
@@ -306,6 +335,25 @@ def main(argv=None):
     bt_p.add_argument("--seed", type=int, default=42)
     bt_p.set_defaults(func=cmd_backtest)
 
+    pts_p = sub.add_parser("points", help="Championship points tables: import, show, check against official standings.")
+    pts_sub = pts_p.add_subparsers(dest="action", required=True)
+    imp = pts_sub.add_parser("import", help="Load a points file (e.g. sports/points/uci_dhi_wc.toml) into points_schemes.")
+    imp.add_argument("file")
+    show = pts_sub.add_parser("show", help="The tables each season uses.")
+    chk = pts_sub.add_parser("check", help="Cumulative points vs the official standings, rider by rider.")
+    chk.add_argument("--standings", required=True, help="The official standings: a CSV (rider, points) or a TOML file (see sports/points/standings/).")
+    chk.add_argument("--season", type=int, required=True)
+    chk.add_argument("--category", default="ME")
+    chk.add_argument("--through-round", type=int, help="Series round the standings are after (default: every round).")
+    chk.add_argument("--data", help="Or a tidy CSV instead of the database.")
+    for q in (imp, show, chk):
+        q.add_argument("--db", nargs="?", const="", default=None, metavar="URL",
+                       help="Database ($DATABASE_URL or the docker-compose default if no URL).")
+        q.add_argument("--competition", default="uci_dhi_wc")
+    chk.add_argument("--points", choices=["schema", "db"], default="db",
+                     help="Tables to check: points_schemes by season (default) or the schema's placeholders.")
+    pts_p.set_defaults(func=cmd_points)
+
     live_p = sub.add_parser("live", help="Follow a final live from UCI timing: rank probabilities, the maker's quotes, "
                                          "the private book's crowd (pipelines/live_dh.py). A demo experiment.")
     live_p.add_argument("--slug", required=True, help="ChronoRace event slug, e.g. 20260925_mtb")
@@ -319,6 +367,45 @@ def main(argv=None):
 
     args = ap.parse_args(argv)
     return args.func(args)
+
+
+def cmd_points(args):
+    from racinglines.models.timed_runs import points as P
+    if args.action == "import":
+        from racinglines.db.config import get_session
+        rows = P.read_file(args.file)
+        with get_session(args.db or None) as s:
+            n = P.import_rows(s, rows, args.competition)
+        placeholders = sum(not r.get("official", False) for r in rows)
+        print(f"{n} table(s) imported" + (f"; {placeholders} still marked placeholder" if placeholders else ""))
+        return 0
+    if args.action == "show":
+        from racinglines.db.config import get_engine
+        with get_engine(args.db or None).connect() as c:
+            schemes = P.load(c, args.competition)
+        for season in range(2021, 2027):
+            sc = P.scheme_for(season, schemes)
+            print(f"{season}: {sc.source:6s} {'official' if sc.official else 'PLACEHOLDER':11s} "
+                  f"final {len(sc.final)} places (1st {sc.final[0]}), qualifying {len(sc.qual)} places")
+        return 0
+    if args.db is None and not args.data:
+        args.db = ""
+    raw = load_splits(args)
+    target = select_target(raw, args.season, args.category)
+    if target.empty:
+        raise SystemExit(f"No results for {args.season} {args.category}.")
+    through = None
+    if args.through_round:
+        ev = target.drop_duplicates("event_id").set_index("event_id")["series_round"]
+        through = ev[ev == args.through_round].index[0]
+    official = P.read_standings(args.standings)
+    with P.use(_points_scheme(args, args.season)):
+        rec = P.reconcile(target, official, through)
+    bad = rec[rec["diff"].abs() > 1e-9]
+    pd.set_option("display.width", 200)
+    print(rec.head(40).to_string(index=False, float_format="{:.0f}".format))
+    print(f"\n{len(rec) - len(bad)}/{len(rec)} riders match" + ("" if bad.empty else f"; {len(bad)} differ"))
+    return 0 if bad.empty else 1
 
 
 def cmd_live(args):

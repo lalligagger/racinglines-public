@@ -83,19 +83,22 @@ standings, champion odds, `spearman_points`) is approximate.
       score. Also check whether riders who get through Q2 score. Update `QUAL_POINTS`
       and `QUAL_POINTS_ROUND`. If more than one round pays, extend
       `actual_event_points` and `simulate_weekend`.
-- [ ] Store the tables in the `points_schemes` database table (per competition,
-      era and round kind), and have the model read them from there instead of the
-      constants.
+- [x] Store the tables in the `points_schemes` database table (per competition,
+      era and round kind), and have the model read them from there: `racinglines mtb_dh points
+      import`, and `--points db` on `forecast` and `backtest` (default: the schema's placeholders).
+      The entry file `sports/points/uci_dhi_wc.toml` holds placeholders for every era until the
+      official scales are in (2026-09-28, cloud build-out).
 - [ ] Check the edge cases:
   - [ ] DNF/DSQ in the Final: zero points, or last-place points?
   - [ ] Ties
   - [ ] Protected or wildcard riders
   - [ ] Bonus or double-points rounds
-- [ ] **Reconcile:** run `actual_event_points(select_target(raw, 2026, "ME"))` and
-      compare each rider's cumulative total after round 7 with the official
-      standings. Every rider should match exactly. Repeat for one past season.
-- [ ] Add a test that pins those totals, so a points change or bad data file is
-      caught right away.
+- [ ] **Reconcile:** `racinglines mtb_dh points check --season 2026 --through-round 7
+      --standings …` compares each rider's cumulative total with the official standings
+      (built; needs the official tables and standings). Every rider should match exactly.
+      Repeat for one past season.
+- [x] A test that pins those totals (`tests/test_points.py`): it checks every standings file in
+      `sports/points/standings/` and skips until the owner adds one.
 - [ ] Re-run `season` and `backtest`, and refresh the tables in the docs and README.
 
 ## Data

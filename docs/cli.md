@@ -102,6 +102,7 @@ racinglines mtb_dh forecast (--db [URL] | --data splits.csv) [--competition uci_
 | `--data` | – | Read a tidy CSV from `racinglines mtb_dh parse` instead. |
 | `--competition` | `uci_dhi_wc` | Competition code in the database. |
 | `--save` | off | Store the model run, its metrics and predictions in the database (needs `--db`). |
+| `--points` | `schema` | Points tables: `schema` = the placeholders in `sports/mtb_dh.toml` for every season (today's behaviour); `db` = each season's tables from `points_schemes` ([`mtb_dh points`](#racinglines-mtb_dh-points)), falling back to the placeholders. |
 | `--scenario LABEL` | – | With `--save`: store as `kind='scenario'`, ignored by live prices until promoted in the web app's Lab. |
 | `--season` | latest in data | Target season. |
 | `--category` | `ME` | Target category. |
@@ -150,12 +151,33 @@ racinglines mtb_dh backtest (--db [URL] | --data splits.csv) [--competition uci_
        [--sims 4000] [--seed 42]
 ```
 
-`--db`, `--data`, `--competition` and `--save` work as for `forecast`. With `--save`, the
+`--db`, `--data`, `--competition`, `--save` and `--points` work as for `forecast` (with `--points db`, each season uses its own tables). With `--save`, the
 per-season and per-event metrics are stored in `model_runs.metrics`. Seasons with
 fewer than 3 events that have data are skipped. Files written:
 `backtest_events.csv` (one row per predicted round) and `backtest_seasons.csv` (one
 row per season). The printed per-season table includes the actual and predicted
 champion.
+
+## racinglines mtb_dh points
+
+Championship points tables by season, and a rider-by-rider check against official standings
+([Roadmap → Points validation](todo.md#points-validation)).
+
+```
+racinglines mtb_dh points import sports/points/uci_dhi_wc.toml --db     # file -> points_schemes
+racinglines mtb_dh points show --db                                     # the tables each season uses
+racinglines mtb_dh points check --db --season 2026 --through-round 7 --standings STANDINGS.toml
+```
+
+| Command | What it does |
+|---|---|
+| `import FILE` | Loads one table per era and round kind (`final`, `qual`, `qual1`, `semi`) into `points_schemes`, replacing rows with the same era start and round kind. Refuses tables that aren't non-negative and non-increasing. |
+| `show` | Per season: where its tables come from (`db` or `schema`), official or placeholder, and their sizes. |
+| `check` | Each rider's cumulative points, from the results and the season's tables, against the official standings (CSV with `rider`, `points`, or TOML as in `sports/points/standings/`). Riders match by name, ignoring accents, case and word order. Exits 1 if any rider differs. `--points schema` checks the placeholders instead. |
+
+`sports/points/uci_dhi_wc.toml` is the entry template: every table in it is still a **placeholder**
+(the schema's scales copied into each era). The owner replaces them with the official UCI scales,
+sets `official = true` and cites the source.
 
 ## racinglines db
 
