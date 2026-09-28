@@ -97,7 +97,7 @@ snapshot, whenever the environment has the key (`SKIP_BUCKET=1` skips it). **Ref
 (`bucket.sh push`) before launching a cloud session that needs current data.
 
 **Cloud environment settings.** At claude.ai/code, click the cloud icon with the environment's name
-in the row above the message box, hover over `racinglines-sweep`, and click its settings icon:
+in the row above the message box, hover over `racinglines`, and click its settings icon:
 - **Environment variables:** add `RACINGLINES_GCS_BUCKET`, `RACINGLINES_GCS_HMAC_ID` and
   `RACINGLINES_GCS_HMAC_SECRET`, from the key file. To copy them without printing them:
   `pbcopy < ~/.config/racinglines/gcs-hmac.env`. Anyone using the environment can read them.

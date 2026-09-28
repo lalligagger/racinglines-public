@@ -11,7 +11,7 @@ session's brief, protocol and progress log.
 claude --cloud "Run the cloud build-out in docs/cloud-buildout.md. Follow its Agent protocol exactly."
 ```
 
-Use the `racinglines-sweep` environment ([Cloud sweeps](cloud-sweep.md#one-time-setup)):
+Use the `racinglines` environment ([Cloud sweeps](cloud-sweep.md#one-time-setup)):
 Trusted network, `BASH_MAX_TIMEOUT_MS=1800000`. The session works on its own
 `claude/…` branch, cut from `live-event`; it's merged back through `live-event` into
 `main` after a local review.

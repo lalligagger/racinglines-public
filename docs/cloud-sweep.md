@@ -47,7 +47,7 @@ checks it).
 1. At [claude.ai/code](https://claude.ai/code), click the **cloud icon** in the row above the message
    box. It's labelled with the current environment's name, e.g. **Default**. Choose **Add cloud
    environment** (or hover over an existing one and click its settings icon to edit it):
-    - **Name:** `racinglines-sweep`
+    - **Name:** `racinglines`
     - **Network access:** the default **Trusted** is enough. It covers PyPI, GitHub and
       `storage.googleapis.com` (the [data bucket](data.md#data-bucket)); the database comes from the
       bucket's dump or the committed snapshot, so no Polymarket access is needed.
@@ -72,7 +72,7 @@ git switch -c cloud/poc && git add -A && git commit -m "Cloud sweep PoC" && git 
 claude --cloud "Run the cloud sweep in docs/cloud-sweep.md with queue sweeps/poc.toml. Follow the Agent protocol section exactly."
 ```
 
-Pick the `racinglines-sweep` environment if asked. Or start the session at claude.ai/code on that
+Pick the `racinglines` environment if asked. Or start the session at claude.ai/code on that
 branch and environment, with the same message. Watch or steer it from the browser or the Claude app;
 `claude -p "message" --cloud <session-id>` sends it a message from any terminal.
 
