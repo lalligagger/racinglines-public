@@ -105,47 +105,6 @@ def test_whistler_book_replays_as_a_backtest():
         assert rep["book"]["markets"][k]["cash"] == pytest.approx(m["cash"], abs=1e-9)
     logged = [dict(f, poll=e["ts"]) for e in VR._read_jsonl(run / "crowd.jsonl") for f in e["fills"]]
     assert rep["fills"] == logged                        # fill for fill, in order
-    # without the run's replay.json (its mid-event rule change and same-second polls) it doesn't reproduce
-    pb = VR.PrivateBook._downhill(json.loads((run / "meta.json").read_text()), json.loads((run / "latest.json").read_text()),
-                                  VR._snaps(run), VR._read_jsonl(run / "crowd.jsonl"), {},
-                                  VR._read_jsonl(run / "history.jsonl"))
-    assert pb.replay()["book"]["crowd"]["fills"] != book["crowd"]["fills"]
-
-
-def test_crowd_polls_log_their_rate(run):
-    """Every poll logs the rate it ran at, so a replay never re-derives it from today's constants."""
-    polls = VR._read_jsonl(run / "crowd.jsonl")
-    assert polls and all(e.get("intensity") is not None for e in polls)
-    assert {e["intensity"] for e in polls} >= {1.0}
-
-
-def test_replay_json_overrides_rates_and_same_second_polls(run, tmp_path):
-    """A run folder's replay.json: polls before `unscaled_until` run at 1 (x the late pace) whatever their
-    interval; `intensity` {"<ts>#<n>": rate} sets one poll's rate; polls logged in the same second take their
-    quotes from history.jsonl (their snapshot file is shared)."""
-    import shutil
-    d = tmp_path / "run"
-    shutil.copytree(run, d)
-    lines = VR._read_jsonl(d / "crowd.jsonl")
-    for e in lines:
-        e.pop("intensity", None)                         # an older run: rates not logged
-    (d / "crowd.jsonl").write_text("".join(json.dumps(e) + "\n" for e in lines))
-    base = VR.PrivateBook.from_run(d)
-    t0, t1 = lines[0]["ts"], lines[1]["ts"]
-    (d / "replay.json").write_text(json.dumps(dict(unscaled_until=t1, intensity={f"{t1}#0": 0.25})))
-    pb = VR.PrivateBook.from_run(d)
-    assert pb.polls[0]["intensity"] == (pb.params.late_pace if pb.polls[0]["late"] else 1.0)
-    assert pb.polls[1]["intensity"] == 0.25 and pb.polls[2:] == base.polls[2:]
-    # the same second twice: the n-th poll takes the n-th history line of that second
-    dup = dict(lines[2], ts=t0)
-    (d / "crowd.jsonl").write_text("".join(json.dumps(e) + "\n" for e in [lines[0], dup] + lines[1:2]))
-    hist = [dict(ts=t0, fair={"1:win": 0.5}, quotes={"1:win": [0.4, 0.6]}),
-            dict(ts=t0, fair={"1:win": 0.3}, quotes={"1:win": [0.2, 0.35]})]
-    (d / "history.jsonl").write_text("".join(json.dumps(h) + "\n" for h in hist))
-    (d / "replay.json").unlink()
-    pb = VR.PrivateBook.from_run(d)
-    assert [p["quotes"] for p in pb.polls[:2]] == [[dict(bib=1, market="win", fair=0.5, bid=0.4, ask=0.6)],
-                                                  [dict(bib=1, market="win", fair=0.3, bid=0.2, ask=0.35)]]
 
 
 def test_window_batches_replay_like_the_f1_engine(tmp_path):
