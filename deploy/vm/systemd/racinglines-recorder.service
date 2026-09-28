@@ -1,0 +1,16 @@
+# The market recorder (replaces the Mac's LaunchAgent bet.racinglines.recorder). Logs: journalctl -u racinglines-recorder
+[Unit]
+Description=racinglines market recorder
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+User=racinglines
+WorkingDirectory=/opt/racinglines
+EnvironmentFile=/etc/racinglines.env
+ExecStart=/opt/racinglines/.venv/bin/racinglines markets record --interval 60
+Restart=always
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target

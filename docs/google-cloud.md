@@ -3,7 +3,8 @@
 A proposal for moving racinglines off the owner's Mac onto Google Cloud, where the
 [data bucket](data.md#data-bucket) already lives. Nothing here is built yet: it's the plan and
 a cost estimate for the owner to decide on. Written 2026-09-28 in the
-[cloud build-out](cloud-buildout.md).
+[cloud build-out](cloud-buildout.md). The first step taken instead is simpler: one VM running what the Mac runs
+([VM deploy](vm-deploy.md)).
 
 ## What runs today
 

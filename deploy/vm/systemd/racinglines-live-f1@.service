@@ -1,0 +1,12 @@
+# One F1 live step for live/f1/<instance>.toml (the Linux twin of `racinglines live agent`; the run folder's
+# lock stops overlapping steps). Enable per event:  sudo systemctl enable --now racinglines-live-f1@2026-16.timer
+[Unit]
+Description=racinglines live step, F1 %i
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=racinglines
+WorkingDirectory=/opt/racinglines
+EnvironmentFile=/etc/racinglines.env
+ExecStart=/opt/racinglines/.venv/bin/racinglines live step live/f1/%i.toml

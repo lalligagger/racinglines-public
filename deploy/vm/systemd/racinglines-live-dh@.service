@@ -1,0 +1,16 @@
+# The downhill poll loop for live/mtb_dh/<instance>.toml, restarted if it exits early (as the LaunchAgent's KeepAlive).
+#   sudo systemctl enable --now racinglines-live-dh@20260925_mtb
+[Unit]
+Description=racinglines live run, downhill %i
+After=network-online.target docker.service
+
+[Service]
+User=racinglines
+WorkingDirectory=/opt/racinglines
+EnvironmentFile=/etc/racinglines.env
+ExecStart=/opt/racinglines/.venv/bin/racinglines live run live/mtb_dh/%i.toml
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
