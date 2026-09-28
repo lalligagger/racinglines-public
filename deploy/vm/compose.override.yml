@@ -1,0 +1,6 @@
+# VM only: Postgres listens on the VM's loopback, not every interface (docs/vm-deploy.md).
+#   docker compose -f docker-compose.yml -f deploy/vm/compose.override.yml up -d
+services:
+  db:
+    ports: !override
+      - "127.0.0.1:5433:5432"

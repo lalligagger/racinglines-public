@@ -447,7 +447,7 @@ git config core.hooksPath scripts/hooks   # skip once with: git push --no-verify
 | `racinglines/cli/` | The `racinglines` command: `f1`, `mtb_dh`, `markets`, `db`, `web`, `check` |
 | `racinglines/sources/` | Data sources: `fastf1/` (fetch, ingest), `chronorace/` (download, parse, ingest), `http.py` (paced, retried requests for every source) |
 | `racinglines/models/` | Model families: `position_sim/` (F1: car/driver pace, practice prior, variants, race and season pricing), `timed_runs/` (downhill: log-time model, weekend and season simulation) |
-| `racinglines/markets/` | Exchanges and books: Polymarket `sync`/`trade`/`links`, the Parquet `store`, `venues`, the `private_book`, new-market and signal `alerts`, and `strategies/` (maker replay, weekend taker, season) |
+| `racinglines/markets/` | Exchanges and books: Polymarket `sync`/`trade`/`links`, Kalshi `client`/`sync`/`trade`, the Parquet `store`, `venues`, the `private_book`, new-market and signal `alerts`, and `strategies/` (maker replay, weekend taker, season) |
 | `racinglines/pipelines/` | Multi-stage runs: `weekend_sweep`, `sweep_settings`, `search` (settings searches), `season_strategy`, `season_checkpoints`, `profiles`, `signals` (live paper trading), `story` and `demo_history` (the demo accounts) |
 | `racinglines/db/` | Database: models, reads, queries, shared ingest helpers, the `snapshot`, registry of sports and venues |
 | `racinglines/web/` | The web app (`racinglines web`): Markets, Strategy, Positions, My Book, Lab, admin; demo sessions (`demo.py`); old-URL redirects (`legacy.py`) |
