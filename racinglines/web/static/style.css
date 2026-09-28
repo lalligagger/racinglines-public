@@ -184,6 +184,30 @@ th a { color: inherit; }
 .section-tabs button { font: inherit; font-size: 13px; font-weight: 500; padding: 8px 12px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--muted); margin-bottom: -1px; cursor: pointer; }
 .section-tabs button:hover { color: var(--fg); }
 .section-tabs button[aria-pressed="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+/* page tabs: one panel of the page at a time (app.js); the count on a tab is muted */
+.ptabs { display: flex; flex-wrap: wrap; gap: 0 4px; border-bottom: 1px solid var(--line); margin: 14px 0 12px; }
+.ptabs button { font: inherit; font-size: 13.5px; font-weight: 500; padding: 8px 12px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--muted); margin-bottom: -1px; cursor: pointer; white-space: nowrap; }
+.ptabs button:hover { color: var(--fg); }
+.ptabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+.ptabs button .n { color: var(--faint); font-weight: 400; font-size: 12px; margin-left: 4px; }
+[data-panel][hidden] { display: none; }
+/* collapsed sections: a card whose summary reads as its heading, with the number that matters on the right */
+details.card { padding-top: 0; padding-bottom: 0; }
+details.card > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; padding: 12px 0; list-style: none; }
+details.card > summary::-webkit-details-marker { display: none; }
+details.card > summary::before { content: "▸"; color: var(--faint); font-size: 12px; margin-right: 2px; }
+details.card[open] > summary::before { content: "▾"; }
+details.card > summary h2, details.card > summary h3 { margin: 0; display: inline; }
+details.card > summary .sum { color: var(--muted); font-size: 12.5px; }
+details.card > summary .spacer { flex: 1; }
+details.card[open] > summary { border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+details.card > :last-child { margin-bottom: 14px; }
+/* table tools: the filter box and the "Show all" button above a long table */
+.tt { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 6px; }
+.tt input[type=search] { font: inherit; font-size: 13px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--fg); min-width: 200px; }
+.tt .spacer { flex: 1; }
+button.link { font: inherit; font-size: 12.5px; border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0; }
+button.link:hover { text-decoration: underline; }
 .lab-section { margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; border-top: 0; }
 .lab-section + .lab-section { margin-top: 12px; border-top: 1px solid var(--line); border-radius: var(--radius); }
 

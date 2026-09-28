@@ -2,7 +2,8 @@
    Partial updates (the Live tab, the Lab's sections and Edge Finder) are HTMX attributes in the templates;
    this file adds what attributes can't: the CSRF token on every HTMX POST, an error toast, browser-side view
    settings (which Lab sections are open, the jobs filter), the replay player, the sweep form's "what changed"
-   highlighting, and a generic pressed-button toggle (the Positions chart's Polymarket / Private book switch). */
+   highlighting, a generic pressed-button toggle (the Positions chart's Polymarket / Private book switch), and the
+   three "less on the page at once" pieces: page tabs, remembered collapsed sections, and table row caps / filters. */
 (function () {
   "use strict";
   const NS = document.body.dataset.ns || "";                // a demo session's own namespace (web/demo.py)
@@ -29,16 +30,96 @@
     t.textContent = msg; clearTimeout(toast.timer); toast.timer = setTimeout(() => t.remove(), 6000);
   }
 
-  // --- generic pressed toggles: <button data-toggle="plot" data-value="x"> shows [data-plot="x"], hides the others ---
+  // --- generic pressed toggles: <button data-toggle="plot" data-value="x"> shows [data-plot="x"], hides the others;
+  //     data-value="*" shows them all ---
   document.addEventListener("click", e => {
     const b = e.target.closest("button[data-toggle]");
     if (!b) return;
     const group = b.dataset.toggle, v = b.dataset.value;
     document.querySelectorAll(`button[data-toggle="${group}"]`).forEach(x => x.setAttribute("aria-pressed", String(x === b)));
-    document.querySelectorAll(`[data-${group}]:not(button)`).forEach(p => { p.hidden = p.dataset[group] !== v; });
+    document.querySelectorAll(`[data-${group}]:not(button)`).forEach(p => { p.hidden = v !== "*" && p.dataset[group] !== v; });
   });
 
+  // --- page tabs: <nav class="ptabs" data-tabs="name"><button data-tab="k">…</button></nav> shows [data-panel="k"] and
+  //     hides the other panels. One set per page; the choice is remembered per page, and #k in the URL opens a tab
+  //     (so does a link to any element inside one). Content re-rendered by HTMX gets the same tab back. ---
+  function tabsApply(nav, key, setHash) {
+    const btns = [...nav.querySelectorAll("[data-tab]")];
+    if (!btns.some(b => b.dataset.tab === key)) key = btns.length ? btns[0].dataset.tab : null;
+    btns.forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === key)));
+    document.querySelectorAll("[data-panel]").forEach(p => { p.hidden = p.dataset.panel !== key; });
+    store.set("tabs." + nav.dataset.tabs, key);
+    if (setHash && key) history.replaceState(null, "", "#" + key);
+  }
+  function tabsInit(root) {
+    const nav = root.querySelector ? root.querySelector("[data-tabs]") : null;
+    if (!nav) return;
+    let key = store.get("tabs." + nav.dataset.tabs, null);
+    const h = location.hash.slice(1), el = h && document.getElementById(h);
+    if (h && nav.querySelector(`[data-tab="${h}"]`)) key = h;
+    else if (el && el.closest("[data-panel]")) key = el.closest("[data-panel]").dataset.panel;
+    tabsApply(nav, key, false);
+    if (el && el.closest("[data-panel]") && !nav.dataset.shown) { nav.dataset.shown = 1; el.scrollIntoView({block: "start"}); }
+  }
+  document.addEventListener("click", e => {
+    const b = e.target.closest("[data-tabs] [data-tab]");
+    if (b) tabsApply(b.closest("[data-tabs]"), b.dataset.tab, true);
+  });
+
+  // --- collapsed sections: <details data-remember="id"> keeps its open / closed state per browser ---
+  document.addEventListener("toggle", e => {
+    const d = e.target;
+    if (d.matches && d.matches("details[data-remember]")) store.set("open." + d.dataset.remember, d.open);
+  }, true);
+  function detailsInit(root) {
+    root.querySelectorAll("details[data-remember]").forEach(d => {
+      const v = store.get("open." + d.dataset.remember, null);
+      if (v !== null) d.open = v;
+    });
+  }
+
+  // --- table tools: <div class="scroll" data-rows="12" data-filter="Driver or team"> caps a long table at N rows
+  //     behind a "Show all" button and, with data-filter, adds a box that filters the rows by their text ---
+  function tableInit(root) {
+    root.querySelectorAll(".scroll[data-rows], .scroll[data-filter]").forEach(box => {
+      if (box.dataset.tt) return;
+      box.dataset.tt = 1;
+      const rows = [...box.querySelectorAll("tbody tr")], cap = +box.dataset.rows || 0;
+      if (rows.length <= (cap || 0) && !box.dataset.filter) return;
+      const bar = document.createElement("div"); bar.className = "tt";
+      let all = !(cap && rows.length > cap), q = "";
+      function apply() {
+        let shown = 0;
+        rows.forEach(r => {
+          const ok = !q || r.textContent.toLowerCase().includes(q);
+          r.hidden = !ok || (!all && !q && shown >= cap); if (!r.hidden) shown++;
+        });
+        if (more) { more.hidden = all || !!q; }
+        if (count) count.textContent = q ? `${shown} of ${rows.length}` : (all ? "" : `${cap} of ${rows.length}`);
+      }
+      let inp = null, more = null, count = null;
+      if (box.dataset.filter !== undefined) {
+        inp = document.createElement("input"); inp.type = "search"; inp.placeholder = box.dataset.filter || "Filter…";
+        inp.setAttribute("aria-label", "Filter rows");
+        inp.addEventListener("input", () => { q = inp.value.trim().toLowerCase(); apply(); });
+        bar.appendChild(inp);
+      }
+      count = document.createElement("span"); count.className = "legend"; bar.appendChild(count);
+      if (cap && rows.length > cap) {
+        more = document.createElement("button"); more.type = "button"; more.className = "link";
+        more.textContent = `Show all ${rows.length}`;
+        more.addEventListener("click", () => { all = true; apply(); });
+        bar.appendChild(more);
+      }
+      box.parentNode.insertBefore(bar, box);
+      apply();
+    });
+  }
+  function initAll(root) { tabsInit(root); detailsInit(root); tableInit(root); }
+  document.addEventListener("htmx:afterSwap", e => initAll(e.detail.target));
+
   document.addEventListener("DOMContentLoaded", () => {
+  initAll(document);
   // --- Lab: sections open on demand (HTMX loads them on their "open" event), remembered per browser ---
   const lab = document.getElementById("lab");
   if (lab) {

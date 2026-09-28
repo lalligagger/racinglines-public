@@ -9,8 +9,8 @@
 <div class="card"><h2>Metrics: {{ name }}</h2>{{ table(rs, cols) }}</div>
 {% endfor %}
 {% for p in preds %}
-<div class="card"><h2>Predictions: {% if p.event_id %}<a href="/events/{{ p.event_id }}">{{ p.venue }}</a> ({{ p.target }}){% else %}{{ p.target }}{% endif %}</h2>
-{{ table(p.table, pred_cols, {"athlete": ["/athletes/", "athlete_id"]}) }}</div>
+<details class="card" data-remember="run:{{ run.id }}:{{ loop.index }}"{% if loop.first %} open{% endif %}><summary><h2>Predictions: {% if p.event_id %}<a href="/events/{{ p.event_id }}">{{ p.venue }}</a> ({{ p.target }}){% else %}{{ p.target }}{% endif %}</h2><span class="sum">{{ p.table|length }} rows</span></summary>
+{{ table(p.table, pred_cols, {"athlete": ["/athletes/", "athlete_id"]}, cap=20, filter="Filter by athlete") }}</details>
 {% endfor %}
-{% if standings %}<div class="card"><h2>Standings</h2>{{ table(standings, stand_cols, {"athlete": ["/athletes/", "athlete_id"]}) }}</div>{% endif %}
+{% if standings %}<div class="card"><h2>Standings</h2>{{ table(standings, stand_cols, {"athlete": ["/athletes/", "athlete_id"]}, cap=20, filter="Filter by athlete") }}</div>{% endif %}
 {% endblock %}

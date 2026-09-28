@@ -6,7 +6,8 @@
 <p class="muted">Diagnostic run <a href="/lab/runs/{{ d.run.id }}">#{{ d.run.id }}</a> · {{ d.event.name }} · event {{ d.event.source_key }}</p>
 
 <p>As-of runs for this event: {% for r in runs %}{% if r.id == d.run.id %}<b>#{{ r.id }} ({{ r.cutoff }})</b>{% else %}<a href="/lab/diagnostics/{{ r.id }}">#{{ r.id }} ({{ r.cutoff }})</a>{% endif %}{{ " · " if not loop.last }}{% endfor %}</p>
-<div class="card"><h2>1 · What the model knew</h2>
+<nav class="ptabs" data-tabs="diag" role="tablist"><button type="button" role="tab" data-tab="s1">1 · What the model knew</button><button type="button" role="tab" data-tab="s2">2 · Prices vs Polymarket</button><button type="button" role="tab" data-tab="s3">3 · Result and scoring</button><button type="button" role="tab" data-tab="s4">4 · Taking Polymarket</button><button type="button" role="tab" data-tab="s5">5 · Maker replay</button><button type="button" role="tab" data-tab="s6">6 · In the app</button></nav>
+<section data-panel="s1"><div class="card"><h2>1 · What the model knew</h2>
 <table><tbody>
 <tr><td class="l">Cutoff</td><td class="l"><b>{{ d.params.cutoff }} UTC</b></td></tr>
 <tr><td class="l">This event's sessions</td><td class="l">{% for k, v in d.metrics.audit.event_sessions.items() %}{% if v %}{{ k }} {{ v }} {% if k in d.metrics.audit.sessions_used %}<span class="good">used</span>{% else %}<span class="bad">excluded</span>{% endif %} · {% endif %}{% endfor %}</td></tr>
@@ -16,7 +17,8 @@
 <tr><td class="l">Polymarket prices</td><td class="l">never used to fit or price; read from stored hourly history at/before the cutoff for comparison only</td></tr>
 </tbody></table></div>
 
-<div class="card"><h2>2 · Our prices vs Polymarket at the cutoff</h2>
+</section>
+<section data-panel="s2" hidden><div class="card"><h2>2 · Our prices vs Polymarket at the cutoff</h2>
 <p class="muted">PM@cutoff = last Polymarket price at/before the cutoff; 24h move = change over the 24 hours before it; latest = now (after the result). Edge = our fair − PM@cutoff.</p>
 {% for kind, ms in groups %}
 <h3>{{ {"race_win": "Winner", "race_podium": "Podium", "race_h2h": "Head-to-head (who finishes higher)", "race_constructor_top": "Top-scoring constructor"}.get(kind, kind) }}</h3>
@@ -35,18 +37,21 @@
 {% endfor %}
 </div>
 
-<div class="card"><h2>3 · Result and scoring (read after pricing)</h2>
+</section>
+<section data-panel="s3" hidden><div class="card"><h2>3 · Result and scoring (read after pricing)</h2>
 <div class="grid"><div>
 {{ table(scores, ["kind", "markets", "brier_model", "brier_polymarket", "logloss_model", "logloss_polymarket"]) }}
 <p class="muted">Lower is better. Polymarket at the cutoff is the benchmark to beat; one race is a very small sample.</p></div>
 <div>{{ table(result[:10], ["position", "driver", "status", "points"]) }}</div></div></div>
 
-<div class="card"><h2>4 · Taking Polymarket at the cutoff (paper)</h2>
+</section>
+<section data-panel="s4" hidden><div class="card"><h2>4 · Taking Polymarket at the cutoff (paper)</h2>
 <p>Rule (decided at the cutoff): buy YES at PM@cutoff when our fair is ≥ {{ "%.0f"|format(consts.paper_edge * 100) }} pts above it, buy NO when ≥ {{ "%.0f"|format(consts.paper_edge * 100) }} pts below; ${{ "%.0f"|format(consts.paper_stake) }} per trade.
 <b>{{ summary.paper_n }}</b> trades · staked ${{ "%.0f"|format(summary.paper_staked) }} · P&amp;L <b class="{{ 'good' if summary.paper_pnl >= 0 else 'bad' }}">${{ "%+.2f"|format(summary.paper_pnl) }}</b></p>
 <p class="muted">A taker's test of the model: it pays Polymarket's price with no spread or slippage (optimistic). {% for k, c in coherence.items() %}{% if not c.ok %}<b>{{ k }}</b>: Polymarket prices summed to {{ "%.2f"|format(c.sum) }} (expected {{ c.target }}), an empty book, so it's excluded. {% endif %}{% endfor %}</p></div>
 
-<div class="card"><h2>5 · Maker replay on Polymarket's real trade tape</h2>
+</section>
+<section data-panel="s5" hidden><div class="card"><h2>5 · Maker replay on Polymarket's real trade tape</h2>
 <p>Our maker rests post-only quotes on Polymarket at fair ± {{ "%.0f"|format(rp.params.half_spread * 100) }}¢ (skewed against inventory, never crossing the market, so YES bid + NO bid &lt; $1), requoting every {{ rp.params.step_min }} min and pulling {{ rp.params.pull_min }} min before qualifying and the race.
 It skips markets priced outside {{ "%.0f"|format(rp.params.price_band[0] * 100) }}–{{ "%.0f"|format(rp.params.price_band[1] * 100) }}¢, with under ${{ "%.0f"|format(rp.params.min_volume_24h) }} traded in the last 24 h, {% if rp.params.max_disagree %}or where our fair is more than {{ "%.0f"|format(rp.params.max_disagree * 100) }} pts from the market{% else %}(disagreement filter off){% endif %}.
 Limits: {{ "%.0f"|format(rp.params.size) }} shares per quote, {{ "%.0f"|format(rp.params.max_pos) }} shares per market, ${{ "%.0f"|format(rp.params.max_capital) }} worst-case loss for the event.
@@ -76,18 +81,20 @@ It only gets filled by <b>real taker trades that came after its quote</b> — ta
 <div><h3>Positions at the race start</h3>{{ table(rp_positions, ["kind", "subject", "inventory", "cash", "worst_case", "outcome", "pnl"]) }}</div></div>
 
 <h3>Biggest fills</h3>
-{{ table(rp_top, ["ts", "kind", "subject", "side", "price", "qty", "fair", "mid", "markout_60m", "pnl"]) }}
+{{ table(rp_top, ["ts", "kind", "subject", "side", "price", "qty", "fair", "mid", "markout_60m", "pnl"], cap=12) }}
 
 <h3>Sensitivity</h3>
 {{ table(rp_sweep, ["half_spread", "fill", "max_disagree", "fills", "notional", "spread_pnl", "markout_60m", "pnl", "worst_case"]) }}
 <p class="muted">Baku limits: minute prices and trades only, no order-book depth (queue position and competing makers are unknown), and our quotes don't change what takers would have done. Book snapshots recorded from now on (<code>racinglines markets record</code>) replace the touch/through bounds with a queue model.</p>
 </div>
 
-<div class="card"><h2>6 · In the app: Polymarket's takers</h2>
+</section>
+<section data-panel="s6" hidden><div class="card"><h2>6 · In the app: Polymarket's takers</h2>
 <p>The <code>polymarket-takers</code> system account (no login) stands in for the Polymarket traders whose real trades filled the replayed maker: each fill becomes its bet on the demo <code>maker</code>'s market for that outcome, at the maker's price, so its P&amp;L is the maker's P&amp;L reversed. It is not the demo <code>taker</code>, which paper trades its own strategy on the Strategy page.</p>
 <form method="post" action="/lab/diagnostics/{{ d.run.id }}/example">{{ csrf() }}<input type="hidden" name="fill" value="{{ fill }}">
 <button class="primary">{{ 'Re-record' if bets else 'Record' }} the replay's fills ({{ fill }}) as Polymarket-taker bets</button></form>
 {% if bets %}<p><b>{{ summary.taker_n }}</b> Polymarket-taker bets · staked ${{ "%.0f"|format(summary.taker_staked) }} · their P&amp;L <b class="{{ 'good' if summary.taker_pnl >= 0 else 'bad' }}">${{ "%+.2f"|format(summary.taker_pnl) }}</b> · maker P&amp;L <b class="{{ 'good' if -summary.taker_pnl >= 0 else 'bad' }}">${{ "%+.2f"|format(-summary.taker_pnl) }}</b></p>
-{{ table(bets, ["id", "title", "side", "price", "stake", "payout", "status", "taker_pnl", "note"]) }}{% endif %}
+{{ table(bets, ["id", "title", "side", "price", "stake", "payout", "status", "taker_pnl", "note"], cap=15, filter="Filter by market") }}{% endif %}
 </div>
+</section>
 {% endblock %}

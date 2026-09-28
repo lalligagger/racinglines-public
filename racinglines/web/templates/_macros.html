@@ -1,5 +1,6 @@
-{% macro table(rows, cols, links={}) -%}
-{% if rows %}<div class="scroll"><table>
+{# rows=N caps the table at N rows behind a "Show all"; filter="placeholder" adds a filter box (app.js). #}
+{% macro table(rows, cols, links={}, cap=0, filter="") -%}
+{% if rows %}<div class="scroll"{% if cap %} data-rows="{{ cap }}"{% endif %}{% if filter %} data-filter="{{ filter }}"{% endif %}><table>
 <thead><tr>{% for c in cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
 <tbody>{% for r in rows %}<tr>{% for c in cols %}{% set v = r.get(c) %}
 <td>{% if c in links and r.get(links[c][1]) is not none %}<a href="{{ links[c][0] }}{{ r.get(links[c][1]) }}">{{ v|fmt(c) }}</a>{% else %}{{ v|fmt(c) }}{% endif %}</td>{% endfor %}</tr>{% endfor %}</tbody>

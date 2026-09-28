@@ -13,13 +13,13 @@
 <p class="legend">Edge = our fair − Polymarket mid (positive = we think YES is cheap). ⚠ marks gaps over 10 pts: usually a model blind spot rather than an edge; check before quoting.</p>
 {% if not events %}<p class="muted">No linked markets yet. Refresh from Polymarket.</p>{% endif %}
 {% for ev in events %}
-<div class="card">
-  <h2><a href="https://polymarket.com/event/{{ ev.slug }}" target="_blank" rel="noopener">{{ ev.title }}</a>{% if ev.new %} {{ new_badge(ev.new if ev.new < ev.rows|length else 0) }}{% endif %}</h2>
-  <p class="muted">ends {{ ev.end_date|fmt }} · volume ${{ "{:,.0f}".format(ev.volume) }} · {{ ev.modeled }} priced by the model</p>
+<details class="card" data-remember="pm:{{ ev.slug }}"{% if loop.first %} open{% endif %}>
+  <summary><h2>{{ ev.title }}{% if ev.new %} {{ new_badge(ev.new if ev.new < ev.rows|length else 0) }}{% endif %}</h2><span class="sum">{{ ev.rows|length }} outcomes · {{ ev.modeled }} priced · ${{ "{:,.0f}".format(ev.volume) }} · ends {{ ev.end_date|fmt }}</span></summary>
+  <p class="muted"><a href="https://polymarket.com/event/{{ ev.slug }}" target="_blank" rel="noopener">open on Polymarket ↗</a></p>
   <form method="post" action="/markets/polymarket/mirror">{{ csrf() }}<input type="hidden" name="event_slug" value="{{ ev.slug }}">
     <label><span>Spread (pts)</span><input name="spread_pct" value="{{ '%g'|format(spread_pct) }}" size="3"></label>
     <button class="primary">Mirror into my book</button> <span class="muted">creates / reprices a YES/NO market in my book for every priced outcome</span></form>
-  <div class="scroll"><table>
+  <div class="scroll" data-rows="15" data-filter="Filter by outcome or kind"><table>
   <thead><tr><th class="l">Outcome</th><th class="l">Kind</th><th>PM bid</th><th>PM ask</th><th>PM mid</th><th>Our fair</th><th>Edge</th><th>Quote bid</th><th>Quote ask</th><th>Mine</th></tr></thead><tbody>
   {% for r in ev.rows %}<tr>
     <td class="l">{{ r.subject }}{% if r.new %} {{ new_badge() }}{% endif %}{% if r.prediction == 'race_h2h' %} <span class="muted">vs {{ r.question.split(': ')[-1] }}</span>{% endif %}</td>
@@ -31,6 +31,6 @@
     <td>{{ "%.3f"|format(r.q_bid) if r.q_bid is not none and r.q_bid > 0 else "" }}</td><td>{{ "%.3f"|format(r.q_ask) if r.q_ask is not none and r.q_ask < 1 else "" }}</td>
     <td>{{ "✓" if r.mirrored else "" }}</td></tr>{% endfor %}
   </tbody></table></div>
-</div>
+</details>
 {% endfor %}
 {% endblock %}

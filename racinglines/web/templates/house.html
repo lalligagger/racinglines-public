@@ -20,7 +20,7 @@
 </div>{% endif %}
 
 {% if race_id %}
-<div class="card"><h2>Create or reprice markets from the latest forecast</h2>
+<details class="card" data-remember="quotes:create"{% if not groups %} open{% endif %}><summary><h2>Create or reprice markets from the latest forecast</h2><span class="sum">{{ kinds|length }} market types available</span></summary>
 <form method="post" action="/book/quotes/generate" class="row">{{ csrf() }}<input type="hidden" name="race_id" value="{{ race_id }}">
   <span class="checks">{% for k in kinds %}<label class="inline"><input type="checkbox" name="kinds" value="{{ k }}" {% if k in ('race_win','race_podium','race_top10','race_make_final') %}checked{% endif %}> {{ k }}</label>{% endfor %}</span>
   <label><span>Riders per market type (top N)</span><input name="top_n" value="15" size="4"></label>
@@ -30,11 +30,12 @@
 <p class="legend">Market types a sport doesn't have (e.g. make-the-Final in F1) are skipped. Open markets priced from the model are repriced; bets keep the price they were taken at. Manually priced markets aren't touched.</p>
 {% if user.role == 'admin' %}<form method="post" action="/book/quotes/settle-auto" class="row">{{ csrf() }}<input type="hidden" name="race_id" value="{{ race_id }}"><button>Auto-settle from results</button>
 <span class="legend">Win / podium / top 10 / make-Final settle from the ingested results. Rank markets: settle by hand from the official standings.</span></form>{% else %}<p class="legend">Markets are created under your account; takers see them on the market board. The admin settles them.</p>{% endif %}
-</div>
+</details>
 {% endif %}
 
+{% if groups %}<nav class="ptabs" data-tabs="quotes" role="tablist">{% for kind, ms in groups %}<button type="button" role="tab" data-tab="{{ kind }}">{{ kind }}<span class="n">{{ ms|length }}</span></button>{% endfor %}</nav>{% endif %}
 {% for kind, ms in groups %}
-<div class="card"><h2>{{ kind }}</h2><div class="scroll"><table>
+<section data-panel="{{ kind }}" hidden><div class="card"><h2>{{ kind }}</h2><div class="scroll" data-rows="15" data-filter="Filter by market or maker"><table>
 <thead><tr><th class="l">Market</th>{% if user.role == 'admin' %}<th class="l">Maker</th>{% endif %}<th>Fair</th><th>YES price</th><th>NO price</th><th>Spread</th><th class="l">Status</th><th>Bets</th><th>Staked</th><th>P&amp;L if YES</th><th>P&amp;L if NO</th><th>EV</th></tr></thead><tbody>
 {% for mk in ms %}<tr>
 <td class="l"><a href="/book/markets/{{ mk.id }}">{{ mk.title }}</a>{% if mk.fair_source == 'manual' %} <span class="warn">(manual)</span>{% endif %}</td>{% if user.role == 'admin' %}<td class="l">{{ mk.maker }}</td>{% endif %}
@@ -44,7 +45,7 @@
 <td>{{ mk.bets }}</td><td>{{ "%.2f"|format(mk.staked) }}</td>
 <td class="{{ 'bad' if mk.pnl_if_yes < 0 else '' }}">{{ "%.2f"|format(mk.pnl_if_yes) }}</td><td class="{{ 'bad' if mk.pnl_if_no < 0 else '' }}">{{ "%.2f"|format(mk.pnl_if_no) }}</td>
 <td>{{ "%.2f"|format(mk.ev) }}</td></tr>{% endfor %}
-</tbody></table></div></div>
+</tbody></table></div></div></section>
 {% endfor %}
 <p class="legend">Prices are per $1 payout: a YES at 0.10 means stake $10 to be paid $100 if it happens. Money is handled outside the app. Rank markets use placeholder points for pricing.</p>
 {% endblock %}

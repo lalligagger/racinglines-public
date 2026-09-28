@@ -40,12 +40,12 @@
   </div>
 </div>
 {% if s.later %}<p class="legend">Later: {% for l in s.later %}<a href="/races/{{ l.race_id }}">{{ l.title }}</a>{% if l.new %} {{ new_badge(l.new) }}{% endif %} {{ l.date|fmt }}{{ " · " if not loop.last }}{% endfor %} · <a href="/events">full calendar</a></p>{% endif %}
-{% if s.recent %}<h3>Recent results</h3>
+{% if s.recent %}<details class="card quiet" data-remember="markets:{{ s.code }}:recent"><summary><h3>Recent results</h3><span class="sum">{{ s.recent|length }} · last: {{ s.recent[0].info.title }}, winner {{ s.recent[0].winner }}{% if s.recent[0].our is not none %}, we had {{ pct(s.recent[0].our) }}{% endif %}</span></summary>
 <div class="recent">{% for r in s.recent %}<div>
   <a href="/races/{{ r.info.race_id }}"><b>{{ r.info.title }}</b></a> <span class="muted">{{ r.info.start_date|fmt }}</span><br>
   Winner <b>{{ r.winner }}</b>{% if r.our is not none %} · we had <b>{{ pct(r.our) }}</b>{% endif %}{% if r.pm is not none %} · Polymarket {{ pct(r.pm) }}{% endif %}
   <div class="legend">{{ r.source }}{% if r.diag %} · <a href="/lab/diagnostics/{{ r.diag }}">diagnostic →</a>{% endif %}</div>
-</div>{% endfor %}</div>{% endif %}
+</div>{% endfor %}</div></details>{% endif %}
 {% endfor %}
 <p class="legend mt">Browse <a href="/markets/polymarket">all Polymarket markets</a> · <a href="/events">all events</a> · <a href="/athletes">all athletes</a>. Bars: our fair probability; the orange tick is the exchange price.</p>
 {% endblock %}

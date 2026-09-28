@@ -23,12 +23,22 @@
   {% if snap.done %}{{ kpi("Winner", fin[0].name if fin else "–", t(fin[0].time) if fin else "", "", "", small=True) }}{% endif %}
   {% if maker and mpnl %}{{ kpi("The maker's event P&L · " ~ ("settled" if snap.done else "marked to fair"), mpnl.total, "vs the crowd " ~ mpnl.crowd|money(true) ~ " · vs the demo taker " ~ mpnl.taker|money(true), "money") }}{% endif %}
   {% if maker and crowd %}{{ kpi("Crowd fills", crowd.fills, (crowd.last_fills if crowd.last_fills is defined else 0) ~ " since the last update · " ~ crowd.active ~ " of " ~ crowd.takers ~ " takers have bet") }}
-  {{ kpi("Crowd volume", "$" ~ "{:,.0f}".format(crowd.volume), ("of $" ~ "{:,.0f}".format(crowd.budget_total) ~ " in event budgets ($10–200 each)" if crowd.budget_total is defined and crowd.budget_total is not none else "")) }}{% endif %}
+  {{ kpi("Crowd volume", "$" ~ "{:,.0f}".format(crowd.volume), (("of $" ~ "{:,.0f}".format(crowd.budget_total) ~ " in event budgets ($10–200 each)" if crowd.budget_total is defined and crowd.budget_total is not none else "") if crowd.budget_total is defined and crowd.budget_total is not none else "")) }}{% endif %}
   {% if picks %}{% if maker %}{{ kpi("The demo taker's picks · the maker's P&L on them", tot.maker_pnl, picks|length ~ " bets, $" ~ "%.0f"|format(tot.stake) ~ " staked" ~ (" · " ~ tot.won ~ " won, " ~ tot.lost ~ " lost" if tot.won or tot.lost else ""), "money") }}
   {% else %}{{ kpi("Your picks · P&L", tot.pnl, picks|length ~ " bets, $" ~ "%.0f"|format(tot.stake) ~ " staked · worth $" ~ "%.2f"|format(tot.value) ~ " now" ~ (" · " ~ tot.won ~ " won, " ~ tot.lost ~ " lost" if tot.won or tot.lost else ""), "money") }}{% endif %}{% endif %}
 </div>
 
+{# --- one view at a time: the race, the odds, the chart, the book --- #}
+<nav class="ptabs" data-tabs="live" role="tablist">
+  <button type="button" role="tab" data-tab="race">{{ "Race" if maker else "Race and my picks" }}</button>
+  {% if maker %}<button type="button" role="tab" data-tab="odds">Odds and quotes<span class="n">{{ grid|length }} riders</span></button>{% endif %}
+  {% if maker and win_chart %}<button type="button" role="tab" data-tab="chart">Win chart</button>{% endif %}
+  {% if maker and book %}<button type="button" role="tab" data-tab="book">Private book<span class="n">{{ crowd.takers }} takers</span></button>{% endif %}
+</nav>
+
 {# --- the race: leaderboard, on course, up next --- #}
+<section data-panel="race">
+{% if not maker %}{% include "live_picks.html" %}{% endif %}
 <div class="board">
 <div class="card"><h2>Leaderboard</h2>
 {% if fin %}<table><thead><tr><th>#</th><th class="l">Rider</th><th>Time</th><th>Gap</th></tr></thead><tbody>
@@ -42,23 +52,25 @@
 <h3>Up next</h3>
 <p>{% for r in nxt %}{{ r.name }}{{ " · " if not loop.last }}{% else %}<span class="muted">everyone has started</span>{% endfor %}</p></div>
 </div>
-
-{% if not maker %}{% include "live_picks.html" %}{% endif %}
+</section>
 
 {# --- the maker's view: rank probabilities, quotes, the chart, the book --- #}
 {% if maker %}
+<section data-panel="odds" hidden>
 <div class="card"><div class="section-head"><h2>Rank probabilities and quotes</h2><span class="legend">from 20,000 simulated finishes after every update · quotes are the maker's YES bid / ask · ▲▼ the move since the last update</span></div>
 {% if snap.model_version and snap.model_version >= 2 %}<p class="legend"><b>Pricing model v{{ snap.model_version }}</b> (switched mid-final; earlier bets keep their prices): the track is wearing, so riders still to come are priced on a start-order trend{% if snap.trend %} (next rider's final at {{ "%.1f"|format((snap.trend.next_ratio - 1) * 100) }}% vs qualifying, ± {{ "%.1f"|format(snap.trend.sd * 100) }}% shared){% endif %}; quotes pulled after a rider's last split.</p>{% endif %}
-<div class="scroll"><table><thead><tr><th class="l">Rider</th><th class="l"></th><th>1st</th><th>2nd</th><th>3rd</th><th>Top 3</th><th>Top 5</th><th>Top 10</th><th>Win bid / ask</th><th>Podium bid / ask</th></tr></thead><tbody>
+<div class="scroll" data-rows="15" data-filter="Filter by rider"><table><thead><tr><th class="l">Rider</th><th class="l"></th><th>1st</th><th>2nd</th><th>3rd</th><th>Top 3</th><th>Top 5</th><th>Top 10</th><th>Win bid / ask</th><th>Podium bid / ask</th></tr></thead><tbody>
 {% for r in grid %}<tr><td class="l">{{ r.name }}</td>
   <td class="l">{% if r.status == 'Finished' %}<span class="muted">finished</span>{% elif r.status == 'InRace' %}<span class="pill yes">on course</span>{% elif r.next is not none %}<span class="muted">starts {{ r.next + 1 }}{{ {0: "st", 1: "nd", 2: "rd"}.get(r.next, "th") }}</span>{% endif %}</td>
   <td>{{ pc(r.p1) }}</td><td>{{ pc(r.p2) }}</td><td>{{ pc(r.p3) }}</td><td><b>{{ pc(r.top3) }}</b></td><td>{{ pc(r.top5) }}</td><td>{{ pc(r.top10) }}</td>
   <td class="num">{{ px(r.win_bid) }} / {{ px(r.win_ask) }} <span class="{{ 'good' if r.win_move == 'up' else 'bad' }}">{{ "▲" if r.win_move == 'up' else "▼" if r.win_move == 'down' else "" }}</span></td>
   <td class="num">{{ px(r.podium_bid) }} / {{ px(r.podium_ask) }} <span class="{{ 'good' if r.podium_move == 'up' else 'bad' }}">{{ "▲" if r.podium_move == 'up' else "▼" if r.podium_move == 'down' else "" }}</span></td></tr>{% endfor %}
 </tbody></table></div></div>
-{% if win_chart %}<div class="card"><h2>Win probability through the final</h2>{{ chart(win_chart) }}</div>{% endif %}
+</section>
+{% if win_chart %}<section data-panel="chart" hidden><div class="card"><h2>Win probability through the final</h2>{{ chart(win_chart) }}</div></section>{% endif %}
 
-{% if book %}<div class="card"><div class="section-head"><h2>Private book</h2><span class="muted">{{ crowd.takers }} anonymous takers · {{ "settled" if snap.done else "marked to fair" }}</span></div>
+{% if book %}<section data-panel="book" hidden>
+<div class="card"><div class="section-head"><h2>Private book</h2><span class="muted">{{ crowd.takers }} anonymous takers · {{ "settled" if snap.done else "marked to fair" }}</span></div>
 <div class="board">
 <div><h3 class="mt0">Biggest positions</h3><table><thead><tr><th class="l">Market</th><th>Shares (YES)</th><th>Result</th><th>P&amp;L</th></tr></thead><tbody>
 {% for p in positions %}<tr><td class="l">{{ p.rider }} <span class="muted">{{ "wins" if p.market == 'win' else "podium" }}</span></td><td class="num {{ 'bad' if p.inv < 0 else '' }}">{{ "%+.0f"|format(p.inv) }}</td>
@@ -72,7 +84,8 @@
 <p>{{ cr.bettors }} have bet: <b class="good">{{ cr.up }} up</b>, <b class="bad">{{ cr.down }} down</b> · median {{ cr.median|money(true) }} · best {{ cr.best|money(true) }} · worst {{ cr.worst|money(true) }} · together {{ cr.total|money(true) }}{{ " (settled)" if snap.done else " (marked to fair)" }}</p>
 <p class="legend">A random taker, <code>{{ cr.spotlight.taker[:8] }}</code>: {{ cr.spotlight.pnl|money(true) }} on
 {% for b in cr.spotlight.bets %}{{ "long" if b.yes > 0 else "short" }} {{ "%.0f"|format(b.yes|abs) }} YES on {{ by_bib.get(b.market.split(':')[0]|int, b.market) }} {{ "winning" if b.market.endswith('win') else "podium" }} ({{ b.pnl|money(true) }}){{ "; " if not loop.last }}{% endfor %}</p>{% endif %}
-</div>{% endif %}
+</div>
 {% include "live_picks.html" %}
+</section>{% endif %}
 {% endif %}
 {% endif %}
