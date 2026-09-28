@@ -92,7 +92,7 @@ Competition     uci_dhi_wc               a league's championship in one sport
 | `model_runs` | One row per model run: competition, season, category, kind (`forecast` / `backtest`), data date, git version, `params` and `metrics` (JSONB). |
 | `race_predictions` | Per-athlete probabilities (win, podium, top 10, make Final, expected points) for a race. `race_id` is empty for races that aren't in the database yet (`target = "remaining_round"`). |
 | `standings_predictions` | Per-athlete projected standings for a model run. |
-| `market_links` | An exchange outcome token (Polymarket) linked to one of the model's probabilities: athlete, prediction kind, optional race, and inverted for "No"-type tokens. Also the event slug and title, live bid / ask / price, volume, end date, resolution, `synced_at`, and `first_seen_at`: when a sync first saw the token (null for tokens synced before alerts existed); it drives the "new" badges and [new-market alerts](cli.md#racinglines-markets). |
+| `market_links` | An exchange outcome token (Polymarket) or market's YES contract (Kalshi; `exchange` says which) linked to one of the model's probabilities: athlete, prediction kind, optional race, and inverted for "No"-type tokens. Also the event slug and title, live bid / ask / price, volume, end date, resolution, `synced_at`, and `first_seen_at`: when a sync first saw the token (null for tokens synced before alerts existed); it drives the "new" badges and [new-market alerts](cli.md#racinglines-markets). |
 | `orders` | Every exchange order the app built: dry run, submitted, rejected or cancelled. Includes the model probability, model run, book at the time and exchange response. |
 | `house_markets` | YES/NO markets quoted in the app (race × athlete × kind × maker), with fair probability, spread, YES/NO prices, status, outcome and `maker_id` (null = legacy house markets). |
 | `house_bets` | Bets against house markets: counterparty, `taker_id` (the taker account, if placed in the app), side, price, stake, payout, status. |
@@ -319,9 +319,9 @@ Migrations so far (in order, `migrations/versions/`):
 |---|---|---|
 | Everything the app presents: sports, events, results, athletes, market links, model runs (forecasts, backtests, diagnostics, sweep summaries with P&L across weekends), users, books, bets, jobs, paper signals and positions | Postgres | Small, queried constantly |
 | Exchange time series (`market_price_history`, `market_trades`, `market_book_snapshots`) for **upcoming and in-progress races, the latest completed race of each competition, and the last 7 days of open season markets** | Postgres | What the app shows live |
-| All other exchange time series | Parquet, `data/archive/markets/polymarket/{prices,trades,books}/month=YYYY-MM/*.parquet` (zstd) | Heavy and stale; about 20–40× smaller than in Postgres |
+| All other exchange time series | Parquet, `data/archive/markets/<exchange>/{prices,trades,books}/month=YYYY-MM/*.parquet` (zstd; `polymarket`, `kalshi`) | Heavy and stale; about 20–40× smaller than in Postgres |
 | Raw F1 sessions | Parquet, `data/raw/f1/fastf1/<year>/` | The record; FastF1's HTTP cache is cleared after each fetch |
-| Snapshot of the model tables, market links file | Parquet, `data/archive/db/`, `data/archive/markets/polymarket/links/` | Rebuild or replicate a database without the sources |
+| Snapshot of the model tables, market links files | Parquet, `data/archive/db/`, `data/archive/markets/{polymarket,kalshi}/links/` | Rebuild or replicate a database without the sources |
 
 - **Reading:** everything goes through `racinglines/markets/store.py` (`read`, `last_before`),
   which merges both stores and drops duplicates. Callers don't need to know

@@ -358,7 +358,7 @@ V2 item and the owner's explicit approval.
 
 ### F1-9: More exchanges (Kalshi, others)
 
-**Status:** Kalshi connector built on mocked responses (2026-09-28, `markets/kalshi/`); not yet run against the live API, nor read by the sweep or signals · **Start after** F1-8's first live weekends
+**Status:** Kalshi connector built (2026-09-28, `markets/kalshi/`) and run against the live read-only API: F1 history for 2025 and 2026 pulled and archived in `data/archive/markets/kalshi/` ([Data changes](data-changes.md)); not yet read by the sweep, signals or the web app; 2025 race titles not classified ([F1](f1.md#kalshi-alignment)) · **Start after** F1-8's first live weekends
 
 - **Kalshi connector** in `racinglines/markets/kalshi/`, mirroring
   `markets/polymarket/`: markets and resolution rules, prices, trade tape, and
