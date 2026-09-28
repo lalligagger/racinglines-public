@@ -339,9 +339,9 @@ Polymarket had listed the markets.
 
 Each item lists what "done" means. B0 matters in every scenario.
 
-- [ ] **B0. Name aliases** *(Mon)*
-  - "Malaysian", "Sepang" and "Kuala Lumpur" resolve to `2026-16` (`GP_ALIASES`).
-  - Done: a test resolving each name.
+- [x] **B0. Name aliases** *(Mon)*
+  - "Malaysian", "Sepang", "Kuala Lumpur" and "Bahrain Grand Prix in Malaysia" resolve to `2026-16` (`GP_ALIASES`).
+  - Done: `tests/test_gp_aliases.py` resolves each name; the April Bahrain market's date still doesn't match.
 - [ ] **B1. The shared live core** *(Mon)*
   - `markets/crowd.py`: the book, the crowd, picks, P&L and positions sync, moved out of `live_dh.py`; add windowed batches (a length in hours, fills timed across it).
   - `markets/quoting.py`: quotes with a spread, inventory lean, cap, freeze and close.

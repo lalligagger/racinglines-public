@@ -249,3 +249,6 @@ The session appends here: date and time (UTC), item, commit, status, notes.
 | When (UTC) | Item | Commit | Status | Notes |
 |---|---|---|---|---|
 | 2026-09-28 | Brief written | – | – | Ready to launch |
+| 2026-09-29 02:45 | A: bring-up | 9010faf | done | Bucket key set: pulled the full database dump and the Whistler run folder. `bucket.py` now installs boto3 with uv (the venv has no pip); `start.sh` upgrades uv so the venv gets Python 3.14.7, not 3.14.0rc2 (pydantic fails under pytest on rc2). |
+| 2026-09-29 03:00 | A: fixtures | – | blocked | `fetch_test_fixtures.py`: the proxy refuses FastF1, Polymarket and ChronoRace (403). Using `-m quick` plus new tests; the full suite runs locally. |
+| 2026-09-29 03:05 | A: B0 name aliases | B0 | done | `GP_ALIASES`: Malaysian, Sepang, Kuala Lumpur, "Bahrain … in Malaysia" → `2026-16`. |
