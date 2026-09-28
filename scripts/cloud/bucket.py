@@ -41,7 +41,10 @@ def client():
     return boto3.client("s3", endpoint_url=ENDPOINT, region_name="auto",
                         aws_access_key_id=os.environ["RACINGLINES_GCS_HMAC_ID"],
                         aws_secret_access_key=os.environ["RACINGLINES_GCS_HMAC_SECRET"],
-                        config=Config(signature_version="s3v4", s3={"addressing_style": "path"}))
+                        # GCS rejects boto3's default upload checksums (SignatureDoesNotMatch on put)
+                        config=Config(signature_version="s3v4", s3={"addressing_style": "path"},
+                                      request_checksum_calculation="when_required",
+                                      response_checksum_validation="when_required"))
 
 
 def keys(s3, bucket, prefix):
