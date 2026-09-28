@@ -51,16 +51,16 @@ def board_page(request: Request, msg: str = "", c=Depends(conn)):
     if user["role"] == "taker":
         from racinglines.web.app import bet_markets
         return bet_markets(request, msg=msg, c=c)
-    return render(request, "board.html", sports=B.board(c, _maker(user)), h=B.headline(c, _maker(user)))
+    return render(request, "board.html", sports=B.board(c, _maker(user)), h=B.headline(c, _maker(user)), kalshi=V.KALSHI_VENUE)
 
 
 # ---------------------------------------------------------------------------
 # Race / season pages
 # ---------------------------------------------------------------------------
 
-def _race_chart(c, info, pricing, df):
+def _race_chart(c, info, pricing, df, exchange="polymarket"):
     wins = df[(df["kind"] == "race_win")] if len(df) else df
-    tops = [r for r in wins.to_dict("records") if (r["venues"] or {}).get("polymarket")][:5]
+    tops = [r for r in wins.to_dict("records") if (r["venues"] or {}).get(exchange)][:5]
     if not tops:
         return None
     now = pd.Timestamp.now(tz="UTC")
@@ -70,7 +70,7 @@ def _race_chart(c, info, pricing, df):
         t0, t1 = start - timedelta(hours=72), start + timedelta(hours=1)
     else:
         t0, t1 = now - timedelta(hours=72), now
-    toks = {r["venues"]["polymarket"]["token"]: r for r in tops}
+    toks = {r["venues"][exchange]["token"]: r for r in tops}
     series = V.price_series(c, list(toks), t0.to_pydatetime(), t1.to_pydatetime())
     markers = []
     sess = data.q(c, """SELECT kind, (extra->>'session_date')::timestamp AS ts FROM rounds
@@ -79,8 +79,11 @@ def _race_chart(c, info, pricing, df):
         markers.append((pd.Timestamp(ts).tz_localize("UTC"), {"qual": "quali", "race": "race", "final": "final"}.get(k, k)))
     if pricing.get("as_of") is not None:
         markers.append((pd.Timestamp(pricing["as_of"]).tz_localize("UTC"), "our price"))
-    return price_chart(series, {t: r["subject"] for t, r in toks.items()}, {t: r["fair"] for t, r in toks.items()},
-                       markers)
+    out = price_chart(series, {t: r["subject"] for t, r in toks.items()}, {t: r["fair"] for t, r in toks.items()},
+                      markers)
+    if out and exchange != "polymarket":
+        out["venue"] = next(v.name for v in V.EXCHANGES if v.code == exchange)
+    return out
 
 
 @app.get("/races/{race_id}", response_class=HTMLResponse)
@@ -112,6 +115,7 @@ def race_page(request: Request, race_id: int, msg: str = "", c=Depends(conn)):
                   results=results, completed=completed, season=False, venue_sum=V.venue_summary(df), mine=B._mine(df),
                   exchanges=V.EXCHANGES, has_pm=bool(len(df) and df["pm_mid"].notna().any()),
                   chart_data=_race_chart(c, info, pricing, df), countdown=B._countdown(info["start_date"]),
+                  kalshi=V.KALSHI_VENUE, chart_kalshi=_race_chart(c, info, pricing, df, "kalshi") if V.KALSHI_VENUE else None,
                   diag_runs=diag_runs, msg=msg, kind_label=V.KIND_LABEL,
                   quote_kinds=list(V.STANDARD_KINDS.get(info["competition"], ("race_win", "race_podium"))))
 
@@ -126,6 +130,7 @@ def season_page(request: Request, code: str, c=Depends(conn)):
     return render(request, "race.html", info=info, pricing=pricing, groups=_groups(df),
                   fav=rows(champs.head(1))[0] if len(champs) else None, winner=None, results=[], completed=False,
                   season=True, strategy=latest_season_strategy(c, code), venue_sum=V.venue_summary(df), mine=B._mine(df), exchanges=V.EXCHANGES,
+                  kalshi=V.KALSHI_VENUE, chart_kalshi=None,
                   has_pm=bool(len(df) and df["pm_mid"].notna().any()), chart_data=None, countdown="", diag_runs=[],
                   msg="", kind_label=V.KIND_LABEL, quote_kinds=[])
 
@@ -168,7 +173,7 @@ def book_page(request: Request, maker: str = "", c=Depends(conn), user=allow("ad
                settled=float(bk["settled_pnl"].dropna().sum()) if len(bk) else 0.0)
     makers = rows(data.q(c, "SELECT username FROM users WHERE role IN ('maker', 'admin') ORDER BY username"))
     orders = data.q(c, "SELECT status, count(*) AS n FROM orders GROUP BY status")
-    return render(request, "book.html", groups=groups, tot=tot, makers=makers, maker=maker,
+    return render(request, "book.html", kalshi=V.KALSHI_VENUE, groups=groups, tot=tot, makers=makers, maker=maker,
                   orders=dict(zip(orders["status"], orders["n"])) if len(orders) else {})
 
 
@@ -353,7 +358,7 @@ def lab_section(request: Request, key: str, job: str = "", event: str = "", vari
     elif key == "backtests":
         ctx.update(backtests=backtest_runs(c), swept=set(edge.swept_variants(c)))
     elif key == "diagnostics":
-        ctx.update(event_diags=diag.event_summaries(c))
+        ctx.update(event_diags=diag.event_summaries(c), kalshi=V.KALSHI_VENUE)
     elif key == "runs":
         ctx.update(recent=rows(diag.recent_runs(c)))
     return render(request, f"lab_{key}.html", **ctx)
@@ -468,6 +473,8 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     user = request.state.user
     profile = PF.of_user(c, user["id"])
     maker = bool(profile and profile.get("strategy") not in WS.TAKER_MODES)
+    if venue == "kalshi" and not V.KALSHI_VENUE:       # the Kalshi filter exists only with the switch on
+        venue = ""
     pos = rows(data.q(c, """
         SELECT p.*, coalesce(ra.format->>'event_name', e.name) AS event_name, e.start_date,
                (SELECT bool_or(detail->>'backfill' = 'true') FROM strategy_signals s
@@ -548,6 +555,10 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
                                      AND (action = 'fill' OR (action IN ('buy', 'sell')
                                           AND coalesce(detail->>'followed', 'true') = 'true'))
                                    ORDER BY signal_ts, id""", u=user["id"], e=event))
+        # the maker's Kalshi replay flags its signals detail.venue = 'kalshi': shown with the switch, one venue at a time
+        tv = lambda t: (t["detail"] or {}).get("venue") or "polymarket"  # noqa: E731
+        trades = [t for t in trades if (V.KALSHI_VENUE or not tv(t).startswith("kalshi"))
+                  and (not V.KALSHI_VENUE or not venue or tv(t) == venue or venue == "private")]
     my_bets = house.taker_bets(c, user["id"]) if user["role"] == "taker" else pd.DataFrame()
     summary = dict(bets=len(my_bets), staked=float(my_bets["stake"].sum()), open=int((my_bets["status"] == "open").sum()),
                    pnl=float(my_bets["pnl"].sum())) if len(my_bets) else None
@@ -564,12 +575,19 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
         book = dict(chart=line_chart({"pnl": curve}, {"pnl": "private book P&L, marked to fair"}), polls=len(curve),
                     max_dd=min((v - max(cum[:i + 1]) for i, v in enumerate(cum)), default=0.0))
     plot = "private" if venue == "private" or (book and not acct) else "polymarket"
+    kacct = None
+    if V.KALSHI_VENUE and "kalshi" in venues and maker:          # the maker's record on Kalshi's tape
+        kacct = story.account(c, user["id"], profile, maker, markers=False, venue="kalshi")
+        if venue == "kalshi":
+            plot = "kalshi"
     coming = polymarket_calls(c, profile, n_races=2) if profile else None
+    kcoming = polymarket_calls(c, profile, n_races=2, exchange="kalshi") if profile and V.KALSHI_VENUE else None
     return render(request, "positions.html", profile=profile, maker=maker, paper=paper, shown=shown,
                   weekends=weekends, event=event, by_kind=sorted(by_kind.values(), key=lambda k: -k["n"]),
                   trades=trades, my_bets=rows(my_bets), summary=summary, acct=acct, coming=coming,
                   venues={v["venue"]: v for v in venues.values()}, venue=venue, sort=sort, link=link, book=book, plot=plot, vtotal=sum(v["pnl"] for v in venues.values()),
-                  open_pos=open_, cur=next((w for w in weekends if w["event_key"] == event), None))
+                  open_pos=open_, cur=next((w for w in weekends if w["event_key"] == event), None),
+                  kalshi=V.KALSHI_VENUE, kacct=kacct, kcoming=kcoming)
 
 
 # ---------------------------------------------------------------------------
@@ -577,7 +595,7 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
 # ---------------------------------------------------------------------------
 
 @app.get("/strategy", response_class=HTMLResponse, dependencies=[allow(*ANY)])
-def signals_page(request: Request, user: str = "", event: str = "", c=Depends(conn)):
+def signals_page(request: Request, user: str = "", event: str = "", venue: str = "", c=Depends(conn)):
     """The account's track record (every weekend: profile, trades, paper P&L), then one weekend's signals by
     stage and its paper positions (default: the latest). Takers see what to do and how hot it is (the
     modelled EV, graded), never our fair value or edge. Backfilled weekends are backtest replays and are
@@ -596,15 +614,23 @@ def signals_page(request: Request, user: str = "", event: str = "", c=Depends(co
     show_fair = me["role"] != "taker"
     from racinglines.pipelines import story
     is_maker = bool(profile and not profile.get("strategy", "update").startswith(("update", "hold", "last", "early")))
-    acct = story.account(c, uid, profile, is_maker)
+    # venue=kalshi (with RACINGLINES_KALSHI_VENUE=1): the maker's same profiles replayed on Kalshi's tape
+    venue = "kalshi" if venue == "kalshi" and V.KALSHI_VENUE and is_maker else ""
+    acct = story.account(c, uid, profile, is_maker, venue=venue or "polymarket")
     record, seasons, total = acct["record"], acct["seasons"], acct["kpis"]["total"]
     ev = event or (record[-1]["event_key"] if record else None)
     cur = next((r for r in record if r["event_key"] == ev), None)
-    sig = data.q(c, """SELECT * FROM strategy_signals WHERE user_id = :u AND event_key = :e
-                       AND coalesce(detail->>'venue', 'polymarket') NOT LIKE 'kalshi%'
-                       ORDER BY signal_ts DESC NULLS LAST, id DESC""", u=uid, e=ev) if ev else pd.DataFrame()
-    pos = data.q(c, """SELECT * FROM paper_positions WHERE user_id = :u AND event_key = :e AND venue NOT LIKE 'kalshi%'
-                       ORDER BY kind, subject""", u=uid, e=ev) if ev else pd.DataFrame()
+    if venue:
+        sig = data.q(c, """SELECT * FROM strategy_signals WHERE user_id = :u AND event_key = :e AND detail->>'venue' = :v
+                           ORDER BY signal_ts DESC NULLS LAST, id DESC""", u=uid, e=ev, v=venue) if ev else pd.DataFrame()
+        pos = data.q(c, """SELECT * FROM paper_positions WHERE user_id = :u AND event_key = :e AND venue = :v
+                           ORDER BY kind, subject""", u=uid, e=ev, v=venue) if ev else pd.DataFrame()
+    else:
+        sig = data.q(c, """SELECT * FROM strategy_signals WHERE user_id = :u AND event_key = :e
+                           AND coalesce(detail->>'venue', 'polymarket') NOT LIKE 'kalshi%'
+                           ORDER BY signal_ts DESC NULLS LAST, id DESC""", u=uid, e=ev) if ev else pd.DataFrame()
+        pos = data.q(c, """SELECT * FROM paper_positions WHERE user_id = :u AND event_key = :e AND venue NOT LIKE 'kalshi%'
+                           ORDER BY kind, subject""", u=uid, e=ev) if ev else pd.DataFrame()
     stages = []
     for lab, g in (sig.groupby("stage", sort=False) if len(sig) else []):
         items = rows(g)
@@ -631,7 +657,8 @@ def signals_page(request: Request, user: str = "", event: str = "", c=Depends(co
     maker = bool(cur and not cur["strategy"].startswith(("update", "hold", "last", "early"))) if cur else is_maker
     return render(request, "strategy.html", viewer=viewer, profile=profile, show_fair=show_fair, stages=stages,
                   positions=positions, cur=cur, event_key=ev, users=users, maker=maker, record=record,
-                  seasons=seasons, total=total, acct=acct, is_maker=is_maker, heat_label=HEAT_LABEL)
+                  seasons=seasons, total=total, acct=acct, is_maker=is_maker, heat_label=HEAT_LABEL,
+                  venue=venue, kalshi=V.KALSHI_VENUE and is_maker)
 
 
 # ---------------------------------------------------------------------------

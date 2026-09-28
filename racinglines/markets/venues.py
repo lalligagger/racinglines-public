@@ -126,9 +126,11 @@ def _exchange_rows(conn, links, cache, run_id):
     links = links.sort_values("id")
     seen = set()
     for link in links.to_dict("records"):
-        if link["prediction"] in ("race_h2h", "standings_h2h") and link["condition_id"] in seen:
+        # a Polymarket binary question has two tokens (keep one); a Kalshi condition_id is the whole event
+        q = link["token_id"] if link["exchange"] == "kalshi" else link["condition_id"]
+        if link["prediction"] in ("race_h2h", "standings_h2h") and q in seen:
             continue
-        seen.add(link["condition_id"])
+        seen.add(q)
         k = key(link["prediction"], link["athlete_id"], link["params"])
         fair = data.model_prob(conn, link, cache, run_id=run_id)[0] if link["prediction"] != "unmodeled" else None
         out.setdefault(k, {})[link["exchange"]] = dict(

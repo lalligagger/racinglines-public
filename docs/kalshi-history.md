@@ -96,8 +96,19 @@ podium +$9.94. Hungary 2025 (M2, −$508) is most of M2's loss.
 
 ## In the app
 
-`RACINGLINES_KALSHI_VENUE=1` (off by default) marks Kalshi as a live venue on the board and race pages. It
-also lets the Positions page include the Kalshi rows (`?venue=kalshi`). With the
-switch off, Kalshi rows stay out of Positions, and the Strategy page never includes them, since it shows the
-Polymarket record. The Positions page's venue tiles and filter menu still list only Polymarket and the
-private book. Adding Kalshi to them waits for the web UI rework.
+`RACINGLINES_KALSHI_VENUE=1` (off by default) brings Kalshi to the same level as Polymarket across the app. With
+the switch off, nothing below appears: Kalshi shows as "soon" on the board and race pages, its rows stay out of
+Positions, and `/markets/kalshi` is a 404.
+
+| Page | With the switch on |
+|---|---|
+| Markets (board) | Kalshi as a live venue chip per race; the winner's Kalshi price next to Polymarket's in recent results; a link to the Kalshi list |
+| Race and season pages | a Kalshi column with its bid–ask (open races) or its price as of our pricing (past races); the price-history tab plots Polymarket or Kalshi; a Kalshi mirror button and link |
+| `/markets/kalshi` | every listed Kalshi event, as `/markets/polymarket`: outcomes, bid/ask/last, our fair, edge, a quote at ± spread/2, mirror into my book, refresh from Kalshi (read-only) |
+| Positions | a Kalshi P&L tile (a filter, like the others), the Kalshi curve in the P&L history, `?venue=kalshi` in the venue menu, Kalshi pills on rows and fills in the all-venues view, Coming up lists Kalshi's open markets with the maker's quotes |
+| Strategy | a Polymarket / Kalshi switch; `?venue=kalshi` shows the maker's Kalshi record, weekend by weekend, with its signals and positions |
+| Lab | Event diagnostics get Kalshi fills / P&L columns (the same replay on Kalshi's tape, with its maker fee); a diagnostic's maker replay has an Exchange selector |
+
+The Polymarket record, its pages and the private book render exactly as before with the switch off. A Kalshi
+`condition_id` is the whole event, so the race page, the mirror and the Coming-up volume group Kalshi's rows by
+market ticker (`token_id`), where Polymarket's group by condition.

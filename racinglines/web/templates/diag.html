@@ -51,12 +51,13 @@
 <p class="muted">A taker's test of the model: it pays Polymarket's price with no spread or slippage (optimistic). {% for k, c in coherence.items() %}{% if not c.ok %}<b>{{ k }}</b>: Polymarket prices summed to {{ "%.2f"|format(c.sum) }} (expected {{ c.target }}), an empty book, so it's excluded. {% endif %}{% endfor %}</p></div>
 
 </section>
-<section data-panel="s5" hidden><div class="card"><h2>5 · Maker replay on Polymarket's real trade tape</h2>
-<p>Our maker rests post-only quotes on Polymarket at fair ± {{ "%.0f"|format(rp.params.half_spread * 100) }}¢ (skewed against inventory, never crossing the market, so YES bid + NO bid &lt; $1), requoting every {{ rp.params.step_min }} min and pulling {{ rp.params.pull_min }} min before qualifying and the race.
+<section data-panel="s5" hidden><div class="card"><h2>5 · Maker replay on {{ "Kalshi" if venue == 'kalshi' else "Polymarket" }}'s real trade tape</h2>
+<p>Our maker rests post-only quotes on {{ "Kalshi" if venue == 'kalshi' else "Polymarket" }} at fair ± {{ "%.0f"|format(rp.params.half_spread * 100) }}¢ (skewed against inventory, never crossing the market, so YES bid + NO bid &lt; $1), requoting every {{ rp.params.step_min }} min and pulling {{ rp.params.pull_min }} min before qualifying and the race.
 It skips markets priced outside {{ "%.0f"|format(rp.params.price_band[0] * 100) }}–{{ "%.0f"|format(rp.params.price_band[1] * 100) }}¢, with under ${{ "%.0f"|format(rp.params.min_volume_24h) }} traded in the last 24 h, {% if rp.params.max_disagree %}or where our fair is more than {{ "%.0f"|format(rp.params.max_disagree * 100) }} pts from the market{% else %}(disagreement filter off){% endif %}.
 Limits: {{ "%.0f"|format(rp.params.size) }} shares per quote, {{ "%.0f"|format(rp.params.max_pos) }} shares per market, ${{ "%.0f"|format(rp.params.max_capital) }} worst-case loss for the event.
-It only gets filled by <b>real taker trades that came after its quote</b> — takers see prices, not our fair value.</p>
+It only gets filled by <b>real taker trades that came after its quote</b> — takers see prices, not our fair value.{% if venue == 'kalshi' %} Kalshi charges makers a fee: ceil({{ rp.params.maker_fee }} × contracts × P × (1 − P)) cents per fill, taken from the P&amp;L.{% endif %}</p>
 <form method="get" class="jobform mt">
+{%- if kalshi %}<label><span>Exchange</span><select name="venue"><option value="">Polymarket</option><option value="kalshi" {{ 'selected' if venue == 'kalshi' }}>Kalshi</option></select></label>{% endif %}
 <label><span>Fill rule</span><select name="fill"><option value="through" {{ 'selected' if fill == 'through' }}>through (conservative)</option><option value="touch" {{ 'selected' if fill == 'touch' }}>touch (optimistic)</option></select></label>
 <label><span>Half-spread (¢)</span><input name="h" type="number" step="0.005" min="0.005" max="0.2" value="{{ rp.params.half_spread }}"></label>
 <label><span>Shares per quote</span><input name="size" type="number" min="1" value="{{ rp.params.size|int }}"></label>
