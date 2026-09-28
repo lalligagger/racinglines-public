@@ -49,6 +49,32 @@ Check (2026-09-28): Baku 2026's Polymarket tape, copied into Kalshi's shape (one
 ticker per kind), replays to the same 72 positions as the Polymarket replay. Only the maker fee differs
 (net cash $30.55 → $29.86).
 
+## First real run (2026-09-28)
+
+On the pulled Kalshi tape ([Data changes](data-changes.md)), in a cloud copy of the database, the demo maker ran
+profile C over the 15 Grands Prix of 2026. The Polymarket record was run on the same copy for comparison. 2025
+isn't comparable yet, because Kalshi's 2025 race markets aren't classified ([F1](f1.md#kalshi-alignment)).
+
+| 2026, profile C | Kalshi | Polymarket |
+|---|---:|---:|
+| Paper P&L, settled | **−$118.84** (−$66.30 before $52.54 of maker fees) | **+$653.03** (as in [Paper trading](paper-trading.md)) |
+| Fills | 1,263 | 843 |
+| Quoted markets filled: win | 75 of 87 (86%) | 64 of 74 (86%) |
+| Quoted markets filled: podium | 71 of 80 (89%) | 46 of 62 (74%) |
+| Quoted markets filled: top constructor | 10 of 17 | 5 of 8 |
+| Quoted markets filled: head-to-head | 2 of 3 | 11 of 20 |
+| P&L by kind: win / podium / constructor / h2h | −95.29 / −78.43 / +41.78 / +13.10 | +424.01 / +216.04 / +22.02 / −9.05 |
+
+- **Kalshi's tape fills the maker reliably.** Most quoted win and podium markets fill, so the record needs no
+  simulated takers. Head-to-heads are the exception, since Kalshi lists few of them.
+- **The same maker loses on Kalshi even before fees.** Profile C was tuned on Polymarket's flow. On Kalshi it
+  fills more often (podium: 647 fills vs 222) and does worse on those fills. That suggests Kalshi's takers are
+  better informed against our quotes, or Kalshi's prices are closer to the result. Whether a Kalshi-tuned
+  maker (spread, disagreement filter) does better is a question for a sweep, and nothing here tunes for it.
+- Weekend by weekend (Kalshi, including fees): Australia −25, China +141, Japan +225, Miami −91, Canada +120,
+  Monaco −50, Barcelona −301, Austria −237, Britain −209, Belgium +32, Hungary +137, Netherlands +37,
+  Italy +165, Spain 0, Azerbaijan −62.
+
 ## In the app
 
 `RACINGLINES_KALSHI_VENUE=1` (off by default) marks Kalshi as a live venue on the board and race pages. It
