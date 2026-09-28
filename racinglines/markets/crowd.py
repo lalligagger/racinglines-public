@@ -40,6 +40,7 @@ class Params:
     rate_h: float = 0.0                 # window(): per taker, per quoted market, per hour
     late_cap: float = 100.0             # the late window's fresh cap per taker
     late_pace: float = 50.0             # the late window's pace, x the normal rate
+    max_loss: float | None = None       # the maker's per-market loss cap (quoting's): a fill never takes it past it
 
     @classmethod
     def from_dict(cls, d):
@@ -94,6 +95,13 @@ def _fill(q, who, book, rng, p, pot):
     shares = round(stake / max(cost, 0.01), 2)
     room = p.max_pos + m["inv"] if side == "buy" else p.max_pos - m["inv"]
     shares = min(shares, max(room, 0.0))
+    if p.max_loss is not None:                                  # the maker's worst case in this market stays capped
+        if side == "buy":                                       # the maker sells YES: loses (1 - px) a share if YES
+            left = p.max_loss + m["cash"] + m["inv"]
+            shares = min(shares, round(max(left, 0.0) / max(1 - px, 0.01), 2))
+        else:                                                   # the maker buys YES: loses px a share if NO
+            left = p.max_loss + m["cash"]
+            shares = min(shares, round(max(left, 0.0) / max(px, 0.01), 2))
     if shares <= 0:
         return None
     book[pot][who] = round(book[pot][who] - shares * cost, 2)

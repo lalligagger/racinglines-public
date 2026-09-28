@@ -214,3 +214,17 @@ def test_loss_cap_stops_selling_yes_once_the_worst_case_hits_it():
     assert Q.capped(0.05, 0.03, inv=-400, cash=24.0, p=p)[1] is not None        # $376: still quoting
     bid, ask = Q.capped(0.50, 0.03, inv=1200, cash=-600.0, p=p)
     assert bid is None and ask is not None                                     # long: loses $600 if NO, no more bids
+
+
+def test_crowd_fills_respect_the_loss_cap():
+    p = C.Params(takers=100, rate_h=0.2, seed=5, max_loss=300.0)
+    book = C.new_book(p)
+    quotes = [dict(key="race_win:9", fair=0.02, bid=None, ask=0.05)]           # a long shot: the crowd can only buy
+    t0 = datetime(2026, 10, 2, tzinfo=timezone.utc)
+    fills = C.window(quotes, book, np.random.default_rng(0), p, t0, t0 + timedelta(hours=20))
+    assert fills
+    if_yes, _ = Q.worst_case(book["markets"]["race_win:9"]["inv"], book["markets"]["race_win:9"]["cash"])
+    assert if_yes <= 300.0 + 0.05                                              # never past the cap
+    uncapped = C.new_book(C.Params(takers=100, rate_h=0.2, seed=5))
+    C.window(quotes, uncapped, np.random.default_rng(0), C.Params(takers=100, rate_h=0.2, seed=5), t0, t0 + timedelta(hours=20))
+    assert Q.worst_case(uncapped["markets"]["race_win:9"]["inv"], uncapped["markets"]["race_win:9"]["cash"])[0] > 300

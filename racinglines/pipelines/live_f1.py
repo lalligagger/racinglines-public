@@ -278,14 +278,12 @@ def classification(conn, rid, round_kind):
 
 def quotes_for(mkts, book, picks, qp, hs, decided=()):
     """The maker's quotes on every market: fair +- hs, leaning against inventory (the crowd's fills and the
-    demo taker's picks); none on a decided market."""
-    pick_inv = {}
-    for p in picks:
-        pick_inv[p["key"]] = pick_inv.get(p["key"], 0.0) - p["shares"]
+    demo taker's picks); none on a decided market. qp's max_loss / floor_bid switches apply (off by default)."""
+    pos = C.maker_positions(book, picks)                 # the crowd's fills and the demo taker's picks
     out = []
     for m in mkts:
-        inv = book["markets"].get(m["key"], {}).get("inv", 0.0) + pick_inv.get(m["key"], 0.0)
-        bid, ask = (None, None) if m["key"] in decided else Q.quote(m["fair"], hs, inv, qp.max_pos, qp.skew)
+        inv, cash = pos.get(m["key"], {}).get("yes", 0.0), pos.get(m["key"], {}).get("cash", 0.0)
+        bid, ask = (None, None) if m["key"] in decided else Q.capped(m["fair"], hs, inv, cash, qp)
         out.append(dict(key=m["key"], kind=m["kind"], fair=None if m["fair"] is None else round(m["fair"], 4),
                         bid=bid, ask=ask, inv=round(inv, 2)))
     return out
@@ -375,7 +373,7 @@ def step(spec, now=None, fetch=True, unfreeze=False, echo=print, engine=None, en
     cache = {} if cache is None else cache
     kinds = [k for k in live["markets"]["kinds"] if k in KINDS]
     qp = Q.Params.from_dict(live["quoting"])
-    cp = C.Params.from_dict(live["crowd"])
+    cp = C.Params.from_dict(dict(live["crowd"], max_loss=live["quoting"].get("max_loss")))
     book = C.load_book(out, cp)
     picks = json.loads((out / "picks.json").read_text()) if (out / "picks.json").exists() else []
     with engine.connect() as c:

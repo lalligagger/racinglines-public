@@ -148,7 +148,7 @@ feed and any overrides of the sport's `[live]` settings.
 | Updates | Pre-weekend (the book opens), after each session (FP1, FP2, FP3; sprint weekends SQ and Sprint; Quali), lights out (the book closes), results (everything settles) |
 | Pricing | The demo maker's profile C (`gbm`): the stage run the signal engine also uses (`signals.price_stages_now`, reused when stored) |
 | Markets | Winner, podium, pole (22 each), head-to-head (the last listed race's pairs), top constructor (11): 99 for round 16 |
-| Quotes | Fair ± 3¢ pre-weekend, 2.5¢ after FP1 and FP2, 2¢ after FP3 and qualifying; leaning against inventory; 2,500 shares per market; frozen as posted after qualifying (pole markets unquoted: decided); none after lights out |
+| Quotes | Fair ± 3¢ pre-weekend, 2.5¢ after FP1 and FP2, 2¢ after FP3 and qualifying; leaning against inventory; 2,500 shares per market; frozen as posted after qualifying (pole markets unquoted: decided); none after lights out. Optional, off by default: a per-market loss cap (`max_loss`, $) and a 1¢ floor bid on long shots (`floor_bid`) |
 | Crowd | The same 1,000 takers; one batch per update for the window since the last one, at 0.0006 hits per taker, per market, per hour, timed across the window; the pre-race window at 3× with fresh $100 caps |
 | Settlement | Pole from the qualifying classification at the after-Quali update; everything else from the race classification (`private_book.outcome_for`) |
 | Late data | An update waits for its stage run; one more than 2 hours late sends an alert. Missed updates merge into the next |

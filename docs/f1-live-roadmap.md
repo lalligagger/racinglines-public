@@ -368,9 +368,10 @@ Each item lists what "done" means. B0 matters in every scenario.
   - An alert when an update is more than 2 hours late (`[live.poll] late_alert_h`), once per update, through the usual alert channels (`markets/alerts.deliver`); `racinglines live status` shows lateness too.
   - Settings frozen into `meta.json` at the pre-weekend update, with the head-to-head pairs; a changed schema or spec is ignored with a warning unless `--unfreeze` (then add a decision-log line).
   - Done: `tests/test_live_f1.py` (lock, plist, frozen settings, the lateness alert); round 16's opening dry-run on a simulated clock (99 markets, 90 quoted, 12 picks). The LaunchAgent itself is only loadable on the Mac.
-- [ ] **B7. Rehearsal on Baku** *(Wed–Thu)*
-  - The whole weekend on a simulated clock, run under the LaunchAgent.
-  - Done: all seven updates happen, pole settles after qualifying and everything else after the race, Positions is correct, replay works.
+- [x] **B7. Rehearsal on Baku** *(Wed–Thu)*
+  - The whole weekend on a simulated clock, as the LaunchAgent runs it: a fresh `racinglines live step live/f1/2026-15.toml --now <t> --no-fetch` process every 5 simulated minutes (669 steps, cloud session, 29 Sep).
+  - Done: all seven updates, each at its scheduled time; pole settled after qualifying and everything else after the race; Positions correct (the maker's 79 settled positions sum to the book's +$8,313.81, the demo taker's 2 picks to −$50); the book reconciles with its 2,596 fills; replay renders all 7 updates for maker and taker. The result matches the in-process `live run --simulate` to the cent.
+  - Left for Thursday, on the Mac: the same under the real LaunchAgent (`racinglines live agent … --install`), and one live `step` with FastF1 fetching.
 - [x] **B8. Report command** *(Thu, stretch)*
   - `racinglines live report <spec> [--pdf]`, generalising the Whistler report: book P&L by update, the crowd, the demo taker, and the fair-price scorecard (Brier score and log loss per market kind at each update, and the biggest moves). Written to the run folder's `report/`: Markdown, HTML with the charts inline, SVG charts, and a PDF through headless Chrome.
   - Done: Whistler's report from its run folder (run folder unchanged); tests on the synthetic third sport.
@@ -502,4 +503,5 @@ existing layout, and the report can be written by hand as Whistler's was.
 | 2026-09-29 | One LaunchAgent per event (`bet.racinglines.live.<run>`), so a downhill final and an F1 weekend can run side by side. |
 | 2026-09-29 | The head-to-head pairs are fixed at the book's opening (in `meta.json`): a Polymarket listing that appears mid-weekend doesn't change the book's markets. |
 | 2026-09-29 | Sprint weekends need no new code: the plan takes its stages from the schedule (after FP1, SQ, Sprint, Quali), each with a half-spread (2.5¢ after SQ, 2¢ after the Sprint). Rehearsed on the Dutch GP (round 12). Sessions without positions (practice, sprint qualifying) show on the page ranked by best lap. |
+| 2026-09-29 | Long-shot risk: the shared quoter gets a per-market loss cap (`[live.quoting] max_loss`: no more selling a side once the market's worst case reaches it, and no crowd fill takes it past it) and a 1¢ floor bid on long shots (`floor_bid`). Both **off** (today's behaviour), for the owner to decide. On Baku's rehearsal (real stage runs, simulated crowd): baseline +$6,935, worst markets −$2,400 each if YES; `max_loss = 500`: +$5,337, worst −$559 (the demo taker's picks sit outside the cap); floor bid: +$6,424; both: +$6,313, worst −$667. One weekend where the long shots lost: the cap costs P&L here and protects the tail. |
 

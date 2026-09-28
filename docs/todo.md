@@ -22,8 +22,8 @@ Polymarket's usual race markets (winner, podium, pole, head-to-head, constructor
 anyway, and update at session ends only. It's built as one shared live core plus an
 F1 adapter, keeping the platform multi-sport. Plan: [F1 live test](f1-live-roadmap.md).
 
-- [ ] Build: name aliases, the shared live core, the F1 adapter, the Live tab's F1
-      body, the demo taker, operations, a rehearsal on Baku (items B0–B7).
+- [x] Build: name aliases, the shared live core, the F1 adapter, the Live tab's F1
+      body, the demo taker, operations, a rehearsal on Baku (items B0–B8, cloud build-out 29 Sep; the Mac rehearsal under the LaunchAgent is Thursday's).
 - [ ] Checkpoints: Polymarket listing Wed 30 Sep; the scenario chosen Thu 1 Oct 18:00 PDT;
       the book opens Thu 20:30 PDT.
 - [ ] After the race (Mon 5 Oct): settle and reconcile, report with a fair-price scorecard.
@@ -33,7 +33,7 @@ F1 adapter, keeping the platform multi-sport. Plan: [F1 live test](f1-live-roadm
 - [ ] Singapore (round 17, sprint, 11 Oct): run it the same way if Polymarket still hasn't listed it. Ready: `live/f1/2026-17.toml`; the sprint stages rehearsed on the Dutch GP (`live/f1/2026-12.toml`).
 - [x] A repeatable report command for any live event: `racinglines live report` ([Live events](#live-events)).
 - [x] Settle the Whistler private book in the database, into the demo maker's story (`live_events`; the owner runs the migration and `racinglines live settle` locally).
-- [ ] A per-market loss cap or two-sided long-shot quotes in the shared quoting core.
+- [x] A per-market loss cap or two-sided long-shot quotes in the shared quoting core (both built, off by default: the owner decides; [decision log](f1-live-roadmap.md#11-decision-log)).
 - [ ] Watch for Polymarket listings: F1-8 starts the first weekend with markets.
 
 **P2 · When Polymarket lists F1 again: paper-trade validation** ([F1-8](#paper-trading))
@@ -228,8 +228,10 @@ How it works: [Live events](live-events.md). First run: the Whistler downhill fi
       raw response re-priced with today's code and the recorded inputs, scored against what was quoted live;
       2026-09-29). On 38 sampled Whistler updates the re-price (v2 throughout) scored a little worse than the
       live quotes (v1, then v2): Brier 0.0216 vs 0.0202 on win, 0.0430 vs 0.0365 on podium.
-- [ ] Two-sided long-shot quotes (or a per-market loss cap) so the maker doesn't pile up shorts in unlikely
-      winners.
+- [x] Two-sided long-shot quotes (or a per-market loss cap) so the maker doesn't pile up shorts in unlikely
+      winners: `[live.quoting] max_loss` and `floor_bid` in `markets/quoting.py` (2026-09-29), both off by default.
+      Measured on Baku's rehearsal in the [decision log](f1-live-roadmap.md#11-decision-log).
+- [ ] Owner: switch the loss cap on for round 16 or not (`max_loss = 500` in `live/f1/2026-16.toml` `[live.quoting]`).
 - [x] Settle the Whistler private book in the database and add it to the demo maker's story: the
       `live_events` table (migration `a3f5c8d1e7b2`) and `racinglines live settle <spec>`; the story dates
       private-book events from it (2026-09-29). Locally: `alembic upgrade head`, then
