@@ -158,7 +158,13 @@ feed and any overrides of the sport's `[live]` settings.
 3. A body partial, `templates/live_<code>.html`, rendered with the adapter's `view()` output.
 4. A launch spec, `live/<code>/<event>.toml`.
 
-Nothing in the core, the book, the crowd or the Live tab's shell changes.
+Nothing in the core, the book, the crowd or the Live tab's shell changes. `tests/test_live_toy.py` proves it with a
+synthetic third sport (`tests/live_toy.py`: a toy sprint with its own schema, spec and body partial), run through
+the CLI's locked step, the registry, the replay and the Live tab.
+
+Launch specs committed so far: `live/f1/2026-16.toml` (round 16), `live/f1/2026-15.toml` (the Baku rehearsal),
+`live/mtb_dh/20260925_mtb.toml` (Whistler as it was run; over, so `step` leaves it alone). No downhill event
+after Whistler is in the data: it was the World Cup final.
 
 ## First F1 test: round 16
 

@@ -652,6 +652,8 @@ def live_page(request: Request, partial: int = 0, t: str = "", event: str = ""):
 def live_context(event="", t="", maker=True, partial=0):
     """The Live tab's template context: the registry's event, live or as of a replay snapshot, with the
     sport's body from its adapter (no database: the run folder only)."""
+    from urllib.parse import quote
+
     from racinglines.pipelines import live as LV
     ev = LV.find(event or None)
     mode = LV.state(ev["run"]) if ev else None
@@ -663,7 +665,8 @@ def live_context(event="", t="", maker=True, partial=0):
         snap, picks, hist = LV.load(ev["run"]) if ev else (None, [], [])
     ctx = dict(snap=snap, maker=maker, partial=partial, mode=mode, times=times,
                t=next((x for x in reversed(times) if x <= t), times[0]) if times else None,
-               sport=(ev or {}).get("sport") or "mtb_dh", evq=f"event={event}&" if event else "",
+               sport=(ev or {}).get("sport") or "mtb_dh",
+               evq=f"event={quote(ev['run'], safe='')}&" if event and ev else "",   # the registry's name, URL-quoted
                events=LV.events())
     if snap:
         ctx.update(LV.adapter(ctx["sport"]).view(ev["run"], snap, picks, hist, mode, maker))

@@ -536,8 +536,13 @@ def run(slug, key, quali_keys, cond="", interval=BASE_INTERVAL, minutes=0, echo=
 
 def step(spec, now=None, echo=print, **_):
     """Adapter interface: one poll of the final named by a launch spec ([feed] slug, final, quali, conditions).
-    Live only (the feed is the present): now is ignored."""
+    Live only (the feed is the present): now is ignored. A final that is over is left alone (its run folder is
+    the record the replay reads)."""
     f = spec["feed"]
+    snap, _, _ = load(f["slug"], str(f["final"]))
+    if snap and snap.get("done"):
+        echo(f"{f['slug']} final {f['final']}: over; nothing to do")
+        return None
     s = update(f["slug"], str(f["final"]), [str(k) for k in f.get("quali", [])], f.get("conditions", ""),
                interval=spec["live"]["poll"]["interval_s"])
     echo(f"{s['ts']} {s['counts']} maker P&L {s['maker_pnl']['total']:+.2f}" + (" · FINAL OVER" if s["done"] else ""))
