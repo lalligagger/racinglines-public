@@ -69,3 +69,47 @@ vallnord-pal-arinsal = "pal-arinsal"
 [markets]
 venues = ["private"]                  # no exchange lists downhill yet
 standard_kinds = ["race_win", "race_podium", "race_make_final"]
+
+[live]
+# A live final (pipelines/live_dh.py): the timing feed polled every few seconds, a Monte Carlo of the rest of
+# the final, the maker re-quoting every rider's markets. live_dh's constants take their values from here.
+adapter = "racinglines.pipelines.live_dh"
+stream = "UCI live timing (ChronoRace), polled every few seconds"
+
+[live.sources]
+historical = { kind = "chronorace", url = "https://prod.chronorace.be/api/results/uci/dh/cms/{slug}" }
+live = { kind = "chronorace_live", url = "https://prod.chronorace.be/api/results/generic/uci/{slug}/dh?key={key}" }
+
+[live.poll]
+mode = "interval"
+interval_s = 5                  # the crowd's rate is per this many seconds; faster polls scale it down
+late_interval_s = 2             # the late window polls every 2 s ...
+late_when_left = 3              # ... once no more than 3 riders are still to start
+stale_h = 6                     # not updated for this long: the Live tab turns grey (a replay)
+
+[live.markets]
+kinds = ["race_win", "race_podium"]
+names = { win = "Wins the final", podium = "Podium (top 3)" }
+
+[live.quoting]
+half_spread = 0.03
+widen_on_course = 0.02          # the rider is on course: information arrives fast
+widen_next = 0.01               # next few to start
+max_pos = 2500.0                # the maker's shares per market, either way
+skew = 1.0                      # quotes lean against inventory: shift = -skew x half-spread x inventory / max_pos
+
+[live.crowd]
+# 1,000 anonymous takers, each hitting a quoted market with probability p per poll, on a random side; each
+# with an event budget of $10-200 (log-uniform) and betting part of what's left each time
+takers = 1000
+p = 0.0004
+budget = [10.0, 200.0]
+bet = [0.2, 0.8]
+min_bet = 2.0
+seed = 20260927
+late_cap = 100.0                # the late window: every taker gets a fresh $100 ...
+late_pace = 50.0                # ... and the crowd trades at 50x the normal rate
+
+[live.freeze]
+market = "a rider's markets are pulled after their last split"
+close = "when the final is over"

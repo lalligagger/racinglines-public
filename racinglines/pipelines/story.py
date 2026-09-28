@@ -137,7 +137,7 @@ def track_record(conn, uid, venue="polymarket"):
         LEFT JOIN races ra ON ra.event_id = e.id
         WHERE (:v <> 'private' AND s.event_key IS NOT NULL) OR (:v <> 'polymarket' AND p.private) ORDER BY event_key""")
     rows = [dict(r) for r in conn.execute(q, dict(u=uid, v=venue)).mappings()]
-    from racinglines.pipelines.live_dh import event_name
+    from racinglines.pipelines.live import event_name
     for r in rows:
         r["pnl"] = float(r["pnl"] or 0.0)
         if r["private"] and r["profile"] is None:

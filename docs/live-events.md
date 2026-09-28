@@ -11,7 +11,8 @@ is **Formula 1: the Bahrain GP at Sepang, Malaysia (2–4 October 2026)**; see b
 
 | | |
 |---|---|
-| Code | `racinglines/pipelines/live_dh.py`; the page is `/live` (`racinglines/web/views.py`, `templates/live*.html`) |
+| Code | The shared live core (`pipelines/live.py`, `markets/crowd.py`, `markets/quoting.py`) and the downhill adapter `racinglines/pipelines/live_dh.py`; the page is `/live` (`racinglines/web/views.py`, `templates/live.html` + `live_mtb_dh.html`) |
+| Settings | `sports/mtb_dh.toml` `[live]`: cadence, market kinds, spreads, crowd size and budgets (`live_dh`'s constants read them) |
 | Command | `racinglines mtb_dh live --slug 20260925_mtb --final 3 --quali 2,91 --conditions "clear, rutted"` |
 | Updates | The engine polls the timing feed every 5 s (`--interval`); the page refreshes itself every 15 s |
 | Tab | **Live** is in the nav for every signed-in user once an event has been recorded: a **green** dot while it runs (not over, updated in the last 6 hours), **grey** once it is over, when the page is a replay |
@@ -97,6 +98,25 @@ re-score the final later:
 | `crowd.jsonl` | Every crowd fill, per poll, with the taker's id and that poll's seed |
 | `picks.json` | The demo taker's picks |
 | `book_superseded*.json`, `crowd_superseded*.jsonl` | Earlier crowd runs during the Whistler final, before the budget and id rules were set |
+
+## The live core: one engine, one adapter per sport
+
+Everything around a sport's data stream is shared. Each sport adds an **adapter** for its stream and pricing.
+
+| Layer | Where | Per sport |
+|---|---|---|
+| Settings | `sports/<code>.toml` `[live]` | Everything: adapter, cadence, market kinds, spreads, crowd, freeze and close |
+| The book and the crowd | `markets/crowd.py` | Only the crowd's settings. Downhill trades per poll (`fills`), F1 in one batch per update (`window`: fills timed across the window, in order) |
+| Quotes | `markets/quoting.py` | The half-spread (downhill widens on course; F1 tightens by stage) |
+| Run folder, snapshots, replay, live / replay state | `pipelines/live.py` | Nothing |
+| The event registry | `pipelines/live.py` `events()`: every run folder, its sport from `meta.json` | Nothing |
+| The adapter | `pipelines/live_dh.py`, `pipelines/live_f1.py` | `markets`, `step`, `outcomes`, `view` |
+| The Live tab | `templates/live.html` (status, replay bar, polling) over `live_<sport>.html` | The body partial |
+
+- `live_dh.py` keeps every public name: its constants read `sports/mtb_dh.toml`, and the moved functions are imported back.
+- `tests/test_live_core.py` pins downhill's numbers: quotes, crowd fills, book, P&L and the crowd's results, as a digest from before the split.
+- Where the Whistler run folder is present (the data bucket), the same test re-derives its book from `crowd.jsonl` and checks six replay pages byte for byte.
+- `/live` shows the most recently updated event; `/live?event=<run or event key>` shows any other.
 
 ## Next: Formula 1
 

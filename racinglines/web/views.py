@@ -462,7 +462,7 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     behind them (a taker's trades taken, a maker's paper fills). A taker's in-app bets, if any, below.
     venue splits the Polymarket history (paper, mostly replayed weekends) from the maker's private book (live,
     one day); sort orders the positions by P&L (pnl: best first, -pnl: worst first) instead of by weekend."""
-    from racinglines.pipelines import live_dh as LD
+    from racinglines.pipelines import live as LV
     from racinglines.pipelines import profiles as PF
     from racinglines.pipelines import weekend_sweep as WS
     user = request.state.user
@@ -480,7 +480,7 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     pos = [p for p in pos if p["trades"] or p["venue"] == "private"]      # markets the account actually traded
     for p in pos:
         if p["venue"] == "private" and not p["event_name"]:
-            p["event_name"] = LD.event_name(p["event_key"])
+            p["event_name"] = LV.event_name(p["event_key"])
     venues = {}
     for p in pos:
         y = float(p["outcome"]) if p["outcome"] is not None else p["mark"]
@@ -559,7 +559,7 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     book = None
     if priv_events:
         from racinglines.web.viz import line_chart
-        curve = sorted(pt for ev in priv_events for pt in LD.book_curve(ev, maker))
+        curve = sorted(pt for ev in priv_events for pt in LV.book_curve(ev, maker))
         cum = [v for _, v in curve]
         book = dict(chart=line_chart({"pnl": curve}, {"pnl": "private book P&L, marked to fair"}), polls=len(curve),
                     max_dd=min((v - max(cum[:i + 1]) for i, v in enumerate(cum)), default=0.0))
@@ -634,104 +634,37 @@ def signals_page(request: Request, user: str = "", event: str = "", c=Depends(co
 
 
 # ---------------------------------------------------------------------------
-# Live: a downhill final as it runs (pipelines/live_dh.py), for the demo maker and taker
+# Live: a private-book event as it runs (pipelines/live.py and the sport's adapter), for the demo maker and taker
 # ---------------------------------------------------------------------------
 
 @app.get("/live", response_class=HTMLResponse, dependencies=[allow(*ANY)])
-def live_page(request: Request, partial: int = 0, t: str = ""):
-    """The live final: leaderboard, on course, up next. Makers also see every rider's rank probabilities,
-    their auto-updating quotes and their exposure to the taker's picks; takers see their picks' P&L.
-    Once the final is over it is a replay: the page as it was at any saved snapshot (t, e.g.
-    20260927T223221; default the end), stepped or played through on a timeline."""
-    from racinglines.pipelines import live_dh as LD
-    from racinglines.web.viz import line_chart
-    user = request.state.user
-    mode = LD.state()
-    cur = LD.latest() if mode else None
-    times = LD.snap_times(*cur) if mode == "replay" else []
+def live_page(request: Request, partial: int = 0, t: str = "", event: str = ""):
+    """The live event: the shared shell (status, replay bar, polling) over the registry's event (event: a run
+    or event key; default the most recently updated), with the sport's body (templates/live_<sport>.html,
+    built by its adapter's view()). Downhill: leaderboard, on course, up next; F1: the weekend's stages and
+    every market's quotes. Makers also see the model and the book; takers see their picks' P&L. Once the
+    event is over it is a replay: the page as it was at any saved snapshot (t, e.g. 20260927T223221; default
+    the end), stepped or played through on a timeline."""
+    ctx = live_context(event, t, request.state.user["role"] != "taker", partial)
+    return render(request, "live_partial.html" if partial else "live.html", **ctx)
+
+
+def live_context(event="", t="", maker=True, partial=0):
+    """The Live tab's template context: the registry's event, live or as of a replay snapshot, with the
+    sport's body from its adapter (no database: the run folder only)."""
+    from racinglines.pipelines import live as LV
+    ev = LV.find(event or None)
+    mode = LV.state(ev["run"]) if ev else None
+    times = LV.snap_times(ev["run"]) if mode == "replay" else []
     if mode == "replay" and times:
         t = t if t else times[-1]
-        snap, picks, hist = LD.load_at(*cur, t)
+        snap, picks, hist = LV.load_at(ev["run"], t)
     else:
-        snap, picks, hist = LD.load(*cur) if cur else (None, [], [])
-    ctx = dict(snap=snap, maker=user["role"] != "taker", partial=partial, mode=mode, times=times,
-               t=next((x for x in reversed(times) if x <= t), times[0]) if times else None)
+        snap, picks, hist = LV.load(ev["run"]) if ev else (None, [], [])
+    ctx = dict(snap=snap, maker=maker, partial=partial, mode=mode, times=times,
+               t=next((x for x in reversed(times) if x <= t), times[0]) if times else None,
+               sport=(ev or {}).get("sport") or "mtb_dh", evq=f"event={event}&" if event else "",
+               events=LV.events())
     if snap:
-        riders = snap["riders"]
-        qs = {(q["bib"], q["market"]): q for q in snap["quotes"]}
-        prev = hist[-2]["quotes"] if len(hist) >= 2 else {}
-        outcomes = {(o["bib"], o["market"]): o["yes"] for o in snap.get("outcomes") or []}
-        fin = sorted([r for r in riders if r["status"] == "Finished" and r["time"]], key=lambda r: r["time"])
-        lead = fin[0]["time"] if fin else None
-        for i, r in enumerate(fin):
-            r["rank"], r["gap"] = i + 1, (r["time"] - lead) if lead else None
-        on = [r for r in riders if r["status"] == "InRace"]
-        nxt = sorted([r for r in riders if r.get("next") is not None], key=lambda r: r["next"])[:6]
-        grid = sorted([r for r in riders if r["top10"] > 0.001 or r["status"] == "Finished"],
-                      key=lambda r: (-r["top3"], -r["top10"]))[:16]
-        grid += [r for r in fin[:3] if r not in grid]                        # the current leaders always show
-        grid.sort(key=lambda r: (-r["top3"], -r["top10"]))
-        for r in grid:
-            for m in LD.MARKETS:
-                q = qs.get((r["bib"], m), {})
-                old = prev.get(f"{r['bib']}:{m}") or [None, None]
-                r[f"{m}_bid"], r[f"{m}_ask"] = q.get("bid"), q.get("ask")
-                r[f"{m}_move"] = (None if q.get("ask") is None or old[1] is None else
-                                  ("up" if q["ask"] > old[1] else "down" if q["ask"] < old[1] else None))
-        by = {r["bib"]: r for r in riders}
-        # the taker's picks: each YES bought at the maker's ask; the maker holds the other side
-        rows_, stake = [], 0.0
-        for p in picks:
-            q = qs.get((p["bib"], p["market"]), {})
-            res = outcomes.get((p["bib"], p["market"]))
-            if res is not None:
-                now, state = (1.0 if res else 0.0), ("won" if res else "lost")
-            else:
-                mid = [x for x in (q.get("bid"), q.get("ask")) if x is not None]
-                now, state = (sum(mid) / len(mid) if mid else q.get("fair")), "live"
-            value = p["shares"] * now if now is not None else None
-            fair = q.get("fair") if res is None else float(res)
-            rows_.append(dict(p, now=now, value=value, pnl=None if value is None else value - p["stake"], state=state,
-                              fair=fair, maker_pnl=None if fair is None else p["stake"] - p["shares"] * fair,
-                              rider_status=by.get(p["bib"], {}).get("status")))
-            stake += p["stake"]
-        tot = dict(stake=stake, value=sum(r["value"] or 0 for r in rows_), pnl=sum(r["pnl"] or 0 for r in rows_),
-                   maker_pnl=sum(r["maker_pnl"] or 0 for r in rows_),
-                   won=sum(r["state"] == "won" for r in rows_), lost=sum(r["state"] == "lost" for r in rows_))
-        chart = None
-        if ctx["maker"] and len(hist) >= 2:
-            top = sorted(riders, key=lambda r: -r["p1"])[:5]
-            # the rider on course (else the next to start) is always drawn, dashed, even at zero
-            cur_r = next((r for r in riders if r["status"] == "InRace"), None) or next(
-                (r for r in sorted(riders, key=lambda r: r["next"] if r.get("next") is not None else 999)
-                 if r.get("next") is not None), None)
-            if cur_r and cur_r not in top:
-                top.append(cur_r)
-            series = {r["name"]: [(pd.Timestamp(h["ts"]), h["fair"].get(f"{r['bib']}:win", 0.0)) for h in hist]
-                      for r in top}
-            labels = {r["name"]: r["name"] + (" (on course)" if r["status"] == "InRace" else " (next)" if r is cur_r else "")
-                      for r in top}
-            chart = line_chart(series, labels, money=False, h=190, highlight={cur_r["name"]} if cur_r else ())
-        # the private book: the anonymous crowd, as a group, and the maker's biggest positions
-        # rebuilt from the crowd's fills up to this snapshot (live: all of them; the same as book.json)
-        markets, polls = LD.book_at(*cur, snap["ts"] if mode == "replay" else None)
-        book = markets if polls and snap.get("maker_pnl") else None
-        positions, recent = [], []
-        if book:
-            fair = {f"{q['bib']}:{q['market']}": q["fair"] for q in snap["quotes"]}
-            for k, mk in markets.items():
-                b_, m_ = k.split(":")
-                o = outcomes.get((int(b_), m_))
-                v = float(o) if o is not None else fair.get(k, 0.0)
-                positions.append(dict(rider=by.get(int(b_), {}).get("name", b_), market=m_, inv=mk["inv"],
-                                      pnl=mk["cash"] + mk["inv"] * v, value=v, settled=o is not None))
-            positions.sort(key=lambda x: -abs(x["inv"]))
-            for e in reversed(polls[-6:]):
-                for f in e["fills"][:4]:
-                    recent.append(dict(f, ts=e["ts"][11:19], rider=by.get(f["bib"], {}).get("name", f["bib"])))
-        ctx.update(by_bib={r["bib"]: r["name"] for r in riders})
-        ctx.update(book=book, positions=positions[:10], recent=recent[:12], crowd=snap.get("crowd"),
-                   mpnl=snap.get("maker_pnl"))
-        ctx.update(fin=fin, on=on, nxt=nxt, grid=grid, picks=rows_, tot=tot, win_chart=chart,
-                   age=int((pd.Timestamp.now(tz="UTC") - pd.Timestamp(snap["ts"])).total_seconds()))
-    return render(request, "live_partial.html" if partial else "live.html", **ctx)
+        ctx.update(LV.adapter(ctx["sport"]).view(ev["run"], snap, picks, hist, mode, maker))
+    return ctx

@@ -342,13 +342,13 @@ Each item lists what "done" means. B0 matters in every scenario.
 - [x] **B0. Name aliases** *(Mon)*
   - "Malaysian", "Sepang", "Kuala Lumpur" and "Bahrain Grand Prix in Malaysia" resolve to `2026-16` (`GP_ALIASES`).
   - Done: `tests/test_gp_aliases.py` resolves each name; the April Bahrain market's date still doesn't match.
-- [ ] **B1. The shared live core** *(Mon)*
+- [x] **B1. The shared live core** *(Mon)*
   - `markets/crowd.py`: the book, the crowd, picks, P&L and positions sync, moved out of `live_dh.py`; add windowed batches (a length in hours, fills timed across it).
   - `markets/quoting.py`: quotes with a spread, inventory lean, cap, freeze and close.
   - `pipelines/live.py`: the run folder, snapshots, replay, live/replay state, and the event registry.
   - A `[live]` section in `sports/mtb_dh.toml` with today's downhill values.
   - `live_dh.py` imports all of it back under its old names.
-  - Done: Whistler's book re-derived from `crowd.jsonl` still matches exactly, its replay pages are unchanged, and the downhill tests pass.
+  - Done: Whistler's book re-derived from `crowd.jsonl` still matches exactly, its replay pages are unchanged, and the downhill tests pass (`tests/test_live_core.py`; all 82 replay and Positions pages checked byte for byte during the build).
 - [ ] **B2. The F1 adapter: markets and prices** *(Mon)*
   - `live_f1.markets(event)`: the 100 markets and their fair values from the latest stage run; head-to-head pairs taken from the last race Polymarket listed. `race_pole`, `race_h2h` and `race_constructor_top` wording added to `KINDS_F1`.
   - A `[live]` section in `sports/f1.toml`: session-end cadence, the five market kinds, the spreads by stage, crowd settings.
@@ -489,3 +489,6 @@ existing layout, and the report can be written by hand as Whistler's was.
 | 2026-09-28 | Otherwise a mock private-book run like Whistler's: the demo maker, 1,000 simulated takers and the demo taker, play money. |
 | 2026-09-28 | The race is display-only: quotes freeze after qualifying's update, and the book closes at lights out. |
 | 2026-09-28 | Multi-sport design: one live core (book, crowd, quoting, positions, run folder, replay, registry, the Live tab's shell) and one adapter per sport for its data stream, pricing and page body; sport settings as data in `sports/<code>.toml`. Downhill keeps working unchanged. |
+| 2026-09-29 | Shared quotes round away float noise before the cent floor / ceiling (0.40 ± 0.03 quotes 0.37 / 0.43). Downhill keeps its old rounding (`tidy=False`, sometimes a cent wider), so Whistler's numbers stay identical. |
+| 2026-09-29 | The Live tab is green while an event isn't over and either updated within its sport's `stale_h` (downhill 6 h) or its next scheduled update isn't more than that overdue. F1 updates are up to 20 h apart, so F1 snapshots carry `next_at`. |
+| 2026-09-29 | `/live` shows the registry's most recently updated event; `?event=` picks another. Once the F1 book opens, it replaces Whistler as the default. |

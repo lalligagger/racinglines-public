@@ -13,7 +13,8 @@
     <span id="rp-time" class="muted" style="margin-left:auto"></span>
   </div>
   <input id="rp-slider" type="range" min="0" max="{{ times|length - 1 }}" value="{{ times.index(t) }}" style="width:100%" aria-label="Replay time">
-  <p class="legend" style="margin:2px 0 0">The final is over: step or play through every update of the {{ (times[0][9:11] ~ ":" ~ times[0][11:13]) }}–{{ (times[-1][9:11] ~ ":" ~ times[-1][11:13]) }} UTC run as it was seen live (timing, prices, quotes, the private book).</p>
+  {% if sport == 'mtb_dh' %}<p class="legend" style="margin:2px 0 0">The final is over: step or play through every update of the {{ (times[0][9:11] ~ ":" ~ times[0][11:13]) }}–{{ (times[-1][9:11] ~ ":" ~ times[-1][11:13]) }} UTC run as it was seen live (timing, prices, quotes, the private book).</p>
+  {%- else %}<p class="legend" style="margin:2px 0 0">Step or play through the weekend's {{ times|length }} updates ({{ times[0][:8] }}–{{ times[-1][:8] }}) as they were seen live: the stages, fair values, quotes and the private book.</p>{% endif %}
 </div>{% endif %}
 <div id="live">{% include "live_partial.html" %}</div>
 {% if mode == 'replay' and times %}<script>
@@ -26,8 +27,8 @@
   function show(i) {
     sl.value = Math.max(0, Math.min(T.length - 1, i)); label();
     const n = ++seq, t = T[+sl.value];
-    history.replaceState(null, "", "/live?t=" + t);
-    return fetch("/live?partial=1&t=" + t, {headers: {accept: "text/html"}}).then(r => r.ok ? r.text() : null)
+    history.replaceState(null, "", "/live?{{ evq }}t=" + t);
+    return fetch("/live?{{ evq }}partial=1&t=" + t, {headers: {accept: "text/html"}}).then(r => r.ok ? r.text() : null)
       .then(h => { if (h && n === seq) box.innerHTML = h; }).catch(() => {});
   }
   function stop() { clearTimeout(timer); timer = null; play.setAttribute("aria-pressed", "false"); play.textContent = "▶ Play"; }
@@ -56,7 +57,7 @@
 (function () {                       // re-fetch the live view every 5 s (the server polls every 5 s, every 2 s in the late window)
   const box = document.getElementById("live");
   setInterval(() => {
-    fetch("/live?partial=1", {headers: {accept: "text/html"}}).then(r => r.ok ? r.text() : null)
+    fetch("/live?{{ evq }}partial=1", {headers: {accept: "text/html"}}).then(r => r.ok ? r.text() : null)
       .then(t => { if (t) box.innerHTML = t; }).catch(() => {});
   }, 5000);
 })();

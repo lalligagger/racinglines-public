@@ -53,3 +53,49 @@ resets = [2014, 2017, 2022, 2026]
 venues = ["polymarket", "kalshi", "private"]
 standard_kinds = ["race_win", "race_podium", "race_top10"]           # the board's columns
 weekend_kinds = ["race_win", "race_podium", "race_h2h", "race_constructor_top", "race_pole"]   # traded in the sweep
+
+[live]
+# A race weekend's private book (pipelines/live_f1.py): updated at session ends from the model's stage runs,
+# not from a live feed. docs/f1-live-roadmap.md, scenario B.
+adapter = "racinglines.pipelines.live_f1"
+stream = "the model's stage runs, one per session (FastF1 archive)"
+
+[live.sources]
+historical = { kind = "fastf1" }
+live = { kind = "stage_runs", profile = "C" }     # the demo maker's profile (pipelines/profiles.py)
+
+[live.poll]
+mode = "session_end"
+lag_min = 30                    # a session's data is used 30 min after it ends (weekend_sweep.DATA_LAG)
+step_min = 5                    # the LaunchAgent runs one step every 5 minutes
+late_alert_h = 2                # alert when an update is more than 2 hours late
+stale_h = 30                    # the Live tab stays green between updates while the next one isn't this overdue
+
+[live.markets]
+kinds = ["race_win", "race_podium", "race_pole", "race_h2h", "race_constructor_top"]
+h2h_from = "last_listed"        # head-to-head pairs: the last race Polymarket listed (or an event key)
+
+[live.quoting]
+# tighter as the model sees more of the weekend; frozen after qualifying's update, closed at lights out
+half_spread = { "pre-weekend" = 0.03, "after FP1" = 0.025, "after FP2" = 0.025, "after SQ" = 0.025, "after Sprint" = 0.02, "after FP3" = 0.02, "after Quali" = 0.02 }
+max_pos = 2500.0
+skew = 1.0
+
+[live.crowd]
+# the same crowd as downhill, trading in one batch per update: the window since the last update, at a
+# steady per-hour rate, against the quotes posted at its start
+takers = 1000
+budget = [10.0, 200.0]
+bet = [0.2, 0.8]
+min_bet = 2.0
+seed = 20261002
+rate_h = 0.0006                 # per taker, per quoted market, per hour
+late_cap = 100.0                # the pre-race window (after qualifying to lights out): fresh $100 caps ...
+late_pace = 3.0                 # ... at 3x the rate
+
+[live.freeze]
+freeze_after = "after Quali"    # quotes stay as posted at this update until lights out
+close = "lights_out"
+
+[live.picks]
+stake = 25.0                    # the demo taker's hype picks, placed at the book's opening
