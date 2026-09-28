@@ -130,7 +130,7 @@ def price_stages(meas, hist, sched, engine, engine_url=None, n_sims=4000, repric
                 runs.append((label, cutoff, have[k]))
                 continue
             _, summ, ex, _ = run.diagnostic(meas, hist, w["event_key"], cutoff, n_sims=st["sims"],
-                                            use_track=st["track_features"])
+                                            use_track=st["track_features"], seed=st.rng_seed)
             extra = dict(model_key=mk, data_key=dk, model_settings={n: st.to_json()[n] for n in SS.MODEL_NAMES})
             if st["variant"] != "baseline":
                 extra["variant"] = st["variant"]

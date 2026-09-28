@@ -21,6 +21,7 @@ from dataclasses import dataclass
 
 STAGES = ("pre-weekend", "after FP1", "after FP2", "after FP3", "after SQ", "after Sprint", "after Quali")
 KINDS = ("race_win", "race_podium", "race_h2h", "race_constructor_top", "race_pole")
+DEFAULT_SEED = 42                # pricing.diagnostic's and the signal engine's seed
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,8 @@ SETTINGS = [
             target="model.FINISH_RHO_SCALE"),
     Setting("reset_weight", "model", "Regulation-reset carry-over", "float", 0.25, 0, 1,
             help="With the reset switch: weight of earlier seasons' car data.", target="model.REG_RESET_WEIGHT"),
+    Setting("seed", "model", "Monte Carlo seed", "int", None, 0, 2**31 - 1,
+            help="Empty = today's fixed seed (42). Set different seeds for independent noise draws in a search."),
     # --- entry timing ---------------------------------------------------------------------------------
     Setting("taker_stages", "timing", "Stages takers may trade", "multi", STAGES, choices=STAGES,
             help="Applies to every taker strategy (update, hold, after quali, stage-aware)."),
@@ -159,6 +162,11 @@ class Settings(dict):
     def key(self):
         """Identity of the whole combo (every setting)."""
         return self._key(sorted(self))
+
+    @property
+    def rng_seed(self):
+        """The Monte Carlo seed: the `seed` setting, or today's fixed one when it's unset."""
+        return DEFAULT_SEED if self["seed"] is None else self["seed"]
 
     @property
     def model_key(self):

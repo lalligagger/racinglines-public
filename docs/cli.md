@@ -258,6 +258,7 @@ baseline. The model variant is the group's `--variant`.
 | | `--teammate-corr` | true | Teammates share noise. |
 | | `--finish-rho-scale` | 1.0 | Teammate finish correlation scale. |
 | | `--reset-weight` | 0.25 | With the `reset` variant: weight of earlier seasons' car data. |
+| | `--seed` | not set | Monte Carlo seed. Unset = today's fixed seed (42), the same prices and cache keys. Different seeds give independent noise draws, e.g. to check a search's winner isn't one lucky draw. |
 | Timing | `--taker-stages` | every stage (`pre-weekend` … `after Quali`) | Stages takers may trade (every taker mode). |
 | | `--late-stages` | `after FP3,after Quali` | Stages the stage-aware taker skips. |
 | Taker | `--min-edge` | 0.05 | Min edge to act (probability). |

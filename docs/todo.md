@@ -45,7 +45,7 @@ F1 adapter, keeping the platform multi-sport. Plan: [F1 live test](f1-live-roadm
 
 **P3 · Models and data**
 
-- [ ] F1 ([F1 model](#f1-model)): promote `gridq+pretrain` (owner's OK), a seed setting, the
+- [ ] F1 ([F1 model](#f1-model)): promote `gridq+pretrain` (owner's OK), the
       driver layer in a new season, fix the h2h-only sweep crash, the stage-aware taker out of
       sample, book-depth replay once enough books are recorded.
 - [ ] **Downhill points validation**, the top downhill item ([Points validation](#points-validation)),
@@ -160,8 +160,8 @@ Phased plan and ground rules: [F1 roadmap](f1-roadmap.md). Items tagged
 - [ ] **Promote `gridq+pretrain` to the default** (owner's OK: it changes live prices; re-run the
       sweep and `UPDATE_GOLDEN` in the same change). Owner, 2026-09-27: keep iterating first. The
       paper-trading profiles pick their model through settings, so they don't wait on this.
-- [ ] **Monte Carlo seed setting** (default: today's fixed seed), so noise replicates in a search
-      are independent draws rather than re-runs of the same one.
+- [x] **Monte Carlo seed setting**: sweep and profile setting `seed`, unset = today's fixed seed
+      (42), so noise replicates in a search are independent draws (2026-09-28, cloud build-out).
 - [ ] **Driver layer in a new season (F1-2):** the teammate offset carries last season (2026:
       Russell priced far above Antonelli after 3 GPs). Candidate: faster forgetting for
       second-year drivers, judged on every season, not 2026 alone.

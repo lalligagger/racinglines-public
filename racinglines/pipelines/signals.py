@@ -299,10 +299,10 @@ def price_stages_now(meas, hist, w, st, engine, engine_url, now, echo=print):
         if hit is None:
             if raced:
                 _, summ, ex, _ = run.diagnostic(meas, hist, w["event_key"], cutoff, n_sims=st["sims"],
-                                                use_track=st["track_features"])
+                                                use_track=st["track_features"], seed=st.rng_seed)
             else:
                 summ, ex = run.price_race(meas, hist, cutoff, event_id, n_sims=st["sims"],
-                                          rng=np.random.default_rng(SEED), use_track=st["track_features"],
+                                          rng=np.random.default_rng(st.rng_seed), use_track=st["track_features"],
                                           entrants=_entrants(meas, event_id, cutoff), venue=_venue(meas, event_id, w))
             extra = dict(model_key=mk, data_key=dk, model_settings={n: st.to_json()[n] for n in SS.MODEL_NAMES},
                          live=not raced)
@@ -599,7 +599,7 @@ def price_upcoming(engine, engine_url, profile, now=None, n=3, echo=print, cache
             year, rnd = (int(x) for x in w["event_key"].split("-"))
             ev = meas.res[(meas.res["year"] == year) & (meas.res["series_round"] == rnd)]
             event_id = int(ev["event_id"].iloc[0]) if len(ev) else None
-            summ, ex = run.price_race(meas, hist, now, event_id, n_sims=st["sims"], rng=np.random.default_rng(SEED),
+            summ, ex = run.price_race(meas, hist, now, event_id, n_sims=st["sims"], rng=np.random.default_rng(st.rng_seed),
                                       use_track=st["track_features"], entrants=_entrants(meas, event_id, now),
                                       venue=_venue(meas, event_id, w))
             extra = dict(model_key=st.model_key, data_key=dk, live=True,
