@@ -304,4 +304,3 @@ Track A's files except `scripts/cloud/bucket.py` and `start.sh`, which carry Tra
 - Track B: `racinglines mtb_dh forecast --db` and `backtest --db` give the same output as before the merge.
 - Track B: `racinglines f1 --variant rookie backtest --save` to store the `rookie` runs in the owner's
   database (runs 1288/1289 exist only in the bucket, `results/cloud-buildout-track-b/f1-backtests/`).
-| 2026-09-28 03:25 | B: final handoff committed | this commit | done | Tests: 125 passed, 6 skipped (fixtures / official standings); quick suite 69 passed |
