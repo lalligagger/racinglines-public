@@ -433,6 +433,6 @@ for scope, hl, jw in [("season", 75, .5), ("all", 120, 0), ("all", 120, .5), ("a
   track record is a labelled backtest replay (maker $10,000 → $10,938, taker $1,000 → $1,898).
 - **Postgres without Docker:** the local database runs as a plain PostgreSQL 17 server on port 5433
   (same connection settings). It was rebuilt on 2026-09-27; some event diagnostics and scenarios from
-  before the rebuild may need re-creating ([TODO](todo.md#data)).
+  before the rebuild may need re-creating ([Roadmap](todo.md#data)).
 - **New phases:** [F1-8](f1-roadmap.md#f1-8-live-paper-trade-validation-polymarket) (live paper-trade
   validation) and [F1-9](f1-roadmap.md#f1-9-more-exchanges-kalshi-others) (Kalshi, other exchanges).

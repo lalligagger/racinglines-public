@@ -275,11 +275,11 @@ grid, which the model underweights.
 
 It's noisy: 15 weekends is a small sample.
 
-**Next:**
+**Since then:**
 
-- fix the front-of-grid weighting;
-- try a stage-aware strategy that stops re-trading after FP3 and qualifying,
-  checked on the next events, not tuned on these.
+- the front-of-grid weighting is fixed (`gridq`, F1-2);
+- a stage-aware taker is in the sweep (F1-4); confirming it out of sample is still
+  open ([Roadmap](todo.md#market-making)).
 
 Pricing is cached, so re-running with new trading settings takes minutes.
 
@@ -538,7 +538,7 @@ view from how fast the market reacts to each race.
   the driver-vs-teammate offset still carries 2025, when Antonelli was a rookie.
   Every position it took after GP 3 moved against it.
 - **Pre-season, no model can see what the market saw:** winter testing. That's
-  a data gap (see [TODO](todo.md)), not a modelling one.
+  a data gap (see [Roadmap](todo.md)), not a modelling one.
 
 Slopes have standard errors of 0.15–0.8 (a title's markets are not independent),
 so read them as direction, not size.
@@ -552,12 +552,13 @@ so read them as direction, not size.
 - Our quotes don't change what takers would have done.
 - One event. The replay needs many recorded events before any setting is tuned.
 
-**Next:**
+**Since then:**
 
-- replay with recorded book snapshots and a queue model;
-- flatten or hedge inventory before qualifying;
-- run the replay across every backtest race once their Polymarket tapes are
-  fetched.
+- the replay runs across every race with a tape (2025 and 2026, the `params-4h`
+  cloud search);
+- flattening before qualifying was tried and doesn't beat the default maker (F1-4);
+- still open: a replay with recorded book snapshots and a queue model, once
+  enough weekends of books are recorded ([Roadmap](todo.md#market-making)).
 
 ## Tests
 

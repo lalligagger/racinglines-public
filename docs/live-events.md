@@ -3,7 +3,7 @@
 A race followed live in the web app's **Live** tab: official timing as it happens, the model re-run after
 every update, a maker re-quoting every market, and takers trading against those quotes. The first run was
 the **UCI Downhill World Cup final at Whistler, 27 September 2026**, as a demo experiment. The next test
-is **Formula 1 at the Malaysia GP (4 October 2026)**.
+is **Formula 1: the Bahrain GP at Sepang, Malaysia (2–4 October 2026)**; see below.
 
 !!! note "A demo experiment"
     The timing is real. The quotes, the private book and its takers are simulated, with play money:
@@ -100,7 +100,12 @@ re-score the final later:
 
 ## Next: Formula 1
 
-For F1 race weekends the same tab will follow the paper-trading signal engine ([Paper trading](paper-trading.md))
-session by session: the demo taker's calls and heat, the maker's quotes on Polymarket's markets, and a
-private book on the same markets. First test: the **Malaysia GP, 4 October 2026** (see the
-[TODO](todo.md) and the [F1 roadmap](f1-roadmap.md)).
+First test: **round 16, the Bahrain GP at Sepang, Malaysia (2–4 October 2026)**. Polymarket hasn't
+listed it, so it's a mock private book like Whistler's:
+- all 100 of Polymarket's usual race markets, priced from the model's stage runs;
+- updated at session ends, not from a live feed;
+- the same crowd and demo taker.
+
+It's built as a shared live core (book, crowd, quoting, replay, the tab's shell) plus an F1 adapter, so each
+sport keeps its own data stream. Plan and status: [F1 live test](f1-live-roadmap.md); priorities: the
+[Roadmap](todo.md#priorities).

@@ -7,9 +7,12 @@ documented in [Formula 1](f1.md), [Market making](market-making.md) and
 [Testing](testing.md).
 
 Phases are named **F1-0 … F1-9** so they don't collide with the platform
-phases in [Project history](history.md) (data layout, one package, and the
-pending additive sport schemas). Each phase starts only after the owner
-confirms it.
+phases in [Project history](history.md) (data layout, one package, sport
+schemas). Each phase starts only after the owner confirms it.
+
+**Priorities across everything, F1 phases included, are on the
+[Roadmap](todo.md#priorities).** The top priority this week is the
+[F1 live test](f1-live-roadmap.md) (round 16, 2–4 Oct 2026), part of F1-8.
 
 ## Ground rules
 
@@ -117,8 +120,9 @@ tape.
   for the model, [Market making](market-making.md) for trading,
   [CLI reference](cli.md) for new commands or flags. Match the existing style:
   short sentences, tables, ± 2 SE.
-- **[TODO](todo.md) is the task list.** Phases below point at its items rather
-  than copying them. Tick items there when done, and add new ones there.
+- **The [Roadmap](todo.md) is the task list** and sets the priorities. Phases below
+  point at its items rather than copying them. Tick items there when done, and add
+  new ones there.
 - **This file:** update each phase's Status, and add Decision Log rows. Never
   delete a row; add a new one that supersedes it.
 - **[F1 reference](f1-reference.md):** when work changes the understanding
@@ -147,7 +151,7 @@ gap, what it changes, and what "done" means.
   CLOB V2 orders?~~ **No.** It uses the V1 `py-clob-client` (0.34.6).
   Polymarket's changelog says V1 SDKs and V1-signed orders stopped working on
   2026-04-28, and Python code must move to `py-clob-client-v2`. Logged as a
-  separate fix (see the Decision Log and [TODO](todo.md#market-making)).
+  separate fix (see the Decision Log and [Roadmap](todo.md#market-making)).
   Nothing is at risk meanwhile: trading is off by default, and read-only market
   data doesn't use the client.
 - ~~**Operations:** make `markets record` run through every race weekend.~~
@@ -320,8 +324,9 @@ races
 
 ### F1-8: Live paper-trade validation (Polymarket)
 
-**Status:** running from round 16 of 2026 (Malaysia, 4 Oct) · **Behavior change:**
-none to pricing or the backtest; recommendations and paper fills only
+**Status:** built and scheduled; waiting for Polymarket, which has listed no race
+since round 15 (28 Aug 2026), so rounds 16–17 have nothing to trade · **Behavior
+change:** none to pricing or the backtest; recommendations and paper fills only
 
 **Built** (2026-09-27): the signal engine (`racinglines f1 signals`, run by the
 LaunchAgent `bet.racinglines.signals` every 5 minutes) prices each stage as its
@@ -335,18 +340,18 @@ trades on a past weekend (2026 round 15: 11 of 11 taker trades and the maker's
 15 fills identical). No order is placed (`POLYMARKET_TRADING_ENABLED` unset).
 Details: [Paper trading](paper-trading.md).
 
-To do (items in [TODO](todo.md#paper-trading)):
+To do (items in [Roadmap](todo.md#paper-trading)):
 
-- Run A and C live through rounds 16–23 of 2026 and on into 2027.
+- Run A and C live on every weekend Polymarket lists, through 2026 and into 2027.
 - After each weekend, compare live paper fills and markouts with the backtest's
   replay of the same weekend under the conservative "through" fill rule; log the
   markouts.
 - Walk-forward re-run of A, A-lite, C, B (#06) and A′ (#08) with rounds 16–17 added.
 - Bankroll-aware sizing and a deployed-capital cap per account.
 
-First weekend (Malaysia GP, 4 Oct 2026) also tests the web app's **Live** tab on F1: the taker's calls and
-the maker's quotes session by session, plus a simulated private book, as trialled on the Whistler downhill
-final ([Live events](live-events.md)).
+With no Polymarket markets for round 16 (the Bahrain GP at Sepang, 2–4 Oct 2026), its first live F1 test
+is a mock private book on all of Polymarket's usual race markets, updated at session ends, as trialled on
+the Whistler downhill final: [F1 live test](f1-live-roadmap.md).
 
 **Done when:** 4–6 live weekends are logged and compared with the backtest, and
 the owner has decided on sizing (e.g. A-lite → A). Real orders need F1-9's CLOB
@@ -424,7 +429,7 @@ signals, with leakage-rule tests like Polymarket's.
   measured markouts (F1-4)? F1-4 showed markout-driven widening doesn't help on
   2026; live markouts from F1-8 are the next evidence.
 - Which sport next? F1 and UCI downhill are the endpoints for audience and
-  expected liquidity; candidates in between are in [TODO](todo.md#business-and-collaborators).
+  expected liquidity; candidates in between are in [Roadmap](todo.md#business-and-collaborators).
 
 ## Collaborators and beta testers
 

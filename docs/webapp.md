@@ -335,7 +335,7 @@ The banner on every page shows the mode: **no credentials**, **dry run**, or **L
     `racinglines/markets/polymarket/trade.py` signs with Polymarket's V1 client.
     Polymarket moved to CLOB V2 on 2026-04-28 and rejects V1-signed orders, so
     live orders won't be accepted until it's migrated to `py-clob-client-v2`
-    (see [TODO](todo.md#market-making)). Dry runs still sign locally, in the old
+    (see [Roadmap](todo.md#market-making)). Dry runs still sign locally, in the old
     format.
 
 !!! warning

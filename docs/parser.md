@@ -103,7 +103,7 @@ Name keys still fail in two ways:
 - **Namesakes:** two riders sharing a name would be merged. None are known yet.
 
 The real fix is ChronoRace's `UciRiderId`, which the results JSON has for every
-rider but the downloader doesn't write out yet (see [TODO](todo.md#data)).
+rider but the downloader doesn't write out yet (see [Roadmap](todo.md#data)).
 
 ## Downloaded-file details
 

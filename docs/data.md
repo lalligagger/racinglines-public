@@ -106,7 +106,7 @@ There are three caveats:
 - **Incomplete pages:** some pages miss rounds. The 2021 page lists 4 of the 6 DH
   rounds. The two Snowshoe rounds (`20210914_dh`, `20210918_dh`) were found by
   **probing**: trying `YYYYMMDD_{dh,dhi,mtb}` for every date in a window against the
-  content-tree endpoint. Probing isn't built into the downloader yet (see [TODO](todo.md)).
+  content-tree endpoint. Probing isn't built into the downloader yet (see [Roadmap](todo.md)).
 - **Before 2019:** the 2016–2018 pages have no ChronoRace links, which fits with
   ChronoRace not timing the World Cup before 2019.
 

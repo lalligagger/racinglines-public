@@ -27,7 +27,7 @@ not break it.
 | Market data | Polymarket sync (Gamma), minute prices, trades, book snapshots (`markets record`) |
 | Execution research | Maker replay (touch/through fills), weekend taker strategies, season strategy, season sweep |
 
-**Known gaps, measured** (from [Formula 1](f1.md) and [TODO](todo.md)):
+**Known gaps, measured** (from [Formula 1](f1.md) and [Roadmap](todo.md)):
 
 1. **Win after qualifying loses to a grid-only baseline** (Brier 0.033 vs
    0.031, backtest run 115). The front of the grid is underweighted.

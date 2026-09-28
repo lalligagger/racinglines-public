@@ -265,8 +265,9 @@ that would change data is refused. See [Web app](webapp.md#accounts-demo-users-v
 
 ## Validation plan
 
-- **Live paper trading from round 16** (Malaysia, 4 Oct 2026) through 2027. As of 27 Sep 2026
-  Polymarket had not listed markets for rounds 16 or 17.
+- **Live paper trading on every weekend Polymarket lists**, through 2027. Polymarket has listed no race
+  since round 15 (28 Aug 2026), none for rounds 16 or 17, so round 16's live test is a private book
+  instead ([F1 live test](f1-live-roadmap.md)).
 - **Compare live with the backtest** before any sizing change: fill rates (against the conservative
   through rule) and markouts, weekend by weekend.
 - **No real orders.** `POLYMARKET_TRADING_ENABLED` stays unset, and order signing needs the CLOB V2

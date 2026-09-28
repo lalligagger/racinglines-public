@@ -36,8 +36,8 @@ maker* / *Try as taker*) · [pitch](https://racinglines.bet/pitch). Demo passwor
 | 🏎️ **129 F1 races backtested** | 2021 to Azerbaijan 2026. Each race is priced before practice, before qualifying and after qualifying. After qualifying, top-10 Brier is **0.149** against 0.163 for a grid-only guess; the best variant also beats it on win and podium. |
 | 💹 **Every Polymarket F1 race weekend, replayed** | 38 weekends (2025 and 2026) on the real prices and trade tape. The default maker made **+$751** on $8,969 filled in 2026. |
 | ☁️ **1,161 strategy combinations searched** | A 4-hour cloud search found two setups that held up in both seasons: **A** (a taker, +$1,232 in 2026 / +$1,237 in 2025) and **C** (a maker, +$653 / +$835, the best Sharpe of any combination). |
-| 📡 **Live paper trading** | A and C run on every F1 weekend from Malaysia (4 Oct 2026) through 2027, stage by stage, with heat ratings, alerts and paper positions, through the same code as the backtest (checked trade for trade). |
-| 🔴 **Live events** | The Whistler downhill final (27 Sep 2026) followed live from UCI timing: rank probabilities after every update, a maker re-quoting every rider, 1,000 simulated private-book takers and a hype-picking demo taker, P&L by venue. F1 next, from the Malaysia GP. |
+| 📡 **Live paper trading** | A and C run on every F1 weekend Polymarket lists, through 2027, stage by stage, with heat ratings, alerts and paper positions, through the same code as the backtest (checked trade for trade). Polymarket has listed no race since Baku (28 Aug 2026). |
+| 🔴 **Live events** | The Whistler downhill final (27 Sep 2026) followed live from UCI timing: rank probabilities after every update, a maker re-quoting every rider, 1,000 simulated private-book takers and a hype-picking demo taker, P&L by venue. F1 next: the Bahrain GP at Sepang (2–4 Oct 2026), a private book on all 100 usual race markets. |
 | 🚵 **43 downhill World Cup rounds** | 2021–2026, walk-forward. Error on who makes the Final is **38% lower** than a uniform guess (0.127 vs 0.204); the actual winner got **7.1%** on average, against ~1%. |
 | ✅ **Checks in seconds** | `racinglines check` runs 21 checks (code, every data source, database) in ~10 s; the regression suite runs 174 tests on pinned public fixtures and golden outputs. |
 
@@ -227,7 +227,7 @@ best of ~60 cells flatters it.
   the driver-vs-teammate offset still carries 2025, when Antonelli was a rookie.
   Every position it took after GP 3 moved against it.
 - **Pre-season, no model can see what the market saw:** winter testing. That's
-  a data gap (see [TODO](docs/todo.md)), not a modelling one.
+  a data gap (see [Roadmap](docs/todo.md)), not a modelling one.
 
 Slopes have standard errors of 0.15–0.8 (a title's markets are not independent),
 so read them as direction, not size.
@@ -412,8 +412,8 @@ F1, which has exchange markets, also has market pages.
 | 5. **Operate** | [CLI reference](docs/cli.md) | Every command and option, launchd agents, scripts |
 | | [Cloud sweeps](docs/cloud-sweep.md) | Running settings searches on a cloud machine |
 | | [Testing](docs/testing.md) | Quick check, regression suite, fixtures, golden outputs |
-| 6. **Background** | [Project history](docs/history.md) · [TODO](docs/todo.md) | How it got here, and what's next |
-| | [F1 roadmap](docs/f1-roadmap.md) · [F1 reference](docs/f1-reference.md) | The phased F1 plan with its ground rules, and the model and market-making ideas behind it |
+| 6. **Roadmap** | [Roadmap](docs/todo.md) · [F1 live test](docs/f1-live-roadmap.md) · [F1 roadmap](docs/f1-roadmap.md) | What's next, in priority order; this week's F1 live test; the phased F1 plan with its ground rules |
+| | [Project history](docs/history.md) · [F1 reference](docs/f1-reference.md) | How it got here, and the model and market-making ideas behind the F1 plan |
 
 <!-- /include -->
 
@@ -473,55 +473,57 @@ committed with the code, and we don't want to publish all of that data yet. We'r
 open to beta testers and collaborators, and happy to share the pipeline and
 web-app code with anyone interested: ask for access.
 
-## TODO
+## Roadmap
 
-Full list: [`docs/todo.md`](docs/todo.md).
+Priorities, then every open item: [`docs/todo.md`](docs/todo.md). This week's F1 live test:
+[`docs/f1-live-roadmap.md`](docs/f1-live-roadmap.md).
 
 <!-- include: todo-summary -->
 <!-- generated from docs/todo.md by build_readme.py - edit it there -->
 
-**F1: paper trading and exchanges** (phased in the [F1 roadmap](docs/f1-roadmap.md))
+**P0 · This week: the first live F1 test** (round 16, the Bahrain GP at Sepang, Malaysia, 2–4 Oct 2026)
 
-- [x] Cloud search `params-4h` (1,161 settings combos, 2025 and 2026): two robust profiles,
-      **A** (update taker, `gridq+pretrain+reset`, min edge 0.10, 0.05 on head-to-head) and
-      **C** (conservative maker on `gbm`, 5-pt disagreement filter, 25-share quotes).
-- [x] Live paper-trading signal engine (`racinglines f1 signals`, every 5 min): A for the demo
-      taker, C for the demo maker; parity with the backtest checked. No orders are placed.
-- [ ] **F1-8: paper-trade validation** on Polymarket, rounds 16–23 of 2026 and 2027: compare
-      live fills and markouts with the backtest; decide on sizing after 4–6 live weekends.
-- [ ] **Migrate order signing to Polymarket CLOB V2** (`py-clob-client-v2`). V1 orders are rejected
-      on production since 2026-04-28. Required before any real order.
-- [ ] **F1-9: Kalshi connector** (markets, prices, trade tape; orders behind a flag), then others.
-- [ ] Bankroll-aware sizing and a deployed-capital cap per account.
-- [ ] A Monte Carlo seed setting, so noise replicates are independent.
-- [ ] Fix: an h2h-only market-kinds sweep crashes on 2025 (`KeyError: 'cond'`).
-- [ ] **Promote `gridq+pretrain` to the default** (owner's OK: it changes live prices).
-- [ ] Replay with recorded book depth and a queue model (books recorded from 2026-09-26).
-- [ ] F1-2: driver layer in a new season (teammate offsets carry over); pre-season testing data.
-- [ ] F1-3: safety-car / red-flag / rain props (deferred: no strategy trades them yet).
+Polymarket has listed no F1 race markets since 28 Aug, none for rounds 16 or 17. So
+the test is a mock private book like the Whistler downhill run. We price all 100 of
+Polymarket's usual race markets (winner, podium, pole, head-to-head, constructor)
+anyway, and update at session ends only. It's built as one shared live core plus an
+F1 adapter, keeping the platform multi-sport. Plan: [F1 live test](docs/f1-live-roadmap.md).
 
-**Downhill: points validation (highest priority)**
+- [ ] Build: name aliases, the shared live core, the F1 adapter, the Live tab's F1
+      body, the demo taker, operations, a rehearsal on Baku (items B0–B7).
+- [ ] Checkpoints: Polymarket listing Wed 30 Sep; the scenario chosen Thu 1 Oct 18:00 PDT;
+      the book opens Thu 20:30 PDT.
+- [ ] After the race (Mon 5 Oct): settle and reconcile, report with a fair-price scorecard.
 
-- [ ] Get the official UCI DHI points scales (Final and qualifying), for 2026 and
-      past formats, and settle the edge cases.
-- [ ] Check our 2026 totals against the official standings, and pin them in a test.
-- [ ] Re-run and refresh the published numbers.
+**P1 · Next two weeks: consolidate the live platform**
 
-**Downhill: data and model**
+- [ ] Singapore (round 17, sprint, 11 Oct): run it the same way if Polymarket still hasn't listed it.
+- [ ] A repeatable report command for any live event ([Live events](docs/todo.md#live-events)).
+- [ ] Settle the Whistler private book in the database, into the demo maker's story.
+- [ ] A per-market loss cap or two-sided long-shot quotes in the shared quoting core.
+- [ ] Watch for Polymarket listings: F1-8 starts the first weekend with markets.
 
-- [ ] Key riders by UCI ID; parse the 2021 PDFs; add Women's categories, start order
-      and weather.
-- [ ] Check calibration (win probabilities look too flat); tune over all 43 rounds.
-- [ ] Find a venue that lists downhill markets (none on Polymarket as of 2026-09).
+**P2 · When Polymarket lists F1 again: paper-trade validation** ([F1-8](docs/todo.md#paper-trading))
 
-**Business and platform**
+- [ ] Profiles A and C live; compare fills and markouts with the replay, weekend by weekend.
+- [ ] Sizing after 4–6 live weekends; walk-forward with the new rounds; bankroll-aware sizing.
+- [ ] **CLOB V2 order signing** before any real order, and real orders only with the
+      owner's approval ([Market making](docs/todo.md#market-making)).
 
-- [ ] New sports between the two endpoints (F1 and UCI downhill): rank candidates such as MotoGP,
-      WEC, IndyCar, Formula E, road-cycling classics and grand tours, XC/enduro and alpine skiing by
-      audience, data and exchange listings.
-- [ ] Beta testers and collaborators: onboarding, contributor docs, a code-only share of the repo.
-- [ ] B2B: packaging the prediction models for sale (open).
-- [ ] Before real users: remove the `demo_context` bubbles; admin P&L without the system account.
-- [ ] Condition in-weekend downhill forecasts on completed rounds (Q1 results, split times).
+**P3 · Models and data**
+
+- [ ] F1 ([F1 model](docs/todo.md#f1-model)): promote `gridq+pretrain` (owner's OK), a seed setting, the
+      driver layer in a new season, fix the h2h-only sweep crash, the stage-aware taker out of
+      sample, book-depth replay once enough books are recorded.
+- [ ] **Downhill points validation**, the top downhill item ([Points validation](docs/todo.md#points-validation)),
+      then downhill data and model ([Data](docs/todo.md#data), [Model](docs/todo.md#model)).
+
+**P4 · Platform and business**
+
+- [ ] A live timing feed (F1 SignalR or OpenF1) for in-session updates; in-race trading (F1-7) only
+      if the owner decides to trade during races.
+- [ ] Kalshi and other exchanges ([F1-9](docs/todo.md#exchanges)); find a venue that lists downhill markets.
+- [ ] New sports, beta testers and collaborators, B2B ([Business](docs/todo.md#business-and-collaborators)).
+- [ ] Before real users: remove the `demo_context` bubbles, fix the admin P&L, check data and settlement terms.
 
 <!-- /include -->

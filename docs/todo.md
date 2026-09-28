@@ -1,56 +1,67 @@
-# TODO
+# Roadmap
 
-## Summary
+The one place for what's next, across every sport and track, in priority order.
+Tick items off where they are listed in the detail sections below. The priorities
+point at them rather than repeating them.
+
+| Plan | What it's for |
+|---|---|
+| **This page** | The priorities, and every open item (detail sections below) |
+| [F1 live test (round 16)](f1-live-roadmap.md) | The P0 working plan for 2–4 Oct: build items, runbook, backup plans, decision log |
+| [F1 roadmap](f1-roadmap.md) | The F1 phases (F1-0 … F1-9), their ground rules and decision log |
+
+## Priorities
 
 <!-- readme: todo-summary -->
 
-**F1: paper trading and exchanges** (phased in the [F1 roadmap](f1-roadmap.md))
+**P0 · This week: the first live F1 test** (round 16, the Bahrain GP at Sepang, Malaysia, 2–4 Oct 2026)
 
-- [x] Cloud search `params-4h` (1,161 settings combos, 2025 and 2026): two robust profiles,
-      **A** (update taker, `gridq+pretrain+reset`, min edge 0.10, 0.05 on head-to-head) and
-      **C** (conservative maker on `gbm`, 5-pt disagreement filter, 25-share quotes).
-- [x] Live paper-trading signal engine (`racinglines f1 signals`, every 5 min): A for the demo
-      taker, C for the demo maker; parity with the backtest checked. No orders are placed.
-- [ ] **F1-8: paper-trade validation** on Polymarket, rounds 16–23 of 2026 and 2027: compare
-      live fills and markouts with the backtest; decide on sizing after 4–6 live weekends.
-- [ ] **Migrate order signing to Polymarket CLOB V2** (`py-clob-client-v2`). V1 orders are rejected
-      on production since 2026-04-28. Required before any real order.
-- [ ] **F1-9: Kalshi connector** (markets, prices, trade tape; orders behind a flag), then others.
-- [ ] Bankroll-aware sizing and a deployed-capital cap per account.
-- [ ] A Monte Carlo seed setting, so noise replicates are independent.
-- [ ] Fix: an h2h-only market-kinds sweep crashes on 2025 (`KeyError: 'cond'`).
-- [ ] **Promote `gridq+pretrain` to the default** (owner's OK: it changes live prices).
-- [ ] Replay with recorded book depth and a queue model (books recorded from 2026-09-26).
-- [ ] F1-2: driver layer in a new season (teammate offsets carry over); pre-season testing data.
-- [ ] F1-3: safety-car / red-flag / rain props (deferred: no strategy trades them yet).
+Polymarket has listed no F1 race markets since 28 Aug, none for rounds 16 or 17. So
+the test is a mock private book like the Whistler downhill run. We price all 100 of
+Polymarket's usual race markets (winner, podium, pole, head-to-head, constructor)
+anyway, and update at session ends only. It's built as one shared live core plus an
+F1 adapter, keeping the platform multi-sport. Plan: [F1 live test](f1-live-roadmap.md).
 
-**Downhill: points validation (highest priority)**
+- [ ] Build: name aliases, the shared live core, the F1 adapter, the Live tab's F1
+      body, the demo taker, operations, a rehearsal on Baku (items B0–B7).
+- [ ] Checkpoints: Polymarket listing Wed 30 Sep; the scenario chosen Thu 1 Oct 18:00 PDT;
+      the book opens Thu 20:30 PDT.
+- [ ] After the race (Mon 5 Oct): settle and reconcile, report with a fair-price scorecard.
 
-- [ ] Get the official UCI DHI points scales (Final and qualifying), for 2026 and
-      past formats, and settle the edge cases.
-- [ ] Check our 2026 totals against the official standings, and pin them in a test.
-- [ ] Re-run and refresh the published numbers.
+**P1 · Next two weeks: consolidate the live platform**
 
-**Downhill: data and model**
+- [ ] Singapore (round 17, sprint, 11 Oct): run it the same way if Polymarket still hasn't listed it.
+- [ ] A repeatable report command for any live event ([Live events](#live-events)).
+- [ ] Settle the Whistler private book in the database, into the demo maker's story.
+- [ ] A per-market loss cap or two-sided long-shot quotes in the shared quoting core.
+- [ ] Watch for Polymarket listings: F1-8 starts the first weekend with markets.
 
-- [ ] Key riders by UCI ID; parse the 2021 PDFs; add Women's categories, start order
-      and weather.
-- [ ] Check calibration (win probabilities look too flat); tune over all 43 rounds.
-- [ ] Find a venue that lists downhill markets (none on Polymarket as of 2026-09).
+**P2 · When Polymarket lists F1 again: paper-trade validation** ([F1-8](#paper-trading))
 
-**Business and platform**
+- [ ] Profiles A and C live; compare fills and markouts with the replay, weekend by weekend.
+- [ ] Sizing after 4–6 live weekends; walk-forward with the new rounds; bankroll-aware sizing.
+- [ ] **CLOB V2 order signing** before any real order, and real orders only with the
+      owner's approval ([Market making](#market-making)).
 
-- [ ] New sports between the two endpoints (F1 and UCI downhill): rank candidates such as MotoGP,
-      WEC, IndyCar, Formula E, road-cycling classics and grand tours, XC/enduro and alpine skiing by
-      audience, data and exchange listings.
-- [ ] Beta testers and collaborators: onboarding, contributor docs, a code-only share of the repo.
-- [ ] B2B: packaging the prediction models for sale (open).
-- [ ] Before real users: remove the `demo_context` bubbles; admin P&L without the system account.
-- [ ] Condition in-weekend downhill forecasts on completed rounds (Q1 results, split times).
+**P3 · Models and data**
+
+- [ ] F1 ([F1 model](#f1-model)): promote `gridq+pretrain` (owner's OK), a seed setting, the
+      driver layer in a new season, fix the h2h-only sweep crash, the stage-aware taker out of
+      sample, book-depth replay once enough books are recorded.
+- [ ] **Downhill points validation**, the top downhill item ([Points validation](#points-validation)),
+      then downhill data and model ([Data](#data), [Model](#model)).
+
+**P4 · Platform and business**
+
+- [ ] A live timing feed (F1 SignalR or OpenF1) for in-session updates; in-race trading (F1-7) only
+      if the owner decides to trade during races.
+- [ ] Kalshi and other exchanges ([F1-9](#exchanges)); find a venue that lists downhill markets.
+- [ ] New sports, beta testers and collaborators, B2B ([Business](#business-and-collaborators)).
+- [ ] Before real users: remove the `demo_context` bubbles, fix the admin P&L, check data and settlement terms.
 
 <!-- /readme -->
 
-Details for each item are in the sections below.
+Everything open, by area, is in the sections below.
 
 ## Points validation
 
@@ -185,8 +196,9 @@ Phased plan and ground rules: [F1 roadmap](f1-roadmap.md). Items tagged
 Phase [F1-8](f1-roadmap.md#f1-8-live-paper-trade-validation-polymarket); how it works:
 [Paper trading](paper-trading.md). Recommendations and paper fills only; no order is placed.
 
-- [ ] Run profiles A (demo taker) and C (demo maker) live from round 16 (Malaysia, 4 Oct 2026)
-      through round 23 and on into 2027.
+- [ ] Run profiles A (demo taker) and C (demo maker) live on every weekend Polymarket lists, through
+      2026 and into 2027. Built and scheduled (the signal engine); Polymarket has listed no race since
+      round 15 (28 Aug), so nothing to trade yet at rounds 16–17.
 - [ ] After each weekend: compare live fills and markouts with the backtest's replay of the same
       weekend (conservative "through" fill rule) and log the markouts.
 - [ ] After 4–6 live weekends: decide on sizing (e.g. A-lite → A).
@@ -202,13 +214,21 @@ How it works: [Live events](live-events.md). First run: the Whistler downhill fi
 
 - [x] Live tab for both demo users; downhill finals from UCI timing, rank probabilities, maker quotes,
       a simulated private book (1,000 anonymous takers with event budgets), P&L by venue, replay logs.
-- [ ] **F1 live test at the Malaysia GP (4 Oct 2026):** the Live tab follows the signal engine session by
-      session (the taker's calls and heat, the maker's Polymarket quotes) plus a private book on the same
-      markets.
-- [ ] An **event replayer** from the logged raw feeds, snapshots and crowd seeds.
+- [x] Replay on the Live tab once an event is over (timeline, step, play), with the book rebuilt from the
+      logged fills; P&L by venue on Positions (2026-09-27).
+- [ ] **F1 live test, round 16 (Bahrain GP at Sepang, 2–4 Oct 2026):** a mock private book on all 100
+      usual Polymarket race markets, updated at session ends, as a shared live core plus an F1 adapter.
+      Build items B0–B8 and the runbook: [F1 live test](f1-live-roadmap.md).
+- [ ] Singapore (round 17, sprint weekend, 11 Oct): the same run if Polymarket still hasn't listed it.
+- [ ] A **report command** for any live event (the Whistler report, made repeatable): P&L by update, the
+      crowd, the demo taker, the fair-price scorecard.
+- [ ] Re-run an event's pricing from its logged raw feed (replay today shows what was seen live; this
+      would re-price it with a new model).
 - [ ] Two-sided long-shot quotes (or a per-market loss cap) so the maker doesn't pile up shorts in unlikely
       winners.
 - [ ] Settle the Whistler private book in the database and add it to the demo maker's story.
+- [ ] A live timing feed (F1 SignalR or OpenF1) for in-session updates; compared in the
+      [F1 live test](f1-live-roadmap.md#5-live-data-source) plan.
 
 ## Exchanges
 
@@ -216,8 +236,9 @@ Phase [F1-9](f1-roadmap.md#f1-9-more-exchanges-kalshi-others).
 
 - [ ] **Kalshi connector** (`racinglines/markets/kalshi/`): markets, prices, trade tape, and
       order placement behind a flag. Registered in `markets/venues`.
-- [ ] Other exchanges, if they list motorsport or cycling markets with real depth.
-- [ ] CLOB V2 migration (above) before any real Polymarket order.
+- [ ] Other exchanges, if they list motorsport or cycling markets with real depth, including one for
+      downhill (none on Polymarket as of 2026-09).
+- [ ] Before any real order: the CLOB V2 migration ([Market making](#market-making)).
 
 ## Engineering
 
@@ -235,6 +256,8 @@ Phase [F1-9](f1-roadmap.md#f1-9-more-exchanges-kalshi-others).
 - [x] `.gitignore`: `data/` stays ignored except the allow-listed minimal set for cloud runs.
 - [ ] Admin overview: the takers' P&L includes the `polymarket-takers` system account; filter it out.
 - [ ] Remove the `demo_context` bubbles before real users.
+- [ ] Before anything goes beyond a private demo: check F1's data terms, OpenF1's non-commercial terms,
+      and settlement rules for relocated or cancelled races.
 - [ ] Public/JSON API endpoints next to the admin pages.
 - [ ] **Condition in-weekend forecasts on completed rounds** (downhill). Once Q1 has run, fix
       who has qualified and use the Q1 times. Also use split times from disrupted

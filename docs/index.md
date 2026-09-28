@@ -27,8 +27,8 @@ the two.
 | 🏎️ **129 F1 races backtested** | 2021 to Azerbaijan 2026. Each race is priced before practice, before qualifying and after qualifying. After qualifying, top-10 Brier is **0.149** against 0.163 for a grid-only guess; the best variant also beats it on win and podium. |
 | 💹 **Every Polymarket F1 race weekend, replayed** | 38 weekends (2025 and 2026) on the real prices and trade tape. The default maker made **+$751** on $8,969 filled in 2026. |
 | ☁️ **1,161 strategy combinations searched** | A 4-hour cloud search found two setups that held up in both seasons: **A** (a taker, +$1,232 in 2026 / +$1,237 in 2025) and **C** (a maker, +$653 / +$835, the best Sharpe of any combination). |
-| 📡 **Live paper trading** | A and C run on every F1 weekend from Malaysia (4 Oct 2026) through 2027, stage by stage, with heat ratings, alerts and paper positions, through the same code as the backtest (checked trade for trade). |
-| 🔴 **Live events** | The Whistler downhill final (27 Sep 2026) followed live from UCI timing: rank probabilities after every update, a maker re-quoting every rider, 1,000 simulated private-book takers and a hype-picking demo taker, P&L by venue. F1 next, from the Malaysia GP. |
+| 📡 **Live paper trading** | A and C run on every F1 weekend Polymarket lists, through 2027, stage by stage, with heat ratings, alerts and paper positions, through the same code as the backtest (checked trade for trade). Polymarket has listed no race since Baku (28 Aug 2026). |
+| 🔴 **Live events** | The Whistler downhill final (27 Sep 2026) followed live from UCI timing: rank probabilities after every update, a maker re-quoting every rider, 1,000 simulated private-book takers and a hype-picking demo taker, P&L by venue. F1 next: the Bahrain GP at Sepang (2–4 Oct 2026), a private book on all 100 usual race markets. |
 | 🚵 **43 downhill World Cup rounds** | 2021–2026, walk-forward. Error on who makes the Final is **38% lower** than a uniform guess (0.127 vs 0.204); the actual winner got **7.1%** on average, against ~1%. |
 | ✅ **Checks in seconds** | `racinglines check` runs 21 checks (code, every data source, database) in ~10 s; the regression suite runs 174 tests on pinned public fixtures and golden outputs. |
 
@@ -174,8 +174,8 @@ F1, which has exchange markets, also has market pages.
 | 5. **Operate** | [CLI reference](cli.md) | Every command and option, launchd agents, scripts |
 | | [Cloud sweeps](cloud-sweep.md) | Running settings searches on a cloud machine |
 | | [Testing](testing.md) | Quick check, regression suite, fixtures, golden outputs |
-| 6. **Background** | [Project history](history.md) · [TODO](todo.md) | How it got here, and what's next |
-| | [F1 roadmap](f1-roadmap.md) · [F1 reference](f1-reference.md) | The phased F1 plan with its ground rules, and the model and market-making ideas behind it |
+| 6. **Roadmap** | [Roadmap](todo.md) · [F1 live test](f1-live-roadmap.md) · [F1 roadmap](f1-roadmap.md) | What's next, in priority order; this week's F1 live test; the phased F1 plan with its ground rules |
+| | [Project history](history.md) · [F1 reference](f1-reference.md) | How it got here, and the model and market-making ideas behind the F1 plan |
 
 <!-- /readme -->
 

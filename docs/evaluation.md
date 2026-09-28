@@ -195,7 +195,7 @@ The same 6 rounds under different settings:
 - **Junior weight 0.5** was marginally better than 0 or 1.
 
 With only 6 rounds, most of these differences are within noise. A proper sweep over
-all 43 rounds is a [TODO](todo.md#model).
+all 43 rounds is a [Roadmap](todo.md#model).
 
 ## Known weaknesses
 
