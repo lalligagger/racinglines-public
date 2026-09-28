@@ -585,3 +585,18 @@ class LiveEvent(Base):
     volume: Mapped[float | None] = mapped_column(Float)
     detail: Mapped[dict | None] = mapped_column(JSONB)                    # settings, crowd results, P&L curve
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class DataChange(Base):
+    """The data change log: one row per change to the race history the models read (an ingest that changed
+    anything, an athlete merge, a manual note), so `racinglines db changes` answers "what changed, when, and
+    why" without git or shell history. Written by `mtb_dh ingest`, `db merge-athletes` and `db changes --add`;
+    docs/data-changes.md summarizes the major ones."""
+    __tablename__ = "data_changes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    sport: Mapped[str | None] = mapped_column(String(20))                 # mtb_dh, f1; None for everything
+    kind: Mapped[str] = mapped_column(String(30))                         # ingest | merge-athletes | note
+    summary: Mapped[str] = mapped_column(Text)
+    detail: Mapped[dict | None] = mapped_column(JSONB)                    # per-file statuses, ids moved, ...
+    by: Mapped[str | None] = mapped_column(String(80))                    # user@host

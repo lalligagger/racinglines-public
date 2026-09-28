@@ -19,6 +19,7 @@ nav:
       - Sources & layout: data.md
       - Parser: parser.md
       - Database: database.md
+      - Data changes: data-changes.md
   - Formula 1:
       - F1 model: f1.md
       - F1 evaluation: f1-evaluation.md

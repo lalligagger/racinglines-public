@@ -9,7 +9,7 @@ racinglines f1      fetch | ingest | forecast | backtest | compare | matrix | di
                     pm-sync | pm-history | pm-trades | pm-record | pm-archive | pm-links-export | pm-links-import
 racinglines mtb_dh  download | parse | ingest | forecast | backtest | walk-forward
 racinglines markets sync | history | trades | record | archive      (= racinglines f1 pm-*)
-racinglines db      init | seed | stats | export | snapshot-export | snapshot-import | merge-athletes
+racinglines db      init | seed | stats | export | snapshot-export | snapshot-import | merge-athletes | changes
 racinglines web
 racinglines check   [--sport f1|mtb_dh] [--offline] [--no-db]    quick validation (see Testing)
 ```
@@ -90,13 +90,14 @@ racinglines mtb_dh parse [--input-dir DIR] [--input-file FILE ...] [--out splits
 ## racinglines mtb_dh ingest
 
 ```
-racinglines mtb_dh ingest [PATH ...] [--db URL] [--competition uci_dhi_wc] [--force]
+racinglines mtb_dh ingest [PATH ...] [--db URL] [--competition uci_dhi_wc] [--force] [--note WHY]
 ```
 
 Loads downloaded files into the database. `PATH` is files or directories
 (non-recursive `*.md`; default `data/raw/mtb_dh/chronorace`). Unchanged files are
 skipped by content hash, and `--force` re-ingests them. Each ingested file replaces
-its race's rounds, results and splits. See [Database](database.md#ingest).
+its race's rounds, results and splits. See [Database](database.md#ingest). A run that ingests anything
+is logged in the [data change log](data-changes.md), with `--note` as the reason.
 
 ## racinglines mtb_dh forecast
 
@@ -256,6 +257,7 @@ racinglines db [--db URL] export [--competition uci_dhi_wc] [--out splits.csv]
 racinglines db [--db URL] snapshot-export          # model tables with ids -> data/archive/db/
 racinglines db [--db URL] snapshot-import [--force]
 racinglines db [--db URL] merge-athletes KEEP DROP [--dry-run]
+racinglines db [--db URL] changes [--add TEXT] [--sport mtb_dh] [--limit 20]
 ```
 
 | Command | What it does |
@@ -266,7 +268,8 @@ racinglines db [--db URL] merge-athletes KEEP DROP [--dry-run]
 | `export` | The tidy frame for a competition (same columns as `mtb_dh parse`'s CSV) to CSV. |
 | `snapshot-export` | The tables the models read (race data and market links, with their ids) to `data/archive/db/<table>.parquet` plus `manifest.json`. Never web-app tables or model runs. |
 | `snapshot-import` | Load that snapshot into a fresh database (schema already at head): an exact replica, same ids, so seeded prices are identical. Refuses a database that already holds model runs unless `--force`. See [Database](database.md#snapshot-an-exact-replica). |
-| `merge-athletes` | Merge athlete `DROP` into `KEEP` (the same person, e.g. a name change that downhill ingest reports once files carry UCI IDs): every table referring to athletes moves to `KEEP`, then `DROP` is deleted. Refuses, changing nothing, if a row would collide (both in the same round). `--dry-run` only reports. It changes the downhill history the model sees, so it's the owner's call. |
+| `merge-athletes` | Merge athlete `DROP` into `KEEP` (the same person, e.g. a name change that downhill ingest reports once files carry UCI IDs): every table referring to athletes moves to `KEEP`, then `DROP` is deleted. Refuses, changing nothing, if a row would collide (both in the same round). `--dry-run` only reports. It changes the downhill history the model sees, so it's the owner's call. Logged in the data change log. |
+| `changes` | The [data change log](data-changes.md), newest first: every ingest that changed data, every merge, and notes (`--add "why"`). |
 
 ## racinglines f1
 

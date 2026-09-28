@@ -111,17 +111,18 @@ standings, champion odds, `spearman_points`) is approximate.
       the live API): the downloader writes a `UCI ID` column, the parser reads it (older files parse
       as before), and ingest matches `athlete_identifiers(scheme="uci")` before names and reports
       a UCI ID shared by two athletes. `racinglines db merge-athletes KEEP DROP` merges them.
-- [ ] Owner: re-download the downhill files (UCI IDs), re-ingest, then merge the reported pairs,
-      e.g. `racinglines db merge-athletes 152 491 --dry-run` (`WILLIAMS Jordan` /
-      `WILLIAMS Robert Jordan`: 11 results). This changes the downhill history the model sees.
+- [x] Re-download the downhill files (UCI IDs) and re-ingest (2026-09-28, locally; [Data changes](data-changes.md)):
+      584 results moved onto the UCI-matched athlete, 1,090 UCI identifiers.
+- [ ] Owner: merge the 58 reported pairs (now empty duplicate rows), e.g.
+      `racinglines db merge-athletes 152 491 --dry-run` (`WILLIAMS Jordan` / `WILLIAMS Robert Jordan`).
 - [ ] **Parse the 2021 PDFs** (Leogang, Les Gets). The text layer is readable but has
       repeated letters from bold text (`BBBBRRRROOOO`), and each rider spans two
       lines. The PDFs also have UCI ID, year of birth, weather, temperature and
       track length.
 - [ ] 2019–2020 PDFs: the text layer is unreadable font codes, so they'd need OCR.
       Low priority.
-- [ ] Build **slug probing** into the downloader (`--probe START END`) for rounds
-      missing from Wikipedia, like 2021 Snowshoe.
+- [x] **Slug probing** in the downloader (`--probe START END`, 2026-09-28): all of 2021 finds exactly its
+      six DH rounds.
 - [x] Canonical venue names (`mont-ste-anne` → `mont-sainte-anne`,
       `vallnord`/`vallnord-pal-arinsal` → `pal-arinsal`): the database already stores every venue
       under its canonical slug (`venue_aliases`, checked on the snapshot: no duplicates); `mtb_dh parse

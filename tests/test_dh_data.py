@@ -139,3 +139,29 @@ def test_merge_athletes_moves_everything_or_refuses(test_engine):
     with test_engine.connect() as c:
         assert c.execute(text("SELECT athlete_id FROM athlete_identifiers WHERE value = 'drop rider'")).scalar() == keep
         assert c.execute(text("SELECT count(*) FROM athletes WHERE id = :d"), dict(d=drop)).scalar() == 0
+
+
+def test_ingest_that_changes_data_is_logged(test_engine, tmp_path, monkeypatch, capsys):
+    """The data change log: an ingest that changed something leaves one data_changes row (with its note and
+    per-file statuses); re-ingesting unchanged files leaves none; `db changes --add` records a note."""
+    from sqlalchemy import text
+
+    from racinglines.cli import db as db_cli
+    from racinglines.cli import mtb_dh
+    url = test_engine.url.render_as_string(hide_password=False)
+    with test_engine.begin() as c:
+        c.execute(text("TRUNCATE data_changes, athletes, athlete_identifiers, results, rounds, races, events, "
+                       "source_files CASCADE"))
+    f = _event_file(tmp_path, monkeypatch, _json())
+    args = ["ingest", str(f), "--db", url]
+    mtb_dh.main(args + ["--note", "re-download with UCI IDs"])
+    mtb_dh.main(args)                                    # unchanged: not logged
+    with test_engine.connect() as c:
+        rows = c.execute(text("SELECT sport, kind, summary, detail FROM data_changes")).all()
+    assert len(rows) == 1
+    sport, kind, summary, detail = rows[0]
+    assert (sport, kind) == ("mtb_dh", "ingest") and summary == "1 downhill files ingested: re-download with UCI IDs"
+    assert detail["files"][f.name].startswith("2 results") and detail["note"] == "re-download with UCI IDs"
+    db_cli.main(["--db", url, "changes", "--add", "2019-2020 PDFs need OCR", "--sport", "mtb_dh"])
+    out = capsys.readouterr().out
+    assert "note            2019-2020 PDFs need OCR" in out and "ingest          1 downhill files ingested" in out
