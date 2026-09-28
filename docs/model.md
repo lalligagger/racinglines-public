@@ -271,6 +271,10 @@ no better or worse, Spearman lower. Two things mattered for a fair test: deviati
 measured from the rider's own level (else they re-add the pace shrinkage), and residuals
 beyond ±4% are dropped (practice times include a few far-off laps). Not built into the model.
 
+**Rookie improvement: none detected.** Shifting riders with 3 or fewer (or 6 or fewer) elite
+events faster by 0.3% or 0.6% of run time is worse on every market; shifting them 0.3% slower
+changes log loss by under 0.001. With the 240-day half-life the pace already follows form.
+
 **Not the default yet.** These settings were picked on the same 43 rounds they're scored
 on, so the gains are in-sample. They change every downhill price, so they wait for the
 owner. Run them with the three flags above.

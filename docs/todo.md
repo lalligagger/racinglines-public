@@ -152,7 +152,9 @@ standings, champion odds, `spearman_points`) is approximate.
       Practice weight: flat between 0 and 1, 0.5 kept.
 - [x] Rider × venue effects: tried (2026-09-28, cloud build-out), no gain on the 43 rounds
       ([Calibration](model.md#calibration)); not built in.
-- [ ] Time trends within a season, e.g. rider form or rookies improving fast.
+- [x] Time trends within a season (2026-09-28, cloud build-out): a faster-improving-rookie drift
+      is worse; none detected beyond what the half-life already tracks
+      ([Calibration](model.md#calibration)).
 - [ ] Protected-rider rules in older formats.
 - [ ] Remaining 2026 venues: once rounds 8–9 are announced, use venue history in the
       forecast.
