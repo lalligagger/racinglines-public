@@ -67,8 +67,11 @@ soon as they're listed.
 | `racinglines markets --exchange kalshi books --events <event ticker> …` | `market_book_snapshots` (YES bids, and NO bids as YES asks) | **No.** One snapshot per call; there is no Kalshi recorder loop yet, so the queue fill rule has no Kalshi books |
 
 The differences that matter for a replay are in
-[Kalshi history](kalshi-history.md#kalshis-historical-feed-vs-polymarkets). The biggest is that Kalshi's
+[Data](data.md#exchange-history-kalshi-and-polymarket). The biggest is that Kalshi's
 `condition_id` is the event ticker, so its tape is read per market ticker.
+
+Kalshi's F1 history from 2025 to 2026-09-28 is pulled and archived under `data/archive/markets/kalshi/`
+([Data changes](data-changes.md)).
 
 ## The maker replay (`racinglines/markets/strategies/maker_replay.py`)
 

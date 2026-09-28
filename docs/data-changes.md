@@ -14,6 +14,40 @@ Before a major update, keep what it replaces: a database dump in `data/backups/d
 files in `data/archive/<sport>/` (both git-ignored; `data/raw` is the record, so it isn't edited in place
 without a copy). Not `data/archive/db/`: that folder is tracked in git (the snapshot).
 
+## 2026-09-28 · Kalshi F1 history pulled (2025–2026)
+
+**Why.** To backtest and show Kalshi next to Polymarket: Polymarket has listed no F1 race since Baku, Kalshi lists
+every weekend. Owner-approved; read-only Kalshi API (no orders, no portfolio calls). Backup first:
+`data/backups/db/racinglines-2026-09-28-before-kalshi-history.dump`.
+
+**What.** `markets --exchange kalshi sync --year 2025 --closed` and `--year 2026 --closed`, then trades and hourly
+candlesticks (`--period 60`) for every event with modeled links, from each market's `open_time` to its close
+(or now, for the open championships). No failures, no rate-limit errors; every modeled event had trades.
+
+| | Rows |
+|---|---:|
+| Kalshi links (`market_links.exchange='kalshi'`) | 3,793 (200 events), 1,847 modeled |
+| Modeled, by kind | win 330 · podium 330 · top 10 330 · fastest lap 330 · pole 308 · top constructor 143 · h2h 14 · drivers' champion 41 (19 in 2025, 22 in 2026) · constructors' champion 21 (10 + 11) |
+| Trades | 857,797 (71.7 M contracts) on 1,722 markets; 126 modeled markets never traded |
+| Hourly prices | 408,211 on all 1,848 markets of those events, 2025-02-12 to 2026-09-28 |
+| Parquet (`data/archive/markets/kalshi/`, in git) | links 140 KB · prices 0.8 MB · trades 23 MB |
+
+Covered: the 15 Grands Prix of 2026 so far (Australia to Azerbaijan; no pole market for Azerbaijan) and the 2025 and
+2026 championships. **2025 race markets are stored but unmodeled**, so they have no trades or prices yet: the
+classifier doesn't read their older titles ([F1](f1.md#kalshi-alignment)). How Kalshi's feed differs from
+Polymarket's: [Data](data.md#exchange-history-kalshi-and-polymarket).
+
+**Side effect.** The market recorder's hourly archive pass isn't per exchange: at 14:06 UTC it moved 201,751
+Kalshi price rows and 283,468 trade rows (all Kalshi) out of Postgres into new part files under
+`data/archive/markets/polymarket/{prices,trades}/` (untracked files in the main checkout). Nothing was lost:
+the export read Postgres and those files together and deduplicated. Those part files hold only `KX…` tokens and
+should move out of the Polymarket tree; later passes will move the rest of the stale Kalshi rows the same way
+until archiving is per exchange.
+
+**Undo.** Restore the backup with `pg_restore --clean`, or delete the rows: `market_links` where
+`exchange='kalshi'`, and `market_price_history` / `market_trades` rows whose `token_id` starts `KX`. Delete
+`data/archive/markets/kalshi/` and the `KX`-only part files in the Polymarket tree.
+
 ## 2026-09-28 · Whistler run folder: replay.json added
 
 `data/runs/live/20260925_mtb_3/replay.json` (and in the bucket, `live/20260925_mtb_3/`). Nothing in the run's

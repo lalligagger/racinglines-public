@@ -402,8 +402,8 @@ racinglines markets history --events 'f1-azerbaijan-grand-prix%' --start 2026-09
 racinglines markets trades --events 'f1-azerbaijan-grand-prix%'
 racinglines markets record [--events …] [--interval 60] [--minutes 0] [--sync-every 30] [--no-alerts] [--year 2026]
 racinglines markets archive [--stats] [--vacuum-full] [--compact] [--hours H]
-racinglines f1 pm-links-export
-racinglines f1 pm-links-import
+racinglines f1 pm-links-export [--exchange kalshi]
+racinglines f1 pm-links-import [--exchange kalshi]
 ```
 
 | Command | What it does |
@@ -414,7 +414,7 @@ racinglines f1 pm-links-import
 | `record` (`f1 pm-record`) | Record order-book snapshots every `--interval` seconds (default 60) of the given events, or of the open markets of races not yet run. Runs until stopped (`--minutes N` stops after N). Re-syncs Polymarket's F1 events every `--sync-every` minutes (default 30; 0 = never) so new race markets get recorded, and alerts about new markets unless `--no-alerts`. Archives to Parquet hourly. Run it through race weekends. |
 | `archive` (`f1 pm-archive`) | Move stale prices, trades and books from Postgres to Parquet under the retention policy, or every row older than `--hours H`. `--vacuum-full` returns freed space to the OS, `--compact` merges each month into one file, `--stats` only shows where the rows are. See [Database](database.md#storage-postgres-for-the-app-parquet-for-heavy-history). |
 | `f1 pm-links-export` | Write `market_links` to `data/archive/markets/polymarket/links/market_links.parquet`, with database ids swapped for stable keys (event key and category, FastF1 driver id, competition and category codes). |
-| `f1 pm-links-import` | Load that file into this database (no Polymarket access needed); replaces each token's row and reports rows whose keys don't resolve. |
+| `f1 pm-links-import` | Load that file into this database (no Polymarket access needed); replaces each token's row and reports rows whose keys don't resolve. `--exchange kalshi` does the same for Kalshi's links (`data/archive/markets/kalshi/links/`). |
 
 ### Kalshi (`--exchange kalshi`)
 
@@ -436,6 +436,11 @@ racinglines markets --exchange kalshi books --events KXF1-26
 | `trades` | Store every trade on those events' markets in `market_trades` (the taker's side of YES, at the YES price, in contracts). |
 | `history` | Store candlesticks (`--period` 1, 60 or 1440 minutes) in `market_price_history`. |
 | `books` | One order-book snapshot per open market in `market_book_snapshots` (a NO bid at p is a YES ask at 1 − p). |
+
+No `archive`, `record` or links export for Kalshi yet: `markets archive` writes to the Polymarket tree whatever the
+exchange, so Kalshi's archive (`data/archive/markets/kalshi/`, [Data](data.md#exchange-history-kalshi-and-polymarket))
+was written by a one-off export on 2026-09-28 ([Data changes](data-changes.md)). Pulling a season: `sync --year Y --closed`,
+then `trades` and `history --period 60` per modeled event ticker, from each market's `open_time` to its `close_time`.
 
 Orders (`markets/kalshi/trade.py`): post-only limit orders on YES, checked against the book, the 1-cent grid
 and `KALSHI_MAX_ORDER_USD` (default 25), signed with RSA-PSS (`KALSHI_API_KEY_ID`, `KALSHI_PRIVATE_KEY_PATH`),
