@@ -186,8 +186,11 @@ Phased plan and ground rules: [F1 roadmap](f1-roadmap.md). Items tagged
 - [ ] Decide whether profile A's model takes `rookie` (`gridq+pretrain+reset+rookie`, run 1289), after
       live weekends.
 - [ ] Teammate-battle uncertainty: a larger per-driver season drift, or a driver-form model.
-- [ ] Price fastest lap, safety car / red flag, rain (F1-3: per-circuit rates from track status
-      and weather, `race_disruption`), and sprint markets.
+- [x] Price fastest lap, safety car / red flag, rain (F1-3): `models/position_sim/props.py`,
+      `racinglines f1 props`; opt-in kinds for a live book (2026-09-28, cloud). Per-circuit rates
+      don't beat the field rate on 2022–2026 ([F1 roadmap](f1-roadmap.md#decision-log)).
+- [ ] Props next: calibrate fastest lap on stored stage runs; map Polymarket's prop markets in the
+      sync classifier (they're `unmodeled` today) and backtest against their prices; sprint markets.
 - [x] Polymarket sync and repricing on a schedule during race weekends: the recorder re-syncs
       every 30 min; the signal engine prices each stage as its data arrives (every 5 min).
 

@@ -256,6 +256,7 @@ racinglines f1 compare BASELINE_RUN CHALLENGER_RUN [--reliability]
 racinglines f1 matrix [--variants baseline,grid,gridq,pretrain,gbm,tail,gridq+pretrain] [--year 2026] [--out MD]
 racinglines f1 [--half-life DAYS] diagnostic --event 2026-15 --cutoff 2026-09-25T13:30 [--sims 10000] [--no-track] [--save]
 racinglines f1 [--half-life DAYS] forecast [--year 2026] [--sims 10000] [--no-track] [--save [--scenario LABEL]] [--top 10]
+racinglines f1 props EVENT [--run STAGE_RUN] [--prior-n 16]  |  racinglines f1 props --check [--from 2022]
 ```
 
 | Command | What it does |
@@ -265,6 +266,7 @@ racinglines f1 [--half-life DAYS] forecast [--year 2026] [--sims 10000] [--no-tr
 | `matrix` | The model × strategy matrix: for each variant, the latest saved backtest (accuracy, marked where it differs from baseline beyond 2 SE) and the latest saved sweep and season strategy (P&L). Writes `data/runs/f1/matrix.md`. See [Model × strategy matrix](market-making.md#model-strategy-matrix). |
 | `diagnostic` | Price one past event as of `--cutoff` (UTC), with a leakage audit. `--save` stores `kind='diagnostic'`. See [Market making](market-making.md). |
 | `forecast` | Live: cutoff = now; upcoming races and the championships. `--save` creates scheduled events for upcoming rounds and stores `kind='forecast'` (the only kind the web app uses for live fair prices). `--scenario LABEL` saves `kind='scenario'` instead, ignored by live prices until promoted in the web app's Lab. |
+| `props` | Race props for one event from the race history before it: safety car, red flag, rain (per-circuit rates shrunk to the field rate); `--run` adds fastest-lap prices from a stored stage run's finishing odds. `--check` scores the yes/no props walk-forward from `--from` against the field rate and a coin flip. Nothing is stored. See [F1 live test](f1-live-roadmap.md#props-opt-in). |
 
 ### Trading research
 

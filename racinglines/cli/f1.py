@@ -27,6 +27,8 @@ racinglines f1 <command>: Formula 1.
                  the real trade tape; fills, inventory, P&L at resolution, mark-outs.
     forecast     LIVE: cutoff = now; upcoming races + championships. Saved as kind='forecast'
                  (the only kind the web app uses for live fair prices).
+    props        Race props (safety car, red flag, rain, fastest lap) for one event from the race
+                 history, or --check: their walk-forward calibration (models/position_sim/props.py).
 """
 
 import argparse
@@ -173,6 +175,12 @@ def main(argv=None):
     p.add_argument("--no-track", action="store_true")
     p.add_argument("--scenario", default=None, metavar="LABEL",
                    help="Save as kind='scenario' (not used for live prices until promoted in the web app).")
+    p = sub.add_parser("props", help="Race props: safety car, red flag, rain, fastest lap (props.py).")
+    p.add_argument("event", nargs="?", default=None, help="Season-round, e.g. 2026-16 (the yes/no props)")
+    p.add_argument("--run", type=int, default=None, help="A stored stage run id: adds the fastest-lap prices")
+    p.add_argument("--check", action="store_true", help="Walk-forward calibration of the yes/no props")
+    p.add_argument("--from", dest="start_year", type=int, default=2022, help="--check: first season scored")
+    p.add_argument("--prior-n", type=float, default=None, help="Shrinkage to the field rate, in races (default: props.PRIOR_N)")
     args = ap.parse_args(argv)
     from racinglines.models.position_sim import variants as V
     V.switches(args.variant)                         # fail fast on an unknown name
@@ -201,6 +209,21 @@ def _run(args):
         from racinglines.sources.fastf1.ingest import ingest
         with get_session(args.db) as s:
             print("Done:", ingest(s, _years(args.years), force=args.force))
+        return
+    if args.cmd == "props":
+        from racinglines.models.position_sim import props as PR
+        prior_n = PR.PRIOR_N if args.prior_n is None else args.prior_n
+        with engine.connect() as c:
+            if args.check:
+                _, summ = PR.check(c, args.start_year, prior_n)
+                print(summ.to_string(index=False, float_format="{:.4f}".format))
+                return
+            if not args.event:
+                sys.exit("give an event (e.g. 2026-16) or --check")
+            kinds = PR.PROP_KINDS if args.run else tuple(PR.BINARY)
+            for mk in PR.markets(c, args.event, args.run, kinds, prior_n):
+                name = "" if mk["subject"] == PR.LABEL[mk["kind"]] else mk["subject"]
+                print(f"{PR.LABEL[mk['kind']]:12} {name:24} {mk['fair']:.1%}")
         return
     if args.cmd in ("pm-links-export", "pm-links-import"):
         from racinglines import paths

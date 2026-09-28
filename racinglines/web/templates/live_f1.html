@@ -32,7 +32,7 @@
 
 {% for g in groups %}<div class="card"><h2>{{ g.label }} <span class="muted" style="font-weight:normal">· {{ g.markets|length }} markets</span></h2>
 {% if maker and g.target %}<p class="legend">Fair values add up to {{ "%.2f"|format(g.total) }} (should be {{ "%.0f"|format(g.target) }}). ▲▼: the move since the last update, in points.</p>{% endif %}
-<div class="scroll"><table><thead><tr><th class="l">{{ "Pair (YES: first ahead)" if g.kind == 'race_h2h' else ("Team" if g.kind == 'race_constructor_top' else "Driver") }}</th>{% if maker %}<th>Fair</th><th>Move</th>{% endif %}<th>Bid / ask</th>{% if maker %}<th>Maker (YES)</th>{% endif %}<th></th></tr></thead><tbody>
+<div class="scroll"><table><thead><tr><th class="l">{{ "Pair (YES: first ahead)" if g.kind == 'race_h2h' else ("Team" if g.kind == 'race_constructor_top' else ("Prop (YES: happens in the race)" if g.kind == 'race_props' else "Driver")) }}</th>{% if maker %}<th>Fair</th><th>Move</th>{% endif %}<th>Bid / ask</th>{% if maker %}<th>Maker (YES)</th>{% endif %}<th></th></tr></thead><tbody>
 {% for m in g.markets %}<tr><td class="l">{{ m.subject }}</td>{% if maker %}<td>{{ pc(m.fair) }}</td><td>{{ mv(m.move) }}</td>{% endif %}
   <td class="num">{% if m.bid is none and m.ask is none %}<span class="muted">not quoted</span>{% else %}{{ px(m.bid) }} / {{ px(m.ask) }}{% endif %}</td>
   {% if maker %}<td class="num {{ 'bad' if m.inv and m.inv < 0 else '' }}">{{ "%+.0f"|format(m.inv) if m.inv else "" }}</td>{% endif %}
@@ -64,7 +64,7 @@
   {% else %}worth <b>${{ "%.2f"|format(tot.value) }}</b> now · P&amp;L <b class="{{ 'good' if tot.pnl > 0 else 'bad' }}">{{ tot.pnl|money(true) }}</b>{% endif %}
   {% if tot.won or tot.lost %} · {{ tot.won }} won, {{ tot.lost }} lost{% endif %}</p>
 <div class="scroll"><table><thead><tr><th class="l">Bet</th><th>Paid</th><th>Shares</th><th>{{ "Fair now" if maker else "Price now" }}</th><th>{{ "Maker P&L" if maker else "P&L" }}</th><th class="l">Hype</th><th class="l"></th></tr></thead><tbody>
-{% for p in picks %}{% set v = p.maker_pnl if maker else p.pnl %}<tr><td class="l">YES · {{ p.subject }} <span class="muted">{{ {"race_win": "wins", "race_podium": "on the podium", "race_pole": "on pole", "race_h2h": "(first ahead)", "race_constructor_top": "top constructor"}.get(p.kind, "") }}</span></td><td>{{ px(p.price) }}</td><td>{{ "%.0f"|format(p.shares) }}</td>
+{% for p in picks %}{% set v = p.maker_pnl if maker else p.pnl %}<tr><td class="l">YES · {{ p.subject }} <span class="muted">{{ {"race_win": "wins", "race_podium": "on the podium", "race_pole": "on pole", "race_h2h": "(first ahead)", "race_constructor_top": "top constructor", "race_safety_car": "in the race", "race_red_flag": "in the race", "race_rain": "in the race", "race_fastest_lap": "fastest lap"}.get(p.kind, "") }}</span></td><td>{{ px(p.price) }}</td><td>{{ "%.0f"|format(p.shares) }}</td>
   <td>{% if maker %}{{ pc(p.fair) }}{% else %}{{ px(p.now) }}{% endif %}</td>
   <td class="{{ 'good' if v and v > 0 else 'bad' }}">{{ v|money(true) if v is not none else "" }}</td>
   <td class="l">{{ "🔥" * p.hype }} <span class="muted">{{ p.why }}</span></td>

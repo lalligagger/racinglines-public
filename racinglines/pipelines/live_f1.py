@@ -26,6 +26,9 @@ Markets (key: what YES means):
     race_pole:<athlete>            takes pole                        extra.pole_prob       settles after qualifying
     race_h2h:<a>:<b>               a finishes ahead of b             extra.h2h[b]          pairs: the last race Polymarket listed
     race_constructor_top:<team>    the team scores the most points   metrics.race_constructor_top
+Props, off by default (listed only when [live.markets] kinds names them; models/position_sim/props.py):
+    race_safety_car / race_red_flag / race_rain     yes/no, per-circuit rates from the race history
+    race_fastest_lap:<athlete>     sets the race's fastest lap       the stage run's finishing odds x history
 Settlement: private_book.outcome_for on the official classification. A demo experiment: play money, nothing
 is traded anywhere.
 """
@@ -40,13 +43,17 @@ from sqlalchemy import text
 
 from racinglines.markets import crowd as C
 from racinglines.markets import quoting as Q
+from racinglines.models.position_sim import props as P
 from racinglines.pipelines import live as LV
 
-KINDS = ("race_win", "race_podium", "race_pole", "race_h2h", "race_constructor_top")
+KINDS = ("race_win", "race_podium", "race_pole", "race_h2h", "race_constructor_top")     # the default market set
+PROP_KINDS = P.PROP_KINDS                                                               # opt-in
+ALL_KINDS = KINDS + PROP_KINDS
 KIND_LABEL = {"race_win": "Winner", "race_podium": "Podium", "race_pole": "Pole position", "race_h2h": "Head-to-head",
-              "race_constructor_top": "Top constructor"}
+              "race_constructor_top": "Top constructor", "race_props": "Race props", **P.LABEL}
 FIELD = {"race_win": "win_prob", "race_podium": "podium_prob"}
 GROUP_TARGET = {"race_win": 1.0, "race_podium": 3.0, "race_pole": 1.0, "race_constructor_top": 1.0}
+VIEW_GROUPS = KINDS + ("race_props", "race_fastest_lap")      # the Live tab: the yes/no props share one card
 
 
 def _utc(t):
@@ -145,11 +152,20 @@ def group_sums(mkts):
     return s, max(dev, default=0.0)
 
 
-def markets(conn, event_key, run_id, source="last_listed", kinds=KINDS):
-    """Adapter interface: the event's markets and their fair values from a stage run."""
+def markets(conn, event_key, run_id, source="last_listed", kinds=KINDS, props=None):
+    """Adapter interface: the event's markets and their fair values from a stage run (props: the [live.props]
+    settings, for prop kinds)."""
     preds, ctor = run_prices(conn, run_id)
     pairs, _ = h2h_pairs(conn, event_key, source)
-    return market_set(preds, ctor, pairs, kinds)
+    return market_set(preds, ctor, pairs, kinds) + prop_markets(conn, event_key, run_id, kinds, props)
+
+
+def prop_markets(conn, event_key, run_id, kinds, props=None):
+    """The prop markets among `kinds` ([] when none is listed, the default)."""
+    pk = tuple(k for k in kinds if k in PROP_KINDS)
+    if not pk:
+        return []
+    return P.markets(conn, event_key, run_id, pk, (props or {}).get("prior_n", P.PRIOR_N))
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +270,9 @@ def outcomes(conn, rid, mkts, stage="race"):
         y = outcome_for(m["kind"], m["athlete_id"], m["params"], res)
         if y is not None:
             out[m["key"]] = bool(y)
+    pm = [m for m in mkts if m["kind"] in PROP_KINDS]
+    if pm:                                               # props: from the race's laps and weather
+        out.update(P.outcomes(conn, rid, pm))
     return out
 
 
@@ -371,7 +390,7 @@ def step(spec, now=None, fetch=True, unfreeze=False, echo=print, engine=None, en
         save_state(out, st)
     engine = engine or get_engine(engine_url)
     cache = {} if cache is None else cache
-    kinds = [k for k in live["markets"]["kinds"] if k in KINDS]
+    kinds = [k for k in live["markets"]["kinds"] if k in ALL_KINDS]
     qp = Q.Params.from_dict(live["quoting"])
     cp = C.Params.from_dict(dict(live["crowd"], max_loss=live["quoting"].get("max_loss")))
     book = C.load_book(out, cp)
@@ -429,6 +448,7 @@ def step(spec, now=None, fetch=True, unfreeze=False, echo=print, engine=None, en
                 pairs, st["pairs_from"] = h2h_pairs(c, event_key, live["markets"].get("h2h_from", "last_listed"))
                 st["pairs"] = [list(p) for p in pairs]
             new = market_set(*run_prices(c, run_id), [tuple(p) for p in st["pairs"]], kinds)
+            new += prop_markets(c, event_key, run_id, kinds, live.get("props"))
         if mkts:                                        # markets listed at the opening stay; a new driver's are added
             keep = {m["key"] for m in new}
             new += [dict(m, fair=m["fair"]) for m in mkts if m["key"] not in keep]
@@ -562,15 +582,16 @@ def view(run, snap, picks, hist, mode, maker):
     oc = {o["key"]: o["yes"] for o in snap.get("outcomes") or []}
     fair = {m["key"]: m["fair"] for m in snap["markets"]}
     groups = []
-    for kind in KINDS:
-        ms = [dict(m) for m in snap["markets"] if m["kind"] == kind]
+    for kind in VIEW_GROUPS:
+        ms = [dict(m) for m in snap["markets"] if m["kind"] == kind or (kind == "race_props" and m["kind"] in P.BINARY)]
         if not ms:
             continue
         for m in ms:
             m["move"] = (None if m.get("prev_fair") is None or m["fair"] is None else m["fair"] - m["prev_fair"])
         ms.sort(key=lambda m: -(m["fair"] or 0))
         groups.append(dict(kind=kind, label=KIND_LABEL[kind], markets=ms,
-                           total=sum(m["fair"] or 0 for m in ms), target=GROUP_TARGET.get(kind)))
+                           total=sum(m["fair"] or 0 for m in ms),
+                           target=1.0 if kind == "race_fastest_lap" else GROUP_TARGET.get(kind)))
     rows, tot = [], dict(stake=0.0, value=0.0, pnl=0.0, maker_pnl=0.0, won=0, lost=0)
     qs = {m["key"]: m for m in snap["markets"]}
     for p in picks:

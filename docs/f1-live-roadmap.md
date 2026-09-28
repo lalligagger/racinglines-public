@@ -291,6 +291,20 @@ Modelled on Baku (round 15), the last race Polymarket listed:
 - `private_book.outcome_for` already settles all five kinds.
 - The model is the demo maker's profile, C (`gbm`).
 
+### Props (opt-in)
+
+Off unless the launch spec (or `sports/f1.toml`) lists them in `[live.markets] kinds`:
+
+| Kind | Markets | Fair value | Settles on |
+|---|---|---|---|
+| `race_safety_car` | 1 | the circuit's safety-car rate, shrunk to the field rate (a prior of 16 races) | track status 4 on any race lap (a VSC alone is NO) |
+| `race_red_flag` | 1 | the same, for red flags | track status 5 on any race lap |
+| `race_rain` | 1 | the same, for rain (history only, no forecast) | any rainfall in the race's weather samples |
+| `race_fastest_lap` | one per driver | the stage run's win / podium / top-10 / DNF odds × how often each finishing bucket set the fastest lap; sums to 1 | the race's quickest timed lap |
+
+`[live.props] prior_n` overrides the prior. The Live tab shows the yes/no props in one card and
+fastest lap in its own. Model: `models/position_sim/props.py`; `racinglines f1 props 2026-16` prints them.
+
 **Every fair price is kept, whether or not anyone trades it.** Each update saves all
 100 fair values and quotes. The report can then show how our prices moved through the
 weekend and score them against the result (Brier score, log loss), exactly as if
