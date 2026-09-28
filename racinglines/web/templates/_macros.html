@@ -36,7 +36,7 @@
 {% for l in c.lines %}<polyline fill="none" stroke="{{ l.color }}" stroke-width="{{ 2.8 if l.dash else 1.6 }}"{% if l.dash %} stroke-dasharray="7 4"{% endif %} points="{{ l.points }}"/>{% if l.fair_y is not none %}<line x1="{{ c.pad }}" x2="{{ c.w }}" y1="{{ l.fair_y }}" y2="{{ l.fair_y }}" stroke="{{ l.color }}" stroke-dasharray="2 4" opacity=".7"/>{% endif %}{% endfor %}
 </svg>
 {% if c.zero_y is defined and c.zero_y is not none %}<line x1="{{ c.pad }}" x2="{{ c.w }}" y1="{{ c.zero_y }}" y2="{{ c.zero_y }}" stroke="var(--muted)" stroke-width="1"/>{% endif %}
-<div class="legend">{% for l in c.lines %}<i style="background:{{ l.color }}"></i>{{ l.label }}{% endfor %}{% if c.zero_y is not defined %} · solid = Polymarket price, dotted = our fair{% endif %}</div>{% endif %}
+<div class="legend">{% for l in c.lines %}<i style="background:{{ l.color }}"></i>{{ l.label }}{% endfor %}{% if c.zero_y is not defined %} · solid = {{ c.venue if c.venue is defined else 'Polymarket' }} price, dotted = our fair{% endif %}</div>{% endif %}
 {%- endmacro %}
 
 {% macro new_badge(n=0) %}<span class="pill new" title="first seen on Polymarket in the last 48 hours">{{ n ~ " " if n else "" }}new</span>{% endmacro %}

@@ -328,3 +328,15 @@ def test_admin_totals_leave_out_the_replay_counterparty():
     assert (t["bets"], t["staked"], t["taker_pnl"]) == (2, 15.0, -6.0)
     assert (t["replay_bets"], t["replay_pnl"]) == (2, 80.0)
     assert bet_totals(bets.iloc[0:0]) == dict(bets=0, staked=0.0, taker_pnl=0.0, replay_bets=0, replay_pnl=0.0)
+
+
+def test_kalshi_pages_need_the_switch(clients):
+    """Without RACINGLINES_KALSHI_VENUE=1 the Kalshi list is a 404 and its Positions filter is ignored (the page
+    still renders); with it, the list and the filters render (racinglines.markets.venues.KALSHI_VENUE)."""
+    from racinglines.markets import venues as V
+    m = clients[0]["maker"]
+    assert m.get("/markets/kalshi").status_code == (200 if V.KALSHI_VENUE else 404)
+    for path in ("/positions?venue=kalshi", "/strategy?venue=kalshi"):
+        r = m.get(path)
+        assert r.status_code == 200, path
+        assert not re.search(r">\s*nan\b|\bnan\s*<", r.text, re.I), path

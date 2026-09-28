@@ -10,7 +10,7 @@
   <div class="kpi"><div class="l">Our fair values</div><div class="v sm">{{ pricing.source }}</div>
     <div class="s">{% if pricing.run_id %}run <a href="{{ '/lab/diagnostics/' if 'diagnostic' in pricing.source else '/lab/runs/' }}{{ pricing.run_id }}">#{{ pricing.run_id }}</a>{% endif %}{% if pricing.as_of is not none %} · as of {{ pricing.as_of|fmt }} UTC{% endif %}</div></div>
   {% if fav %}<div class="kpi"><div class="l">{{ "Favourite" if not season else "Leader" }}</div><div class="v">{{ fav.subject }}</div><div class="s">{{ pct(fav.fair, 1) }} {{ fav.kind_label|lower }}{% if fav.pm_mid is not none %} · market {{ pct(fav.pm_mid, 1) }}{% endif %}</div></div>{% endif %}
-  {% if winner %}<div class="kpi"><div class="l">Result</div><div class="v">{{ winner.subject }}</div><div class="s">we had {{ pct(winner.fair, 1) }}{% if winner.pm_mid is not none %} · Polymarket {{ pct(winner.pm_mid, 1) }} at the same time{% endif %}</div></div>{% endif %}
+  {% if winner %}<div class="kpi"><div class="l">Result</div><div class="v">{{ winner.subject }}</div><div class="s">we had {{ pct(winner.fair, 1) }}{% if winner.pm_mid is not none %} · Polymarket {{ pct(winner.pm_mid, 1) }} at the same time{% endif %}{% if kalshi and winner.venues and winner.venues.kalshi and winner.venues.kalshi.mid is not none %} · Kalshi {{ pct(winner.venues.kalshi.mid, 1) }}{% endif %}</div></div>{% endif %}
   <div class="kpi"><div class="l">Venues</div>{{ venue_chips(venue_sum, mine) }}</div>
   <div class="kpi"><div class="l">My book here</div><div class="v">{{ mine.open }}</div><div class="s">open markets · staked ${{ "%.0f"|format(mine.staked) }} · worst <span class="{{ 'bad' if mine.worst < 0 }}">${{ "%.0f"|format(mine.worst) }}</span></div></div>
 </div>
@@ -18,7 +18,7 @@
 {# --- one view at a time: each market type, the chart, the season strategy, the classification, quoting --- #}
 <nav class="ptabs" data-tabs="race" role="tablist">
   {% for kind, label, rows_ in groups %}<button type="button" role="tab" data-tab="k-{{ kind }}">{{ label }}<span class="n">{{ rows_|length }}</span></button>{% endfor %}
-  {% if chart_data %}<button type="button" role="tab" data-tab="chart">Price history</button>{% endif %}
+  {% if chart_data or chart_kalshi %}<button type="button" role="tab" data-tab="chart">Price history</button>{% endif %}
   {% if strategy is defined and strategy %}<button type="button" role="tab" data-tab="strategy">Season strategy</button>{% endif %}
   {% if results %}<button type="button" role="tab" data-tab="results">Classification</button>{% endif %}
   <button type="button" role="tab" data-tab="quote">Quote</button>
@@ -45,7 +45,14 @@
 </section>
 {% endfor %}
 
-{% if chart_data %}<section data-panel="chart" hidden><div class="card"><h2>Polymarket price vs our fair</h2>{{ chart(chart_data) }}</div></section>{% endif %}
+{% if chart_data and not chart_kalshi %}<section data-panel="chart" hidden><div class="card"><h2>Polymarket price vs our fair</h2>{{ chart(chart_data) }}</div></section>{% elif chart_kalshi %}<section data-panel="chart" hidden><div class="card"><div class="section-head"><h2>Exchange price vs our fair</h2>
+{% if chart_data %}<div class="tabs" role="group" aria-label="Which exchange to plot">
+  <button type="button" data-toggle="pxplot" data-value="polymarket" aria-pressed="true">Polymarket</button>
+  <button type="button" data-toggle="pxplot" data-value="kalshi" aria-pressed="false">Kalshi</button>
+</div>{% endif %}</div>
+{% if chart_data %}<div class="plot" data-pxplot="polymarket">{{ chart(chart_data) }}</div>{% endif %}
+<div class="plot" data-pxplot="kalshi"{% if chart_data %} hidden{% endif %}>{{ chart(chart_kalshi) }}</div>
+</div></section>{% endif %}
 
 {% if strategy is defined and strategy %}{% set st = strategy %}
 <section data-panel="strategy" id="strategy" hidden>
@@ -84,7 +91,7 @@
 <section data-panel="quote" id="quote" hidden><div class="card"><h2>{{ "Quote this race" if not completed and not season else "Quote" }}</h2>
 {% if completed %}<p class="muted">This race has run. {% if diag_runs %}Diagnostics: {% for d in diag_runs %}<a href="/lab/diagnostics/{{ d.id }}">#{{ d.id }} as of {{ d.cutoff }}</a>{{ " · " if not loop.last }}{% endfor %}.{% endif %}
 {% if info.competition == 'f1_wdc' and info.source_key %} <a href="/lab?job=f1_diagnostic&event={{ info.source_key }}#run">Run a diagnostic at another cutoff →</a>{% endif %}</p>
-{% elif season %}<p>Season markets: mirror a Polymarket event from the <a href="/markets/polymarket">Polymarket list</a>, or <a href="/book/quotes?race_id=0">manage my season markets</a>.</p>
+{% elif season %}<p>Season markets: mirror a Polymarket event from the <a href="/markets/polymarket">Polymarket list</a>{% if kalshi %} or a Kalshi event from the <a href="/markets/kalshi">Kalshi list</a>{% endif %}, or <a href="/book/quotes?race_id=0">manage my season markets</a>.</p>
 {% else %}
 <form method="post" action="/book/quotes/generate" class="jobform">{{ csrf() }}<input type="hidden" name="race_id" value="{{ info.race_id }}"><input type="hidden" name="next" value="/races/{{ info.race_id }}">
   <label><span>Markets</span><span class="checks">{% for k in quote_kinds %}<label class="inline"><input type="checkbox" name="kinds" value="{{ k }}" checked> {{ kind_label.get(k, k) }}</label>{% endfor %}</span></label>
@@ -95,7 +102,9 @@
 <p class="legend">Creates (or reprices) YES/NO markets in my private book at our fair ± spread/2. Takers see prices only.</p>
 {% for v in venue_sum %}{% if v.venue.code == 'polymarket' and v.slug %}
 <form method="post" action="/markets/polymarket/mirror" class="inline">{{ csrf() }}<input type="hidden" name="event_slug" value="{{ v.slug }}"><input type="hidden" name="spread_pct" value="4"><button>Mirror Polymarket outcomes into my book</button></form>
-<a href="https://polymarket.com/event/{{ v.slug }}" target="_blank" rel="noopener">open on Polymarket ↗</a>{% endif %}{% endfor %}
+<a href="https://polymarket.com/event/{{ v.slug }}" target="_blank" rel="noopener">open on Polymarket ↗</a>{% elif kalshi and v.venue.code == 'kalshi' and v.slug %}
+<form method="post" action="/markets/kalshi/mirror" class="inline">{{ csrf() }}<input type="hidden" name="event_slug" value="{{ v.slug }}"><input type="hidden" name="spread_pct" value="4"><button>Mirror Kalshi outcomes into my book</button></form>
+<a href="{{ v.venue.url.format(slug=v.slug|lower) }}" target="_blank" rel="noopener">open on Kalshi ↗</a>{% endif %}{% endfor %}
 {% endif %}
 </div></section>
 {% endblock %}

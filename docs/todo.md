@@ -306,8 +306,11 @@ Phase [F1-9](f1-roadmap.md#f1-9-more-exchanges-kalshi-others).
 - [x] Kalshi in the maker replay and the demo maker's record (`f1 demo-history --venue kalshi`, PR #10):
       per-ticker grouping, Kalshi's maker fee, `RACINGLINES_KALSHI_VENUE=1` for the board / race / Positions
       pages. Feed differences vs Polymarket: [Kalshi history](kalshi-history.md).
-- [ ] Kalshi: the first real pull (2025–26, owner's device) replayed and summarised: how many of the maker's
-      quotes Kalshi's tape fills, by market kind; Kalshi in the Positions page's venue tiles after the UI rework.
+- [x] Kalshi: the first real pull (2025–26, owner's device) replayed and summarised: how many of the maker's
+      quotes Kalshi's tape fills, by market kind ([Kalshi history](kalshi-history.md#first-real-run-2026-09-28));
+      Kalshi at parity with Polymarket in the app behind `RACINGLINES_KALSHI_VENUE=1`: Positions tiles and
+      curve, Strategy switch, `/markets/kalshi`, race-page column and chart, Lab replay
+      ([Kalshi history](kalshi-history.md#in-the-app)).
 - [ ] Kalshi: the sweep and taker paper signals reading Kalshi's markets (F1-9's "done when"). No order has
       been sent; `KALSHI_TRADING_ENABLED` stays unset.
 - [ ] Other exchanges, if they list motorsport or cycling markets with real depth, including one for

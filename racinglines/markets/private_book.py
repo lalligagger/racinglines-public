@@ -267,12 +267,14 @@ def mirror_event(session, conn, event_slug, maker_id, spread, only_modeled=True,
                         params=dict(s=event_slug))
     # A binary Polymarket market (e.g. a head-to-head) has two outcome tokens; our
     # market already quotes both YES and NO, so mirror only the first token.
+    # A Kalshi condition_id is the whole event (every driver's market), so Kalshi pairs by market ticker instead.
     mine = {r[0] for r in conn.execute(text("""
-        SELECT ml.condition_id FROM house_markets hm JOIN market_links ml ON ml.id = hm.market_link_id
+        SELECT CASE WHEN ml.exchange = 'kalshi' THEN ml.token_id ELSE ml.condition_id END
+        FROM house_markets hm JOIN market_links ml ON ml.id = hm.market_link_id
         WHERE hm.maker_id = :mk AND ml.event_slug = :s"""), dict(mk=maker_id, s=event_slug))}
     cache, created, repriced, skipped, seen = {}, 0, 0, 0, set()
     for link in links.to_dict("records"):
-        cond = link["condition_id"]
+        cond = link["token_id"] if link["exchange"] == "kalshi" else link["condition_id"]
         if cond and link["prediction"] == "race_h2h" and cond in seen:
             continue
         seen.add(cond)

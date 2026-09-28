@@ -62,6 +62,8 @@ def recent_results(conn, competition_id, n=3):
         w = df[(df["kind"] == "race_win") & (df["athlete_id"] == winner_id)] if len(df) and winner_id else pd.DataFrame()
         our = float(w["fair"].iloc[0]) if len(w) and w["fair"].iloc[0] is not None else None
         pm = float(w["pm_mid"].iloc[0]) if len(w) and w["pm_mid"].iloc[0] is not None and pd.notna(w["pm_mid"].iloc[0]) else None
+        kq = (w["venues"].iloc[0] or {}).get("kalshi") if len(w) else None
+        kalshi = kq["mid"] if kq and kq.get("mid") is not None else None
         source = pricing["source"]
         if our is None and info["event_id"] in bt_ev:
             our, source = bt_ev[info["event_id"]].get("winner_prob"), "backtest (as of before the race)"
@@ -69,7 +71,7 @@ def recent_results(conn, competition_id, n=3):
             if winner_id else None
         diag = data.q(conn, """SELECT max(id) AS id FROM model_runs WHERE kind = 'diagnostic'
                                AND params->>'event_key' = :k""", k=info["source_key"])["id"].iloc[0]
-        out.append(dict(info=info, winner=name, our=our, pm=pm, source=source,
+        out.append(dict(info=info, winner=name, our=our, pm=pm, kalshi=kalshi, source=source,
                         diag=int(diag) if diag is not None and pd.notna(diag) else None,
                         countdown=_countdown(info["start_date"])))
     return out

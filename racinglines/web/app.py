@@ -783,10 +783,10 @@ def bet_markets(request: Request, msg: str = "", c=None):          # served at /
     return render(request, "bet.html", msg=msg, profile=profile, **polymarket_calls(c, profile))
 
 
-def polymarket_calls(c, profile, n_races=3):
-    """Every open Polymarket F1 market with `profile`'s current call: a taker's side / size / limit / heat
-    (signals.call) or a maker's quotes (signals.maker_call). -> dict(races (the next n, listed or not),
-    season, other, synced, n_markets). Never exposes fair values."""
+def polymarket_calls(c, profile, n_races=3, exchange="polymarket"):
+    """Every open Polymarket F1 market (or Kalshi's, `exchange="kalshi"`) with `profile`'s current call: a taker's
+    side / size / limit / heat (signals.call) or a maker's quotes (signals.maker_call). -> dict(races (the next n,
+    listed or not), season, other, synced, n_markets). Never exposes fair values."""
     from datetime import timedelta as _td
 
     from racinglines.markets import store as MS
@@ -799,15 +799,17 @@ def polymarket_calls(c, profile, n_races=3):
                coalesce(ra.format->>'event_name', e.name) AS race_name
         FROM market_links ml LEFT JOIN athletes a ON a.id = ml.athlete_id
         LEFT JOIN races ra ON ra.id = ml.race_id LEFT JOIN events e ON e.id = ra.event_id
-        WHERE ml.exchange = 'polymarket' AND NOT ml.closed
-        ORDER BY ml.end_date NULLS LAST, ml.event_title, ml.last_price DESC NULLS LAST""")
+        WHERE ml.exchange = :x AND NOT ml.closed
+        ORDER BY ml.end_date NULLS LAST, ml.event_title, ml.last_price DESC NULLS LAST""", x=exchange)
     now = pd.Timestamp.now(tz="UTC")
     vol = {}
+    # 24 h volume per market: by condition on Polymarket; on Kalshi a condition is the whole event, so by ticker
+    vkey = "token_id" if exchange == "kalshi" else "condition_id"
     if len(links):
-        tr = MS.read(c, "trades", conditions=links["condition_id"].dropna().unique().tolist(),
-                     start=now - _td(hours=24), end=now)
+        tr = MS.read(c, "trades", **{"tokens" if exchange == "kalshi" else "conditions": links[vkey].dropna().unique().tolist()},
+                     start=now - _td(hours=24), end=now, root=MS.root_for(exchange))
         if len(tr):
-            vol = (tr["price"] * tr["size"]).groupby(tr["condition_id"]).sum().to_dict()
+            vol = (tr["price"] * tr["size"]).groupby(tr[vkey]).sum().to_dict()
     runs, cache = {}, {}
     rows_ = []
     num = lambda v: None if v is None or pd.isna(v) else float(v)                # noqa: E731
@@ -825,13 +827,13 @@ def polymarket_calls(c, profile, n_races=3):
                 fair = data.model_prob(c, link, cache, run_id=runs[ek])[0]
         mid = link["last_price"] if link["last_price"] is not None and not pd.isna(link["last_price"]) else None
         # 24 h volume from the recorded tape (race-weekend markets); None where no tape is recorded
-        v24 = vol.get(link["condition_id"], 0.0) if kind.startswith("race_") else None
+        v24 = vol.get(link[vkey], 0.0) if kind.startswith("race_") else None
         cl = call(profile, kind, fair, mid, v24) if profile else dict(action=None, why="")
         subject = link["athlete"] or (link["params"].get("team") if isinstance(link["params"], dict) else None) \
             or link["group_title"] or link["outcome"]
         if kind == "race_h2h":
             subject = f"{link['outcome']} ({link['question'].split(': ')[-1]})"
-        rows_.append(dict(link, subject=subject, mid=mid, call=cl, volume_24h=vol.get(link["condition_id"], 0.0),
+        rows_.append(dict(link, subject=subject, mid=mid, call=cl, volume_24h=vol.get(link[vkey], 0.0),
                           heat_label=SG.HEAT_LABEL.get(cl.get("heat")) if cl.get("heat") else None))
     by_event = {}
     for r in rows_:
@@ -855,8 +857,8 @@ def polymarket_calls(c, profile, n_races=3):
     season = [e for e in events if e["slug"] not in shown and e["kind"] in
               ("champion", "constructors_champion", "season_wins_ge", "standings_h2h")]
     other = [e for e in events if e["slug"] not in shown and e not in season]
-    synced = data.q(c, "SELECT max(synced_at) AS t FROM market_links WHERE exchange = 'polymarket'")["t"].iloc[0]
-    return dict(races=races, season=season, other=other, synced=synced, n_markets=len(rows_), maker=maker)
+    synced = data.q(c, "SELECT max(synced_at) AS t FROM market_links WHERE exchange = :x", x=exchange)["t"].iloc[0]
+    return dict(races=races, season=season, other=other, synced=synced, n_markets=len(rows_), maker=maker, exchange=exchange)
 
 
 @app.post("/book/markets/{market_id}/take", dependencies=[Depends(check_csrf)])
@@ -942,11 +944,17 @@ def logout(request: Request):
 @app.get("/markets/polymarket", response_class=HTMLResponse)
 def pm_board(request: Request, event: str = "", show: str = "modeled", closed: int = 0, spread_pct: float = 4.0,
              msg: str = "", c=Depends(conn), user=allow("admin", "maker")):
+    return _exchange_board(request, c, user, "polymarket", event, show, closed, spread_pct, msg)
+
+
+def _exchange_board(request, c, user, exchange, event, show, closed, spread_pct, msg):
+    """Every listed event of one exchange (market_links.exchange), our fair values and a quote at ± spread/2."""
     links = data.q(c, """
         SELECT ml.*, a.display_name AS athlete FROM market_links ml LEFT JOIN athletes a ON a.id = ml.athlete_id
-        WHERE ml.exchange = 'polymarket' AND (CAST(:closed AS int) = 1 OR NOT ml.closed)
+        WHERE ml.exchange = :x AND (CAST(:closed AS int) = 1 OR NOT ml.closed)
           AND (CAST(:ev AS text) IS NULL OR ml.event_slug = CAST(:ev AS text))
-        ORDER BY ml.end_date NULLS LAST, ml.event_title, ml.last_price DESC NULLS LAST""", closed=closed, ev=event or None)
+        ORDER BY ml.end_date NULLS LAST, ml.event_title, ml.last_price DESC NULLS LAST""", closed=closed, ev=event or None,
+                   x=exchange)
     mine = set(data.q(c, "SELECT market_link_id FROM house_markets WHERE maker_id = :u AND market_link_id IS NOT NULL",
                       u=user["id"])["market_link_id"].dropna().astype(int))
     from racinglines.markets import alerts
@@ -972,7 +980,10 @@ def pm_board(request: Request, event: str = "", show: str = "modeled", closed: i
         events.append(dict(slug=slug, title=g["event_title"].iloc[0], end_date=g["end_date"].iloc[0], volume=vol,
                            modeled=int(g["fair"].notna().sum()), new=int(g["new"].sum()), rows=rows(g.sort_values("last_price", ascending=False,
                                                                                          na_position="last"))))
-    synced = data.q(c, "SELECT max(synced_at) AS t FROM market_links WHERE exchange = 'polymarket'")["t"].iloc[0]
+    synced = data.q(c, "SELECT max(synced_at) AS t FROM market_links WHERE exchange = :x", x=exchange)["t"].iloc[0]
+    if exchange == "kalshi":
+        return render(request, "kalshi.html", events=events, show=show, closed=closed, spread_pct=spread_pct, msg=msg,
+                      synced=synced, event=event, url=next(v.url for v in V.EXCHANGES if v.code == "kalshi"))
     return render(request, "pm.html", events=events, show=show, closed=closed, spread_pct=spread_pct, msg=msg,
                   synced=synced, event=event)
 
@@ -1004,6 +1015,45 @@ def pm_sync(request: Request, c=Depends(conn), user=allow("admin", "maker")):
     return RedirectResponse(f"/markets/polymarket?msg={msg}", status_code=303)
 
 
+# Kalshi (RACINGLINES_KALSHI_VENUE=1, off by default): the same list and mirror as Polymarket's, read-only on Kalshi
+from racinglines.markets import venues as V  # noqa: E402
+
+
+def _kalshi_on():
+    if not V.KALSHI_VENUE:
+        raise HTTPException(404)
+
+
+@app.get("/markets/kalshi", response_class=HTMLResponse, dependencies=[Depends(_kalshi_on)])
+def kalshi_board(request: Request, event: str = "", show: str = "modeled", closed: int = 0, spread_pct: float = 4.0,
+                 msg: str = "", c=Depends(conn), user=allow("admin", "maker")):
+    return _exchange_board(request, c, user, "kalshi", event, show, closed, spread_pct, msg)
+
+
+@app.post("/markets/kalshi/mirror", dependencies=[Depends(_kalshi_on), Depends(check_csrf)])
+def kalshi_mirror(request: Request, event_slug: str = Form(...), spread_pct: float = Form(4.0), c=Depends(conn),
+                  user=allow("admin", "maker")):
+    with get_session() as s:
+        created, repriced, skipped = house.mirror_event(s, c, event_slug, user["id"], spread_pct / 100)
+    audit(request, "kalshi_mirror", event_slug=event_slug, spread=spread_pct / 100, created=created, repriced=repriced,
+          skipped=skipped)
+    msg = f"Mirrored into your book: {created} new, {repriced} repriced, {skipped} without a model price."
+    return RedirectResponse(f"/markets/kalshi?spread_pct={spread_pct}&msg={msg}", status_code=303)
+
+
+@app.post("/markets/kalshi/sync", dependencies=[Depends(_kalshi_on), Depends(check_csrf)])
+def kalshi_sync(request: Request, c=Depends(conn), user=allow("admin", "maker")):
+    from racinglines.markets.kalshi import sync as KS
+    try:
+        with get_session() as s:
+            stats = KS.sync(s, c, date.today().year)
+        msg = f"Synced {stats['events']} events / {stats['links']} outcomes ({stats['modeled']} priced by the model)."
+    except Exception as e:  # noqa: BLE001  (Kalshi unreachable from this machine)
+        stats, msg = None, f"Error: couldn't reach Kalshi ({type(e).__name__})."
+    audit(request, "kalshi_sync", stats=str(stats))
+    return RedirectResponse(f"/markets/kalshi?msg={msg}", status_code=303)
+
+
 # ---------------------------------------------------------------------------
 # Single-event diagnostics (makers/admin): as-of prices vs Polymarket vs result
 # ---------------------------------------------------------------------------
@@ -1014,8 +1064,9 @@ from racinglines.web import diag  # noqa: E402
 @app.get("/lab/diagnostics/{run_id}", response_class=HTMLResponse, dependencies=[allow("admin", "maker")])
 def diag_page(request: Request, run_id: int, msg: str = "", fill: str = "through", h: float = 0.02, size: float = 50,
               max_pos: float = 250, cap: float = 1000, skew: float = 1.0, disagree: float = 0.15, min_vol: float = 100,
-              pull: int = 15, c=Depends(conn)):
+              pull: int = 15, venue: str = "", c=Depends(conn)):
     d = diag.load(c, run_id)
+    venue = "kalshi" if venue == "kalshi" and V.KALSHI_VENUE else ""      # the maker replay on Kalshi's tape
     if d is None:
         raise HTTPException(404)
     fill = fill if fill in ("touch", "through") else "through"
@@ -1027,7 +1078,7 @@ def diag_page(request: Request, run_id: int, msg: str = "", fill: str = "through
                  max_pos=min(max(max_pos, 1), 50000), max_capital=min(max(cap, 10), 1e6), skew=min(max(skew, 0), 5),
                  max_disagree=None if disagree <= 0 else min(disagree, 1), min_volume_24h=max(min_vol, 0),
                  pull_min=min(max(pull, 0), 240))
-    rp = diag.replay(c, run_id, **knobs)
+    rp = diag.replay(c, run_id, **knobs, **(dict(exchange=venue) if venue else {}))
     f = rp["fills"]
     top = f.reindex(f["pnl"].abs().sort_values(ascending=False).index).head(15) if len(f) else f
     bets = d["bets"]
@@ -1041,7 +1092,7 @@ def diag_page(request: Request, run_id: int, msg: str = "", fill: str = "through
                   coherence=d.get("coherence", {}), rp=rp, rp_stages=rows(rp["stages"]), rp_summary=rows(rp["summary"]),
                   rp_skips=rows(rp["skips"]), rp_sweep=rows(rp["sweep"]), rp_top=rows(top),
                   rp_positions=rows(rp["positions"]), fill=fill, h=h, runs=rows(diag.event_runs(c, run_id)),
-                  consts=dict(paper_edge=diag.PAPER_EDGE, paper_stake=diag.PAPER_STAKE))
+                  consts=dict(paper_edge=diag.PAPER_EDGE, paper_stake=diag.PAPER_STAKE), venue=venue, kalshi=V.KALSHI_VENUE)
 
 
 @app.post("/lab/diagnostics/{run_id}/example", dependencies=[Depends(check_csrf)])

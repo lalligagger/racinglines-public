@@ -160,19 +160,22 @@ DEFAULT_KNOBS = dict(fill="through", half_spread=0.02, size=50, max_pos=250, max
                      max_disagree=0.15, min_volume_24h=100, pull_min=15)
 
 
-def replay(conn, run_id, with_sweep=True, **knobs):
-    """Replay a maker quoting Polymarket through the event, repricing at each
-    diagnostic run's cutoff. `knobs` are markets.strategies.maker_replay.Params fields (fill, half_spread,
-    size, max_pos, max_capital, skew, max_disagree, min_volume_24h, pull_min, ...).
+def replay(conn, run_id, with_sweep=True, exchange="polymarket", **knobs):
+    """Replay a maker quoting Polymarket (or `exchange="kalshi"`: Kalshi's tape, with its maker fee) through the
+    event, repricing at each diagnostic run's cutoff. `knobs` are markets.strategies.maker_replay.Params fields
+    (fill, half_spread, size, max_pos, max_capital, skew, max_disagree, min_volume_24h, pull_min, ...).
     Cached per (runs, knobs); the event's tape is loaded once."""
     from racinglines.markets.strategies import maker_replay as R
     runs = tuple(int(i) for i in event_runs(conn, run_id)["id"])
-    key = (runs, tuple(sorted(knobs.items())), with_sweep)
+    if exchange != "polymarket":
+        knobs = dict(knobs, maker_fee=knobs.get("maker_fee", R.KALSHI_MAKER_FEE))
+    key = (runs, tuple(sorted(knobs.items())), with_sweep) + ((exchange,) if exchange != "polymarket" else ())
     if key in _REPLAY_CACHE:
         return _REPLAY_CACHE[key]
-    if runs not in _EVENT_CACHE:
-        _EVENT_CACHE[runs] = R.load_event(conn, runs)
-    ev = _EVENT_CACHE[runs]
+    ek = runs if exchange == "polymarket" else (runs, exchange)
+    if ek not in _EVENT_CACHE:
+        _EVENT_CACHE[ek] = R.load_event(conn, runs, exchange=exchange)
+    ev = _EVENT_CACHE[ek]
     p = R.Params(**knobs)
     res = R.replay(ev, p)
     f = res["fills"]
@@ -254,6 +257,13 @@ def event_summaries(conn):
             row.update(replay_fills=int(t["fills"]), replay_pnl=float(t["pnl"]), replay_markout=float(t["markout_60m"]))
         except Exception:  # noqa: BLE001  (no tape stored for this event)
             row.update(replay_fills=None, replay_pnl=None, replay_markout=None)
+        from racinglines.markets import venues as V
+        if V.KALSHI_VENUE:                          # the same replay on Kalshi's tape (with Kalshi's maker fee)
+            try:
+                t = replay(conn, last, with_sweep=False, exchange="kalshi", **DEFAULT_KNOBS)["summary"].set_index("kind").loc["total"]
+                row.update(kalshi_fills=int(t["fills"]), kalshi_pnl=float(t["pnl"]))
+            except Exception:  # noqa: BLE001  (no Kalshi tape for this event)
+                row.update(kalshi_fills=None, kalshi_pnl=None)
         out.append(row)
     return out
 

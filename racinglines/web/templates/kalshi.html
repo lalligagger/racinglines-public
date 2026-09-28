@@ -1,0 +1,36 @@
+{% extends "base.html" %}{% from "_macros.html" import csrf, new_badge, flash, page_head %}
+{% block title %}Kalshi{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/markets">Markets</a> › Kalshi</p>
+{% call page_head("Kalshi markets", "Every F1 event listed on Kalshi, including outcomes we don't price. Mirror an event into my private book, or open a race from Markets for the full view. Read-only: nothing is traded on Kalshi.") %}
+<form method="post" action="/markets/kalshi/sync" class="inline">{{ csrf() }}<button>Refresh from Kalshi</button></form>{% endcall %}
+{{ flash(msg) }}
+<form method="get" class="toolbar">
+  <label><span>Show</span><select name="show" onchange="this.form.submit()"><option value="modeled" {% if show == 'modeled' %}selected{% endif %}>markets we price</option><option value="all" {% if show == 'all' %}selected{% endif %}>all F1 markets</option></select></label>
+  <label><span>Include closed</span><select name="closed" onchange="this.form.submit()"><option value="0">no</option><option value="1" {% if closed %}selected{% endif %}>yes</option></select></label>
+  <label><span>Quote spread (pts)</span><input name="spread_pct" value="{{ '%g'|format(spread_pct) }}" size="3"></label><button>Apply</button>
+<span class="links">Last sync {{ synced|fmt }} · <a href="/markets/polymarket">Polymarket markets</a></span></form>
+<p class="legend">Edge = our fair − Kalshi mid (positive = we think YES is cheap). ⚠ marks gaps over 10 pts: usually a model blind spot rather than an edge; check before quoting. Kalshi lists one YES contract per outcome; volume is in contracts ($1 each at settlement).</p>
+{% if not events %}<p class="muted">No open Kalshi markets linked. Refresh from Kalshi, or include closed markets to see past races.</p>{% endif %}
+{% for ev in events %}
+<details class="card" data-remember="kalshi:{{ ev.slug }}"{% if loop.first %} open{% endif %}>
+  <summary><h2>{{ ev.title }}{% if ev.new %} {{ new_badge(ev.new if ev.new < ev.rows|length else 0) }}{% endif %}</h2><span class="sum">{{ ev.rows|length }} outcomes · {{ ev.modeled }} priced · {{ "{:,.0f}".format(ev.volume) }} contracts · ends {{ ev.end_date|fmt }}</span></summary>
+  <p class="muted"><a href="{{ url.format(slug=ev.slug|lower) }}" target="_blank" rel="noopener">open on Kalshi ↗</a> · <code>{{ ev.slug }}</code></p>
+  <form method="post" action="/markets/kalshi/mirror">{{ csrf() }}<input type="hidden" name="event_slug" value="{{ ev.slug }}">
+    <label><span>Spread (pts)</span><input name="spread_pct" value="{{ '%g'|format(spread_pct) }}" size="3"></label>
+    <button class="primary">Mirror into my book</button> <span class="muted">creates / reprices a YES/NO market in my book for every priced outcome</span></form>
+  <div class="scroll" data-rows="15" data-filter="Filter by outcome or kind"><table>
+  <thead><tr><th class="l">Outcome</th><th class="l">Kind</th><th>Bid</th><th>Ask</th><th>Last</th><th>Our fair</th><th>Edge</th><th>Quote bid</th><th>Quote ask</th><th>Mine</th></tr></thead><tbody>
+  {% for r in ev.rows %}<tr>
+    <td class="l">{{ r.subject }}{% if r.new %} {{ new_badge() }}{% endif %}{% if r.prediction == 'race_h2h' %} <span class="muted">{{ r.question }}</span>{% endif %}</td>
+    <td class="l"><span class="muted">{{ r.prediction }}</span></td>
+    <td>{{ r.last_bid|fmt }}</td><td>{{ r.last_ask|fmt }}</td><td>{{ "%.3f"|format(r.last_price) if r.last_price is not none else "" }}</td>
+    <td>{{ r.fair|fmt("model_prob") if r.fair is not none else "–" }}</td>
+    <td class="{{ 'warn' if r.edge and (r.edge > 0.10 or r.edge < -0.10) else ('good' if r.edge and r.edge > 0.02 else ('bad' if r.edge and r.edge < -0.02 else '')) }}"
+        {% if r.edge and (r.edge > 0.10 or r.edge < -0.10) %}title="Large gap to the market: check the model before quoting"{% endif %}>{{ ("%+.1f"|format(r.edge * 100)) ~ " pts" if r.edge is not none else "" }}{% if r.edge and (r.edge > 0.10 or r.edge < -0.10) %} ⚠{% endif %}</td>
+    <td>{{ "%.3f"|format(r.q_bid) if r.q_bid is not none and r.q_bid > 0 else "" }}</td><td>{{ "%.3f"|format(r.q_ask) if r.q_ask is not none and r.q_ask < 1 else "" }}</td>
+    <td>{{ "✓" if r.mirrored else "" }}</td></tr>{% endfor %}
+  </tbody></table></div>
+</details>
+{% endfor %}
+{% endblock %}
