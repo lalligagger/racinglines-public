@@ -137,3 +137,32 @@ def test_beating_a_losing_baseline_is_flagged_when_it_still_loses():
     _, _, rank = _build([(2026, FLAT, {}), (2025, losing, {}), (2026, [(200.0, 10.0)] * 4, A), (2025, better, A)])
     a = next(r for r in rank if r["strategy"] == "update" and r["settings_key"] == SS.Settings.from_dict(A).key)
     assert a["verdict"] == "robust" and a["loses_money_in"] == "2025"
+
+
+def test_model_only_scores_use_the_sports_settings_and_rank_by_gain(tmp_path):
+    from racinglines.models.timed_runs.settings import DHSettings
+    cfg = dict(R.SPORT_DEFAULTS["mtb_dh"], target=2026, holdout=[2025])
+
+    def job(i, year, scores, **st):
+        wk = [dict(round=r + 1, event=f"E{r + 1}", race_win_score=x) for r, x in enumerate(scores)]
+        return dict(id=f"j{i}", year=year, settings=DHSettings.from_dict(st).to_json(), run_id=i), {i: dict(weekends=wk)}
+    specs = [(2026, [-40.0] * 5, {}), (2025, [-45.0] * 5, {}),
+             (2026, [-30.0] * 5, dict(prior_n=1.5)), (2025, [-35.0] * 5, dict(prior_n=1.5)),      # +50 both seasons
+             (2026, [-39.0] * 5, dict(half_life_days=90)), (2025, [-44.0] * 5, dict(half_life_days=90))]   # +5
+    jobs, metrics = [], {}
+    for i, (y, sc, st) in enumerate(specs, 1):
+        j, m = job(i, y, sc, **st)
+        jobs.append(j)
+        metrics.update(m)
+    rows, rank = R.write(tmp_path, jobs, metrics, [("race_win", "Win")], cfg, cls=DHSettings, sport="mtb_dh",
+                         rerun=lambda j: [j["sport"], j["kind"], str(j["year"])], echo=lambda m: None)
+    v = {r["label_settings"]: r for r in rank}
+    assert v["baseline"]["verdict"] == "baseline"
+    assert v["prior_n=1.5"]["verdict"] == "robust" and v["prior_n=1.5"]["loses_money_in"] == ""
+    assert v["prior_n=1.5"]["gain_without_best_target"] == 40.0                  # +10 at each of 5 events
+    assert v["half_life_days=90.0"]["verdict"] == "not better"                  # inside the ±25 model floor
+    assert rank[0]["label_settings"] == "prior_n=1.5" and rank[0]["id"] == f"race_win-{DHSettings.from_dict(dict(prior_n=1.5)).key}"
+    doc = json.loads((tmp_path / "candidates" / f"{rank[0]['id']}.json").read_text())
+    assert doc["rerun"]["2025"] == "mtb_dh walk_forward 2025"
+    assert 'sport = "mtb_dh"' in (tmp_path / "candidates.toml").read_text()
+    assert "score" in (tmp_path / "report.md").read_text()

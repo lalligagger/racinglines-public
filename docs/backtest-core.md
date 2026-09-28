@@ -50,8 +50,8 @@ Both model families already simulate the same thing: a matrix of finishing ranks
 | **Pricing model** | `load`, `events(data, settings, seasons)` (each with its cutoff), `history(data, settings)`, `price(hist, event, settings, rng) -> OutcomeSims`, `results(data, event)` for settlement, and the model's own `Settings` | `racinglines/models/race_model.py` | done: `TimedRuns` (downhill) and `PositionSim` (F1, pre-race) |
 | **Walk-forward engine** | Prices every event from data before it, settles every kind the simulations support, scores them; model-only until a venue is given | `racinglines/core/walk_forward.py` | done: `racinglines mtb_dh walk-forward` |
 | **Stages** | When new information arrives: a `[stages]` table per sport (schedule source, data lag, early closes) turned into `[(label, cutoff)]` | `sports/<code>.toml` | step 5 |
-| **Venues** | `markets(event)`, `view(market, t)` (public data up to t only), costs, fill model, resolution. Polymarket, a Kalshi mock, our private book with the simulated crowd, and model-only (no prices: calibration only) | `racinglines/markets/` | step 4 |
-| **Search** | One queue for every sport, with the held-out rule, seed replicates, confirmation and stable ids built in | `racinglines/pipelines/search*.py` | report done; sport-aware queue step 3 |
+| **Venues** | `markets()`, `view(market, t)` (public data up to t only), costs, fill model, resolution | `racinglines/markets/venue_replay.py` | done: `Polymarket` (the F1 sweep reads through it) and `PrivateBook` (a live run's book replayed); model-only is no venue. A Kalshi mock is the Roadmap queue thread's, and plugs in as one more class |
+| **Search** | One queue for every sport, with the held-out rule, seed replicates, confirmation and stable ids built in | `racinglines/pipelines/search*.py` | done: `sport = "mtb_dh"` jobs, `replicates = N`, candidate ids carried into the Lab |
 
 **Settings.** Shared groups (timing, taker, maker, markets, guards) plus the model's own group. Per-kind
 overrides (e.g. `min_edge_by_kind`) generalise `min_edge_h2h`. `settings_key` / `model_key` keep today's
@@ -73,6 +73,26 @@ Check: over the 43 rounds of 2021–2026 the engine's per-rider fair values and 
 table in [the downhill model](model.md#calibration) comes out the same through it (makes the Final
 −0.035 ± 0.006, 6 of 6 seasons; top 10 −0.006 ± 0.006, 5 of 6; podium −0.003 ± 0.002, 6 of 6; win
 −0.001 ± 0.001, 3 of 6).
+
+### Venues in a backtest
+
+`racinglines/markets/venue_replay.py` holds the venues a backtest trades against, each read only as of a
+moment:
+
+- **`Polymarket`**: the recorded 5-minute prices and trade tape of one weekend. `view(market, t)` gives
+  the last price within 6 hours, the 24-hour traded volume and whether the venue would take an order
+  (priced strictly inside 0–1, liquid enough); `coherent(kind, t)` is the multi-outcome sanity check;
+  `resolve` settles through the market-kind catalogue. The F1 sweep's `weekend_markets` now reads
+  Polymarket only through it.
+- **`PrivateBook.from_run(run_dir)`**: a live run's private book (downhill polls or F1 windows) replayed
+  from its logged quotes and seeds. With the recorded quotes it re-derives the live book exactly; with
+  `spread_quoter(half_spread)` (or any `quoter(quote, inventory)`) it replays another quoting rule
+  against the same crowd draws, which is how a maker setting is backtested on a past event.
+
+Check: full 2025 and 2026 F1 sweeps are identical before and after the change (weekends and trades), a
+synthetic downhill final recorded by `live_dh.update` replays to the same book (every market's
+inventory and cash, every taker's budget, the late window), and so does an F1-style run folder. The
+real Whistler book is checked by `tests/test_venue_replay.py` where the data bucket's run folder is present.
 
 ### Calibration in every sweep
 
@@ -103,13 +123,33 @@ reading the absolute numbers.
   field, never its name.
 - **Finished jobs only:** running or failed jobs are never read.
 
+A downhill job is scored per market kind instead of per strategy: its per-event score is −1000 × log
+loss (higher is better), the noise floor family is `model` (±25 unless replicates measure it), and
+combos are ranked by their gain over the baseline (a score is never positive, so "loses money" doesn't
+apply). Its report goes to `data/runs/search/<name>/mtb_dh/`, configured by `[report.mtb_dh]`.
+
+Check: a queue with a short F1 sweep and downhill jobs (the pre-tuning settings in 2026 at three seeds,
+and in 2025) ran end to end: 10 jobs, both leaderboards, and a downhill report whose noise floor came
+from the seed replicates (±4 per kind) and which labels the old settings "not better" on the Final,
+podium and top 10 and "target only" on win and fastest qualifier.
+
 ```toml
+[[job]]
+sport = "mtb_dh"               # the downhill model's settings (racinglines/models/timed_runs/settings.py)
+year = 2026
+prior_n = 1.5
+replicates = 3                 # this job and its season's baseline at 3 seeds each
+
 [report]                       # optional, in the queue file
 target = 2026
 holdout = [2025]
 confirm_sims = 16000
 top = 25
-noise = { taker = 150, maker = 350 }   # used where the search ran no seed replicates
+noise = { taker = 150, maker = 350, model = 25 }   # used where the search ran no seed replicates
+
+[report.mtb_dh]                # another sport's jobs: the same keys
+target = 2026
+holdout = [2025]
 ```
 
 ## Plan
@@ -118,8 +158,8 @@ noise = { taker = 150, maker = 350 }   # used where the search ran no seed repli
 |---|---|---|
 | 1 ✓ | Market-kind catalogue; calibration in the F1 sweep; the search report | F1 sweeps byte-identical; the params-4h A and C numbers reproduced |
 | 2 ✓ | `PricingModel` for both families; the downhill walk-forward through the engine in model-only mode | Downhill tuning numbers reproduced |
-| 3 | Sport-aware search queue (downhill jobs), `replicates = N`, stable candidate ids in the Lab | A mixed F1 + downhill queue runs end to end |
-| 4 | `Venue` interface: Polymarket behind it, Kalshi mock, private-book venue with the simulated crowd | F1 sweep identical; the Whistler book replays as a backtest |
+| 3 ✓ | Sport-aware search queue (downhill jobs), `replicates = N`, stable candidate ids in the Lab | A mixed F1 + downhill queue runs end to end |
+| 4 ✓ | `Venue` interface: Polymarket behind it, Kalshi mock, private-book venue with the simulated crowd | F1 sweep identical; the Whistler book replays as a backtest (synthetic finals here; Whistler where the bucket is) |
 | 5 | Stages from the schema; per-kind strategy overrides; settings split | Saved F1 `settings_key`s unchanged |
 | 6 | "Adding a sport": schema + data source + model wrapper, nothing else | A synthetic third sport passes the suite |
 
