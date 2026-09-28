@@ -480,7 +480,8 @@ def update(slug, key, quali_keys, cond="", session=None, interval=BASE_INTERVAL)
     book["seeds"].append(seed)
     (out / "book.json").write_text(json.dumps(book))
     with (out / "crowd.jsonl").open("a") as f:
-        f.write(json.dumps(dict(ts=now, seed=seed, fills=fills, last_call=None)) + "\n")
+        # the rate is logged so a replay never has to re-derive it from today's constants (docs/live-events.md)
+        f.write(json.dumps(dict(ts=now, seed=seed, intensity=rate, fills=fills, last_call=None)) + "\n")
     fairmap = {f"{q['bib']}:{q['market']}": q["fair"] for q in quotes}
     pnl = book_pnl(book, fairmap, outcomes, picks)
     cres = crowd_results(book, fairmap, outcomes)

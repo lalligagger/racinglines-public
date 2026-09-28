@@ -95,9 +95,26 @@ re-score the final later:
 | `history.jsonl` | One line per poll: every market's fair value and quote |
 | `meta.json`, `meta_<ts>.json` | The model inputs and parameters (qualifying on one scale, split ratios, season priors, conditions, crowd settings), each version kept |
 | `book.json` | The private book: position and cash per market, the crowd's budgets, ids and positions, every poll's random seed |
-| `crowd.jsonl` | Every crowd fill, per poll, with the taker's id and that poll's seed |
+| `crowd.jsonl` | Every crowd fill, per poll, with the taker's id, that poll's seed and (since 2026-09-28) its rate (`intensity`) |
 | `picks.json` | The demo taker's picks |
 | `book_superseded*.json`, `crowd_superseded*.jsonl` | Earlier crowd runs during the Whistler final, before the budget and id rules were set |
+| `replay.json` | Only where needed: how polls ran when the run's own record doesn't say (below) |
+
+**Replaying a run** (`venue_replay.PrivateBook.from_run`) re-draws every poll's crowd from its seed, quotes
+and rate, and must give the recorded book exactly. Two things can stop it, and `replay.json` records them
+without touching the record:
+
+- **Rates not logged** (runs before 2026-09-28): the rate is re-derived with today's rule (poll interval / 5 s,
+  x the late pace). If the rule changed during the run, `unscaled_until` (ISO) marks the polls that ran at 1
+  whatever their interval; `intensity` {"<ts>#<n>": rate} sets single polls.
+- **Two polls in the same second** (two loops overlapping after a restart): they share one snapshot file, so
+  their quotes come from `history.jsonl`, the n-th line of that second for the n-th poll.
+
+Whistler has both: the interval scaling arrived with the 22:37:58 restart (the 62 polls of 22:11–22:32 logged
+20 s but ran at rate 1), and the old 5 s loop overlapped the new 2 s one until 22:39:06, twice in the same
+second. With its `replay.json` the replay gives the recorded book fill for fill (7,703 fills,
+`test_whistler_book_replays_as_a_backtest`). A restart should stop the old loop first: F1's LaunchAgent step
+takes a lock in the run folder; downhill's `live run` doesn't yet.
 
 ## The live core: one engine, one adapter per sport
 

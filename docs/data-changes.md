@@ -14,6 +14,13 @@ Before a major update, keep what it replaces: a database dump in `data/backups/d
 files in `data/archive/<sport>/` (both git-ignored; `data/raw` is the record, so it isn't edited in place
 without a copy). Not `data/archive/db/`: that folder is tracked in git (the snapshot).
 
+## 2026-09-28 · Whistler run folder: replay.json added
+
+`data/runs/live/20260925_mtb_3/replay.json` (and in the bucket, `live/20260925_mtb_3/`). Nothing in the run's
+record changed; the file tells the replay how two groups of polls ran, so the replay re-derives the recorded
+book fill for fill ([Live events](live-events.md#kept-for-replay)). The local folder and the bucket copy were
+checked identical first (1,541 files, checksums). Undo: delete the file.
+
 ## 2026-09-28 · Downhill: athlete merges and PDF backfill
 
 Right after the UCI re-ingest below. Backup first:
