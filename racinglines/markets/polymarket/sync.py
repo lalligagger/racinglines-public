@@ -282,7 +282,7 @@ def fetch_history(session, conn, event_slugs, start, end, fidelity=60, tokens=No
     `tokens`), between `start` and `end` (datetimes, UTC). Returns points stored."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
     if tokens is None:
-        tokens = conn.execute(text("SELECT token_id FROM market_links WHERE event_slug = ANY(:s)"),
+        tokens = conn.execute(text("SELECT token_id FROM market_links WHERE event_slug = ANY(:s) AND exchange = 'polymarket'"),
                               dict(s=list(event_slugs))).scalars().all()
     n = 0
     with httpx.Client(base_url=CLOB, timeout=20) as c:
@@ -309,7 +309,7 @@ def fetch_trades(session, conn, event_slugs, page=500, max_offset=100_000, model
     since (datetime, UTC): stop paging a market once a page reaches trades this old (newest come first)."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
     conds = conn.execute(text("""SELECT DISTINCT condition_id FROM market_links WHERE event_slug = ANY(:s)
-                                 AND condition_id IS NOT NULL AND (NOT CAST(:m AS boolean) OR prediction <> 'unmodeled')"""),
+                                 AND exchange = 'polymarket' AND condition_id IS NOT NULL AND (NOT CAST(:m AS boolean) OR prediction <> 'unmodeled')"""),
                          dict(s=list(event_slugs), m=modeled_only)).scalars().all()
     n = 0
     with httpx.Client(base_url=DATA_API, timeout=30) as c:
@@ -348,13 +348,13 @@ def snapshot_books(session, conn, event_slugs=None, depth=10):
     Returns snapshots stored."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
     if event_slugs:
-        toks = conn.execute(text("SELECT token_id FROM market_links WHERE event_slug = ANY(:s) AND NOT closed"),
+        toks = conn.execute(text("SELECT token_id FROM market_links WHERE event_slug = ANY(:s) AND NOT closed AND exchange = 'polymarket'"),
                             dict(s=list(event_slugs))).scalars().all()
     else:
         toks = conn.execute(text("""
             SELECT ml.token_id FROM market_links ml LEFT JOIN races ra ON ra.id = ml.race_id
             LEFT JOIN events e ON e.id = ra.event_id
-            WHERE NOT ml.closed AND ml.prediction <> 'unmodeled'
+            WHERE NOT ml.closed AND ml.prediction <> 'unmodeled' AND ml.exchange = 'polymarket'
               AND (ml.race_id IS NULL OR e.status <> 'completed')""")).scalars().all()
     rows = []
     with httpx.Client(base_url=CLOB, timeout=30) as c:

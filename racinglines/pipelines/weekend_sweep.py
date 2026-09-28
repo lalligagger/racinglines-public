@@ -142,7 +142,8 @@ def price_stages(meas, hist, sched, engine, engine_url=None, n_sims=4000, repric
 def _token0_links(conn, race_id):
     links = pd.read_sql(text("""SELECT ml.*, a.display_name AS athlete FROM market_links ml
                                 LEFT JOIN athletes a ON a.id = ml.athlete_id
-                                WHERE ml.race_id = :r AND ml.prediction = ANY(:k) ORDER BY ml.id"""), conn,
+                                WHERE ml.race_id = :r AND ml.prediction = ANY(:k) AND ml.exchange = 'polymarket'
+                                ORDER BY ml.id"""), conn,
                         params=dict(r=race_id, k=list(KINDS)))
     return links.drop_duplicates("condition_id", keep="first")
 

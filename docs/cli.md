@@ -60,7 +60,7 @@ racinglines mtb_dh download --events 20210914_dh 20210918_dh --discipline DH --c
 ```
 racinglines mtb_dh parse --inspect FILE
 racinglines mtb_dh parse [--input-dir DIR] [--input-file FILE ...] [--out splits.csv]
-                 [--round LABEL] [--conditions-file CSV]
+                 [--round LABEL] [--conditions-file CSV] [--canonical-venues]
 ```
 
 | Option | Meaning |
@@ -71,6 +71,7 @@ racinglines mtb_dh parse [--input-dir DIR] [--input-file FILE ...] [--out splits
 | `--out` | Output CSV (default `splits.csv`). |
 | `--round` | Force a round label on every row (rarely needed). |
 | `--conditions-file` | CSV `event_id,round,track_condition` to fill in `track_condition`. |
+| `--canonical-venues` | Write venues under their canonical slugs (`sports/mtb_dh.toml` `[venue_aliases]`, as the database stores them: `vallnord` → `pal-arinsal`). Default: as spelled in the source. |
 
 ## racinglines mtb_dh ingest
 
@@ -93,7 +94,7 @@ racinglines mtb_dh forecast (--db [URL] | --data splits.csv) [--competition uci_
        [--season YEAR] [--category ME]
        [--train-scope {all,season}] [--half-life-days 240] [--junior-weight 0.25]
        [--prior-n 0.5] [--eps-df DF]
-       [--walk-forward] [--backtest 2] [--remaining 2]
+       [--walk-forward] [--backtest 2] [--remaining 2] [--unraced-format {default,last}]
        [--sims 10000] [--seed 42] [--top 15]
 ```
 
@@ -115,6 +116,7 @@ racinglines mtb_dh forecast (--db [URL] | --data splits.csv) [--competition uci_
 | `--walk-forward` | off | Predict and score every target round from everything before it. |
 | `--backtest N` | 2 | Hold out the last N raced rounds; score them and the standings after them. `0` skips. |
 | `--remaining N` | 2 | Rounds left in the season, **including** in-progress events already in the data (forecast with their start lists). The rest are simulated as unknown rounds. `0` skips the forecast. |
+| `--unraced-format` | `default` | The format those rounds are simulated in: `default` = the 2026 elite men's (`[rounds] default_format`, a 30-rider final) for every category; `last` = the category's latest completed event's own format (women, juniors), else `[rounds.category_format]`. |
 | `--sims` | 10000 | Monte Carlo simulations (walk-forward uses at most 5000). |
 | `--seed` | 42 | Random seed. |
 | `--top` | 15 | Rows printed per table. |
@@ -284,6 +286,7 @@ racinglines f1 compare BASELINE_RUN CHALLENGER_RUN [--reliability]
 racinglines f1 matrix [--variants baseline,grid,gridq,pretrain,gbm,tail,gridq+pretrain] [--year 2026] [--out MD]
 racinglines f1 [--half-life DAYS] diagnostic --event 2026-15 --cutoff 2026-09-25T13:30 [--sims 10000] [--no-track] [--save]
 racinglines f1 [--half-life DAYS] forecast [--year 2026] [--sims 10000] [--no-track] [--save [--scenario LABEL]] [--top 10]
+racinglines f1 props EVENT [--run STAGE_RUN] [--prior-n 16]  |  racinglines f1 props --check [--from 2022]
 ```
 
 | Command | What it does |
@@ -293,6 +296,7 @@ racinglines f1 [--half-life DAYS] forecast [--year 2026] [--sims 10000] [--no-tr
 | `matrix` | The model × strategy matrix: for each variant, the latest saved backtest (accuracy, marked where it differs from baseline beyond 2 SE) and the latest saved sweep and season strategy (P&L). Writes `data/runs/f1/matrix.md`. See [Model × strategy matrix](market-making.md#model-strategy-matrix). |
 | `diagnostic` | Price one past event as of `--cutoff` (UTC), with a leakage audit. `--save` stores `kind='diagnostic'`. See [Market making](market-making.md). |
 | `forecast` | Live: cutoff = now; upcoming races and the championships. `--save` creates scheduled events for upcoming rounds and stores `kind='forecast'` (the only kind the web app uses for live fair prices). `--scenario LABEL` saves `kind='scenario'` instead, ignored by live prices until promoted in the web app's Lab. |
+| `props` | Race props for one event from the race history before it: safety car, red flag, rain (per-circuit rates shrunk to the field rate); `--run` adds fastest-lap prices from a stored stage run's finishing odds. `--check` scores the yes/no props walk-forward from `--from` against the field rate and a coin flip. Nothing is stored. See [F1 live test](f1-live-roadmap.md#props-opt-in). |
 
 ### Trading research
 
@@ -394,6 +398,29 @@ racinglines f1 pm-links-import
 | `archive` (`f1 pm-archive`) | Move stale prices, trades and books from Postgres to Parquet under the retention policy, or every row older than `--hours H`. `--vacuum-full` returns freed space to the OS, `--compact` merges each month into one file, `--stats` only shows where the rows are. See [Database](database.md#storage-postgres-for-the-app-parquet-for-heavy-history). |
 | `f1 pm-links-export` | Write `market_links` to `data/archive/markets/polymarket/links/market_links.parquet`, with database ids swapped for stable keys (event key and category, FastF1 driver id, competition and category codes). |
 | `f1 pm-links-import` | Load that file into this database (no Polymarket access needed); replaces each token's row and reports rows whose keys don't resolve. |
+
+### Kalshi (`--exchange kalshi`)
+
+Built from Kalshi's public API docs and tested on mocked responses only: the cloud network blocks
+Kalshi, so none of this has run against the live API. Nothing runs unless you call it.
+
+```
+racinglines markets --exchange kalshi sync [--year 2026] [--closed]
+racinglines markets --exchange kalshi trades --events KXF1RACE-26SIN
+racinglines markets --exchange kalshi history --events KXF1RACE-26SIN --start 2026-10-09T00:00 --end 2026-10-11T14:00 [--period 60]
+racinglines markets --exchange kalshi books --events KXF1RACE-26SIN
+```
+
+| Command | What it does |
+|---|---|
+| `sync` | Find Kalshi's F1 series (Sports series whose title says Formula 1, F1 or Grand Prix, or `kalshi.sync.SERIES`), and upsert one `market_links` row per market (`exchange='kalshi'`, `token_id` = the market ticker's YES contract, `condition_id` = the event ticker), classified into the model's kinds, props included. Each row keeps Kalshi's resolution rules (`params.rules`). `--closed` adds settled events. |
+| `trades` | Store every trade on those events' markets in `market_trades` (the taker's side of YES, at the YES price, in contracts). |
+| `history` | Store candlesticks (`--period` 1, 60 or 1440 minutes) in `market_price_history`. |
+| `books` | One order-book snapshot per open market in `market_book_snapshots` (a NO bid at p is a YES ask at 1 − p). |
+
+Orders (`markets/kalshi/trade.py`): post-only limit orders on YES, checked against the book, the 1-cent grid
+and `KALSHI_MAX_ORDER_USD` (default 25), signed with RSA-PSS (`KALSHI_API_KEY_ID`, `KALSHI_PRIVATE_KEY_PATH`),
+and sent only when `KALSHI_TRADING_ENABLED=true`; otherwise a dry run that returns the request. No CLI.
 
 **Alert channels** (`racinglines/markets/alerts.py`, used by new-market alerts and by
 `signals`): a macOS notification, one JSON line per event in

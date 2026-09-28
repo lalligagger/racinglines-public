@@ -46,6 +46,9 @@ QUAL_POINTS_ROUND = dict(SCHEMA["points"]["qual_round"])
 # 2026 format, used for unraced rounds. Past events use their own format,
 # inferred from their results by event_format().
 DEFAULT_FORMAT = dict(SCHEMA["rounds"]["default_format"])
+# per-category formats for unraced rounds, used only with unraced="last" when a category has no completed event
+# this season (sports/mtb_dh.toml [rounds.category_format]; none set: the official field sizes are the owner's)
+CATEGORY_FORMAT = {k: dict(v) for k, v in SCHEMA["rounds"].get("category_format", {}).items()}
 RACE_ROUNDS = tuple(SCHEMA["rounds"]["race"])
 RUN_WEIGHTS = dict(SCHEMA["rounds"]["run_weights"])
 # Defaults from the 43-round tuning sweep (docs/model.md, Calibration; owner's OK 2026-09-28).
@@ -94,6 +97,22 @@ def event_format(raw, event_id):
     if entered("semi"):
         return dict(kind="semi", to_semi=len(entered("semi")), to_final=len(final))
     return dict(kind="single", to_final=len(final))
+
+
+def unraced_format(target, done, mode="default"):
+    """The format an unraced round is simulated in. mode "default" (today): DEFAULT_FORMAT, the 2026 elite men's,
+    for every category. "last": the target's latest completed event's own format (event_format; the target is
+    one category and season, so women and juniors get their own field sizes), else CATEGORY_FORMAT for the
+    category, else DEFAULT_FORMAT."""
+    if mode == "default":
+        return DEFAULT_FORMAT
+    if mode != "last":
+        raise ValueError(f"unraced format mode must be 'default' or 'last', not {mode!r}")
+    events = [e for e in event_order(target) if e in set(done)]
+    if events:
+        return event_format(target, events[-1])
+    cat = target["category"].iloc[0] if "category" in target and len(target) else None
+    return CATEGORY_FORMAT.get(cat, DEFAULT_FORMAT)
 
 
 def actual_event_points(raw):

@@ -252,7 +252,8 @@ def _season(args, raw, target, season):
 
     if args.remaining:
         model, upcoming, per_round, standings = forecast_season(
-            raw, target, n_remaining=args.remaining, n_sims=args.sims, rng=rng, **fit_kw)
+            raw, target, n_remaining=args.remaining, n_sims=args.sims, rng=rng,
+            unraced=getattr(args, "unraced_format", "default"), **fit_kw)
         print(f"=== FORECAST: {args.remaining} remaining round(s) "
               f"({len(upcoming)} in progress/upcoming with start lists) ===")
         for event_id, summ in upcoming:
@@ -354,6 +355,9 @@ def main(argv=None):
                                "2026-09-28 tuning, see docs/model.md).")
     season_p.add_argument("--eps-df", type=float, default=None,
                           help="Student-t run noise with these degrees of freedom (default: normal).")
+    season_p.add_argument("--unraced-format", choices=["default", "last"], default="default",
+                          help="Format of unraced rounds: the 2026 elite men's (default, every category), or the "
+                               "category's latest completed event's own (women, juniors).")
     season_p.add_argument("--sims", type=int, default=10000)
     season_p.add_argument("--scenario", default=None, metavar="LABEL",
                           help="With --save: store as kind='scenario' (not used for live prices until promoted).")

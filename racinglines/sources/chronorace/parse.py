@@ -681,6 +681,9 @@ def main():
         help="Optional CSV with columns event_id,round,track_condition to backfill "
              "track_condition, since it's rarely in the timing data itself.",
     )
+    ap.add_argument("--canonical-venues", action="store_true",
+                    help="Write venues under their canonical slugs (sports/mtb_dh.toml [venue_aliases], as the "
+                         "database stores them: vallnord -> pal-arinsal). Default: as spelled in the source.")
     args = ap.parse_args()
 
     if args.inspect:
@@ -717,6 +720,10 @@ def main():
             cond, on=[c for c in ("event_id", "round") if c in cond.columns], how="left"
         )
         out_df["track_condition"] = out_df["track_condition"].fillna("unknown")
+
+    if args.canonical_venues and "venue" in out_df:
+        from racinglines.db.registry import canonical_venue
+        out_df["venue"] = out_df["venue"].map(lambda v: canonical_venue(v) if isinstance(v, str) else v)
 
     out_df.to_csv(args.out, index=False)
     print(f"Wrote {len(out_df)} rows -> {args.out}")

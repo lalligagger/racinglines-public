@@ -29,5 +29,10 @@ VENUES = {slug: tuple(v) for slug, v in _S.load("mtb_dh")["venues"].items()}
 # other spellings seen in source data -> canonical slug
 VENUE_ALIASES = dict(_S.load("mtb_dh")["venue_aliases"])
 
+
+def canonical_venue(slug):
+    """A venue slug as the database stores it (mont-ste-anne -> mont-sainte-anne); unknown slugs unchanged."""
+    return VENUE_ALIASES.get(slug, slug)
+
 # source-data round labels -> running order within a race
 ROUND_ORDER = dict(_S.load("mtb_dh")["rounds"]["order"])
