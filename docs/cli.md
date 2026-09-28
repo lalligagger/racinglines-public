@@ -9,7 +9,7 @@ racinglines f1      fetch | ingest | forecast | backtest | compare | matrix | di
                     pm-sync | pm-history | pm-trades | pm-record | pm-archive | pm-links-export | pm-links-import
 racinglines mtb_dh  download | parse | ingest | forecast | backtest
 racinglines markets sync | history | trades | record | archive      (= racinglines f1 pm-*)
-racinglines db      init | seed | stats | export | snapshot-export | snapshot-import
+racinglines db      init | seed | stats | export | snapshot-export | snapshot-import | merge-athletes
 racinglines web
 racinglines check   [--sport f1|mtb_dh] [--offline] [--no-db]    quick validation (see Testing)
 ```
@@ -190,6 +190,7 @@ racinglines db [--db URL] stats                    # table counts + coverage per
 racinglines db [--db URL] export [--competition uci_dhi_wc] [--out splits.csv]
 racinglines db [--db URL] snapshot-export          # model tables with ids -> data/archive/db/
 racinglines db [--db URL] snapshot-import [--force]
+racinglines db [--db URL] merge-athletes KEEP DROP [--dry-run]
 ```
 
 | Command | What it does |
@@ -200,6 +201,7 @@ racinglines db [--db URL] snapshot-import [--force]
 | `export` | The tidy frame for a competition (same columns as `mtb_dh parse`'s CSV) to CSV. |
 | `snapshot-export` | The tables the models read (race data and market links, with their ids) to `data/archive/db/<table>.parquet` plus `manifest.json`. Never web-app tables or model runs. |
 | `snapshot-import` | Load that snapshot into a fresh database (schema already at head): an exact replica, same ids, so seeded prices are identical. Refuses a database that already holds model runs unless `--force`. See [Database](database.md#snapshot-an-exact-replica). |
+| `merge-athletes` | Merge athlete `DROP` into `KEEP` (the same person, e.g. a name change that downhill ingest reports once files carry UCI IDs): every table referring to athletes moves to `KEEP`, then `DROP` is deleted. Refuses, changing nothing, if a row would collide (both in the same round). `--dry-run` only reports. It changes the downhill history the model sees, so it's the owner's call. |
 
 ## racinglines f1
 

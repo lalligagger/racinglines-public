@@ -103,11 +103,13 @@ standings, champion odds, `spearman_points`) is approximate.
 
 ## Data
 
-- [ ] **Use UCI rider IDs.** The results JSON has `UciRiderId` for every rider.
-      Write it as a column in the downloaded markdown, re-download, and add
-      `athlete_identifiers(scheme="uci")` at ingest, matched before names. This
-      merges name changes such as `WILLIAMS Robert Jordan` / `WILLIAMS Jordan`
-      (existing athletes need a one-off merge).
+- [x] **Use UCI rider IDs** (code, 2026-09-28, cloud build-out; synthetic tests, unverified against
+      the live API): the downloader writes a `UCI ID` column, the parser reads it (older files parse
+      as before), and ingest matches `athlete_identifiers(scheme="uci")` before names and reports
+      a UCI ID shared by two athletes. `racinglines db merge-athletes KEEP DROP` merges them.
+- [ ] Owner: re-download the downhill files (UCI IDs), re-ingest, then merge the reported pairs,
+      e.g. `racinglines db merge-athletes 152 491 --dry-run` (`WILLIAMS Jordan` /
+      `WILLIAMS Robert Jordan`: 11 results). This changes the downhill history the model sees.
 - [ ] **Parse the 2021 PDFs** (Leogang, Les Gets). The text layer is readable but has
       repeated letters from bold text (`BBBBRRRROOOO`), and each rider spans two
       lines. The PDFs also have UCI ID, year of birth, weather, temperature and
