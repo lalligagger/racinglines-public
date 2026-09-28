@@ -183,6 +183,51 @@ def discover_event_slugs(year, discipline_id, session):
     return sorted(found)
 
 
+PROBE_SUFFIXES = ("dh", "dhi", "mtb", "xco")
+
+
+def probe_event_slugs(start, end, discipline_id, session, suffixes=PROBE_SUFFIXES, echo=print):
+    """Find events missing from Wikipedia (e.g. 2021 Snowshoe) by trying `YYYYMMDD_<suffix>` for every
+    date from `start` to `end` (datetime.date, inclusive) against the content-tree endpoint, which
+    answers a JSON null for slugs that don't exist. Keeps slugs whose tree has `discipline_id`."""
+    from datetime import timedelta
+    found = []
+    day = start
+    while day <= end:
+        for suffix in suffixes:
+            slug = f"{day:%Y%m%d}_{suffix}"
+            resp = http.get(session, CMS_URL.format(slug=slug), headers={"User-Agent": USER_AGENT}, timeout=30)
+            if resp.status_code != 200:
+                continue
+            try:
+                data = resp.json()
+            except ValueError:
+                continue
+            if isinstance(data, dict) and any(c.get("Id") == discipline_id for c in data.get("Childs") or []):
+                echo(f"  probe: {slug} ({data.get('DisplayName', '')})")
+                found.append(slug)
+        day += timedelta(days=1)
+    return found
+
+
+def fetch_pdf_round(pdf_links, round_name, session):
+    """A round's results table from its result PDF (no live timing), or None."""
+    from racinglines.sources.chronorace import pdf
+    link = next((u for label, u in pdf_links.items() if "result" in (label or "").lower()
+                 and "team" not in (label or "").lower()), None)
+    if link is None:
+        return None
+    try:
+        resp = http.get(session, link, headers={"User-Agent": USER_AGENT}, timeout=60)
+        if resp.status_code != 200 or not resp.content.startswith(b"%PDF"):
+            print(f"    [warn] result PDF for round '{round_name}' not available ({resp.status_code}): {link}")
+            return None
+        return pdf.round_table(pdf.pdf_text(resp.content), round_name)
+    except Exception as e:
+        print(f"    [warn] result PDF for round '{round_name}' failed: {e}")
+        return None
+
+
 def fetch_cms_tree(slug, session):
     url = CMS_URL.format(slug=slug)
     resp = http.get(session, url, headers={"User-Agent": USER_AGENT}, timeout=30)
@@ -327,7 +372,7 @@ def build_round_table(slug, disc_api, key, round_name, session):
     return f"## {round_name}\n\n" + "\n".join(rows) + "\n"
 
 
-def build_event_doc(slug, discipline_id, disc_api, category_code, session):
+def build_event_doc(slug, discipline_id, disc_api, category_code, session, pdf_results=False):
     title, flat = fetch_cms_tree(slug, session)
     cat_display, rounds = get_category_rounds(flat, discipline_id, category_code)
     if cat_display is None:
@@ -345,6 +390,10 @@ def build_event_doc(slug, discipline_id, disc_api, category_code, session):
         table = None
         if r["key"]:
             table = build_round_table(slug, disc_api, r["key"], r["round"], session)
+        if table is None and pdf_results and r["pdf_links"]:
+            table = fetch_pdf_round(r["pdf_links"], r["round"], session)
+            if table:
+                table += "\n" + "".join(f"- [{label}]({link})\n" for label, link in r["pdf_links"].items())
         if table:
             doc += table + "\n"
             any_data = True
@@ -373,11 +422,21 @@ def main():
     ap.add_argument("--category", required=True, help="'Elite Men', 'Elite Women', 'Junior Men', 'Junior Women', 'U23 Men', 'U23 Women'.")
     ap.add_argument("--out-dir", default=None, help="Directory to write one .md file per event into "
                     "(default data/raw/mtb_dh/chronorace).")
+    ap.add_argument("--probe", nargs=2, metavar=("START", "END"),
+                    help="Also find events by trying YYYYMMDD_{dh,dhi,mtb,xco} for every date from START to END "
+                         "(YYYY-MM-DD) against ChronoRace, for rounds missing from Wikipedia (e.g. 2021 Snowshoe). "
+                         "About 2 s per day at ChronoRace's polite pace.")
+    ap.add_argument("--probe-suffixes", nargs="+", default=list(PROBE_SUFFIXES), metavar="SUFFIX",
+                    help=f"Slug suffixes --probe tries (default: {' '.join(PROBE_SUFFIXES)}).")
+    ap.add_argument("--pdf-results", action="store_true",
+                    help="For rounds without live timing, read the result PDF into the round's table "
+                         "(2021 Leogang and Les Gets, some Timed Training rounds). Needs poppler's pdftotext. "
+                         "Default: list the PDF links only.")
     ap.add_argument("--list-only", action="store_true", help="Only print the discovered event slugs; download nothing.")
     args = ap.parse_args()
 
-    if not args.year and not args.events:
-        raise SystemExit("Pass --year (to auto-discover events) or --events (explicit slugs).")
+    if not args.year and not args.events and not args.probe:
+        raise SystemExit("Pass --year (to auto-discover events), --events (explicit slugs) or --probe START END.")
 
     discipline_id, disc_api = resolve_discipline(args.discipline)
     category_code = resolve_category(args.category)
@@ -385,10 +444,18 @@ def main():
     session = requests.Session()
 
     if args.events:
-        slugs = args.events
-    else:
+        slugs = list(args.events)
+    elif args.year:
         print(f"Discovering {discipline_id} events for {args.year} from Wikipedia...")
         slugs = discover_event_slugs(args.year, discipline_id, session)
+    else:
+        slugs = []
+    if args.probe:
+        from datetime import date
+        start, end = (date.fromisoformat(d) for d in args.probe)
+        print(f"Probing {discipline_id} slugs from {start} to {end}...")
+        slugs = sorted(set(slugs) | set(probe_event_slugs(start, end, discipline_id, session,
+                                                           suffixes=args.probe_suffixes)))
 
     print(f"Found {len(slugs)} event(s): {slugs}")
     if args.list_only:
@@ -401,7 +468,8 @@ def main():
     for slug in slugs:
         print(f"  Fetching {slug} ...")
         try:
-            doc = build_event_doc(slug, discipline_id, disc_api, category_code, session)
+            doc = build_event_doc(slug, discipline_id, disc_api, category_code, session,
+                                  pdf_results=args.pdf_results)
         except requests.HTTPError as e:
             print(f"    [error] {e}")
             continue

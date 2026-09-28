@@ -25,16 +25,19 @@ Postgres on port 5433 (see [Database](database.md#setup)).
 `racinglines/sources/chronorace/download.py`.
 
 ```
-racinglines mtb_dh download (--year YEAR | --events SLUG [SLUG ...])
+racinglines mtb_dh download (--year YEAR | --events SLUG [SLUG ...] | --probe START END)
                               --discipline {DH,XCO,XCC,EDR}
                               --category "Elite Men" | "Junior Men" | "Elite Women" | "Junior Women" | ...
-                              [--out-dir DIR] [--list-only]
+                              [--probe-suffixes SUFFIX ...] [--pdf-results] [--out-dir DIR] [--list-only]
 ```
 
 | Option | Meaning |
 |---|---|
 | `--year` | Find events from the Wikipedia season page (only slugs dated that year). |
 | `--events` | Explicit ChronoRace slugs; skips Wikipedia. |
+| `--probe` | Also find events by trying `YYYYMMDD_{dh,dhi,mtb,xco}` for every date from START to END (`YYYY-MM-DD`) against ChronoRace, for rounds missing from Wikipedia. About 2 s per day. Combines with `--year`/`--events`. |
+| `--probe-suffixes` | The suffixes `--probe` tries (default `dh dhi mtb xco`). |
+| `--pdf-results` | For rounds without live timing, read the result PDF into the round's table (the 2021 Leogang and Les Gets rounds, several Timed Training rounds). Needs poppler's `pdftotext` (`brew install poppler`). Off by default: the round is written as its PDF links. |
 | `--discipline` | DH is the tested one; XC/EDR are best-effort. |
 | `--category` | Friendly name; mapped to `ME`/`MJ`/`WE`/`WJ`/`MU`/`WU`. |
 | `--out-dir` | Default `data/raw/mtb_dh/chronorace/`. |
@@ -50,9 +53,20 @@ for y in 2021 2022 2023 2024 2025 2026; do
     racinglines mtb_dh download --year $y --discipline DH --category "$c" --out-dir data/raw/mtb_dh/chronorace/
   done
 done
-# 2021 rounds missing from Wikipedia:
+# 2021 rounds missing from Wikipedia (found by --probe 2021-04-01 2021-10-31):
 racinglines mtb_dh download --events 20210914_dh 20210918_dh --discipline DH --category "Elite Men"  --out-dir data/raw/mtb_dh/chronorace/
 racinglines mtb_dh download --events 20210914_dh 20210918_dh --discipline DH --category "Junior Men" --out-dir data/raw/mtb_dh/chronorace/
+```
+
+Add `--pdf-results` to fill PDF-only rounds from their result PDFs. The 2026 elite files were renamed by
+hand (`2026-08_les-gets_men-elite.md`); a re-download writes `<slug>_dhi_elite-men.md` beside them, so
+rename or remove one of each pair before parsing a directory into a CSV (ingest keys races by event, so
+the database isn't affected).
+
+Find unlisted events:
+
+```
+racinglines mtb_dh download --probe 2021-04-01 2021-10-31 --discipline DH --category "Elite Men" --list-only
 ```
 
 ## racinglines mtb_dh parse
@@ -401,19 +415,21 @@ racinglines f1 pm-links-import
 
 ### Kalshi (`--exchange kalshi`)
 
-Built from Kalshi's public API docs and tested on mocked responses only: the cloud network blocks
-Kalshi, so none of this has run against the live API. Nothing runs unless you call it.
+Built from Kalshi's public API docs, then run against the live read-only API on 2026-09-28 (sync with
+`--closed`, trades, history and books; no order has been sent). Nothing runs unless you call it.
+Markets settled before Kalshi's historical cutoff (about two months back) are read from its `/historical`
+endpoints: settled events' markets, their trades and their candlesticks.
 
 ```
 racinglines markets --exchange kalshi sync [--year 2026] [--closed]
-racinglines markets --exchange kalshi trades --events KXF1RACE-26SIN
-racinglines markets --exchange kalshi history --events KXF1RACE-26SIN --start 2026-10-09T00:00 --end 2026-10-11T14:00 [--period 60]
-racinglines markets --exchange kalshi books --events KXF1RACE-26SIN
+racinglines markets --exchange kalshi trades --events KXF1RACE-AZEGP26
+racinglines markets --exchange kalshi history --events KXF1RACE-AZEGP26 --start 2026-09-24T00:00 --end 2026-09-27T00:00 [--period 60]
+racinglines markets --exchange kalshi books --events KXF1-26
 ```
 
 | Command | What it does |
 |---|---|
-| `sync` | Find Kalshi's F1 series (Sports series whose title says Formula 1, F1 or Grand Prix, or `kalshi.sync.SERIES`), and upsert one `market_links` row per market (`exchange='kalshi'`, `token_id` = the market ticker's YES contract, `condition_id` = the event ticker), classified into the model's kinds, props included. Each row keeps Kalshi's resolution rules (`params.rules`). `--closed` adds settled events. |
+| `sync` | Find Kalshi's F1 series (Sports series whose ticker starts `KXF1` or whose title says Formula 1, F1 or Grand Prix, or `kalshi.sync.SERIES`), and upsert one `market_links` row per market (`exchange='kalshi'`, `token_id` = the market ticker's YES contract, `condition_id` = the event ticker), classified into the model's kinds: win, podium, top 10, pole, top constructor, fastest lap, head-to-head (the race read from the ticker's code, `BRIGP26`), champions. Sprint markets, top 5 and the rest are listed as unmodeled. Each row keeps Kalshi's resolution rules (`params.rules`). `--closed` adds settled events. Races resolve within `--year` (2026: 15 weekends, 1,847 modeled links on 2026-09-28). |
 | `trades` | Store every trade on those events' markets in `market_trades` (the taker's side of YES, at the YES price, in contracts). |
 | `history` | Store candlesticks (`--period` 1, 60 or 1440 minutes) in `market_price_history`. |
 | `books` | One order-book snapshot per open market in `market_book_snapshots` (a NO bid at p is a YES ask at 1 − p). |

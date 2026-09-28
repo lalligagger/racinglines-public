@@ -290,9 +290,15 @@ Phase [F1-9](f1-roadmap.md#f1-9-more-exchanges-kalshi-others).
       the cloud network blocks Kalshi's API. `venue_replay.Kalshi` is its backtest venue; the Polymarket
       paths (sweep, maker replay, season strategy, head-to-head pairs, links export, fetches) now read
       `exchange = 'polymarket'` only, so synced Kalshi links can't leak into them.
-- [ ] Kalshi, locally: run `sync` against the live API and check the title classifier against Kalshi's
-      real F1 listing, the series tickers, prices and the tape; then the sweep and paper signals reading
-      Kalshi's markets (F1-9's "done when"), and the Markets page showing the `kalshi` venue as live.
+- [x] Kalshi against the live read-only API (2026-09-28, locally): `sync --closed`, trades, history and
+      books run into a copy of the database. Fixed: series found by ticker (`KXF1*`; "Qualify in Pole
+      Position" doesn't say F1), sprints unmodeled (the sprint winner and sprint pole were read as the
+      race's), top 10 → `race_top10`, head-to-heads ("Will A beat B in the racing matchup?") with the
+      race from the ticker's code, `volume_fp`, `orderbook_fp` (books came back empty), dollar strings in
+      historical candlesticks (read as cents), and Kalshi's `/historical` endpoints for markets settled
+      before its cutoff (older events came back with no markets). 2026: 15 weekends, 1,847 modeled links.
+- [ ] Kalshi: the sweep and paper signals reading Kalshi's markets (F1-9's "done when"), and the Markets
+      page showing the `kalshi` venue as live. No order has been sent; `KALSHI_TRADING_ENABLED` stays unset.
 - [ ] Other exchanges, if they list motorsport or cycling markets with real depth, including one for
       downhill (none on Polymarket as of 2026-09).
 - [ ] Before any real order: one small V2 order checked against the live CLOB ([Market making](#market-making)).
