@@ -52,8 +52,27 @@ ticker per kind), replays to the same 72 positions as the Polymarket replay. Onl
 ## First real run (2026-09-28)
 
 On the pulled Kalshi tape ([Data changes](data-changes.md)), in a cloud copy of the database, the demo maker ran
-profile C over the 15 Grands Prix of 2026. The Polymarket record was run on the same copy for comparison. 2025
-isn't comparable yet, because Kalshi's 2025 race markets aren't classified ([F1](f1.md#kalshi-alignment)).
+its profiles over all 24 Grands Prix of 2025 (M1–M3) and the 15 of 2026 so far (C). The Polymarket record was run
+on the same copy for comparison, and matches [Paper trading](paper-trading.md) to the cent.
+
+| Profile (weekends) | Kalshi | Kalshi, no maker fee | Polymarket |
+|---|---:|---:|---:|
+| M1, 2025 R1–8 | **+$521.61** (8) | +$545.73 | **+$169.02** (7) |
+| M2, 2025 R9–16 | **−$646.13** (8) | −$553.26 | **+$214.68** (8) |
+| M3, 2025 R17–24 | **+$317.91** (8) | +$373.74 | **−$98.85** (8) |
+| 2025 total | **+$193.39** | +$366.20 | **+$284.85** |
+| C, 2026 R1–15 | **−$118.84** (15) | −$54.45 | **+$653.03** (15) |
+
+"No maker fee" is the same replay with the fee set to zero. It isn't the with-fee P&L plus the fees: the fee
+changes the maker's cash, and so a few later quotes.
+
+**2025 on Kalshi is win and podium only** (pole and fastest lap were listed for the last three races, and the
+profiles don't quote them). Kalshi opened its 2025 race markets only two to four days before each race, so the
+tape is thinner than 2026's (median trades per market: win 19, podium 26). The maker still filled in 93 of 481
+win markets and 100 of 441 podium markets. By kind, without the fee: win +$356.27,
+podium +$9.94. Hungary 2025 (M2, −$508) is most of M2's loss.
+
+### 2026, profile C
 
 | 2026, profile C | Kalshi | Polymarket |
 |---|---:|---:|
