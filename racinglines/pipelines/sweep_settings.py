@@ -71,6 +71,9 @@ SETTINGS = [
     Setting("min_edge", "taker", "Min edge to act (prob.)", "float", 0.05, 0.005, 0.5),
     Setting("min_edge_h2h", "taker", "Min edge for head-to-head markets", "float", None, 0.005, 0.5,
             help="Empty = same as min edge."),
+    Setting("min_edge_by_kind", "taker", "Min edge per market kind", "map", None, 0.005, 0.5, choices=KINDS,
+            help="kind=edge pairs, e.g. race_h2h=0.05,race_podium=0.08; each overrides min edge (and the "
+                 "head-to-head one) for its kind. Empty = none."),
     Setting("stake_per_edge", "taker", "Stake per unit edge ($)", "float", 250.0, 10, 5000,
             help="Target cost = this x edge, e.g. 250 x 0.10 = $25."),
     Setting("max_stake", "taker", "Max stake per market ($)", "float", 50.0, 1, 5000),
@@ -95,6 +98,11 @@ SETTINGS = [
     Setting("min_volume_24h", "markets", "Min $ traded in prior 24 h", "float", 50.0, 0, 100000),
 ]
 BY_NAME = {s.name: s for s in SETTINGS}
+# The split (docs/backtest-core.md): the pricing model's own group, and the groups any sport's backtest shares
+# (entry timing, taker, maker, markets and their guards). Another model family's settings are its own model
+# group plus these once it trades a venue (models/timed_runs/settings.py is model-only so far).
+MODEL_SETTINGS = [s for s in SETTINGS if s.group == "model"]
+SHARED_SETTINGS = [s for s in SETTINGS if s.group != "model"]
 GROUPS = (("model", "Model"), ("timing", "Entry timing"), ("taker", "Taker strategies"),
           ("maker", "Maker strategies"), ("markets", "Markets"))
 MODEL_NAMES = [s.name for s in SETTINGS if s.group == "model"]
@@ -116,6 +124,20 @@ def _coerce(s, v):
         if bad:
             raise ValueError(f"{s.label}: unknown {bad}; choose from {list(s.choices)}")
         return tuple(x for x in s.choices if x in items)         # canonical order
+    if s.type == "map":                                      # "kind=value,..." -> canonical text (sorted, floats)
+        pairs = {}
+        for item in (v.split(",") if isinstance(v, str) else [f"{k}={x}" for k, x in dict(v).items()]):
+            if not item.strip():
+                continue
+            k, _, x = item.partition("=")
+            k = k.strip()
+            if k not in s.choices:
+                raise ValueError(f"{s.label}: unknown {k!r}; choose from {list(s.choices)}")
+            x = float(x)
+            if not s.min <= x <= s.max:
+                raise ValueError(f"{s.label}: {k}={x} is outside {s.min}-{s.max}")
+            pairs[k] = x
+        return ",".join(f"{k}={pairs[k]:g}" for k in sorted(pairs)) or s.default
     if s.type == "choice":
         if v not in s.choices:
             raise ValueError(f"{s.label}: pick one of {list(s.choices)}")
@@ -223,6 +245,11 @@ class Settings(dict):
         finally:
             for mod, attr, v in reversed(old):
                 setattr(mod, attr, v)
+
+
+def parse_map(v):
+    """A map setting's canonical text -> {key: float} ({} when unset)."""
+    return {k: float(x) for k, _, x in (i.partition("=") for i in v.split(","))} if v else {}
 
 
 def add_arguments(parser, cls=None):

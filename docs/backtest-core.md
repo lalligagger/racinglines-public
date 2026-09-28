@@ -49,13 +49,16 @@ Both model families already simulate the same thing: a matrix of finishing ranks
 | **Market kinds** | One definition per kind gives its fair value from `OutcomeSims` **and** its settlement from the official result | `racinglines/markets/kinds.py` | done: win, podium, top 10, pole, makes the Final, head-to-head, top constructor; `private_book.outcome_for` settles through it |
 | **Pricing model** | `load`, `events(data, settings, seasons)` (each with its cutoff), `history(data, settings)`, `price(hist, event, settings, rng) -> OutcomeSims`, `results(data, event)` for settlement, and the model's own `Settings` | `racinglines/models/race_model.py` | done: `TimedRuns` (downhill) and `PositionSim` (F1, pre-race) |
 | **Walk-forward engine** | Prices every event from data before it, settles every kind the simulations support, scores them; model-only until a venue is given | `racinglines/core/walk_forward.py` | done: `racinglines mtb_dh walk-forward` |
-| **Stages** | When new information arrives: a `[stages]` table per sport (schedule source, data lag, early closes) turned into `[(label, cutoff)]` | `sports/<code>.toml` | step 5 |
+| **Stages** | When new information arrives: a `[stages]` table per sport (first stage, data lag, the session never traded, early closes) turned into `[(label, cutoff)]` | `sports/<code>.toml`, `racinglines/core/stages.py` | done: the F1 sweep's stages and the pole market's close come from `sports/f1.toml`; downhill prices once, "pre-event" |
 | **Venues** | `markets()`, `view(market, t)` (public data up to t only), costs, fill model, resolution | `racinglines/markets/venue_replay.py` | done: `Polymarket` (the F1 sweep reads through it) and `PrivateBook` (a live run's book replayed); model-only is no venue. A Kalshi mock is the Roadmap queue thread's, and plugs in as one more class |
 | **Search** | One queue for every sport, with the held-out rule, seed replicates, confirmation and stable ids built in | `racinglines/pipelines/search*.py` | done: `sport = "mtb_dh"` jobs, `replicates = N`, candidate ids carried into the Lab |
 
-**Settings.** Shared groups (timing, taker, maker, markets, guards) plus the model's own group. Per-kind
-overrides (e.g. `min_edge_by_kind`) generalise `min_edge_h2h`. `settings_key` / `model_key` keep today's
-hashing (settings at an unset default are left out), so saved keys never change.
+**Settings.** Shared groups (timing, taker, maker, markets, guards: `SHARED_SETTINGS`) plus the model's own
+group (`MODEL_SETTINGS`; downhill's is `models/timed_runs/settings.py`). Per-kind overrides generalise
+`min_edge_h2h`: `min_edge_by_kind = "race_h2h=0.05,race_podium=0.08"` gives each listed kind its own entry
+threshold (over `min_edge` and `min_edge_h2h`), the params-4h lesson that the edge sits in some kinds and
+not others. `settings_key` / `model_key` keep today's hashing (settings at an unset default are left
+out), so saved keys never change: every saved sweep's and stage run's key recomputes to what it was.
 
 ### The walk-forward engine
 
@@ -160,7 +163,7 @@ holdout = [2025]
 | 2 ✓ | `PricingModel` for both families; the downhill walk-forward through the engine in model-only mode | Downhill tuning numbers reproduced |
 | 3 ✓ | Sport-aware search queue (downhill jobs), `replicates = N`, stable candidate ids in the Lab | A mixed F1 + downhill queue runs end to end |
 | 4 ✓ | `Venue` interface: Polymarket behind it, Kalshi mock, private-book venue with the simulated crowd | F1 sweep identical; the Whistler book replays as a backtest (synthetic finals here; Whistler where the bucket is) |
-| 5 | Stages from the schema; per-kind strategy overrides; settings split | Saved F1 `settings_key`s unchanged |
+| 5 ✓ | Stages from the schema; per-kind strategy overrides; settings split | Saved F1 `settings_key`s unchanged (every saved sweep and 1,245 stage runs here); full F1 sweeps identical |
 | 6 | "Adding a sport": schema + data source + model wrapper, nothing else | A synthetic third sport passes the suite |
 
 The live engine keeps working throughout; once step 4 lands it can use the same venues and kinds.

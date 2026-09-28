@@ -326,6 +326,7 @@ baseline. The model variant is the group's `--variant`.
 | | `--late-stages` | `after FP3,after Quali` | Stages the stage-aware taker skips. |
 | Taker | `--min-edge` | 0.05 | Min edge to act (probability). |
 | | `--min-edge-h2h` | not set | Min edge for head-to-head markets; unset = `--min-edge`. |
+| | `--min-edge-by-kind` | not set | Per market kind, e.g. `race_h2h=0.05,race_podium=0.08`; each overrides `--min-edge` (and `--min-edge-h2h`) for its kind. |
 | | `--stake-per-edge` | 250 | Target cost = this × edge ($). |
 | | `--max-stake` | 50 | Max stake per market ($). |
 | | `--cost` | 0.01 | Cost per share per trade ($). |

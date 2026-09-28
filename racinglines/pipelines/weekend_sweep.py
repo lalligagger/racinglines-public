@@ -29,12 +29,14 @@ from sqlalchemy import text
 from racinglines import sports
 from racinglines.markets.strategies import taker_weekend as RB
 from racinglines.core import calibration as CAL
+from racinglines.core import stages as STG
 
 _SCHEDULE = sports.load("f1")["sessions"]["schedule"]       # FastF1 session name -> [minutes, short label]
 SESSION_MINUTES = {name: m for name, (m, _) in _SCHEDULE.items()}
 SHORT = {name: short for name, (_, short) in _SCHEDULE.items()}
-DATA_LAG = timedelta(minutes=30)     # a session's data is used 30 min after it ends
-PRE = timedelta(hours=1)             # "before any running": 1 h before the first session
+_STAGES = STG.spec("f1")                                     # sports/f1.toml [stages] (core/stages.py)
+DATA_LAG = timedelta(minutes=_STAGES["lag_minutes"])         # a session's data is used 30 min after it ends
+PRE = timedelta(minutes=_STAGES["pre_minutes"])              # "before any running": 1 h before the first session
 KINDS = tuple(sports.load("f1")["markets"]["weekend_kinds"])
 GROUP_TARGET = {"race_win": 1, "race_pole": 1, "race_constructor_top": 1, "race_podium": 3}
 COHERENCE_TOL = 0.25
@@ -86,18 +88,12 @@ def schedule(year, rounds=None):
             name, start = getattr(ev, f"Session{i}"), getattr(ev, f"Session{i}DateUtc")
             if name and not pd.isna(start):
                 sessions.append((name, pd.Timestamp(start).tz_localize(None)))
-        race = next((t for n, t in sessions if n == "Race"), None)
-        if race is None:
+        b = STG.build(sessions, "f1")                        # the stages, from the schema
+        if b is None:
             continue
-        stages = [("pre-weekend", sessions[0][1] - PRE)]
-        for name, start in sessions:
-            if name in SESSION_MINUTES:
-                cut = start + timedelta(minutes=SESSION_MINUTES[name]) + DATA_LAG
-                if cut < race:
-                    stages.append((f"after {SHORT[name]}", cut))
-        out[rnd] = dict(event_key=f"{year}-{rnd:02d}", name=ev.EventName, format=ev.EventFormat, race_start=race,
-                        qual_start=next((t for n, t in sessions if n == "Qualifying"), None),
-                        sessions=[(SHORT.get(n, n), t) for n, t in sessions], stages=stages)
+        out[rnd] = dict(event_key=f"{year}-{rnd:02d}", name=ev.EventName, format=ev.EventFormat, race_start=b["until"],
+                        qual_start=next((t for n, t in sessions if n == "Qualifying"), None), closes=b["closes"],
+                        sessions=[(SHORT.get(n, n), t) for n, t in sessions], stages=b["stages"])
     return out
 
 
@@ -210,7 +206,7 @@ def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None):
             t = at(lab, cutoff)
             price, _, liquid = venue.view(link, t, vol_min)
             f = fair[(link["token_id"], lab)]
-            open_ = not (kind == "race_pole" and w["qual_start"] is not None and t >= w["qual_start"])
+            open_ = STG.is_open(kind, t, w.get("closes", {"race_pole": w["qual_start"]}))
             ok = liquid and f is not None and open_ and coherent.get((kind, lab), True)
             stages.append(dict(label=lab, t=t, fair=f, price=price, tradeable=ok))
         subject = link["athlete"] or (link["params"] or {}).get("team") or link["group_title"]
@@ -320,6 +316,7 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
     data_key = price_stages.data_key
     base = RB.TakerParams(min_edge=st["min_edge"], stake_per_edge=st["stake_per_edge"], max_stake=st["max_stake"],
                           cost=st["cost"], late_stages=st["late_stages"], min_edge_h2h=st["min_edge_h2h"],
+                          min_edge_by_kind=tuple(SS.parse_map(st["min_edge_by_kind"]).items()),
                           stages=None if st["taker_stages"] == SS.STAGES else st["taker_stages"],
                           max_deployed=st["max_deployed"])
     params_list = [RB.TakerParams(**{**base.__dict__, "mode": m}) for m in TAKER_MODES]
@@ -386,7 +383,7 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
                 scores=score_stage, calibration=pd.concat([cal_all.assign(stage="all"), cal_stage], ignore_index=True),
                 reliability=rel,
                 params=dict({k: v for k, v in base.__dict__.items() if k != "stages" and not
-                             (k in ("scale", "max_deployed") and v == RB.TakerParams.__dataclass_fields__[k].default)},
+                             (k in ("scale", "max_deployed", "min_edge_by_kind") and v == RB.TakerParams.__dataclass_fields__[k].default)},
                             n_sims=st["sims"],
                             variant=st["variant"], data_lag_min=DATA_LAG.seconds // 60,
                             min_volume_24h=st["min_volume_24h"], coherence_tol=COHERENCE_TOL,

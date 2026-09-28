@@ -363,6 +363,7 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
             markets = [m for m in markets or [] if m["kind"] in st["market_kinds"]]
             p = RB.TakerParams(min_edge=st["min_edge"], stake_per_edge=st["stake_per_edge"], max_stake=st["max_stake"],
                                cost=st["cost"], late_stages=st["late_stages"], min_edge_h2h=st["min_edge_h2h"],
+                               min_edge_by_kind=tuple(SS.parse_map(st["min_edge_by_kind"]).items()),
                                stages=None if st["taker_stages"] == SS.STAGES else st["taker_stages"], mode=strategy)
             base["signals"], base["positions"] = taker_signals(markets, p)
         elif strategy in WS.MAKERS:
@@ -536,7 +537,8 @@ def call(profile, kind, fair, price, volume_24h=None):
     from racinglines.markets.strategies.sizing import target_shares
     st = SS.Settings.from_dict(profile["settings"], strict=False)
     p = RB.TakerParams(min_edge=st["min_edge"], stake_per_edge=st["stake_per_edge"], max_stake=st["max_stake"],
-                       cost=st["cost"], min_edge_h2h=st["min_edge_h2h"])
+                       cost=st["cost"], min_edge_h2h=st["min_edge_h2h"],
+                       min_edge_by_kind=tuple(SS.parse_map(st["min_edge_by_kind"]).items()))
     p = RB.params_for(kind, p)
     if kind not in st["market_kinds"]:
         return dict(action=None, why="not a market this strategy trades")

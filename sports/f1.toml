@@ -34,6 +34,15 @@ practice = ["fp1", "fp2", "fp3", "sprint_qual"]
 "Sprint" = [45, "Sprint"]
 "Qualifying" = [60, "Quali"]
 
+# When a race weekend is priced and traded (racinglines/core/stages.py): the stages come from the session
+# schedule above; the race itself is never traded
+[stages]
+pre_label = "pre-weekend"
+pre_minutes = 60                         # "before any running": 1 h before the first session
+lag_minutes = 30                         # a session's data is used 30 min after it ends
+until = "Race"
+closes = { race_pole = "Qualifying" }    # pole markets close when qualifying starts
+
 [points]
 race = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
 sprint = [8, 7, 6, 5, 4, 3, 2, 1]

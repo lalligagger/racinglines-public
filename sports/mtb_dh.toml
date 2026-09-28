@@ -33,6 +33,11 @@ run_weights = { practice = 0.5, qual = 1.0, qual1 = 1.0, qual2 = 1.0, semi = 1.0
 # format for unraced rounds; past events use their own, inferred from results
 default_format = { kind = "q1q2", q1_to_final = 20, q2_to_final = 10 }
 
+# When an event is priced (racinglines/core/stages.py): the walk-forward prices each event once, before it
+[stages]
+pre_label = "pre-event"
+pre_minutes = 0
+
 [points]
 # PLACEHOLDER: approximate UCI DHI World Cup scales, not the official tables (see docs/todo.md)
 final = [250, 210, 180, 160, 140, 125, 110, 95, 80, 75,
