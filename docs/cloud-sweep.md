@@ -44,14 +44,20 @@ checks it).
 
 ## One-time setup
 
-1. At [claude.ai/code](https://claude.ai/code), create a cloud environment: click the cloud icon with the
-   environment's name in the row above the message box, then **Add cloud environment**:
+1. At [claude.ai/code](https://claude.ai/code), click the **cloud icon** in the row above the message
+   box. It's labelled with the current environment's name, e.g. **Default**. Choose **Add cloud
+   environment** (or hover over an existing one and click its settings icon to edit it):
     - **Name:** `racinglines-sweep`
-    - **Network access:** the default **Trusted** is enough (PyPI and GitHub). The database comes from
-      the committed snapshot, so no Polymarket access is needed.
-    - **Environment variables:** `BASH_MAX_TIMEOUT_MS=1800000` (lets a command run 30 minutes).
+    - **Network access:** the default **Trusted** is enough. It covers PyPI, GitHub and
+      `storage.googleapis.com` (the [data bucket](data.md#data-bucket)); the database comes from the
+      bucket's dump or the committed snapshot, so no Polymarket access is needed.
+    - **Environment variables:** `BASH_MAX_TIMEOUT_MS=1800000` (lets a command run 30 minutes), plus
+      the data bucket's three variables. `pbcopy < ~/.config/racinglines/gcs-hmac.env` copies them
+      without printing them; paste them on the lines below. They are visible to anyone using the environment.
     - **Setup script:** none. `start.sh` takes longer than the ~5 minutes a cached setup allows, so
       the session runs it.
+
+   `/remote-env` in a local Claude Code session makes it the default for `claude --cloud`.
 2. The GitHub connection must reach this (private) repository: install the Claude GitHub App on it,
    or run `/web-setup` in a local Claude Code terminal.
 
