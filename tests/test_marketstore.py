@@ -57,22 +57,28 @@ def test_archive_moves_rows_out_of_postgres(tmp_path, test_engine):
             c.execute(text("DELETE FROM market_price_history WHERE token_id = :t"), dict(t=TOK))
 
 
-def test_archive_sends_kalshi_tokens_to_kalshis_archive(tmp_path, test_engine, monkeypatch):
-    e, kt = test_engine, "KXTEST-MARKETSTORE-0000"
+
+def test_archive_routes_rows_to_their_exchange(tmp_path, test_engine, monkeypatch):
+    """Each row lands in its exchange's tree (unlinked tokens: Polymarket); reads without a root see all trees."""
+    from racinglines import paths
+    monkeypatch.setattr(paths, "DATA", tmp_path)
+    monkeypatch.setattr(MS, "_exchanges", lambda conn, toks: {"KXTEST-26-A": "kalshi"})
+    e, kx = test_engine, "KXTEST-26-A"
     old = datetime.now(timezone.utc) - timedelta(days=2)
-    monkeypatch.setattr(MS, "root_for", lambda x: tmp_path / x)
-    monkeypatch.setattr(MS, "exchange_tokens", lambda eng, x: [kt] if x == "kalshi" else [])
     with e.begin() as c:
-        for t in (TOK, kt):
-            c.execute(text("DELETE FROM market_price_history WHERE token_id = :t"), dict(t=t))
-            c.execute(text("INSERT INTO market_price_history (token_id, ts, price) VALUES (:t, :a, 0.4)"), dict(t=t, a=old))
+        c.execute(text("DELETE FROM market_price_history WHERE token_id = ANY(:t)"), dict(t=[TOK, kx]))
+        c.execute(text("INSERT INTO market_price_history (token_id, ts, price) VALUES (:p, :a, 0.4), (:k, :a, 0.7)"),
+                  dict(p=TOK, k=kx, a=old))
     try:
-        assert MS.archive(e, "prices", older_than=timedelta(hours=6), tokens=[TOK, kt], root=tmp_path / "polymarket") == 2
-        assert MS.read(None, "prices", root=tmp_path / "polymarket")["token_id"].tolist() == [TOK]
-        assert MS.read(None, "prices", root=tmp_path / "kalshi")["token_id"].tolist() == [kt]
+        assert MS.archive(e, "prices", older_than=timedelta(hours=6), tokens=[TOK, kx]) == 2
+        base = tmp_path / "archive" / "markets"
+        assert {x: MS.read(None, "prices", root=base / x)["token_id"].tolist() for x in ("polymarket", "kalshi")} \
+            == {"polymarket": [TOK], "kalshi": [kx]}
+        assert sorted(MS.read(None, "prices", tokens=[TOK, kx])["price"]) == [0.4, 0.7]
+        assert MS.last_before(None, [kx], datetime.now(timezone.utc)) == {kx: 0.7}
     finally:
         with e.begin() as c:
-            c.execute(text("DELETE FROM market_price_history WHERE token_id = ANY(:t)"), dict(t=[TOK, kt]))
+            c.execute(text("DELETE FROM market_price_history WHERE token_id = ANY(:t)"), dict(t=[TOK, kx]))
 
 
 @pytest.mark.live

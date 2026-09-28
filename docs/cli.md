@@ -437,9 +437,8 @@ racinglines markets --exchange kalshi books --events KXF1-26
 | `history` | Store candlesticks (`--period` 1, 60 or 1440 minutes) in `market_price_history`. |
 | `books` | One order-book snapshot per open market in `market_book_snapshots` (a NO bid at p is a YES ask at 1 − p). |
 
-No `archive`, `record` or links export for Kalshi yet: `markets archive` writes to the Polymarket tree whatever the
-exchange, so Kalshi's archive (`data/archive/markets/kalshi/`, [Data](data.md#exchange-history-kalshi-and-polymarket))
-was written by a one-off export on 2026-09-28 ([Data changes](data-changes.md)). Pulling a season: `sync --year Y --closed`,
+`markets archive` (and the recorder's hourly pass) archives Kalshi's rows too, into `data/archive/markets/kalshi/`
+([Data](data.md#exchange-history-kalshi-and-polymarket)). No `record` or links export for Kalshi yet. Pulling a season: `sync --year Y --closed`,
 then `trades` and `history --period 60` per modeled event ticker, from each market's `open_time` to its `close_time`.
 
 Orders (`markets/kalshi/trade.py`): post-only limit orders on YES, checked against the book, the 1-cent grid

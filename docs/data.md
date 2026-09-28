@@ -139,11 +139,12 @@ markets opened only 2–4 days before each race and are thinner ([Data changes](
 code reads and groups the tape by `token_id` (the market ticker), never by `condition_id`; the 24 h volume filter is
 per market.
 
-**Reading archived Kalshi rows.** `markets/store.py` reads `data/archive/markets/polymarket/` unless given
-`root=store.root_for("kalshi")`, which Kalshi's readers pass. `markets archive` and the recorder's hourly pass send
-Kalshi's tokens to `kalshi/` (since PR #10). Before that fix, the pass of 2026-09-28 14:06 UTC moved Kalshi rows into
-`polymarket/{prices,trades}/part-20260928T1406*` on the owner's machine: those files hold only `KX…` tokens, every
-row is also in the Kalshi archive, and they can be deleted.
+**One store, a tree per exchange.** `markets archive` and the recorder's hourly pass write each row to its
+market's exchange tree (`market_links.exchange`; a token without a link counts as Polymarket), and
+`markets/store.py` reads every exchange's tree unless given a `root`, so Kalshi rows are read like Polymarket's.
+The Kalshi replays pass `root=store.root_for("kalshi")` to read only Kalshi's tree. Before 2026-09-28 the archive
+pass wrote everything to the Polymarket tree ([Data changes](data-changes.md)); the Kalshi-only files it left under
+`polymarket/{prices,trades}/` on the owner's machine were deleted the same day (every row is in the Kalshi archive).
 
 ## Respecting the sources' limits
 
