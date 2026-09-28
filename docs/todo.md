@@ -122,14 +122,20 @@ standings, champion odds, `spearman_points`) is approximate.
       Low priority.
 - [ ] Build **slug probing** into the downloader (`--probe START END`) for rounds
       missing from Wikipedia, like 2021 Snowshoe.
-- [ ] Canonical venue names (`mont-ste-anne` → `mont-sainte-anne`,
-      `vallnord`/`vallnord-pal-arinsal` → `pal-arinsal`).
-- [ ] Elite Women and Junior Women: download, and check the model works for
-      smaller fields.
+- [x] Canonical venue names (`mont-ste-anne` → `mont-sainte-anne`,
+      `vallnord`/`vallnord-pal-arinsal` → `pal-arinsal`): the database already stores every venue
+      under its canonical slug (`venue_aliases`, checked on the snapshot: no duplicates); `mtb_dh parse
+      --canonical-venues` does the same for the CSV path (off by default) (2026-09-28, cloud).
+- [ ] Elite Women and Junior Women: download (`mtb_dh download --category 'Elite Women'` already works;
+      ChronoRace is blocked in the cloud, so locally), then forecast with `--unraced-format last`.
+      Done (2026-09-28, cloud, synthetic data): unraced rounds can take the category's own format
+      (`--unraced-format last`, off by default); the default simulates every category in the 2026 elite
+      men's format (a 30-rider final), which put all 24 riders of a synthetic women's field in the final.
+      Enter the official formats per category in `sports/mtb_dh.toml` `[rounds.category_format]` (owner).
 - [ ] Start order: it's in ChronoRace's start-list PDFs and possibly the JSON.
-      Needed for track-evolution and weather effects.
+      Needed for track-evolution and weather effects. Blocked in the cloud (ChronoRace).
 - [ ] Weather and track conditions (the PDFs have weather; `--conditions-file`
-      exists but is empty).
+      exists but is empty). Blocked in the cloud (ChronoRace).
 - [x] **2025 Polymarket F1 markets** downloaded and synced (2026-09-27: 23 of 24 races have
       markets; minute prices and trades, no order books) and backtested in the cloud search.
 - [ ] **F1 pre-season testing:** ingest FastF1's testing sessions, so the pre-season forecast
@@ -146,6 +152,9 @@ standings, champion odds, `spearman_points`) is approximate.
 - [x] **New downhill defaults** (owner's OK, 2026-09-28): `prior_n` 0.5, half-life 240 days,
       junior weight 0.25. Better in every market on the 43 rounds; picked in-sample.
 - [ ] Check the new downhill defaults on 2026's next rounds (out of sample).
+- [ ] Owner: make `--unraced-format last` the default? Juniors' unraced rounds are simulated in the elite
+      men's 30-rider-final format today; with their own format, the 2026 MJ leader's make-Final odds for
+      the next round go from 92% to 73% (committed snapshot, 2,000 sims). Changes junior and women's prices.
       Per-round-type incident rates tried too: no gain.
 - [x] A tuning sweep over all 43 rounds (2026-09-28, cloud build-out): `prior_n` 0.5, half-life
       240 days, junior weight 0.25 is better in every market ([Calibration](model.md#calibration)).

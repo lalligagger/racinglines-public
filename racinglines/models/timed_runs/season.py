@@ -10,7 +10,7 @@ from racinglines.core.stats import brier
 
 from .model import (
     DEFAULT_FORMAT, INCIDENT_THRESHOLD, RNG, actual_event_points, event_format, event_order, event_starters,
-    fit_season_model, simulate_standings, simulate_weekend, summarize_weekend,
+    fit_season_model, simulate_standings, simulate_weekend, summarize_weekend, unraced_format,
 )
 
 
@@ -210,7 +210,7 @@ def weekend_prior(model, event_rows, riders, practice_sd_mult=1.5, max_iqr=0.08)
 
 
 def forecast_season(raw, target, n_remaining=2, n_sims=10000, attend_window=3, rng=RNG,
-                    train_scope="all", **fit_kw):
+                    train_scope="all", unraced="default", **fit_kw):
     """Simulate the rest of the target season: n_remaining rounds in total.
 
     - Rounds already in the data without final results (the weekend in
@@ -221,6 +221,8 @@ def forecast_season(raw, target, n_remaining=2, n_sims=10000, attend_window=3, r
     - Remaining rounds not in the data yet: field = riders who started Q1 in
       any of the last attend_window completed events, each attending with
       probability (starts in that window / window).
+    - unraced: the format those rounds are simulated in (model.unraced_format): "default" = the 2026 elite men's
+      format for every category; "last" = the category's latest completed event's own format.
     Returns (model, upcoming, per_round, standings): upcoming = [(event_id,
     summary)] for in-data rounds; per_round = summary for an unknown round (or
     None)."""
@@ -233,16 +235,17 @@ def forecast_season(raw, target, n_remaining=2, n_sims=10000, attend_window=3, r
     pts = actual_event_points(target[target["event_id"].isin(done)])
     current = pts.groupby("rider_id")["points"].sum()
 
+    fmt = unraced_format(target, done, unraced)
     weekends = []
     for e in upcoming:
         field = event_starters(target, e)
         prior = weekend_prior(model, target[target["event_id"] == e], field)
-        weekends.append((field, None, DEFAULT_FORMAT, prior))
+        weekends.append((field, None, fmt, prior))
     n_unknown = max(n_remaining - len(upcoming), 0)
     recent = events[-attend_window:]
     starts = pd.Series([r for e in recent for r in event_starters(target, e)]).value_counts()
     field = starts.index.tolist()
-    weekends += [(field, (starts / len(recent)).to_numpy(), DEFAULT_FORMAT)] * n_unknown
+    weekends += [(field, (starts / len(recent)).to_numpy(), fmt)] * n_unknown
 
     standings, sims = simulate_standings(model, current, weekends, n_sims=n_sims, rng=rng)
     upcoming_summaries = []

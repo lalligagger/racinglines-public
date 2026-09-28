@@ -60,7 +60,7 @@ racinglines mtb_dh download --events 20210914_dh 20210918_dh --discipline DH --c
 ```
 racinglines mtb_dh parse --inspect FILE
 racinglines mtb_dh parse [--input-dir DIR] [--input-file FILE ...] [--out splits.csv]
-                 [--round LABEL] [--conditions-file CSV]
+                 [--round LABEL] [--conditions-file CSV] [--canonical-venues]
 ```
 
 | Option | Meaning |
@@ -71,6 +71,7 @@ racinglines mtb_dh parse [--input-dir DIR] [--input-file FILE ...] [--out splits
 | `--out` | Output CSV (default `splits.csv`). |
 | `--round` | Force a round label on every row (rarely needed). |
 | `--conditions-file` | CSV `event_id,round,track_condition` to fill in `track_condition`. |
+| `--canonical-venues` | Write venues under their canonical slugs (`sports/mtb_dh.toml` `[venue_aliases]`, as the database stores them: `vallnord` → `pal-arinsal`). Default: as spelled in the source. |
 
 ## racinglines mtb_dh ingest
 
@@ -93,7 +94,7 @@ racinglines mtb_dh forecast (--db [URL] | --data splits.csv) [--competition uci_
        [--season YEAR] [--category ME]
        [--train-scope {all,season}] [--half-life-days 240] [--junior-weight 0.25]
        [--prior-n 0.5] [--eps-df DF]
-       [--walk-forward] [--backtest 2] [--remaining 2]
+       [--walk-forward] [--backtest 2] [--remaining 2] [--unraced-format {default,last}]
        [--sims 10000] [--seed 42] [--top 15]
 ```
 
@@ -115,6 +116,7 @@ racinglines mtb_dh forecast (--db [URL] | --data splits.csv) [--competition uci_
 | `--walk-forward` | off | Predict and score every target round from everything before it. |
 | `--backtest N` | 2 | Hold out the last N raced rounds; score them and the standings after them. `0` skips. |
 | `--remaining N` | 2 | Rounds left in the season, **including** in-progress events already in the data (forecast with their start lists). The rest are simulated as unknown rounds. `0` skips the forecast. |
+| `--unraced-format` | `default` | The format those rounds are simulated in: `default` = the 2026 elite men's (`[rounds] default_format`, a 30-rider final) for every category; `last` = the category's latest completed event's own format (women, juniors), else `[rounds.category_format]`. |
 | `--sims` | 10000 | Monte Carlo simulations (walk-forward uses at most 5000). |
 | `--seed` | 42 | Random seed. |
 | `--top` | 15 | Rows printed per table. |
