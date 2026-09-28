@@ -323,8 +323,10 @@ races
 
 ### F1-8: Live paper-trade validation (Polymarket)
 
-**Status:** built and scheduled; waiting for Polymarket, which has listed no race
-since round 15 (28 Aug 2026), so rounds 16–17 have nothing to trade · **Behavior
+**Status:** built and scheduled for Polymarket; waiting for a venue to list a race.
+Polymarket has listed none since round 15 (28 Aug 2026). Since 2026-09-28 the phase runs on
+**every venue that lists** (Kalshi via F1-9, pulled forward), judged by the pre-registered
+[validation plan](paper-trading.md#validation-plan); calendar on the [Roadmap](todo.md#race-weekends-to-31-december) · **Behavior
 change:** none to pricing or the backtest; recommendations and paper fills only
 
 **Built** (2026-09-27): the signal engine (`racinglines f1 signals`, run by the
@@ -358,7 +360,7 @@ V2 item and the owner's explicit approval.
 
 ### F1-9: More exchanges (Kalshi, others)
 
-**Status:** Kalshi connector run against the live read-only API (2026-09-28, `markets/kalshi/`); F1 history for 2025 and 2026 pulled and archived in `data/archive/markets/kalshi/` ([Data changes](data-changes.md)); the maker replay and the demo maker's record read it (`f1 demo-history --venue kalshi`, [Kalshi history](kalshi-history.md)); the sweep and taker signals don't yet · **Start after** F1-8's first live weekends
+**Status:** Kalshi connector run against the live read-only API (2026-09-28, `markets/kalshi/`); F1 history for 2025 and 2026 pulled and archived in `data/archive/markets/kalshi/` ([Data changes](data-changes.md)); the maker replay and the demo maker's record read it (`f1 demo-history --venue kalshi`, [Kalshi history](kalshi-history.md)); the sweep and taker signals don't yet · **Pulled forward** (2026-09-28): the Kalshi recorder and Kalshi paper signals (Roadmap U1, U2, U5) come before F1-8's first live weekends, since Kalshi may be the only venue listing races this year
 
 - **Kalshi connector** in `racinglines/markets/kalshi/`, mirroring
   `markets/polymarket/`: markets and resolution rules, prices, trade tape, and
@@ -424,6 +426,7 @@ signals, with leakage-rule tests like Polymarket's.
 | 2026-09-28 | 2 | New variant `rookie` (`model.ROOKIE_CARRY`, off by default): a finished rookie season's teammate comparisons count 0.25 in the driver offsets, for both drivers of the team-event; drivers already in the data's first season aren't treated as rookies | The weight is set a priori, like `reset`'s. Judged on all 129 races and per season (runs 1288, 1289): win odds improve before qualifying, teammate h2h better in 2026 and worse in 2021, so not promoted | faster forgetting for every driver (a shorter driver half-life), not tried |
 | 2026-09-28 | — | Downhill points tables per era live in `points_schemes`, entered from a TOML file (`sports/points/uci_dhi_wc.toml`); the model reads them only with `--points db`, by setting the three table globals per season (`points.use`) | No plumbing through every function, and the default path is untouched. Placeholders stay marked (`official = false`) until the owner enters the UCI scales; committed standings are TOML because git ignores CSVs | a points argument threaded through the season and weekend functions |
 | 2026-09-28 | — | Downhill UCI IDs: a separate `uci_id` field and a `uci` athlete identifier matched first; the parser's `rider_id` stays name-based; existing duplicates are merged by an explicit command, never automatically | Old files and today's model inputs stay identical; a merge changes history, so the owner runs it | switching `rider_id` to `uci:<id>` in the parser |
+| 2026-09-28 | 8, 9 | Strategy to the end of 2026 ([Strategy 2026](strategy-2026.md)): real markets first on any venue (T1), tapes of unmodeled sports recorded (T2), private books only where no venue lists (T3). Kalshi work pulled ahead of F1-8's first weekends; A and C frozen to 31 Dec; a Kalshi-tuned maker K chosen by its own sweep; validation rules pre-registered in [Paper trading](paper-trading.md#validation-plan) | Polymarket has listed no race since 28 Aug; C loses on Kalshi's 2026 tape (−$119) while it earns on Polymarket's (+$653); the taker needs ~40 live weekends to prove, the maker ~17 | F1-9 "start after F1-8's first live weekends" |
 
 ## Open questions
 
