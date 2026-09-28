@@ -81,9 +81,8 @@ def main(argv=None):
                                             "(pipelines/demo_history.py).")
     p.add_argument("--reset", action="store_true", help="Delete the existing backfill first.")
     p.add_argument("--user", nargs="*", default=None, help="Only these demo accounts (maker, taker).")
-    p.add_argument("--venue", default="polymarket", choices=["polymarket", "kalshi", "kalshi_sim"],
-                   help="What the maker replays against (kalshi: Kalshi's recorded tape; kalshi_sim: Kalshi's prices "
-                        "with a synthetic taker crowd fit to its tape). Maker accounts only.")
+    p.add_argument("--venue", default="polymarket", choices=["polymarket", "kalshi"],
+                   help="Whose recorded tape the maker replays (kalshi: the maker's Kalshi record; maker accounts only).")
     sub.add_parser("profiles", help="List strategy profiles; create A / C as Lab candidates if missing.").add_argument(
         "--assign-demo", action="store_true", help="Demo taker -> A, demo maker -> C.")
     sub.add_parser("pm-links-export", help="Write market links to data/archive/markets/polymarket/links/ (stable keys).")

@@ -325,8 +325,7 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
     """Signals and positions of one profile at `now` (naive UTC; default the current time).
     live=False is a replay: markets are read at each stage's cutoff, exactly like the sweep.
     cache: a dict reused across calls (the loaded measurements and each model's training history).
-    venue: the exchange a maker quotes ("kalshi": Kalshi's recorded tape, with its maker fee; "kalshi_sim": Kalshi's
-    prices with a synthetic taker crowd fit to its tape, markets/synthetic_takers.py; replays only).
+    venue: the exchange a maker quotes ("kalshi": Kalshi's recorded tape, with its maker fee; replays only).
     -> dict(event, stages, signals, positions, note)."""
     from racinglines.models.position_sim import pricing as run
     st = SS.Settings.from_dict(profile["settings"], strict=False)
@@ -378,22 +377,11 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
     return base
 
 
-_CROWD_FIT = {}        # season -> the synthetic crowd's calibration (venue "kalshi_sim"), fit once per process
-
-
 def _maker(c, w, runs, st, strategy, now, live, venue="polymarket"):
     from racinglines.markets.strategies import maker_replay as R
     sessions = None if not live else [(SESSION_ROUND.get(k, k), t) for k, t in w["sessions"]]
     ev = R.load_event(c, [r for _, _, r in runs], sessions=sessions, books=st["fill"] == "queue",
-                      **({} if venue == "polymarket" else dict(exchange="kalshi")))
-    if venue == "kalshi_sim":
-        from racinglines.markets import synthetic_takers as ST
-        year = int(w["event_key"].split("-")[0])
-        if year not in _CROWD_FIT:
-            _CROWD_FIT[year] = ST.fit_db(c, year)
-        ev = ST.retape(ev, _CROWD_FIT[year])
-        # its own market keys ("sim:<ticker>"), so it sits beside the real-tape replay of the same markets
-        ev = dict(ev, markets=[replace(m, cond=f"sim:{m.cond}") for m in ev["markets"]])
+                      **({} if venue == "polymarket" else dict(exchange=venue)))
     ev = dict(ev, markets=[m for m in ev["markets"] if m.kind in st["market_kinds"]])
     now_ns = R._ns(now)
     ev["stages"] = truncate_stages(ev["stages"], now_ns)
@@ -403,7 +391,7 @@ def _maker(c, w, runs, st, strategy, now, live, venue="polymarket"):
     opts.pop("widen", None)            # widening needs earlier weekends' markouts; not applied live
     p = replace(R.Params(half_spread=st["half_spread"], size=st["size"], max_pos=st["max_pos"], skew=st["skew"],
                          max_disagree=st["max_disagree"], fill=st["fill"]), **opts)
-    if venue in ("kalshi", "kalshi_sim"):
+    if venue == "kalshi":
         p = replace(p, maker_fee=R.KALSHI_MAKER_FEE)
     rep = R.replay(ev, p)
     labels = {rid: lab for lab, _, rid in runs}

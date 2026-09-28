@@ -10,14 +10,11 @@ Every row is flagged detail.backfill and shown as a backtest replay in the app. 
     racinglines f1 demo-history              # backfill (idempotent: existing rows are kept)
     racinglines f1 demo-history --reset      # delete the backfill first, then rebuild it
     racinglines f1 demo-history --venue kalshi [--reset]   # the maker's record on Kalshi instead (off by default)
-    racinglines f1 demo-history --venue kalshi_sim         # ... against a synthetic crowd fit to Kalshi's tape
 
 --venue kalshi replays the maker's same profiles against Kalshi's recorded tape (markets/kalshi/ stores it in
 the shared tables), with Kalshi's maker fee, as paper_positions.venue = 'kalshi' and signals flagged
-detail.venue = 'kalshi'. --venue kalshi_sim keeps Kalshi's prices but swaps its tape for the synthetic, anonymous
-taker crowd of markets/synthetic_takers.py (fit to the season's Kalshi tape; seeded), stored as venue
-'kalshi_sim'. The Polymarket record and its reset don't touch these rows, and vice versa. Maker accounts only:
-the taker's strategies read Polymarket's markets.
+detail.venue = 'kalshi'. The Polymarket record and its reset don't touch those rows, and vice versa. Maker
+accounts only: the taker's strategies read Polymarket's markets.
 """
 
 import pandas as pd

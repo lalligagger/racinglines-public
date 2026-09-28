@@ -1,6 +1,6 @@
 # Kalshi history
 
-The maker's record on Kalshi, and a synthetic taker crowd fit to Kalshi's tape. Everything here is off by
+The maker's record on Kalshi, filled only by Kalshi's real taker trades. Everything here is off by
 default: nothing changes until the Kalshi tape is synced and one of the commands below is run.
 
 ## The data
@@ -33,33 +33,10 @@ Check (2026-09-28): Baku 2026's Polymarket tape, copied into Kalshi's shape (one
 ticker per kind), replays to the same 72 positions as the Polymarket replay. Only the maker fee differs
 (net cash $30.55 → $29.86).
 
-## The synthetic taker crowd
-
-    racinglines markets --exchange kalshi crowd-fit --year 2026     # the fit and its calibration check
-    racinglines f1 demo-history --venue kalshi_sim [--reset]        # the maker against the crowd
-
-`markets/synthetic_takers.py` fits each market kind from the season's Kalshi tape. It measures trades per
-market-hour by hours before the race, trade sizes, how far trades print from the mid ("noise"), and the share
-of takers buying YES. It then generates a tape from an anonymous, seeded pool of takers with log-uniform
-budgets:
-
-- Each arrival values YES at Kalshi's mid, plus a lean (so the buy share matches the tape's), plus noise.
-- An `informed` share (15%) sees Kalshi's mid an hour ahead instead. This is the adverse selection a real
-  maker faces. It exists only in backtests.
-- Each taker sends an order toward their view, limited at the belief minus (for a buy) or plus (for a sell)
-  a one-cent edge. The maker replay fills our quote only inside that limit.
-
-The maker still sees Kalshi's real prices, and only the takers are simulated. The results are stored as
-`paper_positions.venue = 'kalshi_sim'`, with market keys `sim:<ticker>`. The run is deterministic for a
-given seed.
-
-Known gaps in the calibration check: per-taker budgets cut the largest trades (the synthetic 90th-percentile
-size is below the tape's), and quiet kinds (constructor, head-to-head) have too few trades to fit well.
-
 ## In the app
 
 `RACINGLINES_KALSHI_VENUE=1` (off by default) marks Kalshi as a live venue on the board and race pages. It
-also lets the Positions page include the Kalshi rows (`?venue=kalshi` or `?venue=kalshi_sim`). With the
+also lets the Positions page include the Kalshi rows (`?venue=kalshi`). With the
 switch off, Kalshi rows stay out of Positions, and the Strategy page never includes them, since it shows the
 Polymarket record. The Positions page's venue tiles and filter menu still list only Polymarket and the
 private book. Adding Kalshi to them waits for the web UI rework.

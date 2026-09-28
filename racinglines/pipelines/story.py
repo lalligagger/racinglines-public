@@ -113,8 +113,8 @@ def decisions(conn):
 def track_record(conn, uid, venue="polymarket"):
     """Every weekend with signals or positions: event, strategy run, trades taken (taker) / fills (maker),
     positions, paper P&L (settled, else marked to the market), backtest replay or live. venue: 'polymarket'
-    (the default: the strategy's own record), 'private', 'kalshi' / 'kalshi_sim' (the maker's Kalshi replay
-    against the real tape / the synthetic crowd, `f1 demo-history --venue ...`) or 'all'. A private-book event
+    (the default: the strategy's own record), 'private', 'kalshi' (the maker's replay on Kalshi's tape,
+    `f1 demo-history --venue kalshi`) or 'all'. A private-book event
     (pipelines/live_dh.py) has positions but no signals: it joins the history on the day the book ran, as its
     own "Private book" run."""
     import pandas as pd
@@ -125,7 +125,7 @@ def track_record(conn, uid, venue="polymarket"):
                           count(*) FILTER (WHERE action = 'fill') AS fills,
                           bool_or(detail->>'backfill' = 'true') AS backfill
                    FROM strategy_signals WHERE user_id = :u
-                     AND (:v NOT IN ('polymarket', 'kalshi', 'kalshi_sim') OR coalesce(detail->>'venue', 'polymarket') = :v)
+                     AND (:v NOT IN ('polymarket', 'kalshi') OR coalesce(detail->>'venue', 'polymarket') = :v)
                    GROUP BY event_key),
              p AS (SELECT event_key, count(*) FILTER (WHERE abs(yes_shares) + abs(no_shares) > 1e-9) AS positions,
                           bool_and(outcome IS NOT NULL OR abs(yes_shares) + abs(no_shares) + abs(cash) < 1e-9) AS settled,
