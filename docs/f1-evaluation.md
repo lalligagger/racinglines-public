@@ -91,8 +91,12 @@ half-life, track features on. One run per model variant:
 | 937 | `gridq+pretrain` |
 | 955 | `gridq+pretrain+reset` |
 | 979 | `gbm` |
-| 1288 | `rookie` (2026-09-28) |
-| 1289 | `gridq+pretrain+reset+rookie` (2026-09-28) |
+| 1288 | `rookie` (2026-09-28) † |
+| 1289 | `gridq+pretrain+reset+rookie` (2026-09-28) † |
+
+† Run in a cloud session on a copy of the database, so these ids aren't in the owner's database;
+the runs are in the bucket (`results/cloud-buildout-track-b/f1-backtests/`). Re-run locally with
+`racinglines f1 --variant rookie backtest --save`.
 
 ### Per season
 
