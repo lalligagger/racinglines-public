@@ -331,8 +331,8 @@ def test_admin_totals_leave_out_the_replay_counterparty():
 
 
 def test_kalshi_pages_need_the_switch(clients):
-    """Without RACINGLINES_KALSHI_VENUE=1 the Kalshi list is a 404 and its Positions filter is ignored (the page
-    still renders); with it, the list and the filters render (racinglines.markets.venues.KALSHI_VENUE)."""
+    """With RACINGLINES_KALSHI_VENUE=0 the Kalshi list is a 404 and its Positions filter is ignored (the page
+    still renders); by default, the list and the filters render (racinglines.markets.venues.KALSHI_VENUE)."""
     from racinglines.markets import venues as V
     m = clients[0]["maker"]
     assert m.get("/markets/kalshi").status_code == (200 if V.KALSHI_VENUE else 404)

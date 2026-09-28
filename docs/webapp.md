@@ -59,7 +59,7 @@ event: a race, or a competition's season
        ├─ our fair value:
        │    upcoming: the live forecast
        │    past: the last as-of price made before the start (diagnostic, else an earlier forecast)
-       ├─ venue quotes: Polymarket · Kalshi (live with RACINGLINES_KALSHI_VENUE=1) · private book (our own markets)
+       ├─ venue quotes: Polymarket · Kalshi (off with RACINGLINES_KALSHI_VENUE=0) · private book (our own markets)
        └─ result, once the race has run
 ```
 
@@ -176,8 +176,8 @@ Both demo accounts' weekends before live paper trading began are **backtest repl
 (`racinglines f1 demo-history`, `pipelines/demo_history.py`): real Polymarket prices and trades, the
 strategy the account ran then, flagged in the database (`detail.backfill`) and labelled in the app.
 The maker can also have a Kalshi record (`f1 demo-history --venue kalshi`, [Kalshi history](kalshi-history.md)).
-It stays hidden unless `RACINGLINES_KALSHI_VENUE=1` is set; then Positions shows it beside the Polymarket
-record and Strategy shows it under its Polymarket / Kalshi switch (`?venue=kalshi`).
+Positions shows it beside the Polymarket record and Strategy under its Polymarket / Kalshi switch
+(`?venue=kalshi`); `RACINGLINES_KALSHI_VENUE=0` hides it.
 
 **Demo sessions are disposable** (`racinglines/web/demo.py`; the demo accounts are `RACINGLINES_DEMO_USERS`,
 default `maker,taker`). Every sign-in gets a fresh session id. View settings (Edge Finder combos and season,
@@ -397,9 +397,9 @@ Polymarket market, so markets can be linked as soon as they're listed.
 ## Kalshi
 
 Kalshi's F1 markets are synced and their history stored (links, trades, hourly prices, in Postgres and
-`data/archive/markets/kalshi/`), but by default the web app doesn't show them: the venue column says "Kalshi (soon)"
-and the book page "Kalshi: coming soon". `RACINGLINES_KALSHI_VENUE=1` brings Kalshi to parity with Polymarket: its
-quotes on the board, race and season pages, a `/markets/kalshi` list with mirror and refresh, the maker's Kalshi
+`data/archive/markets/kalshi/`), and the web app shows them at parity with Polymarket (on by default; with
+`RACINGLINES_KALSHI_VENUE=0` the venue column says "Kalshi (soon)", the book page "Kalshi: coming soon", and no Kalshi
+row appears anywhere): its quotes on the board, race and season pages, a `/markets/kalshi` list with mirror and refresh, the maker's Kalshi
 record on Positions and Strategy, and the Kalshi replay in the Lab's event diagnostics (the page-by-page list is in
 [Kalshi history](kalshi-history.md#in-the-app)). There's no linking flow to build: `markets --exchange kalshi sync`
 links every F1 market it can classify ([F1](f1.md#kalshi-alignment)). Orders are dry runs unless
