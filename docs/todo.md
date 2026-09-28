@@ -143,11 +143,13 @@ standings, champion odds, `spearman_points`) is approximate.
       all 43 rounds. Win and podium are close; top 10 and make-Final are too flat. Cause: too much
       shrinkage (`prior_n`). A lower `INCIDENT_THRESHOLD` and heavier-tailed ε (`--eps-df`) don't
       help ([Calibration](model.md#calibration)).
-- [ ] **`prior_n` 0.5 as the default** (owner's OK: it changes every downhill price). Better
-      make-Final log loss in all six seasons; picked in-sample, so confirm on 2026's next rounds.
+- [ ] **New downhill defaults** (owner's OK: they change every downhill price): `prior_n` 0.5,
+      half-life 240 days, junior weight 0.25. Better in every market; picked in-sample, so
+      confirm on 2026's next rounds.
       Still to try: per-round-type incident rates.
-- [ ] A tuning sweep over all 43 rounds, not just 2026 rounds 2–7: half-life,
-      junior weight, `prior_n`, practice weight.
+- [x] A tuning sweep over all 43 rounds (2026-09-28, cloud build-out): `prior_n` 0.5, half-life
+      240 days, junior weight 0.25 is better in every market ([Calibration](model.md#calibration)).
+      Practice weight not swept.
 - [ ] Rider × venue effects: shrink a rider's past residuals at the venue into the
       simulation instead of a fresh `u` every time.
 - [ ] Time trends within a season, e.g. rider form or rookies improving fast.

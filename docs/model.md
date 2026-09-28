@@ -248,9 +248,23 @@ and podium, worse for making the Final), heavier-tailed run noise (`--eps-df` 4 
 and scaling σ and τ down (a little better with `prior_n` 0.5 or 1.0, overconfident with 0.25).
 Not tried yet: per-round-type incident rates.
 
-**Not the default yet.** 0.5 was picked on the same 43 rounds from a small grid (0.25, 0.5,
-1.0 × three noise scales), so it's in-sample. It changes every downhill price, so it
-waits for the owner. Use `--prior-n 0.5` to run it.
+**Tuning sweep** over the same 43 rounds: `prior_n` 0.5 / 1.5 × half-life 60 / 120 / 240 / 480
+days × junior weight 0.25 / 0.5 / 1.0 (24 combinations). A longer half-life (240) and less
+junior weight (0.25) help too. The best, `--prior-n 0.5 --half-life-days 240 --junior-weight
+0.25`, is better than today's default in every market (log loss, paired by round, ± 2 SE):
+
+| Market | Change | Seasons better |
+|---|---|---|
+| Make the Final | −0.035 ± 0.006 | 6 of 6 |
+| Top 10 | −0.006 ± 0.006 | 5 of 6 |
+| Podium | −0.003 ± 0.002 | 6 of 6 |
+| Win | −0.001 ± 0.001 | 3 of 6 |
+
+The practice-run weight wasn't swept.
+
+**Not the default yet.** These settings were picked on the same 43 rounds they're scored
+on, so the gains are in-sample. They change every downhill price, so they wait for the
+owner. Run them with the three flags above.
 
 ## Training scope and targets
 
