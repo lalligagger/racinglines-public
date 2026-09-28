@@ -39,6 +39,7 @@ nav:
       - Backtest core (all sports): backtest-core.md
       - Cloud build-out: cloud-buildout.md
       - Google Cloud proposal: google-cloud.md
+      - VM deploy: vm-deploy.md
       - Testing: testing.md
   - Roadmap:
       - Priorities and open items: todo.md

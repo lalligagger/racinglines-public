@@ -1,0 +1,170 @@
+# VM deploy
+
+How racinglines.bet moves from the owner's Mac to a Compute Engine VM, and how every update reaches it.
+It's a smaller first step than the Cloud Run plan in the [Google Cloud proposal](google-cloud.md). The VM
+runs exactly what the Mac runs today: Postgres in docker, systemd units in place of the LaunchAgents, and
+cloudflared in place of the Mac's tunnel. No code changes. Written 2026-09-28.
+
+## The flow
+
+| Where | What it serves | Runs |
+|---|---|---|
+| **Your Mac** (staging) | the temp trycloudflare address, while that `cloudflared` process runs | any branch: `racinglines web` relaunched by hand, as today |
+| **The VM** (production) | `racinglines.bet` | `main` only, deployed with `scripts/deploy/vm.sh deploy` |
+
+For every change:
+
+1. **On a branch, on the Mac:** `python -m pytest -m "not live"`, `python -m pytest`, then relaunch
+   `racinglines web` and run the smoke check locally and through the temp address:
+   ```sh
+   bash scripts/deploy/smoke.sh http://127.0.0.1:8000
+   bash scripts/deploy/smoke.sh https://<temp>.trycloudflare.com
+   ```
+2. **Merge** the PR into `live-event`, then `live-event` into `main`.
+3. **Deploy** `main` to the VM. `vm.sh` pulls, installs, migrates, restarts, and runs the same smoke check on the VM:
+   ```sh
+   bash scripts/deploy/vm.sh deploy
+   bash scripts/deploy/smoke.sh https://racinglines.bet
+   ```
+
+The smoke check signs in as the demo accounts (`SMOKE_PASSWORD`, default the public demo password). It
+checks `/login`, that a request without credentials or with a wrong password gets 401, the main pages
+for maker and taker, and that `/book/quotes` is maker-only. It makes GET requests only.
+
+The temp address stays on the Mac: a trycloudflare address belongs to the `cloudflared` process that
+made it and forwards only to that machine. It can't be moved to the VM or pointed at another host, and it
+changes if that process restarts. A stable `staging.racinglines.bet` on the Mac's existing tunnel is the
+cleaner later version.
+
+## What's in the repo
+
+| File | What it is |
+|---|---|
+| `scripts/deploy/vm.sh` | Run on your Mac: `setup`, `restore`, `start [web]`, `deploy [ref]`, `status`, `logs [unit]`, `ssh` (SSH through IAP) |
+| `scripts/deploy/smoke.sh <url>` | The smoke check (any machine with curl) |
+| `deploy/vm/setup.sh` | One-time VM setup, run by `vm.sh setup`: packages, the `racinglines` user, a read-only deploy key, `/opt/racinglines` on `main`, a Python 3.14 venv (uv), Postgres, `/etc/racinglines.env`, the units |
+| `deploy/vm/update.sh [ref]` | On the VM, run by `vm.sh deploy`: checkout, `pip install`, `alembic upgrade head` |
+| `deploy/vm/systemd/` | `racinglines-web`, `racinglines-recorder` (the Mac's recorder LaunchAgent), `racinglines-signals` + timer (every 5 min), and per-event templates `racinglines-live-f1@<event>` + timer and `racinglines-live-dh@<event>` |
+| `deploy/vm/compose.override.yml` | Postgres on the VM's loopback only |
+| `deploy/vm/racinglines.env.example` | The VM's settings file (`/etc/racinglines.env`: the admin password, `APP_SECRET`, alerts) |
+| `scripts/cloud/bucket.sh restore --yes` | Loads the bucket's database dump into the docker-compose Postgres, after backing up the current one to `data/backups/db/` |
+
+`vm.sh deploy` refuses while a live event's unit is running on the VM (`--force` overrides). It restarts
+only the services that are already running, so a deploy before cutover never starts a second recorder.
+
+## One-time setup (owner-only, your accounts)
+
+Settings used below: project **`racinglines`** (if that ID is taken, pick another and set
+`RL_GCP_PROJECT`), region `us-west1`, VM `racinglines-vm` in `us-west1-b`, **e2-small** (2 vCPU shared,
+2 GB), Ubuntu 24.04, 30 GB balanced disk. Check the price in the
+[calculator](https://cloud.google.com/products/calculator). It should be roughly $15–20 a month with the
+disk and the external IP the VM needs for outbound traffic.
+
+**1. Project, billing, APIs**
+```sh
+gcloud projects create racinglines --name=racinglines
+gcloud billing accounts list
+gcloud billing projects link racinglines --billing-account=<ACCOUNT_ID>
+gcloud config set project racinglines
+gcloud services enable compute.googleapis.com iap.googleapis.com storage.googleapis.com
+```
+
+**2. The new bucket** (the old bucket stays as it is for cloud sessions)
+```sh
+NUM=$(gcloud projects describe racinglines --format='value(projectNumber)')
+export RACINGLINES_GCS_BUCKET=racinglines-data-$NUM
+gcloud storage buckets create gs://$RACINGLINES_GCS_BUCKET --location=us-west1 \
+  --uniform-bucket-level-access --public-access-prevention
+gcloud storage buckets update gs://$RACINGLINES_GCS_BUCKET --versioning
+```
+
+**3. The VM's service account** (it reads and writes the bucket; no keys)
+```sh
+gcloud iam service-accounts create rl-vm --display-name="racinglines VM"
+gcloud storage buckets add-iam-policy-binding gs://$RACINGLINES_GCS_BUCKET \
+  --member=serviceAccount:rl-vm@racinglines.iam.gserviceaccount.com --role=roles/storage.objectUser
+gcloud projects add-iam-policy-binding racinglines \
+  --member=serviceAccount:rl-vm@racinglines.iam.gserviceaccount.com --role=roles/logging.logWriter
+```
+
+**4. The VM, with SSH only through IAP**
+```sh
+gcloud compute instances create racinglines-vm --zone=us-west1-b --machine-type=e2-small \
+  --image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud \
+  --boot-disk-size=30GB --boot-disk-type=pd-balanced --shielded-secure-boot \
+  --service-account=rl-vm@racinglines.iam.gserviceaccount.com --scopes=cloud-platform
+gcloud compute firewall-rules create allow-iap-ssh --network=default --allow=tcp:22 \
+  --source-ranges=35.235.240.0/20
+gcloud compute firewall-rules delete default-allow-ssh default-allow-rdp --quiet
+```
+
+**5. Set up the VM**
+```sh
+bash scripts/deploy/vm.sh setup     # prints a deploy key the first time
+```
+Add the key on GitHub (repo Settings > Deploy keys > Add, with write access off), then run
+`vm.sh setup` again. Set the admin password with `bash scripts/deploy/vm.sh ssh`, then
+`sudo nano /etc/racinglines.env`. `APP_SECRET` is already filled in.
+
+**6. Copy the data and test the VM before it serves anything**
+```sh
+bash scripts/cloud/bucket.sh push       # on the Mac, with RACINGLINES_GCS_BUCKET set to the new bucket
+bash scripts/deploy/vm.sh restore
+bash scripts/deploy/vm.sh start web     # the web app only: the Mac keeps recording
+bash scripts/deploy/vm.sh deploy        # runs the smoke check on the VM
+gcloud compute ssh racinglines-vm --zone=us-west1-b --tunnel-through-iap -- -L 8001:127.0.0.1:8000 -N
+                                        # then browse http://localhost:8001
+```
+
+**7. The VM's tunnel.** In the Cloudflare dashboard, open Zero Trust > Networks > Tunnels > Create a
+tunnel (cloudflared), name it `racinglines-vm`, and copy the install token. On the VM
+(`vm.sh ssh`), run:
+```sh
+sudo cloudflared service install <TOKEN>
+```
+Don't give it a public hostname yet.
+
+## Cutover (outside a race weekend)
+
+Two recorders would split the order-book history across two databases, so the Mac stops before the
+final copy.
+
+1. On the Mac, stop the recorder and signals:
+   `launchctl bootout gui/$(id -u)/bet.racinglines.recorder` and `launchctl bootout gui/$(id -u)/bet.racinglines.signals`.
+2. `bash scripts/cloud/bucket.sh push`, then `bash scripts/deploy/vm.sh restore`, then `bash scripts/deploy/vm.sh start`.
+3. Log it: on the VM, `racinglines db changes --add "production moved to the VM; restored from the Mac's dump"`,
+   plus a line in [Data changes](data-changes.md).
+4. **Point racinglines.bet at the VM.** How the Mac serves it today isn't in the repo. Check with
+   `cloudflared tunnel list` and `ls ~/.cloudflared` on the Mac.
+    - **A tunnel managed in the dashboard:** remove the `racinglines.bet` public hostname from the
+      Mac's tunnel, then add it to `racinglines-vm` with the service `http://localhost:8000`.
+    - **A tunnel managed locally** (`~/.cloudflared/config.yml`): add the hostname to `racinglines-vm` as
+      above. The dashboard offers to replace the existing DNS record; accept. Then remove the
+      hostname from the Mac's `config.yml`.
+    - **A plain DNS record** (an A record to your home IP): delete it, then add the hostname to
+      `racinglines-vm` as above.
+5. `bash scripts/deploy/smoke.sh https://racinglines.bet`, then sign in by hand.
+
+**Rollback.** Put the hostname back on the Mac's tunnel and reload the two LaunchAgents
+(`launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/bet.racinglines.recorder.plist`, and the
+same for signals). Book snapshots the VM recorded in between would need copying back. A bad code
+deploy is simpler to undo: `vm.sh deploy <previous commit>`.
+
+## Live events on the VM
+
+Each event's spec runs as a unit, in place of `racinglines live agent --install`, which is macOS only.
+The run folder's lock works the same on the VM's disk.
+```sh
+sudo systemctl enable --now racinglines-live-f1@2026-16.timer     # F1: one step every 5 minutes
+sudo systemctl enable --now racinglines-live-dh@<event>           # downhill: the poll loop
+sudo systemctl disable --now racinglines-live-f1@2026-16.timer    # when the event is settled
+```
+Run an event on one machine only, the one whose database racinglines.bet reads.
+
+## Later
+
+- `staging.racinglines.bet` on the Mac's tunnel, replacing the temp address.
+- A nightly `bucket.sh push` from the VM, so cloud sessions stay current without the Mac. It needs
+  `bucket.sh push` to use the docker-compose `pg_dump` on Linux.
+- `racinglines live agent --systemd`, writing the units above.
+- Deploys from GitHub Actions calling `vm.sh`.
