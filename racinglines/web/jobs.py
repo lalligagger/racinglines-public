@@ -201,8 +201,10 @@ def parse_sweep_settings(form):
     return {k: (list(v) if isinstance(v, tuple) else v) for k, v in st.changed().items()}
 
 
-def submit(job_type, params, user_id):
-    with get_session() as s:
+def submit(job_type, params, user_id, engine=None):
+    """Queue a job (the caller has validated `params` with parse()). `engine`: a database other than the default one."""
+    from sqlalchemy.orm import sessionmaker
+    with (sessionmaker(engine, expire_on_commit=False)() if engine is not None else get_session()) as s:
         job = m.Job(kind=job_type.code, sport=job_type.sport, params=params, user_id=user_id, status="queued")
         s.add(job)
         s.commit()
@@ -229,14 +231,17 @@ _wake = threading.Event()
 _started = False
 
 
-def start_worker():
+def start_worker(reset_running=True):
+    """Start the worker thread. `reset_running`: mark jobs still 'running' as failed first (the web app on start: those
+    were its own subprocesses, gone with the restart); the MCP server passes False, since a running job may be the web app's."""
     global _started
     if _started:
         return
     _started = True
-    with get_engine().begin() as c:
-        c.execute(text("""UPDATE jobs SET status = 'failed', finished_at = now(),
-                          progress = 'interrupted: the app restarted' WHERE status = 'running'"""))
+    if reset_running:
+        with get_engine().begin() as c:
+            c.execute(text("""UPDATE jobs SET status = 'failed', finished_at = now(),
+                              progress = 'interrupted: the app restarted' WHERE status = 'running'"""))
     threading.Thread(target=_loop, daemon=True, name="jobs").start()
 
 

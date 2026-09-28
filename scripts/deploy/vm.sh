@@ -48,7 +48,7 @@ case "${1:-}" in
     fi
     log "deploy $ref"
     as_app "deploy/vm/update.sh $ref"
-    remote "sudo install -m 644 $APP/deploy/vm/systemd/* /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl try-restart $SERVICES"
+    remote "sudo install -m 644 $APP/deploy/vm/systemd/* /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl try-restart $SERVICES racinglines-mcp"
     log "smoke check on the VM"
     remote "sleep 3; cd $APP && bash scripts/deploy/smoke.sh http://127.0.0.1:8000"
     ;;
