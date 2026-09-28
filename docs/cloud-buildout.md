@@ -268,13 +268,19 @@ The session appends here: date and time (UTC), item, commit, status, notes.
 | 2026-09-28 04:21 | B: downhill time trends (P3, Model) | this commit | done (docs): none detected | Rookie drift (riders with ≤3 or ≤6 elite events, 0.3%/0.6% faster) worse on every market; 0.3% slower within 0.001. Experiment only |
 | 2026-09-28 04:23 | B: admin P&L without the replay counterparty (Engineering) | this commit | done | `/admin` totals count people's bets only; `polymarket-takers` replay fills get their own line when there are any (`admin.bet_totals`, unit test). Checked /admin renders (local demo logins created in this session's database only). Kalshi connector skipped: F1-9 starts only after the owner confirms it, and the cloud network blocks Kalshi's API. Public JSON API left: its scope (what's public, auth, data terms) is the owner's call |
 | 2026-09-28 04:26 | B: **new downhill defaults** (owner's OK) and Final incident rates (P3, Model) | 288aacb | done | Owner: make the sweep's winner the downhill default, leave F1 alone. `PRIOR_N` 0.5, `HALF_LIFE_DAYS` 240, `CATEGORY_WEIGHTS['MJ']` 0.25 (model, CLI, web Lab knobs). `mtb_dh backtest --db --reliability` now: make-Final log loss 0.361 (was 0.397), podium 0.0735 (0.0768), top 10 0.171 (0.177), win 0.0324 (0.0332). Every downhill price changes; the downhill golden tests (tests/test_pipeline_mtb.py, fixtures local only) need regenerating locally. Lower incident rate in Finals (×0.5/0.71/0.85) tried: slightly worse, not built. No F1 code touched |
+| 2026-09-28 04:33 | B: **final handoff** from the project thread (owner asked to stop) | this commit | handoff | [Track B handoff](#track-b-handoff) rewritten: done list with the thread's commits, the downhill defaults change, blocked and not-started items, updated local checks |
 
 ### Track B handoff
 
 Branch `claude/cloud-buildout-track-b`, cut from `live-event`; merge after Track A. It touches none of
 Track A's files except `scripts/cloud/bucket.py` and `start.sh`, which carry Track A's identical fixes.
 
-**Done** (every new behaviour is off by default; downhill outputs checked byte-identical):
+Updated 2026-09-28 04:40 UTC, when the owner stopped the project thread that took Track B over
+from the CLI session at 03:26 (head `53dd306` before this update).
+
+**Done.** Every new behaviour is off by default **except the new downhill defaults** (`prior_n` 0.5,
+half-life 240 days, junior weight 0.25, the owner's OK), which change every downhill price. F1
+defaults are untouched.
 
 | Item | Commits | Notes |
 |---|---|---|
@@ -289,7 +295,9 @@ Track A's files except `scripts/cloud/bucket.py` and `start.sh`, which carry Tra
 | Downhill points validation (P3) | e062360 | `points_schemes` by era, `mtb_dh points`, pinning test |
 | Downhill UCI rider IDs (P3) | b088e5b | ingest by UCI ID first; `db merge-athletes` |
 | Book-depth queue model (P3, F1-4) | 4727241 | `--fill queue`; synthetic books only |
-| Downhill calibration check and tuning (P3) | 5a550f1, cb0ca13, 288aacb | `mtb_dh backtest --reliability`; new defaults `prior_n` 0.5, half-life 240, junior 0.25 (owner's OK) |
+| Downhill calibration check and tuning (P3) | 5a550f1, cb0ca13, 288aacb | `mtb_dh backtest --reliability`; new defaults `prior_n` 0.5, half-life 240, junior 0.25 (owner's OK): make-Final log loss 0.397 → 0.361, better in every market, in-sample |
+| Downhill ideas tried and not built (P3) | 8963ecc, 46d8875, 288aacb | rider × venue effects, rookie drift, lower Final incident rate, Student-t noise (`--eps-df`, kept as an off switch), practice weight (flat): [Calibration](model.md#calibration) |
+| Admin P&L without the replay counterparty | 6ce9ba5 | `polymarket-takers` on its own line |
 
 **Blocked or not started:**
 
@@ -297,12 +305,15 @@ Track A's files except `scripts/cloud/bucket.py` and `start.sh`, which carry Tra
 |---|---|---|
 | Official UCI points scales and standings | enter `sports/points/uci_dhi_wc.toml` and `sports/points/standings/*.toml`, then `mtb_dh points import` / `check` | owner |
 | UCI IDs in the downhill files | re-download (ChronoRace is blocked here), re-ingest, then merge reported pairs (`db merge-athletes 152 491`) | owner, locally |
-| Stage-aware taker, `rookie` for profile A, sizing rule | live weekends | live events |
+| Stage-aware taker, `rookie` for profile A, sizing rule, the queue model on recorded books | live weekends (recorded books) | live events |
+| New downhill defaults out of sample | 2026's next rounds | live events |
 | First real V2 order | the owner's approval | owner |
 | Downhill golden tests after the new defaults | regenerate locally (fixtures aren't in the cloud) | owner, locally |
 | Google Cloud move | the owner's choices (database tier, recorder shape, domain) | owner |
-| Not started (cloud-doable) | F1 props (fastest lap, safety car, rain), ~~book-depth queue model on synthetic books~~ (done 03:34), the rest of the downhill data items (slug probing, venue names, Women, start order, weather, 2021 PDFs: **high priority for the next cloud session**, owner 2026-09-28), downhill model items (~~calibration~~, ~~43-round tuning~~, ~~rider × venue~~, ~~time trends~~ done), Kalshi connector (mocked; F1-9 needs the owner's go, Kalshi's API is blocked here), web items (~~admin P&L filter~~ done; JSON API: scope is the owner's call) | next session |
-| F1 prop market kinds in `sports/f1.toml` `[live]` | Track A's file | Track A / next session |
+| **Downhill data items (high priority for the next cloud session, owner 2026-09-28)** | slug probing, canonical venue names, Elite/Junior Women, start order, weather, the 2021 PDFs. Most need ChronoRace (`prod.chronorace.be`): allow it in the environment's network policy first | next cloud session |
+| F1 props (fastest lap, safety car / red flag, rain) | its market kinds go in `sports/f1.toml` `[live]`, Track A's file | next session, after Track A merges |
+| Kalshi connector (mocked) | F1-9 starts only with the owner's go; Kalshi's API is blocked by the cloud network | owner |
+| Public JSON API | the owner's scope: what's public, auth, data terms | owner |
 
 **Local checks after merging** (the brief's list, plus Track B's):
 
@@ -311,6 +322,15 @@ Track A's files except `scripts/cloud/bucket.py` and `start.sh`, which carry Tra
 - `alembic upgrade head` (Track B adds no migration).
 - `racinglines live agent <round-16 spec> --install`, then a dry run of one `step` (Track A).
 - The pre-push hook passes.
-- Track B: `racinglines mtb_dh forecast --db` and `backtest --db` give the same output as before the merge.
+- Track B: the downhill golden tests (`tests/test_pipeline_mtb.py`) fail after the merge, as expected:
+  the new defaults change their outputs. Review, then `UPDATE_GOLDEN=1 python -m pytest tests/test_pipeline_mtb.py`.
+- Track B: `racinglines mtb_dh backtest --db --reliability` should give about the log losses in
+  [Calibration](model.md#calibration) (make-Final 0.361); `--prior-n 1.5 --half-life-days 120
+  --junior-weight 0.5` gives the old model.
 - Track B: `racinglines f1 --variant rookie backtest --save` to store the `rookie` runs in the owner's
   database (runs 1288/1289 exist only in the bucket, `results/cloud-buildout-track-b/f1-backtests/`).
+
+**Environment notes (cloud):** without the bucket key the database is the committed snapshot: no
+model runs, no recorded books, no web users. Tests need `TEST_DATABASE_URL=…/racinglines_test` (the
+fixture drops and re-creates whatever it names). Web page tests need the demo logins `maker`,
+`taker` (password `password`) and their strategy profiles, which only the owner's database has.
