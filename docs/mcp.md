@@ -28,18 +28,32 @@ Claude Desktop (Settings > Developer > Edit config), the same idea:
                                  "env": {"DATABASE_URL": "postgresql+psycopg://racinglines:racinglines@localhost:5433/racinglines"}}}}
 ```
 
-**Hosted (the VM, streamable HTTP).** `racinglines mcp --http` serves `http://127.0.0.1:8100/mcp` and
-requires every request to carry `Authorization: Bearer $RACINGLINES_MCP_TOKEN` (it refuses to start without a
-token of 16+ characters). On the VM the unit `racinglines-mcp.service` runs it (`deploy/vm/systemd/`; installed
-by `vm.sh setup`, restarted by `vm.sh deploy` only if it is running, never enabled for you): set
-`RACINGLINES_MCP_TOKEN` in `/etc/racinglines.env`, give the tunnel a hostname for `127.0.0.1:8100` (for
-example `mcp.racinglines.bet`, ideally behind Cloudflare Access like the app), then
-`sudo systemctl enable --now racinglines-mcp`. A client connects to `https://mcp.racinglines.bet/mcp` with the
-token as a bearer header (`claude mcp add --transport http racinglines https://mcp.racinglines.bet/mcp
---header "Authorization: Bearer ..."`).
+**Hosted (the VM, streamable HTTP).** `racinglines mcp --http` serves `http://127.0.0.1:8100/mcp`, and every
+request must carry the bearer token of a real web-app account:
 
-There are no user accounts on the server: it reads as the owner (everything the admin sees) and can queue
-what a maker can queue in the Lab. Tools that show paper trading take a `user` argument to pick an account.
+```sh
+racinglines mcp token admin          # issue the admin account's token (printed once; replaces any earlier one)
+racinglines mcp token                # who holds one
+racinglines mcp token admin --revoke
+```
+
+A token is `rl_` plus 48 hex characters; only its SHA-256 is stored, in `users.prefs["mcp"]`. A request is
+accepted when the token matches an active, non-demo account whose role is in `RACINGLINES_MCP_ROLES` (default
+`admin`: the owner tests with their own Claude first; `admin,maker` later opens it to makers, each with their
+own token and no other change). The server refuses to start in `--http` mode while no account has a token.
+The account behind a request is recorded as the `user` of any job it queues. Demo accounts never get a token.
+
+On the VM the unit `racinglines-mcp.service` runs it (`deploy/vm/systemd/`; installed by `vm.sh setup`,
+restarted by `vm.sh deploy` only if it is running, never enabled for you): issue the admin token as the
+`racinglines` user (`.venv/bin/racinglines mcp token admin` with `/etc/racinglines.env` loaded), give the
+tunnel a hostname for `127.0.0.1:8100` (for example `mcp.racinglines.bet`, ideally behind Cloudflare Access
+like the app), then `sudo systemctl enable --now racinglines-mcp`. A client connects with the token as a
+bearer header: `claude mcp add --transport http racinglines https://mcp.racinglines.bet/mcp --header
+"Authorization: Bearer rl_..."`.
+
+Over stdio there are no tokens: whoever can run the command on that machine is the owner. In both modes the
+tools read as the owner (everything the admin sees) and can queue what a maker can queue in the Lab; tools that
+show paper trading take a `user` argument to pick an account.
 
 ## Tools
 
@@ -110,4 +124,4 @@ these is a deliberate change, not a switch.
 
 `python -m pytest tests/test_mcp.py` (part of the regression suite): the envelope's caps, the SQL guard, and a
 client round trip over an in-memory transport against the test database (tools, errors, paging, a queued job,
-the resources). No network.
+the resources), and the token lifecycle with the bearer check of the hosted mode. No network.

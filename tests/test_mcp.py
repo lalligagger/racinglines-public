@@ -1,5 +1,6 @@
-"""The MCP server (racinglines/mcp): the page envelope's caps, the sql guard, and a client round trip over an
-in-memory transport against the throwaway test database (empty schema): tools, errors, resources, a queued job."""
+"""The MCP server (racinglines/mcp): the page envelope's caps, the sql guard, a client round trip over an
+in-memory transport against the throwaway test database: tools, errors, resources, a queued job; and the hosted
+mode's per-account tokens (issue, look up, revoke, the bearer check)."""
 
 import asyncio
 import json
@@ -201,3 +202,74 @@ def test_docs_are_resources(mcp):
         return index, page, sport
     index, page, sport = mcp.run(go)
     assert "model.md" in index.split() and page.startswith("# ") and 'code = "f1"' in sport
+
+
+# --- per-account tokens for the hosted mode -----------------------------------------------------------
+
+def test_tokens_are_per_account_and_only_for_allowed_real_accounts(test_engine):
+    from sqlalchemy import text
+    from racinglines.mcp import auth
+    from racinglines.web import users as U
+    from racinglines.db.config import get_session
+    from sqlalchemy.orm import sessionmaker
+    with sessionmaker(test_engine)() as s:
+        for name, role, active in (("t_admin", "admin", True), ("t_maker", "maker", True), ("t_gone", "admin", False)):
+            if not s.execute(text("SELECT 1 FROM users WHERE username = :u"), dict(u=name)).first():
+                U.create_user(s, name, "pw", role)
+        s.execute(text("UPDATE users SET active = false WHERE username = 't_gone'"))
+        s.commit()
+    tok = auth.new_token(test_engine, "t_admin")
+    assert tok.startswith("rl_") and len(tok) == 51
+    with test_engine.connect() as c:
+        stored = c.execute(text("SELECT prefs->'mcp' FROM users WHERE username = 't_admin'")).scalar()
+    assert tok not in str(stored) and stored["token_sha256"]                        # only the hash is kept
+    assert auth.lookup(test_engine, tok) == dict(id=auth.lookup(test_engine, tok)["id"], username="t_admin", role="admin")
+    assert auth.lookup(test_engine, "rl_" + "0" * 48) is None and auth.lookup(test_engine, "") is None
+    tok2 = auth.new_token(test_engine, "t_admin")                                     # re-issue voids the old one
+    assert auth.lookup(test_engine, tok) is None and auth.lookup(test_engine, tok2)["username"] == "t_admin"
+    with pytest.raises(ValueError, match="role"):
+        auth.new_token(test_engine, "t_maker")                                        # RACINGLINES_MCP_ROLES=admin
+    with pytest.raises(ValueError, match="inactive"):
+        auth.new_token(test_engine, "t_gone")
+    with pytest.raises(ValueError, match="no account"):
+        auth.new_token(test_engine, "t_nobody")
+    assert ("t_admin", "admin") in {(u, r) for u, r, _ in auth.holders(test_engine)}
+    assert auth.revoke(test_engine, "t_admin") and not auth.revoke(test_engine, "t_admin")
+    assert auth.lookup(test_engine, tok2) is None
+
+
+def test_demo_accounts_never_get_a_token(test_engine, monkeypatch):
+    from racinglines.mcp import auth
+    from racinglines.web import demo, users as U
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy import text
+    monkeypatch.setattr(demo, "DEMO_USERS", {"t_demo"})
+    with sessionmaker(test_engine)() as s:
+        if not s.execute(text("SELECT 1 FROM users WHERE username = 't_demo'"), {}).first():
+            U.create_user(s, "t_demo", "pw", "admin")
+        s.commit()
+    with pytest.raises(ValueError, match="demo"):
+        auth.new_token(test_engine, "t_demo")
+
+
+def test_bearer_check_guards_the_http_app(test_engine):
+    """The ASGI wrapper: no token or a wrong one is 401 before the MCP app sees the request; a good one passes and
+    names the caller for the request."""
+    from starlette.testclient import TestClient
+    from racinglines.mcp import auth, server as S
+    tok = auth.new_token(test_engine, "t_admin")
+    seen = []
+
+    async def inner(scope, receive, send):
+        seen.append(S.CALLER.get())
+        await send({"type": "http.response.start", "status": 200, "headers": [(b"content-type", b"text/plain")]})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    client = TestClient(S.bearer_app(inner, engine=test_engine))
+    assert client.get("/mcp").status_code == 401
+    assert client.get("/mcp", headers={"Authorization": "Bearer rl_nope"}).status_code == 401
+    assert client.get("/mcp", headers={"Authorization": "Basic xyz"}).status_code == 401
+    r = client.get("/mcp", headers={"Authorization": f"Bearer {tok}"})
+    assert r.status_code == 200 and seen[-1]["username"] == "t_admin" and S.CALLER.get() is None
+    auth.revoke(test_engine, "t_admin")
+    assert client.get("/mcp", headers={"Authorization": f"Bearer {tok}"}).status_code == 401
