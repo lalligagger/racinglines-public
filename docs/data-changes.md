@@ -14,6 +14,34 @@ Before a major update, keep what it replaces: a database dump in `data/archive/d
 files in `data/archive/<sport>/` (both git-ignored; `data/raw` is the record, so it isn't edited in place
 without a copy).
 
+## 2026-09-28 · Downhill: athlete merges and PDF backfill
+
+Right after the UCI re-ingest below. Backup first:
+`data/archive/db/backups/racinglines-2026-09-28-before-merges-and-pdf-backfill.dump`.
+
+**Merges.** 53 of the 58 same-UCI-ID pairs merged with `db merge-athletes` (each logged in `data_changes`).
+The duplicates had no results left, so this moved 53 name identifiers, 12 `race_predictions` rows and 5
+`standings_predictions` rows onto the kept athlete and deleted the empty rows. Five pairs weren't merged:
+309/762 (PINKERTON), 460/502 (MUÑOZ), 698/914 (BRADLEY), 866/1037 (HAWKINBERRY) and 1021/1035 (YOUNG). Both
+athletes of each pair have a row in saved forecast run 1287's standings, and merging would have to rewrite
+that run. They hold no results, so the models don't see them.
+
+**PDF backfill.** `mtb_dh download --pdf-results` for the six events with PDF-only rounds (old files kept in
+`data/archive/mtb_dh/chronorace-2026-09-28-before-pdf-backfill/`), then ingest. Feed rounds are unchanged
+(checked file by file: no finish time changed, no rider lost).
+
+| | Before | After |
+|---|---:|---:|
+| Downhill results | 19,214 | 19,989 |
+| Events | 45 | 47 (2021 Léogang and Les Gets) |
+| Athletes | 1,184 | 1,166 (−53 merged, +35 riders only seen in those rounds, all with UCI IDs) |
+
+Added: 2021 Léogang (all rounds but the elite Qualification, whose PDF is missing on ChronoRace's server), 2021
+Les Gets (all rounds), and Timed Training for 2021 Maribor and Lenzerheide, 2022 Snowshoe juniors and 2025 Val
+di Sole juniors: 775 results. Timed Training PDFs carry no UCI ID, so those riders are matched by name.
+Still missing: 2019–2020 (PDF text layer unreadable, needs OCR), 2025 Pal Arinsal junior Final (standings
+PDF only).
+
 ## 2026-09-28 · Downhill: re-downloaded with UCI rider IDs
 
 **Why.** Downhill athletes were matched by name, so a rider printed two ways across seasons (`WILLIAMS Jordan` /

@@ -113,12 +113,10 @@ standings, champion odds, `spearman_points`) is approximate.
       a UCI ID shared by two athletes. `racinglines db merge-athletes KEEP DROP` merges them.
 - [x] Re-download the downhill files (UCI IDs) and re-ingest (2026-09-28, locally; [Data changes](data-changes.md)):
       584 results moved onto the UCI-matched athlete, 1,090 UCI identifiers.
-- [ ] Owner: merge the 58 reported pairs (now empty duplicate rows), e.g.
-      `racinglines db merge-athletes 152 491 --dry-run` (`WILLIAMS Jordan` / `WILLIAMS Robert Jordan`).
-- [ ] **Parse the 2021 PDFs** (Leogang, Les Gets). The text layer is readable but has
-      repeated letters from bold text (`BBBBRRRROOOO`), and each rider spans two
-      lines. The PDFs also have UCI ID, year of birth, weather, temperature and
-      track length.
+- [x] Merged 53 of the 58 reported pairs (2026-09-28). Five stay: both rows are in saved forecast run 1287
+      ([Data changes](data-changes.md)).
+- [x] **2021 PDFs** (Leogang, Les Gets) and PDF-only Timed Training rounds: read by
+      `download --pdf-results` (backfill only) and ingested 2026-09-28 (775 results).
 - [ ] 2019–2020 PDFs: the text layer is unreadable font codes, so they'd need OCR.
       Low priority.
 - [x] **Slug probing** in the downloader (`--probe START END`, 2026-09-28): all of 2021 finds exactly its

@@ -175,7 +175,7 @@ Use `--events` to download specific slugs.
 |---|---|---|---|
 | 2019 | 8 / 8 | 0 / 0 | PDF links only. Live timing returns `null`. |
 | 2020 | 4 / 4 | 0 / 0 | PDF links only. The PDFs' text layer is unreadable font codes, so they'd need OCR. |
-| 2021 | 6 / 6 | 6 / 6 | Leogang and Les Gets are PDF-only; `download --pdf-results` reads their result PDFs (Leogang's elite Qualifying PDF is missing on ChronoRace's server). Maribor, Lenzerheide, and Snowshoe ×2 have timing. |
+| 2021 | 6 / 6 | 6 / 6 | Leogang and Les Gets are PDF-only in the feed; their files come from `download --pdf-results` (backfilled 2026-09-28, [Data changes](data-changes.md); Leogang's elite Qualifying PDF is missing on ChronoRace's server). Maribor, Lenzerheide, and Snowshoe ×2 have timing. |
 | 2022 | 8 / 8 | 8 / 8 | Complete. |
 | 2023 | 8 / 8 | 8 / 8 | Complete. |
 | 2024 | 7 / 7 | 7 / 7 | Complete. |
