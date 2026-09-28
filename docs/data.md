@@ -126,14 +126,14 @@ What each feed gives differs:
 | Order books | Live only (no historical API): `markets record` snapshots them | Live only too: `markets --exchange kalshi books` takes one snapshot; nothing records them continuously yet |
 | Fees | None modelled (the `Polymarket` venue in `venue_replay.py` charges nothing) | Takers pay ⌈0.07 × contracts × P × (1 − P)⌉ cents per order (`venue_replay.Kalshi.taker_fee`); makers ⌈0.0175 × contracts × P × (1 − P)⌉ per fill on most markets (`maker_replay.KALSHI_MAKER_FEE`) |
 | Tick | Per market (`tick_size`, mostly 1¢) | 1¢ |
-| F1 coverage | 2025–2026 races and season markets; the last race listed was Baku 2026, nothing new since 28 August 2026 ([F1 live roadmap](f1-live-roadmap.md#polymarket-has-stopped-listing-f1-races)) | Every 2026 weekend (win, podium, top 10, pole, fastest lap, top constructor, head-to-heads) and both championships. 2025 race markets are stored but unmodeled: their titles use an older wording the classifier doesn't read yet ([F1](f1.md#kalshi-alignment)) |
+| F1 coverage | 2025–2026 races and season markets; the last race listed was Baku 2026, nothing new since 28 August 2026 ([F1 live roadmap](f1-live-roadmap.md#polymarket-has-stopped-listing-f1-races)) | Every 2026 weekend (win, podium, top 10, pole, fastest lap, top constructor, head-to-heads), every 2025 weekend (win, podium; pole and fastest lap for the last three), and both championships of both years ([F1](f1.md#kalshi-alignment)) |
 
 **Filling a simulated maker against Kalshi's tape.** Each Kalshi trade has the taker's side, price, size and
 time, which is what a maker replay needs: a resting quote fills when a taker trade prints at or through it.
 Wallets are missing, so the tape can't say who traded (no per-taker P&L, and one large order split into
 several prints looks like several takers). The tape is thick on winner, pole, podium and championship markets and
-thin on fastest lap and top constructor (median 10–12 trades per market over a weekend, see
-[Data changes](data-changes.md)).
+thin on fastest lap and top constructor (median 10–12 trades per market over a weekend in 2026). 2025's race
+markets opened only 2–4 days before each race and are thinner ([Data changes](data-changes.md)).
 
 **Grouping.** A Kalshi `condition_id` is the event ticker, shared by every driver's market of the event, so Kalshi
 code reads and groups the tape by `token_id` (the market ticker), never by `condition_id`; the 24 h volume filter is
