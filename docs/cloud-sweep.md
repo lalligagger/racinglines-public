@@ -132,7 +132,10 @@ The session follows these steps. They're written for the agent.
    the few best. They're imported as Lab candidates, loadable into the Edge Finder sweep form.
 5. **Every 30 minutes and at the end:** commit `data/runs/search/<name>/` and the queue file, and
    push the branch (`git add data/runs/search sweeps && git commit -m "search: <name> progress" && git push`).
-6. **At the end:** write `data/runs/search/<name>/REPORT.md`: what ran, the leaderboard, the best combo
+6. **At the end:** run `racinglines f1 search-report sweeps/<queue>.toml` for the labels, noise floor,
+   confirmations and candidates ([Backtest core](backtest-core.md#the-search-report)); to measure the
+   noise floor rather than assume it, queue a few `seed` replicates of the leading combos and their
+   baseline. Then write `data/runs/search/<name>/REPORT.md`: what ran, the leaderboard, the best combo
    for the remaining 2026 races, what the early championship entries would have made, what held in
    both windows and what didn't, every queue change with its reason, the candidates, and what to run
    next. Commit and push it. Stop.
