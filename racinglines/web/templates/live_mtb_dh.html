@@ -22,8 +22,8 @@
 <div class="kpis hero">
   {% if snap.done %}{{ kpi("Winner", fin[0].name if fin else "–", t(fin[0].time) if fin else "", "", "", small=True) }}{% endif %}
   {% if maker and mpnl %}{{ kpi("The maker's event P&L · " ~ ("settled" if snap.done else "marked to fair"), mpnl.total, "vs the crowd " ~ mpnl.crowd|money(true) ~ " · vs the demo taker " ~ mpnl.taker|money(true), "money") }}{% endif %}
-  {% if maker and crowd %}{{ kpi("Crowd fills", crowd.fills, crowd.last_fills ~ " since the last update · " ~ crowd.active ~ " of " ~ crowd.takers ~ " takers have bet") }}
-  {{ kpi("Crowd volume", "$" ~ "{:,.0f}".format(crowd.volume), "of $" ~ "{:,.0f}".format(crowd.budget_total) ~ " in event budgets ($10–200 each)") }}{% endif %}
+  {% if maker and crowd %}{{ kpi("Crowd fills", crowd.fills, (crowd.last_fills if crowd.last_fills is defined else 0) ~ " since the last update · " ~ crowd.active ~ " of " ~ crowd.takers ~ " takers have bet") }}
+  {{ kpi("Crowd volume", "$" ~ "{:,.0f}".format(crowd.volume), ("of $" ~ "{:,.0f}".format(crowd.budget_total) ~ " in event budgets ($10–200 each)" if crowd.budget_total is defined and crowd.budget_total is not none else "")) }}{% endif %}
   {% if picks %}{% if maker %}{{ kpi("The demo taker's picks · the maker's P&L on them", tot.maker_pnl, picks|length ~ " bets, $" ~ "%.0f"|format(tot.stake) ~ " staked" ~ (" · " ~ tot.won ~ " won, " ~ tot.lost ~ " lost" if tot.won or tot.lost else ""), "money") }}
   {% else %}{{ kpi("Your picks · P&L", tot.pnl, picks|length ~ " bets, $" ~ "%.0f"|format(tot.stake) ~ " staked · worth $" ~ "%.2f"|format(tot.value) ~ " now" ~ (" · " ~ tot.won ~ " won, " ~ tot.lost ~ " lost" if tot.won or tot.lost else ""), "money") }}{% endif %}{% endif %}
 </div>
