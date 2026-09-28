@@ -28,6 +28,7 @@ from sqlalchemy import text
 
 from racinglines import sports
 from racinglines.markets.strategies import taker_weekend as RB
+from racinglines.core import calibration as CAL
 from racinglines.core.stats import last_at
 
 _SCHEDULE = sports.load("f1")["sessions"]["schedule"]       # FastF1 session name -> [minutes, short label]
@@ -276,6 +277,10 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settin
                 scores.append(dict(stage=lab, kind=kind, n=len(rows), brier_model=float(np.mean((f - y) ** 2)),
                                    brier_market=float(np.mean((pm - y) ** 2))))
     out["scores"] = scores
+    # every tradeable (fair, price, outcome), for calibration (run_sweep's calibration tables)
+    out["calib"] = [dict(stage=s["label"], kind=m["kind"], fair=s["fair"], price=s["price"], y=float(m["outcome"]))
+                    for m in markets if m["outcome"] is not None
+                    for s in m["stages"] if s["fair"] is not None and s["price"] is not None and s["tradeable"]]
     out["markets"] = len(markets)
     out["tradeable_first"] = sum(m["stages"][0]["tradeable"] for m in markets)
     out["tradeable_last"] = sum(m["stages"][-1]["tradeable"] for m in markets)
@@ -320,7 +325,9 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
     """The whole season (every raced weekend unless `rounds`). settings: sweep_settings.Settings, the
     full description of the combo (model, entry timing, taker, maker, markets); without it, one is
     built from n_sims / taker / variant. Returns dict(weekends DataFrame, by_stage, by_kind, totals,
-    trades, scores, params)."""
+    trades, scores, calibration, reliability, params). calibration / reliability: our fair values and the
+    exchange's prices at every tradeable stage, scored on the outcome (core/calibration.py): per market kind
+    and stage, and pooled per kind (stage "all"; a market counts once per stage it was tradeable)."""
     from racinglines.db.config import get_session
 
     from racinglines.models.position_sim import pricing as run
@@ -346,7 +353,7 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
                           max_deployed=st["max_deployed"])
     params_list = [RB.TakerParams(**{**base.__dict__, "mode": m}) for m in TAKER_MODES]
     balance = {m: st["bankroll"] for m in TAKER_MODES}     # bankroll-aware sizing: each mode's balance
-    rows, all_trades, all_scores = [], [], []
+    rows, all_trades, all_scores, all_calib = [], [], [], []
     markouts = {}                      # market kind -> maker's 60-min markout so far (as of each weekend)
     for rnd, w in sched.items():
         runs = stage_runs.get(w["event_key"])
@@ -377,6 +384,7 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
         if len(t):
             all_trades.append(t.assign(event_key=w["event_key"], event=w["name"]))
         all_scores += [dict(s, event_key=w["event_key"]) for s in r["scores"]]
+        all_calib += [dict(c, event_key=w["event_key"]) for c in r["calib"]]
         echo(f"progress {len(rows)}/{len(sched)} traded {w['event_key']} {w['name']}: "
              f"update {row.get('update_pnl', 0):+.2f} · hold {row.get('hold_pnl', 0):+.2f} · "
              f"after-quali {row.get('last_pnl', 0):+.2f} · maker {row.get('maker_pnl', float('nan')):+.2f}")
@@ -391,6 +399,10 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
     score_stage = (scores.groupby(["kind", "stage"])[["n", "brier_model", "brier_market"]]
                    .agg({"n": "sum", "brier_model": "mean", "brier_market": "mean"}).reset_index()
                    if len(scores) else scores)
+    calib = pd.DataFrame(all_calib, columns=["event_key", "stage", "kind", "fair", "price", "y"]).rename(
+        columns=dict(fair="model", price="market"))
+    cal_stage, _ = CAL.table(calib, ("model", "market"), by=("kind", "stage"))
+    cal_all, rel = CAL.table(calib, ("model", "market"), by=("kind",))
     totals = {}
     for mode in (*TAKER_MODES, *MAKERS):
         col = f"{mode}_pnl"
@@ -400,7 +412,8 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
                                 weekends_up=int((weekends[col] > 0).sum()), weekends=int(weekends[col].notna().sum()),
                                 bought=float(weekends.get(spent, pd.Series(dtype=float)).fillna(0).sum()))
     return dict(weekends=weekends, by_stage=by_stage, by_kind=RB.by(trades, "kind"), totals=totals, trades=trades,
-                scores=score_stage,
+                scores=score_stage, calibration=pd.concat([cal_all.assign(stage="all"), cal_stage], ignore_index=True),
+                reliability=rel,
                 params=dict({k: v for k, v in base.__dict__.items() if k != "stages" and not
                              (k in ("scale", "max_deployed") and v == RB.TakerParams.__dataclass_fields__[k].default)},
                             n_sims=st["sims"],

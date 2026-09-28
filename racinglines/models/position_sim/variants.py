@@ -61,3 +61,14 @@ def use(name):
     finally:
         for k, v in old.items():
             setattr(M, k, v)
+
+
+# switches that only act in some seasons: outside them the variant prices exactly like the one without
+SEASONAL = {"reset": lambda year: year in M.RESET_YEARS}
+
+
+def for_season(name, year):
+    """The variant as it prices in `year`: switches inert that season dropped (e.g. "reset" outside a
+    new-regulations season), so a held-out season's run of the plainer variant is the same model."""
+    parts = [p for p in name.split("+") if p not in SEASONAL or SEASONAL[p](year)]
+    return "+".join(parts) or "baseline"

@@ -124,23 +124,35 @@ def _coerce(s, v):
 
 
 class Settings(dict):
-    """A full, validated set of sweep settings (missing ones take their defaults)."""
+    """A full, validated set of sweep settings (missing ones take their defaults).
+
+    The schema is a class attribute, so another model family defines its own settings by subclassing
+    (e.g. racinglines/models/timed_runs/settings.py) and keeps the same keys, labels and flags."""
+
+    SPEC = SETTINGS
+    BY = BY_NAME
+    MODEL = MODEL_NAMES
+    ALIASES = ALIASES
+    DEFAULT_SEED = DEFAULT_SEED
 
     @classmethod
     def from_dict(cls, d=None, strict=True):
-        d = {ALIASES.get(k, k): v for k, v in (d or {}).items()}
-        unknown = [k for k in d if k not in BY_NAME]
+        d = {cls.ALIASES.get(k, k): v for k, v in (d or {}).items()}
+        unknown = [k for k in d if k not in cls.BY]
         if unknown and strict:
             raise ValueError(f"unknown settings {unknown}")
         out = cls()
-        for s in SETTINGS:
+        for s in cls.SPEC:
             v = _coerce(s, d.get(s.name))
             if s.type in ("float", "int") and v is not None and s.min is not None and not s.min <= v <= s.max:
                 raise ValueError(f"{s.label}: {v} is outside {s.min}-{s.max}")
             out[s.name] = v
-        from racinglines.models.position_sim import variants as V
-        V.switches(out["variant"])                                   # raises on an unknown switch
+        out._validate()
         return out
+
+    def _validate(self):
+        from racinglines.models.position_sim import variants as V
+        V.switches(self["variant"])                                  # raises on an unknown switch
 
     @classmethod
     def from_run_params(cls, params):
@@ -148,14 +160,14 @@ class Settings(dict):
         p = dict(params or {})
         if isinstance(p.get("settings"), dict):
             return cls.from_dict(p["settings"], strict=False)
-        return cls.from_dict({k: v for k, v in p.items() if ALIASES.get(k, k) in BY_NAME}, strict=False)
+        return cls.from_dict({k: v for k, v in p.items() if cls.ALIASES.get(k, k) in cls.BY}, strict=False)
 
     def changed(self):
         """{name: value} of the settings that differ from the defaults."""
-        return {k: v for k, v in self.items() if v != BY_NAME[k].default}
+        return {k: v for k, v in self.items() if v != self.BY[k].default}
 
     def _key(self, names):
-        names = [k for k in names if not (BY_NAME[k].default is None and self[k] is None)]   # unset optionals
+        names = [k for k in names if not (self.BY[k].default is None and self[k] is None)]   # unset optionals
         blob = json.dumps({k: self[k] for k in names}, sort_keys=True, default=list)
         return hashlib.sha1(blob.encode()).hexdigest()[:12]
 
@@ -167,12 +179,12 @@ class Settings(dict):
     @property
     def rng_seed(self):
         """The Monte Carlo seed: the `seed` setting, or today's fixed one when it's unset."""
-        return DEFAULT_SEED if self["seed"] is None else self["seed"]
+        return self.DEFAULT_SEED if self["seed"] is None else self["seed"]
 
     @property
     def model_key(self):
         """Identity of the pricing: only the settings that change the model's prices."""
-        return self._key(MODEL_NAMES)
+        return self._key(self.MODEL)
 
     def label(self):
         ch = {k: v for k, v in self.changed().items() if k != "variant"}
@@ -213,9 +225,9 @@ class Settings(dict):
                 setattr(mod, attr, v)
 
 
-def add_arguments(parser):
+def add_arguments(parser, cls=None):
     """One flag per setting (the variant is the f1 group's global --variant)."""
-    for s in SETTINGS:
+    for s in (cls or Settings).SPEC:
         if s.name == "variant":
             continue
         dflt = ",".join(s.default) if s.type == "multi" else "not set" if s.default is None else s.default
@@ -224,10 +236,12 @@ def add_arguments(parser):
         parser.add_argument("--" + s.name.replace("_", "-"), **kw)
 
 
-def from_args(args):
-    d = {s.name: getattr(args, s.name) for s in SETTINGS if s.name != "variant" and getattr(args, s.name, None) is not None}
-    d["variant"] = getattr(args, "variant", "baseline") or "baseline"
-    return Settings.from_dict(d)
+def from_args(args, cls=None):
+    cls = cls or Settings
+    d = {s.name: getattr(args, s.name) for s in cls.SPEC if s.name != "variant" and getattr(args, s.name, None) is not None}
+    if "variant" in cls.BY:
+        d["variant"] = getattr(args, "variant", "baseline") or "baseline"
+    return cls.from_dict(d)
 
 
 def data_key(view):
