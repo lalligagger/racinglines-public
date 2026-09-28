@@ -534,6 +534,23 @@ def run(slug, key, quali_keys, cond="", interval=BASE_INTERVAL, minutes=0, echo=
         time.sleep(LATE_INTERVAL if late else interval)
 
 
+def step(spec, now=None, echo=print, **_):
+    """Adapter interface: one poll of the final named by a launch spec ([feed] slug, final, quali, conditions).
+    Live only (the feed is the present): now is ignored."""
+    f = spec["feed"]
+    s = update(f["slug"], str(f["final"]), [str(k) for k in f.get("quali", [])], f.get("conditions", ""),
+               interval=spec["live"]["poll"]["interval_s"])
+    echo(f"{s['ts']} {s['counts']} maker P&L {s['maker_pnl']['total']:+.2f}" + (" · FINAL OVER" if s["done"] else ""))
+    return s
+
+
+def run_spec(spec, minutes=0, echo=print):
+    """Adapter: poll the spec's final until it is over (run())."""
+    f = spec["feed"]
+    return run(f["slug"], str(f["final"]), [str(k) for k in f.get("quali", [])], f.get("conditions", ""),
+               interval=spec["live"]["poll"]["interval_s"], minutes=minutes, echo=echo)
+
+
 # ---------------------------------------------------------------------------
 # The demo taker's picks: chosen once, at the maker's quotes of that moment
 # ---------------------------------------------------------------------------

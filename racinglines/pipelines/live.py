@@ -75,7 +75,8 @@ def load_spec(path):
     if not p.exists() and not p.suffix:
         p = SPECS / f"{path}.toml"
     spec = tomllib.loads(p.read_text())
-    spec.setdefault("run", spec["event"])
+    feed = spec.get("feed") or {}
+    spec.setdefault("run", f"{feed['slug']}_{feed['final']}" if feed.get("final") else spec["event"])
     spec["live"] = settings(spec["sport"], spec.get("live"))
     spec["path"] = str(p)
     return spec

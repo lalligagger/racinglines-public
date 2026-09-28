@@ -349,13 +349,14 @@ Each item lists what "done" means. B0 matters in every scenario.
   - A `[live]` section in `sports/mtb_dh.toml` with today's downhill values.
   - `live_dh.py` imports all of it back under its old names.
   - Done: Whistler's book re-derived from `crowd.jsonl` still matches exactly, its replay pages are unchanged, and the downhill tests pass (`tests/test_live_core.py`; all 82 replay and Positions pages checked byte for byte during the build).
-- [ ] **B2. The F1 adapter: markets and prices** *(Mon)*
+- [x] **B2. The F1 adapter: markets and prices** *(Mon)*
   - `live_f1.markets(event)`: the 100 markets and their fair values from the latest stage run; head-to-head pairs taken from the last race Polymarket listed. `race_pole`, `race_h2h` and `race_constructor_top` wording added to `KINDS_F1`.
   - A `[live]` section in `sports/f1.toml`: session-end cadence, the five market kinds, the spreads by stage, crowd settings.
-  - Done: priced for Baku (`2026-15`) from its stored stage runs; winner probabilities add up to 1, podium to 3, pole to 1, constructors to 1, and each pair to 1. Also check how the track features handle Sepang (no history).
-- [ ] **B3. The F1 adapter: the engine step** *(Tue)*
+  - Done: priced for Baku (`2026-15`) from its stored stage runs (runs 197–201, profile C): winner 1, podium 3, pole 1, constructors 1, and each pair 1, at every stage. **99 markets, not 100:** Baku's listing had a Lindblad–Tsunoda pair, and Tsunoda isn't in the 2026 field, so it's left out. Round 16 takes its pairs from Baku (the last race listed).
+  - Sepang: the venue slug is `kuala-lumpur` (FastF1's location). The track features treat it as unknown: `venue_known` 0, not a street circuit, the neutral `x_track` / `ease`. Pricing round 16 as of 29 Sep works: the grid is simulated from qualifying pace, with no track history.
+- [x] **B3. The F1 adapter: the engine step** *(Tue)*
   - `live_f1.step`: the seven updates above as one idempotent step, driving the shared core (quoting, crowd batches, freeze and close, settlement through `outcome_for`, positions sync, snapshots).
-  - Done: a run over Baku's weekend (stage runs in order, a simulated clock) settles, and its book reconciles with its fills.
+  - Done: Baku's weekend on a simulated clock (`tests/test_live_f1.py`; `racinglines live run live/f1/2026-15.toml --simulate --no-fetch`): all seven updates in order; pole settles at the after-Quali update, everything else at results; quotes freeze after qualifying and close at lights out; the book reconciles with its 2,600-odd fills; the positions synced to `paper_positions` sum to the maker's P&L.
 - [ ] **B4. The Live tab: shared shell, F1 body** *(Tue–Wed)*
   - `live.html` becomes the shell (status dot, replay bar, polling) over the registry; today's downhill body moves unchanged into `live_mtb_dh.html`; a new `live_f1.html` body with the F1 layout.
   - Done: Baku renders update by update for the maker and the taker, and in replay; Whistler's pages look exactly as they do now.
@@ -492,3 +493,8 @@ existing layout, and the report can be written by hand as Whistler's was.
 | 2026-09-29 | Shared quotes round away float noise before the cent floor / ceiling (0.40 ± 0.03 quotes 0.37 / 0.43). Downhill keeps its old rounding (`tidy=False`, sometimes a cent wider), so Whistler's numbers stay identical. |
 | 2026-09-29 | The Live tab is green while an event isn't over and either updated within its sport's `stale_h` (downhill 6 h) or its next scheduled update isn't more than that overdue. F1 updates are up to 20 h apart, so F1 snapshots carry `next_at`. |
 | 2026-09-29 | `/live` shows the registry's most recently updated event; `?event=` picks another. Once the F1 book opens, it replaces Whistler as the default. |
+| 2026-09-29 | Head-to-head pairs with a driver not in the field are left out (Baku's Lindblad–Tsunoda): round 16 has 99 markets. |
+| 2026-09-29 | Updates missed while the engine was down merge into the next one (marked skipped in the snapshot), and its crowd batch covers the whole gap. A stage whose run never arrives by lights out is skipped. |
+| 2026-09-29 | Each crowd batch's seed is derived from the event and update label (logged in `crowd.jsonl`), so a rehearsal replays exactly. Window fills are timed uniformly across the window and filled in time order. |
+| 2026-09-29 | F1 crowd pace: 0.0006 hits per taker, per quoted market, per hour (about 60 an hour across the book), and 3× in the pre-race window with fresh $100 caps. Chosen a priori; Baku's rehearsal gives about 2,600 fills. |
+

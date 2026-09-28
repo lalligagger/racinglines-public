@@ -1,0 +1,609 @@
+"""
+F1 live private book: a race weekend's mock book, updated at session ends from the model's stage runs (no
+live feed). The F1 adapter of the live core (pipelines/live.py); the plan is docs/f1-live-roadmap.md.
+
+    racinglines live step live/f1/2026-16.toml            # one idempotent update (the LaunchAgent, every 5 min)
+    racinglines live step live/f1/2026-15.toml --now 2026-09-24T07:35 --no-fetch     # a simulated clock
+
+The updates, each one step that acts only when something new has happened:
+
+    1. pre-weekend   the book opens: every market listed, priced from the stage run, quoted; the demo taker's
+                     hype picks; the settings frozen into meta.json
+    2-5. after FP1 / FP2 / FP3 (sprint: SQ, Sprint) / Quali
+                     the crowd trades the window since the last update at the quotes posted then; reprice
+                     from the new stage run; requote. After qualifying: pole settles from the classification,
+                     quotes freeze as posted, the pre-race window opens (fresh caps, a faster pace)
+    6. lights out    the crowd trades the pre-race window; the book closes
+    7. results       every market settles from the race classification; final P&L
+
+A stage update waits for its stage run (priced with the maker's profile, C, by the same code as the signal
+engine: signals.price_stages_now), so a late archive delays that update and nothing else. Updates missed
+while the engine was down are merged into the next one, its crowd batch covering the whole gap.
+
+Markets (key: what YES means):
+    race_win:<athlete>             wins the race                     win_prob
+    race_podium:<athlete>          finishes on the podium            podium_prob
+    race_pole:<athlete>            takes pole                        extra.pole_prob       settles after qualifying
+    race_h2h:<a>:<b>               a finishes ahead of b             extra.h2h[b]          pairs: the last race Polymarket listed
+    race_constructor_top:<team>    the team scores the most points   metrics.race_constructor_top
+Settlement: private_book.outcome_for on the official classification. A demo experiment: play money, nothing
+is traded anywhere.
+"""
+
+import hashlib
+import json
+from datetime import datetime, timedelta, timezone
+
+import numpy as np
+import pandas as pd
+from sqlalchemy import text
+
+from racinglines.markets import crowd as C
+from racinglines.markets import quoting as Q
+from racinglines.pipelines import live as LV
+
+KINDS = ("race_win", "race_podium", "race_pole", "race_h2h", "race_constructor_top")
+KIND_LABEL = {"race_win": "Winner", "race_podium": "Podium", "race_pole": "Pole position", "race_h2h": "Head-to-head",
+              "race_constructor_top": "Top constructor"}
+FIELD = {"race_win": "win_prob", "race_podium": "podium_prob"}
+GROUP_TARGET = {"race_win": 1.0, "race_podium": 3.0, "race_pole": 1.0, "race_constructor_top": 1.0}
+
+
+def _utc(t):
+    t = pd.Timestamp(t)
+    return t.tz_convert("UTC").tz_localize(None) if t.tzinfo else t
+
+
+def _iso(t):
+    return pd.Timestamp(t).tz_localize("UTC").isoformat() if pd.Timestamp(t).tzinfo is None else pd.Timestamp(t).isoformat()
+
+
+# ---------------------------------------------------------------------------
+# Markets and their fair values (adapter: markets)
+# ---------------------------------------------------------------------------
+
+def mkey(kind, athlete_id=None, opponent_id=None, team=None):
+    if kind == "race_h2h":
+        return f"race_h2h:{athlete_id}:{opponent_id}"
+    if kind == "race_constructor_top":
+        return f"race_constructor_top:{team}"
+    return f"{kind}:{athlete_id}"
+
+
+def h2h_pairs(conn, event_key, source="last_listed"):
+    """([(a, b)], source event key): Polymarket's head-to-head pairs, one per market (its first outcome is
+    "a finishes ahead of b"), from `source` (an event key) or the last race listed before this one."""
+    if source in (None, "", "last_listed"):
+        source = conn.execute(text("""
+            SELECT e.source_key FROM market_links ml JOIN races ra ON ra.id = ml.race_id JOIN events e ON e.id = ra.event_id
+            WHERE ml.prediction = 'race_h2h' AND e.start_date <= (SELECT e2.start_date FROM events e2
+                  WHERE e2.source_key = :k AND e2.source = 'f1timing')
+            ORDER BY e.start_date DESC LIMIT 1"""), dict(k=event_key)).scalar()
+    if source is None:
+        return [], None
+    rows = conn.execute(text("""
+        SELECT DISTINCT ON (ml.condition_id) ml.athlete_id, (ml.params->>'opponent_id')::int
+        FROM market_links ml JOIN races ra ON ra.id = ml.race_id JOIN events e ON e.id = ra.event_id
+        WHERE e.source_key = :s AND ml.prediction = 'race_h2h' AND ml.athlete_id IS NOT NULL
+        ORDER BY ml.condition_id, ml.id"""), dict(s=source)).all()
+    return sorted((int(a), int(b)) for a, b in rows if b is not None), source
+
+
+def run_prices(conn, run_id):
+    """A stage run's prices: (per-driver DataFrame with athlete_id, driver, team_key, win_prob, podium_prob,
+    pole_prob, h2h; {team: P(top constructor)})."""
+    df = pd.read_sql(text("""SELECT athlete_id, win_prob, podium_prob, extra FROM race_predictions
+                             WHERE model_run_id = :r ORDER BY win_prob DESC, athlete_id"""), conn, params=dict(r=run_id))
+    ex = df.pop("extra").map(lambda e: e or {})
+    df["driver"] = ex.map(lambda e: e.get("driver"))
+    df["team_key"] = ex.map(lambda e: e.get("team_key"))
+    df["pole_prob"] = ex.map(lambda e: e.get("pole_prob"))
+    df["h2h"] = ex.map(lambda e: e.get("h2h") or {})
+    params, metrics = conn.execute(text("SELECT params, metrics FROM model_runs WHERE id = :r"), dict(r=run_id)).first()
+    ctor = ((metrics or {}).get("race_constructor_top") or {}).get((params or {}).get("event_key")) or {}
+    return df, ctor
+
+
+def market_set(preds, ctor, pairs, kinds=KINDS):
+    """The markets and their fair values from one stage run: [dict(key, kind, athlete_id, params, subject,
+    fair)]. Head-to-head pairs with a driver not in the field are left out."""
+    from racinglines.markets.venues import team_name
+    out = []
+    name = dict(zip(preds["athlete_id"].astype(int), preds["driver"]))
+    by = preds.set_index(preds["athlete_id"].astype(int))
+    for kind in ("race_win", "race_podium", "race_pole"):
+        if kind not in kinds:
+            continue
+        col = FIELD.get(kind, "pole_prob")
+        for r in preds.itertuples():
+            v = getattr(r, col)
+            out.append(dict(key=mkey(kind, int(r.athlete_id)), kind=kind, athlete_id=int(r.athlete_id), params=None,
+                            subject=r.driver, fair=None if v is None or pd.isna(v) else float(v)))
+    if "race_h2h" in kinds:
+        for a, b in pairs:
+            if a not in by.index or b not in by.index:
+                continue
+            p = by.at[a, "h2h"].get(str(b))
+            if p is None and by.at[b, "h2h"].get(str(a)) is not None:
+                p = 1 - by.at[b, "h2h"][str(a)]
+            out.append(dict(key=mkey("race_h2h", a, b), kind="race_h2h", athlete_id=a, params=dict(opponent_id=b),
+                            subject=f"{name[a]} vs {name[b]}", fair=None if p is None else float(p)))
+    if "race_constructor_top" in kinds:
+        for team in sorted(preds["team_key"].dropna().unique()):
+            out.append(dict(key=mkey("race_constructor_top", team=team), kind="race_constructor_top", athlete_id=None,
+                            params=dict(team=team), subject=team_name(team), fair=float(ctor.get(team, 0.0))))
+    return out
+
+
+def group_sums(mkts):
+    """{kind: sum of fair values} for the grouped kinds, and the worst head-to-head pair's deviation from 1
+    (checks: winner 1, podium 3, pole 1, constructors 1)."""
+    s = {k: sum(m["fair"] or 0 for m in mkts if m["kind"] == k) for k in GROUP_TARGET}
+    fair = {m["key"]: m["fair"] for m in mkts}
+    dev = [abs(m["fair"] + fair.get(mkey("race_h2h", m["params"]["opponent_id"], m["athlete_id"]), 1 - m["fair"]) - 1)
+           for m in mkts if m["kind"] == "race_h2h" and m["fair"] is not None]
+    return s, max(dev, default=0.0)
+
+
+def markets(conn, event_key, run_id, source="last_listed", kinds=KINDS):
+    """Adapter interface: the event's markets and their fair values from a stage run."""
+    preds, ctor = run_prices(conn, run_id)
+    pairs, _ = h2h_pairs(conn, event_key, source)
+    return market_set(preds, ctor, pairs, kinds)
+
+
+# ---------------------------------------------------------------------------
+# The weekend's updates
+# ---------------------------------------------------------------------------
+
+def race_done_after():
+    from racinglines.pipelines.signals import RACE_DONE
+    return RACE_DONE
+
+
+def plan(event_key, freeze_after="after Quali"):
+    """The weekend's updates in order: [dict(label, kind ('open' | 'stage' | 'close' | 'results'), at (naive
+    UTC))], from the FastF1 schedule (weekend_sweep.schedule: stage cutoffs are session end + the data lag).
+    Plus the weekend (weekend_sweep's dict)."""
+    from racinglines.pipelines import weekend_sweep as WS
+    year, rnd = (int(x) for x in event_key.split("-"))
+    w = WS.schedule(year, rounds=[rnd])[rnd]
+    ups = [dict(label=lab, kind="open" if i == 0 else "stage", at=cut, freeze=lab == freeze_after)
+           for i, (lab, cut) in enumerate(w["stages"])]
+    ups += [dict(label="lights out", kind="close", at=w["race_start"], freeze=False),
+            dict(label="results", kind="results", at=w["race_start"] + race_done_after(), freeze=False)]
+    return ups, w
+
+
+def load_state(out):
+    p = out / "state.json"
+    return json.loads(p.read_text()) if p.exists() else dict(done=[], frozen=False, closed=False, settled=False,
+                                                             quotes=[], markets=[], outcomes={}, last_ts=None)
+
+
+def save_state(out, st):
+    tmp = out / "state.json.tmp"
+    tmp.write_text(json.dumps(st, default=str))
+    tmp.replace(out / "state.json")
+
+
+def due(ups, st, now):
+    """The updates due at `now` and not yet done (or skipped)."""
+    seen = {d["label"] for d in st["done"]}
+    return [u for u in ups if u["label"] not in seen and u["at"] <= now]
+
+
+def status(spec, now=None):
+    """The event's state for `racinglines live status`: dict(done, next label, due at, late by (h), settled)."""
+    now = _utc(now) if now is not None else pd.Timestamp.now(tz="UTC").tz_localize(None)
+    out = LV.folder(spec.get("run", spec["event"]), mkdir=False)
+    st = load_state(out) if out.exists() else load_state(LV.base() / "__none__")
+    ups, _ = plan(spec["event"], spec["live"].get("freeze", {}).get("freeze_after", "after Quali"))
+    nxt = next_update(ups, st)
+    return dict(done=[d["label"] for d in st["done"]], next=nxt["label"] if nxt else None,
+                due=_iso(nxt["at"]) if nxt else None, settled=st["settled"],
+                late_h=round((now - nxt["at"]).total_seconds() / 3600, 1) if nxt and now > nxt["at"] else 0.0)
+
+
+def next_update(ups, st):
+    seen = {d["label"] for d in st["done"]}
+    return next((u for u in ups if u["label"] not in seen), None)
+
+
+def late(ups, st, now, hours=2.0):
+    """The update that is more than `hours` overdue (due, not done), or None: the lateness alert."""
+    u = next_update(ups, st)
+    return u if u is not None and now - u["at"] > timedelta(hours=hours) else None
+
+
+# ---------------------------------------------------------------------------
+# Settlement (adapter: outcomes)
+# ---------------------------------------------------------------------------
+
+def race_id(conn, event_key):
+    return conn.execute(text("""SELECT ra.id FROM races ra JOIN events e ON e.id = ra.event_id
+                                WHERE e.source_key = :k AND e.source = 'f1timing'"""), dict(k=event_key)).scalar()
+
+
+def qual_classification(conn, rid):
+    return pd.read_sql(text("""SELECT r.athlete_id, r.position AS qual_position FROM results r JOIN rounds ro ON ro.id = r.round_id
+                               WHERE ro.race_id = :r AND ro.kind = 'qual'"""), conn, params=dict(r=rid))
+
+
+def outcomes(conn, rid, mkts, stage="race"):
+    """{key: True / False} for the markets decided at this point: 'qual' settles pole from the qualifying
+    classification (nothing else is read); 'race' settles every market from the race classification
+    (private_book.outcome_for). {} while the classification isn't in."""
+    from racinglines.markets.private_book import outcome_for, race_outcomes
+    out = {}
+    if stage == "qual":
+        q = qual_classification(conn, rid)
+        if len(q) < 5:
+            return {}
+        res = q.assign(position=None, status=None, team_id=None, points=0.0)
+        for m in mkts:
+            if m["kind"] == "race_pole":
+                y = outcome_for("race_pole", m["athlete_id"], m["params"], res)
+                if y is not None:
+                    out[m["key"]] = bool(y)
+        return out
+    res = race_outcomes(conn, rid)
+    if res.empty or (res["status"] == "OK").sum() < 5:
+        return {}
+    for m in mkts:
+        y = outcome_for(m["kind"], m["athlete_id"], m["params"], res)
+        if y is not None:
+            out[m["key"]] = bool(y)
+    return out
+
+
+def classification(conn, rid, round_kind):
+    """A session's classification: [dict(pos, driver, team, time)] (the latest session's, for the page)."""
+    df = pd.read_sql(text("""
+        SELECT r.position, a.display_name AS driver, coalesce(r.team, r.extra->>'team_id') AS team, r.status
+        FROM results r JOIN rounds ro ON ro.id = r.round_id JOIN athletes a ON a.id = r.athlete_id
+        WHERE ro.race_id = :r AND ro.kind = :k ORDER BY r.position NULLS LAST"""), conn, params=dict(r=rid, k=round_kind))
+    return [dict(pos=None if pd.isna(r.position) else int(r.position), driver=r.driver, team=r.team, status=r.status)
+            for r in df.itertuples()]
+
+
+# ---------------------------------------------------------------------------
+# Quotes and the demo taker's picks
+# ---------------------------------------------------------------------------
+
+def quotes_for(mkts, book, picks, qp, hs, decided=()):
+    """The maker's quotes on every market: fair +- hs, leaning against inventory (the crowd's fills and the
+    demo taker's picks); none on a decided market."""
+    pick_inv = {}
+    for p in picks:
+        pick_inv[p["key"]] = pick_inv.get(p["key"], 0.0) - p["shares"]
+    out = []
+    for m in mkts:
+        inv = book["markets"].get(m["key"], {}).get("inv", 0.0) + pick_inv.get(m["key"], 0.0)
+        bid, ask = (None, None) if m["key"] in decided else Q.quote(m["fair"], hs, inv, qp.max_pos, qp.skew)
+        out.append(dict(key=m["key"], kind=m["kind"], fair=None if m["fair"] is None else round(m["fair"], 4),
+                        bid=bid, ask=ask, inv=round(inv, 2)))
+    return out
+
+
+def make_picks(mkts, quotes, spec_picks, stake, ts):
+    """The demo taker's hype picks at the book's opening: each spec pick (name: a driver or team substring;
+    market: a kind; vs: the opponent, head-to-head only; hype 1-5; why) bought YES at the maker's ask for
+    `stake` dollars. Picks the book doesn't offer are left out."""
+    qs = {q["key"]: q for q in quotes}
+    done = []
+    for p in spec_picks:
+        kind = p["market"]
+        cand = [m for m in mkts if m["kind"] == kind and p["name"].lower() in (m["subject"] or "").lower()]
+        if kind == "race_h2h":
+            cand = [m for m in cand if m["subject"].lower().split(" vs ")[0].find(p["name"].lower()) >= 0
+                    and p.get("vs", "").lower() in m["subject"].lower().split(" vs ")[1]]
+        if not cand:
+            continue
+        m = cand[0]
+        q = qs[m["key"]]
+        if q["ask"] is None:
+            continue
+        done.append(dict(p, key=m["key"], kind=kind, subject=m["subject"], price=q["ask"], stake=stake,
+                         shares=round(stake / q["ask"], 2), fair_then=q["fair"], ts=ts, side="YES"))
+    return done
+
+
+# ---------------------------------------------------------------------------
+# One step (adapter: step)
+# ---------------------------------------------------------------------------
+
+def frozen_settings(spec, out, unfreeze=False, echo=print):
+    """The settings this event runs with: frozen into meta.json at the book's opening; a changed schema or
+    spec is ignored (with a warning) unless unfreeze."""
+    live = spec["live"]
+    p = out / "meta.json"
+    if not p.exists():
+        return live
+    meta = json.loads(p.read_text())
+    frozen = meta.get("settings")
+    if frozen is None or frozen == json.loads(json.dumps(live)):
+        return live
+    if unfreeze:
+        echo("settings changed and --unfreeze given: running with the new settings (add a decision-log line)")
+        return live
+    echo("settings differ from the frozen ones in meta.json: running with the frozen settings (--unfreeze to change)")
+    return frozen
+
+
+def _seed(event_key, label):
+    return int(hashlib.sha1(f"{event_key}:{label}".encode()).hexdigest()[:8], 16)
+
+
+def step(spec, now=None, fetch=True, unfreeze=False, echo=print, engine=None, engine_url=None, cache=None, sync=True,
+         alert=True):
+    """One idempotent update of the event at `now` (naive UTC; default the current time): the snapshot
+    written, or None when there's nothing new. fetch: refresh FastF1 data first (live); sync: write the
+    positions to paper_positions; alert: send the lateness alert (an update more than late_alert_h overdue,
+    once per update)."""
+    from racinglines.db.config import get_engine
+    event_key, run = spec["event"], spec.get("run", spec["event"])
+    now = _utc(now) if now is not None else pd.Timestamp.now(tz="UTC").tz_localize(None)
+    out = LV.folder(run)
+    st = load_state(out)
+    if st["settled"]:
+        return None
+    live = frozen_settings(spec, out, unfreeze, echo)
+    ups, w = plan(event_key, live.get("freeze", {}).get("freeze_after", "after Quali"))
+    todo = due(ups, st, now)
+    if not todo:
+        return None
+    lu = late(ups, st, now, live.get("poll", {}).get("late_alert_h", 2.0))
+    if lu is not None and lu["label"] not in st.setdefault("alerted", []):
+        msg = f"{spec.get('title') or event_key}: the {lu['label']} update is late (due {_iso(lu['at'])[:16]} UTC)"
+        echo(f"LATE: {msg}")
+        if alert:
+            try:
+                from racinglines.markets.alerts import deliver
+                deliver("racinglines live: update late", msg, urgent=True, payload=dict(kind="live_late", event=event_key,
+                                                                                       update=lu["label"]))
+            except Exception as ex:                          # noqa: BLE001
+                echo(f"alert failed: {ex}")
+        st["alerted"].append(lu["label"])
+        save_state(out, st)
+    engine = engine or get_engine(engine_url)
+    cache = {} if cache is None else cache
+    kinds = [k for k in live["markets"]["kinds"] if k in KINDS]
+    qp = Q.Params.from_dict(live["quoting"])
+    cp = C.Params.from_dict(live["crowd"])
+    book = C.load_book(out, cp)
+    picks = json.loads((out / "picks.json").read_text()) if (out / "picks.json").exists() else []
+    with engine.connect() as c:
+        rid = race_id(c, event_key)
+    kinds_due = {u["kind"] for u in todo}
+    note, fills, update, run_id = [], [], None, st.get("run_id")
+    mkts = st["markets"]
+
+    if "results" in kinds_due and st["closed"]:
+        if fetch:
+            _refresh(w, now, cache, echo, engine)
+        with engine.connect() as c:
+            res = outcomes(c, rid, mkts, "race")
+        if not res:
+            echo(f"{event_key} results: waiting for the race classification")
+            return None
+        st["outcomes"].update(res)
+        st["settled"] = True
+        update = next(u for u in ups if u["kind"] == "results")
+        st["done"].append(dict(label=update["label"], ts=_iso(now)))
+    elif "close" in kinds_due and not st["closed"]:
+        update = next(u for u in ups if u["kind"] == "close")
+        for u in ups:                                   # stages that never priced (their data never came): skipped
+            if u["kind"] in ("open", "stage") and u["label"] not in {d["label"] for d in st["done"]}:
+                st["done"].append(dict(label=u["label"], ts=None, skipped=True))
+                note.append(f"{u['label']} skipped (no stage run by lights out)")
+        if st["last_ts"]:
+            end = min(now, update["at"])
+            fills = _crowd(st, book, cp, event_key, update["label"], end, out)
+        st["closed"] = True
+        st["done"].append(dict(label=update["label"], ts=_iso(now)))
+    else:
+        stages = [u for u in todo if u["kind"] in ("open", "stage")]
+        if not stages:
+            return None
+        priced = _stage_runs(spec, w, now, fetch, cache, echo, engine, engine_url)
+        have = {lab: r for lab, r in priced}
+        ready = [u for u in stages if u["label"] in have]
+        if not ready:
+            return None                                 # waiting for the stage run (data not in yet)
+        update = ready[-1]
+        run_id = have[update["label"]]
+        for u in stages:
+            if u is update:
+                break
+            st["done"].append(dict(label=u["label"], ts=None, skipped=True, merged_into=update["label"]))
+            note.append(f"{u['label']} merged into {update['label']}")
+        if st["last_ts"]:
+            fills = _crowd(st, book, cp, event_key, update["label"], now, out)
+        prev = {m["key"]: m["fair"] for m in mkts}
+        with engine.connect() as c:
+            new = markets(c, event_key, run_id, live["markets"].get("h2h_from", "last_listed"), kinds)
+        if mkts:                                        # markets listed at the opening stay; a new driver's are added
+            keep = {m["key"] for m in new}
+            new += [dict(m, fair=m["fair"]) for m in mkts if m["key"] not in keep]
+        for m in new:
+            m["prev_fair"] = prev.get(m["key"])
+        mkts = new
+        if update["freeze"]:
+            with engine.connect() as c:
+                st["outcomes"].update(outcomes(c, rid, mkts, "qual"))
+            C.open_late(book, cp, _iso(now))
+        st["done"].append(dict(label=update["label"], ts=_iso(now), run_id=run_id))
+        st["run_id"] = run_id
+
+    # quotes: requoted at every stage update until the freeze; as posted after it; none once closed
+    hs = Q.half_spread(live["quoting"]["half_spread"], (update or {}).get("label"), 0.03)
+    decided = set(st["outcomes"])
+    if st["closed"]:
+        quotes = [dict(q, bid=None, ask=None) for q in st["quotes"]]
+    elif st["frozen"]:
+        quotes = [dict(q, bid=None, ask=None) if q["key"] in decided else q for q in st["quotes"]]
+    else:
+        quotes = quotes_for(mkts, book, picks, qp, hs, decided)
+    if not st.get("opened") and update["kind"] in ("open", "stage"):      # the book opens
+        picks = make_picks(mkts, quotes, spec.get("picks", []), live.get("picks", {}).get("stake", 25.0), _iso(now))
+        (out / "picks.json").write_text(json.dumps(picks, indent=1))
+        quotes = quotes_for(mkts, book, picks, qp, hs, decided)        # the maker now holds the other side
+        meta = dict(sport="f1", event_key=event_key, title=spec.get("title") or w["name"], spec=spec.get("path"),
+                    settings=live, opened_at=_iso(now), profile=live["sources"]["live"].get("profile"),
+                    h2h_from=live["markets"].get("h2h_from"))
+        LV.write_meta(out, meta, now.strftime("%Y%m%dT%H%M%S"))
+        st["opened"] = True
+    if update.get("freeze"):
+        st["frozen"] = True
+    st.update(markets=mkts, quotes=quotes, last_ts=_iso(now))
+    fair = {m["key"]: m["fair"] for m in mkts if m["fair"] is not None}
+    oc = st["outcomes"]
+    pnl = C.book_pnl(book, fair, oc, picks)
+    cres = C.crowd_results(book, fair, oc)
+    (out / "book.json").write_text(json.dumps(book))
+    subj = {m["key"]: (m["kind"], m["subject"]) for m in mkts}
+    try:
+        if sync:
+            C.sync_positions(event_key, book, picks, lambda k: subj.get(k, ("race", k)), fair, oc, race_id=rid)
+    except Exception as ex:                                  # noqa: BLE001  never stop the engine for the database
+        echo(f"positions sync failed: {ex}")
+    nxt = next_update(ups, st)
+    rounds = {"after FP1": "fp1", "after FP2": "fp2", "after FP3": "fp3", "after SQ": "sprint_qual",
+              "after Sprint": "sprint", "after Quali": "qual", "lights out": "qual", "results": "race"}
+    with engine.connect() as c:
+        cls_round = rounds.get(update["label"])
+        cls = classification(c, rid, cls_round) if cls_round and rid else []
+    qmap = {q["key"]: q for q in quotes}
+    snap = dict(ts=_iso(now), sport="f1", event_key=event_key, title=spec.get("title") or w["name"], name=w["name"],
+                update=dict(label=update["label"], kind=update["kind"], n=len([d for d in st["done"] if not d.get("skipped")])),
+                updates=[dict(label=u["label"], kind=u["kind"], at=_iso(u["at"]),
+                              state=next(("skipped" if d.get("skipped") else "done" for d in st["done"] if d["label"] == u["label"]), "pending"))
+                         for u in ups],
+                run_id=run_id, note=note, done=st["settled"], closed=st["closed"], frozen=st["frozen"],
+                next_at=_iso(nxt["at"]) if nxt else None, next_label=nxt["label"] if nxt else None,
+                markets=[dict(m, bid=qmap.get(m["key"], {}).get("bid"), ask=qmap.get(m["key"], {}).get("ask"),
+                              inv=qmap.get(m["key"], {}).get("inv"), outcome=oc.get(m["key"])) for m in mkts],
+                classification=dict(round=cls_round, rows=cls), maker_pnl=pnl,
+                betting=dict(late=bool(book.get("late")), late_at=book.get("late_at"), late_cap=cp.late_cap,
+                             pace=cp.late_pace if book.get("late") else 1.0),
+                crowd=dict(book["crowd"], takers=cp.takers, last_fills=len(fills),
+                           active=sum(1 for x, b in zip(book["left"], book["budget"]) if x < b - 0.005),
+                           left=round(sum(book["left"]), 2), results=cres),
+                outcomes=[dict(key=k, yes=v) for k, v in oc.items()])
+    stamp = now.strftime("%Y%m%dT%H%M%S")
+    LV.write_snapshot(out, snap, stamp)
+    LV.append(out, "history.jsonl", dict(ts=snap["ts"], label=update["label"], run_id=run_id,
+                                         fair={m["key"]: m["fair"] for m in mkts},
+                                         quotes={q["key"]: [q["bid"], q["ask"]] for q in quotes}))
+    save_state(out, st)
+    echo(f"{snap['ts']} {event_key} {update['label']}: {len(mkts)} markets, {sum(1 for q in quotes if q['bid'] or q['ask'])} quoted, "
+         f"{len(fills)} crowd fills, maker P&L {pnl['total']:+.2f}" + (f" ({'; '.join(note)})" if note else ""))
+    return snap
+
+
+def _crowd(st, book, cp, event_key, label, end, out):
+    """The crowd's batch for the window since the last update, at the quotes posted then; logged."""
+    start = pd.Timestamp(st["last_ts"]).to_pydatetime()
+    end_ = pd.Timestamp(end).tz_localize("UTC").to_pydatetime() if pd.Timestamp(end).tzinfo is None else pd.Timestamp(end).to_pydatetime()
+    seed = _seed(event_key, label)
+    late_ = bool(book.get("late"))
+    fills = C.window(st["quotes"], book, np.random.default_rng(seed), cp, start, end_,
+                     pace=cp.late_pace if late_ else 1.0, pot="late_left" if late_ else "left")
+    LV.append(out, "crowd.jsonl", dict(ts=end_.isoformat(timespec="seconds"), seed=seed, label=label,
+                                       window=[start.isoformat(), end_.isoformat()], late=late_, fills=fills))
+    return fills
+
+
+def _refresh(w, now, cache, echo, engine):
+    """Live only: fetch and ingest a finished session's FastF1 data when it's missing (signals.py)."""
+    from racinglines.models.position_sim import pricing as run
+    from racinglines.pipelines import signals as SG
+    meas = cache.get("meas") or run.Measurements.load(engine)
+    if SG._missing_sessions(meas, w, now):
+        SG.refresh_fastf1(w, echo)
+        cache.clear()
+
+
+def _stage_runs(spec, w, now, fetch, cache, echo, engine, engine_url):
+    """[(stage label, run id)] for the stages priced so far with the maker's profile (signals.price_stages_now:
+    a stored run is reused, a missing one priced and stored)."""
+    from racinglines.models.position_sim import pricing as run
+    from racinglines.pipelines import profiles as PF
+    from racinglines.pipelines import signals as SG
+    from racinglines.pipelines import sweep_settings as SS
+    if fetch:
+        _refresh(w, now, cache, echo, engine)
+    prof = PF.PROFILES[spec["live"]["sources"]["live"].get("profile", "C")]
+    st = SS.Settings.from_dict(prof["settings"], strict=False)
+    meas = cache["meas"] if "meas" in cache else run.Measurements.load(engine)
+    cache["meas"] = meas
+    with st.applied():
+        hist = cache.get(("hist", st.model_key))
+        if hist is None:
+            hist = cache[("hist", st.model_key)] = run.history(meas, st["track_features"])
+        stages = SG.price_stages_now(meas, hist, w, st, engine, engine_url, now, echo)
+    return [(lab, rid) for lab, _, rid, _ in stages]
+
+
+# ---------------------------------------------------------------------------
+# The Live tab's body (adapter: view; templates/live_f1.html)
+# ---------------------------------------------------------------------------
+
+def view(run, snap, picks, hist, mode, maker):
+    """What the F1 body needs: the weekend's updates, the latest classification, every market grouped by
+    kind with its move since the last update, the private book, the demo taker's picks."""
+    oc = {o["key"]: o["yes"] for o in snap.get("outcomes") or []}
+    fair = {m["key"]: m["fair"] for m in snap["markets"]}
+    groups = []
+    for kind in KINDS:
+        ms = [dict(m) for m in snap["markets"] if m["kind"] == kind]
+        if not ms:
+            continue
+        for m in ms:
+            m["move"] = (None if m.get("prev_fair") is None or m["fair"] is None else m["fair"] - m["prev_fair"])
+        ms.sort(key=lambda m: -(m["fair"] or 0))
+        groups.append(dict(kind=kind, label=KIND_LABEL[kind], markets=ms,
+                           total=sum(m["fair"] or 0 for m in ms), target=GROUP_TARGET.get(kind)))
+    rows, tot = [], dict(stake=0.0, value=0.0, pnl=0.0, maker_pnl=0.0, won=0, lost=0)
+    qs = {m["key"]: m for m in snap["markets"]}
+    for p in picks:
+        m = qs.get(p["key"], {})
+        res = oc.get(p["key"])
+        if res is not None:
+            now, state = float(res), ("won" if res else "lost")
+        else:
+            mid = [x for x in (m.get("bid"), m.get("ask")) if x is not None]
+            now, state = (sum(mid) / len(mid) if mid else m.get("fair")), "live"
+        value = p["shares"] * now if now is not None else None
+        f = float(res) if res is not None else m.get("fair")
+        r = dict(p, now=now, value=value, pnl=None if value is None else value - p["stake"], state=state, fair=f,
+                 maker_pnl=None if f is None else p["stake"] - p["shares"] * f)
+        rows.append(r)
+        tot["stake"] += p["stake"]
+        tot["value"] += r["value"] or 0
+        tot["pnl"] += r["pnl"] or 0
+        tot["maker_pnl"] += r["maker_pnl"] or 0
+        tot["won"] += state == "won"
+        tot["lost"] += state == "lost"
+    markets_, polls = LV.book_at(run, snap["ts"] if mode == "replay" else None)
+    positions, recent = [], []
+    subj = {m["key"]: m["subject"] for m in snap["markets"]}
+    kind_of = {m["key"]: m["kind"] for m in snap["markets"]}
+    for k, mk in markets_.items():
+        v = float(oc[k]) if k in oc else fair.get(k) or 0.0
+        positions.append(dict(subject=subj.get(k, k), kind=KIND_LABEL.get(kind_of.get(k), ""), inv=mk["inv"],
+                              pnl=mk["cash"] + mk["inv"] * v, value=v, settled=k in oc))
+    positions.sort(key=lambda x: -abs(x["inv"]))
+    for e in reversed(polls[-3:]):
+        for f in sorted(e["fills"], key=lambda f: f.get("ts") or "", reverse=True)[:6]:
+            recent.append(dict(f, subject=subj.get(f["key"], f["key"]), kind=KIND_LABEL.get(kind_of.get(f["key"]), "")))
+    chart = None
+    if maker and len(hist) >= 2:
+        from racinglines.web.viz import line_chart
+        top = [m for m in sorted(snap["markets"], key=lambda m: -(m["fair"] or 0)) if m["kind"] == "race_win"][:6]
+        series = {m["subject"]: [(pd.Timestamp(h["ts"]), h["fair"].get(m["key"]) or 0.0) for h in hist] for m in top}
+        chart = line_chart(series, {k: k for k in series}, money=False, h=190)
+    return dict(groups=groups, picks=rows, tot=tot, book=markets_ if polls else None, positions=positions[:12],
+                recent=recent[:12], crowd=snap.get("crowd"), mpnl=snap.get("maker_pnl"), win_chart=chart,
+                age=int((pd.Timestamp.now(tz="UTC") - pd.Timestamp(snap["ts"])).total_seconds()))
