@@ -322,31 +322,11 @@ def race_outcomes(conn, race_id):
 
 
 def outcome_for(kind, athlete_id, params, res):
-    """YES/NO for a race market from the official classification (None if undecidable)."""
-    if res.empty:
-        return None
-    by = res.set_index("athlete_id")
-    if kind == "race_pole":
-        if athlete_id not in by.index or pd.isna(by.loc[athlete_id, "qual_position"]):
-            return False if athlete_id not in by.index else None
-        return bool(by.loc[athlete_id, "qual_position"] == 1)
-    if kind in ("race_win", "race_podium", "race_top10"):
-        if athlete_id not in by.index:
-            return False
-        r = by.loc[athlete_id]
-        lim = {"race_win": 1, "race_podium": 3, "race_top10": 10}[kind]
-        return bool(r["status"] == "OK" and r["position"] <= lim)
-    if kind == "race_h2h":
-        b = (params or {}).get("opponent_id")
-        if athlete_id not in by.index or b not in by.index:
-            return None
-        # classification order (retirements are classified behind finishers by laps completed)
-        return bool(by.loc[athlete_id, "position"] < by.loc[b, "position"])
-    if kind == "race_constructor_top":
-        from racinglines.models.position_sim.model import team_key
-        pts = res.assign(tk=res["team_id"].map(team_key)).groupby("tk")["points"].sum()
-        return bool(pts.idxmax() == (params or {}).get("team")) if len(pts) else None
-    return None
+    """YES/NO for a race market from the official classification (None if undecidable): the kind's
+    settlement in racinglines/markets/kinds.py."""
+    from racinglines.markets import kinds as K
+    from racinglines.models.position_sim.model import team_key
+    return K.settle(kind, athlete_id, params, res, group_key=team_key if kind == "race_constructor_top" else None)
 
 
 def settle_from_results(session, conn, race_id, market_ids=None):

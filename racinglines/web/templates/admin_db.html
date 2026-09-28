@@ -2,6 +2,7 @@
 {% block title %}Database{% endblock %}
 {% block content %}
 <h1>Database explorer</h1>
+{% include "_admin_nav.html" %}
 <p><a href="/admin/sql">SQL console →</a> <span class="muted">Row edits and deletes are logged in the activity log. Password hashes are never shown.</span></p>
 <div class="card"><table><thead><tr><th class="l">Table</th><th>Rows</th></tr></thead><tbody>
 {% for t in tables %}<tr><td class="l"><a href="/admin/db/{{ t.name }}">{{ t.name }}</a></td><td>{{ t.rows }}</td></tr>{% endfor %}

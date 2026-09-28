@@ -2,7 +2,7 @@
 <h2>Run</h2>
 {% for code, sport, jts in sports %}<h3>{{ sport }}</h3>
 <div class="cards">{% for jt in jts %}{% if jt.code == 'f1_sweep' %}{% include "lab_sweep_form.html" %}{% else %}
-<form method="post" action="/lab/run" class="ecard" {% if sel_job == jt.code %}style="border-color:var(--accent)"{% endif %}>{{ csrf() }}<input type="hidden" name="job" value="{{ jt.code }}">
+<form method="post" action="/lab/run" class="ecard{{ " sel" if sel_job == jt.code }}">{{ csrf() }}<input type="hidden" name="job" value="{{ jt.code }}">
   <div><h3>{{ jt.label }}</h3><div class="when">{{ jt.what }}{% if jt.minutes %} · {{ jt.minutes }}{% endif %}</div></div>
   <div class="jobform">{% set mine = knobs.get(jt.code, {}) %}{% for k in jt.knobs %}{% set val = mine.get(k.name, k.default) %}<label title="{{ k.help }}"><span>{{ k.label }}</span>
     {% if k.type == 'choice' %}<select name="{{ k.name }}">{% for ch in k.choices %}<option {{ 'selected' if ch == val }}>{{ ch }}</option>{% endfor %}</select>

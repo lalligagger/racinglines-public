@@ -28,6 +28,14 @@ After every finished job the leaderboard and a results export are rewritten.
     year = 2026
     variant = "pretrain"
 
+    [[job]]                      # a downhill walk-forward (model-only: calibration per market kind)
+    sport = "mtb_dh"             # the sport's own settings (racinglines/models/timed_runs/settings.py)
+    year = 2025
+    half_life_days = 120
+    replicates = 3               # any job: the same job at this many seeds (the default seed, 1, 2, ...);
+                                 # the season's baseline gets as many, and the search report measures
+                                 # its noise floor from them
+
     [[candidate]]                # a combo worth loading into the Lab (becomes a Lab candidate on import)
     name = "..."
     year = 2026
@@ -35,7 +43,8 @@ After every finished job the leaderboard and a results export are rewritten.
     why = "..."
     variant = "..."              # + any settings, as in [[job]]
 
-The default-settings baseline sweep of every season searched is added automatically (it runs first),
+The default-settings baseline (sweep or walk-forward) of every sport and season searched is added
+automatically (it runs first),
 so every comparison is against a baseline priced from exactly the same data. A job's id covers its
 kind, season, rounds and every setting, so the same job never runs twice. Outputs, in
 data/runs/search/<name>/: state.json, leaderboard.md, results.json (for `racinglines f1
@@ -54,22 +63,51 @@ from datetime import datetime, timedelta, timezone
 from racinglines import paths
 from racinglines.pipelines import sweep_settings as SS
 
-KINDS = ("sweep", "checkpoints", "season_strategy")
-META = {"kind", "year", "rounds", "note", "id", "variants", "entries", "window"}
+KINDS = {"f1": ("sweep", "checkpoints", "season_strategy"), "mtb_dh": ("walk_forward",)}
+SEASON_KINDS = ("sweep", "walk_forward")          # a season-long run with a default-settings baseline
+META = {"kind", "year", "rounds", "note", "id", "variants", "entries", "window", "sport", "replicates"}
 SAVED = {"sweep": "Saved sweep run", "checkpoints": "Saved season checkpoints run",
-         "season_strategy": "Saved season strategy run"}
+         "season_strategy": "Saved season strategy run", "walk_forward": "Saved walk-forward run"}
+
+
+def settings_class(sport="f1"):
+    """The sport's settings schema (F1: the sweep's; others: their pricing model's)."""
+    if sport == "f1":
+        return SS.Settings
+    from racinglines.models import race_model as RM
+    try:
+        return RM.model_class(sport).Settings
+    except ValueError:
+        _unknown_sport(sport)
+
+
+def _unknown_sport(sport):
+    raise ValueError(f"unknown sport {sport!r}: no pricing model (sports/<code>.toml [sport] pricing_model)")
+
+
+def kinds_for(sport):
+    """Job kinds a sport's queue entries may have: F1's sweeps and season runs; any other sport with a pricing
+    model, the model-only walk-forward."""
+    if sport in KINDS:
+        return KINDS[sport]
+    settings_class(sport)                      # raises for a sport without a pricing model
+    return ("walk_forward",)
 
 
 def _settings(j):
-    extra = [k for k in j if k not in META and k not in SS.BY_NAME]
+    cls = settings_class(j.get("sport", "f1"))
+    extra = [k for k in j if k not in META and k not in cls.BY]
     if extra:
         raise ValueError(f"job {j.get('note', j)}: unknown keys {extra}")
-    return SS.Settings.from_dict({k: v for k, v in j.items() if k in SS.BY_NAME})
+    return cls.from_dict({k: v for k, v in j.items() if k in cls.BY})
 
 
 def job_id(j):
-    kind = j.get("kind", "sweep")
+    sport = j.get("sport", "f1")
+    kind = j.get("kind", KINDS.get(sport, ("walk_forward",))[0])
     key = dict(kind=kind, year=j.get("year"), rounds=j.get("rounds"))
+    if sport != "f1":                                 # F1 ids stay as they were
+        key["sport"] = sport
     if kind == "checkpoints":
         key.update(variants=j.get("variants"), entries=j.get("entries"), window=j.get("window"))
     else:
@@ -77,45 +115,73 @@ def job_id(j):
     return hashlib.sha1(json.dumps(key, sort_keys=True, default=str).encode()).hexdigest()[:10]
 
 
+def _replicate(j, n):
+    """The job at n seeds: its own (or the default) seed, then 1, 2, ... (skipping a seed it already has)."""
+    seeds = [j.get("seed")] + [s for s in range(1, n + 1) if s != j.get("seed")][:n - 1]
+    return [dict(j, seed=s) if s is not None else {k: v for k, v in j.items() if k != "seed"} for s in seeds]
+
+
 def load(path):
     """(config, jobs, candidates). Jobs are normalized and validated; each season's baseline sweep is
     put first."""
     cfg = tomllib.loads(open(path).read())
     s = cfg.get("search", {})
-    jobs = []
-    for j in cfg.get("job", []):
-        j = dict(j)
-        j.setdefault("kind", "sweep")
-        j.setdefault("year", 2026)
-        if j["kind"] not in KINDS:
-            raise ValueError(f"unknown job kind {j['kind']!r}; one of {KINDS}")
-        if j["kind"] != "checkpoints":
-            j["settings"] = _settings(j).to_json()
-        j["id"] = job_id({k: v for k, v in j.items() if k != "settings"})
-        jobs.append(j)
+    jobs, reps = [], {}
+    for j0 in cfg.get("job", []):
+        j0 = dict(j0)
+        sport = j0.get("sport", "f1")
+        allowed = kinds_for(sport)
+        j0.setdefault("kind", allowed[0])
+        j0.setdefault("year", 2026)
+        if j0["kind"] not in allowed:
+            raise ValueError(f"unknown job kind {j0['kind']!r} for {sport}; one of {allowed}")
+        n = int(j0.pop("replicates", 1) or 1)
+        if n > 1:
+            key = (sport, j0["year"], j0.get("rounds"))
+            reps[key] = max(reps.get(key, 1), n)
+        for j in _replicate(j0, n):
+            if j["kind"] != "checkpoints":
+                j["settings"] = _settings(j).to_json()
+            j["id"] = job_id({k: v for k, v in j.items() if k != "settings"})
+            if not any(x["id"] == j["id"] for x in jobs):
+                jobs.append(j)
     base = []
-    for year, rounds in dict.fromkeys((j["year"], j.get("rounds")) for j in jobs if j["kind"] == "sweep"):
-        b = dict(kind="sweep", year=year, note="baseline (added automatically: same data as every job)")
+    for sport, kind, year, rounds in dict.fromkeys((j.get("sport", "f1"), j["kind"], j["year"], j.get("rounds"))
+                                                   for j in jobs if j["kind"] in SEASON_KINDS):
+        b0 = dict(kind=kind, year=year, note="baseline (added automatically: same data as every job)")
+        if sport != "f1":
+            b0["sport"] = sport
         if rounds:
-            b["rounds"] = rounds
-        b["settings"] = SS.Settings.from_dict().to_json()
-        b["id"] = job_id({k: v for k, v in b.items() if k != "settings"})
-        if not any(x["id"] == b["id"] for x in jobs):
-            base.append(b)
-        else:                                              # already queued: move it to the front
-            jobs.insert(0, jobs.pop(next(i for i, x in enumerate(jobs) if x["id"] == b["id"])))
+            b0["rounds"] = rounds
+        for b in _replicate(b0, reps.get((sport, year, rounds), 1)):
+            b["settings"] = settings_class(sport).from_dict({"seed": b["seed"]} if "seed" in b else {}).to_json()
+            b["id"] = job_id({k: v for k, v in b.items() if k != "settings"})
+            if not any(x["id"] == b["id"] for x in jobs):
+                base.append(b)
+            else:                                          # already queued: move it to the front
+                jobs.insert(0, jobs.pop(next(i for i, x in enumerate(jobs) if x["id"] == b["id"])))
     cands = []
     for c in cfg.get("candidate", []):
         c = dict(c)
-        st = SS.Settings.from_dict({k: v for k, v in c.items() if k in SS.BY_NAME})
-        cands.append(dict(name=c.get("name") or st.label(), year=int(c.get("year", 2026)),
-                          strategy=c.get("strategy", "maker"), why=c.get("why", ""), settings=st.to_json(),
-                          settings_key=st.key))
+        sport = c.get("sport", "f1")
+        cls = settings_class(sport)
+        st = cls.from_dict({k: v for k, v in c.items() if k in cls.BY})
+        strategy = c.get("strategy", "maker")
+        cand = dict(name=c.get("name") or st.label(), year=int(c.get("year", 2026)), strategy=strategy,
+                    why=c.get("why", ""), settings=st.to_json(), settings_key=st.key,
+                    id=c.get("id") or f"{strategy}-{cls.from_dict(dict(st, seed=None)).key}")   # as search-report names it
+        if sport != "f1":
+            cand["sport"] = sport
+        cands.append(cand)
     return (dict(name=s.get("name", "search"), parallel=int(s.get("parallel", 3)), hours=float(s.get("hours", 1.0)),
                  grace=float(s.get("grace_minutes", 10))), base + jobs, cands)
 
 
 def argv(j):
+    if j.get("sport", "f1") != "f1":
+        st = settings_class(j["sport"]).from_dict(j["settings"])
+        return [sys.executable, "-m", "racinglines", "backtest", "walk-forward", j["sport"], "--seasons", str(j["year"]),
+                "--save"] + st.argv()
     py = [sys.executable, "-m", "racinglines", "f1"]
     if j["kind"] == "checkpoints":
         a = py + ["season-checkpoints", "--year", str(j["year"]), "--save"]
@@ -192,8 +258,9 @@ def run(path, echo=print):
 def _title(j):
     if j["kind"] == "checkpoints":
         return f"checkpoints {j['year']} [{j.get('variants', 'default variants')}]"
-    st = SS.Settings.from_dict(j["settings"])
-    return f"{'' if j['kind'] == 'sweep' else j['kind'] + ' '}{st.label()} · {j['year']}" + (
+    st = settings_class(j.get("sport", "f1")).from_dict(j["settings"])
+    kind = "" if j["kind"] == "sweep" else ("downhill " if j["kind"] == "walk_forward" else j["kind"] + " ")
+    return f"{kind}{st.label()} · {j['year']}" + (
         f" · rounds {j['rounds']}" if j.get("rounds") else "")
 
 
@@ -249,6 +316,30 @@ def write_outputs(out, state, queue_path=None, echo=print):
                 cells.append(f"**{cell}**" if x == best and len(cols) > 1 else cell)
             lines.append(f"| {label} | " + " | ".join(cells) + " |")
         lines.append("")
+    wfs = [(v, runs[v["run_id"]]) for v in done.values() if v["kind"] == "walk_forward" and v["run_id"] in runs]
+    for sport, year in sorted({(v["sport"], v["year"]) for v, _ in wfs}):
+        cols = [(v, r) for v, r in wfs if (v["sport"], v["year"]) == (sport, year)]
+        cls = settings_class(sport)
+        bases = {v["settings"].get("seed"): r for v, r in cols            # the default settings, per seed
+                 if cls.from_dict(v["settings"]).key == cls.from_dict({"seed": v["settings"].get("seed")}).key}
+        kinds = sorted({k[:-len("_score")] for _, r in cols for w in (r["metrics"].get("weekends") or [])
+                        for k in w if k.endswith("_score")})
+        lines += [f"## {year}: {sport} walk-forward (model only)", "",
+                  "Score per market kind = −1000 × log loss, summed over the season's events (higher is better) "
+                  "[difference from the baseline at the same seed].", "",
+                  "| Settings | " + " | ".join(kinds) + " |", "|---" * (len(kinds) + 1) + "|"]
+        for v, r in cols:
+            wk = r["metrics"].get("weekends") or []
+            base = bases.get(v["settings"].get("seed"))
+            cells = []
+            for k in kinds:
+                x = sum(w.get(f"{k}_score") or 0.0 for w in wk)
+                d = None
+                if base is not None and base is not r:
+                    d = x - sum(w.get(f"{k}_score") or 0.0 for w in base["metrics"].get("weekends") or [])
+                cells.append(f"{x:,.1f}" + (f" [{d:+,.1f}]" if d is not None else ""))
+            lines.append(f"| {cls.from_dict(v['settings']).label()} | " + " | ".join(cells) + " |")
+        lines.append("")
     for v in done.values():
         r = runs.get(v["run_id"])
         if not r:
@@ -286,8 +377,8 @@ def import_results(path, engine_url=None, echo=print):
     eng = get_engine(engine_url)
     n = k = 0
     with eng.begin() as c:
-        comp = c.execute(text("SELECT id FROM competitions WHERE code = 'f1_wdc'")).scalar()
-        cat = c.execute(text("SELECT id FROM categories WHERE competition_id = :c AND code = 'DRV'"), dict(c=comp)).scalar()
+        comp_f1 = comp = c.execute(text("SELECT id FROM competitions WHERE code = 'f1_wdc'")).scalar()
+        cat_f1 = c.execute(text("SELECT id FROM categories WHERE competition_id = :c AND code = 'DRV'"), dict(c=comp)).scalar()
         new_ids = {}
         for r in data.get("runs", []):
             src = f"search:{name}:{r['id']}"
@@ -296,15 +387,23 @@ def import_results(path, engine_url=None, echo=print):
                 new_ids[r["id"]] = have
                 continue
             params = dict(r["params"] or {}, source=src)
+            comp, cat = comp_f1, cat_f1
+            if r.get("kind") == "walk_forward":                # a downhill walk-forward
+                comp = c.execute(text("SELECT id FROM competitions WHERE code = 'uci_dhi_wc'")).scalar()
+                cat = c.execute(text("SELECT id FROM categories WHERE competition_id = :c AND code = :k"),
+                                dict(c=comp, k=(params.get("settings") or {}).get("category", "ME"))).scalar()
             season = c.execute(text("SELECT id FROM seasons WHERE competition_id = :c AND year = :y"),
                                dict(c=comp, y=int(params.get("year") or 0))).scalar()
-            model = {"sweep": "f1_sector_sim"}.get(r.get("kind", "sweep"), r.get("kind", "sweep"))
+            model = {"sweep": "f1_sector_sim", "walk_forward": "timed_runs"}.get(r.get("kind", "sweep"), r.get("kind", "sweep"))
             new_ids[r["id"]] = c.execute(text("""INSERT INTO model_runs (competition_id, season_id, category_id, model, kind, params, metrics)
                                                  VALUES (:c, :s, :k, :m, :kind, CAST(:p AS jsonb), CAST(:x AS jsonb)) RETURNING id"""),
                                          dict(c=comp, s=season, k=cat, m=model, kind=r.get("kind", "sweep"),
                                               p=json.dumps(params, default=str), x=json.dumps(r["metrics"], default=str))).scalar()
             n += 1
+        comp = comp_f1
         for cand in data.get("candidates", []):
+            if cand.get("sport", "f1") != "f1":               # the Lab is F1's (downhill candidates stay in the report)
+                continue
             src = f"search:{name}:candidate:{cand['name']}"
             if c.execute(text("SELECT 1 FROM model_runs WHERE kind = 'candidate' AND params->>'source' = :s"),
                          dict(s=src)).first():
@@ -313,18 +412,22 @@ def import_results(path, engine_url=None, echo=print):
             run_id = next((new_ids[r["id"]] for r in data.get("runs", []) if r.get("kind", "sweep") == "sweep"
                            and (r["params"] or {}).get("settings_key") == st.key
                            and int((r["params"] or {}).get("year") or 0) == cand["year"]), None)
-            add_candidate(c, cand["name"], st, cand["year"], cand["strategy"], cand.get("why", ""), run_id, src, comp)
+            add_candidate(c, cand["name"], st, cand["year"], cand["strategy"], cand.get("why", ""), run_id, src, comp,
+                          candidate_id=cand.get("id"))
             k += 1
     echo(f"imported {n} run(s) and {k} candidate(s) from {path}")
     return n
 
 
-def add_candidate(conn, name, settings, year, strategy, why="", run_id=None, source="lab", competition_id=None):
-    """A Lab candidate: a named, complete settings set (+ the strategy it's for and the run it came from)."""
+def add_candidate(conn, name, settings, year, strategy, why="", run_id=None, source="lab", competition_id=None,
+                  candidate_id=None):
+    """A Lab candidate: a named, complete settings set (+ the strategy it's for and the run it came from).
+    candidate_id: the search report's stable id (<strategy>-<settings key without the seed>), when it has one."""
     from sqlalchemy import text
     comp = competition_id or conn.execute(text("SELECT id FROM competitions WHERE code = 'f1_wdc'")).scalar()
     return conn.execute(text("""INSERT INTO model_runs (competition_id, model, kind, params)
                                 VALUES (:c, 'candidate', 'candidate', CAST(:p AS jsonb)) RETURNING id"""),
                         dict(c=comp, p=json.dumps(dict(name=name, settings=settings.to_json(), settings_key=settings.key,
                                                        label=settings.label(), year=int(year), strategy=strategy,
-                                                       why=why, run_id=run_id, source=source)))).scalar()
+                                                       why=why, run_id=run_id, source=source,
+                                                       **({"candidate_id": candidate_id} if candidate_id else {}))))).scalar()

@@ -1,37 +1,42 @@
-{% extends "base.html" %}{% from "_macros.html" import table, paper_banner, demo_context, chart %}
+{% extends "base.html" %}{% from "_macros.html" import table, demo_context, chart, kpi, pnl, pnl_cls, page_head %}
 {% block title %}Positions{% endblock %}
 {% block content %}
-<h1>Positions{% if cur %} <span class="muted">· {{ cur.name }}</span>{% endif %}</h1>
-{{ paper_banner(signals_nav) }}
 {% set priv = venue == 'private' %}
-<p class="sub">Every Polymarket position {{ "your strategy's quotes left you with" if maker else "your strategy's calls put you in" }} (paper only: nothing was sent to Polymarket){% if venues.private %}, and the private book {{ "you ran" if maker else "you bet into" }} live (a demo: play money){% endif %}, and what each made.
-  What the strategy recommended, and why, is on <a href="/strategy">Strategy</a>.</p>
+{% call page_head("Positions" ~ (" · " ~ cur.name if cur else ""), "Every Polymarket position " ~ ("your strategy's quotes left you with" if maker else "your strategy's calls put you in") ~ " (paper only: nothing was sent to Polymarket)" ~ (", and the private book " ~ ("you ran" if maker else "you bet into") ~ " live (a demo: play money)" if venues.private else "") ~ ", and what each made.") %}
+<a href="/strategy">Strategy: what it recommended, and why →</a>{% endcall %}
 
 {% if not paper.n and not my_bets and not venues %}<p class="muted">No positions yet.{% if not profile %} This account has no strategy profile.{% endif %}</p>{% else %}
-{% if venues|length > 1 %}<div class="kpis">
-{% for key, label, sub in [('polymarket', 'Polymarket P&L', 'paper history'), ('private', 'Private book P&L', 'live, play money')] if venues[key] %}{% set v = venues[key] %}
+{# --- the headline: P&L per venue (each one a filter), then the ledger's state --- #}
+<div class="kpis hero">
+{% if venues|length > 1 %}{% for key, label, sub in [('polymarket', 'Polymarket P&L', 'paper history'), ('private', 'Private book P&L', 'live, play money')] if venues[key] %}{% set v = venues[key] %}
   <a class="kpi{{ ' sel' if venue == key }}" href="{{ link(venue=None if venue == key else key, event=None) }}" title="{{ 'Show all venues' if venue == key else 'Show only this venue' }}">
-    <div class="l">{{ label }}</div><div class="v {{ 'good' if v.pnl > 0 else ('bad' if v.pnl < 0) }}">{{ v.pnl|money(true) }}</div>
+    <div class="l">{{ label }}</div><div class="v {{ pnl_cls(v.pnl) }}">{{ v.pnl|money(true) }}</div>
     <div class="s">{{ sub }} · {% if v.first %}{{ v.first.strftime('%d %b %Y') }}{% if v.last != v.first %} – {{ v.last.strftime('%d %b %Y') }}{% endif %}{% endif %} · {{ v.n }} positions</div></a>
 {% endfor %}
   <a class="kpi{{ ' sel' if not venue }}" href="{{ link(venue=None, event=None) }}" title="Show all venues">
-    <div class="l">Total P&amp;L</div><div class="v {{ 'good' if vtotal > 0 else ('bad' if vtotal < 0) }}">{{ vtotal|money(true) }}</div>
-    <div class="s">both venues · {{ venues.values()|sum(attribute='n') }} positions</div></a>
-</div>
-<p class="legend">Click a cell to show only that venue below (click again for both).</p>{% endif %}
-
-<div class="kpis">
-  <div class="kpi"><div class="l">Open now{% if venue %} · {{ "Polymarket" if venue == 'polymarket' else "private book" }}{% endif %}</div><div class="v">{{ paper.open }}</div><div class="s">marked to the market: <span class="{{ 'good' if paper.open_value > 0 else ('bad' if paper.open_value < 0) }}">{{ paper.open_value|money(true) }}</span></div></div>
-  <div class="kpi"><div class="l">Closed and settled</div><div class="v">{{ paper.n - paper.open }}</div><div class="s">{{ paper.won }}/{{ paper.held }} held to the result made money</div></div>
-  <div class="kpi"><div class="l">Realised P&amp;L</div><div class="v {{ 'good' if paper.settled_pnl > 0 else ('bad' if paper.settled_pnl < 0) }}">{{ paper.settled_pnl|money(true) }}</div><div class="s"><a href="/strategy">track record →</a></div></div>
+    <div class="l">Total P&amp;L</div><div class="v {{ pnl_cls(vtotal) }}">{{ vtotal|money(true) }}</div>
+    <div class="s">both venues · {{ venues.values()|sum(attribute='n') }} positions · click a venue to show only it</div></a>
+{% else %}{{ kpi("Realised P&L", paper.settled_pnl, "settled positions", "money") }}{% endif %}
+  <div class="kpi"><div class="l">Open now{% if venue %} · {{ "Polymarket" if venue == 'polymarket' else "private book" }}{% endif %}</div><div class="v">{{ paper.open }}</div><div class="s">marked to the market: {{ pnl(paper.open_value) }}</div></div>
+  <div class="kpi"><div class="l">Closed and settled</div><div class="v">{{ paper.n - paper.open }}</div><div class="s">{{ paper.won }} of {{ paper.held }} held to the result made money{% if venues|length > 1 %} · realised {{ pnl(paper.settled_pnl) }}{% endif %}</div></div>
 </div>
 
+{# --- one view at a time --- #}
 {% set has_poly = acct and acct.chart and not priv %}{% set has_book = book and book.chart and venue != 'polymarket' %}
-{% if has_poly or has_book %}<div class="card"><h2>P&amp;L history</h2>
-{% if has_poly and has_book %}<div class="tabs toggles" role="group" aria-label="Which P&L to plot">
-  <button type="button" data-plot="polymarket" aria-pressed="{{ 'true' if plot == 'polymarket' else 'false' }}">Polymarket</button>
-  <button type="button" data-plot="private" aria-pressed="{{ 'true' if plot == 'private' else 'false' }}">Private book</button>
-</div>{% endif %}
+{% set show_coming = coming and not priv %}
+<nav class="ptabs" data-tabs="positions" role="tablist">
+  <button type="button" role="tab" data-tab="overview">Overview</button>
+  {% if show_coming %}<button type="button" role="tab" data-tab="coming">Coming up{% if open_pos %}<span class="n">{{ open_pos|length }} open</span>{% endif %}</button>{% endif %}
+  <button type="button" role="tab" data-tab="ledger">{{ "Positions this weekend" if cur else "Positions" }}<span class="n">{{ shown|length }}</span></button>
+  {% if my_bets %}<button type="button" role="tab" data-tab="bets">In-app bets<span class="n">{{ my_bets|length }}</span></button>{% endif %}
+</nav>
+
+<section data-panel="overview">
+{% if has_poly or has_book %}<div class="card"><div class="section-head"><h2>P&amp;L history</h2>
+{% if has_poly and has_book %}<div class="tabs" role="group" aria-label="Which P&L to plot">
+  <button type="button" data-toggle="plot" data-value="polymarket" aria-pressed="{{ 'true' if plot == 'polymarket' else 'false' }}">Polymarket</button>
+  <button type="button" data-toggle="plot" data-value="private" aria-pressed="{{ 'true' if plot == 'private' else 'false' }}">Private book</button>
+</div>{% endif %}</div>
 {% if has_poly %}<div class="plot" data-plot="polymarket"{% if has_book and plot != 'polymarket' %} hidden{% endif %}>{{ chart(acct.chart) }}
 <p class="legend">Polymarket, paper: cumulative P&amp;L, <b>{{ acct.kpis.total|money(true) }}</b> over {{ acct.kpis.weekends }} weekends.
 Worst drawdown <b class="bad">{{ acct.kpis.max_dd|money(true) }}</b> from a peak;
@@ -40,21 +45,20 @@ Weekend by weekend, and the strategy behind it: <a href="/strategy">Strategy</a>
 {% if has_book %}<div class="plot" data-plot="private"{% if has_poly and plot != 'private' %} hidden{% endif %}>{{ chart(book.chart) }}
 <p class="legend">Private book: its P&amp;L at every one of the {{ book.polls }} polls of the live event (UTC), marked to fair, settled at the result.
 Worst drawdown <b class="bad">{{ book.max_dd|money(true) }}</b> from a peak, through the day.</p></div>{% endif %}
-</div>
-{% if has_poly and has_book %}<script>
-document.querySelectorAll('[data-plot]').forEach(function (b) {
-  if (b.tagName !== 'BUTTON') return;
-  b.addEventListener('click', function () {
-    document.querySelectorAll('button[data-plot]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
-    document.querySelectorAll('div.plot[data-plot]').forEach(function (p) { p.hidden = p.dataset.plot !== b.dataset.plot; });
-  });
-});
-</script>{% endif %}{% endif %}
+</div>{% endif %}
 
-{% if coming and not priv %}<div class="card"><h2>Coming up</h2>
-{% if open_pos %}<p><b>{{ open_pos|length }}</b> position{{ "s" if open_pos|length != 1 }} still open (below).</p>{% endif %}
+<div class="card"><h2>By market type</h2><div class="scroll"><table><thead><tr><th class="l">Market type</th><th>Positions</th><th>Open</th><th>Held to the result, made money</th><th>P&amp;L</th></tr></thead><tbody>
+{% for k in by_kind %}<tr><td class="l">{{ k.kind|replace('race_', '')|replace('_', ' ') }}</td><td>{{ k.n }}</td><td>{{ k.open }}</td><td>{{ k.won }}/{{ k.settled }}</td>
+  <td>{{ pnl(k.pnl) }}</td></tr>{% endfor %}
+</tbody></table></div></div>
+{% if maker %}<p class="legend">In-app markets you quote are on <a href="/book">My Book</a>.</p>{% endif %}
+</section>
+
+{# --- what the strategy would do next --- #}
+{% if show_coming %}<section data-panel="coming" hidden>
+<div class="card"><div class="section-head"><h2>Coming up</h2>{% if open_pos %}<span class="muted"><b>{{ open_pos|length }}</b> position{{ "s" if open_pos|length != 1 }} still open (under Positions)</span>{% endif %}</div>
 {% for rc in coming.races %}
-<h3>{{ rc.name }}{% if rc.location %} · {{ rc.location }}{% endif %} <span class="muted" style="font-size:13px">· race {{ rc.start|fmt }} UTC</span></h3>
+<h3>{{ rc.name }}{% if rc.location %} · {{ rc.location }}{% endif %} <span class="muted small">· race {{ rc.start|fmt }} UTC</span></h3>
 {% set calls = [] %}{% for e in rc.events %}{% for r in e.rows if r.call.action %}{% set _ = calls.append(r) %}{% endfor %}{% endfor %}
 {% if not rc.events %}<p class="muted">Polymarket hasn't listed markets for this race yet. {{ "Quotes" if maker else "Calls" }} appear here as soon as it does.</p>
 {% elif not calls %}<p class="muted">{{ rc.events|map(attribute='rows')|map('length')|sum }} markets listed; {{ profile.name.split(' ')[0] }} {{ "wouldn't quote any" if maker else "has no call on any" }} right now. {{ "Quotes" if maker else "Calls" }} update after every session.</p>
@@ -65,14 +69,13 @@ document.querySelectorAll('[data-plot]').forEach(function (b) {
 </tbody></table></div>{% endif %}
 {% endfor %}
 <p class="legend">{% if maker %}Where {{ profile.name.split(' ')[0] }} would quote each listed market right now (it re-quotes every 5 minutes through the weekend){% else %}{{ profile.name.split(' ')[0] }}'s current calls{% endif %}. Every market, with or without a {{ "quote" if maker else "call" }}: <a href="{{ '/markets/polymarket' if maker else '/markets' }}">{{ "Polymarket" if maker else "Markets" }}</a>.</p>
-</div>{% endif %}
+</div>
+</section>{% endif %}
 
-<div class="card"><h2>By market type</h2><div class="scroll"><table><thead><tr><th class="l">Market type</th><th>Positions</th><th>Open</th><th>Held to the result, made money</th><th>P&amp;L</th></tr></thead><tbody>
-{% for k in by_kind %}<tr><td class="l">{{ k.kind|replace('race_', '')|replace('_', ' ') }}</td><td>{{ k.n }}</td><td>{{ k.open }}</td><td>{{ k.won }}/{{ k.settled }}</td>
-  <td class="{{ 'good' if k.pnl > 0 else ('bad' if k.pnl < 0) }}">{{ k.pnl|money(true) }}</td></tr>{% endfor %}
-</tbody></table></div></div>
-
-<form method="get" class="inline"><label><span>Venue</span><select name="venue" onchange="this.form.submit()">
+{# --- the ledger --- #}
+<section data-panel="ledger" hidden>
+<div class="card"><div class="section-head"><h2>{{ "Positions" if not cur else "Positions this weekend" }}</h2><span class="spacer"></span>
+<form method="get" class="toolbar mb0"><label><span>Venue</span><select name="venue" onchange="this.form.submit()">
   <option value="">all venues</option><option value="polymarket" {{ 'selected' if venue == 'polymarket' }}>Polymarket (paper)</option><option value="private" {{ 'selected' if venue == 'private' }}>Private book</option>
 </select></label>
 <label><span>Weekend</span><select name="event" onchange="this.form.submit()">
@@ -81,33 +84,34 @@ document.querySelectorAll('[data-plot]').forEach(function (b) {
 </select></label>
 <label><span>Sort</span><select name="sort" onchange="this.form.submit()">
   <option value="">by weekend</option><option value="pnl" {{ 'selected' if sort == 'pnl' }}>P&amp;L, best first</option><option value="-pnl" {{ 'selected' if sort == '-pnl' }}>P&amp;L, worst first</option>
-</select></label></form>
-
-<div class="card"><h2>{{ "Positions" if not cur else "Positions this weekend" }}</h2><div class="scroll"><table><thead><tr>{% if not cur %}<th class="l">Weekend</th>{% endif %}<th class="l">Market</th><th class="l">Position</th><th>{{ "Fills" if maker else "Trades" }}</th><th>Cash in / out</th><th>Price now / result</th><th><a href="{{ link(sort='-pnl' if sort == 'pnl' else 'pnl') }}" title="Sort by P&amp;L">P&amp;L {{ "↓" if sort == 'pnl' else ("↑" if sort == '-pnl' else "↕") }}</a></th><th class="l"></th></tr></thead><tbody>
+</select></label></form></div>
+<div class="scroll" data-rows="25" data-filter="Filter by market or weekend"><table><thead><tr>{% if not cur %}<th class="l">Weekend</th>{% endif %}<th class="l">Market</th><th class="l">Position</th><th>{{ "Fills" if maker else "Trades" }}</th><th>Cash in / out</th><th>Price now / result</th><th><a href="{{ link(sort='-pnl' if sort == 'pnl' else 'pnl') }}" title="Sort by P&amp;L">P&amp;L {{ "↓" if sort == 'pnl' else ("↑" if sort == '-pnl' else "↕") }}</a></th><th class="l"></th></tr></thead><tbody>
 {% for p in shown %}<tr>{% if not cur %}<td class="l"><a href="{{ link(event=p.event_key) }}">{{ p.event_name or p.event_key }}</a> <span class="muted">{{ p.start_date|fmt if p.start_date }}</span></td>{% endif %}
   <td class="l">{{ p.subject }} <span class="muted">{{ p.kind|replace('race_', '')|replace('dh_', 'DH ')|replace('_', ' ') }}</span>{% if p.venue == 'private' %} <span class="pill no">private book</span>{% endif %}</td>
   <td class="l">{% if p.side %}{{ "%.0f"|format(p.shares) }} {{ p.side }}{% else %}<span class="muted">closed before the race</span>{% endif %}</td>
   <td>{{ p.trades }}</td><td>{{ p.cash|money(true) }}</td>
   <td>{% if p.outcome is not none %}{{ "YES" if p.outcome else "NO" }}{% elif p.mark is not none %}{{ "%.2f"|format(p.mark) }}{% endif %}</td>
-  <td class="{{ 'good' if p.pnl and p.pnl > 0 else ('bad' if p.pnl and p.pnl < 0) }}">{{ p.pnl|money(true) if p.pnl is not none }}</td>
+  <td>{{ pnl(p.pnl) }}</td>
   <td class="l">{% if p.state == 'open' %}<span class="pill yes">open</span>{% elif p.state == 'closed' %}<span class="muted">closed</span>{% endif %}{% if p.backfill %} <span class="pill no">backtest replay</span>{% endif %}</td></tr>
 {% else %}<tr><td class="l muted" colspan="8">None.</td></tr>{% endfor %}
 </tbody></table></div></div>
 
-{% if cur %}<div class="card"><h2>{{ "Paper fills" if maker else "Trades taken" }} this weekend</h2>
-<p class="legend">The executions behind these positions, in order. {{ "Each is a real Polymarket taker trade that crossed the maker's quote." if maker else "Each is a call the account took, at the most it would pay." }}</p>
-<div class="scroll"><table><thead><tr><th class="l">When (UTC)</th><th class="l">Stage</th><th class="l">Market</th><th class="l">Trade</th><th>Shares</th><th>Price</th><th>Cash</th></tr></thead><tbody>
+{% if cur %}<details class="card" data-remember="positions:trades"><summary><h2>{{ "Paper fills" if maker else "Trades taken" }} this weekend</h2><span class="sum">{{ trades|length }} · the executions behind these positions, in order</span></summary>
+<p class="legend">{{ "Each is a real Polymarket taker trade that crossed the maker's quote." if maker else "Each is a call the account took, at the most it would pay." }}</p>
+<div class="scroll" data-rows="25" data-filter="Filter by market or stage"><table><thead><tr><th class="l">When (UTC)</th><th class="l">Stage</th><th class="l">Market</th><th class="l">Trade</th><th>Shares</th><th>Price</th><th>Cash</th></tr></thead><tbody>
 {% for t in trades %}{% set sg = (-1 if (t.action == 'buy' or (t.action == 'fill' and t.side == 'YES')) else 1) %}<tr>
   <td class="l">{{ t.signal_ts|fmt }}</td><td class="l">{{ t.stage }}</td><td class="l">{{ t.subject }} <span class="muted">{{ t.kind|replace('race_', '')|replace('_', ' ') }}</span></td>
   <td class="l">{% if t.action == 'fill' %}{{ "bought" if t.side == 'YES' else "sold" }} YES{% else %}{{ t.action }} {{ t.side }}{% endif %}</td>
   <td>{{ "%.0f"|format(t.shares) }}</td><td>{{ "%.2f"|format(t.limit_price) }}</td><td>{{ (sg * t.shares * t.limit_price)|money(true) }}</td></tr>
 {% else %}<tr><td class="l muted" colspan="7">None.</td></tr>{% endfor %}
-</tbody></table></div></div>{% endif %}
-
-{% if my_bets %}<div class="card"><h2>In-app bets</h2>
-{% if summary %}<p><b>{{ summary.bets }}</b> bets ({{ summary.open }} open) · staked <b>${{ "%.2f"|format(summary.staked) }}</b> · settled P&amp;L <b class="{{ 'good' if summary.pnl >= 0 else 'bad' }}">${{ "%.2f"|format(summary.pnl) }}</b></p>{% endif %}
-{{ table(my_bets, ["id", "created_at", "title", "maker", "side", "price", "stake", "payout", "status", "pnl"]) }}</div>{% endif %}
-{% if maker %}<p class="legend">In-app markets you quote are on <a href="/book">My Book</a>.</p>{% endif %}
+</tbody></table></div></details>{% endif %}
 {% if shown|selectattr('backfill')|list %}{% call demo_context() %}<span class="pill no">backtest replay</span> positions come from this demo account's replayed weekends; live paper positions start with the next race weekend.{% endcall %}{% endif %}
+</section>
+
+{% if my_bets %}<section data-panel="bets" hidden>
+<div class="card"><h2>In-app bets</h2>
+{% if summary %}<p><b>{{ summary.bets }}</b> bets ({{ summary.open }} open) · staked <b>${{ "%.2f"|format(summary.staked) }}</b> · settled P&amp;L {{ pnl(summary.pnl, True) }}</p>{% endif %}
+{{ table(my_bets, ["id", "created_at", "title", "maker", "side", "price", "stake", "payout", "status", "pnl"], cap=25, filter="Filter by market") }}</div>
+</section>{% endif %}
 {% endif %}
 {% endblock %}

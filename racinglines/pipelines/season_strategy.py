@@ -33,7 +33,7 @@ HISTORY_START = pd.Timestamp("2025-12-09", tz="UTC")
 def season_links(conn, year):
     return pd.read_sql(text("""
         SELECT ml.*, a.display_name AS athlete FROM market_links ml LEFT JOIN athletes a ON a.id = ml.athlete_id
-        WHERE ml.race_id IS NULL AND ml.prediction = ANY(:k) AND coalesce(ml.volume, 0) >= :v
+        WHERE ml.race_id IS NULL AND ml.prediction = ANY(:k) AND coalesce(ml.volume, 0) >= :v AND ml.exchange = 'polymarket'
           AND ml.competition_id = (SELECT id FROM competitions WHERE code = 'f1_wdc')
           AND extract(year FROM ml.end_date) IN (:y, :y + 1)
         ORDER BY ml.prediction, ml.volume DESC"""), conn, params=dict(k=list(KINDS), v=MIN_VOLUME, y=year))

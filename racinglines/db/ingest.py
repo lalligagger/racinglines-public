@@ -66,16 +66,43 @@ def resolve_venue(session, raw_slug, country=None):
     return venue
 
 
-def resolve_athletes(session, riders):
-    """riders: DataFrame with rider_id ("name:<key>"), rider_name, nation.
-    Returns {rider_id: athlete_id}, creating athletes that don't exist yet."""
+def _identifiers(session, scheme, values):
+    return dict(session.execute(
+        select(m.AthleteIdentifier.value, m.AthleteIdentifier.athlete_id)
+        .where(m.AthleteIdentifier.scheme == scheme, m.AthleteIdentifier.value.in_(list(values)))
+    ).all())
+
+
+def resolve_athletes(session, riders, conflicts=None):
+    """riders: DataFrame with rider_id ("name:<key>"), rider_name, nation, and optionally uci_id.
+    Returns {rider_id: athlete_id}, creating athletes that don't exist yet.
+
+    With a uci_id, the UCI identifier is matched first, then the name key; a rider matched by
+    name gains its UCI identifier. When a UCI ID and a name key point to different athletes
+    (a name change, e.g. WILLIAMS Robert Jordan / WILLIAMS Jordan), the UCI ID wins and the pair
+    (uci athlete, name athlete) is appended to `conflicts` for a merge (db merge-athletes)."""
     riders = riders.drop_duplicates("rider_id")
     keys = {rid: rid.split(":", 1)[1] for rid in riders["rider_id"]}
-    found = dict(session.execute(
-        select(m.AthleteIdentifier.value, m.AthleteIdentifier.athlete_id)
-        .where(m.AthleteIdentifier.scheme == "name", m.AthleteIdentifier.value.in_(list(keys.values())))
-    ).all())
+    found = _identifiers(session, "name", keys.values())
     out = {rid: found[key] for rid, key in keys.items() if key in found}
+    uci = {}
+    if "uci_id" in riders:
+        uci = {r.rider_id: str(r.uci_id).strip() for r in riders.itertuples()
+               if _none(r.uci_id) is not None and str(r.uci_id).strip()}
+        by_uci = _identifiers(session, "uci", uci.values())
+        for rid, u in uci.items():
+            if u in by_uci:
+                if rid in out and out[rid] != by_uci[u] and conflicts is not None:
+                    conflicts.append((by_uci[u], out[rid]))
+                out[rid] = by_uci[u]
+        known = set(by_uci)
+        gain = [dict(scheme="uci", value=u, athlete_id=out[rid]) for rid, u in uci.items()
+                if rid in out and u not in known]
+        # a new spelling matched by UCI ID: its name key now points to the same athlete
+        gain += [dict(scheme="name", value=keys[rid], athlete_id=out[rid]) for rid in uci
+                 if rid in out and keys[rid] not in found]
+        if gain:
+            session.execute(insert(m.AthleteIdentifier), gain)
     new = riders[~riders["rider_id"].isin(out)]
     if len(new):
         ids = session.scalars(
@@ -83,9 +110,45 @@ def resolve_athletes(session, riders):
             [dict(display_name=r.rider_name, nation=_none(r.nation)) for r in new.itertuples()],
         ).all()
         session.execute(insert(m.AthleteIdentifier), [
-            dict(scheme="name", value=keys[rid], athlete_id=aid) for rid, aid in zip(new["rider_id"], ids)])
+            dict(scheme="name", value=keys[rid], athlete_id=aid) for rid, aid in zip(new["rider_id"], ids)]
+            + [dict(scheme="uci", value=uci[rid], athlete_id=aid) for rid, aid in zip(new["rider_id"], ids)
+               if rid in uci])
         out.update(zip(new["rider_id"], ids))
     return out
+
+
+def merge_athletes(session, keep, drop, dry_run=False):
+    """Move everything that refers to athlete `drop` to athlete `keep` (results, identifiers,
+    predictions, standings, market links, ...), then delete `drop`. Every table with a foreign
+    key to athletes.id is found from the models, so new ones are covered. Refuses, changing
+    nothing, when a row would collide with one `keep` already has (e.g. both in the same round).
+    Returns {table: rows moved}."""
+    from sqlalchemy import text
+    if keep == drop or session.get(m.Athlete, keep) is None or session.get(m.Athlete, drop) is None:
+        raise ValueError(f"need two different existing athletes, got {keep} and {drop}")
+    refs = [(t, c) for t in m.Base.metadata.sorted_tables for c in t.columns
+            for fk in c.foreign_keys if fk.column.table.name == "athletes"]
+    clashes, moved = [], {}
+    for t, c in refs:
+        n = session.execute(text(f'SELECT count(*) FROM "{t.name}" WHERE "{c.name}" = :d'), dict(d=drop)).scalar()
+        moved[t.name] = n
+        keys = [list(u.columns) for u in t.constraints if hasattr(u, "columns") and c in list(u.columns)
+                and u.__class__.__name__ in ("UniqueConstraint", "PrimaryKeyConstraint") and len(u.columns) > 1]
+        for cols in keys:
+            others = [x.name for x in cols if x is not c]
+            on = " AND ".join(f'a."{o}" IS NOT DISTINCT FROM b."{o}"' for o in others)
+            k = session.execute(text(f'SELECT count(*) FROM "{t.name}" a JOIN "{t.name}" b ON {on} '
+                                     f'WHERE a."{c.name}" = :d AND b."{c.name}" = :k'), dict(d=drop, k=keep)).scalar()
+            if k:
+                clashes.append(f"{t.name}: {k} row(s) on ({', '.join(others)})")
+    if clashes:
+        raise ValueError("can't merge, rows would collide: " + "; ".join(clashes))
+    if not dry_run:
+        for t, c in refs:
+            session.execute(text(f'UPDATE "{t.name}" SET "{c.name}" = :k WHERE "{c.name}" = :d'), dict(k=keep, d=drop))
+        session.delete(session.get(m.Athlete, drop))
+        session.flush()
+    return {k: v for k, v in moved.items() if v}
 
 
 def _none(v):

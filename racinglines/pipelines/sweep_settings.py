@@ -21,6 +21,7 @@ from dataclasses import dataclass
 
 STAGES = ("pre-weekend", "after FP1", "after FP2", "after FP3", "after SQ", "after Sprint", "after Quali")
 KINDS = ("race_win", "race_podium", "race_h2h", "race_constructor_top", "race_pole")
+DEFAULT_SEED = 42                # pricing.diagnostic's and the signal engine's seed
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,8 @@ SETTINGS = [
             target="model.FINISH_RHO_SCALE"),
     Setting("reset_weight", "model", "Regulation-reset carry-over", "float", 0.25, 0, 1,
             help="With the reset switch: weight of earlier seasons' car data.", target="model.REG_RESET_WEIGHT"),
+    Setting("seed", "model", "Monte Carlo seed", "int", None, 0, 2**31 - 1,
+            help="Empty = today's fixed seed (42). Set different seeds for independent noise draws in a search."),
     # --- entry timing ---------------------------------------------------------------------------------
     Setting("taker_stages", "timing", "Stages takers may trade", "multi", STAGES, choices=STAGES,
             help="Applies to every taker strategy (update, hold, after quali, stage-aware)."),
@@ -68,18 +71,26 @@ SETTINGS = [
     Setting("min_edge", "taker", "Min edge to act (prob.)", "float", 0.05, 0.005, 0.5),
     Setting("min_edge_h2h", "taker", "Min edge for head-to-head markets", "float", None, 0.005, 0.5,
             help="Empty = same as min edge."),
+    Setting("min_edge_by_kind", "taker", "Min edge per market kind", "map", None, 0.005, 0.5, choices=KINDS,
+            help="kind=edge pairs, e.g. race_h2h=0.05,race_podium=0.08; each overrides min edge (and the "
+                 "head-to-head one) for its kind. Empty = none."),
     Setting("stake_per_edge", "taker", "Stake per unit edge ($)", "float", 250.0, 10, 5000,
             help="Target cost = this x edge, e.g. 250 x 0.10 = $25."),
     Setting("max_stake", "taker", "Max stake per market ($)", "float", 50.0, 1, 5000),
     Setting("cost", "taker", "Cost per share per trade ($)", "float", 0.01, 0, 0.1),
+    Setting("bankroll", "taker", "Starting bankroll ($)", "float", None, 10, 1e7,
+            help="Bankroll-aware sizing: stakes scale with the balance after earlier weekends. Empty = fixed sizing."),
+    Setting("max_deployed", "taker", "Max capital deployed per weekend ($)", "float", None, 1, 1e7,
+            help="Across all markets; buys over the cap are cut to fit. Empty = no cap."),
     # --- maker ----------------------------------------------------------------------------------------
     Setting("half_spread", "maker", "Quote half-spread ($)", "float", 0.02, 0.005, 0.2),
     Setting("size", "maker", "Shares per quote", "float", 50.0, 1, 1000),
     Setting("max_pos", "maker", "Max inventory per market (shares)", "float", 250.0, 10, 5000),
     Setting("skew", "maker", "Inventory skew", "float", 1.0, 0, 5),
     Setting("max_disagree", "maker", "Don't quote beyond |fair - market|", "float", 0.15, 0.01, 1),
-    Setting("fill", "maker", "Fill rule", "choice", "through", choices=("through", "touch"),
-            help="through = a trade must cross our price (conservative); touch = at our price."),
+    Setting("fill", "maker", "Fill rule", "choice", "through", choices=("through", "touch", "queue"),
+            help="through = a trade must cross our price (conservative); touch = at our price; "
+                 "queue = at our price once the recorded book's queue ahead of us is served."),
     Setting("info_skew", "maker", "Info-timed skew (maker_skew / maker_all)", "float", 2.0, 0, 10),
     Setting("widen", "maker", "Widen factor on bad markouts (maker_widen / maker_all)", "float", 1.5, 1, 5),
     # --- markets --------------------------------------------------------------------------------------
@@ -87,6 +98,11 @@ SETTINGS = [
     Setting("min_volume_24h", "markets", "Min $ traded in prior 24 h", "float", 50.0, 0, 100000),
 ]
 BY_NAME = {s.name: s for s in SETTINGS}
+# The split (docs/backtest-core.md): the pricing model's own group, and the groups any sport's backtest shares
+# (entry timing, taker, maker, markets and their guards). Another model family's settings are its own model
+# group plus these once it trades a venue (models/timed_runs/settings.py is model-only so far).
+MODEL_SETTINGS = [s for s in SETTINGS if s.group == "model"]
+SHARED_SETTINGS = [s for s in SETTINGS if s.group != "model"]
 GROUPS = (("model", "Model"), ("timing", "Entry timing"), ("taker", "Taker strategies"),
           ("maker", "Maker strategies"), ("markets", "Markets"))
 MODEL_NAMES = [s.name for s in SETTINGS if s.group == "model"]
@@ -108,6 +124,20 @@ def _coerce(s, v):
         if bad:
             raise ValueError(f"{s.label}: unknown {bad}; choose from {list(s.choices)}")
         return tuple(x for x in s.choices if x in items)         # canonical order
+    if s.type == "map":                                      # "kind=value,..." -> canonical text (sorted, floats)
+        pairs = {}
+        for item in (v.split(",") if isinstance(v, str) else [f"{k}={x}" for k, x in dict(v).items()]):
+            if not item.strip():
+                continue
+            k, _, x = item.partition("=")
+            k = k.strip()
+            if k not in s.choices:
+                raise ValueError(f"{s.label}: unknown {k!r}; choose from {list(s.choices)}")
+            x = float(x)
+            if not s.min <= x <= s.max:
+                raise ValueError(f"{s.label}: {k}={x} is outside {s.min}-{s.max}")
+            pairs[k] = x
+        return ",".join(f"{k}={pairs[k]:g}" for k in sorted(pairs)) or s.default
     if s.type == "choice":
         if v not in s.choices:
             raise ValueError(f"{s.label}: pick one of {list(s.choices)}")
@@ -116,23 +146,35 @@ def _coerce(s, v):
 
 
 class Settings(dict):
-    """A full, validated set of sweep settings (missing ones take their defaults)."""
+    """A full, validated set of sweep settings (missing ones take their defaults).
+
+    The schema is a class attribute, so another model family defines its own settings by subclassing
+    (e.g. racinglines/models/timed_runs/settings.py) and keeps the same keys, labels and flags."""
+
+    SPEC = SETTINGS
+    BY = BY_NAME
+    MODEL = MODEL_NAMES
+    ALIASES = ALIASES
+    DEFAULT_SEED = DEFAULT_SEED
 
     @classmethod
     def from_dict(cls, d=None, strict=True):
-        d = {ALIASES.get(k, k): v for k, v in (d or {}).items()}
-        unknown = [k for k in d if k not in BY_NAME]
+        d = {cls.ALIASES.get(k, k): v for k, v in (d or {}).items()}
+        unknown = [k for k in d if k not in cls.BY]
         if unknown and strict:
             raise ValueError(f"unknown settings {unknown}")
         out = cls()
-        for s in SETTINGS:
+        for s in cls.SPEC:
             v = _coerce(s, d.get(s.name))
             if s.type in ("float", "int") and v is not None and s.min is not None and not s.min <= v <= s.max:
                 raise ValueError(f"{s.label}: {v} is outside {s.min}-{s.max}")
             out[s.name] = v
-        from racinglines.models.position_sim import variants as V
-        V.switches(out["variant"])                                   # raises on an unknown switch
+        out._validate()
         return out
+
+    def _validate(self):
+        from racinglines.models.position_sim import variants as V
+        V.switches(self["variant"])                                  # raises on an unknown switch
 
     @classmethod
     def from_run_params(cls, params):
@@ -140,14 +182,14 @@ class Settings(dict):
         p = dict(params or {})
         if isinstance(p.get("settings"), dict):
             return cls.from_dict(p["settings"], strict=False)
-        return cls.from_dict({k: v for k, v in p.items() if ALIASES.get(k, k) in BY_NAME}, strict=False)
+        return cls.from_dict({k: v for k, v in p.items() if cls.ALIASES.get(k, k) in cls.BY}, strict=False)
 
     def changed(self):
         """{name: value} of the settings that differ from the defaults."""
-        return {k: v for k, v in self.items() if v != BY_NAME[k].default}
+        return {k: v for k, v in self.items() if v != self.BY[k].default}
 
     def _key(self, names):
-        names = [k for k in names if not (BY_NAME[k].default is None and self[k] is None)]   # unset optionals
+        names = [k for k in names if not (self.BY[k].default is None and self[k] is None)]   # unset optionals
         blob = json.dumps({k: self[k] for k in names}, sort_keys=True, default=list)
         return hashlib.sha1(blob.encode()).hexdigest()[:12]
 
@@ -157,9 +199,14 @@ class Settings(dict):
         return self._key(sorted(self))
 
     @property
+    def rng_seed(self):
+        """The Monte Carlo seed: the `seed` setting, or today's fixed one when it's unset."""
+        return self.DEFAULT_SEED if self["seed"] is None else self["seed"]
+
+    @property
     def model_key(self):
         """Identity of the pricing: only the settings that change the model's prices."""
-        return self._key(MODEL_NAMES)
+        return self._key(self.MODEL)
 
     def label(self):
         ch = {k: v for k, v in self.changed().items() if k != "variant"}
@@ -200,9 +247,14 @@ class Settings(dict):
                 setattr(mod, attr, v)
 
 
-def add_arguments(parser):
+def parse_map(v):
+    """A map setting's canonical text -> {key: float} ({} when unset)."""
+    return {k: float(x) for k, _, x in (i.partition("=") for i in v.split(","))} if v else {}
+
+
+def add_arguments(parser, cls=None):
     """One flag per setting (the variant is the f1 group's global --variant)."""
-    for s in SETTINGS:
+    for s in (cls or Settings).SPEC:
         if s.name == "variant":
             continue
         dflt = ",".join(s.default) if s.type == "multi" else "not set" if s.default is None else s.default
@@ -211,10 +263,12 @@ def add_arguments(parser):
         parser.add_argument("--" + s.name.replace("_", "-"), **kw)
 
 
-def from_args(args):
-    d = {s.name: getattr(args, s.name) for s in SETTINGS if s.name != "variant" and getattr(args, s.name, None) is not None}
-    d["variant"] = getattr(args, "variant", "baseline") or "baseline"
-    return Settings.from_dict(d)
+def from_args(args, cls=None):
+    cls = cls or Settings
+    d = {s.name: getattr(args, s.name) for s in cls.SPEC if s.name != "variant" and getattr(args, s.name, None) is not None}
+    if "variant" in cls.BY:
+        d["variant"] = getattr(args, "variant", "baseline") or "baseline"
+    return cls.from_dict(d)
 
 
 def data_key(view):

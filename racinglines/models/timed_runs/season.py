@@ -10,7 +10,7 @@ from racinglines.core.stats import brier
 
 from .model import (
     DEFAULT_FORMAT, INCIDENT_THRESHOLD, RNG, actual_event_points, event_format, event_order, event_starters,
-    fit_season_model, simulate_standings, simulate_weekend, summarize_weekend,
+    fit_season_model, simulate_standings, simulate_weekend, summarize_weekend, unraced_format,
 )
 
 
@@ -85,10 +85,13 @@ def backtest_season(raw, target, n_holdout=2, n_sims=10000, rng=RNG, train_scope
     return model, event_reports, standings, (train_ev, test_ev)
 
 
-def walk_forward_season(raw, target, min_prior_events=None, n_sims=5000, rng=RNG, train_scope="all", **fit_kw):
+def walk_forward_season(raw, target, min_prior_events=None, n_sims=5000, rng=RNG, train_scope="all",
+                        rider_rows=None, **fit_kw):
     """For each target event after the first min_prior_events: fit on
     everything before it, simulate it with its actual start list, score it.
-    With train_scope="all" even round 1 has history, so it's included."""
+    With train_scope="all" even round 1 has history, so it's included.
+    rider_rows: a list to append each event's per-rider predictions and outcomes to
+    (for reliability curves, see calibration())."""
     category = target["category"].iloc[0]
     events = event_order(target)
     if min_prior_events is None:
@@ -105,9 +108,41 @@ def walk_forward_season(raw, target, min_prior_events=None, n_sims=5000, rng=RNG
         if not fmt.get("to_final", fmt.get("q1_to_final")):
             continue  # no final results (e.g. PDF-only round)
         sim = simulate_weekend(model, field, n_sims=n_sims, rng=rng, fmt=fmt)
-        rows.append({**_score_weekend(target, pts, e, model, field, sim)[0], "format": fmt["kind"],
+        metrics, summ = _score_weekend(target, pts, e, model, field, sim)
+        rows.append({**metrics, "format": fmt["kind"],
                      "n_final": fmt.get("to_final", fmt.get("q1_to_final", 0) + fmt.get("q2_to_final", 0))})
+        if rider_rows is not None:
+            made = target.loc[(target["event_id"] == e) & (target["round"] == "final"), "rider_id"]
+            fr = summ["actual_final_rank"]
+            rider_rows.append(summ.assign(event_id=e, venue=metrics["venue"], won=fr == 1, podium=fr <= 3,
+                                          top10=fr <= 10, made_final=summ["rider_id"].isin(made)))
     return pd.DataFrame(rows)
+
+
+# market -> (predicted column, outcome column)
+CAL_MARKETS = dict(win=("win_prob", "won"), podium=("podium_prob", "podium"), top10=("top10_prob", "top10"),
+                   final=("make_final_prob", "made_final"))
+CAL_BINS = (0, .01, .03, .06, .1, .2, .35, .5, .7, .9, 1.0001)
+
+
+def calibration(riders, bins=CAL_BINS):
+    """Reliability table from walk-forward rider rows: per market and probability bin, the
+    count, mean predicted and observed frequency (z = (observed - predicted) / its binomial
+    SE), plus a 'total' row per market with Brier and log loss."""
+    out = []
+    for mkt, (p, y) in CAL_MARKETS.items():
+        pr, ob = riders[p].to_numpy(float), riders[y].to_numpy(bool).astype(float)
+        cut = pd.cut(pr, bins, right=False)
+        for b, g in pd.DataFrame(dict(p=pr, y=ob, bin=cut)).groupby("bin", observed=True):
+            m = g["p"].mean()
+            se = np.sqrt(max(m * (1 - m), 1e-6) / len(g))
+            out.append(dict(market=mkt, bin=f"{b.left:.2f}-{min(b.right, 1):.2f}", n=len(g), predicted=m,
+                            observed=g["y"].mean(), z=(g["y"].mean() - m) / se))
+        q = np.clip(pr, 1e-4, 1 - 1e-4)
+        out.append(dict(market=mkt, bin="total", n=len(pr), predicted=pr.mean(), observed=ob.mean(),
+                        z=np.nan, brier=float(((pr - ob) ** 2).mean()),
+                        logloss=float(-(ob * np.log(q) + (1 - ob) * np.log(1 - q)).mean())))
+    return pd.DataFrame(out)
 
 
 def rank_moves(current_points, riders, sim_points):
@@ -175,7 +210,7 @@ def weekend_prior(model, event_rows, riders, practice_sd_mult=1.5, max_iqr=0.08)
 
 
 def forecast_season(raw, target, n_remaining=2, n_sims=10000, attend_window=3, rng=RNG,
-                    train_scope="all", **fit_kw):
+                    train_scope="all", unraced="default", **fit_kw):
     """Simulate the rest of the target season: n_remaining rounds in total.
 
     - Rounds already in the data without final results (the weekend in
@@ -186,6 +221,8 @@ def forecast_season(raw, target, n_remaining=2, n_sims=10000, attend_window=3, r
     - Remaining rounds not in the data yet: field = riders who started Q1 in
       any of the last attend_window completed events, each attending with
       probability (starts in that window / window).
+    - unraced: the format those rounds are simulated in (model.unraced_format): "default" = the 2026 elite men's
+      format for every category; "last" = the category's latest completed event's own format.
     Returns (model, upcoming, per_round, standings): upcoming = [(event_id,
     summary)] for in-data rounds; per_round = summary for an unknown round (or
     None)."""
@@ -198,16 +235,17 @@ def forecast_season(raw, target, n_remaining=2, n_sims=10000, attend_window=3, r
     pts = actual_event_points(target[target["event_id"].isin(done)])
     current = pts.groupby("rider_id")["points"].sum()
 
+    fmt = unraced_format(target, done, unraced)
     weekends = []
     for e in upcoming:
         field = event_starters(target, e)
         prior = weekend_prior(model, target[target["event_id"] == e], field)
-        weekends.append((field, None, DEFAULT_FORMAT, prior))
+        weekends.append((field, None, fmt, prior))
     n_unknown = max(n_remaining - len(upcoming), 0)
     recent = events[-attend_window:]
     starts = pd.Series([r for e in recent for r in event_starters(target, e)]).value_counts()
     field = starts.index.tolist()
-    weekends += [(field, (starts / len(recent)).to_numpy(), DEFAULT_FORMAT)] * n_unknown
+    weekends += [(field, (starts / len(recent)).to_numpy(), fmt)] * n_unknown
 
     standings, sims = simulate_standings(model, current, weekends, n_sims=n_sims, rng=rng)
     upcoming_summaries = []

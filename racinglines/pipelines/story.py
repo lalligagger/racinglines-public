@@ -113,8 +113,10 @@ def decisions(conn):
 def track_record(conn, uid, venue="polymarket"):
     """Every weekend with signals or positions: event, strategy run, trades taken (taker) / fills (maker),
     positions, paper P&L (settled, else marked to the market), backtest replay or live. venue: 'polymarket'
-    (the default: the strategy's own record), 'private' or 'all'. A private-book event (pipelines/live_dh.py)
-    has positions but no signals: it joins the history on the day the book ran, as its own "Private book" run."""
+    (the default: the strategy's own record), 'private', 'kalshi' (the maker's replay on Kalshi's tape,
+    `f1 demo-history --venue kalshi`) or 'all'. A private-book event
+    (pipelines/live_dh.py) has positions but no signals: it joins the history on the day the book ran, as its
+    own "Private book" run."""
     import pandas as pd
     from sqlalchemy import text
     q = text("""
@@ -122,7 +124,9 @@ def track_record(conn, uid, venue="polymarket"):
                           count(*) FILTER (WHERE action IN ('buy', 'sell') AND coalesce(detail->>'followed', 'true') = 'true') AS taken,
                           count(*) FILTER (WHERE action = 'fill') AS fills,
                           bool_or(detail->>'backfill' = 'true') AS backfill
-                   FROM strategy_signals WHERE user_id = :u GROUP BY event_key),
+                   FROM strategy_signals WHERE user_id = :u
+                     AND (:v NOT IN ('polymarket', 'kalshi') OR coalesce(detail->>'venue', 'polymarket') = :v)
+                   GROUP BY event_key),
              p AS (SELECT event_key, count(*) FILTER (WHERE abs(yes_shares) + abs(no_shares) > 1e-9) AS positions,
                           bool_and(outcome IS NOT NULL OR abs(yes_shares) + abs(no_shares) + abs(cash) < 1e-9) AS settled,
                           sum(cash + yes_shares * coalesce(outcome::int, mark) + no_shares * (1 - coalesce(outcome::int, mark))) AS pnl,
@@ -131,13 +135,16 @@ def track_record(conn, uid, venue="polymarket"):
         SELECT event_key, s.profile, s.strategy, coalesce(s.signals, 0) AS signals, coalesce(s.taken, 0) AS taken,
                coalesce(s.fills, 0) AS fills, s.backfill, coalesce(p.private, false) AS private,
                coalesce(p.positions, 0) AS positions, coalesce(p.settled, true) AS settled, coalesce(p.pnl, 0) AS pnl,
-               coalesce(ra.format->>'event_name', e.name) AS event_name,
-               coalesce(e.start_date, CASE WHEN p.private THEN (p.updated AT TIME ZONE 'UTC')::date END) AS start_date
+               coalesce(ra.format->>'event_name', e.name, le.title) AS event_name,
+               coalesce(e.start_date, CASE WHEN p.private THEN coalesce((le.opened_at AT TIME ZONE 'UTC')::date,
+                                                                        (p.updated AT TIME ZONE 'UTC')::date) END) AS start_date
         FROM s FULL JOIN p USING (event_key) LEFT JOIN events e ON e.source_key = event_key AND e.source = 'f1timing'
         LEFT JOIN races ra ON ra.event_id = e.id
+        LEFT JOIN (SELECT DISTINCT ON (event_key) event_key, title, opened_at FROM live_events
+                   ORDER BY event_key, opened_at) le USING (event_key)
         WHERE (:v <> 'private' AND s.event_key IS NOT NULL) OR (:v <> 'polymarket' AND p.private) ORDER BY event_key""")
     rows = [dict(r) for r in conn.execute(q, dict(u=uid, v=venue)).mappings()]
-    from racinglines.pipelines.live_dh import event_name
+    from racinglines.pipelines.live import event_name
     for r in rows:
         r["pnl"] = float(r["pnl"] or 0.0)
         if r["private"] and r["profile"] is None:

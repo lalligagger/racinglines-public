@@ -1,0 +1,277 @@
+{
+ "2026-13_hold": {
+  "by_kind": [
+   {
+    "kind": "race_win",
+    "pnl": 282.0114255,
+    "trades": 4
+   },
+   {
+    "kind": "race_pole",
+    "pnl": 15.21263328,
+    "trades": 3
+   },
+   {
+    "kind": "race_podium",
+    "pnl": 182.6071519,
+    "trades": 6
+   }
+  ],
+  "by_stage": [
+   {
+    "pnl": 379.3504399,
+    "stage": "pre-weekend",
+    "trades": 6
+   },
+   {
+    "pnl": -12.15946936,
+    "stage": "after FP2",
+    "trades": 3
+   },
+   {
+    "pnl": 112.6402402,
+    "stage": "after FP1",
+    "trades": 4
+   }
+  ],
+  "summary": {
+   "bought": 397.375,
+   "markets": 101,
+   "pnl": 479.8312107,
+   "roi": 1.20750226,
+   "traded": 13,
+   "trades": 13,
+   "turnover": 397.375
+  }
+ },
+ "2026-13_last": {
+  "by_kind": [
+   {
+    "kind": "race_win",
+    "pnl": 16.58152174,
+    "trades": 2
+   }
+  ],
+  "by_stage": [
+   {
+    "pnl": 16.58152174,
+    "stage": "after Quali",
+    "trades": 2
+   }
+  ],
+  "summary": {
+   "bought": 70.375,
+   "markets": 101,
+   "pnl": 16.58152174,
+   "roi": 0.2356166499,
+   "traded": 2,
+   "trades": 2,
+   "turnover": 70.375
+  }
+ },
+ "2026-13_update": {
+  "by_kind": [
+   {
+    "kind": "race_win",
+    "pnl": -15.21694672,
+    "trades": 14
+   },
+   {
+    "kind": "race_pole",
+    "pnl": 13.85026497,
+    "trades": 10
+   },
+   {
+    "kind": "race_podium",
+    "pnl": 237.3293513,
+    "trades": 17
+   }
+  ],
+  "by_stage": [
+   {
+    "pnl": 379.3504399,
+    "stage": "pre-weekend",
+    "trades": 6
+   },
+   {
+    "pnl": 77.59170226,
+    "stage": "after FP1",
+    "trades": 9
+   },
+   {
+    "pnl": 130.7968913,
+    "stage": "after FP2",
+    "trades": 13
+   },
+   {
+    "pnl": -16.56725206,
+    "stage": "after FP3",
+    "trades": 10
+   },
+   {
+    "pnl": -335.2091119,
+    "stage": "after Quali",
+    "trades": 3
+   }
+  ],
+  "summary": {
+   "bought": 627.1960338,
+   "markets": 101,
+   "pnl": 235.9626695,
+   "roi": 0.3762183701,
+   "traded": 15,
+   "trades": 41,
+   "turnover": 839.3070905
+  }
+ },
+ "2026-15_hold": {
+  "by_kind": [
+   {
+    "kind": "race_h2h",
+    "pnl": 37.71929825,
+    "trades": 1
+   },
+   {
+    "kind": "race_win",
+    "pnl": 153.2160669,
+    "trades": 5
+   },
+   {
+    "kind": "race_pole",
+    "pnl": 19.73076923,
+    "trades": 1
+   },
+   {
+    "kind": "race_podium",
+    "pnl": 93.49140299,
+    "trades": 6
+   }
+  ],
+  "by_stage": [
+   {
+    "pnl": 37.71929825,
+    "stage": "after Quali",
+    "trades": 1
+   },
+   {
+    "pnl": 129.2678571,
+    "stage": "after FP1",
+    "trades": 2
+   },
+   {
+    "pnl": 23.94820972,
+    "stage": "pre-weekend",
+    "trades": 3
+   },
+   {
+    "pnl": 142.1445623,
+    "stage": "after FP3",
+    "trades": 2
+   },
+   {
+    "pnl": -28.92239011,
+    "stage": "after FP2",
+    "trades": 5
+   }
+  ],
+  "summary": {
+   "bought": 418.0625,
+   "markets": 103,
+   "pnl": 304.1575373,
+   "roi": 0.7275408278,
+   "traded": 13,
+   "trades": 13,
+   "turnover": 418.0625
+  }
+ },
+ "2026-15_last": {
+  "by_kind": [
+   {
+    "kind": "race_h2h",
+    "pnl": 37.71929825,
+    "trades": 1
+   },
+   {
+    "kind": "race_win",
+    "pnl": -130.3725829,
+    "trades": 6
+   }
+  ],
+  "by_stage": [
+   {
+    "pnl": -92.65328463,
+    "stage": "after Quali",
+    "trades": 7
+   }
+  ],
+  "summary": {
+   "bought": 208.6875,
+   "markets": 103,
+   "pnl": -92.65328463,
+   "roi": -0.4439809985,
+   "traded": 7,
+   "trades": 7,
+   "turnover": 208.6875
+  }
+ },
+ "2026-15_update": {
+  "by_kind": [
+   {
+    "kind": "race_h2h",
+    "pnl": 37.71929825,
+    "trades": 1
+   },
+   {
+    "kind": "race_win",
+    "pnl": -113.6851633,
+    "trades": 19
+   },
+   {
+    "kind": "race_pole",
+    "pnl": 6.730769231,
+    "trades": 2
+   },
+   {
+    "kind": "race_podium",
+    "pnl": 65.78271192,
+    "trades": 10
+   }
+  ],
+  "by_stage": [
+   {
+    "pnl": -42.93403649,
+    "stage": "after Quali",
+    "trades": 6
+   },
+   {
+    "pnl": 123.6095162,
+    "stage": "after FP1",
+    "trades": 4
+   },
+   {
+    "pnl": -95.6162569,
+    "stage": "after FP2",
+    "trades": 7
+   },
+   {
+    "pnl": -12.45981641,
+    "stage": "after FP3",
+    "trades": 12
+   },
+   {
+    "pnl": 23.94820972,
+    "stage": "pre-weekend",
+    "trades": 3
+   }
+  ],
+  "summary": {
+   "bought": 636.279932,
+   "markets": 103,
+   "pnl": -3.452383902,
+   "roi": -0.005425888399,
+   "traded": 17,
+   "trades": 32,
+   "turnover": 801.5385926
+  }
+ }
+}

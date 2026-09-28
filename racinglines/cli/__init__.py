@@ -2,9 +2,11 @@
 racinglines <group> <command> [options]
 
     f1        fetch | ingest | forecast | backtest | diagnostic | sweep | season-strategy | replay
-    mtb_dh    download | parse | ingest | forecast | backtest
+    mtb_dh    download | parse | ingest | forecast | backtest | walk-forward
+    backtest  walk-forward SPORT   (the backtest core, any sport with a pricing model)
     markets   sync | history | trades | record | archive
     db        init | seed | stats | export
+    live      new | step | run | agent | status | report   (a live private-book event, any sport)
     web       serve the web app
     check     quick validation: code on synthetic data, data endpoints, database
 
@@ -13,7 +15,7 @@ racinglines <group> <command> [options]
 
 import sys
 
-GROUPS = ("f1", "mtb_dh", "markets", "db", "web", "check")
+GROUPS = ("f1", "mtb_dh", "backtest", "markets", "db", "live", "web", "check")
 
 
 def main(argv=None):

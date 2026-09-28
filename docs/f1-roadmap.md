@@ -65,8 +65,7 @@ Decision Log entry and approval first.
 Before starting, build the fixtures and write your local golden baseline:
 
 ```
-python scripts/fetch_test_fixtures.py      # once; FastF1 is rate-limited, so a cold run can take up to an hour
-python -m pytest -m "not live"             # writes tests/golden/*.json on first run
+python -m pytest -m "not live"            # fixtures and goldens are pinned in git (scripts/fetch_test_fixtures.py --refresh rebuilds them)
 ```
 
 For every change:
@@ -221,7 +220,7 @@ and a Decision Log entry (promoted or not).
 
 ### F1-3: Simulation tail and props (reference model C1)
 
-**Status:** model part done 2026-09-27; props not started · **Target:** gaps 3 and 4, plus unpriced prop markets
+**Status:** model part done 2026-09-27; props priced for the live book 2026-09-28 (opt-in, `models/position_sim/props.py`), not yet mapped in the Polymarket sync · **Target:** gaps 3 and 4, plus unpriced prop markets
 
 **Outcome:** `tail` (disrupted-race mixture + correlated retirements) is neutral:
 no metric moves beyond 2 SE at any stage, so it isn't promoted. Props are
@@ -359,7 +358,7 @@ V2 item and the owner's explicit approval.
 
 ### F1-9: More exchanges (Kalshi, others)
 
-**Status:** not started · **Start after** F1-8's first live weekends
+**Status:** Kalshi connector run against the live read-only API (2026-09-28, `markets/kalshi/`); F1 history for 2025 and 2026 pulled and archived in `data/archive/markets/kalshi/` ([Data changes](data-changes.md)); the maker replay and the demo maker's record read it (`f1 demo-history --venue kalshi`, [Kalshi history](kalshi-history.md)); the sweep and taker signals don't yet · **Start after** F1-8's first live weekends
 
 - **Kalshi connector** in `racinglines/markets/kalshi/`, mirroring
   `markets/polymarket/`: markets and resolution rules, prices, trade tape, and
@@ -414,6 +413,17 @@ signals, with leakage-rule tests like Polymarket's.
 | 2026-09-27 | — | Web routes renamed to match their pages (Markets, Strategy, Positions, My Book, Lab); every old URL redirects (`web/legacy.py`) | A page's name and its URL should agree; redirects keep bookmarks and links working | the old routes |
 | 2026-09-27 | — | Cloud runs load a database snapshot (`racinglines db snapshot-export` / `snapshot-import`, `data/archive/db/`) plus exported market links, prepared by `scripts/cloud/prepare.sh` | An exact replica (same ids, same prices) makes cloud results identical to local ones and needs no network beyond PyPI and GitHub | `f1 ingest` + `pm-sync` on the VM |
 | 2026-09-27 | 9 | New phases F1-8 (live paper-trade validation) and F1-9 (more exchanges); the Kalshi package moves from F1-5 to F1-9 | Trading on any exchange only after paper-trade validation; Kalshi lists F1 | the Kalshi row under F1-5 |
+| 2026-09-28 | 8 | Order signing moves to CLOB V2 (`py-clob-client-v2==1.2.0`); V1 client removed. Dry runs sign with the local order builder (V2 struct, domain version `POLYMARKET_ORDER_VERSION`, default 2), no network; live orders ask the CLOB for its version | V1 orders stopped working on 2026-04-28, so there is no working behaviour to keep behind a switch. The client’s `create_order` calls the CLOB for the tick size and version even in a dry run. Not verified against the live CLOB: no order sent | the V1 client |
+| 2026-09-28 | 8 | Bankroll-aware sizing and a deployed-capital cap are optional sweep settings (`bankroll`, `max_deployed`, unset = today’s fixed sizing). The taker is now a per-market stepper (`taker_weekend._Market`); with a cap, markets are stepped in time order and buys over the cap are cut to fit | Default results identical to the old taker on 2,400 random synthetic weekend × parameter combinations, and the 2026 sweep reproduces +$1,874.01 for the stage-aware taker. Choosing a rule waits for live weekends | — |
+| 2026-09-28 | 2 | A Monte Carlo seed setting (`seed`, a model setting, unset = today's fixed 42) for the sweep, the search and the signal engine's profiles | A search's noise replicates re-ran the same draw; independent seeds show whether a winner is noise. Unset leaves every model key, cached stage run and price unchanged (pinned in the tests) | — |
+| 2026-09-28 | 3 | Props priced outside the simulator (`models/position_sim/props.py`): safety car, red flag and rain as per-circuit rates shrunk to the field rate (prior 16 races), fastest lap from the stage run's finishing odds × how often each finishing bucket set it; listed in a live book only when its `[live.markets] kinds` names them | Walk-forward on 2022–2026 (107 races, `f1 props --check`), per-circuit rates don't beat the field rate within the noise (Brier: safety car 0.2535 vs 0.2525, red flag 0.1128 vs 0.1113, rain 0.1754 vs 0.1765, SE ≈ 0.013–0.02), and lighter shrinkage (4) was worse; the prior was picked on the same data. Fastest lap isn't calibrated yet: it needs stored stage runs for past races (the bucket's dump). The sync classifier still leaves Polymarket's prop markets unmodeled | the simulator-based props |
+| 2026-09-28 | 9 | Kalshi connector (`markets/kalshi/`) writes the same tables as Polymarket (`market_links` with `exchange='kalshi'`, one row per market's YES contract; `market_trades`, `market_price_history`, `market_book_snapshots`), keeps each market's rules in `params.rules`, and gates orders like Polymarket (post-only, a notional cap, `KALSHI_TRADING_ENABLED`). Built early at the owner's request | Owner asked for it (2026-09-28). The cloud network blocks Kalshi and there are no credentials, so it's tested on mocked responses shaped like the API docs; the title wording, series tickers and field names need checking against the live API before anything reads it | — |
+| 2026-09-28 | 4 | The maker replay's positions table keeps its columns when a weekend has no markets of the chosen kinds, so it summarises to a zero total | The fix for the h2h-only crash on 2025 (no h2h markets before round 8). Weekends with markets are unchanged; rounds 8–9 h2h-only run end to end on the bucket's database | — |
+| 2026-09-28 | 4 | The stage-aware taker stays a flagged, in-sample reference strategy; no profile adopts it | Out of sample on 2025 it lost $316 over 23 weekends (+$1,874 in-sample on 2026); 2025's best update-taker stage was after qualifying, the stage it skips | — |
+| 2026-09-28 | — | Proposed Google Cloud shape: Cloud SQL + Cloud Run (one image, a service for the web app, jobs for the recorder, signal engine, live events and sweeps) + Scheduler, the bucket mounted as the data root, IAM database login, no service-account keys | Scales to zero between race weekends; every piece is already a CLI subcommand; `RACINGLINES_DATA` already moves the data root. A proposal: nothing built | a VM running today's LaunchAgents as cron jobs |
+| 2026-09-28 | 2 | New variant `rookie` (`model.ROOKIE_CARRY`, off by default): a finished rookie season's teammate comparisons count 0.25 in the driver offsets, for both drivers of the team-event; drivers already in the data's first season aren't treated as rookies | The weight is set a priori, like `reset`'s. Judged on all 129 races and per season (runs 1288, 1289): win odds improve before qualifying, teammate h2h better in 2026 and worse in 2021, so not promoted | faster forgetting for every driver (a shorter driver half-life), not tried |
+| 2026-09-28 | — | Downhill points tables per era live in `points_schemes`, entered from a TOML file (`sports/points/uci_dhi_wc.toml`); the model reads them only with `--points db`, by setting the three table globals per season (`points.use`) | No plumbing through every function, and the default path is untouched. Placeholders stay marked (`official = false`) until the owner enters the UCI scales; committed standings are TOML because git ignores CSVs | a points argument threaded through the season and weekend functions |
+| 2026-09-28 | — | Downhill UCI IDs: a separate `uci_id` field and a `uci` athlete identifier matched first; the parser's `rider_id` stays name-based; existing duplicates are merged by an explicit command, never automatically | Old files and today's model inputs stay identical; a merge changes history, so the owner runs it | switching `rider_id` to `uci:<id>` in the parser |
 
 ## Open questions
 

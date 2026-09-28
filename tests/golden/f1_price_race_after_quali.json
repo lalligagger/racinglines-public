@@ -1,0 +1,258 @@
+{
+ "audit": {
+  "cutoff": "2026-09-25 14:00:00",
+  "event_sessions": {
+   "fp1": "2026-09-24 08:30:00",
+   "fp2": "2026-09-24 12:00:00",
+   "fp3": "2026-09-25 08:30:00",
+   "qual": "2026-09-25 12:00:00",
+   "race": "2026-09-26 11:00:00",
+   "sprint": null,
+   "sprint_qual": null
+  },
+  "grid": "qualifying order",
+  "practice_prior": true,
+  "sessions_used": [
+   "fp1",
+   "fp2",
+   "fp3",
+   "qual"
+  ],
+  "training_races": 9
+ },
+ "constructor_top": {
+  "alpine": 0.0225,
+  "aston_martin": 0.0,
+  "cadillac": 0.0,
+  "ferrari": 0.325,
+  "haas": 0.001,
+  "mclaren": 0.316,
+  "mercedes": 0.1795,
+  "rb": 0.005,
+  "red_bull": 0.15,
+  "sauber": 0.0,
+  "williams": 0.001
+ },
+ "h2h_first": [
+  [
+   "545",
+   0.6755
+  ],
+  [
+   "546",
+   0.736
+  ],
+  [
+   "547",
+   0.8905
+  ],
+  [
+   "548",
+   0.695
+  ],
+  [
+   "549",
+   0.7725
+  ]
+ ],
+ "probs": [
+  {
+   "athlete_id": 545,
+   "dnf_prob": 0.147,
+   "exp_points": 10.2205,
+   "podium_prob": 0.341,
+   "pole_prob": 0.0,
+   "top10_prob": 0.8145,
+   "win_prob": 0.1055
+  },
+  {
+   "athlete_id": 546,
+   "dnf_prob": 0.1475,
+   "exp_points": 8.1155,
+   "podium_prob": 0.2305,
+   "pole_prob": 0.0,
+   "top10_prob": 0.784,
+   "win_prob": 0.0465
+  },
+  {
+   "athlete_id": 547,
+   "dnf_prob": 0.1365,
+   "exp_points": 0.8095,
+   "podium_prob": 0.0035,
+   "pole_prob": 0.0,
+   "top10_prob": 0.202,
+   "win_prob": 0.0
+  },
+  {
+   "athlete_id": 548,
+   "dnf_prob": 0.1295,
+   "exp_points": 9.265,
+   "podium_prob": 0.281,
+   "pole_prob": 0.0,
+   "top10_prob": 0.8175,
+   "win_prob": 0.0735
+  },
+  {
+   "athlete_id": 549,
+   "dnf_prob": 0.0735,
+   "exp_points": 6.7735,
+   "podium_prob": 0.143,
+   "pole_prob": 0.0,
+   "top10_prob": 0.783,
+   "win_prob": 0.027
+  },
+  {
+   "athlete_id": 550,
+   "dnf_prob": 0.345,
+   "exp_points": 0.054,
+   "podium_prob": 0.0,
+   "pole_prob": 0.0,
+   "top10_prob": 0.02,
+   "win_prob": 0.0
+  },
+  {
+   "athlete_id": 551,
+   "dnf_prob": 0.095,
+   "exp_points": 2.9005,
+   "podium_prob": 0.032,
+   "pole_prob": 0.0,
+   "top10_prob": 0.519,
+   "win_prob": 0.0015
+  },
+  {
+   "athlete_id": 552,
+   "dnf_prob": 0.3585,
+   "exp_points": 0.049,
+   "podium_prob": 0.0005,
+   "pole_prob": 0.0,
+   "top10_prob": 0.0155,
+   "win_prob": 0.0
+  },
+  {
+   "athlete_id": 553,
+   "dnf_prob": 0.193,
+   "exp_points": 12.1925,
+   "podium_prob": 0.474,
+   "pole_prob": 0.0,
+   "top10_prob": 0.798,
+   "win_prob": 0.177
+  },
+  {
+   "athlete_id": 554,
+   "dnf_prob": 0.3585,
+   "exp_points": 0.016,
+   "podium_prob": 0.0,
+   "pole_prob": 0.0,
+   "top10_prob": 0.0055,
+   "win_prob": 0.0
+  },
+  {
+   "athlete_id": 555,
+   "dnf_prob": 0.2005,
+   "exp_points": 0.9715,
+   "podium_prob": 0.0045,
+   "pole_prob": 0.0,
+   "top10_prob": 0.241,
+   "win_prob": 0.0
+  },
+  {
+   "athlete_id": 556,
+   "dnf_prob": 0.1255,
+   "exp_points": 0.4475,
+   "podium_prob": 0.002,
+   "pole_prob": 0.0,
+   "top10_prob": 0.1265,
+   "win_prob": 0.0
+  },
+  {
+   "athlete_id": 557,
+   "dnf_prob": 0.0705,
+   "exp_points": 2.6025,
+   "podium_prob": 0.025,
+   "pole_prob": 0.0,
+   "top10_prob": 0.4735,
+   "win_prob": 0.004
+  },
+  {
+   "athlete_id": 558,
+   "dnf_prob": 0.1635,
+   "exp_points": 1.096,
+   "podium_prob": 0.006,
+   "pole_prob": 0.0,
+   "top10_prob": 0.2435,
+   "win_prob": 0.0005
+  },
+  {
+   "athlete_id": 559,
+   "dnf_prob": 0.0765,
+   "exp_points": 1.391,
+   "podium_prob": 0.0085,
+   "pole_prob": 0.0,
+   "top10_prob": 0.3235,
+   "win_prob": 0.002
+  },
+  {
+   "athlete_id": 560,
+   "dnf_prob": 0.0625,
+   "exp_points": 2.5615,
+   "podium_prob": 0.0275,
+   "pole_prob": 0.0,
+   "top10_prob": 0.4865,
+   "win_prob": 0.002
+  },
+  {
+   "athlete_id": 561,
+   "dnf_prob": 0.198,
+   "exp_points": 10.0995,
+   "podium_prob": 0.339,
+   "pole_prob": 0.0,
+   "top10_prob": 0.781,
+   "win_prob": 0.1165
+  },
+  {
+   "athlete_id": 562,
+   "dnf_prob": 0.1975,
+   "exp_points": 2.4315,
+   "podium_prob": 0.0305,
+   "pole_prob": 0.0,
+   "top10_prob": 0.438,
+   "win_prob": 0.002
+  },
+  {
+   "athlete_id": 563,
+   "dnf_prob": 0.107,
+   "exp_points": 15.1095,
+   "podium_prob": 0.6065,
+   "pole_prob": 1.0,
+   "top10_prob": 0.8865,
+   "win_prob": 0.2945
+  },
+  {
+   "athlete_id": 564,
+   "dnf_prob": 0.334,
+   "exp_points": 0.0025,
+   "podium_prob": 0.0,
+   "pole_prob": 0.0,
+   "top10_prob": 0.002,
+   "win_prob": 0.0
+  },
+  {
+   "athlete_id": 565,
+   "dnf_prob": 0.1295,
+   "exp_points": 11.993,
+   "podium_prob": 0.4295,
+   "pole_prob": 0.0,
+   "top10_prob": 0.8505,
+   "win_prob": 0.1455
+  },
+  {
+   "athlete_id": 566,
+   "dnf_prob": 0.1695,
+   "exp_points": 1.898,
+   "podium_prob": 0.0155,
+   "pole_prob": 0.0,
+   "top10_prob": 0.3885,
+   "win_prob": 0.002
+  }
+ ]
+}

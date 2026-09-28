@@ -7,9 +7,9 @@ racinglines f1      fetch | ingest | forecast | backtest | compare | matrix | di
                     sweep | season-strategy | season-checkpoints | replay | search | search-import
                     profiles | signals | demo-history
                     pm-sync | pm-history | pm-trades | pm-record | pm-archive | pm-links-export | pm-links-import
-racinglines mtb_dh  download | parse | ingest | forecast | backtest
+racinglines mtb_dh  download | parse | ingest | forecast | backtest | walk-forward
 racinglines markets sync | history | trades | record | archive      (= racinglines f1 pm-*)
-racinglines db      init | seed | stats | export | snapshot-export | snapshot-import
+racinglines db      init | seed | stats | export | snapshot-export | snapshot-import | merge-athletes | changes
 racinglines web
 racinglines check   [--sport f1|mtb_dh] [--offline] [--no-db]    quick validation (see Testing)
 ```
@@ -25,16 +25,19 @@ Postgres on port 5433 (see [Database](database.md#setup)).
 `racinglines/sources/chronorace/download.py`.
 
 ```
-racinglines mtb_dh download (--year YEAR | --events SLUG [SLUG ...])
+racinglines mtb_dh download (--year YEAR | --events SLUG [SLUG ...] | --probe START END)
                               --discipline {DH,XCO,XCC,EDR}
                               --category "Elite Men" | "Junior Men" | "Elite Women" | "Junior Women" | ...
-                              [--out-dir DIR] [--list-only]
+                              [--probe-suffixes SUFFIX ...] [--pdf-results] [--out-dir DIR] [--list-only]
 ```
 
 | Option | Meaning |
 |---|---|
 | `--year` | Find events from the Wikipedia season page (only slugs dated that year). |
 | `--events` | Explicit ChronoRace slugs; skips Wikipedia. |
+| `--probe` | Also find events by trying `YYYYMMDD_{dh,dhi,mtb,xco}` for every date from START to END (`YYYY-MM-DD`) against ChronoRace, for rounds missing from Wikipedia. About 2 s per day. Combines with `--year`/`--events`. |
+| `--probe-suffixes` | The suffixes `--probe` tries (default `dh dhi mtb xco`). |
+| `--pdf-results` | For rounds without live timing, read the result PDF into the round's table (the 2021 Leogang and Les Gets rounds, several Timed Training rounds). Needs poppler's `pdftotext` (`brew install poppler`). Off by default: the round is written as its PDF links. |
 | `--discipline` | DH is the tested one; XC/EDR are best-effort. |
 | `--category` | Friendly name; mapped to `ME`/`MJ`/`WE`/`WJ`/`MU`/`WU`. |
 | `--out-dir` | Default `data/raw/mtb_dh/chronorace/`. |
@@ -50,9 +53,20 @@ for y in 2021 2022 2023 2024 2025 2026; do
     racinglines mtb_dh download --year $y --discipline DH --category "$c" --out-dir data/raw/mtb_dh/chronorace/
   done
 done
-# 2021 rounds missing from Wikipedia:
+# 2021 rounds missing from Wikipedia (found by --probe 2021-04-01 2021-10-31):
 racinglines mtb_dh download --events 20210914_dh 20210918_dh --discipline DH --category "Elite Men"  --out-dir data/raw/mtb_dh/chronorace/
 racinglines mtb_dh download --events 20210914_dh 20210918_dh --discipline DH --category "Junior Men" --out-dir data/raw/mtb_dh/chronorace/
+```
+
+Add `--pdf-results` to fill PDF-only rounds from their result PDFs. The 2026 elite files were renamed by
+hand (`2026-08_les-gets_men-elite.md`); a re-download writes `<slug>_dhi_elite-men.md` beside them, so
+rename or remove one of each pair before parsing a directory into a CSV (ingest keys races by event, so
+the database isn't affected).
+
+Find unlisted events:
+
+```
+racinglines mtb_dh download --probe 2021-04-01 2021-10-31 --discipline DH --category "Elite Men" --list-only
 ```
 
 ## racinglines mtb_dh parse
@@ -60,7 +74,7 @@ racinglines mtb_dh download --events 20210914_dh 20210918_dh --discipline DH --c
 ```
 racinglines mtb_dh parse --inspect FILE
 racinglines mtb_dh parse [--input-dir DIR] [--input-file FILE ...] [--out splits.csv]
-                 [--round LABEL] [--conditions-file CSV]
+                 [--round LABEL] [--conditions-file CSV] [--canonical-venues]
 ```
 
 | Option | Meaning |
@@ -71,17 +85,19 @@ racinglines mtb_dh parse [--input-dir DIR] [--input-file FILE ...] [--out splits
 | `--out` | Output CSV (default `splits.csv`). |
 | `--round` | Force a round label on every row (rarely needed). |
 | `--conditions-file` | CSV `event_id,round,track_condition` to fill in `track_condition`. |
+| `--canonical-venues` | Write venues under their canonical slugs (`sports/mtb_dh.toml` `[venue_aliases]`, as the database stores them: `vallnord` → `pal-arinsal`). Default: as spelled in the source. |
 
 ## racinglines mtb_dh ingest
 
 ```
-racinglines mtb_dh ingest [PATH ...] [--db URL] [--competition uci_dhi_wc] [--force]
+racinglines mtb_dh ingest [PATH ...] [--db URL] [--competition uci_dhi_wc] [--force] [--note WHY]
 ```
 
 Loads downloaded files into the database. `PATH` is files or directories
 (non-recursive `*.md`; default `data/raw/mtb_dh/chronorace`). Unchanged files are
 skipped by content hash, and `--force` re-ingests them. Each ingested file replaces
-its race's rounds, results and splits. See [Database](database.md#ingest).
+its race's rounds, results and splits. See [Database](database.md#ingest). A run that ingests anything
+is logged in the [data change log](data-changes.md), with `--note` as the reason.
 
 ## racinglines mtb_dh forecast
 
@@ -91,8 +107,9 @@ Predict and backtest one target season.
 racinglines mtb_dh forecast (--db [URL] | --data splits.csv) [--competition uci_dhi_wc] [--save [--scenario LABEL]]
        [--out-dir data/runs/mtb_dh/forecast]
        [--season YEAR] [--category ME]
-       [--train-scope {all,season}] [--half-life-days 120] [--junior-weight 0.5]
-       [--walk-forward] [--backtest 2] [--remaining 2]
+       [--train-scope {all,season}] [--half-life-days 240] [--junior-weight 0.25]
+       [--prior-n 0.5] [--eps-df DF]
+       [--walk-forward] [--backtest 2] [--remaining 2] [--unraced-format {default,last}]
        [--sims 10000] [--seed 42] [--top 15]
 ```
 
@@ -102,15 +119,19 @@ racinglines mtb_dh forecast (--db [URL] | --data splits.csv) [--competition uci_
 | `--data` | – | Read a tidy CSV from `racinglines mtb_dh parse` instead. |
 | `--competition` | `uci_dhi_wc` | Competition code in the database. |
 | `--save` | off | Store the model run, its metrics and predictions in the database (needs `--db`). |
+| `--points` | `schema` | Points tables: `schema` = the placeholders in `sports/mtb_dh.toml` for every season (today's behaviour); `db` = each season's tables from `points_schemes` ([`mtb_dh points`](#racinglines-mtb_dh-points)), falling back to the placeholders. |
 | `--scenario LABEL` | – | With `--save`: store as `kind='scenario'`, ignored by live prices until promoted in the web app's Lab. |
 | `--season` | latest in data | Target season. |
 | `--category` | `ME` | Target category. |
 | `--train-scope` | `all` | `all` = every season and category in `--data`; `season` = target only. |
-| `--half-life-days` | 120 | Recency half-life for training runs. |
-| `--junior-weight` | 0.5 | Training weight of `MJ` runs relative to elite. |
+| `--half-life-days` | 240 | Recency half-life for training runs (120 before 2026-09-28). |
+| `--junior-weight` | 0.25 | Training weight of `MJ` runs relative to elite (0.5 before 2026-09-28). |
+| `--prior-n` | 0.5 | Shrinkage of each rider's pace toward the field (1.5 before 2026-09-28; [Calibration](model.md#calibration)). |
+| `--eps-df` | normal | Student-t run noise with these degrees of freedom (above 2), same sd. Tried at 4 and 6: no better. |
 | `--walk-forward` | off | Predict and score every target round from everything before it. |
 | `--backtest N` | 2 | Hold out the last N raced rounds; score them and the standings after them. `0` skips. |
 | `--remaining N` | 2 | Rounds left in the season, **including** in-progress events already in the data (forecast with their start lists). The rest are simulated as unknown rounds. `0` skips the forecast. |
+| `--unraced-format` | `default` | The format those rounds are simulated in: `default` = the 2026 elite men's (`[rounds] default_format`, a 30-rider final) for every category; `last` = the category's latest completed event's own format (women, juniors), else `[rounds.category_format]`. |
 | `--sims` | 10000 | Monte Carlo simulations (walk-forward uses at most 5000). |
 | `--seed` | 42 | Random seed. |
 | `--top` | 15 | Rows printed per table. |
@@ -138,6 +159,19 @@ racinglines mtb_dh live --slug 20260925_mtb --final 3 --quali 2,91 --conditions 
 | `--minutes` | 0 | Stop after this many minutes (0: when the final is over) |
 | `--once` | | One update, then exit |
 
+## racinglines live
+
+Launch and run a live private-book event for any sport, from a launch spec (`live/<sport>/<event>.toml`):
+`new`, `step`, `run`, `agent`, `status` and `report`. The commands, options and the F1 engine are in
+[Live events](live-events.md#running-an-event-racinglines-live).
+
+```
+racinglines live new f1 2026-16
+racinglines live step live/f1/2026-16.toml
+racinglines live agent live/f1/2026-16.toml --install
+racinglines live status
+```
+
 ## racinglines mtb_dh backtest
 
 Walk-forward plus a standings holdout, for several seasons.
@@ -146,16 +180,70 @@ Walk-forward plus a standings holdout, for several seasons.
 racinglines mtb_dh backtest (--db [URL] | --data splits.csv) [--competition uci_dhi_wc] [--save]
        [--out-dir data/runs/mtb_dh/backtests]
        [--seasons 2021 2022 ...] [--category ME]
-       [--train-scope all] [--half-life-days 120] [--junior-weight 0.5]
+       [--train-scope all] [--half-life-days 240] [--junior-weight 0.25]
+       [--prior-n 0.5] [--eps-df DF] [--reliability]
        [--sims 4000] [--seed 42]
 ```
 
-`--db`, `--data`, `--competition` and `--save` work as for `forecast`. With `--save`, the
+`--prior-n` and `--eps-df` work as for `forecast`. `--reliability` also prints and saves
+(`backtest_reliability.csv`) reliability curves over every walk-forward round: win, podium,
+top 10 and making the Final, per probability bin ([Calibration](model.md#calibration)).
+
+`--db`, `--data`, `--competition`, `--save` and `--points` work as for `forecast` (with `--points db`, each season uses its own tables). With `--save`, the
 per-season and per-event metrics are stored in `model_runs.metrics`. Seasons with
 fewer than 3 events that have data are skipped. Files written:
 `backtest_events.csv` (one row per predicted round) and `backtest_seasons.csv` (one
 row per season). The printed per-season table includes the actual and predicted
 champion.
+
+## racinglines backtest walk-forward
+
+The backtest core for any sport with a pricing model ([Backtest core](backtest-core.md#adding-a-sport)):
+every event priced from data before it, model-only, calibration per market kind. The sport's settings are
+its flags (`racinglines backtest walk-forward SPORT -h` lists them). What a search job for a sport other
+than F1 runs.
+
+```
+racinglines backtest walk-forward SPORT [--db URL] [--seasons 2025 2026] [--kinds K1,K2] [--save]
+       [--out-dir data/runs/<sport>/walk_forward] [the sport's settings, e.g. --seed N --sims N]
+```
+
+## racinglines mtb_dh walk-forward
+
+Every completed event priced through the shared engine, model-only
+([Backtest core](backtest-core.md#the-walk-forward-engine)): calibration per market kind (win, podium,
+top 10, fastest qualifier, makes the Final; `--kinds race_h2h` adds head-to-heads), overall and per season.
+
+```
+racinglines mtb_dh walk-forward (--db [URL] | --data splits.csv) [--seasons 2025 2026] [--kinds K1,K2]
+       [--category ME] [--sims 5000] [--half-life-days 240] [--prior-n 0.5] [--junior-weight 0.25]
+       [--train-scope all] [--eps-df DF] [--seed N] [--save] [--out-dir data/runs/mtb_dh/walk_forward]
+```
+
+Writes `walk_forward_events.csv`, `walk_forward_calibration.csv` and `walk_forward_reliability.csv`.
+With `--save`, stores a `walk_forward` model run (settings, per-event scores, calibration), which is
+what a downhill search job runs.
+
+## racinglines mtb_dh points
+
+Championship points tables by season, and a rider-by-rider check against official standings
+([Roadmap → Points validation](todo.md#points-validation)).
+
+```
+racinglines mtb_dh points import sports/points/uci_dhi_wc.toml --db     # file -> points_schemes
+racinglines mtb_dh points show --db                                     # the tables each season uses
+racinglines mtb_dh points check --db --season 2026 --through-round 7 --standings STANDINGS.toml
+```
+
+| Command | What it does |
+|---|---|
+| `import FILE` | Loads one table per era and round kind (`final`, `qual`, `qual1`, `semi`) into `points_schemes`, replacing rows with the same era start and round kind. Refuses tables that aren't non-negative and non-increasing. |
+| `show` | Per season: where its tables come from (`db` or `schema`), official or placeholder, and their sizes. |
+| `check` | Each rider's cumulative points, from the results and the season's tables, against the official standings (CSV with `rider`, `points`, or TOML as in `sports/points/standings/`). Riders match by name, ignoring accents, case and word order. Exits 1 if any rider differs. `--points schema` checks the placeholders instead. |
+
+`sports/points/uci_dhi_wc.toml` is the entry template: every table in it is still a **placeholder**
+(the schema's scales copied into each era). The owner replaces them with the official UCI scales,
+sets `official = true` and cites the source.
 
 ## racinglines db
 
@@ -168,6 +256,8 @@ racinglines db [--db URL] stats                    # table counts + coverage per
 racinglines db [--db URL] export [--competition uci_dhi_wc] [--out splits.csv]
 racinglines db [--db URL] snapshot-export          # model tables with ids -> data/archive/db/
 racinglines db [--db URL] snapshot-import [--force]
+racinglines db [--db URL] merge-athletes KEEP DROP [--dry-run]
+racinglines db [--db URL] changes [--add TEXT] [--sport mtb_dh] [--limit 20]
 ```
 
 | Command | What it does |
@@ -178,6 +268,8 @@ racinglines db [--db URL] snapshot-import [--force]
 | `export` | The tidy frame for a competition (same columns as `mtb_dh parse`'s CSV) to CSV. |
 | `snapshot-export` | The tables the models read (race data and market links, with their ids) to `data/archive/db/<table>.parquet` plus `manifest.json`. Never web-app tables or model runs. |
 | `snapshot-import` | Load that snapshot into a fresh database (schema already at head): an exact replica, same ids, so seeded prices are identical. Refuses a database that already holds model runs unless `--force`. See [Database](database.md#snapshot-an-exact-replica). |
+| `merge-athletes` | Merge athlete `DROP` into `KEEP` (the same person, e.g. a name change that downhill ingest reports once files carry UCI IDs): every table referring to athletes moves to `KEEP`, then `DROP` is deleted. Refuses, changing nothing, if a row would collide (both in the same round). `--dry-run` only reports. It changes the downhill history the model sees, so it's the owner's call. Logged in the data change log. |
+| `changes` | The [data change log](data-changes.md), newest first: every ingest that changed data, every merge, and notes (`--add "why"`). |
 
 ## racinglines f1
 
@@ -211,6 +303,7 @@ racinglines f1 compare BASELINE_RUN CHALLENGER_RUN [--reliability]
 racinglines f1 matrix [--variants baseline,grid,gridq,pretrain,gbm,tail,gridq+pretrain] [--year 2026] [--out MD]
 racinglines f1 [--half-life DAYS] diagnostic --event 2026-15 --cutoff 2026-09-25T13:30 [--sims 10000] [--no-track] [--save]
 racinglines f1 [--half-life DAYS] forecast [--year 2026] [--sims 10000] [--no-track] [--save [--scenario LABEL]] [--top 10]
+racinglines f1 props EVENT [--run STAGE_RUN] [--prior-n 16]  |  racinglines f1 props --check [--from 2022]
 ```
 
 | Command | What it does |
@@ -220,25 +313,28 @@ racinglines f1 [--half-life DAYS] forecast [--year 2026] [--sims 10000] [--no-tr
 | `matrix` | The model × strategy matrix: for each variant, the latest saved backtest (accuracy, marked where it differs from baseline beyond 2 SE) and the latest saved sweep and season strategy (P&L). Writes `data/runs/f1/matrix.md`. See [Model × strategy matrix](market-making.md#model-strategy-matrix). |
 | `diagnostic` | Price one past event as of `--cutoff` (UTC), with a leakage audit. `--save` stores `kind='diagnostic'`. See [Market making](market-making.md). |
 | `forecast` | Live: cutoff = now; upcoming races and the championships. `--save` creates scheduled events for upcoming rounds and stores `kind='forecast'` (the only kind the web app uses for live fair prices). `--scenario LABEL` saves `kind='scenario'` instead, ignored by live prices until promoted in the web app's Lab. |
+| `props` | Race props for one event from the race history before it: safety car, red flag, rain (per-circuit rates shrunk to the field rate); `--run` adds fastest-lap prices from a stored stage run's finishing odds. `--check` scores the yes/no props walk-forward from `--from` against the field rate and a coin flip. Nothing is stored. See [F1 live test](f1-live-roadmap.md#props-opt-in). |
 
 ### Trading research
 
 ```
-racinglines f1 [--variant NAME] sweep [--year 2026] [--rounds 1-15] [--no-fetch | --fetch-only] [--reprice] [--save] [SETTINGS …]
+racinglines f1 [--variant NAME] sweep [--year 2026] [--rounds 1-15] [--no-fetch | --fetch-only] [--reprice] [--reliability] [--save] [SETTINGS …]
 racinglines f1 season-strategy [--year 2026] [--sims 5000] [--no-fetch] [--reforecast] [--min-edge 0.03] [--stake-per-edge 500] [--max-stake 150] [--capital 1500] [--save]
 racinglines f1 season-checkpoints [--variants V1,V2] [--year 2026] [--entries 0,3,6] [--window 3] [--sims 5000] [--out MD] [--save]
 racinglines f1 replay --runs 11,12,9 [--sweep]
 racinglines f1 search QUEUE.toml [--leaderboard]
+racinglines f1 search-report QUEUE.toml
 racinglines f1 search-import RESULTS.json
 ```
 
 | Command | What it does |
 |---|---|
-| `sweep` | Trade every raced weekend of a season: price before any running and after each session, trade Polymarket, settle. Runs four taker modes (`update`, `hold`, `last`, `early`) and five maker settings side by side. See [Market making](market-making.md#season-sweep). Downloads the season's missing Polymarket history and trades first unless `--no-fetch`; `--fetch-only` only downloads (e.g. a past season). Stages are reused only when priced with the same model settings from the same data; `--reprice` prices them again. `--save` stores `kind='sweep'`. |
+| `sweep` | Trade every raced weekend of a season: price before any running and after each session, trade Polymarket, settle. Runs four taker modes (`update`, `hold`, `last`, `early`) and five maker settings side by side. See [Market making](market-making.md#season-sweep). Downloads the season's missing Polymarket history and trades first unless `--no-fetch`; `--fetch-only` only downloads (e.g. a past season). Stages are reused only when priced with the same model settings from the same data; `--reprice` prices them again. `--reliability` also scores calibration: our fair values and Polymarket's prices at every tradeable stage, per market kind and stage (Brier, log loss, ECE) and in reliability bins, written to `sweep_<year>_calibration.csv` / `_reliability.csv` (and saved with the run). `--save` stores `kind='sweep'`. |
 | `season-strategy` | The championship-market strategy through the season: as-of season forecasts pre-season and after every race, trades at Polymarket's recorded prices (plus spread and slippage), settles eliminated markets, marks the rest. `--reforecast` recomputes the cached forecasts. |
 | `season-checkpoints` | Championship markets entered at fixed points (pre-season, after 3 and after 6 grands prix; `--entries`) and held, one $500 book each, per model variant (`--variants`). Scores each entry over the next 3 GPs (`--window`) and to date: P&L, how far the market moved toward our fair value, and the share of our edge it closed. Writes `data/runs/f1/season_checkpoints.md`; `--save` stores kind `season_checkpoints`. See [Checkpoint entries](market-making.md#checkpoint-entries). |
 | `replay` | Replay a maker quoting Polymarket through an event's diagnostic runs (ids in time order), with both fill rules, against the real trade tape. `--sweep` adds the half-spread and fill-rule sensitivity table. |
 | `search QUEUE.toml` | Run a queue of season sweeps in parallel (`[search] parallel`, `hours`), each saved as a sweep run. The queue file (e.g. `sweeps/poc.toml`, `sweeps/params-4h.toml`) is re-read whenever a slot frees, so pending `[[job]]` entries can be edited while it runs. Writes `data/runs/search/<name>/` (`leaderboard.md`, `results.json`, `state.json`, logs). `--leaderboard` only rewrites the leaderboard from `state.json`. See [Cloud sweeps](cloud-sweep.md). |
+| `search-report QUEUE.toml` | Analyse a search's finished sweeps with the checks in [Backtest core](backtest-core.md#the-search-report): labels against the baseline in the target and held-out seasons beyond a noise floor (from seed replicates when the search ran them), same-fidelity baselines, confirmation at more simulations, P&L without the best event, and candidates with stable ids (`<strategy>-<settings_key>`). An optional `[report]` table in the queue sets `target`, `holdout`, `confirm_sims`, `top`, `noise`. Writes `stats.csv`, `ranking.csv`, `pnl_curves.json`, `candidates/`, `candidates.toml` and `report.md` next to `state.json`. |
 | `search-import RESULTS.json` | Load a search's sweep runs (e.g. from a cloud session) into this database, marked with `params.source`. |
 
 **Sweep settings.** Every setting of the schema in
@@ -258,19 +354,23 @@ baseline. The model variant is the group's `--variant`.
 | | `--teammate-corr` | true | Teammates share noise. |
 | | `--finish-rho-scale` | 1.0 | Teammate finish correlation scale. |
 | | `--reset-weight` | 0.25 | With the `reset` variant: weight of earlier seasons' car data. |
+| | `--seed` | not set | Monte Carlo seed. Unset = today's fixed seed (42), the same prices and cache keys. Different seeds give independent noise draws, e.g. to check a search's winner isn't one lucky draw. |
 | Timing | `--taker-stages` | every stage (`pre-weekend` … `after Quali`) | Stages takers may trade (every taker mode). |
 | | `--late-stages` | `after FP3,after Quali` | Stages the stage-aware taker skips. |
 | Taker | `--min-edge` | 0.05 | Min edge to act (probability). |
 | | `--min-edge-h2h` | not set | Min edge for head-to-head markets; unset = `--min-edge`. |
+| | `--min-edge-by-kind` | not set | Per market kind, e.g. `race_h2h=0.05,race_podium=0.08`; each overrides `--min-edge` (and `--min-edge-h2h`) for its kind. |
 | | `--stake-per-edge` | 250 | Target cost = this × edge ($). |
 | | `--max-stake` | 50 | Max stake per market ($). |
 | | `--cost` | 0.01 | Cost per share per trade ($). |
+| | `--bankroll` | not set | Bankroll-aware sizing: each taker mode starts with this bankroll, and its stakes scale with its balance after earlier weekends (`balance / bankroll`, 0 once it's gone). Unset = fixed sizing. |
+| | `--max-deployed` | not set | Cap on the capital deployed across a weekend's markets ($). Markets are traded in time order; a buy over the cap is cut to fit. Unset = no cap. |
 | Maker | `--half-spread` | 0.02 | Quote half-spread ($). |
 | | `--size` | 50 | Shares per quote. |
 | | `--max-pos` | 250 | Max inventory per market (shares). |
 | | `--skew` | 1.0 | Inventory skew. |
 | | `--max-disagree` | 0.15 | Don't quote beyond \|fair − market\|. |
-| | `--fill` | `through` | `through`: a trade must cross our price; `touch`: at our price. |
+| | `--fill` | `through` | `through`: a trade must cross our price; `touch`: at our price; `queue`: at our price once the recorded book's queue ahead of us is served ([queue rule](market-making.md#the-queue-rule)). |
 | | `--info-skew` | 2.0 | Info-timed skew (`maker_skew`, `maker_all`). |
 | | `--widen` | 1.5 | Widen factor on bad markouts (`maker_widen`, `maker_all`). |
 | Markets | `--market-kinds` | `race_win,race_podium,race_h2h,race_constructor_top,race_pole` | Market kinds traded. |
@@ -281,14 +381,14 @@ baseline. The model variant is the group's `--variant`.
 ```
 racinglines f1 profiles [--assign-demo]
 racinglines f1 signals [--profile A|C|ID|NAME] [--user NAME ...] [--event next|ROUND|YEAR-ROUND] [--asof UTC] [--no-fetch] [--no-alert]
-racinglines f1 demo-history [--reset] [--user maker taker]
+racinglines f1 demo-history [--reset] [--user maker taker] [--venue kalshi]
 ```
 
 | Command | What it does |
 |---|---|
 | `profiles` | List the strategy profiles, creating A (core taker) and C (maker sleeve) as Lab candidates if missing, and show which users run which. `--assign-demo` assigns the demo taker A and the demo maker C (`users.prefs["strategy_profile"]`, with the demo bankrolls). `racinglines/pipelines/profiles.py`. |
 | `signals` | Live paper signals of every user with a profile, for the weekend in progress (`racinglines/pipelines/signals.py`): refresh FastF1 and Polymarket data (skip with `--no-fetch`), price each stage whose session is in, run the profile's strategy with the backtest's code, store `strategy_signals` and `paper_positions`, and alert (skip with `--no-alert`). Recommendations only: never places an order. `--profile` runs one profile instead of each user's own; `--user` limits the users; `--event` picks the weekend (default the next). `--asof UTC` replays at that time and only prints (markets read at each stage's cutoff, like the sweep). See [Paper trading](paper-trading.md). |
-| `demo-history` | Backfill the demo accounts' track record: every past weekend with Polymarket race markets, replayed with the profile each account ran then, stored as paper signals and positions flagged as backtest replays (`racinglines/pipelines/demo_history.py`). Idempotent; `--reset` deletes the backfill first; `--user` limits it to `maker` or `taker`. |
+| `demo-history` | Backfill the demo accounts' track record: every past weekend with Polymarket race markets, replayed with the profile each account ran then, stored as paper signals and positions flagged as backtest replays (`racinglines/pipelines/demo_history.py`). Idempotent; `--reset` deletes the backfill first; `--user` limits it to `maker` or `taker`. `--venue kalshi` replays the maker's profiles on Kalshi's recorded tape instead, with Kalshi's maker fee, stored apart as venue `kalshi` ([Kalshi history](kalshi-history.md)); off by default. |
 
 ## racinglines markets
 
@@ -302,8 +402,8 @@ racinglines markets history --events 'f1-azerbaijan-grand-prix%' --start 2026-09
 racinglines markets trades --events 'f1-azerbaijan-grand-prix%'
 racinglines markets record [--events …] [--interval 60] [--minutes 0] [--sync-every 30] [--no-alerts] [--year 2026]
 racinglines markets archive [--stats] [--vacuum-full] [--compact] [--hours H]
-racinglines f1 pm-links-export
-racinglines f1 pm-links-import
+racinglines f1 pm-links-export [--exchange kalshi]
+racinglines f1 pm-links-import [--exchange kalshi]
 ```
 
 | Command | What it does |
@@ -314,7 +414,36 @@ racinglines f1 pm-links-import
 | `record` (`f1 pm-record`) | Record order-book snapshots every `--interval` seconds (default 60) of the given events, or of the open markets of races not yet run. Runs until stopped (`--minutes N` stops after N). Re-syncs Polymarket's F1 events every `--sync-every` minutes (default 30; 0 = never) so new race markets get recorded, and alerts about new markets unless `--no-alerts`. Archives to Parquet hourly. Run it through race weekends. |
 | `archive` (`f1 pm-archive`) | Move stale prices, trades and books from Postgres to Parquet under the retention policy, or every row older than `--hours H`. `--vacuum-full` returns freed space to the OS, `--compact` merges each month into one file, `--stats` only shows where the rows are. See [Database](database.md#storage-postgres-for-the-app-parquet-for-heavy-history). |
 | `f1 pm-links-export` | Write `market_links` to `data/archive/markets/polymarket/links/market_links.parquet`, with database ids swapped for stable keys (event key and category, FastF1 driver id, competition and category codes). |
-| `f1 pm-links-import` | Load that file into this database (no Polymarket access needed); replaces each token's row and reports rows whose keys don't resolve. |
+| `f1 pm-links-import` | Load that file into this database (no Polymarket access needed); replaces each token's row and reports rows whose keys don't resolve. `--exchange kalshi` does the same for Kalshi's links (`data/archive/markets/kalshi/links/`). |
+
+### Kalshi (`--exchange kalshi`)
+
+Built from Kalshi's public API docs, then run against the live read-only API on 2026-09-28 (sync with
+`--closed`, trades, history and books; no order has been sent). Nothing runs unless you call it.
+Markets settled before Kalshi's historical cutoff (about two months back) are read from its `/historical`
+endpoints: settled events' markets, their trades and their candlesticks.
+
+```
+racinglines markets --exchange kalshi sync [--year 2026] [--closed]
+racinglines markets --exchange kalshi trades --events KXF1RACE-AZEGP26
+racinglines markets --exchange kalshi history --events KXF1RACE-AZEGP26 --start 2026-09-24T00:00 --end 2026-09-27T00:00 [--period 60]
+racinglines markets --exchange kalshi books --events KXF1-26
+```
+
+| Command | What it does |
+|---|---|
+| `sync` | Find Kalshi's F1 series (Sports series whose ticker starts `KXF1` or whose title says Formula 1, F1 or Grand Prix, or `kalshi.sync.SERIES`), and upsert one `market_links` row per market (`exchange='kalshi'`, `token_id` = the market ticker's YES contract, `condition_id` = the event ticker), classified into the model's kinds: win, podium, top 10, pole, top constructor, fastest lap, head-to-head (the race read from the ticker's code, `BRIGP26`), champions. Sprint markets, top 5 and the rest are listed as unmodeled. Each row keeps Kalshi's resolution rules (`params.rules`). `--closed` adds settled events. Races resolve within `--year` (2026: 15 weekends, 1,847 modeled links on 2026-09-28). |
+| `trades` | Store every trade on those events' markets in `market_trades` (the taker's side of YES, at the YES price, in contracts). |
+| `history` | Store candlesticks (`--period` 1, 60 or 1440 minutes) in `market_price_history`. |
+| `books` | One order-book snapshot per open market in `market_book_snapshots` (a NO bid at p is a YES ask at 1 − p). |
+
+`markets archive` (and the recorder's hourly pass) archives Kalshi's rows too, into `data/archive/markets/kalshi/`
+([Data](data.md#exchange-history-kalshi-and-polymarket)). No `record` or links export for Kalshi yet. Pulling a season: `sync --year Y --closed`,
+then `trades` and `history --period 60` per modeled event ticker, from each market's `open_time` to its `close_time`.
+
+Orders (`markets/kalshi/trade.py`): post-only limit orders on YES, checked against the book, the 1-cent grid
+and `KALSHI_MAX_ORDER_USD` (default 25), signed with RSA-PSS (`KALSHI_API_KEY_ID`, `KALSHI_PRIVATE_KEY_PATH`),
+and sent only when `KALSHI_TRADING_ENABLED=true`; otherwise a dry run that returns the request. No CLI.
 
 **Alert channels** (`racinglines/markets/alerts.py`, used by new-market alerts and by
 `signals`): a macOS notification, one JSON line per event in

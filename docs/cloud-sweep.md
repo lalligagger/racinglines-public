@@ -11,7 +11,7 @@ session's branch.
 | Parallel sweeps | 3 (one core each, one left for PostgreSQL) |
 | Speed | A 24-weekend sweep takes a few minutes on one core (GBM several times longer) |
 | Cost | No compute charge; the session uses the account's Claude usage limits |
-| Data | Committed in the repo: the database snapshot `data/archive/db/`, `data/raw/f1/`, and the Polymarket archive `data/archive/markets/polymarket/{prices,trades,links}/` |
+| Data | Committed in the repo: the database snapshot `data/archive/db/`, `data/raw/f1/`, the Polymarket archive `data/archive/markets/polymarket/{prices,trades,links}/`, and Kalshi's `data/archive/markets/kalshi/{prices,trades}/` once pulled |
 | Network | None beyond PyPI and GitHub: the default **Trusted** network access is enough |
 
 **Why the repo is private.** The minimal data set a cloud run needs is committed: `data/raw/f1`, the
@@ -38,19 +38,29 @@ checks it).
 - **`racinglines f1 search sweeps/<queue>.toml`** runs the queue: up to `parallel` sweeps at once,
   each saved as a normal sweep run. It **re-reads the queue file whenever a slot frees**, so editing
   pending `[[job]]` entries steers it. It stops starting jobs after `hours`. After every finished job
-  it rewrites `data/runs/search/<name>/leaderboard.md` and `results.json`.
+  it rewrites `data/runs/search/<name>/leaderboard.md` and `results.json`. A queue can mix sports:
+  a job with `sport = "mtb_dh"` (or any sport with a pricing model) runs a walk-forward (`racinglines
+  backtest walk-forward <sport>`, model only, scored per market kind) with the downhill model's settings, and gets its own default baseline
+  per season. `replicates = N` on any job runs it (and its season's baseline) at N seeds.
 - **`racinglines f1 search-import <results.json>`** loads a finished search's sweep runs into your
   local database (marked `params.source`), so they show up in the Lab's Edge Finder and Model variants.
 
 ## One-time setup
 
-1. At [claude.ai/code](https://claude.ai/code), create a cloud environment (**Settings → Cloud environments**):
-    - **Name:** `racinglines-sweep`
-    - **Network access:** the default **Trusted** is enough (PyPI and GitHub). The database comes from
-      the committed snapshot, so no Polymarket access is needed.
-    - **Environment variables:** `BASH_MAX_TIMEOUT_MS=1800000` (lets a command run 30 minutes).
+1. At [claude.ai/code](https://claude.ai/code), click the **cloud icon** in the row above the message
+   box. It's labelled with the current environment's name, e.g. **Default**. Choose **Add cloud
+   environment** (or hover over an existing one and click its settings icon to edit it):
+    - **Name:** `racinglines`
+    - **Network access:** the default **Trusted** is enough. It covers PyPI, GitHub and
+      `storage.googleapis.com` (the [data bucket](data.md#data-bucket)); the database comes from the
+      bucket's dump or the committed snapshot, so no Polymarket access is needed.
+    - **Environment variables:** `BASH_MAX_TIMEOUT_MS=1800000` (lets a command run 30 minutes), plus
+      the data bucket's three variables. `pbcopy < ~/.config/racinglines/gcs-hmac.env` copies them
+      without printing them; paste them on the lines below. They are visible to anyone using the environment.
     - **Setup script:** none. `start.sh` takes longer than the ~5 minutes a cached setup allows, so
       the session runs it.
+
+   `/remote-env` in a local Claude Code session makes it the default for `claude --cloud`.
 2. The GitHub connection must reach this (private) repository: install the Claude GitHub App on it,
    or run `/web-setup` in a local Claude Code terminal.
 
@@ -65,7 +75,7 @@ git switch -c cloud/poc && git add -A && git commit -m "Cloud sweep PoC" && git 
 claude --cloud "Run the cloud sweep in docs/cloud-sweep.md with queue sweeps/poc.toml. Follow the Agent protocol section exactly."
 ```
 
-Pick the `racinglines-sweep` environment if asked. Or start the session at claude.ai/code on that
+Pick the `racinglines` environment if asked. Or start the session at claude.ai/code on that
 branch and environment, with the same message. Watch or steer it from the browser or the Claude app;
 `claude -p "message" --cloud <session-id>` sends it a message from any terminal.
 
@@ -125,7 +135,10 @@ The session follows these steps. They're written for the agent.
    the few best. They're imported as Lab candidates, loadable into the Edge Finder sweep form.
 5. **Every 30 minutes and at the end:** commit `data/runs/search/<name>/` and the queue file, and
    push the branch (`git add data/runs/search sweeps && git commit -m "search: <name> progress" && git push`).
-6. **At the end:** write `data/runs/search/<name>/REPORT.md`: what ran, the leaderboard, the best combo
+6. **At the end:** run `racinglines f1 search-report sweeps/<queue>.toml` for the labels, noise floor,
+   confirmations and candidates ([Backtest core](backtest-core.md#the-search-report)); to measure the
+   noise floor rather than assume it, give the leading combos `replicates = 3` (their baseline gets the
+   same). Downhill jobs are reported in `data/runs/search/<name>/mtb_dh/`. Then write `data/runs/search/<name>/REPORT.md`: what ran, the leaderboard, the best combo
    for the remaining 2026 races, what the early championship entries would have made, what held in
    both windows and what didn't, every queue change with its reason, the candidates, and what to run
    next. Commit and push it. Stop.

@@ -16,10 +16,13 @@ as_root() { if [ "$(id -u)" = 0 ]; then "$@"; else sudo -n "$@"; fi; }
 
 if [ -z "${SKIP_SYSTEM:-}" ]; then
     log "python: .venv (3.14) + requirements"
-    command -v uv >/dev/null || python3 -m pip install -q --user uv || pip install -q uv
+    # a current uv: older ones (e.g. 0.8) only know Python 3.14.0rc2, which breaks pydantic under pytest
+    python3 -m pip install -q --user -U uv 2>/dev/null || pip install -q -U uv || command -v uv >/dev/null
     export PATH="$HOME/.local/bin:$PATH"
+    hash -r
     [ -x .venv/bin/python ] || uv venv -q --python 3.14 .venv
-    uv pip install -q --python .venv/bin/python -r requirements.txt -e .
+    case "$(.venv/bin/python --version 2>&1)" in *rc*) rm -rf .venv; uv venv -q --python 3.14 .venv;; esac
+    uv pip install -q --python .venv/bin/python -r requirements.txt -e . boto3
 
     log "postgresql: start, role and database 'racinglines'"
     as_root service postgresql start >/dev/null
@@ -32,8 +35,24 @@ if [ -z "${SKIP_SYSTEM:-}" ]; then
 fi
 
 RL=.venv/bin/racinglines
+# The data bucket (docs/data.md#data-bucket), when the environment has its key: the data folders
+# git doesn't carry, and a full dump of the owner's database (model runs, signals, positions, books)
+if [ -n "${RACINGLINES_GCS_HMAC_ID:-}" ] && [ -z "${SKIP_BUCKET:-}" ]; then
+    log "data bucket: pull";                            .venv/bin/python scripts/cloud/bucket.py pull
+fi
+if [ -f data/archive/bucket-db/racinglines.sql.gz ] && [ -z "${SKIP_BUCKET:-}" ]; then
+    # a full replica of the owner's database, replacing the committed snapshot's subset
+    log "database: restore the bucket's full dump"
+    psql_url=${DATABASE_URL/+psycopg/}
+    psql "${psql_url%/*}/postgres" -v ON_ERROR_STOP=1 -qc "DROP DATABASE IF EXISTS racinglines WITH (FORCE)" \
+        -c "CREATE DATABASE racinglines OWNER racinglines"
+    gunzip -c data/archive/bucket-db/racinglines.sql.gz | psql "$psql_url" -q -v ON_ERROR_STOP=0 2>&1 \
+        | grep -v "transaction_timeout" | tail -3 || true
+fi
 log "schema + reference data";                         $RL db init
-if [ -f data/archive/db/manifest.json ]; then
+if [ -f data/archive/bucket-db/racinglines.sql.gz ] && [ -z "${SKIP_BUCKET:-}" ]; then
+    log "database: from the bucket (skipping the committed snapshot)"
+elif [ -f data/archive/db/manifest.json ]; then
     # exact replica of the exporting database (same ids -> identical seeded prices)
     log "model tables from the committed snapshot";      $RL db snapshot-import
 else

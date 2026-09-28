@@ -7,6 +7,8 @@ racinglines db <command>
     export    Write the tidy frame (same columns as `racinglines mtb_dh parse`'s CSV) for a competition to CSV.
     snapshot-export  The tables the models read, with ids, to data/archive/db/ (Parquet).
     snapshot-import  Load that snapshot into a fresh database: an exact replica (same ids, same prices).
+    merge-athletes   Merge two athletes that are the same person (e.g. a name change found by UCI ID).
+    changes   The data change log: ingests that changed anything, merges, notes (--add "why" for a note).
 
 Connection: $DATABASE_URL, or --db URL (default: docker-compose.yml's database).
 """
@@ -85,6 +87,29 @@ def cmd_snapshot_import(args):
     print(f"imported {sum(counts.values()):,} rows in {len(counts)} tables")
 
 
+def cmd_merge_athletes(args):
+    from racinglines.db.ingest import merge_athletes
+    with get_session(args.db) as s:
+        moved = merge_athletes(s, args.keep, args.drop, dry_run=args.dry_run)
+        if not args.dry_run:
+            from racinglines.db import changes
+            changes.record(s, "merge-athletes", f"athlete {args.drop} merged into {args.keep}", sport="mtb_dh",
+                           detail=dict(keep=args.keep, drop=args.drop, moved=moved))
+            s.commit()
+    rows = ", ".join(f"{t} {n}" for t, n in moved.items()) or "nothing"
+    print(f"{'Would move' if args.dry_run else 'Moved'} athlete {args.drop} into {args.keep}: {rows}")
+
+
+def cmd_changes(args):
+    from racinglines.db import changes
+    with get_session(args.db) as s:
+        if args.add:
+            changes.record(s, "note", args.add, sport=args.sport)
+            s.commit()
+        for c in changes.recent(s, args.limit, args.sport):
+            print(f"{c.at:%Y-%m-%d %H:%M}  {c.sport or '-':7} {c.kind:15} {c.summary}  ({c.by or '?'})")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="racinglines db", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -101,6 +126,16 @@ def main(argv=None):
     p = sub.add_parser("snapshot-import", help="Load data/archive/db/ into a fresh database.")
     p.add_argument("--force", action="store_true", help="Even if the database already holds model runs.")
     p.set_defaults(func=cmd_snapshot_import)
+    p = sub.add_parser("merge-athletes", help="Merge athlete DROP into KEEP (same person), then delete DROP.")
+    p.add_argument("keep", type=int)
+    p.add_argument("drop", type=int)
+    p.add_argument("--dry-run", action="store_true", help="Only report what would move.")
+    p.set_defaults(func=cmd_merge_athletes)
+    p = sub.add_parser("changes", help="The data change log, newest first; --add \"why\" adds a note.")
+    p.add_argument("--add", metavar="TEXT", help="Record a note (e.g. why the data was re-downloaded).")
+    p.add_argument("--sport", help="Only this sport (mtb_dh, f1); with --add, the note's sport.")
+    p.add_argument("--limit", type=int, default=20)
+    p.set_defaults(func=cmd_changes)
     args = ap.parse_args(argv)
     args.func(args)
 

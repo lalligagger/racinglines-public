@@ -12,6 +12,7 @@ per venue, so the board, the event page and the book all read the same thing.
 Adding a venue = a VENUES entry + its rows in `market_links` (exchange = code).
 """
 
+import os
 from dataclasses import dataclass
 
 import numpy as np
@@ -31,9 +32,13 @@ class Venue:
     url: str = ""        # event URL pattern ({slug})
 
 
+# RACINGLINES_KALSHI_VENUE=1 (off by default): Kalshi shows as a live venue (its synced links' quotes on the board
+# and race pages), and the Positions page lists the maker's Kalshi replay (`f1 demo-history --venue kalshi`,
+# paper_positions.venue = 'kalshi'), which is otherwise hidden. The Strategy page stays Polymarket's record.
+KALSHI_VENUE = os.environ.get("RACINGLINES_KALSHI_VENUE", "") == "1"
 VENUES = [
     Venue("polymarket", "Polymarket", "live", "exchange", "https://polymarket.com/event/{slug}"),
-    Venue("kalshi", "Kalshi", "soon", "exchange", "https://kalshi.com/markets/{slug}"),
+    Venue("kalshi", "Kalshi", "live" if KALSHI_VENUE else "soon", "exchange", "https://kalshi.com/markets/{slug}"),
     Venue("private", "Private book", "live", "private"),
 ]
 EXCHANGES = [v for v in VENUES if v.kind == "exchange"]

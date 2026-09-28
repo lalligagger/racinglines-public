@@ -16,6 +16,13 @@ Modes (to see whether updating adds value):
 
 Execution: buy at price + cost, sell at price - cost (cost per share covers spread
 and slippage; the Baku books were a cent or two wide). NO is bought at 1 - price.
+
+Sizing (both off by default, so results match the fixed sizing exactly):
+    scale          multiplies the stake per edge and the per-market cap: bankroll-aware sizing
+                   passes current bankroll / starting bankroll (weekend_sweep.bankroll_scale)
+    max_deployed   a cap on the weekend's capital deployed across all markets (cash spent net of
+                   cash received, per market, summed). Markets are then traded in time order
+                   and a buy that would go over the cap is cut to fit (sells are always allowed)
 """
 
 from dataclasses import dataclass, replace
@@ -36,68 +43,120 @@ class TakerParams:
     late_stages: tuple = ("after FP3", "after Quali")    # mode "early" doesn't trade these
     stages: tuple | None = None                          # entry timing: stages any mode may trade (None = all)
     min_edge_h2h: float | None = None                    # head-to-head markets' threshold (None = min_edge)
+    min_edge_by_kind: tuple = ()                         # ((kind, threshold), ...): per market kind, over both
+    scale: float = 1.0                                   # stake multiplier (bankroll-aware sizing)
+    max_deployed: float | None = None                    # $ cap on the weekend's deployed capital (None = no cap)
 
 
-def run_market(stages, outcome, p: TakerParams):
-    """stages: list of dict(label, t, fair, price, tradeable). outcome: True/False/None.
-    Returns dict(trades, marks, pnl, yes, no, cash)."""
-    yes = no = cash = 0.0
-    trades, marks = [], []
-    idx = [i for i, s in enumerate(stages) if s["tradeable"] and s["fair"] is not None and s["price"] is not None]
-    if p.stages is not None:
-        idx = [i for i in idx if stages[i]["label"] in p.stages]
-    if p.mode == "hold":
-        idx = idx[:1]
-    elif p.mode == "last":
-        idx = [len(stages) - 1] if (len(stages) - 1) in idx else []
-    elif p.mode == "early":
-        idx = [i for i in idx if stages[i]["label"] not in p.late_stages]
-    for i, s in enumerate(stages):
+class _Market:
+    """One market's position through the weekend, one stage at a time."""
+
+    def __init__(self, stages, p: TakerParams):
+        self.stages, self.p = stages, p
+        self.yes = self.no = self.cash = 0.0
+        self.trades, self.marks = [], []
+        idx = [i for i, s in enumerate(stages) if s["tradeable"] and s["fair"] is not None and s["price"] is not None]
+        if p.stages is not None:
+            idx = [i for i in idx if stages[i]["label"] in p.stages]
+        if p.mode == "hold":
+            idx = idx[:1]
+        elif p.mode == "last":
+            idx = [len(stages) - 1] if (len(stages) - 1) in idx else []
+        elif p.mode == "early":
+            idx = [i for i in idx if stages[i]["label"] not in p.late_stages]
+        self.idx = set(idx)
+
+    @property
+    def deployed(self):
+        return max(-self.cash, 0.0)
+
+    def step(self, i, room=None):
+        """Stage i: rebalance if it's a trading stage, then mark. room: $ this market may add to its
+        deployed capital (None = no cap). Returns the change in deployed capital."""
+        p, s = self.p, self.stages[i]
         price = s["price"]
-        if i in idx:
-            ty, tn = target_shares(s["fair"], price, p.cost, p.min_edge, p.stake_per_edge, p.max_stake)
-            for side, cur, tgt, px in (("YES", yes, ty, price), ("NO", no, tn, 1 - price)):
+        before = self.deployed
+        if i in self.idx:
+            ty, tn = target_shares(s["fair"], price, p.cost, p.min_edge, p.stake_per_edge * p.scale,
+                                   p.max_stake * p.scale)
+            for side, tgt, px in (("YES", ty, price), ("NO", tn, 1 - price)):
+                cur = self.yes if side == "YES" else self.no
                 d = tgt - cur
                 if abs(d) * px < p.min_trade and tgt != 0:
                     continue
                 if abs(d) < 1e-9:
                     continue
                 exec_px = px + p.cost if d > 0 else max(px - p.cost, 0.0)
-                cash -= d * exec_px
+                if room is not None and d > 0:
+                    left = room - (self.deployed - before)
+                    if d * exec_px > left:                   # cut the buy to fit under the cap
+                        d = max(left, 0.0) / exec_px
+                        if d * px < p.min_trade:
+                            continue
+                        tgt = cur + d
+                self.cash -= d * exec_px
                 if side == "YES":
-                    yes = tgt
+                    self.yes = tgt
                 else:
-                    no = tgt
-                trades.append(dict(stage=s["label"], t=s["t"], side=side, shares=d, price=exec_px, fair=s["fair"],
-                                   mid=price))
+                    self.no = tgt
+                self.trades.append(dict(stage=s["label"], t=s["t"], side=side, shares=d, price=exec_px,
+                                        fair=s["fair"], mid=price))
         if price is not None:
-            marks.append(dict(stage=s["label"], value=cash + yes * price + no * (1 - price)))
-    pnl = None
-    if outcome is not None:
-        y = float(outcome)
-        pnl = cash + yes * y + no * (1 - y)
-        for tr in trades:      # each decision's P&L to resolution (attribution by stage)
-            v = y if tr["side"] == "YES" else 1 - y
-            tr["pnl"] = tr["shares"] * (v - tr["price"])
-    return dict(trades=trades, marks=marks, pnl=pnl, yes=yes, no=no, cash=cash)
+            self.marks.append(dict(stage=s["label"], value=self.cash + self.yes * price + self.no * (1 - price)))
+        return self.deployed - before
+
+    def result(self, outcome):
+        pnl = None
+        if outcome is not None:
+            y = float(outcome)
+            pnl = self.cash + self.yes * y + self.no * (1 - y)
+            for tr in self.trades:      # each decision's P&L to resolution (attribution by stage)
+                v = y if tr["side"] == "YES" else 1 - y
+                tr["pnl"] = tr["shares"] * (v - tr["price"])
+        return dict(trades=self.trades, marks=self.marks, pnl=pnl, yes=self.yes, no=self.no, cash=self.cash)
+
+
+def run_market(stages, outcome, p: TakerParams):
+    """stages: list of dict(label, t, fair, price, tradeable). outcome: True/False/None.
+    Returns dict(trades, marks, pnl, yes, no, cash)."""
+    mk = _Market(stages, p)
+    for i in range(len(stages)):
+        mk.step(i)
+    return mk.result(outcome)
 
 
 def params_for(kind, p: TakerParams):
-    """The parameters one market is traded with: head-to-head markets may have their own threshold."""
+    """The parameters one market is traded with: a kind's own threshold (min_edge_by_kind), else head-to-head
+    markets' (min_edge_h2h), else min_edge."""
+    by = dict(p.min_edge_by_kind)
+    if kind in by:
+        return replace(p, min_edge=by[kind])
     return replace(p, min_edge=p.min_edge_h2h) if kind == "race_h2h" and p.min_edge_h2h is not None else p
 
 
 def run_weekend(markets, p: TakerParams):
     """markets: list of dict(key, kind, subject, outcome, stages). -> (trades df, per-market df)."""
+    results = _capped(markets, p) if p.max_deployed is not None else \
+        [run_market(mk["stages"], mk["outcome"], params_for(mk["kind"], p)) for mk in markets]
     all_trades, per = [], []
-    for mk in markets:
-        r = run_market(mk["stages"], mk["outcome"], params_for(mk["kind"], p))
+    for mk, r in zip(markets, results):
         for tr in r["trades"]:
             all_trades.append(dict(tr, key=mk["key"], kind=mk["kind"], subject=mk["subject"]))
         cost_basis = sum(tr["shares"] * tr["price"] for tr in r["trades"] if tr["shares"] > 0)
         per.append(dict(key=mk["key"], kind=mk["kind"], subject=mk["subject"], trades=len(r["trades"]),
                         bought=cost_basis, pnl=r["pnl"], outcome=mk["outcome"]))
     return pd.DataFrame(all_trades), pd.DataFrame(per)
+
+
+def _capped(markets, p: TakerParams):
+    """Every market's stages in time order (ties in market order), sharing the deployed-capital cap."""
+    books = [_Market(mk["stages"], params_for(mk["kind"], p)) for mk in markets]
+    order = sorted(((s["t"], j, i) for j, mk in enumerate(markets) for i, s in enumerate(mk["stages"])),
+                   key=lambda x: (pd.Timestamp(x[0]) if x[0] is not None else pd.Timestamp.min, x[1], x[2]))
+    deployed = 0.0
+    for _, j, i in order:
+        deployed += books[j].step(i, room=max(p.max_deployed - deployed, 0.0))
+    return [b.result(mk["outcome"]) for b, mk in zip(books, markets)]
 
 
 def summarize(trades, per):

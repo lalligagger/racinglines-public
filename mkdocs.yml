@@ -19,12 +19,14 @@ nav:
       - Sources & layout: data.md
       - Parser: parser.md
       - Database: database.md
+      - Data changes: data-changes.md
   - Formula 1:
       - F1 model: f1.md
       - F1 evaluation: f1-evaluation.md
       - F1 forecast: f1-forecast.md
       - Market making: market-making.md
       - Paper trading: paper-trading.md
+      - Kalshi history: kalshi-history.md
   - Downhill:
       - Downhill model: model.md
       - Downhill evaluation: evaluation.md
@@ -34,6 +36,9 @@ nav:
   - Operate:
       - CLI reference: cli.md
       - Cloud sweeps: cloud-sweep.md
+      - Backtest core (all sports): backtest-core.md
+      - Cloud build-out: cloud-buildout.md
+      - Google Cloud proposal: google-cloud.md
       - Testing: testing.md
   - Roadmap:
       - Priorities and open items: todo.md

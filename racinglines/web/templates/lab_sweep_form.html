@@ -1,5 +1,5 @@
 {# The Edge Finder sweep: every setting of racinglines/pipelines/sweep_settings.py, grouped. #}
-<form method="post" action="/lab/run" class="ecard sweep-form" id="sweep-form" {% if sel_job == jt.code %}style="border-color:var(--accent)"{% endif %}
+<form method="post" action="/lab/run" class="ecard sweep-form{{ " sel" if sel_job == jt.code }}" id="sweep-form"
       data-defaults='{{ sweep_defaults|tojson }}' data-source='{{ sweep_start|tojson }}'>{{ csrf() }}<input type="hidden" name="job" value="{{ jt.code }}">
   <div><h3>{{ jt.label }}</h3><div class="when">{{ jt.what }} · {{ jt.minutes }}</div></div>
   <div class="jobform">
@@ -17,6 +17,7 @@
     {% if s.name == 'variant' %}<input name="variant" value="{{ v }}" list="variant-choices" maxlength="80" autocomplete="off">
       <datalist id="variant-choices">{% for m in model_choices %}<option value="{{ m }}">{% endfor %}</datalist>
     {% elif s.type == 'bool' %}<span class="check"><input type="hidden" name="{{ s.name }}" value="false"><input type="checkbox" name="{{ s.name }}" value="true" {{ 'checked' if v }}> on</span>
+    {% elif s.type == 'map' %}<input name="{{ s.name }}" value="{{ v or '' }}" placeholder="not set, e.g. race_h2h=0.05" maxlength="200" autocomplete="off">
     {% elif s.type == 'choice' %}<select name="{{ s.name }}">{% for ch in s.choices %}<option {{ 'selected' if ch == v }}>{{ ch }}</option>{% endfor %}</select>
     {% elif s.type == 'multi' %}<input type="hidden" name="{{ s.name }}__present" value="1"><span class="checks">{% for ch in s.choices %}<label class="inline"><input type="checkbox" name="{{ s.name }}" value="{{ ch }}" {{ 'checked' if ch in v }}> {{ ch|replace('after ', '')|replace('race_', '')|replace('_', ' ') }}</label>{% endfor %}</span>
     {% else %}<input name="{{ s.name }}" type="number" value="{{ '' if v is none else v }}" min="{{ s.min }}" max="{{ s.max }}" step="{{ '1' if s.type == 'int' else 'any' }}"{% if s.default is none %} placeholder="not set"{% endif %}>{% endif %}

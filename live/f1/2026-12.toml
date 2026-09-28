@@ -1,0 +1,16 @@
+# Rehearsal: a sprint weekend (the Dutch GP, round 12), run on a simulated clock before Singapore (round 17).
+# Every stage run is stored, so it replays offline:
+#   racinglines live run live/f1/2026-12.toml --simulate --no-fetch --no-sync
+sport = "f1"
+event = "2026-12"
+run = "2026-12-rehearsal"
+title = "Dutch GP (sprint rehearsal)"
+
+[live.markets]
+h2h_from = "2026-12"            # its own listing
+
+[[picks]]
+name = "Verstappen"
+market = "race_win"
+hype = 5
+why = "home race"

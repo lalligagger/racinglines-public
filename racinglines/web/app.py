@@ -227,9 +227,9 @@ templates.env.filters["money"] = money
 DEMO_CONTEXT = {"on": os.environ.get("RACINGLINES_DEMO_CONTEXT", "1") != "0"}
 templates.env.globals["demo_context_on"] = lambda: DEMO_CONTEXT["on"]      # read at render time
 templates.env.globals["csrf_token"] = CSRF_TOKEN
-# the stylesheet's URL carries its mtime, so a CSS change is a new URL: no stale copy from the browser or
+# the stylesheet's and scripts' URLs carry the newest static file's mtime, so a change is a new URL: no stale copy from the browser or
 # Cloudflare's edge cache (read at render time)
-templates.env.globals["css_v"] = lambda: int((HERE / "static" / "style.css").stat().st_mtime)
+templates.env.globals["css_v"] = lambda: int(max(p.stat().st_mtime for p in (HERE / "static").glob("*.*")))
 
 
 def _seen_since(user):
@@ -271,8 +271,8 @@ def render(request, name, **ctx):
     ctx.setdefault("trading", polymarket.TradingConfig.from_env())
     ctx.setdefault("user", getattr(request.state, "user", None))
     ctx.setdefault("signals_nav", _signals_nav(ctx["user"]))
-    try:                                               # a live final (pipelines/live_dh.py): the Live tab, green while
-        from racinglines.pipelines.live_dh import state   # it runs, grey once it is over (a replay)
+    try:                                               # a live event (pipelines/live.py): the Live tab, green while
+        from racinglines.pipelines.live import state      # it runs, grey once it is over (a replay)
         ctx.setdefault("live_nav", state() if ctx["user"] else None)
     except Exception:                                  # noqa: BLE001
         ctx.setdefault("live_nav", False)
@@ -1061,4 +1061,5 @@ def diag_example(request: Request, run_id: int, fill: str = Form("through"), c=D
 
 from racinglines.web import admin  # noqa: E402,F401  (registers /admin routes)
 from racinglines.web import views  # noqa: E402,F401  (registers the board, race, season, book and lab pages)
+from racinglines.web import api  # noqa: E402,F401  (the read-only JSON API; off unless RACINGLINES_JSON_API=1)
 from racinglines.web import legacy  # noqa: E402,F401  (old page URLs redirect to the current routes; register last)

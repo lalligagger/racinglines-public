@@ -27,6 +27,8 @@ racinglines f1 <command>: Formula 1.
                  the real trade tape; fills, inventory, P&L at resolution, mark-outs.
     forecast     LIVE: cutoff = now; upcoming races + championships. Saved as kind='forecast'
                  (the only kind the web app uses for live fair prices).
+    props        Race props (safety car, red flag, rain, fastest lap) for one event from the race
+                 history, or --check: their walk-forward calibration (models/position_sim/props.py).
 """
 
 import argparse
@@ -79,10 +81,13 @@ def main(argv=None):
                                             "(pipelines/demo_history.py).")
     p.add_argument("--reset", action="store_true", help="Delete the existing backfill first.")
     p.add_argument("--user", nargs="*", default=None, help="Only these demo accounts (maker, taker).")
+    p.add_argument("--venue", default="polymarket", choices=["polymarket", "kalshi"],
+                   help="Whose recorded tape the maker replays (kalshi: the maker's Kalshi record; maker accounts only).")
     sub.add_parser("profiles", help="List strategy profiles; create A / C as Lab candidates if missing.").add_argument(
         "--assign-demo", action="store_true", help="Demo taker -> A, demo maker -> C.")
-    sub.add_parser("pm-links-export", help="Write market links to data/archive/markets/polymarket/links/ (stable keys).")
-    sub.add_parser("pm-links-import", help="Load that file into this database (no Polymarket access needed).")
+    for name, hlp in (("pm-links-export", "Write market links to data/archive/markets/<exchange>/links/ (stable keys)."),
+                      ("pm-links-import", "Load that file into this database (no exchange access needed).")):
+        sub.add_parser(name, help=hlp).add_argument("--exchange", default="polymarket", choices=["polymarket", "kalshi"])
     p = sub.add_parser("pm-history")
     p.add_argument("--events", nargs="+", required=True, help="Polymarket event slugs (or a prefix ending in %%).")
     p.add_argument("--start", required=True, help="UTC start, e.g. 2026-09-23T00:00")
@@ -112,6 +117,9 @@ def main(argv=None):
     p.add_argument("--fetch-only", action="store_true", help="Only download the season's Polymarket history/trades.")
     p.add_argument("--reprice", action="store_true", help="Re-price stages even if stored.")
     p.add_argument("--save", action="store_true")
+    p.add_argument("--reliability", action="store_true",
+                   help="Also score calibration: our fair values and Polymarket's prices at every tradeable stage, "
+                        "per market kind (Brier, log loss, ECE, reliability bins); saved with --save.")
     from racinglines.pipelines import sweep_settings as _SS
     _SS.add_arguments(p.add_argument_group("settings (racinglines/pipelines/sweep_settings.py; default = baseline)"))
     p = sub.add_parser("season-strategy")
@@ -137,8 +145,18 @@ def main(argv=None):
     p = sub.add_parser("search")
     p.add_argument("queue", help="Queue file, e.g. sweeps/poc.toml (re-read while running: edit it to steer)")
     p.add_argument("--leaderboard", action="store_true", help="Only rewrite the leaderboard from state.json")
+    p = sub.add_parser("search-report")
+    p.add_argument("queue", help="The search's queue file: labels, noise floor, confirmations and candidates from its "
+                                 "finished jobs (an optional [report] table configures it)")
     p = sub.add_parser("search-import")
     p.add_argument("results", help="A search's results.json (e.g. from a cloud session)")
+    p = sub.add_parser("search-analyze", help="Analyze saved F1 sweep-search runs and write report artifacts "
+                                              "(curves, rankings, charts, noise, HTML; beside search-report).")
+    p.add_argument("search", help="Search name under data/runs/search/.")
+    p.add_argument("--write-candidates", action="store_true", help="Regenerate ranked candidate JSON and TOML files.")
+    p.add_argument("--plot", action="store_true", help="Write the top/bottom cumulative P&L chart.")
+    p.add_argument("--noise", action="store_true", help="Write the report-specific Monte Carlo noise summary.")
+    p.add_argument("--html", metavar="MARKDOWN", help="Render this Markdown report to HTML in the search directory.")
     p = sub.add_parser("replay")
     p.add_argument("--runs", required=True, help="Diagnostic run ids in time order, e.g. 11,9")
     p.add_argument("--sweep", action="store_true", help="Also sweep half-spread and fill rule.")
@@ -173,6 +191,12 @@ def main(argv=None):
     p.add_argument("--no-track", action="store_true")
     p.add_argument("--scenario", default=None, metavar="LABEL",
                    help="Save as kind='scenario' (not used for live prices until promoted in the web app).")
+    p = sub.add_parser("props", help="Race props: safety car, red flag, rain, fastest lap (props.py).")
+    p.add_argument("event", nargs="?", default=None, help="Season-round, e.g. 2026-16 (the yes/no props)")
+    p.add_argument("--run", type=int, default=None, help="A stored stage run id: adds the fastest-lap prices")
+    p.add_argument("--check", action="store_true", help="Walk-forward calibration of the yes/no props")
+    p.add_argument("--from", dest="start_year", type=int, default=2022, help="--check: first season scored")
+    p.add_argument("--prior-n", type=float, default=None, help="Shrinkage to the field rate, in races (default: props.PRIOR_N)")
     args = ap.parse_args(argv)
     from racinglines.models.position_sim import variants as V
     V.switches(args.variant)                         # fail fast on an unknown name
@@ -202,20 +226,38 @@ def _run(args):
         with get_session(args.db) as s:
             print("Done:", ingest(s, _years(args.years), force=args.force))
         return
+    if args.cmd == "props":
+        from racinglines.models.position_sim import props as PR
+        prior_n = PR.PRIOR_N if args.prior_n is None else args.prior_n
+        with engine.connect() as c:
+            if args.check:
+                _, summ = PR.check(c, args.start_year, prior_n)
+                print(summ.to_string(index=False, float_format="{:.4f}".format))
+                return
+            if not args.event:
+                sys.exit("give an event (e.g. 2026-16) or --check")
+            kinds = PR.PROP_KINDS if args.run else tuple(PR.BINARY)
+            for mk in PR.markets(c, args.event, args.run, kinds, prior_n):
+                name = "" if mk["subject"] == PR.LABEL[mk["kind"]] else mk["subject"]
+                print(f"{PR.LABEL[mk['kind']]:12} {name:24} {mk['fair']:.1%}")
+        return
     if args.cmd in ("pm-links-export", "pm-links-import"):
         from racinglines import paths
         from racinglines.markets.polymarket import links as L
+        x = {} if args.exchange == "polymarket" else dict(exchange=args.exchange)
+        path = L.path_for(args.exchange)
         if args.cmd == "pm-links-export":
-            print(f"exported {L.export(engine)} market links -> {paths.rel(L.PATH)}")
+            print(f"exported {L.export(engine, path, **x)} market links -> {paths.rel(path)}")
         else:
-            print(f"imported market links: {L.import_(engine)}")
+            print(f"imported market links: {L.import_(engine, path)}")
         return
     if args.cmd == "demo-history":
         from racinglines.pipelines import demo_history as DH
         from racinglines.pipelines import profiles as PF
         if args.reset:
-            print(f"deleted {DH.reset(engine, args.user or list(PF.HISTORY))} backfilled signals")
-        rep = DH.backfill(engine, args.db, usernames=args.user, echo=lambda m: print(m, flush=True))
+            print(f"deleted {DH.reset(engine, args.user or list(PF.HISTORY), **({} if args.venue == 'polymarket' else dict(venue=args.venue)))} backfilled signals")
+        rep = DH.backfill(engine, args.db, usernames=args.user, echo=lambda m: print(m, flush=True),
+                          **({} if args.venue == "polymarket" else dict(venue=args.venue)))
         for u in sorted({r[0] for r in rep}):
             for y in ("2025", "2026"):
                 rs = [r for r in rep if r[0] == u and r[2].startswith(y)]
@@ -386,9 +428,28 @@ def _run(args):
             return
         SR.run(args.queue, echo=lambda m: print(f"{datetime.now(timezone.utc):%H:%M:%S} {m}", flush=True))
         return
+    if args.cmd == "search-report":
+        from racinglines.pipelines import search_report as SRR
+        SRR.run(args.queue)
+        return
     if args.cmd == "search-import":
         from racinglines.pipelines import search as SR
         SR.import_results(args.results, args.db)
+        return
+    if args.cmd == "search-analyze":
+        from racinglines import paths
+        from racinglines.reporting import search_analyze as RA
+        RA.main([args.search] + (["--write-candidates"] if args.write_candidates else []))
+        out = paths.runs("search", args.search)
+        if args.plot:
+            from racinglines.reporting import search_plot as RP
+            RP.main(out)
+        if args.noise:
+            from racinglines.reporting import search_noise as RN
+            RN.main(out)
+        if args.html:
+            from racinglines.reporting import markdown_html as RH
+            print(RH.render(args.html, out / "report.html", title=f"{args.search} backtest report"))
         return
     if args.cmd == "season-checkpoints":
         from racinglines import paths
@@ -448,6 +509,15 @@ def _run(args):
         print(out["scores"].to_string(index=False, float_format="{:.4f}".format))
         from racinglines import paths
         outdir = paths.runs("f1", "sweeps")
+        if args.reliability:
+            cal = out["calibration"]
+            print("\n=== Calibration: model vs Polymarket, every tradeable stage (lower is better) ===")
+            print(cal.pivot_table(index=["kind", "stage"], columns="source", values=["n", "brier", "logloss", "ece"],
+                                  sort=False).to_string(float_format="{:.4f}".format))
+            print("\n=== Reliability bins, all stages pooled (|z| > 2: off by more than binomial noise) ===")
+            print(out["reliability"].to_string(index=False, float_format="{:.3f}".format))
+            cal.to_csv(outdir / f"sweep_{args.year}_calibration.csv", index=False)
+            out["reliability"].to_csv(outdir / f"sweep_{args.year}_reliability.csv", index=False)
         w.to_csv(outdir / f"sweep_{args.year}_weekends.csv", index=False)
         if len(out["trades"]):
             out["trades"].to_csv(outdir / f"sweep_{args.year}_trades.csv", index=False)
@@ -458,7 +528,10 @@ def _run(args):
                                         kind="sweep", params=dict(out["params"], year=args.year, rounds=args.rounds),
                                         metrics=dict(weekends=records(w), totals=out["totals"],
                                                      by_stage=records(out["by_stage"]), by_kind=records(out["by_kind"]),
-                                                     scores=records(out["scores"])))
+                                                     scores=records(out["scores"]),
+                                                     **(dict(calibration=records(out["calibration"]),
+                                                             reliability=records(out["reliability"]))
+                                                        if args.reliability else {})))
             print(f"Saved sweep run {run_id}.")
         return
     if args.cmd == "replay":

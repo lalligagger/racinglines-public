@@ -1,7 +1,18 @@
 # Web app & trading
 
 `racinglines/web/` is the maker/taker web app (FastAPI, server-rendered pages, no
-JavaScript framework) on top of the [database](database.md).
+JavaScript framework) on top of the [database](database.md). Partial updates (the Live
+tab's refresh and replay, the Lab's sections and Edge Finder) are [htmx](https://htmx.org)
+attributes on the templates (`static/htmx.min.js`, vendored); the little browser-side state
+(open Lab sections, the replay player) is in `static/app.js`. The look is one stylesheet,
+`static/style.css`, in sections (tokens, base, layout, components, pages); shared pieces
+(the page head, flashes, KPIs, signed money) are macros in `templates/_macros.html`.
+A page shows one thing at a time: big pages (Live, Positions, Strategy, a race, a diagnostic,
+Quotes) split into tabs (`<nav class="ptabs" data-tabs=…>` with `[data-panel]` sections; the
+choice is remembered per browser, `#key` in the URL opens a tab), secondary sections are
+`<details class="card" data-remember=…>` with the number that matters in the summary, and a long
+table gets a filter box and a row cap (`.scroll[data-rows][data-filter]`, or `table(…, cap=,
+filter=)`). All of it is in `app.js`; the server renders every row regardless.
 
 ```
 ADMIN_PASSWORD=choose-one racinglines web        # http://127.0.0.1:8000, user "admin"
@@ -48,7 +59,7 @@ event: a race, or a competition's season
        ├─ our fair value:
        │    upcoming: the live forecast
        │    past: the last as-of price made before the start (diagnostic, else an earlier forecast)
-       ├─ venue quotes: Polymarket · Kalshi (soon) · private book (our own markets)
+       ├─ venue quotes: Polymarket · Kalshi (live with RACINGLINES_KALSHI_VENUE=1) · private book (our own markets)
        └─ result, once the race has run
 ```
 
@@ -164,6 +175,9 @@ Three accounts are easy to mix up. They are separate entities:
 Both demo accounts' weekends before live paper trading began are **backtest replays**
 (`racinglines f1 demo-history`, `pipelines/demo_history.py`): real Polymarket prices and trades, the
 strategy the account ran then, flagged in the database (`detail.backfill`) and labelled in the app.
+The maker can also have a Kalshi record (`f1 demo-history --venue kalshi`, [Kalshi history](kalshi-history.md)).
+It stays hidden unless `RACINGLINES_KALSHI_VENUE=1` is set, and then only Positions shows it. The Strategy
+page is always the Polymarket record.
 
 **Demo sessions are disposable** (`racinglines/web/demo.py`; the demo accounts are `RACINGLINES_DEMO_USERS`,
 default `maker,taker`). Every sign-in gets a fresh session id. View settings (Edge Finder combos and season,
@@ -215,6 +229,33 @@ none is set. Other users are created on `/admin/users`.
   Behind Cloudflare, the client IP comes from `CF-Connecting-IP`. The counter is in
   memory and resets on restart.
 - **Forms:** every form POST also carries an anti-forgery (CSRF) token.
+
+### JSON API
+
+Off by default: every route answers 404 unless `RACINGLINES_JSON_API=1` is set where the app
+runs (`racinglines/web/api.py`). Read-only, behind the same login as the pages (cookie or HTTP
+Basic), and only what the events and athletes pages show every signed-in user:
+
+| Route | Returns |
+|---|---|
+| `GET /api/v1/events?season=&competition=` | events, newest first |
+| `GET /api/v1/events/{id}` | one event and its classification, every round |
+| `GET /api/v1/athletes?q=&limit=200` | athletes with result counts (limit at most 1,000) |
+| `GET /api/v1/athletes/{id}` | one athlete, identifiers and results (practice left out) |
+
+```
+RACINGLINES_JSON_API=1 racinglines web
+curl -u taker:PASSWORD 'http://localhost:8000/api/v1/events?competition=uci_dhi_wc&season=2026'
+```
+
+No model prices, quotes, positions or market data. Open questions for the owner before it goes
+further:
+
+- **What's public:** results only (today), or model prices too (the pages hide them from takers)?
+- **Who can use it:** any account (today), a new API role or keys, or no login for results?
+- **Data terms:** F1 timing data (FastF1 / F1's terms), OpenF1's non-commercial terms and UCI /
+  ChronoRace results may not allow redistribution; check before anything leaves the private demo.
+- **Limits:** a per-client rate limit, and paging for the larger lists.
 
 ## Getting predictions for an event weekend
 
@@ -327,16 +368,19 @@ model probability, model run, book at the time, and the exchange's response.
 | `POLYMARKET_TRADING_ENABLED` | off | **Must be `true` to send orders.** Otherwise orders are signed locally as a dry run and nothing is sent. |
 | `POLYMARKET_MAX_ORDER_USD` | `25` | Per-order notional cap. |
 | `POLYMARKET_CLOB_HOST` / `POLYMARKET_GAMMA_HOST` / `POLYMARKET_CHAIN_ID` | Polymarket production / 137 | Endpoints. |
+| `POLYMARKET_ORDER_VERSION` | `2` | Exchange order version for dry runs. Live orders use the version the CLOB reports. |
 
 The banner on every page shows the mode: **no credentials**, **dry run**, or **LIVE**
 (in red).
 
-!!! danger "Order signing is out of date"
-    `racinglines/markets/polymarket/trade.py` signs with Polymarket's V1 client.
-    Polymarket moved to CLOB V2 on 2026-04-28 and rejects V1-signed orders, so
-    live orders won't be accepted until it's migrated to `py-clob-client-v2`
-    (see [Roadmap](todo.md#market-making)). Dry runs still sign locally, in the old
-    format.
+!!! note "CLOB V2 signing: dry-run tested only"
+    `racinglines/markets/polymarket/trade.py` signs with Polymarket's V2 client
+    (`py-clob-client-v2`), since Polymarket rejects V1-signed orders from 2026-04-28.
+    A dry run builds the V2 order and signs it locally (EIP-712 domain version 2) with
+    no network call. `tests/test_polymarket_trade.py` recovers the signer from that
+    signature. **No order has been sent with it.** Posting, open orders and cancels are
+    untested against the live CLOB. Check them with the owner's approval and a small
+    size before relying on them.
 
 !!! warning
     Check that your Polymarket account and jurisdiction are eligible before setting
@@ -349,6 +393,16 @@ The banner on every page shows the mode: **no credentials**, **dry run**, or **L
 As of 2026-09-26, searching Polymarket for "Whistler", "downhill", "Crankworx" and
 "UCI downhill" finds **no downhill markets**. The linking flow works with any
 Polymarket market, so markets can be linked as soon as they're listed.
+
+## Kalshi
+
+Kalshi's F1 markets are synced and their history stored (links, trades, hourly prices, in Postgres and
+`data/archive/markets/kalshi/`), but by default the web app doesn't show them: the venue column says "Kalshi (soon)"
+and the book page "Kalshi: coming soon". `RACINGLINES_KALSHI_VENUE=1` marks Kalshi live (its quotes on the board and
+race pages) and lists the maker's Kalshi record on Positions ([Kalshi history](kalshi-history.md#in-the-app)). There's no linking flow to build: `markets --exchange kalshi sync`
+links every F1 market it can classify ([F1](f1.md#kalshi-alignment)). Orders are dry runs unless
+`KALSHI_TRADING_ENABLED=true` ([CLI](cli.md#kalshi-exchange-kalshi)). How Kalshi's feed differs from
+Polymarket's: [Data](data.md#exchange-history-kalshi-and-polymarket).
 
 ## Tested
 

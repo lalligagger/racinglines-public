@@ -63,12 +63,13 @@ factors:
 | Factor | Value |
 |---|---|
 | Round type (`RUN_WEIGHTS`) | `practice` 0.5; `qual`, `qual1`, `qual2`, `semi`, `final` 1.0 |
-| Category (`CATEGORY_WEIGHTS`, `--junior-weight`) | `ME` 1.0, `MJ` 0.5, anything else 0.5 |
-| Recency | `0.5 ** (days_before_latest / half_life_days)`, default half-life 120 days |
+| Category (`CATEGORY_WEIGHTS`, `--junior-weight`) | `ME` 1.0, `MJ` 0.25, anything else 0.5 |
+| Recency | `0.5 ** (days_before_latest / half_life_days)`, default half-life 240 days |
 
-With a 120-day half-life, last season's results count about a quarter to a half as
-much as this month's, and results from three seasons ago barely count. That
-setting was chosen by backtesting (see [Evaluation](evaluation.md#tuning)).
+With a 240-day half-life, last season's results count about half to three quarters as
+much as this month's, and results from three seasons ago about a fifth. These
+settings come from the 43-round tuning sweep ([Calibration](#calibration)); until
+2026-09-28 they were 120 days, junior weight 0.5 and `prior_n` 1.5.
 
 ### Estimation, step by step
 
@@ -77,7 +78,7 @@ Estimation alternates between two steps, repeated 30 times:
 1. **Run effects:** `run_effect[r] = median over riders in r of (log time − μ[i])`,
    using only clean runs. The median is robust to crashes.
 2. **Rider pace:** `μ[i] = Σ w·(log time − run_effect) / (Σ w + prior_n)` over the
-   rider's clean runs. `prior_n = 1.5` shrinks riders with little data toward the
+   rider's clean runs (`--prior-n`, see [Calibration](#calibration)). `prior_n = 0.5` (1.5 before 2026-09-28) shrinks riders with little data toward the
    field median, since one lucky run shouldn't make a rider a favourite. After each
    step, μ is re-centred so its median is 0.
 3. **Clean runs:** a run counts as clean if its residual
@@ -169,7 +170,9 @@ points = QUAL_POINTS[qualifying rank] + FINAL_POINTS[final rank]
 !!! warning
     `FINAL_POINTS` (250/210/180/…/11 for places 1–30) and `QUAL_POINTS`
     (60/50/40/…/2 for places 1–20) are **placeholders**, and the same tables are
-    used for every era. See [Roadmap](todo.md#points-validation).
+    used for every era. See [Roadmap](todo.md#points-validation). Official tables, once entered,
+    go in `points_schemes` per era (`racinglines mtb_dh points import`), and `--points db` uses them
+    ([CLI](cli.md#racinglines-mtb_dh-points)).
 
 ## Forecasting the rest of the season
 
@@ -215,6 +218,72 @@ compares each rider's championship rank before and after the simulated weekend
 (ranks are "min" style, so tied riders share the better rank). It gives
 `current_rank`, `rank_up_prob`, `rank_down_prob` and `exp_rank_after`, which are
 stored in `race_predictions.extra`. These use the placeholder points tables.
+
+## Calibration
+
+`racinglines mtb_dh backtest --db --reliability` (2026-09-28, cloud build-out): every
+walk-forward round of 2021–2026, 43 rounds and 5,171 rider-rounds, elite men.
+
+**The odds are too flat where it matters most.** Win and podium are close to calibrated.
+Top 10 and making the Final are not: riders the model gives 10–20% to make the Final made it
+6% of the time, and riders it gives 70–90% made it 92% of the time.
+
+| Make the Final: predicted | 0.06–0.10 | 0.10–0.20 | 0.50–0.70 | 0.70–0.90 |
+|---|---|---|---|---|
+| Observed, `prior_n` 1.5 (the old default) | 2.5% | 5.6% | 71.8% | 92.1% |
+| Observed, `prior_n` 0.5 | 5.0% | 8.6% | 64.7% | 87.1% |
+
+**Cause: too much shrinkage.** `prior_n` 1.5 pulls riders' paces toward the field so hard
+that the order of the field is under-stated. With 0.5, log loss per rider-round, paired by
+round (± 2 SE):
+
+| Market | Change | Seasons better |
+|---|---|---|
+| Make the Final | −0.026 ± 0.005 | 6 of 6 |
+| Top 10 | −0.002 ± 0.005 | 5 of 6 (2021 worse) |
+| Podium | −0.001 ± 0.001 | 5 of 6 |
+| Win | −0.000 ± 0.001 | even |
+
+Tried and not better: a lower `INCIDENT_THRESHOLD` (0.03, 0.02: small gains on top 10
+and podium, worse for making the Final), heavier-tailed run noise (`--eps-df` 4 and 6),
+and scaling σ and τ down (a little better with `prior_n` 0.5 or 1.0, overconfident with 0.25).
+Not tried yet: per-round-type incident rates.
+
+**Tuning sweep** over the same 43 rounds: `prior_n` 0.5 / 1.5 × half-life 60 / 120 / 240 / 480
+days × junior weight 0.25 / 0.5 / 1.0 (24 combinations). A longer half-life (240) and less
+junior weight (0.25) help too. The best, `--prior-n 0.5 --half-life-days 240 --junior-weight
+0.25`, is better than the old defaults in every market (log loss, paired by round, ± 2 SE):
+
+| Market | Change | Seasons better |
+|---|---|---|
+| Make the Final | −0.035 ± 0.006 | 6 of 6 |
+| Top 10 | −0.006 ± 0.006 | 5 of 6 |
+| Podium | −0.003 ± 0.002 | 6 of 6 |
+| Win | −0.001 ± 0.001 | 3 of 6 |
+
+The practice-run weight (`run_weights.practice` in `sports/mtb_dh.toml`) makes little
+difference: 0, 0.25, 0.5 and 1.0 are within 0.003 of each other on every market, and today's
+0.5 is as good as any.
+
+**Lower incident rates in Finals: no gain.** Finals have fewer incidents than qualifying in the
+data (15% vs 23% of runs), but scaling the rate in Finals by 0.5, 0.71 or 0.85 (qualifying up
+to keep the average) is slightly worse on every market. Not built in.
+
+**Rider × venue effects: no gain.** A rider's past deviations at the same venue, shrunk
+(divided by events there + k, k = 1, 2, 4), used as the mean of that weekend's `u` on top of
+the tuned settings: win log loss −0.0003 at best, podium, top 10 and making the Final
+no better or worse, Spearman lower. Two things mattered for a fair test: deviations are
+measured from the rider's own level (else they re-add the pace shrinkage), and residuals
+beyond ±4% are dropped (practice times include a few far-off laps). Not built into the model.
+
+**Rookie improvement: none detected.** Shifting riders with 3 or fewer (or 6 or fewer) elite
+events faster by 0.3% or 0.6% of run time is worse on every market; shifting them 0.3% slower
+changes log loss by under 0.001. With the 240-day half-life the pace already follows form.
+
+**The defaults since 2026-09-28** (owner's OK): `PRIOR_N` 0.5, `HALF_LIFE_DAYS` 240,
+`CATEGORY_WEIGHTS["MJ"]` 0.25 in `models/timed_runs/model.py`. They were picked on the same 43
+rounds they're scored on, so the gains are in-sample: check them on 2026's next rounds. The old
+behaviour is `--prior-n 1.5 --half-life-days 120 --junior-weight 0.5`.
 
 ## Training scope and targets
 

@@ -19,6 +19,7 @@ qualifying, while the market moves after every session.
 """
 
 import logging
+from dataclasses import replace
 from datetime import timedelta
 
 import numpy as np
@@ -27,13 +28,15 @@ from sqlalchemy import text
 
 from racinglines import sports
 from racinglines.markets.strategies import taker_weekend as RB
-from racinglines.core.stats import last_at
+from racinglines.core import calibration as CAL
+from racinglines.core import stages as STG
 
 _SCHEDULE = sports.load("f1")["sessions"]["schedule"]       # FastF1 session name -> [minutes, short label]
 SESSION_MINUTES = {name: m for name, (m, _) in _SCHEDULE.items()}
 SHORT = {name: short for name, (_, short) in _SCHEDULE.items()}
-DATA_LAG = timedelta(minutes=30)     # a session's data is used 30 min after it ends
-PRE = timedelta(hours=1)             # "before any running": 1 h before the first session
+_STAGES = STG.spec("f1")                                     # sports/f1.toml [stages] (core/stages.py)
+DATA_LAG = timedelta(minutes=_STAGES["lag_minutes"])         # a session's data is used 30 min after it ends
+PRE = timedelta(minutes=_STAGES["pre_minutes"])              # "before any running": 1 h before the first session
 KINDS = tuple(sports.load("f1")["markets"]["weekend_kinds"])
 GROUP_TARGET = {"race_win": 1, "race_pole": 1, "race_constructor_top": 1, "race_podium": 3}
 COHERENCE_TOL = 0.25
@@ -85,18 +88,12 @@ def schedule(year, rounds=None):
             name, start = getattr(ev, f"Session{i}"), getattr(ev, f"Session{i}DateUtc")
             if name and not pd.isna(start):
                 sessions.append((name, pd.Timestamp(start).tz_localize(None)))
-        race = next((t for n, t in sessions if n == "Race"), None)
-        if race is None:
+        b = STG.build(sessions, "f1")                        # the stages, from the schema
+        if b is None:
             continue
-        stages = [("pre-weekend", sessions[0][1] - PRE)]
-        for name, start in sessions:
-            if name in SESSION_MINUTES:
-                cut = start + timedelta(minutes=SESSION_MINUTES[name]) + DATA_LAG
-                if cut < race:
-                    stages.append((f"after {SHORT[name]}", cut))
-        out[rnd] = dict(event_key=f"{year}-{rnd:02d}", name=ev.EventName, format=ev.EventFormat, race_start=race,
-                        qual_start=next((t for n, t in sessions if n == "Qualifying"), None),
-                        sessions=[(SHORT.get(n, n), t) for n, t in sessions], stages=stages)
+        out[rnd] = dict(event_key=f"{year}-{rnd:02d}", name=ev.EventName, format=ev.EventFormat, race_start=b["until"],
+                        qual_start=next((t for n, t in sessions if n == "Qualifying"), None), closes=b["closes"],
+                        sessions=[(SHORT.get(n, n), t) for n, t in sessions], stages=b["stages"])
     return out
 
 
@@ -129,7 +126,7 @@ def price_stages(meas, hist, sched, engine, engine_url=None, n_sims=4000, repric
                 runs.append((label, cutoff, have[k]))
                 continue
             _, summ, ex, _ = run.diagnostic(meas, hist, w["event_key"], cutoff, n_sims=st["sims"],
-                                            use_track=st["track_features"])
+                                            use_track=st["track_features"], seed=st.rng_seed)
             extra = dict(model_key=mk, data_key=dk, model_settings={n: st.to_json()[n] for n in SS.MODEL_NAMES})
             if st["variant"] != "baseline":
                 extra["variant"] = st["variant"]
@@ -145,7 +142,8 @@ def price_stages(meas, hist, sched, engine, engine_url=None, n_sims=4000, repric
 def _token0_links(conn, race_id):
     links = pd.read_sql(text("""SELECT ml.*, a.display_name AS athlete FROM market_links ml
                                 LEFT JOIN athletes a ON a.id = ml.athlete_id
-                                WHERE ml.race_id = :r AND ml.prediction = ANY(:k) ORDER BY ml.id"""), conn,
+                                WHERE ml.race_id = :r AND ml.prediction = ANY(:k) AND ml.exchange = 'polymarket'
+                                ORDER BY ml.id"""), conn,
                         params=dict(r=race_id, k=list(KINDS)))
     return links.drop_duplicates("condition_id", keep="first")
 
@@ -177,42 +175,22 @@ def fetch_market_data(session, conn, sched, fidelity=5, force=False, echo=print)
         echo(f"progress {w['event_key']} {w['name']}: {n} price points, {k} trades")
 
 
-def _series(conn, tokens, conds, start, end):
-    from racinglines.markets import store as MS
-    a, b = pd.Timestamp(start).tz_localize("UTC"), pd.Timestamp(end).tz_localize("UTC")
-    ph = MS.read(conn, "prices", tokens=tokens, start=a, end=b)[["token_id", "ts", "price"]]
-    tr = MS.read(conn, "trades", conditions=conds, start=a - timedelta(hours=24), end=b)
-    tr = tr.assign(usd=tr["price"] * tr["size"])[["condition_id", "ts", "usd"]]
-    for df in (ph, tr):
-        df["ts"] = pd.to_datetime(df["ts"], utc=True).dt.tz_localize(None)
-    return {t: g for t, g in ph.groupby("token_id")}, {c: g for c, g in tr.groupby("condition_id")}
-
-
-def _price_at_g(g, t):
-    return None if g is None else last_at(pd.DatetimeIndex(g["ts"]), g["price"].to_numpy(), t, STALE)
-
-
-def _vol24(g, t):
-    if g is None:
-        return 0.0
-    a, b = g["ts"].searchsorted(t - timedelta(hours=24)), g["ts"].searchsorted(t, side="right")
-    return float(g["usd"].iloc[a:b].sum())
-
-
 def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None):
     """The weekend's tradeable markets for racinglines/markets/strategies/taker_weekend.py: per market, each stage's fair,
-    exchange price and tradeable flag (what was knowable then) and the outcome (settlement).
+    exchange price and tradeable flag (what was knowable then) and the outcome (settlement). The exchange is a
+    backtest venue (markets/venue_replay.py: Polymarket's recorded prices and trade tape).
     price_times: {stage label: time} to read the market at instead of the stage's cutoff (live signals:
     when the stage was priced, i.e. when its trades could first be made); None = the cutoffs (backtests)."""
     at = lambda lab, cutoff: (price_times or {}).get(lab, cutoff)          # noqa: E731
     from racinglines.db import reads as D
     from racinglines.markets import private_book as house
+    from racinglines.markets.venue_replay import Polymarket
     rid = _race_id(conn, w["event_key"])
     links = _token0_links(conn, rid)
     if not len(links):
         return None
     start, end = stage_runs[0][1] - timedelta(hours=1), max([w["race_start"], *(price_times or {}).values()])
-    prices, trades = _series(conn, links["token_id"].tolist(), links["condition_id"].tolist(), start, end)
+    venue = Polymarket(conn, links, start, end, GROUP_TARGET, COHERENCE_TOL, STALE)
     res = house.race_outcomes(conn, rid)
     cache, markets = {}, []
     fair = {}   # (token, stage) -> fair
@@ -220,31 +198,23 @@ def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None):
         for link in links.to_dict("records"):
             fair[(link["token_id"], lab)] = D.model_prob(conn, link, cache, run_id=run_id)[0]
     # coherence of each multi-outcome group at each stage (stale/empty books are skipped)
-    coherent = {}
-    for lab, cutoff, _ in stage_runs:
-        for kind, target in GROUP_TARGET.items():
-            g = links[links["prediction"] == kind]
-            ps = [_price_at_g(prices.get(t), at(lab, cutoff)) for t in g["token_id"]]
-            ps = [p for p in ps if p is not None]
-            coherent[(kind, lab)] = bool(ps) and abs(sum(ps) - target) <= COHERENCE_TOL * target
-    for link in links.to_dict("records"):
+    coherent = {(kind, lab): venue.coherent(kind, at(lab, cutoff)) for lab, cutoff, _ in stage_runs for kind in GROUP_TARGET}
+    vol_min = MIN_VOLUME_24H if min_volume_24h is None else min_volume_24h
+    for link in venue.markets():
         kind = link["prediction"]
-        ath = None if pd.isna(link["athlete_id"]) else int(link["athlete_id"])
         stages = []
         for lab, cutoff, _ in stage_runs:
             t = at(lab, cutoff)
-            price = _price_at_g(prices.get(link["token_id"]), t)
+            price, _, liquid = venue.view(link, t, vol_min)
             f = fair[(link["token_id"], lab)]
-            open_ = not (kind == "race_pole" and w["qual_start"] is not None and t >= w["qual_start"])
-            ok = (price is not None and f is not None and open_ and coherent.get((kind, lab), True)
-                  and 0 < price < 1 and _vol24(trades.get(link["condition_id"]), t)
-                  >= (MIN_VOLUME_24H if min_volume_24h is None else min_volume_24h))
+            open_ = STG.is_open(kind, t, w.get("closes", {"race_pole": w["qual_start"]}))
+            ok = liquid and f is not None and open_ and coherent.get((kind, lab), True)
             stages.append(dict(label=lab, t=t, fair=f, price=price, tradeable=ok))
         subject = link["athlete"] or (link["params"] or {}).get("team") or link["group_title"]
         if kind == "race_h2h":
             subject = f"{link['outcome']} ({link['question'].split(': ')[-1]})"
         markets.append(dict(key=link["token_id"], kind=kind, subject=subject, stages=stages, link=link,
-                            outcome=house.outcome_for(kind, ath, link["params"], res)))
+                            outcome=venue.resolve(link, res)))
     return markets
 
 
@@ -275,6 +245,10 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settin
                 scores.append(dict(stage=lab, kind=kind, n=len(rows), brier_model=float(np.mean((f - y) ** 2)),
                                    brier_market=float(np.mean((pm - y) ** 2))))
     out["scores"] = scores
+    # every tradeable (fair, price, outcome), for calibration (run_sweep's calibration tables)
+    out["calib"] = [dict(stage=s["label"], kind=m["kind"], fair=s["fair"], price=s["price"], y=float(m["outcome"]))
+                    for m in markets if m["outcome"] is not None
+                    for s in m["stages"] if s["fair"] is not None and s["price"] is not None and s["tradeable"]]
     out["markets"] = len(markets)
     out["tradeable_first"] = sum(m["stages"][0]["tradeable"] for m in markets)
     out["tradeable_last"] = sum(m["stages"][-1]["tradeable"] for m in markets)
@@ -284,7 +258,7 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settin
         from dataclasses import replace
 
         from racinglines.markets.strategies import maker_replay as R
-        ev = R.load_event(conn, [r for _, _, r in stage_runs])
+        ev = R.load_event(conn, [r for _, _, r in stage_runs], books=st["fill"] == "queue")
         ev = dict(ev, markets=[m for m in ev["markets"] if m.kind in st["market_kinds"]])
     except Exception as ex:  # noqa: BLE001  (no tape for this weekend)
         echo(f"  maker replay skipped: {ex}")
@@ -309,12 +283,19 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settin
     return out
 
 
+def bankroll_scale(start, balance):
+    """Stake multiplier for bankroll-aware sizing: the balance over the starting bankroll (0 once it's gone)."""
+    return max(balance, 0.0) / start
+
+
 def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, reprice=False, taker=None, echo=print,
               variant="baseline", settings=None):
     """The whole season (every raced weekend unless `rounds`). settings: sweep_settings.Settings, the
     full description of the combo (model, entry timing, taker, maker, markets); without it, one is
     built from n_sims / taker / variant. Returns dict(weekends DataFrame, by_stage, by_kind, totals,
-    trades, scores, params)."""
+    trades, scores, calibration, reliability, params). calibration / reliability: our fair values and the
+    exchange's prices at every tradeable stage, scored on the outcome (core/calibration.py): per market kind
+    and stage, and pooled per kind (stage "all"; a market counts once per stage it was tradeable)."""
     from racinglines.db.config import get_session
 
     from racinglines.models.position_sim import pricing as run
@@ -336,19 +317,28 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
     data_key = price_stages.data_key
     base = RB.TakerParams(min_edge=st["min_edge"], stake_per_edge=st["stake_per_edge"], max_stake=st["max_stake"],
                           cost=st["cost"], late_stages=st["late_stages"], min_edge_h2h=st["min_edge_h2h"],
-                          stages=None if st["taker_stages"] == SS.STAGES else st["taker_stages"])
+                          min_edge_by_kind=tuple(SS.parse_map(st["min_edge_by_kind"]).items()),
+                          stages=None if st["taker_stages"] == SS.STAGES else st["taker_stages"],
+                          max_deployed=st["max_deployed"])
     params_list = [RB.TakerParams(**{**base.__dict__, "mode": m}) for m in TAKER_MODES]
-    rows, all_trades, all_scores = [], [], []
+    balance = {m: st["bankroll"] for m in TAKER_MODES}     # bankroll-aware sizing: each mode's balance
+    rows, all_trades, all_scores, all_calib = [], [], [], []
     markouts = {}                      # market kind -> maker's 60-min markout so far (as of each weekend)
     for rnd, w in sched.items():
         runs = stage_runs.get(w["event_key"])
         if not runs:
             continue
         with engine.connect() as c:
-            r = weekend(c, w, runs, params_list, echo=echo, widen_kinds=[k for k, v in markouts.items() if v < 0],
+            plist = params_list if st["bankroll"] is None else \
+                [replace(q, scale=bankroll_scale(st["bankroll"], balance[q.mode])) for q in params_list]
+            r = weekend(c, w, runs, plist, echo=echo, widen_kinds=[k for k, v in markouts.items() if v < 0],
                         settings=st)
         if r is None:
             continue
+        if st["bankroll"] is not None:
+            for q in plist:
+                balance[q.mode] += r["modes"][q.mode]["pnl"]
+                r["modes"][q.mode].update(scale=q.scale, balance=balance[q.mode])
         for k, v in r["markout_by_kind"].items():
             markouts[k] = markouts.get(k, 0.0) + v
         row = dict(round=rnd, event_key=w["event_key"], event=w["name"], format=w["format"], stages=len(runs),
@@ -363,6 +353,7 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
         if len(t):
             all_trades.append(t.assign(event_key=w["event_key"], event=w["name"]))
         all_scores += [dict(s, event_key=w["event_key"]) for s in r["scores"]]
+        all_calib += [dict(c, event_key=w["event_key"]) for c in r["calib"]]
         echo(f"progress {len(rows)}/{len(sched)} traded {w['event_key']} {w['name']}: "
              f"update {row.get('update_pnl', 0):+.2f} · hold {row.get('hold_pnl', 0):+.2f} · "
              f"after-quali {row.get('last_pnl', 0):+.2f} · maker {row.get('maker_pnl', float('nan')):+.2f}")
@@ -377,6 +368,10 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
     score_stage = (scores.groupby(["kind", "stage"])[["n", "brier_model", "brier_market"]]
                    .agg({"n": "sum", "brier_model": "mean", "brier_market": "mean"}).reset_index()
                    if len(scores) else scores)
+    calib = pd.DataFrame(all_calib, columns=["event_key", "stage", "kind", "fair", "price", "y"]).rename(
+        columns=dict(fair="model", price="market"))
+    cal_stage, _ = CAL.table(calib, ("model", "market"), by=("kind", "stage"))
+    cal_all, rel = CAL.table(calib, ("model", "market"), by=("kind",))
     totals = {}
     for mode in (*TAKER_MODES, *MAKERS):
         col = f"{mode}_pnl"
@@ -386,8 +381,11 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
                                 weekends_up=int((weekends[col] > 0).sum()), weekends=int(weekends[col].notna().sum()),
                                 bought=float(weekends.get(spent, pd.Series(dtype=float)).fillna(0).sum()))
     return dict(weekends=weekends, by_stage=by_stage, by_kind=RB.by(trades, "kind"), totals=totals, trades=trades,
-                scores=score_stage,
-                params=dict({k: v for k, v in base.__dict__.items() if k != "stages"}, n_sims=st["sims"],
+                scores=score_stage, calibration=pd.concat([cal_all.assign(stage="all"), cal_stage], ignore_index=True),
+                reliability=rel,
+                params=dict({k: v for k, v in base.__dict__.items() if k != "stages" and not
+                             (k in ("scale", "max_deployed", "min_edge_by_kind") and v == RB.TakerParams.__dataclass_fields__[k].default)},
+                            n_sims=st["sims"],
                             variant=st["variant"], data_lag_min=DATA_LAG.seconds // 60,
                             min_volume_24h=st["min_volume_24h"], coherence_tol=COHERENCE_TOL,
                             settings=st.to_json(), settings_key=st.key, model_key=st.model_key, data_key=data_key,

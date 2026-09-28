@@ -5,6 +5,10 @@ as they land and add every decision to the [decision log](#11-decision-log). The
 general F1 plan is the [F1 roadmap](f1-roadmap.md) (this test is its phase F1-8); the
 downhill run it builds on is [Live events](live-events.md).
 
+**Build (29 Sep 2026):** B0–B8 are code-complete and rehearsed on Baku in a cloud session (branch
+`claude/cloud-buildout-track-a`; handoff in [Cloud build-out](cloud-buildout.md#handoffs)). Left: the Mac
+rehearsal under the LaunchAgent, and the owner's decisions.
+
 **Status (28 Sep 2026):** the venue is confirmed and **Polymarket has no markets for
 this race**. We build for [scenario B](#6-primary-plan-scenario-b-no-polymarket-markets):
 a mock private book like Whistler's, pricing every market Polymarket usually lists,
@@ -287,6 +291,20 @@ Modelled on Baku (round 15), the last race Polymarket listed:
 - `private_book.outcome_for` already settles all five kinds.
 - The model is the demo maker's profile, C (`gbm`).
 
+### Props (opt-in)
+
+Off unless the launch spec (or `sports/f1.toml`) lists them in `[live.markets] kinds`:
+
+| Kind | Markets | Fair value | Settles on |
+|---|---|---|---|
+| `race_safety_car` | 1 | the circuit's safety-car rate, shrunk to the field rate (a prior of 16 races) | track status 4 on any race lap (a VSC alone is NO) |
+| `race_red_flag` | 1 | the same, for red flags | track status 5 on any race lap |
+| `race_rain` | 1 | the same, for rain (history only, no forecast) | any rainfall in the race's weather samples |
+| `race_fastest_lap` | one per driver | the stage run's win / podium / top-10 / DNF odds × how often each finishing bucket set the fastest lap; sums to 1 | the race's quickest timed lap |
+
+`[live.props] prior_n` overrides the prior. The Live tab shows the yes/no props in one card and
+fastest lap in its own. Model: `models/position_sim/props.py`; `racinglines f1 props 2026-16` prints them.
+
 **Every fair price is kept, whether or not anyone trades it.** Each update saves all
 100 fair values and quotes. The report can then show how our prices moved through the
 weekend and score them against the result (Brier score, log loss), exactly as if
@@ -339,38 +357,43 @@ Polymarket had listed the markets.
 
 Each item lists what "done" means. B0 matters in every scenario.
 
-- [ ] **B0. Name aliases** *(Mon)*
-  - "Malaysian", "Sepang" and "Kuala Lumpur" resolve to `2026-16` (`GP_ALIASES`).
-  - Done: a test resolving each name.
-- [ ] **B1. The shared live core** *(Mon)*
+- [x] **B0. Name aliases** *(Mon)*
+  - "Malaysian", "Sepang", "Kuala Lumpur" and "Bahrain Grand Prix in Malaysia" resolve to `2026-16` (`GP_ALIASES`).
+  - Done: `tests/test_gp_aliases.py` resolves each name; the April Bahrain market's date still doesn't match.
+- [x] **B1. The shared live core** *(Mon)*
   - `markets/crowd.py`: the book, the crowd, picks, P&L and positions sync, moved out of `live_dh.py`; add windowed batches (a length in hours, fills timed across it).
   - `markets/quoting.py`: quotes with a spread, inventory lean, cap, freeze and close.
   - `pipelines/live.py`: the run folder, snapshots, replay, live/replay state, and the event registry.
   - A `[live]` section in `sports/mtb_dh.toml` with today's downhill values.
   - `live_dh.py` imports all of it back under its old names.
-  - Done: Whistler's book re-derived from `crowd.jsonl` still matches exactly, its replay pages are unchanged, and the downhill tests pass.
-- [ ] **B2. The F1 adapter: markets and prices** *(Mon)*
+  - Done: Whistler's book re-derived from `crowd.jsonl` still matches exactly, its replay pages are unchanged, and the downhill tests pass (`tests/test_live_core.py`; all 82 replay and Positions pages checked byte for byte during the build).
+- [x] **B2. The F1 adapter: markets and prices** *(Mon)*
   - `live_f1.markets(event)`: the 100 markets and their fair values from the latest stage run; head-to-head pairs taken from the last race Polymarket listed. `race_pole`, `race_h2h` and `race_constructor_top` wording added to `KINDS_F1`.
   - A `[live]` section in `sports/f1.toml`: session-end cadence, the five market kinds, the spreads by stage, crowd settings.
-  - Done: priced for Baku (`2026-15`) from its stored stage runs; winner probabilities add up to 1, podium to 3, pole to 1, constructors to 1, and each pair to 1. Also check how the track features handle Sepang (no history).
-- [ ] **B3. The F1 adapter: the engine step** *(Tue)*
+  - Done: priced for Baku (`2026-15`) from its stored stage runs (runs 197–201, profile C): winner 1, podium 3, pole 1, constructors 1, and each pair 1, at every stage. **99 markets, not 100:** Baku's listing had a Lindblad–Tsunoda pair, and Tsunoda isn't in the 2026 field, so it's left out. Round 16 takes its pairs from Baku (the last race listed).
+  - Sepang: the venue slug is `kuala-lumpur` (FastF1's location). The track features treat it as unknown: `venue_known` 0, not a street circuit, the neutral `x_track` / `ease`. Pricing round 16 as of 29 Sep works: the grid is simulated from qualifying pace, with no track history.
+- [x] **B3. The F1 adapter: the engine step** *(Tue)*
   - `live_f1.step`: the seven updates above as one idempotent step, driving the shared core (quoting, crowd batches, freeze and close, settlement through `outcome_for`, positions sync, snapshots).
-  - Done: a run over Baku's weekend (stage runs in order, a simulated clock) settles, and its book reconciles with its fills.
-- [ ] **B4. The Live tab: shared shell, F1 body** *(Tue–Wed)*
+  - Done: Baku's weekend on a simulated clock (`tests/test_live_f1.py`; `racinglines live run live/f1/2026-15.toml --simulate --no-fetch`): all seven updates in order; pole settles at the after-Quali update, everything else at results; quotes freeze after qualifying and close at lights out; the book reconciles with its 2,600-odd fills; the positions synced to `paper_positions` sum to the maker's P&L.
+- [x] **B4. The Live tab: shared shell, F1 body** *(Tue–Wed)*
   - `live.html` becomes the shell (status dot, replay bar, polling) over the registry; today's downhill body moves unchanged into `live_mtb_dh.html`; a new `live_f1.html` body with the F1 layout.
-  - Done: Baku renders update by update for the maker and the taker, and in replay; Whistler's pages look exactly as they do now.
-- [ ] **B5. The demo taker** *(Wed)*
-  - Hype picks written at the pre-weekend update (`make_picks`, F1 version).
-  - Optional: A's calls against our quotes.
-- [ ] **B6. Operations** *(Wed)*
-  - A LaunchAgent (`bet.racinglines.live`, every 5 minutes) with a lock so runs can't overlap.
-  - An alert when an update is more than 2 hours late.
-  - Settings frozen into `meta.json` at the pre-weekend update; changing them needs `--unfreeze` and a decision-log line.
-- [ ] **B7. Rehearsal on Baku** *(Wed–Thu)*
-  - The whole weekend on a simulated clock, run under the LaunchAgent.
-  - Done: all seven updates happen, pole settles after qualifying and everything else after the race, Positions is correct, replay works.
-- [ ] **B8. Report command** *(Thu, stretch)*
-  - `racinglines live report --event …`, generalising the Whistler report: book P&L by update, the crowd, the demo taker, and the fair-price scorecard.
+  - Done: Baku renders update by update for the maker and the taker, and in replay (`tests/test_live_f1.py`); takers see prices, never fair values. Whistler's 82 replay and Positions pages are byte-identical. F1 replay plays at a fixed 2 s per update at 30× (updates are hours apart); the live page refreshes every 30 s.
+- [x] **B5. The demo taker** *(Wed)*
+  - Hype picks written at the pre-weekend update (`live_f1.make_picks`, from the launch spec's `[[picks]]`: name, market, hype, why; `vs` for a head-to-head), bought YES at the maker's ask for $25 each. A pick the book doesn't quote is left out.
+  - Optional: A's calls against our quotes. Not built (the default: hype picks only).
+- [x] **B6. Operations** *(Wed)*
+  - A LaunchAgent per event (`racinglines live agent live/f1/2026-16.toml --install`: label `bet.racinglines.live.2026-16`, a step every 5 minutes, log in the run folder), with a lock in the run folder so steps can't overlap.
+  - An alert when an update is more than 2 hours late (`[live.poll] late_alert_h`), once per update, through the usual alert channels (`markets/alerts.deliver`); `racinglines live status` shows lateness too.
+  - Settings frozen into `meta.json` at the pre-weekend update, with the head-to-head pairs; a changed schema or spec is ignored with a warning unless `--unfreeze` (then add a decision-log line).
+  - Done: `tests/test_live_f1.py` (lock, plist, frozen settings, the lateness alert); round 16's opening dry-run on a simulated clock (99 markets, 90 quoted, 12 picks). The LaunchAgent itself is only loadable on the Mac.
+- [x] **B7. Rehearsal on Baku** *(Wed–Thu)*
+  - The whole weekend on a simulated clock, as the LaunchAgent runs it: a fresh `racinglines live step live/f1/2026-15.toml --now <t> --no-fetch` process every 5 simulated minutes (669 steps, cloud session, 29 Sep).
+  - Done: all seven updates, each at its scheduled time; pole settled after qualifying and everything else after the race; Positions correct (the maker's 79 settled positions sum to the book's +$8,313.81, the demo taker's 2 picks to −$50); the book reconciles with its 2,596 fills; replay renders all 7 updates for maker and taker. The result matches the in-process `live run --simulate` to the cent.
+  - Left for Thursday, on the Mac: the same under the real LaunchAgent (`racinglines live agent … --install`), and one live `step` with FastF1 fetching.
+- [x] **B8. Report command** *(Thu, stretch)*
+  - `racinglines live report <spec> [--pdf]`, generalising the Whistler report: book P&L by update, the crowd, the demo taker, and the fair-price scorecard (Brier score and log loss per market kind at each update, and the biggest moves). Written to the run folder's `report/`: Markdown, HTML with the charts inline, SVG charts, and a PDF through headless Chrome.
+  - Done: Whistler's report from its run folder (run folder unchanged); tests on the synthetic third sport.
+  - Also (owner's local work, 2026-09-28): `racinglines f1 search-analyze <search> [--write-candidates] [--plot] [--noise] [--html REPORT.md]` analyses a saved F1 sweep search (curves, rankings, candidate files, charts, a noise summary, print-friendly HTML) under `data/runs/search/<search>/`, beside `search-report`. Folding the two together is open.
 
 ### Weekend runbook (PDT)
 
@@ -489,3 +512,15 @@ existing layout, and the report can be written by hand as Whistler's was.
 | 2026-09-28 | Otherwise a mock private-book run like Whistler's: the demo maker, 1,000 simulated takers and the demo taker, play money. |
 | 2026-09-28 | The race is display-only: quotes freeze after qualifying's update, and the book closes at lights out. |
 | 2026-09-28 | Multi-sport design: one live core (book, crowd, quoting, positions, run folder, replay, registry, the Live tab's shell) and one adapter per sport for its data stream, pricing and page body; sport settings as data in `sports/<code>.toml`. Downhill keeps working unchanged. |
+| 2026-09-29 | Shared quotes round away float noise before the cent floor / ceiling (0.40 ± 0.03 quotes 0.37 / 0.43). Downhill keeps its old rounding (`tidy=False`, sometimes a cent wider), so Whistler's numbers stay identical. |
+| 2026-09-29 | The Live tab is green while an event isn't over and either updated within its sport's `stale_h` (downhill 6 h) or its next scheduled update isn't more than that overdue. F1 updates are up to 20 h apart, so F1 snapshots carry `next_at`. |
+| 2026-09-29 | `/live` shows the registry's most recently updated event; `?event=` picks another. Once the F1 book opens, it replaces Whistler as the default. |
+| 2026-09-29 | Head-to-head pairs with a driver not in the field are left out (Baku's Lindblad–Tsunoda): round 16 has 99 markets. |
+| 2026-09-29 | Updates missed while the engine was down merge into the next one (marked skipped in the snapshot), and its crowd batch covers the whole gap. A stage whose run never arrives by lights out is skipped. |
+| 2026-09-29 | Each crowd batch's seed is derived from the event and update label (logged in `crowd.jsonl`), so a rehearsal replays exactly. Window fills are timed uniformly across the window and filled in time order. |
+| 2026-09-29 | F1 crowd pace: 0.0006 hits per taker, per quoted market, per hour (about 60 an hour across the book), and 3× in the pre-race window with fresh $100 caps. Chosen a priori; Baku's rehearsal gives about 2,600 fills. |
+| 2026-09-29 | One LaunchAgent per event (`bet.racinglines.live.<run>`), so a downhill final and an F1 weekend can run side by side. |
+| 2026-09-29 | The head-to-head pairs are fixed at the book's opening (in `meta.json`): a Polymarket listing that appears mid-weekend doesn't change the book's markets. |
+| 2026-09-29 | Sprint weekends need no new code: the plan takes its stages from the schedule (after FP1, SQ, Sprint, Quali), each with a half-spread (2.5¢ after SQ, 2¢ after the Sprint). Rehearsed on the Dutch GP (round 12). Sessions without positions (practice, sprint qualifying) show on the page ranked by best lap. |
+| 2026-09-29 | Long-shot risk: the shared quoter gets a per-market loss cap (`[live.quoting] max_loss`: no more selling a side once the market's worst case reaches it, and no crowd fill takes it past it) and a 1¢ floor bid on long shots (`floor_bid`). Both **off** (today's behaviour), for the owner to decide. On Baku's rehearsal (real stage runs, simulated crowd): baseline +$6,935, worst markets −$2,400 each if YES; `max_loss = 500`: +$5,337, worst −$559 (the demo taker's picks sit outside the cap); floor bid: +$6,424; both: +$6,313, worst −$667. One weekend where the long shots lost: the cap costs P&L here and protects the tail. |
+

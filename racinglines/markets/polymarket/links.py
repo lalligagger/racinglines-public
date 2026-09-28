@@ -13,6 +13,8 @@ them back in the target database:
 
     racinglines f1 pm-links-export      # -> data/archive/markets/polymarket/links/market_links.parquet
     racinglines f1 pm-links-import      # replaces each token's row; reports rows whose keys don't resolve
+    racinglines f1 pm-links-export --exchange kalshi   # the same for Kalshi's links -> .../kalshi/links/
+    racinglines f1 pm-links-import --exchange kalshi
 """
 
 import json
@@ -23,10 +25,14 @@ from sqlalchemy import text
 from racinglines import paths
 
 PATH = paths.archive_markets("polymarket") / "links" / "market_links.parquet"
+
+
+def path_for(exchange="polymarket"):
+    return paths.archive_markets(exchange) / "links" / "market_links.parquet"
 SKIP = ("id", "created_at", "race_id", "athlete_id", "competition_id", "category_id")
 
 
-def export(engine, path=PATH):
+def export(engine, path=PATH, exchange="polymarket"):
     with engine.connect() as c:
         df = pd.read_sql(text("""
             SELECT ml.*, e.source_key AS race_key, rc.code AS race_category, ai.value AS athlete_key,
@@ -36,7 +42,8 @@ def export(engine, path=PATH):
             LEFT JOIN categories rc ON rc.id = r.category_id
             LEFT JOIN athlete_identifiers ai ON ai.athlete_id = ml.athlete_id AND ai.scheme = 'f1'
             LEFT JOIN competitions co ON co.id = ml.competition_id
-            LEFT JOIN categories ca ON ca.id = ml.category_id"""), c)
+            LEFT JOIN categories ca ON ca.id = ml.category_id
+            WHERE ml.exchange = :x"""), c, params=dict(x=exchange))
         opp = dict(c.execute(text("SELECT athlete_id, value FROM athlete_identifiers WHERE scheme = 'f1'")).all())
     missing = df[(df["race_id"].notna() & df["race_key"].isna()) | (df["athlete_id"].notna() & df["athlete_key"].isna())]
     if len(missing):
@@ -57,6 +64,11 @@ def export(engine, path=PATH):
     return len(df)
 
 
+def _value(v):
+    """None for NaN, NA and NaT. psycopg writes a NaT as a year-48113 timestamp, which then fails every read."""
+    return None if v is pd.NA or v is pd.NaT or (isinstance(v, float) and pd.isna(v)) else v
+
+
 def import_(engine, path=PATH):
     """Upsert the file's links into this database (by token_id). Returns dict(rows, unresolved)."""
     df = pd.read_parquet(path)
@@ -72,8 +84,7 @@ def import_(engine, path=PATH):
                                                 WHERE table_name = 'market_links'"""))]
         unresolved = 0
         for rec in df.to_dict("records"):
-            rec = {k: (None if isinstance(v, float) and pd.isna(v) else v) for k, v in rec.items()}
-            rec = {k: (None if v is pd.NA else v) for k, v in rec.items()}
+            rec = {k: _value(v) for k, v in rec.items()}
             race = races.get((rec.pop("race_key"), rec.pop("race_category"))) if rec.get("race_key") else None
             rec.pop("race_key", None), rec.pop("race_category", None)
             ak = rec.pop("athlete_key", None)

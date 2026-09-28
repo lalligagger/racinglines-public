@@ -61,3 +61,34 @@ def test_candidates_are_parsed_with_full_settings(tmp_path):
     (c,) = cands
     assert c["settings"]["half_spread"] == 0.03 and c["settings"]["sims"] == 4000
     assert c["settings_key"] == SS.Settings.from_dict(dict(variant="gridq", half_spread=0.03)).key
+
+
+def test_downhill_jobs_get_their_own_settings_baseline_and_command(tmp_path):
+    from racinglines.models.timed_runs.settings import DHSettings
+    _, jobs, _ = S.load(_queue(tmp_path, '[[job]]\nsport = "mtb_dh"\nyear = 2025\nhalf_life_days = 120\n'
+                                         '[[job]]\nvariant = "gridq"\n'))
+    assert [(j.get("sport", "f1"), j["kind"], j["year"], j["note"][:8] if "baseline" in j.get("note", "") else "")
+            for j in jobs][:2] == [("mtb_dh", "walk_forward", 2025, "baseline"), ("f1", "sweep", 2026, "baseline")]
+    dh = next(j for j in jobs if j.get("sport") == "mtb_dh" and j["settings"]["half_life_days"] == 120)
+    assert S.argv(dh)[3:] == ["backtest", "walk-forward", "mtb_dh", "--seasons", "2025", "--save", "--half-life-days", "120.0"]
+    assert dh["settings"] == DHSettings.from_dict(dict(half_life_days=120)).to_json()
+    with pytest.raises(ValueError, match="unknown keys"):
+        S.load(_queue(tmp_path, '[[job]]\nsport = "mtb_dh"\nvariant = "gridq"\n'))      # an F1 setting
+    with pytest.raises(ValueError, match="job kind"):
+        S.load(_queue(tmp_path, '[[job]]\nsport = "mtb_dh"\nkind = "sweep"\n'))
+
+
+def test_f1_job_ids_did_not_move():
+    # finished jobs in a restarted search are found by these ids
+    assert S.job_id(dict(kind="sweep", year=2026, variant="baseline")) == "720a768f98"
+    assert S.job_id(dict(kind="sweep", year=2025, variant="gridq", rounds="1-5", min_edge=0.08)) == "0599d2fcc2"
+
+
+def test_replicates_run_the_job_and_its_baseline_at_several_seeds(tmp_path):
+    _, jobs, _ = S.load(_queue(tmp_path, '[[job]]\nsport = "mtb_dh"\nyear = 2026\nprior_n = 1.5\nreplicates = 3\n'
+                                         '[[job]]\nsport = "mtb_dh"\nyear = 2025\nprior_n = 1.5\n'))
+    seeds = lambda pn, y: sorted((j["settings"]["seed"] or 0) for j in jobs                         # noqa: E731
+                                 if j["year"] == y and j["settings"]["prior_n"] == pn)
+    assert seeds(1.5, 2026) == [0, 1, 2] and seeds(0.5, 2026) == [0, 1, 2]       # the baseline too
+    assert seeds(1.5, 2025) == [0] and seeds(0.5, 2025) == [0]
+    assert len({j["id"] for j in jobs}) == len(jobs)

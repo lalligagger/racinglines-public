@@ -2,10 +2,9 @@
 # Data stays out of git, except the minimal set cloud sweep sessions need (allow-listed at the
 # end of this file; the repo is private since 2026-09-27). Rebuild everything else with:
 #   racinglines <sport> fetch|download ...          (working data, see racinglines/paths.py)
-#   python scripts/fetch_test_fixtures.py [--f1] [--mtb]   (test fixtures)
+#   python scripts/fetch_test_fixtures.py --refresh [--f1] [--mtb]   (test fixtures: pinned in git)
 data/*
-tests/fixtures/
-tests/golden/
+tests/fixtures/_work/
 *.parquet
 *.npz
 *.feather
@@ -65,7 +64,7 @@ htmlcov/
 Thumbs.db
 
 # --- Minimal data set for cloud sweeps (docs/cloud-sweep.md) --------------------------
-# FastF1 raw files (F1) and the Polymarket prices/trades archive. Nothing else under data/.
+# FastF1 raw files (F1) and the Polymarket and Kalshi prices/trades archives. Nothing else under data/.
 # If this repo is ever made public, remove these from git history first.
 !data/raw/
 data/raw/*
@@ -83,6 +82,15 @@ data/archive/markets/polymarket/*
 !data/archive/markets/polymarket/trades/**
 !data/archive/markets/polymarket/links/
 !data/archive/markets/polymarket/links/**
+# Kalshi's archive, the same way (docs/kalshi-history.md): the cloud can't reach Kalshi
+!data/archive/markets/kalshi/
+data/archive/markets/kalshi/*
+!data/archive/markets/kalshi/prices/
+!data/archive/markets/kalshi/prices/**
+!data/archive/markets/kalshi/trades/
+!data/archive/markets/kalshi/trades/**
+!data/archive/markets/kalshi/links/
+!data/archive/markets/kalshi/links/**
 !data/archive/db/
 !data/archive/db/**
 # search results brought back from cloud sessions (leaderboard, saved-run summaries, logs)
@@ -90,3 +98,7 @@ data/archive/markets/polymarket/*
 data/runs/*
 !data/runs/search/
 !data/runs/search/**
+
+# --- Test fixtures and golden baselines (pinned in git since 2026-09-28, docs/testing.md) ---------------
+!tests/fixtures/**/*.parquet
+!tests/fixtures/**/*.npz

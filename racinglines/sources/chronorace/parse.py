@@ -633,6 +633,8 @@ def parse_markdown_tables_file(path, default_round=None):
             venue=venue, series_round=series_round, track_condition="unknown",
             event_name=title, source_key=slug,
         )
+        if "uci id" in header:          # files downloaded since the UCI ID column (older ones don't have it)
+            common["uci_id"] = rec.get("uci id") or None
         cum = 0.0
         sector_i = 0
         for sc in split_cols:
@@ -679,6 +681,9 @@ def main():
         help="Optional CSV with columns event_id,round,track_condition to backfill "
              "track_condition, since it's rarely in the timing data itself.",
     )
+    ap.add_argument("--canonical-venues", action="store_true",
+                    help="Write venues under their canonical slugs (sports/mtb_dh.toml [venue_aliases], as the "
+                         "database stores them: vallnord -> pal-arinsal). Default: as spelled in the source.")
     args = ap.parse_args()
 
     if args.inspect:
@@ -715,6 +720,10 @@ def main():
             cond, on=[c for c in ("event_id", "round") if c in cond.columns], how="left"
         )
         out_df["track_condition"] = out_df["track_condition"].fillna("unknown")
+
+    if args.canonical_venues and "venue" in out_df:
+        from racinglines.db.registry import canonical_venue
+        out_df["venue"] = out_df["venue"].map(lambda v: canonical_venue(v) if isinstance(v, str) else v)
 
     out_df.to_csv(args.out, index=False)
     print(f"Wrote {len(out_df)} rows -> {args.out}")

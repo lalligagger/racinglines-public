@@ -154,8 +154,11 @@ def mtb_results_md(n_events=4, n_riders=30, seed=SEED):
     return out
 
 
-def replay_markets(n=6, hours=48, seed=SEED):
-    """dict(markets, stages) for markets.strategies.maker_replay.replay: one stage, n binary markets."""
+def replay_markets(n=6, hours=48, seed=SEED, books=False, depth=(20, 300)):
+    """dict(markets, stages) for markets.strategies.maker_replay.replay: one stage, n binary markets.
+    books: also a recorded book per market (fill="queue"), one snapshot a minute, 10 levels a
+    side from a tick either side of the mid, each level's size uniform in `depth`; trade
+    prices are then on the 1c tick, as on Polymarket, so trades can land on a quote's level."""
     from racinglines.markets.strategies import maker_replay as R
     rng = np.random.default_rng(seed)
     t0 = pd.Timestamp("2026-09-24", tz="UTC").value
@@ -173,6 +176,17 @@ def replay_markets(n=6, hours=48, seed=SEED):
         markets.append(R.Market(cond=f"c{i}", kind="race_win", subject=f"outcome {i}", question=f"q{i}",
                                 fairs={1: float(np.clip(p0 + rng.normal(0, 0.03), 0.02, 0.98))}, outcome=bool(rng.random() < p0),
                                 mid_ts=ts, mid_px=mids, tr_ts=tr_ts, tr_px=px, tr_sz=rng.uniform(5, 80, k), tr_buy=buy))
+    if books:                      # its own random stream: the tapes above keep their draws
+        brng = np.random.default_rng(seed + 1)
+        for mk in markets:
+            mk.tr_px = np.round(mk.tr_px, 2)
+            mk.bk_ts, mk.bk_bids, mk.bk_asks = mk.mid_ts.copy(), [], []
+            for m in mk.mid_px:
+                best_bid, best_ask = np.floor(m * 100 - 1e-9) / 100, np.ceil(m * 100 + 1e-9) / 100
+                mk.bk_bids.append({round(best_bid - 0.01 * j, 4): float(brng.uniform(*depth))
+                                   for j in range(10) if best_bid - 0.01 * j >= 0.01})
+                mk.bk_asks.append({round(best_ask + 0.01 * j, 4): float(brng.uniform(*depth))
+                                   for j in range(10) if best_ask + 0.01 * j <= 0.99})
     return dict(markets=markets, stages=[dict(run_id=1, start=t0 + 60 * step, end=t0 + (hours - 2) * 60 * step,
                                               session_end=True)])
 
