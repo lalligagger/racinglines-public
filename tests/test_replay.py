@@ -217,3 +217,73 @@ def test_weekend_with_no_markets_summarises_to_zero():
     s = R.summary(res)
     assert list(s.index) == ["total"] and s.loc["total", "markets"] == 0 and s.loc["total", "pnl"] == 0.0
     assert res["positions"].empty and "cond" in res["positions"].columns
+
+
+# --- fill="queue": queue position from recorded books -----------------------
+
+Q = replace(P, fill="queue")
+
+
+def booked(mk, snaps):
+    """snaps: (t_ns, {bid price: size}, {ask price: size})"""
+    mk.bk_ts = np.array([s[0] for s in snaps], dtype="int64")
+    mk.bk_bids, mk.bk_asks = [dict(s[1]) for s in snaps], [dict(s[2]) for s in snaps]
+    return mk
+
+
+def test_queue_trades_at_our_price_serve_the_queue_ahead_first():
+    # 100 shares rest at our bid (0.48) when we join: 60 + 60 sold there leaves 20 for us
+    mk = booked(market(trades=[(MIN, 0.48, 60, 0), (2 * MIN, 0.48, 60, 0)]), [(0, {0.48: 100}, {})])
+    res = R.replay(data(mk), Q)
+    assert list(res["fills"]["qty"]) == [20] and res["fills"]["ts"].iloc[0] == 2 * MIN
+    assert R.replay(data(mk, end=5 * MIN), Q)["book_coverage"] == 1.0     # later steps: the snapshot is stale
+
+
+def test_queue_trade_through_our_price_fills_whatever_is_ahead():
+    mk = booked(market(trades=[(MIN, 0.47, 30, 0), (2 * MIN, 0.48, 10, 0)]), [(0, {0.48: 500}, {})])
+    f = R.replay(data(mk), Q)["fills"]
+    assert list(f["qty"]) == [30, 10]          # the sweep cleared the level: nobody left ahead of us
+
+
+def test_queue_empty_level_is_touch_and_ask_side_mirrors():
+    mk = booked(market(trades=[(MIN, 0.52, 10, 1), (2 * MIN, 0.48, 10, 0)]), [(0, {0.49: 900}, {0.53: 900})])
+    f = R.replay(data(mk), Q)["fills"]          # we improve on both sides: first in line
+    assert list(f["side"]) == ["sell", "buy"] and list(f["qty"]) == [10, 10]
+
+
+def test_queue_keeps_its_place_and_cancellations_ahead_shrink_it():
+    trades = [(MIN, 0.48, 40, 0), (7 * MIN, 0.48, 40, 0)]
+    # same price across requotes (5-minute steps); a later snapshot shows only 30 left at the level
+    kept = booked(market(trades=trades), [(0, {0.48: 100}, {}), (4 * MIN, {0.48: 30}, {})])
+    assert list(R.replay(data(kept), Q)["fills"]["qty"]) == [10]      # ahead 100 -> 60 -> min(60, 30) = 30 -> 40 - 30
+    grew = booked(market(trades=trades), [(0, {0.48: 100}, {}), (4 * MIN, {0.48: 900}, {})])
+    assert len(R.replay(data(grew), Q)["fills"]) == 0                 # joiners queue behind us: still 60 ahead
+
+
+def test_queue_without_a_recent_book_falls_back_to_through():
+    trades = [(MIN, 0.48, 10, 0), (2 * MIN, 0.47, 10, 0)]
+    none = R.replay(data(market(trades=trades)), Q)
+    stale = R.replay(data(booked(market(trades=trades), [(-HOUR, {}, {})])), Q)
+    through = R.replay(data(market(trades=trades)), replace(P, fill="through"))
+    for res in (none, stale):
+        assert res["fills"][["ts", "qty"]].equals(through["fills"][["ts", "qty"]]) and res["book_coverage"] == 0.0
+
+
+def test_queue_sits_between_touch_and_through_on_synthetic_books():
+    from racinglines.testing import synthetic as SY
+    shares = {}
+    for depth in ((0, 1e-9), (20, 300), (5000, 9000)):
+        d = SY.replay_markets(books=True, depth=depth)
+        s = {fm: R.summary(R.replay(d, replace(R.Params(), fill=fm))).loc["total", "shares"]
+             for fm in ("touch", "queue", "through")}
+        assert s["through"] <= s["queue"] <= s["touch"]
+        shares[depth] = s["queue"]
+    assert shares[(0, 1e-9)] >= shares[(20, 300)] >= shares[(5000, 9000)]   # deeper books, fewer fills
+    assert shares[(0, 1e-9)] > shares[(5000, 9000)]
+
+
+def test_book_levels_from_lists_dicts_and_json_text():
+    want = {0.48: 30.0, 0.47: 5.5}
+    assert R._levels([[0.48, 10], ["0.48", "20"], [0.47, 5.5]]) == want
+    assert R._levels('[{"price": "0.48", "size": "30"}, {"price": "0.47", "size": "5.5"}]') == want
+    assert R._levels(None) == {}

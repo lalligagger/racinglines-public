@@ -261,6 +261,7 @@ The session appends here: date and time (UTC), item, commit, status, notes.
 | 2026-09-28 03:20 | B: downhill points validation (P3) | this commit | code + tests; blocked on the official UCI scales and standings (owner) | points.py (schemes from points_schemes, points.use, reconcile), `mtb_dh points import/show/check`, `--points db` on forecast/backtest (default schema: unchanged). Entry template sports/points/uci_dhi_wc.toml, all placeholder. check ran on the real 2026 results through round 7 against a self-made file (189/190 match, the one edited flagged). Pinning test skips until sports/points/standings/*.toml exists |
 | 2026-09-28 03:24 | B: downhill UCI rider IDs (P3 data) | this commit | code + tests; re-download and merges local (owner) | Downloader writes a UCI ID column (unverified against the live API), parser reads it (old files unchanged), ingest matches uci identifiers first and reports shared UCI IDs. `db merge-athletes` dry-run on the bucket DB: 491 into 152 would move 11 results, 1 identifier. Also verified: mtb_dh forecast/backtest outputs byte-identical before/after the points change |
 | 2026-09-28 03:25 | B: **final handoff** (owner asked to stop and hand off) | this commit | handoff | See [Track B handoff](#track-b-handoff) below |
+| 2026-09-28 03:34 | B: book-depth queue model on synthetic books (P3, F1-4) | this commit | done (synthetic); recorded books needed | Taken over from the handoff in a project thread. `fill="queue"` in the maker replay (sweep `--fill queue`, off by default): join the back of the level shown in the latest book snapshot, trades at our price serve the queue first, sweeps fill, same-price requotes keep their place, cancellations shrink the queue; no snapshot within 10 min falls back to through. `load_event(books=True)` reads `market_book_snapshots` (unexercised: no recorded books here). Synthetic: touch >= queue >= through. Quick suite 70 passed; test_views/test_signals have 11 failures (401 Not authenticated) with or without this change, on the committed snapshot without the bucket |
 
 ### Track B handoff
 
@@ -291,7 +292,7 @@ Track A's files except `scripts/cloud/bucket.py` and `start.sh`, which carry Tra
 | Stage-aware taker, `rookie` for profile A, sizing rule | live weekends | live events |
 | First real V2 order | the owner's approval | owner |
 | Google Cloud move | the owner's choices (database tier, recorder shape, domain) | owner |
-| Not started (cloud-doable) | F1 props (fastest lap, safety car, rain), book-depth queue model on synthetic books, the rest of the downhill data items (slug probing, venue names, Women, start order, weather, 2021 PDFs), downhill model items (calibration, 43-round tuning, rider × venue, trends), Kalshi connector (mocked), web items (admin P&L filter, JSON API) | next session |
+| Not started (cloud-doable) | F1 props (fastest lap, safety car, rain), ~~book-depth queue model on synthetic books~~ (done 03:34), the rest of the downhill data items (slug probing, venue names, Women, start order, weather, 2021 PDFs), downhill model items (calibration, 43-round tuning, rider × venue, trends), Kalshi connector (mocked), web items (admin P&L filter, JSON API) | next session |
 | F1 prop market kinds in `sports/f1.toml` `[live]` | Track A's file | Track A / next session |
 
 **Local checks after merging** (the brief's list, plus Track B's):

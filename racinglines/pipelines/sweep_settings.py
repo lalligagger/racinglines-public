@@ -85,8 +85,9 @@ SETTINGS = [
     Setting("max_pos", "maker", "Max inventory per market (shares)", "float", 250.0, 10, 5000),
     Setting("skew", "maker", "Inventory skew", "float", 1.0, 0, 5),
     Setting("max_disagree", "maker", "Don't quote beyond |fair - market|", "float", 0.15, 0.01, 1),
-    Setting("fill", "maker", "Fill rule", "choice", "through", choices=("through", "touch"),
-            help="through = a trade must cross our price (conservative); touch = at our price."),
+    Setting("fill", "maker", "Fill rule", "choice", "through", choices=("through", "touch", "queue"),
+            help="through = a trade must cross our price (conservative); touch = at our price; "
+                 "queue = at our price once the recorded book's queue ahead of us is served."),
     Setting("info_skew", "maker", "Info-timed skew (maker_skew / maker_all)", "float", 2.0, 0, 10),
     Setting("widen", "maker", "Widen factor on bad markouts (maker_widen / maker_all)", "float", 1.5, 1, 5),
     # --- markets --------------------------------------------------------------------------------------

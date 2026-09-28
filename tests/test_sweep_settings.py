@@ -150,3 +150,12 @@ def test_seed_draws_independent_noise():
     assert default.equals(today.set_index("athlete_id")["win_prob"])          # unset = today's prices
     assert not win(SS.Settings.from_dict(dict(seed=7))).equals(default)       # another draw
     assert win(SS.Settings.from_dict(dict(seed=7))).equals(win(SS.Settings.from_dict(dict(seed=7))))
+
+
+def test_queue_fill_rule_is_a_maker_setting():
+    """fill=queue (recorded books) changes the combination, not the model's prices."""
+    d, q = SS.Settings.from_dict(), SS.Settings.from_dict(dict(fill="queue"))
+    assert q.model_key == d.model_key and q.key != d.key and q.changed() == dict(fill="queue")
+    p = argparse.ArgumentParser()
+    SS.add_arguments(p)
+    assert SS.from_args(p.parse_args(q.argv())) == q

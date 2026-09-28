@@ -285,7 +285,7 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settin
         from dataclasses import replace
 
         from racinglines.markets.strategies import maker_replay as R
-        ev = R.load_event(conn, [r for _, _, r in stage_runs])
+        ev = R.load_event(conn, [r for _, _, r in stage_runs], books=st["fill"] == "queue")
         ev = dict(ev, markets=[m for m in ev["markets"] if m.kind in st["market_kinds"]])
     except Exception as ex:  # noqa: BLE001  (no tape for this weekend)
         echo(f"  maker replay skipped: {ex}")

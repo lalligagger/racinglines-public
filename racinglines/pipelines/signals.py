@@ -375,7 +375,7 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
 def _maker(c, w, runs, st, strategy, now, live):
     from racinglines.markets.strategies import maker_replay as R
     sessions = None if not live else [(SESSION_ROUND.get(k, k), t) for k, t in w["sessions"]]
-    ev = R.load_event(c, [r for _, _, r in runs], sessions=sessions)
+    ev = R.load_event(c, [r for _, _, r in runs], sessions=sessions, books=st["fill"] == "queue")
     ev = dict(ev, markets=[m for m in ev["markets"] if m.kind in st["market_kinds"]])
     now_ns = R._ns(now)
     ev["stages"] = truncate_stages(ev["stages"], now_ns)

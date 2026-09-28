@@ -202,7 +202,9 @@ Phased plan and ground rules: [F1 roadmap](f1-roadmap.md). Items tagged
 - [ ] **First real V2 order** (owner): post, list and cancel one small post-only order, unverified
       against the live CLOB so far. `POLYMARKET_TRADING_ENABLED` stays unset until then.
 - [ ] Replay with recorded book depth (F1-4): queue position and competing makers,
-      instead of the touch/through bounds. Needs several weekends of `markets record` books.
+      instead of the touch/through bounds. The queue model is built (`--fill queue`,
+      [queue rule](market-making.md#the-queue-rule), tested on synthetic books, 2026-09-28,
+      cloud build-out); running it needs several weekends of `markets record` books.
 - [ ] Liquidity rewards as a replay P&L line; optional fractional-Kelly caps.
 
 ## Paper trading

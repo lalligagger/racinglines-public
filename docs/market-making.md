@@ -91,6 +91,8 @@ the quote doesn't change.
 - **Touch** (optimistic): a trade at our price fills us, as if we were first in
   the queue.
 - **Through** (conservative): only a trade past our price fills us.
+- **Queue** (recorded books; see [below](#the-queue-rule)): a trade at our price
+  fills us only after the size resting ahead of us is served.
 - A trade in the NO token is treated as the opposite trade in YES: buying NO at
   p is selling YES at 1 − p.
 
@@ -559,6 +561,29 @@ so read them as direction, not size.
 
 <!-- /readme -->
 
+## The queue rule
+
+`fill="queue"` (sweep `--fill queue`, off by default) replaces the touch/through
+bounds with a queue position read from the recorded books (`markets record`, the
+outcome-0 token's book, top 10 levels once a minute):
+
+- A new quote joins the **back of its level**, behind the size the latest snapshot
+  shows at that price. When it improves on the best price the level is empty, so it
+  is first in line (as *touch*).
+- A trade **at** our price serves the queue ahead first; we get what's left. A trade
+  **past** our price swept the level: it fills us (as *through*) and nobody is left
+  ahead.
+- A quote that stays at the same price across requotes **keeps its place**. When a
+  later snapshot shows less at the level than is ahead of us, the queue shrinks to it
+  (cancellations); orders that join later queue behind us.
+- **No snapshot** from the last `book_max_age_min` (10) minutes: that quote fills as
+  *through*. The result's `book_coverage` is the share of quoted sides that had a book.
+
+On synthetic books it lands between the two bounds: at *touch* with empty levels,
+close to *through* with deep ones (`tests/test_replay.py`). It hasn't been run on
+recorded books yet: that needs several weekends of `markets record` data
+([Roadmap](todo.md#market-making)).
+
 ## Limits of the Baku test
 
 - No order-book depth, so queue position and competing makers are unknown. The
@@ -571,8 +596,9 @@ so read them as direction, not size.
 - the replay runs across every race with a tape (2025 and 2026, the `params-4h`
   cloud search);
 - flattening before qualifying was tried and doesn't beat the default maker (F1-4);
-- still open: a replay with recorded book snapshots and a queue model, once
-  enough weekends of books are recorded ([Roadmap](todo.md#market-making)).
+- the queue model is built and tested on synthetic books ([the queue rule](#the-queue-rule));
+  still open: running it on recorded books, once enough weekends are recorded
+  ([Roadmap](todo.md#market-making)).
 
 ## Tests
 
@@ -587,6 +613,9 @@ Part of the [regression suite](testing.md):
     - quotes never cross, and YES bid + NO bid < 1;
     - skew and skip reasons;
     - fills only after the quote, touch vs through, taker-side mapping;
+    - the queue rule: queue ahead served first, sweeps, keeping place,
+      cancellations, the stale-book fallback, and touch ≥ queue ≥ through on
+      synthetic books;
     - size, inventory and capital limits;
     - pulling before sessions;
     - P&L accounting;

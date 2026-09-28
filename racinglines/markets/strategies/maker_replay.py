@@ -24,9 +24,16 @@ level). Fill size is capped by the trade's size, our quote's remaining size and
 our limits. Binary markets trade in both outcome tokens; trades of the second
 token are mapped to the first (buy NO at p == sell YES at 1 - p).
 
-Known limits (Baku test case): no historical order-book depth, so queue position
-and competing makers are unknown; our quotes don't change what takers would have
-done. Book snapshots (`racinglines markets record`) fix the first from now on.
+"queue" (needs recorded books, `racinglines markets record`): a new quote joins the back
+of its price level, behind the size the latest book snapshot shows there (0 when we
+improve on the best price). A trade at our price eats that queue first and fills us
+only with what's left; a trade past our price fills us as "through" does. While the
+quote stays at the same price it keeps its place, and the queue ahead of it shrinks
+to the displayed size when a later snapshot shows less (cancellations). Without a
+snapshot from the last `book_max_age_min`, the quote falls back to "through".
+
+Known limits (Baku test case): our quotes don't change what takers would have done;
+competing makers are only what the recorded books show (top 10 levels, once a minute).
 """
 
 from dataclasses import dataclass, field, replace
@@ -48,7 +55,8 @@ class Params:
     min_volume_24h: float = 100.0  # $ traded in the market over the previous 24 h (public)
     price_band: tuple = (0.03, 0.97)   # don't quote long shots / near-certain (near-resolved) markets
     max_disagree: float | None = 0.15  # don't quote when |fair - market| exceeds this
-    fill: str = "through"          # "touch" (optimistic) or "through" (conservative)
+    fill: str = "through"          # "touch" (optimistic), "through" (conservative) or "queue" (recorded books)
+    book_max_age_min: float = 10.0  # "queue": older snapshots don't count (the quote falls back to "through")
     # options (docs/f1-roadmap.md, F1-4); the defaults are the original maker
     flatten_before_qual: bool = False   # close all inventory at the market (mid +- taker_cost) just before qualifying
     taker_cost: float = 0.01            # $ per share paid when flattening
@@ -72,6 +80,11 @@ class Market:
     tr_sz: np.ndarray = field(repr=False)
     tr_buy: np.ndarray = field(repr=False)      # taker bought YES
     link: dict | None = field(default=None, repr=False)   # the exchange link row (outcome-0 token)
+    # recorded order books of the outcome-0 token (YES side), for fill="queue": snapshot times
+    # (int64 ns, sorted) and per snapshot {price: size} of bids and asks
+    bk_ts: np.ndarray | None = field(default=None, repr=False)
+    bk_bids: list | None = field(default=None, repr=False)
+    bk_asks: list | None = field(default=None, repr=False)
 
 
 class LookaheadError(AssertionError):
@@ -129,6 +142,22 @@ def quote(fair, view: PublicView, inv, p: Params, capital_used=0.0):
     return bid, ask, None if (bid is not None or ask is not None) else "limit"
 
 
+def _px(x):
+    return round(float(x), 4)
+
+
+def book_depth(mk: Market, t, side, price, max_age_min=10.0):
+    """Size resting at `price` on `side` ("bid"/"ask") of the latest book snapshot at or
+    before t: the queue a new quote there joins the back of (0 when the level is empty or
+    better than the best price). None when there's no snapshot from the last max_age_min."""
+    if mk.bk_ts is None or not len(mk.bk_ts):
+        return None
+    i = np.searchsorted(mk.bk_ts, t, side="right") - 1
+    if i < 0 or t - mk.bk_ts[i] > max_age_min * 60e9:
+        return None
+    return float((mk.bk_bids if side == "bid" else mk.bk_asks)[i].get(_px(price), 0.0))
+
+
 def to_yes(outcome_index, side, price):
     """Express a trade of either outcome token as a trade of YES (outcome 0):
     buying NO at p is selling YES at 1 - p. Returns (yes_price, taker_bought_yes)."""
@@ -172,6 +201,8 @@ def replay(data, p: Params = Params()):
     inv = {m.cond: 0.0 for m in data["markets"]}
     fills, quotes = [], []
     by_kind = p.half_spread_by_kind or {}
+    queue = {}                     # fill="queue": (cond, side) -> [price, size ahead of us]
+    booked = [0, 0]                # fill="queue": quoted sides with a usable book, all quoted sides
     for st in data["stages"]:
         t, end = st["start"], st["end"] - (pull if st.get("session_end", True) else 0)
         while t < end:
@@ -188,20 +219,28 @@ def replay(data, p: Params = Params()):
                 quotes.append((t, mk.cond, st["run_id"], bid, ask, why))
                 if bid is None and ask is None:
                     continue
+                if p.fill == "queue":
+                    for side, px_q in (("bid", bid), ("ask", ask)):
+                        _join_queue(queue, mk, t, side, px_q, p, booked)
                 # trades strictly after the quote was placed, up to the next requote
                 a = np.searchsorted(mk.tr_ts, t, side="right")
                 b = np.searchsorted(mk.tr_ts, t_next, side="right")
                 left_bid = left_ask = p.size
                 for k in range(a, b):
                     px, sz, buy = mk.tr_px[k], mk.tr_sz[k], mk.tr_buy[k]
-                    if not buy and bid is not None and left_bid > 0 and (px <= bid if p.fill == "touch" else px < bid):
+                    if p.fill == "queue":
+                        side, px_q = ("ask", ask) if buy else ("bid", bid)
+                        sz = _after_queue(queue.get((mk.cond, side)), px, sz, px_q, buy)
+                        if sz <= 0:
+                            continue
+                    if not buy and bid is not None and left_bid > 0 and (px <= bid if p.fill in ("touch", "queue") else px < bid):
                         q = _cap(min(sz, left_bid, p.max_pos - inv[mk.cond]), +1, bid, cash, inv, mk.cond, p)
                         if q > 0:
                             left_bid -= q
                             inv[mk.cond] += q
                             cash[mk.cond] -= q * bid
                             fills.append((int(mk.tr_ts[k]), mk.cond, st["run_id"], "buy", bid, q, fair))
-                    elif buy and ask is not None and left_ask > 0 and (px >= ask if p.fill == "touch" else px > ask):
+                    elif buy and ask is not None and left_ask > 0 and (px >= ask if p.fill in ("touch", "queue") else px > ask):
                         q = _cap(min(sz, left_ask, p.max_pos + inv[mk.cond]), -1, ask, cash, inv, mk.cond, p)
                         if q > 0:
                             left_ask -= q
@@ -221,8 +260,49 @@ def replay(data, p: Params = Params()):
                               mk.fairs.get(st["run_id"])))
     fills = pd.DataFrame(fills, columns=["ts", "cond", "run_id", "side", "price", "qty", "fair"])
     quotes = pd.DataFrame(quotes, columns=["ts", "cond", "run_id", "bid", "ask", "skip"])
-    return dict(fills=_score_fills(fills, data), quotes=quotes,
-                positions=_positions(data, cash, inv), params=p)
+    out = dict(fills=_score_fills(fills, data), quotes=quotes, positions=_positions(data, cash, inv), params=p)
+    if p.fill == "queue":          # share of quoted sides that had a book (the rest were filled as "through")
+        out["book_coverage"] = booked[0] / booked[1] if booked[1] else 0.0
+    return out
+
+
+def _join_queue(queue, mk, t, side, price, p, booked):
+    """fill="queue": place (or keep) our quote on one side at time t. A quote at a new price
+    joins the back of its level; one at the same price keeps its place, and the queue ahead
+    of it shrinks to the displayed size if that's now smaller. No usable book: ahead = None
+    (the quote fills as "through")."""
+    key = (mk.cond, side)
+    if price is None:
+        queue.pop(key, None)
+        return
+    shown = book_depth(mk, t, side, price, p.book_max_age_min)
+    booked[1] += 1
+    booked[0] += shown is not None
+    cur = queue.get(key)
+    if cur is not None and cur[0] == _px(price) and cur[1] is not None and shown is not None:
+        cur[1] = min(cur[1], shown)
+    else:
+        queue[key] = [_px(price), shown]
+
+
+def _after_queue(state, px, sz, price, buy):
+    """fill="queue": what's left of a taker trade of size sz at px for our quote at `price`
+    once the queue ahead of it has been served; updates the queue. A trade past our price
+    swept the level: it all counts (as "through") and nobody is left ahead of us."""
+    if state is None or price is None:
+        return sz
+    through = px > price + 1e-9 if buy else px < price - 1e-9
+    at = abs(px - price) <= 1e-9
+    if state[1] is None:           # no book: "through"
+        return sz if through else 0.0
+    if through:
+        state[1] = 0.0
+        return sz
+    if not at:
+        return 0.0
+    eat = min(sz, state[1])
+    state[1] -= eat
+    return sz - eat
 
 
 def _mid_at(mk, t):
@@ -344,9 +424,24 @@ def stages_for(runs, sessions):
     return out
 
 
-def load_event(conn, run_ids, sessions=None):
+def _levels(v):
+    """{price: size} from a recorded book side ([[price, size], ...] as a list or JSON text)."""
+    if v is None or (isinstance(v, float) and np.isnan(v)):
+        return {}
+    if isinstance(v, str):
+        import json
+        v = json.loads(v)
+    out = {}
+    for lv in v:
+        px, sz = (lv["price"], lv["size"]) if isinstance(lv, dict) else lv
+        out[_px(px)] = out.get(_px(px), 0.0) + float(sz)
+    return out
+
+
+def load_event(conn, run_ids, sessions=None, books=False):
     """Markets, fair values, public tape and outcomes for one event's diagnostic runs.
-    sessions: [(kind, start)] (naive UTC) instead of the race's stored rounds (an event not yet run)."""
+    sessions: [(kind, start)] (naive UTC) instead of the race's stored rounds (an event not yet run).
+    books: also load the recorded order books (for fill="queue")."""
     from sqlalchemy import text
 
     from racinglines.db import reads as D
@@ -383,6 +478,8 @@ def load_event(conn, run_ids, sessions=None):
     tok = MS.read(conn, "trades", conditions=conds).drop_duplicates("token_id")
     idx = dict(zip(tok["token_id"], tok["outcome_index"]))
     tr_by, px_by = dict(tuple(all_tr.groupby("condition_id"))), dict(tuple(all_px.groupby("token_id")))
+    bk_by = dict(tuple(MS.read(conn, "books", tokens=links["token_id"].tolist(), start=a, end=b)
+                       .groupby("token_id"))) if books else {}
     empty_px, empty_tr = all_px.iloc[0:0], all_tr.iloc[0:0]
     markets, cache = [], {}
     for cond, g in links.groupby("condition_id", sort=False):
@@ -400,12 +497,15 @@ def load_event(conn, run_ids, sessions=None):
         subject = link["athlete"] or (link["params"] or {}).get("team") or link["group_title"]
         if link["prediction"] == "race_h2h":
             subject = f"{link['outcome']} ahead ({link['question'].split(': ')[-1]})"
+        bk = bk_by.get(link["token_id"])
+        book = {} if bk is None or not len(bk) else dict(
+            bk_ts=_ns(bk["ts"]), bk_bids=[_levels(v) for v in bk["bids"]], bk_asks=[_levels(v) for v in bk["asks"]])
         markets.append(Market(cond=cond, kind=link["prediction"], subject=subject, question=link["question"],
                               fairs=fairs, outcome=outcome,
                               mid_ts=_ns(mids["ts"]) if len(mids) else np.array([], dtype="int64"),
                               mid_px=mids["price"].to_numpy(float),
                               tr_ts=_ns(tr["ts"]) if len(tr) else np.array([], dtype="int64"),
                               tr_px=np.asarray(yes_px, float), tr_sz=tr["size"].to_numpy(float), tr_buy=yes_buy,
-                              link=link))
+                              link=link, **book))
     return dict(event_key=key, race_id=race_id, runs=runs, sessions=sorted(sessions), stages=stages, markets=markets,
                 qual_start=qual_start)

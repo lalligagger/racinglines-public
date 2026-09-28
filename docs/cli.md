@@ -297,7 +297,7 @@ baseline. The model variant is the group's `--variant`.
 | | `--max-pos` | 250 | Max inventory per market (shares). |
 | | `--skew` | 1.0 | Inventory skew. |
 | | `--max-disagree` | 0.15 | Don't quote beyond \|fair − market\|. |
-| | `--fill` | `through` | `through`: a trade must cross our price; `touch`: at our price. |
+| | `--fill` | `through` | `through`: a trade must cross our price; `touch`: at our price; `queue`: at our price once the recorded book's queue ahead of us is served ([queue rule](market-making.md#the-queue-rule)). |
 | | `--info-skew` | 2.0 | Info-timed skew (`maker_skew`, `maker_all`). |
 | | `--widen` | 1.5 | Widen factor on bad markouts (`maker_widen`, `maker_all`). |
 | Markets | `--market-kinds` | `race_win,race_podium,race_h2h,race_constructor_top,race_pole` | Market kinds traded. |
