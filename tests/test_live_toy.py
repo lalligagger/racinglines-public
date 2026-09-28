@@ -98,3 +98,11 @@ def test_a_third_sport_runs_through_the_core(toy, monkeypatch):
                                                            signals_nav=None))
     assert "<h1>toy_sprint</h1>" in html and "race_win:Ada" in html and 'id="rp-slider"' in html
     assert "/live?event=toy-1&t=" in html                   # the replay bar keeps the event
+    # the report: any sport's run folder
+    from racinglines.pipelines import live_report as R
+    files = R.write(spec)
+    md = files["md"].read_text()
+    assert "# Toy sprint #1: event report" in md and "## Fair-price scorecard" in md and "Settled" in md
+    sc = R.scorecard(LV.load("toy-1")[2], R.outcomes_of(LV.load("toy-1")[0]))
+    assert sc and sc[-1]["brier"] < 1e-9 and {r["kind"] for r in sc} == {"race_win"}   # certain at the end: perfect
+    assert "<svg" in files["html"].read_text() and files["pnl.svg"].exists()

@@ -31,7 +31,7 @@ F1 adapter, keeping the platform multi-sport. Plan: [F1 live test](f1-live-roadm
 **P1 · Next two weeks: consolidate the live platform**
 
 - [ ] Singapore (round 17, sprint, 11 Oct): run it the same way if Polymarket still hasn't listed it.
-- [ ] A repeatable report command for any live event ([Live events](#live-events)).
+- [x] A repeatable report command for any live event: `racinglines live report` ([Live events](#live-events)).
 - [ ] Settle the Whistler private book in the database, into the demo maker's story.
 - [ ] A per-market loss cap or two-sided long-shot quotes in the shared quoting core.
 - [ ] Watch for Polymarket listings: F1-8 starts the first weekend with markets.
@@ -222,8 +222,8 @@ How it works: [Live events](live-events.md). First run: the Whistler downhill fi
       usual Polymarket race markets, updated at session ends, as a shared live core plus an F1 adapter.
       Build items B0–B8 and the runbook: [F1 live test](f1-live-roadmap.md).
 - [ ] Singapore (round 17, sprint weekend, 11 Oct): the same run if Polymarket still hasn't listed it.
-- [ ] A **report command** for any live event (the Whistler report, made repeatable): P&L by update, the
-      crowd, the demo taker, the fair-price scorecard.
+- [x] A **report command** for any live event (the Whistler report, made repeatable): P&L by update, the
+      crowd, the demo taker, the fair-price scorecard (`racinglines live report <spec> --pdf`, 2026-09-29).
 - [ ] Re-run an event's pricing from its logged raw feed (replay today shows what was seen live; this
       would re-price it with a new model).
 - [ ] Two-sided long-shot quotes (or a per-market loss cap) so the maker doesn't pile up shorts in unlikely

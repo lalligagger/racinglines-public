@@ -371,8 +371,9 @@ Each item lists what "done" means. B0 matters in every scenario.
 - [ ] **B7. Rehearsal on Baku** *(Wed–Thu)*
   - The whole weekend on a simulated clock, run under the LaunchAgent.
   - Done: all seven updates happen, pole settles after qualifying and everything else after the race, Positions is correct, replay works.
-- [ ] **B8. Report command** *(Thu, stretch)*
-  - `racinglines live report --event …`, generalising the Whistler report: book P&L by update, the crowd, the demo taker, and the fair-price scorecard.
+- [x] **B8. Report command** *(Thu, stretch)*
+  - `racinglines live report <spec> [--pdf]`, generalising the Whistler report: book P&L by update, the crowd, the demo taker, and the fair-price scorecard (Brier score and log loss per market kind at each update, and the biggest moves). Written to the run folder's `report/`: Markdown, HTML with the charts inline, SVG charts, and a PDF through headless Chrome.
+  - Done: Whistler's report from its run folder (run folder unchanged); tests on the synthetic third sport.
 
 ### Weekend runbook (PDT)
 
