@@ -149,7 +149,7 @@ sudo systemctl status cloudflared --no-pager      # active; the dashboard shows 
 If it says a service already exists, `sudo cloudflared service uninstall` first. Don't give it
 `racinglines.bet` yet: that hostname moves at the cutover below.
 
-**8. The MCP server's hostname** (Cloudflare + the VM; done 2026-09-28, see [MCP server](mcp.md)).
+**8. The MCP server's hostname** (Cloudflare + the VM; done 2026-09-28). [MCP server](mcp.md#giving-access-as-an-admin) has the admin and user guides and the troubleshooting table; this is the short form.
 Issue the admin token and start the unit, on the VM:
 ```sh
 sudo -u racinglines bash -c 'set -a; . /etc/racinglines.env; set +a; cd /opt/racinglines && .venv/bin/racinglines mcp token admin'
