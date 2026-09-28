@@ -481,56 +481,49 @@ Priorities, then every open item: [`docs/todo.md`](docs/todo.md). This week's F1
 <!-- include: todo-summary -->
 <!-- generated from docs/todo.md by build_readme.py - edit it there -->
 
-**P0 · This week: the first live F1 test** (round 16, the Bahrain GP at Sepang, Malaysia, 2–4 Oct 2026)
+**The rule:** real markets first. Events are tiered ([Strategy 2026](docs/strategy-2026.md#event-tiers)):
+**T1** a real market is listed, so paper-trade it with frozen profiles; **T2** a real market we don't
+model yet, so record its tape; **T3** no market anywhere, so run a simulated pool (private book). T3
+proves the pricing, not an edge.
 
-Polymarket has listed no F1 race markets since 28 Aug, none for rounds 16 or 17. So
-the test is a mock private book like the Whistler downhill run. We price all 100 of
-Polymarket's usual race markets (winner, podium, pole, head-to-head, constructor)
-anyway, and update at session ends only. It's built as one shared live core plus an
-F1 adapter, keeping the platform multi-sport. Plan: [F1 live test](docs/f1-live-roadmap.md).
+**Where things stand (28 Sep 2026):** no F1 race markets are open on either venue. Polymarket has
+listed no race since 28 Aug; Kalshi listed 2025 races only 2–4 days out, so it may still list round 16.
+The F1 championships are open and deep on both (drivers' ~$38M on Polymarket, ~$9M on Kalshi). Profile
+C makes money on Polymarket's tape and loses on Kalshi's.
 
-- [x] Build: name aliases, the shared live core, the F1 adapter, the Live tab's F1
-      body, the demo taker, operations, a rehearsal on Baku (items B0–B8, cloud build-out 29 Sep; the Mac rehearsal under the LaunchAgent is Thursday's).
-- [ ] Checkpoints: Polymarket listing Wed 30 Sep; the scenario chosen Thu 1 Oct 18:00 PDT;
-      the book opens Thu 20:30 PDT.
-- [ ] After the race (Mon 5 Oct): settle and reconcile, report with a fair-price scorecard.
+**P0 · This week (to Thu 1 Oct): be ready to trade round 16 on whichever venue lists it**
 
-**P1 · Next two weeks: consolidate the live platform**
+- [ ] **U2** Kalshi recorder on the VM ([Exchanges](docs/todo.md#exchanges)).
+- [ ] **U1** Kalshi in the signal engine, so A and C can paper-trade Kalshi's race markets ([Exchanges](docs/todo.md#exchanges)).
+- [ ] **U6** Championship sleeve, paper only, from round 16's result ([Live events](docs/todo.md#live-events)).
+- [ ] Freeze A and C and pre-register the rules in [Paper trading](docs/paper-trading.md#validation-plan).
+- [ ] Round 16 checkpoints: both venues checked Wed 30 Sep; the tier chosen Thu 1 Oct 18:00 PDT
+      (T1 on Kalshi if it lists, otherwise T3, the private book); the book opens Thu 20:30 PDT.
+      Plan: [F1 live test](docs/f1-live-roadmap.md).
 
-- [ ] Singapore (round 17, sprint, 11 Oct): run it the same way if Polymarket still hasn't listed it. Ready: `live/f1/2026-17.toml`; the sprint stages rehearsed on the Dutch GP (`live/f1/2026-12.toml`).
-- [x] A repeatable report command for any live event: `racinglines live report` ([Live events](docs/todo.md#live-events)).
-- [x] Settle the Whistler private book in the database, into the demo maker's story (`live_events`; the owner runs the migration and `racinglines live settle` locally).
-- [x] A per-market loss cap or two-sided long-shot quotes in the shared quoting core (both built, off by default: the owner decides; [decision log](docs/f1-live-roadmap.md#11-decision-log)).
-- [ ] Watch for Polymarket listings: F1-8 starts the first weekend with markets.
+**P1 · October (rounds 16–19): first live weekends on real markets**
 
-**P2 · When Polymarket lists F1 again: paper-trade validation** ([F1-8](docs/todo.md#paper-trading))
+- [ ] **U5** Kalshi sprint markets before Singapore (11 Oct).
+- [ ] **U3** Kalshi maker profile K, swept and frozen before the United States GP (25 Oct).
+- [ ] **U7** Cross-venue disagreement log; **U8** settlement rules for relocated or cancelled races.
+- [ ] Per-weekend reconciliation (live vs replay) and the pricing scorecard on every weekend ([Paper trading](docs/todo.md#paper-trading)).
+- [ ] **U9** Record Kalshi's NASCAR (Chase, finale 8 Nov), MotoGP and IndyCar tapes ([New sports](docs/todo.md#new-sports)).
+- [ ] **Parallel track, owner (2026-09-28): the downhill [Data](docs/todo.md#data) items are high priority for the next
+      cloud session** (Elite/Junior Women, start order, weather). They don't touch the F1 weekends. Most
+      need ChronoRace (`prod.chronorace.be`), which the cloud network blocks: allow it first, or run locally.
 
-- [ ] Profiles A and C live; compare fills and markouts with the replay, weekend by weekend.
-- [ ] Sizing after 4–6 live weekends; walk-forward with the new rounds; bankroll-aware sizing.
-- [ ] Real orders only with the owner's approval; CLOB V2 signing is done and dry-run tested
-      ([Market making](docs/todo.md#market-making)).
+**P2 · November (rounds 20–22): the sizing review**
 
-**P3 · Models and data**
+- [ ] About 12 Nov, after 4–6 live weekends: sizing decision and a walk-forward with rounds 16–20 added.
+- [ ] Qatar (29 Nov) and Abu Dhabi (6 Dec) may be cancelled: settle by each venue's rules (U8).
 
-- [ ] F1 ([F1 model](docs/todo.md#f1-model)): promote `gridq+pretrain` (owner's OK), the
-      `rookie` variant for profile A, the stage-aware taker on live
-      weekends (2025 didn't confirm it), book-depth replay once enough books are recorded.
-- [ ] **Downhill points validation**, the top downhill item ([Points validation](docs/todo.md#points-validation)),
-      then downhill data and model ([Data](docs/todo.md#data), [Model](docs/todo.md#model)).
-- [ ] **High priority for the next cloud session: the downhill [Data](docs/todo.md#data) items** (owner,
-      2026-09-28): slug probing, canonical venue names, Elite/Junior Women, start order, weather,
-      the 2021 PDFs. Most need ChronoRace (`prod.chronorace.be`), which the cloud network policy
-      blocks: allow it in the environment first, or do them locally.
+**P3 · December: close 2026, set up 2027**
 
-**P4 · Platform and business**
-
-- [ ] A live timing feed (F1 SignalR or OpenF1) for in-session updates; in-race trading (F1-7) only
-      if the owner decides to trade during races.
-- [ ] Kalshi and other exchanges ([F1-9](docs/todo.md#exchanges)); find a venue that lists downhill markets.
-- [ ] **Move to Google Cloud:** the data bucket is up ([Data](docs/data.md#data-bucket)) and the
-      [proposal](docs/google-cloud.md) is written (Cloud SQL, Cloud Run, Scheduler, service identities, about
-      $28–35 a month at list prices). Next: the owner's choices (database tier, recorder shape, domain).
-- [ ] New sports, beta testers and collaborators, B2B ([Business](docs/todo.md#business-and-collaborators)).
-- [ ] Before real users: remove the `demo_context` bubbles, fix the admin P&L, check data and settlement terms.
+- [ ] 2026 season report; walk-forward re-selection of A′, C′ and K′ for 2027, frozen before Australia.
+- [ ] **U10** F1 pre-season testing ingest; the `reset` and `gridq+pretrain` decisions for 2027.
+- [ ] Decide whether NASCAR joins in 2027, from the recorded tapes and the data-source review.
+- [ ] **U12** Move to Google Cloud; the first real V2 order only if the validation rules are met.
+- [ ] **U11** Downhill off-season: points validation (the top downhill item), then the rest of data and
+      model ([Points validation](docs/todo.md#points-validation), [Data](docs/todo.md#data), [Model](docs/todo.md#model)).
 
 <!-- /include -->

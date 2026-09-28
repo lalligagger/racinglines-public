@@ -15,6 +15,10 @@ a mock private book like Whistler's, pricing every market Polymarket usually lis
 updated at session ends only. We switch to the [backup plans](#7-backup-plans) if
 markets appear.
 
+**Update (28 Sep 2026, [strategy session](strategy-2026.md)):** Kalshi counts as a venue too. It listed its
+2025 races only 2–4 days out, so it may still list round 16: check it at both checkpoints. If it lists, the
+weekend is paper-traded there ([backup plan K](#7-backup-plans)); the private book runs alongside as a demo.
+
 ---
 
 ## 1. Business context
@@ -428,6 +432,17 @@ other update runs by itself.
 4. Our fair prices can be compared with Polymarket's at every update in the report.
    Take the head-to-head pairs from Polymarket's actual listing if it differs from Baku's.
 
+**K. Kalshi lists before FP1** (found at checkpoint 1 or 2)
+
+1. Sync Kalshi (`racinglines markets --exchange kalshi sync --year 2026`) and check the markets link to
+   `2026-16`, not `unmodeled` (Kalshi's tickers carry the race code).
+2. If Kalshi paper signals are built (Roadmap U1): profiles A and C paper-trade Kalshi from the first stage
+   they reach, and the Kalshi recorder (U2) keeps the tape and books. If not yet built: record the tape and
+   books only, and replay the weekend on Monday.
+3. **The private book carries on unchanged**, as in plan A. The report compares our fair prices with
+   Kalshi's at every update.
+4. The weekend counts toward the [validation plan](paper-trading.md#validation-plan) only if A and C traded live.
+
 **C. Polymarket lists mid-weekend**
 
 - The signal engine joins at the next stage; earlier stages are recorded as not quoted,
@@ -523,4 +538,4 @@ existing layout, and the report can be written by hand as Whistler's was.
 | 2026-09-29 | The head-to-head pairs are fixed at the book's opening (in `meta.json`): a Polymarket listing that appears mid-weekend doesn't change the book's markets. |
 | 2026-09-29 | Sprint weekends need no new code: the plan takes its stages from the schedule (after FP1, SQ, Sprint, Quali), each with a half-spread (2.5¢ after SQ, 2¢ after the Sprint). Rehearsed on the Dutch GP (round 12). Sessions without positions (practice, sprint qualifying) show on the page ranked by best lap. |
 | 2026-09-29 | Long-shot risk: the shared quoter gets a per-market loss cap (`[live.quoting] max_loss`: no more selling a side once the market's worst case reaches it, and no crowd fill takes it past it) and a 1¢ floor bid on long shots (`floor_bid`). Both **off** (today's behaviour), for the owner to decide. On Baku's rehearsal (real stage runs, simulated crowd): baseline +$6,935, worst markets −$2,400 each if YES; `max_loss = 500`: +$5,337, worst −$559 (the demo taker's picks sit outside the cap); floor bid: +$6,424; both: +$6,313, worst −$667. One weekend where the long shots lost: the cap costs P&L here and protects the tail. |
-
+| 2026-09-28 | Kalshi counts as a venue for round 16 (backup plan K). If Kalshi lists by Thu 18:00 PDT the weekend is paper-traded there (tier T1) and the private book runs alongside; otherwise it is a private book only (T3). Only T1 weekends count toward the [validation plan](paper-trading.md#validation-plan) ([Strategy 2026](strategy-2026.md)). |

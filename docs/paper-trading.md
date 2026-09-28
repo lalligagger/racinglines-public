@@ -276,10 +276,41 @@ that would change data is refused. See [Web app](webapp.md#accounts-demo-users-v
 
 ## Validation plan
 
-- **Live paper trading on every weekend Polymarket lists**, through 2027. Polymarket has listed no race
-  since round 15 (28 Aug 2026), none for rounds 16 or 17, so round 16's live test is a private book
-  instead ([F1 live test](f1-live-roadmap.md)).
-- **Compare live with the backtest** before any sizing change: fill rates (against the conservative
-  through rule) and markouts, weekend by weekend.
-- **No real orders.** `POLYMARKET_TRADING_ENABLED` stays unset. Order signing is on CLOB V2, but
-  only dry-run tested; the first real order needs the owner's approval (see [Web app](webapp.md#placing-orders)).
+Pre-registered on 2026-09-28, before any live F1 weekend on a real market, and judged by these rules
+only. The reasoning is in [Strategy 2026](strategy-2026.md); the calendar is on the
+[Roadmap](todo.md#race-weekends-to-31-december).
+
+**What counts.** Only live weekends on a real market (tier T1): Polymarket or Kalshi. Private-book
+weekends (T3, like round 16 if no venue lists it) score the pricing, never the strategy. Each venue is a
+separate trial.
+
+**The profiles are frozen until 31 Dec 2026:**
+
+| Profile | Account | Venue | Settings |
+|---|---|---|---|
+| A · core taker | demo taker | Polymarket, Kalshi | As in [Strategy profiles](#strategy-profiles). Judged on A's own calls; the demo taker's followed third is shown too |
+| C · maker sleeve | demo maker | Polymarket, Kalshi | As in [Strategy profiles](#strategy-profiles). On Kalshi it is a control: its Kalshi replay lost $119 in 2026 |
+| K · Kalshi maker | demo maker | Kalshi | Chosen by a Kalshi sweep and frozen before round 18 (Roadmap U3) |
+| Championship sleeve | demo maker | Both | `f1 season-strategy` after each race; kept out of A, C and K's records |
+
+Any change to a profile makes a new profile with its own count.
+
+**The rules:**
+
+1. **Each weekend against its replay.** Re-run the backtest's replay of the same weekend on the recorded
+   tape (the conservative "through" fill rule). Live fill counts and markouts should be within ±25% of
+   the replay's, and live P&L inside the replay's noise band. A weekend outside is flagged and explained
+   before the next one.
+2. **The pricing scorecard on every weekend,** traded or not: Brier and log loss of the fair values
+   against the result and against the venue's mid at each stage.
+3. **How many weekends.** From the 2025–26 replays, about 17 live weekends to show the maker's edge at
+   about 2 standard errors (~$71 a weekend, s.d. ~$146), and about 40 for the taker (~$83, s.d. ~$262).
+   The maker can be proved by the end of 2027; the taker is borderline.
+4. **Sizing** is decided after 4–6 live T1 weekends (about 12 Nov), not before.
+5. **No real orders in 2026 unless** 6 or more live weekends pass rule 1. Even then, one small V2 order
+   first. `POLYMARKET_TRADING_ENABLED` and `KALSHI_TRADING_ENABLED` stay unset until the owner approves;
+   order signing is on CLOB V2 but only dry-run tested (see [Web app](webapp.md#placing-orders)).
+
+**Status (28 Sep 2026):** no live T1 weekend yet. Polymarket has listed no race since round 15
+(28 Aug); Kalshi's live signals are Roadmap item U1. Round 16 is a private book unless Kalshi lists it
+([F1 live test](f1-live-roadmap.md)).
