@@ -310,7 +310,7 @@ def build(jobs_worker=False, engine_url=None):
             raise ResourceError(f"no docs page {page!r}; read racinglines://docs for the list")
         return p.read_text()
 
-    @srv.resource("racinglines://sports/{code}", name="sport", description="A sport's schema (sports/<code>.toml): f1, mtb_dh",
+    @srv.resource("racinglines://sports/{code}", name="sport", description="A sport's schema (sports/<code>.toml): f1, mtb_dh, or a tape-only sport (nascar, motogp, indycar)",
                   mime_type="application/toml")
     def sport(code: str) -> str:
         p = SPORTS / f"{code}.toml"

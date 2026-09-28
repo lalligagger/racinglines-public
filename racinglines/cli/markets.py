@@ -10,10 +10,14 @@ racinglines markets <command>: exchange data (Polymarket; F1 is the only sport l
 Options: --exchange polymarket (default) --sport f1 (default), then the command's own options.
 
 Kalshi (--exchange kalshi; markets/kalshi/, built on mocked responses, unverified against the live API):
-    sync       [--year 2026] [--closed]                  Kalshi's F1 markets into market links
-    trades     --events TICKER …                         the tape of those events' markets
-    history    --events TICKER … --start --end [--period 60]   candlesticks (minutes: 1, 60, 1440)
-    books      --events TICKER …                         one order-book snapshot per open market
+    sync       [--year 2026] [--closed] [--series TICKER …]   the sport's Kalshi markets into market links
+    trades     [--events TICKER …]                       the tape of those events' markets
+    history    [--events TICKER …] --start --end [--period 60]   candlesticks (minutes: 1, 60, 1440)
+    books      [--events TICKER …]                       one order-book snapshot per open market
+
+--sport names the sport (default f1): the tape-only sports (nascar, motogp, indycar; sports/<code>.toml
+[markets.kalshi]) are synced only when named, every link unmodeled, under their own competition. Without
+--events, trades / history / books take every Kalshi event of --sport's competition (books: open markets).
 """
 
 import argparse
@@ -23,16 +27,25 @@ COMMANDS = {"sync": "pm-sync", "history": "pm-history", "trades": "pm-trades", "
             "archive": "pm-archive"}
 
 
+def kalshi_sports():
+    """The sports the Kalshi sync knows: F1 and every schema with a [markets.kalshi] series list."""
+    from racinglines import sports
+    return ["f1"] + [c for c in sports.SPORT_CODES if c != "f1" and sports.kalshi_series(c)]
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     ap = argparse.ArgumentParser(prog="racinglines markets", description=__doc__, add_help=False,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--exchange", default="polymarket", choices=["polymarket", "kalshi"])
-    ap.add_argument("--sport", default="f1", choices=["f1"])
+    ap.add_argument("--sport", default="f1", choices=kalshi_sports())
     ap.add_argument("--db", default=None)
     known, rest = ap.parse_known_args(argv)
     if known.exchange == "kalshi":
-        return kalshi(known.db, rest)
+        return kalshi(known.db, rest, known.sport)
+    if known.sport != "f1":
+        print(f"--sport {known.sport}: only Kalshi lists it (--exchange kalshi)", file=sys.stderr)
+        return 2
     if not rest or rest[0] in ("-h", "--help") or rest[0] not in COMMANDS:
         print(__doc__)
         return 0 if rest and rest[0] in ("-h", "--help") else 2
@@ -40,16 +53,18 @@ def main(argv=None):
     return f1.main((["--db", known.db] if known.db else []) + [COMMANDS[rest[0]]] + rest[1:])
 
 
-def kalshi(db, argv):
-    """racinglines markets --exchange kalshi <command> (markets/kalshi/sync.py)."""
-    ap = argparse.ArgumentParser(prog="racinglines markets --exchange kalshi")
+def kalshi(db, argv, sport="f1"):
+    """racinglines markets --exchange kalshi [--sport f1] <command> (markets/kalshi/sync.py)."""
+    ap = argparse.ArgumentParser(prog=f"racinglines markets --exchange kalshi --sport {sport}")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("sync")
     p.add_argument("--year", type=int, default=2026)
     p.add_argument("--closed", action="store_true", help="Also settled events")
+    p.add_argument("--series", nargs="+", default=None, help="Series tickers to sync instead of discovering them")
     for name in ("trades", "history", "books"):
         p = sub.add_parser(name)
-        p.add_argument("--events", nargs="+", required=True, help="Kalshi event tickers (market_links.condition_id)")
+        p.add_argument("--events", nargs="+", default=None,
+                       help=f"Kalshi event tickers (market_links.condition_id); default: every {sport} event")
         if name == "history":
             p.add_argument("--start", required=True, help="UTC start, e.g. 2026-10-01T00:00")
             p.add_argument("--end", required=True, help="UTC end")
@@ -63,12 +78,12 @@ def kalshi(db, argv):
     from racinglines.markets.kalshi import sync as KS
     with get_engine(db).connect() as c, get_session(db) as s:
         if args.cmd == "sync":
-            print(KS.sync(s, c, args.year, include_closed=args.closed))
+            print(KS.sync(s, c, args.year, include_closed=args.closed, sport=sport, series=args.series))
         elif args.cmd == "trades":
-            print(f"{KS.fetch_trades(s, c, args.events)} trades stored")
+            print(f"{KS.fetch_trades(s, c, args.events, sport=sport)} trades stored")
         elif args.cmd == "history":
             t = [pd.Timestamp(x).tz_localize(timezone.utc).to_pydatetime() for x in (args.start, args.end)]
-            print(f"{KS.fetch_history(s, c, args.events, t[0], t[1], args.period)} price points stored")
+            print(f"{KS.fetch_history(s, c, args.events, t[0], t[1], args.period, sport=sport)} price points stored")
         else:
-            print(f"{KS.snapshot_books(s, c, args.events)} book snapshots stored")
+            print(f"{KS.snapshot_books(s, c, args.events, sport=sport)} book snapshots stored")
     return 0
