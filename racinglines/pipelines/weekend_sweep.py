@@ -29,7 +29,6 @@ from sqlalchemy import text
 from racinglines import sports
 from racinglines.markets.strategies import taker_weekend as RB
 from racinglines.core import calibration as CAL
-from racinglines.core.stats import last_at
 
 _SCHEDULE = sports.load("f1")["sessions"]["schedule"]       # FastF1 session name -> [minutes, short label]
 SESSION_MINUTES = {name: m for name, (m, _) in _SCHEDULE.items()}
@@ -179,42 +178,22 @@ def fetch_market_data(session, conn, sched, fidelity=5, force=False, echo=print)
         echo(f"progress {w['event_key']} {w['name']}: {n} price points, {k} trades")
 
 
-def _series(conn, tokens, conds, start, end):
-    from racinglines.markets import store as MS
-    a, b = pd.Timestamp(start).tz_localize("UTC"), pd.Timestamp(end).tz_localize("UTC")
-    ph = MS.read(conn, "prices", tokens=tokens, start=a, end=b)[["token_id", "ts", "price"]]
-    tr = MS.read(conn, "trades", conditions=conds, start=a - timedelta(hours=24), end=b)
-    tr = tr.assign(usd=tr["price"] * tr["size"])[["condition_id", "ts", "usd"]]
-    for df in (ph, tr):
-        df["ts"] = pd.to_datetime(df["ts"], utc=True).dt.tz_localize(None)
-    return {t: g for t, g in ph.groupby("token_id")}, {c: g for c, g in tr.groupby("condition_id")}
-
-
-def _price_at_g(g, t):
-    return None if g is None else last_at(pd.DatetimeIndex(g["ts"]), g["price"].to_numpy(), t, STALE)
-
-
-def _vol24(g, t):
-    if g is None:
-        return 0.0
-    a, b = g["ts"].searchsorted(t - timedelta(hours=24)), g["ts"].searchsorted(t, side="right")
-    return float(g["usd"].iloc[a:b].sum())
-
-
 def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None):
     """The weekend's tradeable markets for racinglines/markets/strategies/taker_weekend.py: per market, each stage's fair,
-    exchange price and tradeable flag (what was knowable then) and the outcome (settlement).
+    exchange price and tradeable flag (what was knowable then) and the outcome (settlement). The exchange is a
+    backtest venue (markets/venue_replay.py: Polymarket's recorded prices and trade tape).
     price_times: {stage label: time} to read the market at instead of the stage's cutoff (live signals:
     when the stage was priced, i.e. when its trades could first be made); None = the cutoffs (backtests)."""
     at = lambda lab, cutoff: (price_times or {}).get(lab, cutoff)          # noqa: E731
     from racinglines.db import reads as D
     from racinglines.markets import private_book as house
+    from racinglines.markets.venue_replay import Polymarket
     rid = _race_id(conn, w["event_key"])
     links = _token0_links(conn, rid)
     if not len(links):
         return None
     start, end = stage_runs[0][1] - timedelta(hours=1), max([w["race_start"], *(price_times or {}).values()])
-    prices, trades = _series(conn, links["token_id"].tolist(), links["condition_id"].tolist(), start, end)
+    venue = Polymarket(conn, links, start, end, GROUP_TARGET, COHERENCE_TOL, STALE)
     res = house.race_outcomes(conn, rid)
     cache, markets = {}, []
     fair = {}   # (token, stage) -> fair
@@ -222,31 +201,23 @@ def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None):
         for link in links.to_dict("records"):
             fair[(link["token_id"], lab)] = D.model_prob(conn, link, cache, run_id=run_id)[0]
     # coherence of each multi-outcome group at each stage (stale/empty books are skipped)
-    coherent = {}
-    for lab, cutoff, _ in stage_runs:
-        for kind, target in GROUP_TARGET.items():
-            g = links[links["prediction"] == kind]
-            ps = [_price_at_g(prices.get(t), at(lab, cutoff)) for t in g["token_id"]]
-            ps = [p for p in ps if p is not None]
-            coherent[(kind, lab)] = bool(ps) and abs(sum(ps) - target) <= COHERENCE_TOL * target
-    for link in links.to_dict("records"):
+    coherent = {(kind, lab): venue.coherent(kind, at(lab, cutoff)) for lab, cutoff, _ in stage_runs for kind in GROUP_TARGET}
+    vol_min = MIN_VOLUME_24H if min_volume_24h is None else min_volume_24h
+    for link in venue.markets():
         kind = link["prediction"]
-        ath = None if pd.isna(link["athlete_id"]) else int(link["athlete_id"])
         stages = []
         for lab, cutoff, _ in stage_runs:
             t = at(lab, cutoff)
-            price = _price_at_g(prices.get(link["token_id"]), t)
+            price, _, liquid = venue.view(link, t, vol_min)
             f = fair[(link["token_id"], lab)]
             open_ = not (kind == "race_pole" and w["qual_start"] is not None and t >= w["qual_start"])
-            ok = (price is not None and f is not None and open_ and coherent.get((kind, lab), True)
-                  and 0 < price < 1 and _vol24(trades.get(link["condition_id"]), t)
-                  >= (MIN_VOLUME_24H if min_volume_24h is None else min_volume_24h))
+            ok = liquid and f is not None and open_ and coherent.get((kind, lab), True)
             stages.append(dict(label=lab, t=t, fair=f, price=price, tradeable=ok))
         subject = link["athlete"] or (link["params"] or {}).get("team") or link["group_title"]
         if kind == "race_h2h":
             subject = f"{link['outcome']} ({link['question'].split(': ')[-1]})"
         markets.append(dict(key=link["token_id"], kind=kind, subject=subject, stages=stages, link=link,
-                            outcome=house.outcome_for(kind, ath, link["params"], res)))
+                            outcome=venue.resolve(link, res)))
     return markets
 
 
