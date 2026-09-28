@@ -260,3 +260,48 @@ The session appends here: date and time (UTC), item, commit, status, notes.
 | 2026-09-28 03:16 | B: driver layer in a new season (P3, F1-2) | da60e09 | done (variant, not promoted) | Variant `rookie` (ROOKIE_CARRY=0.25). Backtests 1288 (vs 931) and 1289 (vs 955), 129 races: win odds better before practice/quali beyond 2 SE; teammate h2h better 2026 pre-quali, worse 2021 after quali. Not promoted; profile A decision after live weekends. Runs 1288/1289 are in this session's database only: exported to the bucket, results/cloud-buildout-track-b/f1-backtests/. Parametrized variant tests need fixtures: local check |
 | 2026-09-28 03:20 | B: downhill points validation (P3) | this commit | code + tests; blocked on the official UCI scales and standings (owner) | points.py (schemes from points_schemes, points.use, reconcile), `mtb_dh points import/show/check`, `--points db` on forecast/backtest (default schema: unchanged). Entry template sports/points/uci_dhi_wc.toml, all placeholder. check ran on the real 2026 results through round 7 against a self-made file (189/190 match, the one edited flagged). Pinning test skips until sports/points/standings/*.toml exists |
 | 2026-09-28 03:24 | B: downhill UCI rider IDs (P3 data) | this commit | code + tests; re-download and merges local (owner) | Downloader writes a UCI ID column (unverified against the live API), parser reads it (old files unchanged), ingest matches uci identifiers first and reports shared UCI IDs. `db merge-athletes` dry-run on the bucket DB: 491 into 152 would move 11 results, 1 identifier. Also verified: mtb_dh forecast/backtest outputs byte-identical before/after the points change |
+| 2026-09-28 03:40 | B: **final handoff** (owner asked to stop and hand off) | this commit | handoff | See [Track B handoff](#track-b-handoff) below |
+
+### Track B handoff
+
+Branch `claude/cloud-buildout-track-b`, cut from `live-event`; merge after Track A. It touches none of
+Track A's files except `scripts/cloud/bucket.py` and `start.sh`, which carry Track A's identical fixes.
+
+**Done** (every new behaviour is off by default; downhill outputs checked byte-identical):
+
+| Item | Commits | Notes |
+|---|---|---|
+| Cloud bring-up fixes | 3630be3, 41f3f05, 6a62c89 | Track A's uv/boto3 fix; GCS upload checksums |
+| CLOB V2 order signing (P2) | a7aebcb | dry-run only, no order sent; unverified against the live CLOB |
+| Bankroll-aware sizing, deployed-capital cap (P2) | 956cbb6 | sweep settings `bankroll`, `max_deployed` |
+| Monte Carlo seed setting (P3) | 680a049 | `seed`; unset keeps every model key |
+| h2h-only sweep crash (P3) | e29e18a | reproduced and fixed on the bucket's database |
+| Stage-aware taker out of sample (P3) | 3c78aa8 | **not confirmed**: −$316 on 2025 (+$1,874 in-sample on 2026) |
+| Google Cloud proposal (P4) | f1707c3 | [Google Cloud proposal](google-cloud.md), about $28–35/month at list prices |
+| Driver layer, `rookie` variant (P3, F1-2) | da60e09, 6b724de | small gain on win odds; not promoted |
+| Downhill points validation (P3) | e062360 | `points_schemes` by era, `mtb_dh points`, pinning test |
+| Downhill UCI rider IDs (P3) | b088e5b | ingest by UCI ID first; `db merge-athletes` |
+
+**Blocked or not started:**
+
+| Item | Needs | Who |
+|---|---|---|
+| Official UCI points scales and standings | enter `sports/points/uci_dhi_wc.toml` and `sports/points/standings/*.toml`, then `mtb_dh points import` / `check` | owner |
+| UCI IDs in the downhill files | re-download (ChronoRace is blocked here), re-ingest, then merge reported pairs (`db merge-athletes 152 491`) | owner, locally |
+| Stage-aware taker, `rookie` for profile A, sizing rule | live weekends | live events |
+| First real V2 order | the owner's approval | owner |
+| Google Cloud move | the owner's choices (database tier, recorder shape, domain) | owner |
+| Not started (cloud-doable) | F1 props (fastest lap, safety car, rain), book-depth queue model on synthetic books, the rest of the downhill data items (slug probing, venue names, Women, start order, weather, 2021 PDFs), downhill model items (calibration, 43-round tuning, rider × venue, trends), Kalshi connector (mocked), web items (admin P&L filter, JSON API) | next session |
+| F1 prop market kinds in `sports/f1.toml` `[live]` | Track A's file | Track A / next session |
+
+**Local checks after merging** (the brief's list, plus Track B's):
+
+- `python -m pytest -m "not live"` on the local fixtures, including the skipped `test_variants` and golden tests.
+- Whistler: its book re-derived from `crowd.jsonl`, `/live` and replay unchanged.
+- `alembic upgrade head` (Track B adds no migration).
+- `racinglines live agent <round-16 spec> --install`, then a dry run of one `step` (Track A).
+- The pre-push hook passes.
+- Track B: `racinglines mtb_dh forecast --db` and `backtest --db` give the same output as before the merge.
+- Track B: `racinglines f1 --variant rookie backtest --save` to store the `rookie` runs in the owner's
+  database (runs 1288/1289 exist only in the bucket, `results/cloud-buildout-track-b/f1-backtests/`).
+| 2026-09-28 03:25 | B: final handoff committed | this commit | done | Tests: 125 passed, 6 skipped (fixtures / official standings); quick suite 69 passed |
