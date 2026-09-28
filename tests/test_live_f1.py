@@ -237,3 +237,15 @@ def test_lateness_alert_once_per_update(tmp_path, monkeypatch):
     F.step(spec, now="2026-10-02T05:50", fetch=False, alert=False, echo=said.append)
     assert sum("LATE" in m for m in said) == 1                                  # once per update
     assert F.status(spec, "2026-10-02T06:30")["late_h"] == 3.0
+
+
+@pytest.mark.quick
+def test_singapore_is_a_sprint_weekend():
+    ups, w = F.plan("2026-17")
+    assert [u["label"] for u in ups] == ["pre-weekend", "after FP1", "after SQ", "after Sprint", "after Quali",
+                                         "lights out", "results"]
+    assert [u["label"] for u in ups if u["freeze"]] == ["after Quali"]
+    hs = LV.settings("f1")["quoting"]["half_spread"]
+    assert all(u["label"] in hs for u in ups if u["kind"] in ("open", "stage"))    # a spread for every stage
+    spec = LV.load_spec("f1/2026-17")
+    assert spec["window"]["open"] == "2026-10-09T07:30:00" and spec["window"]["close"] == "2026-10-11T12:00:00"

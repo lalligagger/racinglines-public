@@ -30,7 +30,7 @@ F1 adapter, keeping the platform multi-sport. Plan: [F1 live test](f1-live-roadm
 
 **P1 · Next two weeks: consolidate the live platform**
 
-- [ ] Singapore (round 17, sprint, 11 Oct): run it the same way if Polymarket still hasn't listed it.
+- [ ] Singapore (round 17, sprint, 11 Oct): run it the same way if Polymarket still hasn't listed it. Ready: `live/f1/2026-17.toml`; the sprint stages rehearsed on the Dutch GP (`live/f1/2026-12.toml`).
 - [x] A repeatable report command for any live event: `racinglines live report` ([Live events](#live-events)).
 - [x] Settle the Whistler private book in the database, into the demo maker's story (`live_events`; the owner runs the migration and `racinglines live settle` locally).
 - [ ] A per-market loss cap or two-sided long-shot quotes in the shared quoting core.
@@ -221,7 +221,7 @@ How it works: [Live events](live-events.md). First run: the Whistler downhill fi
 - [ ] **F1 live test, round 16 (Bahrain GP at Sepang, 2–4 Oct 2026):** a mock private book on all 100
       usual Polymarket race markets, updated at session ends, as a shared live core plus an F1 adapter.
       Build items B0–B8 and the runbook: [F1 live test](f1-live-roadmap.md).
-- [ ] Singapore (round 17, sprint weekend, 11 Oct): the same run if Polymarket still hasn't listed it.
+- [ ] Singapore (round 17, sprint weekend, 11 Oct): the same run if Polymarket still hasn't listed it. Code-ready (2026-09-29): launch spec `live/f1/2026-17.toml`; the F1 adapter's sprint stages (after SQ, after Sprint) rehearsed on the Dutch GP, round 12 (`live/f1/2026-12.toml`: seven updates, 100 markets, settles). Waits for the owner's decision after round 16.
 - [x] A **report command** for any live event (the Whistler report, made repeatable): P&L by update, the
       crowd, the demo taker, the fair-price scorecard (`racinglines live report <spec> --pdf`, 2026-09-29).
 - [x] Re-run an event's pricing from its logged raw feed: `racinglines live reprice <spec>` (downhill; every

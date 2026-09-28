@@ -258,13 +258,18 @@ def outcomes(conn, rid, mkts, stage="race"):
 
 
 def classification(conn, rid, round_kind):
-    """A session's classification: [dict(pos, driver, team, time)] (the latest session's, for the page)."""
+    """A session's classification: [dict(pos, driver, team, status, best)] (the latest session's, for the page).
+    Practice and sprint qualifying carry no positions in the results: those are ranked by best valid lap."""
     df = pd.read_sql(text("""
-        SELECT r.position, a.display_name AS driver, coalesce(r.team, r.extra->>'team_id') AS team, r.status
+        SELECT r.position, a.display_name AS driver, coalesce(r.team, r.extra->>'team_id') AS team, r.status,
+               (SELECT min(l.lap_time_ms) FROM laps l WHERE l.result_id = r.id AND NOT coalesce(l.deleted, false)) AS best
         FROM results r JOIN rounds ro ON ro.id = r.round_id JOIN athletes a ON a.id = r.athlete_id
-        WHERE ro.race_id = :r AND ro.kind = :k ORDER BY r.position NULLS LAST"""), conn, params=dict(r=rid, k=round_kind))
-    return [dict(pos=None if pd.isna(r.position) else int(r.position), driver=r.driver, team=r.team, status=r.status)
-            for r in df.itertuples()]
+        WHERE ro.race_id = :r AND ro.kind = :k ORDER BY r.position NULLS LAST, best NULLS LAST, a.display_name"""),
+        conn, params=dict(r=rid, k=round_kind))
+    by_lap = df["position"].isna().all()
+    return [dict(pos=(i + 1 if by_lap and pd.notna(r.best) else None) if by_lap else (None if pd.isna(r.position) else int(r.position)),
+                 driver=r.driver, team=r.team, status=r.status, best=None if pd.isna(r.best) else int(r.best))
+            for i, r in enumerate(df.itertuples())]
 
 
 # ---------------------------------------------------------------------------

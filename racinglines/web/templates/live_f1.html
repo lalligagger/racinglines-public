@@ -24,8 +24,8 @@
 
 <div class="grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap:14px">
 <div class="card"><h2>{{ {"fp1": "FP1", "fp2": "FP2", "fp3": "FP3", "sprint_qual": "Sprint qualifying", "sprint": "Sprint", "qual": "Qualifying", "race": "Race"}.get(snap.classification.round, "Latest session") }}{% if snap.classification.rows %} classification{% endif %}</h2>
-{% if snap.classification.rows %}<table><thead><tr><th>#</th><th class="l">Driver</th><th class="l">Team</th></tr></thead><tbody>
-{% for r in snap.classification.rows[:10] %}<tr><td>{{ r.pos or "–" }}</td><td class="l">{{ r.driver }}</td><td class="l muted">{{ r.team or "" }}</td></tr>{% endfor %}
+{% if snap.classification.rows %}<table><thead><tr><th>#</th><th class="l">Driver</th><th class="l">Team</th>{% if snap.classification.rows[0].best is defined %}<th>Best lap</th>{% endif %}</tr></thead><tbody>
+{% for r in snap.classification.rows[:10] %}<tr><td>{{ r.pos or "–" }}</td><td class="l">{{ r.driver }}</td><td class="l muted">{{ r.team or "" }}</td>{% if r.best is defined %}<td class="num">{% if r.best %}{{ "%d:%06.3f"|format(r.best // 60000, (r.best % 60000) / 1000) }}{% endif %}</td>{% endif %}</tr>{% endfor %}
 </tbody></table>{% else %}<p class="muted">No session run yet: priced from the season so far.</p>{% endif %}</div>
 {% if maker and win_chart %}<div class="card"><h2>Win probability through the weekend</h2>{{ chart(win_chart) }}</div>{% endif %}
 </div>

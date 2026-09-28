@@ -497,7 +497,7 @@ F1 adapter, keeping the platform multi-sport. Plan: [F1 live test](docs/f1-live-
 
 **P1 · Next two weeks: consolidate the live platform**
 
-- [ ] Singapore (round 17, sprint, 11 Oct): run it the same way if Polymarket still hasn't listed it.
+- [ ] Singapore (round 17, sprint, 11 Oct): run it the same way if Polymarket still hasn't listed it. Ready: `live/f1/2026-17.toml`; the sprint stages rehearsed on the Dutch GP (`live/f1/2026-12.toml`).
 - [x] A repeatable report command for any live event: `racinglines live report` ([Live events](docs/todo.md#live-events)).
 - [x] Settle the Whistler private book in the database, into the demo maker's story (`live_events`; the owner runs the migration and `racinglines live settle` locally).
 - [ ] A per-market loss cap or two-sided long-shot quotes in the shared quoting core.

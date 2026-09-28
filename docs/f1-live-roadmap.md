@@ -501,4 +501,5 @@ existing layout, and the report can be written by hand as Whistler's was.
 | 2026-09-29 | F1 crowd pace: 0.0006 hits per taker, per quoted market, per hour (about 60 an hour across the book), and 3× in the pre-race window with fresh $100 caps. Chosen a priori; Baku's rehearsal gives about 2,600 fills. |
 | 2026-09-29 | One LaunchAgent per event (`bet.racinglines.live.<run>`), so a downhill final and an F1 weekend can run side by side. |
 | 2026-09-29 | The head-to-head pairs are fixed at the book's opening (in `meta.json`): a Polymarket listing that appears mid-weekend doesn't change the book's markets. |
+| 2026-09-29 | Sprint weekends need no new code: the plan takes its stages from the schedule (after FP1, SQ, Sprint, Quali), each with a half-spread (2.5¢ after SQ, 2¢ after the Sprint). Rehearsed on the Dutch GP (round 12). Sessions without positions (practice, sprint qualifying) show on the page ranked by best lap. |
 
