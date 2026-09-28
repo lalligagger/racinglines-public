@@ -1,0 +1,47 @@
+{
+ "drivers": 220,
+ "practice": {
+  "best_def": {
+   "fp1": 0.01978727774,
+   "fp2": 0.01931272287,
+   "fp3": 0.0183654708,
+   "sprint_qual": 0.02161284745
+  },
+  "long_def": {
+   "fp1": 0.01695982081,
+   "fp2": 0.01122397238,
+   "fp3": 0.01116878227,
+   "sprint_qual": null
+  }
+ },
+ "practice_rows": 593,
+ "q_def": {
+  "count": 218.0,
+  "mean": 0.02027915524,
+  "std": 0.01599714497
+ },
+ "r_def": {
+  "count": 209.0,
+  "mean": 0.02249208931,
+  "std": 0.0162041149
+ },
+ "sector_def": {
+  "s1": 0.01912985218,
+  "s2": 0.02278434553,
+  "s3": 0.02336992955
+ },
+ "sectors": 330,
+ "team_keys": [
+  "alpine",
+  "aston_martin",
+  "cadillac",
+  "ferrari",
+  "haas",
+  "mclaren",
+  "mercedes",
+  "rb",
+  "red_bull",
+  "sauber",
+  "williams"
+ ]
+}

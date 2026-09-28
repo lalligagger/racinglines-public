@@ -1,0 +1,42 @@
+{
+ "laps": {
+  "fp1": 465,
+  "fp2": 456,
+  "fp3": 446,
+  "qual": 373,
+  "race": 981
+ },
+ "positions": [
+  "George Russell",
+  "Max Verstappen",
+  "Isack Hadjar",
+  "Charles Leclerc",
+  "Kimi Antonelli"
+ ],
+ "profile": {
+  "lap_s": 104.8175,
+  "pole_gap_p10": 0.02103856583,
+  "qual_rain_share": 0.0,
+  "qual_track_temp": 38.11111111,
+  "race_rain_share": 0.0,
+  "race_track_temp": 43.3577381,
+  "s1_share": 0.3515735401,
+  "s2_share": 0.4054014055,
+  "s3_share": 0.2430250544,
+  "speed_index": 230.5465163,
+  "street": true,
+  "v_fl": 304.0,
+  "v_i1": 207.5,
+  "v_i2": 206.5,
+  "v_st": 319.5,
+  "venue": "baku"
+ },
+ "results": {
+  "fp1": 22,
+  "fp2": 22,
+  "fp3": 22,
+  "qual": 22,
+  "race": 22
+ },
+ "status": "110 results, 2721 laps, profile speed_index=231"
+}

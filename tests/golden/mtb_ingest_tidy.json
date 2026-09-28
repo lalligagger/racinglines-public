@@ -1,0 +1,58 @@
+{
+ "category": {
+  "ME": 1572,
+  "MJ": 818
+ },
+ "columns": [
+  "athlete_id",
+  "bib",
+  "category",
+  "cum_time_s",
+  "discipline",
+  "event_date",
+  "event_id",
+  "event_name",
+  "nation",
+  "race_id",
+  "rank_at_split",
+  "result_id",
+  "rider_id",
+  "rider_name",
+  "round",
+  "sector_id",
+  "series_round",
+  "source_key",
+  "split_time_s",
+  "start_order",
+  "status",
+  "team",
+  "track_condition",
+  "venue"
+ ],
+ "cum_time_s": 386127.094,
+ "ingest": [
+  "338 results, 1234 splits",
+  "172 results, 646 splits"
+ ],
+ "round": {
+  "final": 250,
+  "practice": 920,
+  "qual": 343,
+  "qual1": 518,
+  "qual2": 359
+ },
+ "rows": 2390,
+ "sector_id": {
+  "FINISH": 510,
+  "S1": 475,
+  "S2": 471,
+  "S3": 469,
+  "S4": 465
+ },
+ "status": {
+  "DNF": 14,
+  "DNS": 21,
+  "DSQ": 12,
+  "OK": 463
+ }
+}
