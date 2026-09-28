@@ -10,14 +10,14 @@ Two places keep it:
   change nothing aren't logged. The table travels with database dumps (the bucket's full dump).
 - **This page**, for the major updates: the story, the numbers, and where the backup is.
 
-Before a major update, keep what it replaces: a database dump in `data/archive/db/backups/` and the old raw
+Before a major update, keep what it replaces: a database dump in `data/backups/db/` and the old raw
 files in `data/archive/<sport>/` (both git-ignored; `data/raw` is the record, so it isn't edited in place
-without a copy).
+without a copy). Not `data/archive/db/`: that folder is tracked in git (the snapshot).
 
 ## 2026-09-28 · Downhill: athlete merges and PDF backfill
 
 Right after the UCI re-ingest below. Backup first:
-`data/archive/db/backups/racinglines-2026-09-28-before-merges-and-pdf-backfill.dump`.
+`data/backups/db/racinglines-2026-09-28-before-merges-and-pdf-backfill.dump`.
 
 **Merges.** 53 of the 58 same-UCI-ID pairs merged with `db merge-athletes` (each logged in `data_changes`).
 The duplicates had no results left, so this moved 53 name identifiers, 12 `race_predictions` rows and 5
@@ -72,7 +72,7 @@ in `data_changes`).
 - Schema: `alembic upgrade head` ran first (`live_events`, `data_changes`). A checkout older than PR #8 won't
   recognise the database's revision; pull `live-event` (with PR #8) before `db init` there.
 
-**Undo.** `data/archive/db/backups/racinglines-2026-09-28-before-uci-reingest.dump` (restore with
+**Undo.** `data/backups/db/racinglines-2026-09-28-before-uci-reingest.dump` (restore with
 `pg_restore --clean`), and the old files in `data/archive/mtb_dh/chronorace-2026-09-28-before-uci/`.
 
 ## Earlier
