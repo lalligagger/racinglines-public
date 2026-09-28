@@ -48,8 +48,11 @@ QUAL_POINTS_ROUND = dict(SCHEMA["points"]["qual_round"])
 DEFAULT_FORMAT = dict(SCHEMA["rounds"]["default_format"])
 RACE_ROUNDS = tuple(SCHEMA["rounds"]["race"])
 RUN_WEIGHTS = dict(SCHEMA["rounds"]["run_weights"])
-CATEGORY_WEIGHTS = {"ME": 1.0, "MJ": 0.5}   # training weight per category (others: 0.5)
-HALF_LIFE_DAYS = 120.0
+# Defaults from the 43-round tuning sweep (docs/model.md, Calibration; owner's OK 2026-09-28).
+# Before: MJ 0.5, half-life 120, prior_n 1.5.
+CATEGORY_WEIGHTS = {"ME": 1.0, "MJ": 0.25}  # training weight per category (others: 0.5)
+HALF_LIFE_DAYS = 240.0
+PRIOR_N = 0.5                 # shrinkage of rider pace toward the field median (in runs' weight)
 INCIDENT_THRESHOLD = 0.04     # finished >4% slower than expected = incident
 EPS_DF = None                 # run noise eps: None = normal; a number = Student-t with these degrees of
                               # freedom, scaled to the same sd (heavier tails; docs/todo.md, Model)
@@ -119,7 +122,7 @@ def event_starters(raw, event_id):
 
 
 def fit_season_model(raw, category="ME", half_life_days=HALF_LIFE_DAYS, category_weights=None,
-                     prior_n=1.5, incident_prior_n=8.0, n_iter=30):
+                     prior_n=PRIOR_N, incident_prior_n=8.0, n_iter=30):
     """Fit rider pace / noise / incident model on every row of `raw` (any
     season or category). Pooled noise and incident parameters come from
     `category` only, since that's the field being simulated."""

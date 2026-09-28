@@ -91,8 +91,8 @@ Predict and backtest one target season.
 racinglines mtb_dh forecast (--db [URL] | --data splits.csv) [--competition uci_dhi_wc] [--save [--scenario LABEL]]
        [--out-dir data/runs/mtb_dh/forecast]
        [--season YEAR] [--category ME]
-       [--train-scope {all,season}] [--half-life-days 120] [--junior-weight 0.5]
-       [--prior-n 1.5] [--eps-df DF]
+       [--train-scope {all,season}] [--half-life-days 240] [--junior-weight 0.25]
+       [--prior-n 0.5] [--eps-df DF]
        [--walk-forward] [--backtest 2] [--remaining 2]
        [--sims 10000] [--seed 42] [--top 15]
 ```
@@ -108,9 +108,9 @@ racinglines mtb_dh forecast (--db [URL] | --data splits.csv) [--competition uci_
 | `--season` | latest in data | Target season. |
 | `--category` | `ME` | Target category. |
 | `--train-scope` | `all` | `all` = every season and category in `--data`; `season` = target only. |
-| `--half-life-days` | 120 | Recency half-life for training runs. |
-| `--junior-weight` | 0.5 | Training weight of `MJ` runs relative to elite. |
-| `--prior-n` | 1.5 | Shrinkage of each rider's pace toward the field. 0.5 is better calibrated for making the Final ([Calibration](model.md#calibration)); not the default yet. |
+| `--half-life-days` | 240 | Recency half-life for training runs (120 before 2026-09-28). |
+| `--junior-weight` | 0.25 | Training weight of `MJ` runs relative to elite (0.5 before 2026-09-28). |
+| `--prior-n` | 0.5 | Shrinkage of each rider's pace toward the field (1.5 before 2026-09-28; [Calibration](model.md#calibration)). |
 | `--eps-df` | normal | Student-t run noise with these degrees of freedom (above 2), same sd. Tried at 4 and 6: no better. |
 | `--walk-forward` | off | Predict and score every target round from everything before it. |
 | `--backtest N` | 2 | Hold out the last N raced rounds; score them and the standings after them. `0` skips. |
@@ -150,8 +150,8 @@ Walk-forward plus a standings holdout, for several seasons.
 racinglines mtb_dh backtest (--db [URL] | --data splits.csv) [--competition uci_dhi_wc] [--save]
        [--out-dir data/runs/mtb_dh/backtests]
        [--seasons 2021 2022 ...] [--category ME]
-       [--train-scope all] [--half-life-days 120] [--junior-weight 0.5]
-       [--prior-n 1.5] [--eps-df DF] [--reliability]
+       [--train-scope all] [--half-life-days 240] [--junior-weight 0.25]
+       [--prior-n 0.5] [--eps-df DF] [--reliability]
        [--sims 4000] [--seed 42]
 ```
 

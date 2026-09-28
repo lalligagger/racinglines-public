@@ -143,10 +143,10 @@ standings, champion odds, `spearman_points`) is approximate.
       all 43 rounds. Win and podium are close; top 10 and make-Final are too flat. Cause: too much
       shrinkage (`prior_n`). A lower `INCIDENT_THRESHOLD` and heavier-tailed ε (`--eps-df`) don't
       help ([Calibration](model.md#calibration)).
-- [ ] **New downhill defaults** (owner's OK: they change every downhill price): `prior_n` 0.5,
-      half-life 240 days, junior weight 0.25. Better in every market; picked in-sample, so
-      confirm on 2026's next rounds.
-      Still to try: per-round-type incident rates.
+- [x] **New downhill defaults** (owner's OK, 2026-09-28): `prior_n` 0.5, half-life 240 days,
+      junior weight 0.25. Better in every market on the 43 rounds; picked in-sample.
+- [ ] Check the new downhill defaults on 2026's next rounds (out of sample).
+      Per-round-type incident rates tried too: no gain.
 - [x] A tuning sweep over all 43 rounds (2026-09-28, cloud build-out): `prior_n` 0.5, half-life
       240 days, junior weight 0.25 is better in every market ([Calibration](model.md#calibration)).
       Practice weight: flat between 0 and 1, 0.5 kept.

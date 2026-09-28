@@ -337,8 +337,8 @@ def main(argv=None):
     season_p.add_argument("--walk-forward", action="store_true",
                           help="Also predict every target round from everything before it and score it.")
     season_p.add_argument("--prior-n", type=float, default=None,
-                          help="Shrinkage of rider pace toward the field (default 1.5; 0.5 is better calibrated "
-                               "for making the Final, see docs/model.md).")
+                          help="Shrinkage of rider pace toward the field (default 0.5; 1.5 before the "
+                               "2026-09-28 tuning, see docs/model.md).")
     season_p.add_argument("--eps-df", type=float, default=None,
                           help="Student-t run noise with these degrees of freedom (default: normal).")
     season_p.add_argument("--sims", type=int, default=10000)
@@ -357,8 +357,8 @@ def main(argv=None):
     bt_p.add_argument("--half-life-days", type=float, default=HALF_LIFE_DAYS)
     bt_p.add_argument("--junior-weight", type=float, default=CATEGORY_WEIGHTS["MJ"])
     bt_p.add_argument("--prior-n", type=float, default=None,
-                          help="Shrinkage of rider pace toward the field (default 1.5; 0.5 is better calibrated "
-                               "for making the Final, see docs/model.md).")
+                          help="Shrinkage of rider pace toward the field (default 0.5; 1.5 before the "
+                               "2026-09-28 tuning, see docs/model.md).")
     bt_p.add_argument("--eps-df", type=float, default=None,
                           help="Student-t run noise with these degrees of freedom (default: normal).")
     bt_p.add_argument("--sims", type=int, default=4000)
