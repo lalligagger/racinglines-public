@@ -47,7 +47,8 @@ Both model families already simulate the same thing: a matrix of finishing ranks
 |---|---|---|---|
 | **Outcome simulations** | `OutcomeSims`: entrants, `(n_sims × n)` classification ranks, finished flags, earlier rounds' ranks, rounds reached, points, groups | `racinglines/models/outcomes.py` | done: adapters for `position_sim` and `timed_runs` |
 | **Market kinds** | One definition per kind gives its fair value from `OutcomeSims` **and** its settlement from the official result | `racinglines/markets/kinds.py` | done: win, podium, top 10, pole, makes the Final, head-to-head, top constructor; `private_book.outcome_for` settles through it |
-| **Pricing model** | `history(data, settings)`, `price(hist, event, cutoff, settings, rng) -> OutcomeSims`, the model's own settings group | per family | step 2 |
+| **Pricing model** | `load`, `events(data, settings, seasons)` (each with its cutoff), `history(data, settings)`, `price(hist, event, settings, rng) -> OutcomeSims`, `results(data, event)` for settlement, and the model's own `Settings` | `racinglines/models/race_model.py` | done: `TimedRuns` (downhill) and `PositionSim` (F1, pre-race) |
+| **Walk-forward engine** | Prices every event from data before it, settles every kind the simulations support, scores them; model-only until a venue is given | `racinglines/core/walk_forward.py` | done: `racinglines mtb_dh walk-forward` |
 | **Stages** | When new information arrives: a `[stages]` table per sport (schedule source, data lag, early closes) turned into `[(label, cutoff)]` | `sports/<code>.toml` | step 5 |
 | **Venues** | `markets(event)`, `view(market, t)` (public data up to t only), costs, fill model, resolution. Polymarket, a Kalshi mock, our private book with the simulated crowd, and model-only (no prices: calibration only) | `racinglines/markets/` | step 4 |
 | **Search** | One queue for every sport, with the held-out rule, seed replicates, confirmation and stable ids built in | `racinglines/pipelines/search*.py` | report done; sport-aware queue step 3 |
@@ -55,6 +56,23 @@ Both model families already simulate the same thing: a matrix of finishing ranks
 **Settings.** Shared groups (timing, taker, maker, markets, guards) plus the model's own group. Per-kind
 overrides (e.g. `min_edge_by_kind`) generalise `min_edge_h2h`. `settings_key` / `model_key` keep today's
 hashing (settings at an unset default are left out), so saved keys never change.
+
+### The walk-forward engine
+
+`racinglines mtb_dh walk-forward --db [--seasons 2025 2026] [--seed N] [--save]` runs a sport's pricing
+model through `racinglines/core/walk_forward.py`: every completed event is priced from the runs before it
+with its real start list and format, every market kind is settled from the official result, and the
+fair values are scored (Brier, log loss, ECE, reliability bins) per kind and per season. The model's
+settings (`racinglines/models/timed_runs/settings.py`: category, sims, half-life, pace shrinkage, junior
+weight, training scope, t noise, seed) use the same schema, keys and flags as the F1 sweep's, so the
+search queue treats a downhill job like an F1 one. `--save` stores a `walk_forward` model run whose
+per-event scores (`<kind>_score` = −1000 × log loss, higher is better) are the search report's curves.
+
+Check: over the 43 rounds of 2021–2026 the engine's per-rider fair values and outcomes equal
+`walk_forward_season`'s exactly (5,171 riders × win, podium, top 10, makes the Final), and the tuning
+table in [the downhill model](model.md#calibration) comes out the same through it (makes the Final
+−0.035 ± 0.006, 6 of 6 seasons; top 10 −0.006 ± 0.006, 5 of 6; podium −0.003 ± 0.002, 6 of 6; win
+−0.001 ± 0.001, 3 of 6).
 
 ### Calibration in every sweep
 
@@ -99,7 +117,7 @@ noise = { taker = 150, maker = 350 }   # used where the search ran no seed repli
 | Step | What | Check |
 |---|---|---|
 | 1 ✓ | Market-kind catalogue; calibration in the F1 sweep; the search report | F1 sweeps byte-identical; the params-4h A and C numbers reproduced |
-| 2 | `PricingModel` for both families; the downhill walk-forward through the engine in model-only mode | Downhill tuning numbers reproduced |
+| 2 ✓ | `PricingModel` for both families; the downhill walk-forward through the engine in model-only mode | Downhill tuning numbers reproduced |
 | 3 | Sport-aware search queue (downhill jobs), `replicates = N`, stable candidate ids in the Lab | A mixed F1 + downhill queue runs end to end |
 | 4 | `Venue` interface: Polymarket behind it, Kalshi mock, private-book venue with the simulated crowd | F1 sweep identical; the Whistler book replays as a backtest |
 | 5 | Stages from the schema; per-kind strategy overrides; settings split | Saved F1 `settings_key`s unchanged |

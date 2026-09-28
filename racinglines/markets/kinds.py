@@ -117,8 +117,13 @@ def settle(kind, athlete_id, params, res, group_key=None):
             return None
         # classification order (retirements are classified behind finishers by laps completed)
         return bool(by.loc[athlete_id, "position"] < by.loc[b, "position"])
+    if k.payoff == "reached":
+        col = f"reached_{k.stage}"          # results that record the round (e.g. timed_runs: reached_final)
+        if col not in res:
+            return None
+        return bool(by.loc[athlete_id, col]) if athlete_id in by.index else False
     if k.payoff == "group_top":
-        keys = res["team_id"].map(group_key) if group_key else res["team_id"]
+        keys =res["team_id"].map(group_key) if group_key else res["team_id"]
         pts = res.assign(tk=keys).groupby("tk")["points"].sum()
         return bool(pts.idxmax() == (params or {}).get("team")) if len(pts) else None
     return None

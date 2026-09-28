@@ -7,7 +7,7 @@ racinglines f1      fetch | ingest | forecast | backtest | compare | matrix | di
                     sweep | season-strategy | season-checkpoints | replay | search | search-import
                     profiles | signals | demo-history
                     pm-sync | pm-history | pm-trades | pm-record | pm-archive | pm-links-export | pm-links-import
-racinglines mtb_dh  download | parse | ingest | forecast | backtest
+racinglines mtb_dh  download | parse | ingest | forecast | backtest | walk-forward
 racinglines markets sync | history | trades | record | archive      (= racinglines f1 pm-*)
 racinglines db      init | seed | stats | export | snapshot-export | snapshot-import | merge-athletes
 racinglines web
@@ -178,6 +178,22 @@ fewer than 3 events that have data are skipped. Files written:
 `backtest_events.csv` (one row per predicted round) and `backtest_seasons.csv` (one
 row per season). The printed per-season table includes the actual and predicted
 champion.
+
+## racinglines mtb_dh walk-forward
+
+Every completed event priced through the shared engine, model-only
+([Backtest core](backtest-core.md#the-walk-forward-engine)): calibration per market kind (win, podium,
+top 10, fastest qualifier, makes the Final; `--kinds race_h2h` adds head-to-heads), overall and per season.
+
+```
+racinglines mtb_dh walk-forward (--db [URL] | --data splits.csv) [--seasons 2025 2026] [--kinds K1,K2]
+       [--category ME] [--sims 5000] [--half-life-days 240] [--prior-n 0.5] [--junior-weight 0.25]
+       [--train-scope all] [--eps-df DF] [--seed N] [--save] [--out-dir data/runs/mtb_dh/walk_forward]
+```
+
+Writes `walk_forward_events.csv`, `walk_forward_calibration.csv` and `walk_forward_reliability.csv`.
+With `--save`, stores a `walk_forward` model run (settings, per-event scores, calibration), which is
+what a downhill search job runs.
 
 ## racinglines mtb_dh points
 
