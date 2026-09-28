@@ -179,6 +179,18 @@ fewer than 3 events that have data are skipped. Files written:
 row per season). The printed per-season table includes the actual and predicted
 champion.
 
+## racinglines backtest walk-forward
+
+The backtest core for any sport with a pricing model ([Backtest core](backtest-core.md#adding-a-sport)):
+every event priced from data before it, model-only, calibration per market kind. The sport's settings are
+its flags (`racinglines backtest walk-forward SPORT -h` lists them). What a search job for a sport other
+than F1 runs.
+
+```
+racinglines backtest walk-forward SPORT [--db URL] [--seasons 2025 2026] [--kinds K1,K2] [--save]
+       [--out-dir data/runs/<sport>/walk_forward] [the sport's settings, e.g. --seed N --sims N]
+```
+
 ## racinglines mtb_dh walk-forward
 
 Every completed event priced through the shared engine, model-only

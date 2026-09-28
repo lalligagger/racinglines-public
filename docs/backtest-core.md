@@ -62,7 +62,8 @@ out), so saved keys never change: every saved sweep's and stage run's key recomp
 
 ### The walk-forward engine
 
-`racinglines mtb_dh walk-forward --db [--seasons 2025 2026] [--seed N] [--save]` runs a sport's pricing
+`racinglines backtest walk-forward mtb_dh [--seasons 2025 2026] [--seed N] [--save]` (or
+`racinglines mtb_dh walk-forward --db`, which also reads a tidy CSV with `--data`) runs a sport's pricing
 model through `racinglines/core/walk_forward.py`: every completed event is priced from the runs before it
 with its real start list and format, every market kind is settled from the official result, and the
 fair values are scored (Brier, log loss, ECE, reliability bins) per kind and per season. The model's
@@ -96,6 +97,24 @@ Check: full 2025 and 2026 F1 sweeps are identical before and after the change (w
 synthetic downhill final recorded by `live_dh.update` replays to the same book (every market's
 inventory and cash, every taker's budget, the late window), and so does an F1-style run folder. The
 real Whistler book is checked by `tests/test_venue_replay.py` where the data bucket's run folder is present.
+
+### Adding a sport
+
+A sport joins the backtest core with two things and no change to the engine, the market kinds, the
+search or the report:
+
+1. **`sports/<code>.toml`**: its schema, with `[sport] pricing_model = "module:Class"` naming its
+   wrapper, its `[competition]` (where saved runs are filed) and, when it trades through a weekend, its
+   `[stages]`.
+2. **The wrapper**: a class with the pricing-model contract (`racinglines/models/race_model.py`): `load`
+   (its data source), `seasons`, `events` (each with its cutoff), `history`, `price` → `OutcomeSims`,
+   `results` (for settlement), `data_through`, and its own `Settings` (the sweep settings schema with its
+   model group; seed and sims are expected).
+
+Then `racinglines backtest walk-forward <code> [--seasons ...] [--save] [its settings' flags]` runs it,
+a queue job with `sport = "<code>"` searches it (with `replicates`), and `search-report` labels it.
+`tests/toy_backtest.py` is a complete example: a synthetic running race (data source and a form model in
+one module) that `tests/test_backtest_toy.py` takes through all of that, including the command line.
 
 ### Calibration in every sweep
 
@@ -164,6 +183,6 @@ holdout = [2025]
 | 3 ✓ | Sport-aware search queue (downhill jobs), `replicates = N`, stable candidate ids in the Lab | A mixed F1 + downhill queue runs end to end |
 | 4 ✓ | `Venue` interface: Polymarket behind it, Kalshi mock, private-book venue with the simulated crowd | F1 sweep identical; the Whistler book replays as a backtest (synthetic finals here; Whistler where the bucket is) |
 | 5 ✓ | Stages from the schema; per-kind strategy overrides; settings split | Saved F1 `settings_key`s unchanged (every saved sweep and 1,245 stage runs here); full F1 sweeps identical |
-| 6 | "Adding a sport": schema + data source + model wrapper, nothing else | A synthetic third sport passes the suite |
+| 6 ✓ | "Adding a sport": schema + data source + model wrapper, nothing else | A synthetic third sport passes the suite (`tests/test_backtest_toy.py`) |
 
 The live engine keeps working throughout; once step 4 lands it can use the same venues and kinds.

@@ -19,7 +19,10 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from racinglines.core import stages as STG
 from racinglines.models import outcomes as O
+
+STAGE = STG.spec("mtb_dh")["pre_label"]          # downhill events are priced once, before they start
 
 
 @dataclass(frozen=True)
@@ -36,6 +39,7 @@ class TimedRuns:
     its actual start list and format, as walk_forward_season does."""
 
     sport = "mtb_dh"
+    name = "timed_runs"                  # model_runs.model
 
     from racinglines.models.timed_runs.settings import DHSettings as Settings
 
@@ -47,6 +51,10 @@ class TimedRuns:
             from racinglines.db.queries import load_tidy
             data = load_tidy(get_engine(engine_url), competition=competition, with_splits=False)
         return data[data["round"].isin(RUN_WEIGHTS)]
+
+    @staticmethod
+    def data_through(data):
+        return data["event_date"].max()
 
     def seasons(self, data, settings, min_events=3):
         """Seasons of the category with min_events or more completed events (as `mtb_dh backtest`)."""
@@ -72,7 +80,7 @@ class TimedRuns:
                 cutoff = _event_date(target, e)
                 out.append(Event(id=e, season=int(season), cutoff=cutoff,
                                  name=str(target.loc[target["event_id"] == e, "venue"].iloc[0]) if "venue" in target else str(e),
-                                 info=dict(format=fmt, target=target)))
+                                 info=dict(format=fmt, target=target, stage=STAGE)))
         return out
 
     def history(self, data, settings):
@@ -118,6 +126,7 @@ class PositionSim:
     same price_race; stages from the schema are step 5 of docs/backtest-core.md."""
 
     sport = "f1"
+    name = "f1_sector_sim"
 
     from racinglines.pipelines.sweep_settings import Settings
 
@@ -127,6 +136,10 @@ class PositionSim:
             from racinglines.db.config import get_engine
             data = run.Measurements.load(get_engine(engine_url))
         return data
+
+    @staticmethod
+    def data_through(data):
+        return data.drivers["r_ts"].max()
 
     def seasons(self, data, settings):
         return sorted(int(y) for y in data.drivers["year"].dropna().unique())
@@ -165,7 +178,23 @@ class PositionSim:
 MODELS = {"mtb_dh": TimedRuns, "f1": PositionSim}
 
 
-def get(sport):
+def model_class(sport):
+    """The sport's pricing model: [sport] pricing_model in sports/<code>.toml ("module:Class"), so a new
+    sport needs its schema and its wrapper and nothing here; the built-in ones otherwise."""
+    from importlib import import_module
+
+    from racinglines import sports
+    try:
+        ref = sports.load(sport)["sport"].get("pricing_model")
+    except FileNotFoundError:
+        ref = None
+    if ref:
+        mod, _, cls = ref.partition(":")
+        return getattr(import_module(mod), cls)
     if sport not in MODELS:
-        raise ValueError(f"no pricing model for sport {sport!r}; one of {sorted(MODELS)}")
-    return MODELS[sport]()
+        raise ValueError(f"no pricing model for sport {sport!r}: set [sport] pricing_model in sports/{sport}.toml")
+    return MODELS[sport]
+
+
+def get(sport):
+    return model_class(sport)()

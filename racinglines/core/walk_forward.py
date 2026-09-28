@@ -76,3 +76,15 @@ def run(model, data, settings, seasons=None, kinds=None, echo=print):
     cal_season, _ = CAL.table(scored, ("fair",), by=("kind", "season"))
     return dict(events=pd.DataFrame(events), rows=rows, reliability=rel,
                 calibration=pd.concat([cal_all.assign(season="all"), cal_season], ignore_index=True))
+
+
+def saved_metrics(out):
+    """What a saved walk_forward run keeps (model_runs.metrics): the per-event rows, the calibration, and
+    `weekends`: per event, each kind's score = -1000 x log loss (higher is better), the search report's curves."""
+    from racinglines.db.queries import records
+    ev = out["events"]
+    kinds = sorted({c[:-len("_logloss")] for c in ev.columns if c.endswith("_logloss")})
+    weekends = [dict(round=i + 1, event=f"{r['season']} {r['event']}", season=r["season"],
+                     **{f"{k}_score": -1000 * r[f"{k}_logloss"] for k in kinds if pd.notna(r.get(f"{k}_logloss"))})
+                for i, r in ev.reset_index(drop=True).iterrows()]
+    return dict(events=records(ev), weekends=weekends, calibration=records(out["calibration"]))

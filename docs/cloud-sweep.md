@@ -39,8 +39,8 @@ checks it).
   each saved as a normal sweep run. It **re-reads the queue file whenever a slot frees**, so editing
   pending `[[job]]` entries steers it. It stops starting jobs after `hours`. After every finished job
   it rewrites `data/runs/search/<name>/leaderboard.md` and `results.json`. A queue can mix sports:
-  a job with `sport = "mtb_dh"` runs a downhill walk-forward (`racinglines mtb_dh walk-forward`, model
-  only, scored per market kind) with the downhill model's settings, and gets its own default baseline
+  a job with `sport = "mtb_dh"` (or any sport with a pricing model) runs a walk-forward (`racinglines
+  backtest walk-forward <sport>`, model only, scored per market kind) with the downhill model's settings, and gets its own default baseline
   per season. `replicates = N` on any job runs it (and its season's baseline) at N seeds.
 - **`racinglines f1 search-import <results.json>`** loads a finished search's sweep runs into your
   local database (marked `params.source`), so they show up in the Lab's Edge Finder and Model variants.

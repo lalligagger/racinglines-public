@@ -166,46 +166,15 @@ def cmd_backtest(args):
 
 def cmd_walk_forward(args):
     """Every event priced by the pricing model through the shared engine (racinglines/core/walk_forward.py),
-    model-only: calibration per market kind. The same run the search queue starts for a downhill job."""
-    from racinglines.core import walk_forward as WF
+    model-only: calibration per market kind. `racinglines backtest walk-forward mtb_dh`, with --data too."""
+    from racinglines.cli.backtest import run_walk_forward
     from racinglines.models import race_model as RM
     from racinglines.pipelines import sweep_settings as SS
     _check_save(args)
     model = RM.get("mtb_dh")
-    st = SS.from_args(args, model.Settings)
-    data = model.load(data=load_splits(args))
-    seasons = args.seasons or model.seasons(data, st)
-    print(f"Walk-forward {', '.join(map(str, seasons))} · {st['category']} · {st.label()} (settings {st.key})")
-    out = WF.run(model, data, st, seasons=seasons, kinds=args.kinds.split(",") if args.kinds else None,
-                 echo=lambda m: print(m, flush=True))
-    out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    for name in ("events", "calibration", "reliability"):
-        out[name].to_csv(out_dir / f"walk_forward_{name}.csv", index=False)
-    pd.set_option("display.width", 250)
-    cal = out["calibration"]
-    print("\n=== Calibration of the model's fair values (all seasons) ===")
-    print(cal[cal["season"] == "all"].drop(columns=["season", "source"]).to_string(index=False, float_format="{:.4f}".format))
-    print(f"\nCSVs -> {out_dir}/")
-    if args.save:
-        from racinglines.db.config import get_session
-        from racinglines.db.queries import records, save_model_run
-        ev = out["events"]
-        kinds = sorted({c[:-len("_logloss")] for c in ev.columns if c.endswith("_logloss")})
-        # per event, per kind: score = -1000 x log loss (higher is better), the search report's curves
-        weekends = [dict(round=i + 1, event=f"{r['season']} {r['event']}", season=r["season"],
-                         **{f"{k}_score": -1000 * r[f"{k}_logloss"] for k in kinds if pd.notna(r.get(f"{k}_logloss"))})
-                    for i, r in ev.reset_index(drop=True).iterrows()]
-        params = dict(settings=st.to_json(), settings_key=st.key, model_key=st.model_key, label=st.label(),
-                      seasons=list(map(int, seasons)), year=int(seasons[-1]) if len(seasons) == 1 else None,
-                      sims=st["sims"], seed=st.rng_seed)
-        with get_session(args.db or None) as session:
-            run_id = save_model_run(session, competition=args.competition,
-                                    season=seasons[-1] if len(seasons) == 1 else None, category=st["category"],
-                                    model="timed_runs", kind="walk_forward", data_through=data["event_date"].max(),
-                                    params=params, metrics=dict(events=records(ev), weekends=weekends,
-                                                                calibration=records(cal)))
-        print(f"Saved walk-forward run {run_id}.")
+    run_walk_forward(model, model.load(data=load_splits(args)), SS.from_args(args, model.Settings),
+                     seasons=args.seasons, kinds=args.kinds.split(",") if args.kinds else None, out_dir=args.out_dir,
+                     save=args.save, engine_url=args.db or None)
 
 
 def cmd_season(args):

@@ -75,11 +75,23 @@ def settings_class(sport="f1"):
     if sport == "f1":
         return SS.Settings
     from racinglines.models import race_model as RM
-    return RM.MODELS[sport].Settings if sport in RM.MODELS else _unknown_sport(sport)
+    try:
+        return RM.model_class(sport).Settings
+    except ValueError:
+        _unknown_sport(sport)
 
 
 def _unknown_sport(sport):
-    raise ValueError(f"unknown sport {sport!r}; one of {sorted(KINDS)}")
+    raise ValueError(f"unknown sport {sport!r}: no pricing model (sports/<code>.toml [sport] pricing_model)")
+
+
+def kinds_for(sport):
+    """Job kinds a sport's queue entries may have: F1's sweeps and season runs; any other sport with a pricing
+    model, the model-only walk-forward."""
+    if sport in KINDS:
+        return KINDS[sport]
+    settings_class(sport)                      # raises for a sport without a pricing model
+    return ("walk_forward",)
 
 
 def _settings(j):
@@ -92,7 +104,7 @@ def _settings(j):
 
 def job_id(j):
     sport = j.get("sport", "f1")
-    kind = j.get("kind", KINDS.get(sport, ("sweep",))[0])
+    kind = j.get("kind", KINDS.get(sport, ("walk_forward",))[0])
     key = dict(kind=kind, year=j.get("year"), rounds=j.get("rounds"))
     if sport != "f1":                                 # F1 ids stay as they were
         key["sport"] = sport
@@ -118,12 +130,11 @@ def load(path):
     for j0 in cfg.get("job", []):
         j0 = dict(j0)
         sport = j0.get("sport", "f1")
-        if sport not in KINDS:
-            _unknown_sport(sport)
-        j0.setdefault("kind", KINDS[sport][0])
+        allowed = kinds_for(sport)
+        j0.setdefault("kind", allowed[0])
         j0.setdefault("year", 2026)
-        if j0["kind"] not in KINDS[sport]:
-            raise ValueError(f"unknown job kind {j0['kind']!r} for {sport}; one of {KINDS[sport]}")
+        if j0["kind"] not in allowed:
+            raise ValueError(f"unknown job kind {j0['kind']!r} for {sport}; one of {allowed}")
         n = int(j0.pop("replicates", 1) or 1)
         if n > 1:
             key = (sport, j0["year"], j0.get("rounds"))
@@ -169,7 +180,7 @@ def load(path):
 def argv(j):
     if j.get("sport", "f1") != "f1":
         st = settings_class(j["sport"]).from_dict(j["settings"])
-        return [sys.executable, "-m", "racinglines", j["sport"], "walk-forward", "--db", "--seasons", str(j["year"]),
+        return [sys.executable, "-m", "racinglines", "backtest", "walk-forward", j["sport"], "--seasons", str(j["year"]),
                 "--save"] + st.argv()
     py = [sys.executable, "-m", "racinglines", "f1"]
     if j["kind"] == "checkpoints":
