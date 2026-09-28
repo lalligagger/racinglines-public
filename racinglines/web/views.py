@@ -475,8 +475,8 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
                (SELECT count(*) FROM strategy_signals s WHERE s.user_id = p.user_id AND s.market_key = p.market_key
                   AND (s.action = 'fill' OR (s.action IN ('buy', 'sell') AND coalesce(s.detail->>'followed', 'true') = 'true'))) AS trades
         FROM paper_positions p LEFT JOIN events e ON e.source_key = p.event_key AND e.source = 'f1timing'
-        LEFT JOIN races ra ON ra.event_id = e.id WHERE p.user_id = :u ORDER BY p.event_key DESC, p.kind, p.subject""",
-        u=user["id"]))
+        LEFT JOIN races ra ON ra.event_id = e.id WHERE p.user_id = :u AND (p.venue NOT LIKE 'kalshi%' OR :k)
+        ORDER BY p.event_key DESC, p.kind, p.subject""", u=user["id"], k=V.KALSHI_VENUE))
     pos = [p for p in pos if p["trades"] or p["venue"] == "private"]      # markets the account actually traded
     for p in pos:
         if p["venue"] == "private" and not p["event_name"]:
@@ -601,9 +601,10 @@ def signals_page(request: Request, user: str = "", event: str = "", c=Depends(co
     ev = event or (record[-1]["event_key"] if record else None)
     cur = next((r for r in record if r["event_key"] == ev), None)
     sig = data.q(c, """SELECT * FROM strategy_signals WHERE user_id = :u AND event_key = :e
+                       AND coalesce(detail->>'venue', 'polymarket') NOT LIKE 'kalshi%'
                        ORDER BY signal_ts DESC NULLS LAST, id DESC""", u=uid, e=ev) if ev else pd.DataFrame()
-    pos = data.q(c, "SELECT * FROM paper_positions WHERE user_id = :u AND event_key = :e ORDER BY kind, subject",
-                 u=uid, e=ev) if ev else pd.DataFrame()
+    pos = data.q(c, """SELECT * FROM paper_positions WHERE user_id = :u AND event_key = :e AND venue NOT LIKE 'kalshi%'
+                       ORDER BY kind, subject""", u=uid, e=ev) if ev else pd.DataFrame()
     stages = []
     for lab, g in (sig.groupby("stage", sort=False) if len(sig) else []):
         items = rows(g)

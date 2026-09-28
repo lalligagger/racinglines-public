@@ -320,10 +320,13 @@ def price_stages_now(meas, hist, w, st, engine, engine_url, now, echo=print):
 # One profile through the weekend
 # ---------------------------------------------------------------------------
 
-def compute(engine, engine_url, profile, now=None, event="next", live=True, fetch=True, echo=print, cache=None):
+def compute(engine, engine_url, profile, now=None, event="next", live=True, fetch=True, echo=print, cache=None,
+            venue="polymarket"):
     """Signals and positions of one profile at `now` (naive UTC; default the current time).
     live=False is a replay: markets are read at each stage's cutoff, exactly like the sweep.
     cache: a dict reused across calls (the loaded measurements and each model's training history).
+    venue: the exchange a maker quotes ("kalshi": Kalshi's recorded tape, with its maker fee; "kalshi_sim": Kalshi's
+    prices with a synthetic taker crowd fit to its tape, markets/synthetic_takers.py; replays only).
     -> dict(event, stages, signals, positions, note)."""
     from racinglines.models.position_sim import pricing as run
     st = SS.Settings.from_dict(profile["settings"], strict=False)
@@ -355,6 +358,8 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
         return dict(base, note=f"{w['name']}: no stage priced yet")
     runs = [(lab, cu, rid) for lab, cu, rid, _ in stages]
     strategy = profile["strategy"]
+    if venue != "polymarket" and (live or strategy not in WS.MAKERS):
+        raise ValueError(f"venue {venue!r}: only maker replays (live=False) read another exchange")
     with engine.connect() as c:
         base["race_id"] = WS._race_id(c, w["event_key"])
         if strategy in WS.TAKER_MODES:
@@ -367,16 +372,28 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
                                stages=None if st["taker_stages"] == SS.STAGES else st["taker_stages"], mode=strategy)
             base["signals"], base["positions"] = taker_signals(markets, p)
         elif strategy in WS.MAKERS:
-            base.update(_maker(c, w, runs, st, strategy, now, live))
+            base.update(_maker(c, w, runs, st, strategy, now, live, venue=venue))
         else:
             raise ValueError(f"unknown strategy {strategy!r}")
     return base
 
 
-def _maker(c, w, runs, st, strategy, now, live):
+_CROWD_FIT = {}        # season -> the synthetic crowd's calibration (venue "kalshi_sim"), fit once per process
+
+
+def _maker(c, w, runs, st, strategy, now, live, venue="polymarket"):
     from racinglines.markets.strategies import maker_replay as R
     sessions = None if not live else [(SESSION_ROUND.get(k, k), t) for k, t in w["sessions"]]
-    ev = R.load_event(c, [r for _, _, r in runs], sessions=sessions, books=st["fill"] == "queue")
+    ev = R.load_event(c, [r for _, _, r in runs], sessions=sessions, books=st["fill"] == "queue",
+                      **({} if venue == "polymarket" else dict(exchange="kalshi")))
+    if venue == "kalshi_sim":
+        from racinglines.markets import synthetic_takers as ST
+        year = int(w["event_key"].split("-")[0])
+        if year not in _CROWD_FIT:
+            _CROWD_FIT[year] = ST.fit_db(c, year)
+        ev = ST.retape(ev, _CROWD_FIT[year])
+        # its own market keys ("sim:<ticker>"), so it sits beside the real-tape replay of the same markets
+        ev = dict(ev, markets=[replace(m, cond=f"sim:{m.cond}") for m in ev["markets"]])
     ev = dict(ev, markets=[m for m in ev["markets"] if m.kind in st["market_kinds"]])
     now_ns = R._ns(now)
     ev["stages"] = truncate_stages(ev["stages"], now_ns)
@@ -386,6 +403,8 @@ def _maker(c, w, runs, st, strategy, now, live):
     opts.pop("widen", None)            # widening needs earlier weekends' markouts; not applied live
     p = replace(R.Params(half_spread=st["half_spread"], size=st["size"], max_pos=st["max_pos"], skew=st["skew"],
                          max_disagree=st["max_disagree"], fill=st["fill"]), **opts)
+    if venue in ("kalshi", "kalshi_sim"):
+        p = replace(p, maker_fee=R.KALSHI_MAKER_FEE)
     rep = R.replay(ev, p)
     labels = {rid: lab for lab, _, rid in runs}
     sigs, state = maker_state(rep["quotes"], rep["fills"], ev["markets"], labels, now_ns)
@@ -395,7 +414,8 @@ def _maker(c, w, runs, st, strategy, now, live):
         s = state.get(r["cond"], {})
         pos.append(dict(market_key=r["cond"], kind=r["kind"], subject=r["subject"], yes_shares=r["inventory"],
                         no_shares=0.0, cash=r["cash"], mark=R.PublicView(mk, now_ns).mid(), outcome=r["outcome"],
-                        bid=s.get("bid"), ask=s.get("ask"), quote_state=s.get("quote_state")))
+                        bid=s.get("bid"), ask=s.get("ask"), quote_state=s.get("quote_state"),
+                        **({} if venue == "polymarket" else dict(venue=venue))))
     return dict(signals=sigs, positions=pos, maker_state=state)
 
 
@@ -433,11 +453,13 @@ def _clean(v):
     return v
 
 
-def store(conn, user_id, out, follow_rate=None, history=False):
+def store(conn, user_id, out, follow_rate=None, history=False, venue=None):
     """Insert the run's signals (existing ones are kept as they are), mark superseded taker signals
     expired, and replace the user's paper positions for the event. Returns the ids of new signals.
     follow_rate: a taker user's (see Following); history: a backfilled weekend (a backtest replay shown
-    as the account's track record): taken / passed statuses, already seen, flagged detail.backfill."""
+    as the account's track record): taken / passed statuses, already seen, flagged detail.backfill.
+    venue: another exchange's replay ("kalshi"): its signals carry detail.venue and only that venue's positions
+    are replaced; the default run leaves Kalshi's positions alone."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
     from racinglines.db import models as m
@@ -453,7 +475,7 @@ def store(conn, user_id, out, follow_rate=None, history=False):
     for s in signals:
         row = dict(common, **{k: _clean(s.get(k)) for k in SIGNAL_COLS}, run_id=run_of.get(s["stage"]))
         row["detail"] = dict(row["detail"] or {}, **({"followed": s["followed"]} if taker else {}),
-                             **({"backfill": True} if history else {}))
+                             **({"backfill": True} if history else {}), **({"venue": venue} if venue else {}))
         row["status"] = row["status"] or "new"
         if history:
             row["status"] = row["status"] if not taker else ("filled_paper" if s["followed"] else "passed")
@@ -469,7 +491,8 @@ def store(conn, user_id, out, follow_rate=None, history=False):
                                AND status IN ('new', 'alerted') AND stage <> :s"""),
                      dict(u=user_id, c=pr.get("candidate_id"), e=w["event_key"], s=out["stages"][-1][0]))
     conn.execute(text("""DELETE FROM paper_positions WHERE user_id = :u AND candidate_id IS NOT DISTINCT FROM :c
-                         AND event_key = :e"""), dict(u=user_id, c=pr.get("candidate_id"), e=w["event_key"]))
+                         AND event_key = :e AND """ + ("venue = :v" if venue else "venue NOT LIKE 'kalshi%'")),
+                 dict(u=user_id, c=pr.get("candidate_id"), e=w["event_key"], v=venue))
     for p in positions:
         conn.execute(pg_insert(m.PaperPosition).values(
             dict(user_id=user_id, candidate_id=pr.get("candidate_id"), race_id=out.get("race_id"),

@@ -81,6 +81,9 @@ def main(argv=None):
                                             "(pipelines/demo_history.py).")
     p.add_argument("--reset", action="store_true", help="Delete the existing backfill first.")
     p.add_argument("--user", nargs="*", default=None, help="Only these demo accounts (maker, taker).")
+    p.add_argument("--venue", default="polymarket", choices=["polymarket", "kalshi", "kalshi_sim"],
+                   help="What the maker replays against (kalshi: Kalshi's recorded tape; kalshi_sim: Kalshi's prices "
+                        "with a synthetic taker crowd fit to its tape). Maker accounts only.")
     sub.add_parser("profiles", help="List strategy profiles; create A / C as Lab candidates if missing.").add_argument(
         "--assign-demo", action="store_true", help="Demo taker -> A, demo maker -> C.")
     sub.add_parser("pm-links-export", help="Write market links to data/archive/markets/polymarket/links/ (stable keys).")
@@ -250,8 +253,9 @@ def _run(args):
         from racinglines.pipelines import demo_history as DH
         from racinglines.pipelines import profiles as PF
         if args.reset:
-            print(f"deleted {DH.reset(engine, args.user or list(PF.HISTORY))} backfilled signals")
-        rep = DH.backfill(engine, args.db, usernames=args.user, echo=lambda m: print(m, flush=True))
+            print(f"deleted {DH.reset(engine, args.user or list(PF.HISTORY), **({} if args.venue == 'polymarket' else dict(venue=args.venue)))} backfilled signals")
+        rep = DH.backfill(engine, args.db, usernames=args.user, echo=lambda m: print(m, flush=True),
+                          **({} if args.venue == "polymarket" else dict(venue=args.venue)))
         for u in sorted({r[0] for r in rep}):
             for y in ("2025", "2026"):
                 rs = [r for r in rep if r[0] == u and r[2].startswith(y)]

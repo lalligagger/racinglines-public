@@ -14,6 +14,8 @@ Kalshi (--exchange kalshi; markets/kalshi/, built on mocked responses, unverifie
     trades     --events TICKER …                         the tape of those events' markets
     history    --events TICKER … --start --end [--period 60]   candlesticks (minutes: 1, 60, 1440)
     books      --events TICKER …                         one order-book snapshot per open market
+    crowd-fit  [--year 2026]                             the synthetic taker crowd's fit to the season's tape,
+                                                         and its calibration check (markets/synthetic_takers.py)
 """
 
 import argparse
@@ -54,6 +56,8 @@ def kalshi(db, argv):
             p.add_argument("--start", required=True, help="UTC start, e.g. 2026-10-01T00:00")
             p.add_argument("--end", required=True, help="UTC end")
             p.add_argument("--period", type=int, default=60, choices=[1, 60, 1440], help="Minutes per candle")
+    p = sub.add_parser("crowd-fit")
+    p.add_argument("--year", type=int, default=2026)
     args = ap.parse_args(argv)
     from datetime import timezone
 
@@ -61,6 +65,16 @@ def kalshi(db, argv):
 
     from racinglines.db.config import get_engine, get_session
     from racinglines.markets.kalshi import sync as KS
+    if args.cmd == "crowd-fit":
+        from racinglines.markets import synthetic_takers as ST
+        with get_engine(db).connect() as c:
+            cal = ST.fit_db(c, args.year)
+            for kind, v in cal.items():
+                print(f"{kind:22s} {v['markets']:4d} markets {v['trades']:7d} trades  noise {v['noise']:.3f}  "
+                      f"buy {v['buy']:.2f}  per market-hour by hours before the race "
+                      + " ".join(f"{r:.2f}" for r in v["rate"]))
+            print(pd.DataFrame(ST.check(c, args.year)).to_string(index=False) if cal else "no tape to fit")
+        return 0
     with get_engine(db).connect() as c, get_session(db) as s:
         if args.cmd == "sync":
             print(KS.sync(s, c, args.year, include_closed=args.closed))

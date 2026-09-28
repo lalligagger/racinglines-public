@@ -35,6 +35,12 @@ from sqlalchemy import text
 from racinglines import paths  # noqa: E402
 
 ROOT = paths.archive_markets("polymarket")
+
+
+def root_for(exchange):
+    """An exchange's Parquet archive: Polymarket's is ROOT (the default everywhere); Kalshi's is its own
+    folder (data/archive/markets/kalshi), read by passing root= to the functions below."""
+    return ROOT if exchange in (None, "polymarket") else paths.archive_markets(exchange)
 RECENT_DAYS = 7
 
 STORES = {

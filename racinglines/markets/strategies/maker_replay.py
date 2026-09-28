@@ -36,6 +36,7 @@ Known limits (Baku test case): our quotes don't change what takers would have do
 competing makers are only what the recorded books show (top 10 levels, once a minute).
 """
 
+import math
 from dataclasses import dataclass, field, replace
 
 import numpy as np
@@ -63,6 +64,8 @@ class Params:
     info_skew: float = 0.0              # skew x (1 + info_skew * exp(-(time to next session) / info_tau_h))
     info_tau_h: float = 2.0
     half_spread_by_kind: dict | None = None   # per market kind, e.g. widened where markouts were bad
+    maker_fee: float = 0.0              # a venue's maker fee: ceil(maker_fee x contracts x P x (1 - P)) cents per fill
+                                        # (Kalshi: KALSHI_MAKER_FEE; Polymarket charges makers nothing)
 
 
 @dataclass
@@ -85,6 +88,14 @@ class Market:
     bk_ts: np.ndarray | None = field(default=None, repr=False)
     bk_bids: list | None = field(default=None, repr=False)
     bk_asks: list | None = field(default=None, repr=False)
+
+
+KALSHI_MAKER_FEE = 0.0175              # Kalshi's maker fee on most markets (check the market's own schedule)
+
+
+def venue_fee(rate, price, contracts):
+    """Dollars for one fill of `contracts` at `price` under a Kalshi-style fee (rounded up to the cent)."""
+    return math.ceil(round(rate * contracts * price * (1 - price) * 100, 6)) / 100
 
 
 class LookaheadError(AssertionError):
@@ -239,6 +250,8 @@ def replay(data, p: Params = Params()):
                             left_bid -= q
                             inv[mk.cond] += q
                             cash[mk.cond] -= q * bid
+                            if p.maker_fee:
+                                cash[mk.cond] -= venue_fee(p.maker_fee, bid, q)
                             fills.append((int(mk.tr_ts[k]), mk.cond, st["run_id"], "buy", bid, q, fair))
                     elif buy and ask is not None and left_ask > 0 and (px >= ask if p.fill in ("touch", "queue") else px > ask):
                         q = _cap(min(sz, left_ask, p.max_pos + inv[mk.cond]), -1, ask, cash, inv, mk.cond, p)
@@ -246,6 +259,8 @@ def replay(data, p: Params = Params()):
                             left_ask -= q
                             inv[mk.cond] -= q
                             cash[mk.cond] += q * ask
+                            if p.maker_fee:
+                                cash[mk.cond] -= venue_fee(p.maker_fee, ask, q)
                             fills.append((int(mk.tr_ts[k]), mk.cond, st["run_id"], "sell", ask, q, fair))
             t = t_next
         if p.flatten_before_qual and st["end"] == data.get("qual_start"):
@@ -438,10 +453,13 @@ def _levels(v):
     return out
 
 
-def load_event(conn, run_ids, sessions=None, books=False):
+def load_event(conn, run_ids, sessions=None, books=False, exchange="polymarket"):
     """Markets, fair values, public tape and outcomes for one event's diagnostic runs.
     sessions: [(kind, start)] (naive UTC) instead of the race's stored rounds (an event not yet run).
-    books: also load the recorded order books (for fill="queue")."""
+    books: also load the recorded order books (for fill="queue").
+    exchange: whose markets and tape ("polymarket", or "kalshi": markets/kalshi/ writes the same tables). A
+    Kalshi link's condition_id is its event ticker, shared by every market of the event, so there each market
+    is its own ticker (token_id), and its trades are read by ticker."""
     from sqlalchemy import text
 
     from racinglines.db import reads as D
@@ -468,8 +486,10 @@ def load_event(conn, run_ids, sessions=None, books=False):
 
     links = pd.read_sql(text("""
         SELECT ml.*, a.display_name AS athlete FROM market_links ml LEFT JOIN athletes a ON a.id = ml.athlete_id
-        WHERE ml.race_id = :r AND ml.prediction = ANY(:k) AND ml.exchange = 'polymarket'
-        ORDER BY ml.id"""), conn, params=dict(r=race_id, k=list(MODELED)))
+        WHERE ml.race_id = :r AND ml.prediction = ANY(:k) AND ml.exchange = :x
+        ORDER BY ml.id"""), conn, params=dict(r=race_id, k=list(MODELED), x=exchange))
+    if exchange == "kalshi":
+        return _load_kalshi(conn, links, runs, key, race_id, sessions, stages, qual_start, t0, t1, books)
     res = house.race_outcomes(conn, race_id)
     from racinglines.markets import store as MS
     conds = links["condition_id"].dropna().unique().tolist()
@@ -508,5 +528,43 @@ def load_event(conn, run_ids, sessions=None, books=False):
                               tr_ts=_ns(tr["ts"]) if len(tr) else np.array([], dtype="int64"),
                               tr_px=np.asarray(yes_px, float), tr_sz=tr["size"].to_numpy(float), tr_buy=yes_buy,
                               link=link, **book))
+    return dict(event_key=key, race_id=race_id, runs=runs, sessions=sorted(sessions), stages=stages, markets=markets,
+                qual_start=qual_start)
+
+
+def _load_kalshi(conn, links, runs, key, race_id, sessions, stages, qual_start, t0, t1, books):
+    """load_event for Kalshi links: one Market per ticker (YES contract; trades are already on its side)."""
+    from racinglines.db import reads as D
+    from racinglines.markets import private_book as house
+    from racinglines.markets import store as MS
+    res = house.race_outcomes(conn, race_id)
+    toks = links["token_id"].tolist()
+    a, b = pd.Timestamp(t0, tz="UTC"), pd.Timestamp(t1, tz="UTC")
+    root = MS.root_for("kalshi")
+    all_tr = MS.read(conn, "trades", tokens=toks, start=a, end=b, root=root)
+    all_px = MS.read(conn, "prices", tokens=toks, start=a, end=b, root=root)
+    tr_by, px_by = dict(tuple(all_tr.groupby("token_id"))), dict(tuple(all_px.groupby("token_id")))
+    bk_by = dict(tuple(MS.read(conn, "books", tokens=toks, start=a, end=b, root=root).groupby("token_id"))) if books else {}
+    empty_px, empty_tr = all_px.iloc[0:0], all_tr.iloc[0:0]
+    markets, cache = [], {}
+    for link in links.to_dict("records"):
+        tok = link["token_id"]
+        fairs = {r["run_id"]: D.model_prob(conn, link, cache, run_id=r["run_id"])[0] for r in runs}
+        ath = None if pd.isna(link["athlete_id"]) else int(link["athlete_id"])
+        outcome = house.outcome_for(link["prediction"], ath, link["params"], res)
+        mids, tr = px_by.get(tok, empty_px), tr_by.get(tok, empty_tr)
+        subject = link["athlete"] or (link["params"] or {}).get("team") or link["group_title"]
+        if link["prediction"] == "race_h2h":
+            subject = f"{link['athlete'] or link['outcome']} ahead ({link['question']})"
+        bk = bk_by.get(tok)
+        book = {} if bk is None or not len(bk) else dict(
+            bk_ts=_ns(bk["ts"]), bk_bids=[_levels(v) for v in bk["bids"]], bk_asks=[_levels(v) for v in bk["asks"]])
+        markets.append(Market(cond=tok, kind=link["prediction"], subject=subject, question=link["question"],
+                              fairs=fairs, outcome=outcome,
+                              mid_ts=_ns(mids["ts"]) if len(mids) else np.array([], dtype="int64"),
+                              mid_px=mids["price"].to_numpy(float),
+                              tr_ts=_ns(tr["ts"]) if len(tr) else np.array([], dtype="int64"),
+                              tr_px=tr["price"].to_numpy(float), tr_sz=tr["size"].to_numpy(float),
+                              tr_buy=(tr["side"] == "BUY").to_numpy(bool), link=link, **book))
     return dict(event_key=key, race_id=race_id, runs=runs, sessions=sorted(sessions), stages=stages, markets=markets,
                 qual_start=qual_start)
