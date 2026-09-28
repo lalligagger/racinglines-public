@@ -1,5 +1,5 @@
 {# The Edge Finder sweep: every setting of racinglines/pipelines/sweep_settings.py, grouped. #}
-<form method="post" action="/lab/run" class="ecard sweep-form" id="sweep-form" {% if sel_job == jt.code %}style="border-color:var(--accent)"{% endif %}
+<form method="post" action="/lab/run" class="ecard sweep-form{{ " sel" if sel_job == jt.code }}" id="sweep-form"
       data-defaults='{{ sweep_defaults|tojson }}' data-source='{{ sweep_start|tojson }}'>{{ csrf() }}<input type="hidden" name="job" value="{{ jt.code }}">
   <div><h3>{{ jt.label }}</h3><div class="when">{{ jt.what }} · {{ jt.minutes }}</div></div>
   <div class="jobform">

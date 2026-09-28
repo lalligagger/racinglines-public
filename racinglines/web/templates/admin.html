@@ -1,17 +1,19 @@
-{% extends "base.html" %}{% from "_macros.html" import table %}
+{% extends "base.html" %}{% from "_macros.html" import table, kpi, page_head %}
 {% block title %}Admin{% endblock %}
 {% block content %}
-<h1>Admin</h1>
-<p><a href="/admin/activity">Activity log</a> · <a href="/admin/users">Users</a> · <a href="/admin/db">Database</a> · <a href="/admin/sql">SQL console</a> · <a href="/markets/linked">Polymarket orders</a> · <a href="/orders">Order log</a> · <a href="/markets">Taker market board</a></p>
-<div class="card"><b>{{ totals.markets }}</b> markets ({{ totals.open }} open) · <b>{{ totals.bets }}</b> taker bets · staked <b>${{ "%.2f"|format(totals.staked) }}</b>
- · takers' settled P&amp;L <b>${{ "%.2f"|format(totals.taker_pnl) }}</b> · makers' worst case <b class="bad">${{ "%.2f"|format(totals.worst) }}</b>
-{% if totals.replay_bets %}<br><span class="muted">Not included: {{ totals.replay_bets }} replay fills by Polymarket's takers (P&amp;L ${{ "%.2f"|format(totals.replay_pnl) }}).</span>{% endif %}</div>
-<div class="card"><h2>Users</h2>
-{{ table(users, ["username", "role", "active", "last_seen", "logins", "markets_made", "bets_against", "bets_placed", "staked"], {"username": ["/admin/users/", "id"]}) }}
-<p><a href="/admin/users">Manage users →</a></p></div>
-<div class="card"><h2>Recent activity</h2>
+{{ page_head("Admin", "Accounts, the activity log, the database, and the Polymarket order flow.") }}
+{% include "_admin_nav.html" %}
+<div class="kpis hero">
+  {{ kpi("Markets", totals.markets, totals.open ~ " open") }}
+  {{ kpi("Taker bets", totals.bets, "staked $" ~ "%.2f"|format(totals.staked)) }}
+  {{ kpi("Takers' settled P&L", totals.taker_pnl, "", "money") }}
+  {{ kpi("Makers' worst case", "$" ~ "%.2f"|format(totals.worst), "", "bad") }}
+</div>
+{% if totals.replay_bets %}<p class="legend">Not included: {{ totals.replay_bets }} replay fills by Polymarket's takers (P&amp;L ${{ "%.2f"|format(totals.replay_pnl) }}).</p>{% endif %}
+<div class="card"><div class="section-head"><h2>Users</h2><a href="/admin/users">Manage users →</a></div>
+{{ table(users, ["username", "role", "active", "last_seen", "logins", "markets_made", "bets_against", "bets_placed", "staked"], {"username": ["/admin/users/", "id"]}) }}</div>
+<div class="card"><div class="section-head"><h2>Recent activity</h2><a href="/admin/activity">Full activity log →</a></div>
 <div class="scroll"><table><thead><tr><th class="l">When</th><th class="l">User</th><th class="l">Action</th><th class="l">Detail</th><th class="l">IP</th></tr></thead><tbody>
 {% for e in recent %}<tr><td class="l">{{ e.ts|fmt }}</td><td class="l">{{ e.username or "" }} <span class="muted">{{ e.role or "" }}</span></td><td class="l">{{ e.action }}</td><td class="wrap"><code>{{ e.detail if e.detail else "" }}</code></td><td class="l">{{ e.ip or "" }}</td></tr>{% endfor %}
-</tbody></table></div>
-<p><a href="/admin/activity">Full activity log →</a> · <a href="/admin/db">Database explorer →</a> · <a href="/admin/sql">SQL console →</a></p></div>
+</tbody></table></div></div>
 {% endblock %}

@@ -1,17 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in · racinglines</title><link rel="stylesheet" href="/static/style.css?v={{ css_v() }}">
-<style>
-  .demo { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-  .demo form { margin:0; height:100%; }
-  .demo button { width:100%; height:100%; padding:12px 10px; vertical-align:top; text-align:left; border-radius:8px; }
-  .demo button b { display:block; font-size:15px; margin-bottom:2px; }
-  .demo button span { font-size:12px; color:var(--muted); }
-  .demo button.maker:hover { border-color:var(--accent); } .demo button.taker:hover { border-color:var(--good); }
-  .confused { text-align:center; margin:10px 0 0; font-size:13px; }
-  .or { text-align:center; color:var(--muted); font-size:12px; margin:14px 0 6px; }
-</style></head>
-<body><main style="max-width:420px;margin:60px auto">
+<title>Sign in · racinglines</title><link rel="stylesheet" href="/static/style.css?v={{ css_v() }}"></head>
+<body><main class="login">
 <h1>racinglines</h1>
 <p class="sub">Fair prices and market making for race sports.</p>
 {% if error %}<p class="bad">Wrong username or password.</p>{% endif %}
@@ -27,8 +17,8 @@
 <p class="or">or sign in</p>
 <form method="post" action="/login" class="card">
   <input type="hidden" name="next" value="{{ next }}">
-  <label style="display:block"><span>Username</span><input name="username" autocomplete="username" required style="width:100%"></label>
-  <label style="display:block"><span>Password</span><input name="password" type="password" autocomplete="current-password" required style="width:100%"></label>
-  <button class="primary" style="margin-top:8px">Sign in</button>
+  <label><span>Username</span><input name="username" autocomplete="username" required></label>
+  <label><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
+  <button class="primary mt">Sign in</button>
 </form>
 </main></body></html>

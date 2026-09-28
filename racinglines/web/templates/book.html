@@ -1,30 +1,31 @@
-{% extends "base.html" %}{% from "_macros.html" import paper_banner %}
+{% extends "base.html" %}{% from "_macros.html" import paper_banner, kpi, pnl, page_head %}
 {% block title %}My book{% endblock %}
 {% block content %}
-<h1>{{ "Books" if user.role == 'admin' else "My Book" }}</h1>
+{% set orders_txt %}{% for k, n in orders.items() %}{{ n }} {{ k }}{{ ", " if not loop.last }}{% else %}none yet{% endfor %}{% endset %}
+{% call page_head("Books" if user.role == 'admin' else "My Book", "Positions across venues. Private book: markets I quote and the bets takers placed against them. Polymarket: orders placed through the app (" ~ orders_txt ~ "). Kalshi: coming soon.") %}
+{% if user.role == 'admin' %}<a href="/orders">Order log →</a>
+<form method="get" class="inline"><label><span>Maker</span><select name="maker" onchange="this.form.submit()"><option value="">all</option>{% for m in makers %}<option {{ 'selected' if m.username == maker }}>{{ m.username }}</option>{% endfor %}</select></label></form>{% endif %}
+{% endcall %}
 {{ paper_banner(signals_nav) }}
-<p class="sub">Positions across venues. Private book: markets I quote and the bets takers placed against them.
-Polymarket: orders placed through the app ({% for k, n in orders.items() %}{{ n }} {{ k }}{{ ", " if not loop.last }}{% else %}none yet{% endfor %}){% if user.role == 'admin' %} · <a href="/orders">order log</a>{% endif %}. Kalshi: coming soon.</p>
-{% if user.role == 'admin' %}<form method="get" class="inline"><label><span>Maker</span><select name="maker" onchange="this.form.submit()"><option value="">all</option>{% for m in makers %}<option {{ 'selected' if m.username == maker }}>{{ m.username }}</option>{% endfor %}</select></label></form>{% endif %}
 
-<div class="kpis">
-  <div class="kpi"><div class="l">Open markets</div><div class="v">{{ tot.open }}</div><div class="s">{{ tot.markets }} in total</div></div>
-  <div class="kpi"><div class="l">Bets against me</div><div class="v">{{ tot.bets }}</div><div class="s">staked ${{ "%.0f"|format(tot.staked) }}</div></div>
-  <div class="kpi"><div class="l">Expected P&amp;L at our fair</div><div class="v {{ 'good' if tot.ev >= 0 else 'bad' }}">{{ tot.ev|money(true) }}</div><div class="s">open markets</div></div>
-  <div class="kpi"><div class="l">Worst case</div><div class="v {{ 'bad' if tot.worst < 0 }}">{{ tot.worst|money }}</div><div class="s">if every open market goes against me</div></div>
-  <div class="kpi"><div class="l">Settled P&amp;L</div><div class="v {{ 'good' if tot.settled >= 0 else 'bad' }}">{{ tot.settled|money(true) }}</div></div>
+<div class="kpis hero">
+  {{ kpi("Expected P&L at our fair", tot.ev, "open markets", "money") }}
+  {{ kpi("Worst case", tot.worst|money, "if every open market goes against me", "bad" if tot.worst < 0 else "") }}
+  {{ kpi("Settled P&L", tot.settled, "", "money") }}
+  {{ kpi("Open markets", tot.open, tot.markets ~ " in total") }}
+  {{ kpi("Bets against me", tot.bets, "staked $" ~ "%.0f"|format(tot.staked)) }}
 </div>
 
 {% if not groups %}<p class="muted">No markets yet. Open a race from the <a href="/markets">Markets</a> and use <b>Quote privately</b>, or mirror a Polymarket event.</p>{% endif %}
-<div class="scroll"><table>
+<div class="card"><div class="scroll"><table>
 <thead><tr><th class="l">Event</th><th class="l">Sport</th><th>Date</th><th class="l">Status</th><th>Markets (open)</th><th>Bets</th><th>Staked</th><th>EV at fair (open)</th><th>Worst case (open)</th><th>Settled P&amp;L</th><th class="l">Most staked</th><th></th></tr></thead>
 <tbody>{% for g in groups %}<tr>
 <td class="l"><a href="{{ '/races/' ~ g.race_id if g.race_id else '/seasons/f1_wdc' }}">{{ g.title }}</a></td><td class="l">{{ g.sport }}</td><td>{{ g.date|fmt if g.date }}</td>
 <td class="l"><span class="chip status-{{ g.status }}">{{ (g.status or "")|replace('_', ' ') }}</span></td>
 <td>{{ g.markets }} ({{ g.open }})</td><td>{{ g.bets }}</td><td>${{ "%.0f"|format(g.staked) }}</td>
-<td class="{{ 'good' if g.ev > 0 else ('bad' if g.ev < 0 else '') }}">{{ g.ev|money(true) if g.open else "" }}</td>
+<td>{% if g.open %}{{ pnl(g.ev) }}{% endif %}</td>
 <td class="{{ 'bad' if g.worst < 0 }}">{{ g.worst|money if g.open else "" }}</td>
-<td class="{{ 'good' if g.settled > 0 else ('bad' if g.settled < 0 else '') }}">{{ g.settled|money(true) if g.settled else "" }}</td>
+<td>{% if g.settled %}{{ pnl(g.settled) }}{% endif %}</td>
 <td class="l">{% for t in g.top[:3] %}{% if t.staked %}{{ t.athlete or t.title[:24] }} ${{ "%.0f"|format(t.staked) }}{{ " · " if not loop.last }}{% endif %}{% endfor %}</td>
-<td><a href="/book/quotes?race_id={{ g.race_id }}">manage →</a></td></tr>{% endfor %}</tbody></table></div>
+<td><a href="/book/quotes?race_id={{ g.race_id }}">manage →</a></td></tr>{% endfor %}</tbody></table></div></div>
 {% endblock %}

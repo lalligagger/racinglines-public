@@ -1,11 +1,23 @@
-{% macro table(rows, cols, links={}) -%}
-{% if rows %}<div class="scroll"><table>
+{# rows=N caps the table at N rows behind a "Show all"; filter="placeholder" adds a filter box (app.js). #}
+{% macro table(rows, cols, links={}, cap=0, filter="") -%}
+{% if rows %}<div class="scroll"{% if cap %} data-rows="{{ cap }}"{% endif %}{% if filter %} data-filter="{{ filter }}"{% endif %}><table>
 <thead><tr>{% for c in cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
 <tbody>{% for r in rows %}<tr>{% for c in cols %}{% set v = r.get(c) %}
 <td>{% if c in links and r.get(links[c][1]) is not none %}<a href="{{ links[c][0] }}{{ r.get(links[c][1]) }}">{{ v|fmt(c) }}</a>{% else %}{{ v|fmt(c) }}{% endif %}</td>{% endfor %}</tr>{% endfor %}</tbody>
 </table></div>{% else %}<p class="muted">Nothing here yet.</p>{% endif %}
 {%- endmacro %}
 {% macro csrf() %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endmacro %}
+{# A one-line result of the last action (msg=... in the query string): green, or red for "Error: ...". #}
+{% macro flash(msg) %}{% if msg %}<p class="flash {{ 'bad' if msg.startswith('Error') else 'good' }}" role="status">{{ msg }}</p>{% endif %}{% endmacro %}
+{# The page's title row: h1, an optional one-line subtitle, and (via call) actions on the right. #}
+{% macro page_head(title, sub="") %}<div class="page-head"><div><h1>{{ title }}</h1>{% if sub %}<p class="sub">{{ sub }}</p>{% endif %}</div>{% if caller %}<div class="actions">{{ caller() }}</div>{% endif %}</div>{% endmacro %}
+{# A headline number: label, value, one line under it. tone: "money" colours the value by sign; else a class. #}
+{% macro kpi(label, value, sub="", tone="", cls="", small=False) -%}
+<div class="kpi {{ cls }}"><div class="l">{{ label }}</div><div class="v{{ ' sm' if small }} {{ pnl_cls(value) if tone == 'money' else tone }}">{{ value|money(true) if tone == 'money' else value }}</div>{% if sub %}<div class="s">{{ sub }}</div>{% endif %}</div>
+{%- endmacro %}
+{% macro pnl_cls(v) %}{{ 'good' if v is not none and v > 0 else ('bad' if v is not none and v < 0 else '') }}{% endmacro %}
+{# A signed money amount coloured by its sign: +$12.30 green, -$4.00 red, $0.00 plain. #}
+{% macro pnl(v, bold=False) %}{% if v is not none %}<{{ 'b' if bold else 'span' }} class="{{ pnl_cls(v) }}">{{ v|money(true) }}</{{ 'b' if bold else 'span' }}>{% endif %}{% endmacro %}
 {% macro bar(fair, mid=None, cls="") -%}
 <div class="bar {{ cls }}" title="our fair {{ '%.1f%%'|format(fair * 100) if fair is not none }}{% if mid is not none %} · market {{ '%.1f%%'|format(mid * 100) }}{% endif %}">{% if fair is not none %}<div class="f" style="width:{{ [fair * 100, 100]|min }}%"></div>{% endif %}{% if mid is not none %}<div class="m" style="left:calc({{ [mid * 100, 100]|min }}% - 1px)"></div>{% endif %}</div>
 {%- endmacro %}

@@ -1,8 +1,9 @@
-{% extends "base.html" %}
+{% extends "base.html" %}{% from "_macros.html" import flash %}
 {% block title %}{{ table_name }}{% endblock %}
 {% block content %}
 <h1><a href="/admin/db">Database</a> / {{ table_name }} <span class="muted">({{ total }} rows)</span></h1>
-{% if msg %}<p class="{{ 'bad' if msg.startswith('Error') else 'good' }}">{{ msg }}</p>{% endif %}
+{% include "_admin_nav.html" %}
+{{ flash(msg) }}
 <form method="get"><label><span>Column</span><select name="col"><option value="">–</option>{% for c in columns %}<option {% if c == col %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></label>
 <label><span>equals (text; NULL for null)</span><input name="val" value="{{ val }}" size="20"></label><button>Filter</button></form>
 <div class="scroll"><table><thead><tr><th></th>{% for c in columns %}<th class="l">{{ c }}</th>{% endfor %}</tr></thead><tbody>

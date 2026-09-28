@@ -2,6 +2,7 @@
 {% block title %}Activity{% endblock %}
 {% block content %}
 <h1>Activity log</h1>
+{% include "_admin_nav.html" %}
 <form method="get">
   <label><span>User</span><select name="user"><option value="">all</option>{% for u in usernames %}<option {% if u == f_user %}selected{% endif %}>{{ u }}</option>{% endfor %}</select></label>
   <label><span>Action</span><select name="action"><option value="">all</option>{% for a in actions %}<option {% if a == f_action %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></label>

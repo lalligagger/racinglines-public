@@ -1,172 +1,18 @@
-{% extends "base.html" %}{% from "_macros.html" import csrf %}
+{% extends "base.html" %}{% from "_macros.html" import csrf, flash, page_head %}
 {% block title %}Lab{% endblock %}
-{% block head %}{% if active %}<meta http-equiv="refresh" content="5">{% endif %}{% endblock %}
 {% block content %}
-<h1>Lab</h1>
-<p class="sub">Test the model and the trading strategies before money is at risk. Everything here prices with a hard as-of cutoff (no future data); forecasts launched here are <b>scenarios</b> and only change live prices when promoted.</p>
-{% if msg %}<p class="{{ 'bad' if msg.startswith('Error') else 'good' }}">{{ msg }}</p>{% endif %}
+{{ page_head("Lab", "Test the model and the trading strategies before money is at risk. Everything here prices with a hard as-of cutoff (no future data); forecasts launched here are scenarios and only change live prices when promoted.") }}
+{{ flash(msg) }}
+<div id="lab" data-open-now='{{ open_now|tojson }}'>
 <form id="lab-csrf" hidden>{{ csrf() }}</form>
 
 <div class="card" id="edge">{% include "lab_edge.html" %}</div>
 
-<div class="tabs toggles" role="group" aria-label="Lab sections">{% for key, label in sections %}<button type="button" data-section="{{ key }}" aria-pressed="false">{{ label }}</button>{% endfor %}</div>
-{% for key, label in sections %}<div class="card lab-section" id="{{ key }}" hidden><p class="muted">Loading {{ label|lower }}…</p></div>
+{# The other sections load on demand: each box fetches /lab/section/<key> the first time it is opened (app.js
+   fires its "open" event; the jobs box reloads on every open, since whose jobs it shows is a browser setting). #}
+<div class="section-tabs" role="group" aria-label="Lab sections">{% for key, label in sections %}<button type="button" data-section="{{ key }}" aria-pressed="false">{{ label }}</button>{% endfor %}</div>
+{% for key, label in sections %}<div class="card lab-section" id="{{ key }}" hidden
+     hx-get="{{ '/lab/section/jobs' if key == 'jobs' else '/lab/section/' ~ key ~ query }}" hx-trigger="{{ 'open' if key == 'jobs' else 'open once' }}" hx-swap="innerHTML"><p class="muted">Loading {{ label|lower }}…</p></div>
 {% endfor %}
-
-<script>
-(function () {
-  // View settings (open sections, jobs filter) live in this browser; the Edge Finder combos,
-  // job knobs, jobs and runs live in the database.
-  const NS = {{ storage_ns|tojson }};                 // a demo session's own namespace (web/demo.py)
-  const OPEN = NS + "lab.open", SCOPE = NS + "lab.jobsScope", qs = {{ query|tojson }};
-  const store = {
-    get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
-  };
-  const token = document.querySelector("#lab-csrf [name=csrf_token]").value;
-  const open = new Set(store.get(OPEN, []));
-  {{ open_now|tojson }}.forEach(k => open.add(k));
-  const loaded = new Set();
-
-  // --- sections: fetched on first open ---
-  function url(key) {
-    if (key !== "jobs") return `/lab/section/${key}${qs}`;
-    return `/lab/section/jobs?scope=${encodeURIComponent(store.get(SCOPE, "mine"))}`;
-  }
-  function load(key) {
-    const box = document.getElementById(key);
-    return fetch(url(key), {headers: {accept: "text/html"}})
-      .then(r => r.ok ? r.text() : Promise.reject(r.status))
-      .then(html => {
-        box.innerHTML = html; mark();
-        const sel = box.querySelector("[data-start-from]");
-        if (sel && sel.value) sel.dispatchEvent(new Event("change", {bubbles: true}));
-      })
-      .catch(e => { loaded.delete(key); box.innerHTML = `<p class="bad">Couldn't load this section (${e}).</p>`; });
-  }
-  function show(key, on, scroll) {
-    const box = document.getElementById(key), btn = document.querySelector(`[data-section="${key}"]`);
-    if (!box || !btn) return;
-    box.hidden = !on; btn.setAttribute("aria-pressed", on);
-    on ? open.add(key) : open.delete(key); store.set(OPEN, [...open]);
-    const done = on && !loaded.has(key) ? (loaded.add(key), load(key)) : Promise.resolve();
-    if (on && scroll) done.then(() => box.scrollIntoView({block: "start"}));
-  }
-
-  // --- Edge Finder combos: any [data-edge] button on the page edits them (saved to the account) ---
-  function combos() {
-    try { return JSON.parse(document.getElementById("edge-root").dataset.combos); } catch (e) { return []; }
-  }
-  function mark() {
-    const cs = combos(), has = (v, s) => cs.some(c => c[0] === v && c[1] === s);
-    document.querySelectorAll("[data-edge=toggle]").forEach(b =>
-      b.setAttribute("aria-pressed", has(b.dataset.variant, b.dataset.strategy)));
-    document.querySelectorAll("[data-edge-model]").forEach(b => {        // whole model in / out
-      const inEF = cs.some(c => c[0] === b.dataset.variant);
-      b.setAttribute("aria-pressed", inEF);
-      b.dataset.edge = inEF ? "remove_model" : "add_model";
-      b.textContent = inEF ? "✓ in Edge Finder" : "+ Edge Finder";
-    });
-  }
-  function edit(b) {
-    const f = new FormData();
-    f.append("csrf_token", token);
-    f.append("action", b.dataset.edge);
-    const form = b.hasAttribute("data-from-form") ? b.closest("form") : null;
-    f.append("variant", form ? form.variant.value : (b.dataset.variant || ""));
-    f.append("strategy", form ? form.strategy.value : (b.dataset.strategy || ""));
-    if (b.dataset.year) f.append("year", b.dataset.year);
-    b.disabled = true;
-    fetch("/lab/edge", {method: "POST", body: f, headers: {accept: "text/html"}})
-      .then(r => r.ok ? r.text() : r.text().then(t => Promise.reject(t)))
-      .then(html => { document.getElementById("edge").innerHTML = html; mark(); })
-      .catch(err => alert(`Edge Finder: ${err}`))
-      .finally(() => { b.disabled = false; });
-  }
-
-  // --- candidates: star a shown combo (named), or delete one ---
-  function candidate(b) {
-    const f = new FormData();
-    f.append("csrf_token", token);
-    f.append("action", b.dataset.cand);
-    if (b.dataset.cand === "delete") {
-      if (!confirm("Delete this candidate?")) return;
-      f.append("id", b.dataset.id);
-    } else {
-      const name = prompt("Name this candidate (it can be loaded into the sweep form):", "");
-      if (name === null) return;
-      f.append("name", name);
-      f.append("why", prompt("Why is it worth exploring? (optional)", "") || "");
-      f.append("variant", b.dataset.variant);
-      f.append("strategy", b.dataset.strategy);
-    }
-    fetch("/lab/candidate", {method: "POST", body: f, headers: {accept: "text/html"}})
-      .then(r => r.ok ? r.text() : r.text().then(t => Promise.reject(t)))
-      .then(html => { document.getElementById("edge").innerHTML = html; mark(); if (loaded.has("run")) load("run"); })
-      .catch(err => alert(`Candidate: ${err}`));
-  }
-
-  // --- the Edge Finder sweep form: start from a candidate / defaults; highlight what changed ---
-  function fields(form, name) { return [...form.querySelectorAll(`[name="${name}"]`)]; }
-  function readSettings(form) {
-    const out = {};
-    form.querySelectorAll("[data-setting]").forEach(l => {
-      const name = l.dataset.setting, els = fields(form, name).filter(e => e.type !== "hidden");
-      if (els.length && els[0].type === "checkbox" && els.length === 1) out[name] = els[0].checked;
-      else if (els.length && els[0].type === "checkbox") out[name] = els.filter(e => e.checked).map(e => e.value);
-      else if (els.length) out[name] = els[0].type !== "number" ? els[0].value : els[0].value === "" ? null : Number(els[0].value);
-    });
-    return out;
-  }
-  function fillSettings(form, st) {
-    Object.entries(st).forEach(([name, v]) => {
-      const els = fields(form, name).filter(e => e.type !== "hidden");
-      if (!els.length) return;
-      if (els[0].type === "checkbox" && els.length === 1) els[0].checked = !!v;
-      else if (els[0].type === "checkbox") els.forEach(e => { e.checked = (v || []).includes(e.value); });
-      else els[0].value = v === null ? "" : v;
-    });
-  }
-  function markChanged(form) {
-    const src = JSON.parse(form.dataset.source || "{}"), now = readSettings(form);
-    let n = 0;
-    form.querySelectorAll("[data-setting]").forEach(l => {
-      const k = l.dataset.setting, a = JSON.stringify(now[k]), b = JSON.stringify(src[k]);
-      const changed = src[k] !== undefined && a !== b && !(typeof now[k] === "number" && Number(src[k]) === now[k]);
-      l.classList.toggle("changed", changed); if (changed) n++;
-    });
-    const c = form.querySelector("[data-changed-count]");
-    if (c) c.textContent = n ? `${n} setting${n > 1 ? "s" : ""} changed from the starting point` : "";
-  }
-  document.addEventListener("change", e => {
-    const sel = e.target.closest("[data-start-from]");
-    if (sel) {
-      const form = sel.form, st = JSON.parse(sel.selectedOptions[0].dataset.settings || "{}");
-      form.dataset.source = JSON.stringify(Object.assign(JSON.parse(form.dataset.defaults), st));
-      fillSettings(form, JSON.parse(form.dataset.source));
-    }
-    const form = e.target.closest("#sweep-form");
-    if (form) markChanged(form);
-  });
-  document.addEventListener("input", e => { const form = e.target.closest("#sweep-form"); if (form) markChanged(form); });
-
-  document.addEventListener("click", e => {
-    const a = e.target.closest("a[data-open]");
-    if (a) { e.preventDefault(); show(a.dataset.open, true, true); return; }
-    const c = e.target.closest("[data-cand]");
-    if (c) { e.preventDefault(); candidate(c); return; }
-    const b = e.target.closest("[data-edge]");
-    if (b) { e.preventDefault(); edit(b); }
-  });
-  document.addEventListener("change", e => {                           // jobs: mine / everyone
-    if (e.target.matches("[name=jobs-scope]")) { store.set(SCOPE, e.target.value); load("jobs"); }
-  });
-  document.querySelectorAll("[data-section]").forEach(b =>
-    b.addEventListener("click", () => show(b.dataset.section, b.getAttribute("aria-pressed") !== "true")));
-  const hashKey = location.hash.slice(1);
-  if (document.querySelector(`[data-section="${hashKey}"]`)) open.add(hashKey);
-  [...open].forEach(k => show(k, true, hashKey === k));
-  mark();
-})();
-</script>
+</div>
 {% endblock %}

@@ -1,8 +1,9 @@
-{% extends "base.html" %}{% from "_macros.html" import csrf %}
+{% extends "base.html" %}{% from "_macros.html" import csrf, flash %}
 {% block title %}{{ table_name }} row{% endblock %}
 {% block content %}
 <h1><a href="/admin/db">Database</a> / <a href="/admin/db/{{ table_name }}">{{ table_name }}</a> / {{ pk }}</h1>
-{% if request.query_params.get('msg') %}<p class="{{ 'bad' if request.query_params.get('msg').startswith('Error') else 'good' }}">{{ request.query_params.get('msg') }}</p>{% endif %}
+{% include "_admin_nav.html" %}
+{{ flash(request.query_params.get('msg')) }}
 <form method="post" action="/admin/db/{{ table_name }}/row?{{ pk_query }}" class="card">{{ csrf() }}
 <table><tbody>
 {% for f in fields %}<tr><td class="l"><b>{{ f.name }}</b><br><span class="muted">{{ f.type }}{% if f.nullable %}, nullable{% endif %}{% if f.pk %}, primary key{% endif %}</span></td>
@@ -10,6 +11,6 @@
 </tbody></table>
 <p class="muted">Empty = NULL for nullable columns. JSON columns take JSON.</p>
 <button class="primary" name="action" value="save">Save changes</button>
-<span style="margin-left:24px"><label><input type="checkbox" name="confirm" value="yes"> confirm delete</label> <button class="danger" name="action" value="delete">Delete row</button></span>
+<span class="mt"><label class="inline"><input type="checkbox" name="confirm" value="yes"> confirm delete</label> <button class="danger" name="action" value="delete">Delete row</button></span>
 </form>
 {% endblock %}
