@@ -5,10 +5,11 @@
 #   bash scripts/deploy/vm.sh restore           # one time: bucket's data folders + database dump -> the VM
 #   bash scripts/deploy/vm.sh start [web]       # enable and start web, recorder, signals (web: the web app only)
 #   bash scripts/deploy/vm.sh deploy [ref]      # checkout (default main), install, migrate, restart, smoke check
+#   bash scripts/deploy/vm.sh public on|off     # testing before handover: the web app on http://<VM IP>:8000
 #   bash scripts/deploy/vm.sh status | logs [unit] | ssh
 #
 # deploy refuses while a live event's unit is active on the VM (--force to override).
-# Needs the gcloud CLI signed in to the project. SSH goes through IAP: the VM opens no ports.
+# Needs the gcloud CLI signed in to the project. SSH goes through IAP: the VM opens no ports (but see public).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 PROJECT="${RL_GCP_PROJECT:-racinglines}"
@@ -51,6 +52,29 @@ case "${1:-}" in
     log "smoke check on the VM"
     remote "sleep 3; cd $APP && bash scripts/deploy/smoke.sh http://127.0.0.1:8000"
     ;;
+  public)
+    # Plain HTTP on a public port, for testing until racinglines.bet moves over; off at handover.
+    # Passwords cross the internet unencrypted: sign in with the demo accounts only, never admin.
+    dropin=/etc/systemd/system/racinglines-web.service.d/public.conf
+    case "${2:-}" in
+      on)
+        gcloud compute firewall-rules describe rl-test-web --project "$PROJECT" >/dev/null 2>&1 ||
+          gcloud compute firewall-rules create rl-test-web --project "$PROJECT" --network default \
+            --allow tcp:8000 --target-tags rl-test-web --source-ranges 0.0.0.0/0
+        gcloud compute instances add-tags "$VM" --project "$PROJECT" --zone "$ZONE" --tags rl-test-web
+        remote "sudo mkdir -p ${dropin%/*} && printf '[Service]\nEnvironment=WEB_HOST=0.0.0.0\n' | sudo tee $dropin >/dev/null && sudo systemctl daemon-reload && sudo systemctl try-restart racinglines-web"
+        ip=$(gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(networkInterfaces[0].accessConfigs[0].natIP)')
+        log "public: http://$ip:8000 (demo accounts only; vm.sh public off at handover)"
+        ;;
+      off)
+        remote "sudo rm -f $dropin && sudo systemctl daemon-reload && sudo systemctl try-restart racinglines-web"
+        gcloud compute instances remove-tags "$VM" --project "$PROJECT" --zone "$ZONE" --tags rl-test-web
+        gcloud compute firewall-rules delete rl-test-web --project "$PROJECT" --quiet
+        log "public port closed"
+        ;;
+      *) echo "usage: vm.sh public on|off"; exit 1 ;;
+    esac
+    ;;
   status)
     remote "cd $APP && git log -1 --format='deployed: %h %s (%cr)' && systemctl --no-pager list-units 'racinglines-*' 'cloudflared*' && systemctl --no-pager list-timers 'racinglines-*'"
     ;;
@@ -61,6 +85,6 @@ case "${1:-}" in
     gcloud compute ssh "$VM" --project "$PROJECT" --zone "$ZONE" --tunnel-through-iap
     ;;
   *)
-    sed -n '2,12p' "$0"; exit 1
+    sed -n '2,/^set -euo/p' "$0" | sed '$d'; exit 1
     ;;
 esac

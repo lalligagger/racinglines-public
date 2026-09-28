@@ -116,6 +116,14 @@ gcloud compute ssh racinglines-vm --zone=us-west1-b --tunnel-through-iap -- -L 8
                                         # then browse http://localhost:8001
 ```
 
+**Public test port (until the handover).** To try the VM from any browser before racinglines.bet moves:
+```sh
+bash scripts/deploy/vm.sh public on      # opens tcp:8000 to everyone; prints http://<VM IP>:8000
+bash scripts/deploy/vm.sh public off     # at the handover: closes the port, the app back on loopback only
+```
+It's plain HTTP, so passwords cross the internet unencrypted. Sign in with the demo accounts only, never
+as admin. The sign-in throttle still applies.
+
 **7. The VM's tunnel.** In the Cloudflare dashboard, open Zero Trust > Networks > Tunnels > Create a
 tunnel (cloudflared), name it `racinglines-vm`, and copy the install token. On the VM
 (`vm.sh ssh`), run:
@@ -124,7 +132,23 @@ sudo cloudflared service install <TOKEN>
 ```
 Don't give it a public hostname yet.
 
-## Cutover (outside a race weekend)
+## Schedule: cutover before round 16 (owner's choice, 2026-09-28)
+
+Round 16's book runs on the VM, so the VM has to be production before the book opens (Thu 1 Oct, 20:30 PDT).
+
+| When | Step |
+|---|---|
+| Mon 28 – Tue 29 Sep | One-time setup 1–7, `vm.sh public on`, test in a browser |
+| Tue 29 – Wed 30 Sep | Rehearse round 15 on the VM, on a simulated clock and without writing positions (below) |
+| Wed 30 Sep | Cutover (below), `vm.sh public off` |
+| Thu 1 Oct, before 20:30 PDT | `sudo systemctl enable --now racinglines-live-f1@2026-16.timer` on the VM. Don't install the round's LaunchAgent on the Mac |
+
+**Rehearsal on the VM** (as the `racinglines` user in `/opt/racinglines`, with `/etc/racinglines.env` loaded):
+```sh
+.venv/bin/racinglines live run live/f1/2026-15.toml --simulate --no-fetch --no-sync --no-alert
+```
+
+## Cutover
 
 Two recorders would split the order-book history across two databases, so the Mac stops before the
 final copy.
@@ -160,6 +184,7 @@ sudo systemctl enable --now racinglines-live-dh@<event>           # downhill: th
 sudo systemctl disable --now racinglines-live-f1@2026-16.timer    # when the event is settled
 ```
 Run an event on one machine only, the one whose database racinglines.bet reads.
+`vm.sh deploy` refuses while an event's unit is running. Merge and deploy before the book opens, or after it settles.
 
 ## Later
 
