@@ -31,7 +31,11 @@ def client():
     try:
         import boto3
     except ImportError:
-        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "boto3"], check=True)
+        import shutil
+        if shutil.which("uv"):                     # start.sh's venv is built by uv and has no pip
+            subprocess.run(["uv", "pip", "install", "-q", "--python", sys.executable, "boto3"], check=True)
+        else:
+            subprocess.run([sys.executable, "-m", "pip", "install", "-q", "boto3"], check=True)
         import boto3
     from botocore.config import Config
     return boto3.client("s3", endpoint_url=ENDPOINT, region_name="auto",
