@@ -11,6 +11,7 @@ racinglines mtb_dh  download | parse | ingest | forecast | backtest | walk-forwa
 racinglines markets sync | history | trades | record | archive      (= racinglines f1 pm-*)
 racinglines db      init | seed | stats | export | snapshot-export | snapshot-import | merge-athletes | changes
 racinglines web
+racinglines mcp     [--http] [--host H] [--port 8100] [--no-jobs]      the MCP server (see MCP server)
 racinglines check   [--sport f1|mtb_dh] [--offline] [--no-db]    quick validation (see Testing)
 ```
 
@@ -494,6 +495,23 @@ cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8000     # optional pu
 | `WEB_RELOAD` | off | `1` = auto-reload on code changes (development). |
 | `DATABASE_URL` | local DB on port 5433 | Database connection. |
 | `POLYMARKET_*` | – | Exchange credentials and limits; see [Web app & trading](webapp.md#polymarket). |
+
+## racinglines mcp
+
+The MCP server: the app's data and simulations for a chat client (Claude Desktop, Claude Code, any MCP
+client). See [MCP server](mcp.md).
+
+```
+racinglines mcp                                    # stdio: the client launches it as a subprocess
+RACINGLINES_MCP_TOKEN=... racinglines mcp --http   # streamable HTTP on 127.0.0.1:8100/mcp, Bearer token required
+```
+
+| Option | Meaning |
+|---|---|
+| `--db URL` | Database URL (default `$DATABASE_URL`, else the local one). |
+| `--http` | Serve streamable HTTP instead of stdio. Refuses to start without `RACINGLINES_MCP_TOKEN` (16+ characters). |
+| `--host` / `--port` | Listen address in `--http` mode (default `127.0.0.1` / `8100`). |
+| `--no-jobs` | Don't run the Lab's job worker in this process: queued jobs wait for the web app's worker. |
 
 ## racinglines check
 

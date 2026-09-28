@@ -32,6 +32,7 @@ nav:
       - Downhill evaluation: evaluation.md
       - Downhill forecast: forecast.md
   - Web app: webapp.md
+  - MCP server: mcp.md
   - Live events: live-events.md
   - Operate:
       - CLI reference: cli.md

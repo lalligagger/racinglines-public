@@ -28,6 +28,9 @@ python-multipart==0.0.32
 Jinja2==3.1.6
 py-clob-client-v2==1.2.0 # Polymarket's official CLOB V2 client (order signing / posting; V1 orders stopped on 2026-04-28)
 
+# MCP server (racinglines mcp): the data and simulations for a chat client
+mcp==2.2.0
+
 # tests (python -m pytest)
 pytest==9.1.1
 
