@@ -258,3 +258,4 @@ The session appends here: date and time (UTC), item, commit, status, notes.
 | 2026-09-28 03:09 | A: B4 Live tab F1 body | 79715dd | done | Stages, latest classification, all markets by kind with moves, the book, picks; maker vs taker; replay at a fixed pace. Whistler's 82 pages byte-identical. |
 | 2026-09-28 03:09 | A: B5 demo taker | 79715dd | done | Hype picks from the spec at the opening, at the maker's ask. A's calls not built (default). |
 | 2026-09-28 03:11 | A: B6 operations | 84b86d0 | done | `live agent` (plist per event, 5-min StartInterval), lock, lateness alert once per update, frozen settings + pairs, `live/f1/2026-16.toml`. Round 16's opening dry-run: 99 markets, 90 quoted, 12 picks. |
+| 2026-09-28 03:15 | A: B8 report command | e106061 | done | `live report` for any sport; Whistler's report rebuilt from its run folder (folder unchanged); PDF via headless Chrome. |
