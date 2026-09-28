@@ -8,13 +8,15 @@ read only as of each moment. Every venue gives the same four things:
     resolve(market, res)  YES / NO / None from the official result (markets/kinds.py's settlement)
 
     Polymarket(conn, w, start, end)          the recorded price history and trade tape (the F1 sweep reads it)
+    Kalshi(conn, links, start, end)          the same for Kalshi's markets (markets/kalshi/ writes the same tables),
+                                             with Kalshi's taker fee; built on mocked data, read by nothing yet
     PrivateBook.from_run(run_dir)            a live run's private book: our quotes and the simulated crowd,
                                              replayed from the logged polls and seeds (exactly, by default,
                                              or under another quoting rule)
 
 A venue reads nothing after t in view(), so strategies can't look ahead through it; settlement is a
-separate call made after trading. Another exchange (e.g. a Kalshi mock) is one more class with these
-methods; the display side of venues (links, names, the board) is markets/venues.py.
+separate call made after trading. Another exchange is one more class with these methods; the display side
+of venues (links, names, the board) is markets/venues.py.
 """
 
 import gzip
@@ -88,6 +90,31 @@ class Polymarket:
         from racinglines.markets import private_book as house
         ath = None if pd.isna(market["athlete_id"]) else int(market["athlete_id"])
         return house.outcome_for(market["prediction"], ath, market["params"], res)
+
+
+class Kalshi(Polymarket):
+    """Recorded Kalshi data for one weekend: markets/kalshi/sync.py stores Kalshi's candlesticks, tape (contracts
+    pay $1, so USD volume = price x contracts) and links (exchange 'kalshi', token = the market's YES contract) in
+    the tables Polymarket uses, so reading them is the same. What differs is the fee: Kalshi charges takers
+    ceil(TAKER_FEE x contracts x P x (1 - P)) in cents per order (Kalshi's published schedule for most markets;
+    check the market's own before relying on it). Built and tested on mocked data only."""
+
+    code = "kalshi"
+    TAKER_FEE = 0.07
+
+    @classmethod
+    def taker_fee(cls, price, contracts):
+        """Dollars for one taker order of `contracts` at `price` (rounded up to the cent)."""
+        return math.ceil(round(cls.TAKER_FEE * contracts * price * (1 - price) * 100, 6)) / 100
+
+    @staticmethod
+    def links(conn, race_id, kinds):
+        """The race's Kalshi links of these kinds, one per market (the YES contract)."""
+        from sqlalchemy import text
+        return pd.read_sql(text("""SELECT ml.*, a.display_name AS athlete FROM market_links ml
+                                   LEFT JOIN athletes a ON a.id = ml.athlete_id
+                                   WHERE ml.race_id = :r AND ml.prediction = ANY(:k) AND ml.exchange = 'kalshi'
+                                   ORDER BY ml.id"""), conn, params=dict(r=race_id, k=list(kinds)))
 
 
 # ---------------------------------------------------------------------------

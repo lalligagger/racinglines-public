@@ -24,6 +24,7 @@ HOST_INTERVAL = {
     "clob.polymarket.com": 0.15,
     "gamma-api.polymarket.com": 0.25,
     "data-api.polymarket.com": 0.25,
+    "api.elections.kalshi.com": 0.25,
     "prod.chronorace.be": 0.5,
     "en.wikipedia.org": 1.0,
 }

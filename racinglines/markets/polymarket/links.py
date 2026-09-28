@@ -36,7 +36,8 @@ def export(engine, path=PATH):
             LEFT JOIN categories rc ON rc.id = r.category_id
             LEFT JOIN athlete_identifiers ai ON ai.athlete_id = ml.athlete_id AND ai.scheme = 'f1'
             LEFT JOIN competitions co ON co.id = ml.competition_id
-            LEFT JOIN categories ca ON ca.id = ml.category_id"""), c)
+            LEFT JOIN categories ca ON ca.id = ml.category_id
+            WHERE ml.exchange = 'polymarket'"""), c)
         opp = dict(c.execute(text("SELECT athlete_id, value FROM athlete_identifiers WHERE scheme = 'f1'")).all())
     missing = df[(df["race_id"].notna() & df["race_key"].isna()) | (df["athlete_id"].notna() & df["athlete_key"].isna())]
     if len(missing):

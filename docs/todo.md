@@ -122,14 +122,20 @@ standings, champion odds, `spearman_points`) is approximate.
       Low priority.
 - [ ] Build **slug probing** into the downloader (`--probe START END`) for rounds
       missing from Wikipedia, like 2021 Snowshoe.
-- [ ] Canonical venue names (`mont-ste-anne` → `mont-sainte-anne`,
-      `vallnord`/`vallnord-pal-arinsal` → `pal-arinsal`).
-- [ ] Elite Women and Junior Women: download, and check the model works for
-      smaller fields.
+- [x] Canonical venue names (`mont-ste-anne` → `mont-sainte-anne`,
+      `vallnord`/`vallnord-pal-arinsal` → `pal-arinsal`): the database already stores every venue
+      under its canonical slug (`venue_aliases`, checked on the snapshot: no duplicates); `mtb_dh parse
+      --canonical-venues` does the same for the CSV path (off by default) (2026-09-28, cloud).
+- [ ] Elite Women and Junior Women: download (`mtb_dh download --category 'Elite Women'` already works;
+      ChronoRace is blocked in the cloud, so locally), then forecast with `--unraced-format last`.
+      Done (2026-09-28, cloud, synthetic data): unraced rounds can take the category's own format
+      (`--unraced-format last`, off by default); the default simulates every category in the 2026 elite
+      men's format (a 30-rider final), which put all 24 riders of a synthetic women's field in the final.
+      Enter the official formats per category in `sports/mtb_dh.toml` `[rounds.category_format]` (owner).
 - [ ] Start order: it's in ChronoRace's start-list PDFs and possibly the JSON.
-      Needed for track-evolution and weather effects.
+      Needed for track-evolution and weather effects. Blocked in the cloud (ChronoRace).
 - [ ] Weather and track conditions (the PDFs have weather; `--conditions-file`
-      exists but is empty).
+      exists but is empty). Blocked in the cloud (ChronoRace).
 - [x] **2025 Polymarket F1 markets** downloaded and synced (2026-09-27: 23 of 24 races have
       markets; minute prices and trades, no order books) and backtested in the cloud search.
 - [ ] **F1 pre-season testing:** ingest FastF1's testing sessions, so the pre-season forecast
@@ -146,6 +152,9 @@ standings, champion odds, `spearman_points`) is approximate.
 - [x] **New downhill defaults** (owner's OK, 2026-09-28): `prior_n` 0.5, half-life 240 days,
       junior weight 0.25. Better in every market on the 43 rounds; picked in-sample.
 - [ ] Check the new downhill defaults on 2026's next rounds (out of sample).
+- [ ] Owner: make `--unraced-format last` the default? Juniors' unraced rounds are simulated in the elite
+      men's 30-rider-final format today; with their own format, the 2026 MJ leader's make-Final odds for
+      the next round go from 92% to 73% (committed snapshot, 2,000 sims). Changes junior and women's prices.
       Per-round-type incident rates tried too: no gain.
 - [x] A tuning sweep over all 43 rounds (2026-09-28, cloud build-out): `prior_n` 0.5, half-life
       240 days, junior weight 0.25 is better in every market ([Calibration](model.md#calibration)).
@@ -186,8 +195,11 @@ Phased plan and ground rules: [F1 roadmap](f1-roadmap.md). Items tagged
 - [ ] Decide whether profile A's model takes `rookie` (`gridq+pretrain+reset+rookie`, run 1289), after
       live weekends.
 - [ ] Teammate-battle uncertainty: a larger per-driver season drift, or a driver-form model.
-- [ ] Price fastest lap, safety car / red flag, rain (F1-3: per-circuit rates from track status
-      and weather, `race_disruption`), and sprint markets.
+- [x] Price fastest lap, safety car / red flag, rain (F1-3): `models/position_sim/props.py`,
+      `racinglines f1 props`; opt-in kinds for a live book (2026-09-28, cloud). Per-circuit rates
+      don't beat the field rate on 2022–2026 ([F1 roadmap](f1-roadmap.md#decision-log)).
+- [ ] Props next: calibrate fastest lap on stored stage runs; map Polymarket's prop markets in the
+      sync classifier (they're `unmodeled` today) and backtest against their prices; sprint markets.
 - [x] Polymarket sync and repricing on a schedule during race weekends: the recorder re-syncs
       every 30 min; the signal engine prices each stage as its data arrives (every 5 min).
 
@@ -272,8 +284,15 @@ How it works: [Live events](live-events.md). First run: the Whistler downhill fi
 
 Phase [F1-9](f1-roadmap.md#f1-9-more-exchanges-kalshi-others).
 
-- [ ] **Kalshi connector** (`racinglines/markets/kalshi/`): markets, prices, trade tape, and
-      order placement behind a flag. Registered in `markets/venues`.
+- [x] **Kalshi connector** (`racinglines/markets/kalshi/`): markets (with their resolution rules), prices,
+      trade tape, price history, order books, and post-only orders behind `KALSHI_TRADING_ENABLED`
+      (`racinglines markets --exchange kalshi …`). Built on mocked responses only (2026-09-28, cloud):
+      the cloud network blocks Kalshi's API. `venue_replay.Kalshi` is its backtest venue; the Polymarket
+      paths (sweep, maker replay, season strategy, head-to-head pairs, links export, fetches) now read
+      `exchange = 'polymarket'` only, so synced Kalshi links can't leak into them.
+- [ ] Kalshi, locally: run `sync` against the live API and check the title classifier against Kalshi's
+      real F1 listing, the series tickers, prices and the tape; then the sweep and paper signals reading
+      Kalshi's markets (F1-9's "done when"), and the Markets page showing the `kalshi` venue as live.
 - [ ] Other exchanges, if they list motorsport or cycling markets with real depth, including one for
       downhill (none on Polymarket as of 2026-09).
 - [ ] Before any real order: one small V2 order checked against the live CLOB ([Market making](#market-making)).
@@ -297,7 +316,10 @@ Phase [F1-9](f1-roadmap.md#f1-9-more-exchanges-kalshi-others).
 - [ ] Remove the `demo_context` bubbles before real users.
 - [ ] Before anything goes beyond a private demo: check F1's data terms, OpenF1's non-commercial terms,
       and settlement rules for relocated or cancelled races.
-- [ ] Public/JSON API endpoints next to the admin pages.
+- [x] JSON API endpoints next to the pages: read-only events and athletes, behind the login,
+      off unless `RACINGLINES_JSON_API=1` ([JSON API](webapp.md#json-api), 2026-09-28, cloud).
+- [ ] JSON API, owner: what's public (results only, or prices), who can use it (accounts, keys, no
+      login), data terms, rate limits ([open questions](webapp.md#json-api)).
 - [ ] **Condition in-weekend forecasts on completed rounds** (downhill). Once Q1 has run, fix
       who has qualified and use the Q1 times. Also use split times from disrupted
       Timed Training sessions.

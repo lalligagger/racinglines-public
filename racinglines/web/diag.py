@@ -51,7 +51,8 @@ def load(conn, run_id):
     # 2. Polymarket at the cutoff, 24 h before, and latest
     links = data.q(conn, """SELECT ml.*, a.display_name AS athlete FROM market_links ml
                             LEFT JOIN athletes a ON a.id = ml.athlete_id
-                            WHERE ml.race_id = :r AND ml.prediction = ANY(:k)""", r=race_id, k=list(RACE_KINDS))
+                            WHERE ml.race_id = :r AND ml.prediction = ANY(:k) AND ml.exchange = 'polymarket'""",
+                     r=race_id, k=list(RACE_KINDS))
     toks = links["token_id"].tolist()
     at_cut = _prices_at(conn, toks, cutoff.to_pydatetime())
     at_24 = _prices_at(conn, toks, (cutoff - pd.Timedelta(hours=24)).to_pydatetime())
