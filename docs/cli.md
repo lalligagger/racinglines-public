@@ -138,6 +138,19 @@ racinglines mtb_dh live --slug 20260925_mtb --final 3 --quali 2,91 --conditions 
 | `--minutes` | 0 | Stop after this many minutes (0: when the final is over) |
 | `--once` | | One update, then exit |
 
+## racinglines live
+
+Launch and run a live private-book event for any sport, from a launch spec (`live/<sport>/<event>.toml`):
+`new`, `step`, `run`, `agent`, `status` and `report`. The commands, options and the F1 engine are in
+[Live events](live-events.md#running-an-event-racinglines-live).
+
+```
+racinglines live new f1 2026-16
+racinglines live step live/f1/2026-16.toml
+racinglines live agent live/f1/2026-16.toml --install
+racinglines live status
+```
+
 ## racinglines mtb_dh backtest
 
 Walk-forward plus a standings holdout, for several seasons.

@@ -50,7 +50,10 @@ GP_ALIASES = {"brazilian": "sao paulo", "brazil": "sao paulo", "china": "chinese
               "japan": "japanese", "mexican": "mexico city", "mexico": "mexico city", "australia": "australian",
               "us": "united states", "usa": "united states", "spain": "spanish", "austria": "austrian",
               "belgium": "belgian", "hungary": "hungarian", "netherlands": "dutch", "canada": "canadian",
-              "imola": "emilia romagna", "saudi": "saudi arabian"}
+              "imola": "emilia romagna", "saudi": "saudi arabian",
+              # 2026 round 16: the Bahrain GP held at Sepang ("... Bahrain Grand Prix in Malaysia 2026")
+              "malaysian": "malaysia", "sepang": "malaysia", "kuala lumpur": "malaysia",
+              "bahrain in malaysia": "malaysia"}
 
 
 def _norm(s):

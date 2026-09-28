@@ -489,18 +489,18 @@ Polymarket's usual race markets (winner, podium, pole, head-to-head, constructor
 anyway, and update at session ends only. It's built as one shared live core plus an
 F1 adapter, keeping the platform multi-sport. Plan: [F1 live test](docs/f1-live-roadmap.md).
 
-- [ ] Build: name aliases, the shared live core, the F1 adapter, the Live tab's F1
-      body, the demo taker, operations, a rehearsal on Baku (items B0–B7).
+- [x] Build: name aliases, the shared live core, the F1 adapter, the Live tab's F1
+      body, the demo taker, operations, a rehearsal on Baku (items B0–B8, cloud build-out 29 Sep; the Mac rehearsal under the LaunchAgent is Thursday's).
 - [ ] Checkpoints: Polymarket listing Wed 30 Sep; the scenario chosen Thu 1 Oct 18:00 PDT;
       the book opens Thu 20:30 PDT.
 - [ ] After the race (Mon 5 Oct): settle and reconcile, report with a fair-price scorecard.
 
 **P1 · Next two weeks: consolidate the live platform**
 
-- [ ] Singapore (round 17, sprint, 11 Oct): run it the same way if Polymarket still hasn't listed it.
-- [ ] A repeatable report command for any live event ([Live events](docs/todo.md#live-events)).
-- [ ] Settle the Whistler private book in the database, into the demo maker's story.
-- [ ] A per-market loss cap or two-sided long-shot quotes in the shared quoting core.
+- [ ] Singapore (round 17, sprint, 11 Oct): run it the same way if Polymarket still hasn't listed it. Ready: `live/f1/2026-17.toml`; the sprint stages rehearsed on the Dutch GP (`live/f1/2026-12.toml`).
+- [x] A repeatable report command for any live event: `racinglines live report` ([Live events](docs/todo.md#live-events)).
+- [x] Settle the Whistler private book in the database, into the demo maker's story (`live_events`; the owner runs the migration and `racinglines live settle` locally).
+- [x] A per-market loss cap or two-sided long-shot quotes in the shared quoting core (both built, off by default: the owner decides; [decision log](docs/f1-live-roadmap.md#11-decision-log)).
 - [ ] Watch for Polymarket listings: F1-8 starts the first weekend with markets.
 
 **P2 · When Polymarket lists F1 again: paper-trade validation** ([F1-8](docs/todo.md#paper-trading))

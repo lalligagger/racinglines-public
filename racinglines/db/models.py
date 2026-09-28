@@ -564,3 +564,24 @@ class PaperPosition(Base):
     ask: Mapped[float | None] = mapped_column(Float)
     quote_state: Mapped[str | None] = mapped_column(String(30))           # quoting, or why not
     venue: Mapped[str] = mapped_column(String(20), default="polymarket", server_default="polymarket")  # polymarket | private
+
+
+class LiveEvent(Base):
+    """A live private-book event (pipelines/live.py), recorded when it is settled (racinglines live settle): its
+    dates, the book's final P&L and the crowd's totals, so the demo accounts' story and the web app don't need
+    the run folder. The positions themselves are in paper_positions (venue 'private')."""
+    __tablename__ = "live_events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run: Mapped[str] = mapped_column(String(60), unique=True)             # the run folder: data/runs/live/<run>
+    sport: Mapped[str] = mapped_column(String(20))
+    event_key: Mapped[str] = mapped_column(String(40), index=True)        # paper_positions.event_key
+    title: Mapped[str | None] = mapped_column(Text)
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    maker_pnl: Mapped[float | None] = mapped_column(Float)                # vs the crowd + vs the demo taker
+    crowd_pnl: Mapped[float | None] = mapped_column(Float)                # the maker's P&L vs the crowd
+    taker_pnl: Mapped[float | None] = mapped_column(Float)                # the maker's P&L vs the demo taker
+    fills: Mapped[int | None] = mapped_column(Integer)
+    volume: Mapped[float | None] = mapped_column(Float)
+    detail: Mapped[dict | None] = mapped_column(JSONB)                    # settings, crowd results, P&L curve
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
