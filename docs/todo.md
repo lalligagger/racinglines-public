@@ -308,7 +308,7 @@ Phase [F1-9](f1-roadmap.md#f1-9-more-exchanges-kalshi-others).
       pages. Feed differences vs Polymarket: [Kalshi history](kalshi-history.md).
 - [x] Kalshi: the first real pull (2025–26, owner's device) replayed and summarised: how many of the maker's
       quotes Kalshi's tape fills, by market kind ([Kalshi history](kalshi-history.md#first-real-run-2026-09-28));
-      Kalshi at parity with Polymarket in the app behind `RACINGLINES_KALSHI_VENUE=1`: Positions tiles and
+      Kalshi at parity with Polymarket in the app, on by default (`RACINGLINES_KALSHI_VENUE=0` hides it): Positions tiles and
       curve, Strategy switch, `/markets/kalshi`, race-page column and chart, Lab replay
       ([Kalshi history](kalshi-history.md#in-the-app)).
 - [ ] Kalshi: the sweep and taker paper signals reading Kalshi's markets (F1-9's "done when"). No order has

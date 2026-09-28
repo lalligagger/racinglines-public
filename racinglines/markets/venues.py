@@ -32,10 +32,11 @@ class Venue:
     url: str = ""        # event URL pattern ({slug})
 
 
-# RACINGLINES_KALSHI_VENUE=1 (off by default): Kalshi shows as a live venue (its synced links' quotes on the board
-# and race pages), and the Positions page lists the maker's Kalshi replay (`f1 demo-history --venue kalshi`,
-# paper_positions.venue = 'kalshi'), which is otherwise hidden. The Strategy page stays Polymarket's record.
-KALSHI_VENUE = os.environ.get("RACINGLINES_KALSHI_VENUE", "") == "1"
+# Kalshi is a live venue (on by default since 2026-09-28, at the owner's call): its synced links' quotes on the board
+# and race pages, /markets/kalshi, the maker's Kalshi replay (`f1 demo-history --venue kalshi`, paper_positions.venue
+# = 'kalshi') on Positions and Strategy, and the Lab's Kalshi replay. RACINGLINES_KALSHI_VENUE=0 hides all of it
+# again: Kalshi shows as "soon" and its rows stay out of every page.
+KALSHI_VENUE = os.environ.get("RACINGLINES_KALSHI_VENUE", "1") != "0"
 VENUES = [
     Venue("polymarket", "Polymarket", "live", "exchange", "https://polymarket.com/event/{slug}"),
     Venue("kalshi", "Kalshi", "live" if KALSHI_VENUE else "soon", "exchange", "https://kalshi.com/markets/{slug}"),

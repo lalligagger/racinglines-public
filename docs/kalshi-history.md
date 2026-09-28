@@ -96,11 +96,11 @@ podium +$9.94. Hungary 2025 (M2, −$508) is most of M2's loss.
 
 ## In the app
 
-`RACINGLINES_KALSHI_VENUE=1` (off by default) brings Kalshi to the same level as Polymarket across the app. With
-the switch off, nothing below appears: Kalshi shows as "soon" on the board and race pages, its rows stay out of
-Positions, and `/markets/kalshi` is a 404.
+Kalshi is at the same level as Polymarket across the app, on by default (the owner's call, 2026-09-28).
+`RACINGLINES_KALSHI_VENUE=0` turns it off: nothing below appears, Kalshi shows as "soon" on the board and race
+pages, its rows stay out of Positions, and `/markets/kalshi` is a 404.
 
-| Page | With the switch on |
+| Page | With Kalshi on |
 |---|---|
 | Markets (board) | Kalshi as a live venue chip per race; the winner's Kalshi price next to Polymarket's in recent results; a link to the Kalshi list |
 | Race and season pages | a Kalshi column with its bid–ask (open races) or its price as of our pricing (past races); the price-history tab plots Polymarket or Kalshi; a Kalshi mirror button and link |
@@ -109,6 +109,6 @@ Positions, and `/markets/kalshi` is a 404.
 | Strategy | a Polymarket / Kalshi switch; `?venue=kalshi` shows the maker's Kalshi record, weekend by weekend, with its signals and positions |
 | Lab | Event diagnostics get Kalshi fills / P&L columns (the same replay on Kalshi's tape, with its maker fee); a diagnostic's maker replay has an Exchange selector |
 
-The Polymarket record, its pages and the private book render exactly as before with the switch off. A Kalshi
+The Polymarket record, its pages and the private book render exactly as before with Kalshi off. A Kalshi
 `condition_id` is the whole event, so the race page, the mirror and the Coming-up volume group Kalshi's rows by
 market ticker (`token_id`), where Polymarket's group by condition.
