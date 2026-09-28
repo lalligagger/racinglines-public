@@ -206,8 +206,10 @@ Phase [F1-8](f1-roadmap.md#f1-8-live-paper-trade-validation-polymarket); how it 
       weekend (conservative "through" fill rule) and log the markouts.
 - [ ] After 4–6 live weekends: decide on sizing (e.g. A-lite → A).
 - [ ] Walk-forward re-run of A, A-lite, C, B (#06) and A′ (#08) with rounds 16–17 added.
-- [ ] **Bankroll-aware sizing** and a **deployed-capital cap** per account (bankrolls are recorded;
-      sizing is fixed today). Later, fractional sizing once recorded depth supports it.
+- [x] **Bankroll-aware sizing** and a **deployed-capital cap** in the backtest: sweep settings
+      `bankroll` and `max_deployed`, unset by default (2026-09-28, cloud build-out; synthetic tests).
+- [ ] Use them live: the signal engine sizes from the account's balance and deployed capital, once
+      4–6 live weekends pick a rule. Later, fractional sizing once recorded depth supports it.
 - [ ] Fix: an h2h-only market-kinds sweep crashes on 2025 (`KeyError: 'cond'` in the
       position-market step when a season has no position markets).
 

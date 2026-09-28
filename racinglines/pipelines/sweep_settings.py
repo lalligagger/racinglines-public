@@ -72,6 +72,10 @@ SETTINGS = [
             help="Target cost = this x edge, e.g. 250 x 0.10 = $25."),
     Setting("max_stake", "taker", "Max stake per market ($)", "float", 50.0, 1, 5000),
     Setting("cost", "taker", "Cost per share per trade ($)", "float", 0.01, 0, 0.1),
+    Setting("bankroll", "taker", "Starting bankroll ($)", "float", None, 10, 1e7,
+            help="Bankroll-aware sizing: stakes scale with the balance after earlier weekends. Empty = fixed sizing."),
+    Setting("max_deployed", "taker", "Max capital deployed per weekend ($)", "float", None, 1, 1e7,
+            help="Across all markets; buys over the cap are cut to fit. Empty = no cap."),
     # --- maker ----------------------------------------------------------------------------------------
     Setting("half_spread", "maker", "Quote half-spread ($)", "float", 0.02, 0.005, 0.2),
     Setting("size", "maker", "Shares per quote", "float", 50.0, 1, 1000),

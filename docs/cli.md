@@ -265,6 +265,8 @@ baseline. The model variant is the group's `--variant`.
 | | `--stake-per-edge` | 250 | Target cost = this × edge ($). |
 | | `--max-stake` | 50 | Max stake per market ($). |
 | | `--cost` | 0.01 | Cost per share per trade ($). |
+| | `--bankroll` | not set | Bankroll-aware sizing: each taker mode starts with this bankroll, and its stakes scale with its balance after earlier weekends (`balance / bankroll`, 0 once it's gone). Unset = fixed sizing. |
+| | `--max-deployed` | not set | Cap on the capital deployed across a weekend's markets ($). Markets are traded in time order; a buy over the cap is cut to fit. Unset = no cap. |
 | Maker | `--half-spread` | 0.02 | Quote half-spread ($). |
 | | `--size` | 50 | Shares per quote. |
 | | `--max-pos` | 250 | Max inventory per market (shares). |
