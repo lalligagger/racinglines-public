@@ -1,5 +1,6 @@
 """Guard: no data is tracked by git or about to be (untracked, not ignored), except the minimal
-allow-listed set cloud sweeps need (.gitignore; the repo is private since 2026-09-27)."""
+allow-listed set cloud sweeps need and the pinned test fixtures and goldens (.gitignore; the repo is
+private since 2026-09-27)."""
 
 import subprocess
 from pathlib import Path
@@ -16,7 +17,8 @@ ALLOWED_LARGE = ("docs/",)                      # screenshots / images in the do
 # the minimal data set for cloud sweeps (docs/cloud-sweep.md); must match the allow-list in .gitignore
 ALLOWED_DATA = ("data/raw/f1/fastf1/", "data/archive/markets/polymarket/prices/",
                 "data/archive/markets/polymarket/trades/", "data/archive/markets/polymarket/links/", "data/archive/db/",
-                "data/runs/search/")
+                "data/runs/search/", "tests/golden/", "tests/fixtures/f1/", "tests/fixtures/market/",
+                "tests/fixtures/mtb/")
 MAX_BYTES = 1_000_000
 
 

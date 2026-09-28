@@ -7,14 +7,14 @@ Three levels, fastest first:
 | | Command | Checks | Time | Needs |
 |---|---|---|---|---|
 | **Quick check** | `racinglines check` | 21 checks: every pipeline on synthetic data, every data source, the database | ~10 s | nothing downloaded; network and Postgres optional |
-| **Regression suite** | `python -m pytest -m "not live"` | 174 tests: every pipeline stage on pinned F1 and downhill fixtures, compared with golden outputs | ~10 s (+ a one-time fixture build) | Postgres and `scripts/fetch_test_fixtures.py` |
+| **Regression suite** | `python -m pytest -m "not live"` | 174 tests: every pipeline stage on pinned F1 and downhill fixtures, compared with golden outputs | ~10 s | Postgres (fixtures and goldens are in git) |
 | **Everything** | `python -m pytest` | 221 tests, adding 47 live tests on the working database: the web app's pages per role, Baku live data, retention | ~35 s | the working database |
 
-- **No test data in git:** fixtures are built locally from the public sources (FastF1,
-  ChronoRace, Polymarket). A guard test fails if any data outside a small
-  allow-list is tracked.
+- **Pinned in git (since 2026-09-28):** the test fixtures (2 MB, built from FastF1,
+  ChronoRace and Polymarket) and the golden outputs, so every machine and cloud session
+  compares against the same baseline. A guard test fails if any other data is tracked.
 - **Results can't drift silently:** an intended change is re-baselined with
-  `UPDATE_GOLDEN=1`.
+  `UPDATE_GOLDEN=1` and reviewed as a diff of `tests/golden/` in its PR.
 
 <!-- /readme -->
 
@@ -43,24 +43,33 @@ racinglines check --sport f1            # one sport
 ## Regression suite
 
 ```
-python scripts/fetch_test_fixtures.py [--f1] [--mtb]   # once: download + build the test fixtures (default: both)
-python -m pytest -m "not live"                         # regression suite on the fixtures, ~10 s
+python -m pytest -m "not live"                         # regression suite on the pinned fixtures, ~10 s
 python -m pytest                                       # everything, incl. live-database smoke tests, ~35 s
-UPDATE_GOLDEN=1 python -m pytest                       # re-baseline after an intended change
+UPDATE_GOLDEN=1 python -m pytest -m "not live"         # re-baseline after an intended change; commit tests/golden
+python scripts/fetch_test_fixtures.py --refresh [--f1] [--mtb]   # rarely: rebuild the fixtures from today's data
+```
+
+A fixture refresh pulls today's data (FastF1 revises laps after a race, new rounds get raced), so it
+changes golden outputs even with no code change. That's why it needs `--refresh`, is logged in the
+[data change log](data-changes.md), and goes in its own commit: fixtures and re-baselined goldens
+together, reviewed apart from code changes.
+
+```
 ```
 
 ## No data in git
 
 Nothing data-shaped is committed except the minimal allow-listed set cloud sweeps
-need (see [What's in git](data.md#whats-in-git)). Never committed:
+need (see [What's in git](data.md#whats-in-git)), the test fixtures and the golden baselines.
+Never committed:
 
-- test fixtures and golden baselines;
+- the fixture build's raw downloads (`tests/fixtures/_work/`);
 - downhill downloads, order books, run outputs, logs;
 - derived tables.
 
 `.gitignore` covers `data/*` (then allow-lists `data/raw/f1`,
 `data/archive/markets/polymarket/{prices,trades,links}`, `data/archive/db` and
-`data/runs/search`), `tests/fixtures/`, `tests/golden/` and data file types.
+`data/runs/search`, then `tests/fixtures/` minus `_work/`), and data file types.
 `tests/test_no_data_in_git.py` fails if anything data-like outside the allow-list
 is tracked or about to be added.
 
@@ -101,13 +110,16 @@ pipeline:
 - **What they hold:** each stage writes a compact fingerprint of its output to
   `tests/golden/<stage>.json`, compared within a relative tolerance of 1e-6.
   Seeds are fixed and simulations small (1,000–2,000 runs).
-- **Not committed:** golden files contain derived results (names, positions,
-  times), so they stay local.
-- **Workflow:** fetch the fixtures and run the suite once (this writes your
-  baseline), then make changes and run it again. Any output change fails with
-  the path of the first differing value.
-- **Only code can change results:** new data arriving doesn't touch the
-  fixtures.
+- **Committed** (since 2026-09-28; the repo is private): the goldens were local
+  before, so a code change could pass in the cloud and break only the owner's
+  baseline. The first shared baseline is the owner's of 2026-09-26, re-baselined
+  for the approved downhill defaults (prior_n 0.5, half-life 240 days, junior
+  weight 0.25), which changed the five downhill model goldens and nothing else.
+- **Workflow:** make changes and run the suite. Any output change fails with the
+  path of the first differing value; if intended, `UPDATE_GOLDEN=1` and commit
+  the golden diff with the change.
+- **Only code can change results:** new data arriving doesn't touch the pinned
+  fixtures; a `--refresh` does, on purpose.
 - **Ingest tests** build `racinglines_test` from the migrations and never touch
   the live database (`TEST_DATABASE_URL` overrides).
 - **Live tests** read the live database and are marked `live` (47 tests): page

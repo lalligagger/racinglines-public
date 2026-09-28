@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """
 Download the inputs the regression suite needs, from the original public sources,
-and build tests/fixtures/ with this repo's own pipeline. Nothing is committed to git:
-fixtures, raw downloads and golden baselines are all ignored.
+and build tests/fixtures/ with this repo's own pipeline. The fixtures and the golden
+baselines are pinned in git (since 2026-09-28), so every machine and cloud session tests
+against the same inputs; the raw downloads (tests/fixtures/_work/) aren't.
 
-    python scripts/fetch_test_fixtures.py            # both sports
-    python scripts/fetch_test_fixtures.py --f1       # Formula 1 only
-    python scripts/fetch_test_fixtures.py --mtb      # UCI downhill only
+A rebuild pulls today's data (FastF1 revises laps, new rounds get raced), which changes
+the fixtures and so the golden outputs. So it only runs with --refresh, is logged in the
+data change log (`racinglines db changes`), and is followed by a reviewed re-baseline.
+
+    python scripts/fetch_test_fixtures.py --refresh            # both sports
+    python scripts/fetch_test_fixtures.py --refresh --f1       # Formula 1 only
+    python scripts/fetch_test_fixtures.py --refresh --mtb      # UCI downhill only
 
 Needs Postgres (docker compose up -d); a throwaway database `racinglines_fixtures` is
 (re)created from the migrations ($FIXTURE_DATABASE_URL to override). Raw downloads go
@@ -20,7 +25,8 @@ up to an hour on a cold cache).
     MTB  ChronoRace: 2025-2026 World Cup DH, Elite and Junior men (MTB_EVENTS)
          -> tests/fixtures/mtb/*.md, tidy_2025_2026.parquet
 
-Then: python -m pytest -m "not live"   (the first run writes your golden baseline)
+Then: UPDATE_GOLDEN=1 python -m pytest -m "not live", review `git diff tests/golden`, and
+commit fixtures and goldens together.
 """
 
 import argparse
@@ -225,8 +231,14 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--f1", action="store_true", help="Formula 1 fixtures only")
     ap.add_argument("--mtb", action="store_true", help="UCI downhill fixtures only")
+    ap.add_argument("--refresh", action="store_true",
+                    help="Replace the pinned fixtures with a fresh build (changes the golden outputs; logged)")
     ap.add_argument("--resume-season", action="store_true", help=argparse.SUPPRESS)   # re-run only the championship step
     args = ap.parse_args()
+    pinned = [f for f in FIX.rglob("*") if f.is_file() and "_work" not in f.parts]
+    if pinned and not args.refresh and not args.resume_season:
+        raise SystemExit(f"{len(pinned)} pinned fixture files in {FIX} (in git). Rebuilding pulls today's data and "
+                         "changes the golden outputs: pass --refresh to do it anyway.")
     if args.resume_season:
         from sqlalchemy import create_engine
         build_f1_season(create_engine(FIXTURE_DB, future=True))
@@ -239,8 +251,23 @@ def main():
     if args.f1 or both:
         build_f1(engine)
     total = sum(f.stat().st_size for f in FIX.rglob("*") if f.is_file() and "_work" not in f.parts)
-    say(f"fixtures: {total / 1e6:.1f} MB in {FIX} (git-ignored). Raw downloads kept in {WORK} for re-runs.")
-    say('Next: python -m pytest -m "not live"   (first run writes your golden baseline in tests/golden/)')
+    say(f"fixtures: {total / 1e6:.1f} MB in {FIX}. Raw downloads kept in {WORK} for re-runs.")
+    _log_refresh(args, total)
+    say('Next: UPDATE_GOLDEN=1 python -m pytest -m "not live", review `git diff tests/fixtures tests/golden`, commit both')
+
+
+def _log_refresh(args, total):
+    """The data change log (in the working database, $DATABASE_URL): a refresh changes what the tests compare."""
+    try:
+        from racinglines.db import changes
+        from racinglines.db.config import get_session
+        parts = "F1 and downhill" if not (args.f1 or args.mtb) else ("F1" if args.f1 else "downhill")
+        with get_session() as s:
+            changes.record(s, "fixtures", f"test fixtures refreshed ({parts}, {total / 1e6:.1f} MB); re-baseline goldens",
+                           detail=dict(f1=args.f1 or not args.mtb, mtb=args.mtb or not args.f1))
+            s.commit()
+    except Exception as e:                               # the log is best effort; the fixtures are built
+        say(f"(not logged in data_changes: {e})")
 
 
 if __name__ == "__main__":

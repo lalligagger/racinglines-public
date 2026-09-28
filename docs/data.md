@@ -51,8 +51,9 @@ types (`*.parquet`, `*.csv`, …) everywhere, then allow-lists the minimal set a
 | `data/runs/live/<slug>_<key>/` | A live event, kept permanently for replay: raw timing-feed responses, snapshots, quotes, model inputs, the private book and every crowd fill (see [Live events](live-events.md#kept-for-replay)) |
 
 - **Everything else in `data/` stays ignored:** downhill downloads, order books,
-  other run outputs, logs, alerts, caches, `data/pg/`, plus `tests/fixtures/` and
-  `tests/golden/`.
+  other run outputs, logs, alerts, caches, `data/pg/`. The test fixtures and golden
+  baselines are tracked (since 2026-09-28, [Testing](testing.md)); their raw downloads
+  (`tests/fixtures/_work/`) aren't.
 - **Enforced:** `tests/test_no_data_in_git.py` fails if data outside the allow-list is
   tracked or about to be added (it also runs in the [pre-push hook](testing.md#pre-push-hook)).
 - **If the repo ever goes public,** this data must be removed from the git history
