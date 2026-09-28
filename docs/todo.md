@@ -287,7 +287,9 @@ Phase [F1-9](f1-roadmap.md#f1-9-more-exchanges-kalshi-others).
 - [x] **Kalshi connector** (`racinglines/markets/kalshi/`): markets (with their resolution rules), prices,
       trade tape, price history, order books, and post-only orders behind `KALSHI_TRADING_ENABLED`
       (`racinglines markets --exchange kalshi …`). Built on mocked responses only (2026-09-28, cloud):
-      the cloud network blocks Kalshi's API.
+      the cloud network blocks Kalshi's API. `venue_replay.Kalshi` is its backtest venue; the Polymarket
+      paths (sweep, maker replay, season strategy, head-to-head pairs, links export, fetches) now read
+      `exchange = 'polymarket'` only, so synced Kalshi links can't leak into them.
 - [ ] Kalshi, locally: run `sync` against the live API and check the title classifier against Kalshi's
       real F1 listing, the series tickers, prices and the tape; then the sweep and paper signals reading
       Kalshi's markets (F1-9's "done when"), and the Markets page showing the `kalshi` venue as live.

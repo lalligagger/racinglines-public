@@ -83,7 +83,7 @@ def h2h_pairs(conn, event_key, source="last_listed"):
     if source in (None, "", "last_listed"):
         source = conn.execute(text("""
             SELECT e.source_key FROM market_links ml JOIN races ra ON ra.id = ml.race_id JOIN events e ON e.id = ra.event_id
-            WHERE ml.prediction = 'race_h2h' AND e.start_date <= (SELECT e2.start_date FROM events e2
+            WHERE ml.prediction = 'race_h2h' AND ml.exchange = 'polymarket' AND e.start_date <= (SELECT e2.start_date FROM events e2
                   WHERE e2.source_key = :k AND e2.source = 'f1timing')
             ORDER BY e.start_date DESC LIMIT 1"""), dict(k=event_key)).scalar()
     if source is None:
@@ -91,7 +91,7 @@ def h2h_pairs(conn, event_key, source="last_listed"):
     rows = conn.execute(text("""
         SELECT DISTINCT ON (ml.condition_id) ml.athlete_id, (ml.params->>'opponent_id')::int
         FROM market_links ml JOIN races ra ON ra.id = ml.race_id JOIN events e ON e.id = ra.event_id
-        WHERE e.source_key = :s AND ml.prediction = 'race_h2h' AND ml.athlete_id IS NOT NULL
+        WHERE e.source_key = :s AND ml.prediction = 'race_h2h' AND ml.exchange = 'polymarket' AND ml.athlete_id IS NOT NULL
         ORDER BY ml.condition_id, ml.id"""), dict(s=source)).all()
     return sorted((int(a), int(b)) for a, b in rows if b is not None), source
 

@@ -218,3 +218,24 @@ def test_sync_and_tape_write_the_shared_tables(test_engine, monkeypatch):
         assert c.execute(text("SELECT count(*) FROM market_trades WHERE token_id LIKE 'KXF1RACE%'")).scalar() == 6
         p = c.execute(text("SELECT params FROM market_links WHERE token_id = 'KXF1RACE-26SIN-VER'")).scalar()
     assert json.loads(json.dumps(p))["series"] == "KXF1RACE"
+
+
+@pytest.mark.quick
+def test_kalshi_backtest_venue_reads_the_shared_tables(monkeypatch):
+    import pandas as pd
+
+    from racinglines.markets import store as MS
+    from racinglines.markets import venue_replay as VR
+    t0 = pd.Timestamp("2026-10-10 12:00", tz="UTC")
+    links = pd.DataFrame(dict(token_id=["KXF1RACE-26SIN-VER"], condition_id=["KXF1RACE-26SIN"], prediction=["race_win"],
+                              athlete_id=[1], params=[{"event_key": "2026-17"}], exchange=["kalshi"]))
+    rows = KS.trade_rows("KXF1RACE-26SIN-VER", "KXF1RACE-26SIN", TRADES["trades"])
+    frames = {"prices": pd.DataFrame(dict(token_id=["KXF1RACE-26SIN-VER"] * 2, ts=[t0, t0 + pd.Timedelta(hours=1)],
+                                          price=[0.31, 0.33])),
+              "trades": pd.DataFrame(rows)}
+    monkeypatch.setattr(MS, "read", lambda conn, store, **kw: frames[store])
+    v = VR.Kalshi(None, links, "2026-10-10 00:00", "2026-10-11 14:00")
+    m = v.markets()[0]
+    p, vol, ok = v.view(m, pd.Timestamp("2026-10-10 12:30"), 1.0)
+    assert (p, ok) == (0.31, True) and vol == pytest.approx(10 * 0.31 + 4 * 0.30)     # both trades in the last 24 h
+    assert v.code == "kalshi" and VR.Kalshi.taker_fee(0.50, 100) == 1.75 and VR.Kalshi.taker_fee(0.01, 1) == 0.01

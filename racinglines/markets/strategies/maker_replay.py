@@ -468,7 +468,8 @@ def load_event(conn, run_ids, sessions=None, books=False):
 
     links = pd.read_sql(text("""
         SELECT ml.*, a.display_name AS athlete FROM market_links ml LEFT JOIN athletes a ON a.id = ml.athlete_id
-        WHERE ml.race_id = :r AND ml.prediction = ANY(:k) ORDER BY ml.id"""), conn, params=dict(r=race_id, k=list(MODELED)))
+        WHERE ml.race_id = :r AND ml.prediction = ANY(:k) AND ml.exchange = 'polymarket'
+        ORDER BY ml.id"""), conn, params=dict(r=race_id, k=list(MODELED)))
     res = house.race_outcomes(conn, race_id)
     from racinglines.markets import store as MS
     conds = links["condition_id"].dropna().unique().tolist()
