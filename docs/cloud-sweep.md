@@ -11,7 +11,7 @@ session's branch.
 | Parallel sweeps | 3 (one core each, one left for PostgreSQL) |
 | Speed | A 24-weekend sweep takes a few minutes on one core (GBM several times longer) |
 | Cost | No compute charge; the session uses the account's Claude usage limits |
-| Data | Committed in the repo: the database snapshot `data/archive/db/`, `data/raw/f1/`, and the Polymarket archive `data/archive/markets/polymarket/{prices,trades,links}/` |
+| Data | Committed in the repo: the database snapshot `data/archive/db/`, `data/raw/f1/`, the Polymarket archive `data/archive/markets/polymarket/{prices,trades,links}/`, and Kalshi's `data/archive/markets/kalshi/{prices,trades}/` once pulled |
 | Network | None beyond PyPI and GitHub: the default **Trusted** network access is enough |
 
 **Why the repo is private.** The minimal data set a cloud run needs is committed: `data/raw/f1`, the

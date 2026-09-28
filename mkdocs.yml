@@ -26,6 +26,7 @@ nav:
       - F1 forecast: f1-forecast.md
       - Market making: market-making.md
       - Paper trading: paper-trading.md
+      - Kalshi history: kalshi-history.md
   - Downhill:
       - Downhill model: model.md
       - Downhill evaluation: evaluation.md

@@ -6,6 +6,7 @@ import json
 from datetime import datetime, timezone
 
 import httpx
+import numpy as np
 import pytest
 from sqlalchemy import text
 
@@ -243,6 +244,49 @@ def test_kalshi_backtest_venue_reads_the_shared_tables(monkeypatch):
     p, vol, ok = v.view(m, pd.Timestamp("2026-10-10 12:30"), 1.0)
     assert (p, ok) == (0.31, True) and vol == pytest.approx(10 * 0.31 + 4 * 0.30)     # both trades in the last 24 h
     assert v.code == "kalshi" and VR.Kalshi.taker_fee(0.50, 100) == 1.75 and VR.Kalshi.taker_fee(0.01, 1) == 0.01
+
+
+@pytest.mark.quick
+def test_kalshi_venue_counts_each_markets_own_volume(monkeypatch):
+    """A Kalshi condition_id is the event ticker: two drivers' markets of one event don't share liquidity."""
+    import pandas as pd
+
+    from racinglines.markets import store as MS
+    from racinglines.markets import venue_replay as VR
+    t0 = pd.Timestamp("2026-10-10 12:00", tz="UTC")
+    toks = ["KXF1RACE-26SIN-VER", "KXF1RACE-26SIN-NOR"]
+    links = pd.DataFrame(dict(token_id=toks, condition_id=["KXF1RACE-26SIN"] * 2, prediction=["race_win"] * 2,
+                              athlete_id=[1, 2], params=[{}, {}], exchange=["kalshi"] * 2))
+    trades = pd.DataFrame(KS.trade_rows(toks[0], "KXF1RACE-26SIN", TRADES["trades"]))
+    frames = {"prices": pd.DataFrame(dict(token_id=toks, ts=[t0, t0], price=[0.31, 0.20])), "trades": trades}
+    seen = []
+    monkeypatch.setattr(MS, "read", lambda conn, store, **kw: seen.append(kw.get("root")) or frames[store])
+    v = VR.Kalshi(None, links, "2026-10-10 00:00", "2026-10-11 14:00")
+    at = pd.Timestamp("2026-10-10 12:30")
+    assert v.view(v.markets()[0], at, 1.0)[1] == pytest.approx(10 * 0.31 + 4 * 0.30)
+    assert v.view(v.markets()[1], at, 1.0) == (0.20, 0.0, False)
+    assert seen and all(str(r).endswith("kalshi") for r in seen)
+
+
+@pytest.mark.quick
+def test_maker_fee_is_off_by_default_and_charged_per_fill():
+    from racinglines.markets.strategies import maker_replay as R
+    HOUR = int(3600e9)
+
+    def mk():
+        return R.Market(cond="T1", kind="race_win", subject="T1", question="T1", fairs={1: 0.5}, outcome=True,
+                        mid_ts=np.array([0], dtype="int64"), mid_px=np.array([0.5]),
+                        tr_ts=np.array([10, 20], dtype="int64"), tr_px=np.array([0.40, 0.60]),
+                        tr_sz=np.array([100.0, 100.0]), tr_buy=np.array([False, True]))
+    data = dict(markets=[mk()], stages=[dict(run_id=1, start=0, end=HOUR, session_end=False)])
+    p = R.Params(pull_min=0, min_volume_24h=0, size=10, half_spread=0.02)
+    free = R.replay(data, p)["positions"]["cash"].sum()
+    paid = R.replay(dict(data, markets=[mk()]), R.Params(**{**p.__dict__, "maker_fee": R.KALSHI_MAKER_FEE}))
+    n = len(paid["fills"])
+    assert n == 2 and free == pytest.approx(10 * (0.52 - 0.48))
+    fee = R.venue_fee(R.KALSHI_MAKER_FEE, 0.48, 10) + R.venue_fee(R.KALSHI_MAKER_FEE, 0.52, 10)
+    assert paid["positions"]["cash"].sum() == pytest.approx(free - fee) and fee == pytest.approx(0.10)     # 5c a fill: rounded up
+    assert R.venue_fee(0.07, 0.50, 100) == 1.75
 
 
 # Shapes from the live API (2026-09-28), trimmed: dollar strings, `_fp` sizes, `orderbook_fp`, and the

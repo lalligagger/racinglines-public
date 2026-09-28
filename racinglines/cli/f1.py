@@ -81,10 +81,13 @@ def main(argv=None):
                                             "(pipelines/demo_history.py).")
     p.add_argument("--reset", action="store_true", help="Delete the existing backfill first.")
     p.add_argument("--user", nargs="*", default=None, help="Only these demo accounts (maker, taker).")
+    p.add_argument("--venue", default="polymarket", choices=["polymarket", "kalshi"],
+                   help="Whose recorded tape the maker replays (kalshi: the maker's Kalshi record; maker accounts only).")
     sub.add_parser("profiles", help="List strategy profiles; create A / C as Lab candidates if missing.").add_argument(
         "--assign-demo", action="store_true", help="Demo taker -> A, demo maker -> C.")
-    sub.add_parser("pm-links-export", help="Write market links to data/archive/markets/polymarket/links/ (stable keys).")
-    sub.add_parser("pm-links-import", help="Load that file into this database (no Polymarket access needed).")
+    for name, hlp in (("pm-links-export", "Write market links to data/archive/markets/<exchange>/links/ (stable keys)."),
+                      ("pm-links-import", "Load that file into this database (no exchange access needed).")):
+        sub.add_parser(name, help=hlp).add_argument("--exchange", default="polymarket", choices=["polymarket", "kalshi"])
     p = sub.add_parser("pm-history")
     p.add_argument("--events", nargs="+", required=True, help="Polymarket event slugs (or a prefix ending in %%).")
     p.add_argument("--start", required=True, help="UTC start, e.g. 2026-09-23T00:00")
@@ -241,17 +244,20 @@ def _run(args):
     if args.cmd in ("pm-links-export", "pm-links-import"):
         from racinglines import paths
         from racinglines.markets.polymarket import links as L
+        x = {} if args.exchange == "polymarket" else dict(exchange=args.exchange)
+        path = L.path_for(args.exchange)
         if args.cmd == "pm-links-export":
-            print(f"exported {L.export(engine)} market links -> {paths.rel(L.PATH)}")
+            print(f"exported {L.export(engine, path, **x)} market links -> {paths.rel(path)}")
         else:
-            print(f"imported market links: {L.import_(engine)}")
+            print(f"imported market links: {L.import_(engine, path)}")
         return
     if args.cmd == "demo-history":
         from racinglines.pipelines import demo_history as DH
         from racinglines.pipelines import profiles as PF
         if args.reset:
-            print(f"deleted {DH.reset(engine, args.user or list(PF.HISTORY))} backfilled signals")
-        rep = DH.backfill(engine, args.db, usernames=args.user, echo=lambda m: print(m, flush=True))
+            print(f"deleted {DH.reset(engine, args.user or list(PF.HISTORY), **({} if args.venue == 'polymarket' else dict(venue=args.venue)))} backfilled signals")
+        rep = DH.backfill(engine, args.db, usernames=args.user, echo=lambda m: print(m, flush=True),
+                          **({} if args.venue == "polymarket" else dict(venue=args.venue)))
         for u in sorted({r[0] for r in rep}):
             for y in ("2025", "2026"):
                 rs = [r for r in rep if r[0] == u and r[2].startswith(y)]

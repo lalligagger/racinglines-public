@@ -124,7 +124,7 @@ What each feed gives differs:
 | Trade fields | Token, side of that token, price, size in shares, time, transaction hash, **wallet** | Market, **taker side** (YES bought = `BUY`, NO bought = `SELL` YES), YES price, size in contracts, time, trade id (`tx_hash`). **No wallets** (`wallet` = ""), so takers can't be told apart |
 | Price history | `/prices-history` per token at `--fidelity` minutes (1 = minute-level): traded price | Candlesticks at 1, 60 or 1440 minutes: the candle's close, else the YES bid/ask mid. Markets past the cutoff read from `/historical/markets/<ticker>/candlesticks` |
 | Order books | Live only (no historical API): `markets record` snapshots them | Live only too: `markets --exchange kalshi books` takes one snapshot; nothing records them continuously yet |
-| Fees | None modelled (the `Polymarket` venue in `venue_replay.py` charges nothing) | Takers pay ⌈0.07 × contracts × P × (1 − P)⌉ cents per order (`venue_replay.Kalshi.taker_fee`) |
+| Fees | None modelled (the `Polymarket` venue in `venue_replay.py` charges nothing) | Takers pay ⌈0.07 × contracts × P × (1 − P)⌉ cents per order (`venue_replay.Kalshi.taker_fee`); makers ⌈0.0175 × contracts × P × (1 − P)⌉ per fill on most markets (`maker_replay.KALSHI_MAKER_FEE`) |
 | Tick | Per market (`tick_size`, mostly 1¢) | 1¢ |
 | F1 coverage | 2025–2026 races and season markets; the last race listed was Baku 2026, nothing new since 28 August 2026 ([F1 live roadmap](f1-live-roadmap.md#polymarket-has-stopped-listing-f1-races)) | Every 2026 weekend (win, podium, top 10, pole, fastest lap, top constructor, head-to-heads), every 2025 weekend (win, podium; pole and fastest lap for the last three), and both championships of both years ([F1](f1.md#kalshi-alignment)) |
 
@@ -135,10 +135,16 @@ several prints looks like several takers). The tape is thick on winner, pole, po
 thin on fastest lap and top constructor (median 10–12 trades per market over a weekend in 2026). 2025's race
 markets opened only 2–4 days before each race and are thinner ([Data changes](data-changes.md)).
 
+**Grouping.** A Kalshi `condition_id` is the event ticker, shared by every driver's market of the event, so Kalshi
+code reads and groups the tape by `token_id` (the market ticker), never by `condition_id`; the 24 h volume filter is
+per market.
+
 **One store, a tree per exchange.** `markets archive` and the recorder's hourly pass write each row to its
 market's exchange tree (`market_links.exchange`; a token without a link counts as Polymarket), and
 `markets/store.py` reads every exchange's tree unless given a `root`, so Kalshi rows are read like Polymarket's.
-Before 2026-09-28 the archive pass wrote everything to the Polymarket tree ([Data changes](data-changes.md)).
+The Kalshi replays pass `root=store.root_for("kalshi")` to read only Kalshi's tree. Before 2026-09-28 the archive
+pass wrote everything to the Polymarket tree ([Data changes](data-changes.md)); the Kalshi-only files it left under
+`polymarket/{prices,trades}/` on the owner's machine were deleted the same day (every row is in the Kalshi archive).
 
 ## Respecting the sources' limits
 

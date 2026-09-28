@@ -9,7 +9,7 @@ read only as of each moment. Every venue gives the same four things:
 
     Polymarket(conn, w, start, end)          the recorded price history and trade tape (the F1 sweep reads it)
     Kalshi(conn, links, start, end)          the same for Kalshi's markets (markets/kalshi/ writes the same tables),
-                                             with Kalshi's taker fee; built on mocked data, read by nothing yet
+                                             with Kalshi's taker fee, per market ticker; built on mocked data, read by nothing yet
     PrivateBook.from_run(run_dir)            a live run's private book: our quotes and the simulated crowd,
                                              replayed from the logged polls and seeds (exactly, by default,
                                              or under another quoting rule)
@@ -101,6 +101,29 @@ class Kalshi(Polymarket):
 
     code = "kalshi"
     TAKER_FEE = 0.07
+
+    def __init__(self, conn, links, start, end, group_target=None, coherence_tol=0.25, stale=STALE):
+        """As Polymarket's, but a Kalshi link's condition_id is its event ticker (every driver's market of the
+        event), so the tape is read and summed per market ticker, from Kalshi's own Parquet archive."""
+        from racinglines.markets import store as MS
+        self.links = links
+        self.stale = stale
+        self.group_target = group_target or {}
+        self.coherence_tol = coherence_tol
+        a, b = pd.Timestamp(start).tz_localize("UTC"), pd.Timestamp(end).tz_localize("UTC")
+        root, toks = MS.root_for(self.code), links["token_id"].tolist()
+        ph = MS.read(conn, "prices", tokens=toks, start=a, end=b, root=root)[["token_id", "ts", "price"]]
+        tr = MS.read(conn, "trades", tokens=toks, start=a - timedelta(hours=24), end=b, root=root)
+        tr = tr.assign(usd=tr["price"] * tr["size"])[["token_id", "ts", "usd"]]
+        for df in (ph, tr):
+            df["ts"] = pd.to_datetime(df["ts"], utc=True).dt.tz_localize(None)
+        self.prices = {t: g for t, g in ph.groupby("token_id")}
+        self.trades = {t: g for t, g in tr.groupby("token_id")}
+
+    def view(self, market, t, min_volume_24h):
+        p = self.price(market["token_id"], t)
+        v = self.volume_24h(market["token_id"], t)
+        return p, v, p is not None and 0 < p < 1 and v >= min_volume_24h
 
     @classmethod
     def taker_fee(cls, price, contracts):

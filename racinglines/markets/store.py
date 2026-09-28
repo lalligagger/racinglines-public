@@ -38,6 +38,11 @@ from sqlalchemy import text
 from racinglines import paths  # noqa: E402
 
 ROOT = paths.archive_markets("polymarket")
+
+
+def root_for(exchange):
+    """One exchange's Parquet tree (data/archive/markets/<exchange>), for readers that want only that venue."""
+    return ROOT if exchange in (None, "polymarket") else paths.archive_markets(exchange)
 RECENT_DAYS = 7
 
 STORES = {

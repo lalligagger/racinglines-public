@@ -217,7 +217,12 @@ engine's replay mode, the same path as the sweep). Every row is flagged `detail.
 racinglines f1 demo-history                  # backfill (idempotent)
 racinglines f1 demo-history --reset          # delete the backfill, then rebuild it
 racinglines f1 demo-history --user taker     # one account only
+racinglines f1 demo-history --venue kalshi   # the maker's record on Kalshi's tape, stored apart (off by default)
 ```
+
+The Kalshi record uses the same profiles and the same maker replay, filled by Kalshi's real taker trades
+with Kalshi's maker fee. See [Kalshi history](kalshi-history.md), which also covers how Kalshi's
+historical feed differs from Polymarket's.
 
 ### The maker's history
 

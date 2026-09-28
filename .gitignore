@@ -64,7 +64,7 @@ htmlcov/
 Thumbs.db
 
 # --- Minimal data set for cloud sweeps (docs/cloud-sweep.md) --------------------------
-# FastF1 raw files (F1) and the Polymarket prices/trades archive. Nothing else under data/.
+# FastF1 raw files (F1) and the Polymarket and Kalshi prices/trades archives. Nothing else under data/.
 # If this repo is ever made public, remove these from git history first.
 !data/raw/
 data/raw/*
@@ -82,6 +82,7 @@ data/archive/markets/polymarket/*
 !data/archive/markets/polymarket/trades/**
 !data/archive/markets/polymarket/links/
 !data/archive/markets/polymarket/links/**
+# Kalshi's archive, the same way (docs/kalshi-history.md): the cloud can't reach Kalshi
 !data/archive/markets/kalshi/
 data/archive/markets/kalshi/*
 !data/archive/markets/kalshi/prices/

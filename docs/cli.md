@@ -381,14 +381,14 @@ baseline. The model variant is the group's `--variant`.
 ```
 racinglines f1 profiles [--assign-demo]
 racinglines f1 signals [--profile A|C|ID|NAME] [--user NAME ...] [--event next|ROUND|YEAR-ROUND] [--asof UTC] [--no-fetch] [--no-alert]
-racinglines f1 demo-history [--reset] [--user maker taker]
+racinglines f1 demo-history [--reset] [--user maker taker] [--venue kalshi]
 ```
 
 | Command | What it does |
 |---|---|
 | `profiles` | List the strategy profiles, creating A (core taker) and C (maker sleeve) as Lab candidates if missing, and show which users run which. `--assign-demo` assigns the demo taker A and the demo maker C (`users.prefs["strategy_profile"]`, with the demo bankrolls). `racinglines/pipelines/profiles.py`. |
 | `signals` | Live paper signals of every user with a profile, for the weekend in progress (`racinglines/pipelines/signals.py`): refresh FastF1 and Polymarket data (skip with `--no-fetch`), price each stage whose session is in, run the profile's strategy with the backtest's code, store `strategy_signals` and `paper_positions`, and alert (skip with `--no-alert`). Recommendations only: never places an order. `--profile` runs one profile instead of each user's own; `--user` limits the users; `--event` picks the weekend (default the next). `--asof UTC` replays at that time and only prints (markets read at each stage's cutoff, like the sweep). See [Paper trading](paper-trading.md). |
-| `demo-history` | Backfill the demo accounts' track record: every past weekend with Polymarket race markets, replayed with the profile each account ran then, stored as paper signals and positions flagged as backtest replays (`racinglines/pipelines/demo_history.py`). Idempotent; `--reset` deletes the backfill first; `--user` limits it to `maker` or `taker`. |
+| `demo-history` | Backfill the demo accounts' track record: every past weekend with Polymarket race markets, replayed with the profile each account ran then, stored as paper signals and positions flagged as backtest replays (`racinglines/pipelines/demo_history.py`). Idempotent; `--reset` deletes the backfill first; `--user` limits it to `maker` or `taker`. `--venue kalshi` replays the maker's profiles on Kalshi's recorded tape instead, with Kalshi's maker fee, stored apart as venue `kalshi` ([Kalshi history](kalshi-history.md)); off by default. |
 
 ## racinglines markets
 
@@ -402,8 +402,8 @@ racinglines markets history --events 'f1-azerbaijan-grand-prix%' --start 2026-09
 racinglines markets trades --events 'f1-azerbaijan-grand-prix%'
 racinglines markets record [--events …] [--interval 60] [--minutes 0] [--sync-every 30] [--no-alerts] [--year 2026]
 racinglines markets archive [--stats] [--vacuum-full] [--compact] [--hours H]
-racinglines f1 pm-links-export
-racinglines f1 pm-links-import
+racinglines f1 pm-links-export [--exchange kalshi]
+racinglines f1 pm-links-import [--exchange kalshi]
 ```
 
 | Command | What it does |
@@ -414,7 +414,7 @@ racinglines f1 pm-links-import
 | `record` (`f1 pm-record`) | Record order-book snapshots every `--interval` seconds (default 60) of the given events, or of the open markets of races not yet run. Runs until stopped (`--minutes N` stops after N). Re-syncs Polymarket's F1 events every `--sync-every` minutes (default 30; 0 = never) so new race markets get recorded, and alerts about new markets unless `--no-alerts`. Archives to Parquet hourly. Run it through race weekends. |
 | `archive` (`f1 pm-archive`) | Move stale prices, trades and books from Postgres to Parquet under the retention policy, or every row older than `--hours H`. `--vacuum-full` returns freed space to the OS, `--compact` merges each month into one file, `--stats` only shows where the rows are. See [Database](database.md#storage-postgres-for-the-app-parquet-for-heavy-history). |
 | `f1 pm-links-export` | Write `market_links` to `data/archive/markets/polymarket/links/market_links.parquet`, with database ids swapped for stable keys (event key and category, FastF1 driver id, competition and category codes). |
-| `f1 pm-links-import` | Load that file into this database (no Polymarket access needed); replaces each token's row and reports rows whose keys don't resolve. |
+| `f1 pm-links-import` | Load that file into this database (no Polymarket access needed); replaces each token's row and reports rows whose keys don't resolve. `--exchange kalshi` does the same for Kalshi's links (`data/archive/markets/kalshi/links/`). |
 
 ### Kalshi (`--exchange kalshi`)
 

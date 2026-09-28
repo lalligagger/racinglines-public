@@ -59,7 +59,7 @@ event: a race, or a competition's season
        ├─ our fair value:
        │    upcoming: the live forecast
        │    past: the last as-of price made before the start (diagnostic, else an earlier forecast)
-       ├─ venue quotes: Polymarket · Kalshi (soon) · private book (our own markets)
+       ├─ venue quotes: Polymarket · Kalshi (live with RACINGLINES_KALSHI_VENUE=1) · private book (our own markets)
        └─ result, once the race has run
 ```
 
@@ -175,6 +175,9 @@ Three accounts are easy to mix up. They are separate entities:
 Both demo accounts' weekends before live paper trading began are **backtest replays**
 (`racinglines f1 demo-history`, `pipelines/demo_history.py`): real Polymarket prices and trades, the
 strategy the account ran then, flagged in the database (`detail.backfill`) and labelled in the app.
+The maker can also have a Kalshi record (`f1 demo-history --venue kalshi`, [Kalshi history](kalshi-history.md)).
+It stays hidden unless `RACINGLINES_KALSHI_VENUE=1` is set, and then only Positions shows it. The Strategy
+page is always the Polymarket record.
 
 **Demo sessions are disposable** (`racinglines/web/demo.py`; the demo accounts are `RACINGLINES_DEMO_USERS`,
 default `maker,taker`). Every sign-in gets a fresh session id. View settings (Edge Finder combos and season,
@@ -394,8 +397,9 @@ Polymarket market, so markets can be linked as soon as they're listed.
 ## Kalshi
 
 Kalshi's F1 markets are synced and their history stored (links, trades, hourly prices, in Postgres and
-`data/archive/markets/kalshi/`), but the web app doesn't show them yet: the venue column says "Kalshi (soon)"
-and the book page "Kalshi: coming soon". There's no linking flow to build: `markets --exchange kalshi sync`
+`data/archive/markets/kalshi/`), but by default the web app doesn't show them: the venue column says "Kalshi (soon)"
+and the book page "Kalshi: coming soon". `RACINGLINES_KALSHI_VENUE=1` marks Kalshi live (its quotes on the board and
+race pages) and lists the maker's Kalshi record on Positions ([Kalshi history](kalshi-history.md#in-the-app)). There's no linking flow to build: `markets --exchange kalshi sync`
 links every F1 market it can classify ([F1](f1.md#kalshi-alignment)). Orders are dry runs unless
 `KALSHI_TRADING_ENABLED=true` ([CLI](cli.md#kalshi-exchange-kalshi)). How Kalshi's feed differs from
 Polymarket's: [Data](data.md#exchange-history-kalshi-and-polymarket).

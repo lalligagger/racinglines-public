@@ -9,6 +9,12 @@ Every row is flagged detail.backfill and shown as a backtest replay in the app. 
 
     racinglines f1 demo-history              # backfill (idempotent: existing rows are kept)
     racinglines f1 demo-history --reset      # delete the backfill first, then rebuild it
+    racinglines f1 demo-history --venue kalshi [--reset]   # the maker's record on Kalshi instead (off by default)
+
+--venue kalshi replays the maker's same profiles against Kalshi's recorded tape (markets/kalshi/ stores it in
+the shared tables), with Kalshi's maker fee, as paper_positions.venue = 'kalshi' and signals flagged
+detail.venue = 'kalshi'. The Polymarket record and its reset don't touch those rows, and vice versa. Maker
+accounts only: the taker's strategies read Polymarket's markets.
 """
 
 import pandas as pd
@@ -21,22 +27,29 @@ from racinglines.pipelines import weekend_sweep as WS
 SETTLED = pd.Timedelta(days=1)       # replay each weekend as of a day after its race: every stage known, settled
 
 
-def reset(engine, usernames):
+def reset(engine, usernames, venue="polymarket"):
+    sig = "coalesce(detail->>'venue', 'polymarket') = :v"
+    pos = "venue = :v" if venue != "polymarket" else "venue NOT LIKE 'kalshi%'"
     with engine.begin() as c:
         ids = c.execute(text("SELECT id FROM users WHERE username = ANY(:u)"), dict(u=list(usernames))).scalars().all()
-        keys = c.execute(text("""SELECT DISTINCT event_key FROM strategy_signals WHERE user_id = ANY(:i)
-                                 AND detail->>'backfill' = 'true'"""), dict(i=ids)).scalars().all()
-        n = c.execute(text("DELETE FROM strategy_signals WHERE user_id = ANY(:i) AND detail->>'backfill' = 'true'"),
-                      dict(i=ids)).rowcount
-        c.execute(text("DELETE FROM paper_positions WHERE user_id = ANY(:i) AND event_key = ANY(:k)"),
-                  dict(i=ids, k=list(keys)))
+        keys = c.execute(text(f"""SELECT DISTINCT event_key FROM strategy_signals WHERE user_id = ANY(:i)
+                                 AND detail->>'backfill' = 'true' AND {sig}"""), dict(i=ids, v=venue)).scalars().all()
+        n = c.execute(text(f"DELETE FROM strategy_signals WHERE user_id = ANY(:i) AND detail->>'backfill' = 'true' AND {sig}"),
+                      dict(i=ids, v=venue)).rowcount
+        c.execute(text(f"DELETE FROM paper_positions WHERE user_id = ANY(:i) AND event_key = ANY(:k) AND {pos}"),
+                  dict(i=ids, k=list(keys), v=venue))
     return n
 
 
-def backfill(engine, engine_url=None, usernames=None, now=None, echo=print):
-    """Replay every past weekend of each demo account's history. Returns [(user, profile, event, signals, P&L)]."""
+def backfill(engine, engine_url=None, usernames=None, now=None, echo=print, venue="polymarket"):
+    """Replay every past weekend of each demo account's history. Returns [(user, profile, event, signals, P&L)].
+    venue="kalshi": the maker accounts' record on Kalshi (taker accounts are skipped)."""
     now = pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz="UTC").tz_localize(None)
     plan = {u: h for u, h in PF.HISTORY.items() if not usernames or u in usernames}
+    other = {} if venue == "polymarket" else dict(venue=venue)
+    if other:
+        plan = {u: h for u, h in plan.items() if all(PF.HISTORY_PROFILES.get(c, PF.PROFILES.get(c))["strategy"] == "maker"
+                                                     for c, *_ in h)}
     with engine.begin() as c:
         ids = PF.ensure_candidates(c, history=True)
         users = dict(c.execute(text("SELECT username, id FROM users WHERE username = ANY(:u)"),
@@ -57,15 +70,16 @@ def backfill(engine, engine_url=None, usernames=None, now=None, echo=print):
                 if w["race_start"] + SETTLED > now:
                     break                                     # not raced yet: live signals cover it
                 out = SG.compute(engine, engine_url, prof, now=w["race_start"] + SETTLED, event=f"{year}-{rnd}",
-                                 live=False, fetch=False, echo=lambda m: None, cache=cache)
+                                 live=False, fetch=False, echo=lambda m: None, cache=cache, **other)
                 if not out["stages"] or not (out["signals"] or out["positions"]):
                     echo(f"{username} {w['event_key']} {w['name']}: no markets")
                     continue
                 with engine.begin() as c:
-                    SG.store(c, uid, out, follow_rate=rate, history=True)
+                    SG.store(c, uid, out, follow_rate=rate, history=True, **other)
                     pnl = c.execute(text("""SELECT coalesce(sum(cash + yes_shares * outcome::int + no_shares * (1 - outcome::int)), 0)
-                                            FROM paper_positions WHERE user_id = :u AND event_key = :e AND outcome IS NOT NULL"""),
-                                    dict(u=uid, e=w["event_key"])).scalar()
+                                            FROM paper_positions WHERE user_id = :u AND event_key = :e AND outcome IS NOT NULL
+                                            AND venue = :v"""),
+                                    dict(u=uid, e=w["event_key"], v=venue)).scalar()
                 report.append((username, prof["name"], w["event_key"], len(out["signals"]), float(pnl)))
                 echo(f"{username} {w['event_key']} {w['name']:28s} {code:2s} {len(out['signals']):4d} signals  "
                      f"P&L {pnl:+8.2f}")

@@ -303,8 +303,13 @@ Phase [F1-9](f1-roadmap.md#f1-9-more-exchanges-kalshi-others).
       temp folder).
 - [ ] Downhill `live run`: take a lock in the run folder like F1's step, so a restart can't leave two loops
       polling (what happened at Whistler, 22:38–22:39).
-- [ ] Kalshi: the sweep and paper signals reading Kalshi's markets (F1-9's "done when"), and the Markets
-      page showing the `kalshi` venue as live. No order has been sent; `KALSHI_TRADING_ENABLED` stays unset.
+- [x] Kalshi in the maker replay and the demo maker's record (`f1 demo-history --venue kalshi`, PR #10):
+      per-ticker grouping, Kalshi's maker fee, `RACINGLINES_KALSHI_VENUE=1` for the board / race / Positions
+      pages. Feed differences vs Polymarket: [Kalshi history](kalshi-history.md).
+- [ ] Kalshi: the first real pull (2025–26, owner's device) replayed and summarised: how many of the maker's
+      quotes Kalshi's tape fills, by market kind; Kalshi in the Positions page's venue tiles after the UI rework.
+- [ ] Kalshi: the sweep and taker paper signals reading Kalshi's markets (F1-9's "done when"). No order has
+      been sent; `KALSHI_TRADING_ENABLED` stays unset.
 - [ ] Other exchanges, if they list motorsport or cycling markets with real depth, including one for
       downhill (none on Polymarket as of 2026-09).
 - [ ] Before any real order: one small V2 order checked against the live CLOB ([Market making](#market-making)).

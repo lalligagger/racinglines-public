@@ -62,13 +62,16 @@ soon as they're listed.
 
 | Command | Table | Available for past events? |
 |---|---|---|
-| `racinglines markets --exchange kalshi history --events <event ticker> --start … --end … --period 60` | `market_price_history` (candlesticks per market: 1, 60 or 1440 minutes) | Yes, including settled markets (`/historical`) |
-| `racinglines markets --exchange kalshi trades --events <event ticker>` | `market_trades` (every trade: taker side, YES price, contracts, time; no wallets) | Yes |
-| `racinglines markets --exchange kalshi books --events <event ticker>` | `market_book_snapshots` (one snapshot per open market) | **No.** Like Polymarket, no historical books; nothing records Kalshi's books continuously yet |
+| `racinglines markets --exchange kalshi history --events <event ticker> … --start … --end … --period 1` | `market_price_history` (per market ticker: the candle's traded close, else its bid/ask mid) | Yes; past Kalshi's cutoff (about two months) from `/historical` |
+| `racinglines markets --exchange kalshi trades --events <event ticker> …` | `market_trades` (every trade: the taker's side of YES, YES price, contracts, time; no wallets) | Yes; the same cutoff |
+| `racinglines markets --exchange kalshi books --events <event ticker> …` | `market_book_snapshots` (YES bids, and NO bids as YES asks) | **No.** One snapshot per call; there is no Kalshi recorder loop yet, so the queue fill rule has no Kalshi books |
+
+The differences that matter for a replay are in
+[Data](data.md#exchange-history-kalshi-and-polymarket). The biggest is that Kalshi's
+`condition_id` is the event ticker, so its tape is read per market ticker.
 
 Kalshi's F1 history from 2025 to 2026-09-28 is pulled and archived under `data/archive/markets/kalshi/`
-([Data changes](data-changes.md)). How it differs from Polymarket's feed, and what that means for a maker
-replay: [Data](data.md#exchange-history-kalshi-and-polymarket).
+([Data changes](data-changes.md)).
 
 ## The maker replay (`racinglines/markets/strategies/maker_replay.py`)
 
@@ -107,6 +110,11 @@ the quote doesn't change.
   fills us only after the size resting ahead of us is served.
 - A trade in the NO token is treated as the opposite trade in YES: buying NO at
   p is selling YES at 1 − p.
+
+**On Kalshi** (`load_event(exchange="kalshi")`, `f1 demo-history --venue kalshi`), the same rules apply to
+Kalshi's recorded tape. Each market ticker is one market, and its trades are already in YES terms. Each fill
+pays Kalshi's maker fee, ceil(0.0175 × C × P × (1 − P)) cents (`Params.maker_fee`, 0 on Polymarket).
+See [Kalshi history](kalshi-history.md).
 
 **What it reports:**
 

@@ -68,7 +68,8 @@ Never committed:
 - derived tables.
 
 `.gitignore` covers `data/*` (then allow-lists `data/raw/f1`,
-`data/archive/markets/polymarket/{prices,trades,links}`, `data/archive/db` and
+`data/archive/markets/polymarket/{prices,trades,links}`, `data/archive/markets/kalshi/{prices,trades,links}`,
+`data/archive/db` and
 `data/runs/search`, then `tests/fixtures/` minus `_work/`), and data file types.
 `tests/test_no_data_in_git.py` fails if anything data-like outside the allow-list
 is tracked or about to be added.
@@ -180,8 +181,9 @@ change failed exactly the stages downstream of it:
 | `test_edge.py` | 8 | Edge Finder combo edits (`web/edge.py`); no database. |
 | `test_f1_car.py` | 4 | F1 model: the car is shared by teammates. |
 | `test_http.py` | 5 | Polite HTTP (`sources/http.py`): per-host pacing and retries, with a fake client. |
+| `test_kalshi.py` | 13 | Kalshi connector on mocked responses shaped like the live API (2026-09-28): client paging and prices, title classifier, link / trade / history / book rows, `/historical` endpoints, the order gate, the backtest venue per market ticker, and the maker fee. |
 | `test_live_dh.py` | 4 | Live downhill finals (`pipelines/live_dh.py`): rank probabilities, quotes, safe riders, the crowd's budgets and P&L; synthetic riders, no network. |
-| `test_marketstore.py` | 5 | Parquet market store: archive from Postgres, merged reads, dedupe (one live retention check). |
+| `test_marketstore.py` | 6 | Parquet market store: archive from Postgres (Kalshi's tokens to Kalshi's archive), merged reads, dedupe (one live retention check). |
 | `test_no_data_in_git.py` | 2 | Guard: no data tracked or about to be, outside the allow-list. |
 | `test_pipeline_f1.py` | 13 | F1 regression suite: every stage on pinned fixtures against golden outputs. |
 | `test_pipeline_mtb.py` | 7 | Downhill regression suite: every stage on pinned fixtures against golden outputs. |
