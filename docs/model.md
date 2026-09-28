@@ -260,7 +260,16 @@ junior weight (0.25) help too. The best, `--prior-n 0.5 --half-life-days 240 --j
 | Podium | −0.003 ± 0.002 | 6 of 6 |
 | Win | −0.001 ± 0.001 | 3 of 6 |
 
-The practice-run weight wasn't swept.
+The practice-run weight (`run_weights.practice` in `sports/mtb_dh.toml`) makes little
+difference: 0, 0.25, 0.5 and 1.0 are within 0.003 of each other on every market, and today's
+0.5 is as good as any.
+
+**Rider × venue effects: no gain.** A rider's past deviations at the same venue, shrunk
+(divided by events there + k, k = 1, 2, 4), used as the mean of that weekend's `u` on top of
+the tuned settings: win log loss −0.0003 at best, podium, top 10 and making the Final
+no better or worse, Spearman lower. Two things mattered for a fair test: deviations are
+measured from the rider's own level (else they re-add the pace shrinkage), and residuals
+beyond ±4% are dropped (practice times include a few far-off laps). Not built into the model.
 
 **Not the default yet.** These settings were picked on the same 43 rounds they're scored
 on, so the gains are in-sample. They change every downhill price, so they wait for the

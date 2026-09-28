@@ -149,9 +149,9 @@ standings, champion odds, `spearman_points`) is approximate.
       Still to try: per-round-type incident rates.
 - [x] A tuning sweep over all 43 rounds (2026-09-28, cloud build-out): `prior_n` 0.5, half-life
       240 days, junior weight 0.25 is better in every market ([Calibration](model.md#calibration)).
-      Practice weight not swept.
-- [ ] Rider × venue effects: shrink a rider's past residuals at the venue into the
-      simulation instead of a fresh `u` every time.
+      Practice weight: flat between 0 and 1, 0.5 kept.
+- [x] Rider × venue effects: tried (2026-09-28, cloud build-out), no gain on the 43 rounds
+      ([Calibration](model.md#calibration)); not built in.
 - [ ] Time trends within a season, e.g. rider form or rookies improving fast.
 - [ ] Protected-rider rules in older formats.
 - [ ] Remaining 2026 venues: once rounds 8–9 are announced, use venue history in the
