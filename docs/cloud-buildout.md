@@ -253,3 +253,5 @@ The session appends here: date and time (UTC), item, commit, status, notes.
 | 2026-09-29 03:00 | A: fixtures | – | blocked | `fetch_test_fixtures.py`: the proxy refuses FastF1, Polymarket and ChronoRace (403). Using `-m quick` plus new tests; the full suite runs locally. |
 | 2026-09-29 03:05 | A: B0 name aliases | B0 | done | `GP_ALIASES`: Malaysian, Sepang, Kuala Lumpur, "Bahrain … in Malaysia" → `2026-16`. |
 | 2026-09-28 02:56 | A: B1 shared live core | cdd9a37 | done | crowd / quoting / live core + registry; `[live]` in both schemas; Live tab shell + `live_mtb_dh.html`. Whistler: book re-derived, all 82 replay + Positions pages byte-identical, downhill digest pinned. |
+| 2026-09-28 03:04 | A: B2 F1 markets | 767f103 | done | 99 markets from the stored stage runs; sums exact at every Baku stage. Baku's Lindblad–Tsunoda pair dropped (Tsunoda not in the field). Sepang: unknown venue, neutral track features. |
+| 2026-09-28 03:04 | A: B3 F1 engine step | 767f103 | done | `live_f1.step` + `racinglines live` CLI; Baku on a simulated clock: 7 updates, pole after Quali, the rest at results, book reconciles, positions sum to maker P&L. |
