@@ -1,0 +1,359 @@
+{
+ "hold": {
+  "equity": [
+   {
+    "equity": 0.0,
+    "t": "2026-06-07 00:00:00+00:00"
+   },
+   {
+    "equity": -124.6119077,
+    "t": "2026-06-14 00:00:00+00:00"
+   },
+   {
+    "equity": -74.74041386,
+    "t": "2026-06-21 00:00:00+00:00"
+   },
+   {
+    "equity": -45.444834,
+    "t": "2026-06-28 00:00:00+00:00"
+   },
+   {
+    "equity": -136.6983331,
+    "t": "2026-07-05 00:00:00+00:00"
+   },
+   {
+    "equity": -88.49023068,
+    "t": "2026-07-12 00:00:00+00:00"
+   },
+   {
+    "equity": -83.89610772,
+    "t": "2026-07-19 00:00:00+00:00"
+   },
+   {
+    "equity": -91.61980573,
+    "t": "2026-07-26 00:00:00+00:00"
+   },
+   {
+    "equity": -148.2260472,
+    "t": "2026-08-02 00:00:00+00:00"
+   },
+   {
+    "equity": -136.4756905,
+    "t": "2026-08-09 00:00:00+00:00"
+   },
+   {
+    "equity": -139.9878363,
+    "t": "2026-08-16 00:00:00+00:00"
+   },
+   {
+    "equity": -117.471632,
+    "t": "2026-08-23 00:00:00+00:00"
+   },
+   {
+    "equity": -178.0876172,
+    "t": "2026-08-30 00:00:00+00:00"
+   },
+   {
+    "equity": -167.0995157,
+    "t": "2026-09-06 00:00:00+00:00"
+   },
+   {
+    "equity": -301.6838604,
+    "t": "2026-09-13 00:00:00+00:00"
+   },
+   {
+    "equity": -342.3456938,
+    "t": "2026-09-20 00:00:00+00:00"
+   },
+   {
+    "equity": -332.3390127,
+    "t": "2026-09-27 00:00:00+00:00"
+   }
+  ],
+  "positions": [
+   {
+    "basis": 33.25,
+    "kind": "champion",
+    "pnl": -33.25,
+    "price": 0.003,
+    "shares": 910.9589041,
+    "side": "YES",
+    "status": "open",
+    "subject": "Max Verstappen",
+    "value": 0.0
+   },
+   {
+    "basis": 150.0,
+    "kind": "champion",
+    "pnl": -113.8755981,
+    "price": 0.9145,
+    "shares": 478.4688995,
+    "side": "NO",
+    "status": "open",
+    "subject": "Kimi Antonelli",
+    "value": 36.12440191
+   },
+   {
+    "basis": 0.0,
+    "kind": "champion",
+    "pnl": 0.0,
+    "price": 0.0,
+    "shares": 0.0,
+    "side": "settled",
+    "status": "settled",
+    "subject": "Isack Hadjar",
+    "value": null
+   },
+   {
+    "basis": 104.5,
+    "kind": "constructors_champion",
+    "pnl": -104.5,
+    "price": 0.0005,
+    "shares": 4976.190476,
+    "side": "YES",
+    "status": "open",
+    "subject": "red_bull",
+    "value": 0.0
+   },
+   {
+    "basis": 0.0,
+    "kind": "constructors_champion",
+    "pnl": 0.0,
+    "price": 0.0,
+    "shares": 0.0,
+    "side": "settled",
+    "status": "settled",
+    "subject": "rb",
+    "value": null
+   },
+   {
+    "basis": 51.75,
+    "kind": "constructors_champion",
+    "pnl": -47.96341463,
+    "price": 0.0145,
+    "shares": 841.4634146,
+    "side": "YES",
+    "status": "open",
+    "subject": "ferrari",
+    "value": 3.786585366
+   },
+   {
+    "basis": 17.5,
+    "kind": "constructors_champion",
+    "pnl": -17.5,
+    "price": 0.004,
+    "shares": 443.0379747,
+    "side": "YES",
+    "status": "open",
+    "subject": "mclaren",
+    "value": 0.0
+   },
+   {
+    "basis": 15.25,
+    "kind": "champion",
+    "pnl": -15.25,
+    "price": 0.0025,
+    "shares": 462.1212121,
+    "side": "YES",
+    "status": "open",
+    "subject": "Charles Leclerc",
+    "value": 0.0
+   }
+  ],
+  "summary": {
+   "bought": 372.25,
+   "capital_used": 372.25,
+   "max_drawdown": -342.3456938,
+   "open_positions": 6,
+   "peak": 0.0,
+   "pnl": -332.3390127,
+   "settled_pnl": 0.0,
+   "trades": 6
+  },
+  "trades": 6
+ },
+ "update": {
+  "equity": [
+   {
+    "equity": 0.0,
+    "t": "2026-06-07 00:00:00+00:00"
+   },
+   {
+    "equity": -124.6119077,
+    "t": "2026-06-14 00:00:00+00:00"
+   },
+   {
+    "equity": -127.1604446,
+    "t": "2026-06-21 00:00:00+00:00"
+   },
+   {
+    "equity": -107.8152465,
+    "t": "2026-06-28 00:00:00+00:00"
+   },
+   {
+    "equity": -177.9918108,
+    "t": "2026-07-05 00:00:00+00:00"
+   },
+   {
+    "equity": -163.9840252,
+    "t": "2026-07-12 00:00:00+00:00"
+   },
+   {
+    "equity": -144.0734497,
+    "t": "2026-07-19 00:00:00+00:00"
+   },
+   {
+    "equity": -182.0362377,
+    "t": "2026-07-26 00:00:00+00:00"
+   },
+   {
+    "equity": -230.7850203,
+    "t": "2026-08-02 00:00:00+00:00"
+   },
+   {
+    "equity": -221.9910898,
+    "t": "2026-08-09 00:00:00+00:00"
+   },
+   {
+    "equity": -232.9531197,
+    "t": "2026-08-16 00:00:00+00:00"
+   },
+   {
+    "equity": -176.1198727,
+    "t": "2026-08-23 00:00:00+00:00"
+   },
+   {
+    "equity": -242.3349795,
+    "t": "2026-08-30 00:00:00+00:00"
+   },
+   {
+    "equity": -216.061196,
+    "t": "2026-09-06 00:00:00+00:00"
+   },
+   {
+    "equity": -474.0335747,
+    "t": "2026-09-13 00:00:00+00:00"
+   },
+   {
+    "equity": -600.7806091,
+    "t": "2026-09-20 00:00:00+00:00"
+   },
+   {
+    "equity": -638.3298282,
+    "t": "2026-09-27 00:00:00+00:00"
+   }
+  ],
+  "positions": [
+   {
+    "basis": 54.38294541,
+    "kind": "champion",
+    "pnl": -54.38294541,
+    "price": 0.003,
+    "shares": 1736.842105,
+    "side": "YES",
+    "status": "open",
+    "subject": "Max Verstappen",
+    "value": 0.0
+   },
+   {
+    "basis": 294.6719267,
+    "kind": "champion",
+    "pnl": -177.3144137,
+    "price": 0.9145,
+    "shares": 1554.404145,
+    "side": "NO",
+    "status": "open",
+    "subject": "Kimi Antonelli",
+    "value": 117.357513
+   },
+   {
+    "basis": 81.69173077,
+    "kind": "champion",
+    "pnl": -31.96200104,
+    "price": 0.0445,
+    "shares": 1441.441441,
+    "side": "YES",
+    "status": "open",
+    "subject": "George Russell",
+    "value": 49.72972973
+   },
+   {
+    "basis": 0.0,
+    "kind": "champion",
+    "pnl": 0.0,
+    "price": 0.0,
+    "shares": 0.0,
+    "side": "settled",
+    "status": "settled",
+    "subject": "Isack Hadjar",
+    "value": null
+   },
+   {
+    "basis": 104.5,
+    "kind": "constructors_champion",
+    "pnl": -104.5,
+    "price": 0.0005,
+    "shares": 4976.190476,
+    "side": "YES",
+    "status": "open",
+    "subject": "red_bull",
+    "value": 0.0
+   },
+   {
+    "basis": 0.0,
+    "kind": "constructors_champion",
+    "pnl": 0.0,
+    "price": 0.0,
+    "shares": 0.0,
+    "side": "settled",
+    "status": "settled",
+    "subject": "rb",
+    "value": null
+   },
+   {
+    "basis": 177.7246362,
+    "kind": "constructors_champion",
+    "pnl": -161.6532077,
+    "price": 0.0145,
+    "shares": 3571.428571,
+    "side": "YES",
+    "status": "open",
+    "subject": "ferrari",
+    "value": 16.07142857
+   },
+   {
+    "basis": 89.60334446,
+    "kind": "constructors_champion",
+    "pnl": -89.60334446,
+    "price": 0.004,
+    "shares": 2980.392157,
+    "side": "YES",
+    "status": "open",
+    "subject": "mclaren",
+    "value": 0.0
+   },
+   {
+    "basis": 56.68676519,
+    "kind": "champion",
+    "pnl": -56.68676519,
+    "price": 0.0075,
+    "shares": 1856.321839,
+    "side": "YES",
+    "status": "open",
+    "subject": "Lando Norris",
+    "value": 0.0
+   }
+  ],
+  "summary": {
+   "bought": 1100.844904,
+   "capital_used": 859.2613488,
+   "max_drawdown": -638.3298282,
+   "open_positions": 7,
+   "peak": 0.0,
+   "pnl": -638.3298282,
+   "settled_pnl": 0.0,
+   "trades": 42
+  },
+  "trades": 42
+ }
+}

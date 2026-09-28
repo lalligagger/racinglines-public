@@ -1,6 +1,6 @@
 """Kalshi connector (markets/kalshi/): the client, title classifier, link / trade / history / book rows, the
-database writes and the order gate, all against mocked responses shaped like Kalshi's Trade API v2 docs
-(no network: the cloud policy blocks Kalshi, and no credentials exist)."""
+database writes and the order gate, against mocked responses: first shaped like Kalshi's Trade API v2 docs,
+then (LIVE_*) copied from the live read-only API on 2026-09-28. No network, no credentials."""
 
 import json
 from datetime import datetime, timezone
@@ -59,6 +59,10 @@ def _transport(log):
             return httpx.Response(200, json=dict(events=evs, cursor=""))
         if p == "/markets/trades":
             return httpx.Response(200, json=dict(TRADES, cursor=""))
+        if p == "/historical/trades":
+            return httpx.Response(200, json=dict(trades=[], cursor=""))
+        if p == "/historical/markets":
+            return httpx.Response(200, json=dict(markets=[], cursor=""))
         if p.endswith("/orderbook"):
             return httpx.Response(200, json=BOOK)
         if p.endswith("/candlesticks"):
@@ -239,3 +243,102 @@ def test_kalshi_backtest_venue_reads_the_shared_tables(monkeypatch):
     p, vol, ok = v.view(m, pd.Timestamp("2026-10-10 12:30"), 1.0)
     assert (p, ok) == (0.31, True) and vol == pytest.approx(10 * 0.31 + 4 * 0.30)     # both trades in the last 24 h
     assert v.code == "kalshi" and VR.Kalshi.taker_fee(0.50, 100) == 1.75 and VR.Kalshi.taker_fee(0.01, 1) == 0.01
+
+
+# Shapes from the live API (2026-09-28), trimmed: dollar strings, `_fp` sizes, `orderbook_fp`, and the
+# /historical endpoints for markets settled before Kalshi's cutoff.
+LIVE_SERIES = {"series": [{"ticker": "KXF1RACE", "title": "F1 Race", "category": "Sports"},
+                          {"ticker": "KXF1POLEPOSITION", "title": "Qualify in Pole Position", "category": "Sports"},
+                          {"ticker": "KXNCAAF1H", "title": "College Football 1st Half Winner", "category": "Sports"}]}
+LIVE_MARKET = {"ticker": "KXF1RACE-BELGP26-VER", "event_ticker": "KXF1RACE-BELGP26", "status": "finalized", "result": "no",
+               "title": "Will Max Verstappen finish in first in the main race at the 2026 Belgian Grand Prix?",
+               "yes_sub_title": "Max Verstappen", "close_time": "2026-07-19T22:52:10Z", "yes_bid_dollars": "0.0000",
+               "yes_ask_dollars": "1.0000", "last_price_dollars": "0.0100", "volume_fp": "362818.18",
+               "price_level_structure": "linear_cent"}
+LIVE_BOOK = {"orderbook_fp": {"no_dollars": [["0.9600", "27.64"], ["0.9700", "11715.50"]], "yes_dollars": [["0.0100", "9128.21"]]}}
+LIVE_CANDLE = {"end_period_ts": 1790002800, "price": {"close_dollars": "0.1100"}, "yes_bid": {"close_dollars": "0.1000"},
+               "yes_ask": {"close_dollars": "0.1100"}}
+HIST_CANDLE = {"end_period_ts": 1784001600, "price": {"close": "0.0700"}, "yes_bid": {"close": "0.0600"},
+               "yes_ask": {"close": "0.0700"}}
+LIVE_TRADE = {"count_fp": "93.51", "created_time": "2026-07-19T22:38:54.335565Z", "taker_side": "yes",
+              "ticker": "KXF1RACE-BELGP26-VER", "trade_id": "d847db05-11b5-6773-48c5-2bb7ba997268", "yes_price_dollars": "0.0100"}
+
+
+def _live_transport(log):
+    def handler(req):
+        log.append(req.url.path)
+        p = req.url.path.removeprefix(K.PREFIX)
+        if p == "/series":
+            return httpx.Response(200, json=LIVE_SERIES)
+        if p.endswith("/orderbook"):
+            return httpx.Response(200, json=LIVE_BOOK)
+        if p.startswith("/series/"):                     # settled before the cutoff: only /historical has it
+            return httpx.Response(404, json={"error": {"code": "not_found", "message": "not found"}})
+        if p.startswith("/historical/markets/") and p.endswith("/candlesticks"):
+            return httpx.Response(200, json={"candlesticks": [HIST_CANDLE]})
+        if p == "/historical/markets":
+            return httpx.Response(200, json={"markets": [LIVE_MARKET], "cursor": ""})
+        if p == "/markets/trades":
+            return httpx.Response(200, json={"trades": [], "cursor": ""})
+        if p == "/historical/trades":
+            return httpx.Response(200, json={"trades": [LIVE_TRADE], "cursor": ""})
+        return httpx.Response(404, json={})
+    return httpx.MockTransport(handler)
+
+
+@pytest.mark.quick
+def test_live_titles_classify():
+    c = KS.classify
+    assert c("Azerbaijan Grand Prix Winner", "Oscar Piastri to finish in first") == ("race_win", "Azerbaijan Grand Prix")
+    assert c("Azerbaijan Grand Prix Main Race: Podium Finishers", "Oscar Piastri to finish")[0] == "race_podium"
+    assert c("Azerbaijan Grand Prix Main Race: Top 10 Finishers", "Oscar Piastri to finish top 10")[0] == "race_top10"
+    assert c("Azerbaijan Grand Prix Main Race: Top 5 Finishers", "Oscar Piastri to finish top 5")[0] == "unmodeled"
+    assert c("Spanish Grand Prix Qualifying Session (Q3): Pole Position", "Oscar Piastri is awarded Pole Position")[0] == "race_pole"
+    assert c("Azerbaijan Grand Prix Main Race: Top Constructor", "McLaren to finish in first")[0] == "race_constructor_top"
+    assert c("Azerbaijan Grand Prix Main Race: Fastest Lap", "Fastest Lap: Oscar Piastri")[0] == "race_fastest_lap"
+    for sprint in ("Dutch Grand Prix: Sprint Race Winner", "Dutch Grand Prix Sprint Qualifying: Pole Position",
+                   "Dutch Grand Prix Sprint Race: Fastest Lap", "Dutch Grand Prix Sprint Race: Top Constructor"):
+        assert c(sprint)[0] == "unmodeled"               # sprints aren't the model's race
+    assert c("F1 Drivers Champion", "Will Lando Norris win the F1 Drivers Championship?") == ("champion", None)
+    assert c("F1 Constructors Champion")[0] == "constructors_champion"
+    assert c("F1 Matchup: Verstappen vs Hamilton", "Will Max Verstappen beat Lewis Hamilton in the racing matchup?") \
+        == ("unmodeled", None)                           # no Grand Prix named ...
+    assert c("F1 Matchup: Verstappen vs Hamilton", "", gp="British Grand Prix") == ("race_h2h", "British Grand Prix")
+
+
+@pytest.mark.quick
+def test_live_head_to_head_takes_the_weekends_grand_prix():
+    class R(FakeResolver):
+        def driver(self, name):
+            return {"max verstappen": 1, "lewis hamilton": 44}.get((name or "").lower())
+
+        def race(self, gp, end=None):
+            return (9, "2026-09") if gp == "British Grand Prix" else (None, None)
+    win = dict(event_ticker="KXF1RACE-BRIGP26", series_ticker="KXF1RACE", title="British Grand Prix Winner", markets=[])
+    h2h = dict(event_ticker="KXF1H2H-BRIGP26VERHAM", series_ticker="KXF1H2H", title="F1 Matchup: Verstappen vs Hamilton",
+               markets=[dict(ticker="KXF1H2H-BRIGP26VERHAM-VER", event_ticker="KXF1H2H-BRIGP26VERHAM", status="finalized",
+                             result="no", yes_sub_title="Max Verstappen beats Lewis Hamilton",
+                             title="Will Max Verstappen beat Lewis Hamilton in the racing matchup?")])
+    assert KS.gp_codes([win, h2h]) == {"BRIGP26": "British Grand Prix"}
+    (r,) = KS.link_rows([win, h2h], R())
+    assert (r["prediction"], r["athlete_id"], r["params"]["opponent_id"], r["race_id"]) == ("race_h2h", 1, 44, 9)
+    assert r["resolved_yes"] is False and r["closed"]
+
+
+@pytest.mark.quick
+def test_live_shapes_and_historical_endpoints():
+    log = []
+    with K.Client(transport=_live_transport(log)) as kc:
+        assert KS.f1_series(kc) == ["KXF1RACE", "KXF1POLEPOSITION"]        # by ticker; not college football
+        book = KS.book_row("KXF1-26-LN", kc.orderbook("KXF1-26-LN"), None)
+        assert (book["best_bid"], book["best_ask"]) == (0.01, 0.03) and book["asks"][0][1] == 11715.5   # NO bid 0.97 = YES ask 0.03
+        (mk,) = kc.historical_markets("KXF1RACE-BELGP26")
+        h = KS.history_rows(mk["ticker"], kc.candlesticks("KXF1RACE", mk["ticker"], 1784000000, 1784600000))
+        assert [r["price"] for r in h] == [0.07]         # "close": "0.0700" is dollars, not cents
+        (t,) = KS.trade_rows(mk["ticker"], mk["event_ticker"], kc.trades(mk["ticker"]))
+    assert "/trade-api/v2/historical/markets/KXF1RACE-BELGP26-VER/candlesticks" in log
+    assert (t["side"], t["price"], t["size"]) == ("BUY", 0.01, 93.51)
+    assert [r["price"] for r in KS.history_rows("X", [LIVE_CANDLE])] == [0.11]
+    (row,) = KS.link_rows([dict(event_ticker="KXF1RACE-BELGP26", series_ticker="KXF1RACE", title="Belgian Grand Prix Winner",
+                                markets=[LIVE_MARKET])], FakeResolver())
+    assert row["volume"] == 362818.18 and row["last_price"] == 0.01 and row["closed"] and row["resolved_yes"] is False

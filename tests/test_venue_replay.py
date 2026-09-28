@@ -9,11 +9,14 @@ import pytest
 
 from racinglines.markets import crowd as C
 from racinglines.markets import venue_replay as VR
+from racinglines.pipelines import live as LV
 from racinglines.pipelines import live_dh as L
 
 pytestmark = pytest.mark.quick
 
 N = 12                                                   # riders in the final, one starting every two polls
+# resolved at import: the `run` fixture points paths.DATA at a temporary folder for the whole module
+WHISTLER = LV.base() / "20260925_mtb_3"
 
 
 def _feed(poll):
@@ -91,16 +94,17 @@ def test_a_replay_starts_from_a_fresh_book_each_time(run):
 
 def test_whistler_book_replays_as_a_backtest():
     """The real Whistler final (data bucket: data/runs/live/20260925_mtb_3), where it's on this machine."""
-    from racinglines.pipelines import live as LV
-    run = LV.base() / "20260925_mtb_3"
+    run = WHISTLER
     if not (run / "book.json").exists():
         pytest.skip("Whistler's run folder isn't on this machine (the data bucket)")
     book = json.loads((run / "book.json").read_text())
     rep = VR.PrivateBook.from_run(run).replay()
-    assert rep["book"]["crowd"]["fills"] == book["crowd"]["fills"]
+    assert rep["book"]["crowd"]["fills"] == book["crowd"]["fills"] == 7703
     for k, m in book["markets"].items():
-        assert rep["book"]["markets"][k]["inv"] == pytest.approx(m["inv"], abs=1e-6)
-        assert rep["book"]["markets"][k]["cash"] == pytest.approx(m["cash"], abs=1e-6)
+        assert rep["book"]["markets"][k]["inv"] == pytest.approx(m["inv"], abs=1e-9)
+        assert rep["book"]["markets"][k]["cash"] == pytest.approx(m["cash"], abs=1e-9)
+    logged = [dict(f, poll=e["ts"]) for e in VR._read_jsonl(run / "crowd.jsonl") for f in e["fills"]]
+    assert rep["fills"] == logged                        # fill for fill, in order
 
 
 def test_window_batches_replay_like_the_f1_engine(tmp_path):

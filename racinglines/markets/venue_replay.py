@@ -155,25 +155,52 @@ class PrivateBook:
         snaps = _snaps(run_dir)
         crowd = _read_jsonl(run_dir / "crowd.jsonl")
         if sport == "mtb_dh":
-            return cls._downhill(meta, latest, snaps, crowd)
+            fix = run_dir / "replay.json"
+            return cls._downhill(meta, latest, snaps, crowd, json.loads(fix.read_text()) if fix.exists() else {},
+                                 _read_jsonl(run_dir / "history.jsonl"))
         return cls._windows(latest, snaps, crowd, run_dir)
 
     @classmethod
-    def _downhill(cls, meta, latest, snaps, crowd):
+    def _downhill(cls, meta, latest, snaps, crowd, fix=None, history=()):
+        """Each poll's rate: the logged `intensity` (runs since 2026-09-28), else re-derived with today's rule
+        (poll interval / BASE_INTERVAL, x the late pace). A run whose rule changed while it ran says so in its
+        replay.json: `unscaled_until` (ISO) = polls before it ran at 1 (x the late pace), whatever their interval
+        (Whistler: the interval scaling arrived with the 22:37:58 restart).
+
+        Two polls logged in the same second share one snapshot file (the later overwrites it), so their quotes
+        come from history.jsonl instead, the n-th line of that second for the n-th poll; replay.json's
+        `intensity` {"<ts>#<n>": rate} gives their rates when they weren't logged (Whistler: two loops overlapped
+        for a minute after the 22:37:58 restart)."""
         from racinglines.pipelines import live_dh as L
         p = meta["params"]
         params = C.Params(takers=p["CROWD"], p=p["CROWD_P"], budget=tuple(p["CROWD_BUDGET"]), bet=tuple(p["CROWD_BET"]),
                           min_bet=p["MIN_BET"], max_pos=p["MAX_POS"], seed=L.CROWD_SEED, late_cap=p["LATE_CAP"],
                           late_pace=p["LATE_PACE"])
-        polls = []
+        polls, seen, hist = [], {}, {}
+        for h in history:
+            hist.setdefault(h.get("ts"), []).append(h)
+        same_second = {t for t in (e["ts"] for e in crowd) if sum(x["ts"] == t for x in crowd) > 1}
         for e in crowd:
             s = snaps.get(e["ts"])
             if s is None:
                 raise ValueError(f"no snapshot for the crowd poll at {e['ts']}")
+            n = seen[e["ts"]] = seen.get(e["ts"], -1) + 1
+            quotes = s["quotes"]
+            if e["ts"] in same_second:
+                h = hist[e["ts"]][n]
+                quotes = [dict(bib=int(k.split(":")[0]), market=k.split(":", 1)[1], fair=h["fair"].get(k), bid=q[0], ask=q[1])
+                          for k, q in h["quotes"].items()]
             b = s.get("betting") or {}
             late = bool(b.get("late"))
-            rate = (b.get("interval") or L.BASE_INTERVAL) / L.BASE_INTERVAL * (params.late_pace if late else 1.0)
-            polls.append(dict(ts=e["ts"], seed=e["seed"], quotes=s["quotes"], late=late, late_at=b.get("late_at"),
+            if (fix or {}).get("intensity", {}).get(f"{e['ts']}#{n}") is not None:
+                rate = fix["intensity"][f"{e['ts']}#{n}"]
+            elif e.get("intensity") is not None:
+                rate = e["intensity"]
+            elif (fix or {}).get("unscaled_until") and e["ts"] < fix["unscaled_until"]:
+                rate = params.late_pace if late else 1.0
+            else:
+                rate = (b.get("interval") or L.BASE_INTERVAL) / L.BASE_INTERVAL * (params.late_pace if late else 1.0)
+            polls.append(dict(ts=e["ts"], seed=e["seed"], quotes=quotes, late=late, late_at=b.get("late_at"),
                               done=bool(s.get("done")), mode="poll", intensity=rate))
         outcomes = {f"{o['bib']}:{o['market']}": o["yes"] for o in latest.get("outcomes") or []}
         fair = {C.mkey(q): q["fair"] for q in latest.get("quotes") or []}

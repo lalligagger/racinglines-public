@@ -147,6 +147,13 @@ def main(argv=None):
                                  "finished jobs (an optional [report] table configures it)")
     p = sub.add_parser("search-import")
     p.add_argument("results", help="A search's results.json (e.g. from a cloud session)")
+    p = sub.add_parser("search-analyze", help="Analyze saved F1 sweep-search runs and write report artifacts "
+                                              "(curves, rankings, charts, noise, HTML; beside search-report).")
+    p.add_argument("search", help="Search name under data/runs/search/.")
+    p.add_argument("--write-candidates", action="store_true", help="Regenerate ranked candidate JSON and TOML files.")
+    p.add_argument("--plot", action="store_true", help="Write the top/bottom cumulative P&L chart.")
+    p.add_argument("--noise", action="store_true", help="Write the report-specific Monte Carlo noise summary.")
+    p.add_argument("--html", metavar="MARKDOWN", help="Render this Markdown report to HTML in the search directory.")
     p = sub.add_parser("replay")
     p.add_argument("--runs", required=True, help="Diagnostic run ids in time order, e.g. 11,9")
     p.add_argument("--sweep", action="store_true", help="Also sweep half-spread and fill rule.")
@@ -422,6 +429,21 @@ def _run(args):
     if args.cmd == "search-import":
         from racinglines.pipelines import search as SR
         SR.import_results(args.results, args.db)
+        return
+    if args.cmd == "search-analyze":
+        from racinglines import paths
+        from racinglines.reporting import search_analyze as RA
+        RA.main([args.search] + (["--write-candidates"] if args.write_candidates else []))
+        out = paths.runs("search", args.search)
+        if args.plot:
+            from racinglines.reporting import search_plot as RP
+            RP.main(out)
+        if args.noise:
+            from racinglines.reporting import search_noise as RN
+            RN.main(out)
+        if args.html:
+            from racinglines.reporting import markdown_html as RH
+            print(RH.render(args.html, out / "report.html", title=f"{args.search} backtest report"))
         return
     if args.cmd == "season-checkpoints":
         from racinglines import paths

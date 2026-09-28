@@ -2,10 +2,9 @@
 # Data stays out of git, except the minimal set cloud sweep sessions need (allow-listed at the
 # end of this file; the repo is private since 2026-09-27). Rebuild everything else with:
 #   racinglines <sport> fetch|download ...          (working data, see racinglines/paths.py)
-#   python scripts/fetch_test_fixtures.py [--f1] [--mtb]   (test fixtures)
+#   python scripts/fetch_test_fixtures.py --refresh [--f1] [--mtb]   (test fixtures: pinned in git)
 data/*
-tests/fixtures/
-tests/golden/
+tests/fixtures/_work/
 *.parquet
 *.npz
 *.feather
@@ -90,3 +89,7 @@ data/archive/markets/polymarket/*
 data/runs/*
 !data/runs/search/
 !data/runs/search/**
+
+# --- Test fixtures and golden baselines (pinned in git since 2026-09-28, docs/testing.md) ---------------
+!tests/fixtures/**/*.parquet
+!tests/fixtures/**/*.npz

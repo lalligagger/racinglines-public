@@ -111,17 +111,16 @@ standings, champion odds, `spearman_points`) is approximate.
       the live API): the downloader writes a `UCI ID` column, the parser reads it (older files parse
       as before), and ingest matches `athlete_identifiers(scheme="uci")` before names and reports
       a UCI ID shared by two athletes. `racinglines db merge-athletes KEEP DROP` merges them.
-- [ ] Owner: re-download the downhill files (UCI IDs), re-ingest, then merge the reported pairs,
-      e.g. `racinglines db merge-athletes 152 491 --dry-run` (`WILLIAMS Jordan` /
-      `WILLIAMS Robert Jordan`: 11 results). This changes the downhill history the model sees.
-- [ ] **Parse the 2021 PDFs** (Leogang, Les Gets). The text layer is readable but has
-      repeated letters from bold text (`BBBBRRRROOOO`), and each rider spans two
-      lines. The PDFs also have UCI ID, year of birth, weather, temperature and
-      track length.
+- [x] Re-download the downhill files (UCI IDs) and re-ingest (2026-09-28, locally; [Data changes](data-changes.md)):
+      584 results moved onto the UCI-matched athlete, 1,090 UCI identifiers.
+- [x] Merged 53 of the 58 reported pairs (2026-09-28). Five stay: both rows are in saved forecast run 1287
+      ([Data changes](data-changes.md)).
+- [x] **2021 PDFs** (Leogang, Les Gets) and PDF-only Timed Training rounds: read by
+      `download --pdf-results` (backfill only) and ingested 2026-09-28 (775 results).
 - [ ] 2019–2020 PDFs: the text layer is unreadable font codes, so they'd need OCR.
       Low priority.
-- [ ] Build **slug probing** into the downloader (`--probe START END`) for rounds
-      missing from Wikipedia, like 2021 Snowshoe.
+- [x] **Slug probing** in the downloader (`--probe START END`, 2026-09-28): all of 2021 finds exactly its
+      six DH rounds.
 - [x] Canonical venue names (`mont-ste-anne` → `mont-sainte-anne`,
       `vallnord`/`vallnord-pal-arinsal` → `pal-arinsal`): the database already stores every venue
       under its canonical slug (`venue_aliases`, checked on the snapshot: no duplicates); `mtb_dh parse
@@ -290,9 +289,22 @@ Phase [F1-9](f1-roadmap.md#f1-9-more-exchanges-kalshi-others).
       the cloud network blocks Kalshi's API. `venue_replay.Kalshi` is its backtest venue; the Polymarket
       paths (sweep, maker replay, season strategy, head-to-head pairs, links export, fetches) now read
       `exchange = 'polymarket'` only, so synced Kalshi links can't leak into them.
-- [ ] Kalshi, locally: run `sync` against the live API and check the title classifier against Kalshi's
-      real F1 listing, the series tickers, prices and the tape; then the sweep and paper signals reading
-      Kalshi's markets (F1-9's "done when"), and the Markets page showing the `kalshi` venue as live.
+- [x] Kalshi against the live read-only API (2026-09-28, locally): `sync --closed`, trades, history and
+      books run into a copy of the database. Fixed: series found by ticker (`KXF1*`; "Qualify in Pole
+      Position" doesn't say F1), sprints unmodeled (the sprint winner and sprint pole were read as the
+      race's), top 10 → `race_top10`, head-to-heads ("Will A beat B in the racing matchup?") with the
+      race from the ticker's code, `volume_fp`, `orderbook_fp` (books came back empty), dollar strings in
+      historical candlesticks (read as cents), and Kalshi's `/historical` endpoints for markets settled
+      before its cutoff (older events came back with no markets). 2026: 15 weekends, 1,847 modeled links.
+- [x] **Whistler replay** (2026-09-28): `PrivateBook.from_run` now re-derives Whistler's recorded book fill for
+      fill. Two causes, both recorded in the run folder's `replay.json` ([Live events](live-events.md#kept-for-replay)):
+      the crowd's rate rule changed mid-event, and two overlapping loops logged polls in the same second.
+      Polls now log their rate. The test had always skipped (its module fixture pointed `paths.DATA` at a
+      temp folder).
+- [ ] Downhill `live run`: take a lock in the run folder like F1's step, so a restart can't leave two loops
+      polling (what happened at Whistler, 22:38–22:39).
+- [ ] Kalshi: the sweep and paper signals reading Kalshi's markets (F1-9's "done when"), and the Markets
+      page showing the `kalshi` venue as live. No order has been sent; `KALSHI_TRADING_ENABLED` stays unset.
 - [ ] Other exchanges, if they list motorsport or cycling markets with real depth, including one for
       downhill (none on Polymarket as of 2026-09).
 - [ ] Before any real order: one small V2 order checked against the live CLOB ([Market making](#market-making)).

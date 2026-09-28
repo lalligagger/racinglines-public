@@ -5,19 +5,27 @@ unless called (`racinglines markets --exchange kalshi ...`); built and tested on
 the cloud network policy blocks Kalshi's API. F1 roadmap, F1-9.
 
 One link per Kalshi market: its YES contract (token_id = the market ticker, condition_id = the event ticker;
-NO is the mirror image). Titles are classified like Polymarket's (the wording below is a guess from Kalshi's
-usual phrasing and must be checked against the live listing):
+NO is the mirror image). Titles are classified like Polymarket's. Checked against the live listing on
+2026-09-28 (event title / market title, series):
 
-    "... <GP> ... winner" / "Who will win ... <GP>"      race_win          yes_sub_title = the driver
-    "... podium ... <GP>"                                race_podium
-    "... pole ... <GP>"                                  race_pole
-    "Will A finish ahead of B ... <GP>"                  race_h2h          params.opponent_id
-    "... constructor ... <GP>"                           race_constructor_top   yes_sub_title = the team
-    "... fastest lap ... <GP>"                           race_fastest_lap
-    "... safety car / red flag / rain ... <GP>"          race_safety_car / race_red_flag / race_rain
-    "... Drivers' Champion(ship)"                        champion
-    "... Constructors' Champion(ship)"                   constructors_champion
-    anything else                                        unmodeled (listed with prices, no model price)
+    "Azerbaijan Grand Prix Winner" / "Oscar Piastri to finish in first"   KXF1RACE          race_win
+    "... Main Race: Podium Finishers" / "... to finish"                   KXF1RACEPODIUM    race_podium
+    "... Main Race: Top 10 Finishers" / "... to finish top 10"            KXF1TOP10         race_top10
+    "... Qualifying Session (Q3): Pole Position"                          KXF1POLE          race_pole
+    "... Main Race: Top Constructor" / "McLaren to finish in first"       KXF1TOPCONSTRUCTOR race_constructor_top
+    "... Main Race: Fastest Lap" / "Fastest Lap: Oscar Piastri"           KXF1FASTLAP       race_fastest_lap
+    "F1 Drivers Champion" / "Will Lando Norris win the F1 Drivers ..."    KXF1              champion
+    "F1 Constructors Champion"                                            KXF1CONSTRUCTORS  constructors_champion
+    "Dutch Grand Prix: Sprint Race Winner", "... Sprint Qualifying ..."   KXF1RACESPRINT... unmodeled (sprints)
+    "F1 Matchup: Verstappen vs Hamilton" / "Will Max Verstappen beat
+        Lewis Hamilton in the racing matchup?" (main race)              KXF1H2H           race_h2h
+    Biggest Mover, Top 5, retirements, race occurrence, ...                                 unmodeled
+
+yes_sub_title is the driver (or the team); race_h2h has params.opponent_id. Head-to-head titles don't name
+the Grand Prix: it's read from the event ticker's race code (KXF1H2H-BRIGP26VERHAM -> BRIGP26), which the
+other series' events of the same weekend name ("KXF1RACE-BRIGP26": "British Grand Prix Winner"). Safety car,
+red flag and rain props would take their kinds, but none was listed to check. Unmodeled markets are listed
+with prices and no model price.
 
 Each link keeps Kalshi's resolution rules (params.rules, from rules_primary) so markets on two venues are only
 compared when their rules agree (F1-9), and its series ticker (params.series, for the price history).
@@ -31,7 +39,7 @@ from sqlalchemy import select, text
 from racinglines.db import models as m
 from racinglines.markets.kalshi import client as K
 
-SERIES = ()          # Kalshi series tickers to sync; empty: every Sports series whose title looks like F1
+SERIES = ()          # Kalshi series tickers to sync; empty: every Sports series that looks like F1 (see f1_series)
 F1_WORDS = re.compile(r"\b(formula\s*1|formula one|f1|grand prix)\b", re.I)
 CLOSED = {"closed", "settled", "finalized", "determined"}
 STOP = {"who", "will", "win", "the", "a", "an", "at", "in", "of", "formula", "one", "which", "driver", "drivers"}
@@ -48,10 +56,11 @@ def gp_name(t):
     return None
 
 
-def classify(event_title, market_title=""):
-    """(prediction kind, Grand Prix name or None) for a Kalshi market."""
+def classify(event_title, market_title="", gp=None):
+    """(prediction kind, Grand Prix name or None) for a Kalshi market. gp: the Grand Prix when the titles
+    don't name it (head-to-heads)."""
     t = f"{event_title or ''} {market_title or ''}"
-    gp = gp_name(event_title) or gp_name(market_title)
+    gp = gp_name(event_title) or gp_name(market_title) or gp
     low = t.lower()
     if re.search(r"constructors'? champion", low):
         return "constructors_champion", None
@@ -59,15 +68,19 @@ def classify(event_title, market_title=""):
         return "champion", None
     if not gp:
         return "unmodeled", None
+    if "sprint" in low:                          # sprint race, sprint qualifying: not the model's race
+        return "unmodeled", gp
     for pat, kind in PROP:
         if re.search(pat, low):
             return kind, gp
-    if re.search(r"finish ahead of|head[- ]to[- ]head|\bvs\.?\b", low):
+    if re.search(r"finish ahead of|head[- ]to[- ]head|\bvs\.?\b|matchup", low):
         return "race_h2h", gp
     if "constructor" in low:
         return "race_constructor_top", gp
     if "podium" in low:
         return "race_podium", gp
+    if re.search(r"\btop[- ]?10\b", low):
+        return "race_top10", gp
     if "pole" in low:
         return "race_pole", gp
     if re.search(r"\bwin(ner)?\b", low):
@@ -77,6 +90,12 @@ def classify(event_title, market_title=""):
 
 def _time(s):
     return datetime.fromisoformat(s.replace("Z", "+00:00")) if s else None
+
+
+def _volume(mk):
+    """Contracts traded: `volume_fp` ("989756.84") on current responses, `volume` on older ones."""
+    v = mk.get("volume_fp") if mk.get("volume_fp") not in (None, "") else mk.get("volume")
+    return float(v) if v not in (None, "") else None
 
 
 def _quote(mk):
@@ -89,24 +108,43 @@ def _quote(mk):
     return bid, ask, mid
 
 
+def _race_code(event_ticker):
+    """The race part of an event ticker: KXF1RACE-BRIGP26 -> BRIGP26 (KXF1H2H-BRIGP26VERHAM -> BRIGP26VERHAM)."""
+    parts = (event_ticker or "").split("-")
+    return parts[1] if len(parts) > 1 else ""
+
+
+def gp_codes(events):
+    """{race code: Grand Prix name} from events whose title names the Grand Prix (BRIGP26 -> British Grand Prix)."""
+    out = {}
+    for ev in events:
+        gp, code = gp_name(ev.get("title")), _race_code(ev.get("event_ticker"))
+        if gp and re.fullmatch(r"[A-Z]+GP\d{2}", code):
+            out[code] = gp
+    return out
+
+
 def link_rows(events, resolver):
     """market_links values (with token_id) for every market of `events` (Kalshi /events with nested markets).
     resolver: driver(name), team(name), race(gp, end_date) -> (race_id, event key), as polymarket.sync.Resolver."""
     rows = []
+    codes = gp_codes(events)
     for ev in events:
+        code = _race_code(ev.get("event_ticker"))
+        ev_gp = next((g for c, g in codes.items() if code.startswith(c)), None)
         for mk in ev.get("markets") or []:
-            kind, gp = classify(ev.get("title"), mk.get("title"))
+            kind, gp = classify(ev.get("title"), mk.get("title"), ev_gp)
             sub = mk.get("yes_sub_title") or mk.get("subtitle") or ""
             end = _time(mk.get("close_time") or mk.get("expiration_time"))
             race_id, race_key = resolver.race(gp, end) if gp else (None, None)
             athlete_id, params = None, None
             if kind == "race_h2h":
-                mm = re.search(r"Will (.+?) finish ahead of (.+?)(?: at| in|\?|$)", mk.get("title") or "")
+                mm = re.search(r"Will (.+?) (?:finish ahead of|beat) (.+?)(?: at| in|\?|$)", mk.get("title") or "")
                 a, b = (resolver.driver(mm.group(1)), resolver.driver(mm.group(2))) if mm else (None, None)
                 athlete_id, params = a, {"opponent_id": b}
             elif kind in ("race_constructor_top", "constructors_champion"):
                 params = {"team": resolver.team(sub)}
-            elif kind in ("race_win", "race_podium", "race_pole", "race_fastest_lap", "champion"):
+            elif kind in ("race_win", "race_podium", "race_top10", "race_pole", "race_fastest_lap", "champion"):
                 athlete_id = resolver.driver(sub)
             matched = kind == "unmodeled" or (
                 (athlete_id is not None or (params or {}).get("team") or kind in ("race_safety_car", "race_red_flag", "race_rain"))
@@ -126,17 +164,19 @@ def link_rows(events, resolver):
                 athlete_id=athlete_id, race_id=race_id, prediction=kind if matched else "unmodeled",
                 params={k: v for k, v in params.items() if v is not None}, invert=False,
                 event_slug=ev.get("event_ticker"), event_title=ev.get("title"), group_title=sub or mk.get("title"),
-                last_bid=bid, last_ask=ask, last_price=mid, volume=float(mk["volume"]) if mk.get("volume") is not None else None,
+                last_bid=bid, last_ask=ask, last_price=mid, volume=_volume(mk),
                 end_date=end, closed=status in CLOSED, resolved_yes={"yes": True, "no": False}.get(result),
                 active=status not in CLOSED))
     return rows
 
 
 def f1_series(kc):
-    """The series tickers to sync: SERIES, or every Sports series whose title looks like F1."""
+    """The series tickers to sync: SERIES, or every Sports series whose ticker starts KXF1 (some titles don't
+    say F1: KXF1POLEPOSITION is "Qualify in Pole Position") or whose title looks like F1."""
     if SERIES:
         return list(SERIES)
-    return [s["ticker"] for s in kc.series(category="Sports") if F1_WORDS.search(s.get("title") or "")]
+    return [s["ticker"] for s in kc.series(category="Sports")
+            if s.get("ticker", "").startswith("KXF1") or F1_WORDS.search(s.get("title") or "")]
 
 
 def sync(session, conn, year=2026, include_closed=False, kc=None):
@@ -153,6 +193,9 @@ def sync(session, conn, year=2026, include_closed=False, kc=None):
         if include_closed:
             events += kc.events(series_ticker=s, status="settled")
     events = list({e["event_ticker"]: e for e in events}.values())      # an event can come back under both statuses
+    for ev in events:                           # settled before Kalshi's historical cutoff: markets under /historical
+        if not ev.get("markets") and include_closed:
+            ev["markets"] = kc.historical_markets(ev["event_ticker"])
     stats = dict(events=len(events), links=0, modeled=0, unmatched=0, new=0)
     for row in link_rows(events, Resolver(conn, year)):
         tok = row.pop("token_id")

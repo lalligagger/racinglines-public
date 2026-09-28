@@ -1,0 +1,244 @@
+{
+ "constructors": [
+  {
+   "champion_prob": 0.0006666666667,
+   "current_points": 33.0,
+   "exp_points": 142.616,
+   "team_key": "alpine"
+  },
+  {
+   "champion_prob": 0.0,
+   "current_points": 3.0,
+   "exp_points": 5.670666667,
+   "team_key": "aston_martin"
+  },
+  {
+   "champion_prob": 0.0,
+   "current_points": 0.0,
+   "exp_points": 5.402666667,
+   "team_key": "cadillac"
+  },
+  {
+   "champion_prob": 0.1846666667,
+   "current_points": 231.0,
+   "exp_points": 485.7353333,
+   "team_key": "ferrari"
+  },
+  {
+   "champion_prob": 0.0,
+   "current_points": 8.0,
+   "exp_points": 58.252,
+   "team_key": "haas"
+  },
+  {
+   "champion_prob": 0.114,
+   "current_points": 200.0,
+   "exp_points": 439.6333333,
+   "team_key": "mclaren"
+  },
+  {
+   "champion_prob": 0.5633333333,
+   "current_points": 319.0,
+   "exp_points": 615.392,
+   "team_key": "mercedes"
+  },
+  {
+   "champion_prob": 0.005333333333,
+   "current_points": 62.0,
+   "exp_points": 203.628,
+   "team_key": "rb"
+  },
+  {
+   "champion_prob": 0.132,
+   "current_points": 206.0,
+   "exp_points": 438.8546667,
+   "team_key": "red_bull"
+  },
+  {
+   "champion_prob": 0.0,
+   "current_points": 15.0,
+   "exp_points": 110.1813333,
+   "team_key": "sauber"
+  },
+  {
+   "champion_prob": 0.0,
+   "current_points": 5.0,
+   "exp_points": 33.63333333,
+   "team_key": "williams"
+  }
+ ],
+ "drift": {
+  "driver_sd": 0.0,
+  "team_sd": 0.008598968445
+ },
+ "drivers": [
+  {
+   "athlete_id": 545,
+   "champion_prob": 0.1386666667,
+   "current_points": 128.0,
+   "exp_points": 251.0626667,
+   "top3_prob": 0.3993333333
+  },
+  {
+   "athlete_id": 546,
+   "champion_prob": 0.13,
+   "current_points": 120.0,
+   "exp_points": 244.168,
+   "top3_prob": 0.3586666667
+  },
+  {
+   "athlete_id": 547,
+   "champion_prob": 0.0,
+   "current_points": 8.0,
+   "exp_points": 57.338,
+   "top3_prob": 0.0
+  },
+  {
+   "athlete_id": 548,
+   "champion_prob": 0.007333333333,
+   "current_points": 72.0,
+   "exp_points": 180.6866667,
+   "top3_prob": 0.09066666667
+  },
+  {
+   "athlete_id": 549,
+   "champion_prob": 0.0,
+   "current_points": 21.0,
+   "exp_points": 83.074,
+   "top3_prob": 0.009333333333
+  },
+  {
+   "athlete_id": 550,
+   "champion_prob": 0.0,
+   "current_points": 0.0,
+   "exp_points": 3.289333333,
+   "top3_prob": 0.0
+  },
+  {
+   "athlete_id": 551,
+   "champion_prob": 0.3026666667,
+   "current_points": 171.0,
+   "exp_points": 311.9393333,
+   "top3_prob": 0.6966666667
+  },
+  {
+   "athlete_id": 552,
+   "champion_prob": 0.0,
+   "current_points": 3.0,
+   "exp_points": 4.696666667,
+   "top3_prob": 0.0
+  },
+  {
+   "athlete_id": 553,
+   "champion_prob": 0.04133333333,
+   "current_points": 104.0,
+   "exp_points": 230.326,
+   "top3_prob": 0.2493333333
+  },
+  {
+   "athlete_id": 554,
+   "champion_prob": 0.0,
+   "current_points": 0.0,
+   "exp_points": 0.974,
+   "top3_prob": 0.0
+  },
+  {
+   "athlete_id": 555,
+   "champion_prob": 0.0,
+   "current_points": 4.0,
+   "exp_points": 16.50266667,
+   "top3_prob": 0.0
+  },
+  {
+   "athlete_id": 556,
+   "champion_prob": 0.0,
+   "current_points": 7.0,
+   "exp_points": 52.84333333,
+   "top3_prob": 0.001333333333
+  },
+  {
+   "athlete_id": 557,
+   "champion_prob": 0.002,
+   "current_points": 43.0,
+   "exp_points": 107.3966667,
+   "top3_prob": 0.018
+  },
+  {
+   "athlete_id": 558,
+   "champion_prob": 0.0,
+   "current_points": 6.0,
+   "exp_points": 29.29733333,
+   "top3_prob": 0.0006666666667
+  },
+  {
+   "athlete_id": 559,
+   "champion_prob": 0.006,
+   "current_points": 32.0,
+   "exp_points": 109.2313333,
+   "top3_prob": 0.02066666667
+  },
+  {
+   "athlete_id": 560,
+   "champion_prob": 0.0006666666667,
+   "current_points": 12.0,
+   "exp_points": 59.542,
+   "top3_prob": 0.002
+  },
+  {
+   "athlete_id": 561,
+   "champion_prob": 0.1366666667,
+   "current_points": 127.0,
+   "exp_points": 255.4093333,
+   "top3_prob": 0.41
+  },
+  {
+   "athlete_id": 562,
+   "champion_prob": 0.0,
+   "current_points": 1.0,
+   "exp_points": 17.13066667,
+   "top3_prob": 0.0
+  },
+  {
+   "athlete_id": 563,
+   "champion_prob": 0.2246666667,
+   "current_points": 148.0,
+   "exp_points": 303.4526667,
+   "top3_prob": 0.6546666667
+  },
+  {
+   "athlete_id": 564,
+   "champion_prob": 0.0,
+   "current_points": 0.0,
+   "exp_points": 2.113333333,
+   "top3_prob": 0.0
+  },
+  {
+   "athlete_id": 565,
+   "champion_prob": 0.01,
+   "current_points": 72.0,
+   "exp_points": 188.5706667,
+   "top3_prob": 0.08866666667
+  },
+  {
+   "athlete_id": 566,
+   "champion_prob": 0.0,
+   "current_points": 2.0,
+   "exp_points": 28.95466667,
+   "top3_prob": 0.0
+  },
+  {
+   "athlete_id": 567,
+   "champion_prob": 0.0,
+   "current_points": 0.0,
+   "exp_points": 0.0,
+   "top3_prob": 0.0
+  },
+  {
+   "athlete_id": 568,
+   "champion_prob": 0.0,
+   "current_points": 1.0,
+   "exp_points": 1.0,
+   "top3_prob": 0.0
+  }
+ ]
+}

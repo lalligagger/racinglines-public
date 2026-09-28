@@ -30,3 +30,7 @@ py-clob-client-v2==1.2.0 # Polymarket's official CLOB V2 client (order signing /
 
 # tests (python -m pytest)
 pytest==9.1.1
+
+# optional report generation
+Markdown==3.10.2
+matplotlib==3.10.8

@@ -306,8 +306,27 @@ def cmd_ingest(args):
     from racinglines.db.config import get_session
     from racinglines.paths import DH_RAW
     from racinglines.sources.chronorace.ingest import ingest_paths
+    import re
+
+    from racinglines.db import changes
+    lines = []
+
+    def echo(line):
+        print(line)
+        lines.append(line.strip())
     with get_session(args.db or None) as s:
-        counts = ingest_paths(s, args.paths or [DH_RAW], competition=args.competition, force=args.force)
+        counts = ingest_paths(s, args.paths or [DH_RAW], competition=args.competition, force=args.force, echo=echo)
+        if counts.get("ingested") or counts.get("ERROR"):     # the change log: only runs that changed something
+            files = {n: st for n, st in (ln.split(": ", 1) for ln in lines if ": " in ln) if st != "unchanged"}
+            merges = sorted({tuple(map(int, p)) for p in re.findall(r"merge (\d+) into (\d+)", "\n".join(lines))})
+            summary = (f"{counts.get('ingested', 0)} downhill files ingested"
+                       + (" (forced)" if args.force else "")
+                       + (f", {len(merges)} same-UCI-ID pairs reported" if merges else "")
+                       + (f": {args.note}" if args.note else ""))
+            changes.record(s, "ingest", summary, sport="mtb_dh",
+                           detail=dict(counts=counts, paths=[str(x) for x in args.paths or [DH_RAW]], files=files,
+                                       merge_pairs=[dict(drop=d, keep=k) for d, k in merges], note=args.note))
+            s.commit()
     print("Done: " + ", ".join(f"{k}={v}" for k, v in sorted(counts.items())))
 
 
@@ -330,6 +349,7 @@ def main(argv=None):
     ing.add_argument("--db", default=None, help="Database URL (default: $DATABASE_URL / docker-compose).")
     ing.add_argument("--competition", default="uci_dhi_wc")
     ing.add_argument("--force", action="store_true", help="Re-ingest even if a file hasn't changed.")
+    ing.add_argument("--note", help="Why (kept in the data change log, `racinglines db changes`).")
     ing.set_defaults(func=cmd_ingest)
 
     season_p = sub.add_parser("forecast", help="Backtest held-out rounds and forecast remaining "

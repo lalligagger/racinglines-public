@@ -51,8 +51,9 @@ types (`*.parquet`, `*.csv`, …) everywhere, then allow-lists the minimal set a
 | `data/runs/live/<slug>_<key>/` | A live event, kept permanently for replay: raw timing-feed responses, snapshots, quotes, model inputs, the private book and every crowd fill (see [Live events](live-events.md#kept-for-replay)) |
 
 - **Everything else in `data/` stays ignored:** downhill downloads, order books,
-  other run outputs, logs, alerts, caches, `data/pg/`, plus `tests/fixtures/` and
-  `tests/golden/`.
+  other run outputs, logs, alerts, caches, `data/pg/`. The test fixtures and golden
+  baselines are tracked (since 2026-09-28, [Testing](testing.md)); their raw downloads
+  (`tests/fixtures/_work/`) aren't.
 - **Enforced:** `tests/test_no_data_in_git.py` fails if data outside the allow-list is
   tracked or about to be added (it also runs in the [pre-push hook](testing.md#pre-push-hook)).
 - **If the repo ever goes public,** this data must be removed from the git history
@@ -151,8 +152,9 @@ There are three caveats:
   2025 finals), so discovery keeps only slugs dated in the requested year.
 - **Incomplete pages:** some pages miss rounds. The 2021 page lists 4 of the 6 DH
   rounds. The two Snowshoe rounds (`20210914_dh`, `20210918_dh`) were found by
-  **probing**: trying `YYYYMMDD_{dh,dhi,mtb}` for every date in a window against the
-  content-tree endpoint. Probing isn't built into the downloader yet (see [Roadmap](todo.md)).
+  **probing**: trying `YYYYMMDD_{dh,dhi,mtb,xco}` for every date in a window against the
+  content-tree endpoint, which answers `null` for a slug that doesn't exist (`mtb_dh download --probe
+  START END`). Probing all of 2021 finds exactly the six DH rounds.
 - **Before 2019:** the 2016–2018 pages have no ChronoRace links, which fits with
   ChronoRace not timing the World Cup before 2019.
 
@@ -174,7 +176,7 @@ Use `--events` to download specific slugs.
 |---|---|---|---|
 | 2019 | 8 / 8 | 0 / 0 | PDF links only. Live timing returns `null`. |
 | 2020 | 4 / 4 | 0 / 0 | PDF links only. The PDFs' text layer is unreadable font codes, so they'd need OCR. |
-| 2021 | 6 / 6 | 4 / 4 | Leogang and Les Gets are PDF-only (the PDFs are readable text). Maribor, Lenzerheide, and Snowshoe ×2 have timing. |
+| 2021 | 6 / 6 | 6 / 6 | Leogang and Les Gets are PDF-only in the feed; their files come from `download --pdf-results` (backfilled 2026-09-28, [Data changes](data-changes.md); Leogang's elite Qualifying PDF is missing on ChronoRace's server). Maribor, Lenzerheide, and Snowshoe ×2 have timing. |
 | 2022 | 8 / 8 | 8 / 8 | Complete. |
 | 2023 | 8 / 8 | 8 / 8 | Complete. |
 | 2024 | 7 / 7 | 7 / 7 | Complete. |
@@ -210,7 +212,12 @@ them in a training run**.
 | Venue names | The same venue appears under different names: `mont-ste-anne` / `mont-sainte-anne`; `vallnord` / `pal-arinsal` / `vallnord-pal-arinsal`. Nothing uses venue yet. |
 | Rider names | The same rider can appear under different names across seasons, e.g. `WILLIAMS Robert Jordan` (2023) and `WILLIAMS Jordan` (2026). See [rider IDs](parser.md#rider-ids). |
 
-PDF-only rounds are written as a list of links, and the parser skips them.
+PDF-only rounds are written as a list of links, and the parser skips them, unless the file was
+downloaded with `--pdf-results`: then the result PDF is read into the same table (`pdftotext -layout`,
+racinglines/sources/chronorace/pdf.py), with a `(From the result PDF ...)` note and the PDF's weather,
+temperature and track length under the heading. The 2021 PDFs also carry UCI IDs (Timed Training PDFs
+don't). On 2021 Snowshoe, where both exist, every PDF finish time and first split equals the live
+timing.
 
 ## File format
 

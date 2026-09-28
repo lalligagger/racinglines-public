@@ -65,8 +65,7 @@ Decision Log entry and approval first.
 Before starting, build the fixtures and write your local golden baseline:
 
 ```
-python scripts/fetch_test_fixtures.py      # once; FastF1 is rate-limited, so a cold run can take up to an hour
-python -m pytest -m "not live"             # writes tests/golden/*.json on first run
+python -m pytest -m "not live"            # fixtures and goldens are pinned in git (scripts/fetch_test_fixtures.py --refresh rebuilds them)
 ```
 
 For every change:
