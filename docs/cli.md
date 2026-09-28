@@ -7,7 +7,7 @@ racinglines f1      fetch | ingest | forecast | backtest | compare | matrix | di
                     sweep | season-strategy | season-checkpoints | replay | search | search-import
                     profiles | signals | demo-history
                     pm-sync | pm-history | pm-trades | pm-record | pm-archive | pm-links-export | pm-links-import
-racinglines mtb_dh  download | parse | ingest | forecast | backtest
+racinglines mtb_dh  download | parse | ingest | forecast | backtest | walk-forward
 racinglines markets sync | history | trades | record | archive      (= racinglines f1 pm-*)
 racinglines db      init | seed | stats | export | snapshot-export | snapshot-import | merge-athletes
 racinglines web
@@ -181,6 +181,22 @@ fewer than 3 events that have data are skipped. Files written:
 row per season). The printed per-season table includes the actual and predicted
 champion.
 
+## racinglines mtb_dh walk-forward
+
+Every completed event priced through the shared engine, model-only
+([Backtest core](backtest-core.md#the-walk-forward-engine)): calibration per market kind (win, podium,
+top 10, fastest qualifier, makes the Final; `--kinds race_h2h` adds head-to-heads), overall and per season.
+
+```
+racinglines mtb_dh walk-forward (--db [URL] | --data splits.csv) [--seasons 2025 2026] [--kinds K1,K2]
+       [--category ME] [--sims 5000] [--half-life-days 240] [--prior-n 0.5] [--junior-weight 0.25]
+       [--train-scope all] [--eps-df DF] [--seed N] [--save] [--out-dir data/runs/mtb_dh/walk_forward]
+```
+
+Writes `walk_forward_events.csv`, `walk_forward_calibration.csv` and `walk_forward_reliability.csv`.
+With `--save`, stores a `walk_forward` model run (settings, per-event scores, calibration), which is
+what a downhill search job runs.
+
 ## racinglines mtb_dh points
 
 Championship points tables by season, and a rider-by-rider check against official standings
@@ -273,21 +289,23 @@ racinglines f1 props EVENT [--run STAGE_RUN] [--prior-n 16]  |  racinglines f1 p
 ### Trading research
 
 ```
-racinglines f1 [--variant NAME] sweep [--year 2026] [--rounds 1-15] [--no-fetch | --fetch-only] [--reprice] [--save] [SETTINGS …]
+racinglines f1 [--variant NAME] sweep [--year 2026] [--rounds 1-15] [--no-fetch | --fetch-only] [--reprice] [--reliability] [--save] [SETTINGS …]
 racinglines f1 season-strategy [--year 2026] [--sims 5000] [--no-fetch] [--reforecast] [--min-edge 0.03] [--stake-per-edge 500] [--max-stake 150] [--capital 1500] [--save]
 racinglines f1 season-checkpoints [--variants V1,V2] [--year 2026] [--entries 0,3,6] [--window 3] [--sims 5000] [--out MD] [--save]
 racinglines f1 replay --runs 11,12,9 [--sweep]
 racinglines f1 search QUEUE.toml [--leaderboard]
+racinglines f1 search-report QUEUE.toml
 racinglines f1 search-import RESULTS.json
 ```
 
 | Command | What it does |
 |---|---|
-| `sweep` | Trade every raced weekend of a season: price before any running and after each session, trade Polymarket, settle. Runs four taker modes (`update`, `hold`, `last`, `early`) and five maker settings side by side. See [Market making](market-making.md#season-sweep). Downloads the season's missing Polymarket history and trades first unless `--no-fetch`; `--fetch-only` only downloads (e.g. a past season). Stages are reused only when priced with the same model settings from the same data; `--reprice` prices them again. `--save` stores `kind='sweep'`. |
+| `sweep` | Trade every raced weekend of a season: price before any running and after each session, trade Polymarket, settle. Runs four taker modes (`update`, `hold`, `last`, `early`) and five maker settings side by side. See [Market making](market-making.md#season-sweep). Downloads the season's missing Polymarket history and trades first unless `--no-fetch`; `--fetch-only` only downloads (e.g. a past season). Stages are reused only when priced with the same model settings from the same data; `--reprice` prices them again. `--reliability` also scores calibration: our fair values and Polymarket's prices at every tradeable stage, per market kind and stage (Brier, log loss, ECE) and in reliability bins, written to `sweep_<year>_calibration.csv` / `_reliability.csv` (and saved with the run). `--save` stores `kind='sweep'`. |
 | `season-strategy` | The championship-market strategy through the season: as-of season forecasts pre-season and after every race, trades at Polymarket's recorded prices (plus spread and slippage), settles eliminated markets, marks the rest. `--reforecast` recomputes the cached forecasts. |
 | `season-checkpoints` | Championship markets entered at fixed points (pre-season, after 3 and after 6 grands prix; `--entries`) and held, one $500 book each, per model variant (`--variants`). Scores each entry over the next 3 GPs (`--window`) and to date: P&L, how far the market moved toward our fair value, and the share of our edge it closed. Writes `data/runs/f1/season_checkpoints.md`; `--save` stores kind `season_checkpoints`. See [Checkpoint entries](market-making.md#checkpoint-entries). |
 | `replay` | Replay a maker quoting Polymarket through an event's diagnostic runs (ids in time order), with both fill rules, against the real trade tape. `--sweep` adds the half-spread and fill-rule sensitivity table. |
 | `search QUEUE.toml` | Run a queue of season sweeps in parallel (`[search] parallel`, `hours`), each saved as a sweep run. The queue file (e.g. `sweeps/poc.toml`, `sweeps/params-4h.toml`) is re-read whenever a slot frees, so pending `[[job]]` entries can be edited while it runs. Writes `data/runs/search/<name>/` (`leaderboard.md`, `results.json`, `state.json`, logs). `--leaderboard` only rewrites the leaderboard from `state.json`. See [Cloud sweeps](cloud-sweep.md). |
+| `search-report QUEUE.toml` | Analyse a search's finished sweeps with the checks in [Backtest core](backtest-core.md#the-search-report): labels against the baseline in the target and held-out seasons beyond a noise floor (from seed replicates when the search ran them), same-fidelity baselines, confirmation at more simulations, P&L without the best event, and candidates with stable ids (`<strategy>-<settings_key>`). An optional `[report]` table in the queue sets `target`, `holdout`, `confirm_sims`, `top`, `noise`. Writes `stats.csv`, `ranking.csv`, `pnl_curves.json`, `candidates/`, `candidates.toml` and `report.md` next to `state.json`. |
 | `search-import RESULTS.json` | Load a search's sweep runs (e.g. from a cloud session) into this database, marked with `params.source`. |
 
 **Sweep settings.** Every setting of the schema in

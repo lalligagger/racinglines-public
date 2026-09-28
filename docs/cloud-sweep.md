@@ -38,7 +38,10 @@ checks it).
 - **`racinglines f1 search sweeps/<queue>.toml`** runs the queue: up to `parallel` sweeps at once,
   each saved as a normal sweep run. It **re-reads the queue file whenever a slot frees**, so editing
   pending `[[job]]` entries steers it. It stops starting jobs after `hours`. After every finished job
-  it rewrites `data/runs/search/<name>/leaderboard.md` and `results.json`.
+  it rewrites `data/runs/search/<name>/leaderboard.md` and `results.json`. A queue can mix sports:
+  a job with `sport = "mtb_dh"` runs a downhill walk-forward (`racinglines mtb_dh walk-forward`, model
+  only, scored per market kind) with the downhill model's settings, and gets its own default baseline
+  per season. `replicates = N` on any job runs it (and its season's baseline) at N seeds.
 - **`racinglines f1 search-import <results.json>`** loads a finished search's sweep runs into your
   local database (marked `params.source`), so they show up in the Lab's Edge Finder and Model variants.
 
@@ -132,7 +135,10 @@ The session follows these steps. They're written for the agent.
    the few best. They're imported as Lab candidates, loadable into the Edge Finder sweep form.
 5. **Every 30 minutes and at the end:** commit `data/runs/search/<name>/` and the queue file, and
    push the branch (`git add data/runs/search sweeps && git commit -m "search: <name> progress" && git push`).
-6. **At the end:** write `data/runs/search/<name>/REPORT.md`: what ran, the leaderboard, the best combo
+6. **At the end:** run `racinglines f1 search-report sweeps/<queue>.toml` for the labels, noise floor,
+   confirmations and candidates ([Backtest core](backtest-core.md#the-search-report)); to measure the
+   noise floor rather than assume it, give the leading combos `replicates = 3` (their baseline gets the
+   same). Downhill jobs are reported in `data/runs/search/<name>/mtb_dh/`. Then write `data/runs/search/<name>/REPORT.md`: what ran, the leaderboard, the best combo
    for the remaining 2026 races, what the early championship entries would have made, what held in
    both windows and what didn't, every queue change with its reason, the candidates, and what to run
    next. Commit and push it. Stop.

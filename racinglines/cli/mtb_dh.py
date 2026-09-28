@@ -164,6 +164,50 @@ def cmd_backtest(args):
                                events=records(ev)))
 
 
+def cmd_walk_forward(args):
+    """Every event priced by the pricing model through the shared engine (racinglines/core/walk_forward.py),
+    model-only: calibration per market kind. The same run the search queue starts for a downhill job."""
+    from racinglines.core import walk_forward as WF
+    from racinglines.models import race_model as RM
+    from racinglines.pipelines import sweep_settings as SS
+    _check_save(args)
+    model = RM.get("mtb_dh")
+    st = SS.from_args(args, model.Settings)
+    data = model.load(data=load_splits(args))
+    seasons = args.seasons or model.seasons(data, st)
+    print(f"Walk-forward {', '.join(map(str, seasons))} · {st['category']} · {st.label()} (settings {st.key})")
+    out = WF.run(model, data, st, seasons=seasons, kinds=args.kinds.split(",") if args.kinds else None,
+                 echo=lambda m: print(m, flush=True))
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for name in ("events", "calibration", "reliability"):
+        out[name].to_csv(out_dir / f"walk_forward_{name}.csv", index=False)
+    pd.set_option("display.width", 250)
+    cal = out["calibration"]
+    print("\n=== Calibration of the model's fair values (all seasons) ===")
+    print(cal[cal["season"] == "all"].drop(columns=["season", "source"]).to_string(index=False, float_format="{:.4f}".format))
+    print(f"\nCSVs -> {out_dir}/")
+    if args.save:
+        from racinglines.db.config import get_session
+        from racinglines.db.queries import records, save_model_run
+        ev = out["events"]
+        kinds = sorted({c[:-len("_logloss")] for c in ev.columns if c.endswith("_logloss")})
+        # per event, per kind: score = -1000 x log loss (higher is better), the search report's curves
+        weekends = [dict(round=i + 1, event=f"{r['season']} {r['event']}", season=r["season"],
+                         **{f"{k}_score": -1000 * r[f"{k}_logloss"] for k in kinds if pd.notna(r.get(f"{k}_logloss"))})
+                    for i, r in ev.reset_index(drop=True).iterrows()]
+        params = dict(settings=st.to_json(), settings_key=st.key, model_key=st.model_key, label=st.label(),
+                      seasons=list(map(int, seasons)), year=int(seasons[-1]) if len(seasons) == 1 else None,
+                      sims=st["sims"], seed=st.rng_seed)
+        with get_session(args.db or None) as session:
+            run_id = save_model_run(session, competition=args.competition,
+                                    season=seasons[-1] if len(seasons) == 1 else None, category=st["category"],
+                                    model="timed_runs", kind="walk_forward", data_through=data["event_date"].max(),
+                                    params=params, metrics=dict(events=records(ev), weekends=weekends,
+                                                                calibration=records(cal)))
+        print(f"Saved walk-forward run {run_id}.")
+
+
 def cmd_season(args):
     _check_save(args)
     raw = load_splits(args)
@@ -370,6 +414,18 @@ def main(argv=None):
     bt_p.add_argument("--reliability", action="store_true",
                       help="Also print and save reliability curves (win, podium, top 10, make the Final).")
     bt_p.set_defaults(func=cmd_backtest)
+
+    wf_p = sub.add_parser("walk-forward", help="Price every event through the shared engine (model-only): "
+                                                "calibration per market kind. What a downhill search job runs.")
+    _add_source_args(wf_p)
+    wf_p.add_argument("--out-dir", default=str(paths.runs("mtb_dh", "walk_forward", mkdir=False)))
+    wf_p.add_argument("--seasons", nargs="+", type=int, help="Seasons (default: all with 3+ completed events).")
+    wf_p.add_argument("--kinds", help="Market kinds, comma-separated (default: every per-rider kind the model "
+                                      "prices; race_h2h adds head-to-heads).")
+    from racinglines.models.timed_runs.settings import DHSettings
+    from racinglines.pipelines import sweep_settings as SS
+    SS.add_arguments(wf_p, DHSettings)
+    wf_p.set_defaults(func=cmd_walk_forward)
 
     pts_p = sub.add_parser("points", help="Championship points tables: import, show, check against official standings.")
     pts_sub = pts_p.add_subparsers(dest="action", required=True)

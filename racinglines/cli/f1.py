@@ -114,6 +114,9 @@ def main(argv=None):
     p.add_argument("--fetch-only", action="store_true", help="Only download the season's Polymarket history/trades.")
     p.add_argument("--reprice", action="store_true", help="Re-price stages even if stored.")
     p.add_argument("--save", action="store_true")
+    p.add_argument("--reliability", action="store_true",
+                   help="Also score calibration: our fair values and Polymarket's prices at every tradeable stage, "
+                        "per market kind (Brier, log loss, ECE, reliability bins); saved with --save.")
     from racinglines.pipelines import sweep_settings as _SS
     _SS.add_arguments(p.add_argument_group("settings (racinglines/pipelines/sweep_settings.py; default = baseline)"))
     p = sub.add_parser("season-strategy")
@@ -139,6 +142,9 @@ def main(argv=None):
     p = sub.add_parser("search")
     p.add_argument("queue", help="Queue file, e.g. sweeps/poc.toml (re-read while running: edit it to steer)")
     p.add_argument("--leaderboard", action="store_true", help="Only rewrite the leaderboard from state.json")
+    p = sub.add_parser("search-report")
+    p.add_argument("queue", help="The search's queue file: labels, noise floor, confirmations and candidates from its "
+                                 "finished jobs (an optional [report] table configures it)")
     p = sub.add_parser("search-import")
     p.add_argument("results", help="A search's results.json (e.g. from a cloud session)")
     p = sub.add_parser("replay")
@@ -409,6 +415,10 @@ def _run(args):
             return
         SR.run(args.queue, echo=lambda m: print(f"{datetime.now(timezone.utc):%H:%M:%S} {m}", flush=True))
         return
+    if args.cmd == "search-report":
+        from racinglines.pipelines import search_report as SRR
+        SRR.run(args.queue)
+        return
     if args.cmd == "search-import":
         from racinglines.pipelines import search as SR
         SR.import_results(args.results, args.db)
@@ -471,6 +481,15 @@ def _run(args):
         print(out["scores"].to_string(index=False, float_format="{:.4f}".format))
         from racinglines import paths
         outdir = paths.runs("f1", "sweeps")
+        if args.reliability:
+            cal = out["calibration"]
+            print("\n=== Calibration: model vs Polymarket, every tradeable stage (lower is better) ===")
+            print(cal.pivot_table(index=["kind", "stage"], columns="source", values=["n", "brier", "logloss", "ece"],
+                                  sort=False).to_string(float_format="{:.4f}".format))
+            print("\n=== Reliability bins, all stages pooled (|z| > 2: off by more than binomial noise) ===")
+            print(out["reliability"].to_string(index=False, float_format="{:.3f}".format))
+            cal.to_csv(outdir / f"sweep_{args.year}_calibration.csv", index=False)
+            out["reliability"].to_csv(outdir / f"sweep_{args.year}_reliability.csv", index=False)
         w.to_csv(outdir / f"sweep_{args.year}_weekends.csv", index=False)
         if len(out["trades"]):
             out["trades"].to_csv(outdir / f"sweep_{args.year}_trades.csv", index=False)
@@ -481,7 +500,10 @@ def _run(args):
                                         kind="sweep", params=dict(out["params"], year=args.year, rounds=args.rounds),
                                         metrics=dict(weekends=records(w), totals=out["totals"],
                                                      by_stage=records(out["by_stage"]), by_kind=records(out["by_kind"]),
-                                                     scores=records(out["scores"])))
+                                                     scores=records(out["scores"]),
+                                                     **(dict(calibration=records(out["calibration"]),
+                                                             reliability=records(out["reliability"]))
+                                                        if args.reliability else {})))
             print(f"Saved sweep run {run_id}.")
         return
     if args.cmd == "replay":
