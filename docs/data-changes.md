@@ -53,8 +53,8 @@ How Kalshi's feed differs from Polymarket's: [Data](data.md#exchange-history-kal
 stale Kalshi rows out of Postgres into new part files under `data/archive/markets/polymarket/{prices,trades}/`
 (untracked in the main checkout; by 18:09 UTC, 94 files and 1.2 M rows, all `KX…` tokens). Nothing was lost:
 the exports read Postgres and those files together and deduplicated, and every row in them was checked to be
-in `data/archive/markets/kalshi/`, so the files can be deleted. Later passes keep doing this until archiving is
-per exchange.
+in `data/archive/markets/kalshi/`; they were deleted (132 files by 19:10 UTC). Fixed the same day: the archive
+pass now writes each row to its exchange's tree ([Data](data.md#exchange-history-kalshi-and-polymarket)).
 
 **Undo.** Restore the backup with `pg_restore --clean`, or delete the rows: `market_links` where
 `exchange='kalshi'`, and `market_price_history` / `market_trades` rows whose `token_id` starts `KX`. Delete

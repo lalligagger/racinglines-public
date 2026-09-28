@@ -7,6 +7,9 @@ older than a few hours into Parquet and deletes them from Postgres:
 
     data/archive/markets/<exchange>/<name>/month=YYYY-MM/part-<utc>-<id>.parquet     (zstd)
 
+Each row goes to its market's exchange (market_links.exchange; a token without a link counts as Polymarket),
+and readers without an explicit `root` read every exchange's tree. Token ids don't collide across exchanges.
+
     name      Postgres table            key
     prices    market_price_history     token_id, ts
     trades    market_trades            tx_hash, token_id, wallet, side, price, size
@@ -53,14 +56,29 @@ def _utc(t):
     return (t.tz_localize("UTC") if t.tzinfo is None else t.tz_convert("UTC")).to_pydatetime()
 
 
-def _dataset(name, root=None):
-    path = (root or ROOT) / name
+def _roots(root=None):
+    """The Parquet trees to read: `root`, else every exchange's (archive/markets/<exchange>/)."""
+    if root is not None:
+        return [root]
+    base = paths.archive_markets().parent
+    return sorted(p for p in base.iterdir() if p.is_dir()) if base.exists() else []
+
+
+def _dataset(name, root):
+    path = root / name
     if not path.exists() or not any(path.rglob("*.parquet")):
         return None
     return ds.dataset(path, format="parquet", partitioning="hive")
 
 
 def _read_parquet(name, tokens, conditions, start, end, root=None):
+    parts = [x for x in (_read_tree(name, tokens, conditions, start, end, r) for r in _roots(root)) if len(x)]
+    if not parts:
+        return pd.DataFrame(columns=STORES[name]["cols"])
+    return parts[0] if len(parts) == 1 else pd.concat(parts, ignore_index=True)
+
+
+def _read_tree(name, tokens, conditions, start, end, root):
     d = _dataset(name, root)
     if d is None:
         return pd.DataFrame(columns=STORES[name]["cols"])
@@ -176,10 +194,17 @@ def hot_tokens(conn):
     return list(keep_all), list(keep_recent)
 
 
+def _exchanges(conn, tokens):
+    """{token: exchange} from market_links."""
+    return dict(conn.execute(text("SELECT token_id, exchange FROM market_links WHERE token_id = ANY(:t)"),
+                             dict(t=list(tokens))).all())
+
+
 def archive(engine, name, older_than=timedelta(hours=6), tokens=None, root=None, chunk_days=31, policy=False):
     """Move rows from Postgres to Parquet (delete ... returning, written and verified before the
     transaction commits). By default: rows older than `older_than`. With policy=True: every row
-    that isn't hot (see hot_tokens), whatever its age. `tokens` limits it (tests). Returns rows moved."""
+    that isn't hot (see hot_tokens), whatever its age. `tokens` limits it (tests). Rows go to their
+    exchange's tree, or all to `root` when given. Returns rows moved."""
     s = STORES[name]
     now = datetime.now(timezone.utc)
     keep_all, keep_recent = [], []
@@ -207,7 +232,12 @@ def archive(engine, name, older_than=timedelta(hours=6), tokens=None, root=None,
             if name == "books":
                 for col in ("bids", "asks"):
                     df[col] = df[col].map(lambda v: v if v is None or isinstance(v, str) else json.dumps(v))
-            moved += _write(name, df, root)
+            if root is not None or not len(df):
+                moved += _write(name, df, root)
+            else:
+                ex = df["token_id"].map(_exchanges(c, df["token_id"].unique())).fillna("polymarket")
+                for x, g in df.groupby(ex):
+                    moved += _write(name, g, paths.archive_markets(x))
         a = b
     return moved
 
@@ -218,7 +248,7 @@ def stats(engine, root=None):
         for name, s in STORES.items():
             n_pg = c.execute(text(f"SELECT count(*) FROM {s['table']}")).scalar()
             size_pg = c.execute(text("SELECT pg_total_relation_size(:t)"), dict(t=s["table"])).scalar()
-            files = list(((root or ROOT) / name).rglob("*.parquet"))
+            files = [f for r in _roots(root) for f in (r / name).rglob("*.parquet")]
             n_pq = sum(pq.read_metadata(f).num_rows for f in files)
             out[name] = dict(postgres_rows=n_pg, postgres_mb=size_pg / 1e6, parquet_rows=n_pq,
                              parquet_mb=sum(f.stat().st_size for f in files) / 1e6, parquet_files=len(files))
@@ -226,14 +256,14 @@ def stats(engine, root=None):
 
 
 def compact(name, root=None):
-    """Rewrite each month as one deduplicated file."""
-    base = (root or ROOT) / name
-    for d in sorted(base.glob("month=*")):
-        files = sorted(d.glob("*.parquet"))
-        if len(files) < 2:
-            continue
-        df = pd.concat([pq.read_table(f).to_pandas() for f in files], ignore_index=True)
-        df = df.drop_duplicates(STORES[name]["key"]).sort_values("ts")
-        _write(name, df, root)
-        for f in files:
-            f.unlink()
+    """Rewrite each month as one deduplicated file (in `root`, else in every exchange's tree)."""
+    for r in _roots(root):
+        for d in sorted((r / name).glob("month=*")):
+            files = sorted(d.glob("*.parquet"))
+            if len(files) < 2:
+                continue
+            df = pd.concat([pq.read_table(f).to_pandas() for f in files], ignore_index=True)
+            df = df.drop_duplicates(STORES[name]["key"]).sort_values("ts")
+            _write(name, df, r)
+            for f in files:
+                f.unlink()

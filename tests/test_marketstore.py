@@ -57,6 +57,29 @@ def test_archive_moves_rows_out_of_postgres(tmp_path, test_engine):
             c.execute(text("DELETE FROM market_price_history WHERE token_id = :t"), dict(t=TOK))
 
 
+
+def test_archive_routes_rows_to_their_exchange(tmp_path, test_engine, monkeypatch):
+    """Each row lands in its exchange's tree (unlinked tokens: Polymarket); reads without a root see all trees."""
+    from racinglines import paths
+    monkeypatch.setattr(paths, "DATA", tmp_path)
+    monkeypatch.setattr(MS, "_exchanges", lambda conn, toks: {"KXTEST-26-A": "kalshi"})
+    e, kx = test_engine, "KXTEST-26-A"
+    old = datetime.now(timezone.utc) - timedelta(days=2)
+    with e.begin() as c:
+        c.execute(text("DELETE FROM market_price_history WHERE token_id = ANY(:t)"), dict(t=[TOK, kx]))
+        c.execute(text("INSERT INTO market_price_history (token_id, ts, price) VALUES (:p, :a, 0.4), (:k, :a, 0.7)"),
+                  dict(p=TOK, k=kx, a=old))
+    try:
+        assert MS.archive(e, "prices", older_than=timedelta(hours=6), tokens=[TOK, kx]) == 2
+        base = tmp_path / "archive" / "markets"
+        assert {x: MS.read(None, "prices", root=base / x)["token_id"].tolist() for x in ("polymarket", "kalshi")} \
+            == {"polymarket": [TOK], "kalshi": [kx]}
+        assert sorted(MS.read(None, "prices", tokens=[TOK, kx])["price"]) == [0.4, 0.7]
+        assert MS.last_before(None, [kx], datetime.now(timezone.utc)) == {kx: 0.7}
+    finally:
+        with e.begin() as c:
+            c.execute(text("DELETE FROM market_price_history WHERE token_id = ANY(:t)"), dict(t=[TOK, kx]))
+
 @pytest.mark.live
 def test_policy_keeps_hot_tokens(tmp_path):
     """A token of an upcoming race stays in Postgres; an unknown (stale) one is archived."""
