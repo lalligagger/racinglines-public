@@ -366,6 +366,29 @@ racinglines f1 pm-links-import
 | `f1 pm-links-export` | Write `market_links` to `data/archive/markets/polymarket/links/market_links.parquet`, with database ids swapped for stable keys (event key and category, FastF1 driver id, competition and category codes). |
 | `f1 pm-links-import` | Load that file into this database (no Polymarket access needed); replaces each token's row and reports rows whose keys don't resolve. |
 
+### Kalshi (`--exchange kalshi`)
+
+Built from Kalshi's public API docs and tested on mocked responses only: the cloud network blocks
+Kalshi, so none of this has run against the live API. Nothing runs unless you call it.
+
+```
+racinglines markets --exchange kalshi sync [--year 2026] [--closed]
+racinglines markets --exchange kalshi trades --events KXF1RACE-26SIN
+racinglines markets --exchange kalshi history --events KXF1RACE-26SIN --start 2026-10-09T00:00 --end 2026-10-11T14:00 [--period 60]
+racinglines markets --exchange kalshi books --events KXF1RACE-26SIN
+```
+
+| Command | What it does |
+|---|---|
+| `sync` | Find Kalshi's F1 series (Sports series whose title says Formula 1, F1 or Grand Prix, or `kalshi.sync.SERIES`), and upsert one `market_links` row per market (`exchange='kalshi'`, `token_id` = the market ticker's YES contract, `condition_id` = the event ticker), classified into the model's kinds, props included. Each row keeps Kalshi's resolution rules (`params.rules`). `--closed` adds settled events. |
+| `trades` | Store every trade on those events' markets in `market_trades` (the taker's side of YES, at the YES price, in contracts). |
+| `history` | Store candlesticks (`--period` 1, 60 or 1440 minutes) in `market_price_history`. |
+| `books` | One order-book snapshot per open market in `market_book_snapshots` (a NO bid at p is a YES ask at 1 − p). |
+
+Orders (`markets/kalshi/trade.py`): post-only limit orders on YES, checked against the book, the 1-cent grid
+and `KALSHI_MAX_ORDER_USD` (default 25), signed with RSA-PSS (`KALSHI_API_KEY_ID`, `KALSHI_PRIVATE_KEY_PATH`),
+and sent only when `KALSHI_TRADING_ENABLED=true`; otherwise a dry run that returns the request. No CLI.
+
 **Alert channels** (`racinglines/markets/alerts.py`, used by new-market alerts and by
 `signals`): a macOS notification, one JSON line per event in
 `data/runs/alerts/new_markets.jsonl`, plus these when set:

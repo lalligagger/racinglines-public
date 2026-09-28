@@ -275,8 +275,13 @@ How it works: [Live events](live-events.md). First run: the Whistler downhill fi
 
 Phase [F1-9](f1-roadmap.md#f1-9-more-exchanges-kalshi-others).
 
-- [ ] **Kalshi connector** (`racinglines/markets/kalshi/`): markets, prices, trade tape, and
-      order placement behind a flag. Registered in `markets/venues`.
+- [x] **Kalshi connector** (`racinglines/markets/kalshi/`): markets (with their resolution rules), prices,
+      trade tape, price history, order books, and post-only orders behind `KALSHI_TRADING_ENABLED`
+      (`racinglines markets --exchange kalshi …`). Built on mocked responses only (2026-09-28, cloud):
+      the cloud network blocks Kalshi's API.
+- [ ] Kalshi, locally: run `sync` against the live API and check the title classifier against Kalshi's
+      real F1 listing, the series tickers, prices and the tape; then the sweep and paper signals reading
+      Kalshi's markets (F1-9's "done when"), and the Markets page showing the `kalshi` venue as live.
 - [ ] Other exchanges, if they list motorsport or cycling markets with real depth, including one for
       downhill (none on Polymarket as of 2026-09).
 - [ ] Before any real order: one small V2 order checked against the live CLOB ([Market making](#market-making)).
