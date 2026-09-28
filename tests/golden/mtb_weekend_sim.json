@@ -3,107 +3,107 @@
  "riders": 108,
  "summary": [
   {
-   "exp_points": 42.946,
-   "make_final_prob": 0.555,
+   "exp_points": 47.177,
+   "make_final_prob": 0.616,
    "podium_prob": 0.049,
    "rider_id": "ath:10",
    "rider_name": "COULANGES Benoit",
-   "top10_prob": 0.177,
-   "win_prob": 0.012
+   "top10_prob": 0.201,
+   "win_prob": 0.015
   },
   {
-   "exp_points": 4.844,
-   "make_final_prob": 0.105,
-   "podium_prob": 0.003,
+   "exp_points": 3.171,
+   "make_final_prob": 0.084,
+   "podium_prob": 0.0,
    "rider_id": "ath:100",
    "rider_name": "JEWETT Jakob",
-   "top10_prob": 0.012,
+   "top10_prob": 0.008,
    "win_prob": 0.0
   },
   {
-   "exp_points": 35.955,
-   "make_final_prob": 0.483,
-   "podium_prob": 0.033,
+   "exp_points": 36.375,
+   "make_final_prob": 0.521,
+   "podium_prob": 0.032,
    "rider_id": "ath:101",
    "rider_name": "SUAREZ ALONSO Angel",
-   "top10_prob": 0.15,
-   "win_prob": 0.011
+   "top10_prob": 0.151,
+   "win_prob": 0.009
   },
   {
-   "exp_points": 97.37,
-   "make_final_prob": 0.803,
-   "podium_prob": 0.178,
+   "exp_points": 107.963,
+   "make_final_prob": 0.861,
+   "podium_prob": 0.202,
    "rider_id": "ath:104",
    "rider_name": "ALRAN Till",
-   "top10_prob": 0.454,
-   "win_prob": 0.051
+   "top10_prob": 0.485,
+   "win_prob": 0.065
   },
   {
-   "exp_points": 115.001,
-   "make_final_prob": 0.842,
-   "podium_prob": 0.235,
+   "exp_points": 121.915,
+   "make_final_prob": 0.883,
+   "podium_prob": 0.248,
    "rider_id": "ath:105",
    "rider_name": "ALRAN Max",
-   "top10_prob": 0.525,
-   "win_prob": 0.097
+   "top10_prob": 0.557,
+   "win_prob": 0.101
   },
   {
-   "exp_points": 33.216,
-   "make_final_prob": 0.452,
-   "podium_prob": 0.032,
+   "exp_points": 39.243,
+   "make_final_prob": 0.56,
+   "podium_prob": 0.033,
    "rider_id": "ath:106",
    "rider_name": "CLARK Oli",
-   "top10_prob": 0.138,
-   "win_prob": 0.007
+   "top10_prob": 0.162,
+   "win_prob": 0.009
   },
   {
-   "exp_points": 27.718,
-   "make_final_prob": 0.434,
+   "exp_points": 28.446,
+   "make_final_prob": 0.474,
    "podium_prob": 0.029,
    "rider_id": "ath:107",
    "rider_name": "BURKE Bode",
-   "top10_prob": 0.115,
-   "win_prob": 0.012
-  },
-  {
-   "exp_points": 35.384,
-   "make_final_prob": 0.493,
-   "podium_prob": 0.031,
-   "rider_id": "ath:108",
-   "rider_name": "WAITE Tyler",
-   "top10_prob": 0.143,
-   "win_prob": 0.005
-  },
-  {
-   "exp_points": 11.353,
-   "make_final_prob": 0.212,
-   "podium_prob": 0.007,
-   "rider_id": "ath:110",
-   "rider_name": "BRADLEY Zac",
-   "top10_prob": 0.036,
-   "win_prob": 0.001
-  },
-  {
-   "exp_points": 27.274,
-   "make_final_prob": 0.387,
-   "podium_prob": 0.027,
-   "rider_id": "ath:111",
-   "rider_name": "MADLEY George",
-   "top10_prob": 0.096,
+   "top10_prob": 0.11,
    "win_prob": 0.01
   },
   {
-   "exp_points": 3.933,
-   "make_final_prob": 0.107,
-   "podium_prob": 0.002,
-   "rider_id": "ath:112",
-   "rider_name": "HIRST WALKER Noa",
-   "top10_prob": 0.005,
+   "exp_points": 37.383,
+   "make_final_prob": 0.546,
+   "podium_prob": 0.031,
+   "rider_id": "ath:108",
+   "rider_name": "WAITE Tyler",
+   "top10_prob": 0.147,
+   "win_prob": 0.005
+  },
+  {
+   "exp_points": 9.406,
+   "make_final_prob": 0.204,
+   "podium_prob": 0.005,
+   "rider_id": "ath:110",
+   "rider_name": "BRADLEY Zac",
+   "top10_prob": 0.027,
    "win_prob": 0.0
   },
   {
-   "exp_points": 0.309,
-   "make_final_prob": 0.016,
+   "exp_points": 26.452,
+   "make_final_prob": 0.41,
+   "podium_prob": 0.023,
+   "rider_id": "ath:111",
+   "rider_name": "MADLEY George",
+   "top10_prob": 0.094,
+   "win_prob": 0.005
+  },
+  {
+   "exp_points": 2.581,
+   "make_final_prob": 0.089,
+   "podium_prob": 0.001,
+   "rider_id": "ath:112",
+   "rider_name": "HIRST WALKER Noa",
+   "top10_prob": 0.003,
+   "win_prob": 0.0
+  },
+  {
+   "exp_points": 0.057,
+   "make_final_prob": 0.004,
    "podium_prob": 0.0,
    "rider_id": "ath:113",
    "rider_name": "MASCHERINI Lorenzo",
@@ -111,8 +111,8 @@
    "win_prob": 0.0
   },
   {
-   "exp_points": 0.254,
-   "make_final_prob": 0.009,
+   "exp_points": 0.016,
+   "make_final_prob": 0.001,
    "podium_prob": 0.0,
    "rider_id": "ath:115",
    "rider_name": "M\u00c4EUIBO Riko",
@@ -120,134 +120,134 @@
    "win_prob": 0.0
   },
   {
-   "exp_points": 1.463,
-   "make_final_prob": 0.047,
+   "exp_points": 2.943,
+   "make_final_prob": 0.094,
    "podium_prob": 0.0,
    "rider_id": "ath:12",
    "rider_name": "PALAZZARI Davide",
+   "top10_prob": 0.002,
+   "win_prob": 0.0
+  },
+  {
+   "exp_points": 21.922,
+   "make_final_prob": 0.383,
+   "podium_prob": 0.015,
+   "rider_id": "ath:13",
+   "rider_name": "THIRION R\u00e9mi",
+   "top10_prob": 0.083,
+   "win_prob": 0.003
+  },
+  {
+   "exp_points": 6.344,
+   "make_final_prob": 0.161,
+   "podium_prob": 0.0,
+   "rider_id": "ath:134",
+   "rider_name": "DE VALL Benny",
+   "top10_prob": 0.018,
+   "win_prob": 0.0
+  },
+  {
+   "exp_points": 70.772,
+   "make_final_prob": 0.732,
+   "podium_prob": 0.104,
+   "rider_id": "ath:14",
+   "rider_name": "KIEFER Henri",
+   "top10_prob": 0.32,
+   "win_prob": 0.036
+  },
+  {
+   "exp_points": 78.635,
+   "make_final_prob": 0.781,
+   "podium_prob": 0.105,
+   "rider_id": "ath:15",
+   "rider_name": "BROSNAN Troy",
+   "top10_prob": 0.342,
+   "win_prob": 0.046
+  },
+  {
+   "exp_points": 0.0,
+   "make_final_prob": 0.0,
+   "podium_prob": 0.0,
+   "rider_id": "ath:152",
+   "rider_name": "FRANEK Igor",
+   "top10_prob": 0.0,
+   "win_prob": 0.0
+  },
+  {
+   "exp_points": 7.174,
+   "make_final_prob": 0.171,
+   "podium_prob": 0.002,
+   "rider_id": "ath:16",
+   "rider_name": "INTROZZI Stefano",
+   "top10_prob": 0.018,
+   "win_prob": 0.0
+  },
+  {
+   "exp_points": 39.414,
+   "make_final_prob": 0.557,
+   "podium_prob": 0.047,
+   "rider_id": "ath:17",
+   "rider_name": "DAVIS Oliver",
+   "top10_prob": 0.147,
+   "win_prob": 0.015
+  },
+  {
+   "exp_points": 124.279,
+   "make_final_prob": 0.905,
+   "podium_prob": 0.255,
+   "rider_id": "ath:172",
+   "rider_name": "VERMETTE Asa",
+   "top10_prob": 0.559,
+   "win_prob": 0.108
+  },
+  {
+   "exp_points": 3.692,
+   "make_final_prob": 0.112,
+   "podium_prob": 0.0,
+   "rider_id": "ath:179",
+   "rider_name": "CONNELLY Jackson",
+   "top10_prob": 0.007,
+   "win_prob": 0.0
+  },
+  {
+   "exp_points": 41.343,
+   "make_final_prob": 0.578,
+   "podium_prob": 0.041,
+   "rider_id": "ath:18",
+   "rider_name": "DUNNE Ronan",
+   "top10_prob": 0.165,
+   "win_prob": 0.01
+  },
+  {
+   "exp_points": 0.0,
+   "make_final_prob": 0.0,
+   "podium_prob": 0.0,
+   "rider_id": "ath:187",
+   "rider_name": "VELLUTINO MALAGA Lucio",
+   "top10_prob": 0.0,
+   "win_prob": 0.0
+  },
+  {
+   "exp_points": 0.733,
+   "make_final_prob": 0.031,
+   "podium_prob": 0.0,
+   "rider_id": "ath:188",
+   "rider_name": "THURLOW Luca",
    "top10_prob": 0.001,
    "win_prob": 0.0
   },
   {
-   "exp_points": 21.738,
-   "make_final_prob": 0.359,
-   "podium_prob": 0.016,
-   "rider_id": "ath:13",
-   "rider_name": "THIRION R\u00e9mi",
-   "top10_prob": 0.082,
-   "win_prob": 0.004
-  },
-  {
-   "exp_points": 9.101,
-   "make_final_prob": 0.189,
-   "podium_prob": 0.002,
-   "rider_id": "ath:134",
-   "rider_name": "DE VALL Benny",
-   "top10_prob": 0.032,
-   "win_prob": 0.0
-  },
-  {
-   "exp_points": 69.803,
-   "make_final_prob": 0.699,
-   "podium_prob": 0.103,
-   "rider_id": "ath:14",
-   "rider_name": "KIEFER Henri",
-   "top10_prob": 0.324,
-   "win_prob": 0.034
-  },
-  {
-   "exp_points": 73.869,
-   "make_final_prob": 0.735,
-   "podium_prob": 0.093,
-   "rider_id": "ath:15",
-   "rider_name": "BROSNAN Troy",
-   "top10_prob": 0.325,
-   "win_prob": 0.038
-  },
-  {
-   "exp_points": 2.905,
-   "make_final_prob": 0.082,
-   "podium_prob": 0.0,
-   "rider_id": "ath:152",
-   "rider_name": "FRANEK Igor",
-   "top10_prob": 0.007,
-   "win_prob": 0.0
-  },
-  {
-   "exp_points": 7.541,
-   "make_final_prob": 0.159,
-   "podium_prob": 0.002,
-   "rider_id": "ath:16",
-   "rider_name": "INTROZZI Stefano",
-   "top10_prob": 0.021,
-   "win_prob": 0.0
-  },
-  {
-   "exp_points": 41.286,
-   "make_final_prob": 0.54,
-   "podium_prob": 0.053,
-   "rider_id": "ath:17",
-   "rider_name": "DAVIS Oliver",
-   "top10_prob": 0.16,
-   "win_prob": 0.017
-  },
-  {
-   "exp_points": 109.321,
-   "make_final_prob": 0.856,
-   "podium_prob": 0.213,
-   "rider_id": "ath:172",
-   "rider_name": "VERMETTE Asa",
-   "top10_prob": 0.496,
-   "win_prob": 0.085
-  },
-  {
-   "exp_points": 6.984,
-   "make_final_prob": 0.175,
-   "podium_prob": 0.002,
-   "rider_id": "ath:179",
-   "rider_name": "CONNELLY Jackson",
-   "top10_prob": 0.012,
-   "win_prob": 0.0
-  },
-  {
-   "exp_points": 21.589,
-   "make_final_prob": 0.349,
-   "podium_prob": 0.018,
-   "rider_id": "ath:18",
-   "rider_name": "DUNNE Ronan",
-   "top10_prob": 0.082,
-   "win_prob": 0.004
-  },
-  {
-   "exp_points": 4.781,
-   "make_final_prob": 0.109,
-   "podium_prob": 0.002,
-   "rider_id": "ath:187",
-   "rider_name": "VELLUTINO MALAGA Lucio",
-   "top10_prob": 0.015,
-   "win_prob": 0.0
-  },
-  {
-   "exp_points": 2.749,
-   "make_final_prob": 0.083,
-   "podium_prob": 0.001,
-   "rider_id": "ath:188",
-   "rider_name": "THURLOW Luca",
-   "top10_prob": 0.007,
-   "win_prob": 0.001
-  },
-  {
-   "exp_points": 42.428,
-   "make_final_prob": 0.542,
-   "podium_prob": 0.034,
+   "exp_points": 47.935,
+   "make_final_prob": 0.619,
+   "podium_prob": 0.042,
    "rider_id": "ath:19",
    "rider_name": "PONTVIANNE Nathan",
-   "top10_prob": 0.184,
-   "win_prob": 0.011
+   "top10_prob": 0.205,
+   "win_prob": 0.009
   },
   {
-   "exp_points": 0.574,
-   "make_final_prob": 0.024,
+   "exp_points": 0.038,
+   "make_final_prob": 0.002,
    "podium_prob": 0.0,
    "rider_id": "ath:193",
    "rider_name": "SMESTAD Simen",
@@ -255,31 +255,31 @@
    "win_prob": 0.0
   },
   {
-   "exp_points": 29.624,
-   "make_final_prob": 0.417,
-   "podium_prob": 0.027,
+   "exp_points": 31.386,
+   "make_final_prob": 0.462,
+   "podium_prob": 0.024,
    "rider_id": "ath:197",
    "rider_name": "GWIN Aaron",
-   "top10_prob": 0.114,
-   "win_prob": 0.008
+   "top10_prob": 0.124,
+   "win_prob": 0.007
   },
   {
-   "exp_points": 108.618,
-   "make_final_prob": 0.831,
-   "podium_prob": 0.219,
+   "exp_points": 102.189,
+   "make_final_prob": 0.839,
+   "podium_prob": 0.199,
    "rider_id": "ath:2",
    "rider_name": "WILLIAMS Jordan",
-   "top10_prob": 0.492,
-   "win_prob": 0.1
+   "top10_prob": 0.475,
+   "win_prob": 0.081
   },
   {
-   "exp_points": 1.87,
-   "make_final_prob": 0.049,
-   "podium_prob": 0.002,
+   "exp_points": 0.673,
+   "make_final_prob": 0.016,
+   "podium_prob": 0.0,
    "rider_id": "ath:20",
    "rider_name": "CAPPELLO Davide",
-   "top10_prob": 0.005,
-   "win_prob": 0.002
+   "top10_prob": 0.003,
+   "win_prob": 0.0
   },
   {
    "exp_points": 0.0,
@@ -300,8 +300,8 @@
    "win_prob": 0.0
   },
   {
-   "exp_points": 0.177,
-   "make_final_prob": 0.009,
+   "exp_points": 0.125,
+   "make_final_prob": 0.008,
    "podium_prob": 0.0,
    "rider_id": "ath:21",
    "rider_name": "PIERCY Jack",
@@ -309,62 +309,62 @@
    "win_prob": 0.0
   },
   {
-   "exp_points": 33.833,
-   "make_final_prob": 0.476,
-   "podium_prob": 0.031,
+   "exp_points": 33.206,
+   "make_final_prob": 0.507,
+   "podium_prob": 0.028,
    "rider_id": "ath:212",
    "rider_name": "NORTON Dakotah",
-   "top10_prob": 0.142,
-   "win_prob": 0.007
+   "top10_prob": 0.125,
+   "win_prob": 0.008
   },
   {
-   "exp_points": 2.154,
-   "make_final_prob": 0.062,
-   "podium_prob": 0.001,
+   "exp_points": 0.338,
+   "make_final_prob": 0.014,
+   "podium_prob": 0.0,
    "rider_id": "ath:218",
    "rider_name": "MACDERMID James",
-   "top10_prob": 0.003,
+   "top10_prob": 0.001,
    "win_prob": 0.0
   },
   {
-   "exp_points": 21.367,
-   "make_final_prob": 0.326,
-   "podium_prob": 0.013,
+   "exp_points": 21.306,
+   "make_final_prob": 0.345,
+   "podium_prob": 0.012,
    "rider_id": "ath:22",
    "rider_name": "HART Danny",
-   "top10_prob": 0.086,
+   "top10_prob": 0.081,
    "win_prob": 0.002
   },
   {
-   "exp_points": 0.852,
-   "make_final_prob": 0.029,
+   "exp_points": 0.876,
+   "make_final_prob": 0.035,
    "podium_prob": 0.0,
    "rider_id": "ath:23",
    "rider_name": "HOLGUIN VILLA Sebastian",
-   "top10_prob": 0.002,
+   "top10_prob": 0.001,
    "win_prob": 0.0
   },
   {
-   "exp_points": 68.507,
-   "make_final_prob": 0.695,
-   "podium_prob": 0.095,
+   "exp_points": 74.739,
+   "make_final_prob": 0.738,
+   "podium_prob": 0.106,
    "rider_id": "ath:24",
    "rider_name": "SHAW Luca",
-   "top10_prob": 0.311,
-   "win_prob": 0.033
+   "top10_prob": 0.335,
+   "win_prob": 0.035
   },
   {
-   "exp_points": 5.082,
-   "make_final_prob": 0.107,
-   "podium_prob": 0.004,
+   "exp_points": 4.046,
+   "make_final_prob": 0.097,
+   "podium_prob": 0.002,
    "rider_id": "ath:241",
    "rider_name": "MARINI Hugo",
-   "top10_prob": 0.013,
+   "top10_prob": 0.008,
    "win_prob": 0.001
   },
   {
-   "exp_points": 0.234,
-   "make_final_prob": 0.009,
+   "exp_points": 0.089,
+   "make_final_prob": 0.004,
    "podium_prob": 0.0,
    "rider_id": "ath:242",
    "rider_name": "LEHMANN Lino",
@@ -372,26 +372,26 @@
    "win_prob": 0.0
   },
   {
-   "exp_points": 8.832,
-   "make_final_prob": 0.19,
-   "podium_prob": 0.002,
+   "exp_points": 6.521,
+   "make_final_prob": 0.174,
+   "podium_prob": 0.001,
    "rider_id": "ath:243",
    "rider_name": "LAMARIS Marco",
-   "top10_prob": 0.029,
-   "win_prob": 0.001
+   "top10_prob": 0.013,
+   "win_prob": 0.0
   },
   {
-   "exp_points": 26.129,
-   "make_final_prob": 0.407,
-   "podium_prob": 0.019,
+   "exp_points": 31.668,
+   "make_final_prob": 0.495,
+   "podium_prob": 0.025,
    "rider_id": "ath:25",
    "rider_name": "HARTENSTERN Max",
-   "top10_prob": 0.093,
-   "win_prob": 0.006
+   "top10_prob": 0.112,
+   "win_prob": 0.008
   },
   {
-   "exp_points": 0.054,
-   "make_final_prob": 0.002,
+   "exp_points": 0.0,
+   "make_final_prob": 0.0,
    "podium_prob": 0.0,
    "rider_id": "ath:253",
    "rider_name": "WARD Patrick",
@@ -399,17 +399,17 @@
    "win_prob": 0.0
   },
   {
-   "exp_points": 8.89,
-   "make_final_prob": 0.19,
-   "podium_prob": 0.004,
+   "exp_points": 4.282,
+   "make_final_prob": 0.117,
+   "podium_prob": 0.001,
    "rider_id": "ath:266",
    "rider_name": "WOOLLEY Kasper",
-   "top10_prob": 0.026,
+   "top10_prob": 0.01,
    "win_prob": 0.0
   },
   {
-   "exp_points": 0.173,
-   "make_final_prob": 0.007,
+   "exp_points": 0.0,
+   "make_final_prob": 0.0,
    "podium_prob": 0.0,
    "rider_id": "ath:269",
    "rider_name": "STANTON Jed",
@@ -417,17 +417,17 @@
    "win_prob": 0.0
   },
   {
-   "exp_points": 58.891,
-   "make_final_prob": 0.638,
-   "podium_prob": 0.083,
+   "exp_points": 56.632,
+   "make_final_prob": 0.662,
+   "podium_prob": 0.067,
    "rider_id": "ath:27",
    "rider_name": "MAPLES Dylan",
-   "top10_prob": 0.269,
-   "win_prob": 0.024
+   "top10_prob": 0.257,
+   "win_prob": 0.022
   },
   {
-   "exp_points": 0.065,
-   "make_final_prob": 0.001,
+   "exp_points": 0.0,
+   "make_final_prob": 0.0,
    "podium_prob": 0.0,
    "rider_id": "ath:273",
    "rider_name": "VANREUSEL Kelian",
@@ -435,17 +435,17 @@
    "win_prob": 0.0
   },
   {
-   "exp_points": 24.78,
+   "exp_points": 21.841,
    "make_final_prob": 0.394,
-   "podium_prob": 0.014,
+   "podium_prob": 0.009,
    "rider_id": "ath:276",
    "rider_name": "KERR Bernard",
-   "top10_prob": 0.094,
+   "top10_prob": 0.076,
    "win_prob": 0.004
   },
   {
-   "exp_points": 0.036,
-   "make_final_prob": 0.002,
+   "exp_points": 0.0,
+   "make_final_prob": 0.0,
    "podium_prob": 0.0,
    "rider_id": "ath:278",
    "rider_name": "VERSTAD STUBERGH Elias",
@@ -453,22 +453,22 @@
    "win_prob": 0.0
   },
   {
-   "exp_points": 9.721,
-   "make_final_prob": 0.186,
-   "podium_prob": 0.004,
+   "exp_points": 8.696,
+   "make_final_prob": 0.187,
+   "podium_prob": 0.002,
    "rider_id": "ath:28",
    "rider_name": "BREEDEN Joe",
-   "top10_prob": 0.036,
+   "top10_prob": 0.028,
    "win_prob": 0.0
   },
   {
-   "exp_points": 13.813,
-   "make_final_prob": 0.265,
+   "exp_points": 13.583,
+   "make_final_prob": 0.278,
    "podium_prob": 0.005,
    "rider_id": "ath:29",
    "rider_name": "ROGGE Antoine",
-   "top10_prob": 0.051,
-   "win_prob": 0.003
+   "top10_prob": 0.04,
+   "win_prob": 0.002
   },
   {
    "exp_points": 0.0,
@@ -480,70 +480,70 @@
    "win_prob": 0.0
   },
   {
-   "exp_points": 4.616,
-   "make_final_prob": 0.1,
-   "podium_prob": 0.004,
+   "exp_points": 0.298,
+   "make_final_prob": 0.01,
+   "podium_prob": 0.0,
    "rider_id": "ath:293",
    "rider_name": "GODOY VEGA Santiago",
-   "top10_prob": 0.012,
-   "win_prob": 0.001
-  },
-  {
-   "exp_points": 91.466,
-   "make_final_prob": 0.797,
-   "podium_prob": 0.158,
-   "rider_id": "ath:3",
-   "rider_name": "PIERRON Amaury",
-   "top10_prob": 0.41,
-   "win_prob": 0.056
-  },
-  {
-   "exp_points": 38.302,
-   "make_final_prob": 0.468,
-   "podium_prob": 0.038,
-   "rider_id": "ath:30",
-   "rider_name": "WAYMAN Luke",
-   "top10_prob": 0.169,
-   "win_prob": 0.012
-  },
-  {
-   "exp_points": 11.862,
-   "make_final_prob": 0.219,
-   "podium_prob": 0.006,
-   "rider_id": "ath:31",
-   "rider_name": "CHAPELET Simon",
-   "top10_prob": 0.035,
-   "win_prob": 0.002
-  },
-  {
-   "exp_points": 3.895,
-   "make_final_prob": 0.103,
-   "podium_prob": 0.0,
-   "rider_id": "ath:32",
-   "rider_name": "KERR Henry",
-   "top10_prob": 0.008,
-   "win_prob": 0.0
-  },
-  {
-   "exp_points": 0.473,
-   "make_final_prob": 0.016,
-   "podium_prob": 0.0,
-   "rider_id": "ath:321",
-   "rider_name": "GAJDOSECH Gonzalo",
    "top10_prob": 0.001,
    "win_prob": 0.0
   },
   {
-   "exp_points": 3.881,
-   "make_final_prob": 0.103,
-   "podium_prob": 0.001,
-   "rider_id": "ath:325",
-   "rider_name": "FABIAN Jose Ignacio",
-   "top10_prob": 0.011,
+   "exp_points": 99.731,
+   "make_final_prob": 0.86,
+   "podium_prob": 0.176,
+   "rider_id": "ath:3",
+   "rider_name": "PIERRON Amaury",
+   "top10_prob": 0.45,
+   "win_prob": 0.06
+  },
+  {
+   "exp_points": 32.852,
+   "make_final_prob": 0.464,
+   "podium_prob": 0.027,
+   "rider_id": "ath:30",
+   "rider_name": "WAYMAN Luke",
+   "top10_prob": 0.136,
+   "win_prob": 0.009
+  },
+  {
+   "exp_points": 13.206,
+   "make_final_prob": 0.25,
+   "podium_prob": 0.006,
+   "rider_id": "ath:31",
+   "rider_name": "CHAPELET Simon",
+   "top10_prob": 0.04,
+   "win_prob": 0.003
+  },
+  {
+   "exp_points": 4.97,
+   "make_final_prob": 0.142,
+   "podium_prob": 0.0,
+   "rider_id": "ath:32",
+   "rider_name": "KERR Henry",
+   "top10_prob": 0.007,
    "win_prob": 0.0
   },
   {
-   "exp_points": 1.224,
+   "exp_points": 0.06,
+   "make_final_prob": 0.003,
+   "podium_prob": 0.0,
+   "rider_id": "ath:321",
+   "rider_name": "GAJDOSECH Gonzalo",
+   "top10_prob": 0.0,
+   "win_prob": 0.0
+  },
+  {
+   "exp_points": 0.789,
+   "make_final_prob": 0.032,
+   "podium_prob": 0.0,
+   "rider_id": "ath:325",
+   "rider_name": "FABIAN Jose Ignacio",
+   "top10_prob": 0.001,
+   "win_prob": 0.0
+  },
+  {
+   "exp_points": 1.035,
    "make_final_prob": 0.039,
    "podium_prob": 0.0,
    "rider_id": "ath:33",
@@ -552,188 +552,188 @@
    "win_prob": 0.0
   },
   {
-   "exp_points": 0.932,
-   "make_final_prob": 0.033,
+   "exp_points": 1.482,
+   "make_final_prob": 0.05,
    "podium_prob": 0.0,
    "rider_id": "ath:35",
    "rider_name": "CASTELLANOS LIBERAL Daniel",
-   "top10_prob": 0.002,
+   "top10_prob": 0.004,
    "win_prob": 0.0
   },
   {
-   "exp_points": 7.178,
-   "make_final_prob": 0.145,
-   "podium_prob": 0.005,
+   "exp_points": 2.335,
+   "make_final_prob": 0.064,
+   "podium_prob": 0.001,
    "rider_id": "ath:351",
    "rider_name": "HELLY Johnathan",
-   "top10_prob": 0.024,
+   "top10_prob": 0.006,
+   "win_prob": 0.0
+  },
+  {
+   "exp_points": 1.152,
+   "make_final_prob": 0.046,
+   "podium_prob": 0.0,
+   "rider_id": "ath:356",
+   "rider_name": "PEDEVILLA Thomas",
+   "top10_prob": 0.0,
+   "win_prob": 0.0
+  },
+  {
+   "exp_points": 27.79,
+   "make_final_prob": 0.455,
+   "podium_prob": 0.02,
+   "rider_id": "ath:36",
+   "rider_name": "WILSON Reece",
+   "top10_prob": 0.091,
+   "win_prob": 0.003
+  },
+  {
+   "exp_points": 0.515,
+   "make_final_prob": 0.022,
+   "podium_prob": 0.0,
+   "rider_id": "ath:369",
+   "rider_name": "SHERRY Henry",
+   "top10_prob": 0.0,
+   "win_prob": 0.0
+  },
+  {
+   "exp_points": 10.596,
+   "make_final_prob": 0.245,
+   "podium_prob": 0.004,
+   "rider_id": "ath:37",
+   "rider_name": "JEWETT Dane",
+   "top10_prob": 0.026,
    "win_prob": 0.001
   },
   {
-   "exp_points": 4.602,
-   "make_final_prob": 0.12,
-   "podium_prob": 0.001,
-   "rider_id": "ath:356",
-   "rider_name": "PEDEVILLA Thomas",
+   "exp_points": 34.322,
+   "make_final_prob": 0.497,
+   "podium_prob": 0.033,
+   "rider_id": "ath:38",
+   "rider_name": "HATTON Charlie",
+   "top10_prob": 0.127,
+   "win_prob": 0.008
+  },
+  {
+   "exp_points": 3.612,
+   "make_final_prob": 0.098,
+   "podium_prob": 0.0,
+   "rider_id": "ath:381",
+   "rider_name": "MENZIES Jack",
+   "top10_prob": 0.006,
+   "win_prob": 0.0
+  },
+  {
+   "exp_points": 14.699,
+   "make_final_prob": 0.286,
+   "podium_prob": 0.005,
+   "rider_id": "ath:39",
+   "rider_name": "PENE Tuhoto-Ariki",
+   "top10_prob": 0.048,
+   "win_prob": 0.0
+  },
+  {
+   "exp_points": 95.14,
+   "make_final_prob": 0.823,
+   "podium_prob": 0.156,
+   "rider_id": "ath:4",
+   "rider_name": "VERGIER Loris",
+   "top10_prob": 0.432,
+   "win_prob": 0.044
+  },
+  {
+   "exp_points": 25.564,
+   "make_final_prob": 0.422,
+   "podium_prob": 0.013,
+   "rider_id": "ath:40",
+   "rider_name": "REVELLI Loris",
+   "top10_prob": 0.094,
+   "win_prob": 0.002
+  },
+  {
+   "exp_points": 62.886,
+   "make_final_prob": 0.677,
+   "podium_prob": 0.081,
+   "rider_id": "ath:41",
+   "rider_name": "MEIER-SMITH Luke",
+   "top10_prob": 0.277,
+   "win_prob": 0.029
+  },
+  {
+   "exp_points": 78.104,
+   "make_final_prob": 0.785,
+   "podium_prob": 0.117,
+   "rider_id": "ath:42",
+   "rider_name": "GOLDSTONE Jackson",
+   "top10_prob": 0.344,
+   "win_prob": 0.043
+  },
+  {
+   "exp_points": 4.18,
+   "make_final_prob": 0.1,
+   "podium_prob": 0.0,
+   "rider_id": "ath:424",
+   "rider_name": "WILLIAMSON Luke",
    "top10_prob": 0.011,
    "win_prob": 0.0
   },
   {
-   "exp_points": 30.965,
-   "make_final_prob": 0.452,
-   "podium_prob": 0.025,
-   "rider_id": "ath:36",
-   "rider_name": "WILSON Reece",
-   "top10_prob": 0.117,
-   "win_prob": 0.005
-  },
-  {
-   "exp_points": 1.927,
-   "make_final_prob": 0.056,
-   "podium_prob": 0.0,
-   "rider_id": "ath:369",
-   "rider_name": "SHERRY Henry",
-   "top10_prob": 0.003,
-   "win_prob": 0.0
-  },
-  {
-   "exp_points": 18.624,
-   "make_final_prob": 0.332,
-   "podium_prob": 0.012,
-   "rider_id": "ath:37",
-   "rider_name": "JEWETT Dane",
-   "top10_prob": 0.064,
-   "win_prob": 0.003
-  },
-  {
-   "exp_points": 35.658,
-   "make_final_prob": 0.476,
-   "podium_prob": 0.038,
-   "rider_id": "ath:38",
-   "rider_name": "HATTON Charlie",
-   "top10_prob": 0.13,
-   "win_prob": 0.011
-  },
-  {
-   "exp_points": 5.849,
-   "make_final_prob": 0.127,
-   "podium_prob": 0.003,
-   "rider_id": "ath:381",
-   "rider_name": "MENZIES Jack",
-   "top10_prob": 0.019,
-   "win_prob": 0.0
-  },
-  {
-   "exp_points": 18.683,
-   "make_final_prob": 0.305,
-   "podium_prob": 0.013,
-   "rider_id": "ath:39",
-   "rider_name": "PENE Tuhoto-Ariki",
-   "top10_prob": 0.069,
-   "win_prob": 0.003
-  },
-  {
-   "exp_points": 86.622,
-   "make_final_prob": 0.768,
-   "podium_prob": 0.148,
-   "rider_id": "ath:4",
-   "rider_name": "VERGIER Loris",
-   "top10_prob": 0.391,
-   "win_prob": 0.042
-  },
-  {
-   "exp_points": 31.507,
-   "make_final_prob": 0.445,
-   "podium_prob": 0.027,
-   "rider_id": "ath:40",
-   "rider_name": "REVELLI Loris",
-   "top10_prob": 0.123,
-   "win_prob": 0.003
-  },
-  {
-   "exp_points": 58.093,
-   "make_final_prob": 0.616,
-   "podium_prob": 0.075,
-   "rider_id": "ath:41",
-   "rider_name": "MEIER-SMITH Luke",
-   "top10_prob": 0.25,
-   "win_prob": 0.035
-  },
-  {
-   "exp_points": 66.033,
-   "make_final_prob": 0.69,
-   "podium_prob": 0.097,
-   "rider_id": "ath:42",
-   "rider_name": "GOLDSTONE Jackson",
-   "top10_prob": 0.285,
-   "win_prob": 0.033
-  },
-  {
-   "exp_points": 6.185,
-   "make_final_prob": 0.131,
-   "podium_prob": 0.001,
-   "rider_id": "ath:424",
-   "rider_name": "WILLIAMSON Luke",
-   "top10_prob": 0.022,
-   "win_prob": 0.0
-  },
-  {
-   "exp_points": 29.913,
-   "make_final_prob": 0.451,
+   "exp_points": 32.114,
+   "make_final_prob": 0.505,
    "podium_prob": 0.029,
    "rider_id": "ath:46",
    "rider_name": "KUHN Bodhi",
-   "top10_prob": 0.121,
-   "win_prob": 0.005
+   "top10_prob": 0.134,
+   "win_prob": 0.004
   },
   {
-   "exp_points": 3.986,
-   "make_final_prob": 0.093,
-   "podium_prob": 0.001,
+   "exp_points": 3.913,
+   "make_final_prob": 0.099,
+   "podium_prob": 0.0,
    "rider_id": "ath:48",
    "rider_name": "HAUSER Christian",
-   "top10_prob": 0.007,
+   "top10_prob": 0.005,
    "win_prob": 0.0
   },
   {
-   "exp_points": 19.501,
-   "make_final_prob": 0.31,
+   "exp_points": 20.241,
+   "make_final_prob": 0.337,
    "podium_prob": 0.014,
    "rider_id": "ath:49",
    "rider_name": "ZWAR Oliver",
-   "top10_prob": 0.073,
+   "top10_prob": 0.075,
    "win_prob": 0.002
   },
   {
-   "exp_points": 40.514,
-   "make_final_prob": 0.552,
-   "podium_prob": 0.032,
+   "exp_points": 39.682,
+   "make_final_prob": 0.582,
+   "podium_prob": 0.024,
    "rider_id": "ath:5",
    "rider_name": "O'CALLAGHAN Oisin",
-   "top10_prob": 0.169,
-   "win_prob": 0.005
+   "top10_prob": 0.158,
+   "win_prob": 0.003
   },
   {
-   "exp_points": 21.638,
-   "make_final_prob": 0.366,
-   "podium_prob": 0.018,
+   "exp_points": 20.621,
+   "make_final_prob": 0.373,
+   "podium_prob": 0.017,
    "rider_id": "ath:50",
    "rider_name": "MU\u00d1OZ Fernando Juan",
-   "top10_prob": 0.077,
+   "top10_prob": 0.073,
    "win_prob": 0.005
   },
   {
-   "exp_points": 0.78,
-   "make_final_prob": 0.02,
+   "exp_points": 0.057,
+   "make_final_prob": 0.003,
    "podium_prob": 0.0,
    "rider_id": "ath:501",
    "rider_name": "GUIONNET Ian",
-   "top10_prob": 0.001,
+   "top10_prob": 0.0,
    "win_prob": 0.0
   },
   {
-   "exp_points": 0.38,
-   "make_final_prob": 0.014,
+   "exp_points": 0.003,
+   "make_final_prob": 0.001,
    "podium_prob": 0.0,
    "rider_id": "ath:502",
    "rider_name": "VIDAL Antoine",
@@ -741,75 +741,75 @@
    "win_prob": 0.0
   },
   {
-   "exp_points": 2.91,
-   "make_final_prob": 0.095,
+   "exp_points": 0.0,
+   "make_final_prob": 0.0,
    "podium_prob": 0.0,
    "rider_id": "ath:503",
    "rider_name": "ROLDAN FRAGOSO Kaito Miguel",
-   "top10_prob": 0.004,
+   "top10_prob": 0.0,
    "win_prob": 0.0
   },
   {
-   "exp_points": 5.218,
-   "make_final_prob": 0.115,
-   "podium_prob": 0.003,
+   "exp_points": 1.222,
+   "make_final_prob": 0.037,
+   "podium_prob": 0.001,
    "rider_id": "ath:504",
    "rider_name": "PAREDES MORENO Jose",
-   "top10_prob": 0.014,
-   "win_prob": 0.001
-  },
-  {
-   "exp_points": 4.031,
-   "make_final_prob": 0.109,
-   "podium_prob": 0.001,
-   "rider_id": "ath:505",
-   "rider_name": "FOURNIER GOMEZ Raymundo",
-   "top10_prob": 0.009,
+   "top10_prob": 0.002,
    "win_prob": 0.0
   },
   {
-   "exp_points": 4.414,
-   "make_final_prob": 0.105,
-   "podium_prob": 0.001,
+   "exp_points": 1.124,
+   "make_final_prob": 0.044,
+   "podium_prob": 0.0,
+   "rider_id": "ath:505",
+   "rider_name": "FOURNIER GOMEZ Raymundo",
+   "top10_prob": 0.002,
+   "win_prob": 0.0
+  },
+  {
+   "exp_points": 1.349,
+   "make_final_prob": 0.046,
+   "podium_prob": 0.0,
    "rider_id": "ath:506",
    "rider_name": "VAN VLIMMEREN Kyano",
-   "top10_prob": 0.013,
-   "win_prob": 0.001
+   "top10_prob": 0.001,
+   "win_prob": 0.0
   },
   {
-   "exp_points": 4.233,
-   "make_final_prob": 0.111,
-   "podium_prob": 0.004,
+   "exp_points": 0.862,
+   "make_final_prob": 0.033,
+   "podium_prob": 0.0,
    "rider_id": "ath:507",
    "rider_name": "ZOTOS Sokratis Aris",
-   "top10_prob": 0.01,
-   "win_prob": 0.001
+   "top10_prob": 0.002,
+   "win_prob": 0.0
   },
   {
-   "exp_points": 3.796,
-   "make_final_prob": 0.093,
-   "podium_prob": 0.004,
+   "exp_points": 0.0,
+   "make_final_prob": 0.0,
+   "podium_prob": 0.0,
    "rider_id": "ath:508",
    "rider_name": "EMPEY Matthew",
-   "top10_prob": 0.009,
-   "win_prob": 0.001
+   "top10_prob": 0.0,
+   "win_prob": 0.0
   },
   {
-   "exp_points": 3.789,
-   "make_final_prob": 0.101,
+   "exp_points": 1.069,
+   "make_final_prob": 0.039,
    "podium_prob": 0.0,
    "rider_id": "ath:509",
    "rider_name": "DZHUPAROV Dimitar",
-   "top10_prob": 0.009,
+   "top10_prob": 0.001,
    "win_prob": 0.0
   },
   {
-   "exp_points": 0.378,
-   "make_final_prob": 0.007,
+   "exp_points": 0.074,
+   "make_final_prob": 0.003,
    "podium_prob": 0.0,
    "rider_id": "ath:58",
    "rider_name": "OSTFELD Roee",
-   "top10_prob": 0.001,
+   "top10_prob": 0.0,
    "win_prob": 0.0
   },
   {
@@ -822,26 +822,26 @@
    "win_prob": 0.0
   },
   {
-   "exp_points": 10.26,
-   "make_final_prob": 0.195,
-   "podium_prob": 0.009,
+   "exp_points": 18.433,
+   "make_final_prob": 0.318,
+   "podium_prob": 0.017,
    "rider_id": "ath:6",
    "rider_name": "DAPRELA Thibaut",
-   "top10_prob": 0.039,
-   "win_prob": 0.0
+   "top10_prob": 0.066,
+   "win_prob": 0.002
   },
   {
-   "exp_points": 0.767,
-   "make_final_prob": 0.026,
+   "exp_points": 0.194,
+   "make_final_prob": 0.01,
    "podium_prob": 0.0,
    "rider_id": "ath:60",
    "rider_name": "KIRK Rory",
-   "top10_prob": 0.001,
+   "top10_prob": 0.0,
    "win_prob": 0.0
   },
   {
-   "exp_points": 0.571,
-   "make_final_prob": 0.023,
+   "exp_points": 0.145,
+   "make_final_prob": 0.007,
    "podium_prob": 0.0,
    "rider_id": "ath:64",
    "rider_name": "BAECHLER Yannick",
@@ -849,116 +849,116 @@
    "win_prob": 0.0
   },
   {
-   "exp_points": 41.148,
-   "make_final_prob": 0.548,
-   "podium_prob": 0.039,
+   "exp_points": 51.36,
+   "make_final_prob": 0.646,
+   "podium_prob": 0.051,
    "rider_id": "ath:68",
    "rider_name": "MAES Martin",
-   "top10_prob": 0.163,
-   "win_prob": 0.012
+   "top10_prob": 0.215,
+   "win_prob": 0.018
   },
   {
-   "exp_points": 79.728,
-   "make_final_prob": 0.761,
-   "podium_prob": 0.115,
+   "exp_points": 84.873,
+   "make_final_prob": 0.813,
+   "podium_prob": 0.119,
    "rider_id": "ath:7",
    "rider_name": "PINKERTON Ryan",
-   "top10_prob": 0.365,
-   "win_prob": 0.035
+   "top10_prob": 0.4,
+   "win_prob": 0.039
   },
   {
-   "exp_points": 4.893,
-   "make_final_prob": 0.117,
-   "podium_prob": 0.001,
+   "exp_points": 2.88,
+   "make_final_prob": 0.091,
+   "podium_prob": 0.0,
    "rider_id": "ath:70",
    "rider_name": "FALQUET Mylann",
-   "top10_prob": 0.012,
+   "top10_prob": 0.003,
    "win_prob": 0.0
   },
   {
-   "exp_points": 43.278,
-   "make_final_prob": 0.544,
-   "podium_prob": 0.042,
+   "exp_points": 42.882,
+   "make_final_prob": 0.578,
+   "podium_prob": 0.041,
    "rider_id": "ath:72",
    "rider_name": "WALKER Matt",
-   "top10_prob": 0.183,
-   "win_prob": 0.011
+   "top10_prob": 0.176,
+   "win_prob": 0.008
   },
   {
-   "exp_points": 5.03,
-   "make_final_prob": 0.121,
+   "exp_points": 0.0,
+   "make_final_prob": 0.0,
    "podium_prob": 0.0,
    "rider_id": "ath:75",
    "rider_name": "PAJAK Jan",
-   "top10_prob": 0.013,
+   "top10_prob": 0.0,
    "win_prob": 0.0
   },
   {
-   "exp_points": 67.622,
-   "make_final_prob": 0.692,
-   "podium_prob": 0.107,
+   "exp_points": 66.226,
+   "make_final_prob": 0.72,
+   "podium_prob": 0.099,
    "rider_id": "ath:78",
    "rider_name": "STEVENS-MCNAB Lachlan",
-   "top10_prob": 0.299,
-   "win_prob": 0.048
+   "top10_prob": 0.29,
+   "win_prob": 0.042
   },
   {
-   "exp_points": 69.829,
-   "make_final_prob": 0.706,
-   "podium_prob": 0.101,
+   "exp_points": 75.529,
+   "make_final_prob": 0.764,
+   "podium_prob": 0.106,
    "rider_id": "ath:8",
    "rider_name": "KOLB Andreas",
-   "top10_prob": 0.304,
-   "win_prob": 0.025
+   "top10_prob": 0.33,
+   "win_prob": 0.029
   },
   {
-   "exp_points": 45.784,
-   "make_final_prob": 0.566,
-   "podium_prob": 0.05,
+   "exp_points": 37.332,
+   "make_final_prob": 0.537,
+   "podium_prob": 0.033,
    "rider_id": "ath:82",
    "rider_name": "RUDE JR Richard",
-   "top10_prob": 0.184,
-   "win_prob": 0.019
-  },
-  {
-   "exp_points": 27.493,
-   "make_final_prob": 0.404,
-   "podium_prob": 0.025,
-   "rider_id": "ath:87",
-   "rider_name": "VIEIRA Roger",
-   "top10_prob": 0.108,
+   "top10_prob": 0.146,
    "win_prob": 0.01
   },
   {
-   "exp_points": 13.598,
-   "make_final_prob": 0.256,
-   "podium_prob": 0.008,
+   "exp_points": 24.723,
+   "make_final_prob": 0.4,
+   "podium_prob": 0.015,
+   "rider_id": "ath:87",
+   "rider_name": "VIEIRA Roger",
+   "top10_prob": 0.095,
+   "win_prob": 0.006
+  },
+  {
+   "exp_points": 7.062,
+   "make_final_prob": 0.176,
+   "podium_prob": 0.002,
    "rider_id": "ath:89",
    "rider_name": "MEDCALF Evan",
-   "top10_prob": 0.049,
-   "win_prob": 0.001
-  },
-  {
-   "exp_points": 51.498,
-   "make_final_prob": 0.583,
-   "podium_prob": 0.056,
-   "rider_id": "ath:9",
-   "rider_name": "PIERRON Antoine",
-   "top10_prob": 0.231,
-   "win_prob": 0.02
-  },
-  {
-   "exp_points": 4.58,
-   "make_final_prob": 0.133,
-   "podium_prob": 0.0,
-   "rider_id": "ath:90",
-   "rider_name": "GARCIN Johan",
-   "top10_prob": 0.005,
+   "top10_prob": 0.015,
    "win_prob": 0.0
   },
   {
-   "exp_points": 0.231,
-   "make_final_prob": 0.01,
+   "exp_points": 48.753,
+   "make_final_prob": 0.612,
+   "podium_prob": 0.048,
+   "rider_id": "ath:9",
+   "rider_name": "PIERRON Antoine",
+   "top10_prob": 0.206,
+   "win_prob": 0.014
+  },
+  {
+   "exp_points": 2.734,
+   "make_final_prob": 0.105,
+   "podium_prob": 0.0,
+   "rider_id": "ath:90",
+   "rider_name": "GARCIN Johan",
+   "top10_prob": 0.002,
+   "win_prob": 0.0
+  },
+  {
+   "exp_points": 0.0,
+   "make_final_prob": 0.0,
    "podium_prob": 0.0,
    "rider_id": "ath:96",
    "rider_name": "HANDL Christoph",
@@ -966,12 +966,12 @@
    "win_prob": 0.0
   },
   {
-   "exp_points": 3.117,
-   "make_final_prob": 0.094,
+   "exp_points": 0.0,
+   "make_final_prob": 0.0,
    "podium_prob": 0.0,
    "rider_id": "ath:97",
    "rider_name": "BAECHLER Nicolas",
-   "top10_prob": 0.005,
+   "top10_prob": 0.0,
    "win_prob": 0.0
   }
  ]
