@@ -5,6 +5,10 @@ as they land and add every decision to the [decision log](#11-decision-log). The
 general F1 plan is the [F1 roadmap](f1-roadmap.md) (this test is its phase F1-8); the
 downhill run it builds on is [Live events](live-events.md).
 
+**Build (29 Sep 2026):** B0–B8 are code-complete and rehearsed on Baku in a cloud session (branch
+`claude/cloud-buildout-track-a`; handoff in [Cloud build-out](cloud-buildout.md#handoffs)). Left: the Mac
+rehearsal under the LaunchAgent, and the owner's decisions.
+
 **Status (28 Sep 2026):** the venue is confirmed and **Polymarket has no markets for
 this race**. We build for [scenario B](#6-primary-plan-scenario-b-no-polymarket-markets):
 a mock private book like Whistler's, pricing every market Polymarket usually lists,

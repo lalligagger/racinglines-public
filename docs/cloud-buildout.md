@@ -294,6 +294,50 @@ racinglines live status                                                  # any t
 After the race: `racinglines live report live/f1/2026-16.toml --pdf`, `racinglines live settle live/f1/2026-16.toml`,
 then `racinglines live agent live/f1/2026-16.toml --remove`.
 
+### A: final handoff (29 Sep 2026)
+
+Track A is complete: queue items 1–3 (P0, the unified launcher, P1). Everything else belongs to Track B or is blocked below.
+
+**Done, with commits** (branch `claude/cloud-buildout-track-a`):
+
+| Item | Commit |
+|---|---|
+| Bring-up fixes: boto3 through uv, a current uv (Python 3.14.7, not rc2), bucket uploads without boto3's checksums | `9010faf`, `a7c8c8d`, `4e0f64b` |
+| B0 name aliases | `a7c8c8d` |
+| B1 the shared live core, `[live]` schemas, the Live tab's shell | `cdd9a37` |
+| B2–B3 the F1 adapter and engine step; `racinglines live` | `767f103` |
+| B4–B5 the Live tab's F1 body; hype picks | `79715dd` |
+| B6 operations; the round-16 spec | `84b86d0` |
+| Item 2: launch specs (Whistler, Baku), the synthetic third sport, `/live?event=` quoted | `5fe0583` |
+| B8 / P1 report command | `e106061` |
+| P1 Whistler into the database (`live_events`, migration `a3f5c8d1e7b2`, `live settle`) | `a85630b` |
+| P1 re-price from the raw feed (`live reprice`) | `66a125e` |
+| P1 Singapore (sprint): spec, Dutch GP rehearsal | `fc1fe47` |
+| B7 Baku rehearsal (669 step processes); P1 loss cap and floor bid (off) | `8cb7401` |
+| Runs found through the registry; F1's book opens at its pre-weekend update | `726f16e` |
+
+**Blocked: what each item needs, and who:**
+
+| Item | Needs | Who |
+|---|---|---|
+| The LaunchAgent itself (`live agent --install`) and a step fetching FastF1 live | macOS; FastF1 access (blocked by this session's proxy) | Owner, Thursday |
+| The full regression suite on the fixtures | `fetch_test_fixtures.py`: FastF1, Polymarket, ChronoRace (blocked here) | Owner, locally |
+| Whistler's final results in the database (the event is `in_progress`) | The downhill download + ingest of `20260925_mtb` (ChronoRace) | Owner, locally |
+| Loss cap for round 16 (`max_loss`), the hype picks, the crowd pace | Decisions (measurements in the [decision log](f1-live-roadmap.md#11-decision-log)) | Owner, before Thu 20:30 PDT |
+| Checkpoints 1–2 (a Polymarket listing?) | Wed evening / Thu 18:00 PDT | Owner |
+| The round-16 weekend, its report and settlement; running Singapore | The live event (2–4 Oct), then the owner's call | Owner, LaunchAgent |
+| A launch spec for the next downhill event | An event after Whistler (none in the data: it was the final) | Next season |
+| Informed takers, A's calls for the demo taker, a live feed (SignalR / OpenF1) | Owner decisions (defaults: none) | Owner |
+
+**Local checks after merging** (the brief's list, with additions):
+
+- The full regression suite (`python -m pytest -m "not live"`) on the local fixtures.
+- Whistler: `python -m pytest tests/test_live_core.py`: its book re-derived from `crowd.jsonl`, and six replay pages hashed. Also look at `/live?event=20260925_mtb_3`, with replay and Positions.
+- Migrations applied to the local database (`alembic upgrade head`: adds `live_events`), then `racinglines live settle live/mtb_dh/20260925_mtb.toml`.
+- `racinglines live agent live/f1/2026-16.toml --install`, then a dry run of one `step` (`racinglines live step live/f1/2026-16.toml --no-sync`).
+- The Baku rehearsal locally: `racinglines live run live/f1/2026-15.toml --simulate --no-fetch --no-sync`, then look at `/live?event=2026-15-rehearsal` as maker and taker. Afterwards `rm -rf data/runs/live/2026-15-rehearsal`: `/live` shows the newest event.
+- The pre-push hook passes.
+
 ## Progress log
 
 The session appends here: date and time (UTC), item, commit, status, notes.
@@ -317,3 +361,4 @@ The session appends here: date and time (UTC), item, commit, status, notes.
 | 2026-09-28 03:24 | A: B7 Baku rehearsal | 8cb7401 | done (cloud part) | 669 separate `live step --now` processes: 7 updates on time, positions = book (+$8,313.81 maker / −$50 taker), book reconciles (2,596 fills), replay renders. Same result as `run --simulate`. The real LaunchAgent + a live FastF1 step are the owner's Thursday rehearsal. |
 | 2026-09-28 03:24 | A: P1 loss cap / long-shot bid | 8cb7401 | done (off by default) | `max_loss` in quotes and crowd fills, `floor_bid`. Baku: baseline +$6,935 (worst −$2,400/market); cap 500: +$5,337 (worst −$559). Owner decides. |
 | 2026-09-28 03:28 | A: P0 handoff | 4e0f64b | done | See [Handoffs](#a-p0-handoff-29-sep-2026-ahead-of-the-wed-30-sep-1900-utc-deadline). Rehearsal run folders + Whistler report pushed to `results/cloud-buildout-a-20260929/` in the bucket (`bucket.py push` needed a checksum fix). Full suite here: 237 passed, 30 skipped (fixtures). |
+| 2026-09-28 03:30 | A: final handoff | – | done | Track A complete (queue items 1–3). See [Handoffs](#a-final-handoff-29-sep-2026). |
