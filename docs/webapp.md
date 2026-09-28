@@ -216,6 +216,33 @@ none is set. Other users are created on `/admin/users`.
   memory and resets on restart.
 - **Forms:** every form POST also carries an anti-forgery (CSRF) token.
 
+### JSON API
+
+Off by default: every route answers 404 unless `RACINGLINES_JSON_API=1` is set where the app
+runs (`racinglines/web/api.py`). Read-only, behind the same login as the pages (cookie or HTTP
+Basic), and only what the events and athletes pages show every signed-in user:
+
+| Route | Returns |
+|---|---|
+| `GET /api/v1/events?season=&competition=` | events, newest first |
+| `GET /api/v1/events/{id}` | one event and its classification, every round |
+| `GET /api/v1/athletes?q=&limit=200` | athletes with result counts (limit at most 1,000) |
+| `GET /api/v1/athletes/{id}` | one athlete, identifiers and results (practice left out) |
+
+```
+RACINGLINES_JSON_API=1 racinglines web
+curl -u taker:PASSWORD 'http://localhost:8000/api/v1/events?competition=uci_dhi_wc&season=2026'
+```
+
+No model prices, quotes, positions or market data. Open questions for the owner before it goes
+further:
+
+- **What's public:** results only (today), or model prices too (the pages hide them from takers)?
+- **Who can use it:** any account (today), a new API role or keys, or no login for results?
+- **Data terms:** F1 timing data (FastF1 / F1's terms), OpenF1's non-commercial terms and UCI /
+  ChronoRace results may not allow redistribution; check before anything leaves the private demo.
+- **Limits:** a per-client rate limit, and paging for the larger lists.
+
 ## Getting predictions for an event weekend
 
 ```

@@ -1061,4 +1061,5 @@ def diag_example(request: Request, run_id: int, fill: str = Form("through"), c=D
 
 from racinglines.web import admin  # noqa: E402,F401  (registers /admin routes)
 from racinglines.web import views  # noqa: E402,F401  (registers the board, race, season, book and lab pages)
+from racinglines.web import api  # noqa: E402,F401  (the read-only JSON API; off unless RACINGLINES_JSON_API=1)
 from racinglines.web import legacy  # noqa: E402,F401  (old page URLs redirect to the current routes; register last)

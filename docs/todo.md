@@ -314,7 +314,10 @@ Phase [F1-9](f1-roadmap.md#f1-9-more-exchanges-kalshi-others).
 - [ ] Remove the `demo_context` bubbles before real users.
 - [ ] Before anything goes beyond a private demo: check F1's data terms, OpenF1's non-commercial terms,
       and settlement rules for relocated or cancelled races.
-- [ ] Public/JSON API endpoints next to the admin pages.
+- [x] JSON API endpoints next to the pages: read-only events and athletes, behind the login,
+      off unless `RACINGLINES_JSON_API=1` ([JSON API](webapp.md#json-api), 2026-09-28, cloud).
+- [ ] JSON API, owner: what's public (results only, or prices), who can use it (accounts, keys, no
+      login), data terms, rate limits ([open questions](webapp.md#json-api)).
 - [ ] **Condition in-weekend forecasts on completed rounds** (downhill). Once Q1 has run, fix
       who has qualified and use the Q1 times. Also use split times from disrupted
       Timed Training sessions.
