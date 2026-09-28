@@ -369,8 +369,9 @@ Each item lists what "done" means. B0 matters in every scenario.
 - [ ] **B7. Rehearsal on Baku** *(Wed–Thu)*
   - The whole weekend on a simulated clock, run under the LaunchAgent.
   - Done: all seven updates happen, pole settles after qualifying and everything else after the race, Positions is correct, replay works.
-- [ ] **B8. Report command** *(Thu, stretch)*
-  - `racinglines live report --event …`, generalising the Whistler report: book P&L by update, the crowd, the demo taker, and the fair-price scorecard.
+- [x] **B8. Search report command**
+  - `racinglines f1 search-report <search> [--write-candidates] [--plot] [--noise] [--html REPORT.md]` analyses a saved F1 sweep search and writes reproducible curves, rankings, candidate files, optional charts, a noise summary and print-friendly HTML under `data/runs/search/<search>/`.
+  - The separate `racinglines live report --event …` remains the next step for event-specific book P&L, crowd, demo-taker and fair-price reporting.
 
 ### Weekend runbook (PDT)
 
