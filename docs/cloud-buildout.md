@@ -267,7 +267,7 @@ The session appends here: date and time (UTC), item, commit, status, notes.
 | 2026-09-28 04:19 | B: downhill practice weight and rider × venue effects (P3, Model) | this commit | done (docs): neither helps | Practice weight 0/0.25/0.5/1.0 within 0.003 log loss on every market, 0.5 kept. Venue prior (k = 1, 2, 4, deviations from the rider's own level, residuals beyond ±4% dropped): no better on podium/top 10/final, Spearman lower. Experiment scripts only; no model code |
 | 2026-09-28 04:21 | B: downhill time trends (P3, Model) | this commit | done (docs): none detected | Rookie drift (riders with ≤3 or ≤6 elite events, 0.3%/0.6% faster) worse on every market; 0.3% slower within 0.001. Experiment only |
 | 2026-09-28 04:23 | B: admin P&L without the replay counterparty (Engineering) | this commit | done | `/admin` totals count people's bets only; `polymarket-takers` replay fills get their own line when there are any (`admin.bet_totals`, unit test). Checked /admin renders (local demo logins created in this session's database only). Kalshi connector skipped: F1-9 starts only after the owner confirms it, and the cloud network blocks Kalshi's API. Public JSON API left: its scope (what's public, auth, data terms) is the owner's call |
-| 2026-09-28 04:26 | B: **new downhill defaults** (owner's OK) and Final incident rates (P3, Model) | this commit | done | Owner: make the sweep's winner the downhill default, leave F1 alone. `PRIOR_N` 0.5, `HALF_LIFE_DAYS` 240, `CATEGORY_WEIGHTS['MJ']` 0.25 (model, CLI, web Lab knobs). `mtb_dh backtest --db --reliability` now: make-Final log loss 0.361 (was 0.397), podium 0.0735 (0.0768), top 10 0.171 (0.177), win 0.0324 (0.0332). Every downhill price changes; the downhill golden tests (tests/test_pipeline_mtb.py, fixtures local only) need regenerating locally. Lower incident rate in Finals (×0.5/0.71/0.85) tried: slightly worse, not built. No F1 code touched |
+| 2026-09-28 04:26 | B: **new downhill defaults** (owner's OK) and Final incident rates (P3, Model) | 288aacb | done | Owner: make the sweep's winner the downhill default, leave F1 alone. `PRIOR_N` 0.5, `HALF_LIFE_DAYS` 240, `CATEGORY_WEIGHTS['MJ']` 0.25 (model, CLI, web Lab knobs). `mtb_dh backtest --db --reliability` now: make-Final log loss 0.361 (was 0.397), podium 0.0735 (0.0768), top 10 0.171 (0.177), win 0.0324 (0.0332). Every downhill price changes; the downhill golden tests (tests/test_pipeline_mtb.py, fixtures local only) need regenerating locally. Lower incident rate in Finals (×0.5/0.71/0.85) tried: slightly worse, not built. No F1 code touched |
 
 ### Track B handoff
 
@@ -289,7 +289,7 @@ Track A's files except `scripts/cloud/bucket.py` and `start.sh`, which carry Tra
 | Downhill points validation (P3) | e062360 | `points_schemes` by era, `mtb_dh points`, pinning test |
 | Downhill UCI rider IDs (P3) | b088e5b | ingest by UCI ID first; `db merge-athletes` |
 | Book-depth queue model (P3, F1-4) | 4727241 | `--fill queue`; synthetic books only |
-| Downhill calibration check and tuning (P3) | 5a550f1, cb0ca13, this commit | `mtb_dh backtest --reliability`; new defaults `prior_n` 0.5, half-life 240, junior 0.25 (owner's OK) |
+| Downhill calibration check and tuning (P3) | 5a550f1, cb0ca13, 288aacb | `mtb_dh backtest --reliability`; new defaults `prior_n` 0.5, half-life 240, junior 0.25 (owner's OK) |
 
 **Blocked or not started:**
 
