@@ -58,6 +58,49 @@ types (`*.parquet`, `*.csv`, …) everywhere, then allow-lists the minimal set a
 - **If the repo ever goes public,** this data must be removed from the git history
   first, not just deleted.
 
+## Data bucket
+
+Everything a cloud session needs that isn't in git lives in a private Google Cloud Storage
+bucket: the first piece of an eventual move to Google Cloud.
+
+| | |
+|---|---|
+| Bucket | `gs://racinglines-data-650570086451` (project `project-977bffa3-5f15-47d7-be1`, `us-west1`) |
+| Access | Private: public access prevented, uniform bucket-level access, object versioning on |
+| Cloud sessions | Service account `racinglines-cloud`, **objects in this bucket only** (`roles/storage.objectUser`), through an HMAC key (S3-compatible API) |
+| Key | `~/.config/racinglines/gcs-hmac.env` on the owner's machine (mode 600, never in git) |
+| Org policy | Service-account keys are blocked across the organization (Google's default); **allowed for this project only** (2026-09-28), for the cloud sessions' key |
+
+**Layout** (the same in `scripts/cloud/bucket.sh` and `bucket.py`):
+
+| Prefix | Local path | Holds |
+|---|---|---|
+| `db/racinglines.sql.gz`, `db/manifest.json` | `data/archive/bucket-db/` (cloud) | A full dump of the owner's database (plain SQL, gzipped): model runs, signals, positions, private-book markets, recorded books. The manifest records the time and the Alembic head |
+| `live/` | `data/runs/live/` | Live-event run folders (Whistler's, and every one after) |
+| `runs/f1/` | `data/runs/f1/` | F1 backtest and sweep outputs |
+| `raw/mtb_dh/` | `data/raw/mtb_dh/` | Downhill downloads (ChronoRace) |
+| `archive/markets/` | `data/archive/markets/` | The Polymarket archive, including what git doesn't carry |
+| `results/<session>/` | – | What a cloud session sends back (reports, run folders) |
+
+**Commands:**
+
+```bash
+bash scripts/cloud/bucket.sh push      # owner: dump the database + sync the folders up (gcloud)
+bash scripts/cloud/bucket.sh pull      # owner: sync the folders down
+bash scripts/cloud/bucket.sh ls
+python scripts/cloud/bucket.py pull    # cloud session: folders + the dump (boto3, HMAC key)
+python scripts/cloud/bucket.py push results/<session> data/runs/live/<event>
+```
+
+`scripts/cloud/start.sh` pulls the bucket and restores the full dump in place of the committed
+snapshot, whenever the environment has the key (`SKIP_BUCKET=1` skips it). **Refresh the bucket**
+(`bucket.sh push`) before launching a cloud session that needs current data.
+
+**Cloud environment settings** (claude.ai/code → Settings → Cloud environments →
+`racinglines-sweep`):
+- Environment variables: `RACINGLINES_GCS_BUCKET`, `RACINGLINES_GCS_HMAC_ID` and `RACINGLINES_GCS_HMAC_SECRET`, from the key file.
+- Network access: **Custom**, keeping the Trusted defaults and adding `storage.googleapis.com`.
+
 ## Respecting the sources' limits
 
 Every download goes through one of two guards, so a long unattended run (e.g. a

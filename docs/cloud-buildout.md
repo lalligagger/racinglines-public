@@ -94,6 +94,29 @@ and schema), and document the steps in [Live events](live-events.md).
 
 ---
 
+## Tracks: one session or two in parallel
+
+The owner has credits to use, so the queue splits into two tracks that don't touch the same
+files. Launch one session per track, or one session for both (it works Track A first).
+
+| Track | Items | Owns |
+|---|---|---|
+| **A: live platform** (critical path) | Queue items 1–3: P0, the unified launcher, P1 | `pipelines/live*.py`, `markets/crowd.py`, `markets/quoting.py`, `markets/private_book.py`, `sports/*.toml` `[live]`, `live/`, the Live tab templates, `racinglines live` CLI |
+| **B: everything else** | Queue item 4, except anything in Track A's files | Models (`models/`), downhill data and parsers (`sources/`), exchanges (`markets/polymarket/trade.py`, a new `markets/kalshi/`), web pages other than the Live tab, tests for those |
+
+**Launch commands** (one session each):
+
+```sh
+claude --cloud "Run the cloud build-out in docs/cloud-buildout.md, Track A only. Follow its Agent protocol exactly."
+claude --cloud "Run the cloud build-out in docs/cloud-buildout.md, Track B only. Follow its Agent protocol exactly."
+```
+
+**In two sessions:**
+- each keeps its own lines in the progress log, prefixed `A:` or `B:`;
+- Track B doesn't edit Track A's files; if it needs a change there, it adds a Roadmap item;
+- shared docs (the Roadmap, the README) get small, separate edits;
+- merges happen locally, A first.
+
 ## Work queue, in order
 
 Work top to bottom. An item that can't be finished in the cloud gets its code and
@@ -125,7 +148,11 @@ CLI above:
 - settling the Whistler book in the database (code and a migration; the owner runs it locally);
 - re-pricing an event from its logged raw feed.
 
-**4. P2–P4, and every other open item on the Roadmap**, in its priority order. Notes for
+**4. P2–P4, and every other open item on the Roadmap**, in its priority order. Also: a
+**Google Cloud architecture proposal** (a docs page; the owner plans to move there):
+- the database on Cloud SQL, and the web app on Cloud Run;
+- the pollers and signal engine on Cloud Scheduler with Cloud Run jobs;
+- the bucket as the data layer, service identities (no keys), and a cost estimate. Notes for
 items with limits in the cloud:
 
 | Item | In the cloud |
@@ -154,17 +181,15 @@ items with limits in the cloud:
   and the downhill tests must match today. The run folder isn't in git, so write that
   regression test to skip when the folder is missing, and add it to the local checks in the log.
 - **Database changes** are additive Alembic migrations (`migrations/versions/`), never destructive.
-- **Data the cloud can't see** (the Whistler run folder, recorded order books, downhill raw
-  files, anything not committed): don't work around it. If a data bucket would unblock
-  items, the owner's choice is **Google Cloud Storage**. The owner has `gcloud` and `gsutil`
-  set up locally; no bucket exists yet. Write the proposal into the handoff:
-  - what to upload, and its size;
-  - the bucket layout;
-  - the `gsutil` commands to upload it;
-  - how a session would read it: a service-account key as a cloud-environment secret, and
-    `storage.googleapis.com` on the environment's network allowlist.
+- **The data bucket** ([Data](data.md#data-bucket)) holds what git doesn't:
+  - a full dump of the owner's database (model runs, signals, positions, books);
+  - the Whistler run folder and every live run after it;
+  - the F1 run outputs, the downhill downloads, and the Polymarket archive.
 
-  Keep the code able to read that layout from a configured bucket or a local folder.
+  `start.sh` pulls it when the environment has the key. Use it: Whistler's regression
+  check can then run in the cloud too. Send reports and run folders back with
+  `python scripts/cloud/bucket.py push results/<session> <path>`, never through git.
+  If the key isn't set, note that in the log and carry on with the committed snapshot.
 - **No data in git** beyond the allow-listed set: run `tests/test_no_data_in_git.py` before
   every push. Configs (schemas, launch specs) are fine; run outputs aren't.
 - **No real trading, no secrets, no fabricated numbers.** Results measured on synthetic
@@ -182,8 +207,8 @@ items with limits in the cloud:
 ## Agent protocol
 
 1. **Bring up the machine:** `bash scripts/cloud/start.sh` (Python 3.14 venv, Postgres, the
-   database from the committed snapshot).
-   - The snapshot has no `model_runs`: compute any stage runs you need (e.g. Baku's) offline from `data/raw/f1` (`--no-fetch`).
+   database: the bucket's full dump if the key is set, else the committed snapshot).
+   - Without the bucket, the snapshot has no `model_runs`: compute any stage runs you need (e.g. Baku's) offline from `data/raw/f1` (`--no-fetch`).
    - Try `python scripts/fetch_test_fixtures.py` once. If the network blocks it, note that in the log, and use `python -m pytest -m quick` plus your new tests; the full suite runs locally.
 2. **Read** this page, the [Roadmap](todo.md), [F1 live test](f1-live-roadmap.md),
    [Live events](live-events.md), and the code named in them (`pipelines/live_dh.py`,
