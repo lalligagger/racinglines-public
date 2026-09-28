@@ -96,10 +96,13 @@ python scripts/cloud/bucket.py push results/<session> data/runs/live/<event>
 snapshot, whenever the environment has the key (`SKIP_BUCKET=1` skips it). **Refresh the bucket**
 (`bucket.sh push`) before launching a cloud session that needs current data.
 
-**Cloud environment settings** (claude.ai/code → Settings → Cloud environments →
-`racinglines-sweep`):
-- Environment variables: `RACINGLINES_GCS_BUCKET`, `RACINGLINES_GCS_HMAC_ID` and `RACINGLINES_GCS_HMAC_SECRET`, from the key file.
-- Network access: **Custom**, keeping the Trusted defaults and adding `storage.googleapis.com`.
+**Cloud environment settings.** At claude.ai/code, click the cloud icon with the environment's name
+in the row above the message box, hover over `racinglines-sweep`, and click its settings icon:
+- **Environment variables:** add `RACINGLINES_GCS_BUCKET`, `RACINGLINES_GCS_HMAC_ID` and
+  `RACINGLINES_GCS_HMAC_SECRET`, from the key file. To copy them without printing them:
+  `pbcopy < ~/.config/racinglines/gcs-hmac.env`. Anyone using the environment can read them.
+- **Network access:** **Trusted** is enough: its default list includes `storage.googleapis.com`.
+- **CLI:** `/remote-env` in a local Claude Code session sets the default environment for `claude --cloud`.
 
 ## Respecting the sources' limits
 

@@ -44,7 +44,8 @@ checks it).
 
 ## One-time setup
 
-1. At [claude.ai/code](https://claude.ai/code), create a cloud environment (**Settings → Cloud environments**):
+1. At [claude.ai/code](https://claude.ai/code), create a cloud environment: click the cloud icon with the
+   environment's name in the row above the message box, then **Add cloud environment**:
     - **Name:** `racinglines-sweep`
     - **Network access:** the default **Trusted** is enough (PyPI and GitHub). The database comes from
       the committed snapshot, so no Polymarket access is needed.
