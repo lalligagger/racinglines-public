@@ -270,5 +270,5 @@ that would change data is refused. See [Web app](webapp.md#accounts-demo-users-v
   instead ([F1 live test](f1-live-roadmap.md)).
 - **Compare live with the backtest** before any sizing change: fill rates (against the conservative
   through rule) and markouts, weekend by weekend.
-- **No real orders.** `POLYMARKET_TRADING_ENABLED` stays unset, and order signing needs the CLOB V2
-  migration first (see [Web app](webapp.md#placing-orders)).
+- **No real orders.** `POLYMARKET_TRADING_ENABLED` stays unset. Order signing is on CLOB V2, but
+  only dry-run tested; the first real order needs the owner's approval (see [Web app](webapp.md#placing-orders)).

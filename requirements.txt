@@ -26,7 +26,7 @@ fastapi==0.141.1
 uvicorn[standard]==0.54.0
 python-multipart==0.0.32
 Jinja2==3.1.6
-py-clob-client==0.34.6   # Polymarket's official CLOB client (order signing / posting)
+py-clob-client-v2==1.2.0 # Polymarket's official CLOB V2 client (order signing / posting; V1 orders stopped on 2026-04-28)
 
 # tests (python -m pytest)
 pytest==9.1.1

@@ -40,8 +40,8 @@ F1 adapter, keeping the platform multi-sport. Plan: [F1 live test](f1-live-roadm
 
 - [ ] Profiles A and C live; compare fills and markouts with the replay, weekend by weekend.
 - [ ] Sizing after 4–6 live weekends; walk-forward with the new rounds; bankroll-aware sizing.
-- [ ] **CLOB V2 order signing** before any real order, and real orders only with the
-      owner's approval ([Market making](#market-making)).
+- [ ] Real orders only with the owner's approval; CLOB V2 signing is done and dry-run tested
+      ([Market making](#market-making)).
 
 **P3 · Models and data**
 
@@ -185,10 +185,11 @@ Phased plan and ground rules: [F1 roadmap](f1-roadmap.md). Items tagged
       search over 1,161 settings combos, judged on both seasons.
 - [x] Live watch list: the Markets page lists every open Polymarket F1 market with the profile's
       call and heat; new markets raise alerts (macOS, ntfy, webhook, log).
-- [ ] **Migrate to CLOB V2** (found in F1-0): `markets/polymarket/trade.py` signs with the V1
-      `py-clob-client==0.34.6`, and V1-signed orders stopped working on 2026-04-28. Move to
-      `py-clob-client-v2` (the order struct and EIP-712 domain version changed), re-test the
-      dry run, and only then enable trading (`POLYMARKET_TRADING_ENABLED` stays unset until then).
+- [x] **Migrate to CLOB V2** (found in F1-0): `markets/polymarket/trade.py` signs with
+      `py-clob-client-v2==1.2.0`; dry runs sign locally (V2 struct, EIP-712 domain 2) and the
+      tests recover the signer (2026-09-28, cloud build-out).
+- [ ] **First real V2 order** (owner): post, list and cancel one small post-only order, unverified
+      against the live CLOB so far. `POLYMARKET_TRADING_ENABLED` stays unset until then.
 - [ ] Replay with recorded book depth (F1-4): queue position and competing makers,
       instead of the touch/through bounds. Needs several weekends of `markets record` books.
 - [ ] Liquidity rewards as a replay P&L line; optional fractional-Kelly caps.
@@ -240,7 +241,7 @@ Phase [F1-9](f1-roadmap.md#f1-9-more-exchanges-kalshi-others).
       order placement behind a flag. Registered in `markets/venues`.
 - [ ] Other exchanges, if they list motorsport or cycling markets with real depth, including one for
       downhill (none on Polymarket as of 2026-09).
-- [ ] Before any real order: the CLOB V2 migration ([Market making](#market-making)).
+- [ ] Before any real order: one small V2 order checked against the live CLOB ([Market making](#market-making)).
 
 ## Engineering
 

@@ -507,8 +507,8 @@ F1 adapter, keeping the platform multi-sport. Plan: [F1 live test](docs/f1-live-
 
 - [ ] Profiles A and C live; compare fills and markouts with the replay, weekend by weekend.
 - [ ] Sizing after 4–6 live weekends; walk-forward with the new rounds; bankroll-aware sizing.
-- [ ] **CLOB V2 order signing** before any real order, and real orders only with the
-      owner's approval ([Market making](docs/todo.md#market-making)).
+- [ ] Real orders only with the owner's approval; CLOB V2 signing is done and dry-run tested
+      ([Market making](docs/todo.md#market-making)).
 
 **P3 · Models and data**
 

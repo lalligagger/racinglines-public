@@ -414,6 +414,7 @@ signals, with leakage-rule tests like Polymarket's.
 | 2026-09-27 | — | Web routes renamed to match their pages (Markets, Strategy, Positions, My Book, Lab); every old URL redirects (`web/legacy.py`) | A page's name and its URL should agree; redirects keep bookmarks and links working | the old routes |
 | 2026-09-27 | — | Cloud runs load a database snapshot (`racinglines db snapshot-export` / `snapshot-import`, `data/archive/db/`) plus exported market links, prepared by `scripts/cloud/prepare.sh` | An exact replica (same ids, same prices) makes cloud results identical to local ones and needs no network beyond PyPI and GitHub | `f1 ingest` + `pm-sync` on the VM |
 | 2026-09-27 | 9 | New phases F1-8 (live paper-trade validation) and F1-9 (more exchanges); the Kalshi package moves from F1-5 to F1-9 | Trading on any exchange only after paper-trade validation; Kalshi lists F1 | the Kalshi row under F1-5 |
+| 2026-09-28 | 8 | Order signing moves to CLOB V2 (`py-clob-client-v2==1.2.0`); V1 client removed. Dry runs sign with the local order builder (V2 struct, domain version `POLYMARKET_ORDER_VERSION`, default 2), no network; live orders ask the CLOB for its version | V1 orders stopped working on 2026-04-28, so there is no working behaviour to keep behind a switch. The client’s `create_order` calls the CLOB for the tick size and version even in a dry run. Not verified against the live CLOB: no order sent | the V1 client |
 
 ## Open questions
 

@@ -327,16 +327,19 @@ model probability, model run, book at the time, and the exchange's response.
 | `POLYMARKET_TRADING_ENABLED` | off | **Must be `true` to send orders.** Otherwise orders are signed locally as a dry run and nothing is sent. |
 | `POLYMARKET_MAX_ORDER_USD` | `25` | Per-order notional cap. |
 | `POLYMARKET_CLOB_HOST` / `POLYMARKET_GAMMA_HOST` / `POLYMARKET_CHAIN_ID` | Polymarket production / 137 | Endpoints. |
+| `POLYMARKET_ORDER_VERSION` | `2` | Exchange order version for dry runs. Live orders use the version the CLOB reports. |
 
 The banner on every page shows the mode: **no credentials**, **dry run**, or **LIVE**
 (in red).
 
-!!! danger "Order signing is out of date"
-    `racinglines/markets/polymarket/trade.py` signs with Polymarket's V1 client.
-    Polymarket moved to CLOB V2 on 2026-04-28 and rejects V1-signed orders, so
-    live orders won't be accepted until it's migrated to `py-clob-client-v2`
-    (see [Roadmap](todo.md#market-making)). Dry runs still sign locally, in the old
-    format.
+!!! note "CLOB V2 signing: dry-run tested only"
+    `racinglines/markets/polymarket/trade.py` signs with Polymarket's V2 client
+    (`py-clob-client-v2`), since Polymarket rejects V1-signed orders from 2026-04-28.
+    A dry run builds the V2 order and signs it locally (EIP-712 domain version 2) with
+    no network call. `tests/test_polymarket_trade.py` recovers the signer from that
+    signature. **No order has been sent with it.** Posting, open orders and cancels are
+    untested against the live CLOB. Check them with the owner's approval and a small
+    size before relying on them.
 
 !!! warning
     Check that your Polymarket account and jurisdiction are eligible before setting
