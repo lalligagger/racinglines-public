@@ -273,3 +273,19 @@ def test_bearer_check_guards_the_http_app(test_engine):
     assert r.status_code == 200 and seen[-1]["username"] == "t_admin" and S.CALLER.get() is None
     auth.revoke(test_engine, "t_admin")
     assert client.get("/mcp", headers={"Authorization": f"Bearer {tok}"}).status_code == 401
+
+
+def test_http_app_serves_a_public_hostname(test_engine):
+    """Behind the tunnel the Host header is the public name, not localhost: with a token the MCP app answers it
+    (the SDK's localhost-only guard would give 421); without one it is 401 as ever."""
+    from starlette.testclient import TestClient
+    from racinglines.mcp import auth, server as S
+    tok = auth.new_token(test_engine, "t_admin")
+    url = test_engine.url.render_as_string(hide_password=False)
+    body = {"jsonrpc": "2.0", "id": 1, "method": "ping"}
+    hdr = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+    with TestClient(S.http_app(S.build(engine_url=url), engine=test_engine), base_url="https://mcp.racinglines.bet") as client:
+        assert client.post("/mcp", json=body, headers=hdr).status_code == 401
+        r = client.post("/mcp", json=body, headers={**hdr, "Authorization": f"Bearer {tok}"})
+        assert r.status_code == 200, r.text
+    auth.revoke(test_engine, "t_admin")
