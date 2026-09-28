@@ -50,6 +50,10 @@ F1 adapter, keeping the platform multi-sport. Plan: [F1 live test](f1-live-roadm
       weekends (2025 didn't confirm it), book-depth replay once enough books are recorded.
 - [ ] **Downhill points validation**, the top downhill item ([Points validation](#points-validation)),
       then downhill data and model ([Data](#data), [Model](#model)).
+- [ ] **High priority for the next cloud session: the downhill [Data](#data) items** (owner,
+      2026-09-28): slug probing, canonical venue names, Elite/Junior Women, start order, weather,
+      the 2021 PDFs. Most need ChronoRace (`prod.chronorace.be`), which the cloud network policy
+      blocks: allow it in the environment first, or do them locally.
 
 **P4 · Platform and business**
 
@@ -135,10 +139,13 @@ standings, champion odds, `spearman_points`) is approximate.
 
 ## Model
 
-- [ ] **Calibration check:** reliability curves for win, podium, top-10 and
-      make-Final across all 43 backtest rounds. Win probabilities look too flat. Try
-      a lower `INCIDENT_THRESHOLD`, per-round-type incident rates (Finals vs
-      qualifying), or a heavier-tailed ε.
+- [x] **Calibration check** (2026-09-28, cloud build-out): `mtb_dh backtest --reliability` over
+      all 43 rounds. Win and podium are close; top 10 and make-Final are too flat. Cause: too much
+      shrinkage (`prior_n`). A lower `INCIDENT_THRESHOLD` and heavier-tailed ε (`--eps-df`) don't
+      help ([Calibration](model.md#calibration)).
+- [ ] **`prior_n` 0.5 as the default** (owner's OK: it changes every downhill price). Better
+      make-Final log loss in all six seasons; picked in-sample, so confirm on 2026's next rounds.
+      Still to try: per-round-type incident rates.
 - [ ] A tuning sweep over all 43 rounds, not just 2026 rounds 2–7: half-life,
       junior weight, `prior_n`, practice weight.
 - [ ] Rider × venue effects: shrink a rider's past residuals at the venue into the

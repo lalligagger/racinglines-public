@@ -92,6 +92,7 @@ racinglines mtb_dh forecast (--db [URL] | --data splits.csv) [--competition uci_
        [--out-dir data/runs/mtb_dh/forecast]
        [--season YEAR] [--category ME]
        [--train-scope {all,season}] [--half-life-days 120] [--junior-weight 0.5]
+       [--prior-n 1.5] [--eps-df DF]
        [--walk-forward] [--backtest 2] [--remaining 2]
        [--sims 10000] [--seed 42] [--top 15]
 ```
@@ -109,6 +110,8 @@ racinglines mtb_dh forecast (--db [URL] | --data splits.csv) [--competition uci_
 | `--train-scope` | `all` | `all` = every season and category in `--data`; `season` = target only. |
 | `--half-life-days` | 120 | Recency half-life for training runs. |
 | `--junior-weight` | 0.5 | Training weight of `MJ` runs relative to elite. |
+| `--prior-n` | 1.5 | Shrinkage of each rider's pace toward the field. 0.5 is better calibrated for making the Final ([Calibration](model.md#calibration)); not the default yet. |
+| `--eps-df` | normal | Student-t run noise with these degrees of freedom (above 2), same sd. Tried at 4 and 6: no better. |
 | `--walk-forward` | off | Predict and score every target round from everything before it. |
 | `--backtest N` | 2 | Hold out the last N raced rounds; score them and the standings after them. `0` skips. |
 | `--remaining N` | 2 | Rounds left in the season, **including** in-progress events already in the data (forecast with their start lists). The rest are simulated as unknown rounds. `0` skips the forecast. |
@@ -148,8 +151,13 @@ racinglines mtb_dh backtest (--db [URL] | --data splits.csv) [--competition uci_
        [--out-dir data/runs/mtb_dh/backtests]
        [--seasons 2021 2022 ...] [--category ME]
        [--train-scope all] [--half-life-days 120] [--junior-weight 0.5]
+       [--prior-n 1.5] [--eps-df DF] [--reliability]
        [--sims 4000] [--seed 42]
 ```
+
+`--prior-n` and `--eps-df` work as for `forecast`. `--reliability` also prints and saves
+(`backtest_reliability.csv`) reliability curves over every walk-forward round: win, podium,
+top 10 and making the Final, per probability bin ([Calibration](model.md#calibration)).
 
 `--db`, `--data`, `--competition`, `--save` and `--points` work as for `forecast` (with `--points db`, each season uses its own tables). With `--save`, the
 per-season and per-event metrics are stored in `model_runs.metrics`. Seasons with

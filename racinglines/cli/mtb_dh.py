@@ -35,6 +35,17 @@ def load_splits(args):
     return raw[raw["discipline"].eq("DHI") & raw["round"].isin(RUN_WEIGHTS)] if "discipline" in raw else raw
 
 
+def _model_switches(args):
+    """--prior-n and --eps-df (docs/todo.md, Model): fit_kw for the first, the model's EPS_DF for the
+    second. Unset = today's model."""
+    from racinglines.models.timed_runs import model as TM
+    if getattr(args, "eps_df", None) is not None:
+        if args.eps_df <= 2:
+            raise SystemExit("--eps-df must be above 2 (the t distribution's variance is finite above 2).")
+        TM.EPS_DF = args.eps_df
+    return {} if getattr(args, "prior_n", None) is None else dict(prior_n=args.prior_n)
+
+
 def _check_save(args):
     if args.save and args.db is None:
         raise SystemExit("--save writes to the database, so it needs --db.")
@@ -59,6 +70,8 @@ def _save_run(args, raw, target, *, kind, fit_kw, metrics, race_predictions=None
 
     params = {k: v for k, v in fit_kw.items() if k != "category_weights"}
     from racinglines.models.timed_runs import model as TM
+    if TM.EPS_DF is not None:
+        params["eps_df"] = TM.EPS_DF
     params.update(junior_weight=args.junior_weight, sims=args.sims, seed=args.seed, final_points=TM.FINAL_POINTS,
                   qual_points=TM.QUAL_POINTS, qual_points_round=TM.QUAL_POINTS_ROUND,
                   points_official=getattr(args, "points_official", False), label=getattr(args, "scenario", None))
@@ -81,7 +94,7 @@ def cmd_backtest(args):
     out_dir.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(args.seed)
     fit_kw = dict(train_scope=args.train_scope, half_life_days=args.half_life_days,
-                  category_weights={"MJ": args.junior_weight})
+                  category_weights={"MJ": args.junior_weight}, **_model_switches(args))
     years = raw.loc[raw["category"] == args.category, "event_date"].astype(str).str[:4]
     seasons = [str(y) for y in args.seasons] if args.seasons else sorted(years.unique())
     if getattr(args, "points", "schema") == "schema":
@@ -89,7 +102,7 @@ def cmd_backtest(args):
     print(f"Category {args.category}, training scope {args.train_scope}, "
           f"half-life {args.half_life_days:.0f} days, junior weight {args.junior_weight}\n")
 
-    per_event, per_season = [], []
+    per_event, per_season, riders = [], [], []
     from racinglines.models.timed_runs import points as P
     for season in seasons:
         with P.use(_points_scheme(args, int(season))):
@@ -99,7 +112,8 @@ def cmd_backtest(args):
             if n_ev < 3:
                 print(f"{season}: {n_ev} event(s) with data, skipped (need 3+).")
                 continue
-            wf = walk_forward_season(raw, target, n_sims=args.sims, rng=rng, **fit_kw)
+            wf = walk_forward_season(raw, target, n_sims=args.sims, rng=rng,
+                                     rider_rows=riders if args.reliability else None, **fit_kw)
             wf.insert(0, "season", season)
             per_event.append(wf)
             _, _, st, (train_ev, test_ev) = backtest_season(raw, target, n_holdout=2, n_sims=args.sims,
@@ -136,6 +150,12 @@ def cmd_backtest(args):
     all_mean = ev[["spearman_points", "brier_win", "brier_win_base", "brier_podium", "brier_podium_base",
                    "brier_final", "brier_final_base", "top10_hits", "winner_pred_win_prob"]].mean()
     print("\nAll events: " + ", ".join(f"{k}={v:.4f}" for k, v in all_mean.items()))
+    if args.reliability:
+        from racinglines.models.timed_runs.season import calibration
+        rel = calibration(pd.concat(riders, ignore_index=True))
+        rel.to_csv(out_dir / "backtest_reliability.csv", index=False)
+        print("\n=== Reliability (every walk-forward round; z = (observed - predicted) / binomial SE) ===")
+        print(rel.to_string(index=False, float_format="{:.4f}".format, na_rep=""))
     print(f"\nCSVs -> {out_dir}/")
     if args.save:
         from racinglines.db.queries import records
@@ -158,7 +178,7 @@ def cmd_season(args):
 
 def _season(args, raw, target, season):
     fit_kw = dict(train_scope=args.train_scope, half_life_days=args.half_life_days,
-                  category_weights={"MJ": args.junior_weight})
+                  category_weights={"MJ": args.junior_weight}, **_model_switches(args))
     done_target = target[target["event_id"].isin(completed_events(target))]  # for backtests
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -316,6 +336,11 @@ def main(argv=None):
                           help="Training weight of junior runs relative to elite.")
     season_p.add_argument("--walk-forward", action="store_true",
                           help="Also predict every target round from everything before it and score it.")
+    season_p.add_argument("--prior-n", type=float, default=None,
+                          help="Shrinkage of rider pace toward the field (default 1.5; 0.5 is better calibrated "
+                               "for making the Final, see docs/model.md).")
+    season_p.add_argument("--eps-df", type=float, default=None,
+                          help="Student-t run noise with these degrees of freedom (default: normal).")
     season_p.add_argument("--sims", type=int, default=10000)
     season_p.add_argument("--scenario", default=None, metavar="LABEL",
                           help="With --save: store as kind='scenario' (not used for live prices until promoted).")
@@ -331,8 +356,15 @@ def main(argv=None):
     bt_p.add_argument("--train-scope", choices=["all", "season"], default="all")
     bt_p.add_argument("--half-life-days", type=float, default=HALF_LIFE_DAYS)
     bt_p.add_argument("--junior-weight", type=float, default=CATEGORY_WEIGHTS["MJ"])
+    bt_p.add_argument("--prior-n", type=float, default=None,
+                          help="Shrinkage of rider pace toward the field (default 1.5; 0.5 is better calibrated "
+                               "for making the Final, see docs/model.md).")
+    bt_p.add_argument("--eps-df", type=float, default=None,
+                          help="Student-t run noise with these degrees of freedom (default: normal).")
     bt_p.add_argument("--sims", type=int, default=4000)
     bt_p.add_argument("--seed", type=int, default=42)
+    bt_p.add_argument("--reliability", action="store_true",
+                      help="Also print and save reliability curves (win, podium, top 10, make the Final).")
     bt_p.set_defaults(func=cmd_backtest)
 
     pts_p = sub.add_parser("points", help="Championship points tables: import, show, check against official standings.")

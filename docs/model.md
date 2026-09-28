@@ -77,7 +77,7 @@ Estimation alternates between two steps, repeated 30 times:
 1. **Run effects:** `run_effect[r] = median over riders in r of (log time − μ[i])`,
    using only clean runs. The median is robust to crashes.
 2. **Rider pace:** `μ[i] = Σ w·(log time − run_effect) / (Σ w + prior_n)` over the
-   rider's clean runs. `prior_n = 1.5` shrinks riders with little data toward the
+   rider's clean runs (`--prior-n`, see [Calibration](#calibration)). `prior_n = 1.5` shrinks riders with little data toward the
    field median, since one lucky run shouldn't make a rider a favourite. After each
    step, μ is re-centred so its median is 0.
 3. **Clean runs:** a run counts as clean if its residual
@@ -217,6 +217,40 @@ compares each rider's championship rank before and after the simulated weekend
 (ranks are "min" style, so tied riders share the better rank). It gives
 `current_rank`, `rank_up_prob`, `rank_down_prob` and `exp_rank_after`, which are
 stored in `race_predictions.extra`. These use the placeholder points tables.
+
+## Calibration
+
+`racinglines mtb_dh backtest --db --reliability` (2026-09-28, cloud build-out): every
+walk-forward round of 2021–2026, 43 rounds and 5,171 rider-rounds, elite men.
+
+**The odds are too flat where it matters most.** Win and podium are close to calibrated.
+Top 10 and making the Final are not: riders the model gives 10–20% to make the Final made it
+6% of the time, and riders it gives 70–90% made it 92% of the time.
+
+| Make the Final: predicted | 0.06–0.10 | 0.10–0.20 | 0.50–0.70 | 0.70–0.90 |
+|---|---|---|---|---|
+| Observed, `prior_n` 1.5 (default) | 2.5% | 5.6% | 71.8% | 92.1% |
+| Observed, `prior_n` 0.5 | 5.0% | 8.6% | 64.7% | 87.1% |
+
+**Cause: too much shrinkage.** `prior_n` 1.5 pulls riders' paces toward the field so hard
+that the order of the field is under-stated. With 0.5, log loss per rider-round, paired by
+round (± 2 SE):
+
+| Market | Change | Seasons better |
+|---|---|---|
+| Make the Final | −0.026 ± 0.005 | 6 of 6 |
+| Top 10 | −0.002 ± 0.005 | 5 of 6 (2021 worse) |
+| Podium | −0.001 ± 0.001 | 5 of 6 |
+| Win | −0.000 ± 0.001 | even |
+
+Tried and not better: a lower `INCIDENT_THRESHOLD` (0.03, 0.02: small gains on top 10
+and podium, worse for making the Final), heavier-tailed run noise (`--eps-df` 4 and 6),
+and scaling σ and τ down (a little better with `prior_n` 0.5 or 1.0, overconfident with 0.25).
+Not tried yet: per-round-type incident rates.
+
+**Not the default yet.** 0.5 was picked on the same 43 rounds from a small grid (0.25, 0.5,
+1.0 × three noise scales), so it's in-sample. It changes every downhill price, so it
+waits for the owner. Use `--prior-n 0.5` to run it.
 
 ## Training scope and targets
 

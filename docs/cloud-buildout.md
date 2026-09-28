@@ -262,6 +262,7 @@ The session appends here: date and time (UTC), item, commit, status, notes.
 | 2026-09-28 03:24 | B: downhill UCI rider IDs (P3 data) | this commit | code + tests; re-download and merges local (owner) | Downloader writes a UCI ID column (unverified against the live API), parser reads it (old files unchanged), ingest matches uci identifiers first and reports shared UCI IDs. `db merge-athletes` dry-run on the bucket DB: 491 into 152 would move 11 results, 1 identifier. Also verified: mtb_dh forecast/backtest outputs byte-identical before/after the points change |
 | 2026-09-28 03:25 | B: **final handoff** (owner asked to stop and hand off) | this commit | handoff | See [Track B handoff](#track-b-handoff) below |
 | 2026-09-28 03:34 | B: book-depth queue model on synthetic books (P3, F1-4) | this commit | done (synthetic); recorded books needed | Taken over from the handoff in a project thread. `fill="queue"` in the maker replay (sweep `--fill queue`, off by default): join the back of the level shown in the latest book snapshot, trades at our price serve the queue first, sweeps fill, same-price requotes keep their place, cancellations shrink the queue; no snapshot within 10 min falls back to through. `load_event(books=True)` reads `market_book_snapshots` (unexercised: no recorded books here). Synthetic: touch >= queue >= through. Quick suite 70 passed; test_views/test_signals have 11 failures (401 Not authenticated) with or without this change, on the committed snapshot without the bucket |
+| 2026-09-28 04:11 | B: downhill calibration check (P3, Model) | this commit | done; `prior_n` 0.5 waits for the owner | Owner: downhill data items are a hi-pri todo for the next cloud session (ChronoRace blocked here); calibration taken instead. `mtb_dh backtest --reliability` over all 43 rounds (committed snapshot, 5,171 rider-rounds): win/podium close, top 10 and make-Final too flat. `--prior-n 0.5`: make-Final log loss −0.026 ± 0.005, better in all 6 seasons, win/podium even; picked in-sample from a small grid. Lower INCIDENT_THRESHOLD and Student-t noise (`--eps-df`, `EPS_DF`) tried, no better. Defaults unchanged: mtb_dh forecast/backtest outputs byte-identical before/after. Quick suite 75 passed |
 
 ### Track B handoff
 
@@ -282,6 +283,8 @@ Track A's files except `scripts/cloud/bucket.py` and `start.sh`, which carry Tra
 | Driver layer, `rookie` variant (P3, F1-2) | da60e09, 6b724de | small gain on win odds; not promoted |
 | Downhill points validation (P3) | e062360 | `points_schemes` by era, `mtb_dh points`, pinning test |
 | Downhill UCI rider IDs (P3) | b088e5b | ingest by UCI ID first; `db merge-athletes` |
+| Book-depth queue model (P3, F1-4) | 4727241 | `--fill queue`; synthetic books only |
+| Downhill calibration check (P3) | this commit | `mtb_dh backtest --reliability`; `--prior-n 0.5` better calibrated, not the default |
 
 **Blocked or not started:**
 
@@ -291,8 +294,9 @@ Track A's files except `scripts/cloud/bucket.py` and `start.sh`, which carry Tra
 | UCI IDs in the downhill files | re-download (ChronoRace is blocked here), re-ingest, then merge reported pairs (`db merge-athletes 152 491`) | owner, locally |
 | Stage-aware taker, `rookie` for profile A, sizing rule | live weekends | live events |
 | First real V2 order | the owner's approval | owner |
+| Downhill `prior_n` 0.5 as the default | the owner's OK (changes every downhill price) | owner |
 | Google Cloud move | the owner's choices (database tier, recorder shape, domain) | owner |
-| Not started (cloud-doable) | F1 props (fastest lap, safety car, rain), ~~book-depth queue model on synthetic books~~ (done 03:34), the rest of the downhill data items (slug probing, venue names, Women, start order, weather, 2021 PDFs), downhill model items (calibration, 43-round tuning, rider × venue, trends), Kalshi connector (mocked), web items (admin P&L filter, JSON API) | next session |
+| Not started (cloud-doable) | F1 props (fastest lap, safety car, rain), ~~book-depth queue model on synthetic books~~ (done 03:34), the rest of the downhill data items (slug probing, venue names, Women, start order, weather, 2021 PDFs: **high priority for the next cloud session**, owner 2026-09-28), downhill model items (~~calibration~~ done; 43-round tuning, rider × venue, trends), Kalshi connector (mocked), web items (admin P&L filter, JSON API) | next session |
 | F1 prop market kinds in `sports/f1.toml` `[live]` | Track A's file | Track A / next session |
 
 **Local checks after merging** (the brief's list, plus Track B's):

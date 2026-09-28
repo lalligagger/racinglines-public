@@ -517,6 +517,10 @@ F1 adapter, keeping the platform multi-sport. Plan: [F1 live test](docs/f1-live-
       weekends (2025 didn't confirm it), book-depth replay once enough books are recorded.
 - [ ] **Downhill points validation**, the top downhill item ([Points validation](docs/todo.md#points-validation)),
       then downhill data and model ([Data](docs/todo.md#data), [Model](docs/todo.md#model)).
+- [ ] **High priority for the next cloud session: the downhill [Data](docs/todo.md#data) items** (owner,
+      2026-09-28): slug probing, canonical venue names, Elite/Junior Women, start order, weather,
+      the 2021 PDFs. Most need ChronoRace (`prod.chronorace.be`), which the cloud network policy
+      blocks: allow it in the environment first, or do them locally.
 
 **P4 · Platform and business**
 

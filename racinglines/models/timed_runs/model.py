@@ -51,6 +51,8 @@ RUN_WEIGHTS = dict(SCHEMA["rounds"]["run_weights"])
 CATEGORY_WEIGHTS = {"ME": 1.0, "MJ": 0.5}   # training weight per category (others: 0.5)
 HALF_LIFE_DAYS = 120.0
 INCIDENT_THRESHOLD = 0.04     # finished >4% slower than expected = incident
+EPS_DF = None                 # run noise eps: None = normal; a number = Student-t with these degrees of
+                              # freedom, scaled to the same sd (heavier tails; docs/todo.md, Model)
 
 
 def select_target(raw, season=None, category="ME"):
@@ -196,8 +198,13 @@ def simulate_weekend(model, riders, n_sims=10000, attend_prob=None, rng=RNG, fmt
     u_mean, u_sd = u_prior if u_prior is not None else (0.0, model["tau"])
     u = rng.normal(u_mean, u_sd, (n_sims, n))
 
+    def eps():
+        if EPS_DF is None:
+            return rng.normal(0.0, model["sigma"], (n_sims, n))
+        return model["sigma"] * np.sqrt((EPS_DF - 2) / EPS_DF) * rng.standard_t(EPS_DF, (n_sims, n))
+
     def run(mask):
-        t = mu + u + rng.normal(0.0, model["sigma"], (n_sims, n))
+        t = mu + u + eps()
         inc = rng.random((n_sims, n)) < p_inc
         dnf = inc & (rng.random((n_sims, n)) < model["dnf_share"])
         t = t + np.where(inc & ~dnf, rng.choice(model["excess"], (n_sims, n)), 0.0)
