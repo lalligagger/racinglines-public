@@ -306,6 +306,17 @@ def test_live_titles_classify():
     assert c("F1 Matchup: Verstappen vs Hamilton", "", gp="British Grand Prix") == ("race_h2h", "British Grand Prix")
 
 
+
+@pytest.mark.quick
+def test_2025_titles_and_each_event_matched_in_its_own_season():
+    assert KS.gp_name("F1 Australian Grand Prix Winner?") == "Australian Grand Prix"
+    assert KS.gp_name("Las Vegas GP: Qualify in Pole Position") == "Las Vegas Grand Prix"
+    assert KS.gp_name("Gran Premio de Mexico Winner?") == "Mexico Grand Prix"
+    assert KS.classify("Abu Dhabi Grand Prix 2025 Podium Finishers?") == ("race_podium", "Abu Dhabi Grand Prix")
+    assert [KS.season(dict(event_ticker=t), 2026) for t in ("KXF1RACE-ABUDGP25", "KXF1-25", "KXF1H2H-BRIGP26VERHAM")] \
+        == [2025, 2025, 2026]
+    assert KS.season(dict(event_ticker="KXAFRICAF1", markets=[dict(close_time="2027-01-01T00:00:00Z")])) == 2027
+
 @pytest.mark.quick
 def test_live_head_to_head_takes_the_weekends_grand_prix():
     class R(FakeResolver):
