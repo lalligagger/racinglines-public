@@ -259,7 +259,9 @@ def _positions(data, cash, inv):
         rows.append(dict(cond=mk.cond, kind=mk.kind, subject=mk.subject, question=mk.question,
                          inventory=inv[mk.cond], cash=cash[mk.cond], worst_case=_worst_case(cash[mk.cond], inv[mk.cond]),
                          outcome=o, pnl=None if o is None else cash[mk.cond] + inv[mk.cond] * float(o)))
-    return pd.DataFrame(rows)
+    # named columns even with no markets (e.g. an h2h-only sweep: the maker replays position markets only)
+    return pd.DataFrame(rows, columns=["cond", "kind", "subject", "question", "inventory", "cash", "worst_case",
+                                       "outcome", "pnl"])
 
 
 def summary(res, by="kind"):

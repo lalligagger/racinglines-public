@@ -209,3 +209,11 @@ def test_per_kind_half_spread():
     assert (q["bid"] <= 0.44 + 1e-9).all()
     q0 = R.replay(data(mk), P)["quotes"].dropna(subset=["bid"])
     assert (q0["bid"] >= 0.47).all()
+
+
+def test_weekend_with_no_markets_summarises_to_zero():
+    """A sweep filtered to kinds a weekend doesn't list (h2h-only on 2025 rounds 1-7) used to raise KeyError 'cond'."""
+    res = R.replay(data(), R.Params())
+    s = R.summary(res)
+    assert list(s.index) == ["total"] and s.loc["total", "markets"] == 0 and s.loc["total", "pnl"] == 0.0
+    assert res["positions"].empty and "cond" in res["positions"].columns

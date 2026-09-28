@@ -46,7 +46,7 @@ F1 adapter, keeping the platform multi-sport. Plan: [F1 live test](f1-live-roadm
 **P3 · Models and data**
 
 - [ ] F1 ([F1 model](#f1-model)): promote `gridq+pretrain` (owner's OK), the
-      driver layer in a new season, fix the h2h-only sweep crash, the stage-aware taker out of
+      driver layer in a new season, the stage-aware taker out of
       sample, book-depth replay once enough books are recorded.
 - [ ] **Downhill points validation**, the top downhill item ([Points validation](#points-validation)),
       then downhill data and model ([Data](#data), [Model](#model)).
@@ -210,8 +210,9 @@ Phase [F1-8](f1-roadmap.md#f1-8-live-paper-trade-validation-polymarket); how it 
       `bankroll` and `max_deployed`, unset by default (2026-09-28, cloud build-out; synthetic tests).
 - [ ] Use them live: the signal engine sizes from the account's balance and deployed capital, once
       4–6 live weekends pick a rule. Later, fractional sizing once recorded depth supports it.
-- [ ] Fix: an h2h-only market-kinds sweep crashes on 2025 (`KeyError: 'cond'` in the
-      position-market step when a season has no position markets).
+- [x] Fix: an h2h-only market-kinds sweep crashed on 2025 (`KeyError: 'cond'` in the maker replay's
+      summary on a weekend with no market of the chosen kinds; 2025 lists no h2h before round 8).
+      An empty weekend now summarises to zero (2026-09-28, cloud build-out).
 
 ## Live events
 
