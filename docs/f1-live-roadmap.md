@@ -357,12 +357,12 @@ Each item lists what "done" means. B0 matters in every scenario.
 - [x] **B3. The F1 adapter: the engine step** *(Tue)*
   - `live_f1.step`: the seven updates above as one idempotent step, driving the shared core (quoting, crowd batches, freeze and close, settlement through `outcome_for`, positions sync, snapshots).
   - Done: Baku's weekend on a simulated clock (`tests/test_live_f1.py`; `racinglines live run live/f1/2026-15.toml --simulate --no-fetch`): all seven updates in order; pole settles at the after-Quali update, everything else at results; quotes freeze after qualifying and close at lights out; the book reconciles with its 2,600-odd fills; the positions synced to `paper_positions` sum to the maker's P&L.
-- [ ] **B4. The Live tab: shared shell, F1 body** *(Tue–Wed)*
+- [x] **B4. The Live tab: shared shell, F1 body** *(Tue–Wed)*
   - `live.html` becomes the shell (status dot, replay bar, polling) over the registry; today's downhill body moves unchanged into `live_mtb_dh.html`; a new `live_f1.html` body with the F1 layout.
-  - Done: Baku renders update by update for the maker and the taker, and in replay; Whistler's pages look exactly as they do now.
-- [ ] **B5. The demo taker** *(Wed)*
-  - Hype picks written at the pre-weekend update (`make_picks`, F1 version).
-  - Optional: A's calls against our quotes.
+  - Done: Baku renders update by update for the maker and the taker, and in replay (`tests/test_live_f1.py`); takers see prices, never fair values. Whistler's 82 replay and Positions pages are byte-identical. F1 replay plays at a fixed 2 s per update at 30× (updates are hours apart); the live page refreshes every 30 s.
+- [x] **B5. The demo taker** *(Wed)*
+  - Hype picks written at the pre-weekend update (`live_f1.make_picks`, from the launch spec's `[[picks]]`: name, market, hype, why; `vs` for a head-to-head), bought YES at the maker's ask for $25 each. A pick the book doesn't quote is left out.
+  - Optional: A's calls against our quotes. Not built (the default: hype picks only).
 - [ ] **B6. Operations** *(Wed)*
   - A LaunchAgent (`bet.racinglines.live`, every 5 minutes) with a lock so runs can't overlap.
   - An alert when an update is more than 2 hours late.

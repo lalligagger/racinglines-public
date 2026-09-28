@@ -35,7 +35,7 @@
   function tick() {
     const i = +sl.value;
     if (i >= T.length - 1) return stop();
-    const wait = Math.max(150, (at(T[i + 1]) - at(T[i])) / speed);
+    {% if sport == 'mtb_dh' %}const wait = Math.max(150, (at(T[i + 1]) - at(T[i])) / speed);{% else %}const wait = 60000 / speed;   // updates hours apart: a fixed pace (2 s at 30×){% endif %}
     timer = setTimeout(() => show(i + 1).then(() => { if (timer) tick(); }), wait);
   }
   play.addEventListener("click", () => {
@@ -59,7 +59,7 @@
   setInterval(() => {
     fetch("/live?{{ evq }}partial=1", {headers: {accept: "text/html"}}).then(r => r.ok ? r.text() : null)
       .then(t => { if (t) box.innerHTML = t; }).catch(() => {});
-  }, 5000);
+  }, {{ 5000 if sport == 'mtb_dh' else 30000 }});
 })();
 </script>{% endif %}
 {% endblock %}

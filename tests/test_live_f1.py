@@ -3,6 +3,7 @@ data; and Baku's weekend (2026-15) run through the engine on a simulated clock, 
 stage runs (skipped otherwise)."""
 
 import json
+import re
 
 import numpy as np
 import pandas as pd
@@ -156,3 +157,13 @@ def test_baku_weekend_on_a_simulated_clock(tmp_path, monkeypatch):
     assert res["maker_pnl"]["crowd"] == pytest.approx(-res["crowd"]["results"]["total"])         # the crowd's loss
     assert F.step(spec, now=t + pd.Timedelta("1d"), fetch=False, sync=False, cache=cache) is None   # settled: idle
     assert len(LV.snap_times(run)) == 7 and LV.find(run)["sport"] == "f1"
+    # the Live tab's F1 body, every update, maker and taker (takers never see fair values)
+    from racinglines.web.app import templates
+    from racinglines.web.views import live_context
+    for t in LV.snap_times(run):
+        for maker in (True, False):
+            ctx = live_context(run, t, maker, 1)
+            assert ctx["sport"] == "f1" and ctx["mode"] == "replay"
+            html = templates.get_template("live_partial.html").render(ctx)
+            assert "Top constructor" in html and not re.search(r">\s*nan\b|\bnan\s*<|None</td>", html, re.I)
+            assert ("<th>Fair</th>" in html) == maker
