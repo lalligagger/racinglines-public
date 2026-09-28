@@ -7,6 +7,9 @@ older than a few hours into Parquet and deletes them from Postgres:
 
     data/archive/markets/<exchange>/<name>/month=YYYY-MM/part-<utc>-<id>.parquet     (zstd)
 
+Polymarket's archive is the default root everywhere; `archive()` sends Kalshi's tokens to Kalshi's own
+(root_for("kalshi")), and Kalshi's readers pass that root.
+
     name      Postgres table            key
     prices    market_price_history     token_id, ts
     trades    market_trades            tx_hash, token_id, wallet, side, price, size
@@ -185,7 +188,23 @@ def hot_tokens(conn):
 def archive(engine, name, older_than=timedelta(hours=6), tokens=None, root=None, chunk_days=31, policy=False):
     """Move rows from Postgres to Parquet (delete ... returning, written and verified before the
     transaction commits). By default: rows older than `older_than`. With policy=True: every row
-    that isn't hot (see hot_tokens), whatever its age. `tokens` limits it (tests). Returns rows moved."""
+    that isn't hot (see hot_tokens), whatever its age. `tokens` limits it (tests). Returns rows moved.
+    Each exchange goes to its own archive: Kalshi's tokens (market_links.exchange = 'kalshi') to
+    root_for("kalshi"), everything else to `root` (default Polymarket's), as before."""
+    kalshi = exchange_tokens(engine, "kalshi")
+    if not kalshi:
+        return _archive(engine, name, older_than, tokens, root, chunk_days, policy)
+    moved = _archive(engine, name, older_than, tokens, root, chunk_days, policy, exclude=kalshi)
+    ks = [t for t in kalshi if tokens is None or t in set(tokens)]
+    return moved + (_archive(engine, name, older_than, ks, root_for("kalshi"), chunk_days, policy) if ks else 0)
+
+
+def exchange_tokens(engine, exchange):
+    with engine.connect() as c:
+        return c.execute(text("SELECT token_id FROM market_links WHERE exchange = :x"), dict(x=exchange)).scalars().all()
+
+
+def _archive(engine, name, older_than, tokens, root, chunk_days, policy, exclude=None):
     s = STORES[name]
     now = datetime.now(timezone.utc)
     keep_all, keep_recent = [], []
@@ -196,8 +215,8 @@ def archive(engine, name, older_than=timedelta(hours=6), tokens=None, root=None,
     else:
         cutoff, recent_cut = now - older_than, now
     cond = ("NOT (token_id = ANY(:ka)) AND NOT (token_id = ANY(:kr) AND ts >= :rc)"
-            + (" AND token_id = ANY(:t)" if tokens else ""))
-    params = dict(ka=keep_all, kr=keep_recent, rc=recent_cut, t=list(tokens or []))
+            + (" AND token_id = ANY(:t)" if tokens else "") + (" AND NOT (token_id = ANY(:x))" if exclude else ""))
+    params = dict(ka=keep_all, kr=keep_recent, rc=recent_cut, t=list(tokens or []), x=list(exclude or []))
     moved = 0
     with engine.connect() as c:
         lo = c.execute(text(f"SELECT min(ts) FROM {s['table']} WHERE ts < :c AND {cond}"), dict(params, c=cutoff)).scalar()

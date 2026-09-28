@@ -92,7 +92,7 @@ Competition     uci_dhi_wc               a league's championship in one sport
 | `model_runs` | One row per model run: competition, season, category, kind (`forecast` / `backtest`), data date, git version, `params` and `metrics` (JSONB). |
 | `race_predictions` | Per-athlete probabilities (win, podium, top 10, make Final, expected points) for a race. `race_id` is empty for races that aren't in the database yet (`target = "remaining_round"`). |
 | `standings_predictions` | Per-athlete projected standings for a model run. |
-| `market_links` | An exchange outcome token (Polymarket) linked to one of the model's probabilities: athlete, prediction kind, optional race, and inverted for "No"-type tokens. Also the event slug and title, live bid / ask / price, volume, end date, resolution, `synced_at`, and `first_seen_at`: when a sync first saw the token (null for tokens synced before alerts existed); it drives the "new" badges and [new-market alerts](cli.md#racinglines-markets). |
+| `market_links` | An exchange outcome token (`exchange`: `polymarket`, or `kalshi`: one row per market ticker, `condition_id` = the event ticker, [Kalshi history](kalshi-history.md)) linked to one of the model's probabilities: athlete, prediction kind, optional race, and inverted for "No"-type tokens. Also the event slug and title, live bid / ask / price, volume, end date, resolution, `synced_at`, and `first_seen_at`: when a sync first saw the token (null for tokens synced before alerts existed); it drives the "new" badges and [new-market alerts](cli.md#racinglines-markets). |
 | `orders` | Every exchange order the app built: dry run, submitted, rejected or cancelled. Includes the model probability, model run, book at the time and exchange response. |
 | `house_markets` | YES/NO markets quoted in the app (race × athlete × kind × maker), with fair probability, spread, YES/NO prices, status, outcome and `maker_id` (null = legacy house markets). |
 | `house_bets` | Bets against house markets: counterparty, `taker_id` (the taker account, if placed in the app), side, price, stake, payout, status. |
@@ -102,8 +102,8 @@ Competition     uci_dhi_wc               a league's championship in one sport
 | `track_profiles` | Per-event track features (sector shares, trap speeds, speed index, overtaking, street, weather) used by the F1 model. |
 | `market_price_history`, `market_trades`, `market_book_snapshots` | Exchange time series per outcome token: prices, every taker trade (the tape a maker replay fills against), and recorded order books. Only recent rows stay here; the rest move to Parquet (see [Storage](#storage-postgres-for-the-app-parquet-for-heavy-history)). |
 | `jobs` | Model runs launched from the web app's Lab, run as CLI subprocesses: kind, params, argv, status, progress, log, and the model run they saved. |
-| `strategy_signals` | What a user's strategy profile would do now ([Paper trading](paper-trading.md)): a taker recommendation (`buy` / `sell`), a maker quote starting or stopping (`quote` / `pull`), or a paper `fill`. Never an order. Columns: user, `candidate_id` (the Lab candidate), profile name, strategy, race, `event_key`, `market_key` (taker: token id; maker: condition id), kind, subject, stage, `dedupe` (the stage, or a fill's time), action, side (`YES` / `NO`, or `bid` / `ask`), shares, limit price, fair, market price, edge, `heat` (1–3), target cost, status (`new` / `alerted` / `expired` / `filled_paper`), model run, signal / alerted / seen times, `detail` (JSONB; `backfill` marks demo-history replays). Unique on (user, candidate, market_key, dedupe, action, side), so re-runs are idempotent. |
-| `paper_positions` | A user's paper position in one market under their profile, rebuilt on every signals run: YES / NO shares (maker: YES-equivalent inventory), cash, latest mark, outcome, for makers the resting bid / ask and quote state, and the **venue**: `polymarket` (paper trading on the exchange) or `private` (a maker's private book, written by the [live engine](live-events.md)). Unique on (user, candidate, market_key). |
+| `strategy_signals` | What a user's strategy profile would do now ([Paper trading](paper-trading.md)): a taker recommendation (`buy` / `sell`), a maker quote starting or stopping (`quote` / `pull`), or a paper `fill`. Never an order. Columns: user, `candidate_id` (the Lab candidate), profile name, strategy, race, `event_key`, `market_key` (taker: token id; maker: condition id), kind, subject, stage, `dedupe` (the stage, or a fill's time), action, side (`YES` / `NO`, or `bid` / `ask`), shares, limit price, fair, market price, edge, `heat` (1–3), target cost, status (`new` / `alerted` / `expired` / `filled_paper`), model run, signal / alerted / seen times, `detail` (JSONB; `backfill` marks demo-history replays, `venue` = `kalshi` a Kalshi replay's). Unique on (user, candidate, market_key, dedupe, action, side), so re-runs are idempotent. |
+| `paper_positions` | A user's paper position in one market under their profile, rebuilt on every signals run: YES / NO shares (maker: YES-equivalent inventory), cash, latest mark, outcome, for makers the resting bid / ask and quote state, and the **venue**: `polymarket` (paper trading on the exchange), `kalshi` (the maker's replay on Kalshi's tape, [Kalshi history](kalshi-history.md)) or `private` (a maker's private book, written by the [live engine](live-events.md)). Unique on (user, candidate, market_key). |
 | `live_events` | Every live private-book event once recorded (`racinglines live settle <spec>`, [Live events](live-events.md)): its run folder, sport, event key, title, when the book opened and settled, the maker's P&L (total, vs the crowd, vs the demo taker), the crowd's fills and volume, and `detail` (settings, the crowd's results, a P&L curve). The demo accounts' story dates private-book events from it. Unique on the run. |
 
 ### Multi-sport design
@@ -297,7 +297,7 @@ Migrations so far (in order, `migrations/versions/`):
 | `9c4d2e8f1a63` | `20260927_9c4d2e8f1a63_market_first_seen.py` | `market_links.first_seen_at` |
 | `c7a1f4e2b9d0` | `20260927_c7a1f4e2b9d0_strategy_signals.py` | `strategy_signals`, `paper_positions` |
 | `d2b8e5a1c3f7` | `20260927_d2b8e5a1c3f7_replay_taker_account.py` | The `polymarket-takers` system account (inactive); recorded replay fills (`house_bets`) move to it from the demo taker (data only) |
-| `e4c1a9b7d205` | `20260927_e4c1a9b7d205_paper_position_venue.py` | `paper_positions.venue` (`polymarket` / `private`) |
+| `e4c1a9b7d205` | `20260927_e4c1a9b7d205_paper_position_venue.py` | `paper_positions.venue` (`polymarket` / `private`; `kalshi` since PR #10, no migration: a string column) |
 
 ## Not done yet
 
@@ -319,7 +319,7 @@ Migrations so far (in order, `migrations/versions/`):
 |---|---|---|
 | Everything the app presents: sports, events, results, athletes, market links, model runs (forecasts, backtests, diagnostics, sweep summaries with P&L across weekends), users, books, bets, jobs, paper signals and positions | Postgres | Small, queried constantly |
 | Exchange time series (`market_price_history`, `market_trades`, `market_book_snapshots`) for **upcoming and in-progress races, the latest completed race of each competition, and the last 7 days of open season markets** | Postgres | What the app shows live |
-| All other exchange time series | Parquet, `data/archive/markets/polymarket/{prices,trades,books}/month=YYYY-MM/*.parquet` (zstd) | Heavy and stale; about 20–40× smaller than in Postgres |
+| All other exchange time series | Parquet, `data/archive/markets/<exchange>/{prices,trades,books}/month=YYYY-MM/*.parquet` (zstd): `polymarket/`, and `kalshi/` for Kalshi's tokens | Heavy and stale; about 20–40× smaller than in Postgres |
 | Raw F1 sessions | Parquet, `data/raw/f1/fastf1/<year>/` | The record; FastF1's HTTP cache is cleared after each fetch |
 | Snapshot of the model tables, market links file | Parquet, `data/archive/db/`, `data/archive/markets/polymarket/links/` | Rebuild or replicate a database without the sources |
 
@@ -327,7 +327,8 @@ Migrations so far (in order, `migrations/versions/`):
   which merges both stores and drops duplicates. Callers don't need to know
   where a row lives.
 - **Moving data:** `racinglines markets archive` applies the retention rule
-  (`hot_tokens`). It moves rows with `DELETE … RETURNING`, and writes and
+  (`hot_tokens`), sending Kalshi's tokens to `kalshi/` and everything else to `polymarket/`. Kalshi's readers
+  pass `root=store.root_for("kalshi")`. It moves rows with `DELETE … RETURNING`, and writes and
   verifies the Parquet before the transaction commits. The recorder
   (`markets record`) runs it every hour.
 - **Options:** `--vacuum-full` returns freed space to the OS, `--compact`

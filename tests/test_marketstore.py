@@ -57,6 +57,24 @@ def test_archive_moves_rows_out_of_postgres(tmp_path, test_engine):
             c.execute(text("DELETE FROM market_price_history WHERE token_id = :t"), dict(t=TOK))
 
 
+def test_archive_sends_kalshi_tokens_to_kalshis_archive(tmp_path, test_engine, monkeypatch):
+    e, kt = test_engine, "KXTEST-MARKETSTORE-0000"
+    old = datetime.now(timezone.utc) - timedelta(days=2)
+    monkeypatch.setattr(MS, "root_for", lambda x: tmp_path / x)
+    monkeypatch.setattr(MS, "exchange_tokens", lambda eng, x: [kt] if x == "kalshi" else [])
+    with e.begin() as c:
+        for t in (TOK, kt):
+            c.execute(text("DELETE FROM market_price_history WHERE token_id = :t"), dict(t=t))
+            c.execute(text("INSERT INTO market_price_history (token_id, ts, price) VALUES (:t, :a, 0.4)"), dict(t=t, a=old))
+    try:
+        assert MS.archive(e, "prices", older_than=timedelta(hours=6), tokens=[TOK, kt], root=tmp_path / "polymarket") == 2
+        assert MS.read(None, "prices", root=tmp_path / "polymarket")["token_id"].tolist() == [TOK]
+        assert MS.read(None, "prices", root=tmp_path / "kalshi")["token_id"].tolist() == [kt]
+    finally:
+        with e.begin() as c:
+            c.execute(text("DELETE FROM market_price_history WHERE token_id = ANY(:t)"), dict(t=[TOK, kt]))
+
+
 @pytest.mark.live
 def test_policy_keeps_hot_tokens(tmp_path):
     """A token of an upcoming race stays in Postgres; an unknown (stale) one is archived."""

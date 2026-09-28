@@ -48,7 +48,7 @@ event: a race, or a competition's season
        ├─ our fair value:
        │    upcoming: the live forecast
        │    past: the last as-of price made before the start (diagnostic, else an earlier forecast)
-       ├─ venue quotes: Polymarket · Kalshi (soon) · private book (our own markets)
+       ├─ venue quotes: Polymarket · Kalshi (live with RACINGLINES_KALSHI_VENUE=1) · private book (our own markets)
        └─ result, once the race has run
 ```
 
@@ -164,6 +164,9 @@ Three accounts are easy to mix up. They are separate entities:
 Both demo accounts' weekends before live paper trading began are **backtest replays**
 (`racinglines f1 demo-history`, `pipelines/demo_history.py`): real Polymarket prices and trades, the
 strategy the account ran then, flagged in the database (`detail.backfill`) and labelled in the app.
+The maker can also have a Kalshi record (`f1 demo-history --venue kalshi`, [Kalshi history](kalshi-history.md)).
+It stays hidden unless `RACINGLINES_KALSHI_VENUE=1` is set, and then only Positions shows it. The Strategy
+page is always the Polymarket record.
 
 **Demo sessions are disposable** (`racinglines/web/demo.py`; the demo accounts are `RACINGLINES_DEMO_USERS`,
 default `maker,taker`). Every sign-in gets a fresh session id. View settings (Edge Finder combos and season,

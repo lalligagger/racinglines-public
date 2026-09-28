@@ -14,6 +14,7 @@ data/
     raw/mtb_dh/manual/...                   live-timing copy/pastes (not used by the pipeline)
   archive/markets/<exchange>/{prices,trades,books}/month=YYYY-MM/*.parquet
   archive/markets/polymarket/links/market_links.parquet   market links with stable keys (f1 pm-links-export)
+  archive/markets/kalshi/{prices,trades}/...               Kalshi's archive (its links travel in the db snapshot)
   archive/db/<table>.parquet + manifest.json               database snapshot (db snapshot-export)
   archive/<sport>/...                       stale heavy race data moved out of Postgres (future)
   runs/<sport>/{backtests,sweeps,...}/      generated outputs
@@ -46,6 +47,7 @@ types (`*.parquet`, `*.csv`, …) everywhere, then allow-lists the minimal set a
 | `data/raw/f1/` | FastF1 sessions and schedules |
 | `data/archive/markets/polymarket/prices/`, `trades/` | Polymarket price and trade archive |
 | `data/archive/markets/polymarket/links/` | Market links file |
+| `data/archive/markets/kalshi/prices/`, `trades/`, `links/` | Kalshi price and trade archive ([Kalshi history](kalshi-history.md)); Kalshi's market links are in the database snapshot |
 | `data/archive/db/` | Database snapshot |
 | `data/runs/search/` | Search results brought back from cloud sessions |
 | `data/runs/live/<slug>_<key>/` | A live event, kept permanently for replay: raw timing-feed responses, snapshots, quotes, model inputs, the private book and every crowd fill (see [Live events](live-events.md#kept-for-replay)) |
@@ -80,7 +82,7 @@ bucket: the first piece of an eventual move to Google Cloud ([proposal](google-c
 | `live/` | `data/runs/live/` | Live-event run folders (Whistler's, and every one after) |
 | `runs/f1/` | `data/runs/f1/` | F1 backtest and sweep outputs |
 | `raw/mtb_dh/` | `data/raw/mtb_dh/` | Downhill downloads (ChronoRace) |
-| `archive/markets/` | `data/archive/markets/` | The Polymarket archive, including what git doesn't carry |
+| `archive/markets/` | `data/archive/markets/` | The Polymarket and Kalshi archives, including what git doesn't carry |
 | `results/<session>/` | – | What a cloud session sends back (reports, run folders) |
 
 **Commands:**
@@ -112,7 +114,7 @@ Every download goes through one of two guards, so a long unattended run (e.g. a
 
 | Source | Guard |
 |---|---|
-| Polymarket (Gamma, CLOB, Data API), ChronoRace, Wikipedia | `racinglines/sources/http.py`: a minimum interval between requests to the same host, shared by every thread (CLOB 0.15 s, Gamma and Data API 0.25 s, ChronoRace 0.5 s, Wikipedia 1 s, others 0.25 s), and up to 5 tries with exponential backoff and jitter (2, 4, 8, 16 s …, capped at 120 s) on timeouts, dropped connections, 429 and 5xx, honouring `Retry-After`; other 4xx return at once |
+| Polymarket (Gamma, CLOB, Data API), Kalshi (Trade API v2), ChronoRace, Wikipedia | `racinglines/sources/http.py`: a minimum interval between requests to the same host, shared by every thread (CLOB 0.15 s, Gamma and Data API 0.25 s, Kalshi 0.25 s, ChronoRace 0.5 s, Wikipedia 1 s, others 0.25 s), and up to 5 tries with exponential backoff and jitter (2, 4, 8, 16 s …, capped at 120 s) on timeouts, dropped connections, 429 and 5xx, honouring `Retry-After`; other 4xx return at once |
 | FastF1 (F1 live-timing archive) | FastF1's own limiter (500 calls an hour); on its rate-limit error the fetcher waits 5 minutes and tries again |
 
 And nothing is downloaded twice:
