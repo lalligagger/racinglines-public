@@ -284,7 +284,8 @@ Phase [F1-9](f1-roadmap.md#f1-9-more-exchanges-kalshi-others).
 - [x] `scripts/build_readme.py --check` runs in the pre-push hook, with `mkdocs build --strict`.
 - [x] PostgreSQL database instead of re-parsing files every run.
 - [x] `.gitignore`: `data/` stays ignored except the allow-listed minimal set for cloud runs.
-- [ ] Admin overview: the takers' P&L includes the `polymarket-takers` system account; filter it out.
+- [x] Admin overview: the takers' P&L leaves out the `polymarket-takers` replay counterparty and shows it
+      on its own line (2026-09-28, cloud build-out).
 - [ ] Remove the `demo_context` bubbles before real users.
 - [ ] Before anything goes beyond a private demo: check F1's data terms, OpenF1's non-commercial terms,
       and settlement rules for relocated or cancelled races.

@@ -266,6 +266,7 @@ The session appends here: date and time (UTC), item, commit, status, notes.
 | 2026-09-28 04:14 | B: downhill tuning sweep, 43 rounds (P3, Model) | this commit | done (docs); new defaults wait for the owner | 24 combinations of prior_n × half-life × junior weight, walk-forward on the committed snapshot. Best: prior_n 0.5, half-life 240, junior 0.25: make-Final −0.035 ± 0.006, podium −0.003 ± 0.002, top 10 −0.006 ± 0.006, win −0.001 ± 0.001 (log loss). In-sample; no code change (existing flags) |
 | 2026-09-28 04:19 | B: downhill practice weight and rider × venue effects (P3, Model) | this commit | done (docs): neither helps | Practice weight 0/0.25/0.5/1.0 within 0.003 log loss on every market, 0.5 kept. Venue prior (k = 1, 2, 4, deviations from the rider's own level, residuals beyond ±4% dropped): no better on podium/top 10/final, Spearman lower. Experiment scripts only; no model code |
 | 2026-09-28 04:21 | B: downhill time trends (P3, Model) | this commit | done (docs): none detected | Rookie drift (riders with ≤3 or ≤6 elite events, 0.3%/0.6% faster) worse on every market; 0.3% slower within 0.001. Experiment only |
+| 2026-09-28 04:23 | B: admin P&L without the replay counterparty (Engineering) | this commit | done | `/admin` totals count people's bets only; `polymarket-takers` replay fills get their own line when there are any (`admin.bet_totals`, unit test). Checked /admin renders (local demo logins created in this session's database only). Kalshi connector skipped: F1-9 starts only after the owner confirms it, and the cloud network blocks Kalshi's API. Public JSON API left: its scope (what's public, auth, data terms) is the owner's call |
 
 ### Track B handoff
 
@@ -299,7 +300,7 @@ Track A's files except `scripts/cloud/bucket.py` and `start.sh`, which carry Tra
 | First real V2 order | the owner's approval | owner |
 | New downhill defaults (`prior_n` 0.5, half-life 240, junior weight 0.25) | the owner's OK (changes every downhill price) | owner |
 | Google Cloud move | the owner's choices (database tier, recorder shape, domain) | owner |
-| Not started (cloud-doable) | F1 props (fastest lap, safety car, rain), ~~book-depth queue model on synthetic books~~ (done 03:34), the rest of the downhill data items (slug probing, venue names, Women, start order, weather, 2021 PDFs: **high priority for the next cloud session**, owner 2026-09-28), downhill model items (~~calibration~~, ~~43-round tuning~~, ~~rider × venue~~, ~~time trends~~ done), Kalshi connector (mocked), web items (admin P&L filter, JSON API) | next session |
+| Not started (cloud-doable) | F1 props (fastest lap, safety car, rain), ~~book-depth queue model on synthetic books~~ (done 03:34), the rest of the downhill data items (slug probing, venue names, Women, start order, weather, 2021 PDFs: **high priority for the next cloud session**, owner 2026-09-28), downhill model items (~~calibration~~, ~~43-round tuning~~, ~~rider × venue~~, ~~time trends~~ done), Kalshi connector (mocked; F1-9 needs the owner's go, Kalshi's API is blocked here), web items (~~admin P&L filter~~ done; JSON API: scope is the owner's call) | next session |
 | F1 prop market kinds in `sports/f1.toml` `[live]` | Track A's file | Track A / next session |
 
 **Local checks after merging** (the brief's list, plus Track B's):

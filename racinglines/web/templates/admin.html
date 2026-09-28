@@ -4,7 +4,8 @@
 <h1>Admin</h1>
 <p><a href="/admin/activity">Activity log</a> · <a href="/admin/users">Users</a> · <a href="/admin/db">Database</a> · <a href="/admin/sql">SQL console</a> · <a href="/markets/linked">Polymarket orders</a> · <a href="/orders">Order log</a> · <a href="/markets">Taker market board</a></p>
 <div class="card"><b>{{ totals.markets }}</b> markets ({{ totals.open }} open) · <b>{{ totals.bets }}</b> taker bets · staked <b>${{ "%.2f"|format(totals.staked) }}</b>
- · takers' settled P&amp;L <b>${{ "%.2f"|format(totals.taker_pnl) }}</b> · makers' worst case <b class="bad">${{ "%.2f"|format(totals.worst) }}</b></div>
+ · takers' settled P&amp;L <b>${{ "%.2f"|format(totals.taker_pnl) }}</b> · makers' worst case <b class="bad">${{ "%.2f"|format(totals.worst) }}</b>
+{% if totals.replay_bets %}<br><span class="muted">Not included: {{ totals.replay_bets }} replay fills by Polymarket's takers (P&amp;L ${{ "%.2f"|format(totals.replay_pnl) }}).</span>{% endif %}</div>
 <div class="card"><h2>Users</h2>
 {{ table(users, ["username", "role", "active", "last_seen", "logins", "markets_made", "bets_against", "bets_placed", "staked"], {"username": ["/admin/users/", "id"]}) }}
 <p><a href="/admin/users">Manage users →</a></p></div>
