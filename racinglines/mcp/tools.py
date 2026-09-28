@@ -700,12 +700,12 @@ def _job_params(job_type, params):
     return jt, out
 
 
-def run_job(engine, job_type, params=None):
-    """Queue a Lab job. Returns its id; `get_job` follows it. The job runs once a worker (this server's, or the web
-    app's) picks it up."""
+def run_job(engine, job_type, params=None, user_id=None):
+    """Queue a Lab job (filed under `user_id`: the account behind the request in --http mode, none over stdio).
+    Returns its id; `get_job` follows it. The job runs once a worker (this server's, or the web app's) picks it up."""
     from racinglines.web import jobs as J
     jt, p = _job_params(job_type, params)
-    job_id = J.submit(jt, p, None, engine=engine)
+    job_id = J.submit(jt, p, user_id, engine=engine)
     return dict(job_id=int(job_id), job_type=jt.code, params=p, status="queued",
                 note=f"{jt.label}: {jt.minutes or 'a while'}. get_job({job_id}) for progress; the run it saves is result_run_id")
 

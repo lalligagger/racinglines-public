@@ -1,12 +1,14 @@
 """
 The MCP server: `build()` registers the tools of racinglines/mcp/tools.py and the docs as resources on an
 MCPServer (the `mcp` package, 2.x); `serve()` runs it over stdio (the default: a chat client launches
-`racinglines mcp` as a subprocess) or streamable HTTP with a bearer token (`--http`, for the VM behind a tunnel).
+`racinglines mcp` as a subprocess) or streamable HTTP (`--http`, for the VM behind a tunnel), where every request
+must carry an account's bearer token (racinglines/mcp/auth.py: `racinglines mcp token <account>`).
 
 Every read tool runs in its own READ ONLY transaction. The job tools (run_job, cancel_job) write what the Lab's
 Run form writes: a `jobs` row; the job's subprocess saves a model run (forecasts as scenarios, never promoted).
 """
 
+import contextvars
 import json
 import os
 import sys
@@ -44,6 +46,7 @@ How to use it:
 
 
 _URL = None
+CALLER = contextvars.ContextVar("racinglines_mcp_caller", default=None)     # dict(id, username, role) in --http mode
 
 
 def _engine():
@@ -84,6 +87,11 @@ def _write(fn, **kw):
         return _json(fn(_engine(), **kw))
     except (ValueError, KeyError, TypeError) as ex:
         raise ToolError(str(ex)) from ex
+
+
+def caller_id():
+    c = CALLER.get()
+    return c["id"] if c else None
 
 
 def build(jobs_worker=False, engine_url=None):
@@ -271,7 +279,7 @@ def build(jobs_worker=False, engine_url=None):
         the live prices), f1_diagnostic (event '2026-15', cutoff '2026-09-25T13:30'), f1_sweep (year + settings: any sweep
         setting), f1_season_strategy, dh_scenario, dh_backtest. params: the job type's knobs (list_job_types). Returns the
         job id; get_job follows it and names the model run it saved (result_run_id)."""
-        return _write(T.run_job, job_type=job_type, params=params)
+        return _write(T.run_job, job_type=job_type, params=params, user_id=caller_id())
 
     @srv.tool()
     def get_job(job_id: int, log_lines: int = 20) -> str:
@@ -316,38 +324,47 @@ def build(jobs_worker=False, engine_url=None):
     return srv
 
 
-def _bearer_app(app, token):
-    """Streamable HTTP behind a bearer token: every request must carry Authorization: Bearer <token>."""
-    import hmac
-
+def bearer_app(app, engine=None):
+    """Streamable HTTP behind per-account bearer tokens: every request must carry `Authorization: Bearer rl_...`
+    matching an account (auth.lookup); the account is the caller for the request (CALLER)."""
     from starlette.responses import JSONResponse
+
+    from racinglines.mcp import auth
 
     async def guarded(scope, receive, send):
         if scope["type"] == "http":
             headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
             got = headers.get("authorization", "")
-            ok = got.startswith("Bearer ") and hmac.compare_digest(got[7:].strip(), token)
-            if not ok:
-                await JSONResponse({"error": "unauthorized"}, status_code=401,
-                                   headers={"WWW-Authenticate": "Bearer"})(scope, receive, send)
+            user = auth.lookup(engine or _engine(), got[7:].strip()) if got.startswith("Bearer ") else None
+            if user is None:
+                await JSONResponse({"error": "unauthorized: a bearer token issued with `racinglines mcp token <account>`"},
+                                   status_code=401, headers={"WWW-Authenticate": "Bearer"})(scope, receive, send)
                 return
+            token = CALLER.set(user)
+            try:
+                await app(scope, receive, send)
+            finally:
+                CALLER.reset(token)
+            return
         await app(scope, receive, send)
     return guarded
 
 
 def serve(http=False, host="127.0.0.1", port=DEFAULT_PORT, jobs_worker=True):
-    """Run the server: stdio (default), or streamable HTTP on host:port/mcp with RACINGLINES_MCP_TOKEN required."""
+    """Run the server: stdio (default), or streamable HTTP on host:port/mcp, each request with an account's token."""
+    from racinglines.mcp import auth
     srv = build(jobs_worker=jobs_worker)
     if not http:
         srv.run("stdio")
         return
-    token = os.environ.get("RACINGLINES_MCP_TOKEN", "")
-    if len(token) < 16:
-        print("racinglines mcp --http needs RACINGLINES_MCP_TOKEN (16+ characters); clients send it as a Bearer token.",
+    who = auth.holders(_engine())
+    if not who:
+        print("racinglines mcp --http: no account has a token yet; issue one with `racinglines mcp token <account>`.",
               file=sys.stderr)
         sys.exit(2)
+    print("accounts with MCP access: " + ", ".join(f"{u} ({r})" for u, r, _ in who), file=sys.stderr)
     if host not in ("127.0.0.1", "localhost"):
         print(f"WARNING: listening on {host}; keep it behind a tunnel or a private network.", file=sys.stderr)
     import uvicorn
     app = srv.streamable_http_app(host=host, stateless_http=True, json_response=True)
-    uvicorn.run(_bearer_app(app, token), host=host, port=int(port), log_level="warning")
+    uvicorn.run(bearer_app(app), host=host, port=int(port), log_level="warning")
