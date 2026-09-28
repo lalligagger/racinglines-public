@@ -10,6 +10,7 @@ racinglines live: launch and run a live private-book event, for any sport (pipel
     racinglines live status                                # every event: live / replay / settled, last update, lateness
     racinglines live report live/f1/2026-16.toml           # the event report (Markdown + charts + PDF)
     racinglines live settle live/mtb_dh/20260925_mtb.toml  # record a settled event in the database (live_events)
+    racinglines live reprice live/mtb_dh/20260925_mtb.toml --every 10   # re-price from the logged raw feed
 
 A spec is a path or sport/event (live/<sport>/<event>.toml). A demo experiment: play money, nothing is
 traded anywhere.
@@ -64,6 +65,12 @@ def main(argv=None):
     p = sub.add_parser("report", help="The event report: Markdown, charts and a PDF, in the run folder.")
     p.add_argument("spec")
     p.add_argument("--pdf", action="store_true", help="Also render the PDF (needs weasyprint or a browser)")
+    p = sub.add_parser("reprice", help="Re-price an event from its logged raw feed with this code (downhill); "
+                                       "scores it against what was quoted live.")
+    p.add_argument("spec")
+    p.add_argument("--label", default="current", help="Name of the re-pricing (reprice/<label>.jsonl in the run folder)")
+    p.add_argument("--every", type=int, default=1, help="Every n-th logged feed response only")
+    p.add_argument("--sims", type=int, default=None, help="Simulations per update (default: the adapter's)")
     p = sub.add_parser("settle", help="Record a settled event in the database (live_events: dates, the book's P&L).")
     p.add_argument("spec")
     args = ap.parse_args(argv)
@@ -352,4 +359,21 @@ def cmd_settle(args):
         print(f"{spec['run']}: recorded, but not settled yet (run it again after the results)")
     print(f"{s['run']}: {s['title']} · opened {str(s['opened_at'])[:16]} · maker P&L {s['maker_pnl'] or 0:+,.2f} "
           f"(crowd {s['crowd_pnl'] or 0:+,.2f}, demo taker {s['taker_pnl'] or 0:+,.2f}) · {s['fills'] or 0:,} fills")
+    return 0
+
+
+def cmd_reprice(args):
+    from racinglines.pipelines import live as LV
+    spec = _spec(args.spec)
+    ad = LV.adapter(spec["sport"])
+    if not hasattr(ad, "reprice"):
+        print(f"{spec['sport']}: no raw feed to re-price (F1 re-prices stages with racinglines f1 diagnostic)")
+        return 1
+    f = spec["feed"]
+    kw = dict(n_sims=args.sims) if args.sims else {}
+    res = ad.reprice(f["slug"], str(f["final"]), label=args.label, every=args.every, echo=_echo, **kw)
+    print(f"{len(res['rows'])} updates re-priced -> {paths.rel(LV.folder(spec['run']) / 'reprice' / (args.label + '.jsonl'))}")
+    for who in ("live", "repriced"):
+        for kind, v in sorted(res["scorecard"][who].items()):
+            print(f"  {who:9s} {kind:7s} mean over {v['updates']} updates: Brier {v['brier']:.4f}, log loss {v['logloss']:.4f}")
     return 0

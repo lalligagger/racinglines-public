@@ -723,3 +723,62 @@ def view(run, snap, picks, hist, mode, maker):
     out.update(fin=fin, on=on, nxt=nxt, grid=grid, picks=rows_, tot=tot, win_chart=chart,
                age=int((pd.Timestamp.now(tz="UTC") - pd.Timestamp(snap["ts"])).total_seconds()))
     return out
+
+
+# ---------------------------------------------------------------------------
+# Re-pricing a final from its logged raw feed (adapter: reprice)
+# ---------------------------------------------------------------------------
+
+def reprice(slug, key, label="current", every=1, n_sims=N_SIMS, echo=print):
+    """Re-run the pricing over every logged raw feed response (raw/<ts>.json.gz), with this code and the
+    final's recorded inputs (meta.json: qualifying on one scale, split ratios, season priors, conditions):
+    no network, no crowd, no quotes. Writes reprice/<label>.jsonl (ts, fair per market) in the run folder and
+    returns dict(rows, scorecard=dict(live, repriced)) scored on the same updates against the result."""
+    import gzip
+
+    from racinglines.pipelines import live_report as R
+    out = outdir(slug, key)
+    meta = json.loads((out / "meta.json").read_text())
+    qbest = {int(k): v for k, v in meta["qbest"].items()}
+    qratio = {int(k): v for k, v in meta["qratio"].items()}
+    prior = {k: tuple(v) for k, v in meta.get("prior", {}).items()}
+    raws = sorted((out / "raw").glob("*.json.gz"))[::max(1, every)]
+    rows, last = [], None
+    for i, f in enumerate(raws):
+        with gzip.open(f, "rt") as fh:
+            riders = parse(json.load(fh))
+        state = json.dumps([(r["bib"], r["status"], r["time"], r["splits"]) for r in riders])
+        if state != last:                                  # an unchanged feed: the same prices
+            sim, _ = simulate(riders, qbest, qratio, meta.get("conditions", ""), n=n_sims, prior=prior)
+            fair = {f"{r['bib']}:{m}": round(r[col], 4) for r in sim for m, col in (("win", "p1"), ("podium", "top3"))}
+            last = state
+        stamp = f.name.split(".")[0]
+        rows.append(dict(ts=f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:8]}T{stamp[9:11]}:{stamp[11:13]}:{stamp[13:15]}+00:00",
+                         stamp=stamp, fair=fair))
+        if i % 100 == 0:
+            echo(f"  {i + 1}/{len(raws)} {stamp}")
+    (out / "reprice").mkdir(exist_ok=True)
+    with (out / "reprice" / f"{label}.jsonl").open("w") as fh:
+        for r in rows:
+            fh.write(json.dumps(r) + "\n")
+    snap, _, _ = load(slug, key)
+    oc = R.outcomes_of(snap)
+    live_rows = []
+    for r in rows:                                         # what was quoted live at the same feed responses
+        p = out / "snaps" / f"{r['stamp']}.json.gz"
+        if p.exists():
+            with gzip.open(p, "rt") as fh:
+                s = json.load(fh)
+            live_rows.append(dict(ts=r["ts"], fair={f"{q['bib']}:{q['market']}": q["fair"] for q in s["quotes"]}))
+
+    def mean(sc):
+        by = {}
+        for x in sc:
+            d = by.setdefault(x["kind"], [0, 0.0, 0.0])
+            d[0] += 1
+            d[1] += x["brier"]
+            d[2] += x["logloss"]
+        return {k: dict(updates=n, brier=b / n, logloss=ll / n) for k, (n, b, ll) in by.items()}
+    have = {r["ts"] for r in live_rows}
+    return dict(rows=rows, scorecard=dict(live=mean(R.scorecard(live_rows, oc)),
+                                          repriced=mean(R.scorecard([r for r in rows if r["ts"] in have], oc))))

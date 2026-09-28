@@ -224,8 +224,10 @@ How it works: [Live events](live-events.md). First run: the Whistler downhill fi
 - [ ] Singapore (round 17, sprint weekend, 11 Oct): the same run if Polymarket still hasn't listed it.
 - [x] A **report command** for any live event (the Whistler report, made repeatable): P&L by update, the
       crowd, the demo taker, the fair-price scorecard (`racinglines live report <spec> --pdf`, 2026-09-29).
-- [ ] Re-run an event's pricing from its logged raw feed (replay today shows what was seen live; this
-      would re-price it with a new model).
+- [x] Re-run an event's pricing from its logged raw feed: `racinglines live reprice <spec>` (downhill; every
+      raw response re-priced with today's code and the recorded inputs, scored against what was quoted live;
+      2026-09-29). On 38 sampled Whistler updates the re-price (v2 throughout) scored a little worse than the
+      live quotes (v1, then v2): Brier 0.0216 vs 0.0202 on win, 0.0430 vs 0.0365 on podium.
 - [ ] Two-sided long-shot quotes (or a per-market loss cap) so the maker doesn't pile up shorts in unlikely
       winners.
 - [x] Settle the Whistler private book in the database and add it to the demo maker's story: the

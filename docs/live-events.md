@@ -132,6 +132,7 @@ feed and any overrides of the sport's `[live]` settings.
 | `racinglines live run <spec> --simulate --no-fetch` | F1: the whole weekend on a simulated clock (a rehearsal) |
 | `racinglines live agent <spec> [--install / --remove]` | A macOS LaunchAgent for the spec (`bet.racinglines.live.<run>`): F1 steps every 5 minutes; a lock stops overlapping steps; log in the run folder |
 | `racinglines live status` | Every event: live / replay / settled, last update, next update, lateness |
+| `racinglines live reprice <spec> [--every n] [--label x]` | Downhill: re-price every logged raw feed response with today's code and the final's recorded inputs (`meta.json`), no network; writes `reprice/<label>.jsonl` and scores it against what was quoted live |
 | `racinglines live settle <spec>` | Record the event in the database (`live_events`: dates, the book's P&L, the crowd's totals), so the demo accounts' story and the web app don't need the run folder. Idempotent |
 | `racinglines live report <spec> [--pdf]` | The event report in the run folder's `report/`: the book's P&L by update, the crowd, the demo taker's picks, and the fair-price scorecard (Brier score and log loss per market kind at each update; the biggest moves). Markdown, HTML, SVG charts, and a PDF through headless Chrome |
 
