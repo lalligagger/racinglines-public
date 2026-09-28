@@ -91,6 +91,8 @@ half-life, track features on. One run per model variant:
 | 937 | `gridq+pretrain` |
 | 955 | `gridq+pretrain+reset` |
 | 979 | `gbm` |
+| 1288 | `rookie` (2026-09-28) |
+| 1289 | `gridq+pretrain+reset+rookie` (2026-09-28) |
 
 ### Per season
 
@@ -158,6 +160,7 @@ standard errors.
 | `gbm` | Gradient-boosted finishing model (scikit-learn, monotone in grid and pace, fixed settings, noise from out-of-time residuals) |
 | `tail` | 35% of past races were disrupted (red flag, ≥ 10% of laps behind the safety car, or rain). Simulated races are disrupted at the venue's rate, with more noise and retirements; teammates' retirements are correlated |
 | `reset` | In a season with new technical regulations (2022, 2026; `sports/f1.toml`), earlier seasons' car pace counts a quarter (set a priori) |
+| `rookie` | Driver offsets: once a driver's rookie season is over, that season's teammate comparisons (the rookie's and the teammate's) count a quarter (set a priori) |
 
 **`gridq + pretrain`** (run 937 vs baseline run 931):
 
@@ -204,6 +207,15 @@ standard errors.
   qualifying. With 129 races and fixed settings, the trees add variance without
   finding structure the ridge misses; the `gridq` term already captures the
   front-of-grid curve. It isn't promoted.
+- **`rookie` is a small gain on win odds, mixed on teammates** (run 1288 vs 931; run 1289 vs 955
+  on profile A's model). It targets the 2026 case of Russell priced far above Antonelli, whose
+  rookie-season gap carried over. Pooled over 129 races, win Brier and log loss improve before
+  practice (−0.0003, −0.0016, beyond 2 SE) and, on profile A's model, before qualifying too
+  (−0.0002, −0.0007); after qualifying nothing moves. Teammate head-to-heads, the target, split by
+  season: better in 2026 before qualifying (−0.0029 ± 0.0021) but worse in 2021 after qualifying
+  (+0.0017 ± 0.0015), and inside 2 SE elsewhere. Russell–Antonelli before qualifying at Miami
+  2026 (round 4, Antonelli won): baseline 50% Russell ahead, `rookie` 46%. Not promoted; a
+  candidate for profile A's model once live weekends add evidence.
 - **`tail` is neutral** (run 935): no metric moves beyond 2 SE at any stage.
   The disrupted-race mixture and correlated retirements change the spread of
   outcomes without making any market's price better on average. It isn't

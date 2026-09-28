@@ -513,7 +513,7 @@ F1 adapter, keeping the platform multi-sport. Plan: [F1 live test](docs/f1-live-
 **P3 · Models and data**
 
 - [ ] F1 ([F1 model](docs/todo.md#f1-model)): promote `gridq+pretrain` (owner's OK), the
-      driver layer in a new season, the stage-aware taker on live
+      `rookie` variant for profile A, the stage-aware taker on live
       weekends (2025 didn't confirm it), book-depth replay once enough books are recorded.
 - [ ] **Downhill points validation**, the top downhill item ([Points validation](docs/todo.md#points-validation)),
       then downhill data and model ([Data](docs/todo.md#data), [Model](docs/todo.md#model)).

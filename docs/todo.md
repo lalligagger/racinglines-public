@@ -46,7 +46,7 @@ F1 adapter, keeping the platform multi-sport. Plan: [F1 live test](f1-live-roadm
 **P3 · Models and data**
 
 - [ ] F1 ([F1 model](#f1-model)): promote `gridq+pretrain` (owner's OK), the
-      driver layer in a new season, the stage-aware taker on live
+      `rookie` variant for profile A, the stage-aware taker on live
       weekends (2025 didn't confirm it), book-depth replay once enough books are recorded.
 - [ ] **Downhill points validation**, the top downhill item ([Points validation](#points-validation)),
       then downhill data and model ([Data](#data), [Model](#model)).
@@ -163,9 +163,12 @@ Phased plan and ground rules: [F1 roadmap](f1-roadmap.md). Items tagged
       paper-trading profiles pick their model through settings, so they don't wait on this.
 - [x] **Monte Carlo seed setting**: sweep and profile setting `seed`, unset = today's fixed seed
       (42), so noise replicates in a search are independent draws (2026-09-28, cloud build-out).
-- [ ] **Driver layer in a new season (F1-2):** the teammate offset carries last season (2026:
-      Russell priced far above Antonelli after 3 GPs). Candidate: faster forgetting for
-      second-year drivers, judged on every season, not 2026 alone.
+- [x] **Driver layer in a new season (F1-2):** the `rookie` variant fades a finished rookie
+      season's teammate comparisons to a quarter. Small gain on win odds before qualifying;
+      teammate head-to-heads better in 2026, worse in 2021 ([F1 evaluation](f1-evaluation.md#model-variants-f1-roadmap-f1-2-f1-3)).
+      Not promoted (2026-09-28, cloud build-out).
+- [ ] Decide whether profile A's model takes `rookie` (`gridq+pretrain+reset+rookie`, run 1289), after
+      live weekends.
 - [ ] Teammate-battle uncertainty: a larger per-driver season drift, or a driver-form model.
 - [ ] Price fastest lap, safety car / red flag, rain (F1-3: per-circuit rates from track status
       and weather, `race_disruption`), and sprint markets.
