@@ -9,11 +9,14 @@ import pytest
 
 from racinglines.markets import crowd as C
 from racinglines.markets import venue_replay as VR
+from racinglines.pipelines import live as LV
 from racinglines.pipelines import live_dh as L
 
 pytestmark = pytest.mark.quick
 
 N = 12                                                   # riders in the final, one starting every two polls
+# resolved at import: the `run` fixture points paths.DATA at a temporary folder for the whole module
+WHISTLER = LV.base() / "20260925_mtb_3"
 
 
 def _feed(poll):
@@ -89,10 +92,12 @@ def test_a_replay_starts_from_a_fresh_book_each_time(run):
     assert C.new_book(pb.params)["left"] == a["book"]["budget"]
 
 
+@pytest.mark.xfail(strict=True, reason="found 2026-09-28: the replay of Whistler's recorded run gives 8,523 crowd fills, the "
+                   "book 7,703. This test always skipped before (the module's `run` fixture pointed paths.DATA at a "
+                   "temp folder), so the replay was never checked against the real run. docs/todo.md")
 def test_whistler_book_replays_as_a_backtest():
     """The real Whistler final (data bucket: data/runs/live/20260925_mtb_3), where it's on this machine."""
-    from racinglines.pipelines import live as LV
-    run = LV.base() / "20260925_mtb_3"
+    run = WHISTLER
     if not (run / "book.json").exists():
         pytest.skip("Whistler's run folder isn't on this machine (the data bucket)")
     book = json.loads((run / "book.json").read_text())

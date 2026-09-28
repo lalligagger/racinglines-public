@@ -296,6 +296,11 @@ Phase [F1-9](f1-roadmap.md#f1-9-more-exchanges-kalshi-others).
       race from the ticker's code, `volume_fp`, `orderbook_fp` (books came back empty), dollar strings in
       historical candlesticks (read as cents), and Kalshi's `/historical` endpoints for markets settled
       before its cutoff (older events came back with no markets). 2026: 15 weekends, 1,847 modeled links.
+- [ ] **Whistler replay mismatch** (found 2026-09-28): `venue_replay.PrivateBook.from_run` on Whistler's run
+      folder gives 8,523 crowd fills, the recorded book 7,703 (`test_whistler_book_replays_as_a_backtest`,
+      xfail). The test had always skipped (its module fixture pointed `paths.DATA` at a temp folder), so the
+      replay was never checked on the real run. Likely suspects: the run was restarted (11 `meta_*.json`,
+      superseded books), so `meta.json`'s current params may not be the ones every poll ran with.
 - [ ] Kalshi: the sweep and paper signals reading Kalshi's markets (F1-9's "done when"), and the Markets
       page showing the `kalshi` venue as live. No order has been sent; `KALSHI_TRADING_ENABLED` stays unset.
 - [ ] Other exchanges, if they list motorsport or cycling markets with real depth, including one for
