@@ -242,6 +242,58 @@ items with limits in the cloud:
 
 ---
 
+## Handoffs
+
+### A: P0 handoff (29 Sep 2026, ahead of the Wed 30 Sep 19:00 UTC deadline)
+
+**Done** (branch `claude/cloud-buildout-track-a`, from `live-event`): B0–B8 of [F1 live test](f1-live-roadmap.md#build-items-scenario-b),
+built as the shared core + adapters + schemas.
+
+| | What | Where |
+|---|---|---|
+| B0 | "Malaysian", "Sepang", "Kuala Lumpur", "Bahrain … in Malaysia" → `2026-16` | `markets/polymarket/sync.py` |
+| B1 | The live core: book and crowd, quotes, run folder / replay / state, the event registry; `[live]` in both schemas. Downhill unchanged: its digest is pinned, and Whistler's book and pages are re-derived | `markets/crowd.py`, `markets/quoting.py`, `pipelines/live.py`, `sports/*.toml` |
+| B2–B3 | The F1 adapter: 99 markets from the stage runs, the weekend as one idempotent step | `pipelines/live_f1.py` |
+| B4 | The Live tab: the shell over `live_mtb_dh.html` / `live_f1.html`; `/live?event=` | `web/views.py`, templates |
+| B5 | Hype picks from the launch spec | `live/f1/2026-16.toml` `[[picks]]` |
+| B6 | `racinglines live agent` (LaunchAgent per event, 5 min, lock, log), lateness alert, frozen settings and pairs | `cli/live.py` |
+| B7 | Baku on a simulated clock, 669 step processes: 7 updates, Positions = book, reconciles, replay | `live/f1/2026-15.toml` |
+| B8 | `racinglines live report` | `pipelines/live_report.py` |
+
+**Not verified in the cloud** (no macOS, and the proxy blocks FastF1 / Polymarket / ChronoRace):
+- the LaunchAgent itself;
+- a step that fetches FastF1 data (`_refresh` reuses the signal engine's fetch + ingest);
+- the full regression suite on the fixtures.
+
+**Decisions for the owner:**
+- the loss cap (`max_loss`, off: measured in the decision log);
+- the hype picks in `live/f1/2026-16.toml` (edit before the book opens);
+- the crowd pace (0.0006 an hour, chosen a priori);
+- 99 markets, not 100 (Baku's Tsunoda pair).
+
+**Local steps to merge and rehearse (Thursday):**
+
+```sh
+git fetch origin && git checkout live-event && git merge origin/claude/cloud-buildout-track-a
+source .venv/bin/activate && pip install -r requirements.txt -e .       # no new dependencies
+alembic upgrade head                                                     # live_events (additive)
+python -m pytest -m "not live"                                           # the full suite on the local fixtures
+python -m pytest tests/test_live_core.py tests/test_live_f1.py          # Whistler's book + 6 replay pages; Baku through the engine
+racinglines live settle live/mtb_dh/20260925_mtb.toml                    # Whistler into live_events
+# rehearsal: Baku on a simulated clock, without touching Positions, then look at it
+racinglines live run live/f1/2026-15.toml --simulate --no-fetch --no-sync
+racinglines web   # /live?event=2026-15-rehearsal (maker and taker), step through the replay; /live?event=20260925_mtb_3 unchanged
+rm -rf data/runs/live/2026-15-rehearsal                                  # so /live defaults to round 16 again
+# round 16
+racinglines live step live/f1/2026-16.toml --no-sync                     # dry run: "nothing new · next: pre-weekend (due 2026-10-02 03:30 UTC)"
+racinglines live agent live/f1/2026-16.toml --install                    # before Thu 20:30 PDT; steps every 5 min
+tail -f data/runs/live/2026-16/agent.log                                 # the book opens at 03:30 UTC (20:30 PDT)
+racinglines live status                                                  # any time: last / next update, lateness
+```
+
+After the race: `racinglines live report live/f1/2026-16.toml --pdf`, `racinglines live settle live/f1/2026-16.toml`,
+then `racinglines live agent live/f1/2026-16.toml --remove`.
+
 ## Progress log
 
 The session appends here: date and time (UTC), item, commit, status, notes.
