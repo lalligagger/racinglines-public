@@ -101,3 +101,15 @@ def test_policy_keeps_hot_tokens(tmp_path):
         with e.begin() as c:
             c.execute(text("DELETE FROM market_price_history WHERE token_id = ANY(:t) AND ts = :a"),
                       dict(t=[hot[0], TOK], a=t_old))
+
+
+
+def test_links_import_turns_nat_into_null(tmp_path):
+    # a missing end date reads back from Parquet as NaT; passed through, it reached Postgres as year 48113
+    from racinglines.markets.polymarket import links as L
+    f = tmp_path / "links.parquet"
+    pd.DataFrame(dict(end_date=pd.to_datetime([None, "2026-10-11 13:00"], utc=True), volume=[float("nan"), 1.0],
+                      note=pd.array([None, "x"], dtype="string"))).to_parquet(f)
+    recs = [{k: L._value(v) for k, v in r.items()} for r in pd.read_parquet(f).to_dict("records")]
+    assert recs[0] == dict(end_date=None, volume=None, note=None)
+    assert recs[1]["end_date"].year == 2026 and recs[1]["volume"] == 1.0 and recs[1]["note"] == "x"

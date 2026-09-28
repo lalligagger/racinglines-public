@@ -64,6 +64,11 @@ def export(engine, path=PATH, exchange="polymarket"):
     return len(df)
 
 
+def _value(v):
+    """None for NaN, NA and NaT. psycopg writes a NaT as a year-48113 timestamp, which then fails every read."""
+    return None if v is pd.NA or v is pd.NaT or (isinstance(v, float) and pd.isna(v)) else v
+
+
 def import_(engine, path=PATH):
     """Upsert the file's links into this database (by token_id). Returns dict(rows, unresolved)."""
     df = pd.read_parquet(path)
@@ -79,8 +84,7 @@ def import_(engine, path=PATH):
                                                 WHERE table_name = 'market_links'"""))]
         unresolved = 0
         for rec in df.to_dict("records"):
-            rec = {k: (None if isinstance(v, float) and pd.isna(v) else v) for k, v in rec.items()}
-            rec = {k: (None if v is pd.NA else v) for k, v in rec.items()}
+            rec = {k: _value(v) for k, v in rec.items()}
             race = races.get((rec.pop("race_key"), rec.pop("race_category"))) if rec.get("race_key") else None
             rec.pop("race_key", None), rec.pop("race_category", None)
             ak = rec.pop("athlete_key", None)
