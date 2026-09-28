@@ -11,10 +11,17 @@ It is a separate process that nothing starts for you: the web app, the CLI, the 
 untouched. The code is `racinglines/mcp/` (`page.py` the result envelope, `tools.py` the tools as plain
 functions, `server.py` the registration and transports) and the command `racinglines/cli/mcp.py`.
 
-## Connecting a client
+## Getting access, as a user
 
-**Locally (stdio, the default).** The client launches the server as a subprocess with your environment
-(`DATABASE_URL`, `RACINGLINES_DATA`), so access is whoever can run commands on that machine.
+Two ways in. **Locally** you run the server yourself and there is no account: whoever can run the command on
+that machine is the owner. **Hosted** you connect to `https://mcp.racinglines.bet/mcp` with a token an admin
+issues for your web-app account; your Claude then sees what the app's data shows and can queue what the Lab's
+Run form can queue, and every job it queues is filed under your account.
+
+### Local (stdio)
+
+The client launches `racinglines mcp` as a subprocess with your environment (`DATABASE_URL`,
+`RACINGLINES_DATA`), in the app's own venv:
 
 ```sh
 # Claude Code, in any folder:
@@ -28,50 +35,113 @@ Claude Desktop (Settings > Developer > Edit config), the same idea:
                                  "env": {"DATABASE_URL": "postgresql+psycopg://racinglines:racinglines@localhost:5433/racinglines"}}}}
 ```
 
-**Hosted (the VM, streamable HTTP).** `racinglines mcp --http` serves `http://127.0.0.1:8100/mcp`, and every
-request must carry the bearer token of a real web-app account:
+### Hosted (the VM)
 
-```sh
-racinglines mcp token admin          # issue the admin account's token (printed once; replaces any earlier one)
-racinglines mcp token                # who holds one
-racinglines mcp token admin --revoke
-```
+1. **Get a token.** Ask an admin for one (the section below says how they make it). It looks like
+   `rl_` followed by 48 hex characters, it is shown once, and it is yours alone: the server records your
+   account against everything you queue. Demo accounts never get one. Keep it like a password; anyone
+   holding it reads the app as you.
+2. **Check the door** (any machine with curl; expect `401`, which means the server is up and refusing
+   requests without a token):
+   ```sh
+   curl -s -o /dev/null -w "%{http_code}\n" -X POST https://mcp.racinglines.bet/mcp
+   ```
+   Then with your token (expect `200`):
+   ```sh
+   curl -s -o /dev/null -w "%{http_code}\n" -X POST https://mcp.racinglines.bet/mcp \
+     -H "Authorization: Bearer rl_YOUR_TOKEN" -H "Content-Type: application/json" \
+     -H "Accept: application/json, text/event-stream" -d '{"jsonrpc":"2.0","id":1,"method":"ping"}'
+   ```
+3. **Connect your client.**
+   - Claude Code:
+     ```sh
+     claude mcp add --transport http racinglines https://mcp.racinglines.bet/mcp --header "Authorization: Bearer rl_YOUR_TOKEN"
+     claude
+     ```
+     `/mcp` inside Claude Code lists it as connected. `claude mcp remove racinglines` forgets it.
+   - Claude Desktop and claude.ai: Settings > Connectors > Add custom connector, URL
+     `https://mcp.racinglines.bet/mcp`; where the form takes headers, add `Authorization` with the value
+     `Bearer rl_YOUR_TOKEN`.
+   - Any other MCP client: streamable HTTP transport, that URL, that header.
+4. **First questions.** "Call `overview` and summarize what's there" proves the whole path. Then something
+   with real content: "list the race_win markets for the next F1 round with our fair value against
+   Polymarket and Kalshi" (`list_markets`), or "queue a 3-race, 300-sim F1 backtest and tell me when it's
+   done" (`run_job`, then `get_job`; the job shows in the Lab's Jobs section under your name).
 
-A token is `rl_` plus 48 hex characters; only its SHA-256 is stored, in `users.prefs["mcp"]`. A request is
-accepted when the token matches an active, non-demo account whose role is in `RACINGLINES_MCP_ROLES` (default
-`admin`: the owner tests with their own Claude first; `admin,maker` later opens it to makers, each with their
-own token and no other change). The server refuses to start in `--http` mode while no account has a token.
-The account behind a request is recorded as the `user` of any job it queues. Demo accounts never get a token.
+Lost or leaked token: ask an admin to issue a new one, which replaces the old one at once. Tokens do not
+expire on their own.
 
-On the VM the unit `racinglines-mcp.service` runs it (`deploy/vm/systemd/`; installed by `vm.sh setup`,
-restarted by `vm.sh deploy` only if it is running, never enabled for you). Setting it up the first time,
-as done on 2026-09-28 (steps 7–8 of the [VM runbook](vm-deploy.md) have the same in full):
+## Giving access, as an admin
 
-1. **On the VM** (`bash scripts/deploy/vm.sh ssh` from the Mac), issue the token and start the unit:
+### Once: host the server
+
+Steps 7 and 8 of the [VM runbook](vm-deploy.md) are the same in full, with what is Google, what is
+Cloudflare and what is neither. In short, and in this order:
+
+1. **Deploy code that has the server** (`bash scripts/deploy/vm.sh deploy` on the Mac). The unit
+   `racinglines-mcp.service` is installed by `vm.sh setup` and by every deploy, never enabled for you.
+2. **Issue the first token, on the VM** (`bash scripts/deploy/vm.sh ssh` from the Mac). The server refuses
+   to start in `--http` mode while no account has a token, so this comes before enabling the unit:
    ```sh
    sudo -u racinglines bash -c 'set -a; . /etc/racinglines.env; set +a; cd /opt/racinglines && .venv/bin/racinglines mcp token admin'
    sudo systemctl enable --now racinglines-mcp
+   sudo systemctl status racinglines-mcp --no-pager
+   curl -s -o /dev/null -w "%{http_code}\n" -X POST http://127.0.0.1:8100/mcp      # 401 on the VM itself
    ```
-   The token is printed once; copy it. `racinglines mcp token` (no account) lists who holds one.
-2. **In the Cloudflare dashboard** (Zero Trust > Networks > Tunnels > `racinglines-vm` > Public hostnames >
-   Add): subdomain `mcp`, domain `racinglines.bet`, type `HTTP`, URL `localhost:8100`, no Access policy
-   (clients send only the bearer token). The VM needs the tunnel from runbook step 7 first. This is the
-   only Cloudflare-specific part: on any other host it is "expose 127.0.0.1:8100 as HTTPS on a hostname".
-3. **On the Mac**, check, then connect:
-   ```sh
-   curl -s -o /dev/null -w "%{http_code}\n" -X POST https://mcp.racinglines.bet/mcp     # 401 = up and locked
-   claude mcp add --transport http racinglines https://mcp.racinglines.bet/mcp --header "Authorization: Bearer rl_..."
-   ```
-   `000` from curl is DNS: the hostname was not saved, or its record is still propagating. Claude Desktop
-   takes the same URL and header as a custom connector. First ask for `overview`, then something with a
-   market matrix or a queued backtest (`run_job` then `get_job`; the job's `user` is the token's account).
+3. **The tunnel** (Cloudflare, once per machine): if the VM has no tunnel yet, Zero Trust > Networks >
+   Tunnels > Create a tunnel > Cloudflared, name `racinglines-vm`, install option Debian 64-bit, copy only
+   the token (the `eyJ...` string), then on the VM `sudo cloudflared service install <TOKEN>`
+   (`cloudflared` itself is installed by `vm.sh setup`; `sudo cloudflared service uninstall` first if it says
+   a service exists). The dashboard shows the connector as connected within seconds.
+4. **The hostname** (Cloudflare): on the tunnel, Published application routes (the public kind, which
+   creates the DNS record; not Hostname routes or Private network routes, which are WARP-only) > Add:
+   subdomain `mcp`, domain `racinglines.bet`, path empty, type **HTTP** (not HTTPS: the server speaks plain
+   HTTP on loopback), URL `localhost:8100`. No Access policy: clients send only the bearer token, and Access
+   would refuse them. Save. The zone's DNS > Records gains a proxied CNAME `mcp`. Nothing on the
+   `racinglines.bet` hostname or the Mac's tunnel changes; each hostname belongs to one tunnel.
+5. **Check from anywhere**: the two curls in step 2 of the user section, `401` then `200`.
 
-Nothing in this is Google-specific: the VM is any Linux box with the units installed by `vm.sh setup`, and
-the tunnel follows the machine that runs `cloudflared service install`.
+### Per user: issue, list, revoke
 
-Over stdio there are no tokens: whoever can run the command on that machine is the owner. In both modes the
-tools read as the owner (everything the admin sees) and can queue what a maker can queue in the Lab; tools that
-show paper trading take a `user` argument to pick an account.
+Tokens are per web-app account: real accounts only (no demos), active, and with a role listed in
+`RACINGLINES_MCP_ROLES` in `/etc/racinglines.env` (default `admin`; `admin,maker` opens it to makers, then
+restart the unit). One token per account; issuing again replaces the old one. On the VM:
+
+```sh
+sudo -u racinglines bash -c 'set -a; . /etc/racinglines.env; set +a; cd /opt/racinglines && .venv/bin/racinglines mcp token <account>'
+sudo -u racinglines bash -c 'set -a; . /etc/racinglines.env; set +a; cd /opt/racinglines && .venv/bin/racinglines mcp token'                      # who holds one
+sudo -u racinglines bash -c 'set -a; . /etc/racinglines.env; set +a; cd /opt/racinglines && .venv/bin/racinglines mcp token <account> --revoke'
+```
+
+Send the token to the person over something private; it is printed once and never again (only its SHA-256 is
+stored, in `users.prefs["mcp"]`). No restart is needed for a new or revoked token: every request looks it up.
+In both modes the tools read as the owner (everything the admin sees) and can queue what a maker can queue in
+the Lab; per-role read scoping is a later change if makers get tokens. Tools that show paper trading take a
+`user` argument to pick an account.
+
+### After every deploy
+
+`vm.sh deploy` restarts the unit only if it is running, after `update.sh` succeeds. When a deploy's output
+ends early, or `systemctl status racinglines-mcp` shows an "active since" older than the deploy, restart by
+hand: `sudo systemctl restart racinglines-mcp`. The unit is off by default on a fresh VM and stays whatever
+you last set it to.
+
+### When it does not work
+
+Each line is what curl (or the log) says, in the order the request travels: DNS, the tunnel, the server,
+the token.
+
+| Symptom | Where | Cause and fix |
+|---|---|---|
+| `000` from curl | DNS | The hostname does not resolve: the route was not saved, or the record is new. `dig +short mcp.racinglines.bet @1.1.1.1` empty means no record: re-add the route, or add a proxied CNAME `mcp` → `<tunnel-id>.cfargotunnel.com` by hand in DNS > Records. An answer from `dig` but `000` from curl is the local resolver's cache; wait a minute. |
+| `530` or `502` | Tunnel | `530`: the tunnel has no connector (`sudo systemctl status cloudflared` on the VM). `502`: cloudflared reached the VM but nothing answered on 8100: the unit is down (`journalctl -u racinglines-mcp -n 30`), or the route's URL has a typo. |
+| `502` and the log says `Invalid HTTP request received` | Route | The route's type is HTTPS; the server speaks HTTP. Edit the route: type HTTP. |
+| `401` with a token | Token | Not a current token: typo, revoked, replaced by a newer one, the account is inactive or a demo, or its role is not in `RACINGLINES_MCP_ROLES`. `racinglines mcp token` on the VM lists holders. `401` without a token is correct. |
+| `421` with a token | Server | A build older than 2026-09-28's fix, which only accepted `Host: localhost`: deploy and restart the unit. |
+| `racinglines mcp: error: unrecognized arguments: token` | Server | The VM runs a build without per-account tokens: deploy. |
+| `fatal: detected dubious ownership` from `git -C /opt/racinglines` | VM | The checkout belongs to the `racinglines` user; prefix git commands with `sudo -u racinglines`. |
+| The unit exits at once with "no account has a token yet" | Server | Issue the first token, then start the unit. |
+| Claude connects but every call errors | Client | Ask for `overview` alone; a tool error's text is the reason (a bad argument, an unknown id). The server's own log is `journalctl -u racinglines-mcp`. |
 
 ## Tools
 
@@ -103,7 +173,7 @@ exchange, venues, users and the next races. Then:
 | `replay_maker(run_id, fill, half_spread, size, max_pos, max_capital, skew, max_disagree, min_volume_24h, pull_min, exchange, with_sweep)` | The event diagnostic's maker replay with every knob, against the real trade tape of Polymarket or Kalshi (`exchange`): synchronous, seconds, nothing stored. |
 
 Jobs run as CLI subprocesses through the same worker the web app uses, one at a time, and land in the `jobs`
-table (the Lab's Jobs section shows them; `user` is empty). The server runs a worker of its own unless
+table (the Lab's Jobs section shows them; `user` is the token's account in hosted mode, empty over stdio). The server runs a worker of its own unless
 `--no-jobs`, so a queued job runs whether or not the web app is up; with both running, whichever is free takes
 the next job. Forecasts started here are scenarios: the live prices change only when a maker promotes one in
 the Lab.
