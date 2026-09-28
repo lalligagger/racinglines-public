@@ -393,6 +393,7 @@ Each item lists what "done" means. B0 matters in every scenario.
 - [x] **B8. Report command** *(Thu, stretch)*
   - `racinglines live report <spec> [--pdf]`, generalising the Whistler report: book P&L by update, the crowd, the demo taker, and the fair-price scorecard (Brier score and log loss per market kind at each update, and the biggest moves). Written to the run folder's `report/`: Markdown, HTML with the charts inline, SVG charts, and a PDF through headless Chrome.
   - Done: Whistler's report from its run folder (run folder unchanged); tests on the synthetic third sport.
+  - Also (owner's local work, 2026-09-28): `racinglines f1 search-analyze <search> [--write-candidates] [--plot] [--noise] [--html REPORT.md]` analyses a saved F1 sweep search (curves, rankings, candidate files, charts, a noise summary, print-friendly HTML) under `data/runs/search/<search>/`, beside `search-report`. Folding the two together is open.
 
 ### Weekend runbook (PDT)
 
