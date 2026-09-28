@@ -380,6 +380,15 @@ As of 2026-09-26, searching Polymarket for "Whistler", "downhill", "Crankworx" a
 "UCI downhill" finds **no downhill markets**. The linking flow works with any
 Polymarket market, so markets can be linked as soon as they're listed.
 
+## Kalshi
+
+Kalshi's F1 markets are synced and their history stored (links, trades, hourly prices, in Postgres and
+`data/archive/markets/kalshi/`), but the web app doesn't show them yet: the venue column says "Kalshi (soon)"
+and the book page "Kalshi: coming soon". There's no linking flow to build: `markets --exchange kalshi sync`
+links every F1 market it can classify ([F1](f1.md#kalshi-alignment)). Orders are dry runs unless
+`KALSHI_TRADING_ENABLED=true` ([CLI](cli.md#kalshi-exchange-kalshi)). How Kalshi's feed differs from
+Polymarket's: [Data](data.md#exchange-history-kalshi-and-polymarket).
+
 ## Tested
 
 Using FastAPI's test client against the Docker database:

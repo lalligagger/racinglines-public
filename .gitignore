@@ -82,6 +82,14 @@ data/archive/markets/polymarket/*
 !data/archive/markets/polymarket/trades/**
 !data/archive/markets/polymarket/links/
 !data/archive/markets/polymarket/links/**
+!data/archive/markets/kalshi/
+data/archive/markets/kalshi/*
+!data/archive/markets/kalshi/prices/
+!data/archive/markets/kalshi/prices/**
+!data/archive/markets/kalshi/trades/
+!data/archive/markets/kalshi/trades/**
+!data/archive/markets/kalshi/links/
+!data/archive/markets/kalshi/links/**
 !data/archive/db/
 !data/archive/db/**
 # search results brought back from cloud sessions (leaderboard, saved-run summaries, logs)

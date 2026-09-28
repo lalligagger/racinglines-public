@@ -58,6 +58,18 @@ Neither one feeds the live app. Live fair prices come only from
 Polymarket's F1 events every 30 minutes, so new race markets are recorded as
 soon as they're listed.
 
+## Data recorded from Kalshi
+
+| Command | Table | Available for past events? |
+|---|---|---|
+| `racinglines markets --exchange kalshi history --events <event ticker> --start … --end … --period 60` | `market_price_history` (candlesticks per market: 1, 60 or 1440 minutes) | Yes, including settled markets (`/historical`) |
+| `racinglines markets --exchange kalshi trades --events <event ticker>` | `market_trades` (every trade: taker side, YES price, contracts, time; no wallets) | Yes |
+| `racinglines markets --exchange kalshi books --events <event ticker>` | `market_book_snapshots` (one snapshot per open market) | **No.** Like Polymarket, no historical books; nothing records Kalshi's books continuously yet |
+
+Kalshi's F1 history from 2025 to 2026-09-28 is pulled and archived under `data/archive/markets/kalshi/`
+([Data changes](data-changes.md)). How it differs from Polymarket's feed, and what that means for a maker
+replay: [Data](data.md#exchange-history-kalshi-and-polymarket).
+
 ## The maker replay (`racinglines/markets/strategies/maker_replay.py`)
 
 The replay steps through the event in 5-minute steps.

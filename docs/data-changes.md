@@ -14,6 +14,52 @@ Before a major update, keep what it replaces: a database dump in `data/backups/d
 files in `data/archive/<sport>/` (both git-ignored; `data/raw` is the record, so it isn't edited in place
 without a copy). Not `data/archive/db/`: that folder is tracked in git (the snapshot).
 
+## 2026-09-28 · Kalshi F1 history pulled (2025–2026)
+
+**Why.** To backtest and show Kalshi next to Polymarket: Polymarket has listed no F1 race since Baku, Kalshi lists
+every weekend. Owner-approved; read-only Kalshi API (no orders, no portfolio calls). Backups first:
+`data/backups/db/racinglines-2026-09-28-before-kalshi-history.dump`, and before the 2025 re-sync
+`data/backups/db/racinglines-2026-09-28-before-kalshi-2025.dump`.
+
+**What.** `markets --exchange kalshi sync --year 2025 --closed` and `--year 2026 --closed`, then trades and hourly
+candlesticks (`--period 60`) for every event with modeled links, from each market's `open_time` to its close
+(or now, for the open championships). No failures, no rate-limit errors. Settled markets older than Kalshi's
+cutoff (before about August 2026) came from its `/historical` endpoints.
+
+**Season-matching bug, fixed the same day.** `sync --closed` returns every settled event whatever `--year` is,
+and `--year` chose the season markets were matched against, so the second run (2026) re-matched all 2025 markets
+against 2026's races and left them unmodeled. Kalshi's data was fine (prices, trades, results, close times);
+only our matching was wrong. The sync now matches each event against its own season (the ticker's `25` / `26`,
+else its close date) and reads 2025's title forms (`F1 Australian Grand Prix Winner?`, `Las Vegas GP: …`,
+`Gran Premio de Mexico Winner?`). Re-syncing changed no 2026 link; 2025 then got its trades and prices.
+
+| | Rows |
+|---|---:|
+| Kalshi links (`market_links.exchange='kalshi'`) | 3,793 (200 events), 2,890 modeled in 150 events |
+| Modeled, 2025 | win 481 · podium 441 · pole 60 · fastest lap 60 · drivers' champion 20 · constructors' champion 10 (all 24 weekends; pole and fastest lap only for the last three) |
+| Modeled, 2026 | win 330 · podium 330 · top 10 330 · fastest lap 330 · pole 308 · top constructor 143 · h2h 14 · drivers' champion 22 · constructors' champion 11 (15 weekends, Australia to Azerbaijan) |
+| Trades | 1,065,605 (108.9 M contracts): 247,465 in 2025 markets, 818,140 in 2026; 295 modeled markets never traded (long shots) |
+| Hourly prices | 520,969, on every modeled market, 2025-02-12 to 2026-09-28 |
+| Parquet (`data/archive/markets/kalshi/`, in git) | links 144 KB · prices 1.0 MB · trades 29 MB |
+
+Not modeled, on purpose: sprint markets, props (`KXUSAF1`, `KXAFRICAF1`), and six Bahrain 2025 markets on reserve
+drivers who didn't race. Kalshi quirks: `KXF1TOPCONSTRUCTOR-AUSGP26` is a second **Austria** market despite its
+ticker (title and rules say Austria, it closed on 6 July; matched to Austria, settled like the other one), so
+Australia 2026 has no top-constructor market; Azerbaijan 2026 has no pole market. 2025's markets opened only 2–4
+days before each race and are thinner (median trades per market: win 19, podium 26, pole 49, fastest lap 5).
+How Kalshi's feed differs from Polymarket's: [Data](data.md#exchange-history-kalshi-and-polymarket).
+
+**Side effect.** The market recorder's hourly archive pass isn't per exchange: from 14:06 UTC on it moved the
+stale Kalshi rows out of Postgres into new part files under `data/archive/markets/polymarket/{prices,trades}/`
+(untracked in the main checkout; by 18:09 UTC, 94 files and 1.2 M rows, all `KX…` tokens). Nothing was lost:
+the exports read Postgres and those files together and deduplicated, and every row in them was checked to be
+in `data/archive/markets/kalshi/`, so the files can be deleted. Later passes keep doing this until archiving is
+per exchange.
+
+**Undo.** Restore the backup with `pg_restore --clean`, or delete the rows: `market_links` where
+`exchange='kalshi'`, and `market_price_history` / `market_trades` rows whose `token_id` starts `KX`. Delete
+`data/archive/markets/kalshi/` and the `KX`-only part files in the Polymarket tree.
+
 ## 2026-09-28 · Whistler run folder: replay.json added
 
 `data/runs/live/20260925_mtb_3/replay.json` (and in the bucket, `live/20260925_mtb_3/`). Nothing in the run's

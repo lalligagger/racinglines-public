@@ -14,6 +14,7 @@ data/
     raw/mtb_dh/manual/...                   live-timing copy/pastes (not used by the pipeline)
   archive/markets/<exchange>/{prices,trades,books}/month=YYYY-MM/*.parquet
   archive/markets/polymarket/links/market_links.parquet   market links with stable keys (f1 pm-links-export)
+  archive/markets/kalshi/links/market_links.parquet       Kalshi's market links, same format
   archive/db/<table>.parquet + manifest.json               database snapshot (db snapshot-export)
   archive/<sport>/...                       stale heavy race data moved out of Postgres (future)
   runs/<sport>/{backtests,sweeps,...}/      generated outputs
@@ -46,6 +47,7 @@ types (`*.parquet`, `*.csv`, …) everywhere, then allow-lists the minimal set a
 | `data/raw/f1/` | FastF1 sessions and schedules |
 | `data/archive/markets/polymarket/prices/`, `trades/` | Polymarket price and trade archive |
 | `data/archive/markets/polymarket/links/` | Market links file |
+| `data/archive/markets/kalshi/prices/`, `trades/`, `links/` | Kalshi price and trade archive and its links file (F1, 2025 to 2026-09-28) |
 | `data/archive/db/` | Database snapshot |
 | `data/runs/search/` | Search results brought back from cloud sessions |
 | `data/runs/live/<slug>_<key>/` | A live event, kept permanently for replay: raw timing-feed responses, snapshots, quotes, model inputs, the private book and every crowd fill (see [Live events](live-events.md#kept-for-replay)) |
@@ -80,7 +82,7 @@ bucket: the first piece of an eventual move to Google Cloud ([proposal](google-c
 | `live/` | `data/runs/live/` | Live-event run folders (Whistler's, and every one after) |
 | `runs/f1/` | `data/runs/f1/` | F1 backtest and sweep outputs |
 | `raw/mtb_dh/` | `data/raw/mtb_dh/` | Downhill downloads (ChronoRace) |
-| `archive/markets/` | `data/archive/markets/` | The Polymarket archive, including what git doesn't carry |
+| `archive/markets/` | `data/archive/markets/` | The Polymarket and Kalshi archives, including what git doesn't carry |
 | `results/<session>/` | – | What a cloud session sends back (reports, run folders) |
 
 **Commands:**
@@ -105,6 +107,38 @@ in the row above the message box, hover over `racinglines`, and click its settin
 - **Network access:** **Trusted** is enough: its default list includes `storage.googleapis.com`.
 - **CLI:** `/remote-env` in a local Claude Code session sets the default environment for `claude --cloud`.
 
+## Exchange history: Kalshi and Polymarket
+
+Both exchanges' F1 history lands in the same tables (`market_links`, `market_price_history`, `market_trades`,
+`market_book_snapshots`; `market_links.exchange` tells them apart) and is archived in the same Parquet layout,
+one tree per exchange: `data/archive/markets/<exchange>/{prices,trades,books}/month=YYYY-MM/*.parquet`.
+What each feed gives differs:
+
+| | Polymarket | Kalshi |
+|---|---|---|
+| API, auth | Gamma (markets), CLOB (prices, books), Data API (trades); public | One REST API (`api.elections.kalshi.com/trade-api/v2`); public for market data, a signed key only for orders |
+| Contract in `market_links` | One row **per outcome token** (YES and NO are separate tokens with their own prices) | One row **per market**: its YES contract (`token_id` = market ticker, `condition_id` = event ticker). NO is the mirror image (NO at p = YES at 1 − p) |
+| Grouping | Event slug (`f1-azerbaijan-grand-prix-…`) | Series (`KXF1RACE`) → event (`KXF1RACE-AZEGP26`) → market (`KXF1RACE-AZEGP26-OPIA`) |
+| Resolution rules | Market description | `rules_primary`, stored in `params.rules`; markets on two venues are only compared when their rules agree |
+| Trades | Data API, taker trades only, paged by offset (newest first, capped at offset 100,000 per market) | Every trade, cursor-paged with no cap. Trades settled before Kalshi's historical cutoff (about two months) come from `/historical/trades`; the connector reads both |
+| Trade fields | Token, side of that token, price, size in shares, time, transaction hash, **wallet** | Market, **taker side** (YES bought = `BUY`, NO bought = `SELL` YES), YES price, size in contracts, time, trade id (`tx_hash`). **No wallets** (`wallet` = ""), so takers can't be told apart |
+| Price history | `/prices-history` per token at `--fidelity` minutes (1 = minute-level): traded price | Candlesticks at 1, 60 or 1440 minutes: the candle's close, else the YES bid/ask mid. Markets past the cutoff read from `/historical/markets/<ticker>/candlesticks` |
+| Order books | Live only (no historical API): `markets record` snapshots them | Live only too: `markets --exchange kalshi books` takes one snapshot; nothing records them continuously yet |
+| Fees | None modelled (the `Polymarket` venue in `venue_replay.py` charges nothing) | Takers pay ⌈0.07 × contracts × P × (1 − P)⌉ cents per order (`venue_replay.Kalshi.taker_fee`) |
+| Tick | Per market (`tick_size`, mostly 1¢) | 1¢ |
+| F1 coverage | 2025–2026 races and season markets; the last race listed was Baku 2026, nothing new since 28 August 2026 ([F1 live roadmap](f1-live-roadmap.md#polymarket-has-stopped-listing-f1-races)) | Every 2026 weekend (win, podium, top 10, pole, fastest lap, top constructor, head-to-heads), every 2025 weekend (win, podium; pole and fastest lap for the last three), and both championships of both years ([F1](f1.md#kalshi-alignment)) |
+
+**Filling a simulated maker against Kalshi's tape.** Each Kalshi trade has the taker's side, price, size and
+time, which is what a maker replay needs: a resting quote fills when a taker trade prints at or through it.
+Wallets are missing, so the tape can't say who traded (no per-taker P&L, and one large order split into
+several prints looks like several takers). The tape is thick on winner, pole, podium and championship markets and
+thin on fastest lap and top constructor (median 10–12 trades per market over a weekend in 2026). 2025's race
+markets opened only 2–4 days before each race and are thinner ([Data changes](data-changes.md)).
+
+**Reading archived Kalshi rows.** `markets/store.py` reads `data/archive/markets/polymarket/` unless given
+`root=paths.archive_markets("kalshi")`. `markets archive` and the recorder's hourly archive pass are not per
+exchange yet: they move stale Kalshi rows into the Polymarket tree too (seen on 2026-09-28).
+
 ## Respecting the sources' limits
 
 Every download goes through one of two guards, so a long unattended run (e.g. a
@@ -112,7 +146,7 @@ Every download goes through one of two guards, so a long unattended run (e.g. a
 
 | Source | Guard |
 |---|---|
-| Polymarket (Gamma, CLOB, Data API), ChronoRace, Wikipedia | `racinglines/sources/http.py`: a minimum interval between requests to the same host, shared by every thread (CLOB 0.15 s, Gamma and Data API 0.25 s, ChronoRace 0.5 s, Wikipedia 1 s, others 0.25 s), and up to 5 tries with exponential backoff and jitter (2, 4, 8, 16 s …, capped at 120 s) on timeouts, dropped connections, 429 and 5xx, honouring `Retry-After`; other 4xx return at once |
+| Polymarket (Gamma, CLOB, Data API), Kalshi, ChronoRace, Wikipedia | `racinglines/sources/http.py`: a minimum interval between requests to the same host, shared by every thread (CLOB 0.15 s, Gamma and Data API 0.25 s, Kalshi 0.25 s, ChronoRace 0.5 s, Wikipedia 1 s, others 0.25 s), and up to 5 tries with exponential backoff and jitter (2, 4, 8, 16 s …, capped at 120 s) on timeouts, dropped connections, 429 and 5xx, honouring `Retry-After`; other 4xx return at once |
 | FastF1 (F1 live-timing archive) | FastF1's own limiter (500 calls an hour); on its rate-limit error the fetcher waits 5 minutes and tries again |
 
 And nothing is downloaded twice:

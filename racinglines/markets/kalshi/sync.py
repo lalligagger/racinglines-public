@@ -42,18 +42,20 @@ from racinglines.markets.kalshi import client as K
 SERIES = ()          # Kalshi series tickers to sync; empty: every Sports series that looks like F1 (see f1_series)
 F1_WORDS = re.compile(r"\b(formula\s*1|formula one|f1|grand prix)\b", re.I)
 CLOSED = {"closed", "settled", "finalized", "determined"}
-STOP = {"who", "will", "win", "the", "a", "an", "at", "in", "of", "formula", "one", "which", "driver", "drivers"}
+STOP = {"who", "will", "win", "the", "a", "an", "at", "in", "of", "formula", "one", "which", "driver", "drivers", "f1"}
 PROP = [(r"fastest lap", "race_fastest_lap"), (r"safety car", "race_safety_car"), (r"red[- ]flag", "race_red_flag"),
         (r"\brain", "race_rain")]
 
 
 def gp_name(t):
-    """The Grand Prix a title names ("Who will win the Singapore Grand Prix?" -> "Singapore Grand Prix"), or None."""
-    for mm in re.finditer(r"((?:[A-Z][A-Za-z\.'-]*\s+)+)Grand Prix", t or ""):
+    """The Grand Prix a title names ("Who will win the Singapore Grand Prix?" -> "Singapore Grand Prix"), or None.
+    2025 titles also say "F1 Australian Grand Prix Winner?", "Las Vegas GP: ..." and "Gran Premio de Mexico Winner?"."""
+    for mm in re.finditer(r"((?:[A-Z][A-Za-z\.'-]*\s+)+)(?:Grand Prix|GP)\b", t or ""):
         words = [w for w in mm.group(1).split() if w.lower() not in STOP]
         if words:
             return " ".join(words) + " Grand Prix"
-    return None
+    mm = re.search(r"Gran Premio (?:de |del |d')?([A-Z][\w-]+)", t or "")       # "Gran Premio de Mexico Winner?" (2025)
+    return f"{mm.group(1)} Grand Prix" if mm else None
 
 
 def classify(event_title, market_title="", gp=None):
@@ -112,6 +114,18 @@ def _race_code(event_ticker):
     """The race part of an event ticker: KXF1RACE-BRIGP26 -> BRIGP26 (KXF1H2H-BRIGP26VERHAM -> BRIGP26VERHAM)."""
     parts = (event_ticker or "").split("-")
     return parts[1] if len(parts) > 1 else ""
+
+
+def season(ev, default=None):
+    """The season an event belongs to: the two digits ending its race code or ticker (KXF1RACE-ABUDGP25,
+    KXF1-25, KXF1H2H-BRIGP26VERHAM), else the year its first market closes, else `default`."""
+    code = _race_code(ev.get("event_ticker"))
+    mm = re.match(r"[A-Z]+GP(\d{2})", code) or re.fullmatch(r"(\d{2})", code)
+    if mm:
+        return 2000 + int(mm.group(1))
+    ends = [_time(mk.get("close_time") or mk.get("expiration_time")) for mk in ev.get("markets") or []]
+    ends = [e for e in ends if e is not None]
+    return min(ends).year if ends else default
 
 
 def gp_codes(events):
@@ -197,7 +211,13 @@ def sync(session, conn, year=2026, include_closed=False, kc=None):
         if not ev.get("markets") and include_closed:
             ev["markets"] = kc.historical_markets(ev["event_ticker"])
     stats = dict(events=len(events), links=0, modeled=0, unmatched=0, new=0)
-    for row in link_rows(events, Resolver(conn, year)):
+    # Each event is matched against its own season's races and drivers: settled events of every year come
+    # back whatever `year` is, and matching a 2025 event against 2026 left it unmodeled.
+    by_season = {}
+    for ev in events:
+        by_season.setdefault(season(ev, year), []).append(ev)
+    rows = [r for y, evs in sorted(by_season.items()) for r in link_rows(evs, Resolver(conn, y))]
+    for row in rows:
         tok = row.pop("token_id")
         values = dict(row, competition_id=comp.id, category_id=cat.id, synced_at=now)
         link = session.scalars(select(m.MarketLink).filter_by(exchange="kalshi", token_id=tok)).first()
