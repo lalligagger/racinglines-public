@@ -36,6 +36,17 @@ made it and forwards only to that machine. It can't be moved to the VM or pointe
 changes if that process restarts. A stable `staging.racinglines.bet` on the Mac's existing tunnel is the
 cleaner later version.
 
+## What is Google, what is Cloudflare, what is neither
+
+If the VM ever moves to another provider, only the first group changes. Written so the setup below can
+be repeated without reading the whole page.
+
+| Group | Steps | What it is |
+|---|---|---|
+| **Google Cloud** (`gcloud`) | 1–4, 6 (`bucket.sh`), `vm.sh public`, `vm.sh ssh`, `vm.sh deploy`'s transport | The project, the bucket the VM restores from, the service account, the VM itself, SSH through IAP, the firewall. On another provider: any Ubuntu 24.04 box with SSH, an object store for backups, and `remote()` in `vm.sh` rewritten for that provider's SSH. |
+| **Cloudflare** | 7, 8, cutover step 4 | The `racinglines-vm` tunnel (outbound only: the VM opens no inbound port), one public hostname per service (`racinglines.bet` → `localhost:8000` at cutover, `mcp.racinglines.bet` → `localhost:8100`), the DNS records the dashboard creates for them. Independent of where the VM runs: the same `cloudflared service install <TOKEN>` on any machine attaches it to the same tunnel. |
+| **Neither** | 5, `deploy/vm/*`, `update.sh`, the units, `/etc/racinglines.env`, the MCP token | Everything `vm.sh setup` puts on the box: the `racinglines` user, `/opt/racinglines`, the venv, Postgres in docker, the systemd units (web, recorder, signals, live-event templates, `racinglines-mcp`), and the app's own auth (web passwords, `racinglines mcp token`). |
+
 ## What's in the repo
 
 | File | What it is |
@@ -126,13 +137,33 @@ bash scripts/deploy/vm.sh public off     # at the handover: closes the port, the
 It's plain HTTP, so passwords cross the internet unencrypted. Sign in with the demo accounts only, never
 as admin. The sign-in throttle still applies.
 
-**7. The VM's tunnel.** In the Cloudflare dashboard, open Zero Trust > Networks > Tunnels > Create a
-tunnel (cloudflared), name it `racinglines-vm`, and copy the install token. On the VM
-(`vm.sh ssh`), run:
+**7. The VM's tunnel** (Cloudflare; done 2026-09-28). In the Cloudflare dashboard, open Zero Trust >
+Networks > Tunnels > Create a tunnel, choose Cloudflared, name it `racinglines-vm`, and on the install
+page pick Debian 64-bit, "Install and run a connector". Copy only the token (the long `eyJ...` string after
+`cloudflared service install`; it is the same token whichever install option is shown). On the VM
+(`vm.sh ssh`):
 ```sh
-sudo cloudflared service install <TOKEN>
+sudo cloudflared service install <TOKEN>          # cloudflared itself was installed by vm.sh setup
+sudo systemctl status cloudflared --no-pager      # active; the dashboard shows the connector as connected
 ```
-Don't give it a public hostname yet.
+If it says a service already exists, `sudo cloudflared service uninstall` first. Don't give it
+`racinglines.bet` yet: that hostname moves at the cutover below.
+
+**8. The MCP server's hostname** (Cloudflare + the VM; done 2026-09-28, see [MCP server](mcp.md)).
+Issue the admin token and start the unit, on the VM:
+```sh
+sudo -u racinglines bash -c 'set -a; . /etc/racinglines.env; set +a; cd /opt/racinglines && .venv/bin/racinglines mcp token admin'
+sudo systemctl enable --now racinglines-mcp
+```
+In the dashboard, on the tunnel `racinglines-vm` > Public hostnames (also called "published application
+routes") > Add: subdomain `mcp`, domain `racinglines.bet`, path empty, type `HTTP`, URL `localhost:8100`.
+Save creates a proxied CNAME `mcp` in the zone's DNS (check DNS > Records if it does not resolve after a
+couple of minutes). No Access policy on it: clients send only the bearer token. Each hostname belongs to
+one tunnel, so this touches nothing on the Mac's tunnel. From the Mac:
+```sh
+curl -s -o /dev/null -w "%{http_code}\n" -X POST https://mcp.racinglines.bet/mcp    # 401: tunnel and server up
+curl -s -o /dev/null -w "%{http_code}\n" https://racinglines.bet/                    # 401: the app, unchanged
+```
 
 ## Schedule: cutover before round 16 (owner's choice, 2026-09-28)
 

@@ -44,12 +44,30 @@ own token and no other change). The server refuses to start in `--http` mode whi
 The account behind a request is recorded as the `user` of any job it queues. Demo accounts never get a token.
 
 On the VM the unit `racinglines-mcp.service` runs it (`deploy/vm/systemd/`; installed by `vm.sh setup`,
-restarted by `vm.sh deploy` only if it is running, never enabled for you): issue the admin token as the
-`racinglines` user (`.venv/bin/racinglines mcp token admin` with `/etc/racinglines.env` loaded), give the
-tunnel a hostname for `127.0.0.1:8100` (for example `mcp.racinglines.bet`, ideally behind Cloudflare Access
-like the app), then `sudo systemctl enable --now racinglines-mcp`. A client connects with the token as a
-bearer header: `claude mcp add --transport http racinglines https://mcp.racinglines.bet/mcp --header
-"Authorization: Bearer rl_..."`.
+restarted by `vm.sh deploy` only if it is running, never enabled for you). Setting it up the first time,
+as done on 2026-09-28 (steps 7–8 of the [VM runbook](vm-deploy.md) have the same in full):
+
+1. **On the VM** (`bash scripts/deploy/vm.sh ssh` from the Mac), issue the token and start the unit:
+   ```sh
+   sudo -u racinglines bash -c 'set -a; . /etc/racinglines.env; set +a; cd /opt/racinglines && .venv/bin/racinglines mcp token admin'
+   sudo systemctl enable --now racinglines-mcp
+   ```
+   The token is printed once; copy it. `racinglines mcp token` (no account) lists who holds one.
+2. **In the Cloudflare dashboard** (Zero Trust > Networks > Tunnels > `racinglines-vm` > Public hostnames >
+   Add): subdomain `mcp`, domain `racinglines.bet`, type `HTTP`, URL `localhost:8100`, no Access policy
+   (clients send only the bearer token). The VM needs the tunnel from runbook step 7 first. This is the
+   only Cloudflare-specific part: on any other host it is "expose 127.0.0.1:8100 as HTTPS on a hostname".
+3. **On the Mac**, check, then connect:
+   ```sh
+   curl -s -o /dev/null -w "%{http_code}\n" -X POST https://mcp.racinglines.bet/mcp     # 401 = up and locked
+   claude mcp add --transport http racinglines https://mcp.racinglines.bet/mcp --header "Authorization: Bearer rl_..."
+   ```
+   `000` from curl is DNS: the hostname was not saved, or its record is still propagating. Claude Desktop
+   takes the same URL and header as a custom connector. First ask for `overview`, then something with a
+   market matrix or a queued backtest (`run_job` then `get_job`; the job's `user` is the token's account).
+
+Nothing in this is Google-specific: the VM is any Linux box with the units installed by `vm.sh setup`, and
+the tunnel follows the machine that runs `cloudflared service install`.
 
 Over stdio there are no tokens: whoever can run the command on that machine is the owner. In both modes the
 tools read as the owner (everything the admin sees) and can queue what a maker can queue in the Lab; tools that

@@ -350,6 +350,17 @@ def bearer_app(app, engine=None):
     return guarded
 
 
+def http_app(srv, engine=None):
+    """The streamable-HTTP ASGI app behind the bearer check, for any Host header. The SDK's default for a
+    loopback bind answers 421 to every Host but localhost (its DNS-rebinding guard: a browser page tricked into
+    calling 127.0.0.1 would carry no bearer token and is refused 401 here before the MCP app sees it), which
+    would also refuse the tunnel's public hostname (mcp.racinglines.bet)."""
+    from mcp.server.transport_security import TransportSecuritySettings
+    app = srv.streamable_http_app(stateless_http=True, json_response=True,
+                                  transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False))
+    return bearer_app(app, engine=engine)
+
+
 def serve(http=False, host="127.0.0.1", port=DEFAULT_PORT, jobs_worker=True):
     """Run the server: stdio (default), or streamable HTTP on host:port/mcp, each request with an account's token."""
     from racinglines.mcp import auth
@@ -366,5 +377,4 @@ def serve(http=False, host="127.0.0.1", port=DEFAULT_PORT, jobs_worker=True):
     if host not in ("127.0.0.1", "localhost"):
         print(f"WARNING: listening on {host}; keep it behind a tunnel or a private network.", file=sys.stderr)
     import uvicorn
-    app = srv.streamable_http_app(host=host, stateless_http=True, json_response=True)
-    uvicorn.run(bearer_app(app), host=host, port=int(port), log_level="warning")
+    uvicorn.run(http_app(srv), host=host, port=int(port), log_level="warning")
