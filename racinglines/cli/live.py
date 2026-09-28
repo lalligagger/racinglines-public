@@ -245,7 +245,7 @@ def plist(spec, root=None, exe=None):
     exe = exe or os.path.join(root, ".venv", "bin", "racinglines")
     run = spec["run"]
     log = os.path.join(root, "data", "runs", "live", run, "agent.log")
-    rel = os.path.relpath(spec["path"], root) if os.path.isabs(spec["path"]) else spec["path"]
+    rel = os.path.relpath(spec["path"], paths.ROOT) if os.path.isabs(spec["path"]) else spec["path"]   # as in the repo
     f1 = spec["sport"] == "f1"
     args = [exe, "live", "step" if f1 else "run", rel]
     sched = (f"  <key>StartInterval</key><integer>{int(spec['live']['poll'].get('step_min', 5)) * 60}</integer>\n" if f1 else

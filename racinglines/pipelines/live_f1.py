@@ -422,7 +422,10 @@ def step(spec, now=None, fetch=True, unfreeze=False, echo=print, engine=None, en
             fills = _crowd(st, book, cp, event_key, update["label"], now, out)
         prev = {m["key"]: m["fair"] for m in mkts}
         with engine.connect() as c:
-            new = markets(c, event_key, run_id, live["markets"].get("h2h_from", "last_listed"), kinds)
+            if st.get("pairs") is None:                 # the head-to-head pairs: fixed at the opening
+                pairs, st["pairs_from"] = h2h_pairs(c, event_key, live["markets"].get("h2h_from", "last_listed"))
+                st["pairs"] = [list(p) for p in pairs]
+            new = market_set(*run_prices(c, run_id), [tuple(p) for p in st["pairs"]], kinds)
         if mkts:                                        # markets listed at the opening stay; a new driver's are added
             keep = {m["key"] for m in new}
             new += [dict(m, fair=m["fair"]) for m in mkts if m["key"] not in keep]
@@ -451,7 +454,7 @@ def step(spec, now=None, fetch=True, unfreeze=False, echo=print, engine=None, en
         quotes = quotes_for(mkts, book, picks, qp, hs, decided)        # the maker now holds the other side
         meta = dict(sport="f1", event_key=event_key, title=spec.get("title") or w["name"], spec=spec.get("path"),
                     settings=live, opened_at=_iso(now), profile=live["sources"]["live"].get("profile"),
-                    h2h_from=live["markets"].get("h2h_from"))
+                    h2h_from=st.get("pairs_from"), h2h_pairs=st.get("pairs"))
         LV.write_meta(out, meta, now.strftime("%Y%m%dT%H%M%S"))
         st["opened"] = True
     if update.get("freeze"):

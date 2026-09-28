@@ -118,14 +118,51 @@ Everything around a sport's data stream is shared. Each sport adds an **adapter*
 - Where the Whistler run folder is present (the data bucket), the same test re-derives its book from `crowd.jsonl` and checks six replay pages byte for byte.
 - `/live` shows the most recently updated event; `/live?event=<run or event key>` shows any other.
 
-## Next: Formula 1
+## Running an event: `racinglines live`
 
-First test: **round 16, the Bahrain GP at Sepang, Malaysia (2–4 October 2026)**. Polymarket hasn't
-listed it, so it's a mock private book like Whistler's:
-- all 100 of Polymarket's usual race markets, priced from the model's stage runs;
-- updated at session ends, not from a live feed;
-- the same crowd and demo taker.
+One CLI for every sport. A **launch spec** (`live/<sport>/<event>.toml`, committed config) names the event, its
+feed and any overrides of the sport's `[live]` settings.
 
-It's built as a shared live core (book, crowd, quoting, replay, the tab's shell) plus an F1 adapter, so each
-sport keeps its own data stream. Plan and status: [F1 live test](f1-live-roadmap.md); priorities: the
-[Roadmap](todo.md#priorities).
+| Command | What it does |
+|---|---|
+| `racinglines live new f1 2026-16` | Write a launch spec from the schedule, with the sport's defaults and the demo taker's hype picks |
+| `racinglines live new mtb_dh <slug> --final 3 --quali 2,91` | The same for a downhill final (its feed arguments) |
+| `racinglines live step <spec>` | One idempotent update. F1: acts only when an update is due and its stage run is in; downhill: one poll |
+| `racinglines live run <spec>` | Step at the sport's cadence until the event is settled (F1: every 5 min; downhill: the poll loop) |
+| `racinglines live run <spec> --simulate --no-fetch` | F1: the whole weekend on a simulated clock (a rehearsal) |
+| `racinglines live agent <spec> [--install / --remove]` | A macOS LaunchAgent for the spec (`bet.racinglines.live.<run>`): F1 steps every 5 minutes; a lock stops overlapping steps; log in the run folder |
+| `racinglines live status` | Every event: live / replay / settled, last update, next update, lateness |
+
+`racinglines mtb_dh live …` still works as before. `step` options: `--now` (a simulated UTC time), `--no-fetch`,
+`--no-sync` (don't write positions), `--no-alert`, `--unfreeze`.
+
+## Formula 1: a weekend's private book
+
+`pipelines/live_f1.py`, settings in `sports/f1.toml` `[live]`. The plan and its decisions: [F1 live test](f1-live-roadmap.md).
+
+| | |
+|---|---|
+| Updates | Pre-weekend (the book opens), after each session (FP1, FP2, FP3; sprint weekends SQ and Sprint; Quali), lights out (the book closes), results (everything settles) |
+| Pricing | The demo maker's profile C (`gbm`): the stage run the signal engine also uses (`signals.price_stages_now`, reused when stored) |
+| Markets | Winner, podium, pole (22 each), head-to-head (the last listed race's pairs), top constructor (11): 99 for round 16 |
+| Quotes | Fair ± 3¢ pre-weekend, 2.5¢ after FP1 and FP2, 2¢ after FP3 and qualifying; leaning against inventory; 2,500 shares per market; frozen as posted after qualifying (pole markets unquoted: decided); none after lights out |
+| Crowd | The same 1,000 takers; one batch per update for the window since the last one, at 0.0006 hits per taker, per market, per hour, timed across the window; the pre-race window at 3× with fresh $100 caps |
+| Settlement | Pole from the qualifying classification at the after-Quali update; everything else from the race classification (`private_book.outcome_for`) |
+| Late data | An update waits for its stage run; one more than 2 hours late sends an alert. Missed updates merge into the next |
+| Files | `data/runs/live/<event>/`: as above, plus `state.json` (the engine's state) |
+
+## Adding a sport
+
+1. A `[live]` section in `sports/<code>.toml`: `adapter`, `poll` (cadence, `stale_h`), `markets.kinds`, `quoting`, `crowd`.
+2. An adapter module with `markets`, `step(spec, now, echo, **kw)`, `outcomes` and `view(run, snap, picks, hist, mode, maker)`. Its snapshots carry `done` (and `next_at` if updates are far apart); it writes them through `pipelines/live.py`, and its book through `markets/crowd.py`.
+3. A body partial, `templates/live_<code>.html`, rendered with the adapter's `view()` output.
+4. A launch spec, `live/<code>/<event>.toml`.
+
+Nothing in the core, the book, the crowd or the Live tab's shell changes.
+
+## First F1 test: round 16
+
+**The Bahrain GP at Sepang, Malaysia (2–4 October 2026)**, launch spec `live/f1/2026-16.toml`. Polymarket hasn't
+listed it, so it's a mock private book like Whistler's: 99 of Polymarket's usual race markets, priced from the
+model's stage runs, updated at session ends, with the same crowd and demo taker. Plan and status:
+[F1 live test](f1-live-roadmap.md); priorities: the [Roadmap](todo.md#priorities).

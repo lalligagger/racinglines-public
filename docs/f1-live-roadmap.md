@@ -363,10 +363,11 @@ Each item lists what "done" means. B0 matters in every scenario.
 - [x] **B5. The demo taker** *(Wed)*
   - Hype picks written at the pre-weekend update (`live_f1.make_picks`, from the launch spec's `[[picks]]`: name, market, hype, why; `vs` for a head-to-head), bought YES at the maker's ask for $25 each. A pick the book doesn't quote is left out.
   - Optional: A's calls against our quotes. Not built (the default: hype picks only).
-- [ ] **B6. Operations** *(Wed)*
-  - A LaunchAgent (`bet.racinglines.live`, every 5 minutes) with a lock so runs can't overlap.
-  - An alert when an update is more than 2 hours late.
-  - Settings frozen into `meta.json` at the pre-weekend update; changing them needs `--unfreeze` and a decision-log line.
+- [x] **B6. Operations** *(Wed)*
+  - A LaunchAgent per event (`racinglines live agent live/f1/2026-16.toml --install`: label `bet.racinglines.live.2026-16`, a step every 5 minutes, log in the run folder), with a lock in the run folder so steps can't overlap.
+  - An alert when an update is more than 2 hours late (`[live.poll] late_alert_h`), once per update, through the usual alert channels (`markets/alerts.deliver`); `racinglines live status` shows lateness too.
+  - Settings frozen into `meta.json` at the pre-weekend update, with the head-to-head pairs; a changed schema or spec is ignored with a warning unless `--unfreeze` (then add a decision-log line).
+  - Done: `tests/test_live_f1.py` (lock, plist, frozen settings, the lateness alert); round 16's opening dry-run on a simulated clock (99 markets, 90 quoted, 12 picks). The LaunchAgent itself is only loadable on the Mac.
 - [ ] **B7. Rehearsal on Baku** *(Wed–Thu)*
   - The whole weekend on a simulated clock, run under the LaunchAgent.
   - Done: all seven updates happen, pole settles after qualifying and everything else after the race, Positions is correct, replay works.
@@ -497,4 +498,6 @@ existing layout, and the report can be written by hand as Whistler's was.
 | 2026-09-29 | Updates missed while the engine was down merge into the next one (marked skipped in the snapshot), and its crowd batch covers the whole gap. A stage whose run never arrives by lights out is skipped. |
 | 2026-09-29 | Each crowd batch's seed is derived from the event and update label (logged in `crowd.jsonl`), so a rehearsal replays exactly. Window fills are timed uniformly across the window and filled in time order. |
 | 2026-09-29 | F1 crowd pace: 0.0006 hits per taker, per quoted market, per hour (about 60 an hour across the book), and 3× in the pre-race window with fresh $100 caps. Chosen a priori; Baku's rehearsal gives about 2,600 fills. |
+| 2026-09-29 | One LaunchAgent per event (`bet.racinglines.live.<run>`), so a downhill final and an F1 weekend can run side by side. |
+| 2026-09-29 | The head-to-head pairs are fixed at the book's opening (in `meta.json`): a Polymarket listing that appears mid-weekend doesn't change the book's markets. |
 

@@ -167,3 +167,73 @@ def test_baku_weekend_on_a_simulated_clock(tmp_path, monkeypatch):
             html = templates.get_template("live_partial.html").render(ctx)
             assert "Top constructor" in html and not re.search(r">\s*nan\b|\bnan\s*<|None</td>", html, re.I)
             assert ("<th>Fair</th>" in html) == maker
+
+
+# --- operations: the lock, the LaunchAgent, frozen settings, the lateness alert ---------------------------
+
+@pytest.mark.quick
+def test_lock_stops_overlapping_steps(tmp_path, monkeypatch):
+    from racinglines.cli import live as CL
+    monkeypatch.setattr(paths, "DATA", tmp_path)
+    with CL.lock("ev") as a:
+        with CL.lock("ev") as b:
+            assert a and not b                           # a second step while one runs: skipped
+    with CL.lock("ev") as c:
+        assert c                                         # released
+
+
+@pytest.mark.quick
+def test_launch_agent_steps_every_five_minutes():
+    from racinglines.cli import live as CL
+    spec = LV.load_spec(paths.ROOT / "live" / "f1" / "2026-16.toml")
+    xml = CL.plist(spec, root="/Users/x/racinglines")
+    assert "<string>bet.racinglines.live.2026-16</string>" in xml
+    assert "<key>StartInterval</key><integer>300</integer>" in xml
+    assert "<string>live</string><string>step</string><string>live/f1/2026-16.toml</string>" in xml
+    assert "/Users/x/racinglines/data/runs/live/2026-16/agent.log" in xml
+    import plistlib
+    assert plistlib.loads(xml.encode())["Label"] == "bet.racinglines.live.2026-16"
+
+
+@pytest.mark.quick
+def test_round_16_spec():
+    spec = LV.load_spec("f1/2026-16")
+    assert spec["event"] == spec["run"] == "2026-16" and spec["sport"] == "f1"
+    assert len(spec["picks"]) == 12 and all(p["market"] in F.KINDS for p in spec["picks"])
+    ups, w = F.plan("2026-16")
+    assert w["name"] == "Bahrain Grand Prix" and [u["at"].isoformat() for u in ups] == [
+        "2026-10-02T03:30:00", "2026-10-02T06:00:00", "2026-10-02T09:30:00", "2026-10-03T06:00:00",
+        "2026-10-03T09:30:00", "2026-10-04T07:00:00", "2026-10-04T10:00:00"]      # the plan's times (UTC)
+    assert spec["window"]["open"] == "2026-10-02T03:30:00" and spec["window"]["close"] == "2026-10-04T07:00:00"
+
+
+@pytest.mark.quick
+def test_settings_freeze_at_the_opening(tmp_path):
+    spec = LV.load_spec(paths.ROOT / "live" / "f1" / "2026-16.toml")
+    assert F.frozen_settings(spec, tmp_path) == spec["live"]                      # not opened yet: the spec's
+    (tmp_path / "meta.json").write_text(json.dumps(dict(settings=spec["live"])))
+    changed = LV.merge(spec, dict(live=dict(quoting=dict(max_pos=10.0))))
+    said = []
+    assert F.frozen_settings(changed, tmp_path, echo=said.append)["quoting"]["max_pos"] == 2500.0
+    assert "frozen" in said[0]
+    assert F.frozen_settings(changed, tmp_path, unfreeze=True, echo=said.append)["quoting"]["max_pos"] == 10.0
+
+
+def test_lateness_alert_once_per_update(tmp_path, monkeypatch):
+    try:
+        from racinglines.db.config import get_engine
+        with get_engine().connect():
+            pass
+    except Exception as ex:                              # noqa: BLE001
+        pytest.skip(f"no database: {ex}")
+    monkeypatch.setattr(paths, "DATA", tmp_path)
+    monkeypatch.setattr(F, "_stage_runs", lambda *a, **k: [])          # the stage run never arrives
+    spec = LV.load_spec(paths.ROOT / "live" / "f1" / "2026-16.toml")
+    said = []
+    assert F.step(spec, now="2026-10-02T04:00", fetch=False, alert=False, echo=said.append) is None
+    assert not any("LATE" in m for m in said)                                   # 30 min: waiting, not late
+    assert F.step(spec, now="2026-10-02T05:45", fetch=False, alert=False, echo=said.append) is None
+    assert sum("LATE" in m for m in said) == 1 and "pre-weekend" in said[-1]
+    F.step(spec, now="2026-10-02T05:50", fetch=False, alert=False, echo=said.append)
+    assert sum("LATE" in m for m in said) == 1                                  # once per update
+    assert F.status(spec, "2026-10-02T06:30")["late_h"] == 3.0
