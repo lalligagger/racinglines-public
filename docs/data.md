@@ -61,7 +61,7 @@ types (`*.parquet`, `*.csv`, …) everywhere, then allow-lists the minimal set a
 ## Data bucket
 
 Everything a cloud session needs that isn't in git lives in a private Google Cloud Storage
-bucket: the first piece of an eventual move to Google Cloud.
+bucket: the first piece of an eventual move to Google Cloud ([proposal](google-cloud.md)).
 
 | | |
 |---|---|

@@ -523,8 +523,9 @@ F1 adapter, keeping the platform multi-sport. Plan: [F1 live test](docs/f1-live-
 - [ ] A live timing feed (F1 SignalR or OpenF1) for in-session updates; in-race trading (F1-7) only
       if the owner decides to trade during races.
 - [ ] Kalshi and other exchanges ([F1-9](docs/todo.md#exchanges)); find a venue that lists downhill markets.
-- [ ] **Move to Google Cloud:** the data bucket is up ([Data](docs/data.md#data-bucket)); next, a proposal
-      for Cloud SQL, Cloud Run (web app, pollers, signal engine), Cloud Scheduler and service identities.
+- [ ] **Move to Google Cloud:** the data bucket is up ([Data](docs/data.md#data-bucket)) and the
+      [proposal](docs/google-cloud.md) is written (Cloud SQL, Cloud Run, Scheduler, service identities, about
+      $28–35 a month at list prices). Next: the owner's choices (database tier, recorder shape, domain).
 - [ ] New sports, beta testers and collaborators, B2B ([Business](docs/todo.md#business-and-collaborators)).
 - [ ] Before real users: remove the `demo_context` bubbles, fix the admin P&L, check data and settlement terms.
 
