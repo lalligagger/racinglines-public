@@ -135,9 +135,10 @@ several prints looks like several takers). The tape is thick on winner, pole, po
 thin on fastest lap and top constructor (median 10–12 trades per market over a weekend in 2026). 2025's race
 markets opened only 2–4 days before each race and are thinner ([Data changes](data-changes.md)).
 
-**Reading archived Kalshi rows.** `markets/store.py` reads `data/archive/markets/polymarket/` unless given
-`root=paths.archive_markets("kalshi")`. `markets archive` and the recorder's hourly archive pass are not per
-exchange yet: they move stale Kalshi rows into the Polymarket tree too (seen on 2026-09-28).
+**One store, a tree per exchange.** `markets archive` and the recorder's hourly pass write each row to its
+market's exchange tree (`market_links.exchange`; a token without a link counts as Polymarket), and
+`markets/store.py` reads every exchange's tree unless given a `root`, so Kalshi rows are read like Polymarket's.
+Before 2026-09-28 the archive pass wrote everything to the Polymarket tree ([Data changes](data-changes.md)).
 
 ## Respecting the sources' limits
 

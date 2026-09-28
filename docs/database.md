@@ -324,11 +324,11 @@ Migrations so far (in order, `migrations/versions/`):
 | Snapshot of the model tables, market links files | Parquet, `data/archive/db/`, `data/archive/markets/{polymarket,kalshi}/links/` | Rebuild or replicate a database without the sources |
 
 - **Reading:** everything goes through `racinglines/markets/store.py` (`read`, `last_before`),
-  which merges both stores and drops duplicates. Callers don't need to know
-  where a row lives.
+  which merges both stores (Postgres and every exchange's Parquet tree) and drops duplicates.
+  Callers don't need to know where a row lives.
 - **Moving data:** `racinglines markets archive` applies the retention rule
   (`hot_tokens`). It moves rows with `DELETE … RETURNING`, and writes and
-  verifies the Parquet before the transaction commits. The recorder
-  (`markets record`) runs it every hour.
+  verifies the Parquet before the transaction commits, each row in its market's
+  exchange tree (`market_links.exchange`). The recorder (`markets record`) runs it every hour.
 - **Options:** `--vacuum-full` returns freed space to the OS, `--compact`
   merges each month into one file, and `--stats` shows where the rows are.
