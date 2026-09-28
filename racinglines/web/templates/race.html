@@ -1,13 +1,13 @@
-{% extends "base.html" %}{% from "_macros.html" import bar, pct, venue_chips, chart, csrf %}
+{% extends "base.html" %}{% from "_macros.html" import bar, pct, venue_chips, chart, csrf, flash %}
 {% block title %}{{ info.title }}{% endblock %}
 {% block content %}
 <p class="crumbs"><a href="/markets">Markets</a> › {{ info.sport }}{% if info.season %} › {{ info.season }}{% endif %}{% if info.event_id %} › <a href="/events/{{ info.event_id }}">event page</a>{% endif %}</p>
 <h1>{{ info.title }} {% if info.status %}<span class="chip status-{{ info.status }}">{{ info.status|replace('_', ' ') }}</span>{% endif %}</h1>
 <p class="sub">{{ info.name or "" }}{% if info.start_date %} · {{ info.start_date|fmt }}{% endif %}{% if countdown and not completed %} · {{ countdown }}{% endif %}</p>
-{% if msg %}<p class="good">{{ msg }}</p>{% endif %}
+{{ flash(msg) }}
 
 <div class="kpis">
-  <div class="kpi"><div class="l">Our fair values</div><div class="v" style="font-size:16px">{{ pricing.source }}</div>
+  <div class="kpi"><div class="l">Our fair values</div><div class="v sm">{{ pricing.source }}</div>
     <div class="s">{% if pricing.run_id %}run <a href="{{ '/lab/diagnostics/' if 'diagnostic' in pricing.source else '/lab/runs/' }}{{ pricing.run_id }}">#{{ pricing.run_id }}</a>{% endif %}{% if pricing.as_of is not none %} · as of {{ pricing.as_of|fmt }} UTC{% endif %}</div></div>
   {% if fav %}<div class="kpi"><div class="l">{{ "Favourite" if not season else "Leader" }}</div><div class="v">{{ fav.subject }}</div><div class="s">{{ pct(fav.fair, 1) }} {{ fav.kind_label|lower }}{% if fav.pm_mid is not none %} · market {{ pct(fav.pm_mid, 1) }}{% endif %}</div></div>{% endif %}
   {% if winner %}<div class="kpi"><div class="l">Result</div><div class="v">{{ winner.subject }}</div><div class="s">we had {{ pct(winner.fair, 1) }}{% if winner.pm_mid is not none %} · Polymarket {{ pct(winner.pm_mid, 1) }} at the same time{% endif %}</div></div>{% endif %}
@@ -49,7 +49,7 @@
 {% elif season %}<p>Season markets: mirror a Polymarket event from the <a href="/markets/polymarket">Polymarket list</a>, or <a href="/book/quotes?race_id=0">manage my season markets</a>.</p>
 {% else %}
 <form method="post" action="/book/quotes/generate" class="jobform">{{ csrf() }}<input type="hidden" name="race_id" value="{{ info.race_id }}"><input type="hidden" name="next" value="/races/{{ info.race_id }}">
-  <label><span>Markets</span><span style="display:flex;gap:10px;color:var(--fg);font-size:14px">{% for k in quote_kinds %}<label style="margin:0"><input type="checkbox" name="kinds" value="{{ k }}" checked> {{ kind_label.get(k, k) }}</label>{% endfor %}</span></label>
+  <label><span>Markets</span><span class="checks">{% for k in quote_kinds %}<label class="inline"><input type="checkbox" name="kinds" value="{{ k }}" checked> {{ kind_label.get(k, k) }}</label>{% endfor %}</span></label>
   <label><span>Top N athletes</span><input name="top_n" value="12" type="number" min="1" max="60"></label>
   <label><span>Spread (pts)</span><input name="spread_pct" value="6" type="number" step="0.5" min="1" max="30"></label>
   <label><button class="primary">Quote privately</button></label>
@@ -93,7 +93,7 @@
 {% elif season %}<p>Season markets: mirror a Polymarket event from the <a href="/markets/polymarket">Polymarket list</a>, or <a href="/book/quotes?race_id=0">manage my season markets</a>.</p>
 {% else %}
 <form method="post" action="/book/quotes/generate" class="jobform">{{ csrf() }}<input type="hidden" name="race_id" value="{{ info.race_id }}"><input type="hidden" name="next" value="/races/{{ info.race_id }}">
-  <label><span>Markets</span><span style="display:flex;gap:10px;color:var(--fg);font-size:14px">{% for k in quote_kinds %}<label style="margin:0"><input type="checkbox" name="kinds" value="{{ k }}" checked> {{ kind_label.get(k, k) }}</label>{% endfor %}</span></label>
+  <label><span>Markets</span><span class="checks">{% for k in quote_kinds %}<label class="inline"><input type="checkbox" name="kinds" value="{{ k }}" checked> {{ kind_label.get(k, k) }}</label>{% endfor %}</span></label>
   <label><span>Top N athletes</span><input name="top_n" value="12" type="number" min="1" max="60"></label>
   <label><span>Spread (pts)</span><input name="spread_pct" value="6" type="number" step="0.5" min="1" max="30"></label>
   <label><button class="primary">Quote privately</button></label>

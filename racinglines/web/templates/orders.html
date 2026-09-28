@@ -2,6 +2,7 @@
 {% block title %}Orders{% endblock %}
 {% block content %}
 <h1>Orders</h1>
+{% include "_admin_nav.html" %}
 <div class="card"><h2>Open orders on Polymarket</h2>
 {% if live_error %}<p class="bad">{{ live_error }}</p>{% elif not (trading.enabled and trading.has_key) %}<p class="muted">Live order list needs trading enabled.</p>
 {% elif live %}<div class="scroll"><table><thead><tr><th class="l">id</th><th>side</th><th>price</th><th>original size</th><th>matched</th><th class="l">status</th></tr></thead><tbody>

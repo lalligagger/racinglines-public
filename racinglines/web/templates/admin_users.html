@@ -1,8 +1,9 @@
-{% extends "base.html" %}{% from "_macros.html" import csrf %}
+{% extends "base.html" %}{% from "_macros.html" import csrf, flash %}
 {% block title %}Users{% endblock %}
 {% block content %}
 <h1>Users</h1>
-{% if msg %}<p class="{{ 'bad' if msg.startswith('Error') else 'good' }}">{{ msg }}</p>{% endif %}
+{% include "_admin_nav.html" %}
+{{ flash(msg) }}
 <div class="card"><h2>Add a user</h2>
 <form method="post" action="/admin/users">{{ csrf() }}
   <label><span>Username</span><input name="username" required size="14"></label>

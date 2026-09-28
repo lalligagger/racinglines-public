@@ -1,0 +1,20 @@
+{# The demo taker's hype picks: for a taker its own bets and their P&L; for the maker, its exposure to them.
+   Shared by the sports' bodies: F1 picks carry subject + kind, downhill picks rider + market (+ rider_status). #}
+{% from "_macros.html" import pnl %}
+{% macro pc(x) %}{% if x is not none and x >= 0.0005 %}{{ "%.1f"|format(x * 100) }}%{% elif x is not none %}<span class="muted">–</span>{% endif %}{% endmacro %}
+{% macro px(x) %}{{ "%.2f"|format(x) if x is not none else "–" }}{% endmacro %}
+{% set kind_word = {"race_win": "wins", "race_podium": "on the podium", "race_pole": "on pole", "race_h2h": "(first ahead)", "race_constructor_top": "top constructor", "race_safety_car": "in the race", "race_red_flag": "in the race", "race_rain": "in the race", "race_fastest_lap": "fastest lap"} %}
+<div class="card"><div class="section-head"><h2>{{ "The taker's picks: your exposure" if maker else "Your picks" }}</h2>
+{% if picks %}<span class="muted">{{ picks|length }} bets, ${{ "%.0f"|format(tot.stake) }} staked ·
+  {% if maker %}the maker's P&amp;L on them, {{ "settled" if snap.done else "marked to fair" }}: {{ pnl(tot.maker_pnl, True) }}
+  {% else %}worth <b>${{ "%.2f"|format(tot.value) }}</b> now · P&amp;L {{ pnl(tot.pnl, True) }}{% endif %}
+  {% if tot.won or tot.lost %} · {{ tot.won }} won, {{ tot.lost }} lost{% endif %}</span>{% endif %}</div>
+{% if picks %}<div class="scroll"><table><thead><tr><th class="l">Bet</th><th>Paid</th><th>Shares</th><th>{{ "Fair now" if maker else "Price now" }}</th><th>{{ "Maker P&L" if maker else "P&L" }}</th><th class="l">Hype</th><th class="l"></th></tr></thead><tbody>
+{% for p in picks %}{% set v = p.maker_pnl if maker else p.pnl %}<tr>
+  <td class="l">YES · {% if p.get('subject') %}{{ p.subject }} <span class="muted">{{ kind_word.get(p.kind, "") }}</span>{% else %}{{ p.rider }} {{ "wins" if p.market == 'win' else "on the podium" }}{% endif %}</td>
+  <td>{{ px(p.price) }}</td><td>{{ "%.0f"|format(p.shares) }}</td>
+  <td>{% if maker %}{{ pc(p.fair) }}{% else %}{{ px(p.now) }}{% endif %}</td>
+  <td>{{ pnl(v) }}</td>
+  <td class="l">{{ "🔥" * p.hype }} <span class="muted">{{ p.why }}</span></td>
+  <td class="l">{% if p.state == 'won' %}<span class="pill yes">won</span>{% elif p.state == 'lost' %}<span class="pill no">lost</span>{% elif p.get('rider_status') == 'InRace' %}<span class="pill yes">on course</span>{% elif p.get('rider_status') == 'Finished' %}<span class="muted">finished</span>{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>{% else %}<p class="muted">No picks.</p>{% endif %}</div>

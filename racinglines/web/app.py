@@ -227,9 +227,9 @@ templates.env.filters["money"] = money
 DEMO_CONTEXT = {"on": os.environ.get("RACINGLINES_DEMO_CONTEXT", "1") != "0"}
 templates.env.globals["demo_context_on"] = lambda: DEMO_CONTEXT["on"]      # read at render time
 templates.env.globals["csrf_token"] = CSRF_TOKEN
-# the stylesheet's URL carries its mtime, so a CSS change is a new URL: no stale copy from the browser or
+# the stylesheet's and scripts' URLs carry the newest static file's mtime, so a change is a new URL: no stale copy from the browser or
 # Cloudflare's edge cache (read at render time)
-templates.env.globals["css_v"] = lambda: int((HERE / "static" / "style.css").stat().st_mtime)
+templates.env.globals["css_v"] = lambda: int(max(p.stat().st_mtime for p in (HERE / "static").glob("*.*")))
 
 
 def _seen_since(user):

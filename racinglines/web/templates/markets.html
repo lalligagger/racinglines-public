@@ -2,6 +2,7 @@
 {% block title %}Markets{% endblock %}
 {% block content %}
 <h1>Linked markets</h1>
+{% include "_admin_nav.html" %}
 <p><a href="/markets/linked/lookup">+ Link a Polymarket market</a></p>
 {% if links %}<div class="scroll"><table>
 <thead><tr><th class="l">Market</th><th class="l">Outcome</th><th class="l">Athlete</th><th class="l">Prediction</th><th class="l">Race</th><th>Model fair price</th><th>Active</th><th></th></tr></thead>

@@ -1,9 +1,8 @@
-{% extends "base.html" %}{% from "_macros.html" import bar, pct, venue_chips, new_badge, paper_banner %}
+{% extends "base.html" %}{% from "_macros.html" import bar, pct, venue_chips, new_badge, paper_banner, page_head %}
 {% block title %}Markets{% endblock %}
 {% block content %}
-<h1>Markets</h1>
+{% call page_head("Markets", "Every sport we price: what's next, what's live on each venue, and how we did lately.") %}<a href="/markets/polymarket">All Polymarket markets →</a>{% endcall %}
 {{ paper_banner(signals_nav) }}
-<p class="sub">Every sport we price: what's next, what's live on each venue, and how we did lately.</p>
 
 <div class="kpis">
   <div class="kpi"><div class="l">Exchange outcomes we price</div><div class="v">{{ h.outcomes }}</div><div class="s">{{ h.markets }} markets · ${{ "{:,.1f}M".format(h.volume / 1e6) if h.volume >= 1e6 else "{:,.0f}".format(h.volume) }} traded</div></div>
@@ -32,7 +31,7 @@
     <div>{% for o in s.season.top %}<div class="pr"><span>{{ o.subject }}</span>{{ bar(o.fair, o.pm_mid) }}<span class="num">{{ pct(o.fair) }}</span></div>{% endfor %}
       <div class="legend">champion probability{% if s.season.top and s.season.top[0].pm_mid is not none %} · <i style="background:var(--warn)"></i>Polymarket{% endif %}</div></div>
     {% if s.season.constructors %}<div class="legend">Constructors: {% for o in s.season.constructors %}{{ o.subject }} {{ pct(o.fair) }}{{ " · " if not loop.last }}{% endfor %}</div>{% endif %}
-    {% set st = s.season.strategy %}{% if st %}<div style="border-top:1px solid var(--line); padding-top:8px">
+    {% set st = s.season.strategy %}{% if st %}<div class="ecard-foot">
       <div class="legend">Default season strategy (replayed on Polymarket's prices)</div>
       <div><b class="{{ 'good' if st.summary.pnl >= 0 else 'bad' }}">{{ st.summary.pnl|money(true) }}</b> <span class="muted">since pre-season · {{ st.summary.open_positions }} open · hold {{ st.hold.pnl|money(true) }}</span></div>
       {% for a in st.actions[:3] %}<div class="legend">Now: <b>{{ a.action }}</b> {{ a.subject }} ({{ "%+.0f"|format(a.edge * 100) }} pts)</div>{% else %}<div class="legend">Now: no trade (no edge ≥ {{ "%.0f"|format(st.params.min_edge * 100) }} pts)</div>{% endfor %}
@@ -48,5 +47,5 @@
   <div class="legend">{{ r.source }}{% if r.diag %} · <a href="/lab/diagnostics/{{ r.diag }}">diagnostic →</a>{% endif %}</div>
 </div>{% endfor %}</div>{% endif %}
 {% endfor %}
-<p class="legend" style="margin-top:24px">Browse <a href="/markets/polymarket">all Polymarket markets</a> · <a href="/events">all events</a> · <a href="/athletes">all athletes</a>. Bars: our fair probability; the orange tick is the exchange price.</p>
+<p class="legend mt">Browse <a href="/markets/polymarket">all Polymarket markets</a> · <a href="/events">all events</a> · <a href="/athletes">all athletes</a>. Bars: our fair probability; the orange tick is the exchange price.</p>
 {% endblock %}

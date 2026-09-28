@@ -1,11 +1,9 @@
-{% extends "base.html" %}{% from "_macros.html" import paper_banner, demo_context %}
+{% extends "base.html" %}{% from "_macros.html" import paper_banner, demo_context, flash, page_head %}
 {% block title %}Markets{% endblock %}
 {% block content %}
-<h1>Markets</h1>
+{{ page_head("Markets", "Every open F1 market on Polymarket (" ~ n_markets ~ " outcomes; synced " ~ synced|fmt ~ " UTC)" ~ (", with " ~ profile.name ~ "'s current call on each: which side, how many shares, the most to pay, and how hot it is" if profile else "") ~ ". Prices are Polymarket's, per $1 payout.") }}
 {{ paper_banner(signals_nav) }}
-{% if msg %}<p class="{{ 'bad' if msg.startswith('Error') else 'good' }}">{{ msg }}</p>{% endif %}
-<p class="sub">Every open F1 market on Polymarket ({{ n_markets }} outcomes; synced {{ synced|fmt }} UTC){% if profile %}, with <b>{{ profile.name }}</b>'s current call on each:
-  which side, how many shares, the most to pay, and how hot it is{% endif %}. Prices are Polymarket's, per $1 payout.</p>
+{{ flash(msg) }}
 {% if profile %}<p class="legend">Heat grades how much the model expects an entry to earn:
   <span class="heat h1">warm</span> <span class="heat h2">hot</span> <span class="heat h3">very hot</span>. It's a guide, not a promise.
   Calls update after every practice and qualifying session.</p>{% endif %}
@@ -24,17 +22,17 @@
 
 <h2>Upcoming races</h2>
 {% for rc in races %}
-<h3 style="margin-top:14px">{{ rc.name }}{% if rc.location %} · {{ rc.location }}{% endif %} <span class="muted" style="font-size:13px">· race {{ rc.start|fmt }} UTC</span></h3>
+<h3 class="mt">{{ rc.name }}{% if rc.location %} · {{ rc.location }}{% endif %} <span class="muted small">· race {{ rc.start|fmt }} UTC</span></h3>
 {% for e in rc.events %}{{ event_card(e) }}{% else %}
 <p class="muted">Polymarket hasn't listed markets for this race yet. They usually appear 3 to 4 weeks before the race; they'll show here{% if profile %}, with {{ profile.name.split(' ')[0] }}'s calls,{% endif %} as soon as they do.</p>
 {% endfor %}
 {% endfor %}
 
-{% if season %}<h2 style="margin-top:28px">Season markets</h2>
+{% if season %}<h2 class="mt">Season markets</h2>
 {% if profile %}<p class="legend">{{ profile.name }} trades race-weekend markets only, so these carry no call.</p>{% endif %}
 {% for e in season %}{{ event_card(e) }}{% endfor %}{% endif %}
 
-{% if other %}<h2 style="margin-top:28px">Everything else</h2>
+{% if other %}<h2 class="mt">Everything else</h2>
 <p class="legend">Props, and markets of races already run that Polymarket hasn't resolved yet.</p>
 {% for e in other %}{{ event_card(e) }}{% endfor %}{% endif %}
 

@@ -1,15 +1,15 @@
-{% extends "base.html" %}{% from "_macros.html" import chart, demo_context %}
+{% extends "base.html" %}{% from "_macros.html" import chart, demo_context, kpi, pnl, page_head %}
 {% block title %}Strategy{% endblock %}
 {% block content %}
-<h1>Strategy{% if viewer.id != user.id %} <span class="muted">· {{ viewer.username }}</span>{% endif %}</h1>
-<p class="sub">The strategy this account runs: its calls on each race weekend, stage by stage, how it has done, and how it got here. Paper only: nothing is sent to an exchange. What it holds is on <a href="/positions">Positions</a>.</p>
+{% call page_head("Strategy" ~ (" · " ~ viewer.username if viewer.id != user.id else ""), "The strategy this account runs: its calls on each race weekend, stage by stage, how it has done, and how it got here. Paper only: nothing is sent to an exchange.") %}
+<a href="/positions">What it holds: Positions →</a>
 {% if users %}<form method="get" class="inline"><label><span>User</span><select name="user" onchange="this.form.submit()">
-  {% for u in users %}<option {{ 'selected' if u == viewer.username }}>{{ u }}</option>{% endfor %}</select></label></form>{% endif %}
+  {% for u in users %}<option {{ 'selected' if u == viewer.username }}>{{ u }}</option>{% endfor %}</select></label></form>{% endif %}{% endcall %}
 
 {% if not profile and not record %}<p class="muted">No strategy profile is assigned to this account. An admin can assign one on the user's admin page.</p>{% else %}
 {% set k = acct.kpis %}
-<div class="kpis">
-  <div class="kpi"><div class="l">Running now</div><div class="v" style="font-size:18px">{{ profile.name if profile else "–" }}</div><div class="s">{{ profile.strategy if profile }}{% if show_fair and profile %} · <code>{{ profile.settings.variant }}</code>{% endif %}{% if profile and profile.follow_rate %} · takes about {{ "%.0f"|format(profile.follow_rate * 100) }}% of signals{% endif %}</div></div>
+<div class="kpis hero">
+  <div class="kpi"><div class="l">Running now</div><div class="v sm">{{ profile.name if profile else "–" }}</div><div class="s">{{ profile.strategy if profile }}{% if show_fair and profile %} · <code>{{ profile.settings.variant }}</code>{% endif %}{% if profile and profile.follow_rate %} · takes about {{ "%.0f"|format(profile.follow_rate * 100) }}% of signals{% endif %}</div></div>
   <div class="kpi"><div class="l">Paper P&amp;L</div><div class="v {{ 'good' if k.total > 0 else ('bad' if k.total < 0) }}">{{ k.total|money(true) }}</div><div class="s">cumulative, since the first weekend</div></div>
   <div class="kpi"><div class="l">Worst drawdown</div><div class="v bad">{{ k.max_dd|money(true) }}</div><div class="s">from a peak of cumulative P&amp;L</div></div>
   <div class="kpi"><div class="l">Most capital in use</div><div class="v">${{ "{:,.0f}".format(k.peak_deployed) }}</div><div class="s">in any one weekend</div></div>
@@ -24,7 +24,7 @@ Mid-season it follows the setup that has made the most, if the lead is over $100
 the noise floor of the leader (about $350 a season, below which differences are simulation noise) and commits to the <b>most consistent</b> one.
 The tables below are that evidence, as the account saw it at each point.{% endcall %}
 {% for d in acct.decisions %}{% set ph = acct.phases[loop.index0] if loop.index0 < acct.phases|length else none %}
-<h3 style="margin-top:18px">{{ d.label }}{% if d.switched and not loop.first %} · <span class="good">switched</span>{% endif %}</h3>
+<h3 class="mt">{{ d.label }}{% if d.switched and not loop.first %} · <span class="good">switched</span>{% endif %}</h3>
 {% if not d.table %}{% call demo_context() %}No Polymarket race-market history yet, so the account starts on the defaults: <b>{{ d.chosen }}</b>.{% endcall %}
 {% else %}<p class="legend">{{ d.weekends }} weekends of evidence{% if d.kind == 'season' %}; the band within the noise floor of the leader is highlighted{% endif %}. Chosen: <b>{{ d.chosen }}</b>.</p>
 <div class="scroll"><table><thead><tr><th class="l">Setup (strategy · model and settings)</th><th>P&amp;L so far</th><th>Weekends up</th><th>Worst weekend</th><th>Max drawdown</th><th>Consistency</th><th class="l"></th></tr></thead><tbody>
@@ -69,7 +69,7 @@ market's later signals to the exit. Being choosy keeps its stakes small and give
 {% endfor %}
 </tbody></table></div></div>
 
-{% if cur %}<h2 style="margin-top:28px">{{ cur.event_name or cur.event_key }} <span class="muted" style="font-size:14px">· {{ cur.profile }}{% if cur.backfill %} · backtest replay{% endif %}</span></h2>{% endif %}
+{% if cur %}<h2 class="mt">{{ cur.event_name or cur.event_key }} <span class="muted small">· {{ cur.profile }}{% if cur.backfill %} · backtest replay{% endif %}</span></h2>{% endif %}
 
 {% if not maker and stages %}<p class="legend">Heat: how much the model expects an entry to earn,
   <span class="heat h1">warm</span> <span class="heat h2">hot</span> <span class="heat h3">very hot</span>

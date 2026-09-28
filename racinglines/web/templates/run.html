@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% from "_macros.html" import table %}
 {% block title %}Run {{ run.id }}{% endblock %}
 {% block content %}
-<p><a href="/lab">← Lab</a></p>
+<p class="crumbs"><a href="/lab">Lab</a> › Run #{{ run.id }}</p>
 <h1>Model run #{{ run.id }} · {{ run.kind }}</h1>
 <p class="muted">{{ run.competition }} {{ run.season or "" }} {{ run.category_code or "" }} · created {{ run.created_at|fmt }} · data through {{ run.data_through|fmt }} · code {{ run.code_version }}</p>
 <details class="card"><summary>Parameters</summary><pre>{{ run.params }}</pre></details>

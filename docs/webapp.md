@@ -1,7 +1,12 @@
 # Web app & trading
 
 `racinglines/web/` is the maker/taker web app (FastAPI, server-rendered pages, no
-JavaScript framework) on top of the [database](database.md).
+JavaScript framework) on top of the [database](database.md). Partial updates (the Live
+tab's refresh and replay, the Lab's sections and Edge Finder) are [htmx](https://htmx.org)
+attributes on the templates (`static/htmx.min.js`, vendored); the little browser-side state
+(open Lab sections, the replay player) is in `static/app.js`. The look is one stylesheet,
+`static/style.css`, in sections (tokens, base, layout, components, pages); shared pieces
+(the page head, flashes, KPIs, signed money) are macros in `templates/_macros.html`.
 
 ```
 ADMIN_PASSWORD=choose-one racinglines web        # http://127.0.0.1:8000, user "admin"

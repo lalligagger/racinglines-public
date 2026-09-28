@@ -1,19 +1,16 @@
-{% extends "base.html" %}{% from "_macros.html" import csrf, new_badge %}
+{% extends "base.html" %}{% from "_macros.html" import csrf, new_badge, flash, page_head %}
 {% block title %}Polymarket{% endblock %}
 {% block content %}
 <p class="crumbs"><a href="/markets">Markets</a> › Polymarket</p>
-<h1>Polymarket markets</h1>
-<p class="sub">Every F1 event listed on Polymarket, including outcomes we don't price. Mirror an event into my private book, or open a race from the <a href="/markets">Markets</a> for the full view.</p>
-{% if msg %}<p class="good">{{ msg }}</p>{% endif %}
-
-<form method="get" class="inline">
+{% call page_head("Polymarket markets", "Every F1 event listed on Polymarket, including outcomes we don't price. Mirror an event into my private book, or open a race from Markets for the full view.") %}
+<form method="post" action="/markets/polymarket/sync" class="inline">{{ csrf() }}<button>Refresh from Polymarket</button></form>{% endcall %}
+{{ flash(msg) }}
+<form method="get" class="toolbar">
   <label><span>Show</span><select name="show" onchange="this.form.submit()"><option value="modeled" {% if show == 'modeled' %}selected{% endif %}>markets we price</option><option value="all" {% if show == 'all' %}selected{% endif %}>all F1 markets</option></select></label>
   <label><span>Include closed</span><select name="closed" onchange="this.form.submit()"><option value="0">no</option><option value="1" {% if closed %}selected{% endif %}>yes</option></select></label>
   <label><span>Quote spread (pts)</span><input name="spread_pct" value="{{ '%g'|format(spread_pct) }}" size="3"></label><button>Apply</button>
-</form>
-<form method="post" action="/markets/polymarket/sync" class="inline">{{ csrf() }}<button>Refresh from Polymarket</button></form>
-<span class="muted">Last sync {{ synced|fmt }}. Edge = our fair − Polymarket mid (positive = we think YES is cheap).
-⚠ marks gaps over 10 pts: usually a model blind spot rather than an edge — check before quoting.</span>
+<span class="links">Last sync {{ synced|fmt }}</span></form>
+<p class="legend">Edge = our fair − Polymarket mid (positive = we think YES is cheap). ⚠ marks gaps over 10 pts: usually a model blind spot rather than an edge; check before quoting.</p>
 {% if not events %}<p class="muted">No linked markets yet. Refresh from Polymarket.</p>{% endif %}
 {% for ev in events %}
 <div class="card">

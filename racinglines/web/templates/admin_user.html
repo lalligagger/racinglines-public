@@ -2,6 +2,7 @@
 {% block title %}{{ u.username }}{% endblock %}
 {% block content %}
 <h1>{{ u.username }} <span class="role role-{{ u.role }}">{{ u.role }}</span>{% if not u.active %} <span class="bad">(inactive)</span>{% endif %}</h1>
+{% include "_admin_nav.html" %}
 <p class="muted">{{ u.display_name }} · created {{ u.created_at|fmt }} · <a href="/admin/activity?user={{ u.username }}">activity</a> · <a href="/admin/users">edit</a></p>
 <div class="card"><h2>Strategy profile</h2>
 <p class="muted">The Lab candidate whose live paper signals this user sees on <a href="/strategy">Strategy</a> (recommendations only: nothing is sent to an exchange).</p>

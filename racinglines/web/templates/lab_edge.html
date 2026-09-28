@@ -1,22 +1,22 @@
 <div id="edge-root" data-combos='{{ combos|tojson }}'>
-<h2>Edge Finder <span class="tabs inline-tabs" role="group" aria-label="Season">{% for y in years %}<button type="button" data-edge="year" data-year="{{ y }}" aria-pressed="{{ 'true' if y == year else 'false' }}">{{ y }}</button>{% endfor %}</span></h2>
+<h2>Edge Finder <span class="tabs inline-tabs" role="group" aria-label="Season">{% for y in years %}<button type="button" hx-post="/lab/edge" hx-target="#edge" hx-swap="innerHTML" hx-vals='{"action": "year", "year": "{{ y }}"}' aria-pressed="{{ 'true' if y == year else 'false' }}">{{ y }}</button>{% endfor %}</span></h2>
 <p class="sub">{% if year == 2026 %}Every 2026 weekend raced so far ({{ ef.n_weekends }}){% else %}The 2025 season ({{ ef.n_weekends }} weekends), as if we had been live from its first race: every price uses only data from before that moment{% endif %}, re-priced after each session, traded on Polymarket's recorded prices and trades, and settled on the result. Nothing is simulated on this page; new combos come from an <a href="/lab?job=f1_sweep#run">Edge Finder sweep</a> or a search. Add combos here or from <a href="#models" data-open="models">Model variants</a>, <a href="#backtests" data-open="backtests">Backtests</a> and <a href="#jobs" data-open="jobs">Jobs</a>.</p>
 
-<form class="edge-add jobform" onsubmit="return false">
+<form class="edge-add jobform" onsubmit="return false" hx-post="/lab/edge" hx-target="#edge" hx-swap="innerHTML" hx-include="this">
   <label><span>Configuration</span><select name="variant">{% for ref, lab in models %}<option value="{{ ref }}">{{ lab }}</option>{% endfor %}</select></label>
   <label><span>Strategy</span><select name="strategy">{% for k, lab in strategies %}<option value="{{ k }}">{{ lab }}</option>{% endfor %}</select></label>
-  <button type="button" class="primary" data-edge="add" data-from-form>Add combo</button>
-  <button type="button" data-edge="add_model" data-from-form title="This configuration with every strategy already shown">Add configuration</button>
-  <button type="button" data-edge="add_strategy" data-from-form title="This strategy with every configuration already shown">Add strategy</button>
-  <button type="button" data-edge="reset" title="Baseline, every strategy">Reset</button>
-  <button type="button" data-edge="clear">Clear</button>
+  <button type="button" class="primary" hx-vals='{"action": "add"}'>Add combo</button>
+  <button type="button" hx-vals='{"action": "add_model"}' title="This configuration with every strategy already shown">Add configuration</button>
+  <button type="button" hx-vals='{"action": "add_strategy"}' title="This strategy with every configuration already shown">Add strategy</button>
+  <button type="button" hx-vals='{"action": "reset"}' hx-include="unset" title="Baseline, every strategy">Reset</button>
+  <button type="button" hx-vals='{"action": "clear"}' hx-include="unset">Clear</button>
 </form>
 
 {% if not ef.cards and not ef.missing and not ef.benchmark %}<p class="muted">No full-season sweep saved for {{ year }} yet: run an <a href="/lab?job=f1_sweep#run">Edge Finder sweep</a>.</p>{% endif %}
 <div class="kpis">{% set b = ef.benchmark %}{% if b %}<div class="kpi bench" title="Pinned: every combo is compared with it. Always the default-settings baseline sweep, so other configurations never replace it.">
 <div class="l">Benchmark · {{ b.label }}</div><div class="l muted"><a href="/lab/runs/{{ b.run_id }}">baseline, run #{{ b.run_id }}</a></div>
 <div class="v {{ 'good' if b.pnl >= 0 else 'bad' }}">{{ b.pnl|money(true) }}</div><div class="s">on ${{ "{:,.0f}".format(b.volume) }} filled · {{ b.up }}/{{ b.weekends }} weekends up · pinned</div></div>{% endif %}{% for c in ef.cards %}
-<div class="kpi{{ ' best' if c.best }}"><button type="button" class="x" data-edge="remove" data-variant="{{ c.ref }}" data-strategy="{{ c.strategy }}" title="Remove from Edge Finder" aria-label="Remove {{ c.label }} · {{ c.name }}">×</button>
+<div class="kpi{{ ' best' if c.best }}"><button type="button" class="x" hx-post="/lab/edge" hx-target="#edge" hx-swap="innerHTML" hx-vals='{"action": "remove", "variant": {{ c.ref|tojson }}, "strategy": {{ c.strategy|tojson }}}' title="Remove from Edge Finder" aria-label="Remove {{ c.label }} · {{ c.name }}">×</button>
 <button type="button" class="star" data-cand="add" data-variant="{{ c.ref }}" data-strategy="{{ c.strategy }}" title="Make this a Lab candidate (load it in the sweep form and tweak it)" aria-label="Make {{ c.label }} · {{ c.name }} a candidate">★</button>
 <div class="l">{{ c.label }}{{ " *" if c.in_sample }}</div><div class="l muted"><a href="/lab/runs/{{ c.run_id }}" title="{{ c.name }}">{{ c.name|truncate(46) }}</a></div>
 <div class="v {{ 'good' if c.pnl >= 0 else 'bad' }}">{{ c.pnl|money(true) }}</div><div class="s">on ${{ "{:,.0f}".format(c.volume) }} {{ c.volume_label }} · {{ c.up }}/{{ c.weekends }} weekends up{% if c.vs_base is not none %} · <span class="{{ 'good' if c.vs_base > 0 else 'bad' }}">{{ c.vs_base|money(true) }}</span> vs baseline{% if not c.same_data %}<span title="The baseline wasn't priced from exactly the same data as this run"> †</span>{% endif %}{% endif %}{% if c.vs_bench is not none %} · <span class="{{ 'good' if c.vs_bench > 0 else 'bad' }}">{{ c.vs_bench|money(true) }}</span> vs benchmark{% endif %}</div></div>{% endfor %}</div>
@@ -43,7 +43,7 @@
 <div class="scroll"><table><thead><tr><th class="l">Name</th><th class="l">Strategy</th><th class="l">Configuration</th><th>Season</th><th class="l">Why</th><th class="l">From</th><th></th></tr></thead><tbody>
 {% for cd in candidates %}<tr><td class="l"><b>{{ cd.name }}</b></td><td class="l">{{ cd.strategy_label }}</td><td class="l" title="{{ cd.label }}">{{ cd.label|truncate(50) }}</td><td>{{ cd.year }}</td>
 <td class="l wrap wide">{{ cd.why }}</td><td class="l muted">{{ cd.source }}{% if cd.run_id %} · <a href="/lab/runs/{{ cd.run_id }}">run #{{ cd.run_id }}</a>{% endif %}</td>
-<td class="l"><a class="edge-btn" href="/lab?candidate={{ cd.id }}#run">Load in Lab</a> <button type="button" class="edge-btn" data-edge="add" data-variant="{{ cd.ref }}" data-strategy="{{ cd.strategy }}">Show</button> <button type="button" class="edge-btn" data-cand="delete" data-id="{{ cd.id }}" title="Delete candidate">×</button></td></tr>{% endfor %}
+<td class="l"><a class="edge-btn" href="/lab?candidate={{ cd.id }}#run">Load in Lab</a> <button type="button" class="edge-btn" hx-post="/lab/edge" hx-target="#edge" hx-swap="innerHTML" hx-vals='{"action": "add", "variant": {{ cd.ref|tojson }}, "strategy": {{ cd.strategy|tojson }}}'>Show</button> <button type="button" class="edge-btn" hx-post="/lab/candidate" hx-target="#edge" hx-swap="innerHTML" hx-confirm="Delete this candidate?" hx-vals='{"action": "delete", "id": "{{ cd.id }}"}' title="Delete candidate">×</button></td></tr>{% endfor %}
 </tbody></table></div>
 {% endif %}
 

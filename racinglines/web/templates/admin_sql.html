@@ -2,6 +2,7 @@
 {% block title %}SQL{% endblock %}
 {% block content %}
 <h1>SQL console</h1>
+{% include "_admin_nav.html" %}
 <p class="muted">Runs as the app's database user. <b>Read</b> mode runs in a READ ONLY transaction (any write is rejected by Postgres).
 <b>Write</b> mode needs both boxes ticked. Every statement is logged. 15 s timeout, {{ 500 }} rows max.</p>
 <form method="post" action="/admin/sql" class="card">{{ csrf() }}
