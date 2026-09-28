@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Deploy racinglines to its Compute Engine VM (racinglines.bet), from the owner's machine. See docs/vm-deploy.md.
 #
-#   bash scripts/deploy/vm.sh setup             # one time: packages, user, checkout, venv, database, units
+#   bash scripts/deploy/vm.sh setup [branch]    # one time: packages, user, checkout (default main), venv, database, units
 #   bash scripts/deploy/vm.sh restore           # one time: bucket's data folders + database dump -> the VM
 #   bash scripts/deploy/vm.sh start [web]       # enable and start web, recorder, signals (web: the web app only)
 #   bash scripts/deploy/vm.sh deploy [ref]      # checkout (default main), install, migrate, restart, smoke check
@@ -25,7 +25,7 @@ SERVICES="racinglines-web racinglines-recorder"
 case "${1:-}" in
   setup)
     gcloud compute scp deploy/vm/setup.sh "$VM:/tmp/racinglines-setup.sh" --project "$PROJECT" --zone "$ZONE" --tunnel-through-iap
-    remote "sudo bash /tmp/racinglines-setup.sh"
+    remote "sudo REF=${2:-main} bash /tmp/racinglines-setup.sh"
     ;;
   restore)
     [ -n "$BUCKET" ] || { echo "set RACINGLINES_GCS_BUCKET to the racinglines project's bucket"; exit 1; }

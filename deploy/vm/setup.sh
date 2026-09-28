@@ -4,10 +4,11 @@
 #
 # 1. packages: git, docker + compose v2, uv (Python 3.14, as on the Mac), cloudflared
 # 2. the racinglines user and a read-only GitHub deploy key (printed: add it to the repo, then re-run)
-# 3. the checkout in /opt/racinglines (main), its venv, the database, /etc/racinglines.env
+# 3. the checkout in /opt/racinglines (main, or REF), its venv, the database, /etc/racinglines.env
 # 4. the systemd units (installed, not started: vm.sh start does that)
 set -euo pipefail
 REPO="${REPO:-git@github.com:lalligagger/racinglines.git}"
+REF="${REF:-main}"      # the branch to clone first (vm.sh setup <branch> tests an unmerged branch)
 APP=/opt/racinglines
 log() { echo "[setup $(date -u +%H:%M:%S)] $*"; }
 [ "$(id -u)" = 0 ] || { echo "run as root (sudo)"; exit 1; }
@@ -39,7 +40,7 @@ fi
 log "checkout $APP"
 if [ ! -d "$APP/.git" ]; then
   mkdir -p "$APP" && chown racinglines: "$APP"
-  if ! as git clone --quiet --branch main "$REPO" "$APP"; then
+  if ! as git clone --quiet --branch "$REF" "$REPO" "$APP"; then
     echo
     echo "Add this read-only deploy key to GitHub (repo Settings > Deploy keys > Add, leave write access off),"
     echo "then run  scripts/deploy/vm.sh setup  again:"

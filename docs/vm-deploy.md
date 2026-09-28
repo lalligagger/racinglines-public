@@ -102,6 +102,8 @@ gcloud compute firewall-rules delete default-allow-ssh default-allow-rdp --quiet
 ```sh
 bash scripts/deploy/vm.sh setup     # prints a deploy key the first time
 ```
+To try an unmerged branch first: `vm.sh setup <branch>`, then `vm.sh deploy <branch>`. The next
+plain `vm.sh deploy` moves the VM back to `main`.
 Add the key on GitHub (repo Settings > Deploy keys > Add, with write access off), then run
 `vm.sh setup` again. Set the admin password with `bash scripts/deploy/vm.sh ssh`, then
 `sudo nano /etc/racinglines.env`. `APP_SECRET` is already filled in.
