@@ -49,17 +49,21 @@ Both model families already simulate the same thing: a matrix of finishing ranks
 | **Market kinds** | One definition per kind gives its fair value from `OutcomeSims` **and** its settlement from the official result | `racinglines/markets/kinds.py` | done: win, podium, top 10, pole, makes the Final, head-to-head, top constructor; `private_book.outcome_for` settles through it |
 | **Pricing model** | `load`, `events(data, settings, seasons)` (each with its cutoff), `history(data, settings)`, `price(hist, event, settings, rng) -> OutcomeSims`, `results(data, event)` for settlement, and the model's own `Settings` | `racinglines/models/race_model.py` | done: `TimedRuns` (downhill) and `PositionSim` (F1, pre-race) |
 | **Walk-forward engine** | Prices every event from data before it, settles every kind the simulations support, scores them; model-only until a venue is given | `racinglines/core/walk_forward.py` | done: `racinglines mtb_dh walk-forward` |
-| **Stages** | When new information arrives: a `[stages]` table per sport (schedule source, data lag, early closes) turned into `[(label, cutoff)]` | `sports/<code>.toml` | step 5 |
+| **Stages** | When new information arrives: a `[stages]` table per sport (first stage, data lag, the session never traded, early closes) turned into `[(label, cutoff)]` | `sports/<code>.toml`, `racinglines/core/stages.py` | done: the F1 sweep's stages and the pole market's close come from `sports/f1.toml`; downhill prices once, "pre-event" |
 | **Venues** | `markets()`, `view(market, t)` (public data up to t only), costs, fill model, resolution | `racinglines/markets/venue_replay.py` | done: `Polymarket` (the F1 sweep reads through it) and `PrivateBook` (a live run's book replayed); model-only is no venue. `Kalshi` reads what `markets/kalshi/` stores in the same tables, with Kalshi's taker fee (built on mocked data; nothing reads it yet) |
 | **Search** | One queue for every sport, with the held-out rule, seed replicates, confirmation and stable ids built in | `racinglines/pipelines/search*.py` | done: `sport = "mtb_dh"` jobs, `replicates = N`, candidate ids carried into the Lab |
 
-**Settings.** Shared groups (timing, taker, maker, markets, guards) plus the model's own group. Per-kind
-overrides (e.g. `min_edge_by_kind`) generalise `min_edge_h2h`. `settings_key` / `model_key` keep today's
-hashing (settings at an unset default are left out), so saved keys never change.
+**Settings.** Shared groups (timing, taker, maker, markets, guards: `SHARED_SETTINGS`) plus the model's own
+group (`MODEL_SETTINGS`; downhill's is `models/timed_runs/settings.py`). Per-kind overrides generalise
+`min_edge_h2h`: `min_edge_by_kind = "race_h2h=0.05,race_podium=0.08"` gives each listed kind its own entry
+threshold (over `min_edge` and `min_edge_h2h`), the params-4h lesson that the edge sits in some kinds and
+not others. `settings_key` / `model_key` keep today's hashing (settings at an unset default are left
+out), so saved keys never change: every saved sweep's and stage run's key recomputes to what it was.
 
 ### The walk-forward engine
 
-`racinglines mtb_dh walk-forward --db [--seasons 2025 2026] [--seed N] [--save]` runs a sport's pricing
+`racinglines backtest walk-forward mtb_dh [--seasons 2025 2026] [--seed N] [--save]` (or
+`racinglines mtb_dh walk-forward --db`, which also reads a tidy CSV with `--data`) runs a sport's pricing
 model through `racinglines/core/walk_forward.py`: every completed event is priced from the runs before it
 with its real start list and format, every market kind is settled from the official result, and the
 fair values are scored (Brier, log loss, ECE, reliability bins) per kind and per season. The model's
@@ -93,6 +97,24 @@ Check: full 2025 and 2026 F1 sweeps are identical before and after the change (w
 synthetic downhill final recorded by `live_dh.update` replays to the same book (every market's
 inventory and cash, every taker's budget, the late window), and so does an F1-style run folder. The
 real Whistler book is checked by `tests/test_venue_replay.py` where the data bucket's run folder is present.
+
+### Adding a sport
+
+A sport joins the backtest core with two things and no change to the engine, the market kinds, the
+search or the report:
+
+1. **`sports/<code>.toml`**: its schema, with `[sport] pricing_model = "module:Class"` naming its
+   wrapper, its `[competition]` (where saved runs are filed) and, when it trades through a weekend, its
+   `[stages]`.
+2. **The wrapper**: a class with the pricing-model contract (`racinglines/models/race_model.py`): `load`
+   (its data source), `seasons`, `events` (each with its cutoff), `history`, `price` → `OutcomeSims`,
+   `results` (for settlement), `data_through`, and its own `Settings` (the sweep settings schema with its
+   model group; seed and sims are expected).
+
+Then `racinglines backtest walk-forward <code> [--seasons ...] [--save] [its settings' flags]` runs it,
+a queue job with `sport = "<code>"` searches it (with `replicates`), and `search-report` labels it.
+`tests/toy_backtest.py` is a complete example: a synthetic running race (data source and a form model in
+one module) that `tests/test_backtest_toy.py` takes through all of that, including the command line.
 
 ### Calibration in every sweep
 
@@ -160,7 +182,7 @@ holdout = [2025]
 | 2 ✓ | `PricingModel` for both families; the downhill walk-forward through the engine in model-only mode | Downhill tuning numbers reproduced |
 | 3 ✓ | Sport-aware search queue (downhill jobs), `replicates = N`, stable candidate ids in the Lab | A mixed F1 + downhill queue runs end to end |
 | 4 ✓ | `Venue` interface: Polymarket behind it, Kalshi mock, private-book venue with the simulated crowd | F1 sweep identical; the Whistler book replays as a backtest (synthetic finals here; Whistler where the bucket is) |
-| 5 | Stages from the schema; per-kind strategy overrides; settings split | Saved F1 `settings_key`s unchanged |
-| 6 | "Adding a sport": schema + data source + model wrapper, nothing else | A synthetic third sport passes the suite |
+| 5 ✓ | Stages from the schema; per-kind strategy overrides; settings split | Saved F1 `settings_key`s unchanged (every saved sweep and 1,245 stage runs here); full F1 sweeps identical |
+| 6 ✓ | "Adding a sport": schema + data source + model wrapper, nothing else | A synthetic third sport passes the suite (`tests/test_backtest_toy.py`) |
 
 The live engine keeps working throughout; once step 4 lands it can use the same venues and kinds.

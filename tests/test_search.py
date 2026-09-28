@@ -70,7 +70,7 @@ def test_downhill_jobs_get_their_own_settings_baseline_and_command(tmp_path):
     assert [(j.get("sport", "f1"), j["kind"], j["year"], j["note"][:8] if "baseline" in j.get("note", "") else "")
             for j in jobs][:2] == [("mtb_dh", "walk_forward", 2025, "baseline"), ("f1", "sweep", 2026, "baseline")]
     dh = next(j for j in jobs if j.get("sport") == "mtb_dh" and j["settings"]["half_life_days"] == 120)
-    assert S.argv(dh)[3:] == ["mtb_dh", "walk-forward", "--db", "--seasons", "2025", "--save", "--half-life-days", "120.0"]
+    assert S.argv(dh)[3:] == ["backtest", "walk-forward", "mtb_dh", "--seasons", "2025", "--save", "--half-life-days", "120.0"]
     assert dh["settings"] == DHSettings.from_dict(dict(half_life_days=120)).to_json()
     with pytest.raises(ValueError, match="unknown keys"):
         S.load(_queue(tmp_path, '[[job]]\nsport = "mtb_dh"\nvariant = "gridq"\n'))      # an F1 setting

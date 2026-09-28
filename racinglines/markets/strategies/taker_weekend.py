@@ -43,6 +43,7 @@ class TakerParams:
     late_stages: tuple = ("after FP3", "after Quali")    # mode "early" doesn't trade these
     stages: tuple | None = None                          # entry timing: stages any mode may trade (None = all)
     min_edge_h2h: float | None = None                    # head-to-head markets' threshold (None = min_edge)
+    min_edge_by_kind: tuple = ()                         # ((kind, threshold), ...): per market kind, over both
     scale: float = 1.0                                   # stake multiplier (bankroll-aware sizing)
     max_deployed: float | None = None                    # $ cap on the weekend's deployed capital (None = no cap)
 
@@ -125,7 +126,11 @@ def run_market(stages, outcome, p: TakerParams):
 
 
 def params_for(kind, p: TakerParams):
-    """The parameters one market is traded with: head-to-head markets may have their own threshold."""
+    """The parameters one market is traded with: a kind's own threshold (min_edge_by_kind), else head-to-head
+    markets' (min_edge_h2h), else min_edge."""
+    by = dict(p.min_edge_by_kind)
+    if kind in by:
+        return replace(p, min_edge=by[kind])
     return replace(p, min_edge=p.min_edge_h2h) if kind == "race_h2h" and p.min_edge_h2h is not None else p
 
 

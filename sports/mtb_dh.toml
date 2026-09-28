@@ -7,6 +7,7 @@ code = "mtb_dh"
 name = "Mountain bike downhill"
 result_kind = "time"              # results are run times
 model_family = "timed_runs"       # racinglines/models/timed_runs
+pricing_model = "racinglines.models.race_model:TimedRuns"   # the backtest core's wrapper (docs/backtest-core.md)
 display_order = 1
 
 [league]
@@ -32,6 +33,11 @@ race = ["qual", "qual1", "qual2", "semi", "final"]
 run_weights = { practice = 0.5, qual = 1.0, qual1 = 1.0, qual2 = 1.0, semi = 1.0, final = 1.0 }
 # format for unraced rounds; past events use their own, inferred from results
 default_format = { kind = "q1q2", q1_to_final = 20, q2_to_final = 10 }
+
+# When an event is priced (racinglines/core/stages.py): the walk-forward prices each event once, before it
+[stages]
+pre_label = "pre-event"
+pre_minutes = 0
 
 [points]
 # PLACEHOLDER: approximate UCI DHI World Cup scales, not the official tables (see docs/todo.md)
