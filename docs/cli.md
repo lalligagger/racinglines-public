@@ -118,6 +118,26 @@ racinglines mtb_dh forecast (--db [URL] | --data splits.csv) [--competition uci_
 Files written: `walk_forward.csv`, `backtest_<venue>.csv`, `backtest_standings.csv`,
 `forecast_per_round.csv`, `forecast_standings.csv`.
 
+## racinglines mtb_dh live
+
+Follow a downhill final live from UCI timing (ChronoRace): rank probabilities after every update, the demo
+maker's quotes, the private book's anonymous crowd, and the demo accounts' private-book positions. A demo
+experiment; see [Live events](live-events.md).
+
+```
+racinglines mtb_dh live --slug 20260925_mtb --final 3 --quali 2,91 --conditions "clear, rutted"
+```
+
+| Option | Default | |
+|---|---|---|
+| `--slug` | (required) | ChronoRace event slug |
+| `--final` | (required) | Live-timing key of the final (Whistler 2026: `3` men, `6` women) |
+| `--quali` | `2,91` | Live-timing keys of the qualifying sessions, comma-separated |
+| `--conditions` | | Free text; "rutted" and "wet" widen the spread and raise the crash risk |
+| `--interval` | 20 | Seconds between polls |
+| `--minutes` | 0 | Stop after this many minutes (0: when the final is over) |
+| `--once` | | One update, then exit |
+
 ## racinglines mtb_dh backtest
 
 Walk-forward plus a standings holdout, for several seasons.

@@ -103,7 +103,7 @@ Competition     uci_dhi_wc               a league's championship in one sport
 | `market_price_history`, `market_trades`, `market_book_snapshots` | Exchange time series per outcome token: prices, every taker trade (the tape a maker replay fills against), and recorded order books. Only recent rows stay here; the rest move to Parquet (see [Storage](#storage-postgres-for-the-app-parquet-for-heavy-history)). |
 | `jobs` | Model runs launched from the web app's Lab, run as CLI subprocesses: kind, params, argv, status, progress, log, and the model run they saved. |
 | `strategy_signals` | What a user's strategy profile would do now ([Paper trading](paper-trading.md)): a taker recommendation (`buy` / `sell`), a maker quote starting or stopping (`quote` / `pull`), or a paper `fill`. Never an order. Columns: user, `candidate_id` (the Lab candidate), profile name, strategy, race, `event_key`, `market_key` (taker: token id; maker: condition id), kind, subject, stage, `dedupe` (the stage, or a fill's time), action, side (`YES` / `NO`, or `bid` / `ask`), shares, limit price, fair, market price, edge, `heat` (1–3), target cost, status (`new` / `alerted` / `expired` / `filled_paper`), model run, signal / alerted / seen times, `detail` (JSONB; `backfill` marks demo-history replays). Unique on (user, candidate, market_key, dedupe, action, side), so re-runs are idempotent. |
-| `paper_positions` | A user's paper position in one market under their profile, rebuilt on every signals run: YES / NO shares (maker: YES-equivalent inventory), cash, latest mark, outcome, and for makers the resting bid / ask and quote state. Unique on (user, candidate, market_key). |
+| `paper_positions` | A user's paper position in one market under their profile, rebuilt on every signals run: YES / NO shares (maker: YES-equivalent inventory), cash, latest mark, outcome, for makers the resting bid / ask and quote state, and the **venue**: `polymarket` (paper trading on the exchange) or `private` (a maker's private book, written by the [live engine](live-events.md)). Unique on (user, candidate, market_key). |
 
 ### Multi-sport design
 
@@ -296,6 +296,7 @@ Migrations so far (in order, `migrations/versions/`):
 | `9c4d2e8f1a63` | `20260927_9c4d2e8f1a63_market_first_seen.py` | `market_links.first_seen_at` |
 | `c7a1f4e2b9d0` | `20260927_c7a1f4e2b9d0_strategy_signals.py` | `strategy_signals`, `paper_positions` |
 | `d2b8e5a1c3f7` | `20260927_d2b8e5a1c3f7_replay_taker_account.py` | The `polymarket-takers` system account (inactive); recorded replay fills (`house_bets`) move to it from the demo taker (data only) |
+| `e4c1a9b7d205` | `20260927_e4c1a9b7d205_paper_position_venue.py` | `paper_positions.venue` (`polymarket` / `private`) |
 
 ## Not done yet
 

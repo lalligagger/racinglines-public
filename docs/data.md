@@ -48,6 +48,7 @@ types (`*.parquet`, `*.csv`, …) everywhere, then allow-lists the minimal set a
 | `data/archive/markets/polymarket/links/` | Market links file |
 | `data/archive/db/` | Database snapshot |
 | `data/runs/search/` | Search results brought back from cloud sessions |
+| `data/runs/live/<slug>_<key>/` | A live event, kept permanently for replay: raw timing-feed responses, snapshots, quotes, model inputs, the private book and every crowd fill (see [Live events](live-events.md#kept-for-replay)) |
 
 - **Everything else in `data/` stays ignored:** downhill downloads, order books,
   other run outputs, logs, alerts, caches, `data/pg/`, plus `tests/fixtures/` and

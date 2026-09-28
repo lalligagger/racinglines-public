@@ -21,7 +21,7 @@
 {% for y in c.yticks %}<line class="grid" x1="{{ c.pad }}" x2="{{ c.w }}" y1="{{ y.y }}" y2="{{ y.y }}"/><text x="2" y="{{ y.y + 3 }}">{{ y.label }}</text>{% endfor %}
 {% for x in c.xticks %}<text x="{{ x.x }}" y="{{ c.h - 2 }}" text-anchor="middle">{{ x.label }}</text>{% endfor %}
 {% for m in c.markers %}<line x1="{{ m.x }}" x2="{{ m.x }}" y1="0" y2="{{ c.h - 14 }}" stroke="var(--muted)" stroke-dasharray="3 3"/><text x="{{ m.x + (-3 if m.anchor == 'end' else 3) }}" y="10" text-anchor="{{ m.anchor }}">{{ m.label }}</text>{% endfor %}
-{% for l in c.lines %}<polyline fill="none" stroke="{{ l.color }}" stroke-width="1.6" points="{{ l.points }}"/>{% if l.fair_y is not none %}<line x1="{{ c.pad }}" x2="{{ c.w }}" y1="{{ l.fair_y }}" y2="{{ l.fair_y }}" stroke="{{ l.color }}" stroke-dasharray="2 4" opacity=".7"/>{% endif %}{% endfor %}
+{% for l in c.lines %}<polyline fill="none" stroke="{{ l.color }}" stroke-width="{{ 2.8 if l.dash else 1.6 }}"{% if l.dash %} stroke-dasharray="7 4"{% endif %} points="{{ l.points }}"/>{% if l.fair_y is not none %}<line x1="{{ c.pad }}" x2="{{ c.w }}" y1="{{ l.fair_y }}" y2="{{ l.fair_y }}" stroke="{{ l.color }}" stroke-dasharray="2 4" opacity=".7"/>{% endif %}{% endfor %}
 </svg>
 {% if c.zero_y is defined and c.zero_y is not none %}<line x1="{{ c.pad }}" x2="{{ c.w }}" y1="{{ c.zero_y }}" y2="{{ c.zero_y }}" stroke="var(--muted)" stroke-width="1"/>{% endif %}
 <div class="legend">{% for l in c.lines %}<i style="background:{{ l.color }}"></i>{{ l.label }}{% endfor %}{% if c.zero_y is not defined %} · solid = Polymarket price, dotted = our fair{% endif %}</div>{% endif %}
@@ -30,7 +30,8 @@
 {% macro new_badge(n=0) %}<span class="pill new" title="first seen on Polymarket in the last 48 hours">{{ n ~ " " if n else "" }}new</span>{% endmacro %}
 
 {% macro paper_banner(n) %}{% if n and n.profile %}<div class="paper-banner"><span>Paper account · <b>{{ n.profile }}</b></span>
-{% if n.balance is not none %}<span>Bankroll <b class="{{ 'good' if n.pnl > 0 else ('bad' if n.pnl < 0) }}">${{ "{:,.0f}".format(n.balance) }}</b> <span class="muted">from ${{ "{:,.0f}".format(n.start) }} · {{ "%+.1f"|format(n.ret * 100) }}%</span></span>{% else %}<span>Paper P&amp;L <b>{{ n.pnl|money(true) }}</b></span>{% endif %}
+<span>Polymarket P&amp;L <b class="{{ 'good' if n.pnl > 0 else ('bad' if n.pnl < 0) }}">{{ n.pnl|money(true) }}</b></span>
+{% if n.private is not none %}<span>Private book <b class="{{ 'good' if n.private > 0 else ('bad' if n.private < 0) }}">{{ n.private|money(true) }}</b></span>{% endif %}
 <span class="links"><a href="/strategy">Strategy: track record and how it got here →</a> · <a href="/positions">Positions →</a></span></div>{% endif %}{% endmacro %}
 
 {# Demo-only context: an info bubble, tagged invisibly (data-tag="demo-context") so it can be found and

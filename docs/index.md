@@ -28,6 +28,7 @@ the two.
 | 💹 **Every Polymarket F1 race weekend, replayed** | 38 weekends (2025 and 2026) on the real prices and trade tape. The default maker made **+$751** on $8,969 filled in 2026. |
 | ☁️ **1,161 strategy combinations searched** | A 4-hour cloud search found two setups that held up in both seasons: **A** (a taker, +$1,232 in 2026 / +$1,237 in 2025) and **C** (a maker, +$653 / +$835, the best Sharpe of any combination). |
 | 📡 **Live paper trading** | A and C run on every F1 weekend from Malaysia (4 Oct 2026) through 2027, stage by stage, with heat ratings, alerts and paper positions, through the same code as the backtest (checked trade for trade). |
+| 🔴 **Live events** | The Whistler downhill final (27 Sep 2026) followed live from UCI timing: rank probabilities after every update, a maker re-quoting every rider, 1,000 simulated private-book takers and a hype-picking demo taker, P&L by venue. F1 next, from the Malaysia GP. |
 | 🚵 **43 downhill World Cup rounds** | 2021–2026, walk-forward. Error on who makes the Final is **38% lower** than a uniform guess (0.127 vs 0.204); the actual winner got **7.1%** on average, against ~1%. |
 | ✅ **Checks in seconds** | `racinglines check` runs 21 checks (code, every data source, database) in ~10 s; the regression suite runs 174 tests on pinned public fixtures and golden outputs. |
 
@@ -169,6 +170,7 @@ F1, which has exchange markets, also has market pages.
 | | [Downhill evaluation](evaluation.md) | 43-round walk-forward, per season and per event |
 | | [Downhill forecast](forecast.md) | The live 2026 title projection |
 | 4. **Web app** | [Web app](webapp.md) | Pages and routes, roles, demo accounts and sessions, the Lab, the private book, Polymarket orders |
+| | [Live events](live-events.md) | A race followed live: the live model, the maker's quotes, the private book's crowd, replay logs |
 | 5. **Operate** | [CLI reference](cli.md) | Every command and option, launchd agents, scripts |
 | | [Cloud sweeps](cloud-sweep.md) | Running settings searches on a cloud machine |
 | | [Testing](testing.md) | Quick check, regression suite, fixtures, golden outputs |

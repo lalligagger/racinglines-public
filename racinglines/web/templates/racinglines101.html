@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Racinglines 101</title><link rel="stylesheet" href="/static/style.css">
+<title>Racinglines 101</title><link rel="stylesheet" href="/static/style.css?v={{ css_v() }}">
 <style>
   .r101 { max-width: 760px; margin: 48px auto; }
   .r101 h2 { margin-top: 36px; }
@@ -82,10 +82,10 @@ by race weekend, and record the trades they <i>would</i> make at the real prices
   <li><b>No peeking:</b> at every point in a backtest, the model only uses data that existed at that moment. That's the same rule it follows live.</li>
   <li><b>Past results don't promise future ones.</b> Two race weekends are mostly luck; the paper-trading season is how we find out whether the backtests hold up.</li>
   <li><b>The demo accounts' track record</b> (2025 and 2026 so far) is one of those replays, run with the strategy each account used at the time,
-    and it's labelled <i>backtest replay</i> in the app. The <b>demo maker</b> started 2025 with a $10,000 paper bankroll and the default setup,
+    and it's labelled <i>backtest replay</i> in the app. The <b>demo maker</b> started 2025 on the default setup,
     switched twice mid-season to whatever the Edge Finder showed was working <i>so far</i>, then chose C for 2026 as the steadiest of the leaders.
-    The <b>demo taker</b> started with $1,000 and has always followed A, taking about a third of its recommendations (the hotter ones more often).
-    Each account's Strategy page shows the whole story: bankroll, every decision and the evidence behind it, and every weekend.</li>
+    The <b>demo taker</b> has always followed A, taking about a third of its recommendations (the hotter ones more often).
+    Each account's Strategy page shows the whole story: cumulative paper P&amp;L, every decision and the evidence behind it, and every weekend.</li>
 </ul>
 
 <a class="back" href="/login">← Back to sign in and try the demo</a>

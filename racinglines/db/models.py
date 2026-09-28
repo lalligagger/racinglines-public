@@ -563,3 +563,4 @@ class PaperPosition(Base):
     bid: Mapped[float | None] = mapped_column(Float)                      # maker: resting quotes now
     ask: Mapped[float | None] = mapped_column(Float)
     quote_state: Mapped[str | None] = mapped_column(String(30))           # quoting, or why not
+    venue: Mapped[str] = mapped_column(String(20), default="polymarket", server_default="polymarket")  # polymarket | private

@@ -196,6 +196,20 @@ Phase [F1-8](f1-roadmap.md#f1-8-live-paper-trade-validation-polymarket); how it 
 - [ ] Fix: an h2h-only market-kinds sweep crashes on 2025 (`KeyError: 'cond'` in the
       position-market step when a season has no position markets).
 
+## Live events
+
+How it works: [Live events](live-events.md). First run: the Whistler downhill final, 27 Sep 2026.
+
+- [x] Live tab for both demo users; downhill finals from UCI timing, rank probabilities, maker quotes,
+      a simulated private book (1,000 anonymous takers with event budgets), P&L by venue, replay logs.
+- [ ] **F1 live test at the Malaysia GP (4 Oct 2026):** the Live tab follows the signal engine session by
+      session (the taker's calls and heat, the maker's Polymarket quotes) plus a private book on the same
+      markets.
+- [ ] An **event replayer** from the logged raw feeds, snapshots and crowd seeds.
+- [ ] Two-sided long-shot quotes (or a per-market loss cap) so the maker doesn't pile up shorts in unlikely
+      winners.
+- [ ] Settle the Whistler private book in the database and add it to the demo maker's story.
+
 ## Exchanges
 
 Phase [F1-9](f1-roadmap.md#f1-9-more-exchanges-kalshi-others).

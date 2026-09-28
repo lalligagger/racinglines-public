@@ -42,7 +42,7 @@
 <h3>Candidates <span class="muted">(load one into the sweep form, tweak, re-run)</span></h3>
 <div class="scroll"><table><thead><tr><th class="l">Name</th><th class="l">Strategy</th><th class="l">Configuration</th><th>Season</th><th class="l">Why</th><th class="l">From</th><th></th></tr></thead><tbody>
 {% for cd in candidates %}<tr><td class="l"><b>{{ cd.name }}</b></td><td class="l">{{ cd.strategy_label }}</td><td class="l" title="{{ cd.label }}">{{ cd.label|truncate(50) }}</td><td>{{ cd.year }}</td>
-<td class="l wrap">{{ cd.why }}</td><td class="l muted">{{ cd.source }}{% if cd.run_id %} · <a href="/lab/runs/{{ cd.run_id }}">run #{{ cd.run_id }}</a>{% endif %}</td>
+<td class="l wrap wide">{{ cd.why }}</td><td class="l muted">{{ cd.source }}{% if cd.run_id %} · <a href="/lab/runs/{{ cd.run_id }}">run #{{ cd.run_id }}</a>{% endif %}</td>
 <td class="l"><a class="edge-btn" href="/lab?candidate={{ cd.id }}#run">Load in Lab</a> <button type="button" class="edge-btn" data-edge="add" data-variant="{{ cd.ref }}" data-strategy="{{ cd.strategy }}">Show</button> <button type="button" class="edge-btn" data-cand="delete" data-id="{{ cd.id }}" title="Delete candidate">×</button></td></tr>{% endfor %}
 </tbody></table></div>
 {% endif %}
