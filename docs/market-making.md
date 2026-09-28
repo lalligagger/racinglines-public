@@ -313,6 +313,20 @@ Baseline model, 2026 rounds 1–15 (sweep run 574):
 - **The stage-aware taker is in-sample.** Its rule came from this sweep's
   stage split, so +$1,874 is the upper end of what to expect. It has to be
   confirmed on weekends after Baku before it's trusted.
+- **Out of sample, 2025: not confirmed.** The same sweep (baseline model, default settings) on all 23
+  2025 weekends with markets, measured 2026-09-28 on the bucket's database:
+
+  | Strategy | 2026 (in-sample) | 2025 (out of sample) | 2025 bought / filled | 2025 weekends up |
+  |---|---|---|---|---|
+  | **Stage-aware taker** | +$1,874 | **−$316** | $7,914 | 9 / 23 |
+  | Update & rebuy | −$479 | +$220 | $11,842 | 9 / 23 |
+  | Maker (default) | +$751 | −$176 | $11,232 | 10 / 23 |
+  | Enter before running, hold | +$214 | −$754 | $7,105 | 7 / 23 |
+  | Enter after qualifying only | −$15 | −$1,303 | $3,907 | 7 / 23 |
+
+  The stage split flips: in 2025 the update taker's trades after qualifying made +$669, its best
+  stage, and that is the stage the rule skips. No profile uses the stage-aware taker, and the Edge
+  Finder still flags it in-sample. The live weekends are the next check.
 - **None of the maker options beats the default maker.** Flattening before
   qualifying pays the spread twice and gives up positions that were, on
   average, on the right side. The skew and the widening each give back about

@@ -46,8 +46,8 @@ F1 adapter, keeping the platform multi-sport. Plan: [F1 live test](f1-live-roadm
 **P3 · Models and data**
 
 - [ ] F1 ([F1 model](#f1-model)): promote `gridq+pretrain` (owner's OK), the
-      driver layer in a new season, the stage-aware taker out of
-      sample, book-depth replay once enough books are recorded.
+      driver layer in a new season, the stage-aware taker on live
+      weekends (2025 didn't confirm it), book-depth replay once enough books are recorded.
 - [ ] **Downhill points validation**, the top downhill item ([Points validation](#points-validation)),
       then downhill data and model ([Data](#data), [Model](#model)).
 
@@ -180,7 +180,9 @@ Phased plan and ground rules: [F1 roadmap](f1-roadmap.md). Items tagged
 - [x] **Maker options (F1-4):** flatten before qualifying, info-timed skew, markout-driven
       widening. None beats the default maker.
 - [x] **Stage-aware taker (F1-4):** in the sweep (+$1,874 in-sample on 2026).
-- [ ] Confirm the stage-aware taker out of sample (2025, and the live weekends).
+- [x] Stage-aware taker out of sample on 2025: **not confirmed** (−$316 on 23 weekends, against +$1,874
+      in-sample on 2026; [Market making](market-making.md#strategy-options-f1-roadmap-f1-4)).
+- [ ] The stage-aware taker on the live weekends, before anyone uses it.
 - [x] Replay across every race with a tape (2025 and 2026), then tune: the `params-4h` cloud
       search over 1,161 settings combos, judged on both seasons.
 - [x] Live watch list: the Markets page lists every open Polymarket F1 market with the profile's

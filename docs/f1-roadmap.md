@@ -418,6 +418,7 @@ signals, with leakage-rule tests like Polymarket's.
 | 2026-09-28 | 8 | Bankroll-aware sizing and a deployed-capital cap are optional sweep settings (`bankroll`, `max_deployed`, unset = today’s fixed sizing). The taker is now a per-market stepper (`taker_weekend._Market`); with a cap, markets are stepped in time order and buys over the cap are cut to fit | Default results identical to the old taker on 2,400 random synthetic weekend × parameter combinations, and the 2026 sweep reproduces +$1,874.01 for the stage-aware taker. Choosing a rule waits for live weekends | — |
 | 2026-09-28 | 2 | A Monte Carlo seed setting (`seed`, a model setting, unset = today's fixed 42) for the sweep, the search and the signal engine's profiles | A search's noise replicates re-ran the same draw; independent seeds show whether a winner is noise. Unset leaves every model key, cached stage run and price unchanged (pinned in the tests) | — |
 | 2026-09-28 | 4 | The maker replay's positions table keeps its columns when a weekend has no markets of the chosen kinds, so it summarises to a zero total | The fix for the h2h-only crash on 2025 (no h2h markets before round 8). Weekends with markets are unchanged; rounds 8–9 h2h-only run end to end on the bucket's database | — |
+| 2026-09-28 | 4 | The stage-aware taker stays a flagged, in-sample reference strategy; no profile adopts it | Out of sample on 2025 it lost $316 over 23 weekends (+$1,874 in-sample on 2026); 2025's best update-taker stage was after qualifying, the stage it skips | — |
 
 ## Open questions
 
