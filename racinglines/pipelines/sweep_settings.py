@@ -21,6 +21,7 @@ from dataclasses import dataclass
 
 STAGES = ("pre-weekend", "after FP1", "after FP2", "after FP3", "after SQ", "after Sprint", "after Quali")
 KINDS = ("race_win", "race_podium", "race_h2h", "race_constructor_top", "race_pole")
+DEFAULT_SEED = 42                # pricing.diagnostic's and the signal engine's seed
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,8 @@ SETTINGS = [
             target="model.FINISH_RHO_SCALE"),
     Setting("reset_weight", "model", "Regulation-reset carry-over", "float", 0.25, 0, 1,
             help="With the reset switch: weight of earlier seasons' car data.", target="model.REG_RESET_WEIGHT"),
+    Setting("seed", "model", "Monte Carlo seed", "int", None, 0, 2**31 - 1,
+            help="Empty = today's fixed seed (42). Set different seeds for independent noise draws in a search."),
     # --- entry timing ---------------------------------------------------------------------------------
     Setting("taker_stages", "timing", "Stages takers may trade", "multi", STAGES, choices=STAGES,
             help="Applies to every taker strategy (update, hold, after quali, stage-aware)."),
@@ -72,14 +75,19 @@ SETTINGS = [
             help="Target cost = this x edge, e.g. 250 x 0.10 = $25."),
     Setting("max_stake", "taker", "Max stake per market ($)", "float", 50.0, 1, 5000),
     Setting("cost", "taker", "Cost per share per trade ($)", "float", 0.01, 0, 0.1),
+    Setting("bankroll", "taker", "Starting bankroll ($)", "float", None, 10, 1e7,
+            help="Bankroll-aware sizing: stakes scale with the balance after earlier weekends. Empty = fixed sizing."),
+    Setting("max_deployed", "taker", "Max capital deployed per weekend ($)", "float", None, 1, 1e7,
+            help="Across all markets; buys over the cap are cut to fit. Empty = no cap."),
     # --- maker ----------------------------------------------------------------------------------------
     Setting("half_spread", "maker", "Quote half-spread ($)", "float", 0.02, 0.005, 0.2),
     Setting("size", "maker", "Shares per quote", "float", 50.0, 1, 1000),
     Setting("max_pos", "maker", "Max inventory per market (shares)", "float", 250.0, 10, 5000),
     Setting("skew", "maker", "Inventory skew", "float", 1.0, 0, 5),
     Setting("max_disagree", "maker", "Don't quote beyond |fair - market|", "float", 0.15, 0.01, 1),
-    Setting("fill", "maker", "Fill rule", "choice", "through", choices=("through", "touch"),
-            help="through = a trade must cross our price (conservative); touch = at our price."),
+    Setting("fill", "maker", "Fill rule", "choice", "through", choices=("through", "touch", "queue"),
+            help="through = a trade must cross our price (conservative); touch = at our price; "
+                 "queue = at our price once the recorded book's queue ahead of us is served."),
     Setting("info_skew", "maker", "Info-timed skew (maker_skew / maker_all)", "float", 2.0, 0, 10),
     Setting("widen", "maker", "Widen factor on bad markouts (maker_widen / maker_all)", "float", 1.5, 1, 5),
     # --- markets --------------------------------------------------------------------------------------
@@ -155,6 +163,11 @@ class Settings(dict):
     def key(self):
         """Identity of the whole combo (every setting)."""
         return self._key(sorted(self))
+
+    @property
+    def rng_seed(self):
+        """The Monte Carlo seed: the `seed` setting, or today's fixed one when it's unset."""
+        return DEFAULT_SEED if self["seed"] is None else self["seed"]
 
     @property
     def model_key(self):

@@ -31,13 +31,20 @@ def client():
     try:
         import boto3
     except ImportError:
-        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "boto3"], check=True)
+        import shutil
+        if shutil.which("uv"):                     # start.sh's venv is built by uv and has no pip
+            subprocess.run(["uv", "pip", "install", "-q", "--python", sys.executable, "boto3"], check=True)
+        else:
+            subprocess.run([sys.executable, "-m", "pip", "install", "-q", "boto3"], check=True)
         import boto3
     from botocore.config import Config
     return boto3.client("s3", endpoint_url=ENDPOINT, region_name="auto",
                         aws_access_key_id=os.environ["RACINGLINES_GCS_HMAC_ID"],
                         aws_secret_access_key=os.environ["RACINGLINES_GCS_HMAC_SECRET"],
-                        config=Config(signature_version="s3v4", s3={"addressing_style": "path"}))
+                        # boto3 >= 1.36 adds CRC checksums to every upload by default; GCS rejects them
+                        config=Config(signature_version="s3v4", s3={"addressing_style": "path"},
+                                      request_checksum_calculation="when_required",
+                                      response_checksum_validation="when_required"))
 
 
 def keys(s3, bucket, prefix):

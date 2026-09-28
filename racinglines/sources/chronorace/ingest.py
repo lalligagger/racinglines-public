@@ -9,10 +9,11 @@ which becomes one Race. Ingest is idempotent:
 - Otherwise the race's rounds, results and splits are deleted and re-inserted
   from the file, so re-downloading a file and re-ingesting it just works.
 
-Athletes are matched through AthleteIdentifier(scheme="name", value=<name key>),
-where the key is parser.normalize_rider_id without its "name:" prefix. When the
-downloader starts writing UCI IDs, add a "uci" identifier here and match on it
-first.
+Athletes are matched through AthleteIdentifier(scheme="uci", value=<UCI ID>) first,
+when the file has a UCI ID column (downloads since 2026-09-28), then
+AthleteIdentifier(scheme="name", value=<name key>), where the key is
+parser.normalize_rider_id without its "name:" prefix. A UCI ID and a name key that
+point to different athletes are reported for `racinglines db merge-athletes`.
 """
 
 
@@ -80,7 +81,9 @@ def ingest_file(session, path, competition="uci_dhi_wc", force=False):
         session.flush()
         round_ids[kind] = rnd.id
 
-    athletes = resolve_athletes(session, df[["rider_id", "rider_name", "nation"]])
+    conflicts = []
+    athletes = resolve_athletes(session, df[["rider_id", "rider_name", "nation"] + (["uci_id"] if "uci_id" in df else [])],
+                                conflicts)
 
     fin = df[df["sector_id"] == "FINISH"].drop_duplicates(["round", "rider_id"])
     result_rows = [dict(
@@ -103,7 +106,8 @@ def ingest_file(session, path, competition="uci_dhi_wc", force=False):
         session.execute(insert(m.Split), split_rows)
 
     _upsert(session, m.SourceFile, dict(path=key), sha256=sha, parser=PARSER, race_id=race.id)
-    return f"{len(result_rows)} results, {len(split_rows)} splits"
+    merges = "".join(f"; same UCI ID, two athletes: merge {drop} into {keep}" for keep, drop in sorted(set(conflicts)))
+    return f"{len(result_rows)} results, {len(split_rows)} splits{merges}"
 
 
 def ingest_paths(session, paths, competition="uci_dhi_wc", force=False, echo=print):

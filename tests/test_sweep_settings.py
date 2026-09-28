@@ -115,3 +115,47 @@ def test_h2h_threshold():
     assert set(tr["kind"]) == {"race_h2h", "race_podium"}
     tr, _ = run_weekend(wk, TakerParams(min_edge=0.10))
     assert set(tr["kind"]) == {"race_podium"}
+
+
+# --- seed (the Monte Carlo seed): new model setting, unchanged keys and prices ------------------------
+
+def test_unset_seed_keeps_model_keys_and_todays_seed():
+    """Model keys computed before the seed setting existed: every cached stage run stays valid."""
+    assert SS.Settings.from_dict().model_key == "56f55ac79102"
+    assert SS.Settings.from_dict(PROFILE_A).model_key == "1c505c191fa3"
+    d, s = SS.Settings.from_dict(), SS.Settings.from_dict(dict(seed=7))
+    assert d["seed"] is None and d.rng_seed == 42 and s.rng_seed == 7
+    assert s.model_key != d.model_key and s.changed() == {"seed": 7} and s.argv() == ["--seed", "7"]
+    with pytest.raises(ValueError):
+        SS.Settings.from_dict(dict(seed=-1))
+
+
+def test_seed_draws_independent_noise():
+    import numpy as np
+    import pandas as pd
+
+    from racinglines.models.position_sim import pricing as run
+    from racinglines.testing import synthetic as SY
+    m = run.Measurements.from_frames(*SY.f1_frames())
+    h = run.history(m)
+    eid = int(m.drivers["event_id"].max())
+    cutoff = m.sessions(eid)["qual"] + pd.Timedelta(hours=2)
+
+    def win(st):
+        summ, _ = run.price_race(m, h, cutoff, eid, n_sims=1000, rng=np.random.default_rng(st.rng_seed))
+        return summ.set_index("athlete_id")["win_prob"]
+
+    default = win(SS.Settings.from_dict())
+    today, _ = run.price_race(m, h, cutoff, eid, n_sims=1000, rng=np.random.default_rng(42))
+    assert default.equals(today.set_index("athlete_id")["win_prob"])          # unset = today's prices
+    assert not win(SS.Settings.from_dict(dict(seed=7))).equals(default)       # another draw
+    assert win(SS.Settings.from_dict(dict(seed=7))).equals(win(SS.Settings.from_dict(dict(seed=7))))
+
+
+def test_queue_fill_rule_is_a_maker_setting():
+    """fill=queue (recorded books) changes the combination, not the model's prices."""
+    d, q = SS.Settings.from_dict(), SS.Settings.from_dict(dict(fill="queue"))
+    assert q.model_key == d.model_key and q.key != d.key and q.changed() == dict(fill="queue")
+    p = argparse.ArgumentParser()
+    SS.add_arguments(p)
+    assert SS.from_args(p.parse_args(q.argv())) == q

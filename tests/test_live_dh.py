@@ -103,3 +103,34 @@ def test_replay_state_snapshots_and_book(tmp_path, monkeypatch):
     mk, _ = L.book_at("ev", "3")
     assert mk["1:win"]["inv"] == pytest.approx(-6.0) and mk["1:win"]["cash"] == pytest.approx(2.8)
     assert L.book_opened("ev", "3") == "2026-09-27T22:00:00+00:00"
+
+
+def test_reprice_from_the_logged_raw_feed(tmp_path, monkeypatch):
+    """live_dh.reprice: every logged feed response re-priced from the recorded inputs (no network)."""
+    import gzip
+    import json
+    monkeypatch.setattr(L.paths, "DATA", tmp_path)
+    out = L.outdir("ev", "3")
+    (out / "raw").mkdir()
+    riders = {str(b): dict(PrintName=n) for b, n in ((1, "A"), (2, "B"), (3, "C"))}
+
+    def feed(done):
+        res = [dict(RaceNr=1, Status="Finished", RaceTime=200_000, Times=[dict(RaceTime=50_000)], ExpectedStartTime=1),
+               dict(RaceNr=2, Status="Finished" if done else "InRace", RaceTime=199_000 if done else None,
+                    Times=[dict(RaceTime=49_000)], ExpectedStartTime=2),
+               dict(RaceNr=3, Status="Finished" if done else "NA", RaceTime=201_000 if done else None, Times=[],
+                    ExpectedStartTime=3)]
+        return dict(Results=res, Riders=riders, NextToStart=[] if done else [3])
+    for name, done in (("20260927T220000", False), ("20260927T220005", False), ("20260927T220010", True)):
+        with gzip.open(out / "raw" / f"{name}.json.gz", "wt") as f:
+            json.dump(feed(done), f)
+    (out / "meta.json").write_text(json.dumps(dict(qbest={"1": 205_000, "2": 204_000, "3": 199_000},
+                                                   qratio={"0": 4.0}, prior={}, conditions="")))
+    (out / "latest.json").write_text(json.dumps(dict(done=True, outcomes=[dict(bib=2, market="win", yes=True),
+                                                                          dict(bib=1, market="win", yes=False)])))
+    res = L.reprice("ev", "3", label="t", n_sims=2000, echo=lambda m: None)
+    assert [r["stamp"] for r in res["rows"]] == ["20260927T220000", "20260927T220005", "20260927T220010"]
+    for r in res["rows"]:
+        assert sum(v for k, v in r["fair"].items() if k.endswith(":win")) == pytest.approx(1, abs=1e-3)
+    assert res["rows"][-1]["fair"]["2:win"] == 1.0                     # over: the winner is certain
+    assert (out / "reprice" / "t.jsonl").exists() and res["scorecard"]["live"] == {}   # no snapshots: nothing to compare

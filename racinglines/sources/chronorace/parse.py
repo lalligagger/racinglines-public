@@ -633,6 +633,8 @@ def parse_markdown_tables_file(path, default_round=None):
             venue=venue, series_round=series_round, track_condition="unknown",
             event_name=title, source_key=slug,
         )
+        if "uci id" in header:          # files downloaded since the UCI ID column (older ones don't have it)
+            common["uci_id"] = rec.get("uci id") or None
         cum = 0.0
         sector_i = 0
         for sc in split_cols:

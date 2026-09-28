@@ -16,10 +16,13 @@ as_root() { if [ "$(id -u)" = 0 ]; then "$@"; else sudo -n "$@"; fi; }
 
 if [ -z "${SKIP_SYSTEM:-}" ]; then
     log "python: .venv (3.14) + requirements"
-    command -v uv >/dev/null || python3 -m pip install -q --user uv || pip install -q uv
+    # a current uv: older ones (e.g. 0.8) only know Python 3.14.0rc2, which breaks pydantic under pytest
+    python3 -m pip install -q --user -U uv 2>/dev/null || pip install -q -U uv || command -v uv >/dev/null
     export PATH="$HOME/.local/bin:$PATH"
+    hash -r
     [ -x .venv/bin/python ] || uv venv -q --python 3.14 .venv
-    uv pip install -q --python .venv/bin/python -r requirements.txt -e .
+    case "$(.venv/bin/python --version 2>&1)" in *rc*) rm -rf .venv; uv venv -q --python 3.14 .venv;; esac
+    uv pip install -q --python .venv/bin/python -r requirements.txt -e . boto3
 
     log "postgresql: start, role and database 'racinglines'"
     as_root service postgresql start >/dev/null

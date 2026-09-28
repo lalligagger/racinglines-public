@@ -43,16 +43,22 @@ FROM users u ORDER BY u.role, u.username
 """
 
 
+def bet_totals(bets):
+    """Taker totals for the admin overview: people's bets only. The replay counterparty
+    (`polymarket-takers`, Polymarket's real takers filling a replayed maker) is counted apart."""
+    replay = bets["taker"] == U.REPLAY_TAKER
+    people, rp = bets[~replay], bets[replay]
+    return dict(bets=len(people), staked=float(people["stake"].sum()), taker_pnl=float(people["pnl"].sum()),
+                replay_bets=len(rp), replay_pnl=float(rp["pnl"].sum()))
+
+
 @app.get("/admin", response_class=HTMLResponse, dependencies=ADMIN)
 def admin_home(request: Request, c=Depends(conn)):
     users = rows(data.q(c, USERS_SQL))
     recent = rows(data.q(c, "SELECT id, ts, username, role, action, detail, ip FROM activity_log ORDER BY id DESC LIMIT 25"))
     book = house.book(c)
-    bets = house.taker_bets(c)
     totals = dict(markets=len(book), open=int((book["status"] == "open").sum()) if len(book) else 0,
-                  bets=len(bets), staked=float(bets["stake"].sum()) if len(bets) else 0.0,
-                  taker_pnl=float(bets["pnl"].sum()) if len(bets) else 0.0,
-                  worst=float(book["worst"].sum()) if len(book) else 0.0)
+                  **bet_totals(house.taker_bets(c)), worst=float(book["worst"].sum()) if len(book) else 0.0)
     return render(request, "admin.html", users=users, recent=recent, totals=totals)
 
 

@@ -35,6 +35,7 @@ nav:
       - CLI reference: cli.md
       - Cloud sweeps: cloud-sweep.md
       - Cloud build-out: cloud-buildout.md
+      - Google Cloud proposal: google-cloud.md
       - Testing: testing.md
   - Roadmap:
       - Priorities and open items: todo.md

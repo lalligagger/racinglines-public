@@ -47,7 +47,13 @@ import numpy as np
 
 from racinglines import paths
 
-FEED = "https://prod.chronorace.be/api/results/generic/uci/{slug}/dh?key={key}"
+from racinglines import sports
+from racinglines.markets import crowd as C
+from racinglines.markets import quoting as Q
+from racinglines.pipelines import live as LV
+
+_LIVE = sports.load("mtb_dh")["live"]          # the sport's live settings (sports/mtb_dh.toml [live])
+FEED = _LIVE["sources"]["live"]["url"]
 MODEL_VERSION = 2               # v2 (27 Sep 2026, mid-final): track trend by start order, shared track shock,
                                 # recent-finisher split ratios, quotes pulled after a rider's last split
 N_SIMS = 20_000
@@ -64,25 +70,27 @@ PRIOR_FACTOR = 1.01             # a final runs ~1% slower than qualifying before
 SIGMA_START = 0.016             # log-time s.d. of a rider still to start
 DNF_START = 0.05                # crash / DNF probability of a rider still to start
 COND = {"rutted": (0.004, 0.02), "wet": (0.010, 0.04), "dry": (0.0, 0.0), "clear": (0.0, 0.0)}
-HALF_SPREAD = 0.03
-WIDEN_ON_COURSE = 0.02          # the rider is on course: information arrives fast
-WIDEN_NEXT = 0.01               # next few to start
-MARKETS = {"win": "Wins the final", "podium": "Podium (top 3)"}
+# quoting, the crowd and the cadence: data, in sports/mtb_dh.toml [live]
+HALF_SPREAD = _LIVE["quoting"]["half_spread"]
+WIDEN_ON_COURSE = _LIVE["quoting"]["widen_on_course"]      # the rider is on course: information arrives fast
+WIDEN_NEXT = _LIVE["quoting"]["widen_next"]                # next few to start
+MARKETS = dict(_LIVE["markets"]["names"])
 # the private book's crowd: CROWD anonymous takers, each hitting a quoted market with probability CROWD_P per
 # poll, on a random side; each taker has an event budget of $10-200 and bets part of what's left each time;
 # anonymous, tracked as one group
-CROWD = 1000
-CROWD_P = 0.0004
-CROWD_BUDGET = (10.0, 200.0)    # $ each taker may bet over the whole event, log-uniform (a private beta, play money)
-CROWD_BET = (0.2, 0.8)          # each bet: this share of what the taker has left (at least MIN_BET)
-MIN_BET = 2.0
-LATE_WHEN_LEFT = 3              # the late window opens once the fourth-to-last rider has started (<= 3 to start):
-LATE_INTERVAL = 2               # polls every 2 s, and every taker gets a fresh $LATE_CAP for the window
-LATE_CAP = 100.0
-LATE_PACE = 50.0                # the late window trades at the push pace: 50x the normal crowd rate
-BASE_INTERVAL = 5               # CROWD_P is per BASE_INTERVAL seconds; faster polls scale it down (same rate)
-MAX_POS = 2500.0                # the maker's shares per market, either way
-SKEW = 1.0                      # quotes lean against inventory: shift = -SKEW x half-spread x inventory / MAX_POS
+CROWD = _LIVE["crowd"]["takers"]
+CROWD_P = _LIVE["crowd"]["p"]
+CROWD_BUDGET = tuple(_LIVE["crowd"]["budget"])   # $ each taker may bet over the whole event, log-uniform (a private beta, play money)
+CROWD_BET = tuple(_LIVE["crowd"]["bet"])         # each bet: this share of what the taker has left (at least MIN_BET)
+MIN_BET = _LIVE["crowd"]["min_bet"]
+LATE_WHEN_LEFT = _LIVE["poll"]["late_when_left"]  # the late window opens once the fourth-to-last rider has started (<= 3 to start):
+LATE_INTERVAL = _LIVE["poll"]["late_interval_s"]  # polls every 2 s, and every taker gets a fresh $LATE_CAP for the window
+LATE_CAP = _LIVE["crowd"]["late_cap"]
+LATE_PACE = _LIVE["crowd"]["late_pace"]           # the late window trades at the push pace: 50x the normal crowd rate
+BASE_INTERVAL = _LIVE["poll"]["interval_s"]       # CROWD_P is per BASE_INTERVAL seconds; faster polls scale it down (same rate)
+MAX_POS = _LIVE["quoting"]["max_pos"]             # the maker's shares per market, either way
+SKEW = _LIVE["quoting"]["skew"]                   # quotes lean against inventory: shift = -SKEW x half-spread x inventory / MAX_POS
+CROWD_SEED = _LIVE["crowd"]["seed"]
 
 
 EVENT_NAMES = {"20260925_mtb": "Whistler DH final (private book)"}
@@ -94,32 +102,17 @@ def event_name(slug):
 
 
 def book_curve(slug, maker=True):
-    """The private book's P&L through the event, from every saved snapshot since the book opened (all of the event's finals):
-    [(time, P&L)], the maker's total (maker) or the demo taker's (the negative of the maker's P&L vs the
-    taker). Cached per snapshot count: the files are only ever added to."""
-    import glob
-    import gzip
+    """The private book's P&L through the event (all of its finals): pipelines/live.py book_curve."""
+    return LV.book_curve(slug, maker)
 
-    import pandas as pd
-    files = sorted(glob.glob(str(paths.DATA / "runs" / "live" / f"{slug}_*" / "snaps" / "*.json.gz")))
-    opened = min((book_opened(*p.parent.name.rsplit("_", 1))
-                  for p in (paths.DATA / "runs" / "live").glob(f"{slug}_*/crowd.jsonl")), default=None)
-    cache = book_curve.__dict__.setdefault("cache", {})
-    if cache.get(slug, (None,))[0] != len(files):
-        pts = []
-        for f in files:
-            with gzip.open(f, "rt") as fh:
-                s = json.load(fh)
-            if s.get("maker_pnl") and (opened is None or s["ts"] >= opened):   # a replaced book's snapshots: not this one
-                pts.append((pd.Timestamp(s["ts"]), s["maker_pnl"]["total"], -s["maker_pnl"]["taker"]))
-        cache[slug] = (len(files), pts)
-    return [(t, m if maker else k) for t, m, k in cache[slug][1]]
+
+def run_name(slug, key):
+    """The run folder's name (data/runs/live/<slug>_<key>)."""
+    return f"{slug}_{key}"
 
 
 def outdir(slug, key):
-    d = paths.DATA / "runs" / "live" / f"{slug}_{key}"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    return LV.folder(run_name(slug, key))
 
 
 def fetch(slug, key, session=None):
@@ -334,8 +327,9 @@ def simulate(riders, qbest, qratio, cond="", n=N_SIMS, seed=7, prior=None):
 
 def quote(fair, rider, n_next=3, inv=0.0):
     """The maker's YES quote on one market: (bid, ask) in cents-rounded dollars, or (None, None). Leans
-    against inventory; stops adding to a position at MAX_POS."""
-    if fair is None or fair <= 0.005 or fair >= 0.995:
+    against inventory; stops adding to a position at MAX_POS (markets/quoting.py). Downhill's half-spread
+    widens while the rider is on course and just before they start."""
+    if fair is None or fair <= Q.LO or fair >= Q.HI:
         return None, None
     hs = HALF_SPREAD
     if rider["status"] == "InRace":
@@ -346,135 +340,54 @@ def quote(fair, rider, n_next=3, inv=0.0):
         hs += WIDEN_NEXT
     if MODEL_VERSION >= 2 and rider["status"] not in ("Finished", "InRace"):
         hs += 0.01                                                        # the track is changing under them
-    shift = -SKEW * hs * inv / MAX_POS
-    bid = math.floor((fair - hs + shift) * 100) / 100
-    ask = math.ceil((fair + hs + shift) * 100) / 100
-    bid = bid if bid >= 0.01 and inv < MAX_POS else None
-    ask = ask if ask <= 0.99 and inv > -MAX_POS else None
-    return bid, ask
+    return Q.quote(fair, hs, inv, MAX_POS, SKEW, tidy=False)
+
+
+def crowd_params():
+    """The crowd's settings (markets/crowd.py), from this module's constants."""
+    return C.Params(takers=CROWD, p=CROWD_P, budget=CROWD_BUDGET, bet=CROWD_BET, min_bet=MIN_BET, max_pos=MAX_POS,
+                    seed=CROWD_SEED, late_cap=LATE_CAP, late_pace=LATE_PACE)
 
 
 def load_book(out):
-    p = out / "book.json"
-    if p.exists():
-        return json.loads(p.read_text())
-    import uuid
-    rng = np.random.default_rng(20260927)                       # the crowd's budgets and ids, fixed once (replayable)
-    budget = np.exp(rng.uniform(math.log(CROWD_BUDGET[0]), math.log(CROWD_BUDGET[1]), CROWD)).round(2).tolist()
-    ids = [str(uuid.UUID(bytes=rng.bytes(16), version=4)) for _ in range(CROWD)]   # anonymous: no accounts
-    return dict(markets={}, crowd=dict(fills=0, volume=0.0, budget_total=round(sum(budget), 2)), seeds=[],
-                budget=budget, left=list(budget), ids=ids, takers={})
+    return C.load_book(out, crowd_params())
 
 
 def crowd_fills(quotes, book, rng, intensity=1.0, pot="left"):
     """One poll of the anonymous crowd against the maker's quotes (intensity x the normal hit rate). Mutates
-    book; returns the fills."""
-    fills = []
-    for q in quotes:
-        if q["bid"] is None and q["ask"] is None:
-            continue
-        for _ in range(int(rng.binomial(CROWD, min(1.0, CROWD_P * intensity)))):
-            who = int(rng.integers(CROWD))                             # an anonymous taker with money left
-            if book[pot][who] < MIN_BET:
-                continue
-            m = book["markets"].setdefault(f"{q['bib']}:{q['market']}", dict(inv=0.0, cash=0.0, crowd_inv=0.0, crowd_cash=0.0))
-            sides = [s for s, px in (("buy", q["ask"]), ("sell", q["bid"])) if px is not None]
-            side = sides[int(rng.integers(len(sides)))]
-            px = q["ask"] if side == "buy" else q["bid"]
-            cost = px if side == "buy" else 1 - px                     # a crowd seller buys NO at 1 - bid
-            stake = max(MIN_BET, book[pot][who] * float(rng.uniform(*CROWD_BET)))
-            stake = min(stake, book[pot][who])
-            shares = round(stake / max(cost, 0.01), 2)
-            room = MAX_POS + m["inv"] if side == "buy" else MAX_POS - m["inv"]
-            shares = min(shares, max(room, 0.0))
-            if shares <= 0:
-                continue
-            book[pot][who] = round(book[pot][who] - shares * cost, 2)
-            tid = book["ids"][who]
-            pos = book["takers"].setdefault(tid, {}).setdefault(f"{q['bib']}:{q['market']}", [0.0, 0.0])
-            sg = 1 if side == "buy" else -1                             # crowd's YES shares
-            m["inv"] -= sg * shares
-            m["cash"] += sg * shares * px
-            m["crowd_inv"] += sg * shares
-            m["crowd_cash"] -= sg * shares * px
-            pos[0] += sg * shares                                       # this taker's YES shares and cash
-            pos[1] -= sg * shares * px
-            book["crowd"]["fills"] += 1
-            book["crowd"]["volume"] += shares * cost
-            fills.append(dict(bib=q["bib"], market=q["market"], side=side, price=px, shares=shares, fair=q["fair"],
-                              taker=tid))
-    return fills
+    book; returns the fills (markets/crowd.py)."""
+    return C.fills(quotes, book, rng, crowd_params(), intensity=intensity, pot=pot)
 
 
-PRIVATE = "private"
-MAKER_USER, TAKER_USER = "maker", "taker"        # the demo accounts: the book's maker, and the tracked taker
+PRIVATE, MAKER_USER, TAKER_USER = C.PRIVATE, C.MAKER_USER, C.TAKER_USER
+
+
+def _by_key(outcomes):
+    """{(bib, market): yes} -> {"bib:market": yes}."""
+    return {f"{b}:{m}": v for (b, m), v in outcomes.items()}
 
 
 def sync_positions(slug, rows, book, picks, fair, outcomes):
     """Write the private book into paper_positions (venue 'private', event_key = the event slug): the demo
     maker's position per market (the crowd's fills and the demo taker's picks) and the demo taker's picks.
     Replaced on every update, so the Positions page shows them live and settled."""
-    from sqlalchemy import text
-
-    from racinglines.db.config import get_engine
     names = {r["bib"]: r["name"] for r in rows}
-    maker = {}
-    for k, mk in book["markets"].items():
-        maker[k] = dict(yes=mk["inv"], cash=mk["cash"])
-    for p in picks:
-        k = f"{p['bib']}:{p['market']}"
-        m = maker.setdefault(k, dict(yes=0.0, cash=0.0))
-        m["yes"] -= p["shares"]
-        m["cash"] += p["stake"]
 
-    def row(uid, k, yes, cash):
+    def describe(k):
         b, m = k.split(":")
-        o = outcomes.get((int(b), m))
-        return dict(u=uid, e=slug, k=f"{slug}:{k}", kind=f"dh_{m}", subj=names.get(int(b), b), yes=yes, no=0.0,
-                    cash=cash, mark=fair.get(k), out=o, v=PRIVATE)
-    with get_engine().begin() as c:
-        ids = dict(c.execute(text("SELECT username, id FROM users WHERE username = ANY(:u)"),
-                             dict(u=[MAKER_USER, TAKER_USER])).all())
-        c.execute(text("DELETE FROM paper_positions WHERE venue = :v AND event_key = :e"), dict(v=PRIVATE, e=slug))
-        rows_ = []
-        if MAKER_USER in ids:
-            rows_ += [row(ids[MAKER_USER], k, m["yes"], m["cash"]) for k, m in maker.items() if abs(m["yes"]) > 1e-9]
-        if TAKER_USER in ids:
-            rows_ += [row(ids[TAKER_USER], f"{p['bib']}:{p['market']}", p["shares"], -p["stake"]) for p in picks]
-        for r in rows_:
-            c.execute(text("""INSERT INTO paper_positions (user_id, candidate_id, race_id, event_key, market_key, kind, subject,
-                                yes_shares, no_shares, cash, mark, outcome, venue)
-                              VALUES (:u, NULL, NULL, :e, :k, :kind, :subj, :yes, :no, :cash, :mark, :out, :v)"""), r)
+        return f"dh_{m}", names.get(int(b), b)
+    C.sync_positions(slug, book, picks, describe, fair, _by_key(outcomes))
 
 
 def crowd_results(book, fair, outcomes, spotlight_seed=20260927):
     """Each anonymous taker's P&L (marked to fair; settled where known), summarised as a group, plus one
     randomly chosen taker's bets."""
-    def value(k):
-        b, m = k.split(":")
-        o = outcomes.get((int(b), m))
-        return float(o) if o is not None else fair.get(k, 0.0)
-    pnl = {tid: sum(c + y * value(k) for k, (y, c) in mk.items()) for tid, mk in book.get("takers", {}).items()}
-    if not pnl:
-        return None
-    v = np.array(list(pnl.values()))
-    ids = sorted(pnl)
-    pick = ids[int(np.random.default_rng(spotlight_seed).integers(len(ids)))]
-    bets = [dict(market=k, yes=y, cash=c, value=value(k), pnl=c + y * value(k)) for k, (y, c) in book["takers"][pick].items()]
-    return dict(bettors=len(v), up=int((v > 0.005).sum()), down=int((v < -0.005).sum()), median=float(np.median(v)),
-                best=float(v.max()), worst=float(v.min()), total=float(v.sum()),
-                spotlight=dict(taker=pick, pnl=pnl[pick], bets=bets))
+    return C.crowd_results(book, fair, _by_key(outcomes), spotlight_seed)
 
 
 def book_pnl(book, fair, outcomes, picks=()):
     """The maker's P&L, marked to fair (settled where the outcome is known): total, vs the crowd, vs the demo taker."""
-    def value(key):
-        b, m = key.split(":")
-        o = outcomes.get((int(b), m))
-        return float(o) if o is not None else fair.get(key, 0.0)
-    crowd = sum(mk["cash"] + mk["inv"] * value(k) for k, mk in book["markets"].items())
-    taker = sum(p["stake"] - p["shares"] * value(f"{p['bib']}:{p['market']}") for p in picks)
-    return dict(total=crowd + taker, crowd=crowd, taker=taker)
+    return C.book_pnl(book, fair, _by_key(outcomes), picks)
 
 
 def settle(rows, done):
@@ -621,6 +534,28 @@ def run(slug, key, quali_keys, cond="", interval=BASE_INTERVAL, minutes=0, echo=
         time.sleep(LATE_INTERVAL if late else interval)
 
 
+def step(spec, now=None, echo=print, **_):
+    """Adapter interface: one poll of the final named by a launch spec ([feed] slug, final, quali, conditions).
+    Live only (the feed is the present): now is ignored. A final that is over is left alone (its run folder is
+    the record the replay reads)."""
+    f = spec["feed"]
+    snap, _, _ = load(f["slug"], str(f["final"]))
+    if snap and snap.get("done"):
+        echo(f"{f['slug']} final {f['final']}: over; nothing to do")
+        return None
+    s = update(f["slug"], str(f["final"]), [str(k) for k in f.get("quali", [])], f.get("conditions", ""),
+               interval=spec["live"]["poll"]["interval_s"])
+    echo(f"{s['ts']} {s['counts']} maker P&L {s['maker_pnl']['total']:+.2f}" + (" · FINAL OVER" if s["done"] else ""))
+    return s
+
+
+def run_spec(spec, minutes=0, echo=print):
+    """Adapter: poll the spec's final until it is over (run())."""
+    f = spec["feed"]
+    return run(f["slug"], str(f["final"]), [str(k) for k in f.get("quali", [])], f.get("conditions", ""),
+               interval=spec["live"]["poll"]["interval_s"], minutes=minutes, echo=echo)
+
+
 # ---------------------------------------------------------------------------
 # The demo taker's picks: chosen once, at the maker's quotes of that moment
 # ---------------------------------------------------------------------------
@@ -647,95 +582,203 @@ def make_picks(slug, key, picks, stake=25.0):
 
 
 def load(slug, key):
-    out = outdir(slug, key)
-    snap = json.loads((out / "latest.json").read_text()) if (out / "latest.json").exists() else None
-    picks = json.loads((out / "picks.json").read_text()) if (out / "picks.json").exists() else []
-    hist = []
-    if (out / "history.jsonl").exists():
-        hist = [json.loads(line) for line in (out / "history.jsonl").read_text().splitlines() if line.strip()]
-    return snap, picks, hist
+    return LV.load(run_name(slug, key))
+
+
+def _finals():
+    """The recorded downhill finals, newest first: [(slug, key)]."""
+    return [tuple(e["run"].rsplit("_", 1)) for e in LV.events() if e["sport"] == "mtb_dh"]
 
 
 def latest():
     """(slug, key) of the most recently updated final, however old (replay), or None."""
-    base = paths.DATA / "runs" / "live"
-    found = list(base.glob("*/latest.json")) if base.exists() else []
-    if not found:
-        return None
-    slug, key = max(found, key=lambda p: p.stat().st_mtime).parent.name.rsplit("_", 1)
-    return slug, key
+    f = _finals()
+    return f[0] if f else None
 
 
 def state(max_age_h=6):
     """'live' while a final is running (updated within max_age_h hours and not over), 'replay' once it is
-    over (or stale), None when nothing was ever recorded. Cached on latest.json's mtime (read per page)."""
+    over (or stale), None when nothing was ever recorded (pipelines/live.py state, for downhill finals)."""
     cur = latest()
-    if cur is None:
-        return None
-    p = outdir(*cur) / "latest.json"
-    m = p.stat().st_mtime
-    cache = state.__dict__.setdefault("cache", {})
-    if cache.get(p) is None or cache[p][0] != m:
-        cache[p] = (m, bool(json.loads(p.read_text()).get("done")))
-    return "live" if not cache[p][1] and time.time() - m <= max_age_h * 3600 else "replay"
+    return None if cur is None else LV.state(run_name(*cur), max_age_h)
 
 
 def snap_times(slug, key):
     """The saved snapshots' times (their file names, e.g. 20260927T223221), oldest first."""
-    return sorted(f.name.split(".")[0] for f in (outdir(slug, key) / "snaps").glob("*.json.gz"))
+    return LV.snap_times(run_name(slug, key))
 
 
 def load_at(slug, key, t):
     """load() as of one snapshot (the last one at or before t, a snap_times name): the snapshot, the picks,
     the history up to it."""
-    import bisect
-    import gzip
-    times = snap_times(slug, key)
-    if not times:
-        return load(slug, key)
-    name = times[max(0, bisect.bisect_right(times, t) - 1)]
-    with gzip.open(outdir(slug, key) / "snaps" / f"{name}.json.gz", "rt") as f:
-        snap = json.load(f)
-    _, picks, hist = load(slug, key)
-    return snap, picks, [h for h in hist if h["ts"] <= snap["ts"]]
+    return LV.load_at(run_name(slug, key), t)
 
 
 def book_opened(slug, key):
     """When the private book that ran opened: its first crowd poll's time (ISO), or None."""
-    p = outdir(slug, key) / "crowd.jsonl"
-    if not p.exists():
-        return None
-    with p.open() as f:
-        first = f.readline()
-    return json.loads(first)["ts"] if first.strip() else None
+    return LV.book_opened(run_name(slug, key))
 
 
 def book_at(slug, key, ts=None):
     """The maker's private book rebuilt from the crowd's fills up to ts (ISO; None = all): {market: dict(inv,
     cash)} (the maker's side; the same as book.json at the end) and the crowd polls up to ts, newest last."""
-    p = outdir(slug, key) / "crowd.jsonl"
-    polls = [json.loads(line) for line in p.read_text().splitlines() if line.strip()] if p.exists() else []
-    polls = [e for e in polls if ts is None or e["ts"] <= ts]
-    markets = {}
-    for e in polls:
-        for f in e["fills"]:
-            mk = markets.setdefault(f"{f['bib']}:{f['market']}", dict(inv=0.0, cash=0.0))
-            sg = -1 if f["side"] == "buy" else 1                       # the crowd buys YES: the maker is short it
-            mk["inv"] += sg * f["shares"]
-            mk["cash"] -= sg * f["shares"] * f["price"]
-    return markets, polls
+    return LV.book_at(run_name(slug, key), ts)
 
 
 def current(max_age_h=12):
     """(slug, key) of the most recently updated live final, if updated within max_age_h hours."""
-    base = paths.DATA / "runs" / "live"
-    if not base.exists():
+    cur = latest()
+    if cur is None or time.time() - (outdir(*cur) / "latest.json").stat().st_mtime > max_age_h * 3600:
         return None
-    latest = [p for p in base.glob("*/latest.json")]
-    if not latest:
-        return None
-    p = max(latest, key=lambda p: p.stat().st_mtime)
-    if time.time() - p.stat().st_mtime > max_age_h * 3600:
-        return None
-    slug, key = p.parent.name.rsplit("_", 1)
-    return slug, key
+    return cur
+
+
+# ---------------------------------------------------------------------------
+# The Live tab's body (templates/live_mtb_dh.html)
+# ---------------------------------------------------------------------------
+
+def view(run, snap, picks, hist, mode, maker):
+    """What the downhill body needs, for the maker or the taker: the leaderboard, riders on course, up next,
+    the rank-probability grid with quotes, the taker's picks, the win-probability chart and the private book
+    (rebuilt from the crowd's fills up to this snapshot)."""
+    import pandas as pd
+
+    from racinglines.web.viz import line_chart
+    out = {}
+    riders = snap["riders"]
+    qs = {(q["bib"], q["market"]): q for q in snap["quotes"]}
+    prev = hist[-2]["quotes"] if len(hist) >= 2 else {}
+    outcomes = {(o["bib"], o["market"]): o["yes"] for o in snap.get("outcomes") or []}
+    fin = sorted([r for r in riders if r["status"] == "Finished" and r["time"]], key=lambda r: r["time"])
+    lead = fin[0]["time"] if fin else None
+    for i, r in enumerate(fin):
+        r["rank"], r["gap"] = i + 1, (r["time"] - lead) if lead else None
+    on = [r for r in riders if r["status"] == "InRace"]
+    nxt = sorted([r for r in riders if r.get("next") is not None], key=lambda r: r["next"])[:6]
+    grid = sorted([r for r in riders if r["top10"] > 0.001 or r["status"] == "Finished"],
+                  key=lambda r: (-r["top3"], -r["top10"]))[:16]
+    grid += [r for r in fin[:3] if r not in grid]                        # the current leaders always show
+    grid.sort(key=lambda r: (-r["top3"], -r["top10"]))
+    for r in grid:
+        for m in MARKETS:
+            q = qs.get((r["bib"], m), {})
+            old = prev.get(f"{r['bib']}:{m}") or [None, None]
+            r[f"{m}_bid"], r[f"{m}_ask"] = q.get("bid"), q.get("ask")
+            r[f"{m}_move"] = (None if q.get("ask") is None or old[1] is None else
+                              ("up" if q["ask"] > old[1] else "down" if q["ask"] < old[1] else None))
+    by = {r["bib"]: r for r in riders}
+    # the taker's picks: each YES bought at the maker's ask; the maker holds the other side
+    rows_, stake = [], 0.0
+    for p in picks:
+        q = qs.get((p["bib"], p["market"]), {})
+        res = outcomes.get((p["bib"], p["market"]))
+        if res is not None:
+            now, state = (1.0 if res else 0.0), ("won" if res else "lost")
+        else:
+            mid = [x for x in (q.get("bid"), q.get("ask")) if x is not None]
+            now, state = (sum(mid) / len(mid) if mid else q.get("fair")), "live"
+        value = p["shares"] * now if now is not None else None
+        fair = q.get("fair") if res is None else float(res)
+        rows_.append(dict(p, now=now, value=value, pnl=None if value is None else value - p["stake"], state=state,
+                          fair=fair, maker_pnl=None if fair is None else p["stake"] - p["shares"] * fair,
+                          rider_status=by.get(p["bib"], {}).get("status")))
+        stake += p["stake"]
+    tot = dict(stake=stake, value=sum(r["value"] or 0 for r in rows_), pnl=sum(r["pnl"] or 0 for r in rows_),
+               maker_pnl=sum(r["maker_pnl"] or 0 for r in rows_),
+               won=sum(r["state"] == "won" for r in rows_), lost=sum(r["state"] == "lost" for r in rows_))
+    chart = None
+    if maker and len(hist) >= 2:
+        top = sorted(riders, key=lambda r: -r["p1"])[:5]
+        # the rider on course (else the next to start) is always drawn, dashed, even at zero
+        cur_r = next((r for r in riders if r["status"] == "InRace"), None) or next(
+            (r for r in sorted(riders, key=lambda r: r["next"] if r.get("next") is not None else 999)
+             if r.get("next") is not None), None)
+        if cur_r and cur_r not in top:
+            top.append(cur_r)
+        series = {r["name"]: [(pd.Timestamp(h["ts"]), h["fair"].get(f"{r['bib']}:win", 0.0)) for h in hist]
+                  for r in top}
+        labels = {r["name"]: r["name"] + (" (on course)" if r["status"] == "InRace" else " (next)" if r is cur_r else "")
+                  for r in top}
+        chart = line_chart(series, labels, money=False, h=190, highlight={cur_r["name"]} if cur_r else ())
+    # the private book: the anonymous crowd, as a group, and the maker's biggest positions
+    # rebuilt from the crowd's fills up to this snapshot (live: all of them; the same as book.json)
+    markets, polls = LV.book_at(run, snap["ts"] if mode == "replay" else None)
+    book = markets if polls and snap.get("maker_pnl") else None
+    positions, recent = [], []
+    if book:
+        fair = {f"{q['bib']}:{q['market']}": q["fair"] for q in snap["quotes"]}
+        for k, mk in markets.items():
+            b_, m_ = k.split(":")
+            o = outcomes.get((int(b_), m_))
+            v = float(o) if o is not None else fair.get(k, 0.0)
+            positions.append(dict(rider=by.get(int(b_), {}).get("name", b_), market=m_, inv=mk["inv"],
+                                  pnl=mk["cash"] + mk["inv"] * v, value=v, settled=o is not None))
+        positions.sort(key=lambda x: -abs(x["inv"]))
+        for e in reversed(polls[-6:]):
+            for f in e["fills"][:4]:
+                recent.append(dict(f, ts=e["ts"][11:19], rider=by.get(f["bib"], {}).get("name", f["bib"])))
+    out.update(by_bib={r["bib"]: r["name"] for r in riders})
+    out.update(book=book, positions=positions[:10], recent=recent[:12], crowd=snap.get("crowd"),
+               mpnl=snap.get("maker_pnl"))
+    out.update(fin=fin, on=on, nxt=nxt, grid=grid, picks=rows_, tot=tot, win_chart=chart,
+               age=int((pd.Timestamp.now(tz="UTC") - pd.Timestamp(snap["ts"])).total_seconds()))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Re-pricing a final from its logged raw feed (adapter: reprice)
+# ---------------------------------------------------------------------------
+
+def reprice(slug, key, label="current", every=1, n_sims=N_SIMS, echo=print):
+    """Re-run the pricing over every logged raw feed response (raw/<ts>.json.gz), with this code and the
+    final's recorded inputs (meta.json: qualifying on one scale, split ratios, season priors, conditions):
+    no network, no crowd, no quotes. Writes reprice/<label>.jsonl (ts, fair per market) in the run folder and
+    returns dict(rows, scorecard=dict(live, repriced)) scored on the same updates against the result."""
+    import gzip
+
+    from racinglines.pipelines import live_report as R
+    out = outdir(slug, key)
+    meta = json.loads((out / "meta.json").read_text())
+    qbest = {int(k): v for k, v in meta["qbest"].items()}
+    qratio = {int(k): v for k, v in meta["qratio"].items()}
+    prior = {k: tuple(v) for k, v in meta.get("prior", {}).items()}
+    raws = sorted((out / "raw").glob("*.json.gz"))[::max(1, every)]
+    rows, last = [], None
+    for i, f in enumerate(raws):
+        with gzip.open(f, "rt") as fh:
+            riders = parse(json.load(fh))
+        state = json.dumps([(r["bib"], r["status"], r["time"], r["splits"]) for r in riders])
+        if state != last:                                  # an unchanged feed: the same prices
+            sim, _ = simulate(riders, qbest, qratio, meta.get("conditions", ""), n=n_sims, prior=prior)
+            fair = {f"{r['bib']}:{m}": round(r[col], 4) for r in sim for m, col in (("win", "p1"), ("podium", "top3"))}
+            last = state
+        stamp = f.name.split(".")[0]
+        rows.append(dict(ts=f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:8]}T{stamp[9:11]}:{stamp[11:13]}:{stamp[13:15]}+00:00",
+                         stamp=stamp, fair=fair))
+        if i % 100 == 0:
+            echo(f"  {i + 1}/{len(raws)} {stamp}")
+    (out / "reprice").mkdir(exist_ok=True)
+    with (out / "reprice" / f"{label}.jsonl").open("w") as fh:
+        for r in rows:
+            fh.write(json.dumps(r) + "\n")
+    snap, _, _ = load(slug, key)
+    oc = R.outcomes_of(snap)
+    live_rows = []
+    for r in rows:                                         # what was quoted live at the same feed responses
+        p = out / "snaps" / f"{r['stamp']}.json.gz"
+        if p.exists():
+            with gzip.open(p, "rt") as fh:
+                s = json.load(fh)
+            live_rows.append(dict(ts=r["ts"], fair={f"{q['bib']}:{q['market']}": q["fair"] for q in s["quotes"]}))
+
+    def mean(sc):
+        by = {}
+        for x in sc:
+            d = by.setdefault(x["kind"], [0, 0.0, 0.0])
+            d[0] += 1
+            d[1] += x["brier"]
+            d[2] += x["logloss"]
+        return {k: dict(updates=n, brier=b / n, logloss=ll / n) for k, (n, b, ll) in by.items()}
+    have = {r["ts"] for r in live_rows}
+    return dict(rows=rows, scorecard=dict(live=mean(R.scorecard(live_rows, oc)),
+                                          repriced=mean(R.scorecard([r for r in rows if r["ts"] in have], oc))))

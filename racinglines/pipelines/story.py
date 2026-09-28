@@ -131,13 +131,16 @@ def track_record(conn, uid, venue="polymarket"):
         SELECT event_key, s.profile, s.strategy, coalesce(s.signals, 0) AS signals, coalesce(s.taken, 0) AS taken,
                coalesce(s.fills, 0) AS fills, s.backfill, coalesce(p.private, false) AS private,
                coalesce(p.positions, 0) AS positions, coalesce(p.settled, true) AS settled, coalesce(p.pnl, 0) AS pnl,
-               coalesce(ra.format->>'event_name', e.name) AS event_name,
-               coalesce(e.start_date, CASE WHEN p.private THEN (p.updated AT TIME ZONE 'UTC')::date END) AS start_date
+               coalesce(ra.format->>'event_name', e.name, le.title) AS event_name,
+               coalesce(e.start_date, CASE WHEN p.private THEN coalesce((le.opened_at AT TIME ZONE 'UTC')::date,
+                                                                        (p.updated AT TIME ZONE 'UTC')::date) END) AS start_date
         FROM s FULL JOIN p USING (event_key) LEFT JOIN events e ON e.source_key = event_key AND e.source = 'f1timing'
         LEFT JOIN races ra ON ra.event_id = e.id
+        LEFT JOIN (SELECT DISTINCT ON (event_key) event_key, title, opened_at FROM live_events
+                   ORDER BY event_key, opened_at) le USING (event_key)
         WHERE (:v <> 'private' AND s.event_key IS NOT NULL) OR (:v <> 'polymarket' AND p.private) ORDER BY event_key""")
     rows = [dict(r) for r in conn.execute(q, dict(u=uid, v=venue)).mappings()]
-    from racinglines.pipelines.live_dh import event_name
+    from racinglines.pipelines.live import event_name
     for r in rows:
         r["pnl"] = float(r["pnl"] or 0.0)
         if r["private"] and r["profile"] is None:

@@ -315,3 +315,16 @@ def test_demo_sessions_are_disposable_and_logged(clients):
                              ORDER BY id DESC LIMIT 1""")).scalar()
     assert got.get("demo_view") and got.get("demo_post") and got.get("demo_blocked") and sid
     assert saved() == base
+
+
+def test_admin_totals_leave_out_the_replay_counterparty():
+    import pandas as pd
+
+    from racinglines.web import users as U
+    from racinglines.web.admin import bet_totals
+    bets = pd.DataFrame(dict(taker=["taker", U.REPLAY_TAKER, U.REPLAY_TAKER, "demo-7"],
+                             stake=[10.0, 500.0, 300.0, 5.0], pnl=[-10.0, 120.0, -40.0, 4.0]))
+    t = bet_totals(bets)
+    assert (t["bets"], t["staked"], t["taker_pnl"]) == (2, 15.0, -6.0)
+    assert (t["replay_bets"], t["replay_pnl"]) == (2, 80.0)
+    assert bet_totals(bets.iloc[0:0]) == dict(bets=0, staked=0.0, taker_pnl=0.0, replay_bets=0, replay_pnl=0.0)

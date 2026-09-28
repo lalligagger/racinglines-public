@@ -3,7 +3,8 @@ Polymarket trading client (maker-only, post-only orders; gated by env settings).
 
 Public data (no credentials): market lookup (Gamma API) and order books (CLOB).
 Trading (credentials from environment variables) goes through Polymarket's
-official py-clob-client, and every order is:
+official CLOB V2 client (py-clob-client-v2; V1-signed orders stopped working on
+2026-04-28), and every order is:
 
   - maker-side only: GTC limit orders posted with post_only=True, so the
     exchange rejects anything that would cross the book and take liquidity;
@@ -11,7 +12,8 @@ official py-clob-client, and every order is:
     SELL above best bid), the market's tick size and minimum size;
   - capped at POLYMARKET_MAX_ORDER_USD notional (price x size);
   - only sent when POLYMARKET_TRADING_ENABLED=true. Otherwise orders are built
-    and signed locally as a dry run and never leave this machine.
+    and signed locally as a dry run (V2 order struct and EIP-712 domain, no
+    network call) and never leave this machine.
 
 Environment variables
     POLYMARKET_PRIVATE_KEY        signer key (hex). Required for dry runs and trading.
@@ -24,6 +26,8 @@ Environment variables
     POLYMARKET_CLOB_HOST          default https://clob.polymarket.com
     POLYMARKET_GAMMA_HOST         default https://gamma-api.polymarket.com
     POLYMARKET_CHAIN_ID           default 137 (Polygon)
+    POLYMARKET_ORDER_VERSION      exchange order version for dry runs (default 2); live
+                                  orders use the version the CLOB reports
 
 Using Polymarket is subject to its terms and to the rules where you are; make
 sure your account and jurisdiction are eligible before enabling trading.
@@ -112,6 +116,7 @@ class TradingConfig:
     enabled: bool
     max_order_usd: float
     chain_id: int
+    order_version: int = 2
 
     @classmethod
     def from_env(cls):
@@ -126,6 +131,7 @@ class TradingConfig:
             enabled=e("POLYMARKET_TRADING_ENABLED", "").lower() in ("1", "true", "yes"),
             max_order_usd=float(e("POLYMARKET_MAX_ORDER_USD", "25")),
             chain_id=int(e("POLYMARKET_CHAIN_ID", "137")),
+            order_version=int(e("POLYMARKET_ORDER_VERSION", "2")),
         )
 
     @property
@@ -141,8 +147,8 @@ class TradingConfig:
 
 
 def _client(cfg, level2):
-    from py_clob_client.client import ClobClient
-    from py_clob_client.clob_types import ApiCreds
+    from py_clob_client_v2.client import ClobClient
+    from py_clob_client_v2.clob_types import ApiCreds
 
     client = ClobClient(CLOB_HOST, chain_id=cfg.chain_id, key=cfg.private_key,
                         signature_type=cfg.signature_type, funder=cfg.funder)
@@ -150,8 +156,30 @@ def _client(cfg, level2):
         if cfg.api_key and cfg.api_secret and cfg.api_passphrase:
             client.set_api_creds(ApiCreds(cfg.api_key, cfg.api_secret, cfg.api_passphrase))
         else:
-            client.set_api_creds(client.create_or_derive_api_creds())
+            client.set_api_creds(client.create_or_derive_api_key())
     return client
+
+
+def sign_order(client, token_id, side, price, size, bk, version):
+    """Build and EIP-712-sign a limit order locally (no network call): the tick size and
+    neg-risk flag come from the book we already checked against."""
+    from py_clob_client_v2.clob_types import CreateOrderOptions, OrderArgsV2
+
+    options = CreateOrderOptions(tick_size=_tick(bk["tick_size"]), neg_risk=bool(bk["neg_risk"]))
+    return client.builder.build_order(OrderArgsV2(token_id=token_id, price=price, size=size, side=side),
+                                      options, version=version)
+
+
+def _tick(tick_size):
+    """The client's tick-size literal ("0.01", "0.001", ...) for a float tick."""
+    return format(Decimal(str(tick_size)).normalize(), "f")
+
+
+def order_json(signed, owner=""):
+    """The signed order as the CLOB's post-order payload (for dry-run records)."""
+    from py_clob_client_v2.order_utils.model.order_data_v2 import order_to_json_v2
+
+    return order_to_json_v2(signed, owner, "GTC", post_only=True)
 
 
 class OrderRejected(Exception):
@@ -183,16 +211,16 @@ def check_order(cfg, side, price, size, bk):
 def place_maker_order(cfg, token_id, side, price, size, bk):
     """Validate, sign and (only if trading is enabled) post a post-only GTC order.
     Returns (status, exchange_order_id, response_dict)."""
-    from py_clob_client.clob_types import OrderArgs, OrderType, PartialCreateOrderOptions
+    from py_clob_client_v2.clob_types import OrderType
 
     check_order(cfg, side, price, size, bk)
     if not cfg.has_key:
         raise OrderRejected("POLYMARKET_PRIVATE_KEY is not set")
     client = _client(cfg, level2=cfg.enabled)
-    options = PartialCreateOrderOptions(tick_size=str(bk["tick_size"]), neg_risk=bk["neg_risk"])
-    signed = client.create_order(OrderArgs(token_id=token_id, price=price, size=size, side=side), options)
     if not cfg.enabled:
-        return "dry_run", None, dict(signed_order=signed.dict() if hasattr(signed, "dict") else str(signed))
+        signed = sign_order(client, token_id, side, price, size, bk, cfg.order_version)
+        return "dry_run", None, dict(signed_order=order_json(signed), order_version=cfg.order_version)
+    signed = sign_order(client, token_id, side, price, size, bk, client.get_version())
     resp = client.post_order(signed, OrderType.GTC, post_only=True)
     ok = bool(resp.get("success")) if isinstance(resp, dict) else False
     return ("submitted" if ok else "rejected"), (resp or {}).get("orderID"), resp
@@ -201,10 +229,12 @@ def place_maker_order(cfg, token_id, side, price, size, bk):
 def open_orders(cfg):
     if not (cfg.has_key and cfg.enabled):
         return []
-    return _client(cfg, level2=True).get_orders()
+    return _client(cfg, level2=True).get_open_orders()
 
 
 def cancel(cfg, exchange_order_id):
+    from py_clob_client_v2.clob_types import OrderPayload
+
     if not (cfg.has_key and cfg.enabled):
         raise OrderRejected("trading is not enabled")
-    return _client(cfg, level2=True).cancel(exchange_order_id)
+    return _client(cfg, level2=True).cancel_order(OrderPayload(orderID=exchange_order_id))

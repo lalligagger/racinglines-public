@@ -61,7 +61,9 @@ instead.
 ## Results: every season with data (2021–2026)
 
 Model run 938 (2026-09-27), command `racinglines mtb_dh backtest --db --save`. Settings: training scope
-`all`, 120-day half-life, junior weight 0.5, 4,000 simulations per round.
+`all`, 120-day half-life, junior weight 0.5, 4,000 simulations per round: the defaults before
+2026-09-28. The current defaults (half-life 240, junior weight 0.5 → 0.25, `prior_n` 1.5 → 0.5)
+and their results are in [Calibration](model.md#calibration).
 Seasons 2019–2020 have no usable timing data (see [Data](data.md#whats-downloaded)).
 2021's first round (Maribor) has no earlier history, so it isn't predicted.
 
@@ -194,8 +196,9 @@ The same 6 rounds under different settings:
 - **120 days** was kept as the balance.
 - **Junior weight 0.5** was marginally better than 0 or 1.
 
-With only 6 rounds, most of these differences are within noise. A proper sweep over
-all 43 rounds is a [Roadmap](todo.md#model).
+With only 6 rounds, most of these differences are within noise. The sweep over all 43
+rounds (2026-09-28) picked half-life 240, junior weight 0.25 and `prior_n` 0.5, now the
+defaults ([Calibration](model.md#calibration)).
 
 ## Known weaknesses
 

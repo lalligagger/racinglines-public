@@ -1,0 +1,21 @@
+# Rehearsal: Baku (round 15), run on a simulated clock (docs/f1-live-roadmap.md, B7). Every stage run is
+# already stored, so the whole weekend replays offline:
+#   racinglines live run live/f1/2026-15.toml --simulate --no-fetch
+sport = "f1"
+event = "2026-15"
+run = "2026-15-rehearsal"
+title = "Azerbaijan GP (rehearsal)"
+
+[live.markets]
+h2h_from = "2026-15"            # Baku's own listing
+
+[[picks]]
+name = "Hamilton"
+market = "race_win"
+hype = 5
+why = "seven-time champion in red"
+[[picks]]
+name = "Verstappen"
+market = "race_win"
+hype = 5
+why = "the name everyone knows"

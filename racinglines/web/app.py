@@ -271,8 +271,8 @@ def render(request, name, **ctx):
     ctx.setdefault("trading", polymarket.TradingConfig.from_env())
     ctx.setdefault("user", getattr(request.state, "user", None))
     ctx.setdefault("signals_nav", _signals_nav(ctx["user"]))
-    try:                                               # a live final (pipelines/live_dh.py): the Live tab, green while
-        from racinglines.pipelines.live_dh import state   # it runs, grey once it is over (a replay)
+    try:                                               # a live event (pipelines/live.py): the Live tab, green while
+        from racinglines.pipelines.live import state      # it runs, grey once it is over (a replay)
         ctx.setdefault("live_nav", state() if ctx["user"] else None)
     except Exception:                                  # noqa: BLE001
         ctx.setdefault("live_nav", False)
