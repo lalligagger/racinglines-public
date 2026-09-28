@@ -19,6 +19,7 @@ qualifying, while the market moves after every session.
 """
 
 import logging
+from dataclasses import replace
 from datetime import timedelta
 
 import numpy as np
@@ -129,7 +130,7 @@ def price_stages(meas, hist, sched, engine, engine_url=None, n_sims=4000, repric
                 runs.append((label, cutoff, have[k]))
                 continue
             _, summ, ex, _ = run.diagnostic(meas, hist, w["event_key"], cutoff, n_sims=st["sims"],
-                                            use_track=st["track_features"])
+                                            use_track=st["track_features"], seed=st.rng_seed)
             extra = dict(model_key=mk, data_key=dk, model_settings={n: st.to_json()[n] for n in SS.MODEL_NAMES})
             if st["variant"] != "baseline":
                 extra["variant"] = st["variant"]
@@ -284,7 +285,7 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settin
         from dataclasses import replace
 
         from racinglines.markets.strategies import maker_replay as R
-        ev = R.load_event(conn, [r for _, _, r in stage_runs])
+        ev = R.load_event(conn, [r for _, _, r in stage_runs], books=st["fill"] == "queue")
         ev = dict(ev, markets=[m for m in ev["markets"] if m.kind in st["market_kinds"]])
     except Exception as ex:  # noqa: BLE001  (no tape for this weekend)
         echo(f"  maker replay skipped: {ex}")
@@ -307,6 +308,11 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settin
             out["markout_by_kind"] = sk.drop(index="total")["markout_60m"].to_dict()
     out["maker"] = out["makers"].get("maker")
     return out
+
+
+def bankroll_scale(start, balance):
+    """Stake multiplier for bankroll-aware sizing: the balance over the starting bankroll (0 once it's gone)."""
+    return max(balance, 0.0) / start
 
 
 def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, reprice=False, taker=None, echo=print,
@@ -336,8 +342,10 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
     data_key = price_stages.data_key
     base = RB.TakerParams(min_edge=st["min_edge"], stake_per_edge=st["stake_per_edge"], max_stake=st["max_stake"],
                           cost=st["cost"], late_stages=st["late_stages"], min_edge_h2h=st["min_edge_h2h"],
-                          stages=None if st["taker_stages"] == SS.STAGES else st["taker_stages"])
+                          stages=None if st["taker_stages"] == SS.STAGES else st["taker_stages"],
+                          max_deployed=st["max_deployed"])
     params_list = [RB.TakerParams(**{**base.__dict__, "mode": m}) for m in TAKER_MODES]
+    balance = {m: st["bankroll"] for m in TAKER_MODES}     # bankroll-aware sizing: each mode's balance
     rows, all_trades, all_scores = [], [], []
     markouts = {}                      # market kind -> maker's 60-min markout so far (as of each weekend)
     for rnd, w in sched.items():
@@ -345,10 +353,16 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
         if not runs:
             continue
         with engine.connect() as c:
-            r = weekend(c, w, runs, params_list, echo=echo, widen_kinds=[k for k, v in markouts.items() if v < 0],
+            plist = params_list if st["bankroll"] is None else \
+                [replace(q, scale=bankroll_scale(st["bankroll"], balance[q.mode])) for q in params_list]
+            r = weekend(c, w, runs, plist, echo=echo, widen_kinds=[k for k, v in markouts.items() if v < 0],
                         settings=st)
         if r is None:
             continue
+        if st["bankroll"] is not None:
+            for q in plist:
+                balance[q.mode] += r["modes"][q.mode]["pnl"]
+                r["modes"][q.mode].update(scale=q.scale, balance=balance[q.mode])
         for k, v in r["markout_by_kind"].items():
             markouts[k] = markouts.get(k, 0.0) + v
         row = dict(round=rnd, event_key=w["event_key"], event=w["name"], format=w["format"], stages=len(runs),
@@ -387,7 +401,9 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
                                 bought=float(weekends.get(spent, pd.Series(dtype=float)).fillna(0).sum()))
     return dict(weekends=weekends, by_stage=by_stage, by_kind=RB.by(trades, "kind"), totals=totals, trades=trades,
                 scores=score_stage,
-                params=dict({k: v for k, v in base.__dict__.items() if k != "stages"}, n_sims=st["sims"],
+                params=dict({k: v for k, v in base.__dict__.items() if k != "stages" and not
+                             (k in ("scale", "max_deployed") and v == RB.TakerParams.__dataclass_fields__[k].default)},
+                            n_sims=st["sims"],
                             variant=st["variant"], data_lag_min=DATA_LAG.seconds // 60,
                             min_volume_24h=st["min_volume_24h"], coherence_tol=COHERENCE_TOL,
                             settings=st.to_json(), settings_key=st.key, model_key=st.model_key, data_key=data_key,

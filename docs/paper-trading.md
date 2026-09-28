@@ -202,6 +202,12 @@ The demo `maker` and `taker` (the **Try as maker** / **Try as taker** buttons; s
 [Web app](webapp.md#accounts-demo-users-vs-polymarkets-takers)) each have a paper bankroll from
 2025-01-01 (`profiles.DEMO_BANKROLL`): $10,000 for the maker, $1,000 for the taker.
 
+Sizing is fixed today: the bankroll is recorded, not used. The sweep can test two sizing rules on
+the backtest, both unset by default: `--bankroll` (stakes scale with the balance) and `--max-deployed`
+(a cap on capital deployed per weekend); see [CLI](cli.md). On 2026 (in-sample, one season; measured
+2026-09-28), a $1,000 bankroll took the stage-aware taker from +$1,874 to +$1,338, and a $200 cap to
++$265. Neither is a decision: sizing waits for 4–6 live weekends.
+
 Their weekends before live paper trading are **backtest replays** (`racinglines/pipelines/demo_history.py`):
 real Polymarket prices and trade tapes, our as-of pricing, and the backtest's strategy code (the signal
 engine's replay mode, the same path as the sweep). Every row is flagged `detail.backfill` and labelled
@@ -270,5 +276,5 @@ that would change data is refused. See [Web app](webapp.md#accounts-demo-users-v
   instead ([F1 live test](f1-live-roadmap.md)).
 - **Compare live with the backtest** before any sizing change: fill rates (against the conservative
   through rule) and markouts, weekend by weekend.
-- **No real orders.** `POLYMARKET_TRADING_ENABLED` stays unset, and order signing needs the CLOB V2
-  migration first (see [Web app](webapp.md#placing-orders)).
+- **No real orders.** `POLYMARKET_TRADING_ENABLED` stays unset. Order signing is on CLOB V2, but
+  only dry-run tested; the first real order needs the owner's approval (see [Web app](webapp.md#placing-orders)).

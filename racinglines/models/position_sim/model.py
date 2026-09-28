@@ -71,6 +71,8 @@ CHAOS = False                # race-level mixture: some simulated races are disr
 TEAM_DNF_CORR = False        # teammates' retirements correlated at the measured rate
 REG_RESET = False            # in a regulation-reset season, car data from earlier seasons count REG_RESET_WEIGHT
 REG_RESET_WEIGHT = 0.25      # set a priori (= two half-lives older), not fitted
+ROOKIE_CARRY = None          # driver offsets: once a driver's rookie season is over, that season's teammate
+                             # comparisons (the rookie's and the teammate's) count this much; None = off
 RESET_YEARS = frozenset(SCHEMA["regulations"]["resets"])       # sports/f1.toml
 # a past race counts as disrupted if it had a red flag, >= 10% of laps behind the safety car, or rain (set a priori)
 DISRUPTED_SC_SHARE, DISRUPTED_RAIN_SHARE, CHAOS_PRIOR_N = 0.10, 0.25, 4.0
@@ -347,8 +349,20 @@ def driver_offsets(drivers, col, now):
         return {}
     d["off"] = d[col] - d.groupby(["event_id", "team_key"])[col].transform("mean")
     d["w"] = _weights(d["start_date"], now)
+    if ROOKIE_CARRY is not None:
+        d["w"] *= _rookie_carry(d, now)
     g = d.assign(wo=d["w"] * d["off"]).groupby("athlete_id")[["wo", "w"]].sum()
     return (g["wo"] / (g["w"] + DRIVER_PRIOR_N)).to_dict()
+
+
+def _rookie_carry(d, now):
+    """ROOKIE_CARRY for rows from a team-event with a driver in their finished rookie season, else 1.
+    A rookie season is a driver's first season in the as-of data, unless that is the data's first
+    season (a driver already racing then isn't known to be a rookie)."""
+    first = d.groupby("athlete_id")["year"].transform("min")
+    rookie = (d["year"] == first) & (first > d["year"].min()) & (d["year"] < now.year)
+    team_event = rookie.groupby([d["event_id"], d["team_key"]]).transform("any")
+    return np.where(team_event, ROOKIE_CARRY, 1.0)
 
 
 def dnf_rates(drivers, now, prior_n=10.0):

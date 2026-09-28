@@ -507,24 +507,29 @@ F1 adapter, keeping the platform multi-sport. Plan: [F1 live test](docs/f1-live-
 
 - [ ] Profiles A and C live; compare fills and markouts with the replay, weekend by weekend.
 - [ ] Sizing after 4–6 live weekends; walk-forward with the new rounds; bankroll-aware sizing.
-- [ ] **CLOB V2 order signing** before any real order, and real orders only with the
-      owner's approval ([Market making](docs/todo.md#market-making)).
+- [ ] Real orders only with the owner's approval; CLOB V2 signing is done and dry-run tested
+      ([Market making](docs/todo.md#market-making)).
 
 **P3 · Models and data**
 
-- [ ] F1 ([F1 model](docs/todo.md#f1-model)): promote `gridq+pretrain` (owner's OK), a seed setting, the
-      driver layer in a new season, fix the h2h-only sweep crash, the stage-aware taker out of
-      sample, book-depth replay once enough books are recorded.
+- [ ] F1 ([F1 model](docs/todo.md#f1-model)): promote `gridq+pretrain` (owner's OK), the
+      `rookie` variant for profile A, the stage-aware taker on live
+      weekends (2025 didn't confirm it), book-depth replay once enough books are recorded.
 - [ ] **Downhill points validation**, the top downhill item ([Points validation](docs/todo.md#points-validation)),
       then downhill data and model ([Data](docs/todo.md#data), [Model](docs/todo.md#model)).
+- [ ] **High priority for the next cloud session: the downhill [Data](docs/todo.md#data) items** (owner,
+      2026-09-28): slug probing, canonical venue names, Elite/Junior Women, start order, weather,
+      the 2021 PDFs. Most need ChronoRace (`prod.chronorace.be`), which the cloud network policy
+      blocks: allow it in the environment first, or do them locally.
 
 **P4 · Platform and business**
 
 - [ ] A live timing feed (F1 SignalR or OpenF1) for in-session updates; in-race trading (F1-7) only
       if the owner decides to trade during races.
 - [ ] Kalshi and other exchanges ([F1-9](docs/todo.md#exchanges)); find a venue that lists downhill markets.
-- [ ] **Move to Google Cloud:** the data bucket is up ([Data](docs/data.md#data-bucket)); next, a proposal
-      for Cloud SQL, Cloud Run (web app, pollers, signal engine), Cloud Scheduler and service identities.
+- [ ] **Move to Google Cloud:** the data bucket is up ([Data](docs/data.md#data-bucket)) and the
+      [proposal](docs/google-cloud.md) is written (Cloud SQL, Cloud Run, Scheduler, service identities, about
+      $28–35 a month at list prices). Next: the owner's choices (database tier, recorder shape, domain).
 - [ ] New sports, beta testers and collaborators, B2B ([Business](docs/todo.md#business-and-collaborators)).
 - [ ] Before real users: remove the `demo_context` bubbles, fix the admin P&L, check data and settlement terms.
 

@@ -48,9 +48,14 @@ QUAL_POINTS_ROUND = dict(SCHEMA["points"]["qual_round"])
 DEFAULT_FORMAT = dict(SCHEMA["rounds"]["default_format"])
 RACE_ROUNDS = tuple(SCHEMA["rounds"]["race"])
 RUN_WEIGHTS = dict(SCHEMA["rounds"]["run_weights"])
-CATEGORY_WEIGHTS = {"ME": 1.0, "MJ": 0.5}   # training weight per category (others: 0.5)
-HALF_LIFE_DAYS = 120.0
+# Defaults from the 43-round tuning sweep (docs/model.md, Calibration; owner's OK 2026-09-28).
+# Before: MJ 0.5, half-life 120, prior_n 1.5.
+CATEGORY_WEIGHTS = {"ME": 1.0, "MJ": 0.25}  # training weight per category (others: 0.5)
+HALF_LIFE_DAYS = 240.0
+PRIOR_N = 0.5                 # shrinkage of rider pace toward the field median (in runs' weight)
 INCIDENT_THRESHOLD = 0.04     # finished >4% slower than expected = incident
+EPS_DF = None                 # run noise eps: None = normal; a number = Student-t with these degrees of
+                              # freedom, scaled to the same sd (heavier tails; docs/todo.md, Model)
 
 
 def select_target(raw, season=None, category="ME"):
@@ -117,7 +122,7 @@ def event_starters(raw, event_id):
 
 
 def fit_season_model(raw, category="ME", half_life_days=HALF_LIFE_DAYS, category_weights=None,
-                     prior_n=1.5, incident_prior_n=8.0, n_iter=30):
+                     prior_n=PRIOR_N, incident_prior_n=8.0, n_iter=30):
     """Fit rider pace / noise / incident model on every row of `raw` (any
     season or category). Pooled noise and incident parameters come from
     `category` only, since that's the field being simulated."""
@@ -196,8 +201,13 @@ def simulate_weekend(model, riders, n_sims=10000, attend_prob=None, rng=RNG, fmt
     u_mean, u_sd = u_prior if u_prior is not None else (0.0, model["tau"])
     u = rng.normal(u_mean, u_sd, (n_sims, n))
 
+    def eps():
+        if EPS_DF is None:
+            return rng.normal(0.0, model["sigma"], (n_sims, n))
+        return model["sigma"] * np.sqrt((EPS_DF - 2) / EPS_DF) * rng.standard_t(EPS_DF, (n_sims, n))
+
     def run(mask):
-        t = mu + u + rng.normal(0.0, model["sigma"], (n_sims, n))
+        t = mu + u + eps()
         inc = rng.random((n_sims, n)) < p_inc
         dnf = inc & (rng.random((n_sims, n)) < model["dnf_share"])
         t = t + np.where(inc & ~dnf, rng.choice(model["excess"], (n_sims, n)), 0.0)

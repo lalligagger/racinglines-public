@@ -29,7 +29,7 @@ def test_grid_terms_only_when_known():
         assert "g_log" in M.features(grid_known=False)
 
 
-@pytest.mark.parametrize("variant", ["grid", "gridq", "pretrain", "tail"])
+@pytest.mark.parametrize("variant", ["grid", "gridq", "pretrain", "tail", "rookie"])
 def test_variant_prices_a_race_and_guards_leakage(f1_meas, variant):
     from racinglines.models.position_sim import pricing as run
     eid = int(f1_meas.drivers["event_id"].max())
@@ -78,3 +78,33 @@ def test_reg_reset_discounts_earlier_seasons_only_in_a_reset_year():
     assert w26[0] == pytest.approx(base[0] * M.REG_RESET_WEIGHT) and w26[1] == pytest.approx(base[1])
     assert 2025 not in M.RESET_YEARS and list(w25) == list(M._weights(
         pd.Series(pd.to_datetime(["2024-11-30", "2025-03-08"])), pd.Timestamp("2025-04-01")))
+
+
+def _team_rows():
+    """One team, three seasons: V (a veteran since the data's first season) with R (a rookie in
+    2025); V's teammate in 2024 was X. R is 1% slower than V in every 2025 race."""
+    rows = []
+    for year, (a, b) in ((2024, ("V", "X")), (2025, ("V", "R")), (2026, ("V", "R"))):
+        for rnd in range(1, 4):
+            t = pd.Timestamp(f"{year}-0{rnd + 2}-01")
+            gap = 0.01 if year == 2025 else 0.0
+            for ath, d in ((a, 0.0), (b, gap)):
+                rows.append(dict(event_id=year * 10 + rnd, team_key="t", athlete_id=ath, year=year, start_date=t,
+                                 r_ts=t, r_def=d))
+    return pd.DataFrame(rows)
+
+
+def test_rookie_carry_fades_a_finished_rookie_season_only():
+    d = _team_rows()
+    now = pd.Timestamp("2026-06-01")
+    base = M.driver_offsets(d, "r_def", now)
+    with V.use("rookie"):
+        rk = M.driver_offsets(d, "r_def", now)
+        w = M._rookie_carry(d.assign(off=0.0), now)
+        in_2025 = M._rookie_carry(d[d["year"] <= 2025], pd.Timestamp("2025-06-01"))
+    assert M.ROOKIE_CARRY is None                                 # off by default
+    # 2025's comparisons (R and V alike) count a quarter in 2026; 2024 (V vs X: X's first season is the
+    # data's first) and 2026 count fully
+    assert list(w) == [1.0] * 6 + [0.25] * 6 + [1.0] * 6
+    assert (in_2025 == 1.0).all()                                 # during the rookie season: full weight
+    assert 0 < rk["R"] < base["R"] and base["V"] < rk["V"] < 0   # the 2025 gap carries less into 2026

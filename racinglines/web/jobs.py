@@ -123,8 +123,8 @@ CATALOG = {j.code: j for j in [
     JobType("dh_scenario", "mtb_dh", "Forward forecast (scenario)", "Simulate the remaining downhill rounds and the "
             "championship. Saved as a scenario; promote it to make it the live fair prices.",
             [Knob("label", "Scenario name", "text", "my scenario"),
-             Knob("half_life", "Recency half-life (days)", "float", 120, 20, 2000),
-             Knob("junior_weight", "Weight of junior results", "float", 0.5, 0, 1),
+             Knob("half_life", "Recency half-life (days)", "float", 240, 20, 2000),
+             Knob("junior_weight", "Weight of junior results", "float", 0.25, 0, 1),
              Knob("sims", "Simulations", "int", 10000, 1000, 50000)],
             lambda p, out: ["-m", "racinglines", "mtb_dh", "forecast", "--db", "--save", "--scenario", p["label"],
                             "--half-life-days", str(p["half_life"]), "--junior-weight", str(p["junior_weight"]),
@@ -132,8 +132,8 @@ CATALOG = {j.code: j for j in [
             "~1 min"),
     JobType("dh_backtest", "mtb_dh", "Backtest", "Walk forward through past downhill seasons, predicting each round "
             "from earlier ones only.",
-            [Knob("half_life", "Recency half-life (days)", "float", 120, 20, 2000),
-             Knob("junior_weight", "Weight of junior results", "float", 0.5, 0, 1),
+            [Knob("half_life", "Recency half-life (days)", "float", 240, 20, 2000),
+             Knob("junior_weight", "Weight of junior results", "float", 0.25, 0, 1),
              Knob("sims", "Simulations", "int", 2000, 200, 10000)],
             lambda p, out: ["-m", "racinglines", "mtb_dh", "backtest", "--db", "--save", "--half-life-days", str(p["half_life"]),
                             "--junior-weight", str(p["junior_weight"]), "--sims", str(p["sims"]),

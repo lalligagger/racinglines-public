@@ -287,10 +287,10 @@ def build_round_table(slug, disc_api, key, round_name, session):
     results = sorted(results, key=lambda r: r.get("Position") or 9999)
     n_splits = max((len(r.get("Times") or []) for r in results), default=0)
 
-    header = "| Pos | Bib | Rider | Team | Nation |"
+    header = "| Pos | Bib | Rider | Team | Nation | UCI ID |"
     header += "".join(f" Split {i} |" for i in range(1, n_splits + 1))
     header += " Time | Gap | Status |"
-    sep = "|---|---|---|---|---|" + "---|" * n_splits + "---|---|---|"
+    sep = "|---|---|---|---|---|---|" + "---|" * n_splits + "---|---|---|"
     rows = [header, sep]
 
     for r in results:
@@ -299,6 +299,7 @@ def build_round_table(slug, disc_api, key, round_name, session):
         name = rider.get("PrintName", "")
         team = rider.get("UciTeamName", "") or ""
         nation = rider.get("Nation", "") or ""
+        uci_id = rider.get("UciRiderId", "") or ""
         pos = r.get("Position") or ""
         times = r.get("Times") or []
         split_cells = ""
@@ -319,7 +320,7 @@ def build_round_table(slug, disc_api, key, round_name, session):
         gap_str = fmt_gap(last_time.get("TimeGap")) if (finished and last_time) else ""
         status_str = status if (status and not finished) else ""
         rows.append(
-            f"| {pos} | {bib} | {name} | {team} | {nation} |{split_cells} "
+            f"| {pos} | {bib} | {name} | {team} | {nation} | {uci_id} |{split_cells} "
             f"{time_str} | {gap_str} | {status_str} |"
         )
 
