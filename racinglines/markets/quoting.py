@@ -18,6 +18,8 @@ class Params:
     half_spread: float = 0.03
     max_pos: float = 2500.0     # the maker's shares per market, either way
     skew: float = 1.0           # quotes lean against inventory: shift = -skew x half-spread x inventory / max_pos
+    max_loss: float | None = None   # stop adding to a side once the market's worst case loses this much ($); None: off
+    floor_bid: bool = False     # a long shot whose bid rounds below 1c still gets a 1c bid, if that's under fair
 
     @classmethod
     def from_dict(cls, d):
@@ -41,6 +43,28 @@ def quote(fair, hs, inv=0.0, max_pos=2500.0, skew=1.0, tidy=True):
     ask = math.ceil(hi) / 100
     bid = bid if bid >= 0.01 and inv < max_pos else None
     ask = ask if ask <= 0.99 and inv > -max_pos else None
+    return bid, ask
+
+
+def worst_case(inv, cash):
+    """The maker's loss in one market if YES wins and if NO wins ($, positive = a loss): inv YES shares, cash."""
+    return -(cash + inv), -cash
+
+
+def capped(fair, hs, inv=0.0, cash=0.0, p=Params(), tidy=True):
+    """quote() with the optional risk switches: a long shot's 1c floor bid (floor_bid: the crowd can sell YES back,
+    so the maker isn't only ever short), and a per-market loss cap (max_loss: no more selling YES once losing
+    max_loss if YES wins; no more buying once losing it if NO wins). Both off by default: quote() as is."""
+    bid, ask = quote(fair, hs, inv, p.max_pos, p.skew, tidy)
+    if p.floor_bid and bid is None and fair is not None and LO < fair < HI and inv < p.max_pos \
+            and fair - 0.01 >= hs / 2:
+        bid = 0.01
+    if p.max_loss is not None:
+        if_yes, if_no = worst_case(inv, cash)
+        if ask is not None and if_yes >= p.max_loss:
+            ask = None
+        if bid is not None and if_no >= p.max_loss:
+            bid = None
     return bid, ask
 
 

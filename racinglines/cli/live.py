@@ -9,6 +9,7 @@ racinglines live: launch and run a live private-book event, for any sport (pipel
     racinglines live agent live/f1/2026-16.toml --install  # a macOS LaunchAgent: one step every 5 minutes, locked
     racinglines live status                                # every event: live / replay / settled, last update, lateness
     racinglines live report live/f1/2026-16.toml           # the event report (Markdown + charts + PDF)
+    racinglines live settle live/mtb_dh/20260925_mtb.toml  # record a settled event in the database (live_events)
 
 A spec is a path or sport/event (live/<sport>/<event>.toml). A demo experiment: play money, nothing is
 traded anywhere.
@@ -63,6 +64,8 @@ def main(argv=None):
     p = sub.add_parser("report", help="The event report: Markdown, charts and a PDF, in the run folder.")
     p.add_argument("spec")
     p.add_argument("--pdf", action="store_true", help="Also render the PDF (needs weasyprint or a browser)")
+    p = sub.add_parser("settle", help="Record a settled event in the database (live_events: dates, the book's P&L).")
+    p.add_argument("spec")
     args = ap.parse_args(argv)
     return globals()[f"cmd_{args.cmd}"](args)
 
@@ -338,4 +341,15 @@ def cmd_report(args):
     spec = _spec(args.spec)
     out = R.write(spec, pdf=args.pdf)
     print(json.dumps({k: paths.rel(v) if hasattr(v, "parts") else v for k, v in out.items()}, indent=1))
+    return 0
+
+
+def cmd_settle(args):
+    from racinglines.pipelines import live as LV
+    spec = _spec(args.spec)
+    s = LV.settle(spec["run"])
+    if not s["settled_at"]:
+        print(f"{spec['run']}: recorded, but not settled yet (run it again after the results)")
+    print(f"{s['run']}: {s['title']} · opened {str(s['opened_at'])[:16]} · maker P&L {s['maker_pnl'] or 0:+,.2f} "
+          f"(crowd {s['crowd_pnl'] or 0:+,.2f}, demo taker {s['taker_pnl'] or 0:+,.2f}) · {s['fills'] or 0:,} fills")
     return 0

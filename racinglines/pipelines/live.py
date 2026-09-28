@@ -282,3 +282,45 @@ def book_curve(event_key, maker=True):
                 pts.append((pd.Timestamp(s["ts"]), s["maker_pnl"]["total"], -s["maker_pnl"]["taker"]))
         cache[event_key] = (len(files), pts)
     return [(t, m if maker else k) for t, m, k in cache[event_key][1]]
+
+
+# ---------------------------------------------------------------------------
+# Recording a settled event in the database (live_events)
+# ---------------------------------------------------------------------------
+
+def summary(run):
+    """A run's record for live_events, from its run folder: dict(run, sport, event_key, title, opened_at,
+    settled_at, maker_pnl, crowd_pnl, taker_pnl, fills, volume, detail)."""
+    e = find(run)
+    if e is None or e["run"] != run:
+        raise ValueError(f"{run}: no such live event")
+    snap, picks, _ = load(run)
+    meta = json.loads((folder(run) / "meta.json").read_text()) if (folder(run) / "meta.json").exists() else {}
+    p = snap.get("maker_pnl") or {}
+    crowd = snap.get("crowd") or {}
+    curve = [(t.isoformat(), v) for t, v in book_curve(e["event_key"])]
+    return dict(run=run, sport=e["sport"], event_key=e["event_key"], title=e["title"], opened_at=book_opened(run),
+                settled_at=snap["ts"] if snap.get("done") else None, maker_pnl=p.get("total"), crowd_pnl=p.get("crowd"),
+                taker_pnl=p.get("taker"), fills=crowd.get("fills"), volume=crowd.get("volume"),
+                detail=dict(settings=meta.get("settings") or meta.get("params"), crowd_results=crowd.get("results"),
+                            picks=len(picks), curve=curve[:: max(1, len(curve) // 200)]))
+
+
+def settle(run, engine=None):
+    """Record a run in live_events (insert or replace; idempotent). Returns its summary."""
+    from sqlalchemy import text
+
+    from racinglines.db.config import get_engine
+    s = summary(run)
+    with (engine or get_engine()).begin() as c:
+        c.execute(text("""
+            INSERT INTO live_events (run, sport, event_key, title, opened_at, settled_at, maker_pnl, crowd_pnl, taker_pnl,
+                                     fills, volume, detail)
+            VALUES (:run, :sport, :event_key, :title, :opened_at, :settled_at, :maker_pnl, :crowd_pnl, :taker_pnl,
+                    :fills, :volume, CAST(:detail AS jsonb))
+            ON CONFLICT (run) DO UPDATE SET sport = EXCLUDED.sport, event_key = EXCLUDED.event_key, title = EXCLUDED.title,
+                opened_at = EXCLUDED.opened_at, settled_at = EXCLUDED.settled_at, maker_pnl = EXCLUDED.maker_pnl,
+                crowd_pnl = EXCLUDED.crowd_pnl, taker_pnl = EXCLUDED.taker_pnl, fills = EXCLUDED.fills,
+                volume = EXCLUDED.volume, detail = EXCLUDED.detail, updated_at = now()"""),
+                  dict(s, detail=json.dumps(s["detail"], default=str)))
+    return s

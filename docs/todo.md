@@ -32,7 +32,7 @@ F1 adapter, keeping the platform multi-sport. Plan: [F1 live test](f1-live-roadm
 
 - [ ] Singapore (round 17, sprint, 11 Oct): run it the same way if Polymarket still hasn't listed it.
 - [x] A repeatable report command for any live event: `racinglines live report` ([Live events](#live-events)).
-- [ ] Settle the Whistler private book in the database, into the demo maker's story.
+- [x] Settle the Whistler private book in the database, into the demo maker's story (`live_events`; the owner runs the migration and `racinglines live settle` locally).
 - [ ] A per-market loss cap or two-sided long-shot quotes in the shared quoting core.
 - [ ] Watch for Polymarket listings: F1-8 starts the first weekend with markets.
 
@@ -228,7 +228,11 @@ How it works: [Live events](live-events.md). First run: the Whistler downhill fi
       would re-price it with a new model).
 - [ ] Two-sided long-shot quotes (or a per-market loss cap) so the maker doesn't pile up shorts in unlikely
       winners.
-- [ ] Settle the Whistler private book in the database and add it to the demo maker's story.
+- [x] Settle the Whistler private book in the database and add it to the demo maker's story: the
+      `live_events` table (migration `a3f5c8d1e7b2`) and `racinglines live settle <spec>`; the story dates
+      private-book events from it (2026-09-29). Locally: `alembic upgrade head`, then
+      `racinglines live settle live/mtb_dh/20260925_mtb.toml`. The final's results still come from the usual
+      downhill download and ingest (the event is `in_progress` in the snapshot).
 - [ ] A live timing feed (F1 SignalR or OpenF1) for in-session updates; compared in the
       [F1 live test](f1-live-roadmap.md#5-live-data-source) plan.
 

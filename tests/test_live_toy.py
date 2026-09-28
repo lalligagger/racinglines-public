@@ -106,3 +106,20 @@ def test_a_third_sport_runs_through_the_core(toy, monkeypatch):
     sc = R.scorecard(LV.load("toy-1")[2], R.outcomes_of(LV.load("toy-1")[0]))
     assert sc and sc[-1]["brier"] < 1e-9 and {r["kind"] for r in sc} == {"race_win"}   # certain at the end: perfect
     assert "<svg" in files["html"].read_text() and files["pnl.svg"].exists()
+
+
+def test_settled_event_is_recorded_in_live_events(toy, test_engine):
+    """racinglines live settle: a settled run into live_events (the migration's table), idempotently."""
+    from sqlalchemy import text
+
+    from racinglines.cli import live as CL
+    spec = LV.load_spec("toy_sprint/toy-1")
+    args = type("A", (), dict(no_fetch=True, unfreeze=False, no_sync=True, no_alert=True, now=None))()
+    while CL._step(spec, args) is not None:
+        pass
+    s1 = LV.settle("toy-1", engine=test_engine)
+    s2 = LV.settle("toy-1", engine=test_engine)
+    assert s1 == s2 and s1["settled_at"] and s1["sport"] == "toy_sprint"
+    with test_engine.connect() as c:
+        rows = c.execute(text("SELECT run, event_key, maker_pnl, fills, detail->>'picks' FROM live_events")).all()
+    assert rows == [("toy-1", "toy-1", pytest.approx(s1["maker_pnl"]), s1["fills"], "0")]

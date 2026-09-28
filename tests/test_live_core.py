@@ -193,3 +193,24 @@ def test_whistler_replay_pages_unchanged(role, t):
     from racinglines.web.views import live_context
     html = templates.get_template("live_partial.html").render(live_context("20260925_mtb_3", t, role == "maker", 1))
     assert hashlib.sha256(html.encode()).hexdigest() == WHISTLER_PAGES[(role, t)]
+
+
+def test_loss_cap_and_long_shot_floor_bid_are_off_by_default():
+    assert Q.capped(0.40, 0.03, inv=-1000, cash=400) == Q.quote(0.40, 0.03, inv=-1000)
+    assert Q.capped(0.02, 0.03) == Q.quote(0.02, 0.03) == (None, 0.05)        # a long shot: YES can only be bought
+
+
+def test_floor_bid_lets_the_crowd_sell_long_shots_back():
+    p = Q.Params(floor_bid=True)
+    assert Q.capped(0.03, 0.02, p=p) == (0.01, 0.05)                            # 1c bid, 2c under fair
+    assert Q.capped(0.012, 0.02, p=p)[0] is None                               # not when 1c isn't under fair by hs/2
+    assert Q.capped(0.004, 0.02, p=p) == (None, None)                          # still nothing on a near-certain NO
+
+
+def test_loss_cap_stops_selling_yes_once_the_worst_case_hits_it():
+    p = Q.Params(max_loss=500.0)
+    assert Q.worst_case(-1000, 60.0) == (940.0, -60.0)                          # short 1,000 YES sold for $60
+    assert Q.capped(0.05, 0.03, inv=-1000, cash=60.0, p=p)[1] is None           # loses $940 if YES: no more asks
+    assert Q.capped(0.05, 0.03, inv=-400, cash=24.0, p=p)[1] is not None        # $376: still quoting
+    bid, ask = Q.capped(0.50, 0.03, inv=1200, cash=-600.0, p=p)
+    assert bid is None and ask is not None                                     # long: loses $600 if NO, no more bids

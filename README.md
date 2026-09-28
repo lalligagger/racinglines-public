@@ -499,7 +499,7 @@ F1 adapter, keeping the platform multi-sport. Plan: [F1 live test](docs/f1-live-
 
 - [ ] Singapore (round 17, sprint, 11 Oct): run it the same way if Polymarket still hasn't listed it.
 - [x] A repeatable report command for any live event: `racinglines live report` ([Live events](docs/todo.md#live-events)).
-- [ ] Settle the Whistler private book in the database, into the demo maker's story.
+- [x] Settle the Whistler private book in the database, into the demo maker's story (`live_events`; the owner runs the migration and `racinglines live settle` locally).
 - [ ] A per-market loss cap or two-sided long-shot quotes in the shared quoting core.
 - [ ] Watch for Polymarket listings: F1-8 starts the first weekend with markets.
 
