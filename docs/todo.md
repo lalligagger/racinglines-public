@@ -42,7 +42,8 @@ C makes money on Polymarket's tape and loses on Kalshi's.
 
 **P1 · October (rounds 16–19): first live weekends on real markets**
 
-- [ ] **U5** Kalshi sprint markets before Singapore (11 Oct).
+- [ ] **U5** Kalshi sprint markets before Singapore (11 Oct). Priced from the race's pole and win odds
+      until **U13**, a real sprint model, lands ([F1 model](#f1-model)).
 - [ ] **U3** Kalshi maker profile K, swept and frozen before the United States GP (25 Oct).
 - [ ] **U7** Cross-venue disagreement log; **U8** settlement rules for relocated or cancelled races.
 - [ ] Per-weekend reconciliation (live vs replay) and the pricing scorecard on every weekend ([Paper trading](#paper-trading)).
@@ -226,6 +227,14 @@ events are T3 unless a venue lists the event.
 
 Phased plan and ground rules: [F1 roadmap](f1-roadmap.md).
 
+- [ ] **U13 · P2 · Sprint-race pricing model.** For now (U5, PR #36) Kalshi's sprint winner and sprint pole
+      markets price from the race's win and pole probabilities as a stand-in; the owner approved that for
+      Singapore (2026-09-29). Simulate the sprint itself: sprint qualifying as its own stage, a shorter race
+      (about a third of the distance: less tyre and pit variance, fewer retirements), and write
+      `extra.sprint_pole_prob` / `extra.sprint_win_prob` on the stage runs, which the pricing already reads
+      first. Backtest on the 2025–26 sprint weekends against Kalshi's and Polymarket's sprint prices.
+      *Done when:* sprint markets price from the sprint simulation and beat the race-odds stand-in on the
+      backtest.
 - [ ] **U10 · P3 · F1 pre-season testing:** ingest FastF1's testing sessions as a stage before round 1 for
       the forecast and the season strategy, so the pre-season forecast sees what the market sees.
       *Done when:* a 2026 re-run with testing moves the pre-season constructors' odds toward the market's
