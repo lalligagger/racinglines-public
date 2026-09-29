@@ -73,6 +73,17 @@ def test_maker_state_signals_on_changes_only():
     assert fill["side"] == "YES" and fill["status"] == "filled_paper" and fill["dedupe"] == "2"
 
 
+
+def test_maker_state_keeps_same_timestamp_fills_apart():
+    q = pd.DataFrame([(1, "a", 7, 0.38, 0.42, None)], columns=["ts", "cond", "run_id", "bid", "ask", "skip"])
+    f = pd.DataFrame([dict(ts=2, cond="a", run_id=7, side="buy", price=0.38, qty=q, fair=0.4, mid=0.40)
+                      for q in (25.0, 10.0, 5.0)]
+                     + [dict(ts=2, cond="a", run_id=7, side="sell", price=0.42, qty=8.0, fair=0.4, mid=0.40),
+                        dict(ts=3, cond="a", run_id=7, side="buy", price=0.38, qty=1.0, fair=0.4, mid=0.40)])
+    sigs, _ = SG.maker_state(q, f, [_M("a")], {7: "after FP1"}, 4)
+    keys = [(s["side"], s["dedupe"]) for s in sigs if s["action"] == "fill"]
+    assert keys == [("YES", "2"), ("YES", "2.1"), ("YES", "2.2"), ("NO", "2"), ("YES", "3")]
+
 def _out(signals, stage="after FP1"):
     prof = dict(candidate_id=999999, name="T · test", strategy="update")
     return dict(profile=prof, event=dict(event_key="2099-01", name="Test GP"), race_id=None,
