@@ -442,8 +442,7 @@ def _maker(c, w, runs, st, strategy, now, live, venue="polymarket"):
     if "info_skew" in opts:
         opts["info_skew"] = st["info_skew"]
     opts.pop("widen", None)            # widening needs earlier weekends' markouts; not applied live
-    p = replace(R.Params(half_spread=st["half_spread"], size=st["size"], max_pos=st["max_pos"], skew=st["skew"],
-                         max_disagree=st["max_disagree"], fill=st["fill"], **WS.maker_venue_opts(venue)), **opts)
+    p = replace(WS.maker_params(st, venue), **opts)     # the sweep's maker parameters, volume floor included
     rep = R.replay(ev, p)
     labels = {rid: lab for lab, _, rid in runs}
     sigs, state = maker_state(rep["quotes"], rep["fills"], ev["markets"], labels, now_ns)
@@ -684,10 +683,8 @@ def maker_call(profile, kind, fair, price, volume_24h=None):
     """Where a maker profile would quote one market at the current price: dict(action='quote', bid, ask,
     size) or dict(action=None, why). Same rules as maker_replay.quote (spread around fair, never crossing
     the market, the price band, the volume floor, the disagreement filter), with no inventory yet."""
-    from racinglines.markets.strategies import maker_replay as R
     st = SS.Settings.from_dict(profile["settings"], strict=False)
-    p = R.Params(half_spread=st["half_spread"], size=st["size"], max_pos=st["max_pos"], skew=st["skew"],
-                 max_disagree=st["max_disagree"], fill=st["fill"])
+    p = WS.maker_params(st, SS.venue_of(st))             # the replay's rules, K's volume floor included
     if kind not in st["market_kinds"] or kind == "race_pole":
         return dict(action=None, why="not a market this strategy quotes")
     if fair is None:

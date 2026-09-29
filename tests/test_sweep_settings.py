@@ -161,6 +161,24 @@ def test_queue_fill_rule_is_a_maker_setting():
     assert SS.from_args(p.parse_args(q.argv())) == q
 
 
+def test_maker_volume_filter_and_kalshi_fee_reach_the_replay_only_when_set():
+    """`maker_min_volume_24h` unset leaves every key and the replay's own $100 filter as they were; the
+    Kalshi venue adds the maker fee and nothing else (weekend_sweep.maker_params)."""
+    from racinglines.markets.strategies import maker_replay as R
+    from racinglines.pipelines import weekend_sweep as WS
+    assert SS.Settings.from_dict().key == "c107835cbced"
+    c = SS.Settings.from_dict({"variant": "gbm", "max_disagree": 0.05, "size": 25})
+    assert c.key == "4a3b81194d5f" and c["maker_min_volume_24h"] is None
+    p = WS.maker_params(c)
+    assert p == R.Params(half_spread=0.02, size=25.0, max_pos=250.0, skew=1.0, max_disagree=0.05, fill="through")
+    assert p.min_volume_24h == 100.0 and p.maker_fee == 0.0
+    k = WS.maker_params(c, "kalshi")
+    assert k.maker_fee == R.KALSHI_MAKER_FEE and k.min_volume_24h == 100.0
+    v = SS.Settings.from_dict({"variant": "gbm", "max_disagree": 0.05, "size": 25, "maker_min_volume_24h": 200})
+    assert v.key != c.key and v.model_key == c.model_key and "--maker-min-volume-24h" in v.argv()
+    assert WS.maker_params(v).min_volume_24h == 200.0
+
+
 def test_venue_setting_stays_out_of_every_key_while_unset():
     """`venue` (U1) is optional: unset or "polymarket" leaves every saved key, label and flag list as it was."""
     d = SS.Settings.from_dict()

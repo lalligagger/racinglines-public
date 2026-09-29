@@ -166,3 +166,26 @@ def test_model_only_scores_use_the_sports_settings_and_rank_by_gain(tmp_path):
     assert doc["rerun"]["2025"] == "mtb_dh walk_forward 2025"
     assert 'sport = "mtb_dh"' in (tmp_path / "candidates.toml").read_text()
     assert "score" in (tmp_path / "report.md").read_text()
+
+
+def test_kalshi_jobs_are_judged_against_the_kalshi_baseline():
+    """A job with `venue` (a maker replayed on Kalshi's tape) is compared with the baseline on the same
+    venue, ranks apart from the same settings on Polymarket, and its candidate id names the venue."""
+    good = [(10.0, 200.0)] * 4                                              # +760 on maker vs a flat baseline
+    specs = [(2026, FLAT, {}), (2025, FLAT, {}), (2026, good, A), (2025, good, A)]
+    jobs, metrics = [], {}
+    for i, (year, pnls, st) in enumerate(specs, 1):
+        j, m = _job(i, year, pnls, **st)
+        jobs.append(dict(j, venue="kalshi"))
+        metrics.update(m)
+    j, m = _job(9, 2026, [(0.0, 300.0)] * 4)                                # a Polymarket baseline that made more
+    jobs.append(j)
+    metrics.update(m)
+    rows, curves = R.stats(jobs, metrics, STRATS, {})
+    rank = R.rank(rows, curves, {})[0]
+    k = next(r for r in rows if r["venue"] == "kalshi" and r["strategy"] == "maker" and r["year"] == 2026
+             and r["settings_key"] == SS.Settings.from_dict(A).key)
+    assert k["vs_baseline"] == 760.0                                        # not against Polymarket's +1,200
+    r = next(r for r in rank if r["venue"] == "kalshi" and r["strategy"] == "maker" and r["verdict"] == "robust")
+    assert r["id"].endswith("-kalshi") and r["pnl_2025"] == 800.0
+    assert [x["venue"] for x in rank if x["verdict"] == "baseline" and x["strategy"] == "maker"] == ["kalshi", "polymarket"]

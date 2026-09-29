@@ -162,6 +162,10 @@ year = 2026
 prior_n = 1.5
 replicates = 3                 # this job and its season's baseline at 3 seeds each
 
+[[job]]
+venue = "kalshi"               # the maker strategies on Kalshi's recorded tape (`f1 sweep --venue kalshi`);
+variant = "gbm"                # judged against a baseline on the same venue (sweeps/kalshi-maker-k.toml)
+
 [report]                       # optional, in the queue file
 target = 2026
 holdout = [2025]

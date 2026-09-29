@@ -294,8 +294,7 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settin
     except Exception as ex:  # noqa: BLE001  (no tape for this weekend)
         echo(f"  maker replay skipped: {ex}")
         ev = None
-    base = R.Params(half_spread=st["half_spread"], size=st["size"], max_pos=st["max_pos"], skew=st["skew"],
-                    max_disagree=st["max_disagree"], fill=st["fill"], **maker_venue_opts(venue))
+    base = maker_params(st, venue)
     for name, opts in MAKERS.items() if ev is not None else []:
         opts = dict(opts)
         p = base
@@ -318,6 +317,18 @@ def maker_venue_opts(venue):
     """maker_replay.Params overrides for a venue: Kalshi charges makers KALSHI_MAKER_FEE per fill; Polymarket nothing."""
     from racinglines.markets.strategies import maker_replay as R
     return {} if venue == "polymarket" else dict(maker_fee=R.KALSHI_MAKER_FEE)
+
+
+def maker_params(st, venue="polymarket"):
+    """The maker replay's parameters from sweep settings: the quote settings, and the venue's maker fee.
+    `maker_min_volume_24h` unset keeps the replay's own $100 filter (the markets group's `min_volume_24h`
+    is the takers' filter)."""
+    from racinglines.markets.strategies import maker_replay as R
+    p = R.Params(half_spread=st["half_spread"], size=st["size"], max_pos=st["max_pos"], skew=st["skew"],
+                 max_disagree=st["max_disagree"], fill=st["fill"], **maker_venue_opts(venue))
+    if st["maker_min_volume_24h"] is not None:
+        p = replace(p, min_volume_24h=st["maker_min_volume_24h"])
+    return p
 
 
 def bankroll_scale(start, balance):

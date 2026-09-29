@@ -92,3 +92,23 @@ def test_replicates_run_the_job_and_its_baseline_at_several_seeds(tmp_path):
     assert seeds(1.5, 2026) == [0, 1, 2] and seeds(0.5, 2026) == [0, 1, 2]       # the baseline too
     assert seeds(1.5, 2025) == [0] and seeds(0.5, 2025) == [0]
     assert len({j["id"] for j in jobs}) == len(jobs)
+
+
+def test_a_kalshi_sweep_job_gets_its_own_id_baseline_and_command(tmp_path):
+    """A job's `venue` (off by default: Polymarket) is part of its id, adds a baseline on the same venue,
+    and turns into `f1 sweep --venue kalshi`; Polymarket ids and commands don't move."""
+    a = dict(kind="sweep", year=2026, variant="gbm")
+    assert S.job_id(a) == S.job_id(dict(a, venue="polymarket"))
+    assert S.job_id(a) != S.job_id(dict(a, venue="kalshi"))
+    _, jobs, cands = S.load(_queue(tmp_path, '[[job]]\nvariant = "gbm"\nvenue = "kalshi"\n[[job]]\nvariant = "gbm"\n'
+                                             '[[candidate]]\nname = "k"\nstrategy = "maker"\nvariant = "gbm"\n'
+                                             'venue = "kalshi"\n'))
+    assert [(j["settings"]["variant"], j.get("venue", "polymarket")) for j in jobs] == \
+        [("baseline", "kalshi"), ("baseline", "polymarket"), ("gbm", "kalshi"), ("gbm", "polymarket")]
+    assert S.argv(jobs[2])[6:] == ["sweep", "--year", "2026", "--no-fetch", "--save", "--venue", "kalshi"]
+    assert "--venue" not in S.argv(jobs[3]) and "venue" not in jobs[3]
+    assert cands[0]["venue"] == "kalshi" and S._title(jobs[2]).endswith(" · kalshi")
+    with pytest.raises(ValueError, match="venue"):
+        S.load(_queue(tmp_path, '[[job]]\nvariant = "gbm"\nvenue = "betfair"\n'))
+    with pytest.raises(ValueError, match="venue"):
+        S.load(_queue(tmp_path, '[[job]]\nkind = "checkpoints"\nvenue = "kalshi"\n'))

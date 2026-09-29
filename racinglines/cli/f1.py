@@ -101,8 +101,11 @@ def main(argv=None):
                                                           "pricings are already cached.")
     p.add_argument("--asof", default=None, help="Replay as of this UTC time instead of a day after the race.")
     p.add_argument("--markdown", action="store_true", help="Also print the block for the weekend report.")
-    sub.add_parser("profiles", help="List strategy profiles; create A / C as Lab candidates if missing.").add_argument(
-        "--assign-demo", action="store_true", help="Demo taker -> A, demo maker -> C.")
+    p = sub.add_parser("profiles", help="List strategy profiles; create A / C / K as Lab candidates if missing.")
+    p.add_argument("--assign-demo", action="store_true", help="Demo taker -> A, demo maker -> C.")
+    p.add_argument("--venue", default="polymarket", choices=["polymarket", "kalshi"],
+                   help="With --assign-demo: kalshi assigns the demo maker K as its Kalshi profile "
+                        "(users.prefs['strategy_profile_kalshi']) and leaves the Polymarket profiles alone.")
     for name, hlp in (("pm-links-export", "Write market links to data/archive/markets/<exchange>/links/ (stable keys)."),
                       ("pm-links-import", "Load that file into this database (no exchange access needed).")):
         sub.add_parser(name, help=hlp).add_argument("--exchange", default="polymarket", choices=["polymarket", "kalshi"])
@@ -366,11 +369,14 @@ def _run(args):
         with engine.begin() as c:
             ids = PF.ensure_candidates(c)
             if args.assign_demo:
-                print("assigned:", PF.assign_demo(c))
+                print("assigned:", PF.assign_demo(c, **({} if args.venue == "polymarket" else dict(venue=args.venue))))
             for code, i in ids.items():
-                print(f"{code}  candidate #{i}  {PF.PROFILES[code]['name']}")
+                pr = PF.PROFILES[code]
+                print(f"{code}  candidate #{i}  {pr['name']}" + (f"  [{pr['venue']}]" if pr.get("venue") else ""))
             for uid, name, role, prof in PF.assigned(c):
                 print(f"  user {name} ({role}) -> {prof['name']} (#{prof.get('candidate_id')})")
+            for uid, name, role, prof in PF.assigned(c, venue="kalshi"):
+                print(f"  user {name} ({role}) -> {prof['name']} (#{prof.get('candidate_id')}) on kalshi")
         return
     if args.cmd == "signals":
         from racinglines.pipelines import signals as SG

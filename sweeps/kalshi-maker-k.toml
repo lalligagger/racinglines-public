@@ -1,0 +1,1037 @@
+# Kalshi maker profile K (docs/kalshi-history.md, roadmap U3): the maker's settings swept on Kalshi's
+# recorded 2025 and 2026 tape (`f1 sweep --venue kalshi`: Kalshi's markets and trades, its maker fee), judged
+# on both seasons as params-4h was (2026 the target, 2025 held out). Every job here is a Kalshi job, so the
+# automatic baseline is the default maker on Kalshi. The takers in these runs read Polymarket, as always:
+# only the maker_* columns are read.
+#
+#   racinglines f1 search sweeps/kalshi-maker-k.toml
+#   racinglines f1 search-report sweeps/kalshi-maker-k.toml
+
+[search]
+name = "kalshi-maker-k"
+parallel = 3
+hours = 6.0
+grace_minutes = 15
+
+[report]
+target = 2026
+holdout = [2025]
+top = 30
+
+# --- round 1: model x half-spread x disagreement filter, 25-share quotes, both seasons ---------
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.01
+max_disagree = 0.05
+size = 25
+note = "r1 gbm spread 0.01 disagree 0.05"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.01
+max_disagree = 0.07
+size = 25
+note = "r1 gbm spread 0.01 disagree 0.07"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.01
+max_disagree = 0.1
+size = 25
+note = "r1 gbm spread 0.01 disagree 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.01
+max_disagree = 0.15
+size = 25
+note = "r1 gbm spread 0.01 disagree 0.15"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.02
+max_disagree = 0.05
+size = 25
+note = "r1 gbm spread 0.02 disagree 0.05"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.02
+max_disagree = 0.07
+size = 25
+note = "r1 gbm spread 0.02 disagree 0.07"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.02
+max_disagree = 0.1
+size = 25
+note = "r1 gbm spread 0.02 disagree 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.02
+max_disagree = 0.15
+size = 25
+note = "r1 gbm spread 0.02 disagree 0.15"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.03
+max_disagree = 0.05
+size = 25
+note = "r1 gbm spread 0.03 disagree 0.05"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.03
+max_disagree = 0.07
+size = 25
+note = "r1 gbm spread 0.03 disagree 0.07"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.03
+max_disagree = 0.1
+size = 25
+note = "r1 gbm spread 0.03 disagree 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.03
+max_disagree = 0.15
+size = 25
+note = "r1 gbm spread 0.03 disagree 0.15"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.04
+max_disagree = 0.05
+size = 25
+note = "r1 gbm spread 0.04 disagree 0.05"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.04
+max_disagree = 0.07
+size = 25
+note = "r1 gbm spread 0.04 disagree 0.07"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.04
+max_disagree = 0.1
+size = 25
+note = "r1 gbm spread 0.04 disagree 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.04
+max_disagree = 0.15
+size = 25
+note = "r1 gbm spread 0.04 disagree 0.15"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.01
+max_disagree = 0.05
+size = 25
+note = "r1 gridq+pretrain spread 0.01 disagree 0.05"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.01
+max_disagree = 0.07
+size = 25
+note = "r1 gridq+pretrain spread 0.01 disagree 0.07"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.01
+max_disagree = 0.1
+size = 25
+note = "r1 gridq+pretrain spread 0.01 disagree 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.01
+max_disagree = 0.15
+size = 25
+note = "r1 gridq+pretrain spread 0.01 disagree 0.15"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.02
+max_disagree = 0.05
+size = 25
+note = "r1 gridq+pretrain spread 0.02 disagree 0.05"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.02
+max_disagree = 0.07
+size = 25
+note = "r1 gridq+pretrain spread 0.02 disagree 0.07"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.02
+max_disagree = 0.1
+size = 25
+note = "r1 gridq+pretrain spread 0.02 disagree 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.02
+max_disagree = 0.15
+size = 25
+note = "r1 gridq+pretrain spread 0.02 disagree 0.15"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.03
+max_disagree = 0.05
+size = 25
+note = "r1 gridq+pretrain spread 0.03 disagree 0.05"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.03
+max_disagree = 0.07
+size = 25
+note = "r1 gridq+pretrain spread 0.03 disagree 0.07"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.03
+max_disagree = 0.1
+size = 25
+note = "r1 gridq+pretrain spread 0.03 disagree 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.03
+max_disagree = 0.15
+size = 25
+note = "r1 gridq+pretrain spread 0.03 disagree 0.15"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.04
+max_disagree = 0.05
+size = 25
+note = "r1 gridq+pretrain spread 0.04 disagree 0.05"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.04
+max_disagree = 0.07
+size = 25
+note = "r1 gridq+pretrain spread 0.04 disagree 0.07"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.04
+max_disagree = 0.1
+size = 25
+note = "r1 gridq+pretrain spread 0.04 disagree 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.04
+max_disagree = 0.15
+size = 25
+note = "r1 gridq+pretrain spread 0.04 disagree 0.15"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.01
+max_disagree = 0.05
+size = 25
+note = "r1 gbm spread 0.01 disagree 0.05"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.01
+max_disagree = 0.07
+size = 25
+note = "r1 gbm spread 0.01 disagree 0.07"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.01
+max_disagree = 0.1
+size = 25
+note = "r1 gbm spread 0.01 disagree 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.01
+max_disagree = 0.15
+size = 25
+note = "r1 gbm spread 0.01 disagree 0.15"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.02
+max_disagree = 0.05
+size = 25
+note = "r1 gbm spread 0.02 disagree 0.05"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.02
+max_disagree = 0.07
+size = 25
+note = "r1 gbm spread 0.02 disagree 0.07"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.02
+max_disagree = 0.1
+size = 25
+note = "r1 gbm spread 0.02 disagree 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.02
+max_disagree = 0.15
+size = 25
+note = "r1 gbm spread 0.02 disagree 0.15"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.03
+max_disagree = 0.05
+size = 25
+note = "r1 gbm spread 0.03 disagree 0.05"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.03
+max_disagree = 0.07
+size = 25
+note = "r1 gbm spread 0.03 disagree 0.07"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.03
+max_disagree = 0.1
+size = 25
+note = "r1 gbm spread 0.03 disagree 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.03
+max_disagree = 0.15
+size = 25
+note = "r1 gbm spread 0.03 disagree 0.15"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.04
+max_disagree = 0.05
+size = 25
+note = "r1 gbm spread 0.04 disagree 0.05"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.04
+max_disagree = 0.07
+size = 25
+note = "r1 gbm spread 0.04 disagree 0.07"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.04
+max_disagree = 0.1
+size = 25
+note = "r1 gbm spread 0.04 disagree 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.04
+max_disagree = 0.15
+size = 25
+note = "r1 gbm spread 0.04 disagree 0.15"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.01
+max_disagree = 0.05
+size = 25
+note = "r1 gridq+pretrain spread 0.01 disagree 0.05"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.01
+max_disagree = 0.07
+size = 25
+note = "r1 gridq+pretrain spread 0.01 disagree 0.07"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.01
+max_disagree = 0.1
+size = 25
+note = "r1 gridq+pretrain spread 0.01 disagree 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.01
+max_disagree = 0.15
+size = 25
+note = "r1 gridq+pretrain spread 0.01 disagree 0.15"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.02
+max_disagree = 0.05
+size = 25
+note = "r1 gridq+pretrain spread 0.02 disagree 0.05"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.02
+max_disagree = 0.07
+size = 25
+note = "r1 gridq+pretrain spread 0.02 disagree 0.07"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.02
+max_disagree = 0.1
+size = 25
+note = "r1 gridq+pretrain spread 0.02 disagree 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.02
+max_disagree = 0.15
+size = 25
+note = "r1 gridq+pretrain spread 0.02 disagree 0.15"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.03
+max_disagree = 0.05
+size = 25
+note = "r1 gridq+pretrain spread 0.03 disagree 0.05"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.03
+max_disagree = 0.07
+size = 25
+note = "r1 gridq+pretrain spread 0.03 disagree 0.07"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.03
+max_disagree = 0.1
+size = 25
+note = "r1 gridq+pretrain spread 0.03 disagree 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.03
+max_disagree = 0.15
+size = 25
+note = "r1 gridq+pretrain spread 0.03 disagree 0.15"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.04
+max_disagree = 0.05
+size = 25
+note = "r1 gridq+pretrain spread 0.04 disagree 0.05"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.04
+max_disagree = 0.07
+size = 25
+note = "r1 gridq+pretrain spread 0.04 disagree 0.07"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.04
+max_disagree = 0.1
+size = 25
+note = "r1 gridq+pretrain spread 0.04 disagree 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.04
+max_disagree = 0.15
+size = 25
+note = "r1 gridq+pretrain spread 0.04 disagree 0.15"
+
+# --- round 2: quote size and the maker's per-market volume filter, at 2c spread ------------------
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.05
+size = 50
+note = "r2 gbm size 50 disagree 0.05"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.05
+size = 25
+maker_min_volume_24h = 50
+note = "r2 gbm min volume 50 disagree 0.05"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.05
+size = 25
+maker_min_volume_24h = 200
+note = "r2 gbm min volume 200 disagree 0.05"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.05
+size = 25
+maker_min_volume_24h = 400
+note = "r2 gbm min volume 400 disagree 0.05"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.1
+size = 50
+note = "r2 gbm size 50 disagree 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.1
+size = 25
+maker_min_volume_24h = 50
+note = "r2 gbm min volume 50 disagree 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.1
+size = 25
+maker_min_volume_24h = 200
+note = "r2 gbm min volume 200 disagree 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.1
+size = 25
+maker_min_volume_24h = 400
+note = "r2 gbm min volume 400 disagree 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+max_disagree = 0.05
+size = 50
+note = "r2 gridq+pretrain size 50 disagree 0.05"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+max_disagree = 0.05
+size = 25
+maker_min_volume_24h = 50
+note = "r2 gridq+pretrain min volume 50 disagree 0.05"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+max_disagree = 0.05
+size = 25
+maker_min_volume_24h = 200
+note = "r2 gridq+pretrain min volume 200 disagree 0.05"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+max_disagree = 0.05
+size = 25
+maker_min_volume_24h = 400
+note = "r2 gridq+pretrain min volume 400 disagree 0.05"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+max_disagree = 0.1
+size = 50
+note = "r2 gridq+pretrain size 50 disagree 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+max_disagree = 0.1
+size = 25
+maker_min_volume_24h = 50
+note = "r2 gridq+pretrain min volume 50 disagree 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+max_disagree = 0.1
+size = 25
+maker_min_volume_24h = 200
+note = "r2 gridq+pretrain min volume 200 disagree 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+max_disagree = 0.1
+size = 25
+maker_min_volume_24h = 400
+note = "r2 gridq+pretrain min volume 400 disagree 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.05
+size = 50
+note = "r2 gbm size 50 disagree 0.05"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.05
+size = 25
+maker_min_volume_24h = 50
+note = "r2 gbm min volume 50 disagree 0.05"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.05
+size = 25
+maker_min_volume_24h = 200
+note = "r2 gbm min volume 200 disagree 0.05"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.05
+size = 25
+maker_min_volume_24h = 400
+note = "r2 gbm min volume 400 disagree 0.05"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.1
+size = 50
+note = "r2 gbm size 50 disagree 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.1
+size = 25
+maker_min_volume_24h = 50
+note = "r2 gbm min volume 50 disagree 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.1
+size = 25
+maker_min_volume_24h = 200
+note = "r2 gbm min volume 200 disagree 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.1
+size = 25
+maker_min_volume_24h = 400
+note = "r2 gbm min volume 400 disagree 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+max_disagree = 0.05
+size = 50
+note = "r2 gridq+pretrain size 50 disagree 0.05"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+max_disagree = 0.05
+size = 25
+maker_min_volume_24h = 50
+note = "r2 gridq+pretrain min volume 50 disagree 0.05"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+max_disagree = 0.05
+size = 25
+maker_min_volume_24h = 200
+note = "r2 gridq+pretrain min volume 200 disagree 0.05"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+max_disagree = 0.05
+size = 25
+maker_min_volume_24h = 400
+note = "r2 gridq+pretrain min volume 400 disagree 0.05"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+max_disagree = 0.1
+size = 50
+note = "r2 gridq+pretrain size 50 disagree 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+max_disagree = 0.1
+size = 25
+maker_min_volume_24h = 50
+note = "r2 gridq+pretrain min volume 50 disagree 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+max_disagree = 0.1
+size = 25
+maker_min_volume_24h = 200
+note = "r2 gridq+pretrain min volume 200 disagree 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+max_disagree = 0.1
+size = 25
+maker_min_volume_24h = 400
+note = "r2 gridq+pretrain min volume 400 disagree 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.05
+size = 10
+note = "r2 gbm size 10 disagree 0.05"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.1
+size = 10
+note = "r2 gbm size 10 disagree 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+max_disagree = 0.05
+size = 10
+note = "r2 gridq+pretrain size 10 disagree 0.05"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+max_disagree = 0.1
+size = 10
+note = "r2 gridq+pretrain size 10 disagree 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.05
+size = 10
+note = "r2 gbm size 10 disagree 0.05"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.1
+size = 10
+note = "r2 gbm size 10 disagree 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+max_disagree = 0.05
+size = 10
+note = "r2 gridq+pretrain size 10 disagree 0.05"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+max_disagree = 0.1
+size = 10
+note = "r2 gridq+pretrain size 10 disagree 0.1"
+
+# --- confirmation: the top 3 of the finished grid, plus the partial grid's K, at 16k simulations ------
+# (search-report's `confirmed` column; params-4h's noise check)
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.04
+size = 25
+sims = 16000
+note = "confirm 16k gridq+pretrain spread 0.04 disagree 0.15"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.1
+maker_min_volume_24h = 400
+size = 25
+sims = 16000
+note = "confirm 16k gbm min volume 400 disagree 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.04
+max_disagree = 0.1
+size = 25
+sims = 16000
+note = "confirm 16k gbm spread 0.04 disagree 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.03
+max_disagree = 0.1
+size = 25
+sims = 16000
+note = "confirm 16k gbm spread 0.03 disagree 0.1 (K from the partial grid)"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.04
+size = 25
+sims = 16000
+note = "confirm 16k gridq+pretrain spread 0.04 disagree 0.15"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.1
+maker_min_volume_24h = 400
+size = 25
+sims = 16000
+note = "confirm 16k gbm min volume 400 disagree 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.04
+max_disagree = 0.1
+size = 25
+sims = 16000
+note = "confirm 16k gbm spread 0.04 disagree 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.03
+max_disagree = 0.1
+size = 25
+sims = 16000
+note = "confirm 16k gbm spread 0.03 disagree 0.1 (K from the partial grid)"
+
+# the confirmations' baselines: default settings at the same 16k simulations (search-report compares like with like)
+[[job]]
+year = 2026
+venue = "kalshi"
+sims = 16000
+note = "confirm 16k baseline"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+sims = 16000
+note = "confirm 16k baseline"
