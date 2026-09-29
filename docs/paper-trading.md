@@ -72,6 +72,18 @@ using the backtest's own code. Recommendations and paper fills only.
 6. **Expire:** a taker's unacted signals from earlier stages are marked `expired`.
 7. **Alert:** one batched message with the new signals (see [Alerts](#alerts)).
 
+**The venue.** A profile trades Polymarket unless its settings say `venue = "kalshi"` (the sweep
+settings schema's optional `venue`; unset by default and left out of every settings key, so existing
+profiles, sweeps and their keys are untouched). A Kalshi profile reads the race's `exchange='kalshi'`
+market links, one market per ticker (`token_id`; never grouped by `condition_id`, which on Kalshi is the
+event ticker shared by every driver's market), its minute prices and trade tape per market from
+`data/archive/markets/kalshi/` and the shared tables (so the 24 h volume filter is per market), and its
+maker pays `KALSHI_MAKER_FEE` per fill. Its signals carry `detail.venue = 'kalshi'` and its positions
+`venue = 'kalshi'`; a Polymarket run replaces only Polymarket's positions and a Kalshi run only Kalshi's.
+The setting is the only switch: a live run can't be pointed at another exchange (`compute(venue=...)` is
+for replays, as `demo-history --venue kalshi` uses it), and nothing here reads `KALSHI_TRADING_ENABLED`.
+Paper only, on every venue. See [Kalshi history](kalshi-history.md#in-the-signal-engine).
+
 **When it runs:** from 4 days before the race to 24 hours after it. After the race, the next runs fetch
 its result, and the paper positions settle. Outside that window a run only notes when signals start.
 
@@ -123,11 +135,16 @@ market, not only this weekend's signals:
 
 `scripts/signals_parity.py` replays a taker profile on a past weekend with the signal engine and runs
 `racinglines f1 sweep` on the same round with the same settings, then compares market, stage, side,
-shares and price of every trade (exit 1 on a difference).
+shares and price of every trade (exit 1 on a difference). A maker profile is replayed as `demo-history`
+replays it (a day after the race, settled) and compared with the sweep's maker on fills and settled P&L,
+and with the demo maker's stored record for that weekend when there is one. `--venue kalshi` gives the
+profile the `venue = kalshi` setting on both sides, so the same check runs on Kalshi's links and tape.
 
 ```
 .venv/bin/python scripts/signals_parity.py                     # profile A, 2026 round 15 (Azerbaijan)
 .venv/bin/python scripts/signals_parity.py --round 12 --reprice
+.venv/bin/python scripts/signals_parity.py --venue kalshi      # A on Kalshi's links and tape
+.venv/bin/python scripts/signals_parity.py --profile C --venue kalshi   # C's fills and P&L vs the sweep and demo-history
 ```
 
 | Check | Result |
@@ -135,6 +152,9 @@ shares and price of every trade (exit 1 on a difference).
 | Profile A, 2026 round 15 | Replay = sweep: 11 of 11 trades identical |
 | Same, with the sweep repricing every stage itself (`--reprice`) | Identical |
 | Maker C, same round | 15 fills, P&L −$22.29, identical to the sweep's maker |
+| Profile A, same round, on Kalshi (`--venue kalshi`, 2026-09-29) | Replay = sweep: 23 of 23 trades identical (sweep update P&L −$49.84) |
+| Maker C, same round, on Kalshi | 41 fills, settled P&L −$61.90: identical to the sweep's maker and to `demo-history --venue kalshi`'s stored Azerbaijan record |
+| Profile A, Polymarket, before and after the venue setting existed | 11 of 11 trades identical both times (the default path is unchanged) |
 
 ## Heat
 
@@ -302,7 +322,10 @@ Any change to a profile makes a new profile with its own count.
    the replay's, and live P&L inside the replay's noise band. A weekend outside is flagged and explained
    before the next one.
 2. **The pricing scorecard on every weekend,** traded or not: Brier and log loss of the fair values
-   against the result and against the venue's mid at each stage.
+   against the result and against the venue's mid at each stage. `racinglines f1 scorecard --event
+   YEAR-ROUND --venue both` scores a Polymarket or Kalshi weekend from its stored stage runs (per stage
+   and market kind, and pooled; `--all --year` for a season; see [F1 evaluation](f1-evaluation.md#the-weekend-scorecard)),
+   `racinglines live report` a private book.
 3. **How many weekends.** From the 2025–26 replays, about 17 live weekends to show the maker's edge at
    about 2 standard errors (~$71 a weekend, s.d. ~$146), and about 40 for the taker (~$83, s.d. ~$262).
    The maker can be proved by the end of 2027; the taker is borderline.

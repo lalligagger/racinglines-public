@@ -4,6 +4,7 @@ then (LIVE_*) copied from the live read-only API on 2026-09-28. No network, no c
 
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 import httpx
 import numpy as np
@@ -397,3 +398,144 @@ def test_live_shapes_and_historical_endpoints():
     (row,) = KS.link_rows([dict(event_ticker="KXF1RACE-BELGP26", series_ticker="KXF1RACE", title="Belgian Grand Prix Winner",
                                 markets=[LIVE_MARKET])], FakeResolver())
     assert row["volume"] == 362818.18 and row["last_price"] == 0.01 and row["closed"] and row["resolved_yes"] is False
+
+
+# Tape-only sports (docs/todo.md, U9): NASCAR Cup, MotoGP and IndyCar, synced only when named, every link
+# unmodeled under the sport's own competition. Fixture in the client's shape: tests/fixtures/market/.
+OTHER = json.loads((Path(__file__).parent / "fixtures" / "market" / "kalshi_other_series.json").read_text())
+
+
+def _other_transport(log):
+    def handler(req):
+        p = req.url.path.removeprefix(K.PREFIX)
+        q = dict(req.url.params)
+        log.append((req.method, p, q))
+        if p == "/series":
+            return httpx.Response(200, json={"series": OTHER["series"]})
+        if p == "/events":
+            evs = OTHER["events"].get(q.get("series_ticker"), {}).get(q.get("status"), [])
+            return httpx.Response(200, json=dict(events=evs, cursor=""))
+        if p == "/markets/trades":
+            trades = [t for t in OTHER["trades"] if t["ticker"] == q.get("ticker")]
+            return httpx.Response(200, json=dict(trades=trades, cursor=""))
+        if p in ("/historical/trades", "/historical/markets"):
+            return httpx.Response(200, json={"trades": [], "markets": [], "cursor": ""})
+        if p.endswith("/orderbook"):
+            return httpx.Response(200, json=OTHER["orderbook"])
+        if p.endswith("/candlesticks"):
+            return httpx.Response(200, json={"candlesticks": OTHER["candlesticks"]})
+        return httpx.Response(404, json={})
+    return httpx.MockTransport(handler)
+
+
+@pytest.mark.quick
+def test_tape_only_sports_have_schemas_and_series():
+    from racinglines import sports
+    from racinglines.cli import markets as CM
+    for code, comp, prefix in (("nascar", "nascar_cup", "KXNASCAR"), ("motogp", "motogp_wc", "KXMOTOGP"),
+                               ("indycar", "indycar_series", "KXINDYCAR")):
+        s = sports.load(code)
+        assert not sports.modeled(code) and "pricing_model" not in s["sport"] and "live" not in s
+        assert s["competition"]["code"] == comp and sports.kalshi_series(code) == (prefix,)
+        assert s["markets"]["venues"] == ["kalshi"]
+    assert sports.modeled("f1") and sports.modeled("mtb_dh") and sports.kalshi_series("f1") == ()
+    assert CM.kalshi_sports() == ["f1", "nascar", "motogp", "indycar"]
+    with pytest.raises(ValueError):
+        KS.series_for(None, "mtb_dh")                    # no [markets.kalshi]: nothing to discover
+
+
+@pytest.mark.quick
+def test_series_discovery_is_per_sport_and_f1_is_unchanged():
+    log = []
+    with K.Client(transport=_other_transport(log)) as kc:
+        assert KS.series_for(kc) == ["KXF1RACE"]                         # the default: F1 only, as before
+        assert KS.series_for(kc, "nascar") == ["KXNASCARRACE", "KXNASCAR"]
+        assert KS.series_for(kc, "motogp") == ["KXMOTOGPRACE", "KXMOTOGP"]
+        assert KS.series_for(kc, "indycar") == ["KXINDYCARRACE"]
+        assert KS.series_for(kc, "nascar", series=["KXNASCARCHAMP"]) == ["KXNASCARCHAMP"]   # explicit tickers win
+    assert all(q.get("category") == "Sports" for _, p, q in log if p == "/series")
+
+
+@pytest.mark.quick
+def test_tape_only_link_rows_are_unmodeled_and_never_resolve():
+    class Boom:
+        def __getattr__(self, name):
+            raise AssertionError("a tape-only sport must not look up drivers or races")
+    evs = OTHER["events"]["KXNASCARRACE"]["open"] + OTHER["events"]["KXNASCARRACE"]["settled"] + OTHER["events"]["KXNASCAR"]["open"]
+    rows = {r["token_id"]: r for r in KS.link_rows(evs, Boom(), modeled=False)}
+    assert len(rows) == 4 and all(r["prediction"] == "unmodeled" for r in rows.values())
+    assert all(r["athlete_id"] is None and r["race_id"] is None and r["exchange"] == "kalshi" for r in rows.values())
+    r = rows["KXNASCARRACE-26NOV08-KLAR"]
+    assert (r["condition_id"], r["outcome"], r["last_bid"], r["last_ask"], r["volume"]) == ("KXNASCARRACE-26NOV08", "Kyle Larson", 0.20, 0.23, 15230.5)
+    assert r["params"]["series"] == "KXNASCARRACE" and "Kyle Larson" in r["params"]["rules"] and "event_key" not in r["params"]
+    assert r["end_date"] == datetime(2026, 11, 8, 23, tzinfo=timezone.utc) and not r["closed"] and r["active"]
+    settled = rows["KXNASCARRACE-26NOV01-KLAR"]
+    assert settled["closed"] and settled["resolved_yes"] is True and not settled["active"]
+    assert (rows["KXNASCARRACE-26NOV08-WBYR"]["last_bid"], rows["KXNASCARRACE-26NOV08-WBYR"]["last_ask"]) == (None, None)
+    # the F1 classifier would have called the champion market "champion": the tape-only path never asks it
+    assert KS.classify("NASCAR Cup Series Champion", "Will Kyle Larson win the 2026 NASCAR Cup Series Championship?")[0] == "champion"
+
+
+def test_tape_only_sync_records_under_its_own_competition(test_engine, monkeypatch):
+    from racinglines.db.config import get_session
+    from racinglines.db.ingest import seed
+    from racinglines.markets import store as MS
+    from racinglines.markets.polymarket import sync as PS
+    url = test_engine.url.render_as_string(hide_password=False)
+    with get_session(url) as s:
+        seed(s)
+        s.commit()
+    with test_engine.begin() as c:
+        c.execute(text("DELETE FROM market_links WHERE exchange = 'kalshi'"))
+        c.execute(text("DELETE FROM market_trades WHERE token_id LIKE 'KX%'"))
+        c.execute(text("DELETE FROM market_book_snapshots WHERE token_id LIKE 'KX%'"))
+        c.execute(text("DELETE FROM market_price_history WHERE token_id LIKE 'KX%'"))
+    monkeypatch.setattr(PS, "Resolver", lambda conn, year: (_ for _ in ()).throw(AssertionError("no resolver for a tape-only sport")))
+    log = []
+    kc = K.Client(transport=_other_transport(log))
+    with test_engine.connect() as c, get_session(url) as s:
+        st = KS.sync(s, c, 2026, include_closed=True, kc=kc, sport="nascar")
+        assert (st["events"], st["links"], st["new"], st["modeled"], st["unmatched"]) == (3, 4, 4, 0, 4)
+        assert KS.sync(s, c, 2026, include_closed=True, kc=kc, sport="nascar")["new"] == 0       # idempotent
+        assert KS.sync(s, c, 2026, kc=kc, sport="motogp")["links"] == 2
+        assert KS.sync(s, c, 2026, kc=kc, sport="indycar")["links"] == 0                         # nothing listed yet
+        # the sport's whole tape without naming events: trades on every market, books on the open ones
+        assert KS.fetch_trades(s, c, kc=kc, sport="nascar") == 2
+        assert KS.fetch_trades(s, c, kc=kc, sport="nascar") == 2                                 # deduplicated
+        assert KS.snapshot_books(s, c, kc=kc, sport="nascar") == 3                               # not the settled one
+        t0, t1 = datetime(2026, 11, 5, tzinfo=timezone.utc), datetime(2026, 11, 6, tzinfo=timezone.utc)
+        assert KS.fetch_history(s, c, ["KXMOTOGPRACE-26QAT"], t0, t1, 60, kc=kc) == 2
+        with pytest.raises(ValueError):
+            KS.fetch_trades(s, c, kc=kc)                                                          # no events, no sport
+    with test_engine.connect() as c:
+        by_comp = dict(c.execute(text("""SELECT co.code, count(*) FROM market_links l JOIN competitions co ON co.id = l.competition_id
+                                         WHERE l.exchange = 'kalshi' GROUP BY co.code""")).all())
+        assert by_comp == {"nascar_cup": 4, "motogp_wc": 2}
+        assert c.execute(text("SELECT count(*) FROM market_links WHERE exchange = 'kalshi' AND prediction <> 'unmodeled'")).scalar() == 0
+        assert c.execute(text("SELECT count(*) FROM market_trades WHERE token_id = 'KXNASCARRACE-26NOV08-KLAR'")).scalar() == 2
+        assert c.execute(text("SELECT count(DISTINCT token_id) FROM market_book_snapshots WHERE token_id LIKE 'KXNASCAR%'")).scalar() == 3
+        assert c.execute(text("SELECT count(*) FROM market_price_history WHERE token_id = 'KXMOTOGPRACE-26QAT-MMAR'")).scalar() == 2
+        # the archive pass files these rows by market_links.exchange: Kalshi's tree, like F1's
+        assert MS._exchanges(c, ["KXNASCARRACE-26NOV08-KLAR", "KXMOTOGP-26-MMAR"]) == \
+            {"KXNASCARRACE-26NOV08-KLAR": "kalshi", "KXMOTOGP-26-MMAR": "kalshi"}
+    assert str(MS.root_for("kalshi")).endswith("archive/markets/kalshi")
+    # no NASCAR / MotoGP series was asked of Kalshi while F1 was the sport: the default run is unchanged
+    f1_log = []
+    with K.Client(transport=_other_transport(f1_log)) as kc, test_engine.connect() as c, get_session(url) as s:
+        monkeypatch.setattr(PS, "Resolver", lambda conn, year: FakeResolver())
+        KS.sync(s, c, 2026, kc=kc)
+    assert {q.get("series_ticker") for _, p, q in f1_log if p == "/events"} == {"KXF1RACE"}
+
+
+@pytest.mark.quick
+def test_markets_cli_routes_tape_only_sports_to_kalshi(monkeypatch, capsys):
+    from racinglines.cli import markets as CM
+    calls = []
+    monkeypatch.setattr(CM, "kalshi", lambda db, argv, sport="f1": calls.append((sport, argv)) or 0)
+    assert CM.main(["--exchange", "kalshi", "--sport", "nascar", "sync", "--closed"]) == 0
+    assert CM.main(["--exchange", "kalshi", "books"]) == 0
+    assert calls == [("nascar", ["sync", "--closed"]), ("f1", ["books"])]
+    assert CM.main(["--sport", "motogp", "sync"]) == 2                    # Polymarket doesn't list it
+    assert "only Kalshi" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        CM.main(["--exchange", "kalshi", "--sport", "wec", "sync"])       # not a known sport

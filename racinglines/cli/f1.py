@@ -23,6 +23,9 @@ racinglines f1 <command>: Formula 1.
     season-checkpoints  Championship markets entered at fixed points (pre-season, after 3 and
                  after 6 grands prix) and held, per model variant: P&L over the next 3 GPs and
                  to date, and how far the market moved toward our fair value.
+    scorecard    ONE EXCHANGE WEEKEND (or --all: a season), traded or not: the stored stage runs' fair
+                 values at each stage cutoff scored against the result and against the venue's mid
+                 (Polymarket, Kalshi or both). Nothing is priced or stored; writes data/runs/f1/scorecard/.
     replay       Replay a maker quoting Polymarket from one or more diagnostic runs against
                  the real trade tape; fills, inventory, P&L at resolution, mark-outs.
     forecast     LIVE: cutoff = now; upcoming races + championships. Saved as kind='forecast'
@@ -166,6 +169,15 @@ def main(argv=None):
     p.add_argument("--plot", action="store_true", help="Write the top/bottom cumulative P&L chart.")
     p.add_argument("--noise", action="store_true", help="Write the report-specific Monte Carlo noise summary.")
     p.add_argument("--html", metavar="MARKDOWN", help="Render this Markdown report to HTML in the search directory.")
+    p = sub.add_parser("scorecard", help="Pricing scorecard of an exchange weekend (pipelines/scorecard.py): the stored "
+                                         "stage runs' fair values vs the result and vs the venue's mid at each stage.")
+    p.add_argument("--event", default=None, help="Season-round, e.g. 2026-15")
+    p.add_argument("--all", action="store_true", help="Every raced weekend of --year instead.")
+    p.add_argument("--year", type=int, default=2026)
+    p.add_argument("--rounds", default=None, help="With --all: only these rounds, e.g. 1-15")
+    p.add_argument("--venue", default="polymarket", choices=["polymarket", "kalshi", "both"])
+    p.add_argument("--model-key", default=None, help="Stage runs of this model_key (default: the sweep defaults for --variant).")
+    p.add_argument("--out", default=None, help="Output folder (default data/runs/f1/scorecard/).")
     p = sub.add_parser("replay")
     p.add_argument("--runs", required=True, help="Diagnostic run ids in time order, e.g. 11,9")
     p.add_argument("--sweep", action="store_true", help="Also sweep half-spread and fill rule.")
@@ -591,6 +603,49 @@ def _run(args):
                                                              reliability=records(out["reliability"]))
                                                         if args.reliability else {})))
             print(f"Saved sweep run {run_id}.")
+        return
+    if args.cmd == "scorecard":
+        from racinglines.pipelines import scorecard as SCD
+        from racinglines.pipelines import weekend_sweep as SW
+        if not args.all and not args.event:
+            sys.exit("give --event YEAR-ROUND or --all --year YEAR")
+        mk = args.model_key or SCD.default_model_key(args.variant)
+        outdir = Path(args.out) if args.out else None
+        if outdir:
+            outdir.mkdir(parents=True, exist_ok=True)
+        venues = list(SCD.VENUES) if args.venue == "both" else [args.venue]
+        if args.all:
+            for venue in venues:
+                print(f"\n=== {args.year} on {venue} (model_key {mk}) ===")
+                with engine.connect() as c:
+                    out = SCD.season(c, args.year, venue, mk, rounds=_years(args.rounds) if args.rounds else None,
+                                    echo=lambda m: print(m, flush=True))
+                if len(out["weekends"]):
+                    print("\n--- Per weekend ---")
+                    print(SCD.format_text(out["weekends"], first=("event_key", "event")))
+                    print("\n--- Per kind, all stages and weekends pooled ---")
+                    print(SCD.format_text(out["by_kind"], first=("kind",)))
+                    print("\n--- Per stage and kind, all weekends pooled ---")
+                    print(SCD.format_text(out["by_stage"]))
+                files = SCD.write_season(out, mk, outdir)
+                print("-> " + ", ".join(str(v) for v in files.values()))
+            return
+        year, rnd = (int(x) for x in args.event.split("-"))
+        w = SW.schedule(year, [rnd]).get(rnd)
+        if w is None:
+            sys.exit(f"{args.event}: not in the {year} schedule")
+        for venue in venues:
+            with engine.connect() as c:
+                res = SCD.weekend(c, w, venue, mk)
+            print(f"\n=== {args.event} {w['name']} on {venue} (model_key {mk}) ===")
+            if res["note"]:
+                print(f"note: {res['note']}")
+            if len(res["scores"]):
+                print(SCD.format_text(res["scores"]))
+                print("\n--- All stages pooled ---")
+                print(SCD.format_text(SCD.score(res["rows"], by=("kind",)), first=("kind",)))
+            files = SCD.write(res, mk, outdir)
+            print("-> " + ", ".join(str(v) for v in files.values()))
         return
     if args.cmd == "replay":
         from racinglines.markets.strategies import maker_replay as R

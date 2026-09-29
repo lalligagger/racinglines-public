@@ -146,6 +146,29 @@ The Kalshi replays pass `root=store.root_for("kalshi")` to read only Kalshi's tr
 pass wrote everything to the Polymarket tree ([Data changes](data-changes.md)); the Kalshi-only files it left under
 `polymarket/{prices,trades}/` on the owner's machine were deleted the same day (every row is in the Kalshi archive).
 
+### Other series' tapes: NASCAR, MotoGP, IndyCar
+
+Kalshi also lists NASCAR Cup (race winners and the champion), MotoGP and IndyCar. Each is a **tape-only
+sport** ([Roadmap](todo.md#new-sports), U9): a schema with no model (`sports/nascar.toml`, `motogp.toml`,
+`indycar.toml`; `[sport] model_family = "none"`, no `pricing_model`, no `[live]`), its own league and competition
+(`nascar_cup`, `motogp_wc`, `indycar_series`, seeded by `db seed` like the others), and a `[markets.kalshi]
+series` list of ticker prefixes (`KXNASCAR`, `KXMOTOGP`, `KXINDYCAR`) that the sync matches against Kalshi's
+Sports series. Nothing is priced: the board and the Lab don't list them (they only show competitions with
+model runs), `racinglines check` doesn't run them, and no pipeline reads them.
+
+**Off by default.** `racinglines markets --exchange kalshi sync` still syncs F1 and nothing else. A tape-only
+sport is synced only when named, `--sport nascar` (or `motogp`, `indycar`); its links land in `market_links`
+with `exchange = 'kalshi'` under its own competition, every one `prediction = 'unmodeled'` (no classifier, no
+driver or race lookup), with the same fields as F1's (bid/ask/last, volume, `params.series`, `params.rules`,
+close time, result). `trades`, `history` and `books` then work as for F1, and without `--events` take every
+Kalshi event of the sport's competition (books: its open markets), so one recording pass is three commands.
+Prices, trades and books are archived per exchange by `market_links.exchange`, so they go to
+`data/archive/markets/kalshi/` with F1's rows; nothing separates the sports in the Parquet tree (the links do).
+
+The Kalshi API is blocked from the cloud, so the series tickers are matched by prefix and were not checked
+against the live listing; `sync --series TICKER …` syncs exact tickers when the discovery finds the wrong ones
+(or none). The whole path is tested on fixtures in the client's shape (`tests/fixtures/market/kalshi_other_series.json`).
+
 ## Respecting the sources' limits
 
 Every download goes through one of two guards, so a long unattended run (e.g. a
@@ -314,3 +337,57 @@ In every 2025 and 2026 round:
 
 That's exactly 30 riders every time, with no protected or wildcard entries.
 Unraced 2026 rounds are simulated with this format.
+
+## NASCAR data sources (research, 2026-09-28)
+
+For the December "NASCAR for 2027?" decision ([Roadmap](todo.md#new-sports), [Strategy 2026](strategy-2026.md)).
+Research only, no build. Written from a cloud session where `cf.nascar.com`, `nascar.com`, `racing-reference.info`
+and CRAN were blocked by the network, so the feeds themselves were not opened: what's below comes from the
+packages and projects that wrap them, and every claim that could not be checked is marked **(unverified)**.
+Verify the feed shapes from the owner's machine before relying on any of it.
+
+### The sources
+
+| Source | What it holds | History | Terms | Notes |
+|---|---|---|---|---|
+| **NASCAR content feeds** (`cf.nascar.com/cacher/…`, no auth) | Per season: `{year}/{series}/race_list_basic.json` and `schedule-combined-feed.json` (series 1 = Cup, 2 = Xfinity, 3 = Trucks). Per race id: results and stage results, weekend feed (results, cautions, leaders, stages, pit reports), `lap-times.json` (every lap: time, speed, position, flag), lap notes, pit stops (time, tyres), loop stats (driver rating, fastest laps, quality passes), practice lap averages (`lapAvg_*_practice_1.json`), qualifying | Feeds exist for at least 2019 (a 2019 practice endpoint is documented); the wrappers say "any year" **(unverified: my recollection is that lap-by-lap and loop data go back to about 2016 and results further; test one season per year backwards)** | **Undocumented and unlicensed.** nascar.com's terms of use are the only terms; they were not readable here **(unverified: they are believed to forbid automated access and commercial reuse of the site)**. The feeds are what nascar.com's own pages read | Live during a race (updated every ~20 s), plus `racing-insights/raw-feed/{id}-NCS.json` (official gaps, pit events) and `live-ops/live-ops.json` (which race is live). This is real live timing, unlike FastF1's post-session archive |
+| **`feed.nascar.com`** (Swagger UI) | Results, standings, schedules, drivers, teams, lap data | ? | Same terms | Documented by api-evangelist/nascar as NASCAR's feed API; not opened here **(unverified)** |
+| **`nascar-api`** (PyPI 0.1.3, 23 Sep 2026, MIT) | Typed client for the content feeds: `HistoricNascarRepo` (schedule, results, laps, lap notes, pit stops, weekend feed, loop stats, standings) and `LiveNascarFeedRepo` (positions, speeds, pits, telemetry); Cup, Xfinity, Trucks; retries built in | As the feeds | MIT for the code; the data's terms are NASCAR's | Python 3.11+, Pydantic. The obvious fetch layer if the feeds are used |
+| **`pynascar`** (GitHub ab5525, MIT) | Same feeds: laps, pit stops, flags and race-control messages, results and stage results, practice and qualifying, cautions | As the feeds | MIT / NASCAR's | Less typed; 42 commits, active in 2025 |
+| **`nascaR.data`** (R package, CRAN, GPL-3) | Race results per driver: finish, start, laps, laps led, points, driver and team; Cup **1949–present**, Xfinity 1982–, Trucks 1995– | Complete | GPL-3; data "scraped with permission from DriverAverages.com" | Updated every Monday in season. No laps, no practice; the cleanest long history of results and grids. Readable from Python as its CSV/RDS files |
+| **Racing-Reference** (`racing-reference.info`) | Every Cup, Xfinity, Truck and ARCA race since 1949: results, starts, laps, led, status, points, plus loop data pages for recent years; driver, owner and crew-chief stats | Complete | Site terms not readable here **(unverified)**; no bulk export, third-party scrapers only | The reference archive; scrape only with permission and slowly (`sources/http.py` guards) |
+| **Kaggle** | "NASCAR Champion History (1949–present)" and similar; the JSE 1975–2003 race-level set (drivers, purse, cautions, lead changes) | Partial | Per dataset | Nothing lap-level found; not needed given the above |
+| **Commercial** (Sportradar NASCAR, SportsDataIO, OddsMatrix) | Live timing, results, standings, per-lap | Deep | Paid licences | Only if the free feeds' terms are unusable |
+
+### What an ingest would need, next to the F1 adapter
+
+The F1 path is `sources/fastf1/fetch.py` (session files to `data/raw/f1/fastf1/<year>/`) → `sources/fastf1/ingest.py`
+(event, race, rounds, results, laps, track profiles) with the sport described in `sports/f1.toml`. NASCAR would follow
+it with these differences:
+
+| | F1 (`sports/f1.toml`, FastF1) | NASCAR (content feeds) |
+|---|---|---|
+| Season | 22–24 rounds, 20–22 cars, one race each | 36 points races + 2 exhibitions, 36–40 cars; Xfinity and Trucks are separate series (competitions) |
+| Weekend | FP1–FP3 (or SQ + Sprint), Q, Race, each a `round` | Practice (one or two short sessions, sometimes none), qualifying (single laps, groups on road courses; **rained-out qualifying sets the grid by formula**), race in **three stages** with points at each; `[sessions]` and `[stages]` need `stage_1`, `stage_2` cut-offs |
+| Results | Position, status, time, grid, points, Q1–Q3 | Position, status (running/accident/engine…), laps, **laps led, stage finishes, playoff points**; qualifying speed not sector times |
+| Laps | Lap and sector times, speed traps, tyre, pit, track status | Lap time, speed, position, flag; pit stops and tyres from a separate feed; **cautions and restarts** matter more than pace |
+| Identity | Ergast driver id (`AthleteIdentifier` scheme `f1`) | NASCAR driver id from the feeds (scheme `nascar`); car number is per team, not per driver |
+| Track | Street/permanent, 2026 regulation reset | Oval (short, intermediate, superspeedway), road course; **pack racing at Daytona and Talladega is a different sport** for a position model |
+| Championship | Points table | **Playoffs:** 16 drivers, three elimination rounds, winner-takes-all finale; the champion market prices the format, not the season's points |
+| Live | Stage runs after each session (30-minute lag) | The feeds are live: an in-race book is possible, which the Chase tapes (U9) will show is where Kalshi's volume is |
+| Model | `position_sim` | A first model can reuse `position_sim`'s shape (grid, pace, DNF) with a caution/restart layer; the Chase tapes decide whether in-race pricing is needed |
+
+### Recommendation for December
+
+- **Data is not the blocker.** Results and grids back to 1949 (`nascaR.data`) and per-lap, loop and stage data for at least
+  the last several seasons (the content feeds) are enough for a first model in January; FastF1 gave F1 only 2020–.
+- **Terms are.** The content feeds are undocumented and carry no licence. Before the decision, read nascar.com's terms of
+  use and `feed.nascar.com`'s Swagger page from the owner's machine, and ask DriverAverages/Racing-Reference for
+  permission if their pages are wanted. A polite, cached, once-a-week fetch through `sources/http.py` is the most that
+  should be assumed; live polling every 20 s during a race is a bigger ask.
+- **Do in October** (the two-week gap after Singapore): from the owner's machine, pull one Cup season with `nascar-api`
+  (schedule, results, laps, loop stats for 2025) into `data/raw/nascar/cf/`, check how far back each feed goes, and
+  keep the sample with the recorded Chase tapes. That turns every **(unverified)** above into a fact before December.
+- **Decide on the tapes,** as the roadmap says: if Kalshi's per-race markets trade mostly in-race, the model needed is a
+  live one and the feeds' live terms matter most; if pre-race, a grid-and-pace model on the archived feeds is the
+  cheaper start and NASCAR is a good 2027 sport.

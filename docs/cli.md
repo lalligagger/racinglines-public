@@ -144,7 +144,8 @@ Files written: `walk_forward.csv`, `backtest_<venue>.csv`, `backtest_standings.c
 
 Follow a downhill final live from UCI timing (ChronoRace): rank probabilities after every update, the demo
 maker's quotes, the private book's anonymous crowd, and the demo accounts' private-book positions. A demo
-experiment; see [Live events](live-events.md).
+experiment; see [Live events](live-events.md). The loop holds a lock in the final's run folder (as
+`racinglines live run` does): a second loop for the same final says so and exits instead of polling alongside it.
 
 ```
 racinglines mtb_dh live --slug 20260925_mtb --final 3 --quali 2,91 --conditions "clear, rutted"
@@ -305,6 +306,8 @@ racinglines f1 matrix [--variants baseline,grid,gridq,pretrain,gbm,tail,gridq+pr
 racinglines f1 [--half-life DAYS] diagnostic --event 2026-15 --cutoff 2026-09-25T13:30 [--sims 10000] [--no-track] [--save]
 racinglines f1 [--half-life DAYS] forecast [--year 2026] [--sims 10000] [--no-track] [--save [--scenario LABEL]] [--top 10]
 racinglines f1 props EVENT [--run STAGE_RUN] [--prior-n 16]  |  racinglines f1 props --check [--from 2022]
+racinglines f1 [--variant NAME] scorecard --event 2026-15 [--venue polymarket|kalshi|both] [--model-key KEY] [--out DIR]
+racinglines f1 [--variant NAME] scorecard --all --year 2025 [--rounds 1-12] [--venue polymarket|kalshi|both]
 ```
 
 | Command | What it does |
@@ -314,6 +317,7 @@ racinglines f1 props EVENT [--run STAGE_RUN] [--prior-n 16]  |  racinglines f1 p
 | `matrix` | The model × strategy matrix: for each variant, the latest saved backtest (accuracy, marked where it differs from baseline beyond 2 SE) and the latest saved sweep and season strategy (P&L). Writes `data/runs/f1/matrix.md`. See [Model × strategy matrix](market-making.md#model-strategy-matrix). |
 | `diagnostic` | Price one past event as of `--cutoff` (UTC), with a leakage audit. `--save` stores `kind='diagnostic'`. See [Market making](market-making.md). |
 | `forecast` | Live: cutoff = now; upcoming races and the championships. `--save` creates scheduled events for upcoming rounds and stores `kind='forecast'` (the only kind the web app uses for live fair prices). `--scenario LABEL` saves `kind='scenario'` instead, ignored by live prices until promoted in the web app's Lab. |
+| `scorecard` | The pricing scorecard of an exchange weekend, traded or not ([Paper trading](paper-trading.md#validation-plan), rule 2): at every stage cutoff (before any running, after each session), the stored stage runs' fair values for every linked market kind scored against the result and against the venue's mid at that cutoff (Brier and log loss; `n` markets, and `paired` where the venue also priced it). `--venue both` runs Polymarket and Kalshi; `--all --year` every raced weekend of a season, per weekend and pooled per kind and stage. Nothing is priced or stored: the stages must have been priced by `f1 sweep` or `f1 signals` with the same model settings (`--variant`, or `--model-key`). Writes `data/runs/f1/scorecard/<event>_<venue>.md` / `.csv` / `_markets.csv` (or `<year>_<venue>…`). See [F1 evaluation](f1-evaluation.md#the-weekend-scorecard). |
 | `props` | Race props for one event from the race history before it: safety car, red flag, rain (per-circuit rates shrunk to the field rate); `--run` adds fastest-lap prices from a stored stage run's finishing odds. `--check` scores the yes/no props walk-forward from `--from` against the field rate and a coin flip. Nothing is stored. See [F1 live test](f1-live-roadmap.md#props-opt-in). |
 
 ### Trading research
@@ -331,7 +335,7 @@ racinglines f1 search-import RESULTS.json
 
 | Command | What it does |
 |---|---|
-| `sweep` | Trade every raced weekend of a season: price before any running and after each session, trade Polymarket, settle. Runs four taker modes (`update`, `hold`, `last`, `early`) and five maker settings side by side. See [Market making](market-making.md#season-sweep). Downloads the season's missing Polymarket history and trades first unless `--no-fetch`; `--fetch-only` only downloads (e.g. a past season). Stages are reused only when priced with the same model settings from the same data; `--reprice` prices them again. `--reliability` also scores calibration: our fair values and Polymarket's prices at every tradeable stage, per market kind and stage (Brier, log loss, ECE) and in reliability bins, written to `sweep_<year>_calibration.csv` / `_reliability.csv` (and saved with the run). `--save` stores `kind='sweep'`. |
+| `sweep` | Trade every raced weekend of a season: price before any running and after each session, trade Polymarket, settle. Runs four taker modes (`update`, `hold`, `last`, `early`) and five maker settings side by side. See [Market making](market-making.md#season-sweep). Downloads the season's missing Polymarket history and trades first unless `--no-fetch`; `--fetch-only` only downloads (e.g. a past season). Stages are reused only when priced with the same model settings from the same data; `--reprice` prices them again. `--reliability` also scores calibration: our fair values and Polymarket's prices at every tradeable stage, per market kind and stage (Brier, log loss, ECE) and in reliability bins, written to `sweep_<year>_calibration.csv` / `_reliability.csv` (and saved with the run). `--save` stores `kind='sweep'`. `--venue kalshi` (the `venue` setting) trades Kalshi's markets instead: its `exchange='kalshi'` links, one market per ticker, its tape per market from `data/archive/markets/kalshi/` and the shared tables (nothing is downloaded), and Kalshi's maker fee ([Kalshi history](kalshi-history.md#in-the-signal-engine)). |
 | `season-strategy` | The championship-market strategy through the season: as-of season forecasts pre-season and after every race, trades at Polymarket's recorded prices (plus spread and slippage), settles eliminated markets, marks the rest. `--reforecast` recomputes the cached forecasts. **`--paper`** is the championship sleeve (paper only, off unless given): replay through the decision after `--after-round` (default: the last raced round) on `--venue` (Polymarket's championship markets, or Kalshi's `KXF1` / `KXF1CONSTRUCTORS` champion markets by ticker, costed at the taker fee) and store that rebalance as the demo maker's (`--user`) paper positions under venue `season:<venue>`, event `<year>-season`, replacing the previous store on that venue; the weekend records of A, C and K never read that venue. `--save` also stores the rebalance as a run of kind `season_sleeve`. See [Paper trading](paper-trading.md#validation-plan). |
 | `season-checkpoints` | Championship markets entered at fixed points (pre-season, after 3 and after 6 grands prix; `--entries`) and held, one $500 book each, per model variant (`--variants`). Scores each entry over the next 3 GPs (`--window`) and to date: P&L, how far the market moved toward our fair value, and the share of our edge it closed. Writes `data/runs/f1/season_checkpoints.md`; `--save` stores kind `season_checkpoints`. See [Checkpoint entries](market-making.md#checkpoint-entries). |
 | `replay` | Replay a maker quoting Polymarket through an event's diagnostic runs (ids in time order), with both fill rules, against the real trade tape. `--sweep` adds the half-spread and fill-rule sensitivity table. |
@@ -377,6 +381,7 @@ baseline. The model variant is the group's `--variant`.
 | | `--widen` | 1.5 | Widen factor on bad markouts (`maker_widen`, `maker_all`). |
 | Markets | `--market-kinds` | `race_win,race_podium,race_h2h,race_constructor_top,race_pole` | Market kinds traded. |
 | | `--min-volume-24h` | 50 | Min $ traded in the prior 24 h. |
+| | `--venue` | not set | `polymarket` (the default) or `kalshi`: whose links and recorded tape the strategies trade. Unset = Polymarket, and unset or `polymarket` leaves every settings key as it was. A profile with this setting paper-trades Kalshi in the signal engine. |
 
 ### Paper signals and strategy profiles
 
@@ -389,7 +394,7 @@ racinglines f1 demo-history [--reset] [--user maker taker] [--venue kalshi]
 | Command | What it does |
 |---|---|
 | `profiles` | List the strategy profiles, creating A (core taker) and C (maker sleeve) as Lab candidates if missing, and show which users run which. `--assign-demo` assigns the demo taker A and the demo maker C (`users.prefs["strategy_profile"]`, with the demo bankrolls). `racinglines/pipelines/profiles.py`. |
-| `signals` | Live paper signals of every user with a profile, for the weekend in progress (`racinglines/pipelines/signals.py`): refresh FastF1 and Polymarket data (skip with `--no-fetch`), price each stage whose session is in, run the profile's strategy with the backtest's code, store `strategy_signals` and `paper_positions`, and alert (skip with `--no-alert`). Recommendations only: never places an order. `--profile` runs one profile instead of each user's own; `--user` limits the users; `--event` picks the weekend (default the next). `--asof UTC` replays at that time and only prints (markets read at each stage's cutoff, like the sweep). See [Paper trading](paper-trading.md). |
+| `signals` | Live paper signals of every user with a profile, for the weekend in progress (`racinglines/pipelines/signals.py`): refresh FastF1 and Polymarket data (skip with `--no-fetch`), price each stage whose session is in, run the profile's strategy with the backtest's code, store `strategy_signals` and `paper_positions`, and alert (skip with `--no-alert`). Recommendations only: never places an order. `--profile` runs one profile instead of each user's own; `--user` limits the users; `--event` picks the weekend (default the next). `--asof UTC` replays at that time and only prints (markets read at each stage's cutoff, like the sweep). A profile whose settings say `venue = kalshi` trades Kalshi's markets (its links, tape and maker fee; signals and positions tagged `kalshi`); there is no flag for it, the profile setting is the switch. See [Paper trading](paper-trading.md#the-signal-engine). |
 | `demo-history` | Backfill the demo accounts' track record: every past weekend with Polymarket race markets, replayed with the profile each account ran then, stored as paper signals and positions flagged as backtest replays (`racinglines/pipelines/demo_history.py`). Idempotent; `--reset` deletes the backfill first; `--user` limits it to `maker` or `taker`. `--venue kalshi` replays the maker's profiles on Kalshi's recorded tape instead, with Kalshi's maker fee, stored apart as venue `kalshi` ([Kalshi history](kalshi-history.md)); off by default. |
 
 ## racinglines markets
@@ -426,18 +431,42 @@ Markets settled before Kalshi's historical cutoff (about two months back) are re
 endpoints: settled events' markets, their trades and their candlesticks.
 
 ```
-racinglines markets --exchange kalshi sync [--year 2026] [--closed]
+racinglines markets --exchange kalshi sync [--year 2026] [--closed] [--series TICKER …]
 racinglines markets --exchange kalshi trades --events KXF1RACE-AZEGP26
 racinglines markets --exchange kalshi history --events KXF1RACE-AZEGP26 --start 2026-09-24T00:00 --end 2026-09-27T00:00 [--period 60]
 racinglines markets --exchange kalshi books --events KXF1-26
+racinglines markets --exchange kalshi --sport nascar sync [--closed]        # NASCAR Cup: KXNASCAR* series, links unmodeled
+racinglines markets --exchange kalshi --sport nascar trades                 # every NASCAR event's tape (no --events needed)
+racinglines markets --exchange kalshi --sport motogp books                  # one snapshot per open MotoGP market
 ```
 
 | Command | What it does |
 |---|---|
-| `sync` | Find Kalshi's F1 series (Sports series whose ticker starts `KXF1` or whose title says Formula 1, F1 or Grand Prix, or `kalshi.sync.SERIES`), and upsert one `market_links` row per market (`exchange='kalshi'`, `token_id` = the market ticker's YES contract, `condition_id` = the event ticker), classified into the model's kinds: win, podium, top 10, pole, top constructor, fastest lap, head-to-head (the race read from the ticker's code, `BRIGP26`), champions. Sprint markets, top 5 and the rest are listed as unmodeled. Each row keeps Kalshi's resolution rules (`params.rules`). `--closed` adds settled events. Races resolve within `--year` (2026: 15 weekends, 1,847 modeled links on 2026-09-28). |
+| `sync` | Find Kalshi's F1 series (Sports series whose ticker starts `KXF1` or whose title says Formula 1, F1 or Grand Prix, or `kalshi.sync.SERIES`; `--series TICKER …` names them instead), and upsert one `market_links` row per market (`exchange='kalshi'`, `token_id` = the market ticker's YES contract, `condition_id` = the event ticker), classified into the model's kinds: win, podium, top 10, pole, top constructor, fastest lap, head-to-head (the race read from the ticker's code, `BRIGP26`), champions. Sprint markets, top 5 and the rest are listed as unmodeled. Each row keeps Kalshi's resolution rules (`params.rules`). `--closed` adds settled events. Races resolve within `--year` (2026: 15 weekends, 1,847 modeled links on 2026-09-28). |
 | `trades` | Store every trade on those events' markets in `market_trades` (the taker's side of YES, at the YES price, in contracts). |
 | `history` | Store candlesticks (`--period` 1, 60 or 1440 minutes) in `market_price_history`. |
 | `books` | One order-book snapshot per open market in `market_book_snapshots` (a NO bid at p is a YES ask at 1 − p). |
+
+`--sport nascar` / `motogp` / `indycar` (before the command) switches the sync to a **tape-only sport**: Kalshi's
+NASCAR Cup (`KXNASCAR*`: race winners and the champion), MotoGP (`KXMOTOGP*`) or IndyCar (`KXINDYCAR*`) series,
+filed under the sport's own competition (`sports/<code>.toml`, no model) with every link `unmodeled`. Off by
+default: without `--sport`, `sync` is the F1 sync above and touches nothing else. For any sport, `trades`,
+`history` and `books` without `--events` take every Kalshi event of that sport's competition (books: its open
+markets), so recording a series from listing to settlement is `sync --closed`, `trades` and `books` per pass.
+The series prefixes come from `[markets.kalshi] series` in the schema and were not checked against the live
+listing (the cloud can't reach Kalshi): `sync --series TICKER …` syncs exact tickers.
+[Data](data.md#other-series-tapes-nascar-motogp-indycar).
+
+**The recorder unit is not changed.** `racinglines-recorder` (`deploy/vm/systemd/racinglines-recorder.service`,
+`scripts/deploy/vm.sh`) still runs `markets record --interval 60`: Polymarket's F1 books, plus the hourly archive
+pass that also files Kalshi's rows. There is no Kalshi `record`. To record NASCAR or MotoGP on the VM, add a
+timer of your own next to `racinglines-signals.timer`, e.g. `racinglines-tapes.service` with
+`ExecStart=/bin/sh -c 'for s in nascar motogp; do racinglines markets --exchange kalshi --sport $s sync --closed
+&& racinglines markets --exchange kalshi --sport $s trades && racinglines markets --exchange kalshi --sport $s books; done'`
+(same `User`, `WorkingDirectory` and `EnvironmentFile` as the recorder) and a `racinglines-tapes.timer` with
+`OnCalendar=*:0/5` (books every 5 min; trades are deduplicated, so re-pulling them is safe), then
+`vm.sh deploy` installs whatever is in `deploy/vm/systemd/`. `history --period 60` once after settlement fills
+the candle series.
 
 `markets archive` (and the recorder's hourly pass) archives Kalshi's rows too, into `data/archive/markets/kalshi/`
 ([Data](data.md#exchange-history-kalshi-and-polymarket)). No `record` or links export for Kalshi yet. Pulling a season: `sync --year Y --closed`,
@@ -526,7 +555,7 @@ to each data source, and the database. `--sport f1|mtb_dh` (default both),
 | Script | What it does |
 |---|---|
 | `scripts/fetch_test_fixtures.py [--f1] [--mtb]` | Build the regression-test fixtures from the public sources. See [Testing](testing.md#fixtures-built-locally-from-the-public-sources). |
-| `scripts/signals_parity.py [--profile A] [--year 2026] [--round 15] [--reprice]` | Parity check: `f1 signals` replayed at a past race's start must give the same taker trades (market, stage, side, shares, price) as `f1 sweep --rounds N --no-fetch` with the profile's settings. Taker profiles only; exit 1 on a difference. |
+| `scripts/signals_parity.py [--profile A] [--year 2026] [--round 15] [--reprice] [--venue kalshi]` | Parity check: `f1 signals` replayed at a past race's start must give the same taker trades (market, stage, side, shares, price) as `f1 sweep --rounds N --no-fetch` with the profile's settings; a maker profile (replayed settled, a day after the race) must match the sweep's maker on fills and settled P&L, and `demo-history`'s stored record for the weekend when there is one. `--venue kalshi` gives the profile the `venue = kalshi` setting on both sides. Exit 1 on a difference. |
 | `scripts/cloud/prepare.sh` | Before a cloud sweep: move every market row from Postgres to the Parquet archive, `db snapshot-export`, `f1 pm-links-export`, and run the no-data-in-git guard. Then commit and push. |
 | `scripts/cloud/start.sh` | Bring up racinglines on a fresh Linux machine (a cloud session): `.venv` with Python 3.14, Postgres, `db init`, then `db snapshot-import` (or, without a snapshot, `f1 ingest` and `pm-links-import` / `pm-sync`), then `check --offline`. `SKIP_SYSTEM=1` runs only the database steps. See [Cloud sweeps](cloud-sweep.md). |
 | `scripts/hooks/pre-push` | Git hook: README in sync, `mkdocs build --strict`, no data in git. See [Testing](testing.md#pre-push-hook). |

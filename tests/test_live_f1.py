@@ -249,3 +249,20 @@ def test_singapore_is_a_sprint_weekend():
     assert all(u["label"] in hs for u in ups if u["kind"] in ("open", "stage"))    # a spread for every stage
     spec = LV.load_spec("f1/2026-17")
     assert spec["window"]["open"] == "2026-10-09T07:30:00" and spec["window"]["close"] == "2026-10-11T12:00:00"
+
+
+@pytest.mark.quick
+@pytest.mark.parametrize("path", sorted((paths.ROOT / "live" / "f1").glob("2026-*.toml")), ids=lambda p: p.stem)
+def test_every_2026_launch_spec_loads(path):
+    """Every committed 2026 spec loads, names its own event, has picks on known markets and, when it has a
+    window, matches the schedule's plan (opening at the pre-weekend cut-off, closing at lights out)."""
+    spec = LV.load_spec(path)
+    assert spec["sport"] == "f1" and spec["event"] == path.stem
+    assert spec["picks"] and all(p["market"] in F.KINDS for p in spec["picks"])
+    ups, w = F.plan(spec["event"])
+    assert ups[0]["label"] == "pre-weekend" and ups[-2]["label"] == "lights out" and ups[-1]["label"] == "results"
+    assert all(u["at"] < w["race_start"] for u in ups if u["kind"] in ("open", "stage"))   # no stage after lights out
+    if "window" in spec:
+        assert spec["window"]["open"] == ups[0]["at"].isoformat()
+        assert spec["window"]["close"] == ups[-2]["at"].isoformat() == w["race_start"].isoformat()
+        assert spec["window"]["results"] == ups[-1]["at"].isoformat()
