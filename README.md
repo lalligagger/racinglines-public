@@ -503,7 +503,8 @@ C makes money on Polymarket's tape and loses on Kalshi's.
 
 **P1 · October (rounds 16–19): first live weekends on real markets**
 
-- [ ] **U5** Kalshi sprint markets before Singapore (11 Oct).
+- [ ] **U5** Kalshi sprint markets before Singapore (11 Oct). Priced from the race's pole and win odds
+      until **U13**, a real sprint model, lands ([F1 model](docs/todo.md#f1-model)).
 - [ ] **U3** Kalshi maker profile K, swept and frozen before the United States GP (25 Oct).
 - [ ] **U7** Cross-venue disagreement log; **U8** settlement rules for relocated or cancelled races.
 - [ ] Per-weekend reconciliation (live vs replay) and the pricing scorecard on every weekend ([Paper trading](docs/todo.md#paper-trading)).
