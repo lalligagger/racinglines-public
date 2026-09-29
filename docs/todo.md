@@ -276,20 +276,24 @@ XC/enduro, alpine skiing. Rank by audience, data availability and exchange listi
 local-league plans. As of 2026-09 the ranking is led by exchange depth:
 [Strategy 2026](strategy-2026.md#other-racing-sports-for-2027).
 
-- [x] **U9 · P1 · Tape recording for other sports** (code, PR #26, merged, fixture-tested only; the live run on the VM and a tapes timer are open). Generalise the Kalshi sync to named series: NASCAR
+- [x] **U9 · P1 · Tape recording for other sports** (code, PR #26, merged). **First live run on the VM, 2026-09-29:** Kalshi NASCAR 13,599 links and 1.69M trades, MotoGP 322 links and 12k trades, IndyCar 1,374 links and 167k trades, all `unmodeled` ([Data changes](data-changes.md)). A tapes timer is still open. Generalise the Kalshi sync to named series: NASCAR
       Cup (`KXNASCAR*`, race and champion), MotoGP (`KXMOTOGP*`), IndyCar (`KXINDYCAR*`). Each under its own
       competition (a `sports/<code>.toml` entry with no model), links `unmodeled`, with prices, trades and
       books archived per exchange.
       *Done when:* the NASCAR finale (Homestead, 8 Nov) and MotoGP's Qatar–Valencia rounds are recorded
       from listing to settlement.
-- [ ] **Polymarket tapes for NASCAR, MotoGP and IndyCar.** Polymarket now lists per-race NASCAR winners
-      and MotoGP / IndyCar futures (seen 2026-09-29). Generalise the Polymarket sync to a named tape-only
-      sport as U9 did for Kalshi (`[markets.polymarket]` in `sports/<code>.toml`, links `unmodeled`).
-      Effort M ([Coverage](coverage.md#the-gaps-ranked)).
-- [ ] **UCI road cycling, tape only.** Kalshi lists `KXCYCLING` (race winner), `KXCYCLINGSTAGE` and
-      `KXCYCLINGTEAM`; Polymarket listed the 2026 Tour winner and top 3. A `sports/road_cycling.toml` with
-      no model and those series records the tapes through the U9 path, `--include-closed` for the 2026
-      grand tours. Effort S. A model is a 2027 question ([Coverage](coverage.md#the-grid)).
+- [x] **Polymarket tapes for NASCAR, MotoGP and IndyCar** (PR #51). The Polymarket sync now takes a named tape-only
+      sport (`[markets.polymarket] tags` in `sports/<code>.toml`, links `unmodeled`, additive: no reset or delete path).
+      **The tag slugs are unverified against the live Gamma API**; `sync --tags SLUG …` overrides them, so the first VM
+      run can correct one without a code change. Not yet run on the VM ([Coverage](coverage.md#the-gaps-ranked)).
+- [x] **UCI road cycling, tape only** (schema, PR #50): `sports/road_cycling.toml` (competition `uci_road_wt`, Kalshi
+      `KXCYCLING*`), plus `le_mans.toml` and `sailgp.toml` (Kalshi, and SailGP on OG.com). Not yet run on the VM:
+      `markets --exchange kalshi --sport road_cycling sync --closed` pulls the 2026 grand tours Kalshi still serves. A
+      model is a 2027 question ([Coverage](coverage.md#the-grid)).
+- [ ] **Tape-sync follow-ups (2026-09-29 first live run):** the sync should seed a sport's competition row from
+      `sports/<code>.toml` instead of raising `NoResultFound` (the VM had none for NASCAR, MotoGP or IndyCar until they were
+      added by hand); Kalshi's `KXNASCARTRUCKSERIES` (35 links) and `KXNASCARAUTOPARTSSERIES` (40) match the `KXNASCAR`
+      prefix and landed under `nascar_cup`, so filter or tag them (owner's call); the Polymarket tag slugs above.
 - [ ] **Re-run the coverage probes and spot-check every combo** (handoff written 2026-09-29: `handoffs/2026-09-29-spot-check-exchange-coverage.md`) (Kalshi and Polymarket counts drift; the remaining ? cells) on the VM or the owner's device: the read-only
       commands in [Coverage](coverage.md#what-to-verify-on-a-device). Effort S.
 - [x] **P2 · NASCAR data sources** (research, PR #25, merged): results, qualifying, practice and lap data
