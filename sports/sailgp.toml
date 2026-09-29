@@ -1,0 +1,33 @@
+# SailGP: a tape-only sport (docs/todo.md, U9). No model, no pipeline: its markets are synced and recorded
+# (links unmodeled, prices / trades / books archived per exchange) when asked for by name
+# (`racinglines markets --exchange kalshi --sport sailgp ...`, or `--exchange og`). Read by racinglines/sports.py;
+# the sync reads [markets.kalshi], the OG.com driver reads exchanges/og.toml [sports.sailgp]. Nothing runs for this
+# sport by default.
+
+[sport]
+code = "sailgp"
+name = "SailGP"
+result_kind = "position"          # finishing positions, once there is a model
+model_family = "none"             # tapes only: no model, no pricing_model, no live adapter
+display_order = 7
+
+[league]
+code = "sailgp"
+name = "SailGP"
+organizer = "SailGP"
+
+[competition]
+code = "sailgp_champ"
+name = "SailGP Championship (Teams)"
+display_name = "SailGP"
+categories = { TEAM = ["Teams", "X", "elite"] }
+
+[markets]
+venues = ["kalshi", "og"]
+standard_kinds = []               # nothing is priced, so the board has no columns for it
+
+[markets.kalshi]
+# Kalshi series tickers to sync, by prefix: every Sports series whose ticker starts with one of these
+# (`sync --series TICKER ...` overrides the list). Off by default: only `--sport sailgp` syncs them.
+# KXSAILGP already covers KXSAILGPRACE by prefix (series_for uses startswith); both are listed for the reader.
+series = ["KXSAILGP", "KXSAILGPRACE"]

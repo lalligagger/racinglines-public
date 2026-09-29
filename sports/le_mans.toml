@@ -1,0 +1,31 @@
+# 24 Hours of Le Mans: a tape-only sport (docs/todo.md, U9). No model, no pipeline: its Kalshi markets are synced and
+# recorded (links unmodeled, prices / trades / books archived per exchange) when asked for by name
+# (`racinglines markets --exchange kalshi --sport le_mans ...`). Read by racinglines/sports.py; the sync reads
+# [markets.kalshi]. Nothing runs for this sport by default.
+
+[sport]
+code = "le_mans"
+name = "24 Hours of Le Mans"
+result_kind = "position"          # finishing positions, once there is a model
+model_family = "none"             # tapes only: no model, no pricing_model, no live adapter
+display_order = 6
+
+[league]
+code = "aco_wec"
+name = "FIA World Endurance Championship"
+organizer = "ACO / FIA"
+
+[competition]
+code = "le_mans_24h"
+name = "24 Hours of Le Mans (Overall)"
+display_name = "Le Mans"
+categories = { CAR = ["Cars", "X", "elite"] }
+
+[markets]
+venues = ["kalshi"]
+standard_kinds = []               # nothing is priced, so the board has no columns for it
+
+[markets.kalshi]
+# Kalshi series tickers to sync, by prefix: every Sports series whose ticker starts with one of these
+# (`sync --series TICKER ...` overrides the list). Off by default: only `--sport le_mans` syncs them.
+series = ["KXLEMANS24H"]

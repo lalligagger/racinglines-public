@@ -620,13 +620,21 @@ def test_tape_only_sports_have_schemas_and_series():
     from racinglines import sports
     from racinglines.cli import markets as CM
     for code, comp, prefix in (("nascar", "nascar_cup", "KXNASCAR"), ("motogp", "motogp_wc", "KXMOTOGP"),
-                               ("indycar", "indycar_series", "KXINDYCAR")):
+                               ("indycar", "indycar_series", "KXINDYCAR"),
+                               ("le_mans", "le_mans_24h", "KXLEMANS24H")):
         s = sports.load(code)
         assert not sports.modeled(code) and "pricing_model" not in s["sport"] and "live" not in s
         assert s["competition"]["code"] == comp and sports.kalshi_series(code) == (prefix,)
         assert s["markets"]["venues"] == ["kalshi"]
+    for code, comp, series, venues in (
+            ("road_cycling", "uci_road_wt", ("KXCYCLING", "KXCYCLINGSTAGE", "KXCYCLINGTEAM", "KXCYCLINGJERSEY"), ["kalshi"]),
+            ("sailgp", "sailgp_champ", ("KXSAILGP", "KXSAILGPRACE"), ["kalshi", "og"])):
+        s = sports.load(code)
+        assert not sports.modeled(code) and "pricing_model" not in s["sport"] and "live" not in s
+        assert s["competition"]["code"] == comp and sports.kalshi_series(code) == series
+        assert s["markets"]["venues"] == venues
     assert sports.modeled("f1") and sports.modeled("mtb_dh") and sports.kalshi_series("f1") == ()
-    assert CM.kalshi_sports() == ["f1", "nascar", "motogp", "indycar"]
+    assert CM.kalshi_sports() == ["f1", "nascar", "motogp", "indycar", "road_cycling", "le_mans", "sailgp"]
     with pytest.raises(ValueError):
         KS.series_for(None, "mtb_dh")                    # no [markets.kalshi]: nothing to discover
 

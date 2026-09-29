@@ -29,13 +29,15 @@ def envelope(data, **result):
 F1_EVENTS = fx("events_f1_futures")["result"]["data"]                  # F1-00001-2026 (drivers), F1-00002-2026 (constructors)
 GP_EVENT = fx("events_f1")["result"]["data"][0]                        # a per-GP event: listed, no live instruments
 NASCAR_EVENT = fx("events_nascar")["result"]["data"][0]
+SAILGP_EVENT = fx("events_sailgp")["result"]["data"][0]                # SAIL-00011-26
 INSTRUMENTS = fx("instruments_f1")["result"]["data"]
 TICKERS = fx("tickers")["result"]["data"]
 
 
 def transport(log=None, error=False):
     """The OG.com public API over the fixtures: events on two pages, instruments and tickers filtered by the ids asked."""
-    events = [F1_EVENTS[0], F1_EVENTS[1], GP_EVENT, NASCAR_EVENT, fx("events_page1")["result"]["data"][0]]
+    events = [F1_EVENTS[0], F1_EVENTS[1], GP_EVENT, NASCAR_EVENT, fx("events_page1")["result"]["data"][0],
+              SAILGP_EVENT]
 
     def handler(req):
         p, q = req.url.path, dict(req.url.params)
@@ -93,6 +95,8 @@ def test_every_exchange_schema_is_complete_and_names_real_sports():
             assert sport in sports.SPORT_CODES                          # a sport schema (sports/<code>.toml) exists
         for sport, cfg in s["sports"].items():
             assert cfg["event_prefixes"] and (not cfg.get("modeled") or cfg["rules"])
+    assert "sailgp" in EX.sports("og")
+    assert D.classify(EX.load("og"), "sailgp", "SailGP Championship Winner") == ("unmodeled", None)
 
 
 @pytest.mark.quick
@@ -153,6 +157,8 @@ def test_client_pages_and_batches_and_only_reads():
         assert len(instruments) == 12
         nascar_events, _ = D.discover(c, "nascar")
         assert [e["symbol"] for e in nascar_events] == ["NSCAR-00002-2026"]
+        sailgp_events, _ = D.discover(c, "sailgp")
+        assert [e["symbol"] for e in sailgp_events] == ["SAIL-00011-26"]
     cursors = [q.get("cursor") for m, p, q in log if p.endswith("/get-events")]
     assert None in cursors and "1" in cursors and all(m == "GET" for m, _, _ in log)
 
