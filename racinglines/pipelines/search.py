@@ -6,9 +6,13 @@ After every finished job the leaderboard and a results export are rewritten.
 
     [search]
     name = "overnight-2026"      # output: data/runs/search/<name>/
-    parallel = 3                 # jobs at once (one core each; leave one for the database)
+    parallel = 4                 # jobs at once, one core each (default: every core; the database mostly idles)
     hours = 1.0                  # no new job starts after this; running ones are stopped at hours + grace
     grace_minutes = 10
+    grid = 8                     # optional: up to 8 sweeps of the same season and model in one process
+                                 # (`f1 sweep --grid`: shared measurements, stage pricings, markets and
+                                 # maker tape; the same results); 0 / unset = one process per job
+    history_cache = true         # optional: keep rating histories on disk (weekend_sweep.history)
 
     [[job]]                      # a season sweep (kind = "sweep", the default): every raced weekend
     year = 2026
@@ -188,7 +192,9 @@ def load(path):
         if c.get("venue", "polymarket") != "polymarket":
             cand["venue"] = c["venue"]
         cands.append(cand)
-    return (dict(name=s.get("name", "search"), parallel=int(s.get("parallel", 3)), hours=float(s.get("hours", 1.0)),
+    return (dict(name=s.get("name", "search"), parallel=int(s.get("parallel", os.cpu_count() or 1)), grid=int(s.get("grid", 0) or 0),
+                 history_cache=bool(s.get("history_cache", False)),
+                 hours=float(s.get("hours", 1.0)),
                  grace=float(s.get("grace_minutes", 10))), base + jobs, cands)
 
 
@@ -215,6 +221,22 @@ def argv(j):
     return a + st.argv()
 
 
+def _grid_key(j):
+    """Sweeps with the same key can share one process (`f1 sweep --grid`): same season, rounds and model."""
+    if j.get("sport", "f1") != "f1" or j["kind"] != "sweep":
+        return None
+    st = SS.Settings.from_dict(j["settings"])
+    return (j["year"], j.get("rounds"), st.model_key, st["variant"])
+
+
+def _grid_settings(j):
+    """A job's full settings for `f1 sweep --grid`: its own, plus its venue (a job-level key here)."""
+    st = dict(SS.Settings.from_dict(j["settings"]).changed(), variant=SS.Settings.from_dict(j["settings"])["variant"])
+    if j.get("venue", "polymarket") != "polymarket":
+        st["venue"] = j["venue"]
+    return st
+
+
 def run(path, echo=print):
     """Run the queue until it's empty or the time is up. Safe to restart: finished jobs are kept."""
     cfg, _, _ = load(path)
@@ -229,6 +251,8 @@ def run(path, echo=print):
     stop_new = t0 + timedelta(hours=cfg["hours"])
     hard_stop = stop_new + timedelta(minutes=cfg["grace"])
     env = dict(os.environ, OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1", MKL_NUM_THREADS="1")  # one core per job
+    if cfg["history_cache"]:                     # [search] history_cache = true: weekend_sweep.history on disk
+        env["RACINGLINES_HISTORY_CACHE"] = "1"
     procs = {}
 
     def save():
@@ -240,16 +264,26 @@ def run(path, echo=print):
             if p.poll() is None:
                 if now > hard_stop:
                     p.terminate()
-                    state[jid]["status"] = "stopped"
+                    for k in [k for k, v in state.items() if v.get("grid") == jid] or [jid]:
+                        if state[k]["status"] == "running":
+                            state[k]["status"] = "stopped"
                     echo(f"search: stopped {jid} (time up)")
                 continue
             log = (out / "logs" / f"{jid}.log").read_text(errors="ignore")
             mark = SAVED[state[jid]["kind"]]
-            rid = next((int(line.split()[-1].rstrip(".")) for line in log.splitlines() if line.startswith(mark)), None)
-            if state[jid]["status"] == "running":
-                state[jid].update(status="done" if p.returncode == 0 and rid else "failed", run_id=rid, ended=str(now))
+            members = [k for k, v in state.items() if v.get("grid") == jid] or [jid]
+            for k in members:
+                if len(members) == 1:
+                    rid = next((int(line.split()[-1].rstrip(".")) for line in log.splitlines() if line.startswith(mark)),
+                               None)
+                else:                                  # "Saved sweep run N for job ID."
+                    rid = next((int(line.split()[3]) for line in log.splitlines()
+                                if line.startswith(mark) and line.rstrip(".").endswith(f"for job {k}")), None)
+                if state[k]["status"] == "running":
+                    state[k].update(status="done" if (p.returncode == 0 or len(members) > 1) and rid else "failed",
+                                    run_id=rid, ended=str(now))
+                echo(f"search: {state[k]['status']} {k} {_title(state[k])} run {rid}")
             del procs[jid]
-            echo(f"search: {state[jid]['status']} {jid} {_title(state[jid])} run {rid}")
             save()
             write_outputs(out, state, path, echo)
         try:
@@ -259,10 +293,24 @@ def run(path, echo=print):
         pending = [j for j in jobs if j["id"] not in state or state[j["id"]]["status"] == "interrupted"]
         while pending and len(procs) < cfg["parallel"] and now < stop_new:
             j = pending.pop(0)
+            group = [j]
+            if cfg["grid"] > 1 and _grid_key(j) is not None:     # [search] grid = N: up to N sweeps in one process
+                group += [x for x in pending if _grid_key(x) == _grid_key(j)][:cfg["grid"] - 1]
+                pending = [x for x in pending if x not in group]
             log = open(out / "logs" / f"{j['id']}.log", "w")
-            procs[j["id"]] = subprocess.Popen(argv(j), stdout=log, stderr=subprocess.STDOUT, env=env, cwd=paths.ROOT)
-            state[j["id"]] = dict(j, status="running", started=str(now), log=f"logs/{j['id']}.log")
-            echo(f"search: started {j['id']} {_title(j)} {j.get('note', '')}")
+            if len(group) == 1:
+                a = argv(j)
+            else:
+                gf = out / "logs" / f"{j['id']}.grid.json"
+                gf.write_text(json.dumps([dict(job=x["id"], settings=_grid_settings(x)) for x in group]))
+                a = argv(dict(j, settings=SS.Settings.from_dict({"variant": SS.Settings.from_dict(j["settings"])["variant"]}).to_json(),
+                              venue="polymarket")) + ["--grid", str(gf)]
+            procs[j["id"]] = subprocess.Popen(a, stdout=log, stderr=subprocess.STDOUT, env=env, cwd=paths.ROOT)
+            for x in group:
+                state[x["id"]] = dict(x, status="running", started=str(now), log=f"logs/{j['id']}.log",
+                                      **({"grid": j["id"]} if len(group) > 1 else {}))
+                echo(f"search: started {x['id']} {_title(x)} {x.get('note', '')}"
+                     + (f" (grid {j['id']}, {len(group)} sweeps)" if len(group) > 1 else ""))
             save()
         if not procs and (not pending or now >= stop_new):
             echo(f"search: finished ({sum(v['status'] == 'done' for v in state.values())} done)")

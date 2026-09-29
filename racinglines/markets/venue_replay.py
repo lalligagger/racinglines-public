@@ -9,7 +9,10 @@ read only as of each moment. Every venue gives the same four things:
 
     Polymarket(conn, w, start, end)          the recorded price history and trade tape (the F1 sweep reads it)
     Kalshi(conn, links, start, end)          the same for Kalshi's markets (markets/kalshi/ writes the same tables),
-                                             with Kalshi's taker fee, per market ticker; built on mocked data, read by nothing yet
+                                             per market ticker
+    EXCHANGES                                code -> class. Each exchange declares its fee schedule (TAKER_FEE,
+                                             MAKER_FEE); the sweep's maker, the disagreement log and the signal
+                                             engine read the fees from here
     PrivateBook.from_run(run_dir)            a live run's private book: our quotes and the simulated crowd,
                                              replayed from the logged polls and seeds (exactly, by default,
                                              or under another quoting rule)
@@ -39,6 +42,8 @@ class Polymarket:
     and the multi-outcome coherence check (a group whose prices don't sum near its target isn't traded)."""
 
     code = "polymarket"
+    TAKER_FEE = 0.0                  # the venue's fee schedule: rate x contracts x P x (1 - P), rounded up to the
+    MAKER_FEE = 0.0                  # cent (Polymarket charges neither on these markets)
 
     def __init__(self, conn, links, start, end, group_target=None, coherence_tol=0.25, stale=STALE):
         from racinglines.markets import store as MS
@@ -101,6 +106,7 @@ class Kalshi(Polymarket):
 
     code = "kalshi"
     TAKER_FEE = 0.07
+    MAKER_FEE = 0.0175               # on most markets (check the market's own schedule)
 
     def __init__(self, conn, links, start, end, group_target=None, coherence_tol=0.25, stale=STALE):
         """As Polymarket's, but a Kalshi link's condition_id is its event ticker (every driver's market of the
@@ -155,6 +161,9 @@ def _snaps(run_dir):
 
 def _read_jsonl(p):
     return [json.loads(x) for x in p.read_text().splitlines() if x.strip()] if p.exists() else []
+
+
+EXCHANGES = {v.code: v for v in (Polymarket, Kalshi)}    # code -> venue class: its fees, how its tape is read
 
 
 class PrivateBook:

@@ -34,7 +34,7 @@ K_SETTINGS = {"variant": "gbm", "max_disagree": 0.10, "size": 25, "maker_min_vol
 K_WHY = ("kalshi-maker-k search (full grid + 16k confirmations), conservative maker on Kalshi's tape with its maker "
          "fee, 2c quotes, only in markets with $400+ traded in the prior 24 h. Robust in both seasons (held-out rule, "
          "maker noise floor 350) and confirmed at 16k sims: 2026 +490 (Sharpe 0.62, max DD 499; +1,360 vs Kalshi "
-         "baseline, +609 vs C on Kalshi; 16k +453), 2025 +855 (1.53, 309; +1,250 vs baseline, +170 vs C; 16k +933).")
+         "baseline, +609 vs C on Kalshi; 16k +453), 2025 +659 (1.07, 504; +846 vs baseline, +150 vs C; 16k +741).")
 PROFILES = {
     "A": dict(name="A · core taker (update)", strategy="update",
               settings={"variant": "gridq+pretrain+reset", "min_edge": 0.10, "min_edge_h2h": 0.05,

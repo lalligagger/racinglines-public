@@ -18,7 +18,7 @@ def _queue(tmp_path, body):
 def test_baseline_is_added_first_for_every_season(tmp_path):
     cfg, jobs, cands = S.load(_queue(tmp_path, '[[job]]\nvariant = "reset"\nyear = 2025\n'
                                                '[[job]]\nvariant = "gridq"\n'))
-    assert cfg == dict(name="t", parallel=2, hours=0.5, grace=10.0)
+    assert cfg == dict(name="t", parallel=2, hours=0.5, grace=10.0, grid=0, history_cache=False)
     assert [(j["year"], j["settings"]["variant"]) for j in jobs] == [(2025, "baseline"), (2026, "baseline"),
                                                                      (2025, "reset"), (2026, "gridq")]
     assert cands == []
@@ -112,3 +112,20 @@ def test_a_kalshi_sweep_job_gets_its_own_id_baseline_and_command(tmp_path):
         S.load(_queue(tmp_path, '[[job]]\nvariant = "gbm"\nvenue = "betfair"\n'))
     with pytest.raises(ValueError, match="venue"):
         S.load(_queue(tmp_path, '[[job]]\nkind = "checkpoints"\nvenue = "kalshi"\n'))
+
+
+def test_grid_groups_sweeps_of_one_season_and_model(tmp_path):
+    """[search] grid: sweeps of the same season, rounds and model share a process; each keeps its own
+    settings (a job's venue included) for `f1 sweep --grid`."""
+    q = _queue(tmp_path, '[[job]]\nvariant = "gbm"\nsize = 25\nvenue = "kalshi"\n'
+                         '[[job]]\nvariant = "gbm"\nmax_disagree = 0.1\n[[job]]\nvariant = "gridq"\n'
+                         '[[job]]\nyear = 2025\nvariant = "gbm"\n')
+    q.write_text(q.read_text().replace("hours = 0.5\n", "hours = 0.5\ngrid = 4\n"))
+    cfg, jobs, _ = S.load(q)
+    assert cfg["grid"] == 4 and not cfg["history_cache"]
+    keys = {j["id"]: S._grid_key(j) for j in jobs}
+    gbm = [j for j in jobs if j["year"] == 2026 and j["settings"]["variant"] == "gbm"]
+    assert len(gbm) == 2 and keys[gbm[0]["id"]] == keys[gbm[1]["id"]]
+    assert S._grid_settings(gbm[0]) == {"variant": "gbm", "size": 25.0, "venue": "kalshi"}
+    other = [j for j in jobs if j["settings"]["variant"] == "gridq" or j["year"] == 2025]
+    assert all(keys[j["id"]] != keys[gbm[0]["id"]] for j in other)

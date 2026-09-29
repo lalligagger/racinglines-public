@@ -23,7 +23,9 @@ model yet, so our fair value only moves after sprint qualifying / sprint /
 qualifying, while the market moves after every session.
 """
 
+import copy
 import logging
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import timedelta
 
@@ -105,8 +107,9 @@ def schedule(year, rounds=None):
 def price_stages(meas, hist, sched, engine, engine_url=None, n_sims=4000, reprice=False, echo=print,
                  variant="baseline", settings=None):
     """Diagnostic run per (race, stage); a stored one is reused only when it was priced with the same
-    model settings (model_key) from the same data (data_key), unless reprice.
-    Returns {event_key: [(label, cutoff, run_id), ...]}."""
+    model settings (model_key) from the same data (data_key), unless reprice. hist: the rating history,
+    or a function returning it, called only when a stage has to be priced (a sweep whose stages are all
+    stored never builds it). Returns {event_key: [(label, cutoff, run_id), ...]}."""
     from racinglines.models.position_sim import pricing as run
     from racinglines.pipelines import sweep_settings as SS
     st = settings or SS.Settings.from_dict({"variant": variant, "sims": n_sims})
@@ -130,6 +133,8 @@ def price_stages(meas, hist, sched, engine, engine_url=None, n_sims=4000, repric
             if k in have and not reprice:
                 runs.append((label, cutoff, have[k]))
                 continue
+            if callable(hist):
+                hist = hist()
             _, summ, ex, _ = run.diagnostic(meas, hist, w["event_key"], cutoff, n_sims=st["sims"],
                                             use_track=st["track_features"], seed=st.rng_seed)
             extra = dict(model_key=mk, data_key=dk, model_settings={n: st.to_json()[n] for n in SS.MODEL_NAMES})
@@ -254,7 +259,9 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settin
     from racinglines.pipelines import sweep_settings as SS
     st = settings or SS.Settings.from_dict()
     venue = SS.venue_of(st)
-    markets = weekend_markets(conn, w, stage_runs, min_volume_24h=st["min_volume_24h"], venue=venue)
+    rids = tuple(r for _, _, r in stage_runs)
+    markets = _memo(("markets", w["event_key"], rids, st["min_volume_24h"], venue),
+                    lambda: weekend_markets(conn, w, stage_runs, min_volume_24h=st["min_volume_24h"], venue=venue))
     if markets is None:
         return None
     markets = [m for m in markets if m["kind"] in st["market_kinds"]]
@@ -288,8 +295,9 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settin
         from dataclasses import replace
 
         from racinglines.markets.strategies import maker_replay as R
-        ev = R.load_event(conn, [r for _, _, r in stage_runs], books=st["fill"] == "queue",
-                          **({} if venue == "polymarket" else dict(exchange=venue)))
+        ev = _memo(("tape", w["event_key"], rids, st["fill"] == "queue", venue),
+                   lambda: R.load_event(conn, list(rids), books=st["fill"] == "queue",
+                                        **({} if venue == "polymarket" else dict(exchange=venue))))
         ev = dict(ev, markets=[m for m in ev["markets"] if m.kind in st["market_kinds"]])
     except Exception as ex:  # noqa: BLE001  (no tape for this weekend)
         echo(f"  maker replay skipped: {ex}")
@@ -314,9 +322,11 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settin
 
 
 def maker_venue_opts(venue):
-    """maker_replay.Params overrides for a venue: Kalshi charges makers KALSHI_MAKER_FEE per fill; Polymarket nothing."""
-    from racinglines.markets.strategies import maker_replay as R
-    return {} if venue == "polymarket" else dict(maker_fee=R.KALSHI_MAKER_FEE)
+    """maker_replay.Params overrides for a venue: its maker fee per fill, from its fee schedule
+    (venue_replay.EXCHANGES; Kalshi's MAKER_FEE, Polymarket none)."""
+    from racinglines.markets.venue_replay import EXCHANGES
+    fee = EXCHANGES[venue].MAKER_FEE
+    return dict(maker_fee=fee) if fee else {}
 
 
 def maker_params(st, venue="polymarket"):
@@ -329,6 +339,58 @@ def maker_params(st, venue="polymarket"):
     if st["maker_min_volume_24h"] is not None:
         p = replace(p, min_volume_24h=st["maker_min_volume_24h"])
     return p
+
+
+HISTORY_CACHE = "RACINGLINES_HISTORY_CACHE"      # =1: keep rating histories on disk (data/cache/history/)
+
+
+def history(meas, st, echo=print):
+    """The model's rating history (pricing.history) under settings `st`, which must be applied. With
+    RACINGLINES_HISTORY_CACHE=1 it is kept in data/cache/history/, keyed by the settings' model_key and the
+    fingerprint of all the data (sweep_settings.data_key), so a stored history is reused only for exactly
+    the same model and data; the search turns it on for its jobs. Off, it is built every time, as before."""
+    import os
+
+    from racinglines import paths
+    from racinglines.models.position_sim import pricing as run
+    from racinglines.pipelines import sweep_settings as SS
+    if os.environ.get(HISTORY_CACHE, "0") != "1":
+        return run.history(meas, st["track_features"])
+    f = paths.cache("history") / f"{st.model_key}-{SS.data_key(meas.view(pd.Timestamp('2100-01-01')))}.pkl"
+    if f.exists():
+        echo(f"progress history from cache ({f.name})")
+        return pd.read_pickle(f)
+    hist = run.history(meas, st["track_features"])
+    f.parent.mkdir(parents=True, exist_ok=True)
+    tmp = f.with_suffix(f".{os.getpid()}.tmp")            # parallel jobs: write aside, then rename
+    pd.to_pickle(hist, tmp)
+    tmp.replace(f)
+    return hist
+
+
+_SHARED = None                 # inside shared(): inputs reused between the sweeps of one process
+
+
+@contextmanager
+def shared():
+    """Several run_sweep calls in one process (`f1 sweep --grid`) that share what doesn't depend on the
+    strategy settings: the measurements, the stage pricings of one model, each weekend's markets and each
+    weekend's maker tape. Every sweep's results are the same as its own process would give."""
+    global _SHARED
+    outer, _SHARED = _SHARED, {} if _SHARED is None else _SHARED
+    try:
+        yield
+    finally:
+        _SHARED = outer
+
+
+def _memo(key, make):
+    """make() once per key inside shared(); a fresh copy for every caller (callers may change it)."""
+    if _SHARED is None:
+        return make()
+    if key not in _SHARED:
+        _SHARED[key] = make()
+    return copy.deepcopy(_SHARED[key])
 
 
 def bankroll_scale(start, balance):
@@ -360,11 +422,21 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
         with engine.connect() as c, get_session(engine_url) as s:
             fetch_market_data(s, c, sched, echo=echo)
     echo(f"progress 0/1 building history ({st.label()})")
-    meas = run.Measurements.load(engine)
-    with st.applied():
-        hist = run.history(meas, st["track_features"])
-        stage_runs = price_stages(meas, hist, sched, engine, engine_url, reprice=reprice, echo=echo, settings=st)
-    data_key = price_stages.data_key
+    meas = _SHARED.get("meas") if _SHARED is not None else None
+    if meas is None:
+        meas = run.Measurements.load(engine)
+        if _SHARED is not None:
+            _SHARED["meas"] = meas
+    skey = ("stages", st.model_key, year, tuple(sched), reprice)
+    if _SHARED is not None and skey in _SHARED:
+        stage_runs, data_key = _SHARED[skey]
+    else:
+        with st.applied():
+            stage_runs = price_stages(meas, lambda: history(meas, st, echo), sched, engine, engine_url,
+                                      reprice=reprice, echo=echo, settings=st)
+        data_key = price_stages.data_key
+        if _SHARED is not None and not reprice:
+            _SHARED[skey] = (stage_runs, data_key)
     base = RB.TakerParams(min_edge=st["min_edge"], stake_per_edge=st["stake_per_edge"], max_stake=st["max_stake"],
                           cost=st["cost"], late_stages=st["late_stages"], min_edge_h2h=st["min_edge_h2h"],
                           min_edge_by_kind=tuple(SS.parse_map(st["min_edge_by_kind"]).items()),
