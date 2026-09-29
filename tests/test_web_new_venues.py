@@ -170,3 +170,37 @@ def test_race_page_marks_the_call_beside_a_schema_venue_quote():
     row["venues"]["og"] = dict(bid=0.20, ask=0.25, mid=0.225)
     html = _render("race.html", **dict(ctx, exchanges=exch[:1], schema_exchanges=[], venue_sum=[]))
     assert "YES +" not in html and "taker fee" not in html
+
+
+# --- the Markets calendar mixes a race's plain date with an exchange event's timezone-aware timestamp -------
+# (2026-09-29: /markets as maker returned 500 on the VM once NASCAR links were synced, because the sort
+# compared the two and pandas refuses to.)
+
+def test_calendar_sort_key_orders_dates_timestamps_and_missing_together():
+    import datetime as dt
+    rows = [dict(date=dt.date(2026, 9, 20)), dict(date=pd.Timestamp("2026-10-04T23:00:00Z")), dict(date=None),
+            dict(date=pd.NaT), dict(date=pd.Timestamp("2026-09-20T01:00:00Z")), dict(date=dt.datetime(2026, 11, 1))]
+    rows.sort(key=V._calendar_key, reverse=True)
+    dated = [r["date"] for r in rows if r["date"] is not None and not pd.isna(r["date"])]
+    assert [V._calendar_key(dict(date=d))[1] for d in dated] == sorted(
+        (V._calendar_key(dict(date=d))[1] for d in dated), reverse=True)
+    assert all(r["date"] is None or pd.isna(r["date"]) for r in rows[:2])              # undated rows lead, as they did before
+
+
+def test_calendar_rows_with_a_race_and_a_tape_only_event(monkeypatch):
+    import datetime as dt
+
+    class Conn:                                                   # data.q is patched below; no database needed
+        pass
+
+    def fake_q(conn, sql, **kw):
+        if "FROM races" in sql:
+            return pd.DataFrame([dict(race_id=1, start_date=dt.date(2026, 9, 20), status="done", event_name="Bristol",
+                                      competition="f1_wdc")])
+        return pd.DataFrame(columns=["race_id", "exchange"])
+    monkeypatch.setattr(V.data, "q", fake_q)
+    monkeypatch.setattr(V, "exchange_breakdown", lambda conn, comps=None: [dict(
+        sport="nascar", sport_name="NASCAR", competition="nascar_cup", exchange="kalshi",
+        events=[dict(end_date=pd.Timestamp("2026-10-04T23:00:00Z"), title="South Point 400 Winner", open=3)])])
+    rows = V.calendar_rows(Conn())
+    assert [r["title"] for r in rows] == ["South Point 400 Winner", "Bristol"]

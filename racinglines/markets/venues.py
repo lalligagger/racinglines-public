@@ -20,6 +20,7 @@ The data contract every page reads, so a new sport or exchange needs no template
                      sports) or a tape-only sport's own exchange event
 """
 
+import datetime
 import os
 from dataclasses import dataclass
 from typing import TypedDict
@@ -487,6 +488,16 @@ def tape_summary(conn) -> list[ExchangeBlock]:
     return exchange_breakdown(conn, {s["competition"]["code"]: s for s in tape_sports()})
 
 
+def _calendar_key(row):
+    """Sort key for a calendar row: (no date, calendar day). A race's date is a plain date and an exchange event's
+    is a timezone-aware timestamp, and Python refuses to order those against each other, so both are cut to the
+    day; a missing date (None or NaT) sorts as undated."""
+    d = row["date"]
+    if d is None or pd.isna(d):
+        return (True, datetime.date.min)
+    return (False, d.date() if hasattr(d, "date") else d)
+
+
 def calendar_rows(conn) -> list[CalendarRow]:
     """One CalendarRow per real event (modeled sports, from the races calendar) or per exchange-native event
     (tape-only sports, which have no race in our tables: each exchange's own event, from its market_links),
@@ -513,5 +524,5 @@ def calendar_rows(conn) -> list[CalendarRow]:
             rows.append(dict(sport=b["competition"], sport_name=b["sport_name"], date=e["end_date"],
                              title=e["title"], status="open" if e["open"] else "settled", exchanges=[b["exchange"]],
                              url=f"/markets/tapes#tapes-{b['sport']}-{b['exchange']}"))
-    rows.sort(key=lambda r: (r["date"] is None, r["date"]), reverse=True)
+    rows.sort(key=_calendar_key, reverse=True)
     return rows
