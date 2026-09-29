@@ -76,7 +76,8 @@ case "${1:-}" in
     esac
     ;;
   status)
-    remote "cd $APP && git log -1 --format='deployed: %h %s (%cr)' && systemctl --no-pager list-units 'racinglines-*' 'cloudflared*' && systemctl --no-pager list-timers 'racinglines-*'"
+    # git runs as the app user: /opt/racinglines is owned by racinglines, and git refuses another user's repository
+    remote "cd $APP && sudo -u racinglines -H git log -1 --format='deployed: %h %s (%cr)' && systemctl --no-pager list-units 'racinglines-*' 'cloudflared*' && systemctl --no-pager list-timers 'racinglines-*'"
     ;;
   logs)
     remote "sudo journalctl --no-pager -n 100 -u ${2:-racinglines-web}"
