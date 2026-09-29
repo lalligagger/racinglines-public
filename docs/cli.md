@@ -5,7 +5,7 @@ Everything runs through one command (after `pip install -r requirements.txt && p
 ```
 racinglines f1      fetch | ingest | forecast | backtest | compare | matrix | diagnostic
                     sweep | season-strategy | season-checkpoints | replay | search | search-import
-                    profiles | signals | demo-history
+                    profiles | signals | demo-history | reconcile
                     pm-sync | pm-history | pm-trades | pm-record | pm-archive | pm-links-export | pm-links-import
 racinglines mtb_dh  download | parse | ingest | forecast | backtest | walk-forward
 racinglines markets sync | history | trades | record | archive      (= racinglines f1 pm-*)
@@ -389,12 +389,14 @@ baseline. The model variant is the group's `--variant`.
 racinglines f1 profiles [--assign-demo]
 racinglines f1 signals [--profile A|C|ID|NAME] [--user NAME ...] [--event next|ROUND|YEAR-ROUND] [--asof UTC] [--no-fetch] [--no-alert]
 racinglines f1 demo-history [--reset] [--user maker taker] [--venue kalshi]
+racinglines f1 reconcile --event YEAR-ROUND --profile A|C|ID|NAME [--venue polymarket|kalshi] [--user NAME] [--replicates N] [--no-price] [--asof UTC] [--markdown]
 ```
 
 | Command | What it does |
 |---|---|
 | `profiles` | List the strategy profiles, creating A (core taker) and C (maker sleeve) as Lab candidates if missing, and show which users run which. `--assign-demo` assigns the demo taker A and the demo maker C (`users.prefs["strategy_profile"]`, with the demo bankrolls). `racinglines/pipelines/profiles.py`. |
 | `signals` | Live paper signals of every user with a profile, for the weekend in progress (`racinglines/pipelines/signals.py`): refresh FastF1 and Polymarket data (skip with `--no-fetch`), price each stage whose session is in, run the profile's strategy with the backtest's code, store `strategy_signals` and `paper_positions`, and alert (skip with `--no-alert`). Recommendations only: never places an order. `--profile` runs one profile instead of each user's own; `--user` limits the users; `--event` picks the weekend (default the next). `--asof UTC` replays at that time and only prints (markets read at each stage's cutoff, like the sweep). A profile whose settings say `venue = kalshi` trades Kalshi's markets (its links, tape and maker fee; signals and positions tagged `kalshi`); there is no flag for it, the profile setting is the switch. See [Paper trading](paper-trading.md#the-signal-engine). |
+| `reconcile` | One account's live paper weekend against the backtest's replay of it ([Paper trading](paper-trading.md#validation-plan), rule 1; `racinglines/pipelines/reconcile.py`): the `strategy_signals` and `paper_positions` the signal engine stored for the profile's account (`--user`, default its demo account) on that weekend and venue, against `signals.compute` replayed as of a day after the race on the recorded tape with the maker's "through" fill rule. Prints fills, notional, 60-minute markouts (from the same tape, for both sides) and P&L to resolution, live and replay, per stage, with the verdict: fills and markouts within ±25% of the replay's, P&L inside the replay's noise band, the range of the weekend's P&L over seed replicates (the profile's seed plus `--replicates` more, default 2: seeds 43 and 44, whose stage pricings are cached as diagnostic runs exactly like a sweep's), at least ±31 (taker) / ±71 (maker) wide. `--no-price` is read-only on the database (cached seeds only). The replay's signals are compared as `signals.store` keeps them (one row per market, timestamp, action and side: maker fills sharing a second on Kalshi's tape collapse into one, and the output says how many). A weekend whose rows are the backfilled replay is a self-check and must match exactly. `--markdown` adds the block for the weekend report. Exit 1 when flagged, 2 when the account has no rows for the weekend. Never writes a signal or a position. |
 | `demo-history` | Backfill the demo accounts' track record: every past weekend with Polymarket race markets, replayed with the profile each account ran then, stored as paper signals and positions flagged as backtest replays (`racinglines/pipelines/demo_history.py`). Idempotent; `--reset` deletes the backfill first; `--user` limits it to `maker` or `taker`. `--venue kalshi` replays the maker's profiles on Kalshi's recorded tape instead, with Kalshi's maker fee, stored apart as venue `kalshi` ([Kalshi history](kalshi-history.md)); off by default. |
 
 ## racinglines markets
