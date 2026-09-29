@@ -38,10 +38,10 @@ from sqlalchemy import text
 from racinglines.db import reads as data
 from racinglines.markets import store as MS
 from racinglines.markets import venues as V
-from racinglines.markets.venue_replay import Kalshi
+from racinglines.markets.venue_replay import EXCHANGES
 
 ON = {"on": os.environ.get("RACINGLINES_DISAGREE", "0") == "1"}
-TAKER_FEE = {"polymarket": 0.0, "kalshi": Kalshi.TAKER_FEE}     # per contract, as a share of P x (1 - P)
+TAKER_FEE = {code: v.TAKER_FEE for code, v in EXCHANGES.items()}  # per contract, as a share of P x (1 - P)
 KINDS = ("race_win", "race_podium", "race_top10", "race_pole", "race_constructor_top", "race_h2h",
          "champion", "constructors_champion")
 SEASON_KINDS = ("champion", "constructors_champion")

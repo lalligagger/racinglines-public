@@ -88,6 +88,10 @@ moment:
   (priced strictly inside 0–1, liquid enough); `coherent(kind, t)` is the multi-outcome sanity check;
   `resolve` settles through the market-kind catalogue. The F1 sweep's `weekend_markets` now reads
   Polymarket only through it.
+- **`Kalshi`**: the same for Kalshi's recorded markets (one market per ticker). Each exchange class declares
+  its fee schedule (`TAKER_FEE`, `MAKER_FEE`: rate × contracts × P × (1 − P), rounded up to the cent), and
+  `venue_replay.EXCHANGES` maps a venue code to its class; the sweep's maker, the signal engine and the
+  disagreement log read the fees from there. A sweep's venue is its `venue` setting.
 - **`PrivateBook.from_run(run_dir)`**: a live run's private book (downhill polls or F1 windows) replayed
   from its logged quotes and seeds. With the recorded quotes it re-derives the live book exactly; with
   `spread_quoter(half_spread)` (or any `quoter(quote, inventory)`) it replays another quoting rule

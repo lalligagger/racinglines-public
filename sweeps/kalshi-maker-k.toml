@@ -9,7 +9,9 @@
 
 [search]
 name = "kalshi-maker-k"
-parallel = 3
+parallel = 4
+grid = 8               # sweeps of one season and model share a process (f1 sweep --grid)
+history_cache = true
 hours = 6.0
 grace_minutes = 15
 

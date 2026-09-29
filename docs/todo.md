@@ -364,20 +364,15 @@ Downhill model.
 - [ ] Ingest the other input formats (copy/paste, HTML, JSON) into the database.
 - [ ] Tests: parser fixtures (one file per format era), `event_format`,
       `actual_event_points`, the rider-ID normalization check.
-- [ ] **Faster searches** (owner to review before any of it is built; found while finishing the Kalshi
-      maker search, 2026-09-29). Every search job is one CPU-bound Python process, and the database
-      sits idle. A one-round Kalshi maker job profiled at 34s: 21s rebuilding the model's rating
-      history (`position_sim.pricing.history`, identical for every job with the same model settings),
-      about 8s pricing plus the 5 maker replays, and about 5s of loading and imports. Fixes, biggest
-      first:
-      1. A maker-grid mode: price each model and season once, then replay every maker setting (spread,
-         disagreement filter, size, volume filter) against the saved prices. The 106-job
-         `sweeps/kalshi-maker-k.toml` grid has only 4 distinct model/season inputs, so this could take
-         it from about an hour to minutes.
-      2. An on-disk cache of the rating history, keyed by the model settings and the data version.
-         This saves about 20s a job in any sweep, taker sweeps included.
-      3. `parallel = 4` instead of 3 on a 4-core machine. The core held back for the database is
-         mostly idle (about 21% of CPU unused during the run).
+- [x] **Faster searches** (2026-09-29). Every search job was one CPU-bound Python process with the database
+      idle, and a full-season Kalshi maker job spent ~60% in the maker replays, ~20% reading the weekend's
+      markets, ~15% loading Kalshi's tape, plus the rating history. Now: (1) `[search] grid = N` runs up to N
+      sweeps of one season and model in one process (`f1 sweep --grid`), sharing the measurements, stage
+      pricings, markets and maker tape, with saved runs identical to separate processes; (2) the rating
+      history is built only when a stage has to be priced, and `[search] history_cache = true` keeps it on
+      disk (`data/cache/history/`, keyed by model settings and data); (3) `parallel` defaults to every core.
+      The 106-job `sweeps/kalshi-maker-k.toml` grid went from 59 to 21 minutes on 4 cores, same results.
+      Left: the maker replay itself (`maker_replay.quote`/`PublicView`, about half of what remains).
 
 ## Business and collaborators
 

@@ -191,3 +191,43 @@ def test_venue_setting_stays_out_of_every_key_while_unset():
     assert k.changed() == dict(venue="kalshi") and k.argv() == ["--venue", "kalshi"] and "venue=kalshi" in k.label()
     with pytest.raises(ValueError):
         SS.Settings.from_dict(dict(venue="betfair"))
+
+
+def test_venue_fees_come_from_the_exchange_classes():
+    """Each exchange's fee schedule lives on its venue class (venue_replay.EXCHANGES); the maker replay's
+    parameters and the disagreement log read it there, and Polymarket adds nothing to the maker's params."""
+    from racinglines.markets import disagree as DG
+    from racinglines.markets.strategies import maker_replay as R
+    from racinglines.markets.venue_replay import EXCHANGES
+    from racinglines.pipelines import weekend_sweep as WS
+    assert set(EXCHANGES) == {"polymarket", "kalshi"}
+    assert WS.maker_venue_opts("polymarket") == {} and WS.maker_venue_opts("kalshi") == dict(maker_fee=0.0175)
+    assert R.KALSHI_MAKER_FEE == EXCHANGES["kalshi"].MAKER_FEE
+    assert DG.TAKER_FEE == {"polymarket": 0.0, "kalshi": 0.07}
+
+
+def test_history_is_built_only_when_a_stage_needs_pricing(monkeypatch, tmp_path):
+    """weekend_sweep.history: off, the plain pricing.history; with RACINGLINES_HISTORY_CACHE=1, stored once per
+    model and data and read back."""
+    import pandas as pd
+
+    from racinglines import paths
+    from racinglines.models.position_sim import pricing as run
+    from racinglines.pipelines import weekend_sweep as WS
+    calls = []
+    monkeypatch.setattr(run, "history", lambda meas, use_track: calls.append(1) or pd.DataFrame({"x": [1, 2]}))
+    monkeypatch.setattr(paths, "cache", lambda tool: tmp_path / tool)
+    monkeypatch.setattr(SS, "data_key", lambda view: "d0")
+
+    class Meas:
+        def view(self, t):
+            return None
+    st = SS.Settings.from_dict({"variant": "gbm"})
+    monkeypatch.delenv(WS.HISTORY_CACHE, raising=False)
+    WS.history(Meas(), st)
+    WS.history(Meas(), st)
+    assert len(calls) == 2 and not (tmp_path / "history").exists()
+    monkeypatch.setenv(WS.HISTORY_CACHE, "1")
+    a = WS.history(Meas(), st)
+    b = WS.history(Meas(), st)
+    assert len(calls) == 3 and a.equals(b) and (tmp_path / "history" / f"{st.model_key}-d0.pkl").exists()

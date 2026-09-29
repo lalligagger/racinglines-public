@@ -141,6 +141,11 @@ def main(argv=None):
     p.add_argument("--reliability", action="store_true",
                    help="Also score calibration: our fair values and Polymarket's prices at every tradeable stage, "
                         "per market kind (Brier, log loss, ECE, reliability bins); saved with --save.")
+    p.add_argument("--grid", default=None, metavar="FILE.json",
+                   help="Several settings in one process: a JSON list of {\"job\": id, \"settings\": {...}}, each "
+                        "swept as if alone (same results and saved runs) while sharing the measurements, stage "
+                        "pricings, markets and maker tape. Prints 'Saved sweep run N for job ID.' per entry "
+                        "(the search's maker_grid). The settings flags are ignored.")
     from racinglines.pipelines import sweep_settings as _SS
     _SS.add_arguments(p.add_argument_group("settings (racinglines/pipelines/sweep_settings.py; default = baseline)"))
     p = sub.add_parser("season-strategy")
@@ -288,6 +293,21 @@ def _season_sleeve(args, engine, prm, SE, get_session, records):
                 metrics=dict(summary=sm, positions=out["positions"],
                              trades=records(tr.assign(t=tr["t"].astype(str))) if len(tr) else []))
         print(f"Saved sleeve run {run_id}.")
+
+
+def _save_sweep(args, out):
+    """Store one sweep (kind='sweep'); returns its run id."""
+    from racinglines.db.config import get_session
+    from racinglines.db.queries import records, save_model_run
+    with get_session(args.db) as s:
+        return save_model_run(s, competition="f1_wdc", season=args.year, category="DRV", model="f1_sector_sim",
+                              kind="sweep", params=dict(out["params"], year=args.year, rounds=args.rounds),
+                              metrics=dict(weekends=records(out["weekends"]), totals=out["totals"],
+                                           by_stage=records(out["by_stage"]), by_kind=records(out["by_kind"]),
+                                           scores=records(out["scores"]),
+                                           **(dict(calibration=records(out["calibration"]),
+                                                   reliability=records(out["reliability"]))
+                                              if args.reliability else {})))
 
 
 def _run(args):
@@ -598,6 +618,22 @@ def _run(args):
             with engine.connect() as c, get_session(args.db) as s:
                 SW.fetch_market_data(s, c, SW.schedule(args.year, rounds), echo=lambda m: print(m, flush=True))
             return
+        if args.grid:
+            import json
+            entries = json.loads(open(args.grid).read())
+            with SW.shared():
+                for i, e in enumerate(entries):
+                    st = SS.Settings.from_dict(e["settings"])
+                    print(f"grid {i + 1}/{len(entries)}: job {e['job']} {st.label()}", flush=True)
+                    out = SW.run_sweep(engine, args.db, args.year, rounds, fetch=not args.no_fetch and i == 0,
+                                       reprice=args.reprice and i == 0, settings=st,
+                                       echo=lambda m: print(m, flush=True))
+                    for k, v in out["totals"].items():
+                        print(f"{k:7s} P&L {v['pnl']:+9.2f} on ${v['bought']:,.0f} · "
+                              f"{v['weekends_up']}/{v['weekends']} weekends up")
+                    if args.save:
+                        print(f"Saved sweep run {_save_sweep(args, out)} for job {e['job']}.", flush=True)
+            return
         out = SW.run_sweep(engine, args.db, args.year, rounds, fetch=not args.no_fetch, reprice=args.reprice,
                            settings=settings, echo=lambda m: print(m, flush=True))
         w = out["weekends"]
@@ -630,17 +666,7 @@ def _run(args):
         if len(out["trades"]):
             out["trades"].to_csv(outdir / f"sweep_{args.year}_trades.csv", index=False)
         if args.save:
-            from racinglines.db.queries import save_model_run
-            with get_session(args.db) as s:
-                run_id = save_model_run(s, competition="f1_wdc", season=args.year, category="DRV", model="f1_sector_sim",
-                                        kind="sweep", params=dict(out["params"], year=args.year, rounds=args.rounds),
-                                        metrics=dict(weekends=records(w), totals=out["totals"],
-                                                     by_stage=records(out["by_stage"]), by_kind=records(out["by_kind"]),
-                                                     scores=records(out["scores"]),
-                                                     **(dict(calibration=records(out["calibration"]),
-                                                             reliability=records(out["reliability"]))
-                                                        if args.reliability else {})))
-            print(f"Saved sweep run {run_id}.")
+            print(f"Saved sweep run {_save_sweep(args, out)}.")
         return
     if args.cmd == "scorecard":
         from racinglines.pipelines import scorecard as SCD

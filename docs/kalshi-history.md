@@ -173,31 +173,37 @@ Conservative maker, Kalshi, with the maker fee (P&L in $; 16k = the same combo a
 
 | Settings (rest default) | Label | 2026 | vs baseline | 2025 | vs baseline | 16k: 2026 / 2025 |
 |---|---|---:|---:|---:|---:|---:|
-| **gbm · max_disagree 0.10, size 25, min volume $400 (K)** | robust, confirmed | **+490** | +1,360 | **+855** | +1,250 | **+453 / +933** |
-| gridq+pretrain · half_spread 0.04, size 25 | robust, confirmed | +710 | +1,581 | +50 | +446 | +649 / **−104** |
-| gbm · half_spread 0.04, max_disagree 0.10, size 25 | robust, confirmed | +469 | +1,340 | +617 | +1,013 | +219 / +684 |
-| gbm · half_spread 0.03, max_disagree 0.10, size 25 (the partial grid's K) | robust, confirmed | +450 | +1,321 | +707 | +1,103 | +228 / +734 |
-| gbm · max_disagree 0.10, size 25, min volume $200 | robust | +389 | +1,259 | +832 | +1,228 | |
-| gbm · max_disagree 0.10, size 25 | robust | +223 | +1,094 | +829 | +1,224 | |
-| gbm · max_disagree 0.10, size 10 | robust | +164 | +1,035 | +662 | +1,058 | |
-| gbm · max_disagree 0.10 (size 50) | robust | −78 | +793 | +780 | +1,175 | |
-| gbm · max_disagree 0.05, size 25 (C) | robust | −119 | +752 | +685 | +1,080 | |
-| baseline (defaults) | | −871 | | −395 | | −1,261 / −394 |
+| **gbm · max_disagree 0.10, size 25, min volume $400 (K)** | robust, confirmed | **+490** | +1,360 | **+659** | +846 | **+453 / +741** |
+| gridq+pretrain · half_spread 0.04, size 25 | robust, confirmed | +710 | +1,581 | +202 | +389 | +649 / **+47** |
+| gbm · half_spread 0.04, max_disagree 0.10, size 25 | robust, confirmed | +469 | +1,340 | +477 | +664 | +219 / +537 |
+| gbm · half_spread 0.03, max_disagree 0.10, size 25 (the partial grid's K) | robust, confirmed | +450 | +1,321 | +529 | +716 | +228 / +560 |
+| gbm · max_disagree 0.10, size 25, min volume $200 | robust | +389 | +1,259 | +637 | +824 | |
+| gbm · max_disagree 0.10, size 25 | robust | +223 | +1,094 | +623 | +810 | |
+| gbm · max_disagree 0.10, size 10 | robust | +164 | +1,035 | +530 | +717 | |
+| gbm · max_disagree 0.10 (size 50) | robust | −78 | +793 | +588 | +775 | |
+| gbm · max_disagree 0.05, size 25 (C) | robust | −119 | +752 | +510 | +696 | |
+| baseline (defaults) | | −871 | | −187 | | −1,261 / −185 |
 
 **The pick.** Under the held-out rule the top score at 4k simulations is `gridq+pretrain · half_spread 0.04`
-(+710 in 2026), but it only just clears the noise floor in 2025 (+446 vs baseline, +50 P&L) and at 16k it loses
-money there (−104, +290 vs the 16k baseline, inside the noise floor). K is the next one down: `gbm`, 2¢ quotes,
-out of markets where the model and price disagree by more than 10 points, and out of markets with less than $400
-traded in the prior 24 hours. It is the only top combo that holds up at 16k in both seasons (+453 / +933, against
-+228 / +734 for the partial grid's pick), and it has the best 2025 of the lot (Sharpe 1.53). K beats C on Kalshi by
-+609 in 2026 (beyond the noise floor) and +170 in 2025 (within it).
+(+710 in 2026), but its 2025 is thin (+202, +389 vs baseline, just over the noise floor) and at 16k it is +47,
++232 vs the 16k baseline, inside the noise floor. K is the next one down: `gbm`, 2¢ quotes, out of markets where
+the model and price disagree by more than 10 points, and out of markets with less than $400 traded in the prior
+24 hours. It holds up best at 16k in both seasons (+453 / +741, against +228 / +560 for the partial grid's pick),
+and it has the best 2025 of the top four (Sharpe 1.07). K beats C on Kalshi by +609 in 2026 (beyond the noise
+floor) and +150 in 2025 (within it).
+
+**2025 corrected (2026-09-29).** The first version of this table read 2025 through Polymarket's markets for the
+takers, so a weekend Polymarket didn't list was skipped for the Kalshi maker too: Emilia-Romagna 2025 (round 7),
+where Kalshi did list the race. The sweep now reads the venue from its settings (`venue = "kalshi"`: Kalshi's own
+markets for every strategy), so that weekend is traded: K's 2025 moves from +855 to +659 (−195 at Imola), and
+every 2026 number is unchanged. The ranking and the pick are the same.
 
 What the grid says: gbm is the maker's model on Kalshi, as on Polymarket; `gridq+pretrain` is good in 2026 and
 loses or barely wins in 2025 almost everywhere. A looser disagreement filter (10 points) beats C's 5 on Kalshi.
 Staying out of thin markets (the $400 volume floor) does what the wider 3–4¢ quote did in the partial grid, with
 less 16k slippage. Quote size matters less: 25 beats 10 and 50.
 
-**Caveats.** 2026's Sharpe is modest (0.62) and its max drawdown ($499) is larger than C's on Polymarket. Without
+**Caveats.** 2026's Sharpe is modest (0.62) and its max drawdown ($499, $504 in 2025) is larger than C's on Polymarket. Without
 its best weekend K's 2026 is −145, so the season's profit rests on a few weekends. One seed per combo (the noise
 floor is params-4h's ±350, not measured here). Freezing K is the owner's call. `signals.maker_call` now reads a
 profile's `maker_min_volume_24h`, so a live K quote uses the same $400 floor as the replay (unset = $100, as

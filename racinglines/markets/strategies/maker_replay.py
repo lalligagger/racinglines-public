@@ -43,6 +43,7 @@ import numpy as np
 import pandas as pd
 
 from racinglines.markets import settlement_rules as SR
+from racinglines.markets.venue_replay import Kalshi
 
 
 @dataclass(frozen=True)
@@ -92,7 +93,7 @@ class Market:
     bk_asks: list | None = field(default=None, repr=False)
 
 
-KALSHI_MAKER_FEE = 0.0175              # Kalshi's maker fee on most markets (check the market's own schedule)
+KALSHI_MAKER_FEE = Kalshi.MAKER_FEE    # Kalshi's maker fee, from its fee schedule (markets/venue_replay.py)
 
 
 def venue_fee(rate, price, contracts):
