@@ -83,6 +83,20 @@ def main(argv=None):
     p.add_argument("--user", nargs="*", default=None, help="Only these demo accounts (maker, taker).")
     p.add_argument("--venue", default="polymarket", choices=["polymarket", "kalshi"],
                    help="Whose recorded tape the maker replays (kalshi: the maker's Kalshi record; maker accounts only).")
+    p = sub.add_parser("reconcile", help="One account's live paper weekend against the backtest's replay of it on the "
+                                         "recorded tape (pipelines/reconcile.py; docs/paper-trading.md, rule 1). "
+                                         "Exit 1 when flagged, 2 without live rows.")
+    p.add_argument("--event", required=True, help="YEAR-ROUND, e.g. 2026-16.")
+    p.add_argument("--profile", required=True, help="Candidate id, name, or A / C / M1-M3.")
+    p.add_argument("--venue", default="polymarket", choices=["polymarket", "kalshi"])
+    p.add_argument("--user", default=None, help="The account (default: the profile's demo account).")
+    p.add_argument("--replicates", type=int, default=2,
+                   help="Seed replicates for the noise band besides the profile's seed (default 2: seeds 43 and 44; "
+                        "their stage pricings are cached like a sweep's).")
+    p.add_argument("--no-price", action="store_true", help="Read-only on the database: only replicates whose stage "
+                                                          "pricings are already cached.")
+    p.add_argument("--asof", default=None, help="Replay as of this UTC time instead of a day after the race.")
+    p.add_argument("--markdown", action="store_true", help="Also print the block for the weekend report.")
     sub.add_parser("profiles", help="List strategy profiles; create A / C as Lab candidates if missing.").add_argument(
         "--assign-demo", action="store_true", help="Demo taker -> A, demo maker -> C.")
     for name, hlp in (("pm-links-export", "Write market links to data/archive/markets/<exchange>/links/ (stable keys)."),
@@ -263,6 +277,20 @@ def _run(args):
                 rs = [r for r in rep if r[0] == u and r[2].startswith(y)]
                 if rs:
                     print(f"{u} {y}: {len(rs)} weekends, paper P&L {sum(r[4] for r in rs):+.2f}")
+        return
+    if args.cmd == "reconcile":
+        from racinglines.pipelines import reconcile as RC
+        res = RC.reconcile(engine, args.db, args.event, args.profile, venue=args.venue, user=args.user,
+                           replicates=RC.seeds(args.replicates), price=not args.no_price, now=args.asof,
+                           echo=lambda m: print(m, flush=True))
+        print(RC.format_table(res))
+        if args.markdown:
+            print()
+            print(RC.format_markdown(res))
+        if not res["live"]["signals"] and not res["live"]["positions"]:
+            sys.exit(2)
+        if not res["verdict"]["ok"]:
+            sys.exit(1)
         return
     if args.cmd == "profiles":
         from racinglines.pipelines import profiles as PF

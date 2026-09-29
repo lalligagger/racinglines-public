@@ -300,7 +300,15 @@ Any change to a profile makes a new profile with its own count.
 1. **Each weekend against its replay.** Re-run the backtest's replay of the same weekend on the recorded
    tape (the conservative "through" fill rule). Live fill counts and markouts should be within ±25% of
    the replay's, and live P&L inside the replay's noise band. A weekend outside is flagged and explained
-   before the next one.
+   before the next one. `racinglines f1 reconcile --event 2026-NN --profile A|C --venue V` does this
+   ([CLI](cli.md#racinglines-f1)): the account's stored signals and positions against `signals.compute`
+   replayed as of a day after the race, both reduced to fills, 60-minute markouts read from the same tape,
+   and P&L to resolution (a taker is judged on its own calls, the demo taker's followed third shown too).
+   The noise band comes from seed replicates ([Backtest core](backtest-core.md#the-search-report), the
+   noise floor): the weekend replayed with the profile's model at its own seed and two more (43, 44), the
+   band being the range of their P&L, at least as wide as the search's configured season floors (150
+   taker / 350 maker) scaled to one weekend of 24 (±31 / ±71). Markouts within $1 of the replay's never
+   miss. A weekend whose rows are the backfilled replay is a self-check and must match to the cent.
 2. **The pricing scorecard on every weekend,** traded or not: Brier and log loss of the fair values
    against the result and against the venue's mid at each stage.
 3. **How many weekends.** From the 2025–26 replays, about 17 live weekends to show the maker's edge at
