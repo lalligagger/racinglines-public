@@ -486,7 +486,12 @@ Priorities, then every open item: [`docs/todo.md`](docs/todo.md). This week's F1
 model yet, so record its tape; **T3** no market anywhere, so run a simulated pool (private book). T3
 proves the pricing, not an edge.
 
-**Where things stand (28 Sep 2026):** no F1 race markets are open on either venue. Polymarket has
+**Where things stand (29 Sep 2026, after the overnight roadmap batch, PRs #23–#45 merged):** U1, U5, U6, U7, U8, U9,
+reconcile, the scorecard and the K sweep are built and merged (new behaviour behind switches, off by default). What
+is left before round 16 is on the VM and with the owner: the Kalshi recorder (U2), the VM cutover, freezing K, the
+loss cap and the tier call. Coverage of every sport × venue is in [Coverage](docs/coverage.md).
+
+**Where things stood (28 Sep 2026):** no F1 race markets are open on either venue. Polymarket has
 listed no race since 28 Aug; Kalshi listed 2025 races only 2–4 days out, so it may still list round 16.
 The F1 championships are open and deep on both (drivers' ~$38M on Polymarket, ~$9M on Kalshi). Profile
 C makes money on Polymarket's tape and loses on Kalshi's.
@@ -494,8 +499,8 @@ C makes money on Polymarket's tape and loses on Kalshi's.
 **P0 · This week (to Thu 1 Oct): be ready to trade round 16 on whichever venue lists it**
 
 - [ ] **U2** Kalshi recorder on the VM ([Exchanges](docs/todo.md#exchanges)).
-- [ ] **U1** Kalshi in the signal engine, so A and C can paper-trade Kalshi's race markets ([Exchanges](docs/todo.md#exchanges)).
-- [ ] **U6** Championship sleeve, paper only, from round 16's result ([Live events](docs/todo.md#live-events)).
+- [x] **U1** Kalshi in the signal engine, so A and C can paper-trade Kalshi's race markets (PR #34, merged 2026-09-29; [Exchanges](docs/todo.md#exchanges)).
+- [x] **U6** Championship sleeve, paper only (PR #29, merged; `f1 season-strategy --paper`). Its first live rebalance is round 16's result ([Live events](docs/todo.md#live-events)).
 - [ ] Freeze A and C and pre-register the rules in [Paper trading](docs/paper-trading.md#validation-plan).
 - [ ] Round 16 checkpoints: both venues checked Wed 30 Sep; the tier chosen Thu 1 Oct 18:00 PDT
       (T1 on Kalshi if it lists, otherwise T3, the private book); the book opens Thu 20:30 PDT.
@@ -503,12 +508,12 @@ C makes money on Polymarket's tape and loses on Kalshi's.
 
 **P1 · October (rounds 16–19): first live weekends on real markets**
 
-- [ ] **U5** Kalshi sprint markets before Singapore (11 Oct). Priced from the race's pole and win odds
+- [x] **U5** Kalshi sprint markets before Singapore (11 Oct); built in PR #36 behind `RACINGLINES_KALSHI_SPRINTS`, merged. Priced from the race's pole and win odds
       until **U13**, a real sprint model, lands ([F1 model](docs/todo.md#f1-model)).
-- [ ] **U3** Kalshi maker profile K, swept and frozen before the United States GP (25 Oct).
-- [ ] **U7** Cross-venue disagreement log; **U8** settlement rules for relocated or cancelled races.
-- [ ] Per-weekend reconciliation (live vs replay) and the pricing scorecard on every weekend ([Paper trading](docs/todo.md#paper-trading)).
-- [ ] **U9** Record Kalshi's NASCAR (Chase, finale 8 Nov), MotoGP and IndyCar tapes ([New sports](docs/todo.md#new-sports)).
+- [ ] **U3** Kalshi maker profile K: swept (PRs #38, #41, merged; K = `gbm`, 2¢, 10-pt filter, 25 shares, $400 volume floor); **freezing it is the owner's call** before the United States GP (25 Oct).
+- [x] **U7** Cross-venue disagreement log (PR #35, behind `RACINGLINES_DISAGREE`); **U8** settlement rules for relocated or cancelled races (PR #27, behind `RACINGLINES_CANCELLED_RACE_RULES`). Both merged; the owner's two assumptions for U8 are still to confirm.
+- [x] Per-weekend reconciliation (`f1 reconcile`, PR #37) and the pricing scorecard (`f1 scorecard`, PR #28), both merged; run them after every weekend ([Paper trading](docs/todo.md#paper-trading)).
+- [ ] **U9** Record Kalshi's NASCAR (Chase, finale 8 Nov), MotoGP and IndyCar tapes: code merged (PR #26, fixture-tested only); **the first live run on the VM is still to do** ([New sports](docs/todo.md#new-sports)).
 - [ ] **Parallel track, owner (2026-09-28): the downhill [Data](docs/todo.md#data) items are high priority for the next
       cloud session** (Elite/Junior Women, start order, weather). They don't touch the F1 weekends. Most
       need ChronoRace (`prod.chronorace.be`), which the cloud network blocks: allow it first, or run locally.
