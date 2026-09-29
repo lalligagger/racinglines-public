@@ -1,7 +1,7 @@
-# NASCAR Cup Series: a tape-only sport (docs/todo.md, U9). No model, no pipeline: its Kalshi markets are synced and
-# recorded (links unmodeled, prices / trades / books archived per exchange) when asked for by name
-# (`racinglines markets --exchange kalshi --sport nascar ...`). Read by racinglines/sports.py; the sync reads
-# [markets.kalshi]. Nothing runs for this sport by default.
+# NASCAR Cup Series: a tape-only sport (docs/todo.md, U9). No model, no pipeline: its Kalshi and Polymarket markets are synced
+# and recorded (links unmodeled, prices / trades / books archived per exchange) when asked for by name
+# (`racinglines markets [--exchange kalshi] --sport nascar ...`). Read by racinglines/sports.py; the syncs read
+# [markets.kalshi] and [markets.polymarket]. Nothing runs for this sport by default.
 
 [sport]
 code = "nascar"
@@ -22,10 +22,16 @@ display_name = "NASCAR"
 categories = { DRV = ["Drivers", "X", "elite"] }
 
 [markets]
-venues = ["kalshi"]
+venues = ["polymarket", "kalshi"]
 standard_kinds = []               # nothing is priced, so the board has no columns for it
 
 [markets.kalshi]
 # Kalshi series tickers to sync, by prefix: every Sports series whose ticker starts with one of these
 # (`sync --series TICKER ...` overrides the list). Off by default: only `--sport nascar` syncs them.
 series = ["KXNASCAR"]
+
+[markets.polymarket]
+# Gamma /events tag_slug values to page (`sync --tags SLUG ...` overrides the list). Off by default: only `--sport nascar` syncs them.
+# UNVERIFIED against the live Gamma API (cloud session can't reach Polymarket); confirmed listed 2026-09-29 by the
+# owner's public-search probe (docs/coverage.md); `sync --tags SLUG ...` overrides.
+tags = ["nascar"]
