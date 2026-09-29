@@ -43,6 +43,13 @@ nav:
       - Google Cloud proposal: google-cloud.md
       - VM deploy: vm-deploy.md
       - Testing: testing.md
+  - Fantasy:
+      - Fantasy soft launch (index): fantasy-launch.md
+      - Fantasy launch runbook: fantasy-runbook.md
+      - Fantasy accounts: fantasy-accounts.md
+      - Fantasy trading: fantasy-trading.md
+      - VM reliability: vm-reliability.md
+      - Email setup: email-setup.md
   - Roadmap:
       - Priorities and open items: todo.md
       - Strategy 2026 (demo plan): strategy-2026.md
