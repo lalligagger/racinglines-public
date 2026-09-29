@@ -309,7 +309,7 @@ local-league plans. As of 2026-09 the ranking is led by exchange depth:
       **the market-link pass** (`sources/nascar/links.py`, `racinglines nascar link`, and inside the Kalshi, Polymarket and OG.com syncs): race by name within its season,
       driver, contract kind, and a `cup | xfinity | trucks` tag, with `prediction` left `unmodeled` (tested on the real Kalshi and Polymarket listings).
       Next, in order (VM, owner): full pull and `ingest` after a backup; then `link` dry run, read the unresolved list, `link --apply --backup FILE`; then the
-      readiness audit. Still unsampled: OG.com's NASCAR instruments and an open Kalshi head-to-head (a read-only probe from the Mac).
+      readiness audit. OG.com's NASCAR contracts and Kalshi head-to-heads were sampled from the Mac (PR #68) and the pass handles both.
 - [ ] **P3 · NASCAR for 2027?** Decide from the recorded Chase tapes (volume, spread, how often markets
       trade) and the data review. If yes: a first model in Jan–Feb, paper-traded from the 2027 Daytona 500.
 - [ ] MotoGP: its qualifying / sprint / race weekend maps onto the F1 adapter. Thin on Kalshi (champion
