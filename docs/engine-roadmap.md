@@ -1,6 +1,8 @@
 # Engine roadmap: standard inputs, composable models, standard outputs
 
-**Status:** draft for the owner, 2026-09-29. Nothing here is built or approved.
+**Status:** approved by the owner on 2026-09-29 (E0 done: decisions D1–D6 taken as recommended, see the
+[decision log](#decision-log)). Nothing below E0 is built yet. The task-by-task implementation plan (twelve tasks,
+roles, files, tests, backups) is the owner's "Engine Implementation Plan" page; the phases here are its skeleton.
 
 **The goal.** A model is developed once, joins "the engine", and runs on any sport and any exchange that
 has the data it needs. For that we need three things:
@@ -190,6 +192,37 @@ contracts to `(kind, subject)`:
   toward per-sport **rules in TOML**, as `og.toml` does (G9). That's what lets a NASCAR or MotoGP market become
   a priced kind without Python.
 
+## Capability matrix (E0, as of 2026-09-29)
+
+Which L1 frames each sport can produce **from the tables it has today**, and which frames each model needs. A
+model runs on a sport only when every frame it requires is in the sport's row. This is the table E1's `[data]`
+blocks are checked against; it is written from the sport schemas (`sports/*.toml`, `model_family`) and the
+ingest code, not from a running database.
+
+| Sport (`code`) | entrants | sessions | classifications | laps | conditions | venue_features | market_links | market_quotes | official_results |
+|---|---|---|---|---|---|---|---|---|---|
+| `f1` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ `track_profiles` | ✓ | ✓ | ✓ |
+| `mtb_dh` | ✓ start lists | ✓ rounds | ✓ runs | ✗ (splits) | ✗ | ~ venue history | – (no venue lists it) | – | ✓ |
+| `nascar` | ✓ after `nascar ingest` | ✓ incl. stages | ✓ | ~ lap time, flag (D5) | ~ | ~ track type | ✓ (#67, #69) | ✓ Kalshi, Polymarket, OG.com | ✓ after `nascar ingest` |
+| `indycar` | from links only | – | – | – | – | – | ✓ | ✓ Kalshi, Polymarket | ✓ from settlement only |
+| `motogp` | from links only | – | – | – | – | – | ✓ | ✓ Kalshi, Polymarket | ✓ from settlement only |
+| `le_mans` | from links only | – | – | – | – | – | ✓ | ✓ Kalshi | ✓ from settlement only |
+| `road_cycling` | from links only | – | – | – | – | – | ✓ | ✓ Kalshi | ✓ from settlement only |
+| `sailgp` | from links only | – | – | – | – | – | ✓ | ✓ Kalshi | ✓ from settlement only |
+
+`✓` today's tables hold it · `~` partial or planned · `–` nothing to build it from · `✗` the sport has no such
+thing. NASCAR's `✓ after` cells depend on the onboarding thread's `nascar ingest` run on the VM.
+
+| Model | Requires | Runs today on | Can run after E1–E7 on |
+|---|---|---|---|
+| `position_sim` (F1 baseline) | entrants, sessions, classifications, laps, conditions, venue_features | `f1` | `f1` only (its features are F1's sectors and practice) |
+| `timed_runs` (downhill) | entrants, sessions, classifications | `mtb_dh` | `mtb_dh`; any timed sport that fills those three |
+| `market_implied` (E7, algorithm B) | market_links, market_quotes | – | every sport with a tape: all eight |
+| `plackett_luce` (E7) | classifications (official_results to settle) | – | `f1`, `mtb_dh`, `nascar` |
+
+So the first cross-sport proof (E7) has exactly one candidate: `plackett_luce` and `market_implied` on `nascar`,
+compared against `market_implied` alone on the five tape-only sports.
+
 ## Phases
 
 The ground rules are the [F1 roadmap](f1-roadmap.md#ground-rules)'s:
@@ -225,7 +258,10 @@ have only a tape for, and the standard outputs and reports come out the same.
 
 ## Owner decisions
 
-| # | Decision | Options | Recommendation |
+All six were taken as recommended on 2026-09-29 ("as recommended", the owner, in the implementation-plan
+thread); D4 is split and D5 is deferred as the decision log records.
+
+| # | Decision | Options | Recommendation (= decision) |
 |---|---|---|---|
 | D1 | Where Prediction records live | (a) a new `predictions` table (migration on the VM: backup first, sign-off) · (b) Parquet under `data/runs/` + the bucket · (c) both | **(c):** Parquet first (no migration, E4a can ship now); the table in E4b, when readers move |
 | D2 | How frame schemas are declared and checked | (a) dataclasses / TypedDicts + tests (as PR 58 did) · (b) `pandera` (a new dependency) | **(a)** now; revisit if validation grows |
@@ -233,6 +269,23 @@ have only a tape for, and the standard outputs and reports come out the same.
 | D4 | Several models per sport | One `pricing_model` · a `[models]` table with default + challengers | **`[models]`.** The promotion rule sets `default`, logged in the decision log |
 | D5 | Sport-specific lap data | Generalize `laps` (nullable sector columns) · a per-sport extension table (`laps_f1`, `laps_nascar`) | Decide at E9 with NASCAR's feed in hand |
 | D6 | Report builder | A `racinglines report build` command · one script per report | **Command** (E6) |
+
+## Decision log
+
+Same format as the [F1 roadmap](f1-roadmap.md#decision-log). Never delete a row; add one that supersedes it.
+
+| Date | Phase | Decision | Why | Supersedes |
+| --- | --- | --- | --- | --- |
+| 2026-09-29 | E0 | Roadmap approved (PR #66); phases E0–E9 stand, with E0→E1→E2→E4a→E5→E6→E7 before 6 Dec and E3→E4b→E8→E9 after | Profiles A and C are frozen and signals run live through Abu Dhabi; only read-side work before then | — |
+| 2026-09-29 | E0 | D1 (c): prediction records as Parquet under `data/runs/<run>/` first (E4a), the `predictions` table when readers move (E4b, VM migration with backup and sign-off) | E4a can ship with no migration; the table waits for its readers | — |
+| 2026-09-29 | E0 | D2 (a): frame schemas as dataclasses plus tests, no `pandera` | No new dependency; matches PR #58's data-contract types | — |
+| 2026-09-29 | E0 | D3: keep `OutcomeSims` for backtests and forecasts only (about 35 MB per F1 season), not for every stage run | Lets a new kind be priced on an old run; live stage runs stay light | — |
+| 2026-09-29 | E0 | D4: a `[models]` table (`default`, `challengers`) in the sport schema, landing in E3. Before that, E7 adds only a `challengers = [...]` list that the new `eval` and generic `backtest` commands read; live pricing keeps reading `pricing_model` until E3 | E7 needs two models side by side on NASCAR before 6 Dec; the full table changes the live path and waits | — |
+| 2026-09-29 | E0 | D5 deferred to E9: generalize `laps` or add `laps_nascar`, decided with NASCAR's lap feed in hand | The shape of the NASCAR lap data is not ingested yet | — |
+| 2026-09-29 | E0 | D6: one `racinglines report build <folder>` command (E6), templates over L4/L5, rendered with `markdown_html.render` | Closes the open question in `CLAUDE.md`; one pipeline for every report type | — |
+| 2026-09-29 | E0 | Every new engine switch is an environment variable `RACINGLINES_*`, default off; a default flips only in a follow-up PR with byte-identical evidence and a row here | The F1 ground rules, applied to the engine | — |
+| 2026-09-29 | E0 | The `market_quotes` frame (E1) reads through the ingest roadmap's phase 2 `canonical_yes` reader when it exists; until then it maps today's `price` per exchange (`last` for Polymarket, `mid` for Kalshi and OG.com) behind the same function | Phase 2 is queued in the onboarding thread behind the NASCAR VM steps and needs the owner's go-ahead; E1's sport frames need no price column at all | — |
+| 2026-09-29 | E4a | Parquet needs `pyarrow`, which is not installed in the cloud sandbox; the Mac and VM are unchecked. If absent there too, the archive is compressed `.npz` and the records CSV; no new pinned dependency without the owner's word | Keep `racinglines check` and the suite runnable everywhere | — |
 
 ## What this doesn't cover
 

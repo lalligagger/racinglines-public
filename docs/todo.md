@@ -383,7 +383,9 @@ Downhill model.
 
 ## Engineering
 
-- [ ] **Engine roadmap E0 · P3:** owner decisions D1–D6 ([Engine roadmap](engine-roadmap.md#owner-decisions)); then E1 (canonical input frames), additive only until after Abu Dhabi. Phases that touch live pricing (E3, E4b, E9) wait until after 6 Dec.
+- [x] **Engine roadmap E0:** owner decisions D1–D6 taken as recommended 2026-09-29 ([decision log](engine-roadmap.md#decision-log)); capability matrix written.
+- [ ] **Engine roadmap, window 1 (read-side, now to 6 Dec)**, one branch and PR per task, in order: E1a sport frames for F1 and downhill (`racinglines/frames/`, `[data]` in the schemas) · E4a long prediction records beside `race_predictions` (parallel with E1a) · E1b market frames over the canonical price reader · E1c NASCAR frames (after the onboarding thread's `nascar ingest`) · E2 `DataView.asof` and the generic leak guard (switch off; ⚠️ `pricing.py`) · E5 `racinglines eval` · E6 `racinglines report build` and the model card · E7 `market_implied` and `plackett_luce` on the NASCAR tape and F1, with a NASCAR model card for the 2027 decision. Details: the owner's Engine Implementation Plan page.
+- [ ] **Engine roadmap, window 2 (after 6 Dec, before 2027's first race):** E3 contract v2 (⚠️ live sweep and signals path) · E4b readers onto the records plus the `predictions` table (⚠️ VM migration, backup, sign-off) · E8 consumers read the registry · E9 Kalshi and Polymarket classifiers to per-sport TOML rules, fees from the schema, D5 (⚠️ money-adjacent). The `exchanges/kalshi.toml` and `exchanges/polymarket.toml` drafts can be proved in a scratch database this year.
 - [ ] **U12 · P3 · Move to Google Cloud,** after Abu Dhabi so nothing changes under live weekends: the data
       bucket is up ([Data](data.md#data-bucket)) and the [proposal](google-cloud.md) is written (Cloud SQL,
       Cloud Run, Scheduler, service identities, about $28–35 a month at list prices). Next: the owner's
