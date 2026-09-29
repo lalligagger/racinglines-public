@@ -463,7 +463,7 @@ default: without `--sport`, `sync` is the F1 sync above and touches nothing else
 markets), so recording a series from listing to settlement is `sync --closed`, `trades` and `books` per pass.
 On Polymarket (`markets --sport nascar|motogp|indycar sync`, no `--exchange`) the same sports are recorded from the Gamma tags in `[markets.polymarket] tags`; the slugs are unverified against the live API and `--tags SLUG …` overrides them. The Polymarket path is additive: it upserts by token id and has no reset or delete. The series prefixes come from `[markets.kalshi] series` in the schema and were not checked against the live
 listing (the cloud can't reach Kalshi): `sync --series TICKER …` syncs exact tickers.
-[Data](data.md#other-series-tapes-nascar-motogp-indycar).
+[Data](data.md#other-series-tapes-nascar-motogp-indycar-road-cycling-le-mans-sailgp).
 
 **The recorder unit is not changed.** `racinglines-recorder` (`deploy/vm/systemd/racinglines-recorder.service`,
 `scripts/deploy/vm.sh`) still runs `markets record --interval 60`: Polymarket's F1 books, plus the hourly archive
