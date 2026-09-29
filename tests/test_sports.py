@@ -3,7 +3,7 @@ modules that take their values from a schema agree with it."""
 
 import pytest
 
-from racinglines import sports
+from racinglines import exchanges, sports
 
 pytestmark = pytest.mark.quick
 
@@ -35,6 +35,6 @@ def test_modules_read_the_schemas():
     assert model.SESSION_MINUTES["race"] == f1["sessions"]["minutes"]["race"]
     assert timed_runs.FINAL_POINTS == dh["points"]["final"]
     assert venues.STANDARD_KINDS["uci_dhi_wc"] == tuple(dh["markets"]["standard_kinds"])
-    known = {v.code for v in venues.VENUES}
+    known = {v.code for v in venues.VENUES} | set(exchanges.CODES)   # schema venues show only with their switch on
     for code in sports.SPORT_CODES:
         assert set(sports.load(code)["markets"]["venues"]) <= known

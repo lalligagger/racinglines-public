@@ -20,7 +20,7 @@ from functools import cache
 from racinglines.paths import ROOT
 
 SCHEMAS = ROOT / "sports"
-SPORT_CODES = ("mtb_dh", "f1", "nascar", "motogp", "indycar")   # registry / seeding order (keeps database ids stable)
+SPORT_CODES = ("mtb_dh", "f1", "nascar", "motogp", "indycar", "road_cycling", "le_mans", "sailgp")   # registry / seeding order (keeps database ids stable)
 
 
 @cache

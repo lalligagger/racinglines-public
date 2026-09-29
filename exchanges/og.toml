@@ -38,7 +38,9 @@ next = "result.next_cursor"
 cursor_param = "cursor"
 params = { limit = 1000 }
 batch_param = "event_symbols"            # comma-separated event symbols, at most `batch_size` per call
-batch_size = 25
+# The live API caps this at 10: 11 or more event symbols return 400 {"code": 40004, "message": "Invalid event_symbol"}
+# whatever the symbols are (checked against api.crypto.com on 2026-09-29; the fixture request used 2). get-tickers took 20.
+batch_size = 10
 
 [endpoints.tickers]
 path = "/get-tickers"
@@ -141,4 +143,10 @@ subject = "driver"
 
 [sports.nascar]
 event_prefixes = ["NSCAR-"]              # 17 Cup Champion contracts; tape only
+modeled = false
+
+[sports.sailgp]
+# 13 Championship Winner contracts plus per-event Overall Winner events (tests/fixtures/market/og_events_sailgp.json,
+# symbols SAIL-000NN-26); tape only
+event_prefixes = ["SAIL-"]
 modeled = false
