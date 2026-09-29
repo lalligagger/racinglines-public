@@ -92,7 +92,9 @@ def test_tape_only_sync_is_additive_and_unmodeled(test_engine, gamma):
         rows = c.execute(text("""SELECT co.code, l.prediction, l.race_id, l.athlete_id, l.params, l.token_id, l.last_bid FROM market_links l
                                  JOIN competitions co ON co.id = l.competition_id WHERE l.token_id LIKE 'tok-%'""")).all()
         assert len(rows) == 2 and {r[0] for r in rows} == {"nascar_cup"} and {r[1] for r in rows} == {"unmodeled"}
-        assert all(r[2] is None and r[3] is None and r[4] is None for r in rows)
+        # no driver or race in this database to match, so none is set; the only params a NASCAR link may carry are the
+        # identity pass's (sources/nascar/links.py), which never make it modeled
+        assert all(r[2] is None and r[3] is None and set(r[4] or {}) <= {"kind", "nascar_series", "season"} for r in rows)
         assert {r[5]: r[6] for r in rows}["tok-larson-y"] == 0.30
         assert c.execute(text("SELECT count(*) FROM market_links WHERE token_id = 'pre-existing-f1'")).scalar() == 1   # additive
         assert PS._sport_where(None, "nascar")[1] == {"c": "nascar_cup"}

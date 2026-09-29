@@ -12,6 +12,8 @@ the values from here, so a new sport starts with a new schema file.
                                 pipeline; its exchange markets are only recorded, docs/todo.md U9)
     kalshi_series(code)         the Kalshi series prefixes a sport's [markets.kalshi] names, () if none
     polymarket_tags(code)       the Gamma tag_slug values a sport's [markets.polymarket] names, () if none
+    identity(code)              the package under racinglines/sources/ whose links module says which driver and race a
+                                market is about ([identity] resolver in the schema), None if the sport has none
 """
 
 import tomllib
@@ -45,6 +47,11 @@ def kalshi_series(code):
 def polymarket_tags(code):
     """The Polymarket Gamma tag_slug values a sport's schema names ([markets.polymarket] tags), as a tuple."""
     return tuple(load(code).get("markets", {}).get("polymarket", {}).get("tags", ()))
+
+
+def identity(code):
+    """The name of the sport's market-identity resolver ([identity] resolver), or None."""
+    return load(code).get("identity", {}).get("resolver")
 
 
 def int_keys(d):

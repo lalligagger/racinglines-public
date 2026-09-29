@@ -462,12 +462,45 @@ returns the athlete for a name as a venue writes it and `.race(date, name)` the 
 runs past the race, is read from real listings, not assumed). Names match exactly first (accents, case, punctuation and suffixes ignored), then on first plus last
 name, a nickname group, a short first name with a surname only one driver in the pool has ("Chris Bell"), and a bare surname only if unique.
 **A name that fits two drivers ("Busch") is never guessed**: it resolves to nothing and `.unresolved` says why, so a rule is added on
-purpose. The pool is the drivers who raced that season or the one before. Nothing reads it yet: re-resolving the existing market links
-is its own database write, with its own backup, after a read-only sample of the real link titles.
+purpose. The pool is the drivers who raced that season or the one before.
+
+**Market links** (`sources/nascar/links.py`, `[identity] resolver = "nascar"` in `sports/nascar.toml`): which driver, race and contract each
+exchange's market is about, so the same outcome on Kalshi, Polymarket and OG.com gets the same athlete and race and therefore one outcome
+key (`links.outcome_key`: kind, athlete, race or season). It is built from the real listings of 2026-09-29
+(`kalshi_nascar_events.json`, `polymarket_nascar_events.json`), and what it fills is small on purpose:
+
+| Field | What it holds |
+|---|---|
+| `athlete_id` | The driver, for a Cup contract on one driver (through the resolver above). Not for a team, a manufacturer or a head-to-head (two drivers a market; there is no sample of an open one yet, so it gets the race and the kind only). |
+| `race_id` | The Cup race, for a contract on one race. Found **by the race's name inside the market's season**, as a whole phrase against the season's Cup schedule (sponsor tails like "presented by Jiffy Lube" are optional): Kalshi's rules text and Polymarket's question both spell it out. A name two races share (Cook Out 400 is Martinsville and Richmond in 2026) is settled by the date the listing states (Kalshi: "originally scheduled for Oct 4, 2026"; Polymarket's slug), then by the close time, else left unset and reported. A date alone is never enough: the O'Reilly race runs the day before the Cup race on the same track. |
+| `params.kind` | What the contract is: `race_win`, `race_podium`, `race_top5`, `race_top10`, `race_top20`, `race_pole`, `race_fastest_lap`, `race_biggest_mover`, `race_h2h`, `race_team_win`, `champion`, `regular_season_champion`, `in_season_challenge`. From the Kalshi series ticker, else the wording of the question ("win", "championship"). |
+| `params.nascar_series` | `cup`, `xfinity` or `trucks`, when the listing says so or a Cup race matched. Trucks and O'Reilly (Auto Parts) links are **tagged, not filtered** (owner, 2026-09-29): they keep their competition and their tapes and get no driver or race, because the results adapter files Cup only. "Xfinity 500" is a Cup race; only "Xfinity Series" / "Auto Parts Series" tag the second series. |
+| `params.season` | The market's year (from the rules date, a year in the text, the ticker's last two digits, or the close time). |
+
+`prediction` is **not** touched: every NASCAR link stays `unmodeled`, so nothing on the board, the calendar or the strategies changes; `params.kind`
+is what a later step promotes when there is a model. A listing it cannot place keeps whatever it had and is reported with the reason
+("no race of that season named", "2 races share the name and the date does not pick one", "driver: unknown").
+
+*Where it runs.* Inside the syncs (Kalshi, Polymarket and OG.com, for a sport whose schema names a resolver), so a re-sync never undoes it, and as a
+pass over the links already stored: `racinglines nascar link` (dry run by default: totals, then one line per exchange, Kalshi series, class and kind
+with how many got a driver and a race, then the unresolved names). `--apply` needs `--backup FILE` (a database dump under 24 hours old), writes only
+`athlete_id`, `race_id` and `params` of the links that change, records a `data_changes` entry, and writes the previous values of every changed
+link to `data/backups/db/nascar-links-undo-<UTC>.json`; `--undo FILE` puts them back one link at a time, so undoing does not mean restoring a dump
+and losing the tapes recorded since. Run it after the full NASCAR pull (`fetch`, `ingest`): with no drivers or races in the database it can only
+fill kinds and series.
+
+*Side effects of a race id on a tape-only link.* `markets/store.hot_tokens` keeps the whole history in Postgres for links whose race is
+upcoming or the latest completed (a link with no race keeps only its last days), so markets on an upcoming race, and on the latest race
+once it has run, stay in Postgres in full until the next race replaces them; older races archive to Parquet as before. Everything that prices or
+trades selects on `prediction`, which stays `unmodeled` (checked in the disagreement recorder, the replays, the weekend sweep, the scorecard, the calendar and the MCP tools).
+
+*Not sampled yet.* OG.com's NASCAR instruments (the fixtures hold its event, not its 17 contracts, so its rows are tested with a synthetic row built from
+the event's fields) and an open Kalshi head-to-head event (only settled ones, without markets, came back). The dry run's unresolved list is where
+either shows up on the first real run; read it before `--apply`.
 
 Cup only for now: Xfinity and Trucks need their own competition rows before `--series 2|3` ingests. Lap-notes and standings are
 fetched and kept (the raw record is cheap to keep and expensive to re-crawl) but not ingested yet. Nothing runs by default;
-tests: `tests/test_nascar.py`.
+tests: `tests/test_nascar.py`, `tests/test_nascar_links.py`.
 
 **A full pull is a VM job, after a backup.** Cup 2017–2026 is about 380 races and one to five feeds each depending on the year
 (see the history column), ≈ 1,600 requests at 1/s (under half an hour; `--dry-run` counts them exactly); the lap table adds

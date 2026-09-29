@@ -56,6 +56,7 @@ from sqlalchemy import select, text
 
 from racinglines import sports
 from racinglines.db import models as m
+from racinglines.markets import identity
 from racinglines.markets.kalshi import client as K
 
 SERIES = ()          # Kalshi series tickers to sync; empty: every Sports series that looks like F1 (see f1_series)
@@ -283,6 +284,10 @@ def sync(session, conn, year=2026, include_closed=False, kc=None, sport="f1", se
         rows = [r for y, evs in sorted(by_season.items()) for r in link_rows(evs, Resolver(conn, y))]
     else:
         rows = link_rows(events, None, modeled=False)
+    who = identity.linker(sport, conn) if not modeled else None      # a tape-only sport with a resolver: driver, race, kind
+    if who:
+        who.fill(rows)
+        stats["identity"] = dict(who.counts)
     for row in rows:
         tok = row.pop("token_id")
         values = dict(row, competition_id=comp.id, category_id=cat.id, synced_at=now)

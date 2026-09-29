@@ -293,9 +293,10 @@ local-league plans. As of 2026-09 the ranking is led by exchange depth:
 - [ ] **Tape-sync follow-ups (2026-09-29 first live run):** ~~the sync should seed a sport's competition row from
       `sports/<code>.toml` instead of raising `NoResultFound`~~ done: every sync creates the rows of the sport it files
       links under (`db/ingest.ensure_competition`), and `vm.sh deploy` now runs `db seed` after the migrations; exchange
-      schemas can state the exchange's own caps (`limits`), checked when the schema loads. Still open: Kalshi's
+      schemas can state the exchange's own caps (`limits`), checked when the schema loads. Kalshi's
       `KXNASCARTRUCKSERIES` (35 links) and `KXNASCARAUTOPARTSSERIES` (40) match the `KXNASCAR` prefix and landed under
-      `nascar_cup`; the owner chose to **tag** them (2026-09-29), not filter; the Polymarket tag slugs above.
+      `nascar_cup`; the owner chose to **tag** them (2026-09-29), not filter: done by the market-link pass (`params.nascar_series`,
+      applied to the stored links by `racinglines nascar link`). Still open: the Polymarket tag slugs above.
 - [ ] **Re-run the coverage probes and spot-check every combo** (handoff written 2026-09-29: `handoffs/2026-09-29-spot-check-exchange-coverage.md`) (Kalshi and Polymarket counts drift; the remaining ? cells) on the VM or the owner's device: the read-only
       commands in [Coverage](coverage.md#what-to-verify-on-a-device). Effort S.
 - [x] **P2 · NASCAR data sources** (research, PR #25, merged): results, qualifying, practice and lap data
@@ -304,9 +305,11 @@ local-league plans. As of 2026-09 the ranking is led by exchange depth:
 - [ ] **NASCAR results adapter** (`racinglines nascar fetch | ingest`; the feeds probed 2026-09-29, findings in
       [Data](data.md#nascar-content-feeds-verified-2026-09-29)). Code and fixture tests done; **the full pull is still to do**:
       database backup, then Cup 2017–2026 on the VM with a `data_changes` entry (three races were fetched on the Mac
-      on 2026-09-29 and the pit feed read: real stops, `nascar_pit_data_2026_5628.json`). Built since: scheduled events for upcoming races and the driver/race resolver (`sources/nascar/identity.py`,
-      tests only). Next: re-resolve the existing Kalshi, Polymarket and OG.com NASCAR links to it (a database write: backup first;
-      needs a read-only sample of the real link titles), then the readiness audit.
+      on 2026-09-29 and the pit feed read: real stops, `nascar_pit_data_2026_5628.json`). Built since: scheduled events for upcoming races and the driver/race resolver (`sources/nascar/identity.py`);
+      **the market-link pass** (`sources/nascar/links.py`, `racinglines nascar link`, and inside the Kalshi, Polymarket and OG.com syncs): race by name within its season,
+      driver, contract kind, and a `cup | xfinity | trucks` tag, with `prediction` left `unmodeled` (tested on the real Kalshi and Polymarket listings).
+      Next, in order (VM, owner): full pull and `ingest` after a backup; then `link` dry run, read the unresolved list, `link --apply --backup FILE`; then the
+      readiness audit. Still unsampled: OG.com's NASCAR instruments and an open Kalshi head-to-head (a read-only probe from the Mac).
 - [ ] **P3 · NASCAR for 2027?** Decide from the recorded Chase tapes (volume, spread, how often markets
       trade) and the data review. If yes: a first model in Jan–Feb, paper-traded from the 2027 Daytona 500.
 - [ ] MotoGP: its qualifying / sprint / race weekend maps onto the F1 adapter. Thin on Kalshi (champion
