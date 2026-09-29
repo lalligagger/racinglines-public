@@ -110,7 +110,7 @@ answers):
 
 **Private** endpoints (orders, positions) need FCM onboarding and HMAC-SHA256 request signing. The owner is
 waiting on an API key. No API terms page was found on the docs site; the legal pages are `og.com/legal` and
-`og.com/document/legal_us.pdf` (not read). **Read the terms before any recorder runs unattended.**
+`og.com/document/legal_us.pdf` (the owner checked them on 2026-09-29: the terms allow this read-only use).
 
 **What it lists** (live instruments, sports grouping): college football 23,938, soccer 9,706, NFL 4,400, NHL
 3,015, MLB 555, tennis 297, WNBA 152, golf 144, NBA 110, esports 52, **F1 20, NASCAR 17, sailing 13**,
@@ -131,7 +131,7 @@ read-only and off by default (`RACINGLINES_OG_VENUE=1` shows the venue). What is
 1. **A recorder timer on the VM.** The API keeps about a month, so `trades` and `history` must run weekly at
    least. Effort S.
 2. **Per-Grand-Prix contract rules** once a live race market has been seen (their names are unchecked). Effort S.
-3. **The fee**: $0.02 per contract is from reviews; confirm it in OG.com's fee schedule, and read the API terms.
+3. **The fee**: $0.02 per contract is from reviews; confirm it in OG.com's fee schedule.
 4. **Cross-venue comparison (U7)**: OG.com joins the championship comparison once `markets/disagree.py`, which
    knows Polymarket and Kalshi only, is generalised. Effort S to M.
 5. **Trading**: only after FCM onboarding, signed private endpoints and the validation rules. Not started.

@@ -153,7 +153,7 @@ venue with live F1 race markets this year.
 - [ ] **OG.com** (Crypto.com's CFTC prediction market): **connector built as a schema** (PR #44: `exchanges/og.toml`,
       one generic driver, `racinglines markets --exchange og sync|trades|history|books|fair`; off by default). Open: a
       recorder timer on the VM (the API keeps about a month), per-GP contract rules once a live race market is seen,
-      confirm the $0.02 fee and read the API terms, join the U7 comparison. Trading needs FCM onboarding and the
+      confirm the $0.02 fee (the terms were checked), join the U7 comparison. Trading needs FCM onboarding and the
       owner's API key ([Coverage](coverage.md#ogcom)).
 
 ## Paper trading
