@@ -91,10 +91,10 @@ started.
 8. **OG.com follow-ups — S each.** A VM recorder timer (trades, history and books at least weekly, since the API
    keeps about a month), confirm the $0.02 fee in OG.com's fee schedule, per-Grand-Prix contract rules once a race
    market is live, join OG.com to the U7 disagreement log.
-9. **A browse page for schema exchanges — S.** `/markets/polymarket` and `/markets/kalshi` are hardcoded routes
-   (`web/app.py`); OG.com has none, only a column on the season board with `RACINGLINES_OG_VENUE=1`. Add
-   `/markets/og`, or better, one `/markets/{exchange}` route for every code in `exchanges/`, so the next schema
-   venue gets a page for free.
+9. **A browse page for schema exchanges — done (PR #49, 2026-09-29).** `/markets/og` (and one page per future
+   schema exchange, from `exchanges/`) lists the venue's markets with the fair-price indicator, behind
+   `RACINGLINES_OG_VENUE=1`; `/markets/tapes`, behind `RACINGLINES_TAPES=1`, lists the tape-only sports' markets and
+   what has been recorded. Not verified on real rows until the VM's first syncs have run.
 10. **Confirm the "–" cells — S.** One device or VM session to run the checks below and turn every **?**
    into a fact. Cheapest item on this page and the one that changes the others. The spot-check handoff covers it.
 

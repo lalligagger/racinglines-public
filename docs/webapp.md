@@ -179,6 +179,14 @@ The maker can also have a Kalshi record (`f1 demo-history --venue kalshi`, [Kals
 Positions shows it beside the Polymarket record and Strategy under its Polymarket / Kalshi switch
 (`?venue=kalshi`); `RACINGLINES_KALSHI_VENUE=0` hides it.
 
+**OG.com and recorded tapes** (both off by default). With `RACINGLINES_OG_VENUE=1`, OG.com shows beside Polymarket and
+Kalshi on the board, race and season pages, and `/markets/og` lists its markets with the fair-price indicator per side
+(edge YES = fair − ask − fee, edge NO = bid − fair − fee, and the call), refresh and mirror, read-only. Every schema
+exchange in `exchanges/` gets its own `/markets/<code>` page this way ([Exchanges](exchanges.md)). With
+`RACINGLINES_TAPES=1`, `/markets/tapes` lists the tape-only sports' markets (NASCAR, MotoGP, IndyCar) per exchange
+event: what is linked, the volume and favourite, and what has been recorded (trades, price points, book snapshots and
+their last timestamps). It is market data only: no model, positions or P&L. With both switches off every page renders as before.
+
 **Demo sessions are disposable** (`racinglines/web/demo.py`; the demo accounts are `RACINGLINES_DEMO_USERS`,
 default `maker,taker`). Every sign-in gets a fresh session id. View settings (Edge Finder combos and season,
 job settings, which signals were seen) live in a per-session overlay on top of the account's saved baseline
