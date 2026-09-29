@@ -400,6 +400,193 @@ def test_live_shapes_and_historical_endpoints():
     assert row["volume"] == 362818.18 and row["last_price"] == 0.01 and row["closed"] and row["resolved_yes"] is False
 
 
+# --- Sprint markets (docs/todo.md U5), on the archived 2026 Dutch GP (round 12, a sprint weekend) links --------
+
+ARCHIVE = "data/archive/markets/kalshi/links/market_links.parquet"
+SPRINT_KIND = {"KXF1RACESPRINT": "race_sprint_win", "KXF1SPRINTPOLE": "race_sprint_pole"}
+
+
+class DutchResolver(FakeResolver):
+    """Every driver and team resolves (ids from the names); the Dutch GP is race 12 of 2026."""
+    def driver(self, name):
+        return abs(hash((name or "").lower())) % 1000 + 1 if name else None
+
+    def team(self, name):
+        return (name or "").lower().replace(" ", "_") or None
+
+    def race(self, gp, end=None):
+        return (12, "2026-12") if gp == "Dutch Grand Prix" else (None, None)
+
+
+def _dutch_events():
+    """Kalshi /events (with nested markets) rebuilt from the archived Dutch GP 2026 rows: real tickers, titles
+    and rules; prices as archived. [] when the archive isn't on disk."""
+    import pandas as pd
+    from racinglines.paths import ROOT
+    path = ROOT / ARCHIVE
+    if not path.exists():
+        return []
+    df = pd.read_parquet(path)
+    df = df[df["event_slug"].str.endswith("-DUTGP26", na=False)]
+    evs = []
+    for ev, g in df.groupby("event_slug", sort=True):
+        markets = [dict(ticker=r.token_id, event_ticker=ev, title=r.question, yes_sub_title=r.outcome, status="settled",
+                        close_time=r.end_date.strftime("%Y-%m-%dT%H:%M:%SZ"), tick_size=1,
+                        yes_bid=int(round(r.last_price * 100)) if pd.notna(r.last_price) else 0,
+                        yes_ask=int(round(r.last_price * 100)) + 1 if pd.notna(r.last_price) else 100,
+                        rules_primary=json.loads(r.params)["rules"] if isinstance(r.params, str) else r.params["rules"],
+                        result="yes" if str(r.resolved_yes) == "True" else "no")
+                   for r in g.itertuples()]
+        evs.append(dict(event_ticker=ev, series_ticker=ev.split("-")[0], title=g["event_title"].iloc[0],
+                        mutually_exclusive=True, markets=markets))
+    return evs
+
+
+@pytest.mark.quick
+def test_sprint_markets_stay_unmodeled_without_the_flag(monkeypatch):
+    """Without RACINGLINES_KALSHI_SPRINTS the classifier gives exactly today's kinds: the archived link rows."""
+    monkeypatch.delenv(KS.SPRINT_FLAG, raising=False)
+    assert not KS.sprints_enabled()
+    c = KS.classify
+    assert c("Dutch Grand Prix: Sprint Race Winner", "Will Oscar Piastri finish in first in the Sprint Race at the 2026 Dutch Grand Prix?") \
+        == ("unmodeled", "Dutch Grand Prix")
+    assert c("Dutch Grand Prix Sprint Qualifying: Pole Position")[0] == "unmodeled"
+    evs = _dutch_events()
+    if not evs:
+        pytest.skip("no archived Kalshi links")
+    import pandas as pd
+    from racinglines.paths import ROOT
+    archived = pd.read_parquet(ROOT / ARCHIVE).set_index("token_id")["prediction"]
+    rows = KS.link_rows(evs, DutchResolver())
+    assert len(rows) == 22 * 12 + 11 * 2                                    # 12 driver events, 2 constructor events
+    assert {r["token_id"]: r["prediction"] for r in rows} == archived[[r["token_id"] for r in rows]].to_dict()
+    for flag in ("0", "no", ""):
+        monkeypatch.setenv(KS.SPRINT_FLAG, flag)
+        assert not KS.sprints_enabled() and c("Dutch Grand Prix: Sprint Race Winner")[0] == "unmodeled"
+
+
+@pytest.mark.quick
+def test_sprint_markets_classify_with_the_flag(monkeypatch):
+    monkeypatch.setenv(KS.SPRINT_FLAG, "1")
+    assert KS.sprints_enabled()
+    c = KS.classify
+    # the live titles (2026-09-28 listing, archived): event title / market title
+    assert c("Dutch Grand Prix: Sprint Race Winner",
+             "Will Oscar Piastri finish in first in the Sprint Race at the 2026 Dutch Grand Prix?") == ("race_sprint_win", "Dutch Grand Prix")
+    assert c("Dutch Grand Prix Sprint Qualifying: Pole Position", "Will Oscar Piastri set the fastest valid qualifying lap time "
+             "in the Sprint Qualifying session (SQ3) for the 2026 Dutch Grand Prix?") == ("race_sprint_pole", "Dutch Grand Prix")
+    assert c("Qatar Grand Prix Sprint Race Winner?") == ("race_sprint_win", "Qatar Grand Prix")        # 2025's title
+    # the other sprint series stay unmodeled: no sprint fastest lap / top 5 / top 10 / top constructor model
+    assert c("Dutch Grand Prix Sprint Race: Fastest Lap", "Will Oscar Piastri record the fastest lap in the Sprint Race at the 2026 Dutch Grand Prix?")[0] == "unmodeled"
+    assert c("Dutch Grand Prix Sprint Race: Top 5 Finishers", "Will Oscar Piastri finish top 5 in the Sprint Race at the 2026 Dutch Grand Prix?")[0] == "unmodeled"
+    assert c("Dutch Grand Prix Sprint Race: Top 10 Finishers")[0] == "unmodeled"
+    assert c("Dutch Grand Prix Sprint Race: Top Constructor", "Will McLaren finish in first in the Sprint Race at the 2026 Dutch Grand Prix?")[0] == "unmodeled"
+    # the main race is untouched by the flag
+    assert c("Dutch Grand Prix Winner", "Will Oscar Piastri finish in first in the main race at the 2026 Dutch Grand Prix?")[0] == "race_win"
+    assert c("Dutch Grand Prix Qualifying Session (Q3): Pole Position")[0] == "race_pole"
+    assert c("Dutch Grand Prix: Sprint Race Winner", sprints=False)[0] == "unmodeled"       # the explicit argument wins
+    evs = _dutch_events()
+    if not evs:
+        pytest.skip("no archived Kalshi links")
+
+    class Piastri(DutchResolver):
+        def driver(self, name):
+            return 81 if (name or "").lower() == "oscar piastri" else None
+    rows = {r["token_id"]: r for r in KS.link_rows(evs, Piastri())}
+    for series, kind in SPRINT_KIND.items():
+        r = rows[f"{series}-DUTGP26-PIA"]
+        assert (r["prediction"], r["athlete_id"], r["race_id"], r["params"]["event_key"], r["params"]["series"]) == (kind, 81, 12, "2026-12", series)
+        assert rows[f"{series}-DUTGP26-NOR"]["prediction"] == "unmodeled"                   # driver not resolved: no model price
+        assert "Sprint" in rows[f"{series}-DUTGP26-PIA"]["params"]["rules"]
+    assert rows["KXF1RACESPRINT-DUTGP26-PIA"]["end_date"] < rows["KXF1RACE-DUTGP26-PIA"]["end_date"]  # sprint Saturday, race Sunday
+    assert rows["KXF1SPRINTPOLE-DUTGP26-PIA"]["end_date"] < rows["KXF1RACESPRINT-DUTGP26-PIA"]["end_date"]
+    kinds = {t.split("-")[0]: r["prediction"] for t, r in rows.items() if t.endswith("-PIA")}
+    assert kinds == {"KXF1RACE": "race_win", "KXF1RACEPODIUM": "race_podium", "KXF1TOP10": "race_top10", "KXF1POLE": "race_pole",
+                     "KXF1FASTLAP": "race_fastest_lap", "KXF1RACESPRINT": "race_sprint_win", "KXF1SPRINTPOLE": "race_sprint_pole",
+                     "KXF1TOP5": "unmodeled", "KXF1BIGGESTMOVER": "unmodeled", "KXF1SPRINTFASTLAP": "unmodeled",
+                     "KXF1SPRINTTOP5": "unmodeled", "KXF1SPRINTTOP10": "unmodeled"}
+
+
+def test_sprint_markets_sync_with_a_model_price(test_engine, monkeypatch):
+    """The roadmap's "done when": a sprint weekend's Kalshi sprint markets sync with a model price (Singapore's
+    can't be reached from here; the archived Dutch GP tickers stand in). Without the flag they sync unmodeled
+    and unpriced, as today."""
+    from racinglines.db import models as m
+    from racinglines.db.config import get_session
+    from racinglines.db.ingest import seed
+    from racinglines.db.reads import model_prob
+    from racinglines.markets.polymarket import sync as PS
+    evs = [e for e in _dutch_events() if e["series_ticker"] in ("KXF1RACE", "KXF1RACESPRINT", "KXF1SPRINTPOLE", "KXF1SPRINTTOP5")]
+    if not evs:
+        pytest.skip("no archived Kalshi links")
+    url = test_engine.url.render_as_string(hide_password=False)
+    with get_session(url) as s:
+        seed(s)
+        comp = s.scalars(text("SELECT id FROM competitions WHERE code = 'f1_wdc'")).one()
+        cat = s.scalars(text("SELECT id FROM categories WHERE competition_id = :c AND code = 'DRV'").bindparams(c=comp)).one()
+        pia = m.Athlete(display_name="Oscar Piastri", nation="AUS")
+        season = m.Season(competition_id=comp, year=2026)
+        s.add_all([pia, season]); s.flush()
+        ev = m.Event(season_id=season.id, source="fastf1", source_key="2026-12", name="Dutch Grand Prix",
+                     start_date=datetime(2026, 8, 21).date(), series_round=12)
+        s.add(ev); s.flush()
+        race = m.Race(event_id=ev.id, category_id=cat, format=dict(kind="f1", sprint=True))
+        run = m.ModelRun(competition_id=comp, season_id=season.id, category_id=cat, model="position_sim", kind="forecast")
+        s.add_all([race, run]); s.flush()
+        s.add(m.RacePrediction(model_run_id=run.id, race_id=race.id, target="2026-12", athlete_id=pia.id,
+                               win_prob=0.31, podium_prob=0.6, top10_prob=0.95, extra=dict(pole_prob=0.27)))
+        s.execute(text("DELETE FROM market_links WHERE exchange = 'kalshi'"))
+        s.commit()
+        ids = dict(pia=pia.id, race=race.id)
+
+    class Dutch(FakeResolver):
+        def driver(self, name):
+            return ids["pia"] if (name or "").lower() == "oscar piastri" else None
+
+        def race(self, gp, end=None):
+            return (ids["race"], "2026-12") if gp == "Dutch Grand Prix" else (None, None)
+
+    class Kc:                                                           # KS.sync's client: the archived events
+        def series(self, category=None):
+            return [dict(ticker=e["series_ticker"], title=e["title"], category="Sports") for e in evs]
+
+        def events(self, series_ticker=None, status=None):
+            return [e for e in evs if e["series_ticker"] == series_ticker] if status == "open" else []
+    monkeypatch.setattr(PS, "Resolver", lambda conn, year: Dutch())
+
+    def links(c):
+        return {r["token_id"]: r for r in c.execute(text("""SELECT token_id, prediction, athlete_id, race_id, competition_id, category_id, params, invert
+                                                  FROM market_links WHERE exchange = 'kalshi'""")).mappings().all()}
+    monkeypatch.delenv(KS.SPRINT_FLAG, raising=False)
+    with test_engine.connect() as c, get_session(url) as s:
+        st = KS.sync(s, c, 2026, kc=Kc())
+        assert st["links"] == 88 and st["modeled"] == 1                 # Piastri's race win only: the sprints are unmodeled
+        before = links(c)
+        assert before["KXF1RACESPRINT-DUTGP26-PIA"]["prediction"] == "unmodeled"
+        assert model_prob(c, dict(before["KXF1RACESPRINT-DUTGP26-PIA"])) == (None, None)
+        assert model_prob(c, dict(before["KXF1RACE-DUTGP26-PIA"]))[0] == pytest.approx(0.31)
+    monkeypatch.setenv(KS.SPRINT_FLAG, "1")
+    with test_engine.connect() as c, get_session(url) as s:
+        st = KS.sync(s, c, 2026, kc=Kc())
+        assert (st["links"], st["modeled"], st["new"]) == (88, 3, 0)    # the same rows, re-classified in place
+        after = links(c)
+        assert after["KXF1RACESPRINT-DUTGP26-PIA"]["prediction"] == "race_sprint_win"
+        assert after["KXF1SPRINTPOLE-DUTGP26-PIA"]["prediction"] == "race_sprint_pole"
+        assert after["KXF1SPRINTTOP5-DUTGP26-PIA"]["prediction"] == "unmodeled"
+        assert model_prob(c, dict(after["KXF1RACESPRINT-DUTGP26-PIA"]))[0] == pytest.approx(0.31)    # the race win, until a sprint sim
+        assert model_prob(c, dict(after["KXF1SPRINTPOLE-DUTGP26-PIA"]))[0] == pytest.approx(0.27)    # the pole probability
+        assert model_prob(c, dict(after["KXF1SPRINTTOP5-DUTGP26-PIA"])) == (None, None)
+        # a run that simulates the sprint prices them from its own sprint probabilities
+        s.execute(text("""UPDATE race_predictions SET extra = extra || '{"sprint_win_prob": 0.4, "sprint_pole_prob": 0.35}'::jsonb"""))
+        s.commit()
+        assert model_prob(c, dict(after["KXF1RACESPRINT-DUTGP26-PIA"]))[0] == pytest.approx(0.4)
+        assert model_prob(c, dict(after["KXF1SPRINTPOLE-DUTGP26-PIA"]))[0] == pytest.approx(0.35)
+    monkeypatch.delenv(KS.SPRINT_FLAG, raising=False)
+    with test_engine.connect() as c, get_session(url) as s:             # flag off again: back to today's rows
+        KS.sync(s, c, 2026, kc=Kc())
+        assert {k: v["prediction"] for k, v in links(c).items()} == {k: v["prediction"] for k, v in before.items()}
+
+
 # Tape-only sports (docs/todo.md, U9): NASCAR Cup, MotoGP and IndyCar, synced only when named, every link
 # unmodeled under the sport's own competition. Fixture in the client's shape: tests/fixtures/market/.
 OTHER = json.loads((Path(__file__).parent / "fixtures" / "market" / "kalshi_other_series.json").read_text())
