@@ -37,6 +37,7 @@ from sqlalchemy import select, text
 
 from racinglines import sports
 from racinglines.db import models as m
+from racinglines.markets import identity
 from racinglines.sources import http
 
 GAMMA = "https://gamma-api.polymarket.com"
@@ -224,6 +225,7 @@ def sync(session, conn, year=2026, include_closed=False, new=None, sport="f1", t
         events = _events(year if include_closed else None, tuple(tags) if tags else TAGS)
     now = datetime.now(timezone.utc)
     stats = dict(events=0, links=0, modeled=0, unmatched=0, new=0)
+    who = identity.linker(sport, conn) if tape else None            # a tape-only sport with a resolver: driver, race, kind
     for slug, ev in events.items():
         stats["events"] += 1
         for mk in ev.get("markets", []):
@@ -287,6 +289,8 @@ def sync(session, conn, year=2026, include_closed=False, new=None, sport="f1", t
                     last_bid=t_bid, last_ask=t_ask, last_price=mid, volume=_f(mk.get("volume")),
                     end_date=datetime.fromisoformat(mk["endDate"].replace("Z", "+00:00")) if mk.get("endDate") else None,
                     closed=closed, resolved_yes=resolved, synced_at=now, active=not closed)
+                if who:
+                    who.fill([values])
                 link = session.scalars(select(m.MarketLink).filter_by(token_id=tokens[i])).first()
                 if link is None:
                     session.add(m.MarketLink(token_id=tokens[i], first_seen_at=now, **values))
@@ -301,6 +305,8 @@ def sync(session, conn, year=2026, include_closed=False, new=None, sport="f1", t
                     stats["modeled"] += 1
                 elif not matched:
                     stats["unmatched"] += 1
+    if who:
+        stats["identity"] = dict(who.counts)
     session.commit()
     return stats
 

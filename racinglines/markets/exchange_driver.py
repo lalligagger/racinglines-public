@@ -26,6 +26,7 @@ from sqlalchemy import select, text
 
 from racinglines import exchanges as EX
 from racinglines.db import models as m
+from racinglines.markets import identity
 from racinglines.sources import http
 
 # ----- values -----
@@ -226,8 +227,13 @@ def sync(session, conn, code, sport="f1", year=2026, client=None, resolver=None)
         from racinglines.markets.polymarket.sync import Resolver
         resolver = Resolver(conn, year)
     rows = link_rows(schema, sport, instruments, tickers, resolver)
+    who = identity.linker(sport, conn) if not sport_cfg(schema, sport).get("modeled") else None
+    if who:                                                          # a tape-only sport with a resolver: driver, race, kind
+        who.fill(rows)
     now = datetime.now(timezone.utc)
     stats = dict(events=len(events), links=0, modeled=0, unmatched=0, new=0, closed=0)
+    if who:
+        stats["identity"] = dict(who.counts)
     for row in rows:
         tok = row.pop("token_id")
         values = dict(row, competition_id=comp.id, category_id=cat.id, synced_at=now)

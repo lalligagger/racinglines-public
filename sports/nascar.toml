@@ -1,5 +1,5 @@
-# NASCAR Cup Series: a tape-only sport (docs/todo.md, U9). No model, no pipeline: its Kalshi and Polymarket markets are synced
-# and recorded (links unmodeled, prices / trades / books archived per exchange) when asked for by name
+# NASCAR Cup Series: a tape-only sport (docs/todo.md, U9). No model, no pipeline: its Kalshi, Polymarket and OG.com markets are synced
+# and recorded (links unmodeled but identified: driver, race, contract; prices / trades / books archived per exchange) when asked for by name
 # (`racinglines markets [--exchange kalshi] --sport nascar ...`). Read by racinglines/sports.py; the syncs read
 # [markets.kalshi] and [markets.polymarket]. Nothing runs for this sport by default.
 
@@ -35,3 +35,9 @@ series = ["KXNASCAR"]
 # UNVERIFIED against the live Gamma API (cloud session can't reach Polymarket); confirmed listed 2026-09-29 by the
 # owner's public-search probe (docs/coverage.md); `sync --tags SLUG ...` overrides.
 tags = ["nascar"]
+
+[identity]
+# Which driver, race and contract a market is about, whichever exchange listed it (racinglines/sources/nascar/links.py).
+# The syncs fill athlete_id, race_id and params (kind, nascar_series, season) on every link of this sport; `prediction`
+# stays unmodeled. `racinglines nascar link` does the same for links already in the database.
+resolver = "nascar"
