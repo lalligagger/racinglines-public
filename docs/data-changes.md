@@ -53,6 +53,15 @@ Auto Parts series belong under `nascar_cup` (they match the `KXNASCAR` prefix) o
 OG.com: `markets --exchange og --sport nascar sync` → 1 event (`NSCAR-00002-2026`, Cup Champion moneyline), 17
 links, quotes stored (Larson 0.41/0.55, Hamlin 0.28/0.46). No trades, history, books or `fair` yet.
 
+**OG.com, full run later the same day** (after 6244a4a on main): `db seed` added `sailgp_champ` (PR #51's schema,
+never seeded on the VM; deploy runs migrations, not the seed), then F1 25 events / 64 links (20 modeled, 44
+unmatched), NASCAR 1 event / 17 links, SailGP 6 events / 13 links (all new); 319 trades, 19,000 minute price rows
+(from 2026-08-29), 64 book snapshots, and `fair` printed the F1 championship table (Antonelli fair 0.96 vs
+0.84/0.92, the one YES call). Two API limits found on the first attempt and fixed in the same commit: `get-trades`
+takes at most `count=150` (was 1000, "Invalid count"; no cursor, so a run keeps the newest 150 per instrument),
+and `get-ticker-histories` refused a span of 2678400001 ms (the start clip and the end read `now` a millisecond
+apart; now one read, start a second inside the 31-day cap). Log: `data/backups/og-sync-20260929.log` on the VM.
+
 Row counts on the VM before → after (joined to `market_links` on `token_id`): links kalshi 3,793 → 19,088, og 0 →
 17, polymarket 7,285; trades kalshi 37,416 → 1,910,536; hourly prices kalshi 16,083 → 187,592; book snapshots kalshi
 0 → 859, polymarket 17,029.
