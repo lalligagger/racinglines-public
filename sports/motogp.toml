@@ -1,13 +1,13 @@
-# MotoGP: a tape-only sport (docs/todo.md, U9). No model, no pipeline: its Kalshi and Polymarket markets are synced
-# and recorded (links unmodeled, prices / trades / books archived per exchange) when asked for by name
-# (`racinglines markets [--exchange kalshi] --sport motogp ...`). Read by racinglines/sports.py; the syncs read
-# [markets.kalshi] and [markets.polymarket]. Nothing runs for this sport by default.
+# MotoGP: result-only model track, not a lap-split model. The public JSON provides final race
+# classifications only, so the first pricing pass is intentionally conservative and uses rider form from
+# prior finishing positions. Kalshi and Polymarket market syncs remain available as archive-only readers.
 
 [sport]
 code = "motogp"
 name = "MotoGP"
-result_kind = "position"          # finishing positions, once there is a model
-model_family = "none"             # tapes only: no model, no pricing_model, no live adapter
+result_kind = "position"          # finishing positions
+model_family = "position_sim"     # conservative, result-only pricing model
+pricing_model = "racinglines.models.motogp_model:MotoGPRace"
 display_order = 3
 
 [league]
