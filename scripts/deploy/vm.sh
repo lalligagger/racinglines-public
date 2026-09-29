@@ -8,7 +8,8 @@
 #   bash scripts/deploy/vm.sh public on|off     # testing before handover: the web app on http://<VM IP>:8000
 #   bash scripts/deploy/vm.sh status | logs [unit] | ssh
 #
-# deploy refuses while a live event's unit is active on the VM (--force to override).
+# deploy never refuses for a live event: it pauses the VM's timers (live-event steps, signals), waits for a step in
+# progress, deploys, then resumes them with one catch-up step each (every step is idempotent and catches up).
 # Needs the gcloud CLI signed in to the project. SSH goes through IAP: the VM opens no ports (but see public).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -21,6 +22,7 @@ log() { echo "[vm $(date -u +%H:%M:%S)] $*"; }
 remote() { gcloud compute ssh "$VM" --project "$PROJECT" --zone "$ZONE" --tunnel-through-iap --command "$1"; }
 as_app() { remote "cd $APP && sudo -u racinglines -H env RACINGLINES_GCS_BUCKET=$BUCKET $1"; }
 SERVICES="racinglines-web racinglines-recorder"
+PAUSED=/var/lib/racinglines/deploy-paused    # timers a deploy paused and hasn't resumed yet (deploy resumes them)
 
 case "${1:-}" in
   setup)
@@ -40,15 +42,56 @@ case "${1:-}" in
     remote "sudo systemctl enable --now $units && systemctl --no-pager status $units | grep -E '●|Active'"
     ;;
   deploy)
-    ref="${2:-main}"; force="${3:-}"
-    [ "$ref" = "--force" ] && { ref=main; force=--force; }
-    active=$(remote "systemctl list-units --no-legend --state=active 'racinglines-live-*' | awk '{print \$1}'" || true)
-    if [ -n "$active" ] && [ "$force" != "--force" ]; then
-      echo "a live event is running on the VM ($active): not deploying. Add --force to deploy anyway."; exit 1
+    ref="${2:-main}"
+    [ "$ref" = "--force" ] && { log "--force is no longer needed: deploy pauses and resumes live events"; ref="${3:-main}"; }
+    # Pause, don't refuse. The timers (racinglines-live-f1@<event>.timer, racinglines-signals.timer) start oneshot
+    # steps every 5 minutes; stop them and wait for a step already running ("activating"), so no step runs while
+    # update.sh rewrites the checkout. Each step is idempotent and catches up: an F1 live step does every update
+    # that fell due meanwhile, and its crowd batch covers the whole window since the last update
+    # (pipelines/live_f1.py due, _crowd); signals inserts with ON CONFLICT DO NOTHING. What was paused is written to
+    # $PAUSED on the VM first, so a deploy that dies half-way is resumed by the next one (and `status` shows it).
+    # The recorder's restart costs at most one book snapshot, which no exchange keeps.
+    units=$(remote "set -o pipefail; a=\$(systemctl list-units --no-legend --plain --state=active 'racinglines-*.timer' 'racinglines-live-dh@*.service' | awk '{print \$1}') || exit 1; { echo \"\$a\"; cat $PAUSED 2>/dev/null || true; } | tr ' ' '\n' | sort -u" | tr '\n' ' ') ||
+      { echo "couldn't list the VM's timers: nothing paused, nothing deployed"; exit 1; }
+    timers=""; dh=""; live=""; steps=""
+    for u in $units; do
+      case "$u" in
+        racinglines-live-dh@*) dh="$dh $u" ;;
+        *.timer) timers="$timers $u"; steps="$steps ${u%.timer}.service"
+                 case "$u" in racinglines-live-*) live="$live ${u%.timer}.service" ;; esac ;;
+      esac
+    done
+    [ -n "$dh" ] && log "WARNING: a downhill loop is running ($dh ). Deploy doesn't restart it: it keeps the code it loaded, and a later lazy import may read the new files. Deploy after the final if you can."
+    if [ -n "$timers" ]; then
+      trap 'echo "deploy stopped early: these timers may still be paused:$timers"; echo "  the next vm.sh deploy resumes them (they are listed in $PAUSED on the VM), or by hand: bash scripts/deploy/vm.sh ssh, then: sudo systemctl start$timers"' EXIT
+      log "pausing:$timers"
+      remote "sudo mkdir -p ${PAUSED%/*} && echo '$timers' | sudo tee $PAUSED >/dev/null && sudo systemctl stop$timers"
+      log "waiting up to 5 minutes for a step in progress"
+      rc=0
+      remote "for i in \$(seq 60); do systemctl list-units --no-legend --plain --state=activating$steps | grep -q . || exit 0; sleep 5; done; echo 'still running:'; systemctl list-units --no-legend --plain --state=activating$steps | awk '{print \$1}'; exit 1" || rc=$?
+      if [ "$rc" -ne 0 ]; then
+        remote "sudo systemctl start$timers && sudo rm -f $PAUSED" && trap - EXIT
+        if [ "$rc" -eq 1 ]; then
+          echo "a step was still running after 5 minutes (above): nothing deployed, timers resumed. A hung step: bash scripts/deploy/vm.sh logs <unit>, then on the VM: sudo systemctl stop <unit>"
+        else
+          echo "lost the connection while waiting (ssh exit $rc): nothing deployed"
+        fi
+        exit 1
+      fi
     fi
     log "deploy $ref"
     as_app "deploy/vm/update.sh $ref"
     remote "sudo install -m 644 $APP/deploy/vm/systemd/* /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl try-restart $SERVICES racinglines-mcp"
+    if [ -n "$timers" ]; then
+      # the live events' catch-up step first (it and signals both price a stage whose data landed during the pause)
+      if [ -n "$live" ]; then
+        log "catch-up step:$live"
+        remote "sudo timeout 300 systemctl start$live" || log "the catch-up step didn't finish cleanly within 5 minutes (still running, it carries on under systemd): bash scripts/deploy/vm.sh logs <unit>"
+      fi
+      log "resuming:$timers"
+      remote "sudo systemctl start$timers && sudo rm -f $PAUSED"
+      trap - EXIT
+    fi
     log "smoke check on the VM"
     remote "sleep 3; cd $APP && bash scripts/deploy/smoke.sh http://127.0.0.1:8000"
     ;;
@@ -77,7 +120,7 @@ case "${1:-}" in
     ;;
   status)
     # git runs as the app user: /opt/racinglines is owned by racinglines, and git refuses another user's repository
-    remote "cd $APP && sudo -u racinglines -H git log -1 --format='deployed: %h %s (%cr)' && systemctl --no-pager list-units 'racinglines-*' 'cloudflared*' && systemctl --no-pager list-timers 'racinglines-*'"
+    remote "cd $APP && sudo -u racinglines -H git log -1 --format='deployed: %h %s (%cr)' && systemctl --no-pager list-units 'racinglines-*' 'cloudflared*' && systemctl --no-pager list-timers 'racinglines-*' && { test -s $PAUSED && echo \"PAUSED by an unfinished deploy (the next deploy resumes them): \$(cat $PAUSED)\" || true; }"
     ;;
   logs)
     remote "sudo journalctl --no-pager -n 100 -u ${2:-racinglines-web}"

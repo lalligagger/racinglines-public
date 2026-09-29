@@ -140,9 +140,10 @@ Run the full suite too when the local database is up. `UPDATE_GOLDEN=1` only in 
 per the [F1 roadmap](docs/f1-roadmap.md#5-promotion-rule-when-a-challenger-becomes-the-default), with a decision
 log entry in the same change.
 
-**Live-event freeze.** No thread should touch VM deploy paths while a live event's systemd unit
-is active there (`vm.sh deploy` already refuses this — don't override it with `--force` as a way around a merge
-conflict).
+**Deploys during live events.** `vm.sh deploy` doesn't wait for a live event: it pauses the VM's timers (live-event
+steps, signals), deploys, and resumes them with one catch-up step each ([VM deploy](docs/vm-deploy.md#whats-in-the-repo)).
+There is no `--force`. Don't hand-restart a live event's units around a deploy. If the update fails, the timers
+stay paused on purpose: fix and redeploy, then check `vm.sh status`.
 
 ## Report generation
 
