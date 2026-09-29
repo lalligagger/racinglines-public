@@ -13,7 +13,8 @@ So a new sport needs its adapter and its `[data] frames` line, and nothing here.
 from importlib import import_module
 
 from racinglines import sports
-from racinglines.frames.schema import FRAMES, SCHEMAS, Column, FrameError, FrameSchema, schema, validate  # noqa: F401
+from racinglines.frames.schema import (FRAMES, SCHEMAS, Column, FrameError, FrameSchema, check_release,  # noqa: F401
+                                      schema, validate)
 
 
 def adapter(sport):
@@ -29,7 +30,9 @@ def adapter(sport):
 
 def frames_for(sport, data, check=True):
     """The frames a sport declares ([data] frames in its schema), built from `data` by its adapter, in the declared
-    order. A sport with no `[data]` block gets {} and its adapter isn't loaded. `check=False` skips validation."""
+    order. A sport with no `[data]` block gets {} and its adapter isn't loaded. Each frame is validated, and
+    session-keyed frames must be released a whole session at a time, after it ends, unless `[data] live` lists them
+    (schema.check_release). `check=False` skips both."""
     try:
         names = sports.frames(sport)
     except FileNotFoundError:
@@ -48,4 +51,5 @@ def frames_for(sport, data, check=True):
     if check:
         for n, df in out.items():
             validate(n, df)
+        check_release(out, live=sports.live_frames(sport))
     return out

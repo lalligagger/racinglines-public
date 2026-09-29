@@ -40,6 +40,14 @@ It is set on every row, and `validate` rejects a frame with a null.
 | `conditions`, `venue_features` | the race's end (the profile is built from race results) | none |
 | `entrants` | the end of the driver's first session | the end of the event's date |
 
+**Sources publish whole sessions.** No source we have is live: FastF1's archive publishes a session's results and
+laps only after the session has ended, and ChronoRace's downhill results come per round. So every row of a
+session-keyed frame (`classifications`, `laps`, `conditions`) is available at its session's end, never at the time of
+the lap or split inside it. `frames_for` enforces this with `check_release`: within one (event, session) every row has
+the same `available_at`, and none is earlier than that session's `end` in the `sessions` frame. A frame whose source
+really does date each row as it happens (a live timing feed, if one is ever added) is listed in `[data] live`, and
+only then may its rows carry their own times.
+
 Two assumptions to review with E2:
 
 - **Entrants are later than in life.** Entry lists are published before the weekend, but the tables don't say
@@ -70,9 +78,11 @@ called with `check=False`.
 ```toml
 [data]
 frames = ["entrants", "sessions", "classifications", "official_results"]
+live = []          # frames whose source dates each row as it happens; none today
 ```
 
-A sport without the block declares none. List only frames the adapter can really build from its data.
+A sport without the block declares none. List only frames the adapter can really build from its data. `live`
+defaults to empty: every session-keyed frame is then released a whole session at a time, after it ends.
 
 ## Add a sport
 

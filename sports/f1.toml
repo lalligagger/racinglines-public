@@ -24,6 +24,9 @@ categories = { DRV = ["Drivers", "X", "elite"] }
 # the L1 input frames this sport's adapter (racinglines/frames/f1.py) builds from Measurements, docs/frames.md.
 # "laps" isn't listed: Measurements keeps measures derived from the laps, not the laps themselves
 frames = ["entrants", "sessions", "classifications", "conditions", "venue_features", "official_results"]
+# frames whose source dates each row as it happens. None for F1: FastF1's archive publishes a session's results and
+# laps only once the session has ended, so every row of a session is available at that session's end
+live = []
 
 [sessions]
 # minutes each session runs; its data is usable once it has ended

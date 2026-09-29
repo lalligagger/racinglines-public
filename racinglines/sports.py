@@ -61,6 +61,12 @@ def frames(code):
     return tuple(load(code).get("data", {}).get("frames", ()))
 
 
+def live_frames(code):
+    """The frames whose source dates each row as it happens ([data] live), as a tuple; () if none. Every other
+    session-keyed frame is published a whole session at a time, once the session has ended."""
+    return tuple(load(code).get("data", {}).get("live", ()))
+
+
 def int_keys(d):
     """TOML keys are strings; {"2021": x} -> {2021: x}."""
     return {int(k): v for k, v in d.items()}

@@ -112,7 +112,9 @@ _SCHEMAS = [
                  _c("grid", "number", True), _c("points", "number", True), _AVAILABLE)),
     FrameSchema(
         "laps", key=("event_id", "session", "athlete_id", "lap"),
-        doc="One row per lap, for sports whose feed has laps (optional).",
+        doc="One row per lap, for sports whose feed has laps (optional). Every source we have publishes a session's "
+            "laps once the session has ended (F1: FastF1's archive), so available_at is that session's end for every "
+            "lap of it, not the lap's own time. Only a frame listed in [data] live may date rows one by one.",
         columns=(_c("event_id", "id"), _c("session", "str"), _c("athlete_id", "int"), _c("lap", "int"),
                  _c("time_ms", "number", True), _c("sector_ms", "object", True, "list of sector times"),
                  _c("pit", "bool", doc="an in-lap or an out-lap"), _c("track_status", "str", True), _AVAILABLE)),
@@ -207,3 +209,40 @@ def validate(name, df):
     if problems:
         raise FrameError(f"frame {name!r} doesn't match its declaration: " + "; ".join(problems), problems)
     return df
+
+
+def check_release(frames, live=()):
+    """Check how a sport's session-keyed frames are released: returns `frames`, or raises FrameError.
+
+    Unless a frame is listed in `live` ([data] live in the sport's schema: a feed that dates each row as it happens),
+    its source publishes a whole session at once, after the session has ended. So every row of one (event, session)
+    must carry the same `available_at`, and, when the `sessions` frame was built too, not one earlier than that
+    session's `end`. This is what stops a lap-by-lap timestamp from reaching an as-of view when the laps really
+    arrived with the session's archive.
+    """
+    problems = []
+    ends = None
+    s = frames.get("sessions")
+    if s is not None and len(s):
+        ends = s.set_index(["event_id", "session"])["end"]
+    for name, df in frames.items():
+        sc = schema(name)
+        if name in live or "session" not in sc.key or not len(df) or name == "sessions":
+            continue
+        g = df.groupby(["event_id", "session"], sort=False)[sc.available_at]
+        spread = g.nunique()
+        mixed = spread[spread > 1]
+        if len(mixed):
+            problems.append(f"{name}: {len(mixed)} (event, session) groups have more than one {sc.available_at}, "
+                            f"e.g. {list(mixed.index[:3])}; its source publishes whole sessions, so date every row of a "
+                            f"session alike (or list {name!r} in [data] live)")
+        if ends is not None:
+            first = g.min()
+            end = ends.reindex(first.index)
+            early = first[end.notna() & (first < end)]
+            if len(early):
+                problems.append(f"{name}: {len(early)} (event, session) groups are available before their session "
+                                f"ends, e.g. {list(early.index[:3])}")
+    if problems:
+        raise FrameError("frames released before their source publishes them: " + "; ".join(problems), problems)
+    return frames

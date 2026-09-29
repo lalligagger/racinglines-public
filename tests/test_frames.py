@@ -10,7 +10,7 @@ import pytest
 from conftest import need
 
 from racinglines import sports
-from racinglines.frames import FRAMES, SCHEMAS, FrameError, frames_for, validate
+from racinglines.frames import FRAMES, SCHEMAS, FrameError, check_release, frames_for, validate
 
 
 def _classifications(**over):
@@ -339,3 +339,45 @@ def test_mtb_frames_leave_the_loaded_data_alone(dh_data):
     before = dh_data.copy(deep=True)
     frames_for("mtb_dh", dh_data)
     pd.testing.assert_frame_equal(dh_data, before)
+
+
+# --- release: sources publish whole sessions, after they end ----------------------------------------------------
+
+def _release_frames(lap_times):
+    """A one-session toy: the sessions frame and three laps dated by `lap_times`."""
+    end = pd.Timestamp("2026-10-04 08:00")
+    sessions = pd.DataFrame({"event_id": [1], "session": ["race"], "start": [end - pd.Timedelta(minutes=150)],
+                             "end": [end], "available_at": [end]})
+    laps = pd.DataFrame({"event_id": [1] * 3, "session": ["race"] * 3, "athlete_id": [7] * 3, "lap": [1, 2, 3],
+                         "time_ms": [95000.0] * 3, "sector_ms": [None] * 3, "pit": [False] * 3,
+                         "track_status": ["1"] * 3, "available_at": pd.to_datetime(lap_times)})
+    return {"sessions": sessions, "laps": laps}, end
+
+
+def test_release_accepts_laps_dated_at_session_end():
+    fr, _ = _release_frames(["2026-10-04 08:00"] * 3)
+    assert check_release(fr) is fr
+
+
+def test_release_rejects_lap_by_lap_times_without_a_live_source():
+    fr, _ = _release_frames(["2026-10-04 05:32", "2026-10-04 05:34", "2026-10-04 05:36"])
+    with pytest.raises(FrameError) as ex:
+        check_release(fr)
+    text = " ".join(ex.value.problems)
+    assert "more than one available_at" in text and "before their session ends" in text
+
+
+def test_release_rejects_a_session_dated_before_it_ends():
+    fr, _ = _release_frames(["2026-10-04 07:59"] * 3)
+    with pytest.raises(FrameError, match="before their session ends"):
+        check_release(fr)
+
+
+def test_release_allows_row_times_for_a_declared_live_frame():
+    fr, _ = _release_frames(["2026-10-04 07:10", "2026-10-04 07:12", "2026-10-04 07:14"])
+    assert check_release(fr, live=("laps",)) is fr
+
+
+def test_no_sport_declares_a_live_frame_today():
+    assert sports.live_frames("f1") == ()
+    assert sports.live_frames("mtb_dh") == ()
