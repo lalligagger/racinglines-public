@@ -159,7 +159,7 @@ exchange, venues, users and the next races. Then:
 | `get_forecast(competition, category)` | The live forecast (the run the web app shows): the next races' top probabilities and the championship. |
 | `edge_finder(year, strategy)`, `list_candidates()` | The Lab's Edge Finder from saved sweeps: every configuration's full-season recap per strategy; the saved candidates. |
 | `list_diagnostics()`, `get_diagnostic(run_id)` | As-of diagnostic runs; one run's prices vs Polymarket at the cutoff, edges, scores and result. |
-| `track_record(user, venue)`, `list_positions(user, venue, event_key)`, `list_signals(user, event_key, status)` | Paper trading per account: the weekend record (Polymarket, Kalshi replay, private book), positions, signals. |
+| `track_record(user, venue)`, `list_positions(user, venue, event_key)`, `list_signals(user, event_key, status)` | Paper trading per account: the weekend record (Polymarket, Kalshi replay, private book; `venue='all'` lists one row per weekend and venue with a `venue` column and `totals` per venue), positions, signals. |
 | `list_live_events()`, `data_changes()` | Settled live private-book events and the run folders present; the data change log. |
 | `sql(query, limit, offset)` | Any `SELECT` (or `WITH ... SELECT`, `EXPLAIN`), in a `READ ONLY` transaction with a 10 s timeout, paged. The `users` and `orders` tables are not readable. |
 
