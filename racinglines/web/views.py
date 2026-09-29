@@ -45,15 +45,20 @@ def _groups(df):
 
 @app.get("/markets", response_class=HTMLResponse)
 def board_page(request: Request, msg: str = "", c=Depends(conn)):
-    """Markets. Makers and admins: every sport's board (fair prices vs the venues). Takers: every open
-    Polymarket market with their strategy's calls (app.bet_markets)."""
+    """Markets. Makers and admins: every sport's board (fair prices vs the venues), each in a collapsible
+    section with its own exchange breakdown, and a calendar of every event across every sport, filterable by
+    sport and exchange. Takers: every open Polymarket market with their strategy's calls (app.bet_markets)."""
     user = request.state.user
     if user["role"] == "taker":
         from racinglines.web.app import bet_markets
         return bet_markets(request, msg=msg, c=c)
     from racinglines.markets import disagree as D
+    calendar = V.calendar_rows(c)
+    cal_sports = sorted({(r["sport"], r["sport_name"]) for r in calendar}, key=lambda x: V.SPORT_ORDER.get(x[0], 9))
+    cal_exchanges = sorted({x for r in calendar for x in r["exchanges"]})
     return render(request, "board.html", sports=B.board(c, _maker(user)), h=B.headline(c, _maker(user)), kalshi=V.KALSHI_VENUE,
-                  disagree=D.panel(c) if D.ON["on"] else None)       # the cross-venue panel: RACINGLINES_DISAGREE=1 only
+                  disagree=D.panel(c) if D.ON["on"] else None,
+                  calendar=calendar, cal_sports=cal_sports, cal_exchanges=cal_exchanges)
 
 
 # ---------------------------------------------------------------------------
