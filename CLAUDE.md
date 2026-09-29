@@ -36,21 +36,21 @@ avoiding here.
 
 1. **Plan.** Restate the ask, resolve ambiguity, no code yet. Check `docs/todo.md` for whether this is already a
    tracked item (U-numbers, P0/P1/P2) and cite it.
-2. **Develop roadmap.** Break the plan into ordered tasks. For each: complexity tier, files/modules touched (to
-   check for overlap across threads), and its test/doc obligations (`docs/f1-roadmap.md` "ground rules": golden
+2. **Develop roadmap.** Break the plan into ordered tasks. For each: complexity tier, files/modules touched, and
+   its test/doc obligations (`docs/f1-roadmap.md` "ground rules": golden
    tests, leakage-rule tests for new pricing/trading paths, `tests/test_no_data_in_git.py`).
 3. **Implementation.** Only after the roadmap is confirmed (or the task is trivial and low-risk).
-4. **Split into worker threads**, ≤4 concurrent, model per the tier table, one worktree per thread.
+4. **Run one thread per task**, one task at a time, model per the tier table, on its own branch off `main`.
 5. **Report back**, every check-in:
-   - status per thread (done / blocked / needs a decision),
+   - status per task (done / blocked / needs a decision),
    - open questions, especially anything the roadmap calls an "owner decision" (`docs/todo.md#owner-decisions`),
-   - a sequenced git command block to merge, in the order that avoids conflicts, e.g.:
+   - a sequenced git command block to merge, in the order that avoids conflicts (one branch per task), e.g.:
 
 ```
 # LOCAL (Mac) — merge sequence, run in order
 git checkout main && git pull
 git merge --no-ff work/<task-1>          # ⚠️ touches settlement rules — read the diff first
-git merge --no-ff work/<task-2>
+git merge --no-ff work/<task-2>          # a later task's branch, if it is ready in the same batch
 python -m pytest -m "not live"
 git push
 ```
@@ -72,7 +72,7 @@ Run the full suite too when the local database is up. `UPDATE_GOLDEN=1` only in 
 per the [F1 roadmap](docs/f1-roadmap.md#5-promotion-rule-when-a-challenger-becomes-the-default), with a decision
 log entry in the same change.
 
-**Live-event freeze.** No parallel-thread work should touch VM deploy paths while a live event's systemd unit
+**Live-event freeze.** No thread should touch VM deploy paths while a live event's systemd unit
 is active there (`vm.sh deploy` already refuses this — don't override it with `--force` as a way around a merge
 conflict).
 
