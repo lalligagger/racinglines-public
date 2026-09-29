@@ -517,6 +517,38 @@ Updating after each race loses less than holding the pre-season view, but it
 still loses: championship prices move on the same information our forecast
 uses, and the market has priced it by the time we trade an hour later.
 
+### The championship sleeve
+
+The same strategy runs live as a paper sleeve, one per exchange, off unless
+invoked:
+
+```
+racinglines f1 season-strategy --paper --venue polymarket --after-round 16
+racinglines f1 season-strategy --paper --venue kalshi --after-round 16
+```
+
+Each replays the strategy from pre-season through the decision after that
+round (the last raced round by default) on the exchange's recorded prices and
+stores the state after that rebalance as the demo maker's paper positions:
+`paper_positions.venue = 'season:polymarket'` or `'season:kalshi'`, event
+`2026-season`, no candidate. Every run replaces the previous store on that
+venue, so the rows are always the latest rebalance; `--save` also keeps the
+rebalance as a run of kind `season_sleeve` (this decision's trades, the
+positions, P&L to date). The two venues differ only in their markets and costs:
+Kalshi's `KXF1-26-*` / `KXF1CONSTRUCTORS-26-*` markets are one per ticker
+(their `condition_id` is the event ticker shared by every driver) and cost the
+taker fee at the price, 7% × p × (1 − p) per contract, plus 0.5¢ slippage,
+instead of half the spread.
+
+The sleeve stays out of A, C and K's records: their track records
+(`pipelines/story.py`), the signal engine's rebuilds and the Positions page
+each select their own venues and weekends (a Positions row needs a signal on
+its market), so nothing of theirs changes when the sleeve is stored. The MCP
+`positions` tool lists it under its own venue. After round 15 (Baku) the
+Polymarket sleeve held Antonelli and Mercedes at −$193 to date, the Kalshi
+sleeve the same two at −$18: the [validation plan](paper-trading.md#validation-plan)
+expects little of it.
+
 ### Checkpoint entries
 
 `racinglines f1 season-checkpoints` asks a narrower question than the strategy

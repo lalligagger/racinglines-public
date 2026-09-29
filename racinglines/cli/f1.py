@@ -135,6 +135,15 @@ def main(argv=None):
     p.add_argument("--max-stake", type=float, default=150.0)
     p.add_argument("--capital", type=float, default=1500.0)
     p.add_argument("--save", action="store_true")
+    p.add_argument("--paper", action="store_true",
+                   help="The championship sleeve (paper only): replay through the decision after --after-round on "
+                        "--venue and store that rebalance as the demo maker's paper positions "
+                        "(venue 'season:<venue>', kept out of the weekend records). Off unless given.")
+    p.add_argument("--venue", choices=("polymarket", "kalshi"), default="polymarket",
+                   help="With --paper: the exchange (Polymarket's championship markets, or Kalshi's KXF1 / "
+                        "KXF1CONSTRUCTORS champion markets)")
+    p.add_argument("--after-round", type=int, default=None, help="With --paper: the round just raced (default: the last)")
+    p.add_argument("--user", default=None, help="With --paper: the account (default: the demo maker)")
     p = sub.add_parser("season-checkpoints")
     p.add_argument("--variants", default=None,
                    help="Comma-separated model variants (default: every variant whose season forecast "
@@ -214,6 +223,53 @@ def main(argv=None):
     V.switches(args.variant)                         # fail fast on an unknown name
     with V.use(args.variant):
         return _run(args)
+
+
+def _season_sleeve(args, engine, prm, SE, get_session, records):
+    """f1 season-strategy --paper: the championship sleeve's rebalance after one round on one exchange, stored
+    as paper positions (and, with --save, as a model run of kind 'season_sleeve')."""
+    from sqlalchemy import text
+    echo = lambda m: print(m, flush=True)   # noqa: E731
+    username = args.user or SE.SLEEVE_USER
+    with engine.connect() as c:
+        uid = c.execute(text("SELECT id FROM users WHERE username = :u"), dict(u=username)).scalar()
+    if uid is None:
+        sys.exit(f"no user {username!r}")
+    if args.venue == "polymarket" and not args.no_fetch:
+        with engine.connect() as c:
+            links = SE.season_links(c, args.year, args.venue)
+        with engine.connect() as c, get_session(args.db) as s:
+            SE.fetch_history(s, c, links["token_id"].tolist(), echo=echo)
+    out = SE.sleeve_rebalance(engine, args.db, args.year, args.after_round, exchange=args.venue, params=prm,
+                              n_sims=args.sims, variant=args.variant, echo=echo)
+    with engine.begin() as c:
+        n = SE.store_sleeve(c, uid, out)
+    sm = out["summary"]
+    print(f"\n=== Championship sleeve on {args.venue}, {out['label']} ({out['markets']} markets) ===")
+    print(f"  decision {out['t']:%Y-%m-%d %H:%M} UTC, executed {out['exec_at']:%H:%M}, forecast run #{out['run_id']}")
+    print(f"  {sm['trades']} trades at this decision; {sm['positions']} open positions, {sm['settled']} settled; "
+          f"P&L to date {sm['pnl']:+,.2f}")
+    print(f"  stored {n} paper positions for {username!r} (venue {out['venue']!r}, event {out['event_key']!r})")
+    if len(out["trades"]):
+        print("\n=== Trades ===")
+        print(out["trades"].drop(columns=["key", "decision"]).to_string(index=False, float_format="{:.3f}".format))
+    if out["positions"]:
+        import pandas as pd
+        print("\n=== Positions ===")
+        print(pd.DataFrame(out["positions"]).drop(columns=["market_key"]).to_string(index=False, float_format="{:.3f}".format))
+    if args.save:
+        from racinglines.db.queries import save_model_run
+        tr = out["trades"]
+        with get_session(args.db) as s:
+            run_id = save_model_run(
+                s, competition="f1_wdc", season=args.year, category="DRV", model="season_strategy", kind="season_sleeve",
+                params=dict({k: (str(v) if hasattr(v, "total_seconds") else v) for k, v in prm.__dict__.items()},
+                            year=args.year, variant=args.variant, venue=args.venue, after_round=out["after_round"],
+                            label=out["label"], t=str(out["t"]), forecast_run=out["run_id"], user=username,
+                            min_volume=SE.MIN_VOLUME, slippage=SE.SLIPPAGE),
+                metrics=dict(summary=sm, positions=out["positions"],
+                             trades=records(tr.assign(t=tr["t"].astype(str))) if len(tr) else []))
+        print(f"Saved sleeve run {run_id}.")
 
 
 def _run(args):
@@ -394,6 +450,8 @@ def _run(args):
         from racinglines.pipelines import season_strategy as SE
         prm = SeasonParams(min_edge=args.min_edge, stake_per_edge=args.stake_per_edge, max_stake=args.max_stake,
                            capital=args.capital)
+        if args.paper:
+            return _season_sleeve(args, engine, prm, SE, get_session, records)
         out = SE.run_season(engine, args.db, args.year, prm, fetch=not args.no_fetch, reforecast=args.reforecast,
                             n_sims=args.sims, echo=lambda m: print(m, flush=True), variant=args.variant)
         r, h = out["result"], out["hold"]
