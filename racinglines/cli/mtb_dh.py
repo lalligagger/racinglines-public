@@ -477,8 +477,7 @@ def cmd_points(args):
         raise SystemExit(f"No results for {args.season} {args.category}.")
     through = None
     if args.through_round:
-        ev = target.drop_duplicates("event_id").set_index("event_id")["series_round"]
-        through = ev[ev == args.through_round].index[0]
+        through = P.through_event(target, args.through_round)       # the season's last event with that number
     official = P.read_standings(args.standings)
     with P.use(_points_scheme(args, args.season)):
         rec = P.reconcile(target, official, through)
