@@ -17,6 +17,13 @@ Kalshi (--exchange kalshi; markets/kalshi/, built on mocked responses, unverifie
     history    [--events TICKER …] --start --end [--period 60]   candlesticks (minutes: 1, 60, 1440)
     books      [--events TICKER …]                       one order-book snapshot per open market
 
+Exchanges defined as schemas (--exchange og; exchanges/<code>.toml, markets/exchange_driver.py), read-only:
+    sync       [--year 2026]                             the sport's markets and quotes into market links
+    trades     [--events SYMBOL …]                       the tape the exchange still serves (about a month)
+    history    [--events SYMBOL …] --start [--end]       minute prices (clipped to what the exchange keeps)
+    books      [--events SYMBOL …]                       one order-book snapshot per open market
+    fair       the model's fair price beside the quote, net of the taker fee: a simple indicator, no trades
+
 --sport names the sport (default f1): the tape-only sports (nascar, motogp, indycar; sports/<code>.toml
 [markets.kalshi]) are synced only when named, every link unmodeled, under their own competition. Without
 --events, trades / history / books take every Kalshi event of --sport's competition (books: open markets).
@@ -39,10 +46,13 @@ def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     ap = argparse.ArgumentParser(prog="racinglines markets", description=__doc__, add_help=False,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--exchange", default="polymarket", choices=["polymarket", "kalshi"])
-    ap.add_argument("--sport", default="f1", choices=kalshi_sports())
+    from racinglines import exchanges
+    ap.add_argument("--exchange", default="polymarket", choices=["polymarket", "kalshi", *exchanges.CODES])
+    ap.add_argument("--sport", default="f1", choices=sorted({*kalshi_sports(), *(s for c in exchanges.CODES for s in exchanges.sports(c))}))
     ap.add_argument("--db", default=None)
     known, rest = ap.parse_known_args(argv)
+    if known.exchange in exchanges.CODES:
+        return schema_exchange(known.exchange, known.db, rest, known.sport)
     if known.exchange == "kalshi":
         return kalshi(known.db, rest, known.sport)
     if known.sport != "f1":
@@ -156,4 +166,38 @@ def kalshi(db, argv, sport="f1"):
             print(f"{KS.fetch_history(s, c, args.events, t[0], t[1], args.period, sport=sport)} price points stored")
         else:
             print(f"{KS.snapshot_books(s, c, args.events, sport=sport)} book snapshots stored")
+    return 0
+
+
+def schema_exchange(code, db, argv, sport="f1"):
+    """racinglines markets --exchange <code> [--sport f1] <command>: an exchange defined by a schema (exchanges/<code>.toml)."""
+    from racinglines import exchanges
+    if sport not in exchanges.sports(code):
+        print(f"--sport {sport}: {code} lists {', '.join(exchanges.sports(code))} (exchanges/{code}.toml)", file=sys.stderr)
+        return 2
+    ap = argparse.ArgumentParser(prog=f"racinglines markets --exchange {code} --sport {sport}")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    p = sub.add_parser("sync")
+    p.add_argument("--year", type=int, default=2026)
+    for name in ("trades", "history", "books"):
+        p = sub.add_parser(name)
+        p.add_argument("--events", nargs="+", default=None, help="Event symbols (market_links.condition_id); default: every event")
+        if name == "history":
+            p.add_argument("--start", required=True, help="UTC start, e.g. 2026-09-01T00:00 (clipped to what the exchange keeps)")
+            p.add_argument("--end", default=None, help="UTC end (default now)")
+    sub.add_parser("fair")
+    args = ap.parse_args(argv)
+    from racinglines.db.config import get_engine, get_session
+    from racinglines.markets import exchange_driver as D
+    with get_engine(db).connect() as c, get_session(db) as s:
+        if args.cmd == "sync":
+            print(D.sync(s, c, code, sport, args.year))
+        elif args.cmd == "trades":
+            print(f"{D.fetch_trades(s, c, code, sport=sport, events=args.events)} trades stored")
+        elif args.cmd == "history":
+            print(f"{D.fetch_history(s, c, code, args.start, args.end, sport=sport, events=args.events)} price rows stored")
+        elif args.cmd == "books":
+            print(f"{D.snapshot_books(s, c, code, sport=sport, events=args.events)} book snapshots stored")
+        else:
+            print(D.fair_text(D.fair_report(c, code, sport), code, exchanges.load(code)["exchange"].get("taker_fee_per_contract", 0.0)))
     return 0
