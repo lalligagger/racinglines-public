@@ -169,12 +169,17 @@ def maker_state(quotes, fills, markets, stage_label, now_ns):
         last = g.iloc[-1]
         state[cond] = dict(bid=last["bid"], ask=last["ask"],
                            quote_state=QUOTING if pd.isna(last["skip"]) else last["skip"])
+    seen = {}
     for f in fills.to_dict("records") if len(fills) else []:
         mk = by[f["cond"]]
         lab = stage_label.get(int(f["run_id"]), str(f["run_id"]))
         side = "YES" if f["side"] == "buy" else "NO"          # buying YES / selling YES (= long NO exposure)
+        # fills sharing a market, side and timestamp (Kalshi's tape is timed to the second) each get their own
+        # key, "<ts>.<n>" from the second one on, so store keeps them all; a lone fill's key stays "<ts>"
+        k = (f["cond"], side, int(f["ts"]))
+        n = seen[k] = seen.get(k, -1) + 1
         sigs.append(dict(market_key=f["cond"], kind=mk.kind, subject=mk.subject, stage=lab,
-                         dedupe=str(int(f["ts"])), action="fill", side=side, shares=float(f["qty"]),
+                         dedupe=str(int(f["ts"])) + (f".{n}" if n else ""), action="fill", side=side, shares=float(f["qty"]),
                          limit_price=float(f["price"]), fair=f["fair"], price=f.get("mid"),
                          signal_ts=pd.Timestamp(int(f["ts"]), tz="UTC"), status="filled_paper",
                          detail=dict(maker_side=f["side"])))
