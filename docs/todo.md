@@ -42,7 +42,8 @@ C makes money on Polymarket's tape and loses on Kalshi's.
 
 **P1 · October (rounds 16–19): first live weekends on real markets**
 
-- [ ] **U5** Kalshi sprint markets before Singapore (11 Oct).
+- [ ] **U5** Kalshi sprint markets before Singapore (11 Oct). Priced from the race's pole and win odds
+      until **U13**, a real sprint model, lands ([F1 model](#f1-model)).
 - [ ] **U3** Kalshi maker profile K, swept and frozen before the United States GP (25 Oct).
 - [ ] **U7** Cross-venue disagreement log; **U8** settlement rules for relocated or cancelled races.
 - [ ] Per-weekend reconciliation (live vs replay) and the pricing scorecard on every weekend ([Paper trading](#paper-trading)).
@@ -226,6 +227,14 @@ events are T3 unless a venue lists the event.
 
 Phased plan and ground rules: [F1 roadmap](f1-roadmap.md).
 
+- [ ] **U13 · P2 · Sprint-race pricing model.** For now (U5, PR #36) Kalshi's sprint winner and sprint pole
+      markets price from the race's win and pole probabilities as a stand-in; the owner approved that for
+      Singapore (2026-09-29). Simulate the sprint itself: sprint qualifying as its own stage, a shorter race
+      (about a third of the distance: less tyre and pit variance, fewer retirements), and write
+      `extra.sprint_pole_prob` / `extra.sprint_win_prob` on the stage runs, which the pricing already reads
+      first. Backtest on the 2025–26 sprint weekends against Kalshi's and Polymarket's sprint prices.
+      *Done when:* sprint markets price from the sprint simulation and beat the race-odds stand-in on the
+      backtest.
 - [ ] **U10 · P3 · F1 pre-season testing:** ingest FastF1's testing sessions as a stage before round 1 for
       the forecast and the season strategy, so the pre-season forecast sees what the market sees.
       *Done when:* a 2026 re-run with testing moves the pre-season constructors' odds toward the market's
@@ -333,8 +342,13 @@ Downhill model.
       bucket is up ([Data](data.md#data-bucket)) and the [proposal](google-cloud.md) is written (Cloud SQL,
       Cloud Run, Scheduler, service identities, about $28–35 a month at list prices). Next: the owner's
       choices (database tier, recorder shape, domain).
-- [ ] Forecast runs from committed code: both live forecasts (F1 run 3, downhill run 1287) were built from
-      `1ab8934-dirty`. Check whether the F1 forecast overwrites run 3 in place instead of saving a new run.
+- [x] Forecast runs from committed code: both live forecasts (F1 run 3, downhill run 1287) were built from
+      `1ab8934-dirty`. Checked (2026-09-29): the F1 forecast does not overwrite run 3; `f1 forecast --save`
+      always inserts a new `model_runs` row (`save_model_run`, nothing updates or deletes forecast runs; Lab
+      promotion only sets `params.promoted_at`) and the web app prices from the latest one. Run 3 is the
+      only F1 forecast because the database was rebuilt on 2026-09-27 (ids 1–3 are its first rows, 18:37–18:42Z)
+      and the forecast has been saved once since; the downhill one came later (1287). Still to do: re-save
+      both from committed code.
 - [ ] Remove the `demo_context` bubbles before real users.
 - [ ] Before anything goes beyond a private demo: check F1's data terms, OpenF1's non-commercial terms,
       and settlement rules for relocated or cancelled races (U8).

@@ -487,6 +487,41 @@ class MarketBookSnapshot(Base):
     asks: Mapped[list | None] = mapped_column(JSONB)
 
 
+class MarketDisagreement(Base):
+    """The cross-venue disagreement log (`racinglines markets disagree`, off unless RACINGLINES_DISAGREE=1): one
+    row per F1 outcome linked on both exchanges and per tick, with both venues' mids and top of book, our fair
+    value at the time (the run in force then), each venue's fee-adjusted taker edge vs fair, and the
+    cross-venue gap net of both taker fees (racinglines/markets/disagree.py). Prices are the outcome's YES
+    side on both venues (an inverted Polymarket link is flipped)."""
+    __tablename__ = "market_disagreements"
+    pm_token: Mapped[str] = mapped_column(String(100), primary_key=True)        # Polymarket YES token
+    kalshi_token: Mapped[str] = mapped_column(String(100), primary_key=True)    # Kalshi market ticker
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    competition_id: Mapped[int] = mapped_column(ForeignKey("competitions.id"))
+    race_id: Mapped[int | None] = mapped_column(ForeignKey("races.id", ondelete="CASCADE"))   # null: a season market
+    kind: Mapped[str] = mapped_column(String(30))
+    athlete_id: Mapped[int | None] = mapped_column(ForeignKey("athletes.id", ondelete="CASCADE"))
+    team: Mapped[str | None] = mapped_column(String(40))
+    opponent_id: Mapped[int | None] = mapped_column(Integer)
+    n: Mapped[int | None] = mapped_column(Integer)
+    pm_mid: Mapped[float | None] = mapped_column(Float)
+    pm_bid: Mapped[float | None] = mapped_column(Float)
+    pm_ask: Mapped[float | None] = mapped_column(Float)
+    kalshi_mid: Mapped[float | None] = mapped_column(Float)
+    kalshi_bid: Mapped[float | None] = mapped_column(Float)
+    kalshi_ask: Mapped[float | None] = mapped_column(Float)
+    fair: Mapped[float | None] = mapped_column(Float)
+    run_id: Mapped[int | None] = mapped_column(ForeignKey("model_runs.id", ondelete="SET NULL"))
+    pm_edge: Mapped[float | None] = mapped_column(Float)        # fee-adjusted edge of the better taker trade on Polymarket
+    pm_side: Mapped[str | None] = mapped_column(String(4))      # which trade that is: buy (YES at the ask) or sell (at the bid)
+    kalshi_edge: Mapped[float | None] = mapped_column(Float)    # the same on Kalshi (its taker fee taken off)
+    kalshi_side: Mapped[str | None] = mapped_column(String(4))
+    gap: Mapped[float | None] = mapped_column(Float)            # kalshi_mid - pm_mid
+    gap_net: Mapped[float | None] = mapped_column(Float)        # |gap| net of both venues' taker fees; > 0 = above fees
+    pm_vol24: Mapped[float | None] = mapped_column(Float)       # USD traded on Polymarket in the 24 h before the tick (null: no tape stored)
+    kalshi_vol24: Mapped[float | None] = mapped_column(Float)   # the same on Kalshi
+
+
 class Job(Base):
     """A model run launched from the web app (backtest, scenario forecast, diagnostic, ...),
     executed as a CLI subprocess; `log` holds its output, `result_run_id` the model run it saved."""

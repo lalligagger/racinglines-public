@@ -148,6 +148,19 @@ def _norm(name):
     return " ".join(sorted(s.replace("-", " ").split()))
 
 
+def through_event(target, series_round):
+    """The event_id that "after round N" means in one season (`target`), for reconcile's `through`. Round numbers
+    come from ChronoRace's titles (`DHI #n`) and are unique only within a season, and not always there: 2022
+    numbers Leogang and Lenzerheide both #3, 2025 Lake Placid and Mont-Sainte-Anne both #9. So this is the last
+    event, by date, that carries the number: standings "after round 3" of 2022 include both #3 weekends. Every
+    season reuses 1, 2, 3...: callers pass one season's rows, never several."""
+    ev = target.drop_duplicates("event_id").set_index("event_id")["series_round"]
+    hits = [e for e in M.event_order(target) if ev.get(e) == series_round]
+    if not hits:
+        raise ValueError(f"no event numbered round {series_round} in this season")
+    return hits[-1]
+
+
 def reconcile(target, official, through=None):
     """Cumulative points per rider from the results (`target`: one season and category) against an
     official standings table (columns `rider` and `points`, optionally `uci_id`), after the events

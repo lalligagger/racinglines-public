@@ -11,6 +11,19 @@ none recorded, plus 0.5c slippage). Markets with under MIN_VOLUME traded are ski
 
 Demo liberty (documented): the pre-season forecast simulates the published 2026 entry
 list (identities only) instead of the 2025 field.
+
+The championship sleeve (paper only, off by default; docs/paper-trading.md):
+
+    racinglines f1 season-strategy --paper --venue polymarket --after-round 15
+    racinglines f1 season-strategy --paper --venue kalshi --after-round 15
+
+replays the same strategy from pre-season through the decision after round N on one exchange
+(Polymarket's championship markets, or Kalshi's KXF1 / KXF1CONSTRUCTORS champion markets, keyed by
+ticker) and stores the state after that rebalance as the demo maker's paper positions, marked as
+paper_positions.venue = 'season:<exchange>' with event_key '<year>-season' and no candidate. The accounts'
+track records (pipelines/story.py track_record) and the signal engine's rebuilds (pipelines/signals.py store)
+select their own venues and weekends, and the Positions page shows only markets with signals, so A, C and K's
+records don't see the sleeve; `racinglines mcp`'s positions tool lists it under its own venue.
 """
 
 from datetime import timedelta
@@ -30,13 +43,26 @@ DEFAULT_HALF_SPREAD, SLIPPAGE = 0.005, 0.005
 HISTORY_START = pd.Timestamp("2025-12-09", tz="UTC")
 
 
-def season_links(conn, year):
+SLEEVE_USER = "maker"                      # the demo maker: the account the championship sleeve belongs to
+SLEEVE_EVENT = "{year}-season"             # paper_positions.event_key of the sleeve
+KALSHI_TAKER_FEE = 0.07                    # Kalshi's taker fee rate: fee = rate x price x (1 - price) per contract
+
+
+def sleeve_venue(exchange):
+    """paper_positions.venue of the championship sleeve on one exchange ('season:polymarket', 'season:kalshi')."""
+    return f"season:{exchange}"
+
+
+def season_links(conn, year, exchange="polymarket"):
+    """The season's championship markets on one exchange with at least MIN_VOLUME traded (Kalshi: contracts).
+    One row per token: Polymarket's YES token, or Kalshi's ticker (KXF1-26-XX), whose condition_id is the
+    event ticker shared by every driver."""
     return pd.read_sql(text("""
         SELECT ml.*, a.display_name AS athlete FROM market_links ml LEFT JOIN athletes a ON a.id = ml.athlete_id
-        WHERE ml.race_id IS NULL AND ml.prediction = ANY(:k) AND coalesce(ml.volume, 0) >= :v AND ml.exchange = 'polymarket'
+        WHERE ml.race_id IS NULL AND ml.prediction = ANY(:k) AND coalesce(ml.volume, 0) >= :v AND ml.exchange = :x
           AND ml.competition_id = (SELECT id FROM competitions WHERE code = 'f1_wdc')
           AND extract(year FROM ml.end_date) IN (:y, :y + 1)
-        ORDER BY ml.prediction, ml.volume DESC"""), conn, params=dict(k=list(KINDS), v=MIN_VOLUME, y=year))
+        ORDER BY ml.prediction, ml.volume DESC"""), conn, params=dict(k=list(KINDS), v=MIN_VOLUME, y=year, x=exchange))
 
 
 def fetch_history(session, conn, tokens, start=HISTORY_START, end=None, echo=print):
@@ -113,12 +139,30 @@ def market_costs(conn, tokens):
     return {t: max(half.get(t, DEFAULT_HALF_SPREAD), 0.0005) + SLIPPAGE for t in tokens}
 
 
-def build_markets(conn, links):
+def kalshi_costs(by, toks, asof=None):
+    """$ per contract per trade on Kalshi: the taker fee at the market's price as of `asof` (the latest
+    recorded price by default; the worst case, 0.5, without one) + slippage."""
+    out = {}
+    for t in toks:
+        g = by.get(t)
+        p = None
+        if g is not None and len(g):
+            h = g if asof is None else g[g["ts"] <= asof]
+            p = float(h["price"].iloc[-1]) if len(h) else None
+        p = 0.5 if p is None else p
+        out[t] = KALSHI_TAKER_FEE * p * (1 - p) + SLIPPAGE
+    return out
+
+
+def build_markets(conn, links, exchange="polymarket", asof=None):
+    """{token_id: SeasonMarket} from the exchange's recorded prices (the market store reads every exchange's
+    tree, and token ids don't collide). Kalshi markets are grouped by ticker (their token_id; the
+    condition_id is the event) and cost the taker fee instead of a spread."""
     from racinglines.markets import store as MS
     toks = links["token_id"].tolist()
     px = MS.read(conn, "prices", tokens=toks)
-    costs = market_costs(conn, toks)
-    by = dict(tuple(px.groupby("token_id")))
+    by = dict(tuple(px.groupby("token_id"))) if len(px) else {}
+    costs = kalshi_costs(by, toks, asof) if exchange == "kalshi" else market_costs(conn, toks)
     out = {}
     for link in links.to_dict("records"):
         g = by.get(link["token_id"])
@@ -200,3 +244,93 @@ def run_season(engine, engine_url, year=2026, params=SS.SeasonParams(), fetch=Tr
     return dict(result=res, hold=hold, now=now_df, decisions=[dict(label=d["label"], t=d["t"], run_id=d["run_id"])
                                                                for d in decisions],
                 params=params, live_run=live_run, markets=len(markets))
+
+
+# ---------------------------------------------------------------------------
+# The championship sleeve: the strategy's state after one round, stored as paper positions
+# ---------------------------------------------------------------------------
+
+def sleeve_positions(markets, trades, now):
+    """The sleeve's paper_positions rows from a replay's trades: one per market traded (market_key, kind,
+    subject, yes_shares, no_shares, cash, mark, outcome). Shares and cash are the trades' sums (a settled
+    market keeps its shares: the outcome values them, as every reader of paper_positions does); the mark
+    is the latest recorded price as of `now` (within 30 days), the outcome only for markets closed by then."""
+    rows = []
+    for k, mk in markets.items():
+        g = trades[trades["key"] == k] if len(trades) else trades
+        if not len(g):
+            continue
+        yes, no = (float(g.loc[g["side"] == sd, "shares"].sum()) for sd in ("YES", "NO"))
+        yes, no = (0.0 if abs(x) < 1e-9 else x for x in (yes, no))      # a closed position, not -0.000
+        cash = -float((g["shares"] * g["price"]).sum())
+        settled = mk.outcome is not None and mk.closed_at is not None and mk.closed_at <= now
+        mark = last_at(mk.ts, mk.px, now, timedelta(days=30))
+        rows.append(dict(market_key=k, kind=mk.kind, subject=mk.subject, yes_shares=yes, no_shares=no, cash=cash,
+                         mark=None if mark is None else float(mark), outcome=bool(mk.outcome) if settled else None))
+    return rows
+
+
+def sleeve_pnl(rows):
+    """P&L of the rows as the track record values them: settled at the outcome, else marked; unmarked rows count 0."""
+    tot = 0.0
+    for r in rows:
+        y = r["outcome"] if r["outcome"] is not None else r["mark"]
+        if y is not None:
+            tot += r["cash"] + r["yes_shares"] * y + r["no_shares"] * (1 - y)
+    return float(tot)
+
+
+def sleeve_rebalance(engine, engine_url, year=2026, after_round=None, exchange="polymarket", params=SS.SeasonParams(),
+                     n_sims=5000, variant="baseline", now=None, echo=print):
+    """Replay the default strategy on one exchange from pre-season through the decision after round
+    `after_round` (the last raced round when None) and return the sleeve's state after that rebalance:
+    dict(label, t, exec_at, run_id, exchange, venue, event_key, trades (this decision's), positions
+    (paper_positions rows: market_key, kind, subject, yes_shares, no_shares, cash, mark, outcome), summary).
+    Marks are the latest recorded price as of `now` (default: now); markets that had closed by then carry
+    their outcome. Nothing is written."""
+    from racinglines.models.position_sim import pricing as run
+    now = pd.Timestamp.now(tz="UTC") if now is None else pd.Timestamp(now)
+    now = now.tz_localize("UTC") if now.tzinfo is None else now.tz_convert("UTC")
+    with engine.connect() as c:
+        links = season_links(c, year, exchange)
+    echo(f"progress {len(links)} {exchange} championship markets with >= {MIN_VOLUME:,} traded")
+    meas = run.Measurements.load(engine)
+    hist = run.history(meas)
+    times = decision_times(meas, year)
+    raced = [int(label.split()[1][1:]) for label, _ in times[1:]]
+    if after_round is None:
+        after_round = max(raced)
+    if after_round not in raced:
+        raise ValueError(f"round {after_round} has not been raced in {year} (raced: {raced})")
+    times = times[:raced.index(after_round) + 2]        # pre-season, then after R01 .. after R<after_round>
+    label, t = times[-1]
+    exec_at = t + params.exec_delay
+    runs = asof_forecasts(engine, engine_url, meas, hist, year, times, n_sims=n_sims, echo=echo, variant=variant)
+    with engine.connect() as c:
+        markets = build_markets(c, links, exchange=exchange, asof=t)
+        decisions = [dict(t=tt, label=lab, run_id=rid, fairs=fairs(c, links, rid)) for lab, tt, rid in runs]
+    res = SS.replay(markets, decisions, params, now=exec_at, marks=[exec_at])
+    tr = res["trades"]
+    rows = sleeve_positions(markets, tr, now)
+    this = tr[tr["decision"] == label] if len(tr) else tr
+    summary = dict(pnl=sleeve_pnl(rows), trades=int(len(this)),
+                   positions=sum(1 for r in rows if r["yes_shares"] or r["no_shares"]),
+                   settled=sum(1 for r in rows if r["outcome"] is not None), replay=res["summary"])
+    return dict(label=label, t=t, exec_at=exec_at, run_id=runs[-1][2], exchange=exchange, venue=sleeve_venue(exchange),
+                event_key=SLEEVE_EVENT.format(year=year), year=year, after_round=after_round, trades=this,
+                positions=rows, summary=summary, markets=len(markets), decisions=[lab for lab, _, _ in runs])
+
+
+def store_sleeve(conn, user_id, out):
+    """Replace the user's championship-sleeve paper positions on the exchange (venue 'season:<exchange>',
+    event_key '<year>-season', no candidate) with the rebalance's. Returns the number of rows stored.
+    Only that venue's rows are touched: the weekend records (venue polymarket / kalshi / private) are not."""
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    from racinglines.db import models as m
+    conn.execute(text("DELETE FROM paper_positions WHERE user_id = :u AND venue = :v AND event_key = :e"),
+                 dict(u=user_id, v=out["venue"], e=out["event_key"]))
+    for p in out["positions"]:
+        conn.execute(pg_insert(m.PaperPosition).values(dict(user_id=user_id, candidate_id=None, race_id=None,
+                                                            event_key=out["event_key"], venue=out["venue"], **p)))
+    return len(out["positions"])

@@ -22,7 +22,13 @@ def test_f1_stages_from_the_schema():
     assert [lab for lab, _ in b["stages"]] == ["pre-weekend", "after FP1", "after SQ", "after Sprint", "after Quali"]
     assert b["stages"][0][1] == T0 - timedelta(hours=1)
     assert b["stages"][1][1] == T0 + timedelta(minutes=60 + 30)                  # FP1 ends, + 30 min data lag
-    assert b["closes"] == {"race_pole": T0 + timedelta(days=1, hours=4)} and b["until"] == SPRINT[-1][1]
+    assert b["closes"] == {"race_pole": T0 + timedelta(days=1, hours=4), "race_sprint_pole": T0 + timedelta(hours=4),
+                           "race_sprint_win": T0 + timedelta(days=1)} and b["until"] == SPRINT[-1][1]
+    assert ST.is_open("race_sprint_pole", T0 + timedelta(hours=3), b["closes"]) and not ST.is_open("race_sprint_win", T0 + timedelta(days=1), b["closes"])
+    shootout = [("Sprint Shootout", t) if n == "Sprint Qualifying" else (n, t) for n, t in SPRINT]       # 2023's name
+    assert ST.build(shootout, "f1")["closes"]["race_sprint_pole"] == T0 + timedelta(hours=4)
+    conventional = [(n, t) for n, t in SPRINT if "Sprint" not in n]
+    assert ST.build(conventional, "f1")["closes"]["race_sprint_pole"] is None                # no session: never closes
     assert ST.is_open("race_pole", b["closes"]["race_pole"] - timedelta(seconds=1), b["closes"])
     assert not ST.is_open("race_pole", b["closes"]["race_pole"], b["closes"]) and ST.is_open("race_win", T0, b["closes"])
     assert ST.build(SPRINT[:-1], "f1") is None                                  # no race: nothing to trade

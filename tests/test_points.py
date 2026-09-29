@@ -25,6 +25,23 @@ def _raw(n_events=2, riders=("Ann Able", "Bea Best", "Cat Cole", "Dee Dunn")):
     return pd.DataFrame(rows)
 
 
+def test_through_round_with_a_number_used_twice_in_a_season():
+    """ChronoRace numbers two weekends of one season the same (2022: Leogang and Lenzerheide both #3): "after
+    round 3" is the later of the two, so both count; an unknown number is an error, not the first event."""
+    raw = _raw(n_events=4)
+    raw.loc[raw["event_id"] == "ev2", "series_round"] = 2          # ev1 and ev2 are both round 2; ev3 is round 4
+    raw.loc[raw["event_id"] == "ev3", "series_round"] = 4
+    assert P.through_event(raw, 1) == "ev0"
+    assert P.through_event(raw, 2) == "ev2"
+    assert P.through_event(raw, 4) == "ev3"
+    with pytest.raises(ValueError):
+        P.through_event(raw, 3)
+    official = pd.DataFrame(dict(rider=["Ann Able"], points=[0.0]))
+    after2 = P.reconcile(raw, official, P.through_event(raw, 2))
+    every = P.reconcile(raw[raw["event_id"] != "ev3"], official)
+    assert after2.equals(every)                                     # both round-2 weekends counted
+
+
 def _row(season_from, round_kind, points, season_to=None, official=False):
     return dict(season_from=season_from, season_to=season_to, round_kind=round_kind, points=points,
                 is_official=official)
@@ -145,8 +162,7 @@ def test_totals_match_official_standings(path):
     except Exception as ex:  # noqa: BLE001
         pytest.skip(f"no database with downhill results: {ex}")
     target = M.select_target(raw, int(season), category)
-    ev = target.drop_duplicates("event_id").set_index("event_id")["series_round"]
-    through = ev[ev == int(rnd.lstrip("r"))].index[0]
+    through = P.through_event(target, int(rnd.lstrip("r")))
     scheme = P.scheme_for(int(season), schemes)
     assert scheme.official, f"{season}: the points tables are still placeholders"
     with P.use(scheme):

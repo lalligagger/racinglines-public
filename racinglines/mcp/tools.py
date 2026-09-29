@@ -538,15 +538,32 @@ def replay_maker(conn, run_id, fill="through", half_spread=0.02, size=50, max_po
 # paper trading: positions, track record, signals; live events; change log
 # ---------------------------------------------------------------------------------------------------
 
+TRACK_RECORD_VENUES = ("polymarket", "kalshi", "private")
+
+
 def track_record(conn, user, venue="polymarket"):
     """Every weekend of a user's paper record: strategy, trades or fills, positions, P&L. venue: polymarket, kalshi,
-    private or all."""
+    private or all. 'all' lists one row per weekend AND venue (a `venue` column; the maker's weekends have a
+    Polymarket and a Kalshi row) with `totals` per venue next to the grand total; `weekends` counts distinct weekends."""
     from racinglines.pipelines import story as S
     uid = _user_id(conn, user)
-    rows = S.track_record(conn, uid, venue=venue)
+    if venue != "all":
+        rows = S.track_record(conn, uid, venue=venue)
+        pnl = sum(r["pnl"] for r in rows)
+        return dict(user=user, venue=venue, weekends=len(rows), pnl=P.plain(pnl), up=sum(1 for r in rows if r["pnl"] > 0),
+                    rows=P.page([{k: v for k, v in r.items() if k != "date"} for r in rows], limit=P.MAX_LIMIT))
+    rows, totals = [], []
+    for v in TRACK_RECORD_VENUES:
+        part = S.track_record(conn, uid, venue=v)
+        rows += [dict(event_key=r["event_key"], venue=v, **{k: x for k, x in r.items() if k not in ("event_key", "date")})
+                 for r in part]
+        if part:
+            totals.append(dict(venue=v, weekends=len(part), pnl=P.plain(sum(r["pnl"] for r in part)),
+                               up=sum(1 for r in part if r["pnl"] > 0)))
+    rows.sort(key=lambda r: (r["event_key"], TRACK_RECORD_VENUES.index(r["venue"])))
     pnl = sum(r["pnl"] for r in rows)
-    return dict(user=user, venue=venue, weekends=len(rows), pnl=P.plain(pnl), up=sum(1 for r in rows if r["pnl"] > 0),
-                rows=P.page([{k: v for k, v in r.items() if k != "date"} for r in rows], limit=P.MAX_LIMIT))
+    return dict(user=user, venue=venue, weekends=len({r["event_key"] for r in rows}), pnl=P.plain(pnl),
+                up=sum(1 for r in rows if r["pnl"] > 0), totals=totals, rows=P.page(rows, limit=P.MAX_LIMIT))
 
 
 def list_positions(conn, user, venue=None, event_key=None, open_only=False, limit=None, offset=0):

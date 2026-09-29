@@ -149,7 +149,7 @@ December closes 2026 and sets up 2027:
 4. **Decide whether to add NASCAR:** look at the recorded Chase tapes (volume, spread, how often
    markets trade) and at data availability. If both hold up, build a model in Jan–Feb and
    paper-trade from the 2027 Daytona 500.
-5. **Infrastructure:** the GCP move, and the first real V2 order if validation rule 6 is met.
+5. **Infrastructure:** the GCP move, and the first real V2 order if validation rule 5 is met.
 6. **Downhill:** points validation, Elite and Junior Women data, and the ChronoRace backlog (run
    locally).
 
