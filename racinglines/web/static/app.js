@@ -235,7 +235,7 @@
     const T = JSON.parse(rp.dataset.times), sl = document.getElementById("rp-slider"), lab = document.getElementById("rp-time"),
           play = document.getElementById("rp-play"), link = document.getElementById("rp-link"), paced = rp.dataset.pace === "real", base = rp.dataset.url;
     const at = s => Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8), +s.slice(9, 11), +s.slice(11, 13), +s.slice(13, 15));
-    let speed = +rp.dataset.speed || 30, timer = null;
+    let speed = +rp.dataset.speed || 30, timer = null, lastFetchMs = 0;
     function label() { const s = T[+sl.value]; lab.textContent = s.slice(9, 11) + ":" + s.slice(11, 13) + ":" + s.slice(13, 15) + " UTC · " + (+sl.value + 1) + " / " + T.length; }
     function show(i) {
       sl.value = Math.max(0, Math.min(T.length - 1, i)); label();
@@ -247,8 +247,14 @@
     function tick() {
       const i = +sl.value;
       if (i >= T.length - 1) return stop();
-      const wait = paced ? Math.max(150, (at(T[i + 1]) - at(T[i])) / speed) : 60000 / speed;   // updates hours apart: a fixed pace
-      timer = setTimeout(() => show(i + 1).then(() => { if (timer) tick(); }), wait);
+      const target = paced ? Math.max(150, (at(T[i + 1]) - at(T[i])) / speed) : 60000 / speed;   // updates hours apart: a fixed pace
+      // each fetch (network + server render) takes its own time on top of the wait; subtract the last one so
+      // higher speeds keep pacing correctly instead of it just adding on top and swallowing the difference
+      const wait = Math.max(0, target - lastFetchMs);
+      timer = setTimeout(() => {
+        const t0 = performance.now();
+        show(i + 1).then(() => { lastFetchMs = performance.now() - t0; if (timer) tick(); });
+      }, wait);
     }
     play.addEventListener("click", () => {
       if (timer) return stop();

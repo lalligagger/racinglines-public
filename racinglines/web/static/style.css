@@ -255,6 +255,9 @@ pre.log { max-height: 220px; overflow: auto; font-size: 11px; background: var(--
 .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { opacity: 1; }
 .htmx-indicator { opacity: 0; transition: opacity .2s; font-size: 12px; color: var(--muted); }
 .htmx-request:not(.htmx-indicator) { opacity: .7; transition: opacity .2s .15s; }
+/* the Live tab polls or steps every few seconds; the generic loading dim above is a distracting flicker there,
+   not a useful "something is happening" cue, so it's excluded (higher specificity than the rule it overrides) */
+#live.htmx-request { opacity: 1; transition: none; }
 
 /* ---------------------------------------------------------------- 5. Pages */
 /* Markets board */
