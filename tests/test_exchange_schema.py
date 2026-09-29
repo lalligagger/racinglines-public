@@ -310,3 +310,43 @@ def test_cli_refuses_a_sport_the_exchange_does_not_list(capsys):
     from racinglines.cli import markets
     assert markets.main(["--exchange", "og", "--sport", "motogp", "sync"]) == 2
     assert "lists f1, nascar" in capsys.readouterr().err
+
+
+def test_a_schema_that_asks_for_more_than_the_exchange_allows_fails_to_load(tmp_path, monkeypatch):
+    import tomllib
+    good = tomllib.loads((EX.SCHEMAS / "og.toml").read_text())
+    EX.check_limits("og", good)                                   # the shipped schema respects its own caps
+    for endpoint, field, value, limit in (("trades", "params", {"count": 1000}, "max_count"),
+                                          ("instruments", "batch_size", 11, "max_batch"),
+                                          ("history", "window_days", 32, "max_window_days")):
+        bad = tomllib.loads((EX.SCHEMAS / "og.toml").read_text())
+        bad["endpoints"][endpoint][field] = value
+        with pytest.raises(ValueError, match=f"endpoints.{endpoint}.*{limit}"):
+            EX.check_limits("og", bad)
+    bad = tomllib.loads((EX.SCHEMAS / "og.toml").read_text())
+    bad["endpoints"]["trades"]["limits"]["max_rows"] = 1
+    with pytest.raises(ValueError, match="unknown limit"):
+        EX.check_limits("og", bad)
+
+
+def test_sync_creates_a_sports_reference_rows_when_the_database_was_never_seeded(test_engine):
+    """The 2026-09-29 crash: a deployed database had tables but no sailgp_champ row, and the sync died with a bare
+    NoResultFound. The sync now files the sport's rows from its schema first."""
+    from sqlalchemy import select
+    from racinglines.db import models as m
+    from racinglines.db.config import get_session
+    from racinglines.db.ingest import ensure_competition
+    url = test_engine.url.render_as_string(hide_password=False)
+    with get_session(url) as s:
+        for comp in s.scalars(select(m.Competition).filter_by(code="sailgp_champ")):
+            for cat in s.scalars(select(m.Category).filter_by(competition_id=comp.id)):
+                s.delete(cat)
+            s.delete(comp)
+        s.commit()
+        assert s.scalars(select(m.Competition).filter_by(code="sailgp_champ")).one_or_none() is None
+        comp, cat = ensure_competition(s, "sailgp")
+        s.commit()
+        assert comp.code == "sailgp_champ" and cat.code == "TEAM" and cat.competition_id == comp.id
+        again, cat2 = ensure_competition(s, "sailgp")             # idempotent: the same rows, no duplicates
+        assert (again.id, cat2.id) == (comp.id, cat.id)
+        assert len(s.scalars(select(m.Competition).filter_by(code="sailgp_champ")).all()) == 1

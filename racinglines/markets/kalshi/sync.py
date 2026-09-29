@@ -248,13 +248,10 @@ def series_for(kc, sport="f1", series=None):
 
 
 def competition(session, sport):
-    """(Competition, its first Category) of a sport, as the sync files links under."""
-    schema = sports.load(sport)
-    comp = session.scalars(select(m.Competition).filter_by(code=schema["competition"]["code"])).one_or_none()
-    if comp is None:
-        raise SystemExit(f"competition {schema['competition']['code']!r} is not in the database: run `racinglines db seed`")
-    cat_code = next(iter(schema["competition"]["categories"]))
-    return comp, session.scalars(select(m.Category).filter_by(competition_id=comp.id, code=cat_code)).one()
+    """(Competition, its first Category) of a sport, as the sync files links under. Creates the rows from the
+    sport's schema when the database has not been seeded for it (db/ingest.ensure_competition)."""
+    from racinglines.db import ingest
+    return ingest.ensure_competition(session, sport)
 
 
 def sync(session, conn, year=2026, include_closed=False, kc=None, sport="f1", series=None):
