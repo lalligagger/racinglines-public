@@ -443,6 +443,9 @@ racinglines markets --exchange kalshi books --events KXF1-26
 racinglines markets --exchange kalshi --sport nascar sync [--closed]        # NASCAR Cup: KXNASCAR* series, links unmodeled
 racinglines markets --exchange kalshi --sport nascar trades                 # every NASCAR event's tape (no --events needed)
 racinglines markets --exchange kalshi --sport motogp books                  # one snapshot per open MotoGP market
+racinglines markets --exchange kalshi --sport road_cycling sync --closed    # UCI road: KXCYCLING* series, incl. settled grand tours
+racinglines markets --sport nascar sync [--tags nascar]                     # the same sport's Polymarket markets (tape only)
+racinglines markets --sport nascar trades                                   # trades / history / books work the same way
 ```
 
 | Command | What it does |
@@ -452,15 +455,15 @@ racinglines markets --exchange kalshi --sport motogp books                  # on
 | `history` | Store candlesticks (`--period` 1, 60 or 1440 minutes) in `market_price_history`. |
 | `books` | One order-book snapshot per open market in `market_book_snapshots` (a NO bid at p is a YES ask at 1 − p). |
 
-`--sport nascar` / `motogp` / `indycar` (before the command) switches the sync to a **tape-only sport**: Kalshi's
+`--sport nascar` / `motogp` / `indycar` / `road_cycling` / `le_mans` / `sailgp` (before the command) switches the sync to a **tape-only sport**: Kalshi's
 NASCAR Cup (`KXNASCAR*`: race winners and the champion), MotoGP (`KXMOTOGP*`) or IndyCar (`KXINDYCAR*`) series,
 filed under the sport's own competition (`sports/<code>.toml`, no model) with every link `unmodeled`. Off by
 default: without `--sport`, `sync` is the F1 sync above and touches nothing else. For any sport, `trades`,
 `history` and `books` without `--events` take every Kalshi event of that sport's competition (books: its open
 markets), so recording a series from listing to settlement is `sync --closed`, `trades` and `books` per pass.
-The series prefixes come from `[markets.kalshi] series` in the schema and were not checked against the live
+On Polymarket (`markets --sport nascar|motogp|indycar sync`, no `--exchange`) the same sports are recorded from the Gamma tags in `[markets.polymarket] tags`; the slugs are unverified against the live API and `--tags SLUG …` overrides them. The Polymarket path is additive: it upserts by token id and has no reset or delete. The series prefixes come from `[markets.kalshi] series` in the schema and were not checked against the live
 listing (the cloud can't reach Kalshi): `sync --series TICKER …` syncs exact tickers.
-[Data](data.md#other-series-tapes-nascar-motogp-indycar).
+[Data](data.md#other-series-tapes-nascar-motogp-indycar-road-cycling-le-mans-sailgp).
 
 **The recorder unit is not changed.** `racinglines-recorder` (`deploy/vm/systemd/racinglines-recorder.service`,
 `scripts/deploy/vm.sh`) still runs `markets record --interval 60`: Polymarket's F1 books, plus the hourly archive

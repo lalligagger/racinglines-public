@@ -19,10 +19,10 @@ Polymarket's; `markets archive` sends Kalshi's tokens there. One difference matt
 shared by every driver's market of the event, so Kalshi code reads and groups the tape by market ticker
 (`token_id`), never by condition.
 
-The same tables and archive take the **tape-only sports** (NASCAR Cup, MotoGP, IndyCar): synced only when named
+The same tables and archive take the **tape-only sports** (NASCAR Cup, MotoGP, IndyCar, and since PR #50 UCI road cycling, Le Mans and SailGP): synced only when named
 (`markets --exchange kalshi --sport nascar sync`), under their own competitions, every link `unmodeled`, so the
 replays below (which read F1's modeled links) never see them.
-[Data](data.md#other-series-tapes-nascar-motogp-indycar), [CLI](cli.md#kalshi-exchange-kalshi).
+[Data](data.md#other-series-tapes-nascar-motogp-indycar-road-cycling-le-mans-sailgp), [CLI](cli.md#kalshi-exchange-kalshi).
 
 ## Sprint weekends
 
