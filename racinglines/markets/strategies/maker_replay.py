@@ -42,6 +42,8 @@ from dataclasses import dataclass, field, replace
 import numpy as np
 import pandas as pd
 
+from racinglines.markets import settlement_rules as SR
+
 
 @dataclass(frozen=True)
 class Params:
@@ -337,7 +339,10 @@ def _score_fills(fills, data):
     mid = np.array([_mid_at(by[c], t) for c, t in zip(fills["cond"], fills["ts"])])
     m5 = np.array([_mid_at(by[c], t + int(300e9)) for c, t in zip(fills["cond"], fills["ts"])])
     m60 = np.array([_mid_at(by[c], t + int(3600e9)) for c, t in zip(fills["cond"], fills["ts"])])
-    out = np.array([np.nan if by[c].outcome is None else float(by[c].outcome) for c in fills["cond"]])
+    # a void market (settlement_rules.VOID: a cancelled race) settles every fill at its own price: P&L 0; a FAIR
+    # one without a price (Kalshi's cancelled race, no recorded price) is undecided
+    out = np.array([np.nan if by[c].outcome in (None, SR.FAIR) else (px if by[c].outcome == SR.VOID else float(by[c].outcome))
+                    for c, px in zip(fills["cond"], fills["price"])])
     q = fills["qty"].to_numpy()
     return fills.assign(
         mid=mid, spread_pnl=sgn * (mid - fills["price"]) * q,
@@ -353,7 +358,7 @@ def _positions(data, cash, inv):
         o = mk.outcome
         rows.append(dict(cond=mk.cond, kind=mk.kind, subject=mk.subject, question=mk.question,
                          inventory=inv[mk.cond], cash=cash[mk.cond], worst_case=_worst_case(cash[mk.cond], inv[mk.cond]),
-                         outcome=o, pnl=None if o is None else cash[mk.cond] + inv[mk.cond] * float(o)))
+                         outcome=o, pnl=SR.settle_position(inv[mk.cond], 0.0, cash[mk.cond], o)))
     # named columns even with no markets (e.g. an h2h-only sweep: the maker replays position markets only)
     return pd.DataFrame(rows, columns=["cond", "kind", "subject", "question", "inventory", "cash", "worst_case",
                                        "outcome", "pnl"])
@@ -439,6 +444,12 @@ def stages_for(runs, sessions):
     return out
 
 
+def _last_price(mids):
+    """The last recorded price of a market (None when none): what a FAIR settlement (settlement_rules.FAIR,
+    Kalshi's cancelled race) pays."""
+    return float(mids["price"].iloc[-1]) if len(mids) else None
+
+
 def _levels(v):
     """{price: size} from a recorded book side ([[price, size], ...] as a list or JSON text)."""
     if v is None or (isinstance(v, float) and np.isnan(v)):
@@ -453,17 +464,20 @@ def _levels(v):
     return out
 
 
-def load_event(conn, run_ids, sessions=None, books=False, exchange="polymarket"):
+def load_event(conn, run_ids, sessions=None, books=False, exchange="polymarket", rules=None):
     """Markets, fair values, public tape and outcomes for one event's diagnostic runs.
     sessions: [(kind, start)] (naive UTC) instead of the race's stored rounds (an event not yet run).
     books: also load the recorded order books (for fill="queue").
     exchange: whose markets and tape ("polymarket", or "kalshi": markets/kalshi/ writes the same tables). A
     Kalshi link's condition_id is its event ticker, shared by every market of the event, so there each market
-    is its own ticker (token_id), and its trades are read by ticker."""
+    is its own ticker (token_id), and its trades are read by ticker.
+    rules: a cancelled race's outcomes by the exchange's rules (markets/settlement_rules.py: an outcome can then
+    be a 0.5 payout or VOID); None reads RACINGLINES_CANCELLED_RACE_RULES, off by default."""
     from sqlalchemy import text
 
     from racinglines.db import reads as D
     from racinglines.markets import private_book as house
+    from racinglines.markets import settlement_rules as SR
 
     runs = pd.read_sql(text("SELECT id, params FROM model_runs WHERE id = ANY(:i) AND kind = 'diagnostic'"), conn,
                        params=dict(i=list(run_ids)))
@@ -488,8 +502,9 @@ def load_event(conn, run_ids, sessions=None, books=False, exchange="polymarket")
         SELECT ml.*, a.display_name AS athlete FROM market_links ml LEFT JOIN athletes a ON a.id = ml.athlete_id
         WHERE ml.race_id = :r AND ml.prediction = ANY(:k) AND ml.exchange = :x
         ORDER BY ml.id"""), conn, params=dict(r=race_id, k=list(MODELED), x=exchange))
+    status = SR.race_status("f1", key, SR.db_status(conn, race_id)) if SR.enabled(rules) else None
     if exchange == "kalshi":
-        return _load_kalshi(conn, links, runs, key, race_id, sessions, stages, qual_start, t0, t1, books)
+        return _load_kalshi(conn, links, runs, key, race_id, sessions, stages, qual_start, t0, t1, books, status)
     res = house.race_outcomes(conn, race_id)
     from racinglines.markets import store as MS
     conds = links["condition_id"].dropna().unique().tolist()
@@ -513,6 +528,9 @@ def load_event(conn, run_ids, sessions=None, books=False, exchange="polymarket")
         ath = None if pd.isna(link["athlete_id"]) else int(link["athlete_id"])
         outcome = house.outcome_for(link["prediction"], ath, link["params"], res)
         mids = px_by.get(link["token_id"], empty_px)
+        if status:
+            outcome = SR.apply(exchange, status, link["prediction"], link.get("group_title") or link.get("outcome"),
+                               outcome, last_price=_last_price(mids))
         tr = tr_by.get(cond, empty_tr)
         yes_px, yes_buy = to_yes(tr["outcome_index"].to_numpy(), tr["side"].to_numpy(), tr["price"].to_numpy())
         subject = link["athlete"] or (link["params"] or {}).get("team") or link["group_title"]
@@ -532,10 +550,12 @@ def load_event(conn, run_ids, sessions=None, books=False, exchange="polymarket")
                 qual_start=qual_start)
 
 
-def _load_kalshi(conn, links, runs, key, race_id, sessions, stages, qual_start, t0, t1, books):
-    """load_event for Kalshi links: one Market per ticker (YES contract; trades are already on its side)."""
+def _load_kalshi(conn, links, runs, key, race_id, sessions, stages, qual_start, t0, t1, books, status=None):
+    """load_event for Kalshi links: one Market per ticker (YES contract; trades are already on its side).
+    status: the race's settlement_rules status (cancelled / relocated), applied to the outcomes."""
     from racinglines.db import reads as D
     from racinglines.markets import private_book as house
+    from racinglines.markets import settlement_rules as SR
     from racinglines.markets import store as MS
     res = house.race_outcomes(conn, race_id)
     toks = links["token_id"].tolist()
@@ -553,6 +573,9 @@ def _load_kalshi(conn, links, runs, key, race_id, sessions, stages, qual_start, 
         ath = None if pd.isna(link["athlete_id"]) else int(link["athlete_id"])
         outcome = house.outcome_for(link["prediction"], ath, link["params"], res)
         mids, tr = px_by.get(tok, empty_px), tr_by.get(tok, empty_tr)
+        if status:
+            outcome = SR.apply("kalshi", status, link["prediction"], link.get("group_title") or link.get("outcome"),
+                               outcome, last_price=_last_price(mids))
         subject = link["athlete"] or (link["params"] or {}).get("team") or link["group_title"]
         if link["prediction"] == "race_h2h":
             subject = f"{link['athlete'] or link['outcome']} ahead ({link['question']})"

@@ -138,7 +138,21 @@ def taker_signals(markets, p):
                              target_cost=shares * tr["price"], signal_ts=stage["t"],
                              detail=dict(ev=modelled_ev(action, tr["side"], shares, tr["price"], tr["fair"]),
                                          side_prob=fair_side)))
-    return sigs, pos
+    return sigs, [_position(p) for p in pos]
+
+
+def _position(p):
+    """A paper position row. paper_positions.outcome is YES/NO; a cancelled race's venue rule (markets/
+    settlement_rules.py) can instead pay 0.5 or refund at cost (VOID): then the position is closed to cash at
+    that payout (shares 0, outcome None), which the track record reads as settled at that P&L."""
+    from racinglines.markets import settlement_rules as SR
+    o = p["outcome"]
+    if o is None or isinstance(o, (bool, np.bool_)):
+        return p
+    if o == SR.FAIR:                # Kalshi's fair-price settlement with no recorded price: still open
+        return dict(p, outcome=None)
+    return dict(p, cash=SR.settle_position(p["yes_shares"], p["no_shares"], p["cash"], o), yes_shares=0.0,
+                no_shares=0.0, outcome=None)
 
 
 def maker_state(quotes, fills, markets, stage_label, now_ns):
@@ -440,7 +454,7 @@ def _maker(c, w, runs, st, strategy, now, live, venue="polymarket"):
         pos.append(dict(market_key=r["cond"], kind=r["kind"], subject=r["subject"], yes_shares=r["inventory"],
                         no_shares=0.0, cash=r["cash"], mark=R.PublicView(mk, now_ns).mid(), outcome=r["outcome"],
                         bid=s.get("bid"), ask=s.get("ask"), quote_state=s.get("quote_state")))
-    return dict(signals=sigs, positions=pos, maker_state=state)
+    return dict(signals=sigs, positions=[_position(p) for p in pos], maker_state=state)
 
 
 def format_replay(out):
