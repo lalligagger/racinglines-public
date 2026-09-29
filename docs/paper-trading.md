@@ -171,7 +171,8 @@ rules (checked 2026-09-29):
   Dhabi 2025, ...) say "If a Grand Prix is permanently canceled, the market will resolve 50-50", a tie between
   the two drivers resolves 50-50 as well, and "If a Grand Prix is postponed, the market will remain open until
   the event has been completed". So the 0.5 payout is the rule, not a guess.
-- **Kalshi:** the F1 race markets (winner, podium, pole, head-to-heads) all carry the same clause: a race
+- **Kalshi:** the F1 race markets (winner, podium, pole, head-to-heads) all carry the same clause (read from search
+  excerpts of Kalshi's market pages; the pages themselves are blocked from the cloud environment): a race
   postponed but started within 48 hours of its scheduled start settles on the official final result, and "if
   the race is cancelled or not started within 48 hours of its originally scheduled start, all markets will
   resolve to a fair price". Kalshi's rulebook (6.3(c)) makes that the last fair market price as Kalshi
