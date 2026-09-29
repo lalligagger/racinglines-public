@@ -30,7 +30,7 @@ in `og_README.txt`). Public market data needs no key. The venue is **off by defa
 `RACINGLINES_OG_VENUE=1` to show an OG.com column next to Polymarket and Kalshi on the board, race and season pages, and a `/markets/og` list page with the fair-price indicator (below). Each schema exchange gets its own `/markets/<code>` page from its TOML file, registered at import, so a new venue needs no route code. `RACINGLINES_TAPES=1` adds `/markets/tapes`, the recorded tape-only sports' markets (NASCAR, MotoGP, IndyCar) per exchange event, market data only.
 
 What it lists of ours: the F1 season futures (Drivers' and Constructors' champion, 20 contracts, expiring
-2027-01-31) become linked, priced markets; the NASCAR Cup Champion contracts are tape-only. Per-Grand-Prix events
+2027-01-31) become linked, priced markets; the NASCAR Cup Champion contracts and SailGP's Championship Winner contracts (`--sport sailgp`, PR #50) are tape-only. Per-Grand-Prix events
 exist but have no live instruments between weekends, so race markets appear only around a weekend, and the
 schema's `event_prefixes` finds them when they do (their contract names need `[[rules]]` once a live one has been
 seen: only the champion contracts have been checked against the API).
@@ -38,6 +38,7 @@ seen: only the champion contracts have been checked against the API).
 ```bash
 racinglines markets --exchange og sync                    # the F1 futures and their quotes, into market links
 racinglines markets --exchange og --sport nascar sync     # NASCAR Cup Champion, tape only
+racinglines markets --exchange og --sport sailgp sync     # SailGP Championship Winner, tape only
 racinglines markets --exchange og trades                  # the tape the API still serves (about a month)
 racinglines markets --exchange og history --start 2026-09-01T00:00     # minute prices (31 days at most per call)
 racinglines markets --exchange og books                   # one 50-level order-book snapshot per open market

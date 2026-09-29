@@ -48,12 +48,12 @@ sport · **?** not probed. Each cell is H / B / L.
 | **F1** (`f1`) | H ✓ 2025–26, 7,285 links · B ✓ A (taker) and C (maker), params-4h · L ✓ signal engine, but **no race listed since 28 Aug** | H ✓ 2025–26, 3,793 links (29 `KXF1*` series, `KXF1RACE` 22 open) · B ✓ C replayed, K tuned ([Profile K](kalshi-history.md#profile-k), frozen pending owner review; **2026 +$490, 2025 +$659**) · L ~ U1 done (`venue = kalshi`, #34), U5 sprints (#36, behind a switch) and the reconcile / scorecard checks built, **U2 recorder on the VM not running** | H ✗ (API keeps about a month) · B ✗ · L ✗ · **20 season futures listed** (Drivers' and Constructors', expire 2027-01-31); per-GP events exist but had no live instruments; books thin, asks only at 1–4¢, about 4 trades a week | H ✓ Baku test · B ✓ same profiles · L ✓ `live/f1/2026-16.toml` … `2026-23.toml` | FastF1 (network-blocked in the cloud). `position_sim` |
 | **UCI downhill** (`mtb_dh`) | – (probed: nothing on mountain bike) | – (probed: no series) | – (probed) | H ✓ Whistler 2026 (7,703 fills) · B ✓ walk-forward, 43 rounds ([Evaluation](evaluation.md)) · L ✓ `racinglines mtb_dh live` | ChronoRace feed (primary) + PDF backfill. `timed_runs`. Season is over; next World Cup spring 2027 |
 | **UCI XCO / XCC** (none) | – (probed) | – (probed) | – (probed) | ✗ no model (the downhill live core is time-based, XCO is a mass start) | ChronoRace serves XC on the same weekend slugs (`_mtb`, once `_xco`): results are fetchable, nothing is ingested |
-| **UCI road: grand tours, monuments, Worlds** (none) | H ✗ · listings ✓ Tour 2026 (about $1.3M volume), Vuelta, Il Lombardia · B ✗ · L ✗ | H ✗ · **settled history ✓ at least 200 markets in each of `KXCYCLING`, `KXCYCLINGSTAGE`, `KXCYCLINGTEAM`, `KXCYCLINGJERSEY`, plus `KXTOURDEFRANCE`**; 0 open now · B ✗ · L ✗ | – (probed: no cycling) | ✗ | No source, no schema, no model. ProCyclingStats is the obvious results source (terms to check). Next listings that could exist: Il Lombardia 10 Oct, then the 2027 spring classics and Giro |
+| **UCI road: grand tours, monuments, Worlds** (none) | H ✗ · listings ✓ Tour 2026 (about $1.3M volume), Vuelta, Il Lombardia · B ✗ · L ✗ | H ~ tape-only schema built (PR #50, `road_cycling`), **not yet run on the VM** · **settled history ✓ at least 200 markets in each of `KXCYCLING`, `KXCYCLINGSTAGE`, `KXCYCLINGTEAM`, `KXCYCLINGJERSEY`, plus `KXTOURDEFRANCE`**; 0 open now · B ✗ · L ✗ | – (probed: no cycling) | ✗ | No source, no model (a tape-only schema exists, PR #50). ProCyclingStats is the obvious results source (terms to check). Next listings that could exist: Il Lombardia 10 Oct, then the 2027 spring classics and Giro |
 | **UCI track, cyclocross, BMX, gravel** (none) | – ? | – ? | – (probed) | ✗ | No source. Track Worlds 14–18 Oct (Shanghai), Cyclocross World Cup from 23 Nov. Expect no markets; not probed beyond OG.com |
-| **NASCAR Cup** (`nascar`, tape-only) | H ✗ · **listings ✓ per-race winner markets** and futures · B ✗ · L ✗ | H ~ U9 sync built (#26, merged), `KXNASCAR*` (17 series, **`KXNASCARRACE` 72 open**), fixture-tested only, **never run live** · B ✗ · L ✗ | H ✗ · **17 Cup Champion futures only** | ✗ | No source (P2 research item), no model. Chase races every October weekend, finale Homestead 8 Nov |
-| **MotoGP** (`motogp`, tape-only) | H ✗ · listings ✓ championship winner (25 outcomes) **and per-race Grand Prix winners** (Germany, Netherlands, Czechia, about $34k–$100k volume each, seen 2026-09-29) · B ✗ · L ✗ | H ~ U9 sync built, `KXMOTOGP*` (3 series, 22 open), never run · B ✗ · L ✗ | – (probed: not listed) | ✗ | No source, no model. Qatar–Valencia rounds Nov |
-| **IndyCar** (`indycar`, tape-only) | H ✗ · listings ✓ championship winner, Indy 500 · B ✗ · L ✗ | H ~ U9 sync built, `KXINDYCAR*` (9 series), never run · B ✗ · L ✗ | – (probed: not listed) | ✗ | Season over (Sept). Nothing to record until March 2027 |
-| **SailGP, Le Mans, Formula E, rally, alpine skiing** (none) | SailGP, Le Mans ✓ listed | SailGP ✓ (`KXSAILGP` 13 open, `KXSAILGPRACE` 13), Le Mans ✓ (`KXLEMANS24H`) | SailGP ✓ 13 Championship Winner contracts | ✗ | Not in scope; noted so the search was complete |
+| **NASCAR Cup** (`nascar`, tape-only) | H ~ Polymarket tape path built (PR #51), **not yet run, tag slug unverified** · listings ✓ per-race winner markets and futures · B ✗ · L ✗ | H ✓ U9 sync (#26), **first live run on the VM 2026-09-29: 13,599 links, 419 events, 1.69M trades** (`KXNASCARRACE` 3,480 and the top-3/5/10/20, fastest-lap, pole, team and head-to-head series), all `unmodeled` · B ✗ · L ✗ | H ✗ · **17 Cup Champion futures only** | ✗ | No source (P2 research item), no model. Chase races every October weekend, finale Homestead 8 Nov |
+| **MotoGP** (`motogp`, tape-only) | H ✗ · listings ✓ championship winner (25 outcomes) **and per-race Grand Prix winners** (Germany, Netherlands, Czechia, about $34k–$100k volume each, seen 2026-09-29) · B ✗ · L ✗ | H ✓ U9 sync, first live run 2026-09-29: 322 links, 15 events, 12k trades (`KXMOTOGPRACE` 289, `KXMOTOGP` 22, `KXMOTOGPTEAMS` 11) · B ✗ · L ✗ | – (probed: not listed) | ✗ | No source, no model. Qatar–Valencia rounds Nov |
+| **IndyCar** (`indycar`, tape-only) | H ✗ · listings ✓ championship winner, Indy 500 · B ✗ · L ✗ | H ✓ U9 sync, first live run 2026-09-29: 1,374 links (all closed), 54 events, 167k trades; nothing open, so no books · B ✗ · L ✗ | – (probed: not listed) | ✗ | Season over (Sept). Nothing to record until March 2027 |
+| **SailGP, Le Mans, Formula E, rally, alpine skiing** (none) | SailGP, Le Mans ✓ listed | SailGP ✓ (`KXSAILGP` 13 open, `KXSAILGPRACE` 13), Le Mans ✓ (`KXLEMANS24H`) | SailGP ✓ 13 Championship Winner contracts | ✗ | Tape-only schemas built (PR #50: `sailgp`, `le_mans`, Kalshi and OG.com SailGP), not yet run on the VM. No model; noted so the search was complete |
 
 Reading across: **F1 is the only sport with all three marks on any real venue**, and only on Polymarket,
 which is not listing. On Kalshi F1 is one step short (the VM recorder). Everything else is either private
@@ -66,19 +66,18 @@ started.
 
 1. **Kalshi recorder on the VM (U2) — S.** The only thing between F1-on-Kalshi and a full row. Needs the VM
    or the owner's device (Kalshi is network-blocked in the cloud). Already P0 in [Roadmap](todo.md#priorities).
-2. **Run the NASCAR / MotoGP tape sync for real (U9) — S.** The code shipped in #26 and has never seen the
-   live API. One command on the VM per sport, then a timer. Every October Chase weekend not recorded is
-   a weekend of 2027 backtest data lost.
-3. **Polymarket tapes for NASCAR, MotoGP, IndyCar — M.** New since the strategy session: Polymarket lists
-   per-race NASCAR winners and MotoGP / IndyCar futures. The Polymarket sync knows F1 only
-   (`markets/polymarket/links.py`); the tape-only path exists for Kalshi. Generalise the Polymarket sync to
-   a named sport the way U9 did for Kalshi (`[markets.polymarket]` in `sports/<code>.toml`, links
-   `unmodeled`). Then the December "NASCAR for 2027?" call has both venues' tapes.
-4. **UCI road cycling as a tape-only sport — S for Kalshi, M with Polymarket.** A `sports/road_cycling.toml`
-   with `model_family = "none"` and `[markets.kalshi] series = ["KXCYCLING", "KXCYCLINGSTAGE",
-   "KXCYCLINGTEAM"]` records Kalshi's tapes with no other code (the U9 path). Include closed 2026 markets
-   (`--include-closed`) to pull the Tour, Giro and Vuelta history Kalshi still serves. Polymarket's cycling
-   markets come with item 3. This is the owner's "all UCI cycling events" ask at its cheapest.
+2. **A timer for the tape syncs (U9) — S.** The first live run happened on the VM on 2026-09-29 (numbers in the grid),
+   so the code works. What is missing is a timer, so every October Chase weekend is recorded from listing to
+   settlement. Also open: the sync should seed a sport's competition row itself, and Kalshi's Truck and Auto Parts
+   series landed under NASCAR Cup.
+3. **Polymarket tapes for NASCAR, MotoGP, IndyCar — built (PR #51), first run open.** The Polymarket sync now takes a
+   named tape-only sport (`[markets.polymarket] tags` in `sports/<code>.toml`, links `unmodeled`, additive).
+   The tag slugs are unverified against the live Gamma API: run `markets --sport nascar sync` on the VM, and
+   `--tags SLUG …` corrects a slug without code. Then the December "NASCAR for 2027?" call has both venues' tapes.
+4. **UCI road cycling as a tape-only sport — schema built (PR #50), first run open.** `sports/road_cycling.toml`
+   (`model_family = "none"`, Kalshi `KXCYCLING*`) records Kalshi's tapes with no other code (the U9 path); `sync
+   --closed` pulls the Tour, Giro and Vuelta history Kalshi still serves. Polymarket's cycling markets need a
+   `[markets.polymarket] tags` entry once the slug is known. This is the owner's "all UCI cycling events" ask at its cheapest.
 5. **A road-cycling model — L, 2027.** Stage racing is a different problem from a timed run or a
    position sim (GC vs stage, teams, breakaways). Decide after the 2026 tapes show volume; the
    grand-tour winner markets look like the only deep ones. Results source and its terms first

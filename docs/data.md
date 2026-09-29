@@ -146,7 +146,7 @@ The Kalshi replays pass `root=store.root_for("kalshi")` to read only Kalshi's tr
 pass wrote everything to the Polymarket tree ([Data changes](data-changes.md)); the Kalshi-only files it left under
 `polymarket/{prices,trades}/` on the owner's machine were deleted the same day (every row is in the Kalshi archive).
 
-### Other series' tapes: NASCAR, MotoGP, IndyCar
+### Other series' tapes: NASCAR, MotoGP, IndyCar, road cycling, Le Mans, SailGP
 
 Kalshi also lists NASCAR Cup (race winners and the champion), MotoGP and IndyCar. Each is a **tape-only
 sport** ([Roadmap](todo.md#new-sports), U9): a schema with no model (`sports/nascar.toml`, `motogp.toml`,
@@ -155,6 +155,8 @@ sport** ([Roadmap](todo.md#new-sports), U9): a schema with no model (`sports/nas
 series` list of ticker prefixes (`KXNASCAR`, `KXMOTOGP`, `KXINDYCAR`) that the sync matches against Kalshi's
 Sports series. Nothing is priced: the board and the Lab don't list them (they only show competitions with
 model runs), `racinglines check` doesn't run them, and no pipeline reads them.
+
+**Also built (PRs #50, #51):** the same kind of schema for UCI road cycling (`road_cycling`, competition `uci_road_wt`), Le Mans (`le_mans`, `le_mans_24h`) and SailGP (`sailgp`, `sailgp_champ`, Kalshi and OG.com), and a Polymarket path for NASCAR, MotoGP and IndyCar through `[markets.polymarket] tags` (slugs unverified, `--tags` overrides; additive). **First live run (VM, 2026-09-29):** Kalshi NASCAR 13,599 links, MotoGP 322, IndyCar 1,374; road cycling, Le Mans, SailGP and Polymarket not yet run.
 
 **Off by default.** `racinglines markets --exchange kalshi sync` still syncs F1 and nothing else. A tape-only
 sport is synced only when named, `--sport nascar` (or `motogp`, `indycar`); its links land in `market_links`
