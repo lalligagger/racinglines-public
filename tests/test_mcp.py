@@ -289,3 +289,33 @@ def test_http_app_serves_a_public_hostname(test_engine):
         r = client.post("/mcp", json=body, headers={**hdr, "Authorization": f"Bearer {tok}"})
         assert r.status_code == 200, r.text
     auth.revoke(test_engine, "t_admin")
+
+
+def test_track_record_all_lists_one_row_per_weekend_and_venue(mcp):
+    """venue='all': the maker's weekend (Polymarket fills and a Kalshi replay of the same tape) shows as two
+    rows with a venue column, totals per venue add up to the grand total; the default venue keeps its shape."""
+    from sqlalchemy import text as T
+    with mcp.engine.begin() as c:
+        uid = c.execute(T("""INSERT INTO users (username, password_hash, role) VALUES ('mcp-maker', 'x', 'maker')
+                             ON CONFLICT (username) DO UPDATE SET role = 'maker' RETURNING id""")).scalar()
+        for venue, pnl in (("polymarket", 3.0), ("kalshi", -1.0)):
+            c.execute(T("""INSERT INTO strategy_signals (user_id, profile, strategy, event_key, market_key, kind, subject, stage,
+                             dedupe, action, side, shares, limit_price, fair, price, edge, heat, status, signal_ts, detail)
+                           VALUES (:u, 'test', 'maker', '2099-02', :mk, 'race_winner', 'Zed', 'after FP2', :mk, 'fill', 'YES',
+                             10, 0.4, 0.5, 0.4, 0.1, 1, 'done', now(), CAST(:d AS jsonb))"""),
+                      dict(u=uid, mk=f"tok-{venue}", d=json.dumps(dict(venue=venue))))
+            c.execute(T("""INSERT INTO paper_positions (user_id, event_key, market_key, kind, subject, yes_shares, cash, outcome, venue)
+                           VALUES (:u, '2099-02', :mk, 'race_winner', 'Zed', 0, :pnl, true, :v)"""),
+                      dict(u=uid, mk=f"tok-{venue}", pnl=pnl, v=venue))
+    try:
+        out = mcp("track_record", user="mcp-maker", venue="all")
+        rows = out["rows"]["rows"]
+        assert [(r["event_key"], r["venue"], r["pnl"]) for r in rows] == [("2099-02", "polymarket", 3.0), ("2099-02", "kalshi", -1.0)]
+        assert out["weekends"] == 1 and out["pnl"] == 2.0 and out["up"] == 1  # one weekend, two rows
+        assert out["totals"] == [dict(venue="polymarket", weekends=1, pnl=3.0, up=1), dict(venue="kalshi", weekends=1, pnl=-1.0, up=0)]
+        default = mcp("track_record", user="mcp-maker")
+        assert "totals" not in default and "venue" not in default["rows"]["rows"][0]
+        assert default["weekends"] == 1 and default["pnl"] == 3.0 and default["rows"]["rows"][0]["fills"] == 1
+    finally:
+        with mcp.engine.begin() as c:
+            c.execute(T("DELETE FROM users WHERE username = 'mcp-maker'"))

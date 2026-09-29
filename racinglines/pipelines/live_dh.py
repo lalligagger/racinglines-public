@@ -38,9 +38,11 @@ Files: data/runs/live/<slug>_<key>/
 A demo experiment: the quotes are simulated, nothing is traded anywhere.
 """
 
+import fcntl
 import json
 import math
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 import numpy as np
@@ -512,7 +514,37 @@ def update(slug, key, quali_keys, cond="", session=None, interval=BASE_INTERVAL)
     return snap
 
 
+@contextmanager
+def lock(slug, key):
+    """One poll loop per final: a non-blocking lock on the run folder, the F1 step's (cli/live.py lock()). Yields
+    True holding it, False when another process holds it. The OS drops the lock with the process that took it,
+    so a killed loop leaves nothing stale to clean up; the `.lock` file itself stays (it's empty)."""
+    f = (outdir(slug, key) / ".lock").open("w")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        f.close()
+        yield False
+        return
+    try:
+        yield True
+    finally:
+        fcntl.flock(f, fcntl.LOCK_UN)
+        f.close()
+
+
 def run(slug, key, quali_keys, cond="", interval=BASE_INTERVAL, minutes=0, echo=print):
+    """Poll the final until it is over (or `minutes`), holding the run folder's lock() the whole time: a second
+    loop for the same final (a restart that didn't stop the first) says so and returns None instead of polling
+    alongside it (Whistler 22:38-22:39, docs/live-events.md)."""
+    with lock(slug, key) as ok:
+        if not ok:
+            echo(f"{run_name(slug, key)}: another loop is polling this final (its lock is held); not started")
+            return None
+        return _run(slug, key, quali_keys, cond, interval=interval, minutes=minutes, echo=echo)
+
+
+def _run(slug, key, quali_keys, cond="", interval=BASE_INTERVAL, minutes=0, echo=print):
     import requests
     s = requests.Session()
     t0 = time.time()
@@ -551,7 +583,7 @@ def step(spec, now=None, echo=print, **_):
 
 
 def run_spec(spec, minutes=0, echo=print):
-    """Adapter: poll the spec's final until it is over (run())."""
+    """Adapter: poll the spec's final until it is over (run(), under the run folder's lock)."""
     f = spec["feed"]
     return run(f["slug"], str(f["final"]), [str(k) for k in f.get("quali", [])], f.get("conditions", ""),
                interval=spec["live"]["poll"]["interval_s"], minutes=minutes, echo=echo)
