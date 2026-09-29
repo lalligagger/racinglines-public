@@ -185,11 +185,14 @@ def test_windows_are_clipped_to_what_the_exchange_keeps_and_naive_times_are_utc(
     with D.Client("og", transport=transport(log)) as c:
         c.window("trades", "NX.F.OPT.F1-00001-2026.O.1.13", "2001-01-01")
         c.window("history", "NX.F.OPT.F1-00001-2026.O.1.13", "2001-01-01", "2026-09-29T00:00")
-    (_, _, trades), (_, _, hist) = [x for x in log if "trades" in x[1] or "histories" in x[1]]
+        c.window("history", "NX.F.OPT.F1-00001-2026.O.1.13", "2001-01-01")            # end defaults to now
+    (_, _, trades), (_, _, hist), (_, _, open_end) = [x for x in log if "trades" in x[1] or "histories" in x[1]]
     now_ns = pd.Timestamp.now("UTC").timestamp() * 1e9
     assert now_ns - int(trades["start_ts"]) < 31 * 86400e9 and int(trades["start_ts"]) > now_ns - 31 * 86400e9
     assert int(hist["end_ts"]) == int(pd.Timestamp("2026-09-29", tz="UTC").timestamp() * 1000)
     assert int(hist["end_ts"]) - int(hist["start_ts"]) <= 31 * 86400 * 1000            # the 31-day cap
+    assert 0 < 31 * 86400 * 1000 - (int(open_end["end_ts"]) - int(open_end["start_ts"])) <= 1000    # never over it by a tick
+    assert trades["count"] == "150"                                                        # OG.com's maximum
 
 
 @pytest.mark.quick

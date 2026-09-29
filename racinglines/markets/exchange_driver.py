@@ -131,11 +131,12 @@ class Client:
         """A time-windowed endpoint (trades, history) for one instrument; the window is clipped to the schema's
         `window_days` (the exchange keeps about that much)."""
         ep = self.schema["endpoints"][endpoint]
-        start = utc(start)
-        start = max(start, pd.Timestamp.now("UTC") - pd.Timedelta(days=ep["window_days"]))
+        now = pd.Timestamp.now("UTC")                  # read once: a second read for `end` a millisecond later
+        start = utc(start)                             # put the span over the cap (OG.com: "at most 2678400000 ms")
+        start = max(start, now - pd.Timedelta(days=ep["window_days"]) + pd.Timedelta(seconds=1))
         p = {ep["instrument_param"]: instrument, ep["start_param"]: epoch(start, ep["start_unit"])}
         if ep.get("end_param"):
-            p[ep["end_param"]] = epoch(utc(end) if end else pd.Timestamp.now("UTC"), ep["start_unit"])
+            p[ep["end_param"]] = epoch(utc(end) if end else now, ep["start_unit"])
         return self.rows(endpoint, **p)
 
 

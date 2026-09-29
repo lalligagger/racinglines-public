@@ -60,7 +60,7 @@ data = "result.data"
 instrument_param = "instrument_name"
 start_param = "start_ts"                 # nanoseconds
 start_unit = "ns"
-params = { count = 1000 }
+params = { count = 150 }                 # the server's maximum: 200 and up is "Invalid count" (checked 2026-09-29)
 window_days = 30                         # the docs say 7; the server accepted 30 and 60, and returned nothing at 100
 
 [endpoints.history]
