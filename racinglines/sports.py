@@ -14,6 +14,8 @@ the values from here, so a new sport starts with a new schema file.
     polymarket_tags(code)       the Gamma tag_slug values a sport's [markets.polymarket] names, () if none
     identity(code)              the package under racinglines/sources/ whose links module says which driver and race a
                                 market is about ([identity] resolver in the schema), None if the sport has none
+    frames(code)                the L1 input frames a sport's [data] frames names, () if the block is absent
+                                (racinglines/frames, docs/frames.md)
 """
 
 import tomllib
@@ -52,6 +54,17 @@ def polymarket_tags(code):
 def identity(code):
     """The name of the sport's market-identity resolver ([identity] resolver), or None."""
     return load(code).get("identity", {}).get("resolver")
+
+
+def frames(code):
+    """The L1 input frames a sport's schema says it provides ([data] frames), as a tuple; () if there is no block."""
+    return tuple(load(code).get("data", {}).get("frames", ()))
+
+
+def live_frames(code):
+    """The frames whose source dates each row as it happens ([data] live), as a tuple; () if none. Every other
+    session-keyed frame is published a whole session at a time, once the session has ended."""
+    return tuple(load(code).get("data", {}).get("live", ()))
 
 
 def int_keys(d):
