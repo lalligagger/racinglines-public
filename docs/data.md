@@ -471,7 +471,7 @@ key (`links.outcome_key`: kind, athlete, race or season). It is built from the r
 
 | Field | What it holds |
 |---|---|
-| `athlete_id` | The driver, for a Cup contract on one driver (through the resolver above). Not for a team, a manufacturer or a head-to-head (two drivers a market; there is no sample of an open one yet, so it gets the race and the kind only). |
+| `athlete_id` | The driver, for a Cup contract on one driver (through the resolver above). A head-to-head (Kalshi lists two markets per matchup, "Will A beat B at the …", yes = A finishes ahead) gets A here and B as `params.opponent_id`, both or neither, so the two sides are two outcomes. Not for a team or a manufacturer. |
 | `race_id` | The Cup race, for a contract on one race. Found **by the race's name inside the market's season**, as a whole phrase against the season's Cup schedule (sponsor tails like "presented by Jiffy Lube" are optional): Kalshi's rules text and Polymarket's question both spell it out. A name two races share (Cook Out 400 is Martinsville and Richmond in 2026) is settled by the date the listing states (Kalshi: "originally scheduled for Oct 4, 2026"; Polymarket's slug), then by the close time, else left unset and reported. A date alone is never enough: the O'Reilly race runs the day before the Cup race on the same track. |
 | `params.kind` | What the contract is: `race_win`, `race_podium`, `race_top5`, `race_top10`, `race_top20`, `race_pole`, `race_fastest_lap`, `race_biggest_mover`, `race_h2h`, `race_team_win`, `champion`, `regular_season_champion`, `in_season_challenge`. From the Kalshi series ticker, else the wording of the question ("win", "championship"). |
 | `params.nascar_series` | `cup`, `xfinity` or `trucks`, when the listing says so or a Cup race matched. Trucks and O'Reilly (Auto Parts) links are **tagged, not filtered** (owner, 2026-09-29): they keep their competition and their tapes and get no driver or race, because the results adapter files Cup only. "Xfinity 500" is a Cup race; only "Xfinity Series" / "Auto Parts Series" tag the second series. |
@@ -494,9 +494,13 @@ upcoming or the latest completed (a link with no race keeps only its last days),
 once it has run, stay in Postgres in full until the next race replaces them; older races archive to Parquet as before. Everything that prices or
 trades selects on `prediction`, which stays `unmodeled` (checked in the disagreement recorder, the replays, the weekend sweep, the scorecard, the calendar and the MCP tools).
 
-*Not sampled yet.* OG.com's NASCAR instruments (the fixtures hold its event, not its 17 contracts, so its rows are tested with a synthetic row built from
-the event's fields) and an open Kalshi head-to-head event (only settled ones, without markets, came back). The dry run's unresolved list is where
-either shows up on the first real run; read it before `--apply`.
+*Sampled, 2026-09-29 (PR #68).* OG.com lists 17 NASCAR contracts, all Cup champion, one binary option per driver
+(`og_instruments_nascar.json`, `og_tickers_nascar.json`): the contract type is "Moneyline", the event name says "NASCAR Cup Series
+Champion", the season is the last part of the event symbol `NSCAR-00002-2026`; 15 of the 17 drivers resolve in the test database. A Kalshi
+head-to-head is only listed around a race (none was open; `kalshi_nascar_h2h.json` holds settled events and their historical markets).
+Not sampled: an open Polymarket race market for a race Kalshi also lists (the pass is tested on Polymarket's Coca-Cola 600, Cracker
+Barrel 400, Cup champion and an Xfinity race, and on a synthetic South Point 400 row), and Kalshi's `KXNASCARCUPCHAMP`, `RACEOLD` and `TOPMANU`
+series (no events came back for them). The first real dry run lists whatever does not resolve; read it before `--apply`.
 
 Cup only for now: Xfinity and Trucks need their own competition rows before `--series 2|3` ingests. Lap-notes and standings are
 fetched and kept (the raw record is cheap to keep and expensive to re-crawl) but not ingested yet. Nothing runs by default;

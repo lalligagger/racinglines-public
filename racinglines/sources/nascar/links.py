@@ -8,7 +8,8 @@ exchange, so the same real-world outcome gets the same athlete, race and kind wh
 
 What is filled, and what is not:
 
-* `athlete_id`: the driver, through identity.Resolver, for a Cup contract on one driver.
+* `athlete_id`: the driver, through identity.Resolver, for a Cup contract on one driver; for a head-to-head the one that
+  finishes ahead on "yes", with `params.opponent_id` the other (both resolve or neither is set).
 * `race_id`: the Cup race, for a contract on one race. The race is found by its NAME within the market's season:
   every exchange writes the race's name somewhere (Kalshi's rules text, Polymarket's question), sponsors and
   all, and it is matched as a whole phrase against the season's Cup schedule. A name two races share ("Cook Out
@@ -56,7 +57,7 @@ KALSHI = {
     "KXNASCARPOLE": ("race_pole", "driver", None),
     "KXNASCARFASTLAP": ("race_fastest_lap", "driver", None),
     "KXNASCARBIGGESTMOVER": ("race_biggest_mover", "driver", None),
-    "KXNASCARH2H": ("race_h2h", "matchup", None),                # two drivers a market: no sample of an open one yet
+    "KXNASCARH2H": ("race_h2h", "matchup", None),                # two drivers a market: athlete = the one that finishes ahead on yes
     "KXNASCARTOPTEAM": ("race_team_win", "team", None),
     "KXNASCARTOPMANU": ("race_manufacturer_win", "manufacturer", None),
     "KXNASCARCUPSERIES": ("champion", "driver", "cup"),
@@ -84,6 +85,9 @@ CLASS_HINTS = (
     (re.compile(r"\bxfinity series\b|\bauto parts series\b|^auto parts\b"), "xfinity"),
     (re.compile(r"\bcup series\b"), "cup"),
 )
+# A head-to-head market names both drivers: Kalshi's question "Will Todd Gilliland beat Chase Elliott at the Window World 450 Main
+# Race originally scheduled for July 19, 2026?" (yes = the first finishes ahead), its yes side "Todd Gilliland beats Chase Elliott".
+PAIR = (re.compile(r"^Will (.+?) (?:finish ahead of|beat) (.+?) (?:at|in) "), re.compile(r"^(.+?) beats (.+)$"))
 DATE = re.compile(r"scheduled for ([A-Z][a-z]{2,8})\.? (\d{1,2}), (\d{4})")
 SLUG_DATE = re.compile(r"(\d{4})-(\d{2})-(\d{2})$")
 YEAR = re.compile(r"(?<!\d)(20[12]\d)(?!\d)")
@@ -98,22 +102,34 @@ class Found:
     """What one link is about. `problems` lists why a part is missing (a report, not an error)."""
 
     def __init__(self):
-        self.kind = self.series = self.year = self.athlete_id = self.race_id = self.race = self.subject = None
+        self.kind = self.series = self.year = self.athlete_id = self.opponent_id = self.race_id = self.race = self.subject = None
         self.problems = []
 
     def params(self):
         """The keys this adds to the link's params (only those known)."""
-        want = {"kind": self.kind, "nascar_series": self.series, "season": self.year}
+        want = {"kind": self.kind, "nascar_series": self.series, "season": self.year, "opponent_id": self.opponent_id}
         return {k: v for k, v in want.items() if v is not None}
 
 
 def outcome_key(link):
-    """One real-world outcome across exchanges: (kind, athlete, race or season). None until the link has all three."""
+    """One real-world outcome across exchanges: (kind, athlete, "race" | "season", race id or year, opponent id or None). None
+    until the link has the kind, the driver and the race (or season); a head-to-head also needs its opponent."""
     p = link.get("params") or {}
-    where = link.get("race_id") if p.get("kind") in RACE_KINDS else p.get("season")
-    if not (p.get("kind") and link.get("athlete_id") and where):
+    race = p.get("kind") in RACE_KINDS
+    where = link.get("race_id") if race else p.get("season")
+    if not (p.get("kind") and link.get("athlete_id") and where) or (p["kind"] == "race_h2h" and not p.get("opponent_id")):
         return None
-    return (p["kind"], link["athlete_id"], "race" if p["kind"] in RACE_KINDS else "season", where)
+    return (p["kind"], link["athlete_id"], "race" if race else "season", where, p.get("opponent_id"))
+
+
+def _pair(link):
+    """(first driver, second driver) named by a head-to-head market, or None."""
+    for field in ("question", "group_title", "outcome"):
+        for rx in PAIR:
+            m = rx.search(str(link.get(field) or "").strip())
+            if m:
+                return m.group(1).strip(), m.group(2).strip()
+    return None
 
 
 def _phrases(name):
@@ -258,6 +274,20 @@ class Linker:
             contract = sure or named
             if not contract:
                 f.kind = None                                        # 'win' wording and no race named: not a race contract
+        if f.series == "cup" and f.kind and contract and who == "matchup":
+            pair = _pair(link)
+            if pair:
+                R = self.resolver(f.year)
+                a, b = R.driver(pair[0]), R.driver(pair[1])
+                if a is not None and b is not None and a != b:
+                    f.athlete_id, f.opponent_id = a, b               # both, or neither: half a matchup is no key
+                else:
+                    for name, got in zip(pair, (a, b)):
+                        if got is None:
+                            f.problems.append(f"driver: {R.unresolved.get(name, 'unknown')}")
+                            self.unresolved["driver: " + R.unresolved.get(name, "unknown").split(":")[0]][name] += 1
+            else:
+                f.problems.append("matchup: the two drivers are not in the question")
         if f.series == "cup" and f.kind and contract and who == "driver":
             subject = link.get("group_title") if norm(link.get("group_title")) not in NOT_A_DRIVER else link.get("outcome")
             f.subject = subject
