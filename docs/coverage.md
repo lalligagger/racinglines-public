@@ -77,10 +77,8 @@ started.
    position sim (GC vs stage, teams, breakaways). Decide after the 2026 tapes show volume; the
    grand-tour winner markets look like the only deep ones. Results source and its terms first
    ([Data](data.md)), then a `[sport]` schema. Not before the F1 and downhill validations are done.
-6. **OG.com read-only connector — M; trading blocked on the API key.** The public FCM API is enough to record
-   OG.com the way we record Kalshi, for the sports it lists. It only pays off where OG.com lists something
-   we trade, which today is 20 thin F1 season futures. Do it as a tape and disagreement-log source (U7), not
-   as a trading venue, and only after the owner picks it. Plan in [OG.com](#ogcom).
+6. **OG.com: connector built (PR #44, a schema); recorder and trading open.** A VM recorder timer is S. Trading is
+   blocked on FCM onboarding and the owner's API key. See [OG.com](#ogcom).
 7. **XCO / XCC ingest — M, 2027.** ChronoRace already serves it on the same slugs the downhill ingest
    probes. Worth it only if a venue ever lists MTB, which none does; otherwise a private-book showcase
    like downhill. Off the list until then.
@@ -125,26 +123,21 @@ appear only around a weekend. Liquidity is thin: the Norris and Verstappen books
 (1–5k contracts), no bids, about 4 trades a week. NASCAR is 17 Cup Champion contracts and SailGP 13
 Championship Winner contracts. Nothing else on our list.
 
-**Integration plan, Kalshi-shaped** (a roadmap item, not started; needs the owner's go-ahead):
+**Connector built as a schema, not code (PR #44, 2026-09-29).** `exchanges/og.toml` describes the API and one
+generic driver reads it, so OG.com needs no OG-specific code. It syncs the F1 futures into market links, records
+the tape, minute prices and books, and prints a fair-price indicator (model fair vs quote, net of the fee). It is
+read-only and off by default (`RACINGLINES_OG_VENUE=1` shows the venue). What is left:
 
-1. **Client** `racinglines/markets/ogcom/client.py`: the seven public GETs above, a token-bucket under
-   100 req/s, no key. Fixtures for each response in `tests/fixtures/market/`. Effort S.
-2. **Sync** `markets/ogcom/sync.py`: F1 events to `market_links` with `exchange = 'ogcom'`, classified with
-   the same kinds (`champion`, `constructors_champion`, later `race_win` and friends), instruments as
-   `token_id`. Same pattern as `markets/kalshi/sync.py`. Effort S to M.
-3. **Recorder**: `get-ticker-histories` and `get-trades` are capped at about a month, so a recorder must run
-   at least weekly or it loses history for good. Add `[markets.ogcom]` to `sports/f1.toml`, an archive tree
-   `data/archive/markets/ogcom/`, and a timer on the VM (like U2). Effort S.
-4. **Venue and fee model**: a `Venue("ogcom", ...)` entry in `markets/venues.py`, and the flat $0.02 per
-   contract fee in the maker and taker cost paths. Confirm the fee in the fee schedule first. Effort S.
-5. **Disagreement log (U7)**: add OG.com to the championship comparison, the one place it overlaps.
-6. **Trading**: only after onboarding, the signed private API, and the validation rules in
-   [Paper trading](paper-trading.md#validation-plan). Off by default like `KALSHI_TRADING_ENABLED`.
+1. **A recorder timer on the VM.** The API keeps about a month, so `trades` and `history` must run weekly at
+   least. Effort S.
+2. **Per-Grand-Prix contract rules** once a live race market has been seen (their names are unchecked). Effort S.
+3. **The fee**: $0.02 per contract is from reviews; confirm it in OG.com's fee schedule, and read the API terms.
+4. **Cross-venue comparison (U7)**: OG.com joins the championship comparison once `markets/disagree.py`, which
+   knows Polymarket and Kalshi only, is generalised. Effort S to M.
+5. **Trading**: only after FCM onboarding, signed private endpoints and the validation rules. Not started.
 
-Total for read-only recording plus the disagreement log: about M. **Value today is low:** thin F1 futures
-only, no race markets until a weekend, and nothing for cycling, MotoGP or IndyCar. The reason to do it early
-is history: the API forgets after a month, so a tape started now is the only way to have OG.com data for a
-2027 backtest.
+Value today is low: thin F1 futures only, nothing for cycling, MotoGP or IndyCar. The reason to record early is
+history, since the API forgets after a month.
 
 ## What to verify on a device
 
