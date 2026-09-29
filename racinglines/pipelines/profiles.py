@@ -9,11 +9,18 @@ The two recommended by the params-4h cloud search (data/runs/search/params-4h/RE
     C  maker sleeve: the conservative maker on gbm, 25-share quotes, out of markets where the model
        disagrees with the price by more than 5 pts.                              (candidate #24)
 
-    racinglines f1 profiles                      # list, and create A / C as Lab candidates if missing
+    K  Kalshi maker: the conservative maker tuned on Kalshi's own 2025-26 tape (docs/kalshi-history.md,
+       sweeps/kalshi-maker-k.toml); the settings below are the sweep's winner under the params-4h
+       held-out rule. The candidate carries venue = "kalshi": it is judged on and quotes Kalshi.
+
+    racinglines f1 profiles                      # list, and create A / C / K as Lab candidates if missing
     racinglines f1 profiles --assign-demo        # demo taker -> A, demo maker -> C
+    racinglines f1 profiles --assign-demo --venue kalshi   # demo maker -> K, as its Kalshi profile (explicit;
+                                                           # nothing reads it until the signal engine runs Kalshi)
 
 A user's profile lives in users.prefs["strategy_profile"] with the full settings, so deleting the
-candidate doesn't break the assignment.
+candidate doesn't break the assignment. A Kalshi profile lives beside it in prefs["strategy_profile_kalshi"]
+(PREF_KALSHI), so the Polymarket profile and everything reading it are untouched.
 """
 
 import json
@@ -23,6 +30,11 @@ from sqlalchemy import text
 from racinglines.pipelines import sweep_settings as SS
 
 LIVE_STAGES = ["after FP1", "after FP2", "after FP3", "after SQ", "after Sprint", "after Quali"]
+K_SETTINGS = {"variant": "gbm", "half_spread": 0.03, "max_disagree": 0.10, "size": 25}
+K_WHY = ("kalshi-maker-k search, conservative maker on Kalshi's tape with its maker fee. Robust in both seasons "
+         "(held-out rule, maker noise floor 350): 2026 +450 (Sharpe 0.61, max DD 316; +1,321 vs Kalshi baseline, "
+         "+569 vs C on Kalshi), 2025 +707 (1.16, 358; +1,103 vs baseline, +23 vs C). Partial grid: gbm fully, "
+         "gridq+pretrain 2026 only.")
 PROFILES = {
     "A": dict(name="A · core taker (update)", strategy="update",
               settings={"variant": "gridq+pretrain+reset", "min_edge": 0.10, "min_edge_h2h": 0.05,
@@ -34,8 +46,12 @@ PROFILES = {
               settings={"variant": "gbm", "max_disagree": 0.05, "size": 25},
               why="params-4h #24. Profitable in both seasons with the smallest drawdowns: 2026 +653 "
                   "(Sharpe 1.78, max DD 279), 2025 +835 (1.63, 176); noise range +717 ± 72 / +881 ± 63."),
+    "K": dict(name="K · Kalshi maker", strategy="maker", venue="kalshi",
+              settings=K_SETTINGS,
+              why=K_WHY),
 }
 DEMO = {"taker": "A", "maker": "C"}
+DEMO_KALSHI = {"maker": "K"}        # the demo maker's Kalshi profile, assigned only by --assign-demo --venue kalshi
 DEMO_FOLLOW = {"taker": 0.33}      # share of recommendations the demo taker follows (code only, not in the UI)
 DEMO_BANKROLL = {"maker": 10_000.0, "taker": 1_000.0}   # starting bankroll ($), from BANKROLL_SINCE
 BANKROLL_SINCE = "2025-01-01"
@@ -43,6 +59,12 @@ BANKROLL_SINCE = "2025-01-01"
 DEMO_EDGE_FINDER = {"maker": [("C", "maker"), ("M3", "maker"), ("M2", "maker"), ("M1", "maker")]}
 DEMO_EDGE_YEAR = 2026
 PREF = "strategy_profile"
+PREF_KALSHI = "strategy_profile_kalshi"
+
+
+def pref(venue="polymarket"):
+    """The users.prefs key a venue's profile lives under (Polymarket: the profile as before)."""
+    return PREF if venue == "polymarket" else f"{PREF}_{venue}"
 
 # The demo accounts' track record (pipelines/demo_history.py): backtest replays of real weekends, shown as
 # what each account ran. The taker has always followed A. The maker tried three setups in 2025, moving
@@ -71,22 +93,23 @@ def _candidates(conn):
 
 
 def ensure_candidates(conn, history=False):
-    """Create A and C (and with history, M1-M3) as Lab candidates unless a candidate of the same name
+    """Create A, C and K (and with history, M1-M3) as Lab candidates unless a candidate of the same name
     exists. {code: candidate id}."""
     from racinglines.pipelines.search import add_candidate
     have = {p.get("name"): i for i, p in _candidates(conn)}
     out = {}
     for code, pr in {**PROFILES, **(HISTORY_PROFILES if history else {})}.items():
-        year, source = (2025, "demo-history") if code in HISTORY_PROFILES else (2026, "params-4h")
+        year, source = (2025, "demo-history") if code in HISTORY_PROFILES else \
+            (2026, "kalshi-maker-k" if code == "K" else "params-4h")
         out[code] = have.get(pr["name"]) or add_candidate(
             conn, pr["name"], SS.Settings.from_dict(pr["settings"]), year, pr["strategy"], why=pr["why"],
-            source=source)
+            source=source, venue=pr.get("venue"))
     return out
 
 
 def load(conn, ref):
     """A profile from a candidate id, a candidate name, or a code (A, C, M1-M3).
-    -> dict(candidate_id, name, strategy, settings)."""
+    -> dict(candidate_id, name, strategy, settings[, venue]) (venue: a Kalshi candidate's exchange)."""
     ref = str(ref).strip()
     rows = _candidates(conn)
     hit = None
@@ -100,32 +123,45 @@ def load(conn, ref):
         raise ValueError(f"no candidate {ref!r} (racinglines f1 profiles creates A and C)")
     i, p = hit
     return dict(candidate_id=i, name=p["name"], strategy=p["strategy"],
-                settings=SS.Settings.from_dict(p["settings"], strict=False).to_json())
+                settings=SS.Settings.from_dict(p["settings"], strict=False).to_json(),
+                **({"venue": p["venue"]} if p.get("venue") else {}))
 
 
-def assign(conn, user_id, profile):
-    """Set (profile dict from load) or clear (None) a user's strategy profile."""
+def assign(conn, user_id, profile, venue="polymarket"):
+    """Set (profile dict from load) or clear (None) a user's strategy profile; venue="kalshi" sets the
+    user's Kalshi profile (pref("kalshi")) and leaves the Polymarket one alone."""
+    key = pref(venue)
     conn.execute(text(f"""UPDATE users SET prefs = CASE WHEN CAST(:v AS jsonb) IS NULL
-                            THEN coalesce(prefs, '{{}}'::jsonb) - '{PREF}'
-                            ELSE coalesce(prefs, '{{}}'::jsonb) || jsonb_build_object('{PREF}', CAST(:v AS jsonb)) END
+                            THEN coalesce(prefs, '{{}}'::jsonb) - '{key}'
+                            ELSE coalesce(prefs, '{{}}'::jsonb) || jsonb_build_object('{key}', CAST(:v AS jsonb)) END
                           WHERE id = :u"""), dict(u=user_id, v=None if profile is None else json.dumps(profile)))
 
 
-def of_user(conn, user_id):
-    p = conn.execute(text("SELECT prefs->'strategy_profile' FROM users WHERE id = :u"), dict(u=user_id)).scalar()
+def of_user(conn, user_id, venue="polymarket"):
+    p = conn.execute(text(f"SELECT prefs->'{pref(venue)}' FROM users WHERE id = :u"), dict(u=user_id)).scalar()
     return p or None
 
 
-def assigned(conn):
-    """[(user_id, username, role, profile)] for every active user with a profile."""
-    rows = conn.execute(text("""SELECT id, username, role, prefs->'strategy_profile' FROM users
-                                WHERE active AND prefs ? 'strategy_profile' ORDER BY id""")).all()
+def assigned(conn, venue="polymarket"):
+    """[(user_id, username, role, profile)] for every active user with a profile (on that venue)."""
+    key = pref(venue)
+    rows = conn.execute(text(f"""SELECT id, username, role, prefs->'{key}' FROM users
+                                WHERE active AND prefs ? '{key}' ORDER BY id""")).all()
     return [(i, u, r, p) for i, u, r, p in rows]
 
 
-def assign_demo(conn):
+def assign_demo(conn, venue="polymarket"):
+    """Demo taker -> A, demo maker -> C (their Polymarket profiles, with the demo bankrolls and saved views).
+    venue="kalshi": demo maker -> K as its Kalshi profile only; the Polymarket assignments don't move."""
     ids = ensure_candidates(conn)
     done = {}
+    if venue != "polymarket":
+        for username, code in DEMO_KALSHI.items():
+            uid = conn.execute(text("SELECT id FROM users WHERE username = :u"), dict(u=username)).scalar()
+            if uid is not None:
+                assign(conn, uid, dict(load(conn, ids[code]), venue=venue), venue=venue)
+                done[username] = PROFILES[code]["name"]
+        return done
     for username, code in DEMO.items():
         uid = conn.execute(text("SELECT id FROM users WHERE username = :u"), dict(u=username)).scalar()
         if uid is not None:

@@ -112,3 +112,42 @@ pages, its rows stay out of Positions, and `/markets/kalshi` is a 404.
 The Polymarket record, its pages and the private book render exactly as before with Kalshi off. A Kalshi
 `condition_id` is the whole event, so the race page, the mirror and the Coming-up volume group Kalshi's rows by
 market ticker (`token_id`), where Polymarket's group by condition.
+
+## Profile K
+
+`K · Kalshi maker` is the maker tuned on Kalshi's own tape: the queue `sweeps/kalshi-maker-k.toml`
+(`racinglines f1 search`, then `search-report`), every job with `venue = "kalshi"`, so each run replays the
+five maker strategies on Kalshi's markets and trades with its maker fee (`f1 sweep --venue kalshi`) against a
+default-settings baseline on the same venue. Judged as params-4h was: 2026 the target, 2025 held out, maker
+noise floor ±350, ranked by 2026 P&L less any 2025 loss.
+
+**The grid (2026-09-29, partial).** Round 1 = model (`gbm`, `gridq+pretrain`) × `half_spread` (0.01–0.04)
+× `max_disagree` (0.05, 0.07, 0.10, 0.15), 25-share quotes, both seasons. Round 2 (`size` 10 / 50, the maker's
+per-market `maker_min_volume_24h` 50 / 200 / 400) is queued but **not run**. The search was stopped for budget
+after 48 of 106 jobs (47 min wall on 3 of 4 cores, about 2.4 core-hours): gbm finished in both seasons,
+gridq+pretrain in 2026 only, so it has no held-out check. Sanity check: the grid's `gbm · max_disagree 0.05,
+size 25` (profile C) on 2026 is −118.84, the same as `demo-history --venue kalshi` above.
+
+Conservative maker, Kalshi, with the maker fee (P&L in $):
+
+| Settings (rest default) | Label | 2026 | vs baseline | 2025 | vs baseline |
+|---|---|---:|---:|---:|---:|
+| **gbm · half_spread 0.03, max_disagree 0.10, size 25 (K)** | robust | **+450** | +1,321 | **+707** | +1,103 |
+| gbm · max_disagree 0.10, size 25 | robust | +223 | +1,094 | +829 | +1,224 |
+| gbm · half_spread 0.03, max_disagree 0.07, size 25 | robust | +219 | +1,089 | +802 | +1,197 |
+| gbm · half_spread 0.04, max_disagree 0.07, size 25 | robust | +194 | +1,064 | +771 | +1,167 |
+| gbm · half_spread 0.01, max_disagree 0.07, size 25 | robust | +76 | +947 | +1,150 | +1,545 |
+| gbm · max_disagree 0.05, size 25 (C) | robust | −119 | +752 | +685 | +1,080 |
+| gbm · size 25 (no tighter filter) | robust | −446 | +425 | +755 | +1,150 |
+| baseline (defaults) | | −871 | | −395 | |
+| gridq+pretrain · half_spread 0.04, size 25 (best 2026) | no held-out run | +710 | +1,581 | | |
+
+On Kalshi, as on Polymarket, gbm is the maker's model and the disagreement filter does most of the work; a
+wider quote (3¢ against 2¢) helps in 2026. K beats C by +569 in 2026 (beyond the noise floor) and +23 in 2025
+(within it). The full table of every combo × maker strategy is in the project files
+(`roadmap-spinup/u3-kalshi-maker-k/`).
+
+**Assigning K is an explicit step.** `racinglines f1 profiles` creates K as a Lab candidate
+(`params.venue = "kalshi"`); `racinglines f1 profiles --assign-demo --venue kalshi` stores it as the demo
+maker's Kalshi profile (`users.prefs["strategy_profile_kalshi"]`), beside its Polymarket profile C, which it
+leaves alone. Nothing reads that key until the signal engine runs Kalshi, so the deployed app doesn't change.

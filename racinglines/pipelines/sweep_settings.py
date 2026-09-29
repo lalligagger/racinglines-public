@@ -88,6 +88,8 @@ SETTINGS = [
     Setting("max_pos", "maker", "Max inventory per market (shares)", "float", 250.0, 10, 5000),
     Setting("skew", "maker", "Inventory skew", "float", 1.0, 0, 5),
     Setting("max_disagree", "maker", "Don't quote beyond |fair - market|", "float", 0.15, 0.01, 1),
+    Setting("maker_min_volume_24h", "maker", "Maker: min $ traded in prior 24 h", "float", None, 0, 100000,
+            help="Per market, before quoting it. Empty = the replay's own $100 (the Markets filter is the takers')."),
     Setting("fill", "maker", "Fill rule", "choice", "through", choices=("through", "touch", "queue"),
             help="through = a trade must cross our price (conservative); touch = at our price; "
                  "queue = at our price once the recorded book's queue ahead of us is served."),

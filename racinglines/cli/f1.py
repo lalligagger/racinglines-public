@@ -83,8 +83,11 @@ def main(argv=None):
     p.add_argument("--user", nargs="*", default=None, help="Only these demo accounts (maker, taker).")
     p.add_argument("--venue", default="polymarket", choices=["polymarket", "kalshi"],
                    help="Whose recorded tape the maker replays (kalshi: the maker's Kalshi record; maker accounts only).")
-    sub.add_parser("profiles", help="List strategy profiles; create A / C as Lab candidates if missing.").add_argument(
-        "--assign-demo", action="store_true", help="Demo taker -> A, demo maker -> C.")
+    p = sub.add_parser("profiles", help="List strategy profiles; create A / C / K as Lab candidates if missing.")
+    p.add_argument("--assign-demo", action="store_true", help="Demo taker -> A, demo maker -> C.")
+    p.add_argument("--venue", default="polymarket", choices=["polymarket", "kalshi"],
+                   help="With --assign-demo: kalshi assigns the demo maker K as its Kalshi profile "
+                        "(users.prefs['strategy_profile_kalshi']) and leaves the Polymarket profiles alone.")
     for name, hlp in (("pm-links-export", "Write market links to data/archive/markets/<exchange>/links/ (stable keys)."),
                       ("pm-links-import", "Load that file into this database (no exchange access needed).")):
         sub.add_parser(name, help=hlp).add_argument("--exchange", default="polymarket", choices=["polymarket", "kalshi"])
@@ -117,6 +120,9 @@ def main(argv=None):
     p.add_argument("--fetch-only", action="store_true", help="Only download the season's Polymarket history/trades.")
     p.add_argument("--reprice", action="store_true", help="Re-price stages even if stored.")
     p.add_argument("--save", action="store_true")
+    p.add_argument("--venue", default="polymarket", choices=["polymarket", "kalshi"],
+                   help="Whose recorded tape the maker strategies replay (kalshi: Kalshi's markets and trades, with "
+                        "its maker fee, as demo-history --venue kalshi; the takers read Polymarket either way).")
     p.add_argument("--reliability", action="store_true",
                    help="Also score calibration: our fair values and Polymarket's prices at every tradeable stage, "
                         "per market kind (Brier, log loss, ECE, reliability bins); saved with --save.")
@@ -269,11 +275,14 @@ def _run(args):
         with engine.begin() as c:
             ids = PF.ensure_candidates(c)
             if args.assign_demo:
-                print("assigned:", PF.assign_demo(c))
+                print("assigned:", PF.assign_demo(c, **({} if args.venue == "polymarket" else dict(venue=args.venue))))
             for code, i in ids.items():
-                print(f"{code}  candidate #{i}  {PF.PROFILES[code]['name']}")
+                pr = PF.PROFILES[code]
+                print(f"{code}  candidate #{i}  {pr['name']}" + (f"  [{pr['venue']}]" if pr.get("venue") else ""))
             for uid, name, role, prof in PF.assigned(c):
                 print(f"  user {name} ({role}) -> {prof['name']} (#{prof.get('candidate_id')})")
+            for uid, name, role, prof in PF.assigned(c, venue="kalshi"):
+                print(f"  user {name} ({role}) -> {prof['name']} (#{prof.get('candidate_id')}) on kalshi")
         return
     if args.cmd == "signals":
         from racinglines.pipelines import signals as SG
@@ -491,7 +500,8 @@ def _run(args):
                 SW.fetch_market_data(s, c, SW.schedule(args.year, rounds), echo=lambda m: print(m, flush=True))
             return
         out = SW.run_sweep(engine, args.db, args.year, rounds, fetch=not args.no_fetch, reprice=args.reprice,
-                           settings=settings, echo=lambda m: print(m, flush=True))
+                           settings=settings, echo=lambda m: print(m, flush=True),
+                           **({} if args.venue == "polymarket" else dict(venue=args.venue)))
         w = out["weekends"]
         cols = [c for c in ["event_key", "event", "format", "stages", "tradeable_pre", "tradeable_quali",
                             "update_trades", "update_bought", "update_pnl", "hold_pnl", "last_pnl", "maker_fills",

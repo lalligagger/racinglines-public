@@ -17,6 +17,11 @@ After every finished job the leaderboard and a results export are rewritten.
     taker_stages = "pre-weekend,after FP1,after FP2"
     note = "why this job"        # shown on the leaderboard
 
+    [[job]]                      # the maker strategies replayed on Kalshi's recorded tape instead of
+    year = 2026                  # Polymarket's (`f1 sweep --venue kalshi`; the takers read Polymarket either
+    venue = "kalshi"             # way). Its own baseline is added, on the same venue; a job's id covers the venue.
+    variant = "gbm"
+
     [[job]]                      # championship markets entered at fixed points and held
     kind = "checkpoints"
     year = 2026
@@ -65,7 +70,8 @@ from racinglines.pipelines import sweep_settings as SS
 
 KINDS = {"f1": ("sweep", "checkpoints", "season_strategy"), "mtb_dh": ("walk_forward",)}
 SEASON_KINDS = ("sweep", "walk_forward")          # a season-long run with a default-settings baseline
-META = {"kind", "year", "rounds", "note", "id", "variants", "entries", "window", "sport", "replicates"}
+META = {"kind", "year", "rounds", "note", "id", "variants", "entries", "window", "sport", "replicates", "venue"}
+VENUES = ("polymarket", "kalshi")               # a sweep's maker venue (weekend_sweep.run_sweep); Polymarket = as before
 SAVED = {"sweep": "Saved sweep run", "checkpoints": "Saved season checkpoints run",
          "season_strategy": "Saved season strategy run", "walk_forward": "Saved walk-forward run"}
 
@@ -108,6 +114,8 @@ def job_id(j):
     key = dict(kind=kind, year=j.get("year"), rounds=j.get("rounds"))
     if sport != "f1":                                 # F1 ids stay as they were
         key["sport"] = sport
+    if j.get("venue", "polymarket") != "polymarket":  # Polymarket ids stay as they were
+        key["venue"] = j["venue"]
     if kind == "checkpoints":
         key.update(variants=j.get("variants"), entries=j.get("entries"), window=j.get("window"))
     else:
@@ -135,6 +143,8 @@ def load(path):
         j0.setdefault("year", 2026)
         if j0["kind"] not in allowed:
             raise ValueError(f"unknown job kind {j0['kind']!r} for {sport}; one of {allowed}")
+        if j0.get("venue", "polymarket") not in VENUES or (j0.get("venue", "polymarket") != "polymarket" and j0["kind"] != "sweep"):
+            raise ValueError(f"job {j0.get('note', j0)}: venue {j0.get('venue')!r} is for sweeps, one of {VENUES}")
         n = int(j0.pop("replicates", 1) or 1)
         if n > 1:
             key = (sport, j0["year"], j0.get("rounds"))
@@ -146,13 +156,16 @@ def load(path):
             if not any(x["id"] == j["id"] for x in jobs):
                 jobs.append(j)
     base = []
-    for sport, kind, year, rounds in dict.fromkeys((j.get("sport", "f1"), j["kind"], j["year"], j.get("rounds"))
-                                                   for j in jobs if j["kind"] in SEASON_KINDS):
+    for sport, kind, year, rounds, venue in dict.fromkeys(
+            (j.get("sport", "f1"), j["kind"], j["year"], j.get("rounds"), j.get("venue", "polymarket"))
+            for j in jobs if j["kind"] in SEASON_KINDS):
         b0 = dict(kind=kind, year=year, note="baseline (added automatically: same data as every job)")
         if sport != "f1":
             b0["sport"] = sport
         if rounds:
             b0["rounds"] = rounds
+        if venue != "polymarket":
+            b0["venue"] = venue
         for b in _replicate(b0, reps.get((sport, year, rounds), 1)):
             b["settings"] = settings_class(sport).from_dict({"seed": b["seed"]} if "seed" in b else {}).to_json()
             b["id"] = job_id({k: v for k, v in b.items() if k != "settings"})
@@ -172,6 +185,8 @@ def load(path):
                     id=c.get("id") or f"{strategy}-{cls.from_dict(dict(st, seed=None)).key}")   # as search-report names it
         if sport != "f1":
             cand["sport"] = sport
+        if c.get("venue", "polymarket") != "polymarket":
+            cand["venue"] = c["venue"]
         cands.append(cand)
     return (dict(name=s.get("name", "search"), parallel=int(s.get("parallel", 3)), hours=float(s.get("hours", 1.0)),
                  grace=float(s.get("grace_minutes", 10))), base + jobs, cands)
@@ -195,6 +210,8 @@ def argv(j):
     a = py + ["--variant", st["variant"], "sweep", "--year", str(j["year"]), "--no-fetch", "--save"]
     if j.get("rounds"):
         a += ["--rounds", str(j["rounds"])]
+    if j.get("venue", "polymarket") != "polymarket":
+        a += ["--venue", j["venue"]]
     return a + st.argv()
 
 
@@ -261,7 +278,8 @@ def _title(j):
     st = settings_class(j.get("sport", "f1")).from_dict(j["settings"])
     kind = "" if j["kind"] == "sweep" else ("downhill " if j["kind"] == "walk_forward" else j["kind"] + " ")
     return f"{kind}{st.label()} · {j['year']}" + (
-        f" · rounds {j['rounds']}" if j.get("rounds") else "")
+        f" · rounds {j['rounds']}" if j.get("rounds") else "") + (
+        f" · {j['venue']}" if j.get("venue", "polymarket") != "polymarket" else "")
 
 
 def write_outputs(out, state, queue_path=None, echo=print):
@@ -291,13 +309,15 @@ def write_outputs(out, state, queue_path=None, echo=print):
     for year in sorted({v["year"] for v, _ in sweeps}):
         cols = [(v, r) for v, r in sweeps if v["year"] == year]
         default = SS.Settings.from_dict().key
-        bases = {v.get("rounds"): r for v, r in cols if SS.Settings.from_dict(v["settings"]).key == default}
+        bases = {(v.get("rounds"), v.get("venue", "polymarket")): r for v, r in cols       # per venue: Kalshi's own
+                 if SS.Settings.from_dict(v["settings"]).key == default}
         n_w = max((len(r["metrics"].get("weekends") or []) for _, r in cols), default=0)
         lines += [f"## {year}: season sweeps ({n_w} weekends)", "",
                   "P&L in $ (weekends up) [difference from the baseline over the same weekends, same data]. "
                   "Best per strategy in **bold**.", ""]
         lines.append("| Strategy | " + " | ".join(SS.Settings.from_dict(v["settings"]).label()
                                                    + (f" · rounds {v['rounds']}" if v.get("rounds") else "")
+                                                   + (f" · {v['venue']}" if v.get("venue", "polymarket") != "polymarket" else "")
                                                    for v, _ in cols) + " |")
         lines.append("|---" * (len(cols) + 1) + "|")
         for key, label in EV.STRATEGIES:
@@ -309,7 +329,7 @@ def write_outputs(out, state, queue_path=None, echo=print):
                     cells.append("")
                     continue
                 t = r["metrics"]["totals"][key]
-                base = bases.get(v.get("rounds"))                   # the baseline over the same weekends
+                base = bases.get((v.get("rounds"), v.get("venue", "polymarket")))   # the baseline over the same weekends
                 bt = (base["metrics"].get("totals") or {}) if base else {}
                 d = x - bt[key]["pnl"] if key in bt and r is not base else None
                 cell = f"{x:+,.0f} ({t['weekends_up']}/{t['weekends']})" + (f" [{d:+,.0f}]" if d is not None else "")
@@ -413,16 +433,17 @@ def import_results(path, engine_url=None, echo=print):
                            and (r["params"] or {}).get("settings_key") == st.key
                            and int((r["params"] or {}).get("year") or 0) == cand["year"]), None)
             add_candidate(c, cand["name"], st, cand["year"], cand["strategy"], cand.get("why", ""), run_id, src, comp,
-                          candidate_id=cand.get("id"))
+                          candidate_id=cand.get("id"), venue=cand.get("venue"))
             k += 1
     echo(f"imported {n} run(s) and {k} candidate(s) from {path}")
     return n
 
 
 def add_candidate(conn, name, settings, year, strategy, why="", run_id=None, source="lab", competition_id=None,
-                  candidate_id=None):
+                  candidate_id=None, venue=None):
     """A Lab candidate: a named, complete settings set (+ the strategy it's for and the run it came from).
-    candidate_id: the search report's stable id (<strategy>-<settings key without the seed>), when it has one."""
+    candidate_id: the search report's stable id (<strategy>-<settings key without the seed>), when it has one.
+    venue: the exchange a maker candidate was judged on and quotes ("kalshi"); None / Polymarket as before."""
     from sqlalchemy import text
     comp = competition_id or conn.execute(text("SELECT id FROM competitions WHERE code = 'f1_wdc'")).scalar()
     return conn.execute(text("""INSERT INTO model_runs (competition_id, model, kind, params)
@@ -430,4 +451,5 @@ def add_candidate(conn, name, settings, year, strategy, why="", run_id=None, sou
                         dict(c=comp, p=json.dumps(dict(name=name, settings=settings.to_json(), settings_key=settings.key,
                                                        label=settings.label(), year=int(year), strategy=strategy,
                                                        why=why, run_id=run_id, source=source,
-                                                       **({"candidate_id": candidate_id} if candidate_id else {}))))).scalar()
+                                                       **({"candidate_id": candidate_id} if candidate_id else {}),
+                                                       **({"venue": venue} if venue and venue != "polymarket" else {}))))).scalar()

@@ -218,10 +218,12 @@ def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None):
     return markets
 
 
-def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settings=None):
+def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settings=None, venue="polymarket"):
     """Trade one weekend. Returns dict(summary rows per mode, trades, stage scores, makers).
     widen_kinds: market kinds whose maker fills lost on 60-min markouts in EARLIER weekends.
-    settings: sweep_settings.Settings (market kinds, volume filter, maker parameters); None = defaults."""
+    settings: sweep_settings.Settings (market kinds, volume filter, maker parameters); None = defaults.
+    venue: whose recorded tape the maker replays ("kalshi": Kalshi's markets and trades, with its maker fee,
+    as `f1 demo-history --venue kalshi`); the takers read Polymarket's markets either way."""
     from racinglines.pipelines import sweep_settings as SS
     st = settings or SS.Settings.from_dict()
     markets = weekend_markets(conn, w, stage_runs, min_volume_24h=st["min_volume_24h"])
@@ -258,13 +260,13 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settin
         from dataclasses import replace
 
         from racinglines.markets.strategies import maker_replay as R
-        ev = R.load_event(conn, [r for _, _, r in stage_runs], books=st["fill"] == "queue")
+        ev = R.load_event(conn, [r for _, _, r in stage_runs], books=st["fill"] == "queue",
+                          **({} if venue == "polymarket" else dict(exchange=venue)))
         ev = dict(ev, markets=[m for m in ev["markets"] if m.kind in st["market_kinds"]])
     except Exception as ex:  # noqa: BLE001  (no tape for this weekend)
         echo(f"  maker replay skipped: {ex}")
         ev = None
-    base = R.Params(half_spread=st["half_spread"], size=st["size"], max_pos=st["max_pos"], skew=st["skew"],
-                    max_disagree=st["max_disagree"], fill=st["fill"])
+    base = maker_params(st, venue)
     for name, opts in MAKERS.items() if ev is not None else []:
         opts = dict(opts)
         p = base
@@ -283,16 +285,31 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settin
     return out
 
 
+def maker_params(st, venue="polymarket"):
+    """The maker replay's parameters from sweep settings: the quote settings, and on Kalshi its maker fee.
+    `maker_min_volume_24h` unset keeps the replay's own $100 filter (the markets group's `min_volume_24h`
+    is the takers' filter)."""
+    from racinglines.markets.strategies import maker_replay as R
+    p = R.Params(half_spread=st["half_spread"], size=st["size"], max_pos=st["max_pos"], skew=st["skew"],
+                 max_disagree=st["max_disagree"], fill=st["fill"])
+    if st["maker_min_volume_24h"] is not None:
+        p = replace(p, min_volume_24h=st["maker_min_volume_24h"])
+    if venue == "kalshi":
+        p = replace(p, maker_fee=R.KALSHI_MAKER_FEE)
+    return p
+
+
 def bankroll_scale(start, balance):
     """Stake multiplier for bankroll-aware sizing: the balance over the starting bankroll (0 once it's gone)."""
     return max(balance, 0.0) / start
 
 
 def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, reprice=False, taker=None, echo=print,
-              variant="baseline", settings=None):
+              variant="baseline", settings=None, venue="polymarket"):
     """The whole season (every raced weekend unless `rounds`). settings: sweep_settings.Settings, the
     full description of the combo (model, entry timing, taker, maker, markets); without it, one is
-    built from n_sims / taker / variant. Returns dict(weekends DataFrame, by_stage, by_kind, totals,
+    built from n_sims / taker / variant. venue: the maker replay's exchange (weekend(); "kalshi" is
+    saved in params.venue, Polymarket leaves params as they were). Returns dict(weekends DataFrame, by_stage, by_kind, totals,
     trades, scores, calibration, reliability, params). calibration / reliability: our fair values and the
     exchange's prices at every tradeable stage, scored on the outcome (core/calibration.py): per market kind
     and stage, and pooled per kind (stage "all"; a market counts once per stage it was tradeable)."""
@@ -332,7 +349,7 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
             plist = params_list if st["bankroll"] is None else \
                 [replace(q, scale=bankroll_scale(st["bankroll"], balance[q.mode])) for q in params_list]
             r = weekend(c, w, runs, plist, echo=echo, widen_kinds=[k for k, v in markouts.items() if v < 0],
-                        settings=st)
+                        settings=st, venue=venue)
         if r is None:
             continue
         if st["bankroll"] is not None:
@@ -389,4 +406,5 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
                             variant=st["variant"], data_lag_min=DATA_LAG.seconds // 60,
                             min_volume_24h=st["min_volume_24h"], coherence_tol=COHERENCE_TOL,
                             settings=st.to_json(), settings_key=st.key, model_key=st.model_key, data_key=data_key,
-                            label=st.label(), weekends=len(weekends)))
+                            label=st.label(), weekends=len(weekends),
+                            **({} if venue == "polymarket" else dict(venue=venue))))

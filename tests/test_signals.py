@@ -181,3 +181,32 @@ def test_call(kind, fair, price, vol, want):
     assert "fair" not in c and "edge" not in c                    # takers never get them
     if c["action"]:
         assert c["heat"] in (1, 2, 3) and c["cost"] <= 50.0 + 1e-9
+
+
+def test_kalshi_profile_k_is_assigned_only_on_request(test_engine):
+    """K is a Lab candidate on Kalshi; `profiles --assign-demo --venue kalshi` stores it as the demo maker's
+    Kalshi profile beside (not instead of) its Polymarket profile."""
+    from racinglines.pipelines import profiles as PF
+    from racinglines.pipelines import sweep_settings as SS
+    k = SS.Settings.from_dict(PF.PROFILES["K"]["settings"])
+    assert PF.PROFILES["K"]["venue"] == "kalshi" and PF.PROFILES["K"]["strategy"] in SG.WS.MAKERS
+    assert k.model_key == SS.Settings.from_dict({"variant": k["variant"]}).model_key   # a maker profile: quote settings only
+    with test_engine.begin() as c:
+        c.execute(text("INSERT INTO sports (code, name) VALUES ('f1', 'F1') ON CONFLICT DO NOTHING"))
+        c.execute(text("INSERT INTO leagues (code, name) VALUES ('f1', 'F1') ON CONFLICT DO NOTHING"))
+        c.execute(text("""INSERT INTO competitions (code, name, league_id, sport_id)
+                          SELECT 'f1_wdc', 'F1', l.id, s.id FROM leagues l, sports s WHERE l.code = 'f1' AND s.code = 'f1'
+                          ON CONFLICT DO NOTHING"""))
+        c.execute(text("""INSERT INTO users (username, password_hash, role) VALUES ('maker', 'x', 'maker'), ('taker', 'x', 'taker')
+                          ON CONFLICT DO NOTHING"""))
+        ids = PF.ensure_candidates(c)
+        assert set(ids) == {"A", "C", "K"} and PF.load(c, "K")["venue"] == "kalshi" and "venue" not in PF.load(c, "C")
+        assert c.execute(text("SELECT params->>'venue' FROM model_runs WHERE id = :i"), dict(i=ids["K"])).scalar() == "kalshi"
+        assert PF.assign_demo(c) == {"taker": PF.PROFILES["A"]["name"], "maker": PF.PROFILES["C"]["name"]}
+        assert PF.assigned(c, venue="kalshi") == []                        # nothing on Kalshi until asked
+        assert PF.assign_demo(c, venue="kalshi") == {"maker": PF.PROFILES["K"]["name"]}
+        uid = c.execute(text("SELECT id FROM users WHERE username = 'maker'")).scalar()
+        assert PF.of_user(c, uid)["name"] == PF.PROFILES["C"]["name"]        # Polymarket untouched
+        kp = PF.of_user(c, uid, venue="kalshi")
+        assert kp["name"] == PF.PROFILES["K"]["name"] and kp["venue"] == "kalshi" and kp["candidate_id"] == ids["K"]
+        assert [u for _, u, _, _ in PF.assigned(c)] == ["maker", "taker"]   # the engine's list is as before

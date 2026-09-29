@@ -89,6 +89,7 @@ def stats(jobs, metrics, strategies, cfg=None, cls=SS.Settings):
             s, cum = curve_stats(pn, cfg["season_events"])
             bi = s.pop("best_index")
             rec = dict(job=j["id"], run_id=j["run_id"], year=j["year"], rounds=j.get("rounds"), settings_key=st.key,
+                       venue=j.get("venue", "polymarket"),
                        combo=cls.from_dict(_without(st, "seed")).key, sims=st["sims"], seed=st["seed"], label=st.label(), strategy=key, strategy_label=label,
                        note=j.get("note", ""), best_event=wk[bi]["event"] if bi is not None else None, **s)
             rows.append(rec)
@@ -98,10 +99,10 @@ def stats(jobs, metrics, strategies, cfg=None, cls=SS.Settings):
     base = {}
     for r, c in zip(rows, curves):
         if cls.from_dict(_without(c["settings"], "sims", "seed")).key == cls.from_dict().key:
-            base[(r["year"], r["rounds"], r["sims"], r["seed"], r["strategy"])] = r
+            base[(r["year"], r["rounds"], r["sims"], r["seed"], r["strategy"], r["venue"])] = r   # same venue's baseline
     by_row = {id(r): c for r, c in zip(rows, curves)}
     for r in rows:
-        b = base.get((r["year"], r["rounds"], r["sims"], r["seed"], r["strategy"]))
+        b = base.get((r["year"], r["rounds"], r["sims"], r["seed"], r["strategy"], r["venue"]))
         r["vs_baseline"] = r["pnl"] - b["pnl"] if b and b is not r else (0.0 if b is r else None)
         # concentration of the gain: without the event where it gained most over the baseline
         r["gain_without_best"], r["best_gain_event"] = None, None
@@ -149,19 +150,19 @@ def rank(rows, curves, cfg=None, twin=None, cls=SS.Settings):
     full = [r for r in rows if not r["rounds"]]
     by = {}
     for r in full:
-        by.setdefault((r["year"], r["combo"], r["strategy"]), []).append(r)     # seed replicates group together
+        by.setdefault((r["year"], r["combo"], r["strategy"], r["venue"]), []).append(r)     # seed replicates group together
 
     def mean_of(rs, k):
         v = [r[k] for r in rs if r.get(k) is not None]
         return sum(v) / len(v) if v else None
 
-    def lookup(year, st, strat):
+    def lookup(year, st, strat, venue="polymarket"):
         key = cls.from_dict(_without(st, "seed")).key
-        return by.get((year, key, strat))
+        return by.get((year, key, strat, venue))
 
     default_sims = cls.BY["sims"].default
     out = []
-    for (year, combo, strat), rs in by.items():
+    for (year, combo, strat, venue), rs in by.items():
         st = settings[rs[0]["settings_key"]]
         if year != cfg["target"] or st["sims"] != default_sims:
             continue
@@ -170,7 +171,7 @@ def rank(rows, curves, cfg=None, twin=None, cls=SS.Settings):
         held = {}
         for hy in cfg["holdout"]:
             st_h = twin(st, hy) if twin else st
-            held[hy] = lookup(hy, st_h, strat) or lookup(hy, st, strat)
+            held[hy] = lookup(hy, st_h, strat, venue) or lookup(hy, st, strat, venue)
         d_h = {hy: mean_of(h, "vs_baseline") if h else None for hy, h in held.items()}
         if cls.from_dict(_without(st, "seed")).key == cls.from_dict().key:
             label = "baseline"
@@ -187,7 +188,8 @@ def rank(rows, curves, cfg=None, twin=None, cls=SS.Settings):
         # confirmation at higher fidelity, in every season the label rests on
         conf = {}
         for yy, s_ in [(year, st)] + [(hy, twin(st, hy) if twin else st) for hy in cfg["holdout"]]:
-            c = lookup(yy, dict(s_, sims=cfg["confirm_sims"]), strat) or lookup(yy, dict(st, sims=cfg["confirm_sims"]), strat)
+            c = lookup(yy, dict(s_, sims=cfg["confirm_sims"]), strat, venue) \
+                or lookup(yy, dict(st, sims=cfg["confirm_sims"]), strat, venue)
             conf[yy] = mean_of(c, "vs_baseline") if c else None
         if label in ("robust", "target only", "held-out-led"):
             need = {"robust": list(conf), "target only": [year], "held-out-led": cfg["holdout"]}[label]
@@ -205,7 +207,8 @@ def rank(rows, curves, cfg=None, twin=None, cls=SS.Settings):
         # better than the baseline isn't the same as profitable (params-4h: hold strategies beat a losing
         # baseline in 2025 and still lost money)
         loses = [str(y) for y, v in [(year, pnl_t), *pnl_h.items()] if pnl and v is not None and v < 0]
-        rec = dict(id=f"{strat}-{combo}", strategy=strat, settings_key=combo, label_settings=st.label(),
+        rec = dict(id=f"{strat}-{combo}" + ("" if venue == "polymarket" else f"-{venue}"), strategy=strat,
+                   settings_key=combo, label_settings=st.label(), venue=venue,
                    verdict=label, confirmed=confirmed, loses_money_in=",".join(loses), score=score, noise_floor=nf, replicates=len(rs),
                    pnl_target=pnl_t, vs_base_target=d_t, sharpe_target=mean_of(rs, "sharpe"),
                    dd_target=mean_of(rs, "max_drawdown"), without_best_target=mean_of(rs, "pnl_without_best"),
@@ -237,7 +240,7 @@ def write(out, jobs, metrics, strategies, cfg=None, twin=None, rerun=None, echo=
     ranking, floor, measured = rank(rows, curves, cfg, twin, cls)
     job = dict(kind="sweep") if sport == "f1" else dict(kind="walk_forward", sport=sport)
     (out / "pnl_curves.json").write_text(json.dumps(curves, default=str))
-    cols = ["year", "rounds", "strategy", "label", "sims", "seed", "pnl", "vs_baseline", "weekends_up", "weekends",
+    cols = ["year", "rounds", "venue", "strategy", "label", "sims", "seed", "pnl", "vs_baseline", "weekends_up", "weekends",
             "max_drawdown", "sharpe", "pnl_without_best", "best_event", "gain_without_best", "best_gain_event", "run_id",
             "job", "settings_key", "note"]
     _csv(out / "stats.csv", sorted(rows, key=lambda r: (r["year"], r["strategy"], -r["pnl"])), cols)
@@ -253,10 +256,11 @@ def write(out, jobs, metrics, strategies, cfg=None, twin=None, rerun=None, echo=
         st = cls.from_dict(r["settings"])
         doc = dict(r, rank=i, name=f"{r['strategy']} · {st.label()}", changed=st.changed())
         if rerun:
-            doc["rerun"] = {str(cfg["target"]): " ".join(rerun(dict(job, year=cfg["target"], settings=r["settings"])))}
+            jv = dict(job, **({} if r.get("venue", "polymarket") == "polymarket" else {"venue": r["venue"]}))
+            doc["rerun"] = {str(cfg["target"]): " ".join(rerun(dict(jv, year=cfg["target"], settings=r["settings"])))}
             for hy in cfg["holdout"]:
                 if r.get(f"settings_{hy}"):
-                    doc["rerun"][str(hy)] = " ".join(rerun(dict(job, year=hy, settings=r[f"settings_{hy}"])))
+                    doc["rerun"][str(hy)] = " ".join(rerun(dict(jv, year=hy, settings=r[f"settings_{hy}"])))
         (cdir / f"{r['id']}.json").write_text(json.dumps(doc, indent=1, default=str) + "\n")
         why = (f"{r['verdict']}: {cfg['target']} {r['pnl_target']:+,.0f} ({r['vs_base_target']:+,.0f} vs baseline); "
                + "; ".join(f"{hy} {r[f'pnl_{hy}']:+,.0f} ({r[f'vs_base_{hy}']:+,.0f})" for hy in cfg["holdout"]))
@@ -264,6 +268,8 @@ def write(out, jobs, metrics, strategies, cfg=None, twin=None, rerun=None, echo=
                  f"year = {cfg['target']}", f'strategy = "{r["strategy"]}"', f'why = "{why}"']
         if sport != "f1":
             toml.append(f'sport = "{sport}"')
+        if r.get("venue", "polymarket") != "polymarket":
+            toml.append(f'venue = "{r["venue"]}"')
         for k, v in st.to_json().items():
             if k == "variant" or st[k] != cls.BY[k].default:
                 toml.append(f"{k} = " + (f'"{",".join(v)}"' if isinstance(v, list) else json.dumps(v)))
