@@ -72,6 +72,18 @@ using the backtest's own code. Recommendations and paper fills only.
 6. **Expire:** a taker's unacted signals from earlier stages are marked `expired`.
 7. **Alert:** one batched message with the new signals (see [Alerts](#alerts)).
 
+**The venue.** A profile trades Polymarket unless its settings say `venue = "kalshi"` (the sweep
+settings schema's optional `venue`; unset by default and left out of every settings key, so existing
+profiles, sweeps and their keys are untouched). A Kalshi profile reads the race's `exchange='kalshi'`
+market links, one market per ticker (`token_id`; never grouped by `condition_id`, which on Kalshi is the
+event ticker shared by every driver's market), its minute prices and trade tape per market from
+`data/archive/markets/kalshi/` and the shared tables (so the 24 h volume filter is per market), and its
+maker pays `KALSHI_MAKER_FEE` per fill. Its signals carry `detail.venue = 'kalshi'` and its positions
+`venue = 'kalshi'`; a Polymarket run replaces only Polymarket's positions and a Kalshi run only Kalshi's.
+The setting is the only switch: a live run can't be pointed at another exchange (`compute(venue=...)` is
+for replays, as `demo-history --venue kalshi` uses it), and nothing here reads `KALSHI_TRADING_ENABLED`.
+Paper only, on every venue. See [Kalshi history](kalshi-history.md#in-the-signal-engine).
+
 **When it runs:** from 4 days before the race to 24 hours after it. After the race, the next runs fetch
 its result, and the paper positions settle. Outside that window a run only notes when signals start.
 
@@ -123,11 +135,16 @@ market, not only this weekend's signals:
 
 `scripts/signals_parity.py` replays a taker profile on a past weekend with the signal engine and runs
 `racinglines f1 sweep` on the same round with the same settings, then compares market, stage, side,
-shares and price of every trade (exit 1 on a difference).
+shares and price of every trade (exit 1 on a difference). A maker profile is replayed as `demo-history`
+replays it (a day after the race, settled) and compared with the sweep's maker on fills and settled P&L,
+and with the demo maker's stored record for that weekend when there is one. `--venue kalshi` gives the
+profile the `venue = kalshi` setting on both sides, so the same check runs on Kalshi's links and tape.
 
 ```
 .venv/bin/python scripts/signals_parity.py                     # profile A, 2026 round 15 (Azerbaijan)
 .venv/bin/python scripts/signals_parity.py --round 12 --reprice
+.venv/bin/python scripts/signals_parity.py --venue kalshi      # A on Kalshi's links and tape
+.venv/bin/python scripts/signals_parity.py --profile C --venue kalshi   # C's fills and P&L vs the sweep and demo-history
 ```
 
 | Check | Result |
@@ -135,6 +152,64 @@ shares and price of every trade (exit 1 on a difference).
 | Profile A, 2026 round 15 | Replay = sweep: 11 of 11 trades identical |
 | Same, with the sweep repricing every stage itself (`--reprice`) | Identical |
 | Maker C, same round | 15 fills, P&L −$22.29, identical to the sweep's maker |
+| Profile A, same round, on Kalshi (`--venue kalshi`, 2026-09-29) | Replay = sweep: 23 of 23 trades identical (sweep update P&L −$49.84) |
+| Maker C, same round, on Kalshi | 41 fills, settled P&L −$61.90: identical to the sweep's maker and to `demo-history --venue kalshi`'s stored Azerbaijan record |
+| Profile A, Polymarket, before and after the venue setting existed | 11 of 11 trades identical both times (the default path is unchanged) |
+
+### Cancelled and relocated races
+
+A market kind says what pays when the race runs ([kinds](backtest-core.md)). `racinglines/markets/settlement_rules.py`
+says what each venue pays when it doesn't, and applies it wherever paper positions settle: the private book
+(`private_book.settle_from_results`), the weekend's markets the signal engine's positions are built from
+(`weekend_sweep.weekend_markets`) and the maker replay (`maker_replay.load_event`). **Off by default:** set
+`RACINGLINES_CANCELLED_RACE_RULES=1` (or pass `rules=True` to those calls). Without it nothing changes: a
+cancelled race never settles (there is no classification) and a relocated race settles on its result.
+
+A race's status is `cancelled` when `events.status = 'cancelled'` in the database, when the env
+`RACINGLINES_RACE_STATUS` says so (`f1:2026-22=cancelled,f1:2026-23=cancelled`), or from the module's
+`RACE_STATUS` table, which also records the one `relocated` race so far: **2026 round 16, the Bahrain GP run
+at Sepang** ("Bahrain Grand Prix in Malaysia"). A relocated race's markets settle on the race that was run,
+at every venue (its test: `tests/test_settlement_rules.py`).
+
+What a YES share pays on a cancelled race, per venue (`settlement_rules.RULES`), from the venues' own market
+rules (checked 2026-09-29):
+
+| Venue | Named outcome (driver, constructor) | "Other" / "any other driver" | Binary (head-to-head) |
+|---|---|---|---|
+| Polymarket | **0** — rule and fact | **1** — rule and fact | **0.5** — rule |
+| Kalshi | last fair price | last fair price | last fair price |
+| Private book | void, stakes returned | void | void |
+
+- **Polymarket, driver and constructor markets:** the market rules say the market resolves to "Other" if the
+  race is cancelled or rescheduled past a deadline about a week after the scheduled date (the 2026 Australian
+  GP: "after March 14, 2026"; Canada: "after May 31"; Monaco: "after June 14"). The archived April 2026 Bahrain
+  markets (`data/archive/markets/polymarket/links/`, `f1-bahrain-grand-prix-*-2026-04-12`) show it: when the
+  race didn't run on its date, all 174 recorded named markets resolved NO and the 9 "Other" markets ("Will any
+  other driver win the 2026 F1 Bahrain Grand Prix?") resolved YES. The October race got new markets, which
+  settle at Sepang.
+- **Polymarket, head-to-heads:** the rules on every F1 head-to-head event (Japan, Monaco, Azerbaijan, Abu
+  Dhabi 2025, ...) say "If a Grand Prix is permanently canceled, the market will resolve 50-50", a tie between
+  the two drivers resolves 50-50 as well, and "If a Grand Prix is postponed, the market will remain open until
+  the event has been completed". So the 0.5 payout is the rule, not a guess.
+- **Kalshi:** the F1 race markets (winner, podium, pole, head-to-heads) all carry the same clause (read from search
+  excerpts of Kalshi's market pages; the pages themselves are blocked from the cloud environment): a race
+  postponed but started within 48 hours of its scheduled start settles on the official final result, and "if
+  the race is cancelled or not started within 48 hours of its originally scheduled start, all markets will
+  resolve to a fair price". Kalshi's rulebook (6.3(c)) makes that the last fair market price as Kalshi
+  determines it, usually the last traded price, else a figure from its Outcome Review Committee. Kalshi does
+  **not** resolve NO and does not void (refund at cost): every contract settles at that price. Here that is
+  `settlement_rules.FAIR`, paid at the market's last recorded price (`apply(..., last_price=...)`: the last
+  5-minute price in the weekend sweep and the maker replay). What stays approximate is only which price Kalshi
+  picks. Kalshi's own market on whether a race happens (`KXF1OCCUR-26ADGP`, "take place in Abu Dhabi before
+  December 7, 2026", about 38¢ on 2026-09-27) is unmodeled and not settled by this.
+- **Void** refunds every share at its own price: a position's P&L is 0. A paper position that is voided, paid
+  0.5 or paid Kalshi's last price is closed to cash at that payout (`paper_positions.outcome` stays null, shares
+  0), which the track record reads as settled at that P&L; a Kalshi position whose market has no recorded price
+  stays open. The private book is a YES/NO book, so a 0.5 payout or a price there is voided with a note saying
+  so. Every settlement note names the venue's rule.
+
+The `[live]` F1 engine (`live_f1.outcomes`) is not wired to this: round 16 is a relocated race and settles on its
+classification as before.
 
 ## Heat
 
@@ -291,7 +366,7 @@ separate trial.
 | A · core taker | demo taker | Polymarket, Kalshi | As in [Strategy profiles](#strategy-profiles). Judged on A's own calls; the demo taker's followed third is shown too |
 | C · maker sleeve | demo maker | Polymarket, Kalshi | As in [Strategy profiles](#strategy-profiles). On Kalshi it is a control: its Kalshi replay lost $119 in 2026 |
 | K · Kalshi maker | demo maker | Kalshi | Chosen by a Kalshi sweep and frozen before round 18 (Roadmap U3) |
-| Championship sleeve | demo maker | Both | `f1 season-strategy` after each race; kept out of A, C and K's records |
+| Championship sleeve | demo maker | Both | `racinglines f1 season-strategy --paper --venue polymarket --after-round N` and the same with `--venue kalshi`, run by hand after each race (nothing schedules it); stored as paper positions under venue `season:<venue>`, event `<year>-season`, which A, C and K's records never read. See [Season strategy](market-making.md#the-championship-sleeve) |
 
 Any change to a profile makes a new profile with its own count.
 
@@ -300,9 +375,20 @@ Any change to a profile makes a new profile with its own count.
 1. **Each weekend against its replay.** Re-run the backtest's replay of the same weekend on the recorded
    tape (the conservative "through" fill rule). Live fill counts and markouts should be within ±25% of
    the replay's, and live P&L inside the replay's noise band. A weekend outside is flagged and explained
-   before the next one.
+   before the next one. `racinglines f1 reconcile --event 2026-NN --profile A|C --venue V` does this
+   ([CLI](cli.md#racinglines-f1)): the account's stored signals and positions against `signals.compute`
+   replayed as of a day after the race, both reduced to fills, 60-minute markouts read from the same tape,
+   and P&L to resolution (a taker is judged on its own calls, the demo taker's followed third shown too).
+   The noise band comes from seed replicates ([Backtest core](backtest-core.md#the-search-report), the
+   noise floor): the weekend replayed with the profile's model at its own seed and two more (43, 44), the
+   band being the range of their P&L, at least as wide as the search's configured season floors (150
+   taker / 350 maker) scaled to one weekend of 24 (±31 / ±71). Markouts within $1 of the replay's never
+   miss. A weekend whose rows are the backfilled replay is a self-check and must match to the cent.
 2. **The pricing scorecard on every weekend,** traded or not: Brier and log loss of the fair values
-   against the result and against the venue's mid at each stage.
+   against the result and against the venue's mid at each stage. `racinglines f1 scorecard --event
+   YEAR-ROUND --venue both` scores a Polymarket or Kalshi weekend from its stored stage runs (per stage
+   and market kind, and pooled; `--all --year` for a season; see [F1 evaluation](f1-evaluation.md#the-weekend-scorecard)),
+   `racinglines live report` a private book.
 3. **How many weekends.** From the 2025–26 replays, about 17 live weekends to show the maker's edge at
    about 2 standard errors (~$71 a weekend, s.d. ~$146), and about 40 for the taker (~$83, s.d. ~$262).
    The maker can be proved by the end of 2027; the taker is borderline.

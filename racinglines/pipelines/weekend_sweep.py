@@ -8,10 +8,15 @@ For each race:
   2. At each stage, price the race as of that moment (position_sim.pricing.price_race: only data
      from sessions that started before the cutoff) and store it as a
      kind='diagnostic' run tagged with the stage.
-  3. Read Polymarket at that moment (5-minute prices, trades for liquidity) and
+  3. Read the venue at that moment (5-minute prices, trades for liquidity) and
      run the taker strategies in racinglines/markets/strategies/taker_weekend.py (update / hold / last) plus the
      maker replay (racinglines/markets/strategies/maker_replay.py) through the same stages.
   4. Only then read the result: settle, score, summarise.
+
+The venue is Polymarket unless the settings say `venue = "kalshi"` (`--venue kalshi`): then the race's
+Kalshi links are read (one market per ticker, never grouped by condition_id, which is the event ticker),
+its tape per market from data/archive/markets/kalshi/, and the maker pays Kalshi's maker fee. Nothing
+about the default changes.
 
 The model uses qualifying, sprint and race results; practice pace isn't in the
 model yet, so our fair value only moves after sprint qualifying / sprint /
@@ -148,6 +153,23 @@ def _token0_links(conn, race_id):
     return links.drop_duplicates("condition_id", keep="first")
 
 
+def _links(conn, race_id, venue="polymarket"):
+    """The race's tradeable links on a venue, one row per market: Polymarket's outcome-0 token per condition,
+    or every Kalshi ticker (a Kalshi condition_id is the event ticker, shared by all its markets)."""
+    if venue == "polymarket":
+        return _token0_links(conn, race_id)
+    from racinglines.markets.venue_replay import Kalshi
+    if venue != Kalshi.code:
+        raise ValueError(f"unknown venue {venue!r}")
+    return Kalshi.links(conn, race_id, KINDS).drop_duplicates("token_id", keep="first")
+
+
+def _venue(conn, links, start, end, venue="polymarket"):
+    from racinglines.markets.venue_replay import Kalshi, Polymarket
+    cls = Polymarket if venue == "polymarket" else Kalshi
+    return cls(conn, links, start, end, GROUP_TARGET, COHERENCE_TOL, STALE)
+
+
 def _race_id(conn, event_key):
     return conn.execute(text("SELECT ra.id FROM races ra JOIN events e ON e.id = ra.event_id WHERE e.source_key = :k"),
                         dict(k=event_key)).scalar()
@@ -175,22 +197,26 @@ def fetch_market_data(session, conn, sched, fidelity=5, force=False, echo=print)
         echo(f"progress {w['event_key']} {w['name']}: {n} price points, {k} trades")
 
 
-def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None):
+def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None, venue="polymarket", rules=None):
     """The weekend's tradeable markets for racinglines/markets/strategies/taker_weekend.py: per market, each stage's fair,
     exchange price and tradeable flag (what was knowable then) and the outcome (settlement). The exchange is a
-    backtest venue (markets/venue_replay.py: Polymarket's recorded prices and trade tape).
+    backtest venue (markets/venue_replay.py: Polymarket's recorded prices and trade tape, or Kalshi's with
+    `venue="kalshi"`: one market per ticker, its own 24 h volume).
     price_times: {stage label: time} to read the market at instead of the stage's cutoff (live signals:
-    when the stage was priced, i.e. when its trades could first be made); None = the cutoffs (backtests)."""
+    when the stage was priced, i.e. when its trades could first be made); None = the cutoffs (backtests).
+    rules: a cancelled race's outcomes by the venue's rules (markets/settlement_rules.py: an outcome can then be
+    a 0.5 payout or VOID); None reads RACINGLINES_CANCELLED_RACE_RULES, off by default."""
     at = lambda lab, cutoff: (price_times or {}).get(lab, cutoff)          # noqa: E731
     from racinglines.db import reads as D
     from racinglines.markets import private_book as house
-    from racinglines.markets.venue_replay import Polymarket
+    from racinglines.markets import settlement_rules as SR
     rid = _race_id(conn, w["event_key"])
-    links = _token0_links(conn, rid)
+    links = _links(conn, rid, venue)
     if not len(links):
         return None
+    status = SR.race_status("f1", w["event_key"], SR.db_status(conn, rid)) if SR.enabled(rules) else None
     start, end = stage_runs[0][1] - timedelta(hours=1), max([w["race_start"], *(price_times or {}).values()])
-    venue = Polymarket(conn, links, start, end, GROUP_TARGET, COHERENCE_TOL, STALE)
+    venue = _venue(conn, links, start, end, venue)
     res = house.race_outcomes(conn, rid)
     cache, markets = {}, []
     fair = {}   # (token, stage) -> fair
@@ -213,20 +239,22 @@ def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None):
         subject = link["athlete"] or (link["params"] or {}).get("team") or link["group_title"]
         if kind == "race_h2h":
             subject = f"{link['outcome']} ({link['question'].split(': ')[-1]})"
-        markets.append(dict(key=link["token_id"], kind=kind, subject=subject, stages=stages, link=link,
-                            outcome=venue.resolve(link, res)))
+        outcome = venue.resolve(link, res)
+        if status:
+            outcome = SR.apply(venue.code, status, kind, link.get("group_title") or link.get("outcome"), outcome,
+                               last_price=venue.price(link["token_id"], end))
+        markets.append(dict(key=link["token_id"], kind=kind, subject=subject, stages=stages, link=link, outcome=outcome))
     return markets
 
 
-def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settings=None, venue="polymarket"):
+def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settings=None):
     """Trade one weekend. Returns dict(summary rows per mode, trades, stage scores, makers).
     widen_kinds: market kinds whose maker fills lost on 60-min markouts in EARLIER weekends.
-    settings: sweep_settings.Settings (market kinds, volume filter, maker parameters); None = defaults.
-    venue: whose recorded tape the maker replays ("kalshi": Kalshi's markets and trades, with its maker fee,
-    as `f1 demo-history --venue kalshi`); the takers read Polymarket's markets either way."""
+    settings: sweep_settings.Settings (market kinds, volume filter, maker parameters); None = defaults."""
     from racinglines.pipelines import sweep_settings as SS
     st = settings or SS.Settings.from_dict()
-    markets = weekend_markets(conn, w, stage_runs, min_volume_24h=st["min_volume_24h"])
+    venue = SS.venue_of(st)
+    markets = weekend_markets(conn, w, stage_runs, min_volume_24h=st["min_volume_24h"], venue=venue)
     if markets is None:
         return None
     markets = [m for m in markets if m["kind"] in st["market_kinds"]]
@@ -285,17 +313,21 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settin
     return out
 
 
+def maker_venue_opts(venue):
+    """maker_replay.Params overrides for a venue: Kalshi charges makers KALSHI_MAKER_FEE per fill; Polymarket nothing."""
+    from racinglines.markets.strategies import maker_replay as R
+    return {} if venue == "polymarket" else dict(maker_fee=R.KALSHI_MAKER_FEE)
+
+
 def maker_params(st, venue="polymarket"):
-    """The maker replay's parameters from sweep settings: the quote settings, and on Kalshi its maker fee.
+    """The maker replay's parameters from sweep settings: the quote settings, and the venue's maker fee.
     `maker_min_volume_24h` unset keeps the replay's own $100 filter (the markets group's `min_volume_24h`
     is the takers' filter)."""
     from racinglines.markets.strategies import maker_replay as R
     p = R.Params(half_spread=st["half_spread"], size=st["size"], max_pos=st["max_pos"], skew=st["skew"],
-                 max_disagree=st["max_disagree"], fill=st["fill"])
+                 max_disagree=st["max_disagree"], fill=st["fill"], **maker_venue_opts(venue))
     if st["maker_min_volume_24h"] is not None:
         p = replace(p, min_volume_24h=st["maker_min_volume_24h"])
-    if venue == "kalshi":
-        p = replace(p, maker_fee=R.KALSHI_MAKER_FEE)
     return p
 
 
@@ -305,11 +337,10 @@ def bankroll_scale(start, balance):
 
 
 def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, reprice=False, taker=None, echo=print,
-              variant="baseline", settings=None, venue="polymarket"):
+              variant="baseline", settings=None):
     """The whole season (every raced weekend unless `rounds`). settings: sweep_settings.Settings, the
     full description of the combo (model, entry timing, taker, maker, markets); without it, one is
-    built from n_sims / taker / variant. venue: the maker replay's exchange (weekend(); "kalshi" is
-    saved in params.venue, Polymarket leaves params as they were). Returns dict(weekends DataFrame, by_stage, by_kind, totals,
+    built from n_sims / taker / variant. Returns dict(weekends DataFrame, by_stage, by_kind, totals,
     trades, scores, calibration, reliability, params). calibration / reliability: our fair values and the
     exchange's prices at every tradeable stage, scored on the outcome (core/calibration.py): per market kind
     and stage, and pooled per kind (stage "all"; a market counts once per stage it was tradeable)."""
@@ -323,7 +354,9 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
                                               stake_per_edge=t.stake_per_edge, max_stake=t.max_stake, cost=t.cost))
     st = settings
     sched = schedule(year, rounds)
-    if fetch:
+    if fetch and SS.venue_of(st) != "polymarket":
+        echo(f"progress {SS.venue_of(st)}: its tape is what the recorder and archive hold (nothing downloaded)")
+    elif fetch:
         with engine.connect() as c, get_session(engine_url) as s:
             fetch_market_data(s, c, sched, echo=echo)
     echo(f"progress 0/1 building history ({st.label()})")
@@ -349,7 +382,7 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
             plist = params_list if st["bankroll"] is None else \
                 [replace(q, scale=bankroll_scale(st["bankroll"], balance[q.mode])) for q in params_list]
             r = weekend(c, w, runs, plist, echo=echo, widen_kinds=[k for k, v in markouts.items() if v < 0],
-                        settings=st, venue=venue)
+                        settings=st)
         if r is None:
             continue
         if st["bankroll"] is not None:
@@ -406,5 +439,4 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
                             variant=st["variant"], data_lag_min=DATA_LAG.seconds // 60,
                             min_volume_24h=st["min_volume_24h"], coherence_tol=COHERENCE_TOL,
                             settings=st.to_json(), settings_key=st.key, model_key=st.model_key, data_key=data_key,
-                            label=st.label(), weekends=len(weekends),
-                            **({} if venue == "polymarket" else dict(venue=venue))))
+                            label=st.label(), weekends=len(weekends)))

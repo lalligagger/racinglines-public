@@ -5,6 +5,7 @@ racinglines live: launch and run a live private-book event, for any sport (pipel
     racinglines live new mtb_dh 20260925_mtb --final 3 --quali 2,91
     racinglines live step live/f1/2026-16.toml             # one idempotent update (F1: acts only when an update is due)
     racinglines live run live/f1/2026-16.toml              # step at the sport's cadence until the event is settled
+    racinglines live run live/mtb_dh/20260925_mtb.toml     # downhill: the poll loop, locked (one loop per final)
     racinglines live run live/f1/2026-15.toml --simulate --no-fetch     # a rehearsal on a simulated clock
     racinglines live agent live/f1/2026-16.toml --install  # a macOS LaunchAgent: one step every 5 minutes, locked
     racinglines live status                                # every event: live / replay / settled, last update, lateness
@@ -42,7 +43,7 @@ def main(argv=None):
     p.add_argument("--conditions", default="", help='Downhill: e.g. "clear, rutted"')
     p.add_argument("--title", default=None)
     p.add_argument("--force", action="store_true", help="Overwrite an existing spec")
-    for name, hlp in (("step", "One idempotent update."), ("run", "Step at the sport's cadence until the event is settled.")):
+    for name, hlp in (("step", "One idempotent update."), ("run", "Step at the sport's cadence until the event is settled (downhill: one locked poll loop per final).")):
         p = sub.add_parser(name, help=hlp)
         p.add_argument("spec")
         p.add_argument("--now", default=None, help="F1: the (simulated) UTC time of this step, e.g. 2026-09-24T07:35")
@@ -132,7 +133,7 @@ def cmd_run(args):
     spec = _spec(args.spec)
     if spec["sport"] != "f1":
         from racinglines.pipelines import live as LV
-        LV.adapter(spec["sport"]).run_spec(spec, minutes=args.minutes, echo=_echo)
+        LV.adapter(spec["sport"]).run_spec(spec, minutes=args.minutes, echo=_echo)     # downhill: the loop takes the run folder's lock
         return 0
     from racinglines.pipelines import live_f1 as F
     tick = pd.Timedelta(minutes=args.tick or spec["live"]["poll"].get("step_min", 5))

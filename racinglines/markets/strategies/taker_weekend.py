@@ -28,6 +28,7 @@ Sizing (both off by default, so results match the fixed sizing exactly):
 from dataclasses import dataclass, replace
 
 import pandas as pd
+from racinglines.markets import settlement_rules as SR
 from racinglines.markets.strategies.sizing import target_shares
 
 
@@ -106,13 +107,21 @@ class _Market:
         return self.deployed - before
 
     def result(self, outcome):
+        """outcome: True / False, or under a cancelled race's venue rules (markets/settlement_rules.py) a payout
+        (0.5, or Kalshi's last price) or VOID (every trade refunded at its price: P&L 0); None = unresolved, as
+        is FAIR (Kalshi's fair-price settlement) when no price was recorded."""
         pnl = None
-        if outcome is not None:
-            y = float(outcome)
-            pnl = self.cash + self.yes * y + self.no * (1 - y)
-            for tr in self.trades:      # each decision's P&L to resolution (attribution by stage)
-                v = y if tr["side"] == "YES" else 1 - y
-                tr["pnl"] = tr["shares"] * (v - tr["price"])
+        if outcome is not None and outcome != SR.FAIR:
+            if outcome == SR.VOID:
+                pnl = 0.0
+                for tr in self.trades:
+                    tr["pnl"] = 0.0
+            else:
+                y = float(outcome)
+                pnl = self.cash + self.yes * y + self.no * (1 - y)
+                for tr in self.trades:      # each decision's P&L to resolution (attribution by stage)
+                    v = y if tr["side"] == "YES" else 1 - y
+                    tr["pnl"] = tr["shares"] * (v - tr["price"])
         return dict(trades=self.trades, marks=self.marks, pnl=pnl, yes=self.yes, no=self.no, cash=self.cash)
 
 

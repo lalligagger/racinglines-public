@@ -46,6 +46,7 @@ EXCHANGES = [v for v in VENUES if v.kind == "exchange"]
 
 KIND_LABEL = {"race_pole": "Pole position", "race_win": "Win", "race_podium": "Podium", "race_top10": "Top 10", "race_make_final": "Makes the Final",
               "race_h2h": "Head-to-head", "race_constructor_top": "Top-scoring constructor",
+              "race_sprint_pole": "Sprint pole", "race_sprint_win": "Sprint winner",
               "champion": "Champion", "constructors_champion": "Constructors' champion",
               "season_wins_ge": "Season wins", "standings_h2h": "Championship head-to-head",
               "rank_up": "Rank up", "rank_down": "Rank down", "standings_top3": "Championship top 3"}

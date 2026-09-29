@@ -30,7 +30,7 @@ from sqlalchemy import text
 from racinglines.pipelines import sweep_settings as SS
 
 LIVE_STAGES = ["after FP1", "after FP2", "after FP3", "after SQ", "after Sprint", "after Quali"]
-K_SETTINGS = {"variant": "gbm", "max_disagree": 0.10, "size": 25, "maker_min_volume_24h": 400}
+K_SETTINGS = {"variant": "gbm", "max_disagree": 0.10, "size": 25, "maker_min_volume_24h": 400, "venue": "kalshi"}
 K_WHY = ("kalshi-maker-k search (full grid + 16k confirmations), conservative maker on Kalshi's tape with its maker "
          "fee, 2c quotes, only in markets with $400+ traded in the prior 24 h. Robust in both seasons (held-out rule, "
          "maker noise floor 350) and confirmed at 16k sims: 2026 +490 (Sharpe 0.62, max DD 499; +1,360 vs Kalshi "

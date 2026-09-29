@@ -406,6 +406,15 @@ links every F1 market it can classify ([F1](f1.md#kalshi-alignment)). Orders are
 `KALSHI_TRADING_ENABLED=true` ([CLI](cli.md#kalshi-exchange-kalshi)). How Kalshi's feed differs from
 Polymarket's: [Data](data.md#exchange-history-kalshi-and-polymarket).
 
+**Cross-venue disagreement panel** (`RACINGLINES_DISAGREE=1`, off by default; the Markets page is byte-identical
+without it): a collapsible card at the foot of the Markets page with the latest tick of the disagreement log
+(`market_disagreements`, written by `racinglines markets disagree` and by the recorder's passes,
+[CLI](cli.md#racinglines-markets)) for every outcome listed on both Polymarket and Kalshi: each venue's mid and top
+of book, our fair, each venue's fee-adjusted taker edge, the gap (Kalshi mid − Polymarket mid) and the gap net of both
+taker fees, widest first, with the last seven days' count of liquid rows above fees. Rows where a venue's stored tape
+shows nothing traded in the prior 24 h are greyed: that gap is on paper. Nothing renders while the log is empty.
+The log itself and what its columns mean: [Kalshi history](kalshi-history.md#cross-venue-disagreement-log).
+
 ## Tested
 
 Using FastAPI's test client against the Docker database:

@@ -63,8 +63,7 @@ def _sweep_argv(p):
     from racinglines.pipelines import sweep_settings as SS
     st = SS.Settings.from_dict(p.get("settings") or {})
     return ["-m", "racinglines", "f1", "--variant", st["variant"], "sweep", "--year", str(p.get("year", 2026)),
-            "--no-fetch", "--save", *(["--venue", p["venue"]] if p.get("venue", "polymarket") != "polymarket" else []),
-            *st.argv()]
+            "--no-fetch", "--save", *st.argv()]
 
 
 def _f1_common(p):
@@ -107,9 +106,6 @@ CATALOG = {j.code: j for j in [
             "Polymarket by every taker and maker strategy and settled on the result. The run joins the Edge Finder. "
             "Stages already priced with the same model settings and data are reused.",
             [Knob("year", "Season", "choice", "2026", choices=["2026", "2025"]),
-             Knob("venue", "Maker venue", "choice", "polymarket", choices=["polymarket", "kalshi"],
-                  help="Whose recorded tape the maker strategies replay (kalshi: with its maker fee); the takers "
-                       "read Polymarket either way."),
              Knob("settings", "Settings", "sweep_settings", None)],
             lambda p, out: _sweep_argv(p),
             "a few minutes per season (GBM longer)"),

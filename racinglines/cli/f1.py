@@ -23,6 +23,9 @@ racinglines f1 <command>: Formula 1.
     season-checkpoints  Championship markets entered at fixed points (pre-season, after 3 and
                  after 6 grands prix) and held, per model variant: P&L over the next 3 GPs and
                  to date, and how far the market moved toward our fair value.
+    scorecard    ONE EXCHANGE WEEKEND (or --all: a season), traded or not: the stored stage runs' fair
+                 values at each stage cutoff scored against the result and against the venue's mid
+                 (Polymarket, Kalshi or both). Nothing is priced or stored; writes data/runs/f1/scorecard/.
     replay       Replay a maker quoting Polymarket from one or more diagnostic runs against
                  the real trade tape; fills, inventory, P&L at resolution, mark-outs.
     forecast     LIVE: cutoff = now; upcoming races + championships. Saved as kind='forecast'
@@ -32,6 +35,7 @@ racinglines f1 <command>: Formula 1.
 """
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -83,6 +87,20 @@ def main(argv=None):
     p.add_argument("--user", nargs="*", default=None, help="Only these demo accounts (maker, taker).")
     p.add_argument("--venue", default="polymarket", choices=["polymarket", "kalshi"],
                    help="Whose recorded tape the maker replays (kalshi: the maker's Kalshi record; maker accounts only).")
+    p = sub.add_parser("reconcile", help="One account's live paper weekend against the backtest's replay of it on the "
+                                         "recorded tape (pipelines/reconcile.py; docs/paper-trading.md, rule 1). "
+                                         "Exit 1 when flagged, 2 without live rows.")
+    p.add_argument("--event", required=True, help="YEAR-ROUND, e.g. 2026-16.")
+    p.add_argument("--profile", required=True, help="Candidate id, name, or A / C / M1-M3.")
+    p.add_argument("--venue", default="polymarket", choices=["polymarket", "kalshi"])
+    p.add_argument("--user", default=None, help="The account (default: the profile's demo account).")
+    p.add_argument("--replicates", type=int, default=2,
+                   help="Seed replicates for the noise band besides the profile's seed (default 2: seeds 43 and 44; "
+                        "their stage pricings are cached like a sweep's).")
+    p.add_argument("--no-price", action="store_true", help="Read-only on the database: only replicates whose stage "
+                                                          "pricings are already cached.")
+    p.add_argument("--asof", default=None, help="Replay as of this UTC time instead of a day after the race.")
+    p.add_argument("--markdown", action="store_true", help="Also print the block for the weekend report.")
     p = sub.add_parser("profiles", help="List strategy profiles; create A / C / K as Lab candidates if missing.")
     p.add_argument("--assign-demo", action="store_true", help="Demo taker -> A, demo maker -> C.")
     p.add_argument("--venue", default="polymarket", choices=["polymarket", "kalshi"],
@@ -120,9 +138,6 @@ def main(argv=None):
     p.add_argument("--fetch-only", action="store_true", help="Only download the season's Polymarket history/trades.")
     p.add_argument("--reprice", action="store_true", help="Re-price stages even if stored.")
     p.add_argument("--save", action="store_true")
-    p.add_argument("--venue", default="polymarket", choices=["polymarket", "kalshi"],
-                   help="Whose recorded tape the maker strategies replay (kalshi: Kalshi's markets and trades, with "
-                        "its maker fee, as demo-history --venue kalshi; the takers read Polymarket either way).")
     p.add_argument("--reliability", action="store_true",
                    help="Also score calibration: our fair values and Polymarket's prices at every tradeable stage, "
                         "per market kind (Brier, log loss, ECE, reliability bins); saved with --save.")
@@ -138,6 +153,15 @@ def main(argv=None):
     p.add_argument("--max-stake", type=float, default=150.0)
     p.add_argument("--capital", type=float, default=1500.0)
     p.add_argument("--save", action="store_true")
+    p.add_argument("--paper", action="store_true",
+                   help="The championship sleeve (paper only): replay through the decision after --after-round on "
+                        "--venue and store that rebalance as the demo maker's paper positions "
+                        "(venue 'season:<venue>', kept out of the weekend records). Off unless given.")
+    p.add_argument("--venue", choices=("polymarket", "kalshi"), default="polymarket",
+                   help="With --paper: the exchange (Polymarket's championship markets, or Kalshi's KXF1 / "
+                        "KXF1CONSTRUCTORS champion markets)")
+    p.add_argument("--after-round", type=int, default=None, help="With --paper: the round just raced (default: the last)")
+    p.add_argument("--user", default=None, help="With --paper: the account (default: the demo maker)")
     p = sub.add_parser("season-checkpoints")
     p.add_argument("--variants", default=None,
                    help="Comma-separated model variants (default: every variant whose season forecast "
@@ -163,6 +187,15 @@ def main(argv=None):
     p.add_argument("--plot", action="store_true", help="Write the top/bottom cumulative P&L chart.")
     p.add_argument("--noise", action="store_true", help="Write the report-specific Monte Carlo noise summary.")
     p.add_argument("--html", metavar="MARKDOWN", help="Render this Markdown report to HTML in the search directory.")
+    p = sub.add_parser("scorecard", help="Pricing scorecard of an exchange weekend (pipelines/scorecard.py): the stored "
+                                         "stage runs' fair values vs the result and vs the venue's mid at each stage.")
+    p.add_argument("--event", default=None, help="Season-round, e.g. 2026-15")
+    p.add_argument("--all", action="store_true", help="Every raced weekend of --year instead.")
+    p.add_argument("--year", type=int, default=2026)
+    p.add_argument("--rounds", default=None, help="With --all: only these rounds, e.g. 1-15")
+    p.add_argument("--venue", default="polymarket", choices=["polymarket", "kalshi", "both"])
+    p.add_argument("--model-key", default=None, help="Stage runs of this model_key (default: the sweep defaults for --variant).")
+    p.add_argument("--out", default=None, help="Output folder (default data/runs/f1/scorecard/).")
     p = sub.add_parser("replay")
     p.add_argument("--runs", required=True, help="Diagnostic run ids in time order, e.g. 11,9")
     p.add_argument("--sweep", action="store_true", help="Also sweep half-spread and fill rule.")
@@ -208,6 +241,53 @@ def main(argv=None):
     V.switches(args.variant)                         # fail fast on an unknown name
     with V.use(args.variant):
         return _run(args)
+
+
+def _season_sleeve(args, engine, prm, SE, get_session, records):
+    """f1 season-strategy --paper: the championship sleeve's rebalance after one round on one exchange, stored
+    as paper positions (and, with --save, as a model run of kind 'season_sleeve')."""
+    from sqlalchemy import text
+    echo = lambda m: print(m, flush=True)   # noqa: E731
+    username = args.user or SE.SLEEVE_USER
+    with engine.connect() as c:
+        uid = c.execute(text("SELECT id FROM users WHERE username = :u"), dict(u=username)).scalar()
+    if uid is None:
+        sys.exit(f"no user {username!r}")
+    if args.venue == "polymarket" and not args.no_fetch:
+        with engine.connect() as c:
+            links = SE.season_links(c, args.year, args.venue)
+        with engine.connect() as c, get_session(args.db) as s:
+            SE.fetch_history(s, c, links["token_id"].tolist(), echo=echo)
+    out = SE.sleeve_rebalance(engine, args.db, args.year, args.after_round, exchange=args.venue, params=prm,
+                              n_sims=args.sims, variant=args.variant, echo=echo)
+    with engine.begin() as c:
+        n = SE.store_sleeve(c, uid, out)
+    sm = out["summary"]
+    print(f"\n=== Championship sleeve on {args.venue}, {out['label']} ({out['markets']} markets) ===")
+    print(f"  decision {out['t']:%Y-%m-%d %H:%M} UTC, executed {out['exec_at']:%H:%M}, forecast run #{out['run_id']}")
+    print(f"  {sm['trades']} trades at this decision; {sm['positions']} open positions, {sm['settled']} settled; "
+          f"P&L to date {sm['pnl']:+,.2f}")
+    print(f"  stored {n} paper positions for {username!r} (venue {out['venue']!r}, event {out['event_key']!r})")
+    if len(out["trades"]):
+        print("\n=== Trades ===")
+        print(out["trades"].drop(columns=["key", "decision"]).to_string(index=False, float_format="{:.3f}".format))
+    if out["positions"]:
+        import pandas as pd
+        print("\n=== Positions ===")
+        print(pd.DataFrame(out["positions"]).drop(columns=["market_key"]).to_string(index=False, float_format="{:.3f}".format))
+    if args.save:
+        from racinglines.db.queries import save_model_run
+        tr = out["trades"]
+        with get_session(args.db) as s:
+            run_id = save_model_run(
+                s, competition="f1_wdc", season=args.year, category="DRV", model="season_strategy", kind="season_sleeve",
+                params=dict({k: (str(v) if hasattr(v, "total_seconds") else v) for k, v in prm.__dict__.items()},
+                            year=args.year, variant=args.variant, venue=args.venue, after_round=out["after_round"],
+                            label=out["label"], t=str(out["t"]), forecast_run=out["run_id"], user=username,
+                            min_volume=SE.MIN_VOLUME, slippage=SE.SLIPPAGE),
+                metrics=dict(summary=sm, positions=out["positions"],
+                             trades=records(tr.assign(t=tr["t"].astype(str))) if len(tr) else []))
+        print(f"Saved sleeve run {run_id}.")
 
 
 def _run(args):
@@ -269,6 +349,20 @@ def _run(args):
                 rs = [r for r in rep if r[0] == u and r[2].startswith(y)]
                 if rs:
                     print(f"{u} {y}: {len(rs)} weekends, paper P&L {sum(r[4] for r in rs):+.2f}")
+        return
+    if args.cmd == "reconcile":
+        from racinglines.pipelines import reconcile as RC
+        res = RC.reconcile(engine, args.db, args.event, args.profile, venue=args.venue, user=args.user,
+                           replicates=RC.seeds(args.replicates), price=not args.no_price, now=args.asof,
+                           echo=lambda m: print(m, flush=True))
+        print(RC.format_table(res))
+        if args.markdown:
+            print()
+            print(RC.format_markdown(res))
+        if not res["live"]["signals"] and not res["live"]["positions"]:
+            sys.exit(2)
+        if not res["verdict"]["ok"]:
+            sys.exit(1)
         return
     if args.cmd == "profiles":
         from racinglines.pipelines import profiles as PF
@@ -373,6 +467,9 @@ def _run(args):
                 with engine.connect() as c, get_session(args.db) as s:
                     n = snapshot_books(s, c, ev)
                 print(f"{datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} {n} books", flush=True)
+                if os.environ.get("RACINGLINES_DISAGREE", "0") == "1":     # the cross-venue log's tick (markets/disagree.py)
+                    from racinglines.markets import disagree as D
+                    print(f"{datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} {D.record(engine)} disagreement rows", flush=True)
             except Exception as e:  # keep recording through transient API errors
                 print(f"{datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} error: {e}", flush=True)
             if time.time() - last_archive >= 3600:
@@ -391,6 +488,8 @@ def _run(args):
         from racinglines.pipelines import season_strategy as SE
         prm = SeasonParams(min_edge=args.min_edge, stake_per_edge=args.stake_per_edge, max_stake=args.max_stake,
                            capital=args.capital)
+        if args.paper:
+            return _season_sleeve(args, engine, prm, SE, get_session, records)
         out = SE.run_season(engine, args.db, args.year, prm, fetch=not args.no_fetch, reforecast=args.reforecast,
                             n_sims=args.sims, echo=lambda m: print(m, flush=True), variant=args.variant)
         r, h = out["result"], out["hold"]
@@ -500,8 +599,7 @@ def _run(args):
                 SW.fetch_market_data(s, c, SW.schedule(args.year, rounds), echo=lambda m: print(m, flush=True))
             return
         out = SW.run_sweep(engine, args.db, args.year, rounds, fetch=not args.no_fetch, reprice=args.reprice,
-                           settings=settings, echo=lambda m: print(m, flush=True),
-                           **({} if args.venue == "polymarket" else dict(venue=args.venue)))
+                           settings=settings, echo=lambda m: print(m, flush=True))
         w = out["weekends"]
         cols = [c for c in ["event_key", "event", "format", "stages", "tradeable_pre", "tradeable_quali",
                             "update_trades", "update_bought", "update_pnl", "hold_pnl", "last_pnl", "maker_fills",
@@ -543,6 +641,49 @@ def _run(args):
                                                              reliability=records(out["reliability"]))
                                                         if args.reliability else {})))
             print(f"Saved sweep run {run_id}.")
+        return
+    if args.cmd == "scorecard":
+        from racinglines.pipelines import scorecard as SCD
+        from racinglines.pipelines import weekend_sweep as SW
+        if not args.all and not args.event:
+            sys.exit("give --event YEAR-ROUND or --all --year YEAR")
+        mk = args.model_key or SCD.default_model_key(args.variant)
+        outdir = Path(args.out) if args.out else None
+        if outdir:
+            outdir.mkdir(parents=True, exist_ok=True)
+        venues = list(SCD.VENUES) if args.venue == "both" else [args.venue]
+        if args.all:
+            for venue in venues:
+                print(f"\n=== {args.year} on {venue} (model_key {mk}) ===")
+                with engine.connect() as c:
+                    out = SCD.season(c, args.year, venue, mk, rounds=_years(args.rounds) if args.rounds else None,
+                                    echo=lambda m: print(m, flush=True))
+                if len(out["weekends"]):
+                    print("\n--- Per weekend ---")
+                    print(SCD.format_text(out["weekends"], first=("event_key", "event")))
+                    print("\n--- Per kind, all stages and weekends pooled ---")
+                    print(SCD.format_text(out["by_kind"], first=("kind",)))
+                    print("\n--- Per stage and kind, all weekends pooled ---")
+                    print(SCD.format_text(out["by_stage"]))
+                files = SCD.write_season(out, mk, outdir)
+                print("-> " + ", ".join(str(v) for v in files.values()))
+            return
+        year, rnd = (int(x) for x in args.event.split("-"))
+        w = SW.schedule(year, [rnd]).get(rnd)
+        if w is None:
+            sys.exit(f"{args.event}: not in the {year} schedule")
+        for venue in venues:
+            with engine.connect() as c:
+                res = SCD.weekend(c, w, venue, mk)
+            print(f"\n=== {args.event} {w['name']} on {venue} (model_key {mk}) ===")
+            if res["note"]:
+                print(f"note: {res['note']}")
+            if len(res["scores"]):
+                print(SCD.format_text(res["scores"]))
+                print("\n--- All stages pooled ---")
+                print(SCD.format_text(SCD.score(res["rows"], by=("kind",)), first=("kind",)))
+            files = SCD.write(res, mk, outdir)
+            print("-> " + ", ".join(str(v) for v in files.values()))
         return
     if args.cmd == "replay":
         from racinglines.markets.strategies import maker_replay as R

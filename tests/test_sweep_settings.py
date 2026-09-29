@@ -177,3 +177,17 @@ def test_maker_volume_filter_and_kalshi_fee_reach_the_replay_only_when_set():
     v = SS.Settings.from_dict({"variant": "gbm", "max_disagree": 0.05, "size": 25, "maker_min_volume_24h": 200})
     assert v.key != c.key and v.model_key == c.model_key and "--maker-min-volume-24h" in v.argv()
     assert WS.maker_params(v).min_volume_24h == 200.0
+
+
+def test_venue_setting_stays_out_of_every_key_while_unset():
+    """`venue` (U1) is optional: unset or "polymarket" leaves every saved key, label and flag list as it was."""
+    d = SS.Settings.from_dict()
+    assert d["venue"] is None and SS.venue_of(d) == "polymarket" and d.key == "c107835cbced"
+    pm = SS.Settings.from_dict(dict(venue="polymarket"))
+    assert pm["venue"] is None and pm.key == d.key and pm.label() == d.label() and pm.argv() == []
+    assert SS.Settings.from_dict(dict(PROFILE_A, venue="polymarket")).key == "8a383d4d0c68"
+    k = SS.Settings.from_dict(dict(venue="kalshi"))
+    assert SS.venue_of(k) == "kalshi" and k.key != d.key and k.model_key == d.model_key
+    assert k.changed() == dict(venue="kalshi") and k.argv() == ["--venue", "kalshi"] and "venue=kalshi" in k.label()
+    with pytest.raises(ValueError):
+        SS.Settings.from_dict(dict(venue="betfair"))

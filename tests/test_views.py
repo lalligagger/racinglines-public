@@ -330,6 +330,32 @@ def test_admin_totals_leave_out_the_replay_counterparty():
     assert bet_totals(bets.iloc[0:0]) == dict(bets=0, staked=0.0, taker_pnl=0.0, replay_bets=0, replay_pnl=0.0)
 
 
+def test_disagreement_panel_needs_the_switch(clients):
+    """The Markets page is byte-identical without RACINGLINES_DISAGREE=1; with it, the cross-venue panel shows the
+    log's latest tick (or nothing at all while the log is empty)."""
+    from racinglines.db.config import get_engine
+    from racinglines.markets import disagree as D
+    m = clients[0]["maker"]
+    was = D.ON["on"]
+    D.ON["on"] = False
+    off = m.get("/markets").text
+    assert "Cross-venue disagreement" not in off
+    D.ON["on"] = True
+    try:
+        on = m.get("/markets").text
+        with get_engine().connect() as c:
+            panel = D.panel(c)
+        if panel is None:
+            assert on == off
+        else:
+            assert "Cross-venue disagreement" in on and f"{panel['n_above']} of {len(panel['rows'])} outcomes above fees" in on
+            assert not re.search(r">\s*nan\b|\bnan\s*<", on, re.I)
+    finally:
+        D.ON["on"] = False
+    assert m.get("/markets").text == off
+    D.ON["on"] = was
+
+
 def test_kalshi_pages_need_the_switch(clients):
     """With RACINGLINES_KALSHI_VENUE=0 the Kalshi list is a 404 and its Positions filter is ignored (the page
     still renders); by default, the list and the filters render (racinglines.markets.venues.KALSHI_VENUE)."""

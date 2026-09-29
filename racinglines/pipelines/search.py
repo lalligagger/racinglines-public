@@ -105,7 +105,7 @@ def _settings(j):
     extra = [k for k in j if k not in META and k not in cls.BY]
     if extra:
         raise ValueError(f"job {j.get('note', j)}: unknown keys {extra}")
-    return cls.from_dict({k: v for k, v in j.items() if k in cls.BY})
+    return cls.from_dict({k: v for k, v in j.items() if k in cls.BY and k not in META})   # a job's venue is META
 
 
 def job_id(j):
@@ -178,7 +178,7 @@ def load(path):
         c = dict(c)
         sport = c.get("sport", "f1")
         cls = settings_class(sport)
-        st = cls.from_dict({k: v for k, v in c.items() if k in cls.BY})
+        st = cls.from_dict({k: v for k, v in c.items() if k in cls.BY and k not in META})
         strategy = c.get("strategy", "maker")
         cand = dict(name=c.get("name") or st.label(), year=int(c.get("year", 2026)), strategy=strategy,
                     why=c.get("why", ""), settings=st.to_json(), settings_key=st.key,

@@ -47,5 +47,20 @@
   <div class="legend">{{ r.source }}{% if r.diag %} · <a href="/lab/diagnostics/{{ r.diag }}">diagnostic →</a>{% endif %}</div>
 </div>{% endfor %}</div></details>{% endif %}
 {% endfor %}
+{% if disagree %}<details class="card" data-remember="markets:disagree" open><summary><h3>Cross-venue disagreement</h3><span class="sum">{{ disagree.n_above }} of {{ disagree.rows|length }} outcomes above fees · last tick {{ disagree.last|fmt }} UTC</span></summary>
+<p class="legend">Polymarket vs Kalshi on every outcome listed on both, at the log's latest tick (<code>racinglines markets disagree</code>). Gap = Kalshi mid − Polymarket mid; net = |gap| − both taker fees; edge = the better taker trade vs our fair, net of fees. Greyed rows: a venue's tape shows nothing traded in the prior 24 h, so the gap is on paper.</p>
+<div class="scroll" data-rows="20" data-filter="filter outcomes"><table>
+<thead><tr><th class="l">Outcome</th><th class="l">Event</th><th>Polymarket</th><th>Kalshi</th><th>Fair</th><th>PM edge</th><th>Kalshi edge</th><th>Gap</th><th>Net</th><th>At (UTC)</th></tr></thead>
+<tbody>{% for r in disagree.rows %}<tr{% if not r.liquid %} class="muted"{% endif %}>
+<td class="l">{{ r.kind_label }} · {{ r.subject }}</td><td class="l">{% if r.rid %}<a href="/races/{{ r.rid }}">{{ r.event }}</a>{% else %}{{ r.event }}{% endif %}</td>
+<td>{{ pct(r.pm_mid, 1) }}{% if r.pm_bid is not none and r.pm_ask is not none %} <span class="muted">{{ pct(r.pm_bid, 1) }}–{{ pct(r.pm_ask, 1) }}</span>{% endif %}</td>
+<td>{{ pct(r.kalshi_mid, 1) }}{% if r.kalshi_bid is not none and r.kalshi_ask is not none %} <span class="muted">{{ pct(r.kalshi_bid, 1) }}–{{ pct(r.kalshi_ask, 1) }}</span>{% endif %}</td>
+<td>{{ pct(r.fair, 1) }}</td>
+<td>{% if r.pm_edge is not none %}<span class="{{ 'good' if r.pm_edge > 0 else 'muted' }}">{{ r.pm_side }} {{ "%+.1f"|format(r.pm_edge * 100) }}</span>{% else %}–{% endif %}</td>
+<td>{% if r.kalshi_edge is not none %}<span class="{{ 'good' if r.kalshi_edge > 0 else 'muted' }}">{{ r.kalshi_side }} {{ "%+.1f"|format(r.kalshi_edge * 100) }}</span>{% else %}–{% endif %}</td>
+<td>{{ "%+.1f"|format(r.gap * 100) }}</td><td{% if r.above %} class="good"{% endif %}>{{ "%+.1f"|format(r.gap_net * 100) }}</td><td>{{ r.ts|fmt }}</td>
+</tr>{% endfor %}</tbody></table></div>
+{% if disagree.days %}<div class="legend">Last {{ disagree.window }} days, liquid rows above fees: {% for d in disagree.days %}{{ d.day }} {{ d.above_fees }}/{{ d.liquid }}{{ " · " if not loop.last }}{% endfor %}</div>{% endif %}
+</details>{% endif %}
 <p class="legend mt">Browse <a href="/markets/polymarket">all Polymarket markets</a> ·{% if kalshi %} <a href="/markets/kalshi">all Kalshi markets</a> ·{% endif %} <a href="/events">all events</a> · <a href="/athletes">all athletes</a>. Bars: our fair probability; the orange tick is the exchange price.</p>
 {% endblock %}

@@ -7,7 +7,8 @@ as new information arrives. A sport's `[stages]` table says how its session sche
     pre_minutes = 60            # ... this long before the first session
     lag_minutes = 30            # a session's data is used this long after it ends
     until = "Race"              # stages stop before this session (it is never traded)
-    closes = { race_pole = "Qualifying" }   # a market kind closes when this session starts
+    closes = { race_pole = "Qualifying" }   # a market kind closes when this session starts (or a list of
+                                            # names: the first one on the schedule, e.g. SQ's two names)
 
     build(sessions, "f1")   -> dict(stages=[(label, cutoff)], closes={kind: time or None}, until=time or None)
 
@@ -42,7 +43,8 @@ def build(sessions, sport):
             cut = start + timedelta(minutes=sched[name][0] + sp["lag_minutes"])
             if until is None or cut < until:
                 stages.append((f"after {sched[name][1]}", cut))
-    closes = {k: next((t for n, t in sessions if n == s), None) for k, s in sp["closes"].items()}
+    closes = {k: next((t for n, t in sessions if n in ([s] if isinstance(s, str) else list(s))), None)
+              for k, s in sp["closes"].items()}
     return dict(stages=stages, closes=closes, until=until)
 
 

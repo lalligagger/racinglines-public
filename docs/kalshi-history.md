@@ -19,6 +19,26 @@ Polymarket's; `markets archive` sends Kalshi's tokens there. One difference matt
 shared by every driver's market of the event, so Kalshi code reads and groups the tape by market ticker
 (`token_id`), never by condition.
 
+The same tables and archive take the **tape-only sports** (NASCAR Cup, MotoGP, IndyCar): synced only when named
+(`markets --exchange kalshi --sport nascar sync`), under their own competitions, every link `unmodeled`, so the
+replays below (which read F1's modeled links) never see them.
+[Data](data.md#other-series-tapes-nascar-motogp-indycar), [CLI](cli.md#kalshi-exchange-kalshi).
+
+## Sprint weekends
+
+Off by default. `RACINGLINES_KALSHI_SPRINTS=1` in the sync's environment makes `markets --exchange kalshi
+sync` classify the sprint winner (`KXF1RACESPRINT-<GP>26`, "Dutch Grand Prix: Sprint Race Winner") as
+`race_sprint_win` and sprint pole (`KXF1SPRINTPOLE-<GP>26`, "Sprint Qualifying: Pole Position") as
+`race_sprint_pole`, linked to the weekend's race and driver like the main-race markets, so `model_prob`
+prices them: from `extra.sprint_win_prob` / `sprint_pole_prob` when a model run stores them, else from the
+race win and pole probabilities (the sprint priced as the model's race, as the season forecast already does
+for sprint points). They close when SQ / the Sprint starts (`sports/f1.toml` `[stages.closes]`) and settle
+after SQ / after the Sprint. The sprint's fastest lap, top 5, top 10 and top constructor stay unmodeled.
+Unset, the sync writes exactly the rows it does today (`tests/test_kalshi.py`, on the archived 2026 Dutch GP
+links). Re-running the sync with the flag re-classifies the existing rows in place; without it they go back.
+The maker replay's kinds (`maker_replay.MODELED`) don't include the sprint kinds, so `demo-history --venue
+kalshi` is unchanged.
+
 ## Kalshi's historical feed vs Polymarket's
 
 The full comparison (API, contract shape, grouping, trades and wallets, price history, books, fees, tick,
@@ -93,6 +113,25 @@ podium +$9.94. Hungary 2025 (M2, −$508) is most of M2's loss.
 - Weekend by weekend (Kalshi, including fees): Australia −25, China +141, Japan +225, Miami −91, Canada +120,
   Monaco −50, Barcelona −301, Austria −237, Britain −209, Belgium +32, Hungary +137, Netherlands +37,
   Italy +165, Spain 0, Azerbaijan −62.
+
+## In the signal engine
+
+A strategy profile paper-trades Kalshi when its settings say `venue = "kalshi"` (roadmap U1; the setting
+is optional, unset by default and left out of every settings key, so every Polymarket profile and saved
+sweep is untouched). Then `racinglines f1 signals`, `f1 sweep --venue kalshi` and the Lab's sweeps read
+the race's `exchange='kalshi'` links, one market per ticker (never grouped by `condition_id`, the event
+ticker), Kalshi's tape per market (its own 24 h volume), and the maker pays `KALSHI_MAKER_FEE`; the taker
+strategies (`taker_weekend`) and the maker replay run unchanged on top. Signals carry
+`detail.venue = 'kalshi'`, positions `venue = 'kalshi'`, apart from the Polymarket rows as the maker's
+record above. Live, a Kalshi profile refreshes Kalshi's minute candlesticks and trades for the event
+(`markets/kalshi/sync.py`) before pricing, as a Polymarket profile refreshes Polymarket's. No order is
+ever sent and `KALSHI_TRADING_ENABLED` is never read by the engine.
+
+Checks (2026-09-29, Azerbaijan 2026, `scripts/signals_parity.py --venue kalshi`; see
+[Paper trading](paper-trading.md#parity-with-the-sweep)): profile A's Kalshi replay through the engine
+gives the sweep's 23 taker trades exactly; profile C's gives 41 fills and −$61.90 settled, the sweep
+maker's figures and the −$61.90 Azerbaijan line of the record above, to the cent. Profile A on Polymarket
+gives the same 11 trades before and after the change.
 
 ## In the app
 
@@ -171,3 +210,39 @@ The full table of every combo × maker strategy, with the 16k columns, is in the
 (`params.venue = "kalshi"`); `racinglines f1 profiles --assign-demo --venue kalshi` stores it as the demo
 maker's Kalshi profile (`users.prefs["strategy_profile_kalshi"]`), beside its Polymarket profile C, which it
 leaves alone. Nothing reads that key until the signal engine runs Kalshi, so the deployed app doesn't change.
+
+## Cross-venue disagreement log
+
+Roadmap U7. `racinglines markets disagree --event …` ([CLI](cli.md#racinglines-markets)) keeps, for every F1
+outcome linked on both Polymarket and Kalshi (a race's win, podium, top 10, pole, top-constructor and head-to-head
+markets, and the season's drivers' and constructors' champion markets), one row per tick in `market_disagreements`
+(`racinglines/markets/disagree.py`, migration `c8e3f6a2d4b1`):
+
+| Column | Meaning |
+|---|---|
+| `pm_mid`, `pm_bid`, `pm_ask` / `kalshi_*` | Each venue's price and top of book at the tick, as the outcome's YES side (an inverted Polymarket link is flipped). The mid is the venue's last stored price at or before the tick, no older than 6 h; a book recorded within one step replaces it with (bid + ask) / 2 and gives the top of book. |
+| `fair`, `run_id` | Our fair value from the run in force at the tick: for a race, the latest diagnostic or forecast with predictions for it, as of its cutoff; for the season, the latest forecast. Before the first run there is no fair and no edge (the gap columns still fill). |
+| `pm_edge`, `pm_side` / `kalshi_edge`, `kalshi_side` | The better taker trade on that venue vs fair, net of its taker fee: buy YES at the ask (`fair − ask − fee`) or sell at the bid (`bid − fair − fee`); without a book, at the mid. Kalshi's taker fee is `0.07 × P × (1 − P)` per contract (`venue_replay.Kalshi.TAKER_FEE`); Polymarket charges takers nothing on these markets. |
+| `gap`, `gap_net` | `kalshi_mid − pm_mid`, and `|gap|` net of both taker fees at their mids: above 0, the venues disagree by more than it costs to take both sides. |
+| `pm_vol24`, `kalshi_vol24` | USD traded on each venue in the 24 h before the tick (`market_trades`; null where no tape is stored). A row is *liquid* when neither venue's tape shows nothing traded: Polymarket's stored history is a mid, and an empty book reads 0.5, so a gap on a dead market is on paper. The report and the panel count liquid rows. |
+
+The backfill reads the archived prices, books and tapes (`data/archive/markets/{polymarket,kalshi}/`), so it runs
+without exchange access; the window defaults to where both venues have prices, on an hourly grid, and for a race ends
+at the race start (after it the venues settle at different speeds). With `RACINGLINES_DISAGREE=1` the recorder writes
+one tick per pass from the latest stored quotes, and the Markets page shows the log's latest tick
+([Web app](webapp.md#kalshi)). A price jump inside one step shows as a one-tick gap (Kalshi's hourly candle closes
+at the tick, Polymarket's sample can be a few minutes older), so read the share of rows above fees and the median,
+not the maximum.
+
+**2026 championship markets** (33 outcomes, 2026-01-12 to 2026-09-27, hourly): 141,220 rows, 81,919 liquid (Kalshi's
+tape is stored; Polymarket's champion tape isn't, so the Polymarket side is taken as liquid), 65,250 of them above fees
+(80%). The typical net gap is small, 0.3 to 0.6 points, so most "above fees" rows are a mid-to-mid difference of a
+cent or two on low-priced outcomes, where Kalshi's fee at P(1 − P) is almost nothing; the widest liquid gaps are
+one-tick jumps on race days (Antonelli's championship, 2026-05-24 21:00: Polymarket 0.357 vs Kalshi 0.640). Our fair
+exists only from the 2026-09-27 forecast on, which the stored prices end before, so this backfill carries no edge
+columns; the recorder's ticks will. Day by day, the report is in the pull request that added it.
+
+**Azerbaijan 2026 (round 15)**, 55 outcomes, 2026-09-22 to the race start on the 26th: 4,922 rows, 1,879 liquid,
+1,221 above fees (65%; median net +0.3 points). The largest liquid gaps are Polymarket's top-constructor and
+long-shot podium markets reading ~0.5 (a one-sided book) against Kalshi's 0.5 to 5 cents, which a recorded book
+would have shown as a spread, not a price.

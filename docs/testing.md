@@ -193,7 +193,7 @@ change failed exactly the stages downstream of it:
 | `test_replay.py` | 41 | Maker replay (`maker_replay.py`) on synthetic tapes. |
 | `test_search.py` | 6 | Search queue (`pipelines/search.py`): parsing, the automatic baseline, job identity, command lines. |
 | `test_season_strategy.py` | 10 | Season-long strategy replay on synthetic markets. |
-| `test_signals.py` | 23 | Paper signals (`pipelines/signals.py`): heat, taker signals = the backtest taker's trades, maker quote state, stage truncation, idempotent storage, profiles. |
+| `test_signals.py` | 24 | Paper signals (`pipelines/signals.py`): heat, taker signals = the backtest taker's trades, maker quote state, same-second maker fills kept apart, stage truncation, idempotent storage, profiles. |
 | `test_sports.py` | 3 | Sport schemas (`sports/*.toml`) and the modules that read them. |
 | `test_story.py` | 4 | The demo maker's decision rules (`pipelines/story.py`) on synthetic evidence. |
 | `test_sweep_settings.py` | 9 | Sweep settings schema: defaults, validation, identity keys, command-line round trip, settings applied and restored. |
