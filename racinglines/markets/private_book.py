@@ -331,9 +331,16 @@ def outcome_for(kind, athlete_id, params, res):
     return K.settle(kind, athlete_id, params, res, group_key=team_key if kind == "race_constructor_top" else None)
 
 
-def settle_from_results(session, conn, race_id, market_ids=None):
+def settle_from_results(session, conn, race_id, market_ids=None, rules=None):
     """Settle open race markets (incl. head-to-head and constructor-top) from the
-    official classification. Returns settled market ids."""
+    official classification. Returns settled market ids.
+    rules: settle a cancelled race by each venue's rules (markets/settlement_rules.py; a mirrored market's
+    venue is its exchange, the rest are the private book's). None reads RACINGLINES_CANCELLED_RACE_RULES,
+    off by default: then a cancelled race never settles here and a relocated one settles on its result."""
+    from racinglines.markets import settlement_rules as SR
+    if SR.enabled(rules) and SR.race_status(_sport(session, race_id), _event_key(session, race_id),
+                                            SR.db_status(conn, race_id)) == SR.CANCELLED:
+        return _settle_cancelled(session, conn, race_id, market_ids)
     res = race_outcomes(conn, race_id)
     if res.empty or (res["status"] == "OK").sum() < 5:
         return []
@@ -346,5 +353,42 @@ def settle_from_results(session, conn, race_id, market_ids=None):
         if y is None:
             continue
         settle(session, mk.id, y, "auto: official race classification")
+        done.append(mk.id)
+    return done
+
+
+def _event_key(session, race_id):
+    return session.get(m.Race, race_id).event.source_key
+
+
+def _sport(session, race_id):
+    race = session.get(m.Race, race_id)
+    return "f1" if (race.format or {}).get("kind") == "f1" or race.event.source == "f1timing" else "mtb_dh"
+
+
+def _settle_cancelled(session, conn, race_id, market_ids=None):
+    """A cancelled race: every open market settles by its venue's rule (settlement_rules.RULES). A 0.5 payout
+    (Polymarket's assumed 50/50 on a binary market) can't be paid by a YES/NO book, so it is voided with a note."""
+    from racinglines.markets import settlement_rules as SR
+    venue_of = dict(conn.execute(text("SELECT hm.id, ml.exchange FROM house_markets hm JOIN market_links ml "
+                                      "ON ml.id = hm.market_link_id WHERE hm.race_id = :r"), dict(r=race_id)).all())
+    name_of = dict(conn.execute(text("SELECT hm.id, coalesce(ml.group_title, ml.outcome) FROM house_markets hm "
+                                     "JOIN market_links ml ON ml.id = hm.market_link_id WHERE hm.race_id = :r"),
+                                dict(r=race_id)).all())
+    q = select(m.HouseMarket).where(m.HouseMarket.race_id == race_id, m.HouseMarket.status.in_(["open", "closed"]))
+    if market_ids is not None:
+        q = q.where(m.HouseMarket.id.in_(market_ids))
+    done = []
+    for mk in session.scalars(q).all():
+        venue = venue_of.get(mk.id) or "private"
+        y = SR.payout(venue, SR.CANCELLED, mk.kind, name_of.get(mk.id))
+        note = "auto: " + SR.describe(venue, SR.CANCELLED, mk.kind, name_of.get(mk.id))
+        if y == SR.RESULT:
+            continue
+        if y == SR.VOID:
+            y = None
+        elif not isinstance(y, bool):
+            y, note = None, note + f"; a YES/NO book can't pay {y}: voided"
+        settle(session, mk.id, y, note)
         done.append(mk.id)
     return done

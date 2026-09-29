@@ -175,20 +175,24 @@ def fetch_market_data(session, conn, sched, fidelity=5, force=False, echo=print)
         echo(f"progress {w['event_key']} {w['name']}: {n} price points, {k} trades")
 
 
-def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None):
+def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None, rules=None):
     """The weekend's tradeable markets for racinglines/markets/strategies/taker_weekend.py: per market, each stage's fair,
     exchange price and tradeable flag (what was knowable then) and the outcome (settlement). The exchange is a
     backtest venue (markets/venue_replay.py: Polymarket's recorded prices and trade tape).
     price_times: {stage label: time} to read the market at instead of the stage's cutoff (live signals:
-    when the stage was priced, i.e. when its trades could first be made); None = the cutoffs (backtests)."""
+    when the stage was priced, i.e. when its trades could first be made); None = the cutoffs (backtests).
+    rules: a cancelled race's outcomes by the venue's rules (markets/settlement_rules.py: an outcome can then be
+    a 0.5 payout or VOID); None reads RACINGLINES_CANCELLED_RACE_RULES, off by default."""
     at = lambda lab, cutoff: (price_times or {}).get(lab, cutoff)          # noqa: E731
     from racinglines.db import reads as D
     from racinglines.markets import private_book as house
+    from racinglines.markets import settlement_rules as SR
     from racinglines.markets.venue_replay import Polymarket
     rid = _race_id(conn, w["event_key"])
     links = _token0_links(conn, rid)
     if not len(links):
         return None
+    status = SR.race_status("f1", w["event_key"], SR.db_status(conn, rid)) if SR.enabled(rules) else None
     start, end = stage_runs[0][1] - timedelta(hours=1), max([w["race_start"], *(price_times or {}).values()])
     venue = Polymarket(conn, links, start, end, GROUP_TARGET, COHERENCE_TOL, STALE)
     res = house.race_outcomes(conn, rid)
@@ -213,8 +217,10 @@ def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None):
         subject = link["athlete"] or (link["params"] or {}).get("team") or link["group_title"]
         if kind == "race_h2h":
             subject = f"{link['outcome']} ({link['question'].split(': ')[-1]})"
-        markets.append(dict(key=link["token_id"], kind=kind, subject=subject, stages=stages, link=link,
-                            outcome=venue.resolve(link, res)))
+        outcome = venue.resolve(link, res)
+        if status:
+            outcome = SR.apply(venue.code, status, kind, link.get("group_title") or link.get("outcome"), outcome)
+        markets.append(dict(key=link["token_id"], kind=kind, subject=subject, stages=stages, link=link, outcome=outcome))
     return markets
 
 

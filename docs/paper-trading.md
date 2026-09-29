@@ -136,6 +136,48 @@ shares and price of every trade (exit 1 on a difference).
 | Same, with the sweep repricing every stage itself (`--reprice`) | Identical |
 | Maker C, same round | 15 fills, P&L −$22.29, identical to the sweep's maker |
 
+### Cancelled and relocated races
+
+A market kind says what pays when the race runs ([kinds](backtest-core.md)). `racinglines/markets/settlement_rules.py`
+says what each venue pays when it doesn't, and applies it wherever paper positions settle: the private book
+(`private_book.settle_from_results`), the weekend's markets the signal engine's positions are built from
+(`weekend_sweep.weekend_markets`) and the maker replay (`maker_replay.load_event`). **Off by default:** set
+`RACINGLINES_CANCELLED_RACE_RULES=1` (or pass `rules=True` to those calls). Without it nothing changes: a
+cancelled race never settles (there is no classification) and a relocated race settles on its result.
+
+A race's status is `cancelled` when `events.status = 'cancelled'` in the database, when the env
+`RACINGLINES_RACE_STATUS` says so (`f1:2026-22=cancelled,f1:2026-23=cancelled`), or from the module's
+`RACE_STATUS` table, which also records the one `relocated` race so far: **2026 round 16, the Bahrain GP run
+at Sepang** ("Bahrain Grand Prix in Malaysia"). A relocated race's markets settle on the race that was run,
+at every venue (its test: `tests/test_settlement_rules.py`).
+
+What a YES share pays on a cancelled race, per venue (`settlement_rules.RULES`):
+
+| Venue | Named outcome (driver, constructor) | "Other" / "any other driver" | Binary (head-to-head) |
+|---|---|---|---|
+| Polymarket | **0** — fact | **1** — fact | 0.5 — *assumed* |
+| Kalshi | 0 — *assumed* | 0 — *assumed* | 0 — *assumed* |
+| Private book | void, stakes returned | void | void |
+
+- **Polymarket, fact:** the archived April 2026 Bahrain markets (`data/archive/markets/polymarket/links/`,
+  `f1-bahrain-grand-prix-*-2026-04-12`): when the race didn't run on its date, all 174 recorded named markets
+  resolved NO and the 9 "Other" markets ("Will any other driver win the 2026 F1 Bahrain Grand Prix?") resolved
+  YES. The October race got new markets, which settle at Sepang. Head-to-heads have no "Other"; 50/50 is
+  Polymarket's usual rule for an event not held and is an assumption here.
+- **Kalshi, assumed:** its rule text names the race "originally scheduled for <date>" and says only what resolves
+  YES ("If X finishes in exactly first in the main race originally scheduled for July 5, 2026 ..."). The archive
+  holds no Kalshi race market on a cancelled race, so NO everywhere is the reading of that text; if Kalshi voids
+  instead, change the table. Kalshi's own market on whether a race happens (`KXF1OCCUR-26ADGP`, "take place in
+  Abu Dhabi before December 7, 2026", about 38¢ on 2026-09-27) is unmodeled and not settled by this.
+- **Void** refunds every share at its own price: a position's P&L is 0. A paper position that is voided or paid
+  0.5 is closed to cash at that payout (`paper_positions.outcome` stays null, shares 0), which the track record
+  reads as settled at that P&L. The private book is a YES/NO book, so a 0.5 payout there is voided with a note
+  saying so. Every settlement note names the venue's rule and marks the assumed ones ("assumed; confirm with the
+  venue").
+
+The `[live]` F1 engine (`live_f1.outcomes`) is not wired to this: round 16 is a relocated race and settles on its
+classification as before.
+
 ## Heat
 
 A taker never sees our fair value or edge. Each entry gets a **heat** instead: its modelled EV,
