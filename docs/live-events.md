@@ -182,7 +182,10 @@ Nothing in the core, the book, the crowd or the Live tab's shell changes. `tests
 synthetic third sport (`tests/live_toy.py`: a toy sprint with its own schema, spec and body partial), run through
 the CLI's locked step, the registry, the replay and the Live tab.
 
-Launch specs committed so far: `live/f1/2026-16.toml` (round 16), `live/f1/2026-15.toml` (the Baku rehearsal),
+Launch specs committed so far: `live/f1/2026-16.toml` (round 16), `live/f1/2026-17.toml` (Singapore, the sprint
+weekend), `live/f1/2026-18.toml` … `2026-23.toml` (Austin, Mexico City, São Paulo, Las Vegas, Qatar, Abu Dhabi: all
+conventional weekends per the saved FastF1 schedule, used only where no venue lists the race; Las Vegas's Saturday-night
+cut-offs are noted in its spec), `live/f1/2026-15.toml` and `2026-12.toml` (the Baku and Dutch GP rehearsals),
 `live/mtb_dh/20260925_mtb.toml` (Whistler as it was run; over, so `step` leaves it alone). No downhill event
 after Whistler is in the data: it was the World Cup final.
 
