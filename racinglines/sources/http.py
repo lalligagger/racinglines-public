@@ -1,5 +1,5 @@
 """
-Polite HTTP for every external data source (Polymarket, ChronoRace, Wikipedia; FastF1 has its own
+Polite HTTP for every external data source (Polymarket, ChronoRace, NASCAR's content feeds, Wikipedia; FastF1 has its own
 limiter, see sources/fastf1/fetch.py).
 
 - **Pacing:** a minimum interval between requests to the same host, shared by every thread in the
@@ -26,6 +26,7 @@ HOST_INTERVAL = {
     "data-api.polymarket.com": 0.25,
     "api.elections.kalshi.com": 0.25,
     "prod.chronorace.be": 0.5,
+    "cf.nascar.com": 1.0,
     "en.wikipedia.org": 1.0,
 }
 DEFAULT_INTERVAL = 0.25

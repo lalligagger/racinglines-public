@@ -12,6 +12,8 @@ data/
     raw/f1/fastf1/<year>/schedule.parquet   the season's FastF1 schedule (used when FastF1 can't be reached)
     raw/mtb_dh/chronorace/*.md              one file per event and category
     raw/mtb_dh/manual/...                   live-timing copy/pastes (not used by the pipeline)
+    raw/nascar/cf/<year>/<series>/...       NASCAR content feeds as served: race list, standings, and per race
+                                            <race_id>/{weekend-feed,lap-times,lap-notes,pit-data,loopstats}.json
   archive/markets/<exchange>/{prices,trades,books}/month=YYYY-MM/*.parquet
   archive/markets/polymarket/links/market_links.parquet   market links with stable keys (f1 pm-links-export)
   archive/markets/kalshi/links/market_links.parquet       Kalshi's market links, same format
@@ -344,10 +346,11 @@ Unraced 2026 rounds are simulated with this format.
 ## NASCAR data sources (research, 2026-09-28)
 
 For the December "NASCAR for 2027?" decision ([Roadmap](todo.md#new-sports), [Strategy 2026](strategy-2026.md)).
-Research only, no build. Written from a cloud session where `cf.nascar.com`, `nascar.com`, `racing-reference.info`
-and CRAN were blocked by the network, so the feeds themselves were not opened: what's below comes from the
-packages and projects that wrap them, and every claim that could not be checked is marked **(unverified)**.
-Verify the feed shapes from the owner's machine before relying on any of it.
+Written from a cloud session where `cf.nascar.com`, `nascar.com`, `racing-reference.info` and CRAN were blocked by
+the network, so the feeds themselves were not opened: what's below comes from the packages and projects that wrap
+them, and every claim that could not be checked is marked **(unverified)**. **The content feeds have since been
+probed from the owner's machine (2026-09-29): [what the probe verified](#nascar-content-feeds-verified-2026-09-29)
+supersedes the unverified marks for that row, and the adapter is built.**
 
 ### The sources
 
@@ -394,3 +397,68 @@ it with these differences:
 - **Decide on the tapes,** as the roadmap says: if Kalshi's per-race markets trade mostly in-race, the model needed is a
   live one and the feeds' live terms matter most; if pre-race, a grid-and-pace model on the archived feeds is the
   cheaper start and NASCAR is a good 2027 sport.
+
+## NASCAR content feeds, verified (2026-09-29)
+
+A read-only probe from the owner's Mac (Remote Control, 1 request/s, ~100 requests, no 429), the first use of the
+"probe a data source before a full run" practice in `CLAUDE.md`.
+The responses are the test fixtures (`tests/fixtures/market/nascar_*.json`, described in `nascar_README.txt`); the
+owner reviewed nascar.com's terms and approved the probe. Base URL `https://cf.nascar.com/`, series 1 Cup, 2 Xfinity,
+3 Trucks. The feeds are static objects behind CloudFront (no auth, no cookies). **A missing object is HTTP 403**
+(S3 AccessDenied), not 404: 403 means "no such file", so nothing is retried.
+
+| Feed | Path | Cup history | Stored as |
+|---|---|---|---|
+| Race list | `cacher/{y}/{s}/race_list_basic.json` | 2015– | `raw/nascar/cf/{y}/{s}/race_list_basic.json` |
+| Standings | `cacher/{y}/{s}/points-feed.json` | 2016– | `.../points-feed.json` |
+| Weekend feed: results, stage results, cautions, leaders, practice and qualifying | `cacher/{y}/{s}/{race}/weekend-feed.json` | 2017– | `.../{race}/weekend-feed.json` |
+| Pit stops | `cacher/live/series_{s}/{race}/live-pit-data.json` | 2018– | `.../{race}/pit-data.json` |
+| Loop stats: driver rating, passes, fast laps | `loopstats/prod/{y}/{s}/{race}.json` | 2019– | `.../{race}/loopstats.json` |
+| Lap by lap: every car's lap time, running position, per-lap flag | `cacher/{y}/{s}/{race}/lap-times.json` | 2020– | `.../{race}/lap-times.json` |
+| Race-control notes per lap | `cacher/{y}/{s}/{race}/lap-notes.json` | 2020– | `.../{race}/lap-notes.json` |
+
+**Identity.** `driver_id` is a stable integer across teams and seasons (Larson 4030 at Ganassi in 2017 and Hendrick in
+2026) and equals `NASCARDriverID` in the lap file. Names are clean in results but decorated in the lap and pit feeds
+(`"Kyle Larson (C)"`, `"Austin Hill(i)"`), and a car number belongs to the team: **join on `driver_id`, never on a name or a
+number.** The pit feed has no driver id; the ingest joins it to results on the car number where that is unambiguous.
+
+**Data-quality findings the ingest handles** (each has a test):
+
+- *Rained-out qualifying* (Darlington and Bristol 2026): the qualifying run exists with every time 0, `qualifying_speed` is 0 on every
+  result and the grid was set by formula. No qualifying round is written and `races.format.qualifying_ran` is false.
+- *Cars that never started* (Daytona 500 2026): results rows with `finishing_position` 0 and no status. Stored as `DNS`, position null.
+- *Lap file with holes and a short end* (Darlington 2026): laps 330–335 absent for every car and nothing after lap 355 of 367.
+  The laps that exist are stored; the race round's `extra` records `laps_complete`, `laps_max` and `laps_missing`, so a
+  lap-based feature can drop races like this one. This is a source property, seen on one race so far; the first full pull says how common it is.
+- *Older shape* (2017): result rows without `team_id`, `crew_chief_id`, `official_car_number`, `disqualified`, `diff_*`, and
+  `bonus_points_earned` in place of `playoff_points_earned`; no `stage_results`. Missing fields stay absent, never zero.
+- `diff_time` on a result is the gap to the winner in **milliseconds** (P2 at Darlington: 1038 = `margin_of_victory` "1.038");
+  the winner's clock time is `total_race_time` (`h:mm:ss`).
+- *Pit feed*: the probe fixture holds only the 15 pre-race entries (`lap_count` 0). **What a mid-race stop looks like
+  (which lap `lap_count` names, what `pit_stop_duration` measures) is unverified**: the ingest keeps stops under the
+  source's own field names and does not set `laps.pit_in`. Look at one full race before building on it.
+
+### The adapter
+
+`racinglines nascar fetch` (`sources/nascar/fetch.py`) → `racinglines nascar ingest` (`sources/nascar/ingest.py`),
+the F1 pattern ([Formula 1](f1.md)) with NASCAR's own shape:
+
+| Table | NASCAR |
+|---|---|
+| `events` | one race weekend: `source = "nascar_cf"`, `source_key = "<year>-<race_id>"`, `series_round` = points-race number (exhibitions have none), venue = track name |
+| `races` | competition `nascar_cup`, category `DRV`; `format` = laps, stage laps, cautions and their segments (start, end, reason, free-pass car), race leaders, `qualifying_ran`, margin |
+| `rounds` | only sessions that were run: `fp1`…, `qual1`… / `qual`, `race` |
+| `results` | position (null if never classified), status `OK`/`DNF`/`DNS`/`DSQ`, `bib` = car number, team; `extra` = grid, points, playoff points, laps led, stage finishes and points, loop stats, pit stops, crew chief and owner ids |
+| `laps` | race laps: lap time, running position, flag state in `track_status` (`"1"` green, `"2"` yellow, `"4"` checkered); lap speed is not stored (it follows from lap time and track length) |
+| `athletes` | one per `driver_id`: `AthleteIdentifier(scheme="nascar", value=<driver_id>)` |
+
+Cup only for now: Xfinity and Trucks need their own competition rows before `--series 2|3` ingests. Lap-notes and standings are
+fetched and kept (the raw record is cheap to keep and expensive to re-crawl) but not ingested yet. Nothing runs by default;
+tests: `tests/test_nascar.py`.
+
+**A full pull is a VM job, after a backup.** Cup 2017–2026 is about 380 races and one to five feeds each depending on the year
+(see the history column), ≈ 1,600 requests at 1/s (under half an hour; `--dry-run` counts them exactly); the lap table adds
+8,000 to 18,000 rows per race from 2020 (roughly 3 million rows for 2020–2026; `--no-laps` skips it). Steps, in order: a database dump (`data/backups/db/racinglines-before-nascar-<UTC time>.sql.gz`);
+`racinglines nascar fetch --years 2026 --races <two or three ids>` on the Mac and read what comes back (the pit feed above);
+then `fetch` and `ingest` for the seasons wanted, with a `data_changes` entry and a line in [Data changes](data-changes.md)
+naming the backup.
