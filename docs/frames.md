@@ -14,7 +14,7 @@ Declared in `racinglines/frames/schema.py`: columns with dtype families, key col
 | Frame | Key | F1 | Downhill |
 |---|---|---|---|
 | `entrants` | event, race, athlete | yes | yes (everyone with a row, DNS included) |
-| `sessions` | event, session | yes | yes (a session is the event's day) |
+| `sessions` | event, session | yes | yes (a round is dated by its weekend) |
 | `classifications` | event, session, athlete | yes (every session) | yes (every run) |
 | `conditions` | event, session | yes (qualifying and race) | no |
 | `venue_features` | event | yes (the track profile) | no |
@@ -35,10 +35,10 @@ It is set on every row, and `validate` rejects a frame with a null.
 
 | Rows | F1 | Downhill |
 |---|---|---|
-| `sessions`, `classifications` | the session's end: start plus `[sessions] minutes`, the same function `Measurements.view` gates with. No lag: `[stages] lag_minutes` moves a stage's cutoff, not the data | the end of the event's date (the frame has dates, not session times) |
-| `official_results` | the race's end | the end of the event's date |
+| `sessions`, `classifications` | the session's end: start plus `[sessions] minutes`, the same function `Measurements.view` gates with. No lag: `[stages] lag_minutes` moves a stage's cutoff, not the data | noon UTC of the day after the weekend's last day, parsed from the event name (the frame has one date, not session times) |
+| `official_results` | the race's end | the same, the weekend's end |
 | `conditions`, `venue_features` | the race's end (the profile is built from race results) | none |
-| `entrants` | the end of the driver's first session | the end of the event's date |
+| `entrants` | the end of the driver's first session | the same, the weekend's end |
 
 **Sources publish whole sessions.** No source we have is live: FastF1's archive publishes a session's results and
 laps only after the session has ended, and ChronoRace's downhill results come per round. So every row of a
@@ -48,13 +48,23 @@ the same `available_at`, and none is earlier than that session's `end` in the `s
 really does date each row as it happens (a live timing feed, if one is ever added) is listed in `[data] live`, and
 only then may its rows carry their own times.
 
-Two assumptions to review with E2:
+Every `available_at` is never earlier than the source really published the row; it may be later. That is the
+invariant behind the choices below, and the reason a coarse or late date is acceptable and an early one is not.
+
+Three assumptions to review with E2:
 
 - **Entrants are later than in life.** Entry lists are published before the weekend, but the tables don't say
   when. The models read them ungated ("identities and teams, never results": `entry_list` for F1, `event_starters`
   for downhill), so E2 must keep that exception.
-- **Downhill is a day coarse.** The model trains on rows with `event_date < cutoff`. The frame agrees at every
-  event's date and is at most one day stricter, never looser.
+- **Downhill is a weekend coarse.** The model trains on rows with `event_date < cutoff`. The frame agrees with that
+  day rule at every event date; later than it inside a weekend; the tables have no end date, so the end is parsed
+  from the event name ("August 21-23": the last day of the range, or the event date plus two days when the name has
+  none) and dated noon UTC of the day after. An `events.end_date` column set at ingest replaces the parse (an E2
+  prerequisite for downhill: a DB migration, so a backup and owner sign-off).
+- **F1 sessions are dated at their end, but the model reads the schedule ungated.** The `sessions` frame dates a
+  session's `start` and `end` at the session's end, while `Measurements.sessions` reads the weekend schedule with no
+  gate (the backtest's anchors, `price_race`'s `event_sessions` and `sessions_used`, `testing/checks.py`; the
+  `pre_weekend` golden depends on it). E2 reads `start` from the ungated sessions frame, like entrants.
 
 ## Use
 

@@ -2,7 +2,8 @@
 F1 frames (L1, docs/frames.md), built from `Measurements`: the data object `PositionSim.load` returns. Read-only
 views over what the model already holds: no database query, and nothing about how the model loads or prices changes.
 
-    entrants          Measurements.res: one row per (event, driver); team_id is the model's team key
+    entrants          the model's own entry list per event (pricing.entry_list: the qualifying classification, the
+                      race when there is none), with the team_id the model keys teams by
     sessions          Measurements.res: one row per (event, session); start from the session timestamp
     classifications   Measurements.res: every session's result rows (practice rows have no position or time; the
                       sprint qualifying rows are all DNS, as the source records them)
@@ -23,6 +24,11 @@ views over what the model already holds: no database query, and nothing about ho
     late, never early. `price_race` reads the entry list from the ungated `meas.res` ("identities and teams, never
     results"), so pricing before the first session still sees entrants: E2 has to carry that exception over.
 
+Another E2 assumption, the sessions themselves: the `sessions` frame dates a session's `start` and `end` at the
+session's end (available_at = end), but the model reads the weekend schedule ungated (Measurements.sessions: the
+backtest's anchors, price_race's event_sessions and sessions_used, testing/checks.py; the pre_weekend golden depends
+on it). So E2 reads `start` from the ungated sessions frame, like entrants, and gates only what a session produced.
+
 Not built: `laps`. Measurements keeps measures derived from the laps (qualifying and race deficits, sector deficits,
 practice pace, race disruption), not the laps, so no lap-level frame can come from it. `[data] frames` in
 sports/f1.toml doesn't list it; a later task decides how the raw laps reach the adapter.
@@ -33,8 +39,9 @@ A row whose session has no timestamp gets a null `available_at`, and `validate` 
 import numpy as np
 import pandas as pd
 
-from racinglines.frames._util import gap_to_leader, shape
+from racinglines.frames._util import empty, gap_to_leader, shape
 from racinglines.models.position_sim import model as M
+from racinglines.models.position_sim.pricing import entry_list
 
 WEATHER = {"qual": ("qual_rain_share", "qual_track_temp"), "race": ("race_rain_share", "race_track_temp")}
 PROFILE_META = ("event_id", "start_date", "venue", "ready_ts")      # the profile's own columns; the rest are features
@@ -51,9 +58,16 @@ def _profile_ready(meas):
 
 
 def entrants(meas):
-    g = _res(meas).groupby(["event_id", "athlete_id"], as_index=False).agg(
-        race_id=("race_id", "first"), name=("driver", "first"), team_id=("team_key", "first"), team=("team", "first"),
-        available_at=("end", "min"))
+    """The model's entry list of each event (`pricing.entry_list`), with the team name, the race and the end of the
+    driver's first session of the event."""
+    res = _res(meas)
+    seen = res.groupby(["event_id", "athlete_id"], as_index=False).agg(
+        race_id=("race_id", "first"), team=("team", "first"), available_at=("end", "min"))
+    listed = [entry_list(meas, e).assign(event_id=e) for e in res["event_id"].drop_duplicates()]
+    if not listed:
+        return empty("entrants")
+    g = pd.concat(listed, ignore_index=True).rename(columns={"driver": "name", "team_key": "team_id"}).merge(
+        seen, on=["event_id", "athlete_id"], how="left")
     g["bib"] = None                                   # the source has no start numbers
     return shape("entrants", g)
 

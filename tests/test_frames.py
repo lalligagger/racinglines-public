@@ -219,7 +219,7 @@ def test_f1_frames_match_what_the_model_reads(f1, f1_meas):
         ent = f1["entrants"]
         ent = ent[ent["event_id"] == event_id].set_index("athlete_id")
         listed = run.entry_list(f1_meas, event_id)
-        assert set(ent.index) >= set(listed["athlete_id"])
+        assert set(ent.index) == set(listed["athlete_id"])
         assert (ent.loc[listed["athlete_id"], "team_id"].to_numpy() == listed["team_key"].to_numpy()).all()
 
 
@@ -293,7 +293,7 @@ def test_mtb_classifications_are_one_row_per_run(dh, dh_data):
 def test_mtb_sessions_and_available_at(dh):
     s = dh["sessions"]
     assert (s["available_at"] == s["end"]).all()
-    assert (s["end"] - s["start"] == pd.Timedelta(days=1)).all()
+    assert (s["end"] - s["start"] >= pd.Timedelta(days=1)).all()                # start is the event date, end the weekend's
     at = dh["classifications"].merge(s, on=["event_id", "session"], suffixes=("", "_s"))
     assert len(at) == len(dh["classifications"])
     assert (at["available_at"] == at["available_at_s"]).all()
@@ -333,6 +333,68 @@ def test_mtb_official_results_match_the_models_results(dh, dh_data):
     assert set(o["event_id"]) == set(completed_events(dh_data[dh_data["sector_id"] == "FINISH"]))
     assert not o.duplicated(["event_id", "athlete_id"]).any()
     assert o["rounds_reached"].map(lambda r: isinstance(r, tuple)).all()
+
+
+def test_mtb_weekend_end_is_parsed_from_the_event_name(dh, dh_data):
+    """The tables have no end date: the last day of the range in the event name, plus a day and 12 hours."""
+    from racinglines.frames.mtb_dh import _last_day
+    finish = dh_data[dh_data["sector_id"] == "FINISH"]
+    ev = finish.groupby("event_id").agg(date=("event_date", "first"), name=("event_name", "first"))
+    end = dh["sessions"].groupby("event_id")["end"].max()
+    for event_id, r in ev.iterrows():
+        last = _last_day(r["date"], r["name"])
+        assert pd.Timestamp(r["date"]) <= last <= pd.Timestamp(r["date"]) + pd.Timedelta(days=14), event_id
+        assert end[event_id] == last + pd.Timedelta(days=1, hours=12), event_id
+    assert _last_day("2026-08-21", "X - Les Gets, August 21-23, FRA") == pd.Timestamp("2026-08-23")
+    assert _last_day("2025-05-30", "X - Loudenvielle, May 30-Jun 1, FRA") == pd.Timestamp("2025-06-01")
+    assert _last_day("2025-07-09", "X - Pal Arinsal, Jul 11-13, AND") == pd.Timestamp("2025-07-13")
+    assert _last_day("2025-12-30", "X - Somewhere, Dec 30-Jan 1") == pd.Timestamp("2026-01-01")
+    for name in (None, "no dates here", "X - Somewhere, Aug 1-3, FRA", "X - Somewhere, May 1-30"):   # fall back
+        assert _last_day("2026-08-21", name) == pd.Timestamp("2026-08-23"), name
+
+
+@pytest.mark.parametrize("event_id, cutoff", [("20260821_mtb_ME", "2026-08-22 18:00"), ("20250821_mtb_ME", "2025-08-25")])
+def test_mtb_a_final_is_not_visible_before_its_day_is_over(dh, event_id, cutoff):
+    """Between an event's start_date and the day of its final (Les Gets: the final is on the Sunday, the 23rd, and
+    for 2025 on Aug 31) nothing of the final round, and no official result, is visible."""
+    cutoff = pd.Timestamp(cutoff)
+    c = dh["classifications"]
+    mine = c[c["event_id"] == event_id]
+    assert len(mine[mine["session"] == "final"]) > 0
+    assert mine[(mine["session"] == "final") & (mine["available_at"] < cutoff)].empty
+    o = dh["official_results"]
+    assert len(o[o["event_id"] == event_id]) > 0
+    assert o[(o["event_id"] == event_id) & (o["available_at"] < cutoff)].empty
+
+
+def test_mtb_needs_the_tidy_frame(dh_data):
+    with pytest.raises(FrameError, match=r"load_tidy.*\['rider_name'\]"):
+        frames_for("mtb_dh", dh_data.drop(columns="rider_name"))
+
+
+def test_mtb_start_numbers_arrive_as_text_without_a_decimal(dh_data):
+    d = dh_data.assign(bib=dh_data["bib"].map(lambda v: float(v) if str(v).isdigit() else v))
+    ent = frames_for("mtb_dh", d)["entrants"]
+    assert ent["bib"].dropna().map(lambda b: isinstance(b, str) and not b.endswith(".0")).all()
+
+
+def test_mtb_an_uncompleted_event_gives_a_typed_empty_official_results(dh, dh_data):
+    from racinglines.frames.mtb_dh import official_results
+    part = dh_data[dh_data["event_id"] == "20260925_mtb_ME"]
+    assert not part.empty
+    out = official_results(part)
+    assert out.empty
+    validate("official_results", out)
+    assert out.dtypes.to_dict() == dh["official_results"].dtypes.to_dict()
+
+
+@pytest.mark.quick
+def test_validate_checks_the_dtypes_of_an_empty_frame():
+    from racinglines.frames._util import empty
+    for name in FRAMES:
+        validate(name, empty(name))
+    with pytest.raises(FrameError, match="'athlete_id' has dtype object, expected int"):
+        validate("classifications", pd.DataFrame(columns=SCHEMAS["classifications"].column_names))
 
 
 def test_mtb_frames_leave_the_loaded_data_alone(dh_data):

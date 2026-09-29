@@ -12,7 +12,11 @@ non-null on every row, so an as-of view can filter on it).
 
 `validate` checks that the declared columns are present, their dtype families, that non-nullable columns have no
 nulls, that `available_at` is set on every row and that the key is unique. Extra columns are allowed (a sport may
-carry more than the engine reads). An empty frame passes when its columns are present.
+carry more than the engine reads). An empty frame passes when its columns are present and typed (the dtype check runs
+on it too; the null and key checks need rows). `_util.empty(name)` builds one.
+
+The invariant behind every `available_at`: it is never earlier than the source really published the row; it may be
+later.
 
 Dtype families (what pandas holds, not an exact dtype, so a nullable int or a string dtype passes too):
     id        int or str (an event id is an int for F1, a string for downhill)
@@ -136,8 +140,9 @@ _SCHEMAS = [
         columns=(_c("event_id", "id"), _c("athlete_id", "int"),
                  _c("position", "number", True, "final position, null if not classified"),
                  _c("status", "str"), _c("points", "number", True),
-                 _c("rounds_reached", "object", True, "the race rounds the athlete started, in running order; "
-                                                      "null for a sport without elimination rounds"),
+                 _c("rounds_reached", "object", True, "the race rounds the athlete reached (was on the start "
+                                                      "list for, DNS included), in running order; null for a "
+                                                      "sport without elimination rounds"),
                  _AVAILABLE)),
 ]
 
@@ -187,14 +192,16 @@ def validate(name, df):
     missing = [c.name for c in sc.columns if c.name not in df.columns]
     if missing:
         problems.append(f"missing columns {missing}")
+    for col in sc.columns:                            # the dtypes are checked on an empty frame too
+        if col.name in df.columns:
+            why = _dtype_problem(col, df[col.name])
+            if why:
+                problems.append(f"column {col.name!r} {why}")
     if len(df):
         for col in sc.columns:
             if col.name not in df.columns:
                 continue
             s = df[col.name]
-            why = _dtype_problem(col, s)
-            if why:
-                problems.append(f"column {col.name!r} {why}")
             n_null = int(s.isna().sum())
             if n_null and col.name == sc.available_at:
                 problems.append(f"{n_null} of {len(df)} rows have no {sc.available_at} (a row that can't be "
@@ -218,7 +225,7 @@ def check_release(frames, live=()):
     its source publishes a whole session at once, after the session has ended. So every row of one (event, session)
     must carry the same `available_at`, and, when the `sessions` frame was built too, not one earlier than that
     session's `end`. This is what stops a lap-by-lap timestamp from reaching an as-of view when the laps really
-    arrived with the session's archive.
+    arrived with the session's archive. The "not before sessions.end" check is only as good as `sessions.end`.
     """
     problems = []
     ends = None

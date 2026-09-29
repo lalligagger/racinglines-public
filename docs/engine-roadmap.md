@@ -76,16 +76,17 @@ the one piece between those two ends that is still missing: **combining models**
 ### L1: Canonical input frames
 
 Each frame is a declared schema (columns, types, keys) with an **`available_at`** column: when the row became
-knowable. For session data that's the session's end plus the source's lag. For a market quote it's the quote's
-timestamp. A sport's adapter produces the frames from its tables. The first version is read-only views over
+knowable. For session data that's the session's end, with no lag added (`Measurements.view` gates on the end;
+`[stages] lag_minutes` moves a stage's cutoff, not the data). No source is live, so session-keyed frames are released
+a whole session at a time. For a market quote it's the quote's timestamp. A sport's adapter produces the frames from its tables. The first version is read-only views over
 today's tables, with no migration.
 
 | Frame | Key columns | F1 | Downhill | NASCAR (planned) | Tape-only sports |
 |---|---|---|---|---|---|
-| `entrants` | event, race, athlete, team, bib | ✓ | ✓ start lists | ✓ | from links only |
+| `entrants` | event, race, athlete | ✓ | ✓ start lists | ✓ | from links only |
 | `sessions` | event, session (the sport's vocabulary from `[sessions]` / `[rounds]`), start, end | ✓ | ✓ rounds | ✓ practice / qual / stages | – |
 | `classifications` | event, session, athlete, position, status, time_ms, gap, grid, points | ✓ | ✓ runs | ✓ | – |
-| `laps` | event, session, athlete, lap, time_ms, sector times[], pit, track_status | ✓ | ✗ (splits instead) | ~ lap time, flag | – |
+| `laps` | event, session, athlete, lap, time_ms, sector times[], pit, track_status | ~ derived measures only until E2 | ✗ (splits instead) | ~ lap time, flag | – |
 | `conditions` | event, session, weather fields | ✓ | ✗ | ~ | – |
 | `venue_features` | event, features map (the sport defines the keys) | ✓ `track_profiles` | ~ venue history | track type | – |
 | `market_links` | exchange, token, kind, subject(s), race, params, rules | ✓ | – | ✓ | ✓ |
@@ -95,9 +96,11 @@ today's tables, with no migration.
 `official_results` is kept separate on purpose. The engine reads it only after pricing, to settle, which is
 what `results()` does today.
 
-**The sport schema gains a `[data]` table** listing the frames it provides, e.g. `frames = ["entrants",
-"sessions", "classifications", "laps", "conditions", "venue_features"]`. That list plus each model's
-`requires` gives the **capability matrix** of which models can run on which sport.
+**The sport schema gains a `[data]` table** listing the frames it provides, e.g. F1's `frames = ["entrants",
+"sessions", "classifications", "conditions", "venue_features", "official_results"]` (`laps` joins when E2 passes
+the raw laps to the adapter). That list plus each model's `requires` gives the **capability matrix** of which models
+can run on which sport. `live` in the same table names the frames whose source dates each row as it happens; it
+defaults to empty, so every session-keyed frame is released a whole session at a time (`check_release`).
 
 ### L2: One as-of view and one leak guard
 
@@ -201,7 +204,7 @@ ingest code, not from a running database.
 
 | Sport (`code`) | entrants | sessions | classifications | laps | conditions | venue_features | market_links | market_quotes | official_results |
 |---|---|---|---|---|---|---|---|---|---|
-| `f1` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ `track_profiles` | ✓ | ✓ | ✓ |
+| `f1` | ✓ | ✓ | ✓ | ~ derived measures | ✓ | ✓ `track_profiles` | ✓ | ✓ | ✓ |
 | `mtb_dh` | ✓ start lists | ✓ rounds | ✓ runs | ✗ (splits) | ✗ | ~ venue history | – (no venue lists it) | – | ✓ |
 | `nascar` | ✓ after `nascar ingest` | ✓ incl. stages | ✓ | ~ lap time, flag (D5) | ~ | ~ track type | ✓ (#67, #69) | ✓ Kalshi, Polymarket, OG.com | ✓ after `nascar ingest` |
 | `indycar` | from links only | – | – | – | – | – | ✓ | ✓ Kalshi, Polymarket | ✓ from settlement only |
@@ -286,6 +289,9 @@ Same format as the [F1 roadmap](f1-roadmap.md#decision-log). Never delete a row;
 | 2026-09-29 | E0 | Every new engine switch is an environment variable `RACINGLINES_*`, default off; a default flips only in a follow-up PR with byte-identical evidence and a row here | The F1 ground rules, applied to the engine | — |
 | 2026-09-29 | E0 | The `market_quotes` frame (E1) reads through the ingest roadmap's phase 2 `canonical_yes` reader when it exists; until then it maps today's `price` per exchange (`last` for Polymarket, `mid` for Kalshi and OG.com) behind the same function | Phase 2 is queued in the onboarding thread behind the NASCAR VM steps and needs the owner's go-ahead; E1's sport frames need no price column at all | — |
 | 2026-09-29 | E4a | Parquet needs `pyarrow`, which is not installed in the cloud sandbox; the Mac and VM are unchecked. If absent there too, the archive is compressed `.npz` and the records CSV; no new pinned dependency without the owner's word | Keep `racinglines check` and the suite runnable everywhere | — |
+| 2026-09-29 | E1 | `[data] live`, default empty; session-keyed frames are released a whole session at a time (`check_release`) | No source is live: FastF1 publishes a session only after it ends. The owner's requirement | — |
+| 2026-09-29 | E1 | `available_at` for session data is the session's end, with no lag, matching `Measurements.view` and `session_end`; `[stages] lag_minutes` moves stage cutoffs, not data | The frames must reproduce the model's own leak boundary exactly | — |
+| 2026-09-29 | E1 | F1 `laps` is not built in E1a: `Measurements` keeps only lap-derived measures. E2 passes the raw laps to the adapter; until then `position_sim`'s laps requirement is met through `Measurements` | No lap-level frame can come from what the model holds today | — |
 
 ## What this doesn't cover
 
