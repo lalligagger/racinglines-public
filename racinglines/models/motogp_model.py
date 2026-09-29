@@ -62,7 +62,7 @@ class MotoGPRace:
                         r.position,
                         r.team,
                         r.status,
-                        r.points
+                        COALESCE((r.extra->>'points')::float, 0.0) AS points
                     FROM events ev
                     JOIN races ra ON ra.event_id = ev.id
                     JOIN rounds r2 ON r2.race_id = ra.id
