@@ -339,8 +339,9 @@ def _score_fills(fills, data):
     mid = np.array([_mid_at(by[c], t) for c, t in zip(fills["cond"], fills["ts"])])
     m5 = np.array([_mid_at(by[c], t + int(300e9)) for c, t in zip(fills["cond"], fills["ts"])])
     m60 = np.array([_mid_at(by[c], t + int(3600e9)) for c, t in zip(fills["cond"], fills["ts"])])
-    # a void market (settlement_rules.VOID: a cancelled race) settles every fill at its own price: P&L 0
-    out = np.array([np.nan if by[c].outcome is None else (px if by[c].outcome == SR.VOID else float(by[c].outcome))
+    # a void market (settlement_rules.VOID: a cancelled race) settles every fill at its own price: P&L 0; a FAIR
+    # one without a price (Kalshi's cancelled race, no recorded price) is undecided
+    out = np.array([np.nan if by[c].outcome in (None, SR.FAIR) else (px if by[c].outcome == SR.VOID else float(by[c].outcome))
                     for c, px in zip(fills["cond"], fills["price"])])
     q = fills["qty"].to_numpy()
     return fills.assign(
@@ -443,6 +444,12 @@ def stages_for(runs, sessions):
     return out
 
 
+def _last_price(mids):
+    """The last recorded price of a market (None when none): what a FAIR settlement (settlement_rules.FAIR,
+    Kalshi's cancelled race) pays."""
+    return float(mids["price"].iloc[-1]) if len(mids) else None
+
+
 def _levels(v):
     """{price: size} from a recorded book side ([[price, size], ...] as a list or JSON text)."""
     if v is None or (isinstance(v, float) and np.isnan(v)):
@@ -520,9 +527,10 @@ def load_event(conn, run_ids, sessions=None, books=False, exchange="polymarket",
         fairs = {r["run_id"]: D.model_prob(conn, link, cache, run_id=r["run_id"])[0] for r in runs}
         ath = None if pd.isna(link["athlete_id"]) else int(link["athlete_id"])
         outcome = house.outcome_for(link["prediction"], ath, link["params"], res)
-        if status:
-            outcome = SR.apply(exchange, status, link["prediction"], link.get("group_title") or link.get("outcome"), outcome)
         mids = px_by.get(link["token_id"], empty_px)
+        if status:
+            outcome = SR.apply(exchange, status, link["prediction"], link.get("group_title") or link.get("outcome"),
+                               outcome, last_price=_last_price(mids))
         tr = tr_by.get(cond, empty_tr)
         yes_px, yes_buy = to_yes(tr["outcome_index"].to_numpy(), tr["side"].to_numpy(), tr["price"].to_numpy())
         subject = link["athlete"] or (link["params"] or {}).get("team") or link["group_title"]
@@ -564,9 +572,10 @@ def _load_kalshi(conn, links, runs, key, race_id, sessions, stages, qual_start, 
         fairs = {r["run_id"]: D.model_prob(conn, link, cache, run_id=r["run_id"])[0] for r in runs}
         ath = None if pd.isna(link["athlete_id"]) else int(link["athlete_id"])
         outcome = house.outcome_for(link["prediction"], ath, link["params"], res)
-        if status:
-            outcome = SR.apply("kalshi", status, link["prediction"], link.get("group_title") or link.get("outcome"), outcome)
         mids, tr = px_by.get(tok, empty_px), tr_by.get(tok, empty_tr)
+        if status:
+            outcome = SR.apply("kalshi", status, link["prediction"], link.get("group_title") or link.get("outcome"),
+                               outcome, last_price=_last_price(mids))
         subject = link["athlete"] or (link["params"] or {}).get("team") or link["group_title"]
         if link["prediction"] == "race_h2h":
             subject = f"{link['athlete'] or link['outcome']} ahead ({link['question']})"

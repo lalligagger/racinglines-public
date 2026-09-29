@@ -151,29 +151,41 @@ A race's status is `cancelled` when `events.status = 'cancelled'` in the databas
 at Sepang** ("Bahrain Grand Prix in Malaysia"). A relocated race's markets settle on the race that was run,
 at every venue (its test: `tests/test_settlement_rules.py`).
 
-What a YES share pays on a cancelled race, per venue (`settlement_rules.RULES`):
+What a YES share pays on a cancelled race, per venue (`settlement_rules.RULES`), from the venues' own market
+rules (checked 2026-09-29):
 
 | Venue | Named outcome (driver, constructor) | "Other" / "any other driver" | Binary (head-to-head) |
 |---|---|---|---|
-| Polymarket | **0** — fact | **1** — fact | 0.5 — *assumed* |
-| Kalshi | 0 — *assumed* | 0 — *assumed* | 0 — *assumed* |
+| Polymarket | **0** — rule and fact | **1** — rule and fact | **0.5** — rule |
+| Kalshi | last fair price | last fair price | last fair price |
 | Private book | void, stakes returned | void | void |
 
-- **Polymarket, fact:** the archived April 2026 Bahrain markets (`data/archive/markets/polymarket/links/`,
-  `f1-bahrain-grand-prix-*-2026-04-12`): when the race didn't run on its date, all 174 recorded named markets
-  resolved NO and the 9 "Other" markets ("Will any other driver win the 2026 F1 Bahrain Grand Prix?") resolved
-  YES. The October race got new markets, which settle at Sepang. Head-to-heads have no "Other"; 50/50 is
-  Polymarket's usual rule for an event not held and is an assumption here.
-- **Kalshi, assumed:** its rule text names the race "originally scheduled for <date>" and says only what resolves
-  YES ("If X finishes in exactly first in the main race originally scheduled for July 5, 2026 ..."). The archive
-  holds no Kalshi race market on a cancelled race, so NO everywhere is the reading of that text; if Kalshi voids
-  instead, change the table. Kalshi's own market on whether a race happens (`KXF1OCCUR-26ADGP`, "take place in
-  Abu Dhabi before December 7, 2026", about 38¢ on 2026-09-27) is unmodeled and not settled by this.
-- **Void** refunds every share at its own price: a position's P&L is 0. A paper position that is voided or paid
-  0.5 is closed to cash at that payout (`paper_positions.outcome` stays null, shares 0), which the track record
-  reads as settled at that P&L. The private book is a YES/NO book, so a 0.5 payout there is voided with a note
-  saying so. Every settlement note names the venue's rule and marks the assumed ones ("assumed; confirm with the
-  venue").
+- **Polymarket, driver and constructor markets:** the market rules say the market resolves to "Other" if the
+  race is cancelled or rescheduled past a deadline about a week after the scheduled date (the 2026 Australian
+  GP: "after March 14, 2026"; Canada: "after May 31"; Monaco: "after June 14"). The archived April 2026 Bahrain
+  markets (`data/archive/markets/polymarket/links/`, `f1-bahrain-grand-prix-*-2026-04-12`) show it: when the
+  race didn't run on its date, all 174 recorded named markets resolved NO and the 9 "Other" markets ("Will any
+  other driver win the 2026 F1 Bahrain Grand Prix?") resolved YES. The October race got new markets, which
+  settle at Sepang.
+- **Polymarket, head-to-heads:** the rules on every F1 head-to-head event (Japan, Monaco, Azerbaijan, Abu
+  Dhabi 2025, ...) say "If a Grand Prix is permanently canceled, the market will resolve 50-50", a tie between
+  the two drivers resolves 50-50 as well, and "If a Grand Prix is postponed, the market will remain open until
+  the event has been completed". So the 0.5 payout is the rule, not a guess.
+- **Kalshi:** the F1 race markets (winner, podium, pole, head-to-heads) all carry the same clause: a race
+  postponed but started within 48 hours of its scheduled start settles on the official final result, and "if
+  the race is cancelled or not started within 48 hours of its originally scheduled start, all markets will
+  resolve to a fair price". Kalshi's rulebook (6.3(c)) makes that the last fair market price as Kalshi
+  determines it, usually the last traded price, else a figure from its Outcome Review Committee. Kalshi does
+  **not** resolve NO and does not void (refund at cost): every contract settles at that price. Here that is
+  `settlement_rules.FAIR`, paid at the market's last recorded price (`apply(..., last_price=...)`: the last
+  5-minute price in the weekend sweep and the maker replay). What stays approximate is only which price Kalshi
+  picks. Kalshi's own market on whether a race happens (`KXF1OCCUR-26ADGP`, "take place in Abu Dhabi before
+  December 7, 2026", about 38¢ on 2026-09-27) is unmodeled and not settled by this.
+- **Void** refunds every share at its own price: a position's P&L is 0. A paper position that is voided, paid
+  0.5 or paid Kalshi's last price is closed to cash at that payout (`paper_positions.outcome` stays null, shares
+  0), which the track record reads as settled at that P&L; a Kalshi position whose market has no recorded price
+  stays open. The private book is a YES/NO book, so a 0.5 payout or a price there is voided with a note saying
+  so. Every settlement note names the venue's rule.
 
 The `[live]` F1 engine (`live_f1.outcomes`) is not wired to this: round 16 is a relocated race and settles on its
 classification as before.

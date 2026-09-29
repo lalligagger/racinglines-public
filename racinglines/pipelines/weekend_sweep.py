@@ -219,7 +219,8 @@ def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None, 
             subject = f"{link['outcome']} ({link['question'].split(': ')[-1]})"
         outcome = venue.resolve(link, res)
         if status:
-            outcome = SR.apply(venue.code, status, kind, link.get("group_title") or link.get("outcome"), outcome)
+            outcome = SR.apply(venue.code, status, kind, link.get("group_title") or link.get("outcome"), outcome,
+                               last_price=venue.price(link["token_id"], end))
         markets.append(dict(key=link["token_id"], kind=kind, subject=subject, stages=stages, link=link, outcome=outcome))
     return markets
 

@@ -1,7 +1,8 @@
 """Settlement of cancelled and relocated races (racinglines/markets/settlement_rules.py, roadmap U8): each venue's
 table, the switch that is off by default, the paper-position P&L under a void or 50/50 payout, and the private
 book on synthetic data: Bahrain 2026 (round 16, run at Sepang) settles on its result; a cancelled race settles as
-each venue's rule says."""
+each venue's published rule says (Polymarket: named NO / "Other" YES / head-to-head 50-50; Kalshi: every market
+at its last fair price; the private book: void)."""
 
 from datetime import date
 
@@ -46,19 +47,29 @@ def test_race_status_from_the_database_and_the_environment(monkeypatch):
 
 
 def test_cancelled_race_pays_by_the_venues_table():
-    # Polymarket: the April 2026 Bahrain markets in the archive (named NO, "Other" YES); binary 50/50 (assumed)
+    # Polymarket: the April 2026 Bahrain markets in the archive (named NO, "Other" YES); its head-to-head rule
+    # ("If a Grand Prix is permanently canceled, the market will resolve 50-50")
     assert SR.payout("polymarket", SR.CANCELLED, "race_win", "Max Verstappen") is False
     assert SR.payout("polymarket", SR.CANCELLED, "race_win", "Other") is True
     assert SR.payout("polymarket", SR.CANCELLED, "race_constructor_top", "Other") is True
     assert SR.payout("polymarket", SR.CANCELLED, "race_h2h", "Lando Norris") == 0.5
-    # Kalshi: NO everywhere (assumed: the condition "originally scheduled for <date>" can't be met)
-    assert SR.payout("kalshi", SR.CANCELLED, "race_win", "Max Verstappen") is False
-    assert SR.payout("kalshi", SR.CANCELLED, "race_h2h", "Yes") is False
+    # Kalshi: "if the race is cancelled or not started within 48 hours of its originally scheduled start, all
+    # markets will resolve to a fair price": the market's last price stands in for it
+    assert SR.payout("kalshi", SR.CANCELLED, "race_win", "Max Verstappen") == SR.FAIR
+    assert SR.payout("kalshi", SR.CANCELLED, "race_win", "Other") == SR.FAIR
+    assert SR.payout("kalshi", SR.CANCELLED, "race_h2h", "Yes") == SR.FAIR
+    assert SR.apply("kalshi", SR.CANCELLED, "race_win", "Max Verstappen", None) == SR.FAIR
+    assert SR.apply("kalshi", SR.CANCELLED, "race_win", "Max Verstappen", None, last_price=0.37) == 0.37
+    assert SR.apply("kalshi", SR.CANCELLED, "race_win", "Max Verstappen", None, last_price=float("nan")) == SR.FAIR
+    assert SR.apply("polymarket", SR.CANCELLED, "race_h2h", None, None, last_price=0.37) == 0.5   # price only for FAIR
+    assert SR.ASSUMED == set()
     # the private book voids
     assert SR.payout("private", SR.CANCELLED, "race_win", "X") == SR.VOID
     assert SR.payout("private", SR.CANCELLED, "race_h2h", None) == SR.VOID
-    assert "assumed" in SR.describe("kalshi", SR.CANCELLED, "race_win") and "pays 0" in SR.describe("kalshi", SR.CANCELLED, "race_win")
+    assert SR.describe("kalshi", SR.CANCELLED, "race_win") == ("kalshi rule for a cancelled race: named outcome settles at "
+                                                                "the last fair price (the market's last recorded price stands in for Kalshi's figure)")
     assert "assumed" not in SR.describe("polymarket", SR.CANCELLED, "race_win", "Other")
+    assert SR.describe("polymarket", SR.CANCELLED, "race_h2h") == "polymarket rule for a cancelled race: binary outcome pays 0.5"
     assert SR.describe("private", SR.CANCELLED, "race_win").endswith("void, stakes returned")
     with pytest.raises(ValueError):
         SR.payout("polymarket", "postponed", "race_win")
@@ -78,6 +89,12 @@ def test_paper_positions_settle_void_at_zero_and_half_at_half():
     half = RB.run_market(_stages(), 0.5, p)
     assert half["pnl"] == pytest.approx(half["cash"] + 0.5 * half["yes"])
     assert RB.run_market(_stages(), None, p)["pnl"] is None
+    fair = RB.run_market(_stages(), SR.FAIR, p)                   # Kalshi's fair price, none recorded: unresolved
+    assert fair["pnl"] is None and fair["yes"] == won["yes"]
+    priced = RB.run_market(_stages(), 0.37, p)                    # ... and at the last recorded price
+    assert priced["pnl"] == pytest.approx(priced["cash"] + 0.37 * priced["yes"])
+    assert SR.settle_position(10, 0, -4, SR.FAIR) is None and SR.settle_position(10, 0, -4, 0.37) == pytest.approx(-0.3)
+    assert SR.value(SR.FAIR) is None
     assert SR.settle_position(10, 0, -4, SR.VOID) == 0.0 and SR.settle_position(10, 0, -4, 0.5) == 1.0
     assert SR.settle_position(10, 0, -4, True) == 6.0 and SR.settle_position(10, 0, -4, None) is None
     assert SR.value(SR.VOID) is None and SR.value(0.5) == 0.5 and SR.value(True) == 1.0
@@ -94,6 +111,8 @@ def test_signal_positions_close_a_void_or_half_market_to_cash():
     _, pos = SG.taker_signals([dict(mk, outcome=0.5)], RB.TakerParams())
     won = SG.taker_signals([dict(mk, outcome=True)], RB.TakerParams())[1][0]
     assert pos[0]["outcome"] is None and pos[0]["cash"] == pytest.approx(won["cash"] + 0.5 * won["yes_shares"])
+    _, pos = SG.taker_signals([dict(mk, outcome=SR.FAIR)], RB.TakerParams())     # no price yet: still open
+    assert pos[0]["outcome"] is None and pos[0]["yes_shares"] == won["yes_shares"] and pos[0]["cash"] == won["cash"]
 
 
 # --- the private book on a database ------------------------------------------------------------------------
@@ -214,9 +233,11 @@ def test_private_book_settles_bahrain_2026_on_the_result_and_a_cancelled_race_by
         assert got[own] == ("void", None, "auto: private rule for a cancelled race: named outcome void, stakes returned")
         assert got[pm] == ("settled", False, "auto: polymarket rule for a cancelled race: named outcome pays 0")
         assert got[pm_other] == ("settled", True, "auto: polymarket rule for a cancelled race: other outcome pays 1")
-        assert got[pm_h2h][:2] == ("void", None) and "pays 0.5 (assumed" in got[pm_h2h][2] and "voided" in got[pm_h2h][2]
-        assert got[ks] == ("settled", False,
-                           "auto: kalshi rule for a cancelled race: named outcome pays 0 (assumed; confirm with the venue)")
+        assert got[pm_h2h] == ("void", None, "auto: polymarket rule for a cancelled race: binary outcome pays 0.5; "
+                                             "a YES/NO book can't pay 0.5: voided")
+        assert got[ks] == ("void", None, "auto: kalshi rule for a cancelled race: named outcome settles at the last fair "
+                                         "price (the market's last recorded price stands in for Kalshi's figure); "
+                                         "a YES/NO book can't settle at a price: voided")
         bet = s.scalars(select(m.HouseBet).filter_by(market_id=own)).one()
         assert bet.status == "void"
 

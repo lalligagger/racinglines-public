@@ -368,7 +368,8 @@ def _sport(session, race_id):
 
 def _settle_cancelled(session, conn, race_id, market_ids=None):
     """A cancelled race: every open market settles by its venue's rule (settlement_rules.RULES). A 0.5 payout
-    (Polymarket's assumed 50/50 on a binary market) can't be paid by a YES/NO book, so it is voided with a note."""
+    (Polymarket's 50/50 on a head-to-head) or a price (Kalshi's fair-price settlement) can't be paid by a YES/NO
+    book, so the market is voided with a note."""
     from racinglines.markets import settlement_rules as SR
     venue_of = dict(conn.execute(text("SELECT hm.id, ml.exchange FROM house_markets hm JOIN market_links ml "
                                       "ON ml.id = hm.market_link_id WHERE hm.race_id = :r"), dict(r=race_id)).all())
@@ -387,6 +388,8 @@ def _settle_cancelled(session, conn, race_id, market_ids=None):
             continue
         if y == SR.VOID:
             y = None
+        elif y == SR.FAIR:
+            y, note = None, note + "; a YES/NO book can't settle at a price: voided"
         elif not isinstance(y, bool):
             y, note = None, note + f"; a YES/NO book can't pay {y}: voided"
         settle(session, mk.id, y, note)

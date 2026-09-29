@@ -108,9 +108,10 @@ class _Market:
 
     def result(self, outcome):
         """outcome: True / False, or under a cancelled race's venue rules (markets/settlement_rules.py) a payout
-        (0.5) or VOID (every trade refunded at its price: P&L 0); None = unresolved."""
+        (0.5, or Kalshi's last price) or VOID (every trade refunded at its price: P&L 0); None = unresolved, as
+        is FAIR (Kalshi's fair-price settlement) when no price was recorded."""
         pnl = None
-        if outcome is not None:
+        if outcome is not None and outcome != SR.FAIR:
             if outcome == SR.VOID:
                 pnl = 0.0
                 for tr in self.trades:

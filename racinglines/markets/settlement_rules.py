@@ -19,33 +19,40 @@ Race status
                 result. RACE_STATUS records it so the rule (and the test) is explicit.
     None        a normal race.
 
-What is fact and what is assumed (the owner should confirm the assumptions before relying on them):
+What each venue's published rules say (checked 2026-09-29 against the venues' own market rules; see
+docs/paper-trading.md, "Cancelled and relocated races", for the wording and links):
     Polymarket, cancelled
-        FACT (data/archive/markets/polymarket/links, the April 2026 Bahrain markets): when the race did not run
-        on its scheduled date (12 Apr 2026), every named-driver / constructor market resolved NO and the
-        "Other" market of each group ("Will any other driver win ...?") resolved YES: 174 named markets NO, 9
-        "Other" markets YES, 23 not recorded. The markets for the rescheduled race (round 16, October) are new
-        markets and settle on the race at Sepang.
-        ASSUMED: binary markets (head-to-heads) have no "Other"; Polymarket's usual sports rule for an event that
-        is not held is a 50/50 resolution, encoded as a 0.5 payout (`cancelled_binary`).
+        RULE: the driver / constructor markets say the market resolves to "Other" if the race is cancelled or
+        rescheduled past a deadline about a week after the scheduled date. FACT in the archive
+        (data/archive/markets/polymarket/links, the April 2026 Bahrain markets): 174 named markets resolved NO
+        and the 9 "Other" markets ("Will any other driver win ...?") YES; 23 not recorded. The rescheduled race
+        (round 16, October) got new markets, which settle on the race at Sepang.
+        RULE: the head-to-head markets say "If a Grand Prix is permanently canceled, the market will resolve
+        50-50" (a tie between the two drivers resolves 50-50 too); a postponed race keeps the market open
+        until the race is completed. Encoded as a 0.5 payout (`cancelled_binary`).
     Kalshi, cancelled
-        The rule text Kalshi publishes per market (params.rules in the archive) names the race "originally
-        scheduled for <date>" and says only what resolves YES ("If X finishes first ... then the market resolves
-        to Yes"); the archive holds no Kalshi race market on a race that was cancelled, so what Kalshi did is not
-        observable. ASSUMED: a condition that can never be met resolves NO for every contract, named or binary.
-        Kalshi could instead void the market; change `cancelled` to VOID here if it does. Kalshi's own market on
-        whether the race happens (KXF1OCCUR-26ADGP, "take place in Abu Dhabi before December 7, 2026") is a
-        separate, unmodeled market and is not settled here.
+        RULE: the F1 race markets (winner, podium, pole, the head-to-heads) say a race postponed but started
+        within 48 hours of its scheduled start settles on the official result, and "if the race is cancelled or
+        not started within 48 hours of its originally scheduled start, all markets will resolve to a fair
+        price": Kalshi settles every contract at the last fair market price it determines (rulebook 6.3(c):
+        usually the last traded price, else its Outcome Review Committee's figure). It does NOT resolve NO, and
+        it does not void (refund at cost). Encoded as FAIR: each market settles at its last recorded price
+        (`apply(..., last_price=...)`), which stands in for Kalshi's figure. Kalshi's own market on whether the
+        race happens (KXF1OCCUR-26ADGP, "take place in Abu Dhabi before December 7, 2026") is a separate,
+        unmodeled market and is not settled here.
     Private book, cancelled
         Our own rule: every bet is void, stakes returned (private_book.settle(outcome=None)).
     Any venue, relocated
         Markets on the race as run settle on its result. FACT for Polymarket round 16 (listed anew for Sepang);
         Kalshi's "originally scheduled for" wording points the same way; the private book's spec is the race.
+    Still an approximation: which price Kalshi calls fair (we use the last recorded price of the market), and
+    Polymarket's deadline for a rescheduled race (a race run within its window settles on the result here).
 """
 
 import os
 
 VOID = "void"                      # refund at cost: every share settles at the price it was bought or sold at
+FAIR = "fair"                      # Kalshi: every share settles at the market's last fair price (its last recorded price here)
 ENV = "RACINGLINES_CANCELLED_RACE_RULES"
 STATUS_ENV = "RACINGLINES_RACE_STATUS"
 CANCELLED, RELOCATED = "cancelled", "relocated"
@@ -55,15 +62,18 @@ CANCELLED, RELOCATED = "cancelled", "relocated"
 #   cancelled_other    the group's "Other" / "any other driver" outcome (Polymarket only)
 #   cancelled_binary   a two-sided market with no "Other": head-to-head
 #   relocated          RESULT: settle on the race that was run
-# Values: True (pays 1), False (pays 0), a float payout (0.5), VOID (refund at cost), RESULT.
+# Values: True (pays 1), False (pays 0), a float payout (0.5), VOID (refund at cost), FAIR (the market's last
+# price), RESULT.
 RESULT = "result"
 RULES = {
     "polymarket": dict(cancelled=False, cancelled_other=True, cancelled_binary=0.5, relocated=RESULT),
-    "kalshi": dict(cancelled=False, cancelled_other=False, cancelled_binary=False, relocated=RESULT),
+    "kalshi": dict(cancelled=FAIR, cancelled_other=FAIR, cancelled_binary=FAIR, relocated=RESULT),
     "private": dict(cancelled=VOID, cancelled_other=VOID, cancelled_binary=VOID, relocated=RESULT),
 }
-ASSUMED = {("polymarket", "cancelled_binary"), ("kalshi", "cancelled"), ("kalshi", "cancelled_other"),
-           ("kalshi", "cancelled_binary")}    # the entries above that are not backed by data in the repo
+# Entries above that stand in for a venue's discretion rather than a published payout: Kalshi names no price,
+# only "a fair price", so the last recorded price is our approximation of it.
+APPROXIMATE = {("kalshi", "cancelled"), ("kalshi", "cancelled_other"), ("kalshi", "cancelled_binary")}
+ASSUMED = set()                    # no entry is a guess any more (2026-09-29): every payout is the venue's rule
 
 BINARY_KINDS = {"race_h2h"}
 OTHER_NAMES = ("other", "any other", "another", "field")
@@ -130,24 +140,30 @@ def payout(venue, status, kind, outcome_name=None):
     return table["cancelled_other"] if is_other(outcome_name) else table["cancelled"]
 
 
-def apply(venue, status, kind, outcome_name, result):
+def apply(venue, status, kind, outcome_name, result, last_price=None):
     """The settled outcome of a market: `result` (the result-based YES/NO, or None while undecided) unless the
-    race's status says otherwise. Returns True / False / None / 0.5 / VOID."""
+    race's status says otherwise. Returns True / False / None / a float payout / VOID / FAIR.
+    last_price: the market's last recorded YES price; a FAIR payout (Kalshi's cancelled race) becomes that
+    price when it is known, else stays FAIR (undecided until a price is supplied)."""
     p = payout(venue, status, kind, outcome_name)
-    return result if p == RESULT else p
+    if p == RESULT:
+        return result
+    if p == FAIR and last_price is not None and not (isinstance(last_price, float) and last_price != last_price):
+        return float(last_price)
+    return p
 
 
 def value(outcome):
-    """A settled outcome as the price of a YES share: 1.0 / 0.0 / 0.5; None for VOID or undecided."""
-    if outcome is None or outcome == VOID:
+    """A settled outcome as the price of a YES share: 1.0 / 0.0 / 0.5; None for VOID, FAIR or undecided."""
+    if outcome is None or outcome in (VOID, FAIR):
         return None
     return float(outcome)
 
 
 def settle_position(yes, no, cash, outcome):
     """A paper position's P&L at settlement: cash + shares at the payout; VOID refunds every share at cost, so
-    the P&L is 0. None while undecided."""
-    if outcome is None:
+    the P&L is 0. None while undecided (also FAIR without a price: apply() turns it into the price)."""
+    if outcome is None or outcome == FAIR:
         return None
     if outcome == VOID:
         return 0.0
@@ -161,6 +177,8 @@ def describe(venue, status, kind, outcome_name=None):
     if p == RESULT:
         return f"{status or 'normal'} race: settled on the result"
     shape = "cancelled_binary" if kind in BINARY_KINDS else ("cancelled_other" if is_other(outcome_name) else "cancelled")
-    what = {True: "pays 1", False: "pays 0", VOID: "void, stakes returned"}.get(p, f"pays {p}")
-    tag = " (assumed; confirm with the venue)" if (venue, shape) in ASSUMED else ""
+    what = {True: "pays 1", False: "pays 0", VOID: "void, stakes returned",
+            FAIR: "settles at the last fair price"}.get(p, f"pays {p}")
+    tag = " (assumed; confirm with the venue)" if (venue, shape) in ASSUMED else \
+        (" (the market's last recorded price stands in for Kalshi's figure)" if (venue, shape) in APPROXIMATE else "")
     return f"{venue} rule for a {status} race: {shape.replace('cancelled_', '').replace('cancelled', 'named')} outcome {what}{tag}"

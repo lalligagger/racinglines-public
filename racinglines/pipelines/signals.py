@@ -142,6 +142,8 @@ def _position(p):
     o = p["outcome"]
     if o is None or isinstance(o, (bool, np.bool_)):
         return p
+    if o == SR.FAIR:                # Kalshi's fair-price settlement with no recorded price: still open
+        return dict(p, outcome=None)
     return dict(p, cash=SR.settle_position(p["yes_shares"], p["no_shares"], p["cash"], o), yes_shares=0.0,
                 no_shares=0.0, outcome=None)
 
