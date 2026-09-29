@@ -13,6 +13,12 @@ with every venue that could list it, and for each cell three questions:
 The gaps below are roadmap items with effort estimates, not work in progress. Nothing here runs by
 default, and no new sweep or connector starts without the owner's say ([Roadmap](todo.md#new-sports)).
 
+**Updated 2026-09-29, after the overnight batch (PRs #23–#45).** Since this grid was first written: Kalshi is in the
+signal engine (U1, #34), the recorder-side tape syncs for NASCAR, MotoGP and IndyCar exist (U9, #26), OG.com is a
+schema connector (#44), and Kalshi maker profile K is tuned ([Kalshi history](kalshi-history.md#profile-k)). What did
+not change: nothing has run live on the VM yet. A spot-check of every combo below is written up as a handoff
+(`handoffs/2026-09-29-spot-check-exchange-coverage.md` in the project files).
+
 **How this was checked.** The repo side (schemas in `sports/*.toml`, `racinglines/markets/venues.py`,
 `markets/kalshi/sync.py`, `live/`, the docs) was read directly. The venue side was probed read-only from the
 owner's Mac on 2026-09-29 (unauthenticated GETs against OG.com's, Kalshi's and Polymarket's public
@@ -39,12 +45,12 @@ sport · **?** not probed. Each cell is H / B / L.
 
 | Sport (schema) | Polymarket | Kalshi | OG.com | Private book | Data source and model |
 |---|---|---|---|---|---|
-| **F1** (`f1`) | H ✓ 2025–26, 7,285 links · B ✓ A (taker) and C (maker), params-4h · L ✓ signal engine, but **no race listed since 28 Aug** | H ✓ 2025–26, 3,793 links (29 `KXF1*` series, `KXF1RACE` 22 open) · B ✓ C replayed, K tuned ([Profile K](kalshi-history.md#profile-k), frozen pending owner review) · L ~ U1 done (`venue = kalshi`), **U2 recorder on the VM not running** | H ✗ (API keeps about a month) · B ✗ · L ✗ · **20 season futures listed** (Drivers' and Constructors', expire 2027-01-31); per-GP events exist but had no live instruments; books thin, asks only at 1–4¢, about 4 trades a week | H ✓ Baku test · B ✓ same profiles · L ✓ `live/f1/2026-16.toml` … `2026-23.toml` | FastF1 (network-blocked in the cloud). `position_sim` |
+| **F1** (`f1`) | H ✓ 2025–26, 7,285 links · B ✓ A (taker) and C (maker), params-4h · L ✓ signal engine, but **no race listed since 28 Aug** | H ✓ 2025–26, 3,793 links (29 `KXF1*` series, `KXF1RACE` 22 open) · B ✓ C replayed, K tuned ([Profile K](kalshi-history.md#profile-k), frozen pending owner review; **2026 +$490, 2025 +$659**) · L ~ U1 done (`venue = kalshi`, #34), U5 sprints (#36, behind a switch) and the reconcile / scorecard checks built, **U2 recorder on the VM not running** | H ✗ (API keeps about a month) · B ✗ · L ✗ · **20 season futures listed** (Drivers' and Constructors', expire 2027-01-31); per-GP events exist but had no live instruments; books thin, asks only at 1–4¢, about 4 trades a week | H ✓ Baku test · B ✓ same profiles · L ✓ `live/f1/2026-16.toml` … `2026-23.toml` | FastF1 (network-blocked in the cloud). `position_sim` |
 | **UCI downhill** (`mtb_dh`) | – (probed: nothing on mountain bike) | – (probed: no series) | – (probed) | H ✓ Whistler 2026 (7,703 fills) · B ✓ walk-forward, 43 rounds ([Evaluation](evaluation.md)) · L ✓ `racinglines mtb_dh live` | ChronoRace feed (primary) + PDF backfill. `timed_runs`. Season is over; next World Cup spring 2027 |
 | **UCI XCO / XCC** (none) | – (probed) | – (probed) | – (probed) | ✗ no model (the downhill live core is time-based, XCO is a mass start) | ChronoRace serves XC on the same weekend slugs (`_mtb`, once `_xco`): results are fetchable, nothing is ingested |
 | **UCI road: grand tours, monuments, Worlds** (none) | H ✗ · listings ✓ Tour 2026 (about $1.3M volume), Vuelta, Il Lombardia · B ✗ · L ✗ | H ✗ · **settled history ✓ at least 200 markets in each of `KXCYCLING`, `KXCYCLINGSTAGE`, `KXCYCLINGTEAM`, `KXCYCLINGJERSEY`, plus `KXTOURDEFRANCE`**; 0 open now · B ✗ · L ✗ | – (probed: no cycling) | ✗ | No source, no schema, no model. ProCyclingStats is the obvious results source (terms to check). Next listings that could exist: Il Lombardia 10 Oct, then the 2027 spring classics and Giro |
 | **UCI track, cyclocross, BMX, gravel** (none) | – ? | – ? | – (probed) | ✗ | No source. Track Worlds 14–18 Oct (Shanghai), Cyclocross World Cup from 23 Nov. Expect no markets; not probed beyond OG.com |
-| **NASCAR Cup** (`nascar`, tape-only) | H ✗ · **listings ✓ per-race winner markets** and futures · B ✗ · L ✗ | H ~ U9 sync built (#26), `KXNASCAR*` (17 series, **`KXNASCARRACE` 72 open**), fixture-tested only, **never run live** · B ✗ · L ✗ | H ✗ · **17 Cup Champion futures only** | ✗ | No source (P2 research item), no model. Chase races every October weekend, finale Homestead 8 Nov |
+| **NASCAR Cup** (`nascar`, tape-only) | H ✗ · **listings ✓ per-race winner markets** and futures · B ✗ · L ✗ | H ~ U9 sync built (#26, merged), `KXNASCAR*` (17 series, **`KXNASCARRACE` 72 open**), fixture-tested only, **never run live** · B ✗ · L ✗ | H ✗ · **17 Cup Champion futures only** | ✗ | No source (P2 research item), no model. Chase races every October weekend, finale Homestead 8 Nov |
 | **MotoGP** (`motogp`, tape-only) | H ✗ · listings ✓ championship winner (25 outcomes) · B ✗ · L ✗ | H ~ U9 sync built, `KXMOTOGP*` (3 series, 22 open), never run · B ✗ · L ✗ | – (probed: not listed) | ✗ | No source, no model. Qatar–Valencia rounds Nov |
 | **IndyCar** (`indycar`, tape-only) | H ✗ · listings ✓ championship winner, Indy 500 · B ✗ · L ✗ | H ~ U9 sync built, `KXINDYCAR*` (9 series), never run · B ✗ · L ✗ | – (probed: not listed) | ✗ | Season over (Sept). Nothing to record until March 2027 |
 | **SailGP, Le Mans, Formula E, rally, alpine skiing** (none) | SailGP, Le Mans ✓ listed | SailGP ✓ (`KXSAILGP` 13 open, `KXSAILGPRACE` 13), Le Mans ✓ (`KXLEMANS24H`) | SailGP ✓ 13 Championship Winner contracts | ✗ | Not in scope; noted so the search was complete |
@@ -82,8 +88,11 @@ started.
 7. **XCO / XCC ingest — M, 2027.** ChronoRace already serves it on the same slugs the downhill ingest
    probes. Worth it only if a venue ever lists MTB, which none does; otherwise a private-book showcase
    like downhill. Off the list until then.
-8. **Confirm the "–" cells — S.** One device or VM session to run the checks below and turn every **?**
-   into a fact. Cheapest item on this page and the one that changes the others.
+8. **OG.com follow-ups — S each.** A VM recorder timer (trades, history and books at least weekly, since the API
+   keeps about a month), confirm the $0.02 fee in OG.com's fee schedule, per-Grand-Prix contract rules once a race
+   market is live, join OG.com to the U7 disagreement log.
+9. **Confirm the "–" cells — S.** One device or VM session to run the checks below and turn every **?**
+   into a fact. Cheapest item on this page and the one that changes the others. The spot-check handoff covers it.
 
 Not gaps: horse racing (blocked by law on both venues), track / cyclocross / BMX (no markets expected),
 alpine skiing and the rest of the last row (out of scope).

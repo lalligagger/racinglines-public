@@ -26,7 +26,12 @@ Tick items off where they are listed. Finished items move to [Done](#done) at th
 model yet, so record its tape; **T3** no market anywhere, so run a simulated pool (private book). T3
 proves the pricing, not an edge.
 
-**Where things stand (28 Sep 2026):** no F1 race markets are open on either venue. Polymarket has
+**Where things stand (29 Sep 2026, after the overnight roadmap batch, PRs #23–#45 merged):** U1, U5, U6, U7, U8, U9,
+reconcile, the scorecard and the K sweep are built and merged (new behaviour behind switches, off by default). What
+is left before round 16 is on the VM and with the owner: the Kalshi recorder (U2), the VM cutover, freezing K, the
+loss cap and the tier call. Coverage of every sport × venue is in [Coverage](coverage.md).
+
+**Where things stood (28 Sep 2026):** no F1 race markets are open on either venue. Polymarket has
 listed no race since 28 Aug; Kalshi listed 2025 races only 2–4 days out, so it may still list round 16.
 The F1 championships are open and deep on both (drivers' ~$38M on Polymarket, ~$9M on Kalshi). Profile
 C makes money on Polymarket's tape and loses on Kalshi's.
@@ -34,8 +39,8 @@ C makes money on Polymarket's tape and loses on Kalshi's.
 **P0 · This week (to Thu 1 Oct): be ready to trade round 16 on whichever venue lists it**
 
 - [ ] **U2** Kalshi recorder on the VM ([Exchanges](#exchanges)).
-- [ ] **U1** Kalshi in the signal engine, so A and C can paper-trade Kalshi's race markets ([Exchanges](#exchanges)).
-- [ ] **U6** Championship sleeve, paper only, from round 16's result ([Live events](#live-events)).
+- [x] **U1** Kalshi in the signal engine, so A and C can paper-trade Kalshi's race markets (PR #34, merged 2026-09-29; [Exchanges](#exchanges)).
+- [x] **U6** Championship sleeve, paper only (PR #29, merged; `f1 season-strategy --paper`). Its first live rebalance is round 16's result ([Live events](#live-events)).
 - [ ] Freeze A and C and pre-register the rules in [Paper trading](paper-trading.md#validation-plan).
 - [ ] Round 16 checkpoints: both venues checked Wed 30 Sep; the tier chosen Thu 1 Oct 18:00 PDT
       (T1 on Kalshi if it lists, otherwise T3, the private book); the book opens Thu 20:30 PDT.
@@ -43,12 +48,12 @@ C makes money on Polymarket's tape and loses on Kalshi's.
 
 **P1 · October (rounds 16–19): first live weekends on real markets**
 
-- [ ] **U5** Kalshi sprint markets before Singapore (11 Oct). Priced from the race's pole and win odds
+- [x] **U5** Kalshi sprint markets before Singapore (11 Oct); built in PR #36 behind `RACINGLINES_KALSHI_SPRINTS`, merged. Priced from the race's pole and win odds
       until **U13**, a real sprint model, lands ([F1 model](#f1-model)).
-- [ ] **U3** Kalshi maker profile K, swept and frozen before the United States GP (25 Oct).
-- [ ] **U7** Cross-venue disagreement log; **U8** settlement rules for relocated or cancelled races.
-- [ ] Per-weekend reconciliation (live vs replay) and the pricing scorecard on every weekend ([Paper trading](#paper-trading)).
-- [ ] **U9** Record Kalshi's NASCAR (Chase, finale 8 Nov), MotoGP and IndyCar tapes ([New sports](#new-sports)).
+- [ ] **U3** Kalshi maker profile K: swept (PRs #38, #41, merged; K = `gbm`, 2¢, 10-pt filter, 25 shares, $400 volume floor); **freezing it is the owner's call** before the United States GP (25 Oct).
+- [x] **U7** Cross-venue disagreement log (PR #35, behind `RACINGLINES_DISAGREE`); **U8** settlement rules for relocated or cancelled races (PR #27, behind `RACINGLINES_CANCELLED_RACE_RULES`). Both merged; the owner's two assumptions for U8 are still to confirm.
+- [x] Per-weekend reconciliation (`f1 reconcile`, PR #37) and the pricing scorecard (`f1 scorecard`, PR #28), both merged; run them after every weekend ([Paper trading](#paper-trading)).
+- [ ] **U9** Record Kalshi's NASCAR (Chase, finale 8 Nov), MotoGP and IndyCar tapes: code merged (PR #26, fixture-tested only); **the first live run on the VM is still to do** ([New sports](#new-sports)).
 - [ ] **Parallel track, owner (2026-09-28): the downhill [Data](#data) items are high priority for the next
       cloud session** (Elite/Junior Women, start order, weather). They don't touch the F1 weekends. Most
       need ChronoRace (`prod.chronorace.be`), which the cloud network blocks: allow it first, or run locally.
@@ -119,6 +124,10 @@ For every F1 weekend, T1 or T3:
 | Add NASCAR for 2027 | December | Only if the tapes and data hold up |
 | Promote `gridq+pretrain`; keep `reset` for 2027 | December | Decide on the walk-forward |
 | `--unraced-format last` as the downhill default | Any time | See [Model](#model) |
+| Freeze Kalshi maker profile K (+$490 / +$659, [Kalshi history](kalshi-history.md#profile-k)) | Before 25 Oct | Yes, then no more tuning on Kalshi's 2025–26 tape |
+| U8 rules for a cancelled race: Polymarket 50/50 on head-to-heads, Kalshi NO versus void | Before Qatar (29 Nov) | Confirm against each venue's rules text |
+| Greenlight the coverage backlog: tape-only UCI road cycling schema (S), Polymarket tapes for NASCAR, MotoGP and IndyCar (M) | Any time | Cycling first: cheapest, and Kalshi holds the history |
+| Fable for High-tier work in CLAUDE.md, against the session-only no-Fable rule | Next session | Owner's call which wins |
 
 ## Exchanges
 
@@ -131,7 +140,7 @@ venue with live F1 race markets this year.
       [VM deploy](vm-deploy.md)). First confirm the GCE VM can reach Kalshi's API (the cloud sandbox can't).
       *Done when:* a race weekend's Kalshi books and trades land in the database and
       `data/archive/markets/kalshi/` with nobody running a command.
-- [ ] **U1 · P0 · Kalshi in the signal engine** (F1-9's "done when"). `pipelines/signals.py`,
+- [x] **U1 · P0 · Kalshi in the signal engine** (PR #34, merged 2026-09-29) (F1-9's "done when"). `pipelines/signals.py`,
       `taker_weekend` and `maker_replay` read `exchange='kalshi'` markets for a profile whose new `venue`
       setting says so (default `polymarket`, optional, left out of `settings_key` while unset). Signals
       carry `detail.venue='kalshi'` and positions `venue='kalshi'`. Group by market ticker (`token_id`),
@@ -140,20 +149,21 @@ venue with live F1 race markets this year.
       *Done when:* a replay of 2026 round 15 through the engine on Kalshi matches `f1 demo-history
       --venue kalshi` for C to the cent, and A's Kalshi taker replay matches the sweep's trades
       (`scripts/signals_parity.py --venue kalshi`). No order is sent; `KALSHI_TRADING_ENABLED` stays unset.
-- [ ] **U5 · P1 · Kalshi sprint markets.** Map sprint winner and sprint pole (`KXF1*` sprint tickers,
+- [x] **U5 · P1 · Kalshi sprint markets** (PR #36, merged, behind `RACINGLINES_KALSHI_SPRINTS`). Map sprint winner and sprint pole (`KXF1*` sprint tickers,
       `unmodeled` today) to the sprint stages (after SQ, after Sprint). Check on the Dutch GP (round 12).
       *Done when:* Singapore's Kalshi sprint markets sync with a model price.
-- [ ] **U7 · P1 · Cross-venue disagreement log.** For each F1 outcome linked on both venues (race and
+- [x] **U7 · P1 · Cross-venue disagreement log** (PR #35, merged, behind `RACINGLINES_DISAGREE`; Polymarket and Kalshi only, OG.com not joined yet). For each F1 outcome linked on both venues (race and
       championship), keep both mids, both fee-adjusted edges and the top of each book at every recorder
       pass (a table or a view over `market_price_history`), with a report
       (`racinglines markets disagree --event …`) and a panel on the Markets page.
       *Done when:* the report lists the gaps above fees for the championship markets, day by day.
+- [ ] **OG.com follow-ups (new, from [Coverage](coverage.md#ogcom)):** (a) a VM recorder timer running `trades`, `history` and `books` at least weekly (S, the API forgets after about a month); (b) confirm the $0.02 fee in OG.com's fee schedule (S); (c) per-Grand-Prix `[[rules]]` in `exchanges/og.toml` once a live race market is seen (S); (d) join OG.com to the U7 log (S–M).
 - [ ] Other exchanges, if they list motorsport or cycling markets with real depth, including one for
       downhill (none on Polymarket or Kalshi as of 2026-09).
-- [ ] **OG.com** (Crypto.com's CFTC prediction market): **connector built as a schema** (PR #44: `exchanges/og.toml`,
+- [x] **OG.com** (Crypto.com's CFTC prediction market): **connector built as a schema** (PR #44: `exchanges/og.toml`,
       one generic driver, `racinglines markets --exchange og sync|trades|history|books|fair`; off by default). Open: a
       recorder timer on the VM (the API keeps about a month), per-GP contract rules once a live race market is seen,
-      confirm the $0.02 fee (the terms were checked), join the U7 comparison. Trading needs FCM onboarding and the
+      confirm the $0.02 fee against OG.com's own fee schedule (today from reviews; the API terms were checked), join the U7 comparison. Trading needs FCM onboarding and the
       owner's API key ([Coverage](coverage.md#ogcom)).
 
 ## Paper trading
@@ -167,20 +177,23 @@ how it works: [Paper trading](paper-trading.md). Recommendations and paper fills
       [validation plan](paper-trading.md#validation-plan).
 - [ ] Run A (demo taker) and C (demo maker) live on every weekend Polymarket or Kalshi lists, through 2026
       and into 2027. Built and scheduled for Polymarket (the signal engine); Kalshi needs U1.
-- [ ] **U3 · P1 · Kalshi maker profile K.** A sweep of the maker's settings on Kalshi's 2025–26 tape
+- [x] **U3 · P1 · Kalshi maker profile K** (sweep done; freezing is the owner's call). A sweep of the maker's settings on Kalshi's 2025–26 tape
       (spread, `max_disagree`, `size`, model `gbm` / `gridq+pretrain`, per-market `min_volume_24h`),
       judged on both seasons as `params-4h` was. Save the winner as the Lab candidate "K · Kalshi maker",
       assigned as the demo maker's Kalshi profile.
       *Done when:* K is frozen before round 18, with its 2025 and 2026 Kalshi replay P&L recorded in
-      [Kalshi history](kalshi-history.md).
-- [ ] **P1 · Per-weekend reconciliation.** `racinglines f1 reconcile --event 2026-NN --profile X --venue V`:
+      [Kalshi history](kalshi-history.md). **Result (PRs #38, #41, corrected 2026-09-29):** K = `gbm`, 2¢ quotes, 10-point
+      disagreement filter, 25 shares, $400 24-hour volume floor: **+$490 (2026), +$659 (2025)**, at 16,000 simulations
+      +$453 / +$741, against profile C's −$119 / +$510. The first 2025 figure (+$855) missed Imola 2025, which only
+      Kalshi listed (−$195). Owner: freeze K?
+- [x] **P1 · Per-weekend reconciliation** (PR #37, merged). `racinglines f1 reconcile --event 2026-NN --profile X --venue V`:
       live paper fills and markouts against the replay of the same weekend on the recorded tape (the
       conservative "through" fill rule), flagging a weekend outside the validation rules. Its output goes
       into the weekend's report.
-- [ ] **P1 · Pricing scorecard on every weekend,** traded or not: Brier and log loss of the fair values
+- [x] **P1 · Pricing scorecard** (PR #28, merged: `f1 scorecard` for exchange weekends; run it on every weekend), traded or not: Brier and log loss of the fair values
       against the result and against each venue's mid at each stage. `racinglines live report` does this
       for private books; extend it to Kalshi and Polymarket weekends.
-- [ ] **P1 · `track_record(venue='all')` in the MCP server** lists one row per weekend while its total sums
+- [x] **P1 · `track_record(venue='all')` in the MCP server** (PR #30, merged; original problem: lists one row per weekend while its total sums
       every venue (the maker's weekends mix Polymarket and Kalshi rows). Return one row per weekend and
       venue, with a `venue` column and a total per venue.
 - [ ] **P2 · Sizing review (~12 Nov),** after 4–6 live weekends on real markets (T3 weekends don't count):
@@ -200,13 +213,13 @@ events are T3 unless a venue lists the event.
       [F1 live test](f1-live-roadmap.md).
 - [ ] Singapore (round 17, sprint weekend, 11 Oct): the same run if no venue lists it. Code-ready: launch
       spec `live/f1/2026-17.toml`; the sprint stages rehearsed on the Dutch GP (`live/f1/2026-12.toml`).
-- [ ] **P1 · Launch specs for rounds 18–23** (`live/f1/2026-18.toml` … `2026-23.toml`), used only on
+- [x] **P1 · Launch specs for rounds 18–23** (PR #24, merged) (`live/f1/2026-18.toml` … `2026-23.toml`), used only on
       weekends no venue lists. Check Las Vegas's Saturday-night stage cut-offs.
-- [ ] **U6 · P0 · Championship sleeve, paper only.** `f1 season-strategy` run live after each race on both
+- [x] **U6 · P0 · Championship sleeve, paper only** (PR #29, merged; first live rebalance is after round 16). `f1 season-strategy` run live after each race on both
       venues (Kalshi's `KXF1*` champion markets included), as a separate profile. Its positions stay out of
       A, C and K's track records. The 2026 replay was −$208 (the model lagged pre-season), so expect little.
       *Done when:* round 16's post-race rebalance is stored for both venues.
-- [ ] **U8 · P1 · Relocated and cancelled races.** Encode Kalshi's and Polymarket's rules for a cancelled or
+- [x] **U8 · P1 · Relocated and cancelled races** (PR #27, merged, behind `RACINGLINES_CANCELLED_RACE_RULES`; the Polymarket 50/50-on-cancel and Kalshi NO-vs-void rules are assumptions for the owner to confirm). Encode Kalshi's and Polymarket's rules for a cancelled or
       moved race (Polymarket's Bahrain 2026 "Other" resolution; the Abu Dhabi "take place" market) in
       settlement, with a test on Bahrain 2026.
       *Done when:* paper positions on a cancelled race settle as the venue's rules say.
@@ -214,7 +227,7 @@ events are T3 unless a venue lists the event.
 - [ ] Optional, round 16: record SignalR during FP1 with FastF1's client, to learn whether it needs a login.
 - [ ] A live timing feed (F1 SignalR or OpenF1) for in-session updates; compared in the
       [F1 live test](f1-live-roadmap.md#5-live-data-source) plan.
-- [ ] Downhill `live run`: take a lock in the run folder like F1's step, so a restart can't leave two loops
+- [x] Downhill `live run`: take a lock in the run folder like F1's step, so a restart can't leave two loops
       polling (what happened at Whistler, 22:38–22:39). Before the 2027 downhill season.
 
 ## Market making
@@ -263,7 +276,7 @@ XC/enduro, alpine skiing. Rank by audience, data availability and exchange listi
 local-league plans. As of 2026-09 the ranking is led by exchange depth:
 [Strategy 2026](strategy-2026.md#other-racing-sports-for-2027).
 
-- [ ] **U9 · P1 · Tape recording for other sports.** Generalise the Kalshi sync to named series: NASCAR
+- [x] **U9 · P1 · Tape recording for other sports** (code, PR #26, merged, fixture-tested only; the live run on the VM and a tapes timer are open). Generalise the Kalshi sync to named series: NASCAR
       Cup (`KXNASCAR*`, race and champion), MotoGP (`KXMOTOGP*`), IndyCar (`KXINDYCAR*`). Each under its own
       competition (a `sports/<code>.toml` entry with no model), links `unmodeled`, with prices, trades and
       books archived per exchange.
@@ -277,9 +290,9 @@ local-league plans. As of 2026-09 the ranking is led by exchange depth:
       `KXCYCLINGTEAM`; Polymarket listed the 2026 Tour winner and top 3. A `sports/road_cycling.toml` with
       no model and those series records the tapes through the U9 path, `--include-closed` for the 2026
       grand tours. Effort S. A model is a 2027 question ([Coverage](coverage.md#the-grid)).
-- [ ] **Re-run the coverage probes** (Kalshi and Polymarket counts drift; the remaining ? cells) on the VM or the owner's device: the read-only
+- [ ] **Re-run the coverage probes and spot-check every combo** (handoff written 2026-09-29: `handoffs/2026-09-29-spot-check-exchange-coverage.md`) (Kalshi and Polymarket counts drift; the remaining ? cells) on the VM or the owner's device: the read-only
       commands in [Coverage](coverage.md#what-to-verify-on-a-device). Effort S.
-- [ ] **P2 · NASCAR data sources** (research, no build): results, qualifying, practice and lap data
+- [x] **P2 · NASCAR data sources** (research, PR #25, merged): results, qualifying, practice and lap data
       (NASCAR's public feeds, community archives), their terms and history depth; written up in
       [Data](data.md).
 - [ ] **P3 · NASCAR for 2027?** Decide from the recorded Chase tapes (volume, spread, how often markets
@@ -365,6 +378,11 @@ Downhill model.
       only F1 forecast because the database was rebuilt on 2026-09-27 (ids 1–3 are its first rows, 18:37–18:42Z)
       and the forecast has been saved once since; the downhill one came later (1287). Still to do: re-save
       both from committed code.
+- [x] **Web app N+1 in `model_prob`** (PR #43, merged 2026-09-29): Kalshi's `market_links` rows doubled the per-market
+      lookups on the Markets page; fixed with one batched read.
+- [x] **Same-second maker fills kept apart in stored signals** (PR #39, merged), the bug `f1 reconcile` found.
+- [x] **CLAUDE.md** (PR #45, merged): the standing process note (environments, model tiers, dev cycle, pre-merge
+      checks, report format, safety rails). Open: its Fable tiering versus the session-only no-Fable rule.
 - [ ] Remove the `demo_context` bubbles before real users.
 - [ ] Before anything goes beyond a private demo: check F1's data terms, OpenF1's non-commercial terms,
       and settlement rules for relocated or cancelled races (U8).

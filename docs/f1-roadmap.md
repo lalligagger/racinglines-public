@@ -323,7 +323,7 @@ races
 
 ### F1-8: Live paper-trade validation (Polymarket)
 
-**Status:** built and scheduled for Polymarket; waiting for a venue to list a race.
+**Status:** built and scheduled for Polymarket; waiting for a venue to list a race. Since 2026-09-29 also built for Kalshi (signal engine `venue` setting, PR #34; `f1 reconcile`, PR #37; `f1 scorecard`, PR #28; championship sleeve, PR #29); the first live weekend is round 16.
 Polymarket has listed none since round 15 (28 Aug 2026). Since 2026-09-28 the phase runs on
 **every venue that lists** (Kalshi via F1-9, pulled forward), judged by the pre-registered
 [validation plan](paper-trading.md#validation-plan); calendar on the [Roadmap](todo.md#race-weekends-to-31-december) · **Behavior
@@ -360,7 +360,7 @@ V2 item and the owner's explicit approval.
 
 ### F1-9: More exchanges (Kalshi, others)
 
-**Status:** Kalshi connector run against the live read-only API (2026-09-28, `markets/kalshi/`); F1 history for 2025 and 2026 pulled and archived in `data/archive/markets/kalshi/` ([Data changes](data-changes.md)); the maker replay and the demo maker's record read it (`f1 demo-history --venue kalshi`, [Kalshi history](kalshi-history.md)); the sweep and taker signals don't yet · **Pulled forward** (2026-09-28): the Kalshi recorder and Kalshi paper signals (Roadmap U1, U2, U5) come before F1-8's first live weekends, since Kalshi may be the only venue listing races this year
+**Status:** built (2026-09-29, PRs #26, #27, #34–#37, #41, #44): Kalshi connector run against the live read-only API (2026-09-28, `markets/kalshi/`); F1 history for 2025 and 2026 pulled and archived in `data/archive/markets/kalshi/` ([Data changes](data-changes.md)); the maker replay, the sweep and the taker signals all read it (`venue = kalshi`); tape-only NASCAR, MotoGP and IndyCar syncs (U9, fixture-tested); OG.com added as the first schema exchange (`exchanges/og.toml`, read-only). Open: the Kalshi recorder on the VM (U2), the first live run of the U9 tapes, and freezing profile K · **Pulled forward** (2026-09-28): the Kalshi recorder and Kalshi paper signals (Roadmap U1, U2, U5) come before F1-8's first live weekends, since Kalshi may be the only venue listing races this year
 
 - **Kalshi connector** in `racinglines/markets/kalshi/`, mirroring
   `markets/polymarket/`: markets and resolution rules, prices, trade tape, and
@@ -374,6 +374,8 @@ V2 item and the owner's explicit approval.
 
 **Done when:** Kalshi's F1 markets replay in the sweep and appear in paper
 signals, with leakage-rule tests like Polymarket's.
+
+**Met 2026-09-29** (PRs #34, #41): Kalshi's F1 markets replay in the sweep and appear in paper signals. Exchange coverage by sport: [Coverage](coverage.md).
 
 ## Decision log
 
@@ -427,6 +429,10 @@ signals, with leakage-rule tests like Polymarket's.
 | 2026-09-28 | — | Downhill points tables per era live in `points_schemes`, entered from a TOML file (`sports/points/uci_dhi_wc.toml`); the model reads them only with `--points db`, by setting the three table globals per season (`points.use`) | No plumbing through every function, and the default path is untouched. Placeholders stay marked (`official = false`) until the owner enters the UCI scales; committed standings are TOML because git ignores CSVs | a points argument threaded through the season and weekend functions |
 | 2026-09-28 | — | Downhill UCI IDs: a separate `uci_id` field and a `uci` athlete identifier matched first; the parser's `rider_id` stays name-based; existing duplicates are merged by an explicit command, never automatically | Old files and today's model inputs stay identical; a merge changes history, so the owner runs it | switching `rider_id` to `uci:<id>` in the parser |
 | 2026-09-28 | 8, 9 | Strategy to the end of 2026 ([Strategy 2026](strategy-2026.md)): real markets first on any venue (T1), tapes of unmodeled sports recorded (T2), private books only where no venue lists (T3). Kalshi work pulled ahead of F1-8's first weekends; A and C frozen to 31 Dec; a Kalshi-tuned maker K chosen by its own sweep; validation rules pre-registered in [Paper trading](paper-trading.md#validation-plan) | Polymarket has listed no race since 28 Aug; C loses on Kalshi's 2026 tape (−$119) while it earns on Polymarket's (+$653); the taker needs ~40 live weekends to prove, the maker ~17 | F1-9 "start after F1-8's first live weekends" |
+| 2026-09-29 | 9 | Kalshi maker profile K chosen by its own sweep on Kalshi's tape: `gbm`, 2¢ quotes, `max_disagree` 0.10, 25 shares, `maker_min_volume_24h` 400. 2026 +$490, 2025 **+$659** (16k simulations: +$453 / +$741). Freezing is the owner's call | Held-out rule (2026 primary, 2025 confirm) and the 16,000-simulation confirmation; beats profile C by +$609 (2026) and +$150 (2025, within the noise). The first 2025 figure, +$855, missed Imola 2025 (Kalshi-only listing, −$195): sweeps now read the venue from the profile | the first K table, +$855 |
+| 2026-09-29 | — | Sweeps run in grid mode (up to N sweeps of one season and model per process), the rating history is built lazily and can be cached, and `parallel` defaults to every core; Kalshi's maker and taker fees are defined once on the venue classes | The 106-job Kalshi search fell from 59 to 21 minutes with identical saved runs (checked to the cent) | one process per job |
+| 2026-09-29 | 9 | Exchanges are schemas, not code: `exchanges/<code>.toml` read by one generic driver (`markets/exchange_driver.py`). OG.com is the first, read-only, off by default (`RACINGLINES_OG_VENUE`); its fair-price indicator is an indicator only, with no backtest (about a month of history, asks-only books at 1–4¢). Polymarket and Kalshi keep their own packages for now | Owner's standing principle (2026-09-29): a new venue should be a config file, not new code paths. The $0.02 fee is from reviews and is unconfirmed | — |
+| 2026-09-29 | — | CLAUDE.md is the standing process note for Claude Code sessions: environments, model tiers, dev cycle (one thread per task), pre-merge checks, report format, safety rails | Owner asked for one place for how the sessions work; the domain lives here and in the Roadmap | — |
 
 ## Open questions
 
