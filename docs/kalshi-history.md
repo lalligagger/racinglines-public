@@ -94,6 +94,25 @@ podium +$9.94. Hungary 2025 (M2, −$508) is most of M2's loss.
   Monaco −50, Barcelona −301, Austria −237, Britain −209, Belgium +32, Hungary +137, Netherlands +37,
   Italy +165, Spain 0, Azerbaijan −62.
 
+## In the signal engine
+
+A strategy profile paper-trades Kalshi when its settings say `venue = "kalshi"` (roadmap U1; the setting
+is optional, unset by default and left out of every settings key, so every Polymarket profile and saved
+sweep is untouched). Then `racinglines f1 signals`, `f1 sweep --venue kalshi` and the Lab's sweeps read
+the race's `exchange='kalshi'` links, one market per ticker (never grouped by `condition_id`, the event
+ticker), Kalshi's tape per market (its own 24 h volume), and the maker pays `KALSHI_MAKER_FEE`; the taker
+strategies (`taker_weekend`) and the maker replay run unchanged on top. Signals carry
+`detail.venue = 'kalshi'`, positions `venue = 'kalshi'`, apart from the Polymarket rows as the maker's
+record above. Live, a Kalshi profile refreshes Kalshi's minute candlesticks and trades for the event
+(`markets/kalshi/sync.py`) before pricing, as a Polymarket profile refreshes Polymarket's. No order is
+ever sent and `KALSHI_TRADING_ENABLED` is never read by the engine.
+
+Checks (2026-09-29, Azerbaijan 2026, `scripts/signals_parity.py --venue kalshi`; see
+[Paper trading](paper-trading.md#parity-with-the-sweep)): profile A's Kalshi replay through the engine
+gives the sweep's 23 taker trades exactly; profile C's gives 41 fills and −$61.90 settled, the sweep
+maker's figures and the −$61.90 Azerbaijan line of the record above, to the cent. Profile A on Polymarket
+gives the same 11 trades before and after the change.
+
 ## In the app
 
 Kalshi is at the same level as Polymarket across the app, on by default (the owner's call, 2026-09-28).

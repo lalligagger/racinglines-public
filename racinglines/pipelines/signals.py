@@ -21,6 +21,13 @@ Per run:
      stopping quoting in a stage (not every requote).
   5. Store (strategy_signals, paper_positions; idempotent per profile, market, stage and side), then alert.
 
+Venue: Polymarket unless the profile's settings say venue = "kalshi" (sweep_settings; unset by default and left
+out of every settings key). A Kalshi profile reads the race's exchange='kalshi' links, one market per ticker
+(never grouped by condition_id, Kalshi's event ticker), its tape per market (its own 24 h volume filter), and
+its maker pays KALSHI_MAKER_FEE; its signals carry detail.venue = 'kalshi' and its positions venue = 'kalshi'.
+The profile setting is the only switch: a live run on Kalshi needs it, and a replay may name the venue
+(compute(venue=...), as demo_history does). Paper only on every venue; KALSHI_TRADING_ENABLED is never read here.
+
 Heat: the modelled EV of a taker entry, shares x (our probability of the side - limit price), graded
 (HEAT). Takers see the heat, never our fair value or edge (docs/webapp.md, Roles). The tiers are the
 median and top quartile of profile A's 472 backtest entries (2025 + 2026, modelled EV $4.8 / $12.0 / $29.8
@@ -225,26 +232,36 @@ def refresh_fastf1(w, echo=print):
         echo(f"  f1 {argv[0]}: {'ok' if r.returncode == 0 else 'failed'} {r.stdout.strip().splitlines()[-1:] or ''}")
 
 
-def refresh_markets(engine, engine_url, w, now, echo=print):
-    """Polymarket 5-minute prices and the trade tape for the event's markets, up to now."""
+def refresh_markets(engine, engine_url, w, now, echo=print, venue="polymarket"):
+    """Polymarket 5-minute prices and the trade tape for the event's markets, up to now (venue="kalshi": its
+    minute candlesticks and trades, per event ticker, from markets/kalshi/sync.py)."""
     from racinglines.db.config import get_session
     from racinglines.markets import store as MS
-    from racinglines.markets.polymarket.sync import fetch_history, fetch_trades
+    if venue == "polymarket":
+        from racinglines.markets.polymarket.sync import fetch_history, fetch_trades
+    else:
+        from racinglines.markets.kalshi.sync import fetch_history, fetch_trades
     with engine.connect() as c:
         rid = WS._race_id(c, w["event_key"])
-        links = WS._token0_links(c, rid) if rid else pd.DataFrame()
+        links = WS._links(c, rid, venue) if rid else pd.DataFrame()
         if not len(links):
-            echo("  no Polymarket markets linked to this event yet")
+            echo(f"  no {venue.capitalize()} markets linked to this event yet")
             return
         start = (w["stages"][0][1] - timedelta(hours=36)).tz_localize("UTC")
-        have = MS.read(c, "prices", tokens=links["token_id"].tolist(), start=start, end=now.tz_localize("UTC"))
+        have = MS.read(c, "prices", tokens=links["token_id"].tolist(), start=start, end=now.tz_localize("UTC"),
+                       root=MS.root_for(venue))
         since = max(start, pd.Timestamp(have["ts"].max()).tz_convert("UTC") - timedelta(hours=1)) if len(have) else start
+        recent = (now - timedelta(hours=6)).tz_localize("UTC").to_pydatetime() if len(have) else None
         with get_session(engine_url) as s:
-            n = fetch_history(s, c, None, since.to_pydatetime(), now.tz_localize("UTC").to_pydatetime(), fidelity=5,
-                              tokens=links["token_id"].tolist())
-            k = fetch_trades(s, c, links["event_slug"].dropna().unique().tolist(), modeled_only=True,
-                             since=(now - timedelta(hours=6)).tz_localize("UTC").to_pydatetime() if len(have) else None)
-    echo(f"  Polymarket: {n} price points, {k} trades")
+            if venue == "polymarket":
+                n = fetch_history(s, c, None, since.to_pydatetime(), now.tz_localize("UTC").to_pydatetime(), fidelity=5,
+                                  tokens=links["token_id"].tolist())
+                k = fetch_trades(s, c, links["event_slug"].dropna().unique().tolist(), modeled_only=True, since=recent)
+            else:
+                events = links["condition_id"].dropna().unique().tolist()      # Kalshi: the event tickers
+                n = fetch_history(s, c, events, since.to_pydatetime(), now.tz_localize("UTC").to_pydatetime(), period=1)
+                k = fetch_trades(s, c, events, since=recent)
+    echo(f"  {venue.capitalize()}: {n} price points, {k} trades")
 
 
 def _entrants(meas, event_id, cutoff):
@@ -320,20 +337,35 @@ def price_stages_now(meas, hist, w, st, engine, engine_url, now, echo=print):
 # One profile through the weekend
 # ---------------------------------------------------------------------------
 
+def resolve_venue(settings, venue=None, live=True):
+    """The exchange a run trades: the profile's `venue` setting (polymarket while unset), or `venue` when a replay
+    names one. Live, only the profile's own setting counts: a live run on another exchange without it is refused,
+    so nothing changes for a deployed Polymarket profile."""
+    own = SS.venue_of(settings)
+    if venue is None or venue == own:
+        return own
+    if live:
+        raise ValueError(f"venue {venue!r}: a live run trades the profile's own venue ({own}); set the profile's "
+                         f"`venue` setting to trade {venue}")
+    return venue
+
+
 def compute(engine, engine_url, profile, now=None, event="next", live=True, fetch=True, echo=print, cache=None,
-            venue="polymarket"):
+            venue=None):
     """Signals and positions of one profile at `now` (naive UTC; default the current time).
     live=False is a replay: markets are read at each stage's cutoff, exactly like the sweep.
     cache: a dict reused across calls (the loaded measurements and each model's training history).
-    venue: the exchange a maker quotes ("kalshi": Kalshi's recorded tape, with its maker fee; replays only).
-    -> dict(event, stages, signals, positions, note)."""
+    venue: the exchange to replay on instead of the profile's own (see resolve_venue; "kalshi": Kalshi's links
+    and recorded tape, its maker fee).
+    -> dict(event, stages, signals, positions, venue, note)."""
     from racinglines.models.position_sim import pricing as run
     st = SS.Settings.from_dict(profile["settings"], strict=False)
+    venue = resolve_venue(st, venue, live)
     now = pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz="UTC").tz_localize(None)
     year = int(str(event).split("-")[0]) if "-" in str(event or "") else now.year     # "2026-15" or a round
     sched = WS.schedule(year)
     rnd, w = pick_event(sched, now, event)
-    base = dict(profile=profile, event=w, stages=[], signals=[], positions=[], maker_state={})
+    base = dict(profile=profile, event=w, stages=[], signals=[], positions=[], maker_state={}, venue=venue)
     if w is None:
         return dict(base, note="no race weekend left this season")
     if live and not in_weekend(w, now):
@@ -345,7 +377,7 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
             refresh_fastf1(w, echo)
             meas = run.Measurements.load(engine)
             cache.clear()
-        refresh_markets(engine, engine_url, w, now, echo)
+        refresh_markets(engine, engine_url, w, now, echo, venue=venue)
     cache["meas"] = meas
     with st.applied():
         hist = cache.get(("hist", st.model_key))
@@ -357,13 +389,12 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
         return dict(base, note=f"{w['name']}: no stage priced yet")
     runs = [(lab, cu, rid) for lab, cu, rid, _ in stages]
     strategy = profile["strategy"]
-    if venue != "polymarket" and (live or strategy not in WS.MAKERS):
-        raise ValueError(f"venue {venue!r}: only maker replays (live=False) read another exchange")
     with engine.connect() as c:
         base["race_id"] = WS._race_id(c, w["event_key"])
         if strategy in WS.TAKER_MODES:
             price_times = {lab: max(cu, at) for lab, cu, _, at in stages} if live else None
-            markets = WS.weekend_markets(c, w, runs, min_volume_24h=st["min_volume_24h"], price_times=price_times)
+            markets = WS.weekend_markets(c, w, runs, min_volume_24h=st["min_volume_24h"], price_times=price_times,
+                                         venue=venue)
             markets = [m for m in markets or [] if m["kind"] in st["market_kinds"]]
             p = RB.TakerParams(min_edge=st["min_edge"], stake_per_edge=st["stake_per_edge"], max_stake=st["max_stake"],
                                cost=st["cost"], late_stages=st["late_stages"], min_edge_h2h=st["min_edge_h2h"],
@@ -374,6 +405,9 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
             base.update(_maker(c, w, runs, st, strategy, now, live, venue=venue))
         else:
             raise ValueError(f"unknown strategy {strategy!r}")
+    if venue != "polymarket":                    # another exchange's rows say so (the default rows stay as they were)
+        base["signals"] = [dict(s, detail=dict(s.get("detail") or {}, venue=venue)) for s in base["signals"]]
+        base["positions"] = [dict(p, venue=venue) for p in base["positions"]]
     return base
 
 
@@ -390,9 +424,7 @@ def _maker(c, w, runs, st, strategy, now, live, venue="polymarket"):
         opts["info_skew"] = st["info_skew"]
     opts.pop("widen", None)            # widening needs earlier weekends' markouts; not applied live
     p = replace(R.Params(half_spread=st["half_spread"], size=st["size"], max_pos=st["max_pos"], skew=st["skew"],
-                         max_disagree=st["max_disagree"], fill=st["fill"]), **opts)
-    if venue == "kalshi":
-        p = replace(p, maker_fee=R.KALSHI_MAKER_FEE)
+                         max_disagree=st["max_disagree"], fill=st["fill"], **WS.maker_venue_opts(venue)), **opts)
     rep = R.replay(ev, p)
     labels = {rid: lab for lab, _, rid in runs}
     sigs, state = maker_state(rep["quotes"], rep["fills"], ev["markets"], labels, now_ns)
@@ -402,8 +434,7 @@ def _maker(c, w, runs, st, strategy, now, live, venue="polymarket"):
         s = state.get(r["cond"], {})
         pos.append(dict(market_key=r["cond"], kind=r["kind"], subject=r["subject"], yes_shares=r["inventory"],
                         no_shares=0.0, cash=r["cash"], mark=R.PublicView(mk, now_ns).mid(), outcome=r["outcome"],
-                        bid=s.get("bid"), ask=s.get("ask"), quote_state=s.get("quote_state"),
-                        **({} if venue == "polymarket" else dict(venue=venue))))
+                        bid=s.get("bid"), ask=s.get("ask"), quote_state=s.get("quote_state")))
     return dict(signals=sigs, positions=pos, maker_state=state)
 
 
@@ -446,12 +477,14 @@ def store(conn, user_id, out, follow_rate=None, history=False, venue=None):
     expired, and replace the user's paper positions for the event. Returns the ids of new signals.
     follow_rate: a taker user's (see Following); history: a backfilled weekend (a backtest replay shown
     as the account's track record): taken / passed statuses, already seen, flagged detail.backfill.
-    venue: another exchange's replay ("kalshi"): its signals carry detail.venue and only that venue's positions
-    are replaced; the default run leaves Kalshi's positions alone."""
+    venue: another exchange ("kalshi"; default: the computation's own, out["venue"]): its signals carry detail.venue
+    and only that venue's positions are replaced; a Polymarket run leaves Kalshi's positions alone."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
     from racinglines.db import models as m
     pr, w = out["profile"], out["event"]
+    if venue is None and out.get("venue", "polymarket") != "polymarket":
+        venue = out["venue"]
     signals, positions = out["signals"], out["positions"]
     taker = pr["strategy"] in WS.TAKER_MODES
     if taker:
@@ -482,9 +515,11 @@ def store(conn, user_id, out, follow_rate=None, history=False, venue=None):
                          AND event_key = :e AND """ + ("venue = :v" if venue else "venue NOT LIKE 'kalshi%'")),
                  dict(u=user_id, c=pr.get("candidate_id"), e=w["event_key"], v=venue))
     for p in positions:
-        conn.execute(pg_insert(m.PaperPosition).values(
-            dict(user_id=user_id, candidate_id=pr.get("candidate_id"), race_id=out.get("race_id"),
-                 event_key=w["event_key"], **{k: _clean(v) for k, v in p.items()})))
+        row = dict(user_id=user_id, candidate_id=pr.get("candidate_id"), race_id=out.get("race_id"),
+                   event_key=w["event_key"], **{k: _clean(v) for k, v in p.items()})
+        if venue:
+            row.setdefault("venue", venue)
+        conn.execute(pg_insert(m.PaperPosition).values(row))
     return new
 
 
@@ -578,18 +613,19 @@ def latest_run(conn, profile, event_key):
 
 
 def price_upcoming(engine, engine_url, profile, now=None, n=3, echo=print, cache=None):
-    """Between race weekends: price each of the next `n` races that has Polymarket race markets listed,
-    as of now, with the profile's model, unless a pricing from the same data exists (the data only
+    """Between race weekends: price each of the next `n` races that has race markets listed on the profile's
+    venue, as of now, with the profile's model, unless a pricing from the same data exists (the data only
     changes when a session runs, so this is a one-off per race). Returns {event_key: run id}."""
     from racinglines.models.position_sim import pricing as run
     st = SS.Settings.from_dict(profile["settings"], strict=False)
+    venue = SS.venue_of(st)
     now = pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz="UTC").tz_localize(None)
     sched = WS.schedule(now.year)
     todo = [w for r, w in sorted(sched.items()) if w["race_start"] > now][:n]
     out = {}
     with engine.connect() as c:
         listed = {w["event_key"] for w in todo if (rid := WS._race_id(c, w["event_key"]))
-                  and len(WS._token0_links(c, rid))}
+                  and len(WS._links(c, rid, venue))}
     todo = [w for w in todo if w["event_key"] in listed]
     if not todo:
         return out
