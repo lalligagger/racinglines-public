@@ -1,0 +1,80 @@
+# Launch spec: United States Grand Prix (private book) (racinglines live, docs/live-events.md). Written by `racinglines live new f1 2026-18`;
+# edit freely before the book opens (the settings freeze into meta.json at the first update).
+sport = "f1"
+event = "2026-18"
+title = "United States Grand Prix (private book)"
+
+# The window (UTC, from the FastF1 schedule): the book opens 2026-10-23T16:30:00, closes at lights out 2026-10-25T20:00:00,
+# and settles from the results (2026-10-25T23:00:00).
+[window]
+open = "2026-10-23T16:30:00"
+close = "2026-10-25T20:00:00"
+results = "2026-10-25T23:00:00"
+
+# Overrides of sports/f1.toml [live], e.g. [live.quoting] max_pos = 1000.0
+[live.markets]
+h2h_from = "last_listed"        # head-to-head pairs: the last race Polymarket listed (resolved at the opening)
+
+# The demo taker's hype picks, placed at the opening at the maker's ask ($25 each): names and stories, not value.
+# name: a driver's (or team's) name; market: race_win, race_podium, race_pole, race_h2h (with vs), race_constructor_top
+[[picks]]
+name = "Hamilton"
+market = "race_win"
+hype = 5
+why = "seven-time champion in red"
+[[picks]]
+name = "Verstappen"
+market = "race_win"
+hype = 5
+why = "the name everyone knows"
+[[picks]]
+name = "Leclerc"
+market = "race_pole"
+hype = 4
+why = "Saturday specialist"
+[[picks]]
+name = "Norris"
+market = "race_podium"
+hype = 4
+why = "crowd favourite"
+[[picks]]
+name = "Alonso"
+market = "race_podium"
+hype = 5
+why = "one more podium for the legend"
+[[picks]]
+name = "Antonelli"
+market = "race_win"
+hype = 4
+why = "the young star"
+[[picks]]
+name = "Hamilton"
+market = "race_h2h"
+hype = 4
+why = "the old master beats the new wave"
+vs = "Piastri"
+[[picks]]
+name = "Ferrari"
+market = "race_constructor_top"
+hype = 5
+why = "the tifosi never doubt"
+[[picks]]
+name = "Russell"
+market = "race_pole"
+hype = 3
+why = "one-lap pace"
+[[picks]]
+name = "Bearman"
+market = "race_podium"
+hype = 3
+why = "rising star"
+[[picks]]
+name = "Colapinto"
+market = "race_podium"
+hype = 3
+why = "the fans' pick"
+[[picks]]
+name = "Piastri"
+market = "race_podium"
+hype = 3
+why = "quietly consistent"

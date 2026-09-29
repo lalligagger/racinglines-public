@@ -325,6 +325,16 @@ the same as with the defaults). *n* is the number of priced outcomes.
   on the baseline in most cells; its biggest gain is race winners after
   qualifying in 2026 (0.0720 → 0.0620).
 
+### The weekend scorecard
+
+`racinglines f1 scorecard --event 2026-15 --venue both` is the same comparison for one exchange
+weekend, traded or not ([Paper trading](paper-trading.md#validation-plan), validation rule 2): at each
+stage cutoff, the stored stage runs' fair values for every linked market kind, against the result and
+against the venue's mid at that cutoff (`--all --year 2025` for a season, per weekend and pooled). It
+scores every market with a fair value and a result (`n`), and model and venue side by side on the
+markets the venue priced then (`paired`); a multi-outcome group whose prices don't sum near its target
+(an empty or stale book) gives no mid, as in the sweep. Written to `data/runs/f1/scorecard/`.
+
 ## Known weaknesses
 
 - **After-qualifying winner markets:** Polymarket is sharper in both seasons

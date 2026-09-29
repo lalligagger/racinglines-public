@@ -134,3 +134,25 @@ def test_reprice_from_the_logged_raw_feed(tmp_path, monkeypatch):
         assert sum(v for k, v in r["fair"].items() if k.endswith(":win")) == pytest.approx(1, abs=1e-3)
     assert res["rows"][-1]["fair"]["2:win"] == 1.0                     # over: the winner is certain
     assert (out / "reprice" / "t.jsonl").exists() and res["scorecard"]["live"] == {}   # no snapshots: nothing to compare
+
+
+def test_run_folder_lock_stops_a_second_loop(tmp_path, monkeypatch):
+    """`live run` / `mtb_dh live` take a non-blocking lock in the final's run folder (F1's step lock): while one
+    loop holds it, a second run() for the same final says so and returns None without polling; once the first
+    lets go (or dies: flock goes with the process), the next loop runs. Another final has its own lock."""
+    monkeypatch.setattr(L.paths, "DATA", tmp_path)
+    polled, said = [], []
+    monkeypatch.setattr(L, "_run", lambda slug, key, *a, **k: polled.append((slug, key)) or "snap")
+    with L.lock("ev", "3") as ok:
+        assert ok and (L.outdir("ev", "3") / ".lock").exists()
+        with L.lock("ev", "3") as again:
+            assert again is False                                       # held: a second holder is refused
+        assert L.run("ev", "3", ["2"], echo=said.append) is None and polled == []
+        assert said == ["ev_3: another loop is polling this final (its lock is held); not started"]
+        with L.lock("ev", "91") as other:
+            assert other                                                # a different final: its own lock
+    assert L.run("ev", "3", ["2"], echo=said.append) == "snap" and polled == [("ev", "3")]   # released: it runs
+    with L.lock("ev", "3") as free:
+        assert free                                                     # and run() let go of the lock again
+    spec = dict(feed=dict(slug="ev", final=3, quali=[2]), live=dict(poll=dict(interval_s=5)))
+    assert L.run_spec(spec, echo=said.append) == "snap" and polled[-1] == ("ev", "3")   # the adapter path too
