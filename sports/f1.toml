@@ -42,7 +42,11 @@ pre_label = "pre-weekend"
 pre_minutes = 60                         # "before any running": 1 h before the first session
 lag_minutes = 30                         # a session's data is used 30 min after it ends
 until = "Race"
-closes = { race_pole = "Qualifying" }    # pole markets close when qualifying starts
+
+[stages.closes]                          # a market kind closes when this session starts (a list: either name)
+race_pole = "Qualifying"                 # pole markets close when qualifying starts
+race_sprint_pole = ["Sprint Qualifying", "Sprint Shootout"]   # sprint pole when sprint qualifying starts ...
+race_sprint_win = "Sprint"               # ... and the sprint winner at the sprint's start (Kalshi's sprint markets, U5)
 
 [points]
 race = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]

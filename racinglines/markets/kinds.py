@@ -32,6 +32,11 @@ KINDS = {k.code: k for k in (
     Kind("race_podium", "top_n", n=3, label="Podium"),
     Kind("race_top10", "top_n", n=10, label="Top 10"),
     Kind("race_pole", "stage_top_n", n=1, stage="qual", label="Pole position"),
+    # F1 sprint weekends (Kalshi's KXF1SPRINTPOLE / KXF1RACESPRINT, docs/todo.md U5): the sprint qualifying
+    # order and the sprint classification are earlier rounds of the weekend, priced like pole from
+    # sims.stage_rank["sprint_qual"] / ["sprint"] when a model simulates them
+    Kind("race_sprint_pole", "stage_top_n", n=1, stage="sprint_qual", label="Sprint pole"),
+    Kind("race_sprint_win", "stage_top_n", n=1, stage="sprint", label="Sprint winner"),
     Kind("race_make_final", "reached", stage="final", label="Makes the Final"),
     Kind("race_h2h", "h2h", label="Head-to-head"),
     Kind("race_constructor_top", "group_top", label="Top constructor"),
@@ -103,9 +108,12 @@ def settle(kind, athlete_id, params, res, group_key=None):
         return None
     by = res.set_index("athlete_id")
     if k.payoff == "stage_top_n":
-        if athlete_id not in by.index or pd.isna(by.loc[athlete_id, "qual_position"]):
+        col = "qual_position" if k.stage == "qual" else f"{k.stage}_position"   # sprint rounds: sprint_qual_position, ...
+        if col not in res:
+            return None
+        if athlete_id not in by.index or pd.isna(by.loc[athlete_id, col]):
             return False if athlete_id not in by.index else None
-        return bool(by.loc[athlete_id, "qual_position"] <= k.n)
+        return bool(by.loc[athlete_id, col] <= k.n)
     if k.payoff == "top_n":
         if athlete_id not in by.index:
             return False

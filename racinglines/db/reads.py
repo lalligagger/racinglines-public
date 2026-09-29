@@ -174,7 +174,12 @@ PREDICTION_COLUMNS = {
 }
 # every prediction kind a market can be linked to (see racinglines/markets/polymarket/sync.py)
 PREDICTION_KINDS = list(PREDICTION_COLUMNS) + ["race_h2h", "race_pole", "race_constructor_top", "constructors_champion",
-                                               "season_wins_ge", "standings_h2h"]
+                                               "season_wins_ge", "standings_h2h", "race_sprint_pole", "race_sprint_win"]
+# F1 sprint weekends (Kalshi's sprint markets, RACINGLINES_KALSHI_SPRINTS=1): a run that simulates the sprint
+# stores extra.sprint_pole_prob / sprint_win_prob; until then the sprint is priced as the model's race:
+# sprint pole from the qualifying-pace pole probability (SQ3 is the same session type), the sprint winner from
+# the race win probability (the season forecast already simulates sprints this way, with sprint points)
+SPRINT_FALLBACK = {"race_sprint_pole": "pole_prob", "race_sprint_win": "win_prob"}
 
 
 def _id(v):
@@ -251,6 +256,11 @@ def model_prob(conn, link, _cache=None, run_id=None):
                 p = ((df["extra"].iloc[0] or {}).get("h2h") or {}).get(str(params.get("opponent_id")))
             elif kind == "race_pole":
                 p = (df["extra"].iloc[0] or {}).get("pole_prob")
+            elif kind in SPRINT_FALLBACK:
+                extra = df["extra"].iloc[0] or {}
+                p = extra.get(kind.replace("race_", "") + "_prob")
+                if p is None:
+                    p = extra.get("pole_prob") if kind == "race_sprint_pole" else df["win_prob"].iloc[0]
             else:
                 p = df[PREDICTION_COLUMNS[kind]].iloc[0]
     if p is None or pd.isna(p):

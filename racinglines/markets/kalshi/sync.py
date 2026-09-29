@@ -16,7 +16,11 @@ NO is the mirror image). Titles are classified like Polymarket's. Checked agains
     "... Main Race: Fastest Lap" / "Fastest Lap: Oscar Piastri"           KXF1FASTLAP       race_fastest_lap
     "F1 Drivers Champion" / "Will Lando Norris win the F1 Drivers ..."    KXF1              champion
     "F1 Constructors Champion"                                            KXF1CONSTRUCTORS  constructors_champion
-    "Dutch Grand Prix: Sprint Race Winner", "... Sprint Qualifying ..."   KXF1RACESPRINT... unmodeled (sprints)
+    "Dutch Grand Prix: Sprint Race Winner" / "... finish in first in the
+        Sprint Race at the 2026 Dutch Grand Prix?"                       KXF1RACESPRINT    race_sprint_win *
+    "... Sprint Qualifying: Pole Position" / "... fastest valid
+        qualifying lap time in the Sprint Qualifying session (SQ3) ..."  KXF1SPRINTPOLE    race_sprint_pole *
+    "... Sprint Race: Fastest Lap / Top 5 / Top 10 / Top Constructor"    KXF1SPRINT...     unmodeled
     "F1 Matchup: Verstappen vs Hamilton" / "Will Max Verstappen beat
         Lewis Hamilton in the racing matchup?" (main race)              KXF1H2H           race_h2h
     Biggest Mover, Top 5, retirements, race occurrence, ...                                 unmodeled
@@ -29,8 +33,15 @@ with prices and no model price.
 
 Each link keeps Kalshi's resolution rules (params.rules, from rules_primary) so markets on two venues are only
 compared when their rules agree (F1-9), and its series ticker (params.series, for the price history).
+
+* Sprint markets (docs/todo.md U5) are classified only with RACINGLINES_KALSHI_SPRINTS=1 (sprints_enabled);
+without it every sprint market stays unmodeled, as before. The sprint winner and sprint pole take the sprint
+kinds of racinglines/markets/kinds.py (race_sprint_win settles after the Sprint, race_sprint_pole after SQ;
+sports/f1.toml closes them when the session starts) and are priced by db.reads.model_prob. The sprint's
+fastest lap, top 5, top 10 and top constructor stay unmodeled either way.
 """
 
+import os
 import re
 from datetime import datetime, timezone
 
@@ -45,6 +56,26 @@ CLOSED = {"closed", "settled", "finalized", "determined"}
 STOP = {"who", "will", "win", "the", "a", "an", "at", "in", "of", "formula", "one", "which", "driver", "drivers", "f1"}
 PROP = [(r"fastest lap", "race_fastest_lap"), (r"safety car", "race_safety_car"), (r"red[- ]flag", "race_red_flag"),
         (r"\brain", "race_rain")]
+SPRINT_FLAG = "RACINGLINES_KALSHI_SPRINTS"
+SPRINT_KINDS = ("race_sprint_win", "race_sprint_pole")
+
+
+def sprints_enabled():
+    """Sprint markets are classified only when RACINGLINES_KALSHI_SPRINTS is 1/true/yes (off by default)."""
+    return os.environ.get(SPRINT_FLAG, "").lower() in ("1", "true", "yes")
+
+
+def classify_sprint(low):
+    """The sprint kind of a lower-cased sprint title: the sprint winner ("Sprint Race Winner", "finish in first in
+    the Sprint Race"), sprint pole ("Sprint Qualifying: Pole Position", "SQ3"), else unmodeled (the sprint's
+    fastest lap, top 5 / top 10, top constructor, and any prop)."""
+    if re.search(r"constructor|\btop[- ]?\d+\b|fastest lap|podium|safety car|red[- ]flag|\brain|mover|retire", low):
+        return "unmodeled"
+    if re.search(r"\bpole\b|\bsq3\b", low):
+        return "race_sprint_pole"
+    if re.search(r"\bwin(ner)?\b|finish(es)? in (exactly )?first", low):
+        return "race_sprint_win"
+    return "unmodeled"
 
 
 def gp_name(t):
@@ -58,9 +89,9 @@ def gp_name(t):
     return f"{mm.group(1)} Grand Prix" if mm else None
 
 
-def classify(event_title, market_title="", gp=None):
+def classify(event_title, market_title="", gp=None, sprints=None):
     """(prediction kind, Grand Prix name or None) for a Kalshi market. gp: the Grand Prix when the titles
-    don't name it (head-to-heads)."""
+    don't name it (head-to-heads). sprints: classify sprint markets (default: sprints_enabled(), off)."""
     t = f"{event_title or ''} {market_title or ''}"
     gp = gp_name(event_title) or gp_name(market_title) or gp
     low = t.lower()
@@ -70,8 +101,9 @@ def classify(event_title, market_title="", gp=None):
         return "champion", None
     if not gp:
         return "unmodeled", None
-    if "sprint" in low:                          # sprint race, sprint qualifying: not the model's race
-        return "unmodeled", gp
+    if "sprint" in low:                          # sprint race, sprint qualifying: not the model's race ...
+        sprints = sprints_enabled() if sprints is None else sprints
+        return (classify_sprint(low) if sprints else "unmodeled"), gp    # ... unless the sprint kinds are on
     for pat, kind in PROP:
         if re.search(pat, low):
             return kind, gp
@@ -158,7 +190,7 @@ def link_rows(events, resolver):
                 athlete_id, params = a, {"opponent_id": b}
             elif kind in ("race_constructor_top", "constructors_champion"):
                 params = {"team": resolver.team(sub)}
-            elif kind in ("race_win", "race_podium", "race_top10", "race_pole", "race_fastest_lap", "champion"):
+            elif kind in ("race_win", "race_podium", "race_top10", "race_pole", "race_fastest_lap", "champion") + SPRINT_KINDS:
                 athlete_id = resolver.driver(sub)
             matched = kind == "unmodeled" or (
                 (athlete_id is not None or (params or {}).get("team") or kind in ("race_safety_car", "race_red_flag", "race_rain"))
