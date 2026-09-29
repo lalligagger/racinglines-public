@@ -11,6 +11,7 @@ the values from here, so a new sport starts with a new schema file.
     modeled(code)               False for a tape-only sport ([sport] model_family = "none": no model, no
                                 pipeline; its exchange markets are only recorded, docs/todo.md U9)
     kalshi_series(code)         the Kalshi series prefixes a sport's [markets.kalshi] names, () if none
+    polymarket_tags(code)       the Gamma tag_slug values a sport's [markets.polymarket] names, () if none
 """
 
 import tomllib
@@ -39,6 +40,11 @@ def modeled(code):
 def kalshi_series(code):
     """The Kalshi series ticker prefixes a sport's schema names ([markets.kalshi] series), as a tuple."""
     return tuple(load(code).get("markets", {}).get("kalshi", {}).get("series", ()))
+
+
+def polymarket_tags(code):
+    """The Polymarket Gamma tag_slug values a sport's schema names ([markets.polymarket] tags), as a tuple."""
+    return tuple(load(code).get("markets", {}).get("polymarket", {}).get("tags", ()))
 
 
 def int_keys(d):

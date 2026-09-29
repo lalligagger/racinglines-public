@@ -17,6 +17,14 @@ Prices come from the Gamma API (bestBid / bestAsk / lastTradePrice /
 outcomePrices, all for the market's first outcome; the second outcome's book
 is the mirror image). Closed markets record which outcome resolved.
 Idempotent: links are keyed by token id and updated in place.
+
+Other sports (docs/coverage.md, item 3): NASCAR Cup, MotoGP and IndyCar are tape-only sports (sports/<code>.toml,
+[markets.polymarket] tags = the Gamma tag_slug values to page, e.g. "nascar"; unverified against the live API).
+`sync(..., sport="nascar")` upserts their markets under their own competition and first category, every link
+`unmodeled` (no Resolver, no classifier, no driver or race), so trades, history and books record them like F1's;
+`sync --tags SLUG ...` overrides the schema's tags. fetch_trades / fetch_history / snapshot_books take `sport=` to
+cover every Polymarket link of that sport's competition when no events are named. Nothing about them runs unless
+the sport is named, and the sync is additive: it upserts by token id and never deletes or resets a row.
 """
 
 import json
@@ -27,6 +35,7 @@ from datetime import datetime, timezone
 import httpx
 from sqlalchemy import select, text
 
+from racinglines import sports
 from racinglines.db import models as m
 from racinglines.sources import http
 
@@ -157,11 +166,11 @@ class Resolver:
         return None, None
 
 
-def _events(closed_year=None):
-    """Active F1 events; with closed_year, also every closed event ending that year."""
+def _events(closed_year=None, tags=TAGS):
+    """Active events of the given Gamma tags (default F1's); with closed_year, also every closed event ending that year."""
     out = {}
     with httpx.Client(base_url=GAMMA, timeout=30) as c:
-        for tag in TAGS:
+        for tag in tags:
             for e in http.get(c, "/events", params={"tag_slug": tag, "active": "true", "closed": "false",
                                                    "limit": 200}).json():
                 out[e["slug"]] = e
@@ -186,32 +195,54 @@ def _f(v):
         return None
 
 
-def sync(session, conn, year=2026, include_closed=False, new=None):
-    """Fetch every active F1 event (and with include_closed, every closed one of `year`)
-    and upsert one market_links row per outcome token. Tokens seen for the first time get
-    first_seen_at and, if `new` is a list, are appended to it (markets/alerts.py)."""
-    comp = session.scalars(select(m.Competition).filter_by(code="f1_wdc")).one()
-    cat = session.scalars(select(m.Category).filter_by(competition_id=comp.id, code="DRV")).one()
-    R = Resolver(conn, year)
+def competition(session, sport):
+    """(Competition, its first Category) of a sport, as the tape-only sync files links under."""
+    schema = sports.load(sport)
+    comp = session.scalars(select(m.Competition).filter_by(code=schema["competition"]["code"])).one()
+    cat_code = next(iter(schema["competition"]["categories"]))
+    return comp, session.scalars(select(m.Category).filter_by(competition_id=comp.id, code=cat_code)).one()
+
+
+def sync(session, conn, year=2026, include_closed=False, new=None, sport="f1", tags=None):
+    """Fetch every active event (and with include_closed, every closed one of `year`) and upsert one
+    market_links row per outcome token. Tokens seen for the first time get first_seen_at and, if `new`
+    is a list, are appended to it (markets/alerts.py). F1 (the default) is classified and matched to its
+    drivers and races; a tape-only sport (nascar, motogp, indycar) pages its schema's Gamma tags (or
+    `tags`) and files every link `unmodeled` under its own competition. Additive: never deletes a row."""
+    tape = sport != "f1"
+    if tape:
+        tags = tuple(tags or sports.polymarket_tags(sport))
+        if sports.modeled(sport) or not tags:
+            raise ValueError(f"{sport}: not a tape-only sport with [markets.polymarket] tags in sports/{sport}.toml")
+        comp, cat = competition(session, sport)
+        R = None
+        events = _events(year if include_closed else None, tags)
+    else:
+        comp = session.scalars(select(m.Competition).filter_by(code="f1_wdc")).one()
+        cat = session.scalars(select(m.Category).filter_by(competition_id=comp.id, code="DRV")).one()
+        R = Resolver(conn, year)
+        events = _events(year if include_closed else None) if tags is None else _events(year if include_closed else None, tuple(tags))
     now = datetime.now(timezone.utc)
     stats = dict(events=0, links=0, modeled=0, unmatched=0, new=0)
-    for slug, ev in _events(year if include_closed else None).items():
+    for slug, ev in events.items():
         stats["events"] += 1
         for mk in ev.get("markets", []):
             if not mk.get("clobTokenIds"):
                 continue
-            kind, gp = classify(ev.get("title"), mk.get("question"))
+            kind, gp = ("unmodeled", None) if tape else classify(ev.get("title"), mk.get("question"))
             outcomes = json.loads(mk.get("outcomes") or "[]")
             tokens = json.loads(mk.get("clobTokenIds") or "[]")
             prices = [_f(p) for p in json.loads(mk.get("outcomePrices") or "[]")]
             bid, ask = _f(mk.get("bestBid")), _f(mk.get("bestAsk"))
             end = datetime.fromisoformat(mk["endDate"].replace("Z", "+00:00")) if mk.get("endDate") else None
-            race_id, race_key = R.race(gp, end) if gp else (None, None)
+            race_id, race_key = R.race(gp, end) if gp and R else (None, None)
             group = mk.get("groupItemTitle") or ""
             closed = bool(mk.get("closed"))
             # which outcome tokens to link, and to whom
             targets = []   # (token_index, athlete_id, params, outcome_label)
-            if kind == "race_h2h" and len(outcomes) == 2:
+            if tape:       # every outcome token, unlinked to any athlete or race
+                targets = [(i, None, None, o) for i, o in enumerate(outcomes)] or [(0, None, None, "Yes")]
+            elif kind == "race_h2h" and len(outcomes) == 2:
                 a, b = R.driver(outcomes[0]), R.driver(outcomes[1])
                 targets = [(0, a, {"opponent_id": b}, outcomes[0]), (1, b, {"opponent_id": a}, outcomes[1])]
             elif kind == "standings_h2h":
@@ -277,11 +308,25 @@ def sync(session, conn, year=2026, include_closed=False, new=None):
 CLOB = "https://clob.polymarket.com"
 
 
-def fetch_history(session, conn, event_slugs, start, end, fidelity=60, tokens=None):
+def _sport_where(event_slugs, sport):
+    """(SQL condition, params) selecting Polymarket links: of the given events, else of `sport`'s competition."""
+    if event_slugs:
+        return f"ml.event_slug = ANY(:s)", dict(s=list(event_slugs))
+    if not sport:
+        raise ValueError("give event slugs or a sport")
+    return f"co.code = :c", dict(c=sports.load(sport)["competition"]["code"])
+
+
+def fetch_history(session, conn, event_slugs, start, end, fidelity=60, tokens=None, sport=None):
     """Store price history for every outcome token of the given events (or the given
-    `tokens`), between `start` and `end` (datetimes, UTC). Returns points stored."""
+    `tokens`; or, with no events, every Polymarket link of `sport`'s competition), between `start`
+    and `end` (datetimes, UTC). Returns points stored."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
-    if tokens is None:
+    if tokens is None and not event_slugs and sport:
+        where, params = _sport_where(None, sport)
+        tokens = conn.execute(text(f"""SELECT ml.token_id FROM market_links ml JOIN competitions co ON co.id = ml.competition_id
+                                       WHERE ml.exchange = 'polymarket' AND {where} ORDER BY ml.token_id"""), params).scalars().all()
+    elif tokens is None:
         tokens = conn.execute(text("SELECT token_id FROM market_links WHERE event_slug = ANY(:s) AND exchange = 'polymarket'"),
                               dict(s=list(event_slugs))).scalars().all()
     n = 0
@@ -303,14 +348,22 @@ def fetch_history(session, conn, event_slugs, start, end, fidelity=60, tokens=No
 DATA_API = "https://data-api.polymarket.com"
 
 
-def fetch_trades(session, conn, event_slugs, page=500, max_offset=100_000, modeled_only=False, since=None):
-    """Store every taker trade for the markets of the given events (Data API).
+def fetch_trades(session, conn, event_slugs, page=500, max_offset=100_000, modeled_only=False, since=None, sport=None):
+    """Store every taker trade for the markets of the given events (Data API; with no events, of every
+    Polymarket link of `sport`'s competition).
     `side` is the taker's side for `token_id`. Idempotent. Returns trades stored.
     since (datetime, UTC): stop paging a market once a page reaches trades this old (newest come first)."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
-    conds = conn.execute(text("""SELECT DISTINCT condition_id FROM market_links WHERE event_slug = ANY(:s)
-                                 AND exchange = 'polymarket' AND condition_id IS NOT NULL AND (NOT CAST(:m AS boolean) OR prediction <> 'unmodeled')"""),
-                         dict(s=list(event_slugs), m=modeled_only)).scalars().all()
+    if not event_slugs and sport:
+        where, params = _sport_where(None, sport)
+        conds = conn.execute(text(f"""SELECT DISTINCT ml.condition_id FROM market_links ml JOIN competitions co ON co.id = ml.competition_id
+                                      WHERE ml.exchange = 'polymarket' AND {where} AND ml.condition_id IS NOT NULL
+                                      AND (NOT CAST(:m AS boolean) OR ml.prediction <> 'unmodeled')"""),
+                             dict(params, m=modeled_only)).scalars().all()
+    else:
+        conds = conn.execute(text("""SELECT DISTINCT condition_id FROM market_links WHERE event_slug = ANY(:s)
+                                     AND exchange = 'polymarket' AND condition_id IS NOT NULL AND (NOT CAST(:m AS boolean) OR prediction <> 'unmodeled')"""),
+                             dict(s=list(event_slugs or []), m=modeled_only)).scalars().all()
     n = 0
     with httpx.Client(base_url=DATA_API, timeout=30) as c:
         for cond in conds:
@@ -342,14 +395,20 @@ def _levels(side, best_first_desc):
     return [[p, s] for p, s in lv]
 
 
-def snapshot_books(session, conn, event_slugs=None, depth=10):
+def snapshot_books(session, conn, event_slugs=None, depth=10, sport=None):
     """One order-book snapshot for every open outcome token of the given events
-    (default: every open modeled market, season-long or for a race that hasn't been run).
+    (default: every open modeled market, season-long or for a race that hasn't been run;
+    with `sport` and no events: every open Polymarket link of that sport's competition).
     Returns snapshots stored."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
     if event_slugs:
         toks = conn.execute(text("SELECT token_id FROM market_links WHERE event_slug = ANY(:s) AND NOT closed AND exchange = 'polymarket'"),
                             dict(s=list(event_slugs))).scalars().all()
+    elif sport:
+        where, params = _sport_where(None, sport)
+        toks = conn.execute(text(f"""SELECT ml.token_id FROM market_links ml JOIN competitions co ON co.id = ml.competition_id
+                                     WHERE NOT ml.closed AND ml.exchange = 'polymarket' AND {where} ORDER BY ml.token_id"""),
+                            params).scalars().all()
     else:
         toks = conn.execute(text("""
             SELECT ml.token_id FROM market_links ml LEFT JOIN races ra ON ra.id = ml.race_id

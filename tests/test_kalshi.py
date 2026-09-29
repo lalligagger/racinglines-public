@@ -624,7 +624,7 @@ def test_tape_only_sports_have_schemas_and_series():
         s = sports.load(code)
         assert not sports.modeled(code) and "pricing_model" not in s["sport"] and "live" not in s
         assert s["competition"]["code"] == comp and sports.kalshi_series(code) == (prefix,)
-        assert s["markets"]["venues"] == ["kalshi"]
+        assert s["markets"]["venues"] == ["polymarket", "kalshi"]
     assert sports.modeled("f1") and sports.modeled("mtb_dh") and sports.kalshi_series("f1") == ()
     assert CM.kalshi_sports() == ["f1", "nascar", "motogp", "indycar"]
     with pytest.raises(ValueError):
@@ -722,7 +722,8 @@ def test_markets_cli_routes_tape_only_sports_to_kalshi(monkeypatch, capsys):
     assert CM.main(["--exchange", "kalshi", "--sport", "nascar", "sync", "--closed"]) == 0
     assert CM.main(["--exchange", "kalshi", "books"]) == 0
     assert calls == [("nascar", ["sync", "--closed"]), ("f1", ["books"])]
-    assert CM.main(["--sport", "motogp", "sync"]) == 2                    # Polymarket doesn't list it
+    monkeypatch.setattr(CM, "polymarket_sports", lambda: ["f1"])
+    assert CM.main(["--sport", "motogp", "sync"]) == 2                    # (were Polymarket not to list it)
     assert "only Kalshi" in capsys.readouterr().err
     with pytest.raises(SystemExit):
         CM.main(["--exchange", "kalshi", "--sport", "wec", "sync"])       # not a known sport
