@@ -10,10 +10,19 @@ One standard shape for markets, across sports, time and venues.
 `event_matrix` and `season_matrix` return one row per outcome with a column group
 per venue, so the board, the event page and the book all read the same thing.
 Adding a venue = a VENUES entry + its rows in `market_links` (exchange = code).
+
+The data contract every page reads, so a new sport or exchange needs no template changes:
+
+    ExchangeQuote    one outcome's quote on one venue (`row["venues"][code]`, from `_exchange_rows`)
+    ExchangeBlock    one sport x exchange summary: what's linked, what's recorded (`exchange_breakdown`,
+                     read by the Markets board's "Exchange data" table and /markets/tapes)
+    CalendarRow      one row of the Markets page's calendar (`calendar_rows`): a race weekend (modeled
+                     sports) or a tape-only sport's own exchange event
 """
 
 import os
 from dataclasses import dataclass
+from typing import TypedDict
 
 import numpy as np
 import pandas as pd
@@ -30,6 +39,82 @@ class Venue:
     status: str          # live | soon
     kind: str            # exchange | private
     url: str = ""        # event URL pattern ({slug})
+
+
+class ExchangeQuote(TypedDict, total=False):
+    """One outcome's quote on one venue: `_assemble`'s `row["venues"][exchange_code]`. Every venue produces
+    exactly this shape (`_exchange_rows`), so a template loop over `row["venues"].values()` or a specific
+    `row["venues"].get(code)` never needs a per-venue branch."""
+    bid: float | None
+    ask: float | None
+    mid: float | None
+    volume: float | None
+    slug: str | None           # event_slug: mirror / "open on <venue>" links
+    token: str                  # token_id: what price_series / _race_chart key charts on
+    link_id: int
+    closed: bool
+    question: str
+    outcome: str
+    fair: float | None          # our model's price for this outcome, or None if unmodeled
+    resolved_mid: float | None  # completed races only: the quote as of pricing, not the settled 0/1
+    at_as_of: bool
+    edge_yes: float | None      # schema exchanges only (net_edge): buy YES at the ask, net of the fee
+    edge_no: float | None
+    best: float | None
+    call: str                   # "YES" / "NO" / ""
+
+
+class ExchangeEvent(TypedDict):
+    """One exchange's real-world event, inside an ExchangeBlock's `events` list."""
+    slug: str
+    title: str
+    end_date: object             # a pandas Timestamp, or None
+    markets: int
+    open: int
+    synced: object
+    volume: float
+    last_price: float | None
+    favourite: str
+    trades: int
+    trades_last: object
+    prices: int
+    prices_last: object
+    books: int
+    books_last: object
+
+
+class ExchangeBlock(TypedDict, total=False):
+    """One sport x exchange summary (`exchange_breakdown` / `tape_summary`): what's linked and what has
+    been recorded for it. The Markets board's per-sport "Exchange data" table and /markets/tapes both
+    render this shape directly; a new exchange or sport needs no template change, only rows in
+    `market_links`."""
+    sport: str                   # sports.py code, e.g. "nascar"
+    sport_name: str
+    competition: str             # competitions.code, e.g. "nascar_cup"
+    exchange: str                # market_links.exchange
+    exchange_name: str
+    events: list[ExchangeEvent]
+    markets: int
+    open: int
+    trades: int
+    prices: int
+    books: int
+    volume: float
+    synced: object
+    url: str | None              # set by board.py: where "N markets" links to
+
+
+class CalendarRow(TypedDict, total=False):
+    """One row of the Markets page's calendar (`calendar_rows`): a real race weekend (modeled sports,
+    tagged with every exchange linked to it) or a tape-only sport's own exchange event (no cross-venue
+    linkage exists for those, so each exchange's event is its own row)."""
+    sport: str
+    sport_name: str
+    date: object                  # a pandas Timestamp, or None
+    title: str
+    status: str | None
+    exchanges: list[str]          # market_links.exchange codes with data for this row
+    url: str | None
 
 
 # Kalshi is a live venue (on by default since 2026-09-28, at the owner's call): its synced links' quotes on the board
@@ -153,8 +238,8 @@ def pricing_run(conn, info):
     return dict(run_id=None, source="no pre-race price", as_of=None)
 
 
-def _exchange_rows(conn, links, cache, run_id):
-    """market_links rows -> per-outcome exchange quotes (one row per question for binary pairs)."""
+def _exchange_rows(conn, links, cache, run_id) -> dict[tuple, dict[str, ExchangeQuote]]:
+    """market_links rows -> {outcome key: {exchange code: ExchangeQuote}} (one row per question for binary pairs)."""
     out = {}
     if not len(links):
         return out
@@ -348,8 +433,8 @@ def tape_sports():
     return [s for s in _SCHEMAS if s["sport"].get("model_family", "none") == "none"]
 
 
-def exchange_breakdown(conn, comps=None):
-    """One block per sport x exchange: market links and what's been recorded on them. `comps`: {competition
+def exchange_breakdown(conn, comps=None) -> list[ExchangeBlock]:
+    """One ExchangeBlock per sport x exchange: market links and what's been recorded on them. `comps`: {competition
     code: schema} to include (default every sport). Used by /markets/tapes (tape-only sports only) and the
     Markets board (every sport, alongside its own venue chips)."""
     comps = comps if comps is not None else {s["competition"]["code"]: s for s in _SCHEMAS}
@@ -394,7 +479,7 @@ def exchange_breakdown(conn, comps=None):
     return out
 
 
-def tape_summary(conn):
+def tape_summary(conn) -> list[ExchangeBlock]:
     """RACINGLINES_TAPES=1: the tape-only sports' markets as market data, one block per sport x exchange, one row
     per exchange event: how many markets are linked (open / closed), the exchange's volume, and what has been
     recorded for them (trades, price points, book snapshots, with the last timestamp of each). Every venue with a
@@ -402,12 +487,12 @@ def tape_summary(conn):
     return exchange_breakdown(conn, {s["competition"]["code"]: s for s in tape_sports()})
 
 
-def calendar_rows(conn):
-    """One row per real event (modeled sports, from the races calendar) or per exchange-native event (tape-only
-    sports, which have no race in our tables: each exchange's own event, from its market_links), across every
-    sport, for the Markets page's calendar: date, sport, title, status and which exchanges have data for it.
-    Sorted newest / soonest first (unlike a race weekend, a tape-only sport's markets have no single canonical
-    date across venues, so each exchange's event is its own row)."""
+def calendar_rows(conn) -> list[CalendarRow]:
+    """One CalendarRow per real event (modeled sports, from the races calendar) or per exchange-native event
+    (tape-only sports, which have no race in our tables: each exchange's own event, from its market_links),
+    across every sport, for the Markets page's calendar: date, sport, title, status and which exchanges have
+    data for it. Sorted newest / soonest first (unlike a race weekend, a tape-only sport's markets have no
+    single canonical date across venues, so each exchange's event is its own row)."""
     rows = []
     ev = data.q(conn, """
         SELECT ra.id AS race_id, e.start_date, e.status, e.name AS event_name, co.code AS competition

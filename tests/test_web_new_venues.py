@@ -161,7 +161,7 @@ def test_race_page_marks_the_call_beside_a_schema_venue_quote():
     ctx = dict(info=info, pricing=dict(run_id=1, source="live forecast", as_of=None), groups=[("champion", "Champion", [row])],
                exchanges=exch, has_pm=True, results=None, completed=False, season=True, strategy=None,
                venue_sum=[dict(venue=og, listed=1, volume=42.0, slug="F1-2026")], mine=dict(open=0, worst=0, staked=0),
-               chart_data=None, chart_kalshi=None, winner=None, schema_exchanges=[og], user=dict(role="maker", id=1))
+               charts=[], winner=None, schema_exchanges=[og], user=dict(role="maker", id=1))
     html = _render("race.html", **ctx)
     assert "YES +3.0" in html and "net of the taker fee" in html and 'href="/markets/og"' in html       # season page
     html = _render("race.html", **dict(ctx, season=False))

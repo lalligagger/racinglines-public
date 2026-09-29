@@ -1,14 +1,49 @@
 """Server-rendered SVG charts (no JavaScript): exchange price lines with our fair values."""
 
+from typing import TypedDict
+
 import numpy as np
 import pandas as pd
 
 COLORS = ["#2563eb", "#16a34a", "#dc2626", "#9333ea", "#d97706", "#0891b2"]
 
 
-def price_chart(series, labels, fairs=None, markers=(), w=900, h=220, pad=34):
+class ChartTick(TypedDict, total=False):
+    """One axis label or marker: x (xticks, markers) or y (yticks) in SVG coordinates, the text shown, and
+    (markers only) which end of the text to anchor at that point."""
+    x: float
+    y: float
+    label: str
+    anchor: str              # markers only: "start" | "end"
+
+
+class ChartLine(TypedDict, total=False):
+    """One series on the chart (`price_chart`: one venue's price; `line_chart`: one line of a P&L curve)."""
+    label: str
+    color: str
+    points: str              # "x,y x,y ..." ready for an SVG <polyline>
+    fair_y: float | None     # price_chart only: our fair value's y, for the dashed reference line
+    dash: bool               # line_chart only: a highlighted / secondary series drawn dashed
+
+
+class ChartData(TypedDict, total=False):
+    """The `chart` template macro's input (racinglines/web/templates/_macros.html): every producer (price_chart,
+    line_chart, and views.py's per-venue wrappers) returns exactly this shape, or None when there's nothing to
+    draw. A new venue's chart is a new dict of this shape, nothing template-side."""
+    w: int
+    h: int
+    pad: int
+    lines: list[ChartLine]
+    yticks: list[ChartTick]
+    xticks: list[ChartTick]
+    markers: list[ChartTick]
+    zero_y: float | None    # line_chart only: the y of value 0, for the zero line
+    venue: str              # set by callers (e.g. views._race_chart) when the chart isn't Polymarket's
+
+
+def price_chart(series, labels, fairs=None, markers=(), w=900, h=220, pad=34) -> ChartData | None:
     """series: {key: [(ts, price), ...]}; labels/fairs: {key: ...}; markers: [(ts, label)].
-    Returns a dict for the `chart` template macro, or None if there's nothing to draw."""
+    Returns a ChartData dict for the `chart` template macro, or None if there's nothing to draw."""
     series = {k: v for k, v in series.items() if len(v) >= 2}
     if not series:
         return None
@@ -43,8 +78,8 @@ def price_chart(series, labels, fairs=None, markers=(), w=900, h=220, pad=34):
     return dict(w=w, h=h, pad=pad, lines=lines, yticks=yticks, xticks=xticks, markers=mk)
 
 
-def line_chart(series, labels=None, w=900, h=200, pad=48, money=True, include_zero=True, markers=(), highlight=()):
-    """series: {key: [(ts, value), ...]} -> dict for the `chart` macro, with a $ axis and a zero line.
+def line_chart(series, labels=None, w=900, h=200, pad=48, money=True, include_zero=True, markers=(), highlight=()) -> ChartData | None:
+    """series: {key: [(ts, value), ...]} -> a ChartData dict for the `chart` macro, with a $ axis and a zero line.
     include_zero=False fits the axis to the data (e.g. a bankroll); markers: [(ts, label)] dashed verticals."""
     series = {k: v for k, v in series.items() if len(v) >= 2}
     if not series:
