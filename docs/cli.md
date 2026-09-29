@@ -144,7 +144,8 @@ Files written: `walk_forward.csv`, `backtest_<venue>.csv`, `backtest_standings.c
 
 Follow a downhill final live from UCI timing (ChronoRace): rank probabilities after every update, the demo
 maker's quotes, the private book's anonymous crowd, and the demo accounts' private-book positions. A demo
-experiment; see [Live events](live-events.md).
+experiment; see [Live events](live-events.md). The loop holds a lock in the final's run folder (as
+`racinglines live run` does): a second loop for the same final says so and exits instead of polling alongside it.
 
 ```
 racinglines mtb_dh live --slug 20260925_mtb --final 3 --quali 2,91 --conditions "clear, rutted"
