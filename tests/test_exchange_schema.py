@@ -50,6 +50,8 @@ def transport(log=None, error=False):
             return httpx.Response(200, json=envelope(chunk, **({"next_cursor": str(page + 1)} if page == 0 else {})))
         if p.endswith("/get-instruments"):
             want = set(q["event_symbols"].split(","))
+            if len(want) > 10:                                        # the live cap (2026-09-29): 11 symbols -> 400
+                return httpx.Response(400, json={"code": 40004, "message": "Invalid event_symbol"})
             return httpx.Response(200, json=envelope([i for i in INSTRUMENTS if i["underlying_symbol"] in want]))
         if p.endswith("/get-tickers"):
             want = set(q["instrument_name"].split(","))
@@ -153,6 +155,16 @@ def test_client_pages_and_batches_and_only_reads():
         assert [e["symbol"] for e in nascar_events] == ["NSCAR-00002-2026"]
     cursors = [q.get("cursor") for m, p, q in log if p.endswith("/get-events")]
     assert None in cursors and "1" in cursors and all(m == "GET" for m, _, _ in log)
+
+
+def test_instrument_batches_stay_under_the_exchange_cap():
+    """The 2026 F1 listing has 23 events; get-instruments refuses more than 10 event symbols per call (a 400 the first
+    live sync hit with batch_size 25), so discovery must ask in batches of at most 10."""
+    log = []
+    with D.Client("og", transport=transport(log)) as c:
+        c.batched("instruments", [f"F1-{n:05d}-2026" for n in range(1, 24)])
+    sizes = [len(q["event_symbols"].split(",")) for m, p, q in log if p.endswith("/get-instruments")]
+    assert sizes == [10, 10, 3]
 
 
 @pytest.mark.quick

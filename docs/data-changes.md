@@ -14,6 +14,52 @@ Before a major update, keep what it replaces: a database dump in `data/backups/d
 files in `data/archive/<sport>/` (both git-ignored; `data/raw` is the record, so it isn't edited in place
 without a copy). Not `data/archive/db/`: that folder is tracked in git (the snapshot).
 
+## 2026-09-29 · VM: Kalshi tape-only sports (NASCAR, MotoGP, IndyCar) and OG.com, first live run
+
+**Why.** After deploying main (7e5d64d) to the VM: rebuild the Kalshi F1 demo record there, and run the fixture-tested
+Kalshi tape-only sport sync (PR #26, U9) and the OG.com connector (PR #44) against the live APIs for the first time.
+Read-only APIs, no orders. Backup first: `data/backups/db/racinglines-before-history-20260929T082054Z.sql.gz` on the
+VM (pg_dump through docker compose, 14.5 MB). Run log: `data/backups/history-rebuild-20260929.log` on the VM.
+
+**What ran (VM, as `racinglines`).** `f1 pm-links-import --exchange kalshi` (3,793 rows, 0 unresolved) and
+`f1 demo-history --venue kalshi --reset` (5,054 backfilled signals deleted; 39 weekends rebuilt: 2025 24 weekends,
+paper P&L +193.39; 2026 15 weekends, −118.84). Then per sport `markets --exchange kalshi --sport <s> sync`,
+`trades`, `history --start 2026-08-29T00:00 --end 2026-09-29T00:00`, `books` (no `--closed`). The Polymarket half
+(`pm-links-import --exchange polymarket`, `demo-history --venue polymarket --reset`) was not run.
+
+**Two things broke on the way.** (1) The three sports' `competitions` rows (`nascar_cup`, `motogp_wc`,
+`indycar_series`) did not exist on the VM, so every tape-only sync (and the OG.com NASCAR sync) failed with
+`NoResultFound` in `kalshi/sync.py competition()`; the rows were added (ids 3–5) and the run resumed. A sync
+should seed its sport's competition from `sports/<code>.toml` instead of requiring it. (2) The OG.com F1 sync
+failed with `400 {"code": 40004, "message": "Invalid event_symbol"}`: `get-instruments` takes at most 10
+`event_symbols` per call (checked one by one and in sets of 10 and 11 on 2026-09-29; every symbol is valid alone;
+`get-tickers` took 20), and `exchanges/og.toml` batched 25. Fixed here: `batch_size = 10`, the test's fake API
+now refuses 11. The OG.com F1 sync has still not run; the NASCAR one had one event and worked.
+
+| Kalshi, first live tape-only sync | Links (all `unmodeled`) | Events | Trades | Hourly prices (last 31 days) | Book snapshots |
+|---|---:|---:|---:|---:|---:|
+| NASCAR (`competition_id` 3) | 13,599 (13,186 closed) | 419 | 1,693,932 | 152,257 | 826 |
+| MotoGP (4) | 322 (289 closed) | 15 | 12,451 | 4,792 | 33 |
+| IndyCar (5) | 1,374 (all closed) | 54 | 166,737 | 14,460 | 0 (nothing open) |
+
+Series matched (by event ticker prefix): NASCAR `KXNASCAR`, `KXNASCARRACE` (3,480), `KXNASCARTOP3`/`TOP5`/`TOP10`/
+`TOP20`, `KXNASCARFASTLAP` (1,944), `KXNASCARPOLE`, `KXNASCARH2H`, `KXNASCARTOPTEAM`, `KXNASCARBIGGESTMOVER`,
+`KXNASCARCUPSEASON`, `KXNASCARCUPSERIES`, `KXNASCARCHALLENGE`, and two that are not Cup: `KXNASCARAUTOPARTSSERIES`
+(40, the Xfinity-tier series) and `KXNASCARTRUCKSERIES` (35). MotoGP `KXMOTOGP`, `KXMOTOGPRACE` (289), `KXMOTOGPTEAMS`.
+IndyCar `KXINDYCARRACE` (433), `TOP3`/`TOP5`/`TOP10`, `KXINDYCARFASTLAP`, `KXINDYCARPOLE`, `KXINDYCARSERIES`,
+`KXINDYCARBIGGESTMOVER`. Nothing was classified as modeled, as designed. Open question: whether the Truck and
+Auto Parts series belong under `nascar_cup` (they match the `KXNASCAR` prefix) or should be filtered.
+
+OG.com: `markets --exchange og --sport nascar sync` → 1 event (`NSCAR-00002-2026`, Cup Champion moneyline), 17
+links, quotes stored (Larson 0.41/0.55, Hamlin 0.28/0.46). No trades, history, books or `fair` yet.
+
+Row counts on the VM before → after (joined to `market_links` on `token_id`): links kalshi 3,793 → 19,088, og 0 →
+17, polymarket 7,285; trades kalshi 37,416 → 1,910,536; hourly prices kalshi 16,083 → 187,592; book snapshots kalshi
+0 → 859, polymarket 17,029.
+
+**Undo.** Restore the backup above (`gunzip -c … | psql`), or delete `market_links` rows with `competition_id in
+(3, 4, 5)` or `exchange = 'og'` and their trades, prices and books by `token_id`.
+
 ## 2026-09-28 · Kalshi F1 history pulled (2025–2026)
 
 **Why.** To backtest and show Kalshi next to Polymarket: Polymarket has listed no F1 race since Baku, Kalshi lists
