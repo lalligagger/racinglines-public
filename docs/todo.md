@@ -157,7 +157,7 @@ venue with live F1 race markets this year.
       pass (a table or a view over `market_price_history`), with a report
       (`racinglines markets disagree --event …`) and a panel on the Markets page.
       *Done when:* the report lists the gaps above fees for the championship markets, day by day.
-- [ ] **OG.com follow-ups (new, from [Coverage](coverage.md#ogcom)):** (a) a VM recorder timer running `trades`, `history` and `books` at least weekly (S, the API forgets after about a month); (b) confirm the $0.02 fee in OG.com's fee schedule (S); (c) per-Grand-Prix `[[rules]]` in `exchanges/og.toml` once a live race market is seen (S); (d) join OG.com to the U7 log (S–M).
+- [ ] **OG.com follow-ups (new, from [Coverage](coverage.md#ogcom)):** (a) a VM recorder timer running `trades`, `history` and `books` at least weekly (S, the API forgets after about a month); (b) confirm the $0.02 fee in OG.com's fee schedule (S); (c) per-Grand-Prix `[[rules]]` in `exchanges/og.toml` once a live race market is seen (S); (d) join OG.com to the U7 log (S–M). (e) **a `/markets/og` browse page**, or one generic `/markets/{exchange}` route for every schema venue (S; found by the 2026-09-29 spot-check, [Coverage](coverage.md#the-gaps-ranked)).
 - [ ] Other exchanges, if they list motorsport or cycling markets with real depth, including one for
       downhill (none on Polymarket or Kalshi as of 2026-09).
 - [x] **OG.com** (Crypto.com's CFTC prediction market): **connector built as a schema** (PR #44: `exchanges/og.toml`,

@@ -51,7 +51,7 @@ sport · **?** not probed. Each cell is H / B / L.
 | **UCI road: grand tours, monuments, Worlds** (none) | H ✗ · listings ✓ Tour 2026 (about $1.3M volume), Vuelta, Il Lombardia · B ✗ · L ✗ | H ✗ · **settled history ✓ at least 200 markets in each of `KXCYCLING`, `KXCYCLINGSTAGE`, `KXCYCLINGTEAM`, `KXCYCLINGJERSEY`, plus `KXTOURDEFRANCE`**; 0 open now · B ✗ · L ✗ | – (probed: no cycling) | ✗ | No source, no schema, no model. ProCyclingStats is the obvious results source (terms to check). Next listings that could exist: Il Lombardia 10 Oct, then the 2027 spring classics and Giro |
 | **UCI track, cyclocross, BMX, gravel** (none) | – ? | – ? | – (probed) | ✗ | No source. Track Worlds 14–18 Oct (Shanghai), Cyclocross World Cup from 23 Nov. Expect no markets; not probed beyond OG.com |
 | **NASCAR Cup** (`nascar`, tape-only) | H ✗ · **listings ✓ per-race winner markets** and futures · B ✗ · L ✗ | H ~ U9 sync built (#26, merged), `KXNASCAR*` (17 series, **`KXNASCARRACE` 72 open**), fixture-tested only, **never run live** · B ✗ · L ✗ | H ✗ · **17 Cup Champion futures only** | ✗ | No source (P2 research item), no model. Chase races every October weekend, finale Homestead 8 Nov |
-| **MotoGP** (`motogp`, tape-only) | H ✗ · listings ✓ championship winner (25 outcomes) · B ✗ · L ✗ | H ~ U9 sync built, `KXMOTOGP*` (3 series, 22 open), never run · B ✗ · L ✗ | – (probed: not listed) | ✗ | No source, no model. Qatar–Valencia rounds Nov |
+| **MotoGP** (`motogp`, tape-only) | H ✗ · listings ✓ championship winner (25 outcomes) **and per-race Grand Prix winners** (Germany, Netherlands, Czechia, about $34k–$100k volume each, seen 2026-09-29) · B ✗ · L ✗ | H ~ U9 sync built, `KXMOTOGP*` (3 series, 22 open), never run · B ✗ · L ✗ | – (probed: not listed) | ✗ | No source, no model. Qatar–Valencia rounds Nov |
 | **IndyCar** (`indycar`, tape-only) | H ✗ · listings ✓ championship winner, Indy 500 · B ✗ · L ✗ | H ~ U9 sync built, `KXINDYCAR*` (9 series), never run · B ✗ · L ✗ | – (probed: not listed) | ✗ | Season over (Sept). Nothing to record until March 2027 |
 | **SailGP, Le Mans, Formula E, rally, alpine skiing** (none) | SailGP, Le Mans ✓ listed | SailGP ✓ (`KXSAILGP` 13 open, `KXSAILGPRACE` 13), Le Mans ✓ (`KXLEMANS24H`) | SailGP ✓ 13 Championship Winner contracts | ✗ | Not in scope; noted so the search was complete |
 
@@ -91,7 +91,11 @@ started.
 8. **OG.com follow-ups — S each.** A VM recorder timer (trades, history and books at least weekly, since the API
    keeps about a month), confirm the $0.02 fee in OG.com's fee schedule, per-Grand-Prix contract rules once a race
    market is live, join OG.com to the U7 disagreement log.
-9. **Confirm the "–" cells — S.** One device or VM session to run the checks below and turn every **?**
+9. **A browse page for schema exchanges — S.** `/markets/polymarket` and `/markets/kalshi` are hardcoded routes
+   (`web/app.py`); OG.com has none, only a column on the season board with `RACINGLINES_OG_VENUE=1`. Add
+   `/markets/og`, or better, one `/markets/{exchange}` route for every code in `exchanges/`, so the next schema
+   venue gets a page for free.
+10. **Confirm the "–" cells — S.** One device or VM session to run the checks below and turn every **?**
    into a fact. Cheapest item on this page and the one that changes the others. The spot-check handoff covers it.
 
 Not gaps: horse racing (blocked by law on both venues), track / cyclocross / BMX (no markets expected),
@@ -147,6 +151,15 @@ read-only and off by default (`RACINGLINES_OG_VENUE=1` shows the venue). What is
 
 Value today is low: thin F1 futures only, nothing for cycling, MotoGP or IndyCar. The reason to record early is
 history, since the API forgets after a month.
+
+## Spot-check, 2026-09-29 (VM database, read-only)
+
+Run from the owner's Mac against the live APIs and the VM's database, before the deploy of the overnight batch.
+Kalshi F1: 3,793 links, 37,416 trades, 16,083 price rows, archived. OG.com, NASCAR, MotoGP and IndyCar on Kalshi:
+**0 links, no archive folder**, as expected until the VM runs the syncs. Polymarket NASCAR, MotoGP, IndyCar,
+Kalshi cycling and Le Mans: no schema. Kalshi's cycling and Le Mans series are still listed. Trap: total Kalshi
+trades by joining `market_trades` to `market_links` on `token_id` only. `condition_id` is the whole event ticker
+there, and joining on it overcounts about 20 times ([Kalshi history](kalshi-history.md)).
 
 ## What to verify on a device
 
