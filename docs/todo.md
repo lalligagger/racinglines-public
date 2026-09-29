@@ -15,6 +15,7 @@ Tick items off where they are listed. Finished items move to [Done](#done) at th
 | [Paper trading: validation plan](paper-trading.md#validation-plan) | The pre-registered rules every live weekend is judged by |
 | [F1 live test (round 16)](f1-live-roadmap.md) | The working plan for 2–4 Oct: build items, runbook, backup plans, decision log |
 | [F1 roadmap](f1-roadmap.md) | The F1 phases (F1-0 … F1-9), their ground rules and decision log |
+| [Engine roadmap](engine-roadmap.md) | Standard model inputs and outputs for every sport and exchange (E0 … E9), building on [Backtest core](backtest-core.md) |
 | [Coverage](coverage.md) | The sport × venue grid (history, backtested strategy, live strategy per cell), the gaps ranked with effort, and the device checks that settle the unverified cells |
 
 ## Priorities
@@ -379,6 +380,7 @@ Downhill model.
 
 ## Engineering
 
+- [ ] **Engine roadmap E0 · P3:** owner decisions D1–D6 ([Engine roadmap](engine-roadmap.md#owner-decisions)); then E1 (canonical input frames), additive only until after Abu Dhabi. Phases that touch live pricing (E3, E4b, E9) wait until after 6 Dec.
 - [ ] **U12 · P3 · Move to Google Cloud,** after Abu Dhabi so nothing changes under live weekends: the data
       bucket is up ([Data](data.md#data-bucket)) and the [proposal](google-cloud.md) is written (Cloud SQL,
       Cloud Run, Scheduler, service identities, about $28–35 a month at list prices). Next: the owner's
