@@ -22,6 +22,8 @@ from dataclasses import dataclass
 STAGES = ("pre-weekend", "after FP1", "after FP2", "after FP3", "after SQ", "after Sprint", "after Quali")
 KINDS = ("race_win", "race_podium", "race_h2h", "race_constructor_top", "race_pole")
 DEFAULT_SEED = 42                # pricing.diagnostic's and the signal engine's seed
+VENUES = ("polymarket", "kalshi")    # exchanges a sweep / the signal engine can trade (markets/venue_replay.py)
+DEFAULT_VENUE = "polymarket"
 
 
 @dataclass(frozen=True)
@@ -36,6 +38,7 @@ class Setting:
     choices: tuple = ()
     help: str = ""
     target: str = ""             # "module.ATTR" set while applied (model settings)
+    unset: object = None         # a value that means "not set" (stored as None, so it stays out of the keys)
 
 
 SETTINGS = [
@@ -96,6 +99,9 @@ SETTINGS = [
     # --- markets --------------------------------------------------------------------------------------
     Setting("market_kinds", "markets", "Market kinds traded", "multi", KINDS, choices=KINDS),
     Setting("min_volume_24h", "markets", "Min $ traded in prior 24 h", "float", 50.0, 0, 100000),
+    Setting("venue", "markets", "Venue", "choice", None, choices=VENUES, unset=DEFAULT_VENUE,
+            help="Whose markets and recorded tape the strategies trade: polymarket (the default) or kalshi "
+                 "(its links, its tape read per market ticker, its maker fee). Unset = polymarket."),
 ]
 BY_NAME = {s.name: s for s in SETTINGS}
 # The split (docs/backtest-core.md): the pricing model's own group, and the groups any sport's backtest shares
@@ -111,6 +117,8 @@ ALIASES = {"n_sims": "sims"}            # older saved params
 
 def _coerce(s, v):
     if v is None or (s.default is None and isinstance(v, str) and not v.strip()):
+        return s.default
+    if s.unset is not None and v == s.unset:
         return s.default
     if s.type == "float":
         return float(v)
@@ -245,6 +253,11 @@ class Settings(dict):
         finally:
             for mod, attr, v in reversed(old):
                 setattr(mod, attr, v)
+
+
+def venue_of(settings):
+    """The exchange a settings set trades: its `venue`, or polymarket while unset."""
+    return settings.get("venue") or DEFAULT_VENUE
 
 
 def parse_map(v):

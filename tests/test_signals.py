@@ -181,3 +181,45 @@ def test_call(kind, fair, price, vol, want):
     assert "fair" not in c and "edge" not in c                    # takers never get them
     if c["action"]:
         assert c["heat"] in (1, 2, 3) and c["cost"] <= 50.0 + 1e-9
+
+
+@pytest.mark.quick
+def test_venue_is_the_profiles_setting_and_never_a_live_override():
+    """The profile's `venue` setting is the only switch onto Kalshi: a live run can't be pointed elsewhere, and
+    a replay may name a venue (demo-history's Kalshi record)."""
+    from racinglines.markets.strategies import maker_replay as R
+    from racinglines.pipelines import sweep_settings as SS
+    from racinglines.pipelines import weekend_sweep as WS
+    pm, ks = SS.Settings.from_dict(), SS.Settings.from_dict(dict(venue="kalshi"))
+    assert SG.resolve_venue(pm) == "polymarket" and SG.resolve_venue(pm, "polymarket") == "polymarket"
+    assert SG.resolve_venue(ks) == "kalshi" and SG.resolve_venue(ks, "kalshi", live=True) == "kalshi"
+    assert SG.resolve_venue(pm, "kalshi", live=False) == "kalshi"
+    with pytest.raises(ValueError, match="live run"):
+        SG.resolve_venue(pm, "kalshi", live=True)
+    assert WS.maker_venue_opts("polymarket") == {} and WS.maker_venue_opts("kalshi") == dict(maker_fee=R.KALSHI_MAKER_FEE)
+    with pytest.raises(ValueError, match="unknown venue"):
+        WS._links(None, 1, "betfair")
+
+
+def test_store_keeps_each_venues_rows_apart(test_engine):
+    s1 = dict(market_key="tok", kind="race_win", subject="X", stage="after FP1", dedupe="after FP1", action="buy",
+              side="YES", shares=10.0, limit_price=0.41, fair=0.55, price=0.40, edge=0.15, heat=1, target_cost=4.1,
+              signal_ts=pd.Timestamp("2099-01-01"), detail={})
+    with test_engine.begin() as c:
+        uid = c.execute(text("""INSERT INTO users (username, password_hash, role) VALUES ('venuetest', 'x', 'taker')
+                                RETURNING id""")).scalar()
+        out = _out([s1])
+        assert len(SG.store(c, uid, out)) == 1                                          # Polymarket, as before
+        k = dict(out, venue="kalshi", signals=[dict(s1, market_key="KXF1RACE-26AZE-VER")],
+                 positions=[dict(out["positions"][0], market_key="KXF1RACE-26AZE-VER")])
+        assert len(SG.store(c, uid, k)) == 1                                            # venue read from the run
+        rows = c.execute(text("SELECT market_key, detail->>'venue' FROM strategy_signals WHERE user_id = :u ORDER BY 1"),
+                         dict(u=uid)).all()
+        assert rows == [("KXF1RACE-26AZE-VER", "kalshi"), ("tok", None)]
+        pos = lambda: sorted(c.execute(text("SELECT market_key, venue FROM paper_positions WHERE user_id = :u"),  # noqa: E731
+                                       dict(u=uid)).all())
+        assert pos() == [("KXF1RACE-26AZE-VER", "kalshi"), ("tok", "polymarket")]
+        SG.store(c, uid, out)                                   # a Polymarket run replaces only Polymarket's positions
+        assert pos() == [("KXF1RACE-26AZE-VER", "kalshi"), ("tok", "polymarket")]
+        SG.store(c, uid, dict(k, positions=[]))                 # and a Kalshi run only Kalshi's
+        assert pos() == [("tok", "polymarket")]
