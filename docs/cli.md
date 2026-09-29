@@ -305,6 +305,8 @@ racinglines f1 matrix [--variants baseline,grid,gridq,pretrain,gbm,tail,gridq+pr
 racinglines f1 [--half-life DAYS] diagnostic --event 2026-15 --cutoff 2026-09-25T13:30 [--sims 10000] [--no-track] [--save]
 racinglines f1 [--half-life DAYS] forecast [--year 2026] [--sims 10000] [--no-track] [--save [--scenario LABEL]] [--top 10]
 racinglines f1 props EVENT [--run STAGE_RUN] [--prior-n 16]  |  racinglines f1 props --check [--from 2022]
+racinglines f1 [--variant NAME] scorecard --event 2026-15 [--venue polymarket|kalshi|both] [--model-key KEY] [--out DIR]
+racinglines f1 [--variant NAME] scorecard --all --year 2025 [--rounds 1-12] [--venue polymarket|kalshi|both]
 ```
 
 | Command | What it does |
@@ -314,6 +316,7 @@ racinglines f1 props EVENT [--run STAGE_RUN] [--prior-n 16]  |  racinglines f1 p
 | `matrix` | The model × strategy matrix: for each variant, the latest saved backtest (accuracy, marked where it differs from baseline beyond 2 SE) and the latest saved sweep and season strategy (P&L). Writes `data/runs/f1/matrix.md`. See [Model × strategy matrix](market-making.md#model-strategy-matrix). |
 | `diagnostic` | Price one past event as of `--cutoff` (UTC), with a leakage audit. `--save` stores `kind='diagnostic'`. See [Market making](market-making.md). |
 | `forecast` | Live: cutoff = now; upcoming races and the championships. `--save` creates scheduled events for upcoming rounds and stores `kind='forecast'` (the only kind the web app uses for live fair prices). `--scenario LABEL` saves `kind='scenario'` instead, ignored by live prices until promoted in the web app's Lab. |
+| `scorecard` | The pricing scorecard of an exchange weekend, traded or not ([Paper trading](paper-trading.md#validation-plan), rule 2): at every stage cutoff (before any running, after each session), the stored stage runs' fair values for every linked market kind scored against the result and against the venue's mid at that cutoff (Brier and log loss; `n` markets, and `paired` where the venue also priced it). `--venue both` runs Polymarket and Kalshi; `--all --year` every raced weekend of a season, per weekend and pooled per kind and stage. Nothing is priced or stored: the stages must have been priced by `f1 sweep` or `f1 signals` with the same model settings (`--variant`, or `--model-key`). Writes `data/runs/f1/scorecard/<event>_<venue>.md` / `.csv` / `_markets.csv` (or `<year>_<venue>…`). See [F1 evaluation](f1-evaluation.md#the-weekend-scorecard). |
 | `props` | Race props for one event from the race history before it: safety car, red flag, rain (per-circuit rates shrunk to the field rate); `--run` adds fastest-lap prices from a stored stage run's finishing odds. `--check` scores the yes/no props walk-forward from `--from` against the field rate and a coin flip. Nothing is stored. See [F1 live test](f1-live-roadmap.md#props-opt-in). |
 
 ### Trading research

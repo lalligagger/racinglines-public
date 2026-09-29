@@ -302,7 +302,10 @@ Any change to a profile makes a new profile with its own count.
    the replay's, and live P&L inside the replay's noise band. A weekend outside is flagged and explained
    before the next one.
 2. **The pricing scorecard on every weekend,** traded or not: Brier and log loss of the fair values
-   against the result and against the venue's mid at each stage.
+   against the result and against the venue's mid at each stage. `racinglines f1 scorecard --event
+   YEAR-ROUND --venue both` scores a Polymarket or Kalshi weekend from its stored stage runs (per stage
+   and market kind, and pooled; `--all --year` for a season; see [F1 evaluation](f1-evaluation.md#the-weekend-scorecard)),
+   `racinglines live report` a private book.
 3. **How many weekends.** From the 2025–26 replays, about 17 live weekends to show the maker's edge at
    about 2 standard errors (~$71 a weekend, s.d. ~$146), and about 40 for the taker (~$83, s.d. ~$262).
    The maker can be proved by the end of 2027; the taker is borderline.
