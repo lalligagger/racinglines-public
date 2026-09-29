@@ -301,6 +301,11 @@ local-league plans. As of 2026-09 the ranking is led by exchange depth:
 - [x] **P2 · NASCAR data sources** (research, PR #25, merged): results, qualifying, practice and lap data
       (NASCAR's public feeds, community archives), their terms and history depth; written up in
       [Data](data.md).
+- [ ] **NASCAR results adapter** (`racinglines nascar fetch | ingest`; the feeds probed 2026-09-29, findings in
+      [Data](data.md#nascar-content-feeds-verified-2026-09-29)). Code and fixture tests done; **the full pull is still to do**:
+      database backup, two or three races fetched on the Mac and read (the pit feed's mid-race shape is unverified), then Cup
+      2017–2026 on the VM with a `data_changes` entry. Next: NASCAR driver and race identity for the Kalshi, Polymarket and OG.com
+      links (a resolver by `driver_id`, per-venue naming rules), then the readiness audit.
 - [ ] **P3 · NASCAR for 2027?** Decide from the recorded Chase tapes (volume, spread, how often markets
       trade) and the data review. If yes: a first model in Jan–Feb, paper-traded from the 2027 Daytona 500.
 - [ ] MotoGP: its qualifying / sprint / race weekend maps onto the F1 adapter. Thin on Kalshi (champion

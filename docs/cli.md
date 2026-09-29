@@ -8,6 +8,7 @@ racinglines f1      fetch | ingest | forecast | backtest | compare | matrix | di
                     profiles | signals | demo-history | reconcile
                     pm-sync | pm-history | pm-trades | pm-record | pm-archive | pm-links-export | pm-links-import
 racinglines mtb_dh  download | parse | ingest | forecast | backtest | walk-forward
+racinglines nascar  fetch | ingest      (the free content feeds: results, stages, cautions, laps)
 racinglines markets sync | history | trades | record | archive      (= racinglines f1 pm-*)
 racinglines db      init | seed | stats | export | snapshot-export | snapshot-import | merge-athletes | changes
 racinglines web
@@ -246,6 +247,22 @@ racinglines mtb_dh points check --db --season 2026 --through-round 7 --standings
 `sports/points/uci_dhi_wc.toml` is the entry template: every table in it is still a **placeholder**
 (the schema's scales copied into each era). The owner replaces them with the official UCI scales,
 sets `official = true` and cites the source.
+
+## racinglines nascar
+
+NASCAR Cup, from the content feeds at `cf.nascar.com` (no key). See [Data](data.md#nascar-content-feeds-verified-2026-09-29).
+
+```
+racinglines nascar fetch [--years 2026] [--series 1] [--feeds a,b] [--races 5624,5628] [--force] [--dry-run]
+racinglines nascar ingest [--years 2026] [--series 1] [--force] [--no-laps]        (group option: --db URL)
+```
+
+| Command | What it does |
+|---|---|
+| `fetch` | Download the feeds to `data/raw/nascar/cf/<year>/<series>/`, byte for byte, one request per second, for every race already run. Files on disk are skipped and a feed the server says is missing (HTTP 403) is remembered in a `.missing` marker (not for races from the last three days, whose feeds may not be published yet), so a re-run after each race weekend asks only for what is new. `--feeds` picks from `race_list_basic, points-feed, weekend-feed, pit-data, loopstats, lap-times, lap-notes`; `--races` limits to some race ids; `--force` asks again; `--dry-run` requests nothing and prints how many requests a run would make. |
+| `ingest` | Load the stored feeds into the database: events, rounds (practice, qualifying, race), results, laps, and one athlete per NASCAR `driver_id`. A race whose files have not changed is skipped (`--force` rebuilds it); `--no-laps` leaves out the lap table. Only Cup (`--series 1`) has a competition. |
+
+Nothing here runs by default. **Back up the database before the first `ingest` on a real database** ([Data changes](data-changes.md)).
 
 ## racinglines db
 
