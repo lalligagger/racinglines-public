@@ -15,6 +15,7 @@ Tick items off where they are listed. Finished items move to [Done](#done) at th
 | [Paper trading: validation plan](paper-trading.md#validation-plan) | The pre-registered rules every live weekend is judged by |
 | [F1 live test (round 16)](f1-live-roadmap.md) | The working plan for 2–4 Oct: build items, runbook, backup plans, decision log |
 | [F1 roadmap](f1-roadmap.md) | The F1 phases (F1-0 … F1-9), their ground rules and decision log |
+| [Coverage](coverage.md) | The sport × venue grid (history, backtested strategy, live strategy per cell), the gaps ranked with effort, and the device checks that settle the unverified cells |
 
 ## Priorities
 
@@ -149,6 +150,11 @@ venue with live F1 race markets this year.
       *Done when:* the report lists the gaps above fees for the championship markets, day by day.
 - [ ] Other exchanges, if they list motorsport or cycling markets with real depth, including one for
       downhill (none on Polymarket or Kalshi as of 2026-09).
+- [ ] **OG.com** (Crypto.com's CFTC prediction market): **connector built as a schema** (PR #44: `exchanges/og.toml`,
+      one generic driver, `racinglines markets --exchange og sync|trades|history|books|fair`; off by default). Open: a
+      recorder timer on the VM (the API keeps about a month), per-GP contract rules once a live race market is seen,
+      confirm the $0.02 fee (the terms were checked), join the U7 comparison. Trading needs FCM onboarding and the
+      owner's API key ([Coverage](coverage.md#ogcom)).
 
 ## Paper trading
 
@@ -263,6 +269,16 @@ local-league plans. As of 2026-09 the ranking is led by exchange depth:
       books archived per exchange.
       *Done when:* the NASCAR finale (Homestead, 8 Nov) and MotoGP's Qatar–Valencia rounds are recorded
       from listing to settlement.
+- [ ] **Polymarket tapes for NASCAR, MotoGP and IndyCar.** Polymarket now lists per-race NASCAR winners
+      and MotoGP / IndyCar futures (seen 2026-09-29). Generalise the Polymarket sync to a named tape-only
+      sport as U9 did for Kalshi (`[markets.polymarket]` in `sports/<code>.toml`, links `unmodeled`).
+      Effort M ([Coverage](coverage.md#the-gaps-ranked)).
+- [ ] **UCI road cycling, tape only.** Kalshi lists `KXCYCLING` (race winner), `KXCYCLINGSTAGE` and
+      `KXCYCLINGTEAM`; Polymarket listed the 2026 Tour winner and top 3. A `sports/road_cycling.toml` with
+      no model and those series records the tapes through the U9 path, `--include-closed` for the 2026
+      grand tours. Effort S. A model is a 2027 question ([Coverage](coverage.md#the-grid)).
+- [ ] **Re-run the coverage probes** (Kalshi and Polymarket counts drift; the remaining ? cells) on the VM or the owner's device: the read-only
+      commands in [Coverage](coverage.md#what-to-verify-on-a-device). Effort S.
 - [ ] **P2 · NASCAR data sources** (research, no build): results, qualifying, practice and lap data
       (NASCAR's public feeds, community archives), their terms and history depth; written up in
       [Data](data.md).
