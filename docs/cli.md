@@ -403,6 +403,7 @@ racinglines markets history --events 'f1-azerbaijan-grand-prix%' --start 2026-09
 racinglines markets trades --events 'f1-azerbaijan-grand-prix%'
 racinglines markets record [--events …] [--interval 60] [--minutes 0] [--sync-every 30] [--no-alerts] [--year 2026]
 racinglines markets archive [--stats] [--vacuum-full] [--compact] [--hours H]
+racinglines markets disagree --event 2026-15 | --event season [--year 2026] [--start … --end …] [--step 60] [--no-save]
 racinglines f1 pm-links-export [--exchange kalshi]
 racinglines f1 pm-links-import [--exchange kalshi]
 ```
@@ -414,6 +415,7 @@ racinglines f1 pm-links-import [--exchange kalshi]
 | `trades` (`f1 pm-trades`) | Store every taker trade for events (the tape the maker replay fills against). |
 | `record` (`f1 pm-record`) | Record order-book snapshots every `--interval` seconds (default 60) of the given events, or of the open markets of races not yet run. Runs until stopped (`--minutes N` stops after N). Re-syncs Polymarket's F1 events every `--sync-every` minutes (default 30; 0 = never) so new race markets get recorded, and alerts about new markets unless `--no-alerts`. Archives to Parquet hourly. Run it through race weekends. |
 | `archive` (`f1 pm-archive`) | Move stale prices, trades and books from Postgres to Parquet under the retention policy, or every row older than `--hours H`. `--vacuum-full` returns freed space to the OS, `--compact` merges each month into one file, `--stats` only shows where the rows are. See [Database](database.md#storage-postgres-for-the-app-parquet-for-heavy-history). |
+| `disagree` | The cross-venue disagreement log ([Kalshi history](kalshi-history.md#cross-venue-disagreement-log)): for every outcome of a race weekend (`--event 2026-15`, or a round number of `--year`) or of the season's drivers' and constructors' champion markets (`--event season`) that is linked on both Polymarket and Kalshi, one row per `--step` minutes (default 60) with both mids and tops of book, our fair from the run in force, each venue's fee-adjusted taker edge and the cross-venue gap net of both taker fees, upserted into `market_disagreements` (`--no-save`: report only) and printed day by day. The window defaults to where both venues have stored prices, and for a race ends at its start. Reads the archived prices, books and tapes, so it needs no exchange access. |
 | `f1 pm-links-export` | Write `market_links` to `data/archive/markets/polymarket/links/market_links.parquet`, with database ids swapped for stable keys (event key and category, FastF1 driver id, competition and category codes). |
 | `f1 pm-links-import` | Load that file into this database (no Polymarket access needed); replaces each token's row and reports rows whose keys don't resolve. `--exchange kalshi` does the same for Kalshi's links (`data/archive/markets/kalshi/links/`). |
 
@@ -437,6 +439,10 @@ racinglines markets --exchange kalshi books --events KXF1-26
 | `trades` | Store every trade on those events' markets in `market_trades` (the taker's side of YES, at the YES price, in contracts). |
 | `history` | Store candlesticks (`--period` 1, 60 or 1440 minutes) in `market_price_history`. |
 | `books` | One order-book snapshot per open market in `market_book_snapshots` (a NO bid at p is a YES ask at 1 − p). |
+
+With `RACINGLINES_DISAGREE=1`, `markets record` also writes one tick of the disagreement log on every pass
+(`disagree.record`), from the latest stored prices and books of every open race listed on both venues and of the
+season's champion markets; the Markets page then shows the log's latest tick ([Web app](webapp.md#kalshi)).
 
 `markets archive` (and the recorder's hourly pass) archives Kalshi's rows too, into `data/archive/markets/kalshi/`
 ([Data](data.md#exchange-history-kalshi-and-polymarket)). No `record` or links export for Kalshi yet. Pulling a season: `sync --year Y --closed`,

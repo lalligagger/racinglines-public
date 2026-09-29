@@ -112,3 +112,39 @@ pages, its rows stay out of Positions, and `/markets/kalshi` is a 404.
 The Polymarket record, its pages and the private book render exactly as before with Kalshi off. A Kalshi
 `condition_id` is the whole event, so the race page, the mirror and the Coming-up volume group Kalshi's rows by
 market ticker (`token_id`), where Polymarket's group by condition.
+
+## Cross-venue disagreement log
+
+Roadmap U7. `racinglines markets disagree --event …` ([CLI](cli.md#racinglines-markets)) keeps, for every F1
+outcome linked on both Polymarket and Kalshi (a race's win, podium, top 10, pole, top-constructor and head-to-head
+markets, and the season's drivers' and constructors' champion markets), one row per tick in `market_disagreements`
+(`racinglines/markets/disagree.py`, migration `c8e3f6a2d4b1`):
+
+| Column | Meaning |
+|---|---|
+| `pm_mid`, `pm_bid`, `pm_ask` / `kalshi_*` | Each venue's price and top of book at the tick, as the outcome's YES side (an inverted Polymarket link is flipped). The mid is the venue's last stored price at or before the tick, no older than 6 h; a book recorded within one step replaces it with (bid + ask) / 2 and gives the top of book. |
+| `fair`, `run_id` | Our fair value from the run in force at the tick: for a race, the latest diagnostic or forecast with predictions for it, as of its cutoff; for the season, the latest forecast. Before the first run there is no fair and no edge (the gap columns still fill). |
+| `pm_edge`, `pm_side` / `kalshi_edge`, `kalshi_side` | The better taker trade on that venue vs fair, net of its taker fee: buy YES at the ask (`fair − ask − fee`) or sell at the bid (`bid − fair − fee`); without a book, at the mid. Kalshi's taker fee is `0.07 × P × (1 − P)` per contract (`venue_replay.Kalshi.TAKER_FEE`); Polymarket charges takers nothing on these markets. |
+| `gap`, `gap_net` | `kalshi_mid − pm_mid`, and `|gap|` net of both taker fees at their mids: above 0, the venues disagree by more than it costs to take both sides. |
+| `pm_vol24`, `kalshi_vol24` | USD traded on each venue in the 24 h before the tick (`market_trades`; null where no tape is stored). A row is *liquid* when neither venue's tape shows nothing traded: Polymarket's stored history is a mid, and an empty book reads 0.5, so a gap on a dead market is on paper. The report and the panel count liquid rows. |
+
+The backfill reads the archived prices, books and tapes (`data/archive/markets/{polymarket,kalshi}/`), so it runs
+without exchange access; the window defaults to where both venues have prices, on an hourly grid, and for a race ends
+at the race start (after it the venues settle at different speeds). With `RACINGLINES_DISAGREE=1` the recorder writes
+one tick per pass from the latest stored quotes, and the Markets page shows the log's latest tick
+([Web app](webapp.md#kalshi)). A price jump inside one step shows as a one-tick gap (Kalshi's hourly candle closes
+at the tick, Polymarket's sample can be a few minutes older), so read the share of rows above fees and the median,
+not the maximum.
+
+**2026 championship markets** (33 outcomes, 2026-01-12 to 2026-09-27, hourly): 141,220 rows, 81,919 liquid (Kalshi's
+tape is stored; Polymarket's champion tape isn't, so the Polymarket side is taken as liquid), 65,250 of them above fees
+(80%). The typical net gap is small, 0.3 to 0.6 points, so most "above fees" rows are a mid-to-mid difference of a
+cent or two on low-priced outcomes, where Kalshi's fee at P(1 − P) is almost nothing; the widest liquid gaps are
+one-tick jumps on race days (Antonelli's championship, 2026-05-24 21:00: Polymarket 0.357 vs Kalshi 0.640). Our fair
+exists only from the 2026-09-27 forecast on, which the stored prices end before, so this backfill carries no edge
+columns; the recorder's ticks will. Day by day, the report is in the pull request that added it.
+
+**Azerbaijan 2026 (round 15)**, 55 outcomes, 2026-09-22 to the race start on the 26th: 4,922 rows, 1,879 liquid,
+1,221 above fees (65%; median net +0.3 points). The largest liquid gaps are Polymarket's top-constructor and
+long-shot podium markets reading ~0.5 (a one-sided book) against Kalshi's 0.5 to 5 cents, which a recorded book
+would have shown as a spread, not a price.

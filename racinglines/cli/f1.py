@@ -32,6 +32,7 @@ racinglines f1 <command>: Formula 1.
 """
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -364,6 +365,9 @@ def _run(args):
                 with engine.connect() as c, get_session(args.db) as s:
                     n = snapshot_books(s, c, ev)
                 print(f"{datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} {n} books", flush=True)
+                if os.environ.get("RACINGLINES_DISAGREE", "0") == "1":     # the cross-venue log's tick (markets/disagree.py)
+                    from racinglines.markets import disagree as D
+                    print(f"{datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} {D.record(engine)} disagreement rows", flush=True)
             except Exception as e:  # keep recording through transient API errors
                 print(f"{datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} error: {e}", flush=True)
             if time.time() - last_archive >= 3600:

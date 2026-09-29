@@ -51,7 +51,9 @@ def board_page(request: Request, msg: str = "", c=Depends(conn)):
     if user["role"] == "taker":
         from racinglines.web.app import bet_markets
         return bet_markets(request, msg=msg, c=c)
-    return render(request, "board.html", sports=B.board(c, _maker(user)), h=B.headline(c, _maker(user)), kalshi=V.KALSHI_VENUE)
+    from racinglines.markets import disagree as D
+    return render(request, "board.html", sports=B.board(c, _maker(user)), h=B.headline(c, _maker(user)), kalshi=V.KALSHI_VENUE,
+                  disagree=D.panel(c) if D.ON["on"] else None)       # the cross-venue panel: RACINGLINES_DISAGREE=1 only
 
 
 # ---------------------------------------------------------------------------
