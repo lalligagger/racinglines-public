@@ -15,7 +15,7 @@ venue's private (trading) API is not part of a schema.
 |---|---|
 | `[exchange]` | Code, name, the env var that switches the venue on in the app (off by default), and the taker fee per contract |
 | `[api]` | Host (an env var can override it, e.g. a sandbox), path prefix, pacing, and how an error looks (`ok_path`, `ok_value`) |
-| `[endpoints.*]` | Path, where the rows are (`data`), how it pages (`next`, `cursor_param`), how it takes ids (`batch_param`), and the time-window limits of the tape and history |
+| `[endpoints.*]` | Path, where the rows are (`data`), how it pages (`next`, `cursor_param`), how it takes ids (`batch_param`), and the time-window limits of the tape and history. An optional `limits = { max_count, max_batch, max_window_days }` states the exchange's own caps; the schema fails to load if the endpoint asks for more, so a wrong `count` or `batch_size` is caught by the tests, not by the first live call |
 | `[fields.*]` | A dotted path into the JSON for each thing the driver needs: an instrument's subject, contract and expiry; a ticker's bid, ask and last; a book's levels; a trade's price, size and side; a history point. Times say their unit (`ms`, `ns`, `iso`) |
 | `[prices]` | Units (OG.com: dollars, 0 to 1, as strings) |
 | `[sports.<code>]` | How the venue lists one of our sports: `event_prefixes` to find its events, `modeled`, and the `[[rules]]` mapping a contract name (regex) to a prediction kind and a subject (driver or team). Without `modeled = true` the sport is tape-only: every link is `unmodeled`, filed under that sport's own competition |

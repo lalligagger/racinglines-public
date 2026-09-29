@@ -24,6 +24,8 @@ main() {
   log "alembic upgrade head"
   set -a; . /etc/racinglines.env; set +a
   .venv/bin/alembic upgrade head
+  log "db seed (reference rows for every sport schema; idempotent upserts)"
+  .venv/bin/racinglines db seed
   log "done: $(git log -1 --format='%h %s')"
 }
 main "$@"

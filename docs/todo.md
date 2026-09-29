@@ -290,10 +290,12 @@ local-league plans. As of 2026-09 the ranking is led by exchange depth:
       `KXCYCLING*`), plus `le_mans.toml` and `sailgp.toml` (Kalshi, and SailGP on OG.com). Not yet run on the VM:
       `markets --exchange kalshi --sport road_cycling sync --closed` pulls the 2026 grand tours Kalshi still serves. A
       model is a 2027 question ([Coverage](coverage.md#the-grid)).
-- [ ] **Tape-sync follow-ups (2026-09-29 first live run):** the sync should seed a sport's competition row from
-      `sports/<code>.toml` instead of raising `NoResultFound` (the VM had none for NASCAR, MotoGP or IndyCar until they were
-      added by hand); Kalshi's `KXNASCARTRUCKSERIES` (35 links) and `KXNASCARAUTOPARTSSERIES` (40) match the `KXNASCAR`
-      prefix and landed under `nascar_cup`, so filter or tag them (owner's call); the Polymarket tag slugs above.
+- [ ] **Tape-sync follow-ups (2026-09-29 first live run):** ~~the sync should seed a sport's competition row from
+      `sports/<code>.toml` instead of raising `NoResultFound`~~ done: every sync creates the rows of the sport it files
+      links under (`db/ingest.ensure_competition`), and `vm.sh deploy` now runs `db seed` after the migrations; exchange
+      schemas can state the exchange's own caps (`limits`), checked when the schema loads. Still open: Kalshi's
+      `KXNASCARTRUCKSERIES` (35 links) and `KXNASCARAUTOPARTSSERIES` (40) match the `KXNASCAR` prefix and landed under
+      `nascar_cup`; the owner chose to **tag** them (2026-09-29), not filter; the Polymarket tag slugs above.
 - [ ] **Re-run the coverage probes and spot-check every combo** (handoff written 2026-09-29: `handoffs/2026-09-29-spot-check-exchange-coverage.md`) (Kalshi and Polymarket counts drift; the remaining ? cells) on the VM or the owner's device: the read-only
       commands in [Coverage](coverage.md#what-to-verify-on-a-device). Effort S.
 - [x] **P2 · NASCAR data sources** (research, PR #25, merged): results, qualifying, practice and lap data

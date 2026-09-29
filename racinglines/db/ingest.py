@@ -50,6 +50,39 @@ def seed(session):
     session.flush()
 
 
+def seed_sport(session, sport):
+    """Upsert one sport's rows (sport, league, competition, categories) from its schema (sports/<sport>.toml).
+    The same upserts as `seed`, for the one sport a sync is about to file links under. Idempotent."""
+    from racinglines import sports as S
+    schema = S.load(sport)
+    scode, lcode, ccode = schema["sport"]["code"], schema["league"]["code"], schema["competition"]["code"]
+    name, kind = registry.SPORTS[scode]
+    sp = _upsert(session, m.Sport, dict(code=scode), name=name, result_kind=kind)
+    lname, org = registry.LEAGUES[lcode]
+    lg = _upsert(session, m.League, dict(code=lcode), name=lname, organizer=org)
+    spec = registry.COMPETITIONS[ccode]
+    comp = _upsert(session, m.Competition, dict(code=ccode), name=spec["name"], league_id=lg.id, sport_id=sp.id)
+    for cat_code, (cname, gender, age) in spec["categories"].items():
+        _upsert(session, m.Category, dict(competition_id=comp.id, code=cat_code), name=cname, gender=gender, age_group=age)
+    session.flush()
+    return comp
+
+
+def ensure_competition(session, sport):
+    """(Competition, its first Category) of a sport, as a market sync files links under. When the database has
+    not been seeded for the sport (a fresh deploy: migrations create tables, not rows) the rows are created from
+    the sport's schema first, so a sync never stops on a missing competition."""
+    from racinglines import sports as S
+    schema = S.load(sport)
+    cat_code = next(iter(schema["competition"]["categories"]))
+    comp = session.scalars(select(m.Competition).filter_by(code=schema["competition"]["code"])).one_or_none()
+    cat = session.scalars(select(m.Category).filter_by(competition_id=comp.id, code=cat_code)).one_or_none() if comp else None
+    if comp is None or cat is None:
+        comp = seed_sport(session, sport)
+        cat = session.scalars(select(m.Category).filter_by(competition_id=comp.id, code=cat_code)).one()
+    return comp, cat
+
+
 def _slugify(text):
     text = unicodedata.normalize("NFKD", str(text)).encode("ascii", "ignore").decode()
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")

@@ -226,7 +226,7 @@ ORDER BY e.start_date;
 
 ```
 racinglines db init       # alembic upgrade head + seed
-racinglines db seed       # re-apply registry.py (after adding a sport, league or venue)
+racinglines db seed       # re-apply registry.py (after adding a sport, league or venue). `vm.sh deploy` runs it after the migrations; a market sync also creates the rows of the one sport it files links under, if they are missing
 racinglines db stats      # table counts + events/rounds/results per season and category
 racinglines db export --out splits.csv   # tidy CSV from the database
 racinglines db snapshot-export           # see Snapshot below

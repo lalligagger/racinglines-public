@@ -191,6 +191,21 @@ When I say this, produce one dated Markdown file I can paste into VS Code Copilo
 
 Default location: `reports/handoffs/<date>-<slug>.md`, **local only** (gitignored) — never commit or push these.
 
+## Database writes and new data sources (every sport and exchange)
+
+Standing practice from the owner (2026-09-29), applied to every task, not one pass:
+
+- **Back up before any step that writes to a database.** A task plan lists the backup as its first step and the
+  rollback as its last: migrations, seeds, syncs that add or retag links, recorder passes on a fresh database,
+  history rebuilds. The dump goes in `data/backups/db/racinglines-before-<task>-<UTC time>.sql.gz`, and the same change
+  adds a `data_changes` entry and a `docs/data-changes.md` line that name it. A migration is tried on a restored copy
+  first. Read-only steps need no backup.
+- **Probe a data source from the owner's machine before any full run.** For a new sport, exchange or results feed: a
+  Remote Control session on the Mac (which has network access the cloud sandbox lacks) makes a small read-only probe
+  (the endpoint answers, the shape matches, paging, caps and history depth, the terms of use). The responses become
+  test fixtures and the findings go into the schema (caps as `limits`). Only then does the full run happen on the
+  VM. Never run a full import against an unverified source, and never guess at a live API's behaviour from the cloud.
+
 ## Safety rails (non-negotiable, carried over from the project's own rules)
 
 - Never flip `POLYMARKET_TRADING_ENABLED` / `KALSHI_TRADING_ENABLED`, run `vm.sh public on`, or run a DB migration

@@ -41,6 +41,7 @@ batch_param = "event_symbols"            # comma-separated event symbols, at mos
 # The live API caps this at 10: 11 or more event symbols return 400 {"code": 40004, "message": "Invalid event_symbol"}
 # whatever the symbols are (checked against api.crypto.com on 2026-09-29; the fixture request used 2). get-tickers took 20.
 batch_size = 10
+limits = { max_batch = 10 }             # checked when the schema loads (racinglines/exchanges.py)
 
 [endpoints.tickers]
 path = "/get-tickers"
@@ -61,6 +62,7 @@ instrument_param = "instrument_name"
 start_param = "start_ts"                 # nanoseconds
 start_unit = "ns"
 params = { count = 150 }                 # the server's maximum: 200 and up is "Invalid count" (checked 2026-09-29)
+limits = { max_count = 150 }
 window_days = 30                         # the docs say 7; the server accepted 30 and 60, and returned nothing at 100
 
 [endpoints.history]
@@ -72,6 +74,7 @@ end_param = "end_ts"
 start_unit = "ms"
 params = { count = 1000 }
 window_days = 31                         # start to end at most 31 days, 1,000 one-minute rows a call
+limits = { max_window_days = 31 }
 
 # Where each thing lives in a response: dotted paths into the JSON ("a.b" = obj["a"]["b"]). `unit` says how a time
 # is written: ms / ns since the epoch, or iso.
