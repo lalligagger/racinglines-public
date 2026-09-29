@@ -146,6 +146,29 @@ The Kalshi replays pass `root=store.root_for("kalshi")` to read only Kalshi's tr
 pass wrote everything to the Polymarket tree ([Data changes](data-changes.md)); the Kalshi-only files it left under
 `polymarket/{prices,trades}/` on the owner's machine were deleted the same day (every row is in the Kalshi archive).
 
+### Other series' tapes: NASCAR, MotoGP, IndyCar
+
+Kalshi also lists NASCAR Cup (race winners and the champion), MotoGP and IndyCar. Each is a **tape-only
+sport** ([Roadmap](todo.md#new-sports), U9): a schema with no model (`sports/nascar.toml`, `motogp.toml`,
+`indycar.toml`; `[sport] model_family = "none"`, no `pricing_model`, no `[live]`), its own league and competition
+(`nascar_cup`, `motogp_wc`, `indycar_series`, seeded by `db seed` like the others), and a `[markets.kalshi]
+series` list of ticker prefixes (`KXNASCAR`, `KXMOTOGP`, `KXINDYCAR`) that the sync matches against Kalshi's
+Sports series. Nothing is priced: the board and the Lab don't list them (they only show competitions with
+model runs), `racinglines check` doesn't run them, and no pipeline reads them.
+
+**Off by default.** `racinglines markets --exchange kalshi sync` still syncs F1 and nothing else. A tape-only
+sport is synced only when named, `--sport nascar` (or `motogp`, `indycar`); its links land in `market_links`
+with `exchange = 'kalshi'` under its own competition, every one `prediction = 'unmodeled'` (no classifier, no
+driver or race lookup), with the same fields as F1's (bid/ask/last, volume, `params.series`, `params.rules`,
+close time, result). `trades`, `history` and `books` then work as for F1, and without `--events` take every
+Kalshi event of the sport's competition (books: its open markets), so one recording pass is three commands.
+Prices, trades and books are archived per exchange by `market_links.exchange`, so they go to
+`data/archive/markets/kalshi/` with F1's rows; nothing separates the sports in the Parquet tree (the links do).
+
+The Kalshi API is blocked from the cloud, so the series tickers are matched by prefix and were not checked
+against the live listing; `sync --series TICKER …` syncs exact tickers when the discovery finds the wrong ones
+(or none). The whole path is tested on fixtures in the client's shape (`tests/fixtures/market/kalshi_other_series.json`).
+
 ## Respecting the sources' limits
 
 Every download goes through one of two guards, so a long unattended run (e.g. a

@@ -426,18 +426,42 @@ Markets settled before Kalshi's historical cutoff (about two months back) are re
 endpoints: settled events' markets, their trades and their candlesticks.
 
 ```
-racinglines markets --exchange kalshi sync [--year 2026] [--closed]
+racinglines markets --exchange kalshi sync [--year 2026] [--closed] [--series TICKER …]
 racinglines markets --exchange kalshi trades --events KXF1RACE-AZEGP26
 racinglines markets --exchange kalshi history --events KXF1RACE-AZEGP26 --start 2026-09-24T00:00 --end 2026-09-27T00:00 [--period 60]
 racinglines markets --exchange kalshi books --events KXF1-26
+racinglines markets --exchange kalshi --sport nascar sync [--closed]        # NASCAR Cup: KXNASCAR* series, links unmodeled
+racinglines markets --exchange kalshi --sport nascar trades                 # every NASCAR event's tape (no --events needed)
+racinglines markets --exchange kalshi --sport motogp books                  # one snapshot per open MotoGP market
 ```
 
 | Command | What it does |
 |---|---|
-| `sync` | Find Kalshi's F1 series (Sports series whose ticker starts `KXF1` or whose title says Formula 1, F1 or Grand Prix, or `kalshi.sync.SERIES`), and upsert one `market_links` row per market (`exchange='kalshi'`, `token_id` = the market ticker's YES contract, `condition_id` = the event ticker), classified into the model's kinds: win, podium, top 10, pole, top constructor, fastest lap, head-to-head (the race read from the ticker's code, `BRIGP26`), champions. Sprint markets, top 5 and the rest are listed as unmodeled. Each row keeps Kalshi's resolution rules (`params.rules`). `--closed` adds settled events. Races resolve within `--year` (2026: 15 weekends, 1,847 modeled links on 2026-09-28). |
+| `sync` | Find Kalshi's F1 series (Sports series whose ticker starts `KXF1` or whose title says Formula 1, F1 or Grand Prix, or `kalshi.sync.SERIES`; `--series TICKER …` names them instead), and upsert one `market_links` row per market (`exchange='kalshi'`, `token_id` = the market ticker's YES contract, `condition_id` = the event ticker), classified into the model's kinds: win, podium, top 10, pole, top constructor, fastest lap, head-to-head (the race read from the ticker's code, `BRIGP26`), champions. Sprint markets, top 5 and the rest are listed as unmodeled. Each row keeps Kalshi's resolution rules (`params.rules`). `--closed` adds settled events. Races resolve within `--year` (2026: 15 weekends, 1,847 modeled links on 2026-09-28). |
 | `trades` | Store every trade on those events' markets in `market_trades` (the taker's side of YES, at the YES price, in contracts). |
 | `history` | Store candlesticks (`--period` 1, 60 or 1440 minutes) in `market_price_history`. |
 | `books` | One order-book snapshot per open market in `market_book_snapshots` (a NO bid at p is a YES ask at 1 − p). |
+
+`--sport nascar` / `motogp` / `indycar` (before the command) switches the sync to a **tape-only sport**: Kalshi's
+NASCAR Cup (`KXNASCAR*`: race winners and the champion), MotoGP (`KXMOTOGP*`) or IndyCar (`KXINDYCAR*`) series,
+filed under the sport's own competition (`sports/<code>.toml`, no model) with every link `unmodeled`. Off by
+default: without `--sport`, `sync` is the F1 sync above and touches nothing else. For any sport, `trades`,
+`history` and `books` without `--events` take every Kalshi event of that sport's competition (books: its open
+markets), so recording a series from listing to settlement is `sync --closed`, `trades` and `books` per pass.
+The series prefixes come from `[markets.kalshi] series` in the schema and were not checked against the live
+listing (the cloud can't reach Kalshi): `sync --series TICKER …` syncs exact tickers.
+[Data](data.md#other-series-tapes-nascar-motogp-indycar).
+
+**The recorder unit is not changed.** `racinglines-recorder` (`deploy/vm/systemd/racinglines-recorder.service`,
+`scripts/deploy/vm.sh`) still runs `markets record --interval 60`: Polymarket's F1 books, plus the hourly archive
+pass that also files Kalshi's rows. There is no Kalshi `record`. To record NASCAR or MotoGP on the VM, add a
+timer of your own next to `racinglines-signals.timer`, e.g. `racinglines-tapes.service` with
+`ExecStart=/bin/sh -c 'for s in nascar motogp; do racinglines markets --exchange kalshi --sport $s sync --closed
+&& racinglines markets --exchange kalshi --sport $s trades && racinglines markets --exchange kalshi --sport $s books; done'`
+(same `User`, `WorkingDirectory` and `EnvironmentFile` as the recorder) and a `racinglines-tapes.timer` with
+`OnCalendar=*:0/5` (books every 5 min; trades are deduplicated, so re-pulling them is safe), then
+`vm.sh deploy` installs whatever is in `deploy/vm/systemd/`. `history --period 60` once after settlement fills
+the candle series.
 
 `markets archive` (and the recorder's hourly pass) archives Kalshi's rows too, into `data/archive/markets/kalshi/`
 ([Data](data.md#exchange-history-kalshi-and-polymarket)). No `record` or links export for Kalshi yet. Pulling a season: `sync --year Y --closed`,
