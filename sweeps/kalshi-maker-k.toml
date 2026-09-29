@@ -941,3 +941,97 @@ variant = "gridq+pretrain"
 max_disagree = 0.1
 size = 10
 note = "r2 gridq+pretrain size 10 disagree 0.1"
+
+# --- confirmation: the top 3 of the finished grid, plus the partial grid's K, at 16k simulations ------
+# (search-report's `confirmed` column; params-4h's noise check)
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.04
+size = 25
+sims = 16000
+note = "confirm 16k gridq+pretrain spread 0.04 disagree 0.15"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.1
+maker_min_volume_24h = 400
+size = 25
+sims = 16000
+note = "confirm 16k gbm min volume 400 disagree 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.04
+max_disagree = 0.1
+size = 25
+sims = 16000
+note = "confirm 16k gbm spread 0.04 disagree 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.03
+max_disagree = 0.1
+size = 25
+sims = 16000
+note = "confirm 16k gbm spread 0.03 disagree 0.1 (K from the partial grid)"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+half_spread = 0.04
+size = 25
+sims = 16000
+note = "confirm 16k gridq+pretrain spread 0.04 disagree 0.15"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+max_disagree = 0.1
+maker_min_volume_24h = 400
+size = 25
+sims = 16000
+note = "confirm 16k gbm min volume 400 disagree 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.04
+max_disagree = 0.1
+size = 25
+sims = 16000
+note = "confirm 16k gbm spread 0.04 disagree 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+half_spread = 0.03
+max_disagree = 0.1
+size = 25
+sims = 16000
+note = "confirm 16k gbm spread 0.03 disagree 0.1 (K from the partial grid)"
+
+# the confirmations' baselines: default settings at the same 16k simulations (search-report compares like with like)
+[[job]]
+year = 2026
+venue = "kalshi"
+sims = 16000
+note = "confirm 16k baseline"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+sims = 16000
+note = "confirm 16k baseline"

@@ -210,3 +210,15 @@ def test_kalshi_profile_k_is_assigned_only_on_request(test_engine):
         kp = PF.of_user(c, uid, venue="kalshi")
         assert kp["name"] == PF.PROFILES["K"]["name"] and kp["venue"] == "kalshi" and kp["candidate_id"] == ids["K"]
         assert [u for _, u, _, _ in PF.assigned(c)] == ["maker", "taker"]   # the engine's list is as before
+
+
+def test_maker_call_reads_the_profiles_volume_floor():
+    """A maker profile's `maker_min_volume_24h` (K's $400) is the live volume floor, as in the replay;
+    unset keeps the replay's own $100."""
+    from racinglines.pipelines import profiles as PF
+    k = dict(settings=PF.PROFILES["K"]["settings"])
+    c = dict(settings=PF.PROFILES["C"]["settings"])
+    assert SG.maker_call(k, "race_win", 0.30, 0.30, volume_24h=300)["why"] == "too thin to quote"
+    assert SG.maker_call(k, "race_win", 0.30, 0.30, volume_24h=500)["action"] == "quote"
+    assert SG.maker_call(c, "race_win", 0.30, 0.30, volume_24h=300)["action"] == "quote"
+    assert SG.maker_call(c, "race_win", 0.30, 0.30, volume_24h=50)["why"] == "too thin to quote"

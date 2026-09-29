@@ -350,6 +350,20 @@ Downhill model.
 - [ ] Ingest the other input formats (copy/paste, HTML, JSON) into the database.
 - [ ] Tests: parser fixtures (one file per format era), `event_format`,
       `actual_event_points`, the rider-ID normalization check.
+- [ ] **Faster searches** (owner to review before any of it is built; found while finishing the Kalshi
+      maker search, 2026-09-29). Every search job is one CPU-bound Python process, and the database
+      sits idle. A one-round Kalshi maker job profiled at 34s: 21s rebuilding the model's rating
+      history (`position_sim.pricing.history`, identical for every job with the same model settings),
+      about 8s pricing plus the 5 maker replays, and about 5s of loading and imports. Fixes, biggest
+      first:
+      1. A maker-grid mode: price each model and season once, then replay every maker setting (spread,
+         disagreement filter, size, volume filter) against the saved prices. The 106-job
+         `sweeps/kalshi-maker-k.toml` grid has only 4 distinct model/season inputs, so this could take
+         it from about an hour to minutes.
+      2. An on-disk cache of the rating history, keyed by the model settings and the data version.
+         This saves about 20s a job in any sweep, taker sweeps included.
+      3. `parallel = 4` instead of 3 on a 4-core machine. The core held back for the database is
+         mostly idle (about 21% of CPU unused during the run).
 
 ## Business and collaborators
 

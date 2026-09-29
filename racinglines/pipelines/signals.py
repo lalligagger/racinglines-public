@@ -633,6 +633,8 @@ def maker_call(profile, kind, fair, price, volume_24h=None):
     st = SS.Settings.from_dict(profile["settings"], strict=False)
     p = R.Params(half_spread=st["half_spread"], size=st["size"], max_pos=st["max_pos"], skew=st["skew"],
                  max_disagree=st["max_disagree"], fill=st["fill"])
+    if st["maker_min_volume_24h"] is not None:           # the replay's volume floor (WS.maker_params), e.g. K's
+        p = replace(p, min_volume_24h=st["maker_min_volume_24h"])
     if kind not in st["market_kinds"] or kind == "race_pole":
         return dict(action=None, why="not a market this strategy quotes")
     if fair is None:

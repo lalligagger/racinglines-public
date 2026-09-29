@@ -30,11 +30,11 @@ from sqlalchemy import text
 from racinglines.pipelines import sweep_settings as SS
 
 LIVE_STAGES = ["after FP1", "after FP2", "after FP3", "after SQ", "after Sprint", "after Quali"]
-K_SETTINGS = {"variant": "gbm", "half_spread": 0.03, "max_disagree": 0.10, "size": 25}
-K_WHY = ("kalshi-maker-k search, conservative maker on Kalshi's tape with its maker fee. Robust in both seasons "
-         "(held-out rule, maker noise floor 350): 2026 +450 (Sharpe 0.61, max DD 316; +1,321 vs Kalshi baseline, "
-         "+569 vs C on Kalshi), 2025 +707 (1.16, 358; +1,103 vs baseline, +23 vs C). Partial grid: gbm fully, "
-         "gridq+pretrain 2026 only.")
+K_SETTINGS = {"variant": "gbm", "max_disagree": 0.10, "size": 25, "maker_min_volume_24h": 400}
+K_WHY = ("kalshi-maker-k search (full grid + 16k confirmations), conservative maker on Kalshi's tape with its maker "
+         "fee, 2c quotes, only in markets with $400+ traded in the prior 24 h. Robust in both seasons (held-out rule, "
+         "maker noise floor 350) and confirmed at 16k sims: 2026 +490 (Sharpe 0.62, max DD 499; +1,360 vs Kalshi "
+         "baseline, +609 vs C on Kalshi; 16k +453), 2025 +855 (1.53, 309; +1,250 vs baseline, +170 vs C; 16k +933).")
 PROFILES = {
     "A": dict(name="A · core taker (update)", strategy="update",
               settings={"variant": "gridq+pretrain+reset", "min_edge": 0.10, "min_edge_h2h": 0.05,
