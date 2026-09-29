@@ -221,7 +221,7 @@ def sync(session, conn, year=2026, include_closed=False, new=None, sport="f1", t
         comp = session.scalars(select(m.Competition).filter_by(code="f1_wdc")).one()
         cat = session.scalars(select(m.Category).filter_by(competition_id=comp.id, code="DRV")).one()
         R = Resolver(conn, year)
-        events = _events(year if include_closed else None) if tags is None else _events(year if include_closed else None, tuple(tags))
+        events = _events(year if include_closed else None, tuple(tags) if tags else TAGS)
     now = datetime.now(timezone.utc)
     stats = dict(events=0, links=0, modeled=0, unmatched=0, new=0)
     for slug, ev in events.items():
@@ -240,8 +240,8 @@ def sync(session, conn, year=2026, include_closed=False, new=None, sport="f1", t
             closed = bool(mk.get("closed"))
             # which outcome tokens to link, and to whom
             targets = []   # (token_index, athlete_id, params, outcome_label)
-            if tape:       # every outcome token, unlinked to any athlete or race
-                targets = [(i, None, None, o) for i, o in enumerate(outcomes)] or [(0, None, None, "Yes")]
+            if tape:       # the first outcome token, as F1's unmodeled markets: no athlete, no race
+                targets = [(0, None, None, outcomes[0] if outcomes else "Yes")]
             elif kind == "race_h2h" and len(outcomes) == 2:
                 a, b = R.driver(outcomes[0]), R.driver(outcomes[1])
                 targets = [(0, a, {"opponent_id": b}, outcomes[0]), (1, b, {"opponent_id": a}, outcomes[1])]
@@ -311,10 +311,10 @@ CLOB = "https://clob.polymarket.com"
 def _sport_where(event_slugs, sport):
     """(SQL condition, params) selecting Polymarket links: of the given events, else of `sport`'s competition."""
     if event_slugs:
-        return f"ml.event_slug = ANY(:s)", dict(s=list(event_slugs))
+        return "ml.event_slug = ANY(:s)", dict(s=list(event_slugs))
     if not sport:
         raise ValueError("give event slugs or a sport")
-    return f"co.code = :c", dict(c=sports.load(sport)["competition"]["code"])
+    return "co.code = :c", dict(c=sports.load(sport)["competition"]["code"])
 
 
 def fetch_history(session, conn, event_slugs, start, end, fidelity=60, tokens=None, sport=None):
