@@ -12,7 +12,7 @@ import pandas as pd
 
 from racinglines.db import reads as data
 from racinglines.markets import private_book as house
-from racinglines.markets.venues import SPORT_NAME, SPORT_ORDER, event_matrix, season_matrix, venue_summary
+from racinglines.markets.venues import SPORT_NAME, SPORT_ORDER, event_matrix, exchange_breakdown, season_matrix, venue_summary
 
 
 def _countdown(d):
@@ -78,24 +78,41 @@ def recent_results(conn, competition_id, n=3):
 
 
 def board(conn, maker_id):
+    from racinglines import exchanges as EX
+    from racinglines import sports as SP
     from racinglines.markets import alerts
     fresh = list(alerts.new_links(conn).values())          # race_id (or None) per new token
+    forecasts = {r["competition"]: r for r in data.latest_forecasts(conn).to_dict("records")}
+    exch_by_comp = {}
+    for b in exchange_breakdown(conn):
+        exch_by_comp.setdefault(b["competition"], []).append(b)
     sports = []
-    for run in data.latest_forecasts(conn).to_dict("records"):
-        comp_id = int(data.q(conn, "SELECT id FROM competitions WHERE code = :c", c=run["competition"])["id"].iloc[0])
-        targets = data.run_race_targets(conn, run["id"])
-        targets = targets[targets["race_id"].notna() & ~targets["target"].astype(str).str.startswith("backtest:")]
-        upcoming = [dict(_card(conn, int(r), maker_id), new=fresh.count(int(r))) for r in targets["race_id"].head(3)]
-        later = [dict(title=f"{t['venue']} GP" if run["competition"] == "f1_wdc" else t["venue"], event_id=t["event_id"],
-                      race_id=int(t["race_id"]), date=t["start_date"], new=fresh.count(int(t["race_id"]))) for t in targets.iloc[3:].to_dict("records")]
-        s_info, s_pricing, s_df = season_matrix(conn, run["competition"], maker_id)
-        from racinglines.web.views import latest_season_strategy
-        season = dict(new=fresh.count(None), info=s_info, top=_top(s_df, "champion"), venues=venue_summary(s_df), mine=_mine(s_df),
-                      outcomes=len(s_df), constructors=_top(s_df, "constructors_champion", 2),
-                      strategy=latest_season_strategy(conn, run["competition"]))
-        sports.append(dict(code=run["competition"], name=SPORT_NAME.get(run["competition"], run["competition_name"]),
-                           run=run, upcoming=upcoming, later=later, season=season,
-                           recent=recent_results(conn, comp_id)))
+    for schema in sorted(map(SP.load, SP.SPORT_CODES), key=lambda s: s["sport"]["display_order"]):
+        code, sport_code = schema["competition"]["code"], schema["sport"]["code"]
+        tape = schema["sport"].get("model_family", "none") == "none"
+        run, exch = forecasts.get(code), exch_by_comp.get(code, [])
+        if run is None and not exch:
+            continue                                     # nothing to show yet: no forecast, no linked market
+        for b in exch:                                    # where "N markets on Kalshi" etc. links to
+            b["url"] = (f"/markets/tapes#tapes-{sport_code}-{b['exchange']}" if tape
+                        else f"/markets/{b['exchange']}" if b["exchange"] in ("polymarket", "kalshi") or b["exchange"] in EX.CODES
+                        else None)
+        upcoming, later, season, recent = [], [], None, []
+        if run:
+            comp_id = int(data.q(conn, "SELECT id FROM competitions WHERE code = :c", c=code)["id"].iloc[0])
+            targets = data.run_race_targets(conn, run["id"])
+            targets = targets[targets["race_id"].notna() & ~targets["target"].astype(str).str.startswith("backtest:")]
+            upcoming = [dict(_card(conn, int(r), maker_id), new=fresh.count(int(r))) for r in targets["race_id"].head(3)]
+            later = [dict(title=f"{t['venue']} GP" if code == "f1_wdc" else t["venue"], event_id=t["event_id"],
+                          race_id=int(t["race_id"]), date=t["start_date"], new=fresh.count(int(t["race_id"]))) for t in targets.iloc[3:].to_dict("records")]
+            s_info, s_pricing, s_df = season_matrix(conn, code, maker_id)
+            from racinglines.web.views import latest_season_strategy
+            season = dict(new=fresh.count(None), info=s_info, top=_top(s_df, "champion"), venues=venue_summary(s_df), mine=_mine(s_df),
+                          outcomes=len(s_df), constructors=_top(s_df, "constructors_champion", 2),
+                          strategy=latest_season_strategy(conn, code))
+            recent = recent_results(conn, comp_id)
+        sports.append(dict(code=code, name=SPORT_NAME.get(code, schema["sport"]["name"]), run=run, tape=tape,
+                           upcoming=upcoming, later=later, season=season, recent=recent, exchanges=exch))
     sports.sort(key=lambda s: SPORT_ORDER.get(s["code"], 9))
     return sports
 

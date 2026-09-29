@@ -13,7 +13,9 @@
 </div>
 
 {% for s in sports %}
-<div class="sport"><h2>{{ s.name }}</h2><span class="muted">live prices from run <a href="/lab/runs/{{ s.run.id }}">#{{ s.run.id }}</a> · {{ s.run.created_at|fmt }}</span></div>
+<details class="card" data-remember="markets:sport:{{ s.code }}"{% if s.run or loop.first %} open{% endif %}>
+<summary><h2 style="display:inline-block;margin:0">{{ s.name }}</h2> <span class="sum">{% if s.run %}live prices from run <a href="/lab/runs/{{ s.run.id }}">#{{ s.run.id }}</a> · {{ s.run.created_at|fmt }}{% else %}market data only · no model{% endif %}</span></summary>
+{% if s.run %}
 <div class="cards">
   {% for u in s.upcoming %}
   <div class="ecard">
@@ -46,6 +48,22 @@
   Winner <b>{{ r.winner }}</b>{% if r.our is not none %} · we had <b>{{ pct(r.our) }}</b>{% endif %}{% if r.pm is not none %} · Polymarket {{ pct(r.pm) }}{% endif %}{% if kalshi and r.kalshi is not none %} · Kalshi {{ pct(r.kalshi) }}{% endif %}
   <div class="legend">{{ r.source }}{% if r.diag %} · <a href="/lab/diagnostics/{{ r.diag }}">diagnostic →</a>{% endif %}</div>
 </div>{% endfor %}</div></details>{% endif %}
+{% endif %}
+{% if s.exchanges %}
+<div class="legend mt">Exchange data{% if not s.run %} (no model: market data only){% endif %}</div>
+<div class="scroll" data-rows="8"><table>
+<thead><tr><th class="l">Exchange</th><th>Markets</th><th>Open</th><th>Volume</th><th>Trades</th><th>Price points</th><th>Books</th><th>Synced</th></tr></thead>
+<tbody>{% for b in s.exchanges %}<tr>
+<td class="l">{% if b.url %}<a href="{{ b.url }}">{{ b.exchange_name }}</a>{% else %}{{ b.exchange_name }}{% endif %}</td>
+<td>{{ b.markets }}</td><td class="{{ 'muted' if not b.open }}">{{ b.open }}</td><td>{{ "{:,.0f}".format(b.volume) }}</td>
+<td class="{{ 'good' if b.trades else 'muted' }}">{{ "{:,}".format(b.trades) }}</td>
+<td class="{{ 'good' if b.prices else 'muted' }}">{{ "{:,}".format(b.prices) }}</td>
+<td class="{{ 'good' if b.books else 'muted' }}">{{ "{:,}".format(b.books) }}</td>
+<td>{{ b.synced|fmt }}</td>
+</tr>{% endfor %}</tbody>
+</table></div>
+{% endif %}
+</details>
 {% endfor %}
 {% if disagree %}<details class="card" data-remember="markets:disagree" open><summary><h3>Cross-venue disagreement</h3><span class="sum">{{ disagree.n_above }} of {{ disagree.rows|length }} outcomes above fees · last tick {{ disagree.last|fmt }} UTC</span></summary>
 <p class="legend">Polymarket vs Kalshi on every outcome listed on both, at the log's latest tick (<code>racinglines markets disagree</code>). Gap = Kalshi mid − Polymarket mid; net = |gap| − both taker fees; edge = the better taker trade vs our fair, net of fees. Greyed rows: a venue's tape shows nothing traded in the prior 24 h, so the gap is on paper.</p>
@@ -62,5 +80,27 @@
 </tr>{% endfor %}</tbody></table></div>
 {% if disagree.days %}<div class="legend">Last {{ disagree.window }} days, liquid rows above fees: {% for d in disagree.days %}{{ d.day }} {{ d.above_fees }}/{{ d.liquid }}{{ " · " if not loop.last }}{% endfor %}</div>{% endif %}
 </details>{% endif %}
+<details class="card" data-remember="markets:calendar" open>
+<summary><h3>Calendar</h3><span class="sum">{{ calendar|length }} events across every sport and venue</span></summary>
+<p class="legend">Every race weekend (modeled sports) and every recorded exchange event (tape-only sports), newest first. A tape-only sport has no single cross-venue event, so each exchange's own listing is its own row.</p>
+<div data-calendar data-rows="25">
+<div class="tt">
+<select data-cal-filter="sport" aria-label="Filter by sport"><option value="">All sports</option>{% for code, name in cal_sports %}<option value="{{ code }}">{{ name }}</option>{% endfor %}</select>
+<select data-cal-filter="exchange" aria-label="Filter by exchange"><option value="">All exchanges</option>{% for x in cal_exchanges %}<option value="{{ x }}">{{ x }}</option>{% endfor %}</select>
+<input type="search" data-cal-filter="q" placeholder="Filter by name" aria-label="Filter by name">
+<span class="legend" data-cal-count></span>
+<button type="button" class="link" data-cal-more hidden>Show all {{ calendar|length }}</button>
+</div>
+<div class="scroll"><table>
+<thead><tr><th>Date</th><th class="l">Sport</th><th class="l">Event</th><th>Status</th><th class="l">Exchanges</th></tr></thead>
+<tbody>{% for r in calendar %}<tr data-sport="{{ r.sport }}" data-exchange="{{ r.exchanges|join(' ') }}">
+<td>{{ r.date|fmt if r.date else "–" }}</td><td class="l">{{ r.sport_name }}</td>
+<td class="l">{% if r.url %}<a href="{{ r.url }}">{{ r.title }}</a>{% else %}{{ r.title }}{% endif %}</td>
+<td>{{ r.status or "–" }}</td>
+<td class="l">{% for x in r.exchanges %}<span class="pill live">{{ x }}</span> {% else %}<span class="muted">none</span>{% endfor %}</td>
+</tr>{% endfor %}</tbody>
+</table></div>
+</div>
+</details>
 <p class="legend mt">Browse <a href="/markets/polymarket">all Polymarket markets</a> ·{% if kalshi %} <a href="/markets/kalshi">all Kalshi markets</a> ·{% endif %}{% for v in schema_exchanges %} <a href="/markets/{{ v.code }}">all {{ v.name }} markets</a> ·{% endfor %}{% if tapes %} <a href="/markets/tapes">recorded tapes</a> ·{% endif %} <a href="/events">all events</a> · <a href="/athletes">all athletes</a>. Bars: our fair probability; the orange tick is the exchange price.</p>
 {% endblock %}

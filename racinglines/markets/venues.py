@@ -348,12 +348,11 @@ def tape_sports():
     return [s for s in _SCHEMAS if s["sport"].get("model_family", "none") == "none"]
 
 
-def tape_summary(conn):
-    """RACINGLINES_TAPES=1: the tape-only sports' markets as market data, one block per sport x exchange, one row
-    per exchange event: how many markets are linked (open / closed), the exchange's volume, and what has been
-    recorded for them (trades, price points, book snapshots, with the last timestamp of each). Every venue with a
-    link counts, whether or not its own switch is on: the tape is data, not a venue on the board."""
-    comps = {s["competition"]["code"]: s for s in tape_sports()}
+def exchange_breakdown(conn, comps=None):
+    """One block per sport x exchange: market links and what's been recorded on them. `comps`: {competition
+    code: schema} to include (default every sport). Used by /markets/tapes (tape-only sports only) and the
+    Markets board (every sport, alongside its own venue chips)."""
+    comps = comps if comps is not None else {s["competition"]["code"]: s for s in _SCHEMAS}
     if not comps:
         return []
     links = data.q(conn, """
@@ -387,9 +386,47 @@ def tape_summary(conn):
             events.append(row)
         s = comps[comp]
         out.append(dict(sport=s["sport"]["code"], sport_name=s["competition"].get("display_name", s["sport"]["name"]),
-                        exchange=exch, exchange_name=names.get(exch, exch), events=events, markets=int(len(g)),
-                        open=int((~g["closed"]).sum()), trades=sum(e["trades"] for e in events),
+                        competition=comp, exchange=exch, exchange_name=names.get(exch, exch), events=events,
+                        markets=int(len(g)), open=int((~g["closed"]).sum()), trades=sum(e["trades"] for e in events),
                         prices=sum(e["prices"] for e in events), books=sum(e["books"] for e in events),
-                        synced=g["synced_at"].max()))
-    out.sort(key=lambda b: (SPORT_ORDER.get(b["sport"], 9), b["exchange"]))
+                        volume=sum(e["volume"] for e in events), synced=g["synced_at"].max()))
+    out.sort(key=lambda b: (SPORT_ORDER.get(b["competition"], 9), b["exchange"]))
     return out
+
+
+def tape_summary(conn):
+    """RACINGLINES_TAPES=1: the tape-only sports' markets as market data, one block per sport x exchange, one row
+    per exchange event: how many markets are linked (open / closed), the exchange's volume, and what has been
+    recorded for them (trades, price points, book snapshots, with the last timestamp of each). Every venue with a
+    link counts, whether or not its own switch is on: the tape is data, not a venue on the board."""
+    return exchange_breakdown(conn, {s["competition"]["code"]: s for s in tape_sports()})
+
+
+def calendar_rows(conn):
+    """One row per real event (modeled sports, from the races calendar) or per exchange-native event (tape-only
+    sports, which have no race in our tables: each exchange's own event, from its market_links), across every
+    sport, for the Markets page's calendar: date, sport, title, status and which exchanges have data for it.
+    Sorted newest / soonest first (unlike a race weekend, a tape-only sport's markets have no single canonical
+    date across venues, so each exchange's event is its own row)."""
+    rows = []
+    ev = data.q(conn, """
+        SELECT ra.id AS race_id, e.start_date, e.status, e.name AS event_name, co.code AS competition
+        FROM races ra JOIN events e ON e.id = ra.event_id JOIN seasons s ON s.id = e.season_id
+        JOIN competitions co ON co.id = s.competition_id ORDER BY e.start_date""")
+    if len(ev):
+        rids = ev["race_id"].dropna().astype(int).tolist()
+        exch = data.q(conn, "SELECT DISTINCT race_id, exchange FROM market_links WHERE race_id = ANY(:r)", r=rids) if rids else ev.iloc[0:0]
+        by_race = {}
+        for rid, ex in zip(exch["race_id"], exch["exchange"]):
+            by_race.setdefault(int(rid), set()).add(ex)
+        for r in ev.to_dict("records"):
+            rows.append(dict(sport=r["competition"], sport_name=SPORT_NAME.get(r["competition"], r["competition"]),
+                             date=r["start_date"], title=r["event_name"], status=r["status"],
+                             exchanges=sorted(by_race.get(int(r["race_id"]), [])), url=f"/races/{int(r['race_id'])}"))
+    for b in exchange_breakdown(conn, {s["competition"]["code"]: s for s in tape_sports()}):
+        for e in b["events"]:
+            rows.append(dict(sport=b["competition"], sport_name=b["sport_name"], date=e["end_date"],
+                             title=e["title"], status="open" if e["open"] else "settled", exchanges=[b["exchange"]],
+                             url=f"/markets/tapes#tapes-{b['sport']}-{b['exchange']}"))
+    rows.sort(key=lambda r: (r["date"] is None, r["date"]), reverse=True)
+    return rows

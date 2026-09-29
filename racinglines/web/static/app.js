@@ -78,6 +78,15 @@
     });
   }
 
+  // --- a link to #id inside (or on) a closed <details> opens it and scrolls it into view ---
+  function openHashDetails() {
+    const el = location.hash && document.getElementById(location.hash.slice(1));
+    if (!el) return;
+    const d = el.matches("details") ? el : el.closest("details");
+    if (d && !d.open) { d.open = true; el.scrollIntoView({block: "start"}); }
+  }
+  window.addEventListener("hashchange", openHashDetails);
+
   // --- table tools: <div class="scroll" data-rows="12" data-filter="Driver or team"> caps a long table at N rows
   //     behind a "Show all" button and, with data-filter, adds a box that filters the rows by their text ---
   function tableInit(root) {
@@ -115,11 +124,42 @@
       apply();
     });
   }
-  function initAll(root) { tabsInit(root); detailsInit(root); tableInit(root); }
+
+  // --- calendar: <div data-calendar data-rows="25"> with <select data-cal-filter="sport|exchange"> and
+  //     <input data-cal-filter="q"> above a table whose <tbody tr> carry data-sport / data-exchange (space-
+  //     separated codes). Every filter must match (AND); a row cap behind "Show all", like tableInit's. ---
+  function calendarInit(root) {
+    root.querySelectorAll("[data-calendar]").forEach(box => {
+      if (box.dataset.tt) return;
+      box.dataset.tt = 1;
+      const rows = [...box.querySelectorAll("tbody tr")], cap = +box.dataset.rows || 0;
+      const sport = box.querySelector('[data-cal-filter="sport"]'), exch = box.querySelector('[data-cal-filter="exchange"]'),
+            q = box.querySelector('[data-cal-filter="q"]'), count = box.querySelector("[data-cal-count]"),
+            more = box.querySelector("[data-cal-more]");
+      let all = !(cap && rows.length > cap);
+      function apply() {
+        const s = sport ? sport.value : "", x = exch ? exch.value : "", qq = q ? q.value.trim().toLowerCase() : "";
+        let matched = 0;
+        rows.forEach(r => {
+          const ok = (!s || r.dataset.sport === s) && (!x || (r.dataset.exchange || "").split(" ").includes(x))
+                     && (!qq || r.textContent.toLowerCase().includes(qq));
+          if (ok) matched++;
+          r.hidden = !ok || (!all && matched > cap);
+        });
+        if (more) more.hidden = all || !(cap && matched > cap);
+        if (count) count.textContent = matched === rows.length ? `${rows.length} events` : `${matched} of ${rows.length} events`;
+      }
+      [sport, exch, q].forEach(el => el && el.addEventListener("input", apply));
+      if (more) more.addEventListener("click", () => { all = true; apply(); });
+      apply();
+    });
+  }
+  function initAll(root) { tabsInit(root); detailsInit(root); tableInit(root); calendarInit(root); }
   document.addEventListener("htmx:afterSwap", e => initAll(e.detail.target));
 
   document.addEventListener("DOMContentLoaded", () => {
   initAll(document);
+  openHashDetails();
   // --- Lab: sections open on demand (HTMX loads them on their "open" event), remembered per browser ---
   const lab = document.getElementById("lab");
   if (lab) {
