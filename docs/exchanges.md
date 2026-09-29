@@ -27,7 +27,7 @@ A new venue is a new file plus, if the sport is new to it, a `[sports.*]` block.
 
 `exchanges/og.toml`, built from real responses captured on 2026-09-29 (`tests/fixtures/market/og_*.json`, described
 in `og_README.txt`). Public market data needs no key. The venue is **off by default**: set
-`RACINGLINES_OG_VENUE=1` to show an OG.com column next to Polymarket and Kalshi on the season board.
+`RACINGLINES_OG_VENUE=1` to show an OG.com column next to Polymarket and Kalshi on the board, race and season pages, and a `/markets/og` list page with the fair-price indicator (below). Each schema exchange gets its own `/markets/<code>` page from its TOML file, registered at import, so a new venue needs no route code. `RACINGLINES_TAPES=1` adds `/markets/tapes`, the recorded tape-only sports' markets (NASCAR, MotoGP, IndyCar) per exchange event, market data only.
 
 What it lists of ours: the F1 season futures (Drivers' and Constructors' champion, 20 contracts, expiring
 2027-01-31) become linked, priced markets; the NASCAR Cup Champion contracts are tape-only. Per-Grand-Prix events
