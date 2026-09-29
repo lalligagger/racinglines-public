@@ -18,7 +18,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from racinglines import sports
+from racinglines import exchanges, sports
 from racinglines.db import reads as data
 from racinglines.markets import private_book as house
 
@@ -36,10 +36,23 @@ class Venue:
 # and race pages, /markets/kalshi, the maker's Kalshi replay (`f1 demo-history --venue kalshi`, paper_positions.venue
 # = 'kalshi') on Positions and Strategy, and the Lab's Kalshi replay. RACINGLINES_KALSHI_VENUE=0 hides all of it
 # again: Kalshi shows as "soon" and its rows stay out of every page.
+def schema_venues():
+    """The venues of the exchange schemas whose switch is on (none by default)."""
+    out = []
+    for code in exchanges.CODES:
+        if exchanges.enabled(code):
+            e = exchanges.load(code)["exchange"]
+            out.append(Venue(code, e["name"], "live", e.get("kind", "exchange"), e.get("url", "")))
+    return out
+
+
 KALSHI_VENUE = os.environ.get("RACINGLINES_KALSHI_VENUE", "1") != "0"
 VENUES = [
     Venue("polymarket", "Polymarket", "live", "exchange", "https://polymarket.com/event/{slug}"),
     Venue("kalshi", "Kalshi", "live" if KALSHI_VENUE else "soon", "exchange", "https://kalshi.com/markets/{slug}"),
+    # exchanges defined as schemas (exchanges/<code>.toml, markets/exchange_driver.py): each shows only with its own
+    # switch on (its schema's [exchange] switch, off by default), so with every switch off the app is unchanged
+    *schema_venues(),
     Venue("private", "Private book", "live", "private"),
 ]
 EXCHANGES = [v for v in VENUES if v.kind == "exchange"]

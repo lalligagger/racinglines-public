@@ -27,6 +27,7 @@ nav:
       - Market making: market-making.md
       - Paper trading: paper-trading.md
       - Kalshi history: kalshi-history.md
+      - Exchanges as schemas (OG.com): exchanges.md
   - Downhill:
       - Downhill model: model.md
       - Downhill evaluation: evaluation.md
