@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% from "_macros.html" import bar, pct, venue_chips, new_badge, paper_banner, page_head %}
 {% block title %}Markets{% endblock %}
 {% block content %}
-{% call page_head("Markets", "Every sport we price: what's next, what's live on each venue, and how we did lately.") %}<a href="/markets/polymarket">All Polymarket markets →</a>{% if kalshi %} <a href="/markets/kalshi">All Kalshi markets →</a>{% endif %}{% endcall %}
+{% call page_head("Markets", "Every sport we price: what's next, what's live on each venue, and how we did lately.") %}<a href="/markets/polymarket">All Polymarket markets →</a>{% if kalshi %} <a href="/markets/kalshi">All Kalshi markets →</a>{% endif %}{% for v in schema_exchanges %} <a href="/markets/{{ v.code }}">All {{ v.name }} markets →</a>{% endfor %}{% if tapes %} <a href="/markets/tapes">Recorded tapes →</a>{% endif %}{% endcall %}
 {{ paper_banner(signals_nav) }}
 
 <div class="kpis">
@@ -62,5 +62,5 @@
 </tr>{% endfor %}</tbody></table></div>
 {% if disagree.days %}<div class="legend">Last {{ disagree.window }} days, liquid rows above fees: {% for d in disagree.days %}{{ d.day }} {{ d.above_fees }}/{{ d.liquid }}{{ " · " if not loop.last }}{% endfor %}</div>{% endif %}
 </details>{% endif %}
-<p class="legend mt">Browse <a href="/markets/polymarket">all Polymarket markets</a> ·{% if kalshi %} <a href="/markets/kalshi">all Kalshi markets</a> ·{% endif %} <a href="/events">all events</a> · <a href="/athletes">all athletes</a>. Bars: our fair probability; the orange tick is the exchange price.</p>
+<p class="legend mt">Browse <a href="/markets/polymarket">all Polymarket markets</a> ·{% if kalshi %} <a href="/markets/kalshi">all Kalshi markets</a> ·{% endif %}{% for v in schema_exchanges %} <a href="/markets/{{ v.code }}">all {{ v.name }} markets</a> ·{% endfor %}{% if tapes %} <a href="/markets/tapes">recorded tapes</a> ·{% endif %} <a href="/events">all events</a> · <a href="/athletes">all athletes</a>. Bars: our fair probability; the orange tick is the exchange price.</p>
 {% endblock %}

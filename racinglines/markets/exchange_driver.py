@@ -356,6 +356,7 @@ def fair_report(conn, code, sport="f1"):
     Returns a DataFrame sorted by the larger edge."""
     from racinglines import sports
     from racinglines.db import reads as data
+    from racinglines.markets import venues
     fee = EX.load(code)["exchange"].get("taker_fee_per_contract", 0.0)
     links = data.q(conn, """SELECT l.* FROM market_links l JOIN competitions co ON co.id = l.competition_id
                             WHERE l.exchange = :x AND co.code = :c AND NOT l.closed AND l.prediction <> 'unmodeled'
@@ -368,13 +369,10 @@ def fair_report(conn, code, sport="f1"):
         bid, ask, mid = link["last_bid"], link["last_ask"], link["last_price"]
         bid = None if bid is None or pd.isna(bid) else float(bid)
         ask = None if ask is None or pd.isna(ask) else float(ask)
-        ey = fair - ask - fee if ask is not None else None
-        en = bid - fair - fee if bid is not None else None
-        best = max((e for e in (ey, en) if e is not None), default=None)
-        call = "" if best is None or best <= 0 else ("YES" if ey == best else "NO")
+        e = venues.net_edge(fee, fair, bid, ask)                # the same arithmetic the app shows
         out.append(dict(event=link["event_title"], subject=link["group_title"], kind=link["prediction"], fair=fair,
-                        bid=bid, ask=ask, mid=None if mid is None or pd.isna(mid) else float(mid), edge_yes=ey, edge_no=en,
-                        call=call, token=link["token_id"], run_id=run))
+                        bid=bid, ask=ask, mid=None if mid is None or pd.isna(mid) else float(mid), edge_yes=e["edge_yes"],
+                        edge_no=e["edge_no"], call=e["call"], token=link["token_id"], run_id=run))
     df = pd.DataFrame(out)
     if len(df):
         df["best"] = df[["edge_yes", "edge_no"]].max(axis=1)

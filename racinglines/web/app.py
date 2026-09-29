@@ -31,6 +31,7 @@ from racinglines.db import models as m  # noqa: E402
 from racinglines.db.config import get_engine, get_session  # noqa: E402
 
 from racinglines.db import reads as data  # noqa: E402
+from racinglines import exchanges, sports  # noqa: E402
 from racinglines.markets.polymarket import trade as polymarket
 
 HERE = Path(__file__).resolve().parent
@@ -271,6 +272,8 @@ def render(request, name, **ctx):
     ctx.setdefault("trading", polymarket.TradingConfig.from_env())
     ctx.setdefault("user", getattr(request.state, "user", None))
     ctx.setdefault("signals_nav", _signals_nav(ctx["user"]))
+    ctx.setdefault("schema_exchanges", V.SCHEMA_EXCHANGES)      # venues defined as schemas whose switch is on (none by default)
+    ctx.setdefault("tapes", V.TAPES)                            # RACINGLINES_TAPES=1: the tape-only sports' market data
     try:                                               # a live event (pipelines/live.py): the Live tab, green while
         from racinglines.pipelines.live import state      # it runs, grey once it is over (a replay)
         ctx.setdefault("live_nav", state() if ctx["user"] else None)
@@ -961,10 +964,16 @@ def _exchange_board(request, c, user, exchange, event, show, closed, spread_pct,
     fresh = alerts.new_links(c)
     cache, out = {}, []
     spread = spread_pct / 100
+    schema = exchange in exchanges.CODES                  # a schema venue: the edge is net of its taker fee, per side
+    fee = V.schema_fee(exchange) if schema else 0.0
     for link in links.to_dict("records"):
         fair, _ = data.model_prob(c, link, cache)
         mid = link["last_price"] if link["last_price"] is not None and not pd.isna(link["last_price"]) else None
         tick = link["tick_size"] or 0.01
+        if schema:
+            bid = None if link["last_bid"] is None or pd.isna(link["last_bid"]) else float(link["last_bid"])
+            ask = None if link["last_ask"] is None or pd.isna(link["last_ask"]) else float(link["last_ask"])
+            link.update(V.net_edge(fee, fair, bid, ask) if fair is not None else dict(edge_yes=None, edge_no=None, best=None, call=""))
         link.update(fair=fair, edge=(fair - mid) if fair is not None and mid is not None else None,
                     q_bid=(math.floor(round((fair - spread / 2) / tick, 6)) * tick) if fair is not None else None,
                     q_ask=(math.ceil(round((fair + spread / 2) / tick, 6)) * tick) if fair is not None else None,
@@ -981,6 +990,11 @@ def _exchange_board(request, c, user, exchange, event, show, closed, spread_pct,
                            modeled=int(g["fair"].notna().sum()), new=int(g["new"].sum()), rows=rows(g.sort_values("last_price", ascending=False,
                                                                                          na_position="last"))))
     synced = data.q(c, "SELECT max(synced_at) AS t FROM market_links WHERE exchange = :x", x=exchange)["t"].iloc[0]
+    if schema:
+        venue = next(v for v in V.SCHEMA_EXCHANGES if v.code == exchange)
+        return render(request, "exchange.html", events=events, show=show, closed=closed, spread_pct=spread_pct, msg=msg,
+                      synced=synced, event=event, venue=venue, fee=fee,
+                      sports=[V.SPORT_NAME.get(sports.load(x)["competition"]["code"], x) for x in exchanges.sports(exchange)])
     if exchange == "kalshi":
         return render(request, "kalshi.html", events=events, show=show, closed=closed, spread_pct=spread_pct, msg=msg,
                       synced=synced, event=event, url=next(v.url for v in V.EXCHANGES if v.code == "kalshi"))
@@ -1052,6 +1066,64 @@ def kalshi_sync(request: Request, c=Depends(conn), user=allow("admin", "maker"))
         stats, msg = None, f"Error: couldn't reach Kalshi ({type(e).__name__})."
     audit(request, "kalshi_sync", stats=str(stats))
     return RedirectResponse(f"/markets/kalshi?msg={msg}", status_code=303)
+
+
+# Exchanges defined as schemas (exchanges/<code>.toml, e.g. OG.com at /markets/og): each with its own switch
+# (RACINGLINES_OG_VENUE=1, off by default). The same list and mirror as Kalshi's, read-only, plus the fair-price
+# indicator net of the fee (`racinglines markets --exchange <code> fair`). One route per schema code, registered at
+# import (no wildcard, so /markets/linked, /markets/tapes and the legacy /markets/{id} redirect keep their paths);
+# with every switch off each is a 404 and nothing else changes.
+def _schema_routes(code):
+    def on():
+        if not exchanges.enabled(code):
+            raise HTTPException(404)
+
+    @app.get(f"/markets/{code}", response_class=HTMLResponse, dependencies=[Depends(on)], name=f"{code}_board")
+    def board(request: Request, event: str = "", show: str = "modeled", closed: int = 0, spread_pct: float = 4.0,
+              msg: str = "", c=Depends(conn), user=allow("admin", "maker")):
+        return _exchange_board(request, c, user, code, event, show, closed, spread_pct, msg)
+
+    @app.post(f"/markets/{code}/mirror", dependencies=[Depends(on), Depends(check_csrf)], name=f"{code}_mirror")
+    def mirror(request: Request, event_slug: str = Form(...), spread_pct: float = Form(4.0), c=Depends(conn),
+               user=allow("admin", "maker")):
+        with get_session() as s:
+            created, repriced, skipped = house.mirror_event(s, c, event_slug, user["id"], spread_pct / 100)
+        audit(request, f"{code}_mirror", event_slug=event_slug, spread=spread_pct / 100, created=created, repriced=repriced,
+              skipped=skipped)
+        msg = f"Mirrored into your book: {created} new, {repriced} repriced, {skipped} without a model price."
+        return RedirectResponse(f"/markets/{code}?spread_pct={spread_pct}&msg={msg}", status_code=303)
+
+    @app.post(f"/markets/{code}/sync", dependencies=[Depends(on), Depends(check_csrf)], name=f"{code}_sync")
+    def sync(request: Request, c=Depends(conn), user=allow("admin", "maker")):
+        """Every sport the schema lists (exchanges/<code>.toml [sports.*]), the way the CLI syncs one at a time."""
+        from racinglines.markets import exchange_driver as D
+        stats, parts = {}, []
+        try:
+            with get_session() as s:
+                for sport in exchanges.sports(code):
+                    stats[sport] = D.sync(s, c, code, sport, date.today().year)
+                    parts.append(f"{sport}: {stats[sport].get('links', 0)} markets ({stats[sport].get('modeled', 0)} priced by the model)")
+            msg = "Synced " + "; ".join(parts) + "."
+        except Exception as e:  # noqa: BLE001  (the exchange unreachable from this machine)
+            stats, msg = None, f"Error: couldn't reach {code} ({type(e).__name__})."
+        audit(request, f"{code}_sync", stats=str(stats))
+        return RedirectResponse(f"/markets/{code}?msg={msg}", status_code=303)
+
+
+for _code in exchanges.CODES:
+    _schema_routes(_code)
+
+
+# Tapes (RACINGLINES_TAPES=1, off by default): the tape-only sports' markets as market data, no model and no P&L
+def _tapes_on():
+    if not V.TAPES:
+        raise HTTPException(404)
+
+
+@app.get("/markets/tapes", response_class=HTMLResponse, dependencies=[Depends(_tapes_on)])
+def tapes_page(request: Request, c=Depends(conn), user=allow("admin", "maker")):
+    return render(request, "tapes.html", blocks=V.tape_summary(c), sports=[s["competition"].get("display_name", s["sport"]["name"])
+                                                                            for s in V.tape_sports()])
 
 
 # ---------------------------------------------------------------------------

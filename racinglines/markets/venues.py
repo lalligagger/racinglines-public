@@ -56,6 +56,26 @@ VENUES = [
     Venue("private", "Private book", "live", "private"),
 ]
 EXCHANGES = [v for v in VENUES if v.kind == "exchange"]
+SCHEMA_EXCHANGES = [v for v in EXCHANGES if v.code in exchanges.CODES]     # the venues defined as schemas that are on
+# RACINGLINES_TAPES=1 (off by default): /markets/tapes lists the tape-only sports' markets (NASCAR, MotoGP, IndyCar on
+# Kalshi; NASCAR on OG.com) as market data: what is linked, what has been recorded. No model, no P&L, no positions.
+TAPES = os.environ.get("RACINGLINES_TAPES", "").lower() in ("1", "true", "yes")
+
+
+def net_edge(fee, fair, bid, ask):
+    """The fair-price indicator (exchange_driver.fair_report, `racinglines markets --exchange <code> fair`), for one
+    quote: edge_yes = fair - ask - fee (buy YES at the ask), edge_no = bid - fair - fee (buy NO at 1 - bid), both net of
+    the exchange's taker fee per contract; `call` is the side with a positive net edge, else "". A one-sided quote
+    gets an edge on its quoted side only; no bid and no ask, no call."""
+    ey = fair - ask - fee if fair is not None and ask is not None else None
+    en = bid - fair - fee if fair is not None and bid is not None else None
+    best = max((e for e in (ey, en) if e is not None), default=None)
+    call = "" if best is None or best <= 0 else ("YES" if ey == best else "NO")
+    return dict(edge_yes=ey, edge_no=en, best=best, call=call)
+
+
+def schema_fee(code):
+    return float(exchanges.load(code)["exchange"].get("taker_fee_per_contract", 0.0)) if code in exchanges.CODES else 0.0
 
 KIND_LABEL = {"race_pole": "Pole position", "race_win": "Win", "race_podium": "Podium", "race_top10": "Top 10", "race_make_final": "Makes the Final",
               "race_h2h": "Head-to-head", "race_constructor_top": "Top-scoring constructor",
@@ -148,10 +168,13 @@ def _exchange_rows(conn, links, cache, run_id):
         seen.add(q)
         k = key(link["prediction"], link["athlete_id"], link["params"])
         fair = data.model_prob(conn, link, cache, run_id=run_id)[0] if link["prediction"] != "unmodeled" else None
-        out.setdefault(k, {})[link["exchange"]] = dict(
+        q = dict(
             bid=_n(link["last_bid"]), ask=_n(link["last_ask"]), mid=_n(link["last_price"]), volume=_n(link["volume"]),
             slug=link["event_slug"], token=link["token_id"], link_id=link["id"], closed=link["closed"],
             question=link["question"], outcome=link["outcome"], fair=fair)
+        if link["exchange"] in exchanges.CODES and fair is not None:      # a schema venue: its fair-price indicator
+            q.update(net_edge(schema_fee(link["exchange"]), fair, q["bid"], q["ask"]))
+        out.setdefault(k, {})[link["exchange"]] = q
     return out
 
 
@@ -317,4 +340,56 @@ def price_series(conn, tokens, start, end, points=120):
     for tok, g in df.groupby("token_id"):
         s = g.set_index("ts")["price"].sort_index().resample(step).last().ffill().dropna()
         out[tok] = list(zip(s.index, s.to_numpy(float)))
+    return out
+
+
+def tape_sports():
+    """The tape-only sports (sports/<code>.toml with model_family = "none"), in display order."""
+    return [s for s in _SCHEMAS if s["sport"].get("model_family", "none") == "none"]
+
+
+def tape_summary(conn):
+    """RACINGLINES_TAPES=1: the tape-only sports' markets as market data, one block per sport x exchange, one row
+    per exchange event: how many markets are linked (open / closed), the exchange's volume, and what has been
+    recorded for them (trades, price points, book snapshots, with the last timestamp of each). Every venue with a
+    link counts, whether or not its own switch is on: the tape is data, not a venue on the board."""
+    comps = {s["competition"]["code"]: s for s in tape_sports()}
+    if not comps:
+        return []
+    links = data.q(conn, """
+        SELECT ml.*, co.code AS competition FROM market_links ml JOIN competitions co ON co.id = ml.competition_id
+        WHERE co.code = ANY(:c) ORDER BY ml.exchange, ml.end_date NULLS LAST, ml.event_title, ml.id""",
+                   c=list(comps))
+    if not len(links):
+        return []
+    toks = list(links["token_id"].unique())
+    rec = {}
+    for name, table in (("trades", "market_trades"), ("prices", "market_price_history"), ("books", "market_book_snapshots")):
+        df = data.q(conn, f"SELECT token_id, count(*) AS n, max(ts) AS last FROM {table} WHERE token_id = ANY(:t) GROUP BY token_id",
+                    t=toks)
+        rec[name] = {r["token_id"]: (int(r["n"]), r["last"]) for r in df.to_dict("records")}
+    names = {v.code: v.name for v in VENUES}
+    for code in exchanges.CODES:                       # a schema venue's name, switch on or off
+        names.setdefault(code, exchanges.load(code)["exchange"]["name"])
+    out = []
+    for (comp, exch), g in links.groupby(["competition", "exchange"], sort=False):
+        events = []
+        for slug, e in g.groupby("event_slug", sort=False, dropna=False):
+            row = dict(slug=slug, title=e["event_title"].iloc[0] or slug, end_date=e["end_date"].max(),
+                       markets=len(e), open=int((~e["closed"]).sum()), synced=e["synced_at"].max(),
+                       volume=float(e.drop_duplicates("market_slug")["volume"].fillna(0).sum()),
+                       last_price=_n(e.sort_values("last_price", ascending=False, na_position="last")["last_price"].iloc[0]),
+                       favourite=e.sort_values("last_price", ascending=False, na_position="last")["outcome"].iloc[0])
+            for name in ("trades", "prices", "books"):
+                hits = [rec[name][t] for t in e["token_id"] if t in rec[name]]
+                row[name] = sum(n for n, _ in hits)
+                row[name + "_last"] = max((t for _, t in hits), default=None)
+            events.append(row)
+        s = comps[comp]
+        out.append(dict(sport=s["sport"]["code"], sport_name=s["competition"].get("display_name", s["sport"]["name"]),
+                        exchange=exch, exchange_name=names.get(exch, exch), events=events, markets=int(len(g)),
+                        open=int((~g["closed"]).sum()), trades=sum(e["trades"] for e in events),
+                        prices=sum(e["prices"] for e in events), books=sum(e["books"] for e in events),
+                        synced=g["synced_at"].max()))
+    out.sort(key=lambda b: (SPORT_ORDER.get(b["sport"], 9), b["exchange"]))
     return out
