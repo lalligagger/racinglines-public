@@ -506,6 +506,10 @@ C makes money on Polymarket's tape and loses on Kalshi's.
       (T1 on Kalshi if it lists, otherwise T3, the private book); the book opens Thu 20:30 PDT.
       Plan: [F1 live test](docs/f1-live-roadmap.md).
 
+- [ ] **Fantasy soft launch (owner, 2026-09-29):** invite-gated F1 fantasy trading (F$ paper money only) from
+      Thu 8 Oct, Singapore (R17), with the VM reliability work before R16. Plan and owner dates:
+      [Fantasy soft launch](docs/fantasy-launch.md); tasks and blocks in the [runbook](docs/fantasy-runbook.md).
+
 **P1 · October (rounds 16–19): first live weekends on real markets**
 
 - [x] **U5** Kalshi sprint markets before Singapore (11 Oct); built in PR #36 behind `RACINGLINES_KALSHI_SPRINTS`, merged. Priced from the race's pole and win odds

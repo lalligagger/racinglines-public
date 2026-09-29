@@ -47,6 +47,10 @@ C makes money on Polymarket's tape and loses on Kalshi's.
       (T1 on Kalshi if it lists, otherwise T3, the private book); the book opens Thu 20:30 PDT.
       Plan: [F1 live test](f1-live-roadmap.md).
 
+- [ ] **Fantasy soft launch (owner, 2026-09-29):** invite-gated F1 fantasy trading (F$ paper money only) from
+      Thu 8 Oct, Singapore (R17), with the VM reliability work before R16. Plan and owner dates:
+      [Fantasy soft launch](fantasy-launch.md); tasks and blocks in the [runbook](fantasy-runbook.md).
+
 **P1 · October (rounds 16–19): first live weekends on real markets**
 
 - [x] **U5** Kalshi sprint markets before Singapore (11 Oct); built in PR #36 behind `RACINGLINES_KALSHI_SPRINTS`, merged. Priced from the race's pole and win odds
@@ -129,6 +133,7 @@ For every F1 weekend, T1 or T3:
 | U8 rules for a cancelled race: Polymarket 50/50 on head-to-heads, Kalshi NO versus void | Before Qatar (29 Nov) | Confirm against each venue's rules text |
 | Greenlight the coverage backlog: tape-only UCI road cycling schema (S), Polymarket tapes for NASCAR, MotoGP and IndyCar (M) | Any time | Cycling first: cheapest, and Kalshi holds the history |
 | Fable for High-tier work in CLAUDE.md, against the session-only no-Fable rule | Next session | Owner's call which wins |
+| Fantasy soft launch decisions DEC-1 to DEC-23 ([Fantasy soft launch](fantasy-launch.md#decisions)) | Batch A Wed 30 Sep 18:00 PDT; B Mon 5 Oct; C Wed 7 Oct; go/no-go Thu 8 Oct 12:00 PDT | Per the [runbook's decision table](fantasy-runbook.md#decisions) |
 
 ## Exchanges
 
