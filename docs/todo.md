@@ -150,9 +150,11 @@ venue with live F1 race markets this year.
       *Done when:* the report lists the gaps above fees for the championship markets, day by day.
 - [ ] Other exchanges, if they list motorsport or cycling markets with real depth, including one for
       downhill (none on Polymarket or Kalshi as of 2026-09).
-- [ ] **OG.com** (Crypto.com's CFTC prediction market, Feb 2026): no public API, no book depth, no history, so
-      no connector is possible today. Scout its F1 / NASCAR / cycling listings by hand once, and check
-      quarterly for an API ([Coverage](coverage.md#ogcom)).
+- [ ] **OG.com** (Crypto.com's CFTC prediction market): a public FCM API exists (no key for market data:
+      book, trades, 1-minute history, WebSocket). It lists only 20 thin F1 season futures, 17 NASCAR and 13
+      SailGP contracts, and keeps about a month of history. A read-only recorder plus the U7 comparison is
+      about M; trading needs FCM onboarding and the owner's API key. Awaiting the owner's go-ahead
+      ([Coverage](coverage.md#ogcom)).
 
 ## Paper trading
 
@@ -275,7 +277,7 @@ local-league plans. As of 2026-09 the ranking is led by exchange depth:
       `KXCYCLINGTEAM`; Polymarket listed the 2026 Tour winner and top 3. A `sports/road_cycling.toml` with
       no model and those series records the tapes through the U9 path, `--include-closed` for the 2026
       grand tours. Effort S. A model is a 2027 question ([Coverage](coverage.md#the-grid)).
-- [ ] **Verify the coverage grid's unverified cells** on the VM or the owner's device: the read-only
+- [ ] **Re-run the coverage probes** (Kalshi and Polymarket counts drift; the remaining ? cells) on the VM or the owner's device: the read-only
       commands in [Coverage](coverage.md#what-to-verify-on-a-device). Effort S.
 - [ ] **P2 · NASCAR data sources** (research, no build): results, qualifying, practice and lap data
       (NASCAR's public feeds, community archives), their terms and history depth; written up in

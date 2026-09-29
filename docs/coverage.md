@@ -14,10 +14,10 @@ The gaps below are roadmap items with effort estimates, not work in progress. No
 default, and no new sweep or connector starts without the owner's say ([Roadmap](todo.md#new-sports)).
 
 **How this was checked.** The repo side (schemas in `sports/*.toml`, `racinglines/markets/venues.py`,
-`markets/kalshi/sync.py`, `live/`, the docs) was read directly. The live-listing side (what each venue
-lists today, OG.com's pages) comes from web search results only: the cloud session cannot reach
-og.com, Kalshi's or Polymarket's APIs, and a device probe was not possible from this thread. Every
-line marked *unverified* needs the one-command checks in [What to verify on a device](#what-to-verify-on-a-device).
+`markets/kalshi/sync.py`, `live/`, the docs) was read directly. The venue side was probed read-only from the
+owner's Mac on 2026-09-29 (unauthenticated GETs against OG.com's, Kalshi's and Polymarket's public
+endpoints), because the cloud session cannot reach them. Counts are a snapshot of that evening. Cells still
+marked **?** were not probed.
 
 ## The venues
 
@@ -25,7 +25,7 @@ line marked *unverified* needs the one-command checks in [What to verify on a de
 |---|---|---|---|---|
 | **Polymarket** | Crypto exchange, CLOB, public Gamma + CLOB APIs, full trade and price history | Yes: `markets sync/record/archive`, 2025–26 F1 history | Yes (paper today; V2 order path built, `POLYMARKET_TRADING_ENABLED` unset) | Our first venue. **Has listed no F1 race since 28 Aug 2026** ([F1 live roadmap](f1-live-roadmap.md#polymarket-has-stopped-listing-f1-races)). Championships still deep |
 | **Kalshi** | CFTC exchange, public REST API with candlesticks and trades, per-market maker fee | Yes: `markets --exchange kalshi`, 2025–26 F1 history ([Kalshi history](kalshi-history.md)) | Yes (paper; `KALSHI_TRADING_ENABLED` unset) | Listed every 2025–26 F1 weekend. The likeliest live venue this autumn |
-| **OG.com** | Crypto.com's US prediction market, launched 3 Feb 2026, CFTC contracts via Crypto.com Derivatives North America (the former Nadex). Sports-first, parlays, $0.02 flat fee per contract, market orders only | **No public API**, no order-book depth or volume shown, no historical data layer (per the 2026 reviews; *unverified* against the site itself) | Not programmatically. Web and app only | Not a connectable venue today. Watch it; a Kalshi-shaped connector is not possible until it publishes an API. See [OG.com](#ogcom) |
+| **OG.com** | Crypto.com's US prediction market, launched 3 Feb 2026, CFTC contracts via Crypto.com Derivatives North America (the former Nadex). Sports-first, parlays, $0.02 flat fee per contract | **Yes, public market data with no key**: the "Crypto.com GEN4 FCM US B2C API" (`api.crypto.com/fcm/v1/public/*`), 50-level book, trade tape, 1-minute bid/ask/last history, WebSocket. History is short: 31 days per call, trades kept about a month | Not without **FCM onboarding** and HMAC-SHA256 request signing (owner is waiting on an API key) | Readable now, tradable later. Its F1, NASCAR and SailGP books are thin. See [OG.com](#ogcom) |
 | **Private book** | Our own simulated pool (`racinglines live`), the demo maker quoting to a simulated crowd and the demo taker | Yes, replayable to the fill | Yes (the T3 tier) | The fallback where no venue lists the event. Proves pricing, not an edge |
 
 Other venues seen in the search results and **not** tracked: Robinhood's prediction-market tab (Kalshi's
@@ -35,19 +35,19 @@ book), Octagon. None adds a market Kalshi or Polymarket doesn't already list.
 ## The grid
 
 Legend: **✓** yes · **~** partly (the note says what) · **✗** no · **–** the venue lists nothing for the
-sport · **?** unverified from the cloud. Each cell is H / B / L.
+sport · **?** not probed. Each cell is H / B / L.
 
 | Sport (schema) | Polymarket | Kalshi | OG.com | Private book | Data source and model |
 |---|---|---|---|---|---|
-| **F1** (`f1`) | H ✓ 2025–26, 7,285 links · B ✓ A (taker) and C (maker), params-4h · L ✓ signal engine, but **no race listed since 28 Aug** | H ✓ 2025–26, 3,793 links · B ✓ C replayed, K tuned ([Profile K](kalshi-history.md#profile-k), frozen pending owner review) · L ~ U1 done (`venue = kalshi`), **U2 recorder on the VM not running** | H ✗ · B ✗ · L ✗ · listings ? (Crypto.com has an F1 sponsorship; reviews name a motorsport category) | H ✓ Baku test · B ✓ same profiles · L ✓ `live/f1/2026-16.toml` … `2026-23.toml` | FastF1 (network-blocked in the cloud). `position_sim` |
-| **UCI downhill** (`mtb_dh`) | – | – (no series found; *unverified*) | – ? | H ✓ Whistler 2026 (7,703 fills) · B ✓ walk-forward, 43 rounds ([Evaluation](evaluation.md)) · L ✓ `racinglines mtb_dh live` | ChronoRace feed (primary) + PDF backfill. `timed_runs`. Season is over; next World Cup spring 2027 |
-| **UCI XCO / XCC** (none) | – | – ? | – ? | ✗ no model (the downhill live core is time-based, XCO is a mass start) | ChronoRace serves XC on the same weekend slugs (`_mtb`, once `_xco`): results are fetchable, nothing is ingested |
-| **UCI road: grand tours, monuments, Worlds** (none) | H ✗ · listings ✓ Tour de France 2026 winner and top-3 (search results), Vuelta unclear · B ✗ · L ✗ | H ✗ · listings ✓ series `KXCYCLING` (race winner: `-26TDFR`, `-26GIRO`), `KXCYCLINGSTAGE` (every TdF stage), `KXCYCLINGTEAM` · B ✗ · L ✗ | ? | ✗ | No source, no schema, no model. ProCyclingStats is the obvious results source (terms to check). Next listings that could exist: Il Lombardia 10 Oct, then the 2027 spring classics and Giro |
-| **UCI track, cyclocross, BMX, gravel** (none) | – ? | – ? (no series found in search) | – ? | ✗ | No source. Track Worlds 14–18 Oct (Shanghai), Cyclocross World Cup from 23 Nov. Expect no markets; confirm once |
-| **NASCAR Cup** (`nascar`, tape-only) | H ✗ · **listings ✓ per-race winner markets** (Hollywood Casino 400, 27 Sep 2026) and futures · B ✗ · L ✗ | H ~ U9 sync built (#26), `KXNASCAR*`, fixture-tested only, **never run live** · B ✗ · L ✗ | ? | ✗ | No source (P2 research item), no model. Chase races every October weekend, finale Homestead 8 Nov |
-| **MotoGP** (`motogp`, tape-only) | H ✗ · listings ✓ championship winner (25 outcomes) · B ✗ · L ✗ | H ~ U9 sync built, `KXMOTOGP*`, never run · B ✗ · L ✗ | ? | ✗ | No source, no model. Qatar–Valencia rounds Nov |
-| **IndyCar** (`indycar`, tape-only) | H ✗ · listings ✓ championship winner, Indy 500 · B ✗ · L ✗ | H ~ U9 sync built, `KXINDYCAR*`, never run · B ✗ · L ✗ | ? | ✗ | Season over (Sept). Nothing to record until March 2027 |
-| **SailGP, WEC / Le Mans, Formula E, rally, alpine skiing** (none) | ? | ? | SailGP ✓ (OG has SailGP event contracts through its US SailGP team partnership) · rest ? | ✗ | Not in scope; noted so the search was complete |
+| **F1** (`f1`) | H ✓ 2025–26, 7,285 links · B ✓ A (taker) and C (maker), params-4h · L ✓ signal engine, but **no race listed since 28 Aug** | H ✓ 2025–26, 3,793 links (29 `KXF1*` series, `KXF1RACE` 22 open) · B ✓ C replayed, K tuned ([Profile K](kalshi-history.md#profile-k), frozen pending owner review) · L ~ U1 done (`venue = kalshi`), **U2 recorder on the VM not running** | H ✗ (API keeps about a month) · B ✗ · L ✗ · **20 season futures listed** (Drivers' and Constructors', expire 2027-01-31); per-GP events exist but had no live instruments; books thin, asks only at 1–4¢, about 4 trades a week | H ✓ Baku test · B ✓ same profiles · L ✓ `live/f1/2026-16.toml` … `2026-23.toml` | FastF1 (network-blocked in the cloud). `position_sim` |
+| **UCI downhill** (`mtb_dh`) | – (probed: nothing on mountain bike) | – (probed: no series) | – (probed) | H ✓ Whistler 2026 (7,703 fills) · B ✓ walk-forward, 43 rounds ([Evaluation](evaluation.md)) · L ✓ `racinglines mtb_dh live` | ChronoRace feed (primary) + PDF backfill. `timed_runs`. Season is over; next World Cup spring 2027 |
+| **UCI XCO / XCC** (none) | – (probed) | – (probed) | – (probed) | ✗ no model (the downhill live core is time-based, XCO is a mass start) | ChronoRace serves XC on the same weekend slugs (`_mtb`, once `_xco`): results are fetchable, nothing is ingested |
+| **UCI road: grand tours, monuments, Worlds** (none) | H ✗ · listings ✓ Tour 2026 (about $1.3M volume), Vuelta, Il Lombardia · B ✗ · L ✗ | H ✗ · **settled history ✓ at least 200 markets in each of `KXCYCLING`, `KXCYCLINGSTAGE`, `KXCYCLINGTEAM`, `KXCYCLINGJERSEY`, plus `KXTOURDEFRANCE`**; 0 open now · B ✗ · L ✗ | – (probed: no cycling) | ✗ | No source, no schema, no model. ProCyclingStats is the obvious results source (terms to check). Next listings that could exist: Il Lombardia 10 Oct, then the 2027 spring classics and Giro |
+| **UCI track, cyclocross, BMX, gravel** (none) | – ? | – ? | – (probed) | ✗ | No source. Track Worlds 14–18 Oct (Shanghai), Cyclocross World Cup from 23 Nov. Expect no markets; not probed beyond OG.com |
+| **NASCAR Cup** (`nascar`, tape-only) | H ✗ · **listings ✓ per-race winner markets** and futures · B ✗ · L ✗ | H ~ U9 sync built (#26), `KXNASCAR*` (17 series, **`KXNASCARRACE` 72 open**), fixture-tested only, **never run live** · B ✗ · L ✗ | H ✗ · **17 Cup Champion futures only** | ✗ | No source (P2 research item), no model. Chase races every October weekend, finale Homestead 8 Nov |
+| **MotoGP** (`motogp`, tape-only) | H ✗ · listings ✓ championship winner (25 outcomes) · B ✗ · L ✗ | H ~ U9 sync built, `KXMOTOGP*` (3 series, 22 open), never run · B ✗ · L ✗ | – (probed: not listed) | ✗ | No source, no model. Qatar–Valencia rounds Nov |
+| **IndyCar** (`indycar`, tape-only) | H ✗ · listings ✓ championship winner, Indy 500 · B ✗ · L ✗ | H ~ U9 sync built, `KXINDYCAR*` (9 series), never run · B ✗ · L ✗ | – (probed: not listed) | ✗ | Season over (Sept). Nothing to record until March 2027 |
+| **SailGP, Le Mans, Formula E, rally, alpine skiing** (none) | SailGP, Le Mans ✓ listed | SailGP ✓ (`KXSAILGP` 13 open, `KXSAILGPRACE` 13), Le Mans ✓ (`KXLEMANS24H`) | SailGP ✓ 13 Championship Winner contracts | ✗ | Not in scope; noted so the search was complete |
 
 Reading across: **F1 is the only sport with all three marks on any real venue**, and only on Polymarket,
 which is not listing. On Kalshi F1 is one step short (the VM recorder). Everything else is either private
@@ -77,10 +77,10 @@ started.
    position sim (GC vs stage, teams, breakaways). Decide after the 2026 tapes show volume; the
    grand-tour winner markets look like the only deep ones. Results source and its terms first
    ([Data](data.md)), then a `[sport]` schema. Not before the F1 and downhill validations are done.
-6. **OG.com — S to scout, blocked to build.** No API means no connector. The item is a one-off manual
-   scout of what it lists for F1, NASCAR and cycling, and a quarterly check for an API announcement.
-   If one appears, the connector is Kalshi-shaped: client, sync, archive tree, fee model, `Venue` entry
-   (about M, the Kalshi connector took two PRs). See [OG.com](#ogcom).
+6. **OG.com read-only connector — M; trading blocked on the API key.** The public FCM API is enough to record
+   OG.com the way we record Kalshi, for the sports it lists. It only pays off where OG.com lists something
+   we trade, which today is 20 thin F1 season futures. Do it as a tape and disagreement-log source (U7), not
+   as a trading venue, and only after the owner picks it. Plan in [OG.com](#ogcom).
 7. **XCO / XCC ingest — M, 2027.** ChronoRace already serves it on the same slugs the downhill ingest
    probes. Worth it only if a venue ever lists MTB, which none does; otherwise a private-book showcase
    like downhill. Off the list until then.
@@ -92,27 +92,64 @@ alpine skiing and the rest of the last row (out of scope).
 
 ## OG.com
 
-What the search results say (2026 reviews; *unverified* against the site, which the cloud cannot open):
+**Corrected 2026-09-29.** An earlier draft of this page, written from 2026 reviews, said OG.com has no
+public API. That is wrong. The owner found the docs and a probe from the owner's Mac confirmed them.
 
-- Launched 3 Feb 2026 by Crypto.com. Contracts are CFTC-regulated, cleared through Crypto.com
-  Derivatives North America (formerly Nadex). Available in the US, all states except where prediction
-  markets are barred (New York and Arizona are named).
-- Sports-first: major US leagues, bigger international events, and a "smattering of niche events", plus
-  crypto, economics, politics and culture. Parlays across contracts. A motorsport category is implied by
-  Crypto.com's F1 sponsorship and named in one review; SailGP contracts are confirmed through the US
-  SailGP team partnership. FanDuel Predicts resells OG's contracts since June 2026.
-- **No public API, no order-book depth or volume shown, no historical data, market orders only,
-  $0.02 flat fee per contract.** That rules out everything the Kalshi connector does: syncing links,
-  recording candlesticks and trades, replaying the maker, and sending an order.
+What it is: Crypto.com's US prediction market (CFTC contracts via Crypto.com Derivatives North America).
+Its API is the "Crypto.com GEN4 FCM US B2C API" at `exchange-developer.crypto.com/fcm-b2c/v1/docs/`, which
+og.com's footer links to. It is a different product from Crypto.com's crypto derivatives exchange.
 
-So OG.com goes in the grid as a venue we cannot read or trade, and the roadmap item is to watch it. If
-the owner wants a manual read of its F1 or cycling prices as a third opinion for the disagreement log
-(U7), that is a spreadsheet, not code.
+**Public, no key** (100 requests per second per method per IP; a UAT sandbox at `uat-api.3ona.co` also
+answers):
+
+| Need | Endpoint under `https://api.crypto.com/fcm/v1/public/` | Note |
+|---|---|---|
+| Market listing | `get-events`, `get-instruments`, `get-instrument-lifecycle-states` | 12,359 events, 54,676 live instruments on 2026-09-29 |
+| Prices | `get-tickers`, `get-book` | 50-level book; tick 0.01, contract size 1 |
+| Trades | `get-trades` | Retained about one month |
+| History | `get-ticker-histories` | 1-minute bid/ask/last; at most 31 days and 1,000 rows per call. **No candlestick endpoint for event contracts** |
+| Stream | `wss://stream.crypto.com/fcm/v1/market` | No auth. Channels `book`, `ticker`, `trade`, `instrument`, `instrumentall`, `settlement`, `tradingstatus` |
+
+**Private** endpoints (orders, positions) need FCM onboarding and HMAC-SHA256 request signing. The owner is
+waiting on an API key. No API terms page was found on the docs site; the legal pages are `og.com/legal` and
+`og.com/document/legal_us.pdf` (not read). **Read the terms before any recorder runs unattended.**
+
+**What it lists** (live instruments, sports grouping): college football 23,938, soccer 9,706, NFL 4,400, NHL
+3,015, MLB 555, tennis 297, WNBA 152, golf 144, NBA 110, esports 52, **F1 20, NASCAR 17, sailing 13**,
+chess 2; plus politics, culture, economics, crypto, companies and climate. **Not listed:** MotoGP, IndyCar,
+any cycling or mountain bike, Le Mans.
+
+**Where it matters to us.** Only F1: 20 season futures (Drivers' champion 9, Constructors' 11, expiring
+2027-01-31). Per-Grand-Prix events exist (series `F12026`) but had no live instruments, so race markets will
+appear only around a weekend. Liquidity is thin: the Norris and Verstappen books were asks only at 1–4¢
+(1–5k contracts), no bids, about 4 trades a week. NASCAR is 17 Cup Champion contracts and SailGP 13
+Championship Winner contracts. Nothing else on our list.
+
+**Integration plan, Kalshi-shaped** (a roadmap item, not started; needs the owner's go-ahead):
+
+1. **Client** `racinglines/markets/ogcom/client.py`: the seven public GETs above, a token-bucket under
+   100 req/s, no key. Fixtures for each response in `tests/fixtures/market/`. Effort S.
+2. **Sync** `markets/ogcom/sync.py`: F1 events to `market_links` with `exchange = 'ogcom'`, classified with
+   the same kinds (`champion`, `constructors_champion`, later `race_win` and friends), instruments as
+   `token_id`. Same pattern as `markets/kalshi/sync.py`. Effort S to M.
+3. **Recorder**: `get-ticker-histories` and `get-trades` are capped at about a month, so a recorder must run
+   at least weekly or it loses history for good. Add `[markets.ogcom]` to `sports/f1.toml`, an archive tree
+   `data/archive/markets/ogcom/`, and a timer on the VM (like U2). Effort S.
+4. **Venue and fee model**: a `Venue("ogcom", ...)` entry in `markets/venues.py`, and the flat $0.02 per
+   contract fee in the maker and taker cost paths. Confirm the fee in the fee schedule first. Effort S.
+5. **Disagreement log (U7)**: add OG.com to the championship comparison, the one place it overlaps.
+6. **Trading**: only after onboarding, the signed private API, and the validation rules in
+   [Paper trading](paper-trading.md#validation-plan). Off by default like `KALSHI_TRADING_ENABLED`.
+
+Total for read-only recording plus the disagreement log: about M. **Value today is low:** thin F1 futures
+only, no race markets until a weekend, and nothing for cycling, MotoGP or IndyCar. The reason to do it early
+is history: the API forgets after a month, so a tape started now is the only way to have OG.com data for a
+2027 backtest.
 
 ## What to verify on a device
 
 Run these on the VM or the owner's Mac (both reach the venues; the cloud sandbox does not). Each is a
-read-only GET. They settle the **?** cells and the *unverified* lines above.
+read-only GET. They refresh the counts and settle the remaining **?** cells.
 
 Kalshi: every sports series that touches our sports, then the open and settled counts for cycling.
 
@@ -141,14 +178,13 @@ for q in cycling "tour de france" giro vuelta "mountain bike" nascar motogp indy
 done
 ```
 
-OG.com: the sports it lists and whether any JSON endpoint serves them without a login.
+OG.com: this was probed on 2026-09-29. To refresh its F1 and NASCAR counts:
 
 ```bash
-curl -sL https://og.com/sports | grep -oE '(Motorsport|Formula|F1|NASCAR|MotoGP|IndyCar|Cycling|Tour de France|SailGP)[^<"]{0,40}' | sort -u
-curl -sL https://og.com/sports | grep -oE 'https?://[a-z0-9./_-]*(api|graphql)[a-z0-9./_-]*' | sort -u
+curl -s 'https://api.crypto.com/fcm/v1/public/get-events' | python3 -c 'import sys,json; d=json.load(sys.stdin); print(json.dumps(d)[:1500])'
 ```
 
-Write the answers into this page's grid and drop the *unverified* marks.
+Write the answers into this page's grid and drop the remaining **?** marks.
 
 ## Calendar: what could be listed before year end
 
