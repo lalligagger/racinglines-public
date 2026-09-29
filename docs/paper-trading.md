@@ -291,7 +291,7 @@ separate trial.
 | A · core taker | demo taker | Polymarket, Kalshi | As in [Strategy profiles](#strategy-profiles). Judged on A's own calls; the demo taker's followed third is shown too |
 | C · maker sleeve | demo maker | Polymarket, Kalshi | As in [Strategy profiles](#strategy-profiles). On Kalshi it is a control: its Kalshi replay lost $119 in 2026 |
 | K · Kalshi maker | demo maker | Kalshi | Chosen by a Kalshi sweep and frozen before round 18 (Roadmap U3) |
-| Championship sleeve | demo maker | Both | `f1 season-strategy` after each race; kept out of A, C and K's records |
+| Championship sleeve | demo maker | Both | `racinglines f1 season-strategy --paper --venue polymarket --after-round N` and the same with `--venue kalshi`, run by hand after each race (nothing schedules it); stored as paper positions under venue `season:<venue>`, event `<year>-season`, which A, C and K's records never read. See [Season strategy](market-making.md#the-championship-sleeve) |
 
 Any change to a profile makes a new profile with its own count.
 
