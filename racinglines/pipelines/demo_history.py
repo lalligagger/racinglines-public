@@ -14,7 +14,7 @@ Every row is flagged detail.backfill and shown as a backtest replay in the app. 
 --venue kalshi replays the maker's same profiles against Kalshi's recorded tape (markets/kalshi/ stores it in
 the shared tables), with Kalshi's maker fee, as paper_positions.venue = 'kalshi' and signals flagged
 detail.venue = 'kalshi'. The Polymarket record and its reset don't touch those rows, and vice versa. Maker
-accounts only: the taker's strategies read Polymarket's markets.
+accounts only (a taker's Kalshi paper trading is a profile with the `venue = kalshi` setting, signals.py).
 """
 
 import pandas as pd

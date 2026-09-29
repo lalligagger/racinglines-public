@@ -113,8 +113,11 @@ without touching the record:
 Whistler has both: the interval scaling arrived with the 22:37:58 restart (the 62 polls of 22:11–22:32 logged
 20 s but ran at rate 1), and the old 5 s loop overlapped the new 2 s one until 22:39:06, twice in the same
 second. With its `replay.json` the replay gives the recorded book fill for fill (7,703 fills,
-`test_whistler_book_replays_as_a_backtest`). A restart should stop the old loop first: F1's LaunchAgent step
-takes a lock in the run folder; downhill's `live run` doesn't yet.
+`test_whistler_book_replays_as_a_backtest`). Since then the downhill loop takes the same lock F1's step takes
+(`.lock` in the run folder, `fcntl.flock`, non-blocking): a second `live run` or `mtb_dh live` for the same
+final says `another loop is polling this final (its lock is held); not started` and exits instead of polling
+alongside the first. The OS drops the lock with the process, so a killed loop leaves nothing stale; a restart
+still stops the old loop first, and now can't run two by accident (`test_run_folder_lock_stops_a_second_loop`).
 
 ## The live core: one engine, one adapter per sport
 
@@ -145,7 +148,7 @@ feed and any overrides of the sport's `[live]` settings.
 | `racinglines live new f1 2026-16` | Write a launch spec from the schedule, with the sport's defaults and the demo taker's hype picks |
 | `racinglines live new mtb_dh <slug> --final 3 --quali 2,91` | The same for a downhill final (its feed arguments) |
 | `racinglines live step <spec>` | One idempotent update. F1: acts only when an update is due and its stage run is in; downhill: one poll |
-| `racinglines live run <spec>` | Step at the sport's cadence until the event is settled (F1: every 5 min; downhill: the poll loop) |
+| `racinglines live run <spec>` | Step at the sport's cadence until the event is settled (F1: every 5 min; downhill: the poll loop, under the run folder's lock: one loop per final) |
 | `racinglines live run <spec> --simulate --no-fetch` | F1: the whole weekend on a simulated clock (a rehearsal) |
 | `racinglines live agent <spec> [--install / --remove]` | A macOS LaunchAgent for the spec (`bet.racinglines.live.<run>`): F1 steps every 5 minutes; a lock stops overlapping steps; log in the run folder |
 | `racinglines live status` | Every event: live / replay / settled, last update, next update, lateness |
@@ -182,7 +185,10 @@ Nothing in the core, the book, the crowd or the Live tab's shell changes. `tests
 synthetic third sport (`tests/live_toy.py`: a toy sprint with its own schema, spec and body partial), run through
 the CLI's locked step, the registry, the replay and the Live tab.
 
-Launch specs committed so far: `live/f1/2026-16.toml` (round 16), `live/f1/2026-15.toml` (the Baku rehearsal),
+Launch specs committed so far: `live/f1/2026-16.toml` (round 16), `live/f1/2026-17.toml` (Singapore, the sprint
+weekend), `live/f1/2026-18.toml` … `2026-23.toml` (Austin, Mexico City, São Paulo, Las Vegas, Qatar, Abu Dhabi: all
+conventional weekends per the saved FastF1 schedule, used only where no venue lists the race; Las Vegas's Saturday-night
+cut-offs are noted in its spec), `live/f1/2026-15.toml` and `2026-12.toml` (the Baku and Dutch GP rehearsals),
 `live/mtb_dh/20260925_mtb.toml` (Whistler as it was run; over, so `step` leaves it alone). No downhill event
 after Whistler is in the data: it was the World Cup final.
 

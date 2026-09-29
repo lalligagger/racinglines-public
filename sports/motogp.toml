@@ -1,0 +1,31 @@
+# MotoGP: a tape-only sport (docs/todo.md, U9). No model, no pipeline: its Kalshi markets are synced and
+# recorded (links unmodeled, prices / trades / books archived per exchange) when asked for by name
+# (`racinglines markets --exchange kalshi --sport motogp ...`). Read by racinglines/sports.py; the sync reads
+# [markets.kalshi]. Nothing runs for this sport by default.
+
+[sport]
+code = "motogp"
+name = "MotoGP"
+result_kind = "position"          # finishing positions, once there is a model
+model_family = "none"             # tapes only: no model, no pricing_model, no live adapter
+display_order = 3
+
+[league]
+code = "fim_motogp"
+name = "FIM MotoGP World Championship"
+organizer = "FIM / Dorna Sports"
+
+[competition]
+code = "motogp_wc"
+name = "MotoGP World Championship (Riders)"
+display_name = "MotoGP"
+categories = { RDR = ["Riders", "X", "elite"] }
+
+[markets]
+venues = ["kalshi"]
+standard_kinds = []               # nothing is priced, so the board has no columns for it
+
+[markets.kalshi]
+# Kalshi series tickers to sync, by prefix: every Sports series whose ticker starts with one of these
+# (`sync --series TICKER ...` overrides the list). Off by default: only `--sport motogp` syncs them.
+series = ["KXMOTOGP"]

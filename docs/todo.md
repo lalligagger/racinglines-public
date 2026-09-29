@@ -333,8 +333,13 @@ Downhill model.
       bucket is up ([Data](data.md#data-bucket)) and the [proposal](google-cloud.md) is written (Cloud SQL,
       Cloud Run, Scheduler, service identities, about $28–35 a month at list prices). Next: the owner's
       choices (database tier, recorder shape, domain).
-- [ ] Forecast runs from committed code: both live forecasts (F1 run 3, downhill run 1287) were built from
-      `1ab8934-dirty`. Check whether the F1 forecast overwrites run 3 in place instead of saving a new run.
+- [x] Forecast runs from committed code: both live forecasts (F1 run 3, downhill run 1287) were built from
+      `1ab8934-dirty`. Checked (2026-09-29): the F1 forecast does not overwrite run 3; `f1 forecast --save`
+      always inserts a new `model_runs` row (`save_model_run`, nothing updates or deletes forecast runs; Lab
+      promotion only sets `params.promoted_at`) and the web app prices from the latest one. Run 3 is the
+      only F1 forecast because the database was rebuilt on 2026-09-27 (ids 1–3 are its first rows, 18:37–18:42Z)
+      and the forecast has been saved once since; the downhill one came later (1287). Still to do: re-save
+      both from committed code.
 - [ ] Remove the `demo_context` bubbles before real users.
 - [ ] Before anything goes beyond a private demo: check F1's data terms, OpenF1's non-commercial terms,
       and settlement rules for relocated or cancelled races (U8).
