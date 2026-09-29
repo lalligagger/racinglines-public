@@ -60,8 +60,19 @@ be repeated without reading the whole page.
 | `deploy/vm/racinglines.env.example` | The VM's settings file (`/etc/racinglines.env`: the admin password, `APP_SECRET`, alerts) |
 | `scripts/cloud/bucket.sh restore --yes` | Loads the bucket's database dump into the docker-compose Postgres, after backing up the current one to `data/backups/db/` |
 
-`vm.sh deploy` refuses while a live event's unit is running on the VM (`--force` overrides). It restarts
-only the services that are already running, so a deploy before cutover never starts a second recorder.
+`vm.sh deploy` never refuses for a live event, and has no `--force`. It pauses the VM's active timers (each
+event's `racinglines-live-f1@<event>.timer` and `racinglines-signals.timer`) and waits up to 5 minutes for a step
+already running. Then it deploys, runs each live event's catch-up step, and starts the timers again. Every step is
+idempotent and catches up: an F1 live step does every update that fell due during the pause, its crowd batch covers
+the whole window since the last update (`pipelines/live_f1.py` `due`, `_crowd`), and signals inserts with `ON
+CONFLICT DO NOTHING`. The paused list is written to `/var/lib/racinglines/deploy-paused` on the VM before anything
+stops, so a deploy that dies half-way leaves a record: `vm.sh status` shows it, and the next `vm.sh deploy` resumes
+those timers too. If a step is still running after 5 minutes, or the connection drops while waiting, nothing is
+deployed and the timers are resumed; the message names the stuck unit. If the update itself fails, the timers stay
+paused (so no step runs on a half-updated checkout): fix and deploy again. A running downhill loop
+(`racinglines-live-dh@`) gets a warning, not a pause: deploy doesn't restart it, so it keeps the code it loaded. The
+recorder's restart costs at most one order-book snapshot; prices and trades are unaffected, because they are fetched
+from the exchanges' own history. Deploy restarts only the services that are already running, so a deploy before cutover never starts a second recorder.
 
 ## One-time setup (owner-only, your accounts)
 
@@ -217,7 +228,9 @@ sudo systemctl enable --now racinglines-live-dh@<event>           # downhill: th
 sudo systemctl disable --now racinglines-live-f1@2026-16.timer    # when the event is settled
 ```
 Run an event on one machine only, the one whose database racinglines.bet reads.
-`vm.sh deploy` refuses while an event's unit is running. Merge and deploy before the book opens, or after it settles.
+`vm.sh deploy` pauses the event's timer and resumes it with a catch-up step (see [What's in the repo](#whats-in-the-repo)), so
+deploys don't wait for the event to settle. The web app restarts for a few seconds, so between sessions is still the
+kindest time.
 
 ## Later
 
