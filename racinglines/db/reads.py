@@ -231,13 +231,11 @@ def model_prob(conn, link, _cache=None, run_id=None):
 
     p = None
     if kind in ("champion", "standings_top3", "season_wins_ge", "standings_h2h"):
-        df = q(conn, f"""SELECT {PREDICTION_COLUMNS.get(kind, 'champion_prob')} AS p, extra
-                         FROM standings_predictions WHERE model_run_id = :run AND athlete_id = :a""",
-               run=run_id, a=athlete)
-        if len(df):
-            extra = df["extra"].iloc[0] or {}
+        row = _standings_row(conn, run_id, athlete, _cache)
+        if row is not None:
+            p_, extra = row
             if kind in ("champion", "standings_top3"):
-                p = df["p"].iloc[0]
+                p = p_[kind]
             elif kind == "season_wins_ge":
                 p = (extra.get("wins_ge") or {}).get(str(params.get("n")))
             else:
@@ -248,25 +246,57 @@ def model_prob(conn, link, _cache=None, run_id=None):
     elif kind == "race_constructor_top":
         p = ((metrics.get("race_constructor_top") or {}).get(params.get("event_key")) or {}).get(params.get("team"))
     else:  # per-race, per-athlete
-        where = "race_id = :race" if race else "target = 'remaining_round'"
-        df = q(conn, f"""SELECT win_prob, podium_prob, top10_prob, make_final_prob, extra FROM race_predictions
-                         WHERE model_run_id = :run AND athlete_id = :a AND {where}""", run=run_id, a=athlete, race=race)
-        if len(df):
+        row = _race_pred_row(conn, run_id, race, athlete, _cache)
+        if row is not None:
+            df, extra = row
             if kind == "race_h2h":
-                p = ((df["extra"].iloc[0] or {}).get("h2h") or {}).get(str(params.get("opponent_id")))
+                p = (extra.get("h2h") or {}).get(str(params.get("opponent_id")))
             elif kind == "race_pole":
-                p = (df["extra"].iloc[0] or {}).get("pole_prob")
+                p = extra.get("pole_prob")
             elif kind in SPRINT_FALLBACK:
-                extra = df["extra"].iloc[0] or {}
                 p = extra.get(kind.replace("race_", "") + "_prob")
                 if p is None:
-                    p = extra.get("pole_prob") if kind == "race_sprint_pole" else df["win_prob"].iloc[0]
+                    p = extra.get("pole_prob") if kind == "race_sprint_pole" else df["win_prob"]
             else:
-                p = df[PREDICTION_COLUMNS[kind]].iloc[0]
+                p = df[PREDICTION_COLUMNS[kind]]
     if p is None or pd.isna(p):
         return None, run_id
     p = float(p)
     return (1 - p if link.get("invert") else p), run_id
+
+
+def _standings_row(conn, run_id, athlete, _cache):
+    """({champion,standings_top3}_prob, extra) for one athlete of a standings run: one query per run_id, not
+    per link, when `_cache` is given (market_links can list hundreds of outcomes per run)."""
+    k = ("standings", run_id)
+    if _cache is not None and k in _cache:
+        by_athlete = _cache[k]
+    else:
+        df = q(conn, "SELECT athlete_id, champion_prob, top3_prob, extra FROM standings_predictions WHERE model_run_id = :run",
+               run=run_id)
+        by_athlete = {int(r.athlete_id): (dict(champion=r.champion_prob, standings_top3=r.top3_prob), r.extra or {})
+                     for r in df.itertuples()}
+        if _cache is not None:
+            _cache[k] = by_athlete
+    return by_athlete.get(athlete)
+
+
+def _race_pred_row(conn, run_id, race, athlete, _cache):
+    """(row dict, extra) for one athlete of a race (or the remaining-round target when `race` is None): one
+    query per (run_id, race), not per link."""
+    k = ("race_preds", run_id, race)
+    if _cache is not None and k in _cache:
+        by_athlete = _cache[k]
+    else:
+        where = "race_id = :race" if race else "target = 'remaining_round'"
+        df = q(conn, f"""SELECT athlete_id, win_prob, podium_prob, top10_prob, make_final_prob, extra
+                         FROM race_predictions WHERE model_run_id = :run AND {where}""", run=run_id, race=race)
+        by_athlete = {int(r.athlete_id): (dict(win_prob=r.win_prob, podium_prob=r.podium_prob, top10_prob=r.top10_prob,
+                                              make_final_prob=r.make_final_prob), r.extra or {})
+                     for r in df.itertuples()}
+        if _cache is not None:
+            _cache[k] = by_athlete
+    return by_athlete.get(athlete)
 
 
 def orders(conn, limit=200):
