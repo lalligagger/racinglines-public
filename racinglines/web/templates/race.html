@@ -18,7 +18,7 @@
 {# --- one view at a time: each market type, the chart, the season strategy, the classification, quoting --- #}
 <nav class="ptabs" data-tabs="race" role="tablist">
   {% for kind, label, rows_ in groups %}<button type="button" role="tab" data-tab="k-{{ kind }}">{{ label }}<span class="n">{{ rows_|length }}</span></button>{% endfor %}
-  {% if chart_data or chart_kalshi %}<button type="button" role="tab" data-tab="chart">Price history</button>{% endif %}
+  {% if charts %}<button type="button" role="tab" data-tab="chart">Price history</button>{% endif %}
   {% if strategy is defined and strategy %}<button type="button" role="tab" data-tab="strategy">Season strategy</button>{% endif %}
   {% if results %}<button type="button" role="tab" data-tab="results">Classification</button>{% endif %}
   <button type="button" role="tab" data-tab="quote">Quote</button>
@@ -45,13 +45,11 @@
 </section>
 {% endfor %}
 
-{% if chart_data and not chart_kalshi %}<section data-panel="chart" hidden><div class="card"><h2>Polymarket price vs our fair</h2>{{ chart(chart_data) }}</div></section>{% elif chart_kalshi %}<section data-panel="chart" hidden><div class="card"><div class="section-head"><h2>Exchange price vs our fair</h2>
-{% if chart_data %}<div class="tabs" role="group" aria-label="Which exchange to plot">
-  <button type="button" data-toggle="pxplot" data-value="polymarket" aria-pressed="true">Polymarket</button>
-  <button type="button" data-toggle="pxplot" data-value="kalshi" aria-pressed="false">Kalshi</button>
+{% if charts %}<section data-panel="chart" hidden><div class="card"><div class="section-head"><h2>Price history vs our fair</h2>
+{% if charts|length > 1 %}<div class="tabs" role="group" aria-label="Which exchange to plot">
+  {% for v, ch in charts %}<button type="button" data-toggle="pxplot" data-value="{{ v.code }}" aria-pressed="{{ 'true' if loop.first else 'false' }}">{{ v.name }}</button>{% endfor %}
 </div>{% endif %}</div>
-{% if chart_data %}<div class="plot" data-pxplot="polymarket">{{ chart(chart_data) }}</div>{% endif %}
-<div class="plot" data-pxplot="kalshi"{% if chart_data %} hidden{% endif %}>{{ chart(chart_kalshi) }}</div>
+{% for v, ch in charts %}<div class="plot" data-pxplot="{{ v.code }}"{% if not loop.first %} hidden{% endif %}>{{ chart(ch) }}</div>{% endfor %}
 </div></section>{% endif %}
 
 {% if strategy is defined and strategy %}{% set st = strategy %}

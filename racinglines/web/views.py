@@ -118,11 +118,12 @@ def race_page(request: Request, race_id: int, msg: str = "", c=Depends(conn)):
     diag_runs = rows(data.q(c, """SELECT id, left(params->>'cutoff', 16) AS cutoff FROM model_runs
                                   WHERE kind = 'diagnostic' AND params->>'event_key' = :k ORDER BY id""",
                             k=info["source_key"]))
+    charts = [(v, ch) for v in V.EXCHANGES if v.status == "live" for ch in [_race_chart(c, info, pricing, df, v.code)] if ch]
     return render(request, "race.html", info=info, pricing=pricing, groups=_groups(df), fav=fav, winner=winner,
                   results=results, completed=completed, season=False, venue_sum=V.venue_summary(df), mine=B._mine(df),
                   exchanges=V.EXCHANGES, has_pm=bool(len(df) and df["pm_mid"].notna().any()),
-                  chart_data=_race_chart(c, info, pricing, df), countdown=B._countdown(info["start_date"]),
-                  kalshi=V.KALSHI_VENUE, chart_kalshi=_race_chart(c, info, pricing, df, "kalshi") if V.KALSHI_VENUE else None,
+                  charts=charts, countdown=B._countdown(info["start_date"]),
+                  kalshi=V.KALSHI_VENUE,
                   diag_runs=diag_runs, msg=msg, kind_label=V.KIND_LABEL,
                   quote_kinds=list(V.STANDARD_KINDS.get(info["competition"], ("race_win", "race_podium"))))
 
@@ -137,8 +138,8 @@ def season_page(request: Request, code: str, c=Depends(conn)):
     return render(request, "race.html", info=info, pricing=pricing, groups=_groups(df),
                   fav=rows(champs.head(1))[0] if len(champs) else None, winner=None, results=[], completed=False,
                   season=True, strategy=latest_season_strategy(c, code), venue_sum=V.venue_summary(df), mine=B._mine(df), exchanges=V.EXCHANGES,
-                  kalshi=V.KALSHI_VENUE, chart_kalshi=None,
-                  has_pm=bool(len(df) and df["pm_mid"].notna().any()), chart_data=None, countdown="", diag_runs=[],
+                  kalshi=V.KALSHI_VENUE, charts=[],
+                  has_pm=bool(len(df) and df["pm_mid"].notna().any()), countdown="", diag_runs=[],
                   msg="", kind_label=V.KIND_LABEL, quote_kinds=[])
 
 
