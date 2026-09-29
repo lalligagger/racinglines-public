@@ -434,9 +434,14 @@ number.** The pit feed has no driver id; the ingest joins it to results on the c
   `bonus_points_earned` in place of `playoff_points_earned`; no `stage_results`. Missing fields stay absent, never zero.
 - `diff_time` on a result is the gap to the winner in **milliseconds** (P2 at Darlington: 1038 = `margin_of_victory` "1.038");
   the winner's clock time is `total_race_time` (`h:mm:ss`).
-- *Pit feed*: the probe fixture holds only the 15 pre-race entries (`lap_count` 0). **What a mid-race stop looks like
-  (which lap `lap_count` names, what `pit_stop_duration` measures) is unverified**: the ingest keeps stops under the
-  source's own field names and does not set `laps.pit_in`. Look at one full race before building on it.
+- *Pit feed*: the first probe fixture held only the 15 pre-race entries (`lap_count` 0). A full race (Kansas 2026,
+  `nascar_pit_data_2026_5628.json`) shows real stops: 267 records, 231 in-race, 36 cars with 3 to 10 stops each (median 6),
+  `pit_stop_type` `FOUR_WHEEL_CHANGE` (185), `OTHER` (80, 44 of them in-race), two `TWO_WHEEL_CHANGE_*`, and
+  `pit_in_flag_status` 2 for stops under caution. The ingest keeps each stop under the source's own field names in
+  `results.extra.pit_stops`. That `lap_count` is the lap of the stop is **inferred, not proven** (the first five stops are all
+  lap 36 under caution, in pit-in order), so `laps.pit_in` is still not set.
+- *Overtime* (Daytona 500 2026): `lap-times` runs to lap 201 while `actual_laps` is 200. The completeness check is "every lap up to
+  `actual_laps` is present", not "the last lap equals `actual_laps`"; `laps_max` can exceed `actual_laps`.
 
 ### The adapter
 
@@ -445,12 +450,20 @@ the F1 pattern ([Formula 1](f1.md)) with NASCAR's own shape:
 
 | Table | NASCAR |
 |---|---|
-| `events` | one race weekend: `source = "nascar_cf"`, `source_key = "<year>-<race_id>"`, `series_round` = points-race number (exhibitions have none), venue = track name |
+| `events` | one race weekend: `source = "nascar_cf"`, `source_key = "<year>-<race_id>"`, `series_round` = points-race number (exhibitions have none), venue = track name. Races still to run are filed as `scheduled` events with no rounds (from the season's race list), so a market on an upcoming race has a race to point at; the weekend feed turns the same event into a `completed` one |
 | `races` | competition `nascar_cup`, category `DRV`; `format` = laps, stage laps, cautions and their segments (start, end, reason, free-pass car), race leaders, `qualifying_ran`, margin |
 | `rounds` | only sessions that were run: `fp1`…, `qual1`… / `qual`, `race` |
 | `results` | position (null if never classified), status `OK`/`DNF`/`DNS`/`DSQ`, `bib` = car number, team; `extra` = grid, points, playoff points, laps led, stage finishes and points, loop stats, pit stops, crew chief and owner ids |
 | `laps` | race laps: lap time, running position, flag state in `track_status` (`"1"` green, `"2"` yellow, `"4"` checkered); lap speed is not stored (it follows from lap time and track length) |
 | `athletes` | one per `driver_id`: `AthleteIdentifier(scheme="nascar", value=<driver_id>)` |
+
+**Identity** (`sources/nascar/identity.py`): one resolver for the sport, whichever exchange listed the market. `Resolver(conn, year).driver(subject)`
+returns the athlete for a name as a venue writes it and `.race(date, name)` the race held within a day of a date (which date a venue's market carries, and how far its close
+runs past the race, is read from real listings, not assumed). Names match exactly first (accents, case, punctuation and suffixes ignored), then on first plus last
+name, a nickname group, a short first name with a surname only one driver in the pool has ("Chris Bell"), and a bare surname only if unique.
+**A name that fits two drivers ("Busch") is never guessed**: it resolves to nothing and `.unresolved` says why, so a rule is added on
+purpose. The pool is the drivers who raced that season or the one before. Nothing reads it yet: re-resolving the existing market links
+is its own database write, with its own backup, after a read-only sample of the real link titles.
 
 Cup only for now: Xfinity and Trucks need their own competition rows before `--series 2|3` ingests. Lap-notes and standings are
 fetched and kept (the raw record is cheap to keep and expensive to re-crawl) but not ingested yet. Nothing runs by default;
@@ -458,7 +471,7 @@ tests: `tests/test_nascar.py`.
 
 **A full pull is a VM job, after a backup.** Cup 2017–2026 is about 380 races and one to five feeds each depending on the year
 (see the history column), ≈ 1,600 requests at 1/s (under half an hour; `--dry-run` counts them exactly); the lap table adds
-8,000 to 18,000 rows per race from 2020 (roughly 3 million rows for 2020–2026; `--no-laps` skips it). Steps, in order: a database dump (`data/backups/db/racinglines-before-nascar-<UTC time>.sql.gz`);
-`racinglines nascar fetch --years 2026 --races <two or three ids>` on the Mac and read what comes back (the pit feed above);
+8,000 to 18,000 rows per race from 2020 (roughly 3 million rows for 2020–2026; `--no-laps` skips it). Steps, in order: a small fetch on the Mac to read what comes back (done 2026-09-29 for Darlington, Kansas and the Daytona 500:
+the fetch layer worked, 17 requests, no errors); a database dump (`data/backups/db/racinglines-before-nascar-<UTC time>.sql.gz`);
 then `fetch` and `ingest` for the seasons wanted, with a `data_changes` entry and a line in [Data changes](data-changes.md)
 naming the backup.

@@ -13,6 +13,7 @@ from conftest import FIX
 
 from racinglines.sources import http
 from racinglines.sources.nascar import fetch as F
+from racinglines.sources.nascar import identity as ID
 from racinglines.sources.nascar import ingest as I
 
 MKT = FIX / "market"
@@ -111,6 +112,16 @@ def test_a_complete_lap_file_is_marked_complete():
     race = p["rounds"][-1]["extra"]
     assert (race["laps_complete"], race["laps_max"], race["laps_missing"]) == (True, 267, 0)
     assert p["laps"][4030][-1]["lap"] == 267 and p["laps"][4030][-1]["track_status"] == "4"     # the checkered flag
+
+
+@pytest.mark.quick
+def test_an_overtime_lap_beyond_the_race_distance_does_not_make_the_laps_incomplete():
+    """Daytona 500 2026: lap-times runs to lap 201, actual_laps is 200."""
+    laps = [dict(Lap=n, LapTime=48.0 + n / 1000, LapSpeed="186.0", RunningPos=1) for n in range(0, 202)]
+    lt = dict(laps=[dict(Number="5", FullName="Kyle Larson (C)", Manufacturer="Chv", RunningPos=1, NASCARDriverID=4030, Laps=laps)],
+              flags=[dict(LapsCompleted=n, FlagState=1) for n in range(0, 202)])
+    race = I.parse_race(2026, 5596, {"weekend-feed": fx("weekend_feed_2026_5596"), "lap-times": lt}, 1)["rounds"][-1]["extra"]
+    assert (race["laps_complete"], race["laps_max"], race["laps_missing"]) == (True, 201, 0)
 
 
 @pytest.mark.quick
@@ -304,9 +315,10 @@ def test_ingest_writes_events_rounds_results_and_laps(db):
     from sqlalchemy import select
     from racinglines.db import models as m
     with db() as s:
-        assert I.ingest(s, [2026, 2017], echo=lambda *_: None) == {"ingested": 4}
+        assert I.ingest(s, [2026, 2017], today=TODAY, echo=lambda *_: None) == {"scheduled": 6, "ingested": 4}
         ev = {e.source_key: e for e in s.scalars(select(m.Event).where(m.Event.source == I.SOURCE))}
-        assert set(ev) == {"2026-5624", "2026-5596", "2026-5626", "2017-4599"}
+        assert {k for k, e in ev.items() if e.status == "completed"} == {"2026-5624", "2026-5596", "2026-5626", "2017-4599"}
+        assert {k for k, e in ev.items() if e.status == "scheduled"} == {f"2026-{i}" for i in (5630, 5629, 5633, 5631, 5632, 5601)}
         dar = ev["2026-5624"]
         assert (dar.name, str(dar.start_date), dar.series_round, dar.status, dar.venue.slug) == \
             ("Cook Out Southern 500", "2026-09-06", 27, "completed", "darlington-raceway")
@@ -341,28 +353,143 @@ def test_ingest_writes_events_rounds_results_and_laps(db):
 
 def test_reingest_is_a_no_op_and_force_rebuilds_without_duplicating(db):
     with db() as s:
-        I.ingest(s, [2026], echo=lambda *_: None)
+        I.ingest(s, [2026], today=TODAY, echo=lambda *_: None)
         before = counts(s)
-        assert I.ingest(s, [2026], echo=lambda *_: None) == {"unchanged": 3}
+        assert I.ingest(s, [2026], today=TODAY, echo=lambda *_: None) == {"unchanged": 3}
         assert counts(s) == before
-        assert I.ingest(s, [2026], force=True, echo=lambda *_: None) == {"ingested": 3}
+        assert I.ingest(s, [2026], force=True, today=TODAY, echo=lambda *_: None) == {"scheduled": 6, "ingested": 3}
         assert counts(s) == before                                                          # rounds replaced, athletes reused
         assert before["nascar_athletes"] > 12 and before["laps"] == 4 * 349
 
 
 def test_changed_file_rebuilds_and_no_laps_skips_the_lap_table(db, raw):
     with db() as s:
-        assert I.ingest(s, [2026], laps=False, echo=lambda *_: None) == {"ingested": 3}
+        assert I.ingest(s, [2026], laps=False, today=TODAY, echo=lambda *_: None) == {"scheduled": 6, "ingested": 3}
         assert counts(s)["laps"] == 0
-        assert I.ingest(s, [2026], laps=True, echo=lambda *_: None) == {"ingested": 1, "unchanged": 2}   # only the race with laps changes
+        assert I.ingest(s, [2026], laps=True, today=TODAY, echo=lambda *_: None) == {"ingested": 1, "unchanged": 2}   # only the race with laps changes
         assert counts(s)["laps"] == 4 * 349
         p = raw / "2026/1/5626/weekend-feed.json"
         feed = json.loads(p.read_text())
         feed["weekend_race"][0]["results"][0]["points_earned"] = 99
         p.write_text(json.dumps(feed))
-        assert I.ingest(s, [2026], echo=lambda *_: None) == {"ingested": 1, "unchanged": 2}
+        assert I.ingest(s, [2026], today=TODAY, echo=lambda *_: None) == {"ingested": 1, "unchanged": 2}
 
 
 def test_a_series_without_a_competition_is_refused(db):
     with db() as s, pytest.raises(ValueError, match="no competition yet"):
         I.ingest(s, [2026], series=2)
+
+
+def test_races_still_to_run_are_filed_as_scheduled_and_become_completed_when_run(db, raw):
+    from sqlalchemy import select
+    from racinglines.db import models as m
+    with db() as s:
+        I.ingest(s, [2026], today=TODAY, echo=lambda *_: None)
+        sched = {e.name: e for e in s.scalars(select(m.Event).where(m.Event.source == I.SOURCE, m.Event.status == "scheduled"))}
+        assert sorted(e.series_round for e in sched.values()) == [31, 32, 33, 34, 35, 36]
+        finale = sched["NASCAR Championship Race"]
+        assert (str(finale.start_date), finale.series_round, finale.venue.slug) == ("2026-11-08", 36, "homestead-miami-speedway")
+        race = s.scalars(select(m.Race).where(m.Race.event_id == finale.id)).one()
+        assert race.format["scheduled_laps"] == 267 and race.rounds == [] and "actual_laps" not in race.format
+        assert I.ingest(s, [2026], today=TODAY, echo=lambda *_: None) == {"unchanged": 3}          # nothing new to file
+        # a later day: the Las Vegas race (Oct 4) has passed, so it is no longer filed as scheduled
+        I.ingest(s, [2026], today=date(2026, 10, 5), echo=lambda *_: None)
+        assert len(s.scalars(select(m.Event).where(m.Event.source == I.SOURCE, m.Event.status == "scheduled")).all()) == 6
+        # the weekend feed of a race that was scheduled completes the same event, not a second one
+        lv = s.scalars(select(m.Event).where(m.Event.source_key == "2026-5630")).one()
+        assert lv.status == "scheduled"
+        wf = json.loads((MKT / "nascar_weekend_feed_2026_5624.json").read_text())
+        wf["weekend_race"][0]["race_id"] = 5630
+        (raw / "2026/1/5630").mkdir()
+        (raw / "2026/1/5630/weekend-feed.json").write_text(json.dumps(wf))
+        I.ingest(s, [2026], today=date(2026, 10, 5), echo=lambda *_: None)
+        s.refresh(lv)
+        assert lv.status == "completed" and len(s.scalars(select(m.Event).where(m.Event.source_key == "2026-5630")).all()) == 1
+
+
+# --- identity ---------------------------------------------------------------------------
+
+@pytest.mark.quick
+def test_names_are_normalized_across_accents_punctuation_and_suffixes():
+    assert ID.norm("A.J. Allmendinger") == ID.norm("AJ Allmendinger") == "aj allmendinger"
+    assert ID.norm("Daniel Suárez") == "daniel suarez"
+    assert ID.strip_suffix(ID.norm("Ricky Stenhouse Jr.")) == "ricky stenhouse"
+    assert ID.first_last("john hunter nemechek") == "john nemechek" and ID.first_last("ty gibbs") == "ty gibbs"
+
+
+def add_driver(s, name, driver_id, race_event_key="2026-5624"):
+    """A driver with a race result in one ingested race (so the resolver's pool has them)."""
+    from sqlalchemy import select
+    from racinglines.db import models as m
+    a = m.Athlete(display_name=name)
+    s.add(a)
+    s.flush()
+    s.add(m.AthleteIdentifier(scheme="nascar", value=str(driver_id), athlete_id=a.id))
+    rnd = s.scalars(select(m.Round).join(m.Race).join(m.Event).where(m.Event.source_key == race_event_key, m.Round.kind == "race")).one()
+    s.add(m.Result(round_id=rnd.id, athlete_id=a.id, position=None, status="DNS"))
+    s.flush()
+    return a.id
+
+
+def athlete_of(s, driver_id):
+    from sqlalchemy import select
+    from racinglines.db import models as m
+    return s.scalars(select(m.AthleteIdentifier.athlete_id).where(
+        m.AthleteIdentifier.scheme == "nascar", m.AthleteIdentifier.value == str(driver_id))).one()
+
+
+def test_resolver_finds_a_driver_under_the_spellings_venues_use(db):
+    with db() as s:
+        I.ingest(s, [2026, 2017], today=TODAY, echo=lambda *_: None)
+        R = ID.Resolver(s.connection(), 2026)
+        want = lambda did: athlete_of(s, did)                                   # noqa: E731
+        assert R.driver("Kyle Larson") == R.driver("kyle larson") == R.driver("LARSON") == want(4030)
+        assert R.driver("Ricky Stenhouse Jr.") == R.driver("Ricky Stenhouse") == want(3888)     # the feed says "Jr" with no dot
+        old = ID.Resolver(s.connection(), 2017)                                                   # Allmendinger: in the 2017 fixture only
+        assert old.driver("A.J. Allmendinger") == old.driver("AJ Allmendinger") == want(3774)
+        assert R.driver("Chris Bell") == R.driver("Christopher Bell") == want(4153)              # a short first name
+        assert R.driver("Alexander Bowman") == want(4045) and R.driver("Chris Buescher") == want(3989)
+        assert R.driver("Darrell Wallace Jr.") == R.driver("Bubba Wallace") == want(4025)        # a nickname the feed has used both ways
+        assert R.driver_id(want(4030)) == 4030
+        assert R.driver("Daniel Suarez") is None and R.unresolved["Daniel Suarez"] == "unknown"
+        assert R.driver("") is None and R.driver(None) is None
+
+
+def test_the_pool_is_the_market_season_and_the_one_before(db):
+    with db() as s:
+        I.ingest(s, [2026, 2017], today=TODAY, echo=lambda *_: None)
+        kenseth = athlete_of(s, 1810)                                               # raced in the 2017 fixture only
+        assert ID.Resolver(s.connection(), 2017).driver("Matt Kenseth") == kenseth
+        assert ID.Resolver(s.connection(), 2018).driver("Matt Kenseth") == kenseth   # the season before still counts
+        r = ID.Resolver(s.connection(), 2026)
+        assert r.driver("Matt Kenseth") is None and r.unresolved["Matt Kenseth"] == "unknown"      # not in 2025 or 2026
+        assert ID.Resolver(s.connection(), None).driver("Matt Kenseth") == kenseth  # no season given: everyone
+
+
+def test_a_name_that_fits_two_drivers_is_never_guessed(db):
+    with db() as s:
+        I.ingest(s, [2026], today=TODAY, echo=lambda *_: None)
+        kyle, kurt = add_driver(s, "Kyle Busch", 1234), add_driver(s, "Kurt Busch", 1235)
+        R = ID.Resolver(s.connection(), 2026)
+        assert (R.driver("Kyle Busch"), R.driver("Kurt Busch")) == (kyle, kurt)
+        assert R.driver("Busch") is None and R.unresolved["Busch"] == "ambiguous: Kurt Busch, Kyle Busch"
+        assert R.driver("K. Busch") is None                                          # an initial is not a first name
+
+
+def test_race_is_looked_up_by_date_and_name(db):
+    from sqlalchemy import select
+    from racinglines.db import models as m
+    with db() as s:
+        I.ingest(s, [2026], today=TODAY, echo=lambda *_: None)
+        R = ID.Resolver(s.connection(), 2026)
+        dar = s.scalars(select(m.Race).join(m.Event).where(m.Event.source_key == "2026-5624")).one().id
+        fin = s.scalars(select(m.Race).join(m.Event).where(m.Event.source_key == "2026-5601")).one().id
+        assert R.race(date(2026, 9, 6))[0] == dar and R.race(date(2026, 9, 7))[0] == dar and R.race(date(2026, 9, 5))[0] == dar
+        assert R.race(date(2026, 9, 8)) == (None, None) and R.race(None) == (None, None)
+        assert R.race(date(2026, 11, 8), "Homestead")[0] == fin                      # an upcoming race resolves too
+        assert [rid for rid, *_ in R.race_window(date(2026, 11, 1), date(2026, 11, 30))] == [
+            s.scalars(select(m.Race).join(m.Event).where(m.Event.source_key == "2026-5632")).one().id, fin]
+        # two events inside the window: the name decides, and without a usable name it is ambiguous, not a guess
+        R.events = [(1, "Cook Out Clash", date(2026, 2, 4), "c"), (2, "DAYTONA 500", date(2026, 2, 5), "c")]
+        assert R.race(date(2026, 2, 4), "Daytona 500 winner") == (2, "DAYTONA 500")
+        assert R.race(date(2026, 2, 4), "Winner") == (None, None) and R.race(date(2026, 2, 4)) == (None, None)

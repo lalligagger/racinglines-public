@@ -260,7 +260,7 @@ racinglines nascar ingest [--years 2026] [--series 1] [--force] [--no-laps]     
 | Command | What it does |
 |---|---|
 | `fetch` | Download the feeds to `data/raw/nascar/cf/<year>/<series>/`, byte for byte, one request per second, for every race already run. Files on disk are skipped and a feed the server says is missing (HTTP 403) is remembered in a `.missing` marker (not for races from the last three days, whose feeds may not be published yet), so a re-run after each race weekend asks only for what is new. `--feeds` picks from `race_list_basic, points-feed, weekend-feed, pit-data, loopstats, lap-times, lap-notes`; `--races` limits to some race ids; `--force` asks again; `--dry-run` requests nothing and prints how many requests a run would make. |
-| `ingest` | Load the stored feeds into the database: events, rounds (practice, qualifying, race), results, laps, and one athlete per NASCAR `driver_id`. A race whose files have not changed is skipped (`--force` rebuilds it); `--no-laps` leaves out the lap table. Only Cup (`--series 1`) has a competition. |
+| `ingest` | Load the stored feeds into the database: events (races still to run as `scheduled`), rounds (practice, qualifying, race), results, laps, and one athlete per NASCAR `driver_id`. A race whose files have not changed is skipped (`--force` rebuilds it); `--no-laps` leaves out the lap table. Only Cup (`--series 1`) has a competition. |
 
 Nothing here runs by default. **Back up the database before the first `ingest` on a real database** ([Data changes](data-changes.md)).
 

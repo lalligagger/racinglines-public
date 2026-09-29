@@ -19,6 +19,10 @@ Two source quirks the ingest records rather than hides (found in the 2026-09-29 
     with laps_max and laps_missing (laps of the race distance that no car has), so a lap-based feature can drop
     those races.
 
+Races still to run (in the season's race list, dated today or later) are filed as events with status "scheduled" and
+no rounds, so a market on an upcoming race has a race to point at; the weekend feed turns the same event into a
+completed one when the race has been run.
+
 Idempotent like the F1 ingest: a race is rebuilt only when its files change (sha256 of all of them).
 Only Cup (series 1) is wired to a competition; Xfinity and Trucks need their own competition rows first.
 """
@@ -266,6 +270,45 @@ def write(session, comp, cat, year, parsed):
     return n_results, n_laps
 
 
+def ingest_schedule(session, comp, cat, year, series, today=None, force=False):
+    """File the season's races that have not been run yet as scheduled events (no rounds, no results). A race
+    dated before `today` gets its event from the weekend feed instead; a completed event is never touched.
+    Returns the number written; 0 when the race list has not changed."""
+    path = F.feed_path(year, series, "race_list_basic")
+    if not path.exists():
+        return 0
+    today = today or date.today()
+    key = f"nascar:{year}-{series}-schedule"
+    h = hashlib.sha256(path.read_bytes() + today.isoformat().encode()).hexdigest()
+    src = session.scalars(select(m.SourceFile).filter_by(path=key)).first()
+    if src and src.sha256 == h and not force:
+        return 0
+    rows = F.read(path) or []
+    rounds = series_rounds(rows)
+    season = _upsert(session, m.Season, dict(competition_id=comp.id, year=year))
+    n = 0
+    for r in rows:
+        day = date.fromisoformat(r["race_date"][:10])
+        if day < today:
+            continue
+        skey = f"{year}-{r['race_id']}"
+        old = session.scalars(select(m.Event).filter_by(season_id=season.id, source=SOURCE, source_key=skey)).first()
+        if old is not None and old.status == "completed":
+            continue
+        venue = resolve_venue(session, r["track_name"]) if r.get("track_name") else None
+        event = _upsert(session, m.Event, dict(season_id=season.id, source=SOURCE, source_key=skey), name=r["race_name"].strip(),
+                        start_date=day, venue_id=venue.id if venue else None, series_round=rounds.get(r["race_id"]), status="scheduled")
+        race = _upsert(session, m.Race, dict(event_id=event.id, category_id=cat.id))
+        race.format = _clean(dict(
+            kind="nascar", series=series, race_id=r["race_id"], track_id=r.get("track_id"), track_name=r.get("track_name"),
+            race_type="points" if r.get("race_type_id") == 1 else "exhibition", scheduled_laps=r.get("scheduled_laps"),
+            scheduled_distance=r.get("scheduled_distance"), stage_laps=[r[k] for k in ("stage_1_laps", "stage_2_laps", "stage_3_laps") if r.get(k)] or None,
+            playoff_round=r.get("playoff_round"), restrictor_plate=r.get("restrictor_plate")))
+        n += 1
+    _upsert(session, m.SourceFile, dict(path=key), sha256=h, parser=PARSER)
+    return n
+
+
 def race_ids(year, series=1):
     """Race ids with a stored weekend feed, in date order."""
     base = F.season_dir(year, series)
@@ -293,7 +336,7 @@ def ingest_race(session, comp, cat, year, series, race_id, rounds, force=False, 
     return f"{n_results} results, {n_laps} laps"
 
 
-def ingest(session, years, series=1, force=False, laps=True, echo=print):
+def ingest(session, years, series=1, force=False, laps=True, today=None, echo=print):
     if series not in SERIES_SPORT:
         raise ValueError(f"series {series} has no competition yet; wired: {sorted(SERIES_SPORT)}")
     comp, cat = ensure_competition(session, SERIES_SPORT[series])
@@ -301,6 +344,11 @@ def ingest(session, years, series=1, force=False, laps=True, echo=print):
     counts = {}
     for year in years:
         rounds = series_rounds(F.race_rows(year, series))
+        n = ingest_schedule(session, comp, cat, year, series, today=today, force=force)
+        session.commit()
+        if n:
+            counts["scheduled"] = counts.get("scheduled", 0) + n
+            echo(f"  {year}: {n} races still to run filed as scheduled")
         for rid in race_ids(year, series):
             try:
                 status = ingest_race(session, comp, cat, year, series, rid, rounds, force=force, laps=laps)
