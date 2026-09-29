@@ -18,29 +18,97 @@ step (not one giant script), so they can be run and checked one at a time.
 
 ## Model / thread allocation
 
-**Goal:** maximize throughput on the Claude Code budget; spend the separate Fable budget on the highest-complexity
-work only, but don't let it sit unused if genuinely high-complexity work exists this session.
+**Goal:** keep bulky work and bulky tool output out of the most expensive context. Fable is the seat that plans,
+decides, reviews and writes the final answer; Opus-, Sonnet- and Haiku-class workers do the work in their own
+context and report back a short, evidenced footer. The cost of an agent session is not what the model writes, it
+is the context it re-reads every turn, so a test log or a 40-file grep sitting in a Fable context is re-read at
+Fable prices for the rest of the session. The goal is therefore *not* "use Fable more" or "use Fable less". An
+earlier version of this note had that upside down: it routed the hardest hands-on tasks *to* Fable and asked
+sessions to go looking for high-complexity work so the Fable budget would not sit idle. Fable's budget sitting
+idle is fine. Fable doing hands-on work a worker could do, in a context Fable then re-reads, is the failure mode.
 
-| Tier | Use for | Model |
+> **Source:** Wes Sander, "Fable Decides, Opus and Sonnet Do the Work: How I Route Claude Code Subagents",
+> <https://x.com/ucsandman/status/2104795895053025310> (2026-09-28). The role split, the "work goes down,
+> questions go up" graph, the size-based delegation rule, the worker footer, the fan-out arithmetic and the
+> "brief, don't wall" lesson below are all from that post. The racinglines-specific examples are ours.
+
+### Who does what
+
+| Role | Model | Use for |
 |---|---|---|
-| **High** | Model/pricing methodology changes, anything touching settlement rules, order signing, or trading flags, cross-cutting refactors touching 4+ modules, ambiguous roadmap items needing a judgment call, the final review pass before a merge batch | `Fable` (pass as the literal model name) |
-| **Medium** | A roadmap item that follows an existing pattern (a new sweep setting, a new venue path, a CLI subcommand, tests for either) | Sonnet-class |
-| **Low** | Mechanical work: doc sync, rote test scaffolding, formatting, dependency bumps, git housekeeping | Haiku-class |
+| **Decide / review** | `Fable` (pass as the literal model name) | Plan, resolve ambiguity, make the judgment calls (model/pricing methodology, settlement rules, order signing, trading flags, cross-cutting refactors touching 4+ modules, ambiguous roadmap items), review workers' footers, the final review pass before a merge batch, root cause after two fixes have already failed. Fable reads decisions and conclusions, not transcripts. |
+| **Own** | Opus-class | A large or risky task end to end: a multi-file change, a repo sweep, a root-cause hunt. The only worker that may hand pieces further down. Routine main-loop work belongs here, not in Fable. |
+| **Implement** | Sonnet-class | The decision is already made; write the code inside the scope given (a new sweep setting, a new venue path, a CLI subcommand, tests for either). In a fix loop it does not edit test files: a test that looks wrong comes back up as a decision, not bent until it passes. |
+| **Scout** | Haiku-class | Read-only lookups (where is this defined, what calls it, how many are there) and mechanical work: doc sync, formatting, git housekeeping. If it cannot find something it says NOT FOUND and lists where it looked. |
 
-At the start of a session, state which tier each queued task falls into and why, before assigning models. If a
-session has no genuinely high-complexity task, say so explicitly rather than routing something to Fable to use
-the budget — but check hard before concluding that, since "no high-complexity work" is the failure mode we're
-avoiding here.
+**Name the model on every spawn.** Subagents inherit the parent's model, so an `Agent`/`agent()` call with no
+model in a Fable session is a Fable worker. That single omission is how one workflow script spawned 110 copies
+of Fable in the source post. A bare call is a bug, not a default.
+
+### Work goes down, questions go up
+
+- Delegation only goes down: Fable → Opus → Sonnet → Haiku. Haiku spawns nobody. Peers are not edges (a Sonnet
+  worker handing its job to another Sonnet worker hides the work one level deeper), and a fork counts as a peer
+  because it inherits the caller's model.
+- The one thing that goes up is a question. A blocked worker asks one rung above itself (Sonnet asks Opus, Opus
+  asks Fable) and gets an answer, not a takeover. A blocked question turns into a guess, and a guess mid-fix costs
+  more than the advice.
+- Depth two is the ceiling: Fable → Opus → Haiku, never deeper.
+- Fan out from the highest level that can already write the brief. If Fable already knows the five files, it
+  spawns five scouts, not one owner that goes and rediscovers them.
+
+### Delegate by size, not by principle
+
+Under about ten tool calls or eighty edited lines, do it inline, whoever is in the main loop. Delegation earns
+its arrival cost (tens of thousands of tokens before the worker does anything) when the work is big, when the
+pieces can run at the same time, or when the output is long and only the conclusion is needed. A one-line edit
+delegated to a worker costs more than doing it by hand.
+
+Every dispatch names its model, declares its size, and says what "done" and "verified" mean:
+
+```
+# EST: 14 calls, 3 files
+Scope: racinglines/f1/pricing.py, racinglines/f1/settings.py, tests/f1/test_pricing.py
+Done when: the new spread setting is off by default and the existing golden tests are byte-identical
+Verify: python -m pytest tests/f1/test_pricing.py -m "not live"
+Report: files changed, the verify command and its last line, what you did not check
+```
+
+**Every worker ends with the same footer:** what changed, the exact command that verified it, the paths it
+checked, and what it did not check. A claim with no evidence line counts as unverified. That footer is what the
+deciding seat reads, not the worker's transcript.
+
+### Fan-outs and workflows
+
+- Write the agent count down as arithmetic before launching (producers + items × verifiers + synthesizers), cap
+  any term that depends on an earlier stage with a slice, and merge duplicates before any per-item stage. The
+  ceiling is 30 agents; anything over 40 needs a written reason. A fan-out with no declared size does not run.
+- Fable appears in a workflow only at the end, as the judge that reads everything and makes the call: a
+  top-level `await` after the fan-out, never inside a `parallel`, a `map` or a loop, at most a few times per
+  script.
+- Concurrency limits only queue the rest; every agent still runs and still pays its arrival cost.
+
+### Brief, don't wall
+
+Hard blocks on routing mid-task get probed, not obeyed (the source post's edit-budget hook logged 714 overrides
+in 1,046 events and once left a file half-edited). Block only the things that destroy state, which for us are the
+safety rails at the bottom of this file. For routing, put the economics in front of the model once at the start
+of the session, name the model on every spawn, and fix the call on the way through.
+
+At the start of a session, state for each queued task which role owns it and why, before assigning models. If
+nothing needs the deciding seat, say so and run the session on Opus-class or below. Never route work to Fable
+to use the budget.
 
 ## Dev cycle
 
 1. **Plan.** Restate the ask, resolve ambiguity, no code yet. Check `docs/todo.md` for whether this is already a
    tracked item (U-numbers, P0/P1/P2) and cite it.
-2. **Develop roadmap.** Break the plan into ordered tasks. For each: complexity tier, files/modules touched, and
+2. **Develop roadmap.** Break the plan into ordered tasks. For each: owning role (decide / own / implement / scout), files/modules touched, and
    its test/doc obligations (`docs/f1-roadmap.md` "ground rules": golden
    tests, leakage-rule tests for new pricing/trading paths, `tests/test_no_data_in_git.py`).
 3. **Implementation.** Only after the roadmap is confirmed (or the task is trivial and low-risk).
-4. **Run one thread per task**, one task at a time, model per the tier table, on its own branch off `main`.
+4. **Run one thread per task**, one task at a time, model per the role table above and named explicitly on
+   every spawn, on its own branch off `main`.
 5. **Report back**, every check-in:
    - status per task (done / blocked / needs a decision),
    - open questions, especially anything the roadmap calls an "owner decision" (`docs/todo.md#owner-decisions`),
