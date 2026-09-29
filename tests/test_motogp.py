@@ -1,0 +1,136 @@
+"""MotoGP results (racinglines/sources/motogp): the parser on the 2026-09-29 probe fixtures
+(tests/fixtures/market/motogp_*.json, see motogp_README.txt), and the ingest into a throwaway database.
+No network."""
+
+import json
+
+import pytest
+from conftest import FIX
+
+from racinglines.sources.motogp import ingest as I
+
+MKT = FIX / "market"
+
+
+def fx(name):
+    return json.loads((MKT / f"motogp_{name}.json").read_text())
+
+
+def tha_event():
+    return next(e for e in fx("events_2026") if e["short_name"] == "THA")
+
+
+# --- parser ---------------------------------------------------------------------
+
+@pytest.mark.quick
+def test_time_ms_parses_minutes_and_hours_clocks():
+    assert I._time_ms("39:36.270") == 39 * 60_000 + 36_270
+    assert I._time_ms("1:39:36.270") == (60 + 39) * 60_000 + 36_270
+    assert I._time_ms(None) is None and I._time_ms("") is None
+
+
+@pytest.mark.quick
+def test_status_of_treats_instnd_as_classified_and_everything_else_as_dnf():
+    assert I.status_of({"status": "INSTND"}) == "OK"
+    assert I.status_of({"status": "OUT"}) == "DNF"
+    assert I.status_of({}) == "DNF"
+
+
+@pytest.mark.quick
+def test_parse_event_reads_the_thailand_race_classification():
+    p = I.parse_event(2026, tha_event(), fx("classification_2026_tha_motogp_race"))
+    assert p["key"] == "2026-THA" and p["name"] == "GRAND PRIX OF THAILAND" and p["venue"] == "Chang International Circuit"
+    assert p["date"].isoformat() == "2026-02-27" and len(p["rows"]) == 6                       # top 5 + last, per the fixture
+    winner = p["rows"][0]
+    assert (winner["name"], winner["position"], winner["status"], winner["bib"], winner["team"]) == \
+        ("Marco Bezzecchi", 1, "OK", "72", "Aprilia Racing")
+    assert winner["time_ms"] == 39 * 60_000 + 36_270 and winner["nation"] == "IT"
+    assert winner["extra"]["constructor"] == "Aprilia" and winner["extra"]["points"] == 25
+    second = p["rows"][1]
+    assert second["time_ms"] == winner["time_ms"] + 5543 and second["extra"]["gap_to_leader_s"] == "5.543"
+
+
+@pytest.mark.quick
+def test_parse_event_is_none_with_no_classification():
+    assert I.parse_event(2026, tha_event(), {"classification": []}) is None
+    assert I.parse_event(2026, tha_event(), None) is None
+
+
+# --- ingest into a database ---------------------------------------------------------
+
+@pytest.fixture
+def raw(tmp_path, monkeypatch):
+    from racinglines.sources.motogp import fetch as F
+    monkeypatch.setattr(F, "OUT", tmp_path)
+    (tmp_path / "2026").mkdir()
+    (tmp_path / "2026" / "events.json").write_text(json.dumps(fx("events_2026")))
+    (tmp_path / "2026" / "THA").mkdir()
+    (tmp_path / "2026" / "THA" / "classification.json").write_text(json.dumps(fx("classification_2026_tha_motogp_race")))
+    return tmp_path
+
+
+@pytest.fixture
+def db(test_engine, raw):
+    from sqlalchemy import delete, select
+    from sqlalchemy.orm import sessionmaker
+
+    from racinglines.db import models as m
+    S = sessionmaker(test_engine)
+
+    def clean():
+        with S() as s:
+            s.execute(delete(m.Event).where(m.Event.source == I.SOURCE))
+            s.execute(delete(m.SourceFile).where(m.SourceFile.parser == I.PARSER))
+            ids = s.scalars(select(m.AthleteIdentifier.athlete_id).where(m.AthleteIdentifier.scheme == I.SCHEME)).all()
+            s.execute(delete(m.AthleteIdentifier).where(m.AthleteIdentifier.scheme == I.SCHEME))
+            s.execute(delete(m.Athlete).where(m.Athlete.id.in_(ids)))
+            s.commit()
+
+    clean()
+    yield S
+    clean()
+
+
+@pytest.mark.quick
+def test_ingest_event_writes_the_standard_shape(db):
+    from sqlalchemy import select
+
+    from racinglines.db import models as m
+    with db() as s:
+        outcome = I.ingest_event(s, *_comp_cat(s), 2026, "THA")
+        s.commit()
+        assert outcome == "6 results"
+        event = s.scalars(select(m.Event).filter_by(source=I.SOURCE, source_key="2026-THA")).one()
+        assert event.name == "GRAND PRIX OF THAILAND" and event.status == "completed"
+        race = s.scalars(select(m.Race).filter_by(event_id=event.id)).one()
+        round_ = s.scalars(select(m.Round).filter_by(race_id=race.id)).one()
+        assert round_.kind == "race"
+        results = s.scalars(select(m.Result).filter_by(round_id=round_.id).order_by(m.Result.position)).all()
+        assert [r.position for r in results] == [1, 2, 3, 4, 5, None] or len(results) == 6
+        winner = next(r for r in results if r.position == 1)
+        athlete = s.get(m.Athlete, winner.athlete_id)
+        assert athlete.display_name == "Marco Bezzecchi"
+
+
+@pytest.mark.quick
+def test_reingest_is_a_no_op_and_force_rebuilds_without_duplicating(db):
+    from sqlalchemy import select
+
+    from racinglines.db import models as m
+    with db() as s:
+        comp, cat = _comp_cat(s)
+        assert I.ingest_event(s, comp, cat, 2026, "THA") == "6 results"
+        s.commit()
+        assert I.ingest_event(s, comp, cat, 2026, "THA") == "unchanged"
+        s.commit()
+        assert I.ingest_event(s, comp, cat, 2026, "THA", force=True) == "6 results"
+        s.commit()
+        event = s.scalars(select(m.Event).filter_by(source=I.SOURCE, source_key="2026-THA")).one()
+        race = s.scalars(select(m.Race).filter_by(event_id=event.id)).one()
+        results = s.scalars(select(m.Result).join(m.Round).where(m.Round.race_id == race.id)).all()
+        assert len(results) == 6                                                           # not doubled
+
+
+def _comp_cat(session):
+    from racinglines.db.ingest import ensure_competition
+    return ensure_competition(session, I.SPORT)

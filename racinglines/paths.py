@@ -54,4 +54,5 @@ def rel(path):
 F1_RAW = raw("f1", "fastf1")
 DH_RAW = raw("mtb_dh", "chronorace")
 NASCAR_RAW = raw("nascar", "cf")
+MOTOGP_RAW = raw("motogp", "pulselive")
 DH_MANUAL = raw("mtb_dh", "manual")

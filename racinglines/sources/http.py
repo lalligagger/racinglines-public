@@ -27,6 +27,7 @@ HOST_INTERVAL = {
     "api.elections.kalshi.com": 0.25,
     "prod.chronorace.be": 0.5,
     "cf.nascar.com": 1.0,
+    "api.motogp.pulselive.com": 0.5,
     "en.wikipedia.org": 1.0,
 }
 DEFAULT_INTERVAL = 0.25
