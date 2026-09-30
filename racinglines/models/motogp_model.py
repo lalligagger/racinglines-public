@@ -48,6 +48,14 @@ class MotoGPRace:
     name = "motogp_results"
     Settings = MotoGPSettings
 
+    @staticmethod
+    def _entrant_ids(frame):
+        ids = pd.to_numeric(frame.get("athlete_id", pd.Series(dtype="float64")), errors="coerce")
+        if ids.notna().any():
+            return sorted(ids.dropna().astype(int).unique().tolist())
+        names = frame.get("rider", pd.Series(dtype="object"))
+        return sorted(names.dropna().astype(str).unique().tolist())
+
     def search_grid(self, data, seasons=None, settings_list=None, kinds=None, echo=False):
         """Evaluate a small grid of parameter settings and rank by mean log loss.
 
@@ -98,6 +106,7 @@ class MotoGPRace:
                         ev.name AS event_name,
                         ev.source_key AS race_key,
                         ev.start_date::date AS date,
+                        a.id AS athlete_id,
                         a.display_name AS rider,
                         r.position,
                         r.team,
@@ -115,9 +124,9 @@ class MotoGPRace:
             ).all()
 
         if not rows:
-            return pd.DataFrame(columns=["season", "event_id", "event_name", "race_key", "date", "rider", "position", "team", "status", "points"])
+            return pd.DataFrame(columns=["season", "event_id", "event_name", "race_key", "date", "athlete_id", "rider", "position", "team", "status", "points"])
 
-        df = pd.DataFrame(rows, columns=["season", "event_id", "event_name", "race_key", "date", "rider", "position", "team", "status", "points"])
+        df = pd.DataFrame(rows, columns=["season", "event_id", "event_name", "race_key", "date", "athlete_id", "rider", "position", "team", "status", "points"])
         df["race"] = df["race_key"].fillna(df["event_name"])
         return df
 
@@ -129,7 +138,12 @@ class MotoGPRace:
         return sorted(int(s) for s in data["season"].dropna().unique())
 
     def events(self, data, settings, seasons=None):
-        d = data.drop_duplicates("race").sort_values("date")
+        frame = data.copy()
+        if "race" not in frame.columns:
+            frame["race"] = frame["season"].astype(str) + "::" + frame["race_key"].fillna(frame.get("event_name", frame["event_id"]))
+        else:
+            frame["race"] = frame["season"].astype(str) + "::" + frame["race"].astype(str)
+        d = frame.drop_duplicates("race").sort_values("date")
         if seasons:
             d = d[d["season"].isin(seasons)]
         out = []
@@ -147,11 +161,11 @@ class MotoGPRace:
         if past.empty:
             return None
 
-        entrants = sorted(past["rider"].dropna().unique())
+        entrants = self._entrant_ids(past)
         if not entrants:
             return None
 
-        recent = past.groupby("rider")["position"].agg(["mean", "count"]).reindex(entrants)
+        recent = past.groupby("athlete_id")["position"].agg(["mean", "count"]).reindex(entrants)
         recent["skill"] = recent["mean"].fillna(recent["mean"].median())
         skill = recent["skill"].to_numpy(dtype=float)
 
@@ -168,7 +182,7 @@ class MotoGPRace:
         r = r.sort_values("position")
         return pd.DataFrame(
             dict(
-                athlete_id=r["rider"].to_numpy(),
+                athlete_id=r["athlete_id"].astype(int).to_numpy(),
                 position=r["position"].to_numpy(float),
                 status=r["status"].fillna("OK").to_numpy(),
                 qual_position=np.nan,
@@ -194,7 +208,7 @@ class MotoGPRaceChallenger(MotoGPRace):
         if settings["history_races"] > 0:
             past = past.tail(settings["history_races"])
 
-        entrants = sorted(past["rider"].dropna().unique())
+        entrants = self._entrant_ids(past)
         if not entrants:
             return None
 
@@ -208,8 +222,8 @@ class MotoGPRaceChallenger(MotoGPRace):
             team_form[team] = float(np.average(rows["position"].to_numpy(float), weights=w))
 
         scores = []
-        for rider in entrants:
-            rider_rows = past[past["rider"] == rider].sort_values("date").tail(settings["recent_races"])
+        for athlete_id in entrants:
+            rider_rows = past[past["athlete_id"] == athlete_id].sort_values("date").tail(settings["recent_races"])
             if rider_rows.empty:
                 base = overall
             else:

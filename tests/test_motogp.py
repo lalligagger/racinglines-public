@@ -67,6 +67,34 @@ def test_parse_event_is_none_with_no_classification():
     assert I.parse_event(2026, tha_event(), None) is None
 
 
+@pytest.mark.quick
+def test_model_uses_stable_athlete_ids_across_roster_changes():
+    import numpy as np
+    import pandas as pd
+
+    from racinglines.models.motogp_model import MotoGPRace
+
+    data = pd.DataFrame([
+        {"season": 2024, "event_id": "2024-r1", "event_name": "Round 1", "race_key": "2024-r1", "date": pd.Timestamp("2024-04-01"),
+         "athlete_id": 101, "rider": "A. Rider", "position": 1, "team": "Alpha", "status": "OK", "points": 25},
+        {"season": 2024, "event_id": "2024-r1", "event_name": "Round 1", "race_key": "2024-r1", "date": pd.Timestamp("2024-04-01"),
+         "athlete_id": 202, "rider": "A. Rider", "position": 2, "team": "Bravo", "status": "OK", "points": 18},
+        {"season": 2025, "event_id": "2025-r1", "event_name": "Round 1", "race_key": "2025-r1", "date": pd.Timestamp("2025-04-01"),
+         "athlete_id": 101, "rider": "A. Rider", "position": 2, "team": "Alpha", "status": "OK", "points": 18},
+        {"season": 2025, "event_id": "2025-r1", "event_name": "Round 1", "race_key": "2025-r1", "date": pd.Timestamp("2025-04-01"),
+         "athlete_id": 303, "rider": "B. Newcomer", "position": 4, "team": "Charlie", "status": "OK", "points": 12},
+    ])
+
+    model = MotoGPRace()
+    ev = model.events(data, {}, seasons=[2025])[0]
+    sim = model.price(data, ev, model.Settings.from_dict({"sims": 100, "noise": 0.1, "recent_races": 1,
+                                                        "history_races": 0, "team_bias": 0.1,
+                                                        "recency_decay": 1.0, "seed": 9}), np.random.default_rng(9))
+    assert sim is not None
+    assert set(sim.entrants) == {101, 202}
+    assert all(isinstance(a, int) for a in sim.entrants)
+
+
 # --- ingest into a database ---------------------------------------------------------
 
 @pytest.fixture

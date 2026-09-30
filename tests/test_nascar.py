@@ -7,6 +7,7 @@ import shutil
 from datetime import date
 
 import httpx
+import pandas as pd
 import pytest
 
 from conftest import FIX
@@ -152,6 +153,171 @@ def test_no_weekend_feed_or_no_results_is_no_race():
     empty = fx("weekend_feed_2026_5624")
     empty["weekend_race"][0]["results"] = []
     assert I.parse_race(2026, 1, {"weekend-feed": empty}) is None
+
+
+def _nascar_data():
+    rows = []
+    drivers = [f"d{i:02d}" for i in range(1, 11)]
+    driver_ids = {name: 1000 + idx for idx, name in enumerate(drivers)}
+    for season in (2024, 2025, 2026):
+        for race_idx in range(1, 5):
+            base = [0.7 * (i % 5) + 0.25 * (season - 2024) for i in range(len(drivers))]
+            order = sorted(range(len(drivers)), key=lambda i: base[i] + (race_idx * 0.05 * i))
+            for pos, driver_idx in enumerate(order, 1):
+                date = pd.Timestamp(f"{season}-04-{1 + race_idx * 7}")
+                driver = drivers[driver_idx]
+                rows.append(dict(
+                    season=season,
+                    race=f"{season}-{race_idx}",
+                    date=date,
+                    athlete_id=driver_ids[driver],
+                    driver=driver,
+                    position=pos,
+                    team=f"team-{(driver_idx % 3) + 1}",
+                    status="OK",
+                    points=25 if pos == 1 else 0,
+                ))
+    return pd.DataFrame(rows)
+
+
+def test_nascar_model_contract_and_in_memory_pricing_are_valid():
+    from racinglines.models.nascar_model import NascarCupRace
+    from racinglines.models.race_model import model_class
+
+    assert model_class("nascar").__name__ == "NascarCupRace"
+
+    df = pd.DataFrame([
+        {"season": 2026, "event_id": "2026-5624", "race_key": "2026-5624", "date": pd.Timestamp("2026-09-06"),
+         "athlete_id": 101, "driver": "Kyle Larson", "position": 1, "team": "Hendrick Motorsports", "status": "OK", "points": 40},
+        {"season": 2026, "event_id": "2026-5624", "race_key": "2026-5624", "date": pd.Timestamp("2026-09-06"),
+         "athlete_id": 202, "driver": "Christopher Bell", "position": 2, "team": "Joe Gibbs Racing", "status": "OK", "points": 32},
+        {"season": 2026, "event_id": "2026-5624", "race_key": "2026-5624", "date": pd.Timestamp("2026-09-06"),
+         "athlete_id": 303, "driver": "Ryan Blaney", "position": 3, "team": "Team Penske", "status": "OK", "points": 28},
+        {"season": 2026, "event_id": "2026-5625", "race_key": "2026-5625", "date": pd.Timestamp("2026-09-13"),
+         "athlete_id": 202, "driver": "Christopher Bell", "position": 1, "team": "Joe Gibbs Racing", "status": "OK", "points": 40},
+        {"season": 2026, "event_id": "2026-5625", "race_key": "2026-5625", "date": pd.Timestamp("2026-09-13"),
+         "athlete_id": 101, "driver": "Kyle Larson", "position": 2, "team": "Hendrick Motorsports", "status": "OK", "points": 34},
+        {"season": 2026, "event_id": "2026-5625", "race_key": "2026-5625", "date": pd.Timestamp("2026-09-13"),
+         "athlete_id": 303, "driver": "Ryan Blaney", "position": 5, "team": "Team Penske", "status": "OK", "points": 18},
+    ])
+
+    model = NascarCupRace()
+    ev = model.events(df, {}, seasons=[2026])[0]
+    rng = __import__("numpy").random.default_rng(42)
+    sim = model.price(df, ev, model.Settings.from_dict({"sims": 100, "noise": 0.5, "recent_races": 2, "history_races": 0,
+                                                     "team_bias": 0.2, "recency_decay": 1.5, "seed": 42}), rng)
+    assert sim is not None
+    assert set(sim.entrants) == {101, 202, 303}
+    assert sim.rank.shape == (100, 3)
+
+
+def test_nascar_model_prices_by_athlete_id_across_roster_changes():
+    from racinglines.models.nascar_model import NascarCupRace
+
+    data = pd.DataFrame([
+        {"season": 2024, "event_id": "2024-r1", "race_key": "2024-r1", "date": pd.Timestamp("2024-04-01"),
+         "athlete_id": 101, "driver": "A. Driver", "position": 1, "team": "Alpha", "status": "OK", "points": 25},
+        {"season": 2024, "event_id": "2024-r1", "race_key": "2024-r1", "date": pd.Timestamp("2024-04-01"),
+         "athlete_id": 202, "driver": "A. Driver", "position": 2, "team": "Bravo", "status": "OK", "points": 18},
+        {"season": 2025, "event_id": "2025-r1", "race_key": "2025-r1", "date": pd.Timestamp("2025-04-01"),
+         "athlete_id": 101, "driver": "A. Driver", "position": 2, "team": "Alpha", "status": "OK", "points": 18},
+        {"season": 2025, "event_id": "2025-r1", "race_key": "2025-r1", "date": pd.Timestamp("2025-04-01"),
+         "athlete_id": 303, "driver": "B. Newcomer", "position": 4, "team": "Charlie", "status": "OK", "points": 12},
+    ])
+
+    model = NascarCupRace()
+    ev = model.events(data, {}, seasons=[2025])[0]
+    rng = __import__("numpy").random.default_rng(7)
+    sim = model.price(data, ev, model.Settings.from_dict({"sims": 100, "noise": 0.1, "recent_races": 1,
+                                                        "history_races": 0, "team_bias": 0.1,
+                                                        "recency_decay": 1.0, "seed": 7}), rng)
+    assert sim is not None
+    assert set(sim.entrants) == {101, 202}
+    assert all(isinstance(a, int) for a in sim.entrants)
+
+
+def test_nascar_results_deduplicate_duplicate_athlete_rows_per_event():
+    from racinglines.core import walk_forward as WF
+    from racinglines.models.nascar_model import NascarCupRace
+
+    data = pd.DataFrame([
+        {"season": 2026, "event_id": "2026-r1", "race_key": "2026-r1", "date": pd.Timestamp("2026-04-01"),
+         "athlete_id": 101, "driver": "A. Driver", "position": 1, "team": "Alpha", "status": "OK", "points": 40},
+        {"season": 2026, "event_id": "2026-r1", "race_key": "2026-r1", "date": pd.Timestamp("2026-04-01"),
+         "athlete_id": 101, "driver": "A. Driver", "position": 1, "team": "Alpha", "status": "OK", "points": 40},
+        {"season": 2026, "event_id": "2026-r1", "race_key": "2026-r1", "date": pd.Timestamp("2026-04-01"),
+         "athlete_id": 202, "driver": "B. Driver", "position": 2, "team": "Bravo", "status": "OK", "points": 32},
+        {"season": 2026, "event_id": "2026-r1", "race_key": "2026-r1", "date": pd.Timestamp("2026-04-01"),
+         "athlete_id": 303, "driver": "C. Driver", "position": 3, "team": "Charlie", "status": "OK", "points": 28},
+    ])
+
+    model = NascarCupRace()
+    ev = model.events(data, {}, seasons=[2026])[0]
+    res = model.results(data, ev)
+    assert res["athlete_id"].is_unique
+    out = WF.run(model, data, model.Settings.from_dict({"sims": 200, "noise": 0.5, "recent_races": 2,
+                                                      "history_races": 0, "team_bias": 0.2,
+                                                      "recency_decay": 1.5, "seed": 7}),
+                 seasons=[2026], kinds=["race_win"])
+    cal = out["calibration"].query("kind == 'race_win'")
+    assert cal["season"].isin(["all", 2026]).all()
+    assert cal.shape[0] == 2
+
+
+def test_nascar_model_runs_through_the_backtest_engine():
+    from racinglines.models import race_model as RM
+    from racinglines.core import walk_forward as WF
+
+    model = RM.get("nascar")
+    data = _nascar_data()
+    settings = model.Settings.from_dict({"sims": 200, "shrink": 2.0, "noise": 0.75, "seed": 7})
+
+    out = WF.run(model, data, settings, seasons=[2025, 2026], kinds=["race_win", "race_podium", "race_h2h"])
+
+    assert set(out["events"]["season"]) == {2025, 2026}
+    assert len(out["events"]) >= 2
+    assert out["calibration"].query("season == 'all' and kind == 'race_win'")["n"].iloc[0] > 0
+
+
+def test_nascar_challenger_runs_and_tracks_recent_form():
+    from racinglines.models import race_model as RM
+    from racinglines.models.nascar_model import NascarCupRaceChallenger
+    from racinglines.core import walk_forward as WF
+
+    data = _nascar_data()
+    baseline = RM.get("nascar")
+    challenger = NascarCupRaceChallenger()
+
+    base_settings = baseline.Settings.from_dict({"sims": 200, "shrink": 2.0, "noise": 0.75, "seed": 7})
+    chal_settings = challenger.Settings.from_dict({"sims": 200, "recent_races": 4, "team_bias": 0.5,
+                                                "noise": 0.75, "seed": 7})
+
+    base_out = WF.run(baseline, data, base_settings, seasons=[2025, 2026], kinds=["race_win"])
+    chal_out = WF.run(challenger, data, chal_settings, seasons=[2025, 2026], kinds=["race_win"])
+
+    base_win = base_out["calibration"].query("season == 'all' and kind == 'race_win'").iloc[0]
+    chal_win = chal_out["calibration"].query("season == 'all' and kind == 'race_win'").iloc[0]
+
+    assert int(chal_out["events"].shape[0]) >= 2
+    assert chal_win["n"] > 0
+    assert chal_win["logloss"] <= 0.25
+    assert chal_out["rows"].query("kind == 'race_win'").shape[0] > 0
+
+
+def test_nascar_search_grid_ranks_candidates_by_logloss():
+    from racinglines.models.nascar_model import NascarCupRaceChallenger
+
+    data = _nascar_data()
+    candidates = [
+        {"sims": 200, "recent_races": 2, "history_races": 4, "recency_decay": 1.5, "team_bias": 0.2, "noise": 0.75, "seed": 7},
+        {"sims": 200, "recent_races": 4, "history_races": 12, "recency_decay": 2.5, "team_bias": 0.5, "noise": 1.0, "seed": 8},
+    ]
+
+    rows = NascarCupRaceChallenger().search_grid(data, seasons=[2025, 2026], settings_list=candidates, kinds=["race_win", "race_podium"])
+
+    assert len(rows) == 2
+    assert {"score", "race_win", "race_podium"}.issubset(rows.columns)
+    assert rows["score"].notna().all()
 
 
 # --- fetch ------------------------------------------------------------------------
