@@ -89,6 +89,10 @@ Worst drawdown <b class="bad">{{ book.max_dd|money(true) }}</b> from a peak, thr
 <form method="get" class="toolbar mb0"><label><span>Venue</span><select name="venue" onchange="this.form.submit()">
   <option value="">all venues</option><option value="polymarket" {{ 'selected' if venue == 'polymarket' }}>Polymarket (paper)</option>{% if kalshi and venues.kalshi %}<option value="kalshi" {{ 'selected' if venue == 'kalshi' }}>Kalshi (paper)</option>{% endif %}<option value="private" {{ 'selected' if venue == 'private' }}>Private book</option>
 </select></label>
+<label><span>Sport</span><select name="sport" onchange="this.form.submit()">
+  <option value="">all sports</option>
+  {% for code in sport_options %}<option value="{{ code }}" {{ 'selected' if sport == code }}>{{ sport_names.get(code, code) }}</option>{% endfor %}
+</select></label>
 <label><span>Weekend</span><select name="event" onchange="this.form.submit()">
   <option value="">all weekends</option>
   {% for w in weekends %}<option value="{{ w.event_key }}" {{ 'selected' if w.event_key == event }}>{{ w.name }} {{ w.event_key[:4] }} · {{ w.n }} · {{ w.pnl|money(true) }}</option>{% endfor %}

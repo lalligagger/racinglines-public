@@ -14,6 +14,16 @@ Before a major update, keep what it replaces: a database dump in `data/backups/d
 files in `data/archive/<sport>/` (both git-ignored; `data/raw` is the record, so it isn't edited in place
 without a copy). Not `data/archive/db/`: that folder is tracked in git (the snapshot).
 
+## 2026-09-30 · Reattached the maker's Kalshi profile on the VM
+
+**Why.** The maker account had lost `users.prefs["strategy_profile_kalshi"]` even though the Kalshi replay rows
+were still present, so the Strategy page for `?venue=kalshi` rendered a zero-dollar cumulative record instead of
+its historical maker replay. **What changed.** The VM ran `racinglines f1 profiles --assign-demo --venue kalshi`,
+restoring `K · Kalshi maker` as the maker's Kalshi profile beside its existing Polymarket profile, and the
+`data_changes` row named the backup. Backup: `data/backups/db/racinglines-before-kalshi-profile-20260930T172425Z.sql.gz`.
+**Undo.** Restore the backup or clear `users.prefs["strategy_profile_kalshi"]` and leave the Polymarket profile
+alone.
+
 ## 2026-09-30 · Overnight VM run: NASCAR and MotoGP results, links, tape and replay saves on the VM
 
 **Why.** The overnight run (report: `reports/2026-09-30-overnight-vm-run/report.md`) needed NASCAR and MotoGP on the

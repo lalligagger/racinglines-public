@@ -5,7 +5,15 @@
 <a href="/positions{{ '?venue=kalshi' if venue }}">What it holds: Positions →</a>
 {%- if kalshi %}<nav class="tabs" aria-label="Which exchange's record"><a href="?{{ 'user=' ~ viewer.username if viewer.id != user.id }}"{% if not venue %} aria-current="page"{% endif %}>Polymarket</a><a href="?venue=kalshi{{ '&user=' ~ viewer.username if viewer.id != user.id }}"{% if venue %} aria-current="page"{% endif %}>Kalshi</a></nav>{% endif %}
 {% if users %}<form method="get" class="inline"><label><span>User</span><select name="user" onchange="this.form.submit()">
-  {% for u in users %}<option {{ 'selected' if u == viewer.username }}>{{ u }}</option>{% endfor %}</select></label></form>{% endif %}{% endcall %}
+  {% for u in users %}<option {{ 'selected' if u == viewer.username }}>{{ u }}</option>{% endfor %}</select></label></form>{% endif %}
+{% if sport_options %}<form method="get" class="inline">
+  {% if viewer.id != user.id %}<input type="hidden" name="user" value="{{ viewer.username }}">{% endif %}
+  {% if venue %}<input type="hidden" name="venue" value="{{ venue }}">{% endif %}
+  <label><span>Sport</span><select name="sport" onchange="this.form.submit()">
+    <option value="">all sports</option>
+    {% for code in sport_options %}<option value="{{ code }}" {{ 'selected' if sport == code }}>{{ sport_names.get(code, code) }}</option>{% endfor %}
+  </select></label>
+</form>{% endif %}{% endcall %}
 
 {% if not profile and not record %}<p class="muted">No strategy profile is assigned to this account. An admin can assign one on the user's admin page.</p>{% else %}
 {% set k = acct.kpis %}
@@ -30,7 +38,7 @@
 <div class="card"><h2>Track record</h2><p class="legend">Click a weekend for its calls, stage by stage.</p><div class="scroll" data-rows="25" data-filter="Filter by weekend or strategy"><table>
 <thead><tr><th class="l">Weekend</th><th class="l">Strategy</th><th>{{ "Fills" if is_maker else "Trades taken" }}</th><th title="Markets still held when the race started">Held to the race</th><th>Most in use</th><th>P&amp;L</th><th>Running total</th><th class="l"></th></tr></thead><tbody>
 {% for y in seasons %}{% for r in y.rows %}<tr class="{{ 'sel' if r.event_key == event_key }}">
-  <td class="l"><a href="?event={{ r.event_key }}{% if viewer.id != user.id %}&user={{ viewer.username }}{% endif %}{% if venue %}&venue={{ venue }}{% endif %}#weekend">{{ r.event_name or r.event_key }}</a> <span class="muted">{{ r.start_date|fmt if r.start_date }}</span></td>
+  <td class="l"><a href="?event={{ r.event_key }}{% if viewer.id != user.id %}&user={{ viewer.username }}{% endif %}{% if venue %}&venue={{ venue }}{% endif %}{% if sport %}&sport={{ sport }}{% endif %}#weekend">{{ r.event_name or r.event_key }}</a> <span class="muted">{{ r.start_date|fmt if r.start_date }}</span></td>
   <td class="l">{{ r.profile }}</td>
   <td>{{ r.fills if r.strategy.startswith('maker') else r.taken }}</td><td>{{ r.positions }}</td><td>${{ "{:,.0f}".format(r.deployed) }}</td>
   <td class="{{ 'good' if r.pnl > 0 else ('bad' if r.pnl < 0) }}">{{ r.pnl|money(true) }}{% if not r.settled %} <span class="muted">open</span>{% endif %}</td>
