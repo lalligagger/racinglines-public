@@ -366,3 +366,33 @@ def test_kalshi_pages_need_the_switch(clients):
         r = m.get(path)
         assert r.status_code == 200, path
         assert not re.search(r">\s*nan\b|\bnan\s*<", r.text, re.I), path
+
+
+def test_basic_pages_never_name_the_strategy_behind_a_pick(clients):
+    """A basic account's picks (here from a blend member) show as "Your picks" with a star rating: no profile,
+    strategy or member name or code, no fair value or edge. Pro pages are unchanged."""
+    from sqlalchemy import text as T
+
+    from racinglines.db.config import get_engine
+    cl, _ = clients
+    eng = get_engine()
+    with eng.begin() as c:
+        uid = c.execute(T("SELECT id FROM users WHERE username = 'taker'")).scalar()
+        c.execute(T("""INSERT INTO strategy_signals (user_id, profile, strategy, event_key, market_key, kind, subject,
+                         stage, dedupe, action, side, shares, limit_price, fair, price, edge, heat, status, signal_ts, detail)
+                       VALUES (:u, 'TB · blended taker (update + stage-aware)', 'early', '2099-03', 'tok-test-b', 'race_h2h',
+                         'Zed ahead of Yan', 'after FP2', 'after FP2', 'buy', 'YES', 62, 0.41, 0.5234, 0.40, 0.1234, 2, 'new',
+                         now(), '{"member": "T8", "followed": true}')"""), dict(u=uid))
+    try:
+        for path in ("/strategy?event=2099-03", "/positions?event=2099-03"):
+            r = cl["taker"].get(path)
+            assert r.status_code == 200, path
+            for leak in ("TB ·", "blended taker", "T8", "stage-aware", "0.523", "+12.3 pts", "Our fair"):
+                assert leak not in r.text, (path, leak)
+        r = cl["taker"].get("/strategy?event=2099-03")
+        assert "Zed ahead of Yan" in r.text, "subject"
+        assert "Your picks" in r.text, "name"
+        assert "★★★" in r.text, "stars"
+    finally:
+        with eng.begin() as c:
+            c.execute(T("DELETE FROM strategy_signals WHERE event_key = '2099-03'"))

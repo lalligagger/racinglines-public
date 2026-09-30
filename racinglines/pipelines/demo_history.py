@@ -48,34 +48,38 @@ def backfill(engine, engine_url=None, usernames=None, now=None, echo=print, venu
     plan = {u: h for u, h in PF.HISTORY.items() if not usernames or u in usernames}
     other = {} if venue == "polymarket" else dict(venue=venue)
     if other:
-        plan = {u: h for u, h in plan.items() if all(PF.HISTORY_PROFILES.get(c, PF.PROFILES.get(c))["strategy"] == "maker"
+        plan = {u: h for u, h in plan.items() if all(PF.HISTORY_PROFILES.get(c, PF.PROFILES.get(c)).get("strategy") == "maker"
                                                      for c, *_ in h)}
     with engine.begin() as c:
         ids = PF.ensure_candidates(c, history=True)
         users = dict(c.execute(text("SELECT username, id FROM users WHERE username = ANY(:u)"),
                                dict(u=list(plan))).all())
         profs = {code: PF.load(c, i) for code, i in ids.items()}
+        profs.update({code: PF.load(c, code) for code, pr in PF.PROFILES.items() if PF.is_combo(pr)})   # blends
     cache, report, scheds = {}, [], {}
     for username, phases in plan.items():
         uid = users.get(username)
         if uid is None:
             echo(f"no user {username!r}: skipped")
             continue
-        rate = PF.DEMO_FOLLOW.get(username)
         for code, year, r0, r1 in phases:
             prof = profs[code]
+            rate = PF.follow_rate(username, prof["strategy"])
             sched = scheds.setdefault(year, WS.schedule(year))
             for rnd in sorted(r for r in sched if r0 <= r <= r1):
                 w = sched[rnd]
                 if w["race_start"] + SETTLED > now:
                     break                                     # not raced yet: live signals cover it
-                out = SG.compute(engine, engine_url, prof, now=w["race_start"] + SETTLED, event=f"{year}-{rnd}",
-                                 live=False, fetch=False, echo=lambda m: None, cache=cache, **other)
-                if not out["stages"] or not (out["signals"] or out["positions"]):
+                outs = SG.compute_all(engine, engine_url, prof, now=w["race_start"] + SETTLED, event=f"{year}-{rnd}",
+                                      live=False, fetch=False, echo=lambda m: None, cache=cache, **other)
+                outs = [o for o in outs if o["stages"] and (o["signals"] or o["positions"])]
+                if not outs:
                     echo(f"{username} {w['event_key']} {w['name']}: no markets")
                     continue
+                out = dict(outs[0], signals=[s for o in outs for s in o["signals"]])     # for the report line
                 with engine.begin() as c:
-                    SG.store(c, uid, out, follow_rate=rate, history=True, **other)
+                    for o in outs:                                # a blend: each member's rows (compute_all)
+                        SG.store(c, uid, o, follow_rate=rate, history=True, **other)
                     pnl = c.execute(text("""SELECT coalesce(sum(cash + yes_shares * outcome::int + no_shares * (1 - outcome::int)), 0)
                                             FROM paper_positions WHERE user_id = :u AND event_key = :e AND outcome IS NOT NULL
                                             AND venue = :v"""),

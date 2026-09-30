@@ -541,20 +541,32 @@ def replay_maker(conn, run_id, fill="through", half_spread=0.02, size=50, max_po
 TRACK_RECORD_VENUES = ("polymarket", "kalshi", "private")
 
 
-def track_record(conn, user, venue="polymarket"):
+def _basic_viewer(viewer):
+    """A basic caller (dict(id, username, role), server.CALLER): its own account only, never which strategy made
+    a pick (web/roles.basic_*). None for everyone else (stdio, admin, pro): output as before."""
+    from racinglines.web import roles as R
+    return viewer if viewer and R.canonical(viewer.get("role")) == "basic" else None
+
+
+def track_record(conn, user, venue="polymarket", viewer=None):
     """Every weekend of a user's paper record: strategy, trades or fills, positions, P&L. venue: polymarket, kalshi,
     private or all. 'all' lists one row per weekend AND venue (a `venue` column; the maker's weekends have a
     Polymarket and a Kalshi row) with `totals` per venue next to the grand total; `weekends` counts distinct weekends."""
     from racinglines.pipelines import story as S
-    uid = _user_id(conn, user)
+    from racinglines.web import roles as R
+    basic = _basic_viewer(viewer)
+    uid = basic["id"] if basic else _user_id(conn, user)
+    if basic:
+        user = basic["username"]
+    tr = (lambda *a, **k: [R.basic_row(r) for r in S.track_record(*a, **k)]) if basic else S.track_record
     if venue != "all":
-        rows = S.track_record(conn, uid, venue=venue)
+        rows = tr(conn, uid, venue=venue)
         pnl = sum(r["pnl"] for r in rows)
         return dict(user=user, venue=venue, weekends=len(rows), pnl=P.plain(pnl), up=sum(1 for r in rows if r["pnl"] > 0),
                     rows=P.page([{k: v for k, v in r.items() if k != "date"} for r in rows], limit=P.MAX_LIMIT))
     rows, totals = [], []
     for v in TRACK_RECORD_VENUES:
-        part = S.track_record(conn, uid, venue=v)
+        part = tr(conn, uid, venue=v)
         rows += [dict(event_key=r["event_key"], venue=v, **{k: x for k, x in r.items() if k not in ("event_key", "date")})
                  for r in part]
         if part:
@@ -566,8 +578,11 @@ def track_record(conn, user, venue="polymarket"):
                 up=sum(1 for r in rows if r["pnl"] > 0), totals=totals, rows=P.page(rows, limit=P.MAX_LIMIT))
 
 
-def list_positions(conn, user, venue=None, event_key=None, open_only=False, limit=None, offset=0):
-    uid = _user_id(conn, user)
+def list_positions(conn, user, venue=None, event_key=None, open_only=False, limit=None, offset=0, viewer=None):
+    basic = _basic_viewer(viewer)
+    uid = basic["id"] if basic else _user_id(conn, user)
+    if basic:
+        user = basic["username"]
     df = data.q(conn, """
         SELECT pp.event_key, pp.venue, pp.kind, pp.subject, pp.market_key, pp.yes_shares, pp.no_shares, pp.cash, pp.mark, pp.outcome,
                pp.bid, pp.ask, pp.quote_state, pp.updated_at,
@@ -580,16 +595,30 @@ def list_positions(conn, user, venue=None, event_key=None, open_only=False, limi
     return dict(user=user, totals=[P.record(r) for r in totals.to_dict("records")], positions=P.page(df, limit=limit, offset=offset))
 
 
-def list_signals(conn, user=None, event_key=None, status=None, action=None, limit=None, offset=0):
-    uid = _user_id(conn, user) if user else None
+def list_signals(conn, user=None, event_key=None, status=None, action=None, limit=None, offset=0, viewer=None):
+    """Paper signals, newest first. A basic viewer: its own only, as roles.basic_signal shows them (no profile,
+    strategy, member, fair value or edge; a `stars` rating instead)."""
+    basic = _basic_viewer(viewer)
+    uid = basic["id"] if basic else (_user_id(conn, user) if user else None)
     df = data.q(conn, """
         SELECT ss.id, u.username AS "user", ss.profile, ss.strategy, ss.event_key, ss.kind, ss.subject, ss.stage, ss.action, ss.side,
                ss.shares, ss.limit_price, ss.fair, ss.price, ss.edge, ss.heat, ss.target_cost, ss.status, ss.signal_ts, ss.market_key,
-               ss.detail->>'venue' AS venue, ss.detail->>'backfill' AS backfill
+               ss.detail->>'venue' AS venue, ss.detail->>'backfill' AS backfill, ss.detail->>'member' AS _member
         FROM strategy_signals ss JOIN users u ON u.id = ss.user_id
         WHERE (CAST(:u AS int) IS NULL OR ss.user_id = CAST(:u AS int)) AND (CAST(:e AS text) IS NULL OR ss.event_key = CAST(:e AS text))
           AND (CAST(:s AS text) IS NULL OR ss.status = CAST(:s AS text)) AND (CAST(:a AS text) IS NULL OR ss.action = CAST(:a AS text))
         ORDER BY ss.id DESC""", u=uid, e=event_key, s=status, a=action)
+    if basic:
+        from racinglines.pipelines import profiles as PF
+        from racinglines.web import roles as R
+        prof = PF.of_user(conn, uid)
+        recs = [R.basic_signal(dict(r, detail={"member": r.pop("_member")}), prof) for r in df.to_dict("records")]
+        for r in recs:
+            r.pop("detail", None)
+        cols = [c for c in df.columns if c not in R.BASIC_HIDDEN and c != "_member"] + ["stars"]
+        df = pd.DataFrame(recs, columns=cols)
+    else:
+        df = df.drop(columns="_member")
     return P.page(df, limit=limit, offset=offset)
 
 

@@ -49,13 +49,14 @@
 {% if not maker and stages %}<p class="legend">Heat: how much the model expects an entry to earn,
   <span class="heat h1">warm</span> <span class="heat h2">hot</span> <span class="heat h3">very hot</span>
   (the middle and top quarter of this profile's backtest entries). It grades the model's conviction, not a promise:
-  in the 2026 backtest hotter entries did earn more, in 2025 they didn't, and the model expects more than it has realised.</p>
+  in the 2026 backtest hotter entries did earn more, in 2025 they didn't, and the model expects more than it has realised.{% if not show_fair %}
+  Rating: one to three stars, how far a pick clears the bar of the strategy that made it.{% endif %}</p>
 {% if stages|map(attribute='signals')|sum(start=[])|selectattr('followed', 'false')|list %}{% call demo_context() %}<b>Taken</b> / <b>passed</b>: this demo account follows some recommendations, not all (hotter ones more often), and sticks with a market once it's in.{% endcall %}{% endif %}{% endif %}
 
 {% for st in stages %}
 <details class="card" data-remember="strategy:stage:{{ loop.index }}"{% if loop.last %} open{% endif %}><summary><h2>{{ st.stage }}</h2><span class="sum">{{ st.signals|length }} signal{{ "s" if st.signals|length != 1 }}{% if not maker %} · {{ st.signals|selectattr('followed', 'true')|list|length }} taken{% endif %}</span></summary>
 <div class="scroll" data-rows="20" data-filter="Filter by market"><table>
-<thead><tr><th class="l">Market</th><th class="l">Action</th><th>Shares</th><th>Limit</th><th>Cost</th>{% if not maker %}<th class="l">Heat</th>{% endif %}
+<thead><tr><th class="l">Market</th><th class="l">Action</th><th>Shares</th><th>Limit</th><th>Cost</th>{% if not maker %}<th class="l">Heat</th>{% endif %}{% if not maker and not show_fair %}<th class="l">Rating</th>{% endif %}
   {% if show_fair %}<th>Market</th><th>Our fair</th><th>Edge</th>{% endif %}<th class="l">Status</th><th class="l">When (UTC)</th></tr></thead><tbody>
 {% for s in st.signals %}<tr class="{{ 'muted-row' if s.followed == false }}">
   <td class="l">{{ s.subject }} <span class="muted">{{ s.kind|replace('race_', '')|replace('_', ' ') }}</span></td>
@@ -64,6 +65,7 @@
   <td>{{ "%.2f"|format(s.limit_price) if s.limit_price is not none else "" }}</td>
   <td>{{ "$%.2f"|format(s.shares * s.limit_price) if s.shares is not none and s.limit_price is not none else "" }}</td>
   {% if not maker %}<td class="l">{% if s.heat %}<span class="heat h{{ s.heat }}">{{ s.heat_label }}</span>{% elif s.action == 'sell' %}<span class="muted">exit / trim</span>{% endif %}</td>{% endif %}
+  {% if not maker and not show_fair %}<td class="l">{% if s.stars %}<span title="{{ s.stars }} of 3">{{ "★" * s.stars }}{{ "☆" * (3 - s.stars) }}</span>{% endif %}</td>{% endif %}
   {% if show_fair %}<td>{{ "%.3f"|format(s.price) if s.price is not none else "" }}</td><td>{{ "%.3f"|format(s.fair) if s.fair is not none else "" }}</td>
     <td>{{ "%+.1f pts"|format(s.edge * 100) if s.edge is not none else "" }}</td>{% endif %}
   <td class="l">{% if s.followed == true %}<b>taken</b>{% elif s.followed == false %}<span class="muted">passed</span>{% elif s.action in ('quote', 'pull') and s.detail and s.detail.backfill %}{% else %}<span class="muted">{{ s.status|replace('_', ' ') }}</span>{% endif %}</td>
@@ -96,7 +98,7 @@ The tables below are that evidence, as the account saw it at each point.{% endca
 </section>
 {% elif acct.taker %}{% set t = acct.taker %}<section data-panel="how" hidden>
 <div class="card"><h2>How this account uses racinglines</h2>
-<p>This account follows the <b>{{ profile.name }}</b> signals: after every practice and qualifying session it gets a list of trades, each with a heat rating.
+<p>This account follows {% if profile.basic %}<b>its picks</b>, drawn from three of our taker strategies{% else %}the <b>{{ profile.name }}</b> signals{% endif %}: after every practice and qualifying session it gets a list of trades, each with a heat rating.
 A taker never sees the model's numbers, only what to trade, the size, the most to pay, and the heat.</p>
 {% call demo_context("This demo taker's habit.") %}It doesn't take every signal: about a third, favouring hotter ones, and once it's in a market it follows that
 market's later signals to the exit. Being choosy keeps its stakes small and gives up part of the upside.{% endcall %}

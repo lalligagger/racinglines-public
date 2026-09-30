@@ -18,6 +18,11 @@ The two recommended by the params-4h cloud search (data/runs/search/params-4h/RE
     racinglines f1 profiles --assign-demo --venue kalshi   # demo maker -> K, as its Kalshi profile (explicit;
                                                            # nothing reads it until the signal engine runs Kalshi)
 
+    T1..T10  the taker shortlist (TAKER_TOP, ranked; source "taker-resweep"): what pro accounts pick from, and
+             the pool a basic account's three picks are drawn from (web/roles.basic_members).
+    TB       a blend (COMBOS): members [(code, weight)] instead of one strategy; each member runs as itself with
+             its stakes scaled by its weight (signals.compute_all). Not a Lab candidate.
+
 A user's profile lives in users.prefs["strategy_profile"] with the full settings, so deleting the
 candidate doesn't break the assignment. A Kalshi profile lives beside it in prefs["strategy_profile_kalshi"]
 (PREF_KALSHI), so the Polymarket profile and everything reading it are untouched.
@@ -50,9 +55,54 @@ PROFILES = {
               settings=K_SETTINGS,
               why=K_WHY),
 }
+
+# The taker shortlist from the taker re-sweep (source "taker-resweep"): pro accounts pick any of these; a basic account
+# gets picks from BASIC_PICKS of them, drawn per account (web/roles.basic_members). Data only: reorder TAKER_TOP or
+# rewrite a `why` here and nothing else moves. Numbers: data/runs/search/taker-resweep/REPORT.md.
+TAKER_SOURCE = "taker-resweep"
+_T1 = {"variant": "gridq+pretrain+reset", "min_edge": 0.10, "min_edge_h2h": 0.05, "taker_stages": LIVE_STAGES}
+_T7 = dict(_T1, coherence_tol_by_kind="race_podium=0.35")
+TAKER_PROFILES = {
+    "T1": dict(name="T1 · update, core (A's settings)", strategy="update", settings=dict(_T1),
+               why="taker-resweep rank 2 (= profile A). Robust: 16k 2026 +1,389 (Sharpe 1.29, max DD 249), 2025 +1,432 (1.55, 233); 4k +1,243 / +1,363."),
+    "T2": dict(name="T2 · update, every stage", strategy="update",
+               settings={"variant": "gridq+pretrain+reset", "min_edge": 0.10, "min_edge_h2h": 0.05},
+               why="taker-resweep rank 3: A with pre-weekend entry. Robust, not better than A: 16k 2026 +1,256 (1.13, 289), 2025 +1,400 (1.53, 239)."),
+    "T3": dict(name="T3 · update, gridq+pretrain", strategy="update",
+               settings={"variant": "gridq+pretrain", "min_edge": 0.10},
+               why="taker-resweep rank 4: gridq+pretrain, 10-pt edge. Robust: 16k 2026 +960 (0.85, 292), 2025 +900 (0.97, 439); 2026 rests on one weekend."),
+    "T4": dict(name="T4 · update, gbm", strategy="update", settings={"variant": "gbm", "min_edge": 0.10},
+               why="taker-resweep rank 5: gbm, 10-pt edge. Robust: 16k 2026 +739 (0.80, 389), 2025 +881 (0.84, 420)."),
+    "T5": dict(name="T5 · update, 8-pt edges", strategy="update",
+               settings={"variant": "gridq+pretrain+reset", "min_edge": 0.08},
+               why="taker-resweep rank 6: 8-pt edge, more trades. Robust: 16k 2026 +872 (0.80, 399), 2025 +816 (0.81, 412)."),
+    "T6": dict(name="T6 · update, $200 volume floor", strategy="update", settings=dict(_T1, min_volume_24h=200),
+               why="taker-resweep rank 8: A in markets with $200+ traded in 24 h. Robust, smallest drawdowns: 16k 2026 +702 (0.73, 260), 2025 +608 (0.78, 225)."),
+    "T7": dict(name="T7 · update, loose podium coherence", strategy="update", settings=dict(_T7),
+               why="taker-resweep rank 1: A with podium coherence 0.35. Robust but within noise of A: 16k 2026 +1,271 (1.18, 249), 2025 +1,456 (1.58, 213)."),
+    "T8": dict(name="T8 · stage-aware (early)", strategy="early", settings=dict(_T1),
+               why="taker-resweep rank 10: A's settings on the stage-aware taker. 2026-led: 16k 2026 +2,707 (1.57, 214), 2025 +546 (0.96, 412)."),
+    "T9": dict(name="T9 · stage-aware, loose podium coherence", strategy="early", settings=dict(_T7),
+               why="taker-resweep rank 9: T8 with podium coherence 0.35. 2026-led: 16k 2026 +2,794 (1.62, 214), 2025 +570 (1.00, 412)."),
+    "T10": dict(name="T10 · update, baseline model", strategy="update",
+                settings={"variant": "baseline", "min_edge": 0.10},
+                why="taker-resweep rank 7: the baseline model at a 10-pt edge. Robust: 16k 2026 +740 (0.56, 504), 2025 +757 (0.71, 656)."),
+}
+TAKER_TOP = ("T7", "T1", "T2", "T3", "T4", "T5", "T10", "T6", "T9", "T8")     # ranked, best first (worse season per weekend, 16k)
+# Blends (combos): `members` [(code, weight)] instead of one strategy. Each member runs as itself with its stakes
+# scaled by its weight (signals.compute_all); its signals carry detail.member. A blend is not a Lab candidate.
+COMBOS = {
+    "TB": dict(name="TB · blended taker (update + stage-aware)", members=[("T1", 0.5), ("T8", 0.5)],
+               why="taker-resweep recommended blend: half T1, half T8 (same model, two entry rules). 16k 2026 +2,048 (Sharpe 1.48, max DD 227), 2025 +989 (1.56, 250). Chosen on both seasons, so no held-out season."),
+}
+PROFILES.update(TAKER_PROFILES)
+PROFILES.update(COMBOS)
 DEMO = {"taker": "A", "maker": "C"}
 DEMO_KALSHI = {"maker": "K"}        # the demo maker's Kalshi profile, assigned only by --assign-demo --venue kalshi
-DEMO_FOLLOW = {"taker": 0.33}      # share of recommendations the demo taker follows (code only, not in the UI)
+# Share of recommendations each demo account follows, by the kind of strategy it runs (code only, not in the UI):
+# the basic demo (`taker`) takes about a third of its taker picks; the pro demo (`maker`) fills every pick of a taker
+# strategy when it runs one (its maker strategy has no follow rate). Unset = follows everything.
+DEMO_FOLLOW = {"taker": {"taker": 0.33}, "maker": {"taker": 1.0}}
 DEMO_BANKROLL = {"maker": 10_000.0, "taker": 1_000.0}   # starting bankroll ($), from BANKROLL_SINCE
 BANKROLL_SINCE = "2025-01-01"
 # the demo maker's saved Edge Finder: the setups it ran, newest first (M1 = the baseline maker, also the benchmark)
@@ -60,6 +110,18 @@ DEMO_EDGE_FINDER = {"maker": [("C", "maker"), ("M3", "maker"), ("M2", "maker"), 
 DEMO_EDGE_YEAR = 2026
 PREF = "strategy_profile"
 PREF_KALSHI = "strategy_profile_kalshi"
+
+
+def is_combo(profile):
+    """A blend: a profile (a PROFILES entry or an assigned profile dict) with `members` instead of one strategy."""
+    return bool(profile and profile.get("members"))
+
+
+def follow_rate(username, strategy):
+    """The demo follow rate for this account running this strategy (DEMO_FOLLOW), or None."""
+    from racinglines.pipelines import weekend_sweep as WS
+    kind = "taker" if strategy in WS.TAKER_MODES else "maker"
+    return (DEMO_FOLLOW.get(username) or {}).get(kind)
 
 
 def pref(venue="polymarket"):
@@ -99,8 +161,10 @@ def ensure_candidates(conn, history=False):
     have = {p.get("name"): i for i, p in _candidates(conn)}
     out = {}
     for code, pr in {**PROFILES, **(HISTORY_PROFILES if history else {})}.items():
+        if is_combo(pr):                                  # a blend isn't a candidate: its members are
+            continue
         year, source = (2025, "demo-history") if code in HISTORY_PROFILES else \
-            (2026, "kalshi-maker-k" if code == "K" else "params-4h")
+            (2026, "kalshi-maker-k" if code == "K" else TAKER_SOURCE if code in TAKER_PROFILES else "params-4h")
         out[code] = have.get(pr["name"]) or add_candidate(
             conn, pr["name"], SS.Settings.from_dict(pr["settings"]), year, pr["strategy"], why=pr["why"],
             source=source, venue=pr.get("venue"))
@@ -111,6 +175,9 @@ def load(conn, ref):
     """A profile from a candidate id, a candidate name, or a code (A, C, M1-M3).
     -> dict(candidate_id, name, strategy, settings[, venue]) (venue: a Kalshi candidate's exchange)."""
     ref = str(ref).strip()
+    if is_combo(PROFILES.get(ref.upper())):
+        pr = PROFILES[ref.upper()]
+        return combo(conn, pr["members"], pr["name"])
     rows = _candidates(conn)
     hit = None
     codes = {**PROFILES, **HISTORY_PROFILES}
@@ -125,6 +192,16 @@ def load(conn, ref):
     return dict(candidate_id=i, name=p["name"], strategy=p["strategy"],
                 settings=SS.Settings.from_dict(p["settings"], strict=False).to_json(),
                 **({"venue": p["venue"]} if p.get("venue") else {}))
+
+
+def combo(conn, members, name, **extra):
+    """A blend's profile dict: dict(name, strategy, settings, candidate_id=None, members=[dict(code, weight, member)]).
+    strategy and settings are the first member's, so every reader that expects one strategy (the Markets page's
+    calls, the season P&L line) sees a taker; only the signal engine and the backfill run each member."""
+    ids = ensure_candidates(conn)
+    ms = [dict(code=code, weight=float(w), member=load(conn, ids[code])) for code, w in members]
+    return dict(name=name, strategy=ms[0]["member"]["strategy"], settings=ms[0]["member"]["settings"],
+                candidate_id=None, members=ms, **extra)
 
 
 def assign(conn, user_id, profile, venue="polymarket"):
@@ -167,8 +244,8 @@ def assign_demo(conn, venue="polymarket"):
         uid = conn.execute(text("SELECT id FROM users WHERE username = :u"), dict(u=username)).scalar()
         if uid is not None:
             prof = load(conn, ids[code])
-            if username in DEMO_FOLLOW:
-                prof["follow_rate"] = DEMO_FOLLOW[username]
+            if follow_rate(username, prof["strategy"]) is not None:
+                prof["follow_rate"] = follow_rate(username, prof["strategy"])
             if username in DEMO_BANKROLL:
                 prof["bankroll"] = dict(start=DEMO_BANKROLL[username], since=BANKROLL_SINCE)
             assign(conn, uid, prof)

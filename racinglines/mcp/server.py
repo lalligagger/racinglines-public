@@ -232,20 +232,22 @@ def build(jobs_worker=False, engine_url=None):
         """A user's paper-trading record, one row per weekend: strategy, trades taken or fills, positions, P&L (settled or
         marked), backtest replay or live. venue: polymarket, kalshi (the maker's replay on Kalshi's tape), private, or all
         (one row per weekend and venue, with a venue column and totals per venue). Users: see overview()."""
-        return _read(T.track_record, user=user, venue=venue)
+        return _read(T.track_record, user=user, venue=venue, viewer=CALLER.get())
 
     @srv.tool()
     def list_positions(user: str, venue: str | None = None, event_key: str | None = None, open_only: bool = False,
                        limit: int = 50, offset: int = 0) -> str:
         """A user's paper positions (YES/NO shares, cash, mark, outcome, P&L) with totals per venue."""
-        return _read(T.list_positions, user=user, venue=venue, event_key=event_key, open_only=open_only, limit=limit, offset=offset)
+        return _read(T.list_positions, user=user, venue=venue, event_key=event_key, open_only=open_only, limit=limit,
+                     offset=offset, viewer=CALLER.get())
 
     @srv.tool()
     def list_signals(user: str | None = None, event_key: str | None = None, status: str | None = None,
                      action: str | None = None, limit: int = 50, offset: int = 0) -> str:
         """Paper signals (what a strategy profile would do: buy/sell recommendations, quote/pull, paper fills), newest first.
         status: new, alerted, expired, filled_paper; action: buy, sell, quote, pull, fill."""
-        return _read(T.list_signals, user=user, event_key=event_key, status=status, action=action, limit=limit, offset=offset)
+        return _read(T.list_signals, user=user, event_key=event_key, status=status, action=action, limit=limit,
+                     offset=offset, viewer=CALLER.get())
 
     @srv.tool()
     def list_live_events(limit: int = 50, offset: int = 0) -> str:

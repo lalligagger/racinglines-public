@@ -161,11 +161,30 @@ role everywhere (`roles.canonical`), so no migration was needed. To retire the a
 The words *maker* and *taker* below (and everywhere else in these docs) mean the two kinds of strategy, which keep
 their names.
 
-**Tiers.** A pro account may run any strategy profile, maker or taker, and has the Lab (Edge Finder, sweeps,
-backtests, diagnostics, replays). A basic account may run only the taker profiles in `roles.BASIC_PROFILES`
-(today: **A**, the core weekend taker) and has no Lab, book or fair values. `/admin/users/{id}` refuses to assign
-any other profile to a basic account, and refuses to make an account basic while it runs one; widen the list to
-open more taker strategies to basic accounts.
+**Tiers.** A pro account may run any strategy profile, maker or taker, including a blend, and has the Lab (Edge
+Finder, sweeps, backtests, diagnostics, replays). A basic account runs only **Your picks** (below) and has no Lab,
+book or fair values. `/admin/users/{id}` refuses to assign a basic account anything else, and refuses to make an
+account basic while it runs something else. A basic account already running **A** (the rule before 2026-09-30)
+keeps working, role edits included, until it is re-assigned (`roles.LEGACY_BASIC_PROFILES`).
+
+**The taker shortlist and blends.** `profiles.TAKER_TOP` ranks ten taker profiles, **T1** to **T10**, from the taker
+re-sweep (Lab candidates with source `taker-resweep`, created by `racinglines f1 profiles` like A and C). A *blend*
+(`profiles.COMBOS`; today **TB**, half T1 and half T8) is a profile with `members` `[(code, weight)]` instead of one
+strategy: the signal engine and the demo backfill run each member as itself with its stakes scaled by its weight
+(`TakerParams.scale`; the $2 minimum rebalance is not scaled), store its rows under its own candidate and the blend's
+name, and tag each signal `detail.member`. A blend isn't a candidate; assign it on `/admin/users/{id}` by its code.
+Pages that read one strategy (the Markets page's calls, the "every recommendation" line) use the first member's.
+
+**Basic picks.** A basic account's profile is the blend of `roles.BASIC_PICKS` (3) codes drawn from `TAKER_TOP` by
+`roles.basic_members(user_id)`, at 1/3 each, named **Your picks**. The draw is seeded with `roles.BASIC_SEED` and the
+account id: the same three every time, never re-rolled at login, nothing written until an admin assigns it (the
+**Your picks** option on `/admin/users/{id}`, which shows the draw). Change `BASIC_SEED` to re-draw every account
+(each then needs re-assigning). A basic account never sees which strategy made a pick: on Strategy, Positions and
+Markets, and in the MCP tools (`track_record`, `list_positions`, `list_signals`, for a basic caller its own account
+only), profile, strategy and member names and codes read **Your picks** / taker, and there's no fair value or edge.
+Instead each entry has a 1 to 3 star rating, computed on the server from the edge over the minimum edge of the
+strategy that made it (`roles.pick_stars`: 2x or more, 3 stars; 1.5x, 2; else 1), next to the heat. Pro and admin
+pages are unchanged.
 
 | Role | Can do |
 |---|---|
@@ -182,7 +201,7 @@ Three accounts are easy to mix up. They are separate entities:
 | Account | What it is | Its trades |
 |---|---|---|
 | `maker` (demo, **Try as pro**) | Our maker, $10,000 paper bankroll from 2025-01-01. 2025: M1 (the defaults: conservative maker, baseline model), then M2 (grid-aware maker, 10-pt filter) after round 8, then M3 (gbm maker, 7-pt filter) after round 16; profile C since the start of 2026. Each switch follows a fixed rule on the Edge Finder's walk-forward evidence (`pipelines/story.py`) | Its own quotes and paper fills (**Strategy**, **Positions**); the in-app markets it opens |
-| `taker` (demo, **Try as basic**) | Our taker, $1,000 paper bankroll from 2025-01-01: profile A throughout, following about a third of its recommendations (`follow_rate` 0.33, hotter entries more often). Bankrolls and the follow rate are set in code (`profiles.DEMO_BANKROLL`, `DEMO_FOLLOW`), not in the UI. See [Paper trading](paper-trading.md#the-demo-accounts) | Its own paper trades (**Strategy**, **Positions**) and any bets placed in the app |
+| `taker` (demo, **Try as basic**) | Our taker, $1,000 paper bankroll from 2025-01-01: profile A throughout, following about a third of its recommendations (`follow_rate` 0.33, hotter entries more often). Bankrolls and the follow rate are set in code (`profiles.DEMO_BANKROLL`, `DEMO_FOLLOW`, per account and kind of strategy: the basic demo takes 0.33 of its taker picks, the pro demo fills every pick of a taker strategy when it runs one), not in the UI. See [Paper trading](paper-trading.md#the-demo-accounts) | Its own paper trades (**Strategy**, **Positions**) and any bets placed in the app |
 | `polymarket-takers` (system, no login) | The Polymarket traders whose real trades filled a replayed maker | Replay fills recorded from a diagnostic page (*Record the replay's fills*); its P&L is that maker's P&L reversed |
 
 Both demo accounts' weekends before live paper trading began are **backtest replays**

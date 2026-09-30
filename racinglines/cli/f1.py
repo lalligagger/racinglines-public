@@ -406,9 +406,9 @@ def _run(args):
                 profs = [PF.load(c, args.profile)] if args.profile else [
                     p for _, n, _, p in PF.assigned(c) if not args.user or n in args.user]
             for prof in profs:
-                out = SG.compute(engine, args.db, prof, now=args.asof, event=args.event, live=False,
-                                 fetch=not args.no_fetch, echo=lambda m: print(m, flush=True))
-                print(SG.format_replay(out))
+                for out in SG.compute_all(engine, args.db, prof, now=args.asof, event=args.event, live=False,
+                                          fetch=not args.no_fetch, echo=lambda m: print(m, flush=True)):
+                    print(SG.format_replay(out))
             return
         rep = SG.run_all(engine, args.db, users=args.user, profile_ref=args.profile, event=args.event,
                          fetch=not args.no_fetch, alert=not args.no_alert, echo=lambda m: print(m, flush=True))

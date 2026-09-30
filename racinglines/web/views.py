@@ -40,6 +40,16 @@ def _groups(df):
     return [(k, V.KIND_LABEL.get(k, k), rows(df[df["kind"] == k])) for k in kinds]
 
 
+def _basic_acct(acct):
+    """story.account as a basic account sees it: every track-record row, season and phase under roles.BASIC_NAME
+    (never which strategy ran a weekend)."""
+    rec = {id(r): R.basic_row(r) for r in acct["record"]}
+    one = lambda r: rec.get(id(r), r)                          # noqa: E731
+    return dict(acct, record=[one(r) for r in acct["record"]],
+                seasons=[dict(y, rows=[one(r) for r in y["rows"]]) for y in acct["seasons"]],
+                phases=[dict(R.basic_row(p), first=one(p["first"]), last=one(p["last"])) for p in acct["phases"]])
+
+
 # ---------------------------------------------------------------------------
 # Markets (home)
 # ---------------------------------------------------------------------------
@@ -494,6 +504,9 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
         LEFT JOIN races ra ON ra.event_id = e.id WHERE p.user_id = :u AND (p.venue NOT LIKE 'kalshi%' OR :k)
         ORDER BY p.event_key DESC, p.kind, p.subject""", u=user["id"], k=V.KALSHI_VENUE))
     pos = [p for p in pos if p["trades"] or p["venue"] == "private"]      # markets the account actually traded
+    basic = R.is_basic(user)                        # basic: never which strategy made a pick (roles.basic_*)
+    if basic:
+        pos = [R.basic_position(p) for p in pos]
     for p in pos:
         if p["venue"] == "private" and not p["event_name"]:
             p["event_name"] = LV.event_name(p["event_key"])
@@ -568,6 +581,8 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
         tv = lambda t: (t["detail"] or {}).get("venue") or "polymarket"  # noqa: E731
         trades = [t for t in trades if (V.KALSHI_VENUE or not tv(t).startswith("kalshi"))
                   and (not V.KALSHI_VENUE or not venue or tv(t) == venue or venue == "private")]
+        if basic:
+            trades = [R.basic_signal(t, profile) for t in trades]
     my_bets = house.taker_bets(c, user["id"]) if R.is_basic(user) else pd.DataFrame()
     summary = dict(bets=len(my_bets), staked=float(my_bets["stake"].sum()), open=int((my_bets["status"] == "open").sum()),
                    pnl=float(my_bets["pnl"].sum())) if len(my_bets) else None
@@ -576,6 +591,8 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     # the two venues are never plotted together: the Polymarket history (the strategy's record) and the
     # private book's P&L through its day(s), from the live snapshots; the page switches between them
     acct = story.account(c, user["id"], profile, maker, markers=False) if profile else None
+    if acct and basic:
+        acct = _basic_acct(acct)
     book = None
     if priv_events:
         from racinglines.web.viz import line_chart
@@ -591,7 +608,8 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
             plot = "kalshi"
     coming = polymarket_calls(c, profile, n_races=2) if profile else None
     kcoming = polymarket_calls(c, profile, n_races=2, exchange="kalshi") if profile and V.KALSHI_VENUE else None
-    return render(request, "positions.html", profile=profile, maker=maker, paper=paper, shown=shown,
+    return render(request, "positions.html", profile=R.basic_view_profile(profile) if basic else profile, maker=maker,
+                  paper=paper, shown=shown,
                   weekends=weekends, event=event, by_kind=sorted(by_kind.values(), key=lambda k: -k["n"]),
                   trades=trades, my_bets=rows(my_bets), summary=summary, acct=acct, coming=coming,
                   venues={v["venue"]: v for v in venues.values()}, venue=venue, sort=sort, link=link, book=book, plot=plot, vtotal=sum(v["pnl"] for v in venues.values()),
@@ -621,11 +639,14 @@ def signals_page(request: Request, user: str = "", event: str = "", venue: str =
     viewer = c.execute(T("SELECT id, username, role FROM users WHERE id = :u"), dict(u=uid)).mappings().first()
     profile = PF.of_user(c, uid)
     show_fair = not R.is_basic(me)
+    basic = not show_fair                            # basic: never which strategy made a pick (roles.basic_*)
     from racinglines.pipelines import story
     is_maker = bool(profile and not profile.get("strategy", "update").startswith(("update", "hold", "last", "early")))
     # venue=kalshi (with RACINGLINES_KALSHI_VENUE=1): the maker's same profiles replayed on Kalshi's tape
     venue = "kalshi" if venue == "kalshi" and V.KALSHI_VENUE and is_maker else ""
-    acct = story.account(c, uid, profile, is_maker, venue=venue or "polymarket")
+    acct = story.account(c, uid, profile, is_maker, venue=venue or "polymarket", **({"markers": False} if basic else {}))
+    if basic:
+        acct = _basic_acct(acct)
     record, seasons, total = acct["record"], acct["seasons"], acct["kpis"]["total"]
     ev = event or (record[-1]["event_key"] if record else None)
     cur = next((r for r in record if r["event_key"] == ev), None)
@@ -643,12 +664,14 @@ def signals_page(request: Request, user: str = "", event: str = "", venue: str =
     stages = []
     for lab, g in (sig.groupby("stage", sort=False) if len(sig) else []):
         items = rows(g)
+        if basic:
+            items = [R.basic_signal(s, profile) for s in items]
         for s in items:
             s["line"] = signal_line(s)
             s["heat_label"] = HEAT_LABEL.get(s["heat"]) if s["heat"] else None
             s["followed"] = (s["detail"] or {}).get("followed")
         stages.append(dict(stage=lab, signals=items))
-    positions = rows(pos)
+    positions = [R.basic_position(p) for p in rows(pos)] if basic else rows(pos)
     for p in positions:
         y = float(p["outcome"]) if p["outcome"] is not None else p["mark"]
         p["value"] = None if y is None else p["cash"] + p["yes_shares"] * y + p["no_shares"] * (1 - y)
@@ -663,8 +686,9 @@ def signals_page(request: Request, user: str = "", event: str = "", venue: str =
                 s.commit()
     users = c.execute(T("""SELECT username FROM users WHERE prefs ? 'strategy_profile' ORDER BY id""")).scalars().all() \
         if me["role"] == "admin" else []
-    maker = bool(cur and not cur["strategy"].startswith(("update", "hold", "last", "early"))) if cur else is_maker
-    return render(request, "strategy.html", viewer=viewer, profile=profile, show_fair=show_fair, stages=stages,
+    maker = False if basic else bool(cur and not cur["strategy"].startswith(("update", "hold", "last", "early"))) if cur else is_maker
+    return render(request, "strategy.html", viewer=viewer, profile=R.basic_view_profile(profile) if basic else profile,
+                  show_fair=show_fair, stages=stages,
                   positions=positions, cur=cur, event_key=ev, users=users, maker=maker, record=record,
                   seasons=seasons, total=total, acct=acct, is_maker=is_maker, heat_label=HEAT_LABEL,
                   venue=venue, kalshi=V.KALSHI_VENUE and is_maker)

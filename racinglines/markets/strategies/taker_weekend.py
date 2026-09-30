@@ -16,6 +16,9 @@ Modes (to see whether updating adds value):
 
 Execution: buy at price + cost, sell at price - cost (cost per share covers spread
 and slippage; the Baku books were a cent or two wide). NO is bought at 1 - price.
+On a venue with a taker fee (Kalshi: 0.07 x contracts x P x (1 - P) per order, rounded
+up to the cent) the fee is added per share on top of the cost, and sizing sees it too;
+Polymarket's rate is 0, so its results are unchanged.
 
 Sizing (both off by default, so results match the fixed sizing exactly):
     scale          multiplies the stake per edge and the per-market cap: bankroll-aware sizing
@@ -25,6 +28,7 @@ Sizing (both off by default, so results match the fixed sizing exactly):
                    and a buy that would go over the cap is cut to fit (sells are always allowed)
 """
 
+import math
 from dataclasses import dataclass, replace
 
 import pandas as pd
@@ -50,6 +54,18 @@ class TakerParams:
     thin_edge_mult: float | None = None                  # trade a thin market (a stage with `thin`) when the edge is
                                                          # >= this x min_edge, capped at the book's size at the touch
                                                          # (None = thin markets are skipped)
+    taker_fee: float = 0.0                               # the venue's taker fee rate: rate x contracts x P x (1 - P)
+                                                         # per order, rounded up to the cent (Kalshi 0.07,
+                                                         # Polymarket 0; venue_replay.EXCHANGES)
+
+
+def _fee(rate, px, shares):
+    """The venue's taker fee per share for one order of `shares` at `px`: rate x contracts x P x (1 - P),
+    rounded up to the cent per order (Kalshi's schedule); 0 when the rate is 0."""
+    if not rate:
+        return 0.0
+    n = abs(shares)
+    return math.ceil(round(rate * n * px * (1 - px) * 100, 6)) / 100 / n
 
 
 class _Market:
@@ -85,7 +101,8 @@ class _Market:
         before = self.deployed
         if i in self.idx:
             thin = not s["tradeable"]            # a thin market: in idx only with edge >= thin_edge_mult x min_edge
-            ty, tn = target_shares(s["fair"], price, p.cost, p.min_edge, p.stake_per_edge * p.scale,
+            ty, tn = target_shares(s["fair"], price, p.cost + p.taker_fee * price * (1 - price), p.min_edge,
+                                   p.stake_per_edge * p.scale,
                                    p.max_stake * p.scale)
             if thin:                             # the book's size at the touch caps what can be bought
                 ty, tn = min(ty, s.get("depth_yes") or 0.0), min(tn, s.get("depth_no") or 0.0)
@@ -98,7 +115,8 @@ class _Market:
                     continue
                 if abs(d) < 1e-9:
                     continue
-                exec_px = px + p.cost if d > 0 else max(px - p.cost, 0.0)
+                fee = _fee(p.taker_fee, px, d)
+                exec_px = px + p.cost + fee if d > 0 else max(px - p.cost - fee, 0.0)
                 if room is not None and d > 0:
                     left = room - (self.deployed - before)
                     if d * exec_px > left:                   # cut the buy to fit under the cap

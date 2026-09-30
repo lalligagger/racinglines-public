@@ -16,18 +16,25 @@ def test_aliases_and_db_spellings():
     assert R.is_basic(dict(role="taker")) and R.is_basic(dict(role="basic")) and not R.is_basic(dict(role="pro"))
 
 
-def test_basic_tier_runs_only_the_listed_taker_profiles():
+def test_basic_tier_runs_only_its_own_draw():
     from racinglines.pipelines import profiles as PF
     from racinglines.web import roles as R
     a = dict(name=PF.PROFILES["A"]["name"], strategy="update")
     c = dict(name=PF.PROFILES["C"]["name"], strategy="maker")
-    assert R.BASIC_PROFILES == ("A",)
-    assert R.basic_profile_names() == (PF.PROFILES["A"]["name"],)
+
+    def draw(uid, codes=None):
+        codes = codes or R.basic_members(uid)
+        return dict(name=R.BASIC_NAME, strategy="update", members=[dict(code=k, weight=1 / 3, member={}) for k in codes])
+    assert R.basic_profile_names() == (R.BASIC_NAME,)
     for role in ("admin", "pro", "maker"):                    # pro (and its old spelling): anything
         assert R.allowed_profile(role, a) and R.allowed_profile(role, c) and R.allowed_profile(role, None)
+    other = next(u for u in range(2, 200) if set(R.basic_members(u)) != set(R.basic_members(1)))
     for role in ("basic", "taker"):
-        assert R.allowed_profile(role, a) and R.allowed_profile(role, None)
-        assert not R.allowed_profile(role, c)
+        assert R.allowed_profile(role, None) and R.allowed_profile(role, draw(1), user_id=1)
+        assert not R.allowed_profile(role, draw(other), user_id=1)            # someone else's draw
+        assert not R.allowed_profile(role, a) and not R.allowed_profile(role, c)
+        assert R.allowed_profile(role, a, legacy_ok=True)                     # A, already assigned, keeps working
+        assert not R.allowed_profile(role, c, legacy_ok=True)
         assert not R.allowed_profile(role, dict(name="something else", strategy="update"))
 
 

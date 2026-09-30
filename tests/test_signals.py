@@ -211,7 +211,7 @@ def test_kalshi_profile_k_is_assigned_only_on_request(test_engine):
         c.execute(text("""INSERT INTO users (username, password_hash, role) VALUES ('maker', 'x', 'maker'), ('taker', 'x', 'taker')
                           ON CONFLICT DO NOTHING"""))
         ids = PF.ensure_candidates(c)
-        assert set(ids) == {"A", "C", "K"} and PF.load(c, "K")["venue"] == "kalshi" and "venue" not in PF.load(c, "C")
+        assert set(ids) == {"A", "C", "K", *PF.TAKER_TOP} and PF.load(c, "K")["venue"] == "kalshi" and "venue" not in PF.load(c, "C")
         assert c.execute(text("SELECT params->>'venue' FROM model_runs WHERE id = :i"), dict(i=ids["K"])).scalar() == "kalshi"
         assert PF.assign_demo(c) == {"taker": PF.PROFILES["A"]["name"], "maker": PF.PROFILES["C"]["name"]}
         assert PF.assigned(c, venue="kalshi") == []                        # nothing on Kalshi until asked

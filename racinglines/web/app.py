@@ -784,7 +784,8 @@ def bet_markets(request: Request, msg: str = "", c=None):          # served at /
             profile = PF.load(c, "A")
         except ValueError:
             profile = None
-    return render(request, "bet.html", msg=msg, profile=profile, **polymarket_calls(c, profile))
+    view = R.basic_view_profile(profile) if R.is_basic(user) else profile       # basic: "Your picks", no strategy name
+    return render(request, "bet.html", msg=msg, profile=view, **polymarket_calls(c, profile))
 
 
 def polymarket_calls(c, profile, n_races=3, exchange="polymarket"):

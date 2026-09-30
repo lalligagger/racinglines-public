@@ -1,5 +1,7 @@
 """Weekend taker strategy (racinglines/markets/strategies/taker_weekend.py): synthetic stages, no database."""
 
+import math
+
 import pytest
 
 from racinglines.markets.strategies import taker_weekend as RB
@@ -113,4 +115,24 @@ def test_liquid_stages_are_unchanged_by_the_setting():
     stages = [st("pre", 0.40, 0.30), st("after Q", 0.50, 0.50)]
     a = RB.run_market(stages, True, RB.TakerParams(**{**P.__dict__, "mode": "update"}))
     b = RB.run_market(stages, True, RB.TakerParams(**{**PT.__dict__, "mode": "update"}))
+    assert a == b
+
+
+def test_venue_taker_fee_is_paid_per_order_rounded_up():
+    from dataclasses import replace
+    k = replace(P, taker_fee=0.07)                                 # Kalshi's rate
+    r = RB.run_market([st("pre", 0.40, 0.30)], True, k)
+    (tr,) = r["trades"]
+    n = 10 / (0.31 + 0.07 * 0.30 * 0.70)                           # sizing sees cost + fee
+    fee = math.ceil(0.07 * n * 0.30 * 0.70 * 100) / 100            # per order, up to the cent
+    assert tr["shares"] == pytest.approx(n)
+    assert tr["price"] == pytest.approx(0.31 + fee / n)
+    assert r["pnl"] == pytest.approx(n - n * tr["price"]) and r["pnl"] == pytest.approx(tr["pnl"])
+    assert r["pnl"] < RB.run_market([st("pre", 0.40, 0.30)], True, P)["pnl"]
+
+
+def test_zero_fee_rate_is_the_old_arithmetic():
+    from dataclasses import replace
+    a = RB.run_market([st("pre", 0.40, 0.30), st("q", 0.20, 0.35)], True, P)
+    b = RB.run_market([st("pre", 0.40, 0.30), st("q", 0.20, 0.35)], True, replace(P, taker_fee=0.0))
     assert a == b

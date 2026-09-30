@@ -345,6 +345,12 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settin
     return out
 
 
+def taker_fee(venue):
+    """The venue's taker fee rate for TakerParams.taker_fee (venue_replay.EXCHANGES: Kalshi 0.07, Polymarket 0)."""
+    from racinglines.markets.venue_replay import EXCHANGES
+    return EXCHANGES[venue].TAKER_FEE
+
+
 def maker_venue_opts(venue):
     """maker_replay.Params overrides for a venue: its maker fee per fill, from its fee schedule
     (venue_replay.EXCHANGES; Kalshi's MAKER_FEE, Polymarket none)."""
@@ -465,7 +471,8 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
                           cost=st["cost"], late_stages=st["late_stages"], min_edge_h2h=st["min_edge_h2h"],
                           min_edge_by_kind=tuple(SS.parse_map(st["min_edge_by_kind"]).items()),
                           stages=None if st["taker_stages"] == SS.STAGES else st["taker_stages"],
-                          max_deployed=st["max_deployed"], thin_edge_mult=st["thin_edge_mult"])
+                          max_deployed=st["max_deployed"], thin_edge_mult=st["thin_edge_mult"],
+                          taker_fee=taker_fee(SS.venue_of(st)))
     params_list = [RB.TakerParams(**{**base.__dict__, "mode": m}) for m in TAKER_MODES]
     balance = {m: st["bankroll"] for m in TAKER_MODES}     # bankroll-aware sizing: each mode's balance
     rows, all_trades, all_scores, all_calib = [], [], [], []

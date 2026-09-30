@@ -110,7 +110,7 @@ def admin_user_update(request: Request, user_id: int, role: str = Form(...), act
         role = R.canonical(role)
         if role not in U.ROLES:
             raise HTTPException(400)
-        if not R.allowed_profile(role, PF.of_user(s.connection(), user_id)):
+        if not R.allowed_profile(role, PF.of_user(s.connection(), user_id), user_id=user_id, legacy_ok=True):
             return RedirectResponse(f"/admin/users?msg=Error: a {role} account can't run this strategy profile; "
                                     "clear or change the profile first.", status_code=303)
         changes = {}
@@ -150,19 +150,22 @@ def admin_user_detail(request: Request, user_id: int, c=Depends(conn)):
     taker_summary = dict(bets=len(bets), staked=float(bets["stake"].sum()), pnl=float(bets["pnl"].sum()),
                          open=int((bets["status"] == "open").sum())) if len(bets) else None
     cands = [dict(id=i, name=p.get("name"), strategy=p.get("strategy")) for i, p in PF._candidates(c)]
+    combos = [dict(code=code, name=pr["name"], members=", ".join(f"{m} x{w:g}" for m, w in pr["members"]))
+              for code, pr in PF.PROFILES.items() if PF.is_combo(pr)]
     return render(request, "admin_user.html", u=rows(u)[0], book=rows(book), bets=rows(bets), activity=rows(activity),
                   maker_summary=maker_summary, taker_summary=taker_summary, profile=PF.of_user(c, user_id),
-                  candidates=cands)
+                  candidates=cands, combos=combos, basic_draw=", ".join(R.basic_members(user_id)))
 
 
 @app.post("/admin/users/{user_id}/profile", dependencies=[Depends(check_csrf), allow("admin")])
 def admin_user_profile(request: Request, user_id: int, candidate_id: str = Form("")):
-    """Assign a Lab candidate as the user's strategy profile (live paper signals), or clear it."""
+    """Assign a Lab candidate as the user's strategy profile (live paper signals), or clear it. candidate_id may
+    also be a blend's code (profiles.COMBOS) or "basic": the account's own draw (roles.basic_profile)."""
     with get_engine().begin() as c:
         old = PF.of_user(c, user_id)
-        new = PF.load(c, candidate_id) if candidate_id else None
+        new = R.basic_profile(c, user_id) if candidate_id == "basic" else PF.load(c, candidate_id) if candidate_id else None
         role = c.execute(text("SELECT role FROM users WHERE id = :u"), dict(u=user_id)).scalar()
-        if not R.allowed_profile(role, new):
+        if not R.allowed_profile(role, new, user_id=user_id):
             names = ", ".join(R.basic_profile_names()) or "none"
             return RedirectResponse(f"/admin/users/{user_id}?msg=Error: a basic account may only run: {names}.",
                                     status_code=303)

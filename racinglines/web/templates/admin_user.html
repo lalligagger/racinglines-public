@@ -9,9 +9,11 @@
 <form method="post" action="/admin/users/{{ u.id }}/profile" class="inline">{{ csrf() }}
   <label><span>Profile</span><select name="candidate_id">
     <option value="">none</option>
+    <option value="basic" {{ 'selected' if profile and profile.basic }}>Your picks: this account's basic draw ({{ basic_draw }})</option>
+    {% for cb in combos %}<option value="{{ cb.code }}" {{ 'selected' if profile and profile.members and profile.name == cb.name }}>{{ cb.name }} (blend: {{ cb.members }})</option>{% endfor %}
     {% for cd in candidates %}<option value="{{ cd.id }}" {{ 'selected' if profile and profile.candidate_id == cd.id }}>#{{ cd.id }} {{ cd.name }} ({{ cd.strategy }})</option>{% endfor %}
   </select></label><button>Save</button>
-  {% if profile %}<span class="muted">now: <b>{{ profile.name }}</b> · {{ profile.strategy }} · <code>{{ profile.settings.variant }}</code></span>{% endif %}
+  {% if profile %}<span class="muted">now: <b>{{ profile.name }}</b> · {% if profile.members %}blend of {{ profile.members|map(attribute='code')|join(', ') }}{% else %}{{ profile.strategy }} · <code>{{ profile.settings.variant }}</code>{% endif %}</span>{% endif %}
 </form></div>
 {% if maker_summary %}<div class="card"><h2>As maker</h2><p><b>{{ maker_summary.markets }}</b> markets · <b>{{ maker_summary.bets }}</b> bets against · staked ${{ "%.2f"|format(maker_summary.staked) }} · EV ${{ "%.2f"|format(maker_summary.ev) }} · worst case <span class="bad">${{ "%.2f"|format(maker_summary.worst) }}</span> · settled P&amp;L ${{ "%.2f"|format(maker_summary.settled) }}</p>
 {{ table(book, ["id", "title", "fair_prob", "yes_price", "no_price", "status", "bets", "staked", "pnl_if_yes", "pnl_if_no", "ev"], {"id": ["/house/", "id"]}) }}</div>{% endif %}

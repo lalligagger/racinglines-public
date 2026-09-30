@@ -4,8 +4,9 @@ Account roles and access tiers, in one place.
     admin   everything, plus the activity log, user management and the database explorer
     pro     every maker and taker strategy, the private book, and the Lab (backtests, Edge Finder,
             diagnostics, replays)
-    basic   a limited set of taker strategies (BASIC_PROFILES) on Markets / Strategy / Positions / Live;
-            no fair values, no book, no Lab
+    basic   "Your picks": a blend of BASIC_PICKS taker strategies drawn per account from profiles.TAKER_TOP
+            (basic_members), on Markets / Strategy / Positions / Live; never which strategy made a pick, no fair
+            values or edges (a 1-3 star rating instead, pick_stars), no book, no Lab
 
 `pro` and `basic` were called `maker` and `taker` until 2026-09-30. Rows written before then still carry the old
 spelling (no migration in that change): `canonical()` maps them, every user dict the app builds goes through it,
@@ -21,9 +22,20 @@ PRO = ("admin", "pro")                            # the tier that sees fair valu
 BASIC = ("basic",)
 ANY = ROLES
 
-# The strategy profiles a basic account may run (codes from pipelines/profiles.PROFILES). Pro and admin may run
-# any candidate. Widen this list to give basic accounts more taker strategies; a maker strategy never belongs here.
-BASIC_PROFILES = ("A",)
+# A basic account runs "Your picks": BASIC_PICKS strategies from profiles.TAKER_TOP, drawn once per account from
+# BASIC_SEED and the account id (stable: never re-rolled at login, nothing stored until an admin assigns it), each at
+# weight 1/BASIC_PICKS. Change BASIC_SEED to re-draw every account. Pro and admin may run any candidate or blend.
+BASIC_PICKS = 3
+BASIC_SEED = "taker-top-2026-09-30"
+BASIC_NAME = "Your picks"
+# Profiles basic accounts ran before the draw (codes): an account that still has one keeps working (role edits are
+# allowed) until it is re-assigned; a new assignment must be its own draw.
+LEGACY_BASIC_PROFILES = ("A",)
+# Pick rating for basic accounts: the entry's edge over its strategy's minimum edge -> stars, as (ratio, stars)
+STARS = ((2.0, 3), (1.5, 2), (0.0, 1))
+# What a basic account never sees on a signal (and on a signal's detail): which strategy made it, our numbers
+BASIC_HIDDEN = ("fair", "edge", "candidate_id", "run_id")
+BASIC_DETAIL_KEEP = ("followed", "backfill", "venue")
 
 
 def canonical(role):
@@ -48,15 +60,110 @@ def is_basic(user):
     return canonical(user["role"]) == "basic"
 
 
-def basic_profile_names():
-    """The candidate names a basic account may be assigned (the profiles behind BASIC_PROFILES)."""
+def basic_members(user_id):
+    """The BASIC_PICKS codes (from profiles.TAKER_TOP, in its rank order) a basic account's picks come from.
+    Deterministic per account id and BASIC_SEED."""
+    import random
+
     from racinglines.pipelines import profiles as PF
-    return tuple(PF.PROFILES[c]["name"] for c in BASIC_PROFILES if c in PF.PROFILES)
+    drawn = random.Random(f"{BASIC_SEED}:{user_id}").sample(PF.TAKER_TOP, BASIC_PICKS)
+    return tuple(sorted(drawn, key=PF.TAKER_TOP.index))
 
 
-def allowed_profile(role, profile):
-    """May an account with this role run this strategy profile (a dict from profiles.load, or None)?
-    Admin and pro: any. Basic: only the taker profiles in BASIC_PROFILES, by candidate name."""
+def basic_profile(conn, user_id):
+    """A basic account's profile: the blend of its basic_members at 1/BASIC_PICKS each, named BASIC_NAME."""
+    from racinglines.pipelines import profiles as PF
+    return PF.combo(conn, [(code, 1.0 / BASIC_PICKS) for code in basic_members(user_id)], BASIC_NAME, basic=True)
+
+
+def basic_profile_names():
+    """The profile names a basic account may be assigned (its own draw, always named BASIC_NAME)."""
+    return (BASIC_NAME,)
+
+
+def _is_basic_draw(profile, user_id):
+    from racinglines.pipelines import profiles as PF
+    if not PF.is_combo(profile) or profile.get("name") != BASIC_NAME:
+        return False
+    codes = tuple(m["code"] for m in profile["members"])
+    if user_id is not None:
+        return set(codes) == set(basic_members(user_id))
+    return len(codes) == BASIC_PICKS and all(c in PF.TAKER_TOP for c in codes)
+
+
+def allowed_profile(role, profile, user_id=None, legacy_ok=False):
+    """May an account with this role run this strategy profile (a dict from profiles.load / basic_profile, or None)?
+    Admin and pro: any. Basic: only its own draw (basic_profile; with user_id, checked against basic_members).
+    legacy_ok: also a profile in LEGACY_BASIC_PROFILES, which a basic account already running one keeps."""
     if profile is None or canonical(role) in PRO:
         return True
-    return profile.get("name") in basic_profile_names()
+    if _is_basic_draw(profile, user_id):
+        return True
+    if legacy_ok:
+        from racinglines.pipelines import profiles as PF
+        return profile.get("name") in {PF.PROFILES[c]["name"] for c in LEGACY_BASIC_PROFILES if c in PF.PROFILES}
+    return False
+
+
+# ---------------------------------------------------------------------------
+# What a basic account sees of its picks
+# ---------------------------------------------------------------------------
+
+def _min_edge(settings, kind):
+    """A taker's minimum edge for a market kind (the h2h threshold and per-kind map, as the taker applies them)."""
+    from racinglines.markets.strategies import taker_weekend as RB
+    from racinglines.pipelines import sweep_settings as SS
+    st = SS.Settings.from_dict(settings or {}, strict=False)
+    p = RB.TakerParams(min_edge=st["min_edge"], min_edge_h2h=st["min_edge_h2h"],
+                       min_edge_by_kind=tuple(SS.parse_map(st["min_edge_by_kind"]).items()))
+    return RB.params_for(kind, p).min_edge
+
+
+def pick_stars(edge, min_edge):
+    """1-3 stars from an entry's edge relative to its strategy's minimum edge (>= 2x: 3, >= 1.5x: 2, else 1);
+    None without an edge."""
+    if edge is None or not min_edge or edge != edge:            # edge != edge: NaN
+        return None
+    ratio = abs(float(edge)) / float(min_edge) + 1e-9          # 0.15 / 0.10 is 1.4999...: 2 stars
+    return next(n for lo, n in STARS if ratio >= lo)
+
+
+def signal_stars(signal, profile=None):
+    """A buy signal's stars, against the minimum edge of the strategy that made it: the blend member named in
+    detail.member, else the account's profile. None for exits, quotes and fills."""
+    from racinglines.pipelines import profiles as PF
+    if signal.get("action") != "buy":
+        return None
+    code = (signal.get("detail") or {}).get("member")
+    member = PF.PROFILES.get(code) if code else None
+    settings = member["settings"] if member and not PF.is_combo(member) else (profile or {}).get("settings")
+    return pick_stars(signal.get("edge"), _min_edge(settings, signal.get("kind")))
+
+
+def basic_signal(signal, profile=None):
+    """A signal as a basic account sees it: named BASIC_NAME, no strategy, member or candidate, no fair value or
+    edge (detail keeps only followed / backfill / venue), with `stars` (signal_stars, computed here)."""
+    out = {k: v for k, v in signal.items() if k not in BASIC_HIDDEN}
+    out.update(profile=BASIC_NAME, strategy="taker", stars=signal_stars(signal, profile))
+    out["detail"] = {k: v for k, v in (signal.get("detail") or {}).items() if k in BASIC_DETAIL_KEEP}
+    return out
+
+
+def basic_position(position):
+    """A paper position as a basic account sees it: no candidate (which strategy held it)."""
+    return {k: v for k, v in position.items() if k != "candidate_id"}
+
+
+def basic_row(row):
+    """A track-record or phase row (story.track_record, story.phases) for a basic account: the strategy renamed."""
+    if row.get("profile") == "Private book":
+        return dict(row)
+    return dict(row, profile=BASIC_NAME, strategy="taker")
+
+
+def basic_view_profile(profile):
+    """The profile dict the pages show a basic account: BASIC_NAME, a taker, its follow rate and bankroll only."""
+    if profile is None:
+        return None
+    return dict(name=BASIC_NAME, strategy="taker", basic=True,
+                **{k: profile[k] for k in ("follow_rate", "bankroll") if k in profile})

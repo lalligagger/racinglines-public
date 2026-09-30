@@ -370,12 +370,13 @@ def resolve_venue(settings, venue=None, live=True):
 
 
 def compute(engine, engine_url, profile, now=None, event="next", live=True, fetch=True, echo=print, cache=None,
-            venue=None):
+            venue=None, scale=1.0):
     """Signals and positions of one profile at `now` (naive UTC; default the current time).
     live=False is a replay: markets are read at each stage's cutoff, exactly like the sweep.
     cache: a dict reused across calls (the loaded measurements and each model's training history).
     venue: the exchange to replay on instead of the profile's own (see resolve_venue; "kalshi": Kalshi's links
     and recorded tape, its maker fee).
+    scale: a taker's stake multiplier (TakerParams.scale; a blend member's weight, see compute_all).
     -> dict(event, stages, signals, positions, venue, note)."""
     from racinglines.models.position_sim import pricing as run
     st = SS.Settings.from_dict(profile["settings"], strict=False)
@@ -422,7 +423,9 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
                                cost=st["cost"], late_stages=st["late_stages"], min_edge_h2h=st["min_edge_h2h"],
                                min_edge_by_kind=tuple(SS.parse_map(st["min_edge_by_kind"]).items()),
                                stages=None if st["taker_stages"] == SS.STAGES else st["taker_stages"], mode=strategy,
-                               thin_edge_mult=st["thin_edge_mult"])
+                               thin_edge_mult=st["thin_edge_mult"], taker_fee=WS.taker_fee(venue))
+            if scale != 1.0:
+                p = replace(p, scale=p.scale * scale)
             base["signals"], base["positions"] = taker_signals(markets, p)
         elif strategy in WS.MAKERS:
             base.update(_maker(c, w, runs, st, strategy, now, live, venue=venue))
@@ -432,6 +435,32 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
         base["signals"] = [dict(s, detail=dict(s.get("detail") or {}, venue=venue)) for s in base["signals"]]
         base["positions"] = [dict(p, venue=venue) for p in base["positions"]]
     return base
+
+
+def compute_all(engine, engine_url, profile, **kw):
+    """compute() for any profile -> [out]. One strategy: [compute(profile)], exactly as before. A blend
+    (profiles.is_combo): one out per member, the member's own strategy and settings with its stakes scaled by its
+    weight, its signals tagged detail.member = its code, and out["profile"] the member's candidate under the blend's
+    name (so each member keeps its own rows: strategy_signals and paper_positions are unique per candidate)."""
+    from racinglines.pipelines import profiles as PF
+    if not PF.is_combo(profile):
+        return [compute(engine, engine_url, profile, **kw)]
+    outs = []
+    for m in profile["members"]:
+        out = compute(engine, engine_url, m["member"], scale=m["weight"], **kw)
+        out["profile"] = dict(m["member"], name=profile["name"], member=m["code"])
+        out["signals"] = [dict(s, detail=dict(s.get("detail") or {}, member=m["code"])) for s in out["signals"]]
+        outs.append(out)
+    return outs
+
+
+def combo_key(profile):
+    """What run_all groups users by: the candidate, or a blend's (code, weight) members (two basic accounts with
+    the same draw share one computation; different draws never do, though both are called "Your picks")."""
+    from racinglines.pipelines import profiles as PF
+    if PF.is_combo(profile):
+        return ("combo",) + tuple((m["code"], m["weight"]) for m in profile["members"])
+    return profile.get("candidate_id") or profile["name"]
 
 
 def _maker(c, w, runs, st, strategy, now, live, venue="polymarket"):
@@ -463,7 +492,8 @@ def _maker(c, w, runs, st, strategy, now, live, venue="polymarket"):
 def format_replay(out):
     """Plain-text table of a compute() result (the replay / parity view shows our fair values)."""
     w = out["event"]
-    head = f"{out['profile']['name']} · {w['name'] if w else '-'}"
+    member = out["profile"].get("member")             # a blend member's run (compute_all)
+    head = f"{out['profile']['name']}{f' [{member}]' if member else ''} · {w['name'] if w else '-'}"
     if out.get("note"):
         return f"{head}: {out['note']}"
     lines = [head, "stages: " + ", ".join(f"{lab} #{rid}" for lab, _, rid, _ in out["stages"])]
@@ -547,8 +577,8 @@ def store(conn, user_id, out, follow_rate=None, history=False, venue=None):
 
 def run_all(engine, engine_url, users=None, profile_ref=None, now=None, event="next", fetch=True, alert=True,
             echo=print):
-    """Every active user with a profile (or `users`, usernames), one computation per distinct profile."""
-    from racinglines.markets import alerts
+    """Every active user with a profile (or `users`, usernames), one computation per distinct profile (a blend:
+    one per member, see compute_all)."""
     from racinglines.pipelines import profiles as PF
     with engine.connect() as c:
         targets = [(uid, prof) for uid, name, _, prof in PF.assigned(c) if not users or name in users]
@@ -557,38 +587,48 @@ def run_all(engine, engine_url, users=None, profile_ref=None, now=None, event="n
             targets = [(uid, prof) for uid, _ in targets]
     groups, rate = {}, {}
     for uid, prof in targets:
-        groups.setdefault(prof.get("candidate_id") or prof["name"], (prof, []))[1].append(uid)
+        groups.setdefault(combo_key(prof), (prof, []))[1].append(uid)
         rate[uid] = prof.get("follow_rate")
     report = []
     for prof, uids in groups.values():
+        if PF.is_combo(prof):
+            echo(f"{prof['name']} (blend of {', '.join(m['code'] for m in prof['members'])}) for users {uids}")
+            outs = compute_all(engine, engine_url, prof, now=now, event=event, fetch=fetch, echo=echo)
+            report += [_run_one(engine, engine_url, out["profile"], out, uids, rate, now, alert, echo) for out in outs]
+            continue
         echo(f"{prof['name']} ({prof['strategy']}) for users {uids}")
         out = compute(engine, engine_url, prof, now=now, event=event, fetch=fetch, echo=echo)
-        if out.get("note"):
-            echo(f"  {out['note']}")
-        if prof["strategy"] in WS.TAKER_MODES and not out["stages"]:
-            try:                                         # between weekends: the Markets page's current calls
-                price_upcoming(engine, engine_url, prof, now=now, echo=echo)
-            except Exception as ex:                      # noqa: BLE001
-                echo(f"  pricing upcoming races failed: {ex}")
-        if not out["stages"]:
-            report.append(dict(profile=prof["name"], note=out.get("note"), new=0))
-            continue
-        with engine.begin() as c:
-            new = {uid: store(c, uid, out, follow_rate=rate[uid]) for uid in uids}
-        n_new = sum(len(v) for v in new.values())
-        echo(f"  {out['event']['name']} · {out['stages'][-1][0]} · {len(out['signals'])} signals "
-             f"({n_new} new) · {len(out['positions'])} positions")
-        if alert and n_new:
-            with engine.begin() as c:
-                ids = [i for v in new.values() for i in v]
-                rows = c.execute(text("SELECT * FROM strategy_signals WHERE id = ANY(:i) ORDER BY id"),
-                                 dict(i=ids)).mappings().all()
-                used = alerts.signals_alert(prof, out["event"], [dict(r) for r in rows if r["user_id"] == uids[0]])
-                c.execute(text("""UPDATE strategy_signals SET status = CASE WHEN status = 'new' THEN 'alerted'
-                                  ELSE status END, alerted_at = now() WHERE id = ANY(:i)"""), dict(i=ids))
-            echo(f"  alerted via {', '.join(used) or 'nothing'}")
-        report.append(dict(profile=prof["name"], stage=out["stages"][-1][0], signals=len(out["signals"]), new=n_new))
+        report.append(_run_one(engine, engine_url, prof, out, uids, rate, now, alert, echo))
     return report
+
+
+def _run_one(engine, engine_url, prof, out, uids, rate, now, alert, echo):
+    """Store one computation for its users and alert the new signals. -> the report row."""
+    from racinglines.markets import alerts
+    if out.get("note"):
+        echo(f"  {out['note']}")
+    if prof["strategy"] in WS.TAKER_MODES and not out["stages"]:
+        try:                                         # between weekends: the Markets page's current calls
+            price_upcoming(engine, engine_url, prof, now=now, echo=echo)
+        except Exception as ex:                      # noqa: BLE001
+            echo(f"  pricing upcoming races failed: {ex}")
+    if not out["stages"]:
+        return dict(profile=prof["name"], note=out.get("note"), new=0)
+    with engine.begin() as c:
+        new = {uid: store(c, uid, out, follow_rate=rate[uid]) for uid in uids}
+    n_new = sum(len(v) for v in new.values())
+    echo(f"  {out['event']['name']} · {out['stages'][-1][0]} · {len(out['signals'])} signals "
+         f"({n_new} new) · {len(out['positions'])} positions")
+    if alert and n_new:
+        with engine.begin() as c:
+            ids = [i for v in new.values() for i in v]
+            rows = c.execute(text("SELECT * FROM strategy_signals WHERE id = ANY(:i) ORDER BY id"),
+                             dict(i=ids)).mappings().all()
+            used = alerts.signals_alert(prof, out["event"], [dict(r) for r in rows if r["user_id"] == uids[0]])
+            c.execute(text("""UPDATE strategy_signals SET status = CASE WHEN status = 'new' THEN 'alerted'
+                              ELSE status END, alerted_at = now() WHERE id = ANY(:i)"""), dict(i=ids))
+        echo(f"  alerted via {', '.join(used) or 'nothing'}")
+    return dict(profile=prof["name"], stage=out["stages"][-1][0], signals=len(out["signals"]), new=n_new)
 
 
 # ---------------------------------------------------------------------------

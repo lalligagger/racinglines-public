@@ -316,7 +316,7 @@ def reconcile(engine, engine_url, event, profile, venue="polymarket", user=None,
     if exact:
         notes.append(f"the live rows are a backfilled replay (stored {live['stored']:%Y-%m-%d %H:%M} UTC): "
                      "self-check, replay against replay must match exactly")
-    rate = PF.DEMO_FOLLOW.get(username)
+    rate = PF.follow_rate(username, prof["strategy"])
     cache = {}
     other = {} if venue == "polymarket" else dict(venue=venue)
 

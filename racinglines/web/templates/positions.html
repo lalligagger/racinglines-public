@@ -72,14 +72,14 @@ Worst drawdown <b class="bad">{{ book.max_dd|money(true) }}</b> from a peak, thr
 <h3>{{ rc.name }}{% if rc.location %} · {{ rc.location }}{% endif %} <span class="muted small">· race {{ rc.start|fmt }} UTC</span></h3>
 {% set calls = [] %}{% for e in rc.events %}{% for r in e.rows if r.call.action %}{% set _ = calls.append(r) %}{% endfor %}{% endfor %}
 {% if not rc.events %}<p class="muted">{{ ex }} hasn't listed markets for this race yet. {{ "Quotes" if maker else "Calls" }} appear here as soon as it does.</p>
-{% elif not calls %}<p class="muted">{{ rc.events|map(attribute='rows')|map('length')|sum }} markets listed; {{ profile.name.split(' ')[0] }} {{ "wouldn't quote any" if maker else "has no call on any" }} right now. {{ "Quotes" if maker else "Calls" }} update after every session.</p>
+{% elif not calls %}<p class="muted">{{ rc.events|map(attribute='rows')|map('length')|sum }} markets listed; {{ "there's" if profile.basic else profile.name.split(' ')[0] }} {{ "wouldn't quote any" if maker else ("no pick on any" if profile.basic else "has no call on any") }} right now. {{ "Quotes" if maker else "Calls" }} update after every session.</p>
 {% else %}<div class="scroll"><table><thead><tr><th class="l">Market</th><th>Price</th>{% if maker %}<th>Bid</th><th>Ask</th><th>Size</th>{% else %}<th class="l">Call</th><th class="l">Heat</th>{% endif %}</tr></thead><tbody>
 {% for r in calls %}<tr><td class="l">{{ r.subject }} <span class="muted">{{ r.prediction|replace('race_', '')|replace('_', ' ') }}</span></td><td>{{ "%.3f"|format(r.mid) if r.mid is not none }}</td>
   {% if maker %}<td>{{ "%.2f"|format(r.call.bid) if r.call.bid is not none else "–" }}</td><td>{{ "%.2f"|format(r.call.ask) if r.call.ask is not none else "–" }}</td><td>{{ "%.0f"|format(r.call.size) }}</td>
   {% else %}<td class="l"><b>BUY {{ r.call.side }}</b> {{ "%.0f"|format(r.call.shares) }} sh @ ≤{{ "%.2f"|format(r.call.limit) }} <span class="muted">(${{ "%.0f"|format(r.call.cost) }})</span></td><td class="l">{% if r.heat_label %}<span class="heat h{{ r.call.heat }}">{{ r.heat_label }}</span>{% endif %}</td>{% endif %}</tr>{% endfor %}
 </tbody></table></div>{% endif %}
 {% endfor %}{% endfor %}
-<p class="legend">{% if maker %}Where {{ profile.name.split(' ')[0] }} would quote each listed market right now (it re-quotes every 5 minutes through the weekend){% else %}{{ profile.name.split(' ')[0] }}'s current calls{% endif %}. Every market, with or without a {{ "quote" if maker else "call" }}: <a href="{{ '/markets/polymarket' if maker else '/markets' }}">{{ "Polymarket" if maker else "Markets" }}</a>{% if kcoming and maker %} · <a href="/markets/kalshi">Kalshi</a>{% endif %}.</p>
+<p class="legend">{% if maker %}Where {{ profile.name.split(' ')[0] }} would quote each listed market right now (it re-quotes every 5 minutes through the weekend){% elif profile.basic %}Your current picks{% else %}{{ profile.name.split(' ')[0] }}'s current calls{% endif %}. Every market, with or without a {{ "quote" if maker else "call" }}: <a href="{{ '/markets/polymarket' if maker else '/markets' }}">{{ "Polymarket" if maker else "Markets" }}</a>{% if kcoming and maker %} · <a href="/markets/kalshi">Kalshi</a>{% endif %}.</p>
 </div>
 </section>{% endif %}
 
