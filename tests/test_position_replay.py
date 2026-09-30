@@ -255,3 +255,19 @@ def test_recent_form_weights_the_latest_race_most():
         st = model.Settings.from_dict({"sims": 4000, "seed": 3, "noise": 1.0, "team_bias": 0.0})
         sims = model.price(hist, Event(id="e", season=2026, cutoff=date(2026, 5, 29)), st, np.random.default_rng(3))
         assert P.fair(sims, "race_win", 1) > 0.7 > P.fair(sims, "race_win", 2), model.name
+
+
+@pytest.mark.quick
+def test_history_and_team_form_count_races_not_results():
+    from racinglines.models import motogp_model as MM
+    from racinglines.models import nascar_model as NM
+    days = [date(2026, 5, d) for d in (1, 8, 15)]
+    # team "a" runs two cars: 10th and 12th, then 20th and 22nd, then 1st and 3rd
+    past = pd.DataFrame(dict(date=[d for d in days for _ in range(2)], athlete_id=[1, 2] * 3,
+                             position=[10.0, 12, 20, 22, 1, 3], team="a"))
+    for mod in (NM, MM):
+        assert len(mod._last_races(past, 2)) == 4 and set(mod._last_races(past, 2)["date"]) == set(days[1:])
+        st = dict(recent_races=1, recency_decay=2.5)
+        assert mod._team_form(past, st) == {"a": 2.0}                       # the last race: mean of 1st and 3rd
+        two = mod._team_form(past, dict(st, recent_races=2))["a"]           # races 2 and 3, the latest weighted most
+        assert 2.0 < two < 11.5 and two < (21 + 2) / 2

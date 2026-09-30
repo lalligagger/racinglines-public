@@ -173,3 +173,26 @@ def test_reingest_is_a_no_op_and_force_rebuilds_without_duplicating(db):
 def _comp_cat(session):
     from racinglines.db.ingest import ensure_competition
     return ensure_competition(session, I.SPORT)
+
+
+def test_the_model_reads_the_race_round_only(db):
+    """A weekend's other sessions (sprint, qualifying) are rounds of the same race: the model's frame keeps
+    only the race classification, one row per rider per Grand Prix."""
+    from sqlalchemy import select
+
+    from conftest import TEST_DB
+    from racinglines.db import models as m
+    from racinglines.models.motogp_model import MotoGPRace
+    with db() as s:
+        I.ingest_event(s, *_comp_cat(s), 2026, "THA")
+        race = s.scalars(select(m.Race).join(m.Event).filter(m.Event.source == I.SOURCE, m.Event.source_key == "2026-THA")).one()
+        rnd = s.scalars(select(m.Round).filter_by(race_id=race.id, kind="race")).one()
+        spr = m.Round(race_id=race.id, kind="sprint", ordinal=8, name="sprint")
+        s.add(spr)
+        s.flush()
+        for r in s.scalars(select(m.Result).filter_by(round_id=rnd.id)).all():
+            s.add(m.Result(round_id=spr.id, athlete_id=r.athlete_id, position=r.position, status=r.status))
+        s.commit()
+        n_race = len(s.scalars(select(m.Result).filter_by(round_id=rnd.id)).all())
+    data = MotoGPRace.load(TEST_DB)
+    assert len(data) == n_race and not data.duplicated(["race", "athlete_id"]).any()
