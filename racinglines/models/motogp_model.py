@@ -18,6 +18,10 @@ SETTINGS = [
     SS.Setting("shrink", "model", "Form shrinkage (races)", "float", 3.0, 0, 100),
     SS.Setting("noise", "model", "Race-day noise (places)", "float", 2.0, 0.1, 20),
     SS.Setting("seed", "model", "Monte Carlo seed", "int", None, 0, 2**31 - 1),
+    SS.Setting("history_races", "model", "Historical results kept as the prior", "int", 0, 0, 500),
+    SS.Setting("recent_races", "model", "Recent results used for form", "int", 6, 1, 30),
+    SS.Setting("recency_decay", "model", "Recent-form decay (races)", "float", 2.5, 0.1, 25),
+    SS.Setting("team_bias", "model", "Team-form prior weight", "float", 0.35, 0.0, 2.0),
 ]
 
 
@@ -28,7 +32,12 @@ class MotoGPSettings(SS.Settings):
     ALIASES = {}
 
     def _validate(self):
-        pass
+        if self["recent_races"] < 1:
+            raise ValueError("recent_races must be >= 1")
+        if self["history_races"] < 0:
+            raise ValueError("history_races must be >= 0")
+        if self["team_bias"] < 0:
+            raise ValueError("team_bias must be >= 0")
 
     def label(self):
         return ", ".join(f"{k}={v}" for k, v in self.changed().items()) or "baseline"
@@ -38,6 +47,37 @@ class MotoGPRace:
     sport = "motogp"
     name = "motogp_results"
     Settings = MotoGPSettings
+
+    def search_grid(self, data, seasons=None, settings_list=None, kinds=None, echo=False):
+        """Evaluate a small grid of parameter settings and rank by mean log loss.
+
+        `settings_list` is a list of dicts that are passed straight into Settings.from_dict.
+        The result is a DataFrame sorted by score (lower is better), with one row per candidate.
+        """
+        from racinglines.core import walk_forward as WF
+
+        if settings_list is None:
+            settings_list = [self.Settings.from_dict({}).to_json()]
+        kinds = kinds or ["race_win", "race_podium", "race_h2h"]
+        rows = []
+        for idx, raw in enumerate(settings_list, 1):
+            settings = self.Settings.from_dict(raw)
+            out = WF.run(self, data, settings, seasons=seasons, kinds=kinds, echo=lambda *args, **kwargs: None if not echo else print(*args, **kwargs))
+            cal = out["calibration"].query("season == 'all'").set_index("kind")
+            vals = []
+            entry = {"candidate": idx, **dict(raw)}
+            for kind in kinds:
+                if kind in cal.index:
+                    val = float(cal.loc[kind, "logloss"])
+                    entry[kind] = val
+                    vals.append(val)
+            entry["score"] = float(np.mean(vals)) if vals else np.nan
+            rows.append(entry)
+        df = pd.DataFrame(rows)
+        if not df.empty:
+            df = df.sort_values(["score"] + [k for k in kinds if k in df.columns], ascending=[True] + [True] * len([k for k in kinds if k in df.columns]), na_position="last")
+            df = df.reset_index(drop=True)
+        return df
 
     @staticmethod
     def load(engine_url=None, data=None):
@@ -136,3 +176,54 @@ class MotoGPRace:
                 points=r["points"].fillna(0.0).to_numpy(float),
             )
         )
+
+
+class MotoGPRaceChallenger(MotoGPRace):
+    """A more F1-like MotoGP backtest: recency-weighted rider form, team prior shrinkage, and a
+    promotion-aware signal that can be replayed as a strategy after each session."""
+
+    name = "motogp_recent_form"
+    Settings = MotoGPSettings
+
+    def price(self, hist, ev, settings, rng):
+        past = hist[hist["date"] < ev.cutoff].copy()
+        if past.empty:
+            return None
+
+        past = past.sort_values("date")
+        if settings["history_races"] > 0:
+            past = past.tail(settings["history_races"])
+
+        entrants = sorted(past["rider"].dropna().unique())
+        if not entrants:
+            return None
+
+        overall = float(past["position"].mean())
+        team_form = {}
+        for team, rows in past.groupby("team", dropna=False):
+            rows = rows.sort_values("date").tail(settings["recent_races"])
+            if rows.empty:
+                continue
+            w = np.exp(-np.linspace(0.0, max(float(settings["recency_decay"]), 0.1), len(rows)))
+            team_form[team] = float(np.average(rows["position"].to_numpy(float), weights=w))
+
+        scores = []
+        for rider in entrants:
+            rider_rows = past[past["rider"] == rider].sort_values("date").tail(settings["recent_races"])
+            if rider_rows.empty:
+                base = overall
+            else:
+                w = np.exp(-np.linspace(0.0, max(float(settings["recency_decay"]), 0.1), len(rider_rows)))
+                recent_mean = float(np.average(rider_rows["position"].to_numpy(float), weights=w))
+                team = rider_rows["team"].iloc[-1]
+                team_mean = team_form.get(team, overall)
+                shrink = min(0.75, settings["shrink"] / max(settings["shrink"] + 5.0, 1.0))
+                base = ((1.0 - shrink) * recent_mean) + (shrink * overall)
+                base += settings["team_bias"] * (team_mean - overall)
+            scores.append(base)
+
+        base = np.asarray(scores, dtype=float)
+        noise = rng.normal(0.0, settings["noise"], (settings["sims"], len(entrants)))
+        sim_scores = base[None, :] + noise
+        rank = np.argsort(np.argsort(sim_scores, axis=1), axis=1) + 1
+        return O.OutcomeSims(entrants=entrants, rank=rank, finished=np.ones_like(rank, bool))

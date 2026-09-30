@@ -37,6 +37,17 @@ def test_status_of_treats_instnd_as_classified_and_everything_else_as_dnf():
 
 
 @pytest.mark.quick
+def test_session_round_kind_names_motogp_sessions_like_the_f1_pipeline():
+    assert I.session_round_kind({"type": "FP", "number": 1}) == "fp1"
+    assert I.session_round_kind({"type": "FP", "number": 2}) == "fp2"
+    assert I.session_round_kind({"type": "Q1"}) == "qual1"
+    assert I.session_round_kind({"type": "Q2"}) == "qual2"
+    assert I.session_round_kind({"type": "SPR"}) == "sprint"
+    assert I.session_round_kind({"type": "WUP"}) == "warmup"
+    assert I.session_round_kind({"type": "RAC"}) == "race"
+
+
+@pytest.mark.quick
 def test_parse_event_reads_the_thailand_race_classification():
     p = I.parse_event(2026, tha_event(), fx("classification_2026_tha_motogp_race"))
     assert p["key"] == "2026-THA" and p["name"] == "GRAND PRIX OF THAILAND" and p["venue"] == "Chang International Circuit"

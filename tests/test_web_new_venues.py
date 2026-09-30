@@ -115,6 +115,28 @@ def test_tapes_page_lists_market_data_only(client, monkeypatch):
     assert "nan" not in html.lower().replace("financ", "")
 
 
+def test_board_shows_tape_only_sports_without_a_model(monkeypatch):
+    import racinglines.web.board as B
+    from racinglines import sports as SP
+
+    monkeypatch.setattr(SP, "SPORT_CODES", ("motogp",))
+    monkeypatch.setattr(SP, "load", lambda code: {"competition": {"code": "motogp_wc", "display_name": "MotoGP"},
+                                                "sport": {"code": "motogp", "name": "MotoGP", "display_order": 3,
+                                                          "model_family": "none"}})
+    monkeypatch.setattr(B, "data", type("D", (), {"latest_forecasts": lambda conn: __import__("pandas").DataFrame(),
+                                                  "run_race_targets": lambda conn, run_id: __import__("pandas").DataFrame(),
+                                                  "q": lambda *a, **k: __import__("pandas").DataFrame()})())
+    monkeypatch.setattr(B, "exchange_breakdown", lambda conn, comps=None: [{"competition": "motogp_wc", "sport": "motogp",
+                                                                             "sport_name": "MotoGP", "exchange": "polymarket",
+                                                                             "exchange_name": "Polymarket", "events": [{"title": "MotoGP champion",
+                                                                             "end_date": __import__("pandas").Timestamp("2026-09-29"),
+                                                                             "open": 1, "markets": 1, "volume": 123.0}],
+                                                                             "markets": 1, "open": 1, "trades": 0, "prices": 0, "books": 0,
+                                                                             "volume": 123.0, "synced": None, "url": "/markets/tapes#tapes-motogp-polymarket"}])
+    board = B.board(None, 1)
+    assert board[0]["tape"] is True and board[0]["upcoming"][0]["title"] == "MotoGP champion"
+
+
 def test_tapes_page_with_nothing_linked(client, monkeypatch):
     monkeypatch.setattr(V, "TAPES", True)
     monkeypatch.setattr(V, "tape_summary", lambda conn: [])

@@ -2,6 +2,7 @@ import pandas as pd
 
 from racinglines.core import walk_forward as WF
 from racinglines.models import race_model as RM
+from racinglines.models.motogp_model import MotoGPRaceChallenger
 
 
 def _motogp_data():
@@ -36,3 +37,47 @@ def test_motogp_model_runs_through_the_backtest_engine():
     assert set(out["events"]["season"]) == {2025, 2026}
     assert len(out["events"]) >= 2
     assert out["calibration"].query("season == 'all' and kind == 'race_win'")["n"].iloc[0] > 0
+
+
+def test_motogp_challenger_runs_and_tracks_recent_form():
+    data = _motogp_data()
+    baseline = RM.get("motogp")
+    challenger = MotoGPRaceChallenger()
+
+    base_settings = baseline.Settings.from_dict({"sims": 200, "shrink": 2.0, "noise": 0.75, "seed": 7})
+    chal_settings = challenger.Settings.from_dict({"sims": 200, "recent_races": 4, "team_bias": 0.5,
+                                                "noise": 0.75, "seed": 7})
+
+    base_out = WF.run(baseline, data, base_settings, seasons=[2025, 2026], kinds=["race_win"])
+    chal_out = WF.run(challenger, data, chal_settings, seasons=[2025, 2026], kinds=["race_win"])
+
+    base_win = base_out["calibration"].query("season == 'all' and kind == 'race_win'").iloc[0]
+    chal_win = chal_out["calibration"].query("season == 'all' and kind == 'race_win'").iloc[0]
+
+    assert int(chal_out["events"].shape[0]) >= 2
+    assert chal_win["n"] > 0
+    assert chal_win["logloss"] <= 0.25
+    assert chal_out["rows"].query("kind == 'race_win'").shape[0] > 0
+
+
+def test_motogp_challenger_accepts_broader_history_window():
+    challenger = MotoGPRaceChallenger()
+    settings = challenger.Settings.from_dict({"sims": 200, "recent_races": 4, "history_races": 12,
+                                            "team_bias": 0.5, "noise": 0.75, "seed": 7})
+
+    assert settings["history_races"] == 12
+    assert settings["recent_races"] == 4
+
+
+def test_motogp_search_grid_ranks_candidates_by_logloss():
+    data = _motogp_data()
+    candidates = [
+        {"sims": 200, "recent_races": 2, "history_races": 4, "recency_decay": 1.5, "team_bias": 0.2, "noise": 0.75, "seed": 7},
+        {"sims": 200, "recent_races": 4, "history_races": 12, "recency_decay": 2.5, "team_bias": 0.5, "noise": 1.0, "seed": 8},
+    ]
+
+    rows = MotoGPRaceChallenger().search_grid(data, seasons=[2025, 2026], settings_list=candidates, kinds=["race_win", "race_podium"])
+
+    assert len(rows) == 2
+    assert {"score", "race_win", "race_podium"}.issubset(rows.columns)
+    assert rows["score"].notna().all()
