@@ -107,3 +107,19 @@ def test_story_gate_stops_on_a_different_pick_or_no_evidence():
     assert G.check(ok) == []
     assert G.check(ok[:3] + [dict(ok[3], chosen="early · gbm · min_edge=0.15")])
     assert G.check(ok[:3] + [dict(ok[3], candidates=0)])
+
+
+def test_progress_counts_jobs_and_eta(tmp_path, monkeypatch):
+    P = _mod("progress")
+    monkeypatch.chdir(tmp_path)
+    d = tmp_path / "data" / "runs" / "search" / "overnight-vm"
+    d.mkdir(parents=True)
+    state = {f"j{i}": dict(status="done", settings={"variant": "baseline"}) for i in range(10)}
+    state["x"] = dict(status="failed", settings={"variant": "baseline"})
+    state["deep"] = dict(status="done", settings={"variant": "baseline", "sims": 16000})
+    (d / "state.json").write_text(json.dumps(state))
+    # no queue file here: the total falls back to what the state holds
+    line = P.counts("F1 broad sweep (4k)", start=0, now=600)
+    assert line.startswith(" · 10 of 11 jobs done, 1 failed")
+    assert P.counts("F1 top 10 at 16k", start=0, now=60) == " · 1 of 1 jobs done"
+    assert P.counts("nascar: replay saves", start=0) == ""

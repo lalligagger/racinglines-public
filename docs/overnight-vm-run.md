@@ -69,6 +69,23 @@ leaves an `overnight-<mode>.done` or `.failed` marker, adds a `data_changes` not
 while a `racinglines-live-*` unit is active. Round 16's book opens Thu 1 Oct 20:30 PDT: the run must start early enough
 to end before then.
 
+### Progress updates
+
+The owner asked (2026-09-30) for clear but not too frequent updates. The runner writes one line:
+- when each phase starts (the same line closes the phase before, with its duration);
+- every 45 minutes inside a phase (`HEARTBEAT_MIN`);
+- at once on any failure or stop.
+
+Each line has the UTC time, the mode, the minutes since the start and the failures so far. It also names the phase:
+F1 broad sweep, F1 top 10 at 16k, walk-forward, each sport's links and tape, replay saves and settings grid, OG.com
+buy-all, and the taker story's sweeps, gate and rebuild. For the F1 searches, the story's evidence sweeps and the
+grids, it adds jobs done of total and a rough time left (`scripts/vm/progress.py`).
+
+The lines go to `data/runs/logs/overnight-progress.log` (appended) and `data/runs/logs/overnight-status.txt` (the latest
+line only). They are local files: the job makes no network calls for them. The heartbeat is a background loop that
+can't fail the run. The VM can't post to the project, so the Mac reads the files over SSH (the handoff has the
+command).
+
 ### F1: broad sweep, then 16k
 
 F1 is the golden baseline, so it goes first and is checked before anything else is read. The sweep numbers on the VM

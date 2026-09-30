@@ -35,17 +35,54 @@ DONE=$LOGS/overnight-$MODE.done
 FAILED=$LOGS/overnight-$MODE.failed
 rm -f "$DONE" "$FAILED"
 exec > >(tee -a "$LOG") 2>&1
-trap 'echo "FAILED at line $LINENO"; echo "$LOG line $LINENO" > "$FAILED"' ERR
+# Progress (owner, 2026-09-30: clear but not too frequent): one line when each phase starts (which also closes the one
+# before), a heartbeat every HEARTBEAT_MIN minutes inside a phase, and a line at once on any failure or STOP. Each line
+# is appended to overnight-progress.log and is the whole of overnight-status.txt (latest state only). Local files only.
+PROGRESS=$LOGS/overnight-progress.log
+STATUS=$LOGS/overnight-status.txt
+PHASE_F=$LOGS/.overnight-phase
+HEARTBEAT_MIN=${HEARTBEAT_MIN:-45}
+T_RUN=$(date +%s)
+FAILS_F=$LOGS/.overnight-fails
+echo 0 > "$FAILS_F"
+fail() { echo $(( $(cat "$FAILS_F" 2>/dev/null || echo 0) + 1 )) > "$FAILS_F"; }
+progress() {
+  local line
+  line="$(date -u +%Y-%m-%dT%H:%MZ) [$MODE, $(( ($(date +%s) - T_RUN) / 60 )) min in, $(cat "$FAILS_F" 2>/dev/null || echo 0) failed] $*"
+  echo "$line" >> "$PROGRESS" || true
+  echo "$line" > "$STATUS" || true
+  echo "$line"
+}
+phase_line() {       # "<phase>, <minutes> min" plus job counts, from the phase file
+  local name t0
+  name=$(cut -d'|' -f2- "$PHASE_F" 2>/dev/null) || return 0
+  t0=$(cut -d'|' -f1 "$PHASE_F" 2>/dev/null) || return 0
+  echo "$name, $(( ($(date +%s) - t0) / 60 )) min$(.venv/bin/python scripts/vm/progress.py "$name" "$t0" 2>/dev/null || true)"
+}
+stop() { fail; progress "STOP: $*"; }
+trap 'fail; progress "FAILED at line $LINENO during: $(phase_line)"; echo "$LOG line $LINENO" > "$FAILED"' ERR
+trap 'kill "${HB:-0}" 2>/dev/null || true; rm -f "$PHASE_F" "$FAILS_F"' EXIT
+( trap - ERR EXIT; set +e
+  while sleep "${HEARTBEAT_SEC:-$(( HEARTBEAT_MIN * 60 ))}"; do
+    [ -f "$PHASE_F" ] && progress "still running: $(phase_line)"
+  done ) &
+HB=$!
 R=.venv/bin/racinglines
 PY=.venv/bin/python
 QUEUE=sweeps/overnight-vm.toml
 A_ARGS=(--taker-stages "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali" --min-edge 0.1 --min-edge-h2h 0.05)
 Q() { docker compose exec -T db psql -U racinglines racinglines -c "$1"; }
-say() { echo "== $(date -u +%H:%M:%SZ) $*"; }
+say() {             # a phase starts: close the one before, log the new one
+  local prev=""
+  if [ -f "$PHASE_F" ]; then prev="done: $(phase_line); "; fi
+  echo "$(date +%s)|$*" > "$PHASE_F"
+  echo "== $(date -u +%H:%M:%SZ) $*"
+  progress "${prev}started: $*"
+}
 
 LIVE=$(systemctl list-units --no-legend --plain --state=active,activating 'racinglines-live-*' || true)
 if [ -n "$LIVE" ]; then
-  echo "a live-event unit is active: not starting"
+  progress "not starting: a live-event unit is active"
   echo "$LIVE"
   echo "live event active" > "$FAILED"
   exit 1
@@ -65,20 +102,20 @@ backup() {
   B=data/backups/db/racinglines-before-overnight-$1-$(date -u +%Y%m%dT%H%M%SZ).sql.gz
   docker compose exec -T db pg_dump --no-owner --no-privileges -U racinglines racinglines | gzip -6 > "$B"
   gunzip -c "$B" | tail -n 5 | grep -q 'PostgreSQL database dump complete'
-  say "backup $B ($(du -h "$B" | cut -f1))"
+  progress "backup $B ($(du -h "$B" | cut -f1))"
 }
 golden() {
-  say "F1 golden check: profile A, 2026, 4k, Polymarket, not saved (published +1,243; pass within +-400 on update)"
+  say "F1 golden check (profile A, 2026, not saved; passes if update P&L is +843 to +1,643)"
   nice $R f1 --variant gridq+pretrain+reset sweep --year 2026 --no-fetch "${A_ARGS[@]}"
 }
 f1() {
   backup f1
   START=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  say "F1 broad sweep"
+  say "F1 broad sweep (4k)"
   nice $R f1 search "$QUEUE"
   nice $R f1 search-report "$QUEUE"
-  say "promote the top $TOP to 16k"
   $PY scripts/vm/promote_16k.py "$QUEUE" --top "$TOP"
+  say "F1 top $TOP at 16k"
   nice $R f1 search "$QUEUE"
   nice $R f1 search-report "$QUEUE"
   cp "$QUEUE" data/runs/search/overnight-vm/queue-promoted.toml
@@ -94,7 +131,7 @@ f1() {
 }
 replay() {
   $PY -c "import sys; from racinglines.markets.kalshi.sync import history_rows as h; sys.exit(0 if not h('t', [dict(yes_bid=dict(close=0), yes_ask=dict(close=100), end_period_ts=0)]) else 1)" \
-    || { echo "STOP: this checkout still stores an empty Kalshi book's candle as a 0.50 price (kalshi/sync.py history_rows): deploy the candle fix before pulling tape"; return 1; }
+    || { stop "this checkout still stores an empty Kalshi book's candle as a 0.50 price (kalshi/sync.py history_rows): deploy the candle fix before pulling tape"; return 1; }
   backup replay
   START=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   for S in $SPORTS; do
@@ -116,12 +153,12 @@ replay() {
     for Y in 2026 2025; do for E in 0.05 0.08 0.10 0.15; do for V in 50 200; do
       if [ $(( $(date +%s) - T0 )) -gt $(( GRID_HOURS * 3600 )) ]; then echo "grid: time up, skipping $Y e$E v$V"; continue; fi
       nice $R "$S" replay --years "$Y" --venue kalshi --min-edge "$E" --min-volume "$V" --out "$G/$Y-e$E-v$V" > "$G/$Y-e$E-v$V.log" 2>&1 \
-        || echo "grid: $Y e$E v$V failed (see $G/$Y-e$E-v$V.log)"
+        || { fail; progress "grid run failed: $S $Y edge $E floor $V (see $G/$Y-e$E-v$V.log)"; }
     done; done; done
     $PY scripts/vm/replay_grid.py rank "$G" --top 3 | tee "$G/rank.txt"
     { grep '^TOP ' "$G/rank.txt" || true; } | while read -r _ E V; do for Y in 2026 2025; do
       nice $R "$S" replay --years "$Y" --venue kalshi --min-edge "$E" --min-volume "$V" --sims 16000 --out "$G/$Y-e$E-v$V-s16000" > "$G/$Y-e$E-v$V-s16000.log" 2>&1 \
-        || echo "grid 16k: $Y e$E v$V failed"
+        || { fail; progress "grid 16k run failed: $S $Y edge $E floor $V"; }
     done; done
     $PY scripts/vm/replay_grid.py rank "$G" --top 3
   done
@@ -129,7 +166,7 @@ replay() {
   if grep -q '"buy-all"' racinglines/cli/markets.py; then
     mkdir -p data/runs/replay-grid/og
     for S in f1 nascar; do
-      nice $R markets --exchange og --sport "$S" buy-all --out "data/runs/replay-grid/og/$S.csv" || echo "OG.com buy-all $S failed (see above)"
+      nice $R markets --exchange og --sport "$S" buy-all --out "data/runs/replay-grid/og/$S.csv" || { fail; progress "OG.com buy-all $S failed (see the log)"; }
     done
   else
     echo "OG.com: this checkout has no buy-all (PR #88 not deployed): skipped"
@@ -141,26 +178,26 @@ replay() {
 
 story() {
   $PY -c "import inspect, sys; from racinglines.pipelines import story; sys.exit(0 if 'taker' in inspect.signature(story.decisions).parameters else 1)" \
-    || { echo "no taker story in this checkout: merge PR #87 and run vm.sh deploy first"; return 1; }
+    || { stop "no taker story in this checkout: merge PR #87 and run vm.sh deploy first"; return 1; }
   B=data/backups/db/racinglines-before-demo-taker-story-$(date -u +%Y%m%dT%H%M%SZ).sql.gz
   docker compose exec -T db pg_dump --no-owner --no-privileges -U racinglines racinglines | gzip -6 > "$B"
   gunzip -c "$B" | tail -n 5 | grep -q 'PostgreSQL database dump complete'
-  say "backup $B ($(du -h "$B" | cut -f1))"
+  progress "backup $B ($(du -h "$B" | cut -f1))"
   START=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   say "demo taker story: evidence sweeps"
   mkdir -p data/runs/search
   nice $R f1 search sweeps/demo-taker-story.toml > data/runs/search/demo-taker-story.log 2>&1
   tail -n 1 data/runs/search/demo-taker-story.log
   grep -Eq "search: finished \((1[6-9]|[2-9][0-9]) done\)" data/runs/search/demo-taker-story.log \
-    || { echo "STOP: the evidence search didn't finish 16 sweeps (data/runs/search/demo-taker-story.log): nothing reset"; return 1; }
+    || { stop "the evidence search didn't finish 16 sweeps (data/runs/search/demo-taker-story.log): nothing reset"; return 1; }
   say "demo taker story: gate"
-  $PY scripts/vm/story_gate.py || { echo "STOP at the gate: the taker's backfill was not reset"; return 1; }
+  $PY scripts/vm/story_gate.py || { stop "the taker story's gate: the taker's backfill was not reset"; return 1; }
   say "demo taker story: rebuild the taker's backfill (taker only)"
   nice $R f1 demo-history --reset --user taker
   $R db changes --add "Demo taker walk-forward story on the VM from $START: evidence sweeps (search demo-taker-story), gate passed, taker backfill rebuilt with f1 demo-history --reset --user taker (TW1 2025 r1-8, TW2 from r9); backup $B"
 }
 
-say "$MODE run, sports $SPORTS, $UTC"
+say "$MODE run for $SPORTS: checks and counts"
 machine
 counts
 case "$MODE" in
@@ -171,7 +208,7 @@ case "$MODE" in
       nice $R "$S" replay --years 2026 --events latest
     done
     golden
-    say "dry run done: nothing written" ;;
+    echo "dry run done: nothing written" ;;
   f1) f1 ;;
   replay) replay ;;
   story) story ;;
@@ -179,4 +216,5 @@ case "$MODE" in
   *) echo "MODE must be dry, f1, replay, story or all"; exit 1 ;;
 esac
 echo "mode=$MODE sports=$SPORTS log=$LOG" > "$DONE"
-say "done"
+progress "done: $(phase_line); FINISHED, marker $DONE"
+rm -f "$PHASE_F"
