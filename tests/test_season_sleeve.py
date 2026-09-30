@@ -100,3 +100,26 @@ def test_store_sleeve_leaves_the_weekend_records_alone(test_engine):
                             dict(u=uid)).scalar()
     assert weekend == 2
     assert after == before                                                    # every venue's record, the sleeve invisible
+
+
+def test_og_costs_are_its_flat_fee_plus_slippage():
+    from racinglines.markets.venue_replay import OG
+    assert SE.og_costs(["o1", "o2"]) == {t: pytest.approx(OG.fee_per_contract() + SE.SLIPPAGE) for t in ("o1", "o2")}
+    assert SE.MIN_VOLUME_BY.get("og") == 0 and "polymarket" not in SE.MIN_VOLUME_BY   # Polymarket keeps MIN_VOLUME
+
+
+def test_og_markets_read_the_replay_venues_prices_and_drop_the_empty_books_half(monkeypatch):
+    from racinglines.markets import store as MS
+    ts = [T0, T0 + timedelta(hours=1), T0 + timedelta(hours=2)]
+    tables = dict(prices=pd.DataFrame(dict(token_id=["o"] * 3, ts=ts, price=[0.5, 0.04, 0.5])),
+                  trades=pd.DataFrame(dict(token_id=["o"], ts=[T0 + timedelta(hours=3)], price=[0.05], size=[10.0])),
+                  books=pd.DataFrame(dict(token_id=["o"], ts=[T0 + timedelta(hours=4)], best_bid=[0.0], best_ask=[0.03])))
+    seen = []
+    monkeypatch.setattr(MS, "read", lambda conn, name, tokens=None, root=None, **kw: seen.append(root) or tables[name])
+    links = pd.DataFrame([dict(token_id="o", prediction="champion", athlete="Lando Norris", params=None, group_title=None,
+                               closed=False, resolved_yes=None)])
+    (mk,) = SE.build_markets(None, links, exchange="og").values()
+    assert list(mk.px) == [0.04, 0.05, 0.03]                  # the two 0.50s dropped; trade, then the ask-only book
+    assert mk.ts[0] == T0 + timedelta(hours=1) and str(mk.ts[0].tz) == "UTC"
+    assert mk.cost == pytest.approx(SE.og_costs(["o"])["o"]) and mk.outcome is None
+    assert set(seen) == {MS.root_for("og")}                    # OG.com's own archive tree
