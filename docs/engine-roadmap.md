@@ -1,9 +1,11 @@
 # Engine roadmap: standard inputs, composable models, standard outputs
 
 **Status:** approved by the owner on 2026-09-29 (E0 done: decisions D1–D6 taken as recommended, see the
-[decision log](#decision-log)). E4a (prediction records beside `race_predictions`, one kind registry) is built behind
-`RACINGLINES_PREDICTION_RECORDS`, default off ([Prediction records](backtest-core.md#prediction-records)); nothing else below E0 is built yet. The task-by-task implementation plan (twelve tasks,
-roles, files, tests, backups) is the owner's "Engine Implementation Plan" page; the phases here are its skeleton.
+[decision log](#decision-log)). Built so far: E1a, the L1 frame schemas with the F1 and downhill adapters
+([Frames](frames.md), PR #73), and E4a, prediction records beside `race_predictions` with one kind registry, behind
+`RACINGLINES_PREDICTION_RECORDS`, default off ([Prediction records](backtest-core.md#prediction-records), PR #76).
+Next in order: E1b market frames, E2 the as-of view and leak guard. The task-by-task implementation plan (twelve
+tasks, roles, files, tests, backups) is the owner's "Engine Implementation Plan" page; the phases here are its skeleton.
 
 **The goal.** A model is developed once, joins "the engine", and runs on any sport and any exchange that
 has the data it needs. For that we need three things:
@@ -243,9 +245,9 @@ start now.
 | Phase | What | Touches live paths? | Done when | Role |
 |---|---|---|---|---|
 | **E0** | This page approved; owner decisions D1–D6 below; the capability matrix written for today's 2 models × 8 sports | No | Decisions logged | Decide |
-| **E1** | L1 frame schemas (declared and checked in tests) + F1 and downhill adapters as read-only views; `[data]` in the sport schemas | No | Both sports produce every frame they claim; `tests/test_frames.py`; goldens unchanged | Implement (Sonnet); the schemas reviewed by the deciding seat |
+| **E1** | **E1a done (PR #73)**; E1b market frames and E1c NASCAR frames open. L1 frame schemas (declared and checked in tests) + F1 and downhill adapters as read-only views; `[data]` in the sport schemas | No | Both sports produce every frame they claim; `tests/test_frames.py`; goldens unchanged | Implement (Sonnet); the schemas reviewed by the deciding seat |
 | **E2** | L2 `DataView.asof` + generic leak guard; `Measurements` rebuilt on it; `market_quotes` through the same view | No (F1 feature values identical) | F1 golden `f1_measurements` byte-identical; a leakage test per frame | Own (Opus) |
-| **E4a** | L4 Prediction records **written alongside** `race_predictions` (new table or Parquet, per D1); kinds merged into one registry | No (readers unchanged) | Every saved run also has long records; a round-trip test | Implement |
+| **E4a** | **Done (PR #76).** L4 Prediction records **written alongside** `race_predictions` (new table or Parquet, per D1); kinds merged into one registry | No (readers unchanged) | Every saved run also has long records; a round-trip test | Implement |
 | **E5** | L5 `eval scores / compare / scorecard` on the records; F1 commands wrap them | No | `f1 compare` and `f1 scorecard` outputs identical through the new path | Implement |
 | **E6** | L6 `report build` + model card template; the first model card for `position_sim` and `timed_runs` | No | Both model cards render to PDF; `mkdocs build --strict` | Implement |
 | **E7** | **First cross-sport proof:** algorithm B (market-implied strengths, requires only `market_links` + `market_quotes`) as a model, and a Plackett-Luce base model (requires `classifications`); run on the NASCAR Kalshi tape and on F1 | No (new models, not live) | A NASCAR model card and scorecard from the recorded Chase tapes, **in time for the December NASCAR decision** | Own (Opus) |
