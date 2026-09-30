@@ -108,7 +108,9 @@ def test_dig_when_epoch_and_quotes():
     assert D.when(1790420400000000000, "ns").year == 2026 and D.when(None, "ms") is None
     assert D.quote(0.83, 0.92, 0.84) == (0.83, 0.92, pytest.approx(0.875))
     assert D.quote(None, 0.01, 0.01) == (None, 0.01, 0.01)               # asks only: the last price, not a fake mid
-    assert D.quote(0.0, 1.0, None) == (None, None, None)                 # an empty book
+    assert D.quote(0.0, 1.0, None) == (None, None, None)                  # an empty book
+    assert D.quote(0.0, 1.0, 0.50) == (None, None, None)                  # a dead book's 0.50 midpoint is discarded
+    assert D.quote(0.0, 1.0, 0.01) == (None, None, 0.01)                 # real historic last prices survive
     assert D.price("0.03") == 0.03 and D.price(None) is None and D.price("") is None
 
 

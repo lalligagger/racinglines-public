@@ -142,11 +142,16 @@ def _volume(mk):
 
 
 def _quote(mk):
-    """(bid, ask, mid) of the YES contract; an empty side (0 bid / 1.00 ask) is None."""
+    """(bid, ask, mid) of the YES contract; an empty side (0 bid / 1.00 ask) is None. A dead book's
+    synthetic 0.50 midpoint is treated as no quote, but a real last trade such as 0.01 is kept."""
     bid, ask = K.price(mk, "yes_bid"), K.price(mk, "yes_ask")
-    bid = None if not bid else bid
+    bid = None if bid in (None, 0) else bid
     ask = None if ask is None or ask >= 1.0 else ask
     last = K.price(mk, "last_price")
+    if bid is None and ask is None:
+        if last is None or abs(last - 0.5) > 1e-9:
+            return None, None, last
+        return None, None, None
     mid = (bid + ask) / 2 if bid is not None and ask is not None else (last or None)
     return bid, ask, mid
 

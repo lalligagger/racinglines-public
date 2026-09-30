@@ -51,6 +51,23 @@ def first_last(n):
     return f"{parts[0]} {parts[-1]}" if len(parts) > 2 else " ".join(parts)
 
 
+def _coerce_identifier(value):
+    """Return a numeric identifier when it is one, otherwise leave it as a raw string for schemes like MotoGP UUIDs."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        return int(value)
+    s = str(value).strip()
+    if not s:
+        return None
+    try:
+        return int(s)
+    except ValueError:
+        return s
+
+
 def _short_form(a, b):
     """Two first names that can be one person: equal, or one begins the other ('chris' / 'christopher')."""
     return a == b or (min(len(a), len(b)) >= 3 and (a.startswith(b) or b.startswith(a)))
@@ -69,7 +86,7 @@ class Resolver:
             SELECT a.id, a.display_name, i.value FROM athletes a
             JOIN athlete_identifiers i ON i.athlete_id = a.id AND i.scheme = :sc"""), dict(sc=scheme)).all()
         self.names = {int(i): n for i, n, _ in rows}
-        self.driver_ids = {int(i): int(v) for i, _, v in rows}
+        self.driver_ids = {int(i): _coerce_identifier(v) for i, _, v in rows}
         seasons = {int(i): set() for i, *_ in rows}
         for i, y in conn.execute(text("""
                 SELECT DISTINCT r.athlete_id, s.year FROM results r JOIN rounds ro ON ro.id = r.round_id AND ro.kind = 'race'

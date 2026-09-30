@@ -120,6 +120,13 @@ def test_client_pages_and_prices():
 
 
 @pytest.mark.quick
+def test_empty_books_do_not_hide_behind_a_fake_last_price():
+    mk = dict(yes_bid=0, yes_ask=100, last_price=50)
+    assert KS._quote(mk) == (None, None, None)
+    assert KS._quote(dict(yes_bid=0, yes_ask=40, last_price=35)) == (None, pytest.approx(0.40), pytest.approx(0.35))
+
+
+@pytest.mark.quick
 def test_link_rows():
     rows = {r["token_id"]: r for r in KS.link_rows(EVENTS["KXF1RACE"] + EVENTS["KXF1PODIUM"], FakeResolver())}
     v = rows["KXF1RACE-26SIN-VER"]

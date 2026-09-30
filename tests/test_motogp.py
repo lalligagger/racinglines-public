@@ -20,6 +20,28 @@ def tha_event():
     return next(e for e in fx("events_2026") if e["short_name"] == "THA")
 
 
+def test_resolver_handles_uuid_identifier_values_for_non_numeric_schemes():
+    from datetime import date
+
+    from racinglines.sources.nascar.identity import Resolver
+
+    class FakeConn:
+        def execute(self, query, params=None):
+            sql = str(query)
+            if "SELECT a.id, a.display_name, i.value" in sql:
+                return type("Rows", (), {"all": lambda self: [(1, "Pecco Bagnaia", "fe7f3311-ebb9-404b-9ab5-ea44b103991e"),
+                                                            (2, "Alex Marquez", "12345")]})()
+            if "SELECT DISTINCT r.athlete_id, s.year" in sql:
+                return type("Rows", (), {"all": lambda self: [(1, 2026), (2, 2026)]})()
+            if "SELECT ra.id, e.name, e.start_date, e.status" in sql:
+                return type("Rows", (), {"all": lambda self: [(99, "GP of Thailand", date(2026, 2, 27), "completed")]})()
+            raise AssertionError(f"unexpected query: {sql}")
+
+    r = Resolver(FakeConn(), year=2026, competition="motogp_wc", scheme="motogp", source="motogp_api")
+    assert r.driver_ids[1] == "fe7f3311-ebb9-404b-9ab5-ea44b103991e"
+    assert r.driver_ids[2] == 12345
+
+
 # --- parser ---------------------------------------------------------------------
 
 @pytest.mark.quick

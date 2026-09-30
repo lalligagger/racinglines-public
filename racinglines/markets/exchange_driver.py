@@ -61,9 +61,14 @@ def price(v):
 
 
 def quote(bid, ask, last):
-    """(bid, ask, mid): an empty side is None; mid = the middle when both sides quote, else the last price."""
-    bid = None if not bid else bid
+    """(bid, ask, mid): an empty side is None; a dead book's synthetic 0.50 midpoint is treated as no quote,
+    but genuine last prices still survive."""
+    bid = None if bid in (None, 0) else bid
     ask = None if ask is None or ask >= 1.0 else ask
+    if bid is None and ask is None:
+        if last is None or abs(last - 0.5) > 1e-9:
+            return None, None, last
+        return None, None, None
     mid = (bid + ask) / 2 if bid is not None and ask is not None else last
     return bid, ask, mid
 
