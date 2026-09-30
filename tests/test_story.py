@@ -19,7 +19,7 @@ def _k(settings, strategy="maker"):
 def run(monkeypatch, weekly, decisions):
     monkeypatch.setattr(S, "POOL", [(BASE, ("maker",)), (GRID, ("maker",)), (GBM, ("maker",)), (C, ("maker",))])
     monkeypatch.setattr(S, "DECISIONS", decisions)
-    monkeypatch.setattr(S, "_weekly", lambda conn, year: weekly)
+    monkeypatch.setattr(S, "_weekly", lambda conn, year, pool=None: weekly)
     return S.decisions(None)
 
 
@@ -52,3 +52,27 @@ def test_phases_group_consecutive_weekends():
     rec = [dict(profile=p, pnl=x) for p, x in (("M1", 10), ("M1", -5), ("M2", 3), ("C", 7), ("C", 1))]
     ph = S.phases(rec)
     assert [(p["profile"], p["weekends"], p["pnl"], p["up"]) for p in ph] == [("M1", 2, 5, 1), ("M2", 1, 3, 1), ("C", 2, 8, 2)]
+
+
+def test_taker_story_starts_on_the_defaults_and_follows_the_same_rule(monkeypatch):
+    gpr = {"variant": "gridq+pretrain+reset", "min_edge": 0.10}
+    wk = {_k(BASE, "update"): [(r, -16.0) for r in range(1, 9)], _k(gpr, "update"): [(r, 41.0) for r in range(1, 9)]}
+    monkeypatch.setattr(S, "DECISIONS", [("start", 2025, 0, "mid"), ("r8", 2025, 8, "mid")])
+    monkeypatch.setattr(S, "_weekly", lambda conn, year, pool=None: wk if pool is S.TAKER_POOL else {})
+    d = S.decisions(None, taker=True)
+    assert d[0]["chosen"] == S.label(BASE, "update") and not d[0]["table"]
+    assert d[1]["switched"] and d[1]["chosen"] == S.label(gpr, "update")
+
+
+def test_taker_pool_is_the_resweep_round_one_and_matches_the_history():
+    from racinglines.pipelines import profiles as PF
+    keys = {SS.Settings.from_dict(s).key for s, _ in S.TAKER_POOL}
+    assert len(keys) == 16
+    for code, *_ in PF.HISTORY["taker"]:
+        assert SS.Settings.from_dict(PF.HISTORY_PROFILES[code]["settings"]).key in keys
+
+
+def test_taker_decisions_only_for_the_story_account(monkeypatch):
+    monkeypatch.setattr(S, "decisions", lambda conn, taker=False: ["story"] if taker else None)
+    assert S._taker_decisions(None, {"TW1 · launch taker (defaults)"}) == ["story"]
+    assert S._taker_decisions(None, {"A · core taker (update)"}) is None

@@ -108,14 +108,18 @@ def apply(cs, action, ref="", strategy=""):
 def configs(conn, year=2026):
     """{settings key: dict(key, ref, settings, label, run_id, weekends, data_key)} for every
     configuration with a full-season sweep of `year` (as many weekends as the most complete sweep of
-    that season); the latest run per configuration."""
+    that season on the same venue); the latest run per configuration."""
     rows = conn.execute(text("""SELECT id, params, jsonb_array_length(coalesce(metrics->'weekends', '[]'::jsonb)) n
                                 FROM model_runs WHERE kind = 'sweep' AND (params->>'year')::int = :y ORDER BY id"""),
                         dict(y=year)).fetchall()
-    full = max((r[2] for r in rows if not ((r[1] or {}).get("rounds") and "settings" in (r[1] or {}))), default=0)
+    venue = lambda p: ((p or {}).get("settings") or {}).get("venue") or "polymarket"     # noqa: E731
+    full = {}                          # per venue: Kalshi listed a 2025 weekend Polymarket didn't (Imola)
+    for r in rows:
+        if not ((r[1] or {}).get("rounds") and "settings" in (r[1] or {})):
+            full[venue(r[1])] = max(full.get(venue(r[1]), 0), r[2])
     out = {}
     for rid, params, n in rows:
-        if n < full or n == 0 or ((params or {}).get("rounds") and "settings" in (params or {})):
+        if n < full.get(venue(params), 0) or n == 0 or ((params or {}).get("rounds") and "settings" in (params or {})):
             continue                                   # partial seasons (explicit rounds) never count
         try:
             st = SS.Settings.from_run_params(params)

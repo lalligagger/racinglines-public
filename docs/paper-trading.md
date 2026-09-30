@@ -324,6 +324,25 @@ walk-forward evidence: each setup's P&L over only the weekends raced so far.
 | After 2025 round 16 | Leader: `gbm` 7-pt maker, +$1,134 over 15 weekends | M3 |
 | Before the 2026 season | Leader: `gbm` 7-pt maker +$1,035; C +$835, within the noise floor, with the best consistency (1.59 vs the leader's 1.45) and the smallest drawdown (−$176 vs −$318) | C |
 
+### The taker's history
+
+The demo taker follows the **same rule at the same decision points** (`story.decisions(conn, taker=True)`),
+on its own pool fixed in advance: the taker re-sweep's round 1 (baseline, `gridq+pretrain`,
+`gridq+pretrain+reset` and `gbm` × minimum edge 0.05 / 0.08 / 0.10 / 0.15, update and stage-aware takers),
+with the takers' measured noise floor of $400. The evidence is the pool's 2025 season sweeps
+(`sweeps/demo-taker-story.toml`). Figures are the sweeps' own (every recommendation taken); the account
+follows about a third of them.
+
+| Decision | Evidence | Chosen |
+|---|---|---|
+| Before the first race of 2025 | None yet | TW1, the defaults (update taker, baseline model, 5-pt edge) |
+| After 2025 round 8 | Leader: `gridq+pretrain+reset` 10-pt update taker, +$327 over 8 weekends | TW2 |
+| After 2025 round 16 | Same leader, +$1,216 | TW2 (kept) |
+| Before the 2026 season | Same leader, +$1,196, the most consistent within $400 | TW2 (kept) |
+
+TW2 is profile A's core without A's head-to-head threshold and with pre-weekend entry. The rule never picks
+a blend, so the story has none; the blend is a Pro option (taker re-sweep report, `data/runs/search/taker-resweep/REPORT.md`, section 6).
+
 ### Results
 
 Backtest replays of real weekends, 2025 and 2026 through round 15:

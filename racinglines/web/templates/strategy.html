@@ -76,9 +76,9 @@
 
 {% if acct.decisions %}<section data-panel="how" hidden>
 <div class="card"><h2>How this account has used racinglines</h2>
-{% call demo_context("This demo maker's rule.") %}It re-checks its setup in the Lab's <b>Edge Finder</b> at a few decision points, using only the weekends raced so far.
+{% call demo_context("This demo " ~ ("maker" if is_maker else "taker") ~ "'s rule.") %}It re-checks its setup in the Lab's <b>Edge Finder</b> at a few decision points, using only the weekends raced so far.
 Mid-season it follows the setup that has made the most, if the lead is over $100. Before a new season, a whole season's commitment, it takes every setup within
-the noise floor of the leader (about $350 a season, below which differences are simulation noise) and commits to the <b>most consistent</b> one.
+the noise floor of the leader (about {{ "$350" if is_maker else "$400" }} a season, below which differences are simulation noise) and commits to the <b>most consistent</b> one.
 The tables below are that evidence, as the account saw it at each point.{% endcall %}
 {% for d in acct.decisions %}{% set ph = acct.phases[loop.index0] if loop.index0 < acct.phases|length else none %}
 <h3 class="mt">{{ d.label }}{% if d.switched and not loop.first %} · <span class="good">switched</span>{% endif %}</h3>

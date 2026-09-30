@@ -36,16 +36,24 @@ POOL = [
 DECISIONS = [("Before the first race of 2025", 2025, 0, "mid"), ("After 2025 round 8", 2025, 8, "mid"),
              ("After 2025 round 16", 2025, 16, "mid"), ("Before the 2026 season", 2025, 99, "season")]
 START = ({"variant": "baseline"}, "maker")      # the defaults
+# The taker's pool: the taker re-sweep's round 1, fixed before any result (four models x four minimum edges, the
+# update and stage-aware takers), judged by the same rule with the takers' own noise floor (measured there).
+TAKERS = ("update", "early")
+TAKER_POOL = [({"variant": v, "min_edge": e} if (v, e) != ("baseline", 0.05) else {"variant": v}, TAKERS)
+              for v in ("baseline", "gridq+pretrain", "gridq+pretrain+reset", "gbm") for e in (0.05, 0.08, 0.10, 0.15)]
+TAKER_START = ({"variant": "baseline"}, "update")
+TAKER_NOISE_FLOOR = 400.0      # $ per season: the update taker's seed spread (taker-resweep report, section 2)
 
 
-def _weekly(conn, year):
-    """{(settings key, strategy): [(round, pnl), ...]} for every POOL setup with a saved `year` sweep."""
+def _weekly(conn, year, pool=None):
+    """{(settings key, strategy): [(round, pnl), ...]} for every pool setup (default POOL) with a saved `year`
+    sweep."""
     from sqlalchemy import text
 
     from racinglines.web import edge
     cfgs = edge.configs(conn, year)
     out = {}
-    for settings, strategies in POOL:
+    for settings, strategies in (POOL if pool is None else pool):
         st = SS.Settings.from_dict(settings)
         cfg = cfgs.get(st.key)
         if cfg is None:
@@ -62,12 +70,14 @@ def label(settings, strategy):
     return f"{strategy} · {st.label()}"
 
 
-def decisions(conn):
+def decisions(conn, taker=False):
     """[dict(label, known, table=[dict(setup, strategy, key, pnl, weekends, up, worst)], current, chosen,
-    switched)] following the rule, with the evidence each decision saw."""
-    weekly = {2025: _weekly(conn, 2025)}
-    names = {(SS.Settings.from_dict(s).key, k): (s, k) for s, ks in POOL for k in ks}
-    cur = (SS.Settings.from_dict(START[0]).key, START[1])
+    switched)] following the rule, with the evidence each decision saw. taker: the demo taker's pool, start and
+    noise floor (same decision points and rule)."""
+    pool, start, noise = (TAKER_POOL, TAKER_START, TAKER_NOISE_FLOOR) if taker else (POOL, START, NOISE_FLOOR)
+    weekly = {2025: _weekly(conn, 2025, pool)}
+    names = {(SS.Settings.from_dict(s).key, k): (s, k) for s, ks in pool for k in ks}
+    cur = (SS.Settings.from_dict(start[0]).key, start[1])
     out = []
     for lab, year, known, kind in DECISIONS:
         table = []
@@ -85,7 +95,7 @@ def decisions(conn):
         table.sort(key=lambda r: -r["pnl"])
         prev = cur
         if table and kind == "season":
-            band = [r for r in table if r["pnl"] >= table[0]["pnl"] - NOISE_FLOOR and r["consistency"] is not None]
+            band = [r for r in table if r["pnl"] >= table[0]["pnl"] - noise and r["consistency"] is not None]
             best = max(band, key=lambda r: r["consistency"])
             cur = (best["key"], best["strategy"])
             for r in table:
@@ -282,4 +292,14 @@ def account(conn, uid, profile, maker, markers=True, venue="polymarket"):
                 peak_deployed=max(peak.values(), default=0.0), weekends=len(record), sharpe=sharpe,
                 up=sum(r["pnl"] > 0 for r in record))
     return dict(record=record, seasons=list(seasons.values()), phases=ph, chart=chart, kpis=kpis,
-                decisions=decisions(conn) if maker else None, taker=detail)
+                decisions=decisions(conn) if maker else
+                _taker_decisions(conn, {r["profile"] for r in record}) if venue == "polymarket" else None,
+                taker=detail)
+
+
+def _taker_decisions(conn, ran):
+    """The demo taker's decisions (the walk-forward rule on TAKER_POOL) for an account whose track record ran
+    the story's profiles (profiles.HISTORY["taker"]; `ran`: the profile names in its record); else None."""
+    from racinglines.pipelines import profiles as PF
+    story = {PF.HISTORY_PROFILES[c]["name"] for c, *_ in PF.HISTORY.get("taker", []) if c in PF.HISTORY_PROFILES}
+    return decisions(conn, taker=True) if story & set(ran) else None

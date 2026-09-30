@@ -1,0 +1,100 @@
+# The demo taker's walk-forward evidence (pipelines/story.py TAKER_POOL): 2025 season sweeps on Polymarket of
+# the taker re-sweep's round-1 settings (four models x four minimum edges), so the Strategy page can show each
+# decision with the evidence the account had then. Only 2025: the rule's decisions all read 2025 weekends.
+# Settings only; nothing here changes a default. The default-settings baseline is added by the search itself.
+#
+#   racinglines f1 search sweeps/demo-taker-story.toml
+
+[search]
+name = "demo-taker-story"
+parallel = 2             # the production VM also serves the web app
+grid = 8
+history_cache = true
+hours = 3.0
+
+[[job]]
+year = 2025
+variant = "baseline"
+min_edge = 0.08
+note = "taker story pool: baseline edge 0.08"
+
+[[job]]
+year = 2025
+variant = "baseline"
+min_edge = 0.1
+note = "taker story pool: baseline edge 0.1"
+
+[[job]]
+year = 2025
+variant = "baseline"
+min_edge = 0.15
+note = "taker story pool: baseline edge 0.15"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+note = "taker story pool: gridq+pretrain edge 0.05"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.08
+note = "taker story pool: gridq+pretrain edge 0.08"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.1
+note = "taker story pool: gridq+pretrain edge 0.1"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.15
+note = "taker story pool: gridq+pretrain edge 0.15"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+note = "taker story pool: gridq+pretrain+reset edge 0.05"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.08
+note = "taker story pool: gridq+pretrain+reset edge 0.08"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+note = "taker story pool: gridq+pretrain+reset edge 0.1"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.15
+note = "taker story pool: gridq+pretrain+reset edge 0.15"
+
+[[job]]
+year = 2025
+variant = "gbm"
+note = "taker story pool: gbm edge 0.05"
+
+[[job]]
+year = 2025
+variant = "gbm"
+min_edge = 0.08
+note = "taker story pool: gbm edge 0.08"
+
+[[job]]
+year = 2025
+variant = "gbm"
+min_edge = 0.1
+note = "taker story pool: gbm edge 0.1"
+
+[[job]]
+year = 2025
+variant = "gbm"
+min_edge = 0.15
+note = "taker story pool: gbm edge 0.15"

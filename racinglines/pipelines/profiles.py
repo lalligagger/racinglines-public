@@ -129,8 +129,12 @@ def pref(venue="polymarket"):
     return PREF if venue == "polymarket" else f"{PREF}_{venue}"
 
 # The demo accounts' track record (pipelines/demo_history.py): backtest replays of real weekends, shown as
-# what each account ran. The taker has always followed A. The maker tried three setups in 2025, moving
-# toward the model and filter that held up, and has run C since the first race of 2026.
+# what each account ran. Both accounts follow the same walk-forward rule (pipelines/story.py: switch to the
+# Edge Finder's P&L leader mid-season past a margin, commit to the most consistent setup within the noise
+# floor before a season), each on its own pool of setups fixed in advance. The maker tried three setups in
+# 2025 and has run C since the first race of 2026; the taker started on the defaults and moved to the
+# grid-aware model with the reset at a 10-pt edge after 2025 round 8, and kept it (taker-resweep report,
+# section 6: the rule never picked a blend).
 HISTORY_PROFILES = {
     "M1": dict(name="M1 · launch maker (baseline)", strategy="maker", settings={"variant": "baseline"},
                why="2025 rounds 1-8: no market history yet, so the defaults: the conservative maker on the "
@@ -143,10 +147,18 @@ HISTORY_PROFILES = {
                settings={"variant": "gbm", "max_disagree": 0.07},
                why="2025 rounds 17-24: the Edge Finder's P&L leader over 15 weekends (+$1,134): the "
                    "gradient-boosted model, quoting only where it agrees with the market within 7 pts."),
+    "TW1": dict(name="TW1 · launch taker (defaults)", strategy="update", settings={"variant": "baseline"},
+                why="2025 rounds 1-8: no market history yet, so the defaults: the update taker on the baseline "
+                    "model at a 5-pt edge."),
+    "TW2": dict(name="TW2 · grid-aware taker, 10-pt edge", strategy="update",
+                settings={"variant": "gridq+pretrain+reset", "min_edge": 0.10},
+                why="From 2025 round 9: the Edge Finder's P&L leader over the season's first 8 weekends (+$327, "
+                    "update taker); still the leader after 16 (+$1,216) and the most consistent setup within "
+                    "the $400 noise floor of the leader before 2026, so kept."),
 }
 HISTORY = {   # username -> [(profile code, year, first round, last round)]
     "maker": [("M1", 2025, 1, 8), ("M2", 2025, 9, 16), ("M3", 2025, 17, 24), ("C", 2026, 1, 99)],
-    "taker": [("A", 2025, 1, 99), ("A", 2026, 1, 99)],
+    "taker": [("TW1", 2025, 1, 8), ("TW2", 2025, 9, 99), ("TW2", 2026, 1, 99)],
 }
 
 

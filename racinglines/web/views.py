@@ -47,7 +47,8 @@ def _basic_acct(acct):
     one = lambda r: rec.get(id(r), r)                          # noqa: E731
     return dict(acct, record=[one(r) for r in acct["record"]],
                 seasons=[dict(y, rows=[one(r) for r in y["rows"]]) for y in acct["seasons"]],
-                phases=[dict(R.basic_row(p), first=one(p["first"]), last=one(p["last"])) for p in acct["phases"]])
+                phases=[dict(R.basic_row(p), first=one(p["first"]), last=one(p["last"])) for p in acct["phases"]],
+                decisions=None)                              # the story's decisions name every setup
 
 
 # ---------------------------------------------------------------------------
