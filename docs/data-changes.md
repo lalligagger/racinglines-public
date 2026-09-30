@@ -14,6 +14,15 @@ Before a major update, keep what it replaces: a database dump in `data/backups/d
 files in `data/archive/<sport>/` (both git-ignored; `data/raw` is the record, so it isn't edited in place
 without a copy). Not `data/archive/db/`: that folder is tracked in git (the snapshot).
 
+## 2026-10-01 · Kalshi and OG.com order books recorded on the VM (vm.sh record)
+
+**Why.** The owner wanted Kalshi and OG.com recorded live through the round-16 weekend, beside the Polymarket
+recorder. **What changes.** `racinglines-record-venues.timer` runs `scripts/vm/record_venues.sh` every 5 minutes:
+one order-book snapshot per open market (`market_book_snapshots`, insert-only) for Kalshi F1 / NASCAR / MotoGP and
+OG.com F1 / NASCAR, and an hourly sync per pair (market links and quotes upserted). The first pass backs up to
+`data/backups/db/racinglines-before-record-venues-<UTC>.sql.gz` and its `data_changes` note names the file.
+**Undo.** `vm.sh record off`; the snapshots are additive (delete by `ts` after the backup's time, or restore it).
+
 ## 2026-09-30 · NASCAR and MotoGP demo paper portfolio on the VM (rl-demo)
 
 **Why.** The owner wanted a paper P&L history for the demo accounts beyond F1. **What changed.** `vm.sh demo` ran

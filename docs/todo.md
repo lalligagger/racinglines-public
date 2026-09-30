@@ -81,7 +81,7 @@ branches, one PR per track (owner, 2026-09-30); the track is named on each item.
 
 **P0 · This week (to Thu 1 Oct): be ready to trade round 16 on whichever venue lists it**
 
-- [ ] **U2** Kalshi recorder on the VM ([Exchanges](#exchanges)).
+- [ ] **U2** Kalshi recorder on the VM ([Exchanges](#exchanges)). Books every 5 minutes (plus OG.com) via `vm.sh record` (`scripts/vm/record_venues.sh`); open: a trades/tape pass and a continuous `markets record` mode.
 - [x] **U1** Kalshi in the signal engine, so A and C can paper-trade Kalshi's race markets (PR #34, merged 2026-09-29; [Exchanges](#exchanges)).
 - [x] **U6** Championship sleeve, paper only (PR #29, merged; `f1 season-strategy --paper`). Its first live rebalance is round 16's result ([Live events](#live-events)).
 - [ ] Freeze A and C and pre-register the rules in [Paper trading](paper-trading.md#validation-plan).

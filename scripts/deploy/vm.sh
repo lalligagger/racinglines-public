@@ -7,6 +7,9 @@
 #                                               # on the Mac it first stops the Mac's recorder and signals agents
 #   bash scripts/deploy/vm.sh live <event> [off] # a live event's timer on the VM (live/f1/<event>.toml): enable
 #                                               # and start it (a step every 5 minutes), or off: stop and disable it
+#   bash scripts/deploy/vm.sh record [off|status] # the Kalshi and OG.com recorder (scripts/vm/record_venues.sh): a pass
+#                                               # every 5 minutes (the first one backs the database up); status: last
+#                                               # passes and book snapshots per venue per 5 minutes
 #   bash scripts/deploy/vm.sh deploy [ref]      # checkout (default main), install, migrate, restart, smoke check
 #   bash scripts/deploy/vm.sh public on|off     # testing before handover: the web app on http://<VM IP>:8000
 #   bash scripts/deploy/vm.sh demo [status|extra] # the multi-sport demo: switches on, NASCAR/MotoGP paper rows and
@@ -63,6 +66,15 @@ case "${1:-}" in
       # before the book opens a step finds nothing due and exits, so enabling early is harmless
       remote "sudo systemctl enable --now $t && systemctl --no-pager list-timers $t"
     fi
+    ;;
+  record)
+    t=racinglines-record-venues.timer
+    case "${2:-}" in
+      off) remote "sudo systemctl disable --now $t && echo '$t: off'" ;;
+      status) remote "cd $APP && sudo -u racinglines -H scripts/vm/record_venues.sh status" ;;
+      "") remote "sudo systemctl enable --now $t && systemctl --no-pager list-timers $t" ;;
+      *) echo "usage: vm.sh record [off|status]"; exit 1 ;;
+    esac
     ;;
   deploy)
     ref="${2:-main}"

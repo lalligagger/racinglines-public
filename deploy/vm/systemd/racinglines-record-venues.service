@@ -1,0 +1,13 @@
+# Kalshi and OG.com recorder, one pass (scripts/vm/record_venues.sh). Started by the .timer; enabled by vm.sh record.
+# Logs: journalctl -u racinglines-record-venues, and data/runs/logs/record-venues.log
+[Unit]
+Description=racinglines Kalshi and OG.com recorder
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=racinglines
+WorkingDirectory=/opt/racinglines
+ExecStart=/opt/racinglines/scripts/vm/record_venues.sh
+TimeoutStartSec=30min
