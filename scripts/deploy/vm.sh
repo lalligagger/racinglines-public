@@ -87,7 +87,7 @@ case "${1:-}" in
       *) name="" ;;
     esac
     [ -n "$name" ] && [ -n "$val" ] || { echo "usage: vm.sh switch RACINGLINES_<NAME> on|off"; exit 1; }
-    remote "sudo sed -i -E '/^$name=/d' /etc/racinglines.env && echo '$name=$val' | sudo tee -a /etc/racinglines.env >/dev/null && sudo systemctl try-restart racinglines-web && grep -E '^$name=' /etc/racinglines.env"
+    remote "sudo sed -i -E '/^$name=/d' /etc/racinglines.env && echo '$name=$val' | sudo tee -a /etc/racinglines.env >/dev/null && sudo systemctl try-restart racinglines-web && sudo grep -E '^$name=' /etc/racinglines.env"
     ;;
   deploy)
     ref="${2:-main}"
