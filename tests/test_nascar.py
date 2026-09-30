@@ -659,3 +659,22 @@ def test_race_is_looked_up_by_date_and_name(db):
         R.events = [(1, "Cook Out Clash", date(2026, 2, 4), "c"), (2, "DAYTONA 500", date(2026, 2, 5), "c")]
         assert R.race(date(2026, 2, 4), "Daytona 500 winner") == (2, "DAYTONA 500")
         assert R.race(date(2026, 2, 4), "Winner") == (None, None) and R.race(date(2026, 2, 4)) == (None, None)
+
+
+# --- the season state for the season forecast (models/nascar_season.load_state) -------------------------------------
+
+def test_season_state_reads_points_races_chase_flags_and_the_races_left(db):
+    from racinglines.models import nascar_season as NS
+    with db() as s:
+        I.ingest(s, [2026], today=TODAY, echo=lambda *_: None)
+        s.commit()
+        results, schedule = NS.load_state(s.connection(), 2026)
+    by = schedule.set_index("name")
+    assert not by.loc["DAYTONA 500", "chase"] and by.loc["DAYTONA 500", "done"]
+    assert by.loc["Cook Out Southern 500", "chase"] and by.loc["Cook Out Southern 500", "done"]
+    left = schedule[~schedule["done"]]
+    assert len(left) == 6 and left["chase"].all() and left["name"].iloc[-1] == "NASCAR Championship Race"
+    assert (schedule["stages"].dropna() >= 1).all()
+    assert set(results["event_id"]) == set(schedule.loc[schedule["done"], "event_id"])
+    darl = results[results["event_id"] == by.loc["Cook Out Southern 500", "event_id"]]
+    assert darl.loc[darl["position"] == 1, "points"].iloc[0] == 73          # the feed's points, stage and bonus included

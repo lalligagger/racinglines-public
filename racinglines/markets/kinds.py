@@ -106,6 +106,39 @@ def summary(sims):
     return pd.DataFrame(out)
 
 
+# --- season-long markets, from a season simulation ------------------------------------------------------------
+
+def season_fair(kind, ss, a=None, b=None, n=None):
+    """Fair probability of YES for a "standings" kind from an outcomes.SeasonSims (a season simulation; `fair`
+    above stays for race markets). champion / standings_top3: per entrant (or one value with `a`); standings_h2h:
+    the matrix, or P(a finishes the season ahead of b); season_wins_ge: P(at least n wins)."""
+    k = KINDS[kind]
+    if k.payoff != "standings":
+        raise ValueError(f"{kind} is a race market: priced by fair() from an OutcomeSims")
+    if kind == "champion":
+        p = standings_position(ss, 1)
+    elif kind == "standings_top3":
+        p = standings_position(ss, 3)
+    elif kind == "standings_h2h":
+        if a is None:
+            r = ss.rank
+            return (r[:, :, None] < r[:, None, :]).mean(0)
+        return float((ss.rank[:, ss.index(a)] < ss.rank[:, ss.index(b)]).mean())
+    elif kind == "season_wins_ge":
+        if ss.wins is None or n is None:
+            raise ValueError("season_wins_ge needs simulated wins and n")
+        p = (ss.wins >= n).mean(0)
+    else:
+        raise ValueError(f"{kind} is not priced from a driver season simulation")
+    return p if a is None else float(p[ss.index(a)])
+
+
+def standings_position(ss, n):
+    """P(finishing the season in the top `n` of the standings), per entrant: the points-position payoff
+    (n = 1 is the champion)."""
+    return (ss.rank <= n).mean(0)
+
+
 # --- settlement ----------------------------------------------------------------------------------------
 
 def settle(kind, athlete_id, params, res, group_key=None):

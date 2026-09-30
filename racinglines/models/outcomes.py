@@ -42,6 +42,24 @@ class OutcomeSims:
         return to_records(self, run_id, sport, model_id, season, event_id, event, stage, cutoff, kinds)
 
 
+@dataclass(frozen=True)
+class SeasonSims:
+    """What a season simulation gives (e.g. models/nascar_season.py): per simulation, the final championship
+    standings. Season-long markets (markets.kinds.season_fair) read it the way race markets read an OutcomeSims."""
+    entrants: list                   # athlete ids, the columns of every array
+    rank: np.ndarray                 # (n_sims, n) final standings position, 1 = champion, no ties
+    points: np.ndarray               # (n_sims, n) final points
+    wins: np.ndarray | None = None   # (n_sims, n) season race wins
+    qualified: np.ndarray | None = None   # (n_sims, n) bool: made the playoff / Chase
+
+    @property
+    def n_sims(self):
+        return self.rank.shape[0]
+
+    def index(self, athlete_id):
+        return self.entrants.index(athlete_id)
+
+
 def from_position_sim(entrants, sim):
     """F1 (position_sim): `pos` is the classification with retirements last, `grid` the qualifying order."""
     pos = sim["pos"]

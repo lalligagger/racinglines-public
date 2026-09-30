@@ -448,3 +448,16 @@ def test_the_link_command_needs_a_fresh_backup_before_it_writes(world, tmp_path,
     assert CLI.main(["--db", url, "link", "--undo", undo]) == 0
     with world() as s:
         assert s.scalars(select(m.MarketLink).filter_by(token_id="KXNASCARCUPSERIES-NCS26-KLAR")).one().athlete_id is None
+
+
+def test_the_season_forecast_finds_every_venues_cup_champion_contract(world):
+    """racinglines nascar season --quotes: OG.com's 17 contracts and Kalshi's Cup series market, read as they are
+    listed (nothing stored), all Cup champion 2026; the Xfinity/Trucks champion and race markets are left out."""
+    from racinglines.pipelines import nascar_season as NSP
+    with world() as s:
+        rows = og_rows() + kalshi_rows("KXNASCARCUPSERIES-NCS26") + kalshi_rows("KXNASCARRACE-SOUP26")
+        got = NSP.champions(rows, linker(s), 2026)
+        assert len(got[got["exchange"] == "og"]) == 17
+        assert set(got["exchange"]) == {"og", "kalshi"}
+        assert got["athlete_id"].notna().sum() >= 16
+        assert NSP.champions(og_rows(), linker(s), 2025).empty
