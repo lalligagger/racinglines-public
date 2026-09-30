@@ -208,13 +208,15 @@ def sync(session, conn, year=2026, include_closed=False, new=None, sport="f1", t
     """Fetch every active event (and with include_closed, every closed one of `year`) and upsert one
     market_links row per outcome token. Tokens seen for the first time get first_seen_at and, if `new`
     is a list, are appended to it (markets/alerts.py). F1 (the default) is classified and matched to its
-    drivers and races; a tape-only sport (nascar, motogp, indycar) pages its schema's Gamma tags (or
-    `tags`) and files every link `unmodeled` under its own competition. Additive: never deletes a row."""
+    drivers and races; any other sport (nascar, motogp, indycar) pages its schema's Gamma tags (or `tags`)
+    and files every link `unmodeled` under its own competition, whether or not the sport has a pricing model
+    (a model prices from results, not from this sync; the identity pass fills athlete_id and race_id).
+    Additive: never deletes a row."""
     tape = sport != "f1"
     if tape:
         tags = tuple(tags or sports.polymarket_tags(sport))
-        if sports.modeled(sport) or not tags:
-            raise ValueError(f"{sport}: not a tape-only sport with [markets.polymarket] tags in sports/{sport}.toml")
+        if not tags:
+            raise ValueError(f"{sport}: no [markets.polymarket] tags in sports/{sport}.toml")
         comp, cat = competition(session, sport)
         R = None
         events = _events(year if include_closed else None, tags)
