@@ -389,6 +389,7 @@ baseline. The model variant is the group's `--variant`.
 | | `--max-stake` | 50 | Max stake per market ($). |
 | | `--cost` | 0.01 | Cost per share per trade ($). |
 | | `--bankroll` | not set | Bankroll-aware sizing: each taker mode starts with this bankroll, and its stakes scale with its balance after earlier weekends (`balance / bankroll`, 0 once it's gone). Unset = fixed sizing. |
+| | `--thin-edge-mult` | not set | Trade a market under the volume floor when the edge is at least this many times the minimum edge and a recorded order book (at most 10 min old) shows size at the touch: buys only, stake capped at that size. Needs recorded books (`markets record`); without them nothing changes. Unset = thin markets are skipped. |
 | | `--max-deployed` | not set | Cap on the capital deployed across a weekend's markets ($). Markets are traded in time order; a buy over the cap is cut to fit. Unset = no cap. |
 | Maker | `--half-spread` | 0.02 | Quote half-spread ($). |
 | | `--size` | 50 | Shares per quote. |
@@ -399,7 +400,8 @@ baseline. The model variant is the group's `--variant`.
 | | `--fill` | `through` | `through`: a trade must cross our price; `touch`: at our price; `queue`: at our price once the recorded book's queue ahead of us is served ([queue rule](market-making.md#the-queue-rule)). |
 | | `--info-skew` | 2.0 | Info-timed skew (`maker_skew`, `maker_all`). |
 | | `--widen` | 1.5 | Widen factor on bad markouts (`maker_widen`, `maker_all`). |
-| Markets | `--market-kinds` | `race_win,race_podium,race_h2h,race_constructor_top,race_pole` | Market kinds traded. |
+| Markets | `--market-kinds` | `race_win,race_podium,race_h2h,race_constructor_top,race_pole` | Market kinds traded. `race_top10` (Kalshi's top-10 finishers, a group of ten for the coherence check) can be added; it is not in the default set and only the takers trade it. |
+| | `--coherence-tol-by-kind` | not set | `kind=tolerance` pairs, e.g. `race_podium=0.35`: how far a multi-outcome group's prices may sum from its target (as a share of it) before its markets are skipped. Unset = 0.25 for every kind. |
 | | `--min-volume-24h` | 50 | Min $ traded in the prior 24 h. |
 | | `--venue` | not set | `polymarket` (the default) or `kalshi`: whose links and recorded tape the strategies trade. Unset = Polymarket, and unset or `polymarket` leaves every settings key as it was. A profile with this setting paper-trades Kalshi in the signal engine. |
 

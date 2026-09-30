@@ -412,13 +412,17 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
         base["race_id"] = WS._race_id(c, w["event_key"])
         if strategy in WS.TAKER_MODES:
             price_times = {lab: max(cu, at) for lab, cu, _, at in stages} if live else None
+            opt = tuple(k for k in WS.OPT_KINDS if k in st["market_kinds"])
             markets = WS.weekend_markets(c, w, runs, min_volume_24h=st["min_volume_24h"], price_times=price_times,
-                                         venue=venue)
+                                         venue=venue, kinds=WS.KINDS + opt if opt else None,
+                                         thin_depth=st["thin_edge_mult"] is not None,
+                                         tol_by_kind=SS.parse_map(st["coherence_tol_by_kind"]))
             markets = [m for m in markets or [] if m["kind"] in st["market_kinds"]]
             p = RB.TakerParams(min_edge=st["min_edge"], stake_per_edge=st["stake_per_edge"], max_stake=st["max_stake"],
                                cost=st["cost"], late_stages=st["late_stages"], min_edge_h2h=st["min_edge_h2h"],
                                min_edge_by_kind=tuple(SS.parse_map(st["min_edge_by_kind"]).items()),
-                               stages=None if st["taker_stages"] == SS.STAGES else st["taker_stages"], mode=strategy)
+                               stages=None if st["taker_stages"] == SS.STAGES else st["taker_stages"], mode=strategy,
+                               thin_edge_mult=st["thin_edge_mult"])
             base["signals"], base["positions"] = taker_signals(markets, p)
         elif strategy in WS.MAKERS:
             base.update(_maker(c, w, runs, st, strategy, now, live, venue=venue))
