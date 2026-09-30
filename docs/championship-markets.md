@@ -32,7 +32,7 @@ lost money on Polymarket's 2026 championship markets at every checkpoint and in 
 than the model. The NASCAR season sim (#93) is **not calibrated**: it has never been scored on a settled season, it
 ignores track types and form drift, and its first Mac run had Larson at 94.6% against 40–55% on the market (before
 its second revision). The replays that would test these prices on Kalshi and OG.com (F1: #95; NASCAR and MotoGP: #96)
-are drafts, not yet run. Read every "Model" cell above as a fair value to compare with the quote, not as a
+are merged on main (off by default, below) but not yet run on the VM as of 2026-09-30. Read every "Model" cell above as a fair value to compare with the quote, not as a
 validated edge. The full sport × exchange status: [Sports and exchanges](coverage.md).
 
 No exchange lists a NASCAR standings top 3, a standings head-to-head or season wins, although the season simulation
@@ -75,7 +75,15 @@ prices.
 - **Costs:** Kalshi's taker fee, OG.com's flat fee, or Polymarket's half-spread, each plus slippage.
 
 Both commands are read-only and off by default (`RACINGLINES_SEASON_REPLAY=1`). They write only CSVs under
-`data/runs/season-replay/`. The F1 replay takes `--venue kalshi|og` too (`f1 season-strategy`).
+`data/runs/season-replay/<sport>-<venue>-<year>/` (`decisions.csv`, `trades.csv`, `positions.csv`, `equity.csv`,
+`summary.json`); `--venue all` (the default) runs every exchange the sport lists, one report each
+([CLI](cli.md#racinglines-nascar)).
+
+The F1 replay takes `--venue kalshi|og` too: `racinglines f1 season-strategy --venue kalshi|og` replays the default
+championship strategy on that exchange's stored tape (no fetch). Kalshi is costed at its taker fee; OG.com at its flat
+$0.02 per contract, with no volume floor and prices read as its replay venue reads them (an empty book's 0.50 dropped).
+Polymarket stays the default and its output is unchanged. `--save` with another venue stores kind `season_venue_replay`,
+so no page reads it as Polymarket's; `--paper` stays Polymarket or Kalshi.
 
 These are first backtest cells, not validated strategies. Both season forecasts simulate races independently from the
 form at the decision, and NASCAR's was more favourite-heavy than every exchange on 2026-09-30.

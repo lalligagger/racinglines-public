@@ -4,7 +4,14 @@
 [decision log](#decision-log)). Built so far: E1a, the L1 frame schemas with the F1 and downhill adapters
 ([Frames](frames.md), PR #73), and E4a, prediction records beside `race_predictions` with one kind registry, behind
 `RACINGLINES_PREDICTION_RECORDS`, default off ([Prediction records](backtest-core.md#prediction-records), PR #76).
-Next in order: E1b market frames, E2 the as-of view and leak guard. The task-by-task implementation plan (twelve
+Next in order: E1b market frames, E2 the as-of view and leak guard.
+
+**Update 2026-09-30.** NASCAR and MotoGP now price races, but **outside the engine**: `NascarCupRace` and
+`MotoGPRaceChallenger` are result-only Monte Carlo models plugged into the existing `position_sim` family and the
+shared taker replay (`pipelines/position_replay.py`), with leakage avoided by convention (only results strictly before
+the race), not by the E2 guard. None has been compared with the market or a naive baseline, so E7 (`market_implied`
+and Plackett-Luce) is now the yardstick those two models are missing, not only a cross-sport proof. The capability
+matrix below is updated for MotoGP's results ingest. Status per sport and venue: [Sports and exchanges](coverage.md). The task-by-task implementation plan (twelve
 tasks, roles, files, tests, backups) is the owner's "Engine Implementation Plan" page; the phases here are its skeleton.
 
 **The goal.** A model is developed once, joins "the engine", and runs on any sport and any exchange that
@@ -211,7 +218,7 @@ ingest code, not from a running database.
 | `mtb_dh` | ✓ start lists | ✓ rounds | ✓ runs | ✗ (splits) | ✗ | ~ venue history | – (no venue lists it) | – | ✓ |
 | `nascar` | ✓ after `nascar ingest` | ✓ incl. stages | ✓ | ~ lap time, flag (D5) | ~ | ~ track type | ✓ (#67, #69) | ✓ Kalshi, Polymarket, OG.com | ✓ after `nascar ingest` |
 | `indycar` | from links only | – | – | – | – | – | ✓ | ✓ Kalshi, Polymarket | ✓ from settlement only |
-| `motogp` | from links only | – | – | – | – | – | ✓ | ✓ Kalshi, Polymarket | ✓ from settlement only |
+| `motogp` | ✓ after `motogp ingest` | ~ Sunday race only (no sprints, no calendar of upcoming events) | ✓ race | – | – | – | ✓ Kalshi (race win, champion, teams) | ✓ Kalshi; Polymarket none linked | ✓ after `motogp ingest` |
 | `le_mans` | from links only | – | – | – | – | – | ✓ | ✓ Kalshi | ✓ from settlement only |
 | `road_cycling` | from links only | – | – | – | – | – | ✓ | ✓ Kalshi | ✓ from settlement only |
 | `sailgp` | from links only | – | – | – | – | – | ✓ | ✓ Kalshi | ✓ from settlement only |
@@ -224,7 +231,8 @@ thing. NASCAR's `✓ after` cells depend on the onboarding thread's `nascar inge
 | `position_sim` (F1 baseline) | entrants, sessions, classifications, laps, conditions, venue_features | `f1` | `f1` only (its features are F1's sectors and practice) |
 | `timed_runs` (downhill) | entrants, sessions, classifications | `mtb_dh` | `mtb_dh`; any timed sport that fills those three |
 | `market_implied` (E7, algorithm B) | market_links, market_quotes | – | every sport with a tape: all eight |
-| `plackett_luce` (E7) | classifications (official_results to settle) | – | `f1`, `mtb_dh`, `nascar` |
+| `plackett_luce` (E7) | classifications (official_results to settle) | – | `f1`, `mtb_dh`, `nascar`, `motogp` |
+| `NascarCupRace`, `MotoGPRaceChallenger` (simple baselines, outside the engine) | classifications (recent finishes), a team prior | `nascar`, `motogp` | Replaced or challenged by E7's models under D4 |
 
 So the first cross-sport proof (E7) has exactly one candidate: `plackett_luce` and `market_implied` on `nascar`,
 compared against `market_implied` alone on the five tape-only sports.

@@ -142,7 +142,7 @@ def run(args, sport, years):
 
 def add_demo_parser(sub, sport):
     p = sub.add_parser("demo-history", help=f"Store the {sport} taker replay's trades as a demo account's paper "
-                                            "positions (pipelines/sport_paper.py; needs RACINGLINES_SPORT_PAPER=1).")
+                                            "positions (pipelines/sport_paper.py; on unless RACINGLINES_SPORT_PAPER is set to something other than 1/true/yes/on).")
     p.add_argument("--grid", default=None, help=f"The settings grid to pick from (data/runs/replay-grid/{sport}).")
     p.add_argument("--pick", default=None, help="Print the selection from this grid folder and write nothing.")
     p.add_argument("--book", default="kinds", choices=["kinds", "blend", "best"],

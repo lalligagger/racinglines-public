@@ -127,6 +127,9 @@ real Whistler book is checked by `tests/test_venue_replay.py` where the data buc
 
 ### Adding a sport
 
+This is the backtest step only; the whole sequence (results source, link identity, preflight, app) is
+[Adding a sport](add-a-sport.md).
+
 A sport joins the backtest core with two things and no change to the engine, the market kinds, the
 search or the report:
 

@@ -112,7 +112,8 @@ Competition     uci_dhi_wc               a league's championship in one sport
   `sports/<code>.toml` (sport, league, competition, categories, sessions, points,
   venues, which markets and venues it uses). `racinglines/db/registry.py` and the
   models read their constants from it. Add the file (and its code to
-  `racinglines/sports.py`), then run `racinglines db seed`.
+  `racinglines/sports.py`), then run `racinglines db seed`. The whole sequence, from the
+  results source to the app: [Adding a sport](add-a-sport.md).
 - **Rounds are generic.** `Round.kind` is free text, so formats like heats, runs
   1/2 or sprint/feature fit without migrations. `ROUND_ORDER` in the registry sets
   the running order.

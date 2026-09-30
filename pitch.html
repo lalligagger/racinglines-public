@@ -122,6 +122,11 @@
   .endpoints .end span { font-size: 14px; color: var(--muted); line-height: 1.4; }
   .endpoints .end.right b { color: var(--accent); }
   .endpoints .between { display: flex; flex-wrap: wrap; gap: 8px; align-content: center; justify-content: center; background: var(--bg); }
+  .endpoints .between span.added { border: 1px solid var(--accent); color: var(--accent); }
+  .tag.none { background: color-mix(in srgb, var(--chart-base) 40%, transparent); color: var(--muted); }
+  .cov td { font-size: 14px; } .cov td .tag { margin-bottom: 6px; }
+  .cov th:first-child, .cov td:first-child { width: 11%; }
+  .done li::marker { color: var(--good); } .left li::marker { color: var(--warn); }
   .endpoints .between span { font-size: 13.5px; font-weight: 600; color: var(--ink); border: 1px dashed var(--line); border-radius: 999px; padding: 6px 12px; background: var(--surface); }
   /* chrome */
   .chrome { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; align-items: center;
@@ -172,13 +177,13 @@
 
 <!-- 1. Title -->
 <section class="slide">
-  <div class="kicker">racinglines · Pitch · September 2026</div>
+  <div class="kicker">racinglines · Pitch · 30 September 2026</div>
   <h1 style="font-size:clamp(34px, 4.6vw, 64px)">An edge in race-sport prediction markets,<br><span class="accent">from Formula 1 to the downhill World Cup.</span></h1>
   <p class="lead" style="margin-top:28px">We turn official race timing into fair odds, priced strictly as of each session, and build the tools that help
-    traders find and size an edge inside the existing markets, starting with Polymarket's F1 markets. Downhill is priced and waiting for a market.</p>
+    traders find and size an edge inside the existing markets: F1 on Polymarket and Kalshi first, now NASCAR and MotoGP. Downhill is priced and waiting for a market.</p>
   <div class="grid g3" style="margin-top:34px">
-    <div class="card"><h3>What we do</h3><p>Tools for makers and takers on Polymarket: calls with heat ratings, quotes, alerts, an Edge Finder, all driven by as-of race models tested on every real price and trade.</p></div>
-    <div class="card"><h3>Where we are</h3><p>Two robust strategies found by a 1,161-combination search; a live race view with a private book, first run at Whistler. Next: the first F1 private book, at the Bahrain GP in Sepang (<strong>2–4 Oct 2026</strong>), a race Polymarket hasn't listed; paper trading on every race Polymarket lists, through 2027.</p></div>
+    <div class="card"><h3>What we do</h3><p>Tools for makers and takers on Polymarket and Kalshi: calls with heat ratings, quotes, alerts, an Edge Finder, all driven by as-of race models tested on every real price and trade.</p></div>
+    <div class="card"><h3>Where we are</h3><p>F1: two strategies that held in a held-out season on Polymarket; Kalshi paper signals wired. NASCAR and MotoGP are in the app as labelled demos. Next: live paper at round 16 (<strong>2–4 Oct</strong>) and an invite-only <strong>fantasy trading</strong> soft launch from Singapore (<strong>8 Oct</strong>).</p></div>
     <div class="card"><h3>How we earn</h3><p>The tools, for traders who want an edge; <strong>B2B sales</strong> of the prediction models and pricing; and trading ourselves once paper trading validates the backtests.</p></div>
   </div>
 </section>
@@ -192,9 +197,9 @@
     <div class="track">
       <div class="end left"><b>UCI Downhill World Cup</b><span>Modelled: 6 seasons, 43 rounds backtested. No exchange lists it yet.</span></div>
       <div class="between">
-        <span>XC / enduro</span><span>alpine ski WC</span><span>road cycling</span><span>Formula E</span><span>IndyCar</span><span>WEC / Le Mans</span><span>MotoGP</span>
+        <span>XC / enduro</span><span>alpine ski WC</span><span>road cycling</span><span>Formula E</span><span>IndyCar</span><span>WEC / Le Mans</span><span class="added">MotoGP · added</span><span class="added">NASCAR · added</span>
       </div>
-      <div class="end right"><b>Formula 1</b><span>Liquid Polymarket race markets: win, podium, head-to-head, pole, constructors. Traded in paper now.</span></div>
+      <div class="end right"><b>Formula 1</b><span>Race and season markets on Polymarket and Kalshi (Polymarket has listed no race since 28 Aug), season futures on OG.com. Paper-traded now.</span></div>
     </div>
   </div>
   <div class="grid g3" style="margin-top:22px">
@@ -234,6 +239,55 @@
     <div class="step"><b>Price</b><span>Win, podium, top 10, pole, head-to-head, constructors, championships, re-priced after each session</span></div>
     <div class="step"><b>Trade</b><span>Maker quotes and taker calls with heat ratings; paper fills, positions and alerts</span></div>
     <div class="step"><b>Settle</b><span>From official results; every price, signal and fill stored with its inputs</span></div>
+  </div>
+</section>
+
+<!-- 4b. Coverage -->
+<section class="slide">
+  <div class="kicker">Coverage · 30 Sep 2026</div>
+  <h2>Three sports on three exchanges: 7 of the 9 cells are in the app.</h2>
+  <table class="cov">
+    <thead><tr><th></th><th>Polymarket</th><th>Kalshi</th><th>OG.com</th></tr></thead>
+    <tbody>
+      <tr><td>F1</td>
+        <td><span class="tag good">Robust</span><br>Real model; taker A +$1,389 / +$1,432 (2026 / 2025 held out). No race listed since 28 Aug</td>
+        <td><span class="tag">Paper</span><br>Real model; paper signals wired; maker replay +$490 / +$659. Taker waits on bid/ask prices</td>
+        <td><span class="tag">Read-only</span><br>20 season futures with a fair-price indicator; thin books; trading needs onboarding</td></tr>
+      <tr><td>NASCAR</td>
+        <td><span class="tag warn">Demo</span><br>Race and champion markets synced; demo replay only</td>
+        <td><span class="tag warn">In-sample demo</span><br>408 races, 7,544 linked markets, a next-race price. Replay up in 2026, down in 2025 at every setting</td>
+        <td><span class="tag warn">Quote only</span><br>17 champion contracts; the season model is not calibrated</td></tr>
+      <tr><td>MotoGP</td>
+        <td><span class="tag none">Empty</span><br>No linked markets yet; probe next</td>
+        <td><span class="tag warn">In-sample demo</span><br>Race-winner markets, race win only. No 2025 markets to hold out; no next race until the calendar is ingested</td>
+        <td><span class="tag none">Not listed</span><br>OG.com lists no MotoGP</td></tr>
+    </tbody>
+  </table>
+  <div class="grid g3" style="margin-top:18px">
+    <div class="card"><h3>Tape only</h3><p>IndyCar (1,374 Kalshi markets, 167k trades), road cycling, Le Mans and SailGP: recorded, no model. IndyCar's results source forbids automated use.</p></div>
+    <div class="card"><h3>Priced, no exchange</h3><p>Downhill: a real model, 43 World Cup rounds walk-forward. Runs live on our own private book until a venue lists it.</p></div>
+    <div class="card"><h3>Schemas, not code</h3><p>A new exchange or a tape-only sport is one schema file. OG.com was added that way; NASCAR and MotoGP added a results adapter, a market-link pass and a model on top.</p></div>
+  </div>
+  <p class="note">Nothing trades real money: both venues' trading switches are off and OG.com has no order code. "In-sample" means the settings were picked on the same races they are scored on.</p>
+</section>
+
+<!-- 4c. Model status -->
+<section class="slide">
+  <div class="kicker">Model status, honestly</div>
+  <h2>One proven edge so far. The rest is pipeline, labelled as such.</h2>
+  <table>
+    <thead><tr><th>Sport</th><th>Model</th><th>How it was checked</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>F1</td><td>Lap and sector pace, practice, qualifying and grid; re-priced after every session</td><td>129 races walk-forward; strategies tuned on 2026, held out on 2025</td><td><span class="tag good">Robust on Polymarket</span></td></tr>
+      <tr><td>Downhill</td><td>Rider pace, form and crash rates; a format-aware weekend simulation</td><td>43 World Cup rounds walk-forward</td><td><span class="tag">Real model, no market</span></td></tr>
+      <tr><td>NASCAR Cup</td><td>Simple baseline: recent finishes and a team prior. No qualifying, practice or track type</td><td>Kalshi taker replay: 2026 up, 2025 down in every setting, on spiky last-trade prices</td><td><span class="tag warn">Not robust · demo</span></td></tr>
+      <tr><td>MotoGP</td><td>Same baseline, Sunday race win only; sprints not ingested</td><td>No held-out season: Kalshi listed no 2025 race</td><td><span class="tag warn">No verdict · demo</span></td></tr>
+      <tr><td>IndyCar, cycling, Le Mans, SailGP</td><td>None</td><td>–</td><td><span class="tag none">Tape for 2027</span></td></tr>
+    </tbody>
+  </table>
+  <div class="grid g2" style="margin-top:18px">
+    <div class="card"><h3>Reading the demo numbers</h3><p>The NASCAR Pro demo record on Kalshi is +$6,525 for 2026 but −$278 for 2025, and its settings were picked on those same seasons. MotoGP's is +$31 on 11 races. They show the pipeline working end to end, not an edge.</p></div>
+    <div class="card"><h3>What would change the verdict</h3><p>Kalshi bid/ask prices instead of last trades; a naive baseline (market-implied, Plackett–Luce) to beat; a second season of markets; MotoGP sprints and calendar. NASCAR for 2027 is decided in December on this evidence.</p></div>
   </div>
 </section>
 
@@ -287,7 +341,7 @@
       <li>Doubling stakes: leverage, not edge (doubles 2025's loss too)</li>
       <li>Stopping before FP3: 2026 only. Hold strategies: lose in 2025</li></ul></div>
   </div>
-  <p class="note">params-4h cloud search, 27 Sep 2026: F1 per-event markets, 2026 (15 weekends) tuned and 2025 (23 weekends, as if live from the first race) held out. Championship markets excluded.</p>
+  <p class="note">params-4h cloud search, 27 Sep 2026: F1 per-event markets, 2026 (15 weekends) tuned and 2025 (23 weekends, as if live from the first race) held out. Championship markets excluded. Re-checked 30 Sep in a 106-job sweep at 16,000 simulations: A stays the best taker, +$1,389 (2026) / +$1,432 (2025).</p>
 </section>
 
 <!-- 7. The two strategies -->
@@ -319,13 +373,13 @@
 <!-- 9. Demo: the taker -->
 <section class="slide">
   <div class="kicker">The demo · taker account</div>
-  <h2>$1,000 in January 2025, taking a third of A's calls.</h2>
+  <h2>$1,000 in January 2025, following A's calls in part.</h2>
   <div class="split">
     <img class="shot" src="/static/pitch/taker-strategy.jpg" alt="Demo taker: bankroll against taking every recommendation, and the heat breakdown">
     <div class="grid" style="gap:14px">
       <img class="shot" src="/static/pitch/taker-positions.jpg" alt="The taker's Positions: realised P&amp;L, drawdown, Sharpe ratio and P&amp;L history">
       <div class="card"><h3>What a taker sees</h3><p>What to buy, how many shares, the most to pay, and a <strong>heat</strong> rating (warm, hot, very hot) from the modelled value, never the model's numbers.
-        $1,000 → $1,898 (+89.8%); worst drawdown −$338. Taking every call would have made +$2,606.</p></div>
+        Rebuilt on 30 Sep: <strong>+$450.46</strong> over 23 weekends of 2025 and <strong>+$353.01</strong> over 15 of 2026, paper; only 2026 is out of sample. It paper-trades live from round 16.</p><p class="note" style="margin-top:8px">Screenshots from 27 Sep, before the rebuild.</p></div>
     </div>
   </div>
 </section>
@@ -363,11 +417,11 @@
 <!-- 11. Validation -->
 <section class="slide">
   <div class="kicker">Next: prove it live</div>
-  <h2>Paper trading on Polymarket, then real capital, then more exchanges.</h2>
+  <h2>Paper trading on Polymarket and Kalshi, then real capital, then more sports.</h2>
   <div class="grid g3">
     <div class="card phase"><span class="tag">Now · Oct 2026 – 2027</span><h3>Live paper trading</h3>
-      <ul><li>The first F1 private book (Sepang, 2–4 Oct): all 100 usual race markets, the ones Polymarket didn't list</li>
-      <li>A and C paper-trade every F1 weekend Polymarket lists, stage by stage, with alerts</li>
+      <ul><li>Round 16 (Sepang, 2–4 Oct): live paper on the venues that list it, and the first F1 private book</li>
+      <li>A and C paper-trade every F1 weekend Polymarket or Kalshi lists, stage by stage, with alerts</li>
       <li>Same code path as the backtest; parity checked trade for trade</li>
       <li>Compare live fills and mark-outs with the backtest; adjust nothing on two weekends of noise</li></ul></div>
     <div class="card phase p2"><span class="tag">After 4–6 live weekends</span><h3>Real capital, small</h3>
@@ -375,10 +429,39 @@
       <li>Size up only on live evidence: fills, slippage, order-book depth (recorded from now on)</li>
       <li>Polymarket's new order-signing (CLOB V2) first</li></ul></div>
     <div class="card phase p3"><span class="tag">Then</span><h3>More exchanges and sports</h3>
-      <ul><li><strong>Kalshi</strong> next, other exchanges after</li>
-      <li>New sports between the endpoints as they list</li>
+      <ul><li><strong>Kalshi</strong> and <strong>OG.com</strong> are read today; each is traded only after its own paper validation</li>
+      <li>NASCAR and MotoGP from demo to a model that beats a naive baseline, for the 2027 decision</li>
       <li>Downhill the day its markets appear</li></ul></div>
   </div>
+</section>
+
+<!-- 11b. Sprint to soft launch -->
+<section class="slide">
+  <div class="kicker">The sprint · fantasy trading soft launch</div>
+  <h2>Invite-only F1 fantasy trading, from Singapore (Thu 8 Oct).</h2>
+  <p class="lead">Paper money only (F$). Takers trade Kalshi and Polymarket F1 markets at live venue prices and bet our private book; makers quote the private book. Up to 50 invited players.</p>
+  <div class="grid g2" style="margin-top:18px; align-items:start">
+    <div class="card"><span class="tag good">Done</span><ul class="done">
+      <li>Production on its own server, racinglines.bet; deploys pause and resume live events</li>
+      <li>F1 priced after every session; demo maker and taker with paper records</li>
+      <li>NASCAR and MotoGP on the Markets page: status, next races, results, demo records labelled in-sample</li>
+      <li>Three exchanges read (Polymarket, Kalshi, OG.com): 7 of 9 cells of the 3 × 3</li>
+      <li>The launch plan: accounts, trading, settlement, reliability, email; 23 decisions listed</li></ul></div>
+    <div class="card"><span class="tag warn">Left</span><ul class="left">
+      <li><strong>First: GitHub CI and a staging host</strong> (staging.racinglines.bet), so every change is checked before production</li>
+      <li>Sign-up, email verification and the fantasy tables: built 2–3 Oct, on the server Tue 6 Oct</li>
+      <li>Recorders on timers: Kalshi, the NASCAR and MotoGP tapes, OG.com, forecast refresh</li>
+      <li>Round 16 (2–4 Oct): live paper for the demo taker, and a closed dry run</li>
+      <li>Gaps: MotoGP calendar and Polymarket links; the OG.com column on; MotoGP is not on OG.com</li></ul></div>
+  </div>
+  <div class="flow" style="margin-top:18px">
+    <div class="step"><b>2–4 Oct</b><span>Round 16: live paper, closed dry run</span></div>
+    <div class="step"><b>5–7 Oct</b><span>Schema on the server, staging rehearsal</span></div>
+    <div class="step"><b>8 Oct 12:00 PDT</b><span>Go / no-go</span></div>
+    <div class="step"><b>8 Oct 18:00 PDT</b><span>Invites open</span></div>
+    <div class="step"><b>9–11 Oct</b><span>Singapore weekend; 22 Oct at the earliest for open sign-up</span></div>
+  </div>
+  <p class="note">If the go/no-go fails, Singapore becomes a second closed dry run and the launch moves to Thu 22 Oct. No prizes, no fees, no real money.</p>
 </section>
 
 <!-- 12. Business model -->
@@ -391,7 +474,8 @@
       <tr><td>Edge-finding tools</td><td>Makers and takers on Polymarket (then Kalshi and others)</td><td>Calls with heat, maker quotes, new-market and signal alerts, the Lab and Edge Finder: subscription per seat, pro tier for makers</td><td>After the beta</td></tr>
       <tr><td>Prediction models &amp; pricing (B2B)</td><td>Exchanges, market makers, trading desks, media, fantasy and game operators</td><td>Licence or subscription per sport: fair prices re-priced after each session, season odds, history</td><td>Open now</td></tr>
       <tr><td>Trading</td><td>The market</td><td>Maker and taker P&amp;L with our own capital, sized on live evidence</td><td>After paper validation</td></tr>
-      <tr><td>New sports</td><td>As above</td><td>Each sport between the endpoints adds models to sell and markets to trade</td><td>As they list</td></tr>
+      <tr><td>Fantasy trading (F$)</td><td>Nobody yet: invite-only, paper money</td><td>Players trade real venue prices with F$; the funnel for the tools and the feedback loop. No prizes or fees</td><td>Soft launch 8 Oct</td></tr>
+        <tr><td>New sports</td><td>As above</td><td>Each sport between the endpoints adds models to sell and markets to trade</td><td>As they list</td></tr>
     </tbody>
   </table>
   <p class="note">No revenue booked yet. Nothing is traded with real money until paper trading validates the backtests. We don't plan to run our own exchange.</p>
@@ -418,7 +502,7 @@
   <div class="kicker">Join us</div>
   <h2>Beta testers, collaborators, and B2B partners.</h2>
   <div class="grid g3">
-    <div class="card"><h3>Beta testers</h3><p>Try the maker and taker accounts through the live paper-trading season and tell us what's missing.</p></div>
+    <div class="card"><h3>Beta testers</h3><p>Join the invite-only fantasy soft launch (F1, paper money) from 8 Oct, or try the demo maker and taker accounts, and tell us what's missing.</p></div>
     <div class="card"><h3>Collaborators</h3><p>The repository is private only because it carries the data our cloud runs need, which we don't want public yet.
       We'll gladly share the <strong>pipeline and web-app code</strong> with anyone interested.</p></div>
     <div class="card"><h3>B2B partners</h3><p>Exchanges, makers, media and data teams who want fair prices for race sports, from F1 to the downhill World Cup.</p></div>

@@ -369,8 +369,9 @@ Taking every recommendation would have made +$2,606.
 
 ### NASCAR and MotoGP (demo, in-sample; on by default)
 
-The result-only sports are included in the demo taker's portfolio by default; set
-`RACINGLINES_SPORT_PAPER=0` to hide them again ([`pipelines/sport_paper.py`](https://github.com/lalligagger/racinglines/blob/main/racinglines/pipelines/sport_paper.py)).
+The result-only sports are included in the demo taker's portfolio by default (since 2026-09-30, commit 7ebf513: an
+unset `RACINGLINES_SPORT_PAPER` counts as on; `1`, `true`, `yes` or `on` also mean on, and any other value, such as `0`
+or an empty string, turns it off); set `RACINGLINES_SPORT_PAPER=0` to hide them again ([`pipelines/sport_paper.py`](https://github.com/lalligagger/racinglines/blob/main/racinglines/pipelines/sport_paper.py)).
 `racinglines nascar demo-history` (and `motogp demo-history`) replays every race of the seasons in the overnight settings
 grid (`data/runs/replay-grid/<sport>/`, runs `<year>-e<edge>-v<volume>`) with the taker replay (`nascar replay`), and
 stores each race's `update` trades as the account's backfilled signals and paper positions on the exchange
@@ -390,9 +391,9 @@ A season in which a kind had nothing to trade at any setting (MotoGP 2025: Kalsh
 the taker's `update` trades are stored, and the app's nav P&L, Positions and Signals never count a row whose strategy or
 `detail.mode` is `buy_all`.
 
-With the switch on, the nav P&L adds these rows to the Polymarket ones, Positions lists them (with the race names), and
-Signals shows them in the track record on their race dates beside F1. With it off, nothing reads them and every page is
-as before. Writes need `--backup FILE` (a dump under 24 hours old) and log a `data_changes` entry; `--reset` deletes only
+With the switch on (the default), the nav P&L adds these rows to the Polymarket ones, Positions lists them (with the race
+names), and Signals shows them in the track record on their race dates beside F1. With it off, nothing reads them and
+every page is as before, and `demo-history` refuses to write (`--pick` still prints the selection). Writes need `--backup FILE` (a dump under 24 hours old) and log a `data_changes` entry; `--reset` deletes only
 this sport's demo rows on that venue for the named accounts (default `taker`), nothing else.
 `bash scripts/deploy/vm.sh demo` (`scripts/vm/demo_setup.sh`, backup first) stores them for both demo accounts
 (`--users maker,taker`), so the Pro account shows its F1 maker record and the NASCAR / MotoGP taker demo side by side.

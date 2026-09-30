@@ -96,6 +96,8 @@ defaults to empty: every session-keyed frame is then released a whole session at
 
 ## Add a sport
 
+This is the frames step only; the whole sequence is [Adding a sport](add-a-sport.md).
+
 1. Write `racinglines/frames/<sport code>.py`: a `BUILDERS = {frame name: function(data)}` dict, where `data` is what
    the sport's model `load()` returns. Read-only: no new queries, and the model doesn't change. Build each frame
    with `shape(name, df)` from `racinglines/frames/_util.py` (declared columns, key order).

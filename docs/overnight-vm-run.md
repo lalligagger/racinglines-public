@@ -1,9 +1,43 @@
-# Overnight VM run: plan
+# Overnight VM run
 
-Status: **plan** (2026-09-30). Nothing here has run. It folds the F1 taker re-sweep (PR #85), the replay tape work and
-Mac Stage 1 (PR #84), the data-off-GitHub stages (PR #83, [plan](data-off-github.md)) and the standing backup and probe
-rules into one run on the VM. The command sequence is in the Copilot handoff
+Status: **ran on 2026-09-30**, in four starts. The full results are in the report,
+`reports/2026-09-30-overnight-vm-run/report.md`; the data it wrote is in [Data changes](data-changes.md). The plan
+below is kept as it was written before the run, with the changes the run forced (the per-sport preflight, the progress
+lines, the MotoGP load order) folded into the sections they changed. The command sequence is in the Copilot handoff
 `handoffs/2026-09-30-overnight-vm-run.md` in the project files (local only, never committed).
+
+## What actually ran
+
+On the VM, resized to an n2-standard-2 for the night. It took four starts; the report names three stops, each
+fixed by a PR:
+
+| Start | Stopped at | Why | Fix |
+|---|---|---|---|
+| 1 | NASCAR | The VM had 13,599 NASCAR Kalshi links but no NASCAR results, because `nascar ingest` and `nascar link --apply` had only ever run on the Mac | #98: a per-sport preflight; the replay mode loads a sport's results and identifies its links when they are missing |
+| 2 | MotoGP's results load | `motogp ingest` stops at the first error, and the older seasons had never been ingested anywhere | #100: newest seasons first (2025-2026, then 2016-2024); a sport's failed data load is logged, not fatal, and the preflight decides |
+| 3 | MotoGP grid ranking | 2025 had no MotoGP race with Kalshi markets, so its summaries had no `update` totals (`KeyError 'net'`) | #102 (merged): the ranking copes with a season with no races |
+
+What it produced (the VM's own output, pasted 2026-09-30 16:07Z; details in the report):
+
+| Piece | Result |
+|---|---|
+| F1 broad sweep at 4k | 104 of 106 jobs (2 failed) |
+| F1 top 10 at 16k | 24 of 24. **Profile A stays**: no setting beat it by more than the noise floor (±352) in both seasons |
+| Demo taker story | The gate passed; the taker's backfill was rebuilt: 2025 23 weekends +$450.46, 2026 15 weekends +$353.01 (paper) |
+| NASCAR × Kalshi | Settings grid: 2026 +$4,226 to +$5,479, 2025 −$242 to −$390 in every setting. Not robust (2026-specific); nothing tuned, the defaults stay |
+| MotoGP × Kalshi | Tape pulled, replay saves stored, 16 grid runs done; the ranking crashed before #102 (no `grid.md` from the run) |
+| NASCAR champion forecast | `data/runs/nascar-season-2026.csv` written |
+| OG.com buy-all (F1, NASCAR) | Ran; its output was not in the pasted tail, so unconfirmed. A plumbing check, never a result |
+
+The absolute F1 totals do not match PR #85's (profile A +$2,607 in 2026 here against +$1,389 there); only comparisons
+within this run are used, and the gap is unexplained. The decision-log entry is in the
+[F1 roadmap](f1-roadmap.md); the NASCAR and MotoGP grids later fed the demo paper portfolio (`vm.sh demo`,
+[Paper trading](paper-trading.md#nascar-and-motogp-demo-in-sample-off-by-default)).
+
+## The plan (as written before the run)
+
+It folds the F1 taker re-sweep (PR #85), the replay tape work and Mac Stage 1 (PR #84), the data-off-GitHub stages
+(PR #83, [plan](data-off-github.md)) and the standing backup and probe rules into one run on the VM.
 
 **The owner's asks (2026-09-30):** a broad settings sweep, then a 16,000-simulation deep run on the top combos; F1 is
 the golden baseline; downhill and any sport without active markets since 2024 are out; NASCAR goes now and MotoGP once
@@ -69,7 +103,10 @@ M1 to M4 give every row and every column at least one cell. After that, in order
 first overnight run (2026-09-30) lost its NASCAR phase to this: the VM had 13,599 NASCAR Kalshi links and no NASCAR
 results, because `nascar ingest` and `nascar link --apply` had only run on the Mac. `dry` now prints `NOT READY` for such
 a sport; `replay` loads its results and identifies its links after its backup, and skips it with a STOP line only if
-that doesn't fix it.
+that doesn't fix it. Since #100 a failed load (a fetch or an ingest that errors) is logged as a progress line and the
+run goes on: the preflight after it decides whether the sport runs or is skipped, so one sport's data problem never
+stops the other sports or the later phases. MotoGP's load ingests the seasons with Kalshi markets (2025-2026) first,
+then 2016-2024, whose failure is logged and not fatal.
 
 Every writing mode backs up first and checks the dump's trailer, logs to `data/runs/logs/overnight-<mode>-<UTC>.log`,
 leaves an `overnight-<mode>.done` or `.failed` marker, adds a `data_changes` note naming the backup, and refuses to start

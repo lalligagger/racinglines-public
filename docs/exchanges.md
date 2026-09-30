@@ -64,8 +64,10 @@ championships, priced by the season forecast), with the edge after the fee:
 The fee is the schema's `taker_fee_per_contract` ($0.02, from reviews of the exchange, **not yet checked against
 its fee schedule**). A market with no bid (most of OG.com's F1 books are asks only at 1–4¢) shows no NO edge, and a
 one-cent ask is not a tradable quote: read the call as an indicator, not a signal. No backtest sits behind it yet:
-OG.com is a replay venue since #88, but no strategy has been replayed on its markets (the F1, NASCAR and MotoGP
-champion replays that would read its futures are drafts, #95 and #96), and its tape starts on 2026-09-29. The same fair price shows beside the OG.com quote on the season board when the
+OG.com is a replay venue since #88, but no strategy has been replayed on its markets yet: the champion replays that
+read its futures are merged, off by default and not yet run on the VM (`f1 season-strategy --venue og`, #95;
+`RACINGLINES_SEASON_REPLAY=1 racinglines nascar season-replay --venue og`, #96;
+[Championship markets](championship-markets.md#championship-replays-backtests)), and its tape starts on 2026-09-29. The same fair price shows beside the OG.com quote on the season board when the
 switch is on.
 
 ### Debug: buy one of everything
@@ -75,8 +77,9 @@ NO share at the first price the store holds for it, whatever its spread, side or
 book's best bid and ask (their mid, or the one side that quotes) or the sync's last quote. The pair is held, settled
 when the exchange resolved the market, else marked at the last price stored, with `--cost` ($0.01) and the schema's
 fee per contract on each side. A pair loses exactly its costs and fees, so the P&L shows that each market was found,
-priced and valued; the YES and NO sides are the informative split. It is a plumbing check, not a result: per the
-owner, buy-all never appears in reporting or the web app, and no cell of the
+priced and valued; the YES and NO sides are the informative split. It is an operator's plumbing check, not a result: per the
+owner, buy-all never appears in reporting or the web app (Positions, the nav P&L and the status table filter out any
+`buy_all` row, and `demo-history` never stores one), and no cell of the
 [status matrix](coverage.md#the-status-matrix) counts it as a backtest. OG.com lists season futures only (F1
 champions, the NASCAR Cup champion, SailGP), so buy-all is today the only replay that reaches its markets: the race replays'
 `--buy-all` ([CLI](cli.md)) find no OG.com race markets to buy today, and OG.com lists no MotoGP. The race replay does read OG.com as a venue (`racinglines nascar replay --venue og`, and in `--venue all`), so race markets flow in as soon as OG.com lists them and they are synced. Both read every stored price whatever its spread or depth, except a stored 0.50 from an empty book; a trade at any price counts.

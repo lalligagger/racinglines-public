@@ -9,6 +9,17 @@ the [F1 live test](f1-live-roadmap.md).
 
 ## Where things stand
 
+**Update, 30 Sep 2026 (evening).** Two days on, the picture below holds, with three changes. (1) The overnight VM
+sweep (106 jobs, 16,000 simulations) kept profile A as the best taker: +$1,389 in 2026 and +$1,432 in 2025 (PR #85);
+the demo taker's rebuilt paper record is +$450.46 over 23 weekends of 2025 and +$353.01 over 15 of 2026, and it
+paper-trades live from round 16. (2) NASCAR and MotoGP are in the app with a simple result-only model and an
+in-sample demo paper record on Kalshi (NASCAR 2026 Pro +$6,525.45, but every setting loses 2025; MotoGP 2026 +$31.25),
+so they are demos of the pipeline, not a second edge. (3) The plan for October now includes the invite-only
+[fantasy soft launch](fantasy-launch.md) on F1 from Thu 8 Oct, preceded by CI and a staging host
+([Roadmap](todo.md#priorities)). Per cell: [Sports and exchanges](coverage.md).
+
+The findings of 28 Sep:
+
 - **The maker's +$12.4k headline is mostly Whistler.** $11.3k of it is the Whistler private book,
   which traded against a simulated crowd. It shows the pricing works, not that there is an edge
   against a real market. On real tapes the maker made +$938 on Polymarket (+$285 in 2025, +$653 in
@@ -167,6 +178,10 @@ scale up.
 | **IndyCar** | Kalshi race markets (about $6.5k for Detroit) | Thin. Record it and watch |
 | **Horse racing** | Blocked. Churchill Downs used the Interstate Horseracing Act, and there were no Derby contracts in 2026 | Skip |
 | **Downhill / cycling** | No exchange | Keep downhill as a private-book showcase. Grand-tour listings not checked |
+
+**Status 30 Sep:** NASCAR and MotoGP moved from tapes to results, identified links, a simple model and a replay
+(the 2027 NASCAR decision still waits on the Chase tapes and a naive-baseline comparison, engine E7). IndyCar stays
+tape only: its results source's terms forbid automated use.
 
 **Do this now:** record Kalshi's NASCAR, MotoGP and IndyCar tapes before any model exists. A 2027
 backtest needs 2026 tapes, and they can only be collected while they are live.

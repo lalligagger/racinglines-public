@@ -176,6 +176,8 @@ feed and any overrides of the sport's `[live]` settings.
 
 ## Adding a sport
 
+This is the live-simulation step only; the whole sequence is [Adding a sport](add-a-sport.md).
+
 1. A `[live]` section in `sports/<code>.toml`: `adapter`, `poll` (cadence, `stale_h`), `markets.kinds`, `quoting`, `crowd`.
 2. An adapter module with `markets`, `step(spec, now, echo, **kw)`, `outcomes` and `view(run, snap, picks, hist, mode, maker)`. Its snapshots carry `done` (and `next_at` if updates are far apart); it writes them through `pipelines/live.py`, and its book through `markets/crowd.py`.
 3. A body partial, `templates/live_<code>.html`, rendered with the adapter's `view()` output.

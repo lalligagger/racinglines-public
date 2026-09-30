@@ -16,6 +16,7 @@ markdown_extensions:
 nav:
   - Overview: index.md
   - Sports and exchanges (status): coverage.md
+  - Adding a sport: add-a-sport.md
   - Data:
       - Sources & layout: data.md
       - Parser: parser.md
@@ -44,7 +45,7 @@ nav:
       - Google Cloud proposal: google-cloud.md
       - VM deploy: vm-deploy.md
       - Data off GitHub (plan): data-off-github.md
-      - Overnight VM run (plan): overnight-vm-run.md
+      - Overnight VM run: overnight-vm-run.md
       - Testing: testing.md
   - Fantasy:
       - Fantasy soft launch (index): fantasy-launch.md

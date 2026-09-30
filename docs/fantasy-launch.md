@@ -7,8 +7,13 @@ first fantasy season. That needs unique logins, per-user stats in the database, 
 This page is the index: the verdict, the phases, the owner's dates and the decisions, with links. The detail
 pages below are the reference.
 
-**Status:** draft for the owner, Tue 2026-09-29. Nothing here is built yet. Every decision is open until the owner
-signs it.
+**Status:** draft for the owner, Tue 2026-09-29; checked again Wed 2026-09-30 evening. **Built:** PR #71 (deploys
+pause the timers, merged), the VM cutover (racinglines.bet runs on the GCE VM, `n2-standard-2`, which the owner keeps),
+and the data the launch shows (F1, plus NASCAR and MotoGP status and demo rows on Markets). **Not built:** sign-up,
+mail, the fantasy tables, the health, backup and Kalshi sync timers, and the staging host. Copilot builds SEC-1,
+MAIL-1, ACC-1 and ACC-3 locally on Fri 2 – Sat 3 Oct, behind `RACINGLINES_SIGNUP=off`. **CI and a staging host
+(STG-1 to STG-4, [Roadmap](todo.md#priorities)) are now the top open item**: STAGE-1 below rehearses on that host
+once it exists, instead of on production with the dry-run season. Every decision is open until the owner signs it.
 
 | Page | What it holds |
 |---|---|
