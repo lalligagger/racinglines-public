@@ -246,4 +246,4 @@ def test_exchange_data_table_shows_na_and_each_exchange_coverage(client, monkeyp
     r = client.get("/markets")
     assert r.status_code == 200, r.text[:500]
     assert "1,065,605" in r.text and "520,969" in r.text and ">n/a<" in r.text
-    assert "no recorder runs for Kalshi books yet" in r.text and "never paper or demo trades" in r.text
+    assert "books exist only where a manual books run took a snapshot" in r.text and "never paper or demo trades" in r.text

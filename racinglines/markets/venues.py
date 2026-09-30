@@ -436,8 +436,8 @@ def price_series(conn, tokens, start, end, points=120):
 COVERAGE = {
     "polymarket": "Polymarket: taker trades only, about the newest 100,000 per market; price history at the "
                   "fidelity pulled (hourly by default); no book history (books exist only where we recorded them live).",
-    "kalshi": "Kalshi: every trade, no cap; hourly candles (the close, else the bid/ask mid); no book history, and "
-              "no recorder runs for Kalshi books yet, so none are stored.",
+    "kalshi": "Kalshi: every trade, no cap; hourly candles (the close, else the bid/ask mid); books exist only where "
+              "a manual books run took a snapshot.",
 }
 
 
