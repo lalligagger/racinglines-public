@@ -33,6 +33,7 @@ import numpy as np
 import pandas as pd
 from sqlalchemy import text
 
+from racinglines import progress as PG
 from racinglines import sports
 from racinglines.markets.strategies import taker_weekend as RB
 from racinglines.core import calibration as CAL
@@ -123,7 +124,7 @@ def price_stages(meas, hist, sched, engine, engine_url=None, n_sims=4000, repric
                                      AND params->>'model_key' = :m ORDER BY id"""), c, params=dict(m=mk))
     have = {(k, str(pd.Timestamp(cu)), d): int(i) for i, k, cu, d in zip(have["id"], have["k"], have["cutoff"], have["d"])}
     out, data_keys = {}, []
-    for rnd, w in sched.items():
+    for rnd, w in PG.track(list(sched.items()), "round", name=lambda x: x[1]["event_key"]):
         ev = meas.res[(meas.res["year"] == int(w["event_key"][:4])) & (meas.res["series_round"] == rnd)]
         if ev.empty or not (ev["round"] == "race").any():
             continue                                     # not raced yet
@@ -185,7 +186,7 @@ def _race_id(conn, event_key):
 def fetch_market_data(session, conn, sched, fidelity=5, force=False, echo=print):
     """Polymarket price history (one token per question) over each weekend, and the trade tape."""
     from racinglines.markets.polymarket.sync import fetch_history, fetch_trades
-    for rnd, w in sched.items():
+    for rnd, w in PG.track(list(sched.items()), "download round", name=lambda x: x[1]["event_key"]):
         rid = _race_id(conn, w["event_key"])
         if rid is None:
             continue

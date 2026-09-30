@@ -44,6 +44,7 @@ import numpy as np
 import pandas as pd
 from sqlalchemy import text
 
+from racinglines import progress as PG
 from racinglines import sports
 from racinglines.core import calibration as CAL
 from racinglines.markets.strategies import taker_weekend as RB
@@ -289,7 +290,7 @@ def run(engine, sport, seasons=None, venue="kalshi", taker=None, min_volume_24h=
     hist = model.history(data, st)
     rng = np.random.default_rng(st.rng_seed)
     rows, trades, calib, ba_trades = [], [], [], []
-    for r in rs.itertuples():
+    for r in PG.track(list(rs.itertuples()), "race", name=lambda r: f"{venue} {r.event_key}"):
         race_links = lk[lk["race_id"] == r.race_id] if len(lk) else lk
         with engine.connect() as conn:
             res = race_results(conn, r.race_id)
@@ -460,7 +461,7 @@ def pull(session, conn, plan, venue, kc=None, echo=print):
     the race's window on (older ones never count toward a stage's 24 h volume) and hourly prices over the window (markets/kalshi/sync.py, markets/polymarket/sync.py; idempotent upserts). A database
     write: the CLI asks for a fresh backup. Returns dict(races, trades, prices)."""
     n = dict(races=0, trades=0, prices=0)
-    for r, g, start, end in plan:
+    for r, g, start, end in PG.track(list(plan), "tape race", name=lambda p: f"{venue} {getattr(p[0], 'event_key', '')}"):
         if venue == "og":
             from racinglines.markets import exchange_driver as D
             evs = sorted(set(g["condition_id"].dropna()))

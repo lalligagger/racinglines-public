@@ -9,6 +9,7 @@
 # Network: PyPI + GitHub (Python, packages) only. The database comes from the committed snapshot
 # (racinglines db snapshot-export): an exact replica, so seeded prices match the exporting machine.
 set -euo pipefail
+export PYTHONUNBUFFERED=1   # progress lines reach the log as they happen (owner rule 2026-09-30: every 5 minutes)
 cd "$(dirname "$0")/../.."
 export DATABASE_URL="${DATABASE_URL:-postgresql+psycopg://racinglines:racinglines@localhost:5432/racinglines}"
 log() { echo "[start $(date -u +%H:%M:%S)] $*"; }

@@ -10,6 +10,7 @@
 # Needs the gcloud CLI signed in with access to the bucket. Cloud sessions (no gcloud) use
 # scripts/cloud/bucket.py instead.
 set -euo pipefail
+export PYTHONUNBUFFERED=1   # progress lines reach the log as they happen (owner rule 2026-09-30: every 5 minutes)
 cd "$(dirname "$0")/../.."
 BUCKET="${RACINGLINES_GCS_BUCKET:-racinglines-data-650570086451}"
 PG_BIN="${PG_BIN:-$HOME/miniconda3-arm64/envs/racinglines-db/bin}"

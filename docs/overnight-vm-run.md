@@ -85,7 +85,7 @@ writes one line:
 - when each step inside a phase starts (the same line closes the step before, with its duration);
 - when each sport starts, and one summary line when it finishes or is skipped;
 - after each tape pull and the replay saves, with what they stored, and the grid's top 3;
-- every 15 minutes inside a phase (`HEARTBEAT_MIN`), with the step, its counter and the run log's last line and age;
+- every 5 minutes inside a phase (`HEARTBEAT_MIN`), with the step, its counter and the run log's last line and age;
 - at once on any failure or stop (a failure line also carries the step and the run log's last line).
 
 Each line has the UTC time, the mode, the minutes since the start and the failures so far. It also names the phase:
@@ -125,7 +125,7 @@ The lines go to `data/runs/logs/overnight-progress.log` (appended) and `data/run
 line only). Heartbeats go only to those two files, not to the run log, so the run log's age is real output. They are
 local files: the job makes no network calls for them. The heartbeat is a background loop that can't fail the run. The
 VM can't post to the project, so the Mac reads the files over SSH (the handoff has the command). Knobs, as environment
-settings on the unit: `HEARTBEAT_MIN` (default 15, was 45) and `QUIET_MIN` (default 30).
+settings on the unit: `HEARTBEAT_MIN` (default 5, was 15 then 45; owner rule 2026-09-30) and `QUIET_MIN` (default 30).
 
 ### F1: broad sweep, then 16k
 

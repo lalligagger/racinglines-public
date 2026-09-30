@@ -70,6 +70,7 @@ import tomllib
 from datetime import datetime, timedelta, timezone
 
 from racinglines import paths
+from racinglines import progress as PG
 from racinglines.pipelines import sweep_settings as SS
 
 KINDS = {"f1": ("sweep", "checkpoints", "season_strategy"), "mtb_dh": ("walk_forward",)}
@@ -291,6 +292,8 @@ def run(path, echo=print):
         except (ValueError, tomllib.TOMLDecodeError) as ex:
             echo(f"search: queue file not usable ({ex}); keeping the previous queue")
         pending = [j for j in jobs if j["id"] not in state or state[j["id"]]["status"] == "interrupted"]
+        PG.update(done=sum(v["status"] in ("done", "failed", "stopped") for v in state.values()),
+                  total=len({j["id"] for j in jobs} | set(state)), item=None)
         while pending and len(procs) < cfg["parallel"] and now < stop_new:
             j = pending.pop(0)
             group = [j]

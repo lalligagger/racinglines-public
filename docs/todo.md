@@ -53,6 +53,10 @@ C makes money on Polymarket's tape and loses on Kalshi's.
 
 **P1 · October (rounds 16–19): first live weekends on real markets**
 
+- [ ] **STG · high priority (owner, 2026-09-30): build CI and a staging environment.** GitHub CI running the
+      checks on every push, `staging.racinglines.bet`, and track branches deployed to staging and verified before
+      `main` goes to `racinglines.bet`. Steps STG-1 to STG-4 in [Staging and CI deploys](#staging-and-ci-deploys);
+      the first owner decisions are staging on the same VM or its own, and GitHub's deploy credentials.
 - [x] **U5** Kalshi sprint markets before Singapore (11 Oct); built in PR #36 behind `RACINGLINES_KALSHI_SPRINTS`, merged. Priced from the race's pole and win odds
       until **U13**, a real sprint model, lands ([F1 model](#f1-model)).
 - [ ] **U3** Kalshi maker profile K: swept (PRs #38, #41, merged; K = `gbm`, 2¢, 10-pt filter, 25 shares, $400 volume floor); **freezing it is the owner's call** before the United States GP (25 Oct).
@@ -400,7 +404,7 @@ Downhill model.
 ## Engineering
 
 - [x] **Engine roadmap E0:** owner decisions D1–D6 taken as recommended 2026-09-29 ([decision log](engine-roadmap.md#decision-log)); capability matrix written.
-- [ ] **Engine roadmap, window 1 (read-side, now to 6 Dec)**, one branch and PR per task, in order: ~~E1a sport frames for F1 and downhill~~ (done, PR #73: `racinglines/frames/`, `[data]` in the schemas) · ~~E4a long prediction records beside `race_predictions`~~ (done, PR #76, behind `RACINGLINES_PREDICTION_RECORDS`) · E1b market frames over the canonical price reader · E1c NASCAR frames (after the onboarding thread's `nascar ingest`) · E2 `DataView.asof` and the generic leak guard (switch off; ⚠️ `pricing.py`) · E5 `racinglines eval` · E6 `racinglines report build` and the model card · E7 `market_implied` and `plackett_luce` on the NASCAR tape and F1, with a NASCAR model card for the 2027 decision. Details: the owner's Engine Implementation Plan page.
+- [ ] **Engine roadmap, window 1 (read-side, now to 6 Dec)**, one branch and PR per task, in order: ~~E1a sport frames for F1 and downhill~~ (done, PR #73: `racinglines/frames/`, `[data]` in the schemas) · ~~E4a long prediction records beside `race_predictions`~~ (done, PR #76, behind `RACINGLINES_PREDICTION_RECORDS`) · E1b market frames over the canonical price reader · E1c NASCAR frames (after the onboarding thread's `nascar ingest`) · E2 `DataView.asof` and the generic leak guard (switch off; ⚠️ `pricing.py`) · E5 `racinglines eval` · E6 `racinglines report build` and the model card (the plan: [Reports](#reports-consistency-and-reproducibility) REP-3 to REP-6) · E7 `market_implied` and `plackett_luce` on the NASCAR tape and F1, with a NASCAR model card for the 2027 decision. Details: the owner's Engine Implementation Plan page.
 - [ ] **Engine roadmap, window 2 (after 6 Dec, before 2027's first race):** E3 contract v2 (⚠️ live sweep and signals path) · E4b readers onto the records plus the `predictions` table (⚠️ VM migration, backup, sign-off) · E8 consumers read the registry · E9 Kalshi and Polymarket classifiers to per-sport TOML rules, fees from the schema, D5 (⚠️ money-adjacent). The `exchanges/kalshi.toml` and `exchanges/polymarket.toml` drafts can be proved in a scratch database this year.
 - [ ] **E2 prerequisite for downhill: an `events.end_date` column set at ingest.** The frames parse a weekend's end from the event name (`racinglines/frames/mtb_dh.py`) because `events` has only `start_date`, which is not always the weekend's first day. A DB migration: backup first (the standing practice in CLAUDE.md) and the owner's sign-off.
 - [ ] **Data defect, F1 event 27:** its qualifying rows alias BEA to placeholder athlete 567 and miss Stroll, so the entry list (and the E1a `entrants` frame, which uses it) lacks him. Found in E1a; not fixed there.
@@ -444,6 +448,52 @@ Downhill model.
       disk (`data/cache/history/`, keyed by model settings and data); (3) `parallel` defaults to every core.
       The 106-job `sweeps/kalshi-maker-k.toml` grid went from 59 to 21 minutes on 4 cores, same results.
       Left: the maker replay itself (`maker_replay.quote`/`PublicView`, about half of what remains).
+
+## Staging and CI deploys
+
+**High priority** (owner, 2026-09-30; in [P1](#priorities)). Owner ask (2026-09-30), after the feature-track branches ([CLAUDE.md](https://github.com/lalligagger/racinglines/blob/main/CLAUDE.md#branches-feature-tracks)).
+Not started; each step needs the owner's go, and the ones touching the VM or DNS need sign-off.
+
+- [ ] **STG-1 · staging host.** `staging.racinglines.bet`: a second app instance with its own database
+      (`racinglines_staging`, restored from the latest backup, trading flags off, `RACINGLINES_*` switches as on
+      production), either a second compose project on the VM (cheapest; the n2-standard-2 has room, owner decision on
+      memory) or a small separate VM. Cloudflare DNS and tunnel route, basic-auth or Cloudflare Access so it is not
+      public. Replaces the Mac's temp trycloudflare address ([VM deploy: Later](vm-deploy.md#later)).
+- [ ] **STG-2 · GitHub CI.** A workflow on every push: `racinglines check`, `pytest -m "not live"`,
+      `mkdocs build --strict`. Today nothing runs on GitHub; the checks are local only.
+- [ ] **STG-3 · deploy branches to staging.** On a push to a `track/*` branch (or a PR label), CI deploys it to
+      staging with a `vm.sh deploy --staging` variant (alembic runs against the staging DB only), then runs
+      `scripts/deploy/smoke.sh` against staging and posts the result on the PR. Needs a deploy key or a GCP
+      service account in GitHub secrets (owner decision: which).
+- [ ] **STG-4 · verify, then production.** The owner checks staging (a short checklist per track: pages load,
+      Markets board counts, paper rows), merges, and `main` deploys to `racinglines.bet` as today (`vm.sh deploy`,
+      by hand at first; from CI once STG-3 has run clean for a few weeks). Live-event deploy windows unchanged.
+
+## Reports: consistency and reproducibility
+
+Owner ask (2026-09-30): reports lean on ad-hoc Claude work; someone else (or a later session) can't rebuild one.
+Recommendations, in order; the first two are cheap and can start with the next report.
+
+- [ ] **REP-1 · a `SOURCES.md` per report folder** (now, by hand; in CLAUDE.md): the commit, every command or SQL
+      query behind a number or plot, run ids, data files and their hashes, screenshot settings.
+- [ ] **REP-2 · one report skeleton.** A template with the fixed sections both good reports share (scene-setter,
+      top-line table, sections, timeline, winners/losers, "what this does and doesn't show", what's next) and the
+      screenshot rule (1024 px, 150%). Reports keep their own voice inside the sections.
+- [ ] **REP-3 · `racinglines report build <folder>`** (engine roadmap E6, with the model card). A folder holds
+      `report.toml` (inputs: run ids, queries, date window, venue, sport; seeds; the settings file), the Markdown
+      with placeholders for tables and plots, and `build.py` hooks. The command re-runs the queries, draws the plots
+      with fixed styles, fills the tables, renders HTML and PDF through `markdown_html.render` (as `live report`
+      does), and writes a `manifest.json`: commit, inputs, output hashes.
+- [ ] **REP-4 · pinned inputs.** Reports read a data snapshot, not the live DB: `db export` of the tables they
+      use (or the bucket's Parquet snapshot) named by date and hash in `report.toml`. Model runs by id, never
+      "latest". Seeds for every simulation in the report.
+- [ ] **REP-5 · versioned config and model cards.** Every tuned setting read from a committed settings file
+      with its decision-log entry; a model card per model in use (inputs, training window, calibration, known
+      gaps), linked from each report that uses it.
+- [ ] **REP-6 · regenerate check.** A CI job (after STG-2) rebuilds one reference report from its pinned
+      snapshot and fails if a number changes; `UPDATE_GOLDEN=1`-style promotion when a change is meant.
+- [ ] **REP-7 · screenshots by script.** A Playwright script per report takes its screenshots at 1024 px and
+      150% against staging (after STG-1), so they can be re-taken, not re-clicked.
 
 ## Business and collaborators
 

@@ -27,5 +27,8 @@ def main(argv=None):
         print(__doc__)
         return 0 if argv and argv[0] in ("-h", "--help") else 2
     import importlib
+    if argv[0] not in ("web", "mcp"):              # servers, not jobs: no heartbeat
+        from racinglines import progress
+        progress.start(" ".join(a for a in argv[:2] if not a.startswith("-")))   # stderr, every 5 min (progress.py)
     mod = importlib.import_module(f"racinglines.cli.{argv[0]}")
     return mod.main(argv[1:])

@@ -108,7 +108,8 @@ to use the budget.
    tests, leakage-rule tests for new pricing/trading paths, `tests/test_no_data_in_git.py`).
 3. **Implementation.** Only after the roadmap is confirmed (or the task is trivial and low-risk).
 4. **Run one thread per task**, one task at a time, model per the role table above and named explicitly on
-   every spawn, on its own branch off `main`.
+   every spawn, on the task's feature-track branch (see [Branches](#branches-feature-tracks)), not a new branch
+   per small task.
 5. **Report back**, every check-in:
    - status per task (done / blocked / needs a decision),
    - open questions, especially anything the roadmap calls an "owner decision" (`docs/todo.md#owner-decisions`),
@@ -145,6 +146,52 @@ steps, signals), deploys, and resumes them with one catch-up step each ([VM depl
 There is no `--force`. Don't hand-restart a live event's units around a deploy. If the update fails, the timers
 stay paused on purpose: fix and redeploy, then check `vm.sh status`.
 
+## Branches: feature tracks
+
+Owner rule (2026-09-30). Too many standalone branches with one or two commits each (#98 to #112 were fifteen PRs in
+two days, five of them "Overnight VM run: ..."). Group related small tasks on one **feature-track branch** off
+`main`, one PR per track batch, merged when the batch is green and reviewed:
+
+| Track | Branch | What goes on it (recent examples) |
+|---|---|---|
+| App | `track/app` | web app pages and the Markets board (#101, #103, #108, #110, #111) |
+| Data | `track/data` | ingest, exchange schemas, syncs, backfills, data-change log entries (#89, #90, #91) |
+| Models | `track/models` | pricing models, sweeps, replays, forecasts, decision-log entries (#85, #87, #93, #112) |
+| Ops | `track/ops` | `scripts/vm`, `scripts/deploy`, `scripts/cloud`, runbooks, progress lines (#92, #94, #98 to #100, #102) |
+| Docs | `track/docs` | reports, status matrices, roadmap and todo edits, CLAUDE.md (#104 to #106) |
+
+- A track branch is short-lived per batch: cut it from `main`, add the batch's tasks as separate commits (one
+  commit per task, its message naming the task), open one PR, and after the squash-merge cut the next batch fresh
+  from `main` under the same name. Never stack a new batch on already-merged history.
+- A task that spans tracks goes on the track of its riskiest part (a money-adjacent change goes on its own track's
+  PR with the ⚠️ note, never hidden in a docs batch).
+- A standalone `work/<task>` branch is still right for: anything money-adjacent (settlement, order signing,
+  trading flags, live-event units, VM systemd units, DB migrations), a hotfix that has to deploy before the
+  track's batch is ready, and a long task another track must not wait on.
+- Cloud threads get their branch name from the harness; use it for the batch and say which track it is in the PR
+  title (`[ops] ...`).
+- Staging (planned, [todo](docs/todo.md#engineering)): each track branch deploys to `staging.racinglines.bet` from
+  GitHub CI, is checked there, and only `main` deploys to `racinglines.bet`.
+
+## Long-running jobs: a progress line every 5 minutes
+
+Owner rule (2026-09-30), every context (cloud, the Mac, the VM) and every long job (downloads, backfills,
+backtests, sweeps, replays): the job prints a flushed progress line at least every 5 minutes, with the elapsed time,
+done/total and the current item where it has them. Built in: every `racinglines` command except `web` and `mcp`
+runs a heartbeat ([racinglines/progress.py](racinglines/progress.py)) that prints
+`progress <command>: <n> min elapsed · race 12 of 36 (...) · about 30 min left` to stderr every
+`RACINGLINES_PROGRESS_SEC` (default 300; 0 turns it off), with stdout and stderr line-buffered. stdout and saved
+outputs are unchanged. A new long loop reports its position with `progress.track(...)` or `progress.update(...)`.
+Scripts set `PYTHONUNBUFFERED=1`, and `scripts/vm/overnight.sh` beats every `HEARTBEAT_MIN=5`. A new script or
+one-off job (a `systemd-run` unit, a cloud sweep, a shell loop) must do the same before it is handed to the owner.
+
+## Screenshots
+
+Owner rule (2026-09-30), for every report, doc and handoff: take screenshots with the browser window at most
+**1024 px wide** and the page zoom at **150%**, so text reads at report size. With Playwright:
+`browser.new_page(viewport={"width": 683, "height": 900}, device_scale_factor=1.5)` (1024 / 1.5 = 683 CSS px,
+saved at 1024 px wide), or in Chrome set the window to 1024 px and zoom to 150%.
+
 ## Report generation
 
 **Already built, for live events:**
@@ -160,9 +207,11 @@ Produces `reports/<event>/report.md` (+ `img/` for charts) → `report.html` (`r
 **Not yet built, for other large updates** (a finished roadmap milestone, a sizing review, a season close): no
 generic pipeline exists today — these have been ad hoc so far. Reuse the same `markdown_html.render` step: write
 the report as Markdown with images saved under an `img/` folder next to it (plots, screenshots, tables as
-Markdown tables), then render HTML → PDF the same way `live report` does. Whether this becomes a real
-`racinglines report build <folder>` command or stays a per-report script is an open question for the first time
-we need one — raise it then rather than guessing now.
+Markdown tables), then render HTML → PDF the same way `live report` does. A real `racinglines report build
+<folder>` command is planned (engine roadmap E6; the reproducibility plan is in
+[todo: Reports](docs/todo.md#reports-consistency-and-reproducibility)). Until it exists, every report folder gets a
+`SOURCES.md`: the commit it was built from, each query or command that produced a number or plot, the run ids and
+data files it read, and the screenshot settings, so someone else can rebuild it.
 
 **Quality bar, until then:** match the two existing reports, not a generic template.
 

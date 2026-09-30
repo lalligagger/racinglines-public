@@ -520,6 +520,10 @@ C makes money on Polymarket's tape and loses on Kalshi's.
 
 **P1 · October (rounds 16–19): first live weekends on real markets**
 
+- [ ] **STG · high priority (owner, 2026-09-30): build CI and a staging environment.** GitHub CI running the
+      checks on every push, `staging.racinglines.bet`, and track branches deployed to staging and verified before
+      `main` goes to `racinglines.bet`. Steps STG-1 to STG-4 in [Staging and CI deploys](docs/todo.md#staging-and-ci-deploys);
+      the first owner decisions are staging on the same VM or its own, and GitHub's deploy credentials.
 - [x] **U5** Kalshi sprint markets before Singapore (11 Oct); built in PR #36 behind `RACINGLINES_KALSHI_SPRINTS`, merged. Priced from the race's pole and win odds
       until **U13**, a real sprint model, lands ([F1 model](docs/todo.md#f1-model)).
 - [ ] **U3** Kalshi maker profile K: swept (PRs #38, #41, merged; K = `gbm`, 2¢, 10-pt filter, 25 shares, $400 volume floor); **freezing it is the owner's call** before the United States GP (25 Oct).

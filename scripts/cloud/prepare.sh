@@ -6,6 +6,7 @@
 #   3. check that only allow-listed data would be committed
 # Then: git add -A && git commit && git push  (see docs/cloud-sweep.md)
 set -euo pipefail
+export PYTHONUNBUFFERED=1   # progress lines reach the log as they happen (owner rule 2026-09-30: every 5 minutes)
 cd "$(dirname "$0")/../.."
 PY=.venv/bin/python
 $PY - <<'PYEOF'

@@ -20,6 +20,7 @@ accounts only (a taker's Kalshi paper trading is a profile with the `venue = kal
 import pandas as pd
 from sqlalchemy import text
 
+from racinglines import progress as PG
 from racinglines.pipelines import profiles as PF
 from racinglines.pipelines import signals as SG
 from racinglines.pipelines import weekend_sweep as WS
@@ -66,7 +67,7 @@ def backfill(engine, engine_url=None, usernames=None, now=None, echo=print, venu
             prof = profs[code]
             rate = PF.follow_rate(username, prof["strategy"])
             sched = scheds.setdefault(year, WS.schedule(year))
-            for rnd in sorted(r for r in sched if r0 <= r <= r1):
+            for rnd in PG.track(sorted(r for r in sched if r0 <= r <= r1), "round", name=lambda r: f"{username} {code} {year}"):
                 w = sched[rnd]
                 if w["race_start"] + SETTLED > now:
                     break                                     # not raced yet: live signals cover it
