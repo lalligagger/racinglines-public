@@ -43,6 +43,7 @@ nav:
       - Google Cloud proposal: google-cloud.md
       - VM deploy: vm-deploy.md
       - Data off GitHub (plan): data-off-github.md
+      - Overnight VM run (plan): overnight-vm-run.md
       - Testing: testing.md
   - Fantasy:
       - Fantasy soft launch (index): fantasy-launch.md
