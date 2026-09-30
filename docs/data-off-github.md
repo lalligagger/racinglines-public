@@ -58,7 +58,7 @@ Staying in git (owner, 2026-09-30): `tests/golden/` (152 KB) and `tests/fixtures
 | Cloud session output (sweep results, reports) | the bucket | written to `results/<session>/`, never to git |
 
 Two buckets (owner, 2026-09-30): the VM project's `racinglines-data-384052502248` is the **primary**, and the
-old `racinglines-data-650570086451` stays as the **backup bucket**, refreshed from the primary (stage 8). The
+old `racinglines-data-650570086451` stays as the **backup bucket**, refreshed from the primary (stage 7). The
 backup is a third copy, so a bad write to the primary never reaches the only other copy of the files. Cloud sessions get a new HMAC key for a new
 service account in project `racinglines`, **read-only on the bucket plus create-only under `results/`** (an
 IAM condition on the object name), so a cloud session can't overwrite the dump or the tapes. Object
@@ -90,14 +90,14 @@ database; and for the bucket, no uploads, deletes or key changes.
 | 4 | cloud sessions read the VM bucket (code PR: `bucket.py pull` gains `raw/f1` and the manifest check; new service account and HMAC key; cloud environment variables switched) | VM DB (untouched); bucket (only read) | the old key and old bucket stay as they are | a cloud session with `data/raw/f1` and `data/archive/*` deleted from its checkout runs `start.sh`, `racinglines check --offline`, and a 2-job F1 baseline sweep on both venues; baselines recorded as the new reference | switch the three environment variables back to the old key; git still holds the files |
 | 5 | sweep results go to `results/<name>/` in the bucket, not git (docs/cloud-sweep.md step 5 and 6, `f1 search` writes and pushes there) | both | none: it only adds objects | one cloud sweep pushes its progress to the bucket and `f1 search-import` loads it on the Mac | revert the docs PR; results can still be committed |
 | 6 | git stops tracking data (code PR: `git rm -r --cached` on the allow-listed data paths, `.gitignore` allow-list removed, `tests/test_no_data_in_git.py` allows only `tests/`, `scripts/cloud/prepare.sh` rewritten as a bucket push, `start.sh` loses the snapshot fallback) | both | the files stay in history and in the bucket | a fresh cloud session passes stage 4's check again from a clean clone of `main` | revert the PR; the files come back from history |
-| 7 | **git history**: remove the data paths from all history with `git filter-repo`, then force-push every branch (owner, 2026-09-30: yes) | both bucket and VM DB (git is the only thing changing) | a `git clone --mirror` kept off GitHub, plus the stage 2 bucket copy of the same files | a fresh clone has no `data/` paths in `git log --all`; `.git` drops by roughly 80 MB; tests pass on the rewritten `main` | push the mirror back (`git push --mirror --force`) |
-| 8 | **backup bucket**: the old bucket becomes a copy of the primary; its cloud-session key is deleted (cloud sessions use stage 4's key) | VM DB, and the primary is only read | the backup's own object versioning; the old dump and prefixes are kept as noncurrent versions | a weekly `gcloud storage rsync` from primary to backup (no deletes) has run, from a `racinglines-backup-bucket.timer` on the VM (its service account gets write on the backup bucket only); the backup's `db/manifest.json` matches the primary's | recreate the old key; the backup's earlier versions are still there |
+| 7 | **backup bucket**: the old bucket becomes a copy of the primary; its cloud-session key is deleted (cloud sessions use stage 4's key) | VM DB, and the primary is only read | the backup's own object versioning; the old dump and prefixes are kept as noncurrent versions | a weekly `gcloud storage rsync` from primary to backup (no deletes) has run, from a `racinglines-backup-bucket.timer` on the VM (its service account gets write on the backup bucket only); the backup's `db/manifest.json` matches the primary's | recreate the old key; the backup's earlier versions are still there |
+| 8 | **git history**: remove the data paths from all history with `git filter-repo`, then force-push every branch (owner, 2026-09-30: yes) | both bucket and VM DB (git is the only thing changing) | a `git clone --mirror` kept off GitHub, plus the stage 2 bucket copy of the same files | a fresh clone has no `data/` paths in `git log --all`; `.git` drops by roughly 80 MB; tests pass on the rewritten `main` | push the mirror back (`git push --mirror --force`) |
 
-**Stage 7 needs its own go at the time it runs.** The owner agreed to it in the plan (2026-09-30), but it
+**Stage 8, the last stage, needs its own go at the time it runs.** The owner agreed to it in the plan (2026-09-30), but it
 rewrites published history with a force push, which the
 [safety rails](https://github.com/lalligagger/racinglines/blob/main/CLAUDE.md#safety-rails-non-negotiable-carried-over-from-the-projects-own-rules)
 allow only with the owner's explicit sign-off in the same conversation turn. It runs from the Mac, only after
-stage 6 is merged and a cloud session has passed stage 4's check from a clean clone. Before it: merge or close
+stages 6 and 7 are done and a cloud session has passed stage 4's check from a clean clone. Before it: merge or close
 every open PR (rewritten history orphans their commits) and delete stale branches, so fewer branches need
 rewriting. After it: every clone (the Mac, the VM's checkout, any Copilot workspace) is re-cloned, not pulled;
 the VM's checkout is replaced by the next `vm.sh deploy` only after the owner re-clones it. The bucket and the
@@ -165,6 +165,6 @@ first; each PR carries its own command blocks. Stage 4's key needs the owner in 
 ## Owner decisions
 
 Answered 2026-09-30: test fixtures and goldens stay in git; the old bucket is kept as a backup, not retired;
-history is purged (stage 7), with the force push signed off by the owner when it runs.
+history is purged as the last stage (stage 8), with the force push signed off by the owner when it runs.
 
-Still open: how often the backup bucket is refreshed (default weekly, stage 8).
+Still open: how often the backup bucket is refreshed (default weekly, stage 7).
