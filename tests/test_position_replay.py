@@ -271,3 +271,64 @@ def test_history_and_team_form_count_races_not_results():
         assert mod._team_form(past, st) == {"a": 2.0}                       # the last race: mean of 1st and 3rd
         two = mod._team_form(past, dict(st, recent_races=2))["a"]           # races 2 and 3, the latest weighted most
         assert 2.0 < two < 11.5 and two < (21 + 2) / 2
+
+
+class _Kalshi:
+    """A stand-in Kalshi client: one trade and one hourly price per market before each stage of the race."""
+
+    def __init__(self, day, prices):
+        self.day, self.prices, self.calls = day, prices, []
+
+    def _p(self, ticker):
+        return self.prices[int(ticker.rsplit("-", 1)[1])]
+
+    def trades(self, ticker, min_ts=None):
+        self.calls.append(("trades", ticker))
+        return [dict(trade_id=f"t{ticker}{h}", yes_price_dollars=str(self._p(ticker)), taker_side="yes",
+                     count=int(80 / self._p(ticker)),
+                     created_time=(self.day + pd.Timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M:%SZ")) for h in (-73, -25, -7)]
+
+    def candlesticks(self, series, ticker, start_ts, end_ts, period=60):
+        self.calls.append(("candles", ticker))
+        return [dict(end_period_ts=int((self.day + pd.Timedelta(hours=h)).tz_localize("UTC").timestamp()),
+                     price=dict(close_dollars=str(self._p(ticker)))) for h in (-73, -25, -7)]
+
+
+def test_no_tape_says_so_then_a_pull_makes_the_race_tradeable(world, test_engine, capsys):
+    from racinglines.cli import replay_cmd
+    with world() as s:
+        rs = P.races(s.connection(), P.spec("nascar"), [2026])
+        race = rs.iloc[-1]
+        res = P.race_results(s.connection(), race.race_id)
+        top = res.sort_values("position")["athlete_id"].astype(int).tolist()
+        prices = {top[0]: 0.05, top[1]: 0.40, top[2]: 0.25, top[-1]: 0.30}
+        _wipe(s)
+        _seed(s, race, res, prices)
+        s.execute(text("DELETE FROM market_price_history WHERE token_id LIKE 'KXNASCARRACE-RPTST26-%'"))
+        s.execute(text("DELETE FROM market_trades WHERE token_id LIKE 'KXNASCARRACE-RPTST26-%'"))
+        s.commit()
+        try:
+            bare = P.run(test_engine, "nascar", [2026], venue="kalshi", events=["latest"], echo=lambda *a: None)
+            assert bare["tape"]["markets"] == 4 and bare["tape"]["priced"] == 0 and bare["tape"]["no_tape"] == [race.event_key]
+            text_ = P.format_report(bare)
+            assert "NOT TRADED" in text_ and "NO TAPE" in text_ and "P&L" not in text_.split("No P&L")[0]
+            assert not P.traded(bare)
+            plan = P.tape_plan(test_engine, "nascar", "kalshi", [2026], ["latest"])
+            assert len(plan) == 1 and len(plan[0][1]) == 4
+            r, g, start, end = plan[0]
+            assert start < pd.Timestamp(race.start).tz_localize("UTC") - pd.Timedelta(hours=72) and end > start
+            kc = _Kalshi(pd.Timestamp(race.start), prices)
+            got = P.probe(plan, "kalshi", kc=kc, echo=lambda *a: None)
+            assert len(got) == 3 and all(tr == 3 and px == 3 for _, tr, px in got)
+            assert not s.execute(text("SELECT count(*) FROM market_trades WHERE token_id LIKE 'KXNASCARRACE-RPTST26-%'")).scalar()
+            with test_engine.connect() as c:
+                n = P.pull(s, c, plan, "kalshi", kc=kc, echo=lambda *a: None)
+            assert n == dict(races=1, trades=12, prices=12)
+            after = P.run(test_engine, "nascar", [2026], venue="kalshi", events=["latest"], echo=lambda *a: None)
+            assert P.traded(after) and after["tape"]["tradeable"] == 4 and not after["tape"]["no_tape"]
+            assert "WARNING" not in P.format_report(after) and "update" in P.format_report(after)
+            with pytest.raises(SystemExit):                  # a pull writes: it needs a fresh backup, as --save does
+                replay_cmd._backup_ok(type("A", (), dict(backup=None))(), "nascar", "--tape pull")
+        finally:
+            s.rollback()
+            _wipe(s)

@@ -8,6 +8,15 @@ exchange's recorded prices (racinglines/pipelines/position_replay.py). Read-only
                            the database dump taken for this step within the last 24 hours. Logged in data_changes with
                            its batch id. The runs are stored once, with the first venue's pass.
     --undo BATCH           delete the runs a --save pass stored (the batch id it printed).
+    --tape probe           read-only: ask each exchange for the tape of 3 markets of the first selected race, print the
+                           counts, and stop (no replay, nothing written).
+    --tape pull --backup FILE
+                           first store the tape the replay reads for the selected races (their markets' trades and
+                           hourly prices over each race's window, from 2 days before its first stage), then replay. Logged in data_changes.
+    --require-tradeable    exit 1 unless some market was tradeable on some venue (the spot check's pass).
+
+A race with markets but no stored price says NO TAPE, and a venue with nothing tradeable prints NOT TRADED instead of
+P&L lines.
 """
 
 import sys
@@ -35,7 +44,19 @@ def add_parser(sub, sport):
     p.add_argument("--save", action="store_true", help="Also store one as-of model run per race (needs --backup).")
     p.add_argument("--backup", default=None, help="With --save: the database dump taken for this step (under 24 hours old).")
     p.add_argument("--undo", default=None, help="Delete the runs of a previous --save pass (its batch id).")
+    p.add_argument("--tape", default=None, choices=["probe", "pull"],
+                   help="probe: read-only look at 3 markets' tape on each exchange, then stop. pull: store the selected "
+                        "races' trades and prices first (needs --backup), then replay.")
+    p.add_argument("--require-tradeable", action="store_true",
+                   help="Exit 1 unless some market was tradeable on some venue.")
     return p
+
+
+def _backup_ok(args, sport, why):
+    backup = Path(args.backup) if args.backup else None
+    if not (backup and backup.is_file() and backup.stat().st_size and time.time() - backup.stat().st_mtime < 86400):
+        sys.exit(f"{why}: give --backup FILE, the database dump taken for this step within the last 24 hours "
+                 f"(data/backups/db/racinglines-before-{sport}-replay-<UTC>.sql.gz)")
 
 
 def run(args, sport, years):
@@ -55,24 +76,40 @@ def run(args, sport, years):
         return 0
     save = None
     if args.save:
-        backup = Path(args.backup) if args.backup else None
-        if not (backup and backup.is_file() and backup.stat().st_size and time.time() - backup.stat().st_mtime < 86400):
-            sys.exit("--save writes model_runs and race_predictions: give --backup FILE, the database dump taken for this "
-                     f"step within the last 24 hours (data/backups/db/racinglines-before-{sport}-replay-<UTC>.sql.gz)")
+        _backup_ok(args, sport, "--save writes model_runs and race_predictions")
         save = dict(engine_url=args.db, batch=P.batch_id())
+    if args.tape == "pull":
+        _backup_ok(args, sport, "--tape pull writes market_trades and market_price_history")
     over = {k: v for k, v in dict(min_edge=args.min_edge, stake_per_edge=args.stake_per_edge, max_stake=args.max_stake,
                                   cost=args.cost).items() if v is not None}
     taker = RB.TakerParams(**over)
     kinds = [k.strip() for k in args.kinds.split(",")] if args.kinds else None
     engine = get_engine(args.db)
     venues = [v for v in ("kalshi", "polymarket") if v in P.venues(sport)] if args.venue == "all" else [args.venue]
-    data = None
+    events = args.events.split(",") if args.events else None
+    if args.tape:
+        for venue in venues:
+            plan = P.tape_plan(engine, sport, venue, years, events)
+            if args.tape == "probe":
+                P.probe(plan, venue)
+                continue
+            with engine.connect() as c, get_session(args.db) as s:
+                n = P.pull(s, c, plan, venue)
+                changes.record(s, "tape-pull", f"{sport} {venue} tape pulled for the replay: {n['races']} races, "
+                               f"{n['trades']} trades, {n['prices']} prices; backup {Path(args.backup).name}", sport=sport,
+                               detail=dict(n, venue=venue, years=years, events=events, backup=Path(args.backup).name))
+                s.commit()
+            print(f"Pulled {venue}: {n['races']} races, {n['trades']} trades, {n['prices']} prices\n")
+        if args.tape == "probe":
+            return 0
+    data, traded = None, False
     for i, venue in enumerate(venues):
         out = P.run(engine, sport, years, venue=venue, taker=taker, kinds=kinds, data=data,
-                    events=args.events.split(",") if args.events else None,
+                    events=events,
                     min_volume_24h=P.MIN_VOLUME_24H if args.min_volume is None else args.min_volume,
                     model_settings={"sims": args.sims} if args.sims else None, save=save if i == 0 else None)
         data = out.pop("data")
+        traded = traded or P.traded(out)
         print(P.format_report(out))
         tag = f"{sport}-{venue}-{years[0]}-{years[-1]}" if years else f"{sport}-{venue}"
         folder = P.write(out, Path(args.out) / venue if args.out else paths.runs("replay") / tag)
@@ -87,4 +124,7 @@ def run(args, sport, years):
                                        years=years))
             s.commit()
         print(f"Stored {n} runs, batch {save['batch']}. Undo: racinglines {sport} replay --undo {save['batch']}")
+    if args.require_tradeable and not traded:
+        print(f"FAIL: no market was tradeable on {', '.join(venues)} for these races (see NO TAPE / NOT TRADED above)")
+        return 1
     return 0
