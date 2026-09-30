@@ -124,6 +124,21 @@ def test_empty_books_do_not_hide_behind_a_fake_last_price():
     mk = dict(yes_bid=0, yes_ask=100, last_price=50)
     assert KS._quote(mk) == (None, None, None)
     assert KS._quote(dict(yes_bid=0, yes_ask=40, last_price=35)) == (None, pytest.approx(0.40), pytest.approx(0.35))
+    assert KS._quote(dict(yes_bid=0, yes_ask=100, last_price=0)) == (None, None, None)     # no trade yet: no mid
+
+
+@pytest.mark.quick
+def test_candles_with_an_empty_side_store_no_price():
+    def candle(ts, close=None, bid=None, ask=None):
+        c = dict(end_period_ts=ts, price=dict(close_dollars=close) if close else {})
+        c.update(yes_bid=dict(close_dollars=bid) if bid else {}, yes_ask=dict(close_dollars=ask) if ask else {})
+        return c
+    h = KS.history_rows("X", [candle(1, bid="0.0000", ask="1.0000"),        # a dead book: its mid is 0.50, not a price
+                              candle(2, bid="0.0000", ask="0.0400"),        # no bids: no mid either
+                              candle(3, bid="0.0200", ask="1.0000"),        # no asks
+                              candle(4, bid="0.0200", ask="0.0400"),        # both sides quote: the mid
+                              candle(5, close="0.0100", bid="0.0000", ask="1.0000")])   # a trade's close always counts
+    assert [(r["ts"].timestamp(), r["price"]) for r in h] == [(4, pytest.approx(0.03)), (5, 0.01)]
 
 
 @pytest.mark.quick

@@ -67,7 +67,7 @@ def quote(bid, ask, last):
     ask = None if ask is None or ask >= 1.0 else ask
     if bid is None and ask is None:
         if last is None or abs(last - 0.5) > 1e-9:
-            return None, None, last
+            return None, None, last or None
         return None, None, None
     mid = (bid + ask) / 2 if bid is not None and ask is not None else last
     return bid, ask, mid

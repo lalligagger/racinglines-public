@@ -111,6 +111,7 @@ def test_dig_when_epoch_and_quotes():
     assert D.quote(0.0, 1.0, None) == (None, None, None)                  # an empty book
     assert D.quote(0.0, 1.0, 0.50) == (None, None, None)                  # a dead book's 0.50 midpoint is discarded
     assert D.quote(0.0, 1.0, 0.01) == (None, None, 0.01)                 # real historic last prices survive
+    assert D.quote(0.0, 1.0, 0.0) == (None, None, None)                  # no trade yet: no mid
     assert D.price("0.03") == 0.03 and D.price(None) is None and D.price("") is None
 
 

@@ -150,7 +150,7 @@ def _quote(mk):
     last = K.price(mk, "last_price")
     if bid is None and ask is None:
         if last is None or abs(last - 0.5) > 1e-9:
-            return None, None, last
+            return None, None, last or None
         return None, None, None
     mid = (bid + ask) / 2 if bid is not None and ask is not None else (last or None)
     return bid, ask, mid
@@ -359,13 +359,15 @@ def fetch_trades(session, conn, event_tickers=None, since=None, kc=None, sport=N
 
 
 def history_rows(ticker, candles):
-    """market_price_history rows from Kalshi candlesticks: the close of the YES price, else the bid/ask mid."""
+    """market_price_history rows from Kalshi candlesticks: the close of the YES price, else the bid/ask mid when
+    both sides quote. An empty side (0 bid / 1.00 ask, as _quote reads it) gives no price for the hour: a dead book's
+    mid is 0.50, not a price, and the replays' staleness rule covers the gap."""
     rows = []
     for c in candles:
         p = K.price(c.get("price") or {}, "close")
         if p is None:
             b, a = K.price(c.get("yes_bid") or {}, "close"), K.price(c.get("yes_ask") or {}, "close")
-            p = (b + a) / 2 if b is not None and a is not None else None
+            p = (b + a) / 2 if b and a is not None and a < 1.0 else None
         if p is not None:
             rows.append(dict(token_id=ticker, ts=datetime.fromtimestamp(int(c["end_period_ts"]), tz=timezone.utc), price=p))
     return rows
