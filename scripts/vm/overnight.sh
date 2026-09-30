@@ -127,8 +127,11 @@ prep() {             # load a sport's results and identify its Kalshi links (wri
     nice $R nascar ingest --years 2016-2026 --no-laps
   else
     nice $R motogp fetch --years 2016-2026 || true
-    step "$S results ingest 2016-2026"
-    nice $R motogp ingest --years 2016-2026
+    step "$S results ingest 2025-2026 (the seasons with Kalshi markets), then 2016-2024"
+    # Newest first: ingest commits per event and stops at the first error, and the older seasons' pages have not
+    # been ingested anywhere yet (the 2026-09-30 sports run failed here). An older season's error is logged, not fatal.
+    nice $R motogp ingest --years 2025-2026
+    nice $R motogp ingest --years 2016-2024 || progress "motogp ingest 2016-2024 failed (see the log): going on with 2025-2026"
   fi
   step "$S Kalshi link sync 2025, 2026"
   nice $R markets --exchange kalshi --sport "$S" sync --year 2025 --closed
@@ -224,7 +227,7 @@ replay() {
     I=$(( I + 1 )); T_S=$(date +%s); L_S=$(( $(wc -l < "$LOG") + 1 ))
     progress "sport $I of $NS: $S"
     if ! sport_ready "$S"; then
-      prep "$S"
+      prep "$S" || progress "$S: loading results failed (see the log); the preflight below decides"
       if ! sport_ready "$S"; then stop "$S still has no events or no Kalshi links with a race after loading its results: skipped"; sport_done "$S" "$T_S" "$L_S" skipped; continue; fi
     fi
     say "$S: links, tape, replay"
