@@ -10,6 +10,7 @@
   <label><span>Include closed</span><select name="closed" onchange="this.form.submit()"><option value="0">no</option><option value="1" {% if closed %}selected{% endif %}>yes</option></select></label>
   <label><span>Quote spread (pts)</span><input name="spread_pct" value="{{ '%g'|format(spread_pct) }}" size="3"></label><button>Apply</button>
 <span class="links">Last sync {{ synced|fmt }} · <a href="/markets/polymarket">Polymarket markets</a></span></form>
+{% include "_recorders.html" %}
 <p class="legend">Edge = our fair − Kalshi mid (positive = we think YES is cheap). ⚠ marks gaps over 10 pts: usually a model blind spot rather than an edge; check before quoting. Kalshi lists one YES contract per outcome; volume is in contracts ($1 each at settlement).</p>
 {% if not events %}<p class="muted">No open Kalshi markets linked. Refresh from Kalshi, or include closed markets to see past races.</p>{% endif %}
 {% for ev in events %}

@@ -10,6 +10,8 @@
 #   bash scripts/deploy/vm.sh record [off|status] # the Kalshi and OG.com recorder (scripts/vm/record_venues.sh): a pass
 #                                               # every 5 minutes (the first one backs the database up); status: last
 #                                               # passes and book snapshots per venue per 5 minutes
+#   bash scripts/deploy/vm.sh switch <NAME> on|off # an app switch (RACINGLINES_*, e.g. RACINGLINES_OG_VENUE) in
+#                                               # /etc/racinglines.env, web app restarted; never a trading flag
 #   bash scripts/deploy/vm.sh deploy [ref]      # checkout (default main), install, migrate, restart, smoke check
 #   bash scripts/deploy/vm.sh public on|off     # testing before handover: the web app on http://<VM IP>:8000
 #   bash scripts/deploy/vm.sh demo [status|extra] # the multi-sport demo: switches on, NASCAR/MotoGP paper rows and
@@ -75,6 +77,17 @@ case "${1:-}" in
       "") remote "sudo systemctl enable --now $t && systemctl --no-pager list-timers $t" ;;
       *) echo "usage: vm.sh record [off|status]"; exit 1 ;;
     esac
+    ;;
+  switch)
+    name="${2:-}"; val=""
+    case "${3:-}" in on) val=1 ;; off) val=0 ;; esac
+    case "$name" in
+      *TRADING*) echo "trading flags are never set by vm.sh: they need the owner's sign-off and a hand edit"; exit 1 ;;
+      RACINGLINES_[A-Z0-9_]*) ;;
+      *) name="" ;;
+    esac
+    [ -n "$name" ] && [ -n "$val" ] || { echo "usage: vm.sh switch RACINGLINES_<NAME> on|off"; exit 1; }
+    remote "sudo sed -i -E '/^$name=/d' /etc/racinglines.env && echo '$name=$val' | sudo tee -a /etc/racinglines.env >/dev/null && sudo systemctl try-restart racinglines-web && grep -E '^$name=' /etc/racinglines.env"
     ;;
   deploy)
     ref="${2:-main}"

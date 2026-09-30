@@ -12,7 +12,7 @@ import pandas as pd
 
 from racinglines.db import reads as data
 from racinglines.markets import private_book as house
-from racinglines.markets.venues import SPORT_NAME, SPORT_ORDER, event_matrix, exchange_breakdown, season_matrix, venue_summary
+from racinglines.markets.venues import VENUES, SPORT_NAME, SPORT_ORDER, event_matrix, exchange_breakdown, season_matrix, venue_summary
 
 
 def _countdown(d):
@@ -157,6 +157,43 @@ def board(conn, maker_id):
                            upcoming=upcoming, later=later, season=season, recent=recent, exchanges=exch))
     sports.sort(key=lambda s: SPORT_ORDER.get(s["code"], 9))
     return sports
+
+
+STALE_MIN = 15          # a venue with no book snapshot for this long is "stale" (its recorder passes every 5 minutes)
+
+
+def recorder_status(conn, codes, now=None):
+    """Per venue in `codes` (in that order): open markets linked, how many have a book snapshot in the last 10 minutes,
+    the latest snapshot's time, and a state: "live", "stale" (nothing for STALE_MIN minutes) or "none" (no snapshot
+    yet, or nothing linked). Fails soft: a query error gives every venue state "unknown" (and rolls the read back), so a
+    page showing it still loads with whatever else it has."""
+    now = now or datetime.now(timezone.utc)
+    try:
+        df = data.q(conn, """
+            SELECT l.exchange, count(*) AS linked, max(t.ts) AS last,
+                   count(t.ts) FILTER (WHERE t.ts > now() - interval '10 minutes') AS recent
+            FROM (SELECT DISTINCT token_id, exchange FROM market_links WHERE NOT closed AND exchange = ANY(:x)) l
+            LEFT JOIN LATERAL (SELECT ts FROM market_book_snapshots b WHERE b.token_id = l.token_id
+                               ORDER BY ts DESC LIMIT 1) t ON true
+            GROUP BY 1""", x=list(codes))
+        rows = {r["exchange"]: r for r in df.to_dict("records")}
+    except Exception:  # noqa: BLE001  (never take the page down for a status line)
+        try:
+            conn.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        return [dict(code=c, name=next((v.name for v in VENUES if v.code == c), c), linked=0, recent=0, last=None,
+                     state="unknown") for c in codes]
+    out = []
+    for c in codes:
+        r = rows.get(c) or {}
+        last = r.get("last")
+        last = None if last is None or pd.isna(last) else pd.Timestamp(last).to_pydatetime()
+        if last is not None and last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        state = "none" if last is None else "live" if (now - last).total_seconds() <= STALE_MIN * 60 else "stale"
+        out.append(dict(code=c, name=next((v.name for v in VENUES if v.code == c), c), linked=int(r.get("linked") or 0), recent=int(r.get("recent") or 0), last=last, state=state))
+    return out
 
 
 def headline(conn, maker_id):

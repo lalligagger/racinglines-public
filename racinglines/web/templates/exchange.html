@@ -10,6 +10,7 @@
   <label><span>Include closed</span><select name="closed" onchange="this.form.submit()"><option value="0">no</option><option value="1" {% if closed %}selected{% endif %}>yes</option></select></label>
   <label><span>Quote spread (pts)</span><input name="spread_pct" value="{{ '%g'|format(spread_pct) }}" size="3"></label><button>Apply</button>
 <span class="links">Last sync {{ synced|fmt }} · <a href="/markets/polymarket">Polymarket markets</a>{% if kalshi %} · <a href="/markets/kalshi">Kalshi markets</a>{% endif %}</span></form>
+{% include "_recorders.html" %}
 <p class="legend">Edge YES = our fair − ask − fee (buy YES at the ask); edge NO = bid − our fair − fee (buy NO at 1 − bid); the fee is {{ venue.name }}'s taker fee, ${{ "%.2f"|format(fee) }} per contract (unverified against its fee schedule). Call = the side with a positive edge after the fee. A one-sided quote gets an edge on its quoted side only: a book nobody will trade against is not an edge. ⚠ marks gaps over 10 pts: usually a model blind spot rather than an edge; check before quoting.</p>
 {% if not events %}<p class="muted">No {{ venue.name }} markets linked. Refresh from {{ venue.name }}, or include closed markets.</p>{% endif %}
 {% for ev in events %}

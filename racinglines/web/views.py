@@ -102,6 +102,7 @@ def board_page(request: Request, msg: str = "", c=Depends(conn)):
     return render(request, "board.html", sports=B.board(c, _maker(user)), h=B.headline(c, _maker(user)), kalshi=V.KALSHI_VENUE,
                   disagree=D.panel(c) if D.ON["on"] else None,
                   sport_status=SS.status(c) if SS.enabled() else None, show_paper=True,
+                  recorders=B.recorder_status(c, [v.code for v in V.EXCHANGES if v.code != "kalshi" or V.KALSHI_VENUE]),
                   calendar=calendar, cal_sports=cal_sports, cal_exchanges=cal_exchanges)
 
 

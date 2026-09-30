@@ -867,6 +867,8 @@ def polymarket_calls(c, profile, n_races=3, exchange="polymarket"):
               ("champion", "constructors_champion", "season_wins_ge", "standings_h2h")]
     other = [e for e in events if e["slug"] not in shown and e not in season]
     synced = data.q(c, "SELECT max(synced_at) AS t FROM market_links WHERE exchange = :x", x=exchange)["t"].iloc[0]
+    from racinglines.web import board as B
+    recorders = B.recorder_status(c, [exchange]) if exchange != "polymarket" else None    # the Kalshi / schema recorders
     return dict(races=races, season=season, other=other, synced=synced, n_markets=len(rows_), maker=maker, exchange=exchange)
 
 
@@ -996,14 +998,16 @@ def _exchange_board(request, c, user, exchange, event, show, closed, spread_pct,
                            modeled=int(g["fair"].notna().sum()), new=int(g["new"].sum()), rows=rows(g.sort_values("last_price", ascending=False,
                                                                                          na_position="last"))))
     synced = data.q(c, "SELECT max(synced_at) AS t FROM market_links WHERE exchange = :x", x=exchange)["t"].iloc[0]
+    from racinglines.web import board as B
+    recorders = B.recorder_status(c, [exchange]) if exchange != "polymarket" else None    # the Kalshi / schema recorders
     if schema:
         venue = next(v for v in V.SCHEMA_EXCHANGES if v.code == exchange)
         return render(request, "exchange.html", events=events, show=show, closed=closed, spread_pct=spread_pct, msg=msg,
-                      synced=synced, event=event, venue=venue, fee=fee,
+                      synced=synced, event=event, venue=venue, fee=fee, recorders=recorders,
                       sports=[V.SPORT_NAME.get(sports.load(x)["competition"]["code"], x) for x in exchanges.sports(exchange)])
     if exchange == "kalshi":
         return render(request, "kalshi.html", events=events, show=show, closed=closed, spread_pct=spread_pct, msg=msg,
-                      synced=synced, event=event, url=next(v.url for v in V.EXCHANGES if v.code == "kalshi"))
+                      synced=synced, event=event, url=next(v.url for v in V.EXCHANGES if v.code == "kalshi"), recorders=recorders)
     return render(request, "pm.html", events=events, show=show, closed=closed, spread_pct=spread_pct, msg=msg,
                   synced=synced, event=event)
 

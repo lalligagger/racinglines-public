@@ -11,6 +11,7 @@
   <div class="kpi"><div class="l">F1 model vs grid-only (win, after quali)</div><div class="v {{ 'bad' if h.bt_win and h.bt_grid and h.bt_win > h.bt_grid else 'good' }}">{% if h.bt_win %}{{ "%+.4f"|format(h.bt_win - h.bt_grid) }}{% else %}–{% endif %}</div><div class="s">Brier difference, lower is better · <a href="/lab">Lab</a></div></div>
   <div class="kpi"><div class="l">Model jobs running</div><div class="v">{{ h.jobs_active }}</div><div class="s"><a href="/lab#run">launch a backtest or scenario</a></div></div>
 </div>
+{% include "_recorders.html" %}
 
 {% if sport_status %}{% include "_sport_status.html" %}{% endif %}
 {% for s in sports %}
