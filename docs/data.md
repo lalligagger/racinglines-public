@@ -109,6 +109,14 @@ in the row above the message box, hover over `racinglines`, and click its settin
 - **Network access:** **Trusted** is enough: its default list includes `storage.googleapis.com`.
 - **CLI:** `/remote-env` in a local Claude Code session sets the default environment for `claude --cloud`.
 
+## MotoGP public results source verified (2026-09-29)
+
+The public MotoGP results API at `api.motogp.pulselive.com` is the source gate for the first data-backed MotoGP model work:
+
+- **Verified scope:** season metadata, event lists, standings and race classification payloads are available and match the project schema.
+- **Confirmed limits:** no JSON field exposes lap-by-lap or sector-level splits for a session; the guessed lap/sector endpoints return 400s or remain unsupported by the public API contract.
+- **Implication:** the first model pass stays conservative and uses only result-derived features until a separate source or API contract is cleared.
+
 ## Exchange history: Kalshi and Polymarket
 
 Both exchanges' F1 history lands in the same tables (`market_links`, `market_price_history`, `market_trades`,

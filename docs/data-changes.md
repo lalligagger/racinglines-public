@@ -14,6 +14,14 @@ Before a major update, keep what it replaces: a database dump in `data/backups/d
 files in `data/archive/<sport>/` (both git-ignored; `data/raw` is the record, so it isn't edited in place
 without a copy). Not `data/archive/db/`: that folder is tracked in git (the snapshot).
 
+## 2026-09-30 · NASCAR Cup live market sync
+
+**Why.** Fill the valid Cup market universe from the live exchange feeds so the app and backtests have the same market set as the identified NASCAR tape. Backup first: `data/backups/db/racinglines-before-nascar-market-sync-20260930T021142Z.sql.gz`.
+
+**What ran.** `racinglines markets --exchange polymarket --sport nascar sync --year 2026 --closed` and `racinglines markets --exchange kalshi --sport nascar sync --year 2026 --closed`, then `racinglines nascar link --apply --backup ...` to attach athlete / race / kind. The result was 14,700 NASCAR market links in the local DB, with 7,044 outcomes fully identified across both venues.
+
+**Undo.** Restore the backup or delete `market_links` rows with `competition_id` for `nascar_cup` and their associated prices/trades/books.
+
 ## 2026-09-29 · VM: Kalshi tape-only sports (NASCAR, MotoGP, IndyCar) and OG.com, first live run
 
 **Why.** After deploying main (7e5d64d) to the VM: rebuild the Kalshi F1 demo record there, and run the fixture-tested
