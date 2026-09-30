@@ -38,3 +38,14 @@ def test_modules_read_the_schemas():
     known = {v.code for v in venues.VENUES} | set(exchanges.CODES)   # schema venues show only with their switch on
     for code in sports.SPORT_CODES:
         assert set(sports.load(code)["markets"]["venues"]) <= known
+
+
+def test_schema_supports_generic_fallback_data():
+    policy = sports.fallback_rule("nascar")
+    assert policy == "official_then_public_summary_fallback"
+
+    fallbacks = sports.fallbacks("nascar")
+    assert len(fallbacks) == 1
+    assert fallbacks[0]["source"] == "wikipedia"
+    assert fallbacks[0]["quality"] == "summary_only"
+    assert fallbacks[0]["scope"] == "race_summary"

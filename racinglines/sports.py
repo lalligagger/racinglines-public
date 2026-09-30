@@ -61,6 +61,28 @@ def frames(code):
     return tuple(load(code).get("data", {}).get("frames", ()))
 
 
+def fallback_rule(code):
+    """The source-quality rule a sport declares for missing or partial result data.
+
+    Default is strict: official data is required; a fallback source is allowed only when the schema says so.
+    """
+    return load(code).get("results", {}).get("fallback_rule", "official_only")
+
+
+def fallbacks(code):
+    """Fallback sources declared in the sport schema, if any.
+
+    Each entry is a generic dict: {source, quality, scope, notes, ...}. The schema may also define a
+    `fallback_rule` describing the policy for when the fallback is acceptable.
+    """
+    entries = load(code).get("results", {}).get("fallbacks", ())
+    if not entries:
+        return ()
+    if isinstance(entries, dict):
+        entries = entries.get("sources", tuple(entries.values()))
+    return tuple(entries)
+
+
 def live_frames(code):
     """The frames whose source dates each row as it happens ([data] live), as a tuple; () if none. Every other
     session-keyed frame is published a whole session at a time, once the session has ended."""

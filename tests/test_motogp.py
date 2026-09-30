@@ -37,6 +37,17 @@ def test_status_of_treats_instnd_as_classified_and_everything_else_as_dnf():
 
 
 @pytest.mark.quick
+def test_session_round_kind_names_motogp_sessions_like_the_f1_pipeline():
+    assert I.session_round_kind({"type": "FP", "number": 1}) == "fp1"
+    assert I.session_round_kind({"type": "FP", "number": 2}) == "fp2"
+    assert I.session_round_kind({"type": "Q1"}) == "qual1"
+    assert I.session_round_kind({"type": "Q2"}) == "qual2"
+    assert I.session_round_kind({"type": "SPR"}) == "sprint"
+    assert I.session_round_kind({"type": "WUP"}) == "warmup"
+    assert I.session_round_kind({"type": "RAC"}) == "race"
+
+
+@pytest.mark.quick
 def test_parse_event_reads_the_thailand_race_classification():
     p = I.parse_event(2026, tha_event(), fx("classification_2026_tha_motogp_race"))
     assert p["key"] == "2026-THA" and p["name"] == "GRAND PRIX OF THAILAND" and p["venue"] == "Chang International Circuit"
@@ -54,6 +65,34 @@ def test_parse_event_reads_the_thailand_race_classification():
 def test_parse_event_is_none_with_no_classification():
     assert I.parse_event(2026, tha_event(), {"classification": []}) is None
     assert I.parse_event(2026, tha_event(), None) is None
+
+
+@pytest.mark.quick
+def test_model_uses_stable_athlete_ids_across_roster_changes():
+    import numpy as np
+    import pandas as pd
+
+    from racinglines.models.motogp_model import MotoGPRace
+
+    data = pd.DataFrame([
+        {"season": 2024, "event_id": "2024-r1", "event_name": "Round 1", "race_key": "2024-r1", "date": pd.Timestamp("2024-04-01"),
+         "athlete_id": 101, "rider": "A. Rider", "position": 1, "team": "Alpha", "status": "OK", "points": 25},
+        {"season": 2024, "event_id": "2024-r1", "event_name": "Round 1", "race_key": "2024-r1", "date": pd.Timestamp("2024-04-01"),
+         "athlete_id": 202, "rider": "A. Rider", "position": 2, "team": "Bravo", "status": "OK", "points": 18},
+        {"season": 2025, "event_id": "2025-r1", "event_name": "Round 1", "race_key": "2025-r1", "date": pd.Timestamp("2025-04-01"),
+         "athlete_id": 101, "rider": "A. Rider", "position": 2, "team": "Alpha", "status": "OK", "points": 18},
+        {"season": 2025, "event_id": "2025-r1", "event_name": "Round 1", "race_key": "2025-r1", "date": pd.Timestamp("2025-04-01"),
+         "athlete_id": 303, "rider": "B. Newcomer", "position": 4, "team": "Charlie", "status": "OK", "points": 12},
+    ])
+
+    model = MotoGPRace()
+    ev = model.events(data, {}, seasons=[2025])[0]
+    sim = model.price(data, ev, model.Settings.from_dict({"sims": 100, "noise": 0.1, "recent_races": 1,
+                                                        "history_races": 0, "team_bias": 0.1,
+                                                        "recency_decay": 1.0, "seed": 9}), np.random.default_rng(9))
+    assert sim is not None
+    assert set(sim.entrants) == {101, 202}
+    assert all(isinstance(a, int) for a in sim.entrants)
 
 
 # --- ingest into a database ---------------------------------------------------------

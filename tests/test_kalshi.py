@@ -616,14 +616,16 @@ def _other_transport(log):
 
 
 @pytest.mark.quick
-def test_tape_only_sports_have_schemas_and_series():
+def test_market_only_sports_have_schemas_and_series():
     from racinglines import sports
     from racinglines.cli import markets as CM
     for code, comp, prefix in (("nascar", "nascar_cup", "KXNASCAR"), ("motogp", "motogp_wc", "KXMOTOGP"),
                                ("indycar", "indycar_series", "KXINDYCAR"),
                                ("le_mans", "le_mans_24h", "KXLEMANS24H")):
         s = sports.load(code)
-        assert not sports.modeled(code) and "pricing_model" not in s["sport"] and "live" not in s
+        tape_only = code in ("indycar", "le_mans")                  # nascar and motogp have result models now
+        assert sports.modeled(code) == (not tape_only) and ("pricing_model" in s["sport"]) == (not tape_only)
+        assert "live" not in s
         assert s["competition"]["code"] == comp and sports.kalshi_series(code) == (prefix,)
     for code, comp, prefix, venues in (
             ("nascar", "nascar_cup", "KXNASCAR", ["polymarket", "kalshi"]),
@@ -631,7 +633,9 @@ def test_tape_only_sports_have_schemas_and_series():
             ("indycar", "indycar_series", "KXINDYCAR", ["polymarket", "kalshi"]),
             ("le_mans", "le_mans_24h", "KXLEMANS24H", ["kalshi"])):
         s = sports.load(code)
-        assert not sports.modeled(code) and "pricing_model" not in s["sport"] and "live" not in s
+        tape_only = code in ("indycar", "le_mans")                  # nascar and motogp have result models now
+        assert sports.modeled(code) == (not tape_only) and ("pricing_model" in s["sport"]) == (not tape_only)
+        assert "live" not in s
         assert s["competition"]["code"] == comp and sports.kalshi_series(code) == (prefix,)
         assert s["markets"]["venues"] == venues
     for code, comp, series, venues in (

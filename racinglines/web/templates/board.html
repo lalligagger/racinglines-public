@@ -15,8 +15,9 @@
 {% for s in sports %}
 <details class="card" data-remember="markets:sport:{{ s.code }}"{% if s.run or loop.first %} open{% endif %}>
 <summary><h2 style="display:inline-block;margin:0">{{ s.name }}</h2> <span class="sum">{% if s.run %}live prices from run <a href="/lab/runs/{{ s.run.id }}">#{{ s.run.id }}</a> · {{ s.run.created_at|fmt }}{% else %}market data only · no model{% endif %}</span></summary>
-{% if s.run %}
+{% if s.run or s.tape %}
 <div class="cards">
+  {% if s.run %}
   {% for u in s.upcoming %}
   <div class="ecard">
     <div><h3><a href="/races/{{ u.info.race_id }}">{{ u.info.title }}</a>{% if u.new %} <a href="/markets/polymarket?show=all">{{ new_badge(u.new) }}</a>{% endif %}</h3>
@@ -40,9 +41,19 @@
     </div>{% endif %}
     <div><a href="/seasons/{{ s.code }}">{{ s.season.outcomes }} outcomes →</a></div>
   </div>
+  {% elif s.tape %}
+  {% for u in s.upcoming %}
+  <div class="ecard">
+    <div><h3>{{ u.title }}</h3><div class="when">{{ u.date|fmt if u.date else "undated" }} · {{ u.status }}</div></div>
+    {% if u.exchanges %}<div class="legend">{% for x in u.exchanges %}<span class="pill live">{{ x }}</span>{% endfor %}</div>{% endif %}
+    {% if u.url %}<div><a href="{{ u.url }}">Open tape →</a></div>{% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
 </div>
-{% if s.later %}<p class="legend">Later: {% for l in s.later %}<a href="/races/{{ l.race_id }}">{{ l.title }}</a>{% if l.new %} {{ new_badge(l.new) }}{% endif %} {{ l.date|fmt }}{{ " · " if not loop.last }}{% endfor %} · <a href="/events">full calendar</a></p>{% endif %}
-{% if s.recent %}<details class="card quiet" data-remember="markets:{{ s.code }}:recent"><summary><h3>Recent results</h3><span class="sum">{{ s.recent|length }} · last: {{ s.recent[0].info.title }}, winner {{ s.recent[0].winner }}{% if s.recent[0].our is not none %}, we had {{ pct(s.recent[0].our) }}{% endif %}</span></summary>
+{% if s.run and s.later %}<p class="legend">Later: {% for l in s.later %}<a href="/races/{{ l.race_id }}">{{ l.title }}</a>{% if l.new %} {{ new_badge(l.new) }}{% endif %} {{ l.date|fmt }}{{ " · " if not loop.last }}{% endfor %} · <a href="/events">full calendar</a></p>{% endif %}
+{% if s.tape and s.later %}<p class="legend">Later: {% for l in s.later %}{% if l.url %}<a href="{{ l.url }}">{{ l.title }}</a>{% else %}{{ l.title }}{% endif %}{% if l.date %} {{ l.date|fmt }}{% endif %}{{ " · " if not loop.last }}{% endfor %}</p>{% endif %}
+{% if s.run and s.recent %}<details class="card quiet" data-remember="markets:{{ s.code }}:recent"><summary><h3>Recent results</h3><span class="sum">{{ s.recent|length }} · last: {{ s.recent[0].info.title }}, winner {{ s.recent[0].winner }}{% if s.recent[0].our is not none %}, we had {{ pct(s.recent[0].our) }}{% endif %}</span></summary>
 <div class="recent">{% for r in s.recent %}<div>
   <a href="/races/{{ r.info.race_id }}"><b>{{ r.info.title }}</b></a> <span class="muted">{{ r.info.start_date|fmt }}</span><br>
   Winner <b>{{ r.winner }}</b>{% if r.our is not none %} · we had <b>{{ pct(r.our) }}</b>{% endif %}{% if r.pm is not none %} · Polymarket {{ pct(r.pm) }}{% endif %}{% if kalshi and r.kalshi is not none %} · Kalshi {{ pct(r.kalshi) }}{% endif %}

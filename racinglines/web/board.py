@@ -81,8 +81,10 @@ def board(conn, maker_id):
     from racinglines import exchanges as EX
     from racinglines import sports as SP
     from racinglines.markets import alerts
-    fresh = list(alerts.new_links(conn).values())          # race_id (or None) per new token
-    forecasts = {r["competition"]: r for r in data.latest_forecasts(conn).to_dict("records")}
+    fresh = list(alerts.new_links(conn).values()) if conn is not None else []  # race_id (or None) per new token
+    forecasts = {}
+    if conn is not None:
+        forecasts = {r["competition"]: r for r in data.latest_forecasts(conn).to_dict("records")}
     exch_by_comp = {}
     for b in exchange_breakdown(conn):
         exch_by_comp.setdefault(b["competition"], []).append(b)
@@ -111,6 +113,16 @@ def board(conn, maker_id):
                           outcomes=len(s_df), constructors=_top(s_df, "constructors_champion", 2),
                           strategy=latest_season_strategy(conn, code))
             recent = recent_results(conn, comp_id)
+        elif exch:
+            tape_events = []
+            for b in exch:
+                for e in b.get("events", []):
+                    tape_events.append(dict(title=e["title"], date=e.get("end_date"), status="open" if e.get("open") else "settled",
+                                           exchanges=[b["exchange_name"]], url=b.get("url"), new=0))
+            upcoming = tape_events[:3]
+            later = tape_events[3:]
+            season = None
+            recent = []
         sports.append(dict(code=code, name=SPORT_NAME.get(code, schema["sport"]["name"]), run=run, tape=tape,
                            upcoming=upcoming, later=later, season=season, recent=recent, exchanges=exch))
     sports.sort(key=lambda s: SPORT_ORDER.get(s["code"], 9))

@@ -68,10 +68,12 @@ def seasons(force=False):
 
 
 def fetch(years, force=False, dry_run=False):
-    """Download events, the MotoGP category id, sessions and race classifications for each season in `years`.
-    A dry run still fetches the cheap season-level lists (events, categories: one call each) to count accurately,
-    but never the many per-event sessions/classification calls. Returns counts: {seasons, events, classifications,
-    skipped, errors}."""
+    """Download events, the MotoGP category id, every finished session and its classification for each season in
+    `years`. The public JSON does not expose lap-by-lap or sector data, but it does expose a result table per
+    session (FP/Q/WUP/SPR/RAC), which is enough to match the F1-like session pipeline without inventing a richer
+    source. A dry run still fetches the cheap season-level lists (events, categories: one call each) to count
+    accurately, but never the many per-event sessions/classification calls. Returns counts: {seasons, events,
+    classifications, skipped, errors}."""
     counts = dict(seasons=0, events=0, classifications=0, skipped=0, errors=0)
     season_ids = seasons(force=force)
     with client() as c:
@@ -120,16 +122,30 @@ def fetch(years, force=False, dry_run=False):
                     _write(sess_path, sessions)
                 race = next((s for s in sessions if s.get("type") == "RAC"), None)
                 counts["events"] += 1
-                if race is None or race.get("status") != "FINISHED":
+                if race is None:
                     counts["skipped"] += 1
                     continue
-                if not force and cls_path.exists():
-                    continue
-                try:
-                    cls = get(c, f"/results/session/{race['id']}/classification", test="false")
-                except httpx.HTTPStatusError:
-                    counts["errors"] += 1
-                    continue
-                _write(cls_path, cls)
-                counts["classifications"] += 1
+                fetched = False
+                for session in sessions:
+                    stype = session.get("type")
+                    sid = session.get("id")
+                    if not sid or stype not in {"FP", "PR", "Q1", "Q2", "SPR", "WUP", "RAC"}:
+                        continue
+                    if session.get("status") == "NOT-STARTED":
+                        continue
+                    session_cls_path = event_path(year, short) / f"{sid}.classification.json"
+                    if not force and session_cls_path.exists():
+                        continue
+                    try:
+                        cls = get(c, f"/results/session/{sid}/classification", test="false")
+                    except httpx.HTTPStatusError:
+                        counts["errors"] += 1
+                        continue
+                    _write(session_cls_path, cls)
+                    if stype == "RAC":
+                        _write(cls_path, cls)
+                    fetched = True
+                    counts["classifications"] += 1
+                if not fetched and race.get("status") != "FINISHED":
+                    counts["skipped"] += 1
     return counts

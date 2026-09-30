@@ -296,6 +296,17 @@ local-league plans. As of 2026-09 the ranking is led by exchange depth:
       `KXCYCLING*`), plus `le_mans.toml` and `sailgp.toml` (Kalshi, and SailGP on OG.com). Not yet run on the VM:
       `markets --exchange kalshi --sport road_cycling sync --closed` pulls the 2026 grand tours Kalshi still serves. A
       model is a 2027 question ([Coverage](coverage.md#the-grid)).
+### MotoGP prediction model track
+
+The database and API plumbing are now in place, and the source gate is complete: the public MotoGP results API is verified for season/event/standings/classification data, and the first pass stays within that contract. We still keep `model_family = "none"` until the backtest is proven, but the data-source gap is now explicit and bounded rather than guessed.
+
+- [x] **M0 · MotoGP source gate:** verify the public API and document the actual data that exists (`api.motogp.pulselive.com`, race classification and standings only; no JSON lap or sector splits). Record the limits in [Data](data.md#motogp-public-results-source-verified-2026-09-29).
+- [ ] **M1 · MotoGP model skeleton:** create the sport-specific model settings + variant plumbing in the same schema as the F1 sweep (`sweep_settings.py` / `f1`-style run params), but without the F1-only assumptions. Base the first variant on rider form, team-level strength, and circuit history using the already-ingested results table.
+- [ ] **M2 · Feature builder for race results only:** keep the first model conservative: only result-based priors (prior race form, rider/team recent pace, circuit-adjusted history), no lap-by-lap or sector splits because the public API does not expose them as JSON. Lock the feature set to what is available in the standard schema and document the exact leak-free cutoff rules.
+- [ ] **M3 · One-season backtest harness:** wire a MotoGP backtest using the F1 walk-forward pattern (before qualifying / before race) but with the MotoGP event calendar and the same result-kind conventions. Save a small set of model runs to `data/runs/motogp/` and verify the model can price a handful of old races without crashing.
+- [ ] **M4 · Sweep then compare:** run a narrow sweep over recent seasons (for example 2021–2026, or a 2–3 season window) and compare the baseline variant to a simple form-only challenger. Use the same search/backtest/reporting conventions as the F1 path, even if the first pass is intentionally small and not production-quality.
+- [ ] **M5 · Promotion gate:** only if the backtest beats a naive baseline on a consistent set of races and there are no leakage issues should MotoGP move from `model_family = "none"` to a live pricing model. The first pass stays conservative and does not change any trading or live market plumbing.
+
 - [ ] **Tape-sync follow-ups (2026-09-29 first live run):** ~~the sync should seed a sport's competition row from
       `sports/<code>.toml` instead of raising `NoResultFound`~~ done: every sync creates the rows of the sport it files
       links under (`db/ingest.ensure_competition`), and `vm.sh deploy` now runs `db seed` after the migrations; exchange

@@ -36,10 +36,34 @@ SOURCE = "motogp_api"
 SCHEME = "motogp"
 CAT_CODE = "RDR"
 PARSER = "motogp_api"
+ROUND_ORDINAL = {"fp1": 1, "fp2": 2, "fp3": 3, "practice": 4, "qual1": 5, "qual2": 6, "warmup": 7,
+                 "sprint": 8, "race": 9}
 
 
 def _clean(d):
     return {k: v for k, v in d.items() if v is not None}
+
+
+def session_round_kind(session):
+    """Map MotoGP session metadata onto the shared round names used by the F1-style engine."""
+    if not session:
+        return None
+    kind = str(session.get("type") or "").upper()
+    num = session.get("number")
+    if kind.startswith("FP"):
+        n = int(num) if num is not None else 1
+        return f"fp{n}"
+    if kind == "PR":
+        return "practice"
+    if kind in {"Q1", "Q2"}:
+        return f"qual{int(kind[1])}"
+    if kind == "SPR":
+        return "sprint"
+    if kind == "WUP":
+        return "warmup"
+    if kind == "RAC":
+        return "race"
+    return None
 
 
 def _time_ms(text):
@@ -68,18 +92,16 @@ def _read_json(path):
     return json.loads(path.read_text()) if path.exists() else None
 
 
-def parse_event(year, ev, classification):
-    """Everything to write for one event, as plain dicts (no database). None when there is no classified result."""
+def _rows_from_classification(classification):
     rows = (classification or {}).get("classification") or []
     if not rows:
         return None
-    circuit = ev.get("circuit") or {}
-    race_rows = []
+    out = []
     for r in rows:
         rider = r.get("rider") or {}
         team = r.get("team") or {}
         constructor = r.get("constructor") or {}
-        race_rows.append(dict(
+        out.append(dict(
             rider_id=rider.get("id"), name=rider.get("full_name"), nation=(rider.get("country") or {}).get("iso"),
             position=r.get("position"), status=status_of(r), time_ms=_time_ms(r.get("time")),
             bib=str(rider["number"]) if rider.get("number") is not None else None, team=team.get("name"),
@@ -87,17 +109,60 @@ def parse_event(year, ev, classification):
                 constructor=constructor.get("name"), average_speed=r.get("average_speed"),
                 gap_to_leader_s=(r.get("gap") or {}).get("first"), total_laps=r.get("total_laps"),
                 points=r.get("points"), status_raw=r.get("status")))))
+    return out
+
+
+def parse_event(year, ev, classification, sessions=None):
+    """Everything to write for one event, as plain dicts (no database). None when there is no classified result.
+
+    Legacy API: one classification payload for the one race session. New API: a list of session metadata plus a
+    mapping of session-id to classification payloads, which are emitted as multiple rounds. The old contract remains
+    supported for the existing fixtures and unit tests.
+    """
+    if sessions:
+        rounds = []
+        by_id = classification or {}
+        for session in sessions or []:
+            sid = session.get("id")
+            kind = session_round_kind(session)
+            if sid is None or kind is None:
+                continue
+            cls = by_id.get(sid)
+            rows = _rows_from_classification(cls)
+            if not rows:
+                continue
+            rounds.append(dict(
+                kind=kind,
+                name=(session.get("type") or kind).upper(),
+                ordinal=ROUND_ORDINAL.get(kind, 0),
+                extra=_clean({"session_date": session.get("date"), "status": session.get("status"),
+                              "number": session.get("number"),
+                              "condition": session.get("condition")}),
+                rows=rows,
+            ))
+        if not rounds:
+            return None
+        circuit = ev.get("circuit") or {}
+        return dict(
+            key=f"{year}-{ev['short_name']}", name=ev.get("name") or ev.get("sponsored_name"),
+            date=date.fromisoformat(ev["date_start"][:10]), venue=circuit.get("name"),
+            nation=(ev.get("country") or {}).get("iso"), rounds=rounds)
+
+    rows = _rows_from_classification(classification)
+    if not rows:
+        return None
+    circuit = ev.get("circuit") or {}
     return dict(
         key=f"{year}-{ev['short_name']}", name=ev.get("name") or ev.get("sponsored_name"),
         date=date.fromisoformat(ev["date_start"][:10]), venue=circuit.get("name"),
-        nation=(ev.get("country") or {}).get("iso"), rows=race_rows)
+        nation=(ev.get("country") or {}).get("iso"), rows=rows)
 
 
 def write(session, comp, cat, parsed):
     """Rebuild one event's rows from a parse_event() result. Returns the number of results written."""
     year = int(parsed["key"].split("-", 1)[0])
     season = _upsert(session, m.Season, dict(competition_id=comp.id, year=year))
-    venue = resolve_venue(session, parsed["venue"], country=parsed.get("nation")) if parsed["venue"] else None
+    venue = resolve_venue(session, parsed["venue"], country=parsed.get("nation")) if parsed.get("venue") else None
     event = _upsert(session, m.Event, dict(season_id=season.id, source=SOURCE, source_key=parsed["key"]),
                     name=parsed["name"], start_date=parsed["date"], venue_id=venue.id if venue else None,
                     status="completed")
@@ -106,10 +171,16 @@ def write(session, comp, cat, parsed):
     session.execute(delete(m.Round).where(m.Round.race_id == race.id))
     session.flush()
 
-    ids = {row["rider_id"]: row["name"] for row in parsed["rows"] if row["rider_id"]}
+    rounds = parsed.get("rounds") or [{"kind": "race", "name": "Race", "ordinal": 1, "extra": None,
+                                      "rows": parsed.get("rows", [])}]
+    athlete_ids = {}
+    for round_ in rounds:
+        for row in round_.get("rows", []):
+            if row.get("rider_id"):
+                athlete_ids[row["rider_id"]] = row["name"]
     found = dict(session.execute(select(m.AthleteIdentifier.value, m.AthleteIdentifier.athlete_id).where(
-        m.AthleteIdentifier.scheme == SCHEME, m.AthleteIdentifier.value.in_(list(ids)))).all())
-    for rid, name in ids.items():
+        m.AthleteIdentifier.scheme == SCHEME, m.AthleteIdentifier.value.in_(list(athlete_ids)))).all())
+    for rid, name in athlete_ids.items():
         if rid not in found:
             a = m.Athlete(display_name=name or f"MotoGP rider {rid}")
             session.add(a)
@@ -117,15 +188,20 @@ def write(session, comp, cat, parsed):
             session.add(m.AthleteIdentifier(scheme=SCHEME, value=rid, athlete_id=a.id))
             found[rid] = a.id
 
-    round_ = m.Round(race_id=race.id, kind="race", ordinal=1, name="Race", extra=None)
-    session.add(round_)
-    session.flush()
-    rows = [dict(round_id=round_.id, athlete_id=found[r["rider_id"]], position=r["position"], status=r["status"],
-                time_ms=r["time_ms"], bib=r["bib"], team=r["team"], nation=r["nation"], extra=r["extra"])
-            for r in parsed["rows"] if r["rider_id"]]
-    if rows:
-        session.execute(insert(m.Result), rows)
-    return len(rows)
+    count = 0
+    for round_ in rounds:
+        kind = round_.get("kind") or "race"
+        rnd = m.Round(race_id=race.id, kind=kind, ordinal=round_.get("ordinal") or ROUND_ORDINAL.get(kind, 1),
+                      name=round_.get("name") or kind, extra=round_.get("extra"))
+        session.add(rnd)
+        session.flush()
+        rows = [dict(round_id=rnd.id, athlete_id=found[r["rider_id"]], position=r["position"], status=r["status"],
+                    time_ms=r["time_ms"], bib=r["bib"], team=r["team"], nation=r["nation"], extra=r["extra"])
+                for r in round_.get("rows", []) if r.get("rider_id") and r["rider_id"] in found]
+        if rows:
+            session.execute(insert(m.Result), rows)
+        count += len(rows)
+    return count
 
 
 def event_names(year):
@@ -136,20 +212,38 @@ def event_names(year):
 
 
 def ingest_event(session, comp, cat, year, short_name, force=False):
-    cls_path = F.event_path(year, short_name) / "classification.json"
+    event_dir = F.event_path(year, short_name)
+    cls_path = event_dir / "classification.json"
+    sessions_path = F.season_path(year) / "sessions.json"
     ev_path = F.season_path(year) / "events.json"
-    if not cls_path.exists():
-        return "no classification"
     events = _read_json(ev_path) or []
     ev = next((e for e in events if e["short_name"] == short_name), None)
     if ev is None:
         return "no event record"
+    session_list = _read_json(event_dir / "sessions.json") or []
+    classification_by_id = {}
+    for s in session_list:
+        sid = s.get("id")
+        if sid:
+            data = _read_json(event_dir / f"{sid}.classification.json")
+            if data is not None:
+                classification_by_id[sid] = data
+    legacy = _read_json(cls_path)
+    if legacy is not None:
+        classification_by_id["legacy"] = legacy
+    if not classification_by_id:
+        return "no classification"
     key = f"motogp:{year}-{short_name}"
-    h = hashlib.sha256(cls_path.read_bytes()).hexdigest()
+    files = [event_dir / "sessions.json"]
+    files.extend(event_dir / f"{s['id']}.classification.json" for s in session_list if s.get("id"))
+    if cls_path.exists():
+        files.append(cls_path)
+    h = hashlib.sha256(b"".join(p.read_bytes() for p in files if p.exists())).hexdigest()
     src = session.scalars(select(m.SourceFile).filter_by(path=key)).first()
     if src and src.sha256 == h and not force:
         return "unchanged"
-    parsed = parse_event(year, ev, _read_json(cls_path))
+    payload = classification_by_id if session_list else legacy
+    parsed = parse_event(year, ev, payload, sessions=session_list or None)
     if parsed is None:
         return "no results"
     n = write(session, comp, cat, parsed)

@@ -6,8 +6,9 @@
 [sport]
 code = "nascar"
 name = "NASCAR Cup Series"
-result_kind = "position"          # finishing positions, once there is a model
-model_family = "none"             # tapes only: no model, no pricing_model, no live adapter
+result_kind = "position"          # finishing positions
+model_family = "position_sim"     # result-based pricing model: conservative, source-faithful, uses race results only
+pricing_model = "racinglines.models.nascar_model:NascarCupRace"
 display_order = 2
 
 [league]
@@ -41,3 +42,12 @@ tags = ["nascar"]
 # The syncs fill athlete_id, race_id and params (kind, nascar_series, season) on every link of this sport; `prediction`
 # stays unmodeled. `racinglines nascar link` does the same for links already in the database.
 resolver = "nascar"
+
+[results]
+# General rule for every results source: the official feed remains first choice; a public fallback is allowed only
+# for missing seasons and only when the schema says it is a low-quality summary, never a full replacement.
+# This is the generic "source-fidelity fallback" policy used by the schema and any result-source handlers.
+fallback_rule = "official_then_public_summary_fallback"
+# A fallback source is allowed only as a summary: no full field rows, no lap/sector timing, no replacement of the
+# official feed. Use it to fill missing seasons only when the official archive does not exist.
+fallbacks = [{ source = "wikipedia", quality = "summary_only", scope = "race_summary", allow = true, notes = "Only for missing seasons when no official archive exists; never for full result reconstruction." }]
