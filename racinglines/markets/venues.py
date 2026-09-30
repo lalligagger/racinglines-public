@@ -102,6 +102,7 @@ class ExchangeBlock(TypedDict, total=False):
     books: int
     volume: float
     synced: object
+    coverage: str                # what the exchange's own feed offers historically (`coverage`)
     url: str | None              # set by board.py: where "N markets" links to
 
 
@@ -429,6 +430,26 @@ def price_series(conn, tokens, start, end, points=120):
     return out
 
 
+# What each exchange's feed can give us historically, shown under the "Exchange data" counts so a small or zero
+# count reads as the source's limit, not ours. A schema exchange says it in its own file ([exchange] coverage).
+# Details: docs/data.md#what-the-exchange-data-counts-show.
+COVERAGE = {
+    "polymarket": "Polymarket: taker trades only, about the newest 100,000 per market; price history at the "
+                  "fidelity pulled (hourly by default); no book history (books exist only where we recorded them live).",
+    "kalshi": "Kalshi: every trade, no cap; hourly candles (the close, else the bid/ask mid); no book history, and "
+              "no recorder runs for Kalshi books yet, so none are stored.",
+}
+
+
+def coverage(exchange):
+    """One line on what `exchange` offers historically (COVERAGE, or its schema's [exchange] coverage), else ""."""
+    if exchange in COVERAGE:
+        return COVERAGE[exchange]
+    if exchange in exchanges.CODES:
+        return exchanges.load(exchange)["exchange"].get("coverage", "")
+    return ""
+
+
 def tape_sports():
     """The tape-only sports (sports/<code>.toml with model_family = "none"), in display order."""
     return [s for s in _SCHEMAS if s["sport"].get("model_family", "none") == "none"]
@@ -448,11 +469,11 @@ def exchange_breakdown(conn, comps=None) -> list[ExchangeBlock]:
     if not len(links):
         return []
     toks = list(links["token_id"].unique())
-    rec = {}
-    for name, table in (("trades", "market_trades"), ("prices", "market_price_history"), ("books", "market_book_snapshots")):
-        df = data.q(conn, f"SELECT token_id, count(*) AS n, max(ts) AS last FROM {table} WHERE token_id = ANY(:t) GROUP BY token_id",
-                    t=toks)
-        rec[name] = {r["token_id"]: (int(r["n"]), r["last"]) for r in df.to_dict("records")}
+    from racinglines.markets import store as MS
+    # Everything each exchange has given us: the Parquet archive plus the Postgres buffer (counted once), not only
+    # the buffer, which holds just the last few hours and the hot races (before 2026-09-30 only the buffer counted,
+    # so Polymarket showed 0 trades and Kalshi a fraction of its tape).
+    rec = {name: MS.counts(conn, name, toks) for name in ("trades", "prices", "books")}
     names = {v.code: v.name for v in VENUES}
     for code in exchanges.CODES:                       # a schema venue's name, switch on or off
         names.setdefault(code, exchanges.load(code)["exchange"]["name"])
@@ -475,7 +496,7 @@ def exchange_breakdown(conn, comps=None) -> list[ExchangeBlock]:
                         competition=comp, exchange=exch, exchange_name=names.get(exch, exch), events=events,
                         markets=int(len(g)), open=int((~g["closed"]).sum()), trades=sum(e["trades"] for e in events),
                         prices=sum(e["prices"] for e in events), books=sum(e["books"] for e in events),
-                        volume=sum(e["volume"] for e in events), synced=g["synced_at"].max()))
+                        volume=sum(e["volume"] for e in events), synced=g["synced_at"].max(), coverage=coverage(exch)))
     out.sort(key=lambda b: (SPORT_ORDER.get(b["competition"], 9), b["exchange"]))
     return out
 

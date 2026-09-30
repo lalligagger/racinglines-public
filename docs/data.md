@@ -181,6 +181,27 @@ The Kalshi API is blocked from the cloud, so the series tickers are matched by p
 against the live listing; `sync --series TICKER …` syncs exact tickers when the discovery finds the wrong ones
 (or none). The whole path is tested on fixtures in the client's shape (`tests/fixtures/market/kalshi_other_series.json`).
 
+### What the "Exchange data" counts show
+
+The Markets board's per-sport **Exchange data** table (and `/markets/tapes`) counts, per sport and exchange,
+the rows stored for that sport's linked markets (`market_links`): **Trades** from `market_trades`, **Price
+points** from `market_price_history`, **Books** from `market_book_snapshots`. Since 2026-09-30 each count spans
+the Parquet archive and the Postgres buffer, a row in both counted once (`store.counts`); before that only the
+buffer counted, which after `markets archive` holds just the last few hours and the hot races, so Polymarket read
+0 trades and 0 price points and Kalshi a small slice of its tape. Only the exchange syncs and the recorder write
+these tables, so the counts never include paper, demo-history or simulated trades (those live in the house book
+tables). A zero shows as **n/a**: nothing stored. Each exchange's feed sets what can be stored at all:
+
+| Exchange | Trades | Price points | Books |
+|---|---|---|---|
+| Polymarket | Taker trades only, the newest ~100,000 per market (Data API offset cap) | `/prices-history` at the fidelity pulled (hourly by default) | No history API: only what `markets record` snapshotted live |
+| Kalshi | Every trade, no cap (older than about two months via `/historical/trades`) | Hourly candles: the close, else the YES bid/ask mid | No history API, and no Kalshi book recorder runs yet, so n/a |
+| OG.com | Only about the last month is served, so the tape starts when we began pulling (2026-09-29) | Minute quotes, same one-month window | One snapshot per `books` run |
+
+The same line per exchange shows under the table on the board (`venues.COVERAGE`; a schema exchange says it in its
+own file, `[exchange] coverage`). Tape-only sports (NASCAR, MotoGP, IndyCar and the rest) are counted the same way
+as F1: their rows share the tables and the per-exchange Parquet trees, and the links decide which sport a row belongs to.
+
 ## Respecting the sources' limits
 
 Every download goes through one of two guards, so a long unattended run (e.g. a

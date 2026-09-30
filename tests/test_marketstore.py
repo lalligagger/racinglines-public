@@ -81,6 +81,34 @@ def test_archive_routes_rows_to_their_exchange(tmp_path, test_engine, monkeypatc
             c.execute(text("DELETE FROM market_price_history WHERE token_id = ANY(:t)"), dict(t=[TOK, kx]))
 
 
+def test_counts_span_parquet_and_postgres_once(tmp_path, test_engine):
+    """counts(): archived rows count too (the Markets board used to count only the Postgres buffer, so Polymarket
+    showed 0 trades), a row in both stores counts once, and duplicate archive copies count once."""
+    e = test_engine
+    t0 = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    arch = pd.DataFrame(dict(token_id=[TOK] * 3, ts=[t0, t0 + timedelta(hours=1), t0 + timedelta(hours=2)],
+                             price=[0.1, 0.2, 0.3]))
+    MS._write("prices", arch, root=tmp_path)
+    MS._write("prices", arch.iloc[:1], root=tmp_path)                 # archived twice
+    tr = pd.DataFrame(dict(token_id=[TOK], condition_id=["c"], outcome_index=[0], ts=[t0], side=["BUY"], price=[0.5],
+                           size=[10.0], tx_hash=["0xa"], wallet=[""]))
+    MS._write("trades", tr, root=tmp_path)
+    with e.begin() as c:
+        c.execute(text("DELETE FROM market_price_history WHERE token_id = :t"), dict(t=TOK))
+        c.execute(text("INSERT INTO market_price_history (token_id, ts, price) VALUES (:t, :a, 0.3), (:t, :b, 0.4)"),
+                  dict(t=TOK, a=t0 + timedelta(hours=2), b=t0 + timedelta(hours=3)))   # one already archived, one new
+    try:
+        with e.connect() as c:
+            got = MS.counts(c, "prices", [TOK, "absent"], root=tmp_path)
+            assert got == {TOK: (4, pd.Timestamp(t0 + timedelta(hours=3)))}
+            assert MS.counts(c, "trades", [TOK], root=tmp_path)[TOK][0] == 1
+            assert MS.counts(c, "books", [TOK], root=tmp_path) == {}
+        assert MS.counts(None, "prices", [TOK], root=tmp_path)[TOK][0] == 3
+    finally:
+        with e.begin() as c:
+            c.execute(text("DELETE FROM market_price_history WHERE token_id = :t"), dict(t=TOK))
+
+
 @pytest.mark.live
 def test_policy_keeps_hot_tokens(tmp_path):
     """A token of an upcoming race stays in Postgres; an unknown (stale) one is archived."""

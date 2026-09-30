@@ -67,12 +67,12 @@
 <tbody>{% for b in s.exchanges %}<tr>
 <td class="l">{% if b.url %}<a href="{{ b.url }}">{{ b.exchange_name }}</a>{% else %}{{ b.exchange_name }}{% endif %}</td>
 <td>{{ b.markets }}</td><td class="{{ 'muted' if not b.open }}">{{ b.open }}</td><td>{{ "{:,.0f}".format(b.volume) }}</td>
-<td class="{{ 'good' if b.trades else 'muted' }}">{{ "{:,}".format(b.trades) }}</td>
-<td class="{{ 'good' if b.prices else 'muted' }}">{{ "{:,}".format(b.prices) }}</td>
-<td class="{{ 'good' if b.books else 'muted' }}">{{ "{:,}".format(b.books) }}</td>
+{% for n in (b.trades, b.prices, b.books) %}<td class="{{ 'good' if n else 'muted' }}"{% if not n and b.coverage %} title="{{ b.coverage }}"{% endif %}>{{ "{:,}".format(n) if n else "n/a" }}</td>
+{% endfor %}
 <td>{{ b.synced|fmt }}</td>
 </tr>{% endfor %}</tbody>
 </table></div>
+<p class="legend">Counts are every row each exchange's feed has given us (archive and live buffer), never paper or demo trades. n/a: nothing stored. {% for b in s.exchanges if b.coverage %}{{ b.coverage }}{{ " " if not loop.last }}{% endfor %}</p>
 {% endif %}
 </details>
 {% endfor %}
