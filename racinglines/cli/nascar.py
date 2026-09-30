@@ -6,6 +6,8 @@ racinglines nascar <command>: NASCAR (Cup, from the free content feeds at cf.nas
     ingest       Load the stored feeds into the database (events, results, laps, driver identity).
     link         Say which driver and race each stored NASCAR market link is about (any exchange); dry run by default,
                  --apply needs a fresh database dump (--backup FILE) and can be undone (--undo FILE).
+    replay       Taker replay of Cup races against Kalshi's or Polymarket's recorded prices (read-only unless
+                 --save; racinglines/pipelines/position_replay.py).
     (exchange data: racinglines markets sync | history | trades | record | archive --sport nascar)
 
 Nothing here runs by default. A full pull and ingest is a VM job: back up the database first
@@ -46,8 +48,12 @@ def main(argv=None):
     p.add_argument("--apply", action="store_true", help="Write the changes (default: a dry run that only reports).")
     p.add_argument("--backup", default=None, help="With --apply: the database dump taken for this step (under 24 hours old).")
     p.add_argument("--undo", default=None, help="Put back the values a previous --apply replaced (the undo file it wrote).")
+    from racinglines.cli import replay_cmd
+    replay_cmd.add_parser(sub, "nascar")
     args = ap.parse_args(argv)
 
+    if args.cmd == "replay":
+        return replay_cmd.run(args, "nascar", _years(args.years))
     if args.cmd == "link":
         return _link(args)
     if args.cmd == "fetch":

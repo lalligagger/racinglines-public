@@ -24,7 +24,7 @@ categories = { DRV = ["Drivers", "X", "elite"] }
 
 [markets]
 venues = ["polymarket", "kalshi"]
-standard_kinds = []               # nothing is priced, so the board has no columns for it
+standard_kinds = ["race_win", "race_podium", "race_top10"]   # the board's columns (on by default, owner 2026-09-30): priced by the replay's saved runs
 
 [markets.kalshi]
 # Kalshi series tickers to sync, by prefix: every Sports series whose ticker starts with one of these
@@ -51,3 +51,16 @@ fallback_rule = "official_then_public_summary_fallback"
 # A fallback source is allowed only as a summary: no full field rows, no lap/sector timing, no replacement of the
 # official feed. Use it to fill missing seasons only when the official archive does not exist.
 fallbacks = [{ source = "wikipedia", quality = "summary_only", scope = "race_summary", allow = true, notes = "Only for missing seasons when no official archive exists; never for full result reconstruction." }]
+
+[replay]
+# The taker replay (racinglines/pipelines/position_replay.py; `racinglines nascar replay`). All values are a priori
+# starting points, none tuned: docs/f1-roadmap.md decision log, 2026-09-30 "NASCAR / MotoGP taker replay".
+source = "nascar_cf"              # the events the model and the settlement read
+linker = "nascar"                 # a link not yet identified by `nascar link --apply` is identified in memory
+kinds = ["race_win", "race_podium", "race_top5", "race_top10", "race_top20", "race_h2h"]
+race_day_offset = 0               # the event's date is race day
+# (label, hours from 00:00 UTC on race day). Cup races start in the US afternoon/evening, so "race eve" (18:00 UTC
+# the day before) is before qualifying on most weekends; the model reads race results only, so its fair is the same
+# at every stage and only the market moves.
+stages = [["T-3d", -72], ["T-1d", -24], ["race eve", -6]]
+group_target = { race_win = 1, race_podium = 3 }   # the coherence check's groups (a listing of top-5/10/20 is often partial)

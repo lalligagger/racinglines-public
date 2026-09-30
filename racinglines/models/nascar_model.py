@@ -27,6 +27,32 @@ SETTINGS = [
 ]
 
 
+def _last_races(frame, n):
+    """The rows of the last `n` races in `frame` (by date), however many results each race holds."""
+    dates = np.sort(frame["date"].unique())[-n:]
+    return frame[frame["date"].isin(dates)]
+
+
+def _team_form(past, settings):
+    """{team: recency-weighted mean finishing position over the team's last `recent_races` races} (each race's
+    mean over the team's entries, the latest race weighted 1 and the oldest e^-recency_decay)."""
+    out = {}
+    for team, rows in past.groupby("team", dropna=False):
+        per_race = rows.groupby("date")["position"].mean().sort_index().tail(settings["recent_races"])
+        if per_race.empty:
+            continue
+        w = np.exp(-np.linspace(max(float(settings["recency_decay"]), 0.1), 0.0, len(per_race)))
+        out[team] = float(np.average(per_race.to_numpy(float), weights=w))
+    return out
+
+
+def _field(ev):
+    """The start list the replay passes in `ev.info["field"]` (pipelines/position_replay.py): price exactly these
+    entrants, a newcomer at the model's no-form base. Empty (walk-forward, search): every entrant in the history,
+    as before."""
+    return list((ev.info or {}).get("field") or [])
+
+
 class NascarCupSettings(SS.Settings):
     SPEC = SETTINGS
     BY = {s.name: s for s in SETTINGS}
@@ -195,7 +221,7 @@ class NascarCupRace:
     def price(self, hist, ev, settings, rng):
         past = self._with_athlete_ids(hist[hist["date"] < ev.cutoff].copy())
         if past.empty:
-            entrants = self._entrant_ids(hist)
+            entrants = _field(ev) or self._entrant_ids(hist)
             if not entrants:
                 return None
             base = np.zeros(len(entrants), dtype=float)
@@ -206,20 +232,14 @@ class NascarCupRace:
 
         past = past.sort_values("date")
         if settings["history_races"] > 0:
-            past = past.tail(settings["history_races"])
+            past = _last_races(past, settings["history_races"])
 
-        entrants = self._entrant_ids(past)
+        entrants = _field(ev) or self._entrant_ids(past)
         if not entrants:
             return None
 
         overall = float(past["position"].mean())
-        team_form = {}
-        for team, rows in past.groupby("team", dropna=False):
-            rows = rows.sort_values("date").tail(settings["recent_races"])
-            if rows.empty:
-                continue
-            w = np.exp(-np.linspace(0.0, max(float(settings["recency_decay"]), 0.1), len(rows)))
-            team_form[team] = float(np.average(rows["position"].to_numpy(float), weights=w))
+        team_form = _team_form(past, settings)
 
         scores = []
         for athlete_id in entrants:
@@ -227,7 +247,7 @@ class NascarCupRace:
             if driver_rows.empty:
                 base = overall
             else:
-                w = np.exp(-np.linspace(0.0, max(float(settings["recency_decay"]), 0.1), len(driver_rows)))
+                w = np.exp(-np.linspace(max(float(settings["recency_decay"]), 0.1), 0.0, len(driver_rows)))
                 recent_mean = float(np.average(driver_rows["position"].to_numpy(float), weights=w))
                 team = driver_rows["team"].iloc[-1]
                 team_mean = team_form.get(team, overall)
@@ -271,7 +291,7 @@ class NascarCupRaceChallenger(NascarCupRace):
     def price(self, hist, ev, settings, rng):
         past = self._with_athlete_ids(hist[hist["date"] < ev.cutoff].copy())
         if past.empty:
-            entrants = self._entrant_ids(hist)
+            entrants = _field(ev) or self._entrant_ids(hist)
             if not entrants:
                 return None
             base = np.zeros(len(entrants), dtype=float)
@@ -282,20 +302,14 @@ class NascarCupRaceChallenger(NascarCupRace):
 
         past = past.sort_values("date")
         if settings["history_races"] > 0:
-            past = past.tail(settings["history_races"])
+            past = _last_races(past, settings["history_races"])
 
-        entrants = self._entrant_ids(past)
+        entrants = _field(ev) or self._entrant_ids(past)
         if not entrants:
             return None
 
         overall = float(past["position"].mean())
-        team_form = {}
-        for team, rows in past.groupby("team", dropna=False):
-            rows = rows.sort_values("date").tail(settings["recent_races"])
-            if rows.empty:
-                continue
-            w = np.exp(-np.linspace(0.0, max(float(settings["recency_decay"]), 0.1), len(rows)))
-            team_form[team] = float(np.average(rows["position"].to_numpy(float), weights=w))
+        team_form = _team_form(past, settings)
 
         scores = []
         for athlete_id in entrants:
@@ -303,7 +317,7 @@ class NascarCupRaceChallenger(NascarCupRace):
             if driver_rows.empty:
                 base = overall
             else:
-                w = np.exp(-np.linspace(0.0, max(float(settings["recency_decay"]), 0.1), len(driver_rows)))
+                w = np.exp(-np.linspace(max(float(settings["recency_decay"]), 0.1), 0.0, len(driver_rows)))
                 recent_mean = float(np.average(driver_rows["position"].to_numpy(float), weights=w))
                 team = driver_rows["team"].iloc[-1]
                 team_mean = team_form.get(team, overall)

@@ -60,12 +60,14 @@ class Resolver:
     """Driver and race lookups for the NASCAR Cup competition. `year`: the market's season; the pool of drivers is
     those with a race result that season or the one before, else every NASCAR driver in the database."""
 
-    def __init__(self, conn, year=None, competition="nascar_cup"):
+    def __init__(self, conn, year=None, competition="nascar_cup", scheme="nascar", source="nascar_cf"):
+        """scheme / source: the identifier scheme and events source of the sport (MotoGP's replay matcher,
+        racinglines/sources/motogp/links.py, passes "motogp" / "motogp_api"); the defaults are NASCAR's."""
         self.competition, self.year = competition, year
         self.unresolved = {}                                  # subject string -> "unknown" | "ambiguous: a, b"
         rows = conn.execute(text("""
             SELECT a.id, a.display_name, i.value FROM athletes a
-            JOIN athlete_identifiers i ON i.athlete_id = a.id AND i.scheme = 'nascar'"""), {}).all()
+            JOIN athlete_identifiers i ON i.athlete_id = a.id AND i.scheme = :sc"""), dict(sc=scheme)).all()
         self.names = {int(i): n for i, n, _ in rows}
         self.driver_ids = {int(i): int(v) for i, _, v in rows}
         seasons = {int(i): set() for i, *_ in rows}
@@ -81,7 +83,7 @@ class Resolver:
         self.events = conn.execute(text("""
             SELECT ra.id, e.name, e.start_date, e.status FROM races ra JOIN events e ON e.id = ra.event_id
             JOIN seasons s ON s.id = e.season_id JOIN competitions co ON co.id = s.competition_id
-            WHERE co.code = :c AND e.source = 'nascar_cf' ORDER BY e.start_date"""), dict(c=competition)).all()
+            WHERE co.code = :c AND e.source = :src ORDER BY e.start_date"""), dict(c=competition, src=source)).all()
 
     def _pool(self, year):
         if year is not None:
