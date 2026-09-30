@@ -21,6 +21,7 @@ from dataclasses import dataclass
 
 STAGES = ("pre-weekend", "after FP1", "after FP2", "after FP3", "after SQ", "after Sprint", "after Quali")
 KINDS = ("race_win", "race_podium", "race_h2h", "race_constructor_top", "race_pole")
+OPT_KINDS = ("race_top10",)          # opt-in market kinds: selectable in `market_kinds`, never in its default
 DEFAULT_SEED = 42                # pricing.diagnostic's and the signal engine's seed
 VENUES = ("polymarket", "kalshi")    # exchanges a sweep / the signal engine can trade (markets/venue_replay.py)
 DEFAULT_VENUE = "polymarket"
@@ -81,6 +82,10 @@ SETTINGS = [
             help="Target cost = this x edge, e.g. 250 x 0.10 = $25."),
     Setting("max_stake", "taker", "Max stake per market ($)", "float", 50.0, 1, 5000),
     Setting("cost", "taker", "Cost per share per trade ($)", "float", 0.01, 0, 0.1),
+    Setting("thin_edge_mult", "taker", "Trade thin markets at edge x (min edge)", "float", None, 1, 20,
+            help="A market under the volume floor is still traded when the edge is at least this many times "
+                 "the minimum and a recorded order book (at most 10 min old) shows size at the touch; the "
+                 "stake is capped at that size and only buys are made there. Empty = thin markets are skipped."),
     Setting("bankroll", "taker", "Starting bankroll ($)", "float", None, 10, 1e7,
             help="Bankroll-aware sizing: stakes scale with the balance after earlier weekends. Empty = fixed sizing."),
     Setting("max_deployed", "taker", "Max capital deployed per weekend ($)", "float", None, 1, 1e7,
@@ -99,7 +104,11 @@ SETTINGS = [
     Setting("info_skew", "maker", "Info-timed skew (maker_skew / maker_all)", "float", 2.0, 0, 10),
     Setting("widen", "maker", "Widen factor on bad markouts (maker_widen / maker_all)", "float", 1.5, 1, 5),
     # --- markets --------------------------------------------------------------------------------------
-    Setting("market_kinds", "markets", "Market kinds traded", "multi", KINDS, choices=KINDS),
+    Setting("market_kinds", "markets", "Market kinds traded", "multi", KINDS, choices=KINDS + OPT_KINDS,
+            help="race_top10 (Kalshi's top-10 finishers) is opt-in: it is priced by the model but not in the default set."),
+    Setting("coherence_tol_by_kind", "markets", "Group coherence tolerance per kind", "map", None, 0.01, 2, choices=KINDS + OPT_KINDS,
+            help="kind=tolerance pairs, e.g. race_podium=0.35: how far a multi-outcome group's prices may sum "
+                 "from its target (as a share of it) before its markets are skipped. Empty = 0.25 for every kind."),
     Setting("min_volume_24h", "markets", "Min $ traded in prior 24 h", "float", 50.0, 0, 100000),
     Setting("venue", "markets", "Venue", "choice", None, choices=VENUES, unset=DEFAULT_VENUE,
             help="Whose markets and recorded tape the strategies trade: polymarket (the default) or kalshi "

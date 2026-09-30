@@ -47,6 +47,9 @@ class TakerParams:
     min_edge_by_kind: tuple = ()                         # ((kind, threshold), ...): per market kind, over both
     scale: float = 1.0                                   # stake multiplier (bankroll-aware sizing)
     max_deployed: float | None = None                    # $ cap on the weekend's deployed capital (None = no cap)
+    thin_edge_mult: float | None = None                  # trade a thin market (a stage with `thin`) when the edge is
+                                                         # >= this x min_edge, capped at the book's size at the touch
+                                                         # (None = thin markets are skipped)
 
 
 class _Market:
@@ -56,7 +59,10 @@ class _Market:
         self.stages, self.p = stages, p
         self.yes = self.no = self.cash = 0.0
         self.trades, self.marks = [], []
-        idx = [i for i, s in enumerate(stages) if s["tradeable"] and s["fair"] is not None and s["price"] is not None]
+        idx = [i for i, s in enumerate(stages)
+               if s["fair"] is not None and s["price"] is not None
+               and (s["tradeable"] or (p.thin_edge_mult is not None and s.get("thin")
+                                       and abs(s["fair"] - s["price"]) >= p.thin_edge_mult * p.min_edge))]
         if p.stages is not None:
             idx = [i for i in idx if stages[i]["label"] in p.stages]
         if p.mode == "hold":
@@ -78,11 +84,16 @@ class _Market:
         price = s["price"]
         before = self.deployed
         if i in self.idx:
+            thin = not s["tradeable"]            # a thin market: in idx only with edge >= thin_edge_mult x min_edge
             ty, tn = target_shares(s["fair"], price, p.cost, p.min_edge, p.stake_per_edge * p.scale,
                                    p.max_stake * p.scale)
+            if thin:                             # the book's size at the touch caps what can be bought
+                ty, tn = min(ty, s.get("depth_yes") or 0.0), min(tn, s.get("depth_no") or 0.0)
             for side, tgt, px in (("YES", ty, price), ("NO", tn, 1 - price)):
                 cur = self.yes if side == "YES" else self.no
                 d = tgt - cur
+                if thin and d <= 0:
+                    continue                     # thin: buys only, never a sale into an unseen book
                 if abs(d) * px < p.min_trade and tgt != 0:
                     continue
                 if abs(d) < 1e-9:

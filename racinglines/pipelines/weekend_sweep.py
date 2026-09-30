@@ -47,6 +47,8 @@ PRE = timedelta(minutes=_STAGES["pre_minutes"])              # "before any runni
 KINDS = tuple(sports.load("f1")["markets"]["weekend_kinds"])
 GROUP_TARGET = {"race_win": 1, "race_pole": 1, "race_constructor_top": 1, "race_podium": 3}
 COHERENCE_TOL = 0.25
+OPT_KINDS = ("race_top10",)                           # opt-in kinds (market_kinds): Kalshi's top-10 finishers
+OPT_GROUP_TARGET = {"race_top10": 10}                 # ... a group of ten finishers
 STALE = timedelta(hours=6)
 MIN_VOLUME_24H = 50.0                # $ traded in the market over the previous 24 h
 TAKER_MODES = ("update", "hold", "last", "early")
@@ -149,30 +151,30 @@ def price_stages(meas, hist, sched, engine, engine_url=None, n_sims=4000, repric
     price_stages.data_key = __import__("hashlib").sha1("|".join(data_keys).encode()).hexdigest()[:12]
     return out
 
-def _token0_links(conn, race_id):
+def _token0_links(conn, race_id, kinds=None):
     links = pd.read_sql(text("""SELECT ml.*, a.display_name AS athlete FROM market_links ml
                                 LEFT JOIN athletes a ON a.id = ml.athlete_id
                                 WHERE ml.race_id = :r AND ml.prediction = ANY(:k) AND ml.exchange = 'polymarket'
                                 ORDER BY ml.id"""), conn,
-                        params=dict(r=race_id, k=list(KINDS)))
+                        params=dict(r=race_id, k=list(kinds or KINDS)))
     return links.drop_duplicates("condition_id", keep="first")
 
 
-def _links(conn, race_id, venue="polymarket"):
+def _links(conn, race_id, venue="polymarket", kinds=None):
     """The race's tradeable links on a venue, one row per market: Polymarket's outcome-0 token per condition,
     or every Kalshi ticker (a Kalshi condition_id is the event ticker, shared by all its markets)."""
     if venue == "polymarket":
-        return _token0_links(conn, race_id)
+        return _token0_links(conn, race_id, kinds)
     from racinglines.markets.venue_replay import Kalshi
     if venue != Kalshi.code:
         raise ValueError(f"unknown venue {venue!r}")
-    return Kalshi.links(conn, race_id, KINDS).drop_duplicates("token_id", keep="first")
+    return Kalshi.links(conn, race_id, kinds or KINDS).drop_duplicates("token_id", keep="first")
 
 
-def _venue(conn, links, start, end, venue="polymarket"):
+def _venue(conn, links, start, end, venue="polymarket", group_target=None):
     from racinglines.markets.venue_replay import Kalshi, Polymarket
     cls = Polymarket if venue == "polymarket" else Kalshi
-    return cls(conn, links, start, end, GROUP_TARGET, COHERENCE_TOL, STALE)
+    return cls(conn, links, start, end, group_target or GROUP_TARGET, COHERENCE_TOL, STALE)
 
 
 def _race_id(conn, event_key):
@@ -202,7 +204,8 @@ def fetch_market_data(session, conn, sched, fidelity=5, force=False, echo=print)
         echo(f"progress {w['event_key']} {w['name']}: {n} price points, {k} trades")
 
 
-def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None, venue="polymarket", rules=None):
+def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None, venue="polymarket", rules=None,
+                    kinds=None, thin_depth=False, tol_by_kind=None):
     """The weekend's tradeable markets for racinglines/markets/strategies/taker_weekend.py: per market, each stage's fair,
     exchange price and tradeable flag (what was knowable then) and the outcome (settlement). The exchange is a
     backtest venue (markets/venue_replay.py: Polymarket's recorded prices and trade tape, or Kalshi's with
@@ -210,18 +213,27 @@ def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None, 
     price_times: {stage label: time} to read the market at instead of the stage's cutoff (live signals:
     when the stage was priced, i.e. when its trades could first be made); None = the cutoffs (backtests).
     rules: a cancelled race's outcomes by the venue's rules (markets/settlement_rules.py: an outcome can then be
-    a 0.5 payout or VOID); None reads RACINGLINES_CANCELLED_RACE_RULES, off by default."""
+    a 0.5 payout or VOID); None reads RACINGLINES_CANCELLED_RACE_RULES, off by default.
+    kinds: the market kinds to read (None = KINDS; an opt-in kind of OPT_KINDS is added by the caller and
+    brings its own group target). thin_depth: read the recorded order books, and mark a stage that fails only
+    the volume floor `thin` with the size at the touch (`depth_yes` / `depth_no`); the stage stays
+    `tradeable=False`, so nothing but a taker with thin_edge_mult reads it. tol_by_kind: {kind: coherence
+    tolerance} over COHERENCE_TOL."""
     at = lambda lab, cutoff: (price_times or {}).get(lab, cutoff)          # noqa: E731
     from racinglines.db import reads as D
     from racinglines.markets import private_book as house
     from racinglines.markets import settlement_rules as SR
     rid = _race_id(conn, w["event_key"])
-    links = _links(conn, rid, venue)
+    links = _links(conn, rid, venue, kinds)
     if not len(links):
         return None
     status = SR.race_status("f1", w["event_key"], SR.db_status(conn, rid)) if SR.enabled(rules) else None
     start, end = stage_runs[0][1] - timedelta(hours=1), max([w["race_start"], *(price_times or {}).values()])
-    venue = _venue(conn, links, start, end, venue)
+    group_target = {**GROUP_TARGET, **{k: v for k, v in OPT_GROUP_TARGET.items() if k in (kinds or ())}}
+    venue = _venue(conn, links, start, end, venue, group_target)
+    venue.tol_by_kind = dict(tol_by_kind or {})
+    if thin_depth:
+        venue.load_books(conn, start, end)
     res = house.race_outcomes(conn, rid)
     cache, markets = {}, []
     fair = {}   # (token, stage) -> fair
@@ -229,7 +241,7 @@ def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None, 
         for link in links.to_dict("records"):
             fair[(link["token_id"], lab)] = D.model_prob(conn, link, cache, run_id=run_id)[0]
     # coherence of each multi-outcome group at each stage (stale/empty books are skipped)
-    coherent = {(kind, lab): venue.coherent(kind, at(lab, cutoff)) for lab, cutoff, _ in stage_runs for kind in GROUP_TARGET}
+    coherent = {(kind, lab): venue.coherent(kind, at(lab, cutoff)) for lab, cutoff, _ in stage_runs for kind in group_target}
     vol_min = MIN_VOLUME_24H if min_volume_24h is None else min_volume_24h
     for link in venue.markets():
         kind = link["prediction"]
@@ -240,7 +252,13 @@ def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None, 
             f = fair[(link["token_id"], lab)]
             open_ = STG.is_open(kind, t, w.get("closes", {"race_pole": w["qual_start"]}))
             ok = liquid and f is not None and open_ and coherent.get((kind, lab), True)
-            stages.append(dict(label=lab, t=t, fair=f, price=price, tradeable=ok))
+            stage = dict(label=lab, t=t, fair=f, price=price, tradeable=ok)
+            if thin_depth and not liquid and price is not None and 0 < price < 1 and f is not None and open_ \
+                    and coherent.get((kind, lab), True):
+                d = venue.touch_depth(link["token_id"], t)          # only the volume floor failed: is there size?
+                if d is not None and (d[0] > 0 or d[1] > 0):
+                    stage.update(thin=True, depth_yes=d[0], depth_no=d[1])
+            stages.append(stage)
         subject = link["athlete"] or (link["params"] or {}).get("team") or link["group_title"]
         if kind == "race_h2h":
             subject = f"{link['outcome']} ({link['question'].split(': ')[-1]})"
@@ -260,8 +278,14 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settin
     st = settings or SS.Settings.from_dict()
     venue = SS.venue_of(st)
     rids = tuple(r for _, _, r in stage_runs)
-    markets = _memo(("markets", w["event_key"], rids, st["min_volume_24h"], venue),
-                    lambda: weekend_markets(conn, w, stage_runs, min_volume_24h=st["min_volume_24h"], venue=venue))
+    opt = tuple(k for k in OPT_KINDS if k in st["market_kinds"])
+    kinds = KINDS + opt if opt else None                       # opt-in kinds only when asked for
+    thin = st["thin_edge_mult"] is not None
+    tol = SS.parse_map(st["coherence_tol_by_kind"])
+    markets = _memo(("markets", w["event_key"], rids, st["min_volume_24h"], venue, kinds, thin,
+                     tuple(sorted(tol.items()))),
+                    lambda: weekend_markets(conn, w, stage_runs, min_volume_24h=st["min_volume_24h"], venue=venue,
+                                            kinds=kinds, thin_depth=thin, tol_by_kind=tol))
     if markets is None:
         return None
     markets = [m for m in markets if m["kind"] in st["market_kinds"]]
@@ -441,7 +465,7 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
                           cost=st["cost"], late_stages=st["late_stages"], min_edge_h2h=st["min_edge_h2h"],
                           min_edge_by_kind=tuple(SS.parse_map(st["min_edge_by_kind"]).items()),
                           stages=None if st["taker_stages"] == SS.STAGES else st["taker_stages"],
-                          max_deployed=st["max_deployed"])
+                          max_deployed=st["max_deployed"], thin_edge_mult=st["thin_edge_mult"])
     params_list = [RB.TakerParams(**{**base.__dict__, "mode": m}) for m in TAKER_MODES]
     balance = {m: st["bankroll"] for m in TAKER_MODES}     # bankroll-aware sizing: each mode's balance
     rows, all_trades, all_scores, all_calib = [], [], [], []
@@ -506,7 +530,7 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
                 scores=score_stage, calibration=pd.concat([cal_all.assign(stage="all"), cal_stage], ignore_index=True),
                 reliability=rel,
                 params=dict({k: v for k, v in base.__dict__.items() if k != "stages" and not
-                             (k in ("scale", "max_deployed", "min_edge_by_kind") and v == RB.TakerParams.__dataclass_fields__[k].default)},
+                             (k in ("scale", "max_deployed", "min_edge_by_kind", "thin_edge_mult") and v == RB.TakerParams.__dataclass_fields__[k].default)},
                             n_sims=st["sims"],
                             variant=st["variant"], data_lag_min=DATA_LAG.seconds // 60,
                             min_volume_24h=st["min_volume_24h"], coherence_tol=COHERENCE_TOL,

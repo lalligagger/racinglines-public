@@ -68,3 +68,49 @@ def test_early_mode_skips_late_stages():
     stages = [st("pre-weekend", 0.40, 0.30), st("after FP3", 0.60, 0.40), st("after Quali", 0.70, 0.40)]
     r = RB.run_market(stages, True, RB.TakerParams(**{**P.__dict__, "mode": "early"}))
     assert [t["stage"] for t in r["trades"]] == ["pre-weekend"]
+
+
+# --- thin markets (thin_edge_mult): a stage under the volume floor that a recorded book vouches for ----------
+
+def thin(label, fair, price, depth_yes=100.0, depth_no=100.0):
+    return dict(label=label, t=label, fair=fair, price=price, tradeable=False, thin=True,
+                depth_yes=depth_yes, depth_no=depth_no)
+
+
+PT = RB.TakerParams(**{**P.__dict__, "thin_edge_mult": 2.0})
+
+
+def test_thin_markets_are_skipped_unless_asked():
+    r = RB.run_market([thin("after Q", 0.30, 0.05)], True, P)
+    assert r["trades"] == []
+    r = RB.run_market([thin("after Q", 0.30, 0.05)], True, RB.TakerParams(**{**P.__dict__, "thin_edge_mult": None}))
+    assert r["trades"] == []
+
+
+def test_thin_market_traded_at_twice_the_edge_and_capped_at_the_book():
+    (tr,) = RB.run_market([thin("after Q", 0.30, 0.05, depth_yes=1e6)], True, PT)["trades"]     # 25 pts >= 2 x 5
+    assert tr["side"] == "YES" and tr["shares"] == pytest.approx(25 / 0.06)         # $100 x 25 pts = $25 stake, book is deep
+    (tr,) = RB.run_market([thin("after Q", 0.30, 0.05, depth_yes=40.0)], True, PT)["trades"]
+    assert tr["shares"] == pytest.approx(40.0)                                       # the book holds 40 shares
+    assert RB.run_market([thin("after Q", 0.30, 0.05, depth_yes=0.0)], True, PT)["trades"] == []
+
+
+def test_thin_market_needs_the_multiple_of_the_edge():
+    assert RB.run_market([thin("after Q", 0.12, 0.05)], True, PT)["trades"] == []   # 7 pts < 2 x 5
+    assert len(RB.run_market([thin("after Q", 0.16, 0.05)], True, PT)["trades"]) == 1   # 11 pts
+
+
+def test_thin_market_buys_no_from_the_bid_side_and_never_sells():
+    (tr,) = RB.run_market([thin("after Q", 0.10, 0.40, depth_no=25.0)], False, PT)["trades"]
+    assert tr["side"] == "NO" and tr["shares"] == pytest.approx(25.0)
+    stages = [st("FP3", 0.40, 0.30), thin("after Q", 0.50, 0.50)]                    # the edge is gone: a liquid stage sells
+    upd = RB.TakerParams(**{**PT.__dict__, "mode": "update"})
+    r = RB.run_market(stages, True, upd)
+    assert len(r["trades"]) == 1 and r["yes"] > 0                                     # ... a thin one is left alone
+
+
+def test_liquid_stages_are_unchanged_by_the_setting():
+    stages = [st("pre", 0.40, 0.30), st("after Q", 0.50, 0.50)]
+    a = RB.run_market(stages, True, RB.TakerParams(**{**P.__dict__, "mode": "update"}))
+    b = RB.run_market(stages, True, RB.TakerParams(**{**PT.__dict__, "mode": "update"}))
+    assert a == b

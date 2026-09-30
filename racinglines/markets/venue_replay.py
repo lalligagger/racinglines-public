@@ -74,15 +74,44 @@ class Polymarket:
         a, b = g["ts"].searchsorted(t - timedelta(hours=24)), g["ts"].searchsorted(t, side="right")
         return float(g["usd"].iloc[a:b].sum())
 
+    tol_by_kind = {}                 # {kind: tolerance} over coherence_tol (coherence_tol_by_kind); {} = none
+    books = None                     # {token: (ts, bids, asks)} once load_books() ran (thin_edge_mult)
+
     def coherent(self, kind, t):
         """A multi-outcome group's prices at t sum to within tolerance of its target (stale books skipped);
         True for kinds that aren't groups."""
         if kind not in self.group_target:
             return True
         target = self.group_target[kind]
+        tol = self.tol_by_kind.get(kind, self.coherence_tol)
         ps = [self.price(tok, t) for tok in self.links.loc[self.links["prediction"] == kind, "token_id"]]
         ps = [p for p in ps if p is not None]
-        return bool(ps) and abs(sum(ps) - target) <= self.coherence_tol * target
+        return bool(ps) and abs(sum(ps) - target) <= tol * target
+
+    def load_books(self, conn, start, end):
+        """Recorded order-book snapshots of the links' YES tokens over [start, end] (markets record writes them;
+        none stored = no thin-market exceptions, which is the safe side)."""
+        from racinglines.markets import store as MS
+        from racinglines.markets.strategies.maker_replay import _levels
+        root = None if self.code == "polymarket" else MS.root_for(self.code)
+        a, b = pd.Timestamp(start).tz_localize("UTC"), pd.Timestamp(end).tz_localize("UTC")
+        bk = MS.read(conn, "books", tokens=self.links["token_id"].tolist(), start=a, end=b, root=root)
+        self.books = {}
+        for tok, g in bk.groupby("token_id"):
+            ts = pd.DatetimeIndex(pd.to_datetime(g["ts"], utc=True)).tz_localize(None)
+            self.books[tok] = (ts, [_levels(v) for v in g["bids"]], [_levels(v) for v in g["asks"]])
+
+    def touch_depth(self, token, t, max_age=timedelta(minutes=10)):
+        """(shares resting at the best ask, at the best bid) of the token's latest book snapshot at or before t;
+        None when there is no snapshot within max_age. Buying YES takes the ask's size, buying NO the bid's."""
+        b = (self.books or {}).get(token)
+        if b is None:
+            return None
+        ts, bids, asks = b
+        i = ts.searchsorted(pd.Timestamp(t), side="right") - 1
+        if i < 0 or pd.Timestamp(t) - ts[i] > max_age:
+            return None
+        return (float(asks[i][min(asks[i])]) if asks[i] else 0.0, float(bids[i][max(bids[i])]) if bids[i] else 0.0)
 
     def view(self, market, t, min_volume_24h):
         """(price, volume_24h, tradeable-by-the-venue): priced, strictly inside (0, 1) and liquid enough."""
