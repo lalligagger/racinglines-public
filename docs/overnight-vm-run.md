@@ -47,7 +47,7 @@ M1 to M4 give every row and every column at least one cell. After that, in order
 |---|---|---|
 | N1 | NASCAR × Polymarket | the 1d diagnostic's NASCAR Polymarket line; if it is a partial listing, no coherence check for partial groups on that exchange (a schema line), then a re-run of the replay |
 | N2 | MotoGP × Polymarket | the `replay` mode syncs MotoGP's Polymarket links when MotoGP is in `SPORTS`; then the same checks |
-| N3 | F1 × OG.com, backtested | a Mac/Copilot probe of how far back OG.com's `get-ticker-histories` goes for the F1 champion contracts. If it covers months, the championship replay (`f1 season-strategy`) needs OG.com as a venue (code PR) |
+| N3 | F1 × OG.com, backtested | a Mac/Copilot probe of how far back OG.com's `get-ticker-histories` goes for the F1 champion contracts. The replay takes OG.com as a venue now (`f1 season-strategy --venue og`, on the stored tape; it reuses the as-of season forecasts the Polymarket replay stored, and stores any that are missing); the probe says how many decisions it can trade |
 | N4 | F1 × Kalshi taker | re-pull Kalshi F1 candles with bid/ask on the Mac and fill the taker at the ask (PR #85, what's next) |
 | N5 | NASCAR × OG.com | a Cup Champion model (playoff format): the largest item, not needed for the minimum |
 

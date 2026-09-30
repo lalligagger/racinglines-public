@@ -162,9 +162,10 @@ def main(argv=None):
                    help="The championship sleeve (paper only): replay through the decision after --after-round on "
                         "--venue and store that rebalance as the demo maker's paper positions "
                         "(venue 'season:<venue>', kept out of the weekend records). Off unless given.")
-    p.add_argument("--venue", choices=("polymarket", "kalshi"), default="polymarket",
-                   help="With --paper: the exchange (Polymarket's championship markets, or Kalshi's KXF1 / "
-                        "KXF1CONSTRUCTORS champion markets)")
+    p.add_argument("--venue", choices=("polymarket", "kalshi", "og"), default="polymarket",
+                   help="The exchange: Polymarket's championship markets (the default), Kalshi's KXF1 / "
+                        "KXF1CONSTRUCTORS champion markets, or OG.com's drivers' and constructors' champion contracts "
+                        "(the replay only, not --paper). Kalshi and OG.com replay their stored tape (no fetch)")
     p.add_argument("--after-round", type=int, default=None, help="With --paper: the round just raced (default: the last)")
     p.add_argument("--user", default=None, help="With --paper: the account (default: the demo maker)")
     p = sub.add_parser("season-checkpoints")
@@ -509,11 +510,15 @@ def _run(args):
         prm = SeasonParams(min_edge=args.min_edge, stake_per_edge=args.stake_per_edge, max_stake=args.max_stake,
                            capital=args.capital)
         if args.paper:
+            if args.venue == "og":
+                sys.exit("--paper: the championship sleeve runs on polymarket or kalshi, not og")
             return _season_sleeve(args, engine, prm, SE, get_session, records)
         out = SE.run_season(engine, args.db, args.year, prm, fetch=not args.no_fetch, reforecast=args.reforecast,
-                            n_sims=args.sims, echo=lambda m: print(m, flush=True), variant=args.variant)
+                            n_sims=args.sims, echo=lambda m: print(m, flush=True), variant=args.variant,
+                            exchange=args.venue)
         r, h = out["result"], out["hold"]
-        print(f"\n=== Default season strategy, {args.year} ({out['markets']} markets) ===")
+        on = "" if args.venue == "polymarket" else f" on {args.venue}"
+        print(f"\n=== Default season strategy{on}, {args.year} ({out['markets']} markets) ===")
         for k, v in r["summary"].items():
             print(f"  {k:15s} {v:,.2f}" if isinstance(v, float) else f"  {k:15s} {v}")
         print(f"  enter pre-season & hold: {h['summary']['pnl']:+,.2f}")
@@ -530,11 +535,15 @@ def _run(args):
             eq = r["equity"].merge(h["equity"].rename(columns={"equity": "hold"}), on="t", how="left")
             with get_session(args.db) as s:
                 run_id = save_model_run(
-                    s, competition="f1_wdc", season=args.year, category="DRV", model="season_strategy", kind="season_strategy",
+                    s, competition="f1_wdc", season=args.year, category="DRV", model="season_strategy",
+                    # another venue's replay is its own kind: the pages, the matrix and the search read the latest
+                    # 'season_strategy' run as Polymarket's
+                    kind="season_strategy" if args.venue == "polymarket" else "season_venue_replay",
                     params=dict({k: (str(v) if hasattr(v, "total_seconds") else v) for k, v in prm.__dict__.items()}, year=args.year,
                                 variant=args.variant,
-                                min_volume=SE.MIN_VOLUME, slippage=SE.SLIPPAGE, default_half_spread=SE.DEFAULT_HALF_SPREAD,
-                                live_run=out["live_run"]),
+                                min_volume=SE.MIN_VOLUME_BY.get(args.venue, SE.MIN_VOLUME), slippage=SE.SLIPPAGE,
+                                default_half_spread=SE.DEFAULT_HALF_SPREAD, live_run=out["live_run"],
+                                **({} if args.venue == "polymarket" else dict(venue=args.venue))),
                     metrics=dict(summary=r["summary"], hold=h["summary"], equity=records(eq.assign(t=eq["t"].astype(str))),
                                  positions=records(r["positions"]),
                                  trades=records(r["trades"].assign(t=r["trades"]["t"].astype(str))) if len(r["trades"]) else [],

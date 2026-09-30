@@ -17,6 +17,12 @@ The championship sleeve (paper only, off by default; docs/paper-trading.md):
     racinglines f1 season-strategy --paper --venue polymarket --after-round 15
     racinglines f1 season-strategy --paper --venue kalshi --after-round 15
 
+The replay itself (no --paper) takes the same --venue, and also OG.com (`--venue og`, OG.com's 20 drivers' and
+constructors' champion contracts, exchanges/og.toml): Polymarket stays the default and its output is unchanged. OG.com
+prices are read by the replay venue's rule (markets/venue_replay.OG: every stored price, trade or book quote except an
+empty book's 0.50), cost its flat fee per contract plus slippage, and are not held to the $ volume floor (its books
+are thin and its API keeps about a month, so only the decisions from late August on can trade).
+
 replays the same strategy from pre-season through the decision after round N on one exchange
 (Polymarket's championship markets, or Kalshi's KXF1 / KXF1CONSTRUCTORS champion markets, keyed by
 ticker) and stores the state after that rebalance as the demo maker's paper positions, marked as
@@ -46,6 +52,7 @@ HISTORY_START = pd.Timestamp("2025-12-09", tz="UTC")
 SLEEVE_USER = "maker"                      # the demo maker: the account the championship sleeve belongs to
 SLEEVE_EVENT = "{year}-season"             # paper_positions.event_key of the sleeve
 KALSHI_TAKER_FEE = 0.07                    # Kalshi's taker fee rate: fee = rate x price x (1 - price) per contract
+MIN_VOLUME_BY = {"og": 0}                  # the exchanges held to another floor than MIN_VOLUME (OG.com: none, thin books)
 
 
 def sleeve_venue(exchange):
@@ -62,7 +69,8 @@ def season_links(conn, year, exchange="polymarket"):
         WHERE ml.race_id IS NULL AND ml.prediction = ANY(:k) AND coalesce(ml.volume, 0) >= :v AND ml.exchange = :x
           AND ml.competition_id = (SELECT id FROM competitions WHERE code = 'f1_wdc')
           AND extract(year FROM ml.end_date) IN (:y, :y + 1)
-        ORDER BY ml.prediction, ml.volume DESC"""), conn, params=dict(k=list(KINDS), v=MIN_VOLUME, y=year, x=exchange))
+        ORDER BY ml.prediction, ml.volume DESC"""), conn,
+        params=dict(k=list(KINDS), v=MIN_VOLUME_BY.get(exchange, MIN_VOLUME), y=year, x=exchange))
 
 
 def fetch_history(session, conn, tokens, start=HISTORY_START, end=None, echo=print):
@@ -154,15 +162,34 @@ def kalshi_costs(by, toks, asof=None):
     return out
 
 
+def og_prices(conn, toks):
+    """OG.com's prices for the tokens, as its replay venue reads them (markets/venue_replay.OG.observed: minute prices
+    other than an empty book's 0.50, every trade, each book's mid or its one quoting side), ts UTC-aware."""
+    from racinglines.markets import store as MS
+    from racinglines.markets.venue_replay import OG
+    root = MS.root_for("og")
+    px = OG.observed(*(MS.read(conn, name, tokens=toks, root=root) for name in ("prices", "trades", "books")))
+    return px.assign(ts=px["ts"].dt.tz_localize("UTC"))
+
+
+def og_costs(toks):
+    """$ per contract per trade on OG.com: its flat taker fee (exchanges/og.toml, unverified) + slippage."""
+    from racinglines.markets.venue_replay import OG
+    fee = OG.fee_per_contract()
+    return {t: fee + SLIPPAGE for t in toks}
+
+
 def build_markets(conn, links, exchange="polymarket", asof=None):
     """{token_id: SeasonMarket} from the exchange's recorded prices (the market store reads every exchange's
     tree, and token ids don't collide). Kalshi markets are grouped by ticker (their token_id; the
-    condition_id is the event) and cost the taker fee instead of a spread."""
+    condition_id is the event) and cost the taker fee instead of a spread. OG.com's prices are its replay
+    venue's (og_prices) and cost its flat fee per contract."""
     from racinglines.markets import store as MS
     toks = links["token_id"].tolist()
-    px = MS.read(conn, "prices", tokens=toks)
+    px = og_prices(conn, toks) if exchange == "og" else MS.read(conn, "prices", tokens=toks)
     by = dict(tuple(px.groupby("token_id"))) if len(px) else {}
-    costs = kalshi_costs(by, toks, asof) if exchange == "kalshi" else market_costs(conn, toks)
+    costs = kalshi_costs(by, toks, asof) if exchange == "kalshi" else og_costs(toks) if exchange == "og" \
+        else market_costs(conn, toks)
     out = {}
     for link in links.to_dict("records"):
         g = by.get(link["token_id"])
@@ -184,15 +211,20 @@ def fairs(conn, links, run_id):
 
 
 def run_season(engine, engine_url, year=2026, params=SS.SeasonParams(), fetch=True, reforecast=False, n_sims=5000,
-               echo=print, variant="baseline"):
+               echo=print, variant="baseline", exchange="polymarket"):
+    """The replay on one exchange (Polymarket, the default; Kalshi or OG.com read their stored tape: fetch is
+    Polymarket's history API, so it runs only for Polymarket)."""
     from racinglines.db.config import get_session
     from racinglines.db import reads as D
 
     from racinglines.models.position_sim import pricing as run
     with engine.connect() as c:
-        links = season_links(c, year)
-    echo(f"progress {len(links)} championship markets with >= ${MIN_VOLUME:,} traded")
-    if fetch:
+        links = season_links(c, year, exchange)
+    if exchange == "polymarket":
+        echo(f"progress {len(links)} championship markets with >= ${MIN_VOLUME:,} traded")
+    else:
+        echo(f"progress {len(links)} {exchange} championship markets with >= {MIN_VOLUME_BY.get(exchange, MIN_VOLUME):,} traded")
+    if fetch and exchange == "polymarket":
         with engine.connect() as c, get_session(engine_url) as s:
             fetch_history(s, c, links["token_id"].tolist(), echo=echo)
     echo("progress 0/1 building history")
@@ -202,7 +234,7 @@ def run_season(engine, engine_url, year=2026, params=SS.SeasonParams(), fetch=Tr
     runs = asof_forecasts(engine, engine_url, meas, hist, year, times, n_sims=n_sims, reforecast=reforecast, echo=echo,
                           variant=variant)
     with engine.connect() as c:
-        markets = build_markets(c, links)
+        markets = build_markets(c, links, exchange=exchange)
         decisions = [dict(t=t, label=label, run_id=rid, fairs=fairs(c, links, rid)) for label, t, rid in runs]
         live_run, _ = D.latest_forecast_run(c, int(links["competition_id"].iloc[0])) if len(links) else (None, None)
         live_fair = fairs(c, links, live_run) if live_run else {}
@@ -243,7 +275,7 @@ def run_season(engine, engine_url, year=2026, params=SS.SeasonParams(), fetch=Tr
         now_df = now_df.assign(a=now_df["edge"].abs()).sort_values(["kind", "a"], ascending=[False, False]).drop(columns="a")
     return dict(result=res, hold=hold, now=now_df, decisions=[dict(label=d["label"], t=d["t"], run_id=d["run_id"])
                                                                for d in decisions],
-                params=params, live_run=live_run, markets=len(markets))
+                params=params, live_run=live_run, markets=len(markets), exchange=exchange)
 
 
 # ---------------------------------------------------------------------------
