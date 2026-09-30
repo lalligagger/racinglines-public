@@ -73,7 +73,8 @@ def rank(folder, top=3, venue="kalshi"):
              "|---:|---:|---:|" + "---:|" * len(years) + "---:|"]
     for k in order:
         r = rows[k]
-        cells = [f"{r[y]['net']:+,.0f} ({r[y]['races_up']}/{r[y]['races']})" if y in r else "not run" for y in years]
+        cells = [("no races with markets" if not r[y] else f"{r[y]['net']:+,.0f} ({r[y]['races_up']}/{r[y]['races']})")
+                 if y in r else "not run" for y in years]      # {} when a season had no race with markets (MotoGP 2025)
         lines.append(f"| {k[0]:g} | ${k[1]:,.0f} | {k[2] or 'default'} | " + " | ".join(cells) + f" | {worse(r):+,.0f} |")
     (folder / ("grid.md" if venue == "kalshi" else f"grid-{venue}.md")).write_text("\n".join(lines) + "\n")
     print("\n".join(lines))

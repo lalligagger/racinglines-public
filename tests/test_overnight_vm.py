@@ -139,3 +139,13 @@ def test_progress_reads_the_replay_race_counters_from_the_log(tmp_path):
     assert P.activity(log) == " · kalshi replay race 12 of 36"
     log.write_text(log.read_text() + "Wrote data/runs/replay/x\n== 14:00:00Z nascar: replay saves\n")
     assert P.activity(log) == ""
+
+
+def test_replay_grid_rank_handles_a_season_with_no_races(tmp_path):
+    G = _mod("replay_grid")
+    for name, totals in (("2026-e0.1-v50", {"update": dict(net=12.0, races_up=2, races=3)}), ("2025-e0.1-v50", {})):
+        d = tmp_path / name / "kalshi"
+        d.mkdir(parents=True)
+        (d / "summary.json").write_text(json.dumps(dict(totals=totals)))
+    assert G.rank(tmp_path, top=1) == 0
+    assert "no races with markets" in (tmp_path / "grid.md").read_text()
