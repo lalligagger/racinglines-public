@@ -11,6 +11,9 @@ racinglines nascar <command>: NASCAR (Cup, from the free content feeds at cf.nas
     season       The Cup season forecast: the rest of the season simulated from today's points through the Chase,
                  champion / top-3 / top-10 / Chase odds per driver; --quotes puts the champion price beside every
                  exchange's champion quote on file. Read-only; off by default (RACINGLINES_NASCAR_SEASON=1).
+    season-replay  The Cup champion markets replayed through the season: an as-of season forecast after every race,
+                 the championship sleeve's strategy at each exchange's recorded prices (racinglines/pipelines/
+                 season_replay.py). Read-only; off by default (RACINGLINES_SEASON_REPLAY=1).
     (exchange data: racinglines markets sync | history | trades | record | archive --sport nascar)
 
 Nothing here runs by default. A full pull and ingest is a VM job: back up the database first
@@ -66,6 +69,7 @@ def main(argv=None):
     p.add_argument("--top", type=int, default=20, help="Rows to print.")
     from racinglines.cli import replay_cmd
     replay_cmd.add_parser(sub, "nascar")
+    replay_cmd.add_season_parser(sub, "nascar")
     replay_cmd.add_demo_parser(sub, "nascar")
     replay_cmd.add_forecast_parser(sub, "nascar")
     args = ap.parse_args(argv)
@@ -79,6 +83,8 @@ def main(argv=None):
         return replay_cmd.run_forecast(args, "nascar")
     if args.cmd == "replay":
         return replay_cmd.run(args, "nascar", _years(args.years))
+    if args.cmd == "season-replay":
+        return replay_cmd.run_season(args, "nascar")
     if args.cmd == "link":
         return _link(args)
     if args.cmd == "fetch":

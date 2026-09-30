@@ -8,6 +8,10 @@ api.motogp.pulselive.com).
     compare      Backtest the baseline and recent-form challenger, and print model-promotion buy signals.
     replay       Taker replay of Grands Prix against Kalshi's or Polymarket's recorded prices (read-only unless
                  --save; racinglines/pipelines/position_replay.py).
+    season-replay  The riders' champion markets replayed through the season (Kalshi's KXMOTOGP, Polymarket's
+                 championship winner): an as-of season forecast after every Grand Prix (models/motogp_season.py),
+                 the championship sleeve's strategy at the recorded prices. Read-only; off by default
+                 (RACINGLINES_SEASON_REPLAY=1).
     (exchange data: racinglines markets sync | history | trades | record | archive --sport motogp)
 
 Nothing here runs by default. Terms of use: sports/motogp.toml [results].terms — the owner has reviewed
@@ -81,6 +85,7 @@ def main(argv=None):
     p.add_argument("--limit", type=int, default=10, help="How many candidate settings to print.")
     from racinglines.cli import replay_cmd
     replay_cmd.add_parser(sub, "motogp")
+    replay_cmd.add_season_parser(sub, "motogp")
     replay_cmd.add_demo_parser(sub, "motogp")
     replay_cmd.add_forecast_parser(sub, "motogp")
     args = ap.parse_args(argv)
@@ -91,6 +96,8 @@ def main(argv=None):
         return replay_cmd.run_forecast(args, "motogp")
     if args.cmd == "replay":
         return replay_cmd.run(args, "motogp", _years(args.years))
+    if args.cmd == "season-replay":
+        return replay_cmd.run_season(args, "motogp")
 
     if args.cmd == "fetch":
         from racinglines.sources.motogp import fetch
