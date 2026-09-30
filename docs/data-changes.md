@@ -14,6 +14,24 @@ Before a major update, keep what it replaces: a database dump in `data/backups/d
 files in `data/archive/<sport>/` (both git-ignored; `data/raw` is the record, so it isn't edited in place
 without a copy). Not `data/archive/db/`: that folder is tracked in git (the snapshot).
 
+## 2026-09-30 · NASCAR and MotoGP Kalshi prices: dead-book 0.50 cleanup
+
+**Why.** Before PR #90, a Kalshi candle with one empty book side was stored as a 0.50 mid. The VM must never pull
+with that rule, so the NASCAR and MotoGP Kalshi prices pulled with it were removed and pulled again. A read-only check
+first showed the stage 1 replay P&L didn't depend on them (share of P&L from trades opened at 0.50: NASCAR −0.8%,
+MotoGP 0%). Backup first: `data/backups/db/racinglines-before-deadbook-cleanup-20260930T060600Z.sql.gz` (19 MB).
+
+**What ran (LOCAL, main at 430c17b).** Deleted the `market_price_history` rows for Kalshi links in `nascar_cup` and
+`motogp_wc` (27,024 rows). 9 MotoGP Kalshi price Parquet files under `data/archive/markets/kalshi/prices/` (months
+2026-03 to 2026-09, written 2026-09-30 05:40 UTC with the old rule) were moved to the Mac's Trash,
+`~/.Trash/kalshi-prices-deadbook-20260930/`. Then `nascar replay --years 2026 --events latest --venue kalshi --tape
+pull` (15,174 prices, 73 at 0.50, was 17,079 and 151) and `motogp replay --years 2026 --venue kalshi --tape pull`
+(5,082 prices, 41 at 0.50, was 9,885 and 214). The replay at a $0 floor: NASCAR 240 trades, +1,293.24 (was 220,
++1,350.49); MotoGP 93 trades, +413.62 (was 67, +508.67). Trades, links and F1 rows untouched. `data_changes` notes
+for both sports, plus the two tape-pull entries.
+
+**Undo.** Restore the backup, and move the Parquet files back from the Trash (until it's emptied).
+
 ## 2026-09-30 · NASCAR Cup live market sync
 
 **Why.** Fill the valid Cup market universe from the live exchange feeds so the app and backtests have the same market set as the identified NASCAR tape. Backup first: `data/backups/db/racinglines-before-nascar-market-sync-20260930T021142Z.sql.gz`.
