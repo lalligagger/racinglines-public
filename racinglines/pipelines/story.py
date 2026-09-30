@@ -120,7 +120,7 @@ def decisions(conn, taker=False):
 # One account's story: bankroll, track record, phases, and what drove them
 # ---------------------------------------------------------------------------
 
-def track_record(conn, uid, venue="polymarket"):
+def track_record(conn, uid, venue="polymarket", sport=None):
     """Every weekend with signals or positions: event, strategy run, trades taken (taker) / fills (maker),
     positions, paper P&L (settled, else marked to the market), backtest replay or live. venue: 'polymarket'
     (the default: the strategy's own record), 'private', 'kalshi' (the maker's replay on Kalshi's tape,
@@ -146,14 +146,22 @@ def track_record(conn, uid, venue="polymarket"):
                coalesce(s.fills, 0) AS fills, s.backfill, coalesce(p.private, false) AS private,
                coalesce(p.positions, 0) AS positions, coalesce(p.settled, true) AS settled, coalesce(p.pnl, 0) AS pnl,
                coalesce(ra.format->>'event_name', e.name, le.title) AS event_name,
+               CASE WHEN p.private THEN 'private' ELSE sp.code END AS sport,
                coalesce(e.start_date, CASE WHEN p.private THEN coalesce((le.opened_at AT TIME ZONE 'UTC')::date,
                                                                         (p.updated AT TIME ZONE 'UTC')::date) END) AS start_date
-        FROM s FULL JOIN p USING (event_key) LEFT JOIN events e ON e.source_key = event_key AND e.source = 'f1timing'
+        FROM s FULL JOIN p USING (event_key)
+        LEFT JOIN events e ON e.source_key = event_key
+        LEFT JOIN seasons se ON se.id = e.season_id
+        LEFT JOIN competitions co ON co.id = se.competition_id
+        LEFT JOIN sports sp ON sp.id = co.sport_id
         LEFT JOIN races ra ON ra.event_id = e.id
         LEFT JOIN (SELECT DISTINCT ON (event_key) event_key, title, opened_at FROM live_events
                    ORDER BY event_key, opened_at) le USING (event_key)
         WHERE (:v <> 'private' AND s.event_key IS NOT NULL) OR (:v <> 'polymarket' AND p.private) ORDER BY event_key""")
     rows = [dict(r) for r in conn.execute(q, dict(u=uid, v=venue)).mappings()]
+    if sport:
+        sport = sport.lower()
+        rows = [r for r in rows if (r.get("sport") or "").lower() == sport]
     from racinglines.pipelines.live import event_name
     for r in rows:
         r["pnl"] = float(r["pnl"] or 0.0)
@@ -243,13 +251,13 @@ def phases(record):
 SEASON_WEEKENDS = 24            # Sharpe per season, as in the params-4h report: mean / s.d. of weekend P&L x sqrt(24)
 
 
-def account(conn, uid, profile, maker, markers=True, venue="polymarket"):
+def account(conn, uid, profile, maker, markers=True, venue="polymarket", sport=None):
     """Everything the Strategy page tells about one account: KPIs (with the worst drawdown and the Sharpe
     ratio over the full history), bankroll curve (markers: dashed lines at strategy switches), phases,
     track record (with running balance), and the maker's decisions or the taker's detail. venue: as in
     track_record (the Strategy page: Polymarket only)."""
     from racinglines.web.viz import line_chart
-    record = track_record(conn, uid, venue)
+    record = track_record(conn, uid, venue, sport=sport)
     bank = (profile or {}).get("bankroll") or {}
     start = float(bank.get("start") or 0.0)
     peak = deployed(conn, uid)

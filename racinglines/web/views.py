@@ -481,7 +481,7 @@ def runs_redirect():
 
 
 @app.get("/positions", response_class=HTMLResponse, dependencies=[allow(*ANY)])
-def positions_page(request: Request, event: str = "", venue: str = "", sort: str = "", c=Depends(conn)):
+def positions_page(request: Request, event: str = "", venue: str = "", sort: str = "", sport: str = "", c=Depends(conn)):
     """Positions: the account's ledger. Every paper position its strategy took on Polymarket (open, settled
     at the race, closed before it), by market type and by weekend; with a weekend picked, the executions
     behind them (a taker's trades taken, a maker's paper fills). A taker's in-app bets, if any, below.
@@ -497,13 +497,21 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
         venue = ""
     pos = rows(data.q(c, """
         SELECT p.*, coalesce(ra.format->>'event_name', e.name) AS event_name, e.start_date,
+               coalesce(sp.code, 'private') AS sport,
                (SELECT bool_or(detail->>'backfill' = 'true') FROM strategy_signals s
                  WHERE s.user_id = p.user_id AND s.event_key = p.event_key) AS backfill,
                (SELECT count(*) FROM strategy_signals s WHERE s.user_id = p.user_id AND s.market_key = p.market_key
                   AND (s.action = 'fill' OR (s.action IN ('buy', 'sell') AND coalesce(s.detail->>'followed', 'true') = 'true'))) AS trades
-        FROM paper_positions p LEFT JOIN events e ON e.source_key = p.event_key AND e.source = 'f1timing'
+        FROM paper_positions p
+        LEFT JOIN events e ON e.source_key = p.event_key
+        LEFT JOIN seasons se ON se.id = e.season_id
+        LEFT JOIN competitions co ON co.id = se.competition_id
+        LEFT JOIN sports sp ON sp.id = co.sport_id
         LEFT JOIN races ra ON ra.event_id = e.id WHERE p.user_id = :u AND (p.venue NOT LIKE 'kalshi%' OR :k)
         ORDER BY p.event_key DESC, p.kind, p.subject""", u=user["id"], k=V.KALSHI_VENUE))
+    if sport:
+        sport = sport.lower()
+        pos = [p for p in pos if (p.get("sport") or "").lower() == sport]
     pos = [p for p in pos if p["trades"] or p["venue"] == "private"]      # markets the account actually traded
     basic = R.is_basic(user)                        # basic: never which strategy made a pick (roles.basic_*)
     if basic:
@@ -557,7 +565,7 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     def link(**kw):
         """This page's URL with the current filters, some replaced (None or "" drops one)."""
         from urllib.parse import urlencode
-        q = {k: v for k, v in {**dict(venue=venue, event=event, sort=sort), **kw}.items() if v}
+        q = {k: v for k, v in {**dict(venue=venue, event=event, sort=sort, sport=sport), **kw}.items() if v}
         return "/positions" + ("?" + urlencode(q) if q else "")
     open_ = [p for p in pos if p["state"] == "open"]
     done = [p for p in pos if p["state"] != "open"]
@@ -591,7 +599,7 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     from racinglines.web.app import polymarket_calls
     # the two venues are never plotted together: the Polymarket history (the strategy's record) and the
     # private book's P&L through its day(s), from the live snapshots; the page switches between them
-    acct = story.account(c, user["id"], profile, maker, markers=False) if profile else None
+    acct = story.account(c, user["id"], profile, maker, markers=False, sport=sport or None) if profile else None
     if acct and basic:
         acct = _basic_acct(acct)
     book = None
@@ -609,12 +617,15 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
             plot = "kalshi"
     coming = polymarket_calls(c, profile, n_races=2) if profile else None
     kcoming = polymarket_calls(c, profile, n_races=2, exchange="kalshi") if profile and V.KALSHI_VENUE else None
+    sport_options = sorted({p["sport"] for p in pos if p.get("sport")})
     return render(request, "positions.html", profile=R.basic_view_profile(profile) if basic else profile, maker=maker,
                   paper=paper, shown=shown,
                   weekends=weekends, event=event, by_kind=sorted(by_kind.values(), key=lambda k: -k["n"]),
                   trades=trades, my_bets=rows(my_bets), summary=summary, acct=acct, coming=coming,
-                  venues={v["venue"]: v for v in venues.values()}, venue=venue, sort=sort, link=link, book=book, plot=plot, vtotal=sum(v["pnl"] for v in venues.values()),
-                  open_pos=open_, cur=next((w for w in weekends if w["event_key"] == event), None),
+                  venues={v["venue"]: v for v in venues.values()}, venue=venue, sort=sort, sport=sport,
+                  sport_options=sport_options, sport_names=V.SPORT_NAME, link=link, book=book, plot=plot,
+                  vtotal=sum(v["pnl"] for v in venues.values()), open_pos=open_,
+                  cur=next((w for w in weekends if w["event_key"] == event), None),
                   kalshi=V.KALSHI_VENUE, kacct=kacct, kcoming=kcoming)
 
 
@@ -623,7 +634,7 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
 # ---------------------------------------------------------------------------
 
 @app.get("/strategy", response_class=HTMLResponse, dependencies=[allow(*ANY)])
-def signals_page(request: Request, user: str = "", event: str = "", venue: str = "", c=Depends(conn)):
+def signals_page(request: Request, user: str = "", event: str = "", venue: str = "", sport: str = "", c=Depends(conn)):
     """The account's track record (every weekend: profile, trades, paper P&L), then one weekend's signals by
     stage and its paper positions (default: the latest). Takers see what to do and how hot it is (the
     modelled EV, graded), never our fair value or edge. Backfilled weekends are backtest replays and are
@@ -645,7 +656,8 @@ def signals_page(request: Request, user: str = "", event: str = "", venue: str =
     is_maker = bool(profile and not profile.get("strategy", "update").startswith(("update", "hold", "last", "early")))
     # venue=kalshi (with RACINGLINES_KALSHI_VENUE=1): the maker's same profiles replayed on Kalshi's tape
     venue = "kalshi" if venue == "kalshi" and V.KALSHI_VENUE and is_maker else ""
-    acct = story.account(c, uid, profile, is_maker, venue=venue or "polymarket", **({"markers": False} if basic else {}))
+    acct = story.account(c, uid, profile, is_maker, venue=venue or "polymarket", sport=sport or None,
+                        **({"markers": False} if basic else {}))
     if basic:
         acct = _basic_acct(acct)
     record, seasons, total = acct["record"], acct["seasons"], acct["kpis"]["total"]
@@ -688,11 +700,13 @@ def signals_page(request: Request, user: str = "", event: str = "", venue: str =
     users = c.execute(T("""SELECT username FROM users WHERE prefs ? 'strategy_profile' ORDER BY id""")).scalars().all() \
         if me["role"] == "admin" else []
     maker = False if basic else bool(cur and not cur["strategy"].startswith(("update", "hold", "last", "early"))) if cur else is_maker
+    sport_options = sorted({r.get("sport") for r in record if r.get("sport")})
     return render(request, "strategy.html", viewer=viewer, profile=R.basic_view_profile(profile) if basic else profile,
                   show_fair=show_fair, stages=stages,
                   positions=positions, cur=cur, event_key=ev, users=users, maker=maker, record=record,
                   seasons=seasons, total=total, acct=acct, is_maker=is_maker, heat_label=HEAT_LABEL,
-                  venue=venue, kalshi=V.KALSHI_VENUE and is_maker)
+                  venue=venue, sport=sport, sport_options=sport_options, sport_names=V.SPORT_NAME,
+                  kalshi=V.KALSHI_VENUE and is_maker)
 
 
 # ---------------------------------------------------------------------------
