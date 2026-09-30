@@ -125,7 +125,7 @@ def board(conn, maker_id):
             targets = data.run_race_targets(conn, run["id"])
             targets = targets[targets["race_id"].notna() & ~targets["target"].astype(str).str.startswith("backtest:")]
             upcoming = [dict(_card(conn, int(r), maker_id), new=fresh.count(int(r))) for r in targets["race_id"].head(3)]
-            later = [dict(title=f"{t['venue']} GP" if code == "f1_wdc" else t["venue"], event_id=t["event_id"],
+            later = [dict(title=f"{t['venue']} GP" if code == "f1_wdc" else (t["event_name"] or t["venue"]), event_id=t["event_id"],
                           race_id=int(t["race_id"]), date=t["start_date"], new=fresh.count(int(t["race_id"]))) for t in targets.iloc[3:].to_dict("records")]
             s_info, s_pricing, s_df = season_matrix(conn, code, maker_id)
             from racinglines.web.views import latest_season_strategy

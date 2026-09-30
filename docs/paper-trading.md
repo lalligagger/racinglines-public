@@ -398,6 +398,12 @@ It uses `--book best`, the best-effort book (owner, 2026-09-30: paper P&L for as
 the setting with its best total over the seasons it traded, the kinds with a positive total; if none is positive, every
 kind at the one setting with the best total, win or lose, so the sport still has a record and a loss shows as a loss.
 It is at least as in-sample as the strict rule (`--book kinds`) and is labelled the same way.
+`vm.sh demo` also stores the same demo on Polymarket's NASCAR and MotoGP tape (`--venue polymarket --grid-venue
+kalshi`: there is no Polymarket grid, so Kalshi's selection is traded at Polymarket's prices and fees), and `vm.sh demo
+extra` runs only that step and the forecasts. First run on the VM (2026-09-30, Kalshi, backup
+`racinglines-before-demo-setup-20260930T213425Z.sql.gz`): NASCAR maker 2025 8 races −$278.31, 2026 32 races +$6,525.45;
+taker 2025 −$357.23, 2026 +$2,657.23 (the Basic demo follows about a third of the signals); MotoGP 2026 11 races, maker
++$31.25, taker +$7.70.
 
 **Demo sessions are disposable:** every sign-in starts from the account's saved baseline, and anything
 that would change data is refused. See [Web app](webapp.md#accounts-demo-users-vs-polymarkets-takers).

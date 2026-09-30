@@ -153,6 +153,9 @@ def add_demo_parser(sub, sport):
     p.add_argument("--reset", action="store_true", help="Delete this sport's demo rows on --venue for --users first "
                                                        "(alone: delete only).")
     p.add_argument("--backup", default=None, help="The database dump taken for this step (under 24 hours old).")
+    p.add_argument("--grid-venue", default=None, choices=["kalshi", "polymarket"],
+                   help="Pick the settings from this venue's grid runs (default: --venue). Polymarket has no grid: "
+                        "--venue polymarket --grid-venue kalshi trades Polymarket's tape with Kalshi's selection.")
     return p
 
 
@@ -162,7 +165,7 @@ def run_demo(args, sport):
     from racinglines.pipelines import sport_paper as SP
 
     if args.pick:
-        print(SP.selection_md(sport, SP.pick(args.pick, args.venue)))
+        print(SP.selection_md(sport, SP.pick(args.pick, getattr(args, "grid_venue", None) or args.venue)))
         return 0
     if not SP.enabled():
         sys.exit(f"{SP.SWITCH} is off: set {SP.SWITCH}=1 to write (and show) the demo paper portfolio")
@@ -182,7 +185,7 @@ def run_demo(args, sport):
         print(f"Deleted {n} signals and {m} positions ({sport}, {args.venue}, {', '.join(users)})")
         if not args.grid:
             return 0
-    sel = SP.pick(args.grid, args.venue)
+    sel = SP.pick(args.grid, getattr(args, "grid_venue", None) or args.venue)
     md = SP.selection_md(sport, sel)
     print(md)
     settings = SP.settings_for(sel, args.book)
@@ -205,4 +208,46 @@ def run_demo(args, sport):
                                    settings={f"{e:g}/{v:g}": k for (e, v), k in settings.items()}, backup=backup))
         s.commit()
     print(f"Undo: racinglines {sport} demo-history --reset --venue {args.venue} --users {','.join(users)} --backup FILE")
+    return 0
+
+
+# --- forecast: the sport's next races, priced by its model (pipelines/sport_forecast.py) ---------------------------
+
+def add_forecast_parser(sub, sport):
+    p = sub.add_parser("forecast", help=f"Price the next {sport} races with the sport's model (read-only unless --save).")
+    p.add_argument("--races", type=int, default=3, help="How many scheduled races (default 3).")
+    p.add_argument("--save", action="store_true", help="Store the forecast as a model run (needs --backup).")
+    p.add_argument("--backup", default=None, help="With --save: the database dump taken for this step (under 24 hours old).")
+    p.add_argument("--undo", type=int, default=None, help="Delete a forecast run this command stored (its run id).")
+    return p
+
+
+def run_forecast(args, sport):
+    from racinglines.db import changes
+    from racinglines.db.config import get_engine, get_session
+    from racinglines.pipelines import sport_forecast as SF
+    if args.undo:
+        with get_session(args.db) as s:
+            n = SF.undo(s, args.undo)
+            if n:
+                changes.record(s, "forecast-undo", f"{sport} forecast run {args.undo} deleted", sport=sport,
+                               detail=dict(run=args.undo))
+            s.commit()
+        print(f"Deleted {n} run(s)")
+        return 0 if n else 1
+    if args.save:
+        _backup_ok(args, sport, "forecast --save writes model_runs and race_predictions")
+    engine = get_engine(args.db)
+    fc = SF.forecast(engine, sport, n=args.races)
+    with engine.connect() as c:
+        print(SF.table(c, fc))
+    if not args.save or not fc["races"]:
+        return 0
+    rid = SF.save(engine.url.render_as_string(hide_password=False), fc)
+    with get_session(args.db) as s:
+        changes.record(s, "forecast", f"{sport} forecast run {rid}: {len(fc['races'])} races, field from "
+                       f"{fc['field_from']}; backup {Path(args.backup).name}", sport=sport,
+                       detail=dict(run=rid, races=[x['race'].event_key for x in fc['races']], backup=Path(args.backup).name))
+        s.commit()
+    print(f"Stored forecast run {rid}. Undo: racinglines {sport} forecast --undo {rid}")
     return 0

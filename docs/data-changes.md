@@ -14,6 +14,16 @@ Before a major update, keep what it replaces: a database dump in `data/backups/d
 files in `data/archive/<sport>/` (both git-ignored; `data/raw` is the record, so it isn't edited in place
 without a copy). Not `data/archive/db/`: that folder is tracked in git (the snapshot).
 
+## 2026-09-30 · NASCAR and MotoGP demo paper portfolio on the VM (rl-demo)
+
+**Why.** The owner wanted a paper P&L history for the demo accounts beyond F1. **What changed.** `vm.sh demo` ran
+`scripts/vm/demo_setup.sh` (unit `rl-demo`, best-effort book): each sport's selection from the overnight Kalshi
+settings grid stored as both demo accounts' backfilled Kalshi paper positions (in-sample, never buy-all). NASCAR maker
+2025 8 races -$278.31, 2026 32 races +$6,525.45; NASCAR taker 2025 -$357.23, 2026 +$2,657.23; MotoGP 2026 11 races
+maker +$31.25, taker +$7.70. The `data_changes` rows name the backup:
+`data/backups/db/racinglines-before-demo-setup-20260930T213425Z.sql.gz`.
+**Undo.** `racinglines <sport> demo-history --reset --users maker,taker --backup FILE`, or restore the backup.
+
 ## 2026-09-30 · Reattached the maker's Kalshi profile on the VM
 
 **Why.** The maker account had lost `users.prefs["strategy_profile_kalshi"]` even though the Kalshi replay rows

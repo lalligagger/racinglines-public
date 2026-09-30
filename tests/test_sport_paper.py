@@ -253,3 +253,47 @@ def _status_and_pro(monkeypatch, s, uid, race):
         s.execute(text("UPDATE users SET role = 'taker' WHERE id = :u"), dict(u=uid))
         s.commit()
         config.get_engine.cache_clear()
+
+
+def test_a_nascar_forecast_prices_the_next_races_and_the_board_shows_it(world, test_engine, monkeypatch):
+    """`nascar forecast --save`: the model on the stored results, for the next scheduled races (field: the latest
+    race's entrants), stored as a forecast run the board and the race pages read; --undo removes it."""
+    from fastapi.testclient import TestClient
+
+    from conftest import TEST_DB
+    from racinglines.db import config
+    from racinglines.pipelines import sport_forecast as SF
+    from racinglines.web import sport_status as SS
+    from racinglines.web import users as U
+    from racinglines.web.app import app
+    from test_nascar import TODAY
+    with world() as s:
+        fc = SF.forecast(test_engine, "nascar", n=2, today=TODAY)
+        assert len(fc["races"]) == 2 and fc["field"] and fc["field_from"]
+        sims = fc["races"][0]["sims"]
+        assert abs(sum(SF.P.fair(sims, "race_win", a) for a in sims.entrants) - 1) < 1e-6
+        with test_engine.connect() as c:
+            assert "win" in SF.table(c, fc)
+        rid = SF.save(TEST_DB, fc)
+        try:
+            n = s.execute(text("SELECT count(DISTINCT race_id), count(*) FROM race_predictions WHERE model_run_id = :m"),
+                          dict(m=rid)).one()
+            assert n[0] == 2 and n[1] == 2 * len(fc["field"])
+            s.execute(text("DELETE FROM users WHERE username = 'fctest'"))
+            s.execute(text("INSERT INTO users (username, password_hash, role) VALUES ('fctest', :h, 'pro')"),
+                      dict(h=U.hash_password("pw")))
+            s.commit()
+            monkeypatch.setenv("DATABASE_URL", TEST_DB)
+            monkeypatch.setenv(SS.SWITCH, "1")
+            config.get_engine.cache_clear()
+            cl = TestClient(app)
+            cl.post("/login", data=dict(username="fctest", password="pw"))
+            page = cl.get("/markets")
+            assert page.status_code == 200 and f"live prices from run <a href=\"/lab/runs/{rid}\">#{rid}</a>" in page.text
+            race = fc["races"][0]["race"]
+            assert cl.get(f"/races/{int(race.race_id)}").status_code == 200
+        finally:
+            assert SF.undo(s, rid) == 1
+            s.execute(text("DELETE FROM users WHERE username = 'fctest'"))
+            s.commit()
+            config.get_engine.cache_clear()

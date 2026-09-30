@@ -6,7 +6,8 @@
 #   bash scripts/deploy/vm.sh start [web]       # enable and start web, recorder, signals (web: the web app only)
 #   bash scripts/deploy/vm.sh deploy [ref]      # checkout (default main), install, migrate, restart, smoke check
 #   bash scripts/deploy/vm.sh public on|off     # testing before handover: the web app on http://<VM IP>:8000
-#   bash scripts/deploy/vm.sh demo [status]     # the multi-sport demo: switches on, NASCAR/MotoGP paper rows (backup first)
+#   bash scripts/deploy/vm.sh demo [status|extra] # the multi-sport demo: switches on, NASCAR/MotoGP paper rows and
+#                                               # forecasts (backup first); extra: only the Polymarket rows and forecasts
 #   bash scripts/deploy/vm.sh status | logs [unit] | ssh
 #
 # deploy never refuses for a live event: it pauses the VM's timers (live-event steps, signals), waits for a step in
@@ -125,14 +126,15 @@ case "${1:-}" in
     # Strategy) in /etc/racinglines.env, the web app restarted, then scripts/vm/demo_setup.sh as the transient unit
     # rl-demo (backup first, then both sports' demo-history for maker and taker). `demo status`: the unit and its log.
     if [ "${2:-}" = status ]; then
-      remote "systemctl --no-pager status rl-demo 2>/dev/null | grep -E 'Active' || echo 'rl-demo: not running'; cd $APP; ls -1t data/runs/logs/demo-setup.done data/runs/logs/demo-setup.failed 2>/dev/null; f=\$(ls -1t data/runs/logs/demo-setup-*.log 2>/dev/null | head -1); [ -n \"\$f\" ] && grep -E '^(backup|==|SKIP|DEMO-SETUP|nascar|motogp|maker|taker)' \"\$f\" | grep -vE '^(maker|taker) (nascar|motogp) ' | tail -n 20; true"
+      remote "systemctl --no-pager status rl-demo 2>/dev/null | grep -E 'Active' || echo 'rl-demo: not running'; cd $APP; ls -1t data/runs/logs/demo-setup.done data/runs/logs/demo-setup.failed 2>/dev/null; f=\$(ls -1t data/runs/logs/demo-setup-*.log 2>/dev/null | head -1); [ -n \"\$f\" ] && grep -E '^(backup|==|SKIP|DEMO-SETUP|nascar|motogp|maker|taker|Stored|Deleted|FAIL)' \"\$f\" | grep -vE '^(maker|taker) (nascar|motogp) ' | tail -n 20; true"
       exit 0
     fi
     remote "systemctl is-active --quiet rl-demo" && { echo "rl-demo is already running: bash scripts/deploy/vm.sh demo status"; exit 1; }
     log "switches on: RACINGLINES_SPORT_STATUS=1 RACINGLINES_SPORT_PAPER=1, web app restarted"
     remote "sudo sed -i -E '/^RACINGLINES_SPORT_(STATUS|PAPER)=/d' /etc/racinglines.env && printf 'RACINGLINES_SPORT_STATUS=1\nRACINGLINES_SPORT_PAPER=1\n' | sudo tee -a /etc/racinglines.env >/dev/null && sudo systemctl try-restart racinglines-web"
     log "starting rl-demo (backup, then NASCAR and MotoGP demo-history for maker and taker)"
-    remote "sudo systemctl reset-failed rl-demo 2>/dev/null; sudo systemd-run --unit=rl-demo --uid=racinglines --setenv=RACINGLINES_SPORT_PAPER=1 $APP/scripts/vm/demo_setup.sh"
+    steps="kalshi polymarket forecast"; [ "${2:-}" = extra ] && steps="polymarket forecast"
+    remote "sudo systemctl reset-failed rl-demo 2>/dev/null; sudo systemd-run --unit=rl-demo --uid=racinglines --setenv=RACINGLINES_SPORT_PAPER=1 '--setenv=STEPS=$steps' $APP/scripts/vm/demo_setup.sh"
     log "started: Markets shows every sport now; the NASCAR and MotoGP paper rows fill in as rl-demo runs. Check: bash scripts/deploy/vm.sh demo status"
     ;;
   status)
