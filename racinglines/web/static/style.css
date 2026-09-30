@@ -162,8 +162,8 @@ th a { color: inherit; }
 .chip.status-completed { color: var(--muted); } .chip.status-in_progress { color: var(--warn); border-color: var(--warn); }
 .role { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 2px 6px; border-radius: 4px; }
 .role-admin { background: var(--bad-soft); color: var(--bad); }
-.role-maker { background: var(--accent-soft); color: var(--accent); }
-.role-taker { background: var(--good-soft); color: var(--good); }
+.role-pro, .role-maker { background: var(--accent-soft); color: var(--accent); }
+.role-basic, .role-taker { background: var(--good-soft); color: var(--good); }
 .heat { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 4px; white-space: nowrap; }
 .heat.h1 { background: var(--warn-soft); color: var(--warn); }
 .heat.h2 { background: var(--bad-soft); color: var(--bad); }

@@ -66,7 +66,7 @@ def client(monkeypatch):
     from racinglines.web import app as A
 
     def as_maker(request: Request):
-        request.state.user = dict(id=1, username="tester", role="maker", sid=None)      # not a demo user: no view log
+        request.state.user = dict(id=1, username="tester", role="maker", sid=None)      # not a demo user: no view log; "maker" is the old spelling of pro (roles.py)
         return request.state.user
     monkeypatch.setitem(A.app.dependency_overrides, A.authenticate, as_maker)
     monkeypatch.setitem(A.app.dependency_overrides, A.conn, lambda: None)                 # no database

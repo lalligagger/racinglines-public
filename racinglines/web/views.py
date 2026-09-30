@@ -21,7 +21,8 @@ from racinglines.web import diag
 from racinglines.markets import private_book as house
 from racinglines.web import jobs
 from racinglines.markets import venues as V
-from racinglines.web.app import ANY, allow, app, audit, check_csrf, conn, data, render, rows
+from racinglines.web import roles as R
+from racinglines.web.app import ANY, PRO, allow, app, audit, check_csrf, conn, data, render, rows
 from racinglines.web.viz import price_chart
 
 KIND_ORDER = ["race_win", "race_podium", "race_top10", "race_make_final", "race_h2h", "race_constructor_top",
@@ -49,7 +50,7 @@ def board_page(request: Request, msg: str = "", c=Depends(conn)):
     section with its own exchange breakdown, and a calendar of every event across every sport, filterable by
     sport and exchange. Takers: every open Polymarket market with their strategy's calls (app.bet_markets)."""
     user = request.state.user
-    if user["role"] == "taker":
+    if R.is_basic(user):
         from racinglines.web.app import bet_markets
         return bet_markets(request, msg=msg, c=c)
     from racinglines.markets import disagree as D
@@ -96,7 +97,7 @@ def _race_chart(c, info, pricing, df, exchange="polymarket"):
 @app.get("/races/{race_id}", response_class=HTMLResponse)
 def race_page(request: Request, race_id: int, msg: str = "", c=Depends(conn)):
     user = request.state.user
-    if user["role"] == "taker":
+    if R.is_basic(user):
         return RedirectResponse(f"/markets?race_id={race_id}", status_code=303)
     info, pricing, df = V.event_matrix(c, race_id, _maker(user))
     if info is None:
@@ -128,7 +129,7 @@ def race_page(request: Request, race_id: int, msg: str = "", c=Depends(conn)):
                   quote_kinds=list(V.STANDARD_KINDS.get(info["competition"], ("race_win", "race_podium"))))
 
 
-@app.get("/seasons/{code}", response_class=HTMLResponse, dependencies=[allow("admin", "maker")])
+@app.get("/seasons/{code}", response_class=HTMLResponse, dependencies=[allow(*PRO)])
 def season_page(request: Request, code: str, c=Depends(conn)):
     info, pricing, df = V.season_matrix(c, code, _maker(request.state.user))
     if info is None:
@@ -148,8 +149,8 @@ def season_page(request: Request, code: str, c=Depends(conn)):
 # ---------------------------------------------------------------------------
 
 @app.get("/book", response_class=HTMLResponse)
-def book_page(request: Request, maker: str = "", c=Depends(conn), user=allow("admin", "maker")):
-    maker_id = user["id"] if user["role"] == "maker" else house.ALL
+def book_page(request: Request, maker: str = "", c=Depends(conn), user=allow(*PRO)):
+    maker_id = user["id"] if user["role"] == "pro" else house.ALL
     if user["role"] == "admin" and maker:
         mk = data.q(c, "SELECT id FROM users WHERE username = :u", u=maker)
         maker_id = int(mk["id"].iloc[0]) if len(mk) else -1
@@ -179,7 +180,7 @@ def book_page(request: Request, maker: str = "", c=Depends(conn), user=allow("ad
                ev=float(bk.loc[bk["status"] == "open", "ev"].sum()) if len(bk) else 0.0,
                worst=float(bk.loc[bk["status"] == "open", "worst"].sum()) if len(bk) else 0.0,
                settled=float(bk["settled_pnl"].dropna().sum()) if len(bk) else 0.0)
-    makers = rows(data.q(c, "SELECT username FROM users WHERE role IN ('maker', 'admin') ORDER BY username"))
+    makers = rows(data.q(c, "SELECT username FROM users WHERE role IN ('pro', 'maker', 'admin') ORDER BY username"))
     orders = data.q(c, "SELECT status, count(*) AS n FROM orders GROUP BY status")
     return render(request, "book.html", kalshi=V.KALSHI_VENUE, groups=groups, tot=tot, makers=makers, maker=maker,
                   orders=dict(zip(orders["status"], orders["n"])) if len(orders) else {})
@@ -304,7 +305,7 @@ def _edge_ctx(c, user):
 
 @app.get("/lab", response_class=HTMLResponse)
 def lab_page(request: Request, job: str = "", event: str = "", variant: str = "", candidate: int = 0, cfg: str = "",
-             msg: str = "", user=allow("admin", "maker"), c=Depends(conn)):
+             msg: str = "", user=allow(*PRO), c=Depends(conn)):
     """The Edge Finder leads (saved runs only, nothing is simulated on a visit); the other sections
     load on demand (/lab/section/{key}). Edge Finder combos and job knobs come from the user's prefs
     (database); which sections are open is a browser view setting."""
@@ -319,7 +320,7 @@ def lab_page(request: Request, job: str = "", event: str = "", variant: str = ""
 
 @app.get("/lab/section/{key}", response_class=HTMLResponse)
 def lab_section(request: Request, key: str, job: str = "", event: str = "", variant: str = "", scope: str = "",
-                candidate: int = 0, cfg: str = "", user=allow("admin", "maker"), c=Depends(conn)):
+                candidate: int = 0, cfg: str = "", user=allow(*PRO), c=Depends(conn)):
     from racinglines.web import edge
     from racinglines.web import prefs as P
     if key not in dict(LAB_SECTIONS):
@@ -373,7 +374,7 @@ def lab_section(request: Request, key: str, job: str = "", event: str = "", vari
 
 
 @app.post("/lab/edge", response_class=HTMLResponse, dependencies=[Depends(check_csrf)])
-async def lab_edge(request: Request, user=allow("admin", "maker"), c=Depends(conn)):
+async def lab_edge(request: Request, user=allow(*PRO), c=Depends(conn)):
     """Edit the user's Edge Finder combos; returns the refreshed Edge Finder."""
     from racinglines.web import edge
     form = await request.form()
@@ -394,7 +395,7 @@ async def lab_edge(request: Request, user=allow("admin", "maker"), c=Depends(con
 
 
 @app.post("/lab/candidate", response_class=HTMLResponse, dependencies=[Depends(check_csrf)])
-async def lab_candidate(request: Request, user=allow("admin", "maker"), c=Depends(conn)):
+async def lab_candidate(request: Request, user=allow(*PRO), c=Depends(conn)):
     """Star a shown combo as a Lab candidate (action=add: variant=<config ref>, strategy, name, why), or
     delete one (action=delete, id). Returns the refreshed Edge Finder."""
     from sqlalchemy import text
@@ -432,7 +433,7 @@ def _remember_knobs(user, code, params):
 
 
 @app.post("/lab/run", dependencies=[Depends(check_csrf)])
-async def lab_run(request: Request, user=allow("admin", "maker")):
+async def lab_run(request: Request, user=allow(*PRO)):
     form = await request.form()
     jt = jobs.CATALOG.get(form.get("job"))
     if jt is None:
@@ -448,7 +449,7 @@ async def lab_run(request: Request, user=allow("admin", "maker")):
 
 
 @app.post("/lab/promote/{run_id}", dependencies=[Depends(check_csrf)])
-def lab_promote(request: Request, run_id: int, user=allow("admin", "maker")):
+def lab_promote(request: Request, run_id: int, user=allow(*PRO)):
     try:
         with get_session() as s:
             jobs.promote(s, run_id)
@@ -458,12 +459,12 @@ def lab_promote(request: Request, run_id: int, user=allow("admin", "maker")):
     return RedirectResponse(f"/lab?msg=Run {run_id} is now the live forecast#scenarios", status_code=303)
 
 
-@app.get("/lab/diagnostics", dependencies=[allow("admin", "maker")])
+@app.get("/lab/diagnostics", dependencies=[allow(*PRO)])
 def diag_redirect():
     return RedirectResponse("/lab#diagnostics", status_code=303)
 
 
-@app.get("/lab/runs", dependencies=[allow("admin", "maker")])
+@app.get("/lab/runs", dependencies=[allow(*PRO)])
 def runs_redirect():
     return RedirectResponse("/lab", status_code=303)
 
@@ -567,7 +568,7 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
         tv = lambda t: (t["detail"] or {}).get("venue") or "polymarket"  # noqa: E731
         trades = [t for t in trades if (V.KALSHI_VENUE or not tv(t).startswith("kalshi"))
                   and (not V.KALSHI_VENUE or not venue or tv(t) == venue or venue == "private")]
-    my_bets = house.taker_bets(c, user["id"]) if user["role"] == "taker" else pd.DataFrame()
+    my_bets = house.taker_bets(c, user["id"]) if R.is_basic(user) else pd.DataFrame()
     summary = dict(bets=len(my_bets), staked=float(my_bets["stake"].sum()), open=int((my_bets["status"] == "open").sum()),
                    pnl=float(my_bets["pnl"].sum())) if len(my_bets) else None
     from racinglines.pipelines import story
@@ -619,7 +620,7 @@ def signals_page(request: Request, user: str = "", event: str = "", venue: str =
         uid = c.execute(T("SELECT id FROM users WHERE username = :u"), dict(u=user)).scalar() or uid
     viewer = c.execute(T("SELECT id, username, role FROM users WHERE id = :u"), dict(u=uid)).mappings().first()
     profile = PF.of_user(c, uid)
-    show_fair = me["role"] != "taker"
+    show_fair = not R.is_basic(me)
     from racinglines.pipelines import story
     is_maker = bool(profile and not profile.get("strategy", "update").startswith(("update", "hold", "last", "early")))
     # venue=kalshi (with RACINGLINES_KALSHI_VENUE=1): the maker's same profiles replayed on Kalshi's tape
@@ -681,7 +682,7 @@ def live_page(request: Request, partial: int = 0, t: str = "", event: str = ""):
     every market's quotes. Makers also see the model and the book; takers see their picks' P&L. Once the
     event is over it is a replay: the page as it was at any saved snapshot (t, e.g. 20260927T223221; default
     the end), stepped or played through on a timeline."""
-    ctx = live_context(event, t, request.state.user["role"] != "taker", partial)
+    ctx = live_context(event, t, not R.is_basic(request.state.user), partial)
     return render(request, "live_partial.html" if partial else "live.html", **ctx)
 
 

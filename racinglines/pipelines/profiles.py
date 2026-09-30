@@ -147,7 +147,8 @@ def assigned(conn, venue="polymarket"):
     key = pref(venue)
     rows = conn.execute(text(f"""SELECT id, username, role, prefs->'{key}' FROM users
                                 WHERE active AND prefs ? '{key}' ORDER BY id""")).all()
-    return [(i, u, r, p) for i, u, r, p in rows]
+    from racinglines.web.roles import canonical
+    return [(i, u, canonical(r), p) for i, u, r, p in rows]
 
 
 def assign_demo(conn, venue="polymarket"):

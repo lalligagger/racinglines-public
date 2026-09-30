@@ -213,7 +213,7 @@ def test_tokens_are_per_account_and_only_for_allowed_real_accounts(test_engine):
     from racinglines.db.config import get_session
     from sqlalchemy.orm import sessionmaker
     with sessionmaker(test_engine)() as s:
-        for name, role, active in (("t_admin", "admin", True), ("t_maker", "maker", True), ("t_gone", "admin", False)):
+        for name, role, active in (("t_admin", "admin", True), ("t_maker", "pro", True), ("t_gone", "admin", False)):
             if not s.execute(text("SELECT 1 FROM users WHERE username = :u"), dict(u=name)).first():
                 U.create_user(s, name, "pw", role)
         s.execute(text("UPDATE users SET active = false WHERE username = 't_gone'"))
@@ -228,7 +228,7 @@ def test_tokens_are_per_account_and_only_for_allowed_real_accounts(test_engine):
     tok2 = auth.new_token(test_engine, "t_admin")                                     # re-issue voids the old one
     assert auth.lookup(test_engine, tok) is None and auth.lookup(test_engine, tok2)["username"] == "t_admin"
     with pytest.raises(ValueError, match="role"):
-        auth.new_token(test_engine, "t_maker")                                        # RACINGLINES_MCP_ROLES=admin
+        auth.new_token(test_engine, "t_maker")                                        # RACINGLINES_MCP_ROLES=admin (pro is not)
     with pytest.raises(ValueError, match="inactive"):
         auth.new_token(test_engine, "t_gone")
     with pytest.raises(ValueError, match="no account"):

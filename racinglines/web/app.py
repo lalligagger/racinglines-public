@@ -1,9 +1,9 @@
 """
 racinglines web app (FastAPI, server-rendered).
 
-Three roles (see users.py): admin, maker, taker. Every route needs a signed-in
-user (session cookie from /login, or HTTP Basic) and declares which roles may
-use it; every form POST carries a CSRF token; every meaningful action is
+Three roles (see roles.py): admin, pro, basic (`maker` / `taker` rows read as pro / basic). Every route needs
+a signed-in user (session cookie from /login, or HTTP Basic) and declares which roles may use it (allow(*PRO)
+for the maker tools and the Lab); every form POST carries a CSRF token; every meaningful action is
 written to activity_log. Run with `racinglines web`.
 """
 
@@ -43,6 +43,7 @@ HERE = Path(__file__).resolve().parent
 from contextlib import asynccontextmanager  # noqa: E402
 
 from racinglines.web import users as U  # noqa: E402
+from racinglines.web import roles as R  # noqa: E402
 
 _SECRET = os.environ.get("APP_SECRET") or secrets.token_hex(32)
 CSRF_TOKEN = hmac.new(_SECRET.encode(), b"csrf", hashlib.sha256).hexdigest()
@@ -101,7 +102,7 @@ def _session_user_id(cookie):
 
 
 def _user_dict(u):
-    return dict(id=u.id, username=u.username, role=u.role, display_name=u.display_name or u.username)
+    return dict(id=u.id, username=u.username, role=R.canonical(u.role), display_name=u.display_name or u.username)
 
 
 def authenticate(request: Request, creds: HTTPBasicCredentials | None = Depends(security)):
@@ -138,13 +139,13 @@ def allow(*roles):
     """Route dependency: only these roles may use the route. Returns the user dict."""
     def dep(request: Request):
         u = getattr(request.state, "user", None)
-        if not u or u["role"] not in roles:
+        if not u or R.canonical(u["role"]) not in roles:
             raise HTTPException(status.HTTP_403_FORBIDDEN, f"This page is only for: {', '.join(roles)}.")
         return u
     return Depends(dep)
 
 
-ANY = ("admin", "maker", "taker")
+ANY, PRO = R.ANY, R.PRO
 
 
 def check_csrf(csrf_token: str = Form(...)):
@@ -313,7 +314,7 @@ STAND_COLS = ["athlete", "current_points", "exp_points", "points_p10", "points_p
               "top3_prob", "exp_rank"]
 
 
-@app.get("/lab/runs/{run_id}", response_class=HTMLResponse, dependencies=[allow("admin", "maker")])
+@app.get("/lab/runs/{run_id}", response_class=HTMLResponse, dependencies=[allow(*PRO)])
 def run_detail(request: Request, run_id: int, c=Depends(conn)):
     run = data.model_run(c, run_id)
     if not run:
@@ -369,7 +370,7 @@ def event_by_key(source_key: str, c=Depends(conn)):
 
 @app.get("/racinglines101", response_class=HTMLResponse)
 def racinglines101(request: Request):
-    """Plain-language intro to makers, takers and the paper-trading demo (public, linked from the login page)."""
+    """Plain-language intro to makers, takers (the pro and basic tiers) and the paper-trading demo (public, linked from the login page)."""
     return render(request, "racinglines101.html")
 
 
@@ -415,7 +416,7 @@ def event_detail(request: Request, event_id: int, c=Depends(conn)):
     preds = data.event_predictions(c, event_id)
     pred_groups = [dict(run=int(run), kind=g["kind"].iloc[0], category=cat, table=rows(g.head(30)))
                    for (run, cat), g in preds.groupby(["run", "category"], sort=False)] if len(preds) else []
-    if request.state.user["role"] == "taker":
+    if R.is_basic(request.state.user):
         pred_groups = []  # model fair values are the makers' edge
     return render(request, "event.html", ev=ev, groups=groups, pred_groups=pred_groups)
 
@@ -430,7 +431,7 @@ def athlete_detail(request: Request, athlete_id: int, c=Depends(conn)):
     a = data.athlete(c, athlete_id)
     if not a:
         raise HTTPException(404)
-    preds = [] if request.state.user["role"] == "taker" else rows(data.athlete_predictions(c, athlete_id))
+    preds = [] if R.is_basic(request.state.user) else rows(data.athlete_predictions(c, athlete_id))
     return render(request, "athlete.html", a=a, results=rows(data.athlete_results(c, athlete_id)), preds=preds)
 
 
@@ -611,7 +612,7 @@ def order_cancel(request: Request, order_id: int):
 
 
 # ---------------------------------------------------------------------------
-# Private book: markets quoted by makers (admin = house), bets placed by takers
+# Private book: markets quoted by pro accounts (admin = house), bets placed by basic accounts
 # ---------------------------------------------------------------------------
 
 from racinglines.markets import private_book as house  # noqa: E402
@@ -645,11 +646,11 @@ def _own_market(user, market_id):
 
 @app.get("/book/quotes", response_class=HTMLResponse)
 def house_book(request: Request, race_id: int | None = None, maker: str = "", msg: str = "", c=Depends(conn),
-               user=allow("admin", "maker")):
+               user=allow(*PRO)):
     races = _races_for_house(c)
     if race_id is None and races:
         race_id = races[0]["race_id"]
-    if user["role"] == "maker":
+    if user["role"] == "pro":
         maker_filter = user["id"]
     elif maker == "house":
         maker_filter = None
@@ -664,13 +665,13 @@ def house_book(request: Request, race_id: int | None = None, maker: str = "", ms
                   staked=float(bk["staked"].sum()), ev=float(bk["ev"].sum()), worst=float(bk["worst"].sum()),
                   settled=float(bk["settled_pnl"].dropna().sum())) if len(bk) else None
     groups = [(kind, rows(g)) for kind, g in bk.groupby("kind", sort=False)] if len(bk) else []
-    makers = rows(data.q(c, "SELECT username FROM users WHERE role IN ('maker', 'admin') ORDER BY username"))
+    makers = rows(data.q(c, "SELECT username FROM users WHERE role IN ('pro', 'maker', 'admin') ORDER BY username"))
     return render(request, "house.html", races=races, race_id=race_id, groups=groups, totals=totals, msg=msg,
                   kinds=list(house.KINDS) + ["race_top10"], makers=makers, maker=maker)
 
 
 @app.post("/book/quotes/generate", dependencies=[Depends(check_csrf)])
-async def house_generate(request: Request, c=Depends(conn), user=allow("admin", "maker")):
+async def house_generate(request: Request, c=Depends(conn), user=allow(*PRO)):
     form = await request.form()
     race_id = int(form["race_id"])
     kinds = [k for k in form.getlist("kinds") if k in house.PROB_FIELD]
@@ -709,7 +710,7 @@ def house_sheet(request: Request, race_id: int, c=Depends(conn)):
 
 
 @app.get("/book/markets/{market_id}", response_class=HTMLResponse)
-def house_market(request: Request, market_id: int, msg: str = "", c=Depends(conn), user=allow("admin", "maker")):
+def house_market(request: Request, market_id: int, msg: str = "", c=Depends(conn), user=allow(*PRO)):
     _own_market(user, market_id)
     bk = house.book(c)
     mk = bk[bk["id"] == market_id]
@@ -733,7 +734,7 @@ def house_bet(request: Request, market_id: int, counterparty: str = Form(...), s
 
 @app.post("/book/markets/{market_id}/price", dependencies=[Depends(check_csrf)])
 def house_price(request: Request, market_id: int, fair_pct: float = Form(...), spread_pct: float = Form(...),
-                user=allow("admin", "maker")):
+                user=allow(*PRO)):
     _own_market(user, market_id)
     with get_session() as s:
         house.set_price(s, market_id, fair_pct / 100, spread_pct / 100)
@@ -743,7 +744,7 @@ def house_price(request: Request, market_id: int, fair_pct: float = Form(...), s
 
 @app.post("/book/markets/{market_id}/status", dependencies=[Depends(check_csrf)])
 def house_status(request: Request, market_id: int, status_: str = Form(..., alias="status"),
-                 user=allow("admin", "maker")):
+                 user=allow(*PRO)):
     if status_ not in ("open", "closed"):
         raise HTTPException(400)
     _own_market(user, market_id)
@@ -866,7 +867,7 @@ def polymarket_calls(c, profile, n_races=3, exchange="polymarket"):
 
 @app.post("/book/markets/{market_id}/take", dependencies=[Depends(check_csrf)])
 def place_bet(request: Request, market_id: int, side: str = Form(...), stake: float = Form(...),
-              quoted: float = Form(...), user=allow("taker")):
+              quoted: float = Form(...), user=allow(*R.BASIC)):
     """Taker bets at the current quote. If the maker repriced since the page was
     loaded (quote changed), the bet is refused so the taker sees the new price."""
     race_id = None
@@ -946,7 +947,7 @@ def logout(request: Request):
 
 @app.get("/markets/polymarket", response_class=HTMLResponse)
 def pm_board(request: Request, event: str = "", show: str = "modeled", closed: int = 0, spread_pct: float = 4.0,
-             msg: str = "", c=Depends(conn), user=allow("admin", "maker")):
+             msg: str = "", c=Depends(conn), user=allow(*PRO)):
     return _exchange_board(request, c, user, "polymarket", event, show, closed, spread_pct, msg)
 
 
@@ -1004,7 +1005,7 @@ def _exchange_board(request, c, user, exchange, event, show, closed, spread_pct,
 
 @app.post("/markets/polymarket/mirror", dependencies=[Depends(check_csrf)])
 def pm_mirror(request: Request, event_slug: str = Form(...), spread_pct: float = Form(4.0), c=Depends(conn),
-              user=allow("admin", "maker")):
+              user=allow(*PRO)):
     with get_session() as s:
         created, repriced, skipped = house.mirror_event(s, c, event_slug, user["id"], spread_pct / 100)
     audit(request, "pm_mirror", event_slug=event_slug, spread=spread_pct / 100, created=created, repriced=repriced,
@@ -1014,7 +1015,7 @@ def pm_mirror(request: Request, event_slug: str = Form(...), spread_pct: float =
 
 
 @app.post("/markets/polymarket/sync", dependencies=[Depends(check_csrf)])
-def pm_sync(request: Request, c=Depends(conn), user=allow("admin", "maker")):
+def pm_sync(request: Request, c=Depends(conn), user=allow(*PRO)):
     from racinglines.markets import alerts
     with get_session() as s:
         stats, groups, _ = alerts.sync_and_alert(s, c, date.today().year)
@@ -1040,13 +1041,13 @@ def _kalshi_on():
 
 @app.get("/markets/kalshi", response_class=HTMLResponse, dependencies=[Depends(_kalshi_on)])
 def kalshi_board(request: Request, event: str = "", show: str = "modeled", closed: int = 0, spread_pct: float = 4.0,
-                 msg: str = "", c=Depends(conn), user=allow("admin", "maker")):
+                 msg: str = "", c=Depends(conn), user=allow(*PRO)):
     return _exchange_board(request, c, user, "kalshi", event, show, closed, spread_pct, msg)
 
 
 @app.post("/markets/kalshi/mirror", dependencies=[Depends(_kalshi_on), Depends(check_csrf)])
 def kalshi_mirror(request: Request, event_slug: str = Form(...), spread_pct: float = Form(4.0), c=Depends(conn),
-                  user=allow("admin", "maker")):
+                  user=allow(*PRO)):
     with get_session() as s:
         created, repriced, skipped = house.mirror_event(s, c, event_slug, user["id"], spread_pct / 100)
     audit(request, "kalshi_mirror", event_slug=event_slug, spread=spread_pct / 100, created=created, repriced=repriced,
@@ -1056,7 +1057,7 @@ def kalshi_mirror(request: Request, event_slug: str = Form(...), spread_pct: flo
 
 
 @app.post("/markets/kalshi/sync", dependencies=[Depends(_kalshi_on), Depends(check_csrf)])
-def kalshi_sync(request: Request, c=Depends(conn), user=allow("admin", "maker")):
+def kalshi_sync(request: Request, c=Depends(conn), user=allow(*PRO)):
     from racinglines.markets.kalshi import sync as KS
     try:
         with get_session() as s:
@@ -1080,12 +1081,12 @@ def _schema_routes(code):
 
     @app.get(f"/markets/{code}", response_class=HTMLResponse, dependencies=[Depends(on)], name=f"{code}_board")
     def board(request: Request, event: str = "", show: str = "modeled", closed: int = 0, spread_pct: float = 4.0,
-              msg: str = "", c=Depends(conn), user=allow("admin", "maker")):
+              msg: str = "", c=Depends(conn), user=allow(*PRO)):
         return _exchange_board(request, c, user, code, event, show, closed, spread_pct, msg)
 
     @app.post(f"/markets/{code}/mirror", dependencies=[Depends(on), Depends(check_csrf)], name=f"{code}_mirror")
     def mirror(request: Request, event_slug: str = Form(...), spread_pct: float = Form(4.0), c=Depends(conn),
-               user=allow("admin", "maker")):
+               user=allow(*PRO)):
         with get_session() as s:
             created, repriced, skipped = house.mirror_event(s, c, event_slug, user["id"], spread_pct / 100)
         audit(request, f"{code}_mirror", event_slug=event_slug, spread=spread_pct / 100, created=created, repriced=repriced,
@@ -1094,7 +1095,7 @@ def _schema_routes(code):
         return RedirectResponse(f"/markets/{code}?spread_pct={spread_pct}&msg={msg}", status_code=303)
 
     @app.post(f"/markets/{code}/sync", dependencies=[Depends(on), Depends(check_csrf)], name=f"{code}_sync")
-    def sync(request: Request, c=Depends(conn), user=allow("admin", "maker")):
+    def sync(request: Request, c=Depends(conn), user=allow(*PRO)):
         """Every sport the schema lists (exchanges/<code>.toml [sports.*]), the way the CLI syncs one at a time."""
         from racinglines.markets import exchange_driver as D
         stats, parts = {}, []
@@ -1121,7 +1122,7 @@ def _tapes_on():
 
 
 @app.get("/markets/tapes", response_class=HTMLResponse, dependencies=[Depends(_tapes_on)])
-def tapes_page(request: Request, c=Depends(conn), user=allow("admin", "maker")):
+def tapes_page(request: Request, c=Depends(conn), user=allow(*PRO)):
     return render(request, "tapes.html", blocks=V.tape_summary(c), sports=[s["competition"].get("display_name", s["sport"]["name"])
                                                                             for s in V.tape_sports()])
 
@@ -1133,7 +1134,7 @@ def tapes_page(request: Request, c=Depends(conn), user=allow("admin", "maker")):
 from racinglines.web import diag  # noqa: E402
 
 
-@app.get("/lab/diagnostics/{run_id}", response_class=HTMLResponse, dependencies=[allow("admin", "maker")])
+@app.get("/lab/diagnostics/{run_id}", response_class=HTMLResponse, dependencies=[allow(*PRO)])
 def diag_page(request: Request, run_id: int, msg: str = "", fill: str = "through", h: float = 0.02, size: float = 50,
               max_pos: float = 250, cap: float = 1000, skew: float = 1.0, disagree: float = 0.15, min_vol: float = 100,
               pull: int = 15, venue: str = "", c=Depends(conn)):
@@ -1169,7 +1170,7 @@ def diag_page(request: Request, run_id: int, msg: str = "", fill: str = "through
 
 @app.post("/lab/diagnostics/{run_id}/example", dependencies=[Depends(check_csrf)])
 def diag_example(request: Request, run_id: int, fill: str = Form("through"), c=Depends(conn),
-                 user=allow("admin", "maker")):
+                 user=allow(*PRO)):
     """Replay fills become bets by the Polymarket-takers system account (not the demo taker) on the demo
     'maker' account's markets."""
     with get_session() as s:

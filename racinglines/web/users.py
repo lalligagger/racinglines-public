@@ -1,10 +1,10 @@
 """
 Accounts, roles and the activity log for the web app.
 
-Roles:
+Roles (racinglines/web/roles.py: admin, pro, basic; `maker` / `taker` rows are read as pro / basic):
     admin   everything, plus the activity log, user management and the database explorer
-    maker   predictions/model runs, and their own quoted markets (fair value +- spread)
-    taker   open markets from all makers, placing bets, their own bets and P&L
+    pro     predictions/model runs, their own quoted markets (fair value +- spread), every strategy, the Lab
+    basic   open markets, a limited set of taker strategies, their own bets and P&L
 
 Passwords are hashed with scrypt (standard library): "scrypt$n$r$p$salt$hash".
 """
@@ -18,8 +18,7 @@ import secrets
 from sqlalchemy import insert, select
 
 from racinglines.db import models as m
-
-ROLES = ("admin", "maker", "taker")
+from racinglines.web.roles import ROLES, canonical  # noqa: F401  (ROLES: the values create_user accepts)
 _N, _R, _P = 2 ** 14, 8, 1
 
 
@@ -49,7 +48,7 @@ def authenticate(session, username, password):
 
 
 # The replay counterparty: Polymarket's takers, whose real trades filled a replayed maker (web/diag.py).
-# A system account, not a person: it can't sign in, and it is NOT the demo `taker` login.
+# A system account, not a person: it can't sign in, and it is NOT the demo `taker` login (a basic account).
 REPLAY_TAKER = "polymarket-takers"
 
 
@@ -57,7 +56,7 @@ def ensure_replay_taker(session):
     """The system account that records Polymarket takers' fills of a replayed maker (inactive: no login)."""
     u = get_user(session, username=REPLAY_TAKER)
     if u is None:
-        u = m.User(username=REPLAY_TAKER, password_hash="!no-login", role="taker", active=False,
+        u = m.User(username=REPLAY_TAKER, password_hash="!no-login", role="basic", active=False,
                    display_name="Polymarket takers (replay counterparty)")
         session.add(u)
         session.commit()
@@ -65,6 +64,7 @@ def ensure_replay_taker(session):
 
 
 def create_user(session, username, password, role, display_name=None):
+    role = canonical(role)
     if role not in ROLES:
         raise ValueError(f"role must be one of {ROLES}")
     if get_user(session, username=username):

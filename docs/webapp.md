@@ -75,8 +75,8 @@ The nav follows the role:
 
 | Role | Nav |
 |---|---|
-| **taker** | Markets · Strategy · Positions |
-| **maker** | Markets · Strategy · Positions · My Book · Lab · Pitch · Docs |
+| **basic** | Markets · Strategy · Positions |
+| **pro** | Markets · Strategy · Positions · My Book · Lab · Pitch · Docs |
 | **admin** | Markets · Strategy · Positions · Books (the admin's name for My Book) · Lab · Admin · Pitch · Docs |
 
 Strategy and Positions appear for accounts with a strategy profile, and for admins. The **Strategy** link
@@ -120,7 +120,7 @@ the Markets, My Book and Positions pages links to Strategy and Positions.
 | Page | What it shows |
 |---|---|
 | **Racinglines 101** (`/racinglines101`, public: no sign-in) | A plain-language intro to makers, takers and the paper-trading demo. Linked from the sign-in page as **I'm already confused.** |
-| **Sign in** (`/login`, `/logout`) | Two one-click demo buttons (**Try as maker**, **Try as taker**; the `maker` / `taker` accounts, password `password`) above the standard username/password form, which the admin uses. |
+| **Sign in** (`/login`, `/logout`) | Two one-click demo buttons (**Try as pro**, **Try as basic**; the `maker` / `taker` accounts, which keep their usernames, password `password`) above the standard username/password form, which the admin uses. |
 | **Pitch** (`/pitch`) | Serves `pitch.html`, behind the same login. |
 | **Docs** (`/docs/`) | Serves these docs as built in `site/` (the pre-push hook builds them; or `python -m mkdocs build -d site`), behind the same login. |
 
@@ -154,11 +154,24 @@ subprocess with no shell, and stream their progress into the `jobs` table.
 
 ### Roles
 
+The roles are **admin**, **pro** and **basic** (`racinglines/web/roles.py`). Until 2026-09-30 pro was called `maker`
+and basic `taker`; accounts created before then still carry the old value in `users.role` and are read as the new
+role everywhere (`roles.canonical`), so no migration was needed. To retire the aliases run, after a backup,
+`UPDATE users SET role = 'pro' WHERE role = 'maker'` and `UPDATE users SET role = 'basic' WHERE role = 'taker'`.
+The words *maker* and *taker* below (and everywhere else in these docs) mean the two kinds of strategy, which keep
+their names.
+
+**Tiers.** A pro account may run any strategy profile, maker or taker, and has the Lab (Edge Finder, sweeps,
+backtests, diagnostics, replays). A basic account may run only the taker profiles in `roles.BASIC_PROFILES`
+(today: **A**, the core weekend taker) and has no Lab, book or fair values. `/admin/users/{id}` refuses to assign
+any other profile to a basic account, and refuses to make an account basic while it runs one; widen the list to
+open more taker strategies to basic accounts.
+
 | Role | Can do |
 |---|---|
-| **taker** | Nav: **Markets**, **Strategy**, **Positions**. **Markets** lists every open Polymarket F1 market with the account's strategy profile's current call on each (side, shares, the most to pay, heat), never a fair value or edge. There is no maker on the other side: takers trade on Polymarket, on paper (see [Paper trading](paper-trading.md)). Race, season, book, Polymarket and Lab pages are closed to takers (a race link sends them to Markets); event and athlete pages show results without predictions. (The in-app private book still exists for makers; a taker's in-app bet is placed at the quoted price, refused if the maker has repriced since the page loaded, with a per-bet cap `MAX_STAKE`, default $100.) |
-| **maker** | Nav: **Markets**, **Strategy**, **Positions**, **My Book**, **Lab**, **Pitch**, **Docs** (Strategy and Positions with a strategy profile). **Own** markets only: generate from the live forecast (fair ± spread), reprice, close, see the bets against them. Can launch Lab jobs and promote scenarios. Can't bet, can't touch other makers' markets, and can't settle. |
-| **admin** | Everything: the maker nav (My Book is called **Books**) plus **Admin**, which links to activity, users, database, SQL, linked Polymarket markets and the order log. Plus the private book across all makers, settlement (auto and manual), offline bets, Polymarket, any user's Strategy page, strategy profiles (on `/admin/users/{id}`), and the admin pages below. |
+| **basic** | Nav: **Markets**, **Strategy**, **Positions**. **Markets** lists every open Polymarket F1 market with the account's strategy profile's current call on each (side, shares, the most to pay, heat), never a fair value or edge. There is no maker on the other side: takers trade on Polymarket, on paper (see [Paper trading](paper-trading.md)). Race, season, book, Polymarket and Lab pages are closed to takers (a race link sends them to Markets); event and athlete pages show results without predictions. (The in-app private book still exists for makers; a taker's in-app bet is placed at the quoted price, refused if the maker has repriced since the page loaded, with a per-bet cap `MAX_STAKE`, default $100.) |
+| **pro** | Nav: **Markets**, **Strategy**, **Positions**, **My Book**, **Lab**, **Pitch**, **Docs** (Strategy and Positions with a strategy profile). Any strategy profile, maker or taker. **Own** markets only: generate from the live forecast (fair ± spread), reprice, close, see the bets against them. Can launch Lab jobs and promote scenarios. Can't bet, can't touch other makers' markets, and can't settle. |
+| **admin** | Everything: the pro nav (My Book is called **Books**) plus **Admin**, which links to activity, users, database, SQL, linked Polymarket markets and the order log. Plus the private book across all makers, settlement (auto and manual), offline bets, Polymarket, any user's Strategy page, strategy profiles (on `/admin/users/{id}`), and the admin pages below. |
 
 Every route declares the roles allowed (`allow(...)` in `app.py`); anything else gets 403.
 
@@ -168,8 +181,8 @@ Three accounts are easy to mix up. They are separate entities:
 
 | Account | What it is | Its trades |
 |---|---|---|
-| `maker` (demo, **Try as maker**) | Our maker, $10,000 paper bankroll from 2025-01-01. 2025: M1 (the defaults: conservative maker, baseline model), then M2 (grid-aware maker, 10-pt filter) after round 8, then M3 (gbm maker, 7-pt filter) after round 16; profile C since the start of 2026. Each switch follows a fixed rule on the Edge Finder's walk-forward evidence (`pipelines/story.py`) | Its own quotes and paper fills (**Strategy**, **Positions**); the in-app markets it opens |
-| `taker` (demo, **Try as taker**) | Our taker, $1,000 paper bankroll from 2025-01-01: profile A throughout, following about a third of its recommendations (`follow_rate` 0.33, hotter entries more often). Bankrolls and the follow rate are set in code (`profiles.DEMO_BANKROLL`, `DEMO_FOLLOW`), not in the UI. See [Paper trading](paper-trading.md#the-demo-accounts) | Its own paper trades (**Strategy**, **Positions**) and any bets placed in the app |
+| `maker` (demo, **Try as pro**) | Our maker, $10,000 paper bankroll from 2025-01-01. 2025: M1 (the defaults: conservative maker, baseline model), then M2 (grid-aware maker, 10-pt filter) after round 8, then M3 (gbm maker, 7-pt filter) after round 16; profile C since the start of 2026. Each switch follows a fixed rule on the Edge Finder's walk-forward evidence (`pipelines/story.py`) | Its own quotes and paper fills (**Strategy**, **Positions**); the in-app markets it opens |
+| `taker` (demo, **Try as basic**) | Our taker, $1,000 paper bankroll from 2025-01-01: profile A throughout, following about a third of its recommendations (`follow_rate` 0.33, hotter entries more often). Bankrolls and the follow rate are set in code (`profiles.DEMO_BANKROLL`, `DEMO_FOLLOW`), not in the UI. See [Paper trading](paper-trading.md#the-demo-accounts) | Its own paper trades (**Strategy**, **Positions**) and any bets placed in the app |
 | `polymarket-takers` (system, no login) | The Polymarket traders whose real trades filled a replayed maker | Replay fills recorded from a diagnostic page (*Record the replay's fills*); its P&L is that maker's P&L reversed |
 
 Both demo accounts' weekends before live paper trading began are **backtest replays**

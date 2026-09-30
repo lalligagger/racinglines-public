@@ -8,7 +8,7 @@
 <form method="post" action="/admin/users">{{ csrf() }}
   <label><span>Username</span><input name="username" required size="14"></label>
   <label><span>Display name</span><input name="display_name" size="16"></label>
-  <label><span>Role</span><select name="role">{% for r in roles %}<option {% if r == 'taker' %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></label>
+  <label><span>Role</span><select name="role">{% for r in roles %}<option {% if r == 'basic' %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></label>
   <label><span>Password (8+ chars)</span><input name="password" type="password" required size="14"></label>
   <button class="primary">Create</button></form></div>
 <div class="card"><h2>Accounts</h2><div class="scroll"><table>

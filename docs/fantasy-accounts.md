@@ -3,7 +3,8 @@
 Today only an admin can create a racinglines account. There is one admin, two demo logins and one system account.
 A session is a stateless 12-hour cookie, and one CSRF token serves the whole process. The soft launch opens sign-up
 on Thu 8 Oct 18:00 PDT (Fri 9 Oct 01:00 UTC), with invite codes and at most 50 players. For it, people need to make
-their own accounts: a unique handle, an email address they have proven they own, and a role (maker or taker) that is
+their own accounts: a unique handle, an email address they have proven they own, and a role (maker or taker; since
+2026-09-30 the app calls these **pro** and **basic**, `racinglines/web/roles.py`, and this plan's role names read as those) that is
 locked for the fantasy season. Each account then gets an F$ bankroll and a line on a leaderboard. This page is the
 implementation spec for that. It covers what exists, the tables, the `fantasy_schema_v1` migration, the sign-up and
 mail flows, session hardening, seasons and the role lock, the F$ ledger, stats and leaderboards, admin tooling,

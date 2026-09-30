@@ -104,7 +104,7 @@ Cloudflare and what is neither. In short, and in this order:
 ### Per user: issue, list, revoke
 
 Tokens are per web-app account: real accounts only (no demos), active, and with a role listed in
-`RACINGLINES_MCP_ROLES` in `/etc/racinglines.env` (default `admin`; `admin,maker` opens it to makers, then
+`RACINGLINES_MCP_ROLES` in `/etc/racinglines.env` (default `admin`; `admin,pro` opens it to pro accounts (accounts still stored as `maker` count), then
 restart the unit). One token per account; issuing again replaces the old one. On the VM:
 
 ```sh
