@@ -258,12 +258,14 @@ def _venue(conn, venue, race_links, stages, sp):
 
 
 def run(engine, sport, seasons=None, venue="kalshi", taker=None, min_volume_24h=MIN_VOLUME_24H, model_settings=None,
-        kinds=None, data=None, save=None, events=None, echo=print, buy_all=None):
+        kinds=None, data=None, save=None, events=None, echo=print, buy_all=None, on_race=None):
     """The replay over `seasons` (None = every season with races). taker: TakerParams (None = the defaults).
     model_settings: dict for the model's Settings (seed defaults to SEED). kinds: a subset of [replay] kinds.
     data: the model's frame, already loaded. save: None, or dict(engine_url, batch) to store one model run per race.
     events: only these event keys ("latest" = the last race of the selection), e.g. for a spot check; the model still
-    learns from every earlier race. buy_all: add the buy-one-of-everything mode (None = RACINGLINES_BUY_ALL)."""
+    learns from every earlier race. buy_all: add the buy-one-of-everything mode (None = RACINGLINES_BUY_ALL).
+    on_race: None, or a callable(race, markets) given each race's markets (race_markets) before they are traded
+    (pipelines/sport_paper.py stores the taker's trades from them as demo paper positions)."""
     from racinglines.markets.strategies import buy_everything as BA
     buy_all = BA.enabled(buy_all)
     sp = spec(sport)
@@ -303,6 +305,8 @@ def run(engine, sport, seasons=None, venue="kalshi", taker=None, min_volume_24h=
             stages = stage_times(r.start, sp)
             v = _venue(conn, venue, race_links, stages, sp)
             markets = race_markets(v, race_links, sims, res, stages, min_volume_24h)
+        if on_race is not None:
+            on_race(r, markets)
         row = dict(season=int(r.season), event_key=r.event_key, race=r.name, race_id=int(r.race_id), markets=len(markets),
                    priced=sum(any(s["price"] is not None for s in m["stages"]) for m in markets),
                    tradeable=sum(any(s["tradeable"] for s in m["stages"]) for m in markets))

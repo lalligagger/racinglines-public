@@ -4,6 +4,7 @@
 {{ page_head("Markets", "Every open F1 market on Polymarket (" ~ n_markets ~ " outcomes; synced " ~ synced|fmt ~ " UTC)" ~ (", with " ~ ("your picks' current call" if profile.basic else profile.name ~ "'s current call") ~ " on each: which side, how many shares, the most to pay, and how hot it is" if profile else "") ~ ". Prices are Polymarket's, per $1 payout.") }}
 {{ paper_banner(signals_nav) }}
 {{ flash(msg) }}
+{% if sport_status %}{% include "_sport_status.html" %}{% endif %}
 {% if profile %}<p class="legend">Heat grades how much the model expects an entry to earn:
   <span class="heat h1">warm</span> <span class="heat h2">hot</span> <span class="heat h3">very hot</span>. It's a guide, not a promise.
   Calls update after every practice and qualifying session.</p>{% endif %}

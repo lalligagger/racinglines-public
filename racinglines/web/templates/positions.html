@@ -2,7 +2,7 @@
 {% block title %}Positions{% endblock %}
 {% block content %}
 {% set priv = venue == 'private' %}
-{% call page_head("Positions" ~ (" · " ~ cur.name if cur else ""), "Every Polymarket position " ~ ("your strategy's quotes left you with" if maker else "your strategy's calls put you in") ~ " (paper only: nothing was sent to Polymarket)" ~ (", the same maker's replay on Kalshi's tape (paper)" if venues.kalshi else "") ~ (", and the private book " ~ ("you ran" if maker else "you bet into") ~ " live (a demo: play money)" if venues.private else "") ~ ", and what each made.") %}
+{% call page_head("Positions" ~ (" · " ~ cur.name if cur else ""), "Every Polymarket position " ~ ("your strategy's quotes left you with" if maker else "your strategy's calls put you in") ~ " (paper only: nothing was sent to Polymarket)" ~ (", NASCAR and MotoGP taker replays on the exchanges' recorded prices (a demo: strategies picked in-sample)" if sport_paper else (", the same maker's replay on Kalshi's tape (paper)" if venues.kalshi else "")) ~ (", and the private book " ~ ("you ran" if maker else "you bet into") ~ " live (a demo: play money)" if venues.private else "") ~ ", and what each made.") %}
 <a href="/strategy">Strategy: what it recommended, and why →</a>{% endcall %}
 
 {% if not paper.n and not my_bets and not venues %}<p class="muted">No positions yet.{% if not profile %} This account has no strategy profile.{% endif %}</p>{% else %}
@@ -107,7 +107,7 @@ Worst drawdown <b class="bad">{{ book.max_dd|money(true) }}</b> from a peak, thr
   <td>{{ p.trades }}</td><td>{{ p.cash|money(true) }}</td>
   <td>{% if p.outcome is not none %}{{ "YES" if p.outcome else "NO" }}{% elif p.mark is not none %}{{ "%.2f"|format(p.mark) }}{% endif %}</td>
   <td>{{ pnl(p.pnl) }}</td>
-  <td class="l">{% if p.state == 'open' %}<span class="pill yes">open</span>{% elif p.state == 'closed' %}<span class="muted">closed</span>{% endif %}{% if p.backfill %} <span class="pill no">backtest replay</span>{% endif %}</td></tr>
+  <td class="l">{% if p.state == 'open' %}<span class="pill yes">open</span>{% elif p.state == 'closed' %}<span class="muted">closed</span>{% endif %}{% if p.demo_sport %} <span class="pill no">demo replay, in-sample</span>{% elif p.backfill %} <span class="pill no">backtest replay</span>{% endif %}</td></tr>
 {% else %}<tr><td class="l muted" colspan="8">None.</td></tr>{% endfor %}
 </tbody></table></div></div>
 

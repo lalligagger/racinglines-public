@@ -81,8 +81,11 @@ def main(argv=None):
     p.add_argument("--limit", type=int, default=10, help="How many candidate settings to print.")
     from racinglines.cli import replay_cmd
     replay_cmd.add_parser(sub, "motogp")
+    replay_cmd.add_demo_parser(sub, "motogp")
     args = ap.parse_args(argv)
 
+    if args.cmd == "demo-history":
+        return replay_cmd.run_demo(args, "motogp")
     if args.cmd == "replay":
         return replay_cmd.run(args, "motogp", _years(args.years))
 

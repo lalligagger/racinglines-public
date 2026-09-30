@@ -365,6 +365,40 @@ Backtest replays of real weekends, 2025 and 2026 through round 15:
 
 Taking every recommendation would have made +$2,606.
 
+### NASCAR and MotoGP (demo, in-sample; off by default)
+
+`RACINGLINES_SPORT_PAPER=1` adds the result-only sports to the demo taker's portfolio
+([`pipelines/sport_paper.py`](https://github.com/lalligagger/racinglines/blob/main/racinglines/pipelines/sport_paper.py)).
+`racinglines nascar demo-history` (and `motogp demo-history`) replays every race of the seasons in the overnight settings
+grid (`data/runs/replay-grid/<sport>/`, runs `<year>-e<edge>-v<volume>`) with the taker replay (`nascar replay`), and
+stores each race's `update` trades as the account's backfilled signals and paper positions on the exchange
+(`paper_positions.venue = 'kalshi'`, `candidate_id` empty, the sport's own event keys), each position's cash net of the
+exchange's taker fee.
+
+**How the strategy is chosen, and why it is only a demo.** Per market kind (NASCAR win, top 3/5/10/20, head-to-head;
+MotoGP win), the grid setting (min edge, 24 h volume floor) whose worse season's net P&L on that kind is highest; a kind
+whose best setting still lost money in its worse season is not traded. `--book blend` instead trades every kind at the
+one setting with the best worse season across them all. The selection is made on the same seasons it is replayed on,
+so the P&L is **in-sample**: it shows what the strategy would have done, not that it has an edge. The app labels every
+such race and position "demo replay, in-sample". `--pick FOLDER` prints the selection (per kind, the blend, each
+season's net) and writes nothing; a run also writes it to `demo-selection-<venue>.md` in the grid folder.
+A season in which a kind had nothing to trade at any setting (MotoGP 2025: Kalshi listed no race markets) is left out of that kind's worse-season test rather than counted as a $0 season, which would veto every kind.
+
+**Never buy_all.** The replay runs with the debug `buy_all` mode switched off whatever `RACINGLINES_BUY_ALL` says, only
+the taker's `update` trades are stored, and the app's nav P&L, Positions and Signals never count a row whose strategy or
+`detail.mode` is `buy_all`.
+
+With the switch on, the nav P&L adds these rows to the Polymarket ones, Positions lists them (with the race names), and
+Signals shows them in the track record on their race dates beside F1. With it off, nothing reads them and every page is
+as before. Writes need `--backup FILE` (a dump under 24 hours old) and log a `data_changes` entry; `--reset` deletes only
+this sport's demo rows on that venue for the named accounts (default `taker`), nothing else.
+`bash scripts/deploy/vm.sh demo` (`scripts/vm/demo_setup.sh`, backup first) stores them for both demo accounts
+(`--users maker,taker`), so the Pro account shows its F1 maker record and the NASCAR / MotoGP taker demo side by side.
+It uses `--book best`, the best-effort book (owner, 2026-09-30: paper P&L for as many sports as possible): each kind at
+the setting with its best total over the seasons it traded, the kinds with a positive total; if none is positive, every
+kind at the one setting with the best total, win or lose, so the sport still has a record and a loss shows as a loss.
+It is at least as in-sample as the strict rule (`--book kinds`) and is labelled the same way.
+
 **Demo sessions are disposable:** every sign-in starts from the account's saved baseline, and anything
 that would change data is refused. See [Web app](webapp.md#accounts-demo-users-vs-polymarkets-takers).
 

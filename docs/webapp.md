@@ -219,6 +219,18 @@ exchange in `exchanges/` gets its own `/markets/<code>` page this way ([Exchange
 event: what is linked, the volume and favourite, and what has been recorded (trades, price points, book snapshots and
 their last timestamps). It is market data only: no model, positions or P&L. With both switches off every page renders as before.
 
+**Every sport's status** (off by default, `RACINGLINES_SPORT_STATUS=1`; `racinglines/web/sport_status.py`). Markets
+opens with one row per sport schema, modeled or tape only, for both roles: race data (races with results, the latest
+result, the next event), exchange markets (links per exchange, open, tied to a race, last sync), model (the schema's
+model family, the latest live forecast run, the stored as-of replay prices, season forecasts), backtests (backtest runs
+in the database, the replay settings grid under `data/runs/replay-grid/<sport>`) and, for Pro and admin, the demo
+accounts' paper record per sport (settled P&L, never a buy_all row). Each cell is green (there), amber (partial), red
+(missing) or grey (not applicable: a tape-only sport has no model by design), so a sport with no model or no data
+says so rather than disappearing. With the switch on, every sport with exchange data opens on the board. The Pro
+account's Strategy page also splits its record by sport and strategy (*Where the P&L came from*: the F1 maker, the
+NASCAR / MotoGP taker demo). `bash scripts/deploy/vm.sh demo` turns this and `RACINGLINES_SPORT_PAPER` on and stores
+the NASCAR / MotoGP demo rows for both demo accounts ([Paper trading](paper-trading.md#nascar-and-motogp-demo-in-sample-off-by-default)).
+
 **Demo sessions are disposable** (`racinglines/web/demo.py`; the demo accounts are `RACINGLINES_DEMO_USERS`,
 default `maker,taker`). Every sign-in gets a fresh session id. View settings (Edge Finder combos and season,
 job settings, which signals were seen) live in a per-session overlay on top of the account's saved baseline

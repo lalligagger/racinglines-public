@@ -12,8 +12,9 @@
   <div class="kpi"><div class="l">Model jobs running</div><div class="v">{{ h.jobs_active }}</div><div class="s"><a href="/lab#run">launch a backtest or scenario</a></div></div>
 </div>
 
+{% if sport_status %}{% include "_sport_status.html" %}{% endif %}
 {% for s in sports %}
-<details class="card" data-remember="markets:sport:{{ s.code }}"{% if s.run or loop.first %} open{% endif %}>
+<details class="card" data-remember="markets:sport:{{ s.code }}"{% if s.run or loop.first or (sport_status and s.exchanges) %} open{% endif %}>
 <summary><h2 style="display:inline-block;margin:0">{{ s.name }}</h2> <span class="sum">{% if s.run %}live prices from run <a href="/lab/runs/{{ s.run.id }}">#{{ s.run.id }}</a> · {{ s.run.created_at|fmt }}{% else %}market data only · no model{% endif %}</span></summary>
 {% if s.run or s.tape %}
 <div class="cards">

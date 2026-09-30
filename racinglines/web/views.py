@@ -14,8 +14,11 @@ import pandas as pd
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from sqlalchemy import text
+
 from racinglines import sports as SP
 from racinglines.db.config import get_session
+from racinglines.pipelines import sport_paper as SPP
 
 from racinglines.web import board as B
 from racinglines.web import diag
@@ -71,6 +74,13 @@ def _sport_options(rows, sport=""):
     return sorted((code for code in seen if code), key=lambda code: (order.get(code, 99), str(code)))
 
 
+def _sport_names():
+    """Display names by competition code (V.SPORT_NAME) and by sport code (what the record and positions carry)."""
+    by_sport = {s["sport"]["code"]: s["competition"].get("display_name", s["sport"]["name"])
+                for s in map(SP.load, SP.SPORT_CODES)}
+    return {**V.SPORT_NAME, **by_sport, "private": "Private book"}
+
+
 # ---------------------------------------------------------------------------
 # Markets (home)
 # ---------------------------------------------------------------------------
@@ -88,8 +98,10 @@ def board_page(request: Request, msg: str = "", c=Depends(conn)):
     calendar = V.calendar_rows(c)
     cal_sports = sorted({(r["sport"], r["sport_name"]) for r in calendar}, key=lambda x: V.SPORT_ORDER.get(x[0], 9))
     cal_exchanges = sorted({x for r in calendar for x in r["exchanges"]})
+    from racinglines.web import sport_status as SS                  # RACINGLINES_SPORT_STATUS=1: every sport's status
     return render(request, "board.html", sports=B.board(c, _maker(user)), h=B.headline(c, _maker(user)), kalshi=V.KALSHI_VENUE,
                   disagree=D.panel(c) if D.ON["on"] else None,
+                  sport_status=SS.status(c) if SS.enabled() else None, show_paper=True,
                   calendar=calendar, cal_sports=cal_sports, cal_exchanges=cal_exchanges)
 
 
@@ -513,7 +525,8 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     user = request.state.user
     profile = PF.of_user(c, user["id"])
     maker = bool(profile and profile.get("strategy") not in WS.TAKER_MODES)
-    if venue == "kalshi" and not V.KALSHI_VENUE:       # the Kalshi filter exists only with the switch on
+    sp = SPP.enabled()                                  # RACINGLINES_SPORT_PAPER=1: NASCAR / MotoGP demo rows too
+    if venue == "kalshi" and not (V.KALSHI_VENUE or sp):       # the Kalshi filter exists only with a switch on
         venue = ""
     pos = rows(data.q(c, """
         SELECT p.*, coalesce(ra.format->>'event_name', e.name) AS event_name, e.start_date,
@@ -527,11 +540,19 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
         LEFT JOIN seasons se ON se.id = e.season_id
         LEFT JOIN competitions co ON co.id = se.competition_id
         LEFT JOIN sports sp ON sp.id = co.sport_id
-        LEFT JOIN races ra ON ra.event_id = e.id WHERE p.user_id = :u AND (p.venue NOT LIKE 'kalshi%' OR :k)
-        ORDER BY p.event_key DESC, p.kind, p.subject""", u=user["id"], k=V.KALSHI_VENUE))
+        LEFT JOIN races ra ON ra.event_id = e.id WHERE p.user_id = :u
+          AND NOT EXISTS (SELECT 1 FROM strategy_signals s WHERE s.user_id = p.user_id AND s.market_key = p.market_key
+                          AND (s.strategy = 'buy_all' OR s.detail->>'mode' = 'buy_all'))    -- the debug mode: never shown
+          AND (p.venue NOT LIKE 'kalshi%' OR :k"""
+        + (" OR p.event_key IN (" + SPP.SPORT_KEYS + ")" if sp else "") + """)
+        ORDER BY """ + ("e.start_date DESC NULLS LAST, " if sp else "") + """p.event_key DESC, p.kind, p.subject""",
+        u=user["id"], k=V.KALSHI_VENUE))
     if sport:
         sport = sport.lower()
         pos = [p for p in pos if (p.get("sport") or "").lower() == sport]
+    demo_keys = set(c.execute(text(SPP.SPORT_KEYS), dict(u=user["id"])).scalars()) if sp else set()
+    for p in pos:
+        p["demo_sport"] = p["event_key"] in demo_keys                   # a NASCAR / MotoGP demo replay (in-sample)
     pos = [p for p in pos if p["trades"] or p["venue"] == "private"]      # markets the account actually traded
     basic = R.is_basic(user)                        # basic: never which strategy made a pick (roles.basic_*)
     if basic:
@@ -608,8 +629,9 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
                                    ORDER BY signal_ts, id""", u=user["id"], e=event))
         # the maker's Kalshi replay flags its signals detail.venue = 'kalshi': shown with the switch, one venue at a time
         tv = lambda t: (t["detail"] or {}).get("venue") or "polymarket"  # noqa: E731
-        trades = [t for t in trades if (V.KALSHI_VENUE or not tv(t).startswith("kalshi"))
-                  and (not V.KALSHI_VENUE or not venue or tv(t) == venue or venue == "private")]
+        ok_k = V.KALSHI_VENUE or (sp and event in demo_keys)
+        trades = [t for t in trades if (ok_k or not tv(t).startswith("kalshi"))
+                  and (not ok_k or not venue or tv(t) == venue or venue == "private")]
         if basic:
             trades = [R.basic_signal(t, profile) for t in trades]
     my_bets = house.taker_bets(c, user["id"]) if R.is_basic(user) else pd.DataFrame()
@@ -619,7 +641,8 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     from racinglines.web.app import polymarket_calls
     # the two venues are never plotted together: the Polymarket history (the strategy's record) and the
     # private book's P&L through its day(s), from the live snapshots; the page switches between them
-    acct = story.account(c, user["id"], profile, maker, markers=False, sport=sport or None) if profile else None
+    acct = story.account(c, user["id"], profile, maker, markers=False, sport=sport or None, sports=sp) \
+        if profile else None
     if acct and basic:
         acct = _basic_acct(acct)
     book = None
@@ -643,10 +666,11 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
                   weekends=weekends, event=event, by_kind=sorted(by_kind.values(), key=lambda k: -k["n"]),
                   trades=trades, my_bets=rows(my_bets), summary=summary, acct=acct, coming=coming,
                   venues={v["venue"]: v for v in venues.values()}, venue=venue, sort=sort, sport=sport,
-                  sport_options=sport_options, sport_names=V.SPORT_NAME, link=link, book=book, plot=plot,
+                  sport_options=sport_options, sport_names=_sport_names(), link=link, book=book, plot=plot,
                   vtotal=sum(v["pnl"] for v in venues.values()), open_pos=open_,
                   cur=next((w for w in weekends if w["event_key"] == event), None),
-                  kalshi=V.KALSHI_VENUE, kacct=kacct, kcoming=kcoming)
+                  kalshi=V.KALSHI_VENUE or bool(sp and demo_keys), kacct=kacct, kcoming=kcoming,
+                  sport_paper=bool(sp and demo_keys))
 
 
 # ---------------------------------------------------------------------------
@@ -676,8 +700,9 @@ def signals_page(request: Request, user: str = "", event: str = "", venue: str =
     is_maker = bool(profile and not profile.get("strategy", "update").startswith(("update", "hold", "last", "early")))
     # venue=kalshi (with RACINGLINES_KALSHI_VENUE=1): the maker's same profiles replayed on Kalshi's tape
     venue = "kalshi" if venue == "kalshi" and V.KALSHI_VENUE and is_maker else ""
-    acct = story.account(c, uid, profile, is_maker, venue=venue or "polymarket", sport=sport or None,
-                        **({"markers": False} if basic else {}))
+    sp = SPP.enabled() and not venue                # RACINGLINES_SPORT_PAPER=1: the NASCAR / MotoGP demo rows join the record
+    acct = story.account(c, uid, profile, is_maker, venue=venue or "polymarket", sport=sport or None, sports=sp,
+                         **({"markers": False} if basic else {}))
     if basic:
         acct = _basic_acct(acct)
     record, seasons, total = acct["record"], acct["seasons"], acct["kpis"]["total"]
@@ -690,9 +715,11 @@ def signals_page(request: Request, user: str = "", event: str = "", venue: str =
                            ORDER BY kind, subject""", u=uid, e=ev, v=venue) if ev else pd.DataFrame()
     else:
         sig = data.q(c, """SELECT * FROM strategy_signals WHERE user_id = :u AND event_key = :e
-                           AND coalesce(detail->>'venue', 'polymarket') NOT LIKE 'kalshi%'
+                           AND (coalesce(detail->>'venue', 'polymarket') NOT LIKE 'kalshi%'""" + (
+                           " OR event_key IN (" + SPP.SPORT_KEYS + ")" if sp else "") + """)
                            ORDER BY signal_ts DESC NULLS LAST, id DESC""", u=uid, e=ev) if ev else pd.DataFrame()
-        pos = data.q(c, """SELECT * FROM paper_positions WHERE user_id = :u AND event_key = :e AND venue NOT LIKE 'kalshi%'
+        pos = data.q(c, """SELECT * FROM paper_positions WHERE user_id = :u AND event_key = :e AND (venue NOT LIKE 'kalshi%'""" + (
+                           " OR event_key IN (" + SPP.SPORT_KEYS + ")" if sp else "") + """)
                            ORDER BY kind, subject""", u=uid, e=ev) if ev else pd.DataFrame()
     stages = []
     for lab, g in (sig.groupby("stage", sort=False) if len(sig) else []):
@@ -725,8 +752,8 @@ def signals_page(request: Request, user: str = "", event: str = "", venue: str =
                   show_fair=show_fair, stages=stages,
                   positions=positions, cur=cur, event_key=ev, users=users, maker=maker, record=record,
                   seasons=seasons, total=total, acct=acct, is_maker=is_maker, heat_label=HEAT_LABEL,
-                  venue=venue, sport=sport, sport_options=sport_options, sport_names=V.SPORT_NAME,
-                  kalshi=V.KALSHI_VENUE and is_maker)
+                  venue=venue, sport=sport, sport_options=sport_options, sport_names=_sport_names(),
+                  kalshi=V.KALSHI_VENUE and is_maker, mix=None if basic else story.mix(record))
 
 
 # ---------------------------------------------------------------------------
