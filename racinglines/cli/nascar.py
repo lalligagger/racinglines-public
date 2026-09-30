@@ -70,11 +70,17 @@ def main(argv=None):
     from racinglines.cli import replay_cmd
     replay_cmd.add_parser(sub, "nascar")
     replay_cmd.add_season_parser(sub, "nascar")
+    replay_cmd.add_demo_parser(sub, "nascar")
+    replay_cmd.add_forecast_parser(sub, "nascar")
     args = ap.parse_args(argv)
 
     if args.cmd == "season":
         return _season(args)
 
+    if args.cmd == "demo-history":
+        return replay_cmd.run_demo(args, "nascar")
+    if args.cmd == "forecast":
+        return replay_cmd.run_forecast(args, "nascar")
     if args.cmd == "replay":
         return replay_cmd.run(args, "nascar", _years(args.years))
     if args.cmd == "season-replay":

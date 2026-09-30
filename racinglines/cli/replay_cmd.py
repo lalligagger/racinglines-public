@@ -138,6 +138,120 @@ def run(args, sport, years):
     return 0
 
 
+# --- demo-history: the replay's trades as a demo account's paper portfolio (pipelines/sport_paper.py) ------------
+
+def add_demo_parser(sub, sport):
+    p = sub.add_parser("demo-history", help=f"Store the {sport} taker replay's trades as a demo account's paper "
+                                            "positions (pipelines/sport_paper.py; needs RACINGLINES_SPORT_PAPER=1).")
+    p.add_argument("--grid", default=None, help=f"The settings grid to pick from (data/runs/replay-grid/{sport}).")
+    p.add_argument("--pick", default=None, help="Print the selection from this grid folder and write nothing.")
+    p.add_argument("--book", default="kinds", choices=["kinds", "blend", "best"],
+                   help="kinds (default): each market kind at its best setting; blend: every kind at the one best setting; best: best effort (best total per kind; if none is positive, every kind at the best total, win or lose).")
+    p.add_argument("--venue", default="kalshi", choices=["kalshi", "polymarket"])
+    p.add_argument("--users", default="taker", help="Comma list of demo accounts (default: taker).")
+    p.add_argument("--events", default=None, help="Only these event keys, comma list, or 'latest': a spot check.")
+    p.add_argument("--reset", action="store_true", help="Delete this sport's demo rows on --venue for --users first "
+                                                       "(alone: delete only).")
+    p.add_argument("--backup", default=None, help="The database dump taken for this step (under 24 hours old).")
+    p.add_argument("--grid-venue", default=None, choices=["kalshi", "polymarket"],
+                   help="Pick the settings from this venue's grid runs (default: --venue). Polymarket has no grid: "
+                        "--venue polymarket --grid-venue kalshi trades Polymarket's tape with Kalshi's selection.")
+    return p
+
+
+def run_demo(args, sport):
+    from racinglines.db import changes
+    from racinglines.db.config import get_engine, get_session
+    from racinglines.pipelines import sport_paper as SP
+
+    if args.pick:
+        print(SP.selection_md(sport, SP.pick(args.pick, getattr(args, "grid_venue", None) or args.venue)))
+        return 0
+    if not SP.enabled():
+        sys.exit(f"{SP.SWITCH} is off: set {SP.SWITCH}=1 to write (and show) the demo paper portfolio")
+    if not (args.grid or args.reset):
+        sys.exit("give --grid FOLDER (the settings grid to pick from), --reset, or --pick FOLDER")
+    _backup_ok(args, sport, "demo-history writes strategy_signals and paper_positions")
+    engine = get_engine(args.db)
+    users = [u.strip() for u in args.users.split(",") if u.strip()]
+    backup = Path(args.backup).name
+    if args.reset:
+        n, m = SP.reset(engine, users, sport, args.venue)
+        with get_session(args.db) as s:
+            changes.record(s, "demo-history-reset", f"{sport} demo paper rows deleted on {args.venue} for {', '.join(users)}: "
+                           f"{n} signals, {m} positions; backup {backup}", sport=sport,
+                           detail=dict(signals=n, positions=m, users=users, venue=args.venue, backup=backup))
+            s.commit()
+        print(f"Deleted {n} signals and {m} positions ({sport}, {args.venue}, {', '.join(users)})")
+        if not args.grid:
+            return 0
+    sel = SP.pick(args.grid, getattr(args, "grid_venue", None) or args.venue)
+    md = SP.selection_md(sport, sel)
+    print(md)
+    settings = SP.settings_for(sel, args.book)
+    if not settings:
+        print(f"Nothing to trade: no {args.book} setting made money in its worse season. Nothing written.")
+        return 0
+    (Path(args.grid) / f"demo-selection-{args.venue}.md").write_text(md)
+    events = args.events.split(",") if args.events else None
+    rep = SP.backfill(engine, sport, settings, usernames=users, seasons=sel["seasons"], venue=args.venue,
+                      events=events, book=args.book, echo=lambda m: print(m, flush=True))
+    for u in sorted({r[0] for r in rep}):
+        for y in sel["seasons"]:
+            rs = [r for r in rep if r[0] == u and r[1].startswith(str(y))]
+            if rs:
+                print(f"{u} {y}: {len(rs)} races, paper P&L after fees {sum(r[4] for r in rs):+.2f}")
+    with get_session(args.db) as s:
+        changes.record(s, "demo-history", f"{sport} demo paper portfolio ({args.book}, {args.venue}, in-sample) for "
+                       f"{', '.join(users)}: {len(rep)} account-races; backup {backup}", sport=sport,
+                       detail=dict(book=args.book, venue=args.venue, users=users, events=events, rows=len(rep),
+                                   settings={f"{e:g}/{v:g}": k for (e, v), k in settings.items()}, backup=backup))
+        s.commit()
+    print(f"Undo: racinglines {sport} demo-history --reset --venue {args.venue} --users {','.join(users)} --backup FILE")
+    return 0
+
+
+# --- forecast: the sport's next races, priced by its model (pipelines/sport_forecast.py) ---------------------------
+
+def add_forecast_parser(sub, sport):
+    p = sub.add_parser("forecast", help=f"Price the next {sport} races with the sport's model (read-only unless --save).")
+    p.add_argument("--races", type=int, default=3, help="How many scheduled races (default 3).")
+    p.add_argument("--save", action="store_true", help="Store the forecast as a model run (needs --backup).")
+    p.add_argument("--backup", default=None, help="With --save: the database dump taken for this step (under 24 hours old).")
+    p.add_argument("--undo", type=int, default=None, help="Delete a forecast run this command stored (its run id).")
+    return p
+
+
+def run_forecast(args, sport):
+    from racinglines.db import changes
+    from racinglines.db.config import get_engine, get_session
+    from racinglines.pipelines import sport_forecast as SF
+    if args.undo:
+        with get_session(args.db) as s:
+            n = SF.undo(s, args.undo)
+            if n:
+                changes.record(s, "forecast-undo", f"{sport} forecast run {args.undo} deleted", sport=sport,
+                               detail=dict(run=args.undo))
+            s.commit()
+        print(f"Deleted {n} run(s)")
+        return 0 if n else 1
+    if args.save:
+        _backup_ok(args, sport, "forecast --save writes model_runs and race_predictions")
+    engine = get_engine(args.db)
+    fc = SF.forecast(engine, sport, n=args.races)
+    with engine.connect() as c:
+        print(SF.table(c, fc))
+    if not args.save or not fc["races"]:
+        return 0
+    rid = SF.save(engine.url.render_as_string(hide_password=False), fc)
+    with get_session(args.db) as s:
+        changes.record(s, "forecast", f"{sport} forecast run {rid}: {len(fc['races'])} races, field from "
+                       f"{fc['field_from']}; backup {Path(args.backup).name}", sport=sport,
+                       detail=dict(run=rid, races=[x['race'].event_key for x in fc['races']], backup=Path(args.backup).name))
+        s.commit()
+    print(f"Stored forecast run {rid}. Undo: racinglines {sport} forecast --undo {rid}")
+
+
 # --- `season-replay`: the champion markets (pipelines/season_replay.py) ---------------------------------------------
 
 def add_season_parser(sub, sport):

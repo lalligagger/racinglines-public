@@ -215,9 +215,26 @@ Positions shows it beside the Polymarket record and Strategy under its Polymarke
 Kalshi on the board, race and season pages, and `/markets/og` lists its markets with the fair-price indicator per side
 (edge YES = fair − ask − fee, edge NO = bid − fair − fee, and the call), refresh and mirror, read-only. Every schema
 exchange in `exchanges/` gets its own `/markets/<code>` page this way ([Exchanges](exchanges.md)). With
-`RACINGLINES_TAPES=1`, `/markets/tapes` lists the tape-only sports' markets (NASCAR, MotoGP, IndyCar, road cycling, Le Mans, SailGP) per exchange
+`RACINGLINES_TAPES=1`, `/markets/tapes` lists the tape-only sports' markets (IndyCar, road cycling, Le Mans, SailGP: the schemas with `model_family = "none"`; NASCAR and MotoGP show on the board instead) per exchange
 event: what is linked, the volume and favourite, and what has been recorded (trades, price points, book snapshots and
 their last timestamps). It is market data only: no model, positions or P&L. With both switches off every page renders as before.
+
+**Every sport's status** (off by default, `RACINGLINES_SPORT_STATUS=1`; `racinglines/web/sport_status.py`). Markets
+opens with one row per sport schema, modeled or tape only, for both roles: race data (races with results, the latest
+result, the next event), exchange markets (links per exchange, open, tied to a race, last sync), model (the schema's
+model family, the latest live forecast run, the stored as-of replay prices, season forecasts), backtests (backtest runs
+in the database, the replay settings grid under `data/runs/replay-grid/<sport>`) and, for Pro and admin, the demo
+accounts' paper record per sport (settled P&L, never a buy_all row). Each cell is green (there), amber (partial), red
+(missing) or grey (not applicable: a tape-only sport has no model by design), so a sport with no model or no data
+says so rather than disappearing. With the switch on, every sport with exchange data opens on the board. A modeled sport
+with no live forecast run but with replay saves (NASCAR, MotoGP: `<sport> replay --save`, as-of runs made before each
+race) gets its board section too: the next races with the exchanges' prices (no fair price until a forecast is stored)
+and the recent races with the model's pre-race price on the winner. `<sport> forecast --save` (in `vm.sh demo`) stores a live forecast for
+the next scheduled races, and the section then reads like F1's: live prices from that run. It is the replay's model and
+settings on every result so far, the field taken from the latest race; refresh it after each race. The Pro
+account's Strategy page also splits its record by sport and strategy (*Where the P&L came from*: the F1 maker, the
+NASCAR / MotoGP taker demo). `bash scripts/deploy/vm.sh demo` turns this and `RACINGLINES_SPORT_PAPER` on and stores
+the NASCAR / MotoGP demo rows for both demo accounts ([Paper trading](paper-trading.md#nascar-and-motogp-demo-in-sample-off-by-default)).
 
 **Demo sessions are disposable** (`racinglines/web/demo.py`; the demo accounts are `RACINGLINES_DEMO_USERS`,
 default `maker,taker`). Every sign-in gets a fresh session id. View settings (Edge Finder combos and season,

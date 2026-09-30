@@ -53,6 +53,7 @@ be repeated without reading the whole page.
 |---|---|
 | `scripts/deploy/vm.sh` | Run on your Mac: `setup`, `restore`, `start [web]`, `deploy [ref]`, `status`, `logs [unit]`, `ssh` (SSH through IAP) |
 | `scripts/deploy/smoke.sh <url>` | The smoke check (any machine with curl) |
+| `vm.sh demo [status]` | The multi-sport demo: `RACINGLINES_SPORT_STATUS=1` and `RACINGLINES_SPORT_PAPER=1` in `/etc/racinglines.env`, the web app restarted, then `scripts/vm/demo_setup.sh` as the unit `rl-demo` (backup first, then NASCAR and MotoGP `demo-history` for `maker,taker`); `demo status` shows its progress ([Web app](webapp.md#accounts-demo-users-vs-polymarkets-takers)) |
 | `deploy/vm/setup.sh` | One-time VM setup, run by `vm.sh setup`: packages, the `racinglines` user, a read-only deploy key, `/opt/racinglines` on `main`, a Python 3.14 venv (uv), Postgres, `/etc/racinglines.env`, the units |
 | `deploy/vm/update.sh [ref]` | On the VM, run by `vm.sh deploy`: checkout, `pip install`, `alembic upgrade head` |
 | `deploy/vm/systemd/` | `racinglines-web`, `racinglines-recorder` (the Mac's recorder LaunchAgent), `racinglines-signals` + timer (every 5 min), and per-event templates `racinglines-live-f1@<event>` + timer and `racinglines-live-dh@<event>` |

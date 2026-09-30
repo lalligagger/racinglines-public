@@ -26,7 +26,7 @@ A cell counts at one of three levels:
 | | Polymarket | Kalshi | OG.com |
 |---|---|---|---|
 | **F1** | **Backtested.** Taker profile A, +$1,389 (2026) and +$1,432 (2025) at 16k (PR #85) | **Backtested (maker).** Profile K. The taker replay is not usable until Kalshi candles carry bid/ask (PR #85, section 3) | **Priced.** Drivers' and constructors' champion: `og fair` printed 20 F1 rows on the VM (2026-09-29). Shown in the app only with `RACINGLINES_OG_VENUE=1`, still off on the VM. No backtest yet. **Replayed prices tonight** with PR #88's buy-all on the VM's recorded OG.com prices |
-| **NASCAR** | **0.** 36 markets priced, 0 tradeable at a $0 floor (Mac Stage 1). Diagnostic 1d pending; likely a partial listing failing the coherence check | **Backtested, one race.** 178 tradeable at $0, 56 at $50 (Mac Stage 1, **before PR #89**, so some of those prices may be dead-book 0.50 midpoints). Needs the full tape pulled after #89 and the candle fix (tonight), and the spike check | **Replayed prices tonight** (PR #88's buy-all on the 17 Cup Champion contracts). Not priced by our model: there is no season-champion model for NASCAR |
+| **NASCAR** | **0.** 36 markets priced, 0 tradeable at a $0 floor (Mac Stage 1). Diagnostic 1d pending; likely a partial listing failing the coherence check | **Backtested, one race.** 178 tradeable at $0, 56 at $50 (Mac Stage 1, **before PR #89**, so some of those prices may be dead-book 0.50 midpoints). Needs the full tape pulled after #89 and the candle fix (tonight), and the spike check | **Replayed prices tonight** (PR #88's buy-all on the 17 Cup Champion contracts). **Priced after the run** (PR #93's season forecast: `nascar season --quotes`, read-only, the champion price beside OG.com's 17 contracts and Kalshi's; an indicator, not a trading input) |
 | **MotoGP** | **0.** Never synced | **Priced, tradeable with PR #89.** 22 priced and 0 tradeable before it. With #89 (dead-book 0.50 midpoints rejected, UUID rider ids kept), the Mac's replay shows 13 races, 288 priced, 186 tradeable. The 3 races still untradeable (USA, RSM, AUT) fail real liquidity or coherence gates | **0.** OG.com lists no MotoGP that we know of (not in `exchanges/og.toml`, never probed) |
 
 **Where it stands:** the MotoGP row is zero on the VM until PR #89 is merged and deployed. With it, MotoGP × Kalshi is tradeable on the Mac. After tonight, OG.com has two cells with replayed prices (F1 and NASCAR) and one priced by our model (F1). The OG.com column is zero for backtests, but F1 is priced there, so
@@ -60,9 +60,16 @@ M1 to M4 give every row and every column at least one cell. After that, in order
 |---|---|---|
 | `dry` | nothing | cores, memory, disk; table counts; each sport's tape probe and last-race replay; **the F1 golden check** (profile A on 2026 at 4k, not saved) |
 | `f1` | sweep runs, walk-forward | backup; the broad sweep (`sweeps/overnight-vm.toml`); `search-report`; `scripts/vm/promote_16k.py` appends the top 10 plus profile A and the default settings at 16k; the 16k confirmations; `search-report` again; with `F1_EXTRAS=1` only, the F1 walk-forward and the default F1 sweeps saved (as the backfill's `full` did; off by default since the 2-vCPU resize) |
-| `replay` | links, tape, replay runs | backup; for each of `SPORTS` (default NASCAR and MotoGP together): Kalshi and Polymarket link syncs for 2025 and 2026 (closed included); tape pull and replay (Kalshi must be tradeable or it stops); the spike check; the replay saves; a read-only settings grid and its top 3 at 16k; then OG.com's read-only buy-all for F1 and NASCAR (PR #88) |
+| `replay` | links, tape, replay runs | backup; for each of `SPORTS` (default NASCAR and MotoGP together): **if the preflight finds 0 events or 0 Kalshi links with a race, it first fetches and ingests the sport's results 2016-2026, re-syncs Kalshi and (NASCAR) runs `nascar link --apply`**; Kalshi and Polymarket link syncs for 2025 and 2026 (closed included); tape pull and replay (a sport with no tradeable Kalshi market is skipped with a STOP line, the rest go on); the spike check; the replay saves; a read-only settings grid and its top 3 at 16k; then OG.com's read-only buy-all for F1 and NASCAR (PR #88) |
 | `story` | 16 sweep runs, the taker's demo backfill | backup; evidence sweeps; a gate that stops on a different pick; the taker's backfill rebuilt ([below](#demo-taker-walk-forward-story)) |
-| `all` | all three | `f1`, then `replay`, then `story`. Each starts only if the one before finished |
+| `sports` | replay and story | `replay`, then `story`: the resume after the 2026-09-30 failure (F1 already done) |
+| `all` | all three | `replay`, then `story`, then `f1` (the sports first; F1 has been backtested for days). Each starts only if the one before finished |
+
+**Preflight (every mode, first minute).** Each sport's event count and its Kalshi links with a race attached. The
+first overnight run (2026-09-30) lost its NASCAR phase to this: the VM had 13,599 NASCAR Kalshi links and no NASCAR
+results, because `nascar ingest` and `nascar link --apply` had only run on the Mac. `dry` now prints `NOT READY` for such
+a sport; `replay` loads its results and identifies its links after its backup, and skips it with a STOP line only if
+that doesn't fix it.
 
 Every writing mode backs up first and checks the dump's trailer, logs to `data/runs/logs/overnight-<mode>-<UTC>.log`,
 leaves an `overnight-<mode>.done` or `.failed` marker, adds a `data_changes` note naming the backup, and refuses to start
@@ -71,20 +78,54 @@ to end before then.
 
 ### Progress updates
 
-The owner asked (2026-09-30) for clear but not too frequent updates. The runner writes one line:
+The owner asked (2026-09-30) for clear but not too frequent updates, then for more inside a phase: during the NASCAR
+tape pull on 2026-09-30 nothing was logged from 12:59Z to 13:44Z, so nobody could tell working from stuck. The runner
+writes one line:
 - when each phase starts (the same line closes the phase before, with its duration);
-- every 45 minutes inside a phase (`HEARTBEAT_MIN`);
-- at once on any failure or stop.
+- when each step inside a phase starts (the same line closes the step before, with its duration);
+- when each sport starts, and one summary line when it finishes or is skipped;
+- after each tape pull and the replay saves, with what they stored, and the grid's top 3;
+- every 15 minutes inside a phase (`HEARTBEAT_MIN`), with the step, its counter and the run log's last line and age;
+- at once on any failure or stop (a failure line also carries the step and the run log's last line).
 
 Each line has the UTC time, the mode, the minutes since the start and the failures so far. It also names the phase:
 F1 broad sweep, F1 top 10 at 16k, walk-forward, each sport's links and tape, replay saves and settings grid, OG.com
 buy-all, and the taker story's sweeps, gate and rebuild. For the F1 searches, the story's evidence sweeps and the
-grids, it adds jobs done of total and a rough time left (`scripts/vm/progress.py`).
+grids, it adds jobs done of total and a rough time left. For a tape pull or a replay it adds the race it is on, of how
+many, and a rough time left for the step (`scripts/vm/progress.py`, reading the race lines the replay prints).
+
+The run sets `PYTHONUNBUFFERED=1`, so the commands' own per-race and per-job lines reach the run log as they happen.
+Before, Python held them in 8 KB blocks when writing to the log, which is likely part of why the 12:59Z-13:44Z gap
+looked empty.
+
+The lines, as they look in `overnight-progress.log`. The check-ins' existing `started:`, `done:`, `still running:`,
+`STOP:`, `FAILED at line`, `backup`, `preflight`, `NOT READY` and `FINISHED` lines keep their start; the new parts are
+appended after them:
+
+```
+2026-10-01T12:59Z [all, 20 min in, 0 failed] sport 1 of 2: nascar
+2026-10-01T12:59Z [all, 20 min in, 0 failed] started: nascar: links, tape, replay
+2026-10-01T12:59Z [all, 20 min in, 0 failed] step 1: nascar Kalshi link sync 2025, 2026
+2026-10-01T13:03Z [all, 24 min in, 0 failed] step 2: nascar Polymarket link sync 2025, 2026 (step 1 took 4 min)
+2026-10-01T13:05Z [all, 26 min in, 0 failed] step 3: nascar Kalshi tape pull and replay 2016-2026 (step 2 took 2 min)
+2026-10-01T13:20Z [all, 41 min in, 0 failed] still running: nascar: links, tape, replay, 21 min · step 3: nascar Kalshi tape pull and replay 2016-2026, 15 min · kalshi tape race 57 of 213, about 41 min left · last output 0 min ago: pull kalshi 57/213 2019-14 Pocono: 38 markets, 412 trades, 610 prices
+2026-10-01T14:02Z [all, 83 min in, 0 failed] nascar Kalshi: Pulled kalshi: 213 races, 51022 trades, 88410 prices
+2026-10-01T15:40Z [all, 181 min in, 0 failed] nascar grid top 3 (edge, floor): 0.1 200; 0.08 200; 0.1 50
+2026-10-01T16:30Z [all, 231 min in, 0 failed] sport nascar finished in 211 min · Pulled kalshi: 213 races, 51022 trades, 88410 prices; Pulled polymarket: 36 races, 0 trades, 0 prices; Stored 36 runs, batch replay-20261001T1405Z
+```
+
+The numbers above are made up to show the shape. What to read:
+- **`QUIET: last output N min ago`** in a heartbeat means the run log has had no new line for `QUIET_MIN` (30) minutes.
+  Tape pulls, replays and searches print a line per race or per job, so a QUIET step there is worth a look (`tail` the
+  run log); a link sync, an ingest or a single saved sweep can be quiet for a while without being stuck.
+- **`step N: ... (step N-1 took M min)`** is the quickest way to see where the time went afterwards.
+- **`sport <s> finished|skipped in M min`** is the per-sport result line; a skipped sport also has a `STOP:` line above it.
 
 The lines go to `data/runs/logs/overnight-progress.log` (appended) and `data/runs/logs/overnight-status.txt` (the latest
-line only). They are local files: the job makes no network calls for them. The heartbeat is a background loop that
-can't fail the run. The VM can't post to the project, so the Mac reads the files over SSH (the handoff has the
-command).
+line only). Heartbeats go only to those two files, not to the run log, so the run log's age is real output. They are
+local files: the job makes no network calls for them. The heartbeat is a background loop that can't fail the run. The
+VM can't post to the project, so the Mac reads the files over SSH (the handoff has the command). Knobs, as environment
+settings on the unit: `HEARTBEAT_MIN` (default 15, was 45) and `QUIET_MIN` (default 30).
 
 ### F1: broad sweep, then 16k
 
@@ -211,7 +252,12 @@ shows the taker's decisions with their evidence). It must be merged and deployed
 6. **Morning:** markers, log greps, the two reports (`data/runs/search/overnight-vm/report.md`,
    `data/runs/replay-grid/<sport>/grid.md`) and the spike lines pasted back to the thread, which writes the report,
    the decision-log entry and the `docs/data-changes.md` line. Resize back.
-7. **Later, each with its own go:** M3 (OG.com venue switch), M4 if MotoGP didn't join tonight (`MODE=replay SPORTS=motogp`), N1 to N5, and bucket stages 3 onward.
+7. **After the run's marker is in: the NASCAR champion forecast** (PR #93, already on the VM, no redeploy). Read-only:
+   `nascar fetch` only downloads the points feed to `data/raw/nascar/`, and `nascar season` writes nothing to the
+   database, so no backup. It fills the NASCAR × OG.com cell at the priced level:
+   `racinglines nascar fetch --years 2026 --feeds points-feed`, then
+   `RACINGLINES_NASCAR_SEASON=1 racinglines nascar season --quotes --csv data/runs/nascar-season-2026.csv`.
+8. **Later, each with its own go:** M3 (OG.com venue switch), M4 if MotoGP didn't join tonight (`MODE=replay SPORTS=motogp`), N1 to N5, and bucket stages 3 onward.
 
 ### Expected time (estimates from the cloud sweep's rate, not measured on the VM)
 

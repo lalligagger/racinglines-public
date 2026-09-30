@@ -5,7 +5,15 @@
 <a href="/positions{{ '?venue=kalshi' if venue }}">What it holds: Positions →</a>
 {%- if kalshi %}<nav class="tabs" aria-label="Which exchange's record"><a href="?{{ 'user=' ~ viewer.username if viewer.id != user.id }}"{% if not venue %} aria-current="page"{% endif %}>Polymarket</a><a href="?venue=kalshi{{ '&user=' ~ viewer.username if viewer.id != user.id }}"{% if venue %} aria-current="page"{% endif %}>Kalshi</a></nav>{% endif %}
 {% if users %}<form method="get" class="inline"><label><span>User</span><select name="user" onchange="this.form.submit()">
-  {% for u in users %}<option {{ 'selected' if u == viewer.username }}>{{ u }}</option>{% endfor %}</select></label></form>{% endif %}{% endcall %}
+  {% for u in users %}<option {{ 'selected' if u == viewer.username }}>{{ u }}</option>{% endfor %}</select></label></form>{% endif %}
+{% if sport_options %}<form method="get" class="inline">
+  {% if viewer.id != user.id %}<input type="hidden" name="user" value="{{ viewer.username }}">{% endif %}
+  {% if venue %}<input type="hidden" name="venue" value="{{ venue }}">{% endif %}
+  <label><span>Sport</span><select name="sport" onchange="this.form.submit()">
+    <option value="">all sports</option>
+    {% for code in sport_options %}<option value="{{ code }}" {{ 'selected' if sport == code }}>{{ sport_names.get(code, code) }}</option>{% endfor %}
+  </select></label>
+</form>{% endif %}{% endcall %}
 
 {% if not profile and not record %}<p class="muted">No strategy profile is assigned to this account. An admin can assign one on the user's admin page.</p>{% else %}
 {% set k = acct.kpis %}
@@ -16,6 +24,13 @@
   <div class="kpi"><div class="l">Most capital in use</div><div class="v">${{ "{:,.0f}".format(k.peak_deployed) }}</div><div class="s">in any one weekend</div></div>
   <div class="kpi"><div class="l">Weekends up</div><div class="v">{{ k.up }}/{{ k.weekends }}</div><div class="s">{% for y in seasons %}{{ y.year }}: {{ y.pnl|money(true) }}{{ " · " if not loop.last }}{% endfor %}</div></div>
 </div>
+{% if record|selectattr('demo')|list %}{% call demo_context() %}<span class="pill no">demo replay, in-sample</span> NASCAR and MotoGP races are the taker replay on the exchange's recorded prices (after its taker fee), each market kind traded with the setting that did best on these same seasons: a demo of the strategy, not evidence of an edge.{% endcall %}{% endif %}
+{% if show_fair and mix and (mix|length > 1 or mix[0].family == 'taker') %}<div class="card"><h3>Where the P&amp;L came from</h3>
+<p class="legend">This account's paper record by sport and kind of strategy. Maker: quotes both sides and earns the spread. Taker: takes the model's edge at the market's price.</p>
+<div class="scroll"><table><thead><tr><th class="l">Sport</th><th class="l">Strategy</th><th>Races / weekends</th><th>Up</th><th>Paper P&amp;L</th><th class="l"></th></tr></thead>
+<tbody>{% for m in mix %}<tr><td class="l">{{ sport_names.get(m.sport, m.sport) if m.sport else "–" }}</td><td class="l">{{ m.family }}</td><td>{{ m.weekends }}</td><td>{{ m.up }}</td>
+<td class="{{ 'good' if m.pnl > 0 else ('bad' if m.pnl < 0) }}">{{ m.pnl|money(true) }}</td><td class="l">{% if m.demo %}<span class="pill no">demo replay, in-sample</span>{% endif %}</td></tr>{% endfor %}</tbody>
+</table></div></div>{% endif %}
 {% if record|selectattr('backfill')|list %}{% call demo_context() %}<span class="pill no">backtest replay</span> weekends were replayed from {% if venue == 'kalshi' %}Kalshi's real prices and trades (with Kalshi's maker fee){% else %}Polymarket's real prices and trades{% endif %} with the strategy this demo account ran then; they weren't traded live. Live paper trading starts with the next race weekend.{% endcall %}{% endif %}
 
 {# --- one view at a time: the record, one weekend, how the account chooses --- #}
@@ -30,12 +45,12 @@
 <div class="card"><h2>Track record</h2><p class="legend">Click a weekend for its calls, stage by stage.</p><div class="scroll" data-rows="25" data-filter="Filter by weekend or strategy"><table>
 <thead><tr><th class="l">Weekend</th><th class="l">Strategy</th><th>{{ "Fills" if is_maker else "Trades taken" }}</th><th title="Markets still held when the race started">Held to the race</th><th>Most in use</th><th>P&amp;L</th><th>Running total</th><th class="l"></th></tr></thead><tbody>
 {% for y in seasons %}{% for r in y.rows %}<tr class="{{ 'sel' if r.event_key == event_key }}">
-  <td class="l"><a href="?event={{ r.event_key }}{% if viewer.id != user.id %}&user={{ viewer.username }}{% endif %}{% if venue %}&venue={{ venue }}{% endif %}#weekend">{{ r.event_name or r.event_key }}</a> <span class="muted">{{ r.start_date|fmt if r.start_date }}</span></td>
+  <td class="l"><a href="?event={{ r.event_key }}{% if viewer.id != user.id %}&user={{ viewer.username }}{% endif %}{% if venue %}&venue={{ venue }}{% endif %}{% if sport %}&sport={{ sport }}{% endif %}#weekend">{{ r.event_name or r.event_key }}</a> <span class="muted">{{ r.start_date|fmt if r.start_date }}</span></td>
   <td class="l">{{ r.profile }}</td>
   <td>{{ r.fills if r.strategy.startswith('maker') else r.taken }}</td><td>{{ r.positions }}</td><td>${{ "{:,.0f}".format(r.deployed) }}</td>
   <td class="{{ 'good' if r.pnl > 0 else ('bad' if r.pnl < 0) }}">{{ r.pnl|money(true) }}{% if not r.settled %} <span class="muted">open</span>{% endif %}</td>
   <td>{{ r.cum|money(true) }}</td>
-  <td class="l">{% if r.backfill %}<span class="pill no">backtest replay</span>{% else %}<span class="pill yes">live paper</span>{% endif %}</td></tr>{% endfor %}
+  <td class="l">{% if r.demo %}<span class="pill no">demo replay, in-sample</span>{% elif r.backfill %}<span class="pill no">backtest replay</span>{% else %}<span class="pill yes">live paper</span>{% endif %}</td></tr>{% endfor %}
   <tr class="total"><td class="l"><b>{{ y.year }}</b></td><td class="l"></td><td></td><td></td><td></td><td class="{{ 'good' if y.pnl > 0 else ('bad' if y.pnl < 0) }}"><b>{{ y.pnl|money(true) }}</b></td><td></td><td class="l muted">{{ y.up }}/{{ y.weekends }} weekends up</td></tr>
 {% endfor %}
 </tbody></table></div></div>

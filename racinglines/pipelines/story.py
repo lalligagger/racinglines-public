@@ -120,40 +120,56 @@ def decisions(conn, taker=False):
 # One account's story: bankroll, track record, phases, and what drove them
 # ---------------------------------------------------------------------------
 
-def track_record(conn, uid, venue="polymarket"):
+def track_record(conn, uid, venue="polymarket", sport=None, sports=False):
     """Every weekend with signals or positions: event, strategy run, trades taken (taker) / fills (maker),
     positions, paper P&L (settled, else marked to the market), backtest replay or live. venue: 'polymarket'
     (the default: the strategy's own record), 'private', 'kalshi' (the maker's replay on Kalshi's tape,
     `f1 demo-history --venue kalshi`) or 'all'. A private-book event
     (pipelines/live_dh.py) has positions but no signals: it joins the history on the day the book ran, as its
-    own "Private book" run."""
+    own "Private book" run. sports (RACINGLINES_SPORT_PAPER=1, pipelines/sport_paper.py): the NASCAR / MotoGP demo
+    replays join the record on their race dates, whatever their venue, flagged `demo` (never a buy_all row)."""
     import pandas as pd
     from sqlalchemy import text
+
+    from racinglines.pipelines import sport_paper as SP
+    demo = " AND detail ? 'sport' AND strategy <> 'buy_all' AND coalesce(detail->>'mode', 'update') <> 'buy_all'"
     q = text("""
-        WITH s AS (SELECT event_key, min(profile) AS profile, min(strategy) AS strategy, count(*) AS signals,
+        WITH s AS (SELECT event_key, min(profile) AS profile, min(strategy) AS strategy, count(*) AS signals,""" + (
+                          " bool_or(detail ? 'sport') AS demo," if sports else "") + """
                           count(*) FILTER (WHERE action IN ('buy', 'sell') AND coalesce(detail->>'followed', 'true') = 'true') AS taken,
                           count(*) FILTER (WHERE action = 'fill') AS fills,
                           bool_or(detail->>'backfill' = 'true') AS backfill
                    FROM strategy_signals WHERE user_id = :u
-                     AND (:v NOT IN ('polymarket', 'kalshi') OR coalesce(detail->>'venue', 'polymarket') = :v)
+                     AND (:v NOT IN ('polymarket', 'kalshi') OR coalesce(detail->>'venue', 'polymarket') = :v""" + (
+                          " OR (TRUE" + demo + ")" if sports else "") + """)
                    GROUP BY event_key),
              p AS (SELECT event_key, count(*) FILTER (WHERE abs(yes_shares) + abs(no_shares) > 1e-9) AS positions,
                           bool_and(outcome IS NOT NULL OR abs(yes_shares) + abs(no_shares) + abs(cash) < 1e-9) AS settled,
                           sum(cash + yes_shares * coalesce(outcome::int, mark) + no_shares * (1 - coalesce(outcome::int, mark))) AS pnl,
                           bool_and(venue = 'private') AS private, max(updated_at) AS updated
-                   FROM paper_positions WHERE user_id = :u AND (:v = 'all' OR venue = :v) GROUP BY event_key)
+                   FROM paper_positions WHERE user_id = :u AND (:v = 'all' OR venue = :v""" + (
+                          " OR event_key IN (" + SP.SPORT_KEYS + ")" if sports else "") + """) GROUP BY event_key)
         SELECT event_key, s.profile, s.strategy, coalesce(s.signals, 0) AS signals, coalesce(s.taken, 0) AS taken,
-               coalesce(s.fills, 0) AS fills, s.backfill, coalesce(p.private, false) AS private,
+               coalesce(s.fills, 0) AS fills, s.backfill, coalesce(p.private, false) AS private,""" + (
+               " coalesce(s.demo, false) AS demo," if sports else "") + """
                coalesce(p.positions, 0) AS positions, coalesce(p.settled, true) AS settled, coalesce(p.pnl, 0) AS pnl,
                coalesce(ra.format->>'event_name', e.name, le.title) AS event_name,
+               CASE WHEN p.private THEN 'private' ELSE sp.code END AS sport,
                coalesce(e.start_date, CASE WHEN p.private THEN coalesce((le.opened_at AT TIME ZONE 'UTC')::date,
                                                                         (p.updated AT TIME ZONE 'UTC')::date) END) AS start_date
-        FROM s FULL JOIN p USING (event_key) LEFT JOIN events e ON e.source_key = event_key AND e.source = 'f1timing'
+        FROM s FULL JOIN p USING (event_key)
+        LEFT JOIN events e ON e.source_key = event_key
+        LEFT JOIN seasons se ON se.id = e.season_id
+        LEFT JOIN competitions co ON co.id = se.competition_id
+        LEFT JOIN sports sp ON sp.id = co.sport_id
         LEFT JOIN races ra ON ra.event_id = e.id
         LEFT JOIN (SELECT DISTINCT ON (event_key) event_key, title, opened_at FROM live_events
                    ORDER BY event_key, opened_at) le USING (event_key)
         WHERE (:v <> 'private' AND s.event_key IS NOT NULL) OR (:v <> 'polymarket' AND p.private) ORDER BY event_key""")
     rows = [dict(r) for r in conn.execute(q, dict(u=uid, v=venue)).mappings()]
+    if sport:
+        sport = sport.lower()
+        rows = [r for r in rows if (r.get("sport") or "").lower() == sport]
     from racinglines.pipelines.live import event_name
     for r in rows:
         r["pnl"] = float(r["pnl"] or 0.0)
@@ -161,7 +177,29 @@ def track_record(conn, uid, venue="polymarket"):
             r.update(profile="Private book", strategy="private", fills=r["positions"], taken=r["positions"],
                      event_name=r["event_name"] or event_name(r["event_key"]))
         r["date"] = pd.Timestamp(r["start_date"]) if r["start_date"] is not None else None
+    if sports:                                          # F1 and the other sports interleaved by date
+        rows.sort(key=lambda r: (r["date"] is None, r["date"] or pd.Timestamp.min, r["event_key"]))
     return rows
+
+
+TAKER_PREFIXES = ("update", "hold", "last", "early")      # the taker modes (weekend_sweep.TAKER_MODES) as strategy names
+
+
+def mix(record):
+    """The record split by sport and by kind of strategy (maker: quotes both sides and earns the spread; taker: takes
+    the model's edge at the market's price), for the Strategy page: [dict(sport, family, weekends, up, pnl, demo)],
+    biggest P&L first. A Pro account runs both: the F1 maker on Polymarket, the taker on the other sports."""
+    out = {}
+    for r in record:
+        fam = "private book" if r.get("private") else ("taker" if (r.get("strategy") or "").startswith(TAKER_PREFIXES)
+                                                        else "maker")
+        k = out.setdefault((r.get("sport") or "", fam), dict(sport=r.get("sport") or "", family=fam, weekends=0, up=0,
+                                                           pnl=0.0, demo=False))
+        k["weekends"] += 1
+        k["up"] += r["pnl"] > 0
+        k["pnl"] += r["pnl"]
+        k["demo"] = k["demo"] or bool(r.get("demo"))
+    return sorted(out.values(), key=lambda k: -abs(k["pnl"]))
 
 
 def deployed(conn, uid):
@@ -243,13 +281,13 @@ def phases(record):
 SEASON_WEEKENDS = 24            # Sharpe per season, as in the params-4h report: mean / s.d. of weekend P&L x sqrt(24)
 
 
-def account(conn, uid, profile, maker, markers=True, venue="polymarket"):
+def account(conn, uid, profile, maker, markers=True, venue="polymarket", sport=None, sports=False):
     """Everything the Strategy page tells about one account: KPIs (with the worst drawdown and the Sharpe
     ratio over the full history), bankroll curve (markers: dashed lines at strategy switches), phases,
     track record (with running balance), and the maker's decisions or the taker's detail. venue: as in
-    track_record (the Strategy page: Polymarket only)."""
+    track_record (the Strategy page: Polymarket only). sports: as in track_record (RACINGLINES_SPORT_PAPER=1)."""
     from racinglines.web.viz import line_chart
-    record = track_record(conn, uid, venue)
+    record = track_record(conn, uid, venue, sport=sport, sports=sports)
     bank = (profile or {}).get("bankroll") or {}
     start = float(bank.get("start") or 0.0)
     peak = deployed(conn, uid)
@@ -260,7 +298,7 @@ def account(conn, uid, profile, maker, markers=True, venue="polymarket"):
         hi = max(hi, cum)
         max_dd = min(max_dd, cum - hi)
         r["cum"], r["balance"], r["deployed"] = cum, start + cum, peak.get(r["event_key"], 0.0)
-    ph = phases(record)
+    ph = phases([r for r in record if not r.get("demo")]) if sports else phases(record)     # F1's strategy story
     dated = [r for r in record if r["date"] is not None]
     series = {"pnl": [(r["date"], r["cum"]) for r in dated]}             # cumulative P&L from $0, not a bankroll
     labels = {"pnl": "cumulative paper P&L"}

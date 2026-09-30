@@ -123,3 +123,29 @@ def test_progress_counts_jobs_and_eta(tmp_path, monkeypatch):
     assert line.startswith(" · 10 of 11 jobs done, 1 failed")
     assert P.counts("F1 top 10 at 16k", start=0, now=60) == " · 1 of 1 jobs done"
     assert P.counts("nascar: replay saves", start=0) == ""
+
+
+def test_progress_reads_the_replay_race_counters_from_the_log(tmp_path):
+    P = _mod("progress")
+    log = tmp_path / "run.log"
+    log.write_text("== 12:59:00Z nascar: links, tape, replay\n"
+                   "pull kalshi 1/200 2016-01 Daytona: 40 markets, 10 trades, 20 prices\n"
+                   "2026-09-30T13:00Z [all, 5 min in, 0 failed] step 3: nascar Kalshi tape pull\n"
+                   "pull kalshi 50/200 2019-10 Dover: 40 markets, 10 trades, 20 prices\n")
+    assert P.activity(log, step_start=0, now=600) == " · kalshi tape race 50 of 200, about 30 min left"
+    log.write_text(log.read_text() + "Pulled kalshi: 200 races, 2000 trades, 4000 prices\n\n"
+                   "progress nascar kalshi: 36 races, 400 markets of kinds win\n"
+                   "progress 12 2026-12 Kansas: 12 markets, 10 priced, 3 tradeable\n")
+    assert P.activity(log) == " · kalshi replay race 12 of 36"
+    log.write_text(log.read_text() + "Wrote data/runs/replay/x\n== 14:00:00Z nascar: replay saves\n")
+    assert P.activity(log) == ""
+
+
+def test_replay_grid_rank_handles_a_season_with_no_races(tmp_path):
+    G = _mod("replay_grid")
+    for name, totals in (("2026-e0.1-v50", {"update": dict(net=12.0, races_up=2, races=3)}), ("2025-e0.1-v50", {})):
+        d = tmp_path / name / "kalshi"
+        d.mkdir(parents=True)
+        (d / "summary.json").write_text(json.dumps(dict(totals=totals)))
+    assert G.rank(tmp_path, top=1) == 0
+    assert "no races with markets" in (tmp_path / "grid.md").read_text()

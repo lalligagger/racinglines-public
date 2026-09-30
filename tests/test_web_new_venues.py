@@ -226,3 +226,24 @@ def test_calendar_rows_with_a_race_and_a_tape_only_event(monkeypatch):
         events=[dict(end_date=pd.Timestamp("2026-10-04T23:00:00Z"), title="South Point 400 Winner", open=3)])])
     rows = V.calendar_rows(Conn())
     assert [r["title"] for r in rows] == ["South Point 400 Winner", "Bristol"]
+
+
+def test_exchange_data_table_shows_na_and_each_exchange_coverage(client, monkeypatch):
+    """The board's Exchange data table: a zero count reads n/a (nothing stored), and each exchange's line on what its
+    feed offers historically sits under the table, so Kalshi's missing books read as the source's limit."""
+    from racinglines.web import board as B
+    assert all(V.coverage(x) for x in ("polymarket", "kalshi", "og")) and V.coverage("nowhere") == ""
+    block = dict(competition="f1_wdc", sport="f1", sport_name="Formula 1", exchange="kalshi", exchange_name="Kalshi",
+                 events=[], markets=3793, open=74, trades=1065605, prices=520969, books=0, volume=1.0e8, synced=None,
+                 url="/markets/kalshi", coverage=V.coverage("kalshi"))
+    monkeypatch.setattr(B, "board", lambda conn, maker_id: [dict(code="f1_wdc", name="Formula 1", run=None, tape=False,
+                                                                  upcoming=[], later=[], season=None, recent=[],
+                                                                  exchanges=[block])])
+    monkeypatch.setattr(B, "headline", lambda conn, maker_id: dict(outcomes=0, markets=0, volume=0.0, synced=None, recording=0,
+                                                                    recorded_at=None, my_open=0, my_worst=0.0, my_staked=0.0,
+                                                                    bt_win=None, bt_grid=None, jobs_active=0))
+    monkeypatch.setattr(V, "calendar_rows", lambda conn: [])
+    r = client.get("/markets")
+    assert r.status_code == 200, r.text[:500]
+    assert "1,065,605" in r.text and "520,969" in r.text and ">n/a<" in r.text
+    assert "books exist only where a manual books run took a snapshot" in r.text and "never paper or demo trades" in r.text

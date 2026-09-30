@@ -2,13 +2,16 @@
 Job counts for the overnight VM run's progress lines (scripts/vm/overnight.sh; docs/overnight-vm-run.md). Read-only,
 no network, never fails the run: any error prints nothing.
 
-    python scripts/vm/progress.py "<phase text>" <phase start, epoch seconds>
+    python scripts/vm/progress.py "<phase text>" <phase start, epoch seconds> [<run log> <step start, epoch seconds>]
 
 Prints " · 42 of 106 jobs done, 1 failed, about 35 min left" for a phase that has countable jobs (the F1 searches
-and the replay grids), else nothing.
+and the replay grids). Given the run's log, it also reads the race counters the replay prints (" · kalshi tape race
+57 of 213, about 40 min left" while a tape pull runs, " · replay race 12 of 36" while a replay or its saves run),
+timing the rest from the current step's start. Prints nothing when it has nothing to count.
 """
 
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -65,8 +68,52 @@ def counts(phase, start, now=None):
     return out
 
 
+PULL = re.compile(r"^pull (\w+) (\d+)/(\d+) ")                      # position_replay.pull, one per race
+REPLAY_HEAD = re.compile(r"^progress \S+ (\w+): (\d+) races")        # position_replay.run, once per venue
+REPLAY_RACE = re.compile(r"^progress (\d+) ")                         # position_replay.run, one per race
+
+
+def _tail(log, size=256_000):
+    with open(log, "rb") as f:
+        f.seek(0, 2)
+        f.seek(max(0, f.tell() - size))
+        return f.read().decode("utf-8", "replace").replace("\r", "\n").splitlines()
+
+
+def _left(n, m, start, now):
+    if 0 < n < m and start is not None and now > start:
+        return f", about {(now - start) / n * (m - n) / 60:.0f} min left"
+    return ""
+
+
+def activity(log, step_start=None, now=None):
+    """The race counter of the replay work the log shows last: a tape pull's race N of M, or a replay's."""
+    now = now or time.time()
+    for i, line in enumerate(reversed(lines := _tail(log))):
+        if m := PULL.match(line):
+            n, total = int(m[2]), int(m[3])
+            return f" · {m[1]} tape race {n} of {total}" + _left(n, total, step_start, now)
+        if m := REPLAY_RACE.match(line):
+            n = int(m[1])
+            for head in reversed(lines[:len(lines) - i]):
+                if h := REPLAY_HEAD.match(head):
+                    total = int(h[2])
+                    return f" · {h[1]} replay race {n} of {total}" + _left(n, total, step_start, now)
+            return f" · replay race {n}"
+        if line.startswith(("== ", "Pulled ", "Wrote ", "Stored ", "search: ")):
+            return ""                   # a newer phase or a finished pull/replay: nothing in flight to count
+    return ""
+
+
 if __name__ == "__main__":
+    out = ""
     try:
-        print(counts(sys.argv[1], float(sys.argv[2])), end="")
+        out = counts(sys.argv[1], float(sys.argv[2]))
     except Exception:
         pass
+    try:
+        if not out and len(sys.argv) > 3:
+            out = activity(sys.argv[3], float(sys.argv[4]) if len(sys.argv) > 4 and sys.argv[4] else None)
+    except Exception:
+        pass
+    print(out, end="")

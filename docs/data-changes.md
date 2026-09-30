@@ -14,6 +14,41 @@ Before a major update, keep what it replaces: a database dump in `data/backups/d
 files in `data/archive/<sport>/` (both git-ignored; `data/raw` is the record, so it isn't edited in place
 without a copy). Not `data/archive/db/`: that folder is tracked in git (the snapshot).
 
+## 2026-09-30 · NASCAR and MotoGP demo paper portfolio on the VM (rl-demo)
+
+**Why.** The owner wanted a paper P&L history for the demo accounts beyond F1. **What changed.** `vm.sh demo` ran
+`scripts/vm/demo_setup.sh` (unit `rl-demo`, best-effort book): each sport's selection from the overnight Kalshi
+settings grid stored as both demo accounts' backfilled Kalshi paper positions (in-sample, never buy-all). NASCAR maker
+2025 8 races -$278.31, 2026 32 races +$6,525.45; NASCAR taker 2025 -$357.23, 2026 +$2,657.23; MotoGP 2026 11 races
+maker +$31.25, taker +$7.70. The `data_changes` rows name the backup:
+`data/backups/db/racinglines-before-demo-setup-20260930T213425Z.sql.gz`.
+**Undo.** `racinglines <sport> demo-history --reset --users maker,taker --backup FILE`, or restore the backup.
+
+## 2026-09-30 · Reattached the maker's Kalshi profile on the VM
+
+**Why.** The maker account had lost `users.prefs["strategy_profile_kalshi"]` even though the Kalshi replay rows
+were still present, so the Strategy page for `?venue=kalshi` rendered a zero-dollar cumulative record instead of
+its historical maker replay. **What changed.** The VM ran `racinglines f1 profiles --assign-demo --venue kalshi`,
+restoring `K · Kalshi maker` as the maker's Kalshi profile beside its existing Polymarket profile, and the
+`data_changes` row named the backup. Backup: `data/backups/db/racinglines-before-kalshi-profile-20260930T172425Z.sql.gz`.
+**Undo.** Restore the backup or clear `users.prefs["strategy_profile_kalshi"]` and leave the Polymarket profile
+alone.
+
+## 2026-09-30 · Overnight VM run: NASCAR and MotoGP results, links, tape and replay saves on the VM
+
+**Why.** The overnight run (report: `reports/2026-09-30-overnight-vm-run/report.md`) needed NASCAR and MotoGP on the
+VM, which had their Kalshi links but no results. **What ran (VM).** NASCAR: results fetched and ingested for 2016-2026
+(408 events), Kalshi re-synced and `nascar link --apply` (7,544 Kalshi links with a race), then the Kalshi tape pull
+(NASCAR Kalshi hourly prices 152,257 before the dead-book cleanup, 295,553 during the pull) and the replay saves
+(`RACINGLINES_PREDICTION_RECORDS=1`). MotoGP: results ingested newest seasons first (202 events), Kalshi re-synced,
+tape pulled and replay saves stored. The demo taker's backfill was rebuilt (`f1 demo-history --reset --user taker`).
+Backups: `racinglines-before-overnight-replay-20260930T092216Z.sql.gz` (97 MB),
+`racinglines-before-nascar-ingest-link-*.sql.gz`, `racinglines-before-demo-taker-story-20260930T152320Z.sql.gz`
+(118 MB), all in `data/backups/db/` on the VM. **Undo.** The replay saves with `racinglines <sport> replay --undo
+BATCH` (batch ids: `grep "batch replay-"` in the run logs); the NASCAR links with `nascar link --undo` and the undo
+file in `data/backups/db/`; the taker's backfill by restoring the story backup. Results, links and tape are additive
+and harmless to keep.
+
 ## 2026-09-30 · NASCAR and MotoGP Kalshi prices: dead-book 0.50 cleanup
 
 **Why.** Before PR #90, a Kalshi candle with one empty book side was stored as a 0.50 mid. The VM must never pull

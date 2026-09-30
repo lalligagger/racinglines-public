@@ -1,7 +1,8 @@
-# NASCAR Cup Series: a tape-only sport (docs/todo.md, U9). No model, no pipeline: its Kalshi, Polymarket and OG.com markets are synced
+# NASCAR Cup Series: started as a tape-only sport (docs/todo.md, U9); now has results (cf.nascar.com), a simple result-only
+# pricing model (below) and the taker replay (`racinglines nascar replay`). Its Kalshi, Polymarket and OG.com markets are synced
 # and recorded (links unmodeled but identified: driver, race, contract; prices / trades / books archived per exchange) when asked for by name
 # (`racinglines markets [--exchange kalshi] --sport nascar ...`). Read by racinglines/sports.py; the syncs read
-# [markets.kalshi] and [markets.polymarket]. Nothing runs for this sport by default.
+# [markets.kalshi] and [markets.polymarket]. Status and caveats: docs/coverage.md.
 
 [sport]
 code = "nascar"

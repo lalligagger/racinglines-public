@@ -206,6 +206,7 @@ def test_signals_page_hides_fair_from_takers(clients):
     cl, _ = clients
     eng = get_engine()
     with eng.begin() as c:
+        c.execute(T("DELETE FROM strategy_signals WHERE event_key = '2099-01'"))
         ids = dict(c.execute(T("SELECT username, id FROM users WHERE username IN ('taker', 'maker')")).all())
         for u, action, side in (("taker", "buy", "YES"), ("maker", "quote", "both")):
             c.execute(T("""INSERT INTO strategy_signals (user_id, profile, strategy, event_key, market_key, kind, subject,
@@ -366,6 +367,77 @@ def test_kalshi_pages_need_the_switch(clients):
         r = m.get(path)
         assert r.status_code == 200, path
         assert not re.search(r">\s*nan\b|\bnan\s*<", r.text, re.I), path
+
+
+def test_strategy_and_positions_have_a_modeled_sport_catalog_even_when_rows_are_sparse():
+    """The dropdown should be built from the modeled sport catalog, not only the rows that happen to exist."""
+    from racinglines.web.views import _sport_options
+
+    options = _sport_options([{"sport": "f1"}])
+    assert "f1" in options and "nascar" in options and "motogp" in options
+    assert len(options) == len(set(options))
+
+
+def test_strategy_and_positions_have_a_nascar_sport_filter(clients):
+    """The web app should treat NASCAR and MotoGP as first-class sports in the demo track-record views."""
+    from sqlalchemy import text as T
+
+    from racinglines.db.config import get_engine
+    cl, _ = clients
+    eng = get_engine()
+    event_key = "2099-nascar"
+    motogp_key = "2099-motogp"
+    with eng.begin() as c:
+        c.execute(T("INSERT INTO sports (code, name) VALUES ('nascar', 'NASCAR') ON CONFLICT (code) DO NOTHING"))
+        c.execute(T("INSERT INTO sports (code, name) VALUES ('motogp', 'MotoGP') ON CONFLICT (code) DO NOTHING"))
+        c.execute(T("INSERT INTO leagues (code, name, organizer) VALUES ('nascar', 'NASCAR', 'NASCAR') ON CONFLICT (code) DO NOTHING"))
+        c.execute(T("INSERT INTO leagues (code, name, organizer) VALUES ('motogp', 'MotoGP', 'MotoGP') ON CONFLICT (code) DO NOTHING"))
+        c.execute(T("""INSERT INTO competitions (code, name, league_id, sport_id)
+                       VALUES ('nascar_cup', 'NASCAR Cup', (SELECT id FROM leagues WHERE code = 'nascar'),
+                               (SELECT id FROM sports WHERE code = 'nascar')),
+                              ('motogp_wc', 'MotoGP World Championship', (SELECT id FROM leagues WHERE code = 'motogp'),
+                               (SELECT id FROM sports WHERE code = 'motogp'))
+                       ON CONFLICT (code) DO NOTHING"""))
+        c.execute(T("""INSERT INTO seasons (competition_id, year)
+                       VALUES ((SELECT id FROM competitions WHERE code = 'nascar_cup'), 2026),
+                              ((SELECT id FROM competitions WHERE code = 'motogp_wc'), 2026)
+                       ON CONFLICT (competition_id, year) DO NOTHING"""))
+        c.execute(T("""INSERT INTO events (season_id, source, source_key, name, start_date, status)
+                       VALUES ((SELECT id FROM seasons WHERE competition_id = (SELECT id FROM competitions WHERE code = 'nascar_cup') AND year = 2026),
+                               'nascar_cf', :k, 'NASCAR South Point 400', '2026-10-04', 'completed'),
+                              ((SELECT id FROM seasons WHERE competition_id = (SELECT id FROM competitions WHERE code = 'motogp_wc') AND year = 2026),
+                               'motogp_api', :mk, 'MotoGP Austrian GP', '2026-08-17', 'completed')
+                       ON CONFLICT (season_id, source, source_key) DO NOTHING"""),
+                   dict(k=event_key, mk=motogp_key))
+        uid = c.execute(T("SELECT id FROM users WHERE username = 'maker'")).scalar()
+        c.execute(T("""INSERT INTO strategy_signals (user_id, profile, strategy, event_key, market_key, kind, subject,
+                         stage, dedupe, action, side, shares, limit_price, fair, price, edge, heat, status, signal_ts, detail)
+                       VALUES (:u, 'maker', 'maker', :k, 'tok-nascar', 'race_win', 'NASCAR South Point 400 Winner',
+                               'before race', 'before race', 'fill', 'YES', 10, 0.60, 0.55, 0.62, 0.10, 2, 'new', now(),
+                               '{\"venue\": \"polymarket\"}'),
+                              (:u, 'maker', 'maker', :mk, 'tok-motogp', 'race_win', 'MotoGP Austrian GP Winner',
+                               'before race', 'before race', 'fill', 'YES', 8, 0.58, 0.51, 0.60, 0.08, 2, 'new', now(),
+                               '{\"venue\": \"polymarket\"}')"""), dict(u=uid, k=event_key, mk=motogp_key))
+        c.execute(T("""INSERT INTO paper_positions (user_id, event_key, market_key, kind, subject, yes_shares, no_shares,
+                         cash, mark, outcome, venue)
+                       VALUES (:u, :k, 'tok-nascar', 'race_win', 'NASCAR South Point 400 Winner', 10, 0, 0.0,
+                               0.82, NULL, 'polymarket'),
+                              (:u, :mk, 'tok-motogp', 'race_win', 'MotoGP Austrian GP Winner', 8, 0, 0.0,
+                               0.74, NULL, 'polymarket')"""), dict(u=uid, k=event_key, mk=motogp_key))
+    try:
+        r = cl["maker"].get("/strategy?sport=nascar")
+        assert r.status_code == 200 and "NASCAR South Point 400" in r.text
+        r = cl["maker"].get("/positions?sport=nascar")
+        assert r.status_code == 200 and "NASCAR South Point 400" in r.text and 'name="sport"' in r.text
+        r = cl["maker"].get("/strategy?sport=motogp")
+        assert r.status_code == 200 and "MotoGP Austrian GP" in r.text
+        r = cl["maker"].get("/positions?sport=motogp")
+        assert r.status_code == 200 and "MotoGP Austrian GP" in r.text and 'name="sport"' in r.text
+    finally:
+        with eng.begin() as c:
+            c.execute(T("DELETE FROM paper_positions WHERE event_key IN (:k, :mk)"), dict(k=event_key, mk=motogp_key))
+            c.execute(T("DELETE FROM strategy_signals WHERE event_key IN (:k, :mk)"), dict(k=event_key, mk=motogp_key))
+            c.execute(T("DELETE FROM events WHERE source_key IN (:k, :mk)"), dict(k=event_key, mk=motogp_key))
 
 
 def test_basic_pages_never_name_the_strategy_behind_a_pick(clients):

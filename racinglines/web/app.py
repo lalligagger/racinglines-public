@@ -245,6 +245,7 @@ def _signals_nav(user):
     account's paper summary (profile, bankroll, P&L) for the banner on the home and trading pages."""
     if not user:
         return None
+    from racinglines.pipelines import sport_paper as SP        # RACINGLINES_SPORT_PAPER=1: NASCAR / MotoGP demo rows count
     try:
         with get_engine().connect() as c:
             r = c.execute(text("""SELECT prefs ? 'strategy_profile', prefs->'strategy_profile'->>'name',
@@ -254,12 +255,13 @@ def _signals_nav(user):
                                             AND (CAST(:since AS timestamptz) IS NULL OR created_at > CAST(:since AS timestamptz))),
                                          (SELECT sum(cash + yes_shares * coalesce(outcome::int, mark)
                                                  + no_shares * (1 - coalesce(outcome::int, mark)))
-                                            FROM paper_positions WHERE user_id = :u AND venue = 'polymarket'),
+                                            FROM paper_positions WHERE user_id = :u AND (venue = 'polymarket'
+                                                 OR (:sp AND event_key IN (""" + SP.SPORT_KEYS + """)))),
                                          (SELECT sum(cash + yes_shares * coalesce(outcome::int, mark)
                                                  + no_shares * (1 - coalesce(outcome::int, mark)))
                                             FROM paper_positions WHERE user_id = :u AND venue = 'private')
                                   FROM users WHERE id = :u"""),
-                          dict(u=user["id"], since=_seen_since(user))).first()
+                          dict(u=user["id"], since=_seen_since(user), sp=SP.enabled())).first()
     except Exception:                                   # noqa: BLE001  the nav never breaks a page
         return None
     if r is None or not (r[0] or user["role"] == "admin"):
@@ -785,7 +787,9 @@ def bet_markets(request: Request, msg: str = "", c=None):          # served at /
         except ValueError:
             profile = None
     view = R.basic_view_profile(profile) if R.is_basic(user) else profile       # basic: "Your picks", no strategy name
-    return render(request, "bet.html", msg=msg, profile=view, **polymarket_calls(c, profile))
+    from racinglines.web import sport_status as SS                  # RACINGLINES_SPORT_STATUS=1: every sport's status
+    return render(request, "bet.html", msg=msg, profile=view, **polymarket_calls(c, profile),
+                  sport_status=SS.status(c) if SS.enabled() else None, show_paper=False)
 
 
 def polymarket_calls(c, profile, n_races=3, exchange="polymarket"):

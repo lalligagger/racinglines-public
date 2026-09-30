@@ -10,6 +10,8 @@ name = "OG.com"
 kind = "exchange"
 switch = "RACINGLINES_OG_VENUE"          # env var; the venue appears in the app only when it is 1 / true / yes
 url = "https://og.com/"                  # no per-event page pattern known: the venue links to the front page
+# What the feed offers historically, shown under the Markets board's "Exchange data" counts.
+coverage = "OG.com: the API serves only about the last month of trades and minute prices, so history starts when we began pulling (2026-09-29); no book history (one snapshot per books run)."
 # The taker fee per contract, in dollars, from 2026 reviews of the exchange (UNVERIFIED against its fee schedule).
 # Used only by the fair-price report; change it here when the schedule is confirmed.
 taker_fee_per_contract = 0.02
