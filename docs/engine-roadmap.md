@@ -1,7 +1,8 @@
 # Engine roadmap: standard inputs, composable models, standard outputs
 
 **Status:** approved by the owner on 2026-09-29 (E0 done: decisions D1–D6 taken as recommended, see the
-[decision log](#decision-log)). Nothing below E0 is built yet. The task-by-task implementation plan (twelve tasks,
+[decision log](#decision-log)). E4a (prediction records beside `race_predictions`, one kind registry) is built behind
+`RACINGLINES_PREDICTION_RECORDS`, default off ([Prediction records](backtest-core.md#prediction-records)); nothing else below E0 is built yet. The task-by-task implementation plan (twelve tasks,
 roles, files, tests, backups) is the owner's "Engine Implementation Plan" page; the phases here are its skeleton.
 
 **The goal.** A model is developed once, joins "the engine", and runs on any sport and any exchange that
@@ -289,6 +290,7 @@ Same format as the [F1 roadmap](f1-roadmap.md#decision-log). Never delete a row;
 | 2026-09-29 | E0 | Every new engine switch is an environment variable `RACINGLINES_*`, default off; a default flips only in a follow-up PR with byte-identical evidence and a row here | The F1 ground rules, applied to the engine | — |
 | 2026-09-29 | E0 | The `market_quotes` frame (E1) reads through the ingest roadmap's phase 2 `canonical_yes` reader when it exists; until then it maps today's `price` per exchange (`last` for Polymarket, `mid` for Kalshi and OG.com) behind the same function | Phase 2 is queued in the onboarding thread behind the NASCAR VM steps and needs the owner's go-ahead; E1's sport frames need no price column at all | — |
 | 2026-09-29 | E4a | Parquet needs `pyarrow`, which is not installed in the cloud sandbox; the Mac and VM are unchecked. If absent there too, the archive is compressed `.npz` and the records CSV; no new pinned dependency without the owner's word | Keep `racinglines check` and the suite runnable everywhere | — |
+| 2026-09-29 | E4a | Built with Parquet: `pyarrow` is already pinned in requirements.txt (and present in the sandbox), so the fallback above is not needed; records at `data/runs/records/<run>/predictions.parquet` with a `sims.npz` archive (backtests and forecasts only), behind `RACINGLINES_PREDICTION_RECORDS` (default off); `standings` kinds joined `markets/kinds.py`, which `db/reads.PREDICTION_KINDS` now derives from | Supersedes the fallback: no new dependency; readers unchanged | the row above |
 | 2026-09-29 | E1 | `[data] live`, default empty; session-keyed frames are released a whole session at a time (`check_release`) | No source is live: FastF1 publishes a session only after it ends. The owner's requirement | — |
 | 2026-09-29 | E1 | `available_at` for session data is the session's end, with no lag, matching `Measurements.view` and `session_end`; `[stages] lag_minutes` moves stage cutoffs, not data | The frames must reproduce the model's own leak boundary exactly | — |
 | 2026-09-29 | E1 | F1 `laps` is not built in E1a: `Measurements` keeps only lap-derived measures. E2 passes the raw laps to the adapter; until then `position_sim`'s laps requirement is met through `Measurements` | No lap-level frame can come from what the model holds today | — |

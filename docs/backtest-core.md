@@ -78,6 +78,29 @@ table in [the downhill model](model.md#calibration) comes out the same through i
 −0.035 ± 0.006, 6 of 6 seasons; top 10 −0.006 ± 0.006, 5 of 6; podium −0.003 ± 0.002, 6 of 6; win
 −0.001 ± 0.001, 3 of 6).
 
+### Prediction records
+
+With `RACINGLINES_PREDICTION_RECORDS=1` (default off: nothing is written and every existing output is
+unchanged), every saved run also writes long-format records beside `race_predictions`
+([engine roadmap](engine-roadmap.md), phase E4a): `data/runs/records/<model_run_id>/predictions.parquet`
+(root moved by `RACINGLINES_RECORDS_DIR`; git-ignored like all of `data/`). One row per run x event x stage x
+kind x subject:
+
+| column | meaning |
+|---|---|
+| `run_id`, `sport`, `model_id` | the `model_runs.id`, the sport code, the model (`f1_sector_sim`, `timed_runs`) |
+| `season`, `event_id`, `event`, `stage`, `cutoff` | what was priced and as of when (`pre_race` for a walk-forward, the sweep's stage label for a stage run, the sport's pre label for a forecast) |
+| `kind` | a code from `racinglines/markets/kinds.py`, the one registry (`db/reads.PREDICTION_KINDS` is derived from it; the season-long standings kinds have `payoff="standings"` and are not priced from simulations) |
+| `subject`, `params` | the athlete id (the group key for a top team) and JSON: `{}`, `{"opponent_id": b}` for a head-to-head (each pair once), `{"team": g}` |
+| `fair`, `se`, `n_sims` | the fair value, its Monte Carlo standard error sqrt(p(1-p)/n_sims), the simulations behind it |
+
+Writers: `run_walk_forward(save=True)`, `save_forecast` (forecast and scenario runs) and `save_diagnostic` (the
+sweep's stage runs). The simulations archive, `sims.npz` beside the records (`sims-<event>.npz` when a run
+covers several events), is written for walk-forwards and forecasts only, never for stage runs: it lets a kind
+added later be priced on an old run (`records.load_sims(run_id)` then `markets.kinds.fair`). The downhill
+forecast (`mtb_dh forecast --save`) does not write records yet: its weekend simulations do not leave
+`forecast_season`.
+
 ### Venues in a backtest
 
 `racinglines/markets/venue_replay.py` holds the venues a backtest trades against, each read only as of a

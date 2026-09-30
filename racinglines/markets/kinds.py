@@ -21,25 +21,32 @@ import pandas as pd
 @dataclass(frozen=True)
 class Kind:
     code: str
-    payoff: str               # top_n | stage_top_n | h2h | reached | group_top
+    payoff: str               # top_n | stage_top_n | h2h | reached | group_top | standings (not from sims)
     n: int | None = None      # top_n / stage_top_n
     stage: str | None = None  # stage_top_n: which earlier round (sims.stage_rank key); reached: which round
     label: str = ""
 
 
+# Declared in the order the readers list prediction kinds (db/reads.PREDICTION_KINDS is derived from it).
+# payoff "standings": season-long markets read from a model run's standings, not priced from an OutcomeSims.
 KINDS = {k.code: k for k in (
     Kind("race_win", "top_n", n=1, label="Win"),
     Kind("race_podium", "top_n", n=3, label="Podium"),
     Kind("race_top10", "top_n", n=10, label="Top 10"),
+    Kind("race_make_final", "reached", stage="final", label="Makes the Final"),
+    Kind("champion", "standings", label="Champion"),
+    Kind("standings_top3", "standings", label="Top 3 in the standings"),
+    Kind("race_h2h", "h2h", label="Head-to-head"),
     Kind("race_pole", "stage_top_n", n=1, stage="qual", label="Pole position"),
+    Kind("race_constructor_top", "group_top", label="Top constructor"),
+    Kind("constructors_champion", "standings", label="Constructors' champion"),
+    Kind("season_wins_ge", "standings", label="Season wins at least"),
+    Kind("standings_h2h", "standings", label="Standings head-to-head"),
     # F1 sprint weekends (Kalshi's KXF1SPRINTPOLE / KXF1RACESPRINT, docs/todo.md U5): the sprint qualifying
     # order and the sprint classification are earlier rounds of the weekend, priced like pole from
     # sims.stage_rank["sprint_qual"] / ["sprint"] when a model simulates them
     Kind("race_sprint_pole", "stage_top_n", n=1, stage="sprint_qual", label="Sprint pole"),
     Kind("race_sprint_win", "stage_top_n", n=1, stage="sprint", label="Sprint winner"),
-    Kind("race_make_final", "reached", stage="final", label="Makes the Final"),
-    Kind("race_h2h", "h2h", label="Head-to-head"),
-    Kind("race_constructor_top", "group_top", label="Top constructor"),
 )}
 
 
@@ -62,6 +69,8 @@ def fair(kind, sims, a=None, b=None):
         p = (sims.stage_rank[k.stage] <= k.n).mean(0)
     elif k.payoff == "reached":
         p = sims.reached[k.stage].mean(0)
+    elif k.payoff == "standings":
+        raise ValueError(f"{kind} is a standings market: not priced from an OutcomeSims")
     else:
         raise ValueError(f"unknown payoff {k.payoff}")
     return p if a is None else float(p[sims.index(a)])
@@ -89,10 +98,11 @@ def group_top(sims):
 def summary(sims):
     """Per entrant: the fair value of every per-entrant kind the simulations support."""
     out = dict(athlete_id=sims.entrants)
-    for code, k in KINDS.items():
-        if k.payoff in ("top_n",) or (k.payoff == "stage_top_n" and k.stage in sims.stage_rank) \
-                or (k.payoff == "reached" and k.stage in sims.reached):
-            out[code] = fair(code, sims)
+    for payoff in ("top_n", "stage_top_n", "reached"):        # columns grouped by payoff, in registry order
+        for code, k in KINDS.items():
+            if k.payoff == payoff and (payoff == "top_n" or k.stage in (sims.stage_rank if payoff == "stage_top_n"
+                                                                        else sims.reached)):
+                out[code] = fair(code, sims)
     return pd.DataFrame(out)
 
 
@@ -104,7 +114,7 @@ def settle(kind, athlete_id, params, res, group_key=None):
     if res.empty:
         return None
     k = KINDS.get(kind)
-    if k is None:
+    if k is None or k.payoff == "standings":
         return None
     by = res.set_index("athlete_id")
     if k.payoff == "stage_top_n":
