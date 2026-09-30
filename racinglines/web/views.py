@@ -14,6 +14,7 @@ import pandas as pd
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from racinglines import sports as SP
 from racinglines.db.config import get_session
 
 from racinglines.web import board as B
@@ -49,6 +50,25 @@ def _basic_acct(acct):
                 seasons=[dict(y, rows=[one(r) for r in y["rows"]]) for y in acct["seasons"]],
                 phases=[dict(R.basic_row(p), first=one(p["first"]), last=one(p["last"])) for p in acct["phases"]],
                 decisions=None)                              # the story's decisions name every setup
+
+
+def _sport_options(rows, sport=""):
+    """Every modeled sport in the app, plus any sport we have live rows for. This keeps the dropdown populated
+    even when a sport has sparse or no current track-record data, instead of dropping it entirely."""
+    seen = set()
+    for row in rows:
+        code = row.get("sport") if isinstance(row, dict) else row
+        if not code:
+            continue
+        if code in V.SPORT_NAME and code not in SP.SPORT_CODES:
+            code = next((s["sport"]["code"] for s in map(SP.load, SP.SPORT_CODES)
+                         if s["competition"]["code"] == code), code)
+        seen.add(code)
+    seen |= set(SP.SPORT_CODES)
+    if sport:
+        seen.add(sport)
+    order = {code: i for i, code in enumerate(SP.SPORT_CODES)}
+    return sorted((code for code in seen if code), key=lambda code: (order.get(code, 99), str(code)))
 
 
 # ---------------------------------------------------------------------------
@@ -617,7 +637,7 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
             plot = "kalshi"
     coming = polymarket_calls(c, profile, n_races=2) if profile else None
     kcoming = polymarket_calls(c, profile, n_races=2, exchange="kalshi") if profile and V.KALSHI_VENUE else None
-    sport_options = sorted({p["sport"] for p in pos if p.get("sport")})
+    sport_options = _sport_options(pos, sport)
     return render(request, "positions.html", profile=R.basic_view_profile(profile) if basic else profile, maker=maker,
                   paper=paper, shown=shown,
                   weekends=weekends, event=event, by_kind=sorted(by_kind.values(), key=lambda k: -k["n"]),
@@ -700,7 +720,7 @@ def signals_page(request: Request, user: str = "", event: str = "", venue: str =
     users = c.execute(T("""SELECT username FROM users WHERE prefs ? 'strategy_profile' ORDER BY id""")).scalars().all() \
         if me["role"] == "admin" else []
     maker = False if basic else bool(cur and not cur["strategy"].startswith(("update", "hold", "last", "early"))) if cur else is_maker
-    sport_options = sorted({r.get("sport") for r in record if r.get("sport")})
+    sport_options = _sport_options(record, sport)
     return render(request, "strategy.html", viewer=viewer, profile=R.basic_view_profile(profile) if basic else profile,
                   show_fair=show_fair, stages=stages,
                   positions=positions, cur=cur, event_key=ev, users=users, maker=maker, record=record,
