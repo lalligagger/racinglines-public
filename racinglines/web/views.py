@@ -637,11 +637,7 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
             plot = "kalshi"
     coming = polymarket_calls(c, profile, n_races=2) if profile else None
     kcoming = polymarket_calls(c, profile, n_races=2, exchange="kalshi") if profile and V.KALSHI_VENUE else None
-<<<<<<< HEAD
-    sport_options = sorted({p["sport"] for p in pos if p.get("sport")})
-=======
     sport_options = _sport_options(pos, sport)
->>>>>>> work/all-sports-to-app
     return render(request, "positions.html", profile=R.basic_view_profile(profile) if basic else profile, maker=maker,
                   paper=paper, shown=shown,
                   weekends=weekends, event=event, by_kind=sorted(by_kind.values(), key=lambda k: -k["n"]),
@@ -724,11 +720,7 @@ def signals_page(request: Request, user: str = "", event: str = "", venue: str =
     users = c.execute(T("""SELECT username FROM users WHERE prefs ? 'strategy_profile' ORDER BY id""")).scalars().all() \
         if me["role"] == "admin" else []
     maker = False if basic else bool(cur and not cur["strategy"].startswith(("update", "hold", "last", "early"))) if cur else is_maker
-<<<<<<< HEAD
-    sport_options = sorted({r.get("sport") for r in record if r.get("sport")})
-=======
     sport_options = _sport_options(record, sport)
->>>>>>> work/all-sports-to-app
     return render(request, "strategy.html", viewer=viewer, profile=R.basic_view_profile(profile) if basic else profile,
                   show_fair=show_fair, stages=stages,
                   positions=positions, cur=cur, event_key=ev, users=users, maker=maker, record=record,
