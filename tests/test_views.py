@@ -369,6 +369,15 @@ def test_kalshi_pages_need_the_switch(clients):
         assert not re.search(r">\s*nan\b|\bnan\s*<", r.text, re.I), path
 
 
+def test_strategy_and_positions_have_a_modeled_sport_catalog_even_when_rows_are_sparse():
+    """The dropdown should be built from the modeled sport catalog, not only the rows that happen to exist."""
+    from racinglines.web.views import _sport_options
+
+    options = _sport_options([{"sport": "f1"}])
+    assert "f1" in options and "nascar" in options and "motogp" in options
+    assert len(options) == len(set(options))
+
+
 def test_strategy_and_positions_have_a_nascar_sport_filter(clients):
     """The web app should treat NASCAR and MotoGP as first-class sports in the demo track-record views."""
     from sqlalchemy import text as T
