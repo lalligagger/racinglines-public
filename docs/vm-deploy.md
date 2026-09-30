@@ -186,7 +186,7 @@ Round 16's book runs on the VM, so the VM has to be production before the book o
 | Mon 28 – Tue 29 Sep | One-time setup 1–7, `vm.sh public on`, test in a browser |
 | Tue 29 – Wed 30 Sep | Rehearse round 15 on the VM, on a simulated clock and without writing positions (below) |
 | Wed 30 Sep | Cutover (below), `vm.sh public off` |
-| Thu 1 Oct, before 20:30 PDT | `sudo systemctl enable --now racinglines-live-f1@2026-16.timer` on the VM. Don't install the round's LaunchAgent on the Mac |
+| Thu 1 Oct, before 20:30 PDT | `bash scripts/deploy/vm.sh live 2026-16` (enables `racinglines-live-f1@2026-16.timer` on the VM). Don't install the round's LaunchAgent on the Mac |
 
 **Rehearsal on the VM** (as the `racinglines` user in `/opt/racinglines`, with `/etc/racinglines.env` loaded):
 ```sh
@@ -199,7 +199,8 @@ Two recorders would split the order-book history across two databases, so the Ma
 final copy.
 
 1. On the Mac, stop the recorder and signals:
-   `launchctl bootout gui/$(id -u)/bet.racinglines.recorder` and `launchctl bootout gui/$(id -u)/bet.racinglines.signals`.
+   `launchctl bootout gui/$(id -u)/bet.racinglines.recorder` and `launchctl bootout gui/$(id -u)/bet.racinglines.signals`
+   (`vm.sh start` also does this when run on the Mac).
 2. `bash scripts/cloud/bucket.sh push`, then `bash scripts/deploy/vm.sh restore`, then `bash scripts/deploy/vm.sh start`.
 3. Log it: on the VM, `racinglines db changes --add "production moved to the VM; restored from the Mac's dump"`,
    plus a line in [Data changes](data-changes.md).
@@ -223,11 +224,17 @@ deploy is simpler to undo: `vm.sh deploy <previous commit>`.
 
 Each event's spec runs as a unit, in place of `racinglines live agent --install`, which is macOS only.
 The run folder's lock works the same on the VM's disk.
+From the Mac, `bash scripts/deploy/vm.sh live 2026-16` enables an F1 event's timer and `vm.sh live 2026-16 off`
+disables it. On the VM itself:
 ```sh
 sudo systemctl enable --now racinglines-live-f1@2026-16.timer     # F1: one step every 5 minutes
 sudo systemctl enable --now racinglines-live-dh@<event>           # downhill: the poll loop
 sudo systemctl disable --now racinglines-live-f1@2026-16.timer    # when the event is settled
 ```
+Only `vm.sh start` (without `web`) enables the recorder and signals, and only `vm.sh live` (or the lines above)
+enables an event's timer; `vm.sh deploy` never starts a unit that wasn't already running. A VM set up with
+`vm.sh start web` before cutover therefore has no recorder and no timers until `vm.sh start` runs.
+The recorder is Polymarket's F1 books only; Kalshi has no recorder (todo U2).
 Run an event on one machine only, the one whose database racinglines.bet reads.
 `vm.sh deploy` pauses the event's timer and resumes it with a catch-up step (see [What's in the repo](#whats-in-the-repo)), so
 deploys don't wait for the event to settle. The web app restarts for a few seconds, so between sessions is still the

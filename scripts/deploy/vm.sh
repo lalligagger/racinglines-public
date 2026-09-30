@@ -3,7 +3,10 @@
 #
 #   bash scripts/deploy/vm.sh setup [branch]    # one time: packages, user, checkout (default main), venv, database, units
 #   bash scripts/deploy/vm.sh restore           # one time: bucket's data folders + database dump -> the VM
-#   bash scripts/deploy/vm.sh start [web]       # enable and start web, recorder, signals (web: the web app only)
+#   bash scripts/deploy/vm.sh start [web]       # enable and start web, recorder, signals (web: the web app only);
+#                                               # on the Mac it first stops the Mac's recorder and signals agents
+#   bash scripts/deploy/vm.sh live <event> [off] # a live event's timer on the VM (live/f1/<event>.toml): enable
+#                                               # and start it (a step every 5 minutes), or off: stop and disable it
 #   bash scripts/deploy/vm.sh deploy [ref]      # checkout (default main), install, migrate, restart, smoke check
 #   bash scripts/deploy/vm.sh public on|off     # testing before handover: the web app on http://<VM IP>:8000
 #   bash scripts/deploy/vm.sh demo [status|extra] # the multi-sport demo: switches on, NASCAR/MotoGP paper rows and
@@ -41,7 +44,25 @@ case "${1:-}" in
   start)
     # before cutover start only the web app: a second recorder would split the book history across two databases
     units="$SERVICES racinglines-signals.timer"; [ "${2:-}" = web ] && units=racinglines-web
+    # after cutover, the Mac's LaunchAgents must not record too (docs/vm-deploy.md "Cutover"); bootout is idempotent
+    # here and undone by `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/<label>.plist`
+    if [ "${2:-}" != web ] && command -v launchctl >/dev/null; then
+      for a in bet.racinglines.recorder bet.racinglines.signals; do
+        launchctl print "gui/$(id -u)/$a" >/dev/null 2>&1 && launchctl bootout "gui/$(id -u)/$a" && log "stopped the Mac's $a"
+      done
+    fi
     remote "sudo systemctl enable --now $units && systemctl --no-pager status $units | grep -E '●|Active'"
+    ;;
+  live)
+    ev="${2:-}"
+    [ -n "$ev" ] && [ -f "live/f1/$ev.toml" ] || { echo "usage: vm.sh live <event> [off], with live/f1/<event>.toml in the repo"; exit 1; }
+    t="racinglines-live-f1@$ev.timer"
+    if [ "${3:-}" = off ]; then
+      remote "sudo systemctl disable --now $t && echo '$t: off'"
+    else
+      # before the book opens a step finds nothing due and exits, so enabling early is harmless
+      remote "sudo systemctl enable --now $t && systemctl --no-pager list-timers $t"
+    fi
     ;;
   deploy)
     ref="${2:-main}"
