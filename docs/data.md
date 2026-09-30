@@ -186,7 +186,7 @@ against the live listing; `sync --series TICKER …` syncs exact tickers when th
 The Markets board's per-sport **Exchange data** table (and `/markets/tapes`) counts, per sport and exchange,
 the rows stored for that sport's linked markets (`market_links`): **Trades** from `market_trades`, **Price
 points** from `market_price_history`, **Books** from `market_book_snapshots`. Since 2026-09-30 each count spans
-the Parquet archive and the Postgres buffer, a row in both counted once (`store.counts`); before that only the
+the Parquet archive and the Postgres buffer (`store.counts`; a buffered row counts when it is newer than the token's last archived row). The archive is scanned in a background thread, at most every 5 minutes and only the months that changed, so a page never waits on it: right after a restart the counts show the buffer alone until the first scan finishes; before that only the
 buffer counted, which after `markets archive` holds just the last few hours and the hot races, so Polymarket read
 0 trades and 0 price points and Kalshi a small slice of its tape. Only the exchange syncs and the recorder write
 these tables, so the counts never include paper, demo-history or simulated trades (those live in the house book

@@ -99,14 +99,33 @@ def test_counts_span_parquet_and_postgres_once(tmp_path, test_engine):
                   dict(t=TOK, a=t0 + timedelta(hours=2), b=t0 + timedelta(hours=3)))   # one already archived, one new
     try:
         with e.connect() as c:
-            got = MS.counts(c, "prices", [TOK, "absent"], root=tmp_path)
+            got = MS.counts(c, "prices", [TOK, "absent"], root=tmp_path, wait=True)
             assert got == {TOK: (4, pd.Timestamp(t0 + timedelta(hours=3)))}
-            assert MS.counts(c, "trades", [TOK], root=tmp_path)[TOK][0] == 1
-            assert MS.counts(c, "books", [TOK], root=tmp_path) == {}
-        assert MS.counts(None, "prices", [TOK], root=tmp_path)[TOK][0] == 3
+            assert MS.counts(c, "trades", [TOK], root=tmp_path, wait=True)[TOK][0] == 1
+            assert MS.counts(c, "books", [TOK], root=tmp_path, wait=True) == {}
+        assert MS.counts(None, "prices", [TOK], root=tmp_path, wait=True)[TOK][0] == 3
     finally:
         with e.begin() as c:
             c.execute(text("DELETE FROM market_price_history WHERE token_id = :t"), dict(t=TOK))
+
+
+def test_counts_never_scan_parquet_in_the_request(tmp_path, monkeypatch):
+    """A web request reads the last background scan (empty before the first finishes) and never waits on one."""
+    import threading
+    t0 = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    MS._write("prices", pd.DataFrame(dict(token_id=[TOK], ts=[t0], price=[0.1])), root=tmp_path)
+    gate = threading.Event()
+    real = MS._parquet_counts
+    monkeypatch.setattr(MS, "_parquet_counts", lambda name, root=None: (gate.wait(5), real(name, root))[1])
+    MS._COUNTS.pop(("prices", str(tmp_path)), None)
+    MS._COUNTED_AT.pop(("prices", str(tmp_path)), None)
+    assert MS.counts(None, "prices", [TOK], root=tmp_path) == {}           # returns at once, scan still blocked
+    gate.set()
+    for _ in range(100):
+        if ("prices", str(tmp_path)) not in MS._COUNTING:
+            break
+        __import__("time").sleep(0.05)
+    assert MS.counts(None, "prices", [TOK], root=tmp_path)[TOK][0] == 1
 
 
 @pytest.mark.live

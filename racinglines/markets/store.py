@@ -26,6 +26,8 @@ still-open season-long markets. Everything else is stale and moves to Parquet.
 """
 
 import json
+import threading
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -248,13 +250,19 @@ def archive(engine, name, older_than=timedelta(hours=6), tokens=None, root=None,
 
 
 _COUNT_CACHE = {}          # (name, month) -> (that month's files signature, its per-token counts)
+_COUNTS = {}               # (name, root) -> latest per-token Parquet counts, read by requests
+_COUNT_LOCK = threading.Lock()
+_COUNTING = set()          # (name, root) scans running now
+_COUNTED_AT = {}           # (name, root) -> when the last background scan started (time.monotonic)
+RESCAN_SECONDS = 300       # a background rescan at most this often (it only re-reads changed months)
 
 
 def _parquet_counts(name, root=None):
     """Per token, the distinct rows of store `name` in Parquet and the latest ts: DataFrame token_id, n, last.
     A month partition holds every copy of a row (the month is the row's own ts), so duplicates (a row archived
     twice, or once in each exchange's tree) are dropped one month at a time, which keeps memory to a month.
-    Each month is cached until one of its files changes, so an archive pass re-reads only the months it wrote."""
+    Each month is cached until one of its files changes, so an archive pass re-reads only the months it wrote.
+    This scans the archive: never call it from a web request (`counts` runs it in the background)."""
     key = STORES[name]["key"]
     cols = list(dict.fromkeys(key + ["ts"]))              # a row's ts is part of the row, so this is still its key
     by_month = {}
@@ -263,11 +271,11 @@ def _parquet_counts(name, root=None):
     parts = []
     for month, files in sorted(by_month.items()):
         sig = tuple((str(f), f.stat().st_mtime_ns, f.stat().st_size) for f in files)
-        hit = _COUNT_CACHE.get((name, month))
+        hit = _COUNT_CACHE.get((name, month, str(root)))
         if not hit or hit[0] != sig:
             t = ds.dataset(files, format="parquet").to_table(columns=cols).group_by(cols).aggregate([])
             hit = (sig, t.group_by("token_id").aggregate([("ts", "count"), ("ts", "max")]).to_pandas())
-            _COUNT_CACHE[(name, month)] = hit
+            _COUNT_CACHE[(name, month, str(root))] = hit
         parts.append(hit[1])
     if not parts:
         return pd.DataFrame({"token_id": pd.Series(dtype=str), "n": pd.Series(dtype=int), "last": pd.Series(dtype=object)})
@@ -275,45 +283,64 @@ def _parquet_counts(name, root=None):
     return df.groupby("token_id", as_index=False).agg(n=("n", "sum"), last=("last", "max"))
 
 
-def _key_frame(df, name):
-    """Store rows reduced to their key, with types made comparable across Postgres and Parquet."""
-    key = STORES[name]["key"]
-    df = df[list(dict.fromkeys(key + ["ts"]))].copy()
-    df["ts"] = pd.to_datetime(df["ts"], utc=True)
-    for c in ("price", "size"):
-        if c in key:
-            df[c] = pd.to_numeric(df[c]).astype(float).round(9)
-    return df
+def _refresh_counts(name, root):
+    try:
+        _COUNTS[(name, str(root))] = _parquet_counts(name, root)
+    finally:
+        with _COUNT_LOCK:
+            _COUNTING.discard((name, str(root)))
 
 
-def counts(conn, name, tokens, root=None) -> dict:
+def cached_parquet_counts(name, root=None, wait=False):
+    """The latest per-token Parquet counts without scanning in the caller: starts a background rescan (one at a time
+    per store) and returns what the last scan found (empty before the first one finishes). wait=True scans inline
+    (CLI, tests)."""
+    k = (name, str(root))
+    if wait:
+        _COUNTS[k] = _parquet_counts(name, root)
+        return _COUNTS[k]
+    with _COUNT_LOCK:
+        start = k not in _COUNTING and time.monotonic() - _COUNTED_AT.get(k, -RESCAN_SECONDS) >= RESCAN_SECONDS
+        if start:
+            _COUNTING.add(k)
+            _COUNTED_AT[k] = time.monotonic()
+    if start:
+        threading.Thread(target=_refresh_counts, args=(name, root), daemon=True, name=f"parquet-counts-{name}").start()
+    return _COUNTS.get(k, pd.DataFrame(columns=["token_id", "n", "last"]))
+
+
+def counts(conn, name, tokens, root=None, wait=False) -> dict:
     """{token: (rows, latest ts)} of store `name` (prices / trades / books) for the given tokens, across Parquet
-    and Postgres like `read()`: a row archived to Parquet and still (or again) in Postgres counts once. Every row in
-    these stores came from an exchange's own feed (the syncs and the recorder write them; paper and demo trading
-    never do), so this is what each exchange has given us."""
+    and Postgres like `read()`. Every row in these stores came from an exchange's own feed (the syncs and the
+    recorder write them; paper and demo trading never do), so this is what each exchange has given us.
+    Parquet counts come from `cached_parquet_counts` (a background scan; a web request never waits on the archive).
+    A Postgres row counts when it is newer than the token's last archived row, so a row archived and still in
+    Postgres counts once (a re-pulled old row not yet archived is left out until the archive pass moves it)."""
     tokens = list(tokens)
     if not tokens:
         return {}
-    pq_df = _parquet_counts(name, root)
+    pq_df = cached_parquet_counts(name, root, wait=wait)
     pq_df = pq_df[pq_df["token_id"].isin(tokens)]
     out = {t: (int(n), pd.Timestamp(last)) for t, n, last in zip(pq_df["token_id"], pq_df["n"], pq_df["last"])}
     if conn is None:
         return out
-    pg = _read_pg(conn, name, tokens, None, None, None)
-    if not len(pg):
-        return out
-    pg = _key_frame(pg, name).drop_duplicates(STORES[name]["key"])
-    pg_tok = pg["token_id"].unique()
-    window = _read_parquet(name, pg_tok, None, pg["ts"].min(), pg["ts"].max(), root)   # the only rows that can repeat
-    new = pg
-    if len(window):
-        seen = _key_frame(window, name).drop_duplicates(STORES[name]["key"])[STORES[name]["key"]]
-        new = pg.merge(seen, on=STORES[name]["key"], how="left", indicator=True)
-        new = new[new["_merge"] == "left_only"]
-    added = new.groupby("token_id").size()
-    for tok, mx in pg.groupby("token_id")["ts"].max().items():
-        n, last = out.get(tok, (0, None))
-        out[tok] = (n + int(added.get(tok, 0)), mx if last is None or mx > last else last)
+    table = STORES[name]["table"]
+    done = list(out)
+    rows = pd.read_sql(text(f"""
+        SELECT token_id, count(*) AS n, max(ts) AS last FROM {table}
+        WHERE token_id = ANY(:t) AND NOT (token_id = ANY(:d)) GROUP BY token_id"""), conn,
+        params=dict(t=tokens, d=done)).to_dict("records")
+    if done:
+        rows += pd.read_sql(text(f"""
+            SELECT m.token_id, count(*) AS n, max(m.ts) AS last
+            FROM {table} m JOIN unnest(CAST(:d AS text[]), CAST(:l AS timestamptz[])) AS a(token_id, last)
+              ON a.token_id = m.token_id AND m.ts > a.last
+            GROUP BY m.token_id"""), conn,
+            params=dict(d=done, l=[out[t][1].to_pydatetime() for t in done])).to_dict("records")
+    for r in rows:
+        n, last = out.get(r["token_id"], (0, None))
+        mx = pd.Timestamp(r["last"])
+        out[r["token_id"]] = (n + int(r["n"]), mx if last is None or mx > last else last)
     return out
 
 
