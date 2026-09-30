@@ -6,6 +6,8 @@ where the API is, what each endpoint returns and where each field lives, the pri
 venue's markets map onto our prediction kinds per sport. Polymarket and Kalshi predate this and keep their own
 packages; they can move onto schemas later. OG.com is the first schema exchange.
 
+Where each exchange stands per sport (data, model, backtest, paper): [Sports and exchanges](coverage.md).
+
 Read-only by construction: the driver only issues GETs of public market data. There is no order code in it, and a
 venue's private (trading) API is not part of a schema.
 
@@ -27,7 +29,7 @@ A new venue is a new file plus, if the sport is new to it, a `[sports.*]` block.
 
 `exchanges/og.toml`, built from real responses captured on 2026-09-29 (`tests/fixtures/market/og_*.json`, described
 in `og_README.txt`). Public market data needs no key. The venue is **off by default**: set
-`RACINGLINES_OG_VENUE=1` to show an OG.com column next to Polymarket and Kalshi on the board, race and season pages, and a `/markets/og` list page with the fair-price indicator (below). Each schema exchange gets its own `/markets/<code>` page from its TOML file, registered at import, so a new venue needs no route code. `RACINGLINES_TAPES=1` adds `/markets/tapes`, the recorded tape-only sports' markets (NASCAR, MotoGP, IndyCar) per exchange event, market data only.
+`RACINGLINES_OG_VENUE=1` to show an OG.com column next to Polymarket and Kalshi on the board, race and season pages, and a `/markets/og` list page with the fair-price indicator (below). Each schema exchange gets its own `/markets/<code>` page from its TOML file, registered at import, so a new venue needs no route code. `RACINGLINES_TAPES=1` adds `/markets/tapes`, the recorded tape-only sports' markets (IndyCar, road cycling, Le Mans, SailGP: the schemas with `model_family = "none"`; NASCAR and MotoGP moved to the board once they had a model) per exchange event, market data only.
 
 What it lists of ours: the F1 season futures (Drivers' and Constructors' champion, 20 contracts, expiring
 2027-01-31) become linked, priced markets; the NASCAR Cup Champion contracts and SailGP's Championship Winner contracts (`--sport sailgp`, PR #50) are tape-only. Per-Grand-Prix events
@@ -61,8 +63,9 @@ championships, priced by the season forecast), with the edge after the fee:
 
 The fee is the schema's `taker_fee_per_contract` ($0.02, from reviews of the exchange, **not yet checked against
 its fee schedule**). A market with no bid (most of OG.com's F1 books are asks only at 1–4¢) shows no NO edge, and a
-one-cent ask is not a tradable quote: read the call as an indicator, not a signal. No backtest sits behind it and
-none is planned for this venue. The same fair price shows beside the OG.com quote on the season board when the
+one-cent ask is not a tradable quote: read the call as an indicator, not a signal. No backtest sits behind it yet:
+OG.com is a replay venue since #88, but no strategy has been replayed on its markets (the F1, NASCAR and MotoGP
+champion replays that would read its futures are drafts, #95 and #96), and its tape starts on 2026-09-29. The same fair price shows beside the OG.com quote on the season board when the
 switch is on.
 
 ### Debug: buy one of everything
@@ -72,8 +75,10 @@ NO share at the first price the store holds for it, whatever its spread, side or
 book's best bid and ask (their mid, or the one side that quotes) or the sync's last quote. The pair is held, settled
 when the exchange resolved the market, else marked at the last price stored, with `--cost` ($0.01) and the schema's
 fee per contract on each side. A pair loses exactly its costs and fees, so the P&L shows that each market was found,
-priced and valued; the YES and NO sides are the informative split. OG.com lists season futures only (F1 champions,
-the NASCAR Cup champion, SailGP), so this is where its cells of the sport x exchange grid come from: the race replays'
+priced and valued; the YES and NO sides are the informative split. It is a plumbing check, not a result: per the
+owner, buy-all never appears in reporting or the web app, and no cell of the
+[status matrix](coverage.md#the-status-matrix) counts it as a backtest. OG.com lists season futures only (F1
+champions, the NASCAR Cup champion, SailGP), so buy-all is today the only replay that reaches its markets: the race replays'
 `--buy-all` ([CLI](cli.md)) find no OG.com race markets to buy today, and OG.com lists no MotoGP. The race replay does read OG.com as a venue (`racinglines nascar replay --venue og`, and in `--venue all`), so race markets flow in as soon as OG.com lists them and they are synced. Both read every stored price whatever its spread or depth, except a stored 0.50 from an empty book; a trade at any price counts.
 
 Nothing here places an order. OG.com's private API needs FCM onboarding and signed requests, which is a separate

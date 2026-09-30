@@ -1,104 +1,123 @@
-# Coverage: every sport, every venue
+# Sports and exchanges: status
 
-One grid, written 2026-09-29, of every sport racinglines has data for or could reasonably take on, crossed
-with every venue that could list it, and for each cell three questions:
+Where every sport stands on every exchange: what data we hold, what prices it, what has been backtested and how far
+the result can be trusted, and what runs live or on paper. **Last reviewed 2026-09-30** against the code on `main`
+(after #104), the [overnight VM run](https://github.com/lalligagger/racinglines/blob/main/reports/2026-09-30-overnight-vm-run/report.md)
+and the [24-hour report](https://github.com/lalligagger/racinglines/blob/main/reports/2026-09-30-sports-exchanges-24h/report.md).
+Nothing here trades real money: `POLYMARKET_TRADING_ENABLED` and `KALSHI_TRADING_ENABLED` are unset, and OG.com has
+no order code at all.
 
-- **H** · is there **historical market data** in our database or archive (`market_links`,
-  `market_price_history`, `market_trades`, `data/archive/markets/<exchange>/`)?
-- **B** · is there a **backtested and optimised strategy** on that venue's tape (a Lab candidate or a frozen
-  profile, judged by the rules in [Paper trading](paper-trading.md#validation-plan))?
-- **L** · is a **live strategy wired up** for the next events (the signal engine or `racinglines live`
-  can run it this weekend with nobody writing code)?
+**The short version.** Only **F1 on Polymarket** has a real model, a backtest that held up in a held-out season, and
+live paper trading wired up, and Polymarket has listed no F1 race since 28 Aug 2026. Everything else is one or more
+steps short: NASCAR and MotoGP have a simple result-only model and a Kalshi taker replay that has not passed a
+held-out season; OG.com is a replay venue with no strategy tested on it; downhill has a real model and no exchange;
+IndyCar, road cycling, Le Mans and SailGP are recorded tapes with no model.
 
-The gaps below are roadmap items with effort estimates, not work in progress. Nothing here runs by
-default, and no new sweep or connector starts without the owner's say ([Roadmap](todo.md#new-sports)).
+## How to read the status
 
-**Updated 2026-09-29, after the overnight batch (PRs #23–#45).** Since this grid was first written: Kalshi is in the
-signal engine (U1, #34), the recorder-side tape syncs for NASCAR, MotoGP and IndyCar exist (U9, #26), OG.com is a
-schema connector (#44), and Kalshi maker profile K is tuned ([Kalshi history](kalshi-history.md#profile-k)). What did
-not change: nothing has run live on the VM yet. A spot-check of every combo below is written up as a handoff
-(`handoffs/2026-09-29-spot-check-exchange-coverage.md` in the project files).
+| Word | Means |
+|---|---|
+| **Real model** | A model with its own features, walk-forward backtested on results and compared with a baseline and the market (F1: [F1 evaluation](f1-evaluation.md); downhill: [Evaluation](evaluation.md)) |
+| **Simple baseline model** | A result-only Monte Carlo on recent finishing positions and a team prior (`models/nascar_model.py`, `models/motogp_model.py`): one price per race, made before the weekend, with no practice, qualifying, lap or track features. It runs in the replays and prices the board's columns, and has not been shown to beat the market |
+| **Quote only** | The market is synced and recorded; no model prices it |
+| **Tape only** | The sport's schema has `model_family = "none"`: links are `unmodeled`, prices, trades and books are recorded, nothing is priced |
+| **Robust** | Positive in the target season (2026) **and** the held-out season (2025), beyond the noise floor ([promotion rule](f1-roadmap.md#5-promotion-rule-when-a-challenger-becomes-the-default)) |
+| **In-sample** | The settings were chosen on the same races they are scored on |
 
-**How this was checked.** The repo side (schemas in `sports/*.toml`, `racinglines/markets/venues.py`,
-`markets/kalshi/sync.py`, `live/`, the docs) was read directly. The venue side was probed read-only from the
-owner's Mac on 2026-09-29 (unauthenticated GETs against OG.com's, Kalshi's and Polymarket's public
-endpoints), because the cloud session cannot reach them. Counts are a snapshot of that evening. Cells still
-marked **?** were not probed.
+## The status matrix
+
+One row per sport and exchange that lists it (a venue that lists nothing for a sport is left out; see
+[Not listed anywhere](#not-listed-anywhere)).
+
+| Sport × exchange | Data we hold | Model | Backtest (caveats) | Live / paper | Main gap |
+|---|---|---|---|---|---|
+| **F1 × Polymarket** | 2025–26 race weekends and championships, 7,285 links, prices and trade tape | **Real model** (`position_sim`) for race kinds; season forecast for champion, season-wins and standings head-to-head | **Robust.** Taker profile A (+$1,389 in 2026 / +$1,432 in 2025 at 16k sims, PR #85) and maker C; the overnight 106-job sweep kept A. Championship checkpoints **lost** in 2026 (−$566 to −$797, every variant) | Signal engine and paper positions for A and C, stage by stage. Demo taker's paper record 2025 +$450.46 (23 weekends), 2026 +$353.01 (15); only 2026 is out of sample | **No F1 race listed since 28 Aug 2026**, so nothing to trade now |
+| **F1 × Kalshi** | 2025–26 history, 3,793 links (29 `KXF1*` series), trades, hourly candles; no order books (no Kalshi book recorder runs) | **Real model** (same as above) | **Maker K** tuned (2026 +$490, 2025 +$659), frozen pending owner review. **Taker not usable**: the replay reads last-trade candles, which spike (1.67% of points >15 pts off the median); bid/ask candles are not stored. Demo maker's Kalshi record 2025 +$193.39, 2026 −$118.84 (backfill) | Paper signals wired (`venue = kalshi`, U1; sprints behind a switch). The Kalshi recorder (U2) does **not** run on the VM | Recorder timer; bid/ask re-pull before any taker result counts |
+| **F1 × OG.com** | 20 season futures (Drivers' and Constructors'), trades and minute prices since 29 Sep, book snapshots per `books` run | **Real model** for the champion markets (season forecast) | **None run.** OG.com is a replay venue (#88); the F1 champion replay on Kalshi and OG.com is a draft (#95). Buy-all ran overnight (a plumbing check, not a backtest; output not read) | Fair-price indicator only, behind `RACINGLINES_OG_VENUE=1` (off on the VM). No trading: needs FCM onboarding | Thin books (asks at 1–4¢, about 4 trades a week); fee $0.02 unverified |
+| **NASCAR × Kalshi** | 13,599 links (race win, top 3/5/10/20, h2h, pole, fastest lap, champion); on the VM 408 events 2016–26 and 7,544 links with a race; trades and hourly candles; 826 book snapshots from one hand run (29 Sep), no recorder | **Simple baseline** (`NascarCupRace`) for race win, top 3/5/10/20 and h2h; champion: #93 season sim through the Chase, **not calibrated**, offline only | **Not robust.** Taker grid 2026 +$4,226 to +$5,479 (19–21 of 32 races up), 2025 −$242 to −$390 in every setting (1–2 of 8 up). Kalshi last-trade prices, spiky, so indicative only. Nothing tuned | None. PR #97 (draft) would store the replay trades as the demo taker's in-sample Kalshi paper positions, behind `RACINGLINES_SPORT_PAPER=1` | A held-out-positive result; bid/ask prices; tapes timer for the Chase |
+| **NASCAR × Polymarket** | 1,101 links on the owner's Mac (per-race winners, Cup champion); tag slug unverified, not run on the VM | Race kinds: same simple baseline; champion: #93, not calibrated | **None.** The replay reads Polymarket (`--venue polymarket`), but no run with a Polymarket NASCAR tape has been reported | None | First VM sync and tape pull |
+| **NASCAR × OG.com** | 17 Cup Champion contracts, tape since 29 Sep | Champion: #93, **not calibrated**, offline (`nascar season --quotes`, off by default); `og.toml` keeps the sport `modeled = false` | **None.** Buy-all ran overnight (plumbing check, output not read); the NASCAR champion replay is a draft (#96) | None | Calibration of the season sim; OG.com lists no NASCAR race markets |
+| **MotoGP × Kalshi** | 322 links (`KXMOTOGPRACE` 289, `KXMOTOGP` champion 22, `KXMOTOGPTEAMS` 11); on the VM 202 events; tape pulled; 33 book snapshots from one hand run (29 Sep), no recorder | **Simple baseline** (`MotoGPRaceChallenger`) for race win only (race-win log loss 0.0796, not compared with the market or a naive baseline). Sunday race only: sprints are not ingested. Champion and teams: **quote only** | **No verdict.** 16 of 16 grid runs done; the ranking crashed (fixed in #102) and has not been re-run. **No held-out season**: 2025 has no MotoGP race with Kalshi markets. One Mac spot check (2026, $0 volume floor, so not tradeable) made +$413.62 on 93 trades | None (#97 draft, as NASCAR) | A second season of markets; sprint results; champion classifiers |
+| **MotoGP × Polymarket** | Champion (25 outcomes) and some per-race winners listed; tag slug unverified, nothing synced on the VM | Champion: **quote only**. Race winners: the baseline could price them, nothing synced | **None** | None | First sync; the champion needs sprints, schedule, standings ([Championship markets](championship-markets.md#what-pricing-motogps-champion-would-take)) |
+| **Downhill × private book** | Whistler 2026 live event (7,703 fills); results 2021–26 from ChronoRace | **Real model** (`timed_runs`), walk-forward on 43 rounds | Walk-forward on results (Final-qualification error 38% below a uniform guess). No exchange tape, so **no market backtest** | `racinglines mtb_dh live` on the private book (a simulated crowd; proves pricing, not an edge) | No exchange lists downhill; next World Cup spring 2027 |
+| **IndyCar × Kalshi** | 1,374 links (all closed), 167k trades | **Tape only** | None | None | Results source's terms forbid automated use (#75); season over until March 2027 |
+| **Road cycling × Kalshi** | Schema built (`road_cycling`, `KXCYCLING*`), **not yet run on the VM**; Kalshi holds 200+ settled markets per series | **Tape only** | None | None | No results source or model |
+| **Le Mans × Kalshi** | Schema built (`le_mans`), not yet run | **Tape only** | None | None | No results source or model |
+| **SailGP × Kalshi, OG.com** | OG.com 13 Championship Winner links (synced 29 Sep); Kalshi schema built, not yet run | **Tape only** | None | None | No results source or model |
+
+**Buy-all is never a result.** `buy-all` (and the replays' `--buy-all`) buys one YES and one NO of every market to
+prove it is found, priced and settled; a pair loses exactly its fees. Per the owner it is never shown in reporting or
+the web app, and none of the numbers above come from it.
+
+### Not listed anywhere
+
+- **MotoGP on OG.com**, **IndyCar, road cycling and Le Mans on OG.com**: OG.com lists none of them (probed 2026-09-29).
+- **Downhill, XCO/XCC, track, cyclocross, BMX**: no exchange lists mountain biking or track cycling. XCO results are
+  fetchable from ChronoRace on the same weekend slugs, nothing is ingested, and there is no mass-start model.
+- Horse racing (blocked by law on both US venues), Formula E, rally and alpine skiing: out of scope.
+
+## Model status by sport
+
+| Sport | Schema `model_family` | Results source | What the model uses | How it was checked | Honest status |
+|---|---|---|---|---|---|
+| **F1** | `position_sim` | FastF1 (cloud-blocked) | Lap and sector times, track and sector properties, practice and qualifying by stage, grid; season forecast by simulation | 129 races, 2021 to Azerbaijan 2026, three stages each; after qualifying top-10 Brier 0.149 vs 0.163 grid-only. Polymarket is as sharp on race winners (sharper after qualifying, and in 2025 at every stage) | Real model; its edge is where the gap to the market is large, not everywhere. Season forecasts lag the market early in a new-regulations season |
+| **Downhill** | `timed_runs` | ChronoRace web feed (primary), PDFs opt-in | Run times: rider pace, noise, rider × weekend spread, incident rates; format-aware weekend simulation | 43 World Cup rounds walk-forward ([Evaluation](evaluation.md)) | Real model, nothing to trade it against |
+| **NASCAR Cup** | `position_sim` (`NascarCupRace`) | `cf.nascar.com` feeds (probed from the Mac) | Recent finishing positions, recency decay, a team prior; the Chase season sim (#93) adds finishing, stage and bonus points and the 2026 Chase format, with no track types or form drift | Taker replay on Kalshi only (above); no calibration table published beside a naive baseline | Simple baseline. Race-day pricing ignores qualifying, practice and track type; the replay's race spread (2.0 places) is tighter than NASCAR's measured ~7, an open owner decision |
+| **MotoGP** | `position_sim` (`MotoGPRaceChallenger`) | `api.motogp.pulselive.com` (unofficial, public; probed from the Mac) | Sunday race results only, same form model as NASCAR | Race-win log loss 0.0796, no baseline comparison; Kalshi replay has no ranked result | Simple baseline, race win only. No sprints, so no season or champion pricing |
+| **IndyCar, road cycling, Le Mans, SailGP** | `none` | None cleared (IndyCar's forbids scraping) | – | – | Tape only |
+
+A `market_implied` or Plackett-Luce baseline for the new sports is planned (engine roadmap E7) and not built, and the
+generic leak guard (E2) is F1-only today: the NASCAR and MotoGP replays avoid leakage by pricing each race from
+results strictly before its start, which is a convention in `pipelines/position_replay.py`, not a checked guard.
 
 ## The venues
 
 | Venue | What it is | Can we read it? | Can we trade it? | Take |
 |---|---|---|---|---|
-| **Polymarket** | Crypto exchange, CLOB, public Gamma + CLOB APIs, full trade and price history | Yes: `markets sync/record/archive`, 2025–26 F1 history | Yes (paper today; V2 order path built, `POLYMARKET_TRADING_ENABLED` unset) | Our first venue. **Has listed no F1 race since 28 Aug 2026** ([F1 live roadmap](f1-live-roadmap.md#polymarket-has-stopped-listing-f1-races)). Championships still deep |
-| **Kalshi** | CFTC exchange, public REST API with candlesticks and trades, per-market maker fee | Yes: `markets --exchange kalshi`, 2025–26 F1 history ([Kalshi history](kalshi-history.md)) | Yes (paper; `KALSHI_TRADING_ENABLED` unset) | Listed every 2025–26 F1 weekend. The likeliest live venue this autumn |
-| **OG.com** | Crypto.com's US prediction market, launched 3 Feb 2026, CFTC contracts via Crypto.com Derivatives North America (the former Nadex). Sports-first, parlays, $0.02 flat fee per contract | **Yes, public market data with no key**: the "Crypto.com GEN4 FCM US B2C API" (`api.crypto.com/fcm/v1/public/*`), 50-level book, trade tape, 1-minute bid/ask/last history, WebSocket. History is short: 31 days per call, trades kept about a month | Not without **FCM onboarding** and HMAC-SHA256 request signing (owner is waiting on an API key) | Readable now, tradable later. Its F1, NASCAR and SailGP books are thin. See [OG.com](#ogcom) |
-| **Private book** | Our own simulated pool (`racinglines live`), the demo maker quoting to a simulated crowd and the demo taker | Yes, replayable to the fill | Yes (the T3 tier) | The fallback where no venue lists the event. Proves pricing, not an edge |
+| **Polymarket** | Crypto exchange, CLOB, public Gamma + CLOB APIs, full trade and price history | Yes: `markets sync/record/archive`; F1 2025–26 history. Tape-only path for NASCAR, MotoGP, IndyCar through `[markets.polymarket] tags` (#51, slugs unverified) | Paper; V2 order path built, `POLYMARKET_TRADING_ENABLED` unset | Our first venue. **Has listed no F1 race since 28 Aug 2026** ([F1 live roadmap](f1-live-roadmap.md#polymarket-has-stopped-listing-f1-races)). Championships still deep |
+| **Kalshi** | CFTC exchange, public REST API with candlesticks and trades, per-market maker fee | Yes: `markets --exchange kalshi`, F1 2025–26 ([Kalshi history](kalshi-history.md)); NASCAR, MotoGP, IndyCar with `--sport` (U9), identified by the sports' resolvers | Paper; `KALSHI_TRADING_ENABLED` unset | Listed every 2025–26 F1 weekend and every NASCAR Cup race; the likeliest live venue this autumn. Its hourly candles are last trades, which spike |
+| **OG.com** | Crypto.com's US prediction market (CFTC contracts via Crypto.com Derivatives North America). Sports-first, $0.02 flat fee per contract (from reviews) | **Yes, public market data with no key** (`api.crypto.com/fcm/v1/public/*`), read by a schema (`exchanges/og.toml`, #44). A replay venue since #88. History is short: about a month | Not without **FCM onboarding** and HMAC-SHA256 signing (owner waiting on an API key) | Readable and replayable, not tradable. F1, NASCAR and SailGP season futures only, thin. See [OG.com](#ogcom) |
+| **Private book** | Our own simulated pool (`racinglines live`): the demo maker quoting to a simulated crowd and the demo taker | Yes, replayable to the fill | Yes (the T3 tier) | The fallback where no venue lists the event. Proves pricing, not an edge |
 
-Other venues seen in the search results and **not** tracked: Robinhood's prediction-market tab (Kalshi's
-contracts resold, so covered by Kalshi), FanDuel Predicts (CME and OG contracts), PrizePicks (picks, not a
-book), Octagon. None adds a market Kalshi or Polymarket doesn't already list.
-
-## The grid
-
-Legend: **✓** yes · **~** partly (the note says what) · **✗** no · **–** the venue lists nothing for the
-sport · **?** not probed. Each cell is H / B / L.
-
-| Sport (schema) | Polymarket | Kalshi | OG.com | Private book | Data source and model |
-|---|---|---|---|---|---|
-| **F1** (`f1`) | H ✓ 2025–26, 7,285 links · B ✓ A (taker) and C (maker), params-4h · L ✓ signal engine, but **no race listed since 28 Aug** | H ✓ 2025–26, 3,793 links (29 `KXF1*` series, `KXF1RACE` 22 open) · B ✓ C replayed, K tuned ([Profile K](kalshi-history.md#profile-k), frozen pending owner review; **2026 +$490, 2025 +$659**) · L ~ U1 done (`venue = kalshi`, #34), U5 sprints (#36, behind a switch) and the reconcile / scorecard checks built, **U2 recorder on the VM not running** | H ✗ (API keeps about a month) · B ✗ · L ✗ · **20 season futures listed** (Drivers' and Constructors', expire 2027-01-31); per-GP events exist but had no live instruments; books thin, asks only at 1–4¢, about 4 trades a week | H ✓ Baku test · B ✓ same profiles · L ✓ `live/f1/2026-16.toml` … `2026-23.toml` | FastF1 (network-blocked in the cloud). `position_sim` |
-| **UCI downhill** (`mtb_dh`) | – (probed: nothing on mountain bike) | – (probed: no series) | – (probed) | H ✓ Whistler 2026 (7,703 fills) · B ✓ walk-forward, 43 rounds ([Evaluation](evaluation.md)) · L ✓ `racinglines mtb_dh live` | ChronoRace feed (primary) + PDF backfill. `timed_runs`. Season is over; next World Cup spring 2027 |
-| **UCI XCO / XCC** (none) | – (probed) | – (probed) | – (probed) | ✗ no model (the downhill live core is time-based, XCO is a mass start) | ChronoRace serves XC on the same weekend slugs (`_mtb`, once `_xco`): results are fetchable, nothing is ingested |
-| **UCI road: grand tours, monuments, Worlds** (none) | H ✗ · listings ✓ Tour 2026 (about $1.3M volume), Vuelta, Il Lombardia · B ✗ · L ✗ | H ~ tape-only schema built (PR #50, `road_cycling`), **not yet run on the VM** · **settled history ✓ at least 200 markets in each of `KXCYCLING`, `KXCYCLINGSTAGE`, `KXCYCLINGTEAM`, `KXCYCLINGJERSEY`, plus `KXTOURDEFRANCE`**; 0 open now · B ✗ · L ✗ | – (probed: no cycling) | ✗ | No source, no model (a tape-only schema exists, PR #50). ProCyclingStats is the obvious results source (terms to check). Next listings that could exist: Il Lombardia 10 Oct, then the 2027 spring classics and Giro |
-| **UCI track, cyclocross, BMX, gravel** (none) | – ? | – ? | – (probed) | ✗ | No source. Track Worlds 14–18 Oct (Shanghai), Cyclocross World Cup from 23 Nov. Expect no markets; not probed beyond OG.com |
-| **NASCAR Cup** (`nascar`, tape-only) | H ~ Polymarket tape path built (PR #51), **not yet run, tag slug unverified** · listings ✓ per-race winner markets and futures · B ✗ · L ✗ | H ✓ U9 sync (#26), **first live run on the VM 2026-09-29: 13,599 links, 419 events, 1.69M trades** (`KXNASCARRACE` 3,480 and the top-3/5/10/20, fastest-lap, pole, team and head-to-head series), all `unmodeled` · B ✗ · L ✗ | H ✗ · **17 Cup Champion futures only** | ✗ | No source (P2 research item), no model. Chase races every October weekend, finale Homestead 8 Nov |
-| **MotoGP** (`motogp`, tape-only) | H ✗ · listings ✓ championship winner (25 outcomes) **and per-race Grand Prix winners** (Germany, Netherlands, Czechia, about $34k–$100k volume each, seen 2026-09-29) · B ✗ · L ✗ | H ✓ U9 sync, first live run 2026-09-29: 322 links, 15 events, 12k trades (`KXMOTOGPRACE` 289, `KXMOTOGP` 22, `KXMOTOGPTEAMS` 11) · B ✗ · L ✗ | – (probed: not listed) | ✗ | No source, no model. Qatar–Valencia rounds Nov |
-| **IndyCar** (`indycar`, tape-only) | H ✗ · listings ✓ championship winner, Indy 500 · B ✗ · L ✗ | H ✓ U9 sync, first live run 2026-09-29: 1,374 links (all closed), 54 events, 167k trades; nothing open, so no books · B ✗ · L ✗ | – (probed: not listed) | ✗ | Season over (Sept). Nothing to record until March 2027 |
-| **SailGP, Le Mans, Formula E, rally, alpine skiing** (none) | SailGP, Le Mans ✓ listed | SailGP ✓ (`KXSAILGP` 13 open, `KXSAILGPRACE` 13), Le Mans ✓ (`KXLEMANS24H`) | SailGP ✓ 13 Championship Winner contracts | ✗ | Tape-only schemas built (PR #50: `sailgp`, `le_mans`, Kalshi and OG.com SailGP), not yet run on the VM. No model; noted so the search was complete |
-
-Reading across: **F1 is the only sport with all three marks on any real venue**, and only on Polymarket,
-which is not listing. On Kalshi F1 is one step short (the VM recorder). Everything else is either private
-book only (downhill) or has markets and nothing on our side (road cycling, NASCAR, MotoGP, IndyCar).
+Other venues seen and **not** tracked: Robinhood's prediction-market tab (Kalshi's contracts resold), FanDuel
+Predicts (CME and OG contracts), PrizePicks (picks, not a book), Octagon. None adds a market Kalshi or Polymarket
+doesn't already list.
 
 ## The gaps, ranked
 
-Effort: **S** under a day, **M** one to three days, **L** a week or more. Each is a roadmap item; none is
-started.
+Effort: **S** under a day, **M** one to three days, **L** a week or more. Ordered by what changes a cell of the
+matrix soonest. None starts without the owner's go ([Roadmap](todo.md#new-sports)).
 
-1. **Kalshi recorder on the VM (U2) — S.** The only thing between F1-on-Kalshi and a full row. Needs the VM
-   or the owner's device (Kalshi is network-blocked in the cloud). Already P0 in [Roadmap](todo.md#priorities).
-2. **A timer for the tape syncs (U9) — S.** The first live run happened on the VM on 2026-09-29 (numbers in the grid),
-   so the code works. What is missing is a timer, so every October Chase weekend is recorded from listing to
-   settlement. Also open: the sync should seed a sport's competition row itself, and Kalshi's Truck and Auto Parts
-   series landed under NASCAR Cup.
-3. **Polymarket tapes for NASCAR, MotoGP, IndyCar — built (PR #51), first run open.** The Polymarket sync now takes a
-   named tape-only sport (`[markets.polymarket] tags` in `sports/<code>.toml`, links `unmodeled`, additive).
-   The tag slugs are unverified against the live Gamma API: run `markets --sport nascar sync` on the VM, and
-   `--tags SLUG …` corrects a slug without code. Then the December "NASCAR for 2027?" call has both venues' tapes.
-4. **UCI road cycling as a tape-only sport — schema built (PR #50), first run open.** `sports/road_cycling.toml`
-   (`model_family = "none"`, Kalshi `KXCYCLING*`) records Kalshi's tapes with no other code (the U9 path); `sync
-   --closed` pulls the Tour, Giro and Vuelta history Kalshi still serves. Polymarket's cycling markets need a
-   `[markets.polymarket] tags` entry once the slug is known. This is the owner's "all UCI cycling events" ask at its cheapest.
-5. **A road-cycling model — L, 2027.** Stage racing is a different problem from a timed run or a
-   position sim (GC vs stage, teams, breakaways). Decide after the 2026 tapes show volume; the
-   grand-tour winner markets look like the only deep ones. Results source and its terms first
-   ([Data](data.md)), then a `[sport]` schema. Not before the F1 and downhill validations are done.
-6. **OG.com: connector built (PR #44, a schema); recorder and trading open.** A VM recorder timer is S. Trading is
-   blocked on FCM onboarding and the owner's API key. See [OG.com](#ogcom).
-7. **XCO / XCC ingest — M, 2027.** ChronoRace already serves it on the same slugs the downhill ingest
-   probes. Worth it only if a venue ever lists MTB, which none does; otherwise a private-book showcase
-   like downhill. Off the list until then.
-8. **OG.com follow-ups — S each.** A VM recorder timer (trades, history and books at least weekly, since the API
-   keeps about a month), confirm the $0.02 fee in OG.com's fee schedule, per-Grand-Prix contract rules once a race
-   market is live, join OG.com to the U7 disagreement log.
-9. **A browse page for schema exchanges — done (PR #49, 2026-09-29).** `/markets/og` (and one page per future
-   schema exchange, from `exchanges/`) lists the venue's markets with the fair-price indicator, behind
-   `RACINGLINES_OG_VENUE=1`; `/markets/tapes`, behind `RACINGLINES_TAPES=1`, lists the tape-only sports' markets and
-   what has been recorded. Not verified on real rows until the VM's first syncs have run.
-10. **Confirm the "–" cells — S.** One device or VM session to run the checks below and turn every **?**
-   into a fact. Cheapest item on this page and the one that changes the others. The spot-check handoff covers it.
+1. **Kalshi bid/ask prices — S to M.** Every Kalshi taker result (F1, NASCAR, MotoGP) reads hourly last-trade
+   candles, which spike. Storing the candles' bid and ask (a re-pull from the VM or the Mac, backup first) is what
+   turns those results from indicative into something a taker could have paid.
+2. **Kalshi recorder on the VM (U2) and a tapes timer (U9) — S each.** Neither runs: F1-on-Kalshi has no live tape,
+   and the NASCAR Chase and MotoGP's last rounds are recorded only when someone runs the sync. Both need the owner's
+   sign-off for new VM units.
+3. **Read the unread overnight outputs — S.** MotoGP's grid ranking (re-run after #102's deploy), the OG.com buy-all
+   CSVs and the NASCAR spike share were written on the VM and not yet read. Until then MotoGP × Kalshi has no verdict.
+4. **Champion replays (#95, #96) — drafts.** F1 champion markets on Kalshi and OG.com, NASCAR and MotoGP champion
+   markets: built, need a Mac spot check before merge. They would be the first backtest on any OG.com cell.
+5. **Calibrate the NASCAR season sim — M.** #93 prices the Cup champion but has never been scored against settled
+   seasons (its first Mac run had Larson at 94.6% against 40–55% on the market, before its second revision).
+6. **Polymarket tapes for NASCAR and MotoGP — built (#51), first VM run open.** The tag slugs are unverified: run
+   `markets --sport nascar sync` on the VM, and `--tags SLUG …` corrects a slug without code.
+7. **MotoGP sprints and champion — M.** Ingest sprint classifications (a Mac probe first), then the champion
+   classifiers (`KXMOTOGP` to `champion`, a stored-link change needing a backup and `link --apply`) and a season sim
+   ([Championship markets](championship-markets.md#what-pricing-motogps-champion-would-take)).
+8. **A naive baseline for the new sports (engine E7) — M.** `market_implied` and Plackett-Luce, so NASCAR's and
+   MotoGP's simple models are measured against something before anyone reads their P&L as edge.
+9. **OG.com follow-ups — S each.** A VM recorder timer (the API keeps about a month), confirm the $0.02 fee,
+   per-Grand-Prix contract rules once a race market is live, join OG.com to the U7 disagreement log. Trading only
+   after FCM onboarding.
+10. **Road cycling, Le Mans, SailGP tapes — schemas built (#50), first VM run open.** A model for any of them is L
+    and 2027 at the earliest; road cycling needs a results source whose terms allow it first.
+11. **XCO / XCC ingest — M, 2027.** Only if a venue ever lists mountain biking.
 
-Not gaps: horse racing (blocked by law on both venues), track / cyclocross / BMX (no markets expected),
-alpine skiing and the rest of the last row (out of scope).
+Done since the 29 Sep version of this page: Kalshi in the signal engine (#34); NASCAR and MotoGP results, identity
+and links on the VM (#60–#69, #75, #77, #98, #100); the NASCAR and MotoGP taker replay (#82, #84); OG.com as a replay
+venue and buy-all (#88); dead-book 0.50 prices removed (#89, #90); syncs seed their sport's competition (#57); the
+board's exchange data counts over the Parquet archive (#101, #103); the `/markets/og` and `/markets/tapes` pages (#49).
 
 ## OG.com
 
@@ -129,16 +148,19 @@ waiting on an API key. No API terms page was found on the docs site; the legal p
 chess 2; plus politics, culture, economics, crypto, companies and climate. **Not listed:** MotoGP, IndyCar,
 any cycling or mountain bike, Le Mans.
 
-**Where it matters to us.** Only F1: 20 season futures (Drivers' champion 9, Constructors' 11, expiring
+**Where it matters to us.** Mostly F1: 20 season futures (Drivers' champion 9, Constructors' 11, expiring
 2027-01-31). Per-Grand-Prix events exist (series `F12026`) but had no live instruments, so race markets will
 appear only around a weekend. Liquidity is thin: the Norris and Verstappen books were asks only at 1–4¢
 (1–5k contracts), no bids, about 4 trades a week. NASCAR is 17 Cup Champion contracts and SailGP 13
-Championship Winner contracts. Nothing else on our list.
+Championship Winner contracts. Nothing else on our list. The F1 futures are model-priced (the season forecast);
+the NASCAR champion is priced only offline by the uncalibrated #93 season sim; SailGP is tape only.
 
 **Connector built as a schema, not code (PR #44, 2026-09-29).** `exchanges/og.toml` describes the API and one
 generic driver reads it, so OG.com needs no OG-specific code. It syncs the F1 futures into market links, records
 the tape, minute prices and books, and prints a fair-price indicator (model fair vs quote, net of the fee). It is
-read-only and off by default (`RACINGLINES_OG_VENUE=1` shows the venue). What is left:
+read-only and off by default (`RACINGLINES_OG_VENUE=1` shows the venue). Since #88 it is also a replay venue
+(`nascar replay --venue og`, `--venue all`), so its race markets flow into the replays once listed and synced; none
+are listed today, and the champion replays that would read its futures are drafts (#95, #96). What is left:
 
 1. **A recorder timer on the VM.** The API keeps about a month, so `trades` and `history` must run weekly at
    least. Effort S.
@@ -148,10 +170,13 @@ read-only and off by default (`RACINGLINES_OG_VENUE=1` shows the venue). What is
    knows Polymarket and Kalshi only, is generalised. Effort S to M.
 5. **Trading**: only after FCM onboarding, signed private endpoints and the validation rules. Not started.
 
-Value today is low: thin F1 futures only, nothing for cycling, MotoGP or IndyCar. The reason to record early is
+Value today is low: thin F1 and NASCAR futures only, no strategy backtested on them, nothing for cycling, MotoGP or
+IndyCar. The reason to record early is
 history, since the API forgets after a month.
 
 ## Spot-check, 2026-09-29 (VM database, read-only)
+
+Historical: this is the state before the first VM syncs of the new sports. The matrix above supersedes it.
 
 Run from the owner's Mac against the live APIs and the VM's database, before the deploy of the overnight batch.
 Kalshi F1: 3,793 links, 37,416 trades, 16,083 price rows, archived. OG.com, NASCAR, MotoGP and IndyCar on Kalshi:
@@ -163,7 +188,7 @@ there, and joining on it overcounts about 20 times ([Kalshi history](kalshi-hist
 ## What to verify on a device
 
 Run these on the VM or the owner's Mac (both reach the venues; the cloud sandbox does not). Each is a
-read-only GET. They refresh the counts and settle the remaining **?** cells.
+read-only GET. They refresh the counts in the matrix above.
 
 Kalshi: every sports series that touches our sports, then the open and settled counts for cycling.
 
@@ -198,18 +223,18 @@ OG.com: this was probed on 2026-09-29. To refresh its F1 and NASCAR counts:
 curl -s 'https://api.crypto.com/fcm/v1/public/get-events' | python3 -c 'import sys,json; d=json.load(sys.stdin); print(json.dumps(d)[:1500])'
 ```
 
-Write the answers into this page's grid and drop the remaining **?** marks.
+Write the answers into the matrix above.
 
 ## Calendar: what could be listed before year end
 
 | When | Event | Venue that may list it | Our side |
 |---|---|---|---|
 | 2–4 Oct | F1 round 16, Sepang | Kalshi (Polymarket dark) | A, C ready; K frozen; private book as T3 |
-| every Oct weekend | NASCAR Chase (Las Vegas, Charlotte Roval, Phoenix, Talladega, Martinsville) | Kalshi, Polymarket per-race | Tape only, once U9 runs |
+| every Oct weekend | NASCAR Chase (Las Vegas, Charlotte Roval, Phoenix, Talladega, Martinsville) | Kalshi, Polymarket per-race | Recorded only when synced by hand (no timer); simple baseline, replay only |
 | 10 Oct | Il Lombardia (last monument) | Kalshi `KXCYCLING` likely, Polymarket maybe | Nothing; item 4 would record it |
 | 14–18 Oct | UCI Track Worlds, Shanghai | Probably none | Nothing |
 | 9–11 Oct, 23–25 Oct, 30 Oct–1 Nov | F1 rounds 17–19 | Kalshi | As round 16, sprints from U5 |
-| 6–8 Nov | F1 São Paulo, NASCAR finale (Homestead), MotoGP Qatar | Kalshi; Polymarket for NASCAR | F1 live; the rest tape |
-| 20–22 Nov, 27–29 Nov, 4–6 Dec | F1 Las Vegas, Qatar, Abu Dhabi; MotoGP Portugal, Valencia | Kalshi | F1 live; MotoGP tape |
+| 6–8 Nov | F1 São Paulo, NASCAR finale (Homestead), MotoGP Qatar | Kalshi; Polymarket for NASCAR | F1 live; NASCAR and MotoGP replay only |
+| 20–22 Nov, 27–29 Nov, 4–6 Dec | F1 Las Vegas, Qatar, Abu Dhabi; MotoGP Portugal, Valencia | Kalshi | F1 live; MotoGP replay only |
 | from 23 Nov | UCI Cyclocross World Cup (Tábor, then weekly to Christmas) | Probably none | Nothing |
 | Spring 2027 | Classics, Giro, UCI MTB World Cup opener | Kalshi cycling series, Polymarket | Decide over the winter from the 2026 tapes |

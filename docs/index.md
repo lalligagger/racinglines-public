@@ -14,7 +14,10 @@ sports mark the ends of the range we build for:
   for an exchange to list it.
 
 New sports qualify when their audience and expected market liquidity sit between
-the two.
+the two. **NASCAR Cup** and **MotoGP** are the first: results, market links on
+Kalshi, Polymarket and OG.com, and a simple result-only model in replay, with no
+edge yet that held up in a second season. Where every sport stands on every
+exchange: [Sports and exchanges](coverage.md).
 
 <!-- /readme -->
 
@@ -29,6 +32,7 @@ the two.
 | ☁️ **1,161 strategy combinations searched** | A 4-hour cloud search found two setups that held up in both seasons: **A** (a taker, +$1,232 in 2026 / +$1,237 in 2025) and **C** (a maker, +$653 / +$835, the best Sharpe of any combination). |
 | 📡 **Live paper trading** | A and C run on every F1 weekend Polymarket lists, through 2027, stage by stage, with heat ratings, alerts and paper positions, through the same code as the backtest (checked trade for trade). Polymarket has listed no race since Baku (28 Aug 2026). |
 | 🔴 **Live events** | The Whistler downhill final (27 Sep 2026) followed live from UCI timing: rank probabilities after every update, a maker re-quoting every rider, 1,000 simulated private-book takers and a hype-picking demo taker, P&L by venue. F1 next: the Bahrain GP at Sepang (2–4 Oct 2026), a private book on all 100 usual race markets. |
+| 🏁 **Three exchanges, eight sports** | Polymarket, Kalshi and OG.com (OG.com read-only, from one schema file). F1 is the only sport with a real model and a backtest that held in a held-out season (on Polymarket). NASCAR on Kalshi: 2026 **+$4.2k to +$5.5k** in the taker replay but **−$242 to −$390** in 2025 in every setting, on spiky last-trade prices, so not robust. MotoGP: race win only, no held-out season. IndyCar, road cycling, Le Mans and SailGP: recorded tapes, no model. [Status matrix](coverage.md#the-status-matrix). |
 | 🚵 **43 downhill World Cup rounds** | 2021–2026, walk-forward. Error on who makes the Final is **38% lower** than a uniform guess (0.127 vs 0.204); the actual winner got **7.1%** on average, against ~1%. |
 | ✅ **Checks in seconds** | `racinglines check` runs 21 checks (code, every data source, database) in ~10 s; the regression suite runs 174 tests on pinned public fixtures and golden outputs. |
 
@@ -145,6 +149,7 @@ official timing ──> PostgreSQL ──> as-of model ──> simulated weekend
 | What does F1 look like now? | The next race's favourites and the championship odds. | [F1 forecast](f1-forecast.md) |
 | How accurate is the downhill model? | Better than uniform on podium and make-Final in every season; win odds too flat. | [Downhill evaluation](evaluation.md) |
 | Who wins the 2026 downhill title? | [Downhill forecast](forecast.md) | |
+| What about NASCAR, MotoGP, Kalshi and OG.com? | Data and a simple result-only model for NASCAR and MotoGP; no strategy outside F1 on Polymarket has passed a held-out season. OG.com is readable and replayable, not tradable. | [Sports and exchanges](coverage.md) |
 
 <!-- /readme -->
 
@@ -153,14 +158,18 @@ official timing ──> PostgreSQL ──> as-of model ──> simulated weekend
 <!-- readme: layers -->
 
 Each layer builds on the one before, so start at the top and stop when you
-have what you need. Every sport has a model, an evaluation and a forecast page;
-F1, which has exchange markets, also has market pages.
+have what you need. F1 and downhill each have a model, an evaluation and a
+forecast page, and F1 also has market pages. NASCAR, MotoGP and the tape-only
+sports are summarised on one status page.
 
 | Layer | Page | What's there |
 |---|---|---|
+| 0. **Status** | [Sports and exchanges](coverage.md) | Every sport × exchange: data, model, backtest and its caveats, live or paper, and the gaps |
+
 | 1. **Data** | [Data](data.md) | Sources, what was downloaded, the on-disk layout, and what's in git |
 | | [Parser](parser.md) | Downhill results formats and the tidy schema |
 | | [Database](database.md) | The multi-sport schema, ingest, stored runs, the snapshot, and what stays in Postgres vs Parquet |
+| | [Exchanges as schemas](exchanges.md) | OG.com read from one TOML file: sync, tape, fair-price indicator, buy-all check |
 | 2. **Formula 1** | [F1 model](f1.md) | Car and driver pace, practice prior, finishing model, as-of pricing |
 | | [F1 evaluation](f1-evaluation.md) | 129-race backtest, model variants, against Polymarket |
 | | [F1 forecast](f1-forecast.md) | The next race and the championships |

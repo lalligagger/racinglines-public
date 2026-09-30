@@ -58,7 +58,7 @@ C makes money on Polymarket's tape and loses on Kalshi's.
 - [ ] **U3** Kalshi maker profile K: swept (PRs #38, #41, merged; K = `gbm`, 2¢, 10-pt filter, 25 shares, $400 volume floor); **freezing it is the owner's call** before the United States GP (25 Oct).
 - [x] **U7** Cross-venue disagreement log (PR #35, behind `RACINGLINES_DISAGREE`); **U8** settlement rules for relocated or cancelled races (PR #27, behind `RACINGLINES_CANCELLED_RACE_RULES`). Both merged; the owner's two assumptions for U8 are still to confirm.
 - [x] Per-weekend reconciliation (`f1 reconcile`, PR #37) and the pricing scorecard (`f1 scorecard`, PR #28), both merged; run them after every weekend ([Paper trading](#paper-trading)).
-- [ ] **U9** Record Kalshi's NASCAR (Chase, finale 8 Nov), MotoGP and IndyCar tapes: code merged (PR #26, fixture-tested only); **the first live run on the VM is still to do** ([New sports](#new-sports)).
+- [ ] **U9** Record Kalshi's NASCAR (Chase, finale 8 Nov), MotoGP and IndyCar tapes: code merged (PR #26); first live run on the VM 2026-09-29 and NASCAR/MotoGP tapes pulled in the overnight run (2026-09-30). **Still open: a timer**, so each race is recorded without a hand run ([New sports](#new-sports)).
 - [ ] **Parallel track, owner (2026-09-28): the downhill [Data](#data) items are high priority for the next
       cloud session** (Elite/Junior Women, start order, weather). They don't touch the F1 weekends. Most
       need ChronoRace (`prod.chronorace.be`), which the cloud network blocks: allow it first, or run locally.
@@ -282,7 +282,7 @@ XC/enduro, alpine skiing. Rank by audience, data availability and exchange listi
 local-league plans. As of 2026-09 the ranking is led by exchange depth:
 [Strategy 2026](strategy-2026.md#other-racing-sports-for-2027).
 
-- [x] **U9 · P1 · Tape recording for other sports** (code, PR #26, merged). **First live run on the VM, 2026-09-29:** Kalshi NASCAR 13,599 links and 1.69M trades, MotoGP 322 links and 12k trades, IndyCar 1,374 links and 167k trades, all `unmodeled` ([Data changes](data-changes.md)). A tapes timer is still open. Generalise the Kalshi sync to named series: NASCAR
+- [x] **U9 · P1 · Tape recording for other sports** (code, PR #26, merged). **First live run on the VM, 2026-09-29:** Kalshi NASCAR 13,599 links and 1.69M trades, MotoGP 322 links and 12k trades, IndyCar 1,374 links and 167k trades, all `unmodeled` ([Data changes](data-changes.md)). NASCAR and MotoGP tapes were pulled again for the replays in the overnight VM run (2026-09-30). A tapes timer is still open. Generalise the Kalshi sync to named series: NASCAR
       Cup (`KXNASCAR*`, race and champion), MotoGP (`KXMOTOGP*`), IndyCar (`KXINDYCAR*`). Each under its own
       competition (a `sports/<code>.toml` entry with no model), links `unmodeled`, with prices, trades and
       books archived per exchange.
@@ -295,15 +295,15 @@ local-league plans. As of 2026-09 the ranking is led by exchange depth:
 - [x] **UCI road cycling, tape only** (schema, PR #50): `sports/road_cycling.toml` (competition `uci_road_wt`, Kalshi
       `KXCYCLING*`), plus `le_mans.toml` and `sailgp.toml` (Kalshi, and SailGP on OG.com). Not yet run on the VM:
       `markets --exchange kalshi --sport road_cycling sync --closed` pulls the 2026 grand tours Kalshi still serves. A
-      model is a 2027 question ([Coverage](coverage.md#the-grid)).
+      model is a 2027 question ([Sports and exchanges](coverage.md#the-status-matrix)).
 ### MotoGP prediction model track
 
-The database and API plumbing are now in place, and the source gate is complete: the public MotoGP results API is verified for season/event/standings/classification data, and the first pass stays within that contract. We still keep `model_family = "none"` until the backtest is proven, but the data-source gap is now explicit and bounded rather than guessed.
+The database and API plumbing are in place and the source gate is complete: the public MotoGP results API is verified for season/event/standings/classification data, and the first pass stays within that contract. **Status 2026-09-30:** `sports/motogp.toml` now has `model_family = "position_sim"` and `pricing_model = MotoGPRaceChallenger` (a result-only form model, Sunday race only), the taker replay runs it (`racinglines motogp replay`, #82), and the board's race-win column is on by default (owner, 2026-09-30). That happened **before M5's gate was met**: the model has not been compared with a naive baseline, the Kalshi replay has no held-out season (2025 lists no MotoGP race markets) and its ranking has not been read. Read its prices as a baseline, not an edge ([Sports and exchanges](coverage.md#model-status-by-sport)).
 
 - [x] **M0 · MotoGP source gate:** verify the public API and document the actual data that exists (`api.motogp.pulselive.com`, race classification and standings only; no JSON lap or sector splits). Record the limits in [Data](data.md#other-series-tapes-nascar-motogp-indycar-road-cycling-le-mans-sailgp) (the MotoGP limits paragraph itself is still to be written there).
-- [ ] **M1 · MotoGP model skeleton:** create the sport-specific model settings + variant plumbing in the same schema as the F1 sweep (`sweep_settings.py` / `f1`-style run params), but without the F1-only assumptions. Base the first variant on rider form, team-level strength, and circuit history using the already-ingested results table.
+- [x] **M1 · MotoGP model skeleton** (`models/motogp_model.py`; circuit history not used): create the sport-specific model settings + variant plumbing in the same schema as the F1 sweep (`sweep_settings.py` / `f1`-style run params), but without the F1-only assumptions. Base the first variant on rider form, team-level strength, and circuit history using the already-ingested results table.
 - [ ] **M2 · Feature builder for race results only:** keep the first model conservative: only result-based priors (prior race form, rider/team recent pace, circuit-adjusted history), no lap-by-lap or sector splits because the public API does not expose them as JSON. Lock the feature set to what is available in the standard schema and document the exact leak-free cutoff rules.
-- [ ] **M3 · One-season backtest harness:** wire a MotoGP backtest using the F1 walk-forward pattern (before qualifying / before race) but with the MotoGP event calendar and the same result-kind conventions. Save a small set of model runs to `data/runs/motogp/` and verify the model can price a handful of old races without crashing.
+- [x] **M3 · One-season backtest harness** (as the shared taker replay, `pipelines/position_replay.py`, one pre-race pricing per race rather than F1's stages; saved runs are `model_runs` kind `diagnostic`): wire a MotoGP backtest using the F1 walk-forward pattern (before qualifying / before race) but with the MotoGP event calendar and the same result-kind conventions. Save a small set of model runs to `data/runs/motogp/` and verify the model can price a handful of old races without crashing.
 - [ ] **M4 · Sweep then compare:** run a narrow sweep over recent seasons (for example 2021–2026, or a 2–3 season window) and compare the baseline variant to a simple form-only challenger. Use the same search/backtest/reporting conventions as the F1 path, even if the first pass is intentionally small and not production-quality.
 - [ ] **M5 · Promotion gate:** only if the backtest beats a naive baseline on a consistent set of races and there are no leakage issues should MotoGP move from `model_family = "none"` to a live pricing model. The first pass stays conservative and does not change any trading or live market plumbing.
 
@@ -319,8 +319,8 @@ The database and API plumbing are now in place, and the source gate is complete:
 - [x] **P2 · NASCAR data sources** (research, PR #25, merged): results, qualifying, practice and lap data
       (NASCAR's public feeds, community archives), their terms and history depth; written up in
       [Data](data.md).
-- [ ] **NASCAR results adapter** (`racinglines nascar fetch | ingest`; the feeds probed 2026-09-29, findings in
-      [Data](data.md#nascar-content-feeds-verified-2026-09-29)). Code and fixture tests done; **the full pull is still to do**:
+- [x] **NASCAR results adapter** (`racinglines nascar fetch | ingest`; the feeds probed 2026-09-29, findings in
+      [Data](data.md#nascar-content-feeds-verified-2026-09-29)). **Done on the VM 2026-09-30** (backup first): 408 Cup events 2016–2026 ingested and 7,544 Kalshi links identified with a race ([Data changes](data-changes.md)). The original plan:
       database backup, then Cup 2017–2026 on the VM with a `data_changes` entry (three races were fetched on the Mac
       on 2026-09-29 and the pit feed read: real stops, `nascar_pit_data_2026_5628.json`). Built since: scheduled events for upcoming races and the driver/race resolver (`sources/nascar/identity.py`);
       **the market-link pass** (`sources/nascar/links.py`, `racinglines nascar link`, and inside the Kalshi, Polymarket and OG.com syncs): race by name within its season,
@@ -329,8 +329,8 @@ The database and API plumbing are now in place, and the source gate is complete:
       readiness audit. OG.com's NASCAR contracts and Kalshi head-to-heads were sampled from the Mac (PR #68) and the pass handles both.
 - [ ] **P3 · NASCAR for 2027?** Decide from the recorded Chase tapes (volume, spread, how often markets
       trade) and the data review. If yes: a first model in Jan–Feb, paper-traded from the 2027 Daytona 500.
-- [ ] MotoGP: its qualifying / sprint / race weekend maps onto the F1 adapter. Thin on Kalshi (champion
-      ~$20k); revisit if the tapes show depth.
+- [ ] MotoGP: its qualifying / sprint / race weekend maps onto the F1 adapter; sprints are not ingested yet, so the
+      model is Sunday-race only and the champion is quote only. Thin on Kalshi (champion ~$20k); revisit if the tapes show depth.
 - [ ] Skip horse racing: the Interstate Horseracing Act keeps it off Kalshi and Polymarket.
 
 ## Points validation

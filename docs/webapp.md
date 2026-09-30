@@ -215,7 +215,7 @@ Positions shows it beside the Polymarket record and Strategy under its Polymarke
 Kalshi on the board, race and season pages, and `/markets/og` lists its markets with the fair-price indicator per side
 (edge YES = fair − ask − fee, edge NO = bid − fair − fee, and the call), refresh and mirror, read-only. Every schema
 exchange in `exchanges/` gets its own `/markets/<code>` page this way ([Exchanges](exchanges.md)). With
-`RACINGLINES_TAPES=1`, `/markets/tapes` lists the tape-only sports' markets (NASCAR, MotoGP, IndyCar, road cycling, Le Mans, SailGP) per exchange
+`RACINGLINES_TAPES=1`, `/markets/tapes` lists the tape-only sports' markets (IndyCar, road cycling, Le Mans, SailGP: the schemas with `model_family = "none"`; NASCAR and MotoGP show on the board instead) per exchange
 event: what is linked, the volume and favourite, and what has been recorded (trades, price points, book snapshots and
 their last timestamps). It is market data only: no model, positions or P&L. With both switches off every page renders as before.
 

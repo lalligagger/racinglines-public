@@ -26,6 +26,15 @@ means the market is synced and recorded, but no model prices it.
 | MotoGP | Polymarket | World champion (25 outcomes) | tag `motogp` | none: `unmodeled` | Quote only |
 | MotoGP | OG.com | none listed | | | |
 
+**How far a model price goes.** None of these champion prices has a backtest that held up. The F1 season forecast
+lost money on Polymarket's 2026 championship markets at every checkpoint and in every model variant (−$566 to
+−$797 over 33 markets, [Market making](market-making.md#checkpoint-entries)): early in a new-regulations season the market knew more
+than the model. The NASCAR season sim (#93) is **not calibrated**: it has never been scored on a settled season, it
+ignores track types and form drift, and its first Mac run had Larson at 94.6% against 40–55% on the market (before
+its second revision). The replays that would test these prices on Kalshi and OG.com (F1: #95; NASCAR and MotoGP: #96)
+are drafts, not yet run. Read every "Model" cell above as a fair value to compare with the quote, not as a
+validated edge. The full sport × exchange status: [Sports and exchanges](coverage.md).
+
 No exchange lists a NASCAR standings top 3, a standings head-to-head or season wins, although the season simulation
 could price them (`markets.kinds.season_fair`). No NASCAR manufacturers' or owners' championship was found either.
 

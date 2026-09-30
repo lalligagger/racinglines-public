@@ -158,20 +158,27 @@ pass wrote everything to the Polymarket tree ([Data changes](data-changes.md)); 
 
 ### Other series' tapes: NASCAR, MotoGP, IndyCar, road cycling, Le Mans, SailGP
 
-Kalshi also lists NASCAR Cup (race winners and the champion), MotoGP and IndyCar. Each is a **tape-only
-sport** ([Roadmap](todo.md#new-sports), U9): a schema with no model (`sports/nascar.toml`, `motogp.toml`,
-`indycar.toml`; `[sport] model_family = "none"`, no `pricing_model`, no `[live]`), its own league and competition
-(`nascar_cup`, `motogp_wc`, `indycar_series`, seeded by `db seed` like the others), and a `[markets.kalshi]
-series` list of ticker prefixes (`KXNASCAR`, `KXMOTOGP`, `KXINDYCAR`) that the sync matches against Kalshi's
-Sports series. Nothing is priced: the board and the Lab don't list them (they only show competitions with
-model runs), `racinglines check` doesn't run them, and no pipeline reads them.
+Kalshi also lists NASCAR Cup, MotoGP and IndyCar (and Kalshi or OG.com list road cycling, Le Mans and SailGP). Each
+has its own schema (`sports/<code>.toml`), league and competition (`nascar_cup`, `motogp_wc`, `indycar_series`, …,
+seeded by `db seed` and by the syncs themselves) and a `[markets.kalshi] series` list of ticker prefixes (`KXNASCAR`,
+`KXMOTOGP`, `KXINDYCAR`, …) that the sync matches against Kalshi's Sports series. They started as **tape-only
+sports** ([Roadmap](todo.md#new-sports), U9); two have since moved on:
 
-**Also built (PRs #50, #51):** the same kind of schema for UCI road cycling (`road_cycling`, competition `uci_road_wt`), Le Mans (`le_mans`, `le_mans_24h`) and SailGP (`sailgp`, `sailgp_champ`, Kalshi and OG.com), and a Polymarket path for NASCAR, MotoGP and IndyCar through `[markets.polymarket] tags` (slugs unverified, `--tags` overrides; additive). **First live run (VM, 2026-09-29):** Kalshi NASCAR 13,599 links, MotoGP 322, IndyCar 1,374; road cycling, Le Mans, SailGP and Polymarket not yet run.
+- **NASCAR Cup and MotoGP** now have results (NASCAR's `cf.nascar.com` feeds; MotoGP's public results API), an
+  `[identity]` resolver that fills each link's driver or rider, race and `params.kind`, and a simple result-only
+  pricing model (`model_family = "position_sim"`, `pricing_model` in the schema). The taker replay
+  (`racinglines nascar|motogp replay`) and the board's race columns read them. `prediction` stays `unmodeled` on
+  their links. What that model is and how far its results go: [Sports and exchanges](coverage.md).
+- **IndyCar, road cycling, Le Mans and SailGP** are still tape only (`model_family = "none"`, no `pricing_model`,
+  no `[live]`): nothing prices them, the board and the Lab don't list them, `racinglines check` doesn't run them,
+  and `/markets/tapes` (behind `RACINGLINES_TAPES=1`) is the only page that shows them.
 
-**Off by default.** `racinglines markets --exchange kalshi sync` still syncs F1 and nothing else. A tape-only
-sport is synced only when named, `--sport nascar` (or `motogp`, `indycar`); its links land in `market_links`
-with `exchange = 'kalshi'` under its own competition, every one `prediction = 'unmodeled'` (no classifier, no
-driver or race lookup), with the same fields as F1's (bid/ask/last, volume, `params.series`, `params.rules`,
+**Also built (PRs #50, #51):** the same kind of schema for UCI road cycling (`road_cycling`, competition `uci_road_wt`), Le Mans (`le_mans`, `le_mans_24h`) and SailGP (`sailgp`, `sailgp_champ`, Kalshi and OG.com), and a Polymarket path for NASCAR, MotoGP and IndyCar through `[markets.polymarket] tags` (slugs unverified, `--tags` overrides; additive). **First live run (VM, 2026-09-29):** Kalshi NASCAR 13,599 links, MotoGP 322, IndyCar 1,374; OG.com SailGP (13 links) the same day; road cycling, Le Mans, Kalshi SailGP and the Polymarket path not yet run on the VM (NASCAR on Polymarket: 1,101 links on the owner's Mac).
+
+**Off by default.** `racinglines markets --exchange kalshi sync` still syncs F1 and nothing else. Another sport
+is synced only when named, `--sport nascar` (or `motogp`, `indycar`, …); its links land in `market_links`
+with `exchange = 'kalshi'` under its own competition, every one `prediction = 'unmodeled'` (NASCAR's and MotoGP's
+resolvers add the driver, race and kind; the tape-only sports get no lookup), with the same fields as F1's (bid/ask/last, volume, `params.series`, `params.rules`,
 close time, result). `trades`, `history` and `books` then work as for F1, and without `--events` take every
 Kalshi event of the sport's competition (books: its open markets), so one recording pass is three commands.
 Prices, trades and books are archived per exchange by `market_links.exchange`, so they go to
@@ -195,7 +202,7 @@ tables). A zero shows as **n/a**: nothing stored. Each exchange's feed sets what
 | Exchange | Trades | Price points | Books |
 |---|---|---|---|
 | Polymarket | Taker trades only, the newest ~100,000 per market (Data API offset cap) | `/prices-history` at the fidelity pulled (hourly by default) | No history API: only what `markets record` snapshotted live |
-| Kalshi | Every trade, no cap (older than about two months via `/historical/trades`) | Hourly candles: the close, else the YES bid/ask mid | No history API, and no Kalshi book recorder runs yet, so n/a |
+| Kalshi | Every trade, no cap (older than about two months via `/historical/trades`) | Hourly candles: the close (last trade), else the YES bid/ask mid; an empty side is no price, not 0.50 (#89, #90). Only that one price is stored, not the candle's bid and ask | No history API and **no Kalshi book recorder** (U2 is not running). `markets --exchange kalshi books` stores one snapshot per open market when run by hand; the only such run was on the VM on 2026-09-29, for NASCAR (826) and MotoGP (33), so **F1 has no Kalshi books** and a database without that run (the cloud copy, the Mac) shows n/a for every sport ([Data changes](data-changes.md)) |
 | OG.com | Only about the last month is served, so the tape starts when we began pulling (2026-09-29) | Minute quotes, same one-month window | One snapshot per `books` run |
 
 The same line per exchange shows under the table on the board (`venues.COVERAGE`; a schema exchange says it in its
