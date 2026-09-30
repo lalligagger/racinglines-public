@@ -244,7 +244,7 @@ class MotoGPRaceChallenger(MotoGPRace):
             rows = rows.sort_values("date").tail(settings["recent_races"])
             if rows.empty:
                 continue
-            w = np.exp(-np.linspace(0.0, max(float(settings["recency_decay"]), 0.1), len(rows)))
+            w = np.exp(-np.linspace(max(float(settings["recency_decay"]), 0.1), 0.0, len(rows)))
             team_form[team] = float(np.average(rows["position"].to_numpy(float), weights=w))
 
         scores = []
@@ -253,7 +253,7 @@ class MotoGPRaceChallenger(MotoGPRace):
             if rider_rows.empty:
                 base = overall
             else:
-                w = np.exp(-np.linspace(0.0, max(float(settings["recency_decay"]), 0.1), len(rider_rows)))
+                w = np.exp(-np.linspace(max(float(settings["recency_decay"]), 0.1), 0.0, len(rider_rows)))
                 recent_mean = float(np.average(rider_rows["position"].to_numpy(float), weights=w))
                 team = rider_rows["team"].iloc[-1]
                 team_mean = team_form.get(team, overall)

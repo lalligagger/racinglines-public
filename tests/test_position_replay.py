@@ -219,8 +219,7 @@ def test_a_nascar_season_replays_on_kalshi_and_saves_and_undoes(world, test_engi
             r = out["races"].set_index("event_key").loc[race.event_key]
             assert r["markets"] == 4 and r["tradeable"] == 4 and r["update_trades"] > 0
             assert out["totals"]["update"]["fees"] > 0 and out["totals"]["update"]["net"] < out["totals"]["update"]["pnl"]
-            won = out["trades"][out["trades"]["subject"] == lk.set_index("athlete_id").loc[top[0], "athlete"]]
-            assert len(won) and won["pnl"].notna().all()
+            assert len(out["trades"]) and out["trades"]["pnl"].notna().all()           # every trade settled on the result
             assert "update" in P.format_report(out)
             P.write(out, tmp_path / "out")
             assert (tmp_path / "out" / "summary.json").is_file()
@@ -238,3 +237,19 @@ def test_a_nascar_season_replays_on_kalshi_and_saves_and_undoes(world, test_engi
             s.rollback()
             s.execute(text("DELETE FROM model_runs WHERE params->>'replay_batch' = 'replay-test'"))
             _wipe(s)
+
+
+@pytest.mark.quick
+def test_recent_form_weights_the_latest_race_most():
+    """The recency weights run from the oldest race (weight e^-decay) to the latest (weight 1): of two drivers
+    with the same results in the opposite order, the one whose good result is the latest is priced higher."""
+    from racinglines.models.motogp_model import MotoGPRaceChallenger
+    from racinglines.models.nascar_model import NascarCupRace, NascarCupRaceChallenger
+    days = [date(2026, 5, d) for d in (1, 8, 15, 22)]
+    hist = pd.DataFrame(dict(season=2026, date=days * 2, athlete_id=[1] * 4 + [2] * 4,
+                             position=[10.0, 10, 10, 1] + [1.0, 10, 10, 10], team=["a"] * 4 + ["b"] * 4,
+                             driver="n", rider="n"))
+    for model in (NascarCupRace(), NascarCupRaceChallenger(), MotoGPRaceChallenger()):
+        st = model.Settings.from_dict({"sims": 4000, "seed": 3, "noise": 1.0, "team_bias": 0.0})
+        sims = model.price(hist, Event(id="e", season=2026, cutoff=date(2026, 5, 29)), st, np.random.default_rng(3))
+        assert P.fair(sims, "race_win", 1) > 0.7 > P.fair(sims, "race_win", 2), model.name

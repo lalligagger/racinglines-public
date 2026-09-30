@@ -225,7 +225,7 @@ class NascarCupRace:
             rows = rows.sort_values("date").tail(settings["recent_races"])
             if rows.empty:
                 continue
-            w = np.exp(-np.linspace(0.0, max(float(settings["recency_decay"]), 0.1), len(rows)))
+            w = np.exp(-np.linspace(max(float(settings["recency_decay"]), 0.1), 0.0, len(rows)))
             team_form[team] = float(np.average(rows["position"].to_numpy(float), weights=w))
 
         scores = []
@@ -234,7 +234,7 @@ class NascarCupRace:
             if driver_rows.empty:
                 base = overall
             else:
-                w = np.exp(-np.linspace(0.0, max(float(settings["recency_decay"]), 0.1), len(driver_rows)))
+                w = np.exp(-np.linspace(max(float(settings["recency_decay"]), 0.1), 0.0, len(driver_rows)))
                 recent_mean = float(np.average(driver_rows["position"].to_numpy(float), weights=w))
                 team = driver_rows["team"].iloc[-1]
                 team_mean = team_form.get(team, overall)
@@ -301,7 +301,7 @@ class NascarCupRaceChallenger(NascarCupRace):
             rows = rows.sort_values("date").tail(settings["recent_races"])
             if rows.empty:
                 continue
-            w = np.exp(-np.linspace(0.0, max(float(settings["recency_decay"]), 0.1), len(rows)))
+            w = np.exp(-np.linspace(max(float(settings["recency_decay"]), 0.1), 0.0, len(rows)))
             team_form[team] = float(np.average(rows["position"].to_numpy(float), weights=w))
 
         scores = []
@@ -310,7 +310,7 @@ class NascarCupRaceChallenger(NascarCupRace):
             if driver_rows.empty:
                 base = overall
             else:
-                w = np.exp(-np.linspace(0.0, max(float(settings["recency_decay"]), 0.1), len(driver_rows)))
+                w = np.exp(-np.linspace(max(float(settings["recency_decay"]), 0.1), 0.0, len(driver_rows)))
                 recent_mean = float(np.average(driver_rows["position"].to_numpy(float), weights=w))
                 team = driver_rows["team"].iloc[-1]
                 team_mean = team_form.get(team, overall)
