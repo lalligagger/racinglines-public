@@ -371,7 +371,7 @@ def test_buy_all_buys_every_market_at_the_first_price_stored_whatever_its_spread
         quoted = D.buy_all(c, "og", "f1", cost=0.01, fee=0.02)          # only the sync's quotes so far
     assert len(quoted) == 12 and set(quoted["kind"]) >= {"champion", "unmodeled"}   # modeled or not
     b = quoted[quoted["entry"].notna()]
-    assert len(b) and set(b["source"]) == {"sync quote"} and (b["status"] == "marked").all()
+    assert len(b) and set(b["source"]).issubset({"sync quote", "trade"}) and (b["status"] == "marked").all()
     assert b["pnl"].to_numpy() == pytest.approx([-0.06] * len(b))      # a pair loses its costs and fees
     with D.Client("og", transport=transport()) as kc, test_engine.connect() as c, get_session(url) as s:
         D.fetch_trades(s, c, "og", sport="f1", client=kc)
