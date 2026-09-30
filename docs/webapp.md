@@ -226,7 +226,10 @@ model family, the latest live forecast run, the stored as-of replay prices, seas
 in the database, the replay settings grid under `data/runs/replay-grid/<sport>`) and, for Pro and admin, the demo
 accounts' paper record per sport (settled P&L, never a buy_all row). Each cell is green (there), amber (partial), red
 (missing) or grey (not applicable: a tape-only sport has no model by design), so a sport with no model or no data
-says so rather than disappearing. With the switch on, every sport with exchange data opens on the board. The Pro
+says so rather than disappearing. With the switch on, every sport with exchange data opens on the board. A modeled sport
+with no live forecast run but with replay saves (NASCAR, MotoGP: `<sport> replay --save`, as-of runs made before each
+race) gets its board section too: the next races with the exchanges' prices (no fair price until a forecast is stored)
+and the recent races with the model's pre-race price on the winner. The Pro
 account's Strategy page also splits its record by sport and strategy (*Where the P&L came from*: the F1 maker, the
 NASCAR / MotoGP taker demo). `bash scripts/deploy/vm.sh demo` turns this and `RACINGLINES_SPORT_PAPER` on and stores
 the NASCAR / MotoGP demo rows for both demo accounts ([Paper trading](paper-trading.md#nascar-and-motogp-demo-in-sample-off-by-default)).

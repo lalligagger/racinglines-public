@@ -224,6 +224,29 @@ def _status_and_pro(monkeypatch, s, uid, race):
             assert ("Every sport: status" in page.text) == (on == "1")
             if on == "1":
                 assert "NASCAR" in page.text and "tape only" in page.text and "buy_all" not in page.text
+        # a replay save (`nascar replay --save`: an as-of run before the race) puts NASCAR's model on the board: the
+        # section says so, and the recent race shows what the model had on its winner
+        res = P.race_results(s.connection(), race.race_id).sort_values("position")
+        winner = int(res["athlete_id"].iloc[0])
+        comp = s.execute(text("SELECT id FROM competitions WHERE code = 'nascar_cup'")).scalar()
+        cutoff = pd.Timestamp(race.start) - pd.Timedelta(days=1)
+        rid = s.execute(text("""INSERT INTO model_runs (competition_id, model, kind, params) VALUES (:c, 'test', 'diagnostic',
+                                  CAST(:p AS jsonb)) RETURNING id"""),
+                        dict(c=comp, p=json.dumps(dict(replay_batch="replay-test", event_key=race.event_key,
+                                                       cutoff=str(cutoff))))).scalar()
+        s.execute(text("""INSERT INTO race_predictions (model_run_id, race_id, target, athlete_id, win_prob)
+                          VALUES (:m, :r, 'asof:test', :a, 0.123)"""), dict(m=rid, r=int(race.race_id), a=winner))
+        s.commit()
+        try:
+            monkeypatch.setenv(SS.SWITCH, "1")
+            page = cl.get("/markets")
+            assert page.status_code == 200 and "pre-race prices for 1 past races" in page.text
+            assert "we had <b>12%</b>" in page.text or "we had 12%" in page.text
+            monkeypatch.setenv(SS.SWITCH, "0")
+            assert "pre-race prices for" not in cl.get("/markets").text                  # switch off: as before
+        finally:
+            s.execute(text("DELETE FROM model_runs WHERE id = :m"), dict(m=rid))
+            s.commit()
         st = cl.get("/strategy")
         assert st.status_code == 200 and "Where the P&amp;L came from" in st.text and ">taker<" in st.text
     finally:

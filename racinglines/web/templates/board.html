@@ -14,9 +14,9 @@
 
 {% if sport_status %}{% include "_sport_status.html" %}{% endif %}
 {% for s in sports %}
-<details class="card" data-remember="markets:sport:{{ s.code }}"{% if s.run or loop.first or (sport_status and s.exchanges) %} open{% endif %}>
-<summary><h2 style="display:inline-block;margin:0">{{ s.name }}</h2> <span class="sum">{% if s.run %}live prices from run <a href="/lab/runs/{{ s.run.id }}">#{{ s.run.id }}</a> · {{ s.run.created_at|fmt }}{% else %}market data only · no model{% endif %}</span></summary>
-{% if s.run or s.tape %}
+<details class="card" data-remember="markets:sport:{{ s.code }}"{% if s.run or s.asof or loop.first or (sport_status and s.exchanges) %} open{% endif %}>
+<summary><h2 style="display:inline-block;margin:0">{{ s.name }}</h2> <span class="sum">{% if s.run %}live prices from run <a href="/lab/runs/{{ s.run.id }}">#{{ s.run.id }}</a> · {{ s.run.created_at|fmt }}{% elif s.asof %}model: pre-race prices for {{ "{:,}".format(s.asof.races) }} past races (replay saves, latest {{ s.asof.at|fmt }}) · no live forecast yet, so upcoming races show exchange prices only{% else %}market data only · no model{% endif %}</span></summary>
+{% if s.run or s.tape or s.asof %}
 <div class="cards">
   {% if s.run %}
   {% for u in s.upcoming %}
@@ -42,6 +42,16 @@
     </div>{% endif %}
     <div><a href="/seasons/{{ s.code }}">{{ s.season.outcomes }} outcomes →</a></div>
   </div>
+  {% elif s.asof %}
+  {% for u in s.upcoming %}
+  <div class="ecard">
+    <div><h3><a href="/races/{{ u.info.race_id }}">{{ u.info.title }}</a></h3>
+      <div class="when">{{ u.info.start_date|fmt }} · {{ u.countdown }}{% if loop.first %} · <b>next</b>{% endif %}</div></div>
+    {{ venue_chips(u.venues, u.mine) }}
+    <div class="legend">no fair price yet: the model prices this race once a forecast is stored</div>
+    <div><a href="/races/{{ u.info.race_id }}">{{ u.outcomes }} outcomes →</a></div>
+  </div>
+  {% else %}<div class="ecard"><div class="legend">No upcoming race in the calendar.</div></div>{% endfor %}
   {% elif s.tape %}
   {% for u in s.upcoming %}
   <div class="ecard">
@@ -52,9 +62,9 @@
   {% endfor %}
   {% endif %}
 </div>
-{% if s.run and s.later %}<p class="legend">Later: {% for l in s.later %}<a href="/races/{{ l.race_id }}">{{ l.title }}</a>{% if l.new %} {{ new_badge(l.new) }}{% endif %} {{ l.date|fmt }}{{ " · " if not loop.last }}{% endfor %} · <a href="/events">full calendar</a></p>{% endif %}
+{% if (s.run or s.asof) and s.later %}<p class="legend">Later: {% for l in s.later %}<a href="/races/{{ l.race_id }}">{{ l.title }}</a>{% if l.new %} {{ new_badge(l.new) }}{% endif %} {{ l.date|fmt }}{{ " · " if not loop.last }}{% endfor %} · <a href="/events">full calendar</a></p>{% endif %}
 {% if s.tape and s.later %}<p class="legend">Later: {% for l in s.later %}{% if l.url %}<a href="{{ l.url }}">{{ l.title }}</a>{% else %}{{ l.title }}{% endif %}{% if l.date %} {{ l.date|fmt }}{% endif %}{{ " · " if not loop.last }}{% endfor %}</p>{% endif %}
-{% if s.run and s.recent %}<details class="card quiet" data-remember="markets:{{ s.code }}:recent"><summary><h3>Recent results</h3><span class="sum">{{ s.recent|length }} · last: {{ s.recent[0].info.title }}, winner {{ s.recent[0].winner }}{% if s.recent[0].our is not none %}, we had {{ pct(s.recent[0].our) }}{% endif %}</span></summary>
+{% if (s.run or s.asof) and s.recent %}<details class="card quiet" data-remember="markets:{{ s.code }}:recent"><summary><h3>Recent results</h3><span class="sum">{{ s.recent|length }} · last: {{ s.recent[0].info.title }}, winner {{ s.recent[0].winner }}{% if s.recent[0].our is not none %}, we had {{ pct(s.recent[0].our) }}{% endif %}</span></summary>
 <div class="recent">{% for r in s.recent %}<div>
   <a href="/races/{{ r.info.race_id }}"><b>{{ r.info.title }}</b></a> <span class="muted">{{ r.info.start_date|fmt }}</span><br>
   Winner <b>{{ r.winner }}</b>{% if r.our is not none %} · we had <b>{{ pct(r.our) }}</b>{% endif %}{% if r.pm is not none %} · Polymarket {{ pct(r.pm) }}{% endif %}{% if kalshi and r.kalshi is not none %} · Kalshi {{ pct(r.kalshi) }}{% endif %}

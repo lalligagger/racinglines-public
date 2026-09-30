@@ -42,7 +42,7 @@ def recent_results(conn, competition_id, n=3):
     races = data.q(conn, """
         SELECT ra.id AS race_id FROM races ra JOIN events e ON e.id = ra.event_id JOIN seasons s ON s.id = e.season_id
         JOIN categories c ON c.id = ra.category_id
-        WHERE s.competition_id = :c AND e.status = 'completed' AND c.code IN ('DRV', 'ME')
+        WHERE s.competition_id = :c AND e.status = 'completed' AND c.code IN ('DRV', 'ME', 'RDR')
           AND EXISTS (SELECT 1 FROM rounds ro JOIN results r ON r.round_id = ro.id
                       WHERE ro.race_id = ra.id AND ro.kind IN ('race', 'final'))
         ORDER BY e.start_date DESC LIMIT :n""", c=competition_id, n=n)
@@ -77,6 +77,16 @@ def recent_results(conn, competition_id, n=3):
     return out
 
 
+def next_races(conn, competition_id, n=8):
+    """The competition's next scheduled races (elite category), soonest first."""
+    return data.q(conn, """
+        SELECT ra.id AS race_id, e.id AS event_id, e.name, e.start_date FROM races ra JOIN events e ON e.id = ra.event_id
+        JOIN seasons s ON s.id = e.season_id JOIN categories c ON c.id = ra.category_id
+        WHERE s.competition_id = :c AND e.status NOT IN ('completed', 'cancelled') AND e.start_date >= current_date
+          AND c.code IN ('DRV', 'ME', 'RDR')
+        ORDER BY e.start_date, ra.id LIMIT :n""", c=competition_id, n=n)
+
+
 def board(conn, maker_id):
     from racinglines import exchanges as EX
     from racinglines import sports as SP
@@ -85,6 +95,15 @@ def board(conn, maker_id):
     forecasts = {}
     if conn is not None:
         forecasts = {r["competition"]: r for r in data.latest_forecasts(conn).to_dict("records")}
+    from racinglines.web import sport_status as SS
+    status_on = SS.enabled()                       # RACINGLINES_SPORT_STATUS=1: model sections for sports with as-of runs
+    asof_by_comp = {}
+    if conn is not None and status_on:
+        for r in data.q(conn, """SELECT co.code AS competition, count(DISTINCT mr.params->>'event_key') AS races,
+                                        max(mr.created_at) AS at
+                                 FROM model_runs mr JOIN competitions co ON co.id = mr.competition_id
+                                 WHERE mr.kind = 'diagnostic' AND mr.params ? 'replay_batch' GROUP BY 1""").to_dict("records"):
+            asof_by_comp[r["competition"]] = r
     exch_by_comp = {}
     for b in exchange_breakdown(conn):
         exch_by_comp.setdefault(b["competition"], []).append(b)
@@ -95,6 +114,7 @@ def board(conn, maker_id):
         run, exch = forecasts.get(code), exch_by_comp.get(code, [])
         if run is None and not exch:
             continue                                     # nothing to show yet: no forecast, no linked market
+        asof = asof_by_comp.get(code) if run is None and status_on else None
         for b in exch:                                    # where "N markets on Kalshi" etc. links to
             b["url"] = (f"/markets/tapes#tapes-{sport_code}-{b['exchange']}" if tape
                         else f"/markets/{b['exchange']}" if b["exchange"] in ("polymarket", "kalshi") or b["exchange"] in EX.CODES
@@ -113,6 +133,16 @@ def board(conn, maker_id):
                           outcomes=len(s_df), constructors=_top(s_df, "constructors_champion", 2),
                           strategy=latest_season_strategy(conn, code))
             recent = recent_results(conn, comp_id)
+        elif not tape and asof is not None:
+            # a modeled sport with no live forecast run (NASCAR, MotoGP): the next races with the exchanges' prices
+            # (no fair price until a forecast is stored), and the recent races with the model's as-of price
+            # (`<sport> replay --save`: made before each race) against the winner
+            comp_id = int(data.q(conn, "SELECT id FROM competitions WHERE code = :c", c=code)["id"].iloc[0])
+            nxt = next_races(conn, comp_id)
+            upcoming = [dict(_card(conn, int(r), maker_id), new=fresh.count(int(r))) for r in nxt["race_id"].head(3)]
+            later = [dict(title=t["name"], event_id=t["event_id"], race_id=int(t["race_id"]), date=t["start_date"],
+                          new=fresh.count(int(t["race_id"]))) for t in nxt.iloc[3:].to_dict("records")]
+            recent = recent_results(conn, comp_id)
         elif exch:
             tape_events = []
             for b in exch:
@@ -123,7 +153,7 @@ def board(conn, maker_id):
             later = tape_events[3:]
             season = None
             recent = []
-        sports.append(dict(code=code, name=SPORT_NAME.get(code, schema["sport"]["name"]), run=run, tape=tape,
+        sports.append(dict(code=code, name=SPORT_NAME.get(code, schema["sport"]["name"]), run=run, tape=tape, asof=asof,
                            upcoming=upcoming, later=later, season=season, recent=recent, exchanges=exch))
     sports.sort(key=lambda s: SPORT_ORDER.get(s["code"], 9))
     return sports
