@@ -78,20 +78,54 @@ to end before then.
 
 ### Progress updates
 
-The owner asked (2026-09-30) for clear but not too frequent updates. The runner writes one line:
+The owner asked (2026-09-30) for clear but not too frequent updates, then for more inside a phase: during the NASCAR
+tape pull on 2026-09-30 nothing was logged from 12:59Z to 13:44Z, so nobody could tell working from stuck. The runner
+writes one line:
 - when each phase starts (the same line closes the phase before, with its duration);
-- every 45 minutes inside a phase (`HEARTBEAT_MIN`);
-- at once on any failure or stop.
+- when each step inside a phase starts (the same line closes the step before, with its duration);
+- when each sport starts, and one summary line when it finishes or is skipped;
+- after each tape pull and the replay saves, with what they stored, and the grid's top 3;
+- every 15 minutes inside a phase (`HEARTBEAT_MIN`), with the step, its counter and the run log's last line and age;
+- at once on any failure or stop (a failure line also carries the step and the run log's last line).
 
 Each line has the UTC time, the mode, the minutes since the start and the failures so far. It also names the phase:
 F1 broad sweep, F1 top 10 at 16k, walk-forward, each sport's links and tape, replay saves and settings grid, OG.com
 buy-all, and the taker story's sweeps, gate and rebuild. For the F1 searches, the story's evidence sweeps and the
-grids, it adds jobs done of total and a rough time left (`scripts/vm/progress.py`).
+grids, it adds jobs done of total and a rough time left. For a tape pull or a replay it adds the race it is on, of how
+many, and a rough time left for the step (`scripts/vm/progress.py`, reading the race lines the replay prints).
+
+The run sets `PYTHONUNBUFFERED=1`, so the commands' own per-race and per-job lines reach the run log as they happen.
+Before, Python held them in 8 KB blocks when writing to the log, which is likely part of why the 12:59Z-13:44Z gap
+looked empty.
+
+The lines, as they look in `overnight-progress.log`. The check-ins' existing `started:`, `done:`, `still running:`,
+`STOP:`, `FAILED at line`, `backup`, `preflight`, `NOT READY` and `FINISHED` lines keep their start; the new parts are
+appended after them:
+
+```
+2026-10-01T12:59Z [all, 20 min in, 0 failed] sport 1 of 2: nascar
+2026-10-01T12:59Z [all, 20 min in, 0 failed] started: nascar: links, tape, replay
+2026-10-01T12:59Z [all, 20 min in, 0 failed] step 1: nascar Kalshi link sync 2025, 2026
+2026-10-01T13:03Z [all, 24 min in, 0 failed] step 2: nascar Polymarket link sync 2025, 2026 (step 1 took 4 min)
+2026-10-01T13:05Z [all, 26 min in, 0 failed] step 3: nascar Kalshi tape pull and replay 2016-2026 (step 2 took 2 min)
+2026-10-01T13:20Z [all, 41 min in, 0 failed] still running: nascar: links, tape, replay, 21 min · step 3: nascar Kalshi tape pull and replay 2016-2026, 15 min · kalshi tape race 57 of 213, about 41 min left · last output 0 min ago: pull kalshi 57/213 2019-14 Pocono: 38 markets, 412 trades, 610 prices
+2026-10-01T14:02Z [all, 83 min in, 0 failed] nascar Kalshi: Pulled kalshi: 213 races, 51022 trades, 88410 prices
+2026-10-01T15:40Z [all, 181 min in, 0 failed] nascar grid top 3 (edge, floor): 0.1 200; 0.08 200; 0.1 50
+2026-10-01T16:30Z [all, 231 min in, 0 failed] sport nascar finished in 211 min · Pulled kalshi: 213 races, 51022 trades, 88410 prices; Pulled polymarket: 36 races, 0 trades, 0 prices; Stored 36 runs, batch replay-20261001T1405Z
+```
+
+The numbers above are made up to show the shape. What to read:
+- **`QUIET: last output N min ago`** in a heartbeat means the run log has had no new line for `QUIET_MIN` (30) minutes.
+  Tape pulls, replays and searches print a line per race or per job, so a QUIET step there is worth a look (`tail` the
+  run log); a link sync, an ingest or a single saved sweep can be quiet for a while without being stuck.
+- **`step N: ... (step N-1 took M min)`** is the quickest way to see where the time went afterwards.
+- **`sport <s> finished|skipped in M min`** is the per-sport result line; a skipped sport also has a `STOP:` line above it.
 
 The lines go to `data/runs/logs/overnight-progress.log` (appended) and `data/runs/logs/overnight-status.txt` (the latest
-line only). They are local files: the job makes no network calls for them. The heartbeat is a background loop that
-can't fail the run. The VM can't post to the project, so the Mac reads the files over SSH (the handoff has the
-command).
+line only). Heartbeats go only to those two files, not to the run log, so the run log's age is real output. They are
+local files: the job makes no network calls for them. The heartbeat is a background loop that can't fail the run. The
+VM can't post to the project, so the Mac reads the files over SSH (the handoff has the command). Knobs, as environment
+settings on the unit: `HEARTBEAT_MIN` (default 15, was 45) and `QUIET_MIN` (default 30).
 
 ### F1: broad sweep, then 16k
 
