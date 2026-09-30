@@ -232,10 +232,12 @@ def _venue(conn, venue, race_links, stages, sp):
 
 
 def run(engine, sport, seasons=None, venue="kalshi", taker=None, min_volume_24h=MIN_VOLUME_24H, model_settings=None,
-        kinds=None, data=None, save=None, echo=print):
+        kinds=None, data=None, save=None, events=None, echo=print):
     """The replay over `seasons` (None = every season with races). taker: TakerParams (None = the defaults).
     model_settings: dict for the model's Settings (seed defaults to SEED). kinds: a subset of [replay] kinds.
-    data: the model's frame, already loaded. save: None, or dict(engine_url, batch) to store one model run per race."""
+    data: the model's frame, already loaded. save: None, or dict(engine_url, batch) to store one model run per race.
+    events: only these event keys ("latest" = the last race of the selection), e.g. for a spot check; the model still
+    learns from every earlier race."""
     sp = spec(sport)
     if kinds:
         bad = set(kinds) - set(sp["kinds"])
@@ -250,6 +252,9 @@ def run(engine, sport, seasons=None, venue="kalshi", taker=None, min_volume_24h=
     with engine.connect() as conn:
         rs = races(conn, sp, seasons)
         lk = links(conn, sp, venue)
+    if events:
+        keys = set(events) - {"latest"} | ({rs["event_key"].iloc[-1]} if "latest" in events and len(rs) else set())
+        rs = rs[rs["event_key"].isin(keys)].reset_index(drop=True)
     echo(f"progress {sport} {venue}: {len(rs)} races, {len(lk)} markets of kinds {', '.join(sp['kinds'])}")
     if data is None:
         data = model.load(engine.url.render_as_string(hide_password=False))

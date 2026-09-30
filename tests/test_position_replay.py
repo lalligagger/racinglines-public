@@ -230,6 +230,8 @@ def test_a_nascar_season_replays_on_kalshi_and_saves_and_undoes(world, test_engi
             assert (tmp_path / str(runs[-1]) / "predictions.parquet").is_file()
             again = P.run(test_engine, "nascar", [2026], venue="kalshi", echo=lambda *a: None)
             assert again["totals"] == out["totals"]                               # reproducible from its settings
+            one = P.run(test_engine, "nascar", [2026], venue="kalshi", events=["latest"], echo=lambda *a: None)
+            assert list(one["races"]["event_key"]) == [race.event_key]            # the spot check: the last race only
             assert P.undo(s, "replay-test") == len(rs)
             s.commit()
             assert not s.execute(select(m.ModelRun.id).where(m.ModelRun.id.in_(runs))).all()

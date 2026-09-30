@@ -21,6 +21,8 @@ def add_parser(sub, sport):
     p.add_argument("--years", default="2025-2026", help="e.g. 2026, 2025-2026 or 2024,2026.")
     p.add_argument("--venue", default="all", choices=["all", "kalshi", "polymarket"],
                    help="all (the default): every exchange the sport lists on, one report each.")
+    p.add_argument("--events", default=None, help="Only these event keys, comma list, or 'latest' (the last race of "
+                                                  "--years): a spot check. The model still learns from earlier races.")
     p.add_argument("--kinds", default=None, help=f"Comma list, a subset of sports/{sport}.toml [replay] kinds.")
     p.add_argument("--min-edge", type=float, default=None, help="Taker threshold (default: TakerParams, 0.05).")
     p.add_argument("--stake-per-edge", type=float, default=None)
@@ -67,6 +69,7 @@ def run(args, sport, years):
     data = None
     for i, venue in enumerate(venues):
         out = P.run(engine, sport, years, venue=venue, taker=taker, kinds=kinds, data=data,
+                    events=args.events.split(",") if args.events else None,
                     min_volume_24h=P.MIN_VOLUME_24H if args.min_volume is None else args.min_volume,
                     model_settings={"sims": args.sims} if args.sims else None, save=save if i == 0 else None)
         data = out.pop("data")
