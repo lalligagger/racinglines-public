@@ -201,15 +201,23 @@ def headline(conn, maker_id):
         SELECT count(*) AS outcomes, count(DISTINCT market_slug) AS markets,
                coalesce(sum(DISTINCT volume), 0) AS volume, max(synced_at) AS synced
         FROM market_links WHERE NOT closed AND prediction <> 'unmodeled'""").iloc[0]
-    rec = data.q(conn, "SELECT max(ts) AS ts, count(DISTINCT token_id) AS n FROM market_book_snapshots "
-                       "WHERE ts > now() - interval '10 minutes'").iloc[0]
+    # Bucketing to 10-minute slots keeps the page stable between repeated renders while still showing the most
+    # recent recorder tick. The live order-book feed is updated every minute, so exact second values jitter the
+    # rendered HTML even when the underlying state is otherwise unchanged.
+    rec = data.q(conn, """
+        SELECT date_trunc('hour', ts) + floor(extract(minute FROM ts) / 10.0) * interval '10 minutes' AS ts,
+               count(DISTINCT token_id) AS n
+        FROM market_book_snapshots WHERE ts > now() - interval '10 minutes'
+        GROUP BY 1 ORDER BY 1 DESC LIMIT 1""")
+    rec_ts = rec["ts"].iloc[0] if len(rec) and not pd.isna(rec["ts"].iloc[0]) else None
+    rec_n = int(rec["n"].iloc[0] or 0) if len(rec) and rec["n"].iloc[0] is not None else 0
     bk = house.book(conn, maker_id=maker_id, status="open")
     bt = data.q(conn, """SELECT metrics->'summary'->'pre_race|track=True' AS s FROM model_runs
                          WHERE kind = 'backtest' AND coalesce(params->>'variant', 'baseline') = 'baseline' ORDER BY id DESC LIMIT 1""")
     s = bt["s"].iloc[0] if len(bt) else None
     jobs = data.q(conn, "SELECT count(*) FILTER (WHERE status IN ('queued', 'running')) AS active FROM jobs").iloc[0]
     return dict(outcomes=int(ex["outcomes"]), markets=int(ex["markets"]), volume=float(ex["volume"]), synced=ex["synced"],
-                recording=int(rec["n"] or 0), recorded_at=rec["ts"],
+                recording=rec_n, recorded_at=rec_ts,
                 my_open=len(bk), my_worst=float(bk["worst"].sum()) if len(bk) else 0.0,
                 my_staked=float(bk["staked"].sum()) if len(bk) else 0.0,
                 bt_win=s.get("brier_win") if s else None, bt_grid=s.get("brier_win_grid") if s else None,

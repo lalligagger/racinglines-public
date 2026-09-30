@@ -2,7 +2,10 @@
 
 import re
 
+import pandas as pd
 import pytest
+
+from racinglines.web.viz import line_chart, price_chart
 
 pytestmark = pytest.mark.live      # reads the live database (changes as data arrives)
 from sqlalchemy import text
@@ -64,6 +67,28 @@ def test_argv_is_a_list_of_plain_arguments():
     p = jobs.parse(jobs.CATALOG["f1_scenario"], {"label": "my scenario"})
     argv = jobs.CATALOG["f1_scenario"].argv(p, "/tmp/x.csv")
     assert "my scenario" in argv and all(isinstance(a, str) for a in argv)
+
+
+def test_line_chart_warns_and_sorts_backward_points():
+    with pytest.warns(UserWarning, match="timestamp order"):
+        chart = line_chart({"good": [(pd.Timestamp("2024-01-02"), 0.8), (pd.Timestamp("2024-01-01"), 0.2)]})
+    assert chart is not None
+    points = chart["lines"][0]["points"].split()
+    xs = [float(p.split(",")[0]) for p in points]
+    assert xs == sorted(xs)
+
+
+def test_line_chart_warns_but_does_not_fail_on_invalid_timestamps():
+    with pytest.warns(UserWarning, match="Could not sort incoming chart data"):
+        chart = line_chart({"bad": [("x", 1.0), ("y", 2.0)]})
+    assert chart is None
+
+
+def test_price_chart_warns_and_keeps_plotting_when_points_are_backwards():
+    with pytest.warns(UserWarning, match="timestamp order"):
+        chart = price_chart({"a": [(pd.Timestamp("2024-01-02"), 0.8), (pd.Timestamp("2024-01-01"), 0.2)]}, {"a": "A"})
+    x0, x1 = [float(p.split(",")[0]) for p in chart["lines"][0]["points"].split()]
+    assert x0 < x1
 
 
 # --- pages (database) ---------------------------------------------------------
