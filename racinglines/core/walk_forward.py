@@ -52,15 +52,17 @@ def event_rows(ev, sims, res, kinds=None):
     return df.assign(event_id=ev.id, season=ev.season, event=ev.name)
 
 
-def run(model, data, settings, seasons=None, kinds=None, echo=print):
+def run(model, data, settings, seasons=None, kinds=None, echo=print, keep_sims=False):
     rng = np.random.default_rng(settings.rng_seed)
     hist = model.history(data, settings)
     evs = model.events(data, settings, seasons)
-    rows, events = [], []
+    rows, events, kept = [], [], []
     for i, ev in enumerate(evs, 1):
         sims = model.price(hist, ev, settings, rng)
         if sims is None:
             continue
+        if keep_sims:
+            kept.append((ev, sims))
         r = event_rows(ev, sims, model.results(data, ev), kinds)
         rows.append(r)
         e = dict(season=ev.season, event_id=ev.id, event=ev.name, n_entrants=len(sims.entrants))
@@ -74,8 +76,11 @@ def run(model, data, settings, seasons=None, kinds=None, echo=print):
     scored = rows.dropna(subset=["y"]).assign(y=lambda d: d["y"].astype(float))
     cal_all, rel = CAL.table(scored, ("fair",), by=("kind",))
     cal_season, _ = CAL.table(scored, ("fair",), by=("kind", "season"))
-    return dict(events=pd.DataFrame(events), rows=rows, reliability=rel,
-                calibration=pd.concat([cal_all.assign(season="all"), cal_season], ignore_index=True))
+    out = dict(events=pd.DataFrame(events), rows=rows, reliability=rel,
+               calibration=pd.concat([cal_all.assign(season="all"), cal_season], ignore_index=True))
+    if keep_sims:                    # opt-in (prediction records): [(event, OutcomeSims), ...] in pricing order
+        out["sims"] = kept
+    return out
 
 
 def saved_metrics(out):

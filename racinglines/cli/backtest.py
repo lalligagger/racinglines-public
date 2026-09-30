@@ -22,7 +22,10 @@ def run_walk_forward(model, data, st, seasons=None, kinds=None, out_dir=None, sa
     from racinglines.core import walk_forward as WF
     seasons = seasons or model.seasons(data, st)
     echo(f"Walk-forward {model.sport} {', '.join(map(str, seasons))} · {st.label()} (settings {st.key})")
-    out = WF.run(model, data, st, seasons=seasons, kinds=kinds, echo=echo)
+    from racinglines.db import records as REC
+    keep = bool(save and REC.enabled())
+    out = WF.run(model, data, st, seasons=seasons, kinds=kinds, echo=echo, keep_sims=keep)
+    kept = out.pop("sims", None) if keep else None            # the returned output is the same with records on or off
     if out_dir:
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -47,6 +50,11 @@ def run_walk_forward(model, data, st, seasons=None, kinds=None, out_dir=None, sa
                                     model=model.name, kind="walk_forward", data_through=model.data_through(data),
                                     params=params, metrics=WF.saved_metrics(out))
         echo(f"Saved walk-forward run {run_id}.")
+        if keep and kept:
+            frames = [sims.to_records(run_id, model.sport, model.name, ev.season, ev.id, ev.name, "pre_race",
+                                      ev.cutoff, kinds=kinds) for ev, sims in kept]
+            REC.write(run_id, REC.concat(frames), sims={ev.id: sims for ev, sims in kept})
+            echo(f"Prediction records -> {REC.records_dir() / str(run_id)}/")
     return out
 
 

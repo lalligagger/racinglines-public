@@ -17,6 +17,7 @@ an `OutcomeSims` equal the model's own summaries exactly.
 from dataclasses import dataclass, field
 
 import numpy as np
+import pandas as pd
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,10 @@ class OutcomeSims:
     def index(self, athlete_id):
         return self.entrants.index(athlete_id)
 
+    def to_records(self, run_id, sport, model_id, season, event_id, event, stage, cutoff, kinds=None):
+        """Long-format prediction records (see `to_records` below)."""
+        return to_records(self, run_id, sport, model_id, season, event_id, event, stage, cutoff, kinds)
+
 
 def from_position_sim(entrants, sim):
     """F1 (position_sim): `pos` is the classification with retirements last, `grid` the qualifying order."""
@@ -51,3 +56,103 @@ def from_timed_runs(riders, sim):
     return OutcomeSims(entrants=list(riders), rank=fr, finished=np.isfinite(fr),
                        stage_rank={"qual": sim["qual_rank"]}, reached={"final": sim["made_final"]},
                        points=sim["points"])
+
+
+# --- prediction records (docs/backtest-core.md, "Prediction records") --------------------------------------
+
+RECORD_COLUMNS = ["run_id", "sport", "model_id", "season", "event_id", "event", "stage", "cutoff", "kind", "subject",
+                  "params", "fair", "se", "n_sims"]
+
+
+def _py(v):
+    """numpy scalars -> plain Python (JSON, record columns)."""
+    return v.item() if isinstance(v, np.generic) else v
+
+
+def _id_value(v):
+    v = _py(v)
+    if v is None or isinstance(v, (int, str)):
+        return v
+    try:
+        return int(v) if float(v) == int(v) else str(v)
+    except (TypeError, ValueError):
+        return str(v)
+
+
+def _se(p, n):
+    return float(np.sqrt(max(p * (1 - p), 0.0) / n))
+
+
+def to_records(sims, run_id, sport, model_id, season, event_id, event, stage, cutoff, kinds=None):
+    """Long-format prediction records for one event x stage: one row per kind x subject with the fair value,
+    its Monte Carlo standard error sqrt(p(1-p)/n_sims) and n_sims. Every kind the simulations support
+    (markets.kinds.summary: per-entrant kinds; head-to-heads for each pair once, as walk_forward.event_rows;
+    the top team when points and groups exist), or just `kinds`. `subject` is the athlete id (the group key
+    for group_top); `params` is JSON: {} | {"opponent_id": b} | {"team": g}."""
+    import json
+
+    from racinglines.markets import kinds as K
+    n = sims.n_sims
+    summ = K.summary(sims)
+    want = list(kinds) if kinds is not None else list(K.KINDS)
+    rows = []
+
+    def add(kind, subject, params, p):
+        p = float(p)
+        rows.append((kind, str(_py(subject)), json.dumps(params, sort_keys=True), p, _se(p, n)))
+
+    for kind in want:
+        k = K.KINDS.get(kind)
+        if k is None or k.payoff == "standings":
+            continue
+        if k.payoff in ("top_n", "stage_top_n", "reached"):
+            if kind not in summ:
+                continue
+            for a, p in zip(sims.entrants, summ[kind]):
+                add(kind, a, {}, p)
+        elif k.payoff == "h2h":
+            h = K.h2h_matrix(sims)
+            for i, a in enumerate(sims.entrants):
+                for j, b in enumerate(sims.entrants[i + 1:], i + 1):
+                    add(kind, a, {"opponent_id": _py(b)}, h[i, j])
+        elif k.payoff == "group_top" and sims.groups is not None and sims.points is not None:
+            for g, p in K.group_top(sims).items():
+                add(kind, g, {"team": _py(g)}, p)
+    df = pd.DataFrame(rows, columns=["kind", "subject", "params", "fair", "se"])
+    ts = pd.Timestamp(cutoff).as_unit("ns") if cutoff is not None else pd.NaT
+    head = dict(run_id=int(run_id), sport=sport, model_id=model_id, season=None if season is None else int(season),
+                event_id=_id_value(event_id), event=None if event is None else str(event), stage=stage, cutoff=ts)
+    for c, v in reversed(list(head.items())):
+        df.insert(0, c, v)
+    df["n_sims"] = int(n)
+    return df[RECORD_COLUMNS]
+
+
+def save_sims(sims, path):
+    """Archive an OutcomeSims to one compressed .npz (the arrays, plus a JSON `meta` string for the entrants,
+    groups and the stage_rank / reached keys); `load_sims` restores it exactly."""
+    import json
+    arrays = dict(rank=sims.rank, finished=sims.finished)
+    if sims.points is not None:
+        arrays["points"] = sims.points
+    for k, v in sims.stage_rank.items():
+        arrays[f"stage_rank__{k}"] = v
+    for k, v in sims.reached.items():
+        arrays[f"reached__{k}"] = v
+    meta = dict(entrants=[_py(a) for a in sims.entrants], stage_rank=list(sims.stage_rank), reached=list(sims.reached),
+                groups=None if sims.groups is None else [_py(g) for g in sims.groups],
+                has_points=sims.points is not None)
+    with open(path, "wb") as f:
+        np.savez_compressed(f, meta=np.array(json.dumps(meta)), **arrays)
+
+
+def load_sims(path):
+    import json
+    with np.load(path, allow_pickle=False) as z:
+        meta = json.loads(str(z["meta"]))
+        return OutcomeSims(
+            entrants=meta["entrants"], rank=z["rank"], finished=z["finished"],
+            stage_rank={k: z[f"stage_rank__{k}"] for k in meta["stage_rank"]},
+            reached={k: z[f"reached__{k}"] for k in meta["reached"]},
+            points=z["points"] if meta["has_points"] else None, groups=meta["groups"])
+
