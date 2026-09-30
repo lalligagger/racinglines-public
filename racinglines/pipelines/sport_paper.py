@@ -1,8 +1,8 @@
 """
 Demo paper portfolios for the result-only sports (NASCAR Cup, MotoGP): each past race's taker replay
 (pipelines/position_replay.py) stored as backfilled paper positions and signals of a demo account, so the web app
-shows them beside the F1 demo history (pipelines/demo_history.py). Off by default: RACINGLINES_SPORT_PAPER=1 turns
-on both the writer and the app's reading of these rows (nav P&L, Positions, Signals).
+shows them beside the F1 demo history (pipelines/demo_history.py). On by default for demo setups: set
+RACINGLINES_SPORT_PAPER=0 to hide them, or 1 to force the explicit opt-in in a non-demo environment.
 
     racinglines nascar demo-history --pick data/runs/replay-grid/nascar             # print the selection, write nothing
     racinglines nascar demo-history --grid data/runs/replay-grid/nascar --backup FILE [--users taker] [--events latest]
@@ -48,9 +48,16 @@ SPORT_KEYS = ("SELECT event_key FROM strategy_signals WHERE user_id = :u AND det
 
 
 def enabled(flag=None):
+    def on(v):
+        if v is None:
+            return True
+        if isinstance(v, str):
+            return v.strip().lower() in ("1", "true", "yes", "on")
+        return bool(v)
     if flag is not None:
-        return bool(flag)
-    return os.environ.get(SWITCH, "").strip().lower() in ("1", "true", "yes", "on")
+        return on(flag)
+    value = os.environ.get(SWITCH)
+    return on(value)
 
 
 def event_sources():

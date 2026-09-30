@@ -365,10 +365,12 @@ Backtest replays of real weekends, 2025 and 2026 through round 15:
 
 Taking every recommendation would have made +$2,606.
 
-### NASCAR and MotoGP (demo, in-sample; off by default)
+<a id="nascar-and-motogp-demo-in-sample-off-by-default"></a>
 
-`RACINGLINES_SPORT_PAPER=1` adds the result-only sports to the demo taker's portfolio
-([`pipelines/sport_paper.py`](https://github.com/lalligagger/racinglines/blob/main/racinglines/pipelines/sport_paper.py)).
+### NASCAR and MotoGP (demo, in-sample; on by default)
+
+The result-only sports are included in the demo taker's portfolio by default; set
+`RACINGLINES_SPORT_PAPER=0` to hide them again ([`pipelines/sport_paper.py`](https://github.com/lalligagger/racinglines/blob/main/racinglines/pipelines/sport_paper.py)).
 `racinglines nascar demo-history` (and `motogp demo-history`) replays every race of the seasons in the overnight settings
 grid (`data/runs/replay-grid/<sport>/`, runs `<year>-e<edge>-v<volume>`) with the taker replay (`nascar replay`), and
 stores each race's `update` trades as the account's backfilled signals and paper positions on the exchange

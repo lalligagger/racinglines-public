@@ -86,8 +86,10 @@ def test_a_race_stores_the_takers_update_trades_net_of_fees_only():
 
 
 @pytest.mark.quick
-def test_the_switch_is_off_by_default(monkeypatch):
+def test_the_switch_is_on_by_default(monkeypatch):
     monkeypatch.delenv(SP.SWITCH, raising=False)
+    assert SP.enabled()
+    monkeypatch.setenv(SP.SWITCH, "0")
     assert not SP.enabled()
     monkeypatch.setenv(SP.SWITCH, "1")
     assert SP.enabled()
