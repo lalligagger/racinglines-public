@@ -21,9 +21,9 @@ means the market is synced and recorded, but no model prices it.
 | NASCAR | Kalshi | Regular-season champion | `KXNASCARCUPSEASON` | `regular_season_champion` | Quote only (settled for 2026: the regular season ended 29 Aug) |
 | NASCAR | Kalshi | In-Season Challenge | `KXNASCARCHALLENGE` | `in_season_challenge` | Quote only (a bracket tournament, not the points table) |
 | NASCAR | Kalshi | O'Reilly (Xfinity) / Truck champion | `KXNASCARAUTOPARTSSERIES`, `KXNASCARTRUCKSERIES` | `champion`, `nascar_series` xfinity / trucks | Quote only (only Cup results are ingested) |
-| MotoGP | Kalshi | World champion | `KXMOTOGP` (22 markets) | none: `unmodeled` (sources/motogp/links.py knows only `KXMOTOGPRACE`) | Quote only |
+| MotoGP | Kalshi | World champion | `KXMOTOGP` (22 markets) | none: `unmodeled` (sources/motogp/links.py knows only `KXMOTOGPRACE`) | **Model, offline**: `motogp season-replay` reads it as `champion` in memory |
 | MotoGP | Kalshi | Teams' championship | `KXMOTOGPTEAMS` (11 markets) | none: `unmodeled` | Quote only |
-| MotoGP | Polymarket | World champion (25 outcomes) | tag `motogp` | none: `unmodeled` | Quote only |
+| MotoGP | Polymarket | World champion (25 outcomes) | tag `motogp` | none: `unmodeled` | **Model, offline**: the same (from the wording) |
 | MotoGP | OG.com | none listed | | | |
 
 No exchange lists a NASCAR standings top 3, a standings head-to-head or season wins, although the season simulation
@@ -45,3 +45,29 @@ the NASCAR model does. What is missing:
 5. **A points format.** A `ChaseFormat`-like table with no playoff (25-20-16-13-11-10-9-8-7-6-5-4-3-2-1 for the race).
 
 Steps 1-3 need a probe from the Mac first (standing rule), so none of this is built.
+
+**Update (2026-09-30): a replay-only version is built** (`racinglines motogp season-replay`, off by default with
+`RACINGLINES_SEASON_REPLAY=1`, read-only). It covers the steps above without changing any stored link.
+- `models/motogp_season.py` supplies the points format (5).
+- The remaining schedule is the stored events plus the fetched `events.json` (2).
+- The standings are summed from the stored Grand Prix and sprint points (3). With no sprint results stored, both sides
+  are Grand Prix only and the report prints SPRINT POINTS MISSING (1).
+- The classifier runs in memory only: `KXMOTOGP`, or a listing naming the championship, is read as `champion`, and the
+  rider comes from the name resolver (4). Nothing is written.
+
+## Championship replays (backtests)
+
+`racinglines nascar season-replay` and `racinglines motogp season-replay` (`pipelines/season_replay.py`) trade the F1
+championship sleeve's default strategy (`markets/strategies/season.py`) against each exchange's recorded champion
+prices.
+- **Decisions:** one at 12:00 UTC the day after each points race.
+- **Fairs:** an as-of season forecast from only the results before the decision. For NASCAR this is
+  `models/nascar_season.py` summed from race results, because the points feed is today's only.
+- **Costs:** Kalshi's taker fee, OG.com's flat fee, or Polymarket's half-spread, each plus slippage.
+
+Both commands are read-only and off by default (`RACINGLINES_SEASON_REPLAY=1`). They write only CSVs under
+`data/runs/season-replay/`. The F1 replay takes `--venue kalshi|og` too (`f1 season-strategy`).
+
+These are first backtest cells, not validated strategies. Both season forecasts simulate races independently from the
+form at the decision, and NASCAR's was more favourite-heavy than every exchange on 2026-09-30.
+

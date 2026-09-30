@@ -261,6 +261,8 @@ racinglines nascar replay [--years 2025-2026] [--venue all|kalshi|polymarket|og]
                           [--save --backup FILE] [--undo BATCH]
 racinglines motogp replay   (the same options)
 RACINGLINES_NASCAR_SEASON=1 racinglines nascar season [--year 2026] [--sims 4000] [--seed 7] [--stage-noise 5] [--race-noise auto|N|model] [--standings feed|results] [--quotes] [--csv FILE]
+RACINGLINES_SEASON_REPLAY=1 racinglines nascar season-replay [--year 2026] [--venue all|kalshi|polymarket|og] [--sims 2000] [--min-edge 0.03] [--stake-per-edge 500] [--max-stake 150] [--capital 1500] [--out DIR]
+RACINGLINES_SEASON_REPLAY=1 racinglines motogp season-replay   (the same options)
 ```
 
 | Command | What it does |

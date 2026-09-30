@@ -136,3 +136,43 @@ def run(args, sport, years):
         print(f"FAIL: no market was tradeable on {', '.join(venues)} for these races (see NO TAPE / NOT TRADED above)")
         return 1
     return 0
+
+
+# --- `season-replay`: the champion markets (pipelines/season_replay.py) ---------------------------------------------
+
+def add_season_parser(sub, sport):
+    p = sub.add_parser("season-replay", help=f"Champion-market replay of the {sport} season against an exchange's "
+                                             "recorded prices (read-only; off unless RACINGLINES_SEASON_REPLAY=1).")
+    p.add_argument("--year", type=int, default=2026)
+    p.add_argument("--venue", default="all", choices=["all", "kalshi", "polymarket", "og"],
+                   help="all (the default): every exchange the sport lists on, one report each.")
+    p.add_argument("--sims", type=int, default=None, help="Season simulations per decision (default 2000).")
+    p.add_argument("--min-edge", type=float, default=None, help="Default 0.03, the F1 championship sleeve's.")
+    p.add_argument("--stake-per-edge", type=float, default=None)
+    p.add_argument("--max-stake", type=float, default=None)
+    p.add_argument("--capital", type=float, default=None)
+    p.add_argument("--out", default=None, help="Write decisions.csv, trades.csv, positions.csv, equity.csv, "
+                                               "summary.json here (default data/runs/season-replay/<sport>-<venue>-<year>/).")
+    return p
+
+
+def run_season(args, sport):
+    from racinglines import paths
+    from racinglines.db.config import get_engine
+    from racinglines.pipelines import position_replay as P
+    from racinglines.pipelines import season_replay as SR
+    if not SR.enabled():
+        sys.exit(f"racinglines {sport} season-replay is off by default: set {SR.SWITCH}=1 to run it (read-only)")
+    over = {k: v for k, v in dict(min_edge=args.min_edge, stake_per_edge=args.stake_per_edge, max_stake=args.max_stake,
+                                  capital=args.capital).items() if v is not None}
+    params = SR.SS.SeasonParams(**{**SR.DEFAULT_PARAMS.__dict__, **over})
+    engine = get_engine(args.db)
+    venues = list(P.replay_venues(sport)) if args.venue == "all" else [args.venue]
+    for venue in venues:
+        out = SR.run(engine, sport, args.year, venue=venue, params=params, n_sims=args.sims or SR.N_SIMS,
+                     echo=lambda m: print(m, flush=True))
+        print(SR.format_report(out))
+        folder = SR.write(out, Path(args.out) / venue if args.out else
+                          paths.runs("season-replay") / f"{sport}-{venue}-{args.year}")
+        print(f"\nWrote {folder}\n")
+    return 0

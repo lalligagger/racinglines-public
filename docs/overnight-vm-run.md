@@ -49,7 +49,7 @@ M1 to M4 give every row and every column at least one cell. After that, in order
 | N2 | MotoGP × Polymarket | the `replay` mode syncs MotoGP's Polymarket links when MotoGP is in `SPORTS`; then the same checks |
 | N3 | F1 × OG.com, backtested | a Mac/Copilot probe of how far back OG.com's `get-ticker-histories` goes for the F1 champion contracts. If it covers months, the championship replay (`f1 season-strategy`) needs OG.com as a venue (code PR) |
 | N4 | F1 × Kalshi taker | re-pull Kalshi F1 candles with bid/ask on the Mac and fill the taker at the ask (PR #85, what's next) |
-| N5 | NASCAR × OG.com | a Cup Champion model (playoff format): the largest item, not needed for the minimum |
+| N5 | NASCAR × OG.com | the Cup champion model is merged (#93); `nascar season-replay --venue og` backtests it on the stored champion prices (read-only, off by default, [Championship markets](championship-markets.md#championship-replays-backtests)). The OG.com tape starts about a month back, so few decisions trade |
 
 ## What runs on the VM
 
