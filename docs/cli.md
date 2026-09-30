@@ -8,7 +8,7 @@ racinglines f1      fetch | ingest | forecast | backtest | compare | matrix | di
                     profiles | signals | demo-history | reconcile
                     pm-sync | pm-history | pm-trades | pm-record | pm-archive | pm-links-export | pm-links-import
 racinglines mtb_dh  download | parse | ingest | forecast | backtest | walk-forward
-racinglines nascar  fetch | ingest | link      (the free content feeds: results, stages, cautions, laps; which driver and race a market is about)
+racinglines nascar  fetch | ingest | link | replay   (the free content feeds: results, stages, cautions, laps; which driver and race a market is about; the taker replay)
 racinglines markets sync | history | trades | record | archive      (= racinglines f1 pm-*)
 racinglines db      init | seed | stats | export | snapshot-export | snapshot-import | merge-athletes | changes
 racinglines web
@@ -256,6 +256,9 @@ NASCAR Cup, from the content feeds at `cf.nascar.com` (no key). See [Data](data.
 racinglines nascar fetch [--years 2026] [--series 1] [--feeds a,b] [--races 5624,5628] [--force] [--dry-run]
 racinglines nascar ingest [--years 2026] [--series 1] [--force] [--no-laps]        (group option: --db URL)
 racinglines nascar link [--exchange kalshi] [--apply --backup FILE] [--undo FILE]
+racinglines nascar replay [--years 2025-2026] [--venue kalshi|polymarket] [--kinds a,b] [--min-edge X] [--min-volume USD]
+                          [--save --backup FILE] [--undo BATCH]
+racinglines motogp replay   (the same options)
 ```
 
 | Command | What it does |
@@ -263,6 +266,7 @@ racinglines nascar link [--exchange kalshi] [--apply --backup FILE] [--undo FILE
 | `fetch` | Download the feeds to `data/raw/nascar/cf/<year>/<series>/`, byte for byte, one request per second, for every race already run. Files on disk are skipped and a feed the server says is missing (HTTP 403) is remembered in a `.missing` marker (not for races from the last three days, whose feeds may not be published yet), so a re-run after each race weekend asks only for what is new. `--feeds` picks from `race_list_basic, points-feed, weekend-feed, pit-data, loopstats, lap-times, lap-notes`; `--races` limits to some race ids; `--force` asks again; `--dry-run` requests nothing and prints how many requests a run would make. |
 | `ingest` | Load the stored feeds into the database: events (races still to run as `scheduled`), rounds (practice, qualifying, race), results, laps, and one athlete per NASCAR `driver_id`. A race whose files have not changed is skipped (`--force` rebuilds it); `--no-laps` leaves out the lap table. Only Cup (`--series 1`) has a competition. |
 | `link` | Say which driver, race and contract each stored NASCAR market link is about (Kalshi, Polymarket, OG.com), the same answer the syncs now give new links ([Data](data.md#nascar-content-feeds-verified-2026-09-29)). A **dry run** by default: totals, one line per exchange, series and kind with how many links got a driver and a race, and the names it could not place. `--apply` writes `athlete_id`, `race_id` and `params` (`kind`, `nascar_series`, `season`) of the links that change and refuses without `--backup FILE`, a database dump under 24 hours old; it records a `data_changes` entry and an undo file (`data/backups/db/nascar-links-undo-<UTC>.json`) that `--undo FILE` replays. `--exchange` limits it to one exchange. Run it after `ingest`, since it matches against the drivers and races in the database. |
+| `replay` | Taker replay of the season's Cup races against Kalshi's (default) or Polymarket's recorded prices ([`pipelines/position_replay.py`](https://github.com/lalligagger/racinglines/blob/main/racinglines/pipelines/position_replay.py)). Per race: the field is the race's start list, the model in `[sport] pricing_model` prices it from earlier races only, and the F1 taker (`update` / `hold` / `last`) trades at the stages of `sports/<code>.toml` `[replay]` (hours from 00:00 UTC on race day: T-3d, T-1d, race eve) wherever the market is priced, has $50 of 24 h volume, is still open and its group is coherent; the result settles by classified position. Prints P&L, Kalshi's taker fees and P&L after fees per mode, P&L by kind and model-vs-exchange calibration, and writes `data/runs/replay/<sport>-<venue>-<years>/`. Kinds: NASCAR race win, top 3/5/10/20 and head-to-head; MotoGP race win. Links are read as `link --apply` left them, and any link it did not identify is identified in memory (MotoGP always: its schema has no resolver, `sources/motogp/links.py`); nothing is written to `market_links`. Read-only unless `--save`, which also stores one as-of model run per race (`model_runs` kind `diagnostic` + `race_predictions`; prediction records with `RACINGLINES_PREDICTION_RECORDS=1`), refuses without `--backup FILE` (a dump under 24 hours old), logs a `data_changes` entry with its batch id, and is undone with `--undo BATCH`. The F1 sweep is not involved. |
 
 Nothing here runs by default. **Back up the database before the first `ingest` on a real database, and before `link --apply`** ([Data changes](data-changes.md)).
 

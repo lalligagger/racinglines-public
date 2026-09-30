@@ -54,3 +54,16 @@ whether for profit or free of charge' (item 3). No separate API terms were found
 same site. Owner reviewed 2026-09-29 and said the intended use (a private, non-commercial fantasy-trading \
 app for friends) can proceed for now, to be reviewed again in more detail before any soft launch."""
 limits = { history_seasons = 78, splits_available = false }   # splits_available: no per-lap/sector data in JSON
+
+[replay]
+# The taker replay (racinglines/pipelines/position_replay.py; `racinglines motogp replay`), read only by that command.
+# There is no [identity] resolver (the syncs keep MotoGP links unmodeled): the replay identifies rider, race and kind
+# in memory (racinglines/sources/motogp/links.py) and writes nothing to market_links. A priori values, none tuned:
+# docs/f1-roadmap.md decision log, 2026-09-30 "NASCAR / MotoGP taker replay".
+source = "motogp_api"
+linker = "motogp"
+kinds = ["race_win"]              # the one race contract the listings show (KXMOTOGPRACE: 289 of 322 Kalshi markets)
+race_day_offset = 2               # an event is filed by its first day (Friday); the Grand Prix is on Sunday
+# (label, hours from 00:00 UTC on race day): "race eve" is 18:00 UTC on Saturday, after the sprint
+stages = [["T-3d", -72], ["T-1d", -24], ["race eve", -6]]
+group_target = { race_win = 1 }

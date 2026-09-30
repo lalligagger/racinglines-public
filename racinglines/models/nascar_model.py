@@ -27,6 +27,13 @@ SETTINGS = [
 ]
 
 
+def _field(ev):
+    """The start list the replay passes in `ev.info["field"]` (pipelines/position_replay.py): price exactly these
+    entrants, a newcomer at the model's no-form base. Empty (walk-forward, search): every entrant in the history,
+    as before."""
+    return list((ev.info or {}).get("field") or [])
+
+
 class NascarCupSettings(SS.Settings):
     SPEC = SETTINGS
     BY = {s.name: s for s in SETTINGS}
@@ -195,7 +202,7 @@ class NascarCupRace:
     def price(self, hist, ev, settings, rng):
         past = self._with_athlete_ids(hist[hist["date"] < ev.cutoff].copy())
         if past.empty:
-            entrants = self._entrant_ids(hist)
+            entrants = _field(ev) or self._entrant_ids(hist)
             if not entrants:
                 return None
             base = np.zeros(len(entrants), dtype=float)
@@ -208,7 +215,7 @@ class NascarCupRace:
         if settings["history_races"] > 0:
             past = past.tail(settings["history_races"])
 
-        entrants = self._entrant_ids(past)
+        entrants = _field(ev) or self._entrant_ids(past)
         if not entrants:
             return None
 
@@ -271,7 +278,7 @@ class NascarCupRaceChallenger(NascarCupRace):
     def price(self, hist, ev, settings, rng):
         past = self._with_athlete_ids(hist[hist["date"] < ev.cutoff].copy())
         if past.empty:
-            entrants = self._entrant_ids(hist)
+            entrants = _field(ev) or self._entrant_ids(hist)
             if not entrants:
                 return None
             base = np.zeros(len(entrants), dtype=float)
@@ -284,7 +291,7 @@ class NascarCupRaceChallenger(NascarCupRace):
         if settings["history_races"] > 0:
             past = past.tail(settings["history_races"])
 
-        entrants = self._entrant_ids(past)
+        entrants = _field(ev) or self._entrant_ids(past)
         if not entrants:
             return None
 

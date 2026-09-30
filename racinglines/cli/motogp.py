@@ -6,6 +6,8 @@ api.motogp.pulselive.com).
                  data/raw/motogp/pulselive/<year>/ (paced, safe to re-run; --dry-run counts the requests first).
     ingest       Load the stored classifications into the database (events, results, rider identity).
     compare      Backtest the baseline and recent-form challenger, and print model-promotion buy signals.
+    replay       Taker replay of Grands Prix against Kalshi's or Polymarket's recorded prices (read-only unless
+                 --save; racinglines/pipelines/position_replay.py).
     (exchange data: racinglines markets sync | history | trades | record | archive --sport motogp)
 
 Nothing here runs by default. Terms of use: sports/motogp.toml [results].terms — the owner has reviewed
@@ -77,7 +79,12 @@ def main(argv=None):
     p.add_argument("--team-bias", default="0.2,0.35,0.5", help="Comma-separated team-bias priors, e.g. 0.2,0.35")
     p.add_argument("--noise", default="0.75,1.25", help="Comma-separated race-day noise levels, e.g. 0.75,1.25")
     p.add_argument("--limit", type=int, default=10, help="How many candidate settings to print.")
+    from racinglines.cli import replay_cmd
+    replay_cmd.add_parser(sub, "motogp")
     args = ap.parse_args(argv)
+
+    if args.cmd == "replay":
+        return replay_cmd.run(args, "motogp", _years(args.years))
 
     if args.cmd == "fetch":
         from racinglines.sources.motogp import fetch

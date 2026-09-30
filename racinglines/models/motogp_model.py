@@ -25,6 +25,13 @@ SETTINGS = [
 ]
 
 
+def _field(ev):
+    """The start list the replay passes in `ev.info["field"]` (pipelines/position_replay.py): price exactly these
+    entrants, a newcomer at the model's no-form base. Empty (walk-forward, search): every entrant in the history,
+    as before."""
+    return list((ev.info or {}).get("field") or [])
+
+
 class MotoGPSettings(SS.Settings):
     SPEC = SETTINGS
     BY = {s.name: s for s in SETTINGS}
@@ -178,7 +185,7 @@ class MotoGPRace:
             return None
 
         key, past = self._keyed(past)
-        entrants = self._entrant_ids(past)
+        entrants = _field(ev) or self._entrant_ids(past)
         if not entrants:
             return None
 
@@ -227,7 +234,7 @@ class MotoGPRaceChallenger(MotoGPRace):
             past = past.tail(settings["history_races"])
 
         key, past = self._keyed(past)
-        entrants = self._entrant_ids(past)
+        entrants = _field(ev) or self._entrant_ids(past)
         if not entrants:
             return None
 
