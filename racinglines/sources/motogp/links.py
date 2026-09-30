@@ -3,8 +3,12 @@ Which rider and race a MotoGP market is about, for the taker replay (racinglines
 
     Linker(conn).identify(link)     -> dict(kind, athlete_id, race_id, opponent_id, problems)
 
-Read-only: nothing here writes to the database, and the sport's schema names no [identity] resolver, so the syncs
-keep filing MotoGP links `unmodeled` exactly as before. The replay identifies each link in memory when it runs.
+    Linker(conn).fill(rows)         the same, written into a sync's fresh link rows (never raises)
+
+The sport's schema names this as its [identity] resolver (on by default since 2026-09-30, the owner's call), so the
+Kalshi, Polymarket and OG.com syncs fill athlete_id, race_id and params.kind on MotoGP links as they store them;
+`prediction` stays `unmodeled`. Links stored before that are identified in memory by the replay; nothing here
+rewrites stored links.
 
 * kind: from the Kalshi series ticker (KXMOTOGPRACE = the Grand Prix winner; the championship and team series are
   not race contracts and get no kind), else from the wording ("win" + "Grand Prix"/"GP", never a sprint, a pole or
@@ -18,6 +22,7 @@ keep filing MotoGP links `unmodeled` exactly as before. The replay identifies ea
 """
 
 import re
+from collections import Counter
 from datetime import timedelta
 
 from racinglines.sources.nascar.identity import Resolver, norm
@@ -51,6 +56,7 @@ class Linker:
 
     def __init__(self, conn):
         self.conn, self._by_year = conn, {}
+        self.counts = Counter()                             # what fill() has done, summed over its calls
 
     def resolver(self, year):
         if year not in self._by_year:
@@ -84,3 +90,26 @@ class Linker:
             if out["athlete_id"] is None:
                 out["problems"].append(f"rider: {R.unresolved.get(subject, 'unknown')}")
         return out
+
+    def fill(self, rows):
+        """Write what is known into freshly built link rows (a sync's values): athlete_id, race_id and params.kind.
+        Never raises: a bad row keeps the sync going and stays as it was. Returns the counts."""
+        n = Counter()
+        for row in rows:
+            n["links"] += 1
+            try:
+                f = self.identify(row)
+            except Exception as e:                          # a recorder must not stop for an identity bug
+                n["errors"] += 1
+                self.counts["last_error"] = f"{type(e).__name__}: {e}"
+                continue
+            if f["kind"] is not None:
+                row["params"] = dict(row.get("params") or {}, kind=f["kind"])
+            if f["athlete_id"] is not None:
+                row["athlete_id"] = f["athlete_id"]
+            if f["race_id"] is not None:
+                row["race_id"] = f["race_id"]
+            n["athletes"] += f["athlete_id"] is not None
+            n["races"] += f["race_id"] is not None
+        self.counts.update(n)
+        return dict(n)

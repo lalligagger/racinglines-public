@@ -2,9 +2,11 @@
 `racinglines nascar replay` / `racinglines motogp replay`: the taker replay of a result-only sport against an
 exchange's recorded prices (racinglines/pipelines/position_replay.py). Read-only unless --save.
 
-    --save --backup FILE   also store one as-of model run per race (model_runs + race_predictions, and prediction
-                           records with RACINGLINES_PREDICTION_RECORDS=1); FILE is the database dump taken for this
-                           step within the last 24 hours. Logged in data_changes with its batch id.
+    --venue all            the default: Kalshi then Polymarket (the sport's [markets] venues), one report each
+    --save --backup FILE   also store one as-of model run per race (model_runs + race_predictions + prediction records
+                           and sims; records are on for this command unless RACINGLINES_PREDICTION_RECORDS=0); FILE is
+                           the database dump taken for this step within the last 24 hours. Logged in data_changes with
+                           its batch id. The runs are stored once, with the first venue's pass.
     --undo BATCH           delete the runs a --save pass stored (the batch id it printed).
 """
 
@@ -17,7 +19,8 @@ def add_parser(sub, sport):
     p = sub.add_parser("replay", help=f"Taker replay of {sport} races against an exchange's recorded prices "
                                       "(read-only unless --save).")
     p.add_argument("--years", default="2025-2026", help="e.g. 2026, 2025-2026 or 2024,2026.")
-    p.add_argument("--venue", default="kalshi", choices=["kalshi", "polymarket"])
+    p.add_argument("--venue", default="all", choices=["all", "kalshi", "polymarket"],
+                   help="all (the default): every exchange the sport lists on, one report each.")
     p.add_argument("--kinds", default=None, help=f"Comma list, a subset of sports/{sport}.toml [replay] kinds.")
     p.add_argument("--min-edge", type=float, default=None, help="Taker threshold (default: TakerParams, 0.05).")
     p.add_argument("--stake-per-edge", type=float, default=None)
@@ -60,13 +63,17 @@ def run(args, sport, years):
     taker = RB.TakerParams(**over)
     kinds = [k.strip() for k in args.kinds.split(",")] if args.kinds else None
     engine = get_engine(args.db)
-    out = P.run(engine, sport, years, venue=args.venue, taker=taker, kinds=kinds,
-                min_volume_24h=P.MIN_VOLUME_24H if args.min_volume is None else args.min_volume,
-                model_settings={"sims": args.sims} if args.sims else None, save=save)
-    print(P.format_report(out))
-    tag = f"{sport}-{args.venue}-{years[0]}-{years[-1]}" if years else f"{sport}-{args.venue}"
-    folder = P.write(out, Path(args.out) if args.out else paths.runs("replay") / tag)
-    print(f"\nWrote {folder}")
+    venues = [v for v in ("kalshi", "polymarket") if v in P.venues(sport)] if args.venue == "all" else [args.venue]
+    data = None
+    for i, venue in enumerate(venues):
+        out = P.run(engine, sport, years, venue=venue, taker=taker, kinds=kinds, data=data,
+                    min_volume_24h=P.MIN_VOLUME_24H if args.min_volume is None else args.min_volume,
+                    model_settings={"sims": args.sims} if args.sims else None, save=save if i == 0 else None)
+        data = out.pop("data")
+        print(P.format_report(out))
+        tag = f"{sport}-{venue}-{years[0]}-{years[-1]}" if years else f"{sport}-{venue}"
+        folder = P.write(out, Path(args.out) / venue if args.out else paths.runs("replay") / tag)
+        print(f"\nWrote {folder}\n")
     if save:
         with get_session(args.db) as s:
             n = s.execute(__import__("sqlalchemy").text(

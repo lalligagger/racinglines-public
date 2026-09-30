@@ -24,7 +24,7 @@ categories = { DRV = ["Drivers", "X", "elite"] }
 
 [markets]
 venues = ["polymarket", "kalshi"]
-standard_kinds = []               # nothing is priced, so the board has no columns for it
+standard_kinds = ["race_win", "race_podium", "race_top10"]   # the board's columns (on by default, owner 2026-09-30): priced by the replay's saved runs
 
 [markets.kalshi]
 # Kalshi series tickers to sync, by prefix: every Sports series whose ticker starts with one of these
@@ -53,8 +53,7 @@ fallback_rule = "official_then_public_summary_fallback"
 fallbacks = [{ source = "wikipedia", quality = "summary_only", scope = "race_summary", allow = true, notes = "Only for missing seasons when no official archive exists; never for full result reconstruction." }]
 
 [replay]
-# The taker replay (racinglines/pipelines/position_replay.py; `racinglines nascar replay`), read only by that command:
-# nothing else changes (standard_kinds above stays empty, so the board is as before). All values are a priori
+# The taker replay (racinglines/pipelines/position_replay.py; `racinglines nascar replay`). All values are a priori
 # starting points, none tuned: docs/f1-roadmap.md decision log, 2026-09-30 "NASCAR / MotoGP taker replay".
 source = "nascar_cf"              # the events the model and the settlement read
 linker = "nascar"                 # a link not yet identified by `nascar link --apply` is identified in memory

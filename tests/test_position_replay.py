@@ -55,14 +55,29 @@ def test_stages_are_hours_from_race_day_midnight_utc():
 
 
 @pytest.mark.quick
-def test_both_sports_have_a_replay_section_and_the_board_is_unchanged():
+def test_both_sports_are_on_by_default_and_f1_is_unchanged():
+    from racinglines import sports
     from racinglines.markets import venues
     for sport in ("nascar", "motogp"):
         sp = P.spec(sport)
         assert set(sp["kinds"]) <= set(P.N_OF) | {"race_h2h"} and sp["stages"] and sp["source"]
-    assert venues.STANDARD_KINDS["nascar_cup"] == () and venues.STANDARD_KINDS["motogp_wc"] == ()
+        assert P.venues(sport) == ("polymarket", "kalshi") and sports.identity(sport) == sport
+    assert venues.STANDARD_KINDS["nascar_cup"] == ("race_win", "race_podium", "race_top10")
+    assert venues.STANDARD_KINDS["motogp_wc"] == ("race_win",)
+    assert venues.STANDARD_KINDS["f1_wdc"] == ("race_win", "race_podium", "race_top10")
     with pytest.raises(ValueError):
         P.spec("indycar")
+
+
+@pytest.mark.quick
+def test_replay_records_are_on_unless_switched_off(monkeypatch):
+    from racinglines.db import records as REC
+    monkeypatch.delenv(REC.SWITCH, raising=False)
+    assert P.records_on() and not REC.enabled()                  # the global switch keeps its own default (off)
+    monkeypatch.setenv(REC.SWITCH, "0")
+    assert not P.records_on()
+    monkeypatch.setenv(REC.SWITCH, "1")
+    assert P.records_on()
 
 
 def _venue(prices, t0, volume=100.0, group=None):
@@ -124,6 +139,20 @@ def test_motogp_listing_kinds():
     assert k(dict(exchange="polymarket", question="Will Marc Marquez win the Thai Grand Prix?")) == "race_win"
     assert k(dict(exchange="polymarket", question="Will Marc Marquez win the Thai GP sprint?")) is None
     assert k(dict(exchange="polymarket", question="Will Marc Marquez win the 2026 MotoGP championship?")) is None
+
+
+@pytest.mark.quick
+def test_motogp_fill_never_raises_and_tags_the_kind():
+    L = ML.Linker.__new__(ML.Linker)
+    L.conn, L._by_year, L.counts = None, {}, __import__("collections").Counter()
+    rows = [dict(exchange="kalshi", params={"series": "KXMOTOGP"}, end_date=None),          # the championship: nothing
+            dict(exchange="kalshi", params={"series": "KXMOTOGPRACE"}, end_date=None),      # a race, no close date
+            dict(exchange="kalshi", params={"series": "KXMOTOGPRACE"}, group_title="Marc Marquez",
+                 end_date=datetime(2026, 9, 28, tzinfo=UTC))]                               # no database: an error, kept going
+    n = L.fill(rows)
+    assert n["links"] == 3 and n["errors"] == 1
+    assert rows[0]["params"] == {"series": "KXMOTOGP"} and rows[1]["params"]["kind"] == "race_win"
+    assert "athlete_id" not in rows[2]
 
 
 # --- a NASCAR season on the test database ---------------------------------------------------------------

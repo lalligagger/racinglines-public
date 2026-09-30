@@ -26,9 +26,10 @@ Markets: the sport's links on the venue whose kind is in [replay] kinds. The kin
 stored link (NASCAR's `nascar link --apply` writes params.kind, athlete_id and race_id), else from the sport's
 matcher run in memory ([replay] linker): nothing is written to market_links.
 
-Nothing runs by default: `racinglines nascar replay` / `racinglines motogp replay`. `save=True` also stores one
-as-of model run per race (model_runs kind 'diagnostic' + race_predictions, and prediction records when
-RACINGLINES_PREDICTION_RECORDS is on); the CLI asks for a fresh backup first and every saved run carries the batch
+Run with `racinglines nascar replay` / `racinglines motogp replay` (every exchange the sport lists on, by default).
+`save` also stores one as-of model run per race (model_runs kind 'diagnostic' + race_predictions, and prediction
+records with the sims, on for these sports unless RACINGLINES_PREDICTION_RECORDS is set off); the CLI asks for a
+fresh backup first and every saved run carries the batch
 id that `undo` deletes.
 """
 
@@ -58,6 +59,21 @@ def spec(sport):
     if not rp:
         raise ValueError(f"sport {sport!r} has no [replay] section in sports/{sport}.toml")
     return dict(rp, sport=sport, competition=s["competition"]["code"], model=s["sport"]["pricing_model"])
+
+
+def venues(sport):
+    """The exchanges the sport's schema lists ([markets] venues)."""
+    return tuple(sports.load(sport)["markets"]["venues"])
+
+
+def records_on():
+    """Prediction records for a replay save: on unless RACINGLINES_PREDICTION_RECORDS is set to an off value
+    (the replay of these sports writes them by default; every other writer keeps the switch's own default, off)."""
+    import os
+
+    from racinglines.db import records as REC
+    v = os.environ.get(REC.SWITCH)
+    return True if v is None or not v.strip() else REC.enabled()
 
 
 def model_for(sp):
@@ -271,12 +287,13 @@ def run(engine, sport, seasons=None, venue="kalshi", taker=None, min_volume_24h=
         rows.append(row)
         echo(f"progress {len(rows)} {r.event_key} {r.name}: {row['markets']} markets, {row['tradeable']} tradeable, "
              f"update {row['update_pnl']:+.2f} (fees {row['update_fees']:.2f})")
-    return summarize(pd.DataFrame(rows), trades, calib, dict(sport=sport, venue=venue, seasons=seasons,
+    out = summarize(pd.DataFrame(rows), trades, calib, dict(sport=sport, venue=venue, seasons=seasons,
                                                               taker={k: v for k, v in t.__dict__.items() if k != "mode"},
                                                               model=model.name, model_settings=st.to_json(),
                                                               min_volume_24h=min_volume_24h, kinds=sp["kinds"],
                                                               stages=sp["stages"], coherence_tol=COHERENCE_TOL,
                                                               group_target=sp.get("group_target") or {}))
+    return dict(out, data=data)                  # data: the model's frame, for a second venue's pass
 
 
 def summarize(races_df, trades, calib, params):
@@ -328,7 +345,7 @@ def save_run(save, sp, model, st, race, sims):
                                    extra=dict(top5_prob=p["race_top5"][i], top20_prob=p["race_top20"][i])))
         s.commit()
         rid = run.id
-    if REC.enabled():
+    if records_on():
         df = O.to_records(sims, rid, sp["sport"], model.name, int(race.season), race.event_key, race.name, "asof",
                           cutoff, kinds=["race_win", "race_podium", "race_top10", "race_h2h"])
         REC.write(rid, df, sims)

@@ -24,12 +24,17 @@ categories = { RDR = ["Riders", "X", "elite"] }
 
 [markets]
 venues = ["polymarket", "kalshi"]
-standard_kinds = []               # nothing is priced, so the board has no columns for it
+standard_kinds = ["race_win"]     # the board's column (on by default, owner 2026-09-30): priced by the replay's saved runs
 
 [markets.kalshi]
 # Kalshi series tickers to sync, by prefix: every Sports series whose ticker starts with one of these
 # (`sync --series TICKER ...` overrides the list). Off by default: only `--sport motogp` syncs them.
 series = ["KXMOTOGP"]
+
+[identity]
+# Which rider, race and contract a market is about, whichever exchange listed it (racinglines/sources/motogp/links.py).
+# On by default since 2026-09-30 (owner): the syncs fill athlete_id, race_id and params.kind; `prediction` stays unmodeled.
+resolver = "motogp"
 
 [markets.polymarket]
 # Gamma /events tag_slug values to page (`sync --tags SLUG ...` overrides the list). Off by default: only `--sport motogp` syncs them.
@@ -56,9 +61,9 @@ app for friends) can proceed for now, to be reviewed again in more detail before
 limits = { history_seasons = 78, splits_available = false }   # splits_available: no per-lap/sector data in JSON
 
 [replay]
-# The taker replay (racinglines/pipelines/position_replay.py; `racinglines motogp replay`), read only by that command.
-# There is no [identity] resolver (the syncs keep MotoGP links unmodeled): the replay identifies rider, race and kind
-# in memory (racinglines/sources/motogp/links.py) and writes nothing to market_links. A priori values, none tuned:
+# The taker replay (racinglines/pipelines/position_replay.py; `racinglines motogp replay`). Links stored before the
+# [identity] resolver was turned on are identified in memory (racinglines/sources/motogp/links.py); the replay writes
+# nothing to market_links. A priori values, none tuned:
 # docs/f1-roadmap.md decision log, 2026-09-30 "NASCAR / MotoGP taker replay".
 source = "motogp_api"
 linker = "motogp"
