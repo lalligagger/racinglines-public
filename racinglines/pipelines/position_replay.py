@@ -97,6 +97,14 @@ def races(conn, sp, seasons=None):
     return df.reset_index(drop=True)
 
 
+def select(rs, events=None):
+    """Only the races of `events` (event keys; "latest" = the last race of `rs`); all of `rs` when None."""
+    if not events:
+        return rs
+    keys = set(events) - {"latest"} | ({rs["event_key"].iloc[-1]} if "latest" in events and len(rs) else set())
+    return rs[rs["event_key"].isin(keys)].reset_index(drop=True)
+
+
 def race_results(conn, race_id):
     """The race round's classification: athlete_id, position (NaN = unclassified), status."""
     return pd.read_sql(text("""
@@ -252,9 +260,7 @@ def run(engine, sport, seasons=None, venue="kalshi", taker=None, min_volume_24h=
     with engine.connect() as conn:
         rs = races(conn, sp, seasons)
         lk = links(conn, sp, venue)
-    if events:
-        keys = set(events) - {"latest"} | ({rs["event_key"].iloc[-1]} if "latest" in events and len(rs) else set())
-        rs = rs[rs["event_key"].isin(keys)].reset_index(drop=True)
+    rs = select(rs, events)
     echo(f"progress {sport} {venue}: {len(rs)} races, {len(lk)} markets of kinds {', '.join(sp['kinds'])}")
     if data is None:
         data = model.load(engine.url.render_as_string(hide_password=False))
@@ -278,6 +284,7 @@ def run(engine, sport, seasons=None, venue="kalshi", taker=None, min_volume_24h=
             v = _venue(conn, venue, race_links, stages, sp)
             markets = race_markets(v, race_links, sims, res, stages, min_volume_24h)
         row = dict(season=int(r.season), event_key=r.event_key, race=r.name, race_id=int(r.race_id), markets=len(markets),
+                   priced=sum(any(s["price"] is not None for s in m["stages"]) for m in markets),
                    tradeable=sum(any(s["tradeable"] for s in m["stages"]) for m in markets))
         for p in plist:
             tr, per = RB.run_weekend(markets, p)
@@ -290,8 +297,9 @@ def run(engine, sport, seasons=None, venue="kalshi", taker=None, min_volume_24h=
                        y=float(m["outcome"])) for m in markets if m["outcome"] is not None
                   for s in m["stages"] if s["tradeable"]]
         rows.append(row)
-        echo(f"progress {len(rows)} {r.event_key} {r.name}: {row['markets']} markets, {row['tradeable']} tradeable, "
-             f"update {row['update_pnl']:+.2f} (fees {row['update_fees']:.2f})")
+        echo(f"progress {len(rows)} {r.event_key} {r.name}: {row['markets']} markets, {row['priced']} priced, "
+             f"{row['tradeable']} tradeable, update {row['update_pnl']:+.2f} (fees {row['update_fees']:.2f})"
+             + ("  NO TAPE" if not row["priced"] else "  NOTHING TRADEABLE" if not row["tradeable"] else ""))
     out = summarize(pd.DataFrame(rows), trades, calib, dict(sport=sport, venue=venue, seasons=seasons,
                                                               taker={k: v for k, v in t.__dict__.items() if k != "mode"},
                                                               model=model.name, model_settings=st.to_json(),
@@ -313,7 +321,104 @@ def summarize(races_df, trades, calib, params):
     cal = pd.DataFrame(calib, columns=["event_key", "stage", "kind", "model", "market", "y"])
     cal_all, rel = CAL.table(cal, ("model", "market"), by=("kind",))
     return dict(races=races_df, trades=trades, totals=totals, by_kind=RB.by(trades, "kind"), calibration=cal_all,
-                reliability=rel, params=params)
+                reliability=rel, params=params, tape=tape(races_df))
+
+
+def tape(races_df):
+    """What the venue's tape allowed: races with markets, markets priced and tradeable, and the races with markets
+    but no stored price at any stage (`no_tape`: the prices and trades were never pulled) or priced but never
+    tradeable (`untradeable`: under the volume floor, closed, or an incoherent group)."""
+    if not len(races_df):
+        return dict(races=0, markets=0, priced=0, tradeable=0, no_tape=[], untradeable=[])
+    r = races_df
+    return dict(races=len(r), markets=int(r["markets"].sum()), priced=int(r["priced"].sum()),
+                tradeable=int(r["tradeable"].sum()), no_tape=r.loc[r["priced"] == 0, "event_key"].tolist(),
+                untradeable=r.loc[(r["priced"] > 0) & (r["tradeable"] == 0), "event_key"].tolist())
+
+
+def traded(out):
+    """True when at least one market of the run was tradeable at a stage (the spot check's pass)."""
+    return out["tape"]["tradeable"] > 0
+
+
+# --- the tape: probe and pull ---------------------------------------------------------------------------
+
+TAPE_BEFORE = timedelta(days=2)      # the pull window: from 2 days before a race's first stage (the 24 h volume floor
+TAPE_AFTER = timedelta(days=2)       # and the 6 h staleness reach back from it) to 2 days after its last
+
+
+def tape_plan(engine, sport, venue, seasons=None, events=None):
+    """[(race row, its links, window start, window end)] for the races `run` would trade on `venue` (the same
+    selection and the same links), with the UTC window whose prices and trades it reads."""
+    sp = spec(sport)
+    with engine.connect() as conn:
+        rs = select(races(conn, sp, seasons), events)
+        lk = links(conn, sp, venue)
+    out = []
+    for r in rs.itertuples():
+        g = lk[lk["race_id"] == r.race_id] if len(lk) else lk
+        if len(g):
+            t = [x for _, x in stage_times(r.start, sp)]
+            out.append((r, g, (min(t) - TAPE_BEFORE).tz_localize("UTC").to_pydatetime(),
+                        (max(t) + TAPE_AFTER).tz_localize("UTC").to_pydatetime()))
+    return out
+
+
+def probe(plan, venue, n=3, kc=None, echo=print):
+    """Read-only: ask the exchange for the tape of `n` markets of the first race in `plan` (trades, and prices over
+    the race's window) and print what came back. Writes nothing. Returns [(token, trades, prices)]."""
+    if not plan:
+        echo(f"probe {venue}: no markets to ask about (no links for these races)")
+        return []
+    r, g, start, end = plan[0]
+    got = []
+    if venue == "kalshi":
+        from racinglines.markets.kalshi import client as K
+        kc = kc or K.Client()
+        for link in g.head(n).to_dict("records"):
+            series = (link.get("params") or {}).get("series") or str(link["condition_id"]).split("-", 1)[0]
+            tr = kc.trades(link["token_id"])
+            px = kc.candlesticks(series, link["token_id"], start.timestamp(), end.timestamp(), 60)
+            got.append((link["token_id"], len(tr), len(px)))
+    else:
+        import httpx
+
+        from racinglines.markets.polymarket.sync import CLOB, DATA_API
+        from racinglines.sources import http
+        with httpx.Client(base_url=DATA_API, timeout=30) as d, httpx.Client(base_url=CLOB, timeout=20) as c:
+            for link in g.head(n).to_dict("records"):
+                t = http.get(d, "/trades", params={"market": link["condition_id"], "limit": 500, "takerOnly": "true"})
+                h = http.get(c, "/prices-history", params={"market": link["token_id"], "startTs": int(start.timestamp()),
+                                                          "endTs": int(end.timestamp()), "fidelity": 60})
+                got.append((link["token_id"], len(t.json()) if t.status_code == 200 else f"HTTP {t.status_code}",
+                            len(h.json().get("history", [])) if h.status_code == 200 else f"HTTP {h.status_code}"))
+    echo(f"probe {venue}, {r.event_key} {r.name} ({len(g)} markets; window {start:%Y-%m-%d %H:%M} to {end:%Y-%m-%d %H:%M} UTC):")
+    for tok, tr, px in got:
+        echo(f"  {tok}: {tr} trades, {px} hourly prices")
+    return got
+
+
+def pull(session, conn, plan, venue, kc=None, echo=print):
+    """Store the tape the replay reads for every race in `plan`: the trades of its markets' events from the start of
+    the race's window on (older ones never count toward a stage's 24 h volume) and hourly prices over the window (markets/kalshi/sync.py, markets/polymarket/sync.py; idempotent upserts). A database
+    write: the CLI asks for a fresh backup. Returns dict(races, trades, prices)."""
+    n = dict(races=0, trades=0, prices=0)
+    for r, g, start, end in plan:
+        if venue == "kalshi":
+            from racinglines.markets.kalshi import sync as KS
+            evs = sorted(set(g["condition_id"]))
+            tr = KS.fetch_trades(session, conn, evs, since=start, kc=kc)
+            px = KS.fetch_history(session, conn, evs, start, end, 60, kc=kc)
+        else:
+            from racinglines.markets.polymarket import sync as PS
+            evs = sorted(set(g["event_slug"].dropna()))
+            tr = PS.fetch_trades(session, conn, evs, since=start)
+            px = PS.fetch_history(session, conn, evs, start, end, 60)
+        n["races"] += 1
+        n["trades"] += tr
+        n["prices"] += px
+        echo(f"pull {venue} {n['races']}/{len(plan)} {r.event_key} {r.name}: {len(g)} markets, {tr} trades, {px} prices")
+    return n
 
 
 # --- saved runs (the backfill) --------------------------------------------------------------------------
@@ -368,10 +473,27 @@ def undo(session, batch):
 
 
 def format_report(out):
-    """The run's text: totals per mode, P&L by kind, calibration."""
-    p = out["params"]
-    lines = [f"{p['sport']} on {p['venue']}, seasons {p['seasons'] or 'all'}: {len(out['races'])} races traded "
+    """The run's text: what the tape allowed, then totals per mode, P&L by kind, calibration. A run with nothing
+    tradeable says so and prints no P&L (a zero there would read as a result)."""
+    p, tp = out["params"], out["tape"]
+    lines = [f"{p['sport']} on {p['venue']}, seasons {p['seasons'] or 'all'}: {tp['races']} races with markets, "
+             f"{tp['markets']} markets, {tp['priced']} priced, {tp['tradeable']} tradeable "
              f"(model {p['model']}; stages {', '.join(l for l, _ in p['stages'])})"]
+    if not tp["races"]:
+        lines.append(f"  NO MARKETS: no {p['venue']} links of kinds {', '.join(p['kinds'])} matched these races "
+                     f"(the sport's {p['venue']} sync has not run on this database, or its markets are not identified).")
+        return "\n".join(lines)
+    if not tp["tradeable"]:
+        why = ("NO TAPE: no stored price for any market at any stage. Pull the prices and trades first "
+               f"(racinglines {p['sport']} replay ... --tape pull --backup FILE)." if not tp["priced"] else
+               f"NOTHING TRADEABLE: markets are priced but none passed the ${p['min_volume_24h']:g} 24 h volume floor, "
+               "was open, and sat in a coherent group at a stage.")
+        lines.append(f"  NOT TRADED. {why} No P&L to report.")
+        return "\n".join(lines)
+    for key, what in (("no_tape", "NO TAPE (no stored price at any stage)"), ("untradeable", "NOTHING TRADEABLE")):
+        if tp[key]:
+            shown = ", ".join(tp[key][:8]) + (f" and {len(tp[key]) - 8} more" if len(tp[key]) > 8 else "")
+            lines.append(f"  WARNING {len(tp[key])} of {tp['races']} races {what}: {shown}")
     for mode, v in out["totals"].items():
         lines.append(f"  {mode:7} P&L {v['pnl']:+9.2f}  fees {v['fees']:7.2f}  net {v['net']:+9.2f}  bought {v['bought']:9.2f}  "
                      f"races up {v['races_up']}/{v['races']}")
@@ -391,6 +513,6 @@ def write(out, folder):
     out["races"].to_csv(folder / "races.csv", index=False)
     out["trades"].to_csv(folder / "trades.csv", index=False)
     out["calibration"].to_csv(folder / "calibration.csv", index=False)
-    (folder / "summary.json").write_text(json.dumps(dict(params=out["params"], totals=out["totals"]), indent=1,
+    (folder / "summary.json").write_text(json.dumps(dict(params=out["params"], totals=out["totals"], tape=out["tape"]), indent=1,
                                                     default=lambda v: v.isoformat() if isinstance(v, date) else str(v)))
     return folder
