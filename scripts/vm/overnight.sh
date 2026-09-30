@@ -15,7 +15,13 @@
 #   story   the demo taker's walk-forward story (needs PR #87 deployed): backup; the evidence sweeps
 #           (sweeps/demo-taker-story.toml); gate: scripts/vm/story_gate.py must print GATE OK, else stop with nothing
 #           reset; then `f1 demo-history --reset --user taker`. Always --user taker: never the maker's record.
-#   all     f1, then replay, then story, in one unit. Each starts only if the one before finished.
+#   sports  replay, then story (skips F1).
+#   all     replay, then story, then f1, in one unit (the sports first: F1 has been backtested for days).
+#
+# Preflight (every mode, first minute): each sport's event count and its Kalshi links with a race attached. dry
+# flags a sport with 0 of either as NOT READY; replay loads its results and identifies its links first (after the
+# backup), and skips the sport with a STOP line if it is still not ready. A sport's untradeable Kalshi pull skips
+# that sport, not the rest of the run.
 #
 # Every writing mode backs up first and checks the dump's trailer. Log: data/runs/logs/overnight-<mode>-<UTC>.log;
 # markers overnight-<mode>.done / .failed. Refuses to start while a racinglines-live-* unit is active.
@@ -73,6 +79,33 @@ PY=.venv/bin/python
 QUEUE=sweeps/overnight-vm.toml
 A_ARGS=(--taker-stages "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali" --min-edge 0.1 --min-edge-h2h 0.05)
 Q() { docker compose exec -T db psql -U racinglines racinglines -c "$1"; }
+code_of() { case "$1" in nascar) echo nascar_cup ;; motogp) echo motogp_wc ;; *) echo "$1" ;; esac; }
+ready() {            # "<events> <Kalshi links with a race>" for one sport (read-only)
+  local co; co=$(code_of "$1")
+  docker compose exec -T db psql -U racinglines racinglines -tA -F' ' -c "SELECT
+    (SELECT count(*) FROM events e JOIN seasons s ON s.id = e.season_id JOIN competitions co ON co.id = s.competition_id WHERE co.code = '$co'),
+    (SELECT count(*) FROM market_links ml JOIN competitions co ON co.id = ml.competition_id WHERE co.code = '$co' AND ml.exchange = 'kalshi' AND ml.race_id IS NOT NULL)"
+}
+sport_ready() {      # prints the preflight line; true if the sport has events and identified Kalshi links
+  local ev id; read -r ev id <<< "$(ready "$1")"
+  progress "preflight $1: ${ev:-0} events, ${id:-0} Kalshi links with a race"
+  [ "${ev:-0}" -gt 0 ] && [ "${id:-0}" -gt 0 ]
+}
+prep() {             # load a sport's results and identify its Kalshi links (writes: runs after replay's backup)
+  local S=$1
+  say "$S: results and link identity (the database had none)"
+  if [ "$S" = nascar ]; then
+    nice $R nascar fetch --years 2016-2026 --feeds race_list_basic,points-feed,weekend-feed || true
+    nice $R nascar ingest --years 2016-2026 --no-laps
+  else
+    nice $R motogp fetch --years 2016-2026 || true
+    nice $R motogp ingest --years 2016-2026
+  fi
+  nice $R markets --exchange kalshi --sport "$S" sync --year 2025 --closed
+  nice $R markets --exchange kalshi --sport "$S" sync --year 2026 --closed
+  if [ "$S" = nascar ]; then nice $R nascar link --apply --backup "$B"; fi
+  $R db changes --add "Overnight run: $S results fetched and ingested 2016-2026, Kalshi links re-synced$([ "$S" = nascar ] && echo ' and identified (nascar link --apply)'); backup $B"
+}
 say() {             # a phase starts: close the one before, log the new one
   local prev=""
   if [ -f "$PHASE_F" ]; then prev="done: $(phase_line); "; fi
@@ -140,12 +173,17 @@ replay() {
   backup replay
   START=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   for S in $SPORTS; do
+    if ! sport_ready "$S"; then
+      prep "$S"
+      if ! sport_ready "$S"; then stop "$S still has no events or no Kalshi links with a race after loading its results: skipped"; continue; fi
+    fi
     say "$S: links, tape, replay"
     nice $R markets --exchange kalshi --sport "$S" sync --year 2025 --closed
     nice $R markets --exchange kalshi --sport "$S" sync --year 2026 --closed
     nice $R markets --sport "$S" sync --year 2025 --closed
     nice $R markets --sport "$S" sync --year 2026 --closed
-    nice $R "$S" replay --years 2016-2026 --venue kalshi --tape pull --backup "$B" --require-tradeable
+    nice $R "$S" replay --years 2016-2026 --venue kalshi --tape pull --backup "$B" --require-tradeable \
+      || { stop "$S: no tradeable Kalshi market (see the log's NO MARKETS / NO TAPE / NOT TRADED lines): skipped"; continue; }
     nice $R "$S" replay --years 2016-2026 --venue polymarket --tape pull --backup "$B"
     $PY scripts/vm/replay_grid.py spikes "$S" kalshi
     $PY scripts/vm/replay_grid.py spikes "$S" polymarket || true
@@ -205,6 +243,9 @@ story() {
 say "$MODE run for $SPORTS: checks and counts"
 machine
 counts
+NOT_READY=""
+for S in $SPORTS; do if ! sport_ready "$S"; then NOT_READY="$NOT_READY $S"; fi; done
+if [ -n "$NOT_READY" ]; then progress "NOT READY:$NOT_READY (0 events or 0 Kalshi links with a race)$([ "$MODE" = dry ] || echo '; replay loads their results first')"; fi
 case "$MODE" in
   dry)
     for S in $SPORTS; do
@@ -217,8 +258,9 @@ case "$MODE" in
   f1) f1 ;;
   replay) replay ;;
   story) story ;;
-  all) f1; replay; story ;;
-  *) echo "MODE must be dry, f1, replay, story or all"; exit 1 ;;
+  sports) replay; story ;;
+  all) replay; story; f1 ;;
+  *) echo "MODE must be dry, f1, replay, story, sports or all"; exit 1 ;;
 esac
 echo "mode=$MODE sports=$SPORTS log=$LOG" > "$DONE"
 progress "done: $(phase_line); FINISHED, marker $DONE"

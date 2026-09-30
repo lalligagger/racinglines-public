@@ -26,7 +26,7 @@ A cell counts at one of three levels:
 | | Polymarket | Kalshi | OG.com |
 |---|---|---|---|
 | **F1** | **Backtested.** Taker profile A, +$1,389 (2026) and +$1,432 (2025) at 16k (PR #85) | **Backtested (maker).** Profile K. The taker replay is not usable until Kalshi candles carry bid/ask (PR #85, section 3) | **Priced.** Drivers' and constructors' champion: `og fair` printed 20 F1 rows on the VM (2026-09-29). Shown in the app only with `RACINGLINES_OG_VENUE=1`, still off on the VM. No backtest yet. **Replayed prices tonight** with PR #88's buy-all on the VM's recorded OG.com prices |
-| **NASCAR** | **0.** 36 markets priced, 0 tradeable at a $0 floor (Mac Stage 1). Diagnostic 1d pending; likely a partial listing failing the coherence check | **Backtested, one race.** 178 tradeable at $0, 56 at $50 (Mac Stage 1, **before PR #89**, so some of those prices may be dead-book 0.50 midpoints). Needs the full tape pulled after #89 and the candle fix (tonight), and the spike check | **Replayed prices tonight** (PR #88's buy-all on the 17 Cup Champion contracts). Not priced by our model: there is no season-champion model for NASCAR |
+| **NASCAR** | **0.** 36 markets priced, 0 tradeable at a $0 floor (Mac Stage 1). Diagnostic 1d pending; likely a partial listing failing the coherence check | **Backtested, one race.** 178 tradeable at $0, 56 at $50 (Mac Stage 1, **before PR #89**, so some of those prices may be dead-book 0.50 midpoints). Needs the full tape pulled after #89 and the candle fix (tonight), and the spike check | **Replayed prices tonight** (PR #88's buy-all on the 17 Cup Champion contracts). **Priced after the run** (PR #93's season forecast: `nascar season --quotes`, read-only, the champion price beside OG.com's 17 contracts and Kalshi's; an indicator, not a trading input) |
 | **MotoGP** | **0.** Never synced | **Priced, tradeable with PR #89.** 22 priced and 0 tradeable before it. With #89 (dead-book 0.50 midpoints rejected, UUID rider ids kept), the Mac's replay shows 13 races, 288 priced, 186 tradeable. The 3 races still untradeable (USA, RSM, AUT) fail real liquidity or coherence gates | **0.** OG.com lists no MotoGP that we know of (not in `exchanges/og.toml`, never probed) |
 
 **Where it stands:** the MotoGP row is zero on the VM until PR #89 is merged and deployed. With it, MotoGP × Kalshi is tradeable on the Mac. After tonight, OG.com has two cells with replayed prices (F1 and NASCAR) and one priced by our model (F1). The OG.com column is zero for backtests, but F1 is priced there, so
@@ -60,9 +60,16 @@ M1 to M4 give every row and every column at least one cell. After that, in order
 |---|---|---|
 | `dry` | nothing | cores, memory, disk; table counts; each sport's tape probe and last-race replay; **the F1 golden check** (profile A on 2026 at 4k, not saved) |
 | `f1` | sweep runs, walk-forward | backup; the broad sweep (`sweeps/overnight-vm.toml`); `search-report`; `scripts/vm/promote_16k.py` appends the top 10 plus profile A and the default settings at 16k; the 16k confirmations; `search-report` again; with `F1_EXTRAS=1` only, the F1 walk-forward and the default F1 sweeps saved (as the backfill's `full` did; off by default since the 2-vCPU resize) |
-| `replay` | links, tape, replay runs | backup; for each of `SPORTS` (default NASCAR and MotoGP together): Kalshi and Polymarket link syncs for 2025 and 2026 (closed included); tape pull and replay (Kalshi must be tradeable or it stops); the spike check; the replay saves; a read-only settings grid and its top 3 at 16k; then OG.com's read-only buy-all for F1 and NASCAR (PR #88) |
+| `replay` | links, tape, replay runs | backup; for each of `SPORTS` (default NASCAR and MotoGP together): **if the preflight finds 0 events or 0 Kalshi links with a race, it first fetches and ingests the sport's results 2016-2026, re-syncs Kalshi and (NASCAR) runs `nascar link --apply`**; Kalshi and Polymarket link syncs for 2025 and 2026 (closed included); tape pull and replay (a sport with no tradeable Kalshi market is skipped with a STOP line, the rest go on); the spike check; the replay saves; a read-only settings grid and its top 3 at 16k; then OG.com's read-only buy-all for F1 and NASCAR (PR #88) |
 | `story` | 16 sweep runs, the taker's demo backfill | backup; evidence sweeps; a gate that stops on a different pick; the taker's backfill rebuilt ([below](#demo-taker-walk-forward-story)) |
-| `all` | all three | `f1`, then `replay`, then `story`. Each starts only if the one before finished |
+| `sports` | replay and story | `replay`, then `story`: the resume after the 2026-09-30 failure (F1 already done) |
+| `all` | all three | `replay`, then `story`, then `f1` (the sports first; F1 has been backtested for days). Each starts only if the one before finished |
+
+**Preflight (every mode, first minute).** Each sport's event count and its Kalshi links with a race attached. The
+first overnight run (2026-09-30) lost its NASCAR phase to this: the VM had 13,599 NASCAR Kalshi links and no NASCAR
+results, because `nascar ingest` and `nascar link --apply` had only run on the Mac. `dry` now prints `NOT READY` for such
+a sport; `replay` loads its results and identifies its links after its backup, and skips it with a STOP line only if
+that doesn't fix it.
 
 Every writing mode backs up first and checks the dump's trailer, logs to `data/runs/logs/overnight-<mode>-<UTC>.log`,
 leaves an `overnight-<mode>.done` or `.failed` marker, adds a `data_changes` note naming the backup, and refuses to start
@@ -211,7 +218,12 @@ shows the taker's decisions with their evidence). It must be merged and deployed
 6. **Morning:** markers, log greps, the two reports (`data/runs/search/overnight-vm/report.md`,
    `data/runs/replay-grid/<sport>/grid.md`) and the spike lines pasted back to the thread, which writes the report,
    the decision-log entry and the `docs/data-changes.md` line. Resize back.
-7. **Later, each with its own go:** M3 (OG.com venue switch), M4 if MotoGP didn't join tonight (`MODE=replay SPORTS=motogp`), N1 to N5, and bucket stages 3 onward.
+7. **After the run's marker is in: the NASCAR champion forecast** (PR #93, already on the VM, no redeploy). Read-only:
+   `nascar fetch` only downloads the points feed to `data/raw/nascar/`, and `nascar season` writes nothing to the
+   database, so no backup. It fills the NASCAR × OG.com cell at the priced level:
+   `racinglines nascar fetch --years 2026 --feeds points-feed`, then
+   `RACINGLINES_NASCAR_SEASON=1 racinglines nascar season --quotes --csv data/runs/nascar-season-2026.csv`.
+8. **Later, each with its own go:** M3 (OG.com venue switch), M4 if MotoGP didn't join tonight (`MODE=replay SPORTS=motogp`), N1 to N5, and bucket stages 3 onward.
 
 ### Expected time (estimates from the cloud sweep's rate, not measured on the VM)
 
