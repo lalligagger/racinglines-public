@@ -43,6 +43,7 @@ racinglines markets --exchange og trades                  # the tape the API sti
 racinglines markets --exchange og history --start 2026-09-01T00:00     # minute prices (31 days at most per call)
 racinglines markets --exchange og books                   # one 50-level order-book snapshot per open market
 racinglines markets --exchange og fair                    # the fair-price indicator below
+racinglines markets --exchange og --sport nascar buy-all  # debug: one YES + one NO of every market (below)
 ```
 
 The API keeps only about a month of trades and minute prices, so `trades` and `history` should run at least
@@ -63,6 +64,17 @@ its fee schedule**). A market with no bid (most of OG.com's F1 books are asks on
 one-cent ask is not a tradable quote: read the call as an indicator, not a signal. No backtest sits behind it and
 none is planned for this venue. The same fair price shows beside the OG.com quote on the season board when the
 switch is on.
+
+### Debug: buy one of everything
+
+`buy-all` (read-only) takes every market the exchange lists for `--sport`, modeled or not, and buys one YES and one
+NO share at the first price the store holds for it, whatever its spread, side or depth: a minute price, a trade, a
+book's best bid and ask (their mid, or the one side that quotes) or the sync's last quote. The pair is held, settled
+when the exchange resolved the market, else marked at the last price stored, with `--cost` ($0.01) and the schema's
+fee per contract on each side. A pair loses exactly its costs and fees, so the P&L shows that each market was found,
+priced and valued; the YES and NO sides are the informative split. OG.com lists season futures only (F1 champions,
+the NASCAR Cup champion, SailGP), so this is where its cells of the sport x exchange grid come from: the race replays'
+`--buy-all` ([CLI](cli.md)) find no OG.com race markets to buy today, and OG.com lists no MotoGP. The race replay does read OG.com as a venue (`racinglines nascar replay --venue og`, and in `--venue all`), so race markets flow in as soon as OG.com lists them and they are synced. Both read every stored price whatever its spread or depth, except a stored 0.50 from an empty book; a trade at any price counts.
 
 Nothing here places an order. OG.com's private API needs FCM onboarding and signed requests, which is a separate
 step for the owner.

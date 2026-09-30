@@ -252,7 +252,7 @@ def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None, 
             f = fair[(link["token_id"], lab)]
             open_ = STG.is_open(kind, t, w.get("closes", {"race_pole": w["qual_start"]}))
             ok = liquid and f is not None and open_ and coherent.get((kind, lab), True)
-            stage = dict(label=lab, t=t, fair=f, price=price, tradeable=ok)
+            stage = dict(label=lab, t=t, fair=f, price=price, tradeable=ok, open=open_)
             if thin_depth and not liquid and price is not None and 0 < price < 1 and f is not None and open_ \
                     and coherent.get((kind, lab), True):
                 d = venue.touch_depth(link["token_id"], t)          # only the volume floor failed: is there size?
@@ -294,6 +294,12 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settin
         tr, per = RB.run_weekend(markets, p)
         out["modes"][p.mode] = RB.summarize(tr, per)
         out["trades"][p.mode] = tr
+    from racinglines.markets.strategies import buy_everything as BA
+    if BA.enabled() and params_list:           # debug, off by default: one YES and one NO of every priced market
+        p = params_list[0]
+        tr, per = BA.run_weekend(markets, cost=p.cost, taker_fee=p.taker_fee)
+        out["modes"][BA.MODE] = RB.summarize(tr, per)
+        out["trades"][BA.MODE] = tr
     # model vs market at each stage, scored on the result (every kind; pole before qualifying)
     scores = []
     for lab, cutoff, _ in stage_runs:
@@ -526,7 +532,7 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
     cal_stage, _ = CAL.table(calib, ("model", "market"), by=("kind", "stage"))
     cal_all, rel = CAL.table(calib, ("model", "market"), by=("kind",))
     totals = {}
-    for mode in (*TAKER_MODES, *MAKERS):
+    for mode in (*TAKER_MODES, *MAKERS, "buy_all"):          # buy_all: only with RACINGLINES_BUY_ALL=1
         col = f"{mode}_pnl"
         if col in weekends:
             spent = f"{mode}_notional" if mode.startswith("maker") else f"{mode}_bought"

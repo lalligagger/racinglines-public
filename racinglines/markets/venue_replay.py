@@ -10,6 +10,8 @@ read only as of each moment. Every venue gives the same four things:
     Polymarket(conn, w, start, end)          the recorded price history and trade tape (the F1 sweep reads it)
     Kalshi(conn, links, start, end)          the same for Kalshi's markets (markets/kalshi/ writes the same tables),
                                              per market ticker
+    OG(conn, links, start, end)              OG.com's (exchanges/og.toml): every stored price counts whatever its
+                                             spread or depth, except an empty book's 0.50; a flat fee per contract
     EXCHANGES                                code -> class. Each exchange declares its fee schedule (TAKER_FEE,
                                              MAKER_FEE); the sweep's maker, the disagreement log and the signal
                                              engine read the fees from here
@@ -192,7 +194,74 @@ def _read_jsonl(p):
     return [json.loads(x) for x in p.read_text().splitlines() if x.strip()] if p.exists() else []
 
 
-EXCHANGES = {v.code: v for v in (Polymarket, Kalshi)}    # code -> venue class: its fees, how its tape is read
+class OG(Kalshi):
+    """Recorded OG.com data (exchanges/og.toml; markets/exchange_driver.py stores its minute prices, tape and books in
+    the shared tables, per instrument, archived under data/archive/markets/og). Every price stored counts, whatever
+    its spread, side or depth, with one exception: a stored 0.50 is the midpoint an empty book used to produce, so it is
+    not a price unless a trade at that time says so. A trade at any price is one. The price at t is the latest of the
+    minute prices (0.50 dropped), the trades and the books' quotes (their mid, or the one side that quotes), within the
+    staleness window. Fees: a flat taker fee per contract (the schema's taker_fee_per_contract, $0.02, unverified),
+    not Kalshi's P x (1 - P) schedule; the replay adds it per share (fees())."""
+
+    code = "og"
+    TAKER_FEE = 0.0                  # no P x (1 - P) rate: OG.com charges per contract (FEE_PER_CONTRACT)
+    MAKER_FEE = 0.0
+    FAKE_MID = 0.5
+
+    def __init__(self, conn, links, start, end, group_target=None, coherence_tol=0.25, stale=STALE):
+        from racinglines.markets import store as MS
+        self.links = links
+        self.stale = stale
+        self.group_target = group_target or {}
+        self.coherence_tol = coherence_tol
+        a, b = pd.Timestamp(start).tz_localize("UTC"), pd.Timestamp(end).tz_localize("UTC")
+        root, toks = MS.root_for(self.code), links["token_id"].tolist()
+        ph = MS.read(conn, "prices", tokens=toks, start=a - stale, end=b, root=root)[["token_id", "ts", "price"]]
+        tr = MS.read(conn, "trades", tokens=toks, start=a - timedelta(hours=24), end=b, root=root)
+        bk = MS.read(conn, "books", tokens=toks, start=a - stale, end=b, root=root)
+        self.prices = {t: g for t, g in self.observed(ph, tr, bk).groupby("token_id")}
+        tr = tr.assign(usd=tr["price"] * tr["size"])[["token_id", "ts", "usd"]]
+        tr["ts"] = pd.to_datetime(tr["ts"], utc=True).dt.tz_localize(None)
+        self.trades = {t: g for t, g in tr.groupby("token_id")}
+
+    @classmethod
+    def observed(cls, prices, trades, books):
+        """(token_id, ts, price) of every price the store holds, time-ordered: minute prices other than the empty
+        book's 0.50, every trade, and each book's mid (or its one quoting side)."""
+        ph = prices[(prices["price"] - cls.FAKE_MID).abs() > 1e-9][["token_id", "ts", "price"]]
+        tp = trades[["token_id", "ts", "price"]]
+        bq = pd.DataFrame(columns=["token_id", "ts", "price"])
+        if len(books):
+            bid = books["best_bid"].where(books["best_bid"] > 0)
+            ask = books["best_ask"].where(books["best_ask"] < 1)
+            bq = books.assign(price=((bid + ask) / 2).fillna(bid).fillna(ask))[["token_id", "ts", "price"]]
+            bq = bq[bq["price"].notna()]
+        df = pd.concat([x for x in (ph, tp, bq) if len(x)], ignore_index=True) if any(len(x) for x in (ph, tp, bq)) \
+            else pd.DataFrame(columns=["token_id", "ts", "price"])
+        df["ts"] = pd.to_datetime(df["ts"], utc=True).dt.tz_localize(None)
+        df["price"] = df["price"].astype(float)
+        return df.sort_values(["token_id", "ts"], kind="stable").reset_index(drop=True)
+
+    @classmethod
+    def fee_per_contract(cls):
+        from racinglines import exchanges
+        return float(exchanges.load(cls.code)["exchange"].get("taker_fee_per_contract", 0.0))
+
+    @classmethod
+    def fees(cls, trades):
+        """Dollars of OG.com's flat taker fee on the trades (per contract bought or sold)."""
+        return float(trades["shares"].abs().sum() * cls.fee_per_contract()) if len(trades) else 0.0
+
+    @staticmethod
+    def links(conn, race_id, kinds):
+        from sqlalchemy import text
+        return pd.read_sql(text("""SELECT ml.*, a.display_name AS athlete FROM market_links ml
+                                   LEFT JOIN athletes a ON a.id = ml.athlete_id
+                                   WHERE ml.race_id = :r AND ml.prediction = ANY(:k) AND ml.exchange = 'og'
+                                   ORDER BY ml.id"""), conn, params=dict(r=race_id, k=list(kinds)))
+
+
+EXCHANGES = {v.code: v for v in (Polymarket, Kalshi, OG)}  # code -> venue class: its fees, how its tape is read
 
 
 class PrivateBook:

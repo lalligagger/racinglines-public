@@ -403,3 +403,81 @@ def fair_text(df, code, fee):
         e = lambda v: "     –  " if v is None or pd.isna(v) else f"{v:+8.2f}"          # noqa: E731
         L.append(f"{(r.event or '')[:20] + ' · ' + str(r.subject)[:12]:<34}{r.fair:7.2f}{f(r.bid)}{f(r.ask)}{e(r.edge_yes)}{e(r.edge_no)}  {r.call}")
     return "\n".join(L)
+
+
+# ----- debug: buy one of everything -----
+
+def observations(conn, code, links):
+    """{token: [(ts, price, source)]}: every price the store holds for the links, whatever its spread or depth: minute
+    prices, trade prices, a book's best bid and ask (their mid when both quote, else the side that does) and the sync's
+    last quote (dated by synced_at). An empty book's 0.50 midpoint is not a price (venue_replay.OG.observed); a trade at
+    any price is."""
+    from racinglines.markets import store as MS
+    from racinglines.markets.venue_replay import OG
+    toks, root = links["token_id"].tolist(), MS.root_for(code)
+    out = {t: [] for t in toks}
+    ph, tr, bk = (MS.read(conn, name, tokens=toks, root=root) for name in ("prices", "trades", "books"))
+    for name, df in (("minute price", OG.observed(ph, tr.iloc[:0], bk.iloc[:0])), ("trade", OG.observed(ph.iloc[:0], tr, bk.iloc[:0])),
+                     ("book", OG.observed(ph.iloc[:0], tr.iloc[:0], bk))):
+        for t, ts, p in zip(df["token_id"], df["ts"], df["price"]):
+            out[t].append((pd.Timestamp(ts, tz="UTC"), float(p), name))
+    for lk in links.to_dict("records"):
+        b, a = (lk.get(k) for k in ("last_bid", "last_ask"))
+        empty = all(v is None or pd.isna(v) for v in (b, a))
+        p = next((lk[k] for k in ("last_price", "last_bid", "last_ask") if lk.get(k) is not None and not pd.isna(lk[k])), None)
+        if p is not None and not (empty and abs(p - OG.FAKE_MID) < 1e-9):
+            ts = lk.get("synced_at")
+            out[lk["token_id"]].append((None if ts is None or pd.isna(ts) else pd.Timestamp(ts), float(p), "sync quote"))
+    return out
+
+
+def buy_all(conn, code, sport="f1", cost=0.01, fee=None):
+    """The debug "buy one of everything" over every market the exchange lists for the sport (modeled or not): one YES
+    and one NO share at the first price the store holds for it (markets/strategies/buy_everything.py), held; settled
+    when the exchange resolved it, else marked at the last price held. fee: $ per contract (default the schema's
+    taker_fee_per_contract). Read-only. -> one row per market."""
+    from racinglines import exchanges, sports
+    from racinglines.markets.strategies import buy_everything as BA
+    fee = exchanges.load(code)["exchange"].get("taker_fee_per_contract", 0.0) if fee is None else fee
+    links = pd.read_sql(text("""SELECT l.* FROM market_links l JOIN competitions co ON co.id = l.competition_id
+                                WHERE l.exchange = :x AND co.code = :c ORDER BY l.condition_id, l.token_id"""), conn,
+                        params=dict(x=code, c=sports.load(sport)["competition"]["code"]))
+    if not len(links):
+        return pd.DataFrame()
+    obs = observations(conn, code, links)
+    rows = []
+    for lk in links.to_dict("records"):
+        o = obs[lk["token_id"]]
+        first = BA.first_price(o)
+        dated = sorted((x for x in o if x[0] is not None), key=lambda x: x[0])
+        mark = (dated or o or [(None, None, None)])[-1][1]
+        res = lk.get("resolved_yes")
+        outcome = None if res is None or pd.isna(res) else bool(res)
+        row = dict(token=lk["token_id"], event=lk["event_title"], subject=lk["group_title"] or lk["outcome"],
+                   kind=lk["prediction"], prices=len(o), source=None, entry_ts=None, entry=None, mark=mark,
+                   outcome=outcome, status="no price", pnl_yes=None, pnl_no=None, pnl=None)
+        if first is not None:
+            h = BA.hold_pair(first[1], outcome, mark, cost, fee)
+            row.update(source=first[2], entry_ts=first[0], entry=first[1], status=h["status"], pnl_yes=h["pnl_yes"],
+                       pnl_no=h["pnl_no"], pnl=h["pnl"])
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def buy_all_text(df, code, sport, cost, fee):
+    if not len(df):
+        return f"{code} {sport}: no markets synced (racinglines markets --exchange {code} --sport {sport} sync)."
+    b = df[df["entry"].notna()]
+    lines = [f"{code} {sport} DEBUG buy_all: {len(df)} markets, {df['prices'].gt(0).sum()} with a price, {len(b)} bought "
+             f"(one YES + one NO each at the first price held, ${cost:g} cost and ${fee:g} fee per contract). "
+             "A pair loses its costs and fees by construction (plumbing check, not an edge)."]
+    for st in ("settled", "marked", "open"):
+        g = b[b["status"] == st]
+        if len(g):
+            lines.append(f"  {st:8} {len(g):4} markets  P&L {g['pnl'].fillna(0).sum():+9.2f}  YES side "
+                         f"{g['pnl_yes'].fillna(0).sum():+9.2f}  NO side {g['pnl_no'].fillna(0).sum():+9.2f}")
+    if len(b):
+        lines.append("  first price from: " + ", ".join(f"{k} {v}" for k, v in b["source"].value_counts().items()))
+    if len(df) > len(b):
+        lines.append(f"  NO PRICE: {len(df) - len(b)} markets have no price in the store (pull trades / history / books).")
+    return "\n".join(lines)

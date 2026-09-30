@@ -200,10 +200,10 @@ def test_venue_fees_come_from_the_exchange_classes():
     from racinglines.markets.strategies import maker_replay as R
     from racinglines.markets.venue_replay import EXCHANGES
     from racinglines.pipelines import weekend_sweep as WS
-    assert set(EXCHANGES) == {"polymarket", "kalshi"}
+    assert set(EXCHANGES) == {"polymarket", "kalshi", "og"}                  # og: the replay venue (flat fee per contract)
     assert WS.maker_venue_opts("polymarket") == {} and WS.maker_venue_opts("kalshi") == dict(maker_fee=0.0175)
     assert R.KALSHI_MAKER_FEE == EXCHANGES["kalshi"].MAKER_FEE
-    assert DG.TAKER_FEE == {"polymarket": 0.0, "kalshi": 0.07}
+    assert DG.TAKER_FEE == {"polymarket": 0.0, "kalshi": 0.07, "og": 0.0}
 
 
 def test_history_is_built_only_when_a_stage_needs_pricing(monkeypatch, tmp_path):

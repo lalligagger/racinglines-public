@@ -353,3 +353,33 @@ def test_sync_creates_a_sports_reference_rows_when_the_database_was_never_seeded
         again, cat2 = ensure_competition(s, "sailgp")             # idempotent: the same rows, no duplicates
         assert (again.id, cat2.id) == (comp.id, cat.id)
         assert len(s.scalars(select(m.Competition).filter_by(code="sailgp_champ")).all()) == 1
+
+
+# ----- debug: buy one of everything -----
+
+def test_buy_all_buys_every_market_at_the_first_price_stored_whatever_its_spread(test_engine):
+    from racinglines.db.config import get_session
+    url = _seed(test_engine)
+    with test_engine.begin() as c:
+        c.execute(text("DELETE FROM market_links WHERE exchange = 'og'"))
+        c.execute(text("DELETE FROM market_trades WHERE token_id LIKE 'NX.F.OPT.%'"))
+        c.execute(text("DELETE FROM market_price_history WHERE token_id LIKE 'NX.F.OPT.%'"))
+        c.execute(text("DELETE FROM market_book_snapshots WHERE token_id LIKE 'NX.F.OPT.%'"))
+    with D.Client("og", transport=transport()) as kc, test_engine.connect() as c, get_session(url) as s:
+        D.sync(s, c, "og", "f1", client=kc, resolver=FakeResolver())
+    with test_engine.connect() as c:
+        quoted = D.buy_all(c, "og", "f1", cost=0.01, fee=0.02)          # only the sync's quotes so far
+    assert len(quoted) == 12 and set(quoted["kind"]) >= {"champion", "unmodeled"}   # modeled or not
+    b = quoted[quoted["entry"].notna()]
+    assert len(b) and set(b["source"]) == {"sync quote"} and (b["status"] == "marked").all()
+    assert b["pnl"].to_numpy() == pytest.approx([-0.06] * len(b))      # a pair loses its costs and fees
+    with D.Client("og", transport=transport()) as kc, test_engine.connect() as c, get_session(url) as s:
+        D.fetch_trades(s, c, "og", sport="f1", client=kc)
+        D.snapshot_books(s, c, "og", sport="f1", client=kc)
+    with test_engine.connect() as c:
+        df = D.buy_all(c, "og", "f1", cost=0.01, fee=0.02)
+        txt = D.buy_all_text(df, "og", "f1", 0.01, 0.02)
+    assert df["entry"].notna().sum() >= len(b) and "trade" in set(df["source"].dropna())
+    assert df.loc[df["entry"].notna(), "entry"].between(0, 1, inclusive="neither").all()
+    assert "DEBUG buy_all" in txt and "marked" in txt
+    assert D.buy_all_text(pd.DataFrame(), "og", "sailgp", 0.01, 0.02).startswith("og sailgp: no markets")

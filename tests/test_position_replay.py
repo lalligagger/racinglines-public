@@ -332,3 +332,91 @@ def test_no_tape_says_so_then_a_pull_makes_the_race_tradeable(world, test_engine
         finally:
             s.rollback()
             _wipe(s)
+
+
+def test_buy_all_is_off_by_default_and_adds_its_mode_without_changing_the_taker(world, test_engine, monkeypatch, tmp_path):
+    monkeypatch.delenv("RACINGLINES_BUY_ALL", raising=False)
+    with world() as s:
+        rs = P.races(s.connection(), P.spec("nascar"), [2026])
+        race = rs.iloc[-1]
+        res = P.race_results(s.connection(), race.race_id)
+        top = res.sort_values("position")["athlete_id"].astype(int).tolist()
+        prices = {top[0]: 0.05, top[1]: 0.40, top[2]: 0.25, top[-1]: 0.30}
+        _wipe(s)
+        _seed(s, race, res, prices)
+        try:
+            kw = dict(venue="kalshi", events=["latest"], echo=lambda *a: None)
+            base = P.run(test_engine, "nascar", [2026], **kw)
+            assert "buy_all" not in base["totals"] and "buy_all_trades" not in base and "buy_all" not in base["params"]
+            ba = P.run(test_engine, "nascar", [2026], buy_all=True, **kw)
+            assert {k: ba["totals"][k] for k in P.TAKER_MODES} == base["totals"]    # the taker's modes are unchanged
+            assert ba["tape"]["bought"] == 4 and len(ba["buy_all_trades"]) == 8
+            t = ba["totals"]["buy_all"]
+            assert t["pnl"] == pytest.approx(-4 * 2 * 0.01) and t["fees"] > 0 and t["net"] < t["pnl"]
+            assert set(ba["buy_all_by_side"]["side"]) == {"YES", "NO"}
+            assert "DEBUG buy_all" in P.format_report(ba)
+            P.write(ba, tmp_path / "ba")
+            assert (tmp_path / "ba" / "buy_all_trades.csv").is_file()
+            thin = P.run(test_engine, "nascar", [2026], buy_all=True, min_volume_24h=1e9, **kw)   # nothing passes the floor
+            text_ = P.format_report(thin)
+            assert thin["tape"]["tradeable"] == 0 and not P.traded(thin)
+            assert "buy_all" in text_ and "NOT TRADED by the taker" in text_ and "update " not in text_
+            monkeypatch.setenv("RACINGLINES_BUY_ALL", "1")
+            assert "buy_all" in P.run(test_engine, "nascar", [2026], **kw)["totals"]
+        finally:
+            s.rollback()
+            _wipe(s)
+
+
+@pytest.mark.quick
+def test_og_counts_every_stored_price_except_an_empty_books_midpoint():
+    t0 = pd.Timestamp("2026-09-26 12:00", tz="UTC")
+    ph = pd.DataFrame(dict(token_id=["a", "a", "b"], ts=[t0, t0 + timedelta(hours=1), t0], price=[0.5, 0.04, 0.5]))
+    tr = pd.DataFrame(dict(token_id=["b"], ts=[t0 + timedelta(hours=2)], price=[0.5], size=[3.0]))
+    bk = pd.DataFrame(dict(token_id=["c", "d", "e"], ts=[t0] * 3, best_bid=[None, 0.2, 0.0], best_ask=[0.03, 0.4, 1.0]))
+    got = VR.OG.observed(ph, tr, bk)
+    rows = {(k, round(float(p), 6)) for k, p in zip(got["token_id"], got["price"])}
+    assert rows == {("a", 0.04), ("b", 0.5), ("c", 0.03), ("d", 0.3)}   # e: an empty book, no price
+    assert VR.EXCHANGES["og"] is VR.OG and VR.OG.fee_per_contract() == pytest.approx(0.02)
+    assert VR.OG.fees(pd.DataFrame(dict(shares=[2.0, -1.0]))) == pytest.approx(0.06)
+    assert P.replay_venues("nascar") == ("kalshi", "polymarket", "og") and P.replay_venues("motogp") == ("kalshi", "polymarket")
+
+
+def test_a_nascar_race_replays_on_og_from_whatever_prices_are_stored(world, test_engine):
+    from racinglines.db import models as m
+    from racinglines.markets.kalshi import sync as KS
+    with world() as s:
+        rs = P.races(s.connection(), P.spec("nascar"), [2026])
+        race = rs.iloc[-1]
+        res = P.race_results(s.connection(), race.race_id)
+        top = res.sort_values("position")["athlete_id"].astype(int).tolist()
+        comp, cat = KS.competition(s, "nascar")
+        day = pd.Timestamp(race.start)
+        toks = {top[0]: "OGTEST-1", top[1]: "OGTEST-2", top[2]: "OGTEST-3"}
+        wipe = lambda: [s.execute(text(f"DELETE FROM {t} WHERE token_id LIKE 'OGTEST-%'"))  # noqa: E731
+                        for t in ("market_price_history", "market_trades", "market_book_snapshots", "market_links")]
+        wipe()
+        s.commit()
+        for a, tok in toks.items():
+            s.add(m.MarketLink(competition_id=comp.id, category_id=cat.id, exchange="og", token_id=tok, market_slug=tok,
+                               question="Race winner", condition_id="OGTEST", outcome=str(a), group_title=str(a),
+                               prediction="race_win", athlete_id=a, race_id=int(race.race_id),
+                               params=dict(kind="race_win", season=2026)))
+        at = lambda h: (day + pd.Timedelta(hours=h)).tz_localize("UTC").to_pydatetime()  # noqa: E731
+        s.execute(text("INSERT INTO market_price_history (token_id, ts, price) VALUES ('OGTEST-1', :t, 0.03)"), dict(t=at(-25)))
+        s.execute(text("INSERT INTO market_price_history (token_id, ts, price) VALUES ('OGTEST-2', :t, 0.5)"), dict(t=at(-25)))
+        s.execute(text("""INSERT INTO market_trades (token_id, condition_id, outcome_index, ts, side, price, size, tx_hash, wallet)
+                          VALUES ('OGTEST-3', 'OGTEST', 0, :t, 'BUY', 0.6, 2, 'ogt1', '')"""), dict(t=at(-26)))
+        s.commit()
+        try:
+            out = P.run(test_engine, "nascar", [2026], venue="og", events=["latest"], echo=lambda *a: None, buy_all=True)
+            r = out["races"].iloc[0]
+            assert r["markets"] == 3 and r["priced"] == 2                   # OGTEST-2 holds only an empty book's 0.50
+            bought = set(out["buy_all_trades"]["key"])
+            assert bought == {"OGTEST-1", "OGTEST-3"}
+            assert out["totals"]["buy_all"]["fees"] == pytest.approx(4 * 0.02)          # flat, per contract
+            assert "og" in P.format_report(out)
+        finally:
+            s.rollback()
+            wipe()
+            s.commit()

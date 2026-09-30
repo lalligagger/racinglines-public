@@ -2,7 +2,9 @@
 `racinglines nascar replay` / `racinglines motogp replay`: the taker replay of a result-only sport against an
 exchange's recorded prices (racinglines/pipelines/position_replay.py). Read-only unless --save.
 
-    --venue all            the default: Kalshi then Polymarket (the sport's [markets] venues), one report each
+    --venue all            the default: Kalshi then Polymarket (the sport's [markets] venues), then OG.com where
+                           exchanges/og.toml lists the sport, one report each. OG.com's stored prices count whatever
+                           their spread or depth, except an empty book's 0.50 (markets/venue_replay.py OG)
     --save --backup FILE   also store one as-of model run per race (model_runs + race_predictions + prediction records
                            and sims; records are on for this command unless RACINGLINES_PREDICTION_RECORDS=0); FILE is
                            the database dump taken for this step within the last 24 hours. Logged in data_changes with
@@ -14,6 +16,9 @@ exchange's recorded prices (racinglines/pipelines/position_replay.py). Read-only
                            first store the tape the replay reads for the selected races (their markets' trades and
                            hourly prices over each race's window, from 2 days before its first stage), then replay. Logged in data_changes.
     --require-tradeable    exit 1 unless some market was tradeable on some venue (the spot check's pass).
+    --buy-all              debug: also buy one YES and one NO share of every market open and priced at a stage, with
+                           no edge, volume or coherence filter (markets/strategies/buy_everything.py; off by default,
+                           or RACINGLINES_BUY_ALL=1). Reported as the mode buy_all; the taker's modes are unchanged.
 
 A race with markets but no stored price says NO TAPE, and a venue with nothing tradeable prints NOT TRADED instead of
 P&L lines.
@@ -28,7 +33,7 @@ def add_parser(sub, sport):
     p = sub.add_parser("replay", help=f"Taker replay of {sport} races against an exchange's recorded prices "
                                       "(read-only unless --save).")
     p.add_argument("--years", default="2025-2026", help="e.g. 2026, 2025-2026 or 2024,2026.")
-    p.add_argument("--venue", default="all", choices=["all", "kalshi", "polymarket"],
+    p.add_argument("--venue", default="all", choices=["all", "kalshi", "polymarket", "og"],
                    help="all (the default): every exchange the sport lists on, one report each.")
     p.add_argument("--events", default=None, help="Only these event keys, comma list, or 'latest' (the last race of "
                                                   "--years): a spot check. The model still learns from earlier races.")
@@ -49,6 +54,8 @@ def add_parser(sub, sport):
                         "races' trades and prices first (needs --backup), then replay.")
     p.add_argument("--require-tradeable", action="store_true",
                    help="Exit 1 unless some market was tradeable on some venue.")
+    p.add_argument("--buy-all", action="store_true",
+                   help="Debug: also buy one YES and one NO of every priced, open market, no filters (mode buy_all).")
     return p
 
 
@@ -85,7 +92,7 @@ def run(args, sport, years):
     taker = RB.TakerParams(**over)
     kinds = [k.strip() for k in args.kinds.split(",")] if args.kinds else None
     engine = get_engine(args.db)
-    venues = [v for v in ("kalshi", "polymarket") if v in P.venues(sport)] if args.venue == "all" else [args.venue]
+    venues = list(P.replay_venues(sport)) if args.venue == "all" else [args.venue]
     events = args.events.split(",") if args.events else None
     if args.tape:
         for venue in venues:
@@ -107,7 +114,8 @@ def run(args, sport, years):
         out = P.run(engine, sport, years, venue=venue, taker=taker, kinds=kinds, data=data,
                     events=events,
                     min_volume_24h=P.MIN_VOLUME_24H if args.min_volume is None else args.min_volume,
-                    model_settings={"sims": args.sims} if args.sims else None, save=save if i == 0 else None)
+                    model_settings={"sims": args.sims} if args.sims else None, save=save if i == 0 else None,
+                    buy_all=True if args.buy_all else None)
         data = out.pop("data")
         traded = traded or P.traded(out)
         print(P.format_report(out))

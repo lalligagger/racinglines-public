@@ -31,6 +31,9 @@ Exchanges defined as schemas (--exchange og; exchanges/<code>.toml, markets/exch
     history    [--events SYMBOL …] --start [--end]       minute prices (clipped to what the exchange keeps)
     books      [--events SYMBOL …]                       one order-book snapshot per open market
     fair       the model's fair price beside the quote, net of the taker fee: a simple indicator, no trades
+    buy-all    debug, read-only: one YES and one NO of every market (modeled or not) at the first price stored
+               (minute price, trade, book side or the sync's quote, whatever the spread or depth), held; P&L settled
+               when resolved, else marked at the last price stored [--cost 0.01] [--fee F] [--out FILE.csv]
 
 --sport names the sport (default f1): the tape-only sports (nascar, motogp, indycar; sports/<code>.toml
 [markets.kalshi] / [markets.polymarket]) are synced only when named, every link unmodeled, under their own
@@ -239,6 +242,11 @@ def schema_exchange(code, db, argv, sport="f1"):
             p.add_argument("--start", required=True, help="UTC start, e.g. 2026-09-01T00:00 (clipped to what the exchange keeps)")
             p.add_argument("--end", default=None, help="UTC end (default now)")
     sub.add_parser("fair")
+    p = sub.add_parser("buy-all", help="Debug, read-only: one YES and one NO of every market at the first price stored, "
+                                       "held; P&L settled or marked (markets/strategies/buy_everything.py).")
+    p.add_argument("--cost", type=float, default=0.01, help="$ per contract on each side (default 0.01).")
+    p.add_argument("--fee", type=float, default=None, help="$ taker fee per contract (default the schema's).")
+    p.add_argument("--out", default=None, help="Also write the per-market rows to this CSV.")
     args = ap.parse_args(argv)
     from racinglines.db.config import get_engine, get_session
     from racinglines.markets import exchange_driver as D
@@ -251,6 +259,13 @@ def schema_exchange(code, db, argv, sport="f1"):
             print(f"{D.fetch_history(s, c, code, args.start, args.end, sport=sport, events=args.events)} price rows stored")
         elif args.cmd == "books":
             print(f"{D.snapshot_books(s, c, code, sport=sport, events=args.events)} book snapshots stored")
+        elif args.cmd == "buy-all":
+            fee = exchanges.load(code)["exchange"].get("taker_fee_per_contract", 0.0) if args.fee is None else args.fee
+            df = D.buy_all(c, code, sport, cost=args.cost, fee=fee)
+            print(D.buy_all_text(df, code, sport, args.cost, fee))
+            if args.out:
+                df.to_csv(args.out, index=False)
+                print(f"Wrote {args.out}")
         else:
             print(D.fair_text(D.fair_report(c, code, sport), code, exchanges.load(code)["exchange"].get("taker_fee_per_contract", 0.0)))
     return 0
