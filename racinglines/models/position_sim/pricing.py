@@ -36,6 +36,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from racinglines.models import outcomes as O
 from racinglines.models.position_sim import model as M
 from racinglines.core.stats import brier, ranks
 
@@ -473,6 +474,10 @@ def forecast(meas, hist, year, cutoff=None, n_sims=10000, seed=42, schedule=None
             per_event.append(dict(round=ev.round, name=ev.name, official=ev.official, location=ev.location, venue=venue,
                                   date=ev.date, sprint=bool(ev.sprint), grid_known=ex["audit"]["grid"] == "qualifying order",
                                   track=tf, summary=summ))
+            if records_enabled():         # prediction records: keep the event's simulations for save_forecast
+                from racinglines.core import stages as STG
+                per_event[-1]["outcome"] = dict(sims=O.from_position_sim(ex["entrants"], ex["sim"]),
+                                                stage=STG.spec("f1")["pre_label"], cutoff=cutoff, archive=True)
 
     rank = ranks(-(total + rng.random(total.shape) * 1e-3))
     ahead = (rank[:, :, None] < rank[:, None, :]).mean(0)
@@ -511,7 +516,7 @@ def save_forecast(engine_url, year, per_event, standings, params, metrics, kind=
     from racinglines.db.ingest import _upsert, resolve_venue
     from racinglines.db.queries import save_model_run
 
-    preds = []
+    preds, event_ids = [], {}
     with get_session(engine_url) as s:
         comp = s.scalars(select(m.Competition).filter_by(code="f1_wdc")).one()
         cat = s.scalars(select(m.Category).filter_by(competition_id=comp.id, code="DRV")).one()
@@ -526,6 +531,7 @@ def save_forecast(engine_url, year, per_event, standings, params, metrics, kind=
                                 status="scheduled")
                 s.add(event)
                 s.flush()
+            event_ids[key] = event.id
             race = _upsert(s, m.Race, dict(event_id=event.id, category_id=cat.id))
             if race.format is None:
                 race.format = dict(kind="f1", sprint=ev["sprint"], event_name=ev["name"])
@@ -541,7 +547,33 @@ def save_forecast(engine_url, year, per_event, standings, params, metrics, kind=
             data_through=_date.today(), params=params, metrics=metrics,
             race_predictions=pd.concat(preds, ignore_index=True) if preds else None,
             standings=standings.assign(rider_id=lambda d: "ath:" + d["athlete_id"].astype(str)) if standings is not None else None)
+    if records_enabled():
+        _write_records(run_id, year, per_event, event_ids)
     return run_id
+
+
+def records_enabled():
+    from racinglines.db import records as REC
+    return REC.enabled()
+
+
+def _write_records(run_id, year, per_event, event_ids):
+    """Prediction records beside race_predictions (racinglines/db/records.py): per event that kept its
+    simulations. Only forecasts and scenarios archive the sims (D3); a stage (diagnostic) run stays light."""
+    from racinglines.db import records as REC
+    frames, archive = [], {}
+    for ev in per_event:
+        oc = ev.get("outcome")
+        if not oc:
+            continue
+        key = f"{year}-{ev['round']:02d}"
+        frames.append(oc["sims"].to_records(run_id, "f1", "f1_sector_sim", year, event_ids.get(key), key, oc["stage"],
+                                            oc["cutoff"]))
+        if oc.get("archive"):
+            archive[key] = oc["sims"]
+    df = REC.concat(frames)
+    if df is not None:
+        REC.write(run_id, df, sims=archive or None)
 
 
 def save_diagnostic(engine_url, event_key, cutoff, summ, ex, sims, **extra_params):
@@ -554,4 +586,7 @@ def save_diagnostic(engine_url, event_key, cutoff, summ, ex, sims, **extra_param
                    race_constructor_top={event_key: ex["constructor_top"]})
     per_event = [dict(round=rnd, name=None, official=None, location=None, date=None, sprint=False, summary=summ,
                       target=f"asof:{event_key}")]
+    if records_enabled():             # stage runs write records but never archive the sims (D3)
+        per_event[0]["outcome"] = dict(sims=O.from_position_sim(ex["entrants"], ex["sim"]), archive=False,
+                                       stage=extra_params.get("sweep_stage", "asof"), cutoff=cutoff)
     return save_forecast(engine_url, year, per_event, None, params, metrics, kind="diagnostic")
