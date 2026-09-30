@@ -16,7 +16,7 @@
 
 [search]
 name = "overnight-vm"
-parallel = 3          # 3 of the resized VM's 4 vCPUs; the 4th for Postgres, the web app and MCP
+parallel = 2          # the VM runs as n2-standard-2 tonight (2 vCPU, 8 GB); runs are niced, so the web app, MCP and Postgres still get CPU
 grid = 8
 history_cache = true
 hours = 3.0

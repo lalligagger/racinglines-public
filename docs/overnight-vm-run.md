@@ -59,7 +59,7 @@ M1 to M4 give every row and every column at least one cell. After that, in order
 | Mode | Writes | What |
 |---|---|---|
 | `dry` | nothing | cores, memory, disk; table counts; each sport's tape probe and last-race replay; **the F1 golden check** (profile A on 2026 at 4k, not saved) |
-| `f1` | sweep runs, walk-forward | backup; the broad sweep (`sweeps/overnight-vm.toml`); `search-report`; `scripts/vm/promote_16k.py` appends the top 10 plus profile A and the default settings at 16k; the 16k confirmations; `search-report` again; the F1 walk-forward and the default F1 sweeps saved (as the backfill's `full` did) |
+| `f1` | sweep runs, walk-forward | backup; the broad sweep (`sweeps/overnight-vm.toml`); `search-report`; `scripts/vm/promote_16k.py` appends the top 10 plus profile A and the default settings at 16k; the 16k confirmations; `search-report` again; with `F1_EXTRAS=1` only, the F1 walk-forward and the default F1 sweeps saved (as the backfill's `full` did; off by default since the 2-vCPU resize) |
 | `replay` | links, tape, replay runs | backup; for each of `SPORTS` (default NASCAR and MotoGP together): Kalshi and Polymarket link syncs for 2025 and 2026 (closed included); tape pull and replay (Kalshi must be tradeable or it stops); the spike check; the replay saves; a read-only settings grid and its top 3 at 16k; then OG.com's read-only buy-all for F1 and NASCAR (PR #88) |
 | `story` | 16 sweep runs, the taker's demo backfill | backup; evidence sweeps; a gate that stops on a different pick; the taker's backfill rebuilt ([below](#demo-taker-walk-forward-story)) |
 | `all` | all three | `f1`, then `replay`, then `story`. Each starts only if the one before finished |
@@ -175,10 +175,13 @@ shows the taker's decisions with their evidence). It must be merged and deployed
 2. **The Mac spot check** of the new pieces: the promotion, the grid ranking and the spike check (owner rule: a Mac
    stop before a VM run of new backtest logic).
 3. **Resize the VM for the night.** It is an e2-small: 2 shared vCPUs (about 1 sustained) and 2 GB of memory, which
-   also runs Postgres, the web app and MCP. Three parallel sweeps would run out of memory, and on one core the run
-   would take well past morning. An e2-standard-4 (4 vCPUs, 16 GB) costs about $0.13 an hour. The resize needs a stop
+   also runs Postgres, the web app and MCP. Parallel sweeps would run out of memory, and on one core the run
+   would take well past morning. The plan asked for an e2-standard-4, but us-west1-b had no capacity for it
+   (`ZONE_RESOURCE_POOL_EXHAUSTED`, 2026-09-30), so tonight's VM is an **n2-standard-2** (2 dedicated vCPUs, 8 GB).
+   The F1 queues run 2 at a time (`parallel = 2`): 8 GB carries two sweeps with the history cache and Postgres, a
+   third would only queue for the same 2 vCPUs, and every run is niced so the web app and MCP stay responsive. The resize needs a stop
    and a start: racinglines.bet is down for a minute or two, the Cloudflare tunnel reconnects on its own (it's outbound
-   only), and the services start on boot. Resize back in the morning the same way. If the owner would rather not resize,
+   only), and the services start on boot. Resize back to the original **e2-small** the same way once the run's marker is in. If the owner would rather not resize,
    run `MODE=f1` on the e2-small with `parallel = 1` and `hours = 3`: then only the golden and model groups finish.
 4. **Merge in this order, then deploy main** (`vm.sh deploy`): **#89**, **#90** (the candle fix), **#88** (OG.com
    buy-all), **#87** (the taker story), then this PR. Both Kalshi fixes must be deployed before any tape pull or replay
@@ -212,18 +215,25 @@ shows the taker's decisions with their evidence). It must be merged and deployed
 
 ### Expected time (estimates from the cloud sweep's rate, not measured on the VM)
 
-| Piece | Runs | Time on an e2-standard-4 |
+| Piece | Runs | Time on the n2-standard-2 (2 vCPU) |
 |---|---:|---:|
-| Dry run, including the golden check | 1 sweep | 15 to 40 min |
-| F1 broad | 106 jobs, 3 at a time | 1 to 2 h (the cloud did 212 jobs in about 1 h on 4 cores) |
-| F1 16k | up to 24 jobs at 4× the cost | 0.5 to 1.5 h |
-| F1 walk-forward and default sweeps | 5 | about 1 h |
-| NASCAR links and tape | several thousand Kalshi markets at 4 requests/s | 1 to 3 h |
-| NASCAR replay saves | about 360 runs | under 1 h |
-| NASCAR grid and 16k | 16 + 6 | capped at 3 h, plus the 16k runs |
-| Demo taker story | 16 evidence sweeps, then about 38 weekends replayed | 30 min to 1.5 h |
+| Dry run, including the golden check | 1 sweep | 30 to 80 min |
+| F1 broad | 106 jobs, 2 at a time | 2 to 4 h, **capped at 3 h** (+20 min grace): about 75 to 100 jobs finish, the cross group is cut first |
+| F1 16k | up to 24 jobs at 4× the cost | 1 to 3 h |
+| F1 walk-forward and default sweeps | 5 | about 2 h, **off by default** (`F1_EXTRAS=1`) |
+| NASCAR and MotoGP links and tape | several thousand Kalshi markets at 4 requests/s | 1 to 3 h (network-bound, unchanged by the resize) |
+| Replay saves | about 360 runs per sport | 1 to 2 h |
+| Settings grid and 16k | 16 + 6 per sport | capped at 3 h, plus the 16k runs |
+| Demo taker story | 16 evidence sweeps, then about 38 weekends replayed | 1 to 3 h |
 
-The total is about 5 to 10 hours, so start it early in the evening.
+The total is about 8 to 16 hours. Started around 01:00 PDT, F1 is done by morning and the replay and story phases
+finish by early afternoon, well before round 16's book opens (Thu 1 Oct 20:30 PDT). The progress lines' "about N min
+left" comes from each phase's own measured rate, so it adjusts to the smaller VM by itself.
+
+**If it has to be shorter, cut in this order:** (1) the F1 extras, already off (saves about 2 h; run them any later
+day with `MODE=f1 F1_EXTRAS=1`, which skips the search jobs already finished); (2) `GRID_HOURS=1` (whole hours; saves up to
+2 h per sport); (3) `SPORTS=nascar` (saves MotoGP's links, tape, saves and grid, about 2 to 4 h, and leaves its row
+for a later `MODE=replay SPORTS=motogp`). The 16k top 10 stays: it feeds the Pro list.
 
 ## Rollback
 
@@ -233,7 +243,7 @@ The total is about 5 to 10 hours, so start it early in the evening.
 - **Links and tape:** additive upserts of exchange data, the kind the recorder writes; harmless to keep.
 - **Last resort:** restore `racinglines-before-overnight-f1-…` or `…-replay-…`. A restore also drops anything written
   since, so ask in the thread first.
-- **The resize:** stop, set the machine type back to e2-small, start.
+- **The resize:** stop, set the machine type back to e2-small (from tonight's n2-standard-2), start.
 
 ## What this plan doesn't cover
 

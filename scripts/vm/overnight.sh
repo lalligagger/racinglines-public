@@ -27,6 +27,7 @@ MODE=${MODE:-dry}
 SPORTS=${SPORTS:-nascar motogp}
 TOP=${TOP:-10}
 GRID_HOURS=${GRID_HOURS:-3}
+F1_EXTRAS=${F1_EXTRAS:-0}   # 1 also saves the F1 walk-forward and 4 default sweeps (about 2 h on 2 vCPU; not on the 3x3 path)
 LOGS=data/runs/logs
 mkdir -p "$LOGS" data/backups/db
 UTC=$(date -u +%Y%m%dT%H%M%SZ)
@@ -90,7 +91,7 @@ fi
 
 machine() {
   echo "cores $(nproc), memory $(free -g | awk '/^Mem:/ {print $2}') GB, free disk $(df -BG --output=avail . | tail -1 | tr -d ' ')"
-  if [ "$(nproc)" -lt 4 ]; then echo "WARNING: fewer than 4 cores: the F1 search runs 3 at once and will be slow (plan: resize first)"; fi
+  if [ "$(nproc)" -lt 2 ] || [ "$(free -g | awk '/^Mem:/ {print $2}')" -lt 6 ]; then echo "WARNING: under 2 cores or 6 GB: the F1 search runs 2 at once and will be slow or run out of memory (plan: resize first)"; fi
   if [ "$(df -BG --output=avail . | tail -1 | tr -dc 0-9)" -lt 5 ]; then echo "less than 5 GB free disk: not starting"; return 1; fi
 }
 counts() {
@@ -120,14 +121,18 @@ f1() {
   nice $R f1 search-report "$QUEUE"
   cp "$QUEUE" data/runs/search/overnight-vm/queue-promoted.toml
   git checkout -- "$QUEUE"                         # keep the checkout clean for the next vm.sh deploy
-  say "F1 walk-forward and default sweeps, saved"
-  nice $R backtest walk-forward f1 --save
-  nice $R f1 sweep --year 2025 --no-fetch --save --reliability
-  nice $R f1 sweep --year 2026 --no-fetch --save --reliability
-  nice $R f1 sweep --year 2025 --no-fetch --venue kalshi --save --reliability
-  nice $R f1 sweep --year 2026 --no-fetch --venue kalshi --save --reliability
+  EXTRAS="not run (F1_EXTRAS=0)"
+  if [ "$F1_EXTRAS" = 1 ]; then
+    say "F1 walk-forward and default sweeps, saved"
+    nice $R backtest walk-forward f1 --save
+    nice $R f1 sweep --year 2025 --no-fetch --save --reliability
+    nice $R f1 sweep --year 2026 --no-fetch --save --reliability
+    nice $R f1 sweep --year 2025 --no-fetch --venue kalshi --save --reliability
+    nice $R f1 sweep --year 2026 --no-fetch --venue kalshi --save --reliability
+    EXTRAS="saved"
+  fi
   Q "SELECT model, kind, count(*) FROM model_runs WHERE created_at >= '$START' GROUP BY 1, 2 ORDER BY 1, 2"
-  $R db changes --add "Overnight F1 on the VM from $START: search overnight-vm (broad at 4k, top $TOP at 16k; data/runs/search/overnight-vm/), f1 walk-forward and default sweeps 2025-2026 on polymarket and kalshi saved; backup $B"
+  $R db changes --add "Overnight F1 on the VM from $START: search overnight-vm (broad at 4k, top $TOP at 16k; data/runs/search/overnight-vm/), f1 walk-forward and default sweeps 2025-2026 on polymarket and kalshi $EXTRAS; backup $B"
 }
 replay() {
   $PY -c "import sys; from racinglines.markets.kalshi.sync import history_rows as h; sys.exit(0 if not h('t', [dict(yes_bid=dict(close=0), yes_ask=dict(close=100), end_period_ts=0)]) else 1)" \
