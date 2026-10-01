@@ -15,6 +15,10 @@ results = "2026-10-04T10:00:00"
 [live.markets]
 h2h_from = "last_listed"        # head-to-head pairs: the last race Polymarket listed (2026-15)
 
+# Owner call 2026-10-01 (decision log): per-market loss cap on.
+[live.quoting]
+max_loss = 500.0
+
 # The demo taker's hype picks, placed at the opening at the maker's ask ($25 each): names and stories, not value.
 # name: a driver's (or team's) name; market: race_win, race_podium, race_pole, race_h2h (with vs), race_constructor_top
 [[picks]]
