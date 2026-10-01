@@ -11,11 +11,11 @@
 </div>
 <div class="card"><h2>Order book</h2>
   {% if book %}<p>Best bid <b>{{ book.best_bid }}</b> · best ask <b>{{ book.best_ask }}</b> · last {{ book.last_trade }} · tick {{ book.tick_size }} · min {{ book.min_size }}</p>
-  <table><thead><tr><th>Bid size</th><th>Bid</th><th>Ask</th><th>Ask size</th></tr></thead><tbody>
+  <div class="scroll"><table><thead><tr><th>Bid size</th><th>Bid</th><th>Ask</th><th>Ask size</th></tr></thead><tbody>
   {% for i in range([book.bids|length, book.asks|length]|max) %}<tr>
   <td>{{ book.bids[i][1] if i < book.bids|length else "" }}</td><td>{{ book.bids[i][0] if i < book.bids|length else "" }}</td>
   <td>{{ book.asks[i][0] if i < book.asks|length else "" }}</td><td>{{ book.asks[i][1] if i < book.asks|length else "" }}</td></tr>{% endfor %}
-  </tbody></table>{% else %}<p class="bad">Could not load the book: {{ book_error }}</p>{% endif %}
+  </tbody></table></div>{% else %}<p class="bad">Could not load the book: {{ book_error }}</p>{% endif %}
 </div>
 </div>
 <div class="card"><h2>Place a maker (post-only) limit order</h2>

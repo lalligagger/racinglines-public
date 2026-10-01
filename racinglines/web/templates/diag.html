@@ -8,14 +8,14 @@
 <p>As-of runs for this event: {% for r in runs %}{% if r.id == d.run.id %}<b>#{{ r.id }} ({{ r.cutoff }})</b>{% else %}<a href="/lab/diagnostics/{{ r.id }}">#{{ r.id }} ({{ r.cutoff }})</a>{% endif %}{{ " · " if not loop.last }}{% endfor %}</p>
 <nav class="ptabs" data-tabs="diag" role="tablist"><button type="button" role="tab" data-tab="s1">1 · What the model knew</button><button type="button" role="tab" data-tab="s2">2 · Prices vs Polymarket</button><button type="button" role="tab" data-tab="s3">3 · Result and scoring</button><button type="button" role="tab" data-tab="s4">4 · Taking Polymarket</button><button type="button" role="tab" data-tab="s5">5 · Maker replay</button><button type="button" role="tab" data-tab="s6">6 · In the app</button></nav>
 <section data-panel="s1"><div class="card"><h2>1 · What the model knew</h2>
-<table><tbody>
-<tr><td class="l">Cutoff</td><td class="l"><b>{{ d.params.cutoff }} UTC</b></td></tr>
-<tr><td class="l">This event's sessions</td><td class="l">{% for k, v in d.metrics.audit.event_sessions.items() %}{% if v %}{{ k }} {{ v }} {% if k in d.metrics.audit.sessions_used %}<span class="good">used</span>{% else %}<span class="bad">excluded</span>{% endif %} · {% endif %}{% endfor %}</td></tr>
-<tr><td class="l">Latest data in each table</td><td class="l">{% for k, v in d.metrics.audit.latest_data.items() %}{{ k }}: {{ v }} · {% endfor %}</td></tr>
-<tr><td class="l">Grid</td><td class="l">{{ d.metrics.audit.grid }}</td></tr>
-<tr><td class="l">Races the finishing model trained on</td><td class="l">{{ d.metrics.audit.training_races }} (all before the cutoff)</td></tr>
-<tr><td class="l">Polymarket prices</td><td class="l">never used to fit or price; read from stored hourly history at/before the cutoff for comparison only</td></tr>
-</tbody></table></div>
+<div class="scroll"><table><tbody>
+<tr><td class="l">Cutoff</td><td class="l wrap"><b>{{ d.params.cutoff }} UTC</b></td></tr>
+<tr><td class="l">This event's sessions</td><td class="l wrap">{% for k, v in d.metrics.audit.event_sessions.items() %}{% if v %}{{ k }} {{ v }} {% if k in d.metrics.audit.sessions_used %}<span class="good">used</span>{% else %}<span class="bad">excluded</span>{% endif %} · {% endif %}{% endfor %}</td></tr>
+<tr><td class="l">Latest data in each table</td><td class="l wrap">{% for k, v in d.metrics.audit.latest_data.items() %}{{ k }}: {{ v }} · {% endfor %}</td></tr>
+<tr><td class="l">Grid</td><td class="l wrap">{{ d.metrics.audit.grid }}</td></tr>
+<tr><td class="l">Races the finishing model trained on</td><td class="l wrap">{{ d.metrics.audit.training_races }} (all before the cutoff)</td></tr>
+<tr><td class="l">Polymarket prices</td><td class="l wrap">never used to fit or price; read from stored hourly history at/before the cutoff for comparison only</td></tr>
+</tbody></table></div></div>
 
 </section>
 <section data-panel="s2" hidden><div class="card"><h2>2 · Our prices vs Polymarket at the cutoff</h2>

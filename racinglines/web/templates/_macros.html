@@ -3,7 +3,7 @@
 {% if rows %}<div class="scroll"{% if cap %} data-rows="{{ cap }}"{% endif %}{% if filter %} data-filter="{{ filter }}"{% endif %}><table>
 <thead><tr>{% for c in cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
 <tbody>{% for r in rows %}<tr>{% for c in cols %}{% set v = r.get(c) %}
-<td>{% if c in links and r.get(links[c][1]) is not none %}<a href="{{ links[c][0] }}{{ r.get(links[c][1]) }}">{{ v|fmt(c) }}</a>{% else %}{{ v|fmt(c) }}{% endif %}</td>{% endfor %}</tr>{% endfor %}</tbody>
+<td{% if v is string and v|length > 24 %} class="wrap"{% endif %}>{% if c in links and r.get(links[c][1]) is not none %}<a href="{{ links[c][0] }}{{ r.get(links[c][1]) }}">{{ v|fmt(c) }}</a>{% else %}{{ v|fmt(c) }}{% endif %}</td>{% endfor %}</tr>{% endfor %}</tbody>
 </table></div>{% else %}<p class="muted">Nothing here yet.</p>{% endif %}
 {%- endmacro %}
 {% macro csrf() %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endmacro %}
@@ -29,7 +29,7 @@
 {% else %}<span class="chip pending" title="not listed yet">{{ v.venue.name }} · pending</span>{% endif %}{% endfor %}</div>
 {%- endmacro %}
 {% macro chart(c) -%}
-{% if c and c.lines %}<svg class="chart" viewBox="0 0 {{ c.w }} {{ c.h }}" preserveAspectRatio="none" role="img" aria-label="price history">
+{% if c and c.lines %}<svg class="chart" viewBox="0 0 {{ c.w }} {{ c.h }}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="price history">
 {% for y in c.yticks %}<line class="grid" x1="{{ c.pad }}" x2="{{ c.w }}" y1="{{ y.y }}" y2="{{ y.y }}"/><text x="2" y="{{ y.y + 3 }}">{{ y.label }}</text>{% endfor %}
 {% for x in c.xticks %}<text x="{{ x.x }}" y="{{ c.h - 2 }}" text-anchor="middle">{{ x.label }}</text>{% endfor %}
 {% for m in c.markers %}<line x1="{{ m.x }}" x2="{{ m.x }}" y1="0" y2="{{ c.h - 14 }}" stroke="var(--muted)" stroke-dasharray="3 3"/><text x="{{ m.x + (-3 if m.anchor == 'end' else 3) }}" y="10" text-anchor="{{ m.anchor }}">{{ m.label }}</text>{% endfor %}

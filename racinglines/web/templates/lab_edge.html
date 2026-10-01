@@ -25,14 +25,14 @@
 
 {% if ef.recaps %}
 <h3>Full-season recap</h3>
-<div class="scroll"><table class="recap"><thead><tr><th class="l">Strategy</th><th class="l">Configuration</th><th>P&amp;L</th><th>Volume</th><th>Return on volume</th><th>Weekends up</th><th>Avg weekend</th><th>Weekend s.d.</th><th>Best</th><th>Worst</th><th>Max drawdown</th><th title="mean weekend P&L / its s.d. x sqrt(weekends): above ~2 is unlikely to be luck">Consistency</th><th>Fills</th><th title="average 60-min markout per fill: negative = adverse selection">Markout 60m</th><th>vs baseline</th></tr></thead><tbody>
-{% for r in ef.recaps %}<tr class="{{ 'muted-row' if r.is_bench }}"><td class="l">{{ r.label }}{{ " *" if r.in_sample }}{{ " (benchmark)" if r.is_bench }}</td><td class="l" title="{{ r.name }}">{{ r.name|truncate(40) }}</td>
-<td class="{{ 'good' if r.pnl > 0 else 'bad' }}">{{ r.pnl|money(true) }}</td><td>${{ "{:,.0f}".format(r.volume) }}</td>
+<div class="scroll"><table class="recap"><thead><tr><th class="l">Strategy</th><th class="l hide-sm">Configuration</th><th>P&amp;L</th><th class="hide-sm">Volume</th><th>Return on volume</th><th>Weekends up</th><th class="hide-sm">Avg weekend</th><th class="hide-sm">Weekend s.d.</th><th class="hide-sm">Best</th><th class="hide-sm">Worst</th><th>Max drawdown</th><th title="mean weekend P&L / its s.d. x sqrt(weekends): above ~2 is unlikely to be luck">Consistency</th><th class="hide-sm">Fills</th><th class="hide-sm" title="average 60-min markout per fill: negative = adverse selection">Markout 60m</th><th>vs baseline</th></tr></thead><tbody>
+{% for r in ef.recaps %}<tr class="{{ 'muted-row' if r.is_bench }}"><td class="l">{{ r.label }}{{ " *" if r.in_sample }}{{ " (benchmark)" if r.is_bench }}</td><td class="l hide-sm" title="{{ r.name }}">{{ r.name|truncate(40) }}</td>
+<td class="{{ 'good' if r.pnl > 0 else 'bad' }}">{{ r.pnl|money(true) }}</td><td class="hide-sm">${{ "{:,.0f}".format(r.volume) }}</td>
 <td>{{ "%+.1f%%"|format(r.roi * 100) if r.roi is not none }}</td><td>{{ r.up }}/{{ r.weekends }}</td>
-<td>{{ r.avg|money(true) if r.avg is not none }}</td><td>{{ r.sd|money if r.sd == r.sd and r.sd is not none }}</td>
-<td>{{ r.best|money(true) if r.best is not none }}</td><td>{{ r.worst|money(true) if r.worst is not none }}</td><td>{{ r.drawdown|money(true) }}</td>
+<td class="hide-sm">{{ r.avg|money(true) if r.avg is not none }}</td><td class="hide-sm">{{ r.sd|money if r.sd == r.sd and r.sd is not none }}</td>
+<td class="hide-sm">{{ r.best|money(true) if r.best is not none }}</td><td class="hide-sm">{{ r.worst|money(true) if r.worst is not none }}</td><td>{{ r.drawdown|money(true) }}</td>
 <td class="{{ 'good' if r.consistency and r.consistency >= 2 }}">{{ "%.2f"|format(r.consistency) if r.consistency is not none }}</td>
-<td>{{ r.fills if r.fills is not none }}</td><td>{{ "%+.3f"|format(r.markout) if r.markout is not none }}</td>
+<td class="hide-sm">{{ r.fills if r.fills is not none }}</td><td class="hide-sm">{{ "%+.3f"|format(r.markout) if r.markout is not none }}</td>
 <td>{% if r.vs_base is not none %}<span class="{{ 'good' if r.vs_base > 0 else 'bad' }}">{{ r.vs_base|money(true) }}</span>{% endif %}</td></tr>{% endfor %}
 </tbody></table></div>
 <p class="legend">Sorted by P&amp;L. Drawdown: the worst fall from a running peak across the season, weekend by weekend. Consistency: how many standard errors the average weekend is above zero ({{ ef.n_weekends }} weekends is a small sample; 2+ is a good sign, not proof).</p>

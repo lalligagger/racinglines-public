@@ -5,10 +5,10 @@
 {% include "_admin_nav.html" %}
 {{ flash(request.query_params.get('msg')) }}
 <form method="post" action="/admin/db/{{ table_name }}/row?{{ pk_query }}" class="card">{{ csrf() }}
-<table><tbody>
+<div class="scroll"><table><tbody>
 {% for f in fields %}<tr><td class="l"><b>{{ f.name }}</b><br><span class="muted">{{ f.type }}{% if f.nullable %}, nullable{% endif %}{% if f.pk %}, primary key{% endif %}</span></td>
-<td class="l">{% if f.pk %}<code>{{ f.value }}</code>{% elif f.value|length > 80 or 'JSON' in f.type or 'ARRAY' in f.type %}<textarea name="{{ f.name }}">{{ f.value }}</textarea>{% else %}<input name="{{ f.name }}" value="{{ f.value }}" size="60">{% endif %}</td></tr>{% endfor %}
-</tbody></table>
+<td class="l">{% if f.pk %}<code>{{ f.value }}</code>{% elif f.value|length > 80 or 'JSON' in f.type or 'ARRAY' in f.type %}<textarea name="{{ f.name }}">{{ f.value }}</textarea>{% else %}<input name="{{ f.name }}" value="{{ f.value }}" style="width:100%">{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>
 <p class="muted">Empty = NULL for nullable columns. JSON columns take JSON.</p>
 <button class="primary" name="action" value="save">Save changes</button>
 <span class="mt"><label class="inline"><input type="checkbox" name="confirm" value="yes"> confirm delete</label> <button class="danger" name="action" value="delete">Delete row</button></span>
