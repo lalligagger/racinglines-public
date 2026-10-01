@@ -51,7 +51,7 @@ CSRF_TOKEN = hmac.new(_SECRET.encode(), b"csrf", hashlib.sha256).hexdigest()
 security = HTTPBasic(realm="racinglines", auto_error=False)
 SESSION_COOKIE = "rl_session"
 SESSION_HOURS = 12
-PUBLIC_PATHS = ("/login", "/static", "/racinglines101")
+PUBLIC_PATHS = ("/login", "/static", "/racinglines101", "/signup", "/forgot")
 
 # failed-login throttle: per client IP, MAX_FAILURES within FAILURE_WINDOW seconds -> 429
 MAX_FAILURES = 8
@@ -231,8 +231,10 @@ templates.env.globals["demo_context_on"] = lambda: DEMO_CONTEXT["on"]      # rea
 templates.env.globals["csrf_token"] = CSRF_TOKEN
 # Maintenance popup on the sign-in page and every app page, dismissed with "ok" once per browser session
 # (_site_notice.html). Set to "" to turn it off.
-MAINTENANCE_NOTICE = "We are working on things! You may experience downtimeor dead links until we finish."
+MAINTENANCE_NOTICE = "We are working on things! You may experience downtime or dead links until we finish."
 templates.env.globals["maintenance_notice"] = lambda: MAINTENANCE_NOTICE   # read at render time
+templates.env.globals["signup_on"] = lambda: signup_on()                    # RACINGLINES_SIGNUP=1: beta sign-up
+templates.env.globals["is_demo"] = lambda u: _demo.is_demo(u)
 # the stylesheet's and scripts' URLs carry the newest static file's mtime, so a change is a new URL: no stale copy from the browser or
 # Cloudflare's edge cache (read at render time)
 templates.env.globals["css_v"] = lambda: int(max(p.stat().st_mtime for p in (HERE / "static").glob("*.*")))
@@ -927,11 +929,15 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
         _record_failure(ip)
         U.log(get_engine(), None, "login_failed", request, username=username)
         return RedirectResponse(f"/login?next={next}&error=1", status_code=303)
+    target = next if next.startswith("/") and not next.startswith("//") and next != "/" else "/markets"
+    return _start_session(request, user, target)
+
+
+def _start_session(request, user, target):
+    """Sign `user` in: a fresh session cookie, logged, then a redirect to `target`."""
     from racinglines.web import demo
     sid = demo.new_sid()                           # a fresh session: a demo account starts from its baseline
     U.log(get_engine(), user, "login", request, sid=sid, demo=demo.is_demo(user) or None)
-    default = "/markets"
-    target = next if next.startswith("/") and not next.startswith("//") and next != "/" else default
     resp = RedirectResponse(target, status_code=303)
     expires = int(time.time()) + SESSION_HOURS * 3600
     https = request.headers.get("x-forwarded-proto") == "https" or request.url.scheme == "https"
@@ -950,6 +956,97 @@ def logout(request: Request):
     resp = RedirectResponse("/login", status_code=303)
     resp.delete_cookie(SESSION_COOKIE)
     return resp
+
+
+# ---------------------------------------------------------------------------
+# Beta sign-up (/signup, RACINGLINES_SIGNUP=1, off by default; web/accounts.py): username and password, as pro. One
+# transaction creates the account (scrypt hash) and its 1,000 fantasy-bucks grant, then signs the person in.
+# Until `racinglines users setup` has made the ledger, the page says sign-up isn't open yet.
+# ---------------------------------------------------------------------------
+
+SIGNUP_ROLE = "pro"                         # every beta sign-up starts as pro (owner, 2026-10-01); tiers later
+SIGNUP_MAX_PER_IP = 10                      # sign-up attempts per client IP per hour (successful or not)
+_signup_hits: dict[str, list[float]] = {}
+
+
+def signup_on() -> bool:
+    return os.environ.get("RACINGLINES_SIGNUP", "0") == "1"
+
+
+def _signup_ready() -> bool:
+    from racinglines.web import accounts as ACC
+    try:
+        with get_engine().connect() as c:
+            return bool(ACC.ready(c))
+    except Exception:                               # noqa: BLE001  no database: fail soft, sign-up closed
+        return False
+
+
+def _signup_page(request, form=None, error="", status_code=200):
+    from racinglines.web import accounts as ACC
+    return templates.TemplateResponse(request, "signup.html", dict(form=form or {}, error=error,
+                                      ready=_signup_ready(), grant=ACC.SIGNUP_GRANT,
+                                      pw_min=ACC.PASSWORD_MIN), status_code=status_code)
+
+
+SUPPORT_EMAIL = "hello@racinglines.bet"      # password resets are requested here; we store no user emails
+
+
+@app.get("/forgot", response_class=HTMLResponse)
+def forgot_password(request: Request):
+    """Forgot your password: we hold no email address, so the page writes a reset request to SUPPORT_EMAIL for the
+    person to send; an admin resets it at /admin/users and replies with a one-time password."""
+    if not signup_on():
+        raise HTTPException(404)
+    return templates.TemplateResponse(request, "forgot.html", dict(support=SUPPORT_EMAIL))
+
+
+@app.get("/signup", response_class=HTMLResponse)
+def signup_page(request: Request):
+    if not signup_on():
+        raise HTTPException(404)
+    return _signup_page(request)
+
+
+@app.post("/signup", response_class=HTMLResponse)
+def signup(request: Request, username: str = Form(""), password: str = Form(""), confirm: str = Form(""),
+           adult: str = Form(""), website: str = Form("")):
+    from racinglines.web import accounts as ACC
+    if not signup_on():
+        raise HTTPException(404)
+    if website:                                     # honeypot: people never see this field, bots fill it
+        raise HTTPException(400)
+    ip = client_ip(request)
+    now = time.time()
+    hits = [t for t in _signup_hits.get(ip, []) if now - t < 3600]
+    if len(hits) >= SIGNUP_MAX_PER_IP:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many sign-up attempts; try again in an hour")
+    _signup_hits[ip] = hits + [now]
+    if not _signup_ready():
+        return _signup_page(request, status_code=503)
+    username = username.strip().lower()
+    tier = SIGNUP_ROLE
+    form = dict(username=username[:30])
+    with get_engine().begin() as c:
+        error = (ACC.check_username(c, username) or ACC.check_password(password, confirm, username)
+                 or ("Please confirm you're 18 or older." if not adult else ""))
+        if error:
+            return _signup_page(request, form, error, status_code=400)
+        uid = c.execute(text("""INSERT INTO users (username, display_name, role, password_hash, active)
+                                VALUES (:u, :u, :r, :h, true) RETURNING id"""),
+                        dict(u=username, r=tier, h=U.hash_password(password))).scalar()
+        ACC.grant(c, uid)
+    try:                                            # the tier's starting strategy, as the demo accounts have; a
+        from racinglines.pipelines import profiles as PF   # failure here leaves the account fine, just unassigned
+        with get_engine().begin() as c:
+            prof = R.basic_profile(c, uid) if tier == "basic" else PF.load(c, PF.ensure_candidates(c)[PF.DEMO["maker"]])
+            PF.assign(c, uid, prof)
+    except Exception as ex:                         # noqa: BLE001
+        print(f"signup: no starting profile for user {uid}: {ex}", flush=True)
+    with get_session() as s:
+        user = _user_dict(U.get_user(s, user_id=uid))
+    U.log(get_engine(), user, "signup", request, grant=ACC.SIGNUP_GRANT)
+    return _start_session(request, user, "/markets")
 
 
 # ---------------------------------------------------------------------------

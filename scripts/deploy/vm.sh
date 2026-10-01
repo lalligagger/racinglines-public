@@ -13,12 +13,16 @@
 #   bash scripts/deploy/vm.sh switch <NAME> on|off # an app switch (RACINGLINES_*, e.g. RACINGLINES_OG_VENUE) in
 #                                               # /etc/racinglines.env, web app restarted; never a trading flag
 #   bash scripts/deploy/vm.sh deploy [ref]      # checkout (default main), install, migrate, restart, smoke check
+#   bash scripts/deploy/vm.sh docs              # build the docs site on the VM (site/, served at /docs); deploy does it too
 #   bash scripts/deploy/vm.sh backup <purpose>  # the VM database to data/backups/db/racinglines-before-<purpose>-<UTC>.sql.gz
 #   bash scripts/deploy/vm.sh repoint           # one time: the VM checkout fetches from REPO_URL (fetch only, no file
 #                                               # touched); deploy refuses until the checkout's origin is REPO_URL
 #   bash scripts/deploy/vm.sh public on|off     # testing before handover: the web app on http://<VM IP>:8000
 #   bash scripts/deploy/vm.sh demo [status|extra] # the multi-sport demo: switches on, NASCAR/MotoGP paper rows and
 #                                               # forecasts (backup first); extra: only the Polymarket rows and forecasts
+#   bash scripts/deploy/vm.sh accounts [off]    # beta sign-up: back up the database, create the accounts schema and
+#                                               # fantasy-bucks ledger (racinglines users setup, idempotent), switch
+#                                               # RACINGLINES_SIGNUP on, check /signup; off: the switch off (the ledger stays)
 #   bash scripts/deploy/vm.sh status | logs [unit] | ssh
 #
 # deploy never refuses for a live event: it pauses the VM's timers (live-event steps, signals), waits for a step in
@@ -168,8 +172,14 @@ case "${1:-}" in
       log "timers running (one 'active' per timer):"
       remote "systemctl is-active$timers"
     fi
+    # after the timers resume (it doesn't need them paused); fail-soft, piped over ssh like untrack.sh
+    log "docs site (/docs)"
+    remote "cd $APP && sudo -u racinglines -H bash -s" < deploy/vm/build_docs.sh || log "docs build didn't finish: /docs keeps its old site (bash scripts/deploy/vm.sh docs to retry)"
     log "smoke check on the VM"
     remote "sleep 3; cd $APP && bash scripts/deploy/smoke.sh http://127.0.0.1:8000"
+    ;;
+  docs)
+    remote "cd $APP && sudo -u racinglines -H bash -s" < deploy/vm/build_docs.sh
     ;;
   backup)
     purpose="${2:-}"; case "$purpose" in ""|*[!a-z0-9-]*) echo "usage: vm.sh backup <purpose> (lowercase letters, digits, -)"; exit 1 ;; esac
@@ -219,6 +229,17 @@ case "${1:-}" in
     steps="kalshi polymarket forecast"; [ "${2:-}" = extra ] && steps="polymarket forecast"
     remote "sudo systemctl reset-failed rl-demo 2>/dev/null; sudo systemd-run --unit=rl-demo --uid=racinglines --setenv=RACINGLINES_SPORT_PAPER=1 '--setenv=STEPS=$steps' $APP/scripts/vm/demo_setup.sh"
     log "started: Markets shows every sport now; the NASCAR and MotoGP paper rows fill in as rl-demo runs. Check: bash scripts/deploy/vm.sh demo status"
+    ;;
+  accounts)
+    # Beta sign-up (racinglines/web/accounts.py). A DB write, so a backup first; a deploy never does this.
+    # Rollback: `vm.sh accounts off` (sign-up closed); the empty accounts schema is harmless and can stay.
+    if [ "${2:-}" = off ]; then exec bash "$SCRIPT_PATH" switch RACINGLINES_SIGNUP off; fi
+    bash "$SCRIPT_PATH" backup accounts-setup
+    log "creating the accounts schema and ledger (idempotent)"
+    as_app "bash -c 'set -a; . /etc/racinglines.env; set +a; .venv/bin/racinglines users setup'"
+    bash "$SCRIPT_PATH" switch RACINGLINES_SIGNUP on
+    remote "sleep 3; curl -s -o /dev/null -w 'GET /signup: %{http_code}\\n' http://127.0.0.1:8000/signup"
+    log "sign-up is open at https://racinglines.bet/signup (accounts: /admin/users)"
     ;;
   status)
     # git runs as the app user: /opt/racinglines is owned by racinglines, and git refuses another user's repository

@@ -13,6 +13,7 @@
     <button class="taker"><b>Try as basic</b><span>Follow a taker strategy's calls on the open markets, no model numbers</span></button></form>
 </div>
 <p class="confused"><a href="/racinglines101">I'm already confused.</a></p>
+{% if signup_on() %}<p class="signup-cta">Beta <a href="/signup">signups</a> are live! Get your own pro account.</p>{% endif %}
 
 <p class="or">or sign in</p>
 <form method="post" action="/login" class="card">
@@ -21,4 +22,5 @@
   <label><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
   <button class="primary mt">Sign in</button>
 </form>
+{% if signup_on() %}<p class="confused"><a href="/forgot">Forgot your password?</a></p>{% endif %}
 </main>{% include "_site_notice.html" %}</body></html>

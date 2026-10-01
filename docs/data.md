@@ -60,8 +60,10 @@ types (`*.parquet`, `*.csv`, …) everywhere, then allow-lists the minimal set a
   (`tests/fixtures/_work/`) aren't.
 - **Enforced:** `tests/test_no_data_in_git.py` fails if data outside the allow-list is
   tracked or about to be added (it also runs in the [pre-push hook](testing.md#pre-push-hook)).
-- **If the repo ever goes public,** this data must be removed from the git history
-  first, not just deleted.
+- **The public repository holds none of this.** `lalligagger/racinglines-public` was published on 2026-10-01
+  with this data (and the test fixtures) removed from its history; the paths above describe the private
+  development checkout and the production server. Beta testers and contributors can get the fixtures:
+  [Contributing](contributing.md#data-in-this-repository).
 
 ## Data bucket
 
@@ -99,7 +101,9 @@ python scripts/cloud/bucket.py push results/<session> data/runs/live/<event>
 
 `scripts/cloud/start.sh` pulls the bucket and restores the full dump in place of the committed
 snapshot, whenever the environment has the key (`SKIP_BUCKET=1` skips it). **Refresh the bucket**
-(`bucket.sh push`) before launching a cloud session that needs current data.
+(`bucket.sh push`) before launching a cloud session that needs current data. Since the VM took over (2026-09-30) the newest data is on the VM, and
+nothing pushes it to a bucket yet ([todo](todo.md#staging-and-ci-deploys) STG-5); `bucket.sh push` runs on the Mac
+(its `pg_dump` path is the Mac's).
 
 **Cloud environment settings.** At claude.ai/code, click the cloud icon with the environment's name
 in the row above the message box, hover over `racinglines`, and click its settings icon:

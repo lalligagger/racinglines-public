@@ -12,7 +12,24 @@ Two places keep it:
 
 Before a major update, keep what it replaces: a database dump in `data/backups/db/` and the old raw
 files in `data/archive/<sport>/` (both git-ignored; `data/raw` is the record, so it isn't edited in place
-without a copy). Not `data/archive/db/`: that folder is tracked in git (the snapshot).
+without a copy). Since 2026-10-01 nothing under `data/` is in git, and production data lives on the VM: back up
+there with `vm.sh backup <purpose>`.
+
+## 2026-10-01 · The VM moved to the public repo; deploys carry code only
+
+**Why.** The owner moved the live repo to the public `lalligagger/racinglines-public` (history restarting at
+"Initial public release") and made merges to `main` deploy through GitHub Actions. **What changed on the VM.** No row
+in the database. `vm.sh repoint` pointed the checkout at the public repo; the first deploy from it (`a449e18`, PR 3)
+ran `deploy/vm/untrack.sh`, which backed up and untracked every file the private history tracked and the public
+one doesn't (`data/raw`, `data/archive`, `tests/fixtures`, the pitch images), so they stayed on disk as untracked
+files: `data/backups/files/racinglines-before-untrack-<UTC>.tar.gz`. Database backup before it:
+`racinglines-before-public-deploy-20261001T071316Z.sql.gz`. From now on a deploy never restores, overwrites or
+deletes data; data changes go through scripts and admin views and get their own entry here.
+**Also.** The recorder's hourly archive pass (`markets record`) moves cold market rows from Postgres to Parquet
+under `data/archive/markets/` on the VM's disk: the database dump fell from 118 MB to 56 MB (2026-10-01 01:56Z,
+counts verified). A dump alone is therefore not the whole market history; the archive folder is the rest, and it
+has no copy off the VM yet ([todo](todo.md#staging-and-ci-deploys) STG-5).
+**Undo.** `vm.sh deploy <commit>` moves code only; the untracked files can be restored from the tar.
 
 ## 2026-10-01 · Kalshi and OG.com order books recorded on the VM (vm.sh record)
 

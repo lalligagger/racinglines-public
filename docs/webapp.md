@@ -94,6 +94,28 @@ event: a race, or a competition's season
 
 ## Pages
 
+**Beta sign-up** (`/signup`, `RACINGLINES_SIGNUP=1`, off by default; `racinglines/web/accounts.py`). A public page,
+linked from the sign-in page and from the popup demo visitors see ("Beta signups are live!"): username, password
+(twice, 10+ characters, stored only as a scrypt hash) and an 18+ / fantasy-money tick. Every beta account starts as
+**pro** (owner, 2026-10-01; fantasy tiers come later, and an admin can change a role at `/admin/users`). One transaction
+creates the account and credits it **1,000 fantasy bucks**, then signs the person in; the demo maker's starting strategy is assigned when the Lab candidates exist. Ten attempts per IP per hour
+and a hidden honeypot field; passwords are never logged or echoed back.
+
+The fantasy bucks live in their own Postgres schema, `accounts.fantasy_ledger` (one row per credit or debit, never
+updated; a balance is a sum), apart from the market data in `public`. It is not an alembic migration, because deploys
+never change the VM's database: `bash scripts/deploy/vm.sh accounts` backs the database up, runs `racinglines users
+setup` (idempotent; every existing active account also gets its 1,000) and switches sign-up on. Until then `/signup`
+says sign-up isn't open yet. Rollback: `vm.sh accounts off`.
+
+Sign-up asks for no email address, and we keep none. **Forgot your password?** (`/forgot`, linked from the sign-in page
+when sign-up is on) writes a reset request to hello@racinglines.bet for the person to send from any address (an
+"Open in my email app" link and a Copy button); an admin resets the password and replies with the one-time password.
+
+Admins manage accounts at `/admin/users`: add, change role, deactivate, **Reset password** (a random one-time password
+shown once on that page, stored only as a hash, never logged) and **Remove** (only accounts with no markets or bets;
+otherwise untick Active). The same from a shell: `racinglines users list | add NAME --role basic | reset-password NAME
+| remove NAME | deactivate NAME | activate NAME`.
+
 The nav follows the role:
 
 | Role | Nav |

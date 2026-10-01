@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign up · racinglines</title><link rel="stylesheet" href="/static/style.css?v={{ css_v() }}"></head>
+<body><main class="login">
+<h1>racinglines</h1>
+<p class="sub">Fair prices and market making for race sports.</p>
+{% if not ready %}
+<div class="card">
+  <p><b>Sign-up isn't open yet.</b> Please check back soon.</p>
+  <p>You can try the app straight away from the <a href="/login">sign-in page</a> with "Try as pro" or "Try as basic".</p>
+</div>
+{% else %}
+<p>Create your beta account: just a username and a password. We never ask for your email. Beta accounts get the <b>pro</b> tier (fair prices, every strategy, the Lab)
+and start with <b>{{ "{:,}".format(grant) }} fantasy bucks</b>. Paper money only:
+nothing is ever sent to an exchange.</p>
+{% if error %}<p class="bad">{{ error }}</p>{% endif %}
+<form method="post" action="/signup" class="card signup-form">
+  <label><span>Username</span><input name="username" value="{{ form.username or '' }}" autocomplete="username"
+    maxlength="30" pattern="[A-Za-z0-9][A-Za-z0-9_.\-]{2,29}" required></label>
+  <p class="hint">3 to 30 letters, digits, ".", "_" or "-". Others may see it, so don't use your email.</p>
+  <label><span>Password</span><input name="password" type="password" autocomplete="new-password" minlength="{{ pw_min }}" maxlength="128" required></label>
+  <label><span>Password again</span><input name="confirm" type="password" autocomplete="new-password" minlength="{{ pw_min }}" maxlength="128" required></label>
+  <p class="hint">At least {{ pw_min }} characters. We store only a salted hash; nobody, admins included, can read it.</p>
+  <label class="check mt"><input type="checkbox" name="adult" value="1" required>
+    <span>I'm 18 or older, and I understand this is a beta that uses fantasy money only.</span></label>
+  <label aria-hidden="true" style="position:absolute;left:-9999px"><span>Website</span><input name="website" tabindex="-1" autocomplete="off"></label>
+  <button class="primary mt">Create account</button>
+</form>
+<p class="confused"><a href="/login">Already have an account? Sign in</a> · <a href="/racinglines101">What is this?</a></p>
+{% endif %}
+</main>{% include "_site_notice.html" %}</body></html>

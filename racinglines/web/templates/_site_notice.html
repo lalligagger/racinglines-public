@@ -1,13 +1,16 @@
-{% if maintenance_notice() %}
+{% set signup_cta = signup_on() and (not user or is_demo(user)) and request.url.path != '/signup' %}
+{% if maintenance_notice() or signup_cta %}
 <dialog id="site-notice" class="site-notice" aria-describedby="site-notice-msg">
-  <p id="site-notice-msg">{{ maintenance_notice() }}</p>
+  {% if signup_cta %}<p class="signup-cta"><b>Beta <a href="/signup">signups</a> are live!</b></p>{% endif %}
+  {% if maintenance_notice() %}<p id="site-notice-msg">{{ maintenance_notice() }}</p>{% endif %}
   <form method="dialog"><button class="primary" autofocus>ok</button></form>
 </dialog>
 <script>
 (function () {
-  var d = document.getElementById("site-notice"), k = "racinglines-notice-ok";
+  var d = document.getElementById("site-notice"), k = "racinglines-notice-ok{{ '-signup' if signup_cta else '' }}";
   try { if (sessionStorage.getItem(k)) return; } catch (e) {}
-  d.addEventListener("close", function () { try { sessionStorage.setItem(k, "1"); } catch (e) {} });
+  d.addEventListener("close", function () {   // the sign-up popup also covers the plain notice
+    try { sessionStorage.setItem(k, "1"); sessionStorage.setItem("racinglines-notice-ok", "1"); } catch (e) {} });
   if (d.showModal) d.showModal(); else d.setAttribute("open", "");
 })();
 </script>

@@ -301,12 +301,13 @@ Three levels, fastest first:
 | | Command | Checks | Time | Needs |
 |---|---|---|---|---|
 | **Quick check** | `racinglines check` | 21 checks: every pipeline on synthetic data, every data source, the database | ~10 s | nothing downloaded; network and Postgres optional |
-| **Regression suite** | `python -m pytest -m "not live"` | 174 tests: every pipeline stage on pinned F1 and downhill fixtures, compared with golden outputs | ~10 s | Postgres (fixtures and goldens are in git) |
+| **Regression suite** | `python -m pytest -m "not live"` | 174 tests: every pipeline stage on pinned F1 and downhill fixtures, compared with golden outputs | ~10 s | Postgres and the fixtures ([how to get them](docs/contributing.md#data-in-this-repository); goldens are in git) |
 | **Everything** | `python -m pytest` | 221 tests, adding 47 live tests on the working database: the web app's pages per role, Baku live data, retention | ~35 s | the working database |
 
-- **Pinned in git (since 2026-09-28):** the test fixtures (2 MB, built from FastF1,
-  ChronoRace and Polymarket) and the golden outputs, so every machine and cloud session
-  compares against the same baseline. A guard test fails if any other data is tracked.
+- **Pinned:** the test fixtures (2 MB, built from FastF1, ChronoRace and Polymarket) and the golden
+  outputs, so every machine compares against the same baseline. The goldens are in git; the fixtures are not in
+  the public repository ([how to get them](docs/contributing.md#data-in-this-repository)), and without them the
+  fixture tests skip. A guard test fails if any data is tracked.
 - **Results can't drift silently:** an intended change is re-baselined with
   `UPDATE_GOLDEN=1` and reviewed as a diff of `tests/golden/` in its PR.
 
@@ -477,10 +478,34 @@ git config core.hooksPath scripts/hooks   # skip once with: git push --no-verify
 
 ## Collaborators and beta testers
 
-This repository is private only because cloud runs need a minimal data set
-committed with the code, and we don't want to publish all of that data yet. We're
-open to beta testers and collaborators, and happy to share the pipeline and
-web-app code with anyone interested: ask for access.
+We're looking for beta testers and collaborators! Try the app at
+[racinglines.bet](https://racinglines.bet), and if you'd like to help, test, or just say hi, drop us a line at
+[hello@racinglines.bet](mailto:hello@racinglines.bet?subject=racinglines%20beta%20tester%20%2F%20collaborator).
+We'd love to hear from you. The [contributor guide](docs/contributing.md) says how to get set up.
+
+### Data in this repository
+
+<!-- include: public-data -->
+<!-- generated from docs/contributing.md by build_readme.py - edit it there -->
+
+This public repository (`lalligagger/racinglines-public`) holds **code, docs, schemas and golden test outputs
+only**. The data it was developed with (raw FastF1 sessions, the Polymarket and Kalshi price and trade archives,
+database snapshots, the pinned test fixtures) was removed from this repository and its history when it went public
+on 2026-10-01: some of it isn't ours to republish, and none of it belongs in git. It lives on the production
+server and in a private bucket.
+
+**Test fixtures are available to beta testers and contributors.** Two ways to get them:
+
+- **Ask us** at [hello@racinglines.bet](mailto:hello@racinglines.bet?subject=racinglines%20test%20fixtures)
+  for the pinned fixture bundle (about 2 MB). Unpacked into `tests/fixtures/`, the regression suite matches the
+  golden outputs exactly.
+- **Build them yourself** from the original public sources with `python scripts/fetch_test_fixtures.py --refresh`
+  (needs Postgres; the F1 part can take up to an hour because FastF1 is rate limited). Today's data differs a
+  little from the pinned set, so expect some golden tests to differ: that's fine for development.
+
+Without fixtures the fixture-based tests are skipped, not failed, and everything else runs.
+
+<!-- /include -->
 
 ## Roadmap
 
@@ -495,23 +520,20 @@ Priorities, then every open item: [`docs/todo.md`](docs/todo.md). This week's F1
 model yet, so record its tape; **T3** no market anywhere, so run a simulated pool (private book). T3
 proves the pricing, not an edge.
 
-### Demo completion path (2026-09-30)
+### Demo completion path (2026-10-01)
 
-The repo-safe CI issue is fixed and verified. The default smoke gate no longer uses a wrong-password probe, so the
-app's 15-minute failed-login throttle is no longer poisoned by the normal staging check. The valid-auth smoke tests
-have already passed on the staging host, and the public-repo guardrails are in place for the final PR path.
+The live repo is the public `lalligagger/racinglines-public` since 2026-10-01, and **merging to `main` deploys to the
+VM** through GitHub Actions (`main-merge-gate`: staging smoke, `vm.sh deploy`, prod smoke; docs-only merges deploy
+nothing; CI runs no tests). Deploys carry code only; data and the database change on the VM through scripts and the
+admin views. The flow and what lives where: [VM deploy](docs/vm-deploy.md#the-flow).
 
-- **Required before PR merge:**
-  - `python -m pytest tests/test_no_data_in_git.py tests/test_fetch_fixtures_guard.py tests/test_deploy_smoke.py -q`
-  - `bash scripts/deploy/predeploy.sh --staging main`
+- **Before asking for a merge (local, CI doesn't run them):** `racinglines check`, `python -m pytest -m "not live"`,
+  `mkdocs build --strict`. Golden tests skip without `tests/fixtures/` (not in the public repo).
 - **Commit policy:** never leave a commit in an editor; use `git commit -m "..."` or `git commit --amend --no-edit`.
-  No `vim`/`vi` commit-message loops.
-- **Branch/merge flow:** cut the feature branch from `main`, commit the batch, open the PR, let CI run, then merge to
-  `main` only after the staging gate is green.
-- **Demo assumptions:** all runtime data, venue flags and secrets stay local; only the demo maker/taker path is used for
-  the final app check; no raw data goes into Git. The public repo is intentionally fixture-limited and clean.
-- **If the old throttle was already warmed:** wait 15 minutes or restart the app on a fresh client/IP, then rerun the
-  valid-auth smoke checks. The staging gate itself does not trigger this anymore.
+- **Branch/merge flow:** one feature-track branch per sprint, PRs from it, the owner squash-merges with
+  `--delete-branch`. A merge is a deploy: batch them, keep them out of live race windows, and back up first for a
+  migration.
+- **Smoke gate:** valid sign-ins only. If an old wrong-password probe warmed the throttle, wait 15 minutes.
 
 **Where things stand (30 Sep 2026, evening; VM on `306a147`, #95 and #96 merged after it):** NASCAR and MotoGP went
 from tape-only listings to sports the production app shows end to end: results, Kalshi markets identified with their
@@ -535,14 +557,10 @@ C makes money on Polymarket's tape and loses on Kalshi's.
 **P0 · Sprint to the fantasy soft launch (to Thu 8 Oct), in this order.** Work is grouped into feature-track
 branches, one PR per track (owner, 2026-09-30); the track is named on each item.
 
-- [ ] **HIGH · Build CI and the staging environment** (track `staging-ci`; STG-1 to STG-4, spelled out in PR #114's
-      "Staging and CI deploys" section). STG-1 `staging.racinglines.bet`, a second app instance with its own
-      database restored from the latest backup, trading flags off, behind Cloudflare Access; STG-2 a GitHub CI
-      workflow on every push (`racinglines check`, `pytest -m "not live"`, `mkdocs build --strict`: today nothing
-      runs on GitHub); STG-3 CI deploys a track branch to staging and runs the smoke check there; STG-4 the owner
-      checks staging, merges, and `main` deploys to production as today. Every step needs the owner's go; the VM, DNS
-      and the GitHub secret (deploy key or service account) need sign-off. The fantasy staging rehearsal (STAGE-1,
-      Wed 7 Oct) runs on this host once it exists.
+- [ ] **HIGH · Finish CI and the staging environment** (STG-1 to STG-11 in [Staging and CI deploys](docs/todo.md#staging-and-ci-deploys)).
+      CI deploys merges to `main` since 2026-10-01, but runs no tests, smoke-checks staging rather than the PR, and
+      the VM's data has no off-VM copy. First: STG-5 (off-VM data copy), STG-2 (tests in CI), STG-8 (migration gate).
+      The fantasy staging rehearsal (STAGE-1, Wed 7 Oct) needs STG-1.
 - [ ] **Sign-up** (track `signup`; SEC-1, MAIL-1, ACC-1, ACC-3 from [Fantasy accounts](docs/fantasy-accounts.md)): not
       built. Copilot builds it locally Fri 2 – Sat 3 Oct behind `RACINGLINES_SIGNUP=off`; the `fantasy_schema_v1`
       migration goes to the VM Tue 6 Oct (OWNER-8, backup and sign-off). Then the trading batch, STAGE-1, the go/no-go
@@ -581,10 +599,9 @@ branches, one PR per track (owner, 2026-09-30); the track is named on each item.
 
 **P1 · October (rounds 16–19): first live weekends on real markets**
 
-- [ ] **STG · high priority (owner, 2026-09-30): build CI and a staging environment.** GitHub CI running the
-      checks on every push, `staging.racinglines.bet`, and track branches deployed to staging and verified before
-      `main` goes to `racinglines.bet`. Steps STG-1 to STG-4 in [Staging and CI deploys](docs/todo.md#staging-and-ci-deploys);
-      the first owner decisions are staging on the same VM or its own, and GitHub's deploy credentials.
+- [ ] **STG · high priority (owner, 2026-09-30): finish CI and a staging environment.** CI deploys `main` since
+      2026-10-01; tests in CI, a real staging deploy, an off-VM data copy, a migration gate and a live-window freeze
+      are open: STG-1 to STG-11 in [Staging and CI deploys](docs/todo.md#staging-and-ci-deploys).
 - [x] **U5** Kalshi sprint markets before Singapore (11 Oct); built in PR #36 behind `RACINGLINES_KALSHI_SPRINTS`, merged. Priced from the race's pole and win odds
       until **U13**, a real sprint model, lands ([F1 model](docs/todo.md#f1-model)).
 - [ ] **U3** Kalshi maker profile K: swept (PRs #38, #41, merged; K = `gbm`, 2¢, 10-pt filter, 25 shares, $400 volume floor); **freezing it is the owner's call** before the United States GP (25 Oct).
