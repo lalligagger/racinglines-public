@@ -47,6 +47,10 @@
       document.querySelectorAll(".bar .m").forEach(m => {
         m.style.display = m.dataset.venue === v ? "" : "none";
       });
+      // Toggle gap values in the Gap column
+      document.querySelectorAll(".gap-cell .gap-value").forEach(g => {
+        g.style.display = g.dataset.venue === v ? "" : "none";
+      });
     } else {
       document.querySelectorAll(`[data-${group}]:not(button)`).forEach(p => { p.hidden = v !== "*" && p.dataset[group] !== v; });
     }
