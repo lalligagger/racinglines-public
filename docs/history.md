@@ -8,6 +8,19 @@ plan. By the time the pitch deck and docs were finished, the session limit was a
 What was built so far, in order, with the reasoning behind each step. The
 `2026-09` dates are when the work was done. The race data covers 2019–2026.
 
+## 2026-09-30 status: public repo, smoke gate, and demo finish
+
+The repo-safe fix is complete: the default smoke gate no longer probes a bad password and therefore no longer
+warms the app's failed-login throttle. The staging gate now runs valid-auth checks only and passed on the live
+staging host. Runtime data remains local-only, the fixture policy is explicit and minimal, and the repo passes the
+public-source guard checks (`tests/test_no_data_in_git.py`, `tests/test_fetch_fixtures_guard.py`, and the smoke-gate
+regression).
+
+The remaining path to the demo is the normal PR/merge flow: branch from `main`, commit the final batch, open the PR,
+let GitHub CI run the repo-safe checks, merge when green, and then use the final staging gate before production
+through the existing VM deploy flow. If the old wrong-password probe had already warmed the throttle, the fix is to
+wait 15 minutes or restart the app on a fresh client/IP and rerun the valid-auth smoke check.
+
 ## 0. Starting point
 
 The repo started with two scaffolds written before any real data existed:

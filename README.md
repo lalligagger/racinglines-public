@@ -495,6 +495,22 @@ Priorities, then every open item: [`docs/todo.md`](docs/todo.md). This week's F1
 model yet, so record its tape; **T3** no market anywhere, so run a simulated pool (private book). T3
 proves the pricing, not an edge.
 
+### Demo completion path (2026-09-30)
+
+The repo-safe CI issue is fixed and verified. The default smoke gate no longer uses a wrong-password probe, so the
+app's 15-minute failed-login throttle is no longer poisoned by the normal staging check. The valid-auth smoke tests
+have already passed on the staging host, and the public-repo guardrails are in place for the final PR path.
+
+- **Required before PR merge:**
+  - `python -m pytest tests/test_no_data_in_git.py tests/test_fetch_fixtures_guard.py tests/test_deploy_smoke.py -q`
+  - `bash scripts/deploy/predeploy.sh --staging main`
+- **Branch/merge flow:** cut the feature branch from `main`, commit the batch, open the PR, let CI run, then merge to
+  `main` only after the staging gate is green.
+- **Demo assumptions:** all runtime data, venue flags and secrets stay local; only the demo maker/taker path is used for
+  the final app check; no raw data goes into Git. The public repo is intentionally fixture-limited and clean.
+- **If the old throttle was already warmed:** wait 15 minutes or restart the app on a fresh client/IP, then rerun the
+  valid-auth smoke checks. The staging gate itself does not trigger this anymore.
+
 **Where things stand (30 Sep 2026, evening; VM on `306a147`, #95 and #96 merged after it):** NASCAR and MotoGP went
 from tape-only listings to sports the production app shows end to end: results, Kalshi markets identified with their
 race, a simple-baseline price for NASCAR's next race, and an in-sample demo paper record on Strategy and Positions
