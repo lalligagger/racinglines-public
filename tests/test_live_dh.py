@@ -38,6 +38,14 @@ def test_quotes_widen_on_course_lean_against_inventory_and_stop_at_certainty():
     assert L.quote(0.40, waiting, inv=-L.MAX_POS)[1] is None               # at the limit: no more selling
 
 
+def test_poll_interval_switches_to_full_freq_for_men_elite_on_track_or_next_to_start():
+    riders = {"1": dict(PrintName="R1", Category="Men Elite"), "2": dict(PrintName="R2", Category="Men Junior")}
+    assert L.poll_interval({"OnTrack": [{"RaceNr": 1}], "Riders": riders}, 5, 2) == 2
+    assert L.poll_interval({"NextToStart": [1], "Riders": riders}, 5, 2) == 2
+    assert L.poll_interval({"OnTrack": [{"RaceNr": 2}], "Riders": riders}, 5, 2) == 5
+    assert L.poll_interval({"NextToStart": [2], "Riders": riders}, 5, 2) == 5
+
+
 def test_safe_riders_slow_qualifying_adds_spread_not_speed():
     riders = [dict(bib=i, name=n, status="NA") for i, n in enumerate(["fast", "star", "mid", "low", "tail"])]
     q = {0: 200_000, 1: 212_000, 2: 205_000, 3: 208_000, 4: 210_000}

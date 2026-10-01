@@ -176,6 +176,40 @@ def parse(d):
     return out
 
 
+def _rider_category(rider):
+    """Category text from ChronoRace: 'Men Elite', 'ME', etc. Returns a normalised lower-case string."""
+    if not isinstance(rider, dict):
+        return ""
+    for key in ("Category", "CategoryName", "CompetitionCategory", "CategoryCode", "CategoryId", "Name"):
+        value = rider.get(key)
+        if value is not None:
+            return str(value).lower().strip()
+    return ""
+
+
+def _men_elite_rider(rider):
+    cat = _rider_category(rider)
+    return cat in {"me", "men elite", "elite men", "male elite", "menelite", "male-elite"} or (
+        ("men" in cat or "male" in cat) and "elite" in cat)
+
+
+def poll_interval(feed, default=BASE_INTERVAL, full=LATE_INTERVAL):
+    """Raise the live poll rate whenever a Men's Elite rider is on-track or next to start; keep the base cadence otherwise."""
+    if not isinstance(feed, dict):
+        return default
+    riders = feed.get("Riders") or {}
+    for key in ("OnTrack", "NextToStart"):
+        for row in feed.get(key) or []:
+            if isinstance(row, dict):
+                bib = row.get("RaceNr")
+            else:
+                bib = row
+            rider = riders.get(str(bib), riders.get(bib))
+            if rider is not None and _men_elite_rider(rider):
+                return full
+    return default
+
+
 def track_trend(fin, qbest):
     """(ratio(slot) function, s.d. of the ratio for the next riders): how the final runs against qualifying,
     by start slot. A recency-weighted line through the clean runs (crashes and big mistakes left out), its
@@ -420,6 +454,7 @@ def update(slug, key, quali_keys, cond="", session=None, interval=BASE_INTERVAL)
     qbest, qratio = cache["q"]
     prior = cache["prior"]
     # the timing state that pricing depends on; an unchanged feed reuses the last simulation
+    effective_interval = poll_interval(d, default=interval, full=LATE_INTERVAL)
     state = hashlib.sha1(json.dumps([(r["bib"], r["status"], r["time"], r["splits"]) for r in riders]).encode()).hexdigest()
     meta = dict(slug=slug, key=key, quali_keys=list(quali_keys), conditions=cond,
                 params=dict(MODEL_VERSION=MODEL_VERSION, TREND_RECENCY=TREND_RECENCY, TREND_PRIOR_N=TREND_PRIOR_N,
@@ -472,7 +507,7 @@ def update(slug, key, quali_keys, cond="", session=None, interval=BASE_INTERVAL)
         book["late"], book["late_at"] = True, now
         book["late_left"] = [LATE_CAP] * CROWD
     pot = "late_left" if book.get("late") else "left"
-    rate = interval / BASE_INTERVAL                                      # same crowd rate per second at any poll rate
+    rate = effective_interval / BASE_INTERVAL                              # same crowd rate per second at any poll rate
     if book.get("late"):
         rate *= LATE_PACE                                                # late window: the high-volume push pace
     if done:
@@ -498,11 +533,12 @@ def update(slug, key, quali_keys, cond="", session=None, interval=BASE_INTERVAL)
                 counts=counts, done=done, riders=rows, quotes=quotes, maker_pnl=pnl,
                 betting=dict(closed=False, closed_at=None, last_call=False,
                              to_start=to_start, late=bool(book.get("late")), late_at=book.get("late_at"),
-                             interval=interval, late_cap=LATE_CAP),
+                             interval=effective_interval, late_cap=LATE_CAP),
                 crowd=dict(book["crowd"], takers=CROWD, last_fills=len(fills),
                            active=sum(1 for x, b in zip(book["left"], book["budget"]) if x < b - 0.005),
                            left=round(sum(book["left"]), 2), results=cres),
-                outcomes=[dict(bib=b, market=m, yes=v) for (b, m), v in outcomes.items()])
+                outcomes=[dict(bib=b, market=m, yes=v) for (b, m), v in outcomes.items()],
+                poll_interval=effective_interval)
     with gzip.open(out / "snaps" / f"{fetched}.json.gz", "wt") as f:
         json.dump(snap, f, default=str)
     tmp = out / "latest.json.tmp"
@@ -552,6 +588,12 @@ def _run(slug, key, quali_keys, cond="", interval=BASE_INTERVAL, minutes=0, echo
     while True:
         try:
             snap = update(slug, key, quali_keys, cond, s, interval=LATE_INTERVAL if late else interval)
+            cur_interval = int((snap.get("betting") or {}).get("interval", interval))
+            if cur_interval == LATE_INTERVAL and not late:               # a Men's Elite rider is on track or next to start
+                late = True
+                echo(f"{snap['ts']} Men Elite on track: polling every {LATE_INTERVAL} s")
+            elif cur_interval != LATE_INTERVAL and late and not (snap.get("betting") or {}).get("late"):
+                late = False
             if not late and (snap.get("betting") or {}).get("late"):      # relaunch at the late-window pace
                 late = True
                 echo(f"{snap['ts']} late window: polling every {LATE_INTERVAL} s, fresh ${LATE_CAP:.0f} caps")
