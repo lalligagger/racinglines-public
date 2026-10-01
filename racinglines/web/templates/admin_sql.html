@@ -6,7 +6,7 @@
 <p class="muted">Runs as the app's database user. <b>Read</b> mode runs in a READ ONLY transaction (any write is rejected by Postgres).
 <b>Write</b> mode needs both boxes ticked. Every statement is logged. 15 s timeout, {{ 500 }} rows max.</p>
 <form method="post" action="/admin/sql" class="card">{{ csrf() }}
-<textarea name="sql">{{ sql }}</textarea>
+<textarea name="sql" aria-label="SQL statement">{{ sql }}</textarea>
 <p><label><input type="checkbox" name="write" value="1" {% if write %}checked{% endif %}> <span class="bad">allow writes</span></label>
 <label><input type="checkbox" name="confirm" value="yes"> confirm</label>
 <button class="primary">Run</button></p>

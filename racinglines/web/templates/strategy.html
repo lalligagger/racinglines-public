@@ -4,12 +4,12 @@
 {% call page_head("Strategy" ~ (" · " ~ viewer.username if viewer.id != user.id else ""), "The strategy this account runs: its calls on each race weekend, stage by stage, how it has done, and how it got here. Paper only: nothing is sent to an exchange.") %}
 <a href="/positions{{ '?venue=kalshi' if venue }}">What it holds: Positions →</a>
 {%- if kalshi %}<nav class="tabs" aria-label="Which exchange's record"><a href="?{{ 'user=' ~ viewer.username if viewer.id != user.id }}"{% if not venue %} aria-current="page"{% endif %}>Polymarket</a><a href="?venue=kalshi{{ '&user=' ~ viewer.username if viewer.id != user.id }}"{% if venue %} aria-current="page"{% endif %}>Kalshi</a></nav>{% endif %}
-{% if users %}<form method="get" class="inline"><label><span>User</span><select name="user" onchange="this.form.submit()">
+{% if users %}<form method="get" class="inline"><label><span>User</span><select name="user" data-autosubmit>
   {% for u in users %}<option {{ 'selected' if u == viewer.username }}>{{ u }}</option>{% endfor %}</select></label></form>{% endif %}
 {% if sport_options %}<form method="get" class="inline">
   {% if viewer.id != user.id %}<input type="hidden" name="user" value="{{ viewer.username }}">{% endif %}
   {% if venue %}<input type="hidden" name="venue" value="{{ venue }}">{% endif %}
-  <label><span>Sport</span><select name="sport" onchange="this.form.submit()">
+  <label><span>Sport</span><select name="sport" data-autosubmit>
     <option value="">all sports</option>
     {% for code in sport_options %}<option value="{{ code }}" {{ 'selected' if sport == code }}>{{ sport_names.get(code, code) }}</option>{% endfor %}
   </select></label>

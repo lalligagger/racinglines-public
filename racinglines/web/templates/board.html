@@ -15,7 +15,7 @@
 {% if sport_status %}{% include "_sport_status.html" %}{% endif %}
 {% for s in sports %}
 <details class="card" data-remember="markets:sport:{{ s.code }}"{% if s.run or s.asof or loop.first or (sport_status and s.exchanges) %} open{% endif %}>
-<summary><h2 style="display:inline-block;margin:0">{{ s.name }}</h2> <span class="sum">{% if s.run %}live prices from run <a href="/lab/runs/{{ s.run.id }}">#{{ s.run.id }}</a> · {{ s.run.created_at|fmt }}{% elif s.asof %}model: pre-race prices for {{ "{:,}".format(s.asof.races) }} past races (replay saves, latest {{ s.asof.at|fmt }}) · no live forecast yet, so upcoming races show exchange prices only{% else %}market data only · no model{% endif %}</span></summary>
+<summary><h2 class="h-inline">{{ s.name }}</h2> <span class="sum">{% if s.run %}live prices from run <a href="/lab/runs/{{ s.run.id }}">#{{ s.run.id }}</a> · {{ s.run.created_at|fmt }}{% elif s.asof %}model: pre-race prices for {{ "{:,}".format(s.asof.races) }} past races (replay saves, latest {{ s.asof.at|fmt }}) · no live forecast yet, so upcoming races show exchange prices only{% else %}market data only · no model{% endif %}</span></summary>
 {% if s.run or s.tape or s.asof %}
 <div class="cards">
   {% if s.run %}
@@ -25,7 +25,7 @@
       <div class="when">{{ u.info.start_date|fmt }} · {% if u.info.status == 'in_progress' %}<span class="warn">in progress</span>{% else %}{{ u.countdown }}{% endif %}{% if loop.first and u.info.status != 'in_progress' %} · <b>next</b>{% endif %}</div></div>
     {{ venue_chips(u.venues, u.mine) }}
     <div>{% for o in u.top %}<div class="pr"><span>{{ o.subject }}</span>{{ bar(o.fair, o.pm_mid) }}<span class="num">{{ pct(o.fair) }}</span></div>{% endfor %}
-      <div class="legend">win probability{% if u.top and u.top[0].pm_mid is not none %} · <i style="background:var(--warn)"></i>Polymarket{% endif %}</div></div>
+      <div class="legend">win probability{% if u.top and u.top[0].pm_mid is not none %} · <i class="sw-warn"></i>Polymarket{% endif %}</div></div>
     <div><a href="/races/{{ u.info.race_id }}">{{ u.outcomes }} outcomes →</a></div>
   </div>
   {% endfor %}
@@ -33,7 +33,7 @@
     <div><h3><a href="/seasons/{{ s.code }}">{{ s.run.season }} championship</a>{% if s.season.new %} <a href="/markets/polymarket?show=all">{{ new_badge(s.season.new) }}</a>{% endif %}</h3><div class="when">season-long markets</div></div>
     {{ venue_chips(s.season.venues, s.season.mine) }}
     <div>{% for o in s.season.top %}<div class="pr"><span>{{ o.subject }}</span>{{ bar(o.fair, o.pm_mid) }}<span class="num">{{ pct(o.fair) }}</span></div>{% endfor %}
-      <div class="legend">champion probability{% if s.season.top and s.season.top[0].pm_mid is not none %} · <i style="background:var(--warn)"></i>Polymarket{% endif %}</div></div>
+      <div class="legend">champion probability{% if s.season.top and s.season.top[0].pm_mid is not none %} · <i class="sw-warn"></i>Polymarket{% endif %}</div></div>
     {% if s.season.constructors %}<div class="legend">Constructors: {% for o in s.season.constructors %}{{ o.subject }} {{ pct(o.fair) }}{{ " · " if not loop.last }}{% endfor %}</div>{% endif %}
     {% set st = s.season.strategy %}{% if st %}<div class="ecard-foot">
       <div class="legend">Default season strategy (replayed on Polymarket's prices)</div>
