@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Request an account · racinglines</title><link rel="stylesheet" href="/static/style.css?v={{ css_v() }}"></head>
+<body><main class="login">
+<h1>racinglines</h1>
+<p class="sub">Fair prices and market making for race sports.</p>
+{% if done %}
+<div class="card">
+  <p><b>Thanks, we have your request.</b></p>
+  <p>We are in a soft launch and set up each account by hand. You will get an email with your sign-in details,
+  usually within a day.</p>
+  <p>In the meantime you can try the app straight away from the <a href="/login">sign-in page</a>.</p>
+</div>
+{% else %}
+<p>Request an account. We are in a soft launch, set up each account by hand, and email you your sign-in details.</p>
+{% if error %}<p class="bad">{{ error }}</p>{% endif %}
+<form method="post" action="/signup" class="card">
+  <label><span>Name</span><input name="name" value="{{ form.name or '' }}" autocomplete="name" maxlength="80" required></label>
+  <label><span>Email</span><input name="email" type="email" value="{{ form.email or '' }}" autocomplete="email" maxlength="120" required></label>
+  <p class="mt"><span>Which tier?</span></p>
+  <label><input type="radio" name="tier" value="pro" {% if form.tier == 'pro' %}checked{% endif %} required>
+    <b>Pro</b>: model fair prices, quote markets, every strategy, the Lab</label>
+  <label><input type="radio" name="tier" value="basic" {% if form.tier == 'basic' %}checked{% endif %}>
+    <b>Basic</b>: follow a taker strategy's calls, no model numbers</label>
+  <label><span>Anything else? (optional)</span><input name="note" value="{{ form.note or '' }}" maxlength="500"></label>
+  <label class="hp" aria-hidden="true" style="position:absolute;left:-9999px"><span>Website</span><input name="website" tabindex="-1" autocomplete="off"></label>
+  <button class="primary mt">Request account</button>
+</form>
+<p class="confused"><a href="/login">Back to sign in</a> · <a href="/racinglines101">What is this?</a></p>
+{% endif %}
+</main>{% include "_site_notice.html" %}</body></html>

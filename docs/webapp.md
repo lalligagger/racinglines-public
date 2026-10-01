@@ -94,6 +94,13 @@ event: a race, or a competition's season
 
 ## Pages
 
+**Request an account** (`/signup`, `RACINGLINES_SIGNUP_REQUESTS=1`, off by default): a public form (name, email,
+pro or basic, a note) linked from the sign-in page. It creates no account: each request is one `signup_request`
+row in `activity_log` (read them at `/admin/activity?action=signup_request`), and an admin creates the account at
+`/admin/users` and emails the sign-in details. Five requests per IP per hour, plus a hidden honeypot field. The
+full self-serve flow (invite codes, email verification) is [fantasy accounts §5](fantasy-accounts.md); this is the
+stopgap for the soft launch.
+
 The nav follows the role:
 
 | Role | Nav |

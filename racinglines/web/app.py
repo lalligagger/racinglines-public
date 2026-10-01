@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import math
 import os
+import re
 import secrets
 import threading
 import time
@@ -51,7 +52,7 @@ CSRF_TOKEN = hmac.new(_SECRET.encode(), b"csrf", hashlib.sha256).hexdigest()
 security = HTTPBasic(realm="racinglines", auto_error=False)
 SESSION_COOKIE = "rl_session"
 SESSION_HOURS = 12
-PUBLIC_PATHS = ("/login", "/static", "/racinglines101")
+PUBLIC_PATHS = ("/login", "/static", "/racinglines101", "/signup")
 
 # failed-login throttle: per client IP, MAX_FAILURES within FAILURE_WINDOW seconds -> 429
 MAX_FAILURES = 8
@@ -231,7 +232,7 @@ templates.env.globals["demo_context_on"] = lambda: DEMO_CONTEXT["on"]      # rea
 templates.env.globals["csrf_token"] = CSRF_TOKEN
 # Maintenance popup on the sign-in page and every app page, dismissed with "ok" once per browser session
 # (_site_notice.html). Set to "" to turn it off.
-MAINTENANCE_NOTICE = "We are working on things! You may experience downtimeor dead links until we finish."
+MAINTENANCE_NOTICE = "We are working on things! You may experience downtime or dead links until we finish."
 templates.env.globals["maintenance_notice"] = lambda: MAINTENANCE_NOTICE   # read at render time
 # the stylesheet's and scripts' URLs carry the newest static file's mtime, so a change is a new URL: no stale copy from the browser or
 # Cloudflare's edge cache (read at render time)
@@ -912,7 +913,7 @@ def place_bet(request: Request, market_id: int, side: str = Form(...), stake: fl
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request, next: str = "/", error: str = ""):
-    return templates.TemplateResponse(request, "login.html", dict(next=next, error=error))
+    return templates.TemplateResponse(request, "login.html", dict(next=next, error=error, signup_on=signup_on()))
 
 
 @app.post("/login")
@@ -950,6 +951,54 @@ def logout(request: Request):
     resp = RedirectResponse("/login", status_code=303)
     resp.delete_cookie(SESSION_COOKIE)
     return resp
+
+
+# ---------------------------------------------------------------------------
+# Request an account (/signup, RACINGLINES_SIGNUP_REQUESTS=1, off by default): a public form that only records
+# the request in activity_log (action "signup_request", no new table). An admin reads them at
+# /admin/activity?action=signup_request and creates the account at /admin/users. The full sign-up flow
+# (invite codes, email verification) is docs/fantasy-accounts.md §5; this is the stopgap until it lands.
+# ---------------------------------------------------------------------------
+
+SIGNUP_MAX_PER_IP = 5                       # requests per client IP per hour
+_signup_hits: dict[str, list[float]] = {}
+_EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$")
+
+
+def signup_on() -> bool:
+    return os.environ.get("RACINGLINES_SIGNUP_REQUESTS", "0") == "1"
+
+
+@app.get("/signup", response_class=HTMLResponse)
+def signup_page(request: Request):
+    if not signup_on():
+        raise HTTPException(404)
+    return templates.TemplateResponse(request, "signup.html", dict(form={}, error="", done=False))
+
+
+@app.post("/signup", response_class=HTMLResponse)
+def signup_request(request: Request, name: str = Form(""), email: str = Form(""), tier: str = Form(""),
+                   note: str = Form(""), website: str = Form("")):
+    if not signup_on():
+        raise HTTPException(404)
+    form = dict(name=name.strip()[:80], email=email.strip()[:120], tier=tier, note=note.strip()[:500])
+    if website:                                   # honeypot: people never see this field, bots fill it
+        return templates.TemplateResponse(request, "signup.html", dict(form={}, error="", done=True))
+    ip = client_ip(request)
+    now = time.time()
+    hits = [t for t in _signup_hits.get(ip, []) if now - t < 3600]
+    if len(hits) >= SIGNUP_MAX_PER_IP:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many requests; try again in an hour")
+    error = ("Please enter your name." if not form["name"] else
+             "Please enter a valid email address." if not _EMAIL_RE.match(form["email"]) else
+             "Please pick pro or basic." if tier not in ("pro", "basic") else "")
+    if error:
+        return templates.TemplateResponse(request, "signup.html", dict(form=form, error=error, done=False),
+                                          status_code=400)
+    _signup_hits[ip] = hits + [now]
+    U.log(get_engine(), None, "signup_request", request, name=form["name"], email=form["email"],
+          tier=tier, note=form["note"] or None)
+    return templates.TemplateResponse(request, "signup.html", dict(form={}, error="", done=True))
 
 
 # ---------------------------------------------------------------------------
