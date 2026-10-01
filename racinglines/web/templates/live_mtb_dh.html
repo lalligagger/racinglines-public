@@ -41,7 +41,7 @@
 <div class="card"><h2>Leaderboard</h2>
 {% if fin %}<div class="scroll"><table><thead><tr><th>#</th><th class="l">Rider</th><th>Time</th><th>Gap</th></tr></thead><tbody>
 {% for r in fin[:10] %}<tr><td>{{ r.rank }}</td><td class="l">{{ r.name }} <span class="muted">{{ r.nation or "" }}</span></td><td class="num">{{ t(r.time) }}</td><td class="num muted">{{ "+%.3f"|format(r.gap / 1000) if r.gap else "" }}</td></tr>{% endfor %}
-</tbody></table></div>{% else %}<p class="muted">Nobody has finished yet.</p>{% endif %}</div>
+</tbody></table></div>{% else %}{{ empty("Nobody has finished yet.") }}{% endif %}</div>
 <div class="card"><h2>On course</h2>
 <ul class="oncourse">{% for r in on %}<li><b>{{ r.name }}</b> <span class="muted">{{ r.nation or "" }}</span><br>
   {% if r.splits %}split {{ r.splits|length }}: {{ t(r.splits[-1]) }}{% if r.split_pos and r.split_pos[-1] %} · <b>{{ r.split_pos[-1] }}{{ {1: "st", 2: "nd", 3: "rd"}.get(r.split_pos[-1], "th") }}</b> at this split{% endif %}{% else %}started{% endif %}

@@ -7,7 +7,7 @@
 <details class="muted"><summary>About these positions</summary>
 <p class="legend">Paper only: nothing was sent to Polymarket. Polymarket history is {{ "the maker's fills" if maker else "your strategy's calls" }}{% if sport_paper %}; NASCAR and MotoGP are taker replays on the exchanges' recorded prices (a demo: strategies picked in-sample){% elif venues.kalshi %}; Kalshi is the same maker's replay on Kalshi's tape{% endif %}{% if venues.private %}; the private book is {{ "the one you ran" if maker else "the one you bet into" }} live (a demo, in fantasy bucks){% endif %}.</p></details>
 
-{% if not paper.n and not my_bets and not venues %}<p class="muted">No positions yet.{% if not profile %} This account has no strategy profile.{% endif %}</p>{% else %}
+{% if not paper.n and not my_bets and not venues %}{{ empty("No positions yet." ~ (" This account has no strategy profile." if not profile else "")) }}{% else %}
 {# --- the headline: P&L per venue (each one a filter), then the ledger's state --- #}
 <div class="kpis hero">
 {% if venues|length > 1 %}{% for key, label, sub in [('polymarket', 'Polymarket P&L', 'paper history'), ('kalshi', 'Kalshi P&L', "paper, on Kalshi's tape"), ('private', 'Private book P&L', 'live, fantasy bucks')] if venues[key] %}{% set v = venues[key] %}
@@ -73,7 +73,7 @@ Worst drawdown <b class="bad">{{ book.max_dd|money(true) }}</b> from a peak, thr
 {% for rc in cm.races %}
 <h3>{{ rc.name }}{% if rc.location %} · {{ rc.location }}{% endif %} <span class="muted small">· race {{ rc.start|fmt }}</span></h3>
 {% set calls = [] %}{% for e in rc.events %}{% for r in e.rows if r.call.action %}{% set _ = calls.append(r) %}{% endfor %}{% endfor %}
-{% if not rc.events %}<p class="muted">{{ ex }} hasn't listed markets for this race yet. {{ "Quotes" if maker else "Calls" }} appear here as soon as it does.</p>
+{% if not rc.events %}{{ empty(ex ~ " hasn't listed markets for this race yet. " ~ ("Quotes" if maker else "Calls") ~ " appear here as soon as it does.") }}
 {% elif not calls %}<p class="muted">{{ rc.events|map(attribute='rows')|map('length')|sum }} markets listed; {{ "there's" if profile.basic else profile.name.split(' ')[0] }} {{ "wouldn't quote any" if maker else ("no pick on any" if profile.basic else "has no call on any") }} right now. {{ "Quotes" if maker else "Calls" }} update after every session.</p>
 {% else %}<div class="scroll"><table><thead><tr><th class="l">Market</th><th>Price</th>{% if maker %}<th>Bid</th><th>Ask</th><th>Size</th>{% else %}<th class="l">Call</th><th class="l">Heat</th>{% endif %}</tr></thead><tbody>
 {% for r in calls %}<tr><td class="l">{{ r.subject }} <span class="muted">{{ r.prediction|kind }}</span></td><td>{{ "%.3f"|format(r.mid) if r.mid is not none }}</td>
