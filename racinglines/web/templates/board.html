@@ -36,11 +36,6 @@
     <div>{% for o in s.season.top %}<div class="pr"><span>{{ o.subject }}</span>{{ bar(o.fair, o.pm_mid, "", (o.venues.kalshi.mid if o.venues and o.venues.kalshi else none)) }}<span class="num">{{ pct(o.fair) }}</span></div>{% endfor %}
       <div class="legend">champion probability{% if s.season.top and s.season.top[0].pm_mid is not none %} · <i class="sw-warn"></i>Polymarket{% endif %}</div></div>
     {% if s.season.constructors %}<div class="legend">Constructors: {% for o in s.season.constructors %}{{ o.subject }} {{ pct(o.fair) }}{{ " · " if not loop.last }}{% endfor %}</div>{% endif %}
-    {% set st = s.season.strategy %}{% if st %}<div class="ecard-foot">
-      <div class="legend">Default season strategy (replayed on Polymarket's prices)</div>
-      <div><b class="{{ pnl_cls(st.summary.pnl) }}">{{ st.summary.pnl|money(true) }}</b> <span class="muted">since pre-season · {{ st.summary.open_positions }} open · hold {{ st.hold.pnl|money(true) }}</span></div>
-      {% for a in st.actions[:3] %}<div class="legend">Now: <b>{{ a.action }}</b> {{ a.subject }} ({{ "%+.0f"|format(a.edge * 100) }} pts)</div>{% else %}<div class="legend">Now: no trade (no edge ≥ {{ "%.0f"|format(st.params.min_edge * 100) }} pts)</div>{% endfor %}
-    </div>{% endif %}
     <div><a href="/seasons/{{ s.code }}">{{ s.season.outcomes }} outcomes →</a></div>
   </div>
   {% elif s.asof %}
