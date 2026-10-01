@@ -267,6 +267,12 @@ case "${1:-}" in
         ref="${3:-staging}"
         origin=$(as_stg "git remote get-url origin" | tail -n 1) || { echo "couldn't reach the VM or $STG is missing: run bash scripts/deploy/vm.sh staging setup first"; exit 1; }
         [ "$origin" = "$REPO_URL" ] || { echo "$STG fetches from $origin, not $REPO_URL: nothing deployed"; exit 1; }
+        # Check for concurrent staging workflow runs and warn (but don't block)
+        if command -v gh >/dev/null 2>&1; then
+          if gh run list --workflow staging.yml --status in_progress --limit 1 2>/dev/null | grep -q .; then
+            echo "warning: a staging workflow run is in progress; deploys share one queue"
+          fi
+        fi
         log "staging deploy $ref (production's timers keep running)"
         remote "cd $STG && sudo -u racinglines -H bash -s -- $ref" < deploy/vm/staging/update.sh
         remote "sudo install -m 644 $STG/deploy/vm/systemd/$SU.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl restart $SU && sleep 3 && systemctl is-active $SU"
