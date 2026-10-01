@@ -4,7 +4,7 @@
 <body><main class="login">
 <h1>racinglines</h1>
 <p class="sub">Fair prices and market making for race sports.</p>
-{% if error %}<p class="bad">Wrong username or password.</p>{% endif %}
+{% if error == "throttled" %}<p class="bad">Too many failed sign-ins. Wait 15 minutes and try again.</p>{% elif error %}<p class="bad">Wrong username or password.</p>{% endif %}
 
 <div class="demo">
   <form method="post" action="/login"><input type="hidden" name="username" value="maker"><input type="hidden" name="password" value="password"><input type="hidden" name="next" value="{{ next }}">

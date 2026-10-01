@@ -23,7 +23,7 @@
   {% elif mk.status == 'closed' %}<input type="hidden" name="status" value="open"><button>Re-open</button>{% endif %}</form>
 </div>
 <div class="card"><h2>{{ "Record an offline bet" if user.role == 'admin' else "Exposure" }}</h2>
-{% if user.role != 'admin' %}<p class="muted">Basic accounts bet on the market board; bets show up below.</p>
+{% if user.role != 'admin' %}
 {% elif mk.status == 'open' %}
 <form method="post" action="/book/markets/{{ mk.id }}/bet" class="row">{{ csrf() }}
   <label><span>Counterparty</span><input name="counterparty" required size="16"></label>

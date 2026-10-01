@@ -20,12 +20,12 @@
 <div class="card"><div class="scroll"><table>
 <thead><tr><th class="l">Event</th><th class="l">Sport</th><th>Date</th><th class="l">Status</th><th>Markets (open)</th><th>Bets</th><th>Staked</th><th>EV at fair (open)</th><th>Worst case (open)</th><th>Settled P&amp;L</th><th class="l">Most staked</th><th></th></tr></thead>
 <tbody>{% for g in groups %}<tr>
-<td class="l"><a href="{{ '/races/' ~ g.race_id if g.race_id else '/seasons/f1_wdc' }}">{{ g.title }}</a></td><td class="l">{{ g.sport }}</td><td>{{ g.date|fmt if g.date }}</td>
+<td class="l"><a href="{{ '/races/' ~ g.race_id if g.race_id else '/seasons/' ~ (g.season_code or 'f1_wdc') }}">{{ g.title }}</a></td><td class="l">{{ g.sport }}</td><td>{{ g.date|fmt if g.date }}</td>
 <td class="l"><span class="chip status-{{ g.status }}">{{ (g.status or "")|replace('_', ' ') }}</span></td>
 <td>{{ g.markets }} ({{ g.open }})</td><td>{{ g.bets }}</td><td>${{ "%.0f"|format(g.staked) }}</td>
 <td>{% if g.open %}{{ pnl(g.ev) }}{% endif %}</td>
 <td class="{{ 'bad' if g.worst < 0 }}">{{ g.worst|money if g.open else "" }}</td>
 <td>{% if g.settled %}{{ pnl(g.settled) }}{% endif %}</td>
 <td class="l">{% for t in g.top[:3] %}{% if t.staked %}{{ t.athlete or t.title[:24] }} ${{ "%.0f"|format(t.staked) }}{{ " · " if not loop.last }}{% endif %}{% endfor %}</td>
-<td><a href="/book/quotes?race_id={{ g.race_id }}">manage →</a></td></tr>{% endfor %}</tbody></table></div></div>
+<td><a href="/book/quotes?race_id={{ g.race_id or 0 }}">manage →</a></td></tr>{% endfor %}</tbody></table></div></div>
 {% endblock %}
