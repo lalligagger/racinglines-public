@@ -163,6 +163,16 @@ sudo systemctl status cloudflared --no-pager      # active; the dashboard shows 
 If it says a service already exists, `sudo cloudflared service uninstall` first. Don't give it
 `racinglines.bet` yet: that hostname moves at the cutover below.
 
+**Temporary local tunnel for staging checks.** The Mac should not keep a long-lived Cloudflare tunnel
+running. For branch validation we instead use a short-lived tunnel that starts just for the smoke check and
+then shuts down:
+```sh
+bash scripts/deploy/staging.sh smoke 8010
+```
+This starts `cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8010`, waits for the temporary
+trycloudflare URL, runs `scripts/deploy/smoke.sh`, and exits cleanly. A stable public hostname like
+`staging.racinglines.bet` belongs on the VM or the Cloudflare dashboard, not on the owner's personal Mac.
+
 **8. The MCP server's hostname** (Cloudflare + the VM; done 2026-09-28). [MCP server](mcp.md#giving-access-as-an-admin) has the admin and user guides and the troubleshooting table; this is the short form.
 Issue the admin token and start the unit, on the VM:
 ```sh
