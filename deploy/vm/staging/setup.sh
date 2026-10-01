@@ -16,6 +16,9 @@
 #                                       recorder, signals, live-event or MCP units for staging)
 # Production's checkout, database, /etc/racinglines.env, units and timers are not read for writing and not restarted.
 set -euo pipefail
+# all in a function: this script arrives on ssh's stdin (vm.sh pipes it), so bash must read it whole before running
+# anything; otherwise `docker compose exec -T` reads the rest of the script as its own stdin and setup stops silently
+main() {
 REPO="${REPO:-https://github.com/lalligagger/racinglines-public.git}"
 REF="${REF:-staging}"
 APP=/opt/racinglines
@@ -27,7 +30,7 @@ log() { echo "[staging-setup $(date -u +%H:%M:%S)] $*"; }
 [ -d "$APP/.git" ] || { echo "production checkout $APP missing: run vm.sh setup first"; exit 1; }
 as() { sudo -u racinglines -H "$@"; }
 # production's compose project (its Postgres container), read-only use below
-pg() { as bash -c "cd $APP && docker compose exec -T db $*"; }
+pg() { as bash -c "cd $APP && docker compose exec -T db $*" </dev/null; }
 
 log "checkout $STG ($REF)"
 if [ ! -d "$STG/.git" ]; then
@@ -56,7 +59,7 @@ if [ "$exists" != 1 ]; then
   pg psql -U racinglines -d postgres -v ON_ERROR_STOP=1 -c "\"CREATE DATABASE $DB\""
   log "copying production's rows into $DB (pg_dump | psql; production is only read)"
   as bash -c "cd $APP && set -o pipefail && docker compose exec -T db pg_dump --no-owner --no-privileges -U racinglines racinglines \
-    | docker compose exec -T db psql -q -U racinglines -d $DB -v ON_ERROR_STOP=0 >/dev/null"
+    | docker compose exec -T db psql -q -U racinglines -d $DB -v ON_ERROR_STOP=0 >/dev/null" </dev/null
   n=$(pg psql -U racinglines -d "$DB" -tAc "\"SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema')\"" | tail -n 1)
   log "$DB has $n tables"
 else
@@ -98,3 +101,5 @@ sleep 3
 systemctl --no-pager status racinglines-staging-web | grep -E 'Active'
 curl -s -o /dev/null -w 'GET http://127.0.0.1:8010/login: %{http_code}  env: %header{x-racinglines-env}\n' http://127.0.0.1:8010/login || true
 log "done. Point staging.racinglines.bet at http://localhost:8010 in Cloudflare, then: bash scripts/deploy/smoke.sh https://staging.racinglines.bet"
+}
+main "$@"
