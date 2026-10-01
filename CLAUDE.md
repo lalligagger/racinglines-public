@@ -271,6 +271,26 @@ Standing practice from the owner (2026-09-29), applied to every task, not one pa
   test fixtures and the findings go into the schema (caps as `limits`). Only then does the full run happen on the
   VM. Never run a full import against an unverified source, and never guess at a live API's behaviour from the cloud.
 
+## Current status: public repo + demo completion plan (2026-09-30)
+
+The repo-safe CI path is now fixed and verified. The default smoke gate does not probe a bad password anymore,
+so it no longer warms the app's 15-minute failed-login throttle and produces a false negative against the real
+maker/taker checks. The explicit auth-throttle check remains available as a separate opt-in mode for diagnosing
+that edge case, but it is not part of the normal staging or prod gate.
+
+The remaining work to finish the demo is therefore purely operational and repo-safe:
+
+- **Public repo guardrails:** raw runtime data stays out of Git; fixture fetches are explicit and minimal; the
+  repo has guard tests for no-data-in-Git and the limited fixture target list.
+- **Staging gate:** `bash scripts/deploy/predeploy.sh --staging main` is the final branch checkpoint before a
+  merge to `main`. The gate runs valid-auth checks only.
+- **PR / merge flow:** branch from `main`, commit the finished batch, open the PR, let GitHub CI run the repo-safe
+  checks, then merge only after the staging gate is green.
+- **Demo completion:** bring the app to the demo default state only behind the tracked feature switches, keep all
+  runtime data and secrets local, and use the maker/taker smoke check rather than the throttling path.
+- **If the old wrong-password probe has already warmed the throttle:** wait 15 minutes or restart the app on a
+  fresh client/IP before rerunning the normal valid-auth smoke checks.
+
 ## Safety rails (non-negotiable, carried over from the project's own rules)
 
 - Never flip `POLYMARKET_TRADING_ENABLED` / `KALSHI_TRADING_ENABLED`, run `vm.sh public on`, or run a DB migration
