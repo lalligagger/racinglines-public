@@ -40,7 +40,7 @@
 <td>{% if r.private and r.private.bets %}{{ r.private.bets }} · {{ r.private.staked|money(false, false) }}{% endif %}</td>
 {% if completed %}<td>{% if r.result == True %}<span class="pill yes">YES</span>{% elif r.result == False %}<span class="pill no">NO</span>{% endif %}</td>{% endif %}
 </tr>{% endfor %}</tbody></table></div>
-<p class="legend">Bars: our fair probability; the orange tick is the exchange price. Gap = exchange − our fair, in points.{% if schema_exchanges %} A green YES / NO beside {% for v in schema_exchanges %}{{ v.name }}{% if not loop.last %}, {% endif %}{% endfor %} quotes is the side with an edge net of the taker fee (<code>racinglines markets --exchange {{ schema_exchanges[0].code }} fair</code>).{% endif %}</p>
+<p class="legend">Bars: our fair probability; the orange tick is the exchange price. Gap = exchange − our fair, in points.{% if schema_exchanges %} A green YES / NO beside {% for v in schema_exchanges %}{{ v.name }}{% if not loop.last %}, {% endif %}{% endfor %} quotes is the side with an edge net of the taker fee{% if user.role == 'admin' %} (<code>racinglines markets --exchange {{ schema_exchanges[0].code }} fair</code>){% endif %}.{% endif %}</p>
 </div>
 </section>
 {% endfor %}
@@ -97,7 +97,7 @@
   <label><span>Spread (pts)</span><input name="spread_pct" value="6" type="number" step="0.5" min="1" max="30"></label>
   <label><button class="primary">Quote privately</button></label>
 </form>
-<p class="legend">Creates (or reprices) YES/NO markets in my private book at our fair ± spread/2. Takers see prices only.</p>
+<p class="legend">Creates (or reprices) YES/NO markets in my book at our fair ± spread/2. Takers see prices only.</p>
 {% for v in venue_sum %}{% if v.venue.code == 'polymarket' and v.slug %}
 <form method="post" action="/markets/polymarket/mirror" class="inline">{{ csrf() }}<input type="hidden" name="event_slug" value="{{ v.slug }}"><input type="hidden" name="spread_pct" value="4"><button>Mirror Polymarket outcomes into my book</button></form>
 <a href="https://polymarket.com/event/{{ v.slug }}" target="_blank" rel="noopener">open on Polymarket ↗</a>{% elif kalshi and v.venue.code == 'kalshi' and v.slug %}

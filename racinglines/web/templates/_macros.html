@@ -54,7 +54,7 @@
 {%- endmacro %}
 {% macro new_badge(n=0) %}<span class="pill new" title="first seen on Polymarket in the last 48 hours">{{ n ~ " " if n else "" }}new</span>{% endmacro %}
 
-{% macro paper_banner(n) %}{% if n and n.profile %}<div class="paper-banner"><span>Paper account · <b>{{ n.profile }}</b></span>
+{% macro paper_banner(n) %}{% if n and n.profile %}<div class="paper-banner"><span>Fantasy account · <b>{{ n.profile }}</b></span>
 <span>Polymarket P&amp;L <b class="{{ pnl_cls(n.pnl) }}">{{ n.pnl|money(true) }}</b></span>
 {% if n.private is not none %}<span>Private book <b class="{{ pnl_cls(n.private) }}">{{ n.private|money(true) }}</b></span>{% endif %}
 <span class="links"><a href="/strategy">Strategy: track record and how it got here →</a> · <a href="/positions">Positions →</a></span></div>{% endif %}{% endmacro %}

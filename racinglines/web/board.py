@@ -212,13 +212,20 @@ def headline(conn, maker_id):
     rec_ts = rec["ts"].iloc[0] if len(rec) and not pd.isna(rec["ts"].iloc[0]) else None
     rec_n = int(rec["n"].iloc[0] or 0) if len(rec) and rec["n"].iloc[0] is not None else 0
     bk = house.book(conn, maker_id=maker_id, status="open")
-    bt = data.q(conn, """SELECT metrics->'summary'->'pre_race|track=True' AS s FROM model_runs
-                         WHERE kind = 'backtest' AND coalesce(params->>'variant', 'baseline') = 'baseline' ORDER BY id DESC LIMIT 1""")
-    s = bt["s"].iloc[0] if len(bt) else None
     jobs = data.q(conn, "SELECT count(*) FILTER (WHERE status IN ('queued', 'running')) AS active FROM jobs").iloc[0]
     return dict(outcomes=int(ex["outcomes"]), markets=int(ex["markets"]), volume=float(ex["volume"]), synced=ex["synced"],
                 recording=rec_n, recorded_at=rec_ts,
                 my_open=len(bk), my_worst=float(bk["worst"].sum()) if len(bk) else 0.0,
                 my_staked=float(bk["staked"].sum()) if len(bk) else 0.0,
-                bt_win=s.get("brier_win") if s else None, bt_grid=s.get("brier_win_grid") if s else None,
                 jobs_active=int(jobs["active"]))
+
+
+def model_brier(conn):
+    """The Lab's headline: (win Brier, grid-only win Brier) of the latest baseline backtest, each None without one."""
+    try:
+        bt = data.q(conn, """SELECT metrics->'summary'->'pre_race|track=True' AS s FROM model_runs
+                             WHERE kind = 'backtest' AND coalesce(params->>'variant', 'baseline') = 'baseline' ORDER BY id DESC LIMIT 1""")
+        s = bt["s"].iloc[0] if len(bt) else None
+    except Exception:                                   # noqa: BLE001  the Lab opens without it
+        s = None
+    return (s.get("brier_win") if s else None, s.get("brier_win_grid") if s else None)

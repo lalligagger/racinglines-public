@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% from "_macros.html" import empty, paper_banner, demo_context, flash, page_head %}
-{% block title %}Markets{% endblock %}
+{% block title %}F1 (Polymarket){% endblock %}
 {% block content %}
-{{ page_head("Markets", "Every open F1 market on Polymarket (" ~ n_markets ~ " outcomes; synced " ~ synced|fmt ~ ")" ~ (", with " ~ ("your picks' current call" if profile.basic else profile.name ~ "'s current call") ~ " on each: which side, how many shares, the most to pay, and how hot it is" if profile else "") ~ ". Prices are Polymarket's, per $1 payout.") }}
+{{ page_head("F1 (Polymarket)", "Every open F1 market on Polymarket (" ~ n_markets ~ " outcomes; synced " ~ synced|fmt ~ ")" ~ (", with " ~ ("your picks' current call" if profile.basic else profile.name ~ "'s current call") ~ " on each: which side, how many shares, the most to pay, and how hot it is" if profile else "") ~ ". Prices are Polymarket's, per $1 payout.") }}
 {{ paper_banner(signals_nav) }}
 {{ flash(msg) }}
 {% if sport_status %}{% include "_sport_status.html" %}{% endif %}

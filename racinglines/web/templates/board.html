@@ -6,9 +6,8 @@
 
 <div class="kpis">
   <div class="kpi"><div class="l">Exchange outcomes we price</div><div class="v">{{ h.outcomes }}</div><div class="s">{{ h.markets }} markets · {{ ("$" ~ "{:,.1f}M".format(h.volume / 1e6)) if h.volume >= 1e6 else (h.volume|money(false, false)) }} traded</div></div>
-  <div class="kpi"><div class="l">Order books recording</div><div class="v {{ 'good' if h.recording else 'muted' }}">{{ h.recording or "off" }}</div><div class="s">{% if h.recorded_at %}last {{ h.recorded_at|fmt }}{% else %}start <code>racinglines markets record</code>{% endif %}</div></div>
+  <div class="kpi"><div class="l">Order books recording</div><div class="v {{ 'good' if h.recording else 'muted' }}">{{ h.recording or "off" }}</div><div class="s">{% if h.recorded_at %}last {{ h.recorded_at|fmt }}{% elif user.role == 'admin' %}start <code>racinglines markets record</code>{% else %}not yet{% endif %}</div></div>
   <div class="kpi"><div class="l">My open markets</div><div class="v">{{ h.my_open }}</div><div class="s">staked against me {{ h.my_staked|money(false, false) }} · worst case <span class="{{ 'bad' if h.my_worst < 0 }}">{{ h.my_worst|money(false, false) }}</span></div></div>
-  <div class="kpi"><div class="l">F1 model vs grid-only (win, after quali)</div><div class="v {{ 'bad' if h.bt_win and h.bt_grid and h.bt_win > h.bt_grid else 'good' }}">{% if h.bt_win %}{{ "%+.4f"|format(h.bt_win - h.bt_grid) }}{% else %}–{% endif %}</div><div class="s">Brier difference, lower is better · <a href="/lab">Lab</a></div></div>
   <div class="kpi"><div class="l">Model jobs running</div><div class="v">{{ h.jobs_active }}</div><div class="s"><a href="/lab#run">launch a backtest or scenario</a></div></div>
 </div>
 {% include "_recorders.html" %}
@@ -89,7 +88,7 @@
 </details>
 {% endfor %}
 {% if disagree %}<details class="card" data-remember="markets:disagree" open><summary><h2>Cross-venue disagreement</h2><span class="sum">{{ disagree.n_above }} of {{ disagree.rows|length }} outcomes above fees · last tick {{ disagree.last|fmt }}</span></summary>
-<p class="legend">Polymarket vs Kalshi on every outcome listed on both, at the log's latest tick (<code>racinglines markets disagree</code>). Gap = Kalshi mid − Polymarket mid; net = |gap| − both taker fees; edge = the better taker trade vs our fair, net of fees. Greyed rows: a venue's tape shows nothing traded in the prior 24 h, so the gap is on paper.</p>
+<p class="legend">Polymarket vs Kalshi on every outcome listed on both, at the log's latest tick{% if user.role == 'admin' %} (<code>racinglines markets disagree</code>){% endif %}. Gap = Kalshi mid − Polymarket mid; net = |gap| − both taker fees; edge = the better taker trade vs our fair, net of fees. Greyed rows: a venue's tape shows nothing traded in the prior 24 h, so the gap is on paper.</p>
 <div class="scroll" data-rows="20" data-filter="filter outcomes"><table>
 <thead><tr><th class="l">Outcome</th><th class="l hide-sm">Event</th><th>Polymarket</th><th>Kalshi</th><th>Fair</th><th class="hide-sm">PM edge</th><th class="hide-sm">Kalshi edge</th><th class="hide-sm">Gap</th><th>Net</th><th class="hide-sm">At (UTC)</th></tr></thead>
 <tbody>{% for r in disagree.rows %}<tr{% if not r.liquid %} class="muted"{% endif %}>

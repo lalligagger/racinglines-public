@@ -5,8 +5,8 @@
 {% block title %}{{ venue.name }}{% endblock %}
 {% block content %}
 <p class="crumbs"><a href="/markets">Markets</a> › {{ venue.name }}</p>
-{% if schema %}{% set sub = "Every " ~ sports|join(" and ") ~ " market listed on " ~ venue.name ~ ", including outcomes we don't price, with the model's fair price beside the quote net of the taker fee (racinglines markets --exchange " ~ venue.code ~ " fair). Read-only: nothing is traded on " ~ venue.name ~ "." %}
-{% else %}{% set sub = "Every F1 event listed on " ~ venue.name ~ ", including outcomes we don't price. Mirror an event into my private book, or open a race from Markets for the full view." ~ ("" if pm else " Read-only: nothing is traded on Kalshi.") %}{% endif %}
+{% if schema %}{% set sub = "Every " ~ sports|join(" and ") ~ " market listed on " ~ venue.name ~ ", including outcomes we don't price, with the model's fair price beside the quote net of the taker fee" ~ (" (racinglines markets --exchange " ~ venue.code ~ " fair)" if user.role == 'admin' else "") ~ ". Read-only: nothing is traded on " ~ venue.name ~ "." %}
+{% else %}{% set sub = "Every F1 event listed on " ~ venue.name ~ ", including outcomes we don't price. Mirror an event into your book, or open a race from Markets for the full view." ~ ("" if pm else " Read-only: nothing is traded on Kalshi.") %}{% endif %}
 {% call page_head(venue.name ~ " markets", sub) %}
 <form method="post" action="/markets/{{ venue.code }}/sync" class="inline">{{ csrf() }}<button>Refresh from {{ venue.name }}</button></form>{% endcall %}
 {{ flash(msg) }}

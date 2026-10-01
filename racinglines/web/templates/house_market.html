@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% from "_macros.html" import csrf, table, flash, page_head %}
 {% block title %}{{ mk.title }}{% endblock %}
 {% block content %}
-<p class="crumbs"><a href="/book">{{ "Books" if user.role == 'admin' else "My Book" }}</a> › <a href="/book/quotes?race_id={{ mk.race_id }}">Quotes</a> › {{ mk.kind }}</p>
+<p class="crumbs"><a href="/book">{{ "Books" if user.role == 'admin' else "My book" }}</a> › <a href="/book/quotes?race_id={{ mk.race_id }}">Quotes</a> › {{ mk.kind }}</p>
 {{ page_head(mk.title, "maker " ~ mk.maker ~ " · " ~ mk.kind ~ " · fair from " ~ mk.fair_source ~ (" run #" ~ mk.model_run_id if mk.model_run_id else "")) }}
 {{ flash(msg) }}
 <div class="kpis hero">

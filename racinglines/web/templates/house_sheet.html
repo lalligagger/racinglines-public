@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% from "_macros.html" import page_head %}
 {% block title %}Quotes · {{ venue }}{% endblock %}
 {% block content %}
-<p class="crumbs"><a href="/book">{{ "Books" if user.role == 'admin' else "My Book" }}</a> › <a href="/book/quotes">Quotes</a> › Sheet</p>
+<p class="crumbs"><a href="/book">{{ "Books" if user.role == 'admin' else "My book" }}</a> › <a href="/book/quotes">Quotes</a> › Sheet</p>
 {% set head_title %}{{ venue }} · {{ cat }} · quotes{% endset %}
 {{ page_head(head_title) }}
 <p class="muted">As of {{ now }} (Vancouver). Price = stake per $1 payout (0.10 → stake $10, get $100). Prices can change until a bet is recorded.</p>

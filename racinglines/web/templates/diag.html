@@ -88,7 +88,7 @@ It only gets filled by <b>real taker trades that came after its quote</b> — ta
 
 <h3>Sensitivity</h3>
 {{ table(rp_sweep, ["half_spread", "fill", "max_disagree", "fills", "notional", "spread_pnl", "markout_60m", "pnl", "worst_case"]) }}
-<p class="muted">Limits: minute prices and trades only, no order-book depth (queue position and competing makers are unknown), and our quotes don't change what takers would have done. Book snapshots recorded from now on (<code>racinglines markets record</code>) replace the touch/through bounds with a queue model.</p>
+<p class="muted">Limits: minute prices and trades only, no order-book depth (queue position and competing makers are unknown), and our quotes don't change what takers would have done. Book snapshots recorded from now on {% if user.role == 'admin' %}(<code>racinglines markets record</code>) {% endif %}replace the touch/through bounds with a queue model.</p>
 </div>
 
 </section>

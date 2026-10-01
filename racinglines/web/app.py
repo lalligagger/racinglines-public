@@ -16,6 +16,7 @@ import os
 import secrets
 import threading
 import time
+from urllib.parse import quote
 from datetime import date, datetime, timezone
 from numbers import Real
 from pathlib import Path
@@ -136,7 +137,8 @@ def authenticate(request: Request, creds: HTTPBasicCredentials | None = Depends(
         _record_failure(ip)
         U.log(get_engine(), None, "login_failed", request, username=creds.username, via="basic")
     if request.method == "GET" and "text/html" in request.headers.get("accept", ""):
-        raise HTTPException(status.HTTP_303_SEE_OTHER, headers={"Location": f"/login?next={request.url.path}"})
+        raise HTTPException(status.HTTP_303_SEE_OTHER, headers={"Location": "/login?next=" + quote(
+                                request.url.path + (f"?{request.url.query}" if request.url.query else ""), safe="/")})
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated",
                         headers={"WWW-Authenticate": 'Basic realm="racinglines"'})
 
@@ -1014,6 +1016,14 @@ def login_page(request: Request, next: str = "/", error: str = ""):
     return templates.TemplateResponse(request, "login.html", dict(next=next, error=error))
 
 
+def _safe_next(nxt):
+    """The post-login target: a same-site relative path only (one leading slash, no scheme, host, backslash or
+    control characters), else /markets."""
+    if (not nxt.startswith("/") or nxt.startswith("//") or "\\" in nxt or any(ord(ch) < 32 or ord(ch) == 127 for ch in nxt)):
+        return "/markets"
+    return nxt
+
+
 @app.post("/login")
 def login(request: Request, username: str = Form(...), password: str = Form(...), next: str = Form("/")):
     ip = client_ip(request)
@@ -1025,8 +1035,8 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
     if user is None:
         _record_failure(ip)
         U.log(get_engine(), None, "login_failed", request, username=username)
-        return RedirectResponse(f"/login?next={next}&error=1", status_code=303)
-    target = next if next.startswith("/") and not next.startswith("//") and next != "/" else "/markets"
+        return RedirectResponse(f"/login?next={quote(_safe_next(next), safe='/')}&error=1", status_code=303)
+    target = _safe_next(next) if next != "/" else "/markets"
     return _start_session(request, user, target)
 
 
@@ -1133,13 +1143,8 @@ def signup(request: Request, username: str = Form(""), password: str = Form(""),
                                 VALUES (:u, :u, :r, :h, true) RETURNING id"""),
                         dict(u=username, r=tier, h=U.hash_password(password))).scalar()
         ACC.grant(c, uid)
-    try:                                            # the tier's starting strategy, as the demo accounts have; a
-        from racinglines.pipelines import profiles as PF   # failure here leaves the account fine, just unassigned
-        with get_engine().begin() as c:
-            prof = R.basic_profile(c, uid) if tier == "basic" else PF.load(c, PF.ensure_candidates(c)[PF.DEMO["maker"]])
-            PF.assign(c, uid, prof)
-    except Exception as ex:                         # noqa: BLE001
-        print(f"signup: no starting profile for user {uid}: {ex}", flush=True)
+        from racinglines.pipelines import profiles as PF   # starts on strategy profile A, as the demo taker does:
+        PF.assign(c, uid, PF.load(c, PF.ensure_candidates(c)["A"]))   # no bankroll, no history: Strategy and Positions start empty
     with get_session() as s:
         user = _user_dict(U.get_user(s, user_id=uid))
     U.log(get_engine(), user, "signup", request, grant=ACC.SIGNUP_GRANT)

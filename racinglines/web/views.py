@@ -357,6 +357,12 @@ def _edge_ctx(c, user):
                 strategies=[(k, edge.label(k)) for k in edge.STRATEGY_KEYS])
 
 
+def _model_brier(c):
+    from racinglines.web import board
+    win, grid = board.model_brier(c)
+    return dict(win=win, grid=grid)
+
+
 @app.get("/lab", response_class=HTMLResponse)
 def lab_page(request: Request, job: str = "", event: str = "", variant: str = "", candidate: int = 0, cfg: str = "",
              msg: str = "", user=allow(*PRO), c=Depends(conn)):
@@ -369,7 +375,7 @@ def lab_page(request: Request, job: str = "", event: str = "", variant: str = ""
     open_now = (["run"] if job or event or variant or candidate or cfg else []) + (["jobs"] if active or msg else [])
     q = {k: v for k, v in dict(job=job, event=event, variant=variant, candidate=candidate or "", cfg=cfg).items() if v}
     return render(request, "lab.html", sections=LAB_SECTIONS, open_now=open_now, query="?" + urlencode(q) if q else "",
-                  active=active, msg=msg, **_edge_ctx(c, user))
+                  active=active, msg=msg, brier=_model_brier(c), **_edge_ctx(c, user))
 
 
 @app.get("/lab/section/{key}", response_class=HTMLResponse)
