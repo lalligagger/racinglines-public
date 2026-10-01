@@ -246,6 +246,12 @@ button.link:hover { text-decoration: underline; }
 .bar { position: relative; height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--muted) 18%, transparent); overflow: visible; }
 .bar .f { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--accent); }
 .bar .m { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--warn); }
+.bar .m[data-venue="kalshi"] { background: #f5b04c; }
+/* exchange toggle buttons for market bars */
+.exchange-toggle { display: flex; gap: 6px; align-items: center; }
+.exchange-toggle button { font: inherit; font-size: 12px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--card); color: var(--fg); cursor: pointer; }
+.exchange-toggle button:hover { border-color: var(--accent); }
+.exchange-toggle button[aria-pressed="true"] { background: color-mix(in srgb, var(--muted) 12%, transparent); border-color: var(--muted); font-weight: 500; }
 .bar.wide { width: 140px; display: inline-block; vertical-align: middle; }
 .legend { font-size: 12px; color: var(--muted); }
 .legend i { display: inline-block; width: 10px; height: 8px; border-radius: 2px; margin: 0 3px 0 8px; vertical-align: middle; }

@@ -23,8 +23,8 @@
 {% macro status_badge(label, x) %}{% set cls = {"ok": "good", "partial": "warn", "none": "bad", "na": "muted"}[x.state] %}<span class="qs" title="{{ x.text }}{% if x.sub %} — {{ x.sub }}{% endif %}"><i class="dot {{ cls }}"></i><b>{{ x.short }}</b> {{ label }}</span>{% endmacro %}
 {# A signed money amount coloured by its sign: +$12.30 green, -$4.00 red, $0.00 plain. #}
 {% macro pnl(v, bold=False) %}{% if v is not none %}<{{ 'b' if bold else 'span' }} class="{{ pnl_cls(v) }}">{{ v|money(true) }}</{{ 'b' if bold else 'span' }}>{% endif %}{% endmacro %}
-{% macro bar(fair, mid=None, cls="") -%}
-<div class="bar {{ cls }}" title="our fair {{ '%.1f%%'|format(fair * 100) if fair is not none }}{% if mid is not none %} · market {{ '%.1f%%'|format(mid * 100) }}{% endif %}">{% if fair is not none %}<div class="f" style="width:{{ [fair * 100, 100]|min }}%"></div>{% endif %}{% if mid is not none %}<div class="m" style="left:calc({{ [mid * 100, 100]|min }}% - 1px)"></div>{% endif %}</div>
+{% macro bar(fair, mid=None, cls="", kalshi_mid=None) -%}
+<div class="bar {{ cls }}" title="our fair {{ '%.1f%%'|format(fair * 100) if fair is not none }}{% if mid is not none %} · Polymarket {{ '%.1f%%'|format(mid * 100) }}{% endif %}{% if kalshi_mid is not none %} · Kalshi {{ '%.1f%%'|format(kalshi_mid * 100) }}{% endif %}">{% if fair is not none %}<div class="f" style="width:{{ [fair * 100, 100]|min }}%"></div>{% endif %}{% if mid is not none %}<div class="m" data-venue="polymarket" style="left:calc({{ [mid * 100, 100]|min }}% - 1px)"></div>{% endif %}{% if kalshi_mid is not none %}<div class="m" data-venue="kalshi" style="left:calc({{ [kalshi_mid * 100, 100]|min }}% - 1px); display:none;"></div>{% endif %}</div>
 {%- endmacro %}
 {% macro pct(p, digits=0) -%}{% if p is not none %}{{ ("%." ~ digits ~ "f%%")|format(p * 100) }}{% else %}–{% endif %}{%- endmacro %}
 {% macro venue_chips(venues, mine=None) -%}
