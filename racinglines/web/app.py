@@ -51,7 +51,7 @@ CSRF_TOKEN = hmac.new(_SECRET.encode(), b"csrf", hashlib.sha256).hexdigest()
 security = HTTPBasic(realm="racinglines", auto_error=False)
 SESSION_COOKIE = "rl_session"
 SESSION_HOURS = 12
-PUBLIC_PATHS = ("/login", "/static", "/racinglines101", "/signup")
+PUBLIC_PATHS = ("/login", "/static", "/racinglines101", "/signup", "/forgot")
 
 # failed-login throttle: per client IP, MAX_FAILURES within FAILURE_WINDOW seconds -> 429
 MAX_FAILURES = 8
@@ -987,6 +987,18 @@ def _signup_page(request, form=None, error="", status_code=200):
     return templates.TemplateResponse(request, "signup.html", dict(form=form or {}, error=error,
                                       ready=_signup_ready(), grant=ACC.SIGNUP_GRANT,
                                       pw_min=ACC.PASSWORD_MIN), status_code=status_code)
+
+
+SUPPORT_EMAIL = "hello@racinglines.bet"      # password resets are requested here; we store no user emails
+
+
+@app.get("/forgot", response_class=HTMLResponse)
+def forgot_password(request: Request):
+    """Forgot your password: we hold no email address, so the page writes a reset request to SUPPORT_EMAIL for the
+    person to send; an admin resets it at /admin/users and replies with a one-time password."""
+    if not signup_on():
+        raise HTTPException(404)
+    return templates.TemplateResponse(request, "forgot.html", dict(support=SUPPORT_EMAIL))
 
 
 @app.get("/signup", response_class=HTMLResponse)

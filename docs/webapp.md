@@ -107,6 +107,10 @@ never change the VM's database: `bash scripts/deploy/vm.sh accounts` backs the d
 setup` (idempotent; every existing active account also gets its 1,000) and switches sign-up on. Until then `/signup`
 says sign-up isn't open yet. Rollback: `vm.sh accounts off`.
 
+Sign-up asks for no email address, and we keep none. **Forgot your password?** (`/forgot`, linked from the sign-in page
+when sign-up is on) writes a reset request to hello@racinglines.bet for the person to send from any address (an
+"Open in my email app" link and a Copy button); an admin resets the password and replies with the one-time password.
+
 Admins manage accounts at `/admin/users`: add, change role, deactivate, **Reset password** (a random one-time password
 shown once on that page, stored only as a hash, never logged) and **Remove** (only accounts with no markets or bets;
 otherwise untick Active). The same from a shell: `racinglines users list | add NAME --role basic | reset-password NAME

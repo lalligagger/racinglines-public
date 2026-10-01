@@ -22,4 +22,5 @@
   <label><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
   <button class="primary mt">Sign in</button>
 </form>
+{% if signup_on() %}<p class="confused"><a href="/forgot">Forgot your password?</a></p>{% endif %}
 </main>{% include "_site_notice.html" %}</body></html>

@@ -39,7 +39,7 @@ def test_off_by_default(monkeypatch):
     from racinglines.web import app as A
     monkeypatch.delenv("RACINGLINES_SIGNUP", raising=False)
     client = TestClient(A.app)
-    assert client.get("/signup").status_code == 404
+    assert client.get("/signup").status_code == 404 and client.get("/forgot").status_code == 404
     assert client.post("/signup", data=GOOD).status_code == 404
     page = client.get("/login").text
     assert "/signup" not in page and "signups</a> are live" not in page
@@ -57,6 +57,9 @@ def test_closed_until_setup_has_run(monkeypatch):
     assert client.post("/signup", data=GOOD).status_code == 503
     page = client.get("/login").text                      # the landing page and its popup link to sign-up
     assert 'Beta <a href="/signup">signups</a> are live!' in page and page.count('href="/signup"') == 2
+    assert 'href="/forgot"' in page
+    forgot = client.get("/forgot").text                    # no email on file: a reset request to us, prefilled
+    assert "mailto:hello@racinglines.bet?subject=Password%20reset%20request" in forgot and "Username:" in forgot
 
 
 # --- the test database ---------------------------------------------------------------------------------------------
