@@ -959,11 +959,12 @@ def logout(request: Request):
 
 
 # ---------------------------------------------------------------------------
-# Beta sign-up (/signup, RACINGLINES_SIGNUP=1, off by default; web/accounts.py): username, password, tier. One
+# Beta sign-up (/signup, RACINGLINES_SIGNUP=1, off by default; web/accounts.py): username and password, as pro. One
 # transaction creates the account (scrypt hash) and its 1,000 fantasy-bucks grant, then signs the person in.
 # Until `racinglines users setup` has made the ledger, the page says sign-up isn't open yet.
 # ---------------------------------------------------------------------------
 
+SIGNUP_ROLE = "pro"                         # every beta sign-up starts as pro (owner, 2026-10-01); tiers later
 SIGNUP_MAX_PER_IP = 10                      # sign-up attempts per client IP per hour (successful or not)
 _signup_hits: dict[str, list[float]] = {}
 
@@ -997,7 +998,7 @@ def signup_page(request: Request):
 
 @app.post("/signup", response_class=HTMLResponse)
 def signup(request: Request, username: str = Form(""), password: str = Form(""), confirm: str = Form(""),
-           tier: str = Form(""), adult: str = Form(""), website: str = Form("")):
+           adult: str = Form(""), website: str = Form("")):
     from racinglines.web import accounts as ACC
     if not signup_on():
         raise HTTPException(404)
@@ -1012,10 +1013,10 @@ def signup(request: Request, username: str = Form(""), password: str = Form(""),
     if not _signup_ready():
         return _signup_page(request, status_code=503)
     username = username.strip().lower()
-    form = dict(username=username[:30], tier=tier)
+    tier = SIGNUP_ROLE
+    form = dict(username=username[:30])
     with get_engine().begin() as c:
         error = (ACC.check_username(c, username) or ACC.check_password(password, confirm, username)
-                 or ("Please pick pro or basic." if tier not in ("pro", "basic") else "")
                  or ("Please confirm you're 18 or older." if not adult else ""))
         if error:
             return _signup_page(request, form, error, status_code=400)

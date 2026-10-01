@@ -10,7 +10,8 @@
   <p>You can try the app straight away from the <a href="/login">sign-in page</a> with "Try as pro" or "Try as basic".</p>
 </div>
 {% else %}
-<p>Create your beta account. You start with <b>{{ "{:,}".format(grant) }} fantasy bucks</b>. Paper money only:
+<p>Create your beta account. Beta accounts get the <b>pro</b> tier (fair prices, every strategy, the Lab)
+and start with <b>{{ "{:,}".format(grant) }} fantasy bucks</b>. Paper money only:
 nothing is ever sent to an exchange.</p>
 {% if error %}<p class="bad">{{ error }}</p>{% endif %}
 <form method="post" action="/signup" class="card signup-form">
@@ -20,11 +21,6 @@ nothing is ever sent to an exchange.</p>
   <label><span>Password</span><input name="password" type="password" autocomplete="new-password" minlength="{{ pw_min }}" maxlength="128" required></label>
   <label><span>Password again</span><input name="confirm" type="password" autocomplete="new-password" minlength="{{ pw_min }}" maxlength="128" required></label>
   <p class="hint">At least {{ pw_min }} characters. We store only a salted hash; nobody, admins included, can read it.</p>
-  <p class="mt"><span>Which tier?</span></p>
-  <label class="tier"><input type="radio" name="tier" value="pro" {% if form.tier == 'pro' %}checked{% endif %} required>
-    <span><b>Pro</b>: model fair prices, quote markets, every strategy, the Lab</span></label>
-  <label class="tier"><input type="radio" name="tier" value="basic" {% if form.tier == 'basic' %}checked{% endif %}>
-    <span><b>Basic</b>: follow a taker strategy's calls, no model numbers</span></label>
   <label class="check mt"><input type="checkbox" name="adult" value="1" required>
     <span>I'm 18 or older, and I understand this is a beta that uses fantasy money only.</span></label>
   <label aria-hidden="true" style="position:absolute;left:-9999px"><span>Website</span><input name="website" tabindex="-1" autocomplete="off"></label>

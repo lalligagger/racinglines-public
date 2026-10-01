@@ -6,8 +6,7 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
-GOOD = dict(username="Ada_Lovelace", password="correct horse battery", confirm="correct horse battery",
-            tier="basic", adult="1")
+GOOD = dict(username="Ada_Lovelace", password="correct horse battery", confirm="correct horse battery", adult="1")
 
 
 # --- no database -------------------------------------------------------------------------------------------------
@@ -110,7 +109,7 @@ def test_signup_creates_a_hashed_account_with_1000_bucks(app_db):
     with get_engine().connect() as c:
         role, h = c.execute(text("SELECT role, password_hash FROM users WHERE username = 'ada_lovelace'")).one()
         logs = c.execute(text("SELECT detail::text FROM activity_log")).scalars().all()
-    assert role == "basic" and h.startswith("scrypt$") and GOOD["password"] not in h
+    assert role == "pro" and h.startswith("scrypt$") and GOOD["password"] not in h
     assert not any(GOOD["password"] in (d or "") for d in logs)          # never logged
     assert float(_balance("ada_lovelace")) == 1000
     assert client.get("/markets").status_code == 200                       # signed in
@@ -121,7 +120,7 @@ def test_signup_creates_a_hashed_account_with_1000_bucks(app_db):
 
 @pytest.mark.parametrize("change, msg", [(dict(username="ADA_LOVELACE"), "taken"), (dict(username="admin"), "reserved"),
                                          (dict(password="short", confirm="short"), "at least"),
-                                         (dict(confirm="something else"), "match"), (dict(tier="admin"), "pro or basic"),
+                                         (dict(confirm="something else"), "match"),
                                          (dict(adult=""), "18")])
 def test_signup_refusals(app_db, change, msg):
     client = TestClient(app_db.app)

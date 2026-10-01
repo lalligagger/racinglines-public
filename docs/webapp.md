@@ -96,9 +96,9 @@ event: a race, or a competition's season
 
 **Beta sign-up** (`/signup`, `RACINGLINES_SIGNUP=1`, off by default; `racinglines/web/accounts.py`). A public page,
 linked from the sign-in page and from the popup demo visitors see ("Beta signups are live!"): username, password
-(twice, 10+ characters, stored only as a scrypt hash), pro or basic, and an 18+ / fantasy-money tick. One transaction
-creates the account and credits it **1,000 fantasy bucks**, then signs the person in; the tier's starting strategy
-(basic: its own draw; pro: the demo maker's) is assigned when the Lab candidates exist. Ten attempts per IP per hour
+(twice, 10+ characters, stored only as a scrypt hash) and an 18+ / fantasy-money tick. Every beta account starts as
+**pro** (owner, 2026-10-01; fantasy tiers come later, and an admin can change a role at `/admin/users`). One transaction
+creates the account and credits it **1,000 fantasy bucks**, then signs the person in; the demo maker's starting strategy is assigned when the Lab candidates exist. Ten attempts per IP per hour
 and a hidden honeypot field; passwords are never logged or echoed back.
 
 The fantasy bucks live in their own Postgres schema, `accounts.fantasy_ledger` (one row per credit or debit, never
