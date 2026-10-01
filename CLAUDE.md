@@ -110,6 +110,17 @@ to use the budget.
 4. **Run one thread per task**, one task at a time, model per the role table above and named explicitly on
    every spawn, on the task's feature-track branch (see [Branches](#branches-feature-tracks)), not a new branch
    per small task.
+
+   **Pre-deploy flow (final staging only):**
+   - Keep reviewable work in one feature-track branch and split it into small, ordered PRs as needed; stacking
+     PRs is fine when they are part of the same feature slice, but each PR must still be a clean, reviewable unit.
+   - Do not deploy to the VM for every small PR or every intermediate commit. VM churn is expensive and noisy;
+     a working branch gets local tests and code review first, then one final staging deploy when the slice is ready.
+   - The deployment gate is: local green -> final staging gate -> one production deploy. The command is
+     `bash scripts/deploy/predeploy.sh --staging <ref>` for the final branch checkpoint, and only then
+     `bash scripts/deploy/predeploy.sh --prod <ref>` or `bash scripts/deploy/vm.sh deploy <ref>` on the final
+     branch after the staging pass.
+
 5. **Report back**, every check-in:
    - status per task (done / blocked / needs a decision),
    - open questions, especially anything the roadmap calls an "owner decision" (`docs/todo.md#owner-decisions`),
@@ -150,7 +161,8 @@ stay paused on purpose: fix and redeploy, then check `vm.sh status`.
 
 Owner rule (2026-09-30). Too many standalone branches with one or two commits each (#98 to #112 were fifteen PRs in
 two days, five of them "Overnight VM run: ..."). Group related small tasks on one **feature-track branch** off
-`main`, one PR per track batch, merged when the batch is green and reviewed:
+`main`, and open one or more small PRs in a stack when the work naturally splits; merge the stack in order when the
+batch is green and reviewed:
 
 | Track | Branch | What goes on it (recent examples) |
 |---|---|---|
@@ -161,8 +173,9 @@ two days, five of them "Overnight VM run: ..."). Group related small tasks on on
 | Docs | `track/docs` | reports, status matrices, roadmap and todo edits, CLAUDE.md (#104 to #106) |
 
 - A track branch is short-lived per batch: cut it from `main`, add the batch's tasks as separate commits (one
-  commit per task, its message naming the task), open one PR, and after the squash-merge cut the next batch fresh
-  from `main` under the same name. Never stack a new batch on already-merged history.
+  commit per task, its message naming the task), and open one or more small PRs from that branch in a stack when
+  the workload is naturally split. Merge the PRs in order, and cut the next batch fresh from `main` under the same
+  name when the batch is done. Never stack a new batch on already-merged history.
 - A task that spans tracks goes on the track of its riskiest part (a money-adjacent change goes on its own track's
   PR with the ⚠️ note, never hidden in a docs batch).
 - A standalone `work/<task>` branch is still right for: anything money-adjacent (settlement, order signing,
@@ -170,8 +183,10 @@ two days, five of them "Overnight VM run: ..."). Group related small tasks on on
   track's batch is ready, and a long task another track must not wait on.
 - Cloud threads get their branch name from the harness; use it for the batch and say which track it is in the PR
   title (`[ops] ...`).
-- Staging (planned, [todo](docs/todo.md#engineering)): each track branch deploys to `staging.racinglines.bet` from
-  GitHub CI, is checked there, and only `main` deploys to `racinglines.bet`.
+- Staging is the final gate, not a deploy for every tiny PR. A feature branch or track batch gets one final
+  `bash scripts/deploy/predeploy.sh --staging <ref>` check when it is ready; only then do we do the single
+  production deploy (`bash scripts/deploy/predeploy.sh --prod <ref>` or `bash scripts/deploy/vm.sh deploy <ref>`).
+  This keeps VM churn down while still giving us a real staging check before prod.
 
 ## Long-running jobs: a progress line every 5 minutes
 
