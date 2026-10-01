@@ -1,14 +1,14 @@
 name: tests
 
-# The regression suite on every PR into main and every push to main (the README's "tests" badge).
+# The regression suite on every PR into main or staging and every push to either (the README's "tests" badge).
 # Postgres runs as a service; TEST_DATABASE_URL names racinglines_test, which the test fixture drops and rebuilds.
 # The pinned fixtures aren't in the public repo (docs/contributing.md), so fixture-based tests skip here.
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, staging]
   push:
-    branches: [main]
+    branches: [main, staging]
 
 permissions:
   contents: read
