@@ -152,8 +152,8 @@ case "${1:-}" in
     log "deploy $ref"
     before=$(as_app "git rev-parse HEAD" | tail -n 1)
     # files the current commit tracks and $ref doesn't: backed up, then untracked, so the checkout keeps them on disk
-    gcloud compute scp deploy/vm/untrack.sh "$VM:/tmp/racinglines-untrack.sh" --project "$PROJECT" --zone "$ZONE" --tunnel-through-iap
-    as_app "bash /tmp/racinglines-untrack.sh $ref"
+    # the script goes over ssh's stdin (no temp file on the VM: one left by another ssh user can't be overwritten)
+    remote "cd $APP && sudo -u racinglines -H bash -s -- $ref" < deploy/vm/untrack.sh
     as_app "deploy/vm/update.sh $ref"
     remote "sudo install -m 644 $APP/deploy/vm/systemd/* /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl try-restart $SERVICES racinglines-mcp"
     if [ -n "$timers" ]; then

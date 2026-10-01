@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# On the VM, as the racinglines user, before update.sh (vm.sh deploy copies it to /tmp and runs it, so the VM's own
-# checkout doesn't need to have it yet). A checkout deletes the files the current commit tracks and the target
+# On the VM, as the racinglines user, before update.sh (vm.sh deploy pipes it over ssh, so the VM's own checkout
+# doesn't need to have it yet). A checkout deletes the files the current commit tracks and the target
 # doesn't: moving from the private history to the public one, that is data/raw, data/archive, the test fixtures and
 # the pitch images. Back those up to data/backups/files/, then untrack them (git rm --cached and a local commit), so the checkout leaves
 # them on disk as untracked files. No file is deleted or rewritten. If a later commit tracks one of them again, its
