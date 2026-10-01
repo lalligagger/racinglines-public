@@ -7,7 +7,7 @@
 {% for r in races %}<option value="{{ r.race_id }}" {% if r.race_id == race_id %}selected{% endif %}>{{ r.venue }} {{ r.start_date|fmt }} · {{ r.category }} · {{ r.status }} ({{ r.markets }} markets)</option>{% endfor %}
 </select></label>
 {% if user.role == 'admin' %}<label><span>Maker</span><select name="maker" onchange="this.form.submit()"><option value="">all</option><option value="house" {% if maker == 'house' %}selected{% endif %}>house (legacy)</option>{% for mk in makers %}<option {% if mk.username == maker %}selected{% endif %}>{{ mk.username }}</option>{% endfor %}</select></label>{% endif %}
-{% if race_id %}<span class="links"><a href="/book/quotes/sheet?race_id={{ race_id }}">Quote sheet →</a> · <a href="/markets?race_id={{ race_id }}">Market board →</a></span>{% endif %}</form>
+{% if race_id %}<span class="links"><a href="/book/quotes/sheet?race_id={{ race_id }}">Quote sheet →</a> · <a href="{{ '/races/' ~ race_id if race_id else '/markets' }}">Market board →</a></span>{% endif %}</form>
 {% endcall %}
 {{ flash(msg) }}
 
@@ -29,7 +29,7 @@
 </form>
 <p class="legend">Market types a sport doesn't have (e.g. make-the-Final in F1) are skipped. Open markets priced from the model are repriced; bets keep the price they were taken at. Manually priced markets aren't touched.</p>
 {% if user.role == 'admin' %}<form method="post" action="/book/quotes/settle-auto" class="row">{{ csrf() }}<input type="hidden" name="race_id" value="{{ race_id }}"><button>Auto-settle from results</button>
-<span class="legend">Win / podium / top 10 / make-Final settle from the ingested results. Rank markets: settle by hand from the official standings.</span></form>{% else %}<p class="legend">Markets are created under your account; takers see them on the market board. The admin settles them.</p>{% endif %}
+<span class="legend">Win / podium / top 10 / make-Final settle from the ingested results. Rank markets: settle by hand from the official standings.</span></form>{% else %}<p class="legend">Markets are created under your account; The admin settles them.</p>{% endif %}
 </details>
 {% endif %}
 

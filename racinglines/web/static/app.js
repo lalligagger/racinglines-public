@@ -280,8 +280,10 @@
     function show(i) {
       sl.value = Math.max(0, Math.min(T.length - 1, i)); label();
       const t = T[+sl.value];
-      history.replaceState(null, "", base + "t=" + t); if (link) link.href = base + "t=" + t;
-      return htmx.ajax("GET", base + "partial=1&t=" + t, {target: "#live", swap: "innerHTML"});
+      const u = new URL(base, location.href); u.searchParams.set("t", t);
+      const page = u.pathname + u.search; u.searchParams.set("partial", "1");
+      history.replaceState(null, "", page); if (link) link.href = page;
+      return htmx.ajax("GET", u.pathname + u.search, {target: "#live", swap: "innerHTML"});
     }
     function stop() { clearTimeout(timer); timer = null; play.setAttribute("aria-pressed", "false"); play.textContent = "▶ Play"; }
     function tick() {

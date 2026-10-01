@@ -7,6 +7,7 @@ for the maker tools and the Lab); every form POST carries a CSRF token; every me
 written to activity_log. Run with `racinglines web`.
 """
 
+import contextvars
 import hashlib
 import hmac
 import math
@@ -19,10 +20,13 @@ from pathlib import Path
 
 import pandas as pd
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, status
+from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy import select, text
 
 ROOT = Path(__file__).resolve().parents[2]      # the repository
@@ -227,7 +231,8 @@ templates.env.filters["money"] = money
 # (_macros.html) tagged data-tag="demo-context". RACINGLINES_DEMO_CONTEXT=0 hides them all; for real users,
 # delete every `demo_context` call.
 DEMO_CONTEXT = {"on": os.environ.get("RACINGLINES_DEMO_CONTEXT", "1") != "0"}
-templates.env.globals["demo_context_on"] = lambda: DEMO_CONTEXT["on"]      # read at render time
+_RENDER_USER = contextvars.ContextVar("render_user", default=None)   # set by render(): imported macros don't see the page's `user`
+templates.env.globals["demo_context_on"] = lambda: DEMO_CONTEXT["on"] and _demo.is_demo(_RENDER_USER.get())   # read at render time; demo accounts only
 templates.env.globals["csrf_token"] = CSRF_TOKEN
 # Maintenance popup on the sign-in page and every app page, dismissed with "ok" once per browser session
 # (_site_notice.html). Set to "" to turn it off.
@@ -290,8 +295,49 @@ def render(request, name, **ctx):
         ctx.setdefault("live_nav", False)
     from racinglines.web import demo
     u = ctx["user"]
+    _RENDER_USER.set(u)
     ctx.setdefault("storage_ns", f"demo.{u.get('sid')}." if demo.is_demo(u) and u.get("sid") else "")
     return templates.TemplateResponse(request, name, ctx)
+
+
+# Browser requests (Accept: text/html) get a readable error page for 403 / 404 / 422 / 429; JSON and API clients keep
+# FastAPI's JSON error. A throttled sign-in goes back to the form with a sentence instead.
+ERROR_TEXT = {403: "You don't have access to this page.", 404: "That page doesn't exist, or it has moved.",
+              422: "Something in that link or form wasn't valid.", 429: "Too many attempts. Wait a few minutes and try again."}
+
+
+def _wants_html(request):
+    return "text/html" in request.headers.get("accept", "") and not request.url.path.startswith("/api/")
+
+
+def _error_page(request, code):
+    user = getattr(request.state, "user", None)
+    try:
+        resp = render(request, "error.html", code=code, message=ERROR_TEXT[code], home="/markets" if user else "/login")
+        resp.status_code = code
+        return resp
+    except Exception:                                  # noqa: BLE001  never let the error page itself fail
+        return None
+
+
+@app.exception_handler(StarletteHTTPException)
+async def _http_error(request: Request, exc: StarletteHTTPException):
+    if exc.status_code == 429 and request.method == "POST" and request.url.path == "/login" and _wants_html(request):
+        return RedirectResponse("/login?error=throttled", status_code=303)
+    if exc.status_code in ERROR_TEXT and _wants_html(request):
+        resp = _error_page(request, exc.status_code)
+        if resp is not None:
+            return resp
+    return await http_exception_handler(request, exc)
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_error(request: Request, exc: RequestValidationError):
+    if _wants_html(request):
+        resp = _error_page(request, 422)
+        if resp is not None:
+            return resp
+    return await request_validation_exception_handler(request, exc)
 
 
 def rows(df):
@@ -904,8 +950,8 @@ def place_bet(request: Request, market_id: int, side: str = Form(...), stake: fl
     except ValueError as e:
         audit(request, "bet_rejected", market_id=market_id, side=side, stake=stake, reason=str(e))
         msg = f"Error: {e}"
-    race_q = f"race_id={race_id}&" if race_id else ""
-    return RedirectResponse(f"/markets?{race_q}msg={msg}", status_code=303)
+    dest = f"/races/{race_id}" if race_id and not R.is_basic(user) else "/markets"
+    return RedirectResponse(f"{dest}?msg={msg}", status_code=303)
 
 
 # ---------------------------------------------------------------------------

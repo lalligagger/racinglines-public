@@ -11,7 +11,7 @@
   </div>
 </div>{% endif %}
 {% if times %}
-<div class="card replay" id="replay" data-times='{{ times|tojson }}' data-url="/live?event={{ current_run|urlencode }}{% if t %}&t={{ t }}{% endif %}" data-pace="{{ 'real' if sport == 'mtb_dh' else 'fixed' }}" data-speed="30">
+<div class="card replay" id="replay" data-times='{{ times|tojson }}' data-url="/live?event={{ current_run|urlencode }}" data-pace="{{ 'real' if sport == 'mtb_dh' else 'fixed' }}" data-speed="30">
   <div class="tabs" role="group" aria-label="Replay controls">
     <b>{{ 'Replay' if mode == 'replay' else 'History' }}</b>
     <button type="button" data-step="-1" title="Previous update">◀</button>

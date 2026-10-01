@@ -3,7 +3,7 @@
 {% block content %}
 <h1>Events</h1>
 <form method="get"><label><span>Season</span><input name="season" value="{{ season or '' }}" size="6"></label><button>Filter</button></form>
-<details class="card"><summary>Add a scheduled event</summary>
+{% if user and user.role == 'admin' %}<details class="card"><summary>Add a scheduled event</summary>
 <form method="post" action="/events">{{ csrf() }}
   <label><span>Competition</span><select name="competition">{% for c in comps %}<option value="{{ c.code }}">{{ c.code }}</option>{% endfor %}</select></label>
   <label><span>Name</span><input name="name" required size="40" placeholder="UCI MTB World Series DHI #9 - ..."></label>
@@ -11,6 +11,6 @@
   <label><span>Venue</span><select name="venue">{% for v in venues %}<option value="{{ v.slug }}">{{ v.name }}</option>{% endfor %}</select></label>
   <label><span>Series round</span><input name="series_round" size="4"></label>
   <button class="primary">Add</button>
-</form></details>
+</form></details>{% endif %}
 {{ table(events, ["start_date", "season", "venue", "country", "series_round", "status", "races", "source_key", "name"], {"venue": ["/events/", "id"], "start_date": ["/events/", "id"]}) }}
 {% endblock %}
