@@ -294,6 +294,9 @@ def _assemble(conn, base, exch, priv, names, results=None):
         pm = e.get("polymarket") or {}
         row["pm_mid"] = pm.get("mid")
         row["gap"] = (fair - pm["mid"]) if fair is not None and pm.get("mid") is not None else None
+        kalshi = e.get("kalshi") or {}
+        row["kalshi_mid"] = kalshi.get("mid")
+        row["kalshi_gap"] = (fair - kalshi["mid"]) if fair is not None and kalshi.get("mid") is not None else None
         rows.append(row)
     df = pd.DataFrame(rows)
     if len(df):
