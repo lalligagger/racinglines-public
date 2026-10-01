@@ -176,7 +176,8 @@ case "${1:-}" in
     ;;
   repoint)
     # set-url and fetch only: the checkout, its files and the running services are untouched until the next deploy
-    as_app "git remote set-url origin $REPO_URL && git fetch --quiet --prune origin && git remote get-url origin && git log -1 --format='checkout still at %h %s'"
+    # one bash -c so every step runs as the app user (a bare && chain only sudoes the first command)
+    as_app "bash -c \"git remote set-url origin $REPO_URL && git fetch --quiet --prune origin && git remote get-url origin && git log -1 --format='checkout still at %h %s'\""
     ;;
   public)
     # Plain HTTP on a public port, for testing until racinglines.bet moves over; off at handover.
