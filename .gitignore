@@ -22,7 +22,6 @@ logs/
 *.sqlite3
 *.db
 *.csv
-*.json
 *.jsonl
 *.sql.gz
 *.pkl
@@ -37,8 +36,6 @@ logs/
 *.svg
 
 # Repo-local generated content and editor state
-tests/golden/
-tests/fixtures/
 .vscode/
 .idea/
 *.swp
@@ -78,3 +75,10 @@ htmlcov/
 # Environment / secrets
 .env
 .env.*
+
+# --- Pinned repo fixtures and golden baselines ------------------------------------
+# These are intentionally tracked source artifacts, not data exports.
+!tests/golden/
+!tests/golden/**
+!tests/fixtures/
+!tests/fixtures/**
