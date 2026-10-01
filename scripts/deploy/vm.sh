@@ -13,6 +13,7 @@
 #   bash scripts/deploy/vm.sh switch <NAME> on|off # an app switch (RACINGLINES_*, e.g. RACINGLINES_OG_VENUE) in
 #                                               # /etc/racinglines.env, web app restarted; never a trading flag
 #   bash scripts/deploy/vm.sh deploy [ref]      # checkout (default main), install, migrate, restart, smoke check
+#   bash scripts/deploy/vm.sh backup <purpose>  # the VM database to data/backups/db/racinglines-before-<purpose>-<UTC>.sql.gz
 #   bash scripts/deploy/vm.sh repoint           # one time: the VM checkout fetches from REPO_URL (fetch only, no file
 #                                               # touched); deploy refuses until the checkout's origin is REPO_URL
 #   bash scripts/deploy/vm.sh public on|off     # testing before handover: the web app on http://<VM IP>:8000
@@ -163,9 +164,15 @@ case "${1:-}" in
       log "resuming:$timers"
       remote "sudo systemctl start$timers && sudo rm -f $PAUSED"
       trap - EXIT
+      log "timers running (one 'active' per timer):"
+      remote "systemctl is-active$timers"
     fi
     log "smoke check on the VM"
     remote "sleep 3; cd $APP && bash scripts/deploy/smoke.sh http://127.0.0.1:8000"
+    ;;
+  backup)
+    purpose="${2:-}"; case "$purpose" in ""|*[!a-z0-9-]*) echo "usage: vm.sh backup <purpose> (lowercase letters, digits, -)"; exit 1 ;; esac
+    remote "cd $APP && sudo -u racinglines -H bash -c 'set -euo pipefail; mkdir -p data/backups/db; b=data/backups/db/racinglines-before-$purpose-\$(date -u +%Y%m%dT%H%M%SZ).sql.gz; docker compose exec -T db pg_dump --no-owner --no-privileges -U racinglines racinglines | gzip -6 > \$b; ls -lh \$b'"
     ;;
   repoint)
     # set-url and fetch only: the checkout, its files and the running services are untouched until the next deploy
