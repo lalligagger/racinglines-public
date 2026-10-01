@@ -1,0 +1,11 @@
+# Launch spec: downhill qualification 1. Lake Placid 2026.
+sport = "mtb_dh"
+event = "20261002_mtb"
+run = "20261002_mtb_2"
+title = "Lake Placid UCI DH qualification 1 (private book)"
+
+[feed]
+slug = "20261002_mtb"
+final = "2"
+quali = ["TT_ME", "91", "3"]
+conditions = ""
