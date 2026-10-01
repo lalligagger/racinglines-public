@@ -9,7 +9,7 @@
 <a href="{{ href }}"{% if path == href or path.startswith((match or href) ~ '/') or (match and path.startswith(match)) %} aria-current="page"{% endif %}>{{ label }}{{ caller() if caller }}</a>
 {%- endmacro %}
 <header class="topbar"><div class="in">
-  <a class="brand" href="/markets"><i aria-hidden="true"></i>racinglines</a>
+  <a class="brand" href="/markets"><i aria-hidden="true"></i>racinglines</a>{% if env_label() %}<span class="pill env" title="This is the {{ env_label() }} copy of the app, with its own database">{{ env_label() }}</span>{% endif %}
   <nav aria-label="Main">
   {% if user %}{{ nav("/markets", "Markets") }}
   {% if live_nav %}{% call nav("/live", "Live") %} <span class="dot {{ 'live' if live_nav == 'live' }}" title="{{ 'A final is running' if live_nav == 'live' else 'The last event, as a replay' }}"></span>{% endcall %}{% endif %}{% endif %}

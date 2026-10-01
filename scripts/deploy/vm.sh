@@ -23,6 +23,11 @@
 #   bash scripts/deploy/vm.sh accounts [off]    # beta sign-up: back up the database, create the accounts schema and
 #                                               # fantasy-bucks ledger (racinglines users setup, idempotent), switch
 #                                               # RACINGLINES_SIGNUP on, check /signup; off: the switch off (the ledger stays)
+#   bash scripts/deploy/vm.sh staging setup [ref] | deploy [ref] | status | logs | reset | off
+#                                               # staging.racinglines.bet: a second app copy on the VM (port 8010,
+#                                               # its own database racinglines_staging, no timers). deploy never pauses
+#                                               # production's timers or touches its database; CI runs it on a merge
+#                                               # to the `staging` branch (deploy/ci/staging.yml). docs/vm-deploy.md "Staging"
 #   bash scripts/deploy/vm.sh status | logs [unit] | ssh
 #
 # deploy never refuses for a live event: it pauses the VM's timers (live-event steps, signals), waits for a step in
@@ -240,6 +245,45 @@ case "${1:-}" in
     bash "$SCRIPT_PATH" switch RACINGLINES_SIGNUP on
     remote "sleep 3; curl -s -o /dev/null -w 'GET /signup: %{http_code}\\n' http://127.0.0.1:8000/signup"
     log "sign-up is open at https://racinglines.bet/signup (accounts: /admin/users)"
+    ;;
+  staging)
+    # Staging on the same VM (docs/vm-deploy.md "Staging"): /opt/racinglines-staging, racinglines_staging in production's
+    # Postgres container, /etc/racinglines-staging.env, racinglines-staging-web on 127.0.0.1:8010. None of these commands
+    # reads $PAUSED, stops a timer, runs untrack.sh or opens /etc/racinglines.env for writing: production is untouched.
+    STG=/opt/racinglines-staging
+    SU=racinglines-staging-web
+    as_stg() { remote "cd $STG && sudo -u racinglines -H $1"; }
+    case "${2:-}" in
+      setup)
+        # piped over ssh (the VM needs none of these files yet); REF: the branch to check out (default staging, else main)
+        log "staging setup (checkout, venv, database copy, env file, unit)"
+        remote "sudo REF=${3:-staging} RESET_DB=0 bash -s" < deploy/vm/staging/setup.sh
+        ;;
+      reset)
+        log "staging reset: drop racinglines_staging and copy production's rows again (production is only read)"
+        remote "sudo REF=${3:-staging} RESET_DB=1 bash -s" < deploy/vm/staging/setup.sh
+        ;;
+      deploy)
+        ref="${3:-staging}"
+        origin=$(as_stg "git remote get-url origin" | tail -n 1) || { echo "couldn't reach the VM or $STG is missing: run bash scripts/deploy/vm.sh staging setup first"; exit 1; }
+        [ "$origin" = "$REPO_URL" ] || { echo "$STG fetches from $origin, not $REPO_URL: nothing deployed"; exit 1; }
+        log "staging deploy $ref (production's timers keep running)"
+        remote "cd $STG && sudo -u racinglines -H bash -s -- $ref" < deploy/vm/staging/update.sh
+        remote "sudo install -m 644 $STG/deploy/vm/systemd/$SU.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl restart $SU && sleep 3 && systemctl is-active $SU"
+        log "smoke check on the VM (expects the staging instance: X-Racinglines-Env: staging)"
+        remote "cd $STG && SMOKE_EXPECT_ENV=staging bash scripts/deploy/smoke.sh http://127.0.0.1:8010"
+        ;;
+      status)
+        remote "cd $STG 2>/dev/null && sudo -u racinglines -H git log -1 --format='staging: %h %s (%cr)' || echo 'staging: not set up'; systemctl --no-pager list-units '$SU*' ; curl -s -o /dev/null -w 'GET http://127.0.0.1:8010/login: %{http_code}  X-Racinglines-Env: %header{x-racinglines-env}\n' http://127.0.0.1:8010/login || true"
+        ;;
+      logs)
+        remote "sudo journalctl --no-pager -n 100 -u $SU"
+        ;;
+      off)
+        remote "sudo systemctl disable --now $SU && echo '$SU: off (the checkout, database and env file stay)'"
+        ;;
+      *) echo "usage: vm.sh staging setup [ref] | deploy [ref] | status | logs | reset | off"; exit 1 ;;
+    esac
     ;;
   status)
     # git runs as the app user: /opt/racinglines is owned by racinglines, and git refuses another user's repository
