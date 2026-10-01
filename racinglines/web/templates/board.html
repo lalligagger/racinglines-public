@@ -25,7 +25,7 @@
     <div><h3><a href="/races/{{ u.info.race_id }}">{{ u.info.title }}</a>{% if u.new %} <a href="/markets/polymarket?show=all&sport={{ s.code }}">{{ new_badge(u.new) }}</a>{% endif %}</h3>
       <div class="when">{{ u.info.start_date|fmt }} · {% if u.info.status == 'in_progress' %}<span class="warn">in progress</span>{% else %}{{ u.countdown }}{% endif %}{% if loop.first and u.info.status != 'in_progress' %} · <b>next</b>{% endif %}</div></div>
     {{ venue_chips(u.venues, u.mine) }}
-    <div>{% for o in u.top %}<div class="pr"><span>{{ o.subject }}</span>{{ bar(o.fair, o.pm_mid) }}<span class="num">{{ pct(o.fair) }}</span></div>{% endfor %}
+    <div>{% for o in u.top %}<div class="pr"><span>{{ o.subject }}</span>{{ bar(o.fair, o.pm_mid, "", (o.venues.kalshi.mid if o.venues and o.venues.kalshi else none)) }}<span class="num">{{ pct(o.fair) }}</span></div>{% endfor %}
       <div class="legend">win probability{% if u.top and u.top[0].pm_mid is not none %} · <i class="sw-warn"></i>Polymarket{% endif %}</div></div>
     <div><a href="/races/{{ u.info.race_id }}">{{ u.outcomes }} outcomes →</a></div>
   </div>
@@ -33,7 +33,7 @@
   <div class="ecard">
     <div><h3><a href="/seasons/{{ s.code }}">{{ s.run.season }} championship</a>{% if s.season.new %} <a href="/markets/polymarket?show=all&sport={{ s.code }}">{{ new_badge(s.season.new) }}</a>{% endif %}</h3><div class="when">season-long markets</div></div>
     {{ venue_chips(s.season.venues, s.season.mine) }}
-    <div>{% for o in s.season.top %}<div class="pr"><span>{{ o.subject }}</span>{{ bar(o.fair, o.pm_mid) }}<span class="num">{{ pct(o.fair) }}</span></div>{% endfor %}
+    <div>{% for o in s.season.top %}<div class="pr"><span>{{ o.subject }}</span>{{ bar(o.fair, o.pm_mid, "", (o.venues.kalshi.mid if o.venues and o.venues.kalshi else none)) }}<span class="num">{{ pct(o.fair) }}</span></div>{% endfor %}
       <div class="legend">champion probability{% if s.season.top and s.season.top[0].pm_mid is not none %} · <i class="sw-warn"></i>Polymarket{% endif %}</div></div>
     {% if s.season.constructors %}<div class="legend">Constructors: {% for o in s.season.constructors %}{{ o.subject }} {{ pct(o.fair) }}{{ " · " if not loop.last }}{% endfor %}</div>{% endif %}
     {% set st = s.season.strategy %}{% if st %}<div class="ecard-foot">
