@@ -21,17 +21,17 @@
     <label><span>Spread (pts)</span><input name="spread_pct" value="{{ '%g'|format(spread_pct) }}" size="3"></label>
     <button class="primary">Mirror into my book</button> <span class="muted">creates / reprices a YES/NO market in my book for every priced outcome</span></form>
   <div class="scroll" data-rows="15" data-filter="Filter by outcome or kind"><table>
-  <thead><tr><th class="l">Outcome</th><th class="l">Kind</th><th>Bid</th><th>Ask</th><th>Last</th><th>Our fair</th><th>Edge YES</th><th>Edge NO</th><th>Call</th><th>Quote bid</th><th>Quote ask</th><th>Mine</th></tr></thead><tbody>
+  <thead><tr><th class="l">Outcome</th><th class="l hide-sm">Kind</th><th class="hide-sm">Bid</th><th class="hide-sm">Ask</th><th>Last</th><th>Our fair</th><th>Edge YES</th><th>Edge NO</th><th>Call</th><th class="hide-sm">Quote bid</th><th class="hide-sm">Quote ask</th><th class="hide-sm">Mine</th></tr></thead><tbody>
   {% for r in ev.rows %}<tr>
     <td class="l">{{ r.subject }}{% if r.new %} {{ new_badge() }}{% endif %}</td>
-    <td class="l"><span class="muted">{{ r.prediction }}</span></td>
-    <td>{{ r.last_bid|fmt }}</td><td>{{ r.last_ask|fmt }}</td><td>{{ "%.3f"|format(r.last_price) if r.last_price is not none else "" }}</td>
+    <td class="l hide-sm"><span class="muted">{{ r.prediction }}</span></td>
+    <td class="hide-sm">{{ r.last_bid|fmt }}</td><td class="hide-sm">{{ r.last_ask|fmt }}</td><td>{{ "%.3f"|format(r.last_price) if r.last_price is not none else "" }}</td>
     <td>{{ r.fair|fmt("model_prob") if r.fair is not none else "–" }}</td>
     <td class="{{ 'good' if r.edge_yes is not none and r.edge_yes > 0 else '' }}">{{ ("%+.1f"|format(r.edge_yes * 100)) ~ " pts" if r.edge_yes is not none else "" }}</td>
     <td class="{{ 'good' if r.edge_no is not none and r.edge_no > 0 else '' }}">{{ ("%+.1f"|format(r.edge_no * 100)) ~ " pts" if r.edge_no is not none else "" }}</td>
     <td class="{{ 'warn' if r.edge and (r.edge > 0.10 or r.edge < -0.10) else ('good' if r.call else '') }}"{% if r.edge and (r.edge > 0.10 or r.edge < -0.10) %} title="Large gap to the market: check the model before quoting"{% endif %}>{{ r.call or "" }}{% if r.edge and (r.edge > 0.10 or r.edge < -0.10) %} ⚠{% endif %}</td>
-    <td>{{ "%.3f"|format(r.q_bid) if r.q_bid is not none and r.q_bid > 0 else "" }}</td><td>{{ "%.3f"|format(r.q_ask) if r.q_ask is not none and r.q_ask < 1 else "" }}</td>
-    <td>{{ "✓" if r.mirrored else "" }}</td></tr>{% endfor %}
+    <td class="hide-sm">{{ "%.3f"|format(r.q_bid) if r.q_bid is not none and r.q_bid > 0 else "" }}</td><td class="hide-sm">{{ "%.3f"|format(r.q_ask) if r.q_ask is not none and r.q_ask < 1 else "" }}</td>
+    <td class="hide-sm">{{ "✓" if r.mirrored else "" }}</td></tr>{% endfor %}
   </tbody></table></div>
 </details>
 {% endfor %}

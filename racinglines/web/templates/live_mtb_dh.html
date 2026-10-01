@@ -41,9 +41,9 @@
 {% if not maker %}{% include "live_picks.html" %}{% endif %}
 <div class="board">
 <div class="card"><h2>Leaderboard</h2>
-{% if fin %}<table><thead><tr><th>#</th><th class="l">Rider</th><th>Time</th><th>Gap</th></tr></thead><tbody>
+{% if fin %}<div class="scroll"><table><thead><tr><th>#</th><th class="l">Rider</th><th>Time</th><th>Gap</th></tr></thead><tbody>
 {% for r in fin[:10] %}<tr><td>{{ r.rank }}</td><td class="l">{{ r.name }} <span class="muted">{{ r.nation or "" }}</span></td><td class="num">{{ t(r.time) }}</td><td class="num muted">{{ "+%.3f"|format(r.gap / 1000) if r.gap else "" }}</td></tr>{% endfor %}
-</tbody></table>{% else %}<p class="muted">Nobody has finished yet.</p>{% endif %}</div>
+</tbody></table></div>{% else %}<p class="muted">Nobody has finished yet.</p>{% endif %}</div>
 <div class="card"><h2>On course</h2>
 <ul class="oncourse">{% for r in on %}<li><b>{{ r.name }}</b> <span class="muted">{{ r.nation or "" }}</span><br>
   {% if r.splits %}split {{ r.splits|length }}: {{ t(r.splits[-1]) }}{% if r.split_pos and r.split_pos[-1] %} · <b>{{ r.split_pos[-1] }}{{ {1: "st", 2: "nd", 3: "rd"}.get(r.split_pos[-1], "th") }}</b> at this split{% endif %}{% else %}started{% endif %}
@@ -72,14 +72,14 @@
 {% if book %}<section data-panel="book" hidden>
 <div class="card"><div class="section-head"><h2>Private book</h2><span class="muted">{{ crowd.takers }} anonymous takers · {{ "settled" if snap.done else "marked to fair" }}</span></div>
 <div class="board">
-<div><h3 class="mt0">Biggest positions</h3><table><thead><tr><th class="l">Market</th><th>Shares (YES)</th><th>Result</th><th>P&amp;L</th></tr></thead><tbody>
+<div><h3 class="mt0">Biggest positions</h3><div class="scroll"><table><thead><tr><th class="l">Market</th><th>Shares (YES)</th><th>Result</th><th>P&amp;L</th></tr></thead><tbody>
 {% for p in positions %}<tr><td class="l">{{ p.rider }} <span class="muted">{{ "wins" if p.market == 'win' else "podium" }}</span></td><td class="num {{ 'bad' if p.inv < 0 else '' }}">{{ "%+.0f"|format(p.inv) }}</td>
   <td>{% if p.settled %}{{ "YES" if p.value else "NO" }}{% else %}{{ pc(p.value) }}{% endif %}</td><td>{{ pnl(p.pnl) }}</td></tr>{% endfor %}
-</tbody></table></div>
-<div><h3 class="mt0">Recent fills</h3><table><thead><tr><th class="l">UTC</th><th class="l">Crowd</th><th class="l">Market</th><th>Price</th><th>Shares</th></tr></thead><tbody>
+</tbody></table></div></div>
+<div><h3 class="mt0">Recent fills</h3><div class="scroll"><table><thead><tr><th class="l">UTC</th><th class="l">Crowd</th><th class="l">Market</th><th>Price</th><th>Shares</th></tr></thead><tbody>
 {% for f in recent %}<tr><td class="l muted">{{ f.ts }}</td><td class="l">{{ "bought YES" if f.side == 'buy' else "sold YES" }}</td><td class="l">{{ f.rider }} <span class="muted">{{ "wins" if f.market == 'win' else "podium" }}</span></td><td>{{ px(f.price) }}</td><td>{{ "%.0f"|format(f.shares) }}</td></tr>
 {% else %}<tr><td class="l muted" colspan="5">No fills yet.</td></tr>{% endfor %}
-</tbody></table></div></div>
+</tbody></table></div></div></div>
 {% set cr = crowd.results %}{% if cr %}<h3>The crowd's results <span class="muted">(each anonymous taker, by id; no accounts)</span></h3>
 <p>{{ cr.bettors }} have bet: <b class="good">{{ cr.up }} up</b>, <b class="bad">{{ cr.down }} down</b> · median {{ cr.median|money(true) }} · best {{ cr.best|money(true) }} · worst {{ cr.worst|money(true) }} · together {{ cr.total|money(true) }}{{ " (settled)" if snap.done else " (marked to fair)" }}</p>
 <p class="legend">A random taker, <code>{{ cr.spotlight.taker[:8] }}</code>: {{ cr.spotlight.pnl|money(true) }} on
