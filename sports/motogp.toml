@@ -9,7 +9,7 @@ name = "MotoGP"
 result_kind = "position"          # finishing positions
 model_family = "position_sim"     # conservative, result-only pricing model
 pricing_model = "racinglines.models.motogp_model:MotoGPRaceChallenger"
-display_order = 3
+display_order = 2
 
 [league]
 code = "fim_motogp"

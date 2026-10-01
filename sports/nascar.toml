@@ -10,7 +10,7 @@ name = "NASCAR Cup Series"
 result_kind = "position"          # finishing positions
 model_family = "position_sim"     # result-based pricing model: conservative, source-faithful, uses race results only
 pricing_model = "racinglines.models.nascar_model:NascarCupRace"
-display_order = 2
+display_order = 1
 
 [league]
 code = "nascar"

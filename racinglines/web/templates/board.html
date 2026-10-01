@@ -12,7 +12,6 @@
 </div>
 {% include "_recorders.html" %}
 
-{% if sport_status %}{% include "_sport_status.html" %}{% endif %}
 {% for s in sports %}
 <details class="card" data-remember="markets:sport:{{ s.code }}">
 <summary><h2 class="h-inline">{{ s.name }}</h2> <span class="sum">{% if s.run %}live prices from run <a href="/lab/runs/{{ s.run.id }}">#{{ s.run.id }}</a> · {{ s.run.created_at|fmt }}{% elif s.asof %}model: pre-race prices for {{ "{:,}".format(s.asof.races) }} past races (replay saves, latest {{ s.asof.at|fmt }}) · no live forecast yet, so upcoming races show exchange prices only{% else %}market data only · no model{% endif %}</span>
@@ -106,25 +105,23 @@
 </details>{% endif %}
 <details class="card" data-remember="markets:calendar" open>
 <summary><h2>Calendar</h2><span class="sum">{{ calendar|length }} events across every sport and venue</span></summary>
-<p class="legend">Every race weekend (modeled sports) and every recorded exchange event (tape-only sports), newest first. A tape-only sport has no single cross-venue event, so each exchange's own listing is its own row.</p>
-<div data-calendar data-rows="25">
-<div class="tt">
+<p class="legend">Every race weekend (modeled sports) and every recorded exchange event (tape-only sports). A tape-only sport has no single cross-venue event, so each exchange's own listing is its own day.</p>
+<div data-calendar data-events='{{ cal_events|tojson }}'>
+<div class="tt cal-tools">
 <select data-cal-filter="sport" aria-label="Filter by sport"><option value="">All sports</option>{% for code, name in cal_sports %}<option value="{{ code }}">{{ name }}</option>{% endfor %}</select>
 <select data-cal-filter="exchange" aria-label="Filter by exchange"><option value="">All exchanges</option>{% for x in cal_exchanges %}<option value="{{ x }}">{{ x }}</option>{% endfor %}</select>
 <input type="search" data-cal-filter="q" placeholder="Filter by name" aria-label="Filter by name">
-<span class="legend" data-cal-count></span>
-<button type="button" class="link" data-cal-more hidden>Show all {{ calendar|length }}</button>
 </div>
-<div class="scroll"><table>
-<thead><tr><th>Date</th><th class="l hide-sm">Sport</th><th class="l">Event</th><th class="hide-sm">Status</th><th class="l">Exchanges</th></tr></thead>
-<tbody>{% for r in calendar %}<tr data-sport="{{ r.sport }}" data-exchange="{{ r.exchanges|join(' ') }}">
-<td>{{ r.date|fmt if r.date else "–" }}</td><td class="l hide-sm">{{ r.sport_name }}</td>
-<td class="l">{% if r.url %}<a href="{{ r.url }}">{{ r.title }}</a>{% else %}{{ r.title }}{% endif %}</td>
-<td class="hide-sm">{{ r.status or "–" }}</td>
-<td class="l">{% for x in r.exchanges %}<span class="pill live">{{ x }}</span> {% else %}<span class="muted">none</span>{% endfor %}</td>
-</tr>{% endfor %}</tbody>
-</table></div>
+<div class="cal-nav">
+<button type="button" class="link" data-cal-prev aria-label="Previous month">‹</button>
+<h3 data-cal-label></h3>
+<button type="button" class="link" data-cal-next aria-label="Next month">›</button>
+<button type="button" class="link" data-cal-today>Today</button>
+</div>
+<div class="cal-weekdays"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
+<div class="cal-grid" data-cal-grid></div>
 </div>
 </details>
 <p class="legend mt">Browse <a href="/markets/polymarket">all Polymarket markets</a> ·{% if kalshi %} <a href="/markets/kalshi">all Kalshi markets</a> ·{% endif %}{% for v in schema_exchanges %} <a href="/markets/{{ v.code }}">all {{ v.name }} markets</a> ·{% endfor %}{% if tapes %} <a href="/markets/tapes">recorded tapes</a> ·{% endif %} <a href="/events">all events</a> · <a href="/athletes">all athletes</a>. Bars: our fair probability; the orange tick is the exchange price.</p>
+{% if sport_status %}{% include "_sport_status.html" %}{% endif %}
 {% endblock %}
