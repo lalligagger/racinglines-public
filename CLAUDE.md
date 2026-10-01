@@ -121,6 +121,13 @@ to use the budget.
    every spawn, on the task's feature-track branch (see [Branches](#branches-feature-tracks)), not a new branch
    per small task.
 
+   **Common patterns:**
+
+   - **Scratch-harness check.** For CSS or JS only changes: make a throwaway `.html` inside the workspace that links the real `style.css` and inlines the real JS with hand-written sample data. Look at it, then delete it. Never commit it.
+   - **Batch-then-go.** For UI rounds: 3 to 5 related fixes per commit, push and staging deploy.
+   - **Red check, look first.** When a check goes red: first `gh run watch` and a direct `curl` of the page, then rerun failed jobs once, before assuming the code is wrong.
+   - **Exact keys only (owner policy).** Links, alerts and counts use exact keys (`market_links.race_id` / `competition_id` foreign keys), never fuzzy or regex matching, unless the owner says so first. A heuristic resolver stays out of exact-match paths.
+
    **Merging is deploying (since 2026-10-01):** the live repo is the public `lalligagger/racinglines-public`, and
    every merge to `main` that changes more than docs deploys to the VM through GitHub Actions (`main-merge-gate`,
    [VM deploy: The flow](docs/vm-deploy.md#the-flow)): `predeploy-staging` smoke-checks staging, `deploy-production`

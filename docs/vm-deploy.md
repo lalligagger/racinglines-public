@@ -352,6 +352,10 @@ never runs `untrack.sh` or `docker compose up`, and never opens `/etc/racingline
 for writing (`tests/test_staging_deploy.py` pins this). A staging deploy is fine during a live window; only production
 deploys stay out of it. `tests.yml` runs the suite on PRs into `staging` and pushes to it, as for `main`.
 
+The `staging` concurrency group ensures that `vm.sh staging deploy` and a push to the `staging` branch share one queue
+(GitHub Actions job serialization with `concurrency: group: staging`). Do not run both at once; push the branch and wait
+for its workflow run to finish before running `vm.sh staging deploy` by hand from the Mac.
+
 **Flow for a change:** branch off `main` → PR into `staging` (or push the branch's commits to `staging`) → the merge
 deploys staging → look at `https://staging.racinglines.bet` → PR of the same branch into `main` → the merge deploys
 production. Keep `staging` close to `main`: after a batch, reset it to `main` (`git push origin main:staging`; a
