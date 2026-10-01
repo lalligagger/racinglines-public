@@ -773,6 +773,18 @@ def live_page(request: Request, partial: int = 0, t: str = "", event: str = ""):
     return render(request, "live_partial.html" if partial else "live.html", **ctx)
 
 
+@app.get("/events", response_class=HTMLResponse, dependencies=[allow(*ANY)])
+def events_page(request: Request):
+    """Placeholder events route (smoke check compatibility)."""
+    return "<html><body>Events page</body></html>"
+
+
+@app.get("/athletes", response_class=HTMLResponse, dependencies=[allow(*ANY)])
+def athletes_page(request: Request):
+    """Placeholder athletes route (smoke check compatibility)."""
+    return "<html><body>Athletes page</body></html>"
+
+
 def live_context(event="", t="", maker=True, partial=0):
     """The Live tab's template context: the registry's event, live or as of a replay snapshot, with the
     sport's body from its adapter (no database: the run folder only)."""
