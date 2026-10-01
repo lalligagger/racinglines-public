@@ -164,8 +164,9 @@ log entry in the same change.
 
 **Deploys during live events.** `vm.sh deploy` doesn't wait for a live event: it pauses the VM's timers (live-event
 steps, signals), deploys, and resumes them with one catch-up step each ([VM deploy](docs/vm-deploy.md#whats-in-the-repo)).
-There is no `--force`. Don't hand-restart a live event's units around a deploy. If the update fails, the timers
-stay paused on purpose: fix and redeploy, then check `vm.sh status`.
+There is no `--force`. Don't hand-restart a live event's units around a deploy. If the update fails after the checkout
+moved, the timers stay paused on purpose: fix and redeploy, then check `vm.sh status` (a failure before it moved, such as
+a fetch or an unknown ref, resumes them).
 
 ## Branches: feature tracks
 

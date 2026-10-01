@@ -13,6 +13,9 @@
 #   bash scripts/deploy/vm.sh switch <NAME> on|off # an app switch (RACINGLINES_*, e.g. RACINGLINES_OG_VENUE) in
 #                                               # /etc/racinglines.env, web app restarted; never a trading flag
 #   bash scripts/deploy/vm.sh deploy [ref]      # checkout (default main), install, migrate, restart, smoke check
+#   bash scripts/deploy/vm.sh backup <purpose>  # the VM database to data/backups/db/racinglines-before-<purpose>-<UTC>.sql.gz
+#   bash scripts/deploy/vm.sh repoint           # one time: the VM checkout fetches from REPO_URL (fetch only, no file
+#                                               # touched); deploy refuses until the checkout's origin is REPO_URL
 #   bash scripts/deploy/vm.sh public on|off     # testing before handover: the web app on http://<VM IP>:8000
 #   bash scripts/deploy/vm.sh demo [status|extra] # the multi-sport demo: switches on, NASCAR/MotoGP paper rows and
 #                                               # forecasts (backup first); extra: only the Polymarket rows and forecasts
@@ -32,6 +35,7 @@ VM="${RL_VM:-racinglines-vm}"
 ZONE="${RL_ZONE:-us-west1-b}"
 BUCKET="${RACINGLINES_GCS_BUCKET:-}"     # the new project's bucket (restore needs it)
 APP=/opt/racinglines
+REPO_URL="${RL_REPO_URL:-https://github.com/lalligagger/racinglines-public.git}"   # where the VM checkout fetches from (vm.sh repoint)
 log() { echo "[vm $(date -u +%H:%M:%S)] $*"; }
 remote() { gcloud compute ssh "$VM" --project "$PROJECT" --zone "$ZONE" --tunnel-through-iap --command "$1"; }
 as_app() { remote "cd $APP && sudo -u racinglines -H env RACINGLINES_GCS_BUCKET=$BUCKET $1"; }
@@ -96,6 +100,8 @@ case "${1:-}" in
   deploy)
     ref="${2:-main}"
     [ "$ref" = "--force" ] && { log "--force is no longer needed: deploy pauses and resumes live events"; ref="${3:-main}"; }
+    origin=$(as_app "git remote get-url origin") || { echo "couldn't reach the VM: nothing paused, nothing deployed"; exit 1; }
+    [ "$origin" = "$REPO_URL" ] || { echo "the VM checkout fetches from $origin, not $REPO_URL: run bash scripts/deploy/vm.sh repoint first. Nothing paused, nothing deployed."; exit 1; }
     # Pause, don't refuse. The timers (racinglines-live-f1@<event>.timer, racinglines-signals.timer) start oneshot
     # steps every 5 minutes; stop them and wait for a step already running ("activating"), so no step runs while
     # update.sh rewrites the checkout. Each step is idempotent and catches up: an F1 live step does every update
@@ -114,8 +120,19 @@ case "${1:-}" in
       esac
     done
     [ -n "$dh" ] && log "WARNING: a downhill loop is running ($dh ). Deploy doesn't restart it: it keeps the code it loaded, and a later lazy import may read the new files. Deploy after the final if you can."
+    before=""
     if [ -n "$timers" ]; then
-      trap 'echo "deploy stopped early: these timers may still be paused:$timers"; echo "  the next vm.sh deploy resumes them (they are listed in $PAUSED on the VM), or by hand: bash scripts/deploy/vm.sh ssh, then: sudo systemctl start$timers"' EXIT
+      # a failure before the checkout moved (fetch, unknown ref) changed nothing, so the timers resume; after it moved,
+      # they stay paused so no step runs on a half-updated checkout
+      stopped_early() {
+        if [ -n "$before" ] && [ "$(as_app "git rev-parse HEAD" 2>/dev/null)" = "$before" ] &&
+           remote "sudo systemctl start$timers && sudo rm -f $PAUSED"; then
+          echo "deploy failed before the checkout changed: nothing deployed, timers resumed:$timers"; return
+        fi
+        echo "deploy stopped early: these timers may still be paused:$timers"
+        echo "  the next vm.sh deploy resumes them (they are listed in $PAUSED on the VM), or by hand: bash scripts/deploy/vm.sh ssh, then: sudo systemctl start$timers"
+      }
+      trap stopped_early EXIT
       log "pausing:$timers"
       remote "sudo mkdir -p ${PAUSED%/*} && echo '$timers' | sudo tee $PAUSED >/dev/null && sudo systemctl stop$timers"
       log "waiting up to 5 minutes for a step in progress"
@@ -132,6 +149,10 @@ case "${1:-}" in
       fi
     fi
     log "deploy $ref"
+    before=$(as_app "git rev-parse HEAD")
+    # files the current commit tracks and $ref doesn't: backed up, then untracked, so the checkout keeps them on disk
+    gcloud compute scp deploy/vm/untrack.sh "$VM:/tmp/racinglines-untrack.sh" --project "$PROJECT" --zone "$ZONE" --tunnel-through-iap
+    as_app "bash /tmp/racinglines-untrack.sh $ref"
     as_app "deploy/vm/update.sh $ref"
     remote "sudo install -m 644 $APP/deploy/vm/systemd/* /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl try-restart $SERVICES racinglines-mcp"
     if [ -n "$timers" ]; then
@@ -143,9 +164,19 @@ case "${1:-}" in
       log "resuming:$timers"
       remote "sudo systemctl start$timers && sudo rm -f $PAUSED"
       trap - EXIT
+      log "timers running (one 'active' per timer):"
+      remote "systemctl is-active$timers"
     fi
     log "smoke check on the VM"
     remote "sleep 3; cd $APP && bash scripts/deploy/smoke.sh http://127.0.0.1:8000"
+    ;;
+  backup)
+    purpose="${2:-}"; case "$purpose" in ""|*[!a-z0-9-]*) echo "usage: vm.sh backup <purpose> (lowercase letters, digits, -)"; exit 1 ;; esac
+    remote "cd $APP && sudo -u racinglines -H bash -c 'set -euo pipefail; mkdir -p data/backups/db; b=data/backups/db/racinglines-before-$purpose-\$(date -u +%Y%m%dT%H%M%SZ).sql.gz; docker compose exec -T db pg_dump --no-owner --no-privileges -U racinglines racinglines | gzip -6 > \$b; ls -lh \$b'"
+    ;;
+  repoint)
+    # set-url and fetch only: the checkout, its files and the running services are untouched until the next deploy
+    as_app "git remote set-url origin $REPO_URL && git fetch --quiet --prune origin && git remote get-url origin && git log -1 --format='checkout still at %h %s'"
     ;;
   public)
     # Plain HTTP on a public port, for testing until racinglines.bet moves over; off at handover.
