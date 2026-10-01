@@ -9,6 +9,10 @@
 # Signs in with HTTP Basic as the demo accounts (SMOKE_PASSWORD, default the public demo password).
 # Read-only: GET requests only. Exit 1 if any check fails.
 #
+# SMOKE_EXPECT_ENV=staging adds one check: /login must answer with the header X-Racinglines-Env: staging
+# (the app sends it when RACINGLINES_ENV is set), so a staging deploy proves it reached the staging instance
+# and not production. Unset, nothing changes.
+#
 # IMPORTANT: the default smoke gate must never test a bad password. The app rate-limits failed Basic
 # auth requests by client IP for 15 minutes, so a wrong-password probe warms the same bucket used by the
 # real maker/taker checks and creates a false predeploy failure. If we intentionally need the throttle
@@ -35,6 +39,11 @@ if [ "$MODE" = "--auth-throttle" ]; then
 fi
 
 check 200 "GET /login" "$URL/login"
+if [ -n "${SMOKE_EXPECT_ENV:-}" ]; then
+  got_env=$(curl -s -o /dev/null -w '%header{x-racinglines-env}' --max-time 30 "$URL/login")
+  if [ "$got_env" = "$SMOKE_EXPECT_ENV" ]; then echo "ok    env  X-Racinglines-Env: $got_env"
+  else echo "FAIL  env  X-Racinglines-Env: '${got_env:-none}' (wanted $SMOKE_EXPECT_ENV: this is not the $SMOKE_EXPECT_ENV instance)"; fail=1; fi
+fi
 check 401 "GET /markets without credentials" "$URL/markets"
 for path in /markets /events /athletes /pitch /racinglines101; do
   for user in maker taker; do check 200 "GET $path as $user" -u "$user:$PW" "$URL$path"; done
