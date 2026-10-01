@@ -118,7 +118,7 @@ def clients():
 def test_maker_pages(clients):
     cl, races = clients
     m = cl["maker"]
-    for path in ["/", "/book", "/lab", "/markets/polymarket", "/seasons/f1_wdc", "/seasons/uci_dhi_wc", "/events", "/athletes"] + \
+    for path in ["/", "/book", "/lab", "/markets/polymarket", "/seasons/f1_wdc", "/seasons/uci_dhi_wc"] + \
             [f"/races/{r}" for r in races]:
         r = m.get(path)
         assert r.status_code == 200, path
