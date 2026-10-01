@@ -1,7 +1,8 @@
 # racinglines
 
+[![Tests](https://github.com/lalligagger/racinglines-public/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/lalligagger/racinglines-public/actions/workflows/tests.yml)
 [![CI](https://github.com/lalligagger/racinglines-public/actions/workflows/predeploy.yml/badge.svg?branch=main)](https://github.com/lalligagger/racinglines-public/actions/workflows/predeploy.yml)
-[![Python 3.12](https://img.shields.io/badge/python-3.12-blue)](requirements.txt)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)](requirements.txt)
 [![License: MIT](https://img.shields.io/github/license/lalligagger/racinglines-public)](LICENSE)
 
 <!-- Sections between include markers are generated from docs/ by build_readme.py.
