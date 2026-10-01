@@ -36,6 +36,8 @@ have already passed on the staging host, and the public-repo guardrails are in p
 - **Required before PR merge:**
   - `python -m pytest tests/test_no_data_in_git.py tests/test_fetch_fixtures_guard.py tests/test_deploy_smoke.py -q`
   - `bash scripts/deploy/predeploy.sh --staging main`
+- **Commit policy:** never leave a commit in an editor; use `git commit -m "..."` or `git commit --amend --no-edit`.
+  No `vim`/`vi` commit-message loops.
 - **Branch/merge flow:** cut the feature branch from `main`, commit the batch, open the PR, let CI run, then merge to
   `main` only after the staging gate is green.
 - **Demo assumptions:** all runtime data, venue flags and secrets stay local; only the demo maker/taker path is used for

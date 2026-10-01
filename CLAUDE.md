@@ -99,6 +99,16 @@ At the start of a session, state for each queued task which role owns it and why
 nothing needs the deciding seat, say so and run the session on Opus-class or below. Never route work to Fable
 to use the budget.
 
+## Commit policy
+
+- Never run `git commit` in an interactive editor flow. No `vim`/`vi` commit-message loops, no dropping into the
+  default editor just to write the message.
+- Use `git commit -m "..."` for normal commits and `git commit --amend --no-edit` for no-message amends.
+- If Git opens an editor, treat that as a failed commit and re-run with the message passed explicitly on the
+  command line.
+- Keep the subject short and concrete; use a second sentence in the same `-m` string only when the change needs
+  a bit more context.
+
 ## Dev cycle
 
 1. **Plan.** Restate the ask, resolve ambiguity, no code yet. Check `docs/todo.md` for whether this is already a
