@@ -121,15 +121,24 @@ to use the budget.
    every spawn, on the task's feature-track branch (see [Branches](#branches-feature-tracks)), not a new branch
    per small task.
 
-   **Pre-deploy flow (final staging only):**
-   - Keep reviewable work in one feature-track branch and split it into small, ordered PRs as needed; stacking
-     PRs is fine when they are part of the same feature slice, but each PR must still be a clean, reviewable unit.
-   - Do not deploy to the VM for every small PR or every intermediate commit. VM churn is expensive and noisy;
-     a working branch gets local tests and code review first, then one final staging deploy when the slice is ready.
-   - The deployment gate is: local green -> final staging gate -> one production deploy. The command is
-     `bash scripts/deploy/predeploy.sh --staging <ref>` for the final branch checkpoint, and only then
-     `bash scripts/deploy/predeploy.sh --prod <ref>` or `bash scripts/deploy/vm.sh deploy <ref>` on the final
-     branch after the staging pass.
+   **Merging is deploying (since 2026-10-01):** the live repo is the public `lalligagger/racinglines-public`, and
+   every merge to `main` that changes more than docs deploys to the VM through GitHub Actions (`main-merge-gate`,
+   [VM deploy: The flow](docs/vm-deploy.md#the-flow)): `predeploy-staging` smoke-checks staging, `deploy-production`
+   runs `vm.sh deploy <sha>` (pauses the live timers, checkout, install, `alembic upgrade head`, `db seed`, restart,
+   resumes the timers, also when it fails before the checkout moved) and smoke-checks racinglines.bet. A change set
+   that is only `docs/` and `*.md` files deploys nothing.
+   - **CI runs no pytest, no `racinglines check`, no `mkdocs build`.** Run them locally before asking for a merge
+     (below). The golden tests skip without `tests/fixtures/`, which the public repo doesn't carry: run them on the
+     owner's Mac for anything touching pricing.
+   - Keep reviewable work in one feature-track branch and split it into small, ordered PRs as needed. Every merged
+     code PR is a VM deploy, so batch them: merge a track's stack together, not one PR an hour.
+   - Every PR description says whether merging it deploys, and names anything the VM needs after the deploy (a
+     backup, a migration, a data step under `scripts/vm/`): code arrives by merge, data never does
+     ([Code from GitHub, data on the VM](docs/vm-deploy.md#code-from-github-data-on-the-vm)).
+   - **A PR with an Alembic migration runs it on the VM the moment it merges.** That is the safety rail below: the
+     owner signs off on that migration and takes `vm.sh backup <purpose>` first, then merges.
+   - Keep code merges out of live race windows unless the owner says otherwise.
+   - By hand, when CI can't: `bash scripts/deploy/predeploy.sh --prod <ref>` or `bash scripts/deploy/vm.sh deploy <ref>`.
 
 5. **Report back**, every check-in:
    - status per task (done / blocked / needs a decision),
@@ -162,7 +171,7 @@ Run the full suite too when the local database is up. `UPDATE_GOLDEN=1` only in 
 per the [F1 roadmap](docs/f1-roadmap.md#5-promotion-rule-when-a-challenger-becomes-the-default), with a decision
 log entry in the same change.
 
-**Deploys during live events.** `vm.sh deploy` doesn't wait for a live event: it pauses the VM's timers (live-event
+**Deploys during live events.** `vm.sh deploy` (by CI on a merge, or by hand) doesn't wait for a live event: it pauses the VM's timers (live-event
 steps, signals), deploys, and resumes them with one catch-up step each ([VM deploy](docs/vm-deploy.md#whats-in-the-repo)).
 There is no `--force`. Don't hand-restart a live event's units around a deploy. If the update fails after the checkout
 moved, the timers stay paused on purpose: fix and redeploy, then check `vm.sh status` (a failure before it moved, such as
@@ -194,10 +203,12 @@ batch is green and reviewed:
   track's batch is ready, and a long task another track must not wait on.
 - Cloud threads get their branch name from the harness; use it for the batch and say which track it is in the PR
   title (`[ops] ...`).
-- Staging is the final gate, not a deploy for every tiny PR. A feature branch or track batch gets one final
-  `bash scripts/deploy/predeploy.sh --staging <ref>` check when it is ready; only then do we do the single
-  production deploy (`bash scripts/deploy/predeploy.sh --prod <ref>` or `bash scripts/deploy/vm.sh deploy <ref>`).
-  This keeps VM churn down while still giving us a real staging check before prod.
+- Clean up as PRs merge (owner, 2026-10-01): one feature-track branch per night or feature sprint, and a thread first
+  looks for the open track branch or PR and adds to it. Delete the head branch at merge
+  (`gh pr merge N --squash --delete-branch`); after a sprint, `git ls-remote --heads origin` should list only `main`
+  and open-PR branches. Never delete `main`, an open PR's branch or a tag.
+- The owner merges (squash, on GitHub). A squash-merged stack leaves the PRs above it conflicted: merge `main` into
+  the next branch before asking for its merge.
 
 ## Long-running jobs: a progress line every 5 minutes
 
@@ -282,30 +293,30 @@ Standing practice from the owner (2026-09-29), applied to every task, not one pa
   test fixtures and the findings go into the schema (caps as `limits`). Only then does the full run happen on the
   VM. Never run a full import against an unverified source, and never guess at a live API's behaviour from the cloud.
 
-## Current status: public repo + demo completion plan (2026-09-30)
+## Current status: public repo, CI deploys, data on the VM (2026-10-01)
 
-The repo-safe CI path is now fixed and verified. The default smoke gate does not probe a bad password anymore,
-so it no longer warms the app's 15-minute failed-login throttle and produces a false negative against the real
-maker/taker checks. The explicit auth-throttle check remains available as a separate opt-in mode for diagnosing
-that edge case, but it is not part of the normal staging or prod gate.
-
-The remaining work to finish the demo is therefore purely operational and repo-safe:
-
-- **Public repo guardrails:** raw runtime data stays out of Git; fixture fetches are explicit and minimal; the
-  repo has guard tests for no-data-in-Git and the limited fixture target list.
-- **Staging gate:** `bash scripts/deploy/predeploy.sh --staging main` is the final branch checkpoint before a
-  merge to `main`. The gate runs valid-auth checks only.
-- **PR / merge flow:** branch from `main`, commit the finished batch, open the PR, let GitHub CI run the repo-safe
-  checks, then merge only after the staging gate is green.
-- **Demo completion:** bring the app to the demo default state only behind the tracked feature switches, keep all
-  runtime data and secrets local, and use the maker/taker smoke check rather than the throttling path.
-- **If the old wrong-password probe has already warmed the throttle:** wait 15 minutes or restart the app on a
-  fresh client/IP before rerunning the normal valid-auth smoke checks.
+- **Live repo:** `lalligagger/racinglines-public`, history starting at "Initial public release" (2026-10-01). The
+  private `lalligagger/racinglines` is the old one; its PR numbers don't apply here. The VM checkout fetches from the
+  public repo (`vm.sh repoint`, done 2026-10-01).
+- **CI:** merge to `main` = staging smoke + VM deploy + prod smoke ([VM deploy: The flow](docs/vm-deploy.md#the-flow)).
+  Docs-only merges deploy nothing. CI runs no tests. Cloud sessions can't push `.github/workflows/*`: ship a patch.
+- **Code only:** a deploy never restores, overwrites or deletes `data/`, the pitch images or database rows. Data and
+  the database change only by ssh and scripts (`vm.sh backup|record|demo|switch|live`, `scripts/vm/*` as transient
+  units, backup first) or the site's admin views. What lives where, and what that breaks (no off-VM copy of the
+  newest data, stale bucket for cloud sessions, golden tests skipping):
+  [Code from GitHub, data on the VM](docs/vm-deploy.md#code-from-github-data-on-the-vm).
+- **Market history:** the recorder's hourly archive pass moves cold market rows from Postgres to Parquet
+  (`data/archive/markets/`), so database dumps shrank (118 MB to 56 MB) and are no longer a full backup on their own.
+- **Maintenance popup:** `MAINTENANCE_NOTICE` in `racinglines/web/app.py` (sign-in page and every app page, dismissed
+  once per browser session); set it to `""` to turn it off. It is code, so changing it is a deploy.
+- **Smoke gate:** valid sign-ins only; a wrong-password probe warms the 15-minute failed-login throttle and fails the
+  real checks (`smoke.sh --auth-throttle` is the opt-in diagnostic). If it was warmed, wait 15 minutes.
 
 ## Safety rails (non-negotiable, carried over from the project's own rules)
 
 - Never flip `POLYMARKET_TRADING_ENABLED` / `KALSHI_TRADING_ENABLED`, run `vm.sh public on`, or run a DB migration
-  against the VM without my explicit sign-off in the same conversation turn.
+  against the VM without my explicit sign-off in the same conversation turn. Merging a PR that adds a migration runs
+  it on the VM, so such a PR is marked ⚠️ and waits for that sign-off.
 - Never `git push --force` or rewrite published history.
 - Every tuned setting (spread, filter, model choice) needs a decision-log entry before it's treated as final —
   match the existing `docs/f1-roadmap.md` decision log format.

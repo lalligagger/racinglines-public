@@ -1,5 +1,14 @@
 # Cloud sweeps
 
+!!! warning "Since 2026-10-01 the data is not in the repo"
+    The live repo is the public `racinglines-public`, which tracks no `data/` (`.gitignore`), so a cloud session
+    no longer finds the snapshot, the raw F1 files or the market archive below in its clone, and `git add` of
+    `data/runs/search` adds nothing. The data comes from the bucket (`scripts/cloud/start.sh` and `bucket.py pull`,
+    with the environment's HMAC key), and results go back with `bucket.py push results/<session> data/runs/search/<name>`
+    plus the leaderboard and `REPORT.md` copied into the PR or the project files. The bucket that key reaches was
+    last pushed 2026-09-28, before the VM took over: refresh it before a sweep that needs current data
+    ([VM deploy: Code from GitHub, data on the VM](vm-deploy.md#code-from-github-data-on-the-vm)).
+
 Long, unattended sweep sessions run in a [Claude Code cloud session](https://code.claude.com/docs/en/claude-code-on-the-web):
 a VM that clones this repo, builds the database from the data committed in it, and works through a
 queue of season sweeps in parallel while the agent steers the queue. Results come back on the
