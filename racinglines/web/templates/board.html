@@ -63,8 +63,8 @@
   {% endfor %}
   {% endif %}
 </div>
-{% if (s.run or s.asof) and s.later %}<p class="legend">Later: {% for l in s.later[:6] %}<a href="/races/{{ l.race_id }}">{{ l.title }}</a>{% if l.new %} {{ new_badge(l.new) }}{% endif %} {{ l.date|fmt }}{{ " · " if not loop.last %}{% endfor %}{% if s.later|length > 6 %} · +{{ s.later|length - 6 }} more{% endif %}</p>{% endif %}
-{% if s.tape and s.later %}<p class="legend">Later: {% for l in s.later[:6] %}{% if l.url %}<a href="{{ l.url }}">{{ l.title }}</a>{% else %}{{ l.title }}{% endif %}{% if l.date %} {{ l.date|fmt }}{% endif %}{{ " · " if not loop.last %}{% endfor %}{% if s.later|length > 6 %} · <a href="/markets/tapes">+{{ s.later|length - 6 }} more on Recorded tapes →</a>{% endif %}</p>{% endif %}
+{% if (s.run or s.asof) and s.later %}<p class="legend">Later: {% for l in s.later[:6] %}<a href="/races/{{ l.race_id }}">{{ l.title }}</a>{% if l.new %} {{ new_badge(l.new) }}{% endif %} {{ l.date|fmt }}{{ " · " if not loop.last }}{% endfor %}{% if s.later|length > 6 %} · +{{ s.later|length - 6 }} more{% endif %}</p>{% endif %}
+{% if s.tape and s.later %}<p class="legend">Later: {% for l in s.later[:6] %}{% if l.url %}<a href="{{ l.url }}">{{ l.title }}</a>{% else %}{{ l.title }}{% endif %}{% if l.date %} {{ l.date|fmt }}{% endif %}{{ " · " if not loop.last }}{% endfor %}{% if s.later|length > 6 %} · <a href="/markets/tapes">+{{ s.later|length - 6 }} more on Recorded tapes →</a>{% endif %}</p>{% endif %}
 {% if (s.run or s.asof) and s.recent %}<details class="card quiet" data-remember="markets:{{ s.code }}:recent"><summary><h3>Recent results</h3><span class="sum">{{ s.recent|length }} · last: {{ s.recent[0].info.title }}, winner {{ s.recent[0].winner }}{% if s.recent[0].our is not none %}, we had {{ pct(s.recent[0].our) }}{% endif %}</span></summary>
 <div class="recent">{% for r in s.recent %}<div>
   <a href="/races/{{ r.info.race_id }}"><b>{{ r.info.title }}</b></a> <span class="muted">{{ r.info.start_date|fmt }}</span><br>
