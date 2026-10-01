@@ -48,5 +48,8 @@ jobs:
           pip install -r requirements.txt
           pip install -e .
 
+      - name: Template syntax check
+        run: python scripts/check_templates.py
+
       - name: Regression suite
         run: python -m pytest -m "not live" -q -ra

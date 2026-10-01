@@ -60,6 +60,9 @@ jobs:
     if: ${{ needs.detect-docs-only.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    concurrency:
+      group: staging
+      cancel-in-progress: false
     env:
       SMOKE_PASSWORD: password
       STAGING_URL: https://staging.racinglines.bet
@@ -112,6 +115,9 @@ jobs:
     environment: production
     permissions:
       contents: read
+    concurrency:
+      group: production
+      cancel-in-progress: false
     # `secrets` is not allowed in a step's `if:` (the whole workflow fails to load); test these env copies instead
     env:
       HAS_GCP_KEY: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY != '' }}
