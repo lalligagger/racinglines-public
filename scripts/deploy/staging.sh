@@ -9,6 +9,11 @@
 # long-running tunnel left behind on the owner's Mac. The tunnel lives only for the command that
 # launches it, and exits when the script does.
 set -euo pipefail
+export PATH="/usr/local/bin:/usr/bin:/bin:${PATH:-}"
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+SCRIPT_DIR="${SCRIPT_PATH%/*}"
+if [ "$SCRIPT_DIR" = "$SCRIPT_PATH" ]; then SCRIPT_DIR="."; fi
+cd "$SCRIPT_DIR/../.."
 PORT="${2:-8010}"
 APP_URL="http://127.0.0.1:${PORT}"
 LOG_FILE="${TMPDIR:-/tmp}/racinglines-staging-cloudflared.log"

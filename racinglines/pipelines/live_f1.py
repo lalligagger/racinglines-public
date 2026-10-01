@@ -54,6 +54,8 @@ KIND_LABEL = {"race_win": "Winner", "race_podium": "Podium", "race_pole": "Pole 
 FIELD = {"race_win": "win_prob", "race_podium": "podium_prob"}
 GROUP_TARGET = {"race_win": 1.0, "race_podium": 3.0, "race_pole": 1.0, "race_constructor_top": 1.0}
 VIEW_GROUPS = KINDS + ("race_props", "race_fastest_lap")      # the Live tab: the yes/no props share one card
+EXCHANGE_LABELS = {"polymarket": "Polymarket", "kalshi": "Kalshi", "coinbase": "Coinbase", "og": "OG.com"}
+EXCHANGE_ORDER = ("polymarket", "kalshi", "coinbase", "og")
 
 
 def _utc(t):
@@ -150,6 +152,100 @@ def group_sums(mkts):
     dev = [abs(m["fair"] + fair.get(mkey("race_h2h", m["params"]["opponent_id"], m["athlete_id"]), 1 - m["fair"]) - 1)
            for m in mkts if m["kind"] == "race_h2h" and m["fair"] is not None]
     return s, max(dev, default=0.0)
+
+
+def _market_lookup_key(kind, athlete_id=None, params=None):
+    p = params if isinstance(params, dict) else {}
+    if isinstance(params, str):
+        try:
+            p = json.loads(params)
+        except (TypeError, ValueError):
+            p = {}
+    try:
+        athlete = int(athlete_id) if athlete_id is not None and not pd.isna(athlete_id) else None
+    except (TypeError, ValueError):
+        athlete = None
+    opp = p.get("opponent_id")
+    try:
+        opp = int(opp) if opp is not None and not pd.isna(opp) else None
+    except (TypeError, ValueError):
+        opp = None
+    team = p.get("team")
+    n = p.get("n")
+    try:
+        n = int(n) if n is not None and not pd.isna(n) else None
+    except (TypeError, ValueError):
+        n = None
+    return (kind, athlete, team, opp, n)
+
+
+def attach_exchange_prices(mkts, links):
+    """Add a compact per-market exchange summary for live pages when the event is linked to venue data."""
+    if not mkts:
+        return []
+    rows = [] if links is None or len(links) == 0 else links.to_dict("records") if hasattr(links, "to_dict") else list(links)
+    out = []
+    for market in mkts:
+        key = _market_lookup_key(market.get("kind"), market.get("athlete_id"), market.get("params"))
+        prices = []
+        for row in rows:
+            if not row:
+                continue
+            pred = row.get("prediction") or row.get("kind") or row.get("market_kind")
+            if pred is None:
+                continue
+            if _market_lookup_key(pred, row.get("athlete_id"), row.get("params")) != key:
+                continue
+            code = str(row.get("exchange") or "")
+            if not code:
+                continue
+            mid = row.get("last_price")
+            bid = row.get("last_bid")
+            ask = row.get("last_ask")
+            mid = None if mid is None or pd.isna(mid) else float(mid)
+            bid = None if bid is None or pd.isna(bid) else float(bid)
+            ask = None if ask is None or pd.isna(ask) else float(ask)
+            if mid is None and bid is None and ask is None:
+                continue
+            prices.append(dict(code=code, name=EXCHANGE_LABELS.get(code, code.replace("_", " ").title()),
+                               mid=mid, bid=bid, ask=ask, slug=row.get("event_slug"),
+                               token=row.get("token_id")))
+        prices.sort(key=lambda x: (EXCHANGE_ORDER.index(x["code"]) if x["code"] in EXCHANGE_ORDER else len(EXCHANGE_ORDER), x["code"]))
+        out.append(dict(market, exchange_prices=prices))
+    return out
+
+
+def compare_exchange_prices(links, threshold=0.005):
+    """Any Coinbase/Kalshi gap above a small threshold, logged once per poll for later inspection."""
+    rows = [] if links is None or len(links) == 0 else links.to_dict("records") if hasattr(links, "to_dict") else list(links)
+    by_key = {}
+    for row in rows:
+        if not row:
+            continue
+        code = str(row.get("exchange") or "").lower()
+        if code not in ("coinbase", "kalshi"):
+            continue
+        key = _market_lookup_key(row.get("prediction") or row.get("kind") or row.get("market_kind"),
+                                 row.get("athlete_id"), row.get("params"))
+        val = row.get("last_price")
+        val = None if val is None or pd.isna(val) else float(val)
+        if val is None:
+            continue
+        prev = by_key.setdefault(key, {"kind": row.get("prediction") or row.get("kind") or row.get("market_kind"),
+                                      "athlete_id": row.get("athlete_id"), "params": row.get("params"),
+                                      "coinbase": None, "kalshi": None})
+        prev[code] = val
+    out = []
+    for key, vals in by_key.items():
+        cb, ks = vals.get("coinbase"), vals.get("kalshi")
+        if cb is None or ks is None:
+            continue
+        diff = abs(cb - ks)
+        if diff > threshold:
+            out.append(dict(kind=vals.get("kind"), athlete_id=vals.get("athlete_id"), params=vals.get("params"),
+                            market_key=list(key), coinbase=cb, kalshi=ks, diff=diff))
+    out.sort(key=lambda r: r["diff"], reverse=True)
+    return out
 
 
 def markets(conn, event_key, run_id, source="last_listed", kinds=KINDS, props=None):
@@ -501,6 +597,20 @@ def step(spec, now=None, fetch=True, unfreeze=False, echo=print, engine=None, en
         cls_round = rounds.get(update["label"])
         cls = classification(c, rid, cls_round) if cls_round and rid else []
     qmap = {q["key"]: q for q in quotes}
+    with engine.connect() as c:
+        rid = race_id(c, event_key)
+        if rid is not None:
+            links = pd.read_sql(text("""SELECT exchange, prediction, athlete_id, params, last_price, last_bid,
+                last_ask, token_id, event_slug FROM market_links WHERE race_id = :r AND prediction IS NOT NULL"""),
+                               c, params=dict(r=rid))
+            mkts = attach_exchange_prices(mkts, links)
+            diffs = compare_exchange_prices(links, threshold=0.005)
+            LV.append(out, "coinbase_kalshi_diffs.jsonl",
+                      dict(ts=_iso(now), event_key=event_key, threshold=0.005, n_diffs=len(diffs), diffs=diffs))
+            if diffs:
+                echo(f"{_iso(now)} {event_key}: Coinbase/Kalshi diff check: {len(diffs)} markets above 0.5%")
+        else:
+            diffs = []
     snap = dict(ts=_iso(now), sport="f1", event_key=event_key, title=spec.get("title") or w["name"], name=w["name"],
                 update=dict(label=update["label"], kind=update["kind"], n=len([d for d in st["done"] if not d.get("skipped")])),
                 updates=[dict(label=u["label"], kind=u["kind"], at=_iso(u["at"]),
