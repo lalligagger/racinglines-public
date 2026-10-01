@@ -781,17 +781,23 @@ def live_context(event="", t="", maker=True, partial=0):
     from racinglines.pipelines import live as LV
     ev = LV.find(event or None)
     mode = LV.state(ev["run"]) if ev else None
-    times = LV.snap_times(ev["run"]) if mode == "replay" else []
-    if mode == "replay" and times:
+    times = LV.snap_times(ev["run"]) if ev else []
+    if ev and t and t in times:
+        mode = "replay"
+        snap, picks, hist = LV.load_at(ev["run"], t)
+    elif mode == "replay" and times:
         t = t if t else times[-1]
         snap, picks, hist = LV.load_at(ev["run"], t)
     else:
         snap, picks, hist = LV.load(ev["run"]) if ev else (None, [], [])
+    selected = next((x for x in reversed(times) if x <= t), times[0]) if times and t else (times[-1] if times else None)
+    if selected is not None and selected not in times:
+        selected = None
     ctx = dict(snap=snap, maker=maker, partial=partial, mode=mode, times=times,
-               t=next((x for x in reversed(times) if x <= t), times[0]) if times else None,
+               t=selected, current_run=(ev or {}).get("run"),
                sport=(ev or {}).get("sport") or "mtb_dh",
                evq=f"event={quote(ev['run'], safe='')}&" if event and ev else "",   # the registry's name, URL-quoted
                events=LV.events())
-    if snap:
+    if snap and ev:
         ctx.update(LV.adapter(ctx["sport"]).view(ev["run"], snap, picks, hist, mode, maker))
     return ctx

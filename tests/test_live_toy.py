@@ -108,6 +108,33 @@ def test_a_third_sport_runs_through_the_core(toy, monkeypatch):
     assert "<svg" in files["html"].read_text() and files["pnl.svg"].exists()
 
 
+def test_live_page_lists_events_and_session_links(toy, monkeypatch):
+    """The live shell should let you jump between overlapping event runs and past snapshots, not just the newest one."""
+    from racinglines.cli import live as CL
+    from racinglines.web.app import templates
+    from racinglines.web.views import live_context
+
+    spec1 = LV.load_spec("toy_sprint/toy-1")
+    spec2 = dict(spec1, event="toy-2", title="Toy sprint #2", feed=dict(spec1["feed"], seed=11))
+    (toy / "live" / "toy_sprint" / "toy-2.toml").write_text('sport = "toy_sprint"\nevent = "toy-2"\ntitle = "Toy sprint #2"\n[feed]\nseed = 11\n')
+    args = type("A", (), dict(no_fetch=True, unfreeze=False, no_sync=True, no_alert=True, now=None))()
+    while CL._step(spec1, args) is not None:
+        pass
+    while CL._step(LV.load_spec("toy_sprint/toy-2"), args) is not None:
+        pass
+    assert {e["run"] for e in LV.events()} >= {"toy-1", "toy-2"}
+    t = LV.snap_times("toy-1")[-1]
+    ctx = live_context("toy-1", t, True, 0)
+    assert any(e["run"] == "toy-2" for e in ctx["events"])
+    from jinja2 import ChoiceLoader, DictLoader
+    monkeypatch.setattr(templates.env, "loader", ChoiceLoader([DictLoader({"live_toy_sprint.html": BODY}), templates.env.loader]))
+    templates.env.cache = None
+    html = templates.get_template("live.html").render(dict(ctx, request=None, user=None, trading=None, live_nav=None,
+                                                           signals_nav=None))
+    assert '/live?event=toy-2' in html
+    assert f'/live?event=toy-1&t={t}' in html
+
+
 def test_settled_event_is_recorded_in_live_events(toy, test_engine):
     """racinglines live settle: a settled run into live_events (the migration's table), idempotently."""
     from sqlalchemy import text
