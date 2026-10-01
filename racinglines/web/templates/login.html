@@ -13,9 +13,8 @@
     <button class="taker"><b>Try as basic</b><span>Follow a taker strategy's calls on the open markets, no model numbers</span></button></form>
 </div>
 <p class="confused"><a href="/racinglines101">I'm already confused.</a></p>
-{% if signup_on() %}<p class="signup-cta">Beta <a href="/signup">signups</a> are live! Get your own pro account.</p>{% endif %}
 
-<p class="or">or sign in</p>
+<p class="or">{% if signup_on() %}<a href="/signup">Sign up</a> or log in{% else %}or sign in{% endif %}</p>
 <form method="post" action="/login" class="card">
   <input type="hidden" name="next" value="{{ next }}">
   <label><span>Username</span><input name="username" autocomplete="username" required></label>
