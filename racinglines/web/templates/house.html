@@ -13,9 +13,9 @@
 
 {% if totals %}<div class="kpis hero">
   {{ kpi("Markets", totals.markets, totals.open ~ " open") }}
-  {{ kpi("Bets", totals.bets, "staked $" ~ "%.2f"|format(totals.staked)) }}
+  {{ kpi("Bets", totals.bets, "staked " ~ (totals.staked|money)) }}
   {{ kpi("EV at fair", totals.ev, "", "money") }}
-  {{ kpi("Worst case", "$" ~ "%.2f"|format(totals.worst), "sum per market", "bad") }}
+  {{ kpi("Worst case", (totals.worst|money), "sum per market", "bad") }}
   {{ kpi("Settled P&L", totals.settled, "", "money") }}
 </div>{% endif %}
 
@@ -42,9 +42,9 @@
 <td>{{ mk.fair_prob|fmt("model_prob") }}</td><td>{{ mk.yes_price if mk.yes_price is not none else "–" }}</td><td>{{ mk.no_price if mk.no_price is not none else "–" }}</td>
 <td>{{ "%.0f"|format(mk.spread * 100) }}</td>
 <td class="l">{{ mk.status }}{% if mk.status == 'settled' %} ({{ "YES" if mk.outcome else "NO" }}){% endif %}</td>
-<td>{{ mk.bets }}</td><td>{{ "%.2f"|format(mk.staked) }}</td>
-<td class="{{ 'bad' if mk.pnl_if_yes < 0 else '' }}">{{ "%.2f"|format(mk.pnl_if_yes) }}</td><td class="{{ 'bad' if mk.pnl_if_no < 0 else '' }}">{{ "%.2f"|format(mk.pnl_if_no) }}</td>
-<td>{{ "%.2f"|format(mk.ev) }}</td></tr>{% endfor %}
+<td>{{ mk.bets }}</td><td>{{ mk.staked|money }}</td>
+<td class="{{ 'bad' if mk.pnl_if_yes < 0 else '' }}">{{ mk.pnl_if_yes|money(true) }}</td><td class="{{ 'bad' if mk.pnl_if_no < 0 else '' }}">{{ mk.pnl_if_no|money(true) }}</td>
+<td>{{ mk.ev|money(true) }}</td></tr>{% endfor %}
 </tbody></table></div></div></section>
 {% endfor %}
 <p class="legend">Prices are per $1 payout: a YES at 0.10 means stake $10 to be paid $100 if it happens. Money is handled outside the app. Rank markets use placeholder points for pricing.</p>

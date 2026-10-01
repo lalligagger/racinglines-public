@@ -1,11 +1,13 @@
 {# rows=N caps the table at N rows behind a "Show all"; filter="placeholder" adds a filter box (app.js). #}
 {% macro table(rows, cols, links={}, cap=0, filter="") -%}
 {% if rows %}<div class="scroll"{% if cap %} data-rows="{{ cap }}"{% endif %}{% if filter %} data-filter="{{ filter }}"{% endif %}><table>
-<thead><tr>{% for c in cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+<thead><tr>{% for c in cols %}<th>{{ LABELS.get(c) or (c|replace("_", " ")|capitalize) }}</th>{% endfor %}</tr></thead>
 <tbody>{% for r in rows %}<tr>{% for c in cols %}{% set v = r.get(c) %}
 <td{% if v is string and v|length > 24 %} class="wrap"{% endif %}>{% if c in links and r.get(links[c][1]) is not none %}<a href="{{ links[c][0] }}{{ r.get(links[c][1]) }}">{{ v|fmt(c) }}</a>{% else %}{{ v|fmt(c) }}{% endif %}</td>{% endfor %}</tr>{% endfor %}</tbody>
-</table></div>{% else %}<p class="muted">Nothing here yet.</p>{% endif %}
+</table></div>{% else %}{{ empty("No rows yet.") }}{% endif %}
 {%- endmacro %}
+{# One muted line for an empty table or list: sentence case, "No X yet." #}
+{% macro empty(msg) %}<p class="muted">{{ msg }}</p>{% endmacro %}
 {% macro csrf() %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endmacro %}
 {# A one-line result of the last action (msg=... in the query string): green, or red for "Error: ...". #}
 {% macro flash(msg) %}{% if msg %}<p class="flash {{ 'bad' if msg.startswith('Error') else 'good' }}" role="status">{{ msg }}</p>{% endif %}{% endmacro %}
@@ -42,8 +44,8 @@
 {% macro new_badge(n=0) %}<span class="pill new" title="first seen on Polymarket in the last 48 hours">{{ n ~ " " if n else "" }}new</span>{% endmacro %}
 
 {% macro paper_banner(n) %}{% if n and n.profile %}<div class="paper-banner"><span>Paper account · <b>{{ n.profile }}</b></span>
-<span>Polymarket P&amp;L <b class="{{ 'good' if n.pnl > 0 else ('bad' if n.pnl < 0) }}">{{ n.pnl|money(true) }}</b></span>
-{% if n.private is not none %}<span>Private book <b class="{{ 'good' if n.private > 0 else ('bad' if n.private < 0) }}">{{ n.private|money(true) }}</b></span>{% endif %}
+<span>Polymarket P&amp;L <b class="{{ pnl_cls(n.pnl) }}">{{ n.pnl|money(true) }}</b></span>
+{% if n.private is not none %}<span>Private book <b class="{{ pnl_cls(n.private) }}">{{ n.private|money(true) }}</b></span>{% endif %}
 <span class="links"><a href="/strategy">Strategy: track record and how it got here →</a> · <a href="/positions">Positions →</a></span></div>{% endif %}{% endmacro %}
 
 {# Demo-only context: an info bubble, tagged invisibly (data-tag="demo-context") so it can be found and

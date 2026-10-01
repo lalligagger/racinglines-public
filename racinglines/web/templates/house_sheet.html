@@ -2,7 +2,7 @@
 {% block title %}Quotes · {{ venue }}{% endblock %}
 {% block content %}
 <h1>{{ venue }} · {{ cat }} · quotes</h1>
-<p class="muted">As of {{ now }}. Price = stake per $1 payout (0.10 → stake $10, get $100). Prices can change until a bet is recorded.</p>
+<p class="muted">As of {{ now }} (Vancouver). Price = stake per $1 payout (0.10 → stake $10, get $100). Prices can change until a bet is recorded.</p>
 {% for kind, ms in groups %}
 <div class="card"><h2>{{ {"race_win": "To win", "race_podium": "Podium (top 3)", "race_top10": "Top 10 / points", "race_make_final": "Makes the Final", "rank_up": "Championship rank goes up", "rank_down": "Championship rank goes down"}.get(kind, kind) }}</h2>
 <div class="scroll"><table><thead><tr><th class="l">Rider</th><th class="l">Maker</th>{% if kind.startswith('rank') %}<th>Now</th>{% endif %}<th>YES</th><th>NO</th></tr></thead><tbody>

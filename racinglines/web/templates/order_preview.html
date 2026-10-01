@@ -4,7 +4,7 @@
 <h1>Confirm order</h1>
 <div class="card">
 <p><b>{{ side }} {{ size }}</b> shares of <b>{{ link.outcome }}</b> in “{{ link.question }}” at <b>{{ price }}</b>, post-only GTC.</p>
-<p>Notional: {{ "$%.2f"|format(notional) if notional is not none else "–" }} · model fair price {{ prob|fmt("model_prob") if prob is not none else "–" }}
+<p>Notional: {{ (notional|money) if notional is not none else "–" }} · model fair price {{ prob|fmt("model_prob") if prob is not none else "–" }}
  · edge at this price {{ edge|fmt("edge") if edge is not none else "–" }} · book {{ book.best_bid if book else "?" }} / {{ book.best_ask if book else "?" }}</p>
 {% if edge is not none and edge < 0 %}<p class="warn">This price is on the wrong side of the model's fair value.</p>{% endif %}
 {% if error %}<p class="bad">Blocked: {{ error }}</p><p><a href="/markets/linked/{{ link.id }}">Back</a></p>
