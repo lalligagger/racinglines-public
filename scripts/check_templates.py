@@ -29,12 +29,20 @@ def fmt(value, col=""):
     return str(value)
 
 
-def money(v, sign=False):
-    """-302.97 -> '-$302.97'; sign=True adds '+' to positives."""
+def money(v, sign=False, cents=True):
+    """-302.97 -> '-$302.97'; sign=True adds '+' to positives; cents=False keeps whole dollars ('-$303')."""
     if v is None or (isinstance(v, float) and math.isnan(v)):
         return ""
     s = "-" if v < 0 else ("+" if sign and v > 0 else "")
-    return f"{s}${abs(v):,.2f}"
+    return f"{s}${abs(v):,.{2 if cents else 0}f}"
+
+
+def kind(k):
+    """'race_win' -> 'win', 'race_top10' -> 'top10', 'race_make_final' -> 'make final'."""
+    if k is None:
+        return ""
+    k = str(k).removeprefix("race_")
+    return ("DH " + k.removeprefix("dh_") if k.startswith("dh_") else k).replace("_", " ")
 
 
 def check_templates():
@@ -49,6 +57,7 @@ def check_templates():
     # Register the same filters the app uses
     env.filters["fmt"] = fmt
     env.filters["money"] = money
+    env.filters["kind"] = kind
     
     html_files = sorted(template_dir.rglob("*.html"))
     failed = []
