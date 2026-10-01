@@ -552,7 +552,7 @@ untrack, checkout, pip, `alembic upgrade head`, `db seed`, restart, resume timer
 |---|---|---|---|
 | No tests in CI | A green PR has only passed a smoke check of staging | Run `racinglines check`, `pytest -m "not live"`, `mkdocs build --strict` locally before asking for a merge | STG-2 |
 | Golden tests skip without `tests/fixtures/` | ~50 tests skip on a public checkout, all goldens included; pytest still looks green | Pricing / model / replay PRs: run the goldens on the owner's Mac | STG-7 |
-| Staging smoke doesn't run the PR's code | `predeploy-staging` checks whatever staging serves | Treat it as "staging is up", not "this PR works" | STG-1, STG-3 |
+| Staging smoke doesn't run the PR's code | `predeploy-staging` checks whatever staging serves | Merge the branch to `staging` first (PR 11) and look at it; `predeploy-staging` alone means "staging is up" | STG-4 |
 | A merged migration runs on the VM at once, no backup step | The safety rail (owner sign-off for VM migrations) depends on who merges | PRs with `migrations/versions/*`: ⚠️ in the title, `vm.sh backup <purpose>` first, owner's word, then merge | STG-8 |
 | No off-VM copy of the VM's data | VM disk loss = data since 2026-09-28 gone, incl. archived market history | Avoid anything risky on the VM's disk; `vm.sh backup` before every data step | STG-5 |
 | Cloud sessions read the old bucket (last push 2026-09-28) | Cloud sweeps and analyses run on stale data | Say so in any cloud result; check `bucket.py ls` dates | STG-5 |
@@ -565,7 +565,7 @@ untrack, checkout, pip, `alembic upgrade head`, `db seed`, restart, resume timer
 
 Each item below needs the owner's go; the ones touching the VM, DNS, the bucket or secrets need sign-off.
 
-- [ ] **STG-1 · staging host.** `staging.racinglines.bet`: a second app instance with its own database
+- [x] **STG-1 · staging host.** Built 2026-10-01 (PR 11, [VM deploy: Staging](vm-deploy.md#staging)): a second app copy on the VM (port 8010, `racinglines_staging`, no timers, no trading flags), `vm.sh staging setup|deploy|status|reset|off`. Open: Cloudflare Access in front of it. Original plan: a second app instance with its own database
       (`racinglines_staging`, restored from the latest VM backup, trading flags off, `RACINGLINES_*` switches as on
       production), either a second compose project on the VM (cheapest; the n2-standard-2 has room) or a small
       separate VM; Cloudflare DNS and tunnel route; Cloudflare Access or basic-auth. Owner decisions pending: same
@@ -576,7 +576,7 @@ Each item below needs the owner's go; the ones touching the VM, DNS, the bucket 
       `racinglines check`, `pytest -m "not live"`, `pip install -r requirements-docs.txt && mkdocs build --strict`.
       It must not run on docs-only change sets' deploy path, but it should still run `mkdocs build` for them. Done
       when a PR that breaks a test is red on GitHub.
-- [ ] **STG-3 · deploy branches to staging.** On a push to a `track/*` branch (or a PR label), CI deploys it to
+- [x] **STG-3 · deploy branches to staging.** Built 2026-10-01 (PR 11): a merge or push to the `staging` branch runs `deploy/ci/staging.yml` (`vm.sh staging deploy <sha>`, smoke with `SMOKE_EXPECT_ENV=staging`); the owner copies it into `.github/workflows/`. Original plan: on a push to a `track/*` branch (or a PR label), CI deploys it to
       staging with a `vm.sh deploy --staging` variant (alembic runs against the staging DB only), runs
       `smoke.sh` against staging and posts the result on the PR. Replaces today's staging smoke of whatever is live.
 - [ ] **STG-4 · verify, then production.** The owner checks staging (a short checklist per track: pages load,

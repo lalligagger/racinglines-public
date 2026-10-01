@@ -14,7 +14,7 @@ Since 2026-10-01 the live repo is the public `lalligagger/racinglines-public` (b
 | Job | Runs on | What it does |
 |---|---|---|
 | `detect-docs-only` | every PR to `main` and every push to `main` | Lists the changed files (the PR's diff, or `HEAD^..HEAD` on a push). If every one is under `docs/` or ends in `.md` (README, CLAUDE.md, mkdocs.yml too), the change is docs-only and the two jobs below are skipped: **a docs-only merge deploys nothing** |
-| `predeploy-staging` | PRs and pushes that are not docs-only | `scripts/deploy/predeploy.sh --staging <sha>`: the smoke check (`scripts/deploy/smoke.sh`, valid sign-ins only) against `https://staging.racinglines.bet`. A failure comments on the PR. It checks whatever staging serves; it does not deploy or run the PR's code |
+| `predeploy-staging` | PRs and pushes that are not docs-only | `scripts/deploy/predeploy.sh --staging <sha>`: the smoke check (`scripts/deploy/smoke.sh`, valid sign-ins only) against `https://staging.racinglines.bet`. A failure comments on the PR. It checks whatever staging serves (since PR 11 the staging instance, [Staging](#staging)); it does not deploy or run the PR's code |
 | `deploy-production` | pushes to `main` only, after `predeploy-staging` passed | `scripts/deploy/predeploy.sh --prod <sha>`: `vm.sh deploy <sha>` (below), then the smoke check against `https://racinglines.bet`. Uses the `production` environment's secrets (`GCP_SERVICE_ACCOUNT_KEY`, `GCP_PROJECT_ID`, `VM_NAME`, `VM_ZONE`); without them the job prints a skip line and deploys nothing |
 
 **CI runs no pytest, no `racinglines check` and no `mkdocs build`.** Those stay local (below) until STG-2's test job
@@ -64,6 +64,7 @@ be repeated without reading the whole page.
 |---|---|
 | `scripts/deploy/vm.sh` | Run on your Mac (and by CI for `deploy`): `setup`, `restore`, `start [web]`, `deploy [ref]`, `backup <purpose>` (a database dump on the VM to `data/backups/db/racinglines-before-<purpose>-<UTC>.sql.gz`), `repoint` (one time: the checkout fetches from the public repo; `git remote set-url` and a fetch, no file touched), `live <event> [off]`, `record`, `switch`, `demo`, `public`, `status`, `logs [unit]`, `ssh` (SSH through IAP) |
 | `scripts/deploy/predeploy.sh --staging\|--prod\|--all [ref]` | The gate CI runs: `--staging` smoke-checks staging, `--prod` runs `vm.sh deploy <ref>` then smoke-checks racinglines.bet |
+| `deploy/vm/staging/`, `deploy/vm/systemd/racinglines-staging-web.service`, `deploy/ci/staging.yml` | Staging on the VM and its workflow ([Staging](#staging)) |
 | `.github/workflows/predeploy.yml` | `main-merge-gate`, the CI workflow ([The flow](#the-flow)). Cloud sessions can't push changes to it (the token lacks the workflow scope): ship a patch for the owner |
 | `scripts/deploy/smoke.sh <url>` | The smoke check (any machine with curl) |
 | `vm.sh demo`, `demo extra`, `demo status` | The multi-sport demo. `demo`: writes `RACINGLINES_SPORT_STATUS=1` and `RACINGLINES_SPORT_PAPER=1` to `/etc/racinglines.env` (replacing any earlier lines for them), restarts the web app, then starts `scripts/vm/demo_setup.sh` as the transient unit `rl-demo` (refused while `rl-demo` is already running). The script refuses to start while a `racinglines-live-*` unit is active, backs up first (`data/backups/db/racinglines-before-demo-setup-<UTC>.sql.gz`, trailer checked), then for NASCAR and MotoGP (a sport with no settings grid under `data/runs/replay-grid/<sport>` is skipped with a `SKIP` line): the steps in `STEPS`, default `kalshi polymarket forecast`: `kalshi` prints the grid's selection and runs `demo-history --grid … --book best --users maker,taker` on Kalshi; `polymarket` the same on Polymarket's tape with the Kalshi grid's selection (`--venue polymarket --grid-venue kalshi`); `forecast` runs `<sport> forecast --save` (MotoGP has no scheduled race stored, so it stores nothing). `demo extra` runs only `polymarket forecast`. `demo status` shows the unit, the `demo-setup.done` / `.failed` markers and the latest log's key lines (`data/runs/logs/demo-setup-<UTC>.log`). Every write logs a `data_changes` row naming the backup; undo with `racinglines <sport> demo-history --reset --users maker,taker --backup FILE` (per venue) and `<sport> forecast --undo RUN_ID`. Touches no trading flag, migration or bucket, and never the F1 demo history ([Paper trading](paper-trading.md#nascar-and-motogp-demo-in-sample-off-by-default)) |
@@ -327,9 +328,65 @@ Run an event on one machine only, the one whose database racinglines.bet reads.
 deploys don't wait for the event to settle. The web app restarts for a few seconds, so between sessions is still the
 kindest time.
 
+## Staging
+
+Since 2026-10-01 (PR 11) `staging.racinglines.bet` is **a second copy of the app on the same VM**, and **merging to
+the `staging` branch deploys staging and nothing else**. `main` keeps deploying production ([The flow](#the-flow)).
+
+| | Production | Staging |
+|---|---|---|
+| Branch that deploys it | `main` (`main-merge-gate`) | `staging` (`staging-deploy`, `.github/workflows/staging.yml`) |
+| Checkout on the VM | `/opt/racinglines` | `/opt/racinglines-staging` |
+| Web app | `racinglines-web`, 127.0.0.1:8000 | `racinglines-staging-web`, 127.0.0.1:8010 |
+| Database | `racinglines` | `racinglines_staging`, in the same Postgres container, copied from production by `staging setup` / `staging reset` (`pg_dump \| psql`: production is only read) |
+| Settings | `/etc/racinglines.env` | `/etc/racinglines-staging.env`: production's switches and admin password, its own `DATABASE_URL`, data folder (`/opt/racinglines-staging/data`, empty: no archive Parquet, no pitch images), `APP_SECRET`, `RACINGLINES_URL`, `RACINGLINES_ENV=staging`, `WEB_PORT=8010`; **no trading flags, no ntfy topic, no alert webhook** |
+| Timers and other units | recorder, signals, live events, record-venues, MCP | **none** (two recorders would split the book history) |
+| Tells you which one you're on | nothing | the `X-Racinglines-Env: staging` response header and a STAGING pill in the top bar (`RACINGLINES_ENV`) |
+
+**What a merge to `staging` does** (`deploy-staging` job): `vm.sh staging deploy <sha>`, which pipes
+`deploy/vm/staging/update.sh` over ssh (fetch, checkout, pip, `alembic upgrade head` and `db seed` **against
+`racinglines_staging` only**: it refuses any other `DATABASE_URL`), restarts `racinglines-staging-web`, and runs the smoke
+check on the VM and then against `https://staging.racinglines.bet` with `SMOKE_EXPECT_ENV=staging`, which fails unless
+the answer carries the staging header. It never calls `vm.sh deploy`, never reads the pause file, never stops a timer,
+never runs `untrack.sh` or `docker compose up`, and never opens `/etc/racinglines.env` or the `racinglines` database
+for writing (`tests/test_staging_deploy.py` pins this). A staging deploy is fine during a live window; only production
+deploys stay out of it. `tests.yml` runs the suite on PRs into `staging` and pushes to it, as for `main`.
+
+**Flow for a change:** branch off `main` → PR into `staging` (or push the branch's commits to `staging`) → the merge
+deploys staging → look at `https://staging.racinglines.bet` → PR of the same branch into `main` → the merge deploys
+production. Keep `staging` close to `main`: after a batch, reset it to `main` (`git push origin main:staging`; a
+force push is fine there, `staging` is a deploy pointer, not history).
+
+**`vm.sh staging` subcommands** (from the Mac, or by CI for `deploy`):
+
+| Command | What it does |
+|---|---|
+| `staging setup [ref]` | One time, as root (piped `deploy/vm/staging/setup.sh`): the checkout at `ref` (default the `staging` branch, else `main`), its venv, `racinglines_staging` copied from production, `/etc/racinglines-staging.env`, the unit installed and started. Idempotent: re-running keeps the database and the env file |
+| `staging deploy [ref]` | What CI runs on a merge to `staging` (above) |
+| `staging status` | The staging checkout's commit, the unit, and `GET /login` with its env header |
+| `staging logs` | `journalctl -u racinglines-staging-web` |
+| `staging reset` | Drop `racinglines_staging` and copy production's rows again (production only read) |
+| `staging off` | Stop and disable the unit; the checkout, database and env file stay |
+
+**Owner's one-time steps** (in this order; nothing here touches production):
+
+1. Cloudflare Zero Trust > Networks > Tunnels > `racinglines-vm` > Public hostnames: edit `staging.racinglines.bet`
+   (today it points at the production app, `localhost:8000`) to `http://localhost:8010`. Until then
+   `https://staging.racinglines.bet` serves production, and a staging deploy's last smoke step fails on the env
+   header (the VM-side smoke on port 8010 passes: the deploy itself is fine).
+2. Copy the workflow files into place on the PR branch (cloud sessions can't): `deploy/ci/staging.yml` to
+   `.github/workflows/staging.yml` and `deploy/ci/tests.yml` over `.github/workflows/tests.yml`.
+3. `bash scripts/deploy/vm.sh staging setup <branch>` from the Mac, with the PR branch while the PR is open.
+4. Create the `staging` branch and merge into it; watch the `staging-deploy` run; `bash scripts/deploy/vm.sh status`
+   shows production's commit and timers unchanged.
+
+Not done yet: Cloudflare Access in front of staging (today it has the app's own login, as production), a docs build
+for staging's `/docs` (`build_docs.sh` is production-only), the Mac's trycloudflare script (`scripts/deploy/staging.sh`,
+ad hoc only).
+
 ## Later
 
-- `staging.racinglines.bet` on the Mac's tunnel, replacing the temp address.
+- ~~`staging.racinglines.bet` on the Mac's tunnel, replacing the temp address.~~ Done 2026-10-01 on the VM ([Staging](#staging)).
 - A nightly push from the VM to its bucket (the latest dump and `data/archive/markets`), so the VM's disk is not
   the only copy and cloud sessions stay current. `bucket.sh push` needs to use the docker-compose `pg_dump` on Linux
   (its `PG_BIN` default is the Mac's conda path), and the VM's service account needs write access to the bucket.

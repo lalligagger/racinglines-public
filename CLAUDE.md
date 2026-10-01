@@ -138,6 +138,9 @@ to use the budget.
    - **A PR with an Alembic migration runs it on the VM the moment it merges.** That is the safety rail below: the
      owner signs off on that migration and takes `vm.sh backup <purpose>` first, then merges.
    - Keep code merges out of live race windows unless the owner says otherwise.
+   - **Staging first:** a merge (or push) to the `staging` branch deploys only `staging.racinglines.bet`, a second
+     copy of the app on the VM with its own database and no timers ([VM deploy: Staging](docs/vm-deploy.md#staging)).
+     Put a branch on `staging`, look at it, then PR it into `main`. Staging deploys are allowed in a live window.
    - By hand, when CI can't: `bash scripts/deploy/predeploy.sh --prod <ref>` or `bash scripts/deploy/vm.sh deploy <ref>`.
 
 5. **Report back**, every check-in:
