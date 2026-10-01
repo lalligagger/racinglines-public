@@ -110,7 +110,7 @@ def status(conn):
         lr = last[last["competition"] == comp]
         nx = nxt[nxt["competition"] == comp]
         if r is None or not _i(r["events"]):
-            row["races"] = dict(state="none", text="no events stored",
+            row["races"] = dict(state="none", text="no events stored", short="0",
                                 sub="no results source" if not modeled else "results not loaded")
         else:
             n, res = _i(r["races"]), _i(r["with_results"])
@@ -118,17 +118,18 @@ def status(conn):
             sub = [f"last result: {lr.iloc[0]['name']} ({lr.iloc[0]['start_date']:%d %b %Y})" if len(lr) else "no results yet"]
             if len(nx):
                 sub.append(f"next: {nx.iloc[0]['name']} ({nx.iloc[0]['start_date']:%d %b %Y})")
-            row["races"] = dict(state="ok" if res else "partial",
+            row["races"] = dict(state="ok" if res else "partial", short=f"{res:,}/{n:,}",
                                 text=f"{res:,} of {n:,} races with results · {span}", sub=" · ".join(sub))
 
         lk = links[links["competition"] == comp]
         if not len(lk):
-            row["markets"] = dict(state="none", text="no exchange markets linked", sub="", exchanges=[])
+            row["markets"] = dict(state="none", text="no exchange markets linked", short="0", sub="", exchanges=[])
         else:
             ex = [dict(exchange=x["exchange"], name=names.get(x["exchange"], x["exchange"]), links=_i(x["links"]),
                        with_race=_i(x["with_race"]), open=_i(x["open"]), synced=x["synced"]) for x in lk.to_dict("records")]
             synced = max((x["synced"] for x in ex if x["synced"] is not None and not pd.isna(x["synced"])), default=None)
             row["markets"] = dict(state="ok" if any(x["open"] for x in ex) else "partial",
+                                  short=f"{sum(x['links'] for x in ex):,}",
                                   text=" · ".join(f"{x['name']} {x['links']:,}" for x in ex),
                                   sub=(f"{sum(x['open'] for x in ex):,} open · "
                                        f"{sum(x['with_race'] for x in ex):,} tied to a race"
@@ -175,21 +176,25 @@ def status(conn):
             sub.append("ranked" + (f" {grid['at']:%d %b %H:%M} UTC" if grid["at"] is not None else "") if grid["ranked"]
                        else "not ranked (no grid.md)")
         if not modeled:
-            parts = ["—"]
-        elif not parts:
-            parts.append("no backtest stored")
+            parts, short = ["—"], "—"
+        else:
+            short = f"{bt['n']:,}" if bt else (f"{grid['runs']}" if grid else "0")
+            if not parts:
+                parts.append("no backtest stored")
         row["backtests"] = dict(state="ok" if bt or (grid and grid["ranked"]) else ("partial" if grid else
                                                                                    ("none" if modeled else "na")),
-                                text=" · ".join(parts), sub=" · ".join(sub),
+                                short=short, text=" · ".join(parts), sub=" · ".join(sub),
                                 note="indicative, in-sample" if grid and sport != "f1" else "")
 
         pp = paper[paper["competition"] == comp]
         if not len(pp):
-            row["paper"] = dict(state="none" if modeled else "na",
+            row["paper"] = dict(state="none" if modeled else "na", short="—" if not modeled else "0",
                                 text="no paper record" if modeled else "—", sub="")
         else:
-            row["paper"] = dict(state="ok", text=" · ".join(f"{u['username']} {_i(u['races'])} races "
-                                                            f"{(u['pnl'] or 0):+,.0f}" for u in pp.to_dict("records")),
+            total = sum((u["pnl"] or 0) for u in pp.to_dict("records"))
+            row["paper"] = dict(state="ok", short=f"{total:+,.0f}",
+                                text=" · ".join(f"{u['username']} {_i(u['races'])} races "
+                                                 f"{(u['pnl'] or 0):+,.0f}" for u in pp.to_dict("records")),
                                 sub="paper (settled P&L, $)")
         out.append(row)
     return out

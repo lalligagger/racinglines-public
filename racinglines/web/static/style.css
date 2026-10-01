@@ -154,6 +154,11 @@ th a { color: inherit; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--faint); vertical-align: middle; }
 .dot.live { width: auto; height: auto; background: none; border-radius: 0; }
+.dot.good { background: var(--good); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); } .dot.muted { background: var(--faint); }
+/* qstats: a sport row's quick-look badges (web/sport_status.py), fixed columns so values line up across rows */
+.qstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 3px 12px; margin-top: 4px; max-width: 640px; }
+.qs { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qs b { color: var(--fg); font-variant-numeric: tabular-nums; }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
 .chip.live { border-color: color-mix(in srgb, var(--good) 60%, transparent); color: var(--good); }
