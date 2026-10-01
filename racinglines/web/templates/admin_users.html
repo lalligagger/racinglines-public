@@ -21,7 +21,7 @@ Please keep it private, and reply to this email if you need a different one.
 
 Thanks,
 racinglines</textarea>
-<p><button type="button" class="primary" data-copy="#onetime-email" data-copied="#onetime-copied" data-copied-text="Copied: paste it into a new email.">Copy email</button> <span id="onetime-copied" class="muted"></span></p>
+<p><button type="button" class="primary" id="onetime-copy" data-copy="#onetime-email" data-copied="#onetime-copied" data-copied-text="Copied: paste it into a new email.">Copy email</button> <span id="onetime-copied" class="muted"></span></p>
 </div>{% endif %}
 <div class="card"><h2>Add a user</h2>
 <form method="post" action="/admin/users">{{ csrf() }}
