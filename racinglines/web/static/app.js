@@ -36,13 +36,20 @@
   }
 
   // --- generic pressed toggles: <button data-toggle="plot" data-value="x"> shows [data-plot="x"], hides the others;
-  //     data-value="*" shows them all ---
+  //     data-value="*" shows them all; special case: data-toggle="venue" toggles .m markers by data-venue ---
   document.addEventListener("click", e => {
     const b = e.target.closest("button[data-toggle]");
     if (!b) return;
     const group = b.dataset.toggle, v = b.dataset.value;
     document.querySelectorAll(`button[data-toggle="${group}"]`).forEach(x => x.setAttribute("aria-pressed", String(x === b)));
-    document.querySelectorAll(`[data-${group}]:not(button)`).forEach(p => { p.hidden = v !== "*" && p.dataset[group] !== v; });
+    if (group === "venue") {
+      // Toggle venue indicators on bars
+      document.querySelectorAll(".bar .m").forEach(m => {
+        m.style.display = m.dataset.venue === v ? "" : "none";
+      });
+    } else {
+      document.querySelectorAll(`[data-${group}]:not(button)`).forEach(p => { p.hidden = v !== "*" && p.dataset[group] !== v; });
+    }
   });
 
   // --- page tabs: <nav class="ptabs" data-tabs="name"><button data-tab="k">…</button></nav> shows [data-panel="k"] and
