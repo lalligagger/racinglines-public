@@ -98,12 +98,15 @@ def board_page(request: Request, msg: str = "", c=Depends(conn)):
     calendar = V.calendar_rows(c)
     cal_sports = sorted({(r["sport"], r["sport_name"]) for r in calendar}, key=lambda x: V.SPORT_ORDER.get(x[0], 9))
     cal_exchanges = sorted({x for r in calendar for x in r["exchanges"]})
+    cal_events = [dict(sport=r["sport"], title=r["title"], status=r["status"], exchanges=r["exchanges"], url=r["url"],
+                       date=None if r["date"] is None or pd.isna(r["date"]) else pd.Timestamp(r["date"]).isoformat())
+                 for r in calendar]
     from racinglines.web import sport_status as SS                  # RACINGLINES_SPORT_STATUS=1: every sport's status
     return render(request, "board.html", sports=B.board(c, _maker(user)), h=B.headline(c, _maker(user)), kalshi=V.KALSHI_VENUE,
                   disagree=D.panel(c) if D.ON["on"] else None,
                   sport_status=SS.status(c) if SS.enabled() else None, show_paper=True,
                   recorders=B.recorder_status(c, [v.code for v in V.EXCHANGES if v.code != "kalshi" or V.KALSHI_VENUE]),
-                  calendar=calendar, cal_sports=cal_sports, cal_exchanges=cal_exchanges)
+                  calendar=calendar, cal_sports=cal_sports, cal_exchanges=cal_exchanges, cal_events=cal_events)
 
 
 # ---------------------------------------------------------------------------

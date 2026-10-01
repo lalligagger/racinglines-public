@@ -8,7 +8,7 @@ name = "Mountain bike downhill"
 result_kind = "time"              # results are run times
 model_family = "timed_runs"       # racinglines/models/timed_runs
 pricing_model = "racinglines.models.race_model:TimedRuns"   # the backtest core's wrapper (docs/backtest-core.md)
-display_order = 1
+display_order = 5
 
 [league]
 code = "uci_mtb"

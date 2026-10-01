@@ -186,36 +186,86 @@
     });
   }
 
-  // --- calendar: <div data-calendar data-rows="25"> with <select data-cal-filter="sport|exchange"> and
-  //     <input data-cal-filter="q"> above a table whose <tbody tr> carry data-sport / data-exchange (space-
-  //     separated codes). Every filter must match (AND); a row cap behind "Show all", like tableInit's. ---
+  // --- calendar: <div data-calendar data-events="[...]"> a month grid (Mon-start). <select data-cal-filter="sport|
+  //     exchange"> and <input data-cal-filter="q"> narrow which events show; a day over 3 events gets a "+N more".
+  //     Month navigation and filtering are all client-side (every event for the page is already in data-events). ---
   function calendarInit(root) {
     root.querySelectorAll("[data-calendar]").forEach(box => {
       if (box.dataset.tt) return;
       box.dataset.tt = 1;
-      const rows = [...box.querySelectorAll("tbody tr")], cap = +box.dataset.rows || 0;
-      const sport = box.querySelector('[data-cal-filter="sport"]'), exch = box.querySelector('[data-cal-filter="exchange"]'),
-            q = box.querySelector('[data-cal-filter="q"]'), count = box.querySelector("[data-cal-count]"),
-            more = box.querySelector("[data-cal-more]");
-      let all = !(cap && rows.length > cap);
-      function apply() {
+      let events = [];
+      try { events = JSON.parse(box.dataset.events || "[]"); } catch (e) {}
+      const byDay = new Map();
+      events.forEach(e => {
+        if (!e.date) return;
+        const key = e.date.slice(0, 10);
+        (byDay.get(key) || byDay.set(key, []).get(key)).push(e);
+      });
+      const grid = box.querySelector("[data-cal-grid]"), label = box.querySelector("[data-cal-label]"),
+            sport = box.querySelector('[data-cal-filter="sport"]'), exch = box.querySelector('[data-cal-filter="exchange"]'),
+            q = box.querySelector('[data-cal-filter="q"]');
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const todayKey = today.toISOString().slice(0, 10);
+      let cur = new Date(today.getFullYear(), today.getMonth(), 1);
+
+      function matches(e) {
         const s = sport ? sport.value : "", x = exch ? exch.value : "", qq = q ? q.value.trim().toLowerCase() : "";
-        let matched = 0;
-        rows.forEach(r => {
-          const ok = (!s || r.dataset.sport === s) && (!x || (r.dataset.exchange || "").split(" ").includes(x))
-                     && (!qq || r.textContent.toLowerCase().includes(qq));
-          if (ok) matched++;
-          r.hidden = !ok || (!all && matched > cap);
-        });
-        if (more) more.hidden = all || !(cap && matched > cap);
-        if (count) count.textContent = matched === rows.length ? `${rows.length} events` : `${matched} of ${rows.length} events`;
+        return (!s || e.sport === s) && (!x || (e.exchanges || []).includes(x)) && (!qq || (e.title || "").toLowerCase().includes(qq));
       }
-      [sport, exch, q].forEach(el => el && el.addEventListener("input", apply));
-      if (more) more.addEventListener("click", () => { all = true; apply(); });
-      apply();
+      function dayCell(dayNum, dayEvents) {
+        const c = document.createElement("div");
+        c.className = "cal-cell" + (dayNum == null ? " empty" : "");
+        if (dayNum == null) return c;
+        const key = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`;
+        if (key === todayKey) c.classList.add("today");
+        const n = document.createElement("div"); n.className = "cal-day"; n.textContent = dayNum; c.appendChild(n);
+        const shown = dayEvents.slice(0, 3);
+        shown.forEach(e => {
+          const a = document.createElement(e.url ? "a" : "div");
+          a.className = "cal-ev"; if (e.url) a.href = e.url;
+          a.title = e.title; a.textContent = e.title;
+          c.appendChild(a);
+        });
+        if (dayEvents.length > shown.length) {
+          const more = document.createElement("div"); more.className = "cal-more";
+          more.textContent = `+${dayEvents.length - shown.length} more`; more.title = dayEvents.slice(3).map(e => e.title).join(", ");
+          c.appendChild(more);
+        }
+        return c;
+      }
+      function render() {
+        const y = cur.getFullYear(), m = cur.getMonth();
+        if (label) label.textContent = cur.toLocaleString(undefined, { month: "long", year: "numeric" });
+        const startOffset = (new Date(y, m, 1).getDay() + 6) % 7;         // Monday-start week
+        const daysInMonth = new Date(y, m + 1, 0).getDate();
+        grid.innerHTML = "";
+        for (let i = 0; i < startOffset; i++) grid.appendChild(dayCell(null, []));
+        for (let d = 1; d <= daysInMonth; d++) {
+          const key = `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+          grid.appendChild(dayCell(d, (byDay.get(key) || []).filter(matches)));
+        }
+      }
+      const prev = box.querySelector("[data-cal-prev]"), next = box.querySelector("[data-cal-next]"),
+            todayBtn = box.querySelector("[data-cal-today]");
+      if (prev) prev.addEventListener("click", () => { cur.setMonth(cur.getMonth() - 1); render(); });
+      if (next) next.addEventListener("click", () => { cur.setMonth(cur.getMonth() + 1); render(); });
+      if (todayBtn) todayBtn.addEventListener("click", () => { cur = new Date(today.getFullYear(), today.getMonth(), 1); render(); });
+      [sport, exch, q].forEach(el => el && el.addEventListener("input", render));
+      render();
     });
   }
-  function initAll(root) { tabsInit(root); detailsInit(root); tableInit(root); calendarInit(root); }
+  // --- local time: <time class="localtime" datetime="ISO"> (the recorders legend) shows the browser's local time
+  //     once this runs; the server-rendered UTC text is the no-JS fallback ---
+  function localTimeInit(root) {
+    root.querySelectorAll("time.localtime[datetime]").forEach(t => {
+      if (t.dataset.localized) return;
+      const d = new Date(t.getAttribute("datetime"));
+      if (isNaN(d)) return;
+      t.textContent = d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      t.dataset.localized = "1";
+    });
+  }
+  function initAll(root) { tabsInit(root); detailsInit(root); tableInit(root); calendarInit(root); localTimeInit(root); }
   document.addEventListener("htmx:afterSwap", e => initAll(e.detail.target));
 
   document.addEventListener("DOMContentLoaded", () => {

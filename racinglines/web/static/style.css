@@ -155,10 +155,29 @@ th a { color: inherit; }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--faint); vertical-align: middle; }
 .dot.live { width: auto; height: auto; background: none; border-radius: 0; }
 .dot.good { background: var(--good); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); } .dot.muted { background: var(--faint); }
-/* qstats: a sport row's quick-look badges (web/sport_status.py), fixed columns so values line up across rows */
-.qstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 3px 12px; margin-top: 4px; max-width: 640px; }
-.qs { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* qstats: a sport row's quick-look badges (web/sport_status.py). Wide: a 2x2 grid at the far right, in line with
+   the (possibly wrapped) title/details. Under 960px that no longer fits beside the title, so it drops to its own
+   row below, left-aligned, as a single row of 4. Under 720px (the mobile breakpoint below) that row is too
+   narrow too, back to a 2x2 grid, still left-aligned under the title. */
+.qstats { display: grid; grid-template-columns: repeat(2, auto); gap: 2px 18px; margin-left: auto; justify-items: end; }
+.qs { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); white-space: nowrap; }
 .qs b { color: var(--fg); font-variant-numeric: tabular-nums; }
+/* calendar: a Monday-start month grid (Markets page), built client-side from data-events (app.js calendarInit) */
+.cal-tools { margin-bottom: 8px; }
+.cal-nav { display: flex; align-items: center; gap: 10px; margin: 4px 0 8px; }
+.cal-nav h3 { margin: 0; min-width: 11em; }
+.cal-weekdays, .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+.cal-weekdays { font-size: 11px; color: var(--muted); padding: 0 2px 4px; }
+.cal-grid { gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.cal-cell { background: var(--card); min-height: 84px; padding: 4px; display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
+.cal-cell.empty { background: var(--bg); }
+.cal-cell.today { background: var(--accent-soft); }
+.cal-day { font-size: 11px; color: var(--muted); }
+.cal-cell.today .cal-day { color: var(--accent); font-weight: 700; }
+.cal-ev { display: block; font-size: 10.5px; padding: 1px 4px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-more { font-size: 10px; color: var(--muted); }
+@media (max-width: 720px) { .cal-cell { min-height: 60px; padding: 2px; } .cal-ev { font-size: 9px; padding: 0 2px; } .cal-more { font-size: 9px; } }
+@media (max-width: 960px) { .qstats { flex-basis: 100%; margin-left: 0; grid-template-columns: repeat(4, auto); justify-items: start; } }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
 .chip.live { border-color: color-mix(in srgb, var(--good) 60%, transparent); color: var(--good); }
@@ -326,6 +345,7 @@ pre.log { max-height: 220px; overflow: auto; font-size: 11px; background: var(--
   .chart { min-height: 200px; } .chart text { font-size: 11px; }
   .kpis.hero .kpi .v { font-size: 22px; }
   .stages { grid-auto-flow: row; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+  .qstats { grid-template-columns: repeat(2, auto); }
 }
 .ecard-foot { border-top: 1px solid var(--line); padding-top: 8px; }
 /* maintenance popup (_site_notice.html) */

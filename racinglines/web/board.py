@@ -166,9 +166,9 @@ STALE_MIN = 15          # a venue with no book snapshot for this long is "stale"
 
 def recorder_status(conn, codes, now=None):
     """Per venue in `codes` (in that order): open markets linked, how many have a book snapshot in the last 10 minutes,
-    the latest snapshot's time, and a state: "live", "stale" (nothing for STALE_MIN minutes) or "none" (no snapshot
-    yet, or nothing linked). Fails soft: a query error gives every venue state "unknown" (and rolls the read back), so a
-    page showing it still loads with whatever else it has."""
+    the latest snapshot's time and minutes elapsed, and a state: "live", "stale" (nothing for STALE_MIN minutes) or
+    "none" (no snapshot yet, or nothing linked). Fails soft: a query error gives every venue state "unknown" (and
+    rolls the read back), so a page showing it still loads with whatever else it has."""
     now = now or datetime.now(timezone.utc)
     try:
         df = data.q(conn, """
@@ -193,8 +193,10 @@ def recorder_status(conn, codes, now=None):
         last = None if last is None or pd.isna(last) else pd.Timestamp(last).to_pydatetime()
         if last is not None and last.tzinfo is None:
             last = last.replace(tzinfo=timezone.utc)
-        state = "none" if last is None else "live" if (now - last).total_seconds() <= STALE_MIN * 60 else "stale"
-        out.append(dict(code=c, name=next((v.name for v in VENUES if v.code == c), c), linked=int(r.get("linked") or 0), recent=int(r.get("recent") or 0), last=last, state=state))
+        minutes = None if last is None else (now - last).total_seconds() / 60
+        state = "none" if last is None else "live" if minutes <= STALE_MIN else "stale"
+        out.append(dict(code=c, name=next((v.name for v in VENUES if v.code == c), c), linked=int(r.get("linked") or 0),
+                        recent=int(r.get("recent") or 0), last=last, minutes=minutes, state=state))
     return out
 
 
