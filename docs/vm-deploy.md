@@ -72,9 +72,10 @@ stops, so a deploy that dies half-way leaves a record: `vm.sh status` shows it, 
 those timers too. If a step is still running after 5 minutes, or the connection drops while waiting, nothing is
 deployed and the timers are resumed; the message names the stuck unit. If the update fails before the checkout
 moves (a fetch, an unknown ref), nothing changed and the timers are resumed. If it fails after, the timers stay
-paused (so no step runs on a half-updated checkout): fix and deploy again. Deploy sets the checkout's `origin` to the
-public repo (`RL_REPO_URL`) first, and puts back as untracked files whatever the previous commit tracked and the new one
-doesn't (`deploy/vm/keep-files.sh`), so moving from the private repo's history keeps `data/` on disk. A running downhill loop
+paused (so no step runs on a half-updated checkout): fix and deploy again. Deploy refuses (nothing paused) until the
+checkout fetches from the public repo: `vm.sh repoint` sets that once (`git remote set-url` and a fetch, no file
+touched). Before each checkout, `deploy/vm/untrack.sh` backs up to `data/backups/files/` and untracks whatever the
+current commit tracks and the new one doesn't, so moving from the private history keeps `data/` on disk. A running downhill loop
 (`racinglines-live-dh@`) gets a warning, not a pause: deploy doesn't restart it, so it keeps the code it loaded. The
 recorder's restart costs at most one order-book snapshot; prices and trades are unaffected, because they are fetched
 from the exchanges' own history. Deploy restarts only the services that are already running, so a deploy before cutover never starts a second recorder.
