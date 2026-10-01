@@ -97,6 +97,7 @@ def board(conn, maker_id):
         forecasts = {r["competition"]: r for r in data.latest_forecasts(conn).to_dict("records")}
     from racinglines.web import sport_status as SS
     status_on = SS.enabled()                       # RACINGLINES_SPORT_STATUS=1: model sections for sports with as-of runs
+    ss_by_comp = {r["competition"]: r for r in SS.status(conn)} if conn is not None else {}  # quick-look chips, always on
     asof_by_comp = {}
     if conn is not None and status_on:
         for r in data.q(conn, """SELECT co.code AS competition, count(DISTINCT mr.params->>'event_key') AS races,
@@ -154,7 +155,8 @@ def board(conn, maker_id):
             season = None
             recent = []
         sports.append(dict(code=code, name=SPORT_NAME.get(code, schema["sport"]["name"]), run=run, tape=tape, asof=asof,
-                           upcoming=upcoming, later=later, season=season, recent=recent, exchanges=exch))
+                           upcoming=upcoming, later=later, season=season, recent=recent, exchanges=exch,
+                           status=ss_by_comp.get(code)))
     sports.sort(key=lambda s: SPORT_ORDER.get(s["code"], 9))
     return sports
 

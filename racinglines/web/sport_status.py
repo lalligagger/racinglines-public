@@ -111,7 +111,7 @@ def status(conn):
         nx = nxt[nxt["competition"] == comp]
         if r is None or not _i(r["events"]):
             row["races"] = dict(state="none", text="no events stored",
-                                sub="tape only: no results source" if not modeled else "results not loaded")
+                                sub="no results source" if not modeled else "results not loaded")
         else:
             n, res = _i(r["races"]), _i(r["with_results"])
             span = f"{_i(r['first_year'])}" + (f"–{_i(r['last_year'])}" if _i(r["last_year"]) != _i(r["first_year"]) else "")
@@ -145,7 +145,7 @@ def status(conn):
                                                 last_id=_i(x["last_id"].max()))
         fc, asof, season = kind("forecast"), kind("diagnostic", True), kind("season_asof")
         if not modeled:
-            row["model"] = dict(state="na", text="no model (market tape only)", sub="by design: no results source to fit")
+            row["model"] = dict(state="na", text="no model", sub="by design: tape-only sport")
         else:
             parts, sub = [], [f"model: {family}"]
             if fc:
@@ -174,8 +174,10 @@ def status(conn):
             parts.append(f"replay grid: {grid['runs']} runs ({', '.join(grid['seasons'])})")
             sub.append("ranked" + (f" {grid['at']:%d %b %H:%M} UTC" if grid["at"] is not None else "") if grid["ranked"]
                        else "not ranked (no grid.md)")
-        if not parts:
-            parts.append("no backtest stored" if modeled else "none (no model)")
+        if not modeled:
+            parts = ["—"]
+        elif not parts:
+            parts.append("no backtest stored")
         row["backtests"] = dict(state="ok" if bt or (grid and grid["ranked"]) else ("partial" if grid else
                                                                                    ("none" if modeled else "na")),
                                 text=" · ".join(parts), sub=" · ".join(sub),
@@ -184,7 +186,7 @@ def status(conn):
         pp = paper[paper["competition"] == comp]
         if not len(pp):
             row["paper"] = dict(state="none" if modeled else "na",
-                                text="no paper record" if modeled else "none (no model)", sub="")
+                                text="no paper record" if modeled else "—", sub="")
         else:
             row["paper"] = dict(state="ok", text=" · ".join(f"{u['username']} {_i(u['races'])} races "
                                                             f"{(u['pnl'] or 0):+,.0f}" for u in pp.to_dict("records")),

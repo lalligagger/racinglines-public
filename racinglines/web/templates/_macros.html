@@ -18,6 +18,8 @@
 <div class="kpi {{ cls }}"><div class="l">{{ label }}</div><div class="v{{ ' sm' if small }} {{ pnl_cls(value) if tone == 'money' else tone }}">{{ value|money(true) if tone == 'money' else value }}</div>{% if sub %}<div class="s">{{ sub }}</div>{% endif %}</div>
 {%- endmacro %}
 {% macro pnl_cls(v) %}{{ 'good' if v is not none and v > 0 else ('bad' if v is not none and v < 0 else '') }}{% endmacro %}
+{# One sport_status.py cell (web/sport_status.py: state ok|partial|none|na), as a colour-coded inline fragment for a summary line. #}
+{% macro status_text(x, label=none) %}{% set cls = {"ok": "good", "partial": "warn", "none": "bad", "na": "muted"}[x.state] %}<span class="{{ cls }}" title="{{ x.sub }}">{% if label %}{{ label }}: {% endif %}{{ x.text }}</span>{% endmacro %}
 {# A signed money amount coloured by its sign: +$12.30 green, -$4.00 red, $0.00 plain. #}
 {% macro pnl(v, bold=False) %}{% if v is not none %}<{{ 'b' if bold else 'span' }} class="{{ pnl_cls(v) }}">{{ v|money(true) }}</{{ 'b' if bold else 'span' }}>{% endif %}{% endmacro %}
 {% macro bar(fair, mid=None, cls="") -%}
