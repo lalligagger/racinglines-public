@@ -1154,8 +1154,12 @@ def signup(request: Request, username: str = Form(""), password: str = Form(""),
                                 VALUES (:u, :u, :r, :h, true) RETURNING id"""),
                         dict(u=username, r=tier, h=U.hash_password(password))).scalar()
         ACC.grant(c, uid)
-        from racinglines.pipelines import profiles as PF   # starts on strategy profile A, as the demo taker does:
-        PF.assign(c, uid, PF.load(c, PF.ensure_candidates(c)["A"]))   # no bankroll, no history: Strategy and Positions start empty
+    try:                                            # starts on strategy profile A (owner, 2026-10-01): no bankroll, no
+        from racinglines.pipelines import profiles as PF   # history, so Strategy and Positions start empty. A failure here
+        with get_engine().begin() as c:             # leaves the account fine, just unassigned (an admin can assign one)
+            PF.assign(c, uid, PF.load(c, PF.ensure_candidates(c)["A"]))
+    except Exception as ex:                         # noqa: BLE001
+        print(f"signup: no starting profile for user {uid}: {ex}", flush=True)
     with get_session() as s:
         user = _user_dict(U.get_user(s, user_id=uid))
     U.log(get_engine(), user, "signup", request, grant=ACC.SIGNUP_GRANT)
