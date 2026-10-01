@@ -15,6 +15,7 @@ markdown_extensions:
   - fenced_code
 nav:
   - Overview: index.md
+  - Contributing: contributing.md
   - Sports and exchanges (status): coverage.md
   - Adding a sport: add-a-sport.md
   - Data:
