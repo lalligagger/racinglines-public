@@ -1,8 +1,9 @@
-# Launch spec: Bahrain GP in Malaysia (private book) (racinglines live, docs/live-events.md). Written by `racinglines live new f1 2026-16`;
+# Launch spec: Bahrain GP in Malaysia (T1 only) (racinglines live, docs/live-events.md). Written by `racinglines live new f1 2026-16`;
 # edit freely before the book opens (the settings freeze into meta.json at the first update).
+# Owner call 2026-10-01: T3 (private book) disabled — venue strategies (Kalshi, Polymarket) only.
 sport = "f1"
 event = "2026-16"
-title = "Bahrain GP in Malaysia (private book)"
+title = "Bahrain GP in Malaysia (T1 only)"
 
 # The window (UTC, from the FastF1 schedule): the book opens 2026-10-02T03:30:00, closes at lights out 2026-10-04T07:00:00,
 # and settles from the results (2026-10-04T10:00:00).
@@ -14,6 +15,10 @@ results = "2026-10-04T10:00:00"
 # Overrides of sports/f1.toml [live], e.g. [live.quoting] max_pos = 1000.0
 [live.markets]
 h2h_from = "last_listed"        # head-to-head pairs: the last race Polymarket listed (2026-15)
+
+# Owner call 2026-10-01: per-market loss cap (docs/f1-live-roadmap.md decision log; Baku rehearsal +$5,337, worst -$559)
+[live.quoting]
+max_loss = 500.0
 
 # The demo taker's hype picks, placed at the opening at the maker's ask ($25 each): names and stories, not value.
 # name: a driver's (or team's) name; market: race_win, race_podium, race_pole, race_h2h (with vs), race_constructor_top
