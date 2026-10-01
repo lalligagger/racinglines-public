@@ -477,10 +477,10 @@ git config core.hooksPath scripts/hooks   # skip once with: git push --no-verify
 
 ## Collaborators and beta testers
 
-This repository is private only because cloud runs need a minimal data set
-committed with the code, and we don't want to publish all of that data yet. We're
-open to beta testers and collaborators, and happy to share the pipeline and
-web-app code with anyone interested: ask for access.
+We're looking for beta testers and collaborators! Try the app at
+[racinglines.bet](https://racinglines.bet), and if you'd like to help, test, or just say hi, drop us a line at
+[hello@racinglines.bet](mailto:hello@racinglines.bet?subject=racinglines%20beta%20tester%20%2F%20collaborator).
+We'd love to hear from you.
 
 ## Roadmap
 

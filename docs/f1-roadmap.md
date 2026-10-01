@@ -462,8 +462,7 @@ signals, with leakage-rule tests like Polymarket's.
 
 ## Collaborators and beta testers
 
-The repository is private on GitHub only because a minimal data set (FastF1 raw
-files, the Polymarket prices and trades archive, the database snapshot) is
-committed so cloud runs can clone it, and that data isn't ours to publish. We
-are open to beta testers and collaborators, and happy to share the pipeline and
-web-app code with anyone interested: ask for invited access or a code-only copy.
+We're looking for beta testers and collaborators! Try the app at
+[racinglines.bet](https://racinglines.bet), and if you'd like to help, test, or just say hi, drop us a line at
+[hello@racinglines.bet](mailto:hello@racinglines.bet?subject=racinglines%20beta%20tester%20%2F%20collaborator).
+We'd love to hear from you.
