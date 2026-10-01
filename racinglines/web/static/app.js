@@ -17,7 +17,12 @@
   document.addEventListener("htmx:configRequest", e => {
     if (e.detail.verb !== "get") e.detail.parameters.csrf_token = csrf();
   });
+  let lastToast = 0;                                          // polling must not stack a toast per failed request
   document.addEventListener("htmx:responseError", e => {
+    if (e.detail.requestConfig && e.detail.requestConfig.verb === "get") {   // polls: at most one toast a minute
+      if (Date.now() - lastToast < 60000) return;
+      lastToast = Date.now();
+    }
     const x = e.detail.xhr, text = (x.responseText || "").trim();
     let msg = text;
     try { msg = JSON.parse(text).detail || text; } catch (err) {}
@@ -25,8 +30,8 @@
   });
   function toast(msg) {
     let t = document.getElementById("toast");
-    if (!t) { t = document.createElement("div"); t.id = "toast"; t.className = "flash bad"; t.setAttribute("role", "alert");
-      t.style.cssText = "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:50;max-width:min(90vw,560px)"; document.body.appendChild(t); }
+    if (!t) { t = document.createElement("div"); t.id = "toast"; t.className = "flash bad toast"; t.setAttribute("role", "alert");
+      document.body.appendChild(t); }
     t.textContent = msg; clearTimeout(toast.timer); toast.timer = setTimeout(() => t.remove(), 6000);
   }
 
@@ -43,11 +48,22 @@
   // --- page tabs: <nav class="ptabs" data-tabs="name"><button data-tab="k">…</button></nav> shows [data-panel="k"] and
   //     hides the other panels. One set per page; the choice is remembered per page, and #k in the URL opens a tab
   //     (so does a link to any element inside one). Content re-rendered by HTMX gets the same tab back. ---
+  // The panels of a tab nav are the [data-panel] elements under the nav's parent (not nested in another panel), so a
+  // page with a second set (or a panel holding its own tabs) is not hidden by this one. Tabs get ids and the panels
+  // role=tabpanel + aria-labelledby them; the selected tab is also the only one in the tab order.
+  function tabPanels(nav) {
+    const root = nav.parentElement || document;
+    return [...root.querySelectorAll("[data-panel]")].filter(p => !p.parentElement.closest("[data-panel]"));
+  }
   function tabsApply(nav, key, setHash) {
     const btns = [...nav.querySelectorAll("[data-tab]")];
     if (!btns.some(b => b.dataset.tab === key)) key = btns.length ? btns[0].dataset.tab : null;
-    btns.forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === key)));
-    document.querySelectorAll("[data-panel]").forEach(p => { p.hidden = p.dataset.panel !== key; });
+    const idOf = k => "tab-" + nav.dataset.tabs + "-" + k;
+    btns.forEach(b => { b.id = idOf(b.dataset.tab); b.setAttribute("aria-selected", String(b.dataset.tab === key)); });
+    tabPanels(nav).forEach(p => {
+      p.hidden = p.dataset.panel !== key; p.setAttribute("role", "tabpanel");
+      if (btns.some(b => b.dataset.tab === p.dataset.panel)) p.setAttribute("aria-labelledby", idOf(p.dataset.panel));
+    });
     store.set("tabs." + nav.dataset.tabs, key);
     if (setHash && key) history.replaceState(null, "", "#" + key);
   }
@@ -65,6 +81,51 @@
     const b = e.target.closest("[data-tabs] [data-tab]");
     if (b) tabsApply(b.closest("[data-tabs]"), b.dataset.tab, true);
   });
+
+  // --- inline-handler replacements: <select data-autosubmit> submits its form on change; <form data-confirm="…">
+  //     asks before submitting; <select data-sets-cutoff> copies the chosen option's data-cutoff into the form's
+  //     cutoff field; <button data-copy="#textarea" data-copied="#status" data-copied-text="…"> copies the text ---
+  document.addEventListener("change", e => {
+    const t = e.target;
+    if (t.matches && t.matches("[data-autosubmit]") && t.form) t.form.submit();
+    if (t.matches && t.matches("[data-sets-cutoff]") && t.form && t.form.cutoff) t.form.cutoff.value = t.selectedOptions[0].dataset.cutoff;
+  });
+  document.addEventListener("submit", e => {
+    const f = e.target;
+    if (f.matches && f.matches("form[data-confirm]") && !confirm(f.dataset.confirm)) e.preventDefault();
+  });
+  document.addEventListener("click", e => {
+    const b = e.target.closest("[data-copy]");
+    if (!b) return;
+    const t = document.querySelector(b.dataset.copy), done = document.querySelector(b.dataset.copied || "#none");
+    if (!t) return;
+    const ok = () => { if (done) done.textContent = b.dataset.copiedText || "Copied."; };
+    const legacy = () => { t.select(); document.execCommand("copy"); ok(); };
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t.value).then(ok, legacy);
+    else legacy();
+  });
+  // the forgot-password page: the e-mail text follows the username box and feeds the mailto link
+  function forgotInit() {
+    const t = document.getElementById("forgot-email"), u = document.getElementById("forgot-user"), a = document.getElementById("forgot-send");
+    if (!t || !u || !a) return;
+    const base = t.value, support = t.dataset.support || "";
+    function sync() {
+      t.value = base.replace("YOUR USERNAME", (u.value || "").trim() || "YOUR USERNAME");
+      const text = t.value.split("\n").slice(3).join("\n");           // the part after To and Subject
+      a.href = "mailto:" + support + "?subject=" + encodeURIComponent("Password reset request") + "&body=" + encodeURIComponent(text);
+    }
+    u.addEventListener("input", sync); sync();
+  }
+  // the site notice: shown once per browser session (the sign-up variant has its own key, and also sets the plain one)
+  function noticeInit() {
+    const d = document.getElementById("site-notice");
+    if (!d) return;
+    const k = "racinglines-notice-ok" + (d.dataset.signup ? "-signup" : "");
+    try { if (sessionStorage.getItem(k)) return; } catch (e) {}
+    d.addEventListener("close", () => {
+      try { sessionStorage.setItem(k, "1"); sessionStorage.setItem("racinglines-notice-ok", "1"); } catch (e) {} });
+    if (d.showModal) d.showModal(); else d.setAttribute("open", "");
+  }
 
   // --- collapsed sections: <details data-remember="id"> keeps its open / closed state per browser ---
   document.addEventListener("toggle", e => {
@@ -160,6 +221,8 @@
   document.addEventListener("DOMContentLoaded", () => {
   initAll(document);
   openHashDetails();
+  forgotInit();
+  noticeInit();
   // --- Lab: sections open on demand (HTMX loads them on their "open" event), remembered per browser ---
   const lab = document.getElementById("lab");
   if (lab) {

@@ -88,18 +88,18 @@ Worst drawdown <b class="bad">{{ book.max_dd|money(true) }}</b> from a peak, thr
 {# --- the ledger --- #}
 <section data-panel="ledger" hidden>
 <div class="card"><div class="section-head"><h2>{{ "Positions" if not cur else "Positions this weekend" }}</h2><span class="spacer"></span>
-<form method="get" class="toolbar mb0"><label><span>Venue</span><select name="venue" onchange="this.form.submit()">
+<form method="get" class="toolbar mb0"><label><span>Venue</span><select name="venue" data-autosubmit>
   <option value="">all venues</option><option value="polymarket" {{ 'selected' if venue == 'polymarket' }}>Polymarket (paper)</option>{% if kalshi and venues.kalshi %}<option value="kalshi" {{ 'selected' if venue == 'kalshi' }}>Kalshi (paper)</option>{% endif %}<option value="private" {{ 'selected' if venue == 'private' }}>Private book</option>
 </select></label>
-<label><span>Sport</span><select name="sport" onchange="this.form.submit()">
+<label><span>Sport</span><select name="sport" data-autosubmit>
   <option value="">all sports</option>
   {% for code in sport_options %}<option value="{{ code }}" {{ 'selected' if sport == code }}>{{ sport_names.get(code, code) }}</option>{% endfor %}
 </select></label>
-<label><span>Weekend</span><select name="event" onchange="this.form.submit()">
+<label><span>Weekend</span><select name="event" data-autosubmit>
   <option value="">all weekends</option>
   {% for w in weekends %}<option value="{{ w.event_key }}" {{ 'selected' if w.event_key == event }}>{{ w.name }} {{ w.event_key[:4] }} · {{ w.n }} · {{ w.pnl|money(true) }}</option>{% endfor %}
 </select></label>
-<label><span>Sort</span><select name="sort" onchange="this.form.submit()">
+<label><span>Sort</span><select name="sort" data-autosubmit>
   <option value="">by weekend</option><option value="pnl" {{ 'selected' if sort == 'pnl' }}>P&amp;L, best first</option><option value="-pnl" {{ 'selected' if sort == '-pnl' }}>P&amp;L, worst first</option>
 </select></label></form></div>
 <div class="scroll" data-rows="25" data-filter="Filter by market or weekend"><table><thead><tr>{% if not cur %}<th class="l">Weekend</th>{% endif %}<th class="l">Market</th><th class="l">Position</th><th>{{ "Fills" if maker else "Trades" }}</th><th>Cash in / out</th><th>Price now / result</th><th><a href="{{ link(sort='-pnl' if sort == 'pnl' else 'pnl') }}" title="Sort by P&amp;L">P&amp;L {{ "↓" if sort == 'pnl' else ("↑" if sort == '-pnl' else "↕") }}</a></th><th class="l"></th></tr></thead><tbody>

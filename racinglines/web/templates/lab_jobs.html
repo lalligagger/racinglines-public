@@ -6,7 +6,7 @@
 <td class="l wrap"><code>{% for k, v in (j.params or {}).items() %}{{ k }}={{ v }} {% endfor %}</code></td><td class="l">{{ j.username or "" }}</td>
 <td class="l status-{{ j.status }}">{{ j.status }}</td><td class="l wrap">{{ j.progress or "" }}</td><td>{{ j.started_at|fmt if j.started_at }}</td>
 <td>{% if j.started_at and j.finished_at %}{{ ((j.finished_at - j.started_at).total_seconds())|round|int }} s{% endif %}</td>
-<td class="l">{% if j.result_run_id %}<a href="{{ '/lab/diagnostics/' if 'diagnostic' in j.kind else '/lab/runs/' }}{{ j.result_run_id }}">run #{{ j.result_run_id }}</a>{% if j.kind == 'f1_sweep' %} <button type="button" class="edge-btn" hx-post="/lab/edge" hx-target="#edge" hx-swap="innerHTML" data-edge="add_model" data-edge-model data-variant="{{ (j.params or {}).get('variant', 'baseline') }}">+ Edge Finder</button>{% endif %}{% endif %}
+<td class="l">{% if j.result_run_id %}<a href="{{ '/lab/diagnostics/' if 'diagnostic' in j.kind else '/lab/runs/' }}{{ j.result_run_id }}">run #{{ j.result_run_id }}</a>{% if j.kind == 'f1_sweep' %} <button type="button" class="edge-btn" hx-post="/lab/edge" hx-disabled-elt="this" hx-target="#edge" hx-swap="innerHTML" data-edge="add_model" data-edge-model data-variant="{{ (j.params or {}).get('variant', 'baseline') }}">+ Edge Finder</button>{% endif %}{% endif %}
 {% if j.log %}<details><summary class="legend">log</summary><pre class="log">{{ j.log[-4000:] }}</pre></details>{% endif %}</td></tr>{% endfor %}
 </tbody></table></div>{% endif %}
-{% if active %}<p class="legend" hx-get="/lab/section/jobs" hx-trigger="every 5s" hx-target="#jobs" hx-swap="innerHTML">Refreshing every 5 s while a job runs.</p>{% endif %}
+{% if active %}<p class="legend" hx-get="/lab/section/jobs" hx-trigger="every 5s [document.visibilityState=='visible' && !document.getElementById('jobs').hidden]" hx-target="#jobs" hx-swap="innerHTML">Refreshing every 5 s while a job runs.</p>{% endif %}
