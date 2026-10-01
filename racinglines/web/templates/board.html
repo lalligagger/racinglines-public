@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_macros.html" import pnl_cls, bar, pct, venue_chips, new_badge, paper_banner, page_head %}
+{% extends "base.html" %}{% from "_macros.html" import pnl_cls, bar, pct, venue_chips, new_badge, paper_banner, page_head, status_text %}
 {% block title %}Markets{% endblock %}
 {% block content %}
 {% call page_head("Markets", "Every sport we price: what's next, what's live on each venue, and how we did lately.") %}<a href="/markets/polymarket">All Polymarket markets →</a>{% if kalshi %} <a href="/markets/kalshi">All Kalshi markets →</a>{% endif %}{% for v in schema_exchanges %} <a href="/markets/{{ v.code }}">All {{ v.name }} markets →</a>{% endfor %}{% if tapes %} <a href="/markets/tapes">Recorded tapes →</a>{% endif %}{% endcall %}
@@ -14,8 +14,10 @@
 
 {% if sport_status %}{% include "_sport_status.html" %}{% endif %}
 {% for s in sports %}
-<details class="card" data-remember="markets:sport:{{ s.code }}"{% if s.run or s.asof or loop.first or (sport_status and s.exchanges) %} open{% endif %}>
-<summary><h2 class="h-inline">{{ s.name }}</h2> <span class="sum">{% if s.run %}live prices from run <a href="/lab/runs/{{ s.run.id }}">#{{ s.run.id }}</a> · {{ s.run.created_at|fmt }}{% elif s.asof %}model: pre-race prices for {{ "{:,}".format(s.asof.races) }} past races (replay saves, latest {{ s.asof.at|fmt }}) · no live forecast yet, so upcoming races show exchange prices only{% else %}market data only · no model{% endif %}</span></summary>
+<details class="card" data-remember="markets:sport:{{ s.code }}">
+<summary><h2 class="h-inline">{{ s.name }}</h2> <span class="sum">{% if s.run %}live prices from run <a href="/lab/runs/{{ s.run.id }}">#{{ s.run.id }}</a> · {{ s.run.created_at|fmt }}{% elif s.asof %}model: pre-race prices for {{ "{:,}".format(s.asof.races) }} past races (replay saves, latest {{ s.asof.at|fmt }}) · no live forecast yet, so upcoming races show exchange prices only{% else %}market data only · no model{% endif %}</span>
+{% if s.status %}<div class="legend">{{ status_text(s.status.races) }} · {{ status_text(s.status.markets) }} · {{ status_text(s.status.backtests, "backtests") }} · {{ status_text(s.status.paper, "paper") }}</div>{% endif %}
+</summary>
 {% if s.run or s.tape or s.asof %}
 <div class="cards">
   {% if s.run %}
