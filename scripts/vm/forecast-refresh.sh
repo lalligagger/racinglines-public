@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# NASCAR and MotoGP forecast refresh: one pass, started every 30 minutes by racinglines-forecast-refresh.timer on the VM
-# (enable with `bash scripts/deploy/vm.sh forecast`, stop with `vm.sh forecast off`). Runs the NASCAR and MotoGP forecasts
+# NASCAR forecast refresh: one pass, started every 30 minutes by racinglines-forecast-refresh.timer on the VM
+# (enable with `bash scripts/deploy/vm.sh forecast`, stop with `vm.sh forecast off`). Runs the NASCAR forecast
 # after each race to keep pricing fresh.
 #
 #   racinglines nascar forecast --save --backup <path>
-#   racinglines motogp forecast --save --backup <path>
 #
-# Every pass: updates the cached forecasts with the latest race results and market conditions.
+# Every pass: updates the cached forecast with the latest race results and market conditions.
 # Logs to the journal (journalctl -u racinglines-forecast-refresh) and data/runs/logs/forecast-refresh.log.
 #
 # The first pass on a box backs the database up first: data/backups/db/
@@ -34,7 +33,7 @@ if [ ! -e "$STATE/backup" ]; then
   docker compose exec -T db pg_dump --no-owner --no-privileges -U racinglines racinglines | gzip -6 > "$B" &&
     gunzip -c "$B" | tail -n 5 | grep -q 'PostgreSQL database dump complete' ||
     { say "BACKUP FAILED: nothing refreshed"; rm -f "$B"; exit 1; }
-  $R db changes --add "NASCAR and MotoGP forecast refresh on (racinglines-forecast-refresh.timer, every 30 min). Backup: $B" >/dev/null
+  $R db changes --add "NASCAR forecast refresh on (racinglines-forecast-refresh.timer, every 30 min). Backup: $B" >/dev/null
   echo "$B" > "$STATE/backup"
   say "backup $B ($(du -h "$B" | cut -f1)), data_changes note added"
 fi
@@ -51,5 +50,4 @@ run() {   # run <sport>: refresh forecast for a sport
 }
 
 run nascar
-run motogp
 exit $rc
