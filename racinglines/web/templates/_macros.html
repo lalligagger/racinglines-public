@@ -28,9 +28,9 @@
 {%- endmacro %}
 {% macro pct(p, digits=0) -%}{% if p is not none %}{{ ("%." ~ digits ~ "f%%")|format(p * 100) }}{% else %}–{% endif %}{%- endmacro %}
 {% macro venue_chips(venues, mine=None) -%}
-<div class="chips">{% for v in venues %}{% if v.venue.kind == 'private' %}{% if mine and mine.open %}<span class="chip mine" title="my open markets · worst case">Private book · {{ mine.open }} mine</span>{% else %}<span class="chip pending" title="no private markets yet">Private book</span>{% endif %}
+<div class="chips">{% set ns = namespace(first_live=true) %}{% for v in venues %}{% if v.venue.kind == 'private' %}{% if mine and mine.open %}<span class="chip mine" title="my open markets · worst case">Private book · {{ mine.open }} mine</span>{% else %}<span class="chip pending" title="no private markets yet">Private book</span>{% endif %}
 {% elif v.venue.status == 'soon' %}<span class="chip soon" title="coming soon">{{ v.venue.name }} · soon</span>
-{% elif v.listed %}<span class="chip live" title="{{ v.listed }} outcomes listed">{{ v.venue.name }} · live{% if v.volume %} · ${{ "{:,.0f}".format(v.volume) }}{% endif %}</span>
+{% elif v.listed %}{% set pressed = ns.first_live %}{% if ns.first_live %}{% set ns.first_live = false %}{% endif %}<button type="button" class="chip live" data-toggle="venue" data-value="{{ v.venue.code }}" aria-pressed="{{ 'true' if pressed else 'false' }}" title="{{ v.listed }} outcomes listed · click to show indicator">{{ v.venue.name }} · live{% if v.volume %} · ${{ "{:,.0f}".format(v.volume) }}{% endif %}</button>
 {% else %}<span class="chip pending" title="not listed yet">{{ v.venue.name }} · pending</span>{% endif %}{% endfor %}</div>
 {%- endmacro %}
 {% macro chart(c) -%}
