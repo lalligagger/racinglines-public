@@ -11,7 +11,7 @@
   {% if snap.next_label and not snap.done %}<span>Next: <b>{{ snap.next_label }}</b> at {{ snap.next_at|when }}</span>{% endif %}
   {% if mode == 'live' %}<span class="faint">refreshes itself</span>{% endif %}
 </div>
-{% call demo_context("A private book.") %}{% if maker %}Polymarket hasn't listed this race, so the demo maker lists and quotes every market it usually would, priced by the model after each session, and 1,000 simulated takers trade against the quotes between updates. The demo taker placed a dozen hype picks when the book opened.{% else %}Polymarket hasn't listed this race: this is the demo maker's own book. The demo taker placed a dozen YES bets when the book opened, picked on names and stories rather than value. Prices move after each session until the book closes at lights out.{% endif %} Play money, nothing traded anywhere.{% endcall %}
+{% call demo_context("A private book.") %}{% if maker %}Polymarket hasn't listed this race, so the demo maker lists and quotes every market it usually would, priced by the model after each session, and 1,000 simulated takers trade against the quotes between updates. The demo taker placed a dozen hype picks when the book opened.{% else %}Polymarket hasn't listed this race: this is the demo maker's own book. The demo taker placed a dozen YES bets when the book opened, picked on names and stories rather than value. Prices move after each session until the book closes at lights out.{% endif %} Fantasy bucks, nothing traded anywhere.{% endcall %}
 
 {# --- the weekend's stages --- #}
 <div class="stages">{% for u in snap.updates %}{% set st = 'now' if u.label == snap.update.label else u.state %}

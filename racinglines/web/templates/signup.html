@@ -10,7 +10,7 @@
 </div>
 {% else %}
 <p>Create your beta account: just a username and a password. We never ask for your email. Beta accounts get the <b>pro</b> tier (fair prices, every strategy, the Lab)
-and start with <b>{{ "{:,}".format(grant) }} fantasy bucks</b>. Paper money only:
+and start with <b>{{ "{:,}".format(grant) }} fantasy bucks</b>. Fantasy bucks only:
 nothing is ever sent to an exchange.</p>
 {% if error %}<p class="bad">{{ error }}</p>{% endif %}
 <form method="post" action="/signup" class="card signup-form">
@@ -21,7 +21,7 @@ nothing is ever sent to an exchange.</p>
   <label><span>Password again</span><input name="confirm" type="password" autocomplete="new-password" minlength="{{ pw_min }}" maxlength="128" required></label>
   <p class="hint">At least {{ pw_min }} characters. We store only a salted hash; nobody, admins included, can read it.</p>
   <label class="check mt"><input type="checkbox" name="adult" value="1" required>
-    <span>I'm 18 or older, and I understand this is a beta that uses fantasy money only.</span></label>
+    <span>I'm 18 or older, and I understand this is a beta that uses fantasy bucks only.</span></label>
   <label aria-hidden="true" style="position:absolute;left:-9999px"><span>Website</span><input name="website" tabindex="-1" autocomplete="off"></label>
   <button class="primary mt">Create account</button>
 </form>

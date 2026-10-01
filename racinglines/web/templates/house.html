@@ -1,12 +1,12 @@
 {% extends "base.html" %}{% from "_macros.html" import csrf, flash, page_head, kpi, pnl %}
-{% block title %}{{ 'Books' if user.role == 'admin' else 'My Book' }} · quotes{% endblock %}
+{% block title %}{{ 'Books' if user.role == 'admin' else 'My book' }} · quotes{% endblock %}
 {% block content %}
-<p class="crumbs"><a href="/book">{{ "Books" if user.role == 'admin' else "My Book" }}</a> › Quotes</p>
+<p class="crumbs"><a href="/book">{{ "Books" if user.role == 'admin' else "My book" }}</a> › Quotes</p>
 {% call page_head("Quotes", "Every maker's YES/NO markets for one race" if user.role == 'admin' else "The YES/NO markets you quote for one race") %}
 <form method="get" class="toolbar mb0"><label><span>Race</span><select name="race_id" onchange="this.form.submit()">
 {% for r in races %}<option value="{{ r.race_id }}" {% if r.race_id == race_id %}selected{% endif %}>{{ r.venue }} {{ r.start_date|fmt }} · {{ r.category }} · {{ r.status }} ({{ r.markets }} markets)</option>{% endfor %}
 </select></label>
-{% if user.role == 'admin' %}<label><span>Maker</span><select name="maker" onchange="this.form.submit()"><option value="">all</option><option value="house" {% if maker == 'house' %}selected{% endif %}>house (legacy)</option>{% for mk in makers %}<option {% if mk.username == maker %}selected{% endif %}>{{ mk.username }}</option>{% endfor %}</select></label>{% endif %}
+{% if user.role == 'admin' %}<label><span>Maker</span><select name="maker" onchange="this.form.submit()"><option value="">all</option><option value="house" {% if maker == 'house' %}selected{% endif %}>house (earlier quotes)</option>{% for mk in makers %}<option {% if mk.username == maker %}selected{% endif %}>{{ mk.username }}</option>{% endfor %}</select></label>{% endif %}
 {% if race_id %}<span class="links"><a href="/book/quotes/sheet?race_id={{ race_id }}">Quote sheet →</a> · <a href="{{ '/races/' ~ race_id if race_id else '/markets' }}">Market board →</a></span>{% endif %}</form>
 {% endcall %}
 {{ flash(msg) }}

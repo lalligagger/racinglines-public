@@ -3,8 +3,9 @@
 {% block content %}
 <h1>racinglines</h1>
 <p class="sub">Fair prices and market making for race sports.</p>
-{% if error == "throttled" %}<p class="bad">Too many failed sign-ins. Wait 15 minutes and try again.</p>{% elif error %}<p class="bad">Wrong username or password.</p>{% endif %}
+{% if error == "throttled" %}<p class="bad" role="alert">Too many failed sign-ins. Wait 15 minutes and try again.</p>{% elif error %}<p class="bad" role="alert">Wrong username or password.</p>{% endif %}
 
+<p class="muted">pro = the maker tools (quotes, book, Lab); basic = the taker picks.</p>
 <div class="demo">
   <form method="post" action="/login"><input type="hidden" name="username" value="maker"><input type="hidden" name="password" value="password"><input type="hidden" name="next" value="{{ next }}">
     <button class="maker"><b>Try as pro</b><span>Model fair prices, quote markets, run every strategy, backtest and replay in the Lab</span></button></form>
