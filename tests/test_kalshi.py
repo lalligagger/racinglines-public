@@ -11,9 +11,12 @@ import numpy as np
 import pytest
 from sqlalchemy import text
 
+from conftest import require_market_fixtures
 from racinglines.markets.kalshi import client as K
 from racinglines.markets.kalshi import sync as KS
 from racinglines.markets.kalshi import trade as KT
+
+require_market_fixtures("kalshi_other_series")
 
 SERIES = {"series": [{"ticker": "KXF1RACE", "title": "Formula 1 race winner", "category": "Sports"},
                      {"ticker": "KXF1PODIUM", "title": "F1 podium finish", "category": "Sports"},

@@ -54,6 +54,18 @@ MTB_EVENTS = ["20250516_mtb", "20250530_mtb", "20250605_mtb", "20250620_mtb", "2
               "20250821_mtb", "20250918_mtb", "20251003_mtb", "20251009_mtb", "20260501_mtb", "20260528_mtb",
               "20260611_mtb", "20260619_mtb", "20260703_mtb", "20260708_mtb", "20260821_mtb", "20260925_mtb"]
 MTB_SAMPLE = ("20260821_mtb_dhi_elite-men.md", "20260821_mtb_dhi_junior-men.md")
+ALLOWED_FIXTURE_TARGETS = ("f1", "mtb")
+
+
+def download_targets(*, f1, mtb):
+    """Keep fixture downloads explicit and minimal: only the repo's pinned fixture targets are allowed."""
+    selected = [name for name, enabled in (("f1", f1), ("mtb", mtb)) if enabled]
+    if not selected:
+        selected = list(ALLOWED_FIXTURE_TARGETS)
+    unknown = [name for name in selected if name not in ALLOWED_FIXTURE_TARGETS]
+    if unknown:
+        raise SystemExit(f"unsupported fixture target(s): {', '.join(unknown)}. Allowed: {', '.join(ALLOWED_FIXTURE_TARGETS)}")
+    return tuple(selected)
 
 
 def say(msg):
@@ -243,12 +255,12 @@ def main():
         from sqlalchemy import create_engine
         build_f1_season(create_engine(FIXTURE_DB, future=True))
         return
-    both = not args.f1 and not args.mtb
+    targets = download_targets(f1=args.f1, mtb=args.mtb)
     WORK.mkdir(parents=True, exist_ok=True)
     engine = fresh_db(FIXTURE_DB)
-    if args.mtb or both:
+    if "mtb" in targets:
         build_mtb(engine)
-    if args.f1 or both:
+    if "f1" in targets:
         build_f1(engine)
     total = sum(f.stat().st_size for f in FIX.rglob("*") if f.is_file() and "_work" not in f.parts)
     say(f"fixtures: {total / 1e6:.1f} MB in {FIX}. Raw downloads kept in {WORK} for re-runs.")

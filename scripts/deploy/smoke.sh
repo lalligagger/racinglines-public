@@ -8,9 +8,15 @@
 #
 # Signs in with HTTP Basic as the demo accounts (SMOKE_PASSWORD, default the public demo password).
 # Read-only: GET requests only. Exit 1 if any check fails.
+#
+# IMPORTANT: the default smoke gate must never test a bad password. The app rate-limits failed Basic
+# auth requests by client IP for 15 minutes, so a wrong-password probe warms the same bucket used by the
+# real maker/taker checks and creates a false predeploy failure. If we intentionally need the throttle
+# path, use the explicit --auth-throttle mode against a fresh client/IP or after resetting the app.
 set -uo pipefail
 export PATH="/usr/local/bin:/usr/bin:/bin:${PATH:-}"
-URL="${1:?usage: smoke.sh <base url>}"; URL="${URL%/}"
+URL="${1:?usage: smoke.sh <base url> [--auth-throttle]}"; URL="${URL%/}"
+MODE="${2:-normal}"
 PW="${SMOKE_PASSWORD:-password}"
 fail=0
 
@@ -21,9 +27,15 @@ check() {   # check <expected status> <label> <curl args...>
   if [ "$got" = "$want" ]; then echo "ok    $got  $label"; else echo "FAIL  $got  $label (wanted $want)"; fail=1; fi
 }
 
+if [ "$MODE" = "--auth-throttle" ]; then
+  echo "[smoke] explicit auth-throttle probe"
+  check 401 "GET /markets with a wrong password" -u "maker:not-the-password-$RANDOM" "$URL/markets"
+  [ $fail = 0 ] && echo "smoke: throttle check passed ($URL)" || echo "smoke: throttle check FAILED ($URL)"
+  exit $fail
+fi
+
 check 200 "GET /login" "$URL/login"
 check 401 "GET /markets without credentials" "$URL/markets"
-check 401 "GET /markets with a wrong password" -u "maker:not-the-password-$RANDOM" "$URL/markets"
 for path in /markets /events /athletes /pitch /racinglines101; do
   for user in maker taker; do check 200 "GET $path as $user" -u "$user:$PW" "$URL$path"; done
 done

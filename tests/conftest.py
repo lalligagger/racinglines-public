@@ -39,6 +39,14 @@ def need(*parts):
     return path
 
 
+def require_market_fixtures(*names):
+    """Skip a market-fixture-heavy module when the repo is intentionally running without its local data subset."""
+    missing = [f"market/{name}.json" for name in names if not (FIX / "market" / f"{name}.json").exists()]
+    if missing:
+        pytest.skip(f"market fixtures missing ({', '.join(missing)}): run python scripts/fetch_test_fixtures.py --refresh",
+                    allow_module_level=True)
+
+
 TEST_DB = os.environ.get("TEST_DATABASE_URL", "postgresql+psycopg://racinglines:racinglines@localhost:5433/racinglines_test")
 
 

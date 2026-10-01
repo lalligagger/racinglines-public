@@ -24,12 +24,13 @@ PROD_URL="${PROD_URL:-https://racinglines.bet}"
 run_smoke() {
   local url="$1"
   echo "[predeploy] smoke check: $url"
+  echo "[predeploy] gate is valid-auth only: no failed-login probes, no rate-limit poisoning"
   bash scripts/deploy/smoke.sh "$url"
 }
 
 staging_gate() {
   echo "[predeploy] staging target: $STAGING_URL"
-  bash scripts/deploy/smoke.sh "$STAGING_URL"
+  run_smoke "$STAGING_URL"
   echo "[predeploy] staging host accepted the branch"
 }
 

@@ -7,9 +7,17 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from conftest import require_market_fixtures
 from racinglines.markets import kinds as K
 from racinglines.models import nascar_season as NS
 from racinglines.models import outcomes as O
+
+require_market_fixtures(
+    "nascar_weekend_feed_2026_5596",
+    "nascar_weekend_feed_2026_5624",
+    "nascar_weekend_feed_2026_5626",
+    "nascar_points_feed_2026",
+)
 
 FIX = Path(__file__).parent / "fixtures" / "market"
 F26 = NS.FORMATS[2026]
