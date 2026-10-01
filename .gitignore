@@ -1,10 +1,19 @@
-# --- Project data ------------------------------------------------------------------
-# Data stays out of git, except the minimal set cloud sweep sessions need (allow-listed at the
-# end of this file; the repo is private since 2026-09-27). Rebuild everything else with:
-#   racinglines <sport> fetch|download ...          (working data, see racinglines/paths.py)
-#   python scripts/fetch_test_fixtures.py --refresh [--f1] [--mtb]   (test fixtures: pinned in git)
-data/*
-tests/fixtures/_work/
+# --- Project data / generated output ----------------------------------------------
+# Keep the repository code-only. Raw data, archives, run outputs, reports, build output,
+# local cache files, and generated artifacts are never committed.
+
+data/
+reports/
+site/
+backtests/
+results/
+logs/
+.claude/
+.venv/
+.pytest_cache/
+
+# Data and artifact file types
+*.log
 *.parquet
 *.npz
 *.feather
@@ -13,12 +22,29 @@ tests/fixtures/_work/
 *.sqlite3
 *.db
 *.csv
+*.json
+*.jsonl
+*.sql.gz
 *.pkl
 *.pickle
 *.joblib
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.svg
 
-# MkDocs build output
-site/
+# Repo-local generated content and editor state
+tests/golden/
+tests/fixtures/
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
 
 # --- Python -------------------------------------------------------------------
 __pycache__/
@@ -32,13 +58,11 @@ dist/
 pip-wheel-metadata/
 
 # Virtual environments
-.venv/
 venv/
 env/
 .python-version
 
 # Test / type-check / lint caches
-.pytest_cache/
 .coverage
 .coverage.*
 htmlcov/
@@ -54,51 +78,3 @@ htmlcov/
 # Environment / secrets
 .env
 .env.*
-
-# --- Editors / OS -------------------------------------------------------------
-.vscode/
-.idea/
-*.swp
-*~
-.DS_Store
-Thumbs.db
-
-# --- Minimal data set for cloud sweeps (docs/cloud-sweep.md) --------------------------
-# FastF1 raw files (F1) and the Polymarket and Kalshi prices/trades archives. Nothing else under data/.
-# If this repo is ever made public, remove these from git history first.
-!data/raw/
-data/raw/*
-!data/raw/f1/
-!data/raw/f1/**
-!data/archive/
-data/archive/*
-!data/archive/markets/
-data/archive/markets/*
-!data/archive/markets/polymarket/
-data/archive/markets/polymarket/*
-!data/archive/markets/polymarket/prices/
-!data/archive/markets/polymarket/prices/**
-!data/archive/markets/polymarket/trades/
-!data/archive/markets/polymarket/trades/**
-!data/archive/markets/polymarket/links/
-!data/archive/markets/polymarket/links/**
-# Kalshi's archive, the same way (docs/kalshi-history.md): the cloud can't reach Kalshi
-!data/archive/markets/kalshi/
-data/archive/markets/kalshi/*
-!data/archive/markets/kalshi/prices/
-!data/archive/markets/kalshi/prices/**
-!data/archive/markets/kalshi/trades/
-!data/archive/markets/kalshi/trades/**
-!data/archive/markets/kalshi/links/
-!data/archive/markets/kalshi/links/**
-!data/archive/db/
-!data/archive/db/**
-# search results brought back from cloud sessions (leaderboard, saved-run summaries, logs)
-!data/runs/
-data/runs/*
-!data/runs/search/
-!data/runs/search/**
-
-# --- Test fixtures and golden baselines (pinned in git since 2026-09-28, docs/testing.md) ---------------
-!tests/fixtures/**/*.parquet
-!tests/fixtures/**/*.npz
