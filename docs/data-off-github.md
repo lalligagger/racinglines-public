@@ -95,7 +95,7 @@ database; and for the bucket, no uploads, deletes or key changes.
 
 **Stage 8, the last stage, needs its own go at the time it runs.** The owner agreed to it in the plan (2026-09-30), but it
 rewrites published history with a force push, which the
-[safety rails](https://github.com/lalligagger/racinglines/blob/main/CLAUDE.md#safety-rails-non-negotiable-carried-over-from-the-projects-own-rules)
+[safety rails](https://github.com/lalligagger/racinglines-public/blob/main/CLAUDE.md#safety-rails-non-negotiable-carried-over-from-the-projects-own-rules)
 allow only with the owner's explicit sign-off in the same conversation turn. It runs from the Mac, only after
 stages 6 and 7 are done and a cloud session has passed stage 4's check from a clean clone. Before it: merge or close
 every open PR (rewritten history orphans their commits) and delete stale branches, so fewer branches need
