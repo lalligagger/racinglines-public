@@ -95,6 +95,15 @@ case "${1:-}" in
       *) echo "usage: vm.sh record [off|status]"; exit 1 ;;
     esac
     ;;
+  forecast)
+    t=racinglines-forecast-refresh.timer
+    case "${2:-}" in
+      off) remote "sudo systemctl disable --now $t && echo '$t: off'" ;;
+      status) remote "cd $APP && sudo -u racinglines -H scripts/vm/forecast-refresh.sh status" ;;
+      "") remote "sudo systemctl enable --now $t && systemctl --no-pager list-timers $t" ;;
+      *) echo "usage: vm.sh forecast [off|status]"; exit 1 ;;
+    esac
+    ;;
   switch)
     name="${2:-}"; val=""
     case "${3:-}" in on) val=1 ;; off) val=0 ;; esac

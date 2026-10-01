@@ -1,0 +1,12 @@
+[Unit]
+Description=racinglines NASCAR and MotoGP forecast refresh every 30 minutes
+
+[Timer]
+OnActiveSec=20s
+OnBootSec=2min
+OnUnitActiveSec=30min
+AccuracySec=1s
+Unit=racinglines-forecast-refresh.service
+
+[Install]
+WantedBy=timers.target
