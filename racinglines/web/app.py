@@ -11,7 +11,6 @@ import hashlib
 import hmac
 import math
 import os
-import re
 import secrets
 import threading
 import time
@@ -234,6 +233,8 @@ templates.env.globals["csrf_token"] = CSRF_TOKEN
 # (_site_notice.html). Set to "" to turn it off.
 MAINTENANCE_NOTICE = "We are working on things! You may experience downtime or dead links until we finish."
 templates.env.globals["maintenance_notice"] = lambda: MAINTENANCE_NOTICE   # read at render time
+templates.env.globals["signup_on"] = lambda: signup_on()                    # RACINGLINES_SIGNUP=1: beta sign-up
+templates.env.globals["is_demo"] = lambda u: _demo.is_demo(u)
 # the stylesheet's and scripts' URLs carry the newest static file's mtime, so a change is a new URL: no stale copy from the browser or
 # Cloudflare's edge cache (read at render time)
 templates.env.globals["css_v"] = lambda: int(max(p.stat().st_mtime for p in (HERE / "static").glob("*.*")))
@@ -913,7 +914,7 @@ def place_bet(request: Request, market_id: int, side: str = Form(...), stake: fl
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request, next: str = "/", error: str = ""):
-    return templates.TemplateResponse(request, "login.html", dict(next=next, error=error, signup_on=signup_on()))
+    return templates.TemplateResponse(request, "login.html", dict(next=next, error=error))
 
 
 @app.post("/login")
@@ -928,11 +929,15 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
         _record_failure(ip)
         U.log(get_engine(), None, "login_failed", request, username=username)
         return RedirectResponse(f"/login?next={next}&error=1", status_code=303)
+    target = next if next.startswith("/") and not next.startswith("//") and next != "/" else "/markets"
+    return _start_session(request, user, target)
+
+
+def _start_session(request, user, target):
+    """Sign `user` in: a fresh session cookie, logged, then a redirect to `target`."""
     from racinglines.web import demo
     sid = demo.new_sid()                           # a fresh session: a demo account starts from its baseline
     U.log(get_engine(), user, "login", request, sid=sid, demo=demo.is_demo(user) or None)
-    default = "/markets"
-    target = next if next.startswith("/") and not next.startswith("//") and next != "/" else default
     resp = RedirectResponse(target, status_code=303)
     expires = int(time.time()) + SESSION_HOURS * 3600
     https = request.headers.get("x-forwarded-proto") == "https" or request.url.scheme == "https"
@@ -954,51 +959,81 @@ def logout(request: Request):
 
 
 # ---------------------------------------------------------------------------
-# Request an account (/signup, RACINGLINES_SIGNUP_REQUESTS=1, off by default): a public form that only records
-# the request in activity_log (action "signup_request", no new table). An admin reads them at
-# /admin/activity?action=signup_request and creates the account at /admin/users. The full sign-up flow
-# (invite codes, email verification) is docs/fantasy-accounts.md §5; this is the stopgap until it lands.
+# Beta sign-up (/signup, RACINGLINES_SIGNUP=1, off by default; web/accounts.py): username, password, tier. One
+# transaction creates the account (scrypt hash) and its 1,000 fantasy-bucks grant, then signs the person in.
+# Until `racinglines users setup` has made the ledger, the page says sign-up isn't open yet.
 # ---------------------------------------------------------------------------
 
-SIGNUP_MAX_PER_IP = 5                       # requests per client IP per hour
+SIGNUP_MAX_PER_IP = 10                      # sign-up attempts per client IP per hour (successful or not)
 _signup_hits: dict[str, list[float]] = {}
-_EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$")
 
 
 def signup_on() -> bool:
-    return os.environ.get("RACINGLINES_SIGNUP_REQUESTS", "0") == "1"
+    return os.environ.get("RACINGLINES_SIGNUP", "0") == "1"
+
+
+def _signup_ready() -> bool:
+    from racinglines.web import accounts as ACC
+    try:
+        with get_engine().connect() as c:
+            return bool(ACC.ready(c))
+    except Exception:                               # noqa: BLE001  no database: fail soft, sign-up closed
+        return False
+
+
+def _signup_page(request, form=None, error="", status_code=200):
+    from racinglines.web import accounts as ACC
+    return templates.TemplateResponse(request, "signup.html", dict(form=form or {}, error=error,
+                                      ready=_signup_ready(), grant=ACC.SIGNUP_GRANT,
+                                      pw_min=ACC.PASSWORD_MIN), status_code=status_code)
 
 
 @app.get("/signup", response_class=HTMLResponse)
 def signup_page(request: Request):
     if not signup_on():
         raise HTTPException(404)
-    return templates.TemplateResponse(request, "signup.html", dict(form={}, error="", done=False))
+    return _signup_page(request)
 
 
 @app.post("/signup", response_class=HTMLResponse)
-def signup_request(request: Request, name: str = Form(""), email: str = Form(""), tier: str = Form(""),
-                   note: str = Form(""), website: str = Form("")):
+def signup(request: Request, username: str = Form(""), password: str = Form(""), confirm: str = Form(""),
+           tier: str = Form(""), adult: str = Form(""), website: str = Form("")):
+    from racinglines.web import accounts as ACC
     if not signup_on():
         raise HTTPException(404)
-    form = dict(name=name.strip()[:80], email=email.strip()[:120], tier=tier, note=note.strip()[:500])
-    if website:                                   # honeypot: people never see this field, bots fill it
-        return templates.TemplateResponse(request, "signup.html", dict(form={}, error="", done=True))
+    if website:                                     # honeypot: people never see this field, bots fill it
+        raise HTTPException(400)
     ip = client_ip(request)
     now = time.time()
     hits = [t for t in _signup_hits.get(ip, []) if now - t < 3600]
     if len(hits) >= SIGNUP_MAX_PER_IP:
-        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many requests; try again in an hour")
-    error = ("Please enter your name." if not form["name"] else
-             "Please enter a valid email address." if not _EMAIL_RE.match(form["email"]) else
-             "Please pick pro or basic." if tier not in ("pro", "basic") else "")
-    if error:
-        return templates.TemplateResponse(request, "signup.html", dict(form=form, error=error, done=False),
-                                          status_code=400)
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many sign-up attempts; try again in an hour")
     _signup_hits[ip] = hits + [now]
-    U.log(get_engine(), None, "signup_request", request, name=form["name"], email=form["email"],
-          tier=tier, note=form["note"] or None)
-    return templates.TemplateResponse(request, "signup.html", dict(form={}, error="", done=True))
+    if not _signup_ready():
+        return _signup_page(request, status_code=503)
+    username = username.strip().lower()
+    form = dict(username=username[:30], tier=tier)
+    with get_engine().begin() as c:
+        error = (ACC.check_username(c, username) or ACC.check_password(password, confirm, username)
+                 or ("Please pick pro or basic." if tier not in ("pro", "basic") else "")
+                 or ("Please confirm you're 18 or older." if not adult else ""))
+        if error:
+            return _signup_page(request, form, error, status_code=400)
+        uid = c.execute(text("""INSERT INTO users (username, display_name, role, password_hash, active)
+                                VALUES (:u, :u, :r, :h, true) RETURNING id"""),
+                        dict(u=username, r=tier, h=U.hash_password(password))).scalar()
+        ACC.grant(c, uid)
+    try:                                            # the tier's starting strategy, as the demo accounts have; a
+        from racinglines.pipelines import profiles as PF   # failure here leaves the account fine, just unassigned
+        with get_engine().begin() as c:
+            prof = R.basic_profile(c, uid) if tier == "basic" else PF.load(c, PF.ensure_candidates(c)[PF.DEMO["maker"]])
+            PF.assign(c, uid, prof)
+    except Exception as ex:                         # noqa: BLE001
+        print(f"signup: no starting profile for user {uid}: {ex}", flush=True)
+    with get_session() as s:
+        user = _user_dict(U.get_user(s, user_id=uid))
+    U.log(get_engine(), user, "signup", request, grant=ACC.SIGNUP_GRANT)
+    return _start_session(request, user, "/markets")
 
 
 # ---------------------------------------------------------------------------

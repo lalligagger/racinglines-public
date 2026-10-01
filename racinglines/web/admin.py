@@ -19,11 +19,13 @@ from racinglines.db.config import get_engine, get_session
 from racinglines.markets import private_book as house
 from racinglines.pipelines import profiles as PF
 from racinglines.web import roles as R
+from racinglines.web import accounts as ACC
 from racinglines.web import users as U
 from racinglines.web.app import app, allow, audit, check_csrf, conn, data, render, rows
 
 ADMIN = [allow("admin")]
 HIDDEN_COLUMNS = {("users", "password_hash")}
+PROTECTED_USERS = {"maker", "taker", U.REPLAY_TAKER}    # the demo logins and the replay counterparty
 PAGE = 50
 SQL_ROW_LIMIT = 500
 
@@ -79,7 +81,15 @@ def admin_activity(request: Request, user: str = "", action: str = "", limit: in
 
 @app.get("/admin/users", response_class=HTMLResponse, dependencies=ADMIN)
 def admin_users(request: Request, msg: str = "", c=Depends(conn)):
-    return render(request, "admin_users.html", users=rows(data.q(c, USERS_SQL)), roles=U.ROLES, msg=msg)
+    return _users_page(request, c, msg)
+
+
+def _users_page(request, c, msg="", onetime=None):
+    """The users page. onetime: (username, temporary password) after a reset, shown once and never stored."""
+    resp = render(request, "admin_users.html", users=rows(data.q(c, USERS_SQL)), roles=U.ROLES, msg=msg,
+                  balances=ACC.balances(c), ledger=ACC.ready(c), grant=ACC.SIGNUP_GRANT, onetime=onetime)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @app.post("/admin/users", dependencies=[Depends(check_csrf), allow("admin")])
@@ -90,6 +100,9 @@ def admin_user_create(request: Request, username: str = Form(...), password: str
             raise ValueError("password must be at least 8 characters")
         with get_session() as s:
             u = U.create_user(s, username, password, role, display_name or None)
+            if ACC.ready(s.connection()):         # every account starts with the signup grant
+                ACC.grant(s.connection(), u.id, note="admin create")
+                s.commit()
         audit(request, "user_create", target=username, role=role, user_id=u.id)
         msg = f"Created {role} {username}."
     except ValueError as e:
@@ -133,6 +146,49 @@ def admin_user_update(request: Request, user_id: int, role: str = Form(...), act
         username = u.username
     audit(request, "user_update", target=username, user_id=user_id, changes=changes)
     return RedirectResponse(f"/admin/users?msg=Updated {username}.", status_code=303)
+
+
+@app.post("/admin/users/{user_id}/reset-password", response_class=HTMLResponse,
+          dependencies=[Depends(check_csrf), allow("admin")])
+def admin_user_reset_password(request: Request, user_id: int, c=Depends(conn)):
+    """A new random password, shown to the admin once on this response (no-store) and stored only as a hash.
+    Existing sessions of that account end at their expiry (cookies carry no password)."""
+    temp = ACC.temp_password()
+    with get_session() as s:
+        u = s.get(m.User, user_id)
+        if u is None:
+            raise HTTPException(404)
+        if u.id == request.state.user["id"]:
+            return RedirectResponse("/admin/users?msg=Error: change your own password in the New password box.",
+                                    status_code=303)
+        u.password_hash = U.hash_password(temp)
+        s.commit()
+        username = u.username
+    audit(request, "user_password_reset", target=username, user_id=user_id)       # never the password
+    return _users_page(request, c, f"Password reset for {username}.", onetime=(username, temp))
+
+
+@app.post("/admin/users/{user_id}/delete", dependencies=[Depends(check_csrf), allow("admin")])
+def admin_user_delete(request: Request, user_id: int):
+    """Remove an account that has no market or bet history (its ledger rows, signals and paper positions go with it).
+    One with history is refused: deactivate it instead, so the book keeps who made and took each bet."""
+    with get_session() as s:
+        u = s.get(m.User, user_id)
+        if u is None:
+            raise HTTPException(404)
+        username = u.username
+        if u.id == request.state.user["id"] or R.canonical(u.role) == "admin" or username in PROTECTED_USERS:
+            return RedirectResponse(f"/admin/users?msg=Error: {username} can't be removed.", status_code=303)
+        history = s.execute(text("""SELECT (SELECT count(*) FROM house_markets WHERE maker_id = :u)
+                                         + (SELECT count(*) FROM house_bets WHERE taker_id = :u)"""),
+                            dict(u=user_id)).scalar()
+        if history:
+            return RedirectResponse(f"/admin/users?msg=Error: {username} has markets or bets; untick Active to "
+                                    "deactivate it instead.", status_code=303)
+        s.delete(u)
+        s.commit()
+    audit(request, "user_delete", target=username, user_id=user_id)
+    return RedirectResponse(f"/admin/users?msg=Removed {username}.", status_code=303)
 
 
 @app.get("/admin/users/{user_id}", response_class=HTMLResponse, dependencies=ADMIN)

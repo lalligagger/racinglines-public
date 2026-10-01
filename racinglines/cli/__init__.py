@@ -10,6 +10,7 @@ racinglines <group> <command> [options]
     db        init | seed | stats | export
     live      new | step | run | agent | status | report   (a live private-book event, any sport)
     web       serve the web app
+    users     setup | list | add | reset-password | remove | deactivate | activate   (accounts, fantasy bucks)
     mcp       the MCP server: the data and simulations for a chat client (docs/mcp.md)
     check     quick validation: code on synthetic data, data endpoints, database
 
@@ -18,7 +19,7 @@ racinglines <group> <command> [options]
 
 import sys
 
-GROUPS = ("f1", "mtb_dh", "nascar", "motogp", "backtest", "markets", "db", "live", "web", "mcp", "check")
+GROUPS = ("f1", "mtb_dh", "nascar", "motogp", "backtest", "markets", "db", "live", "web", "users", "mcp", "check")
 
 
 def main(argv=None):

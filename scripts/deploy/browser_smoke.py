@@ -37,7 +37,7 @@ def same_site_links(page, base):
 
 def run_tier(browser, base, tier, button, out, limit):
     ctx = browser.new_context(viewport={"width": 683, "height": 900}, device_scale_factor=1.5)
-    ctx.add_init_script("try { sessionStorage.setItem('racinglines-notice-ok', '1') } catch (e) {}")  # no popup
+    ctx.add_init_script("try { sessionStorage.setItem('racinglines-notice-ok', '1'); sessionStorage.setItem('racinglines-notice-ok-signup', '1') } catch (e) {}")  # no popup
     page = ctx.new_page()
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))

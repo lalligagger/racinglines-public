@@ -94,12 +94,23 @@ event: a race, or a competition's season
 
 ## Pages
 
-**Request an account** (`/signup`, `RACINGLINES_SIGNUP_REQUESTS=1`, off by default): a public form (name, email,
-pro or basic, a note) linked from the sign-in page. It creates no account: each request is one `signup_request`
-row in `activity_log` (read them at `/admin/activity?action=signup_request`), and an admin creates the account at
-`/admin/users` and emails the sign-in details. Five requests per IP per hour, plus a hidden honeypot field. The
-full self-serve flow (invite codes, email verification) is [fantasy accounts §5](fantasy-accounts.md); this is the
-stopgap for the soft launch.
+**Beta sign-up** (`/signup`, `RACINGLINES_SIGNUP=1`, off by default; `racinglines/web/accounts.py`). A public page,
+linked from the sign-in page and from the popup demo visitors see ("Beta signups are live!"): username, password
+(twice, 10+ characters, stored only as a scrypt hash), pro or basic, and an 18+ / fantasy-money tick. One transaction
+creates the account and credits it **1,000 fantasy bucks**, then signs the person in; the tier's starting strategy
+(basic: its own draw; pro: the demo maker's) is assigned when the Lab candidates exist. Ten attempts per IP per hour
+and a hidden honeypot field; passwords are never logged or echoed back.
+
+The fantasy bucks live in their own Postgres schema, `accounts.fantasy_ledger` (one row per credit or debit, never
+updated; a balance is a sum), apart from the market data in `public`. It is not an alembic migration, because deploys
+never change the VM's database: `bash scripts/deploy/vm.sh accounts` backs the database up, runs `racinglines users
+setup` (idempotent; every existing active account also gets its 1,000) and switches sign-up on. Until then `/signup`
+says sign-up isn't open yet. Rollback: `vm.sh accounts off`.
+
+Admins manage accounts at `/admin/users`: add, change role, deactivate, **Reset password** (a random one-time password
+shown once on that page, stored only as a hash, never logged) and **Remove** (only accounts with no markets or bets;
+otherwise untick Active). The same from a shell: `racinglines users list | add NAME --role basic | reset-password NAME
+| remove NAME | deactivate NAME | activate NAME`.
 
 The nav follows the role:
 
