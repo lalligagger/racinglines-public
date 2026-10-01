@@ -7,7 +7,7 @@
 # 3. the checkout in /opt/racinglines (main, or REF), its venv, the database, /etc/racinglines.env
 # 4. the systemd units (installed, not started: vm.sh start does that)
 set -euo pipefail
-REPO="${REPO:-git@github.com:lalligagger/racinglines.git}"
+REPO="${REPO:-https://github.com/lalligagger/racinglines-public.git}"
 REF="${REF:-main}"      # the branch to clone first (vm.sh setup <branch> tests an unmerged branch)
 APP=/opt/racinglines
 log() { echo "[setup $(date -u +%H:%M:%S)] $*"; }

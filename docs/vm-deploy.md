@@ -70,8 +70,11 @@ the whole window since the last update (`pipelines/live_f1.py` `due`, `_crowd`),
 CONFLICT DO NOTHING`. The paused list is written to `/var/lib/racinglines/deploy-paused` on the VM before anything
 stops, so a deploy that dies half-way leaves a record: `vm.sh status` shows it, and the next `vm.sh deploy` resumes
 those timers too. If a step is still running after 5 minutes, or the connection drops while waiting, nothing is
-deployed and the timers are resumed; the message names the stuck unit. If the update itself fails, the timers stay
-paused (so no step runs on a half-updated checkout): fix and deploy again. A running downhill loop
+deployed and the timers are resumed; the message names the stuck unit. If the update fails before the checkout
+moves (a fetch, an unknown ref), nothing changed and the timers are resumed. If it fails after, the timers stay
+paused (so no step runs on a half-updated checkout): fix and deploy again. Deploy sets the checkout's `origin` to the
+public repo (`RL_REPO_URL`) first, and puts back as untracked files whatever the previous commit tracked and the new one
+doesn't (`deploy/vm/keep-files.sh`), so moving from the private repo's history keeps `data/` on disk. A running downhill loop
 (`racinglines-live-dh@`) gets a warning, not a pause: deploy doesn't restart it, so it keeps the code it loaded. The
 recorder's restart costs at most one order-book snapshot; prices and trades are unaffected, because they are fetched
 from the exchanges' own history. Deploy restarts only the services that are already running, so a deploy before cutover never starts a second recorder.

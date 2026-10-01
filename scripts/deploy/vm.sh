@@ -32,6 +32,7 @@ VM="${RL_VM:-racinglines-vm}"
 ZONE="${RL_ZONE:-us-west1-b}"
 BUCKET="${RACINGLINES_GCS_BUCKET:-}"     # the new project's bucket (restore needs it)
 APP=/opt/racinglines
+REPO_URL="${RL_REPO_URL:-https://github.com/lalligagger/racinglines-public.git}"   # deploy points the VM checkout here
 log() { echo "[vm $(date -u +%H:%M:%S)] $*"; }
 remote() { gcloud compute ssh "$VM" --project "$PROJECT" --zone "$ZONE" --tunnel-through-iap --command "$1"; }
 as_app() { remote "cd $APP && sudo -u racinglines -H env RACINGLINES_GCS_BUCKET=$BUCKET $1"; }
@@ -114,8 +115,19 @@ case "${1:-}" in
       esac
     done
     [ -n "$dh" ] && log "WARNING: a downhill loop is running ($dh ). Deploy doesn't restart it: it keeps the code it loaded, and a later lazy import may read the new files. Deploy after the final if you can."
+    before=""
     if [ -n "$timers" ]; then
-      trap 'echo "deploy stopped early: these timers may still be paused:$timers"; echo "  the next vm.sh deploy resumes them (they are listed in $PAUSED on the VM), or by hand: bash scripts/deploy/vm.sh ssh, then: sudo systemctl start$timers"' EXIT
+      # a failure before the checkout moved (fetch, unknown ref) changed nothing, so the timers resume; after it moved,
+      # they stay paused so no step runs on a half-updated checkout
+      stopped_early() {
+        if [ -n "$before" ] && [ "$(as_app "git rev-parse HEAD" 2>/dev/null)" = "$before" ] &&
+           remote "sudo systemctl start$timers && sudo rm -f $PAUSED"; then
+          echo "deploy failed before the checkout changed: nothing deployed, timers resumed:$timers"; return
+        fi
+        echo "deploy stopped early: these timers may still be paused:$timers"
+        echo "  the next vm.sh deploy resumes them (they are listed in $PAUSED on the VM), or by hand: bash scripts/deploy/vm.sh ssh, then: sudo systemctl start$timers"
+      }
+      trap stopped_early EXIT
       log "pausing:$timers"
       remote "sudo mkdir -p ${PAUSED%/*} && echo '$timers' | sudo tee $PAUSED >/dev/null && sudo systemctl stop$timers"
       log "waiting up to 5 minutes for a step in progress"
@@ -132,7 +144,13 @@ case "${1:-}" in
       fi
     fi
     log "deploy $ref"
-    as_app "deploy/vm/update.sh $ref"
+    before=$(as_app "git rev-parse HEAD")
+    # the VM was cloned from the private repo; deploys come from the public one (RL_REPO_URL). Files the old commit
+    # tracked and the new one doesn't (data/, test fixtures, pitch images) are put back as untracked files.
+    as_app "git remote set-url origin $REPO_URL"
+    rc=0; as_app "deploy/vm/update.sh $ref" || rc=$?
+    as_app "test ! -f deploy/vm/keep-files.sh || bash deploy/vm/keep-files.sh $before"
+    [ "$rc" -eq 0 ] || exit "$rc"
     remote "sudo install -m 644 $APP/deploy/vm/systemd/* /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl try-restart $SERVICES racinglines-mcp"
     if [ -n "$timers" ]; then
       # the live events' catch-up step first (it and signals both price a stage whose data landed during the pause)
