@@ -1,0 +1,80 @@
+name: staging-deploy
+
+# Merging (or pushing) to the `staging` branch deploys THAT commit to staging.racinglines.bet and nothing else:
+# `vm.sh staging deploy <sha>` moves /opt/racinglines-staging, migrates racinglines_staging, restarts
+# racinglines-staging-web (port 8010) and smoke-checks it, expecting the X-Racinglines-Env: staging header. It never
+# runs vm.sh deploy, never pauses production's timers, never opens production's database or /etc/racinglines.env.
+# `main` keeps deploying production through main-merge-gate (predeploy.yml). Cloud sessions can't push workflow files:
+# the owner copies this file to .github/workflows/staging.yml (docs/vm-deploy.md "Staging").
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "branch or commit to put on staging (default: the staging branch)"
+        required: false
+        default: staging
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy-staging:
+    name: deploy-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # the `production` environment only holds the VM's ssh secrets (GCP_SERVICE_ACCOUNT_KEY, GCP_PROJECT_ID, VM_NAME,
+    # VM_ZONE); staging is on the same VM. Rename the environment, or add a `staging` one with the same four, later.
+    environment: production
+    env:
+      HAS_GCP_KEY: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY != '' }}
+      HAS_VM_TARGET: ${{ secrets.GCP_PROJECT_ID != '' && secrets.VM_NAME != '' && secrets.VM_ZONE != '' }}
+      STAGING_URL: https://staging.racinglines.bet
+      SMOKE_PASSWORD: password
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Skip when GCP secrets are not configured
+        if: ${{ env.HAS_GCP_KEY != 'true' || env.HAS_VM_TARGET != 'true' }}
+        run: echo "Skipping the staging deploy because the GCP deployment secrets are not configured."
+
+      - name: Authenticate to Google Cloud
+        if: ${{ env.HAS_GCP_KEY == 'true' }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Set up gcloud
+        if: ${{ env.HAS_GCP_KEY == 'true' }}
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to staging with vm.sh staging deploy
+        if: ${{ env.HAS_GCP_KEY == 'true' && env.HAS_VM_TARGET == 'true' }}
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          VM_NAME: ${{ secrets.VM_NAME }}
+          VM_ZONE: ${{ secrets.VM_ZONE }}
+        run: bash scripts/deploy/vm.sh staging deploy "${{ github.event.inputs.ref || github.sha }}"
+
+      - name: Smoke check staging.racinglines.bet as the staging instance
+        if: ${{ env.HAS_GCP_KEY == 'true' && env.HAS_VM_TARGET == 'true' }}
+        run: SMOKE_EXPECT_ENV=staging bash scripts/deploy/smoke.sh "$STAGING_URL"
+
+      - name: Summary
+        if: ${{ always() }}
+        run: |
+          {
+            echo "### staging.racinglines.bet"
+            echo "- commit: ${{ github.event.inputs.ref || github.sha }}"
+            echo "- job: ${{ job.status }}"
+            echo "- production: not deployed by this workflow"
+          } >> "$GITHUB_STEP_SUMMARY"

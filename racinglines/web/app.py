@@ -229,6 +229,17 @@ templates.env.filters["money"] = money
 DEMO_CONTEXT = {"on": os.environ.get("RACINGLINES_DEMO_CONTEXT", "1") != "0"}
 templates.env.globals["demo_context_on"] = lambda: DEMO_CONTEXT["on"]      # read at render time
 templates.env.globals["csrf_token"] = CSRF_TOKEN
+# RACINGLINES_ENV=staging (set only in /etc/racinglines-staging.env on the VM): every response carries
+# X-Racinglines-Env so a deploy's smoke check can tell the staging instance from production, and the top bar shows
+# the label. Unset (production, local): no header, no label, nothing changes.
+ENV_LABEL = os.environ.get("RACINGLINES_ENV", "").strip()
+templates.env.globals["env_label"] = lambda: ENV_LABEL
+if ENV_LABEL:
+    @app.middleware("http")
+    async def _env_header(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Racinglines-Env"] = ENV_LABEL
+        return response
 # Maintenance popup on the sign-in page and every app page, dismissed with "ok" once per browser session
 # (_site_notice.html). Set to "" to turn it off.
 MAINTENANCE_NOTICE = "We are working on things! You may experience downtime or dead links until we finish."
