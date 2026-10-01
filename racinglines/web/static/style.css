@@ -325,3 +325,7 @@ table.kv td:first-child { color: var(--muted); width: 220px; }
   .stages { grid-auto-flow: row; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
 }
 .ecard-foot { border-top: 1px solid var(--line); padding-top: 8px; }
+/* maintenance popup (_site_notice.html) */
+dialog.site-notice { max-width: 340px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--card); color: var(--fg); padding: 16px 18px; text-align: center; }
+dialog.site-notice::backdrop { background: rgba(0, 0, 0, .35); }
+dialog.site-notice p { margin: 0 0 12px; } dialog.site-notice form { margin: 0; } dialog.site-notice button { min-width: 72px; }

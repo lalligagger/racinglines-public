@@ -1,0 +1,14 @@
+{% if maintenance_notice() %}
+<dialog id="site-notice" class="site-notice" aria-describedby="site-notice-msg">
+  <p id="site-notice-msg">{{ maintenance_notice() }}</p>
+  <form method="dialog"><button class="primary" autofocus>ok</button></form>
+</dialog>
+<script>
+(function () {
+  var d = document.getElementById("site-notice"), k = "racinglines-notice-ok";
+  try { if (sessionStorage.getItem(k)) return; } catch (e) {}
+  d.addEventListener("close", function () { try { sessionStorage.setItem(k, "1"); } catch (e) {} });
+  if (d.showModal) d.showModal(); else d.setAttribute("open", "");
+})();
+</script>
+{% endif %}

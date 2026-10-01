@@ -229,6 +229,10 @@ templates.env.filters["money"] = money
 DEMO_CONTEXT = {"on": os.environ.get("RACINGLINES_DEMO_CONTEXT", "1") != "0"}
 templates.env.globals["demo_context_on"] = lambda: DEMO_CONTEXT["on"]      # read at render time
 templates.env.globals["csrf_token"] = CSRF_TOKEN
+# Maintenance popup on the sign-in page and every app page, dismissed with "ok" once per browser session
+# (_site_notice.html). Set to "" to turn it off.
+MAINTENANCE_NOTICE = "We are working on things! You may experience downtimeor dead links until we finish."
+templates.env.globals["maintenance_notice"] = lambda: MAINTENANCE_NOTICE   # read at render time
 # the stylesheet's and scripts' URLs carry the newest static file's mtime, so a change is a new URL: no stale copy from the browser or
 # Cloudflare's edge cache (read at render time)
 templates.env.globals["css_v"] = lambda: int(max(p.stat().st_mtime for p in (HERE / "static").glob("*.*")))
