@@ -10,7 +10,19 @@ import httpx
 import pandas as pd
 import pytest
 
-from conftest import FIX
+from conftest import FIX, require_market_fixtures
+
+require_market_fixtures(
+    "race_list_2026",
+    "weekend_feed_2026_5624",
+    "lap_times_2026_5624",
+    "pit_data_2026_5624",
+    "loopstats_2026_5624",
+    "lap_times_2026_5628",
+    "weekend_feed_2026_5596",
+    "weekend_feed_2017_4599",
+    "weekend_feed_2026_5624",
+)
 
 from racinglines.sources import http
 from racinglines.sources.nascar import fetch as F

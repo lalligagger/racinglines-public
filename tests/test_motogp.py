@@ -5,9 +5,11 @@ No network."""
 import json
 
 import pytest
-from conftest import FIX
+from conftest import FIX, require_market_fixtures
 
 from racinglines.sources.motogp import ingest as I
+
+require_market_fixtures("events_2026", "classification_2026_tha_motogp_race")
 
 MKT = FIX / "market"
 

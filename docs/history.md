@@ -3,9 +3,7 @@
 All of the work below happened in **one Claude Code session**, my first
 (vibe-)coding session with Claude, within the session credit limit of a basic paid
 plan. By the time the pitch deck and docs were finished, the session limit was at
-96%:
-
-![Claude Code session limit at 96% near the end of the session](img/session-limit.png)
+96%.
 
 What was built so far, in order, with the reasoning behind each step. The
 `2026-09` dates are when the work was done. The race data covers 2019–2026.

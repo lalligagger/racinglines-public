@@ -11,11 +11,24 @@ import pandas as pd
 import pytest
 from sqlalchemy import text
 
+from conftest import require_market_fixtures
 from racinglines import exchanges as EX
 from racinglines import sports
 from racinglines.markets import exchange_driver as D
 
 FIX = Path(__file__).parent / "fixtures" / "market"
+require_market_fixtures(
+    "events_f1_futures",
+    "events_f1",
+    "events_nascar",
+    "events_sailgp",
+    "events_page1",
+    "instruments_f1",
+    "tickers",
+    "book",
+    "trades",
+    "ticker_histories",
+)
 
 
 def fx(name):

@@ -10,7 +10,17 @@ from datetime import date, datetime, timezone
 import pytest
 from sqlalchemy import delete, select
 
+from conftest import require_market_fixtures
 from test_nascar import MKT, TODAY, athlete_of, db, raw          # noqa: F401  (db, raw are fixtures)
+
+require_market_fixtures(
+    "kalshi_nascar_events",
+    "kalshi_nascar_h2h",
+    "og_instruments_nascar",
+    "og_tickers_nascar",
+    "polymarket_nascar_events",
+    "og_events_nascar",
+)
 
 from racinglines.db import models as m
 from racinglines.markets.kalshi import sync as KS
