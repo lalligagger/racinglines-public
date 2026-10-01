@@ -99,7 +99,9 @@ python scripts/cloud/bucket.py push results/<session> data/runs/live/<event>
 
 `scripts/cloud/start.sh` pulls the bucket and restores the full dump in place of the committed
 snapshot, whenever the environment has the key (`SKIP_BUCKET=1` skips it). **Refresh the bucket**
-(`bucket.sh push`) before launching a cloud session that needs current data.
+(`bucket.sh push`) before launching a cloud session that needs current data. Since the VM took over (2026-09-30) the newest data is on the VM, and
+nothing pushes it to a bucket yet ([todo](todo.md#staging-and-ci-deploys) STG-5); `bucket.sh push` runs on the Mac
+(its `pg_dump` path is the Mac's).
 
 **Cloud environment settings.** At claude.ai/code, click the cloud icon with the environment's name
 in the row above the message box, hover over `racinglines`, and click its settings icon:

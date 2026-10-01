@@ -5,6 +5,8 @@
 data/
 reports/
 site/
+site.new/
+site.old/
 backtests/
 results/
 logs/

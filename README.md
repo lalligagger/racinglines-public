@@ -495,23 +495,20 @@ Priorities, then every open item: [`docs/todo.md`](docs/todo.md). This week's F1
 model yet, so record its tape; **T3** no market anywhere, so run a simulated pool (private book). T3
 proves the pricing, not an edge.
 
-### Demo completion path (2026-09-30)
+### Demo completion path (2026-10-01)
 
-The repo-safe CI issue is fixed and verified. The default smoke gate no longer uses a wrong-password probe, so the
-app's 15-minute failed-login throttle is no longer poisoned by the normal staging check. The valid-auth smoke tests
-have already passed on the staging host, and the public-repo guardrails are in place for the final PR path.
+The live repo is the public `lalligagger/racinglines-public` since 2026-10-01, and **merging to `main` deploys to the
+VM** through GitHub Actions (`main-merge-gate`: staging smoke, `vm.sh deploy`, prod smoke; docs-only merges deploy
+nothing; CI runs no tests). Deploys carry code only; data and the database change on the VM through scripts and the
+admin views. The flow and what lives where: [VM deploy](docs/vm-deploy.md#the-flow).
 
-- **Required before PR merge:**
-  - `python -m pytest tests/test_no_data_in_git.py tests/test_fetch_fixtures_guard.py tests/test_deploy_smoke.py -q`
-  - `bash scripts/deploy/predeploy.sh --staging main`
+- **Before asking for a merge (local, CI doesn't run them):** `racinglines check`, `python -m pytest -m "not live"`,
+  `mkdocs build --strict`. Golden tests skip without `tests/fixtures/` (not in the public repo).
 - **Commit policy:** never leave a commit in an editor; use `git commit -m "..."` or `git commit --amend --no-edit`.
-  No `vim`/`vi` commit-message loops.
-- **Branch/merge flow:** cut the feature branch from `main`, commit the batch, open the PR, let CI run, then merge to
-  `main` only after the staging gate is green.
-- **Demo assumptions:** all runtime data, venue flags and secrets stay local; only the demo maker/taker path is used for
-  the final app check; no raw data goes into Git. The public repo is intentionally fixture-limited and clean.
-- **If the old throttle was already warmed:** wait 15 minutes or restart the app on a fresh client/IP, then rerun the
-  valid-auth smoke checks. The staging gate itself does not trigger this anymore.
+- **Branch/merge flow:** one feature-track branch per sprint, PRs from it, the owner squash-merges with
+  `--delete-branch`. A merge is a deploy: batch them, keep them out of live race windows, and back up first for a
+  migration.
+- **Smoke gate:** valid sign-ins only. If an old wrong-password probe warmed the throttle, wait 15 minutes.
 
 **Where things stand (30 Sep 2026, evening; VM on `306a147`, #95 and #96 merged after it):** NASCAR and MotoGP went
 from tape-only listings to sports the production app shows end to end: results, Kalshi markets identified with their
@@ -520,7 +517,7 @@ race, a simple-baseline price for NASCAR's next race, and an in-sample demo pape
 (F1, NASCAR, MotoGP × Polymarket, Kalshi, OG.com) has 7 of 9 cells filled; MotoGP × Polymarket (no linked markets) and
 MotoGP × OG.com (not listed) are empty. **The only held-out-robust strategy is still F1 profile A on Polymarket**, which
 has listed no F1 race since 28 Aug. Status per cell: [Sports and exchanges](docs/coverage.md). The full day:
-[24-hour report](https://github.com/lalligagger/racinglines/blob/main/reports/2026-09-30-sports-exchanges-24h/report.md).
+24-hour report (not in the public repo).
 
 **Where things stood (29 Sep 2026, after the overnight roadmap batch, PRs #23–#45 merged):** U1, U5, U6, U7, U8, U9,
 reconcile, the scorecard and the K sweep are built and merged (new behaviour behind switches, off by default). What
@@ -535,14 +532,10 @@ C makes money on Polymarket's tape and loses on Kalshi's.
 **P0 · Sprint to the fantasy soft launch (to Thu 8 Oct), in this order.** Work is grouped into feature-track
 branches, one PR per track (owner, 2026-09-30); the track is named on each item.
 
-- [ ] **HIGH · Build CI and the staging environment** (track `staging-ci`; STG-1 to STG-4, spelled out in PR #114's
-      "Staging and CI deploys" section). STG-1 `staging.racinglines.bet`, a second app instance with its own
-      database restored from the latest backup, trading flags off, behind Cloudflare Access; STG-2 a GitHub CI
-      workflow on every push (`racinglines check`, `pytest -m "not live"`, `mkdocs build --strict`: today nothing
-      runs on GitHub); STG-3 CI deploys a track branch to staging and runs the smoke check there; STG-4 the owner
-      checks staging, merges, and `main` deploys to production as today. Every step needs the owner's go; the VM, DNS
-      and the GitHub secret (deploy key or service account) need sign-off. The fantasy staging rehearsal (STAGE-1,
-      Wed 7 Oct) runs on this host once it exists.
+- [ ] **HIGH · Finish CI and the staging environment** (STG-1 to STG-11 in [Staging and CI deploys](docs/todo.md#staging-and-ci-deploys)).
+      CI deploys merges to `main` since 2026-10-01, but runs no tests, smoke-checks staging rather than the PR, and
+      the VM's data has no off-VM copy. First: STG-5 (off-VM data copy), STG-2 (tests in CI), STG-8 (migration gate).
+      The fantasy staging rehearsal (STAGE-1, Wed 7 Oct) needs STG-1.
 - [ ] **Sign-up** (track `signup`; SEC-1, MAIL-1, ACC-1, ACC-3 from [Fantasy accounts](docs/fantasy-accounts.md)): not
       built. Copilot builds it locally Fri 2 – Sat 3 Oct behind `RACINGLINES_SIGNUP=off`; the `fantasy_schema_v1`
       migration goes to the VM Tue 6 Oct (OWNER-8, backup and sign-off). Then the trading batch, STAGE-1, the go/no-go
@@ -581,10 +574,9 @@ branches, one PR per track (owner, 2026-09-30); the track is named on each item.
 
 **P1 · October (rounds 16–19): first live weekends on real markets**
 
-- [ ] **STG · high priority (owner, 2026-09-30): build CI and a staging environment.** GitHub CI running the
-      checks on every push, `staging.racinglines.bet`, and track branches deployed to staging and verified before
-      `main` goes to `racinglines.bet`. Steps STG-1 to STG-4 in [Staging and CI deploys](docs/todo.md#staging-and-ci-deploys);
-      the first owner decisions are staging on the same VM or its own, and GitHub's deploy credentials.
+- [ ] **STG · high priority (owner, 2026-09-30): finish CI and a staging environment.** CI deploys `main` since
+      2026-10-01; tests in CI, a real staging deploy, an off-VM data copy, a migration gate and a live-window freeze
+      are open: STG-1 to STG-11 in [Staging and CI deploys](docs/todo.md#staging-and-ci-deploys).
 - [x] **U5** Kalshi sprint markets before Singapore (11 Oct); built in PR #36 behind `RACINGLINES_KALSHI_SPRINTS`, merged. Priced from the race's pole and win odds
       until **U13**, a real sprint model, lands ([F1 model](docs/todo.md#f1-model)).
 - [ ] **U3** Kalshi maker profile K: swept (PRs #38, #41, merged; K = `gbm`, 2¢, 10-pt filter, 25 shares, $400 volume floor); **freezing it is the owner's call** before the United States GP (25 Oct).

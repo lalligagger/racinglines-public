@@ -7,29 +7,41 @@ cloudflared in place of the Mac's tunnel. No code changes. Written 2026-09-28.
 
 ## The flow
 
-| Where | What it serves | Runs |
+Since 2026-10-01 the live repo is the public `lalligagger/racinglines-public` (base `main`) and **merging to
+`main` deploys to the VM by itself**, through the GitHub Actions workflow `main-merge-gate`
+(`.github/workflows/predeploy.yml`):
+
+| Job | Runs on | What it does |
 |---|---|---|
-| **Your Mac** (branch checks) | localhost, plus the Cloudflare staging hostname once it is configured | any branch: `racinglines web` relaunched by hand, as today |
-| **The VM** (production) | `racinglines.bet` | `main` only, deployed with `scripts/deploy/vm.sh deploy` |
+| `detect-docs-only` | every PR to `main` and every push to `main` | Lists the changed files (the PR's diff, or `HEAD^..HEAD` on a push). If every one is under `docs/` or ends in `.md` (README, CLAUDE.md, mkdocs.yml too), the change is docs-only and the two jobs below are skipped: **a docs-only merge deploys nothing** |
+| `predeploy-staging` | PRs and pushes that are not docs-only | `scripts/deploy/predeploy.sh --staging <sha>`: the smoke check (`scripts/deploy/smoke.sh`, valid sign-ins only) against `https://staging.racinglines.bet`. A failure comments on the PR. It checks whatever staging serves; it does not deploy or run the PR's code |
+| `deploy-production` | pushes to `main` only, after `predeploy-staging` passed | `scripts/deploy/predeploy.sh --prod <sha>`: `vm.sh deploy <sha>` (below), then the smoke check against `https://racinglines.bet`. Uses the `production` environment's secrets (`GCP_SERVICE_ACCOUNT_KEY`, `GCP_PROJECT_ID`, `VM_NAME`, `VM_ZONE`); without them the job prints a skip line and deploys nothing |
+
+**CI runs no pytest, no `racinglines check` and no `mkdocs build`.** Those stay local (below) until STG-2's test job
+lands ([todo](todo.md#staging-and-ci-deploys)). A PR that is green on GitHub has only passed the smoke check.
 
 For every change:
 
-1. **On a branch, on the Mac:** `python -m pytest -m "not live"`, `python -m pytest`, then relaunch
-   `racinglines web` and run the smoke check locally and against `https://staging.racinglines.bet`:
-   ```sh
-   bash scripts/deploy/smoke.sh http://127.0.0.1:8000
-   bash scripts/deploy/smoke.sh https://staging.racinglines.bet
-   ```
-2. **Merge** the PR into `live-event`, then `live-event` into `main`.
-3. **Deploy** `main` to the VM. `vm.sh` pulls, installs, migrates, restarts, and runs the same smoke check on the VM:
-   ```sh
-   bash scripts/deploy/vm.sh deploy
-   bash scripts/deploy/smoke.sh https://racinglines.bet
-   ```
+1. **On a branch** (a feature-track branch: [CLAUDE.md](https://github.com/lalligagger/racinglines-public/blob/main/CLAUDE.md#branches-feature-tracks)):
+   `racinglines check`, `python -m pytest -m "not live"`, `mkdocs build --strict`. Without `tests/fixtures/` (not in
+   the public repo, see [Code from GitHub, data on the VM](#code-from-github-data-on-the-vm)) every golden test
+   skips, so run them where the fixtures are (the owner's Mac) before merging anything that touches pricing.
+2. **Open the PR** against `main`; `predeploy-staging` runs on it.
+3. **Merge** (owner only, squash, `gh pr merge N --squash --delete-branch`). The merge is the deploy: CI runs
+   `vm.sh deploy` on the merged commit, which pauses the live timers, checks out, installs, migrates, seeds,
+   restarts and resumes the timers, then smoke-checks the site. Watch the run in the repo's Actions tab.
+   **Merging a PR with an Alembic migration runs it on the VM** (`update.sh`, no extra backup step): take
+   `vm.sh backup <purpose>` first and merge only with the owner's sign-off for that migration.
+4. **By hand** (the same path, from the Mac) when CI can't: `bash scripts/deploy/predeploy.sh --prod main` or
+   `bash scripts/deploy/vm.sh deploy <ref>`. A bad deploy is undone by deploying the previous commit.
+
+Keep merges of code away from a live race window unless the owner says otherwise: the deploy pauses and resumes
+the live timers (below), but the web app restarts for a few seconds.
 
 The smoke check signs in as the demo accounts (`SMOKE_PASSWORD`, default the public demo password). It
-checks `/login`, that a request without credentials or with a wrong password gets 401, the main pages
-for maker and taker, and that `/book/quotes` is maker-only. It makes GET requests only.
+checks `/login`, that a request without credentials gets 401, the main pages for maker and taker, and that
+`/book/quotes` is maker-only. It makes GET requests only and never sends a wrong password (that would warm the
+app's 15-minute failed-login throttle).
 
 `staging.racinglines.bet` is the required public staging route. If the hostname is absent or misconfigured,
 fix the tunnel / Cloudflare public hostname before a prod deploy. The temp trycloudflare URL is for
@@ -50,13 +62,17 @@ be repeated without reading the whole page.
 
 | File | What it is |
 |---|---|
-| `scripts/deploy/vm.sh` | Run on your Mac: `setup`, `restore`, `start [web]`, `deploy [ref]`, `status`, `logs [unit]`, `ssh` (SSH through IAP) |
+| `scripts/deploy/vm.sh` | Run on your Mac (and by CI for `deploy`): `setup`, `restore`, `start [web]`, `deploy [ref]`, `backup <purpose>` (a database dump on the VM to `data/backups/db/racinglines-before-<purpose>-<UTC>.sql.gz`), `repoint` (one time: the checkout fetches from the public repo; `git remote set-url` and a fetch, no file touched), `live <event> [off]`, `record`, `switch`, `demo`, `public`, `status`, `logs [unit]`, `ssh` (SSH through IAP) |
+| `scripts/deploy/predeploy.sh --staging\|--prod\|--all [ref]` | The gate CI runs: `--staging` smoke-checks staging, `--prod` runs `vm.sh deploy <ref>` then smoke-checks racinglines.bet |
+| `.github/workflows/predeploy.yml` | `main-merge-gate`, the CI workflow ([The flow](#the-flow)). Cloud sessions can't push changes to it (the token lacks the workflow scope): ship a patch for the owner |
 | `scripts/deploy/smoke.sh <url>` | The smoke check (any machine with curl) |
 | `vm.sh demo`, `demo extra`, `demo status` | The multi-sport demo. `demo`: writes `RACINGLINES_SPORT_STATUS=1` and `RACINGLINES_SPORT_PAPER=1` to `/etc/racinglines.env` (replacing any earlier lines for them), restarts the web app, then starts `scripts/vm/demo_setup.sh` as the transient unit `rl-demo` (refused while `rl-demo` is already running). The script refuses to start while a `racinglines-live-*` unit is active, backs up first (`data/backups/db/racinglines-before-demo-setup-<UTC>.sql.gz`, trailer checked), then for NASCAR and MotoGP (a sport with no settings grid under `data/runs/replay-grid/<sport>` is skipped with a `SKIP` line): the steps in `STEPS`, default `kalshi polymarket forecast`: `kalshi` prints the grid's selection and runs `demo-history --grid … --book best --users maker,taker` on Kalshi; `polymarket` the same on Polymarket's tape with the Kalshi grid's selection (`--venue polymarket --grid-venue kalshi`); `forecast` runs `<sport> forecast --save` (MotoGP has no scheduled race stored, so it stores nothing). `demo extra` runs only `polymarket forecast`. `demo status` shows the unit, the `demo-setup.done` / `.failed` markers and the latest log's key lines (`data/runs/logs/demo-setup-<UTC>.log`). Every write logs a `data_changes` row naming the backup; undo with `racinglines <sport> demo-history --reset --users maker,taker --backup FILE` (per venue) and `<sport> forecast --undo RUN_ID`. Touches no trading flag, migration or bucket, and never the F1 demo history ([Paper trading](paper-trading.md#nascar-and-motogp-demo-in-sample-off-by-default)) |
 | `vm.sh switch <NAME> on\|off` | An app switch in `/etc/racinglines.env` (`RACINGLINES_*` only, e.g. `RACINGLINES_OG_VENUE`: the OG.com column and `/markets/og`), replacing any earlier line for it, then the web app restarted. Refuses any `*TRADING*` flag |
 | `vm.sh record`, `record off`, `record status` | The Kalshi and OG.com recorder: enables `racinglines-record-venues.timer`, a pass of `scripts/vm/record_venues.sh` every 5 minutes. Each pass stores one order-book snapshot per open market for `kalshi:f1 og:f1 kalshi:nascar og:nascar kalshi:motogp` (`markets --exchange <x> --sport <s> books`) and, once an hour per pair, that pair's `sync` first (links and quotes upserted). Additive only, read-only APIs, no trading. The first pass on a box backs the database up (`data/backups/db/racinglines-before-record-venues-<UTC>.sql.gz`) and adds a `data_changes` note naming it. One line per pair per pass in the journal and `data/runs/logs/record-venues.log`; `record status` prints the last ones and the book snapshots stored per venue per 5 minutes. `vm.sh deploy` pauses and resumes it with the other timers |
 | `deploy/vm/setup.sh` | One-time VM setup, run by `vm.sh setup`: packages, the `racinglines` user, a read-only deploy key, `/opt/racinglines` on `main`, a Python 3.14 venv (uv), Postgres, `/etc/racinglines.env`, the units |
-| `deploy/vm/update.sh [ref]` | On the VM, run by `vm.sh deploy`: checkout, `pip install`, `alembic upgrade head` |
+| `deploy/vm/update.sh [ref]` | On the VM, run by `vm.sh deploy`: checkout, `pip install`, `alembic upgrade head`, `racinglines db seed` (reference rows for every sport schema, idempotent upserts). The only database writes a deploy makes |
+| `deploy/vm/build_docs.sh` | Piped over ssh by `vm.sh deploy` (after the timers resume) and `vm.sh docs`: builds `site/`, which the app serves at `/docs`, from the checkout's `docs/` (installs `requirements-docs.txt` into the venv the first time). Fail-soft: a failure logs a `docs:` line and the old site stays. Touches only `site/` and the venv |
+| `deploy/vm/untrack.sh <ref>` | Piped over ssh by `vm.sh deploy` before `update.sh`: files the VM's current commit tracks and `<ref>` doesn't are backed up to `data/backups/files/racinglines-before-untrack-<UTC>.tar.gz` and untracked with a local commit, so the checkout leaves them on disk. It moved the VM from the private history to the public one without deleting `data/`, the test fixtures or the pitch images |
 | `deploy/vm/systemd/` | `racinglines-web`, `racinglines-recorder` (the Mac's recorder LaunchAgent), `racinglines-signals` + timer (every 5 min), `racinglines-record-venues` + timer (Kalshi and OG.com books every 5 min, enabled by `vm.sh record`), and per-event templates `racinglines-live-f1@<event>` + timer and `racinglines-live-dh@<event>` |
 | `deploy/vm/compose.override.yml` | Postgres on the VM's loopback only |
 | `deploy/vm/racinglines.env.example` | The VM's settings file (`/etc/racinglines.env`: the admin password, `APP_SECRET`, alerts) |
@@ -79,6 +95,47 @@ current commit tracks and the new one doesn't, so moving from the private histor
 (`racinglines-live-dh@`) gets a warning, not a pause: deploy doesn't restart it, so it keeps the code it loaded. The
 recorder's restart costs at most one order-book snapshot; prices and trades are unaffected, because they are fetched
 from the exchanges' own history. Deploy restarts only the services that are already running, so a deploy before cutover never starts a second recorder.
+
+## Code from GitHub, data on the VM
+
+Owner rule (2026-10-01): **a deploy carries code only.** It never restores, overwrites or deletes anything under
+`data/`, the pitch images or the database's rows. Data and the database change only through ssh and the scripts
+below, or through the site's admin views. (A deploy's own database writes are `alembic upgrade head` and
+`racinglines db seed`, both in `update.sh`.)
+
+**Where each kind of file lives now** (checked 2026-10-01 against the public repo, the scripts and the data bucket):
+
+| What | In the public repo? | On the VM | Off the VM (copy) | How it changes on the VM |
+|---|---|---|---|---|
+| Code, schemas (`sports/`, `exchanges/`), live specs (`live/`), sweeps, units, `pitch.html` | yes | the checkout | GitHub | a merge to `main` (CI deploy) |
+| Database (results, links, model runs, positions, the hot market rows) | no | docker Postgres | **none from the VM**: no script or timer pushes a VM dump anywhere; the newest bucket dump a cloud session can read is the Mac's from 2026-09-28 | the timers and scripts (`vm.sh record`, `demo`, `overnight.sh`, live steps), admin views |
+| Market history older than the hot window (`data/archive/markets/`, Parquet) | no | moved there from Postgres by the recorder's archive pass (`markets record`, `MS.archive(..., policy=True)`) | none from the VM; the old bucket has Polymarket only, to 2026-09-28 | the recorder, hourly. **The database dumps no longer hold these rows** (that's why they shrank from 118 MB to 56 MB), so a dump alone is not a full backup |
+| Database dumps (`data/backups/db/`) and untrack tars (`data/backups/files/`) | no | yes | **none** | `vm.sh backup`, each writing script's first step |
+| Raw inputs (`data/raw/f1` FastF1 cache, `nascar`, `motogp`, `mtb_dh`) | no | yes | old bucket: `mtb_dh` only | the live steps and ingest commands fetch them |
+| Run folders (`data/runs/live`, `replay-grid`, `search`, `logs`) | no | yes | old bucket: `live`, `runs/f1` to 2026-09-28 | the units and scripts that write them |
+| Built docs (`site/`, served at `/docs`) | no | built by every `vm.sh deploy` and by `vm.sh docs` (`deploy/vm/build_docs.sh`) | no (rebuilt from the checkout) | a code merge's deploy; a docs-only merge deploys nothing, so run `vm.sh docs` after one |
+| Pitch images (`racinglines/web/static/pitch/*.jpg`, used by `/pitch`) | no (`*.jpg` is ignored) | yes, untracked (kept by `untrack.sh`) | the owner's Mac | by hand (scp) |
+| Test fixtures (`tests/fixtures/`) | no; goldens (`tests/golden/`) yes | yes, untracked | the owner's Mac | `scripts/fetch_test_fixtures.py --refresh` (needs the exchanges and FastF1) |
+
+**What follows from it:**
+
+- **A rebuilt VM doesn't come back complete.** `vm.sh setup` + `vm.sh restore` loads whatever the bucket last
+  received, and nothing has pushed there from the VM (the VM's bucket `racinglines-data-384052502248` was loaded from
+  the Mac before cutover; the cloud can't list it to confirm). That means no Kalshi or OG.com books, no NASCAR or MotoGP data, no demo rows, no
+  `/pitch` images, no `site/`. Until the VM pushes its dumps and `data/archive/markets` to the bucket, its disk
+  is the only copy (owner decision: a nightly push, [todo](todo.md#staging-and-ci-deploys) STG-5).
+- **Cloud sessions read stale data.** Their HMAC key reaches the old bucket (`racinglines-data-650570086451`, last
+  push 2026-09-28) only, and `data/` is no longer in git, so the [cloud sweep](cloud-sweep.md) path of committing
+  data and results to git doesn't work on the public repo. Results go back through `bucket.py push`.
+- **Without `tests/fixtures/` every golden test skips** (`conftest.py` skips, not fails): on a fresh public checkout
+  `pytest -m "not live"` reports about 50 fixture skips and still looks green.
+- **Re-adding an untracked file to git can stop a deploy half-way.** If a commit starts tracking a path the VM keeps
+  as an untracked file (the pitch images, `tests/fixtures/`), `git checkout` refuses ("untracked working tree files
+  would be overwritten") after `untrack.sh`, and the timers stay paused. Before merging such a commit, move the VM's
+  copies aside over ssh; then deploy.
+- **New data a PR needs doesn't arrive with the merge.** A new sport's tape, a FastF1 backfill, a replay grid or a
+  forecast is a VM step after the deploy (a script under `scripts/vm/` run as a transient unit, backup first), named
+  in the PR and run by the owner. Schemas and seeds do arrive (`db seed` runs on every deploy).
 
 ## One-time setup (owner-only, your accounts)
 
@@ -273,7 +330,8 @@ kindest time.
 ## Later
 
 - `staging.racinglines.bet` on the Mac's tunnel, replacing the temp address.
-- A nightly `bucket.sh push` from the VM, so cloud sessions stay current without the Mac. It needs
-  `bucket.sh push` to use the docker-compose `pg_dump` on Linux.
+- A nightly push from the VM to its bucket (the latest dump and `data/archive/markets`), so the VM's disk is not
+  the only copy and cloud sessions stay current. `bucket.sh push` needs to use the docker-compose `pg_dump` on Linux
+  (its `PG_BIN` default is the Mac's conda path), and the VM's service account needs write access to the bucket.
 - `racinglines live agent --systemd`, writing the units above.
-- Deploys from GitHub Actions calling `vm.sh`.
+- ~~Deploys from GitHub Actions calling `vm.sh`.~~ Done 2026-10-01 ([The flow](#the-flow)).

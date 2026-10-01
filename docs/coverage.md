@@ -2,8 +2,8 @@
 
 Where every sport stands on every exchange: what data we hold, what prices it, what has been backtested and how far
 the result can be trusted, and what runs live or on paper. **Last reviewed 2026-09-30** against the code on `main`
-(after #112, and #95/#96 merged), the [overnight VM run](https://github.com/lalligagger/racinglines/blob/main/reports/2026-09-30-overnight-vm-run/report.md)
-and the [24-hour report](https://github.com/lalligagger/racinglines/blob/main/reports/2026-09-30-sports-exchanges-24h/report.md).
+(after #112, and #95/#96 merged), the overnight VM run (not in the public repo)
+and the 24-hour report (not in the public repo).
 Nothing here trades real money: `POLYMARKET_TRADING_ENABLED` and `KALSHI_TRADING_ENABLED` are unset, and OG.com has
 no order code at all.
 

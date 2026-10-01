@@ -371,7 +371,7 @@ Taking every recommendation would have made +$2,606.
 
 The result-only sports are included in the demo taker's portfolio by default (since 2026-09-30, commit 7ebf513: an
 unset `RACINGLINES_SPORT_PAPER` counts as on; `1`, `true`, `yes` or `on` also mean on, and any other value, such as `0`
-or an empty string, turns it off); set `RACINGLINES_SPORT_PAPER=0` to hide them again ([`pipelines/sport_paper.py`](https://github.com/lalligagger/racinglines/blob/main/racinglines/pipelines/sport_paper.py)).
+or an empty string, turns it off); set `RACINGLINES_SPORT_PAPER=0` to hide them again ([`pipelines/sport_paper.py`](https://github.com/lalligagger/racinglines-public/blob/main/racinglines/pipelines/sport_paper.py)).
 `racinglines nascar demo-history` (and `motogp demo-history`) replays every race of the seasons in the overnight settings
 grid (`data/runs/replay-grid/<sport>/`, runs `<year>-e<edge>-v<volume>`) with the taker replay (`nascar replay`), and
 stores each race's `update` trades as the account's backfilled signals and paper positions on the exchange
