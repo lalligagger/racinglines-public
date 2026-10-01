@@ -28,7 +28,13 @@
 <section data-panel="k-{{ kind }}" id="k-{{ kind }}" hidden>
 <div class="card"><h2>{{ label }}</h2>
 <div class="scroll" data-rows="12"{% if rows_|length > 12 %} data-filter="Filter by name"{% endif %}><table>
-<thead><tr><th class="l">Outcome</th><th class="l hide-sm">Our fair{% if has_pm or kalshi %}<div class="exchange-toggle"><button type="button" data-toggle="venue" data-value="polymarket" aria-pressed="true">Polymarket</button>{% if kalshi %}<button type="button" data-toggle="venue" data-value="kalshi">Kalshi</button>{% endif %}</div>{% endif %}</th><th>Fair</th>
+<thead><tr><th class="l">Outcome</th><th class="l hide-sm">
+<div>Our fair</div>
+{% if has_pm or kalshi %}<div class="exchange-toggle">
+<button type="button" data-toggle="venue" data-value="polymarket" aria-pressed="true">Polymarket</button>
+{% if kalshi %}<button type="button" data-toggle="venue" data-value="kalshi">Kalshi</button>{% endif %}
+</div>{% endif %}
+</th><th>Fair</th>
 {% for v in exchanges %}<th>{{ v.name }}{% if v.status == 'soon' %} <span class="muted">(soon)</span>{% elif completed %} <span class="muted">(as of)</span>{% endif %}</th>{% endfor %}
 <th class="hide-sm">Gap</th><th class="hide-sm">My quote YES / NO</th><th>Bets · staked</th>{% if completed %}<th>Result</th>{% endif %}</tr></thead>
 <tbody>{% for r in rows_ %}<tr>
