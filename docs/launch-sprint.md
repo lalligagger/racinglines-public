@@ -15,14 +15,15 @@ production; staging (`staging` branch, staging.racinglines.bet) may change at an
 
 **Who.** *Owner* = a step only the owner can take (merge, VM command, decision). *Copilot* = a one-message handoff the
 owner pastes into Copilot. *Cloud thread* = a Claude thread that writes code, docs or handoffs; it never runs long jobs.
-*Mac RC* = a Remote Control session on the owner's Mac, for probes the cloud network blocks (ChronoRace, exchanges).
+*Mac RC* = a Remote Control session on the owner's Mac, only for read-only checks the cloud network blocks
+(ChronoRace, exchanges); never for Copilot work.
 
 ## Priorities, in order
 
 | # | Item | Done when | Owner of the work |
 |---|---|---|---|
-| 1 | Loss cap (PR 14) | `max_loss` really in `live/f1/2026-16.toml`, merged before Thu 20:30 | Cloud thread fixes PR 14; owner merges |
-| 2 | Lake Placid live view + private-book sim | Spec with the ChronoRace event and session keys; runs on the Mac through Sunday's finals | Mac RC probe Fri; cloud thread writes the spec; owner starts it |
+| 1 | Loss cap (PR 14, `max_loss = 500` approved by the owner) | `max_loss` really in `live/f1/2026-16.toml`, merged before Thu 20:30 | Cloud thread fixes PR 14; owner merges |
+| 2 | Lake Placid live view + private-book sim | Spec with the ChronoRace event and session keys; `racinglines-live-dh@<event>` runs on the VM through Sunday's finals | Mac RC read-only probe; cloud thread writes the spec and the VM command; owner pastes it (backup first) |
 | 3 | Prices recorded for every event | `vm.sh record status` shows Kalshi + OG.com books every 5 min through the weekend | Owner checks; already running |
 | 4 | UI round 3 (PR 12, `track/app`) | On staging and checked by Sun, merged Mon | Copilot; owner merges Mon |
 | 5 | One manual sign-up | Owner signs up a throwaway user on staging (Sat) and on production (Tue), every step ticked | Owner, with the walkthrough thread |
@@ -33,33 +34,37 @@ owner pastes into Copilot. *Cloud thread* = a Claude thread that writes code, do
 
 ### Thu 1 Oct (today)
 
-- **Owner:** approve `max_loss = 500`; merge PR 14 once fixed, **before 20:30**; R16 tier call at 18:00 (existing
+- **Owner:** merge PR 14 once fixed (`max_loss = 500`, already approved), **before 20:30**; R16 tier call at 18:00 (existing
   routine). Before bed: `vm.sh record status` and `vm.sh status`, both green.
 - **Cloud thread (PR 14):** put the real `[live.quoting] max_loss = 500` in the spec, restore or disclose `h2h_from`,
   make the title match the diff.
-- **Cloud thread (Lake Placid):** draft the downhill spec from Whistler's, with the ChronoRace keys left as TODOs.
+- **Cloud thread (Lake Placid):** draft the downhill spec from Whistler's and the VM command for
+  `racinglines-live-dh@<event>` (argument confirmed in the Lake Placid thread), backup first. Lake Placid is a World
+  Cup round and timed practice may already run today: if the timing page is up, the Mac RC probe starts tonight.
 
 ### Fri 2 Oct (freeze: verify only)
 
 - R16 FP1 Thu 21:30, FP2 Fri 01:00. **Owner:** glance at the Live tab after each session; nothing else on production.
-- **Mac RC:** once `live.ucimtbworldseries.com` shows Lake Placid timing, read the ChronoRace event id and the
-  qualifying and final keys from the page's requests (read-only probe). The cloud thread fills them into the spec.
+- **Mac RC (read-only):** once `live.ucimtbworldseries.com` shows Lake Placid timing, read the ChronoRace event id
+  and the qualifying and final keys from the page's requests. The cloud thread fills them into the spec.
+- **Owner, VM:** `vm.sh backup <purpose>`, then paste the `racinglines-live-dh@<event>` command for a **dry run on
+  timed practice or qualifying, whichever comes first** (live view only, book off), to prove the feed. Nothing
+  starts on the VM until the owner pastes it.
 - **Copilot:** UI round 3 Task 1 (smoke without Events/Athletes) and Task 2 (first-run path), pushed to `track/app`
   and then to `staging`.
 
 ### Sat 3 Oct (freeze: verify only)
 
 - R16 qualifying 01:00. Lake Placid downhill qualifying (Eastern time, check the timing page).
-- **Owner, on the Mac:** start the Lake Placid spec for qualifying as a dry run (live view only, book off) to prove the
-  feed.
+- **Owner, VM:** if Friday's dry run was missed, run it on qualifying now (live view only, book off).
 - **Owner:** sign-up test 1 on **staging**, following the walkthrough; send failures to the walkthrough thread.
 - **Copilot:** round 3 Task 3 (Markets on a phone) to staging.
 
 ### Sun 4 Oct (freeze ends 00:00)
 
 - R16 race 00:00; results about 03:00.
-- **Owner, on the Mac:** Lake Placid finals with the private book on, the same setup as Whistler, cap on.
-  Afterwards `racinglines live report <spec> --pdf` on the Mac.
+- **Owner, VM:** Lake Placid finals on `racinglines-live-dh@<event>` with the private book on, the same setup as
+  Whistler, cap on. Afterwards stop the unit and run `racinglines live report <spec> --pdf` on the VM.
 - No production merge today: the downhill book is live.
 
 ### Mon 5 Oct (merge day)
@@ -95,8 +100,7 @@ owner pastes into Copilot. *Cloud thread* = a Claude thread that writes code, do
 
 | Decision | When | Recommendation |
 |---|---|---|
-| `max_loss = 500` on the R16 book | Thu before 20:30 | Yes (Baku rehearsal: +$5,337, worst race -$559, against +$6,935 and -$2,400 uncapped) |
-| Lake Placid runs on the Mac, not the VM | Fri | Mac: `vm.sh live` is F1-only and Whistler ran from the Mac |
+| Paste the Lake Placid VM command (backup, then `racinglines-live-dh@<event>`) | Fri, when timing is up | Yes, dry run first with the book off |
 | Downhill book loss cap | Sat | Use the same 500 if the downhill spec takes `max_loss`; if it doesn't, run it as a sim with no exchange link (it has none) |
 | Launch scope | Mon | The MVP demo above; the full fantasy trading build (book, exchange, settlement) moves to the 22 Oct fallback date |
 | STG-5 off-VM copy before inviting users | Tue | Yes: the VM disk is the only copy of the newest data |
