@@ -16,5 +16,8 @@ out=$("$PY" -m mkdocs build --strict -d site 2>&1) || {       # not -q: it hides
     echo "$out" | grep -v "^INFO"
     echo "pre-push: docs build failed (see above). Needs requirements-docs.txt installed."; exit 1; }
 
+echo "pre-push: template syntax check"
+"$PY" scripts/check_templates.py || exit 1
+
 echo "pre-push: no data in git"
 "$PY" -m pytest -q tests/test_no_data_in_git.py || exit 1

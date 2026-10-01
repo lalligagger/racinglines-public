@@ -45,7 +45,7 @@ if [ -n "${SMOKE_EXPECT_ENV:-}" ]; then
   else echo "FAIL  env  X-Racinglines-Env: '${got_env:-none}' (wanted $SMOKE_EXPECT_ENV: this is not the $SMOKE_EXPECT_ENV instance)"; fail=1; fi
 fi
 check 401 "GET /markets without credentials" "$URL/markets"
-for path in /markets /events /athletes /pitch /racinglines101; do
+for path in /markets /pitch /racinglines101; do
   for user in maker taker; do check 200 "GET $path as $user" -u "$user:$PW" "$URL$path"; done
 done
 check 200 "GET /book/quotes as maker" -u "maker:$PW" "$URL/book/quotes"

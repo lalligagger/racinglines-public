@@ -773,6 +773,8 @@ def live_page(request: Request, partial: int = 0, t: str = "", event: str = ""):
     return render(request, "live_partial.html" if partial else "live.html", **ctx)
 
 
+
+
 def live_context(event="", t="", maker=True, partial=0):
     """The Live tab's template context: the registry's event, live or as of a replay snapshot, with the
     sport's body from its adapter (no database: the run folder only)."""
