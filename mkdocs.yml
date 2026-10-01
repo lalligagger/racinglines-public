@@ -15,7 +15,6 @@ markdown_extensions:
   - fenced_code
 nav:
   - Overview: index.md
-  - Contributing: contributing.md
   - Sports and exchanges (status): coverage.md
   - Adding a sport: add-a-sport.md
   - Data:
@@ -56,7 +55,6 @@ nav:
       - VM reliability: vm-reliability.md
       - Email setup: email-setup.md
   - Roadmap:
-      - Launch sprint (1-8 Oct): launch-sprint.md
       - Priorities and open items: todo.md
       - Strategy 2026 (demo plan): strategy-2026.md
       - Championship markets: championship-markets.md
