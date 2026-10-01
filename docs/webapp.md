@@ -37,9 +37,18 @@ cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8000        # prints h
 
 - **The app stays on localhost.** `cloudflared` forwards HTTPS traffic to it, so
   there are no open ports and no router changes.
-- **Quick-tunnel addresses are random** and last only while the command runs. For
-  a stable address on your own domain, create a named tunnel
-  (`cloudflared tunnel login`, then `cloudflared tunnel create`).
+- **Use a temporary tunnel for local staging checks.** Do not leave a Cloudflare tunnel
+  running from the owner Mac. The staging-flow is short-lived and is owned by the deploy
+  script, not by a LaunchAgent or a persistent `~/.cloudflared/config.yml`.
+
+  ```sh
+  # local staging smoke check: starts a temp tunnel, runs the smoke script, then shuts it down
+  bash scripts/deploy/staging.sh smoke 8010
+  ```
+
+  The helper script uses `cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8010`, captures the
+  temporary trycloudflare URL, runs `scripts/deploy/smoke.sh`, and exits cleanly. For a stable public
+  route, use the VM tunnel and Cloudflare DNS (`staging.racinglines.bet`), not a long-running tunnel on the Mac.
 - **The address is public: anyone with it reaches the sign-in page.** Protections:
   - a strong `ADMIN_PASSWORD`;
   - failed logins limited to 8 per client IP per 15 minutes (using Cloudflare's
