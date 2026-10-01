@@ -1,7 +1,9 @@
-{% extends "base.html" %}{% from "_macros.html" import pnl_cls, csrf, table, flash %}
+{% extends "base.html" %}{% from "_macros.html" import pnl_cls, csrf, table, flash, page_head %}
 {% block title %}Diagnostic · {{ d.event.venue }}{% endblock %}
 {% block content %}
-<h1>{{ d.event.venue }} · as of {{ d.params.cutoff }} UTC</h1>
+<p class="crumbs"><a href="/lab">Lab</a> › Diagnostics</p>
+{% set head_title %}{{ d.event.venue }} · as of {{ d.params.cutoff }} UTC{% endset %}
+{{ page_head(head_title) }}
 {{ flash(msg) }}
 <p class="muted">Diagnostic run <a href="/lab/runs/{{ d.run.id }}">#{{ d.run.id }}</a> · {{ d.event.name }} · event {{ d.event.source_key }}</p>
 

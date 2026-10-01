@@ -1,8 +1,7 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Racinglines 101</title><link rel="stylesheet" href="/static/style.css?v={{ css_v() }}">
-</head>
-<body><main class="r101">
+{% extends "base_public.html" %}
+{% block title %}Racinglines 101{% endblock %}
+{% block main_class %}r101{% endblock %}
+{% block content %}
 <p class="crumbs"><a href="/login">racinglines</a> › 101</p>
 <h1>Racinglines 101</h1>
 <p class="sub">The short version of what this demo does, for anyone who just clicked "I'm already confused."</p>
@@ -75,4 +74,4 @@ by race weekend, and record the trades they <i>would</i> make at the real prices
 </ul>
 
 <a class="back" href="/login">← Back to sign in and try the demo</a>
-</main></body></html>
+{% endblock %}

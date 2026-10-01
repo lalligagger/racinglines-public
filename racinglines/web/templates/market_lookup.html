@@ -1,7 +1,8 @@
-{% extends "base.html" %}{% from "_macros.html" import csrf %}
+{% extends "base.html" %}{% from "_macros.html" import csrf, page_head %}
 {% block title %}Link a market{% endblock %}
 {% block content %}
-<h1>Link a Polymarket market</h1>
+<p class="crumbs"><a href="/admin">Admin</a> › <a href="/markets/linked">Linked markets</a> › Link a market</p>
+{{ page_head("Link a Polymarket market") }}
 <div class="card">
 <form method="get"><label><span>Market or event URL / slug</span><input name="slug" value="{{ slug }}" size="60"></label><button class="primary">Look up</button></form>
 <form method="get"><label><span>…or search active events</span><input name="query" value="{{ query }}" size="40"></label><button>Search</button></form>

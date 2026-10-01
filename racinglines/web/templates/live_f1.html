@@ -1,8 +1,5 @@
-{% from "_macros.html" import empty, chart, demo_context, kpi, pnl, pnl_cls %}
-{% macro pc(x) %}{% if x is not none and x >= 0.0005 %}{{ "%.1f"|format(x * 100) }}%{% elif x is not none %}<span class="muted">–</span>{% endif %}{% endmacro %}
-{% macro px(x) %}{{ "%.2f"|format(x) if x is not none else "–" }}{% endmacro %}
+{% from "_macros.html" import empty, chart, demo_context, kpi, pnl, pnl_cls, pc, px %}
 {% macro mv(x) %}{% if x is not none and x|abs >= 0.0005 %}<span class="{{ 'good' if x > 0 else 'bad' }}">{{ "▲" if x > 0 else "▼" }} {{ "%.1f"|format(x|abs * 100) }}</span>{% endif %}{% endmacro %}
-{% set kind_word = {"race_win": "wins", "race_podium": "on the podium", "race_pole": "on pole", "race_h2h": "(first ahead)", "race_constructor_top": "top constructor", "race_safety_car": "in the race", "race_red_flag": "in the race", "race_rain": "in the race", "race_fastest_lap": "fastest lap"} %}
 
 {# --- status strip --- #}
 <div class="live-head"><h1>{{ snap.title }}</h1>

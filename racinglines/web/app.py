@@ -7,6 +7,7 @@ for the maker tools and the Lab); every form POST carries a CSRF token; every me
 written to activity_log. Run with `racinglines web`.
 """
 
+from types import SimpleNamespace
 import contextvars
 import hashlib
 import hmac
@@ -1197,16 +1198,15 @@ def _exchange_board(request, c, user, exchange, event, show, closed, spread_pct,
     synced = data.q(c, "SELECT max(synced_at) AS t FROM market_links WHERE exchange = :x", x=exchange)["t"].iloc[0]
     from racinglines.web import board as B
     recorders = B.recorder_status(c, [exchange]) if exchange != "polymarket" else None    # the Kalshi / schema recorders
+    ctx = dict(events=events, show=show, closed=closed, spread_pct=spread_pct, msg=msg, synced=synced, event=event,
+               recorders=recorders)
     if schema:
         venue = next(v for v in V.SCHEMA_EXCHANGES if v.code == exchange)
-        return render(request, "exchange.html", events=events, show=show, closed=closed, spread_pct=spread_pct, msg=msg,
-                      synced=synced, event=event, venue=venue, fee=fee, recorders=recorders,
+        return render(request, "exchange.html", mode="schema", venue=venue, fee=fee, **ctx,
                       sports=[V.SPORT_NAME.get(sports.load(x)["competition"]["code"], x) for x in exchanges.sports(exchange)])
     if exchange == "kalshi":
-        return render(request, "kalshi.html", events=events, show=show, closed=closed, spread_pct=spread_pct, msg=msg,
-                      synced=synced, event=event, url=next(v.url for v in V.EXCHANGES if v.code == "kalshi"), recorders=recorders)
-    return render(request, "pm.html", events=events, show=show, closed=closed, spread_pct=spread_pct, msg=msg,
-                  synced=synced, event=event)
+        return render(request, "exchange.html", mode="kalshi", venue=next(v for v in V.EXCHANGES if v.code == "kalshi"), **ctx)
+    return render(request, "exchange.html", mode="pm", venue=SimpleNamespace(name="Polymarket", code="polymarket", url=""), **ctx)
 
 
 @app.post("/markets/polymarket/mirror", dependencies=[Depends(check_csrf)])
