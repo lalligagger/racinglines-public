@@ -35,11 +35,11 @@ def jinja_env():
             return f"{value:.3f}" if abs(value) < 10 else f"{value:.1f}"
         return str(value)
     
-    def money(v, sign=False):
+    def money(v, sign=False, cents=True):
         if v is None or (isinstance(v, float) and math.isnan(v)):
             return ""
         s = "-" if v < 0 else ("+" if sign and v > 0 else "")
-        return f"{s}${abs(v):,.2f}"
+        return f"{s}${abs(v):,.{2 if cents else 0}f}"
     
     env.filters["fmt"] = fmt
     env.filters["money"] = money
@@ -160,6 +160,7 @@ def test_board_html_renders(jinja_env):
         "h": headline,
         "sports": sports,
         "calendar": [],
+        "cal_events": [],
         "cal_sports": [("f1", "Formula 1"), ("mtb_dh", "MTB Downhill")],
         "cal_exchanges": ["polymarket"],
         "kalshi": False,
@@ -243,6 +244,7 @@ def test_board_html_with_sport_status(jinja_env):
         "h": headline,
         "sports": sports,
         "calendar": [],
+        "cal_events": [],
         "cal_sports": [("f1", "Formula 1")],
         "cal_exchanges": ["polymarket"],
         "kalshi": False,
