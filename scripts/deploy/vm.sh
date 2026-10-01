@@ -100,7 +100,8 @@ case "${1:-}" in
   deploy)
     ref="${2:-main}"
     [ "$ref" = "--force" ] && { log "--force is no longer needed: deploy pauses and resumes live events"; ref="${3:-main}"; }
-    origin=$(as_app "git remote get-url origin") || { echo "couldn't reach the VM: nothing paused, nothing deployed"; exit 1; }
+    # tail: a fresh CI runner's first ssh prints its key generation on stdout ahead of the command's own output
+    origin=$(as_app "git remote get-url origin" | tail -n 1) || { echo "couldn't reach the VM: nothing paused, nothing deployed"; exit 1; }
     [ "$origin" = "$REPO_URL" ] || { echo "the VM checkout fetches from $origin, not $REPO_URL: run bash scripts/deploy/vm.sh repoint first. Nothing paused, nothing deployed."; exit 1; }
     # Pause, don't refuse. The timers (racinglines-live-f1@<event>.timer, racinglines-signals.timer) start oneshot
     # steps every 5 minutes; stop them and wait for a step already running ("activating"), so no step runs while
@@ -125,7 +126,7 @@ case "${1:-}" in
       # a failure before the checkout moved (fetch, unknown ref) changed nothing, so the timers resume; after it moved,
       # they stay paused so no step runs on a half-updated checkout
       stopped_early() {
-        if [ -n "$before" ] && [ "$(as_app "git rev-parse HEAD" 2>/dev/null)" = "$before" ] &&
+        if [ -n "$before" ] && [ "$(as_app "git rev-parse HEAD" 2>/dev/null | tail -n 1)" = "$before" ] &&
            remote "sudo systemctl start$timers && sudo rm -f $PAUSED"; then
           echo "deploy failed before the checkout changed: nothing deployed, timers resumed:$timers"; return
         fi
@@ -149,7 +150,7 @@ case "${1:-}" in
       fi
     fi
     log "deploy $ref"
-    before=$(as_app "git rev-parse HEAD")
+    before=$(as_app "git rev-parse HEAD" | tail -n 1)
     # files the current commit tracks and $ref doesn't: backed up, then untracked, so the checkout keeps them on disk
     gcloud compute scp deploy/vm/untrack.sh "$VM:/tmp/racinglines-untrack.sh" --project "$PROJECT" --zone "$ZONE" --tunnel-through-iap
     as_app "bash /tmp/racinglines-untrack.sh $ref"
@@ -176,7 +177,8 @@ case "${1:-}" in
     ;;
   repoint)
     # set-url and fetch only: the checkout, its files and the running services are untouched until the next deploy
-    as_app "git remote set-url origin $REPO_URL && git fetch --quiet --prune origin && git remote get-url origin && git log -1 --format='checkout still at %h %s'"
+    # one bash -c so every step runs as the app user (a bare && chain only sudoes the first command)
+    as_app "bash -c \"git remote set-url origin $REPO_URL && git fetch --quiet --prune origin && git remote get-url origin && git log -1 --format='checkout still at %h %s'\""
     ;;
   public)
     # Plain HTTP on a public port, for testing until racinglines.bet moves over; off at handover.
