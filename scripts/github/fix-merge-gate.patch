@@ -1,0 +1,61 @@
+From 0a24aa8b32e6a146ae99c5b322cd860800b6b6f1 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 1 Oct 2026 06:29:12 +0000
+Subject: [PATCH] [ops] main-merge-gate: test secret presence through job env
+ so the workflow loads
+
+A step's if: cannot read the secrets context; GitHub rejected the whole file, so pushes to main
+ran no jobs at all (run 5 on 4b2cbdb). Same skip-when-unset behaviour, checked with actionlint.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BAHsAtMS57VSusVBu3wp1k
+---
+ .github/workflows/predeploy.yml | 12 ++++++++----
+ 1 file changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/.github/workflows/predeploy.yml b/.github/workflows/predeploy.yml
+index 4c73f9b..19a6b46 100644
+--- a/.github/workflows/predeploy.yml
++++ b/.github/workflows/predeploy.yml
+@@ -112,6 +112,10 @@ jobs:
+     environment: production
+     permissions:
+       contents: read
++    # `secrets` is not allowed in a step's `if:` (the whole workflow fails to load); test these env copies instead
++    env:
++      HAS_GCP_KEY: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY != '' }}
++      HAS_VM_TARGET: ${{ secrets.GCP_PROJECT_ID != '' && secrets.VM_NAME != '' && secrets.VM_ZONE != '' }}
+     steps:
+       - name: Checkout
+         uses: actions/checkout@v4
+@@ -119,23 +123,23 @@ jobs:
+           fetch-depth: 0
+ 
+       - name: Skip deploy when GCP secrets are not configured
+-        if: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY == '' || secrets.GCP_PROJECT_ID == '' || secrets.VM_NAME == '' || secrets.VM_ZONE == '' }}
++        if: ${{ env.HAS_GCP_KEY != 'true' || env.HAS_VM_TARGET != 'true' }}
+         run: |
+           echo "Skipping production deploy because required GCP deployment secrets are not configured for this repo."
+           echo "Safe path: store the JSON in a repo or environment secret (for example GCP_SERVICE_ACCOUNT_KEY), or use an SSH deploy key for VM access. Never commit the key to the repo."
+ 
+       - name: Authenticate to Google Cloud
+-        if: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY != '' }}
++        if: ${{ env.HAS_GCP_KEY == 'true' }}
+         uses: google-github-actions/auth@v2
+         with:
+           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+ 
+       - name: Set up gcloud
+-        if: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY != '' }}
++        if: ${{ env.HAS_GCP_KEY == 'true' }}
+         uses: google-github-actions/setup-gcloud@v2
+ 
+       - name: Deploy to VM
+-        if: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY != '' && secrets.GCP_PROJECT_ID != '' && secrets.VM_NAME != '' && secrets.VM_ZONE != '' }}
++        if: ${{ env.HAS_GCP_KEY == 'true' && env.HAS_VM_TARGET == 'true' }}
+         env:
+           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+           VM_NAME: ${{ secrets.VM_NAME }}
+-- 
+2.43.0
+
