@@ -22,7 +22,7 @@
   {% if s.run %}
   {% for u in s.upcoming %}
   <div class="ecard">
-    <div><h3><a href="/races/{{ u.info.race_id }}">{{ u.info.title }}</a>{% if u.new %} <a href="/markets/polymarket?show=all">{{ new_badge(u.new) }}</a>{% endif %}</h3>
+    <div><h3><a href="/races/{{ u.info.race_id }}">{{ u.info.title }}</a>{% if u.new %} <a href="/markets/polymarket?show=all&sport={{ s.code }}">{{ new_badge(u.new) }}</a>{% endif %}</h3>
       <div class="when">{{ u.info.start_date|fmt }} · {% if u.info.status == 'in_progress' %}<span class="warn">in progress</span>{% else %}{{ u.countdown }}{% endif %}{% if loop.first and u.info.status != 'in_progress' %} · <b>next</b>{% endif %}</div></div>
     {{ venue_chips(u.venues, u.mine) }}
     <div>{% for o in u.top %}<div class="pr"><span>{{ o.subject }}</span>{{ bar(o.fair, o.pm_mid) }}<span class="num">{{ pct(o.fair) }}</span></div>{% endfor %}
@@ -31,7 +31,7 @@
   </div>
   {% endfor %}
   <div class="ecard">
-    <div><h3><a href="/seasons/{{ s.code }}">{{ s.run.season }} championship</a>{% if s.season.new %} <a href="/markets/polymarket?show=all">{{ new_badge(s.season.new) }}</a>{% endif %}</h3><div class="when">season-long markets</div></div>
+    <div><h3><a href="/seasons/{{ s.code }}">{{ s.run.season }} championship</a>{% if s.season.new %} <a href="/markets/polymarket?show=all&sport={{ s.code }}">{{ new_badge(s.season.new) }}</a>{% endif %}</h3><div class="when">season-long markets</div></div>
     {{ venue_chips(s.season.venues, s.season.mine) }}
     <div>{% for o in s.season.top %}<div class="pr"><span>{{ o.subject }}</span>{{ bar(o.fair, o.pm_mid) }}<span class="num">{{ pct(o.fair) }}</span></div>{% endfor %}
       <div class="legend">champion probability{% if s.season.top and s.season.top[0].pm_mid is not none %} · <i class="sw-warn"></i>Polymarket{% endif %}</div></div>
@@ -63,8 +63,8 @@
   {% endfor %}
   {% endif %}
 </div>
-{% if (s.run or s.asof) and s.later %}<p class="legend">Later: {% for l in s.later %}<a href="/races/{{ l.race_id }}">{{ l.title }}</a>{% if l.new %} {{ new_badge(l.new) }}{% endif %} {{ l.date|fmt }}{{ " · " if not loop.last }}{% endfor %} · <a href="/events">full calendar</a></p>{% endif %}
-{% if s.tape and s.later %}<p class="legend">Later: {% for l in s.later %}{% if l.url %}<a href="{{ l.url }}">{{ l.title }}</a>{% else %}{{ l.title }}{% endif %}{% if l.date %} {{ l.date|fmt }}{% endif %}{{ " · " if not loop.last }}{% endfor %}</p>{% endif %}
+{% if (s.run or s.asof) and s.later %}<p class="legend">Later: {% for l in s.later[:6] %}<a href="/races/{{ l.race_id }}">{{ l.title }}</a>{% if l.new %} {{ new_badge(l.new) }}{% endif %} {{ l.date|fmt }}{{ " · " if not loop.last %}{% endfor %}{% if s.later|length > 6 %} · +{{ s.later|length - 6 }} more{% endif %}</p>{% endif %}
+{% if s.tape and s.later %}<p class="legend">Later: {% for l in s.later[:6] %}{% if l.url %}<a href="{{ l.url }}">{{ l.title }}</a>{% else %}{{ l.title }}{% endif %}{% if l.date %} {{ l.date|fmt }}{% endif %}{{ " · " if not loop.last %}{% endfor %}{% if s.later|length > 6 %} · <a href="/markets/tapes">+{{ s.later|length - 6 }} more on Recorded tapes →</a>{% endif %}</p>{% endif %}
 {% if (s.run or s.asof) and s.recent %}<details class="card quiet" data-remember="markets:{{ s.code }}:recent"><summary><h3>Recent results</h3><span class="sum">{{ s.recent|length }} · last: {{ s.recent[0].info.title }}, winner {{ s.recent[0].winner }}{% if s.recent[0].our is not none %}, we had {{ pct(s.recent[0].our) }}{% endif %}</span></summary>
 <div class="recent">{% for r in s.recent %}<div>
   <a href="/races/{{ r.info.race_id }}"><b>{{ r.info.title }}</b></a> <span class="muted">{{ r.info.start_date|fmt }}</span><br>
@@ -122,6 +122,6 @@
 <div class="cal-grid" data-cal-grid></div>
 </div>
 </details>
-<p class="legend mt">Browse <a href="/markets/polymarket">all Polymarket markets</a> ·{% if kalshi %} <a href="/markets/kalshi">all Kalshi markets</a> ·{% endif %}{% for v in schema_exchanges %} <a href="/markets/{{ v.code }}">all {{ v.name }} markets</a> ·{% endfor %}{% if tapes %} <a href="/markets/tapes">recorded tapes</a> ·{% endif %} <a href="/events">all events</a> · <a href="/athletes">all athletes</a>. Bars: our fair probability; the orange tick is the exchange price.</p>
+<p class="legend mt">Browse <a href="/markets/polymarket">all Polymarket markets</a> ·{% if kalshi %} <a href="/markets/kalshi">all Kalshi markets</a> ·{% endif %}{% for v in schema_exchanges %} <a href="/markets/{{ v.code }}">all {{ v.name }} markets</a> ·{% endfor %}{% if tapes %} <a href="/markets/tapes">recorded tapes</a>{% endif %}. Bars: our fair probability; the orange tick is the exchange price.</p>
 {% if sport_status %}{% include "_sport_status.html" %}{% endif %}
 {% endblock %}

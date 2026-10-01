@@ -91,7 +91,12 @@ def board(conn, maker_id):
     from racinglines import exchanges as EX
     from racinglines import sports as SP
     from racinglines.markets import alerts
-    fresh = list(alerts.new_links(conn).values()) if conn is not None else []  # race_id (or None) per new token
+    fresh = list(alerts.new_links(conn).values()) if conn is not None else []  # (race_id, competition_id) per new token
+
+    def _new_for(race_id=None, comp_id=None):
+        """How many new tokens are for this exact race, or (race_id=None) this exact sport's season markets.
+        Both race_id and competition_id are market_links columns (no fuzzy text matching)."""
+        return sum(1 for rid, cid in fresh if rid == race_id and (race_id is not None or cid == comp_id))
     forecasts = {}
     if conn is not None:
         forecasts = {r["competition"]: r for r in data.latest_forecasts(conn).to_dict("records")}
@@ -125,12 +130,12 @@ def board(conn, maker_id):
             comp_id = int(data.q(conn, "SELECT id FROM competitions WHERE code = :c", c=code)["id"].iloc[0])
             targets = data.run_race_targets(conn, run["id"])
             targets = targets[targets["race_id"].notna() & ~targets["target"].astype(str).str.startswith("backtest:")]
-            upcoming = [dict(_card(conn, int(r), maker_id), new=fresh.count(int(r))) for r in targets["race_id"].head(3)]
+            upcoming = [dict(_card(conn, int(r), maker_id), new=_new_for(int(r))) for r in targets["race_id"].head(3)]
             later = [dict(title=f"{t['venue']} GP" if code == "f1_wdc" else (t["event_name"] or t["venue"]), event_id=t["event_id"],
-                          race_id=int(t["race_id"]), date=t["start_date"], new=fresh.count(int(t["race_id"]))) for t in targets.iloc[3:].to_dict("records")]
+                          race_id=int(t["race_id"]), date=t["start_date"], new=_new_for(int(t["race_id"]))) for t in targets.iloc[3:].to_dict("records")]
             s_info, s_pricing, s_df = season_matrix(conn, code, maker_id)
             from racinglines.web.views import latest_season_strategy
-            season = dict(new=fresh.count(None), info=s_info, top=_top(s_df, "champion"), venues=venue_summary(s_df), mine=_mine(s_df),
+            season = dict(new=_new_for(None, comp_id), info=s_info, top=_top(s_df, "champion"), venues=venue_summary(s_df), mine=_mine(s_df),
                           outcomes=len(s_df), constructors=_top(s_df, "constructors_champion", 2),
                           strategy=latest_season_strategy(conn, code))
             recent = recent_results(conn, comp_id)
@@ -140,9 +145,9 @@ def board(conn, maker_id):
             # (`<sport> replay --save`: made before each race) against the winner
             comp_id = int(data.q(conn, "SELECT id FROM competitions WHERE code = :c", c=code)["id"].iloc[0])
             nxt = next_races(conn, comp_id)
-            upcoming = [dict(_card(conn, int(r), maker_id), new=fresh.count(int(r))) for r in nxt["race_id"].head(3)]
+            upcoming = [dict(_card(conn, int(r), maker_id), new=_new_for(int(r))) for r in nxt["race_id"].head(3)]
             later = [dict(title=t["name"], event_id=t["event_id"], race_id=int(t["race_id"]), date=t["start_date"],
-                          new=fresh.count(int(t["race_id"]))) for t in nxt.iloc[3:].to_dict("records")]
+                          new=_new_for(int(t["race_id"]))) for t in nxt.iloc[3:].to_dict("records")]
             recent = recent_results(conn, comp_id)
         elif exch:
             tape_events = []

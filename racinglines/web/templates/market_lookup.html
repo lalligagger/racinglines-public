@@ -22,7 +22,7 @@
   <input type="hidden" name="outcome" value="{{ o.outcome }}"><input type="hidden" name="neg_risk" value="{{ mk.neg_risk }}">
   <input type="hidden" name="tick_size" value="{{ mk.tick_size }}"><input type="hidden" name="min_size" value="{{ mk.min_size }}">
   <b>{{ o.outcome }}</b> <span class="muted">last {{ o.price }} · token {{ o.token_id[:12] }}…</span><br>
-  <label><span>Athlete id (find on <a href="/athletes" target="_blank">Athletes</a>)</span><input name="athlete_id" size="7" required></label>
+  <label><span>Athlete id</span><input name="athlete_id" size="7" required></label>
   <label><span>Prediction</span><select name="prediction">{% for p in predictions %}<option>{{ p }}</option>{% endfor %}</select></label>
   <label><span>Race (race_* predictions; blank = next unknown round)</span><select name="race_id"><option value="">–</option>{% for r in races %}<option value="{{ r.race_id }}">{{ r.venue }} {{ r.start_date|fmt }} {{ r.category }}</option>{% endfor %}</select></label>
   <label><span>Competition</span><select name="competition_id">{% for c in comps %}<option value="{{ c.id }}">{{ c.code }}</option>{% endfor %}</select></label>
