@@ -22,7 +22,11 @@
 # progress, deploys, then resumes them with one catch-up step each (every step is idempotent and catches up).
 # Needs the gcloud CLI signed in to the project. SSH goes through IAP: the VM opens no ports (but see public).
 set -euo pipefail
-cd "$(dirname "$0")/../.."
+export PATH="/usr/local/bin:/usr/bin:/bin:${PATH:-}"
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+SCRIPT_DIR="${SCRIPT_PATH%/*}"
+if [ "$SCRIPT_DIR" = "$SCRIPT_PATH" ]; then SCRIPT_DIR="."; fi
+cd "$SCRIPT_DIR/../.."
 PROJECT="${RL_GCP_PROJECT:-racinglines}"
 VM="${RL_VM:-racinglines-vm}"
 ZONE="${RL_ZONE:-us-west1-b}"

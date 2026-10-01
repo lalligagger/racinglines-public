@@ -9,16 +9,16 @@ cloudflared in place of the Mac's tunnel. No code changes. Written 2026-09-28.
 
 | Where | What it serves | Runs |
 |---|---|---|
-| **Your Mac** (staging) | the temp trycloudflare address, while that `cloudflared` process runs | any branch: `racinglines web` relaunched by hand, as today |
+| **Your Mac** (branch checks) | localhost, plus the Cloudflare staging hostname once it is configured | any branch: `racinglines web` relaunched by hand, as today |
 | **The VM** (production) | `racinglines.bet` | `main` only, deployed with `scripts/deploy/vm.sh deploy` |
 
 For every change:
 
 1. **On a branch, on the Mac:** `python -m pytest -m "not live"`, `python -m pytest`, then relaunch
-   `racinglines web` and run the smoke check locally and through the temp address:
+   `racinglines web` and run the smoke check locally and against `https://staging.racinglines.bet`:
    ```sh
    bash scripts/deploy/smoke.sh http://127.0.0.1:8000
-   bash scripts/deploy/smoke.sh https://<temp>.trycloudflare.com
+   bash scripts/deploy/smoke.sh https://staging.racinglines.bet
    ```
 2. **Merge** the PR into `live-event`, then `live-event` into `main`.
 3. **Deploy** `main` to the VM. `vm.sh` pulls, installs, migrates, restarts, and runs the same smoke check on the VM:
@@ -31,10 +31,9 @@ The smoke check signs in as the demo accounts (`SMOKE_PASSWORD`, default the pub
 checks `/login`, that a request without credentials or with a wrong password gets 401, the main pages
 for maker and taker, and that `/book/quotes` is maker-only. It makes GET requests only.
 
-The temp address stays on the Mac: a trycloudflare address belongs to the `cloudflared` process that
-made it and forwards only to that machine. It can't be moved to the VM or pointed at another host, and it
-changes if that process restarts. A stable `staging.racinglines.bet` on the Mac's existing tunnel is the
-cleaner later version.
+`staging.racinglines.bet` is the required public staging route. If the hostname is absent or misconfigured,
+fix the tunnel / Cloudflare public hostname before a prod deploy. The temp trycloudflare URL is for
+local ad hoc testing only, not the release path.
 
 ## What is Google, what is Cloudflare, what is neither
 
@@ -163,15 +162,30 @@ sudo systemctl status cloudflared --no-pager      # active; the dashboard shows 
 If it says a service already exists, `sudo cloudflared service uninstall` first. Don't give it
 `racinglines.bet` yet: that hostname moves at the cutover below.
 
-**Temporary local tunnel for staging checks.** The Mac should not keep a long-lived Cloudflare tunnel
-running. For branch validation we instead use a short-lived tunnel that starts just for the smoke check and
-then shuts down:
+**Branch pre-deploy: staging first, then final production deploy.** The normal flow is a single gate:
+```sh
+bash scripts/deploy/predeploy.sh --staging main
+bash scripts/deploy/predeploy.sh --prod main
+```
+The staging mode checks `https://staging.racinglines.bet` only. If the route is down or misconfigured, fix the
+Cloudflare tunnel hostname before the prod deploy. The prod mode runs the VM deploy and then
+`bash scripts/deploy/smoke.sh https://racinglines.bet`.
+
+If you want the whole path in one command:
+```sh
+bash scripts/deploy/predeploy.sh --all main
+```
+This keeps the release path explicit: branch checks on staging, then the same final deploy + smoke flow on
+`racinglines.bet`.
+
+**Temporary local tunnel: ad hoc only.** The Mac should not keep a long-lived tunnel running. A short-lived
+local check remains acceptable for debugging a branch locally:
 ```sh
 bash scripts/deploy/staging.sh smoke 8010
 ```
 This starts `cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8010`, waits for the temporary
-trycloudflare URL, runs `scripts/deploy/smoke.sh`, and exits cleanly. A stable public hostname like
-`staging.racinglines.bet` belongs on the VM or the Cloudflare dashboard, not on the owner's personal Mac.
+trycloudflare URL, runs `scripts/deploy/smoke.sh`, and exits cleanly. It is not the shipping path; the
+shipping path is `staging.racinglines.bet` behind the tunnel.
 
 **8. The MCP server's hostname** (Cloudflare + the VM; done 2026-09-28). [MCP server](mcp.md#giving-access-as-an-admin) has the admin and user guides and the troubleshooting table; this is the short form.
 Issue the admin token and start the unit, on the VM:

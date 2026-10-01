@@ -77,6 +77,41 @@ def test_hype_picks_are_bought_at_the_ask():
 
 
 @pytest.mark.quick
+def test_live_market_prices_include_exchange_links():
+    mkts = [
+        dict(key="race_win:100", kind="race_win", athlete_id=100, params=None, subject="Driver A", fair=0.33),
+        dict(key="race_h2h:100:101", kind="race_h2h", athlete_id=100, params={"opponent_id": 101},
+             subject="Driver A vs Driver B", fair=0.58),
+    ]
+    links = pd.DataFrame([
+        dict(exchange="polymarket", prediction="race_win", athlete_id=100, params=None, last_price=0.45,
+             last_bid=0.42, last_ask=0.48),
+        dict(exchange="kalshi", prediction="race_win", athlete_id=100, params=None, last_price=0.41,
+             last_bid=0.39, last_ask=0.43),
+        dict(exchange="coinbase", prediction="race_h2h", athlete_id=100, params={"opponent_id": 101},
+             last_price=0.60, last_bid=0.58, last_ask=0.62),
+    ])
+    out = F.attach_exchange_prices(mkts, links)
+    assert {v["code"] for v in out[0]["exchange_prices"]} == {"polymarket", "kalshi"}
+    assert out[1]["exchange_prices"][0]["code"] == "coinbase"
+    assert out[0]["exchange_prices"][0]["mid"] == pytest.approx(0.45)
+
+
+@pytest.mark.quick
+def test_coinbase_kalshi_market_diffs_are_logged():
+    links = pd.DataFrame([
+        dict(exchange="coinbase", prediction="race_win", athlete_id=100, params=None, last_price=0.44),
+        dict(exchange="kalshi", prediction="race_win", athlete_id=100, params=None, last_price=0.53),
+        dict(exchange="coinbase", prediction="race_win", athlete_id=101, params=None, last_price=0.22),
+        dict(exchange="kalshi", prediction="race_win", athlete_id=101, params=None, last_price=0.20),
+    ])
+    diffs = F.compare_exchange_prices(links, threshold=0.05)
+    assert len(diffs) == 1
+    assert diffs[0]["diff"] == pytest.approx(0.09)
+    assert diffs[0]["coinbase"] == pytest.approx(0.44) and diffs[0]["kalshi"] == pytest.approx(0.53)
+
+
+@pytest.mark.quick
 def test_update_plan_due_and_late():
     t = pd.Timestamp("2026-10-02 03:30")
     ups = [dict(label="pre-weekend", kind="open", at=t, freeze=False),

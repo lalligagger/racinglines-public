@@ -9,6 +9,7 @@
 # Signs in with HTTP Basic as the demo accounts (SMOKE_PASSWORD, default the public demo password).
 # Read-only: GET requests only. Exit 1 if any check fails.
 set -uo pipefail
+export PATH="/usr/local/bin:/usr/bin:/bin:${PATH:-}"
 URL="${1:?usage: smoke.sh <base url>}"; URL="${URL%/}"
 PW="${SMOKE_PASSWORD:-password}"
 fail=0

@@ -37,12 +37,26 @@ cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8000        # prints h
 
 - **The app stays on localhost.** `cloudflared` forwards HTTPS traffic to it, so
   there are no open ports and no router changes.
-- **Use a temporary tunnel for local staging checks.** Do not leave a Cloudflare tunnel
-  running from the owner Mac. The staging-flow is short-lived and is owned by the deploy
-  script, not by a LaunchAgent or a persistent `~/.cloudflared/config.yml`.
+- **Use a real staging host as the default branch gate.** The recommended pre-deploy path is a single script:
 
   ```sh
-  # local staging smoke check: starts a temp tunnel, runs the smoke script, then shuts it down
+  bash scripts/deploy/predeploy.sh --staging main
+  bash scripts/deploy/predeploy.sh --prod main
+  ```
+
+  or the full flow in one command:
+
+  ```sh
+  bash scripts/deploy/predeploy.sh --all main
+  ```
+
+  The staging step checks `https://staging.racinglines.bet` only. If that hostname is down or the route is
+  misconfigured, fix the Cloudflare tunnel first; do not silently switch to a temporary tunnel for the
+  release path. Do not leave a Cloudflare tunnel running from the owner Mac in the normal flow.
+
+  For an ad hoc local-only check while debugging a branch, the one-off helper is:
+
+  ```sh
   bash scripts/deploy/staging.sh smoke 8010
   ```
 
