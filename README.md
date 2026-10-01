@@ -1,12 +1,8 @@
 # racinglines
 
-[![main-merge-gate](https://github.com/lalligagger/racinglines-public/actions/workflows/predeploy.yml/badge.svg?branch=main)](https://github.com/lalligagger/racinglines-public/actions/workflows/predeploy.yml)
-[![Last commit](https://img.shields.io/github/last-commit/lalligagger/racinglines-public/main)](https://github.com/lalligagger/racinglines-public/commits/main)
-[![License](https://img.shields.io/github/license/lalligagger/racinglines-public)](LICENSE)
-[![Open PRs](https://img.shields.io/github/issues-pr/lalligagger/racinglines-public)](https://github.com/lalligagger/racinglines-public/pulls)
-[![Open issues](https://img.shields.io/github/issues/lalligagger/racinglines-public)](https://github.com/lalligagger/racinglines-public/issues)
-[![Top language](https://img.shields.io/github/languages/top/lalligagger/racinglines-public)](https://github.com/lalligagger/racinglines-public)
-[![Repo size](https://img.shields.io/github/repo-size/lalligagger/racinglines-public)](https://github.com/lalligagger/racinglines-public)
+[![CI](https://github.com/lalligagger/racinglines-public/actions/workflows/predeploy.yml/badge.svg?branch=main)](https://github.com/lalligagger/racinglines-public/actions/workflows/predeploy.yml)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue)](requirements.txt)
+[![License: MIT](https://img.shields.io/github/license/lalligagger/racinglines-public)](LICENSE)
 
 <!-- Sections between include markers are generated from docs/ by build_readme.py.
      Edit the tagged section in docs/, then run: python scripts/build_readme.py -->
