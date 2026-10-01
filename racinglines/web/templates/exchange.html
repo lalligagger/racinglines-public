@@ -7,14 +7,15 @@
 <p class="crumbs"><a href="/markets">Markets</a> › {{ venue.name }}</p>
 {% if schema %}{% set sub = "Every " ~ sports|join(" and ") ~ " market listed on " ~ venue.name ~ ", including outcomes we don't price, with the model's fair price beside the quote net of the taker fee" ~ (" (racinglines markets --exchange " ~ venue.code ~ " fair)" if user.role == 'admin' else "") ~ ". Read-only: nothing is traded on " ~ venue.name ~ "." %}
 {% else %}{% set sub = "Every F1 event listed on " ~ venue.name ~ ", including outcomes we don't price. Mirror an event into your book, or open a race from Markets for the full view." ~ ("" if pm else " Read-only: nothing is traded on Kalshi.") %}{% endif %}
-{% call page_head(venue.name ~ " markets", sub) %}
+{% call page_head(venue.name ~ " markets" ~ (" · " ~ sport_name if sport else ""), sub) %}
 <form method="post" action="/markets/{{ venue.code }}/sync" class="inline">{{ csrf() }}<button>Refresh from {{ venue.name }}</button></form>{% endcall %}
 {{ flash(msg) }}
 <form method="get" class="toolbar">
   <label><span>Show</span><select name="show" data-autosubmit><option value="modeled" {% if show == 'modeled' %}selected{% endif %}>markets we price</option><option value="all" {% if show == 'all' %}selected{% endif %}>all {{ "markets" if schema else "F1 markets" }}</option></select></label>
   <label><span>Include closed</span><select name="closed" data-autosubmit><option value="0">no</option><option value="1" {% if closed %}selected{% endif %}>yes</option></select></label>
   <label><span>Quote spread (pts)</span><input name="spread_pct" value="{{ '%g'|format(spread_pct) }}" size="3"></label><button>Apply</button>
-<span class="links">Last sync {{ synced|fmt }}{% if not pm %} · <a href="/markets/polymarket">Polymarket markets</a>{% endif %}</span></form>
+{% if sport %}<input type="hidden" name="sport" value="{{ sport }}">{% endif %}
+<span class="links">Last sync {{ synced|fmt }}{% if not pm %} · <a href="/markets/polymarket">Polymarket markets</a>{% endif %}{% if sport %} · <a href="/markets/{{ venue.code }}?show={{ show }}&closed={{ closed }}">every sport</a>{% endif %}</span></form>
 {% if not pm %}{% include "_recorders.html" %}{% endif %}
 {% if schema %}<p class="legend">Edge YES = our fair − ask − fee (buy YES at the ask); edge NO = bid − our fair − fee (buy NO at 1 − bid); the fee is {{ venue.name }}'s taker fee, {{ fee|money }} per contract (unverified against its fee schedule). Call = the side with a positive edge after the fee. A one-sided quote gets an edge on its quoted side only: a book nobody will trade against is not an edge. ⚠ marks gaps over 10 pts: usually a model blind spot rather than an edge; check before quoting.</p>
 {% else %}<p class="legend">Edge = our fair − {{ venue.name }} mid (positive = we think YES is cheap). ⚠ marks gaps over 10 pts: usually a model blind spot rather than an edge; check before quoting.{% if not pm %} Kalshi lists one YES contract per outcome; volume is in contracts ($1 each at settlement).{% endif %}</p>{% endif %}

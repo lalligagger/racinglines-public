@@ -446,37 +446,6 @@ def run_detail(request: Request, run_id: int, c=Depends(conn)):
                   pred_cols=PRED_COLS + ["attend_prob", "actual_final_rank", "actual_points"], stand_cols=STAND_COLS)
 
 
-@app.get("/events", response_class=HTMLResponse)
-def events(request: Request, season: int | None = None, c=Depends(conn)):
-    venues = data.q(c, "SELECT slug, name FROM venues ORDER BY name")
-    comps = data.q(c, "SELECT code, name FROM competitions ORDER BY code")
-    return render(request, "events.html", events=rows(data.events(c, season=season)), season=season,
-                  venues=rows(venues), comps=rows(comps), today=date.today().isoformat())
-
-
-@app.post("/events", dependencies=[Depends(check_csrf), allow("admin")])
-def create_event(request: Request, competition: str = Form(...), name: str = Form(...), start_date: str = Form(...),
-                 venue: str = Form(...), series_round: str = Form("")):
-    """Add a scheduled (future) event, so forecasts and market links can attach to it.
-    When its results are ingested later, the ingest adopts this event."""
-    with get_session() as s:
-        comp = s.scalars(select(m.Competition).filter_by(code=competition)).one()
-        d = date.fromisoformat(start_date)
-        season = s.scalars(select(m.Season).filter_by(competition_id=comp.id, year=d.year)).first()
-        if season is None:
-            season = m.Season(competition_id=comp.id, year=d.year)
-            s.add(season)
-            s.flush()
-        v = s.scalars(select(m.Venue).filter_by(slug=venue)).one()
-        ev = m.Event(season_id=season.id, source="manual", source_key=f"manual-{d:%Y%m%d}-{venue}", name=name,
-                     start_date=d, venue_id=v.id, series_round=int(series_round) if series_round else None,
-                     status="scheduled")
-        s.add(ev)
-        s.commit()
-        audit(request, "event_create", event_id=ev.id, name=name, start_date=start_date, venue=venue)
-        return RedirectResponse(f"/events/{ev.id}", status_code=303)
-
-
 @app.get("/events/by-key/{source_key}")
 def event_by_key(source_key: str, c=Depends(conn)):
     """Stable link to an event by its source key (e.g. ChronoRace 20260925_mtb)."""
@@ -537,11 +506,6 @@ def event_detail(request: Request, event_id: int, c=Depends(conn)):
     if R.is_basic(request.state.user):
         pred_groups = []  # model fair values are the makers' edge
     return render(request, "event.html", ev=ev, groups=groups, pred_groups=pred_groups)
-
-
-@app.get("/athletes", response_class=HTMLResponse)
-def athletes(request: Request, q: str | None = None, c=Depends(conn)):
-    return render(request, "athletes.html", athletes=rows(data.athletes(c, q)), q=q or "")
 
 
 @app.get("/athletes/{athlete_id}", response_class=HTMLResponse)
@@ -1172,18 +1136,22 @@ def signup(request: Request, username: str = Form(""), password: str = Form(""),
 
 @app.get("/markets/polymarket", response_class=HTMLResponse)
 def pm_board(request: Request, event: str = "", show: str = "modeled", closed: int = 0, spread_pct: float = 4.0,
-             msg: str = "", c=Depends(conn), user=allow(*PRO)):
-    return _exchange_board(request, c, user, "polymarket", event, show, closed, spread_pct, msg)
+             msg: str = "", sport: str = "", c=Depends(conn), user=allow(*PRO)):
+    return _exchange_board(request, c, user, "polymarket", event, show, closed, spread_pct, msg, sport)
 
 
-def _exchange_board(request, c, user, exchange, event, show, closed, spread_pct, msg):
-    """Every listed event of one exchange (market_links.exchange), our fair values and a quote at ± spread/2."""
+def _exchange_board(request, c, user, exchange, event, show, closed, spread_pct, msg, sport=""):
+    """Every listed event of one exchange (market_links.exchange), our fair values and a quote at ± spread/2.
+    `sport`: a competition code (market_links.competition_id, exact match, no text/fuzzy matching) to narrow the
+    list to one sport, e.g. from a Markets page "N new" link."""
     links = data.q(c, """
         SELECT ml.*, a.display_name AS athlete FROM market_links ml LEFT JOIN athletes a ON a.id = ml.athlete_id
+        LEFT JOIN competitions co ON co.id = ml.competition_id
         WHERE ml.exchange = :x AND (CAST(:closed AS int) = 1 OR NOT ml.closed)
           AND (CAST(:ev AS text) IS NULL OR ml.event_slug = CAST(:ev AS text))
+          AND (CAST(:sport AS text) IS NULL OR co.code = CAST(:sport AS text))
         ORDER BY ml.end_date NULLS LAST, ml.event_title, ml.last_price DESC NULLS LAST""", closed=closed, ev=event or None,
-                   x=exchange)
+                   sport=sport or None, x=exchange)
     mine = set(data.q(c, "SELECT market_link_id FROM house_markets WHERE maker_id = :u AND market_link_id IS NOT NULL",
                       u=user["id"])["market_link_id"].dropna().astype(int))
     from racinglines.markets import alerts
@@ -1219,7 +1187,7 @@ def _exchange_board(request, c, user, exchange, event, show, closed, spread_pct,
     from racinglines.web import board as B
     recorders = B.recorder_status(c, [exchange]) if exchange != "polymarket" else None    # the Kalshi / schema recorders
     ctx = dict(events=events, show=show, closed=closed, spread_pct=spread_pct, msg=msg, synced=synced, event=event,
-               recorders=recorders)
+               sport=sport, sport_name=V.SPORT_NAME.get(sport, sport) if sport else "", recorders=recorders)
     if schema:
         venue = next(v for v in V.SCHEMA_EXCHANGES if v.code == exchange)
         return render(request, "exchange.html", mode="schema", venue=venue, fee=fee, **ctx,
@@ -1267,8 +1235,8 @@ def _kalshi_on():
 
 @app.get("/markets/kalshi", response_class=HTMLResponse, dependencies=[Depends(_kalshi_on)])
 def kalshi_board(request: Request, event: str = "", show: str = "modeled", closed: int = 0, spread_pct: float = 4.0,
-                 msg: str = "", c=Depends(conn), user=allow(*PRO)):
-    return _exchange_board(request, c, user, "kalshi", event, show, closed, spread_pct, msg)
+                 msg: str = "", sport: str = "", c=Depends(conn), user=allow(*PRO)):
+    return _exchange_board(request, c, user, "kalshi", event, show, closed, spread_pct, msg, sport)
 
 
 @app.post("/markets/kalshi/mirror", dependencies=[Depends(_kalshi_on), Depends(check_csrf)])
@@ -1307,8 +1275,8 @@ def _schema_routes(code):
 
     @app.get(f"/markets/{code}", response_class=HTMLResponse, dependencies=[Depends(on)], name=f"{code}_board")
     def board(request: Request, event: str = "", show: str = "modeled", closed: int = 0, spread_pct: float = 4.0,
-              msg: str = "", c=Depends(conn), user=allow(*PRO)):
-        return _exchange_board(request, c, user, code, event, show, closed, spread_pct, msg)
+              msg: str = "", sport: str = "", c=Depends(conn), user=allow(*PRO)):
+        return _exchange_board(request, c, user, code, event, show, closed, spread_pct, msg, sport)
 
     @app.post(f"/markets/{code}/mirror", dependencies=[Depends(on), Depends(check_csrf)], name=f"{code}_mirror")
     def mirror(request: Request, event_slug: str = Form(...), spread_pct: float = Form(4.0), c=Depends(conn),
