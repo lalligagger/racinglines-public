@@ -355,6 +355,9 @@ pre.log { max-height: 220px; overflow: auto; font-size: 11px; background: var(--
   .kpis.hero .kpi .v { font-size: 22px; }
   .stages { grid-auto-flow: row; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
   .qstats { grid-template-columns: repeat(2, auto); }
+  /* 32px minimum touch targets: ensure inputs and buttons are tall enough for touch */
+  input, select, textarea { padding: 8px 12px; }
+  button { padding: 8px 12px; }
 }
 .ecard-foot { border-top: 1px solid var(--line); padding-top: 8px; }
 /* maintenance popup (_site_notice.html) */
