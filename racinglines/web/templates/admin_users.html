@@ -7,7 +7,30 @@
 {% if onetime %}<div class="card"><h2>Temporary password for {{ onetime[0] }}</h2>
 <p class="onetime">{{ onetime[1] }}</p>
 <p class="muted">Shown once: it is stored only as a hash and is not in any log. Send it to {{ onetime[0] }} and ask
-them to sign in with it; reloading this page will not show it again.</p></div>{% endif %}
+them to sign in with it; reloading this page will not show it again.</p>
+<textarea id="onetime-email" class="onetime-email" rows="14" readonly>Subject: Your racinglines sign-in details
+
+Hi {{ onetime[0] }},
+
+Your racinglines password has been reset. Sign in at https://racinglines.bet/login with:
+
+Username: {{ onetime[0] }}
+Temporary password: {{ onetime[1] }}
+
+Please keep it private, and reply to this email if you need a different one.
+
+Thanks,
+racinglines</textarea>
+<p><button type="button" class="primary" id="onetime-copy">Copy email</button> <span id="onetime-copied" class="muted"></span></p>
+<script>
+document.getElementById("onetime-copy").addEventListener("click", function () {
+  var t = document.getElementById("onetime-email"), done = document.getElementById("onetime-copied");
+  function ok() { done.textContent = "Copied: paste it into a new email."; }
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(t.value).then(ok, function () { t.select(); document.execCommand("copy"); ok(); });
+  } else { t.select(); document.execCommand("copy"); ok(); }
+});
+</script></div>{% endif %}
 <div class="card"><h2>Add a user</h2>
 <form method="post" action="/admin/users">{{ csrf() }}
   <label><span>Username</span><input name="username" required size="14"></label>

@@ -151,6 +151,7 @@ def test_admin_reset_shows_a_one_time_password_and_remove(app_db):
     r = client.post(f"/admin/users/{uid}/reset-password", data=dict(csrf_token=csrf))
     assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
     temp = re.search(r'<p class="onetime">([^<]+)</p>', r.text).group(1)
+    assert f"Username: taker\nTemporary password: {temp}" in r.text and 'id="onetime-copy"' in r.text  # the form email
     assert temp not in client.get("/admin/users").text                    # shown once
     fresh = TestClient(app_db.app)
     assert fresh.post("/login", data=dict(username="taker", password="password"),
