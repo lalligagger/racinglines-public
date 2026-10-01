@@ -520,7 +520,7 @@ race, a simple-baseline price for NASCAR's next race, and an in-sample demo pape
 (F1, NASCAR, MotoGP × Polymarket, Kalshi, OG.com) has 7 of 9 cells filled; MotoGP × Polymarket (no linked markets) and
 MotoGP × OG.com (not listed) are empty. **The only held-out-robust strategy is still F1 profile A on Polymarket**, which
 has listed no F1 race since 28 Aug. Status per cell: [Sports and exchanges](docs/coverage.md). The full day:
-[24-hour report](https://github.com/lalligagger/racinglines/blob/main/reports/2026-09-30-sports-exchanges-24h/report.md).
+24-hour report (not in the public repo).
 
 **Where things stood (29 Sep 2026, after the overnight roadmap batch, PRs #23–#45 merged):** U1, U5, U6, U7, U8, U9,
 reconcile, the scorecard and the K sweep are built and merged (new behaviour behind switches, off by default). What

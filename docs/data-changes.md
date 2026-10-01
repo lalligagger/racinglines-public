@@ -225,7 +225,7 @@ PDF only).
 **Why.** Downhill athletes were matched by name, so a rider printed two ways across seasons (`WILLIAMS Jordan` /
 `WILLIAMS Robert Jordan`, accents, middle names, double surnames) was two athletes with split histories. The
 ChronoRace feed carries each rider's UCI ID; the downloader writes it since the cloud build-out, but the files
-on disk predated it. [PR #8](https://github.com/lalligagger/racinglines/pull/8).
+on disk predated it. PR #8 (in the private repo).
 
 **What.** All 118 files in `data/raw/mtb_dh/chronorace/` re-downloaded from the feed (same events,
 categories and file names; no PDF backfill), then `racinglines mtb_dh ingest` into the local database (logged
