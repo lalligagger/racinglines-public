@@ -1,7 +1,6 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in · racinglines</title><link rel="stylesheet" href="/static/style.css?v={{ css_v() }}"></head>
-<body><main class="login">
+{% extends "base_public.html" %}
+{% block title %}Sign in · racinglines{% endblock %}
+{% block content %}
 <h1>racinglines</h1>
 <p class="sub">Fair prices and market making for race sports.</p>
 {% if error == "throttled" %}<p class="bad">Too many failed sign-ins. Wait 15 minutes and try again.</p>{% elif error %}<p class="bad">Wrong username or password.</p>{% endif %}
@@ -23,4 +22,4 @@
   <button class="primary mt">Sign in</button>
 </form>
 {% if signup_on() %}<p class="confused"><a href="/forgot">Forgot your password?</a></p>{% endif %}
-</main>{% include "_site_notice.html" %}</body></html>
+{% endblock %}

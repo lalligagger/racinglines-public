@@ -1,7 +1,8 @@
-{% extends "base.html" %}{% from "_macros.html" import csrf %}
+{% extends "base.html" %}{% from "_macros.html" import csrf, page_head %}
 {% block title %}Confirm order{% endblock %}
 {% block content %}
-<h1>Confirm order</h1>
+<p class="crumbs"><a href="/admin">Admin</a> › <a href="/markets/linked">Linked markets</a> › Confirm order</p>
+{{ page_head("Confirm order") }}
 <div class="card">
 <p><b>{{ side }} {{ size }}</b> shares of <b>{{ link.outcome }}</b> in “{{ link.question }}” at <b>{{ price }}</b>, post-only GTC.</p>
 <p>Notional: {{ (notional|money) if notional is not none else "–" }} · model fair price {{ prob|fmt("model_prob") if prob is not none else "–" }}

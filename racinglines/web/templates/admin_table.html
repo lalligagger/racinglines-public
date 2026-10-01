@@ -1,7 +1,8 @@
-{% extends "base.html" %}{% from "_macros.html" import empty, flash %}
+{% extends "base.html" %}{% from "_macros.html" import empty, flash, page_head %}
 {% block title %}{{ table_name }}{% endblock %}
 {% block content %}
-<h1><a href="/admin/db">Database</a> / {{ table_name }} <span class="muted">({{ total }} rows)</span></h1>
+{% set head_title %}<a href="/admin/db">Database</a> / {{ table_name }} <span class="muted">({{ total }} rows)</span>{% endset %}
+{{ page_head(head_title) }}
 {% include "_admin_nav.html" %}
 {{ flash(msg) }}
 <form method="get"><label><span>Column</span><select name="col"><option value="">–</option>{% for c in columns %}<option {% if c == col %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></label>

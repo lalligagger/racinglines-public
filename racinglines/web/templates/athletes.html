@@ -1,7 +1,7 @@
-{% extends "base.html" %}{% from "_macros.html" import table %}
+{% extends "base.html" %}{% from "_macros.html" import table, page_head %}
 {% block title %}Athletes{% endblock %}
 {% block content %}
-<h1>Athletes</h1>
+{{ page_head("Athletes") }}
 <form method="get"><input name="q" value="{{ q }}" placeholder="name contains…" autofocus><button>Search</button></form>
 {{ table(athletes, ["id", "athlete", "nation", "results", "wins", "last_race"], {"athlete": ["/athletes/", "id"], "id": ["/athletes/", "id"]}) }}
 {% endblock %}

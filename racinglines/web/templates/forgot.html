@@ -1,7 +1,6 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Forgot password · racinglines</title><link rel="stylesheet" href="/static/style.css?v={{ css_v() }}"></head>
-<body><main class="login">
+{% extends "base_public.html" %}
+{% block title %}Forgot password · racinglines{% endblock %}
+{% block content %}
 <h1>racinglines</h1>
 <p class="sub">Fair prices and market making for race sports.</p>
 <div class="card signup-form">
@@ -42,4 +41,4 @@ Thanks</textarea>
   });
 })();
 </script>
-</main>{% include "_site_notice.html" %}</body></html>
+{% endblock %}

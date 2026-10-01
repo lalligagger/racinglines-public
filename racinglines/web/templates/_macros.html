@@ -41,6 +41,17 @@
 <div class="legend">{% for l in c.lines %}<i style="background:{{ l.color }}"></i>{{ l.label }}{% endfor %}{% if c.zero_y is not defined %} · solid = {{ c.venue if c.venue is defined else 'Polymarket' }} price, dotted = our fair{% endif %}</div>{% endif %}
 {%- endmacro %}
 
+{% macro pc(x) %}{% if x is not none and x >= 0.0005 %}{{ "%.1f"|format(x * 100) }}%{% elif x is not none %}<span class="muted">–</span>{% endif %}{% endmacro %}
+{% macro px(x) %}{{ "%.2f"|format(x) if x is not none else "–" }}{% endmacro %}
+{% set kind_word = {"race_win": "wins", "race_podium": "on the podium", "race_pole": "on pole", "race_h2h": "(first ahead)", "race_constructor_top": "top constructor", "race_safety_car": "in the race", "race_red_flag": "in the race", "race_rain": "in the race", "race_fastest_lap": "fastest lap"} %}
+{# One edge / gap cell (a probability difference, fair vs market): warn over 10 pts either way, good over +2, bad under -2.
+   label replaces the "+1.2 pts" text (the exchange "Call" column), good overrides the +2 test, mark=false drops the warning glyph and tooltip, warn=false the warn tone too, cls adds classes. #}
+{% macro edge_cell(e, label=none, good=none, mark=true, cls="", pts=true, warn=true) -%}
+{%- set big = warn and e and (e > 0.10 or e < -0.10) -%}
+{%- set tone = 'warn' if big else (('good' if good else '') if good is not none else ('good' if e and e > 0.02 else ('bad' if e and e < -0.02 else ''))) -%}
+<td class="{{ (cls ~ ' ' ~ tone)|trim }}"{% if big and mark %} title="Large gap to the market: check the model before quoting (e.g. tail events such as backmarker points in chaotic races aren't modelled well yet)"{% endif %}>
+{%- if label is not none %}{{ label }}{% elif e is not none %}{{ "%+.1f"|format(e * 100) }}{{ " pts" if pts }}{% endif %}{% if big and mark %} ⚠{% endif %}</td>
+{%- endmacro %}
 {% macro new_badge(n=0) %}<span class="pill new" title="first seen on Polymarket in the last 48 hours">{{ n ~ " " if n else "" }}new</span>{% endmacro %}
 
 {% macro paper_banner(n) %}{% if n and n.profile %}<div class="paper-banner"><span>Paper account · <b>{{ n.profile }}</b></span>

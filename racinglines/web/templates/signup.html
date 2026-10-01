@@ -1,7 +1,6 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign up · racinglines</title><link rel="stylesheet" href="/static/style.css?v={{ css_v() }}"></head>
-<body><main class="login">
+{% extends "base_public.html" %}
+{% block title %}Sign up · racinglines{% endblock %}
+{% block content %}
 <h1>racinglines</h1>
 <p class="sub">Fair prices and market making for race sports.</p>
 {% if not ready %}
@@ -28,4 +27,4 @@ nothing is ever sent to an exchange.</p>
 </form>
 <p class="confused"><a href="/login">Already have an account? Sign in</a> · <a href="/racinglines101">What is this?</a></p>
 {% endif %}
-</main>{% include "_site_notice.html" %}</body></html>
+{% endblock %}

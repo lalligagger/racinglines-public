@@ -1,7 +1,8 @@
-{% extends "base.html" %}{% from "_macros.html" import csrf, flash %}
+{% extends "base.html" %}{% from "_macros.html" import csrf, flash, page_head %}
 {% block title %}{{ table_name }} row{% endblock %}
 {% block content %}
-<h1><a href="/admin/db">Database</a> / <a href="/admin/db/{{ table_name }}">{{ table_name }}</a> / {{ pk }}</h1>
+{% set head_title %}<a href="/admin/db">Database</a> / <a href="/admin/db/{{ table_name }}">{{ table_name }}</a> / {{ pk }}{% endset %}
+{{ page_head(head_title) }}
 {% include "_admin_nav.html" %}
 {{ flash(request.query_params.get('msg')) }}
 <form method="post" action="/admin/db/{{ table_name }}/row?{{ pk_query }}" class="card">{{ csrf() }}

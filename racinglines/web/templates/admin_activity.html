@@ -1,7 +1,7 @@
-{% extends "base.html" %}{% from "_macros.html" import empty %}
+{% extends "base.html" %}{% from "_macros.html" import empty, page_head %}
 {% block title %}Activity{% endblock %}
 {% block content %}
-<h1>Activity log</h1>
+{{ page_head("Activity log") }}
 {% include "_admin_nav.html" %}
 <form method="get">
   <label><span>User</span><select name="user"><option value="">all</option>{% for u in usernames %}<option {% if u == f_user %}selected{% endif %}>{{ u }}</option>{% endfor %}</select></label>

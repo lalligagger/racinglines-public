@@ -9,8 +9,8 @@
   <span class="heat h1">warm</span> <span class="heat h2">hot</span> <span class="heat h3">very hot</span>. It's a guide, not a promise.
   Calls update after every practice and qualifying session.</p>{% endif %}
 
-{% macro event_card(e) %}
-<div class="card"><h3><a href="https://polymarket.com/event/{{ e.slug }}" target="_blank" rel="noopener">{{ e.title }} ↗</a></h3>
+{% macro event_card(e, h="h3") %}
+<div class="card"><{{ h }}><a href="https://polymarket.com/event/{{ e.slug }}" target="_blank" rel="noopener">{{ e.title }} ↗</a></{{ h }}>
 <p class="muted">ends {{ e.end_date|fmt }}{% if e.calls %} · <b>{{ e.calls }}</b> call{{ "s" if e.calls != 1 }}{% endif %}</p>
 <div class="scroll"><table><thead><tr><th class="l">Outcome</th><th>Bid</th><th>Ask</th><th>Price</th><th title="Polymarket's total traded volume for this outcome's market">Volume</th><th class="l">{{ (profile.name.split(' ')[0] ~ "'s call") if profile and not profile.basic else "Call" }}</th></tr></thead><tbody>
 {% for r in e.rows %}<tr class="{{ '' if r.call.action else 'muted-row' }}">
@@ -24,7 +24,7 @@
 <h2>Upcoming races</h2>
 {% for rc in races %}
 <h3 class="mt">{{ rc.name }}{% if rc.location %} · {{ rc.location }}{% endif %} <span class="muted small">· race {{ rc.start|fmt }}</span></h3>
-{% for e in rc.events %}{{ event_card(e) }}{% else %}
+{% for e in rc.events %}{{ event_card(e, "h4") }}{% else %}
 <p class="muted">Polymarket hasn't listed markets for this race yet. They usually appear 3 to 4 weeks before the race; they'll show here{% if profile %}, with {{ "your picks" if profile.basic else profile.name.split(' ')[0] ~ "'s calls" }},{% endif %} as soon as they do.</p>
 {% endfor %}
 {% else %}{{ empty("No upcoming races yet.") }}

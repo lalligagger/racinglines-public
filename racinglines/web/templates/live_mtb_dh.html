@@ -1,7 +1,5 @@
-{% from "_macros.html" import empty, chart, demo_context, kpi, pnl %}
+{% from "_macros.html" import empty, chart, demo_context, kpi, pnl, pc, px %}
 {% macro t(ms) %}{% if ms %}{{ "%d:%06.3f"|format(ms // 60000, (ms % 60000) / 1000) }}{% endif %}{% endmacro %}
-{% macro pc(x) %}{% if x is not none and x >= 0.0005 %}{{ "%.1f"|format(x * 100) }}%{% elif x is not none %}<span class="muted">–</span>{% endif %}{% endmacro %}
-{% macro px(x) %}{{ "%.2f"|format(x) if x is not none else "–" }}{% endmacro %}
 {% if not snap %}
 <h1>Live</h1><p class="muted">No live event right now. The next downhill final will show here while it runs.</p>
 {% else %}

@@ -88,7 +88,7 @@
 {% endif %}
 </details>
 {% endfor %}
-{% if disagree %}<details class="card" data-remember="markets:disagree" open><summary><h3>Cross-venue disagreement</h3><span class="sum">{{ disagree.n_above }} of {{ disagree.rows|length }} outcomes above fees · last tick {{ disagree.last|fmt }}</span></summary>
+{% if disagree %}<details class="card" data-remember="markets:disagree" open><summary><h2>Cross-venue disagreement</h2><span class="sum">{{ disagree.n_above }} of {{ disagree.rows|length }} outcomes above fees · last tick {{ disagree.last|fmt }}</span></summary>
 <p class="legend">Polymarket vs Kalshi on every outcome listed on both, at the log's latest tick (<code>racinglines markets disagree</code>). Gap = Kalshi mid − Polymarket mid; net = |gap| − both taker fees; edge = the better taker trade vs our fair, net of fees. Greyed rows: a venue's tape shows nothing traded in the prior 24 h, so the gap is on paper.</p>
 <div class="scroll" data-rows="20" data-filter="filter outcomes"><table>
 <thead><tr><th class="l">Outcome</th><th class="l hide-sm">Event</th><th>Polymarket</th><th>Kalshi</th><th>Fair</th><th class="hide-sm">PM edge</th><th class="hide-sm">Kalshi edge</th><th class="hide-sm">Gap</th><th>Net</th><th class="hide-sm">At (UTC)</th></tr></thead>
@@ -104,7 +104,7 @@
 {% if disagree.days %}<div class="legend">Last {{ disagree.window }} days, liquid rows above fees: {% for d in disagree.days %}{{ d.day }} {{ d.above_fees }}/{{ d.liquid }}{{ " · " if not loop.last }}{% endfor %}</div>{% endif %}
 </details>{% endif %}
 <details class="card" data-remember="markets:calendar" open>
-<summary><h3>Calendar</h3><span class="sum">{{ calendar|length }} events across every sport and venue</span></summary>
+<summary><h2>Calendar</h2><span class="sum">{{ calendar|length }} events across every sport and venue</span></summary>
 <p class="legend">Every race weekend (modeled sports) and every recorded exchange event (tape-only sports), newest first. A tape-only sport has no single cross-venue event, so each exchange's own listing is its own row.</p>
 <div data-calendar data-rows="25">
 <div class="tt">

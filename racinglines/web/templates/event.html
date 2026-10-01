@@ -1,8 +1,9 @@
-{% extends "base.html" %}{% from "_macros.html" import table %}
+{% extends "base.html" %}{% from "_macros.html" import table, page_head %}
 {% block title %}{{ ev.venue }} {{ ev.season }}{% endblock %}
 {% block content %}
 <p class="crumbs"><a href="/events">Events</a> › {{ ev.season }}</p>
-<h1>{{ ev.venue }} {{ ev.season }} <span class="chip status-{{ ev.status }}">{{ (ev.status or "")|replace("_", " ") }}</span></h1>
+{% set head_title %}{{ ev.venue }} {{ ev.season }} <span class="chip status-{{ ev.status }}">{{ (ev.status or "")|replace("_", " ") }}</span>{% endset %}
+{{ page_head(head_title) }}
 <p class="muted">{{ ev.name }} · {{ ev.start_date|fmt }} · {{ ev.source }} {{ ev.source_key }}</p>
 {% if pred_groups %}<h2>Predictions for this event</h2>
 <div class="grid">{% for g in pred_groups %}<details class="card" data-remember="event:{{ ev.id }}:pred:{{ g.run }}:{{ g.category }}"{% if loop.first %} open{% endif %}><summary><h3>Run <a href="/lab/runs/{{ g.run }}">#{{ g.run }}</a> ({{ g.kind }}) · {{ g.category }}</h3><span class="sum">{{ g.table|length }} athletes</span></summary>
