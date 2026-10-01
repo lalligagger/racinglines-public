@@ -1,13 +1,13 @@
-{% extends "base.html" %}{% from "_macros.html" import bar, pct, venue_chips, new_badge, paper_banner, page_head %}
+{% extends "base.html" %}{% from "_macros.html" import pnl_cls, bar, pct, venue_chips, new_badge, paper_banner, page_head %}
 {% block title %}Markets{% endblock %}
 {% block content %}
 {% call page_head("Markets", "Every sport we price: what's next, what's live on each venue, and how we did lately.") %}<a href="/markets/polymarket">All Polymarket markets →</a>{% if kalshi %} <a href="/markets/kalshi">All Kalshi markets →</a>{% endif %}{% for v in schema_exchanges %} <a href="/markets/{{ v.code }}">All {{ v.name }} markets →</a>{% endfor %}{% if tapes %} <a href="/markets/tapes">Recorded tapes →</a>{% endif %}{% endcall %}
 {{ paper_banner(signals_nav) }}
 
 <div class="kpis">
-  <div class="kpi"><div class="l">Exchange outcomes we price</div><div class="v">{{ h.outcomes }}</div><div class="s">{{ h.markets }} markets · ${{ "{:,.1f}M".format(h.volume / 1e6) if h.volume >= 1e6 else "{:,.0f}".format(h.volume) }} traded</div></div>
-  <div class="kpi"><div class="l">Order books recording</div><div class="v {{ 'good' if h.recording else 'muted' }}">{{ h.recording or "off" }}</div><div class="s">{% if h.recorded_at %}last {{ h.recorded_at|fmt }} UTC{% else %}start <code>racinglines markets record</code>{% endif %}</div></div>
-  <div class="kpi"><div class="l">My open markets</div><div class="v">{{ h.my_open }}</div><div class="s">staked against me ${{ "%.0f"|format(h.my_staked) }} · worst case <span class="{{ 'bad' if h.my_worst < 0 }}">${{ "%.0f"|format(h.my_worst) }}</span></div></div>
+  <div class="kpi"><div class="l">Exchange outcomes we price</div><div class="v">{{ h.outcomes }}</div><div class="s">{{ h.markets }} markets · {{ ("$" ~ "{:,.1f}M".format(h.volume / 1e6)) if h.volume >= 1e6 else (h.volume|money(false, false)) }} traded</div></div>
+  <div class="kpi"><div class="l">Order books recording</div><div class="v {{ 'good' if h.recording else 'muted' }}">{{ h.recording or "off" }}</div><div class="s">{% if h.recorded_at %}last {{ h.recorded_at|fmt }}{% else %}start <code>racinglines markets record</code>{% endif %}</div></div>
+  <div class="kpi"><div class="l">My open markets</div><div class="v">{{ h.my_open }}</div><div class="s">staked against me {{ h.my_staked|money(false, false) }} · worst case <span class="{{ 'bad' if h.my_worst < 0 }}">{{ h.my_worst|money(false, false) }}</span></div></div>
   <div class="kpi"><div class="l">F1 model vs grid-only (win, after quali)</div><div class="v {{ 'bad' if h.bt_win and h.bt_grid and h.bt_win > h.bt_grid else 'good' }}">{% if h.bt_win %}{{ "%+.4f"|format(h.bt_win - h.bt_grid) }}{% else %}–{% endif %}</div><div class="s">Brier difference, lower is better · <a href="/lab">Lab</a></div></div>
   <div class="kpi"><div class="l">Model jobs running</div><div class="v">{{ h.jobs_active }}</div><div class="s"><a href="/lab#run">launch a backtest or scenario</a></div></div>
 </div>
@@ -38,7 +38,7 @@
     {% if s.season.constructors %}<div class="legend">Constructors: {% for o in s.season.constructors %}{{ o.subject }} {{ pct(o.fair) }}{{ " · " if not loop.last }}{% endfor %}</div>{% endif %}
     {% set st = s.season.strategy %}{% if st %}<div class="ecard-foot">
       <div class="legend">Default season strategy (replayed on Polymarket's prices)</div>
-      <div><b class="{{ 'good' if st.summary.pnl >= 0 else 'bad' }}">{{ st.summary.pnl|money(true) }}</b> <span class="muted">since pre-season · {{ st.summary.open_positions }} open · hold {{ st.hold.pnl|money(true) }}</span></div>
+      <div><b class="{{ pnl_cls(st.summary.pnl) }}">{{ st.summary.pnl|money(true) }}</b> <span class="muted">since pre-season · {{ st.summary.open_positions }} open · hold {{ st.hold.pnl|money(true) }}</span></div>
       {% for a in st.actions[:3] %}<div class="legend">Now: <b>{{ a.action }}</b> {{ a.subject }} ({{ "%+.0f"|format(a.edge * 100) }} pts)</div>{% else %}<div class="legend">Now: no trade (no edge ≥ {{ "%.0f"|format(st.params.min_edge * 100) }} pts)</div>{% endfor %}
     </div>{% endif %}
     <div><a href="/seasons/{{ s.code }}">{{ s.season.outcomes }} outcomes →</a></div>
@@ -88,7 +88,7 @@
 {% endif %}
 </details>
 {% endfor %}
-{% if disagree %}<details class="card" data-remember="markets:disagree" open><summary><h3>Cross-venue disagreement</h3><span class="sum">{{ disagree.n_above }} of {{ disagree.rows|length }} outcomes above fees · last tick {{ disagree.last|fmt }} UTC</span></summary>
+{% if disagree %}<details class="card" data-remember="markets:disagree" open><summary><h3>Cross-venue disagreement</h3><span class="sum">{{ disagree.n_above }} of {{ disagree.rows|length }} outcomes above fees · last tick {{ disagree.last|fmt }}</span></summary>
 <p class="legend">Polymarket vs Kalshi on every outcome listed on both, at the log's latest tick (<code>racinglines markets disagree</code>). Gap = Kalshi mid − Polymarket mid; net = |gap| − both taker fees; edge = the better taker trade vs our fair, net of fees. Greyed rows: a venue's tape shows nothing traded in the prior 24 h, so the gap is on paper.</p>
 <div class="scroll" data-rows="20" data-filter="filter outcomes"><table>
 <thead><tr><th class="l">Outcome</th><th class="l hide-sm">Event</th><th>Polymarket</th><th>Kalshi</th><th>Fair</th><th class="hide-sm">PM edge</th><th class="hide-sm">Kalshi edge</th><th class="hide-sm">Gap</th><th>Net</th><th class="hide-sm">At (UTC)</th></tr></thead>

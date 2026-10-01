@@ -1,7 +1,7 @@
-{% from "_macros.html" import csrf %}
+{% from "_macros.html" import empty, csrf %}
 <h2>Forecast scenarios</h2>
 <p class="legend">Forward forecasts with custom knobs. Compare with the live forecast, then promote one to make it the fair price everywhere (board, quotes, Polymarket edges).</p>
-{% if not scenarios %}<p class="muted">None yet: run a <b>Forward forecast (scenario)</b> above.</p>{% else %}
+{% if not scenarios %}{{ empty("No scenarios yet: run a Forward forecast (scenario) above.") }}{% else %}
 <div class="scroll"><table><thead><tr><th>Run</th><th class="l">Sport</th><th class="l">Name</th><th>Half-life</th><th>Sims</th><th>Track</th><th class="l">Next race: top 3</th><th>Max win-prob change vs live</th><th></th></tr></thead><tbody>
 {% for s in scenarios %}<tr><td><a href="/lab/runs/{{ s.id }}">#{{ s.id }}</a></td><td class="l">{{ s.sport }}</td><td class="l">{{ s.label or "" }}</td><td>{{ s.half_life|fmt if s.half_life }}</td><td>{{ s.sims or "" }}</td><td>{{ {True: "on", False: "off"}.get(s.track, "") }}</td>
 <td class="l">{% for n, w in s.top %}{{ n }} {{ "%.0f%%"|format(w * 100) }}{{ " · " if not loop.last }}{% endfor %}</td>
