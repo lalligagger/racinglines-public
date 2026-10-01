@@ -558,7 +558,7 @@ untrack, checkout, pip, `alembic upgrade head`, `db seed`, restart, resume timer
 | Cloud sessions read the old bucket (last push 2026-09-28) | Cloud sweeps and analyses run on stale data | Say so in any cloud result; check `bucket.py ls` dates | STG-5 |
 | No concurrency group | Two merges close together run two `vm.sh deploy`s at once (overlapping pause/resume) | Merge one PR, wait for its Actions run to finish, then the next | STG-6 |
 | Every code merge deploys, also in a live window | The web app restarts; live timers pause and catch up | Don't merge code during a book (round 16: Fri 2 Oct 03:30Z to Sun 4 Oct 07:00Z) | STG-9 |
-| `/docs` and `/pitch` images are only on the VM's disk | Docs-only merges never reach `/docs`; a rebuilt VM has neither | Nothing tonight | STG-10 |
+| `/docs` is built on the VM by deploys (since PR 7) but not by docs-only merges; `/pitch` images are only on the VM's disk | `/docs` lags docs-only merges; a rebuilt VM has no pitch images | After a docs-only merge: `vm.sh docs` | STG-10 |
 | Re-tracking a file the VM keeps untracked | Checkout refuses after `untrack.sh`; timers stay paused until fixed | Before committing pitch images or fixtures, move the VM copies aside | STG-10, STG-7 |
 | Claude GitHub App not on the public repo | PR and CI events never reach threads | Threads check PRs by hand; owner installs the app | STG-11 |
 | Workflow edits | Cloud sessions can't push `.github/workflows/*` | Workflow changes come as a patch the owner applies (`git am`) | — |
@@ -608,9 +608,9 @@ Each item below needs the owner's go; the ones touching the VM, DNS, the bucket 
 - [ ] **STG-9 · deploy freeze for live windows.** A `/var/lib/racinglines/deploy-hold` file on the VM (set by
       `vm.sh hold on|off`, or automatically while a `racinglines-live-*` timer is active) that makes the CI deploy
       wait or fail cleanly with "held for a live event"; a manual `workflow_dispatch` re-runs it after.
-- [ ] **STG-10 · built docs and pitch images on the VM.** `update.sh` runs `mkdocs build -d site` (docs
-      requirements in the venv), and docs-only merges run a light job that builds `site/` on the VM without a
-      restart. The 10 pitch images go to the bucket (STG-5) and, if the owner wants them in the repo, are committed
+- [ ] **STG-10 · built docs and pitch images on the VM.** Done for code deploys (2026-10-01): `vm.sh deploy` and
+      `vm.sh docs` run `deploy/vm/build_docs.sh` (`/docs` was 404 "Docs not built" on the VM since cutover). Open:
+      docs-only merges run a light workflow job that calls `vm.sh docs` (workflow patch). The 10 pitch images go to the bucket (STG-5) and, if the owner wants them in the repo, are committed
       under `racinglines/web/static/pitch/` with a `.gitignore` exception (VM copies moved aside first).
 - [ ] **STG-11 · GitHub App.** Install the Claude GitHub App on `racinglines-public` (owner:
       https://github.com/apps/claude/installations/select_target) so PR, review and CI events reach the threads.

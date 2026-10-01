@@ -13,6 +13,7 @@
 #   bash scripts/deploy/vm.sh switch <NAME> on|off # an app switch (RACINGLINES_*, e.g. RACINGLINES_OG_VENUE) in
 #                                               # /etc/racinglines.env, web app restarted; never a trading flag
 #   bash scripts/deploy/vm.sh deploy [ref]      # checkout (default main), install, migrate, restart, smoke check
+#   bash scripts/deploy/vm.sh docs              # build the docs site on the VM (site/, served at /docs); deploy does it too
 #   bash scripts/deploy/vm.sh backup <purpose>  # the VM database to data/backups/db/racinglines-before-<purpose>-<UTC>.sql.gz
 #   bash scripts/deploy/vm.sh repoint           # one time: the VM checkout fetches from REPO_URL (fetch only, no file
 #                                               # touched); deploy refuses until the checkout's origin is REPO_URL
@@ -168,8 +169,14 @@ case "${1:-}" in
       log "timers running (one 'active' per timer):"
       remote "systemctl is-active$timers"
     fi
+    # after the timers resume (it doesn't need them paused); fail-soft, piped over ssh like untrack.sh
+    log "docs site (/docs)"
+    remote "cd $APP && sudo -u racinglines -H bash -s" < deploy/vm/build_docs.sh || log "docs build didn't finish: /docs keeps its old site (bash scripts/deploy/vm.sh docs to retry)"
     log "smoke check on the VM"
     remote "sleep 3; cd $APP && bash scripts/deploy/smoke.sh http://127.0.0.1:8000"
+    ;;
+  docs)
+    remote "cd $APP && sudo -u racinglines -H bash -s" < deploy/vm/build_docs.sh
     ;;
   backup)
     purpose="${2:-}"; case "$purpose" in ""|*[!a-z0-9-]*) echo "usage: vm.sh backup <purpose> (lowercase letters, digits, -)"; exit 1 ;; esac
