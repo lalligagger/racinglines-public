@@ -327,7 +327,6 @@ dialog.site-notice { max-width: 340px; border: 1px solid var(--line-strong); bor
 dialog.site-notice::backdrop { background: rgba(0, 0, 0, .35); }
 dialog.site-notice p { margin: 0 0 12px; } dialog.site-notice form { margin: 0; } dialog.site-notice button { min-width: 72px; }
 .signup-cta { text-align: center; margin: 12px 0 0; font-size: 14px; }
-.login .signup-cta { padding: 8px 10px; border: 1px dashed var(--accent); border-radius: 8px; }
 .signup-form .check { display: flex; gap: 8px; align-items: baseline; font-size: 13px; } .signup-form .check input { width: auto; }
 .signup-form .hint { color: var(--muted); font-size: 12px; margin: 2px 0 6px; }
 .onetime { font-family: ui-monospace, monospace; font-size: 15px; padding: 6px 10px; background: var(--bg); border-radius: 6px; user-select: all; }
