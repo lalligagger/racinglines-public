@@ -1,0 +1,233 @@
+"""Sweep settings schema (racinglines/pipelines/sweep_settings.py): defaults, validation, identity keys,
+command-line round trip, and model settings applied and restored."""
+
+import argparse
+
+import pytest
+
+from racinglines.pipelines import sweep_settings as SS
+
+pytestmark = pytest.mark.quick
+
+
+def test_defaults_match_the_code_they_configure():
+    from racinglines.markets.strategies import maker_replay as R
+    from racinglines.markets.strategies.taker_weekend import TakerParams
+    from racinglines.models.position_sim import model as M
+    from racinglines.models.position_sim import practice as PR
+    from racinglines.pipelines import weekend_sweep as W
+    d = SS.Settings.from_dict()
+    t, m = TakerParams(), R.Params()
+    assert (d["min_edge"], d["stake_per_edge"], d["max_stake"], d["cost"]) == (t.min_edge, t.stake_per_edge,
+                                                                               t.max_stake, t.cost)
+    assert d["late_stages"] == t.late_stages
+    assert (d["half_spread"], d["size"], d["max_pos"], d["skew"], d["max_disagree"], d["fill"]) == (
+        m.half_spread, m.size, m.max_pos, m.skew, m.max_disagree, m.fill)
+    assert d["info_skew"] == W.MAKERS["maker_skew"]["info_skew"] and d["widen"] == W.WIDEN
+    assert d["min_volume_24h"] == W.MIN_VOLUME_24H and d["market_kinds"] == W.KINDS
+    assert (d["half_life_days"], d["ridge_team"], d["ridge_slope"], d["driver_prior_n"]) == (
+        M.HALF_LIFE_DAYS, M.RIDGE_A, M.RIDGE_B, M.DRIVER_PRIOR_N)
+    assert d["practice_prior"] == PR.USE_PRACTICE and d["reset_weight"] == M.REG_RESET_WEIGHT
+    assert d.changed() == {} and d.argv() == [] and d.label() == "baseline"
+
+
+def test_keys():
+    d = SS.Settings.from_dict()
+    trading = SS.Settings.from_dict(dict(min_edge=0.08))
+    model = SS.Settings.from_dict(dict(half_life_days=90))
+    assert trading.model_key == d.model_key and trading.key != d.key      # same prices, different combo
+    assert model.model_key != d.model_key
+    assert SS.Settings.from_dict(dict(taker_stages="after FP2,pre-weekend")).key == \
+        SS.Settings.from_dict(dict(taker_stages=["pre-weekend", "after FP2"])).key   # order doesn't matter
+
+
+def test_validation():
+    for bad in (dict(half_life_days=5), dict(variant="nope"), dict(market_kinds="race_lunch"), dict(fill="maybe"),
+                dict(bogus=1)):
+        with pytest.raises(ValueError):
+            SS.Settings.from_dict(bad)
+
+
+def test_argv_round_trips_through_the_parser():
+    s = SS.Settings.from_dict(dict(variant="gridq", half_life_days=90, practice_prior=False,
+                                   taker_stages="pre-weekend,after FP1", half_spread=0.03))
+    p = argparse.ArgumentParser()
+    p.add_argument("--variant", default="baseline")
+    SS.add_arguments(p)
+    args = p.parse_args(["--variant", s["variant"], *s.argv()])
+    assert SS.from_args(args) == s
+
+
+def test_old_saved_params_are_read():
+    s = SS.Settings.from_run_params({"n_sims": 4000, "variant": "reset", "min_edge": 0.05, "mode": "update",
+                                     "price_band": [0.02, 0.98]})
+    assert s["variant"] == "reset" and s.changed() == {"variant": "reset"}
+
+
+def test_applied_sets_and_restores_model_globals():
+    from racinglines.models.position_sim import model as M
+    from racinglines.models.position_sim import practice as PR
+    before = (M.HALF_LIFE_DAYS, PR.USE_PRACTICE, M.GRID_TERMS)
+    with SS.Settings.from_dict(dict(variant="gridq", half_life_days=90, practice_prior=False)).applied():
+        assert (M.HALF_LIFE_DAYS, PR.USE_PRACTICE, M.GRID_TERMS) == (90.0, False, "known")
+    assert (M.HALF_LIFE_DAYS, PR.USE_PRACTICE, M.GRID_TERMS) == before
+
+
+# --- min_edge_h2h (the head-to-head threshold): new setting, unchanged keys --------------------------
+
+PROFILE_A = {"variant": "gridq+pretrain+reset", "min_edge": 0.10,
+             "taker_stages": ["after FP1", "after FP2", "after FP3", "after SQ", "after Sprint", "after Quali"]}
+
+
+def test_unset_optional_setting_leaves_every_key_unchanged():
+    """Keys saved before min_edge_h2h existed (these values were computed before it was added)."""
+    assert SS.Settings.from_dict().key == "c107835cbced"
+    assert SS.Settings.from_dict(PROFILE_A).key == "8a383d4d0c68"
+    a = SS.Settings.from_dict(PROFILE_A)
+    b = SS.Settings.from_dict(dict(PROFILE_A, min_edge_h2h=0.05))
+    assert a["min_edge_h2h"] is None and b.key != a.key and b.model_key == a.model_key
+    assert "min_edge_h2h" not in a.changed() and b.changed()["min_edge_h2h"] == 0.05
+    assert "--min-edge-h2h" in b.argv() and "--min-edge-h2h" not in a.argv()
+
+
+def test_optional_setting_parses_blank_and_checks_range():
+    assert SS.Settings.from_dict({"min_edge_h2h": ""})["min_edge_h2h"] is None
+    assert SS.Settings.from_dict({"min_edge_h2h": "0.05"})["min_edge_h2h"] == 0.05
+    with pytest.raises(ValueError):
+        SS.Settings.from_dict({"min_edge_h2h": 0.9})
+
+
+def _market(kind, fair, price, outcome=True):
+    return dict(key=f"{kind}-{fair}", kind=kind, subject=kind, outcome=outcome,
+                stages=[dict(label="after FP1", t=1, fair=fair, price=price, tradeable=True),
+                        dict(label="after FP2", t=2, fair=fair + 0.01, price=price, tradeable=True)])
+
+
+def test_h2h_threshold():
+    from racinglines.markets.strategies.taker_weekend import TakerParams, run_weekend
+    wk = [_market("race_h2h", 0.57, 0.50), _market("race_win", 0.37, 0.30), _market("race_podium", 0.50, 0.30, False)]
+    # default (None): byte-identical to the taker before the setting existed
+    t0, p0 = run_weekend(wk, TakerParams())
+    t1, p1 = run_weekend(wk, TakerParams(min_edge_h2h=None))
+    assert t0.equals(t1) and p0.equals(p1)
+    # min_edge 0.10 with h2h at 0.05: the 7-point h2h edge trades, the 7-point win edge doesn't
+    tr, _ = run_weekend(wk, TakerParams(min_edge=0.10, min_edge_h2h=0.05))
+    assert set(tr["kind"]) == {"race_h2h", "race_podium"}
+    tr, _ = run_weekend(wk, TakerParams(min_edge=0.10))
+    assert set(tr["kind"]) == {"race_podium"}
+
+
+# --- seed (the Monte Carlo seed): new model setting, unchanged keys and prices ------------------------
+
+def test_unset_seed_keeps_model_keys_and_todays_seed():
+    """Model keys computed before the seed setting existed: every cached stage run stays valid."""
+    assert SS.Settings.from_dict().model_key == "56f55ac79102"
+    assert SS.Settings.from_dict(PROFILE_A).model_key == "1c505c191fa3"
+    d, s = SS.Settings.from_dict(), SS.Settings.from_dict(dict(seed=7))
+    assert d["seed"] is None and d.rng_seed == 42 and s.rng_seed == 7
+    assert s.model_key != d.model_key and s.changed() == {"seed": 7} and s.argv() == ["--seed", "7"]
+    with pytest.raises(ValueError):
+        SS.Settings.from_dict(dict(seed=-1))
+
+
+def test_seed_draws_independent_noise():
+    import numpy as np
+    import pandas as pd
+
+    from racinglines.models.position_sim import pricing as run
+    from racinglines.testing import synthetic as SY
+    m = run.Measurements.from_frames(*SY.f1_frames())
+    h = run.history(m)
+    eid = int(m.drivers["event_id"].max())
+    cutoff = m.sessions(eid)["qual"] + pd.Timedelta(hours=2)
+
+    def win(st):
+        summ, _ = run.price_race(m, h, cutoff, eid, n_sims=1000, rng=np.random.default_rng(st.rng_seed))
+        return summ.set_index("athlete_id")["win_prob"]
+
+    default = win(SS.Settings.from_dict())
+    today, _ = run.price_race(m, h, cutoff, eid, n_sims=1000, rng=np.random.default_rng(42))
+    assert default.equals(today.set_index("athlete_id")["win_prob"])          # unset = today's prices
+    assert not win(SS.Settings.from_dict(dict(seed=7))).equals(default)       # another draw
+    assert win(SS.Settings.from_dict(dict(seed=7))).equals(win(SS.Settings.from_dict(dict(seed=7))))
+
+
+def test_queue_fill_rule_is_a_maker_setting():
+    """fill=queue (recorded books) changes the combination, not the model's prices."""
+    d, q = SS.Settings.from_dict(), SS.Settings.from_dict(dict(fill="queue"))
+    assert q.model_key == d.model_key and q.key != d.key and q.changed() == dict(fill="queue")
+    p = argparse.ArgumentParser()
+    SS.add_arguments(p)
+    assert SS.from_args(p.parse_args(q.argv())) == q
+
+
+def test_maker_volume_filter_and_kalshi_fee_reach_the_replay_only_when_set():
+    """`maker_min_volume_24h` unset leaves every key and the replay's own $100 filter as they were; the
+    Kalshi venue adds the maker fee and nothing else (weekend_sweep.maker_params)."""
+    from racinglines.markets.strategies import maker_replay as R
+    from racinglines.pipelines import weekend_sweep as WS
+    assert SS.Settings.from_dict().key == "c107835cbced"
+    c = SS.Settings.from_dict({"variant": "gbm", "max_disagree": 0.05, "size": 25})
+    assert c.key == "4a3b81194d5f" and c["maker_min_volume_24h"] is None
+    p = WS.maker_params(c)
+    assert p == R.Params(half_spread=0.02, size=25.0, max_pos=250.0, skew=1.0, max_disagree=0.05, fill="through")
+    assert p.min_volume_24h == 100.0 and p.maker_fee == 0.0
+    k = WS.maker_params(c, "kalshi")
+    assert k.maker_fee == R.KALSHI_MAKER_FEE and k.min_volume_24h == 100.0
+    v = SS.Settings.from_dict({"variant": "gbm", "max_disagree": 0.05, "size": 25, "maker_min_volume_24h": 200})
+    assert v.key != c.key and v.model_key == c.model_key and "--maker-min-volume-24h" in v.argv()
+    assert WS.maker_params(v).min_volume_24h == 200.0
+
+
+def test_venue_setting_stays_out_of_every_key_while_unset():
+    """`venue` (U1) is optional: unset or "polymarket" leaves every saved key, label and flag list as it was."""
+    d = SS.Settings.from_dict()
+    assert d["venue"] is None and SS.venue_of(d) == "polymarket" and d.key == "c107835cbced"
+    pm = SS.Settings.from_dict(dict(venue="polymarket"))
+    assert pm["venue"] is None and pm.key == d.key and pm.label() == d.label() and pm.argv() == []
+    assert SS.Settings.from_dict(dict(PROFILE_A, venue="polymarket")).key == "8a383d4d0c68"
+    k = SS.Settings.from_dict(dict(venue="kalshi"))
+    assert SS.venue_of(k) == "kalshi" and k.key != d.key and k.model_key == d.model_key
+    assert k.changed() == dict(venue="kalshi") and k.argv() == ["--venue", "kalshi"] and "venue=kalshi" in k.label()
+    with pytest.raises(ValueError):
+        SS.Settings.from_dict(dict(venue="betfair"))
+
+
+def test_venue_fees_come_from_the_exchange_classes():
+    """Each exchange's fee schedule lives on its venue class (venue_replay.EXCHANGES); the maker replay's
+    parameters and the disagreement log read it there, and Polymarket adds nothing to the maker's params."""
+    from racinglines.markets import disagree as DG
+    from racinglines.markets.strategies import maker_replay as R
+    from racinglines.markets.venue_replay import EXCHANGES
+    from racinglines.pipelines import weekend_sweep as WS
+    assert set(EXCHANGES) == {"polymarket", "kalshi", "og"}                  # og: the replay venue (flat fee per contract)
+    assert WS.maker_venue_opts("polymarket") == {} and WS.maker_venue_opts("kalshi") == dict(maker_fee=0.0175)
+    assert R.KALSHI_MAKER_FEE == EXCHANGES["kalshi"].MAKER_FEE
+    assert DG.TAKER_FEE == {"polymarket": 0.0, "kalshi": 0.07, "og": 0.0}
+
+
+def test_history_is_built_only_when_a_stage_needs_pricing(monkeypatch, tmp_path):
+    """weekend_sweep.history: off, the plain pricing.history; with RACINGLINES_HISTORY_CACHE=1, stored once per
+    model and data and read back."""
+    import pandas as pd
+
+    from racinglines import paths
+    from racinglines.models.position_sim import pricing as run
+    from racinglines.pipelines import weekend_sweep as WS
+    calls = []
+    monkeypatch.setattr(run, "history", lambda meas, use_track: calls.append(1) or pd.DataFrame({"x": [1, 2]}))
+    monkeypatch.setattr(paths, "cache", lambda tool: tmp_path / tool)
+    monkeypatch.setattr(SS, "data_key", lambda view: "d0")
+
+    class Meas:
+        def view(self, t):
+            return None
+    st = SS.Settings.from_dict({"variant": "gbm"})
+    monkeypatch.delenv(WS.HISTORY_CACHE, raising=False)
+    WS.history(Meas(), st)
+    WS.history(Meas(), st)
+    assert len(calls) == 2 and not (tmp_path / "history").exists()
+    monkeypatch.setenv(WS.HISTORY_CACHE, "1")
+    a = WS.history(Meas(), st)
+    b = WS.history(Meas(), st)
+    assert len(calls) == 3 and a.equals(b) and (tmp_path / "history" / f"{st.model_key}-d0.pkl").exists()

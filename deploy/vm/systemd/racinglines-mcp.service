@@ -1,0 +1,17 @@
+# The MCP server on the VM (docs/mcp.md), for a chat client through the tunnel. Not enabled by setup.sh: enable it
+# by hand once an account has a token (`racinglines mcp token admin`) and cloudflared has a hostname for 127.0.0.1:8100.
+[Unit]
+Description=racinglines MCP server
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+User=racinglines
+WorkingDirectory=/opt/racinglines
+EnvironmentFile=/etc/racinglines.env
+ExecStart=/opt/racinglines/.venv/bin/racinglines mcp --http --port 8100
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

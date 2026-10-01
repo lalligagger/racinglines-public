@@ -1,0 +1,70 @@
+site_name: racinglines
+site_description: Data pipelines, race simulators and market-making tools for timed racing (UCI downhill, Formula 1)
+docs_dir: docs
+site_dir: site
+theme:
+  name: readthedocs
+  navigation_depth: 3
+extra_css:
+  - css/wide.css
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - tables
+  - fenced_code
+nav:
+  - Overview: index.md
+  - Sports and exchanges (status): coverage.md
+  - Adding a sport: add-a-sport.md
+  - Data:
+      - Sources & layout: data.md
+      - Parser: parser.md
+      - Database: database.md
+      - Data changes: data-changes.md
+  - Formula 1:
+      - F1 model: f1.md
+      - F1 evaluation: f1-evaluation.md
+      - F1 forecast: f1-forecast.md
+      - Market making: market-making.md
+      - Paper trading: paper-trading.md
+      - Kalshi history: kalshi-history.md
+      - Exchanges as schemas (OG.com): exchanges.md
+  - Downhill:
+      - Downhill model: model.md
+      - Downhill evaluation: evaluation.md
+      - Downhill forecast: forecast.md
+  - Web app: webapp.md
+  - MCP server: mcp.md
+  - Live events: live-events.md
+  - Operate:
+      - CLI reference: cli.md
+      - Cloud sweeps: cloud-sweep.md
+      - Backtest core (all sports): backtest-core.md
+      - Cloud build-out: cloud-buildout.md
+      - Google Cloud proposal: google-cloud.md
+      - VM deploy: vm-deploy.md
+      - Data off GitHub (plan): data-off-github.md
+      - Overnight VM run: overnight-vm-run.md
+      - Testing: testing.md
+  - Fantasy:
+      - Fantasy soft launch (index): fantasy-launch.md
+      - Fantasy launch runbook: fantasy-runbook.md
+      - Fantasy accounts: fantasy-accounts.md
+      - Fantasy trading: fantasy-trading.md
+      - VM reliability: vm-reliability.md
+      - Email setup: email-setup.md
+  - Roadmap:
+      - Priorities and open items: todo.md
+      - Strategy 2026 (demo plan): strategy-2026.md
+      - Championship markets: championship-markets.md
+      - F1 live test (round 16): f1-live-roadmap.md
+      - F1 roadmap: f1-roadmap.md
+      - Engine roadmap (all sports): engine-roadmap.md
+      - Input frames (engine E1): frames.md
+  - Background:
+      - Project history: history.md
+      - F1 reference: f1-reference.md
+
+validation:
+  anchors: warn          # broken #anchor links fail `mkdocs build --strict` (pre-push hook)

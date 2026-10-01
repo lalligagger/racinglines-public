@@ -1,0 +1,10 @@
+# Docs site (mkdocs.yml + docs/). build_readme.py needs nothing beyond the standard library.
+#   pip install -r requirements-docs.txt
+#   mkdocs serve   /   mkdocs build
+#
+# On Python 3.14, mkdocs's watchdog dependency (used only by `mkdocs serve` live
+# reload) may have no prebuilt package and fail to build. Use Python <= 3.13, or:
+#   pip install --no-deps mkdocs==1.6.1 mkdocs-get-deps
+#   pip install click jinja2 markdown markupsafe pyyaml pyyaml-env-tag ghp-import mergedeep packaging pathspec platformdirs
+# and use `mkdocs build`.
+mkdocs==1.6.1

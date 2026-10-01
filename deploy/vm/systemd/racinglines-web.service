@@ -1,0 +1,16 @@
+# racinglines.bet's web app on the VM (docs/vm-deploy.md). cloudflared forwards the domain to 127.0.0.1:8000.
+[Unit]
+Description=racinglines web app
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+User=racinglines
+WorkingDirectory=/opt/racinglines
+EnvironmentFile=/etc/racinglines.env
+ExecStart=/opt/racinglines/.venv/bin/racinglines web
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

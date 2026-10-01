@@ -1,0 +1,67 @@
+# NASCAR Cup Series: started as a tape-only sport (docs/todo.md, U9); now has results (cf.nascar.com), a simple result-only
+# pricing model (below) and the taker replay (`racinglines nascar replay`). Its Kalshi, Polymarket and OG.com markets are synced
+# and recorded (links unmodeled but identified: driver, race, contract; prices / trades / books archived per exchange) when asked for by name
+# (`racinglines markets [--exchange kalshi] --sport nascar ...`). Read by racinglines/sports.py; the syncs read
+# [markets.kalshi] and [markets.polymarket]. Status and caveats: docs/coverage.md.
+
+[sport]
+code = "nascar"
+name = "NASCAR Cup Series"
+result_kind = "position"          # finishing positions
+model_family = "position_sim"     # result-based pricing model: conservative, source-faithful, uses race results only
+pricing_model = "racinglines.models.nascar_model:NascarCupRace"
+display_order = 2
+
+[league]
+code = "nascar"
+name = "NASCAR Cup Series"
+organizer = "NASCAR"
+
+[competition]
+code = "nascar_cup"
+name = "NASCAR Cup Series (Drivers)"
+display_name = "NASCAR"
+categories = { DRV = ["Drivers", "X", "elite"] }
+
+[markets]
+venues = ["polymarket", "kalshi"]
+standard_kinds = ["race_win", "race_podium", "race_top10"]   # the board's columns (on by default, owner 2026-09-30): priced by the replay's saved runs
+
+[markets.kalshi]
+# Kalshi series tickers to sync, by prefix: every Sports series whose ticker starts with one of these
+# (`sync --series TICKER ...` overrides the list). Off by default: only `--sport nascar` syncs them.
+series = ["KXNASCAR"]
+
+[markets.polymarket]
+# Gamma /events tag_slug values to page (`sync --tags SLUG ...` overrides the list). Off by default: only `--sport nascar` syncs them.
+# UNVERIFIED against the live Gamma API (cloud session can't reach Polymarket); confirmed listed 2026-09-29 by the
+# owner's public-search probe (docs/coverage.md); `sync --tags SLUG ...` overrides.
+tags = ["nascar"]
+
+[identity]
+# Which driver, race and contract a market is about, whichever exchange listed it (racinglines/sources/nascar/links.py).
+# The syncs fill athlete_id, race_id and params (kind, nascar_series, season) on every link of this sport; `prediction`
+# stays unmodeled. `racinglines nascar link` does the same for links already in the database.
+resolver = "nascar"
+
+[results]
+# General rule for every results source: the official feed remains first choice; a public fallback is allowed only
+# for missing seasons and only when the schema says it is a low-quality summary, never a full replacement.
+# This is the generic "source-fidelity fallback" policy used by the schema and any result-source handlers.
+fallback_rule = "official_then_public_summary_fallback"
+# A fallback source is allowed only as a summary: no full field rows, no lap/sector timing, no replacement of the
+# official feed. Use it to fill missing seasons only when the official archive does not exist.
+fallbacks = [{ source = "wikipedia", quality = "summary_only", scope = "race_summary", allow = true, notes = "Only for missing seasons when no official archive exists; never for full result reconstruction." }]
+
+[replay]
+# The taker replay (racinglines/pipelines/position_replay.py; `racinglines nascar replay`). All values are a priori
+# starting points, none tuned: docs/f1-roadmap.md decision log, 2026-09-30 "NASCAR / MotoGP taker replay".
+source = "nascar_cf"              # the events the model and the settlement read
+linker = "nascar"                 # a link not yet identified by `nascar link --apply` is identified in memory
+kinds = ["race_win", "race_podium", "race_top5", "race_top10", "race_top20", "race_h2h"]
+race_day_offset = 0               # the event's date is race day
+# (label, hours from 00:00 UTC on race day). Cup races start in the US afternoon/evening, so "race eve" (18:00 UTC
+# the day before) is before qualifying on most weekends; the model reads race results only, so its fair is the same
+# at every stage and only the market moves.
+stages = [["T-3d", -72], ["T-1d", -24], ["race eve", -6]]
+group_target = { race_win = 1, race_podium = 3 }   # the coherence check's groups (a listing of top-5/10/20 is often partial)

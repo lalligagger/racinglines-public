@@ -1,0 +1,74 @@
+# MotoGP: result-only model track, not a lap-split model. The public JSON exposes a classification table for
+# each finished session (practice, qualifying, warm-up, sprint, race), but not per-lap/sector timing data,
+# so the first pricing pass stays conservative and uses rider form from session and race results only.
+# Kalshi and Polymarket market syncs remain available as archive-only readers.
+
+[sport]
+code = "motogp"
+name = "MotoGP"
+result_kind = "position"          # finishing positions
+model_family = "position_sim"     # conservative, result-only pricing model
+pricing_model = "racinglines.models.motogp_model:MotoGPRaceChallenger"
+display_order = 3
+
+[league]
+code = "fim_motogp"
+name = "FIM MotoGP World Championship"
+organizer = "FIM / Dorna Sports"
+
+[competition]
+code = "motogp_wc"
+name = "MotoGP World Championship (Riders)"
+display_name = "MotoGP"
+categories = { RDR = ["Riders", "X", "elite"] }
+
+[markets]
+venues = ["polymarket", "kalshi"]
+standard_kinds = ["race_win"]     # the board's column (on by default, owner 2026-09-30): priced by the replay's saved runs
+
+[markets.kalshi]
+# Kalshi series tickers to sync, by prefix: every Sports series whose ticker starts with one of these
+# (`sync --series TICKER ...` overrides the list). Off by default: only `--sport motogp` syncs them.
+series = ["KXMOTOGP"]
+
+[identity]
+# Which rider, race and contract a market is about, whichever exchange listed it (racinglines/sources/motogp/links.py).
+# On by default since 2026-09-30 (owner): the syncs fill athlete_id, race_id and params.kind; `prediction` stays unmodeled.
+resolver = "motogp"
+
+[markets.polymarket]
+# Gamma /events tag_slug values to page (`sync --tags SLUG ...` overrides the list). Off by default: only `--sport motogp` syncs them.
+# UNVERIFIED against the live Gamma API (cloud session can't reach Polymarket); confirmed listed 2026-09-29 by the
+# owner's public-search probe (docs/coverage.md); `sync --tags SLUG ...` overrides.
+tags = ["motogp"]
+
+# Results source, probed read-only from the owner's Mac 2026-09-29 (tests/fixtures/market/motogp_README.txt).
+# The adapter exists in `racinglines/sources/motogp/` and ingests every finished session classification it can
+# fetch, but it still does not fabricate lap-by-lap or sector-level data where the public host returns 400s.
+[results]
+host = "https://api.motogp.pulselive.com/motogp/v1"   # public, no key, no auth; unofficial (see `terms` below)
+# seasons, categories, events, sessions, session/{id}/classification, standings: all confirmed 200 with real JSON,
+# 2026-09-29. History: 78 seasons, 1949-2026. Every finished session exposes a classification table with position,
+# gap, total time, points and status per rider, but not lap-by-lap or sector splits. Confirmed (own probe +
+# fabricepipart/mgp-timings, an open-source wrapper of this same API): sector/lap analysis is PDF-only
+# (`session_files.analysis` etc., linked per session), not exposed as JSON anywhere on this host. Guessed lap/sector
+# JSON paths (laps, analysis, sectors, splits, ...) all returned 400, not 200.
+terms = """restrictive: motogp.com's Terms & Conditions (checked 2026-09-29) limit 'Our Channels' to personal, \
+non-commercial use and forbid copying, exchanging or transmitting Content 'for any purpose whatsoever, \
+whether for profit or free of charge' (item 3). No separate API terms were found; this API backs the \
+same site. Owner reviewed 2026-09-29 and said the intended use (a private, non-commercial fantasy-trading \
+app for friends) can proceed for now, to be reviewed again in more detail before any soft launch."""
+limits = { history_seasons = 78, splits_available = false }   # splits_available: no per-lap/sector data in JSON
+
+[replay]
+# The taker replay (racinglines/pipelines/position_replay.py; `racinglines motogp replay`). Links stored before the
+# [identity] resolver was turned on are identified in memory (racinglines/sources/motogp/links.py); the replay writes
+# nothing to market_links. A priori values, none tuned:
+# docs/f1-roadmap.md decision log, 2026-09-30 "NASCAR / MotoGP taker replay".
+source = "motogp_api"
+linker = "motogp"
+kinds = ["race_win"]              # the one race contract the listings show (KXMOTOGPRACE: 289 of 322 Kalshi markets)
+race_day_offset = 2               # an event is filed by its first day (Friday); the Grand Prix is on Sunday
+# (label, hours from 00:00 UTC on race day): "race eve" is 18:00 UTC on Saturday, after the sprint
+stages = [["T-3d", -72], ["T-1d", -24], ["race eve", -6]]
+group_target = { race_win = 1 }

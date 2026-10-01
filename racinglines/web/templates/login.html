@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · racinglines</title><link rel="stylesheet" href="/static/style.css?v={{ css_v() }}"></head>
+<body><main class="login">
+<h1>racinglines</h1>
+<p class="sub">Fair prices and market making for race sports.</p>
+{% if error %}<p class="bad">Wrong username or password.</p>{% endif %}
+
+<div class="demo">
+  <form method="post" action="/login"><input type="hidden" name="username" value="maker"><input type="hidden" name="password" value="password"><input type="hidden" name="next" value="{{ next }}">
+    <button class="maker"><b>Try as pro</b><span>Model fair prices, quote markets, run every strategy, backtest and replay in the Lab</span></button></form>
+  <form method="post" action="/login"><input type="hidden" name="username" value="taker"><input type="hidden" name="password" value="password"><input type="hidden" name="next" value="{{ next }}">
+    <button class="taker"><b>Try as basic</b><span>Follow a taker strategy's calls on the open markets, no model numbers</span></button></form>
+</div>
+<p class="confused"><a href="/racinglines101">I'm already confused.</a></p>
+
+<p class="or">or sign in</p>
+<form method="post" action="/login" class="card">
+  <input type="hidden" name="next" value="{{ next }}">
+  <label><span>Username</span><input name="username" autocomplete="username" required></label>
+  <label><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
+  <button class="primary mt">Sign in</button>
+</form>
+</main></body></html>

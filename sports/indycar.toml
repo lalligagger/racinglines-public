@@ -1,0 +1,45 @@
+# IndyCar: a tape-only sport (docs/todo.md, U9). No model, no pipeline: its Kalshi and Polymarket markets are synced
+# and recorded (links unmodeled, prices / trades / books archived per exchange) when asked for by name
+# (`racinglines markets [--exchange kalshi] --sport indycar ...`). Read by racinglines/sports.py; the syncs read
+# [markets.kalshi] and [markets.polymarket]. Nothing runs for this sport by default.
+
+[sport]
+code = "indycar"
+name = "IndyCar"
+result_kind = "position"          # finishing positions, once there is a model
+model_family = "none"             # tapes only: no model, no pricing_model, no live adapter
+display_order = 4
+
+[league]
+code = "indycar"
+name = "NTT IndyCar Series"
+organizer = "Penske Entertainment"
+
+[competition]
+code = "indycar_series"
+name = "IndyCar Series (Drivers)"
+display_name = "IndyCar"
+categories = { DRV = ["Drivers", "X", "elite"] }
+
+[markets]
+venues = ["polymarket", "kalshi"]
+standard_kinds = []               # nothing is priced, so the board has no columns for it
+
+[markets.kalshi]
+# Kalshi series tickers to sync, by prefix: every Sports series whose ticker starts with one of these
+# (`sync --series TICKER ...` overrides the list). Off by default: only `--sport indycar` syncs them.
+series = ["KXINDYCAR"]
+
+[markets.polymarket]
+# Gamma /events tag_slug values to page (`sync --tags SLUG ...` overrides the list). Off by default: only `--sport indycar` syncs them.
+# UNVERIFIED against the live Gamma API (cloud session can't reach Polymarket); confirmed listed 2026-09-29 by the
+# owner's public-search probe (docs/coverage.md); `sync --tags SLUG ...` overrides.
+tags = ["indycar"]
+
+# Results source: probed read-only from the owner's Mac 2026-09-29, NOT cleared to build against
+# (tests/fixtures/market/indycar_README.txt has the full writeup). www.indycar.com's Terms of Use explicitly
+# forbid automated scraping without written permission. A separate, undocumented live timing feed (INDYCAR's
+# "Race Control" JSON on Azure blob storage, e.g. timingscoring-ris.json: live, per-car, per-lap splits) is
+# technically public and keyless but is still INDYCAR's content, so the same terms almost certainly cover it too
+# — do not ingest either without INDYCAR, LLC's written permission. No [results] table here on purpose: adding
+# one would read as "cleared to use," which this is not.

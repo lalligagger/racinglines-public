@@ -1,0 +1,143 @@
+name: main-merge-gate
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  detect-docs-only:
+    name: detect-docs-only
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.check.outputs.docs_only }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect docs-only PR or push
+        id: check
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+            changed="$(git diff --name-only "$base" "$head")"
+          else
+            changed="$(git diff --name-only HEAD^ HEAD 2>/dev/null || git show --pretty='' --name-only HEAD)"
+          fi
+
+          echo "Changed files:"
+          printf '%s\n' "$changed"
+
+          if [ -z "$changed" ]; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! printf '%s\n' "$changed" | grep -qEv '^(docs/|README\.md$|CLAUDE\.md$|mkdocs\.yml$|.*\.md$)'; then
+            echo "Docs-only change set detected; skipping deploy gate."
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  predeploy-staging:
+    name: predeploy-staging
+    needs: detect-docs-only
+    if: ${{ needs.detect-docs-only.outputs.docs_only != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SMOKE_PASSWORD: password
+      STAGING_URL: https://staging.racinglines.bet
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Pre-deploy staging gate
+        shell: bash
+        run: bash scripts/deploy/predeploy.sh --staging "${{ github.event.pull_request.head.sha || github.sha }}"
+
+      - name: Comment on PR when staging gate fails
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const issue_number = context.payload.pull_request.number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              body: [
+                '❌ Pre-deploy staging gate failed.',
+                '',
+                'This branch cannot merge to main until the `predeploy-staging` check passes.',
+                '',
+                'Fix the branch, re-run the check, and only then merge.'
+              ].join('\n')
+            });
+
+  deploy-production:
+    name: deploy-production
+    needs: [detect-docs-only, predeploy-staging]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.detect-docs-only.outputs.docs_only != 'true' && needs.predeploy-staging.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Skip deploy when GCP secrets are not configured
+        if: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY == '' || secrets.GCP_PROJECT_ID == '' || secrets.VM_NAME == '' || secrets.VM_ZONE == '' }}
+        run: |
+          echo "Skipping production deploy because required GCP deployment secrets are not configured for this repo."
+          echo "Safe path: store the JSON in a repo or environment secret (for example GCP_SERVICE_ACCOUNT_KEY), or use an SSH deploy key for VM access. Never commit the key to the repo."
+
+      - name: Authenticate to Google Cloud
+        if: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY != '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Set up gcloud
+        if: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY != '' }}
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to VM
+        if: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY != '' && secrets.GCP_PROJECT_ID != '' && secrets.VM_NAME != '' && secrets.VM_ZONE != '' }}
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          VM_NAME: ${{ secrets.VM_NAME }}
+          VM_ZONE: ${{ secrets.VM_ZONE }}
+        run: bash scripts/deploy/predeploy.sh --prod "${{ github.sha }}"

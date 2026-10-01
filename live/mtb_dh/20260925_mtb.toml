@@ -1,0 +1,12 @@
+# Launch spec: a downhill final (racinglines live, docs/live-events.md). Whistler's men's final, 27 Sep 2026, as it
+# was run (with racinglines mtb_dh live); it's over, so `racinglines live step` leaves its run folder alone.
+sport = "mtb_dh"
+event = "20260925_mtb"
+run = "20260925_mtb_3"
+title = "Whistler DH final (private book)"
+
+[feed]
+slug = "20260925_mtb"
+final = "3"
+quali = ["2", "91"]
+conditions = "clear, rutted"

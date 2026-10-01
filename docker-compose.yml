@@ -1,0 +1,26 @@
+# Local PostgreSQL for racinglines.
+#   docker compose up -d        # start (data persists in the pgdata volume)
+#   racinglines db init         # create tables + reference data
+# Host port 5433 so it doesn't clash with a Postgres already on 5432.
+# Matches racinglines/db/config.py's default DATABASE_URL:
+#   postgresql+psycopg://racinglines:racinglines@localhost:5433/racinglines
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: racinglines
+      POSTGRES_PASSWORD: racinglines
+      POSTGRES_DB: racinglines
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U racinglines"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

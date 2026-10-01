@@ -1,0 +1,141 @@
+{
+ "rows": [
+  {
+   "brier_podium": 0.07651983838,
+   "brier_teammate_h2h": 0.224073125,
+   "brier_top10": 0.1337545859,
+   "brier_win": 0.03734715152,
+   "event_id": 26,
+   "mode": "pre_quali",
+   "winner_prob": 0.1466666667
+  },
+  {
+   "brier_podium": 0.08695361616,
+   "brier_teammate_h2h": 0.211519845,
+   "brier_top10": 0.1224710303,
+   "brier_win": 0.04112565657,
+   "event_id": 26,
+   "mode": "pre_race",
+   "winner_prob": 0.1073333333
+  },
+  {
+   "brier_podium": 0.07935858586,
+   "brier_teammate_h2h": 0.232841045,
+   "brier_top10": 0.1357168081,
+   "brier_win": 0.0362999596,
+   "event_id": 26,
+   "mode": "pre_weekend",
+   "winner_prob": 0.1573333333
+  },
+  {
+   "brier_podium": 0.08521688889,
+   "brier_teammate_h2h": 0.2436008944,
+   "brier_top10": 0.1201131005,
+   "brier_win": 0.03425786243,
+   "event_id": 27,
+   "mode": "pre_quali",
+   "winner_prob": 0.2093333333
+  },
+  {
+   "brier_podium": 0.05638924868,
+   "brier_teammate_h2h": 0.1749457733,
+   "brier_top10": 0.09796205291,
+   "brier_win": 0.03245477249,
+   "event_id": 27,
+   "mode": "pre_race",
+   "winner_prob": 0.2406666667
+  },
+  {
+   "brier_podium": 0.08307271958,
+   "brier_teammate_h2h": 0.2553289933,
+   "brier_top10": 0.1239289735,
+   "brier_win": 0.03433193651,
+   "event_id": 27,
+   "mode": "pre_weekend",
+   "winner_prob": 0.2026666667
+  },
+  {
+   "brier_podium": 0.0905759596,
+   "brier_teammate_h2h": 0.2203367067,
+   "brier_top10": 0.2131430303,
+   "brier_win": 0.03461034343,
+   "event_id": 28,
+   "mode": "pre_quali",
+   "winner_prob": 0.1926666667
+  },
+  {
+   "brier_podium": 0.09096222222,
+   "brier_teammate_h2h": 0.2237445689,
+   "brier_top10": 0.2161648889,
+   "brier_win": 0.02586614141,
+   "event_id": 28,
+   "mode": "pre_race",
+   "winner_prob": 0.3046666667
+  },
+  {
+   "brier_podium": 0.09445143434,
+   "brier_teammate_h2h": 0.2371487167,
+   "brier_top10": 0.2321372121,
+   "brier_win": 0.03669305051,
+   "event_id": 28,
+   "mode": "pre_weekend",
+   "winner_prob": 0.1586666667
+  }
+ ],
+ "summary": [
+  {
+   "brier_constructor_top": 0.0474097508,
+   "brier_podium": 0.084104229,
+   "brier_podium_grid": null,
+   "brier_podium_uniform": 0.1193287232,
+   "brier_teammate_h2h": 0.2293369087,
+   "brier_top10": 0.1556702389,
+   "brier_top10_grid": null,
+   "brier_top10_uniform": 0.2484336251,
+   "brier_win": 0.0354051191,
+   "brier_win_grid": null,
+   "brier_win_uniform": 0.0440427778,
+   "logloss_podium": 0.2564313239,
+   "logloss_top10": 0.4615674533,
+   "logloss_win": 0.1191270987,
+   "spearman": 0.839869281,
+   "winner_prob": 0.1828888889
+  },
+  {
+   "brier_constructor_top": 0.0638696566,
+   "brier_podium": 0.0781016957,
+   "brier_podium_grid": 0.0947156581,
+   "brier_podium_uniform": 0.1193287232,
+   "brier_teammate_h2h": 0.2034033957,
+   "brier_top10": 0.1455326574,
+   "brier_top10_grid": 0.1497502245,
+   "brier_top10_uniform": 0.2484336251,
+   "brier_win": 0.0331488568,
+   "brier_win_grid": 0.0405351971,
+   "brier_win_uniform": 0.0440427778,
+   "logloss_podium": 0.2364969871,
+   "logloss_top10": 0.4424085791,
+   "logloss_win": 0.1131469454,
+   "spearman": 0.8420966632,
+   "winner_prob": 0.2175555556
+  },
+  {
+   "brier_constructor_top": 0.0508093468,
+   "brier_podium": 0.0856275799,
+   "brier_podium_grid": null,
+   "brier_podium_uniform": 0.1193287232,
+   "brier_teammate_h2h": 0.2417729183,
+   "brier_top10": 0.1639276646,
+   "brier_top10_grid": null,
+   "brier_top10_uniform": 0.2484336251,
+   "brier_win": 0.0357749822,
+   "brier_win_grid": null,
+   "brier_win_uniform": 0.0440427778,
+   "logloss_podium": 0.2562662646,
+   "logloss_top10": 0.4899428502,
+   "logloss_win": 0.1217466467,
+   "spearman": 0.8167354661,
+   "winner_prob": 0.1728888889
+  }
+ ]
+}

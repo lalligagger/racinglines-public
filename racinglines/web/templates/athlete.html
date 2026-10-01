@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% from "_macros.html" import table %}
+{% block title %}{{ a.display_name }}{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/athletes">Athletes</a> › #{{ a.id }}</p>
+<h1>{{ a.display_name }} <span class="muted">· {{ a.nation or "" }} · athlete #{{ a.id }}</span></h1>
+<p class="muted">Identifiers: {% for i in a.identifiers %}<code>{{ i.scheme }}:{{ i.value }}</code> {% endfor %}</p>
+<div class="card"><h2>Predictions</h2>{{ table(preds, ["run", "kind", "created_at", "target", "venue", "win_prob", "podium_prob", "top10_prob", "make_final_prob", "exp_points"], {"run": ["/lab/runs/", "run"], "venue": ["/events/", "event_id"]}, cap=15, filter="Filter by venue or target") }}</div>
+<div class="card"><h2>Results (qualifying, semis, finals)</h2>{{ table(results, ["start_date", "venue", "category", "round", "position", "status", "time_s", "team"], {"venue": ["/events/", "event_id"]}, cap=15, filter="Filter by venue or round") }}</div>
+{% endblock %}

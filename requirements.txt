@@ -1,0 +1,39 @@
+# Runtime dependencies of the racinglines package (Python >= 3.11; developed on 3.14).
+# Pinned to the versions the pipelines, backtests and tests were run with.
+#   pip install -r requirements.txt && pip install -e .     # + the `racinglines` command
+# Docs site: pip install -r requirements-docs.txt
+
+# data + models
+numpy==2.5.3
+pandas==2.3.3            # FastF1 requires pandas < 3
+scikit-learn==1.9.1      # ridge regressions (F1 finishing model)
+pyarrow==25.0.1          # Parquet (raw F1 sessions, market archive, fixtures)
+
+# data sources
+requests==2.34.2         # ChronoRace downloads
+fastf1==3.8.3            # F1 live-timing archive
+httpx==0.28.1            # Polymarket APIs, web client
+beautifulsoup4==4.15.0   # parsing pasted HTML result tables
+lxml==6.1.3
+
+# database (PostgreSQL)
+SQLAlchemy==2.1.1
+psycopg[binary]==3.3.6
+alembic==1.20.0
+
+# web app
+fastapi==0.141.1
+uvicorn[standard]==0.54.0
+python-multipart==0.0.32
+Jinja2==3.1.6
+py-clob-client-v2==1.2.0 # Polymarket's official CLOB V2 client (order signing / posting; V1 orders stopped on 2026-04-28)
+
+# MCP server (racinglines mcp): the data and simulations for a chat client
+mcp==2.2.0
+
+# tests (python -m pytest)
+pytest==9.1.1
+
+# optional report generation
+Markdown==3.10.2
+matplotlib==3.10.8

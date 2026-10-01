@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% from "_macros.html" import csrf, flash, page_head %}
+{% block title %}Lab{% endblock %}
+{% block content %}
+{{ page_head("Lab", "Test the model and the trading strategies before money is at risk. Everything here prices with a hard as-of cutoff (no future data); forecasts launched here are scenarios and only change live prices when promoted.") }}
+{{ flash(msg) }}
+<div id="lab" data-open-now='{{ open_now|tojson }}'>
+<form id="lab-csrf" hidden>{{ csrf() }}</form>
+
+<div class="card" id="edge">{% include "lab_edge.html" %}</div>
+
+{# The other sections load on demand: each box fetches /lab/section/<key> the first time it is opened (app.js
+   fires its "open" event; the jobs box reloads on every open, since whose jobs it shows is a browser setting). #}
+<div class="section-tabs" role="group" aria-label="Lab sections">{% for key, label in sections %}<button type="button" data-section="{{ key }}" aria-pressed="false">{{ label }}</button>{% endfor %}</div>
+{% for key, label in sections %}<div class="card lab-section" id="{{ key }}" hidden
+     hx-get="{{ '/lab/section/jobs' if key == 'jobs' else '/lab/section/' ~ key ~ query }}" hx-trigger="{{ 'open' if key == 'jobs' else 'open once' }}" hx-swap="innerHTML"><p class="muted">Loading {{ label|lower }}…</p></div>
+{% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,152 @@
+"""The live core carries a new sport without changes: a synthetic third sport (tests/live_toy.py) with its own
+[live] schema, launch spec and body partial, run through the registry, the CLI's step, the replay and the Live
+tab. Everything synthetic; no network, no database."""
+
+import pytest
+
+from racinglines import paths, sports
+from racinglines.pipelines import live as LV
+
+pytestmark = pytest.mark.quick
+
+SCHEMA = """
+[sport]
+code = "toy_sprint"
+name = "Toy sprint"
+result_kind = "time"
+model_family = "none"
+display_order = 9
+
+[live]
+adapter = "live_toy"
+[live.poll]
+mode = "interval"
+interval_s = 10
+stale_h = 1
+[live.markets]
+kinds = ["race_win"]
+[live.quoting]
+half_spread = 0.04
+max_pos = 500.0
+skew = 1.0
+[live.crowd]
+takers = 50
+p = 0.05
+seed = 7
+"""
+
+SPEC = """sport = "toy_sprint"
+event = "toy-1"
+title = "Toy sprint #1"
+[feed]
+seed = 3
+[live.quoting]
+half_spread = 0.05
+"""
+
+BODY = """<h1>{{ snap.sport }}</h1>{% for r in rows %}<p>{{ r.key }} {{ "%.2f"|format(r.fair) }} {{ r.bid }}/{{ r.ask }}</p>{% endfor %}<p>fills {{ fills }}</p>"""
+
+
+@pytest.fixture
+def toy(tmp_path, monkeypatch):
+    (tmp_path / "sports").mkdir()
+    for f in sports.SCHEMAS.glob("*.toml"):                 # the real sports too: the app reads them on import
+        (tmp_path / "sports" / f.name).write_text(f.read_text())
+    (tmp_path / "sports" / "toy_sprint.toml").write_text(SCHEMA)
+    (tmp_path / "live" / "toy_sprint").mkdir(parents=True)
+    (tmp_path / "live" / "toy_sprint" / "toy-1.toml").write_text(SPEC)
+    monkeypatch.setattr(sports, "SCHEMAS", tmp_path / "sports")
+    monkeypatch.setattr(LV, "SPECS", tmp_path / "live")
+    monkeypatch.setattr(paths, "DATA", tmp_path / "data")
+    sports.load.cache_clear()
+    LV.state.__dict__.pop("cache", None)
+    yield tmp_path
+    sports.load.cache_clear()
+
+
+def test_a_third_sport_runs_through_the_core(toy, monkeypatch):
+    from racinglines.cli import live as CL
+    spec = LV.load_spec("toy_sprint/toy-1")
+    assert spec["live"]["quoting"] == dict(half_spread=0.05, max_pos=500.0, skew=1.0)      # the spec over the schema
+    ad = LV.adapter("toy_sprint")
+    assert ad.__name__ == "live_toy"
+    args = type("A", (), dict(no_fetch=True, unfreeze=False, no_sync=True, no_alert=True, now=None))()
+    n = 0
+    while CL._step(spec, args) is not None:                 # the CLI's step: locked, through the adapter
+        n += 1
+        assert n < 50
+    assert n >= 10
+    ev = LV.find("toy-1")
+    assert ev["sport"] == "toy_sprint" and ev["title"] == "Toy sprint #1"
+    assert LV.state("toy-1") == "replay"                     # over
+    times = LV.snap_times("toy-1")
+    assert len(times) == n
+    book = __import__("json").loads((LV.folder("toy-1") / "book.json").read_text())
+    rebuilt, _ = LV.book_at("toy-1")
+    assert set(rebuilt) == set(book["markets"]) and all(
+        abs(rebuilt[k]["inv"] - book["markets"][k]["inv"]) < 1e-9 for k in book["markets"])
+    # the Live tab: the shared shell over the sport's own body partial
+    from jinja2 import ChoiceLoader, DictLoader
+
+    from racinglines.web.app import templates
+    from racinglines.web.views import live_context
+    monkeypatch.setattr(templates.env, "loader", ChoiceLoader([DictLoader({"live_toy_sprint.html": BODY}), templates.env.loader]))
+    templates.env.cache = None
+    ctx = live_context("toy-1", times[2], True, 0)
+    assert ctx["sport"] == "toy_sprint" and ctx["mode"] == "replay" and ctx["t"] == times[2]
+    html = templates.get_template("live.html").render(dict(ctx, request=None, user=None, trading=None, live_nav=None,
+                                                           signals_nav=None))
+    assert "<h1>toy_sprint</h1>" in html and "race_win:Ada" in html and 'id="rp-slider"' in html
+    assert "/live?event=toy-1&t=" in html                   # the replay bar keeps the event
+    # the report: any sport's run folder
+    from racinglines.pipelines import live_report as R
+    files = R.write(spec)
+    md = files["md"].read_text()
+    assert "# Toy sprint #1: event report" in md and "## Fair-price scorecard" in md and "Settled" in md
+    sc = R.scorecard(LV.load("toy-1")[2], R.outcomes_of(LV.load("toy-1")[0]))
+    assert sc and sc[-1]["brier"] < 1e-9 and {r["kind"] for r in sc} == {"race_win"}   # certain at the end: perfect
+    assert "<svg" in files["html"].read_text() and files["pnl.svg"].exists()
+
+
+def test_live_page_lists_events_and_session_links(toy, monkeypatch):
+    """The live shell should let you jump between overlapping event runs and past snapshots, not just the newest one."""
+    from racinglines.cli import live as CL
+    from racinglines.web.app import templates
+    from racinglines.web.views import live_context
+
+    spec1 = LV.load_spec("toy_sprint/toy-1")
+    spec2 = dict(spec1, event="toy-2", title="Toy sprint #2", feed=dict(spec1["feed"], seed=11))
+    (toy / "live" / "toy_sprint" / "toy-2.toml").write_text('sport = "toy_sprint"\nevent = "toy-2"\ntitle = "Toy sprint #2"\n[feed]\nseed = 11\n')
+    args = type("A", (), dict(no_fetch=True, unfreeze=False, no_sync=True, no_alert=True, now=None))()
+    while CL._step(spec1, args) is not None:
+        pass
+    while CL._step(LV.load_spec("toy_sprint/toy-2"), args) is not None:
+        pass
+    assert {e["run"] for e in LV.events()} >= {"toy-1", "toy-2"}
+    t = LV.snap_times("toy-1")[-1]
+    ctx = live_context("toy-1", t, True, 0)
+    assert any(e["run"] == "toy-2" for e in ctx["events"])
+    from jinja2 import ChoiceLoader, DictLoader
+    monkeypatch.setattr(templates.env, "loader", ChoiceLoader([DictLoader({"live_toy_sprint.html": BODY}), templates.env.loader]))
+    templates.env.cache = None
+    html = templates.get_template("live.html").render(dict(ctx, request=None, user=None, trading=None, live_nav=None,
+                                                           signals_nav=None))
+    assert '/live?event=toy-2' in html
+    assert f'/live?event=toy-1&t={t}' in html
+
+
+def test_settled_event_is_recorded_in_live_events(toy, test_engine):
+    """racinglines live settle: a settled run into live_events (the migration's table), idempotently."""
+    from sqlalchemy import text
+
+    from racinglines.cli import live as CL
+    spec = LV.load_spec("toy_sprint/toy-1")
+    args = type("A", (), dict(no_fetch=True, unfreeze=False, no_sync=True, no_alert=True, now=None))()
+    while CL._step(spec, args) is not None:
+        pass
+    s1 = LV.settle("toy-1", engine=test_engine)
+    s2 = LV.settle("toy-1", engine=test_engine)
+    assert s1 == s2 and s1["settled_at"] and s1["sport"] == "toy_sprint"
+    with test_engine.connect() as c:
+        rows = c.execute(text("SELECT run, event_key, maker_pnl, fills, detail->>'picks' FROM live_events")).all()
+    assert rows == [("toy-1", "toy-1", pytest.approx(s1["maker_pnl"]), s1["fills"], "0")]

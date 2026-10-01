@@ -1,0 +1,10 @@
+[Unit]
+Description=racinglines Kalshi and OG.com recorder every 5 minutes
+
+[Timer]
+OnActiveSec=20s
+OnBootSec=2min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,308 @@
+# Downhill model
+
+The downhill season model lives in `racinglines/models/timed_runs/` (section 7) and is driven by
+`racinglines mtb_dh forecast` and `racinglines mtb_dh backtest`. It answers:
+
+- Before a weekend: what's each rider's chance to make the Final, finish top 10,
+  reach the podium, or win? How many championship points do they get on average?
+- Mid-season: how will the championship end up?
+
+How accurate it is: [Downhill evaluation](evaluation.md). The live 2026
+projection: [Downhill forecast](forecast.md). Formula 1 uses a different model
+family: [F1 model](f1.md).
+
+## Overview
+
+```
+tidy splits.csv
+   │  FINISH rows of every round, every season and category
+   ▼
+fit_season_model ──> rider pace μ, noise σ, rider × weekend spread τ, incident rates
+   │
+   ▼
+simulate_weekend (format-aware) ──> qualifying ranks, Final ranks, points  × N sims
+   │
+   ▼
+simulate_standings ──> points so far + simulated rounds ──> title / top-3 odds
+```
+
+## What gets modelled
+
+The model works on the log of each rider's finish time. For rider *i* in run *r*
+(one run = one event + category + round, e.g. Les Gets 2026 ME Q2):
+
+```
+log(time[i, r]) = run_effect[r] + μ[i] + u[i, weekend] + ε[i, r]
+```
+
+| Term | Meaning |
+|---|---|
+| `run_effect[r]` | How long that run's track and conditions are. It absorbs track length, weather, and differences between categories. |
+| `μ[i]` | The rider's pace, as a fraction of time. μ = −0.02 means about 2% faster than the median rider. |
+| `u[i, weekend] ~ N(0, τ²)` | Rider × track effect: shared by all of a rider's runs that weekend (track suits them, feeling good, setup). |
+| `ε ~ N(0, σ²)` | Run-to-run noise. |
+
+On top of this, each rider has an **incident rate** `p_inc[i]`. An incident is a
+DNF or DSQ, or a finished run more than `INCIDENT_THRESHOLD` (4%) slower than
+expected: a crash, puncture or big mistake.
+
+Log times make the terms proportional, so a 2% gap means the same thing on a
+2:45 track and a 4:10 track.
+
+## Fitting
+
+`fit_season_model(raw, category, half_life_days, category_weights, prior_n,
+incident_prior_n, n_iter)`
+
+### Which runs are used, and their weights
+
+Every `FINISH` row with `status == OK` from rounds in `RUN_WEIGHTS` is used, from
+every season and category passed in. Each run's weight is the product of three
+factors:
+
+| Factor | Value |
+|---|---|
+| Round type (`RUN_WEIGHTS`) | `practice` 0.5; `qual`, `qual1`, `qual2`, `semi`, `final` 1.0 |
+| Category (`CATEGORY_WEIGHTS`, `--junior-weight`) | `ME` 1.0, `MJ` 0.25, anything else 0.5 |
+| Recency | `0.5 ** (days_before_latest / half_life_days)`, default half-life 240 days |
+
+With a 240-day half-life, last season's results count about half to three quarters as
+much as this month's, and results from three seasons ago about a fifth. These
+settings come from the 43-round tuning sweep ([Calibration](#calibration)); until
+2026-09-28 they were 120 days, junior weight 0.5 and `prior_n` 1.5.
+
+### Estimation, step by step
+
+Estimation alternates between two steps, repeated 30 times:
+
+1. **Run effects:** `run_effect[r] = median over riders in r of (log time − μ[i])`,
+   using only clean runs. The median is robust to crashes.
+2. **Rider pace:** `μ[i] = Σ w·(log time − run_effect) / (Σ w + prior_n)` over the
+   rider's clean runs (`--prior-n`, see [Calibration](#calibration)). `prior_n = 0.5` (1.5 before 2026-09-28) shrinks riders with little data toward the
+   field median, since one lucky run shouldn't make a rider a favourite. After each
+   step, μ is re-centred so its median is 0.
+3. **Clean runs:** a run counts as clean if its residual
+   `log time − run_effect − μ` is below 0.04. Incidents are excluded from the pace
+   estimate.
+
+**How junior results line up with elite ones:** each run has its own run effect,
+so junior times aren't compared directly with elite times. The link comes from the
+177 riders who raced both categories: their μ has to fit both sets of runs, which
+puts junior and elite on one scale. The same happens across seasons through riders
+who race several years.
+
+### Noise terms
+
+These come from clean race runs (`qual`/`qual1`/`qual2`/`semi`/`final`) in the
+**target category** only:
+
+- σ² is the pooled variance within each rider's weekend (`residual − mean for that
+  rider and weekend`).
+- τ² is the variance of rider-weekend means, minus the part already explained by σ²
+  (`var(mean) − mean(σ²/n)`), with a small floor.
+
+The backtest fit up to 2026 round 5 gives σ ≈ 0.012 and τ ≈ 0.011 (log-time). A
+rider's time scatters by about 1.2% run to run, and about 1.1% extra from weekend
+to weekend.
+
+### Incidents
+
+- **Base rate `p0`:** the share of started race runs in the target category that
+  were incidents. It's about 24% in 2026 elite, which includes slow-but-finished runs.
+- **Per-rider rate:** recency- and category-weighted, then shrunk toward `p0`:
+  `(Σ w·incident + 8·p0) / (Σ w + 8)`.
+- **How incidents play out:** about 14% of incidents are DNF/DSQ. The rest are
+  finished-but-slow, and their time losses are kept in a list that the simulator
+  samples from.
+
+### Unknown riders
+
+A rider with no history gets μ at the 75th percentile of the target category's
+riders (slower than the median), and the base incident rate `p0`.
+
+## Simulating a weekend
+
+`simulate_weekend(model, riders, n_sims, attend_prob, rng, fmt)` works on
+`(n_sims × riders)` arrays, all at once:
+
+1. **Attendance:** each rider starts with probability `attend_prob` (or always, if
+   no probabilities are given).
+2. **Weekend effect:** draw `u` once per rider per simulation; it's shared by all
+   their runs that weekend.
+3. **Each run:** `μ + u + N(0, σ²)`. With probability `p_inc[i]` it's an incident:
+   a DNF (time = ∞) with probability `dnf_share`, otherwise a time loss sampled
+   from the observed losses.
+4. **Rank** each run and move riders through the stages of the weekend format.
+
+### Weekend formats
+
+`event_format(raw, event_id)` works out an event's format from its own results.
+This is fair in backtests, because the format and field sizes are published
+before the race.
+
+| Kind | Stages | Field sizes taken from | Seasons |
+|---|---|---|---|
+| `q1q2` | Q1 → (top `q1_to_final` go through) → Q2 for everyone else → (top `q2_to_final`) → Final | Finalists who didn't ride Q2 / did ride Q2 | Elite 2025–26 |
+| `semi` | Qualifier → (top `to_semi`) → Semi-Final → (top `to_final`) → Final | Semi-Final and Final entry counts | Elite 2023–24 |
+| `single` | Qualifier → (top `to_final`) → Final | Final entry count | Elite 2021–22, juniors, weather-shortened weekends |
+
+Unraced rounds use `DEFAULT_FORMAT = q1q2 (20 + 10)`, the 2026 format.
+
+Protected riders (older formats let top-ranked riders into the Final even if they
+failed to qualify) aren't modelled explicitly. Using the actual Final size
+(e.g. 64 instead of 60) accounts for them roughly.
+
+## Points and standings
+
+```
+points = QUAL_POINTS[qualifying rank] + FINAL_POINTS[final rank]
+```
+
+- **Which round pays qualifying points** depends on the format, via
+  `QUAL_POINTS_ROUND`: `qual1` (q1q2), `semi` (semi), `qual` (single).
+- **Real points so far** come from `actual_event_points` applied to the target
+  season's actual results.
+- **Standings:** `simulate_standings` adds simulated points for each remaining
+  weekend to the real points so far, then ranks everyone in every simulation, with
+  random tie-breaks. That gives each rider's chance of being champion, top 3 and
+  top 10, plus expected points and a p10–p90 range.
+
+!!! warning
+    `FINAL_POINTS` (250/210/180/…/11 for places 1–30) and `QUAL_POINTS`
+    (60/50/40/…/2 for places 1–20) are **placeholders**, and the same tables are
+    used for every era. See [Roadmap](todo.md#points-validation). Official tables, once entered,
+    go in `points_schemes` per era (`racinglines mtb_dh points import`), and `--points db` uses them
+    ([CLI](cli.md#racinglines-mtb_dh-points)).
+
+## Forecasting the rest of the season
+
+`forecast_season(raw, target, n_remaining, ...)` simulates `n_remaining` rounds in
+total. Some may already be in the data (a weekend in progress), and the rest are
+unknown.
+
+### Rounds already in the data (weekend in progress)
+
+`completed_events(target)` is the set of target events whose Final has `OK`
+results. Any target event without them (e.g. Timed Training done, Q1 start list
+published) is treated as **in progress**:
+
+- **Field:** its real start list (`event_starters`: first-qualifier entrants not
+  marked DNS, including `START` rows). Attendance is certain.
+- **Training cutoff:** the model is fit only on data dated **before** that weekend,
+  so this weekend's runs aren't counted twice.
+- **Weekend effect:** each rider's `u` is conditioned on this weekend's Timed
+  Training (`weekend_prior`). A rider's residual `e` gives the posterior
+  `mean = τ²·e / (τ² + σₚ²)`, `sd = √(τ²σₚ² / (τ² + σₚ²))`, where
+  `σₚ = 1.5·σ` because training runs are noisier. Riders without a training run
+  keep `N(0, τ²)`; runs slower than `INCIDENT_THRESHOLD` are ignored.
+- **Safety check:** if the session's residual interquartile range is above `max_iqr`
+  (0.08 in log-time), the session isn't a pace signal (e.g. riders held on track)
+  and is ignored with a warning. This happened at Whistler 2026 (IQR 0.71).
+- **Format:** simulated with `DEFAULT_FORMAT` (Q1 top 20 + Q2 top 10).
+- **Output:** a summary per upcoming event (`forecast_<venue>.csv`, and
+  `race_predictions.target = "event:<event_id>"` with its `race_id` when saved),
+  including `tt_pace_adj_pct`.
+
+### Rounds not in the data yet
+
+`n_unknown = n_remaining − len(upcoming)` rounds use a field of riders who started
+the first qualifier in any of the last `attend_window = 3` completed events. Each
+rider attends with probability `starts / 3`, so a rider who missed one of the last
+three rounds (e.g. through injury) attends with probability 2/3. They're saved as
+`target = "remaining_round"`.
+
+### Championship rank movement
+
+For the next upcoming weekend, `rank_moves(current_points, riders, sim_points)`
+compares each rider's championship rank before and after the simulated weekend
+(ranks are "min" style, so tied riders share the better rank). It gives
+`current_rank`, `rank_up_prob`, `rank_down_prob` and `exp_rank_after`, which are
+stored in `race_predictions.extra`. These use the placeholder points tables.
+
+## Calibration
+
+`racinglines mtb_dh backtest --db --reliability` (2026-09-28, cloud build-out): every
+walk-forward round of 2021–2026, 43 rounds and 5,171 rider-rounds, elite men.
+
+**The odds are too flat where it matters most.** Win and podium are close to calibrated.
+Top 10 and making the Final are not: riders the model gives 10–20% to make the Final made it
+6% of the time, and riders it gives 70–90% made it 92% of the time.
+
+| Make the Final: predicted | 0.06–0.10 | 0.10–0.20 | 0.50–0.70 | 0.70–0.90 |
+|---|---|---|---|---|
+| Observed, `prior_n` 1.5 (the old default) | 2.5% | 5.6% | 71.8% | 92.1% |
+| Observed, `prior_n` 0.5 | 5.0% | 8.6% | 64.7% | 87.1% |
+
+**Cause: too much shrinkage.** `prior_n` 1.5 pulls riders' paces toward the field so hard
+that the order of the field is under-stated. With 0.5, log loss per rider-round, paired by
+round (± 2 SE):
+
+| Market | Change | Seasons better |
+|---|---|---|
+| Make the Final | −0.026 ± 0.005 | 6 of 6 |
+| Top 10 | −0.002 ± 0.005 | 5 of 6 (2021 worse) |
+| Podium | −0.001 ± 0.001 | 5 of 6 |
+| Win | −0.000 ± 0.001 | even |
+
+Tried and not better: a lower `INCIDENT_THRESHOLD` (0.03, 0.02: small gains on top 10
+and podium, worse for making the Final), heavier-tailed run noise (`--eps-df` 4 and 6),
+and scaling σ and τ down (a little better with `prior_n` 0.5 or 1.0, overconfident with 0.25).
+Not tried yet: per-round-type incident rates.
+
+**Tuning sweep** over the same 43 rounds: `prior_n` 0.5 / 1.5 × half-life 60 / 120 / 240 / 480
+days × junior weight 0.25 / 0.5 / 1.0 (24 combinations). A longer half-life (240) and less
+junior weight (0.25) help too. The best, `--prior-n 0.5 --half-life-days 240 --junior-weight
+0.25`, is better than the old defaults in every market (log loss, paired by round, ± 2 SE):
+
+| Market | Change | Seasons better |
+|---|---|---|
+| Make the Final | −0.035 ± 0.006 | 6 of 6 |
+| Top 10 | −0.006 ± 0.006 | 5 of 6 |
+| Podium | −0.003 ± 0.002 | 6 of 6 |
+| Win | −0.001 ± 0.001 | 3 of 6 |
+
+The practice-run weight (`run_weights.practice` in `sports/mtb_dh.toml`) makes little
+difference: 0, 0.25, 0.5 and 1.0 are within 0.003 of each other on every market, and today's
+0.5 is as good as any.
+
+**Lower incident rates in Finals: no gain.** Finals have fewer incidents than qualifying in the
+data (15% vs 23% of runs), but scaling the rate in Finals by 0.5, 0.71 or 0.85 (qualifying up
+to keep the average) is slightly worse on every market. Not built in.
+
+**Rider × venue effects: no gain.** A rider's past deviations at the same venue, shrunk
+(divided by events there + k, k = 1, 2, 4), used as the mean of that weekend's `u` on top of
+the tuned settings: win log loss −0.0003 at best, podium, top 10 and making the Final
+no better or worse, Spearman lower. Two things mattered for a fair test: deviations are
+measured from the rider's own level (else they re-add the pace shrinkage), and residuals
+beyond ±4% are dropped (practice times include a few far-off laps). Not built into the model.
+
+**Rookie improvement: none detected.** Shifting riders with 3 or fewer (or 6 or fewer) elite
+events faster by 0.3% or 0.6% of run time is worse on every market; shifting them 0.3% slower
+changes log loss by under 0.001. With the 240-day half-life the pace already follows form.
+
+**The defaults since 2026-09-28** (owner's OK): `PRIOR_N` 0.5, `HALF_LIFE_DAYS` 240,
+`CATEGORY_WEIGHTS["MJ"]` 0.25 in `models/timed_runs/model.py`. They were picked on the same 43
+rounds they're scored on, so the gains are in-sample: check them on 2026's next rounds. The old
+behaviour is `--prior-n 1.5 --half-life-days 120 --junior-weight 0.5`.
+
+## Training scope and targets
+
+- **Target** (`select_target`): only the target season and category are predicted
+  and scored. Points, start lists, standings and every metric come from target rows.
+- **Training** (`_training_rows`): `train_scope="all"` uses every row in the CSV;
+  `"season"` uses only the target season. Backtests only train on data from strictly
+  before the round being predicted.
+
+## The older per-race model
+
+The `fit` / `predict` subcommands are the first approach, built before any real
+data existed. They're kept but aren't part of the season pipeline:
+
+1. `pct_back` and a robust z-score per round;
+2. pairwise Elo ratings from finishing order;
+3. a recency-weighted form average and a venue prior;
+4. a gradient-boosted regressor on `pct_back`;
+5. Plackett–Luce win, podium and top-10 probabilities from Elo.
+
+They haven't been checked against the multi-season data. They don't model the
+qualifying format or points.

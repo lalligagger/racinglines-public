@@ -1,0 +1,1622 @@
+# Taker re-sweep (2026-09-30, owner's ask in the "Taker sweeps and top 10" project thread): the five weekend
+# taker strategies (update, hold, last, early, stage-aware) swept on F1 over both venues' recorded tapes,
+# Polymarket and Kalshi, 2026 the target and 2025 held out. Round 1 is written here; rounds 2 and 3 are
+# added by the steering agent around the round-1 leaders (each with a note), then the top settings are
+# confirmed at 16,000 simulations. Plan: project files taker-resweep/PLAN.md.
+#
+#   racinglines f1 search sweeps/taker-resweep.toml
+#   racinglines f1 search-report sweeps/taker-resweep.toml
+
+[search]
+name = "taker-resweep"
+parallel = 4
+grid = 8
+history_cache = true
+hours = 6.0
+grace_minutes = 15
+
+[report]
+target = 2026
+holdout = [2025]
+top = 40
+
+# --- round 0: incumbent profile A on both venues ------------------------------------------------
+
+[[job]]
+year = 2026
+venue = "polymarket"
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r0 profile A polymarket"
+
+[[job]]
+year = 2025
+venue = "polymarket"
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r0 profile A polymarket"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r0 profile A kalshi"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r0 profile A kalshi"
+
+# --- round 1: model x min edge, both venues, both seasons --------------------------------------
+
+[[job]]
+year = 2026
+venue = "polymarket"
+variant = "baseline"
+min_edge = 0.08
+note = "r1 polymarket baseline edge 0.08"
+
+[[job]]
+year = 2025
+venue = "polymarket"
+variant = "baseline"
+min_edge = 0.08
+note = "r1 polymarket baseline edge 0.08"
+
+[[job]]
+year = 2026
+venue = "polymarket"
+variant = "baseline"
+min_edge = 0.1
+note = "r1 polymarket baseline edge 0.1"
+
+[[job]]
+year = 2025
+venue = "polymarket"
+variant = "baseline"
+min_edge = 0.1
+note = "r1 polymarket baseline edge 0.1"
+
+[[job]]
+year = 2026
+venue = "polymarket"
+variant = "baseline"
+min_edge = 0.15
+note = "r1 polymarket baseline edge 0.15"
+
+[[job]]
+year = 2025
+venue = "polymarket"
+variant = "baseline"
+min_edge = 0.15
+note = "r1 polymarket baseline edge 0.15"
+
+[[job]]
+year = 2026
+venue = "polymarket"
+variant = "gridq+pretrain"
+min_edge = 0.05
+note = "r1 polymarket gridq+pretrain edge 0.05"
+
+[[job]]
+year = 2025
+venue = "polymarket"
+variant = "gridq+pretrain"
+min_edge = 0.05
+note = "r1 polymarket gridq+pretrain edge 0.05"
+
+[[job]]
+year = 2026
+venue = "polymarket"
+variant = "gridq+pretrain"
+min_edge = 0.08
+note = "r1 polymarket gridq+pretrain edge 0.08"
+
+[[job]]
+year = 2025
+venue = "polymarket"
+variant = "gridq+pretrain"
+min_edge = 0.08
+note = "r1 polymarket gridq+pretrain edge 0.08"
+
+[[job]]
+year = 2026
+venue = "polymarket"
+variant = "gridq+pretrain"
+min_edge = 0.1
+note = "r1 polymarket gridq+pretrain edge 0.1"
+
+[[job]]
+year = 2025
+venue = "polymarket"
+variant = "gridq+pretrain"
+min_edge = 0.1
+note = "r1 polymarket gridq+pretrain edge 0.1"
+
+[[job]]
+year = 2026
+venue = "polymarket"
+variant = "gridq+pretrain"
+min_edge = 0.15
+note = "r1 polymarket gridq+pretrain edge 0.15"
+
+[[job]]
+year = 2025
+venue = "polymarket"
+variant = "gridq+pretrain"
+min_edge = 0.15
+note = "r1 polymarket gridq+pretrain edge 0.15"
+
+[[job]]
+year = 2026
+venue = "polymarket"
+variant = "gridq+pretrain+reset"
+min_edge = 0.05
+note = "r1 polymarket gridq+pretrain+reset edge 0.05"
+
+[[job]]
+year = 2025
+venue = "polymarket"
+variant = "gridq+pretrain+reset"
+min_edge = 0.05
+note = "r1 polymarket gridq+pretrain+reset edge 0.05"
+
+[[job]]
+year = 2026
+venue = "polymarket"
+variant = "gridq+pretrain+reset"
+min_edge = 0.08
+note = "r1 polymarket gridq+pretrain+reset edge 0.08"
+
+[[job]]
+year = 2025
+venue = "polymarket"
+variant = "gridq+pretrain+reset"
+min_edge = 0.08
+note = "r1 polymarket gridq+pretrain+reset edge 0.08"
+
+[[job]]
+year = 2026
+venue = "polymarket"
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+note = "r1 polymarket gridq+pretrain+reset edge 0.1"
+
+[[job]]
+year = 2025
+venue = "polymarket"
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+note = "r1 polymarket gridq+pretrain+reset edge 0.1"
+
+[[job]]
+year = 2026
+venue = "polymarket"
+variant = "gridq+pretrain+reset"
+min_edge = 0.15
+note = "r1 polymarket gridq+pretrain+reset edge 0.15"
+
+[[job]]
+year = 2025
+venue = "polymarket"
+variant = "gridq+pretrain+reset"
+min_edge = 0.15
+note = "r1 polymarket gridq+pretrain+reset edge 0.15"
+
+[[job]]
+year = 2026
+venue = "polymarket"
+variant = "gbm"
+min_edge = 0.05
+note = "r1 polymarket gbm edge 0.05"
+
+[[job]]
+year = 2025
+venue = "polymarket"
+variant = "gbm"
+min_edge = 0.05
+note = "r1 polymarket gbm edge 0.05"
+
+[[job]]
+year = 2026
+venue = "polymarket"
+variant = "gbm"
+min_edge = 0.08
+note = "r1 polymarket gbm edge 0.08"
+
+[[job]]
+year = 2025
+venue = "polymarket"
+variant = "gbm"
+min_edge = 0.08
+note = "r1 polymarket gbm edge 0.08"
+
+[[job]]
+year = 2026
+venue = "polymarket"
+variant = "gbm"
+min_edge = 0.1
+note = "r1 polymarket gbm edge 0.1"
+
+[[job]]
+year = 2025
+venue = "polymarket"
+variant = "gbm"
+min_edge = 0.1
+note = "r1 polymarket gbm edge 0.1"
+
+[[job]]
+year = 2026
+venue = "polymarket"
+variant = "gbm"
+min_edge = 0.15
+note = "r1 polymarket gbm edge 0.15"
+
+[[job]]
+year = 2025
+venue = "polymarket"
+variant = "gbm"
+min_edge = 0.15
+note = "r1 polymarket gbm edge 0.15"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "baseline"
+min_edge = 0.08
+note = "r1 kalshi baseline edge 0.08"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "baseline"
+min_edge = 0.08
+note = "r1 kalshi baseline edge 0.08"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "baseline"
+min_edge = 0.1
+note = "r1 kalshi baseline edge 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "baseline"
+min_edge = 0.1
+note = "r1 kalshi baseline edge 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "baseline"
+min_edge = 0.15
+note = "r1 kalshi baseline edge 0.15"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "baseline"
+min_edge = 0.15
+note = "r1 kalshi baseline edge 0.15"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+min_edge = 0.05
+note = "r1 kalshi gridq+pretrain edge 0.05"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+min_edge = 0.05
+note = "r1 kalshi gridq+pretrain edge 0.05"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+min_edge = 0.08
+note = "r1 kalshi gridq+pretrain edge 0.08"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+min_edge = 0.08
+note = "r1 kalshi gridq+pretrain edge 0.08"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+min_edge = 0.1
+note = "r1 kalshi gridq+pretrain edge 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+min_edge = 0.1
+note = "r1 kalshi gridq+pretrain edge 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain"
+min_edge = 0.15
+note = "r1 kalshi gridq+pretrain edge 0.15"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain"
+min_edge = 0.15
+note = "r1 kalshi gridq+pretrain edge 0.15"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain+reset"
+min_edge = 0.05
+note = "r1 kalshi gridq+pretrain+reset edge 0.05"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain+reset"
+min_edge = 0.05
+note = "r1 kalshi gridq+pretrain+reset edge 0.05"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain+reset"
+min_edge = 0.08
+note = "r1 kalshi gridq+pretrain+reset edge 0.08"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain+reset"
+min_edge = 0.08
+note = "r1 kalshi gridq+pretrain+reset edge 0.08"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+note = "r1 kalshi gridq+pretrain+reset edge 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+note = "r1 kalshi gridq+pretrain+reset edge 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gridq+pretrain+reset"
+min_edge = 0.15
+note = "r1 kalshi gridq+pretrain+reset edge 0.15"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gridq+pretrain+reset"
+min_edge = 0.15
+note = "r1 kalshi gridq+pretrain+reset edge 0.15"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+min_edge = 0.05
+note = "r1 kalshi gbm edge 0.05"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+min_edge = 0.05
+note = "r1 kalshi gbm edge 0.05"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+min_edge = 0.08
+note = "r1 kalshi gbm edge 0.08"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+min_edge = 0.08
+note = "r1 kalshi gbm edge 0.08"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+min_edge = 0.1
+note = "r1 kalshi gbm edge 0.1"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+min_edge = 0.1
+note = "r1 kalshi gbm edge 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+variant = "gbm"
+min_edge = 0.15
+note = "r1 kalshi gbm edge 0.15"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+variant = "gbm"
+min_edge = 0.15
+note = "r1 kalshi gbm edge 0.15"
+
+# --- round 2 (added 03:10Z after round 1): Polymarket only; sizing x volume floor x entry stages around the
+#     three round-1 leaders that were positive in both seasons (A's settings, gridq+pretrain edge 0.08,
+#     gridq+pretrain+reset edge 0.10). Kalshi jobs paused: its taker replay fills at last-trade prints
+#     (1c prints on 50c head-to-heads), so its round-1 taker P&L is not usable. ---------------------
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+min_volume_24h = 0
+note = "r2 A stake 250/50 vol 0 stages all"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+min_volume_24h = 0
+note = "r2 A stake 250/50 vol 0 stages all"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+min_volume_24h = 0
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 A stake 250/50 vol 0 stages live"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+min_volume_24h = 0
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 A stake 250/50 vol 0 stages live"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+note = "r2 A stake 250/50 vol 50 stages all"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+note = "r2 A stake 250/50 vol 50 stages all"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 A stake 250/50 vol 50 stages live"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 A stake 250/50 vol 50 stages live"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+min_volume_24h = 200
+note = "r2 A stake 250/50 vol 200 stages all"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+min_volume_24h = 200
+note = "r2 A stake 250/50 vol 200 stages all"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+min_volume_24h = 200
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 A stake 250/50 vol 200 stages live"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+min_volume_24h = 200
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 A stake 250/50 vol 200 stages live"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 0
+note = "r2 A stake 500/100 vol 0 stages all"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 0
+note = "r2 A stake 500/100 vol 0 stages all"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 0
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 A stake 500/100 vol 0 stages live"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 0
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 A stake 500/100 vol 0 stages live"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+stake_per_edge = 500
+max_stake = 100
+note = "r2 A stake 500/100 vol 50 stages all"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+stake_per_edge = 500
+max_stake = 100
+note = "r2 A stake 500/100 vol 50 stages all"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+stake_per_edge = 500
+max_stake = 100
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 A stake 500/100 vol 50 stages live"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+stake_per_edge = 500
+max_stake = 100
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 A stake 500/100 vol 50 stages live"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 200
+note = "r2 A stake 500/100 vol 200 stages all"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 200
+note = "r2 A stake 500/100 vol 200 stages all"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 200
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 A stake 500/100 vol 200 stages live"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 200
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 A stake 500/100 vol 200 stages live"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain"
+min_edge = 0.08
+min_volume_24h = 0
+note = "r2 gp08 stake 250/50 vol 0 stages all"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.08
+min_volume_24h = 0
+note = "r2 gp08 stake 250/50 vol 0 stages all"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain"
+min_edge = 0.08
+min_volume_24h = 0
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gp08 stake 250/50 vol 0 stages live"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.08
+min_volume_24h = 0
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gp08 stake 250/50 vol 0 stages live"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain"
+min_edge = 0.08
+note = "r2 gp08 stake 250/50 vol 50 stages all"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.08
+note = "r2 gp08 stake 250/50 vol 50 stages all"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain"
+min_edge = 0.08
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gp08 stake 250/50 vol 50 stages live"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.08
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gp08 stake 250/50 vol 50 stages live"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain"
+min_edge = 0.08
+min_volume_24h = 200
+note = "r2 gp08 stake 250/50 vol 200 stages all"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.08
+min_volume_24h = 200
+note = "r2 gp08 stake 250/50 vol 200 stages all"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain"
+min_edge = 0.08
+min_volume_24h = 200
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gp08 stake 250/50 vol 200 stages live"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.08
+min_volume_24h = 200
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gp08 stake 250/50 vol 200 stages live"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain"
+min_edge = 0.08
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 0
+note = "r2 gp08 stake 500/100 vol 0 stages all"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.08
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 0
+note = "r2 gp08 stake 500/100 vol 0 stages all"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain"
+min_edge = 0.08
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 0
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gp08 stake 500/100 vol 0 stages live"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.08
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 0
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gp08 stake 500/100 vol 0 stages live"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain"
+min_edge = 0.08
+stake_per_edge = 500
+max_stake = 100
+note = "r2 gp08 stake 500/100 vol 50 stages all"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.08
+stake_per_edge = 500
+max_stake = 100
+note = "r2 gp08 stake 500/100 vol 50 stages all"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain"
+min_edge = 0.08
+stake_per_edge = 500
+max_stake = 100
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gp08 stake 500/100 vol 50 stages live"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.08
+stake_per_edge = 500
+max_stake = 100
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gp08 stake 500/100 vol 50 stages live"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain"
+min_edge = 0.08
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 200
+note = "r2 gp08 stake 500/100 vol 200 stages all"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.08
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 200
+note = "r2 gp08 stake 500/100 vol 200 stages all"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain"
+min_edge = 0.08
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 200
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gp08 stake 500/100 vol 200 stages live"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.08
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 200
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gp08 stake 500/100 vol 200 stages live"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_volume_24h = 0
+note = "r2 gpr10 stake 250/50 vol 0 stages all"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_volume_24h = 0
+note = "r2 gpr10 stake 250/50 vol 0 stages all"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_volume_24h = 0
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gpr10 stake 250/50 vol 0 stages live"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_volume_24h = 0
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gpr10 stake 250/50 vol 0 stages live"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+note = "r2 gpr10 stake 250/50 vol 50 stages all"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+note = "r2 gpr10 stake 250/50 vol 50 stages all"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gpr10 stake 250/50 vol 50 stages live"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gpr10 stake 250/50 vol 50 stages live"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_volume_24h = 200
+note = "r2 gpr10 stake 250/50 vol 200 stages all"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_volume_24h = 200
+note = "r2 gpr10 stake 250/50 vol 200 stages all"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_volume_24h = 200
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gpr10 stake 250/50 vol 200 stages live"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_volume_24h = 200
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gpr10 stake 250/50 vol 200 stages live"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 0
+note = "r2 gpr10 stake 500/100 vol 0 stages all"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 0
+note = "r2 gpr10 stake 500/100 vol 0 stages all"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 0
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gpr10 stake 500/100 vol 0 stages live"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 0
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gpr10 stake 500/100 vol 0 stages live"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+stake_per_edge = 500
+max_stake = 100
+note = "r2 gpr10 stake 500/100 vol 50 stages all"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+stake_per_edge = 500
+max_stake = 100
+note = "r2 gpr10 stake 500/100 vol 50 stages all"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+stake_per_edge = 500
+max_stake = 100
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gpr10 stake 500/100 vol 50 stages live"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+stake_per_edge = 500
+max_stake = 100
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gpr10 stake 500/100 vol 50 stages live"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 200
+note = "r2 gpr10 stake 500/100 vol 200 stages all"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 200
+note = "r2 gpr10 stake 500/100 vol 200 stages all"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 200
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gpr10 stake 500/100 vol 200 stages live"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+stake_per_edge = 500
+max_stake = 100
+min_volume_24h = 200
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "r2 gpr10 stake 500/100 vol 200 stages live"
+
+# --- round 3 (added 03:20Z after round 2): PR #81's switches on the five settings ranked best by the worse
+#     season's P&L per weekend, at the default stake and volume floor. Round 2's volume floor 0 is left out: its
+#     P&L (+8k to +16k) comes from markets with no trades in 24 h, whose last price nobody could have traded at;
+#     stake 500/100 doubles P&L and risk alike, not an edge. Kalshi's race_top10 waits for the Kalshi fix. ------
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+thin_edge_mult = 2
+note = "r3 A thin2"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+thin_edge_mult = 2
+note = "r3 A thin2"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+thin_edge_mult = 3
+note = "r3 A thin3"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+thin_edge_mult = 3
+note = "r3 A thin3"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+coherence_tol_by_kind = "race_podium=0.35"
+note = "r3 A coh35"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+coherence_tol_by_kind = "race_podium=0.35"
+note = "r3 A coh35"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+thin_edge_mult = 2
+coherence_tol_by_kind = "race_podium=0.35"
+note = "r3 A thin2coh35"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+thin_edge_mult = 2
+coherence_tol_by_kind = "race_podium=0.35"
+note = "r3 A thin2coh35"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+thin_edge_mult = 2
+note = "r3 Anoh2h thin2"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+thin_edge_mult = 2
+note = "r3 Anoh2h thin2"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+thin_edge_mult = 3
+note = "r3 Anoh2h thin3"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+thin_edge_mult = 3
+note = "r3 Anoh2h thin3"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+coherence_tol_by_kind = "race_podium=0.35"
+note = "r3 Anoh2h coh35"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+coherence_tol_by_kind = "race_podium=0.35"
+note = "r3 Anoh2h coh35"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+thin_edge_mult = 2
+coherence_tol_by_kind = "race_podium=0.35"
+note = "r3 Anoh2h thin2coh35"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+thin_edge_mult = 2
+coherence_tol_by_kind = "race_podium=0.35"
+note = "r3 Anoh2h thin2coh35"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+thin_edge_mult = 2
+note = "r3 gpr10h2h thin2"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+thin_edge_mult = 2
+note = "r3 gpr10h2h thin2"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+thin_edge_mult = 3
+note = "r3 gpr10h2h thin3"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+thin_edge_mult = 3
+note = "r3 gpr10h2h thin3"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+coherence_tol_by_kind = "race_podium=0.35"
+note = "r3 gpr10h2h coh35"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+coherence_tol_by_kind = "race_podium=0.35"
+note = "r3 gpr10h2h coh35"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+thin_edge_mult = 2
+coherence_tol_by_kind = "race_podium=0.35"
+note = "r3 gpr10h2h thin2coh35"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+thin_edge_mult = 2
+coherence_tol_by_kind = "race_podium=0.35"
+note = "r3 gpr10h2h thin2coh35"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+thin_edge_mult = 2
+note = "r3 gpr10 thin2"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+thin_edge_mult = 2
+note = "r3 gpr10 thin2"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+thin_edge_mult = 3
+note = "r3 gpr10 thin3"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+thin_edge_mult = 3
+note = "r3 gpr10 thin3"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+coherence_tol_by_kind = "race_podium=0.35"
+note = "r3 gpr10 coh35"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+coherence_tol_by_kind = "race_podium=0.35"
+note = "r3 gpr10 coh35"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+thin_edge_mult = 2
+coherence_tol_by_kind = "race_podium=0.35"
+note = "r3 gpr10 thin2coh35"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+thin_edge_mult = 2
+coherence_tol_by_kind = "race_podium=0.35"
+note = "r3 gpr10 thin2coh35"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain"
+min_edge = 0.1
+thin_edge_mult = 2
+note = "r3 gp10 thin2"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.1
+thin_edge_mult = 2
+note = "r3 gp10 thin2"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain"
+min_edge = 0.1
+thin_edge_mult = 3
+note = "r3 gp10 thin3"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.1
+thin_edge_mult = 3
+note = "r3 gp10 thin3"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain"
+min_edge = 0.1
+coherence_tol_by_kind = "race_podium=0.35"
+note = "r3 gp10 coh35"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.1
+coherence_tol_by_kind = "race_podium=0.35"
+note = "r3 gp10 coh35"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain"
+min_edge = 0.1
+thin_edge_mult = 2
+coherence_tol_by_kind = "race_podium=0.35"
+note = "r3 gp10 thin2coh35"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.1
+thin_edge_mult = 2
+coherence_tol_by_kind = "race_podium=0.35"
+note = "r3 gp10 thin2coh35"
+
+# --- noise floor: the top three bases at 3 seeds (their baselines too) ---------------------------------
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+replicates = 3
+note = "noise A"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+replicates = 3
+note = "noise A"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+replicates = 3
+note = "noise Anoh2h"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+replicates = 3
+note = "noise Anoh2h"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+replicates = 3
+note = "noise gpr10h2h"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+replicates = 3
+note = "noise gpr10h2h"
+
+# --- 16k confirmation (added 03:45Z): the Pro shortlist's settings (and the 16k baseline) at 16,000
+#     simulations in both seasons. Polymarket only. ---------------------------------------------------
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "16k A"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "16k A"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+note = "16k A-allstages"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+note = "16k A-allstages"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gridq+pretrain"
+min_edge = 0.1
+note = "16k gp10"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gridq+pretrain"
+min_edge = 0.1
+note = "16k gp10"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gbm"
+min_edge = 0.1
+note = "16k gbm10"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gbm"
+min_edge = 0.1
+note = "16k gbm10"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.08
+note = "16k gpr08"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.08
+note = "16k gpr08"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+min_volume_24h = 200
+note = "16k A-vol200"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+min_volume_24h = 200
+note = "16k A-vol200"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+coherence_tol_by_kind = "race_podium=0.35"
+note = "16k A-coh35"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+coherence_tol_by_kind = "race_podium=0.35"
+note = "16k A-coh35"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "baseline"
+note = "16k baseline"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "baseline"
+note = "16k baseline"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "baseline"
+min_edge = 0.1
+note = "16k baseline-me10"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "baseline"
+min_edge = 0.1
+note = "16k baseline-me10"

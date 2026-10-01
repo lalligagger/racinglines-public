@@ -1,0 +1,84 @@
+# --- Project data / generated output ----------------------------------------------
+# Keep the repository code-only. Raw data, archives, run outputs, reports, build output,
+# local cache files, and generated artifacts are never committed.
+
+data/
+reports/
+site/
+backtests/
+results/
+logs/
+.claude/
+.venv/
+.pytest_cache/
+
+# Data and artifact file types
+*.log
+*.parquet
+*.npz
+*.feather
+*.arrow
+*.sqlite
+*.sqlite3
+*.db
+*.csv
+*.jsonl
+*.sql.gz
+*.pkl
+*.pickle
+*.joblib
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.svg
+
+# Repo-local generated content and editor state
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# --- Python -------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Virtual environments
+venv/
+env/
+.python-version
+
+# Test / type-check / lint caches
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+.pytype/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Environment / secrets
+.env
+.env.*
+
+# --- Pinned repo fixtures and golden baselines ------------------------------------
+# These are intentionally tracked source artifacts, not data exports.
+!tests/golden/
+!tests/golden/**
+!tests/fixtures/
+!tests/fixtures/**

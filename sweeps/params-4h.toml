@@ -1,0 +1,206 @@
+# Four-hour settings search on the existing matrix (docs/cloud-sweep.md).
+# Scope: the 9 existing model variants x the 9 existing strategies. Only SETTINGS change
+# (racinglines/pipelines/sweep_settings.py): no new variants, switch combos, strategies or code.
+#
+# 2026 (every weekend raced so far) is where settings are tuned; 2025 ("live from its first race")
+# is the held-out check: a setting is only reported as better once it also beats the 2025 baseline
+# (or is labelled 2026-specific). Each season's default baseline is added automatically and runs first.
+#
+# The search re-reads this file whenever a slot frees: edit pending [[job]] entries to steer it.
+# Suggested order: rebuild the matrix at default settings, then one-setting-at-a-time steps around
+# the best configurations, then combine the steps that helped, then confirm on 2025.
+
+[search]
+name = "params-4h"
+parallel = 3            # 4 vCPUs: three jobs + the database
+hours = 4.0             # no new job after this; running ones stop at hours + grace
+grace_minutes = 15
+
+# --- 1. the matrix at default settings (fresh data on the VM) -------------------------------------
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+note = "matrix: best 2026 combo so far"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain"
+note = "matrix"
+
+[[job]]
+year = 2026
+variant = "reset"
+note = "matrix"
+
+[[job]]
+year = 2026
+variant = "gridq"
+note = "matrix"
+
+[[job]]
+year = 2026
+variant = "pretrain"
+note = "matrix"
+
+[[job]]
+year = 2026
+variant = "grid"
+note = "matrix"
+
+[[job]]
+year = 2026
+variant = "tail"
+note = "matrix"
+
+# --- 2. maker settings, one at a time, on the best model -------------------------------------------
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+half_spread = 0.015
+note = "maker: tighter quotes"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+half_spread = 0.03
+note = "maker: wider quotes"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+size = 25
+note = "maker: smaller quotes"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+size = 100
+note = "maker: larger quotes"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+max_pos = 125
+note = "maker: tighter inventory cap"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+skew = 2.0
+note = "maker: skew harder against inventory"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+max_disagree = 0.10
+note = "maker: don't quote where the model disagrees with the market by > 10 pts"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+info_skew = 4.0
+note = "maker_skew / maker_all: stronger info-timed skew"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+widen = 2.0
+note = "maker_widen / maker_all: widen more on bad markouts"
+
+# --- 3. taker settings and entry timing, one at a time, on the best model -------------------------
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.03
+note = "taker: act on smaller edges"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.08
+note = "taker: act only on large edges"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+stake_per_edge = 500
+max_stake = 100
+note = "taker: double the size"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+taker_stages = "pre-weekend,after FP1,after FP2,after SQ,after Sprint"
+note = "entry timing: takers stop before FP3 (in-sample idea from the 2026 stage split)"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "entry timing: skip the pre-weekend stage"
+
+# --- 4. model settings, one at a time, on the best model ------------------------------------------
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+half_life_days = 60
+note = "model: faster forgetting"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+half_life_days = 240
+note = "model: slower forgetting"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+driver_prior_n = 1.5
+note = "model: trust driver-vs-teammate gaps sooner (the 2026 Antonelli miss)"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+reset_weight = 0.1
+note = "model: carry even less pre-2026 car data"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+sims = 8000
+note = "noise check: double the simulations; differences smaller than this change are noise"
+
+# --- 5. markets -----------------------------------------------------------------------------------
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_volume_24h = 200
+note = "markets: only busier markets"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+market_kinds = "race_win,race_podium,race_h2h,race_constructor_top"
+note = "markets: drop pole (lost money in the 2026 update-taker split)"
+
+# --- 6. held-out season, default settings (tweaks that help on 2026 get added here) ----------------
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+note = "2025 held-out: 2026's best (reset is inactive in a stable-rules season)"
+
+[[job]]
+year = 2025
+variant = "pretrain"
+note = "2025 held-out"
+
+[[job]]
+year = 2025
+variant = "gridq"
+note = "2025 held-out"
+
+# --- slow: last -------------------------------------------------------------------------------------
+[[job]]
+year = 2026
+variant = "gbm"
+note = "matrix (slow)"

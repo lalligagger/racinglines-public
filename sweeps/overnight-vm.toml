@@ -1,0 +1,878 @@
+# Overnight VM run, F1 broad sweep (2026-09-30): docs/overnight-vm-run.md. F1 is the golden baseline: profile A
+# first, at 3 seeds, so the VM's numbers can be checked against the published ones (+1,243 / +1,363 at 4k) before
+# anything else is read. Then one-at-a-time variations around A (model knobs, then taker knobs), then a small
+# model x half-life x edge cross. Polymarket only: Kalshi's taker replay is not usable until its candles carry
+# bid/ask (data/runs/search/taker-resweep/REPORT.md section 3). No 24 h volume floor of 0 (untradeable).
+# Jobs run in this order and the queue stops starting jobs after `hours`, so a slow night cuts the cross first.
+# scripts/vm/promote_16k.py appends the 16k confirmation block at the end after `f1 search-report`.
+#
+# Size: 48 settings x 2 seasons + A's 2 extra seeds x 2 + 6 baselines = 106 jobs at 4,000 sims.
+#
+#   racinglines f1 search sweeps/overnight-vm.toml
+#   racinglines f1 search-report sweeps/overnight-vm.toml
+#   python scripts/vm/promote_16k.py sweeps/overnight-vm.toml --top 10
+#   racinglines f1 search sweeps/overnight-vm.toml        (again: runs only the 16k block)
+#   racinglines f1 search-report sweeps/overnight-vm.toml
+
+[search]
+name = "overnight-vm"
+parallel = 2          # the VM runs as n2-standard-2 tonight (2 vCPU, 8 GB); runs are niced, so the web app, MCP and Postgres still get CPU
+grid = 8
+history_cache = true
+hours = 3.0
+grace_minutes = 20
+
+[report]
+target = 2026
+holdout = [2025]
+top = 40
+
+
+# --- golden ---
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+replicates = 3
+note = "golden: profile A at 3 seeds (the default settings get 3 too)"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+replicates = 3
+note = "golden: profile A at 3 seeds (the default settings get 3 too)"
+
+
+# --- model ---
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 60.0
+note = "model: A with half_life_days=60.0"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 60.0
+note = "model: A with half_life_days=60.0"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 90.0
+note = "model: A with half_life_days=90.0"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 90.0
+note = "model: A with half_life_days=90.0"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 180.0
+note = "model: A with half_life_days=180.0"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 180.0
+note = "model: A with half_life_days=180.0"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 240.0
+note = "model: A with half_life_days=240.0"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 240.0
+note = "model: A with half_life_days=240.0"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+reset_weight = 0.0
+note = "model: A with reset_weight=0.0"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+reset_weight = 0.0
+note = "model: A with reset_weight=0.0"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+reset_weight = 0.1
+note = "model: A with reset_weight=0.1"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+reset_weight = 0.1
+note = "model: A with reset_weight=0.1"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+reset_weight = 0.5
+note = "model: A with reset_weight=0.5"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+reset_weight = 0.5
+note = "model: A with reset_weight=0.5"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+driver_prior_n = 1.0
+note = "model: A with driver_prior_n=1.0"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+driver_prior_n = 1.0
+note = "model: A with driver_prior_n=1.0"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+driver_prior_n = 6.0
+note = "model: A with driver_prior_n=6.0"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+driver_prior_n = 6.0
+note = "model: A with driver_prior_n=6.0"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+ridge_team = 1.0
+note = "model: A with ridge_team=1.0"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+ridge_team = 1.0
+note = "model: A with ridge_team=1.0"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+ridge_team = 4.0
+note = "model: A with ridge_team=4.0"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+ridge_team = 4.0
+note = "model: A with ridge_team=4.0"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+ridge_slope = 3.0
+note = "model: A with ridge_slope=3.0"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+ridge_slope = 3.0
+note = "model: A with ridge_slope=3.0"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+ridge_slope = 12.0
+note = "model: A with ridge_slope=12.0"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+ridge_slope = 12.0
+note = "model: A with ridge_slope=12.0"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+finish_rho_scale = 0.5
+note = "model: A with finish_rho_scale=0.5"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+finish_rho_scale = 0.5
+note = "model: A with finish_rho_scale=0.5"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+finish_rho_scale = 1.5
+note = "model: A with finish_rho_scale=1.5"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+finish_rho_scale = 1.5
+note = "model: A with finish_rho_scale=1.5"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+practice_prior = false
+note = "model: A with practice_prior=False"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+practice_prior = false
+note = "model: A with practice_prior=False"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+track_features = false
+note = "model: A with track_features=False"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+track_features = false
+note = "model: A with track_features=False"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+teammate_corr = false
+note = "model: A with teammate_corr=False"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+teammate_corr = false
+note = "model: A with teammate_corr=False"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset+tail"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "model: A on gridq+pretrain+reset+tail"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset+tail"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "model: A on gridq+pretrain+reset+tail"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset+rookie"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "model: A on gridq+pretrain+reset+rookie"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset+rookie"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "model: A on gridq+pretrain+reset+rookie"
+
+
+# --- taker ---
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.07
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "taker: A with min_edge=0.07"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.07
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "taker: A with min_edge=0.07"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.09
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "taker: A with min_edge=0.09"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.09
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "taker: A with min_edge=0.09"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.12
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "taker: A with min_edge=0.12"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.12
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "taker: A with min_edge=0.12"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.15
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "taker: A with min_edge=0.15"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.15
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "taker: A with min_edge=0.15"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.03
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "taker: A with min_edge_h2h=0.03"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.03
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "taker: A with min_edge_h2h=0.03"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.08
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "taker: A with min_edge_h2h=0.08"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.08
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "taker: A with min_edge_h2h=0.08"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+min_volume_24h = 25.0
+note = "taker: A with min_volume_24h=25.0"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+min_volume_24h = 25.0
+note = "taker: A with min_volume_24h=25.0"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+min_volume_24h = 100.0
+note = "taker: A with min_volume_24h=100.0"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+min_volume_24h = 100.0
+note = "taker: A with min_volume_24h=100.0"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+min_volume_24h = 400.0
+note = "taker: A with min_volume_24h=400.0"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+min_volume_24h = 400.0
+note = "taker: A with min_volume_24h=400.0"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+late_stages = "after FP2,after Quali"
+note = "taker: A with late_stages=after FP2,after Quali"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+late_stages = "after FP2,after Quali"
+note = "taker: A with late_stages=after FP2,after Quali"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+late_stages = "after Quali"
+note = "taker: A with late_stages=after Quali"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+late_stages = "after Quali"
+note = "taker: A with late_stages=after Quali"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "taker: A without the head-to-head threshold"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "taker: A without the head-to-head threshold"
+
+
+# --- cross ---
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain"
+min_edge = 0.08
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 90.0
+note = "cross: gridq+pretrain hl 90 edge 0.08"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.08
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 90.0
+note = "cross: gridq+pretrain hl 90 edge 0.08"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain"
+min_edge = 0.12
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 90.0
+note = "cross: gridq+pretrain hl 90 edge 0.12"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.12
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 90.0
+note = "cross: gridq+pretrain hl 90 edge 0.12"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain"
+min_edge = 0.08
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 180.0
+note = "cross: gridq+pretrain hl 180 edge 0.08"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.08
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 180.0
+note = "cross: gridq+pretrain hl 180 edge 0.08"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain"
+min_edge = 0.12
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 180.0
+note = "cross: gridq+pretrain hl 180 edge 0.12"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.12
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 180.0
+note = "cross: gridq+pretrain hl 180 edge 0.12"
+
+[[job]]
+year = 2026
+variant = "gbm"
+min_edge = 0.08
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 90.0
+note = "cross: gbm hl 90 edge 0.08"
+
+[[job]]
+year = 2025
+variant = "gbm"
+min_edge = 0.08
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 90.0
+note = "cross: gbm hl 90 edge 0.08"
+
+[[job]]
+year = 2026
+variant = "gbm"
+min_edge = 0.12
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 90.0
+note = "cross: gbm hl 90 edge 0.12"
+
+[[job]]
+year = 2025
+variant = "gbm"
+min_edge = 0.12
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 90.0
+note = "cross: gbm hl 90 edge 0.12"
+
+[[job]]
+year = 2026
+variant = "gbm"
+min_edge = 0.08
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 180.0
+note = "cross: gbm hl 180 edge 0.08"
+
+[[job]]
+year = 2025
+variant = "gbm"
+min_edge = 0.08
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 180.0
+note = "cross: gbm hl 180 edge 0.08"
+
+[[job]]
+year = 2026
+variant = "gbm"
+min_edge = 0.12
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 180.0
+note = "cross: gbm hl 180 edge 0.12"
+
+[[job]]
+year = 2025
+variant = "gbm"
+min_edge = 0.12
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 180.0
+note = "cross: gbm hl 180 edge 0.12"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.08
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 90.0
+note = "cross: gridq+pretrain+reset hl 90 edge 0.08"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.08
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 90.0
+note = "cross: gridq+pretrain+reset hl 90 edge 0.08"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.12
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 90.0
+note = "cross: gridq+pretrain+reset hl 90 edge 0.12"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.12
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 90.0
+note = "cross: gridq+pretrain+reset hl 90 edge 0.12"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.08
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 180.0
+note = "cross: gridq+pretrain+reset hl 180 edge 0.08"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.08
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 180.0
+note = "cross: gridq+pretrain+reset hl 180 edge 0.08"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.12
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 180.0
+note = "cross: gridq+pretrain+reset hl 180 edge 0.12"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain+reset"
+min_edge = 0.12
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+half_life_days = 180.0
+note = "cross: gridq+pretrain+reset hl 180 edge 0.12"
+
+[[job]]
+year = 2026
+variant = "baseline"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "cross: A's taker settings on baseline"
+
+[[job]]
+year = 2025
+variant = "baseline"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "cross: A's taker settings on baseline"
+
+[[job]]
+year = 2026
+variant = "gbm"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "cross: A's taker settings on gbm"
+
+[[job]]
+year = 2025
+variant = "gbm"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "cross: A's taker settings on gbm"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "cross: A's taker settings on gridq+pretrain"
+
+[[job]]
+year = 2025
+variant = "gridq+pretrain"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "cross: A's taker settings on gridq+pretrain"

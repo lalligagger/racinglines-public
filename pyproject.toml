@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "racinglines"
+version = "0.2.0"
+description = "Fair prices and market making for race sports (F1, UCI downhill)"
+requires-python = ">=3.11"
+dependencies = []            # install the pinned environment with: pip install -r requirements.txt
+
+[project.scripts]
+racinglines = "racinglines.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["racinglines*"]
+
+[tool.setuptools.package-data]
+"racinglines.web" = ["templates/*.html", "static/*"]
