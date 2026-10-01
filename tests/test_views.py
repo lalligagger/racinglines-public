@@ -493,3 +493,15 @@ def test_basic_pages_never_name_the_strategy_behind_a_pick(clients):
     finally:
         with eng.begin() as c:
             c.execute(T("DELETE FROM strategy_signals WHERE event_key = '2099-03'"))
+
+
+def test_maintenance_popup_on_login_and_switches_off(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from racinglines.web import app as A
+    cl = TestClient(A.app)
+    page = cl.get("/login").text
+    assert "<p id=\"site-notice-msg\">We are working on things! You may experience downtimeor dead links until we finish.</p>" in page
+    assert page.count("<button") == 3 + 1 and '<form method="dialog"><button class="primary" autofocus>ok</button></form>' in page
+    monkeypatch.setattr(A, "MAINTENANCE_NOTICE", "")
+    assert 'id="site-notice"' not in cl.get("/login").text
