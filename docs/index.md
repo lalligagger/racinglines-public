@@ -194,7 +194,7 @@ sports are summarised on one status page.
 We're looking for beta testers and collaborators! Try the app at
 [racinglines.bet](https://racinglines.bet), and if you'd like to help, test, or just say hi, drop us a line at
 [hello@racinglines.bet](mailto:hello@racinglines.bet?subject=racinglines%20beta%20tester%20%2F%20collaborator).
-We'd love to hear from you.
+We'd love to hear from you. The [contributor guide](contributing.md) says how to get set up.
 
 ## Building these docs
 

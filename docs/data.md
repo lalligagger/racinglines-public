@@ -60,8 +60,10 @@ types (`*.parquet`, `*.csv`, …) everywhere, then allow-lists the minimal set a
   (`tests/fixtures/_work/`) aren't.
 - **Enforced:** `tests/test_no_data_in_git.py` fails if data outside the allow-list is
   tracked or about to be added (it also runs in the [pre-push hook](testing.md#pre-push-hook)).
-- **If the repo ever goes public,** this data must be removed from the git history
-  first, not just deleted.
+- **The public repository holds none of this.** `lalligagger/racinglines-public` was published on 2026-10-01
+  with this data (and the test fixtures) removed from its history; the paths above describe the private
+  development checkout and the production server. Beta testers and contributors can get the fixtures:
+  [Contributing](contributing.md#data-in-this-repository).
 
 ## Data bucket
 

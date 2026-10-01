@@ -301,12 +301,13 @@ Three levels, fastest first:
 | | Command | Checks | Time | Needs |
 |---|---|---|---|---|
 | **Quick check** | `racinglines check` | 21 checks: every pipeline on synthetic data, every data source, the database | ~10 s | nothing downloaded; network and Postgres optional |
-| **Regression suite** | `python -m pytest -m "not live"` | 174 tests: every pipeline stage on pinned F1 and downhill fixtures, compared with golden outputs | ~10 s | Postgres (fixtures and goldens are in git) |
+| **Regression suite** | `python -m pytest -m "not live"` | 174 tests: every pipeline stage on pinned F1 and downhill fixtures, compared with golden outputs | ~10 s | Postgres and the fixtures ([how to get them](docs/contributing.md#data-in-this-repository); goldens are in git) |
 | **Everything** | `python -m pytest` | 221 tests, adding 47 live tests on the working database: the web app's pages per role, Baku live data, retention | ~35 s | the working database |
 
-- **Pinned in git (since 2026-09-28):** the test fixtures (2 MB, built from FastF1,
-  ChronoRace and Polymarket) and the golden outputs, so every machine and cloud session
-  compares against the same baseline. A guard test fails if any other data is tracked.
+- **Pinned:** the test fixtures (2 MB, built from FastF1, ChronoRace and Polymarket) and the golden
+  outputs, so every machine compares against the same baseline. The goldens are in git; the fixtures are not in
+  the public repository ([how to get them](docs/contributing.md#data-in-this-repository)), and without them the
+  fixture tests skip. A guard test fails if any data is tracked.
 - **Results can't drift silently:** an intended change is re-baselined with
   `UPDATE_GOLDEN=1` and reviewed as a diff of `tests/golden/` in its PR.
 
@@ -480,7 +481,31 @@ git config core.hooksPath scripts/hooks   # skip once with: git push --no-verify
 We're looking for beta testers and collaborators! Try the app at
 [racinglines.bet](https://racinglines.bet), and if you'd like to help, test, or just say hi, drop us a line at
 [hello@racinglines.bet](mailto:hello@racinglines.bet?subject=racinglines%20beta%20tester%20%2F%20collaborator).
-We'd love to hear from you.
+We'd love to hear from you. The [contributor guide](docs/contributing.md) says how to get set up.
+
+### Data in this repository
+
+<!-- include: public-data -->
+<!-- generated from docs/contributing.md by build_readme.py - edit it there -->
+
+This public repository (`lalligagger/racinglines-public`) holds **code, docs, schemas and golden test outputs
+only**. The data it was developed with (raw FastF1 sessions, the Polymarket and Kalshi price and trade archives,
+database snapshots, the pinned test fixtures) was removed from this repository and its history when it went public
+on 2026-10-01: some of it isn't ours to republish, and none of it belongs in git. It lives on the production
+server and in a private bucket.
+
+**Test fixtures are available to beta testers and contributors.** Two ways to get them:
+
+- **Ask us** at [hello@racinglines.bet](mailto:hello@racinglines.bet?subject=racinglines%20test%20fixtures)
+  for the pinned fixture bundle (about 2 MB). Unpacked into `tests/fixtures/`, the regression suite matches the
+  golden outputs exactly.
+- **Build them yourself** from the original public sources with `python scripts/fetch_test_fixtures.py --refresh`
+  (needs Postgres; the F1 part can take up to an hour because FastF1 is rate limited). Today's data differs a
+  little from the pinned set, so expect some golden tests to differ: that's fine for development.
+
+Without fixtures the fixture-based tests are skipped, not failed, and everything else runs.
+
+<!-- /include -->
 
 ## Roadmap
 

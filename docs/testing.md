@@ -7,12 +7,13 @@ Three levels, fastest first:
 | | Command | Checks | Time | Needs |
 |---|---|---|---|---|
 | **Quick check** | `racinglines check` | 21 checks: every pipeline on synthetic data, every data source, the database | ~10 s | nothing downloaded; network and Postgres optional |
-| **Regression suite** | `python -m pytest -m "not live"` | 174 tests: every pipeline stage on pinned F1 and downhill fixtures, compared with golden outputs | ~10 s | Postgres (fixtures and goldens are in git) |
+| **Regression suite** | `python -m pytest -m "not live"` | 174 tests: every pipeline stage on pinned F1 and downhill fixtures, compared with golden outputs | ~10 s | Postgres and the fixtures ([how to get them](contributing.md#data-in-this-repository); goldens are in git) |
 | **Everything** | `python -m pytest` | 221 tests, adding 47 live tests on the working database: the web app's pages per role, Baku live data, retention | ~35 s | the working database |
 
-- **Pinned in git (since 2026-09-28):** the test fixtures (2 MB, built from FastF1,
-  ChronoRace and Polymarket) and the golden outputs, so every machine and cloud session
-  compares against the same baseline. A guard test fails if any other data is tracked.
+- **Pinned:** the test fixtures (2 MB, built from FastF1, ChronoRace and Polymarket) and the golden
+  outputs, so every machine compares against the same baseline. The goldens are in git; the fixtures are not in
+  the public repository ([how to get them](contributing.md#data-in-this-repository)), and without them the
+  fixture tests skip. A guard test fails if any data is tracked.
 - **Results can't drift silently:** an intended change is re-baselined with
   `UPDATE_GOLDEN=1` and reviewed as a diff of `tests/golden/` in its PR.
 
