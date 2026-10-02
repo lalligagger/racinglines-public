@@ -1,5 +1,5 @@
 [Unit]
-Description=racinglines NASCAR and MotoGP forecast refresh every 30 minutes
+Description=racinglines NASCAR forecast refresh every 30 minutes
 
 [Timer]
 OnActiveSec=20s

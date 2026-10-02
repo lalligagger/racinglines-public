@@ -1,7 +1,7 @@
-# NASCAR and MotoGP forecast refresh timer, one pass (scripts/vm/forecast-refresh.sh). Started by the .timer; enabled by vm.sh forecast.
+# NASCAR forecast refresh timer, one pass (scripts/vm/forecast-refresh.sh). Started by the .timer; enabled by vm.sh forecast.
 # Logs: journalctl -u racinglines-forecast-refresh, and data/runs/logs/forecast-refresh.log
 [Unit]
-Description=racinglines NASCAR and MotoGP forecast refresh
+Description=racinglines NASCAR forecast refresh
 After=network-online.target docker.service
 Wants=network-online.target
 
