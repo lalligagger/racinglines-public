@@ -96,16 +96,22 @@ def _users_page(request, c, msg="", onetime=None):
 def admin_user_create(request: Request, username: str = Form(...), password: str = Form(...), role: str = Form(...),
                       display_name: str = Form("")):
     try:
-        if len(password) < 8:
-            raise ValueError("password must be at least 8 characters")
-        with get_session() as s:
-            u = U.create_user(s, username, password, role, display_name or None)
-            if ACC.ready(s.connection()):         # every account starts with the signup grant
-                ACC.grant(s.connection(), u.id, note="admin create")
-                s.commit()
-        audit(request, "user_create", target=username, role=role, user_id=u.id)
+        username = username.strip().lower()
+        with get_engine().begin() as c:
+            error = ACC.check_username(c, username) or ACC.check_password(password, "", username)
+            if len(password) < 8:
+                error = error or "password must be at least 8 characters"
+            if error:
+                raise ValueError(error)
+            user_id = c.execute(text("""INSERT INTO users (username, display_name, role, password_hash, active)
+                                        VALUES (:u, :d, :r, :h, true) RETURNING id"""),
+                                dict(u=username, d=display_name or username, r=role,
+                                     h=U.hash_password(password))).scalar()
+        audit(request, "user_create", target=username, role=role, user_id=user_id)
         msg = f"Created {role} {username}."
     except ValueError as e:
+        msg = f"Error: {e}"
+    except Exception as e:
         msg = f"Error: {e}"
     return RedirectResponse(f"/admin/users?msg={msg}", status_code=303)
 
