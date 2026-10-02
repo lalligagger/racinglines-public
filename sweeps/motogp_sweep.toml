@@ -1,0 +1,21 @@
+[search]
+name = "motogp-2026"
+parallel = 4
+hours = 1.5
+grid = 8
+
+[[job]]
+sport = "motogp"
+year = 2026
+variant = "baseline"
+half_life_days = 90
+replicates = 3
+note = "full taker sweep with min_edge variations"
+
+[[job]]
+sport = "motogp"
+year = 2026
+variant = "baseline"
+half_life_days = 90
+replicates = 2
+note = "maker baseline"
