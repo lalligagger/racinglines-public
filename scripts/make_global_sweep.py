@@ -65,7 +65,7 @@ def main(argv=None):
         for year in a.seasons:
             base = dict(sport=sport, model="global", year=year)
             if a.confirm:
-                jobs = [dict(base, sims=sims, note="confirmation baseline: default settings")]
+                jobs = [dict(base, sims=sims, replicates=3, note="confirmation baseline, 3 seeds: the noise floor at this fidelity")]
                 jobs += [dict(base, sims=sims, **c) for c in confirm_combos(a.confirm, sport)]
             else:
                 jobs = [dict(base, replicates=3, note="default settings, 3 seeds: the noise floor")]

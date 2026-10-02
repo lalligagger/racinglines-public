@@ -181,6 +181,23 @@ walk-forward above with `--save`, it gets its own default-settings baseline per 
 `search-report` writes one folder per sport and model (`<sport>-global/`) with the labels below, scored per
 market kind. `python scripts/make_global_sweep.py` writes `sweeps/global-multi-sport.toml`, the multi-sport grid.
 
+`python scripts/make_global_sweep.py --confirm <search folder>` writes stage 2, `sweeps/global-multi-sport-confirm.toml`:
+the finished search's candidates (every sport's `candidates.toml`) and the default settings, re-run in every season at
+the report's `confirm_sims` (8,000, four times the grid's 2,000). It carries the same search name, so one
+`search-report` reads both stages and fills the report's `confirmed` column.
+
+#### Model against the exchange
+
+`racinglines backtest walk-forward <code> --model global --venue polymarket kalshi --out-dir DIR` also reads each
+venue's price for the same market as of the event's start (00:00 UTC on the day, the cutoff the model prices at),
+through the same `venue_replay` classes the sweeps use (a price counts only if it is under 6 hours old), and
+scores model and market on the markets that have both. It pairs on the exact `market_links` keys
+(`race_id`, kind, athlete) and never guesses: a sport whose links carry no `race_id` reports "nothing to pair"
+with the link counts. Output: a per-kind and per-season table, `walk_forward_vs_<venue>.csv` (one row per pair) and
+`walk_forward_vs_<venue>_scores.csv`. Read-only on the database (no `--save`). The code is
+`racinglines/pipelines/model_vs_market.py`; the field is the event's actual starters, so the comparison has a
+mild lookahead on who started (the same for model and market, which price a field that includes them).
+
 ### Calibration in every sweep
 
 `racinglines f1 sweep --reliability` scores **our fair value and the exchange's price side by side** at
