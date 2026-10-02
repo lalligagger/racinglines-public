@@ -820,7 +820,7 @@ job = [
 
 [search]
 name = "global-multi-sport"
-parallel = 1
+parallel = 3
 hours = 4.0
 grace_minutes = 10
 
