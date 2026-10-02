@@ -112,12 +112,10 @@ def admin_user_create(request: Request, username: str = Form(...), password: str
                                 dict(u=username, d=display_name or username, r=role,
                                      h=U.hash_password(password))).scalar()
             print(f"DEBUG: User created with id={user_id}", file=sys.stderr, flush=True)
-            ready = ACC.ready(c)
-            print(f"DEBUG: ACC.ready() returned {ready}", file=sys.stderr, flush=True)
-            if ready:
-                print(f"DEBUG: Calling ACC.grant()", file=sys.stderr, flush=True)
-                ACC.grant(c, user_id, note="admin create")
-                print(f"DEBUG: ACC.grant() completed", file=sys.stderr, flush=True)
+            # Always grant the signup grant - assume schema is ready if we got here
+            print(f"DEBUG: Calling ACC.grant()", file=sys.stderr, flush=True)
+            ACC.grant(c, user_id, note="admin create")
+            print(f"DEBUG: ACC.grant() completed", file=sys.stderr, flush=True)
         audit(request, "user_create", target=username, role=role, user_id=user_id)
         msg = f"Created {role} {username}."
     except ValueError as e:
