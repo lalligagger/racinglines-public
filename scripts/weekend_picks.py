@@ -133,8 +133,12 @@ def render_text(info, pricing, picks, rest, venues, username=None):
     return "\n".join(lines)
 
 
-def send_email(recipient, subject, html_body, text_body, smtp_server="127.0.0.1", smtp_port=1025, smtp_user=None):
+def send_email(recipient, subject, html_body, text_body, smtp_server="127.0.0.1", smtp_port=1025, smtp_user=None, dry_run=False):
     """Send email via SMTP (e.g., Proton Mail Bridge). Prompts for password securely."""
+    if dry_run:
+        print(f"[DRY RUN] Would send to {recipient}")
+        return True
+
     if not smtp_user:
         smtp_user = input("SMTP username (Proton email): ")
     password = getpass.getpass("SMTP password: ")
@@ -147,19 +151,98 @@ def send_email(recipient, subject, html_body, text_body, smtp_server="127.0.0.1"
     msg.attach(MIMEText(text_body, "plain"))
     msg.attach(MIMEText(html_body, "html"))
 
-    with smtplib.SMTP(smtp_server, smtp_port, timeout=30) as server:
-        server.ehlo()
-        if server.has_extn("starttls"):
-            server.starttls()  # Bridge's certificate is self-signed; the stdlib default context doesn't verify it
+    try:
+        with smtplib.SMTP(smtp_server, smtp_port, timeout=30) as server:
             server.ehlo()
-        server.login(smtp_user, password)
-        server.sendmail(smtp_user, recipient, msg.as_string())
+            if server.has_extn("starttls"):
+                server.starttls()  # Bridge's certificate is self-signed; the stdlib default context doesn't verify it
+                server.ehlo()
+            server.login(smtp_user, password)
+            server.sendmail(smtp_user, recipient, msg.as_string())
+        print(f"Sent to {recipient}")
+        return True
+    except Exception as e:
+        print(f"Failed to send to {recipient}: {e}", file=__import__("sys").stderr)
+        return False
 
-    print(f"Sent to {recipient}")
+
+def send_to_users(conn, min_volume, max_spread, max_picks, smtp_server, smtp_port, smtp_user, dry_run=False):
+    """Send F1 weekend picks to all users with registered emails, respecting their exchange preferences."""
+    import sys
+    from racinglines.db.models import UserEmailPrefs
+
+    # Fetch next F1 event
+    event_id = _next_event(conn)
+    race_id = conn.execute(text("SELECT id FROM races WHERE event_id = :e ORDER BY id LIMIT 1"), {"e": event_id}).scalar()
+    info, pricing, df = V.event_matrix(conn, race_id)
+    m = dict(title=info["title"], start_date=info["start_date"], pricing=pricing or {})
+    want = [k.strip() for k in KINDS.split(",")]
+    rows = T._matrix_rows(df[df["kind"].isin(want)]) if len(df) else []
+
+    if not rows:
+        print("No rows from event matrix", file=sys.stderr)
+        return
+
+    # Fetch all users with registered emails
+    users = conn.execute(text("""
+        SELECT id, email, exchanges FROM user_email_prefs
+        WHERE email IS NOT NULL
+        ORDER BY id
+    """)).fetchall()
+
+    if not users:
+        print("No users with registered emails")
+        return
+
+    subject_template = f"F1 paper picks: {m['title']} ({_when(m)})"
+    sent_count = 0
+    failed_count = 0
+
+    for user_id, email, exchanges in users:
+        try:
+            # exchanges is a list like ['polymarket', 'kalshi']
+            exchanges_list = list(exchanges) if exchanges else ["polymarket"]
+
+            # Generate picks for this user's exchanges
+            cands = candidates(rows, exchanges_list, min_volume, max_spread)
+            if not cands:
+                print(f"[user {user_id}] No picks for exchanges {exchanges_list}", file=sys.stderr)
+                continue
+
+            picks, rest = cands[:max_picks], cands[max_picks:max_picks + 3]
+            _links(conn, picks + rest)
+
+            # Render email
+            html_body = render_html(m, m.get("pricing") or {}, picks, rest, exchanges_list)
+            text_body = render_text(m, m.get("pricing") or {}, picks, rest, exchanges_list)
+
+            # Send email
+            success = send_email(email, subject_template, html_body, text_body,
+                               smtp_server=smtp_server, smtp_port=smtp_port,
+                               smtp_user=smtp_user, dry_run=dry_run)
+
+            if success:
+                sent_count += 1
+                print(f"[user {user_id}] Sent F1 picks ({len(picks)} picks) to {email}", file=sys.stderr)
+            else:
+                failed_count += 1
+        except Exception as e:
+            failed_count += 1
+            print(f"[user {user_id}] Error: {e}", file=sys.stderr)
+
+    print(f"\n=== Summary ===", file=sys.stderr)
+    print(f"Sent: {sent_count}, Failed: {failed_count}", file=sys.stderr)
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+
+    # Multi-user mode
+    ap.add_argument("--send-all", action="store_true", help="send F1 picks to all users with registered emails")
+    ap.add_argument("--user-id", type=int, help="send to specific user ID (from user_email_prefs)")
+    ap.add_argument("--dry-run", action="store_true", help="print what would be sent (no SMTP)")
+
+    # Single-user mode (backward compatible)
     ap.add_argument("--event-id", type=int, help="default: the next scheduled F1 event")
     ap.add_argument("--venues", default="kalshi,polymarket")
     ap.add_argument("--kinds", default=KINDS)
@@ -173,6 +256,52 @@ def main():
     ap.add_argument("--smtp-port", type=int, default=1025, help="SMTP port (default: 1025 for Proton Bridge)")
     ap.add_argument("--smtp-user", help="SMTP username (if not set, prompted at runtime)")
     a = ap.parse_args()
+
+    # Multi-user mode
+    if a.send_all or a.user_id:
+        with get_engine().connect() as conn:
+            if a.send_all:
+                send_to_users(conn, a.min_volume, a.max_spread, a.top,
+                            smtp_server=a.smtp_server, smtp_port=a.smtp_port,
+                            smtp_user=a.smtp_user, dry_run=a.dry_run)
+            elif a.user_id:
+                # Single user from DB
+                user_row = conn.execute(text(
+                    "SELECT email, exchanges FROM user_email_prefs WHERE id = :uid"
+                ), {"uid": a.user_id}).first()
+                if not user_row:
+                    raise SystemExit(f"User {a.user_id} not found")
+                email, exchanges = user_row
+                if not email:
+                    raise SystemExit(f"User {a.user_id} has no email registered")
+
+                exchanges_list = list(exchanges) if exchanges else ["polymarket"]
+
+                # Get F1 event
+                event_id = a.event_id or _next_event(conn)
+                race_id = conn.execute(text("SELECT id FROM races WHERE event_id = :e ORDER BY id LIMIT 1"), {"e": event_id}).scalar()
+                info, pricing, df = V.event_matrix(conn, race_id)
+                m = dict(title=info["title"], start_date=info["start_date"], pricing=pricing or {})
+                want = [k.strip() for k in a.kinds.split(",")]
+                rows = T._matrix_rows(df[df["kind"].isin(want)]) if len(df) else []
+                cands = candidates(rows, exchanges_list, a.min_volume, a.max_spread)
+                picks, rest = cands[:a.top], cands[a.top:a.top + 3]
+                _links(conn, picks + rest)
+
+                if not picks:
+                    raise SystemExit("no pick clears the filters; try a lower --min-volume or a wider --max-spread")
+
+                html_body = render_html(m, m.get("pricing") or {}, picks, rest, exchanges_list)
+                text_body = render_text(m, m.get("pricing") or {}, picks, rest, exchanges_list)
+                subject = f"F1 paper picks: {m['title']} ({_when(m)})"
+                print(f"Subject: {subject}")
+
+                send_email(email, subject, html_body, text_body,
+                          smtp_server=a.smtp_server, smtp_port=a.smtp_port,
+                          smtp_user=a.smtp_user, dry_run=a.dry_run)
+        return
+
+    # Single-user mode (backward compatible with original script)
     venues = [v.strip() for v in a.venues.split(",") if v.strip()]
     with get_engine().connect() as conn:
         event_id = a.event_id or _next_event(conn)
@@ -199,7 +328,8 @@ def main():
 
     if a.email:
         send_email(a.email, subject, html_body, text_body,
-                   smtp_server=a.smtp_server, smtp_port=a.smtp_port, smtp_user=a.smtp_user)
+                   smtp_server=a.smtp_server, smtp_port=a.smtp_port,
+                   smtp_user=a.smtp_user, dry_run=a.dry_run)
 
 
 if __name__ == "__main__":
