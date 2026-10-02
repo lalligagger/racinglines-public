@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_macros.html" import bar, pct, venue_chips, chart, csrf, flash %}
+{% extends "base.html" %}{% from "_macros.html" import empty, pnl_cls, bar, pct, venue_chips, chart, csrf, flash, edge_cell %}
 {% block title %}{{ info.title }}{% endblock %}
 {% block content %}
 <p class="crumbs"><a href="/markets">Markets</a> › {{ info.sport }}{% if info.season %} › {{ info.season }}{% endif %}{% if info.event_id %} › <a href="/events/{{ info.event_id }}">event page</a>{% endif %}</p>
@@ -8,11 +8,11 @@
 
 <div class="kpis">
   <div class="kpi"><div class="l">Our fair values</div><div class="v sm">{{ pricing.source }}</div>
-    <div class="s">{% if pricing.run_id %}run <a href="{{ '/lab/diagnostics/' if 'diagnostic' in pricing.source else '/lab/runs/' }}{{ pricing.run_id }}">#{{ pricing.run_id }}</a>{% endif %}{% if pricing.as_of is not none %} · as of {{ pricing.as_of|fmt }} UTC{% endif %}</div></div>
+    <div class="s">{% if pricing.run_id %}run <a href="{{ '/lab/diagnostics/' if 'diagnostic' in pricing.source else '/lab/runs/' }}{{ pricing.run_id }}">#{{ pricing.run_id }}</a>{% endif %}{% if pricing.as_of is not none %} · as of {{ pricing.as_of|fmt }}{% endif %}</div></div>
   {% if fav %}<div class="kpi"><div class="l">{{ "Favourite" if not season else "Leader" }}</div><div class="v">{{ fav.subject }}</div><div class="s">{{ pct(fav.fair, 1) }} {{ fav.kind_label|lower }}{% if fav.pm_mid is not none %} · market {{ pct(fav.pm_mid, 1) }}{% endif %}</div></div>{% endif %}
   {% if winner %}<div class="kpi"><div class="l">Result</div><div class="v">{{ winner.subject }}</div><div class="s">we had {{ pct(winner.fair, 1) }}{% if winner.pm_mid is not none %} · Polymarket {{ pct(winner.pm_mid, 1) }} at the same time{% endif %}{% if kalshi and winner.venues and winner.venues.kalshi and winner.venues.kalshi.mid is not none %} · Kalshi {{ pct(winner.venues.kalshi.mid, 1) }}{% endif %}</div></div>{% endif %}
   <div class="kpi"><div class="l">Venues</div>{{ venue_chips(venue_sum, mine) }}</div>
-  <div class="kpi"><div class="l">My book here</div><div class="v">{{ mine.open }}</div><div class="s">open markets · staked ${{ "%.0f"|format(mine.staked) }} · worst <span class="{{ 'bad' if mine.worst < 0 }}">${{ "%.0f"|format(mine.worst) }}</span></div></div>
+  <div class="kpi"><div class="l">My book here</div><div class="v">{{ mine.open }}</div><div class="s">open markets · staked {{ mine.staked|money(false, false) }} · worst <span class="{{ 'bad' if mine.worst < 0 }}">{{ mine.worst|money(false, false) }}</span></div></div>
 </div>
 
 {# --- one view at a time: each market type, the chart, the season strategy, the classification, quoting --- #}
@@ -28,19 +28,25 @@
 <section data-panel="k-{{ kind }}" id="k-{{ kind }}" hidden>
 <div class="card"><h2>{{ label }}</h2>
 <div class="scroll" data-rows="12"{% if rows_|length > 12 %} data-filter="Filter by name"{% endif %}><table>
-<thead><tr><th class="l">Outcome</th><th class="l">Our fair{% if has_pm %} <span class="legend"><i style="background:var(--warn)"></i>Polymarket</span>{% endif %}</th><th>Fair</th>
+<thead><tr><th class="l">Outcome</th><th class="l">
+<div>Our fair</div>
+{% if has_pm or kalshi %}<div class="exchange-toggle">
+<button type="button" data-toggle="venue" data-value="polymarket" aria-pressed="true">Polymarket</button>
+{% if kalshi %}<button type="button" data-toggle="venue" data-value="kalshi">Kalshi</button>{% endif %}
+</div>{% endif %}
+</th><th>Fair</th>
 {% for v in exchanges %}<th>{{ v.name }}{% if v.status == 'soon' %} <span class="muted">(soon)</span>{% elif completed %} <span class="muted">(as of)</span>{% endif %}</th>{% endfor %}
-<th>Gap</th><th>My quote YES / NO</th><th>Bets · staked</th>{% if completed %}<th>Result</th>{% endif %}</tr></thead>
+<th class="hide-sm">Gap</th><th class="hide-sm">My quote YES / NO</th><th>Bets · staked</th>{% if completed %}<th>Result</th>{% endif %}</tr></thead>
 <tbody>{% for r in rows_ %}<tr>
 <td class="l">{% if r.athlete_id %}<a href="/athletes/{{ r.athlete_id }}">{{ r.subject }}</a>{% else %}{{ r.subject }}{% endif %} <span class="muted">{{ r.detail }}</span></td>
-<td class="l">{{ bar(r.fair, r.pm_mid, "wide") }}</td><td>{{ pct(r.fair, 1) }}</td>
+<td class="l">{{ bar(r.fair, r.pm_mid, "wide", (r.venues.kalshi.mid if r.venues and r.venues.kalshi else none)) }}</td><td>{{ pct(r.fair, 1) }}</td>
 {% for v in exchanges %}{% set q = r.venues.get(v.code) if r.venues else none %}<td>{% if q %}{% if q.bid is not none and q.ask is not none %}{{ "%.2f"|format(q.bid) }}–{{ "%.2f"|format(q.ask) }}{% elif q.mid is not none %}{{ "%.3f"|format(q.mid) }}{% else %}listed{% endif %}{% if q.call %} <span class="good" title="net of the taker fee: buy {{ q.call }} at the quote, our fair − the price − fee">{{ q.call }} {{ "%+.1f"|format(q.best * 100) }}</span>{% endif %}{% elif v.status == 'soon' %}<span class="muted">n/a</span>{% else %}<span class="muted">–</span>{% endif %}</td>{% endfor %}
-<td class="{{ 'warn' if r.gap is not none and (r.gap > 0.1 or r.gap < -0.1) else ('good' if r.gap and r.gap > 0.02 else ('bad' if r.gap and r.gap < -0.02 else '')) }}">{{ ("%+.1f"|format(r.gap * 100)) if r.gap is not none }}</td>
-<td>{% if r.private %}{% if r.private.status == 'settled' %}<a href="/book/markets/{{ r.private.market_id }}" class="{{ 'good' if (r.private.settled_pnl or 0) >= 0 else 'bad' }}">settled {{ "%+.2f"|format(r.private.settled_pnl or 0) }}</a>{% else %}<a href="/book/markets/{{ r.private.market_id }}">{{ "%.2f"|format(r.private.yes) if r.private.yes is not none else "–" }} / {{ "%.2f"|format(r.private.no) if r.private.no is not none else "–" }}</a>{% if r.private.status != 'open' %} <span class="muted">{{ r.private.status }}</span>{% endif %}{% endif %}{% endif %}</td>
-<td>{% if r.private and r.private.bets %}{{ r.private.bets }} · ${{ "%.0f"|format(r.private.staked) }}{% endif %}</td>
+<td class="hide-sm gap-cell" data-gap-polymarket="{{ ("%.1f"|format(r.gap * 100)) if r.gap is not none else "" }}" data-gap-kalshi="{{ ("%.1f"|format(r.kalshi_gap * 100)) if r.kalshi_gap is not none else "" }}">{% if r.gap is not none %}<span class="gap-value" data-venue="polymarket">{{ "%+.1f"|format(r.gap * 100) }}</span>{% endif %}{% if r.kalshi_gap is not none %}<span class="gap-value" data-venue="kalshi" style="display:none;">{{ "%+.1f"|format(r.kalshi_gap * 100) }}</span>{% endif %}</td>
+<td class="hide-sm">{% if r.private %}{% if r.private.status == 'settled' %}<a href="/book/markets/{{ r.private.market_id }}" class="{{ pnl_cls(r.private.settled_pnl) }}">settled {{ ((r.private.settled_pnl or 0)|money(true)) }}</a>{% else %}<a href="/book/markets/{{ r.private.market_id }}">{{ "%.2f"|format(r.private.yes) if r.private.yes is not none else "–" }} / {{ "%.2f"|format(r.private.no) if r.private.no is not none else "–" }}</a>{% if r.private.status != 'open' %} <span class="muted">{{ r.private.status }}</span>{% endif %}{% endif %}{% endif %}</td>
+<td>{% if r.private and r.private.bets %}{{ r.private.bets }} · {{ r.private.staked|money(false, false) }}{% endif %}</td>
 {% if completed %}<td>{% if r.result == True %}<span class="pill yes">YES</span>{% elif r.result == False %}<span class="pill no">NO</span>{% endif %}</td>{% endif %}
 </tr>{% endfor %}</tbody></table></div>
-<p class="legend">Bars: our fair probability; the orange tick is the exchange price. Gap = exchange − our fair, in points.{% if schema_exchanges %} A green YES / NO beside {% for v in schema_exchanges %}{{ v.name }}{% if not loop.last %}, {% endif %}{% endfor %} quotes is the side with an edge net of the taker fee (<code>racinglines markets --exchange {{ schema_exchanges[0].code }} fair</code>).{% endif %}</p>
+<p class="legend">Bars: our fair probability; the yellow tick is the exchange price (click Polymarket/Kalshi to switch indicators). Gap = exchange − our fair, in points.{% if schema_exchanges %} A green YES / NO beside {% for v in schema_exchanges %}{{ v.name }}{% if not loop.last %}, {% endif %}{% endfor %} quotes is the side with an edge net of the taker fee{% if user.role == 'admin' %} (<code>racinglines markets --exchange {{ schema_exchanges[0].code }} fair</code>){% endif %}.{% endif %}</p>
 </div>
 </section>
 {% endfor %}
@@ -55,10 +61,10 @@
 {% if strategy is defined and strategy %}{% set st = strategy %}
 <section data-panel="strategy" id="strategy" hidden>
 <div class="card"><h2>Default season strategy</h2>
-<p class="legend">Replayed through the season on Polymarket's recorded hourly prices ({{ st.decisions|length }} decisions: pre-season, then 1 h after each race). At each decision: an as-of season forecast (only sessions that had ended), then rebalance every championship market to ${{ st.params.stake_per_edge|int }} × edge when |fair − price| ≥ {{ "%.0f"|format(st.params.min_edge * 100) }} pts (max ${{ st.params.max_stake|int }}/market, ${{ st.params.capital|int }} total). Trades fill at the price 1 h after the decision plus half the recorded spread and {{ "%.1f"|format(st.params.slippage * 100) }}¢ slippage; markets under ${{ "{:,.0f}".format(st.params.min_volume) }} traded are skipped; eliminated drivers settle when Polymarket closes their market; open positions are valued at what they'd sell for now. Run <a href="/lab/runs/{{ st.id }}">#{{ st.id }}</a> · {{ st.created_at|fmt }}.</p>
+<p class="legend">Replayed through the season on Polymarket's recorded hourly prices ({{ st.decisions|length }} decisions: pre-season, then 1 h after each race). At each decision: an as-of season forecast (only sessions that had ended), then rebalance every championship market to ${{ st.params.stake_per_edge|int }} × edge when |fair − price| ≥ {{ "%.0f"|format(st.params.min_edge * 100) }} pts (max ${{ st.params.max_stake|int }}/market, ${{ st.params.capital|int }} total). Trades fill at the price 1 h after the decision plus half the recorded spread and {{ "%.1f"|format(st.params.slippage * 100) }}¢ slippage; markets under {{ st.params.min_volume|money(false, false) }} traded are skipped; eliminated drivers settle when Polymarket closes their market; open positions are valued at what they'd sell for now. Run <a href="/lab/runs/{{ st.id }}">#{{ st.id }}</a> · {{ st.created_at|fmt }}.</p>
 <div class="kpis">
-  <div class="kpi"><div class="l">P&amp;L since pre-season</div><div class="v {{ 'good' if st.summary.pnl >= 0 else 'bad' }}">{{ st.summary.pnl|money(true) }}</div><div class="s">settled {{ st.summary.settled_pnl|money(true) }} · the rest marked to sale value</div></div>
-  <div class="kpi"><div class="l">Enter pre-season &amp; hold</div><div class="v {{ 'good' if st.hold.pnl >= 0 else 'bad' }}">{{ st.hold.pnl|money(true) }}</div><div class="s">same first trades, never rebalanced</div></div>
+  <div class="kpi"><div class="l">P&amp;L since pre-season</div><div class="v {{ pnl_cls(st.summary.pnl) }}">{{ st.summary.pnl|money(true) }}</div><div class="s">settled {{ st.summary.settled_pnl|money(true) }} · the rest marked to sale value</div></div>
+  <div class="kpi"><div class="l">Enter pre-season &amp; hold</div><div class="v {{ pnl_cls(st.hold.pnl) }}">{{ st.hold.pnl|money(true) }}</div><div class="s">same first trades, never rebalanced</div></div>
   <div class="kpi"><div class="l">Bought</div><div class="v">{{ st.summary.bought|money }}</div><div class="s">{{ st.summary.trades }} trades · capital in use {{ st.summary.capital_used|money }}</div></div>
   <div class="kpi"><div class="l">Max drawdown</div><div class="v bad">{{ st.summary.max_drawdown|money }}</div><div class="s">peak {{ st.summary.peak|money(true) }}</div></div>
 </div>
@@ -73,8 +79,8 @@
 <div class="scroll" data-rows="12"><table><thead><tr><th class="l">Market</th><th class="l">Outcome</th><th class="l">Side</th><th>Shares</th><th>Cost basis</th><th>Price now / result</th><th>Value</th><th>P&amp;L</th></tr></thead><tbody>
 {% for r in st.positions %}<tr><td class="l">{{ kind_label.get(r.kind, r.kind) }}</td><td class="l">{{ r.subject }}</td><td class="l">{{ r.side }}</td><td>{{ "%.0f"|format(r.shares) if r.shares }}</td>
 <td>{{ r.basis|money if r.basis }}</td><td>{{ "%.3f"|format(r.price) if r.price is not none }}</td><td>{{ r.value|money if r.value is not none }}</td>
-<td class="{{ 'good' if (r.pnl or 0) > 0 else ('bad' if (r.pnl or 0) < 0 else '') }}">{{ r.pnl|money(true) if r.pnl is not none }}</td></tr>
-{% else %}<tr><td class="l muted" colspan="8">No positions.</td></tr>{% endfor %}</tbody></table></div></details>
+<td class="{{ pnl_cls(r.pnl) }}">{{ r.pnl|money(true) if r.pnl is not none }}</td></tr>
+{% else %}<tr><td colspan="8">{{ empty("No positions yet.") }}</td></tr>{% endfor %}</tbody></table></div></details>
 <details class="card" data-remember="race:strategy:trades"><summary><h3>Trade log</h3><span class="sum">{{ st.trades|length }} trades</span></summary><div class="scroll" data-rows="20" data-filter="Filter by outcome or decision"><table><thead><tr><th class="l">Filled (UTC)</th><th class="l">Decision</th><th class="l">Outcome</th><th class="l">Side</th><th>Shares</th><th>Price paid</th><th>Polymarket</th><th>Our fair</th></tr></thead><tbody>
 {% for t in st.trades %}<tr><td class="l">{{ t.t[:16] }}</td><td class="l">{{ t.decision }}</td><td class="l">{{ t.subject }}</td><td class="l">{{ t.side }}</td><td>{{ "%+.0f"|format(t.shares) }}</td><td>{{ "%.3f"|format(t.price) }}</td><td>{{ "%.3f"|format(t.mid) }}</td><td>{{ pct(t.fair, 1) }}</td></tr>{% endfor %}
 </tbody></table></div></details>
@@ -97,7 +103,7 @@
   <label><span>Spread (pts)</span><input name="spread_pct" value="6" type="number" step="0.5" min="1" max="30"></label>
   <label><button class="primary">Quote privately</button></label>
 </form>
-<p class="legend">Creates (or reprices) YES/NO markets in my private book at our fair ± spread/2. Takers see prices only.</p>
+<p class="legend">Creates (or reprices) YES/NO markets in my book at our fair ± spread/2. Takers see prices only.</p>
 {% for v in venue_sum %}{% if v.venue.code == 'polymarket' and v.slug %}
 <form method="post" action="/markets/polymarket/mirror" class="inline">{{ csrf() }}<input type="hidden" name="event_slug" value="{{ v.slug }}"><input type="hidden" name="spread_pct" value="4"><button>Mirror Polymarket outcomes into my book</button></form>
 <a href="https://polymarket.com/event/{{ v.slug }}" target="_blank" rel="noopener">open on Polymarket ↗</a>{% elif kalshi and v.venue.code == 'kalshi' and v.slug %}

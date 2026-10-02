@@ -1,7 +1,8 @@
-{% extends "base.html" %}{% from "_macros.html" import csrf %}
+{% extends "base.html" %}{% from "_macros.html" import csrf, page_head %}
 {% block title %}Link a market{% endblock %}
 {% block content %}
-<h1>Link a Polymarket market</h1>
+<p class="crumbs"><a href="/admin">Admin</a> › <a href="/markets/linked">Linked markets</a> › Link a market</p>
+{{ page_head("Link a Polymarket market") }}
 <div class="card">
 <form method="get"><label><span>Market or event URL / slug</span><input name="slug" value="{{ slug }}" size="60"></label><button class="primary">Look up</button></form>
 <form method="get"><label><span>…or search active events</span><input name="query" value="{{ query }}" size="40"></label><button>Search</button></form>
@@ -21,7 +22,7 @@
   <input type="hidden" name="outcome" value="{{ o.outcome }}"><input type="hidden" name="neg_risk" value="{{ mk.neg_risk }}">
   <input type="hidden" name="tick_size" value="{{ mk.tick_size }}"><input type="hidden" name="min_size" value="{{ mk.min_size }}">
   <b>{{ o.outcome }}</b> <span class="muted">last {{ o.price }} · token {{ o.token_id[:12] }}…</span><br>
-  <label><span>Athlete id (find on <a href="/athletes" target="_blank">Athletes</a>)</span><input name="athlete_id" size="7" required></label>
+  <label><span>Athlete id</span><input name="athlete_id" size="7" required></label>
   <label><span>Prediction</span><select name="prediction">{% for p in predictions %}<option>{{ p }}</option>{% endfor %}</select></label>
   <label><span>Race (race_* predictions; blank = next unknown round)</span><select name="race_id"><option value="">–</option>{% for r in races %}<option value="{{ r.race_id }}">{{ r.venue }} {{ r.start_date|fmt }} {{ r.category }}</option>{% endfor %}</select></label>
   <label><span>Competition</span><select name="competition_id">{% for c in comps %}<option value="{{ c.id }}">{{ c.code }}</option>{% endfor %}</select></label>

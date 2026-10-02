@@ -6,7 +6,7 @@
   <div><h3>{{ jt.label }}</h3><div class="when">{{ jt.what }}{% if jt.minutes %} · {{ jt.minutes }}{% endif %}</div></div>
   <div class="jobform">{% set mine = knobs.get(jt.code, {}) %}{% for k in jt.knobs %}{% set val = mine.get(k.name, k.default) %}<label title="{{ k.help }}"><span>{{ k.label }}</span>
     {% if k.type == 'choice' %}<select name="{{ k.name }}">{% for ch in k.choices %}<option {{ 'selected' if ch == val }}>{{ ch }}</option>{% endfor %}</select>
-    {% elif k.type == 'event' %}<select name="{{ k.name }}" onchange="this.form.cutoff.value = this.selectedOptions[0].dataset.cutoff">{% for e in events %}<option value="{{ e.key }}" data-cutoff="{{ e.default_cutoff }}" {{ 'selected' if e.key == sel_event }}>{{ e.venue }} {{ e.key }}{{ " · Polymarket" if e.tape }}</option>{% endfor %}</select>
+    {% elif k.type == 'event' %}<select name="{{ k.name }}" data-sets-cutoff>{% for e in events %}<option value="{{ e.key }}" data-cutoff="{{ e.default_cutoff }}" {{ 'selected' if e.key == sel_event }}>{{ e.venue }} {{ e.key }}{{ " · Polymarket" if e.tape }}</option>{% endfor %}</select>
     {% elif k.type == 'datetime' %}<input name="{{ k.name }}" value="{{ sel_cutoff }}" placeholder="YYYY-MM-DDTHH:MM">
     {% elif k.type == 'text' %}<input name="{{ k.name }}" value="{{ val }}" maxlength="60">
     {% else %}<input name="{{ k.name }}" type="number" value="{{ val }}" min="{{ k.min }}" max="{{ k.max }}" step="{{ '1' if k.type == 'int' else 'any' }}">{% endif %}</label>{% endfor %}</div>

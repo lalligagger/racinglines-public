@@ -1,7 +1,8 @@
-{% extends "base.html" %}{% from "_macros.html" import csrf %}
-{% block title %}Markets{% endblock %}
+{% extends "base.html" %}{% from "_macros.html" import empty, csrf, page_head %}
+{% block title %}Linked markets{% endblock %}
 {% block content %}
-<h1>Linked markets</h1>
+<p class="crumbs"><a href="/admin">Admin</a> › Linked markets</p>
+{{ page_head("Linked markets") }}
 {% include "_admin_nav.html" %}
 <p><a href="/markets/linked/lookup">+ Link a Polymarket market</a></p>
 {% if links %}<div class="scroll"><table>
@@ -13,5 +14,5 @@
 <td>{{ l.model_prob|fmt("model_prob") if l.model_prob is not none else "–" }}</td><td>{{ "yes" if l.active else "no" }}</td>
 <td><form class="inline" method="post" action="/markets/linked/{{ l.id }}/toggle">{{ csrf() }}<button>{{ "Deactivate" if l.active else "Activate" }}</button></form></td>
 </tr>{% endfor %}</tbody></table></div>
-{% else %}<p class="muted">No markets linked yet.</p>{% endif %}
+{% else %}{{ empty("No markets linked yet.") }}{% endif %}
 {% endblock %}

@@ -1,9 +1,10 @@
-{% extends "base.html" %}{% from "_macros.html" import table, csrf %}
+{% extends "base.html" %}{% from "_macros.html" import table, csrf, page_head %}
 {% block title %}{{ u.username }}{% endblock %}
 {% block content %}
-<h1>{{ u.username }} <span class="role role-{{ u.role }}">{{ u.role }}</span>{% if not u.active %} <span class="bad">(inactive)</span>{% endif %}</h1>
+{% set head_title %}{{ u.username }} <span class="role role-{{ u.role }}">{{ u.role }}</span>{% if not u.active %} <span class="bad">(inactive)</span>{% endif %}{% endset %}
+{{ page_head(head_title) }}
 {% include "_admin_nav.html" %}
-<p class="muted">{{ u.display_name }} · created {{ u.created_at|fmt }} · <a href="/admin/activity?user={{ u.username }}">activity</a> · <a href="/admin/users">edit</a></p>
+<p class="muted">{{ u.display_name }} · created {{ u.created_at|fmt }} · <a href="/admin/activity?user={{ u.username }}">activity</a> · <a href="/admin/users">all users</a></p>
 <div class="card"><h2>Strategy profile</h2>
 <p class="muted">The Lab candidate whose live paper signals this user sees on <a href="/strategy">Strategy</a> (recommendations only: nothing is sent to an exchange).</p>
 <form method="post" action="/admin/users/{{ u.id }}/profile" class="inline">{{ csrf() }}
@@ -15,10 +16,10 @@
   </select></label><button>Save</button>
   {% if profile %}<span class="muted">now: <b>{{ profile.name }}</b> · {% if profile.members %}blend of {{ profile.members|map(attribute='code')|join(', ') }}{% else %}{{ profile.strategy }} · <code>{{ profile.settings.variant }}</code>{% endif %}</span>{% endif %}
 </form></div>
-{% if maker_summary %}<div class="card"><h2>As maker</h2><p><b>{{ maker_summary.markets }}</b> markets · <b>{{ maker_summary.bets }}</b> bets against · staked ${{ "%.2f"|format(maker_summary.staked) }} · EV ${{ "%.2f"|format(maker_summary.ev) }} · worst case <span class="bad">${{ "%.2f"|format(maker_summary.worst) }}</span> · settled P&amp;L ${{ "%.2f"|format(maker_summary.settled) }}</p>
-{{ table(book, ["id", "title", "fair_prob", "yes_price", "no_price", "status", "bets", "staked", "pnl_if_yes", "pnl_if_no", "ev"], {"id": ["/house/", "id"]}) }}</div>{% endif %}
-{% if taker_summary %}<div class="card"><h2>As taker</h2><p><b>{{ taker_summary.bets }}</b> bets ({{ taker_summary.open }} open) · staked ${{ "%.2f"|format(taker_summary.staked) }} · settled P&amp;L ${{ "%.2f"|format(taker_summary.pnl) }}</p>
-{{ table(bets, ["id", "created_at", "title", "maker", "side", "price", "stake", "payout", "status", "pnl"], {"title": ["/house/", "market_id"]}) }}</div>{% endif %}
+{% if maker_summary %}<div class="card"><h2>As maker</h2><p><b>{{ maker_summary.markets }}</b> markets · <b>{{ maker_summary.bets }}</b> bets against · staked {{ maker_summary.staked|money }} · EV {{ maker_summary.ev|money }} · worst case <span class="bad">{{ maker_summary.worst|money }}</span> · settled P&amp;L {{ maker_summary.settled|money(true) }}</p>
+{{ table(book, ["id", "title", "fair_prob", "yes_price", "no_price", "status", "bets", "staked", "pnl_if_yes", "pnl_if_no", "ev"], {"id": ["/book/markets/", "id"]}) }}</div>{% endif %}
+{% if taker_summary %}<div class="card"><h2>As taker</h2><p><b>{{ taker_summary.bets }}</b> bets ({{ taker_summary.open }} open) · staked {{ taker_summary.staked|money }} · settled P&amp;L {{ taker_summary.pnl|money(true) }}</p>
+{{ table(bets, ["id", "created_at", "title", "maker", "side", "price", "stake", "payout", "status", "pnl"], {"title": ["/book/markets/", "market_id"]}) }}</div>{% endif %}
 <div class="card"><h2>Activity</h2><div class="scroll"><table><thead><tr><th class="l">When</th><th class="l">Action</th><th class="l">Detail</th><th class="l">IP</th></tr></thead><tbody>
 {% for e in activity %}<tr><td class="l">{{ e.ts|fmt }}</td><td class="l">{{ e.action }}</td><td class="wrap"><code>{{ e.detail if e.detail else "" }}</code></td><td class="l">{{ e.ip or "" }}</td></tr>{% endfor %}
 </tbody></table></div></div>

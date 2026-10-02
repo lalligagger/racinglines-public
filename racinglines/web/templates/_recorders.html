@@ -1,6 +1,8 @@
-{# Order books recorded per venue (board.recorder_status): whatever arrived, and a marker where nothing did. #}
+{# Order books recorded per venue (board.recorder_status): whatever arrived, and a marker where nothing did.
+   Colour by freshness (minutes since the last snapshot): green under 5, yellow 5-10, red 10+. The <time> shows the
+   browser's local time once app.js runs (localTimeInit); UTC is the no-JS fallback. #}
+{% macro sync_cls(m) %}{{ "good" if m < 5 else ("warn" if m < 10 else "bad") }}{% endmacro %}
 {% if recorders %}<p class="legend recorders">Order books recorded:{% for r in recorders %} {{ r.name }}
-{%- if r.state == "live" %} <span class="good">{{ r.recent }} of {{ r.linked }} open markets, last {{ r.last.strftime("%H:%M") }} UTC</span>
-{%- elif r.state == "stale" %} <span class="bad">stale since {{ r.last.strftime("%Y-%m-%d %H:%M") }} UTC</span>
+{%- if r.state in ("live", "stale") %} <span class="{{ sync_cls(r.minutes) }}">{% if r.state == "live" %}{{ r.recent }} of {{ r.linked }} open markets, {% endif %}synced <time class="localtime" datetime="{{ r.last.isoformat() }}">{{ r.last.strftime("%Y-%m-%d %H:%M") }} UTC</time></span>
 {%- elif r.state == "unknown" %} <span class="muted">status unavailable</span>
 {%- else %} <span class="muted">no data yet</span>{% endif %}{% if not loop.last %} ·{% endif %}{% endfor %}</p>{% endif %}

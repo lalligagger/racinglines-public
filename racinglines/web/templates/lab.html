@@ -3,6 +3,7 @@
 {% block content %}
 {{ page_head("Lab", "Test the model and the trading strategies before money is at risk. Everything here prices with a hard as-of cutoff (no future data); forecasts launched here are scenarios and only change live prices when promoted.") }}
 {{ flash(msg) }}
+{% if brier and brier.win and brier.grid %}<div class="kpis"><div class="kpi"><div class="l">F1 model vs grid-only (win, after quali)</div><div class="v {{ 'bad' if brier.win > brier.grid else 'good' }}">{{ "%+.4f"|format(brier.win - brier.grid) }}</div><div class="s">Brier difference, lower is better</div></div></div>{% endif %}
 <div id="lab" data-open-now='{{ open_now|tojson }}'>
 <form id="lab-csrf" hidden>{{ csrf() }}</form>
 

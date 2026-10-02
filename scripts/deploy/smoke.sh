@@ -13,6 +13,10 @@
 # (the app sends it when RACINGLINES_ENV is set), so a staging deploy proves it reached the staging instance
 # and not production. Unset, nothing changes.
 #
+# SMOKE_SIGNUP=1 (staging only) registers one throwaway `smoke-<epoch>` account on the staging database;
+# unset, nothing changes. Usernames must match ^[a-z0-9][a-z0-9_.-]{2,29}$ (racinglines/web/accounts.py),
+# so no email-style names.
+#
 # IMPORTANT: the default smoke gate must never test a bad password. The app rate-limits failed Basic
 # auth requests by client IP for 15 minutes, so a wrong-password probe warms the same bucket used by the
 # real maker/taker checks and creates a false predeploy failure. If we intentionally need the throttle
@@ -50,6 +54,16 @@ for path in /markets /pitch /racinglines101; do
 done
 check 200 "GET /book/quotes as maker" -u "maker:$PW" "$URL/book/quotes"
 check 403 "GET /book/quotes as taker (maker-only)" -u "taker:$PW" "$URL/book/quotes"
+
+if [ "${SMOKE_SIGNUP:-}" = 1 ]; then
+  if [ "${SMOKE_EXPECT_ENV:-}" != staging ]; then echo "FAIL  signup smoke runs only with SMOKE_EXPECT_ENV=staging"; fail=1
+  else
+    jar=$(mktemp); u="smoke-$(date +%s)"; p="pass-$(date +%s)-zz"
+    check 303 "POST /signup as $u" -c "$jar" -d "username=$u&password=$p&confirm=$p&adult=1" "$URL/signup"
+    for path in /markets /positions /strategy; do check 200 "GET $path as $u" -b "$jar" "$URL$path"; done
+    rm -f "$jar"
+  fi
+fi
 
 [ $fail = 0 ] && echo "smoke: all checks passed ($URL)" || echo "smoke: FAILED ($URL)"
 exit $fail

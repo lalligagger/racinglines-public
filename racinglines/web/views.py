@@ -98,12 +98,15 @@ def board_page(request: Request, msg: str = "", c=Depends(conn)):
     calendar = V.calendar_rows(c)
     cal_sports = sorted({(r["sport"], r["sport_name"]) for r in calendar}, key=lambda x: V.SPORT_ORDER.get(x[0], 9))
     cal_exchanges = sorted({x for r in calendar for x in r["exchanges"]})
+    cal_events = [dict(sport=r["sport"], title=r["title"], status=r["status"], exchanges=r["exchanges"], url=r["url"],
+                       date=None if r["date"] is None or pd.isna(r["date"]) else pd.Timestamp(r["date"]).isoformat())
+                 for r in calendar]
     from racinglines.web import sport_status as SS                  # RACINGLINES_SPORT_STATUS=1: every sport's status
     return render(request, "board.html", sports=B.board(c, _maker(user)), h=B.headline(c, _maker(user)), kalshi=V.KALSHI_VENUE,
                   disagree=D.panel(c) if D.ON["on"] else None,
                   sport_status=SS.status(c) if SS.enabled() else None, show_paper=True,
                   recorders=B.recorder_status(c, [v.code for v in V.EXCHANGES if v.code != "kalshi" or V.KALSHI_VENUE]),
-                  calendar=calendar, cal_sports=cal_sports, cal_exchanges=cal_exchanges)
+                  calendar=calendar, cal_sports=cal_sports, cal_exchanges=cal_exchanges, cal_events=cal_events)
 
 
 # ---------------------------------------------------------------------------
@@ -142,7 +145,7 @@ def _race_chart(c, info, pricing, df, exchange="polymarket"):
 def race_page(request: Request, race_id: int, msg: str = "", c=Depends(conn)):
     user = request.state.user
     if R.is_basic(user):
-        return RedirectResponse(f"/markets?race_id={race_id}", status_code=303)
+        return RedirectResponse("/markets", status_code=303)
     info, pricing, df = V.event_matrix(c, race_id, _maker(user))
     if info is None:
         raise HTTPException(404)
@@ -207,11 +210,21 @@ def book_page(request: Request, maker: str = "", c=Depends(conn), user=allow(*PR
                             JOIN competitions co ON co.id = s.competition_id LEFT JOIN venues v ON v.id = e.venue_id
                             WHERE ra.id = ANY(:r)""", r=[int(x) for x in bk["race_key"].unique() if x])
         meta = {int(r["race_key"]): r for r in meta.to_dict("records")}
+        season_codes = {}                      # season-long markets: the competition of the model run that priced them
+        if (bk["race_key"] == 0).any():
+            runs = [int(x) for x in bk.loc[bk["race_key"] == 0, "model_run_id"].dropna().unique()]
+            if runs:
+                season_codes = {int(r["id"]): r["code"] for r in data.q(c, """SELECT mr.id, co.code FROM model_runs mr
+                    JOIN competitions co ON co.id = mr.competition_id WHERE mr.id = ANY(:r)""", r=runs).to_dict("records")}
         for rk, g in bk.groupby("race_key", sort=False):
             mt = meta.get(rk, {})
             title = "Season-long markets" if rk == 0 else (
                 f"{mt.get('venue')} GP" if mt.get("competition") == "f1_wdc" else mt.get("venue"))
-            groups.append(dict(race_id=rk, title=title, sport=V.SPORT_NAME.get(mt.get("competition"), ""),
+            code = None
+            if rk == 0:
+                ids = [int(x) for x in g["model_run_id"].dropna()]
+                code = next((season_codes[i] for i in ids if i in season_codes), None) or "f1_wdc"
+            groups.append(dict(race_id=rk, season_code=code, title=title, sport=V.SPORT_NAME.get(mt.get("competition"), ""),
                                date=mt.get("start_date"), status=mt.get("status", "open"),
                                markets=len(g), open=int((g["status"] == "open").sum()), bets=int(g["bets"].sum()),
                                staked=float(g["staked"].sum()), ev=float(g.loc[g["status"] == "open", "ev"].sum()),
@@ -347,6 +360,12 @@ def _edge_ctx(c, user):
                 strategies=[(k, edge.label(k)) for k in edge.STRATEGY_KEYS])
 
 
+def _model_brier(c):
+    from racinglines.web import board
+    win, grid = board.model_brier(c)
+    return dict(win=win, grid=grid)
+
+
 @app.get("/lab", response_class=HTMLResponse)
 def lab_page(request: Request, job: str = "", event: str = "", variant: str = "", candidate: int = 0, cfg: str = "",
              msg: str = "", user=allow(*PRO), c=Depends(conn)):
@@ -359,7 +378,7 @@ def lab_page(request: Request, job: str = "", event: str = "", variant: str = ""
     open_now = (["run"] if job or event or variant or candidate or cfg else []) + (["jobs"] if active or msg else [])
     q = {k: v for k, v in dict(job=job, event=event, variant=variant, candidate=candidate or "", cfg=cfg).items() if v}
     return render(request, "lab.html", sections=LAB_SECTIONS, open_now=open_now, query="?" + urlencode(q) if q else "",
-                  active=active, msg=msg, **_edge_ctx(c, user))
+                  active=active, msg=msg, brier=_model_brier(c), **_edge_ctx(c, user))
 
 
 @app.get("/lab/section/{key}", response_class=HTMLResponse)

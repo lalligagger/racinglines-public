@@ -7,6 +7,8 @@ for the maker tools and the Lab); every form POST carries a CSRF token; every me
 written to activity_log. Run with `racinglines web`.
 """
 
+from types import SimpleNamespace
+import contextvars
 import hashlib
 import hmac
 import math
@@ -14,15 +16,20 @@ import os
 import secrets
 import threading
 import time
-from datetime import date
+from urllib.parse import quote
+from datetime import date, datetime, timezone
+from numbers import Real
 from pathlib import Path
 
 import pandas as pd
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, status
+from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy import select, text
 
 ROOT = Path(__file__).resolve().parents[2]      # the repository
@@ -130,7 +137,8 @@ def authenticate(request: Request, creds: HTTPBasicCredentials | None = Depends(
         _record_failure(ip)
         U.log(get_engine(), None, "login_failed", request, username=creds.username, via="basic")
     if request.method == "GET" and "text/html" in request.headers.get("accept", ""):
-        raise HTTPException(status.HTTP_303_SEE_OTHER, headers={"Location": f"/login?next={request.url.path}"})
+        raise HTTPException(status.HTTP_303_SEE_OTHER, headers={"Location": "/login?next=" + quote(
+                                request.url.path + (f"?{request.url.query}" if request.url.query else ""), safe="/")})
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated",
                         headers={"WWW-Authenticate": 'Basic realm="racinglines"'})
 
@@ -189,19 +197,42 @@ templates = Jinja2Templates(directory=HERE / "templates")
 # Template helpers
 # ---------------------------------------------------------------------------
 
-MONEY_COLS = {"pnl", "spread_pnl", "markout_60m", "markout_5m", "model_edge", "worst_case", "cash", "taker_pnl"}
+MONEY_COLS = {"pnl", "spread_pnl", "markout_60m", "markout_5m", "model_edge", "worst_case", "cash", "taker_pnl",
+              "staked", "stake", "payout", "ev", "pnl_if_yes", "pnl_if_no", "cost", "proceeds", "notional", "settled_pnl",
+              "paper_pnl", "replay_pnl", "kalshi_pnl", "worst"}
+SIGNED_MONEY_COLS = {"pnl", "spread_pnl", "markout_60m", "markout_5m", "model_edge", "taker_pnl", "pnl_if_yes",
+                     "pnl_if_no", "ev", "settled_pnl", "paper_pnl", "replay_pnl", "kalshi_pnl"}   # P&L-like: shown with a sign
+
+
+def money(v, sign=False, cents=True):
+    """-302.97 -> '-$302.97'; sign=True adds '+' to positives; cents=False keeps whole dollars ('-$303')."""
+    if v is None or (isinstance(v, float) and math.isnan(v)):
+        return ""
+    s = "-" if v < 0 else ("+" if sign and v > 0 else "")
+    return f"{s}${abs(v):,.{2 if cents else 0}f}"
+
+
+def _when(value):
+    """One date format: 'YYYY-MM-DD HH:MM UTC', or 'YYYY-MM-DD' when there is no time part (tz-aware values go to UTC)."""
+    if isinstance(value, pd.Timestamp) and pd.isna(value):
+        return ""
+    if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            value = value.astimezone(timezone.utc)
+        return value.strftime("%Y-%m-%d %H:%M UTC") if (value.hour or value.minute) else value.strftime("%Y-%m-%d")
+    return value.strftime("%Y-%m-%d")                                     # a plain date
 
 
 def fmt(value, col=""):
-    if value is None or (isinstance(value, float) and math.isnan(value)):
+    if value is None or (isinstance(value, float) and math.isnan(value)) or value is pd.NaT:
         return ""
-    if isinstance(value, pd.Timestamp):
-        return value.strftime("%Y-%m-%d %H:%M") if (value.hour or value.minute) else value.strftime("%Y-%m-%d")
+    if isinstance(value, (datetime, date)):                                # pd.Timestamp is a datetime
+        return _when(value)
+    if col in MONEY_COLS and isinstance(value, Real) and not isinstance(value, bool):
+        return money(value, sign=col in SIGNED_MONEY_COLS)
     if isinstance(value, float):
         if col.endswith("_prob") or col in ("model_prob", "edge", "quoted_share"):
             return f"{value:.1%}"
-        if col in MONEY_COLS:
-            return f"{value:+,.2f}"
         if col.endswith("time_s"):
             mins, secs = divmod(value, 60)
             return f"{int(mins)}:{secs:06.3f}" if mins else f"{secs:.3f}"
@@ -212,22 +243,49 @@ def fmt(value, col=""):
 
 
 templates.env.filters["fmt"] = fmt
-
-
-def money(v, sign=False):
-    """-302.97 -> '-$302.97'; sign=True adds '+' to positives."""
-    if v is None or (isinstance(v, float) and math.isnan(v)):
-        return ""
-    s = "-" if v < 0 else ("+" if sign and v > 0 else "")
-    return f"{s}${abs(v):,.2f}"
-
-
 templates.env.filters["money"] = money
+
+
+def kind(k):
+    """'race_win' -> 'win', 'race_top10' -> 'top10', 'race_make_final' -> 'make final'."""
+    if k is None:
+        return ""
+    k = str(k).removeprefix("race_")
+    return ("DH " + k.removeprefix("dh_") if k.startswith("dh_") else k).replace("_", " ")
+
+
+templates.env.filters["kind"] = kind
+
+
+def when(v):
+    """fmt for an ISO string ('2026-09-27T14:05:00'; no zone means UTC)."""
+    if not v:
+        return ""
+    t = pd.Timestamp(v)
+    return fmt(t.tz_localize("UTC") if t.tzinfo is None else t)
+
+
+templates.env.filters["when"] = when
+# Short column headers for the `table` macro; a key not listed gets `_` -> space and a capital first letter.
+LABELS = {"markets_made": "Markets made", "bets_against": "Bets against", "bets_placed": "Bets placed", "staked": "Staked",
+          "last_seen": "Last seen", "created_at": "Created", "pnl": "P&L", "pnl_if_yes": "P&L if yes", "pnl_if_no": "P&L if no",
+          "ev": "EV", "id": "ID", "fair_prob": "Fair", "yes_price": "Yes", "no_price": "No",
+          "win_prob": "Win", "podium_prob": "Podium", "top10_prob": "Top 10", "make_final_prob": "Makes final",
+          "exp_points": "Exp. points", "actual_final_pos": "Final pos.", "time_s": "Time", "start_date": "Date",
+          "series_round": "Round", "source_key": "Source", "last_race": "Last race", "brier_model": "Brier (model)",
+          "brier_polymarket": "Brier (Polymarket)", "logloss_model": "Log loss (model)",
+          "logloss_polymarket": "Log loss (Polymarket)", "run_id": "Run", "spread_pnl": "Spread P&L",
+          "markout_60m": "Markout 60m", "model_edge": "Model edge", "worst_case": "Worst case", "quoted_share": "Quoted",
+          "half_spread": "Half spread", "max_disagree": "Max disagree", "market_steps": "Market steps",
+          "taker_pnl": "Taker P&L", "model_prob": "Model prob", "best_bid": "Best bid", "best_ask": "Best ask",
+          "exchange_order_id": "Exchange order", "ts": "Time", "qty": "Qty", "mid": "Mid", "fair": "Fair"}
+templates.env.globals["LABELS"] = LABELS
 # Demo-only explanations (the demo accounts' story, the demo itself) render in `demo_context` bubbles
 # (_macros.html) tagged data-tag="demo-context". RACINGLINES_DEMO_CONTEXT=0 hides them all; for real users,
 # delete every `demo_context` call.
 DEMO_CONTEXT = {"on": os.environ.get("RACINGLINES_DEMO_CONTEXT", "1") != "0"}
-templates.env.globals["demo_context_on"] = lambda: DEMO_CONTEXT["on"]      # read at render time
+_RENDER_USER = contextvars.ContextVar("render_user", default=None)   # set by render(): imported macros don't see the page's `user`
+templates.env.globals["demo_context_on"] = lambda: DEMO_CONTEXT["on"] and _demo.is_demo(_RENDER_USER.get())   # read at render time; demo accounts only
 templates.env.globals["csrf_token"] = CSRF_TOKEN
 # RACINGLINES_ENV=staging (set only in /etc/racinglines-staging.env on the VM): every response carries
 # X-Racinglines-Env so a deploy's smoke check can tell the staging instance from production, and the top bar shows
@@ -301,8 +359,49 @@ def render(request, name, **ctx):
         ctx.setdefault("live_nav", False)
     from racinglines.web import demo
     u = ctx["user"]
+    _RENDER_USER.set(u)
     ctx.setdefault("storage_ns", f"demo.{u.get('sid')}." if demo.is_demo(u) and u.get("sid") else "")
     return templates.TemplateResponse(request, name, ctx)
+
+
+# Browser requests (Accept: text/html) get a readable error page for 403 / 404 / 422 / 429; JSON and API clients keep
+# FastAPI's JSON error. A throttled sign-in goes back to the form with a sentence instead.
+ERROR_TEXT = {403: "You don't have access to this page.", 404: "That page doesn't exist, or it has moved.",
+              422: "Something in that link or form wasn't valid.", 429: "Too many attempts. Wait a few minutes and try again."}
+
+
+def _wants_html(request):
+    return "text/html" in request.headers.get("accept", "") and not request.url.path.startswith("/api/")
+
+
+def _error_page(request, code):
+    user = getattr(request.state, "user", None)
+    try:
+        resp = render(request, "error.html", code=code, message=ERROR_TEXT[code], home="/markets" if user else "/login")
+        resp.status_code = code
+        return resp
+    except Exception:                                  # noqa: BLE001  never let the error page itself fail
+        return None
+
+
+@app.exception_handler(StarletteHTTPException)
+async def _http_error(request: Request, exc: StarletteHTTPException):
+    if exc.status_code == 429 and request.method == "POST" and request.url.path == "/login" and _wants_html(request):
+        return RedirectResponse("/login?error=throttled", status_code=303)
+    if exc.status_code in ERROR_TEXT and _wants_html(request):
+        resp = _error_page(request, exc.status_code)
+        if resp is not None:
+            return resp
+    return await http_exception_handler(request, exc)
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_error(request: Request, exc: RequestValidationError):
+    if _wants_html(request):
+        resp = _error_page(request, 422)
+        if resp is not None:
+            return resp
+    return await request_validation_exception_handler(request, exc)
 
 
 def rows(df):
@@ -345,37 +444,6 @@ def run_detail(request: Request, run_id: int, c=Depends(conn)):
     return render(request, "run.html", run=run, metrics={k: (list(v.columns), rows(v)) for k, v in metrics.items()},
                   preds=preds, standings=rows(data.standings_predictions(c, run_id)),
                   pred_cols=PRED_COLS + ["attend_prob", "actual_final_rank", "actual_points"], stand_cols=STAND_COLS)
-
-
-@app.get("/events", response_class=HTMLResponse)
-def events(request: Request, season: int | None = None, c=Depends(conn)):
-    venues = data.q(c, "SELECT slug, name FROM venues ORDER BY name")
-    comps = data.q(c, "SELECT code, name FROM competitions ORDER BY code")
-    return render(request, "events.html", events=rows(data.events(c, season=season)), season=season,
-                  venues=rows(venues), comps=rows(comps), today=date.today().isoformat())
-
-
-@app.post("/events", dependencies=[Depends(check_csrf), allow("admin")])
-def create_event(request: Request, competition: str = Form(...), name: str = Form(...), start_date: str = Form(...),
-                 venue: str = Form(...), series_round: str = Form("")):
-    """Add a scheduled (future) event, so forecasts and market links can attach to it.
-    When its results are ingested later, the ingest adopts this event."""
-    with get_session() as s:
-        comp = s.scalars(select(m.Competition).filter_by(code=competition)).one()
-        d = date.fromisoformat(start_date)
-        season = s.scalars(select(m.Season).filter_by(competition_id=comp.id, year=d.year)).first()
-        if season is None:
-            season = m.Season(competition_id=comp.id, year=d.year)
-            s.add(season)
-            s.flush()
-        v = s.scalars(select(m.Venue).filter_by(slug=venue)).one()
-        ev = m.Event(season_id=season.id, source="manual", source_key=f"manual-{d:%Y%m%d}-{venue}", name=name,
-                     start_date=d, venue_id=v.id, series_round=int(series_round) if series_round else None,
-                     status="scheduled")
-        s.add(ev)
-        s.commit()
-        audit(request, "event_create", event_id=ev.id, name=name, start_date=start_date, venue=venue)
-        return RedirectResponse(f"/events/{ev.id}", status_code=303)
 
 
 @app.get("/events/by-key/{source_key}")
@@ -438,11 +506,6 @@ def event_detail(request: Request, event_id: int, c=Depends(conn)):
     if R.is_basic(request.state.user):
         pred_groups = []  # model fair values are the makers' edge
     return render(request, "event.html", ev=ev, groups=groups, pred_groups=pred_groups)
-
-
-@app.get("/athletes", response_class=HTMLResponse)
-def athletes(request: Request, q: str | None = None, c=Depends(conn)):
-    return render(request, "athletes.html", athletes=rows(data.athletes(c, q)), q=q or "")
 
 
 @app.get("/athletes/{athlete_id}", response_class=HTMLResponse)
@@ -725,7 +788,7 @@ def house_sheet(request: Request, race_id: int, c=Depends(conn)):
         venue, cat = house.race_label(s, race_id)
     groups = [(kind, rows(g.sort_values("fair_prob", ascending=False))) for kind, g in bk.groupby("kind", sort=False)]
     return render(request, "house_sheet.html", groups=groups, venue=venue, cat=cat,
-                  now=pd.Timestamp.now(tz="America/Vancouver").strftime("%a %d %b %H:%M %Z"))
+                  now=pd.Timestamp.now(tz="America/Vancouver").strftime("%a %d %b %H:%M"))
 
 
 @app.get("/book/markets/{market_id}", response_class=HTMLResponse)
@@ -915,8 +978,8 @@ def place_bet(request: Request, market_id: int, side: str = Form(...), stake: fl
     except ValueError as e:
         audit(request, "bet_rejected", market_id=market_id, side=side, stake=stake, reason=str(e))
         msg = f"Error: {e}"
-    race_q = f"race_id={race_id}&" if race_id else ""
-    return RedirectResponse(f"/markets?{race_q}msg={msg}", status_code=303)
+    dest = f"/races/{race_id}" if race_id and not R.is_basic(user) else "/markets"
+    return RedirectResponse(f"{dest}?msg={msg}", status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -926,6 +989,14 @@ def place_bet(request: Request, market_id: int, side: str = Form(...), stake: fl
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request, next: str = "/", error: str = ""):
     return templates.TemplateResponse(request, "login.html", dict(next=next, error=error))
+
+
+def _safe_next(nxt):
+    """The post-login target: a same-site relative path only (one leading slash, no scheme, host, backslash or
+    control characters), else /markets."""
+    if (not nxt.startswith("/") or nxt.startswith("//") or "\\" in nxt or any(ord(ch) < 32 or ord(ch) == 127 for ch in nxt)):
+        return "/markets"
+    return nxt
 
 
 @app.post("/login")
@@ -939,8 +1010,8 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
     if user is None:
         _record_failure(ip)
         U.log(get_engine(), None, "login_failed", request, username=username)
-        return RedirectResponse(f"/login?next={next}&error=1", status_code=303)
-    target = next if next.startswith("/") and not next.startswith("//") and next != "/" else "/markets"
+        return RedirectResponse(f"/login?next={quote(_safe_next(next), safe='/')}&error=1", status_code=303)
+    target = _safe_next(next) if next != "/" else "/markets"
     return _start_session(request, user, target)
 
 
@@ -1047,11 +1118,10 @@ def signup(request: Request, username: str = Form(""), password: str = Form(""),
                                 VALUES (:u, :u, :r, :h, true) RETURNING id"""),
                         dict(u=username, r=tier, h=U.hash_password(password))).scalar()
         ACC.grant(c, uid)
-    try:                                            # the tier's starting strategy, as the demo accounts have; a
-        from racinglines.pipelines import profiles as PF   # failure here leaves the account fine, just unassigned
-        with get_engine().begin() as c:
-            prof = R.basic_profile(c, uid) if tier == "basic" else PF.load(c, PF.ensure_candidates(c)[PF.DEMO["maker"]])
-            PF.assign(c, uid, prof)
+    try:                                            # starts on strategy profile A (owner, 2026-10-01): no bankroll, no
+        from racinglines.pipelines import profiles as PF   # history, so Strategy and Positions start empty. A failure here
+        with get_engine().begin() as c:             # leaves the account fine, just unassigned (an admin can assign one)
+            PF.assign(c, uid, PF.load(c, PF.ensure_candidates(c)["A"]))
     except Exception as ex:                         # noqa: BLE001
         print(f"signup: no starting profile for user {uid}: {ex}", flush=True)
     with get_session() as s:
@@ -1066,18 +1136,22 @@ def signup(request: Request, username: str = Form(""), password: str = Form(""),
 
 @app.get("/markets/polymarket", response_class=HTMLResponse)
 def pm_board(request: Request, event: str = "", show: str = "modeled", closed: int = 0, spread_pct: float = 4.0,
-             msg: str = "", c=Depends(conn), user=allow(*PRO)):
-    return _exchange_board(request, c, user, "polymarket", event, show, closed, spread_pct, msg)
+             msg: str = "", sport: str = "", c=Depends(conn), user=allow(*PRO)):
+    return _exchange_board(request, c, user, "polymarket", event, show, closed, spread_pct, msg, sport)
 
 
-def _exchange_board(request, c, user, exchange, event, show, closed, spread_pct, msg):
-    """Every listed event of one exchange (market_links.exchange), our fair values and a quote at ± spread/2."""
+def _exchange_board(request, c, user, exchange, event, show, closed, spread_pct, msg, sport=""):
+    """Every listed event of one exchange (market_links.exchange), our fair values and a quote at ± spread/2.
+    `sport`: a competition code (market_links.competition_id, exact match, no text/fuzzy matching) to narrow the
+    list to one sport, e.g. from a Markets page "N new" link."""
     links = data.q(c, """
         SELECT ml.*, a.display_name AS athlete FROM market_links ml LEFT JOIN athletes a ON a.id = ml.athlete_id
+        LEFT JOIN competitions co ON co.id = ml.competition_id
         WHERE ml.exchange = :x AND (CAST(:closed AS int) = 1 OR NOT ml.closed)
           AND (CAST(:ev AS text) IS NULL OR ml.event_slug = CAST(:ev AS text))
+          AND (CAST(:sport AS text) IS NULL OR co.code = CAST(:sport AS text))
         ORDER BY ml.end_date NULLS LAST, ml.event_title, ml.last_price DESC NULLS LAST""", closed=closed, ev=event or None,
-                   x=exchange)
+                   sport=sport or None, x=exchange)
     mine = set(data.q(c, "SELECT market_link_id FROM house_markets WHERE maker_id = :u AND market_link_id IS NOT NULL",
                       u=user["id"])["market_link_id"].dropna().astype(int))
     from racinglines.markets import alerts
@@ -1112,16 +1186,15 @@ def _exchange_board(request, c, user, exchange, event, show, closed, spread_pct,
     synced = data.q(c, "SELECT max(synced_at) AS t FROM market_links WHERE exchange = :x", x=exchange)["t"].iloc[0]
     from racinglines.web import board as B
     recorders = B.recorder_status(c, [exchange]) if exchange != "polymarket" else None    # the Kalshi / schema recorders
+    ctx = dict(events=events, show=show, closed=closed, spread_pct=spread_pct, msg=msg, synced=synced, event=event,
+               sport=sport, sport_name=V.SPORT_NAME.get(sport, sport) if sport else "", recorders=recorders)
     if schema:
         venue = next(v for v in V.SCHEMA_EXCHANGES if v.code == exchange)
-        return render(request, "exchange.html", events=events, show=show, closed=closed, spread_pct=spread_pct, msg=msg,
-                      synced=synced, event=event, venue=venue, fee=fee, recorders=recorders,
+        return render(request, "exchange.html", mode="schema", venue=venue, fee=fee, **ctx,
                       sports=[V.SPORT_NAME.get(sports.load(x)["competition"]["code"], x) for x in exchanges.sports(exchange)])
     if exchange == "kalshi":
-        return render(request, "kalshi.html", events=events, show=show, closed=closed, spread_pct=spread_pct, msg=msg,
-                      synced=synced, event=event, url=next(v.url for v in V.EXCHANGES if v.code == "kalshi"), recorders=recorders)
-    return render(request, "pm.html", events=events, show=show, closed=closed, spread_pct=spread_pct, msg=msg,
-                  synced=synced, event=event)
+        return render(request, "exchange.html", mode="kalshi", venue=next(v for v in V.EXCHANGES if v.code == "kalshi"), **ctx)
+    return render(request, "exchange.html", mode="pm", venue=SimpleNamespace(name="Polymarket", code="polymarket", url=""), **ctx)
 
 
 @app.post("/markets/polymarket/mirror", dependencies=[Depends(check_csrf)])
@@ -1162,8 +1235,8 @@ def _kalshi_on():
 
 @app.get("/markets/kalshi", response_class=HTMLResponse, dependencies=[Depends(_kalshi_on)])
 def kalshi_board(request: Request, event: str = "", show: str = "modeled", closed: int = 0, spread_pct: float = 4.0,
-                 msg: str = "", c=Depends(conn), user=allow(*PRO)):
-    return _exchange_board(request, c, user, "kalshi", event, show, closed, spread_pct, msg)
+                 msg: str = "", sport: str = "", c=Depends(conn), user=allow(*PRO)):
+    return _exchange_board(request, c, user, "kalshi", event, show, closed, spread_pct, msg, sport)
 
 
 @app.post("/markets/kalshi/mirror", dependencies=[Depends(_kalshi_on), Depends(check_csrf)])
@@ -1202,8 +1275,8 @@ def _schema_routes(code):
 
     @app.get(f"/markets/{code}", response_class=HTMLResponse, dependencies=[Depends(on)], name=f"{code}_board")
     def board(request: Request, event: str = "", show: str = "modeled", closed: int = 0, spread_pct: float = 4.0,
-              msg: str = "", c=Depends(conn), user=allow(*PRO)):
-        return _exchange_board(request, c, user, code, event, show, closed, spread_pct, msg)
+              msg: str = "", sport: str = "", c=Depends(conn), user=allow(*PRO)):
+        return _exchange_board(request, c, user, code, event, show, closed, spread_pct, msg, sport)
 
     @app.post(f"/markets/{code}/mirror", dependencies=[Depends(on), Depends(check_csrf)], name=f"{code}_mirror")
     def mirror(request: Request, event_slug: str = Form(...), spread_pct: float = Form(4.0), c=Depends(conn),

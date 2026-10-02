@@ -210,12 +210,10 @@ def sync_and_alert(session, conn, year, mac=True, **kw):
 
 
 def new_links(conn, hours=NEW_HOURS):
-    """Open links first seen within `hours`: token_id -> race_id (resolved like the alerts), for badges."""
-    rows = conn.execute(text("""SELECT token_id, race_id, event_title, question, end_date FROM market_links
+    """Open links first seen within `hours`: token_id -> (race_id, competition_id), both exact market_links
+    columns (no text-matching inference — race_for's fuzzy "Grand Prix" guess is for the CLI/notification
+    summary only, never for the web app's per-sport "N new" badges and links)."""
+    rows = conn.execute(text("""SELECT token_id, race_id, competition_id FROM market_links
                                 WHERE NOT closed AND first_seen_at > now() - make_interval(hours => :h)"""),
                         dict(h=hours)).mappings().all()
-    if not rows:
-        return {}
-    from racinglines.markets.polymarket.sync import Resolver
-    R = Resolver(conn, date.today().year)
-    return {r["token_id"]: race_for(R, dict(r))[0] for r in rows}
+    return {r["token_id"]: (r["race_id"], r["competition_id"]) for r in rows}

@@ -1,7 +1,7 @@
-{% extends "base.html" %}
+{% extends "base.html" %}{% from "_macros.html" import page_head %}
 {% block title %}Database{% endblock %}
 {% block content %}
-<h1>Database explorer</h1>
+{{ page_head("Database explorer") }}
 {% include "_admin_nav.html" %}
 <p><a href="/admin/sql">SQL console →</a> <span class="muted">Row edits and deletes are logged in the activity log. Password hashes are never shown.</span></p>
 <div class="card"><table><thead><tr><th class="l">Table</th><th>Rows</th></tr></thead><tbody>

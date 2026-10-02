@@ -1,8 +1,7 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Racinglines 101</title><link rel="stylesheet" href="/static/style.css?v={{ css_v() }}">
-</head>
-<body><main class="r101">
+{% extends "base_public.html" %}
+{% block title %}Racinglines 101{% endblock %}
+{% block main_class %}r101{% endblock %}
+{% block content %}
 <p class="crumbs"><a href="/login">racinglines</a> › 101</p>
 <h1>Racinglines 101</h1>
 <p class="sub">The short version of what this demo does, for anyone who just clicked "I'm already confused."</p>
@@ -42,13 +41,14 @@ If our model says 45%, that's a bargain to a taker. To a maker, it's a sign to q
 <tr><td class="l"><b>Markets</b></td><td class="l">Every upcoming race with our fair probabilities next to Polymarket's prices</td><td class="l">Every open Polymarket F1 market, with its strategy's call on each</td></tr>
 <tr><td class="l"><b>Strategy</b></td><td class="l">Where its quotes sit on each weekend, stage by stage, with the model's fair price and edge; its track record and the evidence behind each change of setup</td><td class="l">What to buy or sell, how many shares, the most to pay, and a <i>heat</i> rating (warm, hot, very hot); its track record</td></tr>
 <tr><td class="l"><b>Positions</b></td><td class="l">Its inventory in every market, paper fills, P&amp;L history, and where it would quote next</td><td class="l">Everything it holds and has held, P&amp;L history, and the next race's calls</td></tr>
-<tr><td class="l"><b>My Book</b></td><td class="l">Its own in-app markets: opens them, sets the prices, watches its exposure</td><td class="l">Not available</td></tr>
+<tr><td class="l"><b>My book</b></td><td class="l">Its own in-app markets: opens them, sets the prices, watches its exposure</td><td class="l">Not available</td></tr>
 <tr><td class="l"><b>The Lab</b></td><td class="l">Backtests, the Edge Finder, model runs, race-by-race diagnostics</td><td class="l">Not available</td></tr>
 <tr><td class="l"><b>Can see the model?</b></td><td class="l"><b>Yes</b>: every fair price, every setting, every backtest</td><td class="l"><b>No</b>: heat says how strongly the model likes a trade, without revealing its numbers</td></tr>
 </tbody></table></div>
 
 <h2>The two strategies in this demo</h2>
-<p><b>Try as basic</b> follows A; <b>Try as pro</b> runs C. In the app the two account tiers are <b>pro</b> (every maker and taker strategy, the private book and the Lab's backtests) and <b>basic</b> (a short list of taker strategies, currently just A, and never the model's numbers).</p>
+<p><b>pro = the maker tools (quotes, book, Lab); basic = the taker picks.</b></p>
+<p><b>Try as basic</b> follows A; <b>Try as pro</b> runs C. In the app the two account tiers are <b>pro</b> (every maker and taker strategy, the private book and the Lab's backtests) and <b>basic</b> (a blend of three taker strategies drawn from the top of the taker list for each account, shown as &ldquo;Your picks&rdquo;, and never the model's numbers or which strategy made a pick).</p>
 <div class="roles">
   <div class="role-card taker"><h3>A: the core taker</h3>
     <p>After each practice and qualifying session, reprices every race market. It buys only when the model and the crowd disagree by
@@ -75,4 +75,4 @@ by race weekend, and record the trades they <i>would</i> make at the real prices
 </ul>
 
 <a class="back" href="/login">← Back to sign in and try the demo</a>
-</main></body></html>
+{% endblock %}
