@@ -7,6 +7,7 @@ racinglines backtest <command>: the backtest core for any sport with a pricing m
                          ([sport] pricing_model), and its settings are its flags.
 
     racinglines backtest walk-forward mtb_dh --seasons 2025 --half-life-days 120 [--save]
+    racinglines backtest walk-forward motogp --model global --seasons 2026     # the sport-agnostic results model
 """
 
 import argparse
@@ -14,6 +15,16 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+
+
+def pricing_model(sport, which=None):
+    """The sport's own pricing model, or with which="global" the sport-agnostic results model
+    (models/model_global.py) pointed at the sport's schema ([model] / [replay] data hooks)."""
+    from racinglines.models import race_model as RM
+    if which == "global":
+        from racinglines.models.model_global import GlobalModel
+        return GlobalModel.for_sport(sport)()
+    return RM.get(sport)
 
 
 def run_walk_forward(model, data, st, seasons=None, kinds=None, out_dir=None, save=False, engine_url=None,
@@ -61,11 +72,11 @@ def run_walk_forward(model, data, st, seasons=None, kinds=None, out_dir=None, sa
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     from racinglines import paths
-    from racinglines.models import race_model as RM
     from racinglines.pipelines import sweep_settings as SS
     pre = argparse.ArgumentParser(add_help=False)
     pre.add_argument("cmd", nargs="?")
     pre.add_argument("sport", nargs="?")
+    pre.add_argument("--model", default=None)
     known, _ = pre.parse_known_args(argv)
     ap = argparse.ArgumentParser(prog="racinglines backtest", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -77,11 +88,12 @@ def main(argv=None):
     wf.add_argument("--kinds", help="Market kinds, comma-separated (default: every per-entrant kind the model prices).")
     wf.add_argument("--out-dir", help="Write the CSVs here (default: data/runs/<sport>/walk_forward).")
     wf.add_argument("--save", action="store_true", help="Store the run in the database (model_runs, kind walk_forward).")
+    wf.add_argument("--model", choices=("global",), default=None,
+                    help="Run the sport-agnostic results model (models/model_global.py) instead of the sport's own.")
     if known.cmd == "walk-forward" and known.sport:
-        model = RM.get(known.sport)
-        SS.add_arguments(wf, model.Settings)
+        SS.add_arguments(wf, pricing_model(known.sport, known.model).Settings)
     args = ap.parse_args(argv)
-    model = RM.get(args.sport)
+    model = pricing_model(args.sport, args.model)
     st = SS.from_args(args, model.Settings)
     data = model.load(args.db)
     run_walk_forward(model, data, st, seasons=args.seasons, kinds=args.kinds.split(",") if args.kinds else None,

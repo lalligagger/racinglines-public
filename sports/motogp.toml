@@ -60,6 +60,11 @@ same site. Owner reviewed 2026-09-29 and said the intended use (a private, non-c
 app for friends) can proceed for now, to be reviewed again in more detail before any soft launch."""
 limits = { history_seasons = 78, splits_available = false }   # splits_available: no per-lap/sector data in JSON
 
+[model]
+# Data hooks for the sport-agnostic results model (racinglines/models/model_global.py, `--model global`); the
+# history's events.source is the [replay] source below. No setting here is tuned.
+group = "team"                    # results.team, for the optional team-form prior
+
 [replay]
 # The taker replay (racinglines/pipelines/position_replay.py; `racinglines motogp replay`). Links stored before the
 # [identity] resolver was turned on are identified in memory (racinglines/sources/motogp/links.py); the replay writes

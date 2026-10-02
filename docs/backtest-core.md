@@ -146,6 +146,34 @@ a queue job with `sport = "<code>"` searches it (with `replicates`), and `search
 `tests/toy_backtest.py` is a complete example: a synthetic running race (data source and a form model in
 one module) that `tests/test_backtest_toy.py` takes through all of that, including the command line.
 
+#### The global results model: a wrapper that is only a schema
+
+A sport whose history is a table of finishing positions needs no wrapper of its own: point it at
+`racinglines/models/model_global.py` and describe its data in the schema. The model names no sport;
+`race_model.model_class(code)` binds it to the schema's `[model]` block.
+
+```toml
+[sport]
+pricing_model = "racinglines.models.model_global:GlobalModel"
+[model]
+source = "motogp_api"     # events.source of the results (or the [replay] source)
+group = "team"            # optional: results column / results.extra key naming the team (group prior)
+prior = "uci_points"      # optional: results.extra key, a rating the entrant had before the race
+[model.defaults]          # optional: per-sport defaults for its settings (each needs a decision-log entry)
+```
+
+It is the "fuzzy-data" model: every finish becomes a field-size-free strength (second of 150 is not second
+of 5), an entrant's strength is their recency-weighted mean shrunk toward a prior by how few starts they
+have, and a race is a strength-plus-noise draw with a shrunk retirement rate. It needs no laps, no fixed
+schedule and no full participation, so every sport with price tapes and a results history can be backtested
+with it, whatever else it has. Settings, hooks and the leakage rule (days strictly before the event) are in the
+module's docstring. A sport that keeps its own model still gets it side by side:
+
+```
+racinglines backtest walk-forward motogp --model global --seasons 2026
+python scripts/validate_global_model.py motogp --seasons 2016 2026 --own-field --own-fill   # own vs global vs a learn-nothing control
+```
+
 ### Calibration in every sweep
 
 `racinglines f1 sweep --reliability` scores **our fair value and the exchange's price side by side** at

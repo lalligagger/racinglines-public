@@ -20,6 +20,13 @@ code = "f1_wdc"
 name = "Formula 1 World Championship (Drivers)"
 categories = { DRV = ["Drivers", "X", "elite"] }
 
+[model]
+# Data hooks for the sport-agnostic results model (racinglines/models/model_global.py, `racinglines backtest
+# walk-forward f1 --model global`): the F1 pricing model above reads laps and sectors; this one reads finishing
+# positions only. No setting here is tuned.
+source = "f1timing"               # the events whose race results are the history
+group = "team"                    # results.team: the constructor, for the optional team-form prior
+
 [data]
 # the L1 input frames this sport's adapter (racinglines/frames/f1.py) builds from Measurements, docs/frames.md.
 # "laps" isn't listed: Measurements keeps measures derived from the laps, not the laps themselves

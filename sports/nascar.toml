@@ -53,6 +53,11 @@ fallback_rule = "official_then_public_summary_fallback"
 # official feed. Use it to fill missing seasons only when the official archive does not exist.
 fallbacks = [{ source = "wikipedia", quality = "summary_only", scope = "race_summary", allow = true, notes = "Only for missing seasons when no official archive exists; never for full result reconstruction." }]
 
+[model]
+# Data hooks for the sport-agnostic results model (racinglines/models/model_global.py, `--model global`); the
+# history's events.source is the [replay] source below. No setting here is tuned.
+group = "team"                    # results.team, for the optional team-form prior
+
 [replay]
 # The taker replay (racinglines/pipelines/position_replay.py; `racinglines nascar replay`). All values are a priori
 # starting points, none tuned: docs/f1-roadmap.md decision log, 2026-09-30 "NASCAR / MotoGP taker replay".

@@ -178,6 +178,12 @@ class PositionSim:
 MODELS = {"mtb_dh": TimedRuns, "f1": PositionSim}
 
 
+def bind(cls, sport):
+    """A sport-agnostic model class (models/model_global) is bound to the sport's schema by its `for_sport`;
+    a sport's own model class is returned as it is."""
+    return cls.for_sport(sport) if hasattr(cls, "for_sport") else cls
+
+
 def model_class(sport):
     """The sport's pricing model: [sport] pricing_model in sports/<code>.toml ("module:Class"), so a new
     sport needs its schema and its wrapper and nothing here; the built-in ones otherwise."""
@@ -190,7 +196,7 @@ def model_class(sport):
         ref = None
     if ref:
         mod, _, cls = ref.partition(":")
-        return getattr(import_module(mod), cls)
+        return bind(getattr(import_module(mod), cls), sport)
     if sport not in MODELS:
         raise ValueError(f"no pricing model for sport {sport!r}: set [sport] pricing_model in sports/{sport}.toml")
     return MODELS[sport]
