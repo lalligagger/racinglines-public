@@ -95,6 +95,8 @@ def _users_page(request, c, msg="", onetime=None):
 @app.post("/admin/users", dependencies=[Depends(check_csrf), allow("admin")])
 def admin_user_create(request: Request, username: str = Form(...), password: str = Form(...), role: str = Form(...),
                       display_name: str = Form("")):
+    import sys
+    print(f"DEBUG: admin_user_create called for user {username}", file=sys.stderr, flush=True)
     try:
         username = username.strip().lower()
         with get_engine().begin() as c:
@@ -104,12 +106,18 @@ def admin_user_create(request: Request, username: str = Form(...), password: str
             if error:
                 raise ValueError(error)
             # create user and grant in same transaction
+            print(f"DEBUG: Creating user with SQL INSERT", file=sys.stderr, flush=True)
             user_id = c.execute(text("""INSERT INTO users (username, display_name, role, password_hash, active)
                                         VALUES (:u, :d, :r, :h, true) RETURNING id"""),
                                 dict(u=username, d=display_name or username, r=role,
                                      h=U.hash_password(password))).scalar()
-            if ACC.ready(c):
+            print(f"DEBUG: User created with id={user_id}", file=sys.stderr, flush=True)
+            ready = ACC.ready(c)
+            print(f"DEBUG: ACC.ready() returned {ready}", file=sys.stderr, flush=True)
+            if ready:
+                print(f"DEBUG: Calling ACC.grant()", file=sys.stderr, flush=True)
                 ACC.grant(c, user_id, note="admin create")
+                print(f"DEBUG: ACC.grant() completed", file=sys.stderr, flush=True)
         audit(request, "user_create", target=username, role=role, user_id=user_id)
         msg = f"Created {role} {username}."
     except ValueError as e:
