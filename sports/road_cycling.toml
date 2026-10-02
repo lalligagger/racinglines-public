@@ -1,13 +1,9 @@
-# UCI road cycling: a tape-only sport (docs/todo.md, U9). No model, no pipeline: its Kalshi markets are synced and
-# recorded (links unmodeled, prices / trades / books archived per exchange) when asked for by name
-# (`racinglines markets --exchange kalshi --sport road_cycling ...`). Read by racinglines/sports.py; the sync reads
-# [markets.kalshi]. Nothing runs for this sport by default.
-
 [sport]
 code = "road_cycling"
 name = "UCI road cycling"
-result_kind = "position"          # finishing positions, once there is a model
-model_family = "none"             # tapes only: no model, no pricing_model, no live adapter
+result_kind = "position"
+model_family = "position_sim"
+pricing_model = "road_cycling_model"
 display_order = 6
 
 [league]
@@ -22,13 +18,11 @@ display_name = "Road cycling"
 categories = { RDR = ["Riders", "X", "elite"] }
 
 [markets]
-venues = ["kalshi"]
-standard_kinds = []               # nothing is priced, so the board has no columns for it
+venues = ["kalshi", "og"]
+standard_kinds = ["race_win", "race_podium", "race_top10"]
 
 [markets.kalshi]
-# Kalshi series tickers to sync, by prefix: every Sports series whose ticker starts with one of these
-# (`sync --series TICKER ...` overrides the list). Off by default: only `--sport road_cycling` syncs them.
-# These cover the Tour de France, Giro and Vuelta (grand-tour winner, stage, team and jersey markets). KXCYCLING
-# already matches the other three by prefix (series_for uses startswith); they are listed for the reader.
-# The sync's `--closed` flag pulls the settled 2026 history Kalshi still serves.
 series = ["KXCYCLING", "KXCYCLINGSTAGE", "KXCYCLINGTEAM", "KXCYCLINGJERSEY"]
+
+[markets.og]
+series = ["cycling_race_winner", "cycling_stage_winner", "cycling_podium"]
