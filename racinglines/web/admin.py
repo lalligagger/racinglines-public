@@ -114,8 +114,12 @@ def admin_user_create(request: Request, username: str = Form(...), password: str
             print(f"DEBUG: User created with id={user_id}", file=sys.stderr, flush=True)
             # Always grant the signup grant - assume schema is ready if we got here
             print(f"DEBUG: Calling ACC.grant()", file=sys.stderr, flush=True)
-            ACC.grant(c, user_id, note="admin create")
-            print(f"DEBUG: ACC.grant() completed", file=sys.stderr, flush=True)
+            try:
+                ACC.grant(c, user_id, note="admin create")
+                print(f"DEBUG: ACC.grant() completed successfully", file=sys.stderr, flush=True)
+            except Exception as grant_ex:
+                print(f"DEBUG: ACC.grant() raised {type(grant_ex).__name__}: {grant_ex}", file=sys.stderr, flush=True)
+                raise
         audit(request, "user_create", target=username, role=role, user_id=user_id)
         msg = f"Created {role} {username}."
     except ValueError as e:
