@@ -78,6 +78,30 @@ def test_downhill_jobs_get_their_own_settings_baseline_and_command(tmp_path):
         S.load(_queue(tmp_path, '[[job]]\nsport = "mtb_dh"\nkind = "sweep"\n'))
 
 
+def test_global_model_jobs_get_their_own_settings_baseline_command_and_id(tmp_path):
+    q = _queue(tmp_path, '[[job]]\nsport = "nascar"\nmodel = "global"\nyear = 2025\nhalf_life_days = 360\nreplicates = 3\n'
+                         '[[job]]\nsport = "f1"\nmodel = "global"\nyear = 2025\nnoise = 1.0\n'
+                         '[[job]]\nsport = "nascar"\nyear = 2025\n')          # the sport's own model: another baseline
+    _, jobs, _ = S.load(q)
+    mine = [j for j in jobs if j.get("model") == "global" and j["sport"] == "nascar"]
+    assert sorted((j["settings"]["seed"] or 0, j["settings"]["half_life_days"]) for j in mine) == [
+        (0, 240.0), (0, 360.0), (1, 240.0), (1, 360.0), (2, 240.0), (2, 360.0)]
+    f1 = [j for j in jobs if j.get("model") == "global" and j["sport"] == "f1"]
+    assert {j["kind"] for j in f1} == {"walk_forward"} and len(f1) == 2          # a baseline and its job, no F1 sweep
+    own = [j for j in jobs if j.get("sport") == "nascar" and not j.get("model")]
+    assert len(own) == 1 and not {j["id"] for j in own} & {j["id"] for j in mine}      # the queued default is its baseline
+    job = next(j for j in mine if j["settings"]["half_life_days"] == 360 and not j["settings"]["seed"])
+    assert S.argv(job)[3:] == ["backtest", "walk-forward", "nascar", "--seasons", "2025", "--save", "--model", "global",
+                               "--half-life-days", "360.0"]
+    assert S._title(job).startswith("global ")
+    with pytest.raises(ValueError, match="unknown keys"):
+        S.load(_queue(tmp_path, '[[job]]\nsport = "nascar"\nmodel = "global"\nvariant = "gridq"\n'))
+    with pytest.raises(ValueError, match="unknown model"):
+        S.load(_queue(tmp_path, '[[job]]\nsport = "nascar"\nmodel = "nope"\n'))
+    with pytest.raises(ValueError, match="job kind"):
+        S.load(_queue(tmp_path, '[[job]]\nsport = "f1"\nmodel = "global"\nkind = "sweep"\n'))
+
+
 def test_f1_job_ids_did_not_move():
     # finished jobs in a restarted search are found by these ids
     assert S.job_id(dict(kind="sweep", year=2026, variant="baseline")) == "720a768f98"

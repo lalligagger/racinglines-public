@@ -174,6 +174,13 @@ racinglines backtest walk-forward motogp --model global --seasons 2026
 python scripts/validate_global_model.py motogp --seasons 2016 2026 --own-field --own-fill   # own vs global vs a learn-nothing control
 ```
 
+A parameter search over it is an ordinary search queue with `model = "global"` on each job
+(`racinglines/pipelines/search.py` docstring): the
+job's settings are the global model's (with the sport's `[model.defaults]`), its command is the
+walk-forward above with `--save`, it gets its own default-settings baseline per sport and season, and
+`search-report` writes one folder per sport and model (`<sport>-global/`) with the labels below, scored per
+market kind. `python scripts/make_global_sweep.py` writes `sweeps/global-multi-sport.toml`, the multi-sport grid.
+
 ### Calibration in every sweep
 
 `racinglines f1 sweep --reliability` scores **our fair value and the exchange's price side by side** at
