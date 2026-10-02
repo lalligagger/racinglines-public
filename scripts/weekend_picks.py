@@ -14,9 +14,13 @@ The fair values are the live forecast's, which has not seen the weekend's practi
 """
 
 import argparse
+import getpass
 import html
 import re
+import smtplib
 import warnings
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from pathlib import Path
 
 from sqlalchemy import text
@@ -84,7 +88,8 @@ def _when(info):
     return str(info.get("start_date") or "")[:10]
 
 
-def render_html(info, pricing, picks, rest, venues):
+def render_html(info, pricing, picks, rest, venues, username=None):
+    greeting = f"Hi {username}," if username else "Hi,"
     td = 'style="padding:6px 10px;border:1px solid #cccccc;text-align:{a};font-size:14px"'
     head = "".join(f'<th {td.format(a="left")[:-1]};background:#f0f0f0">{h}</th>' for h in
                    ("#", "Bet", "Side", "Venue", "Model: side wins", "Price", "EV / $1", "Volume", "Link"))
@@ -96,7 +101,7 @@ def render_html(info, pricing, picks, rest, venues):
         body += "<tr>" + "".join(f'<td {td.format(a="left")}>{c}</td>' for c in cells) + "</tr>"
     more = "".join(f"<li>{html.escape(_bet(p))}: {p['side']} on {p['venue'].title()}, +{p['ev'] * 100:.1f}¢</li>" for p in rest)
     return f"""<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222222;max-width:720px">
-<p>Hi,</p>
+<p>{greeting}</p>
 <p>Here are this weekend's top paper picks for the <b>{html.escape(info['title'])}</b> ({_when(info)}), ranked by the
 model's expected profit per $1 contract on {" and ".join(v.title() for v in venues)}.</p>
 <table style="border-collapse:collapse;border:1px solid #cccccc"><tr>{head}</tr>{body}</table>
@@ -110,8 +115,9 @@ trading only: nothing here has been placed.</p>
 </div>"""
 
 
-def render_text(info, pricing, picks, rest, venues):
-    lines = [f"Hi,", "", f"Top paper picks for the {info['title']} ({_when(info)}), ranked by the model's expected "
+def render_text(info, pricing, picks, rest, venues, username=None):
+    greeting = f"Hi {username}," if username else "Hi,"
+    lines = [greeting, "", f"Top paper picks for the {info['title']} ({_when(info)}), ranked by the model's expected "
              f"profit per $1 contract on {' and '.join(v.title() for v in venues)}.", ""]
     for i, p in enumerate(picks, 1):
         lines += [f"{i}. {_bet(p)}: buy {p['side']} on {p['venue'].title()}",
@@ -127,6 +133,27 @@ def render_text(info, pricing, picks, rest, venues):
     return "\n".join(lines)
 
 
+def send_email(recipient, subject, html_body, text_body, smtp_server="127.0.0.1", smtp_port=1025, smtp_user=None):
+    """Send email via SMTP (e.g., Proton Mail Bridge). Prompts for password securely."""
+    if not smtp_user:
+        smtp_user = input("SMTP username (Proton email): ")
+    password = getpass.getpass("SMTP password: ")
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = smtp_user
+    msg["To"] = recipient
+
+    msg.attach(MIMEText(text_body, "plain"))
+    msg.attach(MIMEText(html_body, "html"))
+
+    with smtplib.SMTP(smtp_server, smtp_port) as server:
+        server.login(smtp_user, password)
+        server.sendmail(smtp_user, recipient, msg.as_string())
+
+    print(f"Sent to {recipient}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--event-id", type=int, help="default: the next scheduled F1 event")
@@ -136,6 +163,11 @@ def main():
     ap.add_argument("--min-volume", type=float, default=100, help="skip markets with less volume than this (USD)")
     ap.add_argument("--max-spread", type=float, default=0.15, help="skip books wider than this (drops 1c/99c placeholders)")
     ap.add_argument("--out-dir", default="reports/picks")
+    ap.add_argument("--email", help="recipient email address; if set, sends the picks via SMTP")
+    ap.add_argument("--username", help="personalize greeting with username")
+    ap.add_argument("--smtp-server", default="127.0.0.1", help="SMTP server (default: localhost for Proton Bridge)")
+    ap.add_argument("--smtp-port", type=int, default=1025, help="SMTP port (default: 1025 for Proton Bridge)")
+    ap.add_argument("--smtp-user", help="SMTP username (if not set, prompted at runtime)")
     a = ap.parse_args()
     venues = [v.strip() for v in a.venues.split(",") if v.strip()]
     with get_engine().connect() as conn:
@@ -153,10 +185,17 @@ def main():
     stem = re.sub(r"[^a-z0-9]+", "-", f"{_when(m)}-{m['title']}".lower()).strip("-")
     out = Path(a.out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    (out / f"{stem}.html").write_text(render_html(m, m.get("pricing") or {}, picks, rest, venues))
-    (out / f"{stem}.txt").write_text(render_text(m, m.get("pricing") or {}, picks, rest, venues))
-    print(f"Subject: F1 paper picks: {m['title']} ({_when(m)})")
+    html_body = render_html(m, m.get("pricing") or {}, picks, rest, venues, username=a.username)
+    text_body = render_text(m, m.get("pricing") or {}, picks, rest, venues, username=a.username)
+    (out / f"{stem}.html").write_text(html_body)
+    (out / f"{stem}.txt").write_text(text_body)
+    subject = f"F1 paper picks: {m['title']} ({_when(m)})"
+    print(f"Subject: {subject}")
     print(f"wrote {out / (stem + '.html')} and {out / (stem + '.txt')}")
+
+    if a.email:
+        send_email(a.email, subject, html_body, text_body,
+                   smtp_server=a.smtp_server, smtp_port=a.smtp_port, smtp_user=a.smtp_user)
 
 
 if __name__ == "__main__":
