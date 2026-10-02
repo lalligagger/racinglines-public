@@ -105,21 +105,20 @@ def admin_user_create(request: Request, username: str = Form(...), password: str
                 raise ValueError(error)
         with get_session() as s:
             u = U.create_user(s, username, password, role, display_name or None)
-            s.flush()  # flush to database to get the ID and make visible to other connections
+            s.flush()
             user_id = u.id
-            s.commit()  # commit the user
-        # grant the signup grant after the user is persisted
-        try:
-            with get_engine().begin() as c:
-                ready = ACC.ready(c)
-                if ready:
-                    ACC.grant(c, user_id, note="admin create")
-                else:
-                    import sys
-                    print(f"WARNING: Accounts schema not ready for user {username} (id={user_id})", file=sys.stderr)
-        except Exception as e:
+            # grant the signup grant in the same session
+            conn = s.connection()
             import sys
-            print(f"ERROR granting signup funds: {e}", file=sys.stderr)
+            print(f"DEBUG: Checking if accounts schema is ready...", file=sys.stderr, flush=True)
+            ready = ACC.ready(conn)
+            print(f"DEBUG: ACC.ready() returned {ready}", file=sys.stderr, flush=True)
+            if ready:
+                print(f"DEBUG: Granting signup grant to user {user_id}", file=sys.stderr, flush=True)
+                ACC.grant(conn, user_id, note="admin create")
+                print(f"DEBUG: Grant completed", file=sys.stderr, flush=True)
+            s.commit()
+            print(f"DEBUG: Transaction committed", file=sys.stderr, flush=True)
         audit(request, "user_create", target=username, role=role, user_id=user_id)
         msg = f"Created {role} {username}."
     except ValueError as e:
