@@ -103,22 +103,13 @@ def admin_user_create(request: Request, username: str = Form(...), password: str
                 error = error or "password must be at least 8 characters"
             if error:
                 raise ValueError(error)
-        with get_session() as s:
-            u = U.create_user(s, username, password, role, display_name or None)
-            s.flush()
-            user_id = u.id
-            # grant the signup grant in the same session
-            conn = s.connection()
-            import sys
-            print(f"DEBUG: Checking if accounts schema is ready...", file=sys.stderr, flush=True)
-            ready = ACC.ready(conn)
-            print(f"DEBUG: ACC.ready() returned {ready}", file=sys.stderr, flush=True)
-            if ready:
-                print(f"DEBUG: Granting signup grant to user {user_id}", file=sys.stderr, flush=True)
-                ACC.grant(conn, user_id, note="admin create")
-                print(f"DEBUG: Grant completed", file=sys.stderr, flush=True)
-            s.commit()
-            print(f"DEBUG: Transaction committed", file=sys.stderr, flush=True)
+            # create user and grant in same transaction
+            user_id = c.execute(text("""INSERT INTO users (username, display_name, role, password_hash, active)
+                                        VALUES (:u, :d, :r, :h, true) RETURNING id"""),
+                                dict(u=username, d=display_name or username, r=role,
+                                     h=U.hash_password(password))).scalar()
+            if ACC.ready(c):
+                ACC.grant(c, user_id, note="admin create")
         audit(request, "user_create", target=username, role=role, user_id=user_id)
         msg = f"Created {role} {username}."
     except ValueError as e:
