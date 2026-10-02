@@ -1,6 +1,9 @@
 """Search queue (racinglines/pipelines/search.py): parsing, the automatic baseline, job identity and
 the command lines it runs."""
 
+import importlib.util
+from pathlib import Path
+
 import pytest
 
 from racinglines.pipelines import search as S
@@ -100,6 +103,26 @@ def test_global_model_jobs_get_their_own_settings_baseline_command_and_id(tmp_pa
         S.load(_queue(tmp_path, '[[job]]\nsport = "nascar"\nmodel = "nope"\n'))
     with pytest.raises(ValueError, match="job kind"):
         S.load(_queue(tmp_path, '[[job]]\nsport = "f1"\nmodel = "global"\nkind = "sweep"\n'))
+
+
+def test_confirmation_queue_reruns_the_candidates_at_confirm_sims_with_a_baseline(tmp_path):
+    spec = importlib.util.spec_from_file_location("make_global_sweep", Path(__file__).parents[1] / "scripts" / "make_global_sweep.py")
+    gen = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gen)
+    (tmp_path / "nascar-global").mkdir()
+    (tmp_path / "nascar-global" / "candidates.toml").write_text(
+        '[[candidate]]\nid = "race_win-a"\nname = "a"\nyear = 2026\nstrategy = "race_win"\nwhy = "x"\nsport = "nascar"\n'
+        'model = "global"\nnoise = 0.65\n\n[[candidate]]\nid = "race_top10-a"\nname = "a"\nyear = 2026\nstrategy = "race_top10"\n'
+        'why = "x"\nsport = "nascar"\nmodel = "global"\nnoise = 0.65\n\n[[candidate]]\nid = "race_top10-b"\nname = "b"\nyear = 2026\n'
+        'strategy = "race_top10"\nwhy = "x"\nsport = "nascar"\nmodel = "global"\ndnf = false\n')
+    out = tmp_path / "confirm.toml"
+    gen.main(["--sports", "nascar", "--seasons", "2026", "2025", "--confirm", str(tmp_path), "--out", str(out)])
+    _, jobs, _ = S.load(str(out))
+    sims = gen.SRR.SPORT_DEFAULTS["global"]["confirm_sims"]
+    big = [j for j in jobs if j["settings"]["sims"] == sims]
+    assert len(big) == 2 * 3 and {j["year"] for j in big} == {2026, 2025}        # a baseline and two combos, in both seasons
+    assert sorted(j["settings"]["noise"] for j in big if j["year"] == 2025) == [0.65, 0.8, 0.8]     # the shared combo once
+    assert len(jobs) == len(big) + 2                                              # plus the two default-sims baselines
 
 
 def test_f1_job_ids_did_not_move():

@@ -8,6 +8,8 @@ racinglines backtest <command>: the backtest core for any sport with a pricing m
 
     racinglines backtest walk-forward mtb_dh --seasons 2025 --half-life-days 120 [--save]
     racinglines backtest walk-forward motogp --model global --seasons 2026     # the sport-agnostic results model
+    racinglines backtest walk-forward f1 --model global --seasons 2025 2026 --venue polymarket kalshi
+                         # also scores each venue's price at the event's cutoff beside the model's (model_vs_market)
 """
 
 import argparse
@@ -28,8 +30,9 @@ def pricing_model(sport, which=None):
 
 
 def run_walk_forward(model, data, st, seasons=None, kinds=None, out_dir=None, save=False, engine_url=None,
-                     echo=print):
-    """The engine, its CSVs and (save) the model run. Returns the engine's output."""
+                     echo=print, venues=()):
+    """The engine, its CSVs and (save) the model run. Returns the engine's output. venues: exchanges whose prices
+    are scored beside the model's (pipelines/model_vs_market.py)."""
     from racinglines.core import walk_forward as WF
     seasons = seasons or model.seasons(data, st)
     echo(f"Walk-forward {model.sport} {', '.join(map(str, seasons))} · {st.label()} (settings {st.key})")
@@ -48,6 +51,20 @@ def run_walk_forward(model, data, st, seasons=None, kinds=None, out_dir=None, sa
     echo(cal[cal["season"] == "all"].drop(columns=["season", "source"]).to_string(index=False, float_format="{:.4f}".format))
     if out_dir:
         echo(f"\nCSVs -> {out_dir}/")
+    for venue in venues:
+        from racinglines.pipelines import model_vs_market as MVM
+        from racinglines.pipelines import scorecard as SC
+        paired, by_kind, by_season = MVM.compare(out, venue, engine_url)
+        if not len(paired):
+            echo(f"\n=== Model against {venue} ===\nno {venue} market of {', '.join(MVM.KINDS)} is linked to these events "
+                 f"(market_links.race_id and athlete_id): nothing to pair")
+            continue
+        echo(f"\n=== Model against {venue}, prices at each event's cutoff ===")
+        echo(SC.format_text(by_kind, first=("kind",)))
+        echo(SC.format_text(by_season, first=("season", "kind")))
+        if out_dir:
+            paired.to_csv(out_dir / f"walk_forward_vs_{venue}.csv", index=False)
+            by_season.to_csv(out_dir / f"walk_forward_vs_{venue}_scores.csv", index=False)
     if save:
         from racinglines import sports
         from racinglines.db.config import get_session
@@ -90,6 +107,8 @@ def main(argv=None):
     wf.add_argument("--save", action="store_true", help="Store the run in the database (model_runs, kind walk_forward).")
     wf.add_argument("--model", choices=("global",), default=None,
                     help="Run the sport-agnostic results model (models/model_global.py) instead of the sport's own.")
+    wf.add_argument("--venue", nargs="+", choices=("polymarket", "kalshi"), default=[],
+                    help="Also score each exchange's price at the event's cutoff beside the model's (exact market links only).")
     if known.cmd == "walk-forward" and known.sport:
         SS.add_arguments(wf, pricing_model(known.sport, known.model).Settings)
     args = ap.parse_args(argv)
@@ -98,5 +117,5 @@ def main(argv=None):
     data = model.load(args.db)
     run_walk_forward(model, data, st, seasons=args.seasons, kinds=args.kinds.split(",") if args.kinds else None,
                      out_dir=args.out_dir or paths.runs(args.sport, "walk_forward", mkdir=False), save=args.save,
-                     engine_url=args.db)
+                     engine_url=args.db, venues=args.venue)
     return 0
