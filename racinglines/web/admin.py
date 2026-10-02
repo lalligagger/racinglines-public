@@ -107,7 +107,6 @@ def admin_user_create(request: Request, username: str = Form(...), password: str
                                         VALUES (:u, :d, :r, :h, true) RETURNING id"""),
                                 dict(u=username, d=display_name or username, r=role,
                                      h=U.hash_password(password))).scalar()
-            ACC.grant(c, user_id)
         audit(request, "user_create", target=username, role=role, user_id=user_id)
         msg = f"Created {role} {username}."
     except ValueError as e:
