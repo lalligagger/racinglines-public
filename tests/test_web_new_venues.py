@@ -177,7 +177,7 @@ def test_race_page_marks_the_call_beside_a_schema_venue_quote():
     row = dict(kind="champion", kind_label="Champion", athlete_id=1, team=None, opponent_id=None, subject="Max", detail="", fair=0.30,
                venues={"polymarket": dict(bid=0.2, ask=0.3, mid=0.25),
                        "og": dict(bid=0.20, ask=0.25, mid=0.225, call="YES", best=0.03, edge_yes=0.03, edge_no=-0.12)},
-               private=None, result=None, pm_mid=0.25, gap=-0.05)
+               private=None, result=None, pm_mid=0.25, gap=-0.05, kalshi_gap=None)
     info = dict(race_id=0, competition="f1_wdc", title="F1", sport="F1", name="F1", status="scheduled", start_date=None,
                 event_id=None, season=2026, category="DRV")
     ctx = dict(info=info, pricing=dict(run_id=1, source="live forecast", as_of=None), groups=[("champion", "Champion", [row])],
