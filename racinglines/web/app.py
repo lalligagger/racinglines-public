@@ -16,6 +16,7 @@ import os
 import secrets
 import threading
 import time
+import uuid
 from urllib.parse import quote
 from datetime import date, datetime, timezone
 from numbers import Real
@@ -1038,6 +1039,128 @@ def logout(request: Request):
     resp = RedirectResponse("/login", status_code=303)
     resp.delete_cookie(SESSION_COOKIE)
     return resp
+
+
+# ---------------------------------------------------------------------------
+# User settings: email, exchange preferences, sports subscriptions
+# ---------------------------------------------------------------------------
+
+@app.get("/settings", response_class=HTMLResponse)
+def settings_page(request: Request, user: dict = Depends(_user)):
+    """User settings: email, exchange preferences, sports subscriptions."""
+    prefs = user.get("prefs") or {}
+    return templates.TemplateResponse(request, "settings.html", dict(
+        email=prefs.get("email", ""),
+        exchange=prefs.get("exchange", "polymarket"),
+        sports=prefs.get("sports", ["f1"]),
+    ))
+
+
+@app.post("/settings")
+def update_settings(request: Request, user: dict = Depends(_user),
+                   email: str = Form(""), exchange: str = Form("polymarket"),
+                   sports: list[str] = Form(None)):
+    """Update user settings: email, exchange preferences, sports subscriptions."""
+    sports = sports or []
+    email = email.strip()
+    if email and not re.match(r"^[^@]+@[^@]+\.[^@]+$", email):
+        return templates.TemplateResponse(request, "settings.html", dict(
+            email=email, exchange=exchange, sports=sports,
+            error="Invalid email address"
+        ), status_code=400)
+    prefs = user.get("prefs") or {}
+    prefs["email"] = email
+    prefs["exchange"] = exchange
+    prefs["sports"] = sports or ["f1"]
+    with get_session() as s:
+        u = s.query(m.User).filter_by(id=user["id"]).first()
+        u.prefs = prefs
+        s.commit()
+    audit(request, "update_settings", {"email": bool(email), "exchange": exchange, "sports": sports})
+    return templates.TemplateResponse(request, "settings.html", dict(
+        email=email, exchange=exchange, sports=sports,
+        success="Settings saved"
+    ))
+
+
+# ---------------------------------------------------------------------------
+# MCP Token API: token generation, listing, revocation (bearer token auth for external tools)
+# ---------------------------------------------------------------------------
+
+def _hash_token(token: str) -> str:
+    """Hash token using SHA256 for secure storage."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+@app.post("/api/settings/token/generate")
+def generate_mcp_token(request: Request, user: dict = Depends(_user)):
+    """Generate a new MCP API token for the user. Token is shown once and never again."""
+    token = secrets.token_urlsafe(32)
+    token_id = str(uuid.uuid4())[:8]
+    token_hash = _hash_token(token)
+    now = datetime.now(timezone.utc).isoformat()
+
+    prefs = user.get("prefs") or {}
+    tokens = prefs.get("mcp_tokens", [])
+    tokens.append({
+        "id": token_id,
+        "hash": token_hash,
+        "created_at": now,
+        "last_used": None,
+        "active": True,
+    })
+    prefs["mcp_tokens"] = tokens
+
+    with get_session() as s:
+        u = s.query(m.User).filter_by(id=user["id"]).first()
+        u.prefs = prefs
+        s.commit()
+
+    audit(request, "generate_mcp_token", {"token_id": token_id})
+    return {"token": token, "token_id": token_id, "created_at": now}
+
+
+@app.get("/api/settings/tokens")
+def list_mcp_tokens(request: Request, user: dict = Depends(_user)):
+    """List all MCP tokens for the user (without revealing the token itself)."""
+    prefs = user.get("prefs") or {}
+    tokens = prefs.get("mcp_tokens", [])
+    return {"tokens": [
+        {
+            "id": t["id"],
+            "created_at": t.get("created_at", ""),
+            "last_used": t.get("last_used"),
+            "active": t.get("active", True),
+        }
+        for t in tokens if t.get("active", True)
+    ]}
+
+
+@app.post("/api/settings/token/{token_id}/revoke")
+def revoke_mcp_token(request: Request, token_id: str, user: dict = Depends(_user)):
+    """Revoke an MCP token. This cannot be undone."""
+    prefs = user.get("prefs") or {}
+    tokens = prefs.get("mcp_tokens", [])
+
+    found = False
+    for t in tokens:
+        if t["id"] == token_id:
+            t["active"] = False
+            found = True
+            break
+
+    if not found:
+        raise HTTPException(404, "Token not found")
+
+    prefs["mcp_tokens"] = tokens
+
+    with get_session() as s:
+        u = s.query(m.User).filter_by(id=user["id"]).first()
+        u.prefs = prefs
+        s.commit()
+
+    audit(request, "revoke_mcp_token", {"token_id": token_id})
+    return {"status": "revoked"}
 
 
 # ---------------------------------------------------------------------------
