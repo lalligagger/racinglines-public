@@ -106,10 +106,11 @@ def admin_user_create(request: Request, username: str = Form(...), password: str
         with get_session() as s:
             u = U.create_user(s, username, password, role, display_name or None)
             s.commit()
+            user_id = u.id  # capture ID before session closes
         with get_engine().begin() as c:
             if ACC.ready(c):                      # every account starts with the signup grant
-                ACC.grant(c, u.id, note="admin create")
-        audit(request, "user_create", target=username, role=role, user_id=u.id)
+                ACC.grant(c, user_id, note="admin create")
+        audit(request, "user_create", target=username, role=role, user_id=user_id)
         msg = f"Created {role} {username}."
     except ValueError as e:
         msg = f"Error: {e}"
