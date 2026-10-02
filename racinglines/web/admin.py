@@ -108,14 +108,14 @@ def admin_user_create(request: Request, username: str = Form(...), password: str
             # create user and grant in same transaction
             print(f"DEBUG: Creating user with SQL INSERT", file=sys.stderr, flush=True)
             user_id = c.execute(text("""INSERT INTO users (username, display_name, role, password_hash, active)
-                                        VALUES (:u, :d, :r, :h, true) RETURNING id"""),
-                                dict(u=username, d=display_name or username, r=role,
+                                        VALUES (:u, :n, :r, :h, true) RETURNING id"""),
+                                dict(u=username, n=display_name or username, r=role,
                                      h=U.hash_password(password))).scalar()
             print(f"DEBUG: User created with id={user_id}", file=sys.stderr, flush=True)
             # Always grant the signup grant - assume schema is ready if we got here
             print(f"DEBUG: Calling ACC.grant()", file=sys.stderr, flush=True)
             try:
-                ACC.grant(c, user_id, note="admin create")
+                ACC.grant(c, user_id)
                 print(f"DEBUG: ACC.grant() completed successfully", file=sys.stderr, flush=True)
             except Exception as grant_ex:
                 print(f"DEBUG: ACC.grant() raised {type(grant_ex).__name__}: {grant_ex}", file=sys.stderr, flush=True)
