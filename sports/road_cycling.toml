@@ -32,3 +32,15 @@ standard_kinds = []               # nothing is priced, so the board has no colum
 # already matches the other three by prefix (series_for uses startswith); they are listed for the reader.
 # The sync's `--closed` flag pulls the settled 2026 history Kalshi still serves.
 series = ["KXCYCLING", "KXCYCLINGSTAGE", "KXCYCLINGTEAM", "KXCYCLINGJERSEY"]
+
+[results]
+# Results source: Wikipedia (CC-BY-SA 3.0, approved 2026-10-01). Future primary: First Cycling API (terms under review).
+# Races are recorded as tape-only (unmodeled); a model is 2027 roadmap (docs/coverage.md line 126).
+# Wikipedia coverage: Grand Tours (Tour de France, Giro d'Italia, Vuelta a España), Monuments (Milan–San Remo,
+# Tour of Flanders, Paris–Roubaix, Liège–Bastogne–Liège, Giro di Lombardia) and other UCI World Tour races back
+# decades. Tables (GC, stages, KOMs, jerseys) are structured but require HTML parsing; schema registration will
+# enable the results pipeline when the adapter is built (racinglines/sources/cycling/).
+fallback_rule = "wikipedia_only"
+fallbacks = [{ source = "wikipedia", quality = "full_results", scope = "grand_tour_classics", 
+              allow = true, notes = "CC-BY-SA 3.0 content; no automated scraping restrictions in ToS; must attribute" }]
+# Future: when First Cycling access is cleared, add as primary source above fallbacks.

@@ -36,10 +36,11 @@ series = ["KXINDYCAR"]
 # owner's public-search probe (docs/coverage.md); `sync --tags SLUG ...` overrides.
 tags = ["indycar"]
 
-# Results source: probed read-only from the owner's Mac 2026-09-29, NOT cleared to build against
-# (tests/fixtures/market/indycar_README.txt has the full writeup). www.indycar.com's Terms of Use explicitly
-# forbid automated scraping without written permission. A separate, undocumented live timing feed (INDYCAR's
-# "Race Control" JSON on Azure blob storage, e.g. timingscoring-ris.json: live, per-car, per-lap splits) is
-# technically public and keyless but is still INDYCAR's content, so the same terms almost certainly cover it too
-# — do not ingest either without INDYCAR, LLC's written permission. No [results] table here on purpose: adding
-# one would read as "cleared to use," which this is not.
+[results]
+# Results source policy: IndyCar's official terms (www.indycar.com ToS) forbid automated scraping without written
+# permission. Wikipedia (CC-BY-SA 3.0) is allowed as a fallback for historical race results only. No live/primary
+# source is configured here until INDYCAR's terms are reviewed for non-commercial research use by the owner.
+# Races are recorded as tape-only (unmodeled); a model would require cleared terms (docs/coverage.md line 53).
+fallback_rule = "wikipedia_only"
+fallbacks = [{ source = "wikipedia", quality = "summary_only", scope = "race_summary",
+              allow = true, notes = "CC-BY-SA 3.0; IndyCar.com ToS forbid scraping, but Wikipedia content is independently licensed" }]

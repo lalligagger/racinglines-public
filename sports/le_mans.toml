@@ -29,3 +29,11 @@ standard_kinds = []               # nothing is priced, so the board has no colum
 # Kalshi series tickers to sync, by prefix: every Sports series whose ticker starts with one of these
 # (`sync --series TICKER ...` overrides the list). Off by default: only `--sport le_mans` syncs them.
 series = ["KXLEMANS24H"]
+
+[results]
+# Results source: Wikipedia (CC-BY-SA 3.0, approved 2026-10-01). Le Mans race results and podiums are published
+# on Wikipedia for every running of the 24 Hours since the race's founding (1923). Races are recorded as tape-only
+# (unmodeled); a model is 2027 roadmap (docs/coverage.md).
+fallback_rule = "wikipedia_only"
+fallbacks = [{ source = "wikipedia", quality = "full_results", scope = "race_summary",
+              allow = true, notes = "CC-BY-SA 3.0; full race results, podiums, class winners available" }]
