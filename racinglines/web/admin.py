@@ -114,6 +114,10 @@ def admin_user_create(request: Request, username: str = Form(...), password: str
         msg = f"Created {role} {username}."
     except ValueError as e:
         msg = f"Error: {e}"
+    except Exception as e:
+        import sys, traceback
+        traceback.print_exc(file=sys.stderr)
+        msg = f"Internal error: {type(e).__name__}: {e}"
     return RedirectResponse(f"/admin/users?msg={msg}", status_code=303)
 
 
