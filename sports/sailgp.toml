@@ -37,5 +37,10 @@ series = ["KXSAILGP", "KXSAILGPRACE"]
 # leaderboard standings are published on Wikipedia. Races are recorded as tape-only (unmodeled); a model is 2027
 # roadmap (docs/coverage.md).
 fallback_rule = "wikipedia_only"
-fallbacks = [{ source = "wikipedia", quality = "full_results", scope = "championship_results",
-              allow = true, notes = "CC-BY-SA 3.0; team standings and individual match results available" }]
+
+[[results.fallbacks]]
+source = "wikipedia"
+quality = "full_results"
+scope = "championship_results"
+allow = true
+notes = "CC-BY-SA 3.0; team standings and individual match results available"

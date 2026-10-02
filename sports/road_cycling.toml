@@ -41,6 +41,12 @@ series = ["KXCYCLING", "KXCYCLINGSTAGE", "KXCYCLINGTEAM", "KXCYCLINGJERSEY"]
 # decades. Tables (GC, stages, KOMs, jerseys) are structured but require HTML parsing; schema registration will
 # enable the results pipeline when the adapter is built (racinglines/sources/cycling/).
 fallback_rule = "wikipedia_only"
-fallbacks = [{ source = "wikipedia", quality = "full_results", scope = "grand_tour_classics", 
-              allow = true, notes = "CC-BY-SA 3.0 content; no automated scraping restrictions in ToS; must attribute" }]
+
+[[results.fallbacks]]
+source = "wikipedia"
+quality = "full_results"
+scope = "grand_tour_classics"
+allow = true
+notes = "CC-BY-SA 3.0 content; no automated scraping restrictions in ToS; must attribute"
+
 # Future: when First Cycling access is cleared, add as primary source above fallbacks.

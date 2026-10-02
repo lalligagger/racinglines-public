@@ -42,5 +42,10 @@ tags = ["indycar"]
 # source is configured here until INDYCAR's terms are reviewed for non-commercial research use by the owner.
 # Races are recorded as tape-only (unmodeled); a model would require cleared terms (docs/coverage.md line 53).
 fallback_rule = "wikipedia_only"
-fallbacks = [{ source = "wikipedia", quality = "summary_only", scope = "race_summary",
-              allow = true, notes = "CC-BY-SA 3.0; IndyCar.com ToS forbid scraping, but Wikipedia content is independently licensed" }]
+
+[[results.fallbacks]]
+source = "wikipedia"
+quality = "summary_only"
+scope = "race_summary"
+allow = true
+notes = "CC-BY-SA 3.0; IndyCar.com ToS forbid scraping, but Wikipedia content is independently licensed"
