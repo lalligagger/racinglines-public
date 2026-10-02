@@ -120,9 +120,12 @@ def test_confirmation_queue_reruns_the_candidates_at_confirm_sims_with_a_baselin
     _, jobs, _ = S.load(str(out))
     sims = gen.SRR.SPORT_DEFAULTS["global"]["confirm_sims"]
     big = [j for j in jobs if j["settings"]["sims"] == sims]
-    assert len(big) == 2 * 3 and {j["year"] for j in big} == {2026, 2025}        # a baseline and two combos, in both seasons
-    assert sorted(j["settings"]["noise"] for j in big if j["year"] == 2025) == [0.65, 0.8, 0.8]     # the shared combo once
-    assert len(jobs) == len(big) + 2                                              # plus the two default-sims baselines
+    seed0 = [j for j in big if not j["settings"]["seed"]]
+    assert len(seed0) == 2 * 3 and {j["year"] for j in big} == {2026, 2025}      # a baseline and two combos, in both seasons
+    assert sorted(j["settings"]["noise"] for j in seed0 if j["year"] == 2025) == [0.65, 0.8, 0.8]     # the shared combo once
+    assert sorted(j["settings"]["seed"] or 0 for j in big if j["year"] == 2025 and j["settings"]["noise"] == 0.8
+                  and j["settings"]["dnf"]) == [0, 1, 2]                                       # the baseline at three seeds
+    assert len(jobs) == len(big) + 6                                  # plus the default-sims baselines, 3 seeds a season
 
 
 def test_f1_job_ids_did_not_move():
