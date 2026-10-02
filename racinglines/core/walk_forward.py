@@ -9,10 +9,11 @@ values (racinglines/core/calibration.py).
     out["rows"]          one row per entrant x kind: fair value and outcome (for reliability curves)
     out["calibration"]   per kind (and per kind x season): n, Brier, log loss, ECE
     out["reliability"]   per kind: probability bins
+    out["cutoffs"]       {event id: the cutoff it was priced at}, to read a venue's prices as of then
 
-Model-only mode (no venue): calibration only. A venue's prices are scored beside the model's once the
-venue interface exists (step 4). One seeded generator is shared by every event in order, so a run is
-reproducible from its settings.
+Model-only by default; `--venue` on the command line scores a venue's prices beside the model's, on exact
+market links (racinglines/pipelines/model_vs_market.py). One seeded generator is shared by every event in
+order, so a run is reproducible from its settings.
 """
 
 import numpy as np
@@ -57,10 +58,12 @@ def run(model, data, settings, seasons=None, kinds=None, echo=print, keep_sims=F
     hist = model.history(data, settings)
     evs = model.events(data, settings, seasons)
     rows, events, kept = [], [], []
+    cutoffs = {}
     for i, ev in enumerate(evs, 1):
         sims = model.price(hist, ev, settings, rng)
         if sims is None:
             continue
+        cutoffs[ev.id] = ev.cutoff
         if keep_sims:
             kept.append((ev, sims))
         r = event_rows(ev, sims, model.results(data, ev), kinds)
@@ -76,7 +79,7 @@ def run(model, data, settings, seasons=None, kinds=None, echo=print, keep_sims=F
     scored = rows.dropna(subset=["y"]).assign(y=lambda d: d["y"].astype(float))
     cal_all, rel = CAL.table(scored, ("fair",), by=("kind",))
     cal_season, _ = CAL.table(scored, ("fair",), by=("kind", "season"))
-    out = dict(events=pd.DataFrame(events), rows=rows, reliability=rel,
+    out = dict(events=pd.DataFrame(events), rows=rows, reliability=rel, cutoffs=cutoffs,
                calibration=pd.concat([cal_all.assign(season="all"), cal_season], ignore_index=True))
     if keep_sims:                    # opt-in (prediction records): [(event, OutcomeSims), ...] in pricing order
         out["sims"] = kept
