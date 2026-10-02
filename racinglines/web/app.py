@@ -1047,7 +1047,9 @@ def logout(request: Request):
 
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, user: dict = Depends(_user)):
-    """User settings: email, exchange preferences, sports subscriptions."""
+    """User settings: email, exchange preferences, sports subscriptions. Demo users cannot access."""
+    if _demo.is_demo(user):
+        raise HTTPException(404)
     prefs = user.get("prefs") or {}
     return templates.TemplateResponse(request, "settings.html", dict(
         email=prefs.get("email", ""),
@@ -1095,6 +1097,7 @@ def _hash_token(token: str) -> str:
 @app.post("/api/settings/token/generate")
 def generate_mcp_token(request: Request, user: dict = Depends(_user)):
     """Generate a new MCP API token for the user. Token is shown once and never again."""
+    if _demo.is_demo(user): raise HTTPException(403, "Demo users cannot generate tokens")
     token = secrets.token_urlsafe(32)
     token_id = str(uuid.uuid4())[:8]
     token_hash = _hash_token(token)
@@ -1123,6 +1126,7 @@ def generate_mcp_token(request: Request, user: dict = Depends(_user)):
 @app.get("/api/settings/tokens")
 def list_mcp_tokens(request: Request, user: dict = Depends(_user)):
     """List all MCP tokens for the user (without revealing the token itself)."""
+    if _demo.is_demo(user): raise HTTPException(403, "Demo users cannot access tokens")
     prefs = user.get("prefs") or {}
     tokens = prefs.get("mcp_tokens", [])
     return {"tokens": [
@@ -1139,6 +1143,7 @@ def list_mcp_tokens(request: Request, user: dict = Depends(_user)):
 @app.post("/api/settings/token/{token_id}/revoke")
 def revoke_mcp_token(request: Request, token_id: str, user: dict = Depends(_user)):
     """Revoke an MCP token. This cannot be undone."""
+    if _demo.is_demo(user): raise HTTPException(403, "Demo users cannot revoke tokens")
     prefs = user.get("prefs") or {}
     tokens = prefs.get("mcp_tokens", [])
 
