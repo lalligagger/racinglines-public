@@ -173,16 +173,14 @@ def test_whistler_book_rederives_from_its_fills():
     assert sum(len(p["fills"]) for p in polls) == book["crowd"]["fills"] == 7703
 
 
-# sha256 of the Live tab's body, as rendered 2026-09-29 (updated after commit cdd9a37, "B1: the shared live
-# core... the Live tab's shell over a per-sport body", 2026-09-28: that refactor changed the markup, not the
-# data, and the previous hashes were never refreshed to match it)
+# sha256 of the Live tab's body, as rendered 2026-10-01 (updated after template fix for kalshi_gap handling)
 WHISTLER_PAGES = {
-    ("maker", "20260927T212117"): "d33cd6649eaca655c8ae7350a2160075791fca4de91aedeb4bbc2f23ba004246",
-    ("maker", "20260927T224635"): "bd2e7fc4e0d9f6822363f402db5d060f7d235f04739ca9144cc4cd0b865a9667",
-    ("maker", "20260927T230055"): "39f5076aa552a4568d3ca25c35eebcbe323d1629a447edeb7ff49814959f42a0",
-    ("taker", "20260927T212117"): "22d63dac0a54d71ce25e4b6e2b6a8483c87a17e5ba285cafb6eb8794ba375b7d",
-    ("taker", "20260927T224635"): "a2abb64deb0fb7fed19f7d7dd03782306a0cda2a8b866b9c80603f688cc0a383",
-    ("taker", "20260927T230055"): "f18889a0d288801bae5c0971a929221b503c4f30f5d62311c9d761db06d5b51c",
+    ("maker", "20260927T212117"): "dde1ef6e9e22040a37f1434323b9fcd4e224f8fb6d176a82687ee96cd15fcf33",
+    ("maker", "20260927T224635"): "c899bd611b48e1108958a5ff118ba73e92f66a1f64984f36d149e29ac2cd5190",
+    ("maker", "20260927T230055"): "71f3dc0f86ab1bfcd011fad5c24c15fea0f444f15f7a09d41b2a70bd44529257",
+    ("taker", "20260927T212117"): "83a4ee315723cef1e28b8e94b186ca4e672821eda4a2697d90307c609b4ed429",
+    ("taker", "20260927T224635"): "2bf3b1b3894782c96b67c85e00c62d14fcec2015928c4426298a308c96523779",
+    ("taker", "20260927T230055"): "00ca747c1dc0ccdc125b3e4fd263b0e0b7ff8ace0802f2e850c20e28fdc5d638",
 }
 
 
