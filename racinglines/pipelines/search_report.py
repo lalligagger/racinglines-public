@@ -34,8 +34,9 @@ from racinglines.pipelines import sweep_settings as SS
 
 DEFAULTS = dict(target=2026, holdout=[2025], confirm_sims=16000, top=25, season_events=24,
                 noise=dict(taker=150.0, maker=350.0, model=25.0), value="pnl", unit="P&L")
-# another sport's defaults, under [report.<sport>] in the queue
-SPORT_DEFAULTS = {"mtb_dh": dict(confirm_sims=20000, season_events=10, value="score", unit="score")}
+# another sport's defaults, under [report.<sport>] in the queue; "global" is the results model's (any sport)
+SPORT_DEFAULTS = {"mtb_dh": dict(confirm_sims=20000, season_events=10, value="score", unit="score"),
+                  "global": dict(confirm_sims=8000, season_events=20, value="score", unit="score")}
 
 
 def family(strategy):
@@ -233,12 +234,14 @@ def candidates(ranking, top):
     return [r for r in ranking if r["verdict"] not in ("baseline", "no held-out run", "not better")][:top]
 
 
-def write(out, jobs, metrics, strategies, cfg=None, twin=None, rerun=None, echo=print, cls=SS.Settings, sport="f1"):
+def write(out, jobs, metrics, strategies, cfg=None, twin=None, rerun=None, echo=print, cls=SS.Settings, sport="f1",
+          model=None):
     """Every output file, from finished jobs only. rerun(job-like dict) -> argv list, for re-run commands."""
     cfg = _config(cfg)
     rows, curves = stats(jobs, metrics, strategies, cfg, cls)
     ranking, floor, measured = rank(rows, curves, cfg, twin, cls)
-    job = dict(kind="sweep") if sport == "f1" else dict(kind="walk_forward", sport=sport)
+    job = dict(kind="sweep") if sport == "f1" and not model else dict(
+        kind="walk_forward", sport=sport, **({"model": model} if model else {}))
     (out / "pnl_curves.json").write_text(json.dumps(curves, default=str))
     cols = ["year", "rounds", "venue", "strategy", "label", "sims", "seed", "pnl", "vs_baseline", "weekends_up", "weekends",
             "max_drawdown", "sharpe", "pnl_without_best", "best_event", "gain_without_best", "best_gain_event", "run_id",
@@ -266,8 +269,10 @@ def write(out, jobs, metrics, strategies, cfg=None, twin=None, rerun=None, echo=
                + "; ".join(f"{hy} {r[f'pnl_{hy}']:+,.0f} ({r[f'vs_base_{hy}']:+,.0f})" for hy in cfg["holdout"]))
         toml += ["[[candidate]]", f'id = "{r["id"]}"', f'name = "{r["id"]}: {r["strategy"]} · {st.label()}"',
                  f"year = {cfg['target']}", f'strategy = "{r["strategy"]}"', f'why = "{why}"']
-        if sport != "f1":
+        if sport != "f1" or model:
             toml.append(f'sport = "{sport}"')
+        if model:
+            toml.append(f'model = "{model}"')
         if r.get("venue", "polymarket") != "polymarket":
             toml.append(f'venue = "{r["venue"]}"')
         for k, v in st.to_json().items():
@@ -345,13 +350,14 @@ def run(queue_path, echo=print):
     if f1:
         result = write(out, f1, metrics, EV.STRATEGIES, {k: v for k, v in rep.items() if not isinstance(v, dict)
                                                           or k == "noise"}, twin=twin, rerun=S.argv, echo=echo)
-    for sport in sorted({v.get("sport") for v in done if v["kind"] == "walk_forward"}):
-        jobs = [v for v in done if v["kind"] == "walk_forward" and v.get("sport") == sport]
+    for sport, model in sorted({(v.get("sport", "f1"), v.get("model") or "") for v in done if v["kind"] == "walk_forward"}):
+        jobs = [v for v in done if v["kind"] == "walk_forward" and (v.get("sport", "f1"), v.get("model") or "") == (sport, model)]
         kinds = sorted({k[:-len("_score")] for j in jobs for w in (metrics.get(j["run_id"]) or {}).get("weekends") or []
                         for k in w if k.endswith("_score")})
         strategies = [(k, K.KINDS[k].label if k in K.KINDS else k) for k in kinds]
-        d = out / sport
+        d = out / (f"{sport}-{model}" if model else sport)
         d.mkdir(exist_ok=True)
-        result = write(d, jobs, metrics, strategies, dict(SPORT_DEFAULTS.get(sport, {}), **rep.get(sport, {})),
-                       rerun=S.argv, echo=echo, cls=S.settings_class(sport), sport=sport)
+        result = write(d, jobs, metrics, strategies, dict(SPORT_DEFAULTS.get(model or sport, {}), **rep.get(sport, {})),
+                       rerun=S.argv, echo=echo, cls=S.settings_class(sport, model or None), sport=sport,
+                       model=model or None)
     return result
