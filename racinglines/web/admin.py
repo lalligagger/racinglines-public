@@ -95,8 +95,6 @@ def _users_page(request, c, msg="", onetime=None):
 @app.post("/admin/users", dependencies=[Depends(check_csrf), allow("admin")])
 def admin_user_create(request: Request, username: str = Form(...), password: str = Form(...), role: str = Form(...),
                       display_name: str = Form("")):
-    import sys
-    print(f"DEBUG: admin_user_create called for user {username}", file=sys.stderr, flush=True)
     try:
         username = username.strip().lower()
         with get_engine().begin() as c:
@@ -105,29 +103,19 @@ def admin_user_create(request: Request, username: str = Form(...), password: str
                 error = error or "password must be at least 8 characters"
             if error:
                 raise ValueError(error)
-            # create user and grant in same transaction
-            print(f"DEBUG: Creating user with SQL INSERT", file=sys.stderr, flush=True)
             user_id = c.execute(text("""INSERT INTO users (username, display_name, role, password_hash, active)
                                         VALUES (:u, :n, :r, :h, true) RETURNING id"""),
                                 dict(u=username, n=display_name or username, r=role,
                                      h=U.hash_password(password))).scalar()
-            print(f"DEBUG: User created with id={user_id}", file=sys.stderr, flush=True)
-            # Always grant the signup grant - assume schema is ready if we got here
-            print(f"DEBUG: Calling ACC.grant()", file=sys.stderr, flush=True)
-            try:
-                ACC.grant(c, user_id)
-                print(f"DEBUG: ACC.grant() completed successfully", file=sys.stderr, flush=True)
-            except Exception as grant_ex:
-                print(f"DEBUG: ACC.grant() raised {type(grant_ex).__name__}: {grant_ex}", file=sys.stderr, flush=True)
-                raise
+            if user_id is None:
+                raise ValueError("Failed to create user: INSERT returned NULL id")
+            ACC.grant(c, user_id)
         audit(request, "user_create", target=username, role=role, user_id=user_id)
         msg = f"Created {role} {username}."
     except ValueError as e:
         msg = f"Error: {e}"
     except Exception as e:
-        import sys, traceback
-        traceback.print_exc(file=sys.stderr)
-        msg = f"Internal error: {type(e).__name__}: {e}"
+        msg = f"Error: {e}"
     return RedirectResponse(f"/admin/users?msg={msg}", status_code=303)
 
 
