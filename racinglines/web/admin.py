@@ -109,13 +109,17 @@ def admin_user_create(request: Request, username: str = Form(...), password: str
             user_id = u.id
             s.commit()  # commit the user
         # grant the signup grant after the user is persisted
-        with get_engine().begin() as c:
-            ready = ACC.ready(c)
-            if ready:
-                ACC.grant(c, user_id, note="admin create")
-            else:
-                import sys
-                print(f"WARNING: Accounts schema not ready for user {username} (id={user_id})", file=sys.stderr)
+        try:
+            with get_engine().begin() as c:
+                ready = ACC.ready(c)
+                if ready:
+                    ACC.grant(c, user_id, note="admin create")
+                else:
+                    import sys
+                    print(f"WARNING: Accounts schema not ready for user {username} (id={user_id})", file=sys.stderr)
+        except Exception as e:
+            import sys
+            print(f"ERROR granting signup funds: {e}", file=sys.stderr)
         audit(request, "user_create", target=username, role=role, user_id=user_id)
         msg = f"Created {role} {username}."
     except ValueError as e:
