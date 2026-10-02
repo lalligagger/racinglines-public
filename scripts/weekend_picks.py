@@ -147,7 +147,11 @@ def send_email(recipient, subject, html_body, text_body, smtp_server="127.0.0.1"
     msg.attach(MIMEText(text_body, "plain"))
     msg.attach(MIMEText(html_body, "html"))
 
-    with smtplib.SMTP(smtp_server, smtp_port) as server:
+    with smtplib.SMTP(smtp_server, smtp_port, timeout=30) as server:
+        server.ehlo()
+        if server.has_extn("starttls"):
+            server.starttls()  # Bridge's certificate is self-signed; the stdlib default context doesn't verify it
+            server.ehlo()
         server.login(smtp_user, password)
         server.sendmail(smtp_user, recipient, msg.as_string())
 
