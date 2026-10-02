@@ -105,11 +105,13 @@ def admin_user_create(request: Request, username: str = Form(...), password: str
                 raise ValueError(error)
         with get_session() as s:
             u = U.create_user(s, username, password, role, display_name or None)
+            s.flush()  # flush to database to get the ID and make visible to other connections
             user_id = u.id
-            # grant the signup grant in the same transaction to ensure persistence
-            if ACC.ready(s.connection()):
-                ACC.grant(s.connection(), user_id, note="admin create")
-            s.commit()
+            s.commit()  # commit the user
+        # grant the signup grant after the user is persisted
+        with get_engine().begin() as c:
+            if ACC.ready(c):
+                ACC.grant(c, user_id, note="admin create")
         audit(request, "user_create", target=username, role=role, user_id=user_id)
         msg = f"Created {role} {username}."
     except ValueError as e:
