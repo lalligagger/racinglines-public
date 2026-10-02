@@ -2,20 +2,51 @@
 name = "motogp-2026"
 parallel = 4
 hours = 1.5
-grid = 8
+
+# MotoGP baseline settings with variations on key tuning parameters
+[[job]]
+sport = "motogp"
+year = 2026
+note = "baseline: default settings"
 
 [[job]]
 sport = "motogp"
 year = 2026
-variant = "baseline"
-half_life_days = 90
-replicates = 3
-note = "full taker sweep with min_edge variations"
+recent_races = 4
+note = "shorter form window (4 races)"
 
 [[job]]
 sport = "motogp"
 year = 2026
-variant = "baseline"
-half_life_days = 90
-replicates = 2
-note = "maker baseline"
+recent_races = 8
+note = "longer form window (8 races)"
+
+[[job]]
+sport = "motogp"
+year = 2026
+recency_decay = 1.5
+note = "faster recency decay"
+
+[[job]]
+sport = "motogp"
+year = 2026
+recency_decay = 3.5
+note = "slower recency decay"
+
+[[job]]
+sport = "motogp"
+year = 2026
+team_bias = 0.15
+note = "lower team-form prior"
+
+[[job]]
+sport = "motogp"
+year = 2026
+team_bias = 0.55
+note = "higher team-form prior"
+
+[[job]]
+sport = "motogp"
+year = 2026
+noise = 1.5
+note = "lower race-day noise"
