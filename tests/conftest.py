@@ -100,7 +100,7 @@ def test_engine():
     cfg = Config(str(ROOT / "alembic.ini"))
     cfg.set_main_option("script_location", str(ROOT / "migrations"))
     cfg.set_main_option("sqlalchemy.url", url)
-    command.upgrade(cfg, "d9f2a7e5c1b3")
+    command.upgrade(cfg, "d9f4b1c7e5a2")
     e = create_engine(url, future=True)
     yield e
     e.dispose()
