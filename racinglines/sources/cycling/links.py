@@ -2,45 +2,77 @@
 Match UCI road cycling Wikipedia results to Kalshi market links.
 
 The link identity challenge:
-  Kalshi markets for cycling are identified by their series tickers (KXCYCLING*, KXCYCLINGSTAGE, etc.)
+  Kalshi markets for cycling are identified by their series tickers (KXCYCLING*, etc.)
   and condition_ids. Each market link has:
     - competition_id (UCI World Tour)
-    - athlete_id (rider, for head-to-head markets)
-    - token_id (Kalshi's YES/NO token)
-    - prediction (race_win, race_podium, race_top5, stage_win, kc_leader, etc.)
-    - params (stage number for stage markets, etc.)
+    - athlete_id (rider, for head-to-head or outcome markets)
+    - race_id (the specific race, e.g., 2025 Tour de France)
+    - prediction (race_win, race_podium, race_top10, etc.)
+    - params (additional context, e.g. {"stage": 3} for stage markets)
 
   Wikipedia results have:
     - race name, date, year
-    - rider name, team, UCI ID (if available)
+    - rider name, team, country
     - finishing position, time gap
-    - stage-by-stage results, KOM standings, jersey holders
+    - (future: stage-by-stage results, KOM standings, jersey holders)
 
-  A market link is "identified" when we can confidently map a Wikipedia result to a Kalshi market:
+  A market link is "identified" when we map the Wikipedia result to a Kalshi market:
     race_win market → rider finished 1st overall
     race_podium market → rider finished 1-3 overall
-    stage_win market (stage=3) → rider won stage 3
-    kc_leader market → rider wore the yellow jersey after stage N
+    race_top10 market → rider finished 1-10 overall
 
-TODO (implementation phased):
-  - [ ] Build identity resolver: name+date → (athlete_id, prediction, race_outcome)
-  - [ ] Handle name variations (accents, punctuation, team changes)
-  - [ ] Stage-by-stage matching (date, riders, winners)
-  - [ ] Jersey/KOM market matching (time-aware, as jerseys change daily)
-  - [ ] Unidentified races: log for manual review
+This module is Phase 2: actual matching logic. Phase 1 (fetch/ingest) is complete.
+
+TODO (implementation):
+  - [ ] Rider name matching (exact, fuzzy, UCI ID when available)
+  - [ ] Prediction matching (race_win, race_podium, race_top10, stage_win, etc.)
+  - [ ] Handle multiple markets for same rider (e.g., both race_win and race_podium)
+  - [ ] Log unidentified races for manual review
 """
+
+from typing import Dict, List, Optional, Tuple
+
+
+def normalize_rider_name(name: str) -> str:
+    """
+    Normalize rider names for matching: lowercase, remove accents, etc.
+    
+    Examples:
+      "Ben O'Connor" → "ben oconnor"
+      "Jhonatan Narváez" → "jhonatan narvaez"
+    """
+    import unicodedata
+    # Remove accents
+    name = ''.join(c for c in unicodedata.normalize('NFD', name)
+                   if unicodedata.category(c) != 'Mn')
+    # Lowercase and remove punctuation
+    name = name.lower().replace("'", "").replace("-", " ")
+    # Collapse multiple spaces
+    name = ' '.join(name.split())
+    return name
 
 
 def identify_link(
-    link: dict,  # market_links row
-    race_result: dict,  # Wikipedia race data
+    link_dict: dict,  # market_links row (as dict with all columns)
+    results_dict: dict,  # normalize_race() output
 ) -> bool:
     """
-    Determine if a market link corresponds to a race result.
+    Determine if a market link corresponds to any race result.
+    
+    Args:
+        link_dict: Market link row with keys (prediction, athlete_id, race_id, params, ...)
+        results_dict: Output from normalize_race() with keys (event, race, rounds, results)
+    
+    Returns:
+        True if the link is identified and linked to a result. False otherwise.
     
     TODO:
-      - Match link.athlete_id to rider in race_result
-      - Match link.prediction to race_result outcome (race_win, stage_win, etc.)
-      - Return True if match confidence > threshold
+      - Resolve athlete_id to rider name via database lookup
+      - Match prediction type to result (race_win, race_podium, etc.)
+      - Handle stage markets (params["stage"])
+      - Handle jersey/KOM markets (params["jersey"], etc.)
     """
-    pass
+    # TODO: This is a stub for Phase 2.
+    # Full implementation requires database access (athlete name lookup, etc.)
+    # and decision on how to record identified links (update race_id? store separately?)
+    return False
