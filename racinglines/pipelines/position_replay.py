@@ -90,8 +90,9 @@ def records_on():
 
 
 def model_for(sp):
+    from racinglines.models import race_model as RM
     mod, _, cls = sp["model"].partition(":")
-    return getattr(importlib.import_module(mod), cls)()
+    return RM.bind(getattr(importlib.import_module(mod), cls), sp["sport"])()
 
 
 # --- what was knowable, per race ------------------------------------------------------------------------
