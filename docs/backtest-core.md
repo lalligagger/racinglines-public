@@ -181,6 +181,27 @@ walk-forward above with `--save`, it gets its own default-settings baseline per 
 `search-report` writes one folder per sport and model (`<sport>-global/`) with the labels below, scored per
 market kind. `python scripts/make_global_sweep.py` writes `sweeps/global-multi-sport.toml`, the multi-sport grid.
 
+`python scripts/make_global_sweep.py --confirm <search folder>` writes stage 2, `sweeps/global-multi-sport-confirm.toml`:
+the finished search's candidates (every sport's `candidates.toml`) and the default settings, re-run in every season at
+the report's `confirm_sims` (8,000, four times the grid's 2,000). It carries the same search name, so one
+`search-report` reads both stages and fills the report's `confirmed` column.
+
+#### Model against the exchange
+
+`racinglines backtest walk-forward <code> --model global --venue polymarket kalshi --out-dir DIR` also reads each
+venue's price for the same market, through the same `venue_replay` classes the sweeps use (a price counts only if it is
+under 6 hours old), and scores model and market on the markets that have both. When it reads matters: a sport with a
+session schedule (F1) is read at the first stage of its `[stages]`, 1 h before any running, when the market knows what
+the model knows (earlier results); `--market-stage 'after Quali'` reads a later stage, which shows what the model lacks.
+A sport without a schedule is read at the event's day (00:00 UTC), which on a race weekend is after qualifying, so it
+favours the market. Prices pair on the exact `market_links` keys
+(`race_id`, kind, athlete) and never guess: a sport whose links carry no `race_id` reports "nothing to pair"
+with the link counts. Output: a per-kind and per-season table, `walk_forward_vs_<venue>.csv` (one row per pair, with
+the read time `at`) and `walk_forward_vs_<venue>_scores.csv`. Read-only on the database (no `--save`). It needs the
+price history the venue replays read, so on the VM run it where the market archive is (`data/archive/markets/`).
+The code is `racinglines/pipelines/model_vs_market.py`; the field is the event's actual starters, so the comparison has a
+mild lookahead on who started (the same for model and market, which price a field that includes them).
+
 ### Calibration in every sweep
 
 `racinglines f1 sweep --reliability` scores **our fair value and the exchange's price side by side** at
