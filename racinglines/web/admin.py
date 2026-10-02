@@ -104,11 +104,9 @@ def admin_user_create(request: Request, username: str = Form(...), password: str
             if error:
                 raise ValueError(error)
             user_id = c.execute(text("""INSERT INTO users (username, display_name, role, password_hash, active)
-                                        VALUES (:u, :n, :r, :h, true) RETURNING id"""),
-                                dict(u=username, n=display_name or username, r=role,
+                                        VALUES (:u, :d, :r, :h, true) RETURNING id"""),
+                                dict(u=username, d=display_name or username, r=role,
                                      h=U.hash_password(password))).scalar()
-            if user_id is None:
-                raise ValueError("Failed to create user: INSERT returned NULL id")
             ACC.grant(c, user_id)
         audit(request, "user_create", target=username, role=role, user_id=user_id)
         msg = f"Created {role} {username}."
