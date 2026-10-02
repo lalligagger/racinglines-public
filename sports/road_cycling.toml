@@ -22,7 +22,7 @@ display_name = "Road cycling"
 categories = { RDR = ["Riders", "X", "elite"] }
 
 [markets]
-venues = ["kalshi"]
+venues = ["kalshi", "polymarket"]
 standard_kinds = []               # nothing is priced, so the board has no columns for it
 
 [markets.kalshi]
@@ -32,6 +32,16 @@ standard_kinds = []               # nothing is priced, so the board has no colum
 # already matches the other three by prefix (series_for uses startswith); they are listed for the reader.
 # The sync's `--closed` flag pulls the settled 2026 history Kalshi still serves.
 series = ["KXCYCLING", "KXCYCLINGSTAGE", "KXCYCLINGTEAM", "KXCYCLINGJERSEY"]
+
+[markets.polymarket]
+# Polymarket Gamma tag slug for cycling markets.
+tags = ["cycling"]
+
+[identity]
+# Which cyclist, race and contract a market is about, whichever exchange listed it (racinglines/sources/cycling/links.py).
+# The syncs fill athlete_id, race_id and params (kind, season) on every link of this sport; `prediction`
+# stays unmodeled.
+resolver = "cycling"
 
 [results]
 # Results source: Wikipedia (CC-BY-SA 3.0, approved 2026-10-01). Future primary: First Cycling API (terms under review).
