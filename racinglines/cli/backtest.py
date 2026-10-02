@@ -9,7 +9,8 @@ racinglines backtest <command>: the backtest core for any sport with a pricing m
     racinglines backtest walk-forward mtb_dh --seasons 2025 --half-life-days 120 [--save]
     racinglines backtest walk-forward motogp --model global --seasons 2026     # the sport-agnostic results model
     racinglines backtest walk-forward f1 --model global --seasons 2025 2026 --venue polymarket kalshi
-                         # also scores each venue's price at the event's cutoff beside the model's (model_vs_market)
+                         # also scores each venue's price beside the model's (model_vs_market): for F1 at the first
+                         # stage, 1 h before any running (--market-stage 'after Quali' for another)
 """
 
 import argparse
@@ -30,9 +31,10 @@ def pricing_model(sport, which=None):
 
 
 def run_walk_forward(model, data, st, seasons=None, kinds=None, out_dir=None, save=False, engine_url=None,
-                     echo=print, venues=()):
+                     echo=print, venues=(), market_stage=None):
     """The engine, its CSVs and (save) the model run. Returns the engine's output. venues: exchanges whose prices
-    are scored beside the model's (pipelines/model_vs_market.py)."""
+    are scored beside the model's (pipelines/model_vs_market.py), read at the schema's first stage (market_stage: or
+    another stage's label) for a sport with a session schedule, else at the event's cutoff."""
     from racinglines.core import walk_forward as WF
     seasons = seasons or model.seasons(data, st)
     echo(f"Walk-forward {model.sport} {', '.join(map(str, seasons))} · {st.label()} (settings {st.key})")
@@ -51,15 +53,19 @@ def run_walk_forward(model, data, st, seasons=None, kinds=None, out_dir=None, sa
     echo(cal[cal["season"] == "all"].drop(columns=["season", "source"]).to_string(index=False, float_format="{:.4f}".format))
     if out_dir:
         echo(f"\nCSVs -> {out_dir}/")
+    at, when = None, "each event's cutoff"
     for venue in venues:
         from racinglines.pipelines import model_vs_market as MVM
         from racinglines.pipelines import scorecard as SC
-        paired, by_kind, by_season = MVM.compare(out, venue, engine_url)
+        if at is None:
+            at = MVM.stage_times(model.sport, list(out["cutoffs"]), market_stage, engine_url)
+            when = (f"the {market_stage or 'first'} stage" if at else "each event's cutoff")
+        paired, by_kind, by_season = MVM.compare(out, venue, engine_url, at=at)
         if not len(paired):
             echo(f"\n=== Model against {venue} ===\nno {venue} market of {', '.join(MVM.KINDS)} is linked to these events "
                  f"(market_links.race_id and athlete_id): nothing to pair")
             continue
-        echo(f"\n=== Model against {venue}, prices at each event's cutoff ===")
+        echo(f"\n=== Model against {venue}, prices at {when} ===")
         echo(SC.format_text(by_kind, first=("kind",)))
         echo(SC.format_text(by_season, first=("season", "kind")))
         if out_dir:
@@ -108,7 +114,11 @@ def main(argv=None):
     wf.add_argument("--model", choices=("global",), default=None,
                     help="Run the sport-agnostic results model (models/model_global.py) instead of the sport's own.")
     wf.add_argument("--venue", nargs="+", choices=("polymarket", "kalshi"), default=[],
-                    help="Also score each exchange's price at the event's cutoff beside the model's (exact market links only).")
+                    help="Also score each exchange's price beside the model's (exact market links only), read at the "
+                         "schema's first stage before any running where the sport has a session schedule (F1), else at the "
+                         "event's cutoff.")
+    wf.add_argument("--market-stage", default=None, metavar="LABEL",
+                    help="Read the --venue prices at this stage of the schema's [stages] instead (F1: 'after Quali').")
     if known.cmd == "walk-forward" and known.sport:
         SS.add_arguments(wf, pricing_model(known.sport, known.model).Settings)
     args = ap.parse_args(argv)
@@ -117,5 +127,5 @@ def main(argv=None):
     data = model.load(args.db)
     run_walk_forward(model, data, st, seasons=args.seasons, kinds=args.kinds.split(",") if args.kinds else None,
                      out_dir=args.out_dir or paths.runs(args.sport, "walk_forward", mkdir=False), save=args.save,
-                     engine_url=args.db, venues=args.venue)
+                     engine_url=args.db, venues=args.venue, market_stage=args.market_stage)
     return 0

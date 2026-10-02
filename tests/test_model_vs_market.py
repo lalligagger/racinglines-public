@@ -79,3 +79,15 @@ def test_scores_are_model_on_all_and_model_vs_venue_on_paired():
 
 def test_nothing_linked_is_empty_not_an_error():
     assert len(MVM.pair(_rows(), pd.DataFrame(columns=MVM.MID_COLS))) == 0
+
+
+def test_stage_time_is_the_first_stage_unless_one_is_named():
+    stages = [("pre-weekend", pd.Timestamp("2026-05-01 10:30")), ("after FP1", pd.Timestamp("2026-05-01 13:30")),
+              ("after Quali", pd.Timestamp("2026-05-02 17:30"))]
+    assert MVM.stage_time(stages) == pd.Timestamp("2026-05-01 10:30")
+    assert MVM.stage_time(stages, "after Quali") == pd.Timestamp("2026-05-02 17:30")
+    assert MVM.stage_time(stages, "after Sprint") is None and MVM.stage_time([]) is None
+
+
+def test_stage_times_is_empty_for_a_sport_without_a_session_schedule():
+    assert MVM.stage_times("motogp", [1, 2]) == {} and MVM.stage_times("f1", []) == {}
