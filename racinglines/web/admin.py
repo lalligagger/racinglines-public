@@ -96,8 +96,13 @@ def _users_page(request, c, msg="", onetime=None):
 def admin_user_create(request: Request, username: str = Form(...), password: str = Form(...), role: str = Form(...),
                       display_name: str = Form("")):
     try:
-        if len(password) < 8:
-            raise ValueError("password must be at least 8 characters")
+        username = username.strip().lower()
+        with get_engine().begin() as c:
+            error = ACC.check_username(c, username) or ACC.check_password(password, "", username)
+            if len(password) < 8:
+                error = error or "password must be at least 8 characters"
+            if error:
+                raise ValueError(error)
         with get_session() as s:
             u = U.create_user(s, username, password, role, display_name or None)
             if ACC.ready(s.connection()):         # every account starts with the signup grant

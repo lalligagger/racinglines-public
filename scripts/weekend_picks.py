@@ -145,7 +145,7 @@ def send_email(recipient, subject, html_body, text_body, smtp_server="127.0.0.1"
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = smtp_user
+    msg["From"] = f"Racinglines <{smtp_user}>"
     msg["To"] = recipient
 
     msg.attach(MIMEText(text_body, "plain"))

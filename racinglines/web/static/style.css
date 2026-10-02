@@ -393,3 +393,13 @@ a.button.primary:hover { filter: brightness(1.08); color: #fff; }
 .mb12 { margin-bottom: 12px; }
 .ml-auto { margin-left: auto; }
 .w100 { width: 100%; }
+
+/* Settings page: radio groups, checkboxes, token management */
+.radio-group, .checkbox-group { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
+.radio-group label, .checkbox-group label { display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; }
+.radio-group input, .checkbox-group input { margin: 0; flex-shrink: 0; }
+.token-box { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 12px; margin: 12px 0; }
+.token-container { display: flex; gap: 8px; align-items: center; }
+.token-container input { flex: 1; font-family: monospace; font-size: 12px; }
+.copy-btn { padding: 6px 12px; font-size: 12px; }
+.warning { color: var(--warn); font-size: 13px; margin: 8px 0; }
