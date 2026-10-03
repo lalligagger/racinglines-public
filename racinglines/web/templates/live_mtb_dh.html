@@ -13,7 +13,7 @@
   {% if mode == 'live' %}<span class="faint">refreshes itself</span>{% endif %}
 </div>
 {% if snap.waiting %}<div class="card accent" id="dh-waiting"><p><b>Before the final.</b> {{ snap.waiting }}.</p>
-{% for q in snap.qualifying or [] %}<h3>{{ q.title }}</h3>
+{% for q in snap.qualifying or [] %}<h3>{{ q.title }}{% if q.running %} <span class="pill live">running</span>{% endif %}</h3>
 <div class="scroll" data-rows="12"><table><thead><tr><th>#</th><th class="l">Rider</th><th>Time</th><th>Gap</th><th class="l">Status</th></tr></thead><tbody>
 {% for r in q.rows %}<tr><td>{{ r.rank or "" }}</td><td class="l">{{ r.name }} <span class="muted">{{ r.nation or "" }}</span></td><td class="num">{{ t(r.time) }}</td><td class="num muted">{{ "+%.3f"|format(r.gap / 1000) if r.gap else "" }}</td><td class="l muted">{{ "" if r.rank else r.status or "" }}</td></tr>{% endfor %}
 </tbody></table></div>{% else %}<p class="muted">No qualifying times yet.</p>{% endfor %}</div>

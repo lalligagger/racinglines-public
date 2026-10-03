@@ -177,6 +177,7 @@ def test_an_empty_feed_waits_without_touching_the_book(tmp_path, monkeypatch):
     monkeypatch.setattr(L, "season_prior", lambda slug: {})
     monkeypatch.setattr(L, "sync_positions", lambda *a, **k: pytest.fail("positions synced on an empty feed"))
     L.update.__dict__.pop("cache", None)
+    L.waiting.__dict__.pop("cache", None)
     snap = L.update("ev", "3", ["2"], interval=30)
     out = L.outdir("ev", "3")
     assert snap["waiting"] and snap["riders"] == [] and snap["done"] is False and not snap["betting"]["late"]
@@ -197,6 +198,7 @@ def test_an_empty_feed_waits_without_touching_the_book(tmp_path, monkeypatch):
     with pytest.raises(Stop):
         L._run("ev", "3", ["2"], interval=30, echo=said.append)
     assert slept == [L.WAIT_INTERVAL] and len(said) == 1 and "waiting: 0 riders" in said[0]
+    L.waiting.__dict__.pop("cache", None)
 
 
 def test_waiting_shows_qualifying_and_pre_final_odds(tmp_path, monkeypatch):
@@ -215,6 +217,7 @@ def test_waiting_shows_qualifying_and_pre_final_odds(tmp_path, monkeypatch):
     feeds = {"3": {}, "2": q1}
     monkeypatch.setattr(L, "fetch", lambda slug, key, session=None: feeds[key])
     L.update.__dict__.pop("cache", None)
+    L.waiting.__dict__.pop("cache", None)
     snap = L.update("ev", "3", ["2"])
     assert snap["waiting"] and snap["quotes"] == [] and snap["counts"] == {"NA": 3}
     assert [r["bib"] for r in sorted(snap["riders"], key=lambda r: r["slot"])] == [3, 1, 2]   # fastest last
@@ -226,3 +229,36 @@ def test_waiting_shows_qualifying_and_pre_final_odds(tmp_path, monkeypatch):
     assert snap["round"] == "ev"                                        # the event's name, not qualifying's
     assert not (L.outdir("ev", "3") / "book.json").exists()
     assert json.loads((L.outdir("ev", "3") / "latest.json").read_text())["riders"]
+
+
+def test_waiting_reads_only_what_can_change(tmp_path, monkeypatch):
+    """Before the final: a settled qualifying session is read once and kept, one not started or under way is read
+    every look; the next look is 5 s while a session runs and 5 minutes otherwise, and unchanged qualifying times
+    reuse the last simulation."""
+    monkeypatch.setattr(L.paths, "DATA", tmp_path)
+    monkeypatch.setattr(L, "season_prior", lambda slug: {})
+    riders = {str(b): dict(PrintName=n) for b, n in ((1, "A"), (2, "B"), (3, "C"))}
+    q1 = dict(Riders=riders, Results=[dict(RaceNr=1, Status="Finished", RaceTime=200_000, Times=[]),
+                                      dict(RaceNr=2, Status="Finished", RaceTime=198_000, Times=[]),
+                                      dict(RaceNr=3, Status="NA", RaceTime=None, Times=[])])   # a DNS left 'NA'
+    q2 = {}
+    reads, sims = [], []
+    feeds = {"3": {}, "2": q1}
+    monkeypatch.setattr(L, "fetch", lambda slug, key, session=None: reads.append(key) or (q2 if key == "91" else feeds[key]))
+    real = L.simulate
+    monkeypatch.setattr(L, "simulate", lambda *a, **k: sims.append(1) or real(*a, **k))
+    L.update.__dict__.pop("cache", None)
+    L.waiting.__dict__.pop("cache", None)
+    s1 = L.update("ev", "3", ["2", "91"])
+    s2 = L.update("ev", "3", ["2", "91"])
+    assert reads == ["3", "2", "91", "3", "91"]                         # Q1 is over: read once
+    assert s1["poll_interval"] == s2["poll_interval"] == L.WAIT_INTERVAL == 300 and len(sims) == 1
+    q2.update(Riders=riders, Results=[dict(RaceNr=2, Status="NA", RaceTime=None, Times=[])])
+    assert L.update("ev", "3", ["2", "91"])["poll_interval"] == L.SOON_INTERVAL == 60     # start list up, not begun
+    q2.update(Riders=riders, NextToStart=[1], Results=[dict(RaceNr=2, Status="Finished", RaceTime=197_000, Times=[]),
+                                                       dict(RaceNr=1, Status="NA", RaceTime=None, Times=[])])
+    s3 = L.update("ev", "3", ["2", "91"])
+    assert s3["qualifying_live"] == ["91"] and s3["poll_interval"] == L.BASE_INTERVAL and len(sims) == 2
+    assert reads.count("2") == 1
+    assert [q["running"] for q in s3["qualifying"]] == [False, True]
+    assert not (L.outdir("ev", "3") / "raw").exists()                   # the empty final isn't logged every look
