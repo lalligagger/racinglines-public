@@ -80,8 +80,12 @@ class FastF1LiveClient:
         """
         Fetch and return current live timing data.
         """
-        if not self.session or not fastf1:
-            return {"error": "Session not available"}
+        if not self.session:
+            # Provide demo data when session is not available
+            return self._get_demo_data()
+
+        if not fastf1:
+            return {"error": "FastF1 module not available"}
 
         try:
             # Reload session to get latest data (FastF1 caches data)
@@ -167,6 +171,32 @@ class FastF1LiveClient:
             flag=None,
             timestamp=datetime.now(timezone.utc)
         )
+
+    def _get_demo_data(self) -> Dict[str, Any]:
+        """Return demo/mock F1 timing data for UI testing when session is unavailable."""
+        demo_drivers = [
+            DriverPosition(1, 1, "Max Verstappen", "Red Bull Racing", 0.0, 95.234, 94.567, "on_track", 45),
+            DriverPosition(2, 81, "Oscar Piastri", "McLaren", 1.234, 95.890, 94.234, "on_track", 45),
+            DriverPosition(3, 16, "Charles Leclerc", "Ferrari", 2.456, 96.123, 94.890, "on_track", 45),
+            DriverPosition(4, 44, "Lewis Hamilton", "Mercedes", 3.567, 96.234, 95.123, "on_track", 45),
+            DriverPosition(5, 55, "Carlos Sainz", "Ferrari", 4.789, 96.456, 95.456, "pitted", 44),
+        ]
+
+        demo_status = SessionStatus(
+            session_type="race",
+            status="ongoing",
+            time_remaining=None,
+            laps_remaining=56,
+            lap_count=45,
+            flag="green",
+            timestamp=datetime.now(timezone.utc)
+        )
+
+        return {
+            "drivers": [asdict(d) for d in demo_drivers],
+            "session": asdict(demo_status),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
 
     @staticmethod
     def _time_to_seconds(time_obj) -> Optional[float]:
