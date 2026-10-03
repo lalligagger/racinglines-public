@@ -109,8 +109,8 @@
   .ui-fine { font-size: 12px; color: var(--muted); margin-top: 12px; line-height: 1.45; }
   .stats-sm .stat { font-size: clamp(26px, 2.6vw, 38px); }
   .stats-sm .stat small { display: block; margin-top: 4px; }
-  .shot { display: block; width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--line); box-shadow: var(--shadow); }
-  .shot.cap { width: auto; max-width: 100%; max-height: 31vh; }
+  .shot { display: block; width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--line); box-shadow: var(--shadow); object-fit: contain; }
+  .shot.cap { width: 100%; height: auto; max-height: 31vh; object-fit: contain; }
   .split { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; align-items: start; }
   .endpoints { margin-top: 4px; }
   .endpoints .axis { display: flex; justify-content: space-between; font: 600 12px "JetBrains Mono", monospace; color: var(--muted);
@@ -375,9 +375,9 @@
   <div class="kicker">The demo · taker account</div>
   <h2>$1,000 in January 2025, following A's calls in part.</h2>
   <div class="split">
-    <img class="shot" src="/static/pitch/2-markets-overview.jpg" alt="Markets overview: 319 priced markets, $54.8M total traded">
+    <img class="shot cap" src="/static/pitch/2-markets-overview.jpg" alt="Markets overview: 319 priced markets, $54.8M total traded">
     <div class="grid" style="gap:14px">
-      <img class="shot" src="/static/pitch/5-positions-portfolio.jpg" alt="Positions portfolio: +$30k P&L across 1,400 positions">
+      <img class="shot cap" src="/static/pitch/5-positions-portfolio.jpg" alt="Positions portfolio: +$30k P&L across 1,400 positions">
       <div class="card"><h3>What a taker sees</h3><p>What to buy, how many shares, the most to pay, and a <strong>heat</strong> rating (warm, hot, very hot) from the modelled value, never the model's numbers.
         Rebuilt on 30 Sep: <strong>+$450.46</strong> over 23 weekends of 2025 and <strong>+$353.01</strong> over 15 of 2026, paper; only 2026 is out of sample. It paper-trades live from round 16.</p><p class="note" style="margin-top:8px">Screenshots from 27 Sep, before the rebuild.</p></div>
     </div>
@@ -389,7 +389,7 @@
   <div class="kicker">The other endpoint</div>
   <h2>Downhill: priced and waiting for a market.</h2>
   <div class="split">
-    <img class="shot" src="/static/pitch/6-market-type-breakdown.jpg" alt="Market breakdown: DH Win +$14k, Podium +$8.6k across market types">
+    <img class="shot cap" src="/static/pitch/6-market-type-breakdown.jpg" alt="Market breakdown: DH Win +$14k, Podium +$8.6k across market types">
     <div class="grid" style="gap:14px">
       <div class="card"><h3>Ready today</h3><p>Six seasons of every run and split, riders matched across seasons and categories, a live season forecast re-priced as each round is published.</p></div>
       <div class="card"><h3>No exchange lists it yet</h3><p>On Whistler race weekend (Sep 2026), Polymarket had zero downhill markets. We're ready the day one does, and the model is sellable to media, teams and operators before then.</p></div>
@@ -405,7 +405,7 @@
   <div class="split">
     <img class="shot cap" style="max-height:62vh" src="/static/pitch/8-live-maker.jpg" alt="Live maker: rider probabilities and auto-updating quotes">
     <div class="grid" style="gap:12px">
-      <img class="shot" src="/static/pitch/9-live-book.jpg" alt="Private book: event P&L, crowd fills, volume, and crowd results">
+      <img class="shot cap" src="/static/pitch/9-live-book.jpg" alt="Private book: event P&L, crowd fills, volume, and crowd results">
       <div class="card"><h3>What ran</h3><p>UCI's live timing, polled every 20 s; the rest of the final simulated 20,000 times after each update
         (rank probabilities, not one guess); a maker re-quoting every rider; 1,000 anonymous private-book takers with $10–200 budgets, and a demo taker picking on hype.
         P&amp;L sorted by venue; every feed response and fill kept for replay.</p></div>
