@@ -1,0 +1,17 @@
+# Staging's own downhill poll loop for live/mtb_dh/<instance>.toml: the twin of racinglines-live-dh@, from
+# /opt/racinglines-staging with /etc/racinglines-staging.env (its own data folder and database, no alerts).
+#   bash scripts/deploy/vm.sh staging live <event> [off]
+[Unit]
+Description=racinglines live run (staging), downhill %i
+After=network-online.target docker.service
+
+[Service]
+User=racinglines
+WorkingDirectory=/opt/racinglines-staging
+EnvironmentFile=/etc/racinglines-staging.env
+ExecStart=/opt/racinglines-staging/.venv/bin/racinglines live run live/mtb_dh/%i.toml
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -340,7 +340,8 @@ the `staging` branch deploys staging and nothing else**. `main` keeps deploying 
 | Web app | `racinglines-web`, 127.0.0.1:8000 | `racinglines-staging-web`, 127.0.0.1:8010 |
 | Database | `racinglines` | `racinglines_staging`, in the same Postgres container, copied from production by `staging setup` / `staging reset` (`pg_dump \| psql`: production is only read) |
 | Settings | `/etc/racinglines.env` | `/etc/racinglines-staging.env`: production's switches and admin password, its own `DATABASE_URL`, data folder (`/opt/racinglines-staging/data`, empty: no archive Parquet, no pitch images), `APP_SECRET`, `RACINGLINES_URL`, `RACINGLINES_ENV=staging`, `WEB_PORT=8010`; **no trading flags, no ntfy topic, no alert webhook** |
-| Timers and other units | recorder, signals, live events, record-venues, MCP | **none** (two recorders would split the book history) |
+| Timers and other units | recorder, signals, live events, record-venues, MCP | only its own live events, by hand (`vm.sh staging live <event>`: `racinglines-staging-live-f1@` / `racinglines-staging-live-dh@`, its data folder and database); no recorder or signals (two recorders would split the book history) |
+| Live timing button (F1, `/live`) | off (`RACINGLINES_F1_STREAM` unset) | on by default: an opt-in websocket per viewer polling FastF1, with a debug log (`racinglines/web/f1_live.py`) |
 | Tells you which one you're on | nothing | the `X-Racinglines-Env: staging` response header and a STAGING pill in the top bar (`RACINGLINES_ENV`) |
 
 **What a merge to `staging` does** (`deploy-staging` job): `vm.sh staging deploy <sha>`, which pipes
@@ -369,7 +370,8 @@ force push is fine there, `staging` is a deploy pointer, not history).
 | `staging deploy [ref]` | What CI runs on a merge to `staging` (above) |
 | `staging status` | The staging checkout's commit, the unit, and `GET /login` with its env header |
 | `staging logs` | `journalctl -u racinglines-staging-web` |
-| `staging reset` | Drop `racinglines_staging` and copy production's rows again (production only read) |
+| `staging reset` | Drop `racinglines_staging` and copy production's rows and live run folders (`data/runs/live`) again (production only read) |
+| `staging live <event> [off]` | Staging's own run of a live event (`live/f1/<event>.toml`: a step every 5 minutes; `live/mtb_dh/<event>.toml`: the poll loop), like `vm.sh live` for production; it carries on from the run folder `staging reset` copied |
 | `staging off` | Stop and disable the unit; the checkout, database and env file stay |
 
 **Owner's one-time steps** (in this order; nothing here touches production):
