@@ -176,15 +176,17 @@ _SMTP_LOGIN = {}  # the last login that worked, so a run sending to many recipie
 
 
 def send_email(recipient, subject, html_body, text_body, smtp_server="127.0.0.1", smtp_port=1025, smtp_user=None, dry_run=False):
-    """Send email via SMTP (e.g., Proton Mail Bridge). Prompts for password securely."""
+    """Send email via SMTP (e.g., Proton Mail Bridge). Login from RACINGLINES_SMTP_USER / RACINGLINES_SMTP_PASSWORD,
+    else prompted (the password securely)."""
     if dry_run:
         print(f"[DRY RUN] Would send to {recipient}")
         return True
 
     if not smtp_user:
-        smtp_user = _SMTP_LOGIN.get("user") or input("SMTP username (Proton email): ")
+        smtp_user = (_SMTP_LOGIN.get("user") or os.environ.get("RACINGLINES_SMTP_USER")
+                     or input("SMTP username (Proton email): "))
     password = _SMTP_LOGIN.get("password") if _SMTP_LOGIN.get("user") == smtp_user else None
-    password = password or getpass.getpass("SMTP password: ")
+    password = password or os.environ.get("RACINGLINES_SMTP_PASSWORD") or getpass.getpass("SMTP password: ")
 
     html_body, images = _inline_images(html_body)
     alt = MIMEMultipart("alternative")
@@ -474,7 +476,7 @@ def main():
                     help="a screenshot or chart to show under the picks table (repeatable); embedded in the mail when sent")
     ap.add_argument("--smtp-server", default="127.0.0.1", help="SMTP server (default: localhost for Proton Bridge)")
     ap.add_argument("--smtp-port", type=int, default=1025, help="SMTP port (default: 1025 for Proton Bridge)")
-    ap.add_argument("--smtp-user", help="SMTP username (if not set, prompted at runtime)")
+    ap.add_argument("--smtp-user", help="SMTP username (default $RACINGLINES_SMTP_USER, else prompted)")
     a = ap.parse_args()
     a.image = [Path(i).expanduser().resolve() for i in a.image]
     if missing := [str(i) for i in a.image if not i.is_file()]:
