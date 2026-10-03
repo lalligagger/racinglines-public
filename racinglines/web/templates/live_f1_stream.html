@@ -650,6 +650,11 @@
 
           const sessionType = data.session.session_type.toUpperCase();
           document.getElementById('session-title').textContent = sessionType + ' Classification';
+        } else if (message.type === 'error') {
+          const data = message.data;
+          showError(`Connection error: ${data.error}`);
+          document.getElementById('loading-container').style.display = 'block';
+          document.getElementById('loading-container').innerHTML = `<p style="color: #c00;">${data.error}</p>`;
         }
       } catch (e) {
         console.error('Error parsing message:', e);

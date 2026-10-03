@@ -1598,12 +1598,26 @@ async def websocket_f1_live(websocket: WebSocket, session_id: str):
                 session_name = msg.get("session")  # "FP1", "FP2", "FP3", "SQ", "SS", "Q", "R"
 
                 if year and round_num and session_name:
-                    fastf1_session = await FastF1LiveClient.get_session(year, round_num, session_name)
-                    await live_stream_manager.start_live_updates(session_id, fastf1_session, update_interval=5)
+                    try:
+                        fastf1_session = await FastF1LiveClient.get_session(year, round_num, session_name)
+                        if fastf1_session is None:
+                            await websocket.send_json({
+                                "type": "error",
+                                "data": {"error": f"F1 session {year} R{round_num} {session_name} not found"}
+                            })
+                        else:
+                            await live_stream_manager.start_live_updates(session_id, fastf1_session, update_interval=5)
+                    except Exception as e:
+                        logger.error(f"Error loading F1 session {year} R{round_num} {session_name}: {e}")
+                        await websocket.send_json({
+                            "type": "error",
+                            "data": {"error": f"Failed to load session: {str(e)[:100]}"}
+                        })
     except WebSocketDisconnect:
         await live_stream_manager.remove_client(session_id)
     except Exception as e:
         logger.error(f"WebSocket error for {session_id}: {e}")
+        await live_stream_manager.remove_client(session_id)
         await live_stream_manager.remove_client(session_id)
 
 
