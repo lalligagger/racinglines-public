@@ -191,6 +191,7 @@ from racinglines.web import demo as _demo  # noqa: E402
 app = FastAPI(title="racinglines", dependencies=[Depends(authenticate), Depends(_demo.guard)], docs_url=None, redoc_url=None,
               lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
+app.mount("/media", StaticFiles(directory=HERE / "media"), name="media")
 templates = Jinja2Templates(directory=HERE / "templates")
 
 
