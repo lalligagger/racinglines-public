@@ -12,8 +12,9 @@
 #                                       pg_dump | psql (a read of production; production's rows are never written)
 #   /etc/racinglines-staging.env        production's settings with its own DATABASE_URL, data folder, URL, secret,
 #                                       RACINGLINES_ENV=staging, WEB_PORT=8010, and NO trading flags, alerts or ntfy topic
-#   racinglines-staging-web.service     the web app on 127.0.0.1:8010 (installed and started; nothing else: no
-#                                       recorder, signals, live-event or MCP units for staging)
+#   racinglines-staging-web.service     the web app on 127.0.0.1:8010 (installed and started; no recorder, signals
+#                                       or MCP units for staging; its own live events: vm.sh staging live <event>)
+#   $STG/data/runs/live                 with a new database copy, production's live run folders, copied
 # Production's checkout, database, /etc/racinglines.env, units and timers are not read for writing and not restarted.
 set -euo pipefail
 # all in a function: this script arrives on ssh's stdin (vm.sh pipes it), so bash must read it whole before running
@@ -62,6 +63,10 @@ if [ "$exists" != 1 ]; then
     | docker compose exec -T db psql -q -U racinglines -d $DB -v ON_ERROR_STOP=0 >/dev/null" </dev/null
   n=$(pg psql -U racinglines -d "$DB" -tAc "\"SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema')\"" | tail -n 1)
   log "$DB has $n tables"
+  # live events are run folders, not rows: back-fill them with the database so staging's own live units carry on
+  # from where production is (a copy; production's folders are only read)
+  log "copying production's live run folders into $STG/data/runs/live"
+  as bash -c "rm -rf $STG/data/runs/live && mkdir -p $STG/data/runs && { [ -d $APP/data/runs/live ] && cp -a $APP/data/runs/live $STG/data/runs/live || mkdir -p $STG/data/runs/live; } && ls $STG/data/runs/live | sed 's/^/  /'"
 else
   log "$DB exists; keeping it (RESET_DB=1 re-copies it)"
 fi
