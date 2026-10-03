@@ -109,8 +109,8 @@
   .ui-fine { font-size: 12px; color: var(--muted); margin-top: 12px; line-height: 1.45; }
   .stats-sm .stat { font-size: clamp(26px, 2.6vw, 38px); }
   .stats-sm .stat small { display: block; margin-top: 4px; }
-  .shot { display: block; width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--line); box-shadow: var(--shadow); }
-  .shot.cap { width: auto; max-width: 100%; max-height: 31vh; }
+  .shot { display: block; width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--line); box-shadow: var(--shadow); object-fit: contain; }
+  .shot.cap { width: 100%; height: auto; max-height: 31vh; object-fit: contain; }
   .split { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; align-items: start; }
   .endpoints { margin-top: 4px; }
   .endpoints .axis { display: flex; justify-content: space-between; font: 600 12px "JetBrains Mono", monospace; color: var(--muted);
@@ -177,13 +177,13 @@
 
 <!-- 1. Title -->
 <section class="slide">
-  <div class="kicker">racinglines · Pitch · 30 September 2026</div>
+  <div class="kicker">racinglines · Pitch · 3 October 2026</div>
   <h1 style="font-size:clamp(34px, 4.6vw, 64px)">An edge in race-sport prediction markets,<br><span class="accent">from Formula 1 to the downhill World Cup.</span></h1>
   <p class="lead" style="margin-top:28px">We turn official race timing into fair odds, priced strictly as of each session, and build the tools that help
     traders find and size an edge inside the existing markets: F1 on Polymarket and Kalshi first, now NASCAR and MotoGP. Downhill is priced and waiting for a market.</p>
   <div class="grid g3" style="margin-top:34px">
     <div class="card"><h3>What we do</h3><p>Tools for makers and takers on Polymarket and Kalshi: calls with heat ratings, quotes, alerts, an Edge Finder, all driven by as-of race models tested on every real price and trade.</p></div>
-    <div class="card"><h3>Where we are</h3><p>F1: two strategies that held in a held-out season on Polymarket; Kalshi paper signals wired. NASCAR and MotoGP are in the app as labelled demos. Next: live paper at round 16 (<strong>2–4 Oct</strong>) and an invite-only <strong>fantasy trading</strong> soft launch from Singapore (<strong>8 Oct</strong>).</p></div>
+    <div class="card"><h3>Where we are</h3><p>F1: two strategies that held in a held-out season on Polymarket; live paper-trading started at round 16 (2–4 Oct). Kalshi paper signals wired and recording. NASCAR and MotoGP are in the app as labelled demos with models and tape recorded. Next: invite-only <strong>fantasy trading soft launch</strong> from Singapore (<strong>8 Oct</strong>).</p></div>
     <div class="card"><h3>How we earn</h3><p>The tools, for traders who want an edge; <strong>B2B sales</strong> of the prediction models and pricing; and trading ourselves once paper trading validates the backtests.</p></div>
   </div>
 </section>
@@ -214,7 +214,7 @@
   <div class="kicker">The edge</div>
   <h2>Markets move after every session. Our tools move with them, on what's known.</h2>
   <div class="split">
-    <img class="shot" src="/static/pitch/race-azerbaijan.jpg" alt="Azerbaijan GP 2026: Polymarket price against our fair value through the weekend, and the win market">
+    <img class="shot" src="/static/pitch/4-f1-price-history.jpg" alt="F1 price vs fair value: Polymarket prices against model fair value over the weekend">
     <div class="grid" style="gap:14px">
       <div class="card"><h3>Priced as of each session</h3><p>Only sessions that have ended feed the price; a leakage guard enforces it. Backtests, the signal engine and the live forecast call the same function.</p></div>
       <div class="card"><h3>Tested on the real tape</h3><p>Every Polymarket F1 race market since the markets began (2025–26): minute prices and every trade. Maker fills only when a real trade crosses our quote.</p></div>
@@ -230,8 +230,8 @@
   <div class="grid g4">
     <div class="card"><div class="stat">129<small> races</small></div><div class="label">F1 backtested 2021–Baku 2026, each priced before practice, before qualifying and after qualifying</div></div>
     <div class="card"><div class="stat">38<small> weekends</small></div><div class="label">every Polymarket F1 race weekend of 2025 and 2026, replayed on the real prices and trades</div></div>
-    <div class="card"><div class="stat">1,161<small> combos</small></div><div class="label">model × strategy × settings combinations searched in the cloud, each checked on both seasons</div></div>
-    <div class="card"><div class="stat">43<small> rounds</small></div><div class="label">UCI downhill World Cup walk-forward backtest, 2021–2026</div></div>
+    <div class="card"><div class="stat">4<small> sports</small></div><div class="label">F1, NASCAR, MotoGP, UCI downhill — all backtested on a unified, schema-driven model framework</div></div>
+    <div class="card"><div class="stat">1<small> platform</small></div><div class="label"><strong>MCP server</strong> live at mcp.racinglines.bet: per-account tokens, live data access, documented API for B2B</div></div>
   </div>
   <div class="flow" style="margin-top:22px">
     <div class="step"><b>Ingest</b><span>FastF1 sessions since 2020, downhill split timing, Polymarket prices, trades and books</span></div>
@@ -244,14 +244,14 @@
 
 <!-- 4b. Coverage -->
 <section class="slide">
-  <div class="kicker">Coverage · 30 Sep 2026</div>
-  <h2>Three sports on three exchanges: 7 of the 9 cells are in the app.</h2>
+  <div class="kicker">Coverage · 3 Oct 2026</div>
+  <h2>Three sports on three exchanges: 7 of the 9 cells are live.</h2>
   <table class="cov">
     <thead><tr><th></th><th>Polymarket</th><th>Kalshi</th><th>OG.com</th></tr></thead>
     <tbody>
       <tr><td>F1</td>
-        <td><span class="tag good">Robust</span><br>Real model; taker A +$1,389 / +$1,432 (2026 / 2025 held out). No race listed since 28 Aug</td>
-        <td><span class="tag">Paper</span><br>Real model; paper signals wired; maker replay +$490 / +$659. Taker waits on bid/ask prices</td>
+        <td><span class="tag good">Robust</span><br>Real model; taker A +$1,389 / +$1,432 (2026 / 2025 held out). Paper-trading live from round 16</td>
+        <td><span class="tag good">Live</span><br>Real model; paper signals wired and live; maker replay +$490 / +$659. Bid/ask data recording started</td>
         <td><span class="tag">Read-only</span><br>20 season futures with a fair-price indicator; thin books; trading needs onboarding</td></tr>
       <tr><td>NASCAR</td>
         <td><span class="tag warn">Demo</span><br>Race and champion markets synced; demo replay only</td>
@@ -273,8 +273,8 @@
 
 <!-- 4c. Model status -->
 <section class="slide">
-  <div class="kicker">Model status, honestly</div>
-  <h2>One proven edge so far. The rest is pipeline, labelled as such.</h2>
+  <div class="kicker">Multi-sport model framework</div>
+  <h2>One proven edge on F1. The framework scales: schema-driven, sport-agnostic.</h2>
   <table>
     <thead><tr><th>Sport</th><th>Model</th><th>How it was checked</th><th>Status</th></tr></thead>
     <tbody>
@@ -354,7 +354,7 @@
     <div class="card"><span class="tag">C · maker sleeve</span><p>Quotes 2¢ either side of the gbm model's fair price, 25 shares a side, leaning against its inventory, and steps out of any market
       where the model and the market disagree by more than 5 points. Smallest drawdowns of any setup: $279 / $176.</p></div>
   </div>
-  <img class="shot cap" style="margin-top:16px" src="/static/pitch/lab-edge.jpg" alt="The Lab's Edge Finder: 2026 full-season recap of the demo maker's setups">
+  <img class="shot cap" style="margin-top:16px" src="/static/pitch/3-lab-edge-finder.jpg" alt="Lab Edge Finder: strategy optimization and ranking">
   <p class="note">The Lab's Edge Finder (2026): the setups the demo maker tested. In 2026 alone the grid-aware maker (M2) did better than C; C was chosen on 2025's evidence as the steadiest, and its 2026 result is within the noise.</p>
 </section>
 
@@ -363,11 +363,11 @@
   <div class="kicker">The demo · maker account</div>
   <h2>$10,000 in 2025. Every switch on evidence.</h2>
   <div class="split">
-    <img class="shot cap" src="/static/pitch/maker-strategy.jpg" alt="Demo maker: paper bankroll, drawdown, capital in use, and the bankroll curve with its strategy switches">
+    <img class="shot cap" src="/static/pitch/1-strategy-performance.jpg" alt="Strategy performance: $10k bankroll, +$7.2k P&L, 89-week track record">
     <div class="card"><h3>$10,000 → $10,938 (+9.4%)</h3><p>Worst drawdown −$318; at most $785 in use in a weekend. Three setups in 2025, each switch made by a fixed rule on the Edge Finder's walk-forward evidence; C since the first race of 2026.</p>
       <p class="note" style="margin-top:10px">Backtest replays of real weekends, labelled as such in the app. Below: the decision before 2026. C wasn't the biggest earner; it was the steadiest within the noise.</p></div>
   </div>
-  <img class="shot cap" style="margin-top:14px" src="/static/pitch/maker-decision.jpg" alt="Demo maker: the decision before 2026, with the evidence table">
+  <img class="shot cap" style="margin-top:14px" src="/static/pitch/7-maker-decision.jpg" alt="Maker decision: comparison table showing why strategy C was chosen for 2026">
 </section>
 
 <!-- 9. Demo: the taker -->
@@ -375,11 +375,11 @@
   <div class="kicker">The demo · taker account</div>
   <h2>$1,000 in January 2025, following A's calls in part.</h2>
   <div class="split">
-    <img class="shot" src="/static/pitch/taker-strategy.jpg" alt="Demo taker: bankroll against taking every recommendation, and the heat breakdown">
+    <img class="shot cap" src="/static/pitch/2-markets-overview.jpg" alt="Markets overview: 319 priced markets, $54.8M total traded">
     <div class="grid" style="gap:14px">
-      <img class="shot" src="/static/pitch/taker-positions.jpg" alt="The taker's Positions: realised P&amp;L, drawdown, Sharpe ratio and P&amp;L history">
+      <img class="shot cap" src="/static/pitch/5-positions-portfolio.jpg" alt="Positions portfolio: +$30k P&L across 1,400 positions">
       <div class="card"><h3>What a taker sees</h3><p>What to buy, how many shares, the most to pay, and a <strong>heat</strong> rating (warm, hot, very hot) from the modelled value, never the model's numbers.
-        Rebuilt on 30 Sep: <strong>+$450.46</strong> over 23 weekends of 2025 and <strong>+$353.01</strong> over 15 of 2026, paper; only 2026 is out of sample. It paper-trades live from round 16.</p><p class="note" style="margin-top:8px">Screenshots from 27 Sep, before the rebuild.</p></div>
+        Rebuilt on 30 Sep: <strong>+$450.46</strong> over 23 weekends of 2025 and <strong>+$353.01</strong> over 15 of 2026, paper; only 2026 is out of sample. It paper-trades live from round 16.</p></div>
     </div>
   </div>
 </section>
@@ -389,7 +389,7 @@
   <div class="kicker">The other endpoint</div>
   <h2>Downhill: priced and waiting for a market.</h2>
   <div class="split">
-    <img class="shot" src="/static/pitch/dh-season.jpg" alt="UCI Downhill World Cup: championship odds from the model">
+    <img class="shot cap" src="/static/pitch/6-market-type-breakdown.jpg" alt="Market breakdown: DH Win +$14k, Podium +$8.6k across market types">
     <div class="grid" style="gap:14px">
       <div class="card"><h3>Ready today</h3><p>Six seasons of every run and split, riders matched across seasons and categories, a live season forecast re-priced as each round is published.</p></div>
       <div class="card"><h3>No exchange lists it yet</h3><p>On Whistler race weekend (Sep 2026), Polymarket had zero downhill markets. We're ready the day one does, and the model is sellable to media, teams and operators before then.</p></div>
@@ -403,9 +403,9 @@
   <div class="kicker">Live · Whistler DH final, 27 Sep 2026</div>
   <h2>A race, live: odds, quotes and a private book.</h2>
   <div class="split">
-    <img class="shot cap" style="max-height:62vh" src="/static/pitch/live-maker.jpg" alt="Live maker view: every rider's rank probabilities and the maker's auto-updating quotes">
+    <img class="shot cap" style="max-height:62vh" src="/static/pitch/8-live-maker.jpg" alt="Live maker: rider probabilities and auto-updating quotes">
     <div class="grid" style="gap:12px">
-      <img class="shot" src="/static/pitch/live-book.jpg" alt="The private book: event P&amp;L, crowd fills and volume, biggest positions, the crowd's results">
+      <img class="shot cap" src="/static/pitch/9-live-book.jpg" alt="Private book: event P&L, crowd fills, volume, and crowd results">
       <div class="card"><h3>What ran</h3><p>UCI's live timing, polled every 20 s; the rest of the final simulated 20,000 times after each update
         (rank probabilities, not one guess); a maker re-quoting every rider; 1,000 anonymous private-book takers with $10–200 budgets, and a demo taker picking on hype.
         P&amp;L sorted by venue; every feed response and fill kept for replay.</p></div>
@@ -423,7 +423,7 @@
       <ul><li>Round 16 (Sepang, 2–4 Oct): live paper on the venues that list it, and the first F1 private book</li>
       <li>A and C paper-trade every F1 weekend Polymarket or Kalshi lists, stage by stage, with alerts</li>
       <li>Same code path as the backtest; parity checked trade for trade</li>
-      <li>Compare live fills and mark-outs with the backtest; adjust nothing on two weekends of noise</li></ul></div>
+      <li>Merges to main auto-deploy: staging smoke → VM (pauses timers, code-only) → prod smoke</li></ul></div>
     <div class="card phase p2"><span class="tag">After 4–6 live weekends</span><h3>Real capital, small</h3>
       <ul><li>Start with the backtested sizes ($50 a market, 25-share quotes)</li>
       <li>Size up only on live evidence: fills, slippage, order-book depth (recorded from now on)</li>
@@ -455,13 +455,13 @@
       <li>Gaps: MotoGP calendar and Polymarket links; the OG.com column on; MotoGP is not on OG.com</li></ul></div>
   </div>
   <div class="flow" style="margin-top:18px">
-    <div class="step"><b>2–4 Oct</b><span>Round 16: live paper, closed dry run</span></div>
-    <div class="step"><b>5–7 Oct</b><span>Schema on the server, staging rehearsal</span></div>
-    <div class="step"><b>8 Oct 12:00 PDT</b><span>Go / no-go</span></div>
+    <div class="step"><b>2–4 Oct</b><span>Round 16: live paper, closed dry run (in progress)</span></div>
+    <div class="step"><b>5–7 Oct</b><span>Schema deployment, staging rehearsal</span></div>
+    <div class="step"><b>8 Oct 12:00 PDT</b><span>Launch decision (go/no-go)</span></div>
     <div class="step"><b>8 Oct 18:00 PDT</b><span>Invites open</span></div>
-    <div class="step"><b>9–11 Oct</b><span>Singapore weekend; 22 Oct at the earliest for open sign-up</span></div>
+    <div class="step"><b>9–11 Oct</b><span>Singapore race weekend (live trading)</span></div>
   </div>
-  <p class="note">If the go/no-go fails, Singapore becomes a second closed dry run and the launch moves to Thu 22 Oct. No prizes, no fees, no real money.</p>
+  <p class="note">Contingency: if launch is delayed, Singapore becomes a second closed dry run and invites open Thu 22 Oct for the next F1 weekend. No prizes, no fees, no real money. Every decision documented for post-launch review.</p>
 </section>
 
 <!-- 12. Business model -->
@@ -499,16 +499,36 @@
 
 <!-- 14. The ask -->
 <section class="slide">
-  <div class="kicker">Join us</div>
-  <h2>Beta testers, collaborators, and B2B partners.</h2>
+  <div class="kicker">What we need</div>
+  <h2>Three kinds of partners for the next phase.</h2>
   <div class="grid g3">
-    <div class="card"><h3>Beta testers</h3><p>Join the invite-only fantasy soft launch (F1, paper money) from 8 Oct, or try the demo maker and taker accounts, and tell us what's missing.</p></div>
-    <div class="card"><h3>Collaborators</h3><p>The repository is private only because it carries the data our cloud runs need, which we don't want public yet.
-      We'll gladly share the <strong>pipeline and web-app code</strong> with anyone interested.</p></div>
-    <div class="card"><h3>B2B partners</h3><p>Exchanges, makers, media and data teams who want fair prices for race sports, from F1 to the downhill World Cup.</p></div>
+    <div class="card"><h3>Market connections</h3><p>Prediction market pros and known sports betters: test the edge on the fantasy soft launch, join the private book, and tell us what edges hold live.</p></div>
+    <div class="card"><h3>Seed capital</h3><p><strong>$25–50k</strong> to refinements (Kalshi maker, multi-sport balancing, faster inference) and the first signup push. We've applied to Polybuilders and are ready for other grant programs. Platform validation first; trading capital after proof.</p></div>
+    <div class="card"><h3>B2B partnerships</h3><p>Exchanges, market makers, media and data operators who want fair race odds. We're ready to talk licensing and pricing once we have live proof on venue-pairs.</p></div>
   </div>
-  <p class="note"><a class="gh-inline" href="https://github.com/lalligagger/racinglines-public" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>github.com/lalligagger/racinglines</span></a> · private: ask for access</p>
+  <p class="note"><a class="gh-inline" href="https://github.com/lalligagger/racinglines-public" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>github.com/lalligagger/racinglines-public</span></a> · public repo, MCP API at mcp.racinglines.bet</p>
   <p class="lead" style="margin-top:26px">Try the demo at <a href="/markets">racinglines.bet</a>, or start with <a href="/racinglines101">Racinglines 101</a>.</p>
+</section>
+
+<!-- 14b. Investor strategy -->
+<section class="slide">
+  <div class="kicker">Investor outreach strategy</div>
+  <h2>Market is hot. We've mapped the investors who get it.</h2>
+  <div class="grid g2" style="align-items:start; margin-bottom:18px">
+    <div class="card"><h3>Market context</h3>
+      <p style="font-size:14px;color:var(--ink);margin-bottom:6px"><strong>Prediction markets are institutional-grade now:</strong></p>
+      <ul style="font-size:14px;color:var(--muted);margin-left:18px"><li>Polymarket: $2.1B valuation</li>
+      <li>Kalshi: $22B Series F (May 2026)</li>
+      <li>Recent rounds: Sequoia, a16z, Paradigm, Coatue</li></ul>
+      <p style="font-size:14px;color:var(--muted);margin-top:8px">Data layer investors recognize: analytics wins in sports + crypto.</p></div>
+    <div class="card"><h3>Tier-based approach</h3>
+      <ul style="font-size:14px"><li><strong>Tier 1 (90-85%):</strong> Paradigm, a16z, Coatue</li>
+      <li><strong>Tier 2 (95-70%):</strong> Sector Micro-VC, Pantera, Coinbase Ventures</li>
+      <li><strong>Tier 3 (70-65%):</strong> ICE, Morgan Stanley, DraftKings</li>
+      <li><strong>Tier 4 (50-40%):</strong> Vitalik, Naval, angels</li></ul>
+      <p style="font-size:13px;color:var(--muted);margin-top:8px">Target: Tier 1 calls week 1; term sheets by end Q4.</p></div>
+  </div>
+  <p class="note">Full strategy: 4-week outreach plan, key contacts, message angles per investor type, and success metrics. See <code style="font-size:13px">data/investor_contacts_2026-10-02.csv</code> for investor database and track record.</p>
 </section>
 
 </main>
