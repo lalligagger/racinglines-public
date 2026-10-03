@@ -110,7 +110,7 @@ def render_html(info, pricing, picks, rest, venues, username=None, images=None):
 <p>{greeting}</p>
 <p>Here are this weekend's top paper picks for the <b>{html.escape(info['title'])}</b> ({_when(info)}), ranked by the
 model's expected profit per $1 contract on {" and ".join(v.title() for v in venues)}.</p>
-<table style="border-collapse:collapse;border:1px solid #cccccc;width:100%;max-width:600px"><tr>{head}</tr>{body}</table>
+<table style="border-collapse:collapse;border:1px solid #cccccc;width:auto;max-width:600px"><tr>{head}</tr>{body}</table>
 {images_html}
 {"<p><b>Next in line:</b></p><ul>" + more + "</ul>" if rest else ""}
 <p><b>Read these with care.</b> Prices are from {html.escape(str(pricing.get('source', 'the live forecast')))}, which
