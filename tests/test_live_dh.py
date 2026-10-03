@@ -262,3 +262,18 @@ def test_waiting_reads_only_what_can_change(tmp_path, monkeypatch):
     assert reads.count("2") == 1
     assert [q["running"] for q in s3["qualifying"]] == [False, True]
     assert not (L.outdir("ev", "3") / "raw").exists()                   # the empty final isn't logged every look
+
+
+def test_a_finished_session_that_still_lists_riders_on_track_is_settled():
+    """Timed training at Lake Placid kept riders in OnTrack after everyone had finished: that's settled, not running."""
+    tt = dict(OnTrack=[dict(RaceNr=1)], NextToStart=[],
+              Results=[dict(RaceNr=1, Status="Finished", RaceTime=1), dict(RaceNr=2, Status="DNF", RaceTime=None)])
+    assert not L.running(tt) and L.settled(tt)
+    live = dict(OnTrack=[dict(RaceNr=2)], Results=[dict(RaceNr=1, Status="Finished", RaceTime=1),
+                                                   dict(RaceNr=2, Status="InRace", RaceTime=None)])
+    assert L.running(live) and not L.settled(live)
+    stale = dict(OnTrack=[dict(RaceNr=1)], Results=[dict(RaceNr=1, Status="Finished", RaceTime=1),
+                                                    dict(RaceNr=4, Status="NA", RaceTime=None)])   # a DNS left 'NA'
+    assert not L.running(stale) and L.settled(stale)
+    nxt = dict(NextToStart=[3], Results=[dict(RaceNr=1, Status="Finished", RaceTime=1), dict(RaceNr=3, Status="NA")])
+    assert L.running(nxt)
