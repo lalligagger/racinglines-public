@@ -17,6 +17,7 @@ subject.txt, email.html and email.txt under <out-dir>/compose-<time>/; exit the 
 
     .venv/bin/python scripts/weekend_picks.py --draft latest --email a@x.com,b@y.com   # send a saved draft again
     .venv/bin/python scripts/weekend_picks.py --draft latest --compose                 # reopen it in a chat to edit
+    .venv/bin/python scripts/weekend_picks.py --draft latest --ask    # type each email and name; {{name}} in the draft
 
 Reads the same market matrix as the MCP `list_markets` tool and ranks every outcome by expected profit per $1
 contract: buying YES costs the ask (EV = fair - ask - fee), buying NO costs 1 - bid (EV = bid - fair - fee). Writes
@@ -241,7 +242,8 @@ Work with the owner step by step:
    {out}
    namely subject.txt (one line), email.html (inline styles only, no external CSS, max-width 720px, so it pastes into Gmail
    or Outlook), and email.txt (the same email as plain text). Then tell the owner to exit (/exit or Ctrl-D) and the
-   script takes over.
+   script takes over. Write the greeting as "Hi {{{{name}}}}," in both bodies: the script fills in each recipient's
+   name when it sends.
 {seed}"""
 
 COMPOSE_QUESTIONS = (  # (question, label, the answer Enter accepts)
@@ -330,6 +332,22 @@ def read_draft(out):
         print(f"no {', '.join(missing)} in {out}", file=sys.stderr)
         return None
     return tuple(f.read_text().strip() if f.name == "subject.txt" else f.read_text() for f in files)
+
+
+NAME = "{{name}}"  # in a draft's greeting, replaced per recipient ("there" when no name is given)
+
+
+def _send_asked(composed, send):
+    """Ask for recipients one at a time (email, then the name for the greeting) and confirm each send."""
+    print(f"\nRecipients one at a time; a blank email finishes. Subject: {composed[0]}")
+    while email := input("\nEmail: ").strip():
+        name = input("Name for the greeting: ").strip()
+        body = [x.replace(NAME, name or "there") for x in composed]
+        greeting = next((line for line in body[2].splitlines() if line.strip()), "")
+        if input(f"Send to {name or '(no name)'} <{email}>, opening \"{greeting[:60]}\"? [y/N] ").strip().lower() == "y":
+            send_email(email, *body, **send)
+        else:
+            print("skipped")
 
 
 def compose_email_interactive(out_dir, venues, min_volume, max_spread, top, mcp_url, context=None, draft=None):
@@ -434,6 +452,8 @@ def main():
     # Compose mode: a Claude Code chat writes the email instead of the template
     ap.add_argument("--compose", action="store_true",
                     help="write the email in a Claude Code chat with the racinglines MCP tools; with --email or --send-all, send it")
+    ap.add_argument("--ask", action="store_true",
+                    help="with --draft or --compose: ask for each recipient's email and name, confirm each send")
     ap.add_argument("--draft", metavar="DIR",
                     help="a saved compose folder (or `latest`): send it again, or with --compose reopen it to edit")
     ap.add_argument("--context", help="what the --compose email should say; skips the questions asked at launch")
@@ -476,11 +496,15 @@ def main():
         if a.send_all:
             with get_engine().connect() as conn:
                 recipients += [r[0] for r in conn.execute(text("SELECT email FROM user_email_prefs WHERE email IS NOT NULL ORDER BY id"))]
-        if not recipients:
-            print("not sent: pass --email (comma-separated for several) or --send-all")
+        if NAME not in subject + html_body + text_body:
+            print(f"note: the draft has no {NAME} placeholder, so every copy gets the same greeting")
+        send = dict(smtp_server=a.smtp_server, smtp_port=a.smtp_port, smtp_user=a.smtp_user, dry_run=a.dry_run)
         for r in dict.fromkeys(recipients):
-            send_email(r, subject, html_body, text_body, smtp_server=a.smtp_server, smtp_port=a.smtp_port,
-                       smtp_user=a.smtp_user, dry_run=a.dry_run)
+            send_email(r, *(x.replace(NAME, "there") for x in composed), **send)
+        if a.ask:
+            _send_asked(composed, send)
+        elif not recipients:
+            print("not sent: pass --email (comma-separated for several), --send-all or --ask")
         return
 
     # Multi-user mode
