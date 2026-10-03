@@ -131,6 +131,8 @@ def main(argv=None):
     p.add_argument("--vacuum-full", action="store_true", help="Return freed space to the OS (locks the tables briefly).")
     p.add_argument("--compact", action="store_true", help="Also merge each month into one deduplicated file.")
     p.add_argument("--stats", action="store_true", help="Only show where the rows are.")
+    p = sub.add_parser("record", help="Live F1 session recorder: fetch current session via FastF1 and store snapshot to database.")
+    p.add_argument("--status", action="store_true", help="Show last passes and snapshots stored (default: record one snapshot).")
     p = sub.add_parser("sweep")
     p.add_argument("--year", type=int, default=2026)
     p.add_argument("--rounds", default=None, help="e.g. 1-15 (default: every raced round)")
@@ -449,6 +451,127 @@ def _run(args):
         for name, st in MS.stats(engine).items():
             print(f"{name:7s} Postgres {st['postgres_rows']:>10,} rows {st['postgres_mb']:8.1f} MB · "
                   f"Parquet {st['parquet_rows']:>10,} rows {st['parquet_mb']:8.1f} MB in {st['parquet_files']} files")
+        return
+    if args.cmd == "record":
+        from datetime import datetime, timezone
+        from sqlalchemy import text
+        from racinglines.web.f1_live import FastF1LiveClient
+
+        if args.status:
+            # Show status of past passes and stored snapshots
+            with engine.connect() as c:
+                log_file = "data/runs/logs/record-fastf1.log"
+                import os
+                if os.path.exists(log_file):
+                    with open(log_file, "r") as f:
+                        lines = f.readlines()
+                    print("--- last passes")
+                    for line in lines[-12:]:
+                        print(line, end="")
+                else:
+                    print("no pass yet")
+                print("\n--- FastF1 snapshots stored (last 24 hours)")
+                result = c.execute(text("""
+                    SELECT to_char(date_trunc('hour', timestamp) + floor(extract(minute FROM timestamp) / 60) * interval '1 min', 'HH24:MI') AS utc,
+                           year, round, session_type, count(*) AS drivers_recorded
+                    FROM fastf1_session_snapshots
+                    WHERE timestamp > now() - interval '24 hours'
+                    GROUP BY 1, 2, 3, 4
+                    ORDER BY 1 DESC, 2, 3, 4
+                """))
+                for row in result:
+                    print(f"{row[0]}  {row[1]} R{row[2]:2d}  {row[3]:10s}  {row[4]} drivers")
+            return
+
+        # Record one snapshot of current F1 session
+        import asyncio
+
+        async def record_snapshot():
+            try:
+                # Detect current F1 session
+                with engine.connect() as c:
+                    # Get upcoming/ongoing/completed races in priority order
+                    result = c.execute(text("""
+                        SELECT e.year, e.round, r.event_date, r.status
+                        FROM events e
+                        JOIN races r ON r.event_id = e.id
+                        WHERE e.year >= 2020
+                        ORDER BY (CASE r.status
+                                   WHEN 'ongoing' THEN 0
+                                   WHEN 'upcoming' THEN 1
+                                   WHEN 'completed' THEN 2
+                                   ELSE 3 END),
+                                 e.year DESC, e.round DESC
+                        LIMIT 1
+                    """))
+                    row = result.fetchone()
+                    if not row:
+                        print("no upcoming/ongoing race found", flush=True)
+                        return
+                    year, round_num, event_date, status = row
+
+                # Fetch current session via FastF1 and store snapshot
+                now = datetime.now(timezone.utc)
+                client = FastF1LiveClient()
+
+                # Determine which session is likely active: try Race first (most common for live), then Q
+                for session_name in ["R", "Q", "S"]:
+                    session = await client.get_session(year, round_num, session_name)
+                    if session:
+                        timing_data = await client.update_live_timing()
+                        if not timing_data.get("error") and timing_data.get("drivers"):
+                            # Store snapshot and driver positions
+                            with engine.begin() as c:
+                                snapshot_result = c.execute(text("""
+                                    INSERT INTO fastf1_session_snapshots
+                                    (timestamp, year, round, session_type, status, lap_count, time_remaining, laps_remaining, flag)
+                                    VALUES (:ts, :year, :round, :session_type, :status, :lap_count, :time_remaining, :laps_remaining, :flag)
+                                    RETURNING id
+                                """), dict(
+                                    ts=now,
+                                    year=year,
+                                    round=round_num,
+                                    session_type=timing_data["session"]["session_type"],
+                                    status=timing_data["session"]["status"],
+                                    lap_count=timing_data["session"].get("lap_count"),
+                                    time_remaining=timing_data["session"].get("time_remaining"),
+                                    laps_remaining=timing_data["session"].get("laps_remaining"),
+                                    flag=timing_data["session"].get("flag")
+                                ))
+                                snapshot_id = snapshot_result.scalar()
+
+                                # Insert driver positions
+                                for driver in timing_data["drivers"]:
+                                    c.execute(text("""
+                                        INSERT INTO fastf1_driver_positions
+                                        (snapshot_id, position, driver_number, driver_name, team, gap_to_leader, last_lap_time, best_lap_time, status, lap_count)
+                                        VALUES (:snapshot_id, :position, :driver_number, :driver_name, :team, :gap_to_leader, :last_lap_time, :best_lap_time, :status, :lap_count)
+                                    """), dict(
+                                        snapshot_id=snapshot_id,
+                                        position=driver["position"],
+                                        driver_number=driver["driver_number"],
+                                        driver_name=driver["driver_name"],
+                                        team=driver["team"],
+                                        gap_to_leader=driver.get("gap_to_leader"),
+                                        last_lap_time=driver.get("last_lap_time"),
+                                        best_lap_time=driver.get("best_lap_time"),
+                                        status=driver.get("status", "on_track"),
+                                        lap_count=driver.get("lap_count")
+                                    ))
+
+                            session_type_label = timing_data["session"]["session_type"]
+                            n_drivers = len(timing_data["drivers"])
+                            print(f"fastf1: {year} R{round_num:2d} {session_type_label:10s} snapshot stored ({n_drivers} drivers)", flush=True)
+                            return
+
+                print("fastf1: no active session detected (no driver data)", flush=True)
+            except Exception as e:
+                import traceback
+                print(f"fastf1: FAILED: {e}", flush=True)
+                traceback.print_exc()
+                sys.exit(1)
+
+        asyncio.run(record_snapshot())
         return
     if args.cmd in ("pm-trades", "pm-record"):
         from sqlalchemy import text
