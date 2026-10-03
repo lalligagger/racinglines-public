@@ -1643,7 +1643,6 @@ async def websocket_f1_live(websocket: WebSocket, session_id: str):
     except Exception as e:
         logger.error(f"WebSocket error for {session_id}: {e}")
         await live_stream_manager.remove_client(session_id)
-        await live_stream_manager.remove_client(session_id)
 
 
 from racinglines.web import admin  # noqa: E402,F401  (registers /admin routes)
