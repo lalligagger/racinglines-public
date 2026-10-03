@@ -42,12 +42,16 @@ if [ -z "$B" ] || [ ! -s "$B" ] || [ $(( $(date +%s) - $(stat -c %Y "$B") )) -gt
 fi
 
 rc=0
-run() {   # run <sport>: refresh forecast for a sport
-  local t0=$SECONDS out
-  if out=$(nice $R "$1" forecast --save --backup "$B" 2>&1); then
-    say "$1 forecast: $(echo "$out" | tail -n 1) ($((SECONDS - t0)) s)"
+run() {   # run <sport>: refresh forecast for a sport if in race weekend
+  local sport=$1 t0=$SECONDS out
+  if ! bash scripts/vm/race_weekend.sh "$sport" >/dev/null 2>&1; then
+    say "$sport forecast: off-week, skipped"
+    return 0
+  fi
+  if out=$(nice $R "$sport" forecast --save --backup "$B" 2>&1); then
+    say "$sport forecast: $(echo "$out" | tail -n 1) ($((SECONDS - t0)) s)"
   else
-    rc=1; say "$1 forecast: FAILED ($((SECONDS - t0)) s): $(echo "$out" | tail -n 3 | tr '\n' ' ')"
+    rc=1; say "$sport forecast: FAILED ($((SECONDS - t0)) s): $(echo "$out" | tail -n 3 | tr '\n' ' ')"
     return 1
   fi
 }
