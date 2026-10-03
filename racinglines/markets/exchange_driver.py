@@ -433,7 +433,7 @@ def history_rows(schema, token, points):
         ts = when(EX.dig(p, fh["ts"]), fh["ts_unit"])
         if mid is not None and ts is not None:
             rows.append(dict(token_id=token, ts=ts, price=mid))
-    return rows
+    return list({r["ts"]: r for r in rows}.values())       # one row per ts: an upsert can't touch a row twice
 
 
 def fetch_history(session, conn, code, start, end=None, sport=None, events=None, client=None):

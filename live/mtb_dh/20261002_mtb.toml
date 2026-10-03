@@ -1,0 +1,12 @@
+# Launch spec: a downhill final (racinglines live, docs/live-events.md). Lake Placid 2026.
+# UCI Downhill World Series, DHI #9, Oct 2-4. Whiteface Mountain.
+sport = "mtb_dh"
+event = "20261002_mtb"
+run = "20261002_mtb_3"
+title = "Lake Placid UCI DH final (private book)"
+
+[feed]
+slug = "20261002_mtb"
+final = "3"
+quali = ["2", "91", "TT_ME"]
+conditions = ""

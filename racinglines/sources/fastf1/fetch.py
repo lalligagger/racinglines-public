@@ -17,7 +17,7 @@ import argparse
 import json
 import logging
 import time
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -48,6 +48,20 @@ def _seconds(df, cols):
         if c in df:
             df[c] = pd.to_timedelta(df[c]).dt.total_seconds()
     return df
+
+
+def session_started(event, kind, now):
+    """Has this weekend's session `kind` started by `now` (naive UTC)? EventDate is the race day, so a weekend in
+    progress is judged per session: practice and qualifying are fetched before the race. A session the schedule
+    doesn't date falls back to the race day; one the event doesn't have is never started."""
+    names = SCHEDULE_NAME[kind] if isinstance(SCHEDULE_NAME[kind], tuple) else (SCHEDULE_NAME[kind],)
+    for i in range(1, 6):
+        if str(event.get(f"Session{i}")) in names:
+            t = event.get(f"Session{i}DateUtc")
+            if t is None or pd.isna(t):
+                return pd.Timestamp(event["EventDate"]).date() <= now.date()
+            return pd.Timestamp(t).tz_localize(None) <= now
+    return False
 
 
 def fetch_session(fastf1, year, event, kind, force=False):
@@ -108,7 +122,7 @@ def main():
         years = list(range(int(a), int(b) + 1))
     else:
         years = [int(y) for y in args.years.split(",")]
-    today = date.today()
+    now = pd.Timestamp.now(tz="UTC").tz_localize(None)
     rounds = None
     if args.rounds:
         rounds = set()
@@ -120,13 +134,8 @@ def main():
         for _, event in schedule.iterrows():
             if rounds and int(event["RoundNumber"]) not in rounds:
                 continue
-            if pd.Timestamp(event["EventDate"]).date() > today:
-                continue  # not raced yet
-            had = {str(event.get(f"Session{i}")) for i in range(1, 6)}
             wanted = [k.strip() for k in args.sessions.split(",") if k.strip()]
-            kinds = [k for k in wanted
-                     if (lambda n: any(x in had for x in (n if isinstance(n, tuple) else (n,))))(SCHEDULE_NAME[k])
-                     and (k != "S" or year >= args.sprints_from)]
+            kinds = [k for k in wanted if session_started(event, k, now) and (k != "S" or year >= args.sprints_from)]
             for kind in kinds:
                 t = time.time()
                 for attempt in range(13):

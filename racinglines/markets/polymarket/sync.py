@@ -345,7 +345,9 @@ def fetch_history(session, conn, event_slugs, start, end, fidelity=60, tokens=No
             pts = r.json().get("history", []) if r.status_code == 200 else []
             if not pts:
                 continue
-            rows = [dict(token_id=tok, ts=datetime.fromtimestamp(p["t"], tz=timezone.utc), price=float(p["p"])) for p in pts]
+            # the API can repeat a timestamp, and one upsert can't touch a row twice: keep the last point per ts
+            rows = list({p["t"]: dict(token_id=tok, ts=datetime.fromtimestamp(p["t"], tz=timezone.utc), price=float(p["p"]))
+                         for p in pts}.values())
             session.execute(pg_insert(m.MarketPriceHistory).values(rows).on_conflict_do_update(
                 index_elements=["token_id", "ts"], set_={"price": pg_insert(m.MarketPriceHistory).excluded.price}))
             n += len(rows)

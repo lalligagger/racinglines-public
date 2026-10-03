@@ -5,8 +5,8 @@
 #   bash scripts/deploy/vm.sh restore           # one time: bucket's data folders + database dump -> the VM
 #   bash scripts/deploy/vm.sh start [web]       # enable and start web, recorder, signals (web: the web app only);
 #                                               # on the Mac it first stops the Mac's recorder and signals agents
-#   bash scripts/deploy/vm.sh live <event> [off] # a live event's timer on the VM (live/f1/<event>.toml): enable
-#                                               # and start it (a step every 5 minutes), or off: stop and disable it
+#   bash scripts/deploy/vm.sh live <event> [off] # a live event on the VM: live/f1/<event>.toml's timer (a step every
+#                                               # 5 minutes) or live/mtb_dh/<event>.toml's poll loop; off: disable it
 #   bash scripts/deploy/vm.sh record [off|status] # the Kalshi and OG.com recorder (scripts/vm/record_venues.sh): a pass
 #                                               # every 5 minutes (the first one backs the database up); status: last
 #                                               # passes and book snapshots per venue per 5 minutes
@@ -23,9 +23,10 @@
 #   bash scripts/deploy/vm.sh accounts [off]    # beta sign-up: back up the database, create the accounts schema and
 #                                               # fantasy-bucks ledger (racinglines users setup, idempotent), switch
 #                                               # RACINGLINES_SIGNUP on, check /signup; off: the switch off (the ledger stays)
-#   bash scripts/deploy/vm.sh staging setup [ref] | deploy [ref] | status | logs | reset | off
+#   bash scripts/deploy/vm.sh staging setup [ref] | deploy [ref] | status | logs | reset | off | live <event> [off]
 #                                               # staging.racinglines.bet: a second app copy on the VM (port 8010,
-#                                               # its own database racinglines_staging, no timers). deploy never pauses
+#                                               # its own database racinglines_staging and data folder; live: its own
+#                                               # run of a live event, like `vm.sh live`). deploy never pauses
 #                                               # production's timers or touches its database; CI runs it on a merge
 #                                               # to the `staging` branch (deploy/ci/staging.yml). docs/vm-deploy.md "Staging"
 #   bash scripts/deploy/vm.sh status | logs [unit] | ssh
@@ -77,13 +78,14 @@ case "${1:-}" in
     ;;
   live)
     ev="${2:-}"
-    [ -n "$ev" ] && [ -f "live/f1/$ev.toml" ] || { echo "usage: vm.sh live <event> [off], with live/f1/<event>.toml in the repo"; exit 1; }
-    t="racinglines-live-f1@$ev.timer"
+    if [ -n "$ev" ] && [ -f "live/f1/$ev.toml" ]; then t="racinglines-live-f1@$ev.timer"
+    elif [ -n "$ev" ] && [ -f "live/mtb_dh/$ev.toml" ]; then t="racinglines-live-dh@$ev.service"   # the poll loop, no timer
+    else echo "usage: vm.sh live <event> [off], with live/f1/<event>.toml or live/mtb_dh/<event>.toml in the repo"; exit 1; fi
     if [ "${3:-}" = off ]; then
       remote "sudo systemctl disable --now $t && echo '$t: off'"
     else
       # before the book opens a step finds nothing due and exits, so enabling early is harmless
-      remote "sudo systemctl enable --now $t && systemctl --no-pager list-timers $t"
+      remote "sudo systemctl enable --now $t && systemctl --no-pager list-timers $t; systemctl --no-pager is-active $t"
     fi
     ;;
   record)
@@ -289,7 +291,7 @@ case "${1:-}" in
         remote "cd $STG && SMOKE_EXPECT_ENV=staging bash scripts/deploy/smoke.sh http://127.0.0.1:8010"
         ;;
       status)
-        remote "cd $STG 2>/dev/null && sudo -u racinglines -H git log -1 --format='staging: %h %s (%cr)' || echo 'staging: not set up'; systemctl --no-pager list-units '$SU*' ; curl -s -o /dev/null -w 'GET http://127.0.0.1:8010/login: %{http_code}  X-Racinglines-Env: %header{x-racinglines-env}\n' http://127.0.0.1:8010/login || true"
+        remote "cd $STG 2>/dev/null && sudo -u racinglines -H git log -1 --format='staging: %h %s (%cr)' || echo 'staging: not set up'; systemctl --no-pager list-units '$SU*' 'racinglines-staging-live-*' ; systemctl --no-pager list-timers 'racinglines-staging-live-*' ; curl -s -o /dev/null -w 'GET http://127.0.0.1:8010/login: %{http_code}  X-Racinglines-Env: %header{x-racinglines-env}\n' http://127.0.0.1:8010/login || true"
         ;;
       logs)
         remote "sudo journalctl --no-pager -n 100 -u $SU"
@@ -297,7 +299,19 @@ case "${1:-}" in
       off)
         remote "sudo systemctl disable --now $SU && echo '$SU: off (the checkout, database and env file stay)'"
         ;;
-      *) echo "usage: vm.sh staging setup [ref] | deploy [ref] | status | logs | reset | off"; exit 1 ;;
+      live)
+        # staging's own live run (its data folder and database), the twin of `vm.sh live`; production's are untouched
+        ev="${3:-}"
+        if [ -n "$ev" ] && [ -f "live/f1/$ev.toml" ]; then u="racinglines-staging-live-f1@"; t="${u}$ev.timer"
+        elif [ -n "$ev" ] && [ -f "live/mtb_dh/$ev.toml" ]; then u="racinglines-staging-live-dh@"; t="${u}$ev.service"
+        else echo "usage: vm.sh staging live <event> [off], with live/f1/<event>.toml or live/mtb_dh/<event>.toml in the repo"; exit 1; fi
+        if [ "${4:-}" = off ]; then
+          remote "sudo systemctl disable --now $t && echo '$t: off'"
+        else
+          remote "sudo install -m 644 $STG/deploy/vm/systemd/${u}.* /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now $t && systemctl --no-pager is-active $t"
+        fi
+        ;;
+      *) echo "usage: vm.sh staging setup [ref] | deploy [ref] | status | logs | reset | off | live <event> [off]"; exit 1 ;;
     esac
     ;;
   status)

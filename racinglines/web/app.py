@@ -1514,11 +1514,34 @@ def diag_example(request: Request, run_id: int, fill: str = Form("through"), c=D
                             status_code=303)
 
 
-# FastF1 live stream (WebSocket support)
-from fastapi import WebSocket, WebSocketDisconnect
-from racinglines.web.f1_live import live_stream_manager, FastF1LiveClient
+async def _f1_live_ws(websocket):
+    """Live F1 timing for one viewer (web/f1_live.py). A plain Starlette route: the app's dependencies (HTTP Basic,
+    the demo guard) can't run on a websocket, so the session cookie is checked here."""
+    from starlette.concurrency import run_in_threadpool
 
-@app.get("/live/f1", response_class=HTMLResponse)
+    from racinglines.web import f1_live
+
+    def who():
+        uid = _session_user_id(websocket.cookies.get(SESSION_COOKIE))
+        if uid is None:
+            return None
+        with get_session() as s:
+            u = U.get_user(s, user_id=uid)
+            return _user_dict(u) if u and u.active else None
+
+    await f1_live.serve(websocket, await run_in_threadpool(who))
+
+
+from starlette.routing import WebSocketRoute  # noqa: E402
+
+app.router.routes.append(WebSocketRoute("/ws/f1/live", _f1_live_ws))
+
+
+# FastF1 live stream (WebSocket support; staging's stream page, web/f1_ws.py)
+from fastapi import WebSocket, WebSocketDisconnect
+from racinglines.web.f1_ws import live_stream_manager, FastF1LiveClient
+
+@app.get("/live/f1/stream", response_class=HTMLResponse)
 def live_f1(request: Request, year: int = 2026, round_num: int = None, c=Depends(conn), user=allow(*ANY)):
     """FastF1 live stream page with market pricing (Whistler Live demo replica).
 

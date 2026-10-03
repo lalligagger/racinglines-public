@@ -1,283 +1,161 @@
 """
-FastF1 live stream integration for real-time F1 timing and telemetry.
+Live F1 timing on the Live page, opt-in per viewer: a "Live timing" button on an F1 event opens a websocket, and the
+server polls FastF1 for the weekend's latest started session every RACINGLINES_F1_STREAM_SEC (default 120 s:
+FastF1 allows about 500 API calls an hour) and sends the classification plus a debug line per step.
 
-Fetches live session data from FastF1 and streams it to connected clients via WebSocket.
-Supports live timing tables, position updates, gap to leader, and session status.
+On only where RACINGLINES_F1_STREAM=1, which is the default on staging (RACINGLINES_ENV=staging) and off elsewhere.
+
+FastF1's load blocks for seconds and is global state (its cache), so each poll runs in a subprocess:
+    python -m racinglines.web.f1_live 2026 16        # prints one snapshot as JSON
+FastF1 publishes a session's timing on its static archive during or after the session, so mid-session a poll can
+come back empty; the debug log says so.
 """
 
 import asyncio
 import json
-import logging
-from datetime import datetime, timezone
-from typing import Optional, Dict, Any, List
-from dataclasses import dataclass, asdict
+import os
+import sys
+import time
 
-try:
+SESSION_ORDER = ("FP1", "FP2", "FP3", "SQ", "S", "Q", "R")
+POLL_TIMEOUT = 180
+
+
+def enabled():
+    return os.environ.get("RACINGLINES_F1_STREAM", "1" if os.environ.get("RACINGLINES_ENV", "").strip() == "staging"
+                          else "0") == "1"
+
+
+def interval():
+    return max(30, int(os.environ.get("RACINGLINES_F1_STREAM_SEC", "120")))
+
+
+def latest_session(event, now):
+    """(schedule name, start) of the weekend's latest session that has started by `now` (naive UTC), else None."""
+    import pandas as pd
+    out = None
+    for i in range(1, 6):
+        name, t = event.get(f"Session{i}"), event.get(f"Session{i}DateUtc")
+        if name and str(name) != "None" and t is not None and not pd.isna(t) and pd.Timestamp(t) <= now:
+            if out is None or pd.Timestamp(t) > out[1]:
+                out = (str(name), pd.Timestamp(t))
+    return out
+
+
+def _secs(x):
+    import pandas as pd
+    if x is None or pd.isna(x):
+        return None
+    return round(x.total_seconds(), 3) if hasattr(x, "total_seconds") else float(x)
+
+
+def snapshot(year, rnd, now=None):
+    """The weekend's latest started session as plain data: dict(session, start, drivers=[...], laps, note)."""
+    import logging
+
     import fastf1
-    from fastf1.core import Session
-except ImportError:
-    fastf1 = None
-    Session = None
+    import pandas as pd
+    logging.getLogger("fastf1").setLevel(logging.ERROR)
+    fastf1.Cache.set_disabled()                    # every poll re-reads FastF1, nothing stale from a cache
+    now = now if now is not None else pd.Timestamp.now(tz="UTC").tz_localize(None)
+    event = fastf1.get_event(year, rnd)
+    pick = latest_session(event, now)
+    if pick is None:
+        return dict(event=str(event["EventName"]), session=None, note="no session of this weekend has started yet",
+                    drivers=[], laps=0)
+    name, start = pick
+    s = fastf1.get_session(year, rnd, name)
+    s.load(laps=True, telemetry=False, weather=False, messages=False)
+    try:                                           # a load that found nothing raises on first access
+        res = s.results if s.results is not None else pd.DataFrame()
+        laps = pd.DataFrame(s.laps) if s.laps is not None else pd.DataFrame()
+    except Exception as ex:                        # noqa: BLE001
+        return dict(event=str(event["EventName"]), session=name, start=start.isoformat(), drivers=[], laps=0,
+                    note=f"FastF1 has no timing for {name} yet ({type(ex).__name__})")
+    best = laps.groupby("Driver")["LapTime"].min() if len(laps) and "LapTime" in laps else pd.Series(dtype=object)
+    last = laps.sort_values("LapNumber").groupby("Driver").tail(1).set_index("Driver") if len(laps) else pd.DataFrame()
+    drivers = []
+    for _, r in res.iterrows():
+        code = r.get("Abbreviation")
+        lr = last.loc[code] if code in last.index else None
+        drivers.append(dict(pos=None if pd.isna(r.get("Position")) else int(r["Position"]), code=code,
+                            name=r.get("FullName"), team=r.get("TeamName"), status=r.get("Status"),
+                            best=_secs(best.get(code)), last=_secs(lr["LapTime"]) if lr is not None else None,
+                            laps=int(lr["LapNumber"]) if lr is not None and not pd.isna(lr["LapNumber"]) else 0))
+    drivers.sort(key=lambda d: (d["pos"] is None, d["pos"] or 0, d["best"] is None, d["best"] or 0))
+    note = None if len(laps) else "FastF1 has no laps for this session yet (it publishes during or after the session)"
+    return dict(event=str(event["EventName"]), session=name, start=start.isoformat(), drivers=drivers,
+                laps=int(len(laps)), note=note)
 
-logger = logging.getLogger(__name__)
+
+async def poll(year, rnd):
+    """One snapshot from a subprocess: (data or None, error text or None, seconds)."""
+    t = time.monotonic()
+    p = await asyncio.create_subprocess_exec(sys.executable, "-m", "racinglines.web.f1_live", str(year), str(rnd),
+                                             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    try:
+        out, err = await asyncio.wait_for(p.communicate(), POLL_TIMEOUT)
+    except asyncio.TimeoutError:
+        p.kill()
+        return None, f"FastF1 didn't answer within {POLL_TIMEOUT} s", time.monotonic() - t
+    secs = time.monotonic() - t
+    if p.returncode != 0:
+        tail = err.decode(errors="replace").strip().splitlines()[-1:] or [f"exit {p.returncode}"]
+        return None, tail[0][:300], secs
+    return json.loads(out), None, secs
 
 
-@dataclass
-class DriverPosition:
-    """A driver's current position in the session."""
-    position: int
-    driver_number: int
-    driver_name: str
-    team: str
-    gap_to_leader: Optional[float]  # in seconds
-    last_lap_time: Optional[float]  # in seconds
-    best_lap_time: Optional[float]  # in seconds
-    status: str  # "on_track", "pitted", "out", etc.
-    lap_count: int
+async def serve(ws, user):
+    """One viewer's stream: wait for {"type": "start", "event": "2026-16"}, then poll until "stop" or disconnect."""
+    from starlette.websockets import WebSocketDisconnect
 
+    async def log(msg, level="info"):
+        await ws.send_json(dict(type="log", level=level, msg=msg, ts=time.strftime("%H:%M:%S", time.gmtime())))
 
-@dataclass
-class SessionStatus:
-    """Current status of an F1 session."""
-    session_type: str  # "fp1", "fp2", "fp3", "sprint_qual", "sprint", "qual", "race"
-    status: str  # "not_started", "ongoing", "completed", "paused"
-    time_remaining: Optional[int]  # seconds for timed sessions
-    laps_remaining: Optional[int]  # laps for race
-    lap_count: int  # current lap being run
-    flag: Optional[str]  # "green", "yellow", "red", "chequered"
-    timestamp: datetime
-
-
-class FastF1LiveClient:
-    """Manages FastF1 live session data fetching and updates."""
-
-    def __init__(self, session: Optional[Session] = None):
-        self.session = session
-        self.current_positions: Dict[int, DriverPosition] = {}
-        self.session_status: Optional[SessionStatus] = None
-        self.last_update: datetime = datetime.now(timezone.utc)
-
-    @staticmethod
-    async def get_session(year: int, round_num: int, session_name: str) -> Optional[Session]:
-        """
-        Get a FastF1 session for live timing.
-        session_name: "FP1", "FP2", "FP3", "SQ", "SS", "Q", "R"
-        """
-        if not fastf1:
-            logger.warning("FastF1 not available; cannot fetch session data")
-            return None
-
+    await ws.accept()
+    if not enabled():
+        await log("live timing is off on this site (RACINGLINES_F1_STREAM)", "error")
+        await ws.close(code=1008)
+        return
+    if user is None:
+        await log("not signed in", "error")
+        await ws.close(code=1008)
+        return
+    await log(f"connected as {user['username']}; send start to begin (poll every {interval()} s)")
+    try:
+        msg = json.loads(await ws.receive_text())
+        if msg.get("type") != "start":
+            await log(f"expected start, got {msg.get('type')}", "error")
+            return
         try:
-            session = fastf1.get_session(year, round_num, session_name)
-            # Load live telemetry data
-            session.load(telemetry=False, weather=False, messages=False)
-            return session
-        except Exception as e:
-            logger.error(f"Failed to load F1 session {year} R{round_num} {session_name}: {e}")
-            return None
-
-    async def update_live_timing(self) -> Dict[str, Any]:
-        """
-        Fetch and return current live timing data.
-        """
-        if not self.session:
-            # Provide demo data when session is not available
-            return self._get_demo_data()
-
-        if not fastf1:
-            return {"error": "FastF1 module not available"}
-
-        try:
-            # Reload session to get latest data (FastF1 caches data)
-            self.session.load(telemetry=False, weather=False, messages=False, restart=True)
-
-            drivers = self._extract_driver_positions()
-            status = self._extract_session_status()
-
-            self.current_positions = {d.driver_number: d for d in drivers}
-            self.session_status = status
-            self.last_update = datetime.now(timezone.utc)
-
-            return {
-                "drivers": [asdict(d) for d in drivers],
-                "session": asdict(status),
-                "timestamp": self.last_update.isoformat()
-            }
-        except Exception as e:
-            logger.error(f"Error updating live timing: {e}")
-            return {"error": str(e)}
-
-    def _extract_driver_positions(self) -> List[DriverPosition]:
-        """Extract current driver positions from session data."""
-        if not self.session or not hasattr(self.session, "laps"):
-            return []
-
-        try:
-            laps = self.session.laps
-            if laps.empty:
-                return []
-
-            # Group by driver and get latest lap
-            drivers = []
-            for driver_num, group in laps.groupby("Driver"):
-                latest = group.iloc[-1]
-
-                # Calculate gap to leader
-                gap = None
-                if hasattr(latest, "Time") and latest.Time is not None:
-                    leader_time = laps["Time"].min()
-                    if leader_time is not None:
-                        gap = (latest.Time - leader_time).total_seconds()
-
-                drivers.append(DriverPosition(
-                    position=int(latest.Position) if hasattr(latest, "Position") and latest.Position else len(drivers) + 1,
-                    driver_number=int(driver_num),
-                    driver_name=str(driver_num),  # FastF1 uses driver numbers; map to name if needed
-                    team=getattr(latest, "Team", "Unknown"),
-                    gap_to_leader=gap,
-                    last_lap_time=self._time_to_seconds(getattr(latest, "Time", None)),
-                    best_lap_time=self._get_best_lap_time(driver_num, laps),
-                    status="on_track",
-                    lap_count=int(getattr(latest, "LapNumber", 0))
-                ))
-
-            # Sort by position
-            drivers.sort(key=lambda d: d.position)
-            return drivers
-        except Exception as e:
-            logger.error(f"Error extracting driver positions: {e}")
-            return []
-
-    def _extract_session_status(self) -> SessionStatus:
-        """Extract current session status."""
-        session_type_map = {
-            "Practice 1": "fp1",
-            "Practice 2": "fp2",
-            "Practice 3": "fp3",
-            "Sprint Qualifying": "sprint_qual",
-            "Sprint": "sprint",
-            "Qualifying": "qual",
-            "Race": "race"
-        }
-
-        session_type = session_type_map.get(getattr(self.session, "name", ""), "unknown")
-
-        return SessionStatus(
-            session_type=session_type,
-            status="ongoing",
-            time_remaining=None,
-            laps_remaining=None,
-            lap_count=int(getattr(self.session, "current_lap", 0)) if hasattr(self.session, "current_lap") else 0,
-            flag=None,
-            timestamp=datetime.now(timezone.utc)
-        )
-
-    def _get_demo_data(self) -> Dict[str, Any]:
-        """Return demo/mock F1 timing data for UI testing when session is unavailable."""
-        demo_drivers = [
-            DriverPosition(1, 1, "Max Verstappen", "Red Bull Racing", 0.0, 95.234, 94.567, "on_track", 45),
-            DriverPosition(2, 81, "Oscar Piastri", "McLaren", 1.234, 95.890, 94.234, "on_track", 45),
-            DriverPosition(3, 16, "Charles Leclerc", "Ferrari", 2.456, 96.123, 94.890, "on_track", 45),
-            DriverPosition(4, 44, "Lewis Hamilton", "Mercedes", 3.567, 96.234, 95.123, "on_track", 45),
-            DriverPosition(5, 55, "Carlos Sainz", "Ferrari", 4.789, 96.456, 95.456, "pitted", 44),
-        ]
-
-        demo_status = SessionStatus(
-            session_type="race",
-            status="ongoing",
-            time_remaining=None,
-            laps_remaining=56,
-            lap_count=45,
-            flag="green",
-            timestamp=datetime.now(timezone.utc)
-        )
-
-        return {
-            "drivers": [asdict(d) for d in demo_drivers],
-            "session": asdict(demo_status),
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
-
-    @staticmethod
-    def _time_to_seconds(time_obj) -> Optional[float]:
-        """Convert FastF1 time object to seconds."""
-        if time_obj is None:
-            return None
-        try:
-            if hasattr(time_obj, "total_seconds"):
-                return time_obj.total_seconds()
-            return float(time_obj)
-        except (TypeError, ValueError):
-            return None
-
-    @staticmethod
-    def _get_best_lap_time(driver_num: int, laps) -> Optional[float]:
-        """Get best lap time for a driver from laps dataframe."""
-        try:
-            driver_laps = laps[laps["Driver"] == driver_num]
-            if driver_laps.empty or not hasattr(driver_laps, "Time"):
-                return None
-            best = driver_laps["Time"].min()
-            return FastF1LiveClient._time_to_seconds(best)
-        except Exception:
-            return None
-
-
-class LiveStreamManager:
-    """Manages WebSocket connections and broadcasts live updates."""
-
-    def __init__(self):
-        self.clients: Dict[str, Any] = {}  # session_id -> websocket connection
-        self.update_tasks: Dict[str, asyncio.Task] = {}
-        self.fastf1_clients: Dict[str, FastF1LiveClient] = {}
-
-    async def add_client(self, session_id: str, websocket):
-        """Add a new WebSocket client."""
-        self.clients[session_id] = websocket
-        logger.info(f"Client connected: {session_id}")
-
-    async def remove_client(self, session_id: str):
-        """Remove a WebSocket client."""
-        if session_id in self.clients:
-            del self.clients[session_id]
-            logger.info(f"Client disconnected: {session_id}")
-
-        # Stop updates if no clients
-        if not self.clients and session_id in self.update_tasks:
-            self.update_tasks[session_id].cancel()
-            del self.update_tasks[session_id]
-
-    async def start_live_updates(self, session_id: str, fastf1_session: Optional[Session], update_interval: int = 5):
-        """Start sending live updates to all connected clients."""
-        client = FastF1LiveClient(fastf1_session)
-        self.fastf1_clients[session_id] = client
-
-        async def update_loop():
+            year, rnd = (int(x) for x in str(msg.get("event", "")).split("-"))
+        except ValueError:
+            await log(f"bad event key {msg.get('event')!r} (want YEAR-ROUND)", "error")
+            return
+        n = 0
+        while True:
+            n += 1
+            await log(f"poll {n}: FastF1 {year} round {rnd}, latest started session")
+            data, err, secs = await poll(year, rnd)
+            if err:
+                await log(f"poll {n} failed after {secs:.1f} s: {err}", "error")
+            else:
+                await ws.send_json(dict(type="timing", data=data))
+                what = data.get("session") or "no session"
+                await log(f"poll {n}: {what}, {len(data['drivers'])} drivers, {data['laps']} laps ({secs:.1f} s)"
+                          + (f"; {data['note']}" if data.get("note") else ""))
+            await log(f"next poll in {interval()} s")
             try:
-                while session_id in self.clients and self.clients[session_id]:
-                    data = await client.update_live_timing()
-
-                    # Broadcast to all clients
-                    for ws in self.clients.values():
-                        try:
-                            await ws.send_text(json.dumps({"type": "timing_update", "data": data}))
-                        except Exception as e:
-                            logger.error(f"Error sending to client: {e}")
-
-                    await asyncio.sleep(update_interval)
-            except asyncio.CancelledError:
-                logger.info(f"Update loop cancelled for {session_id}")
-            except Exception as e:
-                logger.error(f"Error in update loop: {e}")
-
-        # Cancel existing task
-        if session_id in self.update_tasks:
-            self.update_tasks[session_id].cancel()
-
-        # Start new update task
-        task = asyncio.create_task(update_loop())
-        self.update_tasks[session_id] = task
+                msg = json.loads(await asyncio.wait_for(ws.receive_text(), interval()))
+                if msg.get("type") == "stop":
+                    await log("stopped")
+                    await ws.close()
+                    return
+            except asyncio.TimeoutError:
+                pass
+    except WebSocketDisconnect:
+        return
 
 
-# Global live stream manager
-live_stream_manager = LiveStreamManager()
+if __name__ == "__main__":
+    print(json.dumps(snapshot(int(sys.argv[1]), int(sys.argv[2])), default=str))
