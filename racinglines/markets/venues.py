@@ -221,6 +221,16 @@ def pricing_run(conn, info):
     a past race, the latest as-of price made before it started (diagnostic, else a
     forecast created before the start)."""
     if info["status"] != "completed":
+        # Prefer stage runs (live race session data) over forecast runs
+        stage_run = data.q(conn, """SELECT id FROM model_runs WHERE kind = 'stage' AND competition_id = :comp
+                                    AND (CAST(:cat AS int) IS NULL OR category_id = CAST(:cat AS int))
+                                    AND EXISTS (SELECT 1 FROM race_predictions WHERE model_run_id = model_runs.id AND race_id = :r)
+                                    ORDER BY created_at DESC LIMIT 1""",
+                          comp=info["competition_id"], cat=info["category_id"], r=info["race_id"])
+        if len(stage_run):
+            rid = int(stage_run["id"].iloc[0])
+            return dict(run_id=rid, source="live stage", as_of=None)
+        # Fall back to forecast run
         rid, _ = data.latest_forecast_run(conn, info["competition_id"], info["category_id"])
         has = rid and len(data.q(conn, "SELECT 1 FROM race_predictions WHERE model_run_id = :m AND race_id = :r LIMIT 1",
                                  m=rid, r=info["race_id"]))
