@@ -234,7 +234,7 @@ Work with the owner step by step:
 
 
 def _template_seed(venues, min_volume, max_spread, top):
-    """The template's own top picks, as a starting point for the chat; empty when this machine has no database."""
+    """The template's own top picks from $DATABASE_URL, the database the local MCP server reads; empty when unreachable."""
     try:
         with get_engine().connect() as conn:
             event_id = _next_event(conn)
@@ -272,7 +272,8 @@ def compose_email_interactive(out_dir, venues, min_volume, max_spread, top, mcp_
         raise SystemExit("--compose needs the Claude Code CLI (`claude`) on PATH")
     out = Path(out_dir) / f"compose-{datetime.now():%Y%m%d-%H%M%S}"
     out.mkdir(parents=True, exist_ok=True)
-    brief = COMPOSE_BRIEF.format(out=out.resolve(), seed=_template_seed(venues, min_volume, max_spread, top))
+    seed = "" if os.environ.get("RACINGLINES_MCP_TOKEN") else _template_seed(venues, min_volume, max_spread, top)
+    brief = COMPOSE_BRIEF.format(out=out.resolve(), seed=seed)
     subprocess.run([claude, "Help me write this weekend's picks email.", "--mcp-config", _mcp_config(mcp_url),
                     "--append-system-prompt", brief])
     files = [out / n for n in ("subject.txt", "email.html", "email.txt")]
