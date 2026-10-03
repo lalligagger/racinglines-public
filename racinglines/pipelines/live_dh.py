@@ -89,7 +89,9 @@ LATE_WHEN_LEFT = _LIVE["poll"]["late_when_left"]  # the late window opens once t
 LATE_INTERVAL = _LIVE["poll"]["late_interval_s"]  # polls every 2 s, and every taker gets a fresh $LATE_CAP for the window
 LATE_CAP = _LIVE["crowd"]["late_cap"]
 LATE_PACE = _LIVE["crowd"]["late_pace"]           # the late window trades at the push pace: 50x the normal crowd rate
-WAIT_INTERVAL = 60                                 # before the final's start list: a look a minute (qualifying too)
+WAIT_INTERVAL = 300                                # before the final's start list: a look every 5 minutes, a minute
+SOON_INTERVAL = 60                                 # once a qualifying session's start list is on the timing feed,
+                                                   # and BASE_INTERVAL while a qualifying session is running
 BASE_INTERVAL = _LIVE["poll"]["interval_s"]       # CROWD_P is per BASE_INTERVAL seconds; faster polls scale it down (same rate)
 MAX_POS = _LIVE["quoting"]["max_pos"]             # the maker's shares per market, either way
 SKEW = _LIVE["quoting"]["skew"]                   # quotes lean against inventory: shift = -SKEW x half-spread x inventory / MAX_POS
@@ -476,26 +478,58 @@ def provisional(feeds, qbest):
     return out
 
 
-def waiting(slug, key, d, cond, out, interval, quali_keys=(), session=None):
+def running(d):
+    """A qualifying session under way: a rider on course or next to start (ChronoRace's OnTrack / NextToStart)."""
+    return bool(d.get("OnTrack") or d.get("NextToStart") or any(r.get("Status") == "InRace" for r in d.get("Results") or []))
+
+
+def settled(d):
+    """A qualifying feed that won't change: times in and nobody on course or next to start. Riders left without a
+    time then didn't start or finish, whatever their status says (a DNS can stay 'NA')."""
+    return not running(d) and any(r.get("Status") == "Finished" for r in d.get("Results") or [])
+
+
+def waiting(slug, key, d, cond, out, quali_keys=(), session=None):
     """The final's feed has no riders yet (ChronoRace publishes the start list after qualifying): write a
     latest.json so the Live page lists the event, with the qualifying results so far and the model's pre-final
     odds from them (reverse qualifying order, nobody started), and leave the book, the crowd, the positions and
     the final's qualifying cache alone: no quotes until the final's own feed has riders. Without this an empty
-    feed counted 0 riders to start and opened the late window (Lake Placid, 3 Oct 2026)."""
-    feeds = [fetch(slug, k, session) for k in quali_keys]
-    qbest, qratio = quali_from(feeds)
+    feed counted 0 riders to start and opened the late window (Lake Placid, 3 Oct 2026).
+    Requests: a settled session (Q1 once it's over) is read once per process and kept; a session not started or
+    under way is read every look. The next look is BASE_INTERVAL while one is running, SOON_INTERVAL while one's
+    start list is on the feed but nobody has started, else WAIT_INTERVAL; unchanged qualifying times reuse the
+    last simulation."""
     cache = waiting.__dict__.setdefault("cache", {})
+    kept = cache.setdefault("settled", {})
+    feeds, read = [], []
+    for k in quali_keys:
+        f = kept.get((slug, k))
+        if f is None:
+            f = fetch(slug, k, session)
+            read.append(k)
+            if settled(f):
+                kept[(slug, k)] = f
+        feeds.append(f)
+    live = [k for k, f in zip(quali_keys, feeds) if running(f)]
+    soon = [k for k, f in zip(quali_keys, feeds) if f.get("Results") and not running(f) and not settled(f)]   # start list up
+    interval = BASE_INTERVAL if live else SOON_INTERVAL if soon else WAIT_INTERVAL
+    qbest, qratio = quali_from(feeds)
     if "prior" not in cache:
         cache["prior"] = season_prior(slug)
-    rows = simulate(provisional(feeds, qbest), qbest, qratio, cond, prior=cache["prior"])[0] if qbest else []
+    state = json.dumps(sorted(qbest.items()))
+    if cache.get("state") != (slug, state):
+        cache["rows"] = simulate(provisional(feeds, qbest), qbest, qratio, cond, prior=cache["prior"])[0] if qbest else []
+        cache["state"] = (slug, state)
+    rows = cache["rows"]
     book = load_book(out)
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     snap = dict(ts=now, slug=slug, key=key, round=d.get("DisplayName") or event_name(slug), conditions=cond,
                 waiting=("ChronoRace has no start list for this final yet; odds are the model's from qualifying, "
                          "in reverse qualifying order, with no quotes until the final's start list is out"
                          if rows else "ChronoRace has no start list for this final and no qualifying times yet"),
-                qualifying=[dict(key=k, title=f.get("DisplayName") or f"Qualifying {k}", rows=quali_table(f))
-                            for k, f in zip(quali_keys, feeds) if f.get("Results")],
+                qualifying=[dict(key=k, title=f.get("DisplayName") or f"Qualifying {k}", rows=quali_table(f),
+                                 running=k in live) for k, f in zip(quali_keys, feeds) if f.get("Results")],
+                qualifying_live=live, fetched=read,
                 model_version=MODEL_VERSION, counts={"NA": len(rows)} if rows else {}, done=False, riders=rows,
                 quotes=[], maker_pnl=book_pnl(book, {}, {}),
                 betting=dict(closed=False, closed_at=None, last_call=False, to_start=None, late=bool(book.get("late")),
@@ -516,14 +550,14 @@ def update(slug, key, quali_keys, cond="", session=None, interval=BASE_INTERVAL)
     d = fetch(slug, key, session)
     fetched = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     out = outdir(slug, key)
+    riders = parse(d)
+    if not riders:                                                    # no start list yet: the book waits untouched
+        return waiting(slug, key, d, cond, out, quali_keys, session)
     (out / "raw").mkdir(exist_ok=True)
     (out / "snaps").mkdir(exist_ok=True)
     with gzip.open(out / "raw" / f"{fetched}.json.gz", "wt") as f:                 # the feed, as received
         json.dump(d, f)
     import hashlib
-    riders = parse(d)
-    if not riders:                                                    # no start list yet: the book waits untouched
-        return waiting(slug, key, d, cond, out, WAIT_INTERVAL, quali_keys, session)
     cache = update.__dict__.setdefault("cache", {})                   # per process: nothing old is re-processed
     if "q" not in cache:
         cache["q"] = quali_best(slug, quali_keys, session)            # qualifying: fixed for the final
@@ -668,7 +702,9 @@ def _run(slug, key, quali_keys, cond="", interval=BASE_INTERVAL, minutes=0, echo
             snap = update(slug, key, quali_keys, cond, s, interval=LATE_INTERVAL if late else interval)
             if snap.get("waiting"):                                     # no start list yet: the base pace
                 late = False
-                echo(f"{snap['ts']} waiting: {len(snap['riders'])} riders from qualifying; next look in {WAIT_INTERVAL} s")
+                live_q = ", ".join(snap.get("qualifying_live") or []) or "none running"
+                echo(f"{snap['ts']} waiting: {len(snap['riders'])} riders from qualifying (read {snap.get('fetched')}; "
+                     f"{live_q}); next look in {snap['poll_interval']} s")
             else:
                 cur_interval = int((snap.get("betting") or {}).get("interval", interval))
                 if cur_interval == LATE_INTERVAL and not late:               # a Men's Elite rider is on track or next to start
@@ -688,7 +724,7 @@ def _run(slug, key, quali_keys, cond="", interval=BASE_INTERVAL, minutes=0, echo
             echo(f"error: {ex}")
         if minutes and time.time() - t0 > minutes * 60:
             return None
-        time.sleep(WAIT_INTERVAL if snap is not None and snap.get("waiting") else LATE_INTERVAL if late else interval)
+        time.sleep(snap["poll_interval"] if snap is not None and snap.get("waiting") else LATE_INTERVAL if late else interval)
 
 
 def step(spec, now=None, echo=print, **_):
