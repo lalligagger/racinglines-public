@@ -236,11 +236,14 @@ Work with the owner step by step:
    script takes over.
 {seed}"""
 
-COMPOSE_QUESTIONS = (
-    ("Who is this email for?", "Audience"),
-    ("What should it say? (the main point, what to cover)", "Content"),
-    ("Anything to include, avoid, or a tone to use? (optional)", "Notes"),
-    ("Screenshots to put in it: absolute paths, comma-separated (optional)", "Screenshots"),
+COMPOSE_QUESTIONS = (  # (question, label, the answer Enter accepts)
+    ("Who is this email for?", "Audience",
+     "About a dozen friends and family, plus a headline potential investor."),
+    ("What should it say? (the main point, what to cover)", "Content",
+     "The launch email for racinglines, and it has to be perfect. Anyone reading goes from zero to one on what the "
+     "product is and does, and is wowed by our early progress. This weekend's picks are included as a sub-section."),
+    ("Anything to include, avoid, or a tone to use? (optional)", "Notes", ""),
+    ("Screenshots to put in it: absolute paths, comma-separated (optional)", "Screenshots", ""),
 )
 
 
@@ -277,10 +280,11 @@ def _mcp_config(mcp_url):
 
 def _ask_context():
     """The owner's answers at launch, as the chat's first message."""
-    print("\nCompose an email with Claude. Answer what you can; Claude asks about the rest.\n")
+    print("\nCompose an email with Claude. Answer what you can (Enter keeps the default); Claude asks about the rest.\n")
     lines = []
-    for question, label in COMPOSE_QUESTIONS:
-        answer = input(f"{question}\n> ").strip()
+    for question, label, default in COMPOSE_QUESTIONS:
+        shown = f"\n  default: {default}" if default else ""
+        answer = input(f"{question}{shown}\n> ").strip() or default
         if label == "Screenshots" and answer:
             shots = [Path(x.strip()).expanduser().resolve() for x in answer.split(",") if x.strip()]
             for missing in [x for x in shots if not x.is_file()]:
