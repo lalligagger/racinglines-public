@@ -349,6 +349,23 @@ bash scripts/deploy/vm.sh pm-sync [off|status]     # Polymarket, every 5 min, ra
 bash scripts/deploy/vm.sh forecast [off|status]    # NASCAR/MotoGP, every 30 min, race weekends only
 ```
 
+## Live event configuration and model run traceability (2026-10-03)
+
+**Rule:** Live event config files (`live/<sport>/<event>.toml`) must NOT have hardcoded `run =` fields for active
+events. The system computes `run` dynamically from the event key or feed properties (line 79 in `racinglines/pipelines/live.py`),
+ensuring that traceability always reflects the latest model run and avoids stale references.
+
+**Pattern:**
+- **Active/live events** (current race weekends): omit `run =` entirely. The loader will compute it as `{feed.slug}_{feed.final}`
+  for downhill, or the event key for F1 (e.g., `2026-16`). This ensures the live board always uses the current model.
+- **Historical/past events** (completed races, rehearsals): may keep `run =` if necessary to preserve exact reproducibility,
+  but document why in a comment (e.g., "rehearsal from 2026-09-27, saved with specific run for traceability").
+- **Web views** (`racinglines/web/board.py`, `views.py`): all model run references are dynamically fetched via
+  `data.latest_forecasts()`, `model_runs` queries, etc. No hardcoded run IDs in page logic.
+- **Documentation** (`docs/f1-roadmap.md`, decision logs): specific run numbers in historical entries are appropriate
+  (e.g., "backtest run 115, sweep run 191") because they document decisions made at a point in time. Do not hand-write
+  numerical claims about current model performance; generate them from actual runs instead.
+
 ## Safety rails (non-negotiable, carried over from the project's own rules)
 
 - Never flip `POLYMARKET_TRADING_ENABLED` / `KALSHI_TRADING_ENABLED`, run `vm.sh public on`, or run a DB migration

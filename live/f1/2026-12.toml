@@ -3,7 +3,6 @@
 #   racinglines live run live/f1/2026-12.toml --simulate --no-fetch --no-sync
 sport = "f1"
 event = "2026-12"
-run = "2026-12-rehearsal"
 title = "Dutch GP (sprint rehearsal)"
 
 [live.markets]

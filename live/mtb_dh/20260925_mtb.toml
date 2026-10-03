@@ -2,7 +2,6 @@
 # was run (with racinglines mtb_dh live); it's over, so `racinglines live step` leaves its run folder alone.
 sport = "mtb_dh"
 event = "20260925_mtb"
-run = "20260925_mtb_3"
 title = "Whistler DH final (private book)"
 
 [feed]

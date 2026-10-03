@@ -2,7 +2,6 @@
 # UCI Downhill World Series, DHI #9, Oct 2-4. Whiteface Mountain.
 sport = "mtb_dh"
 event = "20261002_mtb"
-run = "20261002_mtb_3"
 title = "Lake Placid UCI DH final (private book)"
 
 [feed]
