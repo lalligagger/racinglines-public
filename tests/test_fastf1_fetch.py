@@ -28,3 +28,13 @@ def test_an_undated_session_falls_back_to_the_race_day():
     ev = dict(_weekend(), Session4DateUtc=pd.NaT)
     assert not session_started(ev, "Q", pd.Timestamp("2026-10-03 12:00"))
     assert session_started(ev, "Q", pd.Timestamp("2026-10-04 12:00"))
+
+
+def test_a_session_is_fetched_only_once_it_is_over():
+    from racinglines.sources.fastf1.fetch import session_ended
+    ev = _weekend()
+    assert not session_ended(ev, "R", pd.Timestamp("2026-10-04 08:30"))       # racing: a fetch now comes back partial
+    assert not session_ended(ev, "R", pd.Timestamp("2026-10-04 10:00"))
+    assert session_ended(ev, "R", pd.Timestamp("2026-10-04 10:31"))
+    assert not session_ended(ev, "Q", pd.Timestamp("2026-10-03 09:00"))
+    assert session_ended(ev, "Q", pd.Timestamp("2026-10-03 09:15"))

@@ -64,6 +64,18 @@ def session_started(event, kind, now):
     return False
 
 
+# How long after its start a session's data is final: the session's length plus a margin (a race is capped at 3 h
+# including suspensions). A session fetched while it runs comes back partial and would then be kept as "cached".
+SESSION_LENGTH = {"FP1": pd.Timedelta("75min"), "FP2": pd.Timedelta("75min"), "FP3": pd.Timedelta("75min"),
+                  "SQ": pd.Timedelta("60min"), "S": pd.Timedelta("75min"), "Q": pd.Timedelta("75min"),
+                  "R": pd.Timedelta("210min")}
+
+
+def session_ended(event, kind, now):
+    """Is this weekend's session `kind` over by `now` (naive UTC): started at least SESSION_LENGTH[kind] ago?"""
+    return session_started(event, kind, now - SESSION_LENGTH.get(kind, pd.Timedelta("75min")))
+
+
 def fetch_session(fastf1, year, event, kind, force=False):
     rnd = int(event["RoundNumber"])
     base = OUT / str(year) / f"{rnd:02d}_{kind}"
@@ -135,7 +147,7 @@ def main():
             if rounds and int(event["RoundNumber"]) not in rounds:
                 continue
             wanted = [k.strip() for k in args.sessions.split(",") if k.strip()]
-            kinds = [k for k in wanted if session_started(event, k, now) and (k != "S" or year >= args.sprints_from)]
+            kinds = [k for k in wanted if session_ended(event, k, now) and (k != "S" or year >= args.sprints_from)]
             for kind in kinds:
                 t = time.time()
                 for attempt in range(13):
