@@ -9,7 +9,7 @@ name = "MotoGP"
 result_kind = "position"          # finishing positions
 model_family = "position_sim"     # conservative, result-only pricing model
 pricing_model = "racinglines.models.motogp_model:MotoGPRaceChallenger"
-display_order = 3
+display_order = 2
 
 [league]
 code = "fim_motogp"
@@ -59,6 +59,11 @@ whether for profit or free of charge' (item 3). No separate API terms were found
 same site. Owner reviewed 2026-09-29 and said the intended use (a private, non-commercial fantasy-trading \
 app for friends) can proceed for now, to be reviewed again in more detail before any soft launch."""
 limits = { history_seasons = 78, splits_available = false }   # splits_available: no per-lap/sector data in JSON
+
+[model]
+# Data hooks for the sport-agnostic results model (racinglines/models/model_global.py, `--model global`); the
+# history's events.source is the [replay] source below. No setting here is tuned.
+group = "team"                    # results.team, for the optional team-form prior
 
 [replay]
 # The taker replay (racinglines/pipelines/position_replay.py; `racinglines motogp replay`). Links stored before the

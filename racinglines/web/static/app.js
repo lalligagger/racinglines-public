@@ -17,7 +17,12 @@
   document.addEventListener("htmx:configRequest", e => {
     if (e.detail.verb !== "get") e.detail.parameters.csrf_token = csrf();
   });
+  let lastToast = 0;                                          // polling must not stack a toast per failed request
   document.addEventListener("htmx:responseError", e => {
+    if (e.detail.requestConfig && e.detail.requestConfig.verb === "get") {   // polls: at most one toast a minute
+      if (Date.now() - lastToast < 60000) return;
+      lastToast = Date.now();
+    }
     const x = e.detail.xhr, text = (x.responseText || "").trim();
     let msg = text;
     try { msg = JSON.parse(text).detail || text; } catch (err) {}
@@ -25,29 +30,51 @@
   });
   function toast(msg) {
     let t = document.getElementById("toast");
-    if (!t) { t = document.createElement("div"); t.id = "toast"; t.className = "flash bad"; t.setAttribute("role", "alert");
-      t.style.cssText = "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:50;max-width:min(90vw,560px)"; document.body.appendChild(t); }
+    if (!t) { t = document.createElement("div"); t.id = "toast"; t.className = "flash bad toast"; t.setAttribute("role", "alert");
+      document.body.appendChild(t); }
     t.textContent = msg; clearTimeout(toast.timer); toast.timer = setTimeout(() => t.remove(), 6000);
   }
 
   // --- generic pressed toggles: <button data-toggle="plot" data-value="x"> shows [data-plot="x"], hides the others;
-  //     data-value="*" shows them all ---
+  //     data-value="*" shows them all; special case: data-toggle="venue" toggles .m markers by data-venue ---
   document.addEventListener("click", e => {
     const b = e.target.closest("button[data-toggle]");
     if (!b) return;
     const group = b.dataset.toggle, v = b.dataset.value;
     document.querySelectorAll(`button[data-toggle="${group}"]`).forEach(x => x.setAttribute("aria-pressed", String(x === b)));
-    document.querySelectorAll(`[data-${group}]:not(button)`).forEach(p => { p.hidden = v !== "*" && p.dataset[group] !== v; });
+    if (group === "venue") {
+      // Toggle venue indicators on bars
+      document.querySelectorAll(".bar .m").forEach(m => {
+        m.style.display = m.dataset.venue === v ? "" : "none";
+      });
+      // Toggle gap values in the Gap column
+      document.querySelectorAll(".gap-cell .gap-value").forEach(g => {
+        g.style.display = g.dataset.venue === v ? "" : "none";
+      });
+    } else {
+      document.querySelectorAll(`[data-${group}]:not(button)`).forEach(p => { p.hidden = v !== "*" && p.dataset[group] !== v; });
+    }
   });
 
   // --- page tabs: <nav class="ptabs" data-tabs="name"><button data-tab="k">…</button></nav> shows [data-panel="k"] and
   //     hides the other panels. One set per page; the choice is remembered per page, and #k in the URL opens a tab
   //     (so does a link to any element inside one). Content re-rendered by HTMX gets the same tab back. ---
+  // The panels of a tab nav are the [data-panel] elements under the nav's parent (not nested in another panel), so a
+  // page with a second set (or a panel holding its own tabs) is not hidden by this one. Tabs get ids and the panels
+  // role=tabpanel + aria-labelledby them; the selected tab is also the only one in the tab order.
+  function tabPanels(nav) {
+    const root = nav.parentElement || document;
+    return [...root.querySelectorAll("[data-panel]")].filter(p => !p.parentElement.closest("[data-panel]"));
+  }
   function tabsApply(nav, key, setHash) {
     const btns = [...nav.querySelectorAll("[data-tab]")];
     if (!btns.some(b => b.dataset.tab === key)) key = btns.length ? btns[0].dataset.tab : null;
-    btns.forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === key)));
-    document.querySelectorAll("[data-panel]").forEach(p => { p.hidden = p.dataset.panel !== key; });
+    const idOf = k => "tab-" + nav.dataset.tabs + "-" + k;
+    btns.forEach(b => { b.id = idOf(b.dataset.tab); b.setAttribute("aria-selected", String(b.dataset.tab === key)); });
+    tabPanels(nav).forEach(p => {
+      p.hidden = p.dataset.panel !== key; p.setAttribute("role", "tabpanel");
+      if (btns.some(b => b.dataset.tab === p.dataset.panel)) p.setAttribute("aria-labelledby", idOf(p.dataset.panel));
+    });
     store.set("tabs." + nav.dataset.tabs, key);
     if (setHash && key) history.replaceState(null, "", "#" + key);
   }
@@ -65,6 +92,51 @@
     const b = e.target.closest("[data-tabs] [data-tab]");
     if (b) tabsApply(b.closest("[data-tabs]"), b.dataset.tab, true);
   });
+
+  // --- inline-handler replacements: <select data-autosubmit> submits its form on change; <form data-confirm="…">
+  //     asks before submitting; <select data-sets-cutoff> copies the chosen option's data-cutoff into the form's
+  //     cutoff field; <button data-copy="#textarea" data-copied="#status" data-copied-text="…"> copies the text ---
+  document.addEventListener("change", e => {
+    const t = e.target;
+    if (t.matches && t.matches("[data-autosubmit]") && t.form) t.form.submit();
+    if (t.matches && t.matches("[data-sets-cutoff]") && t.form && t.form.cutoff) t.form.cutoff.value = t.selectedOptions[0].dataset.cutoff;
+  });
+  document.addEventListener("submit", e => {
+    const f = e.target;
+    if (f.matches && f.matches("form[data-confirm]") && !confirm(f.dataset.confirm)) e.preventDefault();
+  });
+  document.addEventListener("click", e => {
+    const b = e.target.closest("[data-copy]");
+    if (!b) return;
+    const t = document.querySelector(b.dataset.copy), done = document.querySelector(b.dataset.copied || "#none");
+    if (!t) return;
+    const ok = () => { if (done) done.textContent = b.dataset.copiedText || "Copied."; };
+    const legacy = () => { t.select(); document.execCommand("copy"); ok(); };
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t.value).then(ok, legacy);
+    else legacy();
+  });
+  // the forgot-password page: the e-mail text follows the username box and feeds the mailto link
+  function forgotInit() {
+    const t = document.getElementById("forgot-email"), u = document.getElementById("forgot-user"), a = document.getElementById("forgot-send");
+    if (!t || !u || !a) return;
+    const base = t.value, support = t.dataset.support || "";
+    function sync() {
+      t.value = base.replace("YOUR USERNAME", (u.value || "").trim() || "YOUR USERNAME");
+      const text = t.value.split("\n").slice(3).join("\n");           // the part after To and Subject
+      a.href = "mailto:" + support + "?subject=" + encodeURIComponent("Password reset request") + "&body=" + encodeURIComponent(text);
+    }
+    u.addEventListener("input", sync); sync();
+  }
+  // the site notice: shown once per browser session (the sign-up variant has its own key, and also sets the plain one)
+  function noticeInit() {
+    const d = document.getElementById("site-notice");
+    if (!d) return;
+    const k = "racinglines-notice-ok" + (d.dataset.signup ? "-signup" : "");
+    try { if (sessionStorage.getItem(k)) return; } catch (e) {}
+    d.addEventListener("close", () => {
+      try { sessionStorage.setItem(k, "1"); sessionStorage.setItem("racinglines-notice-ok", "1"); } catch (e) {} });
+    if (d.showModal) d.showModal(); else d.setAttribute("open", "");
+  }
 
   // --- collapsed sections: <details data-remember="id"> keeps its open / closed state per browser ---
   document.addEventListener("toggle", e => {
@@ -125,41 +197,93 @@
     });
   }
 
-  // --- calendar: <div data-calendar data-rows="25"> with <select data-cal-filter="sport|exchange"> and
-  //     <input data-cal-filter="q"> above a table whose <tbody tr> carry data-sport / data-exchange (space-
-  //     separated codes). Every filter must match (AND); a row cap behind "Show all", like tableInit's. ---
+  // --- calendar: <div data-calendar data-events="[...]"> a month grid (Mon-start). <select data-cal-filter="sport|
+  //     exchange"> and <input data-cal-filter="q"> narrow which events show; a day over 3 events gets a "+N more".
+  //     Month navigation and filtering are all client-side (every event for the page is already in data-events). ---
   function calendarInit(root) {
     root.querySelectorAll("[data-calendar]").forEach(box => {
       if (box.dataset.tt) return;
       box.dataset.tt = 1;
-      const rows = [...box.querySelectorAll("tbody tr")], cap = +box.dataset.rows || 0;
-      const sport = box.querySelector('[data-cal-filter="sport"]'), exch = box.querySelector('[data-cal-filter="exchange"]'),
-            q = box.querySelector('[data-cal-filter="q"]'), count = box.querySelector("[data-cal-count]"),
-            more = box.querySelector("[data-cal-more]");
-      let all = !(cap && rows.length > cap);
-      function apply() {
+      let events = [];
+      try { events = JSON.parse(box.dataset.events || "[]"); } catch (e) {}
+      const byDay = new Map();
+      events.forEach(e => {
+        if (!e.date) return;
+        const key = e.date.slice(0, 10);
+        (byDay.get(key) || byDay.set(key, []).get(key)).push(e);
+      });
+      const grid = box.querySelector("[data-cal-grid]"), label = box.querySelector("[data-cal-label]"),
+            sport = box.querySelector('[data-cal-filter="sport"]'), exch = box.querySelector('[data-cal-filter="exchange"]'),
+            q = box.querySelector('[data-cal-filter="q"]');
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const todayKey = today.toISOString().slice(0, 10);
+      let cur = new Date(today.getFullYear(), today.getMonth(), 1);
+
+      function matches(e) {
         const s = sport ? sport.value : "", x = exch ? exch.value : "", qq = q ? q.value.trim().toLowerCase() : "";
-        let matched = 0;
-        rows.forEach(r => {
-          const ok = (!s || r.dataset.sport === s) && (!x || (r.dataset.exchange || "").split(" ").includes(x))
-                     && (!qq || r.textContent.toLowerCase().includes(qq));
-          if (ok) matched++;
-          r.hidden = !ok || (!all && matched > cap);
-        });
-        if (more) more.hidden = all || !(cap && matched > cap);
-        if (count) count.textContent = matched === rows.length ? `${rows.length} events` : `${matched} of ${rows.length} events`;
+        return (!s || e.sport === s) && (!x || (e.exchanges || []).includes(x)) && (!qq || (e.title || "").toLowerCase().includes(qq));
       }
-      [sport, exch, q].forEach(el => el && el.addEventListener("input", apply));
-      if (more) more.addEventListener("click", () => { all = true; apply(); });
-      apply();
+      function dayCell(dayNum, dayEvents) {
+        const c = document.createElement("div");
+        c.className = "cal-cell" + (dayNum == null ? " empty" : "");
+        if (dayNum == null) return c;
+        const key = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`;
+        if (key === todayKey) c.classList.add("today");
+        const n = document.createElement("div"); n.className = "cal-day"; n.textContent = dayNum; c.appendChild(n);
+        const shown = dayEvents.slice(0, 3);
+        shown.forEach(e => {
+          const a = document.createElement(e.url ? "a" : "div");
+          a.className = "cal-ev"; if (e.url) a.href = e.url;
+          a.title = e.title; a.textContent = e.title;
+          c.appendChild(a);
+        });
+        if (dayEvents.length > shown.length) {
+          const more = document.createElement("div"); more.className = "cal-more";
+          more.textContent = `+${dayEvents.length - shown.length} more`; more.title = dayEvents.slice(3).map(e => e.title).join(", ");
+          c.appendChild(more);
+        }
+        return c;
+      }
+      function render() {
+        const y = cur.getFullYear(), m = cur.getMonth();
+        if (label) label.textContent = cur.toLocaleString(undefined, { month: "long", year: "numeric" });
+        const startOffset = (new Date(y, m, 1).getDay() + 6) % 7;         // Monday-start week
+        const daysInMonth = new Date(y, m + 1, 0).getDate();
+        grid.innerHTML = "";
+        for (let i = 0; i < startOffset; i++) grid.appendChild(dayCell(null, []));
+        for (let d = 1; d <= daysInMonth; d++) {
+          const key = `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+          grid.appendChild(dayCell(d, (byDay.get(key) || []).filter(matches)));
+        }
+      }
+      const prev = box.querySelector("[data-cal-prev]"), next = box.querySelector("[data-cal-next]"),
+            todayBtn = box.querySelector("[data-cal-today]");
+      if (prev) prev.addEventListener("click", () => { cur.setMonth(cur.getMonth() - 1); render(); });
+      if (next) next.addEventListener("click", () => { cur.setMonth(cur.getMonth() + 1); render(); });
+      if (todayBtn) todayBtn.addEventListener("click", () => { cur = new Date(today.getFullYear(), today.getMonth(), 1); render(); });
+      [sport, exch, q].forEach(el => el && el.addEventListener("input", render));
+      render();
     });
   }
-  function initAll(root) { tabsInit(root); detailsInit(root); tableInit(root); calendarInit(root); }
+  // --- local time: <time class="localtime" datetime="ISO"> (the recorders legend) shows the browser's local time
+  //     once this runs; the server-rendered UTC text is the no-JS fallback ---
+  function localTimeInit(root) {
+    root.querySelectorAll("time.localtime[datetime]").forEach(t => {
+      if (t.dataset.localized) return;
+      const d = new Date(t.getAttribute("datetime"));
+      if (isNaN(d)) return;
+      t.textContent = d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      t.dataset.localized = "1";
+    });
+  }
+  function initAll(root) { tabsInit(root); detailsInit(root); tableInit(root); calendarInit(root); localTimeInit(root); }
   document.addEventListener("htmx:afterSwap", e => initAll(e.detail.target));
 
   document.addEventListener("DOMContentLoaded", () => {
   initAll(document);
   openHashDetails();
+  forgotInit();
+  noticeInit();
   // --- Lab: sections open on demand (HTMX loads them on their "open" event), remembered per browser ---
   const lab = document.getElementById("lab");
   if (lab) {
@@ -280,8 +404,10 @@
     function show(i) {
       sl.value = Math.max(0, Math.min(T.length - 1, i)); label();
       const t = T[+sl.value];
-      history.replaceState(null, "", base + "t=" + t); if (link) link.href = base + "t=" + t;
-      return htmx.ajax("GET", base + "partial=1&t=" + t, {target: "#live", swap: "innerHTML"});
+      const u = new URL(base, location.href); u.searchParams.set("t", t);
+      const page = u.pathname + u.search; u.searchParams.set("partial", "1");
+      history.replaceState(null, "", page); if (link) link.href = page;
+      return htmx.ajax("GET", u.pathname + u.search, {target: "#live", swap: "innerHTML"});
     }
     function stop() { clearTimeout(timer); timer = null; play.setAttribute("aria-pressed", "false"); play.textContent = "▶ Play"; }
     function tick() {

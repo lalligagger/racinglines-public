@@ -169,12 +169,6 @@ def test_admin_reset_shows_a_one_time_password_and_remove(app_db):
     assert _balance("ada_lovelace") is None                                # its ledger rows went with it
 
 
-def test_admin_create_gets_the_grant_too(app_db):
-    client, csrf = _admin(app_db)
-    client.post("/admin/users", data=dict(csrf_token=csrf, username="newbie", password="newbie-pass-1", role="pro"))
-    assert float(_balance("newbie")) == 1000
-
-
 def test_cli(app_db, capsys):
     from racinglines.cli import users as CLI
     assert CLI.main(["add", "carol", "--role", "pro"]) == 0

@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% from "_macros.html" import csrf, table, flash, page_head %}
 {% block title %}{{ mk.title }}{% endblock %}
 {% block content %}
-<p class="crumbs"><a href="/book">{{ "Books" if user.role == 'admin' else "My Book" }}</a> › <a href="/book/quotes?race_id={{ mk.race_id }}">Quotes</a> › {{ mk.kind }}</p>
+<p class="crumbs"><a href="/book">{{ "Books" if user.role == 'admin' else "My book" }}</a> › <a href="/book/quotes?race_id={{ mk.race_id }}">Quotes</a> › {{ mk.kind }}</p>
 {{ page_head(mk.title, "maker " ~ mk.maker ~ " · " ~ mk.kind ~ " · fair from " ~ mk.fair_source ~ (" run #" ~ mk.model_run_id if mk.model_run_id else "")) }}
 {{ flash(msg) }}
 <div class="kpis hero">
@@ -9,7 +9,7 @@
   <div class="kpi"><div class="l">Fair</div><div class="v">{{ mk.fair_prob|fmt("model_prob") }}</div><div class="s">spread {{ "%.0f"|format(mk.spread*100) }} pts</div></div>
   <div class="kpi"><div class="l">YES</div><div class="v">{{ mk.yes_price if mk.yes_price is not none else "–" }}</div><div class="s">{% if mk.yes_price %}pays {{ "%.2f"|format(1/mk.yes_price) }}× stake{% else %}not offered{% endif %}</div></div>
   <div class="kpi"><div class="l">NO</div><div class="v">{{ mk.no_price if mk.no_price is not none else "–" }}</div><div class="s">{% if mk.no_price %}pays {{ "%.2f"|format(1/mk.no_price) }}× stake{% else %}not offered{% endif %}</div></div>
-  <div class="kpi"><div class="l">Exposure</div><div class="v sm">if YES <span class="{{ 'bad' if mk.pnl_if_yes < 0 else '' }}">${{ "%.2f"|format(mk.pnl_if_yes) }}</span> · if NO <span class="{{ 'bad' if mk.pnl_if_no < 0 else '' }}">${{ "%.2f"|format(mk.pnl_if_no) }}</span></div><div class="s">EV ${{ "%.2f"|format(mk.ev) }}</div></div>
+  <div class="kpi"><div class="l">Exposure</div><div class="v sm">if YES <span class="{{ 'bad' if mk.pnl_if_yes < 0 else '' }}">{{ mk.pnl_if_yes|money(true) }}</span> · if NO <span class="{{ 'bad' if mk.pnl_if_no < 0 else '' }}">{{ mk.pnl_if_no|money(true) }}</span></div><div class="s">EV {{ mk.ev|money }}</div></div>
 </div>
 {% if mk.kind.startswith('rank') %}<p class="note">Settle from the official UCI standings. Pricing uses placeholder points tables.</p>{% endif %}
 <div class="grid">
@@ -23,7 +23,7 @@
   {% elif mk.status == 'closed' %}<input type="hidden" name="status" value="open"><button>Re-open</button>{% endif %}</form>
 </div>
 <div class="card"><h2>{{ "Record an offline bet" if user.role == 'admin' else "Exposure" }}</h2>
-{% if user.role != 'admin' %}<p class="muted">Basic accounts bet on the market board; bets show up below.</p>
+{% if user.role != 'admin' %}
 {% elif mk.status == 'open' %}
 <form method="post" action="/book/markets/{{ mk.id }}/bet" class="row">{{ csrf() }}
   <label><span>Counterparty</span><input name="counterparty" required size="16"></label>

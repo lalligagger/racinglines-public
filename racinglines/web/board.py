@@ -91,12 +91,18 @@ def board(conn, maker_id):
     from racinglines import exchanges as EX
     from racinglines import sports as SP
     from racinglines.markets import alerts
-    fresh = list(alerts.new_links(conn).values()) if conn is not None else []  # race_id (or None) per new token
+    fresh = list(alerts.new_links(conn).values()) if conn is not None else []  # (race_id, competition_id) per new token
+
+    def _new_for(race_id=None, comp_id=None):
+        """How many new tokens are for this exact race, or (race_id=None) this exact sport's season markets.
+        Both race_id and competition_id are market_links columns (no fuzzy text matching)."""
+        return sum(1 for rid, cid in fresh if rid == race_id and (race_id is not None or cid == comp_id))
     forecasts = {}
     if conn is not None:
         forecasts = {r["competition"]: r for r in data.latest_forecasts(conn).to_dict("records")}
     from racinglines.web import sport_status as SS
     status_on = SS.enabled()                       # RACINGLINES_SPORT_STATUS=1: model sections for sports with as-of runs
+    ss_by_comp = {r["competition"]: r for r in SS.status(conn)} if conn is not None else {}  # quick-look chips, always on
     asof_by_comp = {}
     if conn is not None and status_on:
         for r in data.q(conn, """SELECT co.code AS competition, count(DISTINCT mr.params->>'event_key') AS races,
@@ -124,12 +130,12 @@ def board(conn, maker_id):
             comp_id = int(data.q(conn, "SELECT id FROM competitions WHERE code = :c", c=code)["id"].iloc[0])
             targets = data.run_race_targets(conn, run["id"])
             targets = targets[targets["race_id"].notna() & ~targets["target"].astype(str).str.startswith("backtest:")]
-            upcoming = [dict(_card(conn, int(r), maker_id), new=fresh.count(int(r))) for r in targets["race_id"].head(3)]
+            upcoming = [dict(_card(conn, int(r), maker_id), new=_new_for(int(r))) for r in targets["race_id"].head(3)]
             later = [dict(title=f"{t['venue']} GP" if code == "f1_wdc" else (t["event_name"] or t["venue"]), event_id=t["event_id"],
-                          race_id=int(t["race_id"]), date=t["start_date"], new=fresh.count(int(t["race_id"]))) for t in targets.iloc[3:].to_dict("records")]
+                          race_id=int(t["race_id"]), date=t["start_date"], new=_new_for(int(t["race_id"]))) for t in targets.iloc[3:].to_dict("records")]
             s_info, s_pricing, s_df = season_matrix(conn, code, maker_id)
             from racinglines.web.views import latest_season_strategy
-            season = dict(new=fresh.count(None), info=s_info, top=_top(s_df, "champion"), venues=venue_summary(s_df), mine=_mine(s_df),
+            season = dict(new=_new_for(None, comp_id), info=s_info, top=_top(s_df, "champion"), venues=venue_summary(s_df), mine=_mine(s_df),
                           outcomes=len(s_df), constructors=_top(s_df, "constructors_champion", 2),
                           strategy=latest_season_strategy(conn, code))
             recent = recent_results(conn, comp_id)
@@ -139,9 +145,9 @@ def board(conn, maker_id):
             # (`<sport> replay --save`: made before each race) against the winner
             comp_id = int(data.q(conn, "SELECT id FROM competitions WHERE code = :c", c=code)["id"].iloc[0])
             nxt = next_races(conn, comp_id)
-            upcoming = [dict(_card(conn, int(r), maker_id), new=fresh.count(int(r))) for r in nxt["race_id"].head(3)]
+            upcoming = [dict(_card(conn, int(r), maker_id), new=_new_for(int(r))) for r in nxt["race_id"].head(3)]
             later = [dict(title=t["name"], event_id=t["event_id"], race_id=int(t["race_id"]), date=t["start_date"],
-                          new=fresh.count(int(t["race_id"]))) for t in nxt.iloc[3:].to_dict("records")]
+                          new=_new_for(int(t["race_id"]))) for t in nxt.iloc[3:].to_dict("records")]
             recent = recent_results(conn, comp_id)
         elif exch:
             tape_events = []
@@ -154,7 +160,8 @@ def board(conn, maker_id):
             season = None
             recent = []
         sports.append(dict(code=code, name=SPORT_NAME.get(code, schema["sport"]["name"]), run=run, tape=tape, asof=asof,
-                           upcoming=upcoming, later=later, season=season, recent=recent, exchanges=exch))
+                           upcoming=upcoming, later=later, season=season, recent=recent, exchanges=exch,
+                           status=ss_by_comp.get(code)))
     sports.sort(key=lambda s: SPORT_ORDER.get(s["code"], 9))
     return sports
 
@@ -164,9 +171,9 @@ STALE_MIN = 15          # a venue with no book snapshot for this long is "stale"
 
 def recorder_status(conn, codes, now=None):
     """Per venue in `codes` (in that order): open markets linked, how many have a book snapshot in the last 10 minutes,
-    the latest snapshot's time, and a state: "live", "stale" (nothing for STALE_MIN minutes) or "none" (no snapshot
-    yet, or nothing linked). Fails soft: a query error gives every venue state "unknown" (and rolls the read back), so a
-    page showing it still loads with whatever else it has."""
+    the latest snapshot's time and minutes elapsed, and a state: "live", "stale" (nothing for STALE_MIN minutes) or
+    "none" (no snapshot yet, or nothing linked). Fails soft: a query error gives every venue state "unknown" (and
+    rolls the read back), so a page showing it still loads with whatever else it has."""
     now = now or datetime.now(timezone.utc)
     try:
         df = data.q(conn, """
@@ -191,8 +198,10 @@ def recorder_status(conn, codes, now=None):
         last = None if last is None or pd.isna(last) else pd.Timestamp(last).to_pydatetime()
         if last is not None and last.tzinfo is None:
             last = last.replace(tzinfo=timezone.utc)
-        state = "none" if last is None else "live" if (now - last).total_seconds() <= STALE_MIN * 60 else "stale"
-        out.append(dict(code=c, name=next((v.name for v in VENUES if v.code == c), c), linked=int(r.get("linked") or 0), recent=int(r.get("recent") or 0), last=last, state=state))
+        minutes = None if last is None else (now - last).total_seconds() / 60
+        state = "none" if last is None else "live" if minutes <= STALE_MIN else "stale"
+        out.append(dict(code=c, name=next((v.name for v in VENUES if v.code == c), c), linked=int(r.get("linked") or 0),
+                        recent=int(r.get("recent") or 0), last=last, minutes=minutes, state=state))
     return out
 
 
@@ -212,13 +221,20 @@ def headline(conn, maker_id):
     rec_ts = rec["ts"].iloc[0] if len(rec) and not pd.isna(rec["ts"].iloc[0]) else None
     rec_n = int(rec["n"].iloc[0] or 0) if len(rec) and rec["n"].iloc[0] is not None else 0
     bk = house.book(conn, maker_id=maker_id, status="open")
-    bt = data.q(conn, """SELECT metrics->'summary'->'pre_race|track=True' AS s FROM model_runs
-                         WHERE kind = 'backtest' AND coalesce(params->>'variant', 'baseline') = 'baseline' ORDER BY id DESC LIMIT 1""")
-    s = bt["s"].iloc[0] if len(bt) else None
     jobs = data.q(conn, "SELECT count(*) FILTER (WHERE status IN ('queued', 'running')) AS active FROM jobs").iloc[0]
     return dict(outcomes=int(ex["outcomes"]), markets=int(ex["markets"]), volume=float(ex["volume"]), synced=ex["synced"],
                 recording=rec_n, recorded_at=rec_ts,
                 my_open=len(bk), my_worst=float(bk["worst"].sum()) if len(bk) else 0.0,
                 my_staked=float(bk["staked"].sum()) if len(bk) else 0.0,
-                bt_win=s.get("brier_win") if s else None, bt_grid=s.get("brier_win_grid") if s else None,
                 jobs_active=int(jobs["active"]))
+
+
+def model_brier(conn):
+    """The Lab's headline: (win Brier, grid-only win Brier) of the latest baseline backtest, each None without one."""
+    try:
+        bt = data.q(conn, """SELECT metrics->'summary'->'pre_race|track=True' AS s FROM model_runs
+                             WHERE kind = 'backtest' AND coalesce(params->>'variant', 'baseline') = 'baseline' ORDER BY id DESC LIMIT 1""")
+        s = bt["s"].iloc[0] if len(bt) else None
+    except Exception:                                   # noqa: BLE001  the Lab opens without it
+        s = None
+    return (s.get("brier_win") if s else None, s.get("brier_win_grid") if s else None)

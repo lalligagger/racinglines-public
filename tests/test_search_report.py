@@ -189,3 +189,24 @@ def test_kalshi_jobs_are_judged_against_the_kalshi_baseline():
     r = next(r for r in rank if r["venue"] == "kalshi" and r["strategy"] == "maker" and r["verdict"] == "robust")
     assert r["id"].endswith("-kalshi") and r["pnl_2025"] == 800.0
     assert [x["venue"] for x in rank if x["verdict"] == "baseline" and x["strategy"] == "maker"] == ["kalshi", "polymarket"]
+
+
+def test_global_model_walk_forwards_keep_their_settings_and_rerun_command(tmp_path):
+    from racinglines.pipelines import search as S
+    cls = S.settings_class("nascar", "global")
+    cfg = dict(R.SPORT_DEFAULTS["global"], target=2026, holdout=[2025])
+    specs = [(2026, -40.0, {}), (2025, -45.0, {}), (2026, -20.0, dict(half_life_days=360)),
+             (2025, -25.0, dict(half_life_days=360))]
+    jobs, metrics = [], {}
+    for i, (y, x, st) in enumerate(specs, 1):
+        wk = [dict(round=r + 1, event=f"E{r + 1}", race_win_score=x) for r in range(5)]
+        jobs.append(dict(id=f"j{i}", year=y, settings=cls.from_dict(st).to_json(), run_id=i))
+        metrics[i] = dict(weekends=wk)
+    _, rank = R.write(tmp_path, jobs, metrics, [("race_win", "Win")], cfg, cls=cls, sport="nascar", model="global",
+                      rerun=S.argv, echo=lambda m: None)
+    top = rank[0]
+    assert top["verdict"] == "robust" and top["label_settings"] == "half_life_days=360.0"
+    doc = json.loads((tmp_path / "candidates" / f"{top['id']}.json").read_text())
+    assert "--model global" in doc["rerun"]["2025"] and "--half-life-days 360.0" in doc["rerun"]["2025"]
+    toml = (tmp_path / "candidates.toml").read_text()
+    assert 'sport = "nascar"' in toml and 'model = "global"' in toml and "half_life_days = 360.0" in toml

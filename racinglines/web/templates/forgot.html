@@ -1,14 +1,13 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Forgot password · racinglines</title><link rel="stylesheet" href="/static/style.css?v={{ css_v() }}"></head>
-<body><main class="login">
+{% extends "base_public.html" %}
+{% block title %}Forgot password · racinglines{% endblock %}
+{% block content %}
 <h1>racinglines</h1>
 <p class="sub">Fair prices and market making for race sports.</p>
 <div class="card signup-form">
   <p><b>Forgot your password?</b> We don't keep your email address, so send us a reset request from any address
   you like and we'll reply with a temporary password.</p>
   <label><span>Your username</span><input id="forgot-user" autocomplete="username" maxlength="30"></label>
-  <textarea id="forgot-email" class="onetime-email" rows="11" readonly>To: {{ support }}
+  <textarea id="forgot-email" class="onetime-email" data-support="{{ support }}" rows="11" readonly>To: {{ support }}
 Subject: Password reset request
 
 Hi racinglines,
@@ -19,27 +18,9 @@ Username: YOUR USERNAME
 
 Thanks</textarea>
   <p class="mt"><a id="forgot-send" class="button primary" href="mailto:{{ support }}?subject=Password%20reset%20request">Open in my email app</a>
-  <button type="button" id="forgot-copy">Copy email</button> <span id="forgot-copied" class="muted"></span></p>
+  <button type="button" data-copy="#forgot-email" data-copied="#forgot-copied" data-copied-text="Copied.">Copy email</button> <span id="forgot-copied" class="muted"></span></p>
   <p class="hint">Or write to <b>{{ support }}</b> yourself with your username. We never ask for your password.</p>
 </div>
 <p class="confused"><a href="/login">Back to sign in</a></p>
-<script>
-(function () {
-  var u = document.getElementById("forgot-user"), t = document.getElementById("forgot-email"),
-      a = document.getElementById("forgot-send"), base = t.value;
-  function body() { return base.replace("YOUR USERNAME", (u.value || "").trim() || "YOUR USERNAME"); }
-  function sync() {
-    t.value = body();
-    var text = t.value.split("\n").slice(3).join("\n");              // the part after To and Subject
-    a.href = "mailto:{{ support }}?subject=" + encodeURIComponent("Password reset request") + "&body=" + encodeURIComponent(text);
-  }
-  u.addEventListener("input", sync); sync();
-  document.getElementById("forgot-copy").addEventListener("click", function () {
-    var done = document.getElementById("forgot-copied");
-    function ok() { done.textContent = "Copied."; }
-    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t.value).then(ok);
-    else { t.select(); document.execCommand("copy"); ok(); }
-  });
-})();
-</script>
-</main>{% include "_site_notice.html" %}</body></html>
+
+{% endblock %}

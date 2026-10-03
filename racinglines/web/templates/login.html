@@ -1,11 +1,11 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in · racinglines</title><link rel="stylesheet" href="/static/style.css?v={{ css_v() }}"></head>
-<body><main class="login">
+{% extends "base_public.html" %}
+{% block title %}Sign in · racinglines{% endblock %}
+{% block content %}
 <h1>racinglines</h1>
 <p class="sub">Fair prices and market making for race sports.</p>
-{% if error %}<p class="bad">Wrong username or password.</p>{% endif %}
+{% if error == "throttled" %}<p class="bad" role="alert">Too many failed sign-ins. Wait 15 minutes and try again.</p>{% elif error %}<p class="bad" role="alert">Wrong username or password.</p>{% endif %}
 
+<p class="muted">pro = the maker tools (quotes, book, Lab); basic = the taker picks.</p>
 <div class="demo">
   <form method="post" action="/login"><input type="hidden" name="username" value="maker"><input type="hidden" name="password" value="password"><input type="hidden" name="next" value="{{ next }}">
     <button class="maker"><b>Try as pro</b><span>Model fair prices, quote markets, run every strategy, backtest and replay in the Lab</span></button></form>
@@ -13,9 +13,8 @@
     <button class="taker"><b>Try as basic</b><span>Follow a taker strategy's calls on the open markets, no model numbers</span></button></form>
 </div>
 <p class="confused"><a href="/racinglines101">I'm already confused.</a></p>
-{% if signup_on() %}<p class="signup-cta">Beta <a href="/signup">signups</a> are live! Get your own pro account.</p>{% endif %}
 
-<p class="or">or sign in</p>
+<p class="or">{% if signup_on() %}<a href="/signup">Sign up</a> or log in{% else %}or sign in{% endif %}</p>
 <form method="post" action="/login" class="card">
   <input type="hidden" name="next" value="{{ next }}">
   <label><span>Username</span><input name="username" autocomplete="username" required></label>
@@ -23,4 +22,4 @@
   <button class="primary mt">Sign in</button>
 </form>
 {% if signup_on() %}<p class="confused"><a href="/forgot">Forgot your password?</a></p>{% endif %}
-</main>{% include "_site_notice.html" %}</body></html>
+{% endblock %}

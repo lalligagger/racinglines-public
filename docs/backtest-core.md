@@ -146,6 +146,62 @@ a queue job with `sport = "<code>"` searches it (with `replicates`), and `search
 `tests/toy_backtest.py` is a complete example: a synthetic running race (data source and a form model in
 one module) that `tests/test_backtest_toy.py` takes through all of that, including the command line.
 
+#### The global results model: a wrapper that is only a schema
+
+A sport whose history is a table of finishing positions needs no wrapper of its own: point it at
+`racinglines/models/model_global.py` and describe its data in the schema. The model names no sport;
+`race_model.model_class(code)` binds it to the schema's `[model]` block.
+
+```toml
+[sport]
+pricing_model = "racinglines.models.model_global:GlobalModel"
+[model]
+source = "motogp_api"     # events.source of the results (or the [replay] source)
+group = "team"            # optional: results column / results.extra key naming the team (group prior)
+prior = "uci_points"      # optional: results.extra key, a rating the entrant had before the race
+[model.defaults]          # optional: per-sport defaults for its settings (each needs a decision-log entry)
+```
+
+It is the "fuzzy-data" model: every finish becomes a field-size-free strength (second of 150 is not second
+of 5), an entrant's strength is their recency-weighted mean shrunk toward a prior by how few starts they
+have, and a race is a strength-plus-noise draw with a shrunk retirement rate. It needs no laps, no fixed
+schedule and no full participation, so every sport with price tapes and a results history can be backtested
+with it, whatever else it has. Settings, hooks and the leakage rule (days strictly before the event) are in the
+module's docstring. A sport that keeps its own model still gets it side by side:
+
+```
+racinglines backtest walk-forward motogp --model global --seasons 2026
+python scripts/validate_global_model.py motogp --seasons 2016 2026 --own-field --own-fill   # own vs global vs a learn-nothing control
+```
+
+A parameter search over it is an ordinary search queue with `model = "global"` on each job
+(`racinglines/pipelines/search.py` docstring): the
+job's settings are the global model's (with the sport's `[model.defaults]`), its command is the
+walk-forward above with `--save`, it gets its own default-settings baseline per sport and season, and
+`search-report` writes one folder per sport and model (`<sport>-global/`) with the labels below, scored per
+market kind. `python scripts/make_global_sweep.py` writes `sweeps/global-multi-sport.toml`, the multi-sport grid.
+
+`python scripts/make_global_sweep.py --confirm <search folder>` writes stage 2, `sweeps/global-multi-sport-confirm.toml`:
+the finished search's candidates (every sport's `candidates.toml`) and the default settings, re-run in every season at
+the report's `confirm_sims` (8,000, four times the grid's 2,000). It carries the same search name, so one
+`search-report` reads both stages and fills the report's `confirmed` column.
+
+#### Model against the exchange
+
+`racinglines backtest walk-forward <code> --model global --venue polymarket kalshi --out-dir DIR` also reads each
+venue's price for the same market, through the same `venue_replay` classes the sweeps use (a price counts only if it is
+under 6 hours old), and scores model and market on the markets that have both. When it reads matters: a sport with a
+session schedule (F1) is read at the first stage of its `[stages]`, 1 h before any running, when the market knows what
+the model knows (earlier results); `--market-stage 'after Quali'` reads a later stage, which shows what the model lacks.
+A sport without a schedule is read at the event's day (00:00 UTC), which on a race weekend is after qualifying, so it
+favours the market. Prices pair on the exact `market_links` keys
+(`race_id`, kind, athlete) and never guess: a sport whose links carry no `race_id` reports "nothing to pair"
+with the link counts. Output: a per-kind and per-season table, `walk_forward_vs_<venue>.csv` (one row per pair, with
+the read time `at`) and `walk_forward_vs_<venue>_scores.csv`. Read-only on the database (no `--save`). It needs the
+price history the venue replays read, so on the VM run it where the market archive is (`data/archive/markets/`).
+The code is `racinglines/pipelines/model_vs_market.py`; the field is the event's actual starters, so the comparison has a
+mild lookahead on who started (the same for model and market, which price a field that includes them).
+
 ### Calibration in every sweep
 
 `racinglines f1 sweep --reliability` scores **our fair value and the exchange's price side by side** at

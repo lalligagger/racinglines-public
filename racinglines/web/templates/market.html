@@ -1,7 +1,8 @@
-{% extends "base.html" %}{% from "_macros.html" import table, csrf %}
+{% extends "base.html" %}{% from "_macros.html" import table, csrf, page_head %}
 {% block title %}{{ link.question }}{% endblock %}
 {% block content %}
-<h1>{{ link.question }}</h1>
+<p class="crumbs"><a href="/admin">Admin</a> › <a href="/markets/linked">Linked markets</a> › Market</p>
+{{ page_head(link.question) }}
 <p class="muted">Outcome <b>{{ link.outcome }}</b>{% if link.invert %} (pays if the prediction fails){% endif %} · {{ link.athlete }} · {{ link.prediction }} · {{ link.venue or "next round / season" }} · token <code>{{ link.token_id }}</code></p>
 <div class="grid">
 <div class="card"><h2>Model</h2>
@@ -11,11 +12,11 @@
 </div>
 <div class="card"><h2>Order book</h2>
   {% if book %}<p>Best bid <b>{{ book.best_bid }}</b> · best ask <b>{{ book.best_ask }}</b> · last {{ book.last_trade }} · tick {{ book.tick_size }} · min {{ book.min_size }}</p>
-  <table><thead><tr><th>Bid size</th><th>Bid</th><th>Ask</th><th>Ask size</th></tr></thead><tbody>
+  <div class="scroll"><table><thead><tr><th>Bid size</th><th>Bid</th><th>Ask</th><th>Ask size</th></tr></thead><tbody>
   {% for i in range([book.bids|length, book.asks|length]|max) %}<tr>
   <td>{{ book.bids[i][1] if i < book.bids|length else "" }}</td><td>{{ book.bids[i][0] if i < book.bids|length else "" }}</td>
   <td>{{ book.asks[i][0] if i < book.asks|length else "" }}</td><td>{{ book.asks[i][1] if i < book.asks|length else "" }}</td></tr>{% endfor %}
-  </tbody></table>{% else %}<p class="bad">Could not load the book: {{ book_error }}</p>{% endif %}
+  </tbody></table></div>{% else %}<p class="bad">Could not load the book: {{ book_error }}</p>{% endif %}
 </div>
 </div>
 <div class="card"><h2>Place a maker (post-only) limit order</h2>

@@ -1,6 +1,9 @@
 """Search queue (racinglines/pipelines/search.py): parsing, the automatic baseline, job identity and
 the command lines it runs."""
 
+import importlib.util
+from pathlib import Path
+
 import pytest
 
 from racinglines.pipelines import search as S
@@ -76,6 +79,53 @@ def test_downhill_jobs_get_their_own_settings_baseline_and_command(tmp_path):
         S.load(_queue(tmp_path, '[[job]]\nsport = "mtb_dh"\nvariant = "gridq"\n'))      # an F1 setting
     with pytest.raises(ValueError, match="job kind"):
         S.load(_queue(tmp_path, '[[job]]\nsport = "mtb_dh"\nkind = "sweep"\n'))
+
+
+def test_global_model_jobs_get_their_own_settings_baseline_command_and_id(tmp_path):
+    q = _queue(tmp_path, '[[job]]\nsport = "nascar"\nmodel = "global"\nyear = 2025\nhalf_life_days = 360\nreplicates = 3\n'
+                         '[[job]]\nsport = "f1"\nmodel = "global"\nyear = 2025\nnoise = 1.0\n'
+                         '[[job]]\nsport = "nascar"\nyear = 2025\n')          # the sport's own model: another baseline
+    _, jobs, _ = S.load(q)
+    mine = [j for j in jobs if j.get("model") == "global" and j["sport"] == "nascar"]
+    assert sorted((j["settings"]["seed"] or 0, j["settings"]["half_life_days"]) for j in mine) == [
+        (0, 240.0), (0, 360.0), (1, 240.0), (1, 360.0), (2, 240.0), (2, 360.0)]
+    f1 = [j for j in jobs if j.get("model") == "global" and j["sport"] == "f1"]
+    assert {j["kind"] for j in f1} == {"walk_forward"} and len(f1) == 2          # a baseline and its job, no F1 sweep
+    own = [j for j in jobs if j.get("sport") == "nascar" and not j.get("model")]
+    assert len(own) == 1 and not {j["id"] for j in own} & {j["id"] for j in mine}      # the queued default is its baseline
+    job = next(j for j in mine if j["settings"]["half_life_days"] == 360 and not j["settings"]["seed"])
+    assert S.argv(job)[3:] == ["backtest", "walk-forward", "nascar", "--seasons", "2025", "--save", "--model", "global",
+                               "--half-life-days", "360.0"]
+    assert S._title(job).startswith("global ")
+    with pytest.raises(ValueError, match="unknown keys"):
+        S.load(_queue(tmp_path, '[[job]]\nsport = "nascar"\nmodel = "global"\nvariant = "gridq"\n'))
+    with pytest.raises(ValueError, match="unknown model"):
+        S.load(_queue(tmp_path, '[[job]]\nsport = "nascar"\nmodel = "nope"\n'))
+    with pytest.raises(ValueError, match="job kind"):
+        S.load(_queue(tmp_path, '[[job]]\nsport = "f1"\nmodel = "global"\nkind = "sweep"\n'))
+
+
+def test_confirmation_queue_reruns_the_candidates_at_confirm_sims_with_a_baseline(tmp_path):
+    spec = importlib.util.spec_from_file_location("make_global_sweep", Path(__file__).parents[1] / "scripts" / "make_global_sweep.py")
+    gen = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gen)
+    (tmp_path / "nascar-global").mkdir()
+    (tmp_path / "nascar-global" / "candidates.toml").write_text(
+        '[[candidate]]\nid = "race_win-a"\nname = "a"\nyear = 2026\nstrategy = "race_win"\nwhy = "x"\nsport = "nascar"\n'
+        'model = "global"\nnoise = 0.65\n\n[[candidate]]\nid = "race_top10-a"\nname = "a"\nyear = 2026\nstrategy = "race_top10"\n'
+        'why = "x"\nsport = "nascar"\nmodel = "global"\nnoise = 0.65\n\n[[candidate]]\nid = "race_top10-b"\nname = "b"\nyear = 2026\n'
+        'strategy = "race_top10"\nwhy = "x"\nsport = "nascar"\nmodel = "global"\ndnf = false\n')
+    out = tmp_path / "confirm.toml"
+    gen.main(["--sports", "nascar", "--seasons", "2026", "2025", "--confirm", str(tmp_path), "--out", str(out)])
+    _, jobs, _ = S.load(str(out))
+    sims = gen.SRR.SPORT_DEFAULTS["global"]["confirm_sims"]
+    big = [j for j in jobs if j["settings"]["sims"] == sims]
+    seed0 = [j for j in big if not j["settings"]["seed"]]
+    assert len(seed0) == 2 * 3 and {j["year"] for j in big} == {2026, 2025}      # a baseline and two combos, in both seasons
+    assert sorted(j["settings"]["noise"] for j in seed0 if j["year"] == 2025) == [0.65, 0.8, 0.8]     # the shared combo once
+    assert sorted(j["settings"]["seed"] or 0 for j in big if j["year"] == 2025 and j["settings"]["noise"] == 0.8
+                  and j["settings"]["dnf"]) == [0, 1, 2]                                       # the baseline at three seeds
+    assert len(jobs) == len(big) + 6                                  # plus the default-sims baselines, 3 seeds a season
 
 
 def test_f1_job_ids_did_not_move():

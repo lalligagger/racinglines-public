@@ -1,0 +1,13 @@
+# FastF1 session recorder, one pass (scripts/vm/record_fastf1.sh). Started by the .timer; enabled automatically during race weekends.
+# Logs: journalctl -u racinglines-record-fastf1, and data/runs/logs/record-fastf1.log
+[Unit]
+Description=racinglines FastF1 session recorder
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=racinglines
+WorkingDirectory=/opt/racinglines
+ExecStart=/opt/racinglines/scripts/vm/record_fastf1.sh
+TimeoutStartSec=30min

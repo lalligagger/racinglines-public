@@ -1,6 +1,7 @@
 """The per-venue recorder line (board.recorder_status and _recorders.html), without a database: whatever data arrived
-shows per venue, a venue with nothing reads "no data yet", an old one "stale since ...", and a failing status query
-still lets the page load. The Kalshi and OG.com recorder itself is scripts/vm/record_venues.sh (vm.sh record)."""
+shows per venue, a venue with nothing reads "no data yet", an old one "synced ..." coloured by minutes elapsed
+(green under 5, yellow 5-10, red 10+), and a failing status query still lets the page load. The Kalshi and OG.com
+recorder itself is scripts/vm/record_venues.sh (vm.sh record)."""
 
 from datetime import datetime, timedelta, timezone
 
@@ -51,14 +52,16 @@ def test_a_failing_query_is_unknown_not_an_error(monkeypatch):
 
 def test_the_line_renders_every_state():
     from racinglines.web.app import templates
-    recs = [dict(name="Polymarket", state="live", recent=38, linked=40, last=NOW - timedelta(minutes=2)),
-            dict(name="Kalshi", state="stale", recent=0, linked=120, last=NOW - timedelta(hours=3)),
-            dict(name="OG.com", state="none", recent=0, linked=0, last=None),
-            dict(name="Other", state="unknown", recent=0, linked=0, last=None)]
+    recs = [dict(name="Polymarket", state="live", recent=38, linked=40, last=NOW - timedelta(minutes=2), minutes=2),
+            dict(name="Kalshi", state="live", recent=40, linked=120, last=NOW - timedelta(minutes=7), minutes=7),
+            dict(name="OG.com", state="stale", recent=0, linked=120, last=NOW - timedelta(hours=3), minutes=180),
+            dict(name="IndyCar", state="none", recent=0, linked=0, last=None, minutes=None),
+            dict(name="Other", state="unknown", recent=0, linked=0, last=None, minutes=None)]
     html = templates.env.get_template("_recorders.html").render(recorders=recs)
-    assert "38 of 40 open markets, last 11:58 UTC" in html
-    assert "stale since 2026-10-02 09:00 UTC" in html
-    assert "OG.com <span class=\"muted\">no data yet" in html and "status unavailable" in html
+    assert "<span class=\"good\">38 of 40 open markets, synced" in html and "2026-10-02 11:58 UTC" in html
+    assert "<span class=\"warn\">40 of 120 open markets, synced" in html and "2026-10-02 11:53 UTC" in html
+    assert "<span class=\"bad\">synced" in html and "2026-10-02 09:00 UTC" in html
+    assert "IndyCar <span class=\"muted\">no data yet" in html and "status unavailable" in html
     assert templates.env.get_template("_recorders.html").render(recorders=None).strip() == ""
 
 

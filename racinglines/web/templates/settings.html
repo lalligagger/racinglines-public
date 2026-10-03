@@ -1,0 +1,106 @@
+{% extends "base.html" %}{% from "_macros.html" import csrf, flash, page_head %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+{{ page_head("Settings") }}
+{{ flash(success) }}
+{{ flash(error) }}
+<div class="card"><h2>Email & Preferences</h2>
+<form method="post" action="/settings">{{ csrf() }}
+  <label><span>Email</span><input name="email" type="email" value="{{ email }}" placeholder="your@email.com" size="32"></label>
+  <p class="muted">Your email helps with password resets and notifications. It will never be shared.</p>
+
+  <label><span>Exchange</span>
+    <div class="radio-group">
+      <label><input type="radio" name="exchange" value="polymarket" {% if exchange == 'polymarket' %}checked{% endif %}> Polymarket</label>
+      <label><input type="radio" name="exchange" value="kalshi" {% if exchange == 'kalshi' %}checked{% endif %}> Kalshi</label>
+      <label><input type="radio" name="exchange" value="both" {% if exchange == 'both' %}checked{% endif %}> Both</label>
+    </div>
+  </label>
+
+  <label><span>Sports</span>
+    <div class="checkbox-group">
+      <label><input type="checkbox" name="sports" value="f1" {% if 'f1' in sports %}checked{% endif %}> Formula 1</label>
+      <label><input type="checkbox" name="sports" value="motogp" {% if 'motogp' in sports %}checked{% endif %}> MotoGP</label>
+      <label><input type="checkbox" name="sports" value="nascar" {% if 'nascar' in sports %}checked{% endif %}> NASCAR</label>
+    </div>
+  </label>
+
+  <button class="primary mt">Save Settings</button>
+</form>
+</div>
+
+<div class="card"><h2>API & Integrations</h2>
+<p class="muted">Use API tokens to integrate racinglines with external tools and services.</p>
+<div id="mcp-tokens">
+  <p><button class="primary" id="generate-token-btn">Generate API Token</button></p>
+  <div id="token-display" style="display: none;" class="token-box">
+    <p class="warning">Save this token now. You won't be able to see it again.</p>
+    <div class="token-container">
+      <input type="text" id="token-value" readonly size="50">
+      <button type="button" class="copy-btn" data-copy="#token-value">Copy</button>
+    </div>
+    <p class="muted" id="token-meta"></p>
+  </div>
+  <div id="tokens-list"></div>
+</div>
+<script>
+document.getElementById('generate-token-btn').addEventListener('click', async function() {
+  const res = await fetch('/api/settings/token/generate', { method: 'POST' });
+  const data = await res.json();
+  if (data.error) {
+    alert('Error: ' + data.error);
+    return;
+  }
+  document.getElementById('token-value').value = data.token;
+  document.getElementById('token-meta').textContent = 'Created: ' + new Date().toLocaleString();
+  document.getElementById('token-display').style.display = 'block';
+  this.style.display = 'none';
+  // Reload tokens list
+  loadTokensList();
+});
+
+function loadTokensList() {
+  fetch('/api/settings/tokens')
+    .then(r => r.json())
+    .then(data => {
+      const list = document.getElementById('tokens-list');
+      list.innerHTML = '';
+      if (data.tokens && data.tokens.length > 0) {
+        const table = document.createElement('table');
+        table.innerHTML = '<thead><tr><th>Created</th><th>Last Used</th><th></th></tr></thead><tbody>' +
+          data.tokens.map(t => `<tr><td>${t.created_at}</td><td>${t.last_used || 'Never'}</td>
+            <td><button type="button" class="danger" onclick="revokeToken('${t.id}')">Revoke</button></td></tr>`).join('') +
+          '</tbody>';
+        list.appendChild(table);
+      }
+    });
+}
+
+function revokeToken(tokenId) {
+  if (!confirm('Revoke this token? It cannot be undone.')) return;
+  fetch(`/api/settings/token/${tokenId}/revoke`, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        alert('Error: ' + data.error);
+      } else {
+        loadTokensList();
+      }
+    });
+}
+
+// Copy button functionality
+document.querySelectorAll('.copy-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    const input = document.querySelector(this.dataset.copy);
+    input.select();
+    document.execCommand('copy');
+    this.textContent = 'Copied!';
+    setTimeout(() => { this.textContent = 'Copy'; }, 2000);
+  });
+});
+
+loadTokensList();
+</script>
+</div>
+{% endblock %}

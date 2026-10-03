@@ -57,6 +57,10 @@ jobs:
         if: ${{ env.HAS_GCP_KEY == 'true' }}
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Disable OS Login to prevent SSH key accumulation
+        if: ${{ env.HAS_GCP_KEY == 'true' }}
+        run: gcloud config set compute/use_oslogin false
+
       - name: Deploy to staging with vm.sh staging deploy
         if: ${{ env.HAS_GCP_KEY == 'true' && env.HAS_VM_TARGET == 'true' }}
         env:

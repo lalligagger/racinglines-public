@@ -448,6 +448,21 @@ class ActivityLog(Base):
     path: Mapped[str | None] = mapped_column(String(300))
 
 
+class UserEmailPrefs(Base):
+    """User email delivery settings: email address, exchange preferences (Polymarket/Kalshi/both),
+    and sports interests (stored for future use; only F1 weekly picks sent now)."""
+    __tablename__ = "user_email_prefs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True)
+    email: Mapped[str | None] = mapped_column(String(254), index=True)      # optional; if NULL, no email sent
+    exchanges: Mapped[list[str]] = mapped_column(ARRAY(String), default=["polymarket"], server_default="'{polymarket}'")
+    sports: Mapped[list[str]] = mapped_column(ARRAY(String), default=["f1_wdc"], server_default="'{f1_wdc}'")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped[User] = relationship()
+
+
 class MarketPriceHistory(Base):
     """Exchange price time series per outcome token (Polymarket CLOB prices-history)."""
     __tablename__ = "market_price_history"

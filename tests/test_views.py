@@ -118,7 +118,7 @@ def clients():
 def test_maker_pages(clients):
     cl, races = clients
     m = cl["maker"]
-    for path in ["/", "/book", "/lab", "/markets/polymarket", "/seasons/f1_wdc", "/seasons/uci_dhi_wc", "/events", "/athletes"] + \
+    for path in ["/", "/book", "/lab", "/markets/polymarket", "/seasons/f1_wdc", "/seasons/uci_dhi_wc"] + \
             [f"/races/{r}" for r in races]:
         r = m.get(path)
         assert r.status_code == 200, path
@@ -258,6 +258,14 @@ def test_racinglines101_is_public_and_linked_from_login():
     r = cl.get("/racinglines101", follow_redirects=False)
     assert r.status_code == 200 and "Racinglines 101" in r.text and "paper trades" in r.text
     assert 'href="/racinglines101">I\'m already confused.</a>' in cl.get("/login").text
+
+
+def test_pitch_is_public():
+    from fastapi.testclient import TestClient
+
+    from racinglines.web.app import app
+    r = TestClient(app).get("/pitch", follow_redirects=False)
+    assert r.status_code == 200 and "<html" in r.text.lower()
 
 
 def test_replay_counterparty_is_not_the_demo_taker(test_engine):
