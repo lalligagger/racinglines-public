@@ -3,7 +3,11 @@
     .venv/bin/python scripts/weekend_picks.py                       # next scheduled F1 event, top 3
     .venv/bin/python scripts/weekend_picks.py --event-id 89 --top 5
     .venv/bin/python scripts/weekend_picks.py --venues kalshi --min-volume 500
+    .venv/bin/python scripts/weekend_picks.py --image ~/Downloads/markets.png --email you@example.com
     .venv/bin/python scripts/weekend_picks.py --compose --email you@example.com   # write it with Claude Code instead
+
+Images are local files: the saved .html shows them from disk, and the sent mail carries them as inline (cid:) parts,
+which Proton Mail Bridge keeps inline because each has Content-Disposition: inline and a Content-ID.
 
 --compose opens a Claude Code chat (the `claude` CLI) with the racinglines MCP tools: the hosted server when
 RACINGLINES_MCP_TOKEN is set, else a local `racinglines mcp` on $DATABASE_URL. Claude asks what the email should say,
@@ -101,7 +105,7 @@ def _when(info):
     return str(info.get("start_date") or "")[:10]
 
 
-def render_html(info, pricing, picks, rest, venues, username=None):
+def render_html(info, pricing, picks, rest, venues, username=None, images=()):
     greeting = f"Hi {username}," if username else "Hi,"
     td = 'style="padding:6px 10px;border:1px solid #cccccc;text-align:{a};font-size:14px"'
     head = "".join(f'<th {td.format(a="left")[:-1]};background:#f0f0f0">{h}</th>' for h in
@@ -113,11 +117,13 @@ def render_html(info, pricing, picks, rest, venues, username=None):
                  f"{p['price'] * 100:.0f}¢", f"+{p['ev'] * 100:.1f}¢ ({p['roi']:+.0%})", f"${p['volume']:,.0f}", link]
         body += "<tr>" + "".join(f'<td {td.format(a="left")}>{c}</td>' for c in cells) + "</tr>"
     more = "".join(f"<li>{html.escape(_bet(p))}: {p['side']} on {p['venue'].title()}, +{p['ev'] * 100:.1f}¢</li>" for p in rest)
+    shots = "".join(f'<p><img src="{html.escape(str(i))}" style="max-width:100%;height:auto"></p>' for i in images)
     return f"""<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222222;max-width:720px">
 <p>{greeting}</p>
 <p>Here are this weekend's top paper picks for the <b>{html.escape(info['title'])}</b> ({_when(info)}), ranked by the
 model's expected profit per $1 contract on {" and ".join(v.title() for v in venues)}.</p>
 <table style="border-collapse:collapse;border:1px solid #cccccc"><tr>{head}</tr>{body}</table>
+{shots}
 {"<p><b>Next in line:</b></p><ul>" + more + "</ul>" if rest else ""}
 <p><b>Read these with care.</b> Prices are from {html.escape(str(pricing.get('source', 'the live forecast')))}, which
 has not seen this weekend's practice or qualifying, so the biggest gaps are where the model is most likely wrong.
@@ -277,7 +283,7 @@ def compose_email_interactive(out_dir, venues, min_volume, max_spread, top, mcp_
     return tuple(f.read_text().strip() if f.name == "subject.txt" else f.read_text() for f in files)
 
 
-def send_to_users(conn, min_volume, max_spread, max_picks, smtp_server, smtp_port, smtp_user, dry_run=False):
+def send_to_users(conn, min_volume, max_spread, max_picks, smtp_server, smtp_port, smtp_user, dry_run=False, images=()):
     """Send F1 weekend picks to all users with registered emails, respecting their exchange preferences."""
     import sys
     from racinglines.db.models import UserEmailPrefs
@@ -324,7 +330,7 @@ def send_to_users(conn, min_volume, max_spread, max_picks, smtp_server, smtp_por
             _links(conn, picks + rest)
 
             # Render email
-            html_body = render_html(m, m.get("pricing") or {}, picks, rest, exchanges_list)
+            html_body = render_html(m, m.get("pricing") or {}, picks, rest, exchanges_list, images=images)
             text_body = render_text(m, m.get("pricing") or {}, picks, rest, exchanges_list)
 
             # Send email
@@ -369,10 +375,15 @@ def main():
     ap.add_argument("--out-dir", default="reports/picks")
     ap.add_argument("--email", help="recipient email address; if set, sends the picks via SMTP")
     ap.add_argument("--username", help="personalize greeting with username")
+    ap.add_argument("--image", action="append", default=[], metavar="PATH",
+                    help="a screenshot or chart to show under the picks table (repeatable); embedded in the mail when sent")
     ap.add_argument("--smtp-server", default="127.0.0.1", help="SMTP server (default: localhost for Proton Bridge)")
     ap.add_argument("--smtp-port", type=int, default=1025, help="SMTP port (default: 1025 for Proton Bridge)")
     ap.add_argument("--smtp-user", help="SMTP username (if not set, prompted at runtime)")
     a = ap.parse_args()
+    a.image = [Path(i).expanduser().resolve() for i in a.image]
+    if missing := [str(i) for i in a.image if not i.is_file()]:
+        raise SystemExit(f"--image: no such file: {', '.join(missing)}")
 
     if a.compose:
         venues = [v.strip() for v in a.venues.split(",") if v.strip()]
@@ -396,7 +407,7 @@ def main():
             if a.send_all:
                 send_to_users(conn, a.min_volume, a.max_spread, a.top,
                             smtp_server=a.smtp_server, smtp_port=a.smtp_port,
-                            smtp_user=a.smtp_user, dry_run=a.dry_run)
+                            smtp_user=a.smtp_user, dry_run=a.dry_run, images=a.image)
             elif a.user_id:
                 # Single user from DB
                 user_row = conn.execute(text(
@@ -424,7 +435,7 @@ def main():
                 if not picks:
                     raise SystemExit("no pick clears the filters; try a lower --min-volume or a wider --max-spread")
 
-                html_body = render_html(m, m.get("pricing") or {}, picks, rest, exchanges_list)
+                html_body = render_html(m, m.get("pricing") or {}, picks, rest, exchanges_list, images=a.image)
                 text_body = render_text(m, m.get("pricing") or {}, picks, rest, exchanges_list)
                 subject = f"F1 paper picks: {m['title']} ({_when(m)})"
                 print(f"Subject: {subject}")
@@ -451,7 +462,7 @@ def main():
     stem = re.sub(r"[^a-z0-9]+", "-", f"{_when(m)}-{m['title']}".lower()).strip("-")
     out = Path(a.out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    html_body = render_html(m, m.get("pricing") or {}, picks, rest, venues, username=a.username)
+    html_body = render_html(m, m.get("pricing") or {}, picks, rest, venues, username=a.username, images=a.image)
     text_body = render_text(m, m.get("pricing") or {}, picks, rest, venues, username=a.username)
     (out / f"{stem}.html").write_text(html_body)
     (out / f"{stem}.txt").write_text(text_body)
