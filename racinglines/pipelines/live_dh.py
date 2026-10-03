@@ -479,8 +479,14 @@ def provisional(feeds, qbest):
 
 
 def running(d):
-    """A qualifying session under way: a rider on course or next to start (ChronoRace's OnTrack / NextToStart)."""
-    return bool(d.get("OnTrack") or d.get("NextToStart") or any(r.get("Status") == "InRace" for r in d.get("Results") or []))
+    """A qualifying session under way: a rider in ChronoRace's OnTrack whose result isn't final yet, anyone in
+    NextToStart, or an InRace status. OnTrack alone isn't enough: timed training kept its last riders there after
+    they had all finished (Lake Placid, 3 Oct)."""
+    res = d.get("Results") or []
+    status = {r.get("RaceNr"): r.get("Status") for r in res}
+    on = [x.get("RaceNr") if isinstance(x, dict) else x for x in d.get("OnTrack") or []]
+    return bool(any(status.get(n) not in ("Finished", "DNF", "DNS", "DSQ") for n in on) or d.get("NextToStart")
+                or "InRace" in status.values())
 
 
 def settled(d):
