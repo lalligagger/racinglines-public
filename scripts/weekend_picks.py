@@ -9,8 +9,9 @@
 Images are local files: the saved .html shows them from disk, and the sent mail carries them as inline (cid:) parts,
 which Proton Mail Bridge keeps inline because each has Content-Disposition: inline and a Content-ID.
 
---compose opens a Claude Code chat (the `claude` CLI) with the racinglines MCP tools: the hosted server when
-RACINGLINES_MCP_TOKEN is set, else a local `racinglines mcp` on $DATABASE_URL. Claude asks what the email should say,
+--compose first asks who the email is for, what it should say, any notes and screenshot paths (or takes --context),
+then opens a Claude Code chat (the `claude` CLI) with the racinglines MCP tools: the hosted server when
+RACINGLINES_MCP_TOKEN is set, else a local `racinglines mcp` on $DATABASE_URL. Claude confirms the plan,
 pulls the numbers, asks for screenshots (local image paths are embedded when the mail is sent) and writes
 subject.txt, email.html and email.txt under <out-dir>/compose-<time>/; exit the chat and the script sends it.
 
@@ -209,14 +210,17 @@ def send_email(recipient, subject, html_body, text_body, smtp_server="127.0.0.1"
         return False
 
 
-COMPOSE_BRIEF = """You are helping the racinglines owner write this weekend's picks email, in place of the fixed template of
+COMPOSE_BRIEF = """You are helping the racinglines owner write an email, in place of the fixed picks template of
 scripts/weekend_picks.py. The racinglines MCP tools are connected: use them (overview, list_events, list_markets,
 get_forecast, get_market_history, track_record, ...) for every number you put in the email, and never invent one.
 
+The owner's first message is what they want this email to be. It decides the content, not the template: if it does
+not ask for picks, leave picks out.
+
 Work with the owner step by step:
-1. Ask who the email is for and what it should cover (picks, market moves, commentary, a product update), how many
-   picks, which venues (Kalshi, Polymarket) and which angles or drivers to feature.
-2. Pull the data and propose the content. Rank picks the way the template does: buying YES costs the ask,
+1. Restate the email you are about to write in two or three lines and ask about anything the owner left open
+   (audience, length, tone, which events or markets). Draft nothing until they confirm.
+2. Pull the data the email needs and propose the draft. If it includes picks, rank them the way the template does: buying YES costs the ask,
    EV = fair - ask - fee; buying NO costs 1 - bid, EV = bid - fair - fee; Kalshi's fee is about 0.07 x p x (1 - p).
    Skip books wider than 15c and markets with under $100 volume unless the owner says otherwise.
 3. Ask whether a screenshot would help (a chart, the Markets page). The owner saves it and gives you its absolute
@@ -231,6 +235,13 @@ Work with the owner step by step:
    or Outlook), and email.txt (the same email as plain text). Then tell the owner to exit (/exit or Ctrl-D) and the
    script takes over.
 {seed}"""
+
+COMPOSE_QUESTIONS = (
+    ("Who is this email for?", "Audience"),
+    ("What should it say? (the main point, what to cover)", "Content"),
+    ("Anything to include, avoid, or a tone to use? (optional)", "Notes"),
+    ("Screenshots to put in it: absolute paths, comma-separated (optional)", "Screenshots"),
+)
 
 
 def _template_seed(venues, min_volume, max_spread, top):
@@ -247,7 +258,7 @@ def _template_seed(venues, min_volume, max_spread, top):
     except Exception as e:  # noqa: BLE001  (no reachable database here: the chat pulls everything over MCP)
         print(f"no local picks to seed the chat ({type(e).__name__}); Claude will pull them over MCP", file=sys.stderr)
         return ""
-    lines = [f"\nThe template's picks for the {info['title']} ({_when(info)}), from {(pricing or {}).get('source', 'the live forecast')}:"]
+    lines = [f"\nOnly if the owner wants picks, the template's picks for the {info['title']} ({_when(info)}), from {(pricing or {}).get('source', 'the live forecast')}:"]
     lines += [f"- {_bet(p)}: {p['side']} on {p['venue'].title()}, model {p['model']:.0%} vs {p['price'] * 100:.0f}c, "
               f"EV +{p['ev'] * 100:.1f}c, volume ${p['volume']:,.0f}, {p['url'] or 'no link'}" for p in cands]
     return "\n".join(lines)
@@ -264,7 +275,23 @@ def _mcp_config(mcp_url):
     return json.dumps({"mcpServers": {"racinglines": server}})
 
 
-def compose_email_interactive(out_dir, venues, min_volume, max_spread, top, mcp_url):
+def _ask_context():
+    """The owner's answers at launch, as the chat's first message."""
+    print("\nCompose an email with Claude. Answer what you can; Claude asks about the rest.\n")
+    lines = []
+    for question, label in COMPOSE_QUESTIONS:
+        answer = input(f"{question}\n> ").strip()
+        if label == "Screenshots" and answer:
+            shots = [Path(x.strip()).expanduser().resolve() for x in answer.split(",") if x.strip()]
+            for missing in [x for x in shots if not x.is_file()]:
+                print(f"  not found, left out: {missing}")
+            answer = ", ".join(str(x) for x in shots if x.is_file())
+        if answer:
+            lines.append(f"{label}: {answer}")
+    return "\n".join(lines) or "I want to write an email. Ask me what it should say."
+
+
+def compose_email_interactive(out_dir, venues, min_volume, max_spread, top, mcp_url, context=None):
     """Open a Claude Code chat with the racinglines MCP tools to write the email; returns (subject, html, text), or
     None when the chat ended without writing the three files."""
     claude = shutil.which("claude")
@@ -274,7 +301,7 @@ def compose_email_interactive(out_dir, venues, min_volume, max_spread, top, mcp_
     out.mkdir(parents=True, exist_ok=True)
     seed = "" if os.environ.get("RACINGLINES_MCP_TOKEN") else _template_seed(venues, min_volume, max_spread, top)
     brief = COMPOSE_BRIEF.format(out=out.resolve(), seed=seed)
-    subprocess.run([claude, "Help me write this weekend's picks email.", "--mcp-config", _mcp_config(mcp_url),
+    subprocess.run([claude, context or _ask_context(), "--mcp-config", _mcp_config(mcp_url),
                     "--append-system-prompt", brief])
     files = [out / n for n in ("subject.txt", "email.html", "email.txt")]
     if not all(f.exists() for f in files):
@@ -363,6 +390,7 @@ def main():
     # Compose mode: a Claude Code chat writes the email instead of the template
     ap.add_argument("--compose", action="store_true",
                     help="write the email in a Claude Code chat with the racinglines MCP tools; with --email or --send-all, send it")
+    ap.add_argument("--context", help="what the --compose email should say; skips the questions asked at launch")
     ap.add_argument("--mcp-url", default="https://mcp.racinglines.bet/mcp",
                     help="hosted MCP server for --compose, used when RACINGLINES_MCP_TOKEN is set")
 
@@ -388,7 +416,7 @@ def main():
 
     if a.compose:
         venues = [v.strip() for v in a.venues.split(",") if v.strip()]
-        composed = compose_email_interactive(a.out_dir, venues, a.min_volume, a.max_spread, a.top, a.mcp_url)
+        composed = compose_email_interactive(a.out_dir, venues, a.min_volume, a.max_spread, a.top, a.mcp_url, a.context)
         if not composed:
             return
         subject, html_body, text_body = composed
