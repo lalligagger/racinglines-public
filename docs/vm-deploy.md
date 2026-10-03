@@ -319,6 +319,12 @@ sudo systemctl enable --now racinglines-live-f1@2026-16.timer     # F1: one step
 sudo systemctl enable --now racinglines-live-dh@<event>           # downhill: the poll loop
 sudo systemctl disable --now racinglines-live-f1@2026-16.timer    # when the event is settled
 ```
+**F1 sessions come from the Mac (since 3 Oct 2026).** F1's timing archive answers 403 to the VM's cloud address, so
+FastF1 can't fetch there (the live step logs "waiting for the session's data" all weekend). During an F1 weekend, run
+`bash scripts/deploy/f1_push.sh 2026-16` on the Mac: a look every 5 minutes fetches each started session, copies new
+session files to the VM's `data/raw/f1/fastf1/<year>/` and starts the live step, until the race is in. A downhill
+final's ChronoRace feed works from the VM.
+
 Only `vm.sh start` (without `web`) enables the recorder and signals, and only `vm.sh live` (or the lines above)
 enables an event's timer; `vm.sh deploy` never starts a unit that wasn't already running. A VM set up with
 `vm.sh start web` before cutover therefore has no recorder and no timers until `vm.sh start` runs.
