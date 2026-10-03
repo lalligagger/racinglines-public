@@ -219,7 +219,8 @@ def race_info(conn, race_id):
 def pricing_run(conn, info):
     """Which run our fair values come from: the live forecast for upcoming races; for
     a past race, the latest as-of price made before it started (diagnostic, else a
-    forecast created before the start)."""
+    forecast created before the start). Returns dict with run_id, source, as_of, cadence."""
+    competition = info.get("competition", "")
     if info["status"] != "completed":
         # Prefer diagnostic runs with sweep_stage (live race session data) over forecast runs
         stage_run = data.q(conn, """SELECT id FROM model_runs WHERE kind = 'diagnostic' AND params ? 'sweep_stage'
@@ -230,13 +231,14 @@ def pricing_run(conn, info):
                           comp=info["competition_id"], cat=info["category_id"], r=info["race_id"])
         if len(stage_run):
             rid = int(stage_run["id"].iloc[0])
-            return dict(run_id=rid, source="live stage", as_of=None)
+            return dict(run_id=rid, source="live stage", as_of=None, cadence="updated every 5 min during sessions")
         # Fall back to forecast run
         rid, _ = data.latest_forecast_run(conn, info["competition_id"], info["category_id"])
         has = rid and len(data.q(conn, "SELECT 1 FROM race_predictions WHERE model_run_id = :m AND race_id = :r LIMIT 1",
                                  m=rid, r=info["race_id"]))
         if has:
-            return dict(run_id=rid, source="live forecast", as_of=None)
+            cadence_text = "updated live during sessions" if competition == "f1_wdc" else "updated daily"
+            return dict(run_id=rid, source="live forecast", as_of=None, cadence=cadence_text)
     start = info["race_start"] if info["race_start"] is not None and not pd.isna(info["race_start"]) else \
         pd.Timestamp(info["start_date"])
     df = data.q(conn, """
@@ -247,8 +249,8 @@ def pricing_run(conn, info):
         ORDER BY as_of DESC LIMIT 1""", r=info["race_id"], s=pd.Timestamp(start).to_pydatetime())
     if len(df):
         r = df.iloc[0]
-        return dict(run_id=int(r["id"]), source="as-of " + r["kind"], as_of=r["as_of"])
-    return dict(run_id=None, source="no pre-race price", as_of=None)
+        return dict(run_id=int(r["id"]), source="as-of " + r["kind"], as_of=r["as_of"], cadence="pre-race pricing")
+    return dict(run_id=None, source="no pre-race price", as_of=None, cadence="no pricing available")
 
 
 def _exchange_rows(conn, links, cache, run_id) -> dict[tuple, dict[str, ExchangeQuote]]:
@@ -401,7 +403,8 @@ def season_matrix(conn, competition, maker_id=house.ALL):
     ids = {k[1] for k in list(base) + list(exch) + list(priv)} | {k[3] for k in list(exch) + list(priv)}
     info = dict(competition=competition, competition_id=comp_id, name=comp["name"].iloc[0],
                 sport=SPORT_NAME.get(competition, competition), title=f"{comp['name'].iloc[0]}")
-    return info, dict(run_id=run_id, source="live forecast", as_of=None), \
+    cadence_text = "updated live during sessions" if competition == "f1_wdc" else "updated daily"
+    return info, dict(run_id=run_id, source="live forecast", as_of=None, cadence=cadence_text), \
         _assemble(conn, base, exch, priv, _subject_names(conn, ids))
 
 
