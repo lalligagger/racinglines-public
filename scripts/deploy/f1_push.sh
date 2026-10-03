@@ -44,9 +44,9 @@ while true; do
   done
   if [ "${#new[@]}" -gt 0 ]; then
     tgz="/tmp/f1_push_${EV}_$$.tgz"
-    tar -czf "$tgz" -C "$LOCAL" "${new[@]}"
+    COPYFILE_DISABLE=1 tar --no-xattrs -czf "$tgz" -C "$LOCAL" "${new[@]}"
     gcloud compute scp "$tgz" "$VM:/tmp/f1_push_$EV.tgz" --project "$PROJECT" --zone "$ZONE" --tunnel-through-iap
-    remote "sudo -u racinglines mkdir -p $REMOTE && sudo -u racinglines tar -xzf /tmp/f1_push_$EV.tgz -C $REMOTE && rm -f /tmp/f1_push_$EV.tgz && sudo systemctl start --no-block racinglines-live-f1@$EV.service && echo 'on the VM, live step started'"
+    remote "sudo -u racinglines mkdir -p $REMOTE && sudo -u racinglines tar --warning=no-unknown-keyword -xzf /tmp/f1_push_$EV.tgz -C $REMOTE && rm -f /tmp/f1_push_$EV.tgz && sudo systemctl start --no-block racinglines-live-f1@$EV.service && echo 'on the VM, live step started'"
     rm -f "$tgz"
     printf '%s\n' "${new[@]}" >> "$PUSHED"
     log "pushed ${#new[@]} files: ${new[*]}"
