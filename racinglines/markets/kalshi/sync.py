@@ -370,7 +370,7 @@ def history_rows(ticker, candles):
             p = (b + a) / 2 if b and a is not None and a < 1.0 else None
         if p is not None:
             rows.append(dict(token_id=ticker, ts=datetime.fromtimestamp(int(c["end_period_ts"]), tz=timezone.utc), price=p))
-    return rows
+    return list({r["ts"]: r for r in rows}.values())       # one row per ts: an upsert can't touch a row twice
 
 
 def fetch_history(session, conn, event_tickers, start, end, period=60, kc=None, sport=None):

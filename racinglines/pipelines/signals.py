@@ -535,8 +535,8 @@ def store(conn, user_id, out, follow_rate=None, history=False, venue=None):
 
     from racinglines.db import models as m
     pr, w = out["profile"], out["event"]
-    if venue is None:
-        venue = out.get("venue", "polymarket")
+    if venue is None and out.get("venue", "polymarket") != "polymarket":
+        venue = out["venue"]
     signals, positions = out["signals"], out["positions"]
     taker = pr["strategy"] in WS.TAKER_MODES
     if taker:
