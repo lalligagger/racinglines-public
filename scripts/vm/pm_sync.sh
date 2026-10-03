@@ -25,6 +25,12 @@ mkdir -p data/runs/logs
 R=${R:-.venv/bin/racinglines}
 say() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*" | tee -a "$LOG"; }
 
+if [ "${1:-}" = status ]; then   # vm.sh pm-sync status: the last passes
+  systemctl --no-pager list-timers racinglines-pm-sync.timer | head -n 2
+  echo "--- last passes ($LOG)"; tail -n 12 "$LOG" 2>/dev/null || echo "no pass yet"
+  exit 0
+fi
+
 # Check if F1 is in a race weekend; skip if off-week
 if ! bash scripts/vm/race_weekend.sh f1 >/dev/null 2>&1; then
   say "polymarket f1: off-week, skipped"
