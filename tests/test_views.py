@@ -260,6 +260,14 @@ def test_racinglines101_is_public_and_linked_from_login():
     assert 'href="/racinglines101">I\'m already confused.</a>' in cl.get("/login").text
 
 
+def test_pitch_is_public():
+    from fastapi.testclient import TestClient
+
+    from racinglines.web.app import app
+    r = TestClient(app).get("/pitch", follow_redirects=False)
+    assert r.status_code == 200 and "<html" in r.text.lower()
+
+
 def test_replay_counterparty_is_not_the_demo_taker(test_engine):
     """Replay fills belong to the polymarket-takers system account: no login, never the demo taker."""
     from sqlalchemy.orm import Session

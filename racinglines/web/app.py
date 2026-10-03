@@ -59,7 +59,7 @@ CSRF_TOKEN = hmac.new(_SECRET.encode(), b"csrf", hashlib.sha256).hexdigest()
 security = HTTPBasic(realm="racinglines", auto_error=False)
 SESSION_COOKIE = "rl_session"
 SESSION_HOURS = 12
-PUBLIC_PATHS = ("/login", "/static", "/racinglines101", "/signup", "/forgot")
+PUBLIC_PATHS = ("/login", "/static", "/racinglines101", "/signup", "/forgot", "/pitch")
 
 # failed-login throttle: per client IP, MAX_FAILURES within FAILURE_WINDOW seconds -> 429
 MAX_FAILURES = 8
@@ -465,7 +465,7 @@ def racinglines101(request: Request):
 
 @app.get("/pitch", response_class=HTMLResponse)
 def pitch():
-    """The pitch deck (pitch.html at the repo root), behind the same login."""
+    """The pitch deck (pitch.html at the repo root), public like /login and /signup."""
     from fastapi.responses import FileResponse
     return FileResponse(ROOT / "pitch.html", media_type="text/html")
 
