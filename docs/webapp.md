@@ -166,7 +166,7 @@ the Markets, My Book and Positions pages links to Strategy and Positions.
 |---|---|
 | **Racinglines 101** (`/racinglines101`, public: no sign-in) | A plain-language intro to makers, takers and the paper-trading demo. Linked from the sign-in page as **I'm already confused.** |
 | **Sign in** (`/login`, `/logout`) | Two one-click demo buttons (**Try as pro**, **Try as basic**; the `maker` / `taker` accounts, which keep their usernames, password `password`) above the standard username/password form, which the admin uses. |
-| **Pitch** (`/pitch`) | Serves `pitch.html`, behind the same login. |
+| **Pitch** (`/pitch`) | Serves `pitch.html`. Public: no sign-in, like the login and sign-up pages. |
 | **Docs** (`/docs/`) | Serves these docs as built in `site/` (the pre-push hook builds them; or `python -m mkdocs build -d site`), behind the same login. |
 
 ### Launching runs from the Lab
