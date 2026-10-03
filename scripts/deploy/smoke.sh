@@ -32,6 +32,8 @@ check() {   # check <expected status> <label> <curl args...>
   local want=$1 label=$2; shift 2
   local got
   got=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$@")
+  # 000 = no HTTP response (a worker still warming up after a restart, a reset): retry once; a wrong status never retries
+  if [ "$got" = "000" ]; then sleep 5; got=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$@"); fi
   if [ "$got" = "$want" ]; then echo "ok    $got  $label"; else echo "FAIL  $got  $label (wanted $want)"; fail=1; fi
 }
 
@@ -42,6 +44,10 @@ if [ "$MODE" = "--auth-throttle" ]; then
   exit $fail
 fi
 
+# wait up to 60 s for the app to answer at all (vm.sh deploy runs this seconds after the restart)
+for _ in $(seq 1 12); do
+  [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$URL/login")" = 200 ] && break; sleep 5
+done
 check 200 "GET /login" "$URL/login"
 if [ -n "${SMOKE_EXPECT_ENV:-}" ]; then
   got_env=$(curl -s -o /dev/null -w '%header{x-racinglines-env}' --max-time 30 "$URL/login")
@@ -49,7 +55,7 @@ if [ -n "${SMOKE_EXPECT_ENV:-}" ]; then
   else echo "FAIL  env  X-Racinglines-Env: '${got_env:-none}' (wanted $SMOKE_EXPECT_ENV: this is not the $SMOKE_EXPECT_ENV instance)"; fail=1; fi
 fi
 check 401 "GET /markets without credentials" "$URL/markets"
-for path in /markets /pitch /racinglines101; do
+for path in /markets /pitch /racinglines101 /live /live/f1; do
   for user in maker taker; do check 200 "GET $path as $user" -u "$user:$PW" "$URL$path"; done
 done
 check 200 "GET /book/quotes as maker" -u "maker:$PW" "$URL/book/quotes"
