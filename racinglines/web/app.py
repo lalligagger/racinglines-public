@@ -1519,9 +1519,52 @@ from fastapi import WebSocket, WebSocketDisconnect
 from racinglines.web.f1_live import live_stream_manager, FastF1LiveClient
 
 @app.get("/live/f1", response_class=HTMLResponse)
-def live_f1(request: Request, user=allow(*ANY)):
-    """FastF1 live stream page."""
-    return render(request, "live_f1_stream.html")
+def live_f1(request: Request, year: int = 2026, round_num: int = 21, c=Depends(conn), user=allow(*ANY)):
+    """FastF1 live stream page with market pricing (Whistler Live demo replica).
+
+    Shows real-time F1 timing from FastF1 alongside live Polymarket prices.
+    """
+    # Find the current/upcoming F1 race
+    try:
+        races = data.q(c, """
+            SELECT ra.id, ra.event_id, e.season_id, e.start_date, s.competition_id
+            FROM races ra
+            JOIN events e ON e.id = ra.event_id
+            JOIN seasons s ON s.id = e.season_id
+            WHERE s.year = :year AND e.status IN ('upcoming', 'ongoing')
+            ORDER BY e.start_date ASC LIMIT 1
+        """, year=year)
+        race_id = races[0]["id"] if races else None
+    except Exception as e:
+        logger.error(f"Error finding F1 race: {e}")
+        race_id = None
+
+    return render(request, "live_f1_stream.html", year=year, round_num=round_num, race_id=race_id)
+
+@app.get("/api/f1/markets/{race_id}")
+def f1_markets(race_id: int, c=Depends(conn), user=allow(*ANY)):
+    """Fetch market data for an F1 race (race winner odds)."""
+    try:
+        from racinglines.markets.venues import event_matrix
+        info, pricing, df = event_matrix(c, race_id)
+
+        # Filter to race winner markets
+        winners = df[df["kind"] == "race_win"].copy()
+
+        markets = []
+        for _, row in winners.iterrows():
+            markets.append({
+                "subject": row.get("athlete"),
+                "fair": float(row["fair"]) if row["fair"] is not None and pd.notna(row["fair"]) else None,
+                "bid": float(row.get("pm_bid", None)) if row.get("pm_bid") is not None else None,
+                "ask": float(row.get("pm_ask", None)) if row.get("pm_ask") is not None else None,
+                "move": float(row.get("pm_mid", None)) - float(row["fair"]) if row["fair"] is not None and row.get("pm_mid") is not None else None,
+            })
+
+        return {"markets": markets, "source": pricing.get("source", "model")}
+    except Exception as e:
+        logger.error(f"Error fetching F1 markets: {e}")
+        return {"markets": [], "error": str(e)}
 
 @app.websocket("/ws/f1/live/{session_id}")
 async def websocket_f1_live(websocket: WebSocket, session_id: str):
