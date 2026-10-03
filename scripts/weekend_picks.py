@@ -102,15 +102,15 @@ def render_html(info, pricing, picks, rest, venues, username=None, images=None):
     more = "".join(f"<li>{html.escape(_bet(p))}: {p['side']} on {p['venue'].title()}, +{p['ev'] * 100:.1f}¢</li>" for p in rest)
     images_html = ""
     if images:
-        images_html = "<div style=\"margin:20px 0\">" + "".join(
-            f'<div style="margin:10px 0"><img src="/media/{html.escape(img)}" style="max-width:100%;height:auto"></div>'
+        images_html = "<div style=\"margin:20px 0;text-align:center\">" + "".join(
+            f'<div style="margin:10px 0"><img src="/media/{html.escape(img)}" style="max-width:100%;max-height:400px;height:auto;display:block;margin:0 auto"></div>'
             for img in images
         ) + "</div>"
     return f"""<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222222;max-width:720px">
 <p>{greeting}</p>
 <p>Here are this weekend's top paper picks for the <b>{html.escape(info['title'])}</b> ({_when(info)}), ranked by the
 model's expected profit per $1 contract on {" and ".join(v.title() for v in venues)}.</p>
-<table style="border-collapse:collapse;border:1px solid #cccccc"><tr>{head}</tr>{body}</table>
+<table style="border-collapse:collapse;border:1px solid #cccccc;width:100%;max-width:600px"><tr>{head}</tr>{body}</table>
 {images_html}
 {"<p><b>Next in line:</b></p><ul>" + more + "</ul>" if rest else ""}
 <p><b>Read these with care.</b> Prices are from {html.escape(str(pricing.get('source', 'the live forecast')))}, which
