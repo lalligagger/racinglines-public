@@ -89,13 +89,15 @@ LATE_WHEN_LEFT = _LIVE["poll"]["late_when_left"]  # the late window opens once t
 LATE_INTERVAL = _LIVE["poll"]["late_interval_s"]  # polls every 2 s, and every taker gets a fresh $LATE_CAP for the window
 LATE_CAP = _LIVE["crowd"]["late_cap"]
 LATE_PACE = _LIVE["crowd"]["late_pace"]           # the late window trades at the push pace: 50x the normal crowd rate
+WAIT_INTERVAL = 60                                 # before the final's start list: a look a minute (qualifying too)
 BASE_INTERVAL = _LIVE["poll"]["interval_s"]       # CROWD_P is per BASE_INTERVAL seconds; faster polls scale it down (same rate)
 MAX_POS = _LIVE["quoting"]["max_pos"]             # the maker's shares per market, either way
 SKEW = _LIVE["quoting"]["skew"]                   # quotes lean against inventory: shift = -SKEW x half-spread x inventory / MAX_POS
 CROWD_SEED = _LIVE["crowd"]["seed"]
 
 
-EVENT_NAMES = {"20260925_mtb": "Whistler DH final (private book)"}
+EVENT_NAMES = {"20260925_mtb": "Whistler DH final (private book)",
+               "20261002_mtb": "Lake Placid DH final (private book)"}
 
 
 def event_name(slug):
@@ -132,9 +134,13 @@ def quali_best(slug, keys, session=None):
     """{bib: best qualifying time ms, on the first session's scale} and the qualifying split-to-finish
     ratios (median per split). Later sessions can run in different conditions (Whistler's Q2 ran ~2% slower
     than Q1), so each is rescaled to the first with the median time ratio of the riders who finished both."""
+    return quali_from([fetch(slug, k, session) for k in keys])
+
+
+def quali_from(feeds):
+    """quali_best() on qualifying feeds already fetched."""
     sessions, ratios = [], {}
-    for k in keys:
-        d = fetch(slug, k, session)
+    for d in feeds:
         t = {}
         for r in d.get("Results") or []:
             if r.get("Status") != "Finished" or not r.get("RaceTime"):
@@ -435,6 +441,75 @@ def settle(rows, done):
     return {(r["bib"], m): (rank.get(r["bib"], 999) <= (1 if m == "win" else 3)) for r in rows for m in MARKETS}
 
 
+def quali_table(d):
+    """One qualifying feed as rows for the Live page: rank, bib, name, nation, time (ms), gap (ms), status."""
+    riders = d.get("Riders") or {}
+    res = d.get("Results") or []
+    fin = sorted([r for r in res if r.get("Status") == "Finished" and r.get("RaceTime")], key=lambda r: r["RaceTime"])
+    rest = [r for r in res if r not in fin]
+    lead = fin[0]["RaceTime"] if fin else None
+    out = []
+    for i, r in enumerate(fin + rest):
+        rd = riders.get(str(r["RaceNr"]), {})
+        done = i < len(fin)
+        out.append(dict(rank=i + 1 if done else None, bib=r["RaceNr"], name=rd.get("PrintName") or str(r["RaceNr"]),
+                        nation=rd.get("Nation"), time=r["RaceTime"] if done else None,
+                        gap=r["RaceTime"] - lead if done else None, status=r.get("Status")))
+    return out
+
+
+def provisional(feeds, qbest):
+    """The final's riders as qualifying leaves them, before ChronoRace publishes the start list: everyone with
+    a qualifying time, starting in reverse qualifying order (the fastest last), all still to start. Nobody is
+    "next": who makes the final and the real order are ChronoRace's start list's to say."""
+    names = {}
+    for d in feeds:
+        for b, rd in (d.get("Riders") or {}).items():
+            names.setdefault(int(b) if str(b).isdigit() else b, rd)
+    order = sorted(qbest, key=lambda b: -qbest[b])                    # slowest first: the final's start order
+    out = []
+    for i, b in enumerate(order):
+        rd = names.get(b, {})
+        out.append(dict(bib=b, name=rd.get("PrintName") or str(b), nation=rd.get("Nation"), team=rd.get("UciTeamName"),
+                        uci_rank=rd.get("UciRank"), status="NA", start=None, time=None, splits=[], split_pos=[],
+                        sort=None, next=None, slot=i))
+    return out
+
+
+def waiting(slug, key, d, cond, out, interval, quali_keys=(), session=None):
+    """The final's feed has no riders yet (ChronoRace publishes the start list after qualifying): write a
+    latest.json so the Live page lists the event, with the qualifying results so far and the model's pre-final
+    odds from them (reverse qualifying order, nobody started), and leave the book, the crowd, the positions and
+    the final's qualifying cache alone: no quotes until the final's own feed has riders. Without this an empty
+    feed counted 0 riders to start and opened the late window (Lake Placid, 3 Oct 2026)."""
+    feeds = [fetch(slug, k, session) for k in quali_keys]
+    qbest, qratio = quali_from(feeds)
+    cache = waiting.__dict__.setdefault("cache", {})
+    if "prior" not in cache:
+        cache["prior"] = season_prior(slug)
+    rows = simulate(provisional(feeds, qbest), qbest, qratio, cond, prior=cache["prior"])[0] if qbest else []
+    book = load_book(out)
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    snap = dict(ts=now, slug=slug, key=key, round=d.get("DisplayName") or event_name(slug), conditions=cond,
+                waiting=("ChronoRace has no start list for this final yet; odds are the model's from qualifying, "
+                         "in reverse qualifying order, with no quotes until the final's start list is out"
+                         if rows else "ChronoRace has no start list for this final and no qualifying times yet"),
+                qualifying=[dict(key=k, title=f.get("DisplayName") or f"Qualifying {k}", rows=quali_table(f))
+                            for k, f in zip(quali_keys, feeds) if f.get("Results")],
+                model_version=MODEL_VERSION, counts={"NA": len(rows)} if rows else {}, done=False, riders=rows,
+                quotes=[], maker_pnl=book_pnl(book, {}, {}),
+                betting=dict(closed=False, closed_at=None, last_call=False, to_start=None, late=bool(book.get("late")),
+                             late_at=book.get("late_at"), interval=interval, late_cap=LATE_CAP),
+                crowd=dict(book["crowd"], takers=CROWD, last_fills=0,
+                           active=sum(1 for x, b in zip(book["left"], book["budget"]) if x < b - 0.005),
+                           left=round(sum(book["left"]), 2), results=crowd_results(book, {}, {})),
+                outcomes=[], poll_interval=interval)
+    tmp = out / "latest.json.tmp"
+    tmp.write_text(json.dumps(snap, default=str))
+    tmp.replace(out / "latest.json")
+    return snap
+
+
 def update(slug, key, quali_keys, cond="", session=None, interval=BASE_INTERVAL):
     """One poll: feed -> simulation -> quotes -> files. Returns the snapshot."""
     import gzip
@@ -447,6 +522,8 @@ def update(slug, key, quali_keys, cond="", session=None, interval=BASE_INTERVAL)
         json.dump(d, f)
     import hashlib
     riders = parse(d)
+    if not riders:                                                    # no start list yet: the book waits untouched
+        return waiting(slug, key, d, cond, out, WAIT_INTERVAL, quali_keys, session)
     cache = update.__dict__.setdefault("cache", {})                   # per process: nothing old is re-processed
     if "q" not in cache:
         cache["q"] = quali_best(slug, quali_keys, session)            # qualifying: fixed for the final
@@ -586,27 +663,32 @@ def _run(slug, key, quali_keys, cond="", interval=BASE_INTERVAL, minutes=0, echo
     t0 = time.time()
     late = False
     while True:
+        snap = None
         try:
             snap = update(slug, key, quali_keys, cond, s, interval=LATE_INTERVAL if late else interval)
-            cur_interval = int((snap.get("betting") or {}).get("interval", interval))
-            if cur_interval == LATE_INTERVAL and not late:               # a Men's Elite rider is on track or next to start
-                late = True
-                echo(f"{snap['ts']} Men Elite on track: polling every {LATE_INTERVAL} s")
-            elif cur_interval != LATE_INTERVAL and late and not (snap.get("betting") or {}).get("late"):
+            if snap.get("waiting"):                                     # no start list yet: the base pace
                 late = False
-            if not late and (snap.get("betting") or {}).get("late"):      # relaunch at the late-window pace
-                late = True
-                echo(f"{snap['ts']} late window: polling every {LATE_INTERVAL} s, fresh ${LATE_CAP:.0f} caps")
-            lead = max(snap["riders"], key=lambda r: r["p1"])
-            echo(f"{snap['ts']} {snap['counts']} favourite {lead['name']} {lead['p1']:.1%}"
-                 + (" · FINAL OVER" if snap["done"] else ""))
-            if snap["done"]:
-                return snap
+                echo(f"{snap['ts']} waiting: {len(snap['riders'])} riders from qualifying; next look in {WAIT_INTERVAL} s")
+            else:
+                cur_interval = int((snap.get("betting") or {}).get("interval", interval))
+                if cur_interval == LATE_INTERVAL and not late:               # a Men's Elite rider is on track or next to start
+                    late = True
+                    echo(f"{snap['ts']} Men Elite on track: polling every {LATE_INTERVAL} s")
+                elif cur_interval != LATE_INTERVAL and late and not (snap.get("betting") or {}).get("late"):
+                    late = False
+                if not late and (snap.get("betting") or {}).get("late"):      # relaunch at the late-window pace
+                    late = True
+                    echo(f"{snap['ts']} late window: polling every {LATE_INTERVAL} s, fresh ${LATE_CAP:.0f} caps")
+                lead = max(snap["riders"], key=lambda r: r["p1"])
+                echo(f"{snap['ts']} {snap['counts']} favourite {lead['name']} {lead['p1']:.1%}"
+                     + (" · FINAL OVER" if snap["done"] else ""))
+                if snap["done"]:
+                    return snap
         except Exception as ex:                      # noqa: BLE001  keep polling through feed hiccups
             echo(f"error: {ex}")
         if minutes and time.time() - t0 > minutes * 60:
             return None
-        time.sleep(LATE_INTERVAL if late else interval)
+        time.sleep(WAIT_INTERVAL if snap is not None and snap.get("waiting") else LATE_INTERVAL if late else interval)
 
 
 def step(spec, now=None, echo=print, **_):

@@ -164,3 +164,65 @@ def test_run_folder_lock_stops_a_second_loop(tmp_path, monkeypatch):
         assert free                                                     # and run() let go of the lock again
     spec = dict(feed=dict(slug="ev", final=3, quali=[2]), live=dict(poll=dict(interval_s=5)))
     assert L.run_spec(spec, echo=said.append) == "snap" and polled[-1] == ("ev", "3")   # the adapter path too
+
+
+def test_an_empty_feed_waits_without_touching_the_book(tmp_path, monkeypatch):
+    """Before ChronoRace publishes the final's start list the feed has no riders (Lake Placid, 3 Oct 2026): the
+    poll writes a waiting latest.json (the Live page lists the event) and nothing else. The late window stays
+    shut (an empty feed used to count 0 riders to start and open it), the crowd doesn't trade, the positions and
+    qualifying aren't touched, and the loop keeps its base pace instead of the late window's 2 s."""
+    import json
+    monkeypatch.setattr(L.paths, "DATA", tmp_path)
+    monkeypatch.setattr(L, "fetch", lambda slug, key, session=None: {})
+    monkeypatch.setattr(L, "season_prior", lambda slug: {})
+    monkeypatch.setattr(L, "sync_positions", lambda *a, **k: pytest.fail("positions synced on an empty feed"))
+    L.update.__dict__.pop("cache", None)
+    snap = L.update("ev", "3", ["2"], interval=30)
+    out = L.outdir("ev", "3")
+    assert snap["waiting"] and snap["riders"] == [] and snap["done"] is False and not snap["betting"]["late"]
+    assert json.loads((out / "latest.json").read_text())["waiting"] == snap["waiting"]
+    assert L.LV.state("ev_3") == "live"                                 # listed on the Live tab
+    assert not (out / "book.json").exists() and not (out / "crowd.jsonl").exists()
+    assert not (out / "history.jsonl").exists() and not list((out / "snaps").glob("*"))
+    assert "q" not in L.update.__dict__.get("cache", {})                # the final's qualifying cache waits for riders
+    said, slept = [], []
+
+    class Stop(BaseException):
+        pass
+
+    def sleep(s):
+        slept.append(s)
+        raise Stop
+    monkeypatch.setattr(L.time, "sleep", sleep)
+    with pytest.raises(Stop):
+        L._run("ev", "3", ["2"], interval=30, echo=said.append)
+    assert slept == [L.WAIT_INTERVAL] and len(said) == 1 and "waiting: 0 riders" in said[0]
+
+
+def test_waiting_shows_qualifying_and_pre_final_odds(tmp_path, monkeypatch):
+    """With qualifying run and the final's feed still empty, the Live page gets the qualifying tables and the
+    model's odds for the final in reverse qualifying order (fastest starts last), with no quotes and the book
+    untouched."""
+    import json
+    monkeypatch.setattr(L.paths, "DATA", tmp_path)
+    monkeypatch.setattr(L, "season_prior", lambda slug: {})
+    riders = {str(b): dict(PrintName=n, Nation="USA") for b, n in ((1, "A"), (2, "B"), (3, "C"), (4, "D"))}
+    q1 = dict(DisplayName="Men Elite Qualifying", Riders=riders,
+              Results=[dict(RaceNr=1, Status="Finished", RaceTime=200_000, Times=[dict(RaceTime=50_000)]),
+                       dict(RaceNr=2, Status="Finished", RaceTime=198_000, Times=[dict(RaceTime=49_500)]),
+                       dict(RaceNr=3, Status="Finished", RaceTime=205_000, Times=[dict(RaceTime=51_000)]),
+                       dict(RaceNr=4, Status="DNF", RaceTime=None, Times=[])])
+    feeds = {"3": {}, "2": q1}
+    monkeypatch.setattr(L, "fetch", lambda slug, key, session=None: feeds[key])
+    L.update.__dict__.pop("cache", None)
+    snap = L.update("ev", "3", ["2"])
+    assert snap["waiting"] and snap["quotes"] == [] and snap["counts"] == {"NA": 3}
+    assert [r["bib"] for r in sorted(snap["riders"], key=lambda r: r["slot"])] == [3, 1, 2]   # fastest last
+    fav = max(snap["riders"], key=lambda r: r["p1"])
+    assert fav["name"] == "B" and sum(r["p1"] for r in snap["riders"]) == pytest.approx(1, abs=0.01)
+    q = snap["qualifying"][0]
+    assert q["title"] == "Men Elite Qualifying" and [r["name"] for r in q["rows"]] == ["B", "A", "C", "D"]
+    assert q["rows"][1]["gap"] == 2_000 and q["rows"][3]["rank"] is None
+    assert snap["round"] == "ev"                                        # the event's name, not qualifying's
+    assert not (L.outdir("ev", "3") / "book.json").exists()
+    assert json.loads((L.outdir("ev", "3") / "latest.json").read_text())["riders"]
