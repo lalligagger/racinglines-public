@@ -1519,27 +1519,52 @@ from fastapi import WebSocket, WebSocketDisconnect
 from racinglines.web.f1_live import live_stream_manager, FastF1LiveClient
 
 @app.get("/live/f1", response_class=HTMLResponse)
-def live_f1(request: Request, year: int = 2026, round_num: int = 21, c=Depends(conn), user=allow(*ANY)):
+def live_f1(request: Request, year: int = 2026, round_num: int = None, c=Depends(conn), user=allow(*ANY)):
     """FastF1 live stream page with market pricing (Whistler Live demo replica).
 
     Shows real-time F1 timing from FastF1 alongside live Polymarket prices.
+    Auto-detects current F1 event.
     """
-    # Find the current/upcoming F1 race
+    # Find the current/upcoming F1 race (auto-detect if round_num not specified)
     try:
-        races = data.q(c, """
-            SELECT ra.id, ra.event_id, e.season_id, e.start_date, s.competition_id
-            FROM races ra
-            JOIN events e ON e.id = ra.event_id
-            JOIN seasons s ON s.id = e.season_id
-            WHERE s.year = :year AND e.status IN ('upcoming', 'ongoing')
-            ORDER BY e.start_date ASC LIMIT 1
-        """, year=year)
+        if round_num:
+            # Use specified round
+            races = data.q(c, """
+                SELECT ra.id, ra.event_id, e.season_id, e.start_date, e.name, s.competition_id
+                FROM races ra
+                JOIN events e ON e.id = ra.event_id
+                JOIN seasons s ON s.id = e.season_id
+                WHERE s.year = :year AND e.round = :round
+                LIMIT 1
+            """, year=year, round=round_num)
+        else:
+            # Auto-detect: first look for ongoing, then upcoming, then most recent
+            races = data.q(c, """
+                SELECT ra.id, ra.event_id, e.season_id, e.start_date, e.name, e.status, s.competition_id
+                FROM races ra
+                JOIN events e ON e.id = ra.event_id
+                JOIN seasons s ON s.id = e.season_id
+                WHERE s.year = :year
+                ORDER BY CASE
+                    WHEN e.status = 'ongoing' THEN 0
+                    WHEN e.status = 'upcoming' THEN 1
+                    WHEN e.status = 'completed' THEN 2
+                END ASC,
+                e.start_date DESC
+                LIMIT 1
+            """, year=year)
+            if races:
+                round_num = races[0].get("round", 21)  # Extract round number if available
+
         race_id = races[0]["id"] if races else None
+        event_name = races[0].get("name", f"Round {round_num}") if races else None
     except Exception as e:
         logger.error(f"Error finding F1 race: {e}")
         race_id = None
+        event_name = None
+        round_num = 21
 
-    return render(request, "live_f1_stream.html", year=year, round_num=round_num, race_id=race_id)
+    return render(request, "live_f1_stream.html", year=year, round_num=round_num, race_id=race_id, event_name=event_name)
 
 @app.get("/api/f1/markets/{race_id}")
 def f1_markets(race_id: int, c=Depends(conn), user=allow(*ANY)):
