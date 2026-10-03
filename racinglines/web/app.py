@@ -11,6 +11,8 @@ from types import SimpleNamespace
 import contextvars
 import hashlib
 import hmac
+import json
+import logging
 import math
 import os
 import secrets
@@ -21,6 +23,8 @@ from urllib.parse import quote
 from datetime import date, datetime, timezone
 from numbers import Real
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 import pandas as pd
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, status
@@ -1508,6 +1512,43 @@ def diag_example(request: Request, run_id: int, fill: str = Form("through"), c=D
     audit(request, "diag_example", run_id=run_id, **out)
     return RedirectResponse(f"/lab/diagnostics/{run_id}?msg=Recorded {out['bets']} fills as Polymarket-taker bets on {out['markets']} markets",
                             status_code=303)
+
+
+# FastF1 live stream (WebSocket support)
+from fastapi import WebSocket, WebSocketDisconnect
+from racinglines.web.f1_live import live_stream_manager, FastF1LiveClient
+
+@app.get("/live/f1", response_class=HTMLResponse)
+def live_f1(request: Request, user=allow(*ANY)):
+    """FastF1 live stream page."""
+    return render(request, "live_f1_stream.html")
+
+@app.websocket("/ws/f1/live/{session_id}")
+async def websocket_f1_live(websocket: WebSocket, session_id: str):
+    """WebSocket endpoint for F1 live timing updates."""
+    await websocket.accept()
+    await live_stream_manager.add_client(session_id, websocket)
+
+    try:
+        while True:
+            # Keep connection alive and handle incoming messages
+            data = await websocket.receive_text()
+            msg = json.loads(data)
+
+            if msg.get("type") == "start":
+                # Start live updates for this session
+                year = msg.get("year")
+                round_num = msg.get("round")
+                session_name = msg.get("session")  # "FP1", "FP2", "FP3", "SQ", "SS", "Q", "R"
+
+                if year and round_num and session_name:
+                    fastf1_session = await FastF1LiveClient.get_session(year, round_num, session_name)
+                    await live_stream_manager.start_live_updates(session_id, fastf1_session, update_interval=5)
+    except WebSocketDisconnect:
+        await live_stream_manager.remove_client(session_id)
+    except Exception as e:
+        logger.error(f"WebSocket error for {session_id}: {e}")
+        await live_stream_manager.remove_client(session_id)
 
 
 from racinglines.web import admin  # noqa: E402,F401  (registers /admin routes)
