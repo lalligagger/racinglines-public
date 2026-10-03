@@ -37,6 +37,11 @@ check() {   # check <expected status> <label> <curl args...>
   if [ "$got" = "$want" ]; then echo "ok    $got  $label"; else echo "FAIL  $got  $label (wanted $want)"; fail=1; fi
 }
 
+# wait up to 60 s for the app to answer at all (vm.sh deploy runs this seconds after the restart)
+for _ in $(seq 1 12); do
+  [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$URL/login")" = 200 ] && break; sleep 5
+done
+
 if [ "$MODE" = "--auth-throttle" ]; then
   echo "[smoke] explicit auth-throttle probe"
   check 401 "GET /markets with a wrong password" -u "maker:not-the-password-$RANDOM" "$URL/markets"
@@ -44,10 +49,6 @@ if [ "$MODE" = "--auth-throttle" ]; then
   exit $fail
 fi
 
-# wait up to 60 s for the app to answer at all (vm.sh deploy runs this seconds after the restart)
-for _ in $(seq 1 12); do
-  [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$URL/login")" = 200 ] && break; sleep 5
-done
 check 200 "GET /login" "$URL/login"
 if [ -n "${SMOKE_EXPECT_ENV:-}" ]; then
   got_env=$(curl -s -o /dev/null -w '%header{x-racinglines-env}' --max-time 30 "$URL/login")
