@@ -3,6 +3,12 @@
     .venv/bin/python scripts/weekend_picks.py                       # next scheduled F1 event, top 3
     .venv/bin/python scripts/weekend_picks.py --event-id 89 --top 5
     .venv/bin/python scripts/weekend_picks.py --venues kalshi --min-volume 500
+    .venv/bin/python scripts/weekend_picks.py --compose --email you@example.com   # write it with Claude Code instead
+
+--compose opens a Claude Code chat (the `claude` CLI) with the racinglines MCP tools: the hosted server when
+RACINGLINES_MCP_TOKEN is set, else a local `racinglines mcp` on $DATABASE_URL. Claude asks what the email should say,
+pulls the numbers, asks for screenshots (local image paths are embedded when the mail is sent) and writes
+subject.txt, email.html and email.txt under <out-dir>/compose-<time>/; exit the chat and the script sends it.
 
 Reads the same market matrix as the MCP `list_markets` tool and ranks every outcome by expected profit per $1
 contract: buying YES costs the ask (EV = fair - ask - fee), buying NO costs 1 - bid (EV = bid - fair - fee). Writes
@@ -16,9 +22,16 @@ The fair values are the live forecast's, which has not seen the weekend's practi
 import argparse
 import getpass
 import html
+import json
+import os
 import re
+import shutil
 import smtplib
+import subprocess
+import sys
 import warnings
+from datetime import datetime
+from email.mime.image import MIMEImage
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from pathlib import Path
@@ -133,6 +146,21 @@ def render_text(info, pricing, picks, rest, venues, username=None):
     return "\n".join(lines)
 
 
+def _inline_images(html_body):
+    """Swap every <img src> that names a local file for a cid: reference, so the mail carries the image itself."""
+    images = []
+
+    def swap(m):
+        path = Path(html.unescape(m.group(2)).removeprefix("file://")).expanduser()
+        if not path.is_file():
+            return m.group(0)
+        cid = f"img{len(images)}@racinglines"
+        images.append((cid, path))
+        return f"{m.group(1)}cid:{cid}{m.group(3)}"
+
+    return re.sub(r'(<img\b[^>]*?\bsrc=["\'])([^"\']+)(["\'])', swap, html_body, flags=re.I), images
+
+
 def send_email(recipient, subject, html_body, text_body, smtp_server="127.0.0.1", smtp_port=1025, smtp_user=None, dry_run=False):
     """Send email via SMTP (e.g., Proton Mail Bridge). Prompts for password securely."""
     if dry_run:
@@ -143,13 +171,22 @@ def send_email(recipient, subject, html_body, text_body, smtp_server="127.0.0.1"
         smtp_user = input("SMTP username (Proton email): ")
     password = getpass.getpass("SMTP password: ")
 
-    msg = MIMEMultipart("alternative")
+    html_body, images = _inline_images(html_body)
+    alt = MIMEMultipart("alternative")
+    alt.attach(MIMEText(text_body, "plain"))
+    alt.attach(MIMEText(html_body, "html"))
+    msg = alt
+    if images:
+        msg = MIMEMultipart("related")
+        msg.attach(alt)
+        for cid, path in images:
+            img = MIMEImage(path.read_bytes())
+            img.add_header("Content-ID", f"<{cid}>")
+            img.add_header("Content-Disposition", "inline", filename=path.name)
+            msg.attach(img)
     msg["Subject"] = subject
     msg["From"] = f"Racinglines <{smtp_user}>"
     msg["To"] = recipient
-
-    msg.attach(MIMEText(text_body, "plain"))
-    msg.attach(MIMEText(html_body, "html"))
 
     try:
         with smtplib.SMTP(smtp_server, smtp_port, timeout=30) as server:
@@ -164,6 +201,80 @@ def send_email(recipient, subject, html_body, text_body, smtp_server="127.0.0.1"
     except Exception as e:
         print(f"Failed to send to {recipient}: {e}", file=__import__("sys").stderr)
         return False
+
+
+COMPOSE_BRIEF = """You are helping the racinglines owner write this weekend's picks email, in place of the fixed template of
+scripts/weekend_picks.py. The racinglines MCP tools are connected: use them (overview, list_events, list_markets,
+get_forecast, get_market_history, track_record, ...) for every number you put in the email, and never invent one.
+
+Work with the owner step by step:
+1. Ask who the email is for and what it should cover (picks, market moves, commentary, a product update), how many
+   picks, which venues (Kalshi, Polymarket) and which angles or drivers to feature.
+2. Pull the data and propose the content. Rank picks the way the template does: buying YES costs the ask,
+   EV = fair - ask - fee; buying NO costs 1 - bid, EV = bid - fair - fee; Kalshi's fee is about 0.07 x p x (1 - p).
+   Skip books wider than 15c and markets with under $100 volume unless the owner says otherwise.
+3. Ask whether a screenshot would help (a chart, the Markets page). The owner saves it and gives you its absolute
+   path; reference it as <img src="/absolute/path.png" style="max-width:100%">. The script embeds local images
+   when it sends the mail.
+4. Keep the template's caveats unless told otherwise: fair values have not seen this weekend's practice or
+   qualifying, picks on one driver or team are correlated, paper trading only, check the YES/NO label and the live
+   price before sizing anything.
+5. When the owner approves the draft, write exactly three files into the folder
+   {out}
+   namely subject.txt (one line), email.html (inline styles only, no external CSS, max-width 720px, so it pastes into Gmail
+   or Outlook), and email.txt (the same email as plain text). Then tell the owner to exit (/exit or Ctrl-D) and the
+   script takes over.
+{seed}"""
+
+
+def _template_seed(venues, min_volume, max_spread, top):
+    """The template's own top picks, as a starting point for the chat; empty when this machine has no database."""
+    try:
+        with get_engine().connect() as conn:
+            event_id = _next_event(conn)
+            race_id = conn.execute(text("SELECT id FROM races WHERE event_id = :e ORDER BY id LIMIT 1"), {"e": event_id}).scalar()
+            info, pricing, df = V.event_matrix(conn, race_id)
+            want = [k.strip() for k in KINDS.split(",")]
+            rows = T._matrix_rows(df[df["kind"].isin(want)]) if len(df) else []
+            cands = candidates(rows, venues, min_volume, max_spread)[:top + 3]
+            _links(conn, cands)
+    except Exception as e:  # noqa: BLE001  (no reachable database here: the chat pulls everything over MCP)
+        print(f"no local picks to seed the chat ({type(e).__name__}); Claude will pull them over MCP", file=sys.stderr)
+        return ""
+    lines = [f"\nThe template's picks for the {info['title']} ({_when(info)}), from {(pricing or {}).get('source', 'the live forecast')}:"]
+    lines += [f"- {_bet(p)}: {p['side']} on {p['venue'].title()}, model {p['model']:.0%} vs {p['price'] * 100:.0f}c, "
+              f"EV +{p['ev'] * 100:.1f}c, volume ${p['volume']:,.0f}, {p['url'] or 'no link'}" for p in cands]
+    return "\n".join(lines)
+
+
+def _mcp_config(mcp_url):
+    """The racinglines MCP server for this session: the hosted one when RACINGLINES_MCP_TOKEN is set, else a local
+    `racinglines mcp` over stdio (reads $DATABASE_URL, so run it where the database is)."""
+    token = os.environ.get("RACINGLINES_MCP_TOKEN")
+    if token:
+        server = {"type": "http", "url": mcp_url, "headers": {"Authorization": f"Bearer {token}"}}
+    else:
+        server = {"command": str(Path(sys.executable).with_name("racinglines")), "args": ["mcp"]}
+    return json.dumps({"mcpServers": {"racinglines": server}})
+
+
+def compose_email_interactive(out_dir, venues, min_volume, max_spread, top, mcp_url):
+    """Open a Claude Code chat with the racinglines MCP tools to write the email; returns (subject, html, text), or
+    None when the chat ended without writing the three files."""
+    claude = shutil.which("claude")
+    if not claude:
+        raise SystemExit("--compose needs the Claude Code CLI (`claude`) on PATH")
+    out = Path(out_dir) / f"compose-{datetime.now():%Y%m%d-%H%M%S}"
+    out.mkdir(parents=True, exist_ok=True)
+    brief = COMPOSE_BRIEF.format(out=out.resolve(), seed=_template_seed(venues, min_volume, max_spread, top))
+    subprocess.run([claude, "Help me write this weekend's picks email.", "--mcp-config", _mcp_config(mcp_url),
+                    "--append-system-prompt", brief])
+    files = [out / n for n in ("subject.txt", "email.html", "email.txt")]
+    if not all(f.exists() for f in files):
+        print(f"the chat ended without writing {', '.join(f.name for f in files if not f.exists())} in {out}", file=sys.stderr)
+        return None
+    print(f"wrote {out}")
+    return tuple(f.read_text().strip() if f.name == "subject.txt" else f.read_text() for f in files)
 
 
 def send_to_users(conn, min_volume, max_spread, max_picks, smtp_server, smtp_port, smtp_user, dry_run=False):
@@ -242,6 +353,12 @@ def main():
     ap.add_argument("--user-id", type=int, help="send to specific user ID (from user_email_prefs)")
     ap.add_argument("--dry-run", action="store_true", help="print what would be sent (no SMTP)")
 
+    # Compose mode: a Claude Code chat writes the email instead of the template
+    ap.add_argument("--compose", action="store_true",
+                    help="write the email in a Claude Code chat with the racinglines MCP tools; with --email or --send-all, send it")
+    ap.add_argument("--mcp-url", default="https://mcp.racinglines.bet/mcp",
+                    help="hosted MCP server for --compose, used when RACINGLINES_MCP_TOKEN is set")
+
     # Single-user mode (backward compatible)
     ap.add_argument("--event-id", type=int, help="default: the next scheduled F1 event")
     ap.add_argument("--venues", default="kalshi,polymarket")
@@ -256,6 +373,22 @@ def main():
     ap.add_argument("--smtp-port", type=int, default=1025, help="SMTP port (default: 1025 for Proton Bridge)")
     ap.add_argument("--smtp-user", help="SMTP username (if not set, prompted at runtime)")
     a = ap.parse_args()
+
+    if a.compose:
+        venues = [v.strip() for v in a.venues.split(",") if v.strip()]
+        composed = compose_email_interactive(a.out_dir, venues, a.min_volume, a.max_spread, a.top, a.mcp_url)
+        if not composed:
+            return
+        subject, html_body, text_body = composed
+        print(f"Subject: {subject}")
+        recipients = [a.email] if a.email else []
+        if a.send_all:
+            with get_engine().connect() as conn:
+                recipients += [r[0] for r in conn.execute(text("SELECT email FROM user_email_prefs WHERE email IS NOT NULL ORDER BY id"))]
+        for r in recipients:
+            send_email(r, subject, html_body, text_body, smtp_server=a.smtp_server, smtp_port=a.smtp_port,
+                       smtp_user=a.smtp_user, dry_run=a.dry_run)
+        return
 
     # Multi-user mode
     if a.send_all or a.user_id:
