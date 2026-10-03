@@ -94,3 +94,29 @@ def test_websocket_streams_a_poll_and_stops(ws_client, monkeypatch):
         ws.send_json({"type": "stop"})
         assert ws.receive_json()["msg"] == "stopped"
     assert calls == [(2026, 16)]
+
+
+def test_a_fresh_relay_snapshot_stands_in_for_fastf1(tmp_path, monkeypatch):
+    """F1's archive answers 403 to the VM: staging reads the snapshot the owner's Mac relays (scripts/deploy/f1_push.sh)."""
+    import asyncio
+    import json
+    import os
+    import time
+
+    monkeypatch.setattr(FL, "relay_file", lambda year, rnd: tmp_path / f"{year}-{rnd:02d}.json")
+    assert FL.relayed(2026, 16) is None                                            # no relay: FastF1 as before
+    p = tmp_path / "2026-16.json"
+    p.write_text(json.dumps(dict(event="Bahrain Grand Prix", session="Race", drivers=[], laps=40, note=None)))
+    data, err, _ = asyncio.run(FL.poll(2026, 16))
+    assert err is None and data["session"] == "Race" and data["relay_age"] <= 2
+    old = time.time() - FL.RELAY_MAX_AGE - 5
+    os.utime(p, (old, old))
+    assert FL.relayed(2026, 16) is None                                            # stale: the Mac stopped relaying
+    p.write_text("{not json")
+    assert FL.relayed(2026, 16) is None
+
+
+def test_the_relay_file_lives_in_the_data_folder(monkeypatch, tmp_path):
+    from racinglines import paths
+    monkeypatch.setattr(paths, "DATA", tmp_path)
+    assert FL.relay_file(2026, 16) == tmp_path / "runs" / "f1_relay" / "2026-16.json"

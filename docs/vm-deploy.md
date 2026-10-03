@@ -321,9 +321,17 @@ sudo systemctl disable --now racinglines-live-f1@2026-16.timer    # when the eve
 ```
 **F1 sessions come from the Mac (since 3 Oct 2026).** F1's timing archive answers 403 to the VM's cloud address, so
 FastF1 can't fetch there (the live step logs "waiting for the session's data" all weekend). During an F1 weekend, run
-`bash scripts/deploy/f1_push.sh 2026-16` on the Mac: a look every 5 minutes fetches each started session, copies new
-session files to the VM's `data/raw/f1/fastf1/<year>/` and starts the live step, until the race is in. A downhill
-final's ChronoRace feed works from the VM.
+`caffeinate -i bash scripts/deploy/f1_push.sh 2026-16` on the Mac, one process for both halves of the weekend, until the
+race is in:
+
+- **Finished sessions, prod and staging:** a look every 5 minutes fetches each session once it is over (`f1 fetch` no
+  longer fetches a session that is still running: it would come back partial and be kept), copies the round's files
+  to `data/raw/f1/fastf1/<year>/` in both copies of the app, and starts both live steps.
+- **Live timing, staging only:** while a session runs, every 2 minutes (`RELAY_SEC`) it writes the live-timing panel's
+  snapshot to staging's `data/runs/f1_relay/<year>-<round>.json`. The panel (`racinglines/web/f1_live.py`) reads that
+  file while it is under 10 minutes old and asks FastF1 itself otherwise.
+
+A downhill final's ChronoRace feed works from the VM.
 
 Only `vm.sh start` (without `web`) enables the recorder and signals, and only `vm.sh live` (or the lines above)
 enables an event's timer; `vm.sh deploy` never starts a unit that wasn't already running. A VM set up with
@@ -347,7 +355,7 @@ the `staging` branch deploys staging and nothing else**. `main` keeps deploying 
 | Database | `racinglines` | `racinglines_staging`, in the same Postgres container, copied from production by `staging setup` / `staging reset` (`pg_dump \| psql`: production is only read) |
 | Settings | `/etc/racinglines.env` | `/etc/racinglines-staging.env`: production's switches and admin password, its own `DATABASE_URL`, data folder (`/opt/racinglines-staging/data`, empty: no archive Parquet, no pitch images), `APP_SECRET`, `RACINGLINES_URL`, `RACINGLINES_ENV=staging`, `WEB_PORT=8010`; **no trading flags, no ntfy topic, no alert webhook** |
 | Timers and other units | recorder, signals, live events, record-venues, MCP | only its own live events, by hand (`vm.sh staging live <event>`: `racinglines-staging-live-f1@` / `racinglines-staging-live-dh@`, its data folder and database); no recorder or signals (two recorders would split the book history) |
-| Live timing button (F1, `/live`) | off (`RACINGLINES_F1_STREAM` unset) | on by default: an opt-in websocket per viewer polling FastF1, with a debug log (`racinglines/web/f1_live.py`) |
+| Live timing button (F1, `/live`) | off (`RACINGLINES_F1_STREAM` unset) | on by default: an opt-in websocket per viewer polling FastF1, or the Mac's relay while `f1_push.sh` runs, with a debug log (`racinglines/web/f1_live.py`) |
 | Tells you which one you're on | nothing | the `X-Racinglines-Env: staging` response header and a STAGING pill in the top bar (`RACINGLINES_ENV`) |
 
 **What a merge to `staging` does** (`deploy-staging` job): `vm.sh staging deploy <sha>`, which pipes
