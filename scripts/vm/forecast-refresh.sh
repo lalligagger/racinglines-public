@@ -9,8 +9,9 @@
 # Every pass: updates the cached forecasts with the latest race results and market conditions.
 # Logs to the journal (journalctl -u racinglines-forecast-refresh) and data/runs/logs/forecast-refresh.log.
 #
-# The first pass on a box backs the database up first: data/backups/db/
-# racinglines-before-forecast-refresh-<UTC>.sql.gz, named in a data_changes note.
+# A pass backs the database up first when there is no backup yet or the last one is over 23 hours old (forecast --save
+# refuses a dump older than 24 hours): data/backups/db/racinglines-before-forecast-refresh-<UTC>.sql.gz, named in a
+# data_changes note.
 #
 set -uo pipefail
 set -a; . "${ENV_FILE:-/etc/racinglines.env}"; set +a
@@ -28,13 +29,14 @@ if [ "${1:-}" = status ]; then   # vm.sh forecast status: the last passes
   exit 0
 fi
 
-if [ ! -e "$STATE/backup" ]; then
+B=$(cat "$STATE/backup" 2>/dev/null)
+if [ -z "$B" ] || [ ! -s "$B" ] || [ $(( $(date +%s) - $(stat -c %Y "$B") )) -gt 82800 ]; then
   B=data/backups/db/racinglines-before-forecast-refresh-$(date -u +%Y%m%dT%H%M%SZ).sql.gz
-  say "first pass: backing up to $B"
+  say "backing up to $B (none yet, or the last one is over 23 h old)"
   docker compose exec -T db pg_dump --no-owner --no-privileges -U racinglines racinglines | gzip -6 > "$B" &&
     gunzip -c "$B" | tail -n 5 | grep -q 'PostgreSQL database dump complete' ||
     { say "BACKUP FAILED: nothing refreshed"; rm -f "$B"; exit 1; }
-  $R db changes --add "NASCAR and MotoGP forecast refresh on (racinglines-forecast-refresh.timer, every 30 min). Backup: $B" >/dev/null
+  $R db changes --add "NASCAR and MotoGP forecast refresh (racinglines-forecast-refresh.timer, every 30 min), daily backup: $B" >/dev/null
   echo "$B" > "$STATE/backup"
   say "backup $B ($(du -h "$B" | cut -f1)), data_changes note added"
 fi
@@ -42,7 +44,7 @@ fi
 rc=0
 run() {   # run <sport>: refresh forecast for a sport
   local t0=$SECONDS out
-  if out=$(nice $R "$1" forecast --save 2>&1); then
+  if out=$(nice $R "$1" forecast --save --backup "$B" 2>&1); then
     say "$1 forecast: $(echo "$out" | tail -n 1) ($((SECONDS - t0)) s)"
   else
     rc=1; say "$1 forecast: FAILED ($((SECONDS - t0)) s): $(echo "$out" | tail -n 3 | tr '\n' ' ')"
