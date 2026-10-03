@@ -88,7 +88,7 @@ def _when(info):
     return str(info.get("start_date") or "")[:10]
 
 
-def render_html(info, pricing, picks, rest, venues, username=None):
+def render_html(info, pricing, picks, rest, venues, username=None, images=None):
     greeting = f"Hi {username}," if username else "Hi,"
     td = 'style="padding:6px 10px;border:1px solid #cccccc;text-align:{a};font-size:14px"'
     head = "".join(f'<th {td.format(a="left")[:-1]};background:#f0f0f0">{h}</th>' for h in
@@ -100,11 +100,18 @@ def render_html(info, pricing, picks, rest, venues, username=None):
                  f"{p['price'] * 100:.0f}¢", f"+{p['ev'] * 100:.1f}¢ ({p['roi']:+.0%})", f"${p['volume']:,.0f}", link]
         body += "<tr>" + "".join(f'<td {td.format(a="left")}>{c}</td>' for c in cells) + "</tr>"
     more = "".join(f"<li>{html.escape(_bet(p))}: {p['side']} on {p['venue'].title()}, +{p['ev'] * 100:.1f}¢</li>" for p in rest)
+    images_html = ""
+    if images:
+        images_html = "<div style=\"margin:20px 0\">" + "".join(
+            f'<div style="margin:10px 0"><img src="/media/{html.escape(img)}" style="max-width:100%;height:auto"></div>'
+            for img in images
+        ) + "</div>"
     return f"""<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222222;max-width:720px">
 <p>{greeting}</p>
 <p>Here are this weekend's top paper picks for the <b>{html.escape(info['title'])}</b> ({_when(info)}), ranked by the
 model's expected profit per $1 contract on {" and ".join(v.title() for v in venues)}.</p>
 <table style="border-collapse:collapse;border:1px solid #cccccc"><tr>{head}</tr>{body}</table>
+{images_html}
 {"<p><b>Next in line:</b></p><ul>" + more + "</ul>" if rest else ""}
 <p><b>Read these with care.</b> Prices are from {html.escape(str(pricing.get('source', 'the live forecast')))}, which
 has not seen this weekend's practice or qualifying, so the biggest gaps are where the model is most likely wrong.
