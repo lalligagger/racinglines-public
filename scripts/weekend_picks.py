@@ -15,6 +15,9 @@ RACINGLINES_MCP_TOKEN is set, else a local `racinglines mcp` on $DATABASE_URL. C
 pulls the numbers, asks for screenshots (local image paths are embedded when the mail is sent) and writes
 subject.txt, email.html and email.txt under <out-dir>/compose-<time>/; exit the chat and the script sends it.
 
+    .venv/bin/python scripts/weekend_picks.py --draft latest --email a@x.com,b@y.com   # send a saved draft again
+    .venv/bin/python scripts/weekend_picks.py --draft latest --compose                 # reopen it in a chat to edit
+
 Reads the same market matrix as the MCP `list_markets` tool and ranks every outcome by expected profit per $1
 contract: buying YES costs the ask (EV = fair - ask - fee), buying NO costs 1 - bid (EV = bid - fair - fee). Writes
 two files under reports/picks/ (gitignored): <event>.html, an email with inline styles and no external CSS, so a
@@ -168,6 +171,9 @@ def _inline_images(html_body):
     return re.sub(r'(<img\b[^>]*?\bsrc=["\'])([^"\']+)(["\'])', swap, html_body, flags=re.I), images
 
 
+_SMTP_LOGIN = {}  # the last login that worked, so a run sending to many recipients asks once
+
+
 def send_email(recipient, subject, html_body, text_body, smtp_server="127.0.0.1", smtp_port=1025, smtp_user=None, dry_run=False):
     """Send email via SMTP (e.g., Proton Mail Bridge). Prompts for password securely."""
     if dry_run:
@@ -175,8 +181,9 @@ def send_email(recipient, subject, html_body, text_body, smtp_server="127.0.0.1"
         return True
 
     if not smtp_user:
-        smtp_user = input("SMTP username (Proton email): ")
-    password = getpass.getpass("SMTP password: ")
+        smtp_user = _SMTP_LOGIN.get("user") or input("SMTP username (Proton email): ")
+    password = _SMTP_LOGIN.get("password") if _SMTP_LOGIN.get("user") == smtp_user else None
+    password = password or getpass.getpass("SMTP password: ")
 
     html_body, images = _inline_images(html_body)
     alt = MIMEMultipart("alternative")
@@ -202,6 +209,7 @@ def send_email(recipient, subject, html_body, text_body, smtp_server="127.0.0.1"
                 server.starttls()  # Bridge's certificate is self-signed; the stdlib default context doesn't verify it
                 server.ehlo()
             server.login(smtp_user, password)
+            _SMTP_LOGIN.update(user=smtp_user, password=password)
             server.sendmail(smtp_user, recipient, msg.as_string())
         print(f"Sent to {recipient}")
         return True
@@ -295,24 +303,56 @@ def _ask_context():
     return "\n".join(lines) or "I want to write an email. Ask me what it should say."
 
 
-def compose_email_interactive(out_dir, venues, min_volume, max_spread, top, mcp_url, context=None):
-    """Open a Claude Code chat with the racinglines MCP tools to write the email; returns (subject, html, text), or
-    None when the chat ended without writing the three files."""
+DRAFT_FILES = ("subject.txt", "email.html", "email.txt")
+EDIT_NOTE = """
+This chat edits an email already drafted in {out}. Read subject.txt, email.html and email.txt first, summarize the
+draft in a few lines, ask what to change (the first message may already say), and rewrite the files in place once
+the owner approves. Refresh any numbers that may have moved since it was written."""
+
+
+def find_draft(out_dir, name):
+    """A saved compose folder: a path, a folder name under out_dir, or `latest`."""
+    if name == "latest":
+        found = sorted(Path(out_dir).glob("compose-*"))
+        if not found:
+            raise SystemExit(f"--draft latest: no compose-* folder in {out_dir}")
+        return found[-1]
+    for d in (Path(name).expanduser(), Path(out_dir) / name):
+        if d.is_dir():
+            return d
+    raise SystemExit(f"--draft: no folder {name} (here or in {out_dir})")
+
+
+def read_draft(out):
+    """(subject, html, text) from a compose folder, or None when a file is missing."""
+    files = [out / n for n in DRAFT_FILES]
+    if missing := [f.name for f in files if not f.exists()]:
+        print(f"no {', '.join(missing)} in {out}", file=sys.stderr)
+        return None
+    return tuple(f.read_text().strip() if f.name == "subject.txt" else f.read_text() for f in files)
+
+
+def compose_email_interactive(out_dir, venues, min_volume, max_spread, top, mcp_url, context=None, draft=None):
+    """Open a Claude Code chat with the racinglines MCP tools to write the email (or edit the saved `draft` folder);
+    returns (subject, html, text), or None when the chat ended without the three files."""
     claude = shutil.which("claude")
     if not claude:
         raise SystemExit("--compose needs the Claude Code CLI (`claude`) on PATH")
-    out = Path(out_dir) / f"compose-{datetime.now():%Y%m%d-%H%M%S}"
+    out = draft or Path(out_dir) / f"compose-{datetime.now():%Y%m%d-%H%M%S}"
     out.mkdir(parents=True, exist_ok=True)
     seed = "" if os.environ.get("RACINGLINES_MCP_TOKEN") else _template_seed(venues, min_volume, max_spread, top)
     brief = COMPOSE_BRIEF.format(out=out.resolve(), seed=seed)
-    subprocess.run([claude, context or _ask_context(), "--mcp-config", _mcp_config(mcp_url),
-                    "--append-system-prompt", brief])
-    files = [out / n for n in ("subject.txt", "email.html", "email.txt")]
-    if not all(f.exists() for f in files):
-        print(f"the chat ended without writing {', '.join(f.name for f in files if not f.exists())} in {out}", file=sys.stderr)
-        return None
-    print(f"wrote {out}")
-    return tuple(f.read_text().strip() if f.name == "subject.txt" else f.read_text() for f in files)
+    if draft:
+        brief += EDIT_NOTE.format(out=out.resolve())
+        first = context or input("What should change in this draft? (Enter: Claude summarizes it and asks)\n> ").strip()
+        first = first or f"Let's edit the draft in {out.resolve()}."
+    else:
+        first = context or _ask_context()
+    subprocess.run([claude, first, "--mcp-config", _mcp_config(mcp_url), "--append-system-prompt", brief])
+    composed = read_draft(out)
+    if composed:
+        print(f"draft in {out} (send it again later with --draft {out.name})")
+    return composed
 
 
 def send_to_users(conn, min_volume, max_spread, max_picks, smtp_server, smtp_port, smtp_user, dry_run=False, images=()):
@@ -394,6 +434,8 @@ def main():
     # Compose mode: a Claude Code chat writes the email instead of the template
     ap.add_argument("--compose", action="store_true",
                     help="write the email in a Claude Code chat with the racinglines MCP tools; with --email or --send-all, send it")
+    ap.add_argument("--draft", metavar="DIR",
+                    help="a saved compose folder (or `latest`): send it again, or with --compose reopen it to edit")
     ap.add_argument("--context", help="what the --compose email should say; skips the questions asked at launch")
     ap.add_argument("--mcp-url", default="https://mcp.racinglines.bet/mcp",
                     help="hosted MCP server for --compose, used when RACINGLINES_MCP_TOKEN is set")
@@ -406,7 +448,7 @@ def main():
     ap.add_argument("--min-volume", type=float, default=100, help="skip markets with less volume than this (USD)")
     ap.add_argument("--max-spread", type=float, default=0.15, help="skip books wider than this (drops 1c/99c placeholders)")
     ap.add_argument("--out-dir", default="reports/picks")
-    ap.add_argument("--email", help="recipient email address; if set, sends the picks via SMTP")
+    ap.add_argument("--email", help="recipient email address(es), comma-separated; if set, sends via SMTP")
     ap.add_argument("--username", help="personalize greeting with username")
     ap.add_argument("--image", action="append", default=[], metavar="PATH",
                     help="a screenshot or chart to show under the picks table (repeatable); embedded in the mail when sent")
@@ -418,18 +460,25 @@ def main():
     if missing := [str(i) for i in a.image if not i.is_file()]:
         raise SystemExit(f"--image: no such file: {', '.join(missing)}")
 
-    if a.compose:
-        venues = [v.strip() for v in a.venues.split(",") if v.strip()]
-        composed = compose_email_interactive(a.out_dir, venues, a.min_volume, a.max_spread, a.top, a.mcp_url, a.context)
+    if a.compose or a.draft:
+        draft = find_draft(a.out_dir, a.draft) if a.draft else None
+        if a.compose:
+            venues = [v.strip() for v in a.venues.split(",") if v.strip()]
+            composed = compose_email_interactive(a.out_dir, venues, a.min_volume, a.max_spread, a.top, a.mcp_url,
+                                                 a.context, draft)
+        else:
+            composed = read_draft(draft)
         if not composed:
             return
         subject, html_body, text_body = composed
         print(f"Subject: {subject}")
-        recipients = [a.email] if a.email else []
+        recipients = [e.strip() for e in (a.email or "").split(",") if e.strip()]
         if a.send_all:
             with get_engine().connect() as conn:
                 recipients += [r[0] for r in conn.execute(text("SELECT email FROM user_email_prefs WHERE email IS NOT NULL ORDER BY id"))]
-        for r in recipients:
+        if not recipients:
+            print("not sent: pass --email (comma-separated for several) or --send-all")
+        for r in dict.fromkeys(recipients):
             send_email(r, subject, html_body, text_body, smtp_server=a.smtp_server, smtp_port=a.smtp_port,
                        smtp_user=a.smtp_user, dry_run=a.dry_run)
         return
@@ -503,8 +552,8 @@ def main():
     print(f"Subject: {subject}")
     print(f"wrote {out / (stem + '.html')} and {out / (stem + '.txt')}")
 
-    if a.email:
-        send_email(a.email, subject, html_body, text_body,
+    for r in dict.fromkeys(e.strip() for e in (a.email or "").split(",") if e.strip()):
+        send_email(r, subject, html_body, text_body,
                    smtp_server=a.smtp_server, smtp_port=a.smtp_port,
                    smtp_user=a.smtp_user, dry_run=a.dry_run)
 
