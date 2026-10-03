@@ -1,0 +1,14 @@
+# Polymarket market links sync, one pass (runs via racinglines-pm-sync.timer).
+# Syncs active Polymarket markets and updates prices every 5-10 min during race windows.
+# Logs: journalctl -u racinglines-pm-sync, and data/runs/logs/pm-sync.log
+[Unit]
+Description=racinglines Polymarket market sync
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=racinglines
+WorkingDirectory=/opt/racinglines
+ExecStart=/opt/racinglines/scripts/vm/pm_sync.sh
+TimeoutStartSec=5min
