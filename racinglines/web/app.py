@@ -1551,17 +1551,30 @@ def f1_markets(race_id: int, c=Depends(conn), user=allow(*ANY)):
         # Filter to race winner markets
         winners = df[df["kind"] == "race_win"].copy()
 
+        # Get athlete names
+        athlete_ids = winners["athlete_id"].unique() if len(winners) > 0 else []
+        athletes = {}
+        if len(athlete_ids) > 0:
+            names = data.q(c,
+                f"SELECT id, display_name FROM athletes WHERE id IN ({','.join('?' * len(athlete_ids))})",
+                *athlete_ids)
+            athletes = {row["id"]: row["display_name"] for _, row in names.iterrows()}
+
         markets = []
         for _, row in winners.iterrows():
+            athlete_name = athletes.get(row.get("athlete_id"), f"#{row.get('athlete_id', '?')}")
+            fair_val = float(row["fair"]) if row["fair"] is not None and pd.notna(row["fair"]) else None
+            pm_bid = float(row.get("pm_bid", None)) if row.get("pm_bid") is not None and pd.notna(row.get("pm_bid")) else None
+            pm_ask = float(row.get("pm_ask", None)) if row.get("pm_ask") is not None and pd.notna(row.get("pm_ask")) else None
+
             markets.append({
-                "subject": row.get("athlete"),
-                "fair": float(row["fair"]) if row["fair"] is not None and pd.notna(row["fair"]) else None,
-                "bid": float(row.get("pm_bid", None)) if row.get("pm_bid") is not None else None,
-                "ask": float(row.get("pm_ask", None)) if row.get("pm_ask") is not None else None,
-                "move": float(row.get("pm_mid", None)) - float(row["fair"]) if row["fair"] is not None and row.get("pm_mid") is not None else None,
+                "subject": athlete_name,
+                "fair": fair_val,
+                "bid": pm_bid,
+                "ask": pm_ask,
             })
 
-        return {"markets": markets, "source": pricing.get("source", "model")}
+        return {"markets": sorted(markets, key=lambda m: m["fair"] or 0, reverse=True), "source": pricing.get("source", "model")}
     except Exception as e:
         logger.error(f"Error fetching F1 markets: {e}")
         return {"markets": [], "error": str(e)}
