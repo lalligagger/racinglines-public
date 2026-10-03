@@ -30,5 +30,22 @@
   <p class="small muted mb0">{% for x in [times[0], times[(times|length // 2)], times[-1]] %}<a href="/live?event={{ current_run|urlencode }}&t={{ x }}" class="{{ 'sel' if x == t }}">{{ x[:16]|replace('T', ' ') }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</p>
   {% endif %}
 </div>{% endif %}
+{% if f1_stream and sport == 'f1' and stream_event %}
+{# Opt-in live timing (web/f1_live.py; RACINGLINES_F1_STREAM, on by default only on staging). Outside #live, so the
+   page's own refresh doesn't reset it. Off until the viewer turns it on; the log is for testing. #}
+<div class="card mb12" id="f1-stream" data-event="{{ stream_event }}">
+  <div class="tabs" role="group" aria-label="Live timing">
+    <b>Live timing</b> <span class="pill no">beta</span>
+    <button type="button" id="fs-toggle" aria-pressed="false">Turn on</button>
+    <span id="fs-state" class="muted small">off</span>
+  </div>
+  <div id="fs-table"></div>
+  <details open><summary class="small">Debug log</summary>
+    <pre id="fs-log" class="small" style="max-height:16em;overflow:auto;white-space:pre-wrap;margin:0"></pre>
+    <button type="button" id="fs-copy" class="small">Copy log</button>
+  </details>
+</div>
+<script src="/static/f1_stream.js?v={{ css_v() }}" defer></script>
+{% endif %}
 <div id="live"{% if mode == 'live' %} hx-get="/live?{{ evq|safe }}partial=1" hx-trigger="every {{ 5 if sport == 'mtb_dh' else 30 }}s [document.visibilityState=='visible']" hx-swap="innerHTML"{% endif %}>{% include "live_partial.html" %}</div>
 {% endblock %}

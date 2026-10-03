@@ -1514,41 +1514,27 @@ def diag_example(request: Request, run_id: int, fill: str = Form("through"), c=D
                             status_code=303)
 
 
-# FastF1 live stream (WebSocket support)
-from fastapi import WebSocket, WebSocketDisconnect
-from racinglines.web.f1_live import live_stream_manager, FastF1LiveClient
+async def _f1_live_ws(websocket):
+    """Live F1 timing for one viewer (web/f1_live.py). A plain Starlette route: the app's dependencies (HTTP Basic,
+    the demo guard) can't run on a websocket, so the session cookie is checked here."""
+    from starlette.concurrency import run_in_threadpool
 
-@app.get("/live/f1", response_class=HTMLResponse)
-def live_f1(request: Request, user=allow(*ANY)):
-    """FastF1 live stream page."""
-    return render(request, "live_f1_stream.html")
+    from racinglines.web import f1_live
 
-@app.websocket("/ws/f1/live/{session_id}")
-async def websocket_f1_live(websocket: WebSocket, session_id: str):
-    """WebSocket endpoint for F1 live timing updates."""
-    await websocket.accept()
-    await live_stream_manager.add_client(session_id, websocket)
+    def who():
+        uid = _session_user_id(websocket.cookies.get(SESSION_COOKIE))
+        if uid is None:
+            return None
+        with get_session() as s:
+            u = U.get_user(s, user_id=uid)
+            return _user_dict(u) if u and u.active else None
 
-    try:
-        while True:
-            # Keep connection alive and handle incoming messages
-            data = await websocket.receive_text()
-            msg = json.loads(data)
+    await f1_live.serve(websocket, await run_in_threadpool(who))
 
-            if msg.get("type") == "start":
-                # Start live updates for this session
-                year = msg.get("year")
-                round_num = msg.get("round")
-                session_name = msg.get("session")  # "FP1", "FP2", "FP3", "SQ", "SS", "Q", "R"
 
-                if year and round_num and session_name:
-                    fastf1_session = await FastF1LiveClient.get_session(year, round_num, session_name)
-                    await live_stream_manager.start_live_updates(session_id, fastf1_session, update_interval=5)
-    except WebSocketDisconnect:
-        await live_stream_manager.remove_client(session_id)
-    except Exception as e:
-        logger.error(f"WebSocket error for {session_id}: {e}")
-        await live_stream_manager.remove_client(session_id)
+from starlette.routing import WebSocketRoute  # noqa: E402
+
+app.router.routes.append(WebSocketRoute("/ws/f1/live", _f1_live_ws))
 
 
 from racinglines.web import admin  # noqa: E402,F401  (registers /admin routes)

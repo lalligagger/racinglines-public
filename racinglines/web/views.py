@@ -792,6 +792,14 @@ def live_page(request: Request, partial: int = 0, t: str = "", event: str = ""):
     return render(request, "live_partial.html" if partial else "live.html", **ctx)
 
 
+@app.get("/live/f1", response_class=HTMLResponse, dependencies=[allow(*ANY)])
+def live_f1_page(request: Request):
+    """The Live tab on the newest F1 event (its live-timing button where RACINGLINES_F1_STREAM is on)."""
+    from racinglines.pipelines import live as LV
+    f1 = next((e for e in LV.events() if e["sport"] == "f1"), None)
+    return live_page(request, event=f1["run"] if f1 else "")
+
+
 
 
 def live_context(event="", t="", maker=True, partial=0):
@@ -800,6 +808,7 @@ def live_context(event="", t="", maker=True, partial=0):
     from urllib.parse import quote
 
     from racinglines.pipelines import live as LV
+    from racinglines.web import f1_live as FL
     ev = LV.find(event or None)
     mode = LV.state(ev["run"]) if ev else None
     times = LV.snap_times(ev["run"]) if ev else []
@@ -818,7 +827,7 @@ def live_context(event="", t="", maker=True, partial=0):
                t=selected, current_run=(ev or {}).get("run"),
                sport=(ev or {}).get("sport") or "mtb_dh",
                evq=f"event={quote(ev['run'], safe='')}&" if event and ev else "",   # the registry's name, URL-quoted
-               events=LV.events())
+               events=LV.events(), f1_stream=FL.enabled(), stream_event=(ev or {}).get("event_key"))
     if snap and ev:
         ctx.update(LV.adapter(ctx["sport"]).view(ev["run"], snap, picks, hist, mode, maker))
     return ctx
