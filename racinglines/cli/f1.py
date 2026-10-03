@@ -488,7 +488,50 @@ def _run(args):
 
         async def record_snapshot():
             try:
-                # Detect current F1 session
+                now = datetime.now(timezone.utc)
+
+                # Check if we're in a race weekend window (calendar-aware polling)
+                # Only poll during Thu-Sun of race weekends; skip Mon-Wed to avoid abusing FastF1
+                with engine.connect() as c:
+                    # Get the next upcoming/ongoing race to determine if we're in its weekend window
+                    result = c.execute(text("""
+                        SELECT e.year, e.round, r.event_date, r.status
+                        FROM events e
+                        JOIN races r ON r.event_id = e.id
+                        WHERE e.year >= 2020 AND r.status IN ('upcoming', 'ongoing', 'completed')
+                        ORDER BY (CASE r.status
+                                   WHEN 'ongoing' THEN 0
+                                   WHEN 'upcoming' THEN 1
+                                   WHEN 'completed' THEN 2 END),
+                                 r.event_date DESC
+                        LIMIT 1
+                    """))
+                    race_row = result.fetchone()
+
+                    if race_row:
+                        year, round_num, event_date, race_status = race_row
+                        # Calculate race weekend window: Wed before to Tue after the race
+                        from datetime import timedelta
+                        race_date = event_date.date() if hasattr(event_date, 'date') else event_date
+                        # Go back to the Wednesday of that week
+                        day_of_week = race_date.weekday()  # Monday=0, Sunday=6
+                        if day_of_week >= 2:  # Wed(2)=onwards in the week of the race
+                            days_back = day_of_week - 2
+                        else:  # Mon/Tue - go back to previous week's Wed
+                            days_back = day_of_week + 5  # Mon(0)->5 days back, Tue(1)->6 days back
+                        wed_start = race_date - timedelta(days=days_back)
+                        tue_end = wed_start + timedelta(days=6)  # Wed to following Tue
+
+                        # Check if now is within the race weekend window
+                        now_date = now.date()
+                        if not (wed_start <= now_date <= tue_end):
+                            # Outside race weekend - idle mode, just log and exit
+                            return
+                    else:
+                        # No upcoming races found - idle mode
+                        return
+
+                # Detect current F1 session (we're in a race weekend window)
                 with engine.connect() as c:
                     # Get upcoming/ongoing/completed races in priority order
                     result = c.execute(text("""
