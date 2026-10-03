@@ -1540,7 +1540,7 @@ def live_f1(request: Request, year: int = 2026, round_num: int = None, c=Depends
         else:
             # Auto-detect: first look for ongoing, then upcoming, then most recent
             races = data.q(c, """
-                SELECT ra.id, ra.event_id, e.season_id, e.start_date, e.name, e.status, s.competition_id
+                SELECT ra.id, ra.event_id, e.round, e.season_id, e.start_date, e.name, e.status, s.competition_id
                 FROM races ra
                 JOIN events e ON e.id = ra.event_id
                 JOIN seasons s ON s.id = e.season_id
@@ -1554,7 +1554,7 @@ def live_f1(request: Request, year: int = 2026, round_num: int = None, c=Depends
                 LIMIT 1
             """, year=year)
             if races:
-                round_num = races[0].get("round", 21)  # Extract round number if available
+                round_num = races[0].get("round")  # Extract round number from event
 
         race_id = races[0]["id"] if races else None
         event_name = races[0].get("name", f"Round {round_num}") if races else None
