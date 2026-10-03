@@ -9,6 +9,10 @@ FastF1's load blocks for seconds and is global state (its cache), so each poll r
     python -m racinglines.web.f1_live 2026 16        # prints one snapshot as JSON
 FastF1 publishes a session's timing on its static archive during or after the session, so mid-session a poll can
 come back empty; the debug log says so.
+
+F1's archive answers 403 to the VM (3 Oct 2026), so on the VM the snapshot comes from the owner's Mac instead:
+scripts/deploy/f1_relay.sh runs the same command there and writes the JSON to <data>/runs/f1_relay/<year>-<round>.json
+on staging. A poll reads that file while it is fresh (RELAY_MAX_AGE) and runs FastF1 itself otherwise.
 """
 
 import asyncio
@@ -19,6 +23,7 @@ import time
 
 SESSION_ORDER = ("FP1", "FP2", "FP3", "SQ", "S", "Q", "R")
 POLL_TIMEOUT = 180
+RELAY_MAX_AGE = 600                                # seconds; the relay writes every 2 minutes by default
 
 
 def enabled():
@@ -88,9 +93,32 @@ def snapshot(year, rnd, now=None):
                 laps=int(len(laps)), note=note)
 
 
+def relay_file(year, rnd):
+    from racinglines import paths
+    return paths.DATA / "runs" / "f1_relay" / f"{year}-{rnd:02d}.json"
+
+
+def relayed(year, rnd, now=None):
+    """The Mac relay's snapshot (scripts/deploy/f1_relay.sh) with its age in seconds as relay_age, or None when there
+    is none or it is older than RELAY_MAX_AGE."""
+    p = relay_file(year, rnd)
+    try:
+        age = (now if now is not None else time.time()) - p.stat().st_mtime
+        data = json.loads(p.read_text()) if age <= RELAY_MAX_AGE else None
+    except (OSError, ValueError):
+        return None
+    if data is not None:
+        data["relay_age"] = round(age)
+    return data
+
+
 async def poll(year, rnd):
-    """One snapshot from a subprocess: (data or None, error text or None, seconds)."""
+    """One snapshot, from the Mac relay when it is fresh, else from a FastF1 subprocess: (data or None, error text
+    or None, seconds)."""
     t = time.monotonic()
+    data = relayed(year, rnd)
+    if data is not None:
+        return data, None, time.monotonic() - t
     p = await asyncio.create_subprocess_exec(sys.executable, "-m", "racinglines.web.f1_live", str(year), str(rnd),
                                              stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     try:
@@ -142,7 +170,9 @@ async def serve(ws, user):
             else:
                 await ws.send_json(dict(type="timing", data=data))
                 what = data.get("session") or "no session"
-                await log(f"poll {n}: {what}, {len(data['drivers'])} drivers, {data['laps']} laps ({secs:.1f} s)"
+                src = (f"from the Mac relay, {data['relay_age']} s old" if data.get("relay_age") is not None
+                       else f"{secs:.1f} s")
+                await log(f"poll {n}: {what}, {len(data['drivers'])} drivers, {data['laps']} laps ({src})"
                           + (f"; {data['note']}" if data.get("note") else ""))
             await log(f"next poll in {interval()} s")
             try:
