@@ -351,20 +351,26 @@ bash scripts/deploy/vm.sh forecast [off|status]    # NASCAR/MotoGP, every 30 min
 
 ## Live event configuration and model run traceability (2026-10-03)
 
-**Rule:** Live event config files (`live/<sport>/<event>.toml`) must NOT have hardcoded `run =` fields for active
-events. The system computes `run` dynamically from the event key or feed properties (line 79 in `racinglines/pipelines/live.py`),
-ensuring that traceability always reflects the latest model run and avoids stale references.
+**Rule:** All pipeline references (live events, paper P&L, strategy signals, weekends tracking) must be fresh and
+easily cross-checkable against their source model run. No hardcoded identifiers; all traceability computed dynamically.
 
 **Pattern:**
-- **Active/live events** (current race weekends): omit `run =` entirely. The loader will compute it as `{feed.slug}_{feed.final}`
-  for downhill, or the event key for F1 (e.g., `2026-16`). This ensures the live board always uses the current model.
-- **Historical/past events** (completed races, rehearsals): may keep `run =` if necessary to preserve exact reproducibility,
-  but document why in a comment (e.g., "rehearsal from 2026-09-27, saved with specific run for traceability").
-- **Web views** (`racinglines/web/board.py`, `views.py`): all model run references are dynamically fetched via
-  `data.latest_forecasts()`, `model_runs` queries, etc. No hardcoded run IDs in page logic.
-- **Documentation** (`docs/f1-roadmap.md`, decision logs): specific run numbers in historical entries are appropriate
-  (e.g., "backtest run 115, sweep run 191") because they document decisions made at a point in time. Do not hand-write
-  numerical claims about current model performance; generate them from actual runs instead.
+
+1. **Live event configs** (`live/<sport>/<event>.toml`): omit hardcoded `run =` for active events. System computes
+   `run` from event key or feed properties (`racinglines/pipelines/live.py:79`), ensuring traceability always reflects
+   the latest model. Historical/past events may keep `run =` with a comment explaining why.
+
+2. **Paper P&L and positions** (`racinglines/pipelines/signals.py`): Every paper_positions row includes `detail.model_run_id`
+   linking it to the model run that generated it. Positions are created with full traceability via
+   `store(detail={..., model_run_id: run_id, ...})`, enabling web views to cross-check P&L against source models.
+
+3. **Web views** (`racinglines/web/board.py`, `views.py`): All model run references are dynamically fetched via
+   `data.latest_forecasts()`, model_runs queries, paper_positions detail fields. No hardcoded run IDs in page logic.
+   Positions display includes source run information for verification.
+
+4. **Documentation** (`docs/f1-roadmap.md`, decision logs): Specific run numbers in historical entries document
+   decisions made at a point in time (appropriate). Do not hand-write numerical claims about current performance;
+   generate them from actual model runs and paper positions instead.
 
 ## Safety rails (non-negotiable, carried over from the project's own rules)
 

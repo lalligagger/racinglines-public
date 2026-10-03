@@ -571,6 +571,10 @@ def store(conn, user_id, out, follow_rate=None, history=False, venue=None):
                    event_key=w["event_key"], **{k: _clean(v) for k, v in p.items()})
         if venue:
             row.setdefault("venue", venue)
+        stage = p.get("stage")
+        model_run = run_of.get(stage) if stage and run_of else None
+        row["detail"] = dict(row.get("detail") or {}, **({"model_run_id": model_run} if model_run else {}),
+                             **({"backfill": True} if history else {}), **({"venue": venue} if venue else {}))
         conn.execute(pg_insert(m.PaperPosition).values(row))
     return new
 
