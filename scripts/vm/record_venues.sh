@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Kalshi and OG.com recorder: one pass, started every 5 minutes by racinglines-record-venues.timer on the VM
-# (enable with `bash scripts/deploy/vm.sh record`, stop with `vm.sh record off`). The Polymarket F1 recorder is
-# racinglines-recorder.service (`markets record`); this is the same idea for the other two venues, built only from the
-# existing read-only commands, so every exchange stays a schema, not new code:
+# Kalshi, OG.com, and Polymarket recorder: one pass, started every 5 minutes by racinglines-record-venues.timer on the VM
+# (enable with `bash scripts/deploy/vm.sh record`, stop with `vm.sh record off`). Built from the existing read-only
+# commands, so every exchange stays a schema, not new code:
 #
-#   racinglines markets --exchange kalshi --sport <s> sync | books      (markets/kalshi/sync.py)
-#   racinglines markets --exchange og     --sport <s> sync | books      (exchanges/og.toml, markets/exchange_driver.py)
+#   racinglines markets --exchange kalshi    --sport <s> sync | books      (markets/kalshi/sync.py)
+#   racinglines markets --exchange og        --sport <s> sync | books      (exchanges/og.toml, markets/exchange_driver.py)
+#   racinglines markets --exchange polymarket --sport f1    sync | books      (markets/polymarket/sync.py)
 #
 # Every pass: one order-book snapshot per open market of each PAIRS entry (market_book_snapshots, ON CONFLICT DO
 # NOTHING). Every SYNC_MIN minutes (default 60): that pair's sync first (market links and quotes upserted: new round-16
@@ -22,7 +22,7 @@ set -uo pipefail
 set -a; . "${ENV_FILE:-/etc/racinglines.env}"; set +a
 export PYTHONUNBUFFERED=1
 cd "${APP:-/opt/racinglines}"
-PAIRS=${PAIRS:-kalshi:f1 og:f1 kalshi:nascar og:nascar kalshi:motogp}
+PAIRS=${PAIRS:-kalshi:f1 og:f1 polymarket:f1 kalshi:nascar og:nascar kalshi:motogp}
 SYNC_MIN=${SYNC_MIN:-60}
 STATE=data/runs/record-venues
 LOG=data/runs/logs/record-venues.log
