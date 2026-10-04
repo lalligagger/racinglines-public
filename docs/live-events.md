@@ -125,7 +125,7 @@ Everything around a sport's data stream is shared. Each sport adds an **adapter*
 
 | Layer | Where | Per sport |
 |---|---|---|
-| Settings | `sports/<code>.toml` `[live]` | Everything: adapter, cadence, market kinds, spreads, crowd, freeze and close |
+| Settings | `sports/<code>.toml` `[live]` | Everything: adapter, cadence, market kinds, spreads, crowd, close (books never freeze) |
 | The book and the crowd | `markets/crowd.py` | Only the crowd's settings. Downhill trades per poll (`fills`), F1 in one batch per update (`window`: fills timed across the window, in order) |
 | Quotes | `markets/quoting.py` | The half-spread (downhill widens on course; F1 tightens by stage) |
 | Run folder, snapshots, replay, live / replay state | `pipelines/live.py` | Nothing |

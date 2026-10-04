@@ -7,16 +7,29 @@ model prediction that prices it.
     "<GP>: Head-to-Head"                  race_h2h          athlete, race, params.opponent_id (both tokens)
     "<GP>: Which Constructor Scores 1st?" race_constructor_top   race, params.team
     "<GP>: Driver Pole Position"          race_pole         athlete, race
+    "<GP>: Driver Fastest Lap"            race_fastest_lap  athlete, race
+    "Will there be a safety car / red flag during the ... <GP>?", "Rain during the <GP>?"
+                                          race_safety_car / race_red_flag / race_rain   race (no athlete)
     "F1 Drivers' Champion"                champion          athlete
     "F1 Constructors' Champion"           constructors_champion  params.team
     "Will X win N+ Grands Prix in YYYY?"  season_wins_ge    athlete, params.n
     "Will A finish ahead of B in the YYYY Drivers' Championship?"  standings_h2h  athlete, params.opponent_id
-    anything else (fastest lap, safety car, rain, props)   unmodeled (listed with prices, no model price)
+    anything else                         unmodeled (listed with prices, no model price); linked to the race
+                                          when the title starts "<GP>: " (constructor fastest lap, ...)
+
+Placeholders: Polymarket lists unnamed slots in some race events ("Driver A" to "Driver E", "Other" for "any
+other driver / constructor") so it can add outcomes later. They stay unmodeled, linked to the race, with
+params.placeholder = the kind they stand in for (race_win, race_pole, ...); the race page counts them.
 
 Prices come from the Gamma API (bestBid / bestAsk / lastTradePrice /
 outcomePrices, all for the market's first outcome; the second outcome's book
 is the mirror image). Closed markets record which outcome resolved.
 Idempotent: links are keyed by token id and updated in place.
+
+The active listing (active=true, closed=false) drops an event once it closes, so a decided market (pole after
+qualifying) would sit open in market_links with its last quote. Each pass therefore re-reads by slug the events
+whose links are still open here but that the listing no longer returns (up to REREAD_MAX, most recently synced
+first) and upserts them like the rest: closed, resolved and last prices come from Gamma's own market rows.
 
 Other sports (docs/coverage.md, item 3): NASCAR Cup, MotoGP and IndyCar are tape-only sports (sports/<code>.toml,
 [markets.polymarket] tags = the Gamma tag_slug values to page, e.g. "nascar"; unverified against the live API).
@@ -38,11 +51,13 @@ from sqlalchemy import select, text
 from racinglines import sports
 from racinglines.db import models as m
 from racinglines.markets import identity
+from racinglines.markets.kalshi.sync import gp_name
 from racinglines.sources import http
 
 GAMMA = "https://gamma-api.polymarket.com"
 MATCH_DAYS = 10     # a race market's end date must be within this many days of the race
 TAGS = ("f1", "formula1")
+REREAD_MAX = 40     # events re-read by slug per pass when the active listing stopped returning them
 
 # Polymarket labels some drivers oddly in head-to-heads (Carlos Sainz Jr. -> "Jr.")
 DRIVER_ALIASES = {"jr": "carlos sainz", "sainz jr": "carlos sainz", "kimi antonelli": "andrea kimi antonelli"}
@@ -69,6 +84,13 @@ GP_ALIASES = {"brazilian": "sao paulo", "brazil": "sao paulo", "china": "chinese
 def _norm(s):
     s = unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode().lower()
     return re.sub(r"[^a-z ]", "", s).strip()
+
+
+# the yes/no questions as listed (2026-10-04); a count or timing market ("How many safety cars ...") stays unmodeled
+PROPS = [(r"^Will there be a safety car during", "race_safety_car"), (r"^Will there be a red[- ]flag during", "race_red_flag"),
+         (r"^(?:Will it )?rain during", "race_rain")]
+PROP_KINDS = tuple(k for _, k in PROPS)        # yes/no for the whole race: no athlete
+PLACEHOLDER = re.compile(r"^(?:Driver [A-Z]|Other)$")      # unnamed slots in a race event (group title)
 
 
 def classify(event_title, question):
@@ -105,6 +127,14 @@ def classify(event_title, question):
         return "season_wins_ge", None
     if re.search(r"finish ahead of .+ in the \d{4} Drivers'? Championship", q):
         return "standings_h2h", None
+    if m_ := re.search(r"^(.*Grand Prix): Driver Fastest Lap", t):
+        return "race_fastest_lap", m_.group(1)
+    gp = gp_name(t) or gp_name(q)
+    for pat, kind in PROPS:
+        if gp and re.search(pat, q or t, re.I):
+            return kind, gp
+    if m_ := re.search(r"^(.*Grand Prix): ", t):       # constructor fastest lap, ...: linked to the race, no price
+        return "unmodeled", m_.group(1)
     return "unmodeled", None
 
 
@@ -153,18 +183,23 @@ class Resolver:
                 return TEAM_NAMES[label]
         return None
 
-    def race(self, gp_name, end_date=None):
+    def race(self, gp_name, end_date=None, near=None):
         """Race by Grand Prix name, and (when the market's end date is known) held within
-        MATCH_DAYS of it: a cancelled or rescheduled GP keeps its name but not its date."""
+        MATCH_DAYS of it: a cancelled or rescheduled GP keeps its name but not its date.
+        near (a date, for a venue whose expiry says nothing about the race, e.g. OG.com's): of the races with
+        that name, the one held closest to it."""
         g = _norm(gp_name).replace(" grand prix", "")
         g = GP_ALIASES.get(g, g)
+        found = []
         for rid, name, key, start in self.races:
             if not g or g not in _norm(name):
                 continue
             if end_date is not None and start is not None and abs((end_date.date() - start).days) > MATCH_DAYS:
                 continue
-            return rid, key
-        return None, None
+            if near is None:
+                return rid, key
+            found.append((abs((near - start).days) if start is not None else 10**6, rid, key))
+        return min(found)[1:] if found else (None, None)
 
 
 def _events(closed_year=None, tags=TAGS):
@@ -186,6 +221,36 @@ def _events(closed_year=None, tags=TAGS):
                         if str(e.get("endDate") or "").startswith(str(closed_year)):
                             out[e["slug"]] = e
                     off += 100
+    return out
+
+
+def _vanished(conn, competition_id, seen, limit=REREAD_MAX):
+    """Slugs of events with links still open in market_links that the listing (`seen`) no longer returns,
+    most recently synced first."""
+    slugs = conn.execute(text("""SELECT event_slug FROM market_links
+                                 WHERE exchange = 'polymarket' AND competition_id = :c AND closed IS NOT TRUE
+                                   AND event_slug IS NOT NULL
+                                 GROUP BY event_slug ORDER BY max(synced_at) DESC NULLS LAST"""),
+                         dict(c=competition_id)).scalars()
+    return [s for s in slugs if s not in seen][:limit]
+
+
+def _by_slug(slugs):
+    """Events by slug whatever their state (closed ones too), so their markets' closed flags and prices are read.
+    A slug Gamma fails on (an error status, a network error, no event) is skipped for this pass."""
+    out = {}
+    if not slugs:
+        return out
+    with httpx.Client(base_url=GAMMA, timeout=30) as c:
+        for slug in slugs:
+            try:
+                r = http.get(c, "/events", params={"slug": slug}, tries=2)
+                body = r.json() if r.status_code == 200 else []
+            except (httpx.HTTPError, ValueError):
+                continue
+            for e in body if isinstance(body, list) else []:
+                if isinstance(e, dict) and e.get("slug"):
+                    out[e["slug"]] = e
     return out
 
 
@@ -225,8 +290,10 @@ def sync(session, conn, year=2026, include_closed=False, new=None, sport="f1", t
         cat = session.scalars(select(m.Category).filter_by(competition_id=comp.id, code="DRV")).one()
         R = Resolver(conn, year)
         events = _events(year if include_closed else None, tuple(tags) if tags else TAGS)
+    reread = _by_slug(_vanished(conn, comp.id, events))     # closed since the last pass: off the active listing
+    events.update(reread)
     now = datetime.now(timezone.utc)
-    stats = dict(events=0, links=0, modeled=0, unmatched=0, new=0)
+    stats = dict(events=0, links=0, modeled=0, unmatched=0, new=0, reread=len(reread))
     who = identity.linker(sport, conn) if tape else None            # a tape-only sport with a resolver: driver, race, kind
     for slug, ev in events.items():
         stats["events"] += 1
@@ -259,7 +326,7 @@ def sync(session, conn, year=2026, include_closed=False, new=None, sport="f1", t
                             outcomes[0] if outcomes else "Yes")]
             elif kind in ("race_constructor_top", "constructors_champion"):
                 targets = [(0, None, {"team": R.team(group)}, outcomes[0] if outcomes else "Yes")]
-            elif kind in ("race_win", "race_podium", "race_pole", "champion"):
+            elif kind in ("race_win", "race_podium", "race_pole", "race_fastest_lap", "champion"):
                 targets = [(0, R.driver(group), None, outcomes[0] if outcomes else "Yes")]
             else:
                 targets = [(0, None, None, outcomes[0] if outcomes else "Yes")]
@@ -268,7 +335,7 @@ def sync(session, conn, year=2026, include_closed=False, new=None, sport="f1", t
                 if i >= len(tokens):
                     continue
                 matched = kind == "unmodeled" or (
-                    (athlete_id is not None or (params or {}).get("team"))
+                    (athlete_id is not None or (params or {}).get("team") or kind in PROP_KINDS)
                     and (params is None or all(v is not None for v in params.values()))
                     and (not kind.startswith("race_") or race_id is not None))
                 t_bid, t_ask = (bid, ask) if i == 0 else ((1 - ask) if ask is not None else None,
@@ -281,6 +348,8 @@ def sync(session, conn, year=2026, include_closed=False, new=None, sport="f1", t
                     params = dict(params, event_key=race_key)
                 elif race_key:
                     params = {"event_key": race_key}
+                if race_id is not None and PLACEHOLDER.match(group) and kind.startswith("race_"):
+                    params = dict(params or {}, placeholder=kind)
                 values = dict(
                     exchange="polymarket", market_slug=mk.get("slug"), question=mk.get("question") or ev.get("title"),
                     condition_id=mk.get("conditionId"), outcome=str(label), neg_risk=bool(mk.get("negRisk") or ev.get("negRisk")),

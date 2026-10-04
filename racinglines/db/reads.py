@@ -181,6 +181,10 @@ PREDICTION_KINDS = [c for c in K.KINDS]
 # sprint pole from the qualifying-pace pole probability (SQ3 is the same session type), the sprint winner from
 # the race win probability (the season forecast already simulates sprints this way, with sprint points)
 SPRINT_FALLBACK = {"race_sprint_pole": "pole_prob", "race_sprint_win": "win_prob"}
+# per-race kinds read from race_predictions.extra: fl_prob only from runs priced with the position_sim `fastlap`
+# variant; top5_prob / mover_prob from F1 runs saved since 2026-10-04 (older runs leave those links unpriced)
+EXTRA_PROB = {"race_pole": "pole_prob", "race_fastest_lap": "fl_prob", "race_top5": "top5_prob",
+              "race_biggest_mover": "mover_prob"}
 
 
 def _id(v):
@@ -252,8 +256,8 @@ def model_prob(conn, link, _cache=None, run_id=None):
             df, extra = row
             if kind == "race_h2h":
                 p = (extra.get("h2h") or {}).get(str(params.get("opponent_id")))
-            elif kind == "race_pole":
-                p = extra.get("pole_prob")
+            elif kind in EXTRA_PROB:
+                p = extra.get(EXTRA_PROB[kind])
             elif kind in SPRINT_FALLBACK:
                 p = extra.get(kind.replace("race_", "") + "_prob")
                 if p is None:

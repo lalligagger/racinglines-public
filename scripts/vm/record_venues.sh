@@ -7,17 +7,19 @@
 #   racinglines markets --exchange kalshi --sport <s> sync | books      (markets/kalshi/sync.py)
 #   racinglines markets --exchange og     --sport <s> sync | books      (exchanges/og.toml, markets/exchange_driver.py)
 #
-# Every pass: one order-book snapshot per open market of each PAIRS entry (market_book_snapshots, ON CONFLICT DO
-# NOTHING). Every SYNC_MIN minutes (default 60): that pair's sync first (market links and quotes upserted: new round-16
-# markets appear, settled ones close). Additive only; no trading, no buy-all. API limits are the commands' own: the
-# polite HTTP pacing (sources/http.py, Kalshi 4 requests a second) and OG's schema caps (batch 10, max_per_second).
-# One pair failing doesn't stop the others; the pass exits non-zero if any failed, so `systemctl status` shows it.
+# Polling strategy: runs 5-min cadence for each pair, but skips if that sport is not in a race weekend
+# (Thu-Sun UTC when an event exists). Off-weeks: exits cleanly, conserving API quota. Every pass: one
+# order-book snapshot per open market of each active PAIRS entry (market_book_snapshots, ON CONFLICT DO
+# NOTHING). Every SYNC_MIN minutes (default 60): that pair's sync first (market links and quotes upserted:
+# new markets appear, settled ones close). Additive only; no trading, no buy-all. API limits are the
+# commands' own (polite HTTP pacing, sources/http.py; OG schema caps). One pair failing doesn't stop
+# others; the pass exits non-zero if any failed, so `systemctl status` shows it.
 #
-# The first pass on a box backs the database up first (the syncs add links): data/backups/db/
+# The first pass on a box backs the database up first (syncs add links): data/backups/db/
 # racinglines-before-record-venues-<UTC>.sql.gz, named in a data_changes note. Log lines go to the journal
-# (journalctl -u racinglines-record-venues) and data/runs/logs/record-venues.log, one per pair per pass (`status`
-# prints the last ones and the snapshots stored per venue per 5 minutes):
+# (journalctl -u racinglines-record-venues) and data/runs/logs/record-venues.log, one per pair per pass:
 #   2026-10-01T00:05:02Z kalshi f1 books: 184 book snapshots stored (12 s)
+#   2026-10-05T18:30:01Z og nascar: off-week, skipped
 set -uo pipefail
 set -a; . "${ENV_FILE:-/etc/racinglines.env}"; set +a
 export PYTHONUNBUFFERED=1
@@ -65,9 +67,13 @@ run() {   # run <exchange> <sport> <command>: one line with the command's last o
 }
 for p in $PAIRS; do
   x=${p%%:*}; s=${p#*:}; stamp="$STATE/sync-$x-$s"
-  if [ -z "$(find "$stamp" -mmin -"$SYNC_MIN" 2>/dev/null)" ]; then
-    run "$x" "$s" sync && touch "$stamp"
+  if bash scripts/vm/race_weekend.sh "$s" >/dev/null 2>&1; then
+    if [ -z "$(find "$stamp" -mmin -"$SYNC_MIN" 2>/dev/null)" ]; then
+      run "$x" "$s" sync && touch "$stamp"
+    fi
+    run "$x" "$s" books
+  else
+    say "$x $s: off-week, skipped"
   fi
-  run "$x" "$s" books
 done
 exit $rc

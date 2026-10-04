@@ -1,9 +1,8 @@
 # Sports and exchanges: status
 
 Where every sport stands on every exchange: what data we hold, what prices it, what has been backtested and how far
-the result can be trusted, and what runs live or on paper. **Last reviewed 2026-09-30** against the code on `main`
-(after #112, and #95/#96 merged), the overnight VM run (not in the public repo)
-and the [48-hour report](report-48h.md).
+the result can be trusted, and what runs live or on paper. **Last reviewed 2026-10-03** against the code on `main`
+(pricing cadence now displayed on race pages for clarity).
 Nothing here trades real money: `POLYMARKET_TRADING_ENABLED` and `KALSHI_TRADING_ENABLED` are unset, and OG.com has
 no order code at all.
 

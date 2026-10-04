@@ -7,7 +7,7 @@
 <div class="live-meta">
   <span>{% if mode == 'replay' %}As of the <b>{{ snap.update.label }}</b> update, {{ snap.ts|when }}{% else %}Last update <b>{{ snap.update.label }}</b>, {{ (age // 3600) }} h {{ (age % 3600) // 60 }} min ago ({{ snap.ts|when }}){% endif %}</span>
   <span>{{ snap.markets|length }} markets</span>
-  {% if snap.closed %}<span><b>Book closed</b></span>{% elif snap.frozen %}<span><b>Quotes frozen</b> until lights out</span>{% endif %}
+  {% if snap.closed %}<span><b>Book closed</b></span>{% endif %}
   {% if snap.next_label and not snap.done %}<span>Next: <b>{{ snap.next_label }}</b> at {{ snap.next_at|when }}</span>{% endif %}
   {% if mode == 'live' %}<span class="faint">refreshes itself</span>{% endif %}
 </div>
@@ -16,7 +16,7 @@
 {# --- the weekend's stages --- #}
 <div class="stages">{% for u in snap.updates %}{% set st = 'now' if u.label == snap.update.label else u.state %}
 <div class="stage {{ st }}"><b>{{ u.label }}</b>{% if st == 'now' %}now{% elif u.state == 'done' %}done{% elif u.state == 'skipped' %}skipped{% else %}{{ u.at[5:16]|replace("T", " ") }}{% endif %}</div>{% endfor %}</div>
-<p class="legend">Updates at session ends (UTC), each from the model's stage run once the session's data is in. Quotes freeze after qualifying and the book closes at lights out.{% if snap.note %} {{ snap.note|join("; ") }}.{% endif %}</p>
+<p class="legend">Updates at session ends (UTC), each from the model's stage run once the session's data is in. Quotes are reset to the latest fair at every update, and the book closes at lights out.{% if snap.note %} {{ snap.note|join("; ") }}.{% endif %}</p>
 
 {# --- the headline numbers --- #}
 {% set w = (groups|selectattr("kind", "equalto", "race_win")|first) %}{% set winner = (w.markets|selectattr("outcome")|first) if w and snap.done else none %}

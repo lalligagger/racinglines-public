@@ -114,10 +114,10 @@ def test_coinbase_kalshi_market_diffs_are_logged():
 @pytest.mark.quick
 def test_update_plan_due_and_late():
     t = pd.Timestamp("2026-10-02 03:30")
-    ups = [dict(label="pre-weekend", kind="open", at=t, freeze=False),
-           dict(label="after FP1", kind="stage", at=t + pd.Timedelta("2.5h"), freeze=False),
-           dict(label="after Quali", kind="stage", at=t + pd.Timedelta("30h"), freeze=True),
-           dict(label="lights out", kind="close", at=t + pd.Timedelta("51.5h"), freeze=False)]
+    ups = [dict(label="pre-weekend", kind="open", at=t, qual=False),
+           dict(label="after FP1", kind="stage", at=t + pd.Timedelta("2.5h"), qual=False),
+           dict(label="after Quali", kind="stage", at=t + pd.Timedelta("30h"), qual=True),
+           dict(label="lights out", kind="close", at=t + pd.Timedelta("51.5h"), qual=False)]
     st = dict(done=[dict(label="pre-weekend")])
     assert F.due(ups, st, t + pd.Timedelta("1h")) == []
     assert [u["label"] for u in F.due(ups, st, t + pd.Timedelta("31h"))] == ["after FP1", "after Quali"]   # merged into one
@@ -133,7 +133,7 @@ def test_f1_live_settings_are_data():
     assert set(live["markets"]["kinds"]) == set(F.KINDS)
     hs = live["quoting"]["half_spread"]
     assert (hs["pre-weekend"], hs["after FP1"], hs["after FP2"], hs["after FP3"], hs["after Quali"]) == (0.03, 0.025, 0.025, 0.02, 0.02)
-    assert live["freeze"]["freeze_after"] == "after Quali"
+    assert "freeze" not in live                     # live books never freeze (owner rule, 2026-10-04)
 
 
 # --- Baku through the engine (the local database's stored stage runs) ----------------------------------
@@ -177,10 +177,11 @@ def test_baku_weekend_on_a_simulated_clock(tmp_path, monkeypatch):
     kinds_at = lambda lab: {o["key"].split(":")[0] for o in by[lab]["outcomes"]}   # noqa: E731
     assert kinds_at("after FP3") == set() and kinds_at("after Quali") == {"race_pole"}             # pole after qualifying
     assert kinds_at("results") == set(F.KINDS) and by["results"]["done"]
-    assert by["after Quali"]["frozen"] and not by["after FP3"]["frozen"]
+    assert all("frozen" not in s for s in snaps)                                                  # never frozen
     assert all(m["bid"] is None and m["ask"] is None for m in by["lights out"]["markets"])        # closed at lights out
-    frozen = {m["key"]: (m["bid"], m["ask"]) for m in by["after Quali"]["markets"]}
-    assert all(frozen[k] == (None, None) for k in frozen if k.startswith("race_pole:"))          # decided: not quoted
+    quals = {m["key"]: (m["bid"], m["ask"]) for m in by["after Quali"]["markets"]}
+    assert all(quals[k] == (None, None) for k in quals if k.startswith("race_pole:"))            # decided: not quoted
+    assert any(b is not None for k, (b, a) in quals.items() if k.startswith("race_win:"))        # the rest requoted
     run = spec["run"]
     book = json.loads((LV.folder(run) / "book.json").read_text())
     rebuilt, polls = LV.book_at(run)
@@ -279,7 +280,7 @@ def test_singapore_is_a_sprint_weekend():
     ups, w = F.plan("2026-17")
     assert [u["label"] for u in ups] == ["pre-weekend", "after FP1", "after SQ", "after Sprint", "after Quali",
                                          "lights out", "results"]
-    assert [u["label"] for u in ups if u["freeze"]] == ["after Quali"]
+    assert [u["label"] for u in ups if u["qual"]] == ["after Quali"]
     hs = LV.settings("f1")["quoting"]["half_spread"]
     assert all(u["label"] in hs for u in ups if u["kind"] in ("open", "stage"))    # a spread for every stage
     spec = LV.load_spec("f1/2026-17")

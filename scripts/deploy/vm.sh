@@ -10,6 +10,10 @@
 #   bash scripts/deploy/vm.sh record [off|status] # the Kalshi and OG.com recorder (scripts/vm/record_venues.sh): a pass
 #                                               # every 5 minutes (the first one backs the database up); status: last
 #                                               # passes and book snapshots per venue per 5 minutes
+#   bash scripts/deploy/vm.sh pm-sync [off|status]# Polymarket market links sync (scripts/vm/pm_sync.sh): a pass
+#                                               # every 5 minutes during race weekends; status: last passes
+#   bash scripts/deploy/vm.sh forecast [off|status] # NASCAR and MotoGP forecast refresh: every 30 minutes during
+#                                               # race weekends, and F1 once per new race result; status: last passes
 #   bash scripts/deploy/vm.sh switch <NAME> on|off # an app switch (RACINGLINES_*, e.g. RACINGLINES_OG_VENUE) in
 #                                               # /etc/racinglines.env, web app restarted; never a trading flag
 #   bash scripts/deploy/vm.sh deploy [ref]      # checkout (default main), install, migrate, restart, smoke check
@@ -104,6 +108,15 @@ case "${1:-}" in
       status) remote "cd $APP && sudo -u racinglines -H scripts/vm/forecast-refresh.sh status" ;;
       "") remote "sudo systemctl enable --now $t && systemctl --no-pager list-timers $t" ;;
       *) echo "usage: vm.sh forecast [off|status]"; exit 1 ;;
+    esac
+    ;;
+  pm-sync)
+    t=racinglines-pm-sync.timer
+    case "${2:-}" in
+      off) remote "sudo systemctl disable --now $t && echo '$t: off'" ;;
+      status) remote "cd $APP && sudo -u racinglines -H scripts/vm/pm_sync.sh status" ;;
+      "") remote "sudo systemctl enable --now $t && systemctl --no-pager list-timers $t" ;;
+      *) echo "usage: vm.sh pm-sync [off|status]"; exit 1 ;;
     esac
     ;;
   switch)

@@ -139,7 +139,7 @@ def cmd_run(args):
     tick = pd.Timedelta(minutes=args.tick or spec["live"]["poll"].get("step_min", 5))
     cache = {}
     if args.simulate:
-        ups, _ = F.plan(spec["event"], spec["live"].get("freeze", {}).get("freeze_after", "after Quali"))
+        ups, _ = F.plan(spec["event"])
         t = pd.Timestamp(args.start) if args.start else ups[0]["at"] - tick
         end = ups[-1]["at"] + pd.Timedelta(hours=6)
         n = 0

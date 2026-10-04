@@ -176,8 +176,9 @@ Sources: [Polymarket: Bahrain GP Driver Winner (April 2026)](https://polymarket.
   pricing and trading ([F1-7](f1-roadmap.md)); real orders
   (`POLYMARKET_TRADING_ENABLED` is unset, and signing needs the CLOB V2 migration);
   Kalshi; Polymarket's props (safety car, red flag, rain, fastest lap in practice).
-- **The race is display-only.** Quotes freeze after qualifying's stage, and the book
-  closes at lights out.
+- **The race is display-only.** The book closes at lights out. It never freezes before that:
+  every update requotes from the latest fair (owner rule, 2026-10-04; the 2026-09-28 freeze
+  after qualifying is withdrawn).
 
 ---
 
@@ -260,7 +261,7 @@ no long-running process to supervise.
 | 2. After FP1 | Thu 23:00 | Crowd trades the window since the last update; reprice; requote |
 | 3. After FP2 | Fri 02:30 | The same |
 | 4. After FP3 | Fri 23:00 | The same |
-| 5. After Quali | Sat 02:30 | The same; **quotes freeze**; pole markets settle from qualifying; the pre-race window opens |
+| 5. After Quali | Sat 02:30 | The same; pole markets settle from qualifying; the pre-race window opens |
 | 6. Lights out | Sun 00:00 | Crowd trades the pre-race window; **the book closes** |
 | 7. Results | Sun ~03:00 | Everything settles from the race classification; final P&L; the Live dot turns grey |
 
@@ -377,8 +378,8 @@ Each item lists what "done" means. B0 matters in every scenario.
   - Done: priced for Baku (`2026-15`) from its stored stage runs (runs 197–201, profile C): winner 1, podium 3, pole 1, constructors 1, and each pair 1, at every stage. **99 markets, not 100:** Baku's listing had a Lindblad–Tsunoda pair, and Tsunoda isn't in the 2026 field, so it's left out. Round 16 takes its pairs from Baku (the last race listed).
   - Sepang: the venue slug is `kuala-lumpur` (FastF1's location). The track features treat it as unknown: `venue_known` 0, not a street circuit, the neutral `x_track` / `ease`. Pricing round 16 as of 29 Sep works: the grid is simulated from qualifying pace, with no track history.
 - [x] **B3. The F1 adapter: the engine step** *(Tue)*
-  - `live_f1.step`: the seven updates above as one idempotent step, driving the shared core (quoting, crowd batches, freeze and close, settlement through `outcome_for`, positions sync, snapshots).
-  - Done: Baku's weekend on a simulated clock (`tests/test_live_f1.py`; `racinglines live run live/f1/2026-15.toml --simulate --no-fetch`): all seven updates in order; pole settles at the after-Quali update, everything else at results; quotes freeze after qualifying and close at lights out; the book reconciles with its 2,600-odd fills; the positions synced to `paper_positions` sum to the maker's P&L.
+  - `live_f1.step`: the seven updates above as one idempotent step, driving the shared core (quoting, crowd batches, close at lights out, settlement through `outcome_for`, positions sync, snapshots).
+  - Done: Baku's weekend on a simulated clock (`tests/test_live_f1.py`; `racinglines live run live/f1/2026-15.toml --simulate --no-fetch`): all seven updates in order; pole settles at the after-Quali update, everything else at results; quotes close at lights out (the freeze after qualifying was removed 2026-10-04); the book reconciles with its 2,600-odd fills; the positions synced to `paper_positions` sum to the maker's P&L.
 - [x] **B4. The Live tab: shared shell, F1 body** *(Tue–Wed)*
   - `live.html` becomes the shell (status dot, replay bar, polling) over the registry; today's downhill body moves unchanged into `live_mtb_dh.html`; a new `live_f1.html` body with the F1 layout.
   - Done: Baku renders update by update for the maker and the taker, and in replay (`tests/test_live_f1.py`); takers see prices, never fair values. Whistler's 82 replay and Positions pages are byte-identical. F1 replay plays at a fixed 2 s per update at 30× (updates are hours apart); the live page refreshes every 30 s.
@@ -525,7 +526,7 @@ existing layout, and the report can be written by hand as Whistler's was.
 | 2026-09-28 | Price every usual Polymarket race market (winner, podium, pole, head-to-head, constructor: 100 markets, modelled on Baku's listing) even though none are listed, and keep every fair price for scoring. |
 | 2026-09-28 | Updates at session ends only; no live feed this weekend. The FastF1 archive drives pricing and the page; SignalR / OpenF1 deferred. |
 | 2026-09-28 | Otherwise a mock private-book run like Whistler's: the demo maker, 1,000 simulated takers and the demo taker, play money. |
-| 2026-09-28 | The race is display-only: quotes freeze after qualifying's update, and the book closes at lights out. |
+| 2026-09-28 | The race is display-only: quotes freeze after qualifying's update, and the book closes at lights out. **Withdrawn 2026-10-04: books never freeze.** |
 | 2026-09-28 | Multi-sport design: one live core (book, crowd, quoting, positions, run folder, replay, registry, the Live tab's shell) and one adapter per sport for its data stream, pricing and page body; sport settings as data in `sports/<code>.toml`. Downhill keeps working unchanged. |
 | 2026-09-29 | Shared quotes round away float noise before the cent floor / ceiling (0.40 ± 0.03 quotes 0.37 / 0.43). Downhill keeps its old rounding (`tidy=False`, sometimes a cent wider), so Whistler's numbers stay identical. |
 | 2026-09-29 | The Live tab is green while an event isn't over and either updated within its sport's `stale_h` (downhill 6 h) or its next scheduled update isn't more than that overdue. F1 updates are up to 20 h apart, so F1 snapshots carry `next_at`. |
@@ -541,3 +542,4 @@ existing layout, and the report can be written by hand as Whistler's was.
 | 2026-09-28 | Kalshi counts as a venue for round 16 (backup plan K). If Kalshi lists by Thu 18:00 PDT the weekend is paper-traded there (tier T1) and the private book runs alongside; otherwise it is a private book only (T3). Only T1 weekends count toward the [validation plan](paper-trading.md#validation-plan) ([Strategy 2026](strategy-2026.md)). |
 | 2026-10-01 | Round 16 tier: **T1 only, no T3** (owner). Kalshi lists the Bahrain GP race winner; run venue strategies (Kalshi, Polymarket) only. Disable private book. Hype picks (12 drivers/teams) still placed at the opening ($25 each). |
 | 2026-10-01 | Round 16 loss cap: **max_loss = 500** (owner). Per-market cap on the F1 private book disabled this round; Baku rehearsal: +$5,337 vs baseline +$6,935, worst market −$559 vs −$2,400 each. |
+| 2026-10-04 | **Live books never freeze** (owner rule): not at qualifying, not at any other time of a race weekend. Every update requotes from the latest fair until the book closes at lights out; `[live.freeze]` is gone from `sports/f1.toml` and `live_f1` has no frozen state. Exchange prices and our fair values are kept as fresh as we can, and the pages warn when they may be out of sync. A deploy pauses the timers for the deploy only; the catch-up step merges missed updates into the next one. Supersedes the 2026-09-28 freeze. |

@@ -38,7 +38,9 @@ from before that race (no look-ahead in backtests).
    positions and official points (race 25-18-..., sprint 8-7-...). Teammates share
    part of the noise (a car's good or bad weekend): the qualifying and finishing
    noise are split into a team part and a driver part, with the teammate
-   correlation measured on earlier races (TEAMMATE_CORR).
+   correlation measured on earlier races (TEAMMATE_CORR). With FASTEST_LAP (variant
+   "fastlap", off by default), also the fastest lap: the quickest classified car on
+   race pace + noise, drawn on a side stream so nothing else changes (fastest_lap).
 """
 
 from dataclasses import dataclass
@@ -52,6 +54,7 @@ from racinglines.db.registry import STREET_CIRCUITS
 
 SCHEMA = sports.load("f1")
 from racinglines.core.stats import ranks
+from racinglines.markets.kinds import biggest_mover
 
 HALF_LIFE_DAYS = 120.0
 RIDGE_A = 2.0          # prior weight (in "events") pulling team base pace to the field median
@@ -73,6 +76,14 @@ REG_RESET = False            # in a regulation-reset season, car data from earli
 REG_RESET_WEIGHT = 0.25      # set a priori (= two half-lives older), not fitted
 ROOKIE_CARRY = None          # driver offsets: once a driver's rookie season is over, that season's teammate
                              # comparisons (the rookie's and the teammate's) count this much; None = off
+FASTEST_LAP = False          # draw the race's fastest lap in each simulation (sim["fl"], summary fl_prob)
+# Fastest-lap noise, a fraction of a lap like rp (a priori, not fitted): the race-pace surprise (team part at
+# least TEAM_DRIFT_SD's 0.3 %, about 0.4 % at a lag-1 persistence of one half) and a best-lap-vs-median term
+# of the same size (tyre age, fuel, traffic), added in quadrature: 0.6 % (~0.5 s on a 90 s lap)
+FL_SIGMA = 0.006
+FL_RHO = 0.3                 # teammates' share of it: half the variance is race pace, whose teammate
+                             # surprises correlate +0.63 (docs/f1.md), so 0.63 / 2
+FL_SEED = 20261004           # salt of the fastest lap's own random stream (see _side_rng)
 RESET_YEARS = frozenset(SCHEMA["regulations"]["resets"])       # sports/f1.toml
 # a past race counts as disrupted if it had a red flag, >= 10% of laps behind the safety car, or rain (set a priori)
 DISRUPTED_SC_SHARE, DISRUPTED_RAIN_SHARE, CHAOS_PRIOR_N = 0.10, 0.25, 4.0
@@ -626,7 +637,8 @@ def simulate_race(fm, e, tf, n_sims=10000, rng=None, grid_known=False, points=RA
     """e: entrants with qp, rp, p_dnf (and grid if grid_known). pace_shock: optional
     (n_sims, n) shift of both qualifying and race pace (see season_drift). chaos_p:
     probability this race is disrupted (fm.chaos). Returns dict of (n_sims, n) arrays:
-    pos (finishing position, DNFs last), dnf, points, grid."""
+    pos (finishing position, DNFs last), dnf, points, grid; with FASTEST_LAP also fl
+    (who set the race's fastest lap, see fastest_lap)."""
     rng = rng or np.random.default_rng(0)
     n = len(e)
     shock = pace_shock if pace_shock is not None else 0.0
@@ -671,12 +683,39 @@ def simulate_race(fm, e, tf, n_sims=10000, rng=None, grid_known=False, points=RA
     for p, v in enumerate(points, start=1):
         pts += (pos == p) * v
     pts = np.where(dnf, 0, pts)
-    return dict(pos=pos, dnf=dnf, points=pts, grid=grid)
+    out = dict(pos=pos, dnf=dnf, points=pts, grid=grid)
+    if FASTEST_LAP:
+        out["fl"] = fastest_lap(rp, dnf, teams, rng)
+    return out
+
+
+def _side_rng(rng, salt):
+    """A generator for draws that must not move `rng`: seeded from rng's current state, which is read, not
+    advanced, so every output drawn from `rng` (and whatever the caller draws from it next) is the same with or
+    without these draws, and races priced off one shared stream still get different side draws."""
+    import hashlib
+    import json
+    state = json.dumps(rng.bit_generator.state, sort_keys=True, default=str)
+    return np.random.default_rng([salt, int(hashlib.sha256(state.encode()).hexdigest()[:16], 16)])
+
+
+def fastest_lap(rp, dnf, teams, rng):
+    """(n_sims, n) bool: who sets the race's fastest lap in each simulation. Among the classified cars, the
+    quickest of race pace rp (with the simulation's pace shock) plus FL_SIGMA noise, FL_RHO of it shared by
+    teammates (with TEAMMATE_CORR). A retired car never gets it here, though one can in a real race. Drawn on a
+    side stream (_side_rng), so the race's other outputs are byte-identical with FASTEST_LAP on or off."""
+    n_sims = dnf.shape[0]
+    side = _side_rng(rng, FL_SEED)
+    lap = rp + _noise(side, FL_SIGMA, FL_RHO if TEAMMATE_CORR else 0.0, teams, n_sims)
+    lap = np.where(dnf, np.inf, lap)
+    fl = np.zeros(dnf.shape, bool)
+    fl[np.arange(n_sims), lap.argmin(axis=1)] = True
+    return fl & ~dnf                           # a race where every car retired has no fastest lap
 
 
 def summarize(e, sim):
     pos, dnf = sim["pos"], sim["dnf"]
-    return pd.DataFrame(dict(
+    out = dict(
         athlete_id=e["athlete_id"].to_numpy(), driver=e["driver"].to_numpy() if "driver" in e else None,
         team_key=e["team_key"].to_numpy(),
         win_prob=((pos == 1) & ~dnf).mean(0), podium_prob=((pos <= 3) & ~dnf).mean(0),
@@ -684,4 +723,10 @@ def summarize(e, sim):
         dnf_prob=dnf.mean(0), exp_points=sim["points"].mean(0),
         exp_position=pos.mean(0),
         qp=e["qp"].to_numpy(), rp=e["rp"].to_numpy(),
-    )).sort_values("win_prob", ascending=False).reset_index(drop=True)
+        # Kalshi's top 5 and biggest mover (markets.kinds race_top5 / race_biggest_mover), stored in race_predictions.extra:
+        # read from the same draws, no new randomness
+        top5_prob=((pos <= 5) & ~dnf).mean(0), mover_prob=biggest_mover(sim["grid"], pos, ~dnf).mean(0),
+    )
+    if "fl" in sim:                            # FASTEST_LAP: stored in race_predictions.extra.fl_prob
+        out["fl_prob"] = sim["fl"].mean(0)
+    return pd.DataFrame(out).sort_values("win_prob", ascending=False).reset_index(drop=True)

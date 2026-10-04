@@ -18,7 +18,7 @@ matched to a driver or team by the sport's resolver (F1: markets/polymarket/sync
 """
 
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 import httpx
 import pandas as pd
@@ -27,6 +27,7 @@ from sqlalchemy import select, text
 from racinglines import exchanges as EX
 from racinglines.db import models as m
 from racinglines.markets import identity
+from racinglines.markets.kalshi import sync as KS
 from racinglines.sources import http
 
 # ----- values -----
@@ -294,7 +295,7 @@ def link_rows(schema, sport, instruments, tickers, resolver=None):
         elif schema.get("exchange", {}).get("code") == "coinbase" and sport == "f1" and subject == contract:
             subject = _coinbase_f1_subject(inst) or subject
         kind, who = classify(schema, sport, contract)
-        athlete_id, params = None, {}
+        athlete_id, params, race_id = None, {}, None
         if kind != "unmodeled":
             if who == "driver":
                 athlete_id = resolver.driver(subject)
@@ -302,6 +303,14 @@ def link_rows(schema, sport, instruments, tickers, resolver=None):
                 params["team"] = resolver.team(subject)
             if athlete_id is None and not params.get("team"):
                 kind = "unmodeled"                       # a subject we can't match to our drivers or teams
+        if kind.startswith("race_") and hasattr(resolver, "race"):
+            # a race market names its Grand Prix in the event title ("Bahrain Grand Prix 2026"); OG.com's expiry is
+            # weeks after the race, so the race is the one of that name held closest to today
+            race_id, race_key = resolver.race(KS.gp_name(EX.dig(inst, fi["event_title"]) or contract), near=date.today())
+            if race_id is None:
+                kind = "unmodeled"
+            else:
+                params["event_key"] = race_key
         tk = tickers.get(tok) or {}
         bid, ask, mid = quote(price(EX.dig(tk, ft["bid"])), price(EX.dig(tk, ft["ask"])), price(EX.dig(tk, ft["last"])))
         vol = EX.dig(tk, ft["volume"])
@@ -310,7 +319,7 @@ def link_rows(schema, sport, instruments, tickers, resolver=None):
             token_id=tok, exchange=code, market_slug=tok,
             question=contract or EX.dig(inst, fi["title"]) or tok, condition_id=EX.dig(inst, fi["event"]),
             outcome=subject or "Yes", neg_risk=False, tick_size=tick or 0.01, min_size=1.0,
-            athlete_id=athlete_id, race_id=None, prediction=kind, invert=False,
+            athlete_id=athlete_id, race_id=race_id, prediction=kind, invert=False,
             params={k: v for k, v in dict(params, **({"contract": contract} if contract else {})).items() if v is not None},
             event_slug=EX.dig(inst, fi["event"]), event_title=EX.dig(inst, fi["event_title"]) or contract,
             group_title=subject or None, last_bid=bid, last_ask=ask, last_price=mid,

@@ -8,7 +8,7 @@
 
 <div class="kpis">
   <div class="kpi"><div class="l">Our fair values</div><div class="v sm">{{ pricing.source }}</div>
-    <div class="s">{% if pricing.run_id %}run <a href="{{ '/lab/diagnostics/' if 'diagnostic' in pricing.source else '/lab/runs/' }}{{ pricing.run_id }}">#{{ pricing.run_id }}</a>{% endif %}{% if pricing.as_of is not none %} · as of {{ pricing.as_of|fmt }}{% endif %}</div></div>
+    <div class="s">{% if pricing.run_id %}run <a href="{{ '/lab/diagnostics/' if 'diagnostic' in pricing.source else '/lab/runs/' }}{{ pricing.run_id }}">#{{ pricing.run_id }}</a>{% endif %}{% if pricing.as_of is not none %} · as of {{ pricing.as_of|fmt }}{% endif %}{% if pricing.cadence %} · {{ pricing.cadence }}{% endif %}</div></div>
   {% if fav %}<div class="kpi"><div class="l">{{ "Favourite" if not season else "Leader" }}</div><div class="v">{{ fav.subject }}</div><div class="s">{{ pct(fav.fair, 1) }} {{ fav.kind_label|lower }}{% if fav.pm_mid is not none %} · market {{ pct(fav.pm_mid, 1) }}{% endif %}</div></div>{% endif %}
   {% if winner %}<div class="kpi"><div class="l">Result</div><div class="v">{{ winner.subject }}</div><div class="s">we had {{ pct(winner.fair, 1) }}{% if winner.pm_mid is not none %} · Polymarket {{ pct(winner.pm_mid, 1) }} at the same time{% endif %}{% if kalshi and winner.venues and winner.venues.kalshi and winner.venues.kalshi.mid is not none %} · Kalshi {{ pct(winner.venues.kalshi.mid, 1) }}{% endif %}</div></div>{% endif %}
   <div class="kpi"><div class="l">Venues</div>{{ venue_chips(venue_sum, mine) }}</div>
@@ -46,6 +46,7 @@
 <td>{% if r.private and r.private.bets %}{{ r.private.bets }} · {{ r.private.staked|money(false, false) }}{% endif %}</td>
 {% if completed %}<td>{% if r.result == True %}<span class="pill yes">YES</span>{% elif r.result == False %}<span class="pill no">NO</span>{% endif %}</td>{% endif %}
 </tr>{% endfor %}</tbody></table></div>
+{% if placeholders and placeholders.get(kind) %}<p class="legend">Not shown: {{ placeholders[kind] }} Polymarket placeholder{{ "s" if placeholders[kind] != 1 }} (unnamed slots like “Driver A”, or “any other”), which we don't price.</p>{% endif %}
 <p class="legend">Bars: our fair probability; the yellow tick is the exchange price (click Polymarket/Kalshi to switch indicators). Gap = exchange − our fair, in points.{% if schema_exchanges %} A green YES / NO beside {% for v in schema_exchanges %}{{ v.name }}{% if not loop.last %}, {% endif %}{% endfor %} quotes is the side with an edge net of the taker fee{% if user.role == 'admin' %} (<code>racinglines markets --exchange {{ schema_exchanges[0].code }} fair</code>){% endif %}.{% endif %}</p>
 </div>
 </section>

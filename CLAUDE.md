@@ -181,6 +181,12 @@ Run the full suite too when the local database is up. `UPDATE_GOLDEN=1` only in 
 per the [F1 roadmap](docs/f1-roadmap.md#5-promotion-rule-when-a-challenger-becomes-the-default), with a decision
 log entry in the same change.
 
+**Live books never freeze (owner rule, 2026-10-04).** Not at qualifying, not at any other time of a race weekend:
+every update requotes from the latest fair until the book closes at lights out. Keep exchange prices and our fair
+values as fresh as possible, and warn when they may be out of sync. The only pause is a deploy's, for the deploy
+itself; the catch-up step merges missed updates into the next one. Never add a freeze setting or describe a book as
+frozen.
+
 **Deploys during live events.** `vm.sh deploy` (by CI on a merge, or by hand) doesn't wait for a live event: it pauses the VM's timers (live-event
 steps, signals), deploys, and resumes them with one catch-up step each ([VM deploy](docs/vm-deploy.md#whats-in-the-repo)).
 There is no `--force`. Don't hand-restart a live event's units around a deploy. If the update fails after the checkout
@@ -321,6 +327,33 @@ Standing practice from the owner (2026-09-29), applied to every task, not one pa
   once per browser session); set it to `""` to turn it off. It is code, so changing it is a deploy.
 - **Smoke gate:** valid sign-ins only; a wrong-password probe warms the 15-minute failed-login throttle and fails the
   real checks (`smoke.sh --auth-throttle` is the opt-in diagnostic). If it was warmed, wait 15 minutes.
+
+## Standardized polling strategy (2026-10-03)
+
+**5-minute cadence during race weekends; silent off-weeks.** All external data polling (race data, market links,
+forecasts) follows a unified pattern:
+
+1. **Timing:** Thu-Sun UTC when that sport has active events in the next 7 days. Off-weeks: all polling skipped to
+   conserve API quota and avoid noise.
+2. **Helper:** `scripts/vm/race_weekend.sh <sport>` (exit 0 = in race weekend, run; exit 1 = off-week, skip)
+   checks day-of-week and database for active events.
+3. **Services:** systemd timers (every 5 min) + one-shot services (run one polling pass):
+   - `racinglines-pm-sync.timer/.service` (Polymarket market links): `bash scripts/deploy/vm.sh pm-sync [off|status]`
+   - `racinglines-record-venues.timer/.service` (Kalshi & OG.com order books): `bash scripts/deploy/vm.sh record [off|status]`
+   - `racinglines-record-fastf1.timer/.service` (FastF1 live timing): uses race_weekend check internally
+   - `racinglines-forecast-refresh.timer/.service` (NASCAR/MotoGP forecasts; F1 championship forecast once per new race result): `bash scripts/deploy/vm.sh forecast [off|status]`
+4. **Scripts:** each polling script checks race_weekend before running:
+   - Off-week: logs "X: off-week, skipped" and exits 0 (clean exit, no error)
+   - Race weekend: runs the polling command, logs results or errors, exits with command's status
+5. **Exceptions:** DH MTB live viewer on staging supports continuous polling; prod supports only the base 5-min cadence
+   except for live events. Policies in `docs/cloud-sweep.md` and above.
+
+**To control polling on the VM:**
+```
+bash scripts/deploy/vm.sh record [off|status]      # Kalshi/OG.com, every 5 min, race weekends only
+bash scripts/deploy/vm.sh pm-sync [off|status]     # Polymarket, every 5 min, race weekends only
+bash scripts/deploy/vm.sh forecast [off|status]    # NASCAR/MotoGP every 30 min on race weekends; F1 after each race result
+```
 
 ## Safety rails (non-negotiable, carried over from the project's own rules)
 

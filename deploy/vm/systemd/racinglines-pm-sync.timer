@@ -1,0 +1,10 @@
+[Unit]
+Description=racinglines Polymarket market sync every 5 minutes
+
+[Timer]
+OnActiveSec=30s
+OnBootSec=1min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target
