@@ -683,6 +683,54 @@ def _stage_runs(spec, w, now, fetch, cache, echo, engine, engine_url):
 
 
 # ---------------------------------------------------------------------------
+# In-race win chart: live timing (the Mac relay, web/f1_live.py) -> models/position_sim/inrace.py
+# ---------------------------------------------------------------------------
+
+RACE_LAPS = 56       # race distance for the in-race chart; Sepang (2026-16). RACINGLINES_RACE_LAPS overrides
+
+
+def inrace_points(run, snap, now=None):
+    """The in-race win-chart points so far, as hist entries (ts, fair by race_win key). Each fresh race snapshot
+    from the relay adds one point to <relay file>.inrace.jsonl (once per relay write), so the line builds up as
+    the race runs. [] when there is no fresh race snapshot and nothing stored."""
+    import os
+    import re
+
+    from racinglines.models.position_sim import inrace as IR
+    from racinglines.web import f1_live as FL
+    key = str(snap.get("event_key") or run)
+    m = re.fullmatch(r"(\d{4})-(\d{1,2})", key)
+    if not m:
+        return []
+    year, rnd = int(m.group(1)), int(m.group(2))
+    store = FL.relay_file(year, rnd).with_suffix(".inrace.jsonl")
+    wins = {mk["subject"]: mk["key"] for mk in snap["markets"] if mk["kind"] == "race_win"}
+    data = FL.relayed(year, rnd)
+    if data and str(data.get("session")) in ("Race", "R"):
+        prior = {name: next((mk["fair"] or 0.0 for mk in snap["markets"] if mk["key"] == k), 0.0)
+                 for name, k in wins.items()}
+        probs, laps = IR.win_probs(data.get("drivers") or [], prior, int(os.environ.get("RACINGLINES_RACE_LAPS", RACE_LAPS)))
+        if probs is not None:
+            t = (now if now is not None else pd.Timestamp.now(tz="UTC")) - pd.Timedelta(seconds=data.get("relay_age") or 0)
+            t = t.floor("min")
+            last = _read_points(store)[-1:]
+            if not last or pd.Timestamp(last[0]["ts"]) < t:
+                try:
+                    with store.open("a") as fh:
+                        fh.write(json.dumps(dict(ts=t.isoformat(), lap=laps, fair=probs)) + "\n")
+                except OSError:
+                    pass
+    return [dict(ts=p["ts"], fair={wins[n]: v for n, v in p["fair"].items() if n in wins}) for p in _read_points(store)]
+
+
+def _read_points(store):
+    try:
+        return [json.loads(line) for line in store.read_text().splitlines() if line.strip()]
+    except (OSError, ValueError):
+        return []
+
+
+# ---------------------------------------------------------------------------
 # The Live tab's body (adapter: view; templates/live_f1.html)
 # ---------------------------------------------------------------------------
 
@@ -736,6 +784,8 @@ def view(run, snap, picks, hist, mode, maker):
         for f in sorted(e["fills"], key=lambda f: f.get("ts") or "", reverse=True)[:6]:
             recent.append(dict(f, subject=subj.get(f["key"], f["key"]), kind=KIND_LABEL.get(kind_of.get(f["key"]), "")))
     chart = None
+    if mode != "replay":
+        hist = list(hist) + inrace_points(run, snap)
     if maker and len(hist) >= 2:
         from racinglines.web.viz import line_chart
         top = [m for m in sorted(snap["markets"], key=lambda m: -(m["fair"] or 0)) if m["kind"] == "race_win"][:6]
