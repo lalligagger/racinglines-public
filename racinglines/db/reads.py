@@ -254,6 +254,8 @@ def model_prob(conn, link, _cache=None, run_id=None):
                 p = (extra.get("h2h") or {}).get(str(params.get("opponent_id")))
             elif kind == "race_pole":
                 p = extra.get("pole_prob")
+            elif kind == "race_fastest_lap":     # only runs priced with the `fastlap` variant store it
+                p = extra.get("fl_prob")
             elif kind in SPRINT_FALLBACK:
                 p = extra.get(kind.replace("race_", "") + "_prob")
                 if p is None:

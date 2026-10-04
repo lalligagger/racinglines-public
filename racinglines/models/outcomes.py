@@ -4,7 +4,8 @@ sport's model and the shared market, backtest and search code.
 
 A race model's Monte Carlo gives, per simulation, a classification of the entrants. Every market
 we price (win, podium, top 10, pole, head-to-head, makes the Final, top team) is a function of it,
-so market code reads an `OutcomeSims` and never a model's own arrays.
+so market code reads an `OutcomeSims` and never a model's own arrays. A yes/no the classification
+doesn't decide, which a model draws itself (F1's fastest lap), rides along in `indicators`.
 
     sims = from_position_sim(entrants, sim)     # F1: pricing.price_race's extras["sim"], ["entrants"]
     sims = from_timed_runs(riders, sim)         # downhill: timed_runs.model.simulate_weekend
@@ -29,6 +30,8 @@ class OutcomeSims:
     reached: dict = field(default_factory=dict)      # (n_sims, n) bool per round reached, e.g. {"final": made_final}
     points: np.ndarray | None = None                 # (n_sims, n) championship points scored
     groups: list | None = None                       # per entrant: team / nation key (group markets)
+    indicators: dict = field(default_factory=dict)   # (n_sims, n) bool per yes/no kind the model draws itself,
+                                                     # keyed by kind, e.g. {"race_fastest_lap": fl}
 
     @property
     def n_sims(self):
@@ -61,11 +64,13 @@ class SeasonSims:
 
 
 def from_position_sim(entrants, sim):
-    """F1 (position_sim): `pos` is the classification with retirements last, `grid` the qualifying order."""
+    """F1 (position_sim): `pos` is the classification with retirements last, `grid` the qualifying order,
+    `fl` (with model.FASTEST_LAP) who set the fastest lap."""
     pos = sim["pos"]
     return OutcomeSims(entrants=entrants["athlete_id"].tolist(), rank=pos, finished=~sim["dnf"],
                        stage_rank={"qual": sim["grid"]}, points=sim["points"],
-                       groups=entrants["team_key"].tolist() if "team_key" in entrants else None)
+                       groups=entrants["team_key"].tolist() if "team_key" in entrants else None,
+                       indicators={"race_fastest_lap": sim["fl"]} if "fl" in sim else {})
 
 
 def from_timed_runs(riders, sim):
@@ -123,7 +128,7 @@ def to_records(sims, run_id, sport, model_id, season, event_id, event, stage, cu
         k = K.KINDS.get(kind)
         if k is None or k.payoff == "standings":
             continue
-        if k.payoff in ("top_n", "stage_top_n", "reached"):
+        if k.payoff in ("top_n", "stage_top_n", "reached", "indicator"):
             if kind not in summ:
                 continue
             for a, p in zip(sims.entrants, summ[kind]):
@@ -148,7 +153,7 @@ def to_records(sims, run_id, sport, model_id, season, event_id, event, stage, cu
 
 def save_sims(sims, path):
     """Archive an OutcomeSims to one compressed .npz (the arrays, plus a JSON `meta` string for the entrants,
-    groups and the stage_rank / reached keys); `load_sims` restores it exactly."""
+    groups and the stage_rank / reached / indicators keys); `load_sims` restores it exactly."""
     import json
     arrays = dict(rank=sims.rank, finished=sims.finished)
     if sims.points is not None:
@@ -157,9 +162,13 @@ def save_sims(sims, path):
         arrays[f"stage_rank__{k}"] = v
     for k, v in sims.reached.items():
         arrays[f"reached__{k}"] = v
+    for k, v in sims.indicators.items():
+        arrays[f"indicators__{k}"] = v
     meta = dict(entrants=[_py(a) for a in sims.entrants], stage_rank=list(sims.stage_rank), reached=list(sims.reached),
                 groups=None if sims.groups is None else [_py(g) for g in sims.groups],
                 has_points=sims.points is not None)
+    if sims.indicators:                       # left out when empty, so earlier archives' meta is unchanged
+        meta["indicators"] = list(sims.indicators)
     with open(path, "wb") as f:
         np.savez_compressed(f, meta=np.array(json.dumps(meta)), **arrays)
 
@@ -172,5 +181,6 @@ def load_sims(path):
             entrants=meta["entrants"], rank=z["rank"], finished=z["finished"],
             stage_rank={k: z[f"stage_rank__{k}"] for k in meta["stage_rank"]},
             reached={k: z[f"reached__{k}"] for k in meta["reached"]},
-            points=z["points"] if meta["has_points"] else None, groups=meta["groups"])
+            points=z["points"] if meta["has_points"] else None, groups=meta["groups"],
+            indicators={k: z[f"indicators__{k}"] for k in meta.get("indicators", [])})
 

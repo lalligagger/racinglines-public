@@ -21,7 +21,7 @@ import pandas as pd
 @dataclass(frozen=True)
 class Kind:
     code: str
-    payoff: str               # top_n | stage_top_n | h2h | reached | group_top | standings (not from sims)
+    payoff: str               # top_n | stage_top_n | h2h | reached | group_top | indicator | standings (not from sims)
     n: int | None = None      # top_n / stage_top_n
     stage: str | None = None  # stage_top_n: which earlier round (sims.stage_rank key); reached: which round
     label: str = ""
@@ -47,6 +47,10 @@ KINDS = {k.code: k for k in (
     # sims.stage_rank["sprint_qual"] / ["sprint"] when a model simulates them
     Kind("race_sprint_pole", "stage_top_n", n=1, stage="sprint_qual", label="Sprint pole"),
     Kind("race_sprint_win", "stage_top_n", n=1, stage="sprint", label="Sprint winner"),
+    # payoff "indicator": a yes/no the model draws itself in each simulation (sims.indicators[code]). F1's
+    # fastest lap is drawn by position_sim behind its `fastlap` variant (model.FASTEST_LAP, off by default) and
+    # stored as race_predictions.extra.fl_prob; the classification doesn't record it, so settle() can't decide it
+    Kind("race_fastest_lap", "indicator", label="Fastest lap"),
 )}
 
 
@@ -69,6 +73,10 @@ def fair(kind, sims, a=None, b=None):
         p = (sims.stage_rank[k.stage] <= k.n).mean(0)
     elif k.payoff == "reached":
         p = sims.reached[k.stage].mean(0)
+    elif k.payoff == "indicator":
+        if kind not in sims.indicators:
+            raise ValueError(f"{kind}: these simulations don't draw it")
+        p = sims.indicators[kind].mean(0)
     elif k.payoff == "standings":
         raise ValueError(f"{kind} is a standings market: not priced from an OutcomeSims")
     else:
@@ -98,10 +106,15 @@ def group_top(sims):
 def summary(sims):
     """Per entrant: the fair value of every per-entrant kind the simulations support."""
     out = dict(athlete_id=sims.entrants)
-    for payoff in ("top_n", "stage_top_n", "reached"):        # columns grouped by payoff, in registry order
+    for payoff in ("top_n", "stage_top_n", "reached", "indicator"):     # columns grouped by payoff, in registry order
         for code, k in KINDS.items():
-            if k.payoff == payoff and (payoff == "top_n" or k.stage in (sims.stage_rank if payoff == "stage_top_n"
-                                                                        else sims.reached)):
+            if k.payoff != payoff:
+                continue
+            if payoff == "indicator":
+                has = code in sims.indicators
+            else:
+                has = payoff == "top_n" or k.stage in (sims.stage_rank if payoff == "stage_top_n" else sims.reached)
+            if has:
                 out[code] = fair(code, sims)
     return pd.DataFrame(out)
 
