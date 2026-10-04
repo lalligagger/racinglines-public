@@ -108,16 +108,17 @@ def test_a_new_kind_prices_an_archived_run(tmp_path, monkeypatch):
     monkeypatch.setenv(REC.ROOT_ENV, str(tmp_path))
     sims = make_sims()
     REC.write(3, rec(sims), sims=sims)
-    monkeypatch.setitem(K.KINDS, "race_top5", K.Kind("race_top5", "top_n", n=5, label="Top 5"))
+    monkeypatch.setitem(K.KINDS, "race_top6", K.Kind("race_top6", "top_n", n=6, label="Top 6"))
     old = REC.load_sims(3)
-    got = K.fair("race_top5", old)
-    np.testing.assert_array_equal(got, ((sims.rank <= 5) & sims.finished).mean(0))
-    assert "race_top5" in rec(old)["kind"].unique()
+    got = K.fair("race_top6", old)
+    np.testing.assert_array_equal(got, ((sims.rank <= 6) & sims.finished).mean(0))
+    assert "race_top6" in rec(old)["kind"].unique()
 
 
 def test_one_kind_registry():
-    # the old hard-coded list, then kinds added to the registry since (race_fastest_lap: position_sim `fastlap`)
-    assert reads.PREDICTION_KINDS == OLD_PREDICTION_KINDS + ["race_fastest_lap"]
+    # the old hard-coded list, then kinds added to the registry since (race_fastest_lap: position_sim `fastlap`;
+    # race_top5 / race_biggest_mover: Kalshi's KXF1TOP5 / KXF1BIGGESTMOVER, not in the default summary below)
+    assert reads.PREDICTION_KINDS == OLD_PREDICTION_KINDS + ["race_fastest_lap", "race_top5", "race_biggest_mover"]
     sims = make_sims()
     for code in ("champion", "standings_top3", "constructors_champion", "season_wins_ge", "standings_h2h"):
         assert K.KINDS[code].payoff == "standings"

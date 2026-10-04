@@ -54,6 +54,7 @@ from racinglines.db.registry import STREET_CIRCUITS
 
 SCHEMA = sports.load("f1")
 from racinglines.core.stats import ranks
+from racinglines.markets.kinds import biggest_mover
 
 HALF_LIFE_DAYS = 120.0
 RIDGE_A = 2.0          # prior weight (in "events") pulling team base pace to the field median
@@ -722,6 +723,9 @@ def summarize(e, sim):
         dnf_prob=dnf.mean(0), exp_points=sim["points"].mean(0),
         exp_position=pos.mean(0),
         qp=e["qp"].to_numpy(), rp=e["rp"].to_numpy(),
+        # Kalshi's top 5 and biggest mover (markets.kinds race_top5 / race_biggest_mover), stored in race_predictions.extra:
+        # read from the same draws, no new randomness
+        top5_prob=((pos <= 5) & ~dnf).mean(0), mover_prob=biggest_mover(sim["grid"], pos, ~dnf).mean(0),
     )
     if "fl" in sim:                            # FASTEST_LAP: stored in race_predictions.extra.fl_prob
         out["fl_prob"] = sim["fl"].mean(0)

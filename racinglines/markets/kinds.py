@@ -21,10 +21,12 @@ import pandas as pd
 @dataclass(frozen=True)
 class Kind:
     code: str
-    payoff: str               # top_n | stage_top_n | h2h | reached | group_top | indicator | standings (not from sims)
+    payoff: str               # top_n | stage_top_n | h2h | reached | group_top | indicator | mover | standings (not from sims)
     n: int | None = None      # top_n / stage_top_n
-    stage: str | None = None  # stage_top_n: which earlier round (sims.stage_rank key); reached: which round
+    stage: str | None = None  # stage_top_n / mover: which earlier round (sims.stage_rank key); reached: which round
     label: str = ""
+    default: bool = True      # False: priced only when named (fair(), a model's own summary); left out of summary(),
+                              # to_records and the walk-forward default set, so adding one changes no existing output
 
 
 # Declared in the order the readers list prediction kinds (db/reads.PREDICTION_KINDS is derived from it).
@@ -51,6 +53,11 @@ KINDS = {k.code: k for k in (
     # fastest lap is drawn by position_sim behind its `fastlap` variant (model.FASTEST_LAP, off by default) and
     # stored as race_predictions.extra.fl_prob; the classification doesn't record it, so settle() can't decide it
     Kind("race_fastest_lap", "indicator", label="Fastest lap"),
+    # Kalshi's KXF1TOP5 and KXF1BIGGESTMOVER: F1 position_sim stores them as extra.top5_prob / extra.mover_prob.
+    # Biggest mover: the classified driver with the largest gain from the starting grid to the finish, if anyone
+    # gained; every driver tied on that gain counts as YES (docs/f1-roadmap.md decision log, 2026-10-04)
+    Kind("race_top5", "top_n", n=5, label="Top 5", default=False),
+    Kind("race_biggest_mover", "mover", stage="qual", label="Biggest mover", default=False),
 )}
 
 
@@ -77,11 +84,23 @@ def fair(kind, sims, a=None, b=None):
         if kind not in sims.indicators:
             raise ValueError(f"{kind}: these simulations don't draw it")
         p = sims.indicators[kind].mean(0)
+    elif k.payoff == "mover":
+        if k.stage not in sims.stage_rank:
+            raise ValueError(f"{kind}: these simulations have no {k.stage} order")
+        p = biggest_mover(sims.stage_rank[k.stage], sims.rank, sims.finished).mean(0)
     elif k.payoff == "standings":
         raise ValueError(f"{kind} is a standings market: not priced from an OutcomeSims")
     else:
         raise ValueError(f"unknown payoff {k.payoff}")
     return p if a is None else float(p[sims.index(a)])
+
+
+def biggest_mover(grid, rank, finished):
+    """(n_sims, n) bool: who has the largest gain from `grid` to `rank` among the cars that finished, in each
+    simulation; nobody when no one gained, everyone tied on the largest gain."""
+    gain = np.where(finished, np.asarray(grid, float) - rank, -np.inf)
+    best = gain.max(axis=1, keepdims=True)
+    return (gain == best) & (best > 0)
 
 
 def h2h_matrix(sims):
@@ -108,7 +127,7 @@ def summary(sims):
     out = dict(athlete_id=sims.entrants)
     for payoff in ("top_n", "stage_top_n", "reached", "indicator"):     # columns grouped by payoff, in registry order
         for code, k in KINDS.items():
-            if k.payoff != payoff:
+            if k.payoff != payoff or not k.default:
                 continue
             if payoff == "indicator":
                 has = code in sims.indicators
@@ -186,6 +205,8 @@ def settle(kind, athlete_id, params, res, group_key=None):
         if col not in res:
             return None
         return bool(by.loc[athlete_id, col]) if athlete_id in by.index else False
+    if k.payoff == "mover":
+        return None          # needs the starting grid, which the results don't store (qual_position misses penalties)
     if k.payoff == "group_top":
         keys =res["team_id"].map(group_key) if group_key else res["team_id"]
         pts = res.assign(tk=keys).groupby("tk")["points"].sum()

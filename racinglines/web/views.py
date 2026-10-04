@@ -29,7 +29,7 @@ from racinglines.web import roles as R
 from racinglines.web.app import ANY, PRO, allow, app, audit, check_csrf, conn, data, render, rows
 from racinglines.web.viz import price_chart
 
-KIND_ORDER = ["race_win", "race_podium", "race_top10", "race_make_final", "race_h2h", "race_constructor_top",
+KIND_ORDER = ["race_win", "race_podium", "race_top5", "race_top10", "race_make_final", "race_h2h", "race_constructor_top",
               "champion", "constructors_champion", "season_wins_ge", "standings_h2h"]
 
 
@@ -172,7 +172,7 @@ def race_page(request: Request, race_id: int, msg: str = "", c=Depends(conn)):
                   exchanges=V.EXCHANGES, has_pm=bool(len(df) and df["pm_mid"].notna().any()),
                   charts=charts, countdown=B._countdown(info["start_date"]),
                   kalshi=V.KALSHI_VENUE,
-                  diag_runs=diag_runs, msg=msg, kind_label=V.KIND_LABEL,
+                  diag_runs=diag_runs, msg=msg, kind_label=V.KIND_LABEL, placeholders=V.placeholders(c, race_id),
                   quote_kinds=list(V.STANDARD_KINDS.get(info["competition"], ("race_win", "race_podium"))))
 
 

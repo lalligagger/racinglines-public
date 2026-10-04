@@ -107,7 +107,8 @@ kinds = ["race_win", "race_podium", "race_pole", "race_h2h", "race_constructor_t
 h2h_from = "last_listed"        # head-to-head pairs: the last race Polymarket listed (or an event key)
 
 [live.quoting]
-# tighter as the model sees more of the weekend; frozen after qualifying's update, closed at lights out
+# tighter as the model sees more of the weekend; requoted from the latest fair at every update (never frozen),
+# closed at lights out
 half_spread = { "pre-weekend" = 0.03, "after FP1" = 0.025, "after FP2" = 0.025, "after SQ" = 0.025, "after Sprint" = 0.02, "after FP3" = 0.02, "after Quali" = 0.02 }
 max_pos = 2500.0
 skew = 1.0
@@ -123,10 +124,6 @@ seed = 20261002
 rate_h = 0.0006                 # per taker, per quoted market, per hour
 late_cap = 100.0                # the pre-race window (after qualifying to lights out): fresh $100 caps ...
 late_pace = 3.0                 # ... at 3x the rate
-
-[live.freeze]
-freeze_after = "after Quali"    # quotes stay as posted at this update until lights out
-close = "lights_out"
 
 [live.picks]
 stake = 25.0                    # the demo taker's hype picks, placed at the book's opening

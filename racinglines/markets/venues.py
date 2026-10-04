@@ -167,6 +167,8 @@ def schema_fee(code):
 KIND_LABEL = {"race_pole": "Pole position", "race_win": "Win", "race_podium": "Podium", "race_top10": "Top 10", "race_make_final": "Makes the Final",
               "race_h2h": "Head-to-head", "race_constructor_top": "Top-scoring constructor",
               "race_sprint_pole": "Sprint pole", "race_sprint_win": "Sprint winner", "race_fastest_lap": "Fastest lap",
+              "race_top5": "Top 5", "race_biggest_mover": "Biggest mover", "race_safety_car": "Safety car",
+              "race_red_flag": "Red flag", "race_rain": "Rain",
               "champion": "Champion", "constructors_champion": "Constructors' champion",
               "season_wins_ge": "Season wins", "standings_h2h": "Championship head-to-head",
               "rank_up": "Rank up", "rank_down": "Rank down", "standings_top3": "Championship top 3"}
@@ -368,6 +370,14 @@ def event_matrix(conn, race_id, maker_id=house.ALL):
                    for k in set(base) | set(exch) | set(priv)}
     ids = {k[1] for k in list(base) + list(exch) + list(priv)} | {k[3] for k in list(exch) + list(priv)}
     return info, pricing, _assemble(conn, base, exch, priv, _subject_names(conn, ids), results)
+
+
+def placeholders(conn, race_id):
+    """{kind: n} Polymarket placeholder outcomes of a race ("Driver A", "any other"; params.placeholder, set by
+    polymarket.sync), which the race page leaves out as unmodeled but counts under the kind they stand in for."""
+    df = data.q(conn, """SELECT params->>'placeholder' AS kind, count(*) AS n FROM market_links
+                         WHERE race_id = :r AND params->>'placeholder' IS NOT NULL GROUP BY 1""", r=race_id)
+    return {k: int(n) for k, n in zip(df["kind"], df["n"])}
 
 
 def season_matrix(conn, competition, maker_id=house.ALL):
