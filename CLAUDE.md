@@ -335,7 +335,7 @@ forecasts) follows a unified pattern:
    - `racinglines-pm-sync.timer/.service` (Polymarket market links): `bash scripts/deploy/vm.sh pm-sync [off|status]`
    - `racinglines-record-venues.timer/.service` (Kalshi & OG.com order books): `bash scripts/deploy/vm.sh record [off|status]`
    - `racinglines-record-fastf1.timer/.service` (FastF1 live timing): uses race_weekend check internally
-   - `racinglines-forecast-refresh.timer/.service` (NASCAR/MotoGP forecasts): `bash scripts/deploy/vm.sh forecast [off|status]`
+   - `racinglines-forecast-refresh.timer/.service` (NASCAR/MotoGP forecasts; F1 championship forecast once per new race result): `bash scripts/deploy/vm.sh forecast [off|status]`
 4. **Scripts:** each polling script checks race_weekend before running:
    - Off-week: logs "X: off-week, skipped" and exits 0 (clean exit, no error)
    - Race weekend: runs the polling command, logs results or errors, exits with command's status
@@ -346,7 +346,7 @@ forecasts) follows a unified pattern:
 ```
 bash scripts/deploy/vm.sh record [off|status]      # Kalshi/OG.com, every 5 min, race weekends only
 bash scripts/deploy/vm.sh pm-sync [off|status]     # Polymarket, every 5 min, race weekends only
-bash scripts/deploy/vm.sh forecast [off|status]    # NASCAR/MotoGP, every 30 min, race weekends only
+bash scripts/deploy/vm.sh forecast [off|status]    # NASCAR/MotoGP every 30 min on race weekends; F1 after each race result
 ```
 
 ## Safety rails (non-negotiable, carried over from the project's own rules)
