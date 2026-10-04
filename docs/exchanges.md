@@ -35,7 +35,9 @@ What it lists of ours: the F1 season futures (Drivers' and Constructors' champio
 2027-01-31) become linked, priced markets; the NASCAR Cup Champion contracts and SailGP's Championship Winner contracts (`--sport sailgp`, PR #50) are tape-only. Per-Grand-Prix events
 exist but have no live instruments between weekends, so race markets appear only around a weekend, and the
 schema's `event_prefixes` finds them when they do (their contract names need `[[rules]]` once a live one has been
-seen: only the champion contracts have been checked against the API).
+seen). The champion contracts and, since the 2026 Bahrain Grand Prix (round 16), the `Race Winner` contracts
+have been seen: a race winner is linked as `race_win` to the race its event names ("Bahrain Grand Prix 2026"),
+the one of that name held closest to the sync date, because its expiry (2026-11-30) says nothing about the race.
 
 ```bash
 racinglines markets --exchange og sync                    # the F1 futures and their quotes, into market links

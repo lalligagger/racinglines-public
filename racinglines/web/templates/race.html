@@ -46,6 +46,7 @@
 <td>{% if r.private and r.private.bets %}{{ r.private.bets }} · {{ r.private.staked|money(false, false) }}{% endif %}</td>
 {% if completed %}<td>{% if r.result == True %}<span class="pill yes">YES</span>{% elif r.result == False %}<span class="pill no">NO</span>{% endif %}</td>{% endif %}
 </tr>{% endfor %}</tbody></table></div>
+{% if placeholders and placeholders.get(kind) %}<p class="legend">Not shown: {{ placeholders[kind] }} Polymarket placeholder{{ "s" if placeholders[kind] != 1 }} (unnamed slots like “Driver A”, or “any other”), which we don't price.</p>{% endif %}
 <p class="legend">Bars: our fair probability; the yellow tick is the exchange price (click Polymarket/Kalshi to switch indicators). Gap = exchange − our fair, in points.{% if schema_exchanges %} A green YES / NO beside {% for v in schema_exchanges %}{{ v.name }}{% if not loop.last %}, {% endif %}{% endfor %} quotes is the side with an edge net of the taker fee{% if user.role == 'admin' %} (<code>racinglines markets --exchange {{ schema_exchanges[0].code }} fair</code>){% endif %}.{% endif %}</p>
 </div>
 </section>

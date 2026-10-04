@@ -145,6 +145,10 @@ subject = "team"
 contract = "drivers'? champion"
 kind = "champion"
 subject = "driver"
+[[sports.f1.rules]]
+contract = "^race winner$"               # a Grand Prix's winner (event "Bahrain Grand Prix 2026"): linked to that race
+kind = "race_win"
+subject = "driver"
 
 [sports.nascar]
 event_prefixes = ["NSCAR-"]              # 17 Cup Champion contracts; tape only

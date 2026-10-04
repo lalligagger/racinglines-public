@@ -11,6 +11,8 @@ NO is the mirror image). Titles are classified like Polymarket's. Checked agains
     "Azerbaijan Grand Prix Winner" / "Oscar Piastri to finish in first"   KXF1RACE          race_win
     "... Main Race: Podium Finishers" / "... to finish"                   KXF1RACEPODIUM    race_podium
     "... Main Race: Top 10 Finishers" / "... to finish top 10"            KXF1TOP10         race_top10
+    "... Main Race: Top 5 Finishers" / "... to finish top 5"              KXF1TOP5          race_top5
+    "... Main Race: Biggest Mover" / "Biggest Mover: Oscar Piastri"       KXF1BIGGESTMOVER  race_biggest_mover
     "... Qualifying Session (Q3): Pole Position"                          KXF1POLE          race_pole
     "... Main Race: Top Constructor" / "McLaren to finish in first"       KXF1TOPCONSTRUCTOR race_constructor_top
     "... Main Race: Fastest Lap" / "Fastest Lap: Oscar Piastri"           KXF1FASTLAP       race_fastest_lap
@@ -74,6 +76,8 @@ PROP = [(r"fastest lap", "race_fastest_lap"), (r"safety car", "race_safety_car")
         (r"\brain", "race_rain")]
 SPRINT_FLAG = "RACINGLINES_KALSHI_SPRINTS"
 SPRINT_KINDS = ("race_sprint_win", "race_sprint_pole")
+ATHLETE_KINDS = ("race_win", "race_podium", "race_top10", "race_top5", "race_pole", "race_fastest_lap",
+                 "race_biggest_mover", "champion")       # one market per driver: the driver is the yes_sub_title
 REREAD_MAX = 100     # open links re-read by ticker per pass when their event left the open listing
 
 
@@ -124,6 +128,8 @@ def classify(event_title, market_title="", gp=None, sprints=None):
     for pat, kind in PROP:
         if re.search(pat, low):
             return kind, gp
+    if re.search(r"biggest mover", low):
+        return "race_biggest_mover", gp
     if re.search(r"finish ahead of|head[- ]to[- ]head|\bvs\.?\b|matchup", low):
         return "race_h2h", gp
     if "constructor" in low:
@@ -132,6 +138,8 @@ def classify(event_title, market_title="", gp=None, sprints=None):
         return "race_podium", gp
     if re.search(r"\btop[- ]?10\b", low):
         return "race_top10", gp
+    if re.search(r"\btop[- ]?5\b", low):
+        return "race_top5", gp
     if "pole" in low:
         return "race_pole", gp
     if re.search(r"\bwin(ner)?\b", low):
@@ -213,7 +221,7 @@ def link_rows(events, resolver, modeled=True):
                 athlete_id, params = a, {"opponent_id": b}
             elif kind in ("race_constructor_top", "constructors_champion"):
                 params = {"team": resolver.team(sub)}
-            elif kind in ("race_win", "race_podium", "race_top10", "race_pole", "race_fastest_lap", "champion") + SPRINT_KINDS:
+            elif kind in ATHLETE_KINDS + SPRINT_KINDS:
                 athlete_id = resolver.driver(sub)
             matched = kind == "unmodeled" or (
                 (athlete_id is not None or (params or {}).get("team") or kind in ("race_safety_car", "race_red_flag", "race_rain"))
