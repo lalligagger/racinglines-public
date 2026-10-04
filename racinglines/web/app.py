@@ -1056,13 +1056,11 @@ def _prefs(user_id):
 
 
 def _mcp_context(user):
-    from racinglines.mcp import auth as mcp_auth
-    meta = _prefs(user["id"]).get("mcp") or {}
-    return dict(mcp_url=MCP_URL, mcp_issued_at=meta.get("issued_at"), mcp_allowed=user["role"] in mcp_auth.ROLES,
-                mcp_roles=", ".join(mcp_auth.ROLES))
-
-
-MCP_URL = os.environ.get("RACINGLINES_MCP_URL", "https://mcp.racinglines.bet/mcp")
+    from racinglines.mcp import auth as mcp_auth, oauth
+    prefs = _prefs(user["id"])
+    return dict(mcp_url=oauth.MCP_URL, mcp_issued_at=(prefs.get("mcp") or {}).get("issued_at"),
+                mcp_clients=(prefs.get("mcp_oauth") or {}).get("clients") or {},
+                mcp_allowed=user["role"] in mcp_auth.ROLES, mcp_roles=", ".join(mcp_auth.ROLES))
 
 
 @app.get("/settings", response_class=HTMLResponse, dependencies=[allow(*ANY)])
@@ -1119,7 +1117,8 @@ def generate_mcp_token(request: Request):
     except ValueError as ex:
         raise HTTPException(403, str(ex)) from ex
     audit(request, "generate_mcp_token")
-    return {"token": token, "url": MCP_URL}
+    from racinglines.mcp import oauth
+    return {"token": token, "url": oauth.MCP_URL}
 
 
 @app.post("/api/settings/token/revoke", dependencies=[Depends(check_csrf), allow(*ANY)])
@@ -1132,6 +1131,51 @@ def revoke_mcp_token(request: Request):
         raise HTTPException(404, "No MCP token to revoke")
     audit(request, "revoke_mcp_token")
     return {"status": "revoked"}
+
+
+@app.post("/api/settings/mcp/disconnect", dependencies=[Depends(check_csrf), allow(*ANY)])
+def disconnect_mcp(request: Request):
+    from racinglines.mcp import oauth
+    user = request.state.user
+    if _demo.is_demo(user):
+        raise HTTPException(403, "Demo accounts have no MCP sign-ins")
+    oauth.disconnect(get_engine(), user["id"])
+    audit(request, "mcp_disconnect")
+    return {"status": "disconnected"}
+
+
+# ---------------------------------------------------------------------------
+# MCP sign-in (racinglines/mcp/oauth.py): the MCP server's /authorize sends the browser here with a signed request;
+# a signed-in account allowed MCP access presses Allow and goes back to the client with a code.
+# ---------------------------------------------------------------------------
+
+@app.get("/mcp/authorize", response_class=HTMLResponse, dependencies=[allow(*ANY)])
+def mcp_authorize_page(request: Request, req: str = ""):
+    from racinglines.mcp import oauth
+    user = request.state.user
+    info = oauth.request_info(req)
+    allowed = not _demo.is_demo(user) and oauth.account(get_engine(), user_id=user["id"]) is not None
+    resp = render(request, "mcp_authorize.html", req=req, info=info, allowed=allowed, roles=", ".join(oauth.auth.ROLES))
+    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["X-Frame-Options"] = "DENY"                       # an Allow button must not be clickable inside another site
+    resp.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+    return resp
+
+
+@app.post("/mcp/authorize", dependencies=[Depends(check_csrf), allow(*ANY)])
+def mcp_authorize(request: Request, req: str = Form(...), decision: str = Form(...)):
+    from racinglines.mcp import oauth
+    user = request.state.user
+    if decision != "allow":
+        url = oauth.deny_url(req)
+    elif _demo.is_demo(user) or oauth.account(get_engine(), user_id=user["id"]) is None:
+        raise HTTPException(403, "This account may not use the MCP server")
+    else:
+        url = oauth.approve(req, user)
+        audit(request, "mcp_authorize", client=(oauth.request_info(req) or {}).get("client"))
+    if url is None:
+        raise HTTPException(400, "This sign-in request expired: start again from your MCP client")
+    return RedirectResponse(url, status_code=303)
 
 
 # ---------------------------------------------------------------------------

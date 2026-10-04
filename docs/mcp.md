@@ -14,8 +14,8 @@ functions, `server.py` the registration and transports) and the command `racingl
 ## Getting access, as a user
 
 Two ways in. **Locally** you run the server yourself and there is no account: whoever can run the command on
-that machine is the owner. **Hosted** you connect to `https://mcp.racinglines.bet/mcp` with a token an admin
-issues for your web-app account; your Claude then sees what the app's data shows and can queue what the Lab's
+that machine is the owner. **Hosted** you connect to `https://mcp.racinglines.bet/mcp` and sign in with your
+web-app account (or use a token from Settings); your Claude then sees what the app's data shows and can queue what the Lab's
 Run form can queue, and every job it queues is filed under your account.
 
 ### Local (stdio)
@@ -37,40 +37,40 @@ Claude Desktop (Settings > Developer > Edit config), the same idea:
 
 ### Hosted (the VM)
 
-1. **Get a token.** Signed in on racinglines.bet, open **Settings > Connect Claude (MCP)** and press **Get a
-   token**; the card also shows the `claude mcp add` command with it filled in. (An admin can issue one on the
-   VM too, below.) It looks like `rl_` followed by 48 hex characters, it is shown once, and it is yours alone:
-   the server records your account against everything you queue. Getting a new one, or pressing Revoke, stops
-   the old one at once. Demo accounts never get one, and the card says so when your account's role isn't in
-   `RACINGLINES_MCP_ROLES`. Keep it like a password; anyone holding it reads the app as you.
-2. **Check the door** (any machine with curl; expect `401`, which means the server is up and refusing
-   requests without a token):
-   ```sh
-   curl -s -o /dev/null -w "%{http_code}\n" -X POST https://mcp.racinglines.bet/mcp
-   ```
-   Then with your token (expect `200`):
-   ```sh
-   curl -s -o /dev/null -w "%{http_code}\n" -X POST https://mcp.racinglines.bet/mcp \
-     -H "Authorization: Bearer rl_YOUR_TOKEN" -H "Content-Type: application/json" \
-     -H "Accept: application/json, text/event-stream" -d '{"jsonrpc":"2.0","id":1,"method":"ping"}'
-   ```
-3. **Connect your client.**
-   - Claude Code:
-     ```sh
-     claude mcp add --transport http racinglines https://mcp.racinglines.bet/mcp --header "Authorization: Bearer rl_YOUR_TOKEN"
-     claude
-     ```
-     `/mcp` inside Claude Code lists it as connected. `claude mcp remove racinglines` forgets it.
-   - Claude Desktop and claude.ai: not yet. Their custom-connector form sends no custom headers and expects
-     an OAuth sign-in, which the server doesn't offer yet. Use Claude Code, or any client that can send a header.
-   - Any other MCP client: streamable HTTP transport, that URL, that header.
-4. **First questions.** "Call `overview` and summarize what's there" proves the whole path. Then something
+Your account needs a role in `RACINGLINES_MCP_ROLES` (default `admin`); Settings > Connect Claude (MCP) says
+if it hasn't. Demo accounts never get access.
+
+1. **Connect.** No token to copy: the client opens racinglines.bet in your browser, you sign in if you aren't
+   already, and press **Allow** once.
+   - claude.ai and Claude Desktop: Settings > Connectors > Add custom connector, name `racinglines`, URL
+     `https://mcp.racinglines.bet/mcp`, leave the OAuth fields empty, then Connect.
+   - Claude Code: `claude mcp add --transport http racinglines https://mcp.racinglines.bet/mcp`, then `/mcp`
+     inside Claude Code and pick racinglines to sign in. `claude mcp remove racinglines` forgets it.
+   - Any other MCP client: streamable HTTP, that URL; it finds the sign-in from the server's 401
+     (OAuth 2.1 with dynamic client registration and PKCE).
+2. **First questions.** "Call `overview` and summarize what's there" proves the whole path. Then something
    with real content: "list the race_win markets for the next F1 round with our fair value against
    Polymarket and Kalshi" (`list_markets`), or "queue a 3-race, 300-sim F1 backtest and tell me when it's
    done" (`run_job`, then `get_job`; the job shows in the Lab's Jobs section under your name).
 
-Lost or leaked token: ask an admin to issue a new one, which replaces the old one at once. Tokens do not
-expire on their own.
+The client keeps an access token for an hour and refreshes it by itself for 30 days of disuse; after that,
+or after a disconnect, it asks you to sign in again. Settings lists where you've signed in from, and
+**Disconnect all** ends every sign-in of your account at once.
+
+**A token instead**, for scripts and clients without sign-in: Settings > Connect Claude (MCP) > **Get a token**
+(an admin can also issue one on the VM, below). It is `rl_` followed by 48 hex characters, shown once, and the
+card shows the `claude mcp add ... --header "Authorization: Bearer rl_..."` command with it filled in. A new
+one, or Revoke, stops the old one at once; it doesn't expire on its own. Keep it like a password.
+
+**Check the door** (any machine with curl): `401` without a token means the server is up; with your token
+expect `200`:
+
+```sh
+curl -s -o /dev/null -w "%{http_code}\n" -X POST https://mcp.racinglines.bet/mcp
+curl -s -o /dev/null -w "%{http_code}\n" -X POST https://mcp.racinglines.bet/mcp \
+  -H "Authorization: Bearer rl_YOUR_TOKEN" -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" -d '{"jsonrpc":"2.0","id":1,"method":"ping"}'
+```
 
 ## Giving access, as an admin
 
@@ -81,10 +81,13 @@ Cloudflare and what is neither. In short, and in this order:
 
 1. **Deploy code that has the server** (`bash scripts/deploy/vm.sh deploy` on the Mac). The unit
    `racinglines-mcp.service` is installed by `vm.sh setup` and by every deploy, never enabled for you.
-2. **Issue the first token, on the VM** (`bash scripts/deploy/vm.sh ssh` from the Mac). The server refuses
-   to start in `--http` mode while no account has a token, so this comes before enabling the unit:
+2. **Check `APP_SECRET`, then start the unit, on the VM** (`bash scripts/deploy/vm.sh ssh` from the Mac).
+   Sign-in is signed with `APP_SECRET` from `/etc/racinglines.env`, which the web app and the MCP unit both
+   read; without it the unit still serves `rl_` tokens but logs that sign-in is off, and `/admin/mcp` says so.
+   If it is empty, set it (`openssl rand -hex 32`) and restart both units (it also signs web sessions, so
+   everyone signs in again once):
    ```sh
-   sudo -u racinglines bash -c 'set -a; . /etc/racinglines.env; set +a; cd /opt/racinglines && .venv/bin/racinglines mcp token admin'
+   sudo grep -c '^APP_SECRET=.\+' /etc/racinglines.env                                   # 1 = set
    sudo systemctl enable --now racinglines-mcp
    sudo systemctl status racinglines-mcp --no-pager
    curl -s -o /dev/null -w "%{http_code}\n" -X POST http://127.0.0.1:8100/mcp      # 401 on the VM itself
@@ -102,7 +105,16 @@ Cloudflare and what is neither. In short, and in this order:
    `racinglines.bet` hostname or the Mac's tunnel changes; each hostname belongs to one tunnel.
 5. **Check from anywhere**: the two curls in step 2 of the user section, `401` then `200`.
 
-### Per user: issue, list, revoke
+### Per user: who's connected, disconnect, revoke
+
+**Admin > MCP** (`/admin/mcp`) lists every account that has signed in from an MCP client (which client, when it
+last signed in or refreshed) or holds an `rl_` token, with **Disconnect** (ends that account's sign-ins),
+**Revoke token**, and **Disconnect everyone** (every client must sign in again; signed-in people just press
+Allow). Sign-ins keep nothing on the server but a counter per account (`users.prefs["mcp_oauth"]`): client ids,
+codes and tokens are signed with `APP_SECRET`, and disconnecting bumps the counter. Who may connect is the role
+list below; changing a role takes effect on the next request.
+
+Tokens by hand, on the VM:
 
 Tokens are per web-app account: real accounts only (no demos), active, and with a role listed in
 `RACINGLINES_MCP_ROLES` in `/etc/racinglines.env` (default `admin`; `admin,pro` opens it to pro accounts (accounts still stored as `maker` count), then
@@ -141,7 +153,8 @@ the token.
 | `421` with a token | Server | A build older than 2026-09-28's fix, which only accepted `Host: localhost`: deploy and restart the unit. |
 | `racinglines mcp: error: unrecognized arguments: token` | Server | The VM runs a build without per-account tokens: deploy. |
 | `fatal: detected dubious ownership` from `git -C /opt/racinglines` | VM | The checkout belongs to the `racinglines` user; prefix git commands with `sudo -u racinglines`. |
-| The unit exits at once with "no account has a token yet" | Server | Issue the first token, then start the unit. |
+| The unit logs "OAuth sign-in ... is off" | Server | `APP_SECRET` is empty in `/etc/racinglines.env`: set it, restart `racinglines-web` and `racinglines-mcp`. |
+| claude.ai says the connector failed after Allow | Server | The MCP unit and the web app read different `APP_SECRET`s (one not restarted since it changed): restart both. A "sign-in link has expired" page means more than 10 minutes passed: connect again. |
 | Claude connects but every call errors | Client | Ask for `overview` alone; a tool error's text is the reason (a bad argument, an unknown id). The server's own log is `journalctl -u racinglines-mcp`. |
 
 ## Tools

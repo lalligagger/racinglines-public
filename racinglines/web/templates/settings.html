@@ -34,6 +34,17 @@
 {% if not mcp_allowed %}
 <p class="warning">MCP access is open to {{ mcp_roles }} accounts; ask an admin if you need it.</p>
 {% else %}
+<p>In claude.ai or Claude Desktop: Settings &gt; Connectors &gt; Add custom connector, URL <code>{{ mcp_url }}</code>, then
+   Connect and Allow. In Claude Code: <code>claude mcp add --transport http racinglines {{ mcp_url }}</code>, then <code>/mcp</code>.
+   No token to copy: you sign in here.</p>
+<div id="mcp-signins">
+{% if mcp_clients %}
+  <p class="muted">Signed in from: {% for name, at in mcp_clients.items() %}{{ name }} (last {{ at }}){% if not loop.last %}, {% endif %}{% endfor %}.
+  <button type="button" class="danger" id="disconnect-btn">Disconnect all</button></p>
+{% endif %}
+</div>
+<h3>Or a token</h3>
+<p class="muted">For scripts and clients without sign-in.</p>
 <div id="mcp-tokens">
   <p class="muted" id="token-status">{% if mcp_issued_at %}You have a token, issued {{ mcp_issued_at }}. A new one replaces it.{% else %}You have no token yet.{% endif %}</p>
   <p><button class="primary" id="generate-token-btn">{% if mcp_issued_at %}Replace token{% else %}Get a token{% endif %}</button>
@@ -77,6 +88,11 @@ document.getElementById('revoke-token-btn').addEventListener('click', async func
   document.getElementById('token-status').textContent = 'You have no token.';
   document.getElementById('generate-token-btn').textContent = 'Get a token';
   this.style.display = 'none';
+});
+const dc = document.getElementById('disconnect-btn');
+if (dc) dc.addEventListener('click', async function() {
+  if (!confirm('Disconnect every Claude sign-in? Clients will ask you to sign in again.')) return;
+  if (await post('/api/settings/mcp/disconnect')) document.getElementById('mcp-signins').textContent = 'Disconnected.';
 });
 document.querySelectorAll('.copy-btn').forEach(btn => {
   btn.addEventListener('click', function() {
