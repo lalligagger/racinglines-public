@@ -34,6 +34,12 @@ with prices and no model price.
 Each link keeps Kalshi's resolution rules (params.rules, from rules_primary) so markets on two venues are only
 compared when their rules agree (F1-9), and its series ticker (params.series, for the price history).
 
+The open listing drops an event once its markets close, so a decided market (pole after qualifying) would sit
+open in market_links with its last pre-close quote. Each pass therefore re-reads by ticker the open links of the
+synced series that the listing no longer returns (up to REREAD_MAX, most recently synced first) and stores their
+status, result and last quote. A ticker Kalshi no longer serves (settled before its historical cutoff: a 404)
+closes once its end date has passed.
+
 * Sprint markets (docs/todo.md U5) are classified only with RACINGLINES_KALSHI_SPRINTS=1 (sprints_enabled);
 without it every sprint market stays unmodeled, as before. The sprint winner and sprint pole take the sprint
 kinds of racinglines/markets/kinds.py (race_sprint_win settles after the Sprint, race_sprint_pole after SQ;
@@ -52,6 +58,7 @@ import os
 import re
 from datetime import datetime, timezone
 
+import httpx
 from sqlalchemy import select, text
 
 from racinglines import sports
@@ -67,6 +74,7 @@ PROP = [(r"fastest lap", "race_fastest_lap"), (r"safety car", "race_safety_car")
         (r"\brain", "race_rain")]
 SPRINT_FLAG = "RACINGLINES_KALSHI_SPRINTS"
 SPRINT_KINDS = ("race_sprint_win", "race_sprint_pole")
+REREAD_MAX = 100     # open links re-read by ticker per pass when their event left the open listing
 
 
 def sprints_enabled():
@@ -271,7 +279,8 @@ def sync(session, conn, year=2026, include_closed=False, kc=None, sport="f1", se
     kc = kc or K.Client()
     now = datetime.now(timezone.utc)
     events = []
-    for s in series_for(kc, sport, series):
+    names = series_for(kc, sport, series)
+    for s in names:
         events += kc.events(series_ticker=s, status="open")
         if include_closed:
             events += kc.events(series_ticker=s, status="settled")
@@ -293,6 +302,7 @@ def sync(session, conn, year=2026, include_closed=False, kc=None, sport="f1", se
     if who:
         who.fill(rows)
         stats["identity"] = dict(who.counts)
+    seen = {r["token_id"] for r in rows}
     for row in rows:
         tok = row.pop("token_id")
         values = dict(row, competition_id=comp.id, category_id=cat.id, synced_at=now)
@@ -305,8 +315,41 @@ def sync(session, conn, year=2026, include_closed=False, kc=None, sport="f1", se
                 setattr(link, k, v)
         stats["links"] += 1
         stats["modeled" if row["prediction"] != "unmodeled" else "unmatched"] += 1
+    session.flush()
+    stats["reread"] = reread(session, kc, comp.id, names, seen, now)    # closed since the last pass: off the listing
     session.commit()
     return stats
+
+
+def reread(session, kc, competition_id, series, seen, now, limit=REREAD_MAX):
+    """Re-read by ticker the open links of `series` that this pass's listing (`seen` tickers) no longer returned
+    and store each one's status, result, last quote and volume. Returns how many links changed."""
+    ids = session.execute(text("""SELECT id FROM market_links
+                                  WHERE exchange = 'kalshi' AND competition_id = :c AND closed IS NOT TRUE
+                                    AND params->>'series' = ANY(:s) AND NOT (token_id = ANY(:seen))
+                                  ORDER BY synced_at DESC NULLS LAST, id LIMIT :n"""),
+                          dict(c=competition_id, s=list(series), seen=list(seen), n=limit)).scalars().all()
+    n = 0
+    for link in (session.get(m.MarketLink, i) for i in ids):
+        try:
+            mk = kc.market(link.token_id) or {}
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404 and link.end_date is not None and link.end_date < now:
+                link.closed, link.active, link.synced_at = True, False, now      # settled before the historical cutoff
+                n += 1
+            continue
+        except httpx.HTTPError:
+            continue
+        status, result = (mk.get("status") or "").lower(), (mk.get("result") or "").lower()
+        if not status:
+            continue
+        link.last_bid, link.last_ask, link.last_price = _quote(mk)
+        link.volume = _volume(mk) if _volume(mk) is not None else link.volume
+        link.closed, link.active = status in CLOSED, status not in CLOSED
+        link.resolved_yes = {"yes": True, "no": False}.get(result)
+        link.synced_at = now
+        n += 1
+    return n
 
 
 def trade_rows(ticker, event_ticker, trades):

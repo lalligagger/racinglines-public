@@ -341,6 +341,9 @@ Phased plan and ground rules: [F1 roadmap](f1-roadmap.md).
 - [ ] Teammate-battle uncertainty: a larger per-driver season drift, or a driver-form model.
 - [ ] Props next: calibrate fastest lap on stored stage runs; map Polymarket's and Kalshi's prop markets
       in the sync classifiers (they're `unmodeled` today) and backtest against their prices.
+- [ ] Fastest lap from the simulation (`fastlap` variant, off, 2026-10-04): price stage runs with it, score
+      `extra.fl_prob` against Kalshi's resolved `race_fastest_lap` links on the VM, then the owner decides
+      whether a profile takes it ([decision log](f1-roadmap.md#decision-log)).
 
 ## New sports
 

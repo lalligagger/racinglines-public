@@ -165,6 +165,7 @@ standard errors.
 | `tail` | 35% of past races were disrupted (red flag, ≥ 10% of laps behind the safety car, or rain). Simulated races are disrupted at the venue's rate, with more noise and retirements; teammates' retirements are correlated |
 | `reset` | In a season with new technical regulations (2022, 2026; `sports/f1.toml`), earlier seasons' car pace counts a quarter (set a priori) |
 | `rookie` | Driver offsets: once a driver's rookie season is over, that season's teammate comparisons (the rookie's and the teammate's) count a quarter (set a priori) |
+| `fastlap` | No price changes: adds the race's fastest lap (race pace plus 0.6 % noise, among classified cars) as `extra.fl_prob`. Provisional and uncalibrated, so no backtest row; scored against Kalshi's resolved fastest-lap markets first |
 
 **`gridq + pretrain`** (run 937 vs baseline run 931):
 

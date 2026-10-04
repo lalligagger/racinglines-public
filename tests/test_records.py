@@ -116,7 +116,8 @@ def test_a_new_kind_prices_an_archived_run(tmp_path, monkeypatch):
 
 
 def test_one_kind_registry():
-    assert reads.PREDICTION_KINDS == OLD_PREDICTION_KINDS
+    # the old hard-coded list, then kinds added to the registry since (race_fastest_lap: position_sim `fastlap`)
+    assert reads.PREDICTION_KINDS == OLD_PREDICTION_KINDS + ["race_fastest_lap"]
     sims = make_sims()
     for code in ("champion", "standings_top3", "constructors_champion", "season_wins_ge", "standings_h2h"):
         assert K.KINDS[code].payoff == "standings"
