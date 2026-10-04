@@ -181,6 +181,12 @@ Run the full suite too when the local database is up. `UPDATE_GOLDEN=1` only in 
 per the [F1 roadmap](docs/f1-roadmap.md#5-promotion-rule-when-a-challenger-becomes-the-default), with a decision
 log entry in the same change.
 
+**Live books never freeze (owner rule, 2026-10-04).** Not at qualifying, not at any other time of a race weekend:
+every update requotes from the latest fair until the book closes at lights out. Keep exchange prices and our fair
+values as fresh as possible, and warn when they may be out of sync. The only pause is a deploy's, for the deploy
+itself; the catch-up step merges missed updates into the next one. Never add a freeze setting or describe a book as
+frozen.
+
 **Deploys during live events.** `vm.sh deploy` (by CI on a merge, or by hand) doesn't wait for a live event: it pauses the VM's timers (live-event
 steps, signals), deploys, and resumes them with one catch-up step each ([VM deploy](docs/vm-deploy.md#whats-in-the-repo)).
 There is no `--force`. Don't hand-restart a live event's units around a deploy. If the update fails after the checkout

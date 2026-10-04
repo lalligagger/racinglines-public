@@ -59,7 +59,7 @@ What a sport's live simulation *is*:
 | `markets.kinds` | `race_win`, `race_podium` | `race_win`, `race_podium`, `race_pole`, `race_h2h`, `race_constructor_top` |
 | `quoting` | half-spread 3¢, +2¢ on course, +1¢ next to start, `max_pos` 2,500, skew 1.0 | half-spread by stage (3 / 2.5 / 2¢), `max_pos` 2,500, skew 1.0 |
 | `crowd` | 1,000 takers, $10–200 budgets, per-poll rate, late window 50×, $100 caps | the same crowd; one batch per update, per-hour rate; pre-race window |
-| `freeze` / `close` | pull a market after a rider's last split; close when the final is over | freeze after qualifying's update; close at lights out |
+| `freeze` / `close` | pull a market after a rider's last split; close when the final is over | no freeze (books never freeze, 2026-10-04); close at lights out |
 
 Today's values live as constants in `pipelines/live_dh.py`. Move them into the schema, with
 the constants reading from it, exactly as `sports.py` did for the models.

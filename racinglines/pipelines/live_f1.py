@@ -11,8 +11,9 @@ The updates, each one step that acts only when something new has happened:
                      hype picks; the settings frozen into meta.json
     2-5. after FP1 / FP2 / FP3 (sprint: SQ, Sprint) / Quali
                      the crowd trades the window since the last update at the quotes posted then; reprice
-                     from the new stage run; requote. After qualifying: pole settles from the classification,
-                     quotes freeze as posted, the pre-race window opens (fresh caps, a faster pace)
+                     from the new stage run; requote. After qualifying: pole settles from the classification
+                     and the pre-race window opens (fresh caps, a faster pace). The book never freezes: every
+                     update requotes from the latest fair until lights out (owner rule, 2026-10-04)
     6. lights out    the crowd trades the pre-race window; the book closes
     7. results       every market settles from the race classification; final P&L
 
@@ -268,28 +269,31 @@ def prop_markets(conn, event_key, run_id, kinds, props=None):
 # The weekend's updates
 # ---------------------------------------------------------------------------
 
+QUAL_UPDATE = "after Quali"      # pole settles and the pre-race window opens at this update
+
+
 def race_done_after():
     from racinglines.pipelines.signals import RACE_DONE
     return RACE_DONE
 
 
-def plan(event_key, freeze_after="after Quali"):
+def plan(event_key):
     """The weekend's updates in order: [dict(label, kind ('open' | 'stage' | 'close' | 'results'), at (naive
-    UTC))], from the FastF1 schedule (weekend_sweep.schedule: stage cutoffs are session end + the data lag).
-    Plus the weekend (weekend_sweep's dict)."""
+    UTC), qual (the qualifying update: pole settles, the pre-race window opens))], from the FastF1 schedule
+    (weekend_sweep.schedule: stage cutoffs are session end + the data lag). Plus the weekend (weekend_sweep's dict)."""
     from racinglines.pipelines import weekend_sweep as WS
     year, rnd = (int(x) for x in event_key.split("-"))
     w = WS.schedule(year, rounds=[rnd])[rnd]
-    ups = [dict(label=lab, kind="open" if i == 0 else "stage", at=cut, freeze=lab == freeze_after)
+    ups = [dict(label=lab, kind="open" if i == 0 else "stage", at=cut, qual=lab == QUAL_UPDATE)
            for i, (lab, cut) in enumerate(w["stages"])]
-    ups += [dict(label="lights out", kind="close", at=w["race_start"], freeze=False),
-            dict(label="results", kind="results", at=w["race_start"] + race_done_after(), freeze=False)]
+    ups += [dict(label="lights out", kind="close", at=w["race_start"], qual=False),
+            dict(label="results", kind="results", at=w["race_start"] + race_done_after(), qual=False)]
     return ups, w
 
 
 def load_state(out):
     p = out / "state.json"
-    return json.loads(p.read_text()) if p.exists() else dict(done=[], frozen=False, closed=False, settled=False,
+    return json.loads(p.read_text()) if p.exists() else dict(done=[], closed=False, settled=False,
                                                              quotes=[], markets=[], outcomes={}, last_ts=None)
 
 
@@ -310,7 +314,7 @@ def status(spec, now=None):
     now = _utc(now) if now is not None else pd.Timestamp.now(tz="UTC").tz_localize(None)
     out = LV.folder(spec.get("run", spec["event"]), mkdir=False)
     st = load_state(out) if out.exists() else load_state(LV.base() / "__none__")
-    ups, _ = plan(spec["event"], spec["live"].get("freeze", {}).get("freeze_after", "after Quali"))
+    ups, _ = plan(spec["event"])
     nxt = next_update(ups, st)
     return dict(done=[d["label"] for d in st["done"]], next=nxt["label"] if nxt else None,
                 due=_iso(nxt["at"]) if nxt else None, settled=st["settled"],
@@ -467,7 +471,7 @@ def step(spec, now=None, fetch=True, unfreeze=False, echo=print, engine=None, en
     if st["settled"]:
         return None
     live = frozen_settings(spec, out, unfreeze, echo)
-    ups, w = plan(event_key, live.get("freeze", {}).get("freeze_after", "after Quali"))
+    ups, w = plan(event_key)
     todo = due(ups, st, now)
     if not todo:
         return None
@@ -551,20 +555,18 @@ def step(spec, now=None, fetch=True, unfreeze=False, echo=print, engine=None, en
         for m in new:
             m["prev_fair"] = prev.get(m["key"])
         mkts = new
-        if update["freeze"]:
+        if update["qual"]:
             with engine.connect() as c:
                 st["outcomes"].update(outcomes(c, rid, mkts, "qual"))
             C.open_late(book, cp, _iso(now))
         st["done"].append(dict(label=update["label"], ts=_iso(now), run_id=run_id))
         st["run_id"] = run_id
 
-    # quotes: requoted at every stage update until the freeze; as posted after it; none once closed
+    # quotes: requoted from the latest fair at every update until lights out (never frozen); none once closed
     hs = Q.half_spread(live["quoting"]["half_spread"], (update or {}).get("label"), 0.03)
     decided = set(st["outcomes"])
     if st["closed"]:
         quotes = [dict(q, bid=None, ask=None) for q in st["quotes"]]
-    elif st["frozen"]:
-        quotes = [dict(q, bid=None, ask=None) if q["key"] in decided else q for q in st["quotes"]]
     else:
         quotes = quotes_for(mkts, book, picks, qp, hs, decided)
     if not st.get("opened") and update["kind"] in ("open", "stage"):      # the book opens
@@ -576,8 +578,6 @@ def step(spec, now=None, fetch=True, unfreeze=False, echo=print, engine=None, en
                     h2h_from=st.get("pairs_from"), h2h_pairs=st.get("pairs"))
         LV.write_meta(out, meta, now.strftime("%Y%m%dT%H%M%S"))
         st["opened"] = True
-    if update.get("freeze"):
-        st["frozen"] = True
     st.update(markets=mkts, quotes=quotes, last_ts=_iso(now))
     fair = {m["key"]: m["fair"] for m in mkts if m["fair"] is not None}
     oc = st["outcomes"]
@@ -616,7 +616,7 @@ def step(spec, now=None, fetch=True, unfreeze=False, echo=print, engine=None, en
                 updates=[dict(label=u["label"], kind=u["kind"], at=_iso(u["at"]),
                               state=next(("skipped" if d.get("skipped") else "done" for d in st["done"] if d["label"] == u["label"]), "pending"))
                          for u in ups],
-                run_id=run_id, note=note, done=st["settled"], closed=st["closed"], frozen=st["frozen"],
+                run_id=run_id, note=note, done=st["settled"], closed=st["closed"],
                 next_at=_iso(nxt["at"]) if nxt else None, next_label=nxt["label"] if nxt else None,
                 markets=[dict(m, bid=qmap.get(m["key"], {}).get("bid"), ask=qmap.get(m["key"], {}).get("ask"),
                               inv=qmap.get(m["key"], {}).get("inv"), outcome=oc.get(m["key"])) for m in mkts],
