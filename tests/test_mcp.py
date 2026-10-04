@@ -319,3 +319,52 @@ def test_track_record_all_lists_one_row_per_weekend_and_venue(mcp):
     finally:
         with mcp.engine.begin() as c:
             c.execute(T("DELETE FROM users WHERE username = 'mcp-maker'"))
+
+
+def test_settings_page_token_is_the_one_the_server_accepts(test_engine, monkeypatch):
+    """The Settings page issues the server's own token (auth.new_token), Save Settings keeps it, and the token
+    endpoints need the CSRF field like every other POST."""
+    from fastapi import Request
+    from fastapi.testclient import TestClient
+    from sqlalchemy import text
+    from sqlalchemy.orm import sessionmaker
+    from racinglines.mcp import auth
+    from racinglines.web import app as A
+    from racinglines.web import users as U
+    with sessionmaker(test_engine)() as s:
+        for name, role in (("t_admin", "admin"), ("t_maker", "pro")):
+            if not s.execute(text("SELECT 1 FROM users WHERE username = :u"), dict(u=name)).first():
+                U.create_user(s, name, "pw", role)
+        s.commit()
+        ids = dict(s.execute(text("SELECT username, id FROM users WHERE username IN ('t_admin', 't_maker')")).fetchall())
+    monkeypatch.setattr(A, "get_engine", lambda *a: test_engine)
+    monkeypatch.setattr(A, "get_session", lambda *a: sessionmaker(test_engine, expire_on_commit=False)())
+    who = {}
+
+    def as_user(request: Request):
+        request.state.user = dict(id=ids[who["u"]], username=who["u"], role=who["r"], sid=None)
+        return request.state.user
+    A.app.dependency_overrides[A.authenticate] = as_user
+    A.app.dependency_overrides[A.conn] = lambda: None
+    try:
+        client = TestClient(A.app)
+        who.update(u="t_admin", r="admin")
+        assert client.post("/api/settings/token/generate").status_code == 422             # no CSRF field
+        r = client.post("/api/settings/token/generate", data=dict(csrf_token=A.CSRF_TOKEN))
+        assert r.status_code == 200 and r.json()["url"].endswith("/mcp")
+        tok = r.json()["token"]
+        assert auth.lookup(test_engine, tok)["username"] == "t_admin"
+        r = client.post("/settings", data=dict(csrf_token=A.CSRF_TOKEN, email="a@b.co", exchange="kalshi", sports=["f1"]))
+        assert r.status_code == 200
+        assert auth.lookup(test_engine, tok)["username"] == "t_admin"                     # saving settings keeps the token
+        page = client.get("/settings").text
+        assert "a@b.co" in page and "You have a token" in page
+        assert client.post("/api/settings/token/revoke", data=dict(csrf_token=A.CSRF_TOKEN)).status_code == 200
+        assert auth.lookup(test_engine, tok) is None
+        with test_engine.connect() as c:
+            assert c.execute(text("SELECT prefs->>'email' FROM users WHERE username = 't_admin'")).scalar() == "a@b.co"
+        who.update(u="t_maker", r="pro")                                                   # RACINGLINES_MCP_ROLES=admin
+        assert client.post("/api/settings/token/generate", data=dict(csrf_token=A.CSRF_TOKEN)).status_code == 403
+        assert "open to admin accounts" in client.get("/settings").text
+    finally:
+        A.app.dependency_overrides.clear()

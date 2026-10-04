@@ -29,78 +29,63 @@
 </form>
 </div>
 
-<div class="card"><h2>API & Integrations</h2>
-<p class="muted">Use API tokens to integrate racinglines with external tools and services.</p>
+<div class="card"><h2>Connect Claude (MCP)</h2>
+<p class="muted">Let Claude, or any MCP client, read racinglines data and queue Lab jobs as you. Server: <code>{{ mcp_url }}</code></p>
+{% if not mcp_allowed %}
+<p class="warning">MCP access is open to {{ mcp_roles }} accounts; ask an admin if you need it.</p>
+{% else %}
 <div id="mcp-tokens">
-  <p><button class="primary" id="generate-token-btn">Generate API Token</button></p>
+  <p class="muted" id="token-status">{% if mcp_issued_at %}You have a token, issued {{ mcp_issued_at }}. A new one replaces it.{% else %}You have no token yet.{% endif %}</p>
+  <p><button class="primary" id="generate-token-btn">{% if mcp_issued_at %}Replace token{% else %}Get a token{% endif %}</button>
+     <button type="button" class="danger" id="revoke-token-btn" {% if not mcp_issued_at %}style="display: none;"{% endif %}>Revoke</button></p>
   <div id="token-display" style="display: none;" class="token-box">
-    <p class="warning">Save this token now. You won't be able to see it again.</p>
+    <p class="warning">Copy this now: it is shown once. Anyone holding it reads racinglines as you.</p>
     <div class="token-container">
-      <input type="text" id="token-value" readonly size="50">
+      <input type="text" id="token-value" readonly size="56">
       <button type="button" class="copy-btn" data-copy="#token-value">Copy</button>
     </div>
-    <p class="muted" id="token-meta"></p>
+    <p class="muted">Claude Code, in a terminal:</p>
+    <div class="token-container">
+      <input type="text" id="token-cmd" readonly size="56">
+      <button type="button" class="copy-btn" data-copy="#token-cmd">Copy</button>
+    </div>
   </div>
-  <div id="tokens-list"></div>
 </div>
 <script>
+const csrfBody = () => { const f = new FormData(); f.append('csrf_token', '{{ csrf_token }}'); return f; };
+async function post(url) {
+  const res = await fetch(url, { method: 'POST', body: csrfBody() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { alert(data.detail || ('Error ' + res.status)); return null; }
+  return data;
+}
 document.getElementById('generate-token-btn').addEventListener('click', async function() {
-  const res = await fetch('/api/settings/token/generate', { method: 'POST' });
-  const data = await res.json();
-  if (data.error) {
-    alert('Error: ' + data.error);
-    return;
-  }
+  const data = await post('/api/settings/token/generate');
+  if (!data) return;
   document.getElementById('token-value').value = data.token;
-  document.getElementById('token-meta').textContent = 'Created: ' + new Date().toLocaleString();
+  document.getElementById('token-cmd').value =
+    `claude mcp add --transport http racinglines ${data.url} --header "Authorization: Bearer ${data.token}"`;
   document.getElementById('token-display').style.display = 'block';
-  this.style.display = 'none';
-  // Reload tokens list
-  loadTokensList();
+  document.getElementById('token-status').textContent = 'Token issued just now; any earlier one stopped working.';
+  document.getElementById('revoke-token-btn').style.display = '';
+  this.textContent = 'Replace token';
 });
-
-function loadTokensList() {
-  fetch('/api/settings/tokens')
-    .then(r => r.json())
-    .then(data => {
-      const list = document.getElementById('tokens-list');
-      list.innerHTML = '';
-      if (data.tokens && data.tokens.length > 0) {
-        const table = document.createElement('table');
-        table.innerHTML = '<thead><tr><th>Created</th><th>Last Used</th><th></th></tr></thead><tbody>' +
-          data.tokens.map(t => `<tr><td>${t.created_at}</td><td>${t.last_used || 'Never'}</td>
-            <td><button type="button" class="danger" onclick="revokeToken('${t.id}')">Revoke</button></td></tr>`).join('') +
-          '</tbody>';
-        list.appendChild(table);
-      }
-    });
-}
-
-function revokeToken(tokenId) {
-  if (!confirm('Revoke this token? It cannot be undone.')) return;
-  fetch(`/api/settings/token/${tokenId}/revoke`, { method: 'POST' })
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) {
-        alert('Error: ' + data.error);
-      } else {
-        loadTokensList();
-      }
-    });
-}
-
-// Copy button functionality
+document.getElementById('revoke-token-btn').addEventListener('click', async function() {
+  if (!confirm('Revoke your MCP token? Clients using it stop working at once.')) return;
+  if (!await post('/api/settings/token/revoke')) return;
+  document.getElementById('token-display').style.display = 'none';
+  document.getElementById('token-status').textContent = 'You have no token.';
+  document.getElementById('generate-token-btn').textContent = 'Get a token';
+  this.style.display = 'none';
+});
 document.querySelectorAll('.copy-btn').forEach(btn => {
   btn.addEventListener('click', function() {
-    const input = document.querySelector(this.dataset.copy);
-    input.select();
-    document.execCommand('copy');
+    navigator.clipboard.writeText(document.querySelector(this.dataset.copy).value);
     this.textContent = 'Copied!';
     setTimeout(() => { this.textContent = 'Copy'; }, 2000);
   });
 });
-
-loadTokensList();
 </script>
+{% endif %}
 </div>
 {% endblock %}

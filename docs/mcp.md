@@ -37,10 +37,12 @@ Claude Desktop (Settings > Developer > Edit config), the same idea:
 
 ### Hosted (the VM)
 
-1. **Get a token.** Ask an admin for one (the section below says how they make it). It looks like
-   `rl_` followed by 48 hex characters, it is shown once, and it is yours alone: the server records your
-   account against everything you queue. Demo accounts never get one. Keep it like a password; anyone
-   holding it reads the app as you.
+1. **Get a token.** Signed in on racinglines.bet, open **Settings > Connect Claude (MCP)** and press **Get a
+   token**; the card also shows the `claude mcp add` command with it filled in. (An admin can issue one on the
+   VM too, below.) It looks like `rl_` followed by 48 hex characters, it is shown once, and it is yours alone:
+   the server records your account against everything you queue. Getting a new one, or pressing Revoke, stops
+   the old one at once. Demo accounts never get one, and the card says so when your account's role isn't in
+   `RACINGLINES_MCP_ROLES`. Keep it like a password; anyone holding it reads the app as you.
 2. **Check the door** (any machine with curl; expect `401`, which means the server is up and refusing
    requests without a token):
    ```sh
@@ -59,9 +61,8 @@ Claude Desktop (Settings > Developer > Edit config), the same idea:
      claude
      ```
      `/mcp` inside Claude Code lists it as connected. `claude mcp remove racinglines` forgets it.
-   - Claude Desktop and claude.ai: Settings > Connectors > Add custom connector, URL
-     `https://mcp.racinglines.bet/mcp`; where the form takes headers, add `Authorization` with the value
-     `Bearer rl_YOUR_TOKEN`.
+   - Claude Desktop and claude.ai: not yet. Their custom-connector form sends no custom headers and expects
+     an OAuth sign-in, which the server doesn't offer yet. Use Claude Code, or any client that can send a header.
    - Any other MCP client: streamable HTTP transport, that URL, that header.
 4. **First questions.** "Call `overview` and summarize what's there" proves the whole path. Then something
    with real content: "list the race_win markets for the next F1 round with our fair value against

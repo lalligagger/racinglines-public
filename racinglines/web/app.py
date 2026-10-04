@@ -15,10 +15,10 @@ import json
 import logging
 import math
 import os
+import re
 import secrets
 import threading
 import time
-import uuid
 from urllib.parse import quote
 from datetime import date, datetime, timezone
 from numbers import Real
@@ -1050,17 +1050,33 @@ def logout(request: Request):
 # User settings: email, exchange preferences, sports subscriptions
 # ---------------------------------------------------------------------------
 
+def _prefs(user_id):
+    with get_session() as s:
+        return dict(s.query(m.User).filter_by(id=user_id).first().prefs or {})
+
+
+def _mcp_context(user):
+    from racinglines.mcp import auth as mcp_auth
+    meta = _prefs(user["id"]).get("mcp") or {}
+    return dict(mcp_url=MCP_URL, mcp_issued_at=meta.get("issued_at"), mcp_allowed=user["role"] in mcp_auth.ROLES,
+                mcp_roles=", ".join(mcp_auth.ROLES))
+
+
+MCP_URL = os.environ.get("RACINGLINES_MCP_URL", "https://mcp.racinglines.bet/mcp")
+
+
 @app.get("/settings", response_class=HTMLResponse, dependencies=[allow(*ANY)])
 def settings_page(request: Request):
-    """User settings: email, exchange preferences, sports subscriptions. Demo users cannot access."""
+    """User settings: email, exchange preferences, sports subscriptions, MCP token. Demo users cannot access."""
     user = request.state.user
     if _demo.is_demo(user):
         raise HTTPException(404)
-    prefs = user.get("prefs") or {}
+    prefs = _prefs(user["id"])
     return templates.TemplateResponse(request, "settings.html", dict(
         email=prefs.get("email", ""),
         exchange=prefs.get("exchange", "polymarket"),
         sports=prefs.get("sports", ["f1"]),
+        **_mcp_context(user),
     ))
 
 
@@ -1069,111 +1085,52 @@ def update_settings(request: Request, email: str = Form(""), exchange: str = For
                    sports: list[str] = Form(None)):
     """Update user settings: email, exchange preferences, sports subscriptions."""
     user = request.state.user
+    if _demo.is_demo(user):
+        raise HTTPException(404)
     sports = sports or []
     email = email.strip()
     if email and not re.match(r"^[^@]+@[^@]+\.[^@]+$", email):
         return templates.TemplateResponse(request, "settings.html", dict(
-            email=email, exchange=exchange, sports=sports,
-            error="Invalid email address"
+            email=email, exchange=exchange, sports=sports, error="Invalid email address", **_mcp_context(user),
         ), status_code=400)
-    prefs = user.get("prefs") or {}
-    prefs["email"] = email
-    prefs["exchange"] = exchange
-    prefs["sports"] = sports or ["f1"]
-    with get_session() as s:
+    with get_session() as s:     # merge: the session user carries no prefs, and prefs also hold the MCP token and seen-at marks
         u = s.query(m.User).filter_by(id=user["id"]).first()
-        u.prefs = prefs
+        u.prefs = {**(u.prefs or {}), "email": email, "exchange": exchange, "sports": sports or ["f1"]}
         s.commit()
-    audit(request, "update_settings", {"email": bool(email), "exchange": exchange, "sports": sports})
+    audit(request, "update_settings", email=bool(email), exchange=exchange, sports=sports)
     return templates.TemplateResponse(request, "settings.html", dict(
-        email=email, exchange=exchange, sports=sports,
-        success="Settings saved"
+        email=email, exchange=exchange, sports=sports, success="Settings saved", **_mcp_context(user),
     ))
 
 
 # ---------------------------------------------------------------------------
-# MCP Token API: token generation, listing, revocation (bearer token auth for external tools)
+# MCP token from the Settings page: the same token `racinglines mcp token <account>` issues (racinglines/mcp/auth.py),
+# one per account, shown once; the hosted MCP server accepts it at once.
 # ---------------------------------------------------------------------------
 
-def _hash_token(token: str) -> str:
-    """Hash token using SHA256 for secure storage."""
-    return hashlib.sha256(token.encode()).hexdigest()
-
-
-@app.post("/api/settings/token/generate", dependencies=[allow(*ANY)])
+@app.post("/api/settings/token/generate", dependencies=[Depends(check_csrf), allow(*ANY)])
 def generate_mcp_token(request: Request):
-    """Generate a new MCP API token for the user. Token is shown once and never again."""
+    from racinglines.mcp import auth as mcp_auth
     user = request.state.user
-    if _demo.is_demo(user): raise HTTPException(403, "Demo users cannot generate tokens")
-    token = secrets.token_urlsafe(32)
-    token_id = str(uuid.uuid4())[:8]
-    token_hash = _hash_token(token)
-    now = datetime.now(timezone.utc).isoformat()
-
-    prefs = user.get("prefs") or {}
-    tokens = prefs.get("mcp_tokens", [])
-    tokens.append({
-        "id": token_id,
-        "hash": token_hash,
-        "created_at": now,
-        "last_used": None,
-        "active": True,
-    })
-    prefs["mcp_tokens"] = tokens
-
-    with get_session() as s:
-        u = s.query(m.User).filter_by(id=user["id"]).first()
-        u.prefs = prefs
-        s.commit()
-
-    audit(request, "generate_mcp_token", {"token_id": token_id})
-    return {"token": token, "token_id": token_id, "created_at": now}
+    if _demo.is_demo(user):
+        raise HTTPException(403, "Demo accounts cannot get an MCP token")
+    try:
+        token = mcp_auth.new_token(get_engine(), user["username"])
+    except ValueError as ex:
+        raise HTTPException(403, str(ex)) from ex
+    audit(request, "generate_mcp_token")
+    return {"token": token, "url": MCP_URL}
 
 
-@app.get("/api/settings/tokens", dependencies=[allow(*ANY)])
-def list_mcp_tokens(request: Request):
-    """List all MCP tokens for the user (without revealing the token itself)."""
+@app.post("/api/settings/token/revoke", dependencies=[Depends(check_csrf), allow(*ANY)])
+def revoke_mcp_token(request: Request):
+    from racinglines.mcp import auth as mcp_auth
     user = request.state.user
-    if _demo.is_demo(user): raise HTTPException(403, "Demo users cannot access tokens")
-    prefs = user.get("prefs") or {}
-    tokens = prefs.get("mcp_tokens", [])
-    return {"tokens": [
-        {
-            "id": t["id"],
-            "created_at": t.get("created_at", ""),
-            "last_used": t.get("last_used"),
-            "active": t.get("active", True),
-        }
-        for t in tokens if t.get("active", True)
-    ]}
-
-
-@app.post("/api/settings/token/{token_id}/revoke", dependencies=[allow(*ANY)])
-def revoke_mcp_token(request: Request, token_id: str):
-    """Revoke an MCP token. This cannot be undone."""
-    user = request.state.user
-    if _demo.is_demo(user): raise HTTPException(403, "Demo users cannot revoke tokens")
-    prefs = user.get("prefs") or {}
-    tokens = prefs.get("mcp_tokens", [])
-
-    found = False
-    for t in tokens:
-        if t["id"] == token_id:
-            t["active"] = False
-            found = True
-            break
-
-    if not found:
-        raise HTTPException(404, "Token not found")
-
-    prefs["mcp_tokens"] = tokens
-
-    with get_session() as s:
-        u = s.query(m.User).filter_by(id=user["id"]).first()
-        u.prefs = prefs
-        s.commit()
-
-    audit(request, "revoke_mcp_token", {"token_id": token_id})
+    if _demo.is_demo(user):
+        raise HTTPException(403, "Demo accounts have no MCP token")
+    if not mcp_auth.revoke(get_engine(), user["username"]):
+        raise HTTPException(404, "No MCP token to revoke")
+    audit(request, "revoke_mcp_token")
     return {"status": "revoked"}
 
 
