@@ -197,7 +197,11 @@ def events():
             meta = {}
         sport = _sport_of(meta, run)
         key = meta.get("event_key") or (run.rsplit("_", 1)[0] if sport == "mtb_dh" else run)
-        out.append(dict(run=run, sport=sport, event_key=key, title=meta.get("title") or event_name(key),
+        title = meta.get("title") or event_name(key)
+        if sport == "f1":                                  # the same name the Markets board uses
+            from racinglines import sports as SP
+            title = SP.event_title("f1_wdc", key, title)
+        out.append(dict(run=run, sport=sport, event_key=key, title=title,
                         mtime=p.stat().st_mtime))
     return sorted(out, key=lambda e: -e["mtime"])
 

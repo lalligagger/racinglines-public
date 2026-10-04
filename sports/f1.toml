@@ -83,6 +83,9 @@ venues = ["polymarket", "kalshi", "private"]
 standard_kinds = ["race_win", "race_podium", "race_top10"]           # the board's columns
 weekend_kinds = ["race_win", "race_podium", "race_h2h", "race_constructor_top", "race_pole"]   # traded in the sweep
 
+[names]                                   # one display name per event key: Markets board, race page, calendar, Live tab
+"2026-16" = "Malaysia GP"                 # FastF1 and the exchanges call it the Bahrain Grand Prix; it ran at Sepang
+
 [live]
 # A race weekend's private book (pipelines/live_f1.py): updated at session ends from the model's stage runs,
 # not from a live feed. docs/f1-live-roadmap.md, scenario B.
