@@ -18,6 +18,11 @@ outcomePrices, all for the market's first outcome; the second outcome's book
 is the mirror image). Closed markets record which outcome resolved.
 Idempotent: links are keyed by token id and updated in place.
 
+The active listing (active=true, closed=false) drops an event once it closes, so a decided market (pole after
+qualifying) would sit open in market_links with its last quote. Each pass therefore re-reads by slug the events
+whose links are still open here but that the listing no longer returns (up to REREAD_MAX, most recently synced
+first) and upserts them like the rest: closed, resolved and last prices come from Gamma's own market rows.
+
 Other sports (docs/coverage.md, item 3): NASCAR Cup, MotoGP and IndyCar are tape-only sports (sports/<code>.toml,
 [markets.polymarket] tags = the Gamma tag_slug values to page, e.g. "nascar"; unverified against the live API).
 `sync(..., sport="nascar")` upserts their markets under their own competition and first category, every link
@@ -43,6 +48,7 @@ from racinglines.sources import http
 GAMMA = "https://gamma-api.polymarket.com"
 MATCH_DAYS = 10     # a race market's end date must be within this many days of the race
 TAGS = ("f1", "formula1")
+REREAD_MAX = 40     # events re-read by slug per pass when the active listing stopped returning them
 
 # Polymarket labels some drivers oddly in head-to-heads (Carlos Sainz Jr. -> "Jr.")
 DRIVER_ALIASES = {"jr": "carlos sainz", "sainz jr": "carlos sainz", "kimi antonelli": "andrea kimi antonelli"}
@@ -189,6 +195,36 @@ def _events(closed_year=None, tags=TAGS):
     return out
 
 
+def _vanished(conn, competition_id, seen, limit=REREAD_MAX):
+    """Slugs of events with links still open in market_links that the listing (`seen`) no longer returns,
+    most recently synced first."""
+    slugs = conn.execute(text("""SELECT event_slug FROM market_links
+                                 WHERE exchange = 'polymarket' AND competition_id = :c AND closed IS NOT TRUE
+                                   AND event_slug IS NOT NULL
+                                 GROUP BY event_slug ORDER BY max(synced_at) DESC NULLS LAST"""),
+                         dict(c=competition_id)).scalars()
+    return [s for s in slugs if s not in seen][:limit]
+
+
+def _by_slug(slugs):
+    """Events by slug whatever their state (closed ones too), so their markets' closed flags and prices are read.
+    A slug Gamma fails on (an error status, a network error, no event) is skipped for this pass."""
+    out = {}
+    if not slugs:
+        return out
+    with httpx.Client(base_url=GAMMA, timeout=30) as c:
+        for slug in slugs:
+            try:
+                r = http.get(c, "/events", params={"slug": slug}, tries=2)
+                body = r.json() if r.status_code == 200 else []
+            except (httpx.HTTPError, ValueError):
+                continue
+            for e in body if isinstance(body, list) else []:
+                if isinstance(e, dict) and e.get("slug"):
+                    out[e["slug"]] = e
+    return out
+
+
 def _f(v):
     try:
         return None if v in (None, "") else float(v)
@@ -225,8 +261,10 @@ def sync(session, conn, year=2026, include_closed=False, new=None, sport="f1", t
         cat = session.scalars(select(m.Category).filter_by(competition_id=comp.id, code="DRV")).one()
         R = Resolver(conn, year)
         events = _events(year if include_closed else None, tuple(tags) if tags else TAGS)
+    reread = _by_slug(_vanished(conn, comp.id, events))     # closed since the last pass: off the active listing
+    events.update(reread)
     now = datetime.now(timezone.utc)
-    stats = dict(events=0, links=0, modeled=0, unmatched=0, new=0)
+    stats = dict(events=0, links=0, modeled=0, unmatched=0, new=0, reread=len(reread))
     who = identity.linker(sport, conn) if tape else None            # a tape-only sport with a resolver: driver, race, kind
     for slug, ev in events.items():
         stats["events"] += 1
