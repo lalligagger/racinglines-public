@@ -36,6 +36,15 @@ def by_competition(competition):
     return next(s for s in map(load, SPORT_CODES) if s["competition"]["code"] == competition)
 
 
+def event_title(competition, event_key, default):
+    """An event's one display name: its schema's [names] entry for the key, else `default`."""
+    try:
+        names = by_competition(competition).get("names", {})
+    except StopIteration:
+        return default
+    return names.get(str(event_key), default)
+
+
 def modeled(code):
     """Whether the sport has a model ([sport] model_family other than "none")."""
     return load(code)["sport"].get("model_family", "none") != "none"

@@ -820,6 +820,8 @@ def live_context(event="", t="", maker=True, partial=0):
         snap, picks, hist = LV.load_at(ev["run"], t)
     else:
         snap, picks, hist = LV.load(ev["run"]) if ev else (None, [], [])
+    if snap and ev and ev["sport"] == "f1":
+        snap = dict(snap, title=ev["title"])            # snapshots keep the name they were written with
     selected = next((x for x in reversed(times) if x <= t), times[0]) if times and t else (times[-1] if times else None)
     if selected is not None and selected not in times:
         selected = None
