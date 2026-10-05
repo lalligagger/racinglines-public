@@ -4,6 +4,7 @@ import datetime as dt
 import pandas as pd
 
 from racinglines.web.app import fmt, kind, money, templates, when
+from scripts.check_templates import template_env
 
 
 def test_money():
@@ -37,6 +38,11 @@ def test_kind():
     assert kind("race_win") == "win" and kind("race_pole") == "pole"
     assert kind("race_make_final") == "make final"
     assert kind(None) == ""
+
+
+def test_template_checker_registers_app_date_filter():
+    template = template_env().from_string("{{ value|when }}")
+    assert template.render(value="2026-09-27T14:05:33") == when("2026-09-27T14:05:33")
 
 
 def test_table_headers_and_empty():

@@ -15,6 +15,39 @@ files in `data/archive/<sport>/` (both git-ignored; `data/raw` is the record, so
 without a copy). Since 2026-10-01 nothing under `data/` is in git, and production data lives on the VM: back up
 there with `vm.sh backup <purpose>`.
 
+## 2026-10-05 · Kalshi F1 bid/ask candles re-pulled
+
+**Why.** The stored Kalshi `price` is the candle's last-trade close, which can sit far outside the closing
+bid/ask. PRs #52 and #53 added nullable `bid` / `ask` columns, the history upsert, and raw-response save/re-import.
+
+**Backup.** Before the write, the VM database was backed up to
+`data/backups/db/racinglines-before-kalshi-bid-ask-backfill-20261005T104713Z.sql.gz` (86 MB).
+
+**What.** Kalshi rejects a 60-minute candle request spanning more than 5,000 candles. The F1 backfill therefore
+ran in five ranges, from 2025-01-01 through 2026-10-05 10:00 UTC, committing each market as it completed:
+2025-01-01–2025-05-01, 2025-05-01–2025-09-01, 2025-09-01–2026-01-01, 2026-01-01–2026-05-01, and
+2026-05-01–2026-10-05 10:00 UTC. The five runs upserted 336,137 price points.
+
+The raw API responses are retained on the VM in
+`data/raw/kalshi/candles-f1-20261005T104748Z/`, in `chunk-01` through `chunk-05`: 3,958 market response files per
+range (19,790 files total, 289 MB). Each chunk can be re-imported offline with
+`racinglines markets --exchange kalshi history --start <chunk-start> --end <chunk-end> --from-raw
+data/raw/kalshi/candles-f1-20261005T104748Z/chunk-<NN>`.
+
+**Verification.** The transient systemd unit exited successfully. At verification time, the retained F1 rows in
+Postgres numbered 200,496: 189,407 had a bid, 195,238 had an ask, and 188,190 had both. Of rows with both sides,
+8,440 (4.48%) had the last-trade `price` outside the candle's bid/ask; 575 were more than 5¢ outside, the median
+outside amount was 1¢, and the largest was 90¢. This is a notable share and should be considered before treating
+the candles as validated replay fills. These SQL counts cover rows still in Postgres; older market rows may
+already have moved to Parquet.
+
+The database `data_changes` note records the backup, raw archive, point count, and these validation results.
+
+**Rollback caution.** The database backup is from before the pull, but the hourly market archiver can move newly
+backfilled old rows from Postgres to Parquet. Restoring only the database dump would not necessarily undo the
+write; inspect both Postgres and the Kalshi Parquet archive before attempting a rollback. The retained raw
+responses allow the history to be rebuilt offline.
+
 ## 2026-10-01 · The VM moved to the public repo; deploys carry code only
 
 **Why.** The owner moved the live repo to the public `lalligagger/racinglines-public` (history restarting at

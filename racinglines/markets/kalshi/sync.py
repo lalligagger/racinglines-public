@@ -56,9 +56,11 @@ trades, history and books record them like F1's; the archive pass sends the rows
 default F1 sync is unchanged.
 """
 
+import json
 import os
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 
 import httpx
 from sqlalchemy import select, text
@@ -411,32 +413,60 @@ def fetch_trades(session, conn, event_tickers=None, since=None, kc=None, sport=N
 
 def history_rows(ticker, candles):
     """market_price_history rows from Kalshi candlesticks: the close of the YES price, else the bid/ask mid when
-    both sides quote. An empty side (0 bid / 1.00 ask, as _quote reads it) gives no price for the hour: a dead book's
+    both sides quote, plus the bid and ask closes. An empty side (0 bid / 1.00 ask, as _quote reads it) is None.
+    An hour with no price (no trade and a one-sided or dead book) gives no row: price is NOT NULL, a dead book's
     mid is 0.50, not a price, and the replays' staleness rule covers the gap."""
     rows = []
     for c in candles:
+        bid = K.price(c.get("yes_bid") or {}, "close")
+        ask = K.price(c.get("yes_ask") or {}, "close")
+        bid = None if not bid else bid
+        ask = None if ask is None or ask >= 1.0 else ask
         p = K.price(c.get("price") or {}, "close")
-        if p is None:
-            b, a = K.price(c.get("yes_bid") or {}, "close"), K.price(c.get("yes_ask") or {}, "close")
-            p = (b + a) / 2 if b and a is not None and a < 1.0 else None
+        if p is None and bid is not None and ask is not None:
+            p = (bid + ask) / 2
         if p is not None:
-            rows.append(dict(token_id=ticker, ts=datetime.fromtimestamp(int(c["end_period_ts"]), tz=timezone.utc), price=p))
+            rows.append(dict(token_id=ticker, ts=datetime.fromtimestamp(int(c["end_period_ts"]), tz=timezone.utc),
+                             price=p, bid=bid, ask=ask))
     return list({r["ts"]: r for r in rows}.values())       # one row per ts: an upsert can't touch a row twice
 
 
-def fetch_history(session, conn, event_tickers, start, end, period=60, kc=None, sport=None):
+def _raw_path(raw_dir, series, ticker):
+    return Path(raw_dir) / (series or "_") / f"{ticker}.json"
+
+
+def fetch_history(session, conn, event_tickers, start, end, period=60, kc=None, sport=None, save_raw=None,
+                  from_raw=None):
     """Store price history (candlesticks, `period` minutes: 1, 60 or 1440) for the given Kalshi events (or
-    every event of `sport`)."""
+    every event of `sport`). save_raw: also write each market's candlesticks response, as Kalshi sent it, to
+    <save_raw>/<series>/<ticker>.json. from_raw: read those files instead of calling Kalshi (a market with no
+    file is skipped), so a saved pull can be re-imported, and its rows re-derived, without the network."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
-    kc = kc or K.Client()
+
+    from racinglines import progress
+    kc = kc or (None if from_raw else K.Client())
     n = 0
-    for tok, _, series in _tickers(conn, event_tickers, sport=sport):
-        rows = history_rows(tok, kc.candlesticks(series, tok, start.timestamp(), end.timestamp(), period))
+    for tok, _, series in progress.track(_tickers(conn, event_tickers, sport=sport), unit="market", name=lambda x: x[0]):
+        if from_raw:
+            f = _raw_path(from_raw, series, tok)
+            if not f.exists():
+                continue
+            candles = json.loads(f.read_text())["candlesticks"]
+        else:
+            candles = kc.candlesticks(series, tok, start.timestamp(), end.timestamp(), period)
+            if save_raw:
+                f = _raw_path(save_raw, series, tok)
+                f.parent.mkdir(parents=True, exist_ok=True)
+                f.write_text(json.dumps(dict(ticker=tok, series=series, start=start.isoformat(), end=end.isoformat(),
+                                             period=period, fetched_at=datetime.now(timezone.utc).isoformat(),
+                                             candlesticks=candles)))
+        rows = history_rows(tok, candles)
         if rows:
-            session.execute(pg_insert(m.MarketPriceHistory).values(rows).on_conflict_do_update(
-                index_elements=["token_id", "ts"], set_={"price": pg_insert(m.MarketPriceHistory).excluded.price}))
+            ins = pg_insert(m.MarketPriceHistory).values(rows)
+            session.execute(ins.on_conflict_do_update(index_elements=["token_id", "ts"], set_={
+                "price": ins.excluded.price, "bid": ins.excluded.bid, "ask": ins.excluded.ask}))
+            session.commit()                     # per market: a long backfill keeps what it has if it stops
         n += len(rows)
-    session.commit()
     return n
 
 

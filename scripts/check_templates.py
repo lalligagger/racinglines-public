@@ -45,6 +45,21 @@ def kind(k):
     return ("DH " + k.removeprefix("dh_") if k.startswith("dh_") else k).replace("_", " ")
 
 
+def when(v):
+    """Format an ISO timestamp like the web app's `when` filter."""
+    if not v:
+        return ""
+    t = pd.Timestamp(v)
+    t = t.tz_localize("UTC") if t.tzinfo is None else t.tz_convert("UTC")
+    return t.strftime("%Y-%m-%d %H:%M UTC") if (t.hour or t.minute) else t.strftime("%Y-%m-%d")
+
+
+def template_env():
+    env = Environment(loader=FileSystemLoader("racinglines/web/templates"))
+    env.filters.update(fmt=fmt, money=money, kind=kind, when=when)
+    return env
+
+
 def check_templates():
     """Validate all HTML templates in racinglines/web/templates."""
     template_dir = Path("racinglines/web/templates")
@@ -53,11 +68,7 @@ def check_templates():
         print(f"ERROR: {template_dir} not found")
         return 1
     
-    env = Environment(loader=FileSystemLoader(str(template_dir)))
-    # Register the same filters the app uses
-    env.filters["fmt"] = fmt
-    env.filters["money"] = money
-    env.filters["kind"] = kind
+    env = template_env()
     
     html_files = sorted(template_dir.rglob("*.html"))
     failed = []
