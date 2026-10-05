@@ -710,7 +710,7 @@ def test_tape_only_link_rows_are_unmodeled_and_never_resolve():
     assert KS.classify("NASCAR Cup Series Champion", "Will Kyle Larson win the 2026 NASCAR Cup Series Championship?")[0] == "champion"
 
 
-def test_tape_only_sync_records_under_its_own_competition(test_engine, monkeypatch):
+def test_tape_only_sync_records_under_its_own_competition(test_engine, monkeypatch, tmp_path):
     from racinglines.db.config import get_session
     from racinglines.db.ingest import seed
     from racinglines.markets import store as MS
@@ -739,6 +739,17 @@ def test_tape_only_sync_records_under_its_own_competition(test_engine, monkeypat
         assert KS.snapshot_books(s, c, kc=kc, sport="nascar") == 3                               # not the settled one
         t0, t1 = datetime(2026, 11, 5, tzinfo=timezone.utc), datetime(2026, 11, 6, tzinfo=timezone.utc)
         assert KS.fetch_history(s, c, ["KXMOTOGPRACE-26QAT"], t0, t1, 60, kc=kc) == 2
+        # a saved pull re-imports without the network and gives the same rows
+        raw = tmp_path / "raw"
+        assert KS.fetch_history(s, c, ["KXMOTOGPRACE-26QAT"], t0, t1, 60, kc=kc, save_raw=raw) == 2
+        saved = sorted(raw.rglob("*.json"))
+        assert saved and all(json.loads(f.read_text())["candlesticks"] for f in saved)
+        q = text("SELECT ts, price, bid, ask FROM market_price_history WHERE token_id LIKE 'KXMOTOGPRACE%' ORDER BY ts")
+        before = c.execute(q).all()
+        s.execute(text("DELETE FROM market_price_history WHERE token_id LIKE 'KXMOTOGPRACE%'"))
+        s.commit()
+        assert KS.fetch_history(s, c, ["KXMOTOGPRACE-26QAT"], t0, t1, 60, from_raw=raw) == 2
+        assert c.execute(q).all() == before
         with pytest.raises(ValueError):
             KS.fetch_trades(s, c, kc=kc)                                                          # no events, no sport
     with test_engine.connect() as c:
