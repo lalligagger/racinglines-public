@@ -481,6 +481,8 @@ endpoints: settled events' markets, their trades and their candlesticks.
 racinglines markets --exchange kalshi sync [--year 2026] [--closed] [--series TICKER …]
 racinglines markets --exchange kalshi trades --events KXF1RACE-AZEGP26
 racinglines markets --exchange kalshi history --events KXF1RACE-AZEGP26 --start 2026-09-24T00:00 --end 2026-09-27T00:00 [--period 60]
+racinglines markets --exchange kalshi history --start 2025-01-01 --end 2026-10-05 --save-raw data/raw/kalshi/candles-2025-2026   # + raw responses
+racinglines markets --exchange kalshi history --start 2025-01-01 --end 2026-10-05 --from-raw data/raw/kalshi/candles-2025-2026   # re-import, no network
 racinglines markets --exchange kalshi books --events KXF1-26
 racinglines markets --exchange kalshi --sport nascar sync [--closed]        # NASCAR Cup: KXNASCAR* series, links unmodeled
 racinglines markets --exchange kalshi --sport nascar trades                 # every NASCAR event's tape (no --events needed)

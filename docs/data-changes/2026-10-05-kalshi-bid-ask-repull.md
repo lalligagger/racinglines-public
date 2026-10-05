@@ -1,106 +1,45 @@
-# Kalshi Bid/Ask Re-Pull — 2026-10-05
+# Kalshi bid/ask re-pull — 2026-10-05
 
-## Problem Statement
+## Why
 
-Kalshi taker replays were using spiky last-trade prices from `market_price_history.price`, which do not accurately reflect the order book state when trades occurred. For accurate taker fills, we need to use the bid/ask from Kalshi candlesticks (hourly snapshots of the top-of-book), not the volatile last-trade close.
+Kalshi taker replays read `market_price_history.price`, the hourly candle's last-trade close (or the bid/ask mid
+when nothing traded). A last trade can be far from where a taker could have filled. Kalshi's candlesticks also
+carry the YES bid and ask closes, so we store them and re-pull the 2025–26 history to fill them in.
 
-## Solution
+## What changed
 
-### Schema Change
+| Change | Where |
+|---|---|
+| `bid`, `ask` (nullable floats) on `market_price_history` | migration `a7e3c1f9b4d2` (PR #52, deployed 2026-10-05) |
+| Kalshi candles store price, bid and ask; an hour with no price (no trade, one-sided or dead book) gives no row, as before | `markets/kalshi/sync.py` `history_rows` |
+| The archive pass keeps `bid`/`ask` in Parquet; files written before them read as null; when a key is stored twice (a re-pull over archived rows), the row with bid/ask wins on read and on `compact` | `markets/store.py` |
+| `history --save-raw DIR` keeps Kalshi's raw candlesticks responses (`DIR/<series>/<ticker>.json`); `history --from-raw DIR` re-imports them without the network | `cli/markets.py`, `fetch_history` |
 
-**Migration:** `20261005_a7e3c1f9b4d2_kalshi_candlestick_bid_ask.py`
+Polymarket and OG.com price rows leave `bid`/`ask` null. Nothing reads them yet: the Kalshi replay
+(`markets/venue_replay.py`) still fills on `price` until a separate change switches it.
 
-```sql
-ALTER TABLE market_price_history
-  ADD COLUMN bid FLOAT,      -- Candlestick bid close (YES side)
-  ADD COLUMN ask FLOAT;      -- Candlestick ask close (YES side)
+## The re-pull (VM)
+
+1. Backup: `data/backups/db/racinglines-before-kalshi-bid-ask-phase-2-20261005T084328Z.sql.gz` (86 MB, taken
+   before the migration).
+2. Pull with raw responses kept, on the VM (it reaches Kalshi; the cloud doesn't):
+   `racinglines markets --exchange kalshi history --start 2025-01-01 --end <today> --save-raw data/raw/kalshi/candles-<UTC>`
+   (per sport with `--sport`, as for `sync`). Rows are committed per market, so a stopped run keeps what it stored.
+3. Check: the share of Kalshi rows with both sides, and `bid <= price <= ask` on a sample.
+4. A `data_changes` entry (`racinglines db changes --add ...`) naming the backup and the raw folder.
+
+## Reproducing it
+
+The raw folder is the source. On a copy restored from the backup, after `alembic upgrade head`:
+
+```
+racinglines markets --exchange kalshi history --start 2025-01-01 --end <today> --from-raw data/raw/kalshi/candles-<UTC>
 ```
 
-- Columns are nullable for backward compatibility during migration and re-pull
-- `price` column retained for existing queries (stores last-trade close or bid/ask mid)
-- New code reads `bid`/`ask` directly for replay fills
+gives the same rows (`tests/test_kalshi_bidask.py` checks the round trip). `data/` is never in git, so the raw folder
+stays on the VM with the backups.
 
-### Code Changes
+## Rollback
 
-**`racinglines/markets/kalshi/sync.py`:**
-- `history_rows()`: Now extracts bid/ask closes separately from candlesticks
-- Stores them in the new columns alongside `price`
-- `fetch_history()`: Updated upsert to include bid/ask in conflict resolution
-
-### Data Preservation (Reproducibility Audit Trail)
-
-#### 1. Database Backup
-
-**Before migration:**
-```bash
-pg_dump racinglines | gzip > data/backups/db/racinglines-before-kalshi-bid-ask-repull-2026-10-05T06:25:00Z.sql.gz
-```
-
-- Captures schema at v-f8a2c4e7b5d1 (FastF1 snapshots)
-- Preserves existing `market_price_history` with only `price` column
-- Can restore to test migration or audit history transformation
-
-#### 2. Candlestick Source Preservation
-
-**Save raw Kalshi API responses:**
-```bash
-# Download candlesticks for all Kalshi F1 markets, 2025-01-01 to now
-racinglines markets --exchange kalshi --archive-candlesticks 2025-01-01 2026-10-05
-# Saves to: data/backups/kalshi/candlesticks-2025-2026.json
-```
-
-- JSON array of Kalshi `/v2/candlesticks` responses
-- Includes all bid/ask/open/close/volume data
-- Sources for all rows stored in `market_price_history` during re-pull
-
-#### 3. Transformation Reproducibility
-
-**Commit:**
-- Migration file (versioned in `migrations/versions/`)
-- Updated sync.py code (commit hash)
-- This file (transformation log)
-
-**To re-derive identical data:**
-```bash
-# 1. Restore backup database
-pg_restore racinglines-before-kalshi-bid-ask-repull-2026-10-05T06:25:00Z.sql
-
-# 2. Apply migration
-alembic upgrade head
-
-# 3. Re-import candlesticks
-racinglines markets --exchange kalshi --reimport-candlesticks data/backups/kalshi/candlesticks-2025-2026.json
-
-# 4. Verify against live API (spot-check)
-```
-
-Output: identical `market_price_history` rows with bid/ask populated.
-
-## Scope
-
-**Markets affected:** All Kalshi F1/NASCAR/MotoGP/IndyCar markets
-
-**Data range:** Full history from inception through 2026-10-05
-
-**Rows affected:**
-- F1 2025-26: ~408k price history rows (bid/ask added)
-- NASCAR/MotoGP/IndyCar: Additional rows (if any)
-
-## Rollback Plan
-
-**If issues found during Phase 2:**
-```bash
-# Restore pre-migration database
-pg_restore racinglines-before-kalshi-bid-ask-repull-2026-10-05T06:25:00Z.sql
-# Code reverts to previous sync.py version
-```
-
-This is a **safe downgrade** because:
-1. No data is deleted, only columns added
-2. Existing `price` column remains intact
-3. Old queries continue to work
-4. Only new code paths (future replay updates) depend on bid/ask
-
-## Next Steps
-
-See `CLAUDE.md` section "Kalshi bid/ask re-pull automation" (roadmap reference and Phase 2-3 plan).
+The columns are additive and nullable, and old code ignores them. To undo the data only, restore the backup. To undo
+the schema, `alembic downgrade f8a2c4e7b5d1` (drops both columns; take a backup first).

@@ -48,7 +48,8 @@ def root_for(exchange):
 RECENT_DAYS = 7
 
 STORES = {
-    "prices": dict(table="market_price_history", key=["token_id", "ts"], cols=["token_id", "ts", "price"]),
+    "prices": dict(table="market_price_history", key=["token_id", "ts"], cols=["token_id", "ts", "price", "bid", "ask"],
+                   floats=["bid", "ask"]),      # bid/ask: Kalshi candles only; files written before them read as null
     "trades": dict(table="market_trades", key=["tx_hash", "token_id", "wallet", "side", "price", "size"],
                    cols=["token_id", "condition_id", "outcome_index", "ts", "side", "price", "size", "tx_hash", "wallet"]),
     "books": dict(table="market_book_snapshots", key=["token_id", "ts"],
@@ -75,7 +76,14 @@ def _dataset(name, root):
     path = root / name
     if not path.exists() or not any(path.rglob("*.parquet")):
         return None
-    return ds.dataset(path, format="parquet", partitioning="hive")
+    d = ds.dataset(path, format="parquet", partitioning="hive")
+    missing = [c for c in STORES[name].get("floats", ()) if c not in d.schema.names]
+    if not missing:
+        return d
+    schema = d.schema
+    for c in missing:
+        schema = schema.append(pa.field(c, pa.float64()))
+    return ds.dataset(path, format="parquet", partitioning="hive", schema=schema)
 
 
 def _read_parquet(name, tokens, conditions, start, end, root=None):
@@ -128,13 +136,21 @@ def _read_pg(conn, name, tokens, conditions, start, end):
     return df
 
 
+def _dedupe(df, name):
+    """One row per key. For a key stored twice (a re-pull over archived rows), the row with more of bid/ask wins."""
+    fl = [c for c in STORES[name].get("floats", ()) if c in df.columns]
+    if fl:
+        df = df.iloc[(-df[fl].notna().sum(axis=1)).to_numpy().argsort(kind="stable")]
+    return df.drop_duplicates(STORES[name]["key"])
+
+
 def merge(a, b, name):
     parts = [x for x in (a, b) if x is not None and len(x)]
     if not parts:
         return pd.DataFrame(columns=STORES[name]["cols"])
     df = pd.concat(parts, ignore_index=True)
     df["ts"] = pd.to_datetime(df["ts"], utc=True)
-    return df.drop_duplicates(STORES[name]["key"]).sort_values("ts").reset_index(drop=True)
+    return _dedupe(df, name).sort_values("ts").reset_index(drop=True)
 
 
 def read(conn, name, *, tokens=None, conditions=None, start=None, end=None, root=None):
@@ -176,9 +192,10 @@ def _write(name, df, root=None):
         d = (root or ROOT) / name / f"month={month}"
         d.mkdir(parents=True, exist_ok=True)
         f = d / f"part-{datetime.now(timezone.utc):%Y%m%dT%H%M%S}-{uuid.uuid4().hex[:8]}.parquet"
-        tbl = pa.Table.from_pandas(g[STORES[name]["cols"]], preserve_index=False)
-        tbl = tbl.cast(pa.schema([pa.field(c, pa.timestamp("us", tz="UTC")) if c == "ts" else tbl.schema.field(c)
-                                  for c in tbl.column_names]))
+        tbl = pa.Table.from_pandas(g.reindex(columns=STORES[name]["cols"]), preserve_index=False)
+        fl = STORES[name].get("floats", ())
+        tbl = tbl.cast(pa.schema([pa.field(c, pa.timestamp("us", tz="UTC")) if c == "ts" else
+                                  pa.field(c, pa.float64()) if c in fl else tbl.schema.field(c) for c in tbl.column_names]))
         pq.write_table(tbl, f, compression="zstd")
         if pq.read_metadata(f).num_rows != len(g):
             raise IOError(f"verification failed for {f}")
@@ -365,7 +382,7 @@ def compact(name, root=None):
             if len(files) < 2:
                 continue
             df = pd.concat([pq.read_table(f).to_pandas() for f in files], ignore_index=True)
-            df = df.drop_duplicates(STORES[name]["key"]).sort_values("ts")
+            df = _dedupe(df, name).sort_values("ts")
             _write(name, df, r)
             for f in files:
                 f.unlink()
