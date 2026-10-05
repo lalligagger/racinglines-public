@@ -1,0 +1,147 @@
+# 2026 Tre Valli Varesine (1.Pro, hilly one-day race, Varese). Book transcribed from the owner's screenshots
+# (2026-10-05): the winner list as far as the screenshot shows it, and 18 head-to-heads (better finish wins; both
+# out is void on most books). `racinglines cycling price 2026-10-06-tre-valli-varesine --calibrate`.
+
+[event]
+name = "Tre Valli Varesine"
+kind = "road"
+date = "2026-10-06"
+start_utc = "11:00"
+terrain = "hilly"
+pcs = "race/tre-valli-varesine/2026"
+startlist_file = "tre_valli_2026_startlist.csv"
+
+[book.futures]
+Evenepoel = 2.25
+Pidcock = 5.0
+Lapeira = 13
+Narvaez = 17
+Tulett = 21
+McNulty = 21
+Schmid = 21
+Ciccone = 23
+Onley = 26
+Gregoire = 26
+Scaroni = 26
+Jorgenson = 26
+Piganzoli = 34
+Healy = 34
+Simmons = 34
+Debruyne = 67
+"Van Eetvelt" = 67
+Martinez = 67
+Pellizzari = 67
+Cosnefroy = 67
+Carapaz = 67
+Aranburu = 81
+Adria = 81
+Finn = 81
+"Halland Johannessen" = 81
+Rondel = 101
+Ayuso = 101
+Sivakov = 101
+Widar = 101
+Fancellu = 126
+Storer = 126
+Tiberi = 126
+Honore = 126
+Buitrago = 126
+Hirschi = 126
+Ulissi = 151
+Kron = 151
+"Fisher-Black" = 151
+Powless = 151
+Bilbao = 151
+Bagioli = 151
+Gualdi = 151
+Bravo = 151
+Leknessund = 151
+Verstrynge = 151
+Nordhagen = 151
+Omrzel = 151
+Baudin = 201
+Lipowitz = 201
+Mas = 201
+
+[book]
+matchups = [
+  { a = "Storer", a_odds = 1.57, b = "Berthet", b_odds = 2.25 },
+  { a = "Lapeira", a_odds = 1.57, b = "Gregoire", b_odds = 2.25 },
+  { a = "Baudin", a_odds = 1.45, b = "Braz Afonso", b_odds = 2.55 },
+  { a = "Ulissi", a_odds = 1.57, b = "Teuns", b_odds = 2.25 },
+  { a = "Van Eetvelt", a_odds = 1.47, b = "Martinez", b_odds = 2.45 },
+  { a = "Lipowitz", a_odds = 1.67, b = "Hindley", b_odds = 2.07 },
+  { a = "Piganzoli", a_odds = 2.07, b = "Rondel", b_odds = 1.67 },
+  { a = "Omrzel", a_odds = 1.85, b = "Arensman", b_odds = 1.85 },
+  { a = "Schmid", a_odds = 1.63, b = "Scaroni", b_odds = 2.15 },
+  { a = "Debruyne", a_odds = 1.57, b = "Adria", b_odds = 2.25 },
+  { a = "McNulty", a_odds = 1.57, b = "Simmons", b_odds = 2.25 },
+  { a = "Ciccone", a_odds = 1.57, b = "Onley", b_odds = 2.25 },
+  { a = "Bravo", a_odds = 1.97, b = "Widar", b_odds = 1.72 },
+  { a = "Honore", a_odds = 1.57, b = "Zana", b_odds = 2.25 },
+  { a = "Evenepoel", a_odds = 1.45, b = "Pidcock", b_odds = 2.55 },
+  { a = "Jorgenson", a_odds = 1.47, b = "Healy", b_odds = 2.45 },
+  { a = "Halland Johannessen", a_odds = 1.47, b = "Fancellu", b_odds = 2.45 },
+  { a = "Rodriguez", a_odds = 1.85, b = "Rubio", b_odds = 1.85 },
+]
+
+[names]
+# label -> words that must all be in the rider's PCS name (ASCII-folded; "ø" folds away, so Nordhagen is surname only)
+Evenepoel = "remco evenepoel"
+Pidcock = "pidcock"
+Lapeira = "paul lapeira"
+Narvaez = "jhonatan narvaez"
+Tulett = "ben tulett"
+McNulty = "brandon mcnulty"
+Schmid = "mauro schmid"
+Ciccone = "giulio ciccone"
+Onley = "oscar onley"
+Gregoire = "romain gregoire"
+Scaroni = "christian scaroni"
+Jorgenson = "matteo jorgenson"
+Piganzoli = "davide piganzoli"
+Healy = "ben healy"
+Simmons = "quinn simmons"
+Debruyne = "ramses debruyne"
+"Van Eetvelt" = "lennert van eetvelt"
+Martinez = "lenny martinez"
+Pellizzari = "giulio pellizzari"
+Cosnefroy = "benoit cosnefroy"
+Carapaz = "richard carapaz"
+Aranburu = "alex aranburu"
+Adria = "roger adria"
+Finn = "lorenzo finn"
+"Halland Johannessen" = "tobias halland johannessen"
+Rondel = "mathys rondel"
+Ayuso = "juan ayuso"
+Sivakov = "pavel sivakov"
+Widar = "jarno widar"
+Fancellu = "alessandro fancellu"
+Storer = "michael storer"
+Tiberi = "antonio tiberi"
+Honore = "mikkel honore"
+Buitrago = "santiago buitrago"
+Hirschi = "marc hirschi"
+Ulissi = "diego ulissi"
+Kron = "andreas kron"
+"Fisher-Black" = "finn fisher black"
+Powless = "neilson powless"
+Bilbao = "pello bilbao"
+Bagioli = "andrea bagioli"
+Gualdi = "simone gualdi"
+Bravo = "henrique bravo"
+Leknessund = "andreas leknessund"
+Verstrynge = "emiel verstrynge"
+Nordhagen = "nordhagen"
+Omrzel = "jakob omrzel"
+Baudin = "alex baudin"
+Lipowitz = "florian lipowitz"
+Mas = "enric mas"
+Berthet = "clement berthet"
+"Braz Afonso" = "clement braz afonso"
+Teuns = "dylan teuns"
+Hindley = "jai hindley"
+Arensman = "thymen arensman"
+Zana = "filippo zana"
+Rodriguez = "carlos rodriguez"
+Rubio = "einer rubio"

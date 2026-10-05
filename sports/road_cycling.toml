@@ -1,7 +1,9 @@
-# UCI road cycling: a tape-only sport (docs/todo.md, U9). No model, no pipeline: its Kalshi markets are synced and
+# UCI road cycling. On the exchange side a tape-only sport (docs/todo.md, U9): its Kalshi markets are synced and
 # recorded (links unmodeled, prices / trades / books archived per exchange) when asked for by name
-# (`racinglines markets --exchange kalshi --sport road_cycling ...`). Read by racinglines/sports.py; the sync reads
-# [markets.kalshi]. Nothing runs for this sport by default.
+# (`racinglines markets --exchange kalshi --sport road_cycling ...`), and the board prices nothing.
+# Sportsbook lines (winner, head-to-head) are priced from results by the book model: [results] and [model.*] below,
+# racinglines/models/cycling.py, `racinglines cycling ...`, one event file per race in
+# sports/road_cycling/events/ (docs/road-cycling.md). Read by racinglines/sports.py. Nothing runs by default.
 
 [sport]
 code = "road_cycling"
@@ -32,3 +34,102 @@ standard_kinds = []               # nothing is priced, so the board has no colum
 # already matches the other three by prefix (series_for uses startswith); they are listed for the reader.
 # The sync's `--closed` flag pulls the settled 2026 history Kalshi still serves.
 series = ["KXCYCLING", "KXCYCLINGSTAGE", "KXCYCLINGTEAM", "KXCYCLINGJERSEY"]
+
+# --- the book model (racinglines/models/cycling.py, docs/road-cycling.md) -------------------------------------------
+
+[results]
+# ProCyclingStats, fetched on the owner's Mac only (`racinglines cycling fetch`, racinglines/sources/pcs.py): the
+# cloud sandbox can't reach it. Terms: personal, non-commercial use reviewed by the owner (2026-10-05); one request
+# at a time, pace_s apart. Files live in `dir` (gitignored), one per kind of result.
+source = "procyclingstats"
+dir = "data/raw/road_cycling"
+pace_s = 2.0
+files = { itt = "itt_results_pcs.csv", road = "road_results_pcs.csv" }
+
+[results.itt]
+# Individual time trials: championships and national championships (one-day pages), and every ITT stage (stage
+# name carries "ITT") of these stage races.
+one_day = ["world-championship-itt", "uec-road-european-championships-itt",
+           "nc-belgium-itt", "nc-denmark-itt", "nc-france-itt", "nc-great-britain-itt", "nc-switzerland-itt",
+           "nc-spain-itt", "nc-italy-itt", "nc-slovenia-itt", "nc-netherlands-itt", "nc-czech-republic-itt",
+           "nc-portugal-itt", "nc-sweden-itt", "nc-hungary-itt", "nc-luxembourg-itt"]
+stage_races = ["giro-d-italia", "tour-de-france", "vuelta-a-espana", "paris-nice", "tirreno-adriatico",
+               "tour-de-romandie", "dauphine", "tour-de-suisse", "renewi-tour", "tour-of-britain"]
+
+[results.road]
+# Mass-start results: hilly and mixed one-day races (WorldTour and the strong .Pro / .1 races, the Italian autumn
+# block in full), the championships, and the final GC of the main stage races (climbers race few one-day races).
+one_day = ["world-championship", "uec-road-european-championships",
+           "milano-sanremo", "strade-bianche", "omloop-het-nieuwsblad", "e3-harelbeke", "gent-wevelgem",
+           "dwars-door-vlaanderen", "ronde-van-vlaanderen", "amstel-gold-race", "la-fleche-wallonne",
+           "liege-bastogne-liege", "eschborn-frankfurt", "san-sebastian", "bretagne-classic", "gp-quebec",
+           "gp-montreal", "il-lombardia", "cadel-evans-great-ocean-road-race",
+           "trofeo-laigueglia", "faun-drome-classic", "faun-ardeche-classic", "gp-miguel-indurain",
+           "brabantse-pijl", "gp-de-wallonie", "giro-della-toscana", "coppa-sabatini", "memorial-marco-pantani",
+           "giro-dell-emilia", "coppa-bernocchi", "tre-valli-varesine", "coppa-agostoni", "gran-piemonte",
+           "giro-del-veneto", "veneto-classic", "milano-torino", "gp-industria-artigianato-larciano",
+           "trofeo-matteotti", "gp-de-plumelec", "tour-du-finistere", "boucles-de-l-aulne", "japan-cup",
+           "clasica-jaen-paraiso-interior", "circuito-de-getxo", "gp-de-fourmies"]
+stage_race_gc = ["tour-down-under", "uae-tour", "paris-nice", "tirreno-adriatico", "volta-a-catalunya",
+                 "itzulia-basque-country", "tour-of-the-alps", "tour-de-romandie", "dauphine", "tour-de-suisse",
+                 "giro-d-italia", "tour-de-france", "vuelta-a-espana", "tour-de-pologne", "deutschland-tour",
+                 "volta-ao-algarve", "o-gran-camino", "tour-of-oman", "settimana-coppi-bartali",
+                 "tour-de-l-ain", "vuelta-a-burgos", "arctic-race-of-norway", "tour-de-luxembourg",
+                 "giro-di-sicilia", "tour-of-austria"]
+
+[model.itt]
+# Calibrated walk-forward on 73 strong-field ITTs 2021-26 (2026-10-05, decision log in docs/road-cycling.md).
+[model.itt.defaults]
+half_life = 365.0
+flat_weight = 1.0
+weak_weight = 0.4
+noise_scale = 1.15
+incident_scale = 1.0
+climb_scale = 0.5
+climb_prior = 2.0
+
+[model.itt.grid]
+half_life = [240.0, 365.0, 730.0]
+flat_weight = [0.5, 1.0]
+weak_weight = [0.15, 0.4, 1.0]
+noise_scale = [0.75, 0.9, 1.0, 1.15, 1.3]
+incident_scale = [0.3, 1.0]
+climb_scale = [0.0, 0.5, 1.0]
+climb_prior = [2.0, 5.0]
+
+[model.itt.rules]
+hilly_m_per_km = 8.0                  # an ITT with 8+ m/km of climbing is hilly
+weak_label = "national|/nc-"          # national championships are weak fields
+weak_field = 40                       # so is any field under 40 finishers
+
+[model.itt.backtest]
+min_field = 30
+categories = ["ME", "MF"]             # strong fields, any course
+
+[model.road]
+# First version 2026-10-05 for Tre Valli Varesine; defaults are a guess until `--calibrate` has run.
+[model.road.defaults]
+half_life = 365.0
+flat_weight = 0.5
+weak_weight = 1.0
+gc_weight = 0.5
+noise_scale = 1.0
+incident_scale = 1.0
+
+[model.road.grid]
+half_life = [365.0, 730.0]
+flat_weight = [0.3, 1.0]
+weak_weight = [0.5, 1.0]
+gc_weight = [0.0, 0.5]
+noise_scale = [0.8, 1.0, 1.25, 1.5]
+incident_scale = [0.5, 1.0]
+
+[model.road.rules]
+hilly_icons = ["p3", "p4", "p5"]      # PCS profile: p1 flat, p2 hills + flat finish, p3+ hilly / mountains
+hilly_score = 120                     # ProfileScore fallback when the icon is missing
+strong_classes = ["1.UWT", "WC", "CC", "OG"]   # WorldTour one-day races and championships; the rest are weak
+weak_field = 60
+
+[model.road.backtest]
+min_field = 60
+categories = ["ME", "WH"]             # hilly one-day races, any field strength

@@ -1,0 +1,80 @@
+# 2026 UEC European Championships, men elite ITT: Šenčur, 22.1 km, 367 m (Možjanca climb). Book transcribed from
+# the owner's screenshot (2026-10-05). `racinglines cycling price 2026-10-07-euro-itt`.
+
+[event]
+name = "European Championships ITT (men)"
+kind = "itt"
+date = "2026-10-07"
+start_utc = "14:15"
+distance_km = 22.1
+vert_m = 367
+terrain = "hilly"
+pcs = "race/uec-road-european-championships-itt/2026"
+startlist_file = "euro_itt_2026_startlist.csv"
+
+[book.futures]
+Soderqvist = 2.38
+Roglic = 2.75
+Armirail = 13
+Kung = 13
+Romeo = 13
+Decomble = 13
+"Van Wilder" = 21
+Schmid = 23
+Vacek = 26
+Cattaneo = 26
+Asgreen = 34
+Thornley = 41
+Hayter = 67
+Bjerg = 81
+Tratnik = 101
+Oliveira = 126
+Frigo = 201
+Bax = 201
+Antunes = 401
+"De Pestel" = 401
+"Van der Tuuk" = 501
+Pelikan = 1001
+Kasko = 1001
+Kockelmann = 1001
+
+[book]
+matchups = [
+  { a = "Thornley", a_odds = 1.85, b = "Bjerg", b_odds = 1.85 },
+  { a = "Cattaneo", a_odds = 2.35, b = "Armirail", b_odds = 1.53 },
+  { a = "De Pestel", a_odds = 2.25, b = "Frigo", b_odds = 1.57 },
+  { a = "Tratnik", a_odds = 2.45, b = "Schmid", b_odds = 1.47 },
+  { a = "Romeo", a_odds = 1.47, b = "Van Wilder", b_odds = 2.45 },
+  { a = "Pelikan", a_odds = 1.85, b = "Kockelmann", b_odds = 1.85 },
+  { a = "Bax", a_odds = 2.25, b = "Oliveira", b_odds = 1.57 },
+  { a = "Kung", a_odds = 1.29, b = "Asgreen", b_odds = 3.30 },
+  { a = "Decomble", a_odds = 1.29, b = "Hayter", b_odds = 3.30 },
+  { a = "Van der Tuuk", a_odds = 2.25, b = "Antunes", b_odds = 1.57 },
+]
+
+[names]
+# label -> words that must all be in the rider's PCS name (ASCII-folded)
+Soderqvist = "jakob soderqvist"
+Roglic = "primoz roglic"
+Armirail = "bruno armirail"
+Kung = "stefan kung"
+Romeo = "ivan romeo"
+Decomble = "maxime decomble"
+"Van Wilder" = "ilan van wilder"
+Schmid = "mauro schmid"
+Vacek = "mathias vacek"
+Cattaneo = "mattia cattaneo"
+Asgreen = "kasper asgreen"
+Thornley = "callum thornley"
+Hayter = "ethan hayter"
+Bjerg = "mikkel bjerg"
+Tratnik = "jan tratnik"
+Oliveira = "nelson oliveira"
+"De Pestel" = "sander de pestel"
+Frigo = "marco frigo"
+Pelikan = "janos pelikan"
+Kockelmann = "mathieu kockelmann"
+Bax = "sjoerd bax"
+"Van der Tuuk" = "axel van der tuuk"
+Antunes = "tiago antunes"
+Kasko = "david kasko"

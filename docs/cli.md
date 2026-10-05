@@ -287,6 +287,12 @@ racinglines motogp demo-history | forecast   (the same options)
 
 Nothing here runs by default. **Back up the database before the first `ingest` on a real database, and before `link --apply`** ([Data changes](data-changes.md)).
 
+## racinglines cycling
+
+Road cycling sportsbook lines (winner, head-to-head) for time trials and road races, from ProCyclingStats results
+on the timed-runs engine: `events`, `fetch itt|road`, `startlist <event>`, `price <event> [--calibrate]`. See
+[Road cycling](road-cycling.md).
+
 ## racinglines db
 
 Database commands. See [Database](database.md).
