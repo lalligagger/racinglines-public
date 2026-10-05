@@ -76,6 +76,7 @@ def to_raw(df):
     """Engine rows. category encodes the course and field: ME hilly strong, MF flat strong, WH/WF weak fields."""
     d = df[df["status"].isin(["OK", "DNF", "DSQ"])].copy()
     vpk = pd.to_numeric(d["vert_m"], errors="coerce") / pd.to_numeric(d["distance_km"], errors="coerce")
+    vpk = vpk.where(np.isfinite(vpk) & (vpk >= 0) & (vpk <= 60))  # zero or missing distance gives inf
     hilly = vpk.fillna(0) >= HILLY_M_PER_KM
     src = d["source_url"].astype(str) if "source_url" in d else ""
     label = (d["race"].astype(str) + " " + src).map(fold)
@@ -114,6 +115,8 @@ def climb_slopes(raw, m, cw, s):
     x0 = float((w * ok["vpk"]).sum() / w.sum())
     x = ok["vpk"] - x0
     var_x = float((w * x * x).sum() / w.sum())
+    if not np.isfinite(x0) or not var_x > 0:
+        raise ValueError(f"climbing term: bad course data (x0 {x0}, var {var_x}); check vert_m and distance_km")
     num = (w * ok["e"] * x).groupby(ok["rider_id"]).sum()
     den = (w * x * x).groupby(ok["rider_id"]).sum() + s["climb_prior"] * var_x
     return num / den, x0
