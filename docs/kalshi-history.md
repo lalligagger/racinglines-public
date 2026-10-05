@@ -253,3 +253,5 @@ columns; the recorder's ticks will. Day by day, the report is in the pull reques
 1,221 above fees (65%; median net +0.3 points). The largest liquid gaps are Polymarket's top-constructor and
 long-shot podium markets reading ~0.5 (a one-sided book) against Kalshi's 0.5 to 5 cents, which a recorded book
 would have shown as a spread, not a price.
+
+**Taker prices (2026-10-05).** A Kalshi taker in the sweep, the Lab and live signals buys at the ask and sells at the bid: the recorded order book when a snapshot is at most 10 minutes old, else the hourly candle's closing quote (`venue_replay.Kalshi.quote`), else the last trade ± cost as before. Taker results on this page from before that date used the last trade. See the [F1 roadmap decision log](f1-roadmap.md#decision-log); `racinglines markets --exchange kalshi coverage` shows how much stored history carries a quote.

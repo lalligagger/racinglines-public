@@ -263,7 +263,7 @@ def test_kalshi_backtest_venue_reads_the_shared_tables(monkeypatch):
     rows = KS.trade_rows("KXF1RACE-26SIN-VER", "KXF1RACE-26SIN", TRADES["trades"])
     frames = {"prices": pd.DataFrame(dict(token_id=["KXF1RACE-26SIN-VER"] * 2, ts=[t0, t0 + pd.Timedelta(hours=1)],
                                           price=[0.31, 0.33])),
-              "trades": pd.DataFrame(rows)}
+              "trades": pd.DataFrame(rows), "books": pd.DataFrame(columns=["token_id", "ts", "best_bid", "best_ask"])}
     monkeypatch.setattr(MS, "read", lambda conn, store, **kw: frames[store])
     v = VR.Kalshi(None, links, "2026-10-10 00:00", "2026-10-11 14:00")
     m = v.markets()[0]
@@ -284,7 +284,8 @@ def test_kalshi_venue_counts_each_markets_own_volume(monkeypatch):
     links = pd.DataFrame(dict(token_id=toks, condition_id=["KXF1RACE-26SIN"] * 2, prediction=["race_win"] * 2,
                               athlete_id=[1, 2], params=[{}, {}], exchange=["kalshi"] * 2))
     trades = pd.DataFrame(KS.trade_rows(toks[0], "KXF1RACE-26SIN", TRADES["trades"]))
-    frames = {"prices": pd.DataFrame(dict(token_id=toks, ts=[t0, t0], price=[0.31, 0.20])), "trades": trades}
+    frames = {"prices": pd.DataFrame(dict(token_id=toks, ts=[t0, t0], price=[0.31, 0.20])), "trades": trades,
+              "books": pd.DataFrame(columns=["token_id", "ts", "best_bid", "best_ask"])}
     seen = []
     monkeypatch.setattr(MS, "read", lambda conn, store, **kw: seen.append(kw.get("root")) or frames[store])
     v = VR.Kalshi(None, links, "2026-10-10 00:00", "2026-10-11 14:00")
