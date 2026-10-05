@@ -252,43 +252,157 @@ def test_demo_accounts_never_get_a_token(test_engine, monkeypatch):
         auth.new_token(test_engine, "t_demo")
 
 
-def test_bearer_check_guards_the_http_app(test_engine):
-    """The ASGI wrapper: no token or a wrong one is 401 before the MCP app sees the request; a good one passes and
-    names the caller for the request."""
+def _http(test_engine, monkeypatch):
+    """The hosted server (OAuth on) bound to the test database, as a TestClient on the public hostname."""
     from starlette.testclient import TestClient
-    from racinglines.mcp import auth, server as S
-    tok = auth.new_token(test_engine, "t_admin")
-    seen = []
-
-    async def inner(scope, receive, send):
-        seen.append(S.CALLER.get())
-        await send({"type": "http.response.start", "status": 200, "headers": [(b"content-type", b"text/plain")]})
-        await send({"type": "http.response.body", "body": b"ok"})
-
-    client = TestClient(S.bearer_app(inner, engine=test_engine))
-    assert client.get("/mcp").status_code == 401
-    assert client.get("/mcp", headers={"Authorization": "Bearer rl_nope"}).status_code == 401
-    assert client.get("/mcp", headers={"Authorization": "Basic xyz"}).status_code == 401
-    r = client.get("/mcp", headers={"Authorization": f"Bearer {tok}"})
-    assert r.status_code == 200 and seen[-1]["username"] == "t_admin" and S.CALLER.get() is None
-    auth.revoke(test_engine, "t_admin")
-    assert client.get("/mcp", headers={"Authorization": f"Bearer {tok}"}).status_code == 401
-
-
-def test_http_app_serves_a_public_hostname(test_engine):
-    """Behind the tunnel the Host header is the public name, not localhost: with a token the MCP app answers it
-    (the SDK's localhost-only guard would give 421); without one it is 401 as ever."""
-    from starlette.testclient import TestClient
-    from racinglines.mcp import auth, server as S
-    tok = auth.new_token(test_engine, "t_admin")
+    from racinglines.mcp import server as S
+    monkeypatch.setenv("APP_SECRET", "test-secret")
     url = test_engine.url.render_as_string(hide_password=False)
-    body = {"jsonrpc": "2.0", "id": 1, "method": "ping"}
-    hdr = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
-    with TestClient(S.http_app(S.build(engine_url=url), engine=test_engine), base_url="https://mcp.racinglines.bet") as client:
-        assert client.post("/mcp", json=body, headers=hdr).status_code == 401
-        r = client.post("/mcp", json=body, headers={**hdr, "Authorization": f"Bearer {tok}"})
-        assert r.status_code == 200, r.text
-    auth.revoke(test_engine, "t_admin")
+    return TestClient(S.http_app(S.build(engine_url=url, oauth=True)), base_url="https://mcp.racinglines.bet")
+
+
+PING = {"jsonrpc": "2.0", "id": 1, "method": "ping"}
+HDR = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+
+
+def test_rl_tokens_still_open_the_hosted_server(test_engine, monkeypatch):
+    """Behind the tunnel the Host header is the public name (the SDK's localhost-only guard would give 421): no token
+    or a wrong one is 401 with the OAuth discovery header; an account's rl_ token is 200 until revoked."""
+    from racinglines.mcp import auth
+    tok = auth.new_token(test_engine, "t_admin")
+    with _http(test_engine, monkeypatch) as client:
+        r = client.post("/mcp", json=PING, headers=HDR)
+        assert r.status_code == 401 and "resource_metadata" in r.headers["www-authenticate"]
+        assert client.post("/mcp", json=PING, headers={**HDR, "Authorization": "Bearer rl_nope"}).status_code == 401
+        assert client.post("/mcp", json=PING, headers={**HDR, "Authorization": f"Bearer {tok}"}).status_code == 200
+        auth.revoke(test_engine, "t_admin")
+        assert client.post("/mcp", json=PING, headers={**HDR, "Authorization": f"Bearer {tok}"}).status_code == 401
+
+
+def test_oauth_sign_in_from_register_to_refresh(test_engine, monkeypatch):
+    """The connector flow: register, /authorize to the web app's Allow page, Allow as a signed-in admin, code for
+    tokens (once), a tool call as that account, refresh, and Disconnect ending it all. A pro account gets no Allow."""
+    import base64
+    import hashlib
+    from urllib.parse import parse_qs, urlparse
+    from fastapi import Request
+    from fastapi.testclient import TestClient
+    from sqlalchemy import text
+    from sqlalchemy.orm import sessionmaker
+    from racinglines.mcp import oauth
+    from racinglines.web import app as A
+    from racinglines.web import users as U
+    with sessionmaker(test_engine)() as s:
+        for name, role in (("t_admin", "admin"), ("t_maker", "pro")):
+            if not s.execute(text("SELECT 1 FROM users WHERE username = :u"), dict(u=name)).first():
+                U.create_user(s, name, "pw", role)
+        s.commit()
+        ids = dict(s.execute(text("SELECT username, id FROM users WHERE username IN ('t_admin', 't_maker')")).fetchall())
+    monkeypatch.setattr(A, "get_engine", lambda *a: test_engine)
+    monkeypatch.setattr(A, "get_session", lambda *a: sessionmaker(test_engine, expire_on_commit=False)())
+    who = {}
+
+    def as_user(request: Request):
+        request.state.user = dict(id=ids[who["u"]], username=who["u"], role=who["r"], sid=None)
+        return request.state.user
+    A.app.dependency_overrides[A.authenticate] = as_user
+    A.app.dependency_overrides[A.conn] = lambda: None
+    cb = "https://claude.ai/api/mcp/auth_callback"
+    verifier = "v" * 64
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    try:
+        web = TestClient(A.app, base_url="https://racinglines.bet")
+        with _http(test_engine, monkeypatch) as mcp_http:
+            meta = mcp_http.get("/.well-known/oauth-authorization-server").json()
+            assert meta["issuer"].rstrip("/") == "https://mcp.racinglines.bet" and meta["registration_endpoint"]
+            reg = mcp_http.post("/register", json=dict(redirect_uris=[cb], client_name="Claude",
+                                                       token_endpoint_auth_method="none"))
+            assert reg.status_code == 201, reg.text
+            client_id = reg.json()["client_id"]
+            assert oauth.unsign("client", client_id)                                   # signed, nothing stored
+
+            def authorize():
+                r = mcp_http.get("/authorize", params=dict(response_type="code", client_id=client_id, redirect_uri=cb,
+                                                           code_challenge=challenge, code_challenge_method="S256",
+                                                           state="st8"), follow_redirects=False)
+                assert r.status_code == 302, r.text
+                loc = r.headers["location"]
+                assert loc.startswith("https://racinglines.bet/mcp/authorize?req=")
+                return parse_qs(urlparse(loc).query)["req"][0]
+
+            req = authorize()
+            who.update(u="t_maker", r="pro")
+            assert "isn't one" in web.get("/mcp/authorize", params=dict(req=req)).text
+            assert web.post("/mcp/authorize", data=dict(csrf_token=A.CSRF_TOKEN, req=req, decision="allow"),
+                            follow_redirects=False).status_code == 403
+            who.update(u="t_admin", r="admin")
+            page = web.get("/mcp/authorize", params=dict(req=req))
+            assert "Allow" in page.text and page.headers["x-frame-options"] == "DENY"
+            r = web.post("/mcp/authorize", data=dict(csrf_token=A.CSRF_TOKEN, req=req, decision="allow"), follow_redirects=False)
+            assert r.status_code == 303 and r.headers["location"].startswith(cb)
+            q = parse_qs(urlparse(r.headers["location"]).query)
+            assert q["state"] == ["st8"]
+            form = dict(grant_type="authorization_code", code=q["code"][0], redirect_uri=cb, client_id=client_id,
+                        code_verifier=verifier)
+            tok = mcp_http.post("/token", data=form)
+            assert tok.status_code == 200, tok.text
+            assert mcp_http.post("/token", data=form).status_code == 400                # a code works once
+            at, rt = tok.json()["access_token"], tok.json()["refresh_token"]
+            auth_hdr = {**HDR, "Authorization": f"Bearer {at}"}
+            assert mcp_http.post("/mcp", json=PING, headers=auth_hdr).status_code == 200
+            call = dict(jsonrpc="2.0", id=2, method="tools/call",
+                        params=dict(name="run_job", arguments=dict(job_type="f1_backtest", params=dict(races=3, sims=300))))
+            out = mcp_http.post("/mcp", json=call, headers=auth_hdr).json()
+            job = json.loads(out["result"]["content"][0]["text"])
+            with test_engine.connect() as c:                                            # filed under the signed-in account
+                assert c.execute(text("SELECT user_id FROM jobs WHERE id = :i"), dict(i=job["job_id"])).scalar() == ids["t_admin"]
+            assert "Claude" in web.get("/settings").text
+            ref = mcp_http.post("/token", data=dict(grant_type="refresh_token", refresh_token=rt, client_id=client_id))
+            assert ref.status_code == 200, ref.text
+            at2 = ref.json()["access_token"]
+            assert web.post("/api/settings/mcp/disconnect", data=dict(csrf_token=A.CSRF_TOKEN)).status_code == 200
+            for t in (at, at2):
+                assert mcp_http.post("/mcp", json=PING, headers={**HDR, "Authorization": f"Bearer {t}"}).status_code == 401
+            assert mcp_http.post("/token", data=dict(grant_type="refresh_token", refresh_token=ref.json()["refresh_token"],
+                                                     client_id=client_id)).status_code == 400
+            r = web.post("/mcp/authorize", data=dict(csrf_token=A.CSRF_TOKEN, req=authorize(), decision="deny"),
+                         follow_redirects=False)
+            assert "error=access_denied" in r.headers["location"]
+    finally:
+        A.app.dependency_overrides.clear()
+
+
+def test_admin_mcp_page_lists_and_disconnects(test_engine, monkeypatch):
+    from fastapi import Request
+    from fastapi.testclient import TestClient
+    from sqlalchemy import text
+    from racinglines.mcp import auth, oauth
+    from racinglines.web import admin as AD
+    from racinglines.web import app as A
+    monkeypatch.setenv("APP_SECRET", "test-secret")
+    tok = auth.new_token(test_engine, "t_admin")
+    with test_engine.connect() as c:
+        uid = c.execute(text("SELECT id FROM users WHERE username = 't_admin'")).scalar()
+    oauth._seen(test_engine, uid, "Claude")
+    monkeypatch.setattr(AD, "get_engine", lambda *a: test_engine)
+
+    def as_admin(request: Request):
+        request.state.user = dict(id=uid, username="t_admin", role="admin", sid=None)
+        return request.state.user
+    A.app.dependency_overrides[A.authenticate] = as_admin
+    A.app.dependency_overrides[A.conn] = lambda: None
+    try:
+        web = TestClient(A.app)
+        page = web.get("/admin/mcp").text
+        assert "t_admin" in page and "Claude" in page and "Disconnect everyone" in page
+        gen = oauth.account(test_engine, user_id=uid)["gen"]
+        r = web.post("/admin/mcp", data=dict(csrf_token=A.CSRF_TOKEN, action="disconnect_all"))
+        assert r.status_code == 200 and oauth.account(test_engine, user_id=uid)["gen"] == gen + 1
+        assert auth.lookup(test_engine, tok)                                             # the rl_ token is separate
+        web.post("/admin/mcp", data=dict(csrf_token=A.CSRF_TOKEN, action="revoke_token", username="t_admin"))
+        assert auth.lookup(test_engine, tok) is None
+    finally:
+        A.app.dependency_overrides.clear()
 
 
 def test_track_record_all_lists_one_row_per_weekend_and_venue(mcp):
@@ -319,3 +433,52 @@ def test_track_record_all_lists_one_row_per_weekend_and_venue(mcp):
     finally:
         with mcp.engine.begin() as c:
             c.execute(T("DELETE FROM users WHERE username = 'mcp-maker'"))
+
+
+def test_settings_page_token_is_the_one_the_server_accepts(test_engine, monkeypatch):
+    """The Settings page issues the server's own token (auth.new_token), Save Settings keeps it, and the token
+    endpoints need the CSRF field like every other POST."""
+    from fastapi import Request
+    from fastapi.testclient import TestClient
+    from sqlalchemy import text
+    from sqlalchemy.orm import sessionmaker
+    from racinglines.mcp import auth
+    from racinglines.web import app as A
+    from racinglines.web import users as U
+    with sessionmaker(test_engine)() as s:
+        for name, role in (("t_admin", "admin"), ("t_maker", "pro")):
+            if not s.execute(text("SELECT 1 FROM users WHERE username = :u"), dict(u=name)).first():
+                U.create_user(s, name, "pw", role)
+        s.commit()
+        ids = dict(s.execute(text("SELECT username, id FROM users WHERE username IN ('t_admin', 't_maker')")).fetchall())
+    monkeypatch.setattr(A, "get_engine", lambda *a: test_engine)
+    monkeypatch.setattr(A, "get_session", lambda *a: sessionmaker(test_engine, expire_on_commit=False)())
+    who = {}
+
+    def as_user(request: Request):
+        request.state.user = dict(id=ids[who["u"]], username=who["u"], role=who["r"], sid=None)
+        return request.state.user
+    A.app.dependency_overrides[A.authenticate] = as_user
+    A.app.dependency_overrides[A.conn] = lambda: None
+    try:
+        client = TestClient(A.app)
+        who.update(u="t_admin", r="admin")
+        assert client.post("/api/settings/token/generate").status_code == 422             # no CSRF field
+        r = client.post("/api/settings/token/generate", data=dict(csrf_token=A.CSRF_TOKEN))
+        assert r.status_code == 200 and r.json()["url"].endswith("/mcp")
+        tok = r.json()["token"]
+        assert auth.lookup(test_engine, tok)["username"] == "t_admin"
+        r = client.post("/settings", data=dict(csrf_token=A.CSRF_TOKEN, email="a@b.co", exchange="kalshi", sports=["f1"]))
+        assert r.status_code == 200
+        assert auth.lookup(test_engine, tok)["username"] == "t_admin"                     # saving settings keeps the token
+        page = client.get("/settings").text
+        assert "a@b.co" in page and "You have a token" in page
+        assert client.post("/api/settings/token/revoke", data=dict(csrf_token=A.CSRF_TOKEN)).status_code == 200
+        assert auth.lookup(test_engine, tok) is None
+        with test_engine.connect() as c:
+            assert c.execute(text("SELECT prefs->>'email' FROM users WHERE username = 't_admin'")).scalar() == "a@b.co"
+        who.update(u="t_maker", r="pro")                                                   # RACINGLINES_MCP_ROLES=admin
+        assert client.post("/api/settings/token/generate", data=dict(csrf_token=A.CSRF_TOKEN)).status_code == 403
+        assert "open to admin accounts" in client.get("/settings").text
+    finally:
+        A.app.dependency_overrides.clear()
