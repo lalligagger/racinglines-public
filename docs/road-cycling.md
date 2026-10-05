@@ -40,7 +40,7 @@ each sized on its own, with `thin_data` marking a rider with under 5 results.
 ## Workflow (Mac)
 
 The cloud sandbox can't reach ProCyclingStats, so fetching runs on the Mac. Fetching is cached per page and safe to
-re-run; it needs `pip install procyclingstats cloudscraper` (not in `requirements.txt`: nothing on the VM needs them).
+re-run; it needs `pip install cloudscraper selectolax` (not in `requirements.txt`: nothing on the VM needs them). Pages are parsed by `racinglines/sources/pcs.py` itself, not the `procyclingstats` package, whose results selector stopped matching PCS on 2026-10-05. When a fetch fails, `racinglines cycling probe race/<slug>/<year>/result` saves the page and prints what parses.
 
 ```
 # LOCAL (Mac)

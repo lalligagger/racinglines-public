@@ -93,6 +93,53 @@ def test_book_names_need_one_match():
     assert "Pidcock" not in ids and any(b.startswith("Pidcock") for b in bad)
 
 
+RESULT_HTML = """<html><body>
+<div class="page-content"><ul class="list keyvalueList">
+<li><div class="title">Date:</div><div class="value">22 March 2025, 10:10</div></li>
+<li><div class="title">Distance:</div><div class="value">289 km</div></li>
+<li><div class="title">Vertical meters:</div><div class="value">2,234</div></li>
+<li><div class="title">ProfileScore:</div><div class="value">71</div></li>
+<li><div class="title">Classification:</div><div class="value">1.UWT</div></li>
+</ul><span class="icon profile p2 mg_rp4"></span>
+<div class="resultTabs"><table class="unit results results6"><thead><tr>
+<th>Rnk</th><th>BIB</th><th>H2H</th><th>Rider</th><th>Team</th><th>UCI</th><th>Pnt</th><th>Time</th></tr></thead><tbody>
+<tr><td>1</td><td>1</td><td></td><td><span class="flag nl"></span> <a href="rider/mathieu-van-der-poel">VAN DER POEL Mathieu</a></td>
+<td><a href="team/alpecin-2025">Alpecin</a></td><td>500</td><td>275</td><td class="time ar">6:22:53<span class="hide">6:22:53</span></td></tr>
+<tr><td>2</td><td>2</td><td></td><td><span class="flag it"></span> <a href="/rider/filippo-ganna">GANNA Filippo</a></td>
+<td><a href="team/ineos-2025">Ineos</a></td><td>400</td><td>200</td><td class="time ar"><font>,,</font></td></tr>
+<tr><td>3</td><td>3</td><td></td><td><span class="flag si"></span> <a href="rider/tadej-pogacar">POGAČAR Tadej</a></td>
+<td><a href="team/uae-2025">UAE</a></td><td>325</td><td>150</td><td class="time ar">0:02<span class="hide">0:02</span></td></tr>
+<tr><td>DNF</td><td>4</td><td></td><td><span class="flag be"></span> <a href="rider/remco-evenepoel">EVENEPOEL Remco</a></td>
+<td><a href="team/soudal-2025">Soudal</a></td><td></td><td></td><td class="time ar">-</td></tr>
+</tbody></table></div></div></body></html>"""
+
+STARTLIST_HTML = """<html><body><div class="sidebar"><a href="rider/someone-else">Popular rider</a></div>
+<div class="page-content"><ul class="startlist_v4">
+<li><a class="team" href="team/uae-2026">UAE Team Emirates</a><ul>
+<li><a href="rider/tadej-pogacar">POGAČAR Tadej</a></li><li><a href="rider/isaac-del-toro">DEL TORO Isaac</a></li></ul></li>
+<li><a class="team" href="team/soudal-2026">Soudal Quick-Step</a><ul>
+<li><a href="rider/remco-evenepoel">EVENEPOEL Remco</a></li></ul></li>
+</ul></div></body></html>"""
+
+
+def test_pcs_parses_results_info_and_startlist_markup():
+    pytest.importorskip("selectolax")
+    table = pcs.parse_results(RESULT_HTML)
+    assert [r["rider_url"] for r in table] == ["rider/mathieu-van-der-poel", "rider/filippo-ganna",
+                                               "rider/tadej-pogacar", "rider/remco-evenepoel"]
+    assert [r["rank"] for r in table] == [1, 2, 3, None] and table[3]["status"] == "DNF"
+    info = pcs.page_info(RESULT_HTML)
+    assert info == dict(date="2025-03-22", distance_km=289.0, vert_m=2234.0, profile_score=71.0,
+                        race_class="1.UWT", profile_icon="p2")
+    rows = pcs.stage_rows(table, info, "milano-sanremo-2025", "oneday", "u")
+    assert [r["gap_s"] for r in rows] == [0, 0, 2, None]
+    assert [r["status"] for r in rows] == ["OK", "OK", "OK", "DNF"]
+    sl = pcs.parse_startlist(STARTLIST_HTML)
+    assert [(r["rider_url"], r["team"]) for r in sl] == [("rider/tadej-pogacar", "UAE Team Emirates"),
+                                                        ("rider/isaac-del-toro", "UAE Team Emirates"),
+                                                        ("rider/remco-evenepoel", "Soudal Quick-Step")]
+
+
 def test_pcs_rows_read_times_and_gaps():
     table = [dict(rider_name="A", rider_url="rider/a", rank=1, status="DF", time="0:27:12"),
              dict(rider_name="B", rider_url="rider/b", rank=2, status="DF", time="0:00:15"),

@@ -5,7 +5,7 @@ racinglines <group> <command> [options]
     mtb_dh    download | parse | ingest | forecast | backtest | walk-forward
     nascar    fetch | ingest   (the free content feeds: results, stages, laps)
     motogp    fetch | ingest   (the free public results API: race classifications)
-    cycling   events | fetch | startlist | price   (road cycling sportsbook lines: TTs and road races)
+    cycling   events | fetch | startlist | probe | price   (road cycling sportsbook lines: TTs and road races)
     backtest  walk-forward SPORT   (the backtest core, any sport with a pricing model)
     markets   sync | history | trades | record | archive
     db        init | seed | stats | export

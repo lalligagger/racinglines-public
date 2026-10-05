@@ -5,8 +5,10 @@ sports/road_cycling/events/<event>.toml; everything per kind of race (itt, road)
 
     events       List the event files.
     fetch        Fetch ProCyclingStats results for a kind (itt | road) into data/raw/road_cycling/ (Mac only:
-                 cached per page, safe to re-run; `pip install procyclingstats cloudscraper` first).
+                 cached per page, safe to re-run; `pip install cloudscraper selectolax` first).
     startlist    Fetch an event's start list (its [event] pcs race) into its startlist_file.
+    probe        Fetch one PCS page (e.g. race/milano-sanremo/2025/result), save its HTML under
+                 data/raw/road_cycling/pcs/probe/ and print what parses from it: the first check when a fetch fails.
     price        Price an event's book: futures, matchups and fractional-Kelly stakes, written to
                  reports/<event>/. --calibrate grid-searches the kind's [model.<kind>.grid] walk-forward first
                  and prices with the best setting; --settings-from prices with a saved setting row.
@@ -133,6 +135,8 @@ def main(argv=None):
     sl = sub.add_parser("startlist", help="fetch an event's start list (Mac only)")
     sl.add_argument("event")
     sl.add_argument("--data")
+    pr = sub.add_parser("probe", help="fetch one PCS page, save it and show what parses (Mac only)")
+    pr.add_argument("url", help="PCS path, e.g. race/milano-sanremo/2025/result")
     p = sub.add_parser("price", help="price an event's book")
     p.add_argument("event", help="event id (file stem in sports/road_cycling/events/) or a path to an event file")
     p.add_argument("--data", help="results folder (default: [results] dir)")
@@ -161,5 +165,10 @@ def main(argv=None):
         from racinglines.sources import pcs
         ev = C.load_event(a.event)
         pcs.fetch_startlist(ev["event"]["pcs"], C.startlist_file(ev, a.data))
+        return 0
+    if a.cmd == "probe":
+        from racinglines.models import cycling as C
+        from racinglines.sources import pcs
+        pcs.probe(a.url, ROOT / C.schema()["results"]["dir"] / "pcs" / "probe")
         return 0
     return cmd_price(a)
