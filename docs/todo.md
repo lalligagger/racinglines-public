@@ -279,6 +279,9 @@ how it works: [Paper trading](paper-trading.md). Recommendations and paper fills
       sportsbook bets get the same field in the project's bet ledger, using an exchange's close as a proxy
       where the book publishes none.
       *Done when:* the 2025 and 2026 replays of A, C and K report mean CLV, and the weekend report shows it.
+- [ ] **P2 · Stale line in `docs/coverage.md`** (owner, 2026-10-05). Its summary says Polymarket has listed no F1
+      race since 28 Aug 2026, but the Malaysia audit (round 16, 2026-10-04) linked 139 Polymarket tokens, titled
+      "Bahrain Grand Prix". Check which recent rounds Polymarket listed and correct the summary and the grid.
 - [ ] **P2 · Sizing review (~12 Nov),** after 4–6 live weekends on real markets (T3 weekends don't count):
       walk-forward re-run of A, A-lite, C, K, B (#06) and A′ (#08) with rounds 16–20 added, then a sizing
       rule from `bankroll` / `max_deployed` (owner's call, e.g. A-lite → A).
