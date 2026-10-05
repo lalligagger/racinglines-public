@@ -192,7 +192,7 @@ For every F1 weekend, T1 or T3:
 | Go on **STG-1 to STG-11**; first STG-5 (off-VM data copy: VM service account write access to the bucket), STG-2 (tests in CI), STG-8 (migration gate). Also: fixtures in git or bucket (STG-7), staging on the same VM or its own, keyless GCP auth or key, Cloudflare Access or password (STG-1) | Now: HIGH | Yes; STG-5 first: today the VM's disk is the only copy |
 | Next engine plan task after T5 | Any time | T2 |
 | Turn on `RACINGLINES_OG_VENUE=1` on the VM (the OG.com column) | Before the soft launch | Yes: read-only, fair-price indicator only |
-| Kalshi bid/ask candles re-pull (backup first) | Before any Kalshi taker result counts | Yes |
+| Kalshi bid/ask candles re-pull (backup first) | Before any Kalshi taker result counts | Approved 2026-10-05: automate it on the VM |
 | Sign-off for new VM timers: Kalshi recorder (U2), tapes (U9), OG.com recorder, NASCAR forecast refresh | Before round 17 | Yes, one at a time, each with a backup |
 | Price-column migration and the audit scorecard (engine plan) | After round 16 | Owner's call; migration needs a backup and sign-off |
 | Replay race spread for NASCAR (2.0 places vs a measured ~7) | Before any NASCAR result is read as edge | Owner's call, with a decision-log entry |
@@ -259,7 +259,7 @@ how it works: [Paper trading](paper-trading.md). Recommendations and paper fills
       [Kalshi history](kalshi-history.md). **Result (PRs #38, #41, corrected 2026-09-29):** K = `gbm`, 2¢ quotes, 10-point
       disagreement filter, 25 shares, $400 24-hour volume floor: **+$490 (2026), +$659 (2025)**, at 16,000 simulations
       +$453 / +$741, against profile C's −$119 / +$510. The first 2025 figure (+$855) missed Imola 2025, which only
-      Kalshi listed (−$195). Owner: freeze K?
+      Kalshi listed (−$195). Owner (2026-10-05): K's settings stay tunable; log each change in the decision log and keep its live record per settings version.
 - [x] **P1 · Per-weekend reconciliation** (PR #37, merged). `racinglines f1 reconcile --event 2026-NN --profile X --venue V`:
       live paper fills and markouts against the replay of the same weekend on the recorded tape (the
       conservative "through" fill rule), flagging a weekend outside the validation rules. Its output goes
