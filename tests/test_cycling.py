@@ -102,13 +102,13 @@ RESULT_HTML = """<html><body>
 <li><div class="title">Classification:</div><div class="value">1.UWT</div></li>
 </ul><span class="icon profile p2 mg_rp4"></span>
 <div class="resultTabs"><table class="unit results results6"><thead><tr>
-<th>Rnk</th><th>BIB</th><th>H2H</th><th>Rider</th><th>Team</th><th>UCI</th><th>Pnt</th><th>Time</th></tr></thead><tbody>
+<th>Rnk</th><th>BIB</th><th>H2H</th><th>Rider</th><th>Team</th><th>UCI</th><th>Pnt</th><th>Timelag</th><th>Time won/lost</th></tr></thead><tbody>
 <tr><td>1</td><td>1</td><td></td><td><span class="flag nl"></span> <a href="rider/mathieu-van-der-poel">VAN DER POEL Mathieu</a></td>
-<td><a href="team/alpecin-2025">Alpecin</a></td><td>500</td><td>275</td><td class="time ar">6:22:53<span class="hide">6:22:53</span></td></tr>
+<td><a href="team/alpecin-2025">Alpecin</a></td><td>500</td><td>275</td><td class="hide cu600">6:22:53<span class="hide">6:22:53</span></td><td class="time">0:01:10</td></tr>
 <tr><td>2</td><td>2</td><td></td><td><span class="flag it"></span> <a href="/rider/filippo-ganna">GANNA Filippo</a></td>
-<td><a href="team/ineos-2025">Ineos</a></td><td>400</td><td>200</td><td class="time ar"><font>,,</font></td></tr>
+<td><a href="team/ineos-2025">Ineos</a></td><td>400</td><td>200</td><td><font>,,</font></td><td class="time">0:00:40</td></tr>
 <tr><td>3</td><td>3</td><td></td><td><span class="flag si"></span> <a href="rider/tadej-pogacar">POGAČAR Tadej</a></td>
-<td><a href="team/uae-2025">UAE</a></td><td>325</td><td>150</td><td class="time ar">0:02<span class="hide">0:02</span></td></tr>
+<td><a href="team/uae-2025">UAE</a></td><td>325</td><td>150</td><td>0:02<span class="hide">0:02</span></td><td class="time"></td></tr>
 <tr><td>DNF</td><td>4</td><td></td><td><span class="flag be"></span> <a href="rider/remco-evenepoel">EVENEPOEL Remco</a></td>
 <td><a href="team/soudal-2025">Soudal</a></td><td></td><td></td><td class="time ar">-</td></tr>
 </tbody></table></div></div></body></html>"""
@@ -120,6 +120,29 @@ STARTLIST_HTML = """<html><body><div class="sidebar"><a href="rider/someone-else
 <li><a class="team" href="team/soudal-2026">Soudal Quick-Step</a><ul>
 <li><a href="rider/remco-evenepoel">EVENEPOEL Remco</a></li></ul></li>
 </ul></div></body></html>"""
+
+
+GC_HTML = """<html><body><ul class="tabs tabnav resultTabs">
+<li><a data-id="1" href="#">Stage</a></li><li><a data-id="2" href="#">GC</a></li><li><a data-id="3">Points</a></li></ul>
+<div class="resTab" data-id="1"><table class="results"><thead><tr><th>Rnk</th><th>Rider</th><th>Time</th></tr></thead>
+<tbody><tr><td>1</td><td><a href="rider/wout-van-aert">VAN AERT Wout</a></td><td>2:39:10</td></tr>
+<tr><td>2</td><td><a href="rider/tadej-pogacar">POGAČAR Tadej</a></td><td>0:19</td></tr></tbody></table></div>
+<div class="resTab hide" data-id="2"><table class="results"><thead><tr><th>Rnk</th><th>Rider</th><th>Time</th></tr></thead>
+<tbody><tr><td>1</td><td><a href="rider/tadej-pogacar">POGAČAR Tadej</a></td><td>76:00:32</td></tr>
+<tr><td>2</td><td><a href="rider/jonas-vingegaard">VINGEGAARD Jonas</a></td><td>+4:24</td></tr></tbody></table></div>
+<div class="resTab hide" data-id="3"><table class="results"><tbody><tr><td>1</td>
+<td><a href="rider/jonathan-milan">MILAN Jonathan</a></td></tr></tbody></table></div></body></html>"""
+
+
+def test_pcs_reads_the_gc_tab_not_the_stage():
+    pytest.importorskip("selectolax")
+    gc = pcs.parse_results(GC_HTML, "GC")
+    assert [r["rider_url"] for r in gc] == ["rider/tadej-pogacar", "rider/jonas-vingegaard"]
+    rows = pcs.stage_rows(gc, {}, "tdf", "gc", "u")
+    assert [r["gap_s"] for r in rows] == [0, 264] and rows[0]["winner_time_s"] == 76 * 3600 + 32
+    assert pcs.parse_results(GC_HTML)[0]["rider_url"] == "rider/wout-van-aert"
+    no_ids = GC_HTML.replace(' data-id="2"', "").replace(' data-id="1"', "").replace(' data-id="3"', "")
+    assert pcs.parse_results(no_ids, "GC")[0]["rider_url"] == "rider/tadej-pogacar"   # tab position fallback
 
 
 def test_pcs_parses_results_info_and_startlist_markup():

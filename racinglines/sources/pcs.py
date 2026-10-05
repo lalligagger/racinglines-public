@@ -74,47 +74,76 @@ def _rider_href(href):
     return href[i:].rstrip("/") if i >= 0 else None
 
 
-def _rider_table(tree):
-    for t in tree.css("table.results") + tree.css("table"):
-        if t.css_first('tbody a[href*="rider/"]'):
-            return t
+def _rider_tables(node):
+    return [t for t in node.css("table") if t.css_first('tbody a[href*="rider/"]')]
+
+
+TABS = {"GC": ("GC", "GENERAL")}
+
+
+def _tab_table(tree, tab):
+    """The rider table under a results tab (e.g. "GC" on a stage page, which carries the stage, GC, points ...
+    tables side by side): the tab link's data-id names its container; failing that, the tab's position picks the
+    table in page order."""
+    links, seen = [], set()
+    for sel in ("ul.tabs a", "ul.restabs a", ".resultTabs a", ".restabs a"):
+        for a in tree.css(sel):
+            key = a.html
+            if a.text(strip=True) and key not in seen:
+                seen.add(key)
+                links.append(a)
+    for i, a in enumerate(links):
+        if a.text(strip=True).upper().split()[0] not in TABS.get(tab.upper(), (tab.upper(),)):
+            continue
+        did = a.attributes.get("data-id")
+        if did:
+            for box in tree.css(f'[data-id="{did}"]'):
+                if box.tag not in ("a", "li") and _rider_tables(box):
+                    return _rider_tables(box)[0]
+        tables = _rider_tables(tree)
+        if i < len(tables):
+            return tables[i]
     return None
 
 
-def _cell_time(td):
-    """A time cell's own time: the first line that isn't a ',,' (same as the rider above) or a seconds mark."""
-    for line in td.text(separator="\n").split("\n"):
-        line = line.strip()
-        if line and line != "-" and ",," not in line and "″" not in line:
-            return line
+TIME = re.compile(r"\+?\d+(:\d{2}){1,2}")
+
+
+def _row_time(tds):
+    """The row's time as shown: the first cell (left to right) holding a time or a ',,' (same time as the rider
+    above). PCS puts the stage or race time before any GC or time-won/lost columns. None when there is neither."""
+    for td in tds:
+        for line in td.text(separator="\n").split("\n"):
+            line = line.strip().replace(" ", "")
+            if ",," in line:
+                return ",,"
+            if TIME.fullmatch(line):
+                return line
     return None
 
 
-def parse_results(html):
-    """The page's results table -> [{rider_name, rider_url, nationality, rank, status, time}], in table order.
-    `time` is the cell as shown (the winner's time, then gaps); a blank or ',,' cell repeats the row above."""
+def parse_results(html, tab=None):
+    """A results table -> [{rider_name, rider_url, nationality, rank, status, time}], in table order. `tab` picks
+    a results tab ("GC"); otherwise the first table with rider links. `time` is as shown (the winner's time, then
+    gaps); a ',,' or missing time repeats the row above."""
     tree = _tree(html)
-    table = _rider_table(tree)
+    table = _tab_table(tree, tab) if tab else None
+    if tab and table is None:
+        raise ValueError(f"no {tab} tab with a rider table on the page")
+    table = table or next(iter(_rider_tables(tree)), None)
     if table is None:
         raise ValueError("no results table with rider links on the page")
     heads = [th.text(strip=True).lower() for th in table.css("thead th")]
-
-    def col(*names):
-        return next((i for i, h in enumerate(heads) if h in names), None)
-
-    i_rank, i_time = col("rnk", "pos", "#", "result"), col("time")
+    i_rank = next((i for i, h in enumerate(heads) if h in ("rnk", "pos", "#", "result")), 0)
     rows, prev = [], None
     for tr in table.css("tbody tr"):
         a = tr.css_first('a[href*="rider/"]')
         if a is None:
             continue
         tds = tr.css("td")
-        rank_txt = tds[i_rank if i_rank is not None and i_rank < len(tds) else 0].text(strip=True)
-        tcell = next((td for td in tds if "time" in (td.attributes.get("class") or "").split()), None)
-        if tcell is None and i_time is not None and i_time < len(tds):
-            tcell = tds[i_time]
-        t = _cell_time(tcell) if tcell is not None else None
-        t = t if hms(t) is not None else prev
+        rank_txt = tds[i_rank if i_rank < len(tds) else 0].text(strip=True)
+        t = _row_time(tds)
+        t = t if t and t != ",," else prev
         prev = t
         flag = tr.css_first(".flag")
         fl = (flag.attributes.get("class") or "").split() if flag else []
@@ -251,7 +280,8 @@ def fetch(kind, seasons, data_dir=None, limit=None):
             continue
         try:
             html = _get(url)
-            rows = stage_rows(parse_results(html), page_info(html), race, page_kind, url)
+            rows = stage_rows(parse_results(html, "GC" if page_kind == "gc" else None), page_info(html), race,
+                              page_kind, url)
             pd.DataFrame(rows, columns=COLUMNS).to_csv(f, index=False)
             fetched += 1
             print(f"{race} | {len(rows)}", flush=True)
@@ -300,5 +330,5 @@ def probe(url, out_dir):
         rows = parse_startlist(html)
         print(f"start list: {len(rows)} riders; first 3: {rows[:3]}")
     else:
-        rows = parse_results(html)
+        rows = parse_results(html, "GC" if url.rstrip("/").endswith("/gc") else None)
         print(f"results: {len(rows)} rows; first 3: {rows[:3]}; last: {rows[-1]}")
