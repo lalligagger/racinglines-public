@@ -58,6 +58,9 @@ class TakerParams:
     thin_edge_mult: float | None = None                  # trade a thin market (a stage with `thin`) when the edge is
                                                          # >= this x min_edge, capped at the book's size at the touch
                                                          # (None = thin markets are skipped)
+    kelly: float | None = None                           # Kelly fraction (0.5 = half Kelly): stake = kelly x f* x
+                                                         # balance, capped at max_stake x scale (None = linear sizing)
+    bankroll: float | None = None                        # starting bankroll for Kelly; balance = bankroll x scale
     taker_fee: float = 0.0                               # the venue's taker fee rate: rate x contracts x P x (1 - P)
                                                          # per order, rounded up to the cent (Kalshi 0.07,
                                                          # Polymarket 0; venue_replay.EXCHANGES)
@@ -106,16 +109,17 @@ class _Market:
         if i in self.idx:
             thin = not s["tradeable"]            # a thin market: in idx only with edge >= thin_edge_mult x min_edge
             bid, ask = s.get("bid"), s.get("ask")
+            kb = (p.kelly, p.bankroll * p.scale) if p.kelly is not None and p.bankroll is not None else ()
             if bid is not None and ask is not None:
                 ty = target_shares(s["fair"], ask, p.cost + p.taker_fee * ask * (1 - ask), p.min_edge,
-                                   p.stake_per_edge * p.scale, p.max_stake * p.scale)[0]
+                                   p.stake_per_edge * p.scale, p.max_stake * p.scale, *kb)[0]
                 tn = target_shares(s["fair"], bid, p.cost + p.taker_fee * bid * (1 - bid), p.min_edge,
-                                   p.stake_per_edge * p.scale, p.max_stake * p.scale)[1]
+                                   p.stake_per_edge * p.scale, p.max_stake * p.scale, *kb)[1]
                 buy, sell = {"YES": ask, "NO": 1 - bid}, {"YES": bid, "NO": 1 - ask}
             else:
                 ty, tn = target_shares(s["fair"], price, p.cost + p.taker_fee * price * (1 - price), p.min_edge,
                                        p.stake_per_edge * p.scale,
-                                       p.max_stake * p.scale)
+                                       p.max_stake * p.scale, *kb)
                 buy = sell = {"YES": price, "NO": 1 - price}
             if thin:                             # the book's size at the touch caps what can be bought
                 ty, tn = min(ty, s.get("depth_yes") or 0.0), min(tn, s.get("depth_no") or 0.0)
