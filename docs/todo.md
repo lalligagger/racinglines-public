@@ -270,6 +270,15 @@ how it works: [Paper trading](paper-trading.md). Recommendations and paper fills
 - [x] **P1 · `track_record(venue='all')` in the MCP server** (PR #30, merged; original problem: lists one row per weekend while its total sums
       every venue (the maker's weekends mix Polymarket and Kalshi rows). Return one row per weekend and
       venue, with a `venue` column and a total per venue.
+- [ ] **P1 · Closing-line value (CLV) in backtests and live** (owner, 2026-10-05). For every replayed and live
+      fill, record the venue's price when the market closes (lights out for race kinds, the session start for
+      pole), and report CLV = close minus entry, signed for our side, in points and in percent. Report it per
+      profile, venue, market kind and weekend, next to P&L in the sweep stats, `f1 reconcile` and
+      `f1 scorecard`. Polymarket tapes first. Kalshi uses the recorder's bid/ask books from 2026-09-30 on;
+      Kalshi history waits for the bid/ask re-pull, because its last-trade candles spike. Hand-placed
+      sportsbook bets get the same field in the project's bet ledger, using an exchange's close as a proxy
+      where the book publishes none.
+      *Done when:* the 2025 and 2026 replays of A, C and K report mean CLV, and the weekend report shows it.
 - [ ] **P2 · Sizing review (~12 Nov),** after 4–6 live weekends on real markets (T3 weekends don't count):
       walk-forward re-run of A, A-lite, C, K, B (#06) and A′ (#08) with rounds 16–20 added, then a sizing
       rule from `bankroll` / `max_deployed` (owner's call, e.g. A-lite → A).
