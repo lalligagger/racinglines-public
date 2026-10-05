@@ -16,6 +16,10 @@ Modes (to see whether updating adds value):
 
 Execution: buy at price + cost, sell at price - cost (cost per share covers spread
 and slippage; the Baku books were a cent or two wide). NO is bought at 1 - price.
+A stage with a quote (`bid`, `ask`: Kalshi's recorded book or candle, venue_replay.Kalshi.quote)
+trades at the touch instead: YES bought at the ask and sold at the bid, NO bought at 1 - bid and
+sold at 1 - ask, plus cost (slippage beyond the touch) and the fee; the edge each side needs is
+then fair - ask (YES) or bid - fair (NO). Polymarket stages carry no quote, so its results are unchanged.
 On a venue with a taker fee (Kalshi: 0.07 x contracts x P x (1 - P) per order, rounded
 up to the cent) the fee is added per share on top of the cost, and sizing sees it too;
 Polymarket's rate is 0, so its results are unchanged.
@@ -101,14 +105,24 @@ class _Market:
         before = self.deployed
         if i in self.idx:
             thin = not s["tradeable"]            # a thin market: in idx only with edge >= thin_edge_mult x min_edge
-            ty, tn = target_shares(s["fair"], price, p.cost + p.taker_fee * price * (1 - price), p.min_edge,
-                                   p.stake_per_edge * p.scale,
-                                   p.max_stake * p.scale)
+            bid, ask = s.get("bid"), s.get("ask")
+            if bid is not None and ask is not None:
+                ty = target_shares(s["fair"], ask, p.cost + p.taker_fee * ask * (1 - ask), p.min_edge,
+                                   p.stake_per_edge * p.scale, p.max_stake * p.scale)[0]
+                tn = target_shares(s["fair"], bid, p.cost + p.taker_fee * bid * (1 - bid), p.min_edge,
+                                   p.stake_per_edge * p.scale, p.max_stake * p.scale)[1]
+                buy, sell = {"YES": ask, "NO": 1 - bid}, {"YES": bid, "NO": 1 - ask}
+            else:
+                ty, tn = target_shares(s["fair"], price, p.cost + p.taker_fee * price * (1 - price), p.min_edge,
+                                       p.stake_per_edge * p.scale,
+                                       p.max_stake * p.scale)
+                buy = sell = {"YES": price, "NO": 1 - price}
             if thin:                             # the book's size at the touch caps what can be bought
                 ty, tn = min(ty, s.get("depth_yes") or 0.0), min(tn, s.get("depth_no") or 0.0)
-            for side, tgt, px in (("YES", ty, price), ("NO", tn, 1 - price)):
+            for side, tgt in (("YES", ty), ("NO", tn)):
                 cur = self.yes if side == "YES" else self.no
                 d = tgt - cur
+                px = buy[side] if d > 0 else sell[side]
                 if thin and d <= 0:
                     continue                     # thin: buys only, never a sale into an unseen book
                 if abs(d) * px < p.min_trade and tgt != 0:

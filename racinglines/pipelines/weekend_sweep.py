@@ -254,6 +254,9 @@ def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None, 
             open_ = STG.is_open(kind, t, w.get("closes", {"race_pole": w["qual_start"]}))
             ok = liquid and f is not None and open_ and coherent.get((kind, lab), True)
             stage = dict(label=lab, t=t, fair=f, price=price, tradeable=ok, open=open_)
+            q = venue.quote(link["token_id"], t)
+            if q is not None:                    # the taker buys at the ask and sells at the bid (Kalshi)
+                stage.update(bid=q[0], ask=q[1])
             if thin_depth and not liquid and price is not None and 0 < price < 1 and f is not None and open_ \
                     and coherent.get((kind, lab), True):
                 d = venue.touch_depth(link["token_id"], t)          # only the volume floor failed: is there size?

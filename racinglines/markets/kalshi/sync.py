@@ -59,7 +59,7 @@ default F1 sync is unchanged.
 import json
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -431,6 +431,19 @@ def history_rows(ticker, candles):
     return list({r["ts"]: r for r in rows}.values())       # one row per ts: an upsert can't touch a row twice
 
 
+MAX_CANDLES = 4000      # per candlesticks request: Kalshi answers 400 above 5,000 (seen on the 2026-10-05 backfill)
+
+
+def _candles(kc, series, ticker, start, end, period):
+    """Every candle of [start, end], asked for in windows of at most MAX_CANDLES periods."""
+    out, a, step = [], start, timedelta(minutes=period * MAX_CANDLES)
+    while a < end:
+        b = min(a + step, end)
+        out += kc.candlesticks(series, ticker, a.timestamp(), b.timestamp(), period)
+        a = b
+    return out
+
+
 def _raw_path(raw_dir, series, ticker):
     return Path(raw_dir) / (series or "_") / f"{ticker}.json"
 
@@ -453,7 +466,7 @@ def fetch_history(session, conn, event_tickers, start, end, period=60, kc=None, 
                 continue
             candles = json.loads(f.read_text())["candlesticks"]
         else:
-            candles = kc.candlesticks(series, tok, start.timestamp(), end.timestamp(), period)
+            candles = _candles(kc, series, tok, start, end, period)
             if save_raw:
                 f = _raw_path(save_raw, series, tok)
                 f.parent.mkdir(parents=True, exist_ok=True)
@@ -468,6 +481,21 @@ def fetch_history(session, conn, event_tickers, start, end, period=60, kc=None, 
             session.commit()                     # per market: a long backfill keeps what it has if it stops
         n += len(rows)
     return n
+
+
+def coverage(conn, event_tickers=None, sport=None):
+    """How much of the stored price history (Parquet and Postgres) carries the candle's bid and ask, for the given
+    Kalshi events (or every event of `sport`): rows, with both sides, and prices outside the closing quote (a last
+    trade made before the book moved, so some are expected)."""
+    from racinglines.markets import store as MS
+    toks = [t for t, _, _ in _tickers(conn, event_tickers, sport=sport)]
+    ph = MS.read(conn, "prices", tokens=toks, root=MS.root_for("kalshi"))
+    both = ph.dropna(subset=["bid", "ask"])
+    gap = (both["bid"] - both["price"]).clip(lower=0) + (both["price"] - both["ask"]).clip(lower=0)
+    return dict(markets=int(ph["token_id"].nunique()), rows=len(ph), with_bid=int(ph["bid"].notna().sum()),
+                with_ask=int(ph["ask"].notna().sum()), both=len(both), outside=int((gap > 1e-9).sum()),
+                outside_5c=int((gap > 0.05).sum()), first=str(ph["ts"].min()) if len(ph) else None,
+                last=str(ph["ts"].max()) if len(ph) else None)
 
 
 def book_row(ticker, ob, ts, depth=10):
