@@ -5,6 +5,7 @@ racinglines <group> <command> [options]
     mtb_dh    download | parse | ingest | forecast | backtest | walk-forward
     nascar    fetch | ingest   (the free content feeds: results, stages, laps)
     motogp    fetch | ingest   (the free public results API: race classifications)
+    cycling   events | fetch | startlist | price   (road cycling sportsbook lines: TTs and road races)
     backtest  walk-forward SPORT   (the backtest core, any sport with a pricing model)
     markets   sync | history | trades | record | archive
     db        init | seed | stats | export
@@ -19,7 +20,7 @@ racinglines <group> <command> [options]
 
 import sys
 
-GROUPS = ("f1", "mtb_dh", "nascar", "motogp", "backtest", "markets", "db", "live", "web", "users", "mcp", "check")
+GROUPS = ("f1", "mtb_dh", "nascar", "motogp", "cycling", "backtest", "markets", "db", "live", "web", "users", "mcp", "check")
 
 
 def main(argv=None):
