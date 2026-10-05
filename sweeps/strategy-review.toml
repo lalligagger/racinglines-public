@@ -3,7 +3,8 @@
 # $10,000 bankroll and the every-kind variant (adds Kalshi's top 10). One job per distinct settings set: a job runs
 # all four takers and five makers, so T8 / T9 are the `early` rows of the T1 / T7 jobs, M1 the baseline's maker row,
 # and TB (half T1, half T8) is read off those two. Plan: project files strategy-review/2026-10-05-all-strategies-plan.md.
-# Writes only stage runs (each priced once and reused); no --save, no fetch. Back up first (see the handoff).
+# Writes only analysis records: stage runs (each priced once and reused) and one saved sweep run per job, which the
+# report reads. No data fetch. Back up first (see the handoff).
 #
 #   racinglines f1 search sweeps/strategy-review.toml
 #   racinglines f1 search-report sweeps/strategy-review.toml
