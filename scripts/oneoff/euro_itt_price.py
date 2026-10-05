@@ -24,6 +24,13 @@ MATCHUPS = [("Thornley", 1.85, "Bjerg", 1.85), ("Cattaneo", 2.35, "Armirail", 1.
             ("Bax", 2.25, "Oliveira", 1.57)]
 BOOK = sorted(set(FUTURES) | {r for m in MATCHUPS for r in (m[0], m[2])})
 EURO_M_PER_KM = 367 / 22.1
+FULL = {"Soderqvist": "jakob soderqvist", "Roglic": "primoz roglic", "Armirail": "bruno armirail",
+        "Kung": "stefan kung", "Romeo": "ivan romeo", "Decomble": "maxime decomble", "Van Wilder": "ilan van wilder",
+        "Schmid": "mauro schmid", "Vacek": "mathias vacek", "Cattaneo": "mattia cattaneo",
+        "Asgreen": "kasper asgreen", "Thornley": "callum thornley", "Hayter": "ethan hayter",
+        "Bjerg": "mikkel bjerg", "Tratnik": "jan tratnik", "Oliveira": "nelson oliveira",
+        "De Pestel": "sander de pestel", "Frigo": "marco frigo", "Pelikan": "janos pelikan",
+        "Kockelmann": "mathieu kockelmann", "Bax": "sjoerd bax"}
 
 
 def fold(s):
@@ -31,11 +38,14 @@ def fold(s):
 
 
 def book_ids(names):
-    """Book surname -> rider_url, matched on the ASCII-folded rider name. Every surname must match exactly one."""
+    """Book surname -> rider_url: every word of the rider's full name must be a word of the ASCII-folded PCS name
+    (PCS writes "Bjerg Mikkel" or "BJERG Mikkel"). Every book name must match exactly one rider_url."""
     names = names.drop_duplicates("rider_url")
+    words = names["rider"].map(lambda r: set(fold(r).replace("-", " ").split()))
     out, bad = {}, []
     for k in BOOK:
-        hit = names[names["rider"].map(fold).str.contains(fold(k), regex=False)]
+        want = set(FULL[k].split())
+        hit = names[words.map(lambda w: want <= w)]
         if len(hit) == 1:
             out[k] = hit["rider_url"].iloc[0]
         else:
