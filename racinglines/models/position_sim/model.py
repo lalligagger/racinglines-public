@@ -325,7 +325,14 @@ def fit_team_sector(sectors, now, use_track=True):
         # weighted ridge on [a, b] with priors a0, 0 (2x2 normal equations)
         A = np.array([[np.sum(W) + RIDGE_A, np.sum(W * x)], [np.sum(W * x), np.sum(W * x * x) + RIDGE_B]])
         rhs = np.array([np.sum(W * y) + RIDGE_A * a0, np.sum(W * x * y)])
-        a, b = np.linalg.solve(A, rhs)
+        try:
+            a, b = np.linalg.solve(A, rhs)
+            if np.isnan(a) or np.isnan(b):
+                a = (np.sum(W * y) + RIDGE_A * a0) / (np.sum(W) + RIDGE_A)
+                b = 0.0
+        except np.linalg.LinAlgError:
+            a = (np.sum(W * y) + RIDGE_A * a0) / (np.sum(W) + RIDGE_A)
+            b = 0.0
         out[team] = (float(a), float(b))
     return out, a0
 
@@ -347,7 +354,14 @@ def fit_team_race(drivers, xmap, now, use_track=True):
             continue
         A = np.array([[np.sum(W) + RIDGE_A, np.sum(W * x)], [np.sum(W * x), np.sum(W * x * x) + RIDGE_B]])
         rhs = np.array([np.sum(W * y) + RIDGE_A * c0, np.sum(W * x * y)])
-        c, dd = np.linalg.solve(A, rhs)
+        try:
+            c, dd = np.linalg.solve(A, rhs)
+            if np.isnan(c) or np.isnan(dd):
+                c = (np.sum(W * y) + RIDGE_A * c0) / (np.sum(W) + RIDGE_A)
+                dd = 0.0
+        except np.linalg.LinAlgError:
+            c = (np.sum(W * y) + RIDGE_A * c0) / (np.sum(W) + RIDGE_A)
+            dd = 0.0
         out[team] = (float(c), float(dd))
     return out, c0
 
