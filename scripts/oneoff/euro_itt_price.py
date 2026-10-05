@@ -43,9 +43,13 @@ FULL = {"Soderqvist": "jakob soderqvist", "Roglic": "primoz roglic", "Armirail":
         "Bjerg": "mikkel bjerg", "Tratnik": "jan tratnik", "Oliveira": "nelson oliveira",
         "De Pestel": "sander de pestel", "Frigo": "marco frigo", "Pelikan": "janos pelikan",
         "Kockelmann": "mathieu kockelmann", "Bax": "sjoerd bax"}
-DEFAULT = dict(half_life=365.0, flat_weight=0.5, weak_weight=1.0, noise_scale=1.0, incident_scale=1.0)
+DEFAULT = dict(half_life=365.0, flat_weight=0.5, weak_weight=1.0, noise_scale=1.0, incident_scale=1.0,
+               climb_scale=0.0, climb_prior=5.0)
 GRID = dict(half_life=[240.0, 365.0, 730.0], flat_weight=[0.5, 1.0], weak_weight=[0.15, 0.4, 1.0],
-            noise_scale=[0.6, 0.75, 0.9, 1.0, 1.15], incident_scale=[0.3, 1.0])
+            noise_scale=[0.6, 0.75, 0.9, 1.0, 1.15], incident_scale=[0.3, 1.0], climb_scale=[0.0],
+            climb_prior=[5.0])
+# --climb: the calibrated base (calibration.csv's best row) x these climbing-term settings
+CLIMB_GRID = dict(climb_scale=[0.0, 0.5, 1.0, 1.5, 2.0], climb_prior=[2.0, 5.0, 15.0])
 
 
 def fold(s):
@@ -83,19 +87,43 @@ def to_raw(df):
         event_id=d["race"].astype(str), event_date=pd.to_datetime(d["date"]).dt.strftime("%Y-%m-%d"),
         round="final", category=cat, sector_id="FINISH", status=d["status"],
         cum_time_s=t.where(d["status"] == "OK"), rider_id=d["rider_url"], rider_name=d["rider"],
-        rank_at_split=pd.to_numeric(d["position"], errors="coerce")))
+        rank_at_split=pd.to_numeric(d["position"], errors="coerce"),
+        vpk=vpk.fillna(vpk.median())))
 
 
 def fit(raw, s):
     cw = {"ME": 1.0, "MF": s["flat_weight"], "WH": s["weak_weight"], "WF": s["flat_weight"] * s["weak_weight"]}
     strong = raw[raw["category"].isin(["ME", "MF"])]
     pool = "ME" if (strong["category"] == "ME").sum() >= 200 else "MF"
-    return TM.fit_season_model(raw, category=pool, half_life_days=s["half_life"], category_weights=cw)
+    m = TM.fit_season_model(raw, category=pool, half_life_days=s["half_life"], category_weights=cw)
+    m["beta"], m["x0"] = climb_slopes(raw, m, cw, s)
+    return m
 
 
-def simulate(m, riders, n, seed, s):
+def climb_slopes(raw, m, cw, s):
+    """Per-rider climbing term: the slope of a rider's residual log time (after race effect and pace) on the
+    course's climbing in m/km, weighted like the fit (course x field x recency) and shrunk toward 0 by
+    climb_prior races' worth of typical course spread. Incident runs (4%+ slow) are left out."""
+    ok = raw[(raw["status"] == "OK") & (raw["cum_time_s"] > 0)].copy()
+    ok["y"] = np.log(ok["cum_time_s"])
+    ok["mu"] = ok["rider_id"].map(m["mu"]).fillna(0.0)
+    ok["e"] = ok["y"] - ok["event_id"].map((ok["y"] - ok["mu"]).groupby(ok["event_id"]).median()) - ok["mu"]
+    ok = ok[ok["e"] < TM.INCIDENT_THRESHOLD]
+    age = (pd.to_datetime(ok["event_date"]).max() - pd.to_datetime(ok["event_date"])).dt.days
+    w = ok["category"].map(cw).fillna(1.0) * 0.5 ** (age / s["half_life"])
+    x0 = float((w * ok["vpk"]).sum() / w.sum())
+    x = ok["vpk"] - x0
+    var_x = float((w * x * x).sum() / w.sum())
+    num = (w * ok["e"] * x).groupby(ok["rider_id"]).sum()
+    den = (w * x * x).groupby(ok["rider_id"]).sum() + s["climb_prior"] * var_x
+    return num / den, x0
+
+
+def simulate(m, riders, n, seed, s, vpk=None):
     rng = np.random.default_rng(seed)
     mu = m["mu"].reindex(riders).fillna(m["mu_new"]).to_numpy()
+    if vpk is not None and s["climb_scale"]:
+        mu = mu + s["climb_scale"] * m["beta"].reindex(riders).fillna(0.0).to_numpy() * (vpk - m["x0"])
     p_inc = s["incident_scale"] * m["p_inc"].reindex(riders).fillna(m["p0"]).to_numpy()
     k = len(riders)
     noise = s["noise_scale"] * np.hypot(m["tau"], m["sigma"])
@@ -124,14 +152,15 @@ BACKTEST_FROM = "2021-01-01"
 
 def target_races(raw):
     ok = raw[raw["status"] == "OK"]
-    r = ok.groupby("event_id").agg(date=("event_date", "min"), n=("rider_id", "size"), cat=("category", "first"))
+    r = ok.groupby("event_id").agg(date=("event_date", "min"), n=("rider_id", "size"), cat=("category", "first"),
+                                   vpk=("vpk", "first"))
     return r[(r["date"] >= BACKTEST_FROM) & (r["n"] >= 30) & r["cat"].isin(["ME", "MF"])].sort_values("date")
 
 
 def backtest(raw, settings, n_sims=2000, log_every=300):
     """Walk-forward scores for each setting in `settings`. Fits are shared across the simulation-only settings."""
     races = target_races(raw)
-    fit_keys = ("half_life", "flat_weight", "weak_weight")
+    fit_keys = ("half_life", "flat_weight", "weak_weight", "climb_prior")
     rows, t0, last = [], time.time(), time.time()
     groups = {}
     for s in settings:
@@ -147,9 +176,9 @@ def backtest(raw, settings, n_sims=2000, log_every=300):
             m = fit(train, ss[0])
             tgt = raw[(raw["event_id"] == ev) & (raw["status"] == "OK")].sort_values("rank_at_split")
             for s in ss:
-                t = simulate(m, tgt["rider_id"].tolist(), n_sims, 11, s)
+                t = simulate(m, tgt["rider_id"].tolist(), n_sims, 11, s, vpk=r["vpk"])
                 rows.append(dict(**s, race=ev, date=r["date"], field=len(tgt), winner=tgt["rider_name"].iloc[0],
-                                 **score(t)))
+                                 hilly=r["vpk"] >= HILLY_M_PER_KM, **score(t)))
             if time.time() - last > log_every:
                 last = time.time()
                 print(f"progress backtest: {(time.time() - t0) / 60:.0f} min elapsed · fit {done} of {total}",
@@ -159,6 +188,8 @@ def backtest(raw, settings, n_sims=2000, log_every=300):
 
 def summarize(bt):
     keys = list(DEFAULT)
+    if bt.empty:
+        return pd.DataFrame(columns=keys + ["races", "win_ll", "pair_ll", "rank"])
     g = bt.groupby(keys).agg(races=("race", "size"), win_ll=("win_ll", "mean"), pair_ll=("pair_ll", "mean"),
                              fav_p=("fav_p", "mean"), fav_won=("fav_won", "mean"),
                              p_winner=("p_winner", "mean")).reset_index()
@@ -170,7 +201,7 @@ def price(raw, res, start, ids, s, sims, out, tag):
     m = fit(raw, s)
     on_list = set(start["rider_url"])
     field = list(dict.fromkeys(list(start["rider_url"]) + [ids[k] for k in BOOK if k in ids]))
-    t = simulate(m, field, sims, 7, s)
+    t = simulate(m, field, sims, 7, s, vpk=EURO_M_PER_KM)
     rk = ranks(t)
     col = {u: j for j, u in enumerate(field)}
     nres = raw[raw["status"] == "OK"].groupby("rider_id").size()
@@ -185,7 +216,9 @@ def price(raw, res, start, ids, s, sims, out, tag):
         p = (rk[:, j] == 1).mean()
         o = FUTURES.get(k)
         fut.append(dict(rider=k, results=int(nres.get(ids[k], 0)), on_start_list=ids[k] in on_list,
-                        pace_pct=100 * (np.exp(m["mu"].get(ids[k], m["mu_new"])) - 1), win_p=p,
+                        pace_pct=100 * (np.exp(m["mu"].get(ids[k], m["mu_new"])) - 1),
+                        climb_pct=100 * s["climb_scale"] * m["beta"].get(ids[k], 0.0) * (EURO_M_PER_KM - m["x0"]),
+                        win_p=p,
                         fair=1 / p if p else np.inf, book=o, edge=p * o - 1 if o else np.nan,
                         top3_p=(rk[:, j] <= 3).mean()))
     fut = pd.DataFrame(fut).sort_values("win_p", ascending=False)
@@ -214,6 +247,8 @@ def main():
     ap.add_argument("--sims", type=int, default=50000)
     ap.add_argument("--calibrate", action="store_true", help="grid-search the settings walk-forward, then price")
     ap.add_argument("--no-backtest", action="store_true")
+    ap.add_argument("--climb", action="store_true",
+                    help="start from calibration.csv's best row and grid-search the climbing term, then price")
     ap.add_argument("--backtest-from", default=BACKTEST_FROM)
     a = ap.parse_args()
     globals()["BACKTEST_FROM"] = a.backtest_from
@@ -255,6 +290,27 @@ def main():
         print("\nprevious default:")
         print(base.to_string(index=False, float_format="%.3f"))
         chosen = {k: float(summ.iloc[0][k]) for k in DEFAULT}
+    elif a.climb:
+        cal = pd.read_csv(out / "calibration.csv").iloc[0]
+        base = {k: float(cal[k]) if k in cal else DEFAULT[k] for k in DEFAULT}
+        grid = [{**base, **dict(zip(CLIMB_GRID, v))} for v in itertools.product(*CLIMB_GRID.values())]
+        print(f"\nclimbing term: base {base}\nsearching {len(grid)} settings ...", flush=True)
+        bt = backtest(raw, grid)
+        bt.to_csv(out / "climb_races.csv", index=False)
+        allr, hill = summarize(bt), summarize(bt[bt["hilly"]])
+        both = allr.merge(hill, on=list(DEFAULT), suffixes=("", "_hilly"))
+        both["rank_both"] = (both["rank"] + both["rank_hilly"]) / 2
+        both = both.sort_values("rank_both")
+        both.to_csv(out / "climb.csv", index=False)
+        cols = ["climb_scale", "climb_prior", "races", "win_ll", "pair_ll", "races_hilly", "win_ll_hilly",
+                "pair_ll_hilly", "rank_both"]
+        print(f"\nCLIMB (all races, then hilly races only, {HILLY_M_PER_KM:.0f}+ m/km; lower is better; "
+              "climb_scale 0 = no climbing term)")
+        print(both[cols].to_string(index=False, float_format="%.3f"))
+        chosen = {k: float(both.iloc[0][k]) for k in DEFAULT}
+        if chosen["climb_scale"]:
+            price(raw, res, start, ids, chosen, a.sims, out, "climb")
+        chosen = {**base, "climb_scale": 0.0}
     elif not a.no_backtest:
         summ = summarize(backtest(raw, [chosen]))
         print("\nBACKTEST")
