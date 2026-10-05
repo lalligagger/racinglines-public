@@ -255,3 +255,33 @@ long-shot podium markets reading ~0.5 (a one-sided book) against Kalshi's 0.5 to
 would have shown as a spread, not a price.
 
 **Taker prices (2026-10-05).** A Kalshi taker in the sweep, the Lab and live signals buys at the ask and sells at the bid: the recorded order book when a snapshot is at most 10 minutes old, else the hourly candle's closing quote (`venue_replay.Kalshi.quote`), else the last trade ± cost as before. Taker results on this page from before that date used the last trade. See the [F1 roadmap decision log](f1-roadmap.md#decision-log); `racinglines markets --exchange kalshi coverage` shows how much stored history carries a quote.
+
+### First taker results at the touch (2026-10-05)
+
+The first Kalshi taker sweep worth reading: before bid/ask candles were stored, the taker replay traded at the last
+trade and wasn't usable. Run on the VM at `7ba8fd0` (PR #55's merge) with `racinglines f1 sweep --year <year>
+--venue kalshi --no-fetch`, baseline settings, nothing saved.
+
+Stored history behind it (`racinglines markets --exchange kalshi coverage`): 3,855 markets, 600,409 price rows from
+2025-02-12 to 2026-10-05, 319,700 with both bid and ask. 12,390 of those (3.9%) have a last trade outside the
+closing quote, 745 by more than 5¢.
+
+| Season | `update` | `hold` | `last` | `early` | maker (baseline) |
+|---|---:|---:|---:|---:|---:|
+| 2026, 15 weekends | **+$1,391.65** ($9,842, 5 up) | −$162.45 ($6,425, 7 up) | +$523.32 ($1,921, 4 up) | +$1,602.06 ($8,013, 6 up) | −$870.68 ($12,394, 7 up) |
+| 2025, 24 weekends | **+$1,167.41** ($7,224, 6 up) | +$847.29 ($5,225, 8 up) | +$1,823.86 ($1,938, 5 up) | −$1,191.17 ($5,460, 4 up) | −$186.79 ($13,262, 9 up) |
+
+P&L (amount traded, weekends up). Maker variants: 2026 flat −$866.48, skew −$834.91, widen −$608.82, all −$585.38;
+2025 flat −$1,109.88, skew +$59.71, widen −$80.03, all −$727.25. The maker fills on Kalshi's tape, so PR #55
+doesn't change these.
+
+**What this does and doesn't show.**
+
+- `update` is the only taker mode up in both seasons, and by more than the ±$400 noise floor measured for it on
+  Polymarket. `early` and `hold` flip sign between seasons, so they say nothing yet.
+- The wins are concentrated: `update` was up on 5 of 15 weekends in 2026 and 6 of 24 in 2025. A couple of weekends
+  carry most of the result. The per-weekend tables are in the run's journal, not on this page.
+- These are baseline settings at the default simulation count, not profile A at 16k, so they aren't comparable
+  with the Polymarket taker figures (A: +$1,389 / +$1,432 at 16k).
+- Every fill here is at a candle's closing quote. Recorded books start on 2026-09-30, after round 15, so no weekend in
+  either sweep used one. An hourly close can be up to an hour older than the stage it fills.
