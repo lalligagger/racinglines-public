@@ -285,3 +285,24 @@ doesn't change these.
   with the Polymarket taker figures (A: +$1,389 / +$1,432 at 16k).
 - Every fill here is at a candle's closing quote. Recorded books start on 2026-09-30, after round 15, so no weekend in
   either sweep used one. An hourly close can be up to an hour older than the stage it fills.
+
+### Profile A on Kalshi at 16k (2026-10-05)
+
+Profile A's own settings (`--variant gridq+pretrain+reset`, `--min-edge 0.10 --min-edge-h2h 0.05`, live stages only,
+`--sims 16000`), as behind its Polymarket figures, on Kalshi at the touch. Run on the VM at `38591d8`, `--no-fetch`,
+nothing saved; logs and CSVs in `data/runs/f1/sweeps/kalshi-a16k-<year>*` on the VM (backup before it:
+`racinglines-before-kalshi-profile-a-16k-20261005T223203Z.sql.gz`, since priced stages are stored).
+
+| Season | `update` (A) | Without the best weekend | Without the best two | Polymarket, A at 16k |
+|---|---:|---:|---:|---:|
+| 2026 | **+$2,332.44** on $5,972, 8 of 16 up | +$930.98 | **−$117.18** | +$1,389 |
+| 2025 | **+$1,256.67** on $5,010, 5 of 24 up | −$67.76 | **−$1,024.76** | +$1,432 |
+
+Best weekends: 2026 Australia +$1,401.46 (on $290 traded) and Britain +$1,048.16; 2025 the Netherlands +$1,324.43
+and Azerbaijan +$957.00. By market, podium carries it in both seasons (+$1,607.67 / +$1,638.51); win is +$458.13 in
+2026 and −$340.73 in 2025. The other modes: `hold` +$1,725.96 / +$1,084.90, `last` +$926.40 / +$1,955.95, `early`
++$1,677.89 / −$671.70. 2025 rounds 1–4 have nothing tradeable on Kalshi.
+
+**Verdict: no Kalshi taker edge shown yet.** The totals beat A on Polymarket in 2026, but in both seasons two
+weekends make more than the whole result, and the rest lose money. That is a few long-shot podium hits, not a steady
+edge at the touch. Nothing changes: no Kalshi taker profile, and A stays a Polymarket profile.

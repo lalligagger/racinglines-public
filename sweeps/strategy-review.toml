@@ -1,0 +1,785 @@
+# Strategy review (2026-10-05, owner's ask in the "Kalshi bid/ask" project thread): every F1 strategy identified so
+# far, on Polymarket and on Kalshi at the touch, both seasons, at 16,000 simulations; plus rolling Kelly sizing on a
+# $10,000 bankroll and the every-kind variant (adds Kalshi's top 10). One job per distinct settings set: a job runs
+# all four takers and five makers, so T8 / T9 are the `early` rows of the T1 / T7 jobs, M1 the baseline's maker row,
+# and TB (half T1, half T8) is read off those two. Plan: project files strategy-review/2026-10-05-all-strategies-plan.md.
+# Writes only analysis records: stage runs (each priced once and reused) and one saved sweep run per job, which the
+# report reads. No data fetch. Back up first (see the handoff).
+#
+#   racinglines f1 search sweeps/strategy-review.toml
+#   racinglines f1 search-report sweeps/strategy-review.toml
+
+[search]
+name = "strategy-review"
+parallel = 4
+grid = 8
+history_cache = true
+hours = 14.0
+grace_minutes = 30
+
+[report]
+target = 2026
+holdout = [2025]
+rank_sims = 16000
+confirm_sims = 16000
+top = 80
+
+# --- profiles --------------------------------------------------------------------------------------------
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "T1 = A (update) and T8 (its early row), polymarket"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "T1 = A (update) and T8 (its early row), polymarket"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "T1 = A (update) and T8 (its early row), kalshi"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "T1 = A (update) and T8 (its early row), kalshi"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+coherence_tol_by_kind = "race_podium=0.35"
+note = "T7 (update) and T9 (its early row), polymarket"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+coherence_tol_by_kind = "race_podium=0.35"
+note = "T7 (update) and T9 (its early row), polymarket"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+coherence_tol_by_kind = "race_podium=0.35"
+note = "T7 (update) and T9 (its early row), kalshi"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+coherence_tol_by_kind = "race_podium=0.35"
+note = "T7 (update) and T9 (its early row), kalshi"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+note = "T2, polymarket"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+note = "T2, polymarket"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+note = "T2, kalshi"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+note = "T2, kalshi"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gridq+pretrain"
+min_edge = 0.1
+note = "T3, polymarket"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gridq+pretrain"
+min_edge = 0.1
+note = "T3, polymarket"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain"
+min_edge = 0.1
+note = "T3, kalshi"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain"
+min_edge = 0.1
+note = "T3, kalshi"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gbm"
+min_edge = 0.1
+note = "T4, polymarket"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gbm"
+min_edge = 0.1
+note = "T4, polymarket"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+sims = 16000
+variant = "gbm"
+min_edge = 0.1
+note = "T4, kalshi"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+sims = 16000
+variant = "gbm"
+min_edge = 0.1
+note = "T4, kalshi"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.08
+note = "T5, polymarket"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.08
+note = "T5, polymarket"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.08
+note = "T5, kalshi"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.08
+note = "T5, kalshi"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+min_volume_24h = 200
+note = "T6, polymarket"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+min_volume_24h = 200
+note = "T6, polymarket"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+min_volume_24h = 200
+note = "T6, kalshi"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+min_volume_24h = 200
+note = "T6, kalshi"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "baseline"
+min_edge = 0.1
+note = "T10, polymarket"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "baseline"
+min_edge = 0.1
+note = "T10, polymarket"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+sims = 16000
+variant = "baseline"
+min_edge = 0.1
+note = "T10, kalshi"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+sims = 16000
+variant = "baseline"
+min_edge = 0.1
+note = "T10, kalshi"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gbm"
+max_disagree = 0.05
+size = 25
+note = "maker C, polymarket"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gbm"
+max_disagree = 0.05
+size = 25
+note = "maker C, polymarket"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+sims = 16000
+variant = "gbm"
+max_disagree = 0.05
+size = 25
+note = "maker C, kalshi"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+sims = 16000
+variant = "gbm"
+max_disagree = 0.05
+size = 25
+note = "maker C, kalshi"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gridq+pretrain"
+max_disagree = 0.1
+note = "maker M2, polymarket"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gridq+pretrain"
+max_disagree = 0.1
+note = "maker M2, polymarket"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain"
+max_disagree = 0.1
+note = "maker M2, kalshi"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain"
+max_disagree = 0.1
+note = "maker M2, kalshi"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gbm"
+max_disagree = 0.07
+note = "maker M3, polymarket"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gbm"
+max_disagree = 0.07
+note = "maker M3, polymarket"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+sims = 16000
+variant = "gbm"
+max_disagree = 0.07
+note = "maker M3, kalshi"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+sims = 16000
+variant = "gbm"
+max_disagree = 0.07
+note = "maker M3, kalshi"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gbm"
+max_disagree = 0.1
+size = 25
+maker_min_volume_24h = 400
+note = "maker K, polymarket"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gbm"
+max_disagree = 0.1
+size = 25
+maker_min_volume_24h = 400
+note = "maker K, polymarket"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+sims = 16000
+variant = "gbm"
+max_disagree = 0.1
+size = 25
+maker_min_volume_24h = 400
+note = "maker K, kalshi"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+sims = 16000
+variant = "gbm"
+max_disagree = 0.1
+size = 25
+maker_min_volume_24h = 400
+note = "maker K, kalshi"
+
+[[job]]
+year = 2026
+sims = 16000
+note = "baseline at 16k (M1 = its maker row, the default taker its update row), polymarket"
+
+[[job]]
+year = 2025
+sims = 16000
+note = "baseline at 16k (M1 = its maker row, the default taker its update row), polymarket"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+sims = 16000
+note = "baseline at 16k (M1 = its maker row, the default taker its update row), kalshi"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+sims = 16000
+note = "baseline at 16k (M1 = its maker row, the default taker its update row), kalshi"
+
+# --- Kelly sizing on $10,000 -----------------------------------------------------------------------------
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+kelly = 0.5
+bankroll = 10000
+max_stake = 500
+max_deployed = 2500
+note = "half-Kelly T1/T8, polymarket"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+kelly = 0.5
+bankroll = 10000
+max_stake = 500
+max_deployed = 2500
+note = "half-Kelly T1/T8, polymarket"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+kelly = 0.5
+bankroll = 10000
+max_stake = 500
+max_deployed = 2500
+note = "half-Kelly T1/T8, kalshi"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+kelly = 0.5
+bankroll = 10000
+max_stake = 500
+max_deployed = 2500
+note = "half-Kelly T1/T8, kalshi"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+coherence_tol_by_kind = "race_podium=0.35"
+kelly = 0.5
+bankroll = 10000
+max_stake = 500
+max_deployed = 2500
+note = "half-Kelly T7/T9, polymarket"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+coherence_tol_by_kind = "race_podium=0.35"
+kelly = 0.5
+bankroll = 10000
+max_stake = 500
+max_deployed = 2500
+note = "half-Kelly T7/T9, polymarket"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+coherence_tol_by_kind = "race_podium=0.35"
+kelly = 0.5
+bankroll = 10000
+max_stake = 500
+max_deployed = 2500
+note = "half-Kelly T7/T9, kalshi"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+coherence_tol_by_kind = "race_podium=0.35"
+kelly = 0.5
+bankroll = 10000
+max_stake = 500
+max_deployed = 2500
+note = "half-Kelly T7/T9, kalshi"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+min_volume_24h = 200
+kelly = 0.5
+bankroll = 10000
+max_stake = 500
+max_deployed = 2500
+note = "half-Kelly T6, polymarket"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+min_volume_24h = 200
+kelly = 0.5
+bankroll = 10000
+max_stake = 500
+max_deployed = 2500
+note = "half-Kelly T6, polymarket"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+min_volume_24h = 200
+kelly = 0.5
+bankroll = 10000
+max_stake = 500
+max_deployed = 2500
+note = "half-Kelly T6, kalshi"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+min_volume_24h = 200
+kelly = 0.5
+bankroll = 10000
+max_stake = 500
+max_deployed = 2500
+note = "half-Kelly T6, kalshi"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+kelly = 0.25
+bankroll = 10000
+max_stake = 500
+max_deployed = 2500
+note = "quarter-Kelly T1/T8, polymarket"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+kelly = 0.25
+bankroll = 10000
+max_stake = 500
+max_deployed = 2500
+note = "quarter-Kelly T1/T8, polymarket"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+kelly = 0.25
+bankroll = 10000
+max_stake = 500
+max_deployed = 2500
+note = "quarter-Kelly T1/T8, kalshi"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+kelly = 0.25
+bankroll = 10000
+max_stake = 500
+max_deployed = 2500
+note = "quarter-Kelly T1/T8, kalshi"
+
+# --- every market kind -----------------------------------------------------------------------------------
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+market_kinds = "race_win,race_podium,race_h2h,race_constructor_top,race_pole,race_top10"
+note = "T1/T8, every kind (adds top 10), polymarket"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+market_kinds = "race_win,race_podium,race_h2h,race_constructor_top,race_pole,race_top10"
+note = "T1/T8, every kind (adds top 10), polymarket"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+market_kinds = "race_win,race_podium,race_h2h,race_constructor_top,race_pole,race_top10"
+note = "T1/T8, every kind (adds top 10), kalshi"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+market_kinds = "race_win,race_podium,race_h2h,race_constructor_top,race_pole,race_top10"
+note = "T1/T8, every kind (adds top 10), kalshi"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+kelly = 0.5
+market_kinds = "race_win,race_podium,race_h2h,race_constructor_top,race_pole,race_top10"
+bankroll = 10000
+max_stake = 500
+max_deployed = 2500
+note = "half-Kelly T1/T8, every kind, polymarket"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+kelly = 0.5
+market_kinds = "race_win,race_podium,race_h2h,race_constructor_top,race_pole,race_top10"
+bankroll = 10000
+max_stake = 500
+max_deployed = 2500
+note = "half-Kelly T1/T8, every kind, polymarket"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+kelly = 0.5
+market_kinds = "race_win,race_podium,race_h2h,race_constructor_top,race_pole,race_top10"
+bankroll = 10000
+max_stake = 500
+max_deployed = 2500
+note = "half-Kelly T1/T8, every kind, kalshi"
+
+[[job]]
+year = 2025
+venue = "kalshi"
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+kelly = 0.5
+market_kinds = "race_win,race_podium,race_h2h,race_constructor_top,race_pole,race_top10"
+bankroll = 10000
+max_stake = 500
+max_deployed = 2500
+note = "half-Kelly T1/T8, every kind, kalshi"

@@ -482,7 +482,10 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
                           min_edge_by_kind=tuple(SS.parse_map(st["min_edge_by_kind"]).items()),
                           stages=None if st["taker_stages"] == SS.STAGES else st["taker_stages"],
                           max_deployed=st["max_deployed"], thin_edge_mult=st["thin_edge_mult"],
+                          kelly=st["kelly"], bankroll=st["bankroll"] if st["kelly"] is not None else None,
                           taker_fee=taker_fee(SS.venue_of(st)))
+    if st["kelly"] is not None and st["bankroll"] is None:
+        raise ValueError("kelly sizing needs a bankroll (the `bankroll` setting)")
     params_list = [RB.TakerParams(**{**base.__dict__, "mode": m}) for m in TAKER_MODES]
     balance = {m: st["bankroll"] for m in TAKER_MODES}     # bankroll-aware sizing: each mode's balance
     rows, all_trades, all_scores, all_calib = [], [], [], []
@@ -547,7 +550,7 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
                 scores=score_stage, calibration=pd.concat([cal_all.assign(stage="all"), cal_stage], ignore_index=True),
                 reliability=rel,
                 params=dict({k: v for k, v in base.__dict__.items() if k != "stages" and not
-                             (k in ("scale", "max_deployed", "min_edge_by_kind", "thin_edge_mult") and v == RB.TakerParams.__dataclass_fields__[k].default)},
+                             (k in ("scale", "max_deployed", "min_edge_by_kind", "thin_edge_mult", "kelly", "bankroll") and v == RB.TakerParams.__dataclass_fields__[k].default)},
                             n_sims=st["sims"],
                             variant=st["variant"], data_lag_min=DATA_LAG.seconds // 60,
                             min_volume_24h=st["min_volume_24h"], coherence_tol=COHERENCE_TOL,
