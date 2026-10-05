@@ -27,11 +27,14 @@ from racinglines.models.timed_runs import model as TM
 
 FUTURES = {"Soderqvist": 2.38, "Roglic": 2.75, "Armirail": 13, "Kung": 13, "Romeo": 13, "Decomble": 13,
            "Van Wilder": 21, "Schmid": 23, "Vacek": 26, "Cattaneo": 26, "Asgreen": 34, "Thornley": 41,
-           "Hayter": 67, "Bjerg": 81, "Tratnik": 101, "Oliveira": 126}
+           "Hayter": 67, "Bjerg": 81, "Tratnik": 101, "Oliveira": 126, "Frigo": 201, "Bax": 201,
+           "Antunes": 401, "De Pestel": 401, "Van der Tuuk": 501, "Pelikan": 1001, "Kasko": 1001,
+           "Kockelmann": 1001}
 MATCHUPS = [("Thornley", 1.85, "Bjerg", 1.85), ("Cattaneo", 2.35, "Armirail", 1.53),
             ("De Pestel", 2.25, "Frigo", 1.57), ("Tratnik", 2.45, "Schmid", 1.47),
             ("Romeo", 1.47, "Van Wilder", 2.45), ("Pelikan", 1.85, "Kockelmann", 1.85),
-            ("Bax", 2.25, "Oliveira", 1.57)]
+            ("Bax", 2.25, "Oliveira", 1.57), ("Kung", 1.29, "Asgreen", 3.30), ("Decomble", 1.29, "Hayter", 3.30),
+            ("Van der Tuuk", 2.25, "Antunes", 1.57)]
 BOOK = sorted(set(FUTURES) | {r for m in MATCHUPS for r in (m[0], m[2])})
 EURO_M_PER_KM = 367 / 22.1
 HILLY_M_PER_KM = 8.0
@@ -42,7 +45,8 @@ FULL = {"Soderqvist": "jakob soderqvist", "Roglic": "primoz roglic", "Armirail":
         "Asgreen": "kasper asgreen", "Thornley": "callum thornley", "Hayter": "ethan hayter",
         "Bjerg": "mikkel bjerg", "Tratnik": "jan tratnik", "Oliveira": "nelson oliveira",
         "De Pestel": "sander de pestel", "Frigo": "marco frigo", "Pelikan": "janos pelikan",
-        "Kockelmann": "mathieu kockelmann", "Bax": "sjoerd bax"}
+        "Kockelmann": "mathieu kockelmann", "Bax": "sjoerd bax", "Van der Tuuk": "axel van der tuuk",
+        "Antunes": "tiago antunes", "Kasko": "david kasko"}
 DEFAULT = dict(half_life=365.0, flat_weight=0.5, weak_weight=1.0, noise_scale=1.0, incident_scale=1.0,
                climb_scale=0.0, climb_prior=5.0)
 GRID = dict(half_life=[240.0, 365.0, 730.0], flat_weight=[0.5, 1.0], weak_weight=[0.15, 0.4, 1.0],
@@ -239,6 +243,31 @@ def price(raw, res, start, ids, s, sims, out, tag):
     mu.to_csv(out / f"matchups_{tag}.csv", index=False)
     print("MATCHUPS")
     print(mu.to_string(index=False, float_format="%.3f"))
+    stakes(fut, mu, out, tag)
+
+
+BANKROLL = 100.0
+
+
+def stakes(fut, mu, out, tag):
+    """Half-Kelly stake on every positive-edge line, on BANKROLL. Each bet is sized on its own; futures are
+    mutually exclusive, so their total is checked against half-Kelly on the futures book as a whole."""
+    bets = [dict(bet=f"{r.rider} to win", odds=r.book, p=r.win_p, results=r.results)
+            for r in fut.itertuples() if r.book == r.book]
+    for r in mu.itertuples():
+        bets.append(dict(bet=f"{r.a} over {r.b}", odds=r.a_odds, p=r.a_p, results=min(r.a_results, r.b_results)))
+        bets.append(dict(bet=f"{r.b} over {r.a}", odds=r.b_odds, p=r.b_p, results=min(r.a_results, r.b_results)))
+    b = pd.DataFrame(bets)
+    b["edge"] = b["p"] * b["odds"] - 1
+    b = b[b["edge"] > 0].copy()
+    b["half_kelly_pct"] = 50 * b["edge"] / (b["odds"] - 1)
+    b["stake"] = (BANKROLL * b["half_kelly_pct"] / 100).round(2)
+    b["thin_data"] = b["results"] < 5
+    b = b.sort_values("stake", ascending=False)
+    b.to_csv(out / f"stakes_{tag}.csv", index=False)
+    print(f"STAKES (half-Kelly on ${BANKROLL:.0f}; thin_data = a rider with under 5 results)")
+    print(b.to_string(index=False, float_format="%.3f"))
+    print(f"total ${b['stake'].sum():.2f} · futures ${b.loc[b['bet'].str.endswith('to win'), 'stake'].sum():.2f}")
 
 
 def main():
@@ -253,8 +282,11 @@ def main():
     ap.add_argument("--climb", action="store_true",
                     help="start from calibration.csv's best row and grid-search the climbing term, then price")
     ap.add_argument("--backtest-from", default=BACKTEST_FROM)
+    ap.add_argument("--settings-from", help="price with the first row of this CSV (e.g. climb.csv) and no search")
+    ap.add_argument("--bankroll", type=float, default=BANKROLL)
     a = ap.parse_args()
     globals()["BACKTEST_FROM"] = a.backtest_from
+    globals()["BANKROLL"] = a.bankroll
 
     res = pd.read_csv(Path(a.data) / "itt_results_pcs.csv")
     start = pd.read_csv(Path(a.data) / "euro_itt_2026_startlist.csv")
@@ -280,6 +312,11 @@ def main():
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     chosen = {k: getattr(a, k) for k in DEFAULT}
+    if a.settings_from:
+        row = pd.read_csv(a.settings_from).iloc[0]
+        chosen = {k: float(row[k]) if k in row else DEFAULT[k] for k in DEFAULT}
+        price(raw, res, start, ids, chosen, a.sims, out, "final")
+        return
     if a.calibrate:
         grid = [dict(zip(GRID, v)) for v in itertools.product(*GRID.values())]
         print(f"\ncalibrating {len(grid)} settings ...", flush=True)
