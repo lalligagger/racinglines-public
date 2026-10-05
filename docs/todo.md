@@ -245,9 +245,9 @@ venue with live F1 race markets this year.
 Phase [F1-8](f1-roadmap.md#f1-8-live-paper-trade-validation-polymarket), now on every venue that lists;
 how it works: [Paper trading](paper-trading.md). Recommendations and paper fills only; no order is placed.
 
-- [ ] **P0 · Freeze the profiles and pre-register the rules.** A and C (and K once U3 is done) are fixed
-      until 31 Dec, their settings and the date recorded in the [F1 roadmap](f1-roadmap.md#decision-log).
-      Any change makes a new profile with its own count. Rules:
+- [ ] **P0 · Pre-register the rules; profiles stay tunable (owner, 2026-10-05: no freezes).** A, C and K can
+      be re-tuned at any time. Each change is recorded with its date in the
+      [F1 roadmap](f1-roadmap.md#decision-log) and starts a new settings version with its own live count. Rules:
       [validation plan](paper-trading.md#validation-plan).
 - [ ] Run A (demo taker) and C (demo maker) live on every weekend Polymarket or Kalshi lists, through 2026
       and into 2027. Built and scheduled for Polymarket (the signal engine); Kalshi needs U1.
