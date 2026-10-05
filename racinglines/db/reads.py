@@ -29,13 +29,13 @@ def run_race_targets(conn, run_id):
     """Distinct prediction targets in a run, with event info when linked to a race."""
     return q(conn, """
         SELECT rp.target, rp.race_id, e.id AS event_id, e.name AS event_name, e.start_date, e.status,
-               v.name AS venue, count(*) AS n
+               v.name AS venue, e.source_key, count(*) AS n
         FROM race_predictions rp
         LEFT JOIN races ra ON ra.id = rp.race_id
         LEFT JOIN events e ON e.id = ra.event_id
         LEFT JOIN venues v ON v.id = e.venue_id
         WHERE rp.model_run_id = :run
-        GROUP BY 1, 2, 3, 4, 5, 6, 7
+        GROUP BY 1, 2, 3, 4, 5, 6, 7, 8
         ORDER BY e.start_date NULLS LAST, rp.target""", run=run_id)
 
 

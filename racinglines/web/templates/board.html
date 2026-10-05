@@ -23,7 +23,7 @@
   {% for u in s.upcoming %}
   <div class="ecard">
     <div><h3><a href="/races/{{ u.info.race_id }}">{{ u.info.title }}</a>{% if u.new %} <a href="/markets/polymarket?show=all&sport={{ s.code }}">{{ new_badge(u.new) }}</a>{% endif %}</h3>
-      <div class="when">{{ u.info.start_date|fmt }} · {% if u.info.status == 'in_progress' %}<span class="warn">in progress</span>{% else %}{{ u.countdown }}{% endif %}{% if loop.first and u.info.status != 'in_progress' %} · <b>next</b>{% endif %}</div></div>
+      <div class="when">{{ u.info.start_date|fmt }} · {% if u.info.status == 'completed' %}<span class="good">resolved</span>{% if u.winner %} · winner {{ u.winner }}{% endif %}{% elif u.info.status == 'in_progress' %}<span class="warn">in progress</span>{% else %}{{ u.countdown }}{% endif %}{% if u.next %} · <b>next</b>{% endif %}</div></div>
     {{ venue_chips(u.venues, u.mine) }}
     <div>{% for o in u.top %}<div class="pr"><span>{{ o.subject }}</span>{{ bar(o.fair, o.pm_mid, "", (o.venues.kalshi.mid if o.venues and o.venues.kalshi else none)) }}<span class="num">{{ pct(o.fair) }}</span></div>{% endfor %}
       <div class="legend">win probability{% if u.top and u.top[0].pm_mid is not none %} · <i class="sw-warn"></i>Polymarket{% endif %}</div></div>
@@ -42,9 +42,9 @@
   {% for u in s.upcoming %}
   <div class="ecard">
     <div><h3><a href="/races/{{ u.info.race_id }}">{{ u.info.title }}</a></h3>
-      <div class="when">{{ u.info.start_date|fmt }} · {{ u.countdown }}{% if loop.first %} · <b>next</b>{% endif %}</div></div>
+      <div class="when">{{ u.info.start_date|fmt }} · {% if u.info.status == 'completed' %}<span class="good">resolved</span>{% if u.winner %} · winner {{ u.winner }}{% endif %}{% else %}{{ u.countdown }}{% endif %}{% if u.next %} · <b>next</b>{% endif %}</div></div>
     {{ venue_chips(u.venues, u.mine) }}
-    <div class="legend">no fair price yet: the model prices this race once a forecast is stored</div>
+    {% if u.info.status != 'completed' %}<div class="legend">no fair price yet: the model prices this race once a forecast is stored</div>{% endif %}
     <div><a href="/races/{{ u.info.race_id }}">{{ u.outcomes }} outcomes →</a></div>
   </div>
   {% else %}<div class="ecard"><div class="legend">No upcoming race in the calendar.</div></div>{% endfor %}

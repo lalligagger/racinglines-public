@@ -3,7 +3,7 @@
 # Owner call 2026-10-01: T3 (private book) disabled — venue strategies (Kalshi, Polymarket) only.
 sport = "f1"
 event = "2026-16"
-title = "Bahrain GP in Malaysia (T1 only)"
+title = "Malaysia GP"
 
 # The window (UTC, from the FastF1 schedule): the book opens 2026-10-02T03:30:00, closes at lights out 2026-10-04T07:00:00,
 # and settles from the results (2026-10-04T10:00:00).
