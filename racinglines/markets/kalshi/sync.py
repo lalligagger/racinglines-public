@@ -410,17 +410,23 @@ def fetch_trades(session, conn, event_tickers=None, since=None, kc=None, sport=N
 
 
 def history_rows(ticker, candles):
-    """market_price_history rows from Kalshi candlesticks: the close of the YES price, else the bid/ask mid when
-    both sides quote. An empty side (0 bid / 1.00 ask, as _quote reads it) gives no price for the hour: a dead book's
-    mid is 0.50, not a price, and the replays' staleness rule covers the gap."""
+    """market_price_history rows from Kalshi candlesticks: stores the close of the YES price and bid/ask closes.
+    bid/ask are extracted from candlestick closes (not spiky last-trade prices). An empty side (0 bid / 1.00 ask,
+    as _quote reads it) is stored as None. The price field (last-trade close or bid/ask mid) is kept for
+    backward compatibility; new replay code uses bid/ask directly. Replays' staleness rule covers gaps when
+    both bid/ask are None."""
     rows = []
     for c in candles:
+        ts = datetime.fromtimestamp(int(c["end_period_ts"]), tz=timezone.utc)
+        bid = K.price(c.get("yes_bid") or {}, "close")
+        ask = K.price(c.get("yes_ask") or {}, "close")
+        bid = None if bid in (None, 0) else bid
+        ask = None if ask is None or ask >= 1.0 else ask
         p = K.price(c.get("price") or {}, "close")
         if p is None:
-            b, a = K.price(c.get("yes_bid") or {}, "close"), K.price(c.get("yes_ask") or {}, "close")
-            p = (b + a) / 2 if b and a is not None and a < 1.0 else None
-        if p is not None:
-            rows.append(dict(token_id=ticker, ts=datetime.fromtimestamp(int(c["end_period_ts"]), tz=timezone.utc), price=p))
+            p = (bid + ask) / 2 if bid is not None and ask is not None else None
+        if p is not None or (bid is not None or ask is not None):
+            rows.append(dict(token_id=ticker, ts=ts, price=p, bid=bid, ask=ask))
     return list({r["ts"]: r for r in rows}.values())       # one row per ts: an upsert can't touch a row twice
 
 
@@ -434,7 +440,10 @@ def fetch_history(session, conn, event_tickers, start, end, period=60, kc=None, 
         rows = history_rows(tok, kc.candlesticks(series, tok, start.timestamp(), end.timestamp(), period))
         if rows:
             session.execute(pg_insert(m.MarketPriceHistory).values(rows).on_conflict_do_update(
-                index_elements=["token_id", "ts"], set_={"price": pg_insert(m.MarketPriceHistory).excluded.price}))
+                index_elements=["token_id", "ts"],
+                set_={"price": pg_insert(m.MarketPriceHistory).excluded.price,
+                      "bid": pg_insert(m.MarketPriceHistory).excluded.bid,
+                      "ask": pg_insert(m.MarketPriceHistory).excluded.ask}))
         n += len(rows)
     session.commit()
     return n
