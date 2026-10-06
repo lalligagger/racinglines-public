@@ -134,8 +134,14 @@ the Lab; per-role read scoping is a later change if makers get tokens. Tools tha
 
 ### After every deploy
 
-`vm.sh deploy` restarts the unit only if it is running, after `update.sh` succeeds. When a deploy's output
-ends early, or `systemctl status racinglines-mcp` shows an "active since" older than the deploy, restart by
+`vm.sh deploy` restarts the unit only if it is running, after `update.sh` succeeds. The restart takes a few seconds:
+on SIGTERM the server waits at most 10 seconds (`SHUTDOWN_GRACE_SEC` in `racinglines/mcp/server.py`) for requests in
+flight, then cancels them, and the unit's `TimeoutStopSec=20` is systemd's margin above that. Before 2026-10-06 the
+wait had no limit, so a chat client's open event stream held every restart until systemd's 90-second default killed
+the process, and the connector answered 502 for those 90 seconds; a client that was connected reconnects on its own.
+If a restart still takes more than 20 seconds, `journalctl -u racinglines-mcp` names what it waited on.
+
+When a deploy's output ends early, or `systemctl status racinglines-mcp` shows an "active since" older than the deploy, restart by
 hand: `sudo systemctl restart racinglines-mcp`. The unit is off by default on a fresh VM and stays whatever
 you last set it to.
 
