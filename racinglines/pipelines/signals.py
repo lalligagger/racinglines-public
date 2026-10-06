@@ -351,7 +351,7 @@ def price_stages_now(meas, hist, w, st, engine, engine_url, now, echo=print):
                 summ, ex = run.price_race(meas, hist, cutoff, event_id, n_sims=st["sims"],
                                           rng=np.random.default_rng(st.rng_seed), use_track=st["track_features"],
                                           entrants=_entrants(meas, event_id, cutoff), venue=_venue(meas, event_id, w),
-                                          stages=_stages(w))
+                                          stages=_stages(w), event_key=w["event_key"])
             extra = dict(model_key=mk, data_key=dk, model_settings={n: st.to_json()[n] for n in SS.MODEL_NAMES},
                          live=not raced)
             if st["variant"] != "baseline":
@@ -724,7 +724,7 @@ def price_upcoming(engine, engine_url, profile, now=None, n=3, echo=print, cache
             event_id = int(ev["event_id"].iloc[0]) if len(ev) else None
             summ, ex = run.price_race(meas, hist, now, event_id, n_sims=st["sims"], rng=np.random.default_rng(st.rng_seed),
                                       use_track=st["track_features"], entrants=_entrants(meas, event_id, now),
-                                      venue=_venue(meas, event_id, w), stages=_stages(w))
+                                      venue=_venue(meas, event_id, w), stages=_stages(w), event_key=w["event_key"])
             extra = dict(model_key=st.model_key, data_key=dk, live=True,
                          model_settings={k: st.to_json()[k] for k in SS.MODEL_NAMES})
             if st["variant"] != "baseline":
