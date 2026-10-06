@@ -215,9 +215,10 @@ def test_global_model_walk_forwards_keep_their_settings_and_rerun_command(tmp_pa
 def test_without_best_two_and_shape():
     s, _ = R.curve_stats([500.0, 400.0, -100.0, -50.0], 24)
     assert s["pnl_without_best2"] == -150.0
-    assert R.shape([750.0, 300.0], [-150.0, 50.0]) == "long-shot"
+    assert R.shape([750.0, 300.0], [-150.0, 50.0]) == "concentrated"
     assert R.shape([750.0, 300.0], [10.0, 50.0]) == "steady"
-    assert R.shape([750.0, -30.0], [10.0, -90.0]) == "loses"
+    assert R.shape([750.0, -30.0], [10.0, -90.0]) == "mixed"
+    assert R.shape([-5.0, -30.0], [-90.0, -90.0]) == "losing"
     assert R.shape([750.0, None], [10.0, None]) == ""
 
 
@@ -231,5 +232,5 @@ def test_ranked_at_a_chosen_fidelity_with_shape():
     by = {(r["strategy"], r["settings_key"]): r for r in rank}
     lump = by[("update", SS.Settings.from_dict(dict(A, **hi)).key)]
     stead = by[("update", SS.Settings.from_dict(dict(min_edge=0.12, **hi)).key)]
-    assert lump["shape"] == "long-shot" and lump["without_best2_target"] == -200.0
+    assert lump["shape"] == "concentrated" and lump["without_best2_target"] == -200.0
     assert stead["shape"] == "steady" and stead["confirmed"] == ""
