@@ -113,6 +113,9 @@ rows are identical. It's promising but rests on one season. It needs a 2025 top-
 
 ## What this means for this weekend
 
+This is a fantasy season for comparing strategies, so every row above stays in previews and pick lists, risky ones
+included. The notes below say what the record supports, not what to leave out.
+
 - **Polymarket: trade A (T1) as is.** If sized off a bankroll, use quarter-Kelly with a cap the book can carry,
   not half-Kelly. T7 is a near twin of A (the podium coherence tolerance hardly matters). T8 and T9 earn more in
   2026 but are flat in 2025 once the best two weekends are removed.
