@@ -284,12 +284,13 @@ how it works: [Paper trading](paper-trading.md). Recommendations and paper fills
       and caps (half- and quarter-Kelly). It writes two tables per strategy: the markets it would pick (side,
       shares, cost) and every other modelled market with its skip reason, such as no edge, the volume
       filter or a cap. It must be read-only, with no orders and no database writes, and it marks
-      apparent-value trades that fail a filter as watchlist only. The first version is Copilot's draft
-      `strategy_preview.py` (Singapore, 2026-10-05: 4k sims, $1,000, $50 a market, $250 in total). Every
-      trade there was blocked by zero recorded 24-hour Polymarket volume, so the preview should also show
-      the venue's own 24-hour volume next to ours.
-      *Done when:* the script is in the repo as a CLI subcommand with tests, documented in `docs/cli.md`,
-      and runs on the VM for any stage run and any simulation count.
+      apparent-value trades that fail a filter as watchlist only. **First version (PR #64):**
+      `scripts/strategy_preview.py`, with tests and `docs/strategy-preview.md`. It's standalone
+      and read-only, works for any event and source run at 4k or 16k, and was first run on Singapore
+      2026-10-05 at $1,000, $50 a market and $250 in total. Every trade there was blocked by zero recorded
+      24-hour Polymarket volume, so the preview should also show the venue's own 24-hour volume next to ours.
+      *Done when:* it's a `racinglines f1` subcommand documented in `docs/cli.md`, and it shows the venue's
+      volume.
 - [ ] **P2 · Stale line in `docs/coverage.md`** (owner, 2026-10-05). Its summary says Polymarket has listed no F1
       race since 28 Aug 2026, but the Malaysia audit (round 16, 2026-10-04) linked 139 Polymarket tokens, titled
       "Bahrain Grand Prix". Check which recent rounds Polymarket listed and correct the summary and the grid.
