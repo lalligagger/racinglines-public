@@ -176,7 +176,7 @@ PREDICTION_COLUMNS = {
 }
 # every prediction kind a market can be linked to (see racinglines/markets/polymarket/sync.py): the one registry
 PREDICTION_KINDS = [c for c in K.KINDS]
-# F1 sprint weekends (Kalshi's sprint markets, RACINGLINES_KALSHI_SPRINTS=1): a run that simulates the sprint
+# F1 sprint weekends (Kalshi's sprint markets, on unless RACINGLINES_KALSHI_SPRINTS=0): a run that simulates the sprint
 # stores extra.sprint_pole_prob / sprint_win_prob; until then the sprint is priced as the model's race:
 # sprint pole from the qualifying-pace pole probability (SQ3 is the same session type), the sprint winner from
 # the race win probability (the season forecast already simulates sprints this way, with sprint points)
