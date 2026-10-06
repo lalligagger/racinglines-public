@@ -23,6 +23,9 @@ forecast API for the same models and `racinglines weather fetch --session race=.
     races(conn)                            props.history() plus each race's UTC start and venue slug
     backtest(hist, leads_df=None)          per race from February 2024: the realised wet / red / sc / n_dnf and the
                                            vote at each lead (from the leads CSV; default the committed fixture)
+    votes(leads_df)                        the leads CSV's per-model rows as one vote per race and lead
+    p_wet_series(hist, leads_df, lead)     walk-forward p_wet per race_id at one lead: the -WX checks' forecast
+                                           (racinglines f1 props --check / --dnf-check --forecast CSV --lead N)
     score(rows, hist, lead)                Brier and log loss of rain, red flag and safety car per method, and the
                                            DNF count (MAE, Poisson deviance) per method; the forecast-aware method is
                                            its base's name + "-WX" (wx_name: circuit-WX, climatology-WX)
@@ -126,10 +129,7 @@ def backtest(hist, leads_df=None, leads=LEADS, since=FIRST_ARCHIVED):
     """One row per race from `since` in both `hist` (races()) and `leads_df` (open_meteo.lead_rows' CSV; default
     the committed fixture): event_key, slug, start_utc, wet, red, sc, n_dnf, and per lead N: models_N, votes_N,
     max_mm_N (the vote of the runs issued N days before the race: models with max_hour_mm >= WET_MM)."""
-    ld = pd.read_csv(LEADS_FIXTURE) if leads_df is None else leads_df
-    ld = ld[ld["lead_days"].isin(leads)]
-    g = ld.assign(wet=ld["max_hour_mm"] >= WET_MM).groupby(["race_id", "lead_days"])
-    v = pd.DataFrame({"models": g.size(), "votes": g["wet"].sum(), "max_mm": g["max_hour_mm"].mean()}).reset_index()
+    v = votes(pd.read_csv(LEADS_FIXTURE) if leads_df is None else leads_df, leads)
     h = P.prepare(hist)
     h = h[pd.to_datetime(h["start"]) >= since]
     rows = []
@@ -145,6 +145,33 @@ def backtest(hist, leads_df=None, leads=LEADS, since=FIRST_ARCHIVED):
                         f"max_mm_{n}": float(x["max_mm"].iloc[0]) if len(x) else np.nan})
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+def votes(leads_df, leads=LEADS):
+    """The leads CSV's per-model rows as one vote per race and lead: race_id, lead_days, models (rows), votes (models
+    with max_hour_mm >= WET_MM), max_mm (their mean wettest hour). backtest() and p_wet_series() share it."""
+    ld = leads_df[leads_df["lead_days"].isin(leads)]
+    g = ld.assign(wet=ld["max_hour_mm"] >= WET_MM).groupby(["race_id", "lead_days"])
+    return pd.DataFrame({"models": g.size(), "votes": g["wet"].sum(), "max_mm": g["max_hour_mm"].mean()}).reset_index()
+
+
+def p_wet_series(hist, leads_df, lead, prior=PRIOR_VOTES, prior_n=P.PRIOR_N, since=FIRST_ARCHIVED):
+    """p_wet per race_id at `lead` days, walk-forward: the race's vote (votes(), as backtest() counts it) shrunk to
+    climatology = props.rate(past, venue_id, "wet", prior_n), past = `hist`'s races that started before it (hist:
+    props.history()'s columns, through props.prepare). Races from `since` (default FIRST_ARCHIVED, as backtest(): the
+    seven-model archive; None: every race, JMA alone before 2024) in both frames, with a vote and a past race. This is
+    the forecast the -WX checks take: props.check(..., forecast=) and dnf_check.check(..., forecast=).
+    -> Series indexed by race_id, named p_wet."""
+    v = votes(leads_df, (int(lead),)).set_index("race_id")
+    h = P.prepare(hist)
+    scored = h if since is None else h[pd.to_datetime(h["start"]) >= pd.Timestamp(since)]
+    out = {}
+    for r in scored[scored["race_id"].isin(v.index)].itertuples():
+        x = v.loc[r.race_id]
+        clim = P.rate(h[h["start"] < r.start], r.venue_id, "wet", prior_n)
+        if clim is not None and int(x["models"]):
+            out[r.race_id] = p_wet(int(x["votes"]), int(x["models"]), clim, prior)
+    return pd.Series(out, dtype=float, name="p_wet")
 
 
 def _ll(p, y):

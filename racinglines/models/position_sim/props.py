@@ -28,9 +28,9 @@ Weather-aware (-WX) variants. Which kinds a probability of rain moves is schema,
 (markets/kinds.py; `wx = "..."` in markets/kinds.toml). "rate" kinds (WX_KINDS: race_red_flag) are priced with
 rate_wx; "dnf" kinds (WX_DNF_KINDS: the classification and retirement kinds) from the run's dnf_prob times
 wx_scale(hist, venue_id, p_wet), the circuit's retirement rate (dnf_rate = n_dnf / n per race) at that p_wet over the
-same at its climatological wet share. `check(..., forecast=)` adds `circuit-WX` (rate_wx with a real forecast issued
-days before, weather/leads.p_wet) and its paired Brier difference against `circuit`; dnf_check.py's `model-WX` is the
-retirement twin.
+same at its climatological wet share. `check(..., forecast=)` adds `climatology-WX` (rate_wx with a real forecast
+issued days before, weather/wet.p_wet_series, instead of the circuit's wet share) and its paired Brier difference
+against `climatology`; dnf_check.py's `model-WX` is the retirement twin.
 
 Fastest lap: from history, how often the fastest lap goes to a driver finishing 1st, 2nd-3rd, 4th-10th, lower,
 or not finishing (per driver in that bucket); a driver's price is his bucket probabilities from the stage run
@@ -40,7 +40,7 @@ or not finishing (per driver in that bucket); a driver's price is his bucket pro
     racinglines f1 props --check --from 2022      # walk-forward calibration of the yes/no props
     racinglines f1 props --check --history h.csv  # the same on a history CSV (history()'s columns), no database
     racinglines f1 props --dnf-check dnf.csv      # the position simulation's DNF calibration (dnf_check.py)
-    racinglines f1 props --check --history h.csv --forecast leads.csv --lead 5     # adds circuit-WX
+    racinglines f1 props --check --history h.csv --forecast leads.csv --lead 5     # adds climatology-WX
 """
 
 import numpy as np
@@ -318,7 +318,7 @@ def outcomes(conn, race_id, mkts):
 
 
 METHODS = ("circuit", "field", "coin", "climatology", "wet_oracle")
-WX_METHODS = ("circuit-WX",)  # scored only when check() is given a forecast
+WX_METHODS = ("climatology-WX",)  # scored only when check() is given a forecast
 EPS = 1e-4                    # log loss clip
 
 
@@ -351,10 +351,10 @@ def check(conn=None, start_year=2022, prior_n=PRIOR_N, history_df=None, forecast
     (`climatology`: rate_wx with the circuit's past wet share; `wet_oracle`: rate_wx with the race's realised wet
     flag, a perfect forecast's ceiling; race_rain has neither, its conditioned price would be itself).
     history_df: a history frame (history()'s columns; fl_* not needed) instead of reading `conn`.
-    forecast: P(wet) per race_id (weather/leads.p_wet at one lead): adds `circuit-WX` for WX_CHECKED, rate_wx with the
-    forecast (NaN for a race without one, scored on the races that have one), and a paired row per kind,
-    method "circuit-WX - circuit": the mean Brier and log loss differences over the races both price, with the Brier
-    difference's se (negative: the forecast helps).
+    forecast: P(wet) per race_id (weather/wet.p_wet_series at one lead): adds `climatology-WX` for WX_CHECKED,
+    rate_wx with the forecast in place of the circuit's wet share (NaN for a race without one, scored on the races
+    that have one), and a paired row per kind, method "climatology-WX - climatology": the mean Brier and log loss
+    differences over the races both price, with the Brier difference's se (negative: the forecast helps).
     -> (per-race DataFrame, summary DataFrame: Brier and log loss per prop and method, with the mean YES rate and
     mean price; `races` counts the races each method priced)."""
     h = prepare(history_df) if history_df is not None else history(conn)
@@ -374,7 +374,7 @@ def check(conn=None, start_year=2022, prior_n=PRIOR_N, history_df=None, forecast
                 row.update(climatology=rate_wx(past, r.venue_id, col, None, prior_n),
                            wet_oracle=rate_wx(past, r.venue_id, col, float(r.wet), prior_n))
                 if forecast is not None:
-                    row["circuit-WX"] = np.nan if p_fc is None else rate_wx(past, r.venue_id, col, p_fc, prior_n)
+                    row["climatology-WX"] = np.nan if p_fc is None else rate_wx(past, r.venue_id, col, p_fc, prior_n)
             rows.append(row)
     per = pd.DataFrame(rows)
     out = []
@@ -386,9 +386,9 @@ def check(conn=None, start_year=2022, prior_n=PRIOR_N, history_df=None, forecast
             y = s["y"].astype(float).to_numpy()
             p = np.clip(s[meth].to_numpy(float), EPS, 1 - EPS)
             out.append(dict(kind=kind, method=meth, races=len(s), yes_rate=y.mean(), mean_price=p.mean(), **score(p, y)))
-        if "circuit-WX" in g and g["circuit-WX"].notna().any():
-            d = paired(g["circuit-WX"], g["circuit"], g["y"].astype(float))
-            both = g[g["circuit-WX"].notna()]
-            out.append(dict(kind=kind, method="circuit-WX - circuit", races=d["n"], yes_rate=both["y"].mean(),
+        if "climatology-WX" in g and g["climatology-WX"].notna().any():
+            d = paired(g["climatology-WX"], g["climatology"], g["y"].astype(float))
+            both = g[g["climatology-WX"].notna()]
+            out.append(dict(kind=kind, method="climatology-WX - climatology", races=d["n"], yes_rate=both["y"].mean(),
                             mean_price=float("nan"), brier=d["brier"], log_loss=d["log_loss"], se=d["se"]))
     return per, pd.DataFrame(out)

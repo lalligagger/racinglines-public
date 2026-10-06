@@ -13,7 +13,7 @@ Scored against two baselines on the same rows: `field` (one rate for every drive
 in-sample, so it flatters the baseline) and `race_mean` (every driver in a race gets the run's mean dnf_prob: what
 the model says about the race, without its split between drivers).
 
-Weather-aware (`model-WX`): given a forecast (P(wet) per race_id, weather/leads.p_wet at one lead) and the race
+Weather-aware (`model-WX`): given a forecast (P(wet) per race_id, weather/wet.p_wet_series at one lead) and the race
 history (props.history()'s columns; the export has no venue_id, so the venue comes from the history by race_id), each
 driver's dnf_prob is multiplied by props.wx_scale(past, venue_id, p_wet), past = the history's races before this one,
 and clipped to [0, 1]: the circuit's retirement rate at the forecast's p_wet over the same at its usual wet share.

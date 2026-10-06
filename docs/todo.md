@@ -348,7 +348,7 @@ Phased plan and ground rules: [F1 roadmap](f1-roadmap.md).
 
 - [ ] **P2 · Weather-aware position-model variant `gridq+pretrain+reset-WX`** (owner, 2026-10-06: "later branch", not
       the weather PR). The disruption mixture (more noise and retirements in disrupted races) weighted by the race's
-      forecast rain probability (`weather/leads.p_wet`, lead 5 days) instead of history alone; then the strategies on it
+      forecast rain probability (`weather/wet.p_wet_series`, lead 5 days) instead of history alone; then the strategies on it
       (`A-WX` against `A`) in their own sweep under the promotion rule. Until then a `-WX` strategy name would be
       byte-for-byte its baseline: nothing weather-aware feeds win, podium, h2h, constructor or pole. Decided after the
       5-day forecast backtest found the forecast beats the circuit history for rain, is neutral for red flags and adds

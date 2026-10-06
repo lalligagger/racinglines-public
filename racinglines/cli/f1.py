@@ -252,10 +252,9 @@ def main(argv=None):
     p.add_argument("--dnf-check", default=None, metavar="CSV",
                    help="The position simulation's DNF calibration on an as-of export (position_sim/dnf_check.py)")
     p.add_argument("--forecast", default=None, metavar="CSV",
-                   help="--check / --dnf-check: a rain forecast by lead (weather/leads.py) adds the -WX variants")
+                   help="--check / --dnf-check: the weather leads CSV (racinglines weather leads; weather/wet.py "
+                        "p_wet_series) adds the -WX variants; needs a race history (--history CSV or the database)")
     p.add_argument("--lead", type=int, default=5, help="--forecast: the forecast issued this many days before (default 5)")
-    p.add_argument("--forecast-skill", action="store_true",
-                   help="Score the --forecast CSV's rain forecast at every lead against the race history (leads.skill)")
     args = ap.parse_args(argv)
     from racinglines.models.position_sim import variants as V
     V.switches(args.variant)                         # fail fast on an unknown name
@@ -355,27 +354,23 @@ def _run(args):
     if args.cmd == "props":
         from racinglines.models.position_sim import props as PR
         prior_n = PR.PRIOR_N if args.prior_n is None else args.prior_n
-        from racinglines.weather import leads as WL
-        leads = WL.load(args.forecast) if args.forecast else None
-        fc = None if leads is None else WL.p_wet(leads, args.lead)
-        if (args.dnf_check or args.forecast_skill) and leads is not None:
+        fc = hist = None
+        if args.forecast:
+            from racinglines.weather import wet as WET
             if args.history:
                 hist = pd.read_csv(args.history)
             else:
                 with engine.connect() as c:
                     hist = PR.history(c)
-        if args.forecast_skill:
-            if leads is None:
-                sys.exit("--forecast-skill needs --forecast CSV")
-            print(WL.skill(leads, hist, prior_n=prior_n).to_string(index=False, float_format="{:.4f}".format))
-            return
+            fc = WET.p_wet_series(hist, pd.read_csv(args.forecast), args.lead, prior_n=prior_n)
         if args.dnf_check:
             from racinglines.models.position_sim import dnf_check as DC
-            wx = {} if leads is None else dict(forecast=fc, history_df=hist, prior_n=prior_n)
+            wx = {} if fc is None else dict(forecast=fc, history_df=hist, prior_n=prior_n)
             print(DC.render(DC.check(pd.read_csv(args.dnf_check), **wx)))
             return
         if args.check and args.history:
-            _, summ = PR.check(None, args.start_year, prior_n, history_df=pd.read_csv(args.history), forecast=fc)
+            h = hist if hist is not None else pd.read_csv(args.history)
+            _, summ = PR.check(None, args.start_year, prior_n, history_df=h, forecast=fc)
             print(summ.to_string(index=False, float_format="{:.4f}".format))
             return
         with engine.connect() as c:

@@ -302,12 +302,12 @@ on the timed-runs engine: `events`, `fetch itt|road`, `startlist <event>`, `pric
 classification (`models/position_sim/dnf_check.py`). Both are read-only; see the decision log of 2026-10-06 in
 [F1 roadmap](f1-roadmap.md#decision-log).
 
-`--forecast <csv> [--lead N]` (the rain forecast by lead, `racinglines/weather/leads.py`; lead 5 by default) adds the
-weather-aware variants to both: `circuit-WX` to `--check` and `model-WX` to `--dnf-check` (which then also needs
-`--history <csv>`, or reads the history from the database), each with its paired Brier difference against the plain
-method. `--forecast-skill --forecast <csv> --history <csv>` scores the forecast itself at every lead (Brier, log loss,
-hit rate, and the paired difference against the circuit's climatology). See
-[F1: weather-aware (-WX) variants](f1.md#weather-aware-wx-variants).
+`--forecast <csv> [--lead N]` (the leads CSV of `racinglines weather leads`, e.g.
+`tests/fixtures/weather/open_meteo-leads-f1.csv`, turned into a walk-forward `p_wet` per race by
+`weather/wet.py`'s `p_wet_series`; lead 5 by default) adds the weather-aware variants to both: `climatology-WX` to
+`--check` and `model-WX` to `--dnf-check`, each with its paired Brier difference against its base. Both read the
+race history from `--history <csv>`, else the database. The forecast's own skill by lead is
+`racinglines weather backtest`. See [F1: weather-aware (-WX) variants](f1.md#weather-aware-wx-variants).
 
 ## racinglines weather
 

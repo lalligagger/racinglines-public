@@ -1,31 +1,38 @@
-"""Forecast skill by lead time (racinglines/weather/leads.py) and the weather-aware (-WX) variants it feeds: the props
-check's circuit-WX, the DNF check's model-WX and the schema's `wx` hook. Synthetic data only: the real leads fixture
-(tests/fixtures/weather/open_meteo-leads-f1.csv) is not read here."""
+"""The weather-aware (-WX) variants and their forecast: weather/wet.p_wet_series (the leads CSV's per-model rows as a
+walk-forward p_wet per race), the props check's climatology-WX, the DNF check's model-WX and the schema's `wx` hook.
+Synthetic data only: the real leads fixture (tests/fixtures/weather/open_meteo-leads-f1.csv) is read in
+test_weather.py."""
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from racinglines.weather import leads as L
+from racinglines.models.position_sim import props as PR
+from racinglines.weather import open_meteo as OM
+from racinglines.weather import wet as WET
 
-# 4 races with a forecast (ids 20-23), leads 0-7; lead 3 has no precip_prob (the precip_mm rule decides)
-WET = {20: True, 21: False, 22: True, 23: False}
-MM3 = {20: 0.5, 21: 0.05, 22: 2.0, 23: 0.0}       # lead 3's precip_mm
+pytestmark = pytest.mark.quick
+
+# 4 races with a forecast (ids 20-23); per race at lead 5 the models' wettest hour (mm), several models per race
+WETRACE = {20: True, 21: False, 22: True, 23: False}
+MM5 = {20: [0.5, 0.1, 0.0, 2.0, 0.3, 0.0, 0.05],          # 4 of 7 wet (0.1 counts: >= WET_MM)
+       21: [0.0, 0.05, 0.2, 0.0, 0.0, 0.0, 0.0],          # 1 of 7
+       22: [3.0, 1.0, 0.4, 2.2, 0.9],                     # 5 of 5 (two models missing)
+       23: [0.0, 0.0, 0.0, 0.0]}                          # 0 of 4
+MM2 = {r: [9.0 if not w else 0.0] * 3 for r, w in WETRACE.items()}    # lead 2: the opposite, 3 models
 
 
-def _leads_csv(tmp_path):
+def _leads(extra=()):
     rows = []
-    for rid, wet in WET.items():
-        for lead in range(8):
-            prob = None if lead == 3 else (0.9 - 0.05 * lead if wet else 0.1 + 0.05 * lead)
-            rows.append(dict(race_id=rid, event_key=f"2025-{rid:02d}", venue_slug=f"v{rid % 2}", lat=1.0, lon=2.0,
-                             race_start_utc=f"2025-{(rid - 15):02d}-01T13:00:00Z",
-                             window_end_utc=f"2025-{(rid - 15):02d}-01T15:00:00Z", lead_days=lead,
-                             precip_prob=prob, precip_mm=(2.0 if wet else 0.0) if lead != 3 else MM3[rid],
-                             temp_c=20.0, wind_kph=10.0, weather_code=61 if wet else 1, source="synthetic"))
-    p = tmp_path / "leads.csv"
-    pd.DataFrame(rows).to_csv(p, index=False)
-    return p
+    for lead, mm in ((5, MM5), (2, MM2)):
+        for rid, vals in mm.items():
+            for i, x in enumerate(vals):
+                rows.append(dict(race_id=rid, event_key=f"e{rid}", venue_slug=f"v{rid % 2}", lat=1.0, lon=2.0,
+                                 race_start_utc="2025-06-01 13:00:00", window_end_utc="2025-06-01 15:00:00",
+                                 lead_days=lead, precip_prob=None, precip_mm=x, temp_c=20.0, wind_kph=10.0,
+                                 weather_code=61 if x else 1, max_hour_mm=x, source=f"open_meteo:{OM.MODELS[i]}"))
+    rows += list(extra)
+    return pd.DataFrame(rows, columns=list(OM.LEAD_COLUMNS))
 
 
 def _history():
@@ -34,7 +41,7 @@ def _history():
     rows = []
     for i in range(24):
         v = 1 if i % 2 == 0 else 2
-        wet = WET.get(i, v == 1 and i % 4 == 0)
+        wet = WETRACE.get(i, v == 1 and i % 4 == 0)
         rows.append(dict(race_id=i, event_key=f"e{i}", venue_id=v,
                          start=(pd.Timestamp("2024-11-01") + pd.Timedelta(days=14 * i)).strftime("%Y-%m-%d"),
                          sc=i % 3 == 0, red=wet and i % 2 == 0, rain_share=0.4 if wet else 0.0,
@@ -42,88 +49,82 @@ def _history():
     return pd.DataFrame(rows)
 
 
-@pytest.mark.quick
-def test_load_types_and_rejects_bad_frames(tmp_path):
-    d = L.load(_leads_csv(tmp_path))
-    assert list(d.columns) == list(L.COLUMNS) and len(d) == 32
-    assert str(d["race_start_utc"].dt.tz) == "UTC" and d["lead_days"].dtype == int
-    assert d.loc[d["lead_days"] == 3, "precip_prob"].isna().all()
-    with pytest.raises(ValueError, match="missing columns"):
-        L.validate(d.drop(columns=["precip_mm"]))
-    with pytest.raises(ValueError, match="outside 0-1"):
-        L.validate(d.assign(precip_prob=d["precip_prob"] * 100))
-    with pytest.raises(ValueError, match="given twice"):
-        L.validate(pd.concat([d, d.iloc[:1]]))
-
-
-@pytest.mark.quick
-def test_p_wet_takes_the_probability_else_the_mm_rule(tmp_path):
-    d = L.load(_leads_csv(tmp_path))
-    p5 = L.p_wet(d, 5)
-    assert list(p5.index) == list(WET) and p5[20] == pytest.approx(0.65) and p5[21] == pytest.approx(0.35)
-    p3 = L.p_wet(d, 3)                                  # no precip_prob at lead 3: precip_mm >= 0.1
-    assert p3.to_dict() == {20: 1.0, 21: 0.0, 22: 1.0, 23: 0.0}
-    assert L.p_wet(d, 3, mm_threshold=1.0).to_dict() == {20: 0.0, 21: 0.0, 22: 1.0, 23: 0.0}
-    assert L.p_wet(d, 9).empty
-
-
-@pytest.mark.quick
-def test_skill_scores_every_lead_against_climatology(tmp_path):
-    d, h = L.load(_leads_csv(tmp_path)), _history()
-    s = L.skill(d, h)
-    assert list(s["method"]) == ["forecast"] * 7 + ["climatology", "analysis"]
-    assert list(s["lead_days"].iloc[:7]) == list(range(1, 8)) and pd.isna(s["lead_days"].iloc[7])
-    assert (s["races"] == 4).all() and (s["wet_rate"] == 0.5).all()
-    one = s.iloc[0]
-    p = np.array([0.85, 0.15, 0.85, 0.15])
-    y = np.array([1, 0, 1, 0.0])
-    assert one["brier"] == pytest.approx(((p - y) ** 2).mean()) and one["hit_rate"] == 1.0
-    assert one["log_loss"] == pytest.approx(-np.log(0.85))
-    assert s.set_index("lead_days").loc[3, "from_prob"] == 0 and s.iloc[0]["from_prob"] == 4
-    clim = L.climatology(h, list(WET))
-    from racinglines.models.position_sim import props as PR
+def _expected(h, rid, votes, models, prior=WET.PRIOR_VOTES, prior_n=PR.PRIOR_N):
     hp = PR.prepare(h)
-    assert clim[22] == pytest.approx(PR.rate(hp[hp["start"] < hp.loc[22, "start"]], 1, "wet"))
-    c = s[s["method"] == "climatology"].iloc[0]
-    yc = np.array([WET[r] for r in clim.index], float)
-    assert c["brier"] == pytest.approx(((clim.to_numpy() - yc) ** 2).mean())
-    assert one["brier_vs_clim"] == pytest.approx(one["brier"] - c["brier"])
-    a = s[s["method"] == "analysis"].iloc[0]
-    assert a["brier"] == pytest.approx(((np.array([0.9, 0.1, 0.9, 0.1]) - y) ** 2).mean())
+    r = hp[hp["race_id"] == rid].iloc[0]
+    clim = PR.rate(hp[hp["start"] < r["start"]], r["venue_id"], "wet", prior_n)
+    return (votes + prior * clim) / (models + prior)
 
 
-# --- the props check's circuit-WX and the schema's wx hook ----------------------------------------------------------
+# --- the forecast: weather/wet.p_wet_series ----------------------------------------------------------------------
 
-@pytest.mark.quick
-def test_circuit_wx_only_for_races_with_a_forecast(tmp_path):
-    from racinglines.models.position_sim import props as PR
-    h, fc = _history(), L.p_wet(L.load(_leads_csv(tmp_path)), 5)
+def test_votes_count_models_per_race_and_lead():
+    v = WET.votes(_leads()).set_index(["race_id", "lead_days"])
+    assert v.loc[(20, 5), "models"] == 7 and v.loc[(20, 5), "votes"] == 4
+    assert v.loc[(22, 5), "models"] == 5 and v.loc[(22, 5), "votes"] == 5
+    assert v.loc[(23, 5), "votes"] == 0 and v.loc[(21, 2), "models"] == 3 and v.loc[(21, 2), "votes"] == 3
+
+
+def test_p_wet_series_aggregates_the_models_and_shrinks_to_climatology():
+    h = _history()
+    s = WET.p_wet_series(h, _leads(), 5)
+    assert s.name == "p_wet" and list(s.index) == [20, 21, 22, 23]
+    for rid, (votes, models) in {20: (4, 7), 21: (1, 7), 22: (5, 5), 23: (0, 4)}.items():
+        assert s[rid] == pytest.approx(_expected(h, rid, votes, models))
+    assert s[22] > s[20] > s[21] > s[23] > 0                       # climatology keeps 0 votes off zero
+    # the lead picks the rows: lead 2 votes the other way
+    s2 = WET.p_wet_series(h, _leads(), 2)
+    assert s2[21] == pytest.approx(_expected(h, 21, 3, 3)) and s2[20] == pytest.approx(_expected(h, 20, 0, 3))
+    assert WET.p_wet_series(h, _leads(), 7).empty                   # no rows at that lead
+
+
+def test_p_wet_series_is_walk_forward_and_takes_its_settings():
+    h = _history()
+    base = WET.p_wet_series(h, _leads(), 5)
+    # a later race's weather never moves an earlier race's climatology
+    later = pd.concat([h, h.iloc[[0]].assign(race_id=99, start="2026-12-01", rain_share=0.9)])
+    assert WET.p_wet_series(later, _leads(), 5).equals(base)
+    # the prior (in votes) and the shrinkage (in races) are passed through
+    assert WET.p_wet_series(h, _leads(), 5, prior=1.0)[20] == pytest.approx(_expected(h, 20, 4, 7, prior=1.0))
+    assert WET.p_wet_series(h, _leads(), 5, prior_n=4.0)[20] == pytest.approx(_expected(h, 20, 4, 7, prior_n=4.0))
+    # races before `since` and races not in the history are left out
+    assert list(WET.p_wet_series(h, _leads(), 5, since="2025-09-01").index) == [22, 23]
+    stray = dict(race_id=500, event_key="x", venue_slug="x", lat=0, lon=0, race_start_utc="2025-06-01 13:00:00",
+                 window_end_utc="2025-06-01 15:00:00", lead_days=5, precip_mm=1.0, max_hour_mm=1.0, source="x")
+    assert 500 not in WET.p_wet_series(h, _leads([stray]), 5).index
+
+
+# --- the props check's climatology-WX and the schema's wx hook ---------------------------------------------------
+
+def test_climatology_wx_only_for_races_with_a_forecast():
+    h = _history()
+    fc = WET.p_wet_series(h, _leads(), 5)
     per, summ = PR.check(history_df=h, start_year=2024, forecast=fc)
     rf = per[per["kind"] == "race_red_flag"].reset_index(drop=True)
-    has = rf["event_key"].isin([f"e{r}" for r in WET])
-    assert has.sum() == 4 and rf.loc[has, "circuit-WX"].notna().all() and rf.loc[~has, "circuit-WX"].isna().all()
-    assert per.loc[per["kind"] == "race_rain", "circuit-WX"].isna().all()       # rain is the forecast, not conditioned
+    has = rf["event_key"].isin([f"e{r}" for r in WETRACE])
+    col = "climatology-WX"
+    assert has.sum() == 4 and rf.loc[has, col].notna().all() and rf.loc[~has, col].isna().all()
+    assert per.loc[per["kind"] == "race_rain", col].isna().all()             # rain is the forecast, not conditioned
     hp = PR.prepare(h)
     r22 = rf[rf["event_key"] == "e22"].iloc[0]
-    assert r22["circuit-WX"] == pytest.approx(PR.rate_wx(hp[hp["start"] < hp.loc[22, "start"]], 1, "red", fc[22]))
+    assert r22[col] == pytest.approx(PR.rate_wx(hp[hp["start"] < hp.loc[22, "start"]], 1, "red", fc[22]))
     s = summ.set_index(["kind", "method"])
-    assert s.loc[("race_red_flag", "circuit-WX"), "races"] == 4
-    assert s.loc[("race_red_flag", "circuit"), "races"] == len(rf)
-    pr = s.loc[("race_red_flag", "circuit-WX - circuit")]
+    assert s.loc[("race_red_flag", col), "races"] == 4
+    assert s.loc[("race_red_flag", "climatology"), "races"] == len(rf)
+    pr = s.loc[("race_red_flag", "climatology-WX - climatology")]
     both = rf[has]
     y = both["y"].astype(float).to_numpy()
-    d = (both["circuit-WX"].to_numpy() - y) ** 2 - (both["circuit"].to_numpy() - y) ** 2
+    d = (both[col].to_numpy() - y) ** 2 - (both["climatology"].to_numpy() - y) ** 2
     assert pr["races"] == 4 and pr["brier"] == pytest.approx(d.mean()) and pr["se"] == pytest.approx(d.std(ddof=1) / 2)
-    assert ("race_rain", "circuit-WX - circuit") not in s.index
+    assert ("race_rain", "climatology-WX - climatology") not in s.index
+    assert not summ["method"].str.contains("circuit-WX").any()
     _, plain = PR.check(history_df=h, start_year=2024)                    # no forecast: no WX rows
     assert not plain["method"].str.contains("WX").any()
 
 
-@pytest.mark.quick
 def test_wx_is_read_from_the_schema():
     from racinglines.markets import kinds as K
     from racinglines.markets import payoffs as PO
-    from racinglines.models.position_sim import props as PR
     assert PR.WX_KINDS == ("race_red_flag",) and K.wx_kinds("rate") == PR.WX_KINDS
     want = {c for c, e in PO.load().items()
             if e["payoff"]["predicate"] in ("retired", "nth_retired", "classified", "last_classified")}
@@ -133,7 +134,6 @@ def test_wx_is_read_from_the_schema():
     assert "race_red_flag" not in K.KINDS                      # a prop: not a prediction kind
 
 
-@pytest.mark.quick
 def test_a_bad_wx_in_the_schema_is_refused(tmp_path):
     from racinglines.markets import payoffs as PO
     p = tmp_path / "kinds.toml"
@@ -142,9 +142,7 @@ def test_a_bad_wx_in_the_schema_is_refused(tmp_path):
         PO.load(p)
 
 
-@pytest.mark.quick
 def test_wx_scale_is_one_at_the_circuits_own_wet_rate():
-    from racinglines.models.position_sim import props as PR
     h = PR.prepare(_history())
     assert "dnf_rate" in h and h.loc[0, "dnf_rate"] == pytest.approx(4 / 20)        # race 0 is wet
     for v in (1, 2):
@@ -159,10 +157,8 @@ def test_wx_scale_is_one_at_the_circuits_own_wet_rate():
     assert PR.prepare(_history().drop(columns="n")).loc[0, "dnf_rate"] == pytest.approx(4 / 20)
 
 
-@pytest.mark.quick
 def test_market_set_scales_dnf_prob_for_the_dnf_kinds():
     from racinglines.markets import kinds as K
-    from racinglines.models.position_sim import props as PR
     h = PR.prepare(_history())
     preds = pd.DataFrame(dict(athlete_id=[1, 2, 3, 4], driver=list("ABCD"), team_key=["x", "x", "y", "y"],
                               win_prob=[0.4, 0.3, 0.2, 0.1], podium_prob=[0.8, 0.7, 0.6, 0.5],
@@ -186,11 +182,10 @@ def test_market_set_scales_dnf_prob_for_the_dnf_kinds():
     assert set(K.wx_kinds("dnf")) >= {"race_retire", "race_n_retirements"}
 
 
-@pytest.mark.quick
-def test_dnf_check_adds_model_wx(tmp_path):
+def test_dnf_check_adds_model_wx():
     from racinglines.models.position_sim import dnf_check as DC
-    from racinglines.models.position_sim import props as PR
-    h, fc = _history(), L.p_wet(L.load(_leads_csv(tmp_path)), 5)
+    h = _history()
+    fc = WET.p_wet_series(h, _leads(), 5)
     rows = []
     for race in (19, 20, 22):                                 # 19 has no forecast
         for a, (p, st) in enumerate([(0.05, "OK"), (0.10, "DNF"), (0.20, "OK"), (0.30, "DSQ")]):
@@ -216,18 +211,18 @@ def test_dnf_check_adds_model_wx(tmp_path):
     assert list(DC.check(df, forecast=fc)["summary"]["method"]) == ["model", "field", "race_mean"]   # needs both
 
 
-@pytest.mark.quick
 def test_cli_runs_the_wx_checks_on_csvs(tmp_path, capsys):
     from racinglines.cli import f1
-    leads, hist = _leads_csv(tmp_path), tmp_path / "history.csv"
+    leads, hist = tmp_path / "leads.csv", tmp_path / "history.csv"
+    _leads().to_csv(leads, index=False)
     _history().to_csv(hist, index=False)
-    f1.main(["props", "--forecast-skill", "--forecast", str(leads), "--history", str(hist)])
-    out = capsys.readouterr().out
-    assert "climatology" in out and "analysis" in out and "brier_vs_clim" in out
     f1.main(["props", "--check", "--from", "2024", "--history", str(hist), "--forecast", str(leads), "--lead", "2"])
-    assert "circuit-WX - circuit" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "climatology-WX - climatology" in out and "circuit-WX" not in out
     dnf = tmp_path / "dnf.csv"
     pd.DataFrame([dict(race_id=20, run_id=1, cutoff="2025-01-01", athlete_id=a, team="t", dnf_prob=0.1 * (a + 1),
                        status="DNF" if a == 2 else "OK") for a in range(4)]).to_csv(dnf, index=False)
-    f1.main(["props", "--dnf-check", str(dnf), "--history", str(hist), "--forecast", str(leads)])
+    f1.main(["props", "--dnf-check", str(dnf), "--history", str(hist), "--forecast", str(leads), "--lead", "5"])
     assert "model-WX - model" in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        f1.main(["props", "--forecast-skill", "--forecast", str(leads), "--history", str(hist)])
