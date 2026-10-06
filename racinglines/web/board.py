@@ -262,11 +262,12 @@ def headline(conn, maker_id):
     rec_n = int(rec["n"].iloc[0] or 0) if len(rec) and rec["n"].iloc[0] is not None else 0
     bk = house.book(conn, maker_id=maker_id, status="open")
     jobs = data.q(conn, "SELECT count(*) FILTER (WHERE status IN ('queued', 'running')) AS active FROM jobs").iloc[0]
+    brier_win, brier_grid = model_brier(conn)
     return dict(outcomes=int(ex["outcomes"]), markets=int(ex["markets"]), volume=float(ex["volume"]), synced=ex["synced"],
                 recording=rec_n, recorded_at=rec_ts,
                 my_open=len(bk), my_worst=float(bk["worst"].sum()) if len(bk) else 0.0,
                 my_staked=float(bk["staked"].sum()) if len(bk) else 0.0,
-                jobs_active=int(jobs["active"]))
+                jobs_active=int(jobs["active"]), brier_win=brier_win, brier_grid=brier_grid)
 
 
 def model_brier(conn):

@@ -85,6 +85,8 @@ def test_board_html_renders(jinja_env):
         "bt_win": 0.0456,
         "bt_grid": 0.0512,
         "jobs_active": 1,
+        "brier_win": 0.081,
+        "brier_grid": 0.094,
     }
     
     # Sports list - one sport card per section
@@ -183,6 +185,9 @@ def test_board_html_renders(jinja_env):
     assert len(html) > 0
     assert "Markets" in html
     assert "Formula 1" in html
+    assert "0.081" in html
+    assert "lower is better" in html
+    assert "grid-only 0.094" in html
 
 
 def test_board_html_with_sport_status(jinja_env):
@@ -264,3 +269,21 @@ def test_board_html_with_sport_status(jinja_env):
     assert isinstance(html, str)
     assert len(html) > 0
     assert "Formula 1" in html
+
+
+def test_board_html_model_accuracy_without_backtest(jinja_env):
+    """The Model accuracy KPI shows a dash and 'no backtest yet' when there is no baseline backtest."""
+    headline = {
+        "outcomes": 0, "markets": 0, "volume": 0, "recording": 0, "recorded_at": None,
+        "my_open": 0, "my_staked": 0.0, "my_worst": 0.0, "jobs_active": 0,
+        "brier_win": None, "brier_grid": None,
+    }
+    context = {
+        "h": headline, "sports": [], "calendar": [], "cal_events": [], "cal_sports": [], "cal_exchanges": [],
+        "kalshi": False, "schema_exchanges": [], "tapes": False, "signals_nav": None, "sport_status": None,
+        "user": {"sid": "test", "email": "test@example.com"}, "storage_ns": "", "trading": None, "live_nav": None,
+    }
+    html = jinja_env.get_template("board.html").render(**context)
+    assert "Model accuracy" in html
+    assert "no backtest yet" in html
+    assert "lower is better" not in html
