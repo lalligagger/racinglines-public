@@ -1,9 +1,9 @@
 from conftest import FIX
 
-from racinglines.sources.lemans import parse
+from racinglines.sources.wec import parse
 
 
-FIXTURE = FIX / "lemans" / "wec-2026-fuji-665449.html"
+FIXTURE = FIX / "wec" / "wec-2026-fuji-665449.html"
 
 
 def test_parse_fixture_reads_fuji_race_results_offline():

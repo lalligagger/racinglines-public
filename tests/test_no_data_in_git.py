@@ -20,7 +20,7 @@ ALLOWED_DATA = ("data/raw/f1/fastf1/", "data/archive/markets/polymarket/prices/"
                 "data/archive/markets/kalshi/prices/", "data/archive/markets/kalshi/trades/",
                 "data/archive/markets/kalshi/links/", "data/archive/db/",
                 "data/runs/search/", "tests/golden/", "tests/fixtures/f1/", "tests/fixtures/market/",
-                "tests/fixtures/mtb/", "tests/fixtures/indycar/", "tests/fixtures/lemans/",
+                "tests/fixtures/mtb/", "tests/fixtures/indycar/", "tests/fixtures/wec/",
                 "tests/fixtures/sailgp/")
 MAX_BYTES = 1_000_000
 
