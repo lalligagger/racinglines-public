@@ -20,7 +20,7 @@
     <div class="s">{{ "both" if venues|length == 2 else "all" }} venues · {{ venues.values()|sum(attribute='n') }} positions · click a venue to show only it</div></a>
 {% else %}{{ kpi("Realised P&L", paper.settled_pnl, "settled positions", "money") }}{% endif %}
   <div class="kpi"><div class="l">Open now{% if venue %} · {{ "Polymarket" if venue == 'polymarket' else ("Kalshi" if venue == 'kalshi' else "private book") }}{% endif %}</div><div class="v">{{ paper.open }}</div><div class="s">marked to the market: {{ pnl(paper.open_value) }}</div></div>
-  <div class="kpi"><div class="l">Closed and settled</div><div class="v">{{ paper.n - paper.open }}</div><div class="s">{{ paper.won }} of {{ paper.held }} held to the result made money{% if venues|length > 1 %} · realised {{ pnl(paper.settled_pnl) }}{% endif %}</div></div>
+  <div class="kpi"><div class="l">Closed and settled</div><div class="v">{{ paper.n - paper.open }}</div><div class="s">{{ paper.won }} of {{ paper.held }} <span data-tooltip="kept until the race result">held to the result</span> made money{% if venues|length > 1 %} · realised {{ pnl(paper.settled_pnl) }}{% endif %}</div></div>
 </div>
 
 {# --- one view at a time --- #}
