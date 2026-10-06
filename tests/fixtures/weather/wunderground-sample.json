@@ -1,0 +1,102 @@
+{
+ "_note": "HAND-WRITTEN to the field names declared in racinglines/weather/wunderground.py (unverified in the cloud). Not a captured response: replace with a trimmed `racinglines weather probe` output from the Mac.",
+ "provider": "wunderground",
+ "fetched_utc": "2026-10-03T06:00:00Z",
+ "lat": 0.0,
+ "lon": 0.0,
+ "errors": {},
+ "daily": {
+  "validTimeUtc": [
+   1790985600,
+   1791072000
+  ],
+  "temperatureMax": [
+   null,
+   31
+  ],
+  "temperatureMin": [
+   25,
+   26
+  ],
+  "qpf": [
+   2.5,
+   12.0
+  ],
+  "narrative": [
+   "Thunderstorms in the evening.",
+   "Showers, heavy at times."
+  ],
+  "daypart": [
+   {
+    "precipChance": [
+     null,
+     40,
+     80,
+     60
+    ],
+    "relativeHumidity": [
+     null,
+     85,
+     90,
+     94
+    ],
+    "windSpeed": [
+     null,
+     9,
+     15,
+     11
+    ],
+    "wxPhraseLong": [
+     null,
+     "Thunderstorms",
+     "Showers",
+     "Rain"
+    ]
+   }
+  ]
+ },
+ "hourly": {
+  "validTimeUtc": [
+   1791111600,
+   1791115200,
+   1791118800,
+   1791122400
+  ],
+  "temperature": [
+   30,
+   29,
+   28,
+   28
+  ],
+  "precipChance": [
+   20,
+   60,
+   70,
+   30
+  ],
+  "qpf": [
+   0.0,
+   1.2,
+   3.4,
+   0.5
+  ],
+  "relativeHumidity": [
+   80,
+   88,
+   92,
+   90
+  ],
+  "windSpeed": [
+   8,
+   12,
+   16,
+   10
+  ],
+  "wxPhraseLong": [
+   "Partly Cloudy",
+   "Showers",
+   "Heavy Rain",
+   "Light Rain"
+  ]
+ }
+}

@@ -1,0 +1,102 @@
+# DRAFT (2026-10-06, roadmap example): one venue's lines for one event, as captured. Proposed location:
+# books/book_a/2026-10-05-2026-17-singapore.toml. Values below are real, copied from
+# the owner's priced board (outside the repo) (13 of its 368 rows), notes included.
+# Nothing reads this file yet.
+
+[book]
+venue = "book_a"                       # venues/book_a.toml holds the title rules and odds format
+event = "2026-17"                         # events/f1/2026-17-singapore.toml
+captured_utc = "2026-10-06T05:33Z"        # screenshot 2026-10-05 22:33 PDT
+source = "screenshot"                     # screenshot | paste | api
+source_ref = "owner screenshot (outside the repo)"
+odds = "decimal"
+currency = "USDT"
+
+# One line per price. `title` and `selection` are the venue's own words, untouched. `market` is the event market key
+# (kind, subject, params) the venue rules produced, written here so the mapping is reviewable; a line the rules do not
+# match stays `market = "unmapped"` and is never guessed.
+[[lines]]
+title = "Race Winner"
+selection = "Verstappen, Max"
+odds = 3.50
+market = { kind = "race_win", driver = "Max Verstappen" }
+
+[[lines]]
+title = "Race Winner"
+selection = "Russell, George"
+odds = 8.00
+market = { kind = "race_win", driver = "George Russell" }
+
+[[lines]]
+title = "Most Team Points"
+selection = "McLaren"
+odds = 6.50
+market = { kind = "race_constructor_top", team = "mclaren" }
+
+[[lines]]
+title = "Number Of Classified Drivers"
+selection = "Under 18.5"
+odds = 1.73
+note = "low-res"
+market = { kind = "race_n_classified", line = 18.5, side = "under" }
+
+[[lines]]
+title = "Number Of Classified Drivers"
+selection = "Over 18.5"
+odds = 2.00
+market = { kind = "race_n_classified", line = 18.5, side = "over" }
+
+[[lines]]
+title = "Will There Be A Red Flag During Race?"
+selection = "No"
+odds = 1.50
+note = "low-res"
+market = { kind = "race_red_flag", side = "no" }
+
+[[lines]]
+title = "Will There Be A Red Flag During Race?"
+selection = "Yes"
+odds = 2.40
+note = "low-res"
+market = { kind = "race_red_flag", side = "yes" }
+
+[[lines]]
+title = "McLaren Both Cars Classified?"
+selection = "Yes"
+odds = 1.16
+note = "all Both Cars prices low-res"
+market = { kind = "race_team_both_classified", team = "mclaren", side = "yes" }
+
+[[lines]]
+title = "McLaren Both Cars Classified?"
+selection = "No"
+odds = 5.00
+note = "all Both Cars prices low-res"
+market = { kind = "race_team_both_classified", team = "mclaren", side = "no" }
+
+[[lines]]
+title = "Lance Stroll To Be Classified?"
+selection = "Yes"
+odds = 2.10
+note = "low-res"
+market = { kind = "race_classified", driver = "Lance Stroll", side = "yes" }
+
+[[lines]]
+title = "Lance Stroll To Be Classified?"
+selection = "No"
+odds = 1.65
+note = "printed No first; low-res"
+market = { kind = "race_classified", driver = "Lance Stroll", side = "no" }
+
+[[lines]]
+title = "Sprint Race Winner"
+selection = "Russell, George"
+odds = 9.00
+market = { kind = "race_sprint_win", driver = "George Russell" }
+
+[[lines]]
+title = "Fastest Team Pit Stop"
+selection = "McLaren"
+odds = 4.50
+note = "4.00/4.50 low-res"
+market = "unmapped"                       # no kind exists and no data source is known (roadmap Section 3)

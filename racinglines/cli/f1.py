@@ -247,6 +247,10 @@ def main(argv=None):
     p.add_argument("--check", action="store_true", help="Walk-forward calibration of the yes/no props")
     p.add_argument("--from", dest="start_year", type=int, default=2022, help="--check: first season scored")
     p.add_argument("--prior-n", type=float, default=None, help="Shrinkage to the field rate, in races (default: props.PRIOR_N)")
+    p.add_argument("--history", default=None, metavar="CSV",
+                   help="--check: score a history CSV (props.history()'s columns) instead of the database")
+    p.add_argument("--dnf-check", default=None, metavar="CSV",
+                   help="The position simulation's DNF calibration on an as-of export (position_sim/dnf_check.py)")
     args = ap.parse_args(argv)
     from racinglines.models.position_sim import variants as V
     V.switches(args.variant)                         # fail fast on an unknown name
@@ -346,6 +350,14 @@ def _run(args):
     if args.cmd == "props":
         from racinglines.models.position_sim import props as PR
         prior_n = PR.PRIOR_N if args.prior_n is None else args.prior_n
+        if args.dnf_check:
+            from racinglines.models.position_sim import dnf_check as DC
+            print(DC.render(DC.check(pd.read_csv(args.dnf_check))))
+            return
+        if args.check and args.history:
+            _, summ = PR.check(None, args.start_year, prior_n, history_df=pd.read_csv(args.history))
+            print(summ.to_string(index=False, float_format="{:.4f}".format))
+            return
         with engine.connect() as c:
             if args.check:
                 _, summ = PR.check(c, args.start_year, prior_n)

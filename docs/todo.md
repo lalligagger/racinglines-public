@@ -198,6 +198,7 @@ For every F1 weekend, T1 or T3:
 | Replay race spread for NASCAR (2.0 places vs a measured ~7) | Before any NASCAR result is read as edge | Owner's call, with a decision-log entry |
 | Close draft #97 (superseded by #110) | Any time | Yes |
 | History purge for data off GitHub (force-push) | Last stage | Needs the owner's spoken OK in the same turn |
+| Odds presentation names in the sportsbook schema: `decimal`, `american`, `fractional`, `cents` (Kalshi), `dollars` (Polymarket, OG.com), `prob` ([Sportsbook schema](sportsbook/index.md)) | After PR #69 merges | Owner checks the names; a rename is one line in `racinglines/books/schema.py` plus the docs table |
 | Fantasy soft launch decisions DEC-1 to DEC-23 ([Fantasy soft launch](fantasy-launch.md#decisions)) | Batch A Wed 30 Sep 18:00 PDT; B Mon 5 Oct; C Wed 7 Oct; go/no-go Thu 8 Oct 12:00 PDT | Per the [runbook's decision table](fantasy-runbook.md#decisions) |
 
 ## Exchanges

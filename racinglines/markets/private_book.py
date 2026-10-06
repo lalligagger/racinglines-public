@@ -328,7 +328,10 @@ def outcome_for(kind, athlete_id, params, res):
     settlement in racinglines/markets/kinds.py."""
     from racinglines.markets import kinds as K
     from racinglines.models.position_sim.model import team_key
-    return K.settle(kind, athlete_id, params, res, group_key=team_key if kind == "race_constructor_top" else None)
+    k = K.KINDS.get(kind)
+    # a team market: a declarative kind whose subject is a team (markets/kinds.toml), or the legacy group_top
+    grouped = k is not None and ((k.spec or {}).get("payoff", {}).get("subject") == "team" or k.payoff == "group_top")
+    return K.settle(kind, athlete_id, params, res, group_key=team_key if grouped else None)
 
 
 def settle_from_results(session, conn, race_id, market_ids=None, rules=None):

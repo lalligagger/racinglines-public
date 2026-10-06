@@ -13,12 +13,24 @@ against a circuit's own record, over every race finished before the event starts
 no weather forecast. Measured walk-forward on 2022-2026 (107 races, `--check`): a circuit's own record doesn't
 beat the field rate within the noise (lighter shrinkage, e.g. 4, was worse), so PRIOR_N is a heavy 16.
 
+Wet or dry (decision log 2026-10-06, provisional): a race is `wet` when any weather sample had rain (rain_share > 0,
+the `rain` rule). `rate_given` is a prop's rate among a circuit's wet (or dry) races, shrunk to the field's wet (or
+dry) rate, itself shrunk to the overall field rate; `rate_wx` mixes the two with a probability of rain:
+p_wet * rate_given(wet) + (1 - p_wet) * rate_given(dry), and with no p_wet it uses the circuit's own shrunk wet
+share (climatology). Red flags are far likelier in the wet (2020-2026: 10 of 35 wet races, 12 of 112 dry). The live
+book still prices with `rate()`: `market_set(..., p_wet=...)` prices race_red_flag with `rate_wx` only when a
+probability of rain is passed (racinglines/weather will supply it); rain itself is the forecast, not conditioned,
+and the safety car stays on `rate()` because conditioning it was worse in the walk-forward (WX_KINDS). `check()` scores both: `climatology` (p_wet = the circuit's past wet share) and
+`wet_oracle` (p_wet = the race's realised wet flag, the ceiling a perfect forecast would reach).
+
 Fastest lap: from history, how often the fastest lap goes to a driver finishing 1st, 2nd-3rd, 4th-10th, lower,
 or not finishing (per driver in that bucket); a driver's price is his bucket probabilities from the stage run
 (win, podium, top 10, DNF) times those rates, scaled so the field sums to 1.
 
     racinglines f1 props 2026-16                  # the prices for an event
     racinglines f1 props --check --from 2022      # walk-forward calibration of the yes/no props
+    racinglines f1 props --check --history h.csv  # the same on a history CSV (history()'s columns), no database
+    racinglines f1 props --dnf-check dnf.csv      # the position simulation's DNF calibration (dnf_check.py)
 """
 
 import numpy as np
@@ -36,7 +48,7 @@ FL_SMOOTH = 0.5               # fastest laps added to each bucket (and spread ov
 
 def history(conn, before=None):
     """Per finished race (with timed laps) before `before` (a date; None: all): race_id, event_key, venue_id,
-    start (date), sc, red, rain (bools), rain_share, fl_athlete, fl_bucket, n_ok, n_dnf."""
+    start (date), sc, red, rain, wet (bools), rain_share, fl_athlete, fl_bucket, n_ok, n_dnf."""
     df = pd.read_sql(text("""
         WITH rl AS (
             SELECT ro.race_id, r.athlete_id, r.position, r.status, l.lap_time_ms, l.deleted, l.track_status
@@ -57,8 +69,24 @@ def history(conn, before=None):
         JOIN cl ON cl.race_id = st.race_id LEFT JOIN fl ON fl.race_id = st.race_id
         WHERE e.source = 'f1timing' AND (CAST(:b AS date) IS NULL OR e.start_date < CAST(:b AS date))
         ORDER BY e.start_date, st.race_id"""), conn, params=dict(b=None if before is None else str(pd.Timestamp(before).date())))
-    df["rain"] = df["rain_share"] > 0
+    df = prepare(df)
     df["fl_bucket"] = [_bucket(p, s) for p, s in zip(df["fl_pos"], df["fl_status"])]
+    return df
+
+
+def prepare(df):
+    """history()'s derived columns on a frame with at least start, venue_id, sc, red and rain_share (e.g. a CSV
+    export): start as a date, rain and wet (rain_share > 0; two names, one rule: `rain` is the prop, `wet` the
+    condition), sc and red as bools."""
+    df = df.copy()
+    df["start"] = pd.to_datetime(df["start"]).dt.date
+    df["rain_share"] = pd.to_numeric(df["rain_share"], errors="coerce").fillna(0.0)
+    df["rain"] = df["rain_share"] > 0
+    df["wet"] = df["rain"]
+    for c in ("sc", "red"):
+        if df[c].dtype == object:
+            df[c] = df[c].astype(str).str.lower().isin(("true", "t", "1"))
+        df[c] = df[c].astype(bool)
     return df
 
 
@@ -77,6 +105,34 @@ def rate(hist, venue_id, col, prior_n=PRIOR_N):
     field = float(hist[col].mean())
     v = hist.loc[hist["venue_id"] == venue_id, col]
     return float((v.sum() + prior_n * field) / (len(v) + prior_n))
+
+
+def rate_given(hist, venue_id, col, wet, prior_n=PRIOR_N):
+    """P(YES) for a yes/no prop at a venue given the race is wet (True) or dry (False): the circuit's rate among
+    its wet (dry) races, shrunk to the field's wet (dry) rate, which is itself shrunk to the overall field rate
+    with the same prior_n (two levels). The field's wet sample is small (35 of 147 races 2020-2026, 25 of 108 from
+    2022), so its rate leans on the overall one; a circuit has 0-4 wet races, so its own wet record barely moves
+    the price. None with no history."""
+    if hist.empty:
+        return None
+    field = float(hist[col].mean())
+    sub = hist[hist["wet"].astype(bool) == bool(wet)]
+    field_c = float((sub[col].sum() + prior_n * field) / (len(sub) + prior_n))
+    v = sub.loc[sub["venue_id"] == venue_id, col]
+    return float((v.sum() + prior_n * field_c) / (len(v) + prior_n))
+
+
+def rate_wx(hist, venue_id, col, p_wet=None, prior_n=PRIOR_N):
+    """P(YES) given a probability of rain: p_wet * rate_given(wet) + (1 - p_wet) * rate_given(dry). With p_wet
+    None, the circuit's own wet share shrunk to the field's (climatology: rate(hist, venue_id, "wet")), so it always
+    prices. None with no history."""
+    if hist.empty:
+        return None
+    if p_wet is None:
+        p_wet = rate(hist, venue_id, "wet", prior_n)
+    p_wet = min(max(float(p_wet), 0.0), 1.0)
+    return p_wet * rate_given(hist, venue_id, col, True, prior_n) + \
+        (1 - p_wet) * rate_given(hist, venue_id, col, False, prior_n)
 
 
 def fl_rates(hist):
@@ -121,14 +177,22 @@ def run_preds(conn, run_id):
     return df
 
 
-def market_set(preds, venue_id, hist, kinds=PROP_KINDS, prior_n=PRIOR_N):
+# priced given a probability of rain when one is passed. The safety car is not: conditioning it on wet was worse in
+# the walk-forward (Brier +0.0046, se 0.0027, decision log 2026-10-06), so it stays on rate(); check() still scores it
+WX_KINDS = ("race_red_flag",)
+WX_CHECKED = ("race_safety_car", "race_red_flag")
+
+
+def market_set(preds, venue_id, hist, kinds=PROP_KINDS, prior_n=PRIOR_N, p_wet=None):
     """The prop markets and their fair values (live_f1.market_set's shape): [dict(key, kind, athlete_id,
-    params, subject, fair)]."""
+    params, subject, fair)]. p_wet (a probability of rain, None by default): the WX_KINDS (race_red_flag) priced
+    with rate_wx instead of rate."""
     out = []
     for kind, col in BINARY.items():
         if kind in kinds:
-            out.append(dict(key=kind, kind=kind, athlete_id=None, params=None, subject=LABEL[kind],
-                            fair=rate(hist, venue_id, col, prior_n)))
+            fair = rate_wx(hist, venue_id, col, p_wet, prior_n) if p_wet is not None and kind in WX_KINDS \
+                else rate(hist, venue_id, col, prior_n)
+            out.append(dict(key=kind, kind=kind, athlete_id=None, params=None, subject=LABEL[kind], fair=fair))
     if "race_fastest_lap" in kinds and len(preds) and not hist.empty:
         p = fl_probs(preds, fl_rates(hist))
         for r, v in zip(preds.itertuples(), p):
@@ -137,12 +201,13 @@ def market_set(preds, venue_id, hist, kinds=PROP_KINDS, prior_n=PRIOR_N):
     return out
 
 
-def markets(conn, event_key, run_id, kinds=PROP_KINDS, prior_n=PRIOR_N):
-    """The event's prop markets from the race history before it and a stage run (fastest lap)."""
+def markets(conn, event_key, run_id, kinds=PROP_KINDS, prior_n=PRIOR_N, p_wet=None):
+    """The event's prop markets from the race history before it and a stage run (fastest lap); p_wet: see
+    market_set (None, the default, prices with rate())."""
     venue_id, start = event_info(conn, event_key)
     hist = history(conn, start)
     preds = run_preds(conn, run_id) if "race_fastest_lap" in kinds and run_id is not None else pd.DataFrame()
-    return market_set(preds, venue_id, hist, kinds, prior_n)
+    return market_set(preds, venue_id, hist, kinds, prior_n, p_wet)
 
 
 def outcomes(conn, race_id, mkts):
@@ -161,11 +226,19 @@ def outcomes(conn, race_id, mkts):
     return out
 
 
-def check(conn, start_year=2022, prior_n=PRIOR_N):
+METHODS = ("circuit", "field", "coin", "climatology", "wet_oracle")
+
+
+def check(conn=None, start_year=2022, prior_n=PRIOR_N, history_df=None):
     """Walk-forward calibration of the yes/no props: each race from `start_year` priced from the races before
-    it, against the field rate alone and a coin flip. -> (per-race DataFrame, summary DataFrame: Brier and log
-    loss per prop and method, with the mean YES rate and mean price)."""
-    h = history(conn)
+    it, against the field rate alone and a coin flip; race_safety_car and race_red_flag (WX_CHECKED) also given wet or dry
+    (`climatology`: rate_wx with the circuit's past wet share; `wet_oracle`: rate_wx with the race's realised wet
+    flag, a perfect forecast's ceiling; race_rain has neither, its conditioned price would be itself).
+    history_df: a history frame (history()'s columns; fl_* not needed) instead of reading `conn`.
+    -> (per-race DataFrame, summary DataFrame: Brier and log loss per prop and method, with the mean YES rate and
+    mean price)."""
+    h = prepare(history_df) if history_df is not None else history(conn)
+    h = h.sort_values(["start", "race_id"] if "race_id" in h else ["start"]).reset_index(drop=True)
     rows = []
     for r in h[pd.to_datetime(h["start"]).dt.year >= start_year].itertuples():
         past = h[h["start"] < r.start]
@@ -173,13 +246,19 @@ def check(conn, start_year=2022, prior_n=PRIOR_N):
             continue
         for kind, col in BINARY.items():
             y = bool(getattr(r, col))
-            rows.append(dict(event_key=r.event_key, kind=kind, y=y, circuit=rate(past, r.venue_id, col, prior_n),
-                             field=float(past[col].mean()), coin=0.5))
+            row = dict(event_key=r.event_key, kind=kind, y=y, wet=bool(r.wet),
+                       circuit=rate(past, r.venue_id, col, prior_n), field=float(past[col].mean()), coin=0.5)
+            if kind in WX_CHECKED:
+                row.update(climatology=rate_wx(past, r.venue_id, col, None, prior_n),
+                           wet_oracle=rate_wx(past, r.venue_id, col, float(r.wet), prior_n))
+            rows.append(row)
     per = pd.DataFrame(rows)
     out = []
     for kind, g in per.groupby("kind", sort=False):
         y = g["y"].astype(float).to_numpy()
-        for meth in ("circuit", "field", "coin"):
+        for meth in METHODS:
+            if meth not in g or g[meth].isna().all():
+                continue
             p = np.clip(g[meth].to_numpy(float), 1e-4, 1 - 1e-4)
             out.append(dict(kind=kind, method=meth, races=len(g), yes_rate=y.mean(), mean_price=p.mean(),
                             brier=float(((p - y) ** 2).mean()),

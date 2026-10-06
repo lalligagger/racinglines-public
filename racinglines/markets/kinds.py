@@ -10,28 +10,42 @@ result. Any sport whose model returns an `OutcomeSims` gets every kind here with
 
 Settlement reads the result frame of private_book.race_outcomes (athlete_id, position, status,
 qual_position, team_id, points) and is what private_book.outcome_for returns.
+
+Two kinds of kind. The declarative kinds (the sportsbook classification and retirement markets) are specs in
+markets/kinds.toml: subject / predicate / aggregate / compare, priced and settled by the two generic functions of
+racinglines/markets/payoffs.py, so a new one is a table in that file, not a branch here (owner, 2026-10-06: "as few
+conditional code switches in the model, and more generalized support functions who's inputs are set by the
+schemas"). The legacy kinds below (payoffs top_n, stage_top_n, reached, h2h, group_top, standings, indicator,
+mover) keep their code in this change: their fair values feed the golden tests and the live book, and moving them
+onto specs is a later change under the promotion rule (docs/f1-roadmap.md).
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
+
+from racinglines.markets import payoffs as P
+
+first_retired = P.first_retired          # re-exported (tests/test_kinds.py)
 
 
 @dataclass(frozen=True)
 class Kind:
     code: str
-    payoff: str               # top_n | stage_top_n | h2h | reached | group_top | indicator | mover | standings (not from sims)
+    payoff: str               # top_n | stage_top_n | h2h | reached | group_top | indicator | mover | standings (not from
+                              # sims) | spec (a declarative kind: markets/kinds.toml, priced and settled by payoffs.py)
     n: int | None = None      # top_n / stage_top_n
     stage: str | None = None  # stage_top_n / mover: which earlier round (sims.stage_rank key); reached: which round
     label: str = ""
     default: bool = True      # False: priced only when named (fair(), a model's own summary); left out of summary(),
                               # to_records and the walk-forward default set, so adding one changes no existing output
+    spec: dict | None = field(default=None, compare=False)   # payoff "spec": {"payoff": {...}, "settle": {...}}
 
 
 # Declared in the order the readers list prediction kinds (db/reads.PREDICTION_KINDS is derived from it).
 # payoff "standings": season-long markets read from a model run's standings, not priced from an OutcomeSims.
-KINDS = {k.code: k for k in (
+LEGACY = (
     Kind("race_win", "top_n", n=1, label="Win"),
     Kind("race_podium", "top_n", n=3, label="Podium"),
     Kind("race_top10", "top_n", n=10, label="Top 10"),
@@ -58,15 +72,27 @@ KINDS = {k.code: k for k in (
     # gained; every driver tied on that gain counts as YES (docs/f1-roadmap.md decision log, 2026-10-04)
     Kind("race_top5", "top_n", n=5, label="Top 5", default=False),
     Kind("race_biggest_mover", "mover", stage="qual", label="Biggest mover", default=False),
-)}
+)
+
+# The declarative kinds (markets/kinds.toml), after the legacy ones in the file's order: the sportsbook classification
+# markets (docs/sportsbook/) and the retirements (decision log 2026-10-06, provisional), all default=False.
+KINDS = {k.code: k for k in LEGACY + tuple(
+    Kind(e["code"], "spec", label=e["label"], default=e["default"], spec=e) for e in P.load().values())}
 
 
 # --- fair values ---------------------------------------------------------------------------------------
 
-def fair(kind, sims, a=None, b=None):
+def fair(kind, sims, a=None, b=None, line=None):
     """Fair probability of YES. Per-entrant kinds return an array over sims.entrants (or one value with
-    `a` = an athlete id); race_h2h needs a and b; race_constructor_top returns {group: probability}."""
+    `a` = an athlete id); race_h2h needs a and b; race_constructor_top and the team kinds of markets/kinds.toml
+    return {group: probability}; its field kinds with compare over (race_n_classified, race_n_retirements) need
+    `line` and return P(over)."""
     k = KINDS[kind]
+    if k.spec is not None:
+        try:
+            return P.fair(k.spec["payoff"], sims, a=a, line=line)
+        except ValueError as e:
+            raise ValueError(f"{kind}: {e}") from None
     if k.payoff == "h2h":
         if a is None:
             return h2h_matrix(sims)
@@ -175,10 +201,14 @@ def standings_position(ss, n):
 
 def settle(kind, athlete_id, params, res, group_key=None):
     """YES/NO for a race market from the official classification (None if undecidable).
-    group_key: maps a result's team_id to the group key the market names (F1: position_sim team_key)."""
+    group_key: maps a result's team_id to the group key the market names (F1: position_sim team_key).
+    The n-th retirement kinds read a `laps_completed` column when the frame has one (the caller adds it; nothing here
+    queries the database): the DNF with the fewest laps is first, every tied driver YES."""
     if res.empty:
         return None
     k = KINDS.get(kind)
+    if k is not None and k.spec is not None:
+        return P.settle(k.spec["settle"], athlete_id, params, res, group_key=group_key)
     if k is None or k.payoff == "standings":
         return None
     by = res.set_index("athlete_id")
