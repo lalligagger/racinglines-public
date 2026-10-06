@@ -574,8 +574,16 @@ An exchange defined by a file in `exchanges/` goes through one generic driver
 
 ```
 racinglines markets --exchange og [--sport f1|nascar|sailgp] sync | trades | history --start UTC [--end UTC] | books | fair
+racinglines markets --exchange og [--sport f1|nascar|sailgp] settle [--since UTC] [--max-pages N]
 racinglines markets --exchange og --sport f1|nascar|sailgp buy-all [--cost 0.01] [--fee USD] [--out FILE.csv]   # debug
 ```
+
+`settle` writes the outcomes of the sport's closed, unresolved links from the exchange's settlement feed
+(`[endpoints.settlements]` in its schema; OG.com's `get-expired-settlement-price`, since its listing drops a settled
+instrument): `resolved_yes`, plus `params.settled_at`; a void (a 0.50 settlement) is noted in `params.settlement` and
+left unresolved. Bounded (`--max-pages`, default the schema's 500) and resumed where the last pass stopped; a schema
+with no feed does nothing. The VM recorder runs it hourly on race weekends
+([Exchanges](exchanges.md#outcomes-the-settlement-feed)).
 
 OG.com is also a **replay venue**: `racinglines nascar replay --venue og` (and `--venue all`, where `exchanges/og.toml`
 lists the sport) and `f1 season-strategy --venue og` read its stored minute prices, trades and book quotes whatever their
