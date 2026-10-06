@@ -90,3 +90,97 @@ def test_skill_scores_every_lead_against_climatology(tmp_path):
     assert one["brier_vs_clim"] == pytest.approx(one["brier"] - c["brier"])
     a = s[s["method"] == "analysis"].iloc[0]
     assert a["brier"] == pytest.approx(((np.array([0.9, 0.1, 0.9, 0.1]) - y) ** 2).mean())
+
+
+# --- the props check's circuit-WX and the schema's wx hook ----------------------------------------------------------
+
+@pytest.mark.quick
+def test_circuit_wx_only_for_races_with_a_forecast(tmp_path):
+    from racinglines.models.position_sim import props as PR
+    h, fc = _history(), L.p_wet(L.load(_leads_csv(tmp_path)), 5)
+    per, summ = PR.check(history_df=h, start_year=2024, forecast=fc)
+    rf = per[per["kind"] == "race_red_flag"].reset_index(drop=True)
+    has = rf["event_key"].isin([f"e{r}" for r in WET])
+    assert has.sum() == 4 and rf.loc[has, "circuit-WX"].notna().all() and rf.loc[~has, "circuit-WX"].isna().all()
+    assert per.loc[per["kind"] == "race_rain", "circuit-WX"].isna().all()       # rain is the forecast, not conditioned
+    hp = PR.prepare(h)
+    r22 = rf[rf["event_key"] == "e22"].iloc[0]
+    assert r22["circuit-WX"] == pytest.approx(PR.rate_wx(hp[hp["start"] < hp.loc[22, "start"]], 1, "red", fc[22]))
+    s = summ.set_index(["kind", "method"])
+    assert s.loc[("race_red_flag", "circuit-WX"), "races"] == 4
+    assert s.loc[("race_red_flag", "circuit"), "races"] == len(rf)
+    pr = s.loc[("race_red_flag", "circuit-WX - circuit")]
+    both = rf[has]
+    y = both["y"].astype(float).to_numpy()
+    d = (both["circuit-WX"].to_numpy() - y) ** 2 - (both["circuit"].to_numpy() - y) ** 2
+    assert pr["races"] == 4 and pr["brier"] == pytest.approx(d.mean()) and pr["se"] == pytest.approx(d.std(ddof=1) / 2)
+    assert ("race_rain", "circuit-WX - circuit") not in s.index
+    _, plain = PR.check(history_df=h, start_year=2024)                    # no forecast: no WX rows
+    assert not plain["method"].str.contains("WX").any()
+
+
+@pytest.mark.quick
+def test_wx_is_read_from_the_schema():
+    from racinglines.markets import kinds as K
+    from racinglines.markets import payoffs as PO
+    from racinglines.models.position_sim import props as PR
+    assert PR.WX_KINDS == ("race_red_flag",) and K.wx_kinds("rate") == PR.WX_KINDS
+    want = {c for c, e in PO.load().items()
+            if e["payoff"]["predicate"] in ("retired", "nth_retired", "classified", "last_classified")}
+    assert set(PR.WX_DNF_KINDS) == want and "race_retire" in want and "race_team_both_classified" in want
+    assert K.KINDS["race_retire"].wx == "dnf" and K.KINDS["race_constructor_win"].wx is None
+    assert all(K.KINDS[c].wx is None for c in K.KINDS if K.KINDS[c].spec is None)
+    assert "race_red_flag" not in K.KINDS                      # a prop: not a prediction kind
+
+
+@pytest.mark.quick
+def test_a_bad_wx_in_the_schema_is_refused(tmp_path):
+    from racinglines.markets import payoffs as PO
+    p = tmp_path / "kinds.toml"
+    p.write_text('[[kinds]]\ncode = "x"\nwx = "rain"\npayoff = { subject = "driver", predicate = "retired" }\n')
+    with pytest.raises(ValueError, match="wx"):
+        PO.load(p)
+
+
+@pytest.mark.quick
+def test_wx_scale_is_one_at_the_circuits_own_wet_rate():
+    from racinglines.models.position_sim import props as PR
+    h = PR.prepare(_history())
+    assert "dnf_rate" in h and h.loc[0, "dnf_rate"] == pytest.approx(4 / 20)        # race 0 is wet
+    for v in (1, 2):
+        assert PR.wx_scale(h, v, PR.rate(h, v, "wet")) == pytest.approx(1.0)
+    assert PR.wx_scale(h, 1, 1.0) > 1 > PR.wx_scale(h, 1, 0.0)                     # wet races retire more here
+    assert PR.wx_scale(h, 1, None) == 1.0 and PR.wx_scale(h.iloc[:0], 1, 0.9) == 1.0
+    assert PR.wx_scale(h.assign(dnf_rate=0.0), 1, 0.9) == 1.0                      # nothing to scale
+    # a fractional column shrinks like a bool one: rate() is the mean, shrunk
+    v = h.loc[h["venue_id"] == 1, "dnf_rate"]
+    assert PR.rate(h, 1, "dnf_rate", 16) == pytest.approx((v.sum() + 16 * h["dnf_rate"].mean()) / (len(v) + 16))
+    # n missing: n_ok + n_dnf
+    assert PR.prepare(_history().drop(columns="n")).loc[0, "dnf_rate"] == pytest.approx(4 / 20)
+
+
+@pytest.mark.quick
+def test_market_set_scales_dnf_prob_for_the_dnf_kinds():
+    from racinglines.markets import kinds as K
+    from racinglines.models.position_sim import props as PR
+    h = PR.prepare(_history())
+    preds = pd.DataFrame(dict(athlete_id=[1, 2, 3, 4], driver=list("ABCD"), team_key=["x", "x", "y", "y"],
+                              win_prob=[0.4, 0.3, 0.2, 0.1], podium_prob=[0.8, 0.7, 0.6, 0.5],
+                              top10_prob=[1.0] * 4, dnf_prob=[0.1, 0.2, 0.0, 0.5]))
+    kinds = ("race_red_flag", "race_retire", "race_team_both_classified", "race_n_retirements")
+    base = PR.market_set(preds, 1, h, kinds, lines={"race_n_retirements": [0.5]})
+    by = {m["key"]: m for m in base}
+    assert by["race_retire:2"]["fair"] == pytest.approx(0.2, abs=0.01) and by["race_retire:3"]["fair"] == 0.0
+    assert by["race_team_both_classified:x"]["params"] == {"team": "x"}
+    assert by["race_team_both_classified:x"]["fair"] == pytest.approx(0.9 * 0.8, abs=0.01)
+    assert by["race_n_retirements:0.5"]["fair"] == pytest.approx(1 - 0.9 * 0.8 * 0.5, abs=0.01)
+    assert PR.market_set(preds, 1, h, ("race_n_retirements",)) == []               # a field kind needs a line
+    wet = {m["key"]: m["fair"] for m in PR.market_set(preds, 1, h, kinds, p_wet=1.0, lines={"race_n_retirements": [0.5]})}
+    sc = PR.wx_scale(h, 1, 1.0)
+    assert sc > 1
+    assert wet["race_retire:2"] == pytest.approx(0.2 * sc, abs=0.01) and wet["race_retire:3"] == 0.0
+    assert wet["race_red_flag"] == pytest.approx(PR.rate_wx(h, 1, "red", 1.0))
+    # the scaled preds price exactly as preds with that dnf_prob would
+    same = PR.dnf_markets(preds.assign(dnf_prob=(preds["dnf_prob"] * sc).clip(0, 1)), ("race_retire",))
+    assert [m["fair"] for m in same] == [wet[f"race_retire:{a}"] for a in (1, 2, 3, 4)]
+    assert set(K.wx_kinds("dnf")) >= {"race_retire", "race_n_retirements"}
