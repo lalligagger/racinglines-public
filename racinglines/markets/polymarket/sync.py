@@ -8,6 +8,8 @@ model prediction that prices it.
     "<GP>: Which Constructor Scores 1st?" race_constructor_top   race, params.team
     "<GP>: Driver Pole Position"          race_pole         athlete, race
     "<GP>: Driver Fastest Lap"            race_fastest_lap  athlete, race
+    "<GP>: Sprint Winner"                 race_sprint_win   athlete, race (the sprint stage, models/position_sim/pricing.py)
+    "<GP>: Sprint Qualifying Pole Winner" race_sprint_pole  athlete, race
     "Will there be a safety car / red flag during the ... <GP>?", "Rain during the <GP>?"
                                           race_safety_car / race_red_flag / race_rain   race (no athlete)
     "F1 Drivers' Champion"                champion          athlete
@@ -95,6 +97,10 @@ PLACEHOLDER = re.compile(r"^(?:Driver [A-Z]|Other)$")      # unnamed slots in a 
 
 def classify(event_title, question):
     t, q = (event_title or "").strip(), (question or "").strip()
+    if m_ := re.search(r"^(.*Grand Prix): Sprint Winner$", t):
+        return "race_sprint_win", m_.group(1)
+    if m_ := re.search(r"^(.*Grand Prix): Sprint Qualifying Pole Winner$", t):
+        return "race_sprint_pole", m_.group(1)
     if m_ := re.search(r"^(.*Grand Prix): Driver Winner", t):
         return "race_win", m_.group(1)
     if m_ := re.search(r"^(.*Grand Prix): Driver Podium", t):
@@ -326,7 +332,8 @@ def sync(session, conn, year=2026, include_closed=False, new=None, sport="f1", t
                             outcomes[0] if outcomes else "Yes")]
             elif kind in ("race_constructor_top", "constructors_champion"):
                 targets = [(0, None, {"team": R.team(group)}, outcomes[0] if outcomes else "Yes")]
-            elif kind in ("race_win", "race_podium", "race_pole", "race_fastest_lap", "champion"):
+            elif kind in ("race_win", "race_podium", "race_pole", "race_fastest_lap", "race_sprint_win", "race_sprint_pole",
+                          "champion"):
                 targets = [(0, R.driver(group), None, outcomes[0] if outcomes else "Yes")]
             else:
                 targets = [(0, None, None, outcomes[0] if outcomes else "Yes")]

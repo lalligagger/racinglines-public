@@ -118,10 +118,11 @@ def test_a_new_kind_prices_an_archived_run(tmp_path, monkeypatch):
 def test_one_kind_registry():
     # the old hard-coded list, then kinds added to the registry since (race_fastest_lap: position_sim `fastlap`;
     # race_top5 / race_biggest_mover: Kalshi's KXF1TOP5 / KXF1BIGGESTMOVER; the five classification kinds: generic
-    # sportsbook lines, docs/sportsbook/vocabulary.md; the four retirement kinds, decision log 2026-10-06), none of
-    # them in the default summary below
+    # sportsbook lines, docs/sportsbook/vocabulary.md; the four retirement kinds, decision log 2026-10-06; the four
+    # sprint-stage kinds, docs/todo.md U13), none of them in the default summary below
     assert reads.PREDICTION_KINDS == OLD_PREDICTION_KINDS + [
         "race_fastest_lap", "race_top5", "race_biggest_mover",
+        "race_sprint_podium", "race_sprint_top8", "race_sprint_h2h", "race_sprint_constructor_top",
         "race_classified", "race_last_classified", "race_team_both_classified", "race_n_classified",
         "race_constructor_win",
         "race_retire", "race_n_retirements", "race_first_retirement", "race_first_retirement_team",

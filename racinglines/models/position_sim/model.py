@@ -90,6 +90,24 @@ DISRUPTED_SC_SHARE, DISRUPTED_RAIN_SHARE, CHAOS_PRIOR_N = 0.10, 0.25, 4.0
 RACE_POINTS = list(SCHEMA["points"]["race"])                       # sports/f1.toml
 SPRINT_POINTS = sports.int_keys(SCHEMA["points"]["sprint_by_year"])
 SPRINT_POINTS_DEFAULT = list(SCHEMA["points"]["sprint"])
+# The race-like sessions simulated per weekend (sports/f1.toml [sessions.sim]): MAIN_STAGE is the Grand Prix, the
+# others are side stages (the sprint), each drawn on its own stream (_side_rng, salt STAGE_SEED + its index)
+SIM_SESSIONS = {k: dict(v) for k, v in SCHEMA["sessions"]["sim"].items()}
+MAIN_STAGE = "race"
+STAGE_SEED = 20261006
+
+
+def points_table(name, year):
+    """The [points] table `name` for a season (its <name>_by_year entry when the season has one)."""
+    pts = SCHEMA["points"]
+    return list(sports.int_keys(pts.get(f"{name}_by_year", {})).get(int(year), pts[name]))
+
+
+def grid_source(stage, year):
+    """The session whose order sets a side stage's grid in a season: the stage's grid_from_by_year entry when the
+    season has one (2021: Friday's qualifying set the sprint grid, there was no Sprint Qualifying), else grid_from."""
+    cfg = SIM_SESSIONS[stage]
+    return sports.int_keys(cfg.get("grid_from_by_year", {})).get(int(year), cfg["grid_from"])
 
 # team lineage across renames, so history carries over
 TEAM_ALIASES = {"racing_point": "aston_martin", "renault": "alpine", "toro_rosso": "rb", "alphatauri": "rb",

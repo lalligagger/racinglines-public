@@ -110,7 +110,7 @@ branches, one PR per track (owner, 2026-09-30); the track is named on each item.
       2026-10-01; tests in CI, a real staging deploy, an off-VM data copy, a migration gate and a live-window freeze
       are open: STG-1 to STG-11 in [Staging and CI deploys](#staging-and-ci-deploys).
 - [x] **U5** Kalshi sprint markets before Singapore (11 Oct); built in PR #36, merged; on by default since 2026-10-06 (`RACINGLINES_KALSHI_SPRINTS=0` turns it off). Priced from the race's pole and win odds
-      until **U13**, a real sprint model, lands ([F1 model](#f1-model)).
+      until **U13**, the sprint stage, lands (in progress, [F1 model](#f1-model)).
 - [ ] **U3** Kalshi maker profile K: swept (PRs #38, #41, merged; K = `gbm`, 2¢, 10-pt filter, 25 shares, $400 volume floor); **freezing it is the owner's call** before the United States GP (25 Oct).
 - [x] **U7** Cross-venue disagreement log (PR #35, behind `RACINGLINES_DISAGREE`); **U8** settlement rules for relocated or cancelled races (PR #27, behind `RACINGLINES_CANCELLED_RACE_RULES`). Both merged; the owner's two assumptions for U8 are still to confirm.
 - [x] Per-weekend reconciliation (`f1 reconcile`, PR #37) and the pricing scorecard (`f1 scorecard`, PR #28), both merged; run them after every weekend ([Paper trading](#paper-trading)).
@@ -353,14 +353,38 @@ Phased plan and ground rules: [F1 roadmap](f1-roadmap.md).
       byte-for-byte its baseline: nothing weather-aware feeds win, podium, h2h, constructor or pole. Decided after the
       5-day forecast backtest found the forecast beats the circuit history for rain, is neutral for red flags and adds
       nothing for safety car or DNF ([Weather forecasts](weather.md), [decision log](f1-roadmap.md#decision-log)).
-- [ ] **U13 · P2 · Sprint-race pricing model.** For now (U5, PR #36) Kalshi's sprint winner and sprint pole
-      markets price from the race's win and pole probabilities as a stand-in; the owner approved that for
-      Singapore (2026-09-29). Simulate the sprint itself: sprint qualifying as its own stage, a shorter race
-      (about a third of the distance: less tyre and pit variance, fewer retirements), and write
-      `extra.sprint_pole_prob` / `extra.sprint_win_prob` on the stage runs, which the pricing already reads
-      first. Backtest on the 2025–26 sprint weekends against Kalshi's and Polymarket's sprint prices.
+- [ ] **U13 · P2 · Sprint-race pricing model. In progress (2026-10-06, branch `work/sprint-stage`).** Until U5
+      (PR #36) Kalshi's sprint winner and sprint pole markets priced from the race's win and pole probabilities
+      as a stand-in; the owner approved that for Singapore (2026-09-29).
+      **Landed:**
+      - **The sprint stage** ([F1 model](f1.md#model-racinglinesmodelsposition_simmodelpy), step 6). It is
+        schema-driven (`[sessions.sim]` in `sports/f1.toml`) and drawn on a side stream, so Grand Prix prices are
+        byte-identical. It prices from the GP finishing model with the sprint points and `dnf_scale` 0.5
+        (provisional, [decision log](f1-roadmap.md#decision-log)).
+      - **Grid:** SQ's laps ranked by best valid lap once SQ has run, else simulated. After the sprint, its
+        actual result. Per year (`grid_from_by_year`): the 2021 sprint takes its grid from `qual` (no SQ then).
+      - **Outputs:** `extra.sprint_win_prob` / `sprint_pole_prob` on every run of a sprint weekend; sprint arrays
+        in the sims and records.
+      - **Kinds:** `race_sprint_podium` / `_top8` / `_h2h` / `_constructor_top` (`default=False`; out of every
+        book per DEC-12), settled from `race_outcomes`' sprint columns.
+      - **Polymarket:** `<GP>: Sprint Winner` and `<GP>: Sprint Qualifying Pole Winner` link as
+        `race_sprint_win` / `race_sprint_pole`.
+      - **Walk-forward:** `racinglines f1 sprint-check`, run on the owner's Mac (2026-10-06): the stage beats the
+        GP-win stand-in once the SQ order is known ([decision log](f1-roadmap.md#decision-log)).
+      **Open:**
+      - **Sprint backfill on the VM:** `f1 fetch --sprints-from 2023` for the 12 missing 2023–25 weekends
+        (a database write: backup first, data-changes entry). Then refit `dnf_scale` and decide whether a
+        sprint-specific grid weight or noise earns a setting.
+      - **SQ order:** segment-aware SQ1/SQ2/SQ3 ordering (best lap per segment, not over the whole session)
+        and a TeamId fill for SQ rows (FastF1 leaves both empty). Also SQ positions in `ingest.py`, if FastF1
+        ever gives them.
+      - **Settlement timing:** `race_sprint_pole` settles from the sprint's starting grid (`extra.grid`, after
+        penalties), so not before the sprint has run.
+      - **Live stage runs** before SQ only see the sprint when the caller passes `stages=` (the weekend's rows
+        don't exist yet): wire it from the schedule in `signals` / `weekend_sweep` if sprint kinds go live.
+      - **Replay** against the Kalshi and Polymarket sprint tapes.
       *Done when:* sprint markets price from the sprint simulation and beat the race-odds stand-in on the
-      backtest.
+      walk-forward and the tape replay.
 - [ ] **U10 · P3 · F1 pre-season testing:** ingest FastF1's testing sessions as a stage before round 1 for
       the forecast and the season strategy, so the pre-season forecast sees what the market sees.
       *Done when:* a 2026 re-run with testing moves the pre-season constructors' odds toward the market's

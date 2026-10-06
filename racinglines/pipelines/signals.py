@@ -74,6 +74,17 @@ HEAT_WEIGHT = {1: 0.6, 2: 1.0, 3: 1.4}    # relative chance of following an entr
 HEAT_MIX_MEAN = 0.9                       # mean weight over A's backtest entries (1/2 warm, 1/4 hot, 1/4 very hot)
 
 
+def _stages(w):
+    """The side stages (sports/f1.toml [sessions.sim], e.g. the sprint) this weekend has, from the schedule's
+    FastF1 event format, so a live run prices them before their sessions' data exists (pricing.price_stages)."""
+    from racinglines.models.position_sim import model as M
+    from racinglines.sources.fastf1.fetch import SPRINT_FORMATS
+    if not w or str(w.get("format", "")) not in SPRINT_FORMATS:
+        return []
+    return [k for k in M.SIM_SESSIONS if k != M.MAIN_STAGE]
+
+
+
 # ---------------------------------------------------------------------------
 # Pure pieces (tested without a database)
 # ---------------------------------------------------------------------------
@@ -335,11 +346,12 @@ def price_stages_now(meas, hist, w, st, engine, engine_url, now, echo=print):
         if hit is None:
             if raced:
                 _, summ, ex, _ = run.diagnostic(meas, hist, w["event_key"], cutoff, n_sims=st["sims"],
-                                                use_track=st["track_features"], seed=st.rng_seed)
+                                                use_track=st["track_features"], seed=st.rng_seed, stages=_stages(w))
             else:
                 summ, ex = run.price_race(meas, hist, cutoff, event_id, n_sims=st["sims"],
                                           rng=np.random.default_rng(st.rng_seed), use_track=st["track_features"],
-                                          entrants=_entrants(meas, event_id, cutoff), venue=_venue(meas, event_id, w))
+                                          entrants=_entrants(meas, event_id, cutoff), venue=_venue(meas, event_id, w),
+                                          stages=_stages(w))
             extra = dict(model_key=mk, data_key=dk, model_settings={n: st.to_json()[n] for n in SS.MODEL_NAMES},
                          live=not raced)
             if st["variant"] != "baseline":
@@ -712,7 +724,7 @@ def price_upcoming(engine, engine_url, profile, now=None, n=3, echo=print, cache
             event_id = int(ev["event_id"].iloc[0]) if len(ev) else None
             summ, ex = run.price_race(meas, hist, now, event_id, n_sims=st["sims"], rng=np.random.default_rng(st.rng_seed),
                                       use_track=st["track_features"], entrants=_entrants(meas, event_id, now),
-                                      venue=_venue(meas, event_id, w))
+                                      venue=_venue(meas, event_id, w), stages=_stages(w))
             extra = dict(model_key=st.model_key, data_key=dk, live=True,
                          model_settings={k: st.to_json()[k] for k in SS.MODEL_NAMES})
             if st["variant"] != "baseline":
