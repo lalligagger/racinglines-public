@@ -7,6 +7,7 @@
   let ws = null;
   const now = () => new Date().toISOString().slice(11, 19);
   function log(msg, level, ts) {
+    if (!logEl) return;                                 // the debug log is on the page for admins only
     logEl.textContent += `${ts || now()} ${level === "error" ? "ERROR " : ""}${msg}\n`;
     logEl.scrollTop = logEl.scrollHeight;
   }
@@ -49,7 +50,8 @@
     }
     else start();
   });
-  document.getElementById("fs-copy").addEventListener("click", () => {
+  const copyBtn = document.getElementById("fs-copy");
+  if (copyBtn) copyBtn.addEventListener("click", () => {
     navigator.clipboard.writeText(logEl.textContent).then(() => log("log copied"), () => log("couldn't copy", "error"));
   });
   log(`ready: press Turn on (event ${box.dataset.event})`);
