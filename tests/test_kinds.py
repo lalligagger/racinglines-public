@@ -113,3 +113,40 @@ def test_settlement(kind, ath, params, want):
 
 def test_settlement_without_results_is_undecided():
     assert K.settle("race_win", 1, None, RES.iloc[:0]) is None
+
+
+# --- sportsbook classification kinds (docs/sportsbook/) -------------------------------------------------------
+
+def test_classification_kinds_from_the_simulations(f1_priced):
+    _, ex = f1_priced
+    sims = O.from_position_sim(ex["entrants"], ex["sim"])
+    classified = K.fair("race_classified", sims)
+    assert classified.shape == (len(sims.entrants),) and ((0 <= classified) & (classified <= 1)).all()
+    last = K.fair("race_last_classified", sims)
+    assert abs(last.sum() - 1) < 1e-9                       # exactly one last finisher per simulation (ties split none here)
+    both = K.fair("race_team_both_classified", sims)
+    win = K.fair("race_constructor_win", sims)
+    assert abs(sum(win.values()) - 1) < 1e-9
+    groups = np.array(sims.groups)
+    for team, p in both.items():
+        members = np.where(groups == team)[0]
+        assert p <= classified[members].min() + 1e-9      # both classified is never likelier than either one
+    n = sims.finished.sum(axis=1)
+    over = K.fair("race_n_classified", sims, line=float(np.median(n)) - 0.5)
+    assert 0 <= over <= 1 and over >= K.fair("race_n_classified", sims, line=float(n.max()) + 0.5) == 0.0
+    with pytest.raises(ValueError):
+        K.fair("race_n_classified", sims)
+
+
+@pytest.mark.parametrize("kind,ath,params,want", [
+    ("race_classified", 1, None, True), ("race_classified", 5, None, False), ("race_classified", 9, None, False),
+    ("race_last_classified", 4, None, True), ("race_last_classified", 3, None, False),
+    ("race_last_classified", 5, None, False),
+    ("race_team_both_classified", None, {"team": "a"}, True), ("race_team_both_classified", None, {"team": "b"}, False),
+    ("race_team_both_classified", None, {"team": "z"}, None),
+    ("race_n_classified", None, {"line": 3.5}, True), ("race_n_classified", None, {"line": 4.5}, False),
+    ("race_n_classified", None, None, None),
+    ("race_constructor_win", None, {"team": "a"}, True), ("race_constructor_win", None, {"team": "b"}, False),
+])
+def test_classification_settlement(kind, ath, params, want):
+    assert K.settle(kind, ath, params, RES) == want

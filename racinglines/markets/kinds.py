@@ -58,14 +58,24 @@ KINDS = {k.code: k for k in (
     # gained; every driver tied on that gain counts as YES (docs/f1-roadmap.md decision log, 2026-10-04)
     Kind("race_top5", "top_n", n=5, label="Top 5", default=False),
     Kind("race_biggest_mover", "mover", stage="qual", label="Biggest mover", default=False),
+    # Sportsbook classification markets (docs/sportsbook/, sportsbook A's "To Be Classified?", "Both Cars Classified?",
+    # "Number Of Classified Drivers", "Classified As Last Finisher", "Race Winning Constructor"), drawn from the same
+    # simulations. "Classified" means the car is not a DNF (sims.finished); settlement reads status == "OK", the top_n
+    # convention. The 90%-distance rule is not modelled. default=False keeps them out of summary() and the records.
+    Kind("race_classified", "classified", label="Classified", default=False),
+    Kind("race_last_classified", "last_classified", label="Last classified finisher", default=False),
+    Kind("race_team_both_classified", "group_all_classified", label="Both cars classified", default=False),
+    Kind("race_n_classified", "count_over", label="Classified drivers over the line", default=False),
+    Kind("race_constructor_win", "group_win", label="Winning constructor", default=False),
 )}
 
 
 # --- fair values ---------------------------------------------------------------------------------------
 
-def fair(kind, sims, a=None, b=None):
+def fair(kind, sims, a=None, b=None, line=None):
     """Fair probability of YES. Per-entrant kinds return an array over sims.entrants (or one value with
-    `a` = an athlete id); race_h2h needs a and b; race_constructor_top returns {group: probability}."""
+    `a` = an athlete id); race_h2h needs a and b; the group kinds (race_constructor_top, race_constructor_win,
+    race_team_both_classified) return {group: probability}; race_n_classified needs `line` and returns P(over)."""
     k = KINDS[kind]
     if k.payoff == "h2h":
         if a is None:
@@ -74,8 +84,18 @@ def fair(kind, sims, a=None, b=None):
         return float((sims.rank[:, i] < sims.rank[:, j]).mean())
     if k.payoff == "group_top":
         return group_top(sims)
+    if k.payoff in ("group_win", "group_all_classified"):
+        return group_fair(k.payoff, sims)
+    if k.payoff == "count_over":
+        if line is None:
+            raise ValueError(f"{kind} needs a line (e.g. 18.5)")
+        return float((sims.finished.sum(axis=1) > line).mean())
     if k.payoff == "top_n":
         p = ((sims.rank <= k.n) & sims.finished).mean(0)
+    elif k.payoff == "classified":
+        p = sims.finished.mean(0)
+    elif k.payoff == "last_classified":
+        p = last_classified(sims.rank, sims.finished).mean(0)
     elif k.payoff == "stage_top_n":
         p = (sims.stage_rank[k.stage] <= k.n).mean(0)
     elif k.payoff == "reached":
@@ -101,6 +121,31 @@ def biggest_mover(grid, rank, finished):
     gain = np.where(finished, np.asarray(grid, float) - rank, -np.inf)
     best = gain.max(axis=1, keepdims=True)
     return (gain == best) & (best > 0)
+
+
+def last_classified(rank, finished):
+    """(n_sims, n) bool: the classified car with the worst rank in each simulation (everyone tied on it counts);
+    nobody when no car is classified."""
+    r = np.where(finished, np.asarray(rank, float), -np.inf)
+    worst = r.max(axis=1, keepdims=True)
+    return (r == worst) & np.isfinite(worst)
+
+
+def group_fair(payoff, sims):
+    """{group: probability} for the per-team yes/no kinds: group_win = the winner (rank 1, classified) drives for
+    the team; group_all_classified = every one of the team's cars is classified."""
+    if sims.groups is None:
+        raise ValueError("group markets need groups")
+    g = np.array(sims.groups)
+    out = {}
+    for key in sorted(set(sims.groups)):
+        cols = g == key
+        if payoff == "group_win":
+            hit = ((sims.rank[:, cols] == 1) & sims.finished[:, cols]).any(axis=1)
+        else:
+            hit = sims.finished[:, cols].all(axis=1)
+        out[key] = float(hit.mean())
+    return out
 
 
 def h2h_matrix(sims):
@@ -211,4 +256,24 @@ def settle(kind, athlete_id, params, res, group_key=None):
         keys =res["team_id"].map(group_key) if group_key else res["team_id"]
         pts = res.assign(tk=keys).groupby("tk")["points"].sum()
         return bool(pts.idxmax() == (params or {}).get("team")) if len(pts) else None
+    ok = res["status"] == "OK"
+    if k.payoff == "classified":
+        return bool(ok[res["athlete_id"] == athlete_id].any()) if athlete_id in by.index else False
+    if k.payoff == "last_classified":
+        if not ok.any():
+            return None
+        worst = res.loc[ok, "position"].max()
+        return bool((ok & (res["position"] == worst) & (res["athlete_id"] == athlete_id)).any())
+    if k.payoff == "count_over":
+        line = (params or {}).get("line")
+        return None if line is None else bool(int(ok.sum()) > float(line))
+    if k.payoff in ("group_win", "group_all_classified"):
+        keys = res["team_id"].map(group_key) if group_key else res["team_id"]
+        team = (params or {}).get("team")
+        members = keys == team
+        if not members.any():
+            return None
+        if k.payoff == "group_win":
+            return bool((members & ok & (res["position"] == 1)).any())
+        return bool(ok[members].all())
     return None
