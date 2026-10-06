@@ -549,6 +549,32 @@ Downhill model.
       The 106-job `sweeps/kalshi-maker-k.toml` grid went from 59 to 21 minutes on 4 cores, same results.
       Left: the maker replay itself (`maker_replay.quote`/`PublicView`, about half of what remains).
 
+## Infrastructure
+
+- [ ] **U-14 · P0 · Docker containerization for reproducible local/cloud builds.** Environment reproducibility; blocking LOCAL/CLOUD sessions.
+      
+      **Problem:**
+      - Python 3.14 build issues (watchdog, numpy C-extensions on arm64/x86_64 mismatch)
+      - Rosetta emulation conflicts on macOS slowing down development cycles
+      - Inconsistency between LOCAL (Mac) and VM (Linux) environments
+      - Cloud sweep sessions pulling unreliable deps (no lock pinning across platforms)
+      
+      **Scope:**
+      - Dockerfile (local dev + cloud build stages)
+      - docker-compose.yml for LOCAL postgres + app stack
+      - CI: build and test in container, push to VM registry
+      - CLAUDE.md: update Environments table with container runbooks
+      - Update scripts/deploy/vm.sh to pull pre-built images
+      
+      **Test plan:**
+      - LOCAL: `docker-compose up` runs full stack
+      - CLOUD: cloud sweep on pinned image matches local results
+      - CI: every push builds image, smoke tests pass
+      
+      **Owner:** ops track  
+      **Timeline:** 1–2 sprints  
+      **Blocks:** F1-8 signal engine stability, cloud sweep reliability
+
 ## Staging and CI deploys
 
 **High priority** (owner, 2026-09-30; in [P1](#priorities)). Audited 2026-10-01 against the public repo, the
