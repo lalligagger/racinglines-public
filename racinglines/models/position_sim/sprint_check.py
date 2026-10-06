@@ -25,7 +25,13 @@ from racinglines.models.position_sim import pricing as run
 
 STAGE = "sprint"
 RETIRED = ("DNF", "DSQ")
-MODES = {"pre_sq": M.SIM_SESSIONS[STAGE]["grid_from"], "pre_sprint": STAGE}     # cutoff: a minute before that session
+# the mode's cutoff is a minute before that session: "pre_sq" the weekend's own grid session (M.grid_source: Sprint
+# Qualifying, or in 2021 the Friday qualifying), "pre_sprint" the sprint
+MODES = ("pre_sq", "pre_sprint")
+
+
+def _anchor(mode, year):
+    return M.grid_source(STAGE, year) if mode == "pre_sq" else STAGE
 
 
 def _retired(rows):
@@ -35,7 +41,7 @@ def _retired(rows):
     return int(st[started].isin(RETIRED).sum()), int(started.sum())
 
 
-def check(meas, hist, start_year=2021, n_sims=4000, seed=0, modes=tuple(MODES), echo=None):
+def check(meas, hist, start_year=2021, n_sims=4000, seed=0, modes=MODES, echo=None):
     """One row per sprint weekend x mode (see the module docstring)."""
     from racinglines import progress as PG
     rng = np.random.default_rng(seed)
@@ -44,8 +50,9 @@ def check(meas, hist, start_year=2021, n_sims=4000, seed=0, modes=tuple(MODES), 
     rows = []
     for eid in PG.track(list(events.index), "sprint weekend"):
         sessions = meas.sessions(eid)
+        year = int(sp.loc[sp["event_id"] == eid, "year"].iloc[0])
         for mode in modes:
-            anchor = sessions.get(MODES[mode])
+            anchor = sessions.get(_anchor(mode, year))
             if anchor is None or pd.isna(anchor):
                 continue
             cutoff = anchor - run.ONE_MIN

@@ -362,16 +362,16 @@ Phased plan and ground rules: [F1 roadmap](f1-roadmap.md).
         byte-identical. It prices from the GP finishing model with the sprint points and `dnf_scale` 0.5
         (provisional, [decision log](f1-roadmap.md#decision-log)).
       - **Grid:** SQ's laps ranked by best valid lap once SQ has run, else simulated. After the sprint, its
-        actual result.
+        actual result. Per year (`grid_from_by_year`): the 2021 sprint takes its grid from `qual` (no SQ then).
       - **Outputs:** `extra.sprint_win_prob` / `sprint_pole_prob` on every run of a sprint weekend; sprint arrays
         in the sims and records.
       - **Kinds:** `race_sprint_podium` / `_top8` / `_h2h` / `_constructor_top` (`default=False`; out of every
         book per DEC-12), settled from `race_outcomes`' sprint columns.
       - **Polymarket:** `<GP>: Sprint Winner` and `<GP>: Sprint Qualifying Pole Winner` link as
         `race_sprint_win` / `race_sprint_pole`.
-      - **Walk-forward:** `racinglines f1 sprint-check`. Not run on real data yet.
+      - **Walk-forward:** `racinglines f1 sprint-check`, run on the owner's Mac (2026-10-06): the stage beats the
+        GP-win stand-in once the SQ order is known ([decision log](f1-roadmap.md#decision-log)).
       **Open:**
-      - **Run `f1 sprint-check` on the VM** and put the result in the decision log row.
       - **Sprint backfill on the VM:** `f1 fetch --sprints-from 2023` for the 12 missing 2023–25 weekends
         (a database write: backup first, data-changes entry). Then refit `dnf_scale` and decide whether a
         sprint-specific grid weight or noise earns a setting.

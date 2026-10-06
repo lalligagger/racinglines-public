@@ -83,7 +83,9 @@ def from_position_sim(entrants, sim):
     pos = sim["pos"]
     stage_rank, finished, points = {"qual": sim["grid"]}, {}, {}
     for stage, s in sim.get("stages", {}).items():
-        stage_rank[s["grid_from"]], stage_rank[stage] = s["grid"], s["pos"]
+        if s["grid_from"] != "qual":       # 2021's sprint grid is the weekend's own qualifying: never overwrite the GP's
+            stage_rank[s["grid_from"]] = s["grid"]
+        stage_rank[stage] = s["pos"]
         finished[stage], points[stage] = ~s["dnf"], s["points"]
     return OutcomeSims(entrants=entrants["athlete_id"].tolist(), rank=pos, finished=~sim["dnf"],
                        stage_rank=stage_rank, points=sim["points"],

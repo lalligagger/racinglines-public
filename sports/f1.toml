@@ -48,7 +48,8 @@ practice = ["fp1", "fp2", "fp3", "sprint_qual"]
 # 2026-10-06, provisional, refit after the 2023-25 sprint backfill)
 [sessions.sim]
 race = { grid_from = "qual", points = "race" }
-sprint = { grid_from = "sprint_qual", points = "sprint", dnf_scale = 0.5 }
+# 2021 format: Friday's qualifying set the sprint grid (no Sprint Qualifying session), hence grid_from_by_year
+sprint = { grid_from = "sprint_qual", grid_from_by_year = { 2021 = "qual" }, points = "sprint", dnf_scale = 0.5 }
 
 # FastF1 schedule names -> (minutes, short label), for trading stages through a weekend
 [sessions.schedule]

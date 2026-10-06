@@ -102,6 +102,13 @@ def points_table(name, year):
     pts = SCHEMA["points"]
     return list(sports.int_keys(pts.get(f"{name}_by_year", {})).get(int(year), pts[name]))
 
+
+def grid_source(stage, year):
+    """The session whose order sets a side stage's grid in a season: the stage's grid_from_by_year entry when the
+    season has one (2021: Friday's qualifying set the sprint grid, there was no Sprint Qualifying), else grid_from."""
+    cfg = SIM_SESSIONS[stage]
+    return sports.int_keys(cfg.get("grid_from_by_year", {})).get(int(year), cfg["grid_from"])
+
 # team lineage across renames, so history carries over
 TEAM_ALIASES = {"racing_point": "aston_martin", "renault": "alpine", "toro_rosso": "rb", "alphatauri": "rb",
                 "alfa": "sauber", "alfa_romeo": "sauber", "kick_sauber": "sauber", "audi": "sauber"}

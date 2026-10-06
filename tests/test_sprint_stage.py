@@ -51,7 +51,10 @@ def _cutoffs(m, eid):
 
 def test_schema_declares_the_race_like_sessions():
     assert M.SIM_SESSIONS["race"] == {"grid_from": "qual", "points": "race"}
-    assert M.SIM_SESSIONS["sprint"] == {"grid_from": "sprint_qual", "points": "sprint", "dnf_scale": 0.5}
+    assert M.SIM_SESSIONS["sprint"] == {"grid_from": "sprint_qual", "grid_from_by_year": {"2021": "qual"},
+                                        "points": "sprint", "dnf_scale": 0.5}
+    assert [M.grid_source("sprint", y) for y in (2021, 2022, 2026)] == ["qual", "sprint_qual", "sprint_qual"]
+    assert M.grid_source("race", 2021) == "qual"
     assert M.points_table("sprint", 2021) == [3, 2, 1] and M.points_table("sprint", 2026) == M.SPRINT_POINTS_DEFAULT
     assert M.points_table("race", 2026) == M.RACE_POINTS
 
@@ -396,3 +399,66 @@ def test_sprint_check_cli(sprint, monkeypatch, capsys, tmp_path):
               "--out", str(out)])
     text = capsys.readouterr().out
     assert "=== Summary" in text and len(pd.read_csv(out)) == 4
+
+
+# --- the 2021 format: Friday's qualifying set the sprint grid (sports/f1.toml grid_from_by_year) ------------
+
+def _as_2021(res, laps, eid):
+    """The event as a 2021 weekend: no Sprint Qualifying (rows and laps gone), the sprint the day after qualifying."""
+    res, laps = res.copy(), laps.copy()
+    mine = res["event_id"] == eid
+    res.loc[mine, "year"] = 2021
+    res = res[~(mine & (res["round"] == "sprint_qual"))]
+    laps = laps[~((laps["event_id"] == eid) & (laps["round"] == "sprint_qual"))]
+    qual_ts = pd.Timestamp(res.loc[mine & (res["round"] == "qual"), "session_ts"].iloc[0])
+    res.loc[mine & (res["round"] == "sprint"), "session_ts"] = str(qual_ts + pd.Timedelta(hours=20))
+    return res, laps
+
+
+def test_a_2021_weekend_takes_the_sprint_grid_from_qualifying_and_a_2025_one_from_sprint_qualifying():
+    (res, laps, prof), eid25 = _frames()
+    eid21 = sorted(res["event_id"].unique())[-3]
+    res, laps = _as_2021(res, laps, eid21)
+    m = run.Measurements.from_frames(res, laps, prof)
+    hist = run.history(m)
+    one = pd.Timedelta(minutes=1)
+    assert run.side_stages(m, eid21) == ["sprint"] and run.side_stages(m, eid25) == ["sprint"]
+    s = m.sessions(eid21)
+    assert s["sprint_qual"] is None or pd.isna(s["sprint_qual"])
+    # 2021: before qualifying the grid is simulated, after it the sprint starts in qualifying's order
+    _, ex, _ = _price(m, hist, s["qual"] - one, eid21)
+    assert ex["audit"]["stages"]["sprint"]["grid"] == "simulated from qualifying pace"
+    assert ex["sim"]["stages"]["sprint"]["grid_from"] == "qual"
+    summ, ex, _ = _price(m, hist, s["sprint"] - one, eid21)
+    st = ex["audit"]["stages"]["sprint"]
+    assert st["grid"].startswith("qual") and st["result"] == "simulated"
+    sim = ex["sim"]["stages"]["sprint"]
+    assert sim["grid_from"] == "qual" and (sim["grid"] == sim["grid"][0]).all()
+    qual = m.res[(m.res["event_id"] == eid21) & (m.res["round"] == "qual")].set_index("athlete_id")["position"]
+    np.testing.assert_array_equal(sim["grid"][0], ex["entrants"]["athlete_id"].map(qual).to_numpy(float))
+    np.testing.assert_array_equal(sim["grid"][0], ex["sim"]["grid"][0])        # the same order the Grand Prix starts from
+    assert summ["sprint_pole_prob"].max() == 1.0
+    # the stage's grid doesn't replace the Grand Prix's qualifying order in the kinds' sims, and has no SQ key
+    sims = O.from_position_sim(ex["entrants"], ex["sim"])
+    assert sims.stage_rank["qual"] is ex["sim"]["grid"] and "sprint_qual" not in sims.stage_rank
+    assert ex["audit"]["stages"]["sprint"]["points"] == "sprint" and M.points_table("sprint", 2021) == [3, 2, 1]
+    assert sim["points"].max() == 3
+    # 2025 format (the same frames, SQ present): still the Sprint Qualifying laps
+    _, ex, _ = _price(m, hist, m.sessions(eid25)["sprint"] - one, eid25)
+    assert ex["audit"]["stages"]["sprint"]["grid"] == "sprint_qual best laps"
+    assert ex["sim"]["stages"]["sprint"]["grid_from"] == "sprint_qual"
+
+
+def test_sprint_check_cuts_a_2021_weekend_off_before_qualifying():
+    from racinglines.models.position_sim import sprint_check as SC
+    (res, laps, prof), eid25 = _frames()
+    eid21 = sorted(res["event_id"].unique())[-3]
+    res, laps = _as_2021(res, laps, eid21)
+    m = run.Measurements.from_frames(res, laps, prof)
+    df = SC.check(m, run.history(m), start_year=2021, n_sims=200)
+    q = m.sessions(eid21)["qual"] - pd.Timedelta(minutes=1)
+    row = df[(df["event_id"] == eid21) & (df["mode"] == "pre_sq")].iloc[0]
+    assert pd.Timestamp(row["cutoff"]) == q and row["grid"] == "simulated from qualifying pace"
+    assert df[(df["event_id"] == eid21) & (df["mode"] == "pre_sprint")].iloc[0]["grid"].startswith("qual")
+    assert df[(df["event_id"] == eid25) & (df["mode"] == "pre_sq")].iloc[0]["grid"] == "simulated from qualifying pace"
+    assert df[(df["event_id"] == eid25) & (df["mode"] == "pre_sprint")].iloc[0]["grid"] == "sprint_qual best laps"

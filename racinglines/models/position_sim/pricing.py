@@ -143,7 +143,8 @@ def side_stages(meas, event_id, stages=None):
     """The race-like sessions besides the Grand Prix this weekend has (sports/f1.toml [sessions.sim], schema order):
     those named in `stages` when the caller knows the weekend's format (the forecast: its schedule's sprint flag),
     else those the event's rows name (the session or its grid session: which sessions a weekend has is schedule,
-    not result, so the full frame is read; their results are read only from the as-of view)."""
+    not result, so the full frame is read; their results are read only from the as-of view). A stage's grid session
+    counts only in its default form (grid_from): a per-year source such as 2021's qual is on every weekend."""
     side = [k for k in M.SIM_SESSIONS if k != M.MAIN_STAGE]
     if stages is not None:
         return [k for k in side if k in set(stages)]
@@ -199,7 +200,8 @@ def price_stages(meas, v, event_id, e, fm, tf, rng, n_sims, chaos_p, stages=None
     year = int(rows["year"].iloc[0]) if len(rows) else v.cutoff.year
     for i, stage in enumerate(side_stages(meas, event_id, stages)):
         cfg = M.SIM_SESSIONS[stage]
-        grid, src = stage_grid(v, event_id, e, cfg["grid_from"]) if event_id is not None else (None, "simulated")
+        grid_from = M.grid_source(stage, year)
+        grid, src = stage_grid(v, event_id, e, grid_from) if event_id is not None else (None, "simulated")
         s = stage_result(v, event_id, e, stage, n_sims, grid) if event_id is not None else None
         if s is None:
             es = e.assign(p_dnf=np.clip(e["p_dnf"].to_numpy() * float(cfg.get("dnf_scale", 1.0)), 0.0, 1.0))
@@ -208,7 +210,7 @@ def price_stages(meas, v, event_id, e, fm, tf, rng, n_sims, chaos_p, stages=None
             s = M.simulate_race(fm, es, tf, n_sims=n_sims, rng=M._side_rng(rng, M.STAGE_SEED + i),
                                 grid_known=grid is not None, points=M.points_table(cfg["points"], year), chaos_p=chaos_p)
             s.pop("fl", None)
-        sims[stage] = dict(pos=s["pos"], dnf=s["dnf"], points=s["points"], grid=s["grid"], grid_from=cfg["grid_from"])
+        sims[stage] = dict(pos=s["pos"], dnf=s["dnf"], points=s["points"], grid=s["grid"], grid_from=grid_from)
         audit[stage] = dict(grid=src, result="actual" if stage in set(v.res.loc[v.res["event_id"] == event_id, "round"])
                             else "simulated", dnf_scale=float(cfg.get("dnf_scale", 1.0)), points=cfg["points"])
     return sims, audit
