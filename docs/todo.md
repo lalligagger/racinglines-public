@@ -346,6 +346,9 @@ events are T3 unless a venue lists the event.
 
 Phased plan and ground rules: [F1 roadmap](f1-roadmap.md).
 
+- [ ] **P1 · Grid penalties (branch `work/grid-penalties`).** Confirmed penalties in `sports/f1/grid_penalties.toml`
+      move the race's or sprint's starting grid before it is simulated ([F1 model](f1.md#model-racinglinesmodelsposition_simmodelpy),
+      "Grid penalties"); first row: Russell to the back for Singapore (2026-17). Re-price Singapore once it ships.
 - [ ] **P2 · Weather-aware position-model variant `gridq+pretrain+reset-WX`** (owner, 2026-10-06: "later branch", not
       the weather PR). The disruption mixture (more noise and retirements in disrupted races) weighted by the race's
       forecast rain probability (`weather/wet.p_wet_series`, lead 5 days) instead of history alone; then the strategies on it
