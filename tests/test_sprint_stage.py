@@ -352,3 +352,47 @@ def test_race_outcomes_carry_the_sprint_and_the_private_book_settles_it(test_eng
         for key, y in want.items():
             assert s.get(m.HouseMarket, mk[key]).outcome is y, key
         assert mk[("race_sprint_pole", 1)] not in settled          # pit-lane start: no SQ position, undecided
+
+
+# --- the walk-forward check (racinglines f1 sprint-check) -------------------------------------------------
+
+def test_sprint_check_scores_each_sprint_weekend_against_the_gp_stand_in(sprint):
+    from racinglines.models.position_sim import sprint_check as SC
+    m, hist, eid = sprint
+    df = SC.check(m, hist, start_year=2026, n_sims=300)
+    sprints = sorted(m.res.loc[m.res["round"] == "sprint", "event_id"].unique())
+    assert sorted(df["event_id"].unique()) == sprints and set(df["mode"]) == {"pre_sq", "pre_sprint"}
+    assert len(df) == 2 * len(sprints) and df["winner_found"].all()
+    assert set(df.loc[df["mode"] == "pre_sq", "grid"]) == {"simulated from qualifying pace"}
+    assert set(df.loc[df["mode"] == "pre_sprint", "grid"]) == {"sprint_qual best laps"}
+    # the stage row equals pricing the weekend directly at that cutoff with a fresh stream of the same seed
+    row = df[(df["event_id"] == sprints[0]) & (df["mode"] == "pre_sq")].iloc[0]
+    summ, _ = run.price_race(m, hist, pd.Timestamp(row["cutoff"]), sprints[0], n_sims=300, rng=np.random.default_rng(0))
+    sp = m.res[(m.res["event_id"] == sprints[0]) & (m.res["round"] == "sprint")].set_index("athlete_id")
+    y = (summ["athlete_id"].map(sp["position"]) == 1).to_numpy(float)
+    assert row["brier_stage"] == pytest.approx(((summ["sprint_win_prob"] - y) ** 2).mean())
+    assert row["brier_proxy"] == pytest.approx(((summ["win_prob"] - y) ** 2).mean())
+    # retirements counted from the results, DNS left out
+    for r in df.itertuples():
+        s = m.res[(m.res["event_id"] == r.event_id) & (m.res["round"] == "sprint")]
+        g = m.res[(m.res["event_id"] == r.event_id) & (m.res["round"] == "race")]
+        assert (r.sprint_dnf, r.sprint_starters) == ((s["status"] == "DNF").sum(), len(s))
+        assert (r.gp_dnf, r.gp_starters) == (g["status"].isin(["DNF", "DSQ"]).sum(), len(g))
+        assert r.sim_sprint_dnf_share < r.sim_gp_dnf_share                  # dnf_scale 0.5
+    summ = SC.summarize(df)
+    assert list(summ["mode"]) == ["pre_sq", "pre_sprint"] and (summ["weekends"] == len(sprints)).all()
+    assert summ["brier_diff"].to_numpy() == pytest.approx((summ["brier_stage"] - summ["brier_proxy"]).to_numpy())
+    text = SC.render(df)
+    assert "Summary (dnf_scale 0.5)" in text and "pre_sprint" in text
+    assert SC.render(df.iloc[:0]).startswith("No sprint weekend")
+
+
+def test_sprint_check_cli(sprint, monkeypatch, capsys, tmp_path):
+    from racinglines.cli import f1 as CLI
+    m, _, _ = sprint
+    monkeypatch.setattr(run.Measurements, "load", classmethod(lambda cls, engine: m))
+    out = tmp_path / "sc.csv"
+    CLI.main(["--db", "postgresql+psycopg://nobody@127.0.0.1:1/none", "sprint-check", "--from", "2026", "--sims", "200",
+              "--out", str(out)])
+    text = capsys.readouterr().out
+    assert "=== Summary" in text and len(pd.read_csv(out)) == 4

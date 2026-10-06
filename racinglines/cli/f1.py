@@ -32,6 +32,9 @@ racinglines f1 <command>: Formula 1.
                  (the only kind the web app uses for live fair prices).
     props        Race props (safety car, red flag, rain, fastest lap) for one event from the race
                  history, or --check: their walk-forward calibration (models/position_sim/props.py).
+    sprint-check Walk-forward check of the sprint stage on every stored sprint weekend: sprint-winner Brier
+                 and log loss vs the Grand Prix win stand-in, and sprint vs GP retirements
+                 (models/position_sim/sprint_check.py). Read-only; nothing is stored.
 """
 
 import argparse
@@ -241,6 +244,10 @@ def main(argv=None):
     p = sub.add_parser("inrace-backfill", help="After a race: the Live tab's in-race win chart from the race's laps, "
                                                "one point per lap, as if the live-timing relay had run all race.")
     p.add_argument("--event", required=True, help="YEAR-ROUND, e.g. 2026-16.")
+    p = sub.add_parser("sprint-check", help="Walk-forward check of the sprint stage (position_sim/sprint_check.py).")
+    p.add_argument("--from", dest="start_year", type=int, default=2021, help="First season scored")
+    p.add_argument("--sims", type=int, default=4000)
+    p.add_argument("--out", default=None, metavar="CSV", help="Also write the per-weekend rows here")
     p = sub.add_parser("props", help="Race props: safety car, red flag, rain, fastest lap (props.py).")
     p.add_argument("event", nargs="?", default=None, help="Season-round, e.g. 2026-16 (the yes/no props)")
     p.add_argument("--run", type=int, default=None, help="A stored stage run id: adds the fastest-lap prices")
@@ -1017,6 +1024,15 @@ def _run(args):
 
     use_track = not getattr(args, "no_track", False)
     hist = run.history(meas, use_track)
+
+    if args.cmd == "sprint-check":
+        from racinglines.models.position_sim import sprint_check as SC
+        out = SC.check(meas, hist, start_year=args.start_year, n_sims=args.sims)
+        print(SC.render(out))
+        if args.out:
+            out.to_csv(args.out, index=False)
+            print(f"\nPer-weekend rows -> {args.out}")
+        return
 
     if args.cmd == "diagnostic":
         cutoff = pd.Timestamp(args.cutoff)
