@@ -28,6 +28,8 @@ HOST_INTERVAL = {
     "prod.chronorace.be": 0.5,
     "cf.nascar.com": 1.0,
     "api.motogp.pulselive.com": 0.5,
+    "motorsport.com": 1.0,
+    "www.motorsport.com": 1.0,
     "en.wikipedia.org": 1.0,
 }
 DEFAULT_INTERVAL = 0.25
