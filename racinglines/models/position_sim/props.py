@@ -18,9 +18,10 @@ the `rain` rule). `rate_given` is a prop's rate among a circuit's wet (or dry) r
 dry) rate, itself shrunk to the overall field rate; `rate_wx` mixes the two with a probability of rain:
 p_wet * rate_given(wet) + (1 - p_wet) * rate_given(dry), and with no p_wet it uses the circuit's own shrunk wet
 share (climatology). Red flags are far likelier in the wet (2020-2026: 10 of 35 wet races, 12 of 112 dry). The live
-book still prices with `rate()`: `market_set(..., p_wet=...)` prices race_red_flag with `rate_wx` only when a
-probability of rain is passed (racinglines/weather will supply it); rain itself is the forecast, not conditioned,
-and the safety car stays on `rate()` because conditioning it was worse in the walk-forward (WX_KINDS). `check()` scores both: `climatology` (p_wet = the circuit's past wet share) and
+book prices with `rate()` unless a probability of rain is passed: `market_set(..., p_wet=...)` prices race_red_flag
+with `rate_wx` and race_rain at p_wet itself (the live book passes the saved wet vote of racinglines/weather/wet.py,
+shrunk to climatology; its 5-day backtest beat the circuit history for rain, decision log 2026-10-06), and the
+safety car stays on `rate()` because conditioning it was worse in the walk-forward (WX_KINDS). `check()` scores both: `climatology` (p_wet = the circuit's past wet share) and
 `wet_oracle` (p_wet = the race's realised wet flag, the ceiling a perfect forecast would reach).
 
 Fastest lap: from history, how often the fastest lap goes to a driver finishing 1st, 2nd-3rd, 4th-10th, lower,
@@ -178,20 +179,27 @@ def run_preds(conn, run_id):
 
 
 # priced given a probability of rain when one is passed. The safety car is not: conditioning it on wet was worse in
-# the walk-forward (Brier +0.0046, se 0.0027, decision log 2026-10-06), so it stays on rate(); check() still scores it
+# the walk-forward (Brier +0.0046, se 0.0027, decision log 2026-10-06), so it stays on rate(); check() still scores it.
+# race_rain is the probability of rain itself (RAIN_KIND): the forecast beat the circuit's history 5 days out (Brier
+# 0.123 vs 0.167, 63 races 2024-2026, weather/wet.py backtest, decision log 2026-10-06)
 WX_KINDS = ("race_red_flag",)
+RAIN_KIND = "race_rain"
 WX_CHECKED = ("race_safety_car", "race_red_flag")
 
 
 def market_set(preds, venue_id, hist, kinds=PROP_KINDS, prior_n=PRIOR_N, p_wet=None):
     """The prop markets and their fair values (live_f1.market_set's shape): [dict(key, kind, athlete_id,
-    params, subject, fair)]. p_wet (a probability of rain, None by default): the WX_KINDS (race_red_flag) priced
-    with rate_wx instead of rate."""
+    params, subject, fair)]. p_wet (a probability of rain, None by default): race_rain priced at p_wet and the
+    WX_KINDS (race_red_flag) with rate_wx, instead of rate."""
     out = []
     for kind, col in BINARY.items():
         if kind in kinds:
-            fair = rate_wx(hist, venue_id, col, p_wet, prior_n) if p_wet is not None and kind in WX_KINDS \
-                else rate(hist, venue_id, col, prior_n)
+            if p_wet is not None and kind == RAIN_KIND:
+                fair = min(max(float(p_wet), 0.0), 1.0)
+            elif p_wet is not None and kind in WX_KINDS:
+                fair = rate_wx(hist, venue_id, col, p_wet, prior_n)
+            else:
+                fair = rate(hist, venue_id, col, prior_n)
             out.append(dict(key=kind, kind=kind, athlete_id=None, params=None, subject=LABEL[kind], fair=fair))
     if "race_fastest_lap" in kinds and len(preds) and not hist.empty:
         p = fl_probs(preds, fl_rates(hist))
@@ -201,11 +209,15 @@ def market_set(preds, venue_id, hist, kinds=PROP_KINDS, prior_n=PRIOR_N, p_wet=N
     return out
 
 
-def markets(conn, event_key, run_id, kinds=PROP_KINDS, prior_n=PRIOR_N, p_wet=None):
+def markets(conn, event_key, run_id, kinds=PROP_KINDS, prior_n=PRIOR_N, p_wet=None, wet_vote=None):
     """The event's prop markets from the race history before it and a stage run (fastest lap); p_wet: see
-    market_set (None, the default, prices with rate())."""
+    market_set (None, the default, prices with rate()). wet_vote (a saved weather.wet vote: {"wet_votes", "models"})
+    gives p_wet as the vote shrunk to the circuit's wet share (weather.wet.p_wet) when p_wet is None."""
     venue_id, start = event_info(conn, event_key)
     hist = history(conn, start)
+    if p_wet is None and wet_vote and not hist.empty:
+        from racinglines.weather import wet as WET
+        p_wet = WET.p_wet(wet_vote["wet_votes"], wet_vote["models"], rate(hist, venue_id, "wet", prior_n))
     preds = run_preds(conn, run_id) if "race_fastest_lap" in kinds and run_id is not None else pd.DataFrame()
     return market_set(preds, venue_id, hist, kinds, prior_n, p_wet)
 

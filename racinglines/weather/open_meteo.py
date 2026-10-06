@@ -183,3 +183,87 @@ def probe(lat, lon, out_path, days=MAX_DAYS):
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(raw, indent=1))
     return p, missing_fields(raw)
+
+
+# ---------------------------------------------------------------------------
+# Forecasts issued N days before a past window (the backtest's input; docs/weather.md#forecasts-of-past-races)
+# ---------------------------------------------------------------------------
+
+PREVIOUS_URL = "https://previous-runs-api.open-meteo.com/v1/forecast"      # leads 1-7, from about February 2024
+HISTORICAL_URL = "https://historical-forecast-api.open-meteo.com/v1/forecast"   # lead 0 (each run's first hours)
+# global models with archived runs (probe 2026-10-06: meteofrance_seamless and ukmo_seamless return none)
+MODELS = ("ecmwf_ifs025", "gfs_seamless", "icon_seamless", "gem_seamless", "jma_seamless", "cma_grapes_global",
+          "bom_access_global")
+LEADS = (1, 2, 3, 4, 5, 6, 7)
+LEAD_VARS = ("precipitation", "temperature_2m", "wind_speed_10m", "weather_code")
+RACE_H = 2                     # the race window, start to start + 2 h: precip_mm, temp_c, wind_kph, weather_code
+VOTE_H = (-1, 3)               # the wet vote's window (weather/wet.py): hours around the start
+LEAD_COLUMNS = ("race_id", "event_key", "venue_slug", "lat", "lon", "race_start_utc", "window_end_utc", "lead_days",
+                "precip_prob", "precip_mm", "temp_c", "wind_kph", "weather_code", "max_hour_mm", "source")
+
+
+def _get_json(url, query):
+    import requests
+
+    from racinglines.sources import http
+    with requests.Session() as s:
+        r = http.get(s, url, params=query, timeout=60)
+    if r.status_code != 200:
+        raise RuntimeError(f"open_meteo {url}: HTTP {r.status_code}: {r.text[:300]}")
+    return r.json()
+
+
+def window_values(hourly, start, suffix, model):
+    """One model's values for a race starting at `start` (naive UTC) from an hourly block keyed
+    "<variable><suffix>_<model>": precip_mm (sum), temp_c (mean), wind_kph (max), weather_code (max) over the race
+    window, and max_hour_mm (the wettest hour in the vote window). None when the model has no value in the window."""
+    start = pd.Timestamp(start)
+    t = pd.to_datetime(np.asarray(hourly["time"], dtype=float), unit="s")
+    race = (t >= start) & (t < start + pd.Timedelta(hours=RACE_H))
+    vote = (t >= start + pd.Timedelta(hours=VOTE_H[0])) & (t < start + pd.Timedelta(hours=VOTE_H[1]))
+
+    def col(var):
+        v = hourly.get(f"{var}{suffix}_{model}")
+        return None if v is None else _num(v)
+    p = col("precipitation")
+    if p is None or np.isnan(p[race]).all():
+        return None
+    temp, wind, code = col("temperature_2m"), col("wind_speed_10m"), col("weather_code")
+    agg = lambda a, f: None if a is None or np.isnan(a[race]).all() else float(f(a[race]))   # noqa: E731
+    return dict(precip_mm=float(np.nansum(p[race])), temp_c=agg(temp, np.nanmean), wind_kph=agg(wind, np.nanmax),
+                weather_code=agg(code, np.nanmax), max_hour_mm=float(np.nanmax(p[vote])))
+
+
+def fetch_leads(lat, lon, start, leads=LEADS, models=MODELS):
+    """The archived forecasts for the days around a race start: {"lead0": the Historical Forecast API body (lead 0),
+    "previous": the Previous Runs API body (leads 1-7)}, untouched."""
+    start = pd.Timestamp(start)
+    lo, hi = start + pd.Timedelta(hours=VOTE_H[0]), start + pd.Timedelta(hours=VOTE_H[1])
+    common = {"latitude": lat, "longitude": lon, "models": ",".join(models), "start_date": f"{lo:%Y-%m-%d}",
+              "end_date": f"{hi:%Y-%m-%d}", "timezone": "GMT", "timeformat": "unixtime"}
+    lead0 = _get_json(HISTORICAL_URL, {**common, "hourly": ",".join(LEAD_VARS)})
+    prev = _get_json(PREVIOUS_URL, {**common, "hourly": ",".join(f"{v}_previous_day{n}" for v in LEAD_VARS
+                                                                 for n in leads)})
+    return {"lead0": lead0, "previous": prev}
+
+
+def lead_rows(race, bodies, leads=LEADS, models=MODELS):
+    """LEAD_COLUMNS rows for one race (a mapping with race_id, event_key, venue_slug, lat, lon, race_start_utc) from
+    fetch_leads' bodies: one row per lead and model with a value (lead 0 from the Historical Forecast API). source is
+    "open_meteo:<model>"; precip_prob is None (not archived at any lead)."""
+    start = pd.Timestamp(race["race_start_utc"])
+    out = []
+    for lead in (0, *leads):
+        body = bodies["lead0"] if lead == 0 else bodies["previous"]
+        hourly = (body or {}).get("hourly")
+        if not hourly:
+            continue
+        for m in models:
+            v = window_values(hourly, start, "" if lead == 0 else f"_previous_day{lead}", m)
+            if v is None:
+                continue
+            out.append(dict(race_id=race["race_id"], event_key=race["event_key"], venue_slug=race["venue_slug"],
+                            lat=race["lat"], lon=race["lon"], race_start_utc=f"{start:%Y-%m-%d %H:%M:%S}",
+                            window_end_utc=f"{start + pd.Timedelta(hours=RACE_H):%Y-%m-%d %H:%M:%S}",
+                            lead_days=lead, precip_prob=None, **v, source=f"{SOURCE}:{m}"))
+    return out

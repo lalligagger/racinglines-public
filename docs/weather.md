@@ -4,7 +4,8 @@ Weather forecasts as one frame a model can read, whoever made the forecast (`rac
 the default provider**: free, no API key, global hourly and daily forecasts, verified by the probe of 2026-10-06
 (Marina Bay, see [Probe of 2026-10-06](#probe-of-2026-10-06)). Weather Underground stays as an optional provider that
 needs a PWS owner's key and is unverified. MVP status (2026-10-06): the frame, the save/load layout, the CLI and the
-Open-Meteo parser are built and tested against a captured response. No model reads the frame yet.
+Open-Meteo parser are built and tested against a captured response. The F1 props read the wet-race vote ([Wet-race
+forecast](#wet-race-forecast)); nothing else reads the frame yet.
 
 ## The forecast frame
 
@@ -78,8 +79,8 @@ and another source. Not implemented, for comparison: **MET Norway's Locationfore
 (`api.met.no`) is free including commercial use (CC BY 4.0) and needs an identifying `User-Agent`, but its
 precipitation probability is not available everywhere.
 
-Not checked yet: Open-Meteo's historical forecast and archive endpoints, which a backtest would need (an issue as of a
-past date, for the as-of rule).
+Past forecasts for the backtest come from two more Open-Meteo endpoints, under the same licence: see
+[Forecasts of past races](#forecasts-of-past-races).
 
 ## Weather Underground (optional, unverified, needs a PWS key)
 
@@ -123,13 +124,97 @@ run, the captured response becomes the test fixture, and the field names come fr
 se's own issue time. `issued_utc` is the fetch time.
 - The key's rate limits and terms of use.
 
+## Wet-race forecast
+
+`racinglines/weather/wet.py`: a probability that an F1 race is wet (`p_wet`), made the same way live and in the
+backtest, and the backtest itself.
+
+- **The vote.** Seven global models (`open_meteo.MODELS`: ECMWF IFS, GFS, ICON, GEM, JMA, CMA, BOM) each vote "wet"
+  when they forecast at least `WET_MM` = 0.1 mm in any hour of the window from one hour before the start to three
+  after (`WINDOW_H`). Open-Meteo doesn't archive precipitation probability, so a probability can't be backtested; the
+  vote can.
+- **Shrunk to climatology.** `p_wet = (wet votes + 3 × climatology) / (models + 3)`, where climatology is the circuit's
+  past wet share shrunk to the field's (`props.rate(hist, venue, "wet")`) and 3 (`PRIOR_VOTES`) is its weight in
+  votes, because the models are correlated. The settings were fixed before the backtest, not tuned on it.
+- **Live.** `racinglines weather fetch <event> --lat --lon --session race=START/END` saves the vote next to the issue
+  (`data/weather/<event>/wet-<issued>.json`, with the lead in hours). The live book's props
+  (`pipelines/live_f1.prop_markets`) read the latest vote issued before now and price `race_rain` at `p_wet` and
+  `race_red_flag` with `props.rate_wx(p_wet)`. The safety car stays on its history. `[live.props] weather = false`
+  turns it off. With no saved vote nothing changes, so a deploy moves no live price until someone runs `weather fetch`.
+- **Venues.** `racinglines/weather/venues.toml`: the 34 venue slugs in the database, with coordinates from Jolpica's
+  circuit list (the Ergast successor), retrieved 2026-10-06.
+
+### Forecasts of past races
+
+`racinglines weather leads` writes, for every past race, what each model forecast for its window 0 to 7 days before
+(`open_meteo.LEAD_COLUMNS`: precipitation summed over start to start + 2 h, mean temperature, max wind, max weather
+code, and the wettest hour in the vote window). Probe of 2026-10-06, raw responses under
+`data/raw/weather/open_meteo/probe-leads-*.json` on the Mac:
+
+- **Previous Runs API** (`previous-runs-api.open-meteo.com/v1/forecast`, `<variable>_previous_day<N>`): leads 1 to 7
+  (day 8 is null). All seven models from about February 2024. Before that, JMA alone has leads (1 to 4 in
+  2020, 1 to 7 in 2021 to 2023); the others are null. The fixture covers all 147 races at lead 0 and every lead JMA has. Precipitation, temperature, wind and weather code exist at every lead;
+  **precipitation probability is null at every lead**.
+- **Historical Forecast API** (`historical-forecast-api.open-meteo.com/v1/forecast`): lead 0 only (each run's first
+  hours). It accepts `precipitation_previous_day5` but returns nulls.
+- No rate-limit headers and no errors over about 300 requests; one empty body during a fast probe loop.
+
+The committed copy, `tests/fixtures/weather/open_meteo-leads-f1.csv`, lets the cloud rerun the backtest with no
+network ([fixture README](https://github.com/lalligagger/racinglines-public/blob/main/tests/fixtures/weather/README.md)).
+
+### Backtest of 2026-10-06
+
+**Naming (owner, 2026-10-06):** a weather-aware method, model variant or strategy is its base name + `-WX`
+(`wet.wx_name`): the backtest's `circuit-WX` is the circuit-history price with the forecast in it, `climatology-WX`
+the wet/dry mixture with the forecast's `p_wet` instead of the circuit's wet share. No trading strategy (A, C, K,
+T1–T10) or position-model variant is weather-aware yet. The sweeps trade win, podium, head-to-head, constructor and
+pole, which no weather input touches, so no `A-WX` exists until one does.
+
+`racinglines weather backtest --lead 5`, walk-forward: each race is priced from the races before it (2020 on) and the
+vote issued 5 days before it. That covers 63 races from 2024-01 to 2026-15: 13 wet, 6 red-flagged.
+
+| Prop | Method | Brier | Log loss |
+|---|---|---|---|
+| Rain | circuit history | 0.1668 | 0.5155 |
+| Rain | **circuit-WX** (the forecast, 5 days out) | **0.1232** | **0.3876** |
+| Red flag | climatology (circuit's wet share) | 0.0915 | 0.3361 |
+| Red flag | climatology-WX (`rate_wx(p_wet)`) | 0.0917 | 0.3372 |
+| Red flag | wet oracle (the realised flag) | 0.0900 | 0.3273 |
+| Safety car | climatology | 0.2667 | 0.7278 |
+| Safety car | climatology-WX | 0.2679 | 0.7303 |
+
+| DNFs per race | MAE | Poisson deviance |
+|---|---|---|
+| field mean | 1.416 | 1.373 |
+| climatology-WX (wet and dry means mixed by p_wet) | 1.411 | 1.378 |
+| wet oracle | 1.407 | 1.383 |
+
+Rain by lead (Brier; the circuit's history is 0.1668 at every lead): 1 day 0.093, 2 days 0.104, 3 days 0.113,
+4 days 0.113, **5 days 0.123**, 6 days 0.115, 7 days 0.135. Paired against the history, the 5-day forecast is better
+by 0.044 (se 0.021); at 1 day by 0.074 (se 0.024). Calibration at 5 days (races, mean p_wet, wet share): p ≤ 0.15:
+33, 0.08, 0.03; 0.15 to 0.3: 14, 0.23, 0.29; 0.3 to 0.5: 7, 0.44, 0.43; over 0.5: 9, 0.63, 0.56.
+
+Wet vs dry, 2020 to 2026-15 (146 races): red flags in 29 % of 34 wet races against 11 % of 112 dry ones, safety cars
+59 % against 57 %, and 2.71 DNFs per race against 2.42.
+
+**What it shows.** Five days out, the forecast is a clearly better price for `race_rain` than the circuit's history,
+so the live book now uses it. For the red flag, the long-run link with rain is real (29 % against 11 %), but in these
+63 races even a perfect rain forecast barely helps (6 red flags, 2 of them in wet races), and the 5-day forecast
+matches climatology. It stays wired as designed (decision log of 2026-10-06), and it's neutral here. The safety car
+has no wet effect: unchanged. DNFs run about 12 % higher in the wet, but conditioning the race's DNF count on the
+forecast doesn't improve it, so no DNF setting changes. The position simulation's `dnf_prob` and its disruption
+mixture are not touched.
+
+**What it doesn't show.** 63 races and 13 wet ones is a small sample: the red-flag and DNF results have wide error
+bars. "Wet" is any rain sample during the race (`rain_share > 0`), which counts a brief shower; a heavier definition
+might link to red flags more strongly. The live vote can use fewer models than seven (5 for 2026-17: two models'
+horizons or archives end sooner), and so did the backtest after mid-2025. Open-Meteo snaps to its grid, about 10 km.
+
 ## What the forecast is for
 
 The frame is provider-agnostic, so other providers and other sports read it the same way:
 
-- **F1 rain and red flags.** `racinglines/models/position_sim/props.py` prices `race_rain` and `race_red_flag` as
-  per-circuit rates shrunk to the field's rate. Its docstring says "Rain uses the history only: no weather forecast".
-  The race-window summary (`precip_prob`, `precip_mm`) is the input that would move those rates for this weekend.
+- **F1 rain and red flags.** Wired: see [Wet-race forecast](#wet-race-forecast).
 - **Track conditions.** `position_sim`'s disruption mixture (`model.CHAOS`) is a race-level mixture in which some
   simulated races are disrupted, with more noise and more DNFs. "Disrupted" is learned from past races
   (`model.race_disruption`: safety-car share, red flag, rain share). A wet forecast could weight that branch for this
@@ -137,6 +222,6 @@ The frame is provider-agnostic, so other providers and other sports read it the 
 - **Other sports.** Downhill (wet runs and conditions, `--conditions` on `mtb_dh live`), road cycling (wind on a
   time trial), NASCAR (rain delays) and sailing (wind) could read the same columns; none does yet.
 
-Another worker is wiring the first two consumers. How a forecast moves a price is a tuned setting, so it needs a
-decision-log entry in the [F1 roadmap](f1-roadmap.md) before it is treated as final. The wiring must keep the as-of rule: a backtest may read
-only issues with `issued_utc` before its cutoff.
+How a forecast moves a price is a tuned setting, so it has a decision-log entry in the [F1 roadmap](f1-roadmap.md)
+(2026-10-06, provisional). The wiring keeps the as-of rule: `load_vote` reads only votes issued before now, and the
+backtest uses only runs issued before each race.

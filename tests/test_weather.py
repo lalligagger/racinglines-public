@@ -173,3 +173,97 @@ def test_open_meteo_hourly_only_and_a_missing_field_fails_loudly():
     bad["daily"][OM.D_WIND] = [1.0]                    # one value for two days
     with pytest.raises(OM.OpenMeteoFieldError, match=OM.D_WIND):
         OM.parse(bad, "2026-17", 0.0, 0.0, ISSUED)
+
+
+# --- the wet-race forecast (weather/wet.py) and the forecasts of past races (open_meteo.lead_rows) ---
+
+from racinglines.models.position_sim import props as P  # noqa: E402
+from racinglines.weather import wet as WET  # noqa: E402
+
+LEADS_FIXTURE = Path(__file__).parent / "fixtures" / "weather" / "open_meteo-leads-f1.csv"
+HISTORY_FIXTURE = Path(__file__).parent / "fixtures" / "weather" / "f1-wet-history.csv"
+PREV_FIXTURE = Path(__file__).parent / "fixtures" / "weather" / "open_meteo-previous-runs-sample.json"
+
+
+def test_venues_cover_every_race_slug():
+    v = WET.venues()
+    hist = pd.read_csv(HISTORY_FIXTURE)
+    assert set(hist["slug"]) <= set(v) and len(v) == 34
+    assert all(-90 <= x["lat"] <= 90 and -180 <= x["lon"] <= 180 for x in v.values())
+    assert v["marina-bay"]["lat"] == 1.2914 and v["kuala-lumpur"]["circuit"] == "sepang"
+
+
+def test_window_values_from_a_captured_previous_runs_response():
+    hourly = json.loads(PREV_FIXTURE.read_text())["hourly"]
+    start = pd.Timestamp("2024-09-22 12:00")
+    gfs = OM.window_values(hourly, start, "_previous_day5", "gfs_seamless")
+    assert gfs["max_hour_mm"] == 0.1 and gfs["precip_mm"] == pytest.approx(0.1)   # 0.1 mm at 11:00 and 12:00
+    cma = OM.window_values(hourly, start, "_previous_day5", "cma_grapes_global")
+    assert cma["max_hour_mm"] == 1.3 and cma["precip_mm"] == pytest.approx(1.3)   # 13:00 in, 14:00 out of the race window
+    assert OM.window_values(hourly, start, "_previous_day5", "bom_access_global") is None
+    rows = OM.lead_rows(dict(race_id=238, event_key="2024-18", venue_slug="marina-bay", lat=1.2914, lon=103.864,
+                             race_start_utc="2024-09-22 12:00:00"), {"lead0": None, "previous": {"hourly": hourly}},
+                        leads=(5,))
+    assert len(rows) == 6 and set(rows[0]) == set(OM.LEAD_COLUMNS) and rows[0]["precip_prob"] is None
+    assert sum(r["max_hour_mm"] >= WET.WET_MM for r in rows) == 4
+
+
+def test_leads_fixture_shape():
+    ld = pd.read_csv(LEADS_FIXTURE)
+    assert list(ld.columns) == list(OM.LEAD_COLUMNS)
+    assert ld["race_id"].nunique() == 147 and set(ld["lead_days"]) <= set(range(8))
+    assert ld["precip_prob"].isna().all() and (ld["precip_mm"] >= -0.5).all()     # JMA once sends -0.2 mm (2024-06)
+    since = ld[pd.to_datetime(ld["race_start_utc"]) >= WET.FIRST_ARCHIVED]
+    assert (since.groupby("race_id")["lead_days"].apply(lambda s: 5 in set(s))).all()
+
+
+def test_p_wet_shrinks_the_vote_to_climatology():
+    assert WET.p_wet(0, 0, 0.3) == pytest.approx(0.3)
+    assert WET.p_wet(7, 7, 0.2, prior=3.0) == pytest.approx((7 + 0.6) / 10)
+    assert WET.p_wet(3, 5, 0.286) == pytest.approx(0.482, abs=1e-3)
+
+
+def test_vote_from_a_forecast_block():
+    t0 = pd.Timestamp("2026-10-11 10:00")
+    times = [int((t0 + pd.Timedelta(hours=i)).timestamp()) for i in range(6)]       # 10:00 .. 15:00
+    hourly = {"time": times, "precipitation_ecmwf_ifs025": [0, 0.0, 0.2, 0, 0, 0],
+              "precipitation_gfs_seamless": [5.0, 0, 0, 0, 0, 0.0], "precipitation_icon_seamless": [None] * 6}
+    v = WET.vote(hourly, pd.Timestamp("2026-10-11 12:00"))       # window 11:00-15:00
+    assert v["models"] == 2 and v["wet_votes"] == 1
+
+
+def test_save_and_load_vote_as_of(tmp_path, monkeypatch):
+    monkeypatch.setenv(S.ROOT_ENV, str(tmp_path))
+    start = pd.Timestamp("2026-10-11 12:00")
+    WET.save_vote("2026-17", start, 1.2914, 103.864, {"models": 5, "wet_votes": 3, "max_mm": 0.36}, "2026-10-06 08:00")
+    WET.save_vote("2026-17", start, 1.2914, 103.864, {"models": 5, "wet_votes": 1, "max_mm": 0.1}, "2026-10-08 08:00")
+    assert WET.load_vote("2026-17", "2026-10-07")["wet_votes"] == 3
+    assert WET.load_vote("2026-17", "2026-10-09")["wet_votes"] == 1
+    assert WET.load_vote("2026-17", "2026-10-05") is None and WET.load_vote("2026-18") is None
+    assert WET.load_vote("2026-17", "2026-10-07")["lead_hours"] == 124.0
+
+
+def test_market_set_prices_rain_at_p_wet():
+    hist = P.prepare(pd.read_csv(HISTORY_FIXTURE))
+    base = {m["kind"]: m["fair"] for m in P.market_set(pd.DataFrame(), 17, hist, tuple(P.BINARY))}
+    wx = {m["kind"]: m["fair"] for m in P.market_set(pd.DataFrame(), 17, hist, tuple(P.BINARY), p_wet=0.9)}
+    assert wx["race_rain"] == 0.9 and base["race_rain"] != 0.9
+    assert wx["race_red_flag"] > base["race_red_flag"]                 # red flags likelier in the wet
+    assert wx["race_safety_car"] == base["race_safety_car"]            # not conditioned (decision log 2026-10-06)
+
+
+def test_backtest_from_the_fixtures_pins_the_5_day_result():
+    hist = pd.read_csv(HISTORY_FIXTURE)
+    rows = WET.backtest(hist)
+    assert len(rows) == 63 and int(rows["wet"].sum()) == 13
+    _, summ = WET.score(rows, hist, 5)
+    s = summ.set_index(["prop", "method"])
+    assert s.loc[("rain", "circuit-WX"), "brier"] < s.loc[("rain", "circuit"), "brier"] - 0.03
+    corr = WET.correlations(hist)
+    assert corr.loc["wet", "red_flag"] > 2 * corr.loc["dry", "red_flag"]
+
+
+def test_wx_names():
+    assert WET.wx_name("A") == "A-WX" and WET.wx_name("gridq+pretrain+reset-WX") == "gridq+pretrain+reset-WX"
+    _, summ = WET.score(WET.backtest(pd.read_csv(HISTORY_FIXTURE)), pd.read_csv(HISTORY_FIXTURE), 5)
+    assert {"circuit-WX", "climatology-WX"} <= set(summ["method"]) and "forecast" not in set(summ["method"])

@@ -305,7 +305,9 @@ classification (`models/position_sim/dnf_check.py`). Both are read-only; see the
 ## racinglines weather
 
 Weather forecasts per event in one provider-agnostic frame: `probe --lat --lon [--out]`, `fetch <event_key> --lat
---lon [--session race=START/END]`, `show <event_key>`. `--provider open_meteo` (the default, no key, verified by
+--lon [--session race=START/END]`, `show <event_key>`, `leads --out <csv> [--races <csv>]` (the forecasts issued 0 to 7
+days before past races), `backtest [--lead 5] [--history <csv>] [--leads <csv>]` (the wet-race forecast against rain,
+red flag, safety car and DNFs). `--provider open_meteo` (the default, no key, verified by
 the probe of 2026-10-06) or `wunderground` (optional, unverified, a PWS owner's key). See
 [Weather forecasts](weather.md).
 
