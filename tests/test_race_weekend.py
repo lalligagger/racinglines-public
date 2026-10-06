@@ -42,9 +42,11 @@ def test_gate_uses_each_sports_competition_code(tmp_path, sport):
     assert f"c.code = '{sports.load(sport)['competition']['code']}'" in q
 
 
-def test_gate_counts_race_day_and_the_night_after(tmp_path):
-    _, q = gate(tmp_path, "f1", _epoch(2026, 10, 11))           # Sunday: the window starts Saturday
-    assert "e.start_date >= '2026-10-10'::date" in q and "e.start_date < '2026-10-18'::date" in q
+def test_gate_counts_the_whole_weekend_but_not_last_weeks_event(tmp_path):
+    _, q = gate(tmp_path, "motogp", _epoch(2026, 10, 11))       # Sunday: a Friday start_date still counts
+    assert "e.start_date >= '2026-10-08'::date" in q and "e.start_date < '2026-10-18'::date" in q
+    _, q = gate(tmp_path, "f1", _epoch(2026, 10, 15))           # Thursday: last Sunday's race no longer counts
+    assert "e.start_date >= '2026-10-12'::date" in q
 
 
 def test_gate_off_week_and_unknown_sport(tmp_path):

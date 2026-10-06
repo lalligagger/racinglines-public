@@ -10,8 +10,9 @@
 #
 # <sport> is a sport code (a file in sports/: f1, nascar, motogp, road_cycling, mtb_dh, ...); its competition code
 # comes from that file's [competition] code, so the gate never needs its own list of sports.
-# On Thu to Sun UTC, an event counts while its start_date is from yesterday to 7 days ahead, so race day itself and a
-# race that ends after midnight UTC (Las Vegas) still poll.
+# On Thu to Sun UTC, an event counts while its start_date is from 3 days ago to 7 days ahead. start_date is race day
+# for F1 but the Friday for MotoGP (date_start), so this keeps race day, a MotoGP weekend's Sunday and a race that
+# ends after midnight UTC (Las Vegas) polling, and still drops last weekend's event by Thursday.
 
 set -euo pipefail
 
@@ -48,8 +49,7 @@ fi
 # Query: is there an active event for this sport in the next 7 days?
 # (backup check: if DB query fails, assume not a race weekend)
 if [ "$RACE_WEEKEND" -eq 1 ]; then
-  # start_date is a date (an F1 event's is its race day): from yesterday, so race day and a past-midnight finish count
-  FROM=$(date -u -d @"$((NOW_UTC - 86400))" +%Y-%m-%d)
+  FROM=$(date -u -d @"$((NOW_UTC - 3 * 86400))" +%Y-%m-%d)
   WEEK_LATER=$(date -u -d @"$((NOW_UTC + 604800))" +%Y-%m-%d)
 
   QUERY="SELECT COUNT(*) FROM events e
