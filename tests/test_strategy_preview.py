@@ -222,7 +222,7 @@ def workspace_folder():
         yield Path(folder)
 
 
-def mocked_compute(monkeypatch, folder, *, writable=False, mutation=None, sims=4000):
+def mocked_compute(monkeypatch, folder, *, writable=False, mutation=None, sims=4000, draws=None, failure=None):
     import sqlalchemy
 
     from racinglines.db import reads
@@ -259,6 +259,8 @@ def mocked_compute(monkeypatch, folder, *, writable=False, mutation=None, sims=4
 
     def read_sql(query, connection, **kwargs):
         assert connection is conn
+        if failure == "database":
+            raise RuntimeError("synthetic database read failure")
         sql_reads.append(str(query))
         assert "market_links" not in str(query), "Frozen empty venue must never read current links"
         return pd.DataFrame()
@@ -269,11 +271,15 @@ def mocked_compute(monkeypatch, folder, *, writable=False, mutation=None, sims=4
     monkeypatch.setattr(ss, "data_key", lambda *a: "inputs")
     monkeypatch.setattr(pricing, "history", lambda *a: None)
     summary = pd.DataFrame([{"athlete_id": 1, "h2h": {"2": 0.8}}])
-    monkeypatch.setattr(
-        pricing,
-        "price_race",
-        lambda *a, **kw: (summary, {"audit": {}, "constructor_top": {}}),
-    )
+
+    def price_race(*args, **kwargs):
+        if failure == "model":
+            raise RuntimeError("synthetic model pricing failure")
+        if draws is not None:
+            draws.append(kwargs["rng"].random())
+        return summary, {"audit": {}, "constructor_top": {}}
+
+    monkeypatch.setattr(pricing, "price_race", price_race)
     from racinglines.pipelines import signals
 
     monkeypatch.setattr(signals, "_entrants", lambda *a: None)
@@ -326,6 +332,32 @@ def test_compute_frozen_full_coverage_float_h2h_and_render(monkeypatch, workspac
 def test_compute_refuses_writable_connection(monkeypatch, workspace_folder):
     with pytest.raises(RuntimeError, match="writable"):
         mocked_compute(monkeypatch, workspace_folder, writable=True)
+
+
+@pytest.mark.parametrize("failure", ["database", "model"])
+def test_readonly_failures_are_not_empty_results(monkeypatch, workspace_folder, failure):
+    with pytest.raises(RuntimeError, match=f"synthetic {failure}"):
+        mocked_compute(monkeypatch, workspace_folder, failure=failure)
+
+
+def test_compute_default_seed_preserves_literal_42(monkeypatch, workspace_folder):
+    import numpy as np
+
+    draws = []
+    mocked_compute(monkeypatch, workspace_folder, draws=draws)
+    assert len(draws) == 4
+    assert draws == [np.random.default_rng(42).random()] * 4
+
+
+def test_compute_honors_explicit_profile_seed(monkeypatch, workspace_folder):
+    import numpy as np
+
+    profile = profiles.PROFILES["T1"]
+    monkeypatch.setitem(profiles.PROFILES, "T1", dict(profile, settings=dict(profile["settings"], seed=123)))
+    draws = []
+    mocked_compute(monkeypatch, workspace_folder, draws=draws)
+    assert draws[0] == np.random.default_rng(123).random()
+    assert draws[1:] == [np.random.default_rng(42).random()] * 4
 
 
 def test_compute_refuses_changed_frozen_sizing(monkeypatch, workspace_folder):
