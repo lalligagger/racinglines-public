@@ -55,6 +55,12 @@ changes golden outputs even with no code change. That's why it needs `--refresh`
 [data change log](data-changes.md), and goes in its own commit: fixtures and re-baselined goldens
 together, reviewed apart from code changes.
 
+Re-baselined 2026-10-06, no code or fixture change: `mtb_season_forecast` and `mtb_backtest`. As committed on
+2026-09-28 they failed at their own commit under Python 3.12 and 3.13, one or four BLAS threads and any hash seed,
+so they were never reproducible from the repo (cause unknown, most likely the machine they were blessed on). The
+backtest's per-weekend tables are now compared sorted by rider, since riders tied at zero expected points swap
+places between library builds. The other five downhill goldens and every F1 golden are unchanged.
+
 ```
 ```
 
