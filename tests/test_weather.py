@@ -1,5 +1,6 @@
-"""The weather forecast frame (racinglines/weather/schema.py) and the Weather Underground parser, offline: the
-parser reads tests/fixtures/weather/wunderground-sample.json, hand-written to the declared (unverified) field names."""
+"""The weather forecast frame (racinglines/weather/schema.py) and the provider parsers, offline. The
+Open-Meteo parser reads tests/fixtures/weather/open_meteo-sample.json (a captured response, the probe of
+2026-10-06); Weather Underground reads wunderground-sample.json, hand-written to its declared (unverified) field names."""
 
 import copy
 import json
@@ -11,6 +12,7 @@ import pytest
 
 from racinglines.frames.schema import FrameError
 from racinglines.weather import schema as S
+from racinglines.weather import open_meteo as OM
 from racinglines.weather import wunderground as W
 
 pytestmark = pytest.mark.quick
@@ -131,3 +133,43 @@ def test_no_nan_columns_from_the_fixture():
     df = W.parse(json.loads(FIXTURE.read_text()), "2026-17", 0.0, 0.0, ISSUED)
     for c in ("precip_prob", "precip_mm", "temp_c", "humidity", "wind_kph"):
         assert not np.isnan(df[c]).all(), c
+
+
+OM_FIXTURE = Path(__file__).parent / "fixtures" / "weather" / "open_meteo-sample.json"
+
+
+def test_open_meteo_fixture_is_a_captured_response():
+    raw = json.loads(OM_FIXTURE.read_text())
+    assert raw["provider"] == OM.SOURCE and raw["lat"] == 1.2914 and raw["lon"] == 103.864
+    assert OM.missing_fields(raw) == []
+    assert all(0 <= v <= 100 for v in raw["hourly"][OM.H_PRECIP_CHANCE] + raw["daily"][OM.D_PRECIP_CHANCE])
+    assert raw["meta"]["hourly_units"][OM.H_WIND] == "km/h" and raw["meta"]["hourly_units"][OM.H_PRECIP] == "mm"
+
+
+def test_open_meteo_parse_and_summary():
+    raw = json.loads(OM_FIXTURE.read_text())
+    sessions = {"race": (pd.Timestamp("2026-10-07 08:00"), pd.Timestamp("2026-10-07 10:00"))}
+    df = OM.parse(raw, "2026-17", raw["lat"], raw["lon"], ISSUED, sessions)
+    assert S.problems(df) == []
+    assert df["session"].value_counts().to_dict() == {"hour": 46, "day": 2, "race": 2}
+    assert df["precip_prob"].between(0, 1).all() and (df["source"] == "open_meteo").all()
+    day1 = df[df["session"] == "day"].iloc[0]
+    assert day1["valid_utc"] == pd.Timestamp("2026-10-05 16:00")          # local midnight in Singapore (UTC+8)
+    assert day1["precip_prob"] == 0.28 and day1["temp_c"] == pytest.approx(30.4)
+    assert day1["condition"] == "Light drizzle"
+    race = S.summary(df, "race")
+    assert race["precip_prob"] == 0.49 and race["precip_mm"] == pytest.approx(0.5) and race["wind_kph"] == 11.2
+
+
+def test_open_meteo_hourly_only_and_a_missing_field_fails_loudly():
+    raw = json.loads(OM_FIXTURE.read_text())
+    assert set(OM.parse({**raw, "daily": None}, "2026-17", 0.0, 0.0, ISSUED)["session"]) == {"hour"}
+    bad = copy.deepcopy(raw)
+    del bad["hourly"][OM.H_PRECIP_CHANCE]
+    with pytest.raises(OM.OpenMeteoFieldError, match=OM.H_PRECIP_CHANCE):
+        OM.parse(bad, "2026-17", 0.0, 0.0, ISSUED)
+    assert OM.missing_fields(bad) == [f"hourly.{OM.H_PRECIP_CHANCE}"]
+    bad = copy.deepcopy(raw)
+    bad["daily"][OM.D_WIND] = [1.0]                    # one value for two days
+    with pytest.raises(OM.OpenMeteoFieldError, match=OM.D_WIND):
+        OM.parse(bad, "2026-17", 0.0, 0.0, ISSUED)

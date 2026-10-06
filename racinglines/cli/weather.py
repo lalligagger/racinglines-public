@@ -1,10 +1,11 @@
 """
 racinglines weather <command>: weather forecasts for an event, in the provider-agnostic forecast frame
-(racinglines/weather/; docs/weather.md). Weather Underground is the only provider; its key is $WUNDERGROUND_API_KEY.
+(racinglines/weather/; docs/weather.md). --provider picks the source: open_meteo (the default, no key) or
+wunderground (optional, unverified, a PWS owner's key in $WUNDERGROUND_API_KEY).
 
-    probe   Fetch the daily and hourly forecasts for --lat/--lon and write the responses untouched (key left out) to
-            --out (default data/raw/weather/wunderground/probe-<UTC time>.json); lists every declared field the
-            response doesn't have. Run it on the Mac first: the endpoints and fields are unverified in the cloud.
+    probe   Fetch the daily and hourly forecasts for --lat/--lon and write the responses untouched (any key left out)
+            to --out (default data/raw/weather/<provider>/probe-<UTC time>.json); lists every declared field the
+            response doesn't have (exit 1 when any is missing).
     fetch   Fetch, parse and save one issue for an event key (data/weather/<event_key>/), the raw response next to
             the probe's; print the summary per session. --session race=START/END (UTC, repeatable) labels the
             hourly rows inside that window.
@@ -43,11 +44,25 @@ def _window(spec):
     return name, (datetime.fromisoformat(start), datetime.fromisoformat(end))
 
 
+def _provider(name):
+    from racinglines.weather import open_meteo, wunderground
+    return {"open_meteo": open_meteo, "wunderground": wunderground}[name]
+
+
+def _fetch_raw(a, W, hourly=True):
+    if W.SOURCE == "wunderground":
+        return W.fetch_raw(a.lat, a.lon, W.api_key(), hourly=hourly)
+    return W.fetch_raw(a.lat, a.lon, a.days)
+
+
 def cmd_probe(a):
     from racinglines.weather import schema as S
-    from racinglines.weather import wunderground as W
+    W = _provider(a.provider)
     out = a.out or S.root() / "raw" / "weather" / W.SOURCE / f"probe-{_stamp(datetime.now(UTC))}.json"
-    p, missing = W.probe(a.lat, a.lon, W.api_key(), out)
+    if W.SOURCE == "wunderground":
+        p, missing = W.probe(a.lat, a.lon, W.api_key(), out)
+    else:
+        p, missing = W.probe(a.lat, a.lon, out, a.days)
     raw = json.loads(p.read_text())
     print(f"wrote {p}")
     for k in ("daily", "hourly"):
@@ -61,8 +76,8 @@ def cmd_probe(a):
 
 def cmd_fetch(a):
     from racinglines.weather import schema as S
-    from racinglines.weather import wunderground as W
-    raw = W.fetch_raw(a.lat, a.lon, W.api_key(), hourly=not a.daily_only)
+    W = _provider(a.provider)
+    raw = _fetch_raw(a, W, hourly=not a.daily_only)
     issued = datetime.strptime(raw["fetched_utc"], "%Y-%m-%dT%H:%M:%S%z").replace(tzinfo=None)   # naive UTC
     rawp = S.root() / "raw" / "weather" / W.SOURCE / a.event_key / f"{_stamp(issued)}.json"
     rawp.parent.mkdir(parents=True, exist_ok=True)
@@ -96,18 +111,26 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="racinglines weather", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
+
+    def provider(p):
+        p.add_argument("--provider", choices=("open_meteo", "wunderground"), default="open_meteo",
+                       help="forecast source (default open_meteo, no key)")
+        p.add_argument("--days", type=int, default=16, help="open_meteo: days ahead, 1 to 16 (default 16)")
+
     p = sub.add_parser("probe", help="fetch once and write the raw response (the Mac, before anything else)")
     p.add_argument("--lat", type=float, required=True)
     p.add_argument("--lon", type=float, required=True)
-    p.add_argument("--out", help="output JSON (default data/raw/weather/wunderground/probe-<UTC time>.json)")
+    p.add_argument("--out", help="output JSON (default data/raw/weather/<provider>/probe-<UTC time>.json)")
+    provider(p)
     p.set_defaults(fn=cmd_probe)
     p = sub.add_parser("fetch", help="fetch, parse and save one forecast issue for an event")
     p.add_argument("event_key", help='the sportsbook event key, e.g. "2026-17"')
     p.add_argument("--lat", type=float, required=True)
     p.add_argument("--lon", type=float, required=True)
+    provider(p)
     p.add_argument("--session", action="append", metavar="NAME=START/END",
                    help="race | qual | sprint window in UTC (ISO times); repeatable")
-    p.add_argument("--daily-only", action="store_true", help="skip the hourly forecast")
+    p.add_argument("--daily-only", action="store_true", help="wunderground: skip the hourly forecast")
     p.set_defaults(fn=cmd_fetch)
     p = sub.add_parser("show", help="print the latest saved issue's summary per session")
     p.add_argument("event_key")

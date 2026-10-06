@@ -1,10 +1,10 @@
 # Weather forecasts
 
-Weather forecasts as one frame a model can read, whoever made the forecast (`racinglines/weather/`). Weather
-Underground is the first provider. MVP status (2026-10-06): the frame, the save/load layout and the CLI are built and
-tested offline. **The provider's endpoints and field names are unverified**. The cloud has no network to any weather
-host, so they come from memory of the public API documentation. No response has been captured yet (see
-[Unverified](#unverified-until-the-probe-runs)). No model reads the frame yet.
+Weather forecasts as one frame a model can read, whoever made the forecast (`racinglines/weather/`). **Open-Meteo is
+the default provider**: free, no API key, global hourly and daily forecasts, verified by the probe of 2026-10-06
+(Marina Bay, see [Probe of 2026-10-06](#probe-of-2026-10-06)). Weather Underground stays as an optional provider that
+needs a PWS owner's key and is unverified. MVP status (2026-10-06): the frame, the save/load layout, the CLI and the
+Open-Meteo parser are built and tested against a captured response. No model reads the frame yet.
 
 ## The forecast frame
 
@@ -16,14 +16,14 @@ host, so they come from memory of the public API documentation. No response has 
 | `event_key` | str | the sportsbook event key, e.g. `2026-17` ([Sportsbook schema](sportsbook/index.md)) |
 | `session` | str | `race`, `qual`, `sprint` (an hour inside that session's window), `day` (a daily forecast row) or `hour` (an hourly row outside every window given) |
 | `valid_utc` | datetime | the time the row forecasts: the hour's start, or the provider's own time for a day |
-| `issued_utc` | datetime | when the forecast was issued. Weather Underground: the fetch time, because the response's own issue time is not mapped yet |
+| `issued_utc` | datetime | when the forecast was issued: the fetch time (neither provider's response carries a model-run time we map) |
 | `precip_prob` | number, 0 to 1 | chance of precipitation |
 | `precip_mm` | number, ≥ 0 | expected precipitation: the hour's, or the day's total |
 | `temp_c` | number | air temperature (a day: the mean of its max and min) |
 | `humidity` | number, 0 to 100 | relative humidity |
 | `wind_kph` | number, ≥ 0 | wind speed |
-| `condition` | str, nullable | the provider's own text ("Showers") |
-| `source` | str | the provider code (`wunderground`) |
+| `condition` | str, nullable | the provider's text ("Showers"); Open-Meteo: its WMO weather code's name ("Slight rain showers") |
+| `source` | str | the provider code (`open_meteo`, `wunderground`) |
 | `lat`, `lon` | number | where the forecast is for |
 
 - `validate(df)` returns the frame, or raises `FrameError`. Its `problems` list every mismatch and name the column:
@@ -35,37 +35,76 @@ host, so they come from memory of the public API documentation. No response has 
   source and issue per file. `load(event_key, source=None)` returns the latest issue. Both read `RACINGLINES_DATA`
   when they run. `data/` is gitignored, so forecasts never reach git.
 
-## Weather Underground
+## Open-Meteo (default)
 
-`racinglines/weather/wunderground.py`. Weather Underground's forecasts are served by The Weather Company's API
-(`api.weather.com`, the v3 endpoints). It takes an `apiKey` query parameter: the key a Weather Underground PWS owner
-gets. Set it in `WUNDERGROUND_API_KEY` ([CLI reference](cli.md#racinglines-weather)).
+`racinglines/weather/open_meteo.py`. One request to `https://api.open-meteo.com/v1/forecast` with no key returns both
+blocks, up to 16 days ahead (`--days`, default 16):
 
-- `fetch_raw(lat, lon, key, hourly=True)` fetches the daily forecast and, with `hourly=True`, the hourly one through
-  the repo's paced, retried HTTP helper (`racinglines/sources/http.py`). It returns an envelope: `daily`, `hourly`,
-  `errors`, `fetched_utc`, `lat` and `lon`, with the bodies untouched and the key left out. A failed hourly request
-  is recorded under `errors.hourly` and the daily forecast is kept.
-- `parse(raw, event_key, lat, lon, issued_utc, sessions=None)` builds the frame from the envelope. It writes one `day`
-  row per day: precip_prob and wind are the larger of the day and night halves, humidity is their mean. It writes one
-  row per hour, labelled with the session whose window holds it (`sessions = {"race": (start, end)}`), or `hour`.
-  **A declared field the response doesn't have raises `WundergroundFieldError` naming it**, so a wrong field name can
-  never produce silent NaN columns.
-- `probe(lat, lon, key, out_path)` writes the envelope as fetched. It also lists every declared field the response
-  doesn't have (`missing_fields`).
+- `hourly`: `time`, `temperature_2m` (C), `relative_humidity_2m` (%), `precipitation_probability` (%),
+  `precipitation` (mm), `wind_speed_10m` (km/h), `weather_code` (WMO).
+- `daily`: `time`, `temperature_2m_max`, `temperature_2m_min`, `precipitation_probability_max`, `precipitation_sum`,
+  `relative_humidity_2m_mean`, `wind_speed_10m_max`, `weather_code`.
+- `timeformat=unixtime`, so every time is a UTC epoch second. `timezone=auto`, so the daily rows are the venue's local
+  calendar days: a `day` row's `valid_utc` is local midnight in UTC (Singapore, UTC+8: `2026-10-10 16:00` is race day,
+  11 October). Hourly rows are unaffected.
+
+`fetch_raw(lat, lon, days=16)` returns an envelope (`provider`, `fetched_utc`, `lat`, `lon`, `hourly`, `daily`, and
+`meta`: the response's other fields, units included) through the repo's paced, retried HTTP helper
+(`racinglines/sources/http.py`). `parse(raw, event_key, lat, lon, issued_utc, sessions=None)` writes one `day` row per
+day (`temp_c` the mean of max and min) and one row per hour, labelled with the session whose window holds it
+(`sessions = {"race": (start, end)}`) or `hour`. **A field the response doesn't have raises `OpenMeteoFieldError`
+naming it**, so a renamed field can never produce silent NaN columns. `condition` is the weather code's name from
+Open-Meteo's WMO code table. `probe(lat, lon, out_path)` writes the envelope as fetched and lists any missing field.
+
+### Probe of 2026-10-06
+
+From the owner's Mac, read-only, for Marina Bay (lat 1.2914, lon 103.8640: approximate public-map coordinates; the
+API snapped them to its grid point 1.3005, 103.8626, elevation 7 m):
+
+```
+# LOCAL (Mac)
+racinglines weather probe --lat 1.2914 --lon 103.8640 --out data/raw/weather/open_meteo/probe-2026-17-singapore.json
+```
+
+HTTP 200, 384 hourly and 16 daily entries, every requested field present, units as stated above. The response sends
+no rate-limit headers. A trimmed copy (48 hours, 2 days) is `tests/fixtures/weather/open_meteo-sample.json`.
+
+### Licence: an open item for the owner
+
+Open-Meteo's free API is for **non-commercial use** (fair use, about 10,000 calls a day; the data is CC BY 4.0, so a
+page that shows it credits Open-Meteo). Commercial use needs Open-Meteo's paid API plan, a different host and an
+`apikey` parameter. racinglines plans billing in 2027: before that, the owner decides between Open-Meteo's paid plan
+and another source. Not implemented, for comparison: **MET Norway's Locationforecast**
+(`api.met.no`) is free including commercial use (CC BY 4.0) and needs an identifying `User-Agent`, but its
+precipitation probability is not available everywhere.
+
+Not checked yet: Open-Meteo's historical forecast and archive endpoints, which a backtest would need (an issue as of a
+past date, for the as-of rule).
+
+## Weather Underground (optional, unverified, needs a PWS key)
+
+`racinglines/weather/wunderground.py`, used with `--provider wunderground`. Weather Underground's forecasts are served
+by The Weather Company's API (`api.weather.com`, the v3 endpoints), which takes the key a Weather Underground personal
+weather station owner gets, in `WUNDERGROUND_API_KEY` ([CLI reference](cli.md#racinglines-weather)). The owner has no
+station, so this provider has never been probed: **every endpoint path, query parameter and field name in it is
+unverified** (written from memory of the public API documentation, each constant marked in the module), and its test
+fixture `tests/fixtures/weather/wunderground-sample.json` is hand-written to the declared shape. If a key ever exists,
+`racinglines weather probe --provider wunderground --lat ... --lon ...` on the Mac lists the declared fields the
+response lacks; fix those, replace the fixture with a trimmed capture, and drop the "unverified" marks.
 
 ## Commands
 
 ```
-racinglines weather probe --lat LAT --lon LON [--out FILE.json]
-racinglines weather fetch EVENT_KEY --lat LAT --lon LON [--session race=START/END ...] [--daily-only]
-racinglines weather show EVENT_KEY [--source wunderground]
+racinglines weather probe --lat LAT --lon LON [--out FILE.json] [--provider open_meteo|wunderground] [--days N]
+racinglines weather fetch EVENT_KEY --lat LAT --lon LON [--session race=START/END ...] [--provider ...] [--days N]
+racinglines weather show EVENT_KEY [--source open_meteo]
 ```
 
-- `probe` writes the untouched responses to `data/raw/weather/wunderground/probe-<UTC time>.json`, or to `--out`.
-  It prints each body's fields and the declared fields that are missing, and exits 1 when any are missing.
-- `fetch` fetches once and keeps the raw envelope under `data/raw/weather/wunderground/<event_key>/`. It parses and
-  saves the issue, then prints the summary per session. `--session` takes ISO times in UTC (`race=2026-10-04T12:00/2026-10-04T14:00`)
-  and repeats.
+- `probe` writes the untouched response to `data/raw/weather/<provider>/probe-<UTC time>.json`, or to `--out`.
+  It prints each body's fields and the requested fields that are missing, and exits 1 when any are missing.
+- `fetch` fetches once and keeps the raw envelope under `data/raw/weather/<provider>/<event_key>/`. It parses and
+  saves the issue, then prints the summary per session. `--session` takes ISO times in UTC
+  (`race=2026-10-11T12:00/2026-10-11T14:00`) and repeats. `--daily-only` applies to Weather Underground only.
 - `show` loads the latest saved issue and prints the summary per session, then the daily rows.
 
 Nothing here runs by default, writes to the database, or touches the VM.
@@ -77,37 +116,11 @@ and `fetch` reads it from there.
 ## Probe first
 
 The project rule for a new data source ([CLAUDE.md](https://github.com/lalligagger/racinglines-public/blob/main/CLAUDE.md),
-"Database writes and new data sources") applies here. The owner's Mac probes before any scheduled or full run:
+"Database writes and new data sources") applies to every provider: the owner's Mac probes before any scheduled or full
+run, the captured response becomes the test fixture, and the field names come from it. Open-Meteo passed on
+2026-10-06; Weather Underground has not been probed.
 
-```
-# LOCAL (Mac)
-export WUNDERGROUND_API_KEY=...
-racinglines weather probe --lat <lat> --lon <lon>
-```
-
-Then:
-
-1. Fix any constant the probe lists as missing in `wunderground.py`.
-2. Trim the probe file to a couple of days and hours, and replace `tests/fixtures/weather/wunderground-sample.json`
-   with it. Today's fixture is hand-written to the declared shape, with coordinates (0, 0) as a placeholder, and is
-   not a captured response.
-3. Run `python -m pytest tests/test_weather.py`.
-4. Note the key's rate limits and terms of use from the response headers and the account page.
-
-## Unverified until the probe runs
-
-Every one of these is marked in `wunderground.py` with `# unverified in the cloud: confirm with racinglines weather probe on the Mac`:
-
-- Host and paths: `BASE_URL = https://api.weather.com`, `DAILY_PATH = /v3/wx/forecast/daily/5day`,
-  `HOURLY_PATH = /v3/wx/forecast/hourly/2day`. Also whether a PWS key may call the hourly endpoint at all.
-- Query: `geocode=lat,lon`, `format=json`, `units=m`, `language=en-US`, `apiKey`.
-- Units under `units=m`: C, km/h, mm.
-- Daily fields: `validTimeUtc` (epoch seconds), `temperatureMax`, `temperatureMin`, `qpf`, `narrative`, `daypart`.
-  Inside `daypart[0]`: `precipChance`, `relativeHumidity`, `windSpeed`, two entries per day (day, then night, null
-  once a half has passed).
-- Hourly fields: `validTimeUtc`, `temperature`, `precipChance`, `qpf`, `relativeHumidity`, `windSpeed`,
-  `wxPhraseLong`.
-- Not mapped: the response's own issue time. `issued_utc` is the fetch time.
+se's own issue time. `issued_utc` is the fetch time.
 - The key's rate limits and terms of use.
 
 ## What the forecast is for
