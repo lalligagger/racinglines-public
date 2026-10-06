@@ -13,7 +13,7 @@ racinglines nascar  fetch | ingest | link | replay | season | season-replay | de
                     the champion-market replay; the demo paper portfolio; the next races' forecast)
 racinglines motogp  fetch | ingest | compare | search | replay | season-replay | demo-history | forecast
 racinglines markets sync | history | trades | record | archive      (= racinglines f1 pm-*)
-racinglines weather probe | fetch | show                            (weather forecasts per event: Weather Underground)
+racinglines weather probe | fetch | show                            (weather forecasts per event: Open-Meteo, no key)
 racinglines db      init | seed | stats | export | snapshot-export | snapshot-import | merge-athletes | changes
 racinglines web
 racinglines mcp     [--http] [--host H] [--port 8100] [--no-jobs] | token ACCOUNT [--revoke]     the MCP server
@@ -302,15 +302,25 @@ on the timed-runs engine: `events`, `fetch itt|road`, `startlist <event>`, `pric
 classification (`models/position_sim/dnf_check.py`). Both are read-only; see the decision log of 2026-10-06 in
 [F1 roadmap](f1-roadmap.md#decision-log).
 
+`--forecast <csv> [--lead N]` (the leads CSV of `racinglines weather leads`, e.g.
+`tests/fixtures/weather/open_meteo-leads-f1.csv`, turned into a walk-forward `p_wet` per race by
+`weather/wet.py`'s `p_wet_series`; lead 5 by default) adds the weather-aware variants to both: `climatology-WX` to
+`--check` and `model-WX` to `--dnf-check`, each with its paired Brier difference against its base. Both read the
+race history from `--history <csv>`, else the database. The forecast's own skill by lead is
+`racinglines weather backtest`. See [F1: weather-aware (-WX) variants](f1.md#weather-aware-wx-variants).
+
 ## racinglines weather
 
 Weather forecasts per event in one provider-agnostic frame: `probe --lat --lon [--out]`, `fetch <event_key> --lat
---lon [--session race=START/END]`, `show <event_key>`. The provider's endpoints and fields are unverified until
-`probe` runs on the Mac. See [Weather forecasts](weather.md).
+--lon [--session race=START/END]`, `show <event_key>`, `leads --out <csv> [--races <csv>]` (the forecasts issued 0 to 7
+days before past races), `backtest [--lead 5] [--history <csv>] [--leads <csv>]` (the wet-race forecast against rain,
+red flag, safety car and DNFs). `--provider open_meteo` (the default, no key, verified by
+the probe of 2026-10-06) or `wunderground` (optional, unverified, a PWS owner's key). See
+[Weather forecasts](weather.md).
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `WUNDERGROUND_API_KEY` | – | Weather Underground (The Weather Company API) key, a PWS owner's key; read by `weather probe` and `weather fetch`. |
+| `WUNDERGROUND_API_KEY` | – | Weather Underground (The Weather Company API) key, a PWS owner's key; read by `weather probe` and `weather fetch` with `--provider wunderground` only. |
 
 ## racinglines db
 

@@ -198,6 +198,7 @@ For every F1 weekend, T1 or T3:
 | Replay race spread for NASCAR (2.0 places vs a measured ~7) | Before any NASCAR result is read as edge | Owner's call, with a decision-log entry |
 | Close draft #97 (superseded by #110) | Any time | Yes |
 | History purge for data off GitHub (force-push) | Last stage | Needs the owner's spoken OK in the same turn |
+| Open-Meteo's free API is non-commercial only ([Weather forecasts](weather.md)): paid plan, or MET Norway (free for commercial use, not built) | Before billing goes live (G3, 2027) | Stay on the free tier while there is no revenue; decide with the first paid tier |
 | Odds presentation names in the sportsbook schema: `decimal`, `american`, `fractional`, `cents` (Kalshi), `dollars` (Polymarket, OG.com), `prob` ([Sportsbook schema](sportsbook/index.md)) | After PR #69 merges | Owner checks the names; a rename is one line in `racinglines/books/schema.py` plus the docs table |
 | Fantasy soft launch decisions DEC-1 to DEC-23 ([Fantasy soft launch](fantasy-launch.md#decisions)) | Batch A Wed 30 Sep 18:00 PDT; B Mon 5 Oct; C Wed 7 Oct; go/no-go Thu 8 Oct 12:00 PDT | Per the [runbook's decision table](fantasy-runbook.md#decisions) |
 
@@ -345,6 +346,13 @@ events are T3 unless a venue lists the event.
 
 Phased plan and ground rules: [F1 roadmap](f1-roadmap.md).
 
+- [ ] **P2 · Weather-aware position-model variant `gridq+pretrain+reset-WX`** (owner, 2026-10-06: "later branch", not
+      the weather PR). The disruption mixture (more noise and retirements in disrupted races) weighted by the race's
+      forecast rain probability (`weather/wet.p_wet_series`, lead 5 days) instead of history alone; then the strategies on it
+      (`A-WX` against `A`) in their own sweep under the promotion rule. Until then a `-WX` strategy name would be
+      byte-for-byte its baseline: nothing weather-aware feeds win, podium, h2h, constructor or pole. Decided after the
+      5-day forecast backtest found the forecast beats the circuit history for rain, is neutral for red flags and adds
+      nothing for safety car or DNF ([Weather forecasts](weather.md), [decision log](f1-roadmap.md#decision-log)).
 - [ ] **U13 · P2 · Sprint-race pricing model.** For now (U5, PR #36) Kalshi's sprint winner and sprint pole
       markets price from the race's win and pole probabilities as a stand-in; the owner approved that for
       Singapore (2026-09-29). Simulate the sprint itself: sprint qualifying as its own stage, a shorter race

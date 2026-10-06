@@ -251,6 +251,10 @@ def main(argv=None):
                    help="--check: score a history CSV (props.history()'s columns) instead of the database")
     p.add_argument("--dnf-check", default=None, metavar="CSV",
                    help="The position simulation's DNF calibration on an as-of export (position_sim/dnf_check.py)")
+    p.add_argument("--forecast", default=None, metavar="CSV",
+                   help="--check / --dnf-check: the weather leads CSV (racinglines weather leads; weather/wet.py "
+                        "p_wet_series) adds the -WX variants; needs a race history (--history CSV or the database)")
+    p.add_argument("--lead", type=int, default=5, help="--forecast: the forecast issued this many days before (default 5)")
     args = ap.parse_args(argv)
     from racinglines.models.position_sim import variants as V
     V.switches(args.variant)                         # fail fast on an unknown name
@@ -350,17 +354,28 @@ def _run(args):
     if args.cmd == "props":
         from racinglines.models.position_sim import props as PR
         prior_n = PR.PRIOR_N if args.prior_n is None else args.prior_n
+        fc = hist = None
+        if args.forecast:
+            from racinglines.weather import wet as WET
+            if args.history:
+                hist = pd.read_csv(args.history)
+            else:
+                with engine.connect() as c:
+                    hist = PR.history(c)
+            fc = WET.p_wet_series(hist, pd.read_csv(args.forecast), args.lead, prior_n=prior_n)
         if args.dnf_check:
             from racinglines.models.position_sim import dnf_check as DC
-            print(DC.render(DC.check(pd.read_csv(args.dnf_check))))
+            wx = {} if fc is None else dict(forecast=fc, history_df=hist, prior_n=prior_n)
+            print(DC.render(DC.check(pd.read_csv(args.dnf_check), **wx)))
             return
         if args.check and args.history:
-            _, summ = PR.check(None, args.start_year, prior_n, history_df=pd.read_csv(args.history))
+            h = hist if hist is not None else pd.read_csv(args.history)
+            _, summ = PR.check(None, args.start_year, prior_n, history_df=h, forecast=fc)
             print(summ.to_string(index=False, float_format="{:.4f}".format))
             return
         with engine.connect() as c:
             if args.check:
-                _, summ = PR.check(c, args.start_year, prior_n)
+                _, summ = PR.check(c, args.start_year, prior_n, forecast=fc)
                 print(summ.to_string(index=False, float_format="{:.4f}".format))
                 return
             if not args.event:

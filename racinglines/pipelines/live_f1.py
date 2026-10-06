@@ -258,11 +258,18 @@ def markets(conn, event_key, run_id, source="last_listed", kinds=KINDS, props=No
 
 
 def prop_markets(conn, event_key, run_id, kinds, props=None):
-    """The prop markets among `kinds` ([] when none is listed, the default)."""
+    """The prop markets among `kinds` ([] when none is listed, the default). The race's latest saved wet vote
+    (`racinglines weather fetch ... --session race=...`, weather/wet.py), when there is one, prices race_rain and
+    race_red_flag given the forecast; [live.props] weather = false turns that off."""
     pk = tuple(k for k in kinds if k in PROP_KINDS)
     if not pk:
         return []
-    return P.markets(conn, event_key, run_id, pk, (props or {}).get("prior_n", P.PRIOR_N))
+    props = props or {}
+    vote = None
+    if props.get("weather", True):
+        from racinglines.weather import wet as WET
+        vote = WET.load_vote(event_key)
+    return P.markets(conn, event_key, run_id, pk, props.get("prior_n", P.PRIOR_N), wet_vote=vote)
 
 
 # ---------------------------------------------------------------------------
