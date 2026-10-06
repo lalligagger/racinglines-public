@@ -688,8 +688,11 @@ def latest_run(conn, profile, event_key):
 
 def price_upcoming(engine, engine_url, profile, now=None, n=3, echo=print, cache=None):
     """Between race weekends: price each of the next `n` races that has race markets listed on the profile's
-    venue, as of now, with the profile's model, unless a pricing from the same data exists (the data only
-    changes when a session runs, so this is a one-off per race). Returns {event_key: run id}."""
+    venue, as of now, with the profile's model, unless a pricing from the same data by the same code exists (the
+    data only changes when a session runs and the code only when a deploy lands, so this is a one-off per race
+    per deploy: the Markets board reads the newest of these runs, so a model change reaches it at the next pass).
+    Returns {event_key: run id}."""
+    from racinglines.db.queries import code_version
     from racinglines.models.position_sim import pricing as run
     st = SS.Settings.from_dict(profile["settings"], strict=False)
     venue = SS.venue_of(st)
@@ -710,12 +713,13 @@ def price_upcoming(engine, engine_url, profile, now=None, n=3, echo=print, cache
         hist = cache.get(("hist", st.model_key))
         if hist is None:
             hist = cache[("hist", st.model_key)] = run.history(meas, st["track_features"])
-        dk = SS.data_key(meas.view(now))
+        dk, cv = SS.data_key(meas.view(now)), code_version()
         for w in todo:
             with engine.connect() as c:
                 have = c.execute(text("""SELECT id FROM model_runs WHERE kind = 'diagnostic' AND params->>'model_key' = :m
-                                           AND params->>'event_key' = :k AND params->>'data_key' = :d ORDER BY id DESC LIMIT 1"""),
-                                 dict(m=st.model_key, k=w["event_key"], d=dk)).scalar()
+                                           AND params->>'event_key' = :k AND params->>'data_key' = :d
+                                           AND code_version IS NOT DISTINCT FROM :cv ORDER BY id DESC LIMIT 1"""),
+                                 dict(m=st.model_key, k=w["event_key"], d=dk, cv=cv)).scalar()
             if have:
                 out[w["event_key"]] = have
                 continue
