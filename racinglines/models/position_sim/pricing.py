@@ -26,7 +26,9 @@ Leakage guards:
   - The finishing model is trained only on races whose results were known at
     the cutoff, each row with features computed as of just before that race.
   - The grid is the QUALIFYING order (in the view), not the official grid
-    stored with race results; grid penalties are therefore ignored.
+    stored with race results, moved by the confirmed grid penalties in
+    sports/f1/grid_penalties.toml (penalties.py; a penalty announced after the
+    cutoff is left out). Pole is priced from the qualifying order.
   - Exchange (Polymarket) prices never enter fitting or pricing. They are only
     compared with our prices after the fact.
 """
@@ -38,6 +40,7 @@ import pandas as pd
 
 from racinglines.models import outcomes as O
 from racinglines.models.position_sim import model as M
+from racinglines.models.position_sim import penalties as GP
 from racinglines.core.stats import brier, ranks
 
 ONE_MIN = pd.Timedelta(minutes=1)
@@ -139,6 +142,23 @@ def qualifying_grid(view, event_id, entrants):
     return entrants["athlete_id"].map(pos).fillna(len(entrants)).to_numpy(float)
 
 
+def event_key_of(meas, event_id):
+    """The event's key YYYY-RR (season, championship round) from its rows; None when it has none."""
+    rows = meas.res[meas.res["event_id"] == event_id] if event_id is not None else meas.res.iloc[:0]
+    return f"{int(rows['year'].iloc[0])}-{int(rows['series_round'].iloc[0]):02d}" if len(rows) else None
+
+
+def grid_adjust(key, session, entrants, cutoff):
+    """(simulate_race's grid_adjust, the penalties) for a session's confirmed grid penalties known at `cutoff`;
+    (None, []) when it has none, so a weekend without one runs exactly the code it ran before."""
+    pens = GP.for_event(key, session, cutoff)
+    if not pens:
+        return None, []
+    for p in pens:                             # a typo fails here, not silently in the draws
+        GP.driver_index(entrants, p)
+    return (lambda g: GP.apply(g, entrants, pens)), pens
+
+
 def side_stages(meas, event_id, stages=None):
     """The race-like sessions besides the Grand Prix this weekend has (sports/f1.toml [sessions.sim], schema order):
     those named in `stages` when the caller knows the weekend's format (the forecast: its schedule's sprint flag),
@@ -190,12 +210,14 @@ def stage_result(view, event_id, entrants, stage, n_sims, grid):
     return dict(pos=tile(rank), dnf=tile(~ok), points=tile(pts), grid=tile(grid))
 
 
-def price_stages(meas, v, event_id, e, fm, tf, rng, n_sims, chaos_p, stages=None):
+def price_stages(meas, v, event_id, e, fm, tf, rng, n_sims, chaos_p, stages=None, key=None):
     """The weekend's side stages (the sprint), from the same paces and finishing model as the Grand Prix: the
     schema's points table and retirement scale, the grid from stage_grid, the actual result once the stage has run.
     Every draw is on a side stream seeded from `rng` without advancing it, so the Grand Prix's prices, and whatever
-    the caller draws next, are byte-identical with or without these stages. Returns ({stage: sim}, {stage: audit})."""
-    sims, audit = {}, {}
+    the caller draws next, are byte-identical with or without these stages. A stage's confirmed grid penalties
+    (key: the event's YYYY-RR) move its simulated starting grid; its pole stays the qualifying order. Returns
+    ({stage: sim}, {stage: audit}, [applied penalties])."""
+    sims, audit, applied = {}, {}, []
     rows = meas.res[meas.res["event_id"] == event_id] if event_id is not None else meas.res.iloc[:0]
     year = int(rows["year"].iloc[0]) if len(rows) else v.cutoff.year
     for i, stage in enumerate(side_stages(meas, event_id, stages)):
@@ -207,13 +229,17 @@ def price_stages(meas, v, event_id, e, fm, tf, rng, n_sims, chaos_p, stages=None
             es = e.assign(p_dnf=np.clip(e["p_dnf"].to_numpy() * float(cfg.get("dnf_scale", 1.0)), 0.0, 1.0))
             if grid is not None:
                 es["grid"] = grid
+            adjust, pens = grid_adjust(key, stage, es, v.cutoff)
+            applied += pens
             s = M.simulate_race(fm, es, tf, n_sims=n_sims, rng=M._side_rng(rng, M.STAGE_SEED + i),
-                                grid_known=grid is not None, points=M.points_table(cfg["points"], year), chaos_p=chaos_p)
+                                grid_known=grid is not None, points=M.points_table(cfg["points"], year), chaos_p=chaos_p,
+                                grid_adjust=adjust)
             s.pop("fl", None)
-        sims[stage] = dict(pos=s["pos"], dnf=s["dnf"], points=s["points"], grid=s["grid"], grid_from=grid_from)
+        sims[stage] = dict(pos=s["pos"], dnf=s["dnf"], points=s["points"], grid=s.get("qual", s["grid"]),
+                           grid_from=grid_from)
         audit[stage] = dict(grid=src, result="actual" if stage in set(v.res.loc[v.res["event_id"] == event_id, "round"])
                             else "simulated", dnf_scale=float(cfg.get("dnf_scale", 1.0)), points=cfg["points"])
-    return sims, audit
+    return sims, audit, applied
 
 
 def history(meas, use_track=True):
@@ -236,6 +262,9 @@ def history(meas, use_track=True):
         e_nopr = e.copy()
         e, _ = PR.apply(e, v.practice, ev.event_id, PR.fit(ptrain, cutoff))
         grid = qualifying_grid(v, ev.event_id, ent)
+        adjust, _ = grid_adjust(f"{int(ev.year)}-{int(ev.series_round):02d}", M.MAIN_STAGE, ent, cutoff)
+        if grid is not None and adjust is not None:   # the starting grid the outcome was raced from
+            grid = adjust(grid)
         e["grid_used"] = grid if grid is not None else np.nan
         if M.PRE_PRACTICE_TRAIN:                  # the same features from paces before the practice prior
             nopr = M.design(e_nopr.assign(grid_used=e["grid_used"].to_numpy()), tf, use_track)
@@ -261,7 +290,7 @@ def history(meas, use_track=True):
 # ---------------------------------------------------------------------------
 
 def price_race(meas, hist, cutoff, event_id, n_sims=10000, rng=None, use_track=True, entrants=None,
-               venue=None, points=M.RACE_POINTS, stages=None):
+               venue=None, points=M.RACE_POINTS, stages=None, event_key=None):
     """Fair prices for one race using only data from before `cutoff`.
 
     Returns (summary, extras): summary has per-driver win/podium/top10/pole/DNF
@@ -269,9 +298,13 @@ def price_race(meas, hist, cutoff, event_id, n_sims=10000, rng=None, use_track=T
     per-team top-scorer probabilities, the leakage audit, track features and model.
     On a weekend with side stages (the sprint, see price_stages; `stages` names them when the
     event's rows can't, e.g. a future weekend), the summary adds <stage>_win_prob and
-    <stage>_pole_prob, extras["sim"]["stages"] their arrays and the audit their sources."""
+    <stage>_pole_prob, extras["sim"]["stages"] their arrays and the audit their sources. The event's
+    confirmed grid penalties (sports/f1/grid_penalties.toml, looked up by `event_key` YYYY-RR, else the
+    event's rows) move the starting grid of the race and stages they name, recorded in
+    extras["audit"]["grid_penalties"]."""
     rng = rng if rng is not None else np.random.default_rng(0)
     v = meas.view(cutoff)
+    key = event_key if event_key is not None else event_key_of(meas, event_id)
     if entrants is None:
         entrants = entry_list(meas, event_id)
     if venue is None:
@@ -290,9 +323,12 @@ def price_race(meas, hist, cutoff, event_id, n_sims=10000, rng=None, use_track=T
     if grid is not None:
         e["grid"] = grid
     chaos_p = M.chaos_prob(hist, venue, v.cutoff, fm.chaos["p"]) if fm.chaos else None
+    adjust, applied = grid_adjust(key, M.MAIN_STAGE, e, v.cutoff)
     sim = M.simulate_race(fm, e, tf, n_sims=n_sims, rng=rng, grid_known=grid is not None, points=points,
-                          chaos_p=chaos_p)
-    stage_sims, stage_audit = price_stages(meas, v, event_id, e, fm, tf, rng, n_sims, chaos_p, stages)
+                          chaos_p=chaos_p, grid_adjust=adjust)
+    stage_sims, stage_audit, stage_applied = price_stages(meas, v, event_id, e, fm, tf, rng, n_sims, chaos_p, stages,
+                                                          key)
+    applied += stage_applied
     summ = M.summarize(e, sim)
     for stage, s in stage_sims.items():        # race_sprint_win / race_sprint_pole (markets/kinds.py, db/reads.py)
         summ[f"{stage}_win_prob"] = summ["athlete_id"].map(dict(zip(e["athlete_id"], (s["pos"] == 1).mean(0))))
@@ -318,6 +354,8 @@ def price_race(meas, hist, cutoff, event_id, n_sims=10000, rng=None, use_track=T
                   track=tf, sim=sim, entrants=e, model=fm)
     if stage_audit:
         extras["audit"]["stages"] = stage_audit
+    if applied:
+        extras["audit"]["grid_penalties"] = GP.describe(applied)
     return summ, extras
 
 
@@ -454,7 +492,7 @@ def diagnostic(meas, hist, event_key, cutoff, n_sims=10000, seed=42, use_track=T
         raise ValueError(f"no event {event_key}")
     event_id = int(ev["event_id"].iloc[0])
     summ, ex = price_race(meas, hist, cutoff, event_id, n_sims=n_sims, rng=np.random.default_rng(seed),
-                          use_track=use_track, stages=stages)
+                          use_track=use_track, stages=stages, event_key=event_key)
     y = outcome(meas, event_id, summ["athlete_id"].tolist())
     result = pd.DataFrame(dict(athlete_id=summ["athlete_id"], status=y["status"], position=y["position"]))
     return event_id, summ, ex, result
@@ -540,7 +578,8 @@ def forecast(meas, hist, year, cutoff=None, n_sims=10000, seed=42, schedule=None
         if race_prices:
             # published race prices: the backtested single-race model (no season drift)
             summ, ex = price_race(meas, hist, cutoff, event_id, n_sims=n_sims, rng=rng, entrants=entrants, venue=venue,
-                                  use_track=use_track, stages=[k for k in M.SIM_SESSIONS if bool(getattr(ev, k, False))])
+                                  use_track=use_track, stages=[k for k in M.SIM_SESSIONS if bool(getattr(ev, k, False))],
+                                  event_key=f"{year}-{ev.round:02d}")
             race_constructor_top[f"{year}-{ev.round:02d}"] = ex["constructor_top"]
             tf = ex["track"]
         else:

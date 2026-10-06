@@ -665,12 +665,15 @@ def season_drift(e, n_sims, rng, team_sd=TEAM_DRIFT_SD, driver_sd=DRIVER_DRIFT_S
 
 
 def simulate_race(fm, e, tf, n_sims=10000, rng=None, grid_known=False, points=RACE_POINTS, pace_shock=None,
-                  chaos_p=None):
+                  chaos_p=None, grid_adjust=None):
     """e: entrants with qp, rp, p_dnf (and grid if grid_known). pace_shock: optional
     (n_sims, n) shift of both qualifying and race pace (see season_drift). chaos_p:
-    probability this race is disrupted (fm.chaos). Returns dict of (n_sims, n) arrays:
-    pos (finishing position, DNFs last), dnf, points, grid; with FASTEST_LAP also fl
-    (who set the race's fastest lap, see fastest_lap)."""
+    probability this race is disrupted (fm.chaos). grid_adjust: optional callable taking the
+    (n_sims, n) qualifying order (known or drawn) and returning the starting grid (grid
+    penalties, penalties.apply); it runs after the grid's draws and draws nothing itself.
+    Returns dict of (n_sims, n) arrays: pos (finishing position, DNFs last), dnf, points,
+    grid (the starting grid); with grid_adjust also qual (the qualifying order, for pole);
+    with FASTEST_LAP also fl (who set the race's fastest lap, see fastest_lap)."""
     rng = rng or np.random.default_rng(0)
     n = len(e)
     shock = pace_shock if pace_shock is not None else 0.0
@@ -682,6 +685,9 @@ def simulate_race(fm, e, tf, n_sims=10000, rng=None, grid_known=False, points=RA
     else:
         q = qp + _noise(rng, fm.sigma_q, fm.rho_q, teams, n_sims)
         grid = ranks(q).astype(float)
+    qual = grid
+    if grid_adjust is not None:
+        grid = np.asarray(grid_adjust(grid), float)
     g = (grid - 1) / max(n - 1, 1)
     rp_rel = (rp - rp.min(axis=1, keepdims=True)) * 100
     qp_rel = (qp - qp.min(axis=1, keepdims=True)) * 100
@@ -716,6 +722,8 @@ def simulate_race(fm, e, tf, n_sims=10000, rng=None, grid_known=False, points=RA
         pts += (pos == p) * v
     pts = np.where(dnf, 0, pts)
     out = dict(pos=pos, dnf=dnf, points=pts, grid=grid)
+    if grid_adjust is not None:
+        out["qual"] = qual
     if FASTEST_LAP:
         out["fl"] = fastest_lap(rp, dnf, teams, rng)
     return out
@@ -751,7 +759,7 @@ def summarize(e, sim):
         athlete_id=e["athlete_id"].to_numpy(), driver=e["driver"].to_numpy() if "driver" in e else None,
         team_key=e["team_key"].to_numpy(),
         win_prob=((pos == 1) & ~dnf).mean(0), podium_prob=((pos <= 3) & ~dnf).mean(0),
-        top10_prob=((pos <= 10) & ~dnf).mean(0), pole_prob=(sim["grid"] == 1).mean(0),
+        top10_prob=((pos <= 10) & ~dnf).mean(0), pole_prob=(sim.get("qual", sim["grid"]) == 1).mean(0),
         dnf_prob=dnf.mean(0), exp_points=sim["points"].mean(0),
         exp_position=pos.mean(0),
         qp=e["qp"].to_numpy(), rp=e["rp"].to_numpy(),
