@@ -32,7 +32,7 @@
 </div>{% endif %}
 {% if f1_stream and sport == 'f1' and stream_event %}
 {# Opt-in live timing (web/f1_live.py; RACINGLINES_F1_STREAM, on by default only on staging). Outside #live, so the
-   page's own refresh doesn't reset it. Off until the viewer turns it on; the log is for testing. #}
+   page's own refresh doesn't reset it. Off until the viewer turns it on; the debug log is for testing, admins only. #}
 <div class="card mb12" id="f1-stream" data-event="{{ stream_event }}">
   <div class="tabs" role="group" aria-label="Live timing">
     <b>Live timing</b> <span class="pill no">beta</span>
@@ -40,10 +40,10 @@
     <span id="fs-state" class="muted small">off</span>
   </div>
   <div id="fs-table"></div>
-  <details open><summary class="small">Debug log</summary>
+  {% if user.role == 'admin' %}<details><summary class="small">Debug log</summary>
     <pre id="fs-log" class="small" style="max-height:16em;overflow:auto;white-space:pre-wrap;margin:0"></pre>
     <button type="button" id="fs-copy" class="small">Copy log</button>
-  </details>
+  </details>{% endif %}
 </div>
 <script src="/static/f1_stream.js?v={{ css_v() }}" defer></script>
 {% endif %}

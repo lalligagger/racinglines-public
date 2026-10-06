@@ -287,6 +287,12 @@ racinglines motogp demo-history | forecast   (the same options)
 
 Nothing here runs by default. **Back up the database before the first `ingest` on a real database, and before `link --apply`** ([Data changes](data-changes.md)).
 
+## racinglines cycling
+
+Road cycling sportsbook lines (winner, head-to-head) for time trials and road races, from ProCyclingStats results
+on the timed-runs engine: `events`, `fetch itt|road`, `startlist <event>`, `price <event> [--calibrate]`. See
+[Road cycling](road-cycling.md).
+
 ## racinglines db
 
 Database commands. See [Database](database.md).
@@ -380,7 +386,7 @@ racinglines f1 search-import RESULTS.json
 | `season-checkpoints` | Championship markets entered at fixed points (pre-season, after 3 and after 6 grands prix; `--entries`) and held, one $500 book each, per model variant (`--variants`). Scores each entry over the next 3 GPs (`--window`) and to date: P&L, how far the market moved toward our fair value, and the share of our edge it closed. Writes `data/runs/f1/season_checkpoints.md`; `--save` stores kind `season_checkpoints`. See [Checkpoint entries](market-making.md#checkpoint-entries). |
 | `replay` | Replay a maker quoting Polymarket through an event's diagnostic runs (ids in time order), with both fill rules, against the real trade tape. `--sweep` adds the half-spread and fill-rule sensitivity table. |
 | `search QUEUE.toml` | Run a queue of season sweeps in parallel (`[search] parallel`, `hours`), each saved as a sweep run. The queue file (e.g. `sweeps/poc.toml`, `sweeps/params-4h.toml`) is re-read whenever a slot frees, so pending `[[job]]` entries can be edited while it runs. A job with `venue = "kalshi"` runs `sweep --venue kalshi` (the makers on Kalshi's tape) and gets its own baseline on that venue; its id and title carry the venue, and a `[[candidate]]` may carry it too (e.g. `sweeps/kalshi-maker-k.toml`). `[search] grid = N` runs up to N sweeps of the same season and model in one process (`sweep --grid`: the measurements, stage pricings, markets and maker tape are read once; every saved run is what its own process would save), and `history_cache = true` keeps rating histories in `data/cache/history/`; `parallel` defaults to every core. Writes `data/runs/search/<name>/` (`leaderboard.md`, `results.json`, `state.json`, logs). `--leaderboard` only rewrites the leaderboard from `state.json`. See [Cloud sweeps](cloud-sweep.md). |
-| `search-report QUEUE.toml` | Analyse a search's finished sweeps with the checks in [Backtest core](backtest-core.md#the-search-report): labels against the baseline in the target and held-out seasons beyond a noise floor (from seed replicates when the search ran them), same-fidelity baselines, confirmation at more simulations, P&L without the best event, and candidates with stable ids (`<strategy>-<settings_key>`). An optional `[report]` table in the queue sets `target`, `holdout`, `confirm_sims`, `top`, `noise`. Writes `stats.csv`, `ranking.csv`, `pnl_curves.json`, `candidates/`, `candidates.toml` and `report.md` next to `state.json`. |
+| `search-report QUEUE.toml` | Analyse a search's finished sweeps with the checks in [Backtest core](backtest-core.md#the-search-report): labels against the baseline in the target and held-out seasons beyond a noise floor (from seed replicates when the search ran them), same-fidelity baselines, confirmation at more simulations, P&L without the best event and without the best two, a shape label describing the record, not the risk (steady: still up without its best two events in every season; concentrated: up in every season but not without its best two in one; mixed: up in one season, down in another; losing: down in every season), and candidates with stable ids (`<strategy>-<settings_key>`). An optional `[report]` table in the queue sets `target`, `holdout`, `confirm_sims`, `rank_sims` (the simulation count combos are ranked at; default the settings' 4,000), `top`, `noise`. Writes `stats.csv`, `ranking.csv`, `pnl_curves.json`, `candidates/`, `candidates.toml` and `report.md` next to `state.json`. |
 | `search-import RESULTS.json` | Load a search's sweep runs (e.g. from a cloud session) into this database, marked with `params.source`. |
 
 **Sweep settings.** Every setting of the schema in
@@ -410,6 +416,7 @@ baseline. The model variant is the group's `--variant`.
 | | `--max-stake` | 50 | Max stake per market ($). |
 | | `--cost` | 0.01 | Cost per share per trade ($). |
 | | `--bankroll` | not set | Bankroll-aware sizing: each taker mode starts with this bankroll, and its stakes scale with its balance after earlier weekends (`balance / bankroll`, 0 once it's gone). Unset = fixed sizing. |
+| | `--kelly` | not set | Kelly sizing (needs `--bankroll`): a taker's stake in a market is this fraction × the Kelly fraction × its current balance, where the Kelly fraction is `(q − c) / (1 − c)` for a contract costing `c` (price plus cost, at the touch where there's a quote) that wins with probability `q`. Still capped at `--max-stake` × the bankroll scale per market and at `--max-deployed` per weekend. 0.5 = half Kelly. Unset = linear sizing. |
 | | `--thin-edge-mult` | not set | Trade a market under the volume floor when the edge is at least this many times the minimum edge and a recorded order book (at most 10 min old) shows size at the touch: buys only, stake capped at that size. Needs recorded books (`markets record`); without them nothing changes. Unset = thin markets are skipped. |
 | | `--max-deployed` | not set | Cap on the capital deployed across a weekend's markets ($). Markets are traded in time order; a buy over the cap is cut to fit. Unset = no cap. |
 | Maker | `--half-spread` | 0.02 | Quote half-spread ($). |
@@ -481,6 +488,8 @@ endpoints: settled events' markets, their trades and their candlesticks.
 racinglines markets --exchange kalshi sync [--year 2026] [--closed] [--series TICKER …]
 racinglines markets --exchange kalshi trades --events KXF1RACE-AZEGP26
 racinglines markets --exchange kalshi history --events KXF1RACE-AZEGP26 --start 2026-09-24T00:00 --end 2026-09-27T00:00 [--period 60]
+racinglines markets --exchange kalshi history --start 2025-01-01 --end 2026-10-05 --save-raw data/raw/kalshi/candles-2025-2026   # + raw responses
+racinglines markets --exchange kalshi history --start 2025-01-01 --end 2026-10-05 --from-raw data/raw/kalshi/candles-2025-2026   # re-import, no network
 racinglines markets --exchange kalshi books --events KXF1-26
 racinglines markets --exchange kalshi --sport nascar sync [--closed]        # NASCAR Cup: KXNASCAR* series, links unmodeled
 racinglines markets --exchange kalshi --sport nascar trades                 # every NASCAR event's tape (no --events needed)
@@ -614,7 +623,7 @@ racinglines mcp token admin [--revoke]             # issue (printed once) or rev
 | Option | Meaning |
 |---|---|
 | `--db URL` | Database URL (default `$DATABASE_URL`, else the local one). |
-| `--http` | Serve streamable HTTP instead of stdio. Every request must carry `Authorization: Bearer <token>` of an active, non-demo account whose role is in `RACINGLINES_MCP_ROLES` (default `admin`); refuses to start while no account has a token. |
+| `--http` | Serve streamable HTTP instead of stdio. Every request must carry a bearer token of an active, non-demo account whose role is in `RACINGLINES_MCP_ROLES` (default `admin`): one from OAuth sign-in (signed with `APP_SECRET`; [MCP server](mcp.md#hosted-the-vm)) or an `rl_` token. |
 | `--host` / `--port` | Listen address in `--http` mode (default `127.0.0.1` / `8100`). |
 | `--no-jobs` | Don't run the Lab's job worker in this process: queued jobs wait for the web app's worker. |
 

@@ -542,7 +542,7 @@ TRACK_RECORD_VENUES = ("polymarket", "kalshi", "private")
 
 
 def _basic_viewer(viewer):
-    """A basic caller (dict(id, username, role), server.CALLER): its own account only, never which strategy made
+    """A basic caller (dict(id, username, role), server.caller()): its own account only, never which strategy made
     a pick (web/roles.basic_*). None for everyone else (stdio, admin, pro): output as before."""
     from racinglines.web import roles as R
     return viewer if viewer and R.canonical(viewer.get("role")) == "basic" else None

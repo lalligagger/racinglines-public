@@ -166,3 +166,20 @@ def test_links_import_turns_nat_into_null(tmp_path):
     recs = [{k: L._value(v) for k, v in r.items()} for r in pd.read_parquet(f).to_dict("records")]
     assert recs[0] == dict(end_date=None, volume=None, note=None)
     assert recs[1]["end_date"].year == 2026 and recs[1]["volume"] == 1.0 and recs[1]["note"] == "x"
+
+
+def test_bid_ask_survive_the_archive_and_old_files_read_as_null(tmp_path):
+    t0 = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    old = pd.DataFrame(dict(token_id=[TOK, TOK], ts=[t0, t0 + timedelta(hours=1)], price=[0.40, 0.41]))
+    MS._write("prices", old, root=tmp_path)                            # a file from before bid/ask existed
+    import pyarrow.parquet as pq
+    first = next((tmp_path / "prices").rglob("*.parquet"))
+    pq.write_table(pq.read_table(first).select(["token_id", "ts", "price"]), first)
+    new = pd.DataFrame(dict(token_id=[TOK], ts=[t0], price=[0.40], bid=[0.39], ask=[0.42]))   # a re-pull of hour 0
+    MS._write("prices", new, root=tmp_path)
+    got = MS.read(None, "prices", tokens=[TOK], root=tmp_path)
+    assert got["price"].tolist() == [0.40, 0.41]
+    assert got["bid"].tolist()[0] == 0.39 and pd.isna(got["bid"].tolist()[1])       # the enriched row wins
+    MS.compact("prices", root=tmp_path)
+    got = MS.read(None, "prices", tokens=[TOK], root=tmp_path)
+    assert len(got) == 2 and got["ask"].tolist()[0] == 0.42

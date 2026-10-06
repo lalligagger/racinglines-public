@@ -210,3 +210,27 @@ def test_global_model_walk_forwards_keep_their_settings_and_rerun_command(tmp_pa
     assert "--model global" in doc["rerun"]["2025"] and "--half-life-days 360.0" in doc["rerun"]["2025"]
     toml = (tmp_path / "candidates.toml").read_text()
     assert 'sport = "nascar"' in toml and 'model = "global"' in toml and "half_life_days = 360.0" in toml
+
+
+def test_without_best_two_and_shape():
+    s, _ = R.curve_stats([500.0, 400.0, -100.0, -50.0], 24)
+    assert s["pnl_without_best2"] == -150.0
+    assert R.shape([750.0, 300.0], [-150.0, 50.0]) == "concentrated"
+    assert R.shape([750.0, 300.0], [10.0, 50.0]) == "steady"
+    assert R.shape([750.0, -30.0], [10.0, -90.0]) == "mixed"
+    assert R.shape([-5.0, -30.0], [-90.0, -90.0]) == "losing"
+    assert R.shape([750.0, None], [10.0, None]) == ""
+
+
+def test_ranked_at_a_chosen_fidelity_with_shape():
+    lumpy = [(900.0, 10.0), (-100.0, 10.0), (-100.0, 10.0), (-100.0, 10.0)]
+    steady = [(60.0, 10.0)] * 4
+    hi = dict(sims=16000)
+    _, _, rank = _build([(2026, FLAT, hi), (2025, FLAT, hi), (2026, lumpy, dict(A, **hi)), (2025, lumpy, dict(A, **hi)),
+                         (2026, steady, dict(min_edge=0.12, **hi)), (2025, steady, dict(min_edge=0.12, **hi))],
+                        rank_sims=16000, confirm_sims=16000)
+    by = {(r["strategy"], r["settings_key"]): r for r in rank}
+    lump = by[("update", SS.Settings.from_dict(dict(A, **hi)).key)]
+    stead = by[("update", SS.Settings.from_dict(dict(min_edge=0.12, **hi)).key)]
+    assert lump["shape"] == "concentrated" and lump["without_best2_target"] == -200.0
+    assert stead["shape"] == "steady" and stead["confirmed"] == ""

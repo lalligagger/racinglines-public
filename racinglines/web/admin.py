@@ -7,6 +7,7 @@ Everything that changes data is written to activity_log.
 
 import json
 from datetime import date, datetime
+from urllib.parse import quote
 
 from fastapi import Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -402,3 +403,38 @@ def admin_sql_run(request: Request, sql: str = Form(...), write: str = Form(""),
     audit(request, "sql_write" if write_mode else "sql_read", sql=sql[:4000], error=error, info=info)
     return render(request, "admin_sql.html", sql=sql, columns=columns, records=records, info=info, error=error,
                   write=write_mode)
+
+
+# ---------------------------------------------------------------------------
+# MCP access: who holds an rl_ token or has signed in from an MCP client; disconnect or revoke
+# ---------------------------------------------------------------------------
+
+@app.get("/admin/mcp", response_class=HTMLResponse, dependencies=ADMIN)
+def admin_mcp(request: Request, msg: str = ""):
+    from racinglines.mcp import auth as mcp_auth
+    from racinglines.mcp import oauth
+    resp = render(request, "admin_mcp.html", conns=oauth.connections(get_engine()), roles=", ".join(mcp_auth.ROLES),
+                  mcp_url=oauth.MCP_URL, signin=oauth.enabled(), msg=msg)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.post("/admin/mcp", dependencies=[Depends(check_csrf), allow("admin")])
+def admin_mcp_action(request: Request, action: str = Form(...), username: str = Form("")):
+    from racinglines.mcp import auth as mcp_auth
+    from racinglines.mcp import oauth
+    eng = get_engine()
+    names = [c["username"] for c in oauth.connections(eng)] if action == "disconnect_all" else [username]
+    with eng.connect() as c:
+        ids = dict(c.execute(text("SELECT username, id FROM users WHERE username = ANY(:u)"), dict(u=names)).fetchall())
+    if action in ("disconnect", "disconnect_all"):
+        for name in names:
+            if name in ids:
+                oauth.disconnect(eng, ids[name])
+        msg = f"Disconnected {', '.join(names) or 'nobody'}: their MCP clients must sign in again."
+    elif action == "revoke_token":
+        msg = f"Revoked {username}'s token." if mcp_auth.revoke(eng, username) else f"{username} had no token."
+    else:
+        raise HTTPException(400, "unknown action")
+    audit(request, "admin_mcp", what=action, users=names)
+    return RedirectResponse("/admin/mcp?msg=" + quote(msg), status_code=303)

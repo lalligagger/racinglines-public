@@ -22,6 +22,7 @@ The data contract every page reads, so a new sport or exchange needs no template
 
 import datetime
 import os
+import time
 from dataclasses import dataclass
 from typing import TypedDict
 
@@ -200,6 +201,14 @@ def key(kind, athlete_id, params):
     return (kind, _i(athlete_id), p.get("team"), _i(p.get("opponent_id")), _i(p.get("n")))
 
 
+def race_title(competition, source_key, venue, name):
+    """The one name a race goes by on every page: the sport's [names] entry, else "<venue> GP" for F1, else
+    the venue (or the event's name when it has no venue)."""
+    from racinglines import sports as SP
+    default = f"{venue} GP" if competition == "f1_wdc" else (venue or name)
+    return SP.event_title(competition, source_key, default)
+
+
 def race_info(conn, race_id):
     df = data.q(conn, """
         SELECT ra.id AS race_id, ra.event_id, e.name, e.status, e.start_date, e.source_key, v.name AS venue,
@@ -214,7 +223,7 @@ def race_info(conn, race_id):
         return None
     info = df.iloc[0].to_dict()
     info["sport"] = SPORT_NAME.get(info["competition"], info["competition"])
-    info["title"] = f"{info['venue']} GP" if info["competition"] == "f1_wdc" else info["venue"]
+    info["title"] = race_title(info["competition"], info["source_key"], info["venue"], info["name"])
     return info
 
 
@@ -482,10 +491,27 @@ def tape_sports():
     return [s for s in _SCHEMAS if s["sport"].get("model_family", "none") == "none"]
 
 
+_EXCHANGE_BREAKDOWN_CACHE: list | None = None   # the every-sport result, reused for _EXCHANGE_BREAKDOWN_TTL seconds
+_EXCHANGE_BREAKDOWN_TIME = 0.0
+_EXCHANGE_BREAKDOWN_TTL = 60
+
+
 def exchange_breakdown(conn, comps=None) -> list[ExchangeBlock]:
     """One ExchangeBlock per sport x exchange: market links and what's been recorded on them. `comps`: {competition
     code: schema} to include (default every sport). Used by /markets/tapes (tape-only sports only) and the
-    Markets board (every sport, alongside its own venue chips)."""
+    Markets board (every sport, alongside its own venue chips). The every-sport call (`comps` None) is cached
+    in memory for _EXCHANGE_BREAKDOWN_TTL seconds, per process, so repeated /markets loads skip the queries."""
+    global _EXCHANGE_BREAKDOWN_CACHE, _EXCHANGE_BREAKDOWN_TIME
+    if comps is not None:
+        return _exchange_breakdown(conn, comps)
+    now = time.monotonic()
+    if _EXCHANGE_BREAKDOWN_CACHE is None or now - _EXCHANGE_BREAKDOWN_TIME >= _EXCHANGE_BREAKDOWN_TTL:
+        _EXCHANGE_BREAKDOWN_CACHE = _exchange_breakdown(conn, None)
+        _EXCHANGE_BREAKDOWN_TIME = now
+    return list(_EXCHANGE_BREAKDOWN_CACHE)
+
+
+def _exchange_breakdown(conn, comps=None) -> list[ExchangeBlock]:
     comps = comps if comps is not None else {s["competition"]["code"]: s for s in _SCHEMAS}
     if not comps:
         return []
@@ -552,9 +578,10 @@ def calendar_rows(conn) -> list[CalendarRow]:
     across every sport, for the Markets page's calendar: date, sport, title, status and which exchanges have
     data for it. Sorted newest / soonest first (unlike a race weekend, a tape-only sport's markets have no
     single canonical date across venues, so each exchange's event is its own row)."""
+    from racinglines import sports as SP
     rows = []
     ev = data.q(conn, """
-        SELECT ra.id AS race_id, e.start_date, e.status, e.name AS event_name, co.code AS competition
+        SELECT ra.id AS race_id, e.start_date, e.status, e.name AS event_name, e.source_key, co.code AS competition
         FROM races ra JOIN events e ON e.id = ra.event_id JOIN seasons s ON s.id = e.season_id
         JOIN competitions co ON co.id = s.competition_id ORDER BY e.start_date""")
     if len(ev):
@@ -565,7 +592,8 @@ def calendar_rows(conn) -> list[CalendarRow]:
             by_race.setdefault(int(rid), set()).add(ex)
         for r in ev.to_dict("records"):
             rows.append(dict(sport=r["competition"], sport_name=SPORT_NAME.get(r["competition"], r["competition"]),
-                             date=r["start_date"], title=r["event_name"], status=r["status"],
+                             date=r["start_date"], status=r["status"],
+                             title=SP.event_title(r["competition"], r.get("source_key"), r["event_name"]),
                              exchanges=sorted(by_race.get(int(r["race_id"]), [])), url=f"/races/{int(r['race_id'])}"))
     for b in exchange_breakdown(conn, {s["competition"]["code"]: s for s in tape_sports()}):
         for e in b["events"]:

@@ -8,9 +8,7 @@ Every read tool runs in its own READ ONLY transaction. The job tools (run_job, c
 Run form writes: a `jobs` row; the job's subprocess saves a model run (forecasts as scenarios, never promoted).
 """
 
-import contextvars
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -46,7 +44,6 @@ How to use it:
 
 
 _URL = None
-CALLER = contextvars.ContextVar("racinglines_mcp_caller", default=None)     # dict(id, username, role) in --http mode
 
 
 def _engine():
@@ -89,20 +86,34 @@ def _write(fn, **kw):
         raise ToolError(str(ex)) from ex
 
 
+def caller():
+    """The account behind this request in --http mode (dict(id, username, role)), None over stdio."""
+    from mcp.server.auth.middleware.auth_context import get_access_token
+    t = get_access_token()
+    if t is None or not t.subject:
+        return None
+    return dict(id=int(t.subject), username=(t.claims or {}).get("username"), role=(t.claims or {}).get("role"))
+
+
 def caller_id():
-    c = CALLER.get()
+    c = caller()
     return c["id"] if c else None
 
 
-def build(jobs_worker=False, engine_url=None):
+def build(jobs_worker=False, engine_url=None, oauth=False):
     """The server with every tool and resource registered. `jobs_worker`: run the Lab's job worker in this process
-    (queued jobs run here when no web app is running). `engine_url`: a database other than $DATABASE_URL."""
+    (queued jobs run here when no web app is running). `engine_url`: a database other than $DATABASE_URL. `oauth`:
+    every request needs a token (racinglines/mcp/oauth.py: OAuth sign-in, or an account's `rl_` token)."""
     global _URL
     from mcp.server.mcpserver import MCPServer
     from mcp.server.mcpserver.exceptions import ResourceError
 
     _URL = engine_url
-    srv = MCPServer(NAME, instructions=INSTRUCTIONS, log_level="WARNING")
+    kw = {}
+    if oauth:
+        from racinglines.mcp import oauth as O
+        kw = dict(auth_server_provider=O.provider(_engine), auth=O.auth_settings())
+    srv = MCPServer(NAME, instructions=INSTRUCTIONS, log_level="WARNING", **kw)
 
     # --- orientation --------------------------------------------------------------------------------
     @srv.tool()
@@ -232,14 +243,14 @@ def build(jobs_worker=False, engine_url=None):
         """A user's paper-trading record, one row per weekend: strategy, trades taken or fills, positions, P&L (settled or
         marked), backtest replay or live. venue: polymarket, kalshi (the maker's replay on Kalshi's tape), private, or all
         (one row per weekend and venue, with a venue column and totals per venue). Users: see overview()."""
-        return _read(T.track_record, user=user, venue=venue, viewer=CALLER.get())
+        return _read(T.track_record, user=user, venue=venue, viewer=caller())
 
     @srv.tool()
     def list_positions(user: str, venue: str | None = None, event_key: str | None = None, open_only: bool = False,
                        limit: int = 50, offset: int = 0) -> str:
         """A user's paper positions (YES/NO shares, cash, mark, outcome, P&L) with totals per venue."""
         return _read(T.list_positions, user=user, venue=venue, event_key=event_key, open_only=open_only, limit=limit,
-                     offset=offset, viewer=CALLER.get())
+                     offset=offset, viewer=caller())
 
     @srv.tool()
     def list_signals(user: str | None = None, event_key: str | None = None, status: str | None = None,
@@ -247,7 +258,7 @@ def build(jobs_worker=False, engine_url=None):
         """Paper signals (what a strategy profile would do: buy/sell recommendations, quote/pull, paper fills), newest first.
         status: new, alerted, expired, filled_paper; action: buy, sell, quote, pull, fill."""
         return _read(T.list_signals, user=user, event_key=event_key, status=status, action=action, limit=limit,
-                     offset=offset, viewer=CALLER.get())
+                     offset=offset, viewer=caller())
 
     @srv.tool()
     def list_live_events(limit: int = 50, offset: int = 0) -> str:
@@ -326,56 +337,28 @@ def build(jobs_worker=False, engine_url=None):
     return srv
 
 
-def bearer_app(app, engine=None):
-    """Streamable HTTP behind per-account bearer tokens: every request must carry `Authorization: Bearer rl_...`
-    matching an account (auth.lookup); the account is the caller for the request (CALLER)."""
-    from starlette.responses import JSONResponse
-
-    from racinglines.mcp import auth
-
-    async def guarded(scope, receive, send):
-        if scope["type"] == "http":
-            headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
-            got = headers.get("authorization", "")
-            user = auth.lookup(engine or _engine(), got[7:].strip()) if got.startswith("Bearer ") else None
-            if user is None:
-                await JSONResponse({"error": "unauthorized: a bearer token issued with `racinglines mcp token <account>`"},
-                                   status_code=401, headers={"WWW-Authenticate": "Bearer"})(scope, receive, send)
-                return
-            token = CALLER.set(user)
-            try:
-                await app(scope, receive, send)
-            finally:
-                CALLER.reset(token)
-            return
-        await app(scope, receive, send)
-    return guarded
-
-
-def http_app(srv, engine=None):
-    """The streamable-HTTP ASGI app behind the bearer check, for any Host header. The SDK's default for a
-    loopback bind answers 421 to every Host but localhost (its DNS-rebinding guard: a browser page tricked into
-    calling 127.0.0.1 would carry no bearer token and is refused 401 here before the MCP app sees it), which
-    would also refuse the tunnel's public hostname (mcp.racinglines.bet)."""
+def http_app(srv):
+    """The streamable-HTTP ASGI app of a server built with `oauth=True`: /mcp needs a bearer token (401 with the
+    OAuth discovery header otherwise), and the SDK serves the sign-in endpoints next to it. Any Host header: the
+    SDK's default for a loopback bind answers 421 to every Host but localhost (its DNS-rebinding guard: a browser
+    page tricked into calling 127.0.0.1 would carry no bearer token and is refused 401 anyway), which would also
+    refuse the tunnel's public hostname (mcp.racinglines.bet)."""
     from mcp.server.transport_security import TransportSecuritySettings
-    app = srv.streamable_http_app(stateless_http=True, json_response=True,
-                                  transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False))
-    return bearer_app(app, engine=engine)
+    return srv.streamable_http_app(stateless_http=True, json_response=True,
+                                   transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False))
 
 
 def serve(http=False, host="127.0.0.1", port=DEFAULT_PORT, jobs_worker=True):
     """Run the server: stdio (default), or streamable HTTP on host:port/mcp, each request with an account's token."""
-    from racinglines.mcp import auth
-    srv = build(jobs_worker=jobs_worker)
+    from racinglines.mcp import auth, oauth
+    srv = build(jobs_worker=jobs_worker, oauth=http)
     if not http:
         srv.run("stdio")
         return
+    oauth.warn_if_disabled()
     who = auth.holders(_engine())
-    if not who:
-        print("racinglines mcp --http: no account has a token yet; issue one with `racinglines mcp token <account>`.",
-              file=sys.stderr)
-        sys.exit(2)
-    print("accounts with MCP access: " + ", ".join(f"{u} ({r})" for u, r, _ in who), file=sys.stderr)
+    print("accounts with an rl_ token: " + (", ".join(f"{u} ({r})" for u, r, _ in who) or "none") +
+          f"; OAuth sign-in for roles {', '.join(auth.ROLES)} via {oauth.WEB_URL}", file=sys.stderr)
     if host not in ("127.0.0.1", "localhost"):
         print(f"WARNING: listening on {host}; keep it behind a tunnel or a private network.", file=sys.stderr)
     import uvicorn

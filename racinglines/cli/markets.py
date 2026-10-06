@@ -22,8 +22,10 @@ unverified against the live Gamma API; markets/polymarket/sync.py). Additive: ro
 Kalshi (--exchange kalshi; markets/kalshi/, built on mocked responses, unverified against the live API):
     sync       [--year 2026] [--closed] [--series TICKER …]   the sport's Kalshi markets into market links
     trades     [--events TICKER …]                       the tape of those events' markets
-    history    [--events TICKER …] --start --end [--period 60]   candlesticks (minutes: 1, 60, 1440)
+    history    [--events TICKER …] --start --end [--period 60]   candlesticks (minutes: 1, 60, 1440): price, bid, ask
+               [--save-raw DIR | --from-raw DIR]          also keep Kalshi's raw responses / re-import them offline
     books      [--events TICKER …]                       one order-book snapshot per open market
+    coverage   [--events TICKER …]                       stored prices with the candle's bid/ask (Parquet + Postgres)
 
 Exchanges defined as schemas (--exchange og; exchanges/<code>.toml, markets/exchange_driver.py), read-only:
     sync       [--year 2026]                             the sport's markets and quotes into market links
@@ -161,7 +163,7 @@ def kalshi(db, argv, sport="f1"):
     p.add_argument("--year", type=int, default=2026)
     p.add_argument("--closed", action="store_true", help="Also settled events")
     p.add_argument("--series", nargs="+", default=None, help="Series tickers to sync instead of discovering them")
-    for name in ("trades", "history", "books"):
+    for name in ("trades", "history", "books", "coverage"):
         p = sub.add_parser(name)
         p.add_argument("--events", nargs="+", default=None,
                        help=f"Kalshi event tickers (market_links.condition_id); default: every {sport} event")
@@ -169,6 +171,11 @@ def kalshi(db, argv, sport="f1"):
             p.add_argument("--start", required=True, help="UTC start, e.g. 2026-10-01T00:00")
             p.add_argument("--end", required=True, help="UTC end")
             p.add_argument("--period", type=int, default=60, choices=[1, 60, 1440], help="Minutes per candle")
+            raw = p.add_mutually_exclusive_group()
+            raw.add_argument("--save-raw", metavar="DIR",
+                             help="Also save each market's raw candlesticks response to DIR/<series>/<ticker>.json")
+            raw.add_argument("--from-raw", metavar="DIR",
+                             help="Import from files saved by --save-raw instead of calling Kalshi")
     args = ap.parse_args(argv)
     from datetime import timezone
 
@@ -183,7 +190,9 @@ def kalshi(db, argv, sport="f1"):
             print(f"{KS.fetch_trades(s, c, args.events, sport=sport)} trades stored")
         elif args.cmd == "history":
             t = [pd.Timestamp(x).tz_localize(timezone.utc).to_pydatetime() for x in (args.start, args.end)]
-            print(f"{KS.fetch_history(s, c, args.events, t[0], t[1], args.period, sport=sport)} price points stored")
+            print(f"{KS.fetch_history(s, c, args.events, t[0], t[1], args.period, sport=sport, save_raw=args.save_raw, from_raw=args.from_raw)} price points stored")
+        elif args.cmd == "coverage":
+            print(KS.coverage(c, args.events, sport=sport))
         else:
             print(f"{KS.snapshot_books(s, c, args.events, sport=sport)} book snapshots stored")
     return 0

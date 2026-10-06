@@ -12,7 +12,8 @@ import pandas as pd
 
 from racinglines.db import reads as data
 from racinglines.markets import private_book as house
-from racinglines.markets.venues import VENUES, SPORT_NAME, SPORT_ORDER, event_matrix, exchange_breakdown, season_matrix, venue_summary
+from racinglines.markets.venues import (VENUES, SPORT_NAME, SPORT_ORDER, event_matrix, exchange_breakdown, race_title,
+                                        season_matrix, venue_summary)
 
 
 def _countdown(d):
@@ -77,6 +78,43 @@ def recent_results(conn, competition_id, n=3):
     return out
 
 
+RESOLVED_DAYS = 5      # a resolved race stays among the board's race cards this many days after it ran
+
+
+def recently_resolved(conn, competition_id, days=RESOLVED_DAYS):
+    """The competition's races (elite category) completed with a race classification in the last `days` days,
+    newest first: the board keeps them up as resolved before the next races."""
+    return data.q(conn, """
+        SELECT ra.id AS race_id FROM races ra JOIN events e ON e.id = ra.event_id JOIN seasons s ON s.id = e.season_id
+        JOIN categories c ON c.id = ra.category_id
+        WHERE s.competition_id = :c AND e.status = 'completed' AND c.code IN ('DRV', 'ME', 'RDR')
+          AND e.start_date >= current_date - CAST(:d AS int)
+          AND EXISTS (SELECT 1 FROM rounds ro JOIN results r ON r.round_id = ro.id
+                      WHERE ro.race_id = ra.id AND ro.kind IN ('race', 'final'))
+        ORDER BY e.start_date DESC""", c=competition_id, d=days)
+
+
+def _resolved_card(conn, race_id, maker_id):
+    card = _card(conn, race_id, maker_id)
+    res = house.race_outcomes(conn, race_id)
+    win = res[(res["position"] == 1) & (res["status"] == "OK")]
+    card["winner"] = (data.q(conn, "SELECT display_name FROM athletes WHERE id = :a",
+                             a=int(win["athlete_id"].iloc[0]))["display_name"].iloc[0] if len(win) else None)
+    return card
+
+
+def _with_resolved(conn, comp_id, maker_id, upcoming):
+    """Recently resolved race cards first, then the upcoming ones (a race never twice); `next` marks the first
+    race still to run."""
+    done = [dict(_resolved_card(conn, int(r), maker_id), new=0) for r in recently_resolved(conn, comp_id)["race_id"]]
+    ids = {u["info"]["race_id"] for u in done}
+    cards = done + [u for u in upcoming if u["info"]["race_id"] not in ids]
+    nxt = next((u for u in cards if u["info"]["status"] not in ("completed", "in_progress")), None)
+    for u in cards:
+        u["next"] = u is nxt
+    return cards
+
+
 def next_races(conn, competition_id, n=8):
     """The competition's next scheduled races (elite category), soonest first."""
     return data.q(conn, """
@@ -130,8 +168,9 @@ def board(conn, maker_id):
             comp_id = int(data.q(conn, "SELECT id FROM competitions WHERE code = :c", c=code)["id"].iloc[0])
             targets = data.run_race_targets(conn, run["id"])
             targets = targets[targets["race_id"].notna() & ~targets["target"].astype(str).str.startswith("backtest:")]
-            upcoming = [dict(_card(conn, int(r), maker_id), new=_new_for(int(r))) for r in targets["race_id"].head(3)]
-            later = [dict(title=f"{t['venue']} GP" if code == "f1_wdc" else (t["event_name"] or t["venue"]), event_id=t["event_id"],
+            upcoming = _with_resolved(conn, comp_id, maker_id,
+                                      [dict(_card(conn, int(r), maker_id), new=_new_for(int(r))) for r in targets["race_id"].head(3)])
+            later = [dict(title=race_title(code, t["source_key"], t["venue"], t["event_name"]), event_id=t["event_id"],
                           race_id=int(t["race_id"]), date=t["start_date"], new=_new_for(int(t["race_id"]))) for t in targets.iloc[3:].to_dict("records")]
             s_info, s_pricing, s_df = season_matrix(conn, code, maker_id)
             from racinglines.web.views import latest_season_strategy
@@ -145,7 +184,8 @@ def board(conn, maker_id):
             # (`<sport> replay --save`: made before each race) against the winner
             comp_id = int(data.q(conn, "SELECT id FROM competitions WHERE code = :c", c=code)["id"].iloc[0])
             nxt = next_races(conn, comp_id)
-            upcoming = [dict(_card(conn, int(r), maker_id), new=_new_for(int(r))) for r in nxt["race_id"].head(3)]
+            upcoming = _with_resolved(conn, comp_id, maker_id,
+                                      [dict(_card(conn, int(r), maker_id), new=_new_for(int(r))) for r in nxt["race_id"].head(3)])
             later = [dict(title=t["name"], event_id=t["event_id"], race_id=int(t["race_id"]), date=t["start_date"],
                           new=_new_for(int(t["race_id"]))) for t in nxt.iloc[3:].to_dict("records")]
             recent = recent_results(conn, comp_id)
@@ -222,11 +262,12 @@ def headline(conn, maker_id):
     rec_n = int(rec["n"].iloc[0] or 0) if len(rec) and rec["n"].iloc[0] is not None else 0
     bk = house.book(conn, maker_id=maker_id, status="open")
     jobs = data.q(conn, "SELECT count(*) FILTER (WHERE status IN ('queued', 'running')) AS active FROM jobs").iloc[0]
+    brier_win, brier_grid = model_brier(conn)
     return dict(outcomes=int(ex["outcomes"]), markets=int(ex["markets"]), volume=float(ex["volume"]), synced=ex["synced"],
                 recording=rec_n, recorded_at=rec_ts,
                 my_open=len(bk), my_worst=float(bk["worst"].sum()) if len(bk) else 0.0,
                 my_staked=float(bk["staked"].sum()) if len(bk) else 0.0,
-                jobs_active=int(jobs["active"]))
+                jobs_active=int(jobs["active"]), brier_win=brier_win, brier_grid=brier_grid)
 
 
 def model_brier(conn):

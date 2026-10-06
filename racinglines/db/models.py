@@ -464,11 +464,13 @@ class UserEmailPrefs(Base):
 
 
 class MarketPriceHistory(Base):
-    """Exchange price time series per outcome token (Polymarket CLOB prices-history)."""
+    """Exchange price time series per outcome token, with optional Kalshi candle quotes."""
     __tablename__ = "market_price_history"
     token_id: Mapped[str] = mapped_column(String(100), primary_key=True)
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
     price: Mapped[float] = mapped_column(Float)
+    bid: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ask: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class MarketTrade(Base):

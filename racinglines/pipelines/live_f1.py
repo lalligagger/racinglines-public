@@ -683,16 +683,22 @@ def _stage_runs(spec, w, now, fetch, cache, echo, engine, engine_url):
 
 
 # ---------------------------------------------------------------------------
-# In-race win chart: live timing (the Mac relay, web/f1_live.py) -> models/position_sim/inrace.py
+# In-race win chart: live timing (the Mac relay, web/f1_live.py) or, after the race, its laps
+# (backfill_inrace) -> models/position_sim/inrace.py
 # ---------------------------------------------------------------------------
 
 RACE_LAPS = 56       # race distance for the in-race chart; Sepang (2026-16). RACINGLINES_RACE_LAPS overrides
 
 
-def inrace_points(run, snap, now=None):
-    """The in-race win-chart points so far, as hist entries (ts, fair by race_win key). Each fresh race snapshot
-    from the relay adds one point to <relay file>.inrace.jsonl (once per relay write), so the line builds up as
-    the race runs. [] when there is no fresh race snapshot and nothing stored."""
+def inrace_store(year, rnd):
+    from racinglines.web import f1_live as FL
+    return FL.relay_file(year, rnd).with_suffix(".inrace.jsonl")
+
+
+def inrace_points(run, snap, now=None, replay=False):
+    """The in-race win-chart points so far, as hist entries (ts, fair by race_win key). Live, each fresh race
+    snapshot from the relay adds one point to the store (once per relay write); in replay nothing is added and
+    only the points up to the snapshot shown are returned. [] when nothing is stored."""
     import os
     import re
 
@@ -703,9 +709,9 @@ def inrace_points(run, snap, now=None):
     if not m:
         return []
     year, rnd = int(m.group(1)), int(m.group(2))
-    store = FL.relay_file(year, rnd).with_suffix(".inrace.jsonl")
+    store = inrace_store(year, rnd)
     wins = {mk["subject"]: mk["key"] for mk in snap["markets"] if mk["kind"] == "race_win"}
-    data = FL.relayed(year, rnd)
+    data = None if replay else FL.relayed(year, rnd)
     if data and str(data.get("session")) in ("Race", "R"):
         prior = {name: next((mk["fair"] or 0.0 for mk in snap["markets"] if mk["key"] == k), 0.0)
                  for name, k in wins.items()}
@@ -720,7 +726,10 @@ def inrace_points(run, snap, now=None):
                         fh.write(json.dumps(dict(ts=t.isoformat(), lap=laps, fair=probs)) + "\n")
                 except OSError:
                     pass
-    return [dict(ts=p["ts"], fair={wins[n]: v for n, v in p["fair"].items() if n in wins}) for p in _read_points(store)]
+    pts = _read_points(store)
+    if replay:
+        pts = [p for p in pts if pd.Timestamp(p["ts"]) <= pd.Timestamp(snap["ts"])]
+    return [dict(ts=p["ts"], fair={wins[n]: v for n, v in p["fair"].items() if n in wins}) for p in pts]
 
 
 def _read_points(store):
@@ -728,6 +737,67 @@ def _read_points(store):
         return [json.loads(line) for line in store.read_text().splitlines() if line.strip()]
     except (OSError, ValueError):
         return []
+
+
+def race_running_order(laps, results, start):
+    """The race lap by lap from its laps table (FastF1, as stored by f1 fetch: LapNumber, Position, Driver,
+    LapStartTime and Time in session seconds) and its classification: [(UTC time the leader finished lap L,
+    rows like the relay's)]. Each driver shows his position at the end of lap L (or of his last lap before it).
+    The clock is the scheduled start plus the session time since lap 1 began. A driver who stopped before lap L
+    carries his classification status, so a retirement drops out of the chart."""
+    laps = laps.dropna(subset=["LapNumber", "Time"]).sort_values(["Driver", "LapNumber"])
+    if not len(laps):
+        return []
+    t0 = float(laps.loc[laps["LapNumber"] == laps["LapNumber"].min(), "LapStartTime"].min())
+    name = dict(zip(results["Abbreviation"], results["FullName"]))
+    status = dict(zip(results["Abbreviation"], results["Status"].astype(str)))
+    out = []
+    for lap in sorted(laps["LapNumber"].unique()):
+        t = float(laps.loc[laps["LapNumber"] == lap, "Time"].min())
+        upto = laps[laps["LapNumber"] <= lap].groupby("Driver").tail(1)
+        rows = [dict(name=name.get(r.Driver, r.Driver), code=r.Driver,
+                     pos=None if pd.isna(r.Position) else int(r.Position), laps=int(r.LapNumber),
+                     status=status.get(r.Driver, "") if r.LapNumber < lap else "")
+                for r in upto.itertuples()]
+        out.append((pd.Timestamp(start) + pd.Timedelta(seconds=t - t0), rows))
+    return out
+
+
+def backfill_inrace(year, rnd, echo=print):
+    """After the race, the in-race win chart as if the relay had run all race: one point per lap from the race's
+    laps (data/raw/f1/fastf1/<year>/<round>_R.*, pushed by scripts/deploy/f1_push.sh or f1 fetch), priced from the
+    last live-book update before lights out. Rewrites the store; returns how many points it wrote."""
+    from racinglines.models.position_sim import inrace as IR
+    from racinglines.sources.fastf1.fetch import OUT
+    base = OUT / str(year) / f"{rnd:02d}_R"
+    meta = json.loads(base.with_suffix(".meta.json").read_text())
+    laps, results = pd.read_parquet(base.with_suffix(".laps.parquet")), pd.read_parquet(base.with_suffix(".results.parquet"))
+    ev = LV.find(f"{year}-{rnd:02d}")
+    if ev is None:
+        raise SystemExit(f"no live event recorded for {year}-{rnd:02d}")
+    snap, _, hist = LV.load(ev["run"])
+    start = pd.Timestamp(meta["session_date"])
+    start = start.tz_localize("UTC") if start.tzinfo is None else start.tz_convert("UTC")
+    before = [h for h in hist if pd.Timestamp(h["ts"]) <= start] or hist[:1]
+    if not before:
+        raise SystemExit(f"{ev['run']} has no update before lights out to price from")
+    wins = {mk["subject"]: mk["key"] for mk in snap["markets"] if mk["kind"] == "race_win"}
+    prior = {n: float(before[-1]["fair"].get(k) or 0.0) for n, k in wins.items()}
+    race_laps = int(meta.get("total_laps") or laps["LapNumber"].max())
+    points = []
+    for t, rows in race_running_order(laps, results, start):
+        probs, done = IR.win_probs(rows, prior, race_laps)
+        if probs is not None:
+            points.append(dict(ts=t.floor("s").isoformat(), lap=done, fair=probs))
+    missing = sorted(set(results["FullName"]) - set(prior))
+    if missing:
+        echo(f"not on the book (left out of the chart): {', '.join(missing)}")
+    store = inrace_store(year, rnd)
+    store.parent.mkdir(parents=True, exist_ok=True)
+    store.write_text("".join(json.dumps(p) + "\n" for p in points))
+    echo(f"{ev['run']}: {len(points)} in-race points (laps {points[0]['lap']}-{points[-1]['lap']}) -> {store}"
+         if points else f"{ev['run']}: no usable laps")
+    return len(points)
 
 
 # ---------------------------------------------------------------------------
@@ -784,8 +854,7 @@ def view(run, snap, picks, hist, mode, maker):
         for f in sorted(e["fills"], key=lambda f: f.get("ts") or "", reverse=True)[:6]:
             recent.append(dict(f, subject=subj.get(f["key"], f["key"]), kind=KIND_LABEL.get(kind_of.get(f["key"]), "")))
     chart = None
-    if mode != "replay":
-        hist = list(hist) + inrace_points(run, snap)
+    hist = sorted(list(hist) + inrace_points(run, snap, replay=mode == "replay"), key=lambda h: pd.Timestamp(h["ts"]))
     if maker and len(hist) >= 2:
         from racinglines.web.viz import line_chart
         top = [m for m in sorted(snap["markets"], key=lambda m: -(m["fair"] or 0)) if m["kind"] == "race_win"][:6]

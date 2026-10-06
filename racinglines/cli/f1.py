@@ -238,6 +238,9 @@ def main(argv=None):
     p.add_argument("--no-track", action="store_true")
     p.add_argument("--scenario", default=None, metavar="LABEL",
                    help="Save as kind='scenario' (not used for live prices until promoted in the web app).")
+    p = sub.add_parser("inrace-backfill", help="After a race: the Live tab's in-race win chart from the race's laps, "
+                                               "one point per lap, as if the live-timing relay had run all race.")
+    p.add_argument("--event", required=True, help="YEAR-ROUND, e.g. 2026-16.")
     p = sub.add_parser("props", help="Race props: safety car, red flag, rain, fastest lap (props.py).")
     p.add_argument("event", nargs="?", default=None, help="Season-round, e.g. 2026-16 (the yes/no props)")
     p.add_argument("--run", type=int, default=None, help="A stored stage run id: adds the fastest-lap prices")
@@ -334,6 +337,11 @@ def _run(args):
         from racinglines.sources.fastf1.ingest import ingest
         with get_session(args.db) as s:
             print("Done:", ingest(s, _years(args.years), force=args.force))
+        return
+    if args.cmd == "inrace-backfill":
+        from racinglines.pipelines import live_f1 as LF
+        year, rnd = (int(x) for x in args.event.split("-"))
+        LF.backfill_inrace(year, rnd)
         return
     if args.cmd == "props":
         from racinglines.models.position_sim import props as PR

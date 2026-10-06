@@ -192,7 +192,7 @@ For every F1 weekend, T1 or T3:
 | Go on **STG-1 to STG-11**; first STG-5 (off-VM data copy: VM service account write access to the bucket), STG-2 (tests in CI), STG-8 (migration gate). Also: fixtures in git or bucket (STG-7), staging on the same VM or its own, keyless GCP auth or key, Cloudflare Access or password (STG-1) | Now: HIGH | Yes; STG-5 first: today the VM's disk is the only copy |
 | Next engine plan task after T5 | Any time | T2 |
 | Turn on `RACINGLINES_OG_VENUE=1` on the VM (the OG.com column) | Before the soft launch | Yes: read-only, fair-price indicator only |
-| Kalshi bid/ask candles re-pull (backup first) | Before any Kalshi taker result counts | Yes |
+| Kalshi bid/ask candles re-pull (backup first) | Before any Kalshi taker result counts | Approved 2026-10-05: automate it on the VM |
 | Sign-off for new VM timers: Kalshi recorder (U2), tapes (U9), OG.com recorder, NASCAR forecast refresh | Before round 17 | Yes, one at a time, each with a backup |
 | Price-column migration and the audit scorecard (engine plan) | After round 16 | Owner's call; migration needs a backup and sign-off |
 | Replay race spread for NASCAR (2.0 places vs a measured ~7) | Before any NASCAR result is read as edge | Owner's call, with a decision-log entry |
@@ -245,9 +245,9 @@ venue with live F1 race markets this year.
 Phase [F1-8](f1-roadmap.md#f1-8-live-paper-trade-validation-polymarket), now on every venue that lists;
 how it works: [Paper trading](paper-trading.md). Recommendations and paper fills only; no order is placed.
 
-- [ ] **P0 · Freeze the profiles and pre-register the rules.** A and C (and K once U3 is done) are fixed
-      until 31 Dec, their settings and the date recorded in the [F1 roadmap](f1-roadmap.md#decision-log).
-      Any change makes a new profile with its own count. Rules:
+- [ ] **P0 · Pre-register the rules; profiles stay tunable (owner, 2026-10-05: no freezes).** A, C and K can
+      be re-tuned at any time. Each change is recorded with its date in the
+      [F1 roadmap](f1-roadmap.md#decision-log) and starts a new settings version with its own live count. Rules:
       [validation plan](paper-trading.md#validation-plan).
 - [ ] Run A (demo taker) and C (demo maker) live on every weekend Polymarket or Kalshi lists, through 2026
       and into 2027. Built and scheduled for Polymarket (the signal engine); Kalshi needs U1.
@@ -259,7 +259,7 @@ how it works: [Paper trading](paper-trading.md). Recommendations and paper fills
       [Kalshi history](kalshi-history.md). **Result (PRs #38, #41, corrected 2026-09-29):** K = `gbm`, 2¢ quotes, 10-point
       disagreement filter, 25 shares, $400 24-hour volume floor: **+$490 (2026), +$659 (2025)**, at 16,000 simulations
       +$453 / +$741, against profile C's −$119 / +$510. The first 2025 figure (+$855) missed Imola 2025, which only
-      Kalshi listed (−$195). Owner: freeze K?
+      Kalshi listed (−$195). Owner (2026-10-05): K's settings stay tunable; log each change in the decision log and keep its live record per settings version.
 - [x] **P1 · Per-weekend reconciliation** (PR #37, merged). `racinglines f1 reconcile --event 2026-NN --profile X --venue V`:
       live paper fills and markouts against the replay of the same weekend on the recorded tape (the
       conservative "through" fill rule), flagging a weekend outside the validation rules. Its output goes
@@ -270,6 +270,30 @@ how it works: [Paper trading](paper-trading.md). Recommendations and paper fills
 - [x] **P1 · `track_record(venue='all')` in the MCP server** (PR #30, merged; original problem: lists one row per weekend while its total sums
       every venue (the maker's weekends mix Polymarket and Kalshi rows). Return one row per weekend and
       venue, with a `venue` column and a total per venue.
+- [ ] **P1 · Closing-line value (CLV) in backtests and live** (owner, 2026-10-05). For every replayed and live
+      fill, record the venue's price when the market closes (lights out for race kinds, the session start for
+      pole), and report CLV = close minus entry, signed for our side, in points and in percent. Report it per
+      profile, venue, market kind and weekend, next to P&L in the sweep stats, `f1 reconcile` and
+      `f1 scorecard`. Polymarket tapes first. Kalshi uses the recorder's bid/ask books from 2026-09-30 on;
+      Kalshi history waits for the bid/ask re-pull, because its last-trade candles spike. Hand-placed
+      sportsbook bets get the same field in the project's bet ledger, using an exchange's close as a proxy
+      where the book publishes none.
+      *Done when:* the 2025 and 2026 replays of A, C and K report mean CLV, and the weekend report shows it.
+- [ ] **P1 · On-demand strategy previews** (owner, 2026-10-06). One command that prices the coming weekend
+      from a stored stage run and shows what each strategy (T1–T10, TB) would enter now, at a chosen bankroll
+      and caps (half- and quarter-Kelly). It writes two tables per strategy: the markets it would pick (side,
+      shares, cost) and every other modelled market with its skip reason, such as no edge, the volume
+      filter or a cap. It must be read-only, with no orders and no database writes, and it marks
+      apparent-value trades that fail a filter as watchlist only. **First version (PR #64):**
+      `scripts/strategy_preview.py`, with tests and `docs/strategy-preview.md`. It's standalone
+      and read-only, works for any event and source run at 4k or 16k, and was first run on Singapore
+      2026-10-05 at $1,000, $50 a market and $250 in total. Every trade there was blocked by zero recorded
+      24-hour Polymarket volume, so the preview should also show the venue's own 24-hour volume next to ours.
+      *Done when:* it's a `racinglines f1` subcommand documented in `docs/cli.md`, and it shows the venue's
+      volume.
+- [ ] **P2 · Stale line in `docs/coverage.md`** (owner, 2026-10-05). Its summary says Polymarket has listed no F1
+      race since 28 Aug 2026, but the Malaysia audit (round 16, 2026-10-04) linked 139 Polymarket tokens, titled
+      "Bahrain Grand Prix". Check which recent rounds Polymarket listed and correct the summary and the grid.
 - [ ] **P2 · Sizing review (~12 Nov),** after 4–6 live weekends on real markets (T3 weekends don't count):
       walk-forward re-run of A, A-lite, C, K, B (#06) and A′ (#08) with rounds 16–20 added, then a sizing
       rule from `bankroll` / `max_deployed` (owner's call, e.g. A-lite → A).

@@ -24,9 +24,10 @@
   <div class="kpi"><div class="l">Most capital in use</div><div class="v">{{ k.peak_deployed|money(false, false) }}</div><div class="s">in any one weekend</div></div>
   <div class="kpi"><div class="l">Weekends up</div><div class="v">{{ k.up }}/{{ k.weekends }}</div><div class="s">{% for y in seasons %}{{ y.year }}: {{ y.pnl|money(true) }}{{ " · " if not loop.last }}{% endfor %}</div></div>
 </div>
+{% if show_fair and profile_why %}<p class="legend">{{ profile_why }}</p>{% endif %}
 {% if record|selectattr('demo')|list %}{% call demo_context() %}<span class="pill no">demo replay, in-sample</span> NASCAR and MotoGP races are the taker replay on the exchange's recorded prices (after its taker fee), each market kind traded with the setting that did best on these same seasons: a demo of the strategy, not evidence of an edge.{% endcall %}{% endif %}
 {% if show_fair and mix and (mix|length > 1 or mix[0].family == 'taker') %}<div class="card"><h2>Where the P&amp;L came from</h2>
-<p class="legend">This account's paper record by sport and kind of strategy. Maker: quotes both sides and earns the spread. Taker: takes the model's edge at the market's price.</p>
+<p class="legend">This account's paper record by sport and kind of strategy. <span tabindex="0" data-tooltip="quotes both sides, earns spread">Maker</span>: quotes both sides and earns the spread. <span tabindex="0" data-tooltip="takes model's edge at market price">Taker</span>: takes the model's edge at the market's price.</p>
 <div class="scroll"><table><thead><tr><th class="l">Sport</th><th class="l">Strategy</th><th>Races / weekends</th><th>Up</th><th>Fantasy P&amp;L</th><th class="l"></th></tr></thead>
 <tbody>{% for m in mix %}<tr><td class="l">{{ sport_names.get(m.sport, m.sport) if m.sport else "–" }}</td><td class="l">{{ m.family }}</td><td>{{ m.weekends }}</td><td>{{ m.up }}</td>
 <td class="{{ pnl_cls(m.pnl) }}">{{ m.pnl|money(true) }}</td><td class="l">{% if m.demo %}<span class="pill no">demo replay, in-sample</span>{% endif %}</td></tr>{% endfor %}</tbody>
