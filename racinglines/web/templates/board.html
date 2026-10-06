@@ -7,7 +7,8 @@
 <div class="kpis">
   <div class="kpi"><div class="l">Exchange outcomes we price</div><div class="v">{{ h.outcomes }}</div><div class="s">{{ h.markets }} markets · {{ ("$" ~ "{:,.1f}M".format(h.volume / 1e6)) if h.volume >= 1e6 else (h.volume|money(false, false)) }} traded</div></div>
   <div class="kpi"><div class="l">Order books recording</div><div class="v {{ 'good' if h.recording else 'muted' }}">{{ h.recording or "off" }}</div><div class="s">{% if h.recorded_at %}last {{ h.recorded_at|fmt }}{% elif user.role == 'admin' %}start <code>racinglines markets record</code>{% else %}not yet{% endif %}</div></div>
-  <div class="kpi"><div class="l">My open markets</div><div class="v">{{ h.my_open }}</div><div class="s">staked against me {{ h.my_staked|money(false, false) }} · worst case <span class="{{ 'bad' if h.my_worst < 0 }}">{{ h.my_worst|money(false, false) }}</span></div></div>
+  <div class="kpi"><div class="l">Model accuracy</div><div class="v">{{ h.model_accuracy or "—" }}</div><div class="s">{% if h.accuracy_window %}last {{ h.accuracy_window }} races · overall {% if h.cumulative_accuracy %}{{ h.cumulative_accuracy }}{% else %}TBD{% endif %}{% else %}no completed races yet{% endif %}</div></div>
+  <div class="kpi"><div class="l">My <span data-tooltip="limits on positions to balance the book">open markets</span></div><div class="v">{{ h.my_open }}</div><div class="s">staked against me {{ h.my_staked|money(false, false) }} · worst case <span class="{{ 'bad' if h.my_worst < 0 }}">{{ h.my_worst|money(false, false) }}</span></div></div>
   <div class="kpi"><div class="l">Model jobs running</div><div class="v">{{ h.jobs_active }}</div><div class="s"><a href="/lab#run">launch a backtest or scenario</a></div></div>
 </div>
 {% include "_recorders.html" %}
@@ -15,7 +16,7 @@
 {% for s in sports %}
 <details class="card" data-remember="markets:sport:{{ s.code }}">
 <summary class="sport-sum"><div class="sport-head"><h2 class="h-inline">{{ s.name }}</h2> <span class="sum">{% if s.run %}live prices from run <a href="/lab/runs/{{ s.run.id }}">#{{ s.run.id }}</a> · {{ s.run.created_at|fmt }}{% elif s.asof %}model: pre-race prices for {{ "{:,}".format(s.asof.races) }} past races (replay saves, latest {{ s.asof.at|fmt }}) · no live forecast yet, so upcoming races show exchange prices only{% else %}market data only · no model{% endif %}</span></div>
-{% if s.status %}<div class="qstats">{{ status_badge("races", s.status.races) }}{{ status_badge("markets", s.status.markets) }}{{ status_badge("backtests", s.status.backtests) }}{{ status_badge("paper", s.status.paper) }}</div>{% endif %}
+{% if s.status %}<div class="qstats">{{ status_badge("races", s.status.races) }}{{ status_badge("markets", s.status.markets) }}{{ status_badge("backtests", s.status.backtests) }}<span data-tooltip="theoretical trades, not yet settled">{{ status_badge("paper", s.status.paper) }}</span></div>{% endif %}
 </summary>
 {% if s.run or s.tape or s.asof %}
 <div class="cards">
@@ -84,7 +85,7 @@
 </details>
 {% endfor %}
 {% if disagree %}<details class="card" data-remember="markets:disagree" open><summary><h2>Cross-venue disagreement</h2><span class="sum">{{ disagree.n_above }} of {{ disagree.rows|length }} outcomes above fees · last tick {{ disagree.last|fmt }}</span></summary>
-<p class="legend">Polymarket vs Kalshi on every outcome listed on both, at the log's latest tick{% if user.role == 'admin' %} (<code>racinglines markets disagree</code>){% endif %}. Gap = Kalshi mid − Polymarket mid; net = |gap| − both taker fees; edge = the better taker trade vs our fair, net of fees. Greyed rows: a venue's tape shows nothing traded in the prior 24 h, so the gap is on paper.</p>
+<p class="legend">Polymarket vs Kalshi on every outcome listed on both, at the log's latest tick{% if user.role == 'admin' %} (<code>racinglines markets disagree</code>){% endif %}. Gap = Kalshi mid − Polymarket mid; net = |gap| − both <span data-tooltip="cost to buy or sell right now">taker fees</span>; edge = the better taker trade vs our fair, net of fees. <span data-tooltip="no recent trade activity; pricing is theoretical">Greyed rows</span>: a venue's tape shows nothing traded in the prior 24 h, so the gap is on paper.</p>
 <div class="scroll" data-rows="20" data-filter="filter outcomes"><table>
 <thead><tr><th class="l">Outcome</th><th class="l hide-sm">Event</th><th>Polymarket</th><th>Kalshi</th><th>Fair</th><th class="hide-sm">PM edge</th><th class="hide-sm">Kalshi edge</th><th class="hide-sm">Gap</th><th>Net</th><th class="hide-sm">At (UTC)</th></tr></thead>
 <tbody>{% for r in disagree.rows %}<tr{% if not r.liquid %} class="muted"{% endif %}>
