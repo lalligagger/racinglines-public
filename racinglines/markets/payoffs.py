@@ -38,6 +38,7 @@ PATH = ROOT / "markets" / "kinds.toml"
 RETIRED = ("DNF", "DSQ")      # result statuses that count as a retirement
 SUBJECTS = ("driver", "team", "field")
 ABSENT = {"no": False, "void": None}
+WX = (None, "rate", "dnf")    # a kind's `wx`: how a probability of rain moves its price (markets/kinds.py Kind.wx)
 
 
 # --- predicates: one car, every simulation or every result row ---------------------------------------------------
@@ -181,7 +182,7 @@ def check(spec, where="spec"):
 
 
 def load(path=None):
-    """{code: {"code", "label", "default", "payoff", "settle"}} in file order, every spec checked; `settle` is the
+    """{code: {"code", "label", "default", "payoff", "settle", "wx"}} in file order, every spec checked; `settle` is the
     payoff spec with the file's [kinds.settle] overrides. markets/kinds.toml is read once; another `path` each call."""
     return _default() if path is None else _parse(Path(path))
 
@@ -207,7 +208,10 @@ def _parse(p):
                              "read only the legacy payoffs)")
         payoff = check(e.get("payoff"), f"{where}.payoff")
         settle = check({**payoff, **e.get("settle", {})}, f"{where}.settle")
-        out[code] = dict(code=code, label=e.get("label", code), default=False, payoff=payoff, settle=settle)
+        wx = e.get("wx")
+        if wx not in WX:
+            raise ValueError(f"{where}.wx: {wx!r} not in {WX}")
+        out[code] = dict(code=code, label=e.get("label", code), default=False, payoff=payoff, settle=settle, wx=wx)
     return out
 
 

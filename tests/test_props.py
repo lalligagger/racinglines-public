@@ -56,14 +56,14 @@ def test_wet_or_dry_rates_shrink_twice():
 
 
 @pytest.mark.quick
-def test_p_wet_reprices_only_the_red_flag():
+def test_p_wet_reprices_the_red_flag_and_rain():
     h = _hist()
     base = {m["kind"]: m["fair"] for m in P.market_set(pd.DataFrame(), 1, h, kinds=tuple(P.BINARY))}
     assert base == {k: P.rate(h, 1, c) for k, c in P.BINARY.items()}                    # default: rate()
     wx = {m["kind"]: m["fair"] for m in P.market_set(pd.DataFrame(), 1, h, kinds=tuple(P.BINARY), p_wet=0.9)}
     assert wx["race_red_flag"] == pytest.approx(P.rate_wx(h, 1, "red", 0.9))
     assert wx["race_safety_car"] == base["race_safety_car"]                              # worse when conditioned
-    assert wx["race_rain"] == base["race_rain"]
+    assert wx["race_rain"] == 0.9                     # the forecast itself (weather/wet.py backtest, 2026-10-06)
     assert P.WX_KINDS == ("race_red_flag",) and set(P.WX_KINDS) <= set(P.WX_CHECKED)
 
 
