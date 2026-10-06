@@ -27,7 +27,7 @@ replays below (which read F1's modeled links) never see them. NASCAR and MotoGP 
 
 ## Sprint weekends
 
-Off by default. `RACINGLINES_KALSHI_SPRINTS=1` in the sync's environment makes `markets --exchange kalshi
+On by default since 2026-10-06 (owner); `RACINGLINES_KALSHI_SPRINTS=0` in the sync's environment turns it off. On, it makes `markets --exchange kalshi
 sync` classify the sprint winner (`KXF1RACESPRINT-<GP>26`, "Dutch Grand Prix: Sprint Race Winner") as
 `race_sprint_win` and sprint pole (`KXF1SPRINTPOLE-<GP>26`, "Sprint Qualifying: Pole Position") as
 `race_sprint_pole`, linked to the weekend's race and driver like the main-race markets, so `model_prob`
@@ -35,8 +35,8 @@ prices them: from `extra.sprint_win_prob` / `sprint_pole_prob` when a model run 
 race win and pole probabilities (the sprint priced as the model's race, as the season forecast already does
 for sprint points). They close when SQ / the Sprint starts (`sports/f1.toml` `[stages.closes]`) and settle
 after SQ / after the Sprint. The sprint's fastest lap, top 5, top 10 and top constructor stay unmodeled.
-Unset, the sync writes exactly the rows it does today (`tests/test_kalshi.py`, on the archived 2026 Dutch GP
-links). Re-running the sync with the flag re-classifies the existing rows in place; without it they go back.
+With the flag at 0, the sync writes exactly the rows it did before sprints (`tests/test_kalshi.py`, on the archived 2026 Dutch GP
+links). Re-running the sync with sprints on re-classifies the existing rows in place; with the flag at 0 they go back.
 The maker replay's kinds (`maker_replay.MODELED`) don't include the sprint kinds, so `demo-history --venue
 kalshi` is unchanged.
 

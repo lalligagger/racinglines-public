@@ -469,9 +469,9 @@ def _dutch_events():
 
 
 @pytest.mark.quick
-def test_sprint_markets_stay_unmodeled_without_the_flag(monkeypatch):
-    """Without RACINGLINES_KALSHI_SPRINTS the classifier gives exactly today's kinds: the archived link rows."""
-    monkeypatch.delenv(KS.SPRINT_FLAG, raising=False)
+def test_sprint_markets_stay_unmodeled_with_the_flag_off(monkeypatch):
+    """With RACINGLINES_KALSHI_SPRINTS=0 the classifier gives exactly the pre-sprint kinds: the archived link rows."""
+    monkeypatch.setenv(KS.SPRINT_FLAG, "0")
     assert not KS.sprints_enabled()
     c = KS.classify
     assert c("Dutch Grand Prix: Sprint Race Winner", "Will Oscar Piastri finish in first in the Sprint Race at the 2026 Dutch Grand Prix?") \
@@ -486,9 +486,20 @@ def test_sprint_markets_stay_unmodeled_without_the_flag(monkeypatch):
     rows = KS.link_rows(evs, DutchResolver())
     assert len(rows) == 22 * 12 + 11 * 2                                    # 12 driver events, 2 constructor events
     assert {r["token_id"]: r["prediction"] for r in rows} == archived[[r["token_id"] for r in rows]].to_dict()
-    for flag in ("0", "no", ""):
+    for flag in ("0", "no", "false", "off", " OFF "):
         monkeypatch.setenv(KS.SPRINT_FLAG, flag)
         assert not KS.sprints_enabled() and c("Dutch Grand Prix: Sprint Race Winner")[0] == "unmodeled"
+
+
+@pytest.mark.quick
+def test_sprint_markets_are_on_by_default(monkeypatch):
+    """Owner 2026-10-06: deploys classify Kalshi sprint markets unless the flag says otherwise."""
+    monkeypatch.delenv(KS.SPRINT_FLAG, raising=False)
+    assert KS.sprints_enabled()
+    for flag in ("", "1", "yes", "true"):
+        monkeypatch.setenv(KS.SPRINT_FLAG, flag)
+        assert KS.sprints_enabled()
+    assert KS.classify("Dutch Grand Prix: Sprint Race Winner")[0] == "race_sprint_win"
 
 
 @pytest.mark.quick

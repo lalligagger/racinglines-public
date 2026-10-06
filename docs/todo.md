@@ -221,7 +221,7 @@ venue with live F1 race markets this year.
       *Done when:* a replay of 2026 round 15 through the engine on Kalshi matches `f1 demo-history
       --venue kalshi` for C to the cent, and A's Kalshi taker replay matches the sweep's trades
       (`scripts/signals_parity.py --venue kalshi`). No order is sent; `KALSHI_TRADING_ENABLED` stays unset.
-- [x] **U5 · P1 · Kalshi sprint markets** (PR #36, merged, behind `RACINGLINES_KALSHI_SPRINTS`). Map sprint winner and sprint pole (`KXF1*` sprint tickers,
+- [x] **U5 · P1 · Kalshi sprint markets** (PR #36, merged; on by default since 2026-10-06, owner; `RACINGLINES_KALSHI_SPRINTS=0` turns it off). Map sprint winner and sprint pole (`KXF1*` sprint tickers,
       `unmodeled` today) to the sprint stages (after SQ, after Sprint). Check on the Dutch GP (round 12).
       *Done when:* Singapore's Kalshi sprint markets sync with a model price.
 - [x] **U7 · P1 · Cross-venue disagreement log** (PR #35, merged, behind `RACINGLINES_DISAGREE`; Polymarket and Kalshi only, OG.com not joined yet). For each F1 outcome linked on both venues (race and
