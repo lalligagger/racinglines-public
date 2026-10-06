@@ -394,21 +394,17 @@ a.button.primary:hover { filter: brightness(1.08); color: #fff; }
 .ml-auto { margin-left: auto; }
 .w100 { width: 100%; }
 
-/* Tooltips: hover, or tap/focus (tabindex="0") on touch screens, to show domain definitions. Hidden ones are
-   display: none so they never widen the page; on phones they show as a fixed strip above the bottom edge. */
+/* Tooltips: hover to show domain definitions */
 [data-tooltip] { position: relative; cursor: help; }
 [data-tooltip]::after {
-  content: attr(data-tooltip); display: none;
-  position: absolute; bottom: 125%; left: 0;
+  content: attr(data-tooltip);
+  position: absolute; bottom: 125%; left: 50%; transform: translateX(-50%);
   background: var(--fg); color: var(--bg); padding: 6px 10px; border-radius: 6px;
-  font-size: 12px; font-weight: 400; text-align: left; line-height: 1.4;
-  white-space: normal; width: max-content; max-width: min(260px, 80vw); z-index: 100; pointer-events: none;
+  font-size: 12px; white-space: nowrap; z-index: 100; opacity: 0;
+  pointer-events: none; transition: opacity .15s;
 }
-[data-tooltip]:hover::after, [data-tooltip]:focus::after, [data-tooltip]:focus-within::after { display: block; }
-@media (min-width: 721px) { [data-tooltip].tip-end::after { left: auto; right: 0; } }   /* tip-end: app.js, near the right edge */
-@media (max-width: 720px) {
-  [data-tooltip]::after { position: fixed; left: 16px; right: 16px; bottom: 16px; width: auto; max-width: none; }
-}
+[data-tooltip]:hover::after { opacity: 1; pointer-events: auto; }
+@media (max-width: 720px) { [data-tooltip]::after { display: none; } }
 
 /* Settings page: radio groups, checkboxes, token management */
 .radio-group, .checkbox-group { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }

@@ -1256,16 +1256,10 @@ def signup(request: Request, username: str = Form(""), password: str = Form(""),
                                 VALUES (:u, :u, :r, :h, true) RETURNING id"""),
                         dict(u=username, r=tier, h=U.hash_password(password))).scalar()
         ACC.grant(c, uid)
-    # One taker strategy per new account, round-robin over PF.TAKER_TOP by user id, so the paper records cover every
-    # strategy evenly and each account's record maps to exactly one (strategy diversity, owner 2026-10-06; replaces
-    # "start on A", 2026-10-01). No bankroll, no history, so Strategy and Positions start empty. A failure here
-    # leaves the account fine, just unassigned (an admin can assign one).
-    try:
-        from racinglines.pipelines import profiles as PF
-        with get_engine().begin() as c:
-            cands = PF.ensure_candidates(c)
-            code = PF.TAKER_TOP[uid % len(PF.TAKER_TOP)]
-            PF.assign(c, uid, PF.load(c, cands[code]))
+    try:                                            # starts on strategy profile A (owner, 2026-10-01): no bankroll, no
+        from racinglines.pipelines import profiles as PF   # history, so Strategy and Positions start empty. A failure here
+        with get_engine().begin() as c:             # leaves the account fine, just unassigned (an admin can assign one)
+            PF.assign(c, uid, PF.load(c, PF.ensure_candidates(c)["A"]))
     except Exception as ex:                         # noqa: BLE001
         print(f"signup: no starting profile for user {uid}: {ex}", flush=True)
     with get_session() as s:

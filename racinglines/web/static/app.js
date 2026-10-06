@@ -138,14 +138,6 @@
     if (d.showModal) d.showModal(); else d.setAttribute("open", "");
   }
 
-  // --- tooltips ([data-tooltip], CSS-only): open toward the left when the text would run past the window's right edge ---
-  function tipSide(e) {
-    const t = e.target.closest && e.target.closest("[data-tooltip]");
-    if (t) t.classList.toggle("tip-end", t.getBoundingClientRect().left + 270 > document.documentElement.clientWidth);
-  }
-  document.addEventListener("mouseover", tipSide);
-  document.addEventListener("focusin", tipSide);
-
   // --- collapsed sections: <details data-remember="id"> keeps its open / closed state per browser ---
   document.addEventListener("toggle", e => {
     const d = e.target;

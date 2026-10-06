@@ -716,9 +716,6 @@ def signals_page(request: Request, user: str = "", event: str = "", venue: str =
     profile = PF.of_user(c, uid)
     show_fair = not R.is_basic(me)
     basic = not show_fair                            # basic: never which strategy made a pick (roles.basic_*)
-    # what the running strategy is, from its profile's `why` (pro and admin only: it names the strategy)
-    profile_why = next((pr.get("why") for pr in {**PF.PROFILES, **PF.HISTORY_PROFILES}.values()
-                        if profile and pr.get("name") == profile.get("name")), None) if show_fair else None
     from racinglines.pipelines import story
     is_maker = bool(profile and not profile.get("strategy", "update").startswith(("update", "hold", "last", "early")))
     # venue=kalshi (with RACINGLINES_KALSHI_VENUE=1): the maker's same profiles replayed on Kalshi's tape
@@ -772,7 +769,7 @@ def signals_page(request: Request, user: str = "", event: str = "", venue: str =
     maker = False if basic else bool(cur and not cur["strategy"].startswith(("update", "hold", "last", "early"))) if cur else is_maker
     sport_options = _sport_options(record, sport)
     return render(request, "strategy.html", viewer=viewer, profile=R.basic_view_profile(profile) if basic else profile,
-                  show_fair=show_fair, profile_why=profile_why, stages=stages,
+                  show_fair=show_fair, stages=stages,
                   positions=positions, cur=cur, event_key=ev, users=users, maker=maker, record=record,
                   seasons=seasons, total=total, acct=acct, is_maker=is_maker, heat_label=HEAT_LABEL,
                   venue=venue, sport=sport, sport_options=sport_options, sport_names=_sport_names(),

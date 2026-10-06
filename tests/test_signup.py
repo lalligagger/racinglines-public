@@ -121,30 +121,6 @@ def test_signup_creates_a_hashed_account_with_1000_bucks(app_db):
                       follow_redirects=False).headers["location"] == "/markets"
 
 
-def test_signups_get_different_taker_strategies(app_db):
-    """Each new account gets one strategy from TAKER_TOP, round-robin by user id (owner, 2026-10-06)."""
-    from sqlalchemy import text
-    from racinglines.db.config import get_engine
-    from racinglines.pipelines import profiles as PF
-    with get_engine().begin() as c:                     # candidates need the F1 championship (search.add_candidate)
-        c.execute(text("INSERT INTO sports (code, name) VALUES ('f1', 'F1') ON CONFLICT DO NOTHING"))
-        c.execute(text("INSERT INTO leagues (code, name) VALUES ('f1', 'F1') ON CONFLICT DO NOTHING"))
-        c.execute(text("""INSERT INTO competitions (code, name, league_id, sport_id)
-                          SELECT 'f1_wdc', 'F1', l.id, s.id FROM leagues l, sports s WHERE l.code = 'f1' AND s.code = 'f1'
-                          ON CONFLICT DO NOTHING"""))
-    for name in ("ada_one", "ada_two"):
-        app_db._signup_hits.clear()
-        assert TestClient(app_db.app).post("/signup", data=dict(GOOD, username=name),
-                                           follow_redirects=False).status_code == 303
-    with get_engine().connect() as c:
-        ids = [c.execute(text("SELECT id FROM users WHERE username = :u"), dict(u=n)).scalar() for n in ("ada_one", "ada_two")]
-        names = [PF.of_user(c, i)["name"] for i in ids]
-    assert ids[1] == ids[0] + 1
-    taker = {PF.PROFILES[code]["name"] for code in PF.TAKER_TOP}
-    assert names[0] != names[1] and set(names) <= taker
-    assert names == [PF.PROFILES[PF.TAKER_TOP[i % len(PF.TAKER_TOP)]]["name"] for i in ids]
-
-
 @pytest.mark.parametrize("change, msg", [(dict(username="ADA_LOVELACE"), "taken"), (dict(username="admin"), "reserved"),
                                          (dict(password="short", confirm="short"), "at least"),
                                          (dict(confirm="something else"), "match"),
