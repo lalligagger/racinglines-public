@@ -348,8 +348,16 @@ def http_app(srv):
                                    transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False))
 
 
+SHUTDOWN_GRACE_SEC = 10
+"""How long the HTTP server waits for in-flight requests on SIGTERM before cancelling them. uvicorn's default is
+forever: a chat client keeps a GET /mcp event stream open for as long as it is connected, so with no limit every
+`systemctl restart` (every deploy) sat on that stream until systemd's 90-second stop timeout killed the process, and
+the connector was down for those 90 seconds. The unit's TimeoutStopSec stays above this number."""
+
+
 def serve(http=False, host="127.0.0.1", port=DEFAULT_PORT, jobs_worker=True):
-    """Run the server: stdio (default), or streamable HTTP on host:port/mcp, each request with an account's token."""
+    """Run the server: stdio (default), or streamable HTTP on host:port/mcp, each request with an account's token.
+    On SIGTERM the server stops within SHUTDOWN_GRACE_SEC seconds."""
     from racinglines.mcp import auth, oauth
     srv = build(jobs_worker=jobs_worker, oauth=http)
     if not http:
@@ -362,4 +370,4 @@ def serve(http=False, host="127.0.0.1", port=DEFAULT_PORT, jobs_worker=True):
     if host not in ("127.0.0.1", "localhost"):
         print(f"WARNING: listening on {host}; keep it behind a tunnel or a private network.", file=sys.stderr)
     import uvicorn
-    uvicorn.run(http_app(srv), host=host, port=int(port), log_level="warning")
+    uvicorn.run(http_app(srv), host=host, port=int(port), log_level="warning", timeout_graceful_shutdown=SHUTDOWN_GRACE_SEC)
