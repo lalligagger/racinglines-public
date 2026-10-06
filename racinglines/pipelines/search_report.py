@@ -10,8 +10,9 @@ search showed a backtest needs (docs/backtest-core.md, Part 1):
     simulation count, over the same rounds;
   - confirmation: the same combo at `confirm_sims` simulations, when the search ran it;
   - concentration: P&L without the best event (and which event that was) and without the best two;
-  - shape: steady (still up without its best two events in every season), long-shot (up in every season,
-    but not without its best two in one of them) or loses (down in a season);
+  - shape: steady (still up without its best two events in every season), concentrated (up in every season,
+    but not without its best two in one of them), mixed (up in one season, down in another) or losing (down in
+    every season);
   - stable candidate ids: `<strategy>-<settings_key>`, never a position in a list;
   - finished jobs only: a job still running (or failed) is never read.
 
@@ -68,13 +69,15 @@ def curve_stats(pnls, season_events):
 
 
 def shape(pnls, without_best2):
-    """steady / long-shot / loses from each season's P&L and P&L without its best two events ("" if a season
-    is missing)."""
+    """steady / concentrated / mixed / losing from each season's P&L and P&L without its best two events
+    ("" if a season is missing). These describe the record, not the risk."""
     if any(v is None for v in list(pnls) + list(without_best2)):
         return ""
+    if all(v <= 0 for v in pnls):
+        return "losing"
     if any(v <= 0 for v in pnls):
-        return "loses"
-    return "steady" if all(v > 0 for v in without_best2) else "long-shot"
+        return "mixed"
+    return "steady" if all(v > 0 for v in without_best2) else "concentrated"
 
 
 def _config(cfg):
@@ -321,8 +324,8 @@ def summary_md(ranking, top, floor, measured, cfg):
              f"*Without best* is the target-season {u} without its best event; *gain without best*, its gain over the "
              "baseline without the event where it gained most. *Loses money in*: better than the "
              "baseline there, but still a loss (P&L only). *Shape*: **steady** is still up without its best two events "
-             "in every season, **long-shot** is up in every season but not without its best two in one of them, "
-             "**loses** is down in a season." + (" Scores are −1000 × log loss per event, summed: "
+             "in every season, **concentrated** is up in every season but not without its best two in one of them, "
+             "**mixed** is up in one season and down in another, **losing** is down in every season." + (" Scores are −1000 × log loss per event, summed: "
                                                                 "higher is better." if u == "score" else ""), "",
              "| Id | Strategy | Settings | Label | Shape | Confirmed | " + f"{cfg['target']} | vs baseline | Without best | "
              "Gain without best | " + " | ".join(f"{y} | vs baseline" for y in hy) + " | Loses money in |",
