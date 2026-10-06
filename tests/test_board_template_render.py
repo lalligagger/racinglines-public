@@ -94,6 +94,7 @@ def test_board_html_renders(jinja_env):
         {
             "code": "f1",
             "name": "Formula 1",
+            "status": {k: {"state": "ok", "short": "1", "text": k} for k in ("races", "markets", "backtests", "paper")},
             "run": None,
             "tape": None,
             "asof": None,
@@ -188,6 +189,8 @@ def test_board_html_renders(jinja_env):
     assert "0.081" in html
     assert "lower is better" in html
     assert "grid-only 0.094" in html
+    assert "simulated trades in fantasy bucks; nothing is sent to an exchange" in html
+    assert "markets in your private book that are still open" in html
 
 
 def test_board_html_with_sport_status(jinja_env):
