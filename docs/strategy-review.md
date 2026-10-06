@@ -8,7 +8,7 @@ sizing on a $10,000 bankroll, and sorted into steady and lumpy. This page is tha
 
 **Verdict: A (T1) stays the core taker, on Polymarket only.** It is steady there: up in both seasons, and still up
 without each season's two best weekends. On Kalshi no taker is steady. Every taker is up in 2026 because of
-Australia and down in 2025 once the two best weekends are removed, so Kalshi taking waits for more evidence. The
+Australia and down in 2025 once the two best weekends are removed, so Kalshi taking stays small until live weekends add evidence. The
 best Kalshi option is maker K, still small and concentrated. Kelly sizing multiplies the dollars but not the
 evidence: its totals come mostly from two compounding weekends and assume fills the books can't carry.
 
@@ -116,8 +116,10 @@ rows are identical. It's promising but rests on one season. It needs a 2025 top-
 - **Polymarket: trade A (T1) as is.** If sized off a bankroll, use quarter-Kelly with a cap the book can carry,
   not half-Kelly. T7 is a near twin of A (the podium coherence tolerance hardly matters). T8 and T9 earn more in
   2026 but are flat in 2025 once the best two weekends are removed.
-- **Kalshi: no taker at size.** If anything trades there, it's maker K, small. The 2026 taker gains rest on
-  Australia.
+- **Kalshi: trade A small and build the record.** Kalshi is a big exchange; the problem is our evidence there, not
+  its size. A's Kalshi totals are positive (+2,332 / +1,257) but come from a few long-shot weekends: only 5 of 24
+  weekends were up in 2025. Live weekends at a small flat stake are how we tell an edge from luck. Maker K is the
+  steadiest Kalshi option. Kalshi has no Singapore markets linked yet, so linking comes first.
 - **Makers on Polymarket**: C and K are steady but small, about +$500 to +$1,000 a season.
 
 ## What this doesn't show
