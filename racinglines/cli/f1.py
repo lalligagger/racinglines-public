@@ -331,6 +331,35 @@ def _save_sweep(args, out):
                                               if args.reliability else {})))
 
 
+def race_week(race_date):
+    """The FastF1 recorder's window around a race day: the Wednesday before it to the Tuesday after (inclusive)."""
+    from datetime import timedelta
+    wed = race_date - timedelta(days=(race_date.weekday() - 2) % 7)
+    return wed, wed + timedelta(days=6)
+
+
+def fastf1_target(conn, today):
+    """(year, round) of the F1 event whose race week (race_week) contains `today`, else None. Reads events by the
+    competition code in sports/f1.toml; an event's start_date is its race day (sources/fastf1/ingest.py)."""
+    from datetime import timedelta
+    from sqlalchemy import text
+    from racinglines import sports
+    rows = conn.execute(text("""
+        SELECT s.year, e.series_round, e.start_date
+        FROM events e
+        JOIN seasons s ON s.id = e.season_id
+        JOIN competitions c ON c.id = s.competition_id
+        WHERE c.code = :code AND e.series_round IS NOT NULL AND e.status <> 'cancelled'
+          AND e.start_date BETWEEN :lo AND :hi
+        ORDER BY e.start_date"""), dict(code=sports.load("f1")["competition"]["code"],
+                                        lo=today - timedelta(days=7), hi=today + timedelta(days=7))).all()
+    for year, rnd, race_date in rows:
+        lo, hi = race_week(race_date)
+        if lo <= today <= hi:
+            return int(year), int(rnd)
+    return None
+
+
 def _run(args):
     import pandas as pd
     pd.set_option("display.width", 220)
@@ -532,68 +561,12 @@ def _run(args):
             try:
                 now = datetime.now(timezone.utc)
 
-                # Check if we're in a race weekend window (calendar-aware polling)
-                # Only poll during Thu-Sun of race weekends; skip Mon-Wed to avoid abusing FastF1
+                # Calendar-aware polling: only inside an F1 event's race-week window (Wed before to Tue after)
                 with engine.connect() as c:
-                    # Get the next upcoming/ongoing race to determine if we're in its weekend window
-                    result = c.execute(text("""
-                        SELECT e.year, e.round, r.event_date, r.status
-                        FROM events e
-                        JOIN races r ON r.event_id = e.id
-                        WHERE e.year >= 2020 AND r.status IN ('upcoming', 'ongoing', 'completed')
-                        ORDER BY (CASE r.status
-                                   WHEN 'ongoing' THEN 0
-                                   WHEN 'upcoming' THEN 1
-                                   WHEN 'completed' THEN 2 END),
-                                 r.event_date DESC
-                        LIMIT 1
-                    """))
-                    race_row = result.fetchone()
-
-                    if race_row:
-                        year, round_num, event_date, race_status = race_row
-                        # Calculate race weekend window: Wed before to Tue after the race
-                        from datetime import timedelta
-                        race_date = event_date.date() if hasattr(event_date, 'date') else event_date
-                        # Go back to the Wednesday of that week
-                        day_of_week = race_date.weekday()  # Monday=0, Sunday=6
-                        if day_of_week >= 2:  # Wed(2)=onwards in the week of the race
-                            days_back = day_of_week - 2
-                        else:  # Mon/Tue - go back to previous week's Wed
-                            days_back = day_of_week + 5  # Mon(0)->5 days back, Tue(1)->6 days back
-                        wed_start = race_date - timedelta(days=days_back)
-                        tue_end = wed_start + timedelta(days=6)  # Wed to following Tue
-
-                        # Check if now is within the race weekend window
-                        now_date = now.date()
-                        if not (wed_start <= now_date <= tue_end):
-                            # Outside race weekend - idle mode, just log and exit
-                            return
-                    else:
-                        # No upcoming races found - idle mode
-                        return
-
-                # Detect current F1 session (we're in a race weekend window)
-                with engine.connect() as c:
-                    # Get upcoming/ongoing/completed races in priority order
-                    result = c.execute(text("""
-                        SELECT e.year, e.round, r.event_date, r.status
-                        FROM events e
-                        JOIN races r ON r.event_id = e.id
-                        WHERE e.year >= 2020
-                        ORDER BY (CASE r.status
-                                   WHEN 'ongoing' THEN 0
-                                   WHEN 'upcoming' THEN 1
-                                   WHEN 'completed' THEN 2
-                                   ELSE 3 END),
-                                 e.year DESC, e.round DESC
-                        LIMIT 1
-                    """))
-                    row = result.fetchone()
-                    if not row:
-                        print("no upcoming/ongoing race found", flush=True)
-                        return
-                    year, round_num, event_date, status = row
+                    target = fastf1_target(c, now.date())
+                if target is None:
+                    return   # outside a race week: idle
+                year, round_num = target
 
                 # Fetch current session via FastF1 and store snapshot
                 now = datetime.now(timezone.utc)
