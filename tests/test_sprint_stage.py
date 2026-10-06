@@ -269,3 +269,86 @@ def test_every_head_to_head_kind_is_a_binary_market_for_the_cancelled_race_rules
     from racinglines.markets import settlement_rules as SR
     assert SR.BINARY_KINDS == {k for k, v in K.KINDS.items() if v.payoff == "h2h"}
     assert SR.payout("polymarket", SR.CANCELLED, "race_sprint_h2h") == 0.5
+
+
+# --- settlement from the database (private_book.race_outcomes) ----------------------------------------------
+
+def _ensure(s, model, **kw):
+    from sqlalchemy import select
+    row = s.scalars(select(model).filter_by(**{k: v for k, v in kw.items() if k in ("code", "slug", "display_name")})).first()
+    if row is None:
+        row = model(**kw)
+        s.add(row)
+        s.flush()
+    return row
+
+
+@pytest.mark.parametrize("sprint_ran", [True, False])
+def test_race_outcomes_carry_the_sprint_and_the_private_book_settles_it(test_engine, sprint_ran):
+    from datetime import date
+
+    from sqlalchemy.orm import Session
+
+    from racinglines.db import models as m
+    from racinglines.markets import private_book as house
+    with Session(test_engine) as s:
+        sport = _ensure(s, m.Sport, code="f1_sp", name="F1 (sprint test)")
+        league = _ensure(s, m.League, code="fia_sp", name="FIA (sprint test)")
+        comp = _ensure(s, m.Competition, code="f1_wdc_sp", name="F1 (sprint test)", league_id=league.id, sport_id=sport.id)
+        cat = _ensure(s, m.Category, code="DRV_SP", name="Drivers", competition_id=comp.id)
+        season = _ensure(s, m.Season, competition_id=comp.id, year=2026)
+        ev = m.Event(season_id=season.id, source="f1timing", source_key=f"sp-{sprint_ran}", name="Sprint test GP",
+                     start_date=date(2026, 10, 11), status="completed")
+        s.add(ev)
+        s.flush()
+        race = m.Race(event_id=ev.id, category_id=cat.id, format={"kind": "f1", "sprint": True})
+        s.add(race)
+        s.flush()
+        rnd = {k: m.Round(race_id=race.id, kind=k, ordinal=i, name=k)
+               for i, k in enumerate(("sprint_qual", "sprint", "qual", "race"))}
+        s.add_all(rnd.values())
+        s.flush()
+        ath = [_ensure(s, m.Athlete, display_name=f"Sprint test driver {i}") for i in range(6)]
+        gp = [1, 2, 3, 4, 5, 6]
+        sprint = [(3, "OK", 6), (5, "OK", 4), (1, "OK", 8), (2, "OK", 7), (4, "OK", 5), (6, "DNF", 0)]
+        sq_grid = [4, 0, 2, 1, 3, 5]                       # driver 1 started from the pit lane (GridPosition 0)
+        for i, a in enumerate(ath):
+            team = f"t{i // 2}"
+            s.add(m.Result(round_id=rnd["race"].id, athlete_id=a.id, position=gp[i], status="OK", team=team,
+                           extra={"team_id": team, "points": [25, 18, 15, 12, 10, 8][i]}))
+            s.add(m.Result(round_id=rnd["qual"].id, athlete_id=a.id, position=gp[i], status="OK", team=team))
+            s.add(m.Result(round_id=rnd["sprint_qual"].id, athlete_id=a.id, position=None, status="DNS", team=team))
+            if sprint_ran:
+                pos, st, pts = sprint[i]
+                s.add(m.Result(round_id=rnd["sprint"].id, athlete_id=a.id, position=pos, status=st, team=team,
+                               extra={"team_id": team, "points": pts, "grid": sq_grid[i]}))
+        s.flush()
+        mk = {}
+        for kind, who, params in (("race_sprint_podium", 2, None), ("race_sprint_podium", 0, None),
+                                  ("race_sprint_win", 2, None), ("race_sprint_pole", 3, None), ("race_sprint_pole", 1, None),
+                                  ("race_sprint_h2h", 2, {"opponent_id": ath[0].id}),
+                                  ("race_sprint_constructor_top", None, {"team": "t1"}), ("race_win", 0, None)):
+            hm = m.HouseMarket(race_id=race.id, athlete_id=None if who is None else ath[who].id, kind=kind, title=kind,
+                               fair_prob=0.3, spread=0.06, yes_price=0.33, no_price=0.73, params=params)
+            s.add(hm)
+            s.flush()
+            mk[(kind, who)] = hm.id
+        s.commit()
+        with test_engine.connect() as c:
+            res = house.race_outcomes(c, race.id)
+            settled = set(house.settle_from_results(s, c, race.id))
+        by = res.set_index("athlete_id")
+        assert s.get(m.HouseMarket, mk[("race_win", 0)]).outcome is True
+        if not sprint_ran:                      # before the sprint: nothing of it settles
+            assert "sprint_status" not in res or by["sprint_status"].isna().all()
+            assert settled == {mk[("race_win", 0)]}
+            return
+        assert by.loc[ath[2].id, "sprint_position"] == 1 and by.loc[ath[5].id, "sprint_status"] == "DNF"
+        assert by.loc[ath[3].id, "sprint_qual_position"] == 1 and pd.isna(by.loc[ath[1].id, "sprint_qual_position"])
+        assert by.loc[ath[2].id, "sprint_points"] == 8
+        want = {("race_sprint_podium", 2): True, ("race_sprint_podium", 0): True, ("race_sprint_win", 2): True,
+                ("race_sprint_pole", 3): True, ("race_sprint_h2h", 2): True,
+                ("race_sprint_constructor_top", None): True, ("race_win", 0): True}
+        for key, y in want.items():
+            assert s.get(m.HouseMarket, mk[key]).outcome is y, key
+        assert mk[("race_sprint_pole", 1)] not in settled          # pit-lane start: no SQ position, undecided
