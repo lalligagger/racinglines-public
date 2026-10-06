@@ -5,13 +5,16 @@
 # existing read-only commands, so every exchange stays a schema, not new code:
 #
 #   racinglines markets --exchange kalshi --sport <s> sync | books      (markets/kalshi/sync.py)
-#   racinglines markets --exchange og     --sport <s> sync | books      (exchanges/og.toml, markets/exchange_driver.py)
+#   racinglines markets --exchange og     --sport <s> sync | settle | books   (exchanges/og.toml, markets/exchange_driver.py)
 #
 # Polling strategy: runs 5-min cadence for each pair, but skips if that sport is not in a race weekend
 # (Thu-Sun UTC when an event exists). Off-weeks: exits cleanly, conserving API quota. Every pass: one
 # order-book snapshot per open market of each active PAIRS entry (market_book_snapshots, ON CONFLICT DO
 # NOTHING). Every SYNC_MIN minutes (default 60): that pair's sync first (market links and quotes upserted:
-# new markets appear, settled ones close). Additive only; no trading, no buy-all. API limits are the
+# new markets appear, settled ones close). Every SETTLE_MIN minutes (default 60), after the sync, a schema exchange
+# with a settlement feed (OG.com) records the outcomes of its closed links (`settle`: resolved_yes, and params
+# settled_at; bounded by the schema's max_pages and resumed from where the last pass stopped, so a pass reads a few
+# pages; Kalshi's outcomes come with its sync). Additive only; no trading, no buy-all. API limits are the
 # commands' own (polite HTTP pacing, sources/http.py; OG schema caps). One pair failing doesn't stop
 # others; the pass exits non-zero if any failed, so `systemctl status` shows it.
 #
@@ -26,6 +29,7 @@ export PYTHONUNBUFFERED=1
 cd "${APP:-/opt/racinglines}"
 PAIRS=${PAIRS:-kalshi:f1 og:f1 kalshi:nascar og:nascar kalshi:motogp}
 SYNC_MIN=${SYNC_MIN:-60}
+SETTLE_MIN=${SETTLE_MIN:-60}
 STATE=data/runs/record-venues
 LOG=data/runs/logs/record-venues.log
 mkdir -p "$STATE" data/runs/logs data/backups/db
@@ -70,6 +74,10 @@ for p in $PAIRS; do
   if bash scripts/vm/race_weekend.sh "$s" >/dev/null 2>&1; then
     if [ -z "$(find "$stamp" -mmin -"$SYNC_MIN" 2>/dev/null)" ]; then
       run "$x" "$s" sync && touch "$stamp"
+    fi
+    # a schema exchange's outcomes (exchanges/<x>.toml endpoints.settlements), after its sync, every SETTLE_MIN
+    if [ -f "exchanges/$x.toml" ] && [ -z "$(find "$STATE/settle-$x-$s" -mmin -"$SETTLE_MIN" 2>/dev/null)" ]; then
+      run "$x" "$s" settle && touch "$STATE/settle-$x-$s"
     fi
     run "$x" "$s" books
   else

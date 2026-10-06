@@ -78,6 +78,21 @@ params = { count = 1000 }
 window_days = 31                         # start to end at most 31 days, 1,000 one-minute rows a call
 limits = { max_window_days = 31 }
 
+[endpoints.settlements]
+# Who won. get-instruments, get-events and get-tickers drop an instrument once it settles (a settled event returns
+# []), so the listing never says the outcome; this feed does. It holds every instrument the exchange settles (mostly
+# FX and crypto, about 20,000 rows per 12 hours), unfiltered: an instrument_type filter is refused together with
+# since / cursor. exchange_driver.settle scans it forward from `since` until every closed, unresolved link of the
+# sport is found or the feed ends (probed from the owner's Mac 2026-10-06; the docs site is JS-only and unreadable).
+path = "/get-expired-settlement-price"
+data = "result.data"
+next = "result.next_cursor"              # paged with cursor=<next>, like get-events; the last page has none
+cursor_param = "cursor"
+start_param = "since"                    # nanoseconds; the feed goes back to about 2026-07-08
+start_unit = "ns"
+params = { limit = 1000 }                # 1,000 rows a call worked; about 20 calls cover 12 hours
+max_pages = 500                          # our own cap per pass (500,000 rows, about 12 days); the next pass resumes
+
 # Where each thing lives in a response: dotted paths into the JSON ("a.b" = obj["a"]["b"]). `unit` says how a time
 # is written: ms / ns since the epoch, or iso.
 [fields.event]
@@ -126,6 +141,18 @@ ts_unit = "ms"
 bid = "b"
 ask = "k"
 last = "a"
+
+[fields.settlement]
+# One row per settled instrument: {"i": symbol, "x": expiry ms, "v": "1.00" | "0.00" | "0.50", "t": settled at ms}.
+# `value` is what one YES contract paid: 1 = YES, 0 = NO, anything between (0.50 seen) is a void, which leaves
+# resolved_yes empty. Sports contracts settle when decided, not at the nominal expiry (the Sepang race winners
+# expire 2026-11-30; 21 of 22 settled 2026-10-04 11:36 UTC), so `ts` is the settle time and `expiry` only a note.
+instrument = "i"                         # equals market_links.token_id (and market_slug)
+value = "v"
+ts = "t"
+ts_unit = "ms"
+expiry = "x"
+expiry_unit = "ms"
 
 [prices]
 unit = "dollars"                         # 0 to 1, decimal strings; a contract pays $1
