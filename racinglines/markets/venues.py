@@ -22,6 +22,7 @@ The data contract every page reads, so a new sport or exchange needs no template
 
 import datetime
 import os
+import time
 from dataclasses import dataclass
 from typing import TypedDict
 
@@ -31,6 +32,10 @@ import pandas as pd
 from racinglines import exchanges, sports
 from racinglines.db import reads as data
 from racinglines.markets import private_book as house
+
+_EXCHANGE_BREAKDOWN_CACHE = None
+_EXCHANGE_BREAKDOWN_TIME = 0
+_EXCHANGE_BREAKDOWN_TTL = 60  # Cache for 60 seconds
 
 
 @dataclass(frozen=True)
@@ -494,9 +499,16 @@ def exchange_breakdown(conn, comps=None) -> list[ExchangeBlock]:
     """One ExchangeBlock per sport x exchange: market links and what's been recorded on them. `comps`: {competition
     code: schema} to include (default every sport). Used by /markets/tapes (tape-only sports only) and the
     Markets board (every sport, alongside its own venue chips)."""
+    global _EXCHANGE_BREAKDOWN_CACHE, _EXCHANGE_BREAKDOWN_TIME
+    fetch_all = comps is None
     comps = comps if comps is not None else {s["competition"]["code"]: s for s in _SCHEMAS}
     if not comps:
         return []
+
+    # Return cached result if still fresh and we're fetching all sports
+    if fetch_all and time.time() - _EXCHANGE_BREAKDOWN_TIME < _EXCHANGE_BREAKDOWN_TTL and _EXCHANGE_BREAKDOWN_CACHE is not None:
+        return _EXCHANGE_BREAKDOWN_CACHE
+
     links = data.q(conn, """
         SELECT ml.*, co.code AS competition FROM market_links ml JOIN competitions co ON co.id = ml.competition_id
         WHERE co.code = ANY(:c) ORDER BY ml.exchange, ml.end_date NULLS LAST, ml.event_title, ml.id""",
@@ -533,6 +545,12 @@ def exchange_breakdown(conn, comps=None) -> list[ExchangeBlock]:
                         prices=sum(e["prices"] for e in events), books=sum(e["books"] for e in events),
                         volume=sum(e["volume"] for e in events), synced=g["synced_at"].max(), coverage=coverage(exch)))
     out.sort(key=lambda b: (SPORT_ORDER.get(b["competition"], 9), b["exchange"]))
+
+    # Cache the result if we fetched all sports
+    if fetch_all:
+        _EXCHANGE_BREAKDOWN_CACHE = out
+        _EXCHANGE_BREAKDOWN_TIME = time.time()
+
     return out
 
 
