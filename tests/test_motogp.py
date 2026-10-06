@@ -9,7 +9,7 @@ from conftest import FIX, require_market_fixtures
 
 from racinglines.sources.motogp import ingest as I
 
-require_market_fixtures("events_2026", "classification_2026_tha_motogp_race")
+require_market_fixtures("motogp_events_2026", "motogp_classification_2026_tha_motogp_race")
 
 MKT = FIX / "market"
 

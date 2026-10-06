@@ -504,6 +504,8 @@ server and in a private bucket.
 - **Ask us** at [hello@racinglines.bet](mailto:hello@racinglines.bet?subject=racinglines%20test%20fixtures)
   for the pinned fixture bundle (about 2 MB). Unpacked into `tests/fixtures/`, the regression suite matches the
   golden outputs exactly.
+- **With access to the private repository** (the owner's machines and cloud sessions):
+  `bash scripts/restore_test_fixtures.sh` copies the pinned set from its git into `tests/fixtures/`, untracked.
 - **Build them yourself** from the original public sources with `python scripts/fetch_test_fixtures.py --refresh`
   (needs Postgres; the F1 part can take up to an hour because FastF1 is rate limited). Today's data differs a
   little from the pinned set, so expect some golden tests to differ: that's fine for development.
@@ -608,7 +610,7 @@ branches, one PR per track (owner, 2026-09-30); the track is named on each item.
       2026-10-01; tests in CI, a real staging deploy, an off-VM data copy, a migration gate and a live-window freeze
       are open: STG-1 to STG-11 in [Staging and CI deploys](docs/todo.md#staging-and-ci-deploys).
 - [x] **U5** Kalshi sprint markets before Singapore (11 Oct); built in PR #36, merged; on by default since 2026-10-06 (`RACINGLINES_KALSHI_SPRINTS=0` turns it off). Priced from the race's pole and win odds
-      until **U13**, a real sprint model, lands ([F1 model](docs/todo.md#f1-model)).
+      until **U13**, the sprint stage, lands (in progress, [F1 model](docs/todo.md#f1-model)).
 - [ ] **U3** Kalshi maker profile K: swept (PRs #38, #41, merged; K = `gbm`, 2¢, 10-pt filter, 25 shares, $400 volume floor); **freezing it is the owner's call** before the United States GP (25 Oct).
 - [x] **U7** Cross-venue disagreement log (PR #35, behind `RACINGLINES_DISAGREE`); **U8** settlement rules for relocated or cancelled races (PR #27, behind `RACINGLINES_CANCELLED_RACE_RULES`). Both merged; the owner's two assumptions for U8 are still to confirm.
 - [x] Per-weekend reconciliation (`f1 reconcile`, PR #37) and the pricing scorecard (`f1 scorecard`, PR #28), both merged; run them after every weekend ([Paper trading](docs/todo.md#paper-trading)).

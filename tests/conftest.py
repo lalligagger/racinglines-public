@@ -143,3 +143,12 @@ def weekend_fixture():
             for s in m["stages"]:
                 s["t"] = pd.Timestamp(s["t"])
     return raw
+
+
+@pytest.fixture(autouse=True)
+def _fresh_exchange_breakdown():
+    """markets/venues.exchange_breakdown caches its every-sport result for a minute per process: start each test
+    without an earlier test's markets in it."""
+    from racinglines.markets import venues
+    venues._EXCHANGE_BREAKDOWN_CACHE = None
+    yield
