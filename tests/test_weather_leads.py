@@ -184,3 +184,33 @@ def test_market_set_scales_dnf_prob_for_the_dnf_kinds():
     same = PR.dnf_markets(preds.assign(dnf_prob=(preds["dnf_prob"] * sc).clip(0, 1)), ("race_retire",))
     assert [m["fair"] for m in same] == [wet[f"race_retire:{a}"] for a in (1, 2, 3, 4)]
     assert set(K.wx_kinds("dnf")) >= {"race_retire", "race_n_retirements"}
+
+
+@pytest.mark.quick
+def test_dnf_check_adds_model_wx(tmp_path):
+    from racinglines.models.position_sim import dnf_check as DC
+    from racinglines.models.position_sim import props as PR
+    h, fc = _history(), L.p_wet(L.load(_leads_csv(tmp_path)), 5)
+    rows = []
+    for race in (19, 20, 22):                                 # 19 has no forecast
+        for a, (p, st) in enumerate([(0.05, "OK"), (0.10, "DNF"), (0.20, "OK"), (0.30, "DSQ")]):
+            rows.append(dict(race_id=race, run_id=race, cutoff="2025-01-01", athlete_id=a, team=f"t{a // 2}",
+                             dnf_prob=p, status=st))
+    df = pd.DataFrame(rows)
+    plain = DC.check(df)
+    assert list(plain["summary"]["method"]) == ["model", "field", "race_mean"]
+    out = DC.check(df, forecast=fc, history_df=h)
+    s = out["summary"].set_index("method")
+    assert list(s.index) == ["model", "field", "race_mean", "model-WX", "model-WX - model"]
+    assert s.loc["model-WX", "rows"] == 8 and out["totals"]["wx_races"] == 2
+    hp = PR.prepare(h)
+    sc = {r: PR.wx_scale(hp[hp["start"] < hp.loc[r, "start"]], hp.loc[r, "venue_id"], fc[r]) for r in (20, 22)}
+    p = np.array([0.05, 0.10, 0.20, 0.30])
+    y = np.array([0, 1, 0, 1.0])
+    wx = np.concatenate([np.clip(p * sc[20], 0, 1), np.clip(p * sc[22], 0, 1)])
+    yy = np.concatenate([y, y])
+    assert s.loc["model-WX", "brier"] == pytest.approx(((wx - yy) ** 2).mean())
+    assert s.loc["model-WX - model", "rows"] == 8
+    assert s.loc["model-WX - model", "brier"] == pytest.approx(((wx - yy) ** 2).mean() - ((np.tile(p, 2) - yy) ** 2).mean())
+    assert "model-WX on the 2 races" in DC.render(out) and "model-WX - model" in DC.render(out)
+    assert list(DC.check(df, forecast=fc)["summary"]["method"]) == ["model", "field", "race_mean"]   # needs both
