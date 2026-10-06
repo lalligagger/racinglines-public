@@ -32,6 +32,8 @@ class OutcomeSims:
     groups: list | None = None                       # per entrant: team / nation key (group markets)
     indicators: dict = field(default_factory=dict)   # (n_sims, n) bool per yes/no kind the model draws itself,
                                                      # keyed by kind, e.g. {"race_fastest_lap": fl}
+    stage_finished: dict = field(default_factory=dict)   # per stage_rank key that is a race of its own (F1: the
+    stage_points: dict = field(default_factory=dict)     # sprint): (n_sims, n) finished and points, see at()
 
     @property
     def n_sims(self):
@@ -39,6 +41,16 @@ class OutcomeSims:
 
     def index(self, athlete_id):
         return self.entrants.index(athlete_id)
+
+    def at(self, stage):
+        """The simulations of one earlier round as a classification of its own (F1: the sprint), so every race
+        payoff (top n, head-to-head, top team) prices it unchanged: rank = stage_rank[stage], with that stage's
+        finished and points (a stage without them: every entrant finished, no points)."""
+        if stage not in self.stage_rank:
+            raise ValueError(f"these simulations have no {stage} stage")
+        r = self.stage_rank[stage]
+        return OutcomeSims(entrants=self.entrants, rank=r, finished=self.stage_finished.get(stage, np.isfinite(r)),
+                           points=self.stage_points.get(stage), groups=self.groups)
 
     def to_records(self, run_id, sport, model_id, season, event_id, event, stage, cutoff, kinds=None):
         """Long-format prediction records (see `to_records` below)."""
@@ -65,12 +77,19 @@ class SeasonSims:
 
 def from_position_sim(entrants, sim):
     """F1 (position_sim): `pos` is the classification with retirements last, `grid` the qualifying order,
-    `fl` (with model.FASTEST_LAP) who set the fastest lap."""
+    `fl` (with model.FASTEST_LAP) who set the fastest lap; `stages` (sprint weekends, pricing.price_stages) adds
+    each side stage's classification, finished and points under its name and its grid under its grid session's
+    (stage_rank["sprint"], ["sprint_qual"])."""
     pos = sim["pos"]
+    stage_rank, finished, points = {"qual": sim["grid"]}, {}, {}
+    for stage, s in sim.get("stages", {}).items():
+        stage_rank[s["grid_from"]], stage_rank[stage] = s["grid"], s["pos"]
+        finished[stage], points[stage] = ~s["dnf"], s["points"]
     return OutcomeSims(entrants=entrants["athlete_id"].tolist(), rank=pos, finished=~sim["dnf"],
-                       stage_rank={"qual": sim["grid"]}, points=sim["points"],
+                       stage_rank=stage_rank, points=sim["points"],
                        groups=entrants["team_key"].tolist() if "team_key" in entrants else None,
-                       indicators={"race_fastest_lap": sim["fl"]} if "fl" in sim else {})
+                       indicators={"race_fastest_lap": sim["fl"]} if "fl" in sim else {},
+                       stage_finished=finished, stage_points=points)
 
 
 def from_timed_runs(riders, sim):
@@ -126,20 +145,25 @@ def to_records(sims, run_id, sport, model_id, season, event_id, event, stage, cu
 
     for kind in want:
         k = K.KINDS.get(kind)
-        if k is None or k.payoff == "standings":
+        if k is None or k.payoff == "standings" or (kinds is None and not k.default):
             continue
+        s = sims
+        if k.session is not None:              # a kind of an earlier round (the sprint): that round's view
+            if k.session not in sims.stage_rank:
+                continue
+            s = sims.at(k.session)
         if k.payoff in ("top_n", "stage_top_n", "reached", "indicator"):
             if kind not in summ:
                 continue
             for a, p in zip(sims.entrants, summ[kind]):
                 add(kind, a, {}, p)
         elif k.payoff == "h2h":
-            h = K.h2h_matrix(sims)
+            h = K.h2h_matrix(s)
             for i, a in enumerate(sims.entrants):
                 for j, b in enumerate(sims.entrants[i + 1:], i + 1):
                     add(kind, a, {"opponent_id": _py(b)}, h[i, j])
-        elif k.payoff == "group_top" and sims.groups is not None and sims.points is not None:
-            for g, p in K.group_top(sims).items():
+        elif k.payoff == "group_top" and s.groups is not None and s.points is not None:
+            for g, p in K.group_top(s).items():
                 add(kind, g, {"team": _py(g)}, p)
     df = pd.DataFrame(rows, columns=["kind", "subject", "params", "fair", "se"])
     ts = pd.Timestamp(cutoff).as_unit("ns") if cutoff is not None else pd.NaT
@@ -164,11 +188,17 @@ def save_sims(sims, path):
         arrays[f"reached__{k}"] = v
     for k, v in sims.indicators.items():
         arrays[f"indicators__{k}"] = v
+    for k, v in sims.stage_finished.items():
+        arrays[f"stage_finished__{k}"] = v
+    for k, v in sims.stage_points.items():
+        arrays[f"stage_points__{k}"] = v
     meta = dict(entrants=[_py(a) for a in sims.entrants], stage_rank=list(sims.stage_rank), reached=list(sims.reached),
                 groups=None if sims.groups is None else [_py(g) for g in sims.groups],
                 has_points=sims.points is not None)
     if sims.indicators:                       # left out when empty, so earlier archives' meta is unchanged
         meta["indicators"] = list(sims.indicators)
+    if sims.stage_finished or sims.stage_points:     # the same: only archives of a weekend with side stages
+        meta["stage_finished"], meta["stage_points"] = list(sims.stage_finished), list(sims.stage_points)
     with open(path, "wb") as f:
         np.savez_compressed(f, meta=np.array(json.dumps(meta)), **arrays)
 
@@ -182,5 +212,7 @@ def load_sims(path):
             stage_rank={k: z[f"stage_rank__{k}"] for k in meta["stage_rank"]},
             reached={k: z[f"reached__{k}"] for k in meta["reached"]},
             points=z["points"] if meta["has_points"] else None, groups=meta["groups"],
-            indicators={k: z[f"indicators__{k}"] for k in meta.get("indicators", [])})
+            indicators={k: z[f"indicators__{k}"] for k in meta.get("indicators", [])},
+            stage_finished={k: z[f"stage_finished__{k}"] for k in meta.get("stage_finished", [])},
+            stage_points={k: z[f"stage_points__{k}"] for k in meta.get("stage_points", [])})
 

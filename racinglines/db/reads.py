@@ -262,8 +262,8 @@ def model_prob(conn, link, _cache=None, run_id=None):
                 p = extra.get(kind.replace("race_", "") + "_prob")
                 if p is None:
                     p = extra.get("pole_prob") if kind == "race_sprint_pole" else df["win_prob"]
-            else:
-                p = df[PREDICTION_COLUMNS[kind]]
+            else:     # a kind no stored column holds (the sprint's podium, top 8, ...): unpriced, not an error
+                p = df.get(PREDICTION_COLUMNS.get(kind))
     if p is None or pd.isna(p):
         return None, run_id
     p = float(p)

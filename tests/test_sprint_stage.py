@@ -67,6 +67,8 @@ def test_a_weekend_without_a_sprint_prices_exactly_as_before(plain):
         b_summ, b_ex, b_nxt = _price(m, hist, cutoff, eid, stages=())       # no side stage at all
         pd.testing.assert_frame_equal(summ, b_summ)
         assert ex["constructor_top"] == b_ex["constructor_top"] and (nxt == b_nxt).all()
+        sims = O.from_position_sim(ex["entrants"], ex["sim"])
+        assert set(sims.stage_rank) == {"qual"} and not sims.stage_finished and not sims.stage_points
 
 
 def test_the_sprint_moves_no_grand_prix_price_or_the_callers_stream(sprint):
@@ -165,3 +167,105 @@ def test_a_future_weekend_takes_the_sprint_from_the_schedule(sprint):
     last = sched["round"].max()
     assert "sprint_win_prob" in by[last] and by[last]["sprint_win_prob"].sum() == pytest.approx(1.0, abs=0.02)
     assert all("sprint_win_prob" not in s for r, s in by.items() if r != last)
+
+
+# --- the sims and the kinds ---------------------------------------------------------------------------------
+
+def test_a_sprint_weekend_prices_race_sprint_win_from_its_sprint_stage(sprint):
+    from racinglines.markets import kinds as K
+    m, hist, eid = sprint
+    summ, ex, _ = _price(m, hist, _cutoffs(m, eid)["pre_sprint"], eid)
+    sims = O.from_position_sim(ex["entrants"], ex["sim"])
+    s = ex["sim"]["stages"]["sprint"]
+    assert sims.stage_rank["sprint"] is s["pos"] and sims.stage_rank["sprint_qual"] is s["grid"]
+    by = summ.set_index("athlete_id").loc[sims.entrants]
+    np.testing.assert_array_equal(K.fair("race_sprint_win", sims), (s["pos"] == 1).mean(0))
+    np.testing.assert_array_equal(K.fair("race_sprint_win", sims), by["sprint_win_prob"].to_numpy())
+    np.testing.assert_array_equal(K.fair("race_sprint_pole", sims), by["sprint_pole_prob"].to_numpy())
+    # the summary and the records gain the two sprint kinds (default) and nothing else
+    assert {"race_sprint_win", "race_sprint_pole"} <= set(K.summary(sims).columns)
+    assert not {"race_sprint_podium", "race_sprint_top8"} & set(K.summary(sims).columns)
+    rec = sims.to_records(1, "f1", "f1_sector_sim", 2026, eid, "2026-06", "after SQ", _cutoffs(m, eid)["pre_sprint"])
+    assert set(rec["kind"]) & {k for k in K.KINDS if k.startswith("race_sprint")} == {"race_sprint_win", "race_sprint_pole"}
+
+
+def test_sprint_kinds_are_the_race_payoffs_on_the_sprint_view(sprint):
+    from racinglines.markets import kinds as K
+    m, hist, eid = sprint
+    _, ex, _ = _price(m, hist, _cutoffs(m, eid)["pre_weekend"], eid)
+    sims = O.from_position_sim(ex["entrants"], ex["sim"])
+    s = ex["sim"]["stages"]["sprint"]
+    view = sims.at("sprint")
+    assert view.rank is s["pos"] and view.points is s["points"] and view.groups == sims.groups
+    np.testing.assert_array_equal(view.finished, ~s["dnf"])
+    for kind, n in (("race_sprint_podium", 3), ("race_sprint_top8", 8)):
+        assert not K.KINDS[kind].default and K.KINDS[kind].session == "sprint"
+        np.testing.assert_array_equal(K.fair(kind, sims), ((s["pos"] <= n) & ~s["dnf"]).mean(0))
+    a, b = sims.entrants[:2]
+    assert K.fair("race_sprint_h2h", sims, a, b) == (s["pos"][:, 0] < s["pos"][:, 1]).mean()
+    assert K.fair("race_sprint_h2h", sims, a, b) != K.fair("race_h2h", sims, a, b)
+    np.testing.assert_array_equal(K.fair("race_sprint_h2h", sims), K.h2h_matrix(view))
+    top = K.fair("race_sprint_constructor_top", sims)
+    assert top == K.group_top(view) and abs(sum(top.values()) - 1) < 1e-9
+    # none of them in the default records; named, they price the sprint
+    assert not {"race_sprint_h2h", "race_sprint_constructor_top"} & set(
+        sims.to_records(1, "f1", "m", 2026, eid, "e", "s", None)["kind"])
+    rec = sims.to_records(1, "f1", "m", 2026, eid, "e", "s", None, kinds=["race_sprint_h2h", "race_sprint_constructor_top"])
+    h = rec[(rec["kind"] == "race_sprint_h2h") & (rec["subject"] == str(a))].set_index("params")["fair"]
+    assert h[f'{{"opponent_id": {b}}}'] == K.fair("race_sprint_h2h", sims, a, b)
+    assert rec[rec["kind"] == "race_sprint_constructor_top"].set_index("subject")["fair"].to_dict() == top
+    # a weekend without a sprint has no sprint view: the sprint kinds aren't priced from the race
+    plain = O.from_position_sim(ex["entrants"], {k: ex["sim"][k] for k in GP_KEYS})
+    with pytest.raises(ValueError):
+        K.fair("race_sprint_podium", plain)
+    assert not {k for k in rec["kind"]} - {"race_sprint_h2h", "race_sprint_constructor_top"}
+    assert plain.to_records(1, "f1", "m", 2026, eid, "e", "s", None, kinds=["race_sprint_h2h"]).empty
+
+
+def test_save_and_load_round_trip_the_stage_arrays(sprint, tmp_path):
+    m, hist, eid = sprint
+    _, ex, _ = _price(m, hist, _cutoffs(m, eid)["pre_weekend"], eid)
+    sims = O.from_position_sim(ex["entrants"], ex["sim"])
+    O.save_sims(sims, tmp_path / "s.npz")
+    got = O.load_sims(tmp_path / "s.npz")
+    assert set(got.stage_rank) == {"qual", "sprint_qual", "sprint"}
+    for k in ("sprint_qual", "sprint"):
+        np.testing.assert_array_equal(got.stage_rank[k], sims.stage_rank[k])
+    np.testing.assert_array_equal(got.stage_finished["sprint"], sims.stage_finished["sprint"])
+    np.testing.assert_array_equal(got.stage_points["sprint"], sims.stage_points["sprint"])
+    # an archive without stages keeps its old meta (no new keys)
+    import json
+    plain = O.from_position_sim(ex["entrants"], {k: ex["sim"][k] for k in GP_KEYS})
+    O.save_sims(plain, tmp_path / "p.npz")
+    with np.load(tmp_path / "p.npz") as z:
+        assert set(json.loads(str(z["meta"]))) == {"entrants", "stage_rank", "reached", "groups", "has_points"}
+    assert not O.load_sims(tmp_path / "p.npz").stage_finished
+
+
+def test_sprint_kinds_settle_on_the_sprint_columns():
+    from racinglines.markets import kinds as K
+    res = pd.DataFrame(dict(athlete_id=[1, 2, 3, 4], position=[1, 2, 3, 4], status=["OK"] * 4, qual_position=[2, 1, 3, 4],
+                            team_id=["a", "a", "b", "b"], points=[25, 18, 15, 12],
+                            sprint_position=[4, 3, 1, 2], sprint_status=["OK", "OK", "OK", "DNF"],
+                            sprint_points=[2, 3, 8, 0], sprint_qual_position=[3, 4, 1, 2]))
+    assert K.settle("race_sprint_win", 3, None, res) is True and K.settle("race_sprint_win", 1, None, res) is False
+    assert K.settle("race_sprint_pole", 3, None, res) is True and K.settle("race_sprint_pole", 2, None, res) is False
+    assert K.settle("race_sprint_podium", 2, None, res) is True and K.settle("race_sprint_podium", 1, None, res) is False
+    assert K.settle("race_sprint_podium", 4, None, res) is False            # retired in the sprint
+    assert K.settle("race_sprint_top8", 4, None, res) is False and K.settle("race_sprint_top8", 1, None, res) is True
+    assert K.settle("race_sprint_h2h", 3, {"opponent_id": 1}, res) is True
+    assert K.settle("race_h2h", 3, {"opponent_id": 1}, res) is False        # the Grand Prix, unchanged
+    assert K.settle("race_sprint_constructor_top", None, {"team": "b"}, res) is True
+    assert K.settle("race_constructor_top", None, {"team": "a"}, res) is True
+    # before the sprint's results are in (or a weekend without one): undecidable, never settled from the race
+    gp = res[["athlete_id", "position", "status", "qual_position", "team_id", "points"]]
+    for kind in ("race_sprint_podium", "race_sprint_top8", "race_sprint_h2h", "race_sprint_constructor_top"):
+        assert K.settle(kind, 1, {"opponent_id": 2, "team": "a"}, gp) is None, kind
+    assert K.settle("race_sprint_podium", 1, None, res.assign(sprint_status=None)) is None
+
+
+def test_every_head_to_head_kind_is_a_binary_market_for_the_cancelled_race_rules():
+    from racinglines.markets import kinds as K
+    from racinglines.markets import settlement_rules as SR
+    assert SR.BINARY_KINDS == {k for k, v in K.KINDS.items() if v.payoff == "h2h"}
+    assert SR.payout("polymarket", SR.CANCELLED, "race_sprint_h2h") == 0.5
