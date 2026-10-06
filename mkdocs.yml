@@ -32,6 +32,9 @@ nav:
       - Kalshi history: kalshi-history.md
       - Exchanges as schemas (OG.com): exchanges.md
   - Road cycling (book lines): road-cycling.md
+  - Sportsbook schema (draft):
+      - Schema, CLI and MCP surface: sportsbook/index.md
+      - Market vocabulary: sportsbook/vocabulary.md
   - Downhill:
       - Downhill model: model.md
       - Downhill evaluation: evaluation.md
