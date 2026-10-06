@@ -64,6 +64,15 @@ regex, every line either `"unmapped"` or a market table carrying the driver / te
 `exchanges/`, `docs/exchanges.md:26`). The five classification kinds the vocabulary needed are in the registry with
 `fair` and `settle` (`kinds.py`, `default=False`, so the app's summaries and the golden tests are unchanged).
 
+**Adding a market type** (owner, 2026-10-06: "as few conditional code switches in the model, and more generalized
+support functions who's inputs are set by the schemas"). The classification and retirement kinds are declarative: one
+`[[kinds]]` table each in `markets/kinds.toml` with a payoff spec (`subject` driver / team / field, a `predicate` on one
+car, an `aggregate` for a team or the field, `compare = "over"` for a line), priced and settled by the two generic
+functions of `racinglines/markets/payoffs.py`. A new market type is a new table there plus a venue rule line; code
+changes only when it needs a predicate the table doesn't have yet. The legacy kinds (win, podium, pole, head-to-head,
+top constructor, standings, ...) keep their code in `kinds.py` until a later migration under the promotion rule, since
+their fair values feed the golden tests and the live book.
+
 **What the exchanges list today, for the rules files.** Polymarket's safety car / red flag / rain questions are linked but
 unpriced (`docs/f1.md:178-181`); Kalshi sprint markets price from the stand-in; Kalshi retirements and "race occurrence"
 are `unmodeled` (`kalshi/sync.py:25-28`); OG.com lists only champions and Race Winner (`docs/exchanges.md:34-40`).
@@ -90,5 +99,5 @@ back, and the owner's ledger stays a file outside the app.
 ## Vocabulary
 
 [vocabulary.md](vocabulary.md), generated from [`schemas/kinds-vocabulary.toml`](schemas/kinds-vocabulary.toml):
-49 kinds, 29 in the registry (16 before this branch, 13 added here: classified, last classified, both cars classified, at least one car classified, both cars in the points, number classified, winning constructor, retire, number of retirements, first, second and third retirement, first retiring constructor), 3 in `props.py` only, 16 proposed, 1 with no data source; 17 seen on two or more
+49 kinds, 29 of them in the registry (which holds 30: 17 before this branch, 13 declared in `markets/kinds.toml` on it: classified, last classified, both cars classified, at least one car classified, both cars in the points, number classified, winning constructor, retire, number of retirements, first, second and third retirement, first retiring constructor), 3 in `props.py` only, 16 proposed, 1 with no data source; 17 seen on two or more
 venues, 20 seen only on sportsbook A.

@@ -1,0 +1,114 @@
+# Declarative market kinds: one [[kinds]] table per kind, read by racinglines/markets/payoffs.py and added to the
+# registry (racinglines/markets/kinds.py KINDS) after the legacy kinds, in this file's order. A kind is a payoff spec,
+# not code: the same spec prices it from a model's simulations (payoffs.fair) and settles it from the official
+# classification (payoffs.settle). A new market type is a new table here; code changes only for a new predicate.
+#
+# [kinds.payoff]
+#   subject    driver | team | field           who a selection names (field: the whole race, one yes/no with a line)
+#   predicate  classified | retired | top | last_classified | nth_retired       what holds for one car
+#   n          top: rank <= n and finished; nth_retired: the n-th retirement (1 = the first)
+#   aggregate  any | all | sum | count         how a team's or the field's cars combine (omitted for driver)
+#   compare    over                            P(aggregate > line); the line is given when pricing or settling
+# [kinds.settle]   optional: overrides of the payoff spec for settlement, plus
+#   absent     no | void                       a driver missing from the results settles NO or void (default void)
+#
+# Predicates on the simulations: classified = sims.finished; retired = not finished; top = rank <= n and finished;
+# last_classified = the worst-ranked classified car (ties all); nth_retired = 1 / n_dnf for every retiring car in a
+# simulation with at least n retirements, else 0 (the simulations draw who retires, not when: every retiring car is
+# equally likely to be the n-th out, the uniform timing assumption).
+# On the results frame: classified = status OK; retired = status DNF or DSQ (a DNS is void); top = OK and
+# position <= n; last_classified = OK and position == the worst OK position (void when nobody is classified);
+# nth_retired = among status DNF (a DSQ is decided after the flag), competition rank ("min") of laps_completed == n,
+# void without a laps_completed for every DNF, NO for everyone when nobody retired.
+#
+# default = false on every kind: left out of kinds.summary(), the prediction records and the walk-forward default set,
+# so adding one changes no existing output and no golden test.
+
+# ---- classification (docs/sportsbook/, sportsbook A's "To Be Classified?", "Both Cars Classified?", "Number Of
+# Classified Drivers", "Classified As Last Finisher", "Race Winning Constructor"). The 90%-distance rule is not modelled.
+
+[[kinds]]
+code = "race_classified"
+label = "Classified"
+default = false
+payoff = { subject = "driver", predicate = "classified" }
+settle = { absent = "no" }
+
+[[kinds]]
+code = "race_last_classified"
+label = "Last classified finisher"
+default = false
+payoff = { subject = "driver", predicate = "last_classified" }
+settle = { absent = "no" }
+
+[[kinds]]
+code = "race_team_both_classified"
+label = "Both cars classified"
+default = false
+payoff = { subject = "team", predicate = "classified", aggregate = "all" }
+
+[[kinds]]
+code = "race_n_classified"
+label = "Classified drivers over the line"
+default = false
+payoff = { subject = "field", predicate = "classified", aggregate = "count", compare = "over" }
+
+[[kinds]]
+code = "race_constructor_win"
+label = "Winning constructor"
+default = false
+payoff = { subject = "team", predicate = "top", n = 1, aggregate = "any" }
+
+# ---- retirements (docs/sportsbook/vocabulary.md; decision log 2026-10-06, provisional). race_retire is "To Be
+# Classified? No" / "Will X retire". The book's "no retirement" selection is the NO side of race_n_retirements at 0.5.
+
+[[kinds]]
+code = "race_retire"
+label = "Retires (DNF)"
+default = false
+payoff = { subject = "driver", predicate = "retired" }
+
+[[kinds]]
+code = "race_n_retirements"
+label = "Retirements over the line"
+default = false
+payoff = { subject = "field", predicate = "retired", aggregate = "count", compare = "over" }
+
+[[kinds]]
+code = "race_first_retirement"
+label = "First retirement"
+default = false
+payoff = { subject = "driver", predicate = "nth_retired", n = 1 }
+
+[[kinds]]
+code = "race_first_retirement_team"
+label = "First constructor to retire"
+default = false
+payoff = { subject = "team", predicate = "nth_retired", n = 1, aggregate = "sum" }
+
+# Owner (2026-10-06): "if we have DID RETIRE add DID RETIRE 1st and so on", and team versions of the per-driver
+# classification kinds.
+
+[[kinds]]
+code = "race_second_retirement"
+label = "Second retirement"
+default = false
+payoff = { subject = "driver", predicate = "nth_retired", n = 2 }
+
+[[kinds]]
+code = "race_third_retirement"
+label = "Third retirement"
+default = false
+payoff = { subject = "driver", predicate = "nth_retired", n = 3 }
+
+[[kinds]]
+code = "race_team_any_classified"
+label = "At least one car classified"
+default = false
+payoff = { subject = "team", predicate = "classified", aggregate = "any" }
+
+[[kinds]]
+code = "race_team_both_points"
+label = "Both cars in the points"
+default = false
+payoff = { subject = "team", predicate = "top", n = 10, aggregate = "all" }

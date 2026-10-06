@@ -10,29 +10,42 @@ result. Any sport whose model returns an `OutcomeSims` gets every kind here with
 
 Settlement reads the result frame of private_book.race_outcomes (athlete_id, position, status,
 qual_position, team_id, points) and is what private_book.outcome_for returns.
+
+Two kinds of kind. The declarative kinds (the sportsbook classification and retirement markets) are specs in
+markets/kinds.toml: subject / predicate / aggregate / compare, priced and settled by the two generic functions of
+racinglines/markets/payoffs.py, so a new one is a table in that file, not a branch here (owner, 2026-10-06: "as few
+conditional code switches in the model, and more generalized support functions who's inputs are set by the
+schemas"). The legacy kinds below (payoffs top_n, stage_top_n, reached, h2h, group_top, standings, indicator,
+mover) keep their code in this change: their fair values feed the golden tests and the live book, and moving them
+onto specs is a later change under the promotion rule (docs/f1-roadmap.md).
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
+
+from racinglines.markets import payoffs as P
+
+first_retired = P.first_retired          # re-exported (tests/test_kinds.py)
 
 
 @dataclass(frozen=True)
 class Kind:
     code: str
-    payoff: str               # top_n | stage_top_n | h2h | reached | group_top | indicator | mover | classified | ... |
-                              # retired | count_retired_over | first_retired | group_first_retired | standings (not from sims)
+    payoff: str               # top_n | stage_top_n | h2h | reached | group_top | indicator | mover | standings (not from
+                              # sims) | spec (a declarative kind: markets/kinds.toml, priced and settled by payoffs.py)
     n: int | None = None      # top_n / stage_top_n
     stage: str | None = None  # stage_top_n / mover: which earlier round (sims.stage_rank key); reached: which round
     label: str = ""
     default: bool = True      # False: priced only when named (fair(), a model's own summary); left out of summary(),
                               # to_records and the walk-forward default set, so adding one changes no existing output
+    spec: dict | None = field(default=None, compare=False)   # payoff "spec": {"payoff": {...}, "settle": {...}}
 
 
 # Declared in the order the readers list prediction kinds (db/reads.PREDICTION_KINDS is derived from it).
 # payoff "standings": season-long markets read from a model run's standings, not priced from an OutcomeSims.
-KINDS = {k.code: k for k in (
+LEGACY = (
     Kind("race_win", "top_n", n=1, label="Win"),
     Kind("race_podium", "top_n", n=3, label="Podium"),
     Kind("race_top10", "top_n", n=10, label="Top 10"),
@@ -59,45 +72,27 @@ KINDS = {k.code: k for k in (
     # gained; every driver tied on that gain counts as YES (docs/f1-roadmap.md decision log, 2026-10-04)
     Kind("race_top5", "top_n", n=5, label="Top 5", default=False),
     Kind("race_biggest_mover", "mover", stage="qual", label="Biggest mover", default=False),
-    # Sportsbook classification markets (docs/sportsbook/, sportsbook A's "To Be Classified?", "Both Cars Classified?",
-    # "Number Of Classified Drivers", "Classified As Last Finisher", "Race Winning Constructor"), drawn from the same
-    # simulations. "Classified" means the car is not a DNF (sims.finished); settlement reads status == "OK", the top_n
-    # convention. The 90%-distance rule is not modelled. default=False keeps them out of summary() and the records.
-    Kind("race_classified", "classified", label="Classified", default=False),
-    Kind("race_last_classified", "last_classified", label="Last classified finisher", default=False),
-    Kind("race_team_both_classified", "group_all_classified", label="Both cars classified", default=False),
-    Kind("race_n_classified", "count_over", label="Classified drivers over the line", default=False),
-    Kind("race_constructor_win", "group_win", label="Winning constructor", default=False),
-    # Retirements (docs/sportsbook/vocabulary.md; decision log 2026-10-06, provisional): a retirement is a DNF in the
-    # simulations (not sims.finished) and status DNF or DSQ in the results (DNS: a non-starter, void). race_retire is
-    # "To Be Classified? No" / "Will X retire". The simulations have no retirement timing, so first retirement assumes
-    # every car retiring in a simulation is equally likely to be the first out (uniform timing assumption):
-    # P(X first) = mean over sims of dnf_X / n_dnf (0 when nobody retires); settled on laps completed.
-    Kind("race_retire", "retired", label="Retires (DNF)", default=False),
-    Kind("race_n_retirements", "count_retired_over", label="Retirements over the line", default=False),
-    Kind("race_first_retirement", "first_retired", label="First retirement", default=False),
-    Kind("race_first_retirement_team", "group_first_retired", label="First constructor to retire", default=False),
-    # Owner (2026-10-06): "if we have DID RETIRE add DID RETIRE 1st and so on", and team versions of the per-driver
-    # classification kinds. nth_retired is first_retired's uniform timing carried on: P(X is the n-th retirement) =
-    # mean over sims of dnf_X / n_dnf when at least n cars retire. Settled on laps completed with competition
-    # ranking (ties share the lower place; a place nobody holds settles NO for everyone).
-    Kind("race_second_retirement", "nth_retired", n=2, label="Second retirement", default=False),
-    Kind("race_third_retirement", "nth_retired", n=3, label="Third retirement", default=False),
-    Kind("race_team_any_classified", "group_any_classified", label="At least one car classified", default=False),
-    Kind("race_team_both_points", "group_all_points", n=10, label="Both cars in the points", default=False),
-)}
+)
 
-RETIRED = ("DNF", "DSQ")      # result statuses that count as a retirement (race_retire, race_n_retirements)
+# The declarative kinds (markets/kinds.toml), after the legacy ones in the file's order: the sportsbook classification
+# markets (docs/sportsbook/) and the retirements (decision log 2026-10-06, provisional), all default=False.
+KINDS = {k.code: k for k in LEGACY + tuple(
+    Kind(e["code"], "spec", label=e["label"], default=e["default"], spec=e) for e in P.load().values())}
 
 
 # --- fair values ---------------------------------------------------------------------------------------
 
 def fair(kind, sims, a=None, b=None, line=None):
     """Fair probability of YES. Per-entrant kinds return an array over sims.entrants (or one value with
-    `a` = an athlete id); race_h2h needs a and b; the group kinds (race_constructor_top, race_constructor_win,
-    race_team_both_classified, race_first_retirement_team) return {group: probability}; race_n_classified and
-    race_n_retirements need `line` and return P(over)."""
+    `a` = an athlete id); race_h2h needs a and b; race_constructor_top and the team kinds of markets/kinds.toml
+    return {group: probability}; its field kinds with compare over (race_n_classified, race_n_retirements) need
+    `line` and return P(over)."""
     k = KINDS[kind]
+    if k.spec is not None:
+        try:
+            return P.fair(k.spec["payoff"], sims, a=a, line=line)
+        except ValueError as e:
+            raise ValueError(f"{kind}: {e}") from None
     if k.payoff == "h2h":
         if a is None:
             return h2h_matrix(sims)
@@ -105,25 +100,8 @@ def fair(kind, sims, a=None, b=None, line=None):
         return float((sims.rank[:, i] < sims.rank[:, j]).mean())
     if k.payoff == "group_top":
         return group_top(sims)
-    if k.payoff in ("group_win", "group_all_classified", "group_first_retired", "group_any_classified", "group_all_points"):
-        return group_fair(k.payoff, sims, k.n)
-    if k.payoff in ("count_over", "count_retired_over"):
-        if line is None:
-            raise ValueError(f"{kind} needs a line (e.g. 18.5)")
-        n = sims.finished.sum(axis=1) if k.payoff == "count_over" else (~sims.finished).sum(axis=1)
-        return float((n > line).mean())
     if k.payoff == "top_n":
         p = ((sims.rank <= k.n) & sims.finished).mean(0)
-    elif k.payoff == "classified":
-        p = sims.finished.mean(0)
-    elif k.payoff == "last_classified":
-        p = last_classified(sims.rank, sims.finished).mean(0)
-    elif k.payoff == "retired":
-        p = 1.0 - sims.finished.mean(0)
-    elif k.payoff == "first_retired":
-        p = first_retired(sims.finished).mean(0)
-    elif k.payoff == "nth_retired":
-        p = nth_retired(sims.finished, k.n).mean(0)
     elif k.payoff == "stage_top_n":
         p = (sims.stage_rank[k.stage] <= k.n).mean(0)
     elif k.payoff == "reached":
@@ -149,57 +127,6 @@ def biggest_mover(grid, rank, finished):
     gain = np.where(finished, np.asarray(grid, float) - rank, -np.inf)
     best = gain.max(axis=1, keepdims=True)
     return (gain == best) & (best > 0)
-
-
-def last_classified(rank, finished):
-    """(n_sims, n) bool: the classified car with the worst rank in each simulation (everyone tied on it counts);
-    nobody when no car is classified."""
-    r = np.where(finished, np.asarray(rank, float), -np.inf)
-    worst = r.max(axis=1, keepdims=True)
-    return (r == worst) & np.isfinite(worst)
-
-
-def first_retired(finished):
-    """(n_sims, n) float: each car's chance of being the first retirement in each simulation, under the uniform
-    timing assumption (the simulations draw who retires, not when): 1 / n_dnf for every retiring car, 0 for the
-    rest and for every car when nobody retires. Rows sum to 1, or 0 with no retirement."""
-    dnf = ~np.asarray(finished, bool)
-    n = dnf.sum(axis=1, keepdims=True)
-    return np.where(dnf, 1.0 / np.maximum(n, 1), 0.0)
-
-
-def nth_retired(finished, n):
-    """(n_sims, n_cars) float: each car's chance of being the n-th retirement under the uniform timing assumption:
-    first_retired's 1 / n_dnf for every retiring car in a simulation with at least n retirements, else 0."""
-    dnf = ~np.asarray(finished, bool)
-    enough = dnf.sum(axis=1, keepdims=True) >= n
-    return np.where(enough, first_retired(finished), 0.0)
-
-
-def group_fair(payoff, sims, n=None):
-    """{group: probability} for the per-team yes/no kinds: group_win = the winner (rank 1, classified) drives for
-    the team; group_all_classified = every one of the team's cars is classified; group_any_classified = at least
-    one is; group_all_points = every one is classified in the top n (10: the points); group_first_retired = the
-    first retirement drives for the team (first_retired's uniform timing; the book's "no retirement" selection is
-    the NO side of race_n_retirements at 0.5)."""
-    if sims.groups is None:
-        raise ValueError("group markets need groups")
-    g = np.array(sims.groups)
-    out = {}
-    for key in sorted(set(sims.groups)):
-        cols = g == key
-        if payoff == "group_win":
-            hit = ((sims.rank[:, cols] == 1) & sims.finished[:, cols]).any(axis=1)
-        elif payoff == "group_first_retired":
-            hit = first_retired(sims.finished)[:, cols].sum(axis=1)
-        elif payoff == "group_any_classified":
-            hit = sims.finished[:, cols].any(axis=1)
-        elif payoff == "group_all_points":
-            hit = ((sims.rank[:, cols] <= n) & sims.finished[:, cols]).all(axis=1)
-        else:
-            hit = sims.finished[:, cols].all(axis=1)
-        out[key] = float(hit.mean())
-    return out
 
 
 def h2h_matrix(sims):
@@ -275,11 +202,13 @@ def standings_position(ss, n):
 def settle(kind, athlete_id, params, res, group_key=None):
     """YES/NO for a race market from the official classification (None if undecidable).
     group_key: maps a result's team_id to the group key the market names (F1: position_sim team_key).
-    First retirement reads a `laps_completed` column when the frame has one (the caller adds it; nothing here
+    The n-th retirement kinds read a `laps_completed` column when the frame has one (the caller adds it; nothing here
     queries the database): the DNF with the fewest laps is first, every tied driver YES."""
     if res.empty:
         return None
     k = KINDS.get(kind)
+    if k is not None and k.spec is not None:
+        return P.settle(k.spec["settle"], athlete_id, params, res, group_key=group_key)
     if k is None or k.payoff == "standings":
         return None
     by = res.set_index("athlete_id")
@@ -312,55 +241,4 @@ def settle(kind, athlete_id, params, res, group_key=None):
         keys =res["team_id"].map(group_key) if group_key else res["team_id"]
         pts = res.assign(tk=keys).groupby("tk")["points"].sum()
         return bool(pts.idxmax() == (params or {}).get("team")) if len(pts) else None
-    ok = res["status"] == "OK"
-    if k.payoff == "classified":
-        return bool(ok[res["athlete_id"] == athlete_id].any()) if athlete_id in by.index else False
-    if k.payoff == "last_classified":
-        if not ok.any():
-            return None
-        worst = res.loc[ok, "position"].max()
-        return bool((ok & (res["position"] == worst) & (res["athlete_id"] == athlete_id)).any())
-    if k.payoff == "count_over":
-        line = (params or {}).get("line")
-        return None if line is None else bool(int(ok.sum()) > float(line))
-    retired = res["status"].isin(RETIRED)
-    if k.payoff == "retired":
-        if athlete_id not in by.index:
-            return None
-        st = res.loc[res["athlete_id"] == athlete_id, "status"].iloc[0]
-        return None if st == "DNS" else bool(st in RETIRED)
-    if k.payoff == "count_retired_over":
-        line = (params or {}).get("line")
-        return None if line is None else bool(int(retired.sum()) > float(line))
-    if k.payoff in ("first_retired", "group_first_retired", "nth_retired"):
-        if k.payoff in ("first_retired", "nth_retired"):
-            if athlete_id not in by.index:
-                return None
-            mine = res["athlete_id"] == athlete_id
-        else:
-            keys = res["team_id"].map(group_key) if group_key else res["team_id"]
-            mine = keys == (params or {}).get("team")
-            if not mine.any():
-                return None
-        dnf = res["status"] == "DNF"         # a DSQ is decided after the flag, not a car stopping first
-        if not dnf.any():
-            return False                     # nobody retired: every driver (and team) is a NO
-        if "laps_completed" not in res or res.loc[dnf, "laps_completed"].isna().any():
-            return None
-        place = res.loc[dnf, "laps_completed"].rank(method="min")          # competition ranking: ties share the place
-        nth = dnf & (place.reindex(res.index) == (k.n if k.payoff == "nth_retired" else 1))
-        return bool((nth & mine).any())
-    if k.payoff in ("group_win", "group_all_classified", "group_any_classified", "group_all_points"):
-        keys = res["team_id"].map(group_key) if group_key else res["team_id"]
-        team = (params or {}).get("team")
-        members = keys == team
-        if not members.any():
-            return None
-        if k.payoff == "group_win":
-            return bool((members & ok & (res["position"] == 1)).any())
-        if k.payoff == "group_any_classified":
-            return bool(ok[members].any())
-        if k.payoff == "group_all_points":
-            return bool((ok & (res["position"] <= k.n))[members].all())
-        return bool(ok[members].all())
     return None

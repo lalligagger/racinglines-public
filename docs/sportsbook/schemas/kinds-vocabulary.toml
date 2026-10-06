@@ -6,6 +6,7 @@
 # screenshots (4 groups), sportsbook B Singapore winner board (1 group), the ledger's Malaysia rows (sportsbook A, 2026-10-03),
 # Kalshi series and Polymarket events from docs/f1.md and markets/kalshi/sync.py, OG.com from exchanges/og.toml, and
 # the VM's list_markets for Singapore (MCP, 2026-10-06). Nothing reads this file yet.
+# The registry definitions of the declarative kinds (subject / predicate / aggregate / compare) live in markets/kinds.toml.
 
 [meta]
 subjects = ["driver", "team", "pair", "line", "none"]   # what a selection names; "none" = a yes/no on the race itself

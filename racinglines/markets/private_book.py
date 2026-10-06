@@ -329,7 +329,8 @@ def outcome_for(kind, athlete_id, params, res):
     from racinglines.markets import kinds as K
     from racinglines.models.position_sim.model import team_key
     k = K.KINDS.get(kind)
-    grouped = k is not None and k.payoff in ("group_top", "group_win", "group_all_classified", "group_first_retired", "group_any_classified", "group_all_points")
+    # a team market: a declarative kind whose subject is a team (markets/kinds.toml), or the legacy group_top
+    grouped = k is not None and ((k.spec or {}).get("payoff", {}).get("subject") == "team" or k.payoff == "group_top")
     return K.settle(kind, athlete_id, params, res, group_key=team_key if grouped else None)
 
 

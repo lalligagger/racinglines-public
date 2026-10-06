@@ -156,16 +156,22 @@ def _market(m, field, problems):
         problems.append(f"{field}.side: {m['side']!r} not in {SIDES}")
     if "line" in m and (isinstance(m["line"], bool) or not isinstance(m["line"], (int, float))):
         problems.append(f"{field}.line: {m['line']!r} is not a number")
-    payoff = K.KINDS[kind].payoff if kind in K.KINDS else None
-    if payoff in ("top_n", "stage_top_n", "classified", "last_classified", "retired", "first_retired", "nth_retired", "indicator", "mover") \
-            and "driver" not in m:
+    k = K.KINDS.get(kind)
+    if k is not None and k.spec is not None:            # a declarative kind: its spec says what a selection names
+        spec = k.spec["payoff"]
+        need = {"driver": ("driver",), "team": ("team",), "field": ()}[spec["subject"]] + \
+            (("line",) if spec.get("compare") == "over" else ())
+        for f in need:
+            if f not in m:
+                problems.append(f"{field}: kind {kind} " + ("needs a line" if f == "line" else f"names a {f}"))
+        return
+    payoff = k.payoff if k is not None else None
+    if payoff in ("top_n", "stage_top_n", "indicator", "mover") and "driver" not in m:
         problems.append(f"{field}: kind {kind} names a driver")
-    if payoff in ("group_top", "group_win", "group_all_classified", "group_first_retired", "group_any_classified", "group_all_points") and "team" not in m:
+    if payoff == "group_top" and "team" not in m:
         problems.append(f"{field}: kind {kind} names a team")
     if payoff == "h2h" and ("driver" not in m or "opponent" not in m):
         problems.append(f"{field}: kind {kind} names a driver and an opponent")
-    if payoff in ("count_over", "count_retired_over") and "line" not in m:
-        problems.append(f"{field}: kind {kind} needs a line")
 
 
 def validate_event(d, path="event"):
