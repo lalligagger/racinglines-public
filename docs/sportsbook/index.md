@@ -8,8 +8,8 @@ library; this page is the part the repo needs: the schema, the vocabulary, the C
 The owner's rule: sportsbook analysis is CLI only, outside the app and its database for now, and events are defined by
 schemas that no venue owns. The repo already defines sports (`sports/<code>.toml`), exchanges (`exchanges/<code>.toml`,
 read by `racinglines/exchanges.py`) and input frames (`racinglines/frames/schema.py`) as data with a validator. The
-proposal adds three more files of the same kind. Draft examples, parsed with `tomllib` and built from real board rows,
-are in `library/roadmap/schemas/`; nothing in the repo reads them yet.
+proposal adds three more files of the same kind. Draft examples, built from real board rows, are under
+[`schemas/`](schemas/) and load through `racinglines/books/schema.py` (`tests/test_books_schema.py` loads every one).
 
 | File | One per | Holds | Example |
 |---|---|---|---|
@@ -41,10 +41,15 @@ decision-log entry. Sportsbook lines stay out of `market_links`, the disagreemen
 owner says otherwise; CLV for hand-placed bets is computed by the CLI from the book's own later captures (or an
 exchange's close as a proxy, `docs/todo.md:279`) into the ledger's `closing_odds` column.
 
-**Validation.** A `racinglines/books/schema.py` in the style of `frames/schema.py`: required sections and fields, odds
-format checks (decimal > 1, American ≠ 0), every `market.kind` in `kinds.KINDS`, every line either mapped or
-`unmapped`, times in UTC, and a test that loads every file under `events/`, `venues/` and `books/` (as
-`tests/test_exchange_schema.py` does for `exchanges/`, `docs/exchanges.md:26`).
+**Validation** (built, second commit). `racinglines/books/schema.py` in the style of `frames/schema.py`: `load_event`,
+`load_venue`, `load_book` and `load` (picks the schema from the top-level table) return the parsed dict or raise
+`BookError` listing every problem with its field: required sections and fields, odds that can be odds in the file's
+format (decimal > 1, American an integer of at least 100 either way, prob in (0, 1)), UTC times (ISO 8601 ending in `Z`,
+or `"unknown"` for a session), every `market.kind` in `kinds.KINDS` or `props.PROP_KINDS`, every rule title a compilable
+regex, every line either `"unmapped"` or a market table carrying the driver / team / opponent / line its payoff needs.
+`tests/test_books_schema.py` loads every example under `schemas/` (as `tests/test_exchange_schema.py` does for
+`exchanges/`, `docs/exchanges.md:26`). The five classification kinds the vocabulary needed are in the registry with
+`fair` and `settle` (`kinds.py`, `default=False`, so the app's summaries and the golden tests are unchanged).
 
 **What the exchanges list today, for the rules files.** Polymarket's safety car / red flag / rain questions are linked but
 unpriced (`docs/f1.md:178-181`); Kalshi sprint markets price from the stand-in; Kalshi retirements and "race occurrence"
