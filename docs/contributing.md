@@ -18,6 +18,8 @@ server and in a private bucket.
 - **Ask us** at [hello@racinglines.bet](mailto:hello@racinglines.bet?subject=racinglines%20test%20fixtures)
   for the pinned fixture bundle (about 2 MB). Unpacked into `tests/fixtures/`, the regression suite matches the
   golden outputs exactly.
+- **With access to the private repository** (the owner's machines and cloud sessions):
+  `bash scripts/restore_test_fixtures.sh` copies the pinned set from its git into `tests/fixtures/`, untracked.
 - **Build them yourself** from the original public sources with `python scripts/fetch_test_fixtures.py --refresh`
   (needs Postgres; the F1 part can take up to an hour because FastF1 is rate limited). Today's data differs a
   little from the pinned set, so expect some golden tests to differ: that's fine for development.
