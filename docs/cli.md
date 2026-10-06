@@ -302,6 +302,13 @@ on the timed-runs engine: `events`, `fetch itt|road`, `startlist <event>`, `pric
 classification (`models/position_sim/dnf_check.py`). Both are read-only; see the decision log of 2026-10-06 in
 [F1 roadmap](f1-roadmap.md#decision-log).
 
+`--forecast <csv> [--lead N]` (the rain forecast by lead, `racinglines/weather/leads.py`; lead 5 by default) adds the
+weather-aware variants to both: `circuit-WX` to `--check` and `model-WX` to `--dnf-check` (which then also needs
+`--history <csv>`, or reads the history from the database), each with its paired Brier difference against the plain
+method. `--forecast-skill --forecast <csv> --history <csv>` scores the forecast itself at every lead (Brier, log loss,
+hit rate, and the paired difference against the circuit's climatology). See
+[F1: weather-aware (-WX) variants](f1.md#weather-aware-wx-variants).
+
 ## racinglines weather
 
 Weather forecasts per event in one provider-agnostic frame: `probe --lat --lon [--out]`, `fetch <event_key> --lat

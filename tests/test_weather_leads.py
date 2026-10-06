@@ -214,3 +214,20 @@ def test_dnf_check_adds_model_wx(tmp_path):
     assert s.loc["model-WX - model", "brier"] == pytest.approx(((wx - yy) ** 2).mean() - ((np.tile(p, 2) - yy) ** 2).mean())
     assert "model-WX on the 2 races" in DC.render(out) and "model-WX - model" in DC.render(out)
     assert list(DC.check(df, forecast=fc)["summary"]["method"]) == ["model", "field", "race_mean"]   # needs both
+
+
+@pytest.mark.quick
+def test_cli_runs_the_wx_checks_on_csvs(tmp_path, capsys):
+    from racinglines.cli import f1
+    leads, hist = _leads_csv(tmp_path), tmp_path / "history.csv"
+    _history().to_csv(hist, index=False)
+    f1.main(["props", "--forecast-skill", "--forecast", str(leads), "--history", str(hist)])
+    out = capsys.readouterr().out
+    assert "climatology" in out and "analysis" in out and "brier_vs_clim" in out
+    f1.main(["props", "--check", "--from", "2024", "--history", str(hist), "--forecast", str(leads), "--lead", "2"])
+    assert "circuit-WX - circuit" in capsys.readouterr().out
+    dnf = tmp_path / "dnf.csv"
+    pd.DataFrame([dict(race_id=20, run_id=1, cutoff="2025-01-01", athlete_id=a, team="t", dnf_prob=0.1 * (a + 1),
+                       status="DNF" if a == 2 else "OK") for a in range(4)]).to_csv(dnf, index=False)
+    f1.main(["props", "--dnf-check", str(dnf), "--history", str(hist), "--forecast", str(leads)])
+    assert "model-WX - model" in capsys.readouterr().out
