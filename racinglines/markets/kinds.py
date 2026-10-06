@@ -21,7 +21,8 @@ import pandas as pd
 @dataclass(frozen=True)
 class Kind:
     code: str
-    payoff: str               # top_n | stage_top_n | h2h | reached | group_top | indicator | mover | standings (not from sims)
+    payoff: str               # top_n | stage_top_n | h2h | reached | group_top | indicator | mover | classified | ... |
+                              # retired | count_retired_over | first_retired | group_first_retired | standings (not from sims)
     n: int | None = None      # top_n / stage_top_n
     stage: str | None = None  # stage_top_n / mover: which earlier round (sims.stage_rank key); reached: which round
     label: str = ""
@@ -67,7 +68,18 @@ KINDS = {k.code: k for k in (
     Kind("race_team_both_classified", "group_all_classified", label="Both cars classified", default=False),
     Kind("race_n_classified", "count_over", label="Classified drivers over the line", default=False),
     Kind("race_constructor_win", "group_win", label="Winning constructor", default=False),
+    # Retirements (docs/sportsbook/vocabulary.md; decision log 2026-10-06, provisional): a retirement is a DNF in the
+    # simulations (not sims.finished) and status DNF or DSQ in the results (DNS: a non-starter, void). race_retire is
+    # "To Be Classified? No" / "Will X retire". The simulations have no retirement timing, so first retirement assumes
+    # every car retiring in a simulation is equally likely to be the first out (uniform timing assumption):
+    # P(X first) = mean over sims of dnf_X / n_dnf (0 when nobody retires); settled on laps completed.
+    Kind("race_retire", "retired", label="Retires (DNF)", default=False),
+    Kind("race_n_retirements", "count_retired_over", label="Retirements over the line", default=False),
+    Kind("race_first_retirement", "first_retired", label="First retirement", default=False),
+    Kind("race_first_retirement_team", "group_first_retired", label="First constructor to retire", default=False),
 )}
+
+RETIRED = ("DNF", "DSQ")      # result statuses that count as a retirement (race_retire, race_n_retirements)
 
 
 # --- fair values ---------------------------------------------------------------------------------------
@@ -75,7 +87,8 @@ KINDS = {k.code: k for k in (
 def fair(kind, sims, a=None, b=None, line=None):
     """Fair probability of YES. Per-entrant kinds return an array over sims.entrants (or one value with
     `a` = an athlete id); race_h2h needs a and b; the group kinds (race_constructor_top, race_constructor_win,
-    race_team_both_classified) return {group: probability}; race_n_classified needs `line` and returns P(over)."""
+    race_team_both_classified, race_first_retirement_team) return {group: probability}; race_n_classified and
+    race_n_retirements need `line` and return P(over)."""
     k = KINDS[kind]
     if k.payoff == "h2h":
         if a is None:
@@ -84,18 +97,23 @@ def fair(kind, sims, a=None, b=None, line=None):
         return float((sims.rank[:, i] < sims.rank[:, j]).mean())
     if k.payoff == "group_top":
         return group_top(sims)
-    if k.payoff in ("group_win", "group_all_classified"):
+    if k.payoff in ("group_win", "group_all_classified", "group_first_retired"):
         return group_fair(k.payoff, sims)
-    if k.payoff == "count_over":
+    if k.payoff in ("count_over", "count_retired_over"):
         if line is None:
             raise ValueError(f"{kind} needs a line (e.g. 18.5)")
-        return float((sims.finished.sum(axis=1) > line).mean())
+        n = sims.finished.sum(axis=1) if k.payoff == "count_over" else (~sims.finished).sum(axis=1)
+        return float((n > line).mean())
     if k.payoff == "top_n":
         p = ((sims.rank <= k.n) & sims.finished).mean(0)
     elif k.payoff == "classified":
         p = sims.finished.mean(0)
     elif k.payoff == "last_classified":
         p = last_classified(sims.rank, sims.finished).mean(0)
+    elif k.payoff == "retired":
+        p = 1.0 - sims.finished.mean(0)
+    elif k.payoff == "first_retired":
+        p = first_retired(sims.finished).mean(0)
     elif k.payoff == "stage_top_n":
         p = (sims.stage_rank[k.stage] <= k.n).mean(0)
     elif k.payoff == "reached":
@@ -131,9 +149,20 @@ def last_classified(rank, finished):
     return (r == worst) & np.isfinite(worst)
 
 
+def first_retired(finished):
+    """(n_sims, n) float: each car's chance of being the first retirement in each simulation, under the uniform
+    timing assumption (the simulations draw who retires, not when): 1 / n_dnf for every retiring car, 0 for the
+    rest and for every car when nobody retires. Rows sum to 1, or 0 with no retirement."""
+    dnf = ~np.asarray(finished, bool)
+    n = dnf.sum(axis=1, keepdims=True)
+    return np.where(dnf, 1.0 / np.maximum(n, 1), 0.0)
+
+
 def group_fair(payoff, sims):
     """{group: probability} for the per-team yes/no kinds: group_win = the winner (rank 1, classified) drives for
-    the team; group_all_classified = every one of the team's cars is classified."""
+    the team; group_all_classified = every one of the team's cars is classified; group_first_retired = the first
+    retirement drives for the team (first_retired's uniform timing; the book's "no retirement" selection is the NO
+    side of race_n_retirements at 0.5)."""
     if sims.groups is None:
         raise ValueError("group markets need groups")
     g = np.array(sims.groups)
@@ -142,6 +171,8 @@ def group_fair(payoff, sims):
         cols = g == key
         if payoff == "group_win":
             hit = ((sims.rank[:, cols] == 1) & sims.finished[:, cols]).any(axis=1)
+        elif payoff == "group_first_retired":
+            hit = first_retired(sims.finished)[:, cols].sum(axis=1)
         else:
             hit = sims.finished[:, cols].all(axis=1)
         out[key] = float(hit.mean())
@@ -220,7 +251,9 @@ def standings_position(ss, n):
 
 def settle(kind, athlete_id, params, res, group_key=None):
     """YES/NO for a race market from the official classification (None if undecidable).
-    group_key: maps a result's team_id to the group key the market names (F1: position_sim team_key)."""
+    group_key: maps a result's team_id to the group key the market names (F1: position_sim team_key).
+    First retirement reads a `laps_completed` column when the frame has one (the caller adds it; nothing here
+    queries the database): the DNF with the fewest laps is first, every tied driver YES."""
     if res.empty:
         return None
     k = KINDS.get(kind)
@@ -267,6 +300,32 @@ def settle(kind, athlete_id, params, res, group_key=None):
     if k.payoff == "count_over":
         line = (params or {}).get("line")
         return None if line is None else bool(int(ok.sum()) > float(line))
+    retired = res["status"].isin(RETIRED)
+    if k.payoff == "retired":
+        if athlete_id not in by.index:
+            return None
+        st = res.loc[res["athlete_id"] == athlete_id, "status"].iloc[0]
+        return None if st == "DNS" else bool(st in RETIRED)
+    if k.payoff == "count_retired_over":
+        line = (params or {}).get("line")
+        return None if line is None else bool(int(retired.sum()) > float(line))
+    if k.payoff in ("first_retired", "group_first_retired"):
+        if k.payoff == "first_retired":
+            if athlete_id not in by.index:
+                return None
+            mine = res["athlete_id"] == athlete_id
+        else:
+            keys = res["team_id"].map(group_key) if group_key else res["team_id"]
+            mine = keys == (params or {}).get("team")
+            if not mine.any():
+                return None
+        dnf = res["status"] == "DNF"         # a DSQ is decided after the flag, not a car stopping first
+        if not dnf.any():
+            return False                     # nobody retired: every driver (and team) is a NO
+        if "laps_completed" not in res or res.loc[dnf, "laps_completed"].isna().any():
+            return None
+        first = dnf & (res["laps_completed"] == res.loc[dnf, "laps_completed"].min())
+        return bool((first & mine).any())
     if k.payoff in ("group_win", "group_all_classified"):
         keys = res["team_id"].map(group_key) if group_key else res["team_id"]
         team = (params or {}).get("team")

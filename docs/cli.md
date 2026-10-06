@@ -294,6 +294,14 @@ Road cycling sportsbook lines (winner, head-to-head) for time trials and road ra
 on the timed-runs engine: `events`, `fetch itt|road`, `startlist <event>`, `price <event> [--calibrate]`. See
 [Road cycling](road-cycling.md).
 
+## racinglines f1 props: wet or dry and the DNF check
+
+`racinglines f1 props --check --history <csv>` runs the walk-forward calibration of the yes/no props on a history CSV
+(`props.history()`'s columns) with no database, scoring the red flag and safety car given wet or dry as well
+(`climatology`, `wet_oracle`); `--dnf-check <csv>` scores the position simulation's `dnf_prob` against the
+classification (`models/position_sim/dnf_check.py`). Both are read-only; see the decision log of 2026-10-06 in
+[F1 roadmap](f1-roadmap.md#decision-log).
+
 ## racinglines weather
 
 Weather forecasts per event in one provider-agnostic frame: `probe --lat --lon [--out]`, `fetch <event_key> --lat

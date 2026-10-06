@@ -150,3 +150,76 @@ def test_classification_kinds_from_the_simulations(f1_priced):
 ])
 def test_classification_settlement(kind, ath, params, want):
     assert K.settle(kind, ath, params, RES) == want
+
+
+# --- retirements (decision log 2026-10-06) --------------------------------------------------------------------
+
+def _retire_sims():
+    # 4 cars on teams a, a, b, b; 4 simulations: nobody retires / car 1 / cars 1 and 3 / cars 2, 3 and 4
+    fin = np.array([[1, 1, 1, 1], [0, 1, 1, 1], [0, 1, 0, 1], [1, 0, 0, 0]], bool)
+    rank = np.where(fin, np.tile(np.arange(1.0, 5), (4, 1)), np.inf)
+    return O.OutcomeSims(entrants=[1, 2, 3, 4], rank=rank, finished=fin, groups=["a", "a", "b", "b"])
+
+
+def test_retirement_kinds_from_the_simulations():
+    sims = _retire_sims()
+    np.testing.assert_allclose(K.fair("race_retire", sims), [0.5, 0.25, 0.5, 0.25])
+    np.testing.assert_allclose(K.fair("race_retire", sims), 1 - K.fair("race_classified", sims))
+    assert K.fair("race_retire", sims, a=3) == 0.5
+    # uniform timing: each retiring car is equally likely to be first out; a sim with no retirement gives nobody
+    first = K.fair("race_first_retirement", sims)
+    np.testing.assert_allclose(first, [(1 + 0.5) / 4, (1 / 3) / 4, (0.5 + 1 / 3) / 4, (1 / 3) / 4])
+    assert first.sum() == pytest.approx(0.75)                      # P(anyone retires)
+    assert K.fair("race_first_retirement_team", sims) == pytest.approx({"a": (1.5 + 1 / 3) / 4, "b": (0.5 + 2 / 3) / 4})
+    assert K.fair("race_n_retirements", sims, line=0.5) == 0.75
+    assert K.fair("race_n_retirements", sims, line=1.5) == 0.5 and K.fair("race_n_retirements", sims, line=3.5) == 0
+    with pytest.raises(ValueError):
+        K.fair("race_n_retirements", sims)
+    none = O.OutcomeSims(entrants=[1, 2], rank=np.array([[1.0, 2.0]]), finished=np.ones((1, 2), bool))
+    np.testing.assert_array_equal(K.fair("race_first_retirement", none), [0.0, 0.0])
+
+
+def test_retirement_kinds_on_the_simulation_from_position_sim(f1_priced):
+    _, ex = f1_priced
+    sims = O.from_position_sim(ex["entrants"], ex["sim"])
+    n_dnf = (~sims.finished).sum(axis=1)
+    assert K.fair("race_first_retirement", sims).sum() == pytest.approx((n_dnf > 0).mean())
+    assert sum(K.fair("race_first_retirement_team", sims).values()) == pytest.approx((n_dnf > 0).mean())
+    assert K.fair("race_retire", sims).sum() == pytest.approx(n_dnf.mean())
+    assert "race_retire" not in K.summary(sims)
+
+
+RET = pd.DataFrame(dict(athlete_id=[1, 2, 3, 4, 5, 6], position=[1, 2, 3, 4, 5, 6],
+                        status=["OK", "OK", "DNF", "DNF", "DSQ", "DNS"], team_id=["a", "a", "b", "c", "c", "d"],
+                        points=[25.0, 18, 0, 0, 0, 0], qual_position=[1, 2, 3, 4, 5, 6],
+                        laps_completed=[57, 57, 12, 12, 57, 0]))
+
+
+@pytest.mark.parametrize("kind,ath,params,want", [
+    ("race_retire", 3, None, True), ("race_retire", 5, None, True), ("race_retire", 1, None, False),
+    ("race_retire", 6, None, None), ("race_retire", 9, None, None),
+    ("race_n_retirements", None, {"line": 2.5}, True), ("race_n_retirements", None, {"line": 3.5}, False),
+    ("race_n_retirements", None, None, None),
+    # cars 3 and 4 both stopped after 12 laps: a tie, both YES; the DSQ and the DNS are never first
+    ("race_first_retirement", 3, None, True), ("race_first_retirement", 4, None, True),
+    ("race_first_retirement", 5, None, False), ("race_first_retirement", 6, None, False),
+    ("race_first_retirement", 1, None, False), ("race_first_retirement", 9, None, None),
+    ("race_first_retirement_team", None, {"team": "b"}, True), ("race_first_retirement_team", None, {"team": "c"}, True),
+    ("race_first_retirement_team", None, {"team": "a"}, False), ("race_first_retirement_team", None, {"team": "z"}, None),
+])
+def test_retirement_settlement(kind, ath, params, want):
+    assert K.settle(kind, ath, params, RET) == want
+
+
+def test_first_retirement_needs_laps_completed():
+    one = RET.assign(laps_completed=[57, 57, 12, 30, 57, 0])
+    assert K.settle("race_first_retirement", 3, None, one) is True
+    assert K.settle("race_first_retirement", 4, None, one) is False
+    no_laps = RET.drop(columns="laps_completed")
+    assert K.settle("race_first_retirement", 3, None, no_laps) is None
+    assert K.settle("race_first_retirement_team", None, {"team": "b"}, no_laps) is None
+    assert K.settle("race_first_retirement", 3, None, RET.assign(laps_completed=[57, 57, None, 12, 57, 0])) is None
+    clean = RES.assign(status="OK")                                 # nobody retired: every driver and team is NO
+    assert K.settle("race_first_retirement", 1, None, clean) is False
+    assert K.settle("race_first_retirement_team", None, {"team": "a"}, clean) is False
+    assert house.outcome_for("race_retire", 3, None, RET) is True

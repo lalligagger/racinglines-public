@@ -90,5 +90,5 @@ back, and the owner's ledger stays a file outside the app.
 ## Vocabulary
 
 [vocabulary.md](vocabulary.md), generated from [`schemas/kinds-vocabulary.toml`](schemas/kinds-vocabulary.toml):
-44 kinds, 21 in the registry (16 before this branch, 5 added here: classified, last classified, both cars classified, number classified, winning constructor), 3 in `props.py` only, 19 proposed, 1 with no data source; 17 seen on two or more
+46 kinds, 25 in the registry (16 before this branch, 9 added here: classified, last classified, both cars classified, number classified, winning constructor, retire, number of retirements, first retirement, first retiring constructor), 3 in `props.py` only, 17 proposed, 1 with no data source; 17 seen on two or more
 venues, 20 seen only on sportsbook A.

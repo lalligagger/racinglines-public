@@ -93,10 +93,18 @@ settle_from = "classification"
 venues = { book_a = "Classified As Last Finisher" }
 
 [[kinds]]
-code = "race_first_retirement"
-label = "First driver to retire"
+code = "race_retire"
+label = "Driver retires (DNF or DSQ)"
 subject = "driver"
-status = "proposed"                        # model gap: retirement timing (roadmap 3.3)
+status = "exists"                          # 1 - race_classified from the simulations; a DNS is void
+settle_from = "classification"
+venues = { book_a = "<Driver> To Be Classified? (the No side)" }
+
+[[kinds]]
+code = "race_first_retirement"
+label = "First driver to retire (uniform timing assumption)"
+subject = "driver"
+status = "exists"                          # uniform timing assumption: the sims draw who retires, not when; settled on laps completed
 settle_from = "laps"
 venues = { book_a = "First Driver Retirement", kalshi = "retirement titles, unmodeled (kalshi/sync.py:95)" }
 
@@ -145,7 +153,7 @@ venues = { book_a = "<Team> both cars in points (ledger, Malaysia 2026)" }
 code = "race_first_retirement_team"
 label = "First constructor to retire (or no retirement)"
 subject = "team"
-status = "proposed"
+status = "exists"                          # race_first_retirement summed per team; "no retirement" = race_n_retirements 0.5 under
 settle_from = "laps"
 venues = { book_a = "First Constructor Retirement" }
 
@@ -181,6 +189,14 @@ subject = "line"
 status = "exists"
 settle_from = "classification"
 venues = { book_a = "Number Of Classified Drivers" }
+
+[[kinds]]
+code = "race_n_retirements"
+label = "Number of retirements (over/under)"
+subject = "line"
+status = "exists"                          # DNF and DSQ counted; not the mirror of race_n_classified when a car is DNS
+settle_from = "classification"
+venues = {}
 
 [[kinds]]
 code = "race_safety_car"
