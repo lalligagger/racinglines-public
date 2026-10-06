@@ -109,7 +109,7 @@ branches, one PR per track (owner, 2026-09-30); the track is named on each item.
 - [ ] **STG · high priority (owner, 2026-09-30): finish CI and a staging environment.** CI deploys `main` since
       2026-10-01; tests in CI, a real staging deploy, an off-VM data copy, a migration gate and a live-window freeze
       are open: STG-1 to STG-11 in [Staging and CI deploys](#staging-and-ci-deploys).
-- [x] **U5** Kalshi sprint markets before Singapore (11 Oct); built in PR #36 behind `RACINGLINES_KALSHI_SPRINTS`, merged. Priced from the race's pole and win odds
+- [x] **U5** Kalshi sprint markets before Singapore (11 Oct); built in PR #36, merged; on by default since 2026-10-06 (`RACINGLINES_KALSHI_SPRINTS=0` turns it off). Priced from the race's pole and win odds
       until **U13**, a real sprint model, lands ([F1 model](#f1-model)).
 - [ ] **U3** Kalshi maker profile K: swept (PRs #38, #41, merged; K = `gbm`, 2¢, 10-pt filter, 25 shares, $400 volume floor); **freezing it is the owner's call** before the United States GP (25 Oct).
 - [x] **U7** Cross-venue disagreement log (PR #35, behind `RACINGLINES_DISAGREE`); **U8** settlement rules for relocated or cancelled races (PR #27, behind `RACINGLINES_CANCELLED_RACE_RULES`). Both merged; the owner's two assumptions for U8 are still to confirm.
@@ -221,7 +221,7 @@ venue with live F1 race markets this year.
       *Done when:* a replay of 2026 round 15 through the engine on Kalshi matches `f1 demo-history
       --venue kalshi` for C to the cent, and A's Kalshi taker replay matches the sweep's trades
       (`scripts/signals_parity.py --venue kalshi`). No order is sent; `KALSHI_TRADING_ENABLED` stays unset.
-- [x] **U5 · P1 · Kalshi sprint markets** (PR #36, merged, behind `RACINGLINES_KALSHI_SPRINTS`). Map sprint winner and sprint pole (`KXF1*` sprint tickers,
+- [x] **U5 · P1 · Kalshi sprint markets** (PR #36, merged; on by default since 2026-10-06, `RACINGLINES_KALSHI_SPRINTS=0` turns it off). Map sprint winner and sprint pole (`KXF1*` sprint tickers,
       `unmodeled` today) to the sprint stages (after SQ, after Sprint). Check on the Dutch GP (round 12).
       *Done when:* Singapore's Kalshi sprint markets sync with a model price.
 - [x] **U7 · P1 · Cross-venue disagreement log** (PR #35, merged, behind `RACINGLINES_DISAGREE`; Polymarket and Kalshi only, OG.com not joined yet). For each F1 outcome linked on both venues (race and
