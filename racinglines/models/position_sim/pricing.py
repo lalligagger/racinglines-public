@@ -139,6 +139,81 @@ def qualifying_grid(view, event_id, entrants):
     return entrants["athlete_id"].map(pos).fillna(len(entrants)).to_numpy(float)
 
 
+def side_stages(meas, event_id, stages=None):
+    """The race-like sessions besides the Grand Prix this weekend has (sports/f1.toml [sessions.sim], schema order):
+    those named in `stages` when the caller knows the weekend's format (the forecast: its schedule's sprint flag),
+    else those the event's rows name (the session or its grid session: which sessions a weekend has is schedule,
+    not result, so the full frame is read; their results are read only from the as-of view)."""
+    side = [k for k in M.SIM_SESSIONS if k != M.MAIN_STAGE]
+    if stages is not None:
+        return [k for k in side if k in set(stages)]
+    if event_id is None:
+        return []
+    have = set(meas.res.loc[meas.res["event_id"] == event_id, "round"])
+    return [k for k in side if k in have or M.SIM_SESSIONS[k]["grid_from"] in have]
+
+
+def stage_grid(view, event_id, entrants, grid_from):
+    """(grid, source) for a side stage from the as-of view: the grid session's laps ranked by each driver's best
+    valid lap (Sprint Qualifying is stored without positions: FastF1 gives none), else its classification positions
+    if it has any, else (None, "simulated from qualifying pace"). A driver without a lap or a position starts last."""
+    p = view.practice
+    laps = p[(p["event_id"] == event_id) & (p["round"] == grid_from)] if p is not None and len(p) else None
+    if laps is not None and len(laps):
+        order = laps.drop_duplicates("athlete_id").set_index("athlete_id")["best_def"].rank(method="first")
+        return entrants["athlete_id"].map(order).fillna(len(entrants)).to_numpy(float), f"{grid_from} best laps"
+    c = view.res[(view.res["event_id"] == event_id) & (view.res["round"] == grid_from)]
+    if len(c) and c["position"].notna().any():
+        pos = c.drop_duplicates("athlete_id").set_index("athlete_id")["position"].astype(float)
+        return entrants["athlete_id"].map(pos).fillna(len(entrants)).to_numpy(float), f"{grid_from} classification"
+    return None, "simulated from qualifying pace"
+
+
+def stage_result(view, event_id, entrants, stage, n_sims, grid):
+    """A side stage's actual result once it has run (in the as-of view), as simulation arrays repeated n_sims times
+    (as the Grand Prix uses the actual qualifying order): finishers in classification order, then the rest; None
+    before it has run. grid: the stage's grid (else the result rows' own starting grid)."""
+    r = view.res[(view.res["event_id"] == event_id) & (view.res["round"] == stage)]
+    if r.empty:
+        return None
+    by = r.drop_duplicates("athlete_id").set_index("athlete_id")
+    ids = entrants["athlete_id"]
+    ok = ids.map(by["status"]).eq("OK").to_numpy()
+    pos = ids.map(by["position"]).astype(float).fillna(np.inf).to_numpy()
+    rank = np.empty(len(ids))
+    rank[np.lexsort((pos, ~ok))] = np.arange(1, len(ids) + 1)
+    pts = ids.map(by["points"]).astype(float).fillna(0.0).to_numpy()
+    if grid is None:
+        grid = ids.map(by["grid"]).astype(float).replace(0, np.nan).fillna(len(ids)).to_numpy()
+    tile = lambda a: np.tile(np.asarray(a), (n_sims, 1))      # noqa: E731
+    return dict(pos=tile(rank), dnf=tile(~ok), points=tile(pts), grid=tile(grid))
+
+
+def price_stages(meas, v, event_id, e, fm, tf, rng, n_sims, chaos_p, stages=None):
+    """The weekend's side stages (the sprint), from the same paces and finishing model as the Grand Prix: the
+    schema's points table and retirement scale, the grid from stage_grid, the actual result once the stage has run.
+    Every draw is on a side stream seeded from `rng` without advancing it, so the Grand Prix's prices, and whatever
+    the caller draws next, are byte-identical with or without these stages. Returns ({stage: sim}, {stage: audit})."""
+    sims, audit = {}, {}
+    rows = meas.res[meas.res["event_id"] == event_id] if event_id is not None else meas.res.iloc[:0]
+    year = int(rows["year"].iloc[0]) if len(rows) else v.cutoff.year
+    for i, stage in enumerate(side_stages(meas, event_id, stages)):
+        cfg = M.SIM_SESSIONS[stage]
+        grid, src = stage_grid(v, event_id, e, cfg["grid_from"]) if event_id is not None else (None, "simulated")
+        s = stage_result(v, event_id, e, stage, n_sims, grid) if event_id is not None else None
+        if s is None:
+            es = e.assign(p_dnf=np.clip(e["p_dnf"].to_numpy() * float(cfg.get("dnf_scale", 1.0)), 0.0, 1.0))
+            if grid is not None:
+                es["grid"] = grid
+            s = M.simulate_race(fm, es, tf, n_sims=n_sims, rng=M._side_rng(rng, M.STAGE_SEED + i),
+                                grid_known=grid is not None, points=M.points_table(cfg["points"], year), chaos_p=chaos_p)
+            s.pop("fl", None)
+        sims[stage] = dict(pos=s["pos"], dnf=s["dnf"], points=s["points"], grid=s["grid"], grid_from=cfg["grid_from"])
+        audit[stage] = dict(grid=src, result="actual" if stage in set(v.res.loc[v.res["event_id"] == event_id, "round"])
+                            else "simulated", dnf_scale=float(cfg.get("dnf_scale", 1.0)), points=cfg["points"])
+    return sims, audit
+
+
 def history(meas, use_track=True):
     """One row per entrant per completed race, with features computed as of one
     minute before that race's start (qualifying known) and its outcome."""
@@ -184,12 +259,15 @@ def history(meas, use_track=True):
 # ---------------------------------------------------------------------------
 
 def price_race(meas, hist, cutoff, event_id, n_sims=10000, rng=None, use_track=True, entrants=None,
-               venue=None, points=M.RACE_POINTS):
+               venue=None, points=M.RACE_POINTS, stages=None):
     """Fair prices for one race using only data from before `cutoff`.
 
     Returns (summary, extras): summary has per-driver win/podium/top10/pole/DNF
     probabilities, expected points and head-to-head probabilities; extras has the
-    per-team top-scorer probabilities, the leakage audit, track features and model."""
+    per-team top-scorer probabilities, the leakage audit, track features and model.
+    On a weekend with side stages (the sprint, see price_stages; `stages` names them when the
+    event's rows can't, e.g. a future weekend), the summary adds <stage>_win_prob and
+    <stage>_pole_prob, extras["sim"]["stages"] their arrays and the audit their sources."""
     rng = rng if rng is not None else np.random.default_rng(0)
     v = meas.view(cutoff)
     if entrants is None:
@@ -212,7 +290,13 @@ def price_race(meas, hist, cutoff, event_id, n_sims=10000, rng=None, use_track=T
     chaos_p = M.chaos_prob(hist, venue, v.cutoff, fm.chaos["p"]) if fm.chaos else None
     sim = M.simulate_race(fm, e, tf, n_sims=n_sims, rng=rng, grid_known=grid is not None, points=points,
                           chaos_p=chaos_p)
+    stage_sims, stage_audit = price_stages(meas, v, event_id, e, fm, tf, rng, n_sims, chaos_p, stages)
     summ = M.summarize(e, sim)
+    for stage, s in stage_sims.items():        # race_sprint_win / race_sprint_pole (markets/kinds.py, db/reads.py)
+        summ[f"{stage}_win_prob"] = summ["athlete_id"].map(dict(zip(e["athlete_id"], (s["pos"] == 1).mean(0))))
+        summ[f"{stage}_pole_prob"] = summ["athlete_id"].map(dict(zip(e["athlete_id"], (s["grid"] == 1).mean(0))))
+    if stage_sims:
+        sim["stages"] = stage_sims
     ids = e["athlete_id"].tolist()
     h2h = (sim["pos"][:, :, None] < sim["pos"][:, None, :]).mean(0)
     summ["h2h"] = summ["athlete_id"].map({a: {str(b): round(float(h2h[i, j]), 4) for j, b in enumerate(ids) if b != a}
@@ -230,6 +314,8 @@ def price_race(meas, hist, cutoff, event_id, n_sims=10000, rng=None, use_track=T
                              practice_prior=sigma_q is not None,
                              training_races=int(hist.loc[hist["r_ts"] + M.RACE_DONE < v.cutoff, "event_id"].nunique())),
                   track=tf, sim=sim, entrants=e, model=fm)
+    if stage_audit:
+        extras["audit"]["stages"] = stage_audit
     return summ, extras
 
 
@@ -358,7 +444,7 @@ def summarize_backtest(bt):
 # Diagnostic: one past event priced at a chosen cutoff
 # ---------------------------------------------------------------------------
 
-def diagnostic(meas, hist, event_key, cutoff, n_sims=10000, seed=42, use_track=True):
+def diagnostic(meas, hist, event_key, cutoff, n_sims=10000, seed=42, use_track=True, stages=None):
     """Price one completed event as of `cutoff`, then (separately) read its result."""
     year, rnd = (int(x) for x in event_key.split("-"))
     ev = meas.res[(meas.res["year"] == year) & (meas.res["series_round"] == rnd)]
@@ -366,7 +452,7 @@ def diagnostic(meas, hist, event_key, cutoff, n_sims=10000, seed=42, use_track=T
         raise ValueError(f"no event {event_key}")
     event_id = int(ev["event_id"].iloc[0])
     summ, ex = price_race(meas, hist, cutoff, event_id, n_sims=n_sims, rng=np.random.default_rng(seed),
-                          use_track=use_track)
+                          use_track=use_track, stages=stages)
     y = outcome(meas, event_id, summ["athlete_id"].tolist())
     result = pd.DataFrame(dict(athlete_id=summ["athlete_id"], status=y["status"], position=y["position"]))
     return event_id, summ, ex, result
@@ -452,7 +538,7 @@ def forecast(meas, hist, year, cutoff=None, n_sims=10000, seed=42, schedule=None
         if race_prices:
             # published race prices: the backtested single-race model (no season drift)
             summ, ex = price_race(meas, hist, cutoff, event_id, n_sims=n_sims, rng=rng, entrants=entrants, venue=venue,
-                                  use_track=use_track)
+                                  use_track=use_track, stages=[k for k in M.SIM_SESSIONS if bool(getattr(ev, k, False))])
             race_constructor_top[f"{year}-{ev.round:02d}"] = ex["constructor_top"]
             tf = ex["track"]
         else:

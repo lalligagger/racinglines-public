@@ -40,6 +40,16 @@ live = []
 minutes = { fp1 = 60, fp2 = 60, fp3 = 60, sprint_qual = 45, qual = 60, sprint = 45, race = 150 }
 practice = ["fp1", "fp2", "fp3", "sprint_qual"]
 
+# The race-like sessions the pricer simulates (models/position_sim/pricing.py price_race), each with the session its
+# grid comes from, its points table ([points] below, with <points>_by_year) and its retirement rate as a multiple of
+# the race's (dnf_scale, default 1.0). `race` is the Grand Prix itself and keeps its own code path; every other entry
+# is a stage priced only on weekends that have it (format.sprint), on its own random stream, so no Grand Prix price
+# moves. sprint dnf_scale 0.5: 13 stored sprints vs the same weekends' GPs, DNF share 7.0 % vs 14.4 % (decision log
+# 2026-10-06, provisional, refit after the 2023-25 sprint backfill)
+[sessions.sim]
+race = { grid_from = "qual", points = "race" }
+sprint = { grid_from = "sprint_qual", points = "sprint", dnf_scale = 0.5 }
+
 # FastF1 schedule names -> (minutes, short label), for trading stages through a weekend
 [sessions.schedule]
 "Practice 1" = [60, "FP1"]
