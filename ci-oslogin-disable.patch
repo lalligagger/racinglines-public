@@ -1,0 +1,60 @@
+From fd9c201c44fda1abaaf62eb722961f2110318f18 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 3 Oct 2026 14:41:05 +0000
+Subject: [PATCH] CI: disable OS Login to prevent SSH key accumulation in
+ gcloud profile
+
+Disables OS Login in gcloud configuration during CI workflow execution to prevent
+accumulated SSH keys from exceeding the 32 KiB profile size limit that blocks
+deployments. This must be set before any gcloud compute SSH operations.
+---
+ .github/workflows/predeploy.yml | 4 ++++
+ .github/workflows/staging.yml   | 4 ++++
+ deploy/ci/staging.yml           | 4 ++++
+ 3 files changed, 12 insertions(+)
+
+diff --git a/.github/workflows/predeploy.yml b/.github/workflows/predeploy.yml
+index e2744bf..bfc20be 100644
+--- a/.github/workflows/predeploy.yml
++++ b/.github/workflows/predeploy.yml
+@@ -144,6 +144,10 @@ jobs:
+         if: ${{ env.HAS_GCP_KEY == 'true' }}
+         uses: google-github-actions/setup-gcloud@v2
+ 
++      - name: Disable OS Login to prevent SSH key accumulation
++        if: ${{ env.HAS_GCP_KEY == 'true' }}
++        run: gcloud config set compute/use_oslogin false
++
+       - name: Deploy to VM
+         if: ${{ env.HAS_GCP_KEY == 'true' && env.HAS_VM_TARGET == 'true' }}
+         env:
+diff --git a/.github/workflows/staging.yml b/.github/workflows/staging.yml
+index f16ecd1..fd614df 100644
+--- a/.github/workflows/staging.yml
++++ b/.github/workflows/staging.yml
+@@ -57,6 +57,10 @@ jobs:
+         if: ${{ env.HAS_GCP_KEY == 'true' }}
+         uses: google-github-actions/setup-gcloud@v2
+ 
++      - name: Disable OS Login to prevent SSH key accumulation
++        if: ${{ env.HAS_GCP_KEY == 'true' }}
++        run: gcloud config set compute/use_oslogin false
++
+       - name: Deploy to staging with vm.sh staging deploy
+         if: ${{ env.HAS_GCP_KEY == 'true' && env.HAS_VM_TARGET == 'true' }}
+         env:
+diff --git a/deploy/ci/staging.yml b/deploy/ci/staging.yml
+index a1e88e7..15585ea 100644
+--- a/deploy/ci/staging.yml
++++ b/deploy/ci/staging.yml
+@@ -57,6 +57,10 @@ jobs:
+         if: ${{ env.HAS_GCP_KEY == 'true' }}
+         uses: google-github-actions/setup-gcloud@v2
+ 
++      - name: Disable OS Login to prevent SSH key accumulation
++        if: ${{ env.HAS_GCP_KEY == 'true' }}
++        run: gcloud config set compute/use_oslogin false
++
+       - name: Deploy to staging with vm.sh staging deploy
+         if: ${{ env.HAS_GCP_KEY == 'true' && env.HAS_VM_TARGET == 'true' }}
+         env:

@@ -16,6 +16,7 @@ COLUMN_ALIASES = {
     "pos": "position",
     "pos.": "position",
     "position": "position",
+    "finish": "position",
     "driver": "competitor",
     "no.": "no",
     "no": "no",
@@ -72,6 +73,8 @@ def _text(value) -> str | None:
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return None
     text = _normalize(value)
+    # Strip trailing footnote markers: superscript chars, special symbols, single letters
+    text = re.sub(r'\s+[A-Z†‡§¶⁺⁻ⁿ\^\[\]\*\d]+\s*$', '', text).strip()
     return text or None
 
 
@@ -92,9 +95,12 @@ def _table_score(cols: list[str]) -> tuple[int, int]:
         score += 4
     if "points" in mapped:
         score += 3
+    # Strongly prefer tables with laps/time (race results, not standings)
+    if "laps" in mapped:
+        score += 10
     if "time_retired" in mapped:
-        score += 3
-    score += sum(1 for c in ("no", "team", "engine", "laps", "pit_stops", "grid", "laps_led") if c in mapped)
+        score += 10
+    score += sum(1 for c in ("no", "team", "engine", "pit_stops", "grid", "laps_led") if c in mapped)
     return score, len(mapped)
 
 
@@ -102,8 +108,14 @@ def _map_columns(df: pd.DataFrame) -> pd.DataFrame:
     renames = {}
     for col in df.columns:
         key = _normalize_col(col)
+        # Check for exact match first
         if key in COLUMN_ALIASES:
             renames[col] = COLUMN_ALIASES[key]
+        # Check for prefix match (e.g., "pts.1" -> "points")
+        elif key.startswith("pts"):
+            renames[col] = "points"
+        elif key.startswith("time"):
+            renames[col] = "time_retired"
     return df.rename(columns=renames)
 
 
@@ -131,7 +143,7 @@ def _status(time_retired: str | None) -> str:
     upper = time_retired.upper()
     if upper in {"DNF", "DNS", "DSQ"}:
         return upper
-    if re.fullmatch(r"\d+:\d{2}:\d{2}(?:\.\d+)?", time_retired) or re.fullmatch(r"\d+:\d{2}(?:\.\d+)?", time_retired):
+    if re.fullmatch(r"\d+:\d{2}:\d{2}(?:\.\d*)?", time_retired) or re.fullmatch(r"\d+:\d{2}(?:\.\d*)?", time_retired):
         return "OK"
     return time_retired
 
