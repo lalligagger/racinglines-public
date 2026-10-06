@@ -55,6 +55,35 @@ def test_american_odds_need_a_hundred():
     assert S.check_odds(1.0, "decimal")
 
 
+def test_every_presentation_checks_and_converts():
+    good = dict(decimal=1.85, american=-118, fractional="7/4", cents=37, dollars=0.37, prob=0.37)
+    bad = dict(decimal=0.9, american=-50, fractional="7/0", cents=100, dollars=1.0, prob=0)
+    assert set(good) == set(S.ODDS_FORMATS)
+    for fmt in S.ODDS_FORMATS:
+        assert S.check_odds(good[fmt], fmt) is None
+        assert S.check_odds(bad[fmt], fmt)
+        with pytest.raises(ValueError):
+            S.to_prob(bad[fmt], fmt)
+    assert S.to_prob(1.85, "decimal") == pytest.approx(1 / 1.85)
+    assert S.to_prob(-118, "american") == pytest.approx(118 / 218)
+    assert S.to_prob(150, "american") == pytest.approx(100 / 250)
+    assert S.to_prob("7/4", "fractional") == pytest.approx(4 / 11)
+    assert S.to_prob(37, "cents") == pytest.approx(0.37) == S.to_prob(0.37, "dollars") == S.to_prob(0.37, "prob")
+
+
+def test_present_round_trips_through_each_venue():
+    for p in (0.05, 0.37, 0.5, 0.63, 0.95):
+        for fmt in S.ODDS_FORMATS:
+            q = S.present(p, fmt)
+            assert S.check_odds(q, fmt) is None, (p, fmt, q)
+            assert S.to_prob(q, fmt) == pytest.approx(p, abs=0.011), (p, fmt, q)
+    assert S.present(0.37, "american") == 170 and S.present(0.63, "american") == -170
+    assert S.present(0.5, "american") == -100 and S.present(0.37, "fractional") == "17/10"
+    assert S.present(0.37, "cents") == 37 and S.present(0.37, "decimal") == 2.7
+    with pytest.raises(ValueError):
+        S.present(1.0, "cents")
+
+
 def test_a_kind_that_names_a_team_must_carry_one(book):
     d = copy.deepcopy(book)
     d["lines"][2]["market"] = {"kind": "race_constructor_top"}

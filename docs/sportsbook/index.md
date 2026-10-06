@@ -18,6 +18,19 @@ proposal adds three more files of the same kind. Draft examples, built from real
 | `books/<venue>/<date>-<event>.toml` | capture | venue, event key, capture time (UTC), source (screenshot / paste / api) and its reference, odds format, and `[[lines]]`: the venue's own `title` and `selection` untouched, the odds, a transcription `note`, and the `market` key the rules produced, written into the file so the mapping is reviewable before pricing | [`books-book_a-2026-10-05-singapore.toml`](schemas/books-book_a-2026-10-05-singapore.toml) |
 | (same) | capture | A second venue in the same shape, American odds, same event file untouched: sportsbook B's 22-driver winner board from the owner's screenshot (2026-10-05 22:59 PDT). Its overround is 23.3%; the model comparison is the "track sportsbook bets" thread's job | [`books-book_b-2026-10-05-singapore.toml`](schemas/books-book_b-2026-10-05-singapore.toml) |
 
+**Odds presentations** (`venue.odds` and `book.odds`; `racinglines/books/schema.py` checks each, `to_prob` reads a quote
+as an implied probability with the venue's margin still in it, `present` writes a fair value in the venue's own units).
+The names are provisional: the owner checks them after the merge ([todo: owner decisions](../todo.md#owner-decisions)).
+
+| Name | Looks like | Where | Means |
+|---|---|---|---|
+| `decimal` | 1.85 | European sportsbooks (sportsbook A) | payout per unit staked, stake included |
+| `american` | -118 / +150 | US sportsbooks (sportsbooks B and C) | stake to win 100, or the win on a 100 stake |
+| `fractional` | "7/4" | UK sportsbooks | the win per unit staked, as a string |
+| `cents` | 37 | Kalshi | price of a $1 YES contract, in cents (1 to 99) |
+| `dollars` | 0.37 | Polymarket, OG.com | price of a $1 share, in dollars (0 to 1) |
+| `prob` | 0.37 | our fair values | a plain probability |
+
 **What makes it exchange-agnostic.** The market key is `(kind, subject, params)` in the kinds registry's vocabulary
 (`racinglines/markets/kinds.py`), the same key Kalshi's and Polymarket's classifiers already produce and OG.com's rules
 file produces. A sportsbook A line, an sportsbook C American-odds line and a Kalshi contract for the same thing carry the same key,

@@ -15,7 +15,21 @@ compilable regex. A kind the registry has but no model prices yet still passes: 
 Market keys are `(kind, subject, params)` in the registry's vocabulary: a mapped line's `market` table carries `kind`
 plus `driver` / `team` / `opponent` / `line` / `side` as the kind needs. Selections resolve to the entry list through
 an exact alias table at pricing time, never here and never fuzzily.
+
+Odds presentations (`venue.odds`, `book.odds`; names provisional until the owner checks them, docs/todo.md):
+
+    decimal       1.85          European sportsbooks: the payout per unit staked, stake included
+    american      -118 / +150   US sportsbooks: stake to win 100, or the win on a 100 stake
+    fractional    "7/4"         UK sportsbooks: the win per unit staked, as a string
+    cents         37            Kalshi: the price of a $1 YES contract, in cents (1 to 99)
+    dollars       0.37          Polymarket and OG.com: the price of a $1 share, in dollars (0 to 1)
+    prob          0.37          a plain probability: our fair values, and a book quoted as one
+
+`to_prob(value, fmt)` is the implied probability of a quote (the venue's vig still in it); `present(prob, fmt)` writes
+a probability in a venue's presentation, so a fair value can sit next to the quote in the book's own units.
 """
+from fractions import Fraction
+
 
 import re
 import tomllib
@@ -26,7 +40,7 @@ from racinglines.models.position_sim.props import PROP_KINDS
 
 KNOWN_KINDS = frozenset(K.KINDS) | frozenset(PROP_KINDS)
 VENUE_KINDS = ("exchange", "sportsbook")
-ODDS_FORMATS = ("decimal", "american", "prob")
+ODDS_FORMATS = ("decimal", "american", "fractional", "cents", "dollars", "prob")
 SOURCES = ("screenshot", "paste", "api")
 SUBJECTS = ("driver", "team", "pair", "line", "none", "title_driver", "title_team")
 SIDES = ("yes", "no", "over", "under")
@@ -66,8 +80,14 @@ def _utc(value, field, problems, allow_unknown=True):
         problems.append(f"{field}: {value!r} is not a UTC time like 2026-10-11T12:00Z" + (' or "unknown"' if allow_unknown else ""))
 
 
+FRACTIONAL = re.compile(r"^\s*(\d+)\s*/\s*(\d+)\s*$")
+
+
 def check_odds(value, fmt):
     """None if `value` can be odds in `fmt`, else the reason."""
+    if fmt == "fractional":
+        m = FRACTIONAL.match(value) if isinstance(value, str) else None
+        return None if m and int(m[1]) > 0 and int(m[2]) > 0 else f'fractional odds {value!r} must be a string like "7/4"'
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return f"{value!r} is not a number"
     if fmt == "decimal":
@@ -76,9 +96,49 @@ def check_odds(value, fmt):
         if value != int(value) or abs(value) < 100:
             return f"American odds {value} must be an integer of at least 100 either way"
         return None
-    if fmt == "prob":
-        return None if 0 < value < 1 else f"probability {value} must be between 0 and 1"
+    if fmt == "cents":
+        return None if value == int(value) and 1 <= value <= 99 else f"cents {value} must be an integer from 1 to 99"
+    if fmt in ("dollars", "prob"):
+        return None if 0 < value < 1 else f"{fmt} {value} must be between 0 and 1"
     return f"unknown odds format {fmt!r}"
+
+
+def to_prob(value, fmt):
+    """The implied probability of a quote in `fmt` (the venue's margin still in it). Raises ValueError on a bad quote."""
+    bad = check_odds(value, fmt)
+    if bad:
+        raise ValueError(bad)
+    if fmt == "decimal":
+        return 1.0 / float(value)
+    if fmt == "american":
+        v = float(value)
+        return (-v / (100.0 - v)) if v < 0 else 100.0 / (v + 100.0)
+    if fmt == "fractional":
+        m = FRACTIONAL.match(value)
+        return int(m[2]) / (int(m[1]) + int(m[2]))
+    if fmt == "cents":
+        return float(value) / 100.0
+    return float(value)                                      # dollars, prob
+
+
+def present(prob, fmt):
+    """A probability written in a venue's presentation: a decimal to two places, American odds as an int (never
+    between -100 and +100), a fractional string with a denominator up to 20, cents as an int, dollars and prob to
+    two places. Raises ValueError outside (0, 1)."""
+    if not 0 < prob < 1:
+        raise ValueError(f"probability {prob} must be between 0 and 1")
+    if fmt == "decimal":
+        return round(1.0 / prob, 2)
+    if fmt == "american":
+        return int(round(-100.0 * prob / (1.0 - prob))) if prob >= 0.5 else int(round(100.0 * (1.0 - prob) / prob))
+    if fmt == "fractional":
+        f = Fraction(1.0 / prob - 1.0).limit_denominator(20)
+        return f"{f.numerator}/{f.denominator}"
+    if fmt == "cents":
+        return int(min(99, max(1, round(prob * 100))))
+    if fmt in ("dollars", "prob"):
+        return round(prob, 2)
+    raise ValueError(f"unknown odds format {fmt!r}")
 
 
 def _market(m, field, problems):
