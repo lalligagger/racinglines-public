@@ -109,6 +109,22 @@ settle_from = "laps"
 venues = { book_a = "First Driver Retirement", kalshi = "retirement titles, unmodeled (kalshi/sync.py:95)" }
 
 [[kinds]]
+code = "race_second_retirement"
+label = "Second driver to retire (uniform timing assumption)"
+subject = "driver"
+status = "exists"                          # owner (2026-10-06): "if we have DID RETIRE add DID RETIRE 1st and so on"
+settle_from = "laps"
+venues = {}
+
+[[kinds]]
+code = "race_third_retirement"
+label = "Third driver to retire (uniform timing assumption)"
+subject = "driver"
+status = "exists"
+settle_from = "laps"
+venues = {}
+
+[[kinds]]
 code = "race_grand_slam"
 label = "Win, pole and fastest lap by one driver"
 subject = "none"
@@ -145,9 +161,17 @@ venues = { book_a = "<Team> Both Cars Classified?" }
 code = "race_team_both_points"
 label = "Both cars in the points"
 subject = "team"
-status = "proposed"
+status = "exists"                          # group_all_points, n = 10
 settle_from = "classification"
 venues = { book_a = "<Team> both cars in points (ledger, Malaysia 2026)" }
+
+[[kinds]]
+code = "race_team_any_classified"
+label = "At least one car classified"
+subject = "team"
+status = "exists"                          # owner (2026-10-06): team versions of the per-driver classification kinds
+settle_from = "classification"
+venues = {}
 
 [[kinds]]
 code = "race_first_retirement_team"

@@ -77,6 +77,14 @@ KINDS = {k.code: k for k in (
     Kind("race_n_retirements", "count_retired_over", label="Retirements over the line", default=False),
     Kind("race_first_retirement", "first_retired", label="First retirement", default=False),
     Kind("race_first_retirement_team", "group_first_retired", label="First constructor to retire", default=False),
+    # Owner (2026-10-06): "if we have DID RETIRE add DID RETIRE 1st and so on", and team versions of the per-driver
+    # classification kinds. nth_retired is first_retired's uniform timing carried on: P(X is the n-th retirement) =
+    # mean over sims of dnf_X / n_dnf when at least n cars retire. Settled on laps completed with competition
+    # ranking (ties share the lower place; a place nobody holds settles NO for everyone).
+    Kind("race_second_retirement", "nth_retired", n=2, label="Second retirement", default=False),
+    Kind("race_third_retirement", "nth_retired", n=3, label="Third retirement", default=False),
+    Kind("race_team_any_classified", "group_any_classified", label="At least one car classified", default=False),
+    Kind("race_team_both_points", "group_all_points", n=10, label="Both cars in the points", default=False),
 )}
 
 RETIRED = ("DNF", "DSQ")      # result statuses that count as a retirement (race_retire, race_n_retirements)
@@ -97,8 +105,8 @@ def fair(kind, sims, a=None, b=None, line=None):
         return float((sims.rank[:, i] < sims.rank[:, j]).mean())
     if k.payoff == "group_top":
         return group_top(sims)
-    if k.payoff in ("group_win", "group_all_classified", "group_first_retired"):
-        return group_fair(k.payoff, sims)
+    if k.payoff in ("group_win", "group_all_classified", "group_first_retired", "group_any_classified", "group_all_points"):
+        return group_fair(k.payoff, sims, k.n)
     if k.payoff in ("count_over", "count_retired_over"):
         if line is None:
             raise ValueError(f"{kind} needs a line (e.g. 18.5)")
@@ -114,6 +122,8 @@ def fair(kind, sims, a=None, b=None, line=None):
         p = 1.0 - sims.finished.mean(0)
     elif k.payoff == "first_retired":
         p = first_retired(sims.finished).mean(0)
+    elif k.payoff == "nth_retired":
+        p = nth_retired(sims.finished, k.n).mean(0)
     elif k.payoff == "stage_top_n":
         p = (sims.stage_rank[k.stage] <= k.n).mean(0)
     elif k.payoff == "reached":
@@ -158,11 +168,20 @@ def first_retired(finished):
     return np.where(dnf, 1.0 / np.maximum(n, 1), 0.0)
 
 
-def group_fair(payoff, sims):
+def nth_retired(finished, n):
+    """(n_sims, n_cars) float: each car's chance of being the n-th retirement under the uniform timing assumption:
+    first_retired's 1 / n_dnf for every retiring car in a simulation with at least n retirements, else 0."""
+    dnf = ~np.asarray(finished, bool)
+    enough = dnf.sum(axis=1, keepdims=True) >= n
+    return np.where(enough, first_retired(finished), 0.0)
+
+
+def group_fair(payoff, sims, n=None):
     """{group: probability} for the per-team yes/no kinds: group_win = the winner (rank 1, classified) drives for
-    the team; group_all_classified = every one of the team's cars is classified; group_first_retired = the first
-    retirement drives for the team (first_retired's uniform timing; the book's "no retirement" selection is the NO
-    side of race_n_retirements at 0.5)."""
+    the team; group_all_classified = every one of the team's cars is classified; group_any_classified = at least
+    one is; group_all_points = every one is classified in the top n (10: the points); group_first_retired = the
+    first retirement drives for the team (first_retired's uniform timing; the book's "no retirement" selection is
+    the NO side of race_n_retirements at 0.5)."""
     if sims.groups is None:
         raise ValueError("group markets need groups")
     g = np.array(sims.groups)
@@ -173,6 +192,10 @@ def group_fair(payoff, sims):
             hit = ((sims.rank[:, cols] == 1) & sims.finished[:, cols]).any(axis=1)
         elif payoff == "group_first_retired":
             hit = first_retired(sims.finished)[:, cols].sum(axis=1)
+        elif payoff == "group_any_classified":
+            hit = sims.finished[:, cols].any(axis=1)
+        elif payoff == "group_all_points":
+            hit = ((sims.rank[:, cols] <= n) & sims.finished[:, cols]).all(axis=1)
         else:
             hit = sims.finished[:, cols].all(axis=1)
         out[key] = float(hit.mean())
@@ -309,8 +332,8 @@ def settle(kind, athlete_id, params, res, group_key=None):
     if k.payoff == "count_retired_over":
         line = (params or {}).get("line")
         return None if line is None else bool(int(retired.sum()) > float(line))
-    if k.payoff in ("first_retired", "group_first_retired"):
-        if k.payoff == "first_retired":
+    if k.payoff in ("first_retired", "group_first_retired", "nth_retired"):
+        if k.payoff in ("first_retired", "nth_retired"):
             if athlete_id not in by.index:
                 return None
             mine = res["athlete_id"] == athlete_id
@@ -324,9 +347,10 @@ def settle(kind, athlete_id, params, res, group_key=None):
             return False                     # nobody retired: every driver (and team) is a NO
         if "laps_completed" not in res or res.loc[dnf, "laps_completed"].isna().any():
             return None
-        first = dnf & (res["laps_completed"] == res.loc[dnf, "laps_completed"].min())
-        return bool((first & mine).any())
-    if k.payoff in ("group_win", "group_all_classified"):
+        place = res.loc[dnf, "laps_completed"].rank(method="min")          # competition ranking: ties share the place
+        nth = dnf & (place.reindex(res.index) == (k.n if k.payoff == "nth_retired" else 1))
+        return bool((nth & mine).any())
+    if k.payoff in ("group_win", "group_all_classified", "group_any_classified", "group_all_points"):
         keys = res["team_id"].map(group_key) if group_key else res["team_id"]
         team = (params or {}).get("team")
         members = keys == team
@@ -334,5 +358,9 @@ def settle(kind, athlete_id, params, res, group_key=None):
             return None
         if k.payoff == "group_win":
             return bool((members & ok & (res["position"] == 1)).any())
+        if k.payoff == "group_any_classified":
+            return bool(ok[members].any())
+        if k.payoff == "group_all_points":
+            return bool((ok & (res["position"] <= k.n))[members].all())
         return bool(ok[members].all())
     return None

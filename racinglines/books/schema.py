@@ -157,10 +157,10 @@ def _market(m, field, problems):
     if "line" in m and (isinstance(m["line"], bool) or not isinstance(m["line"], (int, float))):
         problems.append(f"{field}.line: {m['line']!r} is not a number")
     payoff = K.KINDS[kind].payoff if kind in K.KINDS else None
-    if payoff in ("top_n", "stage_top_n", "classified", "last_classified", "retired", "first_retired", "indicator", "mover") \
+    if payoff in ("top_n", "stage_top_n", "classified", "last_classified", "retired", "first_retired", "nth_retired", "indicator", "mover") \
             and "driver" not in m:
         problems.append(f"{field}: kind {kind} names a driver")
-    if payoff in ("group_top", "group_win", "group_all_classified", "group_first_retired") and "team" not in m:
+    if payoff in ("group_top", "group_win", "group_all_classified", "group_first_retired", "group_any_classified", "group_all_points") and "team" not in m:
         problems.append(f"{field}: kind {kind} names a team")
     if payoff == "h2h" and ("driver" not in m or "opponent" not in m):
         problems.append(f"{field}: kind {kind} names a driver and an opponent")

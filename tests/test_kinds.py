@@ -177,6 +177,18 @@ def test_retirement_kinds_from_the_simulations():
         K.fair("race_n_retirements", sims)
     none = O.OutcomeSims(entrants=[1, 2], rank=np.array([[1.0, 2.0]]), finished=np.ones((1, 2), bool))
     np.testing.assert_array_equal(K.fair("race_first_retirement", none), [0.0, 0.0])
+    # n-th retirement: first_retired's share, only in simulations with at least n retirements
+    n_dnf = (~sims.finished).sum(axis=1)
+    second = K.fair("race_second_retirement", sims)
+    np.testing.assert_allclose(second, (K.first_retired(sims.finished) * (n_dnf >= 2)[:, None]).mean(0))
+    assert second.sum() == pytest.approx((n_dnf >= 2).mean()) and K.fair("race_third_retirement", sims).sum() == pytest.approx((n_dnf >= 3).mean())
+    assert (second <= first + 1e-12).all()
+    # team versions of the classification kinds
+    anyc = K.fair("race_team_any_classified", sims)
+    both = K.fair("race_team_both_classified", sims)
+    assert all(anyc[t] >= both[t] for t in anyc) and anyc == pytest.approx({t: float(sims.finished[:, np.array(sims.groups) == t].any(axis=1).mean()) for t in anyc})
+    pts = K.fair("race_team_both_points", sims)
+    assert all(pts[t] <= both[t] for t in pts)
 
 
 def test_retirement_kinds_on_the_simulation_from_position_sim(f1_priced):
@@ -206,6 +218,12 @@ RET = pd.DataFrame(dict(athlete_id=[1, 2, 3, 4, 5, 6], position=[1, 2, 3, 4, 5, 
     ("race_first_retirement", 1, None, False), ("race_first_retirement", 9, None, None),
     ("race_first_retirement_team", None, {"team": "b"}, True), ("race_first_retirement_team", None, {"team": "c"}, True),
     ("race_first_retirement_team", None, {"team": "a"}, False), ("race_first_retirement_team", None, {"team": "z"}, None),
+    # competition ranking on laps: cars 3 and 4 share first place, so nobody is the second retirement; a third needs 3 DNFs
+    ("race_second_retirement", 3, None, False), ("race_second_retirement", 4, None, False), ("race_second_retirement", 5, None, False),
+    ("race_third_retirement", 3, None, False), ("race_second_retirement", 9, None, None),
+    ("race_team_any_classified", None, {"team": "a"}, True), ("race_team_any_classified", None, {"team": "c"}, False),
+    ("race_team_any_classified", None, {"team": "z"}, None),
+    ("race_team_both_points", None, {"team": "a"}, True), ("race_team_both_points", None, {"team": "b"}, False),
 ])
 def test_retirement_settlement(kind, ath, params, want):
     assert K.settle(kind, ath, params, RET) == want
@@ -215,6 +233,10 @@ def test_first_retirement_needs_laps_completed():
     one = RET.assign(laps_completed=[57, 57, 12, 30, 57, 0])
     assert K.settle("race_first_retirement", 3, None, one) is True
     assert K.settle("race_first_retirement", 4, None, one) is False
+    assert K.settle("race_second_retirement", 4, None, one) is True and K.settle("race_second_retirement", 3, None, one) is False
+    assert K.settle("race_second_retirement", 3, None, RET.drop(columns="laps_completed")) is None
+    pts = RES.assign(position=[1, 11, 3, 4, 5], status="OK")
+    assert K.settle("race_team_both_points", None, {"team": "a"}, pts) is True and K.settle("race_team_both_points", None, {"team": "b"}, pts) is False
     no_laps = RET.drop(columns="laps_completed")
     assert K.settle("race_first_retirement", 3, None, no_laps) is None
     assert K.settle("race_first_retirement_team", None, {"team": "b"}, no_laps) is None

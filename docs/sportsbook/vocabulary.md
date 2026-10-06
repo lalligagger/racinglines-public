@@ -16,11 +16,14 @@ Generated from `schemas/kinds-vocabulary.toml`. Status: exists = in `racinglines
 | `race_last_classified` | Last classified finisher | driver | exists | **book_a**: Classified As Last Finisher |
 | `race_retire` | Driver retires (DNF or DSQ) | driver | exists | **book_a**: <Driver> To Be Classified? (the No side) |
 | `race_first_retirement` | First driver to retire (uniform timing assumption) | driver | exists | **book_a**: First Driver Retirement; **kalshi**: retirement titles, unmodeled (kalshi/sync.py:95) |
+| `race_second_retirement` | Second driver to retire (uniform timing assumption) | driver | exists | none seen |
+| `race_third_retirement` | Third driver to retire (uniform timing assumption) | driver | exists | none seen |
 | `race_grand_slam` | Win, pole and fastest lap by one driver | none | proposed | **book_a**: Any Driver To Win Race, Pole Position And Fastest Lap |
 | `race_constructor_top` | Most team points in the race | team | exists | **book_a**: Most Team Points; **kalshi**: KXF1TOPCONSTRUCTOR; **polymarket**: <GP>: Which Constructor Scores 1st? |
 | `race_constructor_win` | Winning constructor | team | exists | **book_a**: Race Winning Constructor |
 | `race_team_both_classified` | Both cars classified | team | exists | **book_a**: <Team> Both Cars Classified? |
-| `race_team_both_points` | Both cars in the points | team | proposed | **book_a**: <Team> both cars in points (ledger, Malaysia 2026) |
+| `race_team_both_points` | Both cars in the points | team | exists | **book_a**: <Team> both cars in points (ledger, Malaysia 2026) |
+| `race_team_any_classified` | At least one car classified | team | exists | none seen |
 | `race_first_retirement_team` | First constructor to retire (or no retirement) | team | exists | **book_a**: First Constructor Retirement |
 | `race_fastest_lap_team` | Fastest lap (team) | team | proposed | **book_a**: Car To Set The Fastest Lap; **polymarket**: constructor fastest lap (unmodeled, docs/f1.md:180) |
 | `race_fastest_pit_team` | Fastest pit stop (team) | team | no_data | **book_a**: Fastest Team Pit Stop |

@@ -124,7 +124,8 @@ def test_one_kind_registry():
         "race_fastest_lap", "race_top5", "race_biggest_mover",
         "race_classified", "race_last_classified", "race_team_both_classified", "race_n_classified",
         "race_constructor_win",
-        "race_retire", "race_n_retirements", "race_first_retirement", "race_first_retirement_team"]
+        "race_retire", "race_n_retirements", "race_first_retirement", "race_first_retirement_team",
+        "race_second_retirement", "race_third_retirement", "race_team_any_classified", "race_team_both_points"]
     sims = make_sims()
     for code in ("champion", "standings_top3", "constructors_champion", "season_wins_ge", "standings_h2h"):
         assert K.KINDS[code].payoff == "standings"
