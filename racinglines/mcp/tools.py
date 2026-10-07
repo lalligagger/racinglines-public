@@ -827,3 +827,68 @@ def cancel_job(engine, job_id):
         n = c.execute(text("""UPDATE jobs SET status = 'failed', finished_at = now(), progress = 'cancelled before it started'
                               WHERE id = :i AND status = 'queued'"""), dict(i=int(job_id))).rowcount
     return dict(job_id=int(job_id), cancelled=bool(n), note="" if n else "not queued (already running, done or failed)")
+
+
+# ---------------------------------------------------------------------------------------------------
+# sportsbook slips: map, price and settle a pasted book (racinglines/books/slips.py; nothing is stored)
+# ---------------------------------------------------------------------------------------------------
+
+def list_kinds(sport=None):
+    """Every market kind in the registry (markets/kinds.toml, markets/kinds.py) with the sports that model it: what a
+    book's `kind = ...` may name, and where price_book can expect a model price."""
+    from racinglines import sports as SPS
+    from racinglines.markets import kinds as K
+    from racinglines.pipelines import coverage as C
+    codes = SPS.SPORT_CODES
+    if sport and sport not in codes:
+        raise ValueError(f"no sport {sport!r}; one of {', '.join(codes)}")
+    rows = []
+    for code, k in K.KINDS.items():
+        modeled = [s for s in codes if C.modeled(s, code)]
+        if sport and sport not in modeled:
+            continue
+        rows.append(dict(kind=code, label=k.label, payoff=k.payoff, subject=k.subject, session=k.session,
+                         default=k.default, modeled_for=modeled))
+    return dict(sport=sport, kinds=len(rows), rows=P.page(rows, limit=P.MAX_LIMIT),
+                note="modeled_for: sports whose schema names a pricing model and lists the kind (coverage.modeled, the "
+                     "parity counter's rule); price_book reads a leg's model price from the stored run, so a kind outside "
+                     "this list prices only where a run stored it")
+
+
+def _book(text_):
+    from racinglines.books import slips as B
+    if not (text_ or "").strip():
+        raise ValueError("book: the book as TOML text (docs/sportsbook/slips.md)")
+    try:
+        return B.load_text(text_)
+    except Exception as ex:  # noqa: BLE001  (tomllib and the validator: a bad book is the caller's error)
+        raise ValueError(f"book: {ex}") from ex
+
+
+def _runs(conn, run_ids):
+    out = {}
+    for rid in run_ids or ():
+        r = data.model_run(conn, int(rid))
+        if r is None:
+            raise ValueError(f"no model run {rid}")
+        out[int(rid)] = r["competition"]
+    return out
+
+
+def map_book(conn, book):
+    """Each line and leg of a book matched to an exact race and athlete in the database, or unmapped with the reason."""
+    from racinglines.books import slips as B
+    return P.plain(B.map_book(conn, _book(book)), preview=False)
+
+
+def price_book(conn, book, run_ids=None):
+    """map_book plus, per leg and line: the book's own probability, the model's (a stored run), the linked prediction
+    market's, and EV against each. No blend of the two (an owner decision); both are shown."""
+    from racinglines.books import slips as B
+    return P.plain(B.price_book(conn, _book(book), runs=_runs(conn, run_ids)), preview=False)
+
+
+def settle_book(conn, book):
+    """map_book plus each leg's result and each line's result, payout and profit from the stored results."""
+    from racinglines.books import slips as B
+    return P.plain(B.settle_book(conn, _book(book)), preview=False)

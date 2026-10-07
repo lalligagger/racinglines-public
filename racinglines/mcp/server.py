@@ -287,6 +287,35 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         """The data change log: ingests that changed the race history, athlete merges and notes, newest first."""
         return _read(T.data_changes, sport=sport, limit=limit, offset=offset)
 
+    # --- sportsbook slips ----------------------------------------------------------------------------
+    @srv.tool()
+    def list_kinds(sport: str | None = None) -> str:
+        """Every market kind (race winner, podium, top N, head-to-head, pole, sprint, props, ...) with the sports that
+        model it: what a book's lines may name for map_book / price_book. sport: f1, nascar, motogp, ... to list only
+        the kinds modeled there."""
+        return _plain(T.list_kinds, sport=sport)
+
+    @srv.tool()
+    def map_book(book: str) -> str:
+        """Match a generic sportsbook's book (TOML text: [book] venue, event, sport, odds format; [[lines]] with kind,
+        driver / opponent / team, odds; combos as legs; docs/sportsbook/slips.md) to exact races and athletes in the
+        database. Each line and leg comes back mapped, or unmapped with the reason. Nothing is stored."""
+        return _read(T.map_book, book=book)
+
+    @srv.tool()
+    def price_book(book: str, run_ids: list[int] | None = None) -> str:
+        """map_book, then price every leg and line: the book's implied probability, our model's (a stored model run:
+        the app's own choice, or run_ids to pin one per competition), the linked prediction market's (Polymarket,
+        Kalshi, OG.com) and the expected value of the bet against each. Same-race combos are priced jointly where the
+        simulations allow, and flagged otherwise. The two probabilities are never blended (owner decision)."""
+        return _read(T.price_book, book=book, run_ids=run_ids)
+
+    @srv.tool()
+    def settle_book(book: str) -> str:
+        """map_book, then settle each leg and line from the stored results: won, lost, void, manual or pending, with
+        the payout and profit per line at the book's odds."""
+        return _read(T.settle_book, book=book)
+
     # --- sql ----------------------------------------------------------------------------------------
     @srv.tool()
     def sql(query: str, limit: int = 50, offset: int = 0) -> str:

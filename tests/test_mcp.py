@@ -170,7 +170,8 @@ def test_tools_are_registered_with_descriptions(mcp):
     tools = mcp.run(go)
     names = {t.name for t in tools}
     assert names >= {"overview", "list_events", "list_markets", "get_market_history", "sql", "run_job", "get_job", "replay_maker",
-                     "edge_finder", "track_record", "describe_schema"}
+                     "edge_finder", "track_record", "describe_schema", "list_kinds", "map_book", "price_book",
+                     "settle_book"}
     assert all(t.description for t in tools)
     lm = next(t for t in tools if t.name == "list_markets")
     assert "race_id" in lm.input_schema["properties"] and lm.input_schema["properties"]["limit"]["default"] == 50
