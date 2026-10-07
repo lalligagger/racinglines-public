@@ -51,6 +51,22 @@ def test_independent_legs_equal_the_product():
     assert C.combo_fair(legs, s) == pytest.approx(0.25)
 
 
+def test_three_independent_legs_win_pole_fastest_lap():
+    """Eight simulations in which A's win, pole and fastest lap vary independently (each holds in four): the
+    three-leg combo, same driver, holds in exactly one, the product of the marginals."""
+    bits = np.array([[(i >> j) & 1 for j in range(3)] for i in range(8)], bool)
+    rank = np.where(bits[:, [0]], [[1.0, 2, 3, 4]], [[2.0, 1, 3, 4]])
+    qual = np.where(bits[:, [1]], [[1.0, 2, 3, 4]], [[2.0, 1, 3, 4]])
+    fl = np.zeros((8, 4), bool)
+    fl[:, 0], fl[:, 1] = bits[:, 2], ~bits[:, 2]
+    s = OutcomeSims(entrants=[A, B, CC, D], rank=rank, finished=np.ones((8, 4), bool), stage_rank={"qual": qual},
+                    indicators={"race_fastest_lap": fl})
+    legs = [{"kind": "race_win", "athlete": A}, {"kind": "race_pole", "athlete": A},
+            {"kind": "race_fastest_lap", "athlete": A}]
+    out = C.price(legs, s)
+    assert out["legs"] == [0.5, 0.5, 0.5] and out["fair"] == pytest.approx(1 / 8) == pytest.approx(out["independent"])
+
+
 def test_legs_match_the_single_markets():
     s = _factorial()
     for leg, single in [({"kind": "race_podium", "athlete": B}, K.fair("race_podium", s, a=B)),

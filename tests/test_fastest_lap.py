@@ -54,7 +54,7 @@ def test_off_by_default_and_restored():
 BEFORE_SHA = "c8104984a253d930b4709376f2946bb9e22ce3bb151acb7219cf91a77d97f240"
 
 
-@pytest.mark.parametrize("variant", ["baseline", "fastlap"])
+@pytest.mark.parametrize("variant", ["baseline", "fastlap", "flpos"])
 def test_simulation_is_byte_identical_to_before_the_switch(variant):
     import hashlib
     e = _field([0.0, 0.001, 0.002, 0.003, 0.004, 0.005])
@@ -67,12 +67,13 @@ def test_simulation_is_byte_identical_to_before_the_switch(variant):
 
 
 @pytest.mark.parametrize("case", [dict(), dict(grid_known=True), dict(shock=True), dict(fm=dict(rho_dnf=0.4))])
-def test_switch_adds_fl_and_every_other_output_is_byte_identical(case):
+@pytest.mark.parametrize("variant", ["fastlap", "flpos"])
+def test_switch_adds_fl_and_every_other_output_is_byte_identical(case, variant):
     case = dict(case)
     fm = _fm(**case.pop("fm", {}))
     e = _field([0.0, 0.001, 0.002, 0.004, 0.006, 0.009], p_dnf=0.15)
     off, off_next = _sim(fm, e, **case)
-    with V.use("fastlap"):
+    with V.use(variant):
         on, on_next = _sim(fm, e, **case)
     assert set(on) == set(off) | {"fl"}
     for k in SIM_KEYS:
@@ -82,7 +83,8 @@ def test_switch_adds_fl_and_every_other_output_is_byte_identical(case):
     pd.testing.assert_frame_equal(so, sn.drop(columns="fl_prob"))
 
 
-def test_price_race_with_fastlap_is_otherwise_identical():
+@pytest.mark.parametrize("variant", ["fastlap", "flpos"])
+def test_price_race_with_fastlap_is_otherwise_identical(variant):
     """Through the one pricing path: the summary, head-to-heads and the constructor tie-break (drawn from the
     main stream after the simulation) are unchanged; fl_prob is the catalogue's fair value and is recorded."""
     from racinglines.models.position_sim import pricing as run
@@ -92,7 +94,7 @@ def test_price_race_with_fastlap_is_otherwise_identical():
     eid = int(m.drivers["event_id"].max())
     for cutoff in (m.sessions(eid)["qual"] - pd.Timedelta(minutes=1), m.sessions(eid)["qual"] + pd.Timedelta(hours=2)):
         base, bex = run.price_race(m, hist, cutoff, eid, n_sims=1500, rng=np.random.default_rng(5))
-        with V.use("fastlap"):
+        with V.use(variant):
             summ, ex = run.price_race(m, hist, cutoff, eid, n_sims=1500, rng=np.random.default_rng(5))
         pd.testing.assert_frame_equal(base, summ.drop(columns="fl_prob"))
         assert bex["constructor_top"] == ex["constructor_top"]
@@ -231,3 +233,70 @@ def test_model_prob_reads_fl_prob(test_engine):
         assert model_prob(c, dict(link, athlete_id=ids["b"]), run_id=ids["on"])[0] == 0.0
         assert model_prob(c, link, run_id=ids["off"]) == (None, ids["off"])      # a run without the switch
         assert model_prob(c, dict(link, prediction="race_pole"), run_id=ids["off"])[0] == pytest.approx(0.2)
+
+
+# --- flpos: the fastest lap from the simulated finishing order and race pace (sports/f1/fastest_lap.toml) -------------
+
+def test_flpos_is_off_by_default_and_reads_the_table():
+    assert M.FL_FROM == "pace" and "flpos" in V.SWITCHES and V.describe("flpos")
+    with V.use("flpos"):
+        assert M.FASTEST_LAP is True and M.FL_FROM == "position"
+    assert M.FASTEST_LAP is False and M.FL_FROM == "pace"
+    w, scale = M.fl_table()
+    assert w[0] == pytest.approx(36 / 108) and w[1] == pytest.approx(18 / 108)
+    assert w[2] == w[7] == pytest.approx(38 / 648) and w[8] == w[98] == pytest.approx(15 / 1042)
+    assert 0 < scale < 0.1
+
+
+def test_flpos_draw_gives_the_table_rate_to_the_winner():
+    """Equal pace: the draw follows the position weights alone. Seeded, 20 cars, nobody retires: the winner sets it
+    with probability w[0] / sum(w[:20]), about a third (2022-26: 36 of 108)."""
+    n, n_sims = 20, 40000
+    rng = np.random.default_rng(7)
+    pos = np.tile(np.arange(1.0, n + 1), (n_sims, 1))
+    for row in pos:
+        rng.shuffle(row)
+    dnf = np.zeros((n_sims, n), bool)
+    fl = M.fastest_lap_from_position(pos, dnf, np.zeros(n), rng)
+    w = M.fl_table()[0][:n]
+    assert set(fl.sum(axis=1)) == {1}
+    rate = fl[pos == 1].mean()
+    assert rate == pytest.approx(w[0] / w.sum(), abs=0.01)
+    assert 0.30 < rate < 0.36
+    assert fl[pos == 2].mean() == pytest.approx(w[1] / w.sum(), abs=0.01)
+    # a retired car never gets it, and a race with no classified car has none
+    dnf[:, 0] = True
+    assert not (M.fastest_lap_from_position(pos, dnf, np.zeros(n), rng) & dnf).any()
+    assert not M.fastest_lap_from_position(pos, np.ones((n_sims, n), bool), np.zeros(n), rng).any()
+
+
+def test_flpos_a_slow_winner_sets_it_less_often():
+    """Same finishing order, the winner's car 1.5 % of a lap slower than the rest: its share drops."""
+    n, n_sims = 20, 20000
+    pos = np.tile(np.arange(1.0, n + 1), (n_sims, 1))
+    dnf = np.zeros((n_sims, n), bool)
+    fast = M.fastest_lap_from_position(pos, dnf, np.zeros(n), np.random.default_rng(1))[:, 0].mean()
+    slow = M.fastest_lap_from_position(pos, dnf, np.r_[0.015, np.zeros(n - 1)], np.random.default_rng(1))[:, 0].mean()
+    assert slow < 0.65 * fast
+
+
+def test_flpos_win_pole_fastest_lap_before_qualifying():
+    """Through price_race before qualifying: pole comes from the simulated qualifying order (it varies between
+    simulations) and the race is simulated from that same draw, so the three legs on one driver move together."""
+    from racinglines.markets import combos as C
+    from racinglines.models.position_sim import pricing as run
+    from racinglines.testing import synthetic as SY
+    m = run.Measurements.from_frames(*SY.f1_frames())
+    hist = run.history(m)
+    eid = int(m.drivers["event_id"].max())
+    cutoff = m.sessions(eid)["qual"] - pd.Timedelta(minutes=1)
+    with V.use("flpos"):
+        _, ex = run.price_race(m, hist, cutoff, eid, n_sims=4000, rng=np.random.default_rng(5))
+    sims = O.from_position_sim(ex["entrants"], ex["sim"])
+    assert len(np.unique(sims.stage_rank["qual"][:, 0])) > 1            # drawn, not a fixed grid
+    a = sims.entrants[int(np.argmax(K.fair("race_win", sims)))]
+    legs = [{"kind": "race_win", "athlete": a}, {"kind": "race_pole", "athlete": a},
+            {"kind": "race_fastest_lap", "athlete": a}]
+    out = C.price(legs, sims)
+    assert out["fair"] > out["independent"]
+    assert C.price(legs[:2], sims)["fair"] > C.price(legs[:2], sims)["independent"]
