@@ -200,6 +200,7 @@ def board(conn, maker_id):
             season = None
             recent = []
         sports.append(dict(code=code, name=SPORT_NAME.get(code, schema["sport"]["name"]), run=run, tape=tape, asof=asof,
+                           calibration=schema["sport"].get("calibration"),
                            upcoming=upcoming, later=later, season=season, recent=recent, exchanges=exch,
                            status=ss_by_comp.get(code)))
     sports.sort(key=lambda s: SPORT_ORDER.get(s["code"], 9))

@@ -10,6 +10,7 @@ name = "NASCAR Cup Series"
 result_kind = "position"          # finishing positions
 model_family = "position_sim"     # result-based pricing model: conservative, source-faithful, uses race results only
 pricing_model = "racinglines.models.nascar_model:NascarCupRace"
+calibration = "baseline"          # pages label its prices as baseline: settings untuned (docs/f1-roadmap.md decision log, 2026-09-30); drop once fitted on a held-out season
 display_order = 1
 
 [league]

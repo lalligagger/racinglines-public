@@ -141,6 +141,14 @@ def _race_chart(c, info, pricing, df, exchange="polymarket"):
     return out
 
 
+def _calibration(competition):
+    """The sport schema's [sport] calibration for a competition code (e.g. "baseline"), None when unset or unknown."""
+    try:
+        return SP.by_competition(competition)["sport"].get("calibration")
+    except StopIteration:
+        return None
+
+
 @app.get("/races/{race_id}", response_class=HTMLResponse)
 def race_page(request: Request, race_id: int, msg: str = "", c=Depends(conn)):
     user = request.state.user
@@ -173,7 +181,8 @@ def race_page(request: Request, race_id: int, msg: str = "", c=Depends(conn)):
                   charts=charts, countdown=B._countdown(info["start_date"]),
                   kalshi=V.KALSHI_VENUE,
                   diag_runs=diag_runs, msg=msg, kind_label=V.KIND_LABEL, placeholders=V.placeholders(c, race_id),
-                  quote_kinds=list(V.STANDARD_KINDS.get(info["competition"], ("race_win", "race_podium"))))
+                  quote_kinds=list(V.STANDARD_KINDS.get(info["competition"], ("race_win", "race_podium"))),
+                  calibration=_calibration(info["competition"]))
 
 
 @app.get("/seasons/{code}", response_class=HTMLResponse, dependencies=[allow(*PRO)])
@@ -188,7 +197,7 @@ def season_page(request: Request, code: str, c=Depends(conn)):
                   season=True, strategy=latest_season_strategy(c, code), venue_sum=V.venue_summary(df), mine=B._mine(df), exchanges=V.EXCHANGES,
                   kalshi=V.KALSHI_VENUE, charts=[],
                   has_pm=bool(len(df) and df["pm_mid"].notna().any()), countdown="", diag_runs=[],
-                  msg="", kind_label=V.KIND_LABEL, quote_kinds=[])
+                  msg="", kind_label=V.KIND_LABEL, quote_kinds=[], calibration=_calibration(code))
 
 
 # ---------------------------------------------------------------------------

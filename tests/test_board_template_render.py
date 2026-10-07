@@ -127,6 +127,7 @@ def test_board_html_renders(jinja_env):
         {
             "code": "mtb_dh",
             "name": "MTB Downhill",
+            "calibration": "baseline",     # [sport] calibration: the board labels its prices
             "run": None,
             "tape": None,
             "asof": None,
@@ -191,6 +192,7 @@ def test_board_html_renders(jinja_env):
     assert "grid-only 0.094" in html
     assert "simulated trades in fantasy bucks; nothing is sent to an exchange" in html
     assert "markets in your private book that are still open" in html
+    assert html.count("baseline prices") == 1         # only the sport whose schema says calibration = "baseline"
 
 
 def test_board_html_with_sport_status(jinja_env):

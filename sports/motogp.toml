@@ -9,6 +9,7 @@ name = "MotoGP"
 result_kind = "position"          # finishing positions
 model_family = "position_sim"     # conservative, result-only pricing model
 pricing_model = "racinglines.models.motogp_model:MotoGPRaceChallenger"
+calibration = "baseline"          # pages label its prices as baseline: settings untuned (docs/f1-roadmap.md decision log, 2026-09-30); drop once fitted on a held-out season
 display_order = 2
 
 [league]

@@ -15,7 +15,7 @@
 
 {% for s in sports %}
 <details class="card" data-remember="markets:sport:{{ s.code }}">
-<summary class="sport-sum"><div class="sport-head"><h2 class="h-inline">{{ s.name }}</h2> <span class="sum">{% if s.run %}live prices from run <a href="/lab/runs/{{ s.run.id }}">#{{ s.run.id }}</a> · {{ s.run.created_at|fmt }}{% elif s.asof %}model: pre-race prices for {{ "{:,}".format(s.asof.races) }} past races (replay saves, latest {{ s.asof.at|fmt }}) · no live forecast yet, so upcoming races show exchange prices only{% else %}market data only · no model{% endif %}</span></div>
+<summary class="sport-sum"><div class="sport-head"><h2 class="h-inline">{{ s.name }}</h2>{% if s.calibration == "baseline" and not s.tape %} <span class="pill warn" tabindex="0" data-tooltip="a results-only model with untuned settings: a rough guide, not a calibrated fair price">baseline prices</span>{% endif %} <span class="sum">{% if s.run %}live prices from run <a href="/lab/runs/{{ s.run.id }}">#{{ s.run.id }}</a> · {{ s.run.created_at|fmt }}{% elif s.asof %}model: pre-race prices for {{ "{:,}".format(s.asof.races) }} past races (replay saves, latest {{ s.asof.at|fmt }}) · no live forecast yet, so upcoming races show exchange prices only{% else %}market data only · no model{% endif %}</span></div>
 {% if s.status %}<div class="qstats">{{ status_badge("races", s.status.races) }}{{ status_badge("markets", s.status.markets) }}{{ status_badge("backtests", s.status.backtests) }}<span tabindex="0" data-tooltip="simulated trades in fantasy bucks; nothing is sent to an exchange">{{ status_badge("paper", s.status.paper) }}</span></div>{% endif %}
 </summary>
 {% if s.run or s.tape or s.asof %}
