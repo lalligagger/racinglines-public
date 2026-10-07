@@ -100,7 +100,8 @@ def test_the_series_wins_over_the_titles_and_needs_a_grand_prix():
     ("nascar", dict(athlete_id=5, race_id=None, params=dict(kind="race_win")), "unmodeled"),     # no Cup race matched
     ("nascar", dict(athlete_id=5, race_id=9, params=dict(kind="race_h2h")), "unmodeled"),       # no opponent
     ("nascar", dict(athlete_id=5, race_id=9, params=dict(kind="race_h2h", opponent_id=6)), "race_h2h"),
-    ("nascar", dict(athlete_id=5, race_id=9, params=dict(kind="race_pole")), "unmodeled"),      # not in [markets] kinds
+    ("nascar", dict(athlete_id=5, race_id=9, params=dict(kind="race_pole")), "race_pole"),      # priced since C12b
+    ("nascar", dict(athlete_id=5, race_id=9, params=dict(kind="race_biggest_mover")), "unmodeled"),  # not in [markets] kinds
     ("nascar", dict(athlete_id=5, race_id=None, params=dict(kind="champion")), "unmodeled"),
     ("nascar", dict(athlete_id=None, race_id=9, params=dict(kind="race_team_win")), "unmodeled"),   # not a kind
     ("motogp", dict(athlete_id=5, race_id=9, params=dict(kind="race_win")), "race_win"),
