@@ -8,6 +8,7 @@ racinglines backtest <command>: the backtest core for any sport with a pricing m
 
     racinglines backtest walk-forward mtb_dh --seasons 2025 --half-life-days 120 [--save]
     racinglines backtest walk-forward motogp --model global --seasons 2026     # the sport-agnostic results model
+    racinglines backtest walk-forward nascar --model nascar_recent_form        # a challenger ([sport] challengers)
     racinglines backtest walk-forward f1 --model global --seasons 2025 2026 --venue polymarket kalshi
                          # also scores each venue's price beside the model's (model_vs_market): for F1 at the first
                          # stage, 1 h before any running (--market-stage 'after Quali' for another)
@@ -28,13 +29,22 @@ import pandas as pd
 
 
 def pricing_model(sport, which=None):
-    """The sport's own pricing model, or with which="global" the sport-agnostic results model
-    (models/model_global.py) pointed at the sport's schema ([model] / [replay] data hooks)."""
+    """The sport's pricing model ([sport] pricing_model), or with which="global" the sport-agnostic results model
+    (models/model_global.py) pointed at the sport's schema ([model] / [replay] data hooks), or with which = a name
+    in [sport] challengers the challenger model it names (an earlier pricing model kept runnable)."""
     from racinglines.models import race_model as RM
     if which == "global":
         from racinglines.models.model_global import GlobalModel
         return GlobalModel.for_sport(sport)()
+    if which:
+        return RM.challenger(sport, which)()
     return RM.get(sport)
+
+
+def model_choices(sport):
+    """The --model values for `sport`: "global" and the names in its [sport] challengers."""
+    from racinglines.models import race_model as RM
+    return ("global",) + tuple(RM.challengers(sport)) if sport else ("global",)
 
 
 def run_walk_forward(model, data, st, seasons=None, kinds=None, out_dir=None, save=False, engine_url=None,
@@ -118,8 +128,9 @@ def main(argv=None):
     wf.add_argument("--kinds", help="Market kinds, comma-separated (default: every per-entrant kind the model prices).")
     wf.add_argument("--out-dir", help="Write the CSVs here (default: data/runs/<sport>/walk_forward).")
     wf.add_argument("--save", action="store_true", help="Store the run in the database (model_runs, kind walk_forward).")
-    wf.add_argument("--model", choices=("global",), default=None,
-                    help="Run the sport-agnostic results model (models/model_global.py) instead of the sport's own.")
+    wf.add_argument("--model", choices=model_choices(known.sport if known.cmd == "walk-forward" else None), default=None,
+                    help="global: the sport-agnostic results model (models/model_global.py); or a challenger named in "
+                         "the schema's [sport] challengers (an earlier pricing model). Default: [sport] pricing_model.")
     wf.add_argument("--venue", nargs="+", choices=("polymarket", "kalshi"), default=[],
                     help="Also score each exchange's price beside the model's (exact market links only), read at the "
                          "schema's first stage before any running where the sport has a session schedule (F1), else at the "

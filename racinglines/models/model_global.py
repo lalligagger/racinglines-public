@@ -125,6 +125,25 @@ def _strengths(d):
     return d, np.where(fin, -_probit(q), np.nan), fin
 
 
+def _groups(hist, n, j, inf, field, ev):
+    """Per entrant of `field`: its team (the group the team markets name), from the event's entry list
+    (`ev.info["groups"]`) or else the entrant's latest team in the history before the event; an entrant with neither
+    is a group of its own. None when there are no teams at all. Draws nothing, so the prices are unchanged."""
+    known = dict((ev.info or {}).get("groups") or {})
+    if not known and hist.team is None:
+        return None
+    last = {}
+    if hist.team is not None:
+        team = hist.team[:n]
+        has = inf & pd.notna(team)
+        last = pd.Series(team[has], index=j[has]).groupby(level=0).last().to_dict()
+    out = []
+    for i, a in enumerate(field):
+        g = known.get(int(a), last.get(i))
+        out.append(str(g) if g is not None and pd.notna(g) else f"entrant:{int(a)}")
+    return out
+
+
 class GlobalModel:
     """The sport-agnostic results model. `for_sport(code)` (called by race_model.model_class) binds it to a
     sport's schema; unbound it prices whatever frame `load(data=...)` is given."""
@@ -133,6 +152,7 @@ class GlobalModel:
     name = "global_results"                # model_runs.model
     Settings = GlobalSettings
     cfg = None                             # {competition, source, group, prior}: the schema's data hooks
+    noise_unit = "strength"                # `noise` is in strength units, not finishing places
 
     @classmethod
     def for_sport(cls, sport):
@@ -193,8 +213,11 @@ class GlobalModel:
             if seasons and season not in seasons:
                 continue
             name = str(g["name"].iloc[0]) if "name" in g and pd.notna(g["name"].iloc[0]) else str(race)
-            out.append(Event(id=race, season=season, cutoff=g["date"].iloc[0], name=name,
-                             info={"field": sorted(started["athlete_id"].unique().tolist())}))
+            info = {"field": sorted(started["athlete_id"].unique().tolist())}
+            if "team" in started and started["team"].notna().any():      # the entry list's teams (group markets)
+                t = started.dropna(subset=["team"]).drop_duplicates("athlete_id", keep="last")
+                info["groups"] = {int(a): str(x) for a, x in zip(t["athlete_id"], t["team"])}
+            out.append(Event(id=race, season=season, cutoff=g["date"].iloc[0], name=name, info=info))
         return sorted(out, key=lambda e: (e.cutoff, str(e.id)))
 
     def history(self, data, settings):
@@ -262,7 +285,8 @@ class GlobalModel:
         else:
             dnf = np.zeros((settings["sims"], k), bool)
         rank = np.argsort(np.argsort(-(perf - 1e3 * dnf), axis=1), axis=1) + 1
-        return O.OutcomeSims(entrants=[int(x) for x in field], rank=rank, finished=~dnf)
+        return O.OutcomeSims(entrants=[int(x) for x in field], rank=rank, finished=~dnf,
+                             groups=_groups(hist, n, j, inf, field, ev))
 
     def results(self, data, ev):
         """The classification in markets/kinds.settle's shape; unclassified entrants follow the finishers."""

@@ -34,9 +34,13 @@ def event_rows(ev, sims, res, kinds=None):
     for kind in kinds:
         k = K.KINDS[kind]
         if k.payoff in PER_ENTRANT:
-            if kind not in summ:
+            if kind in summ:
+                col = summ[kind]
+            elif k.payoff == "top_n":              # a top-n kind off by default (race_top5), priced when named
+                col = K.fair(kind, sims)
+            else:
                 continue
-            for a, p in zip(sims.entrants, summ[kind]):
+            for a, p in zip(sims.entrants, col):
                 out.append(dict(kind=kind, athlete_id=a, opponent=None, fair=float(p),
                                 y=K.settle(kind, a, None, res)))
         elif k.payoff == "h2h":

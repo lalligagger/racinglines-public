@@ -202,5 +202,25 @@ def model_class(sport):
     return MODELS[sport]
 
 
+def challengers(sport):
+    """{name: "module:Class"}: the sport's challenger models ([sport] challengers in sports/<code>.toml), earlier or
+    alternative pricing models kept runnable beside [sport] pricing_model (`backtest walk-forward --model NAME`)."""
+    from racinglines import sports
+    try:
+        return dict(sports.load(sport)["sport"].get("challengers") or {})
+    except FileNotFoundError:
+        return {}
+
+
+def challenger(sport, name):
+    """The challenger model class `name` of `sport`, bound to the sport's schema as the pricing model is."""
+    from importlib import import_module
+    refs = challengers(sport)
+    if name not in refs:
+        raise ValueError(f"sports/{sport}.toml [sport] challengers has no {name!r}; choose from {sorted(refs)}")
+    mod, _, cls = refs[name].partition(":")
+    return bind(getattr(import_module(mod), cls), sport)
+
+
 def get(sport):
     return model_class(sport)()
