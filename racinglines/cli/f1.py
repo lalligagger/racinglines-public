@@ -538,7 +538,7 @@ def _run(args):
     if args.cmd == "record":
         from datetime import datetime, timezone
         from sqlalchemy import text
-        from racinglines.web.f1_live import FastF1LiveClient
+        from racinglines.web.f1_ws import FastF1LiveClient
 
         if args.status:
             # Show status of past passes and stored snapshots

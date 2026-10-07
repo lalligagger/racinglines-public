@@ -671,6 +671,137 @@ from starlette.routing import WebSocketRoute  # noqa: E402
 app.router.routes.append(WebSocketRoute("/ws/f1/live", _f1_live_ws))
 
 
+# FastF1 live stream (WebSocket support; staging's stream page, web/f1_ws.py)
+from fastapi import WebSocket, WebSocketDisconnect
+from racinglines.web.f1_ws import live_stream_manager, FastF1LiveClient
+
+@app.get("/live/f1/stream", response_class=HTMLResponse)
+def live_f1(request: Request, year: int = 2026, round_num: int = None, c=Depends(conn), user=allow(*ANY)):
+    """FastF1 live stream page with market pricing (Whistler Live demo replica).
+
+    Shows real-time F1 timing from FastF1 alongside live Polymarket prices.
+    Auto-detects current F1 event.
+    """
+    # Find the current/upcoming F1 race (auto-detect if round_num not specified)
+    try:
+        if round_num:
+            # Use specified round
+            races = data.q(c, """
+                SELECT ra.id, ra.event_id, e.season_id, e.start_date, e.name, s.competition_id
+                FROM races ra
+                JOIN events e ON e.id = ra.event_id
+                JOIN seasons s ON s.id = e.season_id
+                WHERE s.year = :year AND e.round = :round
+                LIMIT 1
+            """, year=year, round=round_num)
+        else:
+            # Auto-detect: first look for ongoing, then upcoming, then most recent
+            races = data.q(c, """
+                SELECT ra.id, ra.event_id, e.round, e.season_id, e.start_date, e.name, e.status, s.competition_id
+                FROM races ra
+                JOIN events e ON e.id = ra.event_id
+                JOIN seasons s ON s.id = e.season_id
+                WHERE s.year = :year
+                ORDER BY CASE
+                    WHEN e.status = 'ongoing' THEN 0
+                    WHEN e.status = 'upcoming' THEN 1
+                    WHEN e.status = 'completed' THEN 2
+                END ASC,
+                e.start_date DESC
+                LIMIT 1
+            """, year=year)
+            if races:
+                round_num = races[0].get("round")  # Extract round number from event
+
+        race_id = races[0]["id"] if races else None
+        event_name = races[0].get("name", f"Round {round_num}") if races else None
+    except Exception as e:
+        logger.error(f"Error finding F1 race: {e}")
+        race_id = None
+        event_name = None
+        round_num = 21
+
+    return render(request, "live_f1_stream.html", year=year, round_num=round_num, race_id=race_id, event_name=event_name)
+
+@app.get("/api/f1/markets/{race_id}")
+def f1_markets(race_id: int, c=Depends(conn), user=allow(*ANY)):
+    """Fetch market data for an F1 race (race winner odds)."""
+    try:
+        from racinglines.markets.venues import event_matrix
+        info, pricing, df = event_matrix(c, race_id)
+
+        # Filter to race winner markets
+        winners = df[df["kind"] == "race_win"].copy()
+
+        # Get athlete names
+        athlete_ids = winners["athlete_id"].unique() if len(winners) > 0 else []
+        athletes = {}
+        if len(athlete_ids) > 0:
+            names = data.q(c,
+                f"SELECT id, display_name FROM athletes WHERE id IN ({','.join('?' * len(athlete_ids))})",
+                *athlete_ids)
+            athletes = {row["id"]: row["display_name"] for _, row in names.iterrows()}
+
+        markets = []
+        for _, row in winners.iterrows():
+            athlete_name = athletes.get(row.get("athlete_id"), f"#{row.get('athlete_id', '?')}")
+            fair_val = float(row["fair"]) if row["fair"] is not None and pd.notna(row["fair"]) else None
+            pm_bid = float(row.get("pm_bid", None)) if row.get("pm_bid") is not None and pd.notna(row.get("pm_bid")) else None
+            pm_ask = float(row.get("pm_ask", None)) if row.get("pm_ask") is not None and pd.notna(row.get("pm_ask")) else None
+
+            markets.append({
+                "subject": athlete_name,
+                "fair": fair_val,
+                "bid": pm_bid,
+                "ask": pm_ask,
+            })
+
+        return {"markets": sorted(markets, key=lambda m: m["fair"] or 0, reverse=True), "source": pricing.get("source", "model")}
+    except Exception as e:
+        logger.error(f"Error fetching F1 markets: {e}")
+        return {"markets": [], "error": str(e)}
+
+@app.websocket("/ws/f1/live/{session_id}")
+async def websocket_f1_live(websocket: WebSocket, session_id: str):
+    """WebSocket endpoint for F1 live timing updates."""
+    await websocket.accept()
+    await live_stream_manager.add_client(session_id, websocket)
+
+    try:
+        while True:
+            # Keep connection alive and handle incoming messages
+            data = await websocket.receive_text()
+            msg = json.loads(data)
+
+            if msg.get("type") == "start":
+                # Start live updates for this session
+                year = msg.get("year")
+                round_num = msg.get("round")
+                session_name = msg.get("session")  # "FP1", "FP2", "FP3", "SQ", "SS", "Q", "R"
+
+                if year and round_num and session_name:
+                    try:
+                        fastf1_session = await FastF1LiveClient.get_session(year, round_num, session_name)
+                        if fastf1_session is None:
+                            await websocket.send_json({
+                                "type": "error",
+                                "data": {"error": f"F1 session {year} R{round_num} {session_name} not found"}
+                            })
+                        else:
+                            await live_stream_manager.start_live_updates(session_id, fastf1_session, update_interval=5)
+                    except Exception as e:
+                        logger.error(f"Error loading F1 session {year} R{round_num} {session_name}: {e}")
+                        await websocket.send_json({
+                            "type": "error",
+                            "data": {"error": f"Failed to load session: {str(e)[:100]}"}
+                        })
+    except WebSocketDisconnect:
+        await live_stream_manager.remove_client(session_id)
+    except Exception as e:
+        logger.error(f"WebSocket error for {session_id}: {e}")
+        await live_stream_manager.remove_client(session_id)
+
+
 from racinglines.web import admin  # noqa: E402,F401  (registers /admin routes)
 from racinglines.web import views  # noqa: E402,F401  (registers the board, race, season, book and lab pages)
 from racinglines.web import api  # noqa: E402,F401  (the read-only JSON API; off unless RACINGLINES_JSON_API=1)
