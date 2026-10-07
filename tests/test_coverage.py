@@ -24,7 +24,8 @@ def test_tier_bar():
 
 
 def test_modeled_reads_the_schema():
-    assert COV.modeled("f1", "race_win") and COV.modeled("nascar", "race_top20") is False   # not a kinds.py kind
+    assert COV.modeled("f1", "race_win") and COV.modeled("nascar", "race_top20")
+    assert COV.modeled("f1", "race_winning_margin") is False    # not a kind
     assert COV.modeled("indycar", "race_win") is False          # no pricing_model
     assert COV.modeled("motogp", "race_podium") is False        # not in the schema's kind lists
     assert COV.modeled("f1", "race_h2h") and COV.modeled("motogp", "race_win")
