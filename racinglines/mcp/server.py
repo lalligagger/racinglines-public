@@ -143,7 +143,8 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
     @srv.tool()
     def list_events(sport: str | None = None, competition: str | None = None, season: int | None = None,
                     status: str | None = None, limit: int = 50, offset: int = 0) -> str:
-        """Events (race weekends / rounds), newest first. sport: f1 or mtb_dh; competition: f1_wdc or uci_dhi_wc;
+        """Events (race weekends / rounds), newest first. sport: a sport code (f1, nascar, motogp, mtb_dh, ...)
+        or competition: a competition code (overview() lists both);
         status: completed or scheduled. Each row has its id (for get_event) and source_key (e.g. 2026-15)."""
         return _read(T.list_events, sport=sport, competition=competition, season=season, status=status, limit=limit, offset=offset)
 
@@ -213,11 +214,13 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
 
     # --- strategy research ---------------------------------------------------------------------------
     @srv.tool()
-    def edge_finder(year: int = 2026, strategy: str | None = None, limit: int = 50, offset: int = 0) -> str:
+    def edge_finder(year: int = 2026, strategy: str | None = None, venue: str | None = None, limit: int = 50,
+                    offset: int = 0) -> str:
         """The Lab's Edge Finder from saved sweeps: every configuration (a full set of sweep settings) with a full-season
         sweep of `year`, and each strategy's full-season recap (P&L, volume, weekends up, drawdown, consistency, fills and
-        markout for makers). Nothing is simulated. strategy: update, hold, last, early, maker, maker_flat, ... (omit for all)."""
-        return _read(T.edge_finder, year=year, strategy=strategy, limit=limit, offset=offset)
+        markout for makers). Nothing is simulated. strategy: update, hold, last, early, maker, maker_flat, ... (omit for all).
+        venue: polymarket or kalshi, the exchange the sweep traded (omit for all; each row names its venue)."""
+        return _read(T.edge_finder, year=year, strategy=strategy, venue=venue, limit=limit, offset=offset)
 
     @srv.tool()
     def list_candidates(limit: int = 50, offset: int = 0) -> str:
@@ -251,11 +254,12 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
 
     # --- paper trading, live events, change log ------------------------------------------------------
     @srv.tool()
-    def track_record(user: str, venue: str = "polymarket") -> str:
+    def track_record(user: str, venue: str = "polymarket", sport: str | None = None) -> str:
         """A user's paper-trading record, one row per weekend: strategy, trades taken or fills, positions, P&L (settled or
         marked), backtest replay or live. venue: polymarket, kalshi (the maker's replay on Kalshi's tape), private, or all
-        (one row per weekend and venue, with a venue column and totals per venue). Users: see overview()."""
-        return _read(T.track_record, user=user, venue=venue, viewer=caller())
+        (one row per weekend and venue, with a venue column and totals per venue). sport: f1, nascar, motogp, ... (omit
+        for all; NASCAR and MotoGP paper rows show where RACINGLINES_SPORT_PAPER is on). Users: see overview()."""
+        return _read(T.track_record, user=user, venue=venue, sport=sport, viewer=caller())
 
     @srv.tool()
     def list_positions(user: str, venue: str | None = None, event_key: str | None = None, open_only: bool = False,

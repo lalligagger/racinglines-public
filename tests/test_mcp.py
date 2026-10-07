@@ -181,15 +181,42 @@ def test_reads_on_the_test_database(mcp):
     ov = mcp("overview")
     assert {v["code"] for v in ov["venues"]} >= {"polymarket", "private"} and ov["row_counts"]["events"] >= 0
     assert set(ov) >= {"seasons", "forecasts", "model_runs", "market_links", "users", "upcoming", "hint"}
-    ev = mcp("list_events", sport="f1", limit=5)
+    ev = mcp("list_events", competition="f1_wdc", limit=5)
     assert len(ev["rows"]) <= 5 and ev["total"] >= len(ev["rows"]) and ev["limit"] == 5
     sc = mcp("describe_schema", table="model_runs")
     assert sc["rows"] >= 0 and "params" in {c["name"] for c in sc["columns"]}
     assert mcp("describe_schema")["tables"][0]["table"] == "sports"
-    assert "forecasts" in mcp("get_forecast", sport="f1")
+    assert "forecasts" in mcp("get_forecast", competition="f1_wdc")
     assert mcp("edge_finder", year=2026)["configurations"] >= 0
     kind, text = mcp("describe_schema", table="nope")
     assert kind == "error" and "no table" in text
+
+
+def test_sports_come_from_the_database(mcp):
+    """Any sport with a competition row is reachable by its code (no list in the code); an unknown one says what exists."""
+    from sqlalchemy import text
+    with mcp.engine.begin() as c:
+        c.execute(text("INSERT INTO sports (code, name, result_kind) VALUES ('kart_test', 'Karting', 'time') ON CONFLICT DO NOTHING"))
+        c.execute(text("INSERT INTO leagues (code, name) VALUES ('kart_test_lg', 'Karting league') ON CONFLICT DO NOTHING"))
+        c.execute(text("""INSERT INTO competitions (code, name, league_id, sport_id)
+                          SELECT 'kart_test_cup', 'Karting cup', l.id, s.id FROM leagues l, sports s
+                          WHERE l.code = 'kart_test_lg' AND s.code = 'kart_test' ON CONFLICT DO NOTHING"""))
+        assert T.sports_of(c)["kart_test_cup"] == "kart_test"
+        assert T._sport_filter(c, sport="kart_test") == "kart_test_cup"
+        assert T._sport_filter(c, sport="kart_test_cup") == "kart_test_cup"
+        assert T._sport_filter(c, competition="anything") == "anything" and T._sport_filter(c) is None
+        with pytest.raises(ValueError, match="no sport 'curling'"):
+            T._sport_filter(c, sport="curling")
+    assert mcp("overview")["sports"]["kart_test_cup"] == "kart_test"
+    assert mcp("list_events", sport="kart_test")["rows"] == []
+    kind, text_ = mcp("list_events", sport="curling")
+    assert kind == "error" and "kart_test" in text_
+
+
+def test_edge_finder_and_track_record_take_venue_and_sport(mcp):
+    assert mcp("edge_finder", year=2026, venue="kalshi")["venue"] == "kalshi"
+    kind, text_ = mcp("edge_finder", year=2026, venue="og")
+    assert kind == "error" and "polymarket" in text_
 
 
 def test_errors_reach_the_client_as_text(mcp):
@@ -469,6 +496,7 @@ def test_track_record_all_lists_one_row_per_weekend_and_venue(mcp):
         default = mcp("track_record", user="mcp-maker")
         assert "totals" not in default and "venue" not in default["rows"]["rows"][0]
         assert default["weekends"] == 1 and default["pnl"] == 3.0 and default["rows"]["rows"][0]["fills"] == 1
+        assert mcp("track_record", user="mcp-maker", sport="nascar")["weekends"] == 0    # no NASCAR weekend here
     finally:
         with mcp.engine.begin() as c:
             c.execute(T("DELETE FROM users WHERE username = 'mcp-maker'"))

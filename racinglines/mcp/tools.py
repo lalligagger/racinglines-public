@@ -16,8 +16,6 @@ from sqlalchemy import text
 from racinglines.db import reads as data
 from racinglines.mcp import page as P
 
-SPORT_OF = {"f1_wdc": "f1", "uci_dhi_wc": "mtb_dh"}
-COMPETITION_OF = {v: k for k, v in SPORT_OF.items()}
 RUN_KINDS = ("forecast", "scenario", "diagnostic", "backtest", "sweep", "season_strategy", "season_checkpoints",
              "season_asof", "walk_forward", "candidate")
 # tables the sql tool never reads (login secrets; exchange credentials and responses)
@@ -48,12 +46,27 @@ TABLES = {
 }
 
 
-def _sport_filter(sport=None, competition=None):
+def sports_of(conn):
+    """{competition code: sport code}, from the competitions and sports tables (every sport the database holds)."""
+    return {r[0]: r[1] for r in conn.execute(text(
+        "SELECT co.code, sp.code FROM competitions co JOIN sports sp ON sp.id = co.sport_id ORDER BY co.code")).fetchall()}
+
+
+def _sport_filter(conn, sport=None, competition=None):
+    """The competition code a tool filters on: `competition` as given, else the one competition of `sport`."""
     if competition:
         return competition
-    if sport:
-        return COMPETITION_OF.get(sport, sport)
-    return None
+    if not sport:
+        return None
+    of = sports_of(conn)
+    if sport in of:                     # a competition code passed as the sport
+        return sport
+    comps = [c for c, s in of.items() if s == sport]
+    if len(comps) == 1:
+        return comps[0]
+    if comps:
+        raise ValueError(f"sport {sport!r} has several competitions ({', '.join(comps)}): pass competition")
+    raise ValueError(f"no sport {sport!r}; the database has {', '.join(sorted(set(of.values())))}")
 
 
 def _usernames(conn):
@@ -91,7 +104,7 @@ def overview(conn):
                                JOIN seasons s ON s.id = e.season_id JOIN competitions co ON co.id = s.competition_id
                                WHERE e.status <> 'completed' AND e.start_date >= current_date - 7 ORDER BY e.start_date LIMIT 6""")
     return dict(
-        sports={c: s for c, s in SPORT_OF.items()},
+        sports=sports_of(conn),
         seasons=[P.record(r) for r in seasons.to_dict("records")],
         forecasts=[P.record(r) for r in data.latest_forecasts(conn).to_dict("records")],
         model_runs=[P.record(r) for r in runs.to_dict("records")],
@@ -124,7 +137,7 @@ def describe_schema(conn, table=None):
 # ---------------------------------------------------------------------------------------------------
 
 def list_events(conn, sport=None, competition=None, season=None, status=None, limit=None, offset=0):
-    df = data.events(conn, competition=_sport_filter(sport, competition), season=season)
+    df = data.events(conn, competition=_sport_filter(conn, sport, competition), season=season)
     if status:
         df = df[df["status"] == status]
     return P.page(df, limit=limit, offset=offset)
@@ -217,7 +230,7 @@ def list_markets(conn, race_id=None, event_id=None, competition=None, sport=None
         head = dict(race_id=int(race_id), event_id=info["event_id"], title=info["title"], competition=info["competition"],
                     season=info["season"], status=info["status"], start_date=info["start_date"], race_start=info["race_start"])
     else:
-        comp = _sport_filter(sport, competition)
+        comp = _sport_filter(conn, sport, competition)
         if not comp:
             raise ValueError("give race_id, event_id, or competition/sport (season markets)")
         info, pricing, df = V.season_matrix(conn, comp)
@@ -336,7 +349,7 @@ def get_market_history(conn, tokens=None, race_id=None, kind=None, athlete_id=No
 # ---------------------------------------------------------------------------------------------------
 
 def list_model_runs(conn, kind=None, competition=None, sport=None, season=None, limit=None, offset=0):
-    comp = _sport_filter(sport, competition)
+    comp = _sport_filter(conn, sport, competition)
     df = data.q(conn, """
         SELECT mr.id, mr.kind, co.code AS competition, s.year AS season, c.code AS category, mr.model, mr.created_at,
                mr.data_through, mr.params->>'variant' AS variant, mr.params->>'cutoff' AS cutoff, mr.params->>'event_key' AS event_key,
@@ -418,7 +431,7 @@ def get_predictions(conn, run_id, target=None, top=20, standings=False):
 
 def get_forecast(conn, competition=None, sport=None, category=None, top=10):
     """The live forecast (the run the web app shows): its next races' top probabilities and the championship."""
-    comp = _sport_filter(sport, competition)
+    comp = _sport_filter(conn, sport, competition)
     fc = data.latest_forecasts(conn)
     if comp:
         fc = fc[fc["competition"] == comp]
@@ -446,11 +459,15 @@ def get_forecast(conn, competition=None, sport=None, category=None, top=10):
 # strategy research: Edge Finder, diagnostics, maker replay
 # ---------------------------------------------------------------------------------------------------
 
-def edge_finder(conn, year=2026, strategy=None, limit=None, offset=0):
+def edge_finder(conn, year=2026, strategy=None, venue=None, limit=None, offset=0):
     """Every configuration with a full-season sweep of `year`, with the full-season recap of each strategy
     (P&L, volume, weekends up, drawdown, consistency): what the Lab's Edge Finder shows, from saved runs only."""
+    from racinglines.pipelines import sweep_settings as SS
     from racinglines.web import edge as E
-    cfgs = E.configs(conn, int(year))
+    if venue and venue not in SS.VENUES:
+        raise ValueError(f"venue is one of {', '.join(SS.VENUES)} (the exchanges a sweep trades)")
+    cfgs = {k: c for k, c in E.configs(conn, int(year)).items()
+            if not venue or (c["settings"]["venue"] or SS.DEFAULT_VENUE) == venue}
     strategies = [strategy] if strategy else E.STRATEGY_KEYS
     unknown = [s for s in strategies if s not in E.STRATEGY_LABEL]
     if unknown:
@@ -461,10 +478,11 @@ def edge_finder(conn, year=2026, strategy=None, limit=None, offset=0):
         weekends = (run or {}).get("metrics", {}).get("weekends") or []
         for s in strategies:
             rc = E.recap(weekends, s)
-            rows.append(dict(config=c["label"], settings_key=c["key"], run_id=c["run_id"], strategy=s,
+            rows.append(dict(config=c["label"], settings_key=c["key"], run_id=c["run_id"],
+                             venue=c["settings"]["venue"] or SS.DEFAULT_VENUE, strategy=s,
                              strategy_label=E.STRATEGY_LABEL[s], **{k: v for k, v in rc.items()}))
     rows.sort(key=lambda r: -(r["pnl"] or 0))
-    return dict(year=int(year), configurations=len(cfgs), strategies={k: E.STRATEGY_LABEL[k] for k in strategies},
+    return dict(year=int(year), venue=venue, configurations=len(cfgs), strategies={k: E.STRATEGY_LABEL[k] for k in strategies},
                 changed_settings={c["key"]: c["settings"].changed() for c in cfgs.values()},
                 rows=P.page(rows, limit=limit, offset=offset))
 
@@ -548,21 +566,23 @@ def _basic_viewer(viewer):
     return viewer if viewer and R.canonical(viewer.get("role")) == "basic" else None
 
 
-def track_record(conn, user, venue="polymarket", viewer=None):
+def track_record(conn, user, venue="polymarket", sport=None, viewer=None):
     """Every weekend of a user's paper record: strategy, trades or fills, positions, P&L. venue: polymarket, kalshi,
     private or all. 'all' lists one row per weekend AND venue (a `venue` column; the maker's weekends have a
     Polymarket and a Kalshi row) with `totals` per venue next to the grand total; `weekends` counts distinct weekends."""
+    from racinglines.pipelines import sport_paper as SP
     from racinglines.pipelines import story as S
     from racinglines.web import roles as R
     basic = _basic_viewer(viewer)
     uid = basic["id"] if basic else _user_id(conn, user)
     if basic:
         user = basic["username"]
-    tr = (lambda *a, **k: [R.basic_row(r) for r in S.track_record(*a, **k)]) if basic else S.track_record
+    full = lambda *a, **k: S.track_record(*a, sport=sport, sports=SP.enabled(), **k)      # noqa: E731
+    tr = (lambda *a, **k: [R.basic_row(r) for r in full(*a, **k)]) if basic else full
     if venue != "all":
         rows = tr(conn, uid, venue=venue)
         pnl = sum(r["pnl"] for r in rows)
-        return dict(user=user, venue=venue, weekends=len(rows), pnl=P.plain(pnl), up=sum(1 for r in rows if r["pnl"] > 0),
+        return dict(user=user, venue=venue, sport=sport, weekends=len(rows), pnl=P.plain(pnl), up=sum(1 for r in rows if r["pnl"] > 0),
                     rows=P.page([{k: v for k, v in r.items() if k != "date"} for r in rows], limit=P.MAX_LIMIT))
     rows, totals = [], []
     for v in TRACK_RECORD_VENUES:
@@ -574,7 +594,7 @@ def track_record(conn, user, venue="polymarket", viewer=None):
                                up=sum(1 for r in part if r["pnl"] > 0)))
     rows.sort(key=lambda r: (r["event_key"], TRACK_RECORD_VENUES.index(r["venue"])))
     pnl = sum(r["pnl"] for r in rows)
-    return dict(user=user, venue=venue, weekends=len({r["event_key"] for r in rows}), pnl=P.plain(pnl),
+    return dict(user=user, venue=venue, sport=sport, weekends=len({r["event_key"] for r in rows}), pnl=P.plain(pnl),
                 up=sum(1 for r in rows if r["pnl"] > 0), totals=totals, rows=P.page(rows, limit=P.MAX_LIMIT))
 
 

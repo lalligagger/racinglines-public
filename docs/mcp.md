@@ -185,15 +185,15 @@ exchange, venues, users and the next races. Then:
 | Tool | What it reads or does |
 |---|---|
 | `describe_schema(table)` | The tables with one-line meanings, or one table's columns (for `sql`). |
-| `list_events(sport, competition, season, status)`, `get_event(event_id \| source_key, include)` | Events and one event's races, classification, stored predictions and market matrix (`include=results,predictions,markets`). |
+| `list_events(sport, competition, season, status)`, `get_event(event_id \| source_key, include)` | Events (`sport` is any sport code the database holds: `overview()` lists them, from the `sports` and `competitions` tables) and one event's races, classification, stored predictions and market matrix (`include=results,predictions,markets`). |
 | `search_athletes(q)`, `get_athlete(athlete_id, include)` | Drivers and riders, their results and prediction history. |
 | `list_markets(race_id \| event_id \| competition, kinds)` | The venues matrix (`markets/venues.py`): one row per outcome with our fair value, each venue's quote (Polymarket, Kalshi with `RACINGLINES_KALSHI_VENUE=1`, the private book), the gap and, for a past race, the result and the exchange price at the time we priced. |
 | `get_market_history(tokens \| race_id + kind/athlete_id/subject/exchange, series, start, end, resample)` | Exchange time series from the archive and the database (`markets/store.py`): prices (last per bucket), trades (count, volume, VWAP per bucket) or books (best bid/ask), at most 200 points per token. |
 | `list_model_runs(kind, ...)`, `get_model_run(run_id, path)`, `get_predictions(run_id, target, top, standings)` | Runs of every kind, one run's params and metrics (large metrics as a key map; `path='metrics.weekends'` for a part), per-athlete probabilities. |
 | `get_forecast(competition, category)` | The live forecast (the run the web app shows): the next races' top probabilities and the championship. |
-| `edge_finder(year, strategy)`, `list_candidates()` | The Lab's Edge Finder from saved sweeps: every configuration's full-season recap per strategy; the saved candidates. |
+| `edge_finder(year, strategy, venue)`, `list_candidates()` | The Lab's Edge Finder from saved sweeps: every configuration's full-season recap per strategy (`venue`: the exchange the sweep traded, a column on every row); the saved candidates. |
 | `list_diagnostics()`, `get_diagnostic(run_id)` | As-of diagnostic runs; one run's prices vs Polymarket at the cutoff, edges, scores and result. |
-| `track_record(user, venue)`, `list_positions(user, venue, event_key)`, `list_signals(user, event_key, status)` | Paper trading per account: the weekend record (Polymarket, Kalshi replay, private book; `venue='all'` lists one row per weekend and venue with a `venue` column and `totals` per venue), positions, signals. |
+| `track_record(user, venue, sport)`, `list_positions(user, venue, event_key)`, `list_signals(user, event_key, status)` | Paper trading per account: the weekend record (Polymarket, Kalshi replay, private book; `venue='all'` lists one row per weekend and venue with a `venue` column and `totals` per venue; `sport` keeps one sport's weekends, NASCAR and MotoGP paper rows included where `RACINGLINES_SPORT_PAPER` is on), positions, signals. |
 | `list_live_events()`, `data_changes()` | Settled live private-book events and the run folders present; the data change log. |
 | `sql(query, limit, offset)` | Any `SELECT` (or `WITH ... SELECT`, `EXPLAIN`), in a `READ ONLY` transaction with a 10 s timeout, paged. The `users` and `orders` tables are not readable. |
 
