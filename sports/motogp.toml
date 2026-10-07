@@ -92,14 +92,49 @@ race_day_offset = 2               # an event is filed by its first day (Friday);
 stages = [["T-3d", -72], ["T-1d", -24], ["race eve", -6]]
 group_target = { race_win = 1 }
 
+[sessions]
+# The season sweep's "sessions" stage mode (racinglines/pipelines/season_sweep.py; C12a): a weekend's sessions are its
+# stored rounds (racinglines/sources/motogp/ingest.py session_round_kind) whose kind is a [sessions.schedule] name,
+# each starting at rounds.extra.session_date (the sessions API's date, with its UTC offset). A read-only query on
+# 2026-10-07: 34 events store their sessions with dates (fp1, fp2, warmup, race; practice and sprint 2025-, fp3/fp4
+# 2016); the other 168 race rounds come from the one-session ingest and store no date, so those events are traded on
+# the [replay] stages. No qualifying round is stored (0 qual1/qual2 rounds): the API names them type "Q" with number
+# 1 / 2, which session_round_kind doesn't map yet (C12, not this schema), so Q1/Q2 stages appear once it does.
+time_key = "session_date"
+
+# round kind -> (minutes, short label). Minutes are a priori (no session length is stored): docs/f1-roadmap.md
+# decision log 2026-10-07 "NASCAR and MotoGP session schedules"
+[sessions.schedule]
+fp1 = [45, "FP1"]
+fp2 = [45, "FP2"]
+fp3 = [45, "FP3"]
+fp4 = [30, "FP4"]
+practice = [60, "PR"]                    # Friday's Practice (2023-): the top ten go straight to Q2
+qual1 = [15, "Q1"]
+qual2 = [15, "Q2"]                       # the starting grid
+sprint = [45, "Sprint"]                  # the Saturday sprint (2023-; stored 2025-), with its procedures
+warmup = [10, "WUP"]                     # Sunday's warm-up, before the Grand Prix
+
+# When a weekend is priced and traded in the "sessions" mode (racinglines/core/stages.py, as F1's): a stage 1 h
+# before the first session, then 30 min after each session ends, until the Grand Prix. A priori, as F1's values
+[stages]
+pre_label = "pre-weekend"
+pre_minutes = 60
+lag_minutes = 30
+until = "race"
+until_fallback_hours = 0                 # the race start when its round stores no date: 00:00 UTC on race day (the
+                                         # [sweep] quote_until_hours assumption): a later session's stage is dropped
+
 [sweep]
 # The season sweep (racinglines/pipelines/season_sweep.py; `racinglines motogp sweep`, search jobs of kind "sweep"): the
 # F1 sweep's taker modes and maker variants on the [replay] stages, kinds and group targets, priced by [sport]
 # pricing_model from results strictly before the event, settled by classified position. Venues: [markets] venues,
 # plus OG.com where exchanges/og.toml lists the sport. A priori values, none tuned.
-stages = "weekend"                # the stage mode: the fixed [replay] stages, one pricing per race (the replay's
-                                  # behaviour, kept reproducible; a session-aware mode needs [sessions.schedule])
-late_stages = ["race eve"]        # the stage-aware taker ("early") skips these
+stages = "weekend"                # the default stage mode: the fixed [replay] stages, one pricing per race (the
+                                  # replay's behaviour, kept reproducible). "sessions" ([sessions] above) is a sweep's
+                                  # `stages` setting until the owner makes it the default
+late_stages = ["race eve", "after Q2", "after Sprint", "after WUP"]   # the stage-aware taker ("early") skips these
+                                                                      # (each mode: its own labels)
 quote_until_hours = 0             # the maker stops quoting at this hour (UTC) of race day: before any race-day running
                                   # (the race's start time isn't in the schema)
 

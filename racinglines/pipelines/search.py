@@ -282,7 +282,8 @@ def _grid_key(j):
         return None
     from racinglines.pipelines import season_sweep as SW
     st = job_settings_class(j).from_dict(j["settings"])
-    if SW.mode_of(j.get("sport", DEFAULT_SPORT), st) != "sessions":
+    sport = j.get("sport", DEFAULT_SPORT)
+    if SW.mode_of(sport, st) != "sessions" or SW.time_key(sport):       # stored sessions: priced in the sweep itself
         return None
     return (j.get("sport", DEFAULT_SPORT), j["year"], j.get("rounds"), st.model_key, st["variant"])
 

@@ -189,3 +189,138 @@ def test_the_weekend_mode_reproduces_the_base_commit(world, test_engine, sport):
     blob, digest = canon(run(test_engine, sport))
     assert digest == BASE[sport], blob[:2000]
     assert canon(run(test_engine, sport, stages="weekend"))[1] == BASE[sport]        # named or unset: the same
+
+
+# --- the schema: a session schedule beside the fixed stages ---------------------------------------------------
+
+@pytest.mark.quick
+def test_both_modes_are_in_the_schema_and_weekend_stays_the_default():
+    from racinglines.pipelines import sweep_settings as SS
+    for sport in ("nascar", "motogp"):
+        assert SW.modes(sport) == ("sessions", "weekend") and SW.engine_of(sport) == "weekend"
+        assert SW.time_key(sport) and SW.supports(sport)
+        cls = SW.settings_class(sport)
+        st = cls.from_dict()
+        assert st["taker_stages"] == SW.stage_labels(sport, "weekend") and st["late_stages"] == ("race eve",)
+        assert SW.mode_of(sport, cls.from_dict({"stages": "sessions"})) == "sessions"
+        assert set(SW.stage_labels(sport, "sessions")) <= set(cls.BY["taker_stages"].choices)
+    assert SW.time_key("f1") is None and SW.modes("f1") == ("sessions",)
+    assert SW.stage_labels("f1", "sessions") == SS.STAGES                   # the schema's labels are F1's, as before
+    assert SW.stage_labels("nascar", "sessions") == ("pre-weekend", "after P1", "after P2", "after P3", "after P4",
+                                                     "after P5", "after Q1", "after Q2", "after Q")
+    assert SW.stage_labels("motogp", "sessions") == ("pre-weekend", "after FP1", "after FP2", "after FP3", "after FP4",
+                                                     "after PR", "after Q1", "after Q2", "after Sprint", "after WUP")
+    assert SW.late_labels("nascar", "sessions") == ("after Q", "race eve")
+    assert SW.kinds("nascar", "sessions") == SW.kinds("nascar", "weekend")   # no weekend_kinds: the [replay] kinds
+
+
+@pytest.mark.quick
+def test_session_stages_come_from_stored_times_and_stop_before_the_race():
+    T = pd.Timestamp
+    sp = P.spec("nascar")
+    # practice and qualifying stored, the race not: the stages end at 00:00 UTC on race day
+    got = SW.session_stages("nascar", T("2031-03-23"), [("fp1", T("2031-03-22 15:00")), ("qual", T("2031-03-22 19:00"))], sp)
+    assert got["stages"] == [("pre-weekend", T("2031-03-22 14:00")), ("after P1", T("2031-03-22 16:20")),
+                             ("after Q", T("2031-03-22 20:30"))]
+    assert got["until"] == T("2031-03-23") and got["sessions"][0][0] == "fp1"
+    # a session whose data would be in after the start is not a stage
+    late = SW.session_stages("nascar", T("2031-03-23"), [("fp1", T("2031-03-22 15:00")), ("qual", T("2031-03-22 23:30"))], sp)
+    assert [lab for lab, _ in late["stages"]] == ["pre-weekend", "after P1"]
+    # nothing stored: no session stages (the event is traded on its [replay] stages)
+    assert SW.session_stages("nascar", T("2031-03-23"), [], sp) is None
+    # MotoGP: the race's stored start ends the stages (Sunday's warm-up is in, the race is not)
+    m = SW.session_stages("motogp", T("2031-03-28"), [("fp1", T("2031-03-28 09:45")), ("sprint", T("2031-03-29 14:00")),
+                                                     ("warmup", T("2031-03-30 08:40")), ("race", T("2031-03-30 12:00"))],
+                          P.spec("motogp"))
+    assert [lab for lab, _ in m["stages"]] == ["pre-weekend", "after FP1", "after Sprint", "after WUP"]
+    assert m["until"] == T("2031-03-30 12:00")
+
+
+@pytest.mark.quick
+def test_the_start_list_leaves_out_non_starters():
+    res = pd.DataFrame(dict(athlete_id=[3, 1, 2, 4], position=[1, 2, None, None], status=["OK", "ok", "DNS", None]))
+    assert SW.start_list(res) == [1, 3, 4]                     # DNS out; a DNF / unknown status started
+
+
+# --- "sessions": a season on the test database ----------------------------------------------------------------
+
+def _plans(test_engine, sport, mode):
+    sp, sw = P.spec(sport), SW.spec(sport)
+    with test_engine.connect() as conn:
+        rs = P.races(conn, sp, [YEAR])
+        times = SW.session_times(conn, sport, rs["race_id"].tolist())
+    return rs, {r.event_key: SW.race_plan(sport, mode, r, times.get(int(r.race_id), []), sp, sw) for r in rs.itertuples()}
+
+
+@pytest.mark.parametrize("sport", ["nascar", "motogp"])
+def test_a_sessions_sweep_trades_after_each_stored_session(world, test_engine, sport):
+    world(sport)
+    rs, plans = _plans(test_engine, sport, "sessions")
+    keys = list(rs["event_key"])
+    assert [plans[k]["format"] for k in keys] == ["sessions", "sessions", "weekend", "sessions"]   # the third: no times
+    want = {"nascar": ["pre-weekend", "after P1", "after Q"],
+            "motogp": ["pre-weekend", "after FP1", "after PR", "after Q1", "after Q2", "after Sprint"]}[sport]
+    assert [lab for lab, _ in plans[keys[3]]["stages"]] == want
+    assert [lab for lab, _ in plans[keys[2]]["stages"]] == ["T-3d", "T-1d", "race eve"]
+    first = pd.Timestamp(WORLD[sport]["days"][3])
+    until = first if sport == "nascar" else first + pd.Timedelta(hours=WORLD[sport]["race"])   # fallback / stored
+    assert plans[keys[3]]["until"] == until and all(t < until for _, t in plans[keys[3]]["stages"])
+
+    out = run(test_engine, sport, stages="sessions")
+    p = out["params"]
+    assert p["stages_mode"] == "sessions" and p["sessions"]["events"] == 3 and p["sessions"]["fallback_events"] == 1
+    assert tuple(p["late_stages"]) == SW.late_labels(sport, "sessions")           # the mode's own late stages
+    w = out["weekends"].set_index("event_key")
+    assert list(w.index) == keys[2:] and w.loc[keys[3], "format"] == "sessions" and w.loc[keys[2], "format"] == "weekend"
+    assert w.loc[keys[3], "stages"] == len(want) and w.loc[keys[3], "markets"] == 4
+    stages = set(out["trades"]["stage"])
+    assert stages & set(want[1:]), stages                                        # entries after a session ...
+    assert stages <= set(want) | {"T-3d", "T-1d", "race eve"}
+    assert set(out["totals"]) >= {"update", "hold", "last", "early", "maker"} and out["trades"]["pnl"].notna().all()
+    # ... and the weekend mode on the same data is still the base commit's
+    assert canon(run(test_engine, sport))[1] == BASE[sport]
+
+
+@pytest.mark.parametrize("sport", ["nascar", "motogp"])
+def test_every_stage_is_repriced_with_what_is_known_and_a_results_model_moves_nothing(world, test_engine, sport):
+    """GlobalModel reads race results before the event only: asked at every stage (with the sessions run so far in
+    Event.info), it prices each the same, and the same as the weekend mode's one pricing."""
+    from conftest import TEST_DB
+    from racinglines.models.race_model import Event
+    world(sport)
+    rs, plans = _plans(test_engine, sport, "sessions")
+    r = list(rs.itertuples())[3]
+    plan = plans[r.event_key]
+    model = P.model_for(P.spec(sport))
+    ms = model.Settings.from_dict({"sims": 300})
+    hist = model.history(model.load(TEST_DB), ms)
+    with test_engine.connect() as conn:
+        field = SW.start_list(P.race_results(conn, r.race_id))
+    seed = [ms.rng_seed, 7]
+    seen, orig = [], model.price
+
+    def spy(h, ev, s, rng):
+        seen.append(list(ev.info["sessions"]))
+        assert ev.cutoff == r.start and ev.info["field"] == field
+        return orig(h, ev, s, rng)
+    model.price = spy
+    sims = SW.stage_sims(model, hist, ms, r, field, plan["stages"], plan["sessions"], sport, seed)
+    model.price = orig
+    assert list(sims) == [lab for lab, _ in plan["stages"]]
+    assert [len(x) for x in seen] == list(range(len(plan["stages"])))       # one more session known at each stage
+    one = model.price(hist, Event(id=r.event_key, season=int(r.season), cutoff=r.start, name=str(r.name),
+                                  info={"field": field}), ms, np.random.default_rng(seed))
+    for s in sims.values():
+        assert s.entrants == one.entrants and np.array_equal(s.rank, one.rank) and np.array_equal(s.finished, one.finished)
+
+
+def test_the_sweep_prices_the_start_list_not_the_non_starters(world, test_engine):
+    """A car on the entry list that did not start (DNS) is not in the field the sweep prices, in either mode."""
+    ids = world("nascar", dns=True)
+    rs, _ = _plans(test_engine, "nascar", "weekend")
+    with test_engine.connect() as conn:
+        res = P.race_results(conn, rs["race_id"].iloc[3])
+    assert ids[N] in set(res["athlete_id"]) and ids[N] not in SW.start_list(res)
+    for mode in ("weekend", "sessions"):
+        out = run(test_engine, "nascar", stages=mode)
+        assert out["weekends"]["markets"].tolist() == [4, 4] and out["trades"]["pnl"].notna().all()
