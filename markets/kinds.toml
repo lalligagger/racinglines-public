@@ -21,7 +21,8 @@
 #      reached      stage        the entrant reached the round (sims.reached[stage]); settles on reached_<stage>
 #      h2h                       P(a classified ahead of b); settles on positions (params.opponent_id)
 #      group_top                 the team scoring the most points (ties split); settles on summed points (params.team)
-#      indicator                 a yes/no the model draws itself (sims.indicators[code]); not in the results: undecided
+#      indicator                 a yes/no the model draws itself (sims.indicators[code]); settles on the results' <code>
+#                                column when the frame has one (GlobalModel's best lap), else undecided
 #      mover        stage        priced: the biggest gain from the <stage> order to the finish; settled from the race
 #                                round's stored starting grid (results.extra.grid; payoffs.biggest_mover), else undecided
 #      standings    n, exact     season-long, priced by kinds.season_fair from a season simulation (outcomes.SeasonSims,
@@ -42,8 +43,8 @@
 #               position   n      rank == n and finished / OK and position == n (an exact finishing place)
 #               stage_top  n, stage   sims.stage_rank[stage] <= n / <stage>_position <= n (qual_position for "qual");
 #                                 a car with no position is NO once anyone has one, undecided while nobody has
-#               indicator  of     sims.indicators[of] (a yes/no the model draws, e.g. race_fastest_lap) / not in the
-#                                 results: undecided
+#               indicator  of     sims.indicators[of] (a yes/no the model draws, e.g. race_fastest_lap) / the results'
+#                                 <of> column when the frame has one, else undecided
 #               points            the points the car scores (sims.points) / the results' points (a number, not a yes/no)
 #               last_classified   the worst-ranked classified car (ties all) / OK and position == the worst OK position
 #               nth_retired n     1 / n_dnf for every retiring car in a simulation with at least n retirements (the
@@ -159,7 +160,8 @@ stage = "sprint"
 
 # A yes/no the model draws itself in each simulation (sims.indicators[code]). F1's fastest lap is drawn by position_sim
 # behind its `fastlap` variant (model.FASTEST_LAP, off by default) and stored as race_predictions.extra.fl_prob; the
-# classification doesn't record it, so it can't be settled from the results
+# classification doesn't record it, so it can't be settled from F1's results. NASCAR's is drawn by the GlobalModel from
+# each race's best-lap order ([model] best_lap in sports/nascar.toml) and settles on the race's laps when all are stored
 
 [[kinds]]
 code = "race_fastest_lap"

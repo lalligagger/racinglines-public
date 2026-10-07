@@ -150,6 +150,14 @@ def _res_stage_top(res, s):
     return (res[col] <= s["n"]).astype(object)   # a car with no place in it, once others have one: NO
 
 
+def _res_indicator(res, s):
+    """A drawn yes/no (the fastest lap) from the frame's column of that kind's name (models/model_global.py adds it
+    from the race's laps); None when the frame has no such column: the venue settles it."""
+    if s["of"] not in res or res[s["of"]].isna().all():
+        return None
+    return res[s["of"]].astype(object)
+
+
 def _res_retired(res, s):
     v = res["status"].isin(RETIRED).astype(object)
     v[res["status"] == "DNS"] = None             # a non-starter: void, not a retirement
@@ -189,7 +197,7 @@ PREDICATES = {
     "stage_top": (lambda sims, s: _stage_rank(sims, s) <= s["n"],
                   _res_stage_top, ("n", "stage")),
     "indicator": (_indicator,
-                  lambda res, s: None, ("of",)),          # not in the results (the fastest lap): the venue settles it
+                  _res_indicator, ("of",)),     # the results' <of> column when the frame has one, else undecidable
     "points": (_points,
                lambda res, s: res["points"].astype(float).fillna(0.0), ()),
     "last_classified": (lambda sims, s: last_classified(sims.rank, sims.finished),

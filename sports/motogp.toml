@@ -73,6 +73,10 @@ limits = { history_seasons = 78, splits_available = false }   # splits_available
 # Data hooks for the sport-agnostic results model (racinglines/models/model_global.py, `--model global`); the
 # history's events.source is the [replay] source below. No setting here is tuned.
 group = "team"                    # results.team, for the optional team-form prior
+# The qualifying order (round "qual": Q2 then the Q1 riders who didn't reach it, racinglines/sources/motogp/ingest.py)
+# drawn from past qualifying results, for race_pole (models/model_global.py; decision log 2026-10-07 "NASCAR pole and
+# fastest lap", provisional). Inert until qualifying is in the database: the VM backfill (C12b report) brings it
+sessions = ["qual"]
 
 [replay]
 # The taker replay (racinglines/pipelines/position_replay.py; `racinglines motogp replay`). Links stored before the

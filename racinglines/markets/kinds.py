@@ -293,6 +293,12 @@ def settle(kind, athlete_id, params, res, group_key=None):
         if col not in res:
             return None
         return bool(by.loc[athlete_id, col]) if athlete_id in by.index else False
+    if k.payoff == "indicator":
+        # a yes/no the model draws (the fastest lap): settled from a column of that kind's name when the frame
+        # carries one (models/model_global.py adds it from the race's laps), else undecidable
+        if kind not in res or res[kind].isna().all():
+            return None
+        return bool(by.loc[athlete_id, kind]) if athlete_id in by.index else False
     if k.payoff == "mover":
         won, _ = P.biggest_mover(res)        # from the stored starting grid (the frame's `grid`); None when it can't say
         if won is None:

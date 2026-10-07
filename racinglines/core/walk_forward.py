@@ -22,7 +22,7 @@ import pandas as pd
 from racinglines.core import calibration as CAL
 from racinglines.markets import kinds as K
 
-PER_ENTRANT = ("top_n", "stage_top_n", "reached")
+PER_ENTRANT = ("top_n", "stage_top_n", "reached", "indicator")   # indicator: a drawn yes/no (the fastest lap)
 
 
 def event_rows(ev, sims, res, kinds=None):
