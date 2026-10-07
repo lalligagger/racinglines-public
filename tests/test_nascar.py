@@ -194,9 +194,9 @@ def _nascar_data():
 
 def test_nascar_model_contract_and_in_memory_pricing_are_valid():
     from racinglines.models.nascar_model import NascarCupRace
-    from racinglines.models.race_model import model_class
+    from racinglines.models.race_model import challenger
 
-    assert model_class("nascar").__name__ == "NascarCupRace"
+    assert challenger("nascar", "nascar_results").__name__ == "NascarCupRace"
 
     df = pd.DataFrame([
         {"season": 2026, "event_id": "2026-5624", "race_key": "2026-5624", "date": pd.Timestamp("2026-09-06"),
@@ -244,7 +244,7 @@ def test_nascar_model_prices_by_athlete_id_across_roster_changes():
                                                         "history_races": 0, "team_bias": 0.1,
                                                         "recency_decay": 1.0, "seed": 7}), rng)
     assert sim is not None
-    assert set(sim.entrants) == {101, 202}
+    assert set(sim.entrants) == {101, 303}
     assert all(isinstance(a, int) for a in sim.entrants)
 
 
@@ -280,7 +280,7 @@ def test_nascar_model_runs_through_the_backtest_engine():
     from racinglines.models import race_model as RM
     from racinglines.core import walk_forward as WF
 
-    model = RM.get("nascar")
+    model = RM.challenger("nascar", "nascar_results")()
     data = _nascar_data()
     settings = model.Settings.from_dict({"sims": 200, "shrink": 2.0, "noise": 0.75, "seed": 7})
 
@@ -297,7 +297,7 @@ def test_nascar_challenger_runs_and_tracks_recent_form():
     from racinglines.core import walk_forward as WF
 
     data = _nascar_data()
-    baseline = RM.get("nascar")
+    baseline = RM.challenger("nascar", "nascar_results")()
     challenger = NascarCupRaceChallenger()
 
     base_settings = baseline.Settings.from_dict({"sims": 200, "shrink": 2.0, "noise": 0.75, "seed": 7})
