@@ -136,7 +136,8 @@ def configs(conn, year=2026, sport=None, venue=None):
     that season on the same venue); the latest run per configuration. sport / venue: only the sweeps of that
     sport / exchange (None: all)."""
     rows = conn.execute(text("""SELECT id, params, jsonb_array_length(coalesce(metrics->'weekends', '[]'::jsonb)) n
-                                FROM model_runs WHERE kind = 'sweep' AND (params->>'year')::int = :y ORDER BY id"""),
+                                FROM model_runs WHERE kind = 'sweep' AND (params->>'year')::int = :y
+                                  AND coalesce(params->>'sport', 'f1') = 'f1' ORDER BY id"""),
                         dict(y=year)).fetchall()
     rows = [r for r in rows if (sport is None or run_sport(r[1]) == sport) and (venue is None or run_venue(r[1]) == venue)]
     venue = lambda p: ((p or {}).get("settings") or {}).get("venue") or "polymarket"     # noqa: E731
@@ -204,6 +205,7 @@ def build(conn, cs, year=2026, sport=None, venue=None):
         """The default-settings sweep priced from the same data (else the latest one)."""
         dk = (run or {}).get("params", {}).get("data_key")
         same = conn.execute(text("""SELECT id, params FROM model_runs WHERE kind = 'sweep' AND (params->>'year')::int = :y
+                                    AND coalesce(params->>'sport', 'f1') = 'f1'
                                     AND params->>'data_key' = :d AND params->>'settings_key' = :k ORDER BY id DESC LIMIT 1"""),
                             dict(y=year, d=dk or "", k=default_key)).fetchone() if dk else None
         if same:

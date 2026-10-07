@@ -281,6 +281,12 @@ how it works: [Paper trading](paper-trading.md). Recommendations and paper fills
       sportsbook bets get the same field in the project's bet ledger, using an exchange's close as a proxy
       where the book publishes none.
       *Done when:* the 2025 and 2026 replays of A, C and K report mean CLV, and the weekend report shows it.
+      **Paper bets done (C4):** `racinglines backtest clv` reports CLV for every stored paper bet, any sport and
+      venue ([CLI](cli.md#racinglines-backtest-clv)). Still open: the sweep stats, `f1 reconcile`, `f1 scorecard` and
+      the weekend report.
+      **G1 definition (owner, 2026-10-07):** the go-live gate reads CLV as the plain mean per bet against the fill
+      price, every decided bet counting once (the wider gate: more bets, even if the P&L reads less sharp). Storing
+      sweep trades one row per trade, so sweeps get CLV too, is a nice-to-have (core backlog C41).
 - [ ] **P1 · On-demand strategy previews** (owner, 2026-10-06). One command that prices the coming weekend
       from a stored stage run and shows what each strategy (T1–T10, TB) would enter now, at a chosen bankroll
       and caps (half- and quarter-Kelly). It writes two tables per strategy: the markets it would pick (side,
@@ -403,7 +409,8 @@ Phased plan and ground rules: [F1 roadmap](f1-roadmap.md).
       in the sync classifiers (they're `unmodeled` today) and backtest against their prices.
 - [ ] Fastest lap from the simulation (`fastlap` variant, off, 2026-10-04): price stage runs with it, score
       `extra.fl_prob` against Kalshi's resolved `race_fastest_lap` links on the VM, then the owner decides
-      whether a profile takes it ([decision log](f1-roadmap.md#decision-log)).
+      whether a profile takes it ([decision log](f1-roadmap.md#decision-log)). Score `flpos` (2026-10-07: the fastest
+      lap from the simulated finishing order and pace) the same way, beside it.
 
 ## New sports
 

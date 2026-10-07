@@ -9,6 +9,7 @@ name = "24 Hours of Le Mans"
 result_kind = "position"          # finishing positions, once there is a model
 model_family = "none"             # tapes only: no model, no pricing_model, no live adapter
 display_order = 7
+results_modules = ["racinglines.sources.wec"]   # what fetches its results (`backtest coverage`)
 
 [league]
 code = "aco_wec"

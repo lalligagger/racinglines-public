@@ -35,6 +35,7 @@ nav:
   - Road cycling (book lines): road-cycling.md
   - Sportsbook schema (draft):
       - Schema, CLI and MCP surface: sportsbook/index.md
+      - Slip EV (book map, price, settle): sportsbook/slips.md
       - Market vocabulary: sportsbook/vocabulary.md
   - Downhill:
       - Downhill model: model.md
@@ -47,6 +48,7 @@ nav:
       - CLI reference: cli.md
       - Cloud sweeps: cloud-sweep.md
       - Backtest core (all sports): backtest-core.md
+      - Parity rebuild (all combos): parity-rebuild.md
       - Cloud build-out: cloud-buildout.md
       - Google Cloud proposal: google-cloud.md
       - VM deploy: vm-deploy.md

@@ -23,8 +23,9 @@ STAGES = ("pre-weekend", "after FP1", "after FP2", "after FP3", "after SQ", "aft
 KINDS = ("race_win", "race_podium", "race_h2h", "race_constructor_top", "race_pole")
 OPT_KINDS = ("race_top10",)          # opt-in market kinds: selectable in `market_kinds`, never in its default
 DEFAULT_SEED = 42                # pricing.diagnostic's and the signal engine's seed
-VENUES = ("polymarket", "kalshi")    # exchanges a sweep / the signal engine can trade (markets/venue_replay.py)
+VENUES = ("polymarket", "kalshi", "og")   # exchanges a sweep / the signal engine can trade (markets/venue_replay.py)
 DEFAULT_VENUE = "polymarket"
+STAGE_MODES = ("sessions", "weekend")   # where a sweep's stages come from (pipelines/season_sweep.py); F1: sessions
 
 
 @dataclass(frozen=True)
@@ -67,6 +68,10 @@ SETTINGS = [
     Setting("seed", "model", "Monte Carlo seed", "int", None, 0, 2**31 - 1,
             help="Empty = today's fixed seed (42). Set different seeds for independent noise draws in a search."),
     # --- entry timing ---------------------------------------------------------------------------------
+    Setting("stages", "timing", "Stage mode", "choice", None, choices=STAGE_MODES, unset="sessions",
+            help="Where the stages come from: sessions (the session schedule, one pricing per stage; F1's) or weekend "
+                 "(the schema's fixed weekend stages, one pricing per race; NASCAR's and MotoGP's). Unset = the sport's "
+                 "default (sports/<code>.toml [sweep] stages), so earlier results stay reproducible."),
     Setting("taker_stages", "timing", "Stages takers may trade", "multi", STAGES, choices=STAGES,
             help="Applies to every taker strategy (update, hold, after quali, stage-aware)."),
     Setting("late_stages", "timing", "Stage-aware taker: stop at", "multi", ("after FP3", "after Quali"), choices=STAGES,
@@ -114,8 +119,9 @@ SETTINGS = [
                  "from its target (as a share of it) before its markets are skipped. Empty = 0.25 for every kind."),
     Setting("min_volume_24h", "markets", "Min $ traded in prior 24 h", "float", 50.0, 0, 100000),
     Setting("venue", "markets", "Venue", "choice", None, choices=VENUES, unset=DEFAULT_VENUE,
-            help="Whose markets and recorded tape the strategies trade: polymarket (the default) or kalshi "
-                 "(its links, its tape read per market ticker, its maker fee). Unset = polymarket."),
+            help="Whose markets and recorded tape the strategies trade: polymarket (the default), kalshi "
+                 "(its links, its tape read per market ticker, its maker fee) or og (OG.com: its links and tape, "
+                 "its flat fee per contract on the taker's cost). Unset = polymarket."),
 ]
 BY_NAME = {s.name: s for s in SETTINGS}
 # The split (docs/backtest-core.md): the pricing model's own group, and the groups any sport's backtest shares
@@ -178,6 +184,7 @@ class Settings(dict):
     MODEL = MODEL_NAMES
     ALIASES = ALIASES
     DEFAULT_SEED = DEFAULT_SEED
+    DEFAULT_VENUE = DEFAULT_VENUE    # the venue while `venue` is unset (a sport's sweep settings: its first venue)
 
     @classmethod
     def from_dict(cls, d=None, strict=True):
@@ -270,8 +277,8 @@ class Settings(dict):
 
 
 def venue_of(settings):
-    """The exchange a settings set trades: its `venue`, or polymarket while unset."""
-    return settings.get("venue") or DEFAULT_VENUE
+    """The exchange a settings set trades: its `venue`, or its class's default (polymarket) while unset."""
+    return settings.get("venue") or getattr(settings, "DEFAULT_VENUE", DEFAULT_VENUE)
 
 
 def parse_map(v):

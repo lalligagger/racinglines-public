@@ -335,6 +335,8 @@ def price_race(meas, hist, cutoff, event_id, n_sims=10000, rng=None, use_track=T
         summ[f"{stage}_pole_prob"] = summ["athlete_id"].map(dict(zip(e["athlete_id"], (s["grid"] == 1).mean(0))))
     if stage_sims:
         sim["stages"] = stage_sims
+    if M.PRACTICE_FASTEST and event_id is not None:   # practice sessions' best-lap orders, on a side stream
+        sim["practice"] = PR.simulate(meas, v, event_id, e, fm, rng, n_sims)
     ids = e["athlete_id"].tolist()
     h2h = (sim["pos"][:, :, None] < sim["pos"][:, None, :]).mean(0)
     summ["h2h"] = summ["athlete_id"].map({a: {str(b): round(float(h2h[i, j]), 4) for j, b in enumerate(ids) if b != a}

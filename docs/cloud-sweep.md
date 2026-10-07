@@ -50,7 +50,12 @@ checks it).
   it rewrites `data/runs/search/<name>/leaderboard.md` and `results.json`. A queue can mix sports:
   a job with `sport = "mtb_dh"` (or any sport with a pricing model) runs a walk-forward (`racinglines
   backtest walk-forward <sport>`, model only, scored per market kind) with the downhill model's settings, and gets its own default baseline
-  per season. `replicates = N` on any job runs it (and its season's baseline) at N seeds.
+  per season. A job with `sport = "nascar"` (or `"motogp"`) and `kind = "sweep"` runs that sport's season sweep
+  (`racinglines <sport> sweep`, [`pipelines/season_sweep.py`](https://github.com/lalligagger/racinglines-public/blob/main/racinglines/pipelines/season_sweep.py)):
+  the same taker modes and maker variants on the sport's `[replay]` stages, kinds and pricing model, with
+  `venue = "kalshi"` / `"polymarket"` / `"og"` where the sport lists it; its saved run carries `sport` and `venue`
+  in its params, and its baseline is its own (same sport, season and venue). `replicates = N` on any job runs it
+  (and its season's baseline) at N seeds.
 - **`racinglines f1 search-import <results.json>`** loads a finished search's sweep runs into your
   local database (marked `params.source`), so they show up in the Lab's Edge Finder and Model variants.
 

@@ -15,6 +15,36 @@ files in `data/archive/<sport>/` (both git-ignored; `data/raw` is the record, so
 without a copy). Since 2026-10-01 nothing under `data/` is in git, and production data lives on the VM: back up
 there with `vm.sh backup <purpose>`.
 
+## 2026-10-07 · Staging only: parity sprint data run (NASCAR, MotoGP, Kalshi, NASCAR links)
+
+Database `racinglines_staging` only; production was not touched.
+
+**Why.** The parity sprint (PRs #81, #87 and #88 into `staging`) changed what the NASCAR and MotoGP ingests store:
+race start times in UTC, MotoGP Q1/Q2 and sprints as rounds, one round per kind for a restarted race, and real
+names for drivers first stored without one. The ingests were re-run with `--force`, and Kalshi was re-synced to
+re-file links by series ticker.
+
+**Backups** (on the VM, under `/opt/racinglines-staging/data/backups/db/`):
+- `racinglines_staging-before-parity-data-20261007T104619Z.sql.gz` (76M), before every step below except the link apply;
+- `racinglines_staging-before-nascar-links-20261007T200822Z.sql.gz` (76M), before `nascar link --apply`.
+
+**What.**
+- NASCAR `fetch` and `ingest --years 2019-2026 --force` on `a282154`, then the ingest again on `8d5bd66` (#88):
+  321 races ingested, 5 scheduled. Afterwards the athletes "NASCAR driver 4180" and "NASCAR driver 4093" are
+  "Austin Cindric" and "Daniel Hemric"; "NASCAR driver -1" (one result, never named in a feed) remains.
+- MotoGP `fetch` and `ingest --years 2016-2026 --force`: the first run stopped at 2016 NED (two `RAC` sessions).
+  After #87 it finished: 204 events ingested of 211 seen; 2016 NED keeps the restarted race and lists the stopped
+  session's date in `extra.superseded`.
+- Kalshi `sync --closed` (one run covers every year).
+- `nascar link --apply`: 221 of 15,081 links changed, all of them the links naming Austin Cindric. Undo:
+  `racinglines nascar link --undo /opt/racinglines-staging/data/backups/db/nascar-links-undo-20261007T200920Z.json`.
+
+**Verification.** `markets --exchange kalshi --sport nascar settle-check`: no disagreement (agree 5,980, undecided
+769, unmodeled 6,241, void 0). `backtest coverage` after the run: MotoGP events with results 202 to 204 and newly recorded tape
+files, no other change in the NASCAR or MotoGP Kalshi rows (Copilot's comparison with the first run).
+
+**Rollback.** Restore the first dump into `racinglines_staging`, or `vm.sh staging reset` (re-copies production).
+
 ## 2026-10-05 · Kalshi F1 bid/ask candles re-pulled
 
 **Why.** The stored Kalshi `price` is the candle's last-trade close, which can sit far outside the closing

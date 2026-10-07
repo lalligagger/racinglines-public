@@ -39,7 +39,7 @@ type is a kind (with `fair` and `settle`) and one rule line per venue that lists
 `exchanges/`; a `venues/` file for an exchange would hold only its title rules, which for OG.com already live in
 `exchanges/og.toml` (one of the two should own them: **decision**).
 
-**The CLI around it** (all read-only against the app; nothing writes to `market_links` or any app table):
+**The CLI around it** (all read-only against the app; nothing writes to `market_links` or any app table). `book map`, `book price` and `book settle` are built (2026-10-07): [Sportsbook slips](slips.md) has their actual interface, the EV definitions and the JSON fields. The table below is the original proposal; shrink, Kelly, picks CSV, writing back into the book file and the ledger update are not built:
 
 | Command | Does |
 |---|---|
@@ -72,6 +72,20 @@ functions of `racinglines/markets/payoffs.py`. A new market type is a new table 
 changes only when it needs a predicate the table doesn't have yet. The legacy kinds (win, podium, pole, head-to-head,
 top constructor, standings, ...) keep their code in `kinds.py` until a later migration under the promotion rule, since
 their fair values feed the golden tests and the live book.
+
+**Combos (same-game parlays, 2026-10-07).** A slip like "Race Winner and Fastest Lap" is one line whose `market` is
+`{ kind = "combo", legs = [ { kind = "race_win", driver = "..." }, { kind = "race_fastest_lap", driver = "..." } ],
+void_leg = "void_all" }`: two or more legs, each a market table of a single kind (no combo inside a combo), and the
+book's rule for a void leg (`"void_all"`, the default: a void leg voids the slip; `"drop_leg"`: the other legs decide).
+`racinglines/markets/combos.py` prices it as the share of simulations in which every leg holds, from the same
+simulations as the single markets (`combo_fair`; `price` adds each leg's marginal, their product and the lift), so legs
+that move together price above the product. Every kind decided per simulation can be a leg: win / podium / top n, the
+declarative kinds through their spec predicates, pole and the sprint stages, head-to-head, top constructor (a points tie
+splits it), biggest mover, and the fastest lap when the run draws it (variant `fastlap` or `flpos`). A season standings
+market or a history-rate prop (safety car, red flag, rain) can't be a leg: pricing raises an error naming it.
+Settlement takes each leg's own rule; any losing leg settles the combo NO, and a fastest-lap leg otherwise returns
+None (a manual settlement: the classification records no lap times). On the VM the Lab job `f1_combo` prices combos
+for one event (MCP `run_job`, then `get_model_run`; [docs/mcp.md](../mcp.md)).
 
 **What the exchanges list today, for the rules files.** Polymarket's safety car / red flag / rain questions are linked but
 unpriced (`docs/f1.md:178-181`); Kalshi sprint markets price from the stand-in; Kalshi retirements and "race occurrence"

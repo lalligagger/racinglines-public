@@ -40,10 +40,12 @@ from before that race (no look-ahead in backtests).
    noise are split into a team part and a driver part, with the teammate
    correlation measured on earlier races (TEAMMATE_CORR). With FASTEST_LAP (variant
    "fastlap", off by default), also the fastest lap: the quickest classified car on
-   race pace + noise, drawn on a side stream so nothing else changes (fastest_lap).
+   race pace + noise, drawn on a side stream so nothing else changes (fastest_lap); with variant "flpos" instead
+   from the simulated finishing order and race pace (fastest_lap_from_position, sports/f1/fastest_lap.toml).
 """
 
 from dataclasses import dataclass
+from functools import cache
 
 import numpy as np
 import pandas as pd
@@ -84,6 +86,17 @@ FL_SIGMA = 0.006
 FL_RHO = 0.3                 # teammates' share of it: half the variance is race pace, whose teammate
                              # surprises correlate +0.63 (docs/f1.md), so 0.63 / 2
 FL_SEED = 20261004           # salt of the fastest lap's own random stream (see _side_rng)
+FL_FROM = "pace"             # how FASTEST_LAP draws it: "pace" (fastest_lap: race pace + noise) or "position" (variant
+                             # "flpos": per finishing position weights from past races, fastest_lap_from_position)
+FL_TABLE = sports.SCHEMAS / "f1" / "fastest_lap.toml"
+PRACTICE_FASTEST = False     # draw each practice session's order of best laps (sim["practice"], practice.simulate):
+                             # the race_fp<n>_fastest kinds; every other price unchanged (variant "practicefast")
+# Practice best-lap deficit around the qualifying deficit, a fraction of a lap (a priori, not fitted against a score):
+# 0.7 %, the within-session spread of (practice best-lap deficit - qualifying deficit) on the 10 stored fixture
+# weekends (tests/fixtures/f1, 538 driver-sessions: FP1 0.73 %, FP2 0.73 %, FP3 0.57 %). Added to the qualifying draw
+# (qp + sigma_q noise), independent between teammates (programmes differ)
+PRACTICE_SIGMA = 0.007
+PRACTICE_SEED = 20261007     # salt of the practice draws' own random stream (+ the session's index)
 RESET_YEARS = frozenset(SCHEMA["regulations"]["resets"])       # sports/f1.toml
 # a past race counts as disrupted if it had a red flag, >= 10% of laps behind the safety car, or rain (set a priori)
 DISRUPTED_SC_SHARE, DISRUPTED_RAIN_SHARE, CHAOS_PRIOR_N = 0.10, 0.25, 4.0
@@ -280,6 +293,9 @@ def venue_track_features(prof, venue, before):
 # ---------------------------------------------------------------------------
 
 PRACTICE_KINDS = tuple(SCHEMA["sessions"]["practice"])
+# the practice sessions classified on their own (race_fp<n>_fastest): every practice session but a side stage's grid
+# session (Sprint Qualifying sets the sprint grid, priced as the sprint pole)
+PRACTICE_CLASSIFIED = tuple(k for k in PRACTICE_KINDS if k not in {c["grid_from"] for c in SIM_SESSIONS.values()})
 # a session's data is usable only once it has ended (a cutoff inside a session sees nothing of it)
 SESSION_MINUTES = dict(SCHEMA["sessions"]["minutes"])
 QUAL_DONE = pd.Timedelta(minutes=SESSION_MINUTES["qual"])
@@ -725,7 +741,8 @@ def simulate_race(fm, e, tf, n_sims=10000, rng=None, grid_known=False, points=RA
     if grid_adjust is not None:
         out["qual"] = qual
     if FASTEST_LAP:
-        out["fl"] = fastest_lap(rp, dnf, teams, rng)
+        out["fl"] = (fastest_lap_from_position(pos, dnf, rp, rng) if FL_FROM == "position"
+                     else fastest_lap(rp, dnf, teams, rng))
     return out
 
 
@@ -751,6 +768,54 @@ def fastest_lap(rp, dnf, teams, rng):
     fl = np.zeros(dnf.shape, bool)
     fl[np.arange(n_sims), lap.argmin(axis=1)] = True
     return fl & ~dnf                           # a race where every car retired has no fastest lap
+
+
+@cache
+def fl_table(path=None):
+    """sports/f1/fastest_lap.toml as (weight per finishing position 1..99, pace_scale). A position's weight is its
+    band's rate, the fastest laps over the classified starts of every position in the band (`bands`, `by_position`);
+    a position past the last band takes the last band's."""
+    import tomllib
+    where = path or FL_TABLE
+    with open(where, "rb") as f:
+        t = tomllib.load(f)
+    rows = {r["position"]: r for r in t["by_position"]}
+    rates = []
+    for lo, hi in t["bands"]:
+        band = [r for p, r in rows.items() if lo <= p <= hi]
+        races = sum(r["races"] for r in band)
+        if not races:
+            raise ValueError(f"{where}: band {lo}-{hi} has no races")
+        rates.append((lo, hi, sum(r["fl"] for r in band) / races))
+    w = np.array([next((x for lo, hi, x in rates if lo <= p <= hi), rates[-1][2]) for p in range(1, 100)])
+    return w, float(t["fit"]["pace_scale"])
+
+
+def fastest_lap_from_position(pos, dnf, pace, rng, weights=None, pace_scale=None):
+    """(n_sims, n) bool: who sets the race's fastest lap in each simulation (variant "flpos"): one classified car,
+    drawn with probability proportional to weights[finishing position - 1] * exp(-(pace - the quickest classified
+    pace) / pace_scale), from sports/f1/fastest_lap.toml (fl_table: band rates and a pace scale from 2022-26 races). The fastest lap so
+    follows the simulated result (the winner sets it about a third of the time) and the car (a midfield winner in a
+    slow car less often than a top-car winner). pace: (n_sims, n) or (n,) race pace, a fraction of a lap, lower is
+    quicker. A retired car never gets it. Drawn on the same side stream as fastest_lap (_side_rng, FL_SEED), so every
+    other output is byte-identical with or without it."""
+    n_sims, n = pos.shape
+    if weights is None or pace_scale is None:
+        w0, s0 = fl_table()
+        weights = w0 if weights is None else weights
+        pace_scale = s0 if pace_scale is None else pace_scale
+    w = np.asarray(weights, float)
+    pace = np.broadcast_to(np.asarray(pace, float), (n_sims, n))
+    best = np.where(dnf, np.inf, pace).min(axis=1, keepdims=True)
+    gap = np.where(dnf, 0.0, pace - np.where(np.isfinite(best), best, 0.0))
+    p = np.where(dnf, 0.0, w[np.clip(np.asarray(pos, int), 1, len(w)) - 1] * np.exp(-gap / pace_scale))
+    tot = p.sum(axis=1, keepdims=True)
+    cum = np.cumsum(p, axis=1) / np.where(tot > 0, tot, 1.0)
+    u = _side_rng(rng, FL_SEED).random((n_sims, 1))
+    pick = np.minimum((cum <= u).sum(axis=1), n - 1)
+    fl = np.zeros(pos.shape, bool)
+    fl[np.arange(n_sims), pick] = True
+    return fl & (tot > 0) & ~dnf               # a race where every car retired has no fastest lap
 
 
 def summarize(e, sim):
