@@ -47,6 +47,7 @@ nav:
       - CLI reference: cli.md
       - Cloud sweeps: cloud-sweep.md
       - Backtest core (all sports): backtest-core.md
+      - Parity rebuild (all combos): parity-rebuild.md
       - Cloud build-out: cloud-buildout.md
       - Google Cloud proposal: google-cloud.md
       - VM deploy: vm-deploy.md
