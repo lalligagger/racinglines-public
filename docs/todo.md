@@ -403,7 +403,8 @@ Phased plan and ground rules: [F1 roadmap](f1-roadmap.md).
       in the sync classifiers (they're `unmodeled` today) and backtest against their prices.
 - [ ] Fastest lap from the simulation (`fastlap` variant, off, 2026-10-04): price stage runs with it, score
       `extra.fl_prob` against Kalshi's resolved `race_fastest_lap` links on the VM, then the owner decides
-      whether a profile takes it ([decision log](f1-roadmap.md#decision-log)).
+      whether a profile takes it ([decision log](f1-roadmap.md#decision-log)). Score `flpos` (2026-10-07: the fastest
+      lap from the simulated finishing order and pace) the same way, beside it.
 
 ## New sports
 
