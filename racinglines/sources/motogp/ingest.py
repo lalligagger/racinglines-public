@@ -145,6 +145,28 @@ def combined_qualifying(q1, q2):
     return placed
 
 
+def _one_round_per_kind(rounds):
+    """Keep one round per kind (rounds are UNIQUE on race and kind). A stopped and restarted session is listed twice
+    under one type (2016 NED has two RAC sessions); the later one, by date then number, is kept as the classification
+    of record, and the dropped session's date is noted in `superseded`. That the restart is the result of record is
+    inferred from how restarts are run, not checked against an official rule."""
+    keep = {}
+    for r in rounds:
+        ex = r.get("extra") or {}
+        prev = keep.get(r["kind"])
+        if prev is not None:
+            pex = prev.get("extra") or {}
+            if (str(ex.get("session_date") or ""), ex.get("number") or 0) < (
+                    str(pex.get("session_date") or ""), pex.get("number") or 0):
+                prev, r = r, prev
+            r["extra"] = {**(r.get("extra") or {}),
+                          "superseded": [*(r.get("extra") or {}).get("superseded", []),
+                                         *(prev.get("extra") or {}).get("superseded", []),
+                                         (prev.get("extra") or {}).get("session_date")]}
+        keep[r["kind"]] = r
+    return list(keep.values())
+
+
 def parse_event(year, ev, classification, sessions=None):
     """Everything to write for one event, as plain dicts (no database). None when there is no classified result.
 
@@ -175,6 +197,7 @@ def parse_event(year, ev, classification, sessions=None):
                               "condition": session.get("condition")}),
                 rows=rows,
             ))
+        rounds = _one_round_per_kind(rounds)
         if not rounds:
             return None
         got = {r["kind"]: r for r in rounds}
