@@ -74,6 +74,17 @@ HEAT_WEIGHT = {1: 0.6, 2: 1.0, 3: 1.4}    # relative chance of following an entr
 HEAT_MIX_MEAN = 0.9                       # mean weight over A's backtest entries (1/2 warm, 1/4 hot, 1/4 very hot)
 
 
+def _stages(w):
+    """The side stages (sports/f1.toml [sessions.sim], e.g. the sprint) this weekend has, from the schedule's
+    FastF1 event format, so a live run prices them before their sessions' data exists (pricing.price_stages)."""
+    from racinglines.models.position_sim import model as M
+    from racinglines.sources.fastf1.fetch import SPRINT_FORMATS
+    if not w or str(w.get("format", "")) not in SPRINT_FORMATS:
+        return []
+    return [k for k in M.SIM_SESSIONS if k != M.MAIN_STAGE]
+
+
+
 # ---------------------------------------------------------------------------
 # Pure pieces (tested without a database)
 # ---------------------------------------------------------------------------
@@ -335,11 +346,12 @@ def price_stages_now(meas, hist, w, st, engine, engine_url, now, echo=print):
         if hit is None:
             if raced:
                 _, summ, ex, _ = run.diagnostic(meas, hist, w["event_key"], cutoff, n_sims=st["sims"],
-                                                use_track=st["track_features"], seed=st.rng_seed)
+                                                use_track=st["track_features"], seed=st.rng_seed, stages=_stages(w))
             else:
                 summ, ex = run.price_race(meas, hist, cutoff, event_id, n_sims=st["sims"],
                                           rng=np.random.default_rng(st.rng_seed), use_track=st["track_features"],
-                                          entrants=_entrants(meas, event_id, cutoff), venue=_venue(meas, event_id, w))
+                                          entrants=_entrants(meas, event_id, cutoff), venue=_venue(meas, event_id, w),
+                                          stages=_stages(w), event_key=w["event_key"])
             extra = dict(model_key=mk, data_key=dk, model_settings={n: st.to_json()[n] for n in SS.MODEL_NAMES},
                          live=not raced)
             if st["variant"] != "baseline":
@@ -676,8 +688,11 @@ def latest_run(conn, profile, event_key):
 
 def price_upcoming(engine, engine_url, profile, now=None, n=3, echo=print, cache=None):
     """Between race weekends: price each of the next `n` races that has race markets listed on the profile's
-    venue, as of now, with the profile's model, unless a pricing from the same data exists (the data only
-    changes when a session runs, so this is a one-off per race). Returns {event_key: run id}."""
+    venue, as of now, with the profile's model, unless a pricing from the same data by the same code exists (the
+    data only changes when a session runs and the code only when a deploy lands, so this is a one-off per race
+    per deploy: the Markets board reads the newest of these runs, so a model change reaches it at the next pass).
+    Returns {event_key: run id}."""
+    from racinglines.db.queries import code_version
     from racinglines.models.position_sim import pricing as run
     st = SS.Settings.from_dict(profile["settings"], strict=False)
     venue = SS.venue_of(st)
@@ -698,12 +713,13 @@ def price_upcoming(engine, engine_url, profile, now=None, n=3, echo=print, cache
         hist = cache.get(("hist", st.model_key))
         if hist is None:
             hist = cache[("hist", st.model_key)] = run.history(meas, st["track_features"])
-        dk = SS.data_key(meas.view(now))
+        dk, cv = SS.data_key(meas.view(now)), code_version()
         for w in todo:
             with engine.connect() as c:
                 have = c.execute(text("""SELECT id FROM model_runs WHERE kind = 'diagnostic' AND params->>'model_key' = :m
-                                           AND params->>'event_key' = :k AND params->>'data_key' = :d ORDER BY id DESC LIMIT 1"""),
-                                 dict(m=st.model_key, k=w["event_key"], d=dk)).scalar()
+                                           AND params->>'event_key' = :k AND params->>'data_key' = :d
+                                           AND code_version IS NOT DISTINCT FROM :cv ORDER BY id DESC LIMIT 1"""),
+                                 dict(m=st.model_key, k=w["event_key"], d=dk, cv=cv)).scalar()
             if have:
                 out[w["event_key"]] = have
                 continue
@@ -712,7 +728,7 @@ def price_upcoming(engine, engine_url, profile, now=None, n=3, echo=print, cache
             event_id = int(ev["event_id"].iloc[0]) if len(ev) else None
             summ, ex = run.price_race(meas, hist, now, event_id, n_sims=st["sims"], rng=np.random.default_rng(st.rng_seed),
                                       use_track=st["track_features"], entrants=_entrants(meas, event_id, now),
-                                      venue=_venue(meas, event_id, w))
+                                      venue=_venue(meas, event_id, w), stages=_stages(w), event_key=w["event_key"])
             extra = dict(model_key=st.model_key, data_key=dk, live=True,
                          model_settings={k: st.to_json()[k] for k in SS.MODEL_NAMES})
             if st["variant"] != "baseline":

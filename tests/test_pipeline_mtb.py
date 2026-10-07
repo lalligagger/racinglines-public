@@ -101,6 +101,8 @@ def test_backtest(dh):
     P, raw, _, done = dh
     model, reports, standings, (train_ev, test_ev) = P.backtest_season(raw, done, n_holdout=2, n_sims=1000,
                                                                        rng=np.random.default_rng(13))
+    # each weekend's table sorted by rider: summarize_weekend orders by exp_points, and riders tied at 0 swap places
+    reports = [(metrics, summ.sort_values("rider_id", kind="stable").reset_index(drop=True)) for metrics, summ in reports]
     check("mtb_backtest", dict(train=train_ev, test=test_ev, reports=reports,
                                standings=standings.sort_values("rider_id").head(20)))
 
