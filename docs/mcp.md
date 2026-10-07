@@ -201,6 +201,7 @@ exchange, venues, users and the next races. Then:
 | `list_diagnostics()`, `get_diagnostic(run_id)` | As-of diagnostic runs; one run's prices vs Polymarket at the cutoff, edges, scores and result. |
 | `track_record(user, venue, sport)`, `list_positions(user, venue, event_key)`, `list_signals(user, event_key, status)` | Paper trading per account: the weekend record (Polymarket, Kalshi replay, private book; `venue='all'` lists one row per weekend and venue with a `venue` column and `totals` per venue; `sport` keeps one sport's weekends, NASCAR and MotoGP paper rows included where `RACINGLINES_SPORT_PAPER` is on), positions, signals. |
 | `list_live_events()`, `data_changes()` | Settled live private-book events and the run folders present; the data change log. |
+| `list_kinds(sport)`, `map_book(book)`, `price_book(book, run_ids)`, `settle_book(book)` | Sportsbook slips ([sportsbook/slips.md](sportsbook/slips.md)): every market kind with the sports that model it; then a generic sportsbook's book, passed as TOML text, mapped to exact races and athletes, priced (the book's, the model's and the linked prediction market's probability, EV against each, never blended) or settled from the stored results. Nothing is stored. |
 | `sql(query, limit, offset)` | Any `SELECT` (or `WITH ... SELECT`, `EXPLAIN`), in a `READ ONLY` transaction with a 10 s timeout, paged. The `users` and `orders` tables are not readable. |
 
 **Scenarios** (the only tools that write anything, and only what the Lab's Run form writes):
