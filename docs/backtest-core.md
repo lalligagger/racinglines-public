@@ -153,6 +153,15 @@ search or the report:
    `stages` setting (`--stages`, or `stages = "weekend"` in a search job) picks any mode the schema supports
    (`"sessions"` needs `[sessions.schedule]`, `"weekend"` needs `[replay] stages`), so the earlier weekend-based
    results stay reproducible beside a session-aware path; unset, the setting stays out of the settings keys.
+   A sport whose sessions are stored rounds (NASCAR, MotoGP) adds `[sessions] time_key`, the `rounds.extra` key
+   holding a session's UTC start, a `[sessions.schedule]` keyed by round kind, and `[stages]` with `until = "race"`
+   and `until_fallback_hours` (the race start, as hours from 00:00 UTC on race day, where the race round stores
+   none). Its "sessions" mode builds each event's stages from its stored sessions through `core/stages.py` (a stage
+   before any running, then one after each session), asks the pricing model at every stage with the start list
+   and the sessions run so far (`Event.info` `field` and `sessions`), and trades an event that stores no session
+   time on its `[replay]` stages instead. GlobalModel reads race results before the event only, so its fair is
+   the same at every stage; only the market and the stages move. Both modes price the start list: the race's
+   entrants less DNS.
 
 Then `racinglines backtest walk-forward <code> [--seasons ...] [--save] [its settings' flags]` runs it,
 a queue job with `sport = "<code>"` searches it (with `replicates`), and `search-report` labels it.
