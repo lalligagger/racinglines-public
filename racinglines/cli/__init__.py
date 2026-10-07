@@ -6,7 +6,7 @@ racinglines <group> <command> [options]
     nascar    fetch | ingest   (the free content feeds: results, stages, laps)
     motogp    fetch | ingest   (the free public results API: race classifications)
     cycling   events | fetch | startlist | price   (road cycling sportsbook lines: TTs and road races)
-    backtest  walk-forward SPORT   (the backtest core, any sport with a pricing model)
+    backtest  walk-forward SPORT   (the backtest core, any sport with a pricing model); coverage (read-only)
     markets   sync | history | trades | record | archive
     db        init | seed | stats | export
     live      new | step | run | agent | status | report   (a live private-book event, any sport)

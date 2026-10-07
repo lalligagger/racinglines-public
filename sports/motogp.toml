@@ -10,6 +10,7 @@ result_kind = "position"          # finishing positions
 model_family = "position_sim"     # conservative, result-only pricing model
 pricing_model = "racinglines.models.motogp_model:MotoGPRaceChallenger"
 display_order = 2
+results_modules = ["racinglines.sources.motogp"]   # what fetches its results (`backtest coverage`)
 
 [league]
 code = "fim_motogp"

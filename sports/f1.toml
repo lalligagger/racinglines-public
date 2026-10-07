@@ -9,6 +9,7 @@ result_kind = "position"          # results are finishing positions
 model_family = "position_sim"     # racinglines/models/position_sim
 pricing_model = "racinglines.models.race_model:PositionSim"   # the backtest core's wrapper (docs/backtest-core.md)
 display_order = 0
+results_modules = ["racinglines.sources.fastf1"]   # what fetches its results (`backtest coverage`)
 
 [league]
 code = "fia_f1"

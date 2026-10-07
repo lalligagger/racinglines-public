@@ -11,6 +11,13 @@ racinglines backtest <command>: the backtest core for any sport with a pricing m
     racinglines backtest walk-forward f1 --model global --seasons 2025 2026 --venue polymarket kalshi
                          # also scores each venue's price beside the model's (model_vs_market): for F1 at the first
                          # stage, 1 h before any running (--market-stage 'after Quali' for another)
+
+    coverage             read-only: per sport x exchange x market kind x season, the races linked, settled and taped
+                         (prices, trades, books in Postgres and the Parquet archive) and the parity tier that gives;
+                         season futures; per sport, the race results in the database and the declared results
+                         sources (racinglines/pipelines/coverage.py, docs/parity-rebuild.md "C0")
+
+    racinglines backtest coverage [--seasons 2025 2026] [--out DIR]
 """
 
 import argparse
@@ -119,9 +126,22 @@ def main(argv=None):
                          "event's cutoff.")
     wf.add_argument("--market-stage", default=None, metavar="LABEL",
                     help="Read the --venue prices at this stage of the schema's [stages] instead (F1: 'after Quali').")
+    cov = sub.add_parser("coverage", help="Read-only: linked, settled and taped races per sport, exchange, kind and season.")
+    cov.add_argument("--db", default=None, metavar="URL", help="Database URL (default: $DATABASE_URL).")
+    cov.add_argument("--seasons", nargs="+", type=int, help="Only these seasons (default: all).")
+    cov.add_argument("--out", default=None, metavar="DIR", help="Also write coverage_{combos,futures,results}.csv here.")
     if known.cmd == "walk-forward" and known.sport:
         SS.add_arguments(wf, pricing_model(known.sport, known.model).Settings)
     args = ap.parse_args(argv)
+    if args.cmd == "coverage":
+        from racinglines.db.config import get_engine
+        from racinglines.pipelines import coverage as COV
+        with get_engine(args.db).connect() as c:
+            res = COV.run(c, seasons=args.seasons)
+        print(COV.format_text(res))
+        if args.out:
+            print(f"\nCSVs -> {COV.write(res, args.out)}/")
+        return 0
     model = pricing_model(args.sport, args.model)
     st = SS.from_args(args, model.Settings)
     data = model.load(args.db)

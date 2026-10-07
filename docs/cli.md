@@ -214,6 +214,30 @@ racinglines backtest walk-forward SPORT [--db URL] [--seasons 2025 2026] [--kind
        [--out-dir data/runs/<sport>/walk_forward] [the sport's settings, e.g. --seed N --sims N]
 ```
 
+## racinglines backtest coverage
+
+The coverage counter (parity rebuild package C0), read-only: it writes nothing to the database. It prints four
+things. The first is what it counted: the database, the archive trees, and the Postgres and Parquet rows per
+store. A header line says when there's no market tape at all, which is how you check a copy such as staging.
+The second is one row per sport × exchange × market kind × season of race markets: links, races linked,
+races settled, races with a price, trade or book tape (Postgres or the Parquet archive, through
+`markets/store.py`), the parity tier, the maker tier, whether the kind is modeled, and links still `unmodeled`.
+The third is the season futures. The fourth is, per sport, the race results in the database (seasons, events,
+events with results) and the results sources its schema declares (`[results]`, `[replay]` or `[model]` source,
+allowed fallbacks, `[sport] results_modules`, cleared or not).
+
+```
+racinglines backtest coverage [--db URL] [--seasons 2025 2026] [--out DIR]
+```
+
+A tier counts, per season, the races with both a settlement and a price tape. **parity-2** is 8 or more in two
+seasons, **parity-1** is 8 or more in one, **thin** is 1 to 7, and **missing** is none. The maker tier counts
+book tape in place of price tape. A kind is **modeled** when `markets/kinds.py` defines it, the sport's schema
+names a `pricing_model`, and one of the schema's `kinds` / `*_kinds` lists names it. A link's kind is its
+`prediction`, or `params.kind` while it's `unmodeled`. Its season is the year of the race's event, or of the
+link's `end_date` for a futures market. `--out` writes `coverage_combos.csv`, `coverage_futures.csv` and
+`coverage_results.csv`.
+
 ## racinglines mtb_dh walk-forward
 
 Every completed event priced through the shared engine, model-only
