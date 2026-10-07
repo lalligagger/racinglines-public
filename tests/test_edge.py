@@ -40,7 +40,7 @@ def test_rejects_unknown_models_strategies_and_actions(args):
 
 def test_configs_and_scopes_filter_by_sport_and_venue(test_engine):
     """A sweep run's sport is params.sport (F1 when unset) and its venue the settings' venue (Polymarket when unset):
-    the Edge Finder's filter keeps only the matching runs, and its choices list what has a sweep."""
+    the Edge Finder shows one sport at a time (F1 by default), and its choices list what has a sweep."""
     import json
 
     from sqlalchemy import text
@@ -61,7 +61,7 @@ def test_configs_and_scopes_filter_by_sport_and_venue(test_engine):
                               VALUES (:c, 'test', 'sweep', CAST(:p AS jsonb), CAST(:m AS jsonb))"""),
                       dict(c=comp, p=json.dumps(p), m=weekends))
         assert edge.scopes(c, 2099) == (["f1", "nascar"], ["polymarket", "kalshi"])
-        assert len(edge.configs(c, 2099)) == 3
+        assert len(edge.configs(c, 2099)) == len(edge.configs(c, 2099, sport=None)) == 2
         assert {cf["settings"]["venue"] for cf in edge.configs(c, 2099, venue="kalshi").values()} == {"kalshi"}
         assert len(edge.configs(c, 2099, sport="f1")) == 2
         assert len(edge.configs(c, 2099, sport="nascar", venue="kalshi")) == 1

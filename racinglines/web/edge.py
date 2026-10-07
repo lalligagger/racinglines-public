@@ -76,9 +76,10 @@ def run_venue(params):
 
 
 def scope(conn, user_id):
-    """The user's Edge Finder filter (sport, venue), each None for all; stored in prefs["edge_scope"]."""
+    """The user's Edge Finder filter (sport, venue): F1 unless another sport is chosen, venue None for all; stored in
+    prefs["edge_scope"]."""
     got = P.get(conn, user_id).get("edge_scope") or {}
-    return got.get("sport") or None, got.get("venue") or None
+    return got.get("sport") or "f1", got.get("venue") or None
 
 
 def scopes(conn, year=2026):
@@ -130,16 +131,15 @@ def apply(cs, action, ref="", strategy=""):
 # saved sweeps -> configurations
 # ---------------------------------------------------------------------------------------------------
 
-def configs(conn, year=2026, sport=None, venue=None):
+def configs(conn, year=2026, sport="f1", venue=None):
     """{settings key: dict(key, ref, settings, label, run_id, weekends, data_key)} for every
     configuration with a full-season sweep of `year` (as many weekends as the most complete sweep of
-    that season on the same venue); the latest run per configuration. sport / venue: only the sweeps of that
-    sport / exchange (None: all)."""
+    that season on the same venue); the latest run per configuration. One sport at a time (F1 by default, also for
+    None), since a configuration's key doesn't name its sport; venue: only that exchange's sweeps (None: all)."""
     rows = conn.execute(text("""SELECT id, params, jsonb_array_length(coalesce(metrics->'weekends', '[]'::jsonb)) n
-                                FROM model_runs WHERE kind = 'sweep' AND (params->>'year')::int = :y
-                                  AND coalesce(params->>'sport', 'f1') = 'f1' ORDER BY id"""),
+                                FROM model_runs WHERE kind = 'sweep' AND (params->>'year')::int = :y ORDER BY id"""),
                         dict(y=year)).fetchall()
-    rows = [r for r in rows if (sport is None or run_sport(r[1]) == sport) and (venue is None or run_venue(r[1]) == venue)]
+    rows = [r for r in rows if run_sport(r[1]) == (sport or "f1") and (venue is None or run_venue(r[1]) == venue)]
     venue = lambda p: ((p or {}).get("settings") or {}).get("venue") or "polymarket"     # noqa: E731
     full = {}                          # per venue: Kalshi listed a 2025 weekend Polymarket didn't (Imola)
     for r in rows:
@@ -189,8 +189,8 @@ def recap(weekends, strategy):
     return out
 
 
-def build(conn, cs, year=2026, sport=None, venue=None):
-    """Everything the Edge Finder template shows, from saved runs only (sport / venue: the filter, None for all)."""
+def build(conn, cs, year=2026, sport="f1", venue=None):
+    """Everything the Edge Finder template shows, from saved runs only (sport / venue: the filter; venue None for all)."""
     cfgs = configs(conn, year, sport, venue)
     default_key = SS.Settings.from_dict().key
     runs = {}
