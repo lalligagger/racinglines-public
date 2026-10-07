@@ -87,6 +87,9 @@ def main(argv=None):
                                                "stage's cutoff, like the sweep).")
     p.add_argument("--no-fetch", action="store_true", help="Don't refresh FastF1 / Polymarket data first.")
     p.add_argument("--no-alert", action="store_true")
+    p.add_argument("--venue", default="polymarket", choices=["polymarket", "kalshi", "og"],
+                   help="Whose profiles run (users' profiles for that exchange); polymarket, the default, is the "
+                        "5-minute timer's pass as before.")
     p = sub.add_parser("demo-history", help="Backfill the demo accounts' track record from backtest replays "
                                             "(pipelines/demo_history.py).")
     p.add_argument("--reset", action="store_true", help="Delete the existing backfill first.")
@@ -490,14 +493,15 @@ def _run(args):
             from racinglines.pipelines import profiles as PF
             with engine.connect() as c:
                 profs = [PF.load(c, args.profile)] if args.profile else [
-                    p for _, n, _, p in PF.assigned(c) if not args.user or n in args.user]
+                    p for _, n, _, p in PF.assigned(c, venue=args.venue) if not args.user or n in args.user]
             for prof in profs:
                 for out in SG.compute_all(engine, args.db, prof, now=args.asof, event=args.event, live=False,
                                           fetch=not args.no_fetch, echo=lambda m: print(m, flush=True)):
                     print(SG.format_replay(out))
             return
         rep = SG.run_all(engine, args.db, users=args.user, profile_ref=args.profile, event=args.event,
-                         fetch=not args.no_fetch, alert=not args.no_alert, echo=lambda m: print(m, flush=True))
+                         fetch=not args.no_fetch, alert=not args.no_alert, echo=lambda m: print(m, flush=True),
+                         venue=args.venue)
         if not rep:
             print("no user has a strategy profile (racinglines f1 profiles --assign-demo)")
         return
@@ -1079,7 +1083,26 @@ def _run(args):
             run_id = run.save_forecast(args.db, args.year, per_event, standings, params, metrics=dict(
                 latest_data=extras["latest_data"], constructors=records(extras["constructors"]),
                 race_constructor_top=extras["race_constructor_top"]), kind="scenario" if args.scenario else "forecast")
+            log_forecast(args.db, run_id, args.year, per_event, meas, extras["cutoff"], args.sims, use_track,
+                         variant=args.variant, scenario=args.scenario)
             print(f"\nSaved {'scenario' if args.scenario else 'forecast'} run {run_id}.")
+
+
+def log_forecast(db, run_id, year, per_event, meas, cutoff, sims, use_track, variant="baseline", scenario=None):
+    """The data_changes row of an `f1 forecast --save` ("forecast", as `<sport> forecast --save` writes): the events
+    priced, run id, model variant (--variant), sims, code_version and data_key (the data as of the cutoff)."""
+    import pandas as pd
+
+    from racinglines.db import changes
+    from racinglines.db.config import get_session
+    from racinglines.db.queries import code_version
+    from racinglines.pipelines import sweep_settings as SS
+    keys = [f"{year}-{ev['round']:02d}" for ev in per_event]
+    with get_session(db) as s:
+        changes.record_run(s, "forecast", "f1", keys, run_id, variant=variant, sims=sims, code_version=code_version(),
+                           data_key=SS.data_key(meas.view(pd.Timestamp(cutoff))), track_features=use_track,
+                           **({"scenario": scenario} if scenario else {}))
+        s.commit()
 
 
 if __name__ == "__main__":
