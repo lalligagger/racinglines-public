@@ -11,6 +11,9 @@ EnvironmentFile=/etc/racinglines.env
 ExecStart=/opt/racinglines/.venv/bin/racinglines web
 Restart=always
 RestartSec=5
+# The server cancels in-flight requests 10 s after SIGTERM (uvicorn timeout_graceful_shutdown); this is the margin
+# above that before systemd would SIGKILL, instead of the 90 s default that each restart used to wait out.
+TimeoutStopSec=20
 
 [Install]
 WantedBy=multi-user.target

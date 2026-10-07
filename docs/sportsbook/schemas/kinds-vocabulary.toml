@@ -1,0 +1,410 @@
+# DRAFT (2026-10-06): the common market vocabulary across the venues seen so far. One canonical code per market type,
+# in the style of racinglines/markets/kinds.py (codes marked status = "exists" are that file's codes, unchanged;
+# "props" exist in models/position_sim/props.py but not in the registry; "proposed" are new names in the same style).
+# `venues` lists where the market has been seen and the venue's own wording; a venue absent from a row has not listed it
+# in the material at hand. Sources: sportsbook A Singapore board (63 markets, 2026-10-05 22:33 PDT), sportsbook C Singapore
+# screenshots (4 groups), sportsbook B Singapore winner board (1 group), the ledger's Malaysia rows (sportsbook A, 2026-10-03),
+# Kalshi series and Polymarket events from docs/f1.md and markets/kalshi/sync.py, OG.com from exchanges/og.toml, and
+# the VM's list_markets for Singapore (MCP, 2026-10-06). Nothing reads this file yet.
+# The registry definitions of the declarative kinds (subject / predicate / aggregate / compare) live in markets/kinds.toml.
+
+[meta]
+subjects = ["driver", "team", "pair", "line", "none"]   # what a selection names; "none" = a yes/no on the race itself
+settle_from = ["classification", "laps", "weather", "venue"]  # what decides it: results table, laps table, weather, or only the book
+
+# ---------------------------------------------------------------- per-race, driver
+[[kinds]]
+code = "race_win"
+label = "Race winner"
+subject = "driver"
+status = "exists"
+settle_from = "classification"
+venues = { book_a = "Race Winner", book_c = "Odds to win F1 - Singapore GP 2026", book_b = "Odds to Win Singapore Grand Prix", kalshi = "KXF1RACE", polymarket = "<GP>: Driver Winner", og = "Race Winner" }
+
+[[kinds]]
+code = "race_podium"
+label = "Podium finish"
+subject = "driver"
+status = "exists"
+settle_from = "classification"
+venues = { kalshi = "KXF1RACEPODIUM", polymarket = "<GP>: Driver Podium Finish" }
+
+[[kinds]]
+code = "race_top5"
+label = "Top 5 finish"
+subject = "driver"
+status = "exists"
+settle_from = "classification"
+venues = { kalshi = "KXF1TOP5" }
+
+[[kinds]]
+code = "race_top10"
+label = "Top 10 finish"
+subject = "driver"
+status = "exists"
+settle_from = "classification"
+venues = { kalshi = "KXF1TOP10" }
+
+[[kinds]]
+code = "race_h2h"
+label = "Race head-to-head (finishes ahead)"
+subject = "pair"
+status = "exists"
+settle_from = "classification"
+venues = { book_a = "Head-to-head (ledger, Malaysia 2026)", kalshi = "KXF1H2H", polymarket = "<GP>: Head-to-Head" }
+
+[[kinds]]
+code = "race_pole"
+label = "Pole position (qualifying winner)"
+subject = "driver"
+status = "exists"
+settle_from = "classification"
+venues = { book_a = "Qualifying Winner", kalshi = "KXF1POLE", polymarket = "<GP>: Driver Pole Position" }
+
+[[kinds]]
+code = "race_fastest_lap"
+label = "Fastest lap (driver)"
+subject = "driver"
+status = "exists"                          # `fastlap` variant, off by default; props.fl_probs as history rate
+settle_from = "laps"
+venues = { book_a = "Fastest Lap", kalshi = "KXF1FASTLAP", polymarket = "<GP>: Driver Fastest Lap" }
+
+[[kinds]]
+code = "race_biggest_mover"
+label = "Biggest mover (grid to finish)"
+subject = "driver"
+status = "exists"
+settle_from = "classification"
+venues = { kalshi = "KXF1BIGGESTMOVER" }
+
+[[kinds]]
+code = "race_classified"
+label = "Driver classified"
+subject = "driver"
+status = "exists"
+settle_from = "classification"
+venues = { book_a = "<Driver> To Be Classified?" }
+
+[[kinds]]
+code = "race_last_classified"
+label = "Last classified finisher"
+subject = "driver"
+status = "exists"
+settle_from = "classification"
+venues = { book_a = "Classified As Last Finisher" }
+
+[[kinds]]
+code = "race_retire"
+label = "Driver retires (DNF or DSQ)"
+subject = "driver"
+status = "exists"                          # 1 - race_classified from the simulations; a DNS is void
+settle_from = "classification"
+venues = { book_a = "<Driver> To Be Classified? (the No side)" }
+
+[[kinds]]
+code = "race_first_retirement"
+label = "First driver to retire (uniform timing assumption)"
+subject = "driver"
+status = "exists"                          # uniform timing assumption: the sims draw who retires, not when; settled on laps completed
+settle_from = "laps"
+venues = { book_a = "First Driver Retirement", kalshi = "retirement titles, unmodeled (kalshi/sync.py:95)" }
+
+[[kinds]]
+code = "race_second_retirement"
+label = "Second driver to retire (uniform timing assumption)"
+subject = "driver"
+status = "exists"                          # owner (2026-10-06): "if we have DID RETIRE add DID RETIRE 1st and so on"
+settle_from = "laps"
+venues = {}
+
+[[kinds]]
+code = "race_third_retirement"
+label = "Third driver to retire (uniform timing assumption)"
+subject = "driver"
+status = "exists"
+settle_from = "laps"
+venues = {}
+
+[[kinds]]
+code = "race_grand_slam"
+label = "Win, pole and fastest lap by one driver"
+subject = "none"
+status = "proposed"
+settle_from = "laps"
+venues = { book_a = "Any Driver To Win Race, Pole Position And Fastest Lap" }
+
+# ---------------------------------------------------------------- per-race, team
+[[kinds]]
+code = "race_constructor_top"
+label = "Most team points in the race"
+subject = "team"
+status = "exists"
+settle_from = "classification"
+venues = { book_a = "Most Team Points", kalshi = "KXF1TOPCONSTRUCTOR", polymarket = "<GP>: Which Constructor Scores 1st?" }
+
+[[kinds]]
+code = "race_constructor_win"
+label = "Winning constructor"
+subject = "team"
+status = "exists"                        # not the same as race_constructor_top: the winner's team, not most points
+settle_from = "classification"
+venues = { book_a = "Race Winning Constructor" }
+
+[[kinds]]
+code = "race_team_both_classified"
+label = "Both cars classified"
+subject = "team"
+status = "exists"
+settle_from = "classification"
+venues = { book_a = "<Team> Both Cars Classified?" }
+
+[[kinds]]
+code = "race_team_both_points"
+label = "Both cars in the points"
+subject = "team"
+status = "exists"                          # group_all_points, n = 10
+settle_from = "classification"
+venues = { book_a = "<Team> both cars in points (ledger, Malaysia 2026)" }
+
+[[kinds]]
+code = "race_team_any_classified"
+label = "At least one car classified"
+subject = "team"
+status = "exists"                          # owner (2026-10-06): team versions of the per-driver classification kinds
+settle_from = "classification"
+venues = {}
+
+[[kinds]]
+code = "race_first_retirement_team"
+label = "First constructor to retire (or no retirement)"
+subject = "team"
+status = "exists"                          # race_first_retirement summed per team; "no retirement" = race_n_retirements 0.5 under
+settle_from = "laps"
+venues = { book_a = "First Constructor Retirement" }
+
+[[kinds]]
+code = "race_fastest_lap_team"
+label = "Fastest lap (team)"
+subject = "team"
+status = "proposed"                        # sum of the two drivers' fastest-lap probability
+settle_from = "laps"
+venues = { book_a = "Car To Set The Fastest Lap", polymarket = "constructor fastest lap (unmodeled, docs/f1.md:180)" }
+
+[[kinds]]
+code = "race_fastest_pit_team"
+label = "Fastest pit stop (team)"
+subject = "team"
+status = "no_data"                         # stationary times are not stored and no source is known
+settle_from = "venue"
+venues = { book_a = "Fastest Team Pit Stop" }
+
+[[kinds]]
+code = "race_pair_podium"
+label = "Named pair both on the podium"
+subject = "pair"
+status = "proposed"
+settle_from = "classification"
+venues = { book_a = "Podium pair (ledger, Malaysia 2026)" }
+
+# ---------------------------------------------------------------- per-race, lines and yes/no on the race itself
+[[kinds]]
+code = "race_n_classified"
+label = "Number of classified drivers (over/under)"
+subject = "line"
+status = "exists"
+settle_from = "classification"
+venues = { book_a = "Number Of Classified Drivers" }
+
+[[kinds]]
+code = "race_n_retirements"
+label = "Number of retirements (over/under)"
+subject = "line"
+status = "exists"                          # DNF and DSQ counted; not the mirror of race_n_classified when a car is DNS
+settle_from = "classification"
+venues = {}
+
+[[kinds]]
+code = "race_safety_car"
+label = "Safety car during the race"
+subject = "none"
+status = "props"
+settle_from = "laps"
+venues = { book_a = "Will There Be A Safety Car Period During Race?", polymarket = "Will there be a safety car during the <GP>?" }
+
+[[kinds]]
+code = "race_red_flag"
+label = "Red flag during the race"
+subject = "none"
+status = "props"
+settle_from = "laps"
+venues = { book_a = "Will There Be A Red Flag During Race?", polymarket = "red flag question (docs/f1.md:178)" }
+
+[[kinds]]
+code = "race_rain"
+label = "Rain during the race"
+subject = "none"
+status = "props"
+settle_from = "weather"
+venues = { polymarket = "Rain during the <GP>?" }
+
+[[kinds]]
+code = "race_vsc"
+label = "Virtual safety car during the race"
+subject = "none"
+status = "proposed"                        # laps.track_status codes 6/7 per the model comment; codes unverified
+settle_from = "laps"
+venues = { book_a = "Will There Be A Virtual Safety Car Period During Race?" }
+
+[[kinds]]
+code = "race_sc_and_vsc"
+label = "Both a safety car and a virtual safety car"
+subject = "none"
+status = "proposed"
+settle_from = "laps"
+venues = { book_a = "Will There Be A Safety Car And A Virtual Safety Car Period During Race?" }
+
+[[kinds]]
+code = "race_n_safety_cars"
+label = "Number of safety cars (over/under)"
+subject = "line"
+status = "proposed"                        # needs distinct periods counted from laps or race-control messages
+settle_from = "laps"
+venues = { book_a = "Number Of Safety Cars; Safety cars Under 1.5 (ledger, Malaysia 2026)" }
+
+[[kinds]]
+code = "race_n_vsc"
+label = "Number of virtual safety cars (over/under)"
+subject = "line"
+status = "proposed"
+settle_from = "laps"
+venues = { book_a = "Number Of Virtual Safety Cars" }
+
+[[kinds]]
+code = "race_win_margin"
+label = "Winning margin (buckets)"
+subject = "line"
+status = "proposed"                        # history rate only; the sim has no times
+settle_from = "classification"
+venues = { book_a = "Race Winning Margin" }
+
+[[kinds]]
+code = "race_n_leaders"
+label = "Number of race leaders (buckets)"
+subject = "line"
+status = "proposed"
+settle_from = "laps"
+venues = { book_a = "Number Of Race Leaders" }
+
+[[kinds]]
+code = "race_win_nation"
+label = "Winning nationality"
+subject = "line"                           # a nation code, or "Others"
+status = "proposed"
+settle_from = "classification"
+venues = { book_a = "Winning Nationality" }
+
+# ---------------------------------------------------------------- other sessions of the weekend
+[[kinds]]
+code = "race_sprint_win"
+label = "Sprint race winner"
+subject = "driver"
+status = "exists"                          # priced by the race-win stand-in until U13
+settle_from = "classification"
+venues = { book_a = "Sprint Race Winner; Sprint winner (ledger)", book_c = "Odds to win F1 Sprint - Singapore GP 2026", kalshi = "KXF1RACESPRINT" }
+
+[[kinds]]
+code = "race_sprint_pole"
+label = "Sprint qualifying winner"
+subject = "driver"
+status = "exists"                          # priced by the pole stand-in until U13
+settle_from = "classification"
+venues = { book_a = "Sprint Qualifying Winner; sprint qualifying winner (ledger)", kalshi = "KXF1SPRINTPOLE" }
+
+[[kinds]]
+code = "race_sprint_constructor_win"
+label = "Sprint winning constructor"
+subject = "team"
+status = "proposed"
+settle_from = "classification"
+venues = { book_a = "Sprint Race Winning Constructor", kalshi = "sprint top constructor (unmodeled)" }
+
+[[kinds]]
+code = "qual_constructor_win"
+label = "Qualifying winning constructor"
+subject = "team"
+status = "proposed"
+settle_from = "classification"
+venues = { book_a = "Qualifying Winning Constructor" }
+
+[[kinds]]
+code = "fp1_win"
+label = "FP1 fastest driver"
+subject = "driver"
+status = "proposed"                        # FP1 laps are stored; practice results carry no time (ingest.py:179-180)
+settle_from = "laps"
+venues = { book_a = "1st Practice Winner; FP1 winner (ledger, Singapore 2026)", polymarket = "fastest lap in practice (docs/f1-live-roadmap.md:178)" }
+
+[[kinds]]
+code = "fp1_constructor_win"
+label = "FP1 fastest constructor"
+subject = "team"
+status = "proposed"
+settle_from = "laps"
+venues = { book_a = "1st Practice Winning Constructor" }
+
+[[kinds]]
+code = "session_win_margin"
+label = "Session winning margin (buckets), parameter: session"
+subject = "line"
+status = "proposed"                        # one kind, session in params: fp1 | qual | sprint_qual | sprint
+settle_from = "classification"
+venues = { book_a = "1st Practice Winning Margin; Qualifying Winning Margin; Sprint Qualifying Winning Margin; Sprint Race Winning Margin" }
+
+# ---------------------------------------------------------------- season
+[[kinds]]
+code = "champion"
+label = "Drivers' champion"
+subject = "driver"
+status = "exists"
+settle_from = "classification"
+venues = { kalshi = "KXF1", polymarket = "F1 Drivers' Champion", og = "F1-00001-2026" }
+
+[[kinds]]
+code = "constructors_champion"
+label = "Constructors' champion"
+subject = "team"
+status = "exists"
+settle_from = "classification"
+venues = { kalshi = "KXF1CONSTRUCTORS", polymarket = "F1 Constructors' Champion", og = "F1-00002-2026" }
+
+[[kinds]]
+code = "standings_h2h"
+label = "Season head-to-head, drivers (finishes ahead in the standings)"
+subject = "pair"
+status = "exists"
+settle_from = "classification"
+venues = { book_c = "F1 season matchup - Drivers Championship 2026", polymarket = "Will A finish ahead of B in the YYYY Drivers' Championship?" }
+
+[[kinds]]
+code = "standings_h2h_constructors"
+label = "Season head-to-head, constructors"
+subject = "pair"
+status = "proposed"                        # priced in the one-off sportsbook C evaluation from the forecast's constructor standings; no registry kind found (inferred)
+settle_from = "classification"
+venues = { book_c = "F1 season matchup - Constructors Championship 2026" }
+
+[[kinds]]
+code = "season_wins_ge"
+label = "Season wins at least N"
+subject = "driver"
+status = "exists"
+settle_from = "classification"
+venues = { polymarket = "Will X win N+ Grands Prix in YYYY?" }
+
+[[kinds]]
+code = "standings_top3"
+label = "Top 3 in the standings"
+subject = "driver"
+status = "exists"
+settle_from = "classification"
+venues = { }

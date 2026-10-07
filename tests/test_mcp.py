@@ -327,6 +327,34 @@ def _http(test_engine, monkeypatch):
     return TestClient(S.http_app(S.build(engine_url=url, oauth=True)), base_url="https://mcp.racinglines.bet")
 
 
+def test_hosted_server_stops_within_its_grace_period(monkeypatch):
+    """A restart (every deploy) must not wait on a client's open event stream: serve() gives uvicorn a finite graceful
+    shutdown, and every unit's TimeoutStopSec leaves systemd a margin above it instead of the 90 s default."""
+    import re
+    from pathlib import Path
+    import uvicorn
+    from racinglines.cli import web as W
+    from racinglines.mcp import auth, oauth
+    from racinglines.mcp import server as S
+    seen = {}
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kw: seen.update(kw))
+    monkeypatch.setattr(S, "build", lambda **kw: object())
+    monkeypatch.setattr(S, "http_app", lambda srv: srv)
+    monkeypatch.setattr(S, "_engine", lambda: None)
+    monkeypatch.setattr(auth, "holders", lambda e: [])
+    monkeypatch.setattr(oauth, "warn_if_disabled", lambda: None)
+    S.serve(http=True)
+    assert 0 < seen["timeout_graceful_shutdown"] == S.SHUTDOWN_GRACE_SEC
+    seen.clear()
+    W.main()
+    assert 0 < seen["timeout_graceful_shutdown"] == W.SHUTDOWN_GRACE_SEC
+    units = Path(__file__).resolve().parent.parent / "deploy/vm/systemd"
+    for name, grace in [("racinglines-mcp.service", S.SHUTDOWN_GRACE_SEC), ("racinglines-web.service", W.SHUTDOWN_GRACE_SEC),
+                        ("racinglines-staging-web.service", W.SHUTDOWN_GRACE_SEC)]:
+        m = re.search(r"^TimeoutStopSec=(\d+)$", (units / name).read_text(), re.M)
+        assert m and grace < int(m.group(1)) < 90, name
+
+
 PING = {"jsonrpc": "2.0", "id": 1, "method": "ping"}
 HDR = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
 

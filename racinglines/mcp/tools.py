@@ -777,7 +777,7 @@ def _job_params(job_type, params):
             continue
         v = params.pop(k.name, None)
         if v is not None:
-            form[k.name] = str(v).strip()
+            form[k.name] = json.dumps(v) if isinstance(v, (list, dict)) else str(v).strip()   # combo legs as JSON
     settings = params.pop("settings", None)
     if params:
         raise ValueError(f"unknown knobs for {job_type}: {sorted(params)}")

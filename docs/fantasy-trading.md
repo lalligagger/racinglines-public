@@ -37,7 +37,7 @@ Kind codes are the `market_links.prediction` / `house_markets.kind` values. The 
 | Venue and market | Kinds | Taker at launch | Maker at launch | Later |
 |---|---|---|---|---|
 | Kalshi F1 race, R17 Singapore | `race_win`, `race_podium`, `race_top10`, `race_constructor_top`; `race_pole` and `race_h2h` if listed | Exchange paper trade (EXCH-1) | No (DEC-6) | Makers: NEXT-1, R19 at the earliest |
-| Kalshi F1 sprint, R17 | `race_sprint_win`, `race_sprint_pole` | Only if Kalshi lists them and `RACINGLINES_KALSHI_SPRINTS=1` on the VM (DEC-12) | No | Same as above |
+| Kalshi F1 sprint, R17 | `race_sprint_win`, `race_sprint_pole` | Only if Kalshi lists them; sprint classification is on by default since 2026-10-06 (DEC-12) | No | Same as above |
 | Kalshi F1 season futures | `champion`, `constructors_champion` | Exchange paper trade | No | Same as above |
 | Polymarket F1 season futures | `champion`, `constructors_champion` | Exchange paper trade | No | `season_wins_ge` and `standings_h2h`: owner input |
 | Polymarket F1 race | none listed since 28 Aug | Same rules as Kalshi race, if a market is listed | No | |
@@ -742,7 +742,7 @@ What each role and account type sees:
 | `RACINGLINES_FANTASY_BOOK` | 0 | `/fantasy/book`, and the player gates on `/take` |
 | `RACINGLINES_FANTASY_EXCHANGE` | 0 | `/fantasy/markets` trading and `POST /fantasy/orders` |
 | `RACINGLINES_FANTASY_EXCHANGE_MAKERS` | 0 | Stays 0 this sprint (NEXT-1) |
-| `RACINGLINES_KALSHI_SPRINTS` | off (existing) | Sprint kinds are linked, and so tradable, only when on (DEC-12) |
+| `RACINGLINES_KALSHI_SPRINTS` | on (default since 2026-10-06, owner) | Sprint kinds are linked, and so tradable, unless set to 0 (DEC-12) |
 | `MAX_STAKE` | 100 (existing) | Capped further by `fantasy_seasons.max_stake` |
 | `RACINGLINES_CANCELLED_RACE_RULES` | existing | Not changed by fantasy. The tick passes `rules=False` |
 | `POLYMARKET_CLOB_HOST`, `KALSHI_API_HOST` | existing | Read by `books.py` for its base URLs |

@@ -312,15 +312,53 @@ def settle_from_exchange(session, conn):
 
 
 def race_outcomes(conn, race_id):
-    """Official race classification for settlement: athlete -> (position, classified, team_key)."""
+    """Official race classification for settlement: athlete -> (position, classified, team_key), and `grid`, the
+    starting grid slot the race round stores (results.extra.grid: F1's FastF1 GridPosition after penalties, 0 = pit
+    lane; NASCAR's starting_position; NaN where none is stored), which settles the biggest mover (payoffs.biggest_mover)."""
     df = pd.read_sql(text("""
         SELECT r.athlete_id, r.position, r.status, coalesce(r.extra->>'team_id', r.team) AS team_id,
-               coalesce((r.extra->>'points')::float, 0) AS points
+               coalesce((r.extra->>'points')::float, 0) AS points, nullif(r.extra->>'grid', '')::float AS grid
         FROM results r JOIN rounds ro ON ro.id = r.round_id
         WHERE ro.race_id = :r AND ro.kind IN ('race', 'final')"""), conn, params=dict(r=race_id))
     q = pd.read_sql(text("""SELECT r.athlete_id, r.position AS qual_position FROM results r JOIN rounds ro ON ro.id = r.round_id
                             WHERE ro.race_id = :r AND ro.kind = 'qual'"""), conn, params=dict(r=race_id))
-    return df.merge(q, on="athlete_id", how="left") if len(df) else df.assign(qual_position=None)
+    out = df.merge(q, on="athlete_id", how="left") if len(df) else df.assign(qual_position=None)
+    if not len(out):
+        return out
+    from racinglines import sports
+    from racinglines.markets import payoffs as P
+    out = P.mark_sport(out, sports.race_sport(conn, race_id))     # who is classified: the sport's [results] rule
+    return out.merge(stage_outcomes(conn, race_id), on="athlete_id", how="left")
+
+
+def stage_outcomes(conn, race_id):
+    """Per athlete, each side stage of the weekend (sports/f1.toml [sessions.sim], the sprint): <stage>_position,
+    _status, _points, and <grid session>_position (sprint_qual_position) for the stage-pole kinds. Sprint
+    Qualifying is stored without positions, so its order is the stage's starting grid (FastF1's GridPosition,
+    results.extra.grid: after penalties, 0 = pit lane = none), known once the stage has run; an SQ position
+    stored in the classification wins when there is one. Empty frame (just athlete_id) on a weekend without one."""
+    from racinglines.models.position_sim.model import MAIN_STAGE, SIM_SESSIONS
+    # the current-format grid session (grid_from); 2021's per-year source (grid_from_by_year: qual) is not read here,
+    # no venue listed 2021 sprint markets, so none are settled by this
+    side = {k: v["grid_from"] for k, v in SIM_SESSIONS.items() if k != MAIN_STAGE}
+    rows = pd.read_sql(text("""
+        SELECT r.athlete_id, ro.kind, r.position, r.status, coalesce((r.extra->>'points')::float, 0) AS points,
+               nullif(nullif(r.extra->>'grid', '')::float, 0) AS grid
+        FROM results r JOIN rounds ro ON ro.id = r.round_id
+        WHERE ro.race_id = :r AND ro.kind = ANY(:k)"""), conn,
+        params=dict(r=race_id, k=sorted(set(side) | set(side.values()))))
+    out = pd.DataFrame(dict(athlete_id=pd.Series(dtype="int64")))
+    for stage, grid_from in side.items():
+        st = rows[rows["kind"] == stage].drop_duplicates("athlete_id").set_index("athlete_id")
+        gq = rows[rows["kind"] == grid_from].drop_duplicates("athlete_id").set_index("athlete_id")["position"]
+        if st.empty and gq.notna().sum() == 0:
+            continue
+        idx = st.index.union(gq.index)
+        f = pd.DataFrame({f"{stage}_position": st["position"].reindex(idx), f"{stage}_status": st["status"].reindex(idx),
+                          f"{stage}_points": st["points"].reindex(idx),
+                          f"{grid_from}_position": gq.reindex(idx).combine_first(st["grid"].reindex(idx))}, index=idx)
+        out = out.merge(f.rename_axis("athlete_id").reset_index(), on="athlete_id", how="outer")
+    return out
 
 
 def outcome_for(kind, athlete_id, params, res):
@@ -328,7 +366,10 @@ def outcome_for(kind, athlete_id, params, res):
     settlement in racinglines/markets/kinds.py."""
     from racinglines.markets import kinds as K
     from racinglines.models.position_sim.model import team_key
-    return K.settle(kind, athlete_id, params, res, group_key=team_key if kind == "race_constructor_top" else None)
+    k = K.KINDS.get(kind)
+    # a team market: a kind whose subject is a team (markets/kinds.toml: a team spec, or the legacy group_top)
+    grouped = k is not None and k.subject == "team"
+    return K.settle(kind, athlete_id, params, res, group_key=team_key if grouped else None)
 
 
 def settle_from_results(session, conn, race_id, market_ids=None, rules=None):
