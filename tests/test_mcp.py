@@ -215,7 +215,7 @@ def test_sports_come_from_the_database(mcp):
 
 def test_edge_finder_and_track_record_take_venue_and_sport(mcp):
     assert mcp("edge_finder", year=2026, venue="kalshi")["venue"] == "kalshi"
-    kind, text_ = mcp("edge_finder", year=2026, venue="og")
+    kind, text_ = mcp("edge_finder", year=2026, venue="nope")
     assert kind == "error" and "polymarket" in text_
 
 
