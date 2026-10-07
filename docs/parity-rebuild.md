@@ -7,6 +7,21 @@ read-only coverage counter that comes first. The owner's go, 2026-10-07: C0 only
 **Status:** plan and C0 spec. Nothing built. Counts below come from a read-only query of the VM database on
 2026-10-07 at 04:10 UTC, made against `main` `c1b7277`. C0 replaces them with a command anyone can re-run.
 
+## Sprint goal (owner, 2026-10-07)
+
+When this sprint ends, F1, NASCAR and MotoGP should each support two uses:
+
+1. **Our model against the prediction markets.** Polymarket, Kalshi and OG.com wherever they list the sport: fair
+   prices on the board, backtests and paper P&L for every valid combo. That is the parity work below.
+2. **Expected value (EV) of a sportsbook slip.** Price each leg of a generic sportsbook's slip with our model, and
+   show the prediction-market price beside it wherever a linked market exists. Report the EV against both. That is
+   package C9 below.
+
+For C9, how the model and the market price are combined is a decision for the owner. It gets a decision-log entry
+before any blend is treated as final. Until then, both prices and both EVs are shown side by side.
+
+Road cycling (C6) is outside this sprint.
+
 ## What "on par" means
 
 The F1/Polymarket pipeline has eight stages. A sport × exchange × market kind ("combo") is on par when it passes
@@ -61,6 +76,70 @@ live paper signals today.
 - **F1 links left unmodeled.** 831 F1 Kalshi links from 2026 are unmodeled, among them "to finish top 5" titles.
 - **MotoGP champion links have no kind.** On both Kalshi and Polymarket, `params.kind` is empty.
 
+## Every session, every supportable kind (owner, 2026-10-07: "close this gap")
+
+The tables above count only the kinds we already link. This section lists everything the exchanges list for F1,
+NASCAR and MotoGP that we don't price yet. It comes from the unmodeled links in a read-only query on 2026-10-07,
+grouped by Kalshi series or Polymarket event title. Each row is marked **supportable** (the position sim can price
+it once the kind exists as a `kinds.toml` row), **needs data or model** (named), or **not supportable** (out of
+scope).
+
+**Sessions to price at.** F1 already reprices after every session. NASCAR and MotoGP reprice only at fixed hours
+before the race (`[replay] stages`). Every sport gets its session schedule in `sports/<sport>.toml`:
+
+- **F1:** FP1–3, sprint qualifying, sprint, qualifying, race.
+- **NASCAR:** practice, qualifying, stage 1, stage 2, race.
+- **MotoGP:** FP1, Practice, Q1/Q2, sprint, race.
+
+Each sport then reprices after each of its sessions, through the same stage engine.
+
+### F1
+
+| Listed, not priced | Exchange | Links (races) | Status |
+|---|---|---|---|
+| Top 5 finish (`KXF1TOP5`) | Kalshi | 330 (15) | **supportable now.** The `race_top5` kind exists; the classifier misses this series |
+| Sprint winner, sprint top 5 and top 10, sprint fastest lap, sprint top constructor, sprint pole (`KXF1RACESPRINT`, `KXF1SPRINT*`) | Kalshi | 130 / 88 / 88 / 66 / 33 / 66 | **supportable.** The sprint stage exists since PR #73; the sprint kinds are off by default |
+| Sprint winner, sprint qualifying pole | Polymarket | 199 + 69 / 159 | **supportable.** Same as above |
+| Exact position (2nd, 3rd, 4th, 5th place) | Polymarket | about 230 | **supportable.** A new kind: finishing position = n |
+| Constructor pole, constructor fastest lap | Polymarket | 284 / 284 | **supportable.** Team aggregate over the pole and fastest-lap kinds |
+| Constructor score rank 1st to 5th, constructor head-to-head | Polymarket | about 220 / 36 | **supportable.** Team points rank and team h2h from the sim |
+| Driver head-to-head and podium families with no race link ("finish ahead of", "who will finish higher") | Polymarket | 56 + 46 + 21 | **linking gap.** The kind exists; the link has no `race_id` |
+| Practice 1, 2, 3 fastest lap | Polymarket | 526 / 344 / 368 | **needs a model:** practice pace from laps. FastF1 laps are in the database |
+| Biggest mover | Kalshi | 44 (2) | **needs the starting grid** (core backlog C11; per-event grid penalties since PR #74) |
+| Championship 2nd to 5th place (drivers, constructors) | Polymarket | 84 / 44 | **supportable.** Standings position from the season sim |
+| Winning margin | Polymarket | 7 | **not supportable now.** The sim has no time gaps |
+| Awards, transfers, retirements, calendar, attendance, winter testing | both | about 100 | **not supportable** (not race outcomes) |
+| IndyCar races filed under F1 ("Honda Indy 200 at Mid-Ohio") | Polymarket | 78 | **data fix.** Refile them to IndyCar |
+
+### NASCAR
+
+Kalshi lists, all as `params.kind` with `prediction = 'unmodeled'`: win, podium, top 5, top 10, top 20, fastest lap,
+pole, team win, head-to-head, biggest mover, champion and regular-season champion. Kalshi also has "win the
+playoffs" (16 links) and Polymarket an In-Season Challenge winner (17 links).
+
+| Kind | Status |
+|---|---|
+| Win, podium, top 5, top 10, top 20, head-to-head, team win | **supportable** once start lists and the global model are in (C3) and the kinds are rows |
+| Pole | **needs a qualifying model.** 270 qualifying rounds are in the database |
+| Fastest lap | **needs a lap model.** Laps exist for 279 races |
+| Biggest mover | **needs the starting grid.** It's in the weekend feed |
+| Champion, playoffs | **needs a playoff-format season sim** (16 drivers, eliminations, one-race final) |
+| Regular-season champion, In-Season Challenge | **supportable** from the season sim once the formats are in the schema |
+| Stage winners | not seen in the listings; **not checked** |
+
+Other NASCAR series (Truck, possibly Xfinity) are filed under Cup; **data fix** first (C1).
+
+### MotoGP
+
+The exchanges list race win (Kalshi 289 links, Polymarket 131), the riders' champion (Kalshi 22, Polymarket 78) and
+the teams' champion (Kalshi 11). Race win is supportable now. The champion and teams' champion are **supportable**
+from a season sim with a team aggregate.
+
+**Sportsbook slips** (C9) list more than the exchanges do: podium, top N, head-to-head, sprint winner and pole. Those
+are **supportable** for slip EV with the model price alone. They **need data:** qualifying is not ingested (0
+qualifying rounds in the database), so there is no grid, and sprints are only in from 2025 although they began in
+2023. Both come from the MotoGP source we already use.
+
 ## Engine gaps
 
 These line numbers come from grep and are approximate.
@@ -84,8 +163,8 @@ staging database first, and add a `data_changes` row.
 
 | Thread | Packages |
 |---|---|
-| Core (leads) | **C0** coverage counter (below). **C1** link cleanup: kinds from `params.kind` for every sport, other NASCAR series refiled, MotoGP champion links classified (data step). **C2** sport-agnostic sweep: stages, kinds and venues come from the schemas, OG.com goes through `venue_replay`, and sweep params gain `sport` and `venue`; F1 goldens stay byte-identical. **C3** NASCAR/MotoGP pricing: start lists, `GlobalModel` as the pricing model, and top 20, h2h, team win, fastest lap and pole as kinds. **C4** CLV per bet. **C5** settlement parity: one top-N rule, OG.com settle verified, mover settles. **C6** cycling, gated on a Mac probe. **C7** live paper signals for every sport and venue. **C8** the rebuild run (data step): 9 sport-venue-seasons × 9 strategies = 81 sweep jobs per model variant, then the paper backfill |
-| MCP | Sports read from the database (M6). `sport` and `venue` (including `og`) on `edge_finder`, `track_record`, `replay_maker` and `run_job`. `list_kinds` reads C0. The SQL guard (M1/M2) comes first |
+| Core (leads) | **C0** coverage counter (below). **C1** link cleanup: kinds from `params.kind` for every sport, other NASCAR series refiled, MotoGP champion links classified (data step). **C2** sport-agnostic sweep: stages, kinds and venues come from the schemas, OG.com goes through `venue_replay`, and sweep params gain `sport` and `venue`; F1 goldens stay byte-identical. **C3** NASCAR/MotoGP pricing: start lists, `GlobalModel` as the pricing model, and top 20, h2h, team win, fastest lap and pole as kinds. **C4** CLV per bet. **C5** settlement parity: one top-N rule, OG.com settle verified, mover settles. **C6** cycling, gated on a Mac probe (deferred: outside this sprint). **C7** live paper signals for every sport and venue. **C8** the rebuild run (data step): 9 sport-venue-seasons × 9 strategies = 81 sweep jobs per model variant, then the paper backfill. **C9** sportsbook slip EV for F1, NASCAR and MotoGP. This is the `book map/price/settle` CLI (core backlog step 8; today only `racinglines/books/schema.py`, the validator, exists), extended to multi-leg slips. Each leg gets the model's fair price, the linked prediction-market price where one exists, and EV against both. Kinds come from `kinds.toml`, so no per-sport branches. **C10** linking and classifier gaps from "Every session, every supportable kind": Kalshi `KXF1TOP5` and the sprint series, Polymarket families with no race link, and IndyCar links filed under F1 (a data step). **C11** the supportable kinds above as `kinds.toml` rows and payoffs, with settlement. **C12** session-aware repricing for NASCAR and MotoGP from a session schedule in each sport's schema; MotoGP qualifying and the 2023–24 sprints ingested; an F1 practice-pace model; NASCAR qualifying and lap models for pole and fastest lap |
+| MCP | Sports read from the database (M6). `sport` and `venue` (including `og`) on `edge_finder`, `track_record`, `replay_maker` and `run_job`. `list_kinds` reads C0. `map_book`, `price_book` and `settle_book` (M9) wrap C9. The SQL guard (M1/M2) comes first |
 | Web View | A coverage page drawn from C0. Sport and venue filters on Edge Finder, Strategy and Positions. Track record per venue, including OG.com |
 | Web UI | Split `web/app.py`, then a Lab launcher for any sport × venue. `og` in the profile venue selector |
 
