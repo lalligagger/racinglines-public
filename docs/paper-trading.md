@@ -11,6 +11,7 @@ on the Strategy and Positions pages. Nothing here places an order.
 | [Heat](#heat) and [following](#following) | `signals.py` | What a taker sees instead of fair values; which calls it takes |
 | [Alerts](#alerts) | `racinglines/markets/alerts.py` | New Polymarket markets, new signals |
 | [Demo accounts](#the-demo-accounts) | `pipelines/demo_history.py`, `pipelines/story.py` | The maker's and taker's track record, replayed from backtests |
+| [CLV](cli.md#racinglines-backtest-clv) | `racinglines/pipelines/clv.py` | Closing-line value of every paper bet, any sport and venue (`racinglines backtest clv`) |
 
 ## Strategy profiles
 

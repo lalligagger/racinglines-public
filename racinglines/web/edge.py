@@ -110,7 +110,8 @@ def configs(conn, year=2026):
     configuration with a full-season sweep of `year` (as many weekends as the most complete sweep of
     that season on the same venue); the latest run per configuration."""
     rows = conn.execute(text("""SELECT id, params, jsonb_array_length(coalesce(metrics->'weekends', '[]'::jsonb)) n
-                                FROM model_runs WHERE kind = 'sweep' AND (params->>'year')::int = :y ORDER BY id"""),
+                                FROM model_runs WHERE kind = 'sweep' AND (params->>'year')::int = :y
+                                  AND coalesce(params->>'sport', 'f1') = 'f1' ORDER BY id"""),
                         dict(y=year)).fetchall()
     venue = lambda p: ((p or {}).get("settings") or {}).get("venue") or "polymarket"     # noqa: E731
     full = {}                          # per venue: Kalshi listed a 2025 weekend Polymarket didn't (Imola)
@@ -177,6 +178,7 @@ def build(conn, cs, year=2026):
         """The default-settings sweep priced from the same data (else the latest one)."""
         dk = (run or {}).get("params", {}).get("data_key")
         same = conn.execute(text("""SELECT id, params FROM model_runs WHERE kind = 'sweep' AND (params->>'year')::int = :y
+                                    AND coalesce(params->>'sport', 'f1') = 'f1'
                                     AND params->>'data_key' = :d AND params->>'settings_key' = :k ORDER BY id DESC LIMIT 1"""),
                             dict(y=year, d=dk or "", k=default_key)).fetchone() if dk else None
         if same:

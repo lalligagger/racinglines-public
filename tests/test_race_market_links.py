@@ -102,7 +102,7 @@ def test_kalshi_classifies_and_links_top5_and_biggest_mover():
     assert c("Bahrain Grand Prix Main Race: Biggest Mover", "Biggest Mover: Max Verstappen") == \
         ("race_biggest_mover", "Bahrain Grand Prix")
     assert c("Bahrain Grand Prix Main Race: Top 10 Finishers", "Main Race: Max Verstappen to finish top 10")[0] == "race_top10"
-    assert c("Singapore Grand Prix Sprint Race: Top 5 Finishers", "x", sprints=True)[0] == "unmodeled"
+    assert c("Singapore Grand Prix Sprint Race: Top 5 Finishers", "x", sprints=True)[0] == "race_sprint_top5"     # C10
     ev = dict(event_ticker="KXF1TOP5-BAH26", series_ticker="KXF1TOP5", title="Bahrain Grand Prix Main Race: Top 5 Finishers",
               markets=[dict(ticker="KXF1TOP5-BAH26-VER", event_ticker="KXF1TOP5-BAH26", status="active",
                             title="Main Race: Max Verstappen to finish top 5", yes_sub_title="Max Verstappen",
@@ -165,7 +165,7 @@ def test_polymarket_classifies_fastest_lap_props_and_other_race_events():
     assert c("Bahrain Grand Prix: Driver Fastest Lap", f"Will Max Verstappen achieve the fastest lap at {q}") == \
         ("race_fastest_lap", "Bahrain Grand Prix")
     assert c("Bahrain Grand Prix: Constructor Fastest Lap", f"Will Ferrari achieve the fastest lap at {q}") == \
-        ("unmodeled", "Bahrain Grand Prix")
+        ("race_constructor_fastest_lap", "Bahrain Grand Prix")                       # a team kind since C11
     for t, kind in ((f"Will there be a safety car during {q}", "race_safety_car"),
                     (f"Will there be a red flag during {q}", "race_red_flag"),
                     ("Rain during the Bahrain Grand Prix?", "race_rain")):
@@ -249,7 +249,8 @@ def test_polymarket_sync_links_fastest_lap_props_and_tags_placeholders(test_engi
         ("race_fastest_lap", ids["ver"], ids["race"])
     assert (got["rl-sc-y"]["prediction"], got["rl-sc-y"]["athlete_id"], got["rl-sc-y"]["race_id"]) == \
         ("race_safety_car", None, ids["race"])
-    assert (got["rl-cfl-f-y"]["prediction"], got["rl-cfl-f-y"]["race_id"]) == ("unmodeled", ids["race"])
+    assert (got["rl-cfl-f-y"]["prediction"], got["rl-cfl-f-y"]["race_id"], got["rl-cfl-f-y"]["params"]["team"]) == \
+        ("race_constructor_fastest_lap", ids["race"], "ferrari")                     # a team kind since C11
     for tok, kind in (("rl-fl-a-y", "race_fastest_lap"), ("rl-fl-o-y", "race_fastest_lap"), ("rl-win-a-y", "race_win")):
         assert (got[tok]["prediction"], got[tok]["race_id"], got[tok]["params"]["placeholder"]) == ("unmodeled", ids["race"], kind)
     assert "placeholder" not in got["rl-fl-ver-y"]["params"] and "placeholder" not in got["rl-cfl-f-y"]["params"]
@@ -293,3 +294,85 @@ def test_model_prob_reads_top5_and_mover(test_engine):
         assert model_prob(c, link, run_id=ids["old"]) == (None, ids["old"])         # a run saved before these columns
         assert model_prob(c, dict(link, prediction="race_pole"), run_id=ids["old"])[0] == pytest.approx(0.1)
         assert model_prob(c, dict(link, prediction="race_safety_car"), run_id=ids["new"]) == (None, None)    # no model
+
+
+# --- Polymarket's sprint markets (the sprint stage, docs/todo.md U13) ----------------------------------------
+
+@pytest.mark.quick
+def test_polymarket_classifies_the_sprint_winner_and_sprint_pole():
+    c = PS.classify
+    q = "the 2026 F1 Singapore Grand Prix Sprint?"
+    assert c("Singapore Grand Prix: Sprint Winner", f"Will Lando Norris win {q}") == ("race_sprint_win", "Singapore Grand Prix")
+    assert c("Singapore Grand Prix: Sprint Qualifying Pole Winner", f"Will Driver A win sprint pole at {q}") == \
+        ("race_sprint_pole", "Singapore Grand Prix")
+    # the Grand Prix's own markets are unchanged, and other sprint markets stay unmodeled, linked to the race
+    assert c("Singapore Grand Prix: Driver Winner", "Will Lando Norris win?") == ("race_win", "Singapore Grand Prix")
+    assert c("Singapore Grand Prix: Driver Pole Position", "Will Lando Norris get pole?") == ("race_pole", "Singapore Grand Prix")
+    assert c("Singapore Grand Prix: Sprint Fastest Lap", "x") == ("unmodeled", "Singapore Grand Prix")
+    assert c("Singapore Grand Prix: Sprint Winner Margin", "x") == ("unmodeled", "Singapore Grand Prix")
+
+
+def test_polymarket_sync_links_sprint_markets_and_tags_their_placeholders(test_engine, monkeypatch):
+    from racinglines.db import models as m
+    from racinglines.db.config import get_session
+    from racinglines.db.ingest import _upsert, seed
+    from racinglines.markets import venues
+    url = test_engine.url.render_as_string(hide_password=False)
+    with get_session(url) as s:
+        seed(s)
+        comp = s.scalars(select(m.Competition).filter_by(code="f1_wdc")).one()
+        cat = s.scalars(select(m.Category).filter_by(competition_id=comp.id, code="DRV")).one()
+        season = _upsert(s, m.Season, dict(competition_id=comp.id, year=2026))
+        nor = m.Athlete(display_name="Lando Norris (sprint links test)", nation="GBR")
+        ev = m.Event(season_id=season.id, source="test", source_key="sp-2026-17", name="Singapore Grand Prix (links test)",
+                     start_date=date(2026, 10, 11), series_round=17)
+        s.add_all([nor, ev])
+        s.flush()
+        race = m.Race(event_id=ev.id, category_id=cat.id, format=dict(kind="f1", sprint=True))
+        s.add(race)
+        s.commit()
+        ids = dict(nor=nor.id, race=race.id)
+    with test_engine.begin() as c:
+        c.execute(text("DELETE FROM market_links WHERE token_id LIKE 'sp-%'"))
+
+    class R:
+        def __init__(self, conn, year):
+            pass
+
+        def driver(self, name):
+            return ids["nor"] if name == "Lando Norris" else None
+
+        def team(self, name):
+            return None
+
+        def race(self, gp, end_date=None, near=None):
+            return (ids["race"], "sp-2026-17") if gp == "Singapore Grand Prix" else (None, None)
+    monkeypatch.setattr(PS, "Resolver", R)
+    q = "the 2026 F1 Singapore Grand Prix Sprint?"
+    events = [dict(slug="sp-win", title="Singapore Grand Prix: Sprint Winner", markets=[
+                  _pm("sp-win-nor", f"Will Lando Norris win {q}", "Lando Norris", ["sp-win-nor-y", "sp-win-nor-n"]),
+                  _pm("sp-win-a", f"Will Driver A win {q}", "Driver A", ["sp-win-a-y", "sp-win-a-n"]),
+                  _pm("sp-win-o", f"Will any other driver win {q}", "Other", ["sp-win-o-y", "sp-win-o-n"])]),
+              dict(slug="sp-pole", title="Singapore Grand Prix: Sprint Qualifying Pole Winner", markets=[
+                  _pm("sp-pole-nor", f"Will Lando Norris win sprint pole at {q}", "Lando Norris",
+                      ["sp-pole-nor-y", "sp-pole-nor-n"]),
+                  _pm("sp-pole-e", f"Will Driver E win sprint pole at {q}", "Driver E", ["sp-pole-e-y", "sp-pole-e-n"])])]
+
+    def handler(req):
+        p = dict(req.url.params)
+        return httpx.Response(200, json=events if p.get("tag_slug") == "f1" and p.get("closed") == "false" else [])
+    real = httpx.Client
+    monkeypatch.setattr(PS.httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+
+    with test_engine.connect() as c, get_session(url) as s:
+        PS.sync(s, c, 2026)
+    with test_engine.connect() as c:
+        got = {r["token_id"]: r for r in c.execute(text("""SELECT token_id, prediction, athlete_id, race_id, params
+                                                           FROM market_links WHERE token_id LIKE 'sp-%'""")).mappings()}
+        counts = venues.placeholders(c, ids["race"])
+    for tok, kind in (("sp-win-nor-y", "race_sprint_win"), ("sp-pole-nor-y", "race_sprint_pole")):
+        assert (got[tok]["prediction"], got[tok]["athlete_id"], got[tok]["race_id"]) == (kind, ids["nor"], ids["race"])
+        assert "placeholder" not in got[tok]["params"]
+    for tok, kind in (("sp-win-a-y", "race_sprint_win"), ("sp-win-o-y", "race_sprint_win"), ("sp-pole-e-y", "race_sprint_pole")):
+        assert (got[tok]["prediction"], got[tok]["race_id"], got[tok]["params"]["placeholder"]) == ("unmodeled", ids["race"], kind)
+    assert counts == {"race_sprint_win": 2, "race_sprint_pole": 1}

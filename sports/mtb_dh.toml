@@ -9,6 +9,7 @@ result_kind = "time"              # results are run times
 model_family = "timed_runs"       # racinglines/models/timed_runs
 pricing_model = "racinglines.models.race_model:TimedRuns"   # the backtest core's wrapper (docs/backtest-core.md)
 display_order = 5
+results_modules = ["racinglines.sources.chronorace"]   # what fetches its results (`backtest coverage`)
 
 [league]
 code = "uci_mtb"
@@ -79,6 +80,10 @@ vallnord-pal-arinsal = "pal-arinsal"
 [markets]
 venues = ["private"]                  # no exchange lists downhill yet
 standard_kinds = ["race_win", "race_podium", "race_make_final"]
+
+[search]
+# The search queue's job kinds for this sport (racinglines/pipelines/search.py): the model-only walk-forward.
+jobs = ["walk_forward"]
 
 [live]
 # A live final (pipelines/live_dh.py): the timing feed polled every few seconds, a Monte Carlo of the rest of

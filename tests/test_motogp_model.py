@@ -28,7 +28,7 @@ def _motogp_data():
 
 
 def test_motogp_model_runs_through_the_backtest_engine():
-    model = RM.get("motogp")
+    model = RM.challenger("motogp", "motogp_recent_form")()
     data = _motogp_data()
     settings = model.Settings.from_dict({"sims": 200, "shrink": 2.0, "noise": 0.75, "seed": 7})
 
@@ -41,7 +41,7 @@ def test_motogp_model_runs_through_the_backtest_engine():
 
 def test_motogp_challenger_runs_and_tracks_recent_form():
     data = _motogp_data()
-    baseline = RM.get("motogp")
+    baseline = RM.challenger("motogp", "motogp_recent_form")()
     challenger = MotoGPRaceChallenger()
 
     base_settings = baseline.Settings.from_dict({"sims": 200, "shrink": 2.0, "noise": 0.75, "seed": 7})

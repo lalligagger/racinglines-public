@@ -86,6 +86,12 @@ def load_tidy(engine, competition="uci_dhi_wc", with_splits=True):
     return out
 
 
+def code_version():
+    """The checkout's git describe (commit, "-dirty" when the tree has changes), as model_runs.code_version records it;
+    None when git is unavailable."""
+    return _git_commit()
+
+
 def _git_commit():
     try:
         return subprocess.run(["git", "describe", "--always", "--dirty"], capture_output=True, text=True,

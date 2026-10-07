@@ -14,6 +14,9 @@ racinglines f1 <command>: Formula 1.
     matrix       Every model variant x every trading strategy: accuracy (latest saved backtest per
                  variant, paired vs baseline) and 2026 P&L (latest sweep + season strategy per variant).
     diagnostic   ONE PAST EVENT at a chosen cutoff (e.g. yesterday); saved as kind='diagnostic'.
+    combo        Combos (same-game parlays) on ONE EVENT, past or upcoming, as of a cutoff (default now): each
+                 combo's fair value and its legs' marginals from one pricing (models/position_sim/combo_job.py);
+                 saved as kind='combo' with the prices in metrics (the Lab job f1_combo).
     sweep        Every race of a season traded through the weekend: price before any running
                  and after each session, trade Polymarket (update / hold / after-quali taker
                  strategies, maker replay), settle; per-weekend P&L. Saved as kind='sweep'.
@@ -32,6 +35,9 @@ racinglines f1 <command>: Formula 1.
                  (the only kind the web app uses for live fair prices).
     props        Race props (safety car, red flag, rain, fastest lap) for one event from the race
                  history, or --check: their walk-forward calibration (models/position_sim/props.py).
+    sprint-check Walk-forward check of the sprint stage on every stored sprint weekend: sprint-winner Brier
+                 and log loss vs the Grand Prix win stand-in, and sprint vs GP retirements
+                 (models/position_sim/sprint_check.py). Read-only; nothing is stored.
 """
 
 import argparse
@@ -81,6 +87,9 @@ def main(argv=None):
                                                "stage's cutoff, like the sweep).")
     p.add_argument("--no-fetch", action="store_true", help="Don't refresh FastF1 / Polymarket data first.")
     p.add_argument("--no-alert", action="store_true")
+    p.add_argument("--venue", default="polymarket", choices=["polymarket", "kalshi", "og"],
+                   help="Whose profiles run (users' profiles for that exchange); polymarket, the default, is the "
+                        "5-minute timer's pass as before.")
     p = sub.add_parser("demo-history", help="Backfill the demo accounts' track record from backtest replays "
                                             "(pipelines/demo_history.py).")
     p.add_argument("--reset", action="store_true", help="Delete the existing backfill first.")
@@ -230,6 +239,15 @@ def main(argv=None):
     p.add_argument("--sims", type=int, default=10000)
     p.add_argument("--no-track", action="store_true")
     p.add_argument("--save", action="store_true")
+    p = sub.add_parser("combo", help="Combo (same-game parlay) prices for one event (combo_job.py).")
+    p.add_argument("--event", required=True, help="Season-round, e.g. 2026-17")
+    p.add_argument("--cutoff", default=None, help="UTC as-of time, e.g. 2026-10-09T08:00 (default: now)")
+    p.add_argument("--legs", required=True,
+                   help='JSON: a list of legs, a list of combos, or {name: [legs]}; a leg is {"kind": "race_win", '
+                        '"driver": "Max Verstappen"} (or "athlete": id, "team", "pair": [a, b], "line", "side")')
+    p.add_argument("--sims", type=int, default=10000)
+    p.add_argument("--no-track", action="store_true")
+    p.add_argument("--save", action="store_true", help="Store as a model run (kind='combo').")
     p = sub.add_parser("forecast")
     p.add_argument("--year", type=int, default=2026)
     p.add_argument("--sims", type=int, default=10000)
@@ -241,12 +259,24 @@ def main(argv=None):
     p = sub.add_parser("inrace-backfill", help="After a race: the Live tab's in-race win chart from the race's laps, "
                                                "one point per lap, as if the live-timing relay had run all race.")
     p.add_argument("--event", required=True, help="YEAR-ROUND, e.g. 2026-16.")
+    p = sub.add_parser("sprint-check", help="Walk-forward check of the sprint stage (position_sim/sprint_check.py).")
+    p.add_argument("--from", dest="start_year", type=int, default=2021, help="First season scored")
+    p.add_argument("--sims", type=int, default=4000)
+    p.add_argument("--out", default=None, metavar="CSV", help="Also write the per-weekend rows here")
     p = sub.add_parser("props", help="Race props: safety car, red flag, rain, fastest lap (props.py).")
     p.add_argument("event", nargs="?", default=None, help="Season-round, e.g. 2026-16 (the yes/no props)")
     p.add_argument("--run", type=int, default=None, help="A stored stage run id: adds the fastest-lap prices")
     p.add_argument("--check", action="store_true", help="Walk-forward calibration of the yes/no props")
     p.add_argument("--from", dest="start_year", type=int, default=2022, help="--check: first season scored")
     p.add_argument("--prior-n", type=float, default=None, help="Shrinkage to the field rate, in races (default: props.PRIOR_N)")
+    p.add_argument("--history", default=None, metavar="CSV",
+                   help="--check: score a history CSV (props.history()'s columns) instead of the database")
+    p.add_argument("--dnf-check", default=None, metavar="CSV",
+                   help="The position simulation's DNF calibration on an as-of export (position_sim/dnf_check.py)")
+    p.add_argument("--forecast", default=None, metavar="CSV",
+                   help="--check / --dnf-check: the weather leads CSV (racinglines weather leads; weather/wet.py "
+                        "p_wet_series) adds the -WX variants; needs a race history (--history CSV or the database)")
+    p.add_argument("--lead", type=int, default=5, help="--forecast: the forecast issued this many days before (default 5)")
     args = ap.parse_args(argv)
     from racinglines.models.position_sim import variants as V
     V.switches(args.variant)                         # fail fast on an unknown name
@@ -316,6 +346,35 @@ def _save_sweep(args, out):
                                               if args.reliability else {})))
 
 
+def race_week(race_date):
+    """The FastF1 recorder's window around a race day: the Wednesday before it to the Tuesday after (inclusive)."""
+    from datetime import timedelta
+    wed = race_date - timedelta(days=(race_date.weekday() - 2) % 7)
+    return wed, wed + timedelta(days=6)
+
+
+def fastf1_target(conn, today):
+    """(year, round) of the F1 event whose race week (race_week) contains `today`, else None. Reads events by the
+    competition code in sports/f1.toml; an event's start_date is its race day (sources/fastf1/ingest.py)."""
+    from datetime import timedelta
+    from sqlalchemy import text
+    from racinglines import sports
+    rows = conn.execute(text("""
+        SELECT s.year, e.series_round, e.start_date
+        FROM events e
+        JOIN seasons s ON s.id = e.season_id
+        JOIN competitions c ON c.id = s.competition_id
+        WHERE c.code = :code AND e.series_round IS NOT NULL AND e.status <> 'cancelled'
+          AND e.start_date BETWEEN :lo AND :hi
+        ORDER BY e.start_date"""), dict(code=sports.load("f1")["competition"]["code"],
+                                        lo=today - timedelta(days=7), hi=today + timedelta(days=7))).all()
+    for year, rnd, race_date in rows:
+        lo, hi = race_week(race_date)
+        if lo <= today <= hi:
+            return int(year), int(rnd)
+    return None
+
+
 def _run(args):
     import pandas as pd
     pd.set_option("display.width", 220)
@@ -346,9 +405,28 @@ def _run(args):
     if args.cmd == "props":
         from racinglines.models.position_sim import props as PR
         prior_n = PR.PRIOR_N if args.prior_n is None else args.prior_n
+        fc = hist = None
+        if args.forecast:
+            from racinglines.weather import wet as WET
+            if args.history:
+                hist = pd.read_csv(args.history)
+            else:
+                with engine.connect() as c:
+                    hist = PR.history(c)
+            fc = WET.p_wet_series(hist, pd.read_csv(args.forecast), args.lead, prior_n=prior_n)
+        if args.dnf_check:
+            from racinglines.models.position_sim import dnf_check as DC
+            wx = {} if fc is None else dict(forecast=fc, history_df=hist, prior_n=prior_n)
+            print(DC.render(DC.check(pd.read_csv(args.dnf_check), **wx)))
+            return
+        if args.check and args.history:
+            h = hist if hist is not None else pd.read_csv(args.history)
+            _, summ = PR.check(None, args.start_year, prior_n, history_df=h, forecast=fc)
+            print(summ.to_string(index=False, float_format="{:.4f}".format))
+            return
         with engine.connect() as c:
             if args.check:
-                _, summ = PR.check(c, args.start_year, prior_n)
+                _, summ = PR.check(c, args.start_year, prior_n, forecast=fc)
                 print(summ.to_string(index=False, float_format="{:.4f}".format))
                 return
             if not args.event:
@@ -415,14 +493,15 @@ def _run(args):
             from racinglines.pipelines import profiles as PF
             with engine.connect() as c:
                 profs = [PF.load(c, args.profile)] if args.profile else [
-                    p for _, n, _, p in PF.assigned(c) if not args.user or n in args.user]
+                    p for _, n, _, p in PF.assigned(c, venue=args.venue) if not args.user or n in args.user]
             for prof in profs:
                 for out in SG.compute_all(engine, args.db, prof, now=args.asof, event=args.event, live=False,
                                           fetch=not args.no_fetch, echo=lambda m: print(m, flush=True)):
                     print(SG.format_replay(out))
             return
         rep = SG.run_all(engine, args.db, users=args.user, profile_ref=args.profile, event=args.event,
-                         fetch=not args.no_fetch, alert=not args.no_alert, echo=lambda m: print(m, flush=True))
+                         fetch=not args.no_fetch, alert=not args.no_alert, echo=lambda m: print(m, flush=True),
+                         venue=args.venue)
         if not rep:
             print("no user has a strategy profile (racinglines f1 profiles --assign-demo)")
         return
@@ -498,68 +577,12 @@ def _run(args):
             try:
                 now = datetime.now(timezone.utc)
 
-                # Check if we're in a race weekend window (calendar-aware polling)
-                # Only poll during Thu-Sun of race weekends; skip Mon-Wed to avoid abusing FastF1
+                # Calendar-aware polling: only inside an F1 event's race-week window (Wed before to Tue after)
                 with engine.connect() as c:
-                    # Get the next upcoming/ongoing race to determine if we're in its weekend window
-                    result = c.execute(text("""
-                        SELECT e.year, e.round, r.event_date, r.status
-                        FROM events e
-                        JOIN races r ON r.event_id = e.id
-                        WHERE e.year >= 2020 AND r.status IN ('upcoming', 'ongoing', 'completed')
-                        ORDER BY (CASE r.status
-                                   WHEN 'ongoing' THEN 0
-                                   WHEN 'upcoming' THEN 1
-                                   WHEN 'completed' THEN 2 END),
-                                 r.event_date DESC
-                        LIMIT 1
-                    """))
-                    race_row = result.fetchone()
-
-                    if race_row:
-                        year, round_num, event_date, race_status = race_row
-                        # Calculate race weekend window: Wed before to Tue after the race
-                        from datetime import timedelta
-                        race_date = event_date.date() if hasattr(event_date, 'date') else event_date
-                        # Go back to the Wednesday of that week
-                        day_of_week = race_date.weekday()  # Monday=0, Sunday=6
-                        if day_of_week >= 2:  # Wed(2)=onwards in the week of the race
-                            days_back = day_of_week - 2
-                        else:  # Mon/Tue - go back to previous week's Wed
-                            days_back = day_of_week + 5  # Mon(0)->5 days back, Tue(1)->6 days back
-                        wed_start = race_date - timedelta(days=days_back)
-                        tue_end = wed_start + timedelta(days=6)  # Wed to following Tue
-
-                        # Check if now is within the race weekend window
-                        now_date = now.date()
-                        if not (wed_start <= now_date <= tue_end):
-                            # Outside race weekend - idle mode, just log and exit
-                            return
-                    else:
-                        # No upcoming races found - idle mode
-                        return
-
-                # Detect current F1 session (we're in a race weekend window)
-                with engine.connect() as c:
-                    # Get upcoming/ongoing/completed races in priority order
-                    result = c.execute(text("""
-                        SELECT e.year, e.round, r.event_date, r.status
-                        FROM events e
-                        JOIN races r ON r.event_id = e.id
-                        WHERE e.year >= 2020
-                        ORDER BY (CASE r.status
-                                   WHEN 'ongoing' THEN 0
-                                   WHEN 'upcoming' THEN 1
-                                   WHEN 'completed' THEN 2
-                                   ELSE 3 END),
-                                 e.year DESC, e.round DESC
-                        LIMIT 1
-                    """))
-                    row = result.fetchone()
-                    if not row:
-                        print("no upcoming/ongoing race found", flush=True)
-                        return
-                    year, round_num, event_date, status = row
+                    target = fastf1_target(c, now.date())
+                if target is None:
+                    return   # outside a race week: idle
+                year, round_num = target
 
                 # Fetch current session via FastF1 and store snapshot
                 now = datetime.now(timezone.utc)
@@ -991,6 +1014,15 @@ def _run(args):
     use_track = not getattr(args, "no_track", False)
     hist = run.history(meas, use_track)
 
+    if args.cmd == "sprint-check":
+        from racinglines.models.position_sim import sprint_check as SC
+        out = SC.check(meas, hist, start_year=args.start_year, n_sims=args.sims)
+        print(SC.render(out))
+        if args.out:
+            out.to_csv(args.out, index=False)
+            print(f"\nPer-weekend rows -> {args.out}")
+        return
+
     if args.cmd == "diagnostic":
         cutoff = pd.Timestamp(args.cutoff)
         event_id, summ, ex, result = run.diagnostic(meas, hist, args.event, cutoff, n_sims=args.sims, use_track=use_track)
@@ -1001,6 +1033,31 @@ def _run(args):
         if args.save:
             run_id = run.save_diagnostic(args.db, args.event, cutoff, summ, ex, args.sims, track_features=use_track)
             print(f"Saved diagnostic run {run_id}.")
+        return
+
+    if args.cmd == "combo":
+        import json as _json
+
+        from racinglines.models.position_sim import combo_job as CJ
+        cutoff = pd.Timestamp(args.cutoff) if args.cutoff else pd.Timestamp.now(tz="UTC").tz_localize(None).floor("min")
+        metrics, ex = CJ.run(meas, hist, args.event, cutoff, args.legs, n_sims=args.sims, use_track=use_track)
+        print("Leakage audit:", ex["audit"])
+        for c in metrics["combos"]:
+            print(f"{c['name']}: fair {c['fair']:.4f} (se {c['se']:.4f}), legs "
+                  + " x ".join(f"{leg['label']} {leg['marginal']:.4f}" for leg in c["legs"])
+                  + f" = {c['independent']:.4f} if independent, lift {c['lift']}"
+                  + ("" if c["calibrated"] else f"; NOT CALIBRATED: {_json.dumps(c['flags'])}"))
+        print("Checks:", _json.dumps(metrics["checks"]))
+        if args.save:
+            from racinglines.db.queries import save_model_run
+            with get_session(args.db) as s:
+                run_id = save_model_run(s, competition="f1_wdc", category="DRV", model="f1_sector_sim", kind="combo",
+                                        season=int(args.event.split("-")[0]),
+                                        params=dict(event_key=args.event, cutoff=str(cutoff), sims=args.sims,
+                                                    variant=args.variant, track_features=use_track, legs=args.legs,
+                                                    half_life_days=run.M.HALF_LIFE_DAYS),
+                                        metrics=dict(metrics, audit=ex["audit"]))
+            print(f"Saved combo run {run_id}.")
         return
 
     if args.cmd == "forecast":
@@ -1026,7 +1083,26 @@ def _run(args):
             run_id = run.save_forecast(args.db, args.year, per_event, standings, params, metrics=dict(
                 latest_data=extras["latest_data"], constructors=records(extras["constructors"]),
                 race_constructor_top=extras["race_constructor_top"]), kind="scenario" if args.scenario else "forecast")
+            log_forecast(args.db, run_id, args.year, per_event, meas, extras["cutoff"], args.sims, use_track,
+                         variant=args.variant, scenario=args.scenario)
             print(f"\nSaved {'scenario' if args.scenario else 'forecast'} run {run_id}.")
+
+
+def log_forecast(db, run_id, year, per_event, meas, cutoff, sims, use_track, variant="baseline", scenario=None):
+    """The data_changes row of an `f1 forecast --save` ("forecast", as `<sport> forecast --save` writes): the events
+    priced, run id, model variant (--variant), sims, code_version and data_key (the data as of the cutoff)."""
+    import pandas as pd
+
+    from racinglines.db import changes
+    from racinglines.db.config import get_session
+    from racinglines.db.queries import code_version
+    from racinglines.pipelines import sweep_settings as SS
+    keys = [f"{year}-{ev['round']:02d}" for ev in per_event]
+    with get_session(db) as s:
+        changes.record_run(s, "forecast", "f1", keys, run_id, variant=variant, sims=sims, code_version=code_version(),
+                           data_key=SS.data_key(meas.view(pd.Timestamp(cutoff))), track_features=use_track,
+                           **({"scenario": scenario} if scenario else {}))
+        s.commit()
 
 
 if __name__ == "__main__":

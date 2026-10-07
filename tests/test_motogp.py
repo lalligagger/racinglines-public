@@ -9,7 +9,7 @@ from conftest import FIX, require_market_fixtures
 
 from racinglines.sources.motogp import ingest as I
 
-require_market_fixtures("events_2026", "classification_2026_tha_motogp_race")
+require_market_fixtures("motogp_events_2026", "motogp_classification_2026_tha_motogp_race")
 
 MKT = FIX / "market"
 
@@ -115,7 +115,7 @@ def test_model_uses_stable_athlete_ids_across_roster_changes():
                                                         "history_races": 0, "team_bias": 0.1,
                                                         "recency_decay": 1.0, "seed": 9}), np.random.default_rng(9))
     assert sim is not None
-    assert set(sim.entrants) == {101, 202}
+    assert set(sim.entrants) == {101, 303}
     assert all(isinstance(a, int) for a in sim.entrants)
 
 

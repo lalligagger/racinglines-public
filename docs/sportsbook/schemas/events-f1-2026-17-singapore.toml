@@ -1,0 +1,41 @@
+# DRAFT (2026-10-06, roadmap example): one event, defined once, with no venue in it. Every venue's lines (a sportsbook
+# board, Kalshi, Polymarket, OG.com) map onto this file's market keys. Proposed location in the repo:
+# events/f1/2026-17-singapore.toml. Nothing reads this file yet.
+
+[event]
+sport = "f1"                              # sports/f1.toml
+season = 2026
+round = 17
+key = "2026-17"                           # the launch-spec key already used by live/f1/2026-17.toml
+name = "Singapore Grand Prix"
+race_id = "unknown"                       # the DB's events.id for this round: the exact key every link uses (CLAUDE.md
+                                          # exact-keys rule); filled from the DB, never matched by name at pricing time
+format = "sprint"                         # from the FastF1 schedule (fair/2026-17-singapore.md)
+
+# Session start times decide when a market closes (sports/f1.toml [stages.closes]); UTC. Not transcribed here: the
+# screenshot shows only "10/11/2026 05:00 AM" in the venue's local time (board CSV section_header).
+[sessions]
+fp1 = "unknown"
+sprint_qual = "unknown"
+sprint = "unknown"
+qual = "unknown"
+race = "unknown"
+
+# Entrants are not listed in the file: they come from the DB entry list for race_id (the model's own field), so a
+# driver swap changes the data, not this file.
+
+# Which market kinds this event opens, in the kinds registry's codes (racinglines/markets/kinds.py). Kinds marked
+# "proposed" do not exist yet (roadmap Phase 1.2 / 1.3). A kind with a line parameter lists its lines.
+[markets]
+kinds = [
+  "race_win", "race_pole", "race_h2h", "race_constructor_top", "race_podium", "race_top10",
+  "race_sprint_win", "race_sprint_pole",          # priced by the stand-in until U13 (db/reads.py SPRINT_FALLBACK)
+  "race_classified",                              # proposed: one driver is classified
+  "race_team_both_classified",                    # proposed
+  "race_n_classified",                            # proposed: over/under a line
+  "race_last_classified",                         # proposed
+  "race_constructor_win",                         # proposed: the winning team
+  "race_safety_car", "race_red_flag", "race_rain" # exist in props.py, proposed for the registry
+]
+[markets.lines]
+race_n_classified = [18.5]                        # the line sportsbook A posted

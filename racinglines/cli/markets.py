@@ -8,6 +8,8 @@ racinglines markets <command>: exchange data (Polymarket and Kalshi; F1 plus the
     archive    Move stale prices / trades / books from Postgres to Parquet (--stats: sizes)
     disagree   Cross-venue disagreement log: Polymarket vs Kalshi on every outcome listed on both, per tick
                (--event 2026-15, a round number, or season [--year]; --start/--end UTC, --step minutes, --no-save)
+    settle-check  Read-only, any --exchange and --sport: our outcome from the results (markets/kinds.settle) beside
+               the exchange's resolved_yes on every resolved link; lists disagreements, exit 1 if any [--out FILE.csv]
 
 Options: --exchange polymarket (default) --sport f1 (default), then the command's own options.
 
@@ -29,6 +31,9 @@ Kalshi (--exchange kalshi; markets/kalshi/, built on mocked responses, unverifie
 
 Exchanges defined as schemas (--exchange og; exchanges/<code>.toml, markets/exchange_driver.py), read-only:
     sync       [--year 2026]                             the sport's markets and quotes into market links
+    settle     [--since UTC] [--max-pages N]             outcomes of closed links from the settlement feed
+               (resolved_yes; a void is recorded in params and left empty); a schema with no feed does nothing
+               --check: no scan, read-only: compare our settlement with resolved_yes (= settle-check)
     trades     [--events SYMBOL …]                       the tape the exchange still serves (about a month)
     history    [--events SYMBOL …] --start [--end]       minute prices (clipped to what the exchange keeps)
     books      [--events SYMBOL …]                       one order-book snapshot per open market
@@ -71,6 +76,8 @@ def main(argv=None):
     ap.add_argument("--sport", default="f1", choices=sorted({*kalshi_sports(), *polymarket_sports(), *(s for c in exchanges.CODES for s in exchanges.sports(c))}))
     ap.add_argument("--db", default=None)
     known, rest = ap.parse_known_args(argv)
+    if rest and rest[0] == "settle-check":
+        return settle_check(known.exchange, known.db, known.sport, rest[1:])
     if known.exchange in exchanges.CODES:
         return schema_exchange(known.exchange, known.db, rest, known.sport)
     if known.exchange == "kalshi":
@@ -87,6 +94,23 @@ def main(argv=None):
         return 0 if rest and rest[0] in ("-h", "--help") else 2
     from . import f1
     return f1.main((["--db", known.db] if known.db else []) + [COMMANDS[rest[0]]] + rest[1:])
+
+
+def settle_check(exchange, db, sport="f1", argv=()):
+    """racinglines markets --exchange X [--sport S] settle-check: read-only, our settlement from the results beside the
+    exchange's resolved_yes on every resolved link (markets/settle_check.py). Exit 1 when any disagree."""
+    ap = argparse.ArgumentParser(prog=f"racinglines markets --exchange {exchange} --sport {sport} settle-check")
+    ap.add_argument("--out", default=None, help="Also write every checked link to this CSV.")
+    args = ap.parse_args(list(argv))
+    from racinglines.db.config import get_engine
+    from racinglines.markets import settle_check as SC
+    with get_engine(db).connect() as c:
+        df = SC.check(c, exchange, sport)
+    print(SC.text_report(df, exchange, sport))
+    if args.out:
+        df.to_csv(args.out, index=False)
+        print(f"Wrote {args.out}")
+    return 1 if (df["verdict"] == "disagree").any() else 0
 
 
 def disagree(db, argv):
@@ -244,6 +268,12 @@ def schema_exchange(code, db, argv, sport="f1"):
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("sync")
     p.add_argument("--year", type=int, default=2026)
+    p = sub.add_parser("settle", help="Outcomes of closed links from the exchange's settlement feed (resolved_yes).")
+    p.add_argument("--since", default=None, help="UTC time to scan the feed from (default: where each pending link's "
+                                                 "last pass stopped, else a day before its last sync)")
+    p.add_argument("--max-pages", type=int, default=None, help="Pages to read at most (default the schema's max_pages)")
+    p.add_argument("--check", action="store_true", help="Read-only: no feed scan; compare our settlement from the results "
+                                                        "with resolved_yes on every resolved link (settle-check)")
     for name in ("trades", "history", "books"):
         p = sub.add_parser(name)
         p.add_argument("--events", nargs="+", default=None, help="Event symbols (market_links.condition_id); default: every event")
@@ -262,6 +292,11 @@ def schema_exchange(code, db, argv, sport="f1"):
     with get_engine(db).connect() as c, get_session(db) as s:
         if args.cmd == "sync":
             print(D.sync(s, c, code, sport, args.year))
+        elif args.cmd == "settle" and args.check:
+            return settle_check(code, db, sport)
+        elif args.cmd == "settle":
+            st = D.settle(s, c, code, sport, since=args.since, max_pages=args.max_pages)
+            print(st if st.get("supported", True) else f"{code}: no settlement feed in exchanges/{code}.toml, nothing done")
         elif args.cmd == "trades":
             print(f"{D.fetch_trades(s, c, code, sport=sport, events=args.events)} trades stored")
         elif args.cmd == "history":
