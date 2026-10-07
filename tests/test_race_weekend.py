@@ -21,7 +21,7 @@ def _epoch(y, m, d, h=12):
     return str(int(datetime(y, m, d, h, tzinfo=timezone.utc).timestamp()))
 
 
-def gate(tmp_path, sport, now, count="1"):
+def gate(tmp_path, sport, now, count="1", *args, env_extra=None):
     """Run the gate with a fake `docker` that records the query and prints `count`; returns (exit code, query)."""
     log = tmp_path / "query.sql"
     log.unlink(missing_ok=True)
@@ -30,8 +30,8 @@ def gate(tmp_path, sport, now, count="1"):
     (fake / "docker").write_text(f'#!/usr/bin/env bash\nprintf "%s" "${{@: -1}}" > "{log}"\necho " {count}"\n')
     (fake / "docker").chmod(0o755)
     env = dict(os.environ, PATH=f"{fake}:{os.environ['PATH']}", ENV_FILE="/dev/null", APP=str(ROOT),
-               RACE_WEEKEND_NOW=now)
-    rc = subprocess.run(["bash", str(GATE), sport], env=env, capture_output=True, text=True).returncode
+               RACE_WEEKEND_NOW=now, **(env_extra or {}))
+    rc = subprocess.run(["bash", str(GATE), sport, *args], env=env, capture_output=True, text=True).returncode
     return rc, (log.read_text() if log.exists() else None)
 
 
@@ -53,6 +53,16 @@ def test_gate_off_week_and_unknown_sport(tmp_path):
     assert gate(tmp_path, "f1", _epoch(2026, 10, 7)) == (1, None)        # Wednesday: no query at all
     assert gate(tmp_path, "f1", _epoch(2026, 10, 11), count="0")[0] == 1  # no event this week
     assert gate(tmp_path, "cycling", _epoch(2026, 10, 11)) == (1, None)  # not a sport code
+
+
+def test_lead_runs_any_day_with_an_event_ahead(tmp_path):
+    rc, q = gate(tmp_path, "f1", _epoch(2026, 10, 7), "1", "--lead")   # Wednesday: the lead sync runs
+    assert rc == 0
+    assert "e.start_date >= '2026-10-04'::date" in q and "e.start_date < '2026-10-14'::date" in q
+    _, q = gate(tmp_path, "f1", _epoch(2026, 10, 5), "1", "--lead", env_extra={"LEAD_DAYS": "10"})   # Monday
+    assert "e.start_date < '2026-10-15'::date" in q
+    assert gate(tmp_path, "f1", _epoch(2026, 10, 7), "0", "--lead")[0] == 1      # no event ahead
+    assert gate(tmp_path, "f1", _epoch(2026, 10, 7), "1", "--verbose") == (1, None)   # no --lead: still Thu to Sun
 
 
 def test_race_week_is_wednesday_to_tuesday():
@@ -100,3 +110,33 @@ def test_gate_query_runs_and_counts_race_day(tmp_path, f1_events):
     _, q = gate(tmp_path, "f1", _epoch(2099, 3, 8))               # Sunday, race day of round 1
     with f1_events.connect() as c:
         assert c.execute(text(q.rstrip(";"))).scalar() == 1
+
+
+TAPE = ROOT / "scripts" / "vm" / "tape_check.sh"
+
+
+def tape(tmp_path, exchange, ever, rows):
+    """Run tape_check.sh with a fake `docker`: `ever` race links for the competition, then the per-event `rows`."""
+    fake = tmp_path / "bin"
+    fake.mkdir(exist_ok=True)
+    (fake / "docker").write_text('#!/usr/bin/env bash\ncase "${@: -1}" in\n'
+                                 f'  *"SELECT count(*) FROM market_links"*) echo "{ever}" ;;\n'
+                                 f"  *) printf '{rows}' ;;\nesac\n")
+    (fake / "docker").chmod(0o755)
+    env = dict(os.environ, PATH=f"{fake}:{os.environ['PATH']}", ENV_FILE="/dev/null", APP=str(ROOT))
+    out = subprocess.run(["bash", str(TAPE), exchange, "f1"], env=env, capture_output=True, text=True)
+    return out.returncode, out.stdout.splitlines()
+
+
+def test_tape_check_flags_missing_and_stale_links(tmp_path):
+    rc, lines = tape(tmp_path, "kalshi", 5, r"e1|Event one|0|\ne2|Event two|12|5.2\ne3|Event three|9|1.0\n")
+    assert rc == 1
+    assert lines[0] == "WARN kalshi f1 e1 Event one: no links with this race (sync, then link)"
+    assert lines[1].startswith("WARN kalshi f1 e2 Event two: 12 links, last sync 5.2 h ago")
+    assert lines[2].startswith("OK   kalshi f1 e3")
+    assert tape(tmp_path, "kalshi", 5, r"e3|Event three|9|1.0\n")[0] == 0
+
+
+def test_tape_check_skips_an_exchange_without_race_markets(tmp_path):
+    assert tape(tmp_path, "og", 0, "") == (0, ["SKIP og f1: no race market on this exchange for this sport yet"])
+    assert tape(tmp_path, "k;x", 5, "")[0] == 2

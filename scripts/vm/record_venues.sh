@@ -8,7 +8,10 @@
 #   racinglines markets --exchange og     --sport <s> sync | settle | books   (exchanges/og.toml, markets/exchange_driver.py)
 #
 # Polling strategy: runs 5-min cadence for each pair, but skips if that sport is not in a race weekend
-# (Thu-Sun UTC when an event exists). Off-weeks: exits cleanly, conserving API quota. Every pass: one
+# (Thu-Sun UTC when an event exists). Mon to Wed of a race week (an event within 7 days, race_weekend.sh --lead):
+# the sync alone, every LEAD_SYNC_MIN (default 60), so links and quotes exist before Thursday. After each sync,
+# scripts/vm/tape_check.sh logs a WARN line for an upcoming event with no links or a sync older than STALE_HOURS
+# (default 3). Off-weeks: exits cleanly, conserving API quota. Every pass: one
 # order-book snapshot per open market of each active PAIRS entry (market_book_snapshots, ON CONFLICT DO
 # NOTHING). Every SYNC_MIN minutes (default 60): that pair's sync first (market links and quotes upserted:
 # new markets appear, settled ones close). Every SETTLE_MIN minutes (default 60), after the sync, a schema exchange
@@ -30,6 +33,7 @@ cd "${APP:-/opt/racinglines}"
 PAIRS=${PAIRS:-kalshi:f1 og:f1 kalshi:nascar og:nascar kalshi:motogp}
 SYNC_MIN=${SYNC_MIN:-60}
 SETTLE_MIN=${SETTLE_MIN:-60}
+LEAD_SYNC_MIN=${LEAD_SYNC_MIN:-60}   # race week before Thursday: the sync alone, this often (race_weekend.sh --lead)
 STATE=data/runs/record-venues
 LOG=data/runs/logs/record-venues.log
 mkdir -p "$STATE" data/runs/logs data/backups/db
@@ -39,6 +43,7 @@ say() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*" | tee -a "$LOG"; }
 if [ "${1:-}" = status ]; then   # vm.sh record status: the last passes, and book snapshots per venue per 5 minutes
   systemctl --no-pager list-timers racinglines-record-venues.timer | head -n 2
   echo "--- last passes ($LOG)"; tail -n 12 "$LOG" 2>/dev/null || echo "no pass yet"
+  echo "--- tape warnings, last 24 hours"; awk -v t="$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)" '$1 >= t && $2 == "WARN"' "$LOG" 2>/dev/null | tail -n 12
   echo "--- book snapshots stored per venue, per 5 minutes (UTC), last 30 minutes"
   docker compose exec -T db psql -U racinglines racinglines -c "
     SELECT to_char(date_trunc('hour', b.ts) + floor(extract(minute FROM b.ts) / 5) * interval '5 min', 'HH24:MI') AS utc,
@@ -60,6 +65,9 @@ if [ ! -e "$STATE/backup" ]; then
 fi
 
 rc=0
+tape_check() {   # tape_check <exchange> <sport>: WARN lines for an upcoming event with no links or a stale sync
+  bash scripts/vm/tape_check.sh "$1" "$2" 2>&1 | while read -r line; do say "$line"; done || true
+}
 run() {   # run <exchange> <sport> <command>: one line with the command's last output line and its time
   local t0=$SECONDS out
   if out=$(nice $R markets --exchange "$1" --sport "$2" "$3" 2>&1); then
@@ -74,12 +82,19 @@ for p in $PAIRS; do
   if bash scripts/vm/race_weekend.sh "$s" >/dev/null 2>&1; then
     if [ -z "$(find "$stamp" -mmin -"$SYNC_MIN" 2>/dev/null)" ]; then
       run "$x" "$s" sync && touch "$stamp"
+      tape_check "$x" "$s"
     fi
     # a schema exchange's outcomes (exchanges/<x>.toml endpoints.settlements), after its sync, every SETTLE_MIN
     if [ -f "exchanges/$x.toml" ] && [ -z "$(find "$STATE/settle-$x-$s" -mmin -"$SETTLE_MIN" 2>/dev/null)" ]; then
       run "$x" "$s" settle && touch "$STATE/settle-$x-$s"
     fi
     run "$x" "$s" books
+  elif bash scripts/vm/race_weekend.sh "$s" --lead >/dev/null 2>&1; then
+    # race week, Mon to Wed: the sync only (links and quotes), every LEAD_SYNC_MIN; no book snapshots until Thursday
+    if [ -z "$(find "$stamp" -mmin -"$LEAD_SYNC_MIN" 2>/dev/null)" ]; then
+      run "$x" "$s" sync && touch "$stamp"
+      tape_check "$x" "$s"
+    fi
   else
     say "$x $s: off-week, skipped"
   fi

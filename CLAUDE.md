@@ -334,7 +334,9 @@ Standing practice from the owner (2026-09-29), applied to every task, not one pa
 forecasts) follows a unified pattern:
 
 1. **Timing:** Thu-Sun UTC when that sport has active events in the next 7 days. Off-weeks: all polling skipped to
-   conserve API quota and avoid noise.
+   conserve API quota and avoid noise. Mon-Wed of a race week (`race_weekend.sh <sport> --lead`), the market sync
+   alone runs hourly (`LEAD_SYNC_MIN`), so links and quotes exist before Thursday; `scripts/vm/tape_check.sh` then logs a
+   WARN for an upcoming event with no links or a sync older than `STALE_HOURS` (default 3), shown by `vm.sh record status`.
 2. **Helper:** `scripts/vm/race_weekend.sh <sport>` (exit 0 = in race weekend, run; exit 1 = off-week, skip)
    checks day-of-week and database for active events.
 3. **Services:** systemd timers (every 5 min) + one-shot services (run one polling pass):

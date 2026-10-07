@@ -2,9 +2,13 @@
 # Check if a sport is currently in a race weekend (Thurs-Sun UTC).
 # Used by all polling scripts to control when data syncing runs.
 #
-# Usage: race_weekend.sh <sport> [--verbose]
+# Usage: race_weekend.sh <sport> [--verbose] [--lead]
 #        exit 0 = in a race weekend, run polling
 #        exit 1 = off-week or no events, skip polling
+#        --lead: any day of the week, not only Thu to Sun: exit 0 while an event is in the same window (3 days ago to
+#        LEAD_DAYS, default 7, ahead). The recorders use it to sync market links ahead of the weekend, so markets
+#        listed Mon to Wed are linked and quoted before the race weekend starts (P0, 2026-10-07: the bets thread found
+#        no Kalshi links for Singapore on the Wednesday before it).
 #
 # Example: if race_weekend.sh f1; then racinglines markets --exchange polymarket sync; fi
 #
@@ -17,7 +21,15 @@
 set -euo pipefail
 
 SPORT="${1:-f1}"
-VERBOSE="${2:-}"
+VERBOSE=""
+LEAD=""
+for a in "${@:2}"; do
+  case "$a" in
+    --verbose) VERBOSE=1 ;;
+    --lead) LEAD=1 ;;
+  esac
+done
+LEAD_DAYS=${LEAD_DAYS:-7}
 
 if [ -z "$SPORT" ]; then
   echo "Usage: race_weekend.sh <sport> [--verbose]" >&2
@@ -45,7 +57,7 @@ DOW=$(utc "$NOW_UTC" +%w)  # 0=Sun, 1=Mon, ..., 4=Thu, ..., 6=Sat
 # Race weekend = Thursday (4) through Sunday (0), inclusive
 # In UTC terms: Thu=4, Fri=5, Sat=6, Sun=0
 RACE_WEEKEND=0
-if [ "$DOW" -ge 4 ] || [ "$DOW" -eq 0 ]; then
+if [ "$DOW" -ge 4 ] || [ "$DOW" -eq 0 ] || [ -n "$LEAD" ]; then
   RACE_WEEKEND=1
 fi
 
@@ -53,7 +65,8 @@ fi
 # (backup check: if DB query fails, assume not a race weekend)
 if [ "$RACE_WEEKEND" -eq 1 ]; then
   FROM=$(utc "$((NOW_UTC - 3 * 86400))" +%Y-%m-%d)
-  WEEK_LATER=$(utc "$((NOW_UTC + 604800))" +%Y-%m-%d)
+  AHEAD=604800; [ -n "$LEAD" ] && AHEAD=$((LEAD_DAYS * 86400))
+  WEEK_LATER=$(utc "$((NOW_UTC + AHEAD))" +%Y-%m-%d)
 
   QUERY="SELECT COUNT(*) FROM events e
          JOIN seasons s ON e.season_id = s.id
