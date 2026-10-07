@@ -22,7 +22,8 @@
 #      h2h                       P(a classified ahead of b); settles on positions (params.opponent_id)
 #      group_top                 the team scoring the most points (ties split); settles on summed points (params.team)
 #      indicator                 a yes/no the model draws itself (sims.indicators[code]); not in the results: undecided
-#      mover        stage        the biggest gain from the <stage> order to the finish; not in the results: undecided
+#      mover        stage        priced: the biggest gain from the <stage> order to the finish; settled from the race
+#                                round's stored starting grid (results.extra.grid; payoffs.biggest_mover), else undecided
 #      standings    n, exact     season-long, priced by kinds.season_fair from a season simulation (outcomes.SeasonSims,
 #                   subject      drivers or, with subject = "team", constructors): P(standings position <= n), or == n
 #                                with exact = true. Without n: its own rule in season_fair (season_wins_ge,

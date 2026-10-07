@@ -74,8 +74,50 @@ def nth_retired(finished, n):
     return np.where(enough, first_retired(finished), 0.0)
 
 
-def _ok(res):
+def classified(res):
+    """bool per row of a results frame: classified in the official result (status OK). The one classification rule
+    of every settlement: top-n, exact place, last classified, the biggest mover and the walk-forward, the replays and
+    the private book all read it (docs/f1-roadmap.md decision log, 2026-10-07). F1: FastF1's ClassifiedPosition is a
+    number; NASCAR: running at the end (a retirement is DNF, whatever its place by laps); MotoGP: INSTND."""
     return res["status"] == "OK"
+
+
+def top_n(res, n):
+    """bool per row: classified in the top `n` (status OK and position <= n). The top-n kinds' settlement
+    everywhere (kinds.settle top_n, the "top" predicate here, position_replay and season_sweep through kinds.settle)."""
+    return classified(res) & (res["position"] <= n)
+
+
+GRID = "grid"           # the results frame's starting-grid column (results.extra.grid of the race round; 0 = pit lane)
+
+
+def biggest_mover(res):
+    """(outcome per row, reason): the race's biggest mover from the stored starting grid (docs/f1-roadmap.md decision
+    log, 2026-10-04): the classified driver with the largest gain from `grid` to `position`, if anyone gained; every
+    driver tied on that gain is YES, everyone else NO (nobody gained: NO for all). The outcome is None, with the
+    reason, when the stored data can't decide it:
+      * no `grid` column, or a classified driver without a stored grid slot;
+      * a classified pit-lane starter (grid 0: FastF1's GridPosition, stored by sources/fastf1/ingest.py) whose gain
+        could reach the best one. The venue's rule (Kalshi: "the largest positive differential between their starting
+        grid position and their finishing position") doesn't say what a pit-lane start counts as, so the outcome is
+        settled only when no reading of it changes the answer: at most the slot behind every car that started (the
+        cars with a status other than DNS)."""
+    if GRID not in res:
+        return None, "no starting grid in the results"
+    ok = classified(res)
+    grid = pd.to_numeric(res[GRID], errors="coerce")
+    if grid[ok].isna().any():
+        return None, "a classified driver has no stored starting grid slot"
+    pit = ok & (grid <= 0)
+    gain = (grid - res["position"].astype(float)).where(ok & ~pit)
+    best = gain.max() if gain.notna().any() else -np.inf
+    if pit.any():
+        last = int((res["status"] != "DNS").sum())
+        if ((last - res.loc[pit, "position"].astype(float)) >= max(best, 1)).any():
+            return None, "a pit-lane starter may be the biggest mover, depending on the slot the venue counts"
+    if not best > 0:
+        return pd.Series(False, index=res.index, dtype=object), "nobody gained a place"
+    return (gain == best).astype(object), f"largest gain {best:g}"
 
 
 def stage_col(stage):
@@ -115,7 +157,7 @@ def _res_retired(res, s):
 
 
 def _res_last_classified(res, s):
-    ok = _ok(res)
+    ok = classified(res)
     if not ok.any():
         return None
     return ok & (res["position"] == res.loc[ok, "position"].max())
@@ -137,13 +179,13 @@ def _res_nth_retired(res, s):
 #          the fields it needs: n a positive integer, stage / of a name)
 PREDICATES = {
     "classified": (lambda sims, s: sims.finished,
-                   lambda res, s: _ok(res), ()),
+                   lambda res, s: classified(res), ()),
     "retired": (lambda sims, s: ~sims.finished,
                 _res_retired, ()),
     "top": (lambda sims, s: (sims.rank <= s["n"]) & sims.finished,
-            lambda res, s: _ok(res) & (res["position"] <= s["n"]), ("n",)),
+            lambda res, s: top_n(res, s["n"]), ("n",)),
     "position": (lambda sims, s: (sims.rank == s["n"]) & sims.finished,
-                 lambda res, s: _ok(res) & (res["position"] == s["n"]), ("n",)),
+                 lambda res, s: classified(res) & (res["position"] == s["n"]), ("n",)),
     "stage_top": (lambda sims, s: _stage_rank(sims, s) <= s["n"],
                   _res_stage_top, ("n", "stage")),
     "indicator": (_indicator,

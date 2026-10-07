@@ -275,23 +275,30 @@ def settle(kind, athlete_id, params, res, group_key=None):
             return False if athlete_id not in by.index else None
         return bool(by.loc[athlete_id, col] <= k.n)
     if k.payoff == "top_n":
-        if athlete_id not in by.index:
+        rows = res["athlete_id"] == athlete_id
+        if not rows.any():
             return False
-        r = by.loc[athlete_id]
-        return bool(r["status"] == "OK" and r["position"] <= k.n)
+        return bool(P.top_n(res, k.n)[rows].iloc[0])        # the one top-n rule (payoffs.top_n): classified in the top n
     if k.payoff == "h2h":
         b = (params or {}).get("opponent_id")
         if athlete_id not in by.index or b not in by.index:
             return None
-        # classification order (retirements are classified behind finishers by laps completed)
-        return bool(by.loc[athlete_id, "position"] < by.loc[b, "position"])
+        # classification order (retirements are classified behind finishers by laps completed); a driver with no
+        # position is behind every driver with one; neither has one: NO (the walk-forward's rule since C9; unverified
+        # against the venues: Polymarket's head-to-head rule resolves a tie 50-50, markets/settlement_rules.py)
+        pa, pb = (float(by.loc[x, "position"]) if pd.notna(by.loc[x, "position"]) else np.inf for x in (athlete_id, b))
+        return bool(pa < pb)
     if k.payoff == "reached":
         col = f"reached_{k.stage}"          # results that record the round (e.g. timed_runs: reached_final)
         if col not in res:
             return None
         return bool(by.loc[athlete_id, col]) if athlete_id in by.index else False
     if k.payoff == "mover":
-        return None          # needs the starting grid, which the results don't store (qual_position misses penalties)
+        won, _ = P.biggest_mover(res)        # from the stored starting grid (the frame's `grid`); None when it can't say
+        if won is None:
+            return None
+        rows = res["athlete_id"] == athlete_id
+        return bool(won[rows].iloc[0]) if rows.any() else False
     if k.payoff == "group_top":
         keys =res["team_id"].map(group_key) if group_key else res["team_id"]
         pts = res.assign(tk=keys).groupby("tk")["points"].sum()

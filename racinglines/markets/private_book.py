@@ -312,10 +312,12 @@ def settle_from_exchange(session, conn):
 
 
 def race_outcomes(conn, race_id):
-    """Official race classification for settlement: athlete -> (position, classified, team_key)."""
+    """Official race classification for settlement: athlete -> (position, classified, team_key), and `grid`, the
+    starting grid slot the race round stores (results.extra.grid: F1's FastF1 GridPosition after penalties, 0 = pit
+    lane; NASCAR's starting_position; NaN where none is stored), which settles the biggest mover (payoffs.biggest_mover)."""
     df = pd.read_sql(text("""
         SELECT r.athlete_id, r.position, r.status, coalesce(r.extra->>'team_id', r.team) AS team_id,
-               coalesce((r.extra->>'points')::float, 0) AS points
+               coalesce((r.extra->>'points')::float, 0) AS points, nullif(r.extra->>'grid', '')::float AS grid
         FROM results r JOIN rounds ro ON ro.id = r.round_id
         WHERE ro.race_id = :r AND ro.kind IN ('race', 'final')"""), conn, params=dict(r=race_id))
     q = pd.read_sql(text("""SELECT r.athlete_id, r.position AS qual_position FROM results r JOIN rounds ro ON ro.id = r.round_id

@@ -15,7 +15,7 @@ Nothing here names a sport. The sport's schema (sports/<code>.toml) says everyth
                         results as they were). Needs [sessions.schedule]
         "weekend"       fixed weekend stages, [replay] stages (hours from 00:00 UTC on race day), priced once per race
                         by [sport] pricing_model from results strictly before the event (a results-only model: one
-                        pricing serves every stage), settled by classified position (pipelines/position_replay.py;
+                        pricing serves every stage), settled by markets/kinds.settle (pipelines/position_replay.py;
                         NASCAR's and MotoGP's default). Needs [replay] stages
     kinds               [sweep] kinds, else [markets] weekend_kinds ("sessions") or [replay] kinds ("weekend")
     venues              [markets] venues that are exchanges, then OG.com where exchanges/og.toml lists the sport
