@@ -167,12 +167,15 @@ class PositionSim:
         return O.from_position_sim(ex["entrants"], ex["sim"])
 
     def results(self, data, ev):
+        from racinglines.models.position_sim import practice as PR
         o = data.drivers[data.drivers["event_id"] == ev.id]
         q = data.res[(data.res["event_id"] == ev.id) & (data.res["round"] == "qual")].set_index("athlete_id")["position"]
-        return pd.DataFrame(dict(athlete_id=o["athlete_id"].to_numpy(), position=o["position"].to_numpy(float),
-                                 status=o["status"].to_numpy(), qual_position=o["athlete_id"].map(q).to_numpy(float),
-                                 team_id=o["team_key"].to_numpy() if "team_key" in o else None,
-                                 points=o["points"].to_numpy(float) if "points" in o else 0.0))
+        out = pd.DataFrame(dict(athlete_id=o["athlete_id"].to_numpy(), position=o["position"].to_numpy(float),
+                                status=o["status"].to_numpy(), qual_position=o["athlete_id"].map(q).to_numpy(float),
+                                team_id=o["team_key"].to_numpy() if "team_key" in o else None,
+                                points=o["points"].to_numpy(float) if "points" in o else 0.0))
+        # each practice session's order of best laps (fp1_position, ...: the race_fp<n>_fastest kinds), where stored
+        return PR.with_positions(out, PR.classification(data.practice, ev.id))
 
 
 MODELS = {"mtb_dh": TimedRuns, "f1": PositionSim}
