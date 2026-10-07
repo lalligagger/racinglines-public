@@ -111,6 +111,8 @@ moment:
   (priced strictly inside 0–1, liquid enough); `coherent(kind, t)` is the multi-outcome sanity check;
   `resolve` settles through the market-kind catalogue. The F1 sweep's `weekend_markets` now reads
   Polymarket only through it.
+- **`OG`**: OG.com's recorded markets (one market per instrument), every stored price counting except an empty
+  book's 0.50, and a flat fee per contract (`per_share_fee()`, added to a taker's cost per share).
 - **`Kalshi`**: the same for Kalshi's recorded markets (one market per ticker). Each exchange class declares
   its fee schedule (`TAKER_FEE`, `MAKER_FEE`: rate × contracts × P × (1 − P), rounded up to the cent), and
   `venue_replay.EXCHANGES` maps a venue code to its class; the sweep's maker, the signal engine and the
@@ -140,6 +142,17 @@ search or the report:
    (its data source), `seasons`, `events` (each with its cutoff), `history`, `price` → `OutcomeSims`,
    `results` (for settlement), `data_through`, and its own `Settings` (the sweep settings schema with its
    model group; seed and sims are expected).
+
+3. **A season sweep (optional)**: `[sweep] stages = "weekend"` with a `[replay]` table (stages as hours from
+   00:00 UTC on race day, kinds, group targets) makes the F1 sweep's taker modes and maker variants run on it
+   (`racinglines/pipelines/season_sweep.py`, `racinglines <code> sweep`, search jobs `kind = "sweep"` once
+   `[search] jobs` lists it), on every exchange of `[markets] venues` plus OG.com where `exchanges/og.toml`
+   lists the sport. Its sweep settings are the model's own plus the shared taker, maker and markets settings,
+   with the schema's stage labels, kinds and venues as choices. F1's engine is `"sessions"` (the session
+   schedule, `pipelines/weekend_sweep.py`), unchanged. `[sweep] stages` is only the default **stage mode**: a sweep's
+   `stages` setting (`--stages`, or `stages = "weekend"` in a search job) picks any mode the schema supports
+   (`"sessions"` needs `[sessions.schedule]`, `"weekend"` needs `[replay] stages`), so the earlier weekend-based
+   results stay reproducible beside a session-aware path; unset, the setting stays out of the settings keys.
 
 Then `racinglines backtest walk-forward <code> [--seasons ...] [--save] [its settings' flags]` runs it,
 a queue job with `sport = "<code>"` searches it (with `replicates`), and `search-report` labels it.

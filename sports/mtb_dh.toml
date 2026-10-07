@@ -81,6 +81,10 @@ vallnord-pal-arinsal = "pal-arinsal"
 venues = ["private"]                  # no exchange lists downhill yet
 standard_kinds = ["race_win", "race_podium", "race_make_final"]
 
+[search]
+# The search queue's job kinds for this sport (racinglines/pipelines/search.py): the model-only walk-forward.
+jobs = ["walk_forward"]
+
 [live]
 # A live final (pipelines/live_dh.py): the timing feed polled every few seconds, a Monte Carlo of the rest of
 # the final, the maker re-quoting every rider's markets. live_dh's constants take their values from here.

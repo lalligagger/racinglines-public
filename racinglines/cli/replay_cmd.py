@@ -290,3 +290,63 @@ def run_season(args, sport):
                           paths.runs("season-replay") / f"{sport}-{venue}-{args.year}")
         print(f"\nWrote {folder}\n")
     return 0
+
+
+# --- sweep: the season sweep, taker modes and maker variants (pipelines/season_sweep.py) -------------------------
+
+def add_sweep_parser(sub, sport):
+    """`racinglines <sport> sweep`: the season sweep on the sport's [sweep] engine, as `racinglines f1 sweep` (the
+    search runs both the same way: sweeps/*.toml jobs of kind "sweep")."""
+    from racinglines.pipelines import season_sweep as S
+    from racinglines.pipelines import sweep_settings as SS
+    p = sub.add_parser("sweep", help=f"Season sweep of {sport}: the taker modes and maker variants through each race's "
+                                     f"stages on one exchange's recorded tape (read-only unless --save).")
+    p.add_argument("--year", type=int, default=2026)
+    p.add_argument("--rounds", default=None, help="Events within the season, 1 = the first raced, e.g. 1-8 "
+                                                  "(default: every raced event).")
+    p.add_argument("--no-fetch", action="store_true", help="Accepted for the search; nothing is downloaded (the tape is "
+                                                           "what the recorder and archive hold).")
+    p.add_argument("--save", action="store_true", help="Store the sweep (model_runs kind 'sweep', params with sport "
+                                                       "and venue).")
+    p.add_argument("--reliability", action="store_true", help="Also print and save the calibration tables.")
+    SS.add_arguments(p.add_argument_group(f"settings (sports/{sport}.toml [sweep]; default = baseline)"),
+                     S.settings_class(sport))
+    return p
+
+
+def run_sweep(args, sport):
+    from racinglines.db.config import get_engine
+    from racinglines.pipelines import season_sweep as S
+    from racinglines.pipelines import sweep_settings as SS
+    st = SS.from_args(args, S.settings_class(sport))
+    rounds = _numbers(args.rounds) if args.rounds else None
+    out = S.run(get_engine(args.db), args.db, sport, args.year, rounds, settings=st,
+                echo=lambda m: print(m, flush=True))
+    w = out["weekends"]
+    cols = [c for c in ["event_key", "event", "stages", "markets", "tradeable_pre", "tradeable_quali", "update_trades",
+                        "update_bought", "update_pnl", "hold_pnl", "last_pnl", "early_pnl", "maker_fills", "maker_pnl"]
+            if c in w]
+    p = out["params"]
+    print(f"\n=== {sport} {args.year} on {p['venue']} ({p['label']}) ===")
+    if len(w):
+        print(w[cols].to_string(index=False, float_format="{:.2f}".format))
+    print("\n=== Totals ===")
+    for k, v in out["totals"].items():
+        print(f"{k:11s} P&L {v['pnl']:+9.2f} on ${v['bought']:,.0f} · {v['weekends_up']}/{v['weekends']} races up")
+    if len(out["by_kind"]):
+        print("\n=== Update strategy by market kind ===")
+        print(out["by_kind"].to_string(index=False, float_format="{:+.2f}".format))
+    if args.reliability and len(out["calibration"]):
+        print("\n=== Calibration: model vs exchange, every tradeable stage (lower is better) ===")
+        print(out["calibration"].to_string(index=False, float_format="{:.4f}".format))
+    if args.save:
+        print(f"Saved sweep run {S.save(args.db, sport, args.year, args.rounds, out, args.reliability)}.", flush=True)
+    return 0
+
+
+def _numbers(spec):
+    """"3", "1-8" or "1,4,6" -> a list of ints."""
+    if "," in spec:
+        return [int(x) for x in spec.split(",")]
+    a, _, b = spec.partition("-")
+    return list(range(int(a), int(b or a) + 1))

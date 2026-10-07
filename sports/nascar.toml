@@ -71,3 +71,18 @@ race_day_offset = 0               # the event's date is race day
 # at every stage and only the market moves.
 stages = [["T-3d", -72], ["T-1d", -24], ["race eve", -6]]
 group_target = { race_win = 1, race_podium = 3 }   # the coherence check's groups (a listing of top-5/10/20 is often partial)
+
+[sweep]
+# The season sweep (racinglines/pipelines/season_sweep.py; `racinglines nascar sweep`, search jobs of kind "sweep"): the
+# F1 sweep's taker modes and maker variants on the [replay] stages, kinds and group targets, priced by [sport]
+# pricing_model from results strictly before the event, settled by classified position. Venues: [markets] venues,
+# plus OG.com where exchanges/og.toml lists the sport. A priori values, none tuned.
+stages = "weekend"                # the stage mode: the fixed [replay] stages, one pricing per race (the replay's
+                                  # behaviour, kept reproducible; a session-aware mode needs [sessions.schedule])
+late_stages = ["race eve"]        # the stage-aware taker ("early") skips these
+quote_until_hours = 0             # the maker stops quoting at this hour (UTC) of race day: before any race-day running
+                                  # (the race's start time isn't in the schema)
+
+[search]
+# The search queue's job kinds for this sport (racinglines/pipelines/search.py); the first is the default.
+jobs = ["walk_forward", "sweep"]

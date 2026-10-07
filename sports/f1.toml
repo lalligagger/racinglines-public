@@ -95,6 +95,20 @@ venues = ["polymarket", "kalshi", "private"]
 standard_kinds = ["race_win", "race_podium", "race_top10"]           # the board's columns
 weekend_kinds = ["race_win", "race_podium", "race_h2h", "race_constructor_top", "race_pole"]   # traded in the sweep
 
+[sweep]
+# The season sweep (racinglines/pipelines/season_sweep.py; `racinglines f1 sweep`, search jobs of kind "sweep"):
+# the taker modes and maker variants, tuned on one season and held out on the other. `stages` is the default stage
+# mode (a sweep's `stages` setting picks another the schema supports): "sessions" = the session schedule
+# ([sessions.schedule], [stages]) with one diagnostic run per stage (pipelines/weekend_sweep.py); "weekend" needs
+# [replay] stages, which F1 has none of. The kinds are [markets] weekend_kinds; the venues are [markets] venues that
+# are exchanges, plus OG.com where exchanges/og.toml lists the sport.
+stages = "sessions"
+
+[search]
+# The search queue's job kinds for this sport (racinglines/pipelines/search.py, sweeps/*.toml); the first is the
+# default kind of a [[job]] that names none.
+jobs = ["sweep", "checkpoints", "season_strategy"]
+
 [names]                                   # one display name per event key: Markets board, race page, calendar, Live tab
 "2026-16" = "Malaysia GP"                 # FastF1 and the exchanges call it the Bahrain Grand Prix; it ran at Sepang
 
