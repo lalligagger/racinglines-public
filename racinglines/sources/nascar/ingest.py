@@ -28,7 +28,7 @@ Only Cup (series 1) is wired to a competition; Xfinity and Trucks need their own
 """
 
 import hashlib
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy import delete, insert, select
 
@@ -98,6 +98,20 @@ def _runs(weekend):
     runs = sorted((r for r in weekend.get("weekend_runs") or [] if ran(r)),
                   key=lambda r: (r.get("run_date_utc") or r.get("run_date") or "", r.get("run_name") or ""))
     return [r for r in runs if r.get("run_type") == 1], [r for r in runs if r.get("run_type") == 2]
+
+
+def _race_start_utc(weekend, race_date):
+    """The race's start in UTC: the feed's race_date is local with no zone, so the offset comes from the weekend's
+    own runs (run_date local, run_date_utc UTC), the latest run first (nearest the race, so a DST change between
+    weekend days matters least). None when no run carries both."""
+    if not race_date:
+        return None
+    runs = sorted((r for r in weekend.get("weekend_runs") or [] if r.get("run_date") and r.get("run_date_utc")),
+                  key=lambda r: r["run_date_utc"], reverse=True)
+    if not runs:
+        return None
+    off = datetime.fromisoformat(runs[0]["run_date_utc"][:19]) - datetime.fromisoformat(runs[0]["run_date"][:19])
+    return (datetime.fromisoformat(race_date[:19]) + off).isoformat()
 
 
 def _session_rows(run):
@@ -220,7 +234,8 @@ def parse_race(year, race_id, feeds, series_round=None, series=1, laps=True):
         lap_meta = dict(laps_max=max(seen, default=0), laps_missing=missing, laps_complete=bool(seen) and missing == 0,
                         lap_drivers=len(lap_rows))
     add("race", wr.get("race_name"), dict(
-        total_race_time=wr.get("total_race_time"), race_date_local=wr.get("race_date"), **lap_meta), race_rows)
+        total_race_time=wr.get("total_race_time"), race_date_local=wr.get("race_date"),
+        run_date_utc=_race_start_utc(wf, wr.get("race_date")), **lap_meta), race_rows)
     return dict(
         key=f"{year}-{race_id}", name=wr.get("race_name"), date=date.fromisoformat(wr["race_date"][:10]),
         track=wr.get("track_name"), series_round=series_round, format=fmt, rounds=rounds, laps=lap_rows)

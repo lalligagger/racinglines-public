@@ -17,10 +17,11 @@ replay's cost and fee) or a maker's fill price (a YES price).
 The close (one rule for every sport, kind and venue, from what the database and schemas hold):
   1. The round that decides the market, from markets/kinds.toml: the kind's `session`, else the `stage` of a
      stage_top_n payoff or a stage_top predicate (pole: "qual"), else the race.
-  2. That round's start, rounds.extra.session_date (FastF1 and the MotoGP API write it, in UTC).
-  3. A race with no stored start (NASCAR's feed stores none; any race before its results are in): race day from the
-     schema, the event's start_date + [replay] race_day_offset days, at [sweep] quote_until_hours UTC (default 0:
-     00:00 UTC on race day, before any race-day running, the time the sweep's maker stops quoting). An earlier round
+  2. That round's start in UTC, rounds.extra.session_date (FastF1, the MotoGP API) or the sport's [sessions] time_key
+     (NASCAR's run_date_utc, the race's included since C42).
+  3. A race with no stored start (a NASCAR weekend whose runs carry no UTC time; a race before its results are in):
+     race day from the schema, the event's start_date + [replay] race_day_offset days, at [sweep] quote_until_hours
+     UTC (default 0: 00:00 UTC on race day, before any race-day running, the time the sweep's maker stops quoting). An earlier round
      with no stored start has no close: such a bet stays undecided rather than risk a close after the result.
   4. The closing price is the venue's price at the close as its replay reads it (markets/venue_replay.EXCHANGES): the
      book's mid when the venue keeps a quote (Kalshi: the recorded book within 10 minutes, else the candle's bid/ask),
@@ -177,14 +178,27 @@ def links(conn, keys_by_venue):
     return out
 
 
+def _time_keys():
+    """The rounds.extra keys that hold a round's UTC start: session_date (FastF1, the MotoGP API) and every schema's
+    [sessions] time_key (NASCAR's run_date_utc), from the schemas, in a fixed order."""
+    keys = ["session_date"]
+    for code in sports.SPORT_CODES:
+        k = sports.load(code).get("sessions", {}).get("time_key")
+        if k and k not in keys and k.isidentifier():
+            keys.append(k)
+    return keys
+
+
 def closes(conn, link_rows, sport_of=None):
     """{(race_id, kind): (close as naive UTC or None, rule or the reason there is none)}."""
     sport_of = sport_of or _sport_of()
     races = sorted({int(r["race_id"]) for r in link_rows if r.get("race_id") is not None and not pd.isna(r["race_id"])})
     starts = {}
     if races:
-        for rid, kind, sd in conn.execute(text("""SELECT race_id, kind, extra->>'session_date' FROM rounds
-                                                  WHERE race_id = ANY(:r) AND extra->>'session_date' IS NOT NULL"""),
+        keys = _time_keys()
+        start = "coalesce(" + ", ".join(f"extra->>'{k}'" for k in keys) + ")"
+        for rid, kind, sd in conn.execute(text(f"""SELECT race_id, kind, {start} FROM rounds
+                                                   WHERE race_id = ANY(:r) AND {start} IS NOT NULL"""),
                                           dict(r=races)):
             starts[(rid, kind)] = sd
     out = {}

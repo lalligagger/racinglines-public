@@ -99,8 +99,9 @@ group_target = { race_win = 1, race_podium = 3 }   # the coherence check's group
 # each starting at rounds.extra.run_date_utc (the weekend feed's run time in UTC). Stored from 2019 (a read-only
 # query on 2026-10-07: 206 of 283 fp1 rounds, 200 of 270 qual rounds; the 2017 fixture's feed has no UTC time); a
 # round without it is not a stage, and an event with none is traded on the [replay] stages. Sessions that were never
-# run (rained out) have no round. The race round stores race_date_local only (the track's time zone isn't stored),
-# so the race start is [stages] until_fallback_hours.
+# run (rained out) have no round. The race round's run_date_utc is the feed's local race_date plus the weekend's own
+# UTC offset (run_date_utc - run_date of its latest run; ingest._race_start_utc, C42); a weekend whose runs carry no
+# UTC time has none, and its race start is [stages] until_fallback_hours.
 time_key = "run_date_utc"
 
 # round kind -> (minutes, short label). Minutes are a priori (no session length is stored): docs/f1-roadmap.md

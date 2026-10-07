@@ -151,6 +151,16 @@ def test_practice_qualifying_and_entries_that_never_started():
 
 
 @pytest.mark.quick
+def test_race_start_in_utc_from_the_weekends_own_offset():
+    """The feed's race_date is local with no zone; the weekend's runs (run_date local, run_date_utc) give the offset
+    (C42): Daytona 500 2026, 14:30 local, practice 10:00 local = 15:00 UTC, so 19:30 UTC."""
+    p = I.parse_race(2026, 5596, {"weekend-feed": fx("weekend_feed_2026_5596")}, 1)
+    race = p["rounds"][-1]["extra"]
+    assert race["race_date_local"] == "2026-02-15T14:30:00" and race["run_date_utc"] == "2026-02-15T19:30:00"
+    assert I._race_start_utc({"weekend_runs": [{"run_date": "2026-02-11T10:00:00"}]}, "2026-02-15T14:30:00") is None
+
+
+@pytest.mark.quick
 def test_the_2017_shape_parses_without_the_newer_fields():
     p = I.parse_race(2017, 4599, {"weekend-feed": fx("weekend_feed_2017_4599")})
     assert p["series_round"] is None and [r["kind"] for r in p["rounds"]] == ["fp1", "fp2", "fp3", "qual", "race"]

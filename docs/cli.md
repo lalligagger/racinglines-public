@@ -256,7 +256,9 @@ CLV is the close minus the entry, both as the YES token's price, signed for the 
 closed on our side of the price we paid. In percent it's divided by the price paid for that side. The entry is the
 fill price the signal stored. The close is the start of the round that decides the market (`markets/kinds.toml`:
 the kind's `session`, else a `stage_top_n` or `stage_top` stage, such as qualifying for pole; else the race), read
-from `rounds.extra.session_date`. A race with no stored start (NASCAR's feed stores none) closes on race day from
+from `rounds.extra.session_date` or the sport's `[sessions] time_key` (NASCAR's `run_date_utc`: the race's start is the
+feed's local race time plus the weekend's own UTC offset, from its practice and qualifying runs). A race with no
+stored start (a NASCAR weekend whose runs carry no UTC time) closes on race day from
 the schema: the event's date plus `[replay] race_day_offset` days, at `[sweep] quote_until_hours` UTC (default
 00:00). An earlier round with no stored start gets no close. The closing price is the venue's own reading at the close
 (`markets/venue_replay.py`): the book's mid where the venue keeps a quote (Kalshi), else the last tape price within

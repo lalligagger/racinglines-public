@@ -284,6 +284,9 @@ how it works: [Paper trading](paper-trading.md). Recommendations and paper fills
       **Paper bets done (C4):** `racinglines backtest clv` reports CLV for every stored paper bet, any sport and
       venue ([CLI](cli.md#racinglines-backtest-clv)). Still open: the sweep stats, `f1 reconcile`, `f1 scorecard` and
       the weekend report.
+      **G1 definition (owner, 2026-10-07):** the go-live gate reads CLV as the plain mean per bet against the fill
+      price, every decided bet counting once (the wider gate: more bets, even if the P&L reads less sharp). Storing
+      sweep trades one row per trade, so sweeps get CLV too, is a nice-to-have (core backlog C41).
 - [ ] **P1 · On-demand strategy previews** (owner, 2026-10-06). One command that prices the coming weekend
       from a stored stage run and shows what each strategy (T1–T10, TB) would enter now, at a chosen bankroll
       and caps (half- and quarter-Kelly). It writes two tables per strategy: the markets it would pick (side,
