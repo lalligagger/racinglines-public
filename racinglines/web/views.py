@@ -89,10 +89,10 @@ def _sport_names():
 def board_page(request: Request, msg: str = "", c=Depends(conn)):
     """Markets. Makers and admins: every sport's board (fair prices vs the venues), each in a collapsible
     section with its own exchange breakdown, and a calendar of every event across every sport, filterable by
-    sport and exchange. Takers: every open Polymarket market with their strategy's calls (app.bet_markets)."""
+    sport and exchange. Takers: every open Polymarket market with their strategy's calls (book_routes.bet_markets)."""
     user = request.state.user
     if R.is_basic(user):
-        from racinglines.web.app import bet_markets
+        from racinglines.web.book_routes import bet_markets
         return bet_markets(request, msg=msg, c=c)
     from racinglines.markets import disagree as D
     calendar = V.calendar_rows(c)
@@ -658,7 +658,7 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     summary = dict(bets=len(my_bets), staked=float(my_bets["stake"].sum()), open=int((my_bets["status"] == "open").sum()),
                    pnl=float(my_bets["pnl"].sum())) if len(my_bets) else None
     from racinglines.pipelines import story
-    from racinglines.web.app import polymarket_calls
+    from racinglines.web.book_routes import polymarket_calls
     # the two venues are never plotted together: the Polymarket history (the strategy's record) and the
     # private book's P&L through its day(s), from the live snapshots; the page switches between them
     acct = story.account(c, user["id"], profile, maker, markers=False, sport=sport or None, sports=sp) \
