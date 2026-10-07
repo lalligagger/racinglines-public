@@ -716,6 +716,7 @@ def signals_page(request: Request, user: str = "", event: str = "", venue: str =
 
     from racinglines.markets.alerts import signal_line
     from racinglines.pipelines import profiles as PF
+    from racinglines.pipelines import weekend_sweep as WS
     from racinglines.pipelines.signals import HEAT_LABEL
     me = request.state.user
     uid = me["id"]
@@ -729,7 +730,7 @@ def signals_page(request: Request, user: str = "", event: str = "", venue: str =
     profile_why = next((pr.get("why") for pr in {**PF.PROFILES, **PF.HISTORY_PROFILES}.values()
                         if profile and pr.get("name") == profile.get("name")), None) if show_fair else None
     from racinglines.pipelines import story
-    is_maker = bool(profile and not profile.get("strategy", "update").startswith(("update", "hold", "last", "early")))
+    is_maker = bool(profile and profile.get("strategy", "update") not in WS.TAKER_MODES)
     # venue=kalshi (with RACINGLINES_KALSHI_VENUE=1): the maker's same profiles replayed on Kalshi's tape
     venue = "kalshi" if venue == "kalshi" and V.KALSHI_VENUE and is_maker else ""
     sp = SPP.enabled() and not venue                # RACINGLINES_SPORT_PAPER=1: the NASCAR / MotoGP demo rows join the record
@@ -778,7 +779,7 @@ def signals_page(request: Request, user: str = "", event: str = "", venue: str =
                 s.commit()
     users = c.execute(T("""SELECT username FROM users WHERE prefs ? 'strategy_profile' ORDER BY id""")).scalars().all() \
         if me["role"] == "admin" else []
-    maker = False if basic else bool(cur and not cur["strategy"].startswith(("update", "hold", "last", "early"))) if cur else is_maker
+    maker = False if basic else bool(cur and cur["strategy"] not in WS.TAKER_MODES) if cur else is_maker
     sport_options = _sport_options(record, sport)
     return render(request, "strategy.html", viewer=viewer, profile=R.basic_view_profile(profile) if basic else profile,
                   show_fair=show_fair, profile_why=profile_why, stages=stages,
