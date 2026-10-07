@@ -538,3 +538,30 @@ code = "race_team_double_podium"
 label = "Double podium"
 default = false
 payoff = { subject = "team", predicate = "top", n = 3, aggregate = "all" }
+
+# Practice fastest lap (Polymarket's "<GP>: Practice 1 / 2 / 3 Fastest Lap"; C12b): who sets the session's fastest lap.
+# Priced from sims.stage_rank["fp<n>"], each practice session's order of best laps that position_sim draws behind its
+# `practicefast` variant (model.PRACTICE_FASTEST, off by default; the real order once the session has run); settled on
+# the results' fp<n>_position, the session's order of best laps from the stored laps (models/position_sim/practice.py):
+# undecidable when the session's laps aren't stored. A driver who set no lap in a session that ran is a NO
+
+[[kinds]]
+code = "race_fp1_fastest"
+label = "Practice 1 fastest lap"
+default = false
+payoff = { subject = "driver", predicate = "stage_top", stage = "fp1", n = 1 }
+settle = { absent = "no" }
+
+[[kinds]]
+code = "race_fp2_fastest"
+label = "Practice 2 fastest lap"
+default = false
+payoff = { subject = "driver", predicate = "stage_top", stage = "fp2", n = 1 }
+settle = { absent = "no" }
+
+[[kinds]]
+code = "race_fp3_fastest"
+label = "Practice 3 fastest lap"
+default = false
+payoff = { subject = "driver", predicate = "stage_top", stage = "fp3", n = 1 }
+settle = { absent = "no" }
