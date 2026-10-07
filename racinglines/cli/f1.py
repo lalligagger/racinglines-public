@@ -14,6 +14,9 @@ racinglines f1 <command>: Formula 1.
     matrix       Every model variant x every trading strategy: accuracy (latest saved backtest per
                  variant, paired vs baseline) and 2026 P&L (latest sweep + season strategy per variant).
     diagnostic   ONE PAST EVENT at a chosen cutoff (e.g. yesterday); saved as kind='diagnostic'.
+    combo        Combos (same-game parlays) on ONE EVENT, past or upcoming, as of a cutoff (default now): each
+                 combo's fair value and its legs' marginals from one pricing (models/position_sim/combo_job.py);
+                 saved as kind='combo' with the prices in metrics (the Lab job f1_combo).
     sweep        Every race of a season traded through the weekend: price before any running
                  and after each session, trade Polymarket (update / hold / after-quali taker
                  strategies, maker replay), settle; per-weekend P&L. Saved as kind='sweep'.
@@ -233,6 +236,15 @@ def main(argv=None):
     p.add_argument("--sims", type=int, default=10000)
     p.add_argument("--no-track", action="store_true")
     p.add_argument("--save", action="store_true")
+    p = sub.add_parser("combo", help="Combo (same-game parlay) prices for one event (combo_job.py).")
+    p.add_argument("--event", required=True, help="Season-round, e.g. 2026-17")
+    p.add_argument("--cutoff", default=None, help="UTC as-of time, e.g. 2026-10-09T08:00 (default: now)")
+    p.add_argument("--legs", required=True,
+                   help='JSON: a list of legs, a list of combos, or {name: [legs]}; a leg is {"kind": "race_win", '
+                        '"driver": "Max Verstappen"} (or "athlete": id, "team", "pair": [a, b], "line", "side")')
+    p.add_argument("--sims", type=int, default=10000)
+    p.add_argument("--no-track", action="store_true")
+    p.add_argument("--save", action="store_true", help="Store as a model run (kind='combo').")
     p = sub.add_parser("forecast")
     p.add_argument("--year", type=int, default=2026)
     p.add_argument("--sims", type=int, default=10000)
@@ -1017,6 +1029,31 @@ def _run(args):
         if args.save:
             run_id = run.save_diagnostic(args.db, args.event, cutoff, summ, ex, args.sims, track_features=use_track)
             print(f"Saved diagnostic run {run_id}.")
+        return
+
+    if args.cmd == "combo":
+        import json as _json
+
+        from racinglines.models.position_sim import combo_job as CJ
+        cutoff = pd.Timestamp(args.cutoff) if args.cutoff else pd.Timestamp.now(tz="UTC").tz_localize(None).floor("min")
+        metrics, ex = CJ.run(meas, hist, args.event, cutoff, args.legs, n_sims=args.sims, use_track=use_track)
+        print("Leakage audit:", ex["audit"])
+        for c in metrics["combos"]:
+            print(f"{c['name']}: fair {c['fair']:.4f} (se {c['se']:.4f}), legs "
+                  + " x ".join(f"{leg['label']} {leg['marginal']:.4f}" for leg in c["legs"])
+                  + f" = {c['independent']:.4f} if independent, lift {c['lift']}"
+                  + ("" if c["calibrated"] else f"; NOT CALIBRATED: {_json.dumps(c['flags'])}"))
+        print("Checks:", _json.dumps(metrics["checks"]))
+        if args.save:
+            from racinglines.db.queries import save_model_run
+            with get_session(args.db) as s:
+                run_id = save_model_run(s, competition="f1_wdc", category="DRV", model="f1_sector_sim", kind="combo",
+                                        season=int(args.event.split("-")[0]),
+                                        params=dict(event_key=args.event, cutoff=str(cutoff), sims=args.sims,
+                                                    variant=args.variant, track_features=use_track, legs=args.legs,
+                                                    half_life_days=run.M.HALF_LIFE_DAYS),
+                                        metrics=dict(metrics, audit=ex["audit"]))
+            print(f"Saved combo run {run_id}.")
         return
 
     if args.cmd == "forecast":
