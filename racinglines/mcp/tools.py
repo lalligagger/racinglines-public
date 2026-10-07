@@ -7,6 +7,7 @@ do what the Lab's Run form does.
 """
 
 import json
+import os
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -244,9 +245,53 @@ def list_markets(conn, race_id=None, event_id=None, competition=None, sport=None
     by_kind = {}
     for r in rows:
         by_kind[r["kind"]] = by_kind.get(r["kind"], 0) + 1
+    scope = dict(event_id=head["event_id"]) if race_id is not None else dict(competition=head["competition"])
+    upcoming = race_id is None or head.get("status") != "completed"
     return dict(**P.record(head), pricing=P.record(pricing or {}), outcomes_by_kind=by_kind,
+                freshness=freshness(conn, upcoming=upcoming, **scope),
                 venues=[dict(venue=v["venue"].code, listed=v["listed"], volume=v["volume"]) for v in V.venue_summary(df)] if len(df) else [],
                 outcomes=P.page(rows, limit=limit, offset=offset))
+
+
+def stale_hours():
+    """How old a venue's newest market link sync may be before list_markets flags its prices stale:
+    RACINGLINES_STALE_HOURS, default 3 (polling runs every 5 minutes, so 3 h means several missed passes)."""
+    try:
+        return float(os.environ.get("RACINGLINES_STALE_HOURS") or 3)
+    except ValueError:
+        return 3.0
+
+
+def freshness(conn, event_id=None, competition=None, upcoming=True, now=None):
+    """Per exchange: links, the newest synced_at over the event's races (or the competition's season links, with no
+    race) and its age; `stale` when an upcoming event has no link on a live exchange or the newest sync is older than
+    stale_hours(). A completed event is never flagged: its prices are history."""
+    from racinglines.markets import venues as V
+    if event_id is not None:
+        df = data.q(conn, """SELECT ml.exchange, count(*) AS links, max(ml.synced_at) AS synced_at FROM market_links ml
+                             JOIN races ra ON ra.id = ml.race_id WHERE ra.event_id = :e GROUP BY 1""", e=int(event_id))
+    else:
+        df = data.q(conn, """SELECT ml.exchange, count(*) AS links, max(ml.synced_at) AS synced_at FROM market_links ml
+                             JOIN competitions co ON co.id = ml.competition_id
+                             WHERE co.code = :c AND ml.race_id IS NULL GROUP BY 1""", c=competition)
+    got = {r["exchange"]: r for r in df.to_dict("records")}
+    limit = stale_hours()
+    now = now or pd.Timestamp.now(tz="UTC")
+    codes = [v.code for v in V.EXCHANGES if v.status == "live"]
+    codes += [c for c in sorted(got) if c not in codes]
+    out = []
+    for code in codes:
+        r = got.get(code)
+        links = int(r["links"]) if r else 0
+        at = pd.Timestamp(r["synced_at"]) if r and r["synced_at"] is not None and not pd.isna(r["synced_at"]) else None
+        age = (now - at).total_seconds() / 3600 if at is not None else None
+        why = None
+        if upcoming:
+            why = ("no linked markets" if not links else "never synced" if at is None else
+                   f"newest sync {age:.1f} h old (limit {limit:g} h)" if age > limit else None)
+        out.append(dict(venue=code, links=links, synced_at=P.plain(at), age_hours=P.plain(age), stale=why is not None,
+                        reason=why))
+    return dict(stale_hours=limit, any_stale=any(r["stale"] for r in out), venues=out)
 
 
 def _tokens_for(conn, race_id=None, kind=None, athlete_id=None, subject=None, exchange=None, competition=None):

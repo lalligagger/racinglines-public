@@ -578,3 +578,46 @@ def test_settings_page_token_is_the_one_the_server_accepts(test_engine, monkeypa
         assert "open to admin accounts" in client.get("/settings").text
     finally:
         A.app.dependency_overrides.clear()
+
+
+def test_list_markets_flags_stale_or_missing_exchange_prices(mcp, monkeypatch):
+    """freshness: per exchange, the newest synced_at over the event's links. An upcoming event with no link on a live
+    exchange, or a newest sync older than RACINGLINES_STALE_HOURS, is flagged; a completed one never is."""
+    from datetime import timedelta
+
+    import pandas as pd
+    from sqlalchemy import text
+    now = pd.Timestamp("2026-10-07T21:00Z")
+    with mcp.engine.begin() as c:
+        c.execute(text("INSERT INTO sports (code, name, result_kind) VALUES ('fresh_t', 'Fresh', 'time') ON CONFLICT DO NOTHING"))
+        c.execute(text("INSERT INTO leagues (code, name) VALUES ('fresh_t_lg', 'Fresh league') ON CONFLICT DO NOTHING"))
+        comp = c.execute(text("""INSERT INTO competitions (code, name, league_id, sport_id)
+                                 SELECT 'fresh_t_cup', 'Fresh cup', l.id, s.id FROM leagues l, sports s
+                                 WHERE l.code = 'fresh_t_lg' AND s.code = 'fresh_t' RETURNING id""")).scalar()
+        cat = c.execute(text("INSERT INTO categories (competition_id, code, name) VALUES (:c, 'DRV', 'Drivers') RETURNING id"),
+                        dict(c=comp)).scalar()
+        season = c.execute(text("INSERT INTO seasons (competition_id, year) VALUES (:c, 2026) RETURNING id"), dict(c=comp)).scalar()
+        ev = c.execute(text("""INSERT INTO events (season_id, source, source_key, name, start_date)
+                               VALUES (:s, 't', 'fresh-1', 'Fresh GP', '2026-10-11') RETURNING id"""), dict(s=season)).scalar()
+        race = c.execute(text("INSERT INTO races (event_id, category_id) VALUES (:e, :c) RETURNING id"),
+                         dict(e=ev, c=cat)).scalar()
+        for ex, hours in (("polymarket", 1), ("polymarket", 30), ("og", 5)):
+            c.execute(text("""INSERT INTO market_links (exchange, question, token_id, outcome, competition_id, race_id, prediction,
+                                                        synced_at) VALUES (:x, 'q', :t, 'Yes', :c, :r, 'race_win', :at)"""),
+                      dict(x=ex, t=f"fresh-{ex}-{hours}", c=comp, r=race, at=(now - timedelta(hours=hours)).to_pydatetime()))
+        f = T.freshness(c, event_id=ev, now=now)
+        by = {v["venue"]: v for v in f["venues"]}
+        assert f["stale_hours"] == 3 and f["any_stale"]
+        assert by["polymarket"]["links"] == 2 and by["polymarket"]["age_hours"] == 1 and not by["polymarket"]["stale"]
+        assert by["og"]["stale"] and by["og"]["reason"] == "newest sync 5.0 h old (limit 3 h)"
+        monkeypatch.setenv("RACINGLINES_STALE_HOURS", "6")
+        f = T.freshness(c, event_id=ev, now=now)
+        assert f["stale_hours"] == 6 and not {v["venue"]: v for v in f["venues"]}["og"]["stale"]
+        empty = c.execute(text("""INSERT INTO events (season_id, source, source_key, name, start_date)
+                                  VALUES (:s, 't', 'fresh-2', 'Bare GP', '2026-10-18') RETURNING id"""), dict(s=season)).scalar()
+        bare = T.freshness(c, event_id=empty, now=now)["venues"]
+        assert bare and all(v["stale"] and v["reason"] == "no linked markets" for v in bare)
+        assert not T.freshness(c, event_id=ev, upcoming=False, now=now)["any_stale"]
+        out = T.list_markets(c, race_id=race)
+        assert out["freshness"]["venues"] and "any_stale" in out["freshness"]
+        c.execute(text("DELETE FROM market_links WHERE token_id LIKE 'fresh-%'"))

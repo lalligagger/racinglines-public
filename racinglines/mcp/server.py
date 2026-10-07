@@ -170,7 +170,10 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         """The market matrix: one row per outcome (kind x subject) with our fair value, each venue's quote (Polymarket,
         Kalshi when enabled, the private book), the gap and, for a past race, the result and the exchange price at the
         time we priced. Give race_id or event_id for a race weekend, or competition/sport for the season-long markets.
-        kinds: comma-separated (race_win, race_podium, race_top10, race_h2h, race_constructor_top, race_pole, champion, ...)."""
+        kinds: comma-separated (race_win, race_podium, race_top10, race_h2h, race_constructor_top, race_pole, champion, ...).
+        freshness: per exchange, the links and the newest price sync; `stale` (with the reason) when an upcoming event has
+        no linked market on a live exchange or its newest sync is older than RACINGLINES_STALE_HOURS (default 3):
+        quote those prices as possibly out of date."""
         return _read(T.list_markets, race_id=race_id, event_id=event_id, competition=competition, sport=sport, kinds=kinds,
                      limit=limit, offset=offset)
 
