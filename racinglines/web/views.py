@@ -387,8 +387,12 @@ def _edge_ctx(c, user):
     from racinglines.web import edge
     cs = edge.combos(c, user)
     year = edge.year(c, user)
-    ef = edge.build(c, cs, year)
+    sport, venue = edge.scope(c, user)
+    sports, venues = edge.scopes(c, year)
+    ef = edge.build(c, cs, year, sport, venue)
     return dict(ef=ef, combos=[list(x) for x in cs], year=year, years=edge.YEARS, candidates=edge.candidates(c),
+                sport=sport, venue=venue, sports=sports, venues=venues, sport_names=_sport_names(),
+                venue_names=_venue_names(),
                 models=[(cf["ref"], cf["label"]) for cf in ef["configs"]] or [("baseline", "baseline")],
                 strategies=[(k, edge.label(k)) for k in edge.STRATEGY_KEYS])
 
@@ -480,6 +484,18 @@ async def lab_edge(request: Request, user=allow(*PRO), c=Depends(conn)):
         if y not in edge.YEARS:
             raise HTTPException(400, "unknown season")
         P.put(c, user, "edge_year", y)
+        return render(request, "lab_edge.html", **_edge_ctx(c, user))
+    if form.get("action") == "scope":                  # the sport / venue filter ("" for all)
+        from racinglines.web import prefs as P
+        sport, venue = edge.scope(c, user)
+        if "sport" in form:
+            sport = form.get("sport") or None
+        if "venue" in form:
+            venue = form.get("venue") or None
+        sports, venues = edge.scopes(c, edge.year(c, user))
+        if (sport and sport not in sports) or (venue and venue not in venues):
+            raise HTTPException(400, "no sweep for that sport or venue")
+        P.put(c, user, "edge_scope", dict(sport=sport, venue=venue))
         return render(request, "lab_edge.html", **_edge_ctx(c, user))
     try:
         cs = edge.apply(edge.combos(c, user), form.get("action", ""), form.get("variant", ""),
