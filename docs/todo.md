@@ -281,6 +281,9 @@ how it works: [Paper trading](paper-trading.md). Recommendations and paper fills
       sportsbook bets get the same field in the project's bet ledger, using an exchange's close as a proxy
       where the book publishes none.
       *Done when:* the 2025 and 2026 replays of A, C and K report mean CLV, and the weekend report shows it.
+      **Paper bets done (C4):** `racinglines backtest clv` reports CLV for every stored paper bet, any sport and
+      venue ([CLI](cli.md#racinglines-backtest-clv)). Still open: the sweep stats, `f1 reconcile`, `f1 scorecard` and
+      the weekend report.
 - [ ] **P1 · On-demand strategy previews** (owner, 2026-10-06). One command that prices the coming weekend
       from a stored stage run and shows what each strategy (T1–T10, TB) would enter now, at a chosen bankroll
       and caps (half- and quarter-Kelly). It writes two tables per strategy: the markets it would pick (side,

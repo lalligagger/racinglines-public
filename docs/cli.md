@@ -239,6 +239,32 @@ names a `pricing_model`, and one of the schema's `kinds` / `*_kinds` lists names
 link's `end_date` for a futures market. `--out` writes `coverage_combos.csv`, `coverage_futures.csv` and
 `coverage_results.csv`.
 
+## racinglines backtest clv
+
+Closing-line value (CLV) per paper bet (parity rebuild package C4; the owner's go/no-go metric for real money is CLV
+above +2 % over 100 live bets). Read-only: it computes CLV on read and writes nothing to the database
+(`racinglines/pipelines/clv.py`). A bet is a paper trade in `strategy_signals`: a taker's buy or sell it followed, or
+a maker's paper fill, on any sport (F1, NASCAR, MotoGP) and venue (Polymarket, Kalshi, OG.com). It prints one row
+per sport × venue × kind × strategy × profile (bets, decided, undecided, mean CLV in points and percent, share of
+decided bets with a positive CLV, mean move against the mid at entry) with an `all` row, then every bet.
+
+```
+racinglines backtest clv [--db URL] [--user NAME ...] [--sport nascar] [--venue kalshi] [--event KEY] [--asof UTC] [--summary] [--json] [--out DIR]
+```
+
+CLV is the close minus the entry, both as the YES token's price, signed for the side held: positive when the market
+closed on our side of the price we paid. In percent it's divided by the price paid for that side. The entry is the
+fill price the signal stored. The close is the start of the round that decides the market (`markets/kinds.toml`:
+the kind's `session`, else a `stage_top_n` or `stage_top` stage, such as qualifying for pole; else the race), read
+from `rounds.extra.session_date`. A race with no stored start (NASCAR's feed stores none) closes on race day from
+the schema: the event's date plus `[replay] race_day_offset` days, at `[sweep] quote_until_hours` UTC (default
+00:00). An earlier round with no stored start gets no close. The closing price is the venue's own reading at the close
+(`markets/venue_replay.py`): the book's mid where the venue keeps a quote (Kalshi), else the last tape price within
+6 hours. A bet stays **undecided**, with its reason, when its close is still ahead, it was made after the close, it
+has no race (season futures) or no link, or the venue has no price in the 6 hours before the close. `--asof` judges which markets have closed as of that time (default now). `--out` writes
+`clv_bets.csv` and `clv_summary.csv`. Stored sweep runs keep no per-trade rows, so they get no CLV; a sweep's
+in-memory trades go through `clv.from_trades`.
+
 ## racinglines mtb_dh walk-forward
 
 Every completed event priced through the shared engine, model-only

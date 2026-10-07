@@ -19,6 +19,13 @@ racinglines backtest <command>: the backtest core for any sport with a pricing m
                          sources (racinglines/pipelines/coverage.py, docs/parity-rebuild.md "C0")
 
     racinglines backtest coverage [--seasons 2025 2026] [--out DIR]
+
+    clv                  read-only: closing-line value of every paper bet (strategy_signals: the taker's followed
+                         trades, the maker's fills) on any sport and venue, per bet and per sport x venue x kind x
+                         strategy x profile: bets, mean CLV, share positive (racinglines/pipelines/clv.py, "C4")
+
+    racinglines backtest clv [--user NAME ...] [--sport nascar] [--venue kalshi] [--event KEY] [--asof UTC] [--summary] [--json]
+                             [--out DIR]
 """
 
 import argparse
@@ -141,6 +148,16 @@ def main(argv=None):
     cov.add_argument("--db", default=None, metavar="URL", help="Database URL (default: $DATABASE_URL).")
     cov.add_argument("--seasons", nargs="+", type=int, help="Only these seasons (default: all).")
     cov.add_argument("--out", default=None, metavar="DIR", help="Also write coverage_{combos,futures,results}.csv here.")
+    clv = sub.add_parser("clv", help="Read-only: closing-line value per paper bet, and per sport, venue, kind and profile.")
+    clv.add_argument("--db", default=None, metavar="URL", help="Database URL (default: $DATABASE_URL).")
+    clv.add_argument("--user", nargs="+", default=None, metavar="NAME", help="Only these users' bets.")
+    clv.add_argument("--sport", default=None, help="Only this sport (a sports/<code>.toml code).")
+    clv.add_argument("--venue", default=None, help="Only this venue (polymarket, kalshi, og).")
+    clv.add_argument("--event", default=None, metavar="KEY", help="Only this event key.")
+    clv.add_argument("--asof", default=None, metavar="UTC", help="Judge closes as of this time (default now).")
+    clv.add_argument("--summary", action="store_true", help="Print the aggregate only, not every bet.")
+    clv.add_argument("--json", action="store_true", help="Print JSON (summary and bets) instead of tables.")
+    clv.add_argument("--out", default=None, metavar="DIR", help="Also write clv_bets.csv and clv_summary.csv here.")
     if known.cmd == "walk-forward" and known.sport:
         SS.add_arguments(wf, pricing_model(known.sport, known.model).Settings)
     args = ap.parse_args(argv)
@@ -152,6 +169,20 @@ def main(argv=None):
         print(COV.format_text(res))
         if args.out:
             print(f"\nCSVs -> {COV.write(res, args.out)}/")
+        return 0
+    if args.cmd == "clv":
+        import json
+
+        from racinglines.db.config import get_engine
+        from racinglines.pipelines import clv as CLV
+        with get_engine(args.db).connect() as c:
+            res = CLV.run(c, users=args.user, sport=args.sport, venue=args.venue, event=args.event,
+                          now=pd.Timestamp(args.asof, tz="UTC") if args.asof else None)
+        print(json.dumps(CLV.to_json(res), indent=1) if args.json else CLV.format_text(res, per_bet=not args.summary))
+        if args.out:
+            out = CLV.write(res, args.out)
+            if not args.json:
+                print(f"\nCSVs -> {out}/")
         return 0
     model = pricing_model(args.sport, args.model)
     st = SS.from_args(args, model.Settings)
