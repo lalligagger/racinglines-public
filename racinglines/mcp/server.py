@@ -9,6 +9,7 @@ Run form writes: a `jobs` row; the job's subprocess saves a model run (forecasts
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -51,16 +52,27 @@ def _engine():
     return get_engine(_URL)
 
 
+def _sql_engine():
+    """The sql tool's connection: RACINGLINES_MCP_SQL_URL when set (a login that can SELECT only the allowed tables,
+    made by scripts/vm/mcp_sql_role.sh), else the app's own. Only the role keeps users and orders out of reach; the
+    text check in tools.check_sql is a first filter."""
+    url = os.environ.get("RACINGLINES_MCP_SQL_URL")
+    if not url:
+        return _engine()
+    from racinglines.db.config import get_engine
+    return get_engine(url)
+
+
 def _json(obj):
     """One line of JSON: the text a chat client reads (an indented dump would double the bytes for nothing)."""
     return json.dumps(obj, default=str)
 
 
-def _read(fn, **kw):
+def _read(fn, engine=None, **kw):
     """Call a tools.py function inside a READ ONLY transaction; anticipated errors become tool errors the client sees."""
     from mcp.server.mcpserver.exceptions import ToolError
     try:
-        with _engine().begin() as c:
+        with (engine or _engine()).begin() as c:
             c.execute(text("SET TRANSACTION READ ONLY"))
             return _json(fn(c, **kw))
     except (ValueError, KeyError, TypeError) as ex:
@@ -277,7 +289,7 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         """Run one read-only SQL query (SELECT / WITH ... SELECT / EXPLAIN) against the database, in a READ ONLY transaction
         with a 10 s timeout. The result is paged (limit at most 500; an outer LIMIT/OFFSET is applied for you). The users and
         orders tables are not readable. describe_schema() lists the tables and columns."""
-        return _read(T.sql, query=query, limit=limit, offset=offset)
+        return _read(T.sql, engine=_sql_engine(), query=query, limit=limit, offset=offset)
 
     # --- jobs ---------------------------------------------------------------------------------------
     @srv.tool()

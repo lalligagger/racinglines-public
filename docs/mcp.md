@@ -132,6 +132,26 @@ In both modes the tools read as the owner (everything the admin sees) and can qu
 the Lab; per-role read scoping is a later change if makers get tokens. Tools that show paper trading take a
 `user` argument to pick an account.
 
+### The sql tool's database role
+
+The `sql` tool's text check (`check_sql` in `racinglines/mcp/tools.py`) is a first filter with friendly errors, not a
+boundary: the 2026-10-05 audit got past it to `users` with a Unicode-escaped name and a query held in a string, and the
+app's own database login is a superuser. The boundary is a login of its own, `racinglines_mcp_ro`: no superuser, read
+only, a 10 s statement timeout, and `SELECT` on every table except `users` and `orders` (tables a later migration adds
+are readable too). `RACINGLINES_MCP_SQL_URL` in `/etc/racinglines.env` points the `sql` tool at it; every other tool
+keeps the app's connection. Without the line, `sql` uses the app's login as before.
+
+```sh
+bash scripts/deploy/vm.sh backup mcp-sql-role                                     # first, from the Mac
+sudo bash -c 'cd /opt/racinglines && bash scripts/vm/mcp_sql_role.sh'             # on the VM: role, grants, env line, restart
+sudo bash -c 'cd /opt/racinglines && bash scripts/vm/mcp_sql_role.sh status'      # superuser=false, users/orders readable: false
+```
+
+Re-running it sets a new password and rewrites the line. `DB=racinglines_staging` grants staging's database instead
+(the role is shared by the Postgres container; staging runs no MCP unit today). Keep `RACINGLINES_MCP_ROLES` at
+`admin` until this has run on the VM. Undo: delete the `RACINGLINES_MCP_SQL_URL` line, restart `racinglines-mcp`,
+then `DROP OWNED BY racinglines_mcp_ro; DROP ROLE racinglines_mcp_ro;`.
+
 ### After every deploy
 
 `vm.sh deploy` restarts the unit only if it is running, after `update.sh` succeeds. When a deploy's output

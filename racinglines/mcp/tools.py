@@ -649,6 +649,12 @@ def data_changes(conn, sport=None, limit=None, offset=0):
 _SQL_FORBIDDEN = re.compile(r"\b(insert|update|delete|merge|drop|alter|create|truncate|grant|revoke|copy|vacuum|analyze|"
                             r"reindex|cluster|lock|listen|notify|set|reset|call|do|refresh|comment|security|pg_sleep|"
                             r"pg_read_file|pg_ls_dir|lo_import|lo_export|dblink)\b", re.I)
+# functions that run a query given as text (which hides a table name in a string), read server files or settings,
+# or reach other roles' secrets; and the catalogs holding role password hashes
+_SQL_FORBIDDEN_FN = re.compile(r"\b(query_to_xml\w*|cursor_to_xml\w*|table_to_xml\w*|schema_to_xml\w*|database_to_xml\w*|"
+                               r"ts_stat|ts_rewrite|set_config|pg_read_\w+|pg_stat_file|pg_ls_\w+|pg_file_\w+|lo_\w+|"
+                               r"dblink\w*|pg_terminate_backend|pg_cancel_backend|pg_reload_conf|pg_rotate_logfile|"
+                               r"pg_authid|pg_shadow|pg_user_mappings|pg_hba_file_rules)\b", re.I)
 
 
 def _strip_comments(sql):
@@ -656,8 +662,22 @@ def _strip_comments(sql):
     return re.sub(r"--[^\n]*", " ", sql)
 
 
+# one left-to-right pass, so a quote inside one kind of token never starts another: dollar-quoted, E'' (backslash
+# escapes), plain '' and "identifier"
+_SQL_TOKENS = re.compile(r"\$(\w*)\$.*?\$\1\$|(?<!\w)[eE]'(?:[^'\\]|\\.|'')*'|'(?:[^']|'')*'|\"(?:[^\"]|\"\")*\"", re.S)
+
+
+def _strip_literals(sql):
+    """The query with its string constants blanked ('..', E'..', $tag$..$tag$), so a word inside a value (a variant
+    named 'gridq+pretrain+reset') is not read as a keyword. Identifiers in double quotes are kept."""
+    return _SQL_TOKENS.sub(lambda m: m.group(0) if m.group(0).startswith('"') else "''", sql)
+
+
 def check_sql(query):
-    """The query text a client may run: one SELECT (or WITH ... SELECT), no writes, no hidden tables."""
+    """The query text a client may run: one SELECT (or WITH ... SELECT), no writes, no hidden tables.
+
+    A first filter only, with friendly errors: the real boundary is the database role the sql tool connects as
+    (RACINGLINES_MCP_SQL_URL, docs/mcp.md), which can read only the allowed tables."""
     q = _strip_comments(query or "").strip().rstrip(";").strip()
     if not q:
         raise ValueError("empty query")
@@ -665,7 +685,10 @@ def check_sql(query):
         raise ValueError("one statement only")
     if not re.match(r"(?is)^(select|with|table|values|explain)\b", q):
         raise ValueError("only SELECT (or WITH ... SELECT / EXPLAIN) queries")
-    if _SQL_FORBIDDEN.search(q):
+    if re.search(r"\bu&['\"]", q, re.I):
+        raise ValueError("Unicode-escaped names and strings (U&) are not accepted")
+    code = _strip_literals(q)
+    if _SQL_FORBIDDEN.search(code) or _SQL_FORBIDDEN_FN.search(code):
         raise ValueError("only read-only queries: no writes, DDL, settings, or server-side functions")
     for t in SQL_HIDDEN:
         if re.search(rf"\b{t}\b", q, re.I):

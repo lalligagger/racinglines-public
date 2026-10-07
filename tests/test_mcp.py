@@ -78,6 +78,45 @@ def test_sql_guard_refuses_writes_and_hidden_tables(q, why):
         T.check_sql(q)
 
 
+@pytest.mark.parametrize("q", [
+    'select * from U&"\\0075sers"',                                          # a Unicode-escaped table name
+    "select query_to_xml('select password_hash from us'||'ers', true, true, '')",  # a query hidden in a string
+    "select pg_read_binary_file('/etc/passwd')", "select pg_stat_file('/etc/passwd')",
+    "select set_config('role', 'racinglines', true)", "select * from ts_stat('select 1')",
+    "select rolpassword from pg_authid", "select passwd from pg_catalog.pg_shadow",
+    "select E'\\'', pg_read_binary_file('/etc/passwd'), ''",                  # an escaped quote must not hide code
+    "select $q$x$q$, lo_get(1)",
+])
+def test_sql_guard_refuses_known_bypasses(q):
+    """The audit's bypasses (2026-10-05) and their kin. The guard is a first filter; the sql tool's own database role
+    (scripts/vm/mcp_sql_role.sh) is what keeps users and orders out of reach."""
+    with pytest.raises(ValueError):
+        T.check_sql(q)
+
+
+@pytest.mark.parametrize("q", [
+    "select * from model_runs where variant = 'gridq+pretrain+reset'",  # a keyword inside a value
+    "select $$delete me$$ as note", "select E'it''s', 'update' as word",
+])
+def test_sql_guard_reads_keywords_in_values_as_values(q):
+    assert T.check_sql(q)
+
+
+def test_sql_role_script_hides_the_same_tables():
+    from pathlib import Path
+    script = (Path(__file__).resolve().parents[1] / "scripts/vm/mcp_sql_role.sh").read_text()
+    hidden = next(line for line in script.splitlines() if line.startswith("HIDDEN="))
+    assert hidden.split("=", 1)[1].strip('"').split() == list(T.SQL_HIDDEN)
+
+
+def test_sql_tool_uses_its_own_login_when_set(monkeypatch):
+    from racinglines.mcp import server as S
+    monkeypatch.setenv("RACINGLINES_MCP_SQL_URL", "postgresql+psycopg://racinglines_mcp_ro:pw@localhost:5433/racinglines")
+    assert S._sql_engine().url.username == "racinglines_mcp_ro"
+    monkeypatch.delenv("RACINGLINES_MCP_SQL_URL")
+    assert S._sql_engine().url.username != "racinglines_mcp_ro"
+
+
 def test_job_params_validated_against_the_lab_catalog():
     jt, p = T._job_params("f1_backtest", {"races": 5, "sims": 300, "track": "on"})
     assert jt.code == "f1_backtest" and p == {"races": 5, "half_life": 120.0, "sims": 300, "track": "on"}
