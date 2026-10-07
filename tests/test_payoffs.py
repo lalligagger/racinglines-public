@@ -15,7 +15,7 @@ pytestmark = pytest.mark.quick
 
 def test_every_kind_in_the_file_loads_with_a_valid_spec():
     got = P.load()
-    assert len(got) == 13
+    assert len(got) == 28          # 13 classification and retirement kinds, 15 parity kinds (C11)
     for code, e in got.items():
         assert e["code"] == code and e["label"] and e["default"] is False
         assert P.check(e["payoff"]) is e["payoff"] and P.check(e["settle"]) is e["settle"]
