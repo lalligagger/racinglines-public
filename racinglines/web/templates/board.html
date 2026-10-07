@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% from "_macros.html" import pnl_cls, bar, pct, venue_chips, new_badge, paper_banner, page_head, status_badge %}
 {% block title %}Markets{% endblock %}
 {% block content %}
+{% macro sync_flags(u) %}{% set stale = (u.sync or [])|selectattr("stale")|list %}{% if stale %}<div class="chips">{% for v in stale %}<span class="pill warn" tabindex="0" data-tooltip="exchange prices for this race may be missing or out of date: flagged when no market is linked or the newest sync is over {{ '%g'|format(v.limit) }} h old">{{ v.name }}: {% if not v.links %}no markets linked{% elif v.hours is none %}never synced{% elif v.hours < 48 %}synced {{ '%.0f'|format(v.hours) }} h ago{% else %}synced {{ '%.0f'|format(v.hours / 24) }} days ago{% endif %}</span>{% endfor %}</div>{% endif %}{% endmacro %}
 {% call page_head("Markets", "Every sport we price: what's next, what's live on each venue, and how we did lately.") %}<a href="/markets/polymarket">All Polymarket markets →</a>{% if kalshi %} <a href="/markets/kalshi">All Kalshi markets →</a>{% endif %}{% for v in schema_exchanges %} <a href="/markets/{{ v.code }}">All {{ v.name }} markets →</a>{% endfor %}{% if tapes %} <a href="/markets/tapes">Recorded tapes →</a>{% endif %}{% endcall %}
 {{ paper_banner(signals_nav) }}
 
@@ -26,6 +27,7 @@
     <div><h3><a href="/races/{{ u.info.race_id }}">{{ u.info.title }}</a>{% if u.new %} <a href="/markets/polymarket?show=all&sport={{ s.code }}">{{ new_badge(u.new) }}</a>{% endif %}</h3>
       <div class="when">{{ u.info.start_date|fmt }} · {% if u.info.status == 'completed' %}<span class="good">resolved</span>{% if u.winner %} · winner {{ u.winner }}{% endif %}{% elif u.info.status == 'in_progress' %}<span class="warn">in progress</span>{% else %}{{ u.countdown }}{% endif %}{% if u.next %} · <b>next</b>{% endif %}</div></div>
     {{ venue_chips(u.venues, u.mine) }}
+    {{ sync_flags(u) }}
     <div>{% for o in u.top %}<div class="pr"><span>{{ o.subject }}</span>{{ bar(o.fair, o.pm_mid, "", (o.venues.kalshi.mid if o.venues and o.venues.kalshi else none)) }}<span class="num">{{ pct(o.fair) }}</span></div>{% endfor %}
       <div class="legend">win probability{% if u.top and u.top[0].pm_mid is not none %} · <i class="sw-warn"></i>Polymarket{% endif %}</div></div>
     <div><a href="/races/{{ u.info.race_id }}">{{ u.outcomes }} outcomes →</a></div>
@@ -45,6 +47,7 @@
     <div><h3><a href="/races/{{ u.info.race_id }}">{{ u.info.title }}</a></h3>
       <div class="when">{{ u.info.start_date|fmt }} · {% if u.info.status == 'completed' %}<span class="good">resolved</span>{% if u.winner %} · winner {{ u.winner }}{% endif %}{% else %}{{ u.countdown }}{% endif %}{% if u.next %} · <b>next</b>{% endif %}</div></div>
     {{ venue_chips(u.venues, u.mine) }}
+    {{ sync_flags(u) }}
     {% if u.info.status != 'completed' %}<div class="legend">no fair price yet: the model prices this race once a forecast is stored</div>{% endif %}
     <div><a href="/races/{{ u.info.race_id }}">{{ u.outcomes }} outcomes →</a></div>
   </div>
