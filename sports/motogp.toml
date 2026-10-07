@@ -31,6 +31,9 @@ categories = { RDR = ["Riders", "X", "elite"] }
 [markets]
 venues = ["polymarket", "kalshi"]
 standard_kinds = ["race_win"]     # the board's column (on by default, owner 2026-09-30): priced by the replay's saved runs
+# The kinds a link is filed as (market_links.prediction) once the [identity] resolver has its kind, rider and race: the
+# Grand Prix winner; the champion and teams' champion keep params.kind (or none) and stay unmodeled
+kinds = ["race_win"]
 
 [markets.kalshi]
 # Kalshi series tickers to sync, by prefix: every Sports series whose ticker starts with one of these

@@ -94,6 +94,33 @@ resets = [2014, 2017, 2022, 2026]
 venues = ["polymarket", "kalshi", "private"]
 standard_kinds = ["race_win", "race_podium", "race_top10"]           # the board's columns
 weekend_kinds = ["race_win", "race_podium", "race_h2h", "race_constructor_top", "race_pole"]   # traded in the sweep
+# The syncs classify F1's markets from the exchanges' titles and match drivers, teams and races with the F1 resolver
+# (racinglines/markets/kalshi/sync.py classify, polymarket/sync.py classify and Resolver); a sport without it files
+# its links through its [identity] resolver and [markets] kinds
+titles = true
+
+[markets.kalshi.kinds]
+# Kalshi series ticker -> kind: the exact key a market's kind is read from before its titles (the titles still give the
+# Grand Prix). A series not listed is classified from its titles; KXF1SPRINTFASTLAP stays unmodeled on purpose (no
+# model draws the sprint's fastest lap). Sprint kinds follow RACINGLINES_KALSHI_SPRINTS like the titles do.
+KXF1RACE = "race_win"
+KXF1RACEPODIUM = "race_podium"
+KXF1TOP10 = "race_top10"
+KXF1TOP5 = "race_top5"
+KXF1BIGGESTMOVER = "race_biggest_mover"
+KXF1POLE = "race_pole"
+KXF1POLEPOSITION = "race_pole"
+KXF1TOPCONSTRUCTOR = "race_constructor_top"
+KXF1FASTLAP = "race_fastest_lap"
+KXF1FASTESTLAP = "race_fastest_lap"
+KXF1H2H = "race_h2h"
+KXF1 = "champion"
+KXF1CONSTRUCTORS = "constructors_champion"
+KXF1RACESPRINT = "race_sprint_win"
+KXF1SPRINTPOLE = "race_sprint_pole"
+KXF1SPRINTTOP5 = "race_sprint_top5"
+KXF1SPRINTTOP10 = "race_sprint_top10"
+KXF1SPRINTTOPCONSTRUCTOR = "race_sprint_constructor_top"
 
 [sweep]
 # The season sweep (racinglines/pipelines/season_sweep.py; `racinglines f1 sweep`, search jobs of kind "sweep"):

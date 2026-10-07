@@ -32,6 +32,11 @@ categories = { DRV = ["Drivers", "X", "elite"] }
 [markets]
 venues = ["polymarket", "kalshi"]
 standard_kinds = ["race_win", "race_podium", "race_top10"]   # the board's columns (on by default, owner 2026-09-30): priced by the replay's saved runs
+# The kinds a link is filed as (market_links.prediction) once the [identity] resolver has its kind, driver and race
+# (and a head-to-head's opponent): the race payoffs the Cup model prices from its simulations (markets/kinds.toml).
+# Every other kind (pole, fastest lap, team win, mover, champion, ...) keeps params.kind and stays unmodeled: no model
+# prices it yet
+kinds = ["race_win", "race_podium", "race_top5", "race_top10", "race_top20", "race_h2h"]
 
 [markets.kalshi]
 # Kalshi series tickers to sync, by prefix: every Sports series whose ticker starts with one of these

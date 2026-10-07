@@ -11,6 +11,9 @@ the values from here, so a new sport starts with a new schema file.
     modeled(code)               False for a tape-only sport ([sport] model_family = "none": no model, no
                                 pipeline; its exchange markets are only recorded, docs/todo.md U9)
     kalshi_series(code)         the Kalshi series prefixes a sport's [markets.kalshi] names, () if none
+    kalshi_kinds(code)          {series ticker: kind} from [markets.kalshi] kinds, {} if none
+    titles_classified(code)     [markets] titles: the syncs classify from titles with the F1 resolver
+    link_kinds(code)            [markets] kinds: the kinds an identified link of the sport is filed as
     polymarket_tags(code)       the Gamma tag_slug values a sport's [markets.polymarket] names, () if none
     identity(code)              the package under racinglines/sources/ whose links module says which driver and race a
                                 market is about ([identity] resolver in the schema), None if the sport has none
@@ -53,6 +56,27 @@ def modeled(code):
 def kalshi_series(code):
     """The Kalshi series ticker prefixes a sport's schema names ([markets.kalshi] series), as a tuple."""
     return tuple(load(code).get("markets", {}).get("kalshi", {}).get("series", ()))
+
+
+@cache
+def kalshi_kinds(code):
+    """{Kalshi series ticker: prediction kind} a sport's schema names ([markets.kalshi] kinds), {} if none: the exact
+    key a market's kind is read from before its titles."""
+    return dict(load(code).get("markets", {}).get("kalshi", {}).get("kinds", {}))
+
+
+@cache
+def titles_classified(code):
+    """Whether the syncs classify the sport's markets from the exchanges' titles and match them with the F1 resolver
+    ([markets] titles = true); otherwise its [identity] resolver, when it has one, says what each market is about."""
+    return bool(load(code).get("markets", {}).get("titles", False))
+
+
+@cache
+def link_kinds(code):
+    """The kinds a sport's links are filed as (market_links.prediction) once identified ([markets] kinds), () if none:
+    the kinds its pricing model prices. A link of another kind keeps params.kind and stays unmodeled."""
+    return tuple(load(code).get("markets", {}).get("kinds", ()))
 
 
 def polymarket_tags(code):
