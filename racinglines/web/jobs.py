@@ -35,7 +35,7 @@ LOG_MAX = 20_000
 class Knob:
     name: str
     label: str
-    type: str = "float"          # float | int | choice | text | datetime | event
+    type: str = "float"          # float | int | choice | text | datetime | event | legs (combo legs, JSON)
     default: object = None
     min: float | None = None
     max: float | None = None
@@ -64,6 +64,40 @@ def _sweep_argv(p):
     st = SS.Settings.from_dict(p.get("settings") or {})
     return ["-m", "racinglines", "f1", "--variant", st["variant"], "sweep", "--year", str(p.get("year", 2026)),
             "--no-fetch", "--save", *st.argv()]
+
+
+def live_variant():
+    """The model variant the live book prices with: sports/f1.toml [live.sources] live's profile
+    (pipelines/profiles.py)."""
+    from racinglines import sports
+    from racinglines.pipelines import profiles as PF
+    prof = sports.load("f1")["live"]["sources"]["live"].get("profile", "C")
+    return PF.PROFILES[prof]["settings"].get("variant", "baseline")
+
+
+def taker_variant():
+    """The model variant the core taker prices with (pipelines/profiles.py profile A): sportsbook combos are taker
+    bets, so they default to it, the variant of the Singapore stage runs the picks used."""
+    from racinglines.pipelines import profiles as PF
+    return PF.PROFILES["A"]["settings"].get("variant", "baseline")
+
+
+def combo_variants():
+    """The variants the f1_combo job offers: the taker's plus flpos first (the default), then the live book's plus
+    flpos, then the taker's with fastlap, then flpos alone."""
+    out = []
+    for v in (f"{taker_variant()}+flpos", f"{live_variant()}+flpos", f"{taker_variant()}+fastlap", "flpos"):
+        v = v.removeprefix("baseline+")
+        if v not in out:
+            out.append(v)
+    return out
+
+
+def _combo_argv(p):
+    return (["-m", "racinglines", "f1", "--variant", p["variant"], "--half-life", str(p["half_life"]), "combo",
+             "--event", p["event"], "--legs", p["legs"], "--sims", str(p["sims"]), "--save"]
+            + ([] if p["cutoff"] == "now" else ["--cutoff", p["cutoff"]])
+            + (["--no-track"] if p["track"] == "off" else []))
 
 
 def _f1_common(p):
@@ -100,6 +134,21 @@ CATALOG = {j.code: j for j in [
             lambda p, out: _f1_common(p) + ["diagnostic", "--event", p["event"], "--cutoff", p["cutoff"],
                                             "--sims", str(p["sims"]), "--save"]
             + (["--no-track"] if p["track"] == "off" else []),
+            "~1 min"),
+    JobType("f1_combo", "f1", "Combo (same-game parlay) prices", "Price one event (past or upcoming) once as of a "
+            "cutoff and read each combo's fair value from the same simulations, with every leg's marginal, their "
+            "product and the lift; pole and fastest-lap legs are flagged when the simulation's correlation is off "
+            "history. Saved as a model run (kind 'combo') with the prices in its metrics.",
+            [Knob("event", "Event", "event"),
+             Knob("cutoff", "As of (UTC)", "datetime", "now", help="YYYY-MM-DDTHH:MM, or now"),
+             Knob("legs", "Legs (JSON)", "legs",
+                  help='A list of legs, a list of combos, or {"name": [legs]}; a leg is {"kind": "race_win", "driver": '
+                       '"Max Verstappen"} with "driver" / "athlete" / "team" / "pair" / "line" / "side" as the kind '
+                       'needs (markets/combos.py)'),
+             Knob("variant", "Model variant", "choice", combo_variants()[0], choices=combo_variants(),
+                  help="the live book's variant plus flpos (the fastest lap from the simulated result) by default"),
+             HALF_LIFE, Knob("sims", "Simulations", "int", 10000, 1000, 50000), F1_TRACK],
+            lambda p, out: _combo_argv(p),
             "~1 min"),
     JobType("f1_sweep", "f1", "Edge Finder sweep (every weekend of the season)", "Every raced weekend of the "
             "season, priced with these settings before any running and after each session, then traded on "
@@ -161,6 +210,10 @@ def parse(job_type, form):
             if raw not in k.choices:
                 raise ValueError(f"{k.label}: pick one of {k.choices}")
             out[k.name] = raw
+        elif k.type == "datetime" and k.default == "now" and raw == "now":
+            out[k.name] = raw
+        elif k.type == "legs":
+            out[k.name] = parse_legs(raw)
         elif k.type == "datetime":
             if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", raw):
                 raise ValueError(f"{k.label}: use YYYY-MM-DDTHH:MM")
@@ -174,6 +227,28 @@ def parse(job_type, form):
                 raise ValueError(f"{k.label}: letters, numbers and spaces, up to 60 characters")
             out[k.name] = raw
     return out
+
+
+def parse_legs(raw):
+    """A combo job's legs (combo_job.parse_combos' JSON), checked without the entry list: each leg's kind can be
+    priced per simulation and names what it needs (a driver counts as an athlete). Returns compact JSON."""
+    import json
+    from racinglines.markets import combos as C
+    from racinglines.models.position_sim import combo_job as CJ
+    if not raw or len(raw) > 4000:
+        raise ValueError("Legs: JSON, up to 4000 characters")
+    combos = CJ.parse_combos(raw)
+    for name, legs in combos:
+        stand_in = [dict(leg, athlete=leg.get("athlete", leg.get("driver")),
+                         pair=leg.get("pair")) if isinstance(leg, dict) else leg for leg in legs]
+        stand_in = [{k: v for k, v in leg.items() if v is not None and k != "driver"} if isinstance(leg, dict) else leg
+                    for leg in stand_in]
+        try:
+            C.check_legs(stand_in)
+        except ValueError as e:
+            raise ValueError(f"Legs ({name}): {e}") from None
+    return json.dumps({n: legs for n, legs in combos} if len(combos) > 1 or combos[0][0] != "combo 1"
+                      else combos[0][1], separators=(",", ":"))
 
 
 def parse_sweep_settings(form):
