@@ -75,7 +75,7 @@ RULES = {
 APPROXIMATE = {("kalshi", "cancelled"), ("kalshi", "cancelled_other"), ("kalshi", "cancelled_binary")}
 ASSUMED = set()                    # no entry is a guess any more (2026-09-29): every payout is the venue's rule
 
-BINARY_KINDS = {"race_h2h", "race_sprint_h2h"}   # two-sided markets with no "Other" (markets/kinds.py payoff h2h)
+BINARY_KINDS = {"race_h2h", "race_sprint_h2h", "race_qual_h2h"}   # two-sided markets with no "Other" (markets/kinds.py payoff h2h)
 OTHER_NAMES = ("other", "any other", "another", "field")
 
 # Races whose status isn't (or isn't only) in the database: (sport, event key) -> status.

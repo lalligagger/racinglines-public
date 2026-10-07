@@ -80,6 +80,22 @@ def test_legs_match_the_single_markets():
         assert C.leg_hits(s, leg).mean() == pytest.approx(single), leg
 
 
+def test_qualifying_and_sprint_sessions_are_legs():
+    s = _factorial()
+    assert C.leg_hits(s, {"kind": "race_qual_top3", "athlete": CC}).mean() == 1.0
+    assert C.leg_hits(s, {"kind": "race_qual_top10", "athlete": D}).mean() == 1.0
+    assert C.leg_hits(s, {"kind": "race_qual_h2h", "pair": [A, B]}).mean() == 1.0
+    assert K.fair("race_qual_h2h", s, a=A, b=B) == 1.0 and "race_qual_top3" not in K.summary(s)
+    res = _res()
+    assert K.settle("race_qual_top3", CC, {}, res) is True and K.settle("race_qual_top3", D, {}, res) is False
+    sprint = OutcomeSims(entrants=s.entrants, rank=s.rank, finished=s.finished, points=s.points, groups=s.groups,
+                         stage_rank={"qual": s.stage_rank["qual"], "sprint": s.rank[:, ::-1]})
+    assert C.leg_hits(sprint, {"kind": "race_sprint_win", "athlete": D}).mean() == 0.5
+    assert C.leg_hits(sprint, {"kind": "race_sprint_h2h", "pair": [D, A]}).mean() == 1.0
+    with pytest.raises(ValueError, match="no sprint"):
+        C.leg_hits(s, {"kind": "race_sprint_podium", "athlete": A})
+
+
 def test_side_no_takes_the_complement():
     s = _factorial()
     yes = C.leg_hits(s, {"kind": "race_win", "athlete": A})

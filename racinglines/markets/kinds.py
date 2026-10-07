@@ -85,6 +85,13 @@ LEGACY = (
     Kind("race_sprint_top8", "top_n", n=8, label="Sprint top 8", default=False, session="sprint"),
     Kind("race_sprint_h2h", "h2h", label="Sprint head-to-head", default=False, session="sprint"),
     Kind("race_sprint_constructor_top", "group_top", label="Sprint top constructor", default=False, session="sprint"),
+    # Qualifying as a classification of its own (owner, 2026-10-07: every session's markets, combo legs included): priced
+    # from sims.stage_rank["qual"], the simulated qualifying order before qualifying, the real one after; settled from
+    # the results' qual_position (the head-to-head needs qual_status too, which the result frame doesn't carry yet:
+    # undecidable until then). Kept out of every default set and live book
+    Kind("race_qual_top3", "stage_top_n", n=3, stage="qual", label="Qualifying top 3", default=False),
+    Kind("race_qual_top10", "stage_top_n", n=10, stage="qual", label="Qualifying top 10 (reaches Q3)", default=False),
+    Kind("race_qual_h2h", "h2h", label="Qualifying head-to-head", default=False, session="qual"),
 )
 
 # The declarative kinds (markets/kinds.toml), after the legacy ones in the file's order: the sportsbook classification
