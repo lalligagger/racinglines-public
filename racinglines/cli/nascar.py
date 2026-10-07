@@ -76,7 +76,11 @@ def main(argv=None):
     replay_cmd.add_demo_parser(sub, "nascar")
     replay_cmd.add_forecast_parser(sub, "nascar")
     replay_cmd.add_sweep_parser(sub, "nascar")
+    replay_cmd.add_signals_parser(sub, "nascar")
     args = ap.parse_args(argv)
+
+    if args.cmd == "signals":
+        return replay_cmd.run_signals(args, "nascar")
 
     if args.cmd == "season":
         return _season(args)

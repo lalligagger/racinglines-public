@@ -350,3 +350,47 @@ def _numbers(spec):
         return [int(x) for x in spec.split(",")]
     a, _, b = spec.partition("-")
     return list(range(int(a), int(b or a) + 1))
+
+
+# --- signals: live paper signals of the sport's profiles (pipelines/sport_signals.py) ----------------------------
+
+def add_signals_parser(sub, sport):
+    from racinglines.pipelines import season_sweep as S
+    p = sub.add_parser("signals", help=f"Live paper signals of users' {sport} strategy profiles on every exchange the "
+                                       "sport lists (pipelines/sport_signals.py). Recommendations only: never places an order.")
+    p.add_argument("--venue", default="all", choices=["all", *S.venues(sport)],
+                   help="all (the default): every exchange of the sport's schema, each with its own users' profiles.")
+    p.add_argument("--profile", default=None, help="Candidate id or name (default: each user's own).")
+    p.add_argument("--user", nargs="*", default=None, help="Only these usernames.")
+    p.add_argument("--event", default="next", help="next (default) or an event key.")
+    p.add_argument("--asof", default=None, help="Replay at this UTC time (prints only; markets read at each stage's "
+                                               "time, the race priced on its classified field, like the sweep).")
+    p.add_argument("--no-fetch", action="store_true", help="Don't refresh the exchange's tape first.")
+    p.add_argument("--no-alert", action="store_true")
+    return p
+
+
+def run_signals(args, sport):
+    from racinglines.db.config import get_engine
+    from racinglines.pipelines import profiles as PF
+    from racinglines.pipelines import season_sweep as S
+    from racinglines.pipelines import signals as SG
+    from racinglines.pipelines import sport_signals as SPS
+    engine = get_engine(args.db)
+    venues = list(S.venues(sport)) if args.venue == "all" else [args.venue]
+    echo = lambda m: print(m, flush=True)        # noqa: E731
+    if args.asof:
+        for venue in venues:
+            with engine.connect() as c:
+                profs = [dict(PF.load(c, args.profile), sport=sport)] if args.profile else [
+                    p for _, n, _, p in PF.assigned(c, venue=venue, sport=sport) if not args.user or n in args.user]
+            for prof in profs:
+                out = SPS.compute(engine, args.db, prof, now=args.asof, event=args.event, live=False, venue=venue,
+                                  fetch=False, echo=echo)
+                print(SG.format_replay(out))
+        return 0
+    rep = SPS.run_all(engine, args.db, sport, venues=venues, users=args.user, profile_ref=args.profile,
+                      event=args.event, fetch=not args.no_fetch, alert=not args.no_alert, echo=echo)
+    if not rep:
+        print(f"no user has a {sport} strategy profile on {', '.join(venues)}")
+    return 0

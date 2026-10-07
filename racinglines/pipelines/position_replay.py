@@ -493,10 +493,12 @@ def batch_id():
     return "replay-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
-def save_run(save, sp, model, st, race, sims):
+def save_run(save, sp, model, st, race, sims, params=None):
     """One as-of run of one race: model_runs (kind 'diagnostic', params.cutoff = the event's first day, so the race
     page reads it as the pre-race price) and race_predictions (win / podium / top 10; top 5 and top 20 in extra);
-    prediction records beside it when RACINGLINES_PREDICTION_RECORDS is on. Returns the run id."""
+    prediction records beside it when RACINGLINES_PREDICTION_RECORDS is on. Returns the run id.
+    params: the run's mode params instead of the replay's (mode "replay as-of" and save["batch"]), e.g. the live
+    signal engine's (pipelines/sport_signals.py)."""
     from racinglines.db import models as m
     from racinglines.db import records as REC
     from racinglines.db.config import get_session
@@ -509,9 +511,10 @@ def save_run(save, sp, model, st, race, sims):
                            dict(c=comp, y=int(race.season))).scalar()
         run = m.ModelRun(competition_id=comp, season_id=season, model=model.name, kind="diagnostic",
                          data_through=(cutoff - pd.Timedelta(days=1)).date(),
-                         params=dict(mode="replay as-of", replay_batch=save["batch"], sport=sp["sport"],
-                                     event_key=race.event_key, cutoff=str(cutoff), sims=int(sims.n_sims),
-                                     model_settings=st.to_json(), model_key=st.model_key, field=len(sims.entrants)))
+                         params={**(dict(mode="replay as-of", replay_batch=save["batch"]) if params is None else {}),
+                                 **dict(sport=sp["sport"], event_key=race.event_key, cutoff=str(cutoff),
+                                        sims=int(sims.n_sims), model_settings=st.to_json(), model_key=st.model_key,
+                                        field=len(sims.entrants)), **(params or {})})
         s.add(run)
         s.flush()
         for i, a in enumerate(sims.entrants):

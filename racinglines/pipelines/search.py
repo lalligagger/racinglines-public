@@ -564,7 +564,7 @@ def import_results(path, engine_url=None, echo=print):
 
 
 def add_candidate(conn, name, settings, year, strategy, why="", run_id=None, source="lab", competition_id=None,
-                  candidate_id=None, venue=None):
+                  candidate_id=None, venue=None, sport=None):
     """A Lab candidate: a named, complete settings set (+ the strategy it's for and the run it came from).
     candidate_id: the search report's stable id (<strategy>-<settings key without the seed>), when it has one.
     venue: the exchange a maker candidate was judged on and quotes ("kalshi"); None / Polymarket as before."""
@@ -576,4 +576,5 @@ def add_candidate(conn, name, settings, year, strategy, why="", run_id=None, sou
                                                        label=settings.label(), year=int(year), strategy=strategy,
                                                        why=why, run_id=run_id, source=source,
                                                        **({"candidate_id": candidate_id} if candidate_id else {}),
-                                                       **({"venue": venue} if venue and venue != DEFAULT_VENUE else {}))))).scalar()
+                                                       **({"venue": venue} if venue and venue != DEFAULT_VENUE else {}),
+                                                       **({"sport": sport} if sport and sport != "f1" else {}))))).scalar()
