@@ -199,6 +199,7 @@ For every F1 weekend, T1 or T3:
 | Close draft #97 (superseded by #110) | Any time | Yes |
 | History purge for data off GitHub (force-push) | Last stage | Needs the owner's spoken OK in the same turn |
 | Open-Meteo's free API is non-commercial only ([Weather forecasts](weather.md)): paid plan, or MET Norway (free for commercial use, not built) | Before billing goes live (G3, 2027) | Stay on the free tier while there is no revenue; decide with the first paid tier |
+| Blend of model fair and prediction-market price for sportsbook slip EV (`racinglines book price` shows both side by side, `blend: none`) | Before any blended EV is treated as final | Owner's call, with a decision-log entry ([Sportsbook slips](sportsbook/slips.md#model-and-market-no-blend-decision-placeholder)) |
 | Odds presentation names in the sportsbook schema: `decimal`, `american`, `fractional`, `cents` (Kalshi), `dollars` (Polymarket, OG.com), `prob` ([Sportsbook schema](sportsbook/index.md)) | After PR #69 merges | Owner checks the names; a rename is one line in `racinglines/books/schema.py` plus the docs table |
 | Fantasy soft launch decisions DEC-1 to DEC-23 ([Fantasy soft launch](fantasy-launch.md#decisions)) | Batch A Wed 30 Sep 18:00 PDT; B Mon 5 Oct; C Wed 7 Oct; go/no-go Thu 8 Oct 12:00 PDT | Per the [runbook's decision table](fantasy-runbook.md#decisions) |
 

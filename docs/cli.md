@@ -315,6 +315,15 @@ racinglines motogp demo-history | forecast   (the same options)
 
 Nothing here runs by default. **Back up the database before the first `ingest` on a real database, and before `link --apply`** ([Data changes](data-changes.md)).
 
+## racinglines book
+
+Generic sportsbook lines and slips (singles and parlays across F1, NASCAR and MotoGP) priced against the model and the
+linked prediction markets, read-only and CLI only: `map FILE` (exact-key mapping of every leg to race, athletes and
+kind; unmapped legs listed), `price FILE [--run ID] [--sims RACE_ID=FILE]` (model fair, market price, book implied
+probability, EV against model and against market; same-race legs jointly from simulations or flagged
+`correlated: EV approximate`), `settle FILE` (results and payouts from the stored classification); `--json` on each.
+See [Sportsbook slips](sportsbook/slips.md).
+
 ## racinglines cycling
 
 Road cycling sportsbook lines (winner, head-to-head) for time trials and road races, from ProCyclingStats results
