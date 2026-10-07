@@ -5,6 +5,8 @@ the result can be trusted, and what runs live or on paper. **Last reviewed 2026-
 (pricing cadence now displayed on race pages for clarity).
 Nothing here trades real money: `POLYMARKET_TRADING_ENABLED` and `KALSHI_TRADING_ENABLED` are unset, and OG.com has
 no order code at all.
+The plan to bring every valid sport × exchange × kind to the F1-on-Polymarket bar, and the counter that will replace
+this page's hand counts, is [Parity rebuild](parity-rebuild.md).
 
 **The short version.** Only **F1 on Polymarket** has a real model, a backtest that held up in a held-out season, and
 live paper trading wired up, and Polymarket has listed no F1 race since 28 Aug 2026. Everything else is one or more

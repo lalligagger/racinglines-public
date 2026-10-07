@@ -6,7 +6,6 @@ better; the model never sees the prices):
 
     own      the sport's [sport] pricing_model
     global   the sport-agnostic model pointed at the sport's schema (`--set k=v` changes its settings)
-    pl       with --pl: Plackett-Luce on the same finishing orders (racinglines/models/model_pl.py)
     control  the same model told to learn nothing (prior_weight 100, the setting's cap: results move a price by a few percent of a place at most): every entrant priced alike, the floor
 
 Read-only: reads the database, writes nothing but the CSV (default data/runs/validation/<sport>.csv).
@@ -64,7 +63,6 @@ def main(argv=None):
     ap.add_argument("--own-set", action="append", default=[], metavar="K=V", help="a setting of the sport's own model")
     ap.add_argument("--own-field", action="store_true", help="give the sport's own model each event's start list")
     ap.add_argument("--own-fill", action="store_true", help="fill the own model's empty positions behind the finishers")
-    ap.add_argument("--pl", action="store_true", help="also run the Plackett-Luce challenger (same settings as global)")
     ap.add_argument("--db", default=None)
     ap.add_argument("--out", default=None)
     args = ap.parse_args(argv)
@@ -81,9 +79,6 @@ def main(argv=None):
     runs = [("own", own, {**base, **own_extra}),
             ("global", glob, {**base, **extra}),
             ("control", glob, {**base, **extra, "prior_weight": 100, "uncertainty": 0, "dnf": False})]
-    if args.pl:
-        from racinglines.models.model_pl import PlackettLuceModel
-        runs.insert(2, ("pl", PlackettLuceModel.for_sport(args.sport)(), {**base, **extra}))
     rows = []
     for label, model, settings in runs:
         st = model.Settings.from_dict(settings)
@@ -100,7 +95,7 @@ def main(argv=None):
     pd.set_option("display.width", 200)
     for col in ("logloss", "brier"):
         print(f"\n{args.sport}: {col} (lower is better)")
-        print(table.pivot_table(index=["season", "kind"], columns="model", values=col)[[r[0] for r in runs]]
+        print(table.pivot_table(index=["season", "kind"], columns="model", values=col)[["own", "global", "control"]]
               .round(4).to_string())
     print("\nn (outcomes scored) per kind, all seasons:")
     print(table[table["season"] == "all"].pivot_table(index="kind", columns="model", values="n").to_string())

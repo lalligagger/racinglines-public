@@ -13,7 +13,9 @@ UTC times (ISO 8601 ending in Z, or "unknown"), every market kind in the kinds r
 compilable regex. A kind the registry has but no model prices yet still passes: pricing says so, not loading.
 
 Market keys are `(kind, subject, params)` in the registry's vocabulary: a mapped line's `market` table carries `kind`
-plus `driver` / `team` / `opponent` / `line` / `side` as the kind needs. Selections resolve to the entry list through
+plus `driver` / `team` / `opponent` / `line` / `side` as the kind needs. A combo (same-game parlay, e.g. "Race Winner
+and Fastest Lap") is `kind = "combo"` with `legs = [...]` (two or more such tables) and `void_leg = "void_all" |
+"drop_leg"` (default void_all), priced and settled by racinglines/markets/combos.py. Selections resolve to the entry list through
 an exact alias table at pricing time, never here and never fuzzily.
 
 Odds presentations (`venue.odds`, `book.odds`; names provisional until the owner checks them, docs/todo.md):
@@ -141,14 +143,42 @@ def present(prob, fmt):
     raise ValueError(f"unknown odds format {fmt!r}")
 
 
+COMBO = "combo"
+VOID_LEG = ("void_all", "drop_leg")
+
+
+def _combo(m, field, problems):
+    """A combo (same-game parlay) line: `legs`, at least two market tables of single kinds (no combo inside a combo),
+    and `void_leg` ("void_all" by default: a void leg voids the slip; "drop_leg": the rest decide). Priced and settled by
+    racinglines/markets/combos.py once the legs' names resolve to entrants."""
+    legs = m.get("legs")
+    if not isinstance(legs, list) or len(legs) < 2:
+        problems.append(f"{field}.legs: a combo needs a list of at least two legs")
+        return
+    if m.get("void_leg", "void_all") not in VOID_LEG:
+        problems.append(f"{field}.void_leg: {m.get('void_leg')!r} not in {VOID_LEG}")
+    for i, leg in enumerate(legs):
+        if isinstance(leg, dict) and leg.get("kind") == COMBO:
+            problems.append(f"{field}.legs[{i}].kind: a combo can't hold a combo")
+            continue
+        if leg == "unmapped":
+            problems.append(f"{field}.legs[{i}]: a combo's legs must all be mapped")
+            continue
+        _market(leg, f"{field}.legs[{i}]", problems)
+
+
 def _market(m, field, problems):
-    """A line's market key: "unmapped", or a table with a known kind and the fields that kind's subject needs."""
+    """A line's market key: "unmapped", a table with a known kind and the fields that kind's subject needs, or a combo
+    (kind = "combo", its legs each such a table)."""
     if m == "unmapped":
         return
     if not isinstance(m, dict):
         problems.append(f'{field}: must be "unmapped" or a table with a kind')
         return
     kind = m.get("kind")
+    if kind == COMBO:
+        _combo(m, field, problems)
+        return
     if kind not in KNOWN_KINDS:
         problems.append(f"{field}.kind: {kind!r} is not a known kind")
         return
