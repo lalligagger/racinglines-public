@@ -75,11 +75,22 @@ def live_variant():
     return PF.PROFILES[prof]["settings"].get("variant", "baseline")
 
 
+def taker_variant():
+    """The model variant the core taker prices with (pipelines/profiles.py profile A): sportsbook combos are taker
+    bets, so they default to it, the variant of the Singapore stage runs the picks used."""
+    from racinglines.pipelines import profiles as PF
+    return PF.PROFILES["A"]["settings"].get("variant", "baseline")
+
+
 def combo_variants():
-    """The variants the f1_combo job offers: the live one plus flpos first (the default), then with fastlap and alone."""
-    live = live_variant()
-    base = [] if live == "baseline" else [live]
-    return [f"{live}+flpos" if base else "flpos", *base, f"{live}+fastlap" if base else "fastlap", "flpos"][:4 if base else 3]
+    """The variants the f1_combo job offers: the taker's plus flpos first (the default), then the live book's plus
+    flpos, then the taker's with fastlap, then flpos alone."""
+    out = []
+    for v in (f"{taker_variant()}+flpos", f"{live_variant()}+flpos", f"{taker_variant()}+fastlap", "flpos"):
+        v = v.removeprefix("baseline+")
+        if v not in out:
+            out.append(v)
+    return out
 
 
 def _combo_argv(p):
