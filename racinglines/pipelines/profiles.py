@@ -124,9 +124,10 @@ def follow_rate(username, strategy):
     return (DEMO_FOLLOW.get(username) or {}).get(kind)
 
 
-def pref(venue="polymarket"):
-    """The users.prefs key a venue's profile lives under (Polymarket: the profile as before)."""
-    return PREF if venue == "polymarket" else f"{PREF}_{venue}"
+def pref(venue="polymarket", sport="f1"):
+    """The users.prefs key a profile lives under: one per venue and sport (F1 on Polymarket: the profile as before,
+    F1 on Kalshi: strategy_profile_kalshi, NASCAR on OG.com: strategy_profile_og_nascar)."""
+    return PREF + ("" if venue == "polymarket" else f"_{venue}") + ("" if sport == "f1" else f"_{sport}")
 
 # The demo accounts' track record (pipelines/demo_history.py): backtest replays of real weekends, shown as
 # what each account ran. Both accounts follow the same walk-forward rule (pipelines/story.py: switch to the
@@ -216,24 +217,24 @@ def combo(conn, members, name, **extra):
                 candidate_id=None, members=ms, **extra)
 
 
-def assign(conn, user_id, profile, venue="polymarket"):
+def assign(conn, user_id, profile, venue="polymarket", sport="f1"):
     """Set (profile dict from load) or clear (None) a user's strategy profile; venue="kalshi" sets the
-    user's Kalshi profile (pref("kalshi")) and leaves the Polymarket one alone."""
-    key = pref(venue)
+    user's Kalshi profile (pref("kalshi")) and leaves the Polymarket one alone; sport another sport's (pref)."""
+    key = pref(venue, sport)
     conn.execute(text(f"""UPDATE users SET prefs = CASE WHEN CAST(:v AS jsonb) IS NULL
                             THEN coalesce(prefs, '{{}}'::jsonb) - '{key}'
                             ELSE coalesce(prefs, '{{}}'::jsonb) || jsonb_build_object('{key}', CAST(:v AS jsonb)) END
                           WHERE id = :u"""), dict(u=user_id, v=None if profile is None else json.dumps(profile)))
 
 
-def of_user(conn, user_id, venue="polymarket"):
-    p = conn.execute(text(f"SELECT prefs->'{pref(venue)}' FROM users WHERE id = :u"), dict(u=user_id)).scalar()
+def of_user(conn, user_id, venue="polymarket", sport="f1"):
+    p = conn.execute(text(f"SELECT prefs->'{pref(venue, sport)}' FROM users WHERE id = :u"), dict(u=user_id)).scalar()
     return p or None
 
 
-def assigned(conn, venue="polymarket"):
-    """[(user_id, username, role, profile)] for every active user with a profile (on that venue)."""
-    key = pref(venue)
+def assigned(conn, venue="polymarket", sport="f1"):
+    """[(user_id, username, role, profile)] for every active user with a profile (on that venue, for that sport)."""
+    key = pref(venue, sport)
     rows = conn.execute(text(f"""SELECT id, username, role, prefs->'{key}' FROM users
                                 WHERE active AND prefs ? '{key}' ORDER BY id""")).all()
     from racinglines.web.roles import canonical

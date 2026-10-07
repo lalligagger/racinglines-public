@@ -21,6 +21,7 @@ from racinglines.markets import private_book as house
 from racinglines.pipelines import profiles as PF
 from racinglines.web import roles as R
 from racinglines.web import accounts as ACC
+from racinglines.web import jobs as J
 from racinglines.web import users as U
 from racinglines.web.app import app, allow, audit, check_csrf, conn, data, render, rows
 
@@ -215,26 +216,43 @@ def admin_user_detail(request: Request, user_id: int, c=Depends(conn)):
     cands = [dict(id=i, name=p.get("name"), strategy=p.get("strategy")) for i, p in PF._candidates(c)]
     combos = [dict(code=code, name=pr["name"], members=", ".join(f"{m} x{w:g}" for m, w in pr["members"]))
               for code, pr in PF.PROFILES.items() if PF.is_combo(pr)]
+    slots = [dict(s, profile=PF.of_user(c, user_id, s["venue"], s["sport"])) for s in profile_slots()]
     return render(request, "admin_user.html", u=rows(u)[0], book=rows(book), bets=rows(bets), activity=rows(activity),
-                  maker_summary=maker_summary, taker_summary=taker_summary, profile=PF.of_user(c, user_id),
+                  maker_summary=maker_summary, taker_summary=taker_summary, profile=slots[0]["profile"], slots=slots,
                   candidates=cands, combos=combos, basic_draw=", ".join(R.basic_members(user_id)))
 
 
+def profile_slots():
+    """Where a user can hold a strategy profile: one slot per sport with a pricing model and exchange that lists it
+    (sports/<code>.toml [markets] venues, exchanges/<code>.toml [sports]), F1 on Polymarket first (the one live
+    paper signals run today, pipelines/signals.py). -> [dict(sport, venue, key, label)]."""
+    out = [dict(sport=code, venue=venue, key=f"{code}:{venue}", label=f"{J.sport_name(code)} · {J.venue_name(venue)}")
+           for code in J.modeled_sports() for venue in J.sport_venues(code)]
+    return sorted(out, key=lambda s: s["key"] != "f1:polymarket")
+
+
 @app.post("/admin/users/{user_id}/profile", dependencies=[Depends(check_csrf), allow("admin")])
-def admin_user_profile(request: Request, user_id: int, candidate_id: str = Form("")):
-    """Assign a Lab candidate as the user's strategy profile (live paper signals), or clear it. candidate_id may
-    also be a blend's code (profiles.COMBOS) or "basic": the account's own draw (roles.basic_profile)."""
+def admin_user_profile(request: Request, user_id: int, candidate_id: str = Form(""), slot: str = Form("f1:polymarket")):
+    """Assign a Lab candidate as the user's strategy profile (live paper signals), or clear it, for one sport and
+    exchange (`slot`, profile_slots). candidate_id may also be a blend's code (profiles.COMBOS) or "basic": the
+    account's own draw (roles.basic_profile)."""
+    where = next((s for s in profile_slots() if s["key"] == slot), None)
+    if where is None:
+        raise HTTPException(400, "unknown sport and exchange")
+    venue, sport = where["venue"], where["sport"]
     with get_engine().begin() as c:
-        old = PF.of_user(c, user_id)
+        old = PF.of_user(c, user_id, venue, sport)
         new = R.basic_profile(c, user_id) if candidate_id == "basic" else PF.load(c, candidate_id) if candidate_id else None
         role = c.execute(text("SELECT role FROM users WHERE id = :u"), dict(u=user_id)).scalar()
         if not R.allowed_profile(role, new, user_id=user_id):
             names = ", ".join(R.basic_profile_names()) or "none"
             return RedirectResponse(f"/admin/users/{user_id}?msg=Error: a basic account may only run: {names}.",
                                     status_code=303)
-        PF.assign(c, user_id, new)
+        if new is not None and slot != "f1:polymarket":     # the slot it was assigned to travels with it (as assign_demo)
+            new = dict(new, venue=venue, sport=sport)
+        PF.assign(c, user_id, new, venue, sport)
     audit(request, "user_profile", user_id=user_id, old=(old or {}).get("name"), new=(new or {}).get("name"),
-          candidate_id=(new or {}).get("candidate_id"))
+          candidate_id=(new or {}).get("candidate_id"), **({} if slot == "f1:polymarket" else dict(venue=venue, sport=sport)))
     return RedirectResponse(f"/admin/users/{user_id}", status_code=303)
 
 
