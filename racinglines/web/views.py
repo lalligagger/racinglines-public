@@ -368,7 +368,7 @@ def _model_brier(c):
 
 @app.get("/lab", response_class=HTMLResponse)
 def lab_page(request: Request, job: str = "", event: str = "", variant: str = "", candidate: int = 0, cfg: str = "",
-             msg: str = "", user=allow(*PRO), c=Depends(conn)):
+             sport: str = "", venue: str = "", msg: str = "", user=allow(*PRO), c=Depends(conn)):
     """The Edge Finder leads (saved runs only, nothing is simulated on a visit); the other sections
     load on demand (/lab/section/{key}). Edge Finder combos and job knobs come from the user's prefs
     (database); which sections are open is a browser view setting."""
@@ -376,14 +376,15 @@ def lab_page(request: Request, job: str = "", event: str = "", variant: str = ""
 
     active = any(j["status"] in ("queued", "running") for j in _recent_jobs(c, user["id"]))
     open_now = (["run"] if job or event or variant or candidate or cfg else []) + (["jobs"] if active or msg else [])
-    q = {k: v for k, v in dict(job=job, event=event, variant=variant, candidate=candidate or "", cfg=cfg).items() if v}
+    q = {k: v for k, v in dict(job=job, event=event, variant=variant, candidate=candidate or "", cfg=cfg, sport=sport,
+                               venue=venue).items() if v}
     return render(request, "lab.html", sections=LAB_SECTIONS, open_now=open_now, query="?" + urlencode(q) if q else "",
                   active=active, msg=msg, brier=_model_brier(c), **_edge_ctx(c, user))
 
 
 @app.get("/lab/section/{key}", response_class=HTMLResponse)
 def lab_section(request: Request, key: str, job: str = "", event: str = "", variant: str = "", scope: str = "",
-                candidate: int = 0, cfg: str = "", user=allow(*PRO), c=Depends(conn)):
+                candidate: int = 0, cfg: str = "", sport: str = "", venue: str = "", user=allow(*PRO), c=Depends(conn)):
     from racinglines.web import edge
     from racinglines.web import prefs as P
     if key not in dict(LAB_SECTIONS):
@@ -410,9 +411,20 @@ def lab_section(request: Request, key: str, job: str = "", event: str = "", vari
             start, source = cf["settings"].to_json(), f"run #{cf['run_id']}"
         elif variant:
             start, source = {"variant": variant}, variant
-        ctx.update(sports=[(code, V.SPORT_NAME[code], [j for j in jobs.CATALOG.values() if j.sport == sport])
-                           for code, sport in (("f1_wdc", "f1"), ("uci_dhi_wc", "mtb_dh"))],
-                   sel_job=job or ("f1_sweep" if variant or candidate or cfg else ""), events=evs, sel_event=sel_event,
+        sel_job = job if job in jobs.CATALOG else ("f1_sweep" if variant or candidate or cfg else "")
+        # a launcher link (?job=…&sport=…&venue=…) presets the chosen job's sport and exchange knobs
+        preset = {k: v for k, v in dict(sport=sport, venue=venue).items()
+                  if v and any(kn.name == k and v in kn.choices for kn in jobs.CATALOG[sel_job].knobs)} if sel_job else {}
+        if preset:
+            knobs[sel_job] = dict(knobs.get(sel_job, {}), **preset)
+        if sel_job == "f1_sweep" and venue in SS.VENUES:
+            start, source = dict(start, venue=venue), source or venue
+        ctx.update(sports=[(code, name, jts) for code, name, jts in
+                           [(jobs.ANY_SPORT, "Any sport", [j for j in jobs.CATALOG.values() if j.sport == jobs.ANY_SPORT])]
+                           + [(code, jobs.sport_name(code), [j for j in jobs.CATALOG.values() if j.sport == code])
+                              for code in jobs.modeled_sports()] if jts],
+                   launch=jobs.launcher(), venue_name=jobs.venue_name,
+                   sel_job=sel_job, events=evs, sel_event=sel_event,
                    sel_cutoff=sel["default_cutoff"] if sel else "", knobs=knobs, candidates=cands,
                    sweep_start=SS.Settings.from_dict(start, strict=False).to_json(), sweep_source=source,
                    sweep_groups=[(g, lab, [x for x in SS.SETTINGS if x.group == g]) for g, lab in SS.GROUPS],
