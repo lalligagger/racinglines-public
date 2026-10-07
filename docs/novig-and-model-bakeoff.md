@@ -65,7 +65,7 @@ global probit-strength model. Plackett-Luce and a market-implied model are plann
 |---|---|---|---|
 | A | Each sport's own model (F1 simulator; timed runs for downhill) | Simulation from sessions or run times | Yes |
 | B | Global model | Probit strength from finishing positions | Yes |
-| C | Plackett-Luce | Ranking likelihood over classifications (`choix`, per `docs/f1-reference.md`) | No (E7) |
+| C | Plackett-Luce | Ranking likelihood over classifications | Tested 2026-10-06, not adopted (Part 3) |
 | D | Market-implied strengths | Strengths fitted to exchange prices | No (E7) |
 | 0 | Learns-nothing control | Uniform or prior only | Yes (global with a heavy prior) |
 
@@ -77,5 +77,62 @@ global probit-strength model. Plackett-Luce and a market-implied model are plann
   profile K.
 - **Golf** would be a fourth sport only if the owner wants a Novig model; it needs a data source probe first.
 
+## Part 3: Plackett-Luce tested (2026-10-06): not adopted
+
+**What ran.** A first Plackett-Luce model (`racinglines/models/model_pl.py`, tests in `tests/test_model_pl.py`)
+was added as a fourth column to the 2026-10-02 validation harness (`scripts/validate_global_model.py --pl`) and run
+on the same events, seasons, seed and simulation count. It reads exactly the global model's history (finishing
+positions only), so the comparison isolates the algorithm. Each past race's classified order is one Plackett-Luce
+observation, weighted by the global model's recency decay (`half_life_days`), fitted by Hunter's MM algorithm with
+`prior_weight` pseudo-comparisons against an average entrant; races are drawn by Gumbel-max, with the global
+model's retirement draw. Nothing is tuned: every setting is the global model's default. The own, global and control
+columns reproduce the 2026-10-02 report to the fourth decimal, so the runs are like for like.
+
+**Results**, log loss over all scored seasons (lower is better; bold is the better of global and PL):
+
+| Sport (events) | Kind | Own | Global | PL | Control |
+|---|---|---|---|---|---|
+| F1 (63) | race_win | 0.1134 | **0.1476** | 0.1556 | 0.1812 |
+| F1 | race_podium | 0.2273 | **0.2965** | 0.3122 | 0.3852 |
+| F1 | race_top10 | 0.4528 | 0.5453 | **0.5377** | 0.6481 |
+| F1 | race_h2h | 0.4847 | 0.5612 | **0.5580** | 0.6515 |
+| NASCAR (82) | race_win | 0.1530 | **0.1085** | 0.1151 | 0.1211 |
+| NASCAR | race_podium | 0.4373 | **0.2407** | 0.2527 | 0.2713 |
+| NASCAR | race_top10 | 1.1189 | **0.4904** | 0.4992 | 0.5547 |
+| NASCAR | race_h2h | 1.4863 | **0.6083** | 0.6086 | 0.6634 |
+| MotoGP (32) | race_win | 0.1936 | **0.1608** | 0.1620 | 0.1867 |
+| MotoGP | race_podium | 0.4004 | 0.3242 | **0.3112** | 0.3985 |
+| MotoGP | race_top10 | 0.9820 | 0.6134 | **0.5874** | 0.6765 |
+| MotoGP | race_h2h | 1.0548 | 0.6331 | **0.6184** | 0.6814 |
+
+**Verdict: not adopted.** PL beats the learn-nothing control everywhere, so it learns. But it loses to the global
+model on **race win in all three sports and on podium in F1 and NASCAR**, the markets we actually trade, and never
+comes near the F1 simulator. Its wins are in the middle of the field: F1 top 10 and head-to-head, and every MotoGP
+kind but the win (MotoGP is 32 events, two seasons). The differences are small, and the harness prints no standard
+errors, so only the direction is a finding: the per-kind margins are not tested for significance.
+
+**Why** *(inferred, not tested separately)*:
+
+1. **Every place counts the same.** A Plackett-Luce fit learns as much from a 14th-vs-15th swap as from who won, so
+   the strengths are fitted mostly to the midfield (there are many more midfield places than podium places). That
+   matches where it does well (top 10, head-to-head) and where it doesn't (win, podium). The global model's probit
+   score spreads the front of the field further apart, so a win counts for more than a 10th place.
+2. **Its race-day noise is fixed.** The Gumbel draw has one spread; the global model has `noise` and an extra
+   spread for entrants with few starts (`uncertainty`). With no knob for how decisive a race is, PL can't sharpen
+   its favourites in a sport where the best car wins often (F1) or flatten them where it doesn't.
+3. **Retirements are left out of the order.** A retirement is information about reliability that PL ignores in
+   the strengths (it only reaches the price through the shared DNF draw).
+4. **Nothing is tuned,** for either model. A tuned PL (a temperature on the strengths, a weighting toward the
+   front places) might close the gap. It isn't worth that work while it trails on the win market.
+
+**Kept:** the model and the `--pl` flag stay in the repo as a baseline for E7 (no live path uses them), so the next
+algorithm (market-implied strengths) is scored against it. Commands, on the Mac with the local database (read-only):
+
+```
+PYTHONPATH=. python scripts/validate_global_model.py f1     --seasons 2024 2025 2026 --pl
+PYTHONPATH=. python scripts/validate_global_model.py motogp --seasons 2016 2026 --own-field --own-fill --pl
+PYTHONPATH=. python scripts/validate_global_model.py nascar --seasons 2018 2019 2026 --own-field --own-fill --pl
+```
+
 **Owner decisions:** (1) Novig: option 1, 2 or 3 above. (2) Build E5's generic `compare` first (Implement, Sonnet,
-on the E4a records), then C (Plackett-Luce) as the first new algorithm (Own, Opus), then D? (3) Is golf in scope?
+on the E4a records, with paired standard errors), then D (market-implied)? C (Plackett-Luce) is tested above and not adopted. (3) Is golf in scope?
