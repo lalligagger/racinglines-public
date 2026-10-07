@@ -117,15 +117,14 @@ slip:
 3. The market's slip probability is always the product of its legs' prices. No exchange lists the slip itself. When
    legs share a race, it carries the same flag.
 
-## Model and market: no blend (decision placeholder)
+## Model and market: no blend
 
-Both prices and both EVs are shown side by side, and nothing combines them. **How the model and the market price
-are blended is the owner's decision.** It needs a decision-log entry in the
-[F1 roadmap decision log](../f1-roadmap.md) format before any blend is treated as final.
+Both prices and both EVs are shown side by side, and nothing combines them. The owner decided on no blend
+(2026-10-07); a blend later would need a new row here in the [F1 roadmap decision log](../f1-roadmap.md) format.
 
 | Date | Decision | Status |
 |---|---|---|
-| (pending) | Blend of model fair and prediction-market price for sportsbook slip EV (a weight, a shrink toward the market, or none) | **Awaiting the owner**. Until then `book price` reports `blend: "none"` |
+| 2026-10-07 | Blend of model fair and prediction-market price for sportsbook slip EV: **none**. `book price` shows both prices and both EVs side by side | Decided (owner) |
 
 ## Settlement
 

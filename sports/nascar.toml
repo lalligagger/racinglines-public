@@ -10,7 +10,7 @@ name = "NASCAR Cup Series"
 result_kind = "position"          # finishing positions
 model_family = "position_sim"     # result-based pricing model: conservative, source-faithful, uses race results only
 # The sport-agnostic results model (models/model_global.py: start list, retirements, team groups), with [model] below.
-# PROPOSED, staging only, owner to confirm: docs/f1-roadmap.md decision log 2026-10-07 "GlobalModel for NASCAR and
+# Confirmed by the owner 2026-10-07 (staging first): docs/f1-roadmap.md decision log 2026-10-07 "GlobalModel for NASCAR and
 # MotoGP". Its settings are the model's a priori defaults (no [model.defaults]), none tuned.
 pricing_model = "racinglines.models.model_global:GlobalModel"
 # Other pricing models kept runnable (`racinglines backtest walk-forward nascar --model NAME`), by model_runs.model name

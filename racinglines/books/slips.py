@@ -24,7 +24,7 @@ exactly these legs; otherwise the product of the legs' marginals, flagged "corre
 different races are taken as independent (the product). The market's slip probability is always the product of its
 legs' prices (no exchange lists the combo), flagged the same way when legs share a race.
 
-Model and market are shown side by side and never blended: how they combine is the owner's decision
+Model and market are shown side by side and never blended (owner, 2026-10-07: no blend)
 (docs/sportsbook/slips.md, decision log placeholder).
 """
 
@@ -47,7 +47,7 @@ ASSUMPTIONS = (
     "Legs on the same race are priced jointly from simulations when they are available (passed in, or a stored combo "
     "run with exactly these legs); otherwise the product of the marginals, flagged '" + CORRELATED + "'.",
     "The market's slip probability is the product of its legs' prices: no exchange lists the slip itself.",
-    "Model and market are shown side by side, never blended: the blend is the owner's decision.",
+    "Model and market are shown side by side, never blended (owner, 2026-10-07).",
     "The market price is the freshest linked exchange's mid (bid/ask midpoint, else its last price, else the tape's).",
 )
 LEG_FIELDS = ("line", "leg", "status", "reason", "sport", "competition", "season", "round", "event_key", "race_id",
@@ -453,7 +453,7 @@ def price_book(conn, book, runs=None, sims=None, _db=None):
                    market_method=None if pk is None else ("single" if len(legs) == 1 else "product"),
                    flags=flags, edge_model=None if pm is None else _r(pm - book_p),
                    edge_market=None if pk is None else _r(pk - book_p), ev_model=_ev(pm, dec), ev_market=_ev(pk, dec))
-    out.update(assumptions=list(ASSUMPTIONS), blend="none: the owner's decision (docs/sportsbook/slips.md)")
+    out.update(assumptions=list(ASSUMPTIONS), blend="none (owner, 2026-10-07; docs/sportsbook/slips.md)")
     return out
 
 

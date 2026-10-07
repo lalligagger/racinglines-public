@@ -37,7 +37,8 @@ def test_the_schema_names_the_engine_kinds_venues_and_settings():
 def test_the_stage_mode_is_an_explicit_setting_defaulting_to_the_schema():
     """`stages`: "weekend" (the fixed [replay] stages) or "sessions" (the session schedule); unset = the schema's
     [sweep] stages, and unset it stays out of every key, so earlier results and ids are unchanged."""
-    assert SW.modes("f1") == ("sessions",) and SW.modes("nascar") == SW.modes("motogp") == ("weekend",)
+    assert SW.modes("f1") == ("sessions",)
+    assert set(SW.modes("nascar")) == set(SW.modes("motogp")) == {"weekend", "sessions"}     # schedules since C12a
     f1 = SS.Settings.from_dict()
     assert f1["stages"] is None and SS.Settings.from_dict({"stages": "sessions"}).key == f1.key
     assert SW.mode_of("f1", f1) == "sessions"
@@ -46,8 +47,8 @@ def test_the_stage_mode_is_an_explicit_setting_defaulting_to_the_schema():
     cls = SW.settings_class("nascar")
     assert cls.from_dict({"stages": "weekend"}).key == cls.from_dict().key
     assert SW.mode_of("nascar", cls.from_dict()) == "weekend"
-    with pytest.raises(ValueError):
-        cls.from_dict({"stages": "sessions"})                            # no session schedule in its schema yet
+    assert SW.mode_of("nascar", cls.from_dict({"stages": "sessions"})) == "sessions"   # opt-in; weekend stays default
+    assert cls.from_dict({"stages": "sessions"}).key != cls.from_dict().key
 
 
 @pytest.mark.quick
