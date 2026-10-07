@@ -165,6 +165,15 @@ def _race_chart(c, info, pricing, df, exchange="polymarket"):
     return out
 
 
+def _diagnostic_job(competition):
+    """The Lab's event-diagnostic job for a competition's sport (e.g. f1_diagnostic), None when it has none."""
+    try:
+        sport = SP.by_competition(competition)["sport"]["code"]
+    except StopIteration:
+        return None
+    return next((j.code for j in jobs.CATALOG.values() if j.sport == sport and j.code.endswith("_diagnostic")), None)
+
+
 def _calibration(competition):
     """The sport schema's [sport] calibration for a competition code (e.g. "baseline"), None when unset or unknown."""
     try:
@@ -206,7 +215,7 @@ def race_page(request: Request, race_id: int, msg: str = "", c=Depends(conn)):
                   kalshi=V.KALSHI_VENUE,
                   diag_runs=diag_runs, msg=msg, kind_label=V.KIND_LABEL, placeholders=V.placeholders(c, race_id),
                   quote_kinds=list(V.STANDARD_KINDS.get(info["competition"], ("race_win", "race_podium"))),
-                  calibration=_calibration(info["competition"]))
+                  calibration=_calibration(info["competition"]), diag_job=_diagnostic_job(info["competition"]))
 
 
 @app.get("/seasons/{code}", response_class=HTMLResponse, dependencies=[allow(*PRO)])
@@ -251,8 +260,7 @@ def book_page(request: Request, maker: str = "", c=Depends(conn), user=allow(*PR
                     JOIN competitions co ON co.id = mr.competition_id WHERE mr.id = ANY(:r)""", r=runs).to_dict("records")}
         for rk, g in bk.groupby("race_key", sort=False):
             mt = meta.get(rk, {})
-            title = "Season-long markets" if rk == 0 else (
-                f"{mt.get('venue')} GP" if mt.get("competition") == "f1_wdc" else mt.get("venue"))
+            title = "Season-long markets" if rk == 0 else V.race_title(mt.get("competition"), None, mt.get("venue"), None)
             code = None
             if rk == 0:
                 ids = [int(x) for x in g["model_run_id"].dropna()]
@@ -447,8 +455,10 @@ def lab_section(request: Request, key: str, job: str = "", event: str = "", vari
             start, source = cf["settings"].to_json(), f"run #{cf['run_id']}"
         elif variant:
             start, source = {"variant": variant}, variant
-        ctx.update(sports=[(code, V.SPORT_NAME[code], [j for j in jobs.CATALOG.values() if j.sport == sport])
-                           for code, sport in (("f1_wdc", "f1"), ("uci_dhi_wc", "mtb_dh"))],
+        ctx.update(sports=[(SP.load(sport)["competition"]["code"],
+                            V.SPORT_NAME.get(SP.load(sport)["competition"]["code"], SP.load(sport)["sport"]["name"]),
+                            [j for j in jobs.CATALOG.values() if j.sport == sport])
+                           for sport in dict.fromkeys(j.sport for j in jobs.CATALOG.values())],    # every sport with a job
                    sel_job=job or ("f1_sweep" if variant or candidate or cfg else ""), events=evs, sel_event=sel_event,
                    sel_cutoff=sel["default_cutoff"] if sel else "", knobs=knobs, candidates=cands,
                    sweep_start=SS.Settings.from_dict(start, strict=False).to_json(), sweep_source=source,

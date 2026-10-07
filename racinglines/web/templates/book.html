@@ -20,7 +20,7 @@
 <div class="card"><div class="scroll"><table>
 <thead><tr><th class="l">Event</th><th class="l">Sport</th><th>Date</th><th class="l">Status</th><th>Markets (open)</th><th>Bets</th><th>Staked</th><th>EV at fair (open)</th><th>Worst case (open)</th><th>Settled P&amp;L</th><th class="l">Most staked</th><th></th></tr></thead>
 <tbody>{% for g in groups %}<tr>
-<td class="l"><a href="{{ '/races/' ~ g.race_id if g.race_id else '/seasons/' ~ (g.season_code or 'f1_wdc') }}">{{ g.title }}</a></td><td class="l">{{ g.sport }}</td><td>{{ g.date|fmt if g.date }}</td>
+<td class="l"><a href="{{ '/races/' ~ g.race_id if g.race_id else '/seasons/' ~ g.season_code }}">{{ g.title }}</a></td><td class="l">{{ g.sport }}</td><td>{{ g.date|fmt if g.date }}</td>
 <td class="l"><span class="chip status-{{ g.status }}">{{ (g.status or "")|replace('_', ' ') }}</span></td>
 <td>{{ g.markets }} ({{ g.open }})</td><td>{{ g.bets }}</td><td>{{ g.staked|money(false, false) }}</td>
 <td>{% if g.open %}{{ pnl(g.ev) }}{% endif %}</td>
