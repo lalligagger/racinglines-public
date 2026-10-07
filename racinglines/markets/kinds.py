@@ -35,12 +35,18 @@ class Kind:
     code: str
     payoff: str               # top_n | stage_top_n | h2h | reached | group_top | indicator | mover | standings (not from
                               # sims) | spec (a declarative kind: markets/kinds.toml, priced and settled by payoffs.py)
+                              # | prop (a history-rate race prop, PROPS below: not in KINDS)
     n: int | None = None      # top_n / stage_top_n
     stage: str | None = None  # stage_top_n / mover: which earlier round (sims.stage_rank key); reached: which round
     label: str = ""
     default: bool = True      # False: priced only when named (fair(), a model's own summary); left out of summary(),
                               # to_records and the walk-forward default set, so adding one changes no existing output
     spec: dict | None = field(default=None, compare=False)   # payoff "spec": {"payoff": {...}, "settle": {...}}
+    wx: str | None = None     # how a probability of rain moves its price (models/position_sim/props.py): None, not at
+                              # all; "rate" a yes/no rate priced with props.rate_wx; "dnf" its drivers' dnf_prob scaled by
+                              # props.wx_scale before pricing. Declarative kinds: `wx = "..."` in markets/kinds.toml
+    session: str | None = None   # a market on an earlier round raced as its own classification (F1: "sprint"):
+                                 # priced on sims.at(session), settled on the result's <session>_ columns
 
 
 # Declared in the order the readers list prediction kinds (db/reads.PREDICTION_KINDS is derived from it).
@@ -72,12 +78,34 @@ LEGACY = (
     # gained; every driver tied on that gain counts as YES (docs/f1-roadmap.md decision log, 2026-10-04)
     Kind("race_top5", "top_n", n=5, label="Top 5", default=False),
     Kind("race_biggest_mover", "mover", stage="qual", label="Biggest mover", default=False),
+    # The sprint as a race of its own (models/position_sim/pricing.price_stages, docs/todo.md U13): the race payoffs
+    # on the sprint's classification and points. Kept out of every default set and live book (owner, DEC-12) until
+    # their settlement is proven
+    Kind("race_sprint_podium", "top_n", n=3, label="Sprint podium", default=False, session="sprint"),
+    Kind("race_sprint_top8", "top_n", n=8, label="Sprint top 8", default=False, session="sprint"),
+    Kind("race_sprint_h2h", "h2h", label="Sprint head-to-head", default=False, session="sprint"),
+    Kind("race_sprint_constructor_top", "group_top", label="Sprint top constructor", default=False, session="sprint"),
 )
 
 # The declarative kinds (markets/kinds.toml), after the legacy ones in the file's order: the sportsbook classification
 # markets (docs/sportsbook/) and the retirements (decision log 2026-10-06, provisional), all default=False.
 KINDS = {k.code: k for k in LEGACY + tuple(
-    Kind(e["code"], "spec", label=e["label"], default=e["default"], spec=e) for e in P.load().values())}
+    Kind(e["code"], "spec", label=e["label"], default=e["default"], spec=e, wx=e["wx"]) for e in P.load().values())}
+
+# The race props priced from the race history (models/position_sim/props.py), not from simulations: kinds for their
+# `wx` only, kept out of KINDS so the prediction kinds (db/reads.PREDICTION_KINDS) and every summary stay as they are.
+# The red flag is priced given a probability of rain; the safety car is not (conditioning it was worse in the
+# walk-forward, decision log 2026-10-06) and rain is the forecast itself.
+PROPS = (
+    Kind("race_safety_car", "prop", label="Safety car", default=False),
+    Kind("race_red_flag", "prop", label="Red flag", default=False, wx="rate"),
+    Kind("race_rain", "prop", label="Rain", default=False),
+)
+
+
+def wx_kinds(how):
+    """The codes whose `wx` is `how` ("rate" or "dnf"), props first, then KINDS in registry order."""
+    return tuple(k.code for k in PROPS + tuple(KINDS.values()) if k.wx == how)
 
 
 # --- fair values ---------------------------------------------------------------------------------------
@@ -88,6 +116,8 @@ def fair(kind, sims, a=None, b=None, line=None):
     return {group: probability}; its field kinds with compare over (race_n_classified, race_n_retirements) need
     `line` and return P(over)."""
     k = KINDS[kind]
+    if k.session is not None:                  # an earlier round's own classification (the sprint)
+        sims = sims.at(k.session)
     if k.spec is not None:
         try:
             return P.fair(k.spec["payoff"], sims, a=a, line=line)
@@ -199,6 +229,18 @@ def standings_position(ss, n):
 
 # --- settlement ----------------------------------------------------------------------------------------
 
+def session_result(res, session):
+    """An earlier round's classification out of the race's result frame (private_book.race_outcomes adds
+    <session>_position / _status / _points), as a result frame of its own: the drivers who took part in it.
+    None when the frame doesn't carry it (that round's results aren't in yet)."""
+    cols = {f"{session}_{c}": c for c in ("position", "status", "points")}
+    if not set(cols) <= set(res.columns):
+        return None
+    out = res.drop(columns=[c for c in cols.values() if c in res]).rename(columns=cols)
+    out = out[out["status"].notna()]
+    return out if len(out) else None
+
+
 def settle(kind, athlete_id, params, res, group_key=None):
     """YES/NO for a race market from the official classification (None if undecidable).
     group_key: maps a result's team_id to the group key the market names (F1: position_sim team_key).
@@ -207,6 +249,10 @@ def settle(kind, athlete_id, params, res, group_key=None):
     if res.empty:
         return None
     k = KINDS.get(kind)
+    if k is not None and k.session is not None:
+        res = session_result(res, k.session)
+        if res is None:
+            return None
     if k is not None and k.spec is not None:
         return P.settle(k.spec["settle"], athlete_id, params, res, group_key=group_key)
     if k is None or k.payoff == "standings":

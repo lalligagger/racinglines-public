@@ -1,5 +1,6 @@
 """
-Weather Underground forecasts (docs/weather.md), the first provider of the forecast frame (weather/schema.py).
+Weather Underground forecasts (docs/weather.md), an optional provider of the forecast frame (weather/schema.py);
+Open-Meteo (weather/open_meteo.py) is the default. Never probed: the owner has no PWS key.
 
 Weather Underground's forecasts are served by The Weather Company's API (api.weather.com, the "v3" endpoints), called
 with an `apiKey` query parameter: the key a Weather Underground PWS owner gets, read from $WUNDERGROUND_API_KEY.

@@ -32,6 +32,9 @@ racinglines f1 <command>: Formula 1.
                  (the only kind the web app uses for live fair prices).
     props        Race props (safety car, red flag, rain, fastest lap) for one event from the race
                  history, or --check: their walk-forward calibration (models/position_sim/props.py).
+    sprint-check Walk-forward check of the sprint stage on every stored sprint weekend: sprint-winner Brier
+                 and log loss vs the Grand Prix win stand-in, and sprint vs GP retirements
+                 (models/position_sim/sprint_check.py). Read-only; nothing is stored.
 """
 
 import argparse
@@ -241,6 +244,10 @@ def main(argv=None):
     p = sub.add_parser("inrace-backfill", help="After a race: the Live tab's in-race win chart from the race's laps, "
                                                "one point per lap, as if the live-timing relay had run all race.")
     p.add_argument("--event", required=True, help="YEAR-ROUND, e.g. 2026-16.")
+    p = sub.add_parser("sprint-check", help="Walk-forward check of the sprint stage (position_sim/sprint_check.py).")
+    p.add_argument("--from", dest="start_year", type=int, default=2021, help="First season scored")
+    p.add_argument("--sims", type=int, default=4000)
+    p.add_argument("--out", default=None, metavar="CSV", help="Also write the per-weekend rows here")
     p = sub.add_parser("props", help="Race props: safety car, red flag, rain, fastest lap (props.py).")
     p.add_argument("event", nargs="?", default=None, help="Season-round, e.g. 2026-16 (the yes/no props)")
     p.add_argument("--run", type=int, default=None, help="A stored stage run id: adds the fastest-lap prices")
@@ -251,6 +258,10 @@ def main(argv=None):
                    help="--check: score a history CSV (props.history()'s columns) instead of the database")
     p.add_argument("--dnf-check", default=None, metavar="CSV",
                    help="The position simulation's DNF calibration on an as-of export (position_sim/dnf_check.py)")
+    p.add_argument("--forecast", default=None, metavar="CSV",
+                   help="--check / --dnf-check: the weather leads CSV (racinglines weather leads; weather/wet.py "
+                        "p_wet_series) adds the -WX variants; needs a race history (--history CSV or the database)")
+    p.add_argument("--lead", type=int, default=5, help="--forecast: the forecast issued this many days before (default 5)")
     args = ap.parse_args(argv)
     from racinglines.models.position_sim import variants as V
     V.switches(args.variant)                         # fail fast on an unknown name
@@ -320,6 +331,35 @@ def _save_sweep(args, out):
                                               if args.reliability else {})))
 
 
+def race_week(race_date):
+    """The FastF1 recorder's window around a race day: the Wednesday before it to the Tuesday after (inclusive)."""
+    from datetime import timedelta
+    wed = race_date - timedelta(days=(race_date.weekday() - 2) % 7)
+    return wed, wed + timedelta(days=6)
+
+
+def fastf1_target(conn, today):
+    """(year, round) of the F1 event whose race week (race_week) contains `today`, else None. Reads events by the
+    competition code in sports/f1.toml; an event's start_date is its race day (sources/fastf1/ingest.py)."""
+    from datetime import timedelta
+    from sqlalchemy import text
+    from racinglines import sports
+    rows = conn.execute(text("""
+        SELECT s.year, e.series_round, e.start_date
+        FROM events e
+        JOIN seasons s ON s.id = e.season_id
+        JOIN competitions c ON c.id = s.competition_id
+        WHERE c.code = :code AND e.series_round IS NOT NULL AND e.status <> 'cancelled'
+          AND e.start_date BETWEEN :lo AND :hi
+        ORDER BY e.start_date"""), dict(code=sports.load("f1")["competition"]["code"],
+                                        lo=today - timedelta(days=7), hi=today + timedelta(days=7))).all()
+    for year, rnd, race_date in rows:
+        lo, hi = race_week(race_date)
+        if lo <= today <= hi:
+            return int(year), int(rnd)
+    return None
+
+
 def _run(args):
     import pandas as pd
     pd.set_option("display.width", 220)
@@ -350,17 +390,28 @@ def _run(args):
     if args.cmd == "props":
         from racinglines.models.position_sim import props as PR
         prior_n = PR.PRIOR_N if args.prior_n is None else args.prior_n
+        fc = hist = None
+        if args.forecast:
+            from racinglines.weather import wet as WET
+            if args.history:
+                hist = pd.read_csv(args.history)
+            else:
+                with engine.connect() as c:
+                    hist = PR.history(c)
+            fc = WET.p_wet_series(hist, pd.read_csv(args.forecast), args.lead, prior_n=prior_n)
         if args.dnf_check:
             from racinglines.models.position_sim import dnf_check as DC
-            print(DC.render(DC.check(pd.read_csv(args.dnf_check))))
+            wx = {} if fc is None else dict(forecast=fc, history_df=hist, prior_n=prior_n)
+            print(DC.render(DC.check(pd.read_csv(args.dnf_check), **wx)))
             return
         if args.check and args.history:
-            _, summ = PR.check(None, args.start_year, prior_n, history_df=pd.read_csv(args.history))
+            h = hist if hist is not None else pd.read_csv(args.history)
+            _, summ = PR.check(None, args.start_year, prior_n, history_df=h, forecast=fc)
             print(summ.to_string(index=False, float_format="{:.4f}".format))
             return
         with engine.connect() as c:
             if args.check:
-                _, summ = PR.check(c, args.start_year, prior_n)
+                _, summ = PR.check(c, args.start_year, prior_n, forecast=fc)
                 print(summ.to_string(index=False, float_format="{:.4f}".format))
                 return
             if not args.event:
@@ -510,68 +561,12 @@ def _run(args):
             try:
                 now = datetime.now(timezone.utc)
 
-                # Check if we're in a race weekend window (calendar-aware polling)
-                # Only poll during Thu-Sun of race weekends; skip Mon-Wed to avoid abusing FastF1
+                # Calendar-aware polling: only inside an F1 event's race-week window (Wed before to Tue after)
                 with engine.connect() as c:
-                    # Get the next upcoming/ongoing race to determine if we're in its weekend window
-                    result = c.execute(text("""
-                        SELECT e.year, e.round, r.event_date, r.status
-                        FROM events e
-                        JOIN races r ON r.event_id = e.id
-                        WHERE e.year >= 2020 AND r.status IN ('upcoming', 'ongoing', 'completed')
-                        ORDER BY (CASE r.status
-                                   WHEN 'ongoing' THEN 0
-                                   WHEN 'upcoming' THEN 1
-                                   WHEN 'completed' THEN 2 END),
-                                 r.event_date DESC
-                        LIMIT 1
-                    """))
-                    race_row = result.fetchone()
-
-                    if race_row:
-                        year, round_num, event_date, race_status = race_row
-                        # Calculate race weekend window: Wed before to Tue after the race
-                        from datetime import timedelta
-                        race_date = event_date.date() if hasattr(event_date, 'date') else event_date
-                        # Go back to the Wednesday of that week
-                        day_of_week = race_date.weekday()  # Monday=0, Sunday=6
-                        if day_of_week >= 2:  # Wed(2)=onwards in the week of the race
-                            days_back = day_of_week - 2
-                        else:  # Mon/Tue - go back to previous week's Wed
-                            days_back = day_of_week + 5  # Mon(0)->5 days back, Tue(1)->6 days back
-                        wed_start = race_date - timedelta(days=days_back)
-                        tue_end = wed_start + timedelta(days=6)  # Wed to following Tue
-
-                        # Check if now is within the race weekend window
-                        now_date = now.date()
-                        if not (wed_start <= now_date <= tue_end):
-                            # Outside race weekend - idle mode, just log and exit
-                            return
-                    else:
-                        # No upcoming races found - idle mode
-                        return
-
-                # Detect current F1 session (we're in a race weekend window)
-                with engine.connect() as c:
-                    # Get upcoming/ongoing/completed races in priority order
-                    result = c.execute(text("""
-                        SELECT e.year, e.round, r.event_date, r.status
-                        FROM events e
-                        JOIN races r ON r.event_id = e.id
-                        WHERE e.year >= 2020
-                        ORDER BY (CASE r.status
-                                   WHEN 'ongoing' THEN 0
-                                   WHEN 'upcoming' THEN 1
-                                   WHEN 'completed' THEN 2
-                                   ELSE 3 END),
-                                 e.year DESC, e.round DESC
-                        LIMIT 1
-                    """))
-                    row = result.fetchone()
-                    if not row:
-                        print("no upcoming/ongoing race found", flush=True)
-                        return
-                    year, round_num, event_date, status = row
+                    target = fastf1_target(c, now.date())
+                if target is None:
+                    return   # outside a race week: idle
+                year, round_num = target
 
                 # Fetch current session via FastF1 and store snapshot
                 now = datetime.now(timezone.utc)
@@ -1002,6 +997,15 @@ def _run(args):
 
     use_track = not getattr(args, "no_track", False)
     hist = run.history(meas, use_track)
+
+    if args.cmd == "sprint-check":
+        from racinglines.models.position_sim import sprint_check as SC
+        out = SC.check(meas, hist, start_year=args.start_year, n_sims=args.sims)
+        print(SC.render(out))
+        if args.out:
+            out.to_csv(args.out, index=False)
+            print(f"\nPer-weekend rows -> {args.out}")
+        return
 
     if args.cmd == "diagnostic":
         cutoff = pd.Timestamp(args.cutoff)

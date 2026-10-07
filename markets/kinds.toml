@@ -9,6 +9,10 @@
 #   n          top: rank <= n and finished; nth_retired: the n-th retirement (1 = the first)
 #   aggregate  any | all | sum | count         how a team's or the field's cars combine (omitted for driver)
 #   compare    over                            P(aggregate > line); the line is given when pricing or settling
+# wx               optional: how a probability of rain moves the price (racinglines/markets/kinds.py Kind.wx).
+#                  "dnf": priced from drivers' dnf_prob scaled by props.wx_scale (the circuit's wet-or-dry retirement
+#                  rate, models/position_sim/props.py) when a probability of rain is given; set on every kind whose
+#                  predicate is classified, retired, last_classified or nth_retired. Omitted: weather doesn't move it.
 # [kinds.settle]   optional: overrides of the payoff spec for settlement, plus
 #   absent     no | void                       a driver missing from the results settles NO or void (default void)
 #
@@ -31,6 +35,7 @@
 code = "race_classified"
 label = "Classified"
 default = false
+wx = "dnf"
 payoff = { subject = "driver", predicate = "classified" }
 settle = { absent = "no" }
 
@@ -38,6 +43,7 @@ settle = { absent = "no" }
 code = "race_last_classified"
 label = "Last classified finisher"
 default = false
+wx = "dnf"
 payoff = { subject = "driver", predicate = "last_classified" }
 settle = { absent = "no" }
 
@@ -45,12 +51,14 @@ settle = { absent = "no" }
 code = "race_team_both_classified"
 label = "Both cars classified"
 default = false
+wx = "dnf"
 payoff = { subject = "team", predicate = "classified", aggregate = "all" }
 
 [[kinds]]
 code = "race_n_classified"
 label = "Classified drivers over the line"
 default = false
+wx = "dnf"
 payoff = { subject = "field", predicate = "classified", aggregate = "count", compare = "over" }
 
 [[kinds]]
@@ -66,24 +74,28 @@ payoff = { subject = "team", predicate = "top", n = 1, aggregate = "any" }
 code = "race_retire"
 label = "Retires (DNF)"
 default = false
+wx = "dnf"
 payoff = { subject = "driver", predicate = "retired" }
 
 [[kinds]]
 code = "race_n_retirements"
 label = "Retirements over the line"
 default = false
+wx = "dnf"
 payoff = { subject = "field", predicate = "retired", aggregate = "count", compare = "over" }
 
 [[kinds]]
 code = "race_first_retirement"
 label = "First retirement"
 default = false
+wx = "dnf"
 payoff = { subject = "driver", predicate = "nth_retired", n = 1 }
 
 [[kinds]]
 code = "race_first_retirement_team"
 label = "First constructor to retire"
 default = false
+wx = "dnf"
 payoff = { subject = "team", predicate = "nth_retired", n = 1, aggregate = "sum" }
 
 # Owner (2026-10-06): "if we have DID RETIRE add DID RETIRE 1st and so on", and team versions of the per-driver
@@ -93,18 +105,21 @@ payoff = { subject = "team", predicate = "nth_retired", n = 1, aggregate = "sum"
 code = "race_second_retirement"
 label = "Second retirement"
 default = false
+wx = "dnf"
 payoff = { subject = "driver", predicate = "nth_retired", n = 2 }
 
 [[kinds]]
 code = "race_third_retirement"
 label = "Third retirement"
 default = false
+wx = "dnf"
 payoff = { subject = "driver", predicate = "nth_retired", n = 3 }
 
 [[kinds]]
 code = "race_team_any_classified"
 label = "At least one car classified"
 default = false
+wx = "dnf"
 payoff = { subject = "team", predicate = "classified", aggregate = "any" }
 
 [[kinds]]

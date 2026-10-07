@@ -7,6 +7,12 @@
 #        exit 1 = off-week or no events, skip polling
 #
 # Example: if race_weekend.sh f1; then racinglines markets --exchange polymarket sync; fi
+#
+# <sport> is a sport code (a file in sports/: f1, nascar, motogp, road_cycling, mtb_dh, ...); its competition code
+# comes from that file's [competition] code, so the gate never needs its own list of sports.
+# On Thu to Sun UTC, an event counts while its start_date is from 3 days ago to 7 days ahead. start_date is race day
+# for F1 but the Friday for MotoGP (date_start), so this keeps race day, a MotoGP weekend's Sunday and a race that
+# ends after midnight UTC (Las Vegas) polling, and still drops last weekend's event by Thursday.
 
 set -euo pipefail
 
@@ -21,8 +27,16 @@ fi
 set -a; . "${ENV_FILE:-/etc/racinglines.env}"; set +a
 cd "${APP:-/opt/racinglines}"
 
-# Get UTC day of week (0=Sunday, 1=Monday, ..., 4=Thursday)
-NOW_UTC=$(date -u +%s)
+# The sport's competition code, from sports/<sport>.toml [competition] code
+TOML="sports/$SPORT.toml"
+COMPETITION=$(awk '/^\[/{sec=$0} sec=="[competition]" && /^code *=/{gsub(/.*= *"|".*/, ""); print; exit}' "$TOML" 2>/dev/null || true)
+if [ -z "$COMPETITION" ]; then
+  echo "race_weekend: no [competition] code in $TOML (unknown sport '$SPORT')" >&2
+  exit 1
+fi
+
+# Get UTC day of week (0=Sunday, 1=Monday, ..., 4=Thursday); RACE_WEEKEND_NOW (epoch seconds) overrides now, for tests
+NOW_UTC=${RACE_WEEKEND_NOW:-$(date -u +%s)}
 DOW=$(date -u -d @"$NOW_UTC" +%w)  # 0=Sun, 1=Mon, ..., 4=Thu, ..., 6=Sat
 
 # Race weekend = Thursday (4) through Sunday (0), inclusive
@@ -35,24 +49,17 @@ fi
 # Query: is there an active event for this sport in the next 7 days?
 # (backup check: if DB query fails, assume not a race weekend)
 if [ "$RACE_WEEKEND" -eq 1 ]; then
-  NOW=$(date -u +%Y-%m-%dT%H:%M:%S)
-  WEEK_LATER=$(date -u -d @"$((NOW_UTC + 604800))" +%Y-%m-%dT%H:%M:%S)
+  FROM=$(date -u -d @"$((NOW_UTC - 3 * 86400))" +%Y-%m-%d)
+  WEEK_LATER=$(date -u -d @"$((NOW_UTC + 604800))" +%Y-%m-%d)
 
   QUERY="SELECT COUNT(*) FROM events e
          JOIN seasons s ON e.season_id = s.id
          JOIN competitions c ON s.competition_id = c.id
-         WHERE c.code IN (SELECT competition_code FROM (
-           SELECT 'f1_wdc' as competition_code WHERE '$SPORT' = 'f1'
-           UNION SELECT 'nascar_cup' WHERE '$SPORT' = 'nascar'
-           UNION SELECT 'motogp' WHERE '$SPORT' = 'motogp'
-           UNION SELECT 'indycar' WHERE '$SPORT' = 'indycar'
-           UNION SELECT 'road_cycling' WHERE '$SPORT' = 'cycling'
-           UNION SELECT 'mtb_dh' WHERE '$SPORT' = 'mtb_dh'
-         ) AS c_map)
-         AND e.start_date >= '$NOW'::timestamp AND e.start_date < '$WEEK_LATER'::timestamp;"
+         WHERE c.code = '$COMPETITION' AND e.status <> 'cancelled'
+         AND e.start_date >= '$FROM'::date AND e.start_date < '$WEEK_LATER'::date;"
 
   COUNT=$(docker compose exec -T db psql -U racinglines racinglines -t -c "$QUERY" 2>/dev/null | tr -d ' ' || echo "0")
-  if [ "$COUNT" -eq 0 ]; then
+  if [ -z "$COUNT" ] || [ "$COUNT" -eq 0 ]; then
     RACE_WEEKEND=0
   fi
 fi

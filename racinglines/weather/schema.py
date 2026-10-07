@@ -14,7 +14,7 @@ One row per (event_key, session, valid_utc):
     humidity     relative humidity, 0 to 100
     wind_kph     wind speed, km/h
     condition    the provider's own text ("Showers", "Partly Cloudy" ...)
-    source       the provider code ("wunderground")
+    source       the provider code ("open_meteo", "wunderground")
     lat, lon     where the forecast is for
 
     validate(df)            df itself, or FrameError listing every problem, each naming its column

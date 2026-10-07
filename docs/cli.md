@@ -13,7 +13,7 @@ racinglines nascar  fetch | ingest | link | replay | season | season-replay | de
                     the champion-market replay; the demo paper portfolio; the next races' forecast)
 racinglines motogp  fetch | ingest | compare | search | replay | season-replay | demo-history | forecast
 racinglines markets sync | history | trades | record | archive      (= racinglines f1 pm-*)
-racinglines weather probe | fetch | show                            (weather forecasts per event: Weather Underground)
+racinglines weather probe | fetch | show                            (weather forecasts per event: Open-Meteo, no key)
 racinglines db      init | seed | stats | export | snapshot-export | snapshot-import | merge-athletes | changes
 racinglines web
 racinglines mcp     [--http] [--host H] [--port 8100] [--no-jobs] | token ACCOUNT [--revoke]     the MCP server
@@ -302,15 +302,25 @@ on the timed-runs engine: `events`, `fetch itt|road`, `startlist <event>`, `pric
 classification (`models/position_sim/dnf_check.py`). Both are read-only; see the decision log of 2026-10-06 in
 [F1 roadmap](f1-roadmap.md#decision-log).
 
+`--forecast <csv> [--lead N]` (the leads CSV of `racinglines weather leads`, e.g.
+`tests/fixtures/weather/open_meteo-leads-f1.csv`, turned into a walk-forward `p_wet` per race by
+`weather/wet.py`'s `p_wet_series`; lead 5 by default) adds the weather-aware variants to both: `climatology-WX` to
+`--check` and `model-WX` to `--dnf-check`, each with its paired Brier difference against its base. Both read the
+race history from `--history <csv>`, else the database. The forecast's own skill by lead is
+`racinglines weather backtest`. See [F1: weather-aware (-WX) variants](f1.md#weather-aware-wx-variants).
+
 ## racinglines weather
 
 Weather forecasts per event in one provider-agnostic frame: `probe --lat --lon [--out]`, `fetch <event_key> --lat
---lon [--session race=START/END]`, `show <event_key>`. The provider's endpoints and fields are unverified until
-`probe` runs on the Mac. See [Weather forecasts](weather.md).
+--lon [--session race=START/END]`, `show <event_key>`, `leads --out <csv> [--races <csv>]` (the forecasts issued 0 to 7
+days before past races), `backtest [--lead 5] [--history <csv>] [--leads <csv>]` (the wet-race forecast against rain,
+red flag, safety car and DNFs). `--provider open_meteo` (the default, no key, verified by
+the probe of 2026-10-06) or `wunderground` (optional, unverified, a PWS owner's key). See
+[Weather forecasts](weather.md).
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `WUNDERGROUND_API_KEY` | – | Weather Underground (The Weather Company API) key, a PWS owner's key; read by `weather probe` and `weather fetch`. |
+| `WUNDERGROUND_API_KEY` | – | Weather Underground (The Weather Company API) key, a PWS owner's key; read by `weather probe` and `weather fetch` with `--provider wunderground` only. |
 
 ## racinglines db
 
@@ -520,7 +530,7 @@ racinglines markets --sport nascar trades                                   # tr
 
 | Command | What it does |
 |---|---|
-| `sync` | Find Kalshi's F1 series (Sports series whose ticker starts `KXF1` or whose title says Formula 1, F1 or Grand Prix, or `kalshi.sync.SERIES`; `--series TICKER …` names them instead), and upsert one `market_links` row per market (`exchange='kalshi'`, `token_id` = the market ticker's YES contract, `condition_id` = the event ticker), classified into the model's kinds: win, podium, top 10, pole, top constructor, fastest lap, head-to-head (the race read from the ticker's code, `BRIGP26`), champions. The sprint winner and sprint pole (`KXF1RACESPRINT`, `KXF1SPRINTPOLE`) classify as `race_sprint_win` / `race_sprint_pole` and get a model price ([F1](f1.md#kalshi-alignment)), unless `RACINGLINES_KALSHI_SPRINTS=0`; the sprint's top 5, top 10 and the rest are listed as unmodeled. Each row keeps Kalshi's resolution rules (`params.rules`). `--closed` adds settled events. Races resolve within `--year` (2026: 15 weekends, 1,847 modeled links on 2026-09-28). |
+| `sync` | Find Kalshi's F1 series (Sports series whose ticker starts `KXF1` or whose title says Formula 1, F1 or Grand Prix, or `kalshi.sync.SERIES`; `--series TICKER …` names them instead), and upsert one `market_links` row per market (`exchange='kalshi'`, `token_id` = the market ticker's YES contract, `condition_id` = the event ticker), classified into the model's kinds: win, podium, top 10, pole, top constructor, fastest lap, head-to-head (the race read from the ticker's code, `BRIGP26`), champions. The sprint winner and sprint pole (`KXF1RACESPRINT`, `KXF1SPRINTPOLE`) classify as `race_sprint_win` / `race_sprint_pole` and get a model price ([F1](f1.md#kalshi-alignment)); `RACINGLINES_KALSHI_SPRINTS=0` lists them as unmodeled instead. The sprint's top 5, top 10, fastest lap and top constructor stay unmodeled. Each row keeps Kalshi's resolution rules (`params.rules`). `--closed` adds settled events. Races resolve within `--year` (2026: 15 weekends, 1,847 modeled links on 2026-09-28). |
 | `trades` | Store every trade on those events' markets in `market_trades` (the taker's side of YES, at the YES price, in contracts). |
 | `history` | Store candlesticks (`--period` 1, 60 or 1440 minutes) in `market_price_history`. |
 | `books` | One order-book snapshot per open market in `market_book_snapshots` (a NO bid at p is a YES ask at 1 − p). |
@@ -564,8 +574,16 @@ An exchange defined by a file in `exchanges/` goes through one generic driver
 
 ```
 racinglines markets --exchange og [--sport f1|nascar|sailgp] sync | trades | history --start UTC [--end UTC] | books | fair
+racinglines markets --exchange og [--sport f1|nascar|sailgp] settle [--since UTC] [--max-pages N]
 racinglines markets --exchange og --sport f1|nascar|sailgp buy-all [--cost 0.01] [--fee USD] [--out FILE.csv]   # debug
 ```
+
+`settle` writes the outcomes of the sport's closed, unresolved links from the exchange's settlement feed
+(`[endpoints.settlements]` in its schema; OG.com's `get-expired-settlement-price`, since its listing drops a settled
+instrument): `resolved_yes`, plus `params.settled_at`; a void (a 0.50 settlement) is noted in `params.settlement` and
+left unresolved. Bounded (`--max-pages`, default the schema's 500) and resumed where the last pass stopped; a schema
+with no feed does nothing. The VM recorder runs it hourly on race weekends
+([Exchanges](exchanges.md#outcomes-the-settlement-feed)).
 
 OG.com is also a **replay venue**: `racinglines nascar replay --venue og` (and `--venue all`, where `exchanges/og.toml`
 lists the sport) and `f1 season-strategy --venue og` read its stored minute prices, trades and book quotes whatever their

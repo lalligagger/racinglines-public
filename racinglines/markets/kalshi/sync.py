@@ -42,8 +42,8 @@ synced series that the listing no longer returns (up to REREAD_MAX, most recentl
 status, result and last quote. A ticker Kalshi no longer serves (settled before its historical cutoff: a 404)
 closes once its end date has passed.
 
-* Sprint markets (docs/todo.md U5) are classified by default (sprints_enabled); RACINGLINES_KALSHI_SPRINTS=0
-turns that off, and every sprint market stays unmodeled, as before. The sprint winner and sprint pole take the sprint
+* Sprint markets (docs/todo.md U5) are classified by default (sprints_enabled; on since 2026-10-06, owner);
+RACINGLINES_KALSHI_SPRINTS=0 (or false/no) turns it off and every sprint market stays unmodeled. The sprint winner and sprint pole take the sprint
 kinds of racinglines/markets/kinds.py (race_sprint_win settles after the Sprint, race_sprint_pole after SQ;
 sports/f1.toml closes them when the session starts) and are priced by db.reads.model_prob. The sprint's
 fastest lap, top 5, top 10 and top constructor stay unmodeled either way.
@@ -84,8 +84,8 @@ REREAD_MAX = 100     # open links re-read by ticker per pass when their event le
 
 
 def sprints_enabled():
-    """Sprint markets are classified unless RACINGLINES_KALSHI_SPRINTS is 0/false/no/off (on by default, owner 2026-10-06)."""
-    return os.environ.get(SPRINT_FLAG, "").strip().lower() not in ("0", "false", "no", "off")
+    """Sprint markets are classified unless RACINGLINES_KALSHI_SPRINTS is 0/false/no (on by default since 2026-10-06)."""
+    return os.environ.get(SPRINT_FLAG, "1").strip().lower() not in ("0", "false", "no", "off")
 
 
 def classify_sprint(low):

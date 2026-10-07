@@ -363,13 +363,13 @@ def test_live_titles_classify():
     assert c("Azerbaijan Grand Prix Winner", "Oscar Piastri to finish in first") == ("race_win", "Azerbaijan Grand Prix")
     assert c("Azerbaijan Grand Prix Main Race: Podium Finishers", "Oscar Piastri to finish")[0] == "race_podium"
     assert c("Azerbaijan Grand Prix Main Race: Top 10 Finishers", "Oscar Piastri to finish top 10")[0] == "race_top10"
-    assert c("Azerbaijan Grand Prix Main Race: Top 5 Finishers", "Oscar Piastri to finish top 5")[0] == "unmodeled"
+    assert c("Azerbaijan Grand Prix Main Race: Top 5 Finishers", "Oscar Piastri to finish top 5")[0] == "race_top5"
     assert c("Spanish Grand Prix Qualifying Session (Q3): Pole Position", "Oscar Piastri is awarded Pole Position")[0] == "race_pole"
     assert c("Azerbaijan Grand Prix Main Race: Top Constructor", "McLaren to finish in first")[0] == "race_constructor_top"
     assert c("Azerbaijan Grand Prix Main Race: Fastest Lap", "Fastest Lap: Oscar Piastri")[0] == "race_fastest_lap"
     for sprint in ("Dutch Grand Prix: Sprint Race Winner", "Dutch Grand Prix Sprint Qualifying: Pole Position",
                    "Dutch Grand Prix Sprint Race: Fastest Lap", "Dutch Grand Prix Sprint Race: Top Constructor"):
-        assert c(sprint)[0] == "unmodeled"               # sprints aren't the model's race
+        assert c(sprint, sprints=False)[0] == "unmodeled"    # sprints off: not the model's race
     assert c("F1 Drivers Champion", "Will Lando Norris win the F1 Drivers Championship?") == ("champion", None)
     assert c("F1 Constructors Champion")[0] == "constructors_champion"
     assert c("F1 Matchup: Verstappen vs Hamilton", "Will Max Verstappen beat Lewis Hamilton in the racing matchup?") \
@@ -470,7 +470,7 @@ def _dutch_events():
 
 @pytest.mark.quick
 def test_sprint_markets_stay_unmodeled_with_the_flag_off(monkeypatch):
-    """With RACINGLINES_KALSHI_SPRINTS=0 the classifier gives exactly the pre-sprint kinds: the archived link rows."""
+    """With RACINGLINES_KALSHI_SPRINTS=0 the classifier gives the pre-U5 kinds: the archived link rows."""
     monkeypatch.setenv(KS.SPRINT_FLAG, "0")
     assert not KS.sprints_enabled()
     c = KS.classify
@@ -486,20 +486,21 @@ def test_sprint_markets_stay_unmodeled_with_the_flag_off(monkeypatch):
     rows = KS.link_rows(evs, DutchResolver())
     assert len(rows) == 22 * 12 + 11 * 2                                    # 12 driver events, 2 constructor events
     assert {r["token_id"]: r["prediction"] for r in rows} == archived[[r["token_id"] for r in rows]].to_dict()
-    for flag in ("0", "no", "false", "off", " OFF "):
+    for flag in ("0", "no", "false", "off"):
         monkeypatch.setenv(KS.SPRINT_FLAG, flag)
         assert not KS.sprints_enabled() and c("Dutch Grand Prix: Sprint Race Winner")[0] == "unmodeled"
 
 
 @pytest.mark.quick
 def test_sprint_markets_are_on_by_default(monkeypatch):
-    """Owner 2026-10-06: deploys classify Kalshi sprint markets unless the flag says otherwise."""
-    monkeypatch.delenv(KS.SPRINT_FLAG, raising=False)
-    assert KS.sprints_enabled()
-    for flag in ("", "1", "yes", "true"):
-        monkeypatch.setenv(KS.SPRINT_FLAG, flag)
+    """On by default since 2026-10-06 (owner): unset or empty classifies the sprint kinds."""
+    for flag in (None, "", "1", "true"):
+        if flag is None:
+            monkeypatch.delenv(KS.SPRINT_FLAG, raising=False)
+        else:
+            monkeypatch.setenv(KS.SPRINT_FLAG, flag)
         assert KS.sprints_enabled()
-    assert KS.classify("Dutch Grand Prix: Sprint Race Winner")[0] == "race_sprint_win"
+        assert KS.classify("Dutch Grand Prix: Sprint Race Winner")[0] == "race_sprint_win"
 
 
 @pytest.mark.quick
@@ -594,7 +595,7 @@ def test_sprint_markets_sync_with_a_model_price(test_engine, monkeypatch):
     def links(c):
         return {r["token_id"]: r for r in c.execute(text("""SELECT token_id, prediction, athlete_id, race_id, competition_id, category_id, params, invert
                                                   FROM market_links WHERE exchange = 'kalshi'""")).mappings().all()}
-    monkeypatch.delenv(KS.SPRINT_FLAG, raising=False)
+    monkeypatch.setenv(KS.SPRINT_FLAG, "0")
     with test_engine.connect() as c, get_session(url) as s:
         st = KS.sync(s, c, 2026, kc=Kc())
         assert st["links"] == 88 and st["modeled"] == 1                 # Piastri's race win only: the sprints are unmodeled
@@ -618,7 +619,7 @@ def test_sprint_markets_sync_with_a_model_price(test_engine, monkeypatch):
         s.commit()
         assert model_prob(c, dict(after["KXF1RACESPRINT-DUTGP26-PIA"]))[0] == pytest.approx(0.4)
         assert model_prob(c, dict(after["KXF1SPRINTPOLE-DUTGP26-PIA"]))[0] == pytest.approx(0.35)
-    monkeypatch.delenv(KS.SPRINT_FLAG, raising=False)
+    monkeypatch.setenv(KS.SPRINT_FLAG, "0")
     with test_engine.connect() as c, get_session(url) as s:             # flag off again: back to today's rows
         KS.sync(s, c, 2026, kc=Kc())
         assert {k: v["prediction"] for k, v in links(c).items()} == {k: v["prediction"] for k, v in before.items()}
