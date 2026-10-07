@@ -99,6 +99,25 @@ def test_a_race_fetched_before_session_files_keeps_its_race():
     assert [r["kind"] for r in p["rounds"]] == ["race"] and len(p["rounds"][0]["rows"]) == 6
 
 
+@pytest.mark.quick
+def test_a_stopped_and_restarted_race_listed_twice_keeps_the_restart():
+    """2016 NED lists two RAC sessions (14:00 with no number, 15:00 numbered 2: the race was stopped and restarted).
+    Rounds are UNIQUE on race and kind, so one race round is kept: the later session's."""
+    first = copy.deepcopy(next(s for s in sessions() if s["type"] == "RAC"))
+    restart = copy.deepcopy(first)
+    first.update(id="stopped-race", number=None, date="2026-03-01T14:00:00+07:00")
+    restart.update(number=2, date="2026-03-01T15:00:00+07:00")
+    got = {"stopped-race": classification(SPR), restart["id"]: fx("classification_2026_tha_motogp_race")}
+    for order in ([first, restart], [restart, first]):
+        p = I.parse_event(2026, tha_event(), got, sessions=order)
+        races = [r for r in p["rounds"] if r["kind"] == "race"]
+        assert len(races) == 1
+        assert [r["rider_id"] for r in races[0]["rows"]] == [
+            r["rider"]["id"] for r in fx("classification_2026_tha_motogp_race")["classification"]]
+        assert races[0]["extra"]["number"] == 2
+        assert races[0]["extra"]["superseded"] == ["2026-03-01T14:00:00+07:00"]
+
+
 # --- into a database ------------------------------------------------------------------------------------------------
 
 @pytest.fixture
