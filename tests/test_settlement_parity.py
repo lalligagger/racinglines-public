@@ -31,23 +31,39 @@ def _sims(entrants):
     return O.OutcomeSims(entrants=list(entrants), rank=rank, finished=np.ones((4, n), bool))
 
 
-@pytest.mark.quick
-def test_walk_forward_and_replay_settle_a_retirement_and_a_disqualification_alike():
-    rows = WF.event_rows(SimpleNamespace(id=1, season=2026, name="t"), _sims(RES["athlete_id"]), RES,
+def _agree(res):
+    """The walk-forward's rows on `res`, each checked against the replay and the private book on the same frame."""
+    rows = WF.event_rows(SimpleNamespace(id=1, season=2026, name="t"), _sims(res["athlete_id"]), res,
                          kinds=list(TOP_N) + ["race_h2h"])
     assert len(rows) == 4 * 6 + 15                    # race_top20 is a declarative kind: not a walk-forward row
-    for a in RES["athlete_id"]:
-        assert PR.settle("race_top20", a, None, RES) == K.settle("race_top20", a, None, RES) == (a in (1, 4))
+    for a in res["athlete_id"]:
+        assert PR.settle("race_top20", a, None, res) == K.settle("race_top20", a, None, res)
     for r in rows.itertuples():
         b = None if r.opponent is None or pd.isna(r.opponent) else int(r.opponent)
-        replay = PR.settle(r.kind, int(r.athlete_id), b, RES)
-        assert replay == r.y, (r.kind, r.athlete_id, b)
-        assert house.outcome_for(r.kind, int(r.athlete_id), {"opponent_id": b}, RES) == r.y
-    top = {(r.kind, r.athlete_id): r.y for r in rows.itertuples() if r.kind != "race_h2h"}
+        assert PR.settle(r.kind, int(r.athlete_id), b, res) == r.y, (r.kind, r.athlete_id, b)
+        assert house.outcome_for(r.kind, int(r.athlete_id), {"opponent_id": b}, res) == r.y
+    return {(r.kind, r.athlete_id): r.y for r in rows.itertuples() if r.kind != "race_h2h"}
+
+
+@pytest.mark.quick
+def test_walk_forward_and_replay_settle_a_retirement_and_a_disqualification_alike():
+    top = _agree(P.mark_sport(RES, "f1"))                                              # status_ok (F1, MotoGP)
     assert top[("race_podium", 2)] is False and top[("race_top10", 2)] is False       # a DNF is NO, whatever its place
     assert top[("race_podium", 3)] is False and top[("race_win", 1)] is True          # a DSQ is NO
     assert top[("race_podium", 4)] is False and top[("race_top5", 4)] is True         # 2 and 3 don't move 4 up
     assert top[("race_top10", 6)] is False and top[("race_top10", 5)] is False
+    top = _agree(P.mark_sport(RES, "nascar"))                                          # placed (NASCAR)
+    assert top[("race_podium", 2)] is True and top[("race_podium", 3)] is True        # every placed car counts
+    assert top[("race_top5", 4)] is True and top[("race_top10", 5)] is False          # unplaced: NO
+
+
+@pytest.mark.quick
+def test_the_schemas_name_who_is_classified():
+    from racinglines import sports
+    assert [sports.classified_rule(s) for s in ("f1", "motogp", "nascar", "mtb_dh")] == \
+        ["status_ok", "status_ok", "placed", "status_ok"]                              # mtb_dh: the default
+    assert list(P.classified(RES)) == list(RES["status"] == "OK")                      # an unmarked frame: status OK
+    assert list(P.classified(P.mark_sport(RES, "nascar"))) == list(RES["position"].notna())
 
 
 @pytest.mark.quick

@@ -323,7 +323,12 @@ def race_outcomes(conn, race_id):
     q = pd.read_sql(text("""SELECT r.athlete_id, r.position AS qual_position FROM results r JOIN rounds ro ON ro.id = r.round_id
                             WHERE ro.race_id = :r AND ro.kind = 'qual'"""), conn, params=dict(r=race_id))
     out = df.merge(q, on="athlete_id", how="left") if len(df) else df.assign(qual_position=None)
-    return out.merge(stage_outcomes(conn, race_id), on="athlete_id", how="left") if len(out) else out
+    if not len(out):
+        return out
+    from racinglines import sports
+    from racinglines.markets import payoffs as P
+    out = P.mark_sport(out, sports.race_sport(conn, race_id))     # who is classified: the sport's [results] rule
+    return out.merge(stage_outcomes(conn, race_id), on="athlete_id", how="left")
 
 
 def stage_outcomes(conn, race_id):

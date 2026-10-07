@@ -21,6 +21,7 @@ import pandas as pd
 
 from racinglines.core import calibration as CAL
 from racinglines.markets import kinds as K
+from racinglines.markets import payoffs as P
 
 PER_ENTRANT = ("top_n", "stage_top_n", "reached", "indicator")   # indicator: a drawn yes/no (the fastest lap)
 
@@ -70,7 +71,7 @@ def run(model, data, settings, seasons=None, kinds=None, echo=print, keep_sims=F
         cutoffs[ev.id] = ev.cutoff
         if keep_sims:
             kept.append((ev, sims))
-        r = event_rows(ev, sims, model.results(data, ev), kinds)
+        r = event_rows(ev, sims, P.mark_sport(model.results(data, ev), getattr(model, "sport", None)), kinds)
         rows.append(r)
         e = dict(season=ev.season, event_id=ev.id, event=ev.name, n_entrants=len(sims.entrants))
         for kind, g in r.dropna(subset=["y"]).groupby("kind", sort=False):

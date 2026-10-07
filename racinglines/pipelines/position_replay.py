@@ -20,8 +20,9 @@ schedule and its fairs from position_sim. Here, per race:
      Kalshi's or Polymarket's recorded prices and tape) says the price and whether the market was tradeable (priced,
      liquid, open, a coherent group), and the taker strategies (markets/strategies/taker_weekend.py) trade.
   4. Only then the result settles each market, through markets/kinds.settle (the walk-forward's settlement): a top-n
-     market is YES when the driver is classified (status OK) in the top n, so a NASCAR car out of the race (DNF) is NO
-     whatever its place by laps, and an unclassified MotoGP rider is NO; a head-to-head goes by position.
+     market is YES when the driver is classified, by the sport's [results] classified rule, in the top n (NASCAR
+     "placed": every car is ranked, retirements by laps run; MotoGP "status_ok": an unclassified rider is NO); a
+     head-to-head goes by position.
 
 Markets: the sport's links on the venue whose kind is in [replay] kinds. The kind, driver and race come from the
 stored link (NASCAR's `nascar link --apply` writes params.kind, athlete_id and race_id), else from the sport's
@@ -52,6 +53,7 @@ from racinglines.markets.strategies import taker_weekend as RB
 
 N_OF = {"race_win": 1, "race_podium": 3, "race_top5": 5, "race_top10": 10, "race_top20": 20}
 TAKER_MODES = ("update", "hold", "last")
+UNMARKED_RULE = "placed"             # who is classified in a results frame without a `classified` column (see settle)
 STALE = timedelta(hours=6)
 COHERENCE_TOL = 0.25                 # as the F1 sweep's (a priori, not tuned for these sports)
 MIN_VOLUME_24H = 50.0                # $ traded in the market over the previous 24 h (the F1 taker's floor)
@@ -121,8 +123,13 @@ def select(rs, events=None):
 
 
 def race_results(conn, race_id):
-    """The race round's classification: athlete_id, position (NaN = unclassified), status, and grid (the starting
-    slot stored in results.extra.grid, NaN where none is)."""
+    """The race round's classification: athlete_id, position (NaN = unclassified), status, grid (the starting slot
+    stored in results.extra.grid, NaN where none is), and `classified` by the sport's [results] rule."""
+    from racinglines.markets import payoffs as PO
+    return PO.mark_sport(_race_results(conn, race_id), sports.race_sport(conn, race_id))
+
+
+def _race_results(conn, race_id):
     return pd.read_sql(text("""
         SELECT r.athlete_id, r.position, r.status, nullif(r.extra->>'grid', '')::float AS grid
         FROM results r JOIN rounds ro ON ro.id = r.round_id
@@ -198,11 +205,15 @@ def fair(sims, kind, athlete_id, opponent_id=None):
 def settle(kind, athlete_id, opponent_id, res):
     """YES / NO / None through the one settlement of every kind (markets/kinds.settle; top-n: payoffs.top_n, classified
     in the top n, so the replay, the season sweep and the walk-forward agree on a retirement or a disqualification).
+    race_results marks who is classified by the sport's [results] classified rule (NASCAR: placed; MotoGP: status OK).
     A market whose driver has no row in the classification stays unsettled here (None: the link may name a driver
     the result doesn't list), where kinds.settle says NO for a top-n market."""
     from racinglines.markets import kinds as K
+    from racinglines.markets import payoffs as PO
     if not (res["athlete_id"] == athlete_id).any():
         return None
+    if PO.CLASSIFIED_COL not in res:         # a frame not loaded by race_results: the replay's rule before C5, any
+        res = PO.mark_classified(res, UNMARKED_RULE)       # placed car (race_results marks it by the sport's rule)
     return K.settle(kind, athlete_id, None if opponent_id is None else {"opponent_id": opponent_id}, res)
 
 

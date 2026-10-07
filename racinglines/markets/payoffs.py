@@ -74,16 +74,39 @@ def nth_retired(finished, n):
     return np.where(enough, first_retired(finished), 0.0)
 
 
+# Who counts as classified, by the sport's rule (sports/<code>.toml [results] classified; racinglines.sports):
+CLASSIFIED = {
+    "status_ok": lambda res: res["status"] == "OK",       # F1 (ClassifiedPosition a number), MotoGP (INSTND)
+    "placed": lambda res: res["position"].notna(),        # NASCAR: every car that started is ranked, DNFs by laps run
+}
+CLASSIFIED_COL = "classified"
+
+
+def mark_classified(res, rule):
+    """The results frame with its `classified` column set by the sport's rule (None: left as it is)."""
+    if rule is None or res is None or not len(res):
+        return res
+    return res.assign(**{CLASSIFIED_COL: CLASSIFIED[rule](res).astype(bool)})
+
+
+def mark_sport(res, sport):
+    """mark_classified with the rule of sports/<sport>.toml (unknown or None sport: left as it is)."""
+    from racinglines import sports
+    return mark_classified(res, sports.classified_rule(sport) if sport else None)
+
+
 def classified(res):
-    """bool per row of a results frame: classified in the official result (status OK). The one classification rule
-    of every settlement: top-n, exact place, last classified, the biggest mover and the walk-forward, the replays and
-    the private book all read it (docs/f1-roadmap.md decision log, 2026-10-07). F1: FastF1's ClassifiedPosition is a
-    number; NASCAR: running at the end (a retirement is DNF, whatever its place by laps); MotoGP: INSTND."""
-    return res["status"] == "OK"
+    """bool per row of a results frame: classified in the official result. The one classification of every settlement
+    (top-n, exact place, last classified, the biggest mover; the walk-forward, the replays and the private book): the
+    frame's `classified` column, which the loaders set from the sport's [results] classified rule (mark_sport), else
+    status OK (the "status_ok" default) (docs/f1-roadmap.md decision log, 2026-10-07)."""
+    if CLASSIFIED_COL in res:
+        return res[CLASSIFIED_COL].fillna(False).astype(bool)
+    return CLASSIFIED["status_ok"](res)
 
 
 def top_n(res, n):
-    """bool per row: classified in the top `n` (status OK and position <= n). The top-n kinds' settlement
+    """bool per row: classified (by the sport's rule) and placed in the top `n`. The top-n kinds' settlement
     everywhere (kinds.settle top_n, the "top" predicate here, position_replay and season_sweep through kinds.settle)."""
     return classified(res) & (res["position"] <= n)
 

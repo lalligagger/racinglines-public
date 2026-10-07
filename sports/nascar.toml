@@ -56,6 +56,11 @@ tags = ["nascar"]
 resolver = "nascar"
 
 [results]
+# Who counts as classified when a race market settles (markets/payoffs.py classified: top-n, exact place, biggest mover):
+# "placed", every car with a finishing position: NASCAR's official finishing order ranks every car that started, the
+# ones out of the race (DNF) by laps run. INFERRED from the feed (sources/nascar/ingest.py), not checked against the
+# venues' rule text (owner question, docs/f1-roadmap.md decision log 2026-10-07). Default "status_ok" (status OK only).
+classified = "placed"
 # General rule for every results source: the official feed remains first choice; a public fallback is allowed only
 # for missing seasons and only when the schema says it is a low-quality summary, never a full replacement.
 # This is the generic "source-fidelity fallback" policy used by the schema and any result-source handlers.

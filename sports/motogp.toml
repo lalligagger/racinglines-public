@@ -55,6 +55,7 @@ tags = ["motogp"]
 # The adapter exists in `racinglines/sources/motogp/` and ingests every finished session classification it can
 # fetch, but it still does not fabricate lap-by-lap or sector-level data where the public host returns 400s.
 [results]
+classified = "status_ok"          # settlement: only a classified finish (INSTND) counts (markets/payoffs.py classified)
 host = "https://api.motogp.pulselive.com/motogp/v1"   # public, no key, no auth; unofficial (see `terms` below)
 # seasons, categories, events, sessions, session/{id}/classification, standings: all confirmed 200 with real JSON,
 # 2026-09-29. History: 78 seasons, 1949-2026. Every finished session exposes a classification table with position,

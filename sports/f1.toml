@@ -36,6 +36,10 @@ frames = ["entrants", "sessions", "classifications", "conditions", "venue_featur
 # laps only once the session has ended, so every row of a session is available at that session's end
 live = []
 
+[results]
+classified = "status_ok"          # settlement: only an officially classified car (ClassifiedPosition a number) counts as
+                                  # classified for top-n, exact place and the biggest mover (markets/payoffs.py classified)
+
 [sessions]
 # minutes each session runs; its data is usable once it has ended
 minutes = { fp1 = 60, fp2 = 60, fp3 = 60, sprint_qual = 45, qual = 60, sprint = 45, race = 150 }
