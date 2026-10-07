@@ -241,6 +241,11 @@ def parse_race(year, race_id, feeds, series_round=None, series=1, laps=True):
         track=wr.get("track_name"), series_round=series_round, format=fmt, rounds=rounds, laps=lap_rows)
 
 
+def placeholder_name(driver_id):
+    """The athlete name used while the feeds have given no name for a driver yet; replaced once one does."""
+    return f"NASCAR driver {driver_id}"
+
+
 def write(session, comp, cat, year, parsed):
     """Rebuild one race's rows from a parse_race() result. Returns (results, laps)."""
     season = _upsert(session, m.Season, dict(competition_id=comp.id, year=year))
@@ -253,16 +258,24 @@ def write(session, comp, cat, year, parsed):
     session.execute(delete(m.Round).where(m.Round.race_id == race.id))
     session.flush()
 
-    ids = {row["driver_id"]: row["name"] for rd in parsed["rounds"] for row in rd["results"]}
+    ids = {}
+    for rd in parsed["rounds"]:
+        for row in rd["results"]:
+            if not ids.get(row["driver_id"]):           # the first non-empty name: a later nameless row keeps it
+                ids[row["driver_id"]] = row["name"]
     found = dict(session.execute(select(m.AthleteIdentifier.value, m.AthleteIdentifier.athlete_id).where(
         m.AthleteIdentifier.scheme == SCHEME, m.AthleteIdentifier.value.in_([str(i) for i in ids]))).all())
     for did, name in ids.items():
         if str(did) not in found:
-            a = m.Athlete(display_name=name or f"NASCAR driver {did}")
+            a = m.Athlete(display_name=name or placeholder_name(did))
             session.add(a)
             session.flush()
             session.add(m.AthleteIdentifier(scheme=SCHEME, value=str(did), athlete_id=a.id))
             found[str(did)] = a.id
+        elif name:
+            a = session.get(m.Athlete, found[str(did)])
+            if a.display_name == placeholder_name(did):  # first seen in a feed row with no name: named now
+                a.display_name = name
 
     n_results = n_laps = 0
     for rd in parsed["rounds"]:

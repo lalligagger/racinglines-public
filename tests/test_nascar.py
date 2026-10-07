@@ -539,6 +539,22 @@ def test_ingest_writes_events_rounds_results_and_laps(db):
             m.AthleteIdentifier.scheme == "nascar", m.AthleteIdentifier.value == "4153")).one().display_name == "Christopher Bell"
 
 
+def test_a_driver_first_stored_without_a_name_is_named_by_a_later_ingest(db):
+    """Driver 4180 (Austin Cindric) first appears in a 2019 feed row with no name, so the athlete was stored as
+    "NASCAR driver 4180" and never renamed (staging, 2026-10-07). A later feed that carries the name now fixes it."""
+    from sqlalchemy import select
+    from racinglines.db import models as m
+    with db() as s:
+        I.ingest(s, [2026], today=TODAY, echo=lambda *_: None)
+        bell = s.scalars(select(m.Athlete).join(m.AthleteIdentifier).where(
+            m.AthleteIdentifier.scheme == "nascar", m.AthleteIdentifier.value == "4153")).one()
+        bell.display_name = I.placeholder_name(4153)
+        s.flush()
+        I.ingest(s, [2026], force=True, today=TODAY, echo=lambda *_: None)
+        s.refresh(bell)
+        assert bell.display_name == "Christopher Bell"
+
+
 def test_reingest_is_a_no_op_and_force_rebuilds_without_duplicating(db):
     with db() as s:
         I.ingest(s, [2026], today=TODAY, echo=lambda *_: None)
