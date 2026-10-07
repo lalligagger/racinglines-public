@@ -649,7 +649,7 @@ racinglines markets --exchange og --sport f1|nascar|sailgp buy-all [--cost 0.01]
 (`[endpoints.settlements]` in its schema; OG.com's `get-expired-settlement-price`, since its listing drops a settled
 instrument): `resolved_yes`, plus `params.settled_at`; a void (a 0.50 settlement) is noted in `params.settlement` and
 left unresolved. Bounded (`--max-pages`, default the schema's 500) and resumed where the last pass stopped; a schema
-with no feed does nothing. The VM recorder runs it hourly on race weekends
+with no feed does nothing. The VM recorder runs it hourly, every day
 ([Exchanges](exchanges.md#outcomes-the-settlement-feed)).
 
 `settle --check`, or `racinglines markets --exchange polymarket|kalshi|og [--sport S] settle-check [--out FILE.csv]` for

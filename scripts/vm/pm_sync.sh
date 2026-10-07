@@ -7,15 +7,14 @@
 #
 # Command: racinglines markets --exchange polymarket sync (markets/polymarket/sync.py)
 #
-# Polling strategy: runs 5-min cadence Thu-Sun UTC when F1 is in a race weekend; hourly Mon-Wed of a race week
-# (race_weekend.sh --lead), then a tape check (scripts/vm/tape_check.sh, WARN lines in the log). Off-weeks: exits
-# cleanly (race_weekend.sh checks if event exists in next 7 days). Every pass: one market_links row
+# Polling strategy (owner, 2026-10-07): every 5-minute pass, every day, all day (WEEKEND_ONLY=1 brings back the old
+# gate: only Thu to Sun of an F1 race weekend, scripts/vm/race_weekend.sh), then a tape check (scripts/vm/tape_check.sh,
+# WARN lines in the log). Every pass: one market_links row
 # upsert per outcome token, synced_at updated with current bid/ask/lastTradePrice from Gamma API.
 # New markets appear as they open; resolved ones mark closed. API limit: the command's own (Gamma HTTP
 # pacing, sources/http.py). One sync failing exits non-zero, so `systemctl status` shows it. Log lines
 # go to journal (journalctl -u racinglines-pm-sync) and data/runs/logs/pm-sync.log. Status line:
 #   2026-10-03T21:30:02Z polymarket f1 sync: 4 events, 34 links upserted (8 s)
-#   2026-10-04T14:20:01Z polymarket f1: off-week, skipped
 set -uo pipefail
 set -a; . "${ENV_FILE:-/etc/racinglines.env}"; set +a
 export PYTHONUNBUFFERED=1
@@ -32,17 +31,9 @@ if [ "${1:-}" = status ]; then   # vm.sh pm-sync status: the last passes
   exit 0
 fi
 
-# Thu to Sun of a race weekend: every pass. Mon to Wed of a race week (an event within 7 days, race_weekend.sh
-# --lead): every LEAD_SYNC_MIN (default 60), so the links and quotes exist before Thursday. Otherwise off-week.
-LEAD_SYNC_MIN=${LEAD_SYNC_MIN:-60}
-STAMP=data/runs/pm-sync-lead
-if ! bash scripts/vm/race_weekend.sh f1 >/dev/null 2>&1; then
-  if ! bash scripts/vm/race_weekend.sh f1 --lead >/dev/null 2>&1; then
-    say "polymarket f1: off-week, skipped"
-    exit 0
-  fi
-  [ -n "$(find "$STAMP" -mmin -"$LEAD_SYNC_MIN" 2>/dev/null)" ] && exit 0
-  touch "$STAMP"
+if [ "${WEEKEND_ONLY:-0}" = 1 ] && ! bash scripts/vm/race_weekend.sh f1 >/dev/null 2>&1; then
+  say "polymarket f1: off-week, skipped (WEEKEND_ONLY=1)"
+  exit 0
 fi
 
 run() {

@@ -7,11 +7,10 @@
 #   racinglines markets --exchange kalshi --sport <s> sync | books      (markets/kalshi/sync.py)
 #   racinglines markets --exchange og     --sport <s> sync | settle | books   (exchanges/og.toml, markets/exchange_driver.py)
 #
-# Polling strategy: runs 5-min cadence for each pair, but skips if that sport is not in a race weekend
-# (Thu-Sun UTC when an event exists). Mon to Wed of a race week (an event within 7 days, race_weekend.sh --lead):
-# the sync alone, every LEAD_SYNC_MIN (default 60), so links and quotes exist before Thursday. After each sync,
-# scripts/vm/tape_check.sh logs a WARN line for an upcoming event with no links or a sync older than STALE_HOURS
-# (default 3). Off-weeks: exits cleanly, conserving API quota. Every pass: one
+# Polling strategy (owner, 2026-10-07): every day, all day. Each 5-minute pass takes a book snapshot of every
+# open market of each PAIRS entry, so prices are on record between race weekends too (WEEKEND_ONLY=1 brings back the
+# old gate: only Thu to Sun of a race weekend, scripts/vm/race_weekend.sh). After each sync, scripts/vm/tape_check.sh
+# logs a WARN line for an upcoming event with no links or a sync older than STALE_HOURS (default 3). Every pass: one
 # order-book snapshot per open market of each active PAIRS entry (market_book_snapshots, ON CONFLICT DO
 # NOTHING). Every SYNC_MIN minutes (default 60): that pair's sync first (market links and quotes upserted:
 # new markets appear, settled ones close). Every SETTLE_MIN minutes (default 60), after the sync, a schema exchange
@@ -25,7 +24,6 @@
 # racinglines-before-record-venues-<UTC>.sql.gz, named in a data_changes note. Log lines go to the journal
 # (journalctl -u racinglines-record-venues) and data/runs/logs/record-venues.log, one per pair per pass:
 #   2026-10-01T00:05:02Z kalshi f1 books: 184 book snapshots stored (12 s)
-#   2026-10-05T18:30:01Z og nascar: off-week, skipped
 set -uo pipefail
 set -a; . "${ENV_FILE:-/etc/racinglines.env}"; set +a
 export PYTHONUNBUFFERED=1
@@ -33,7 +31,7 @@ cd "${APP:-/opt/racinglines}"
 PAIRS=${PAIRS:-kalshi:f1 og:f1 kalshi:nascar og:nascar kalshi:motogp}
 SYNC_MIN=${SYNC_MIN:-60}
 SETTLE_MIN=${SETTLE_MIN:-60}
-LEAD_SYNC_MIN=${LEAD_SYNC_MIN:-60}   # race week before Thursday: the sync alone, this often (race_weekend.sh --lead)
+WEEKEND_ONLY=${WEEKEND_ONLY:-0}       # 1: skip a sport outside its race weekend (the gate before 2026-10-07)
 STATE=data/runs/record-venues
 LOG=data/runs/logs/record-venues.log
 mkdir -p "$STATE" data/runs/logs data/backups/db
@@ -79,24 +77,18 @@ run() {   # run <exchange> <sport> <command>: one line with the command's last o
 }
 for p in $PAIRS; do
   x=${p%%:*}; s=${p#*:}; stamp="$STATE/sync-$x-$s"
-  if bash scripts/vm/race_weekend.sh "$s" >/dev/null 2>&1; then
-    if [ -z "$(find "$stamp" -mmin -"$SYNC_MIN" 2>/dev/null)" ]; then
-      run "$x" "$s" sync && touch "$stamp"
-      tape_check "$x" "$s"
-    fi
-    # a schema exchange's outcomes (exchanges/<x>.toml endpoints.settlements), after its sync, every SETTLE_MIN
-    if [ -f "exchanges/$x.toml" ] && [ -z "$(find "$STATE/settle-$x-$s" -mmin -"$SETTLE_MIN" 2>/dev/null)" ]; then
-      run "$x" "$s" settle && touch "$STATE/settle-$x-$s"
-    fi
-    run "$x" "$s" books
-  elif bash scripts/vm/race_weekend.sh "$s" --lead >/dev/null 2>&1; then
-    # race week, Mon to Wed: the sync only (links and quotes), every LEAD_SYNC_MIN; no book snapshots until Thursday
-    if [ -z "$(find "$stamp" -mmin -"$LEAD_SYNC_MIN" 2>/dev/null)" ]; then
-      run "$x" "$s" sync && touch "$stamp"
-      tape_check "$x" "$s"
-    fi
-  else
-    say "$x $s: off-week, skipped"
+  if [ "$WEEKEND_ONLY" = 1 ] && ! bash scripts/vm/race_weekend.sh "$s" >/dev/null 2>&1; then
+    say "$x $s: off-week, skipped (WEEKEND_ONLY=1)"
+    continue
   fi
+  if [ -z "$(find "$stamp" -mmin -"$SYNC_MIN" 2>/dev/null)" ]; then
+    run "$x" "$s" sync && touch "$stamp"
+    tape_check "$x" "$s"
+  fi
+  # a schema exchange's outcomes (exchanges/<x>.toml endpoints.settlements), after its sync, every SETTLE_MIN
+  if [ -f "exchanges/$x.toml" ] && [ -z "$(find "$STATE/settle-$x-$s" -mmin -"$SETTLE_MIN" 2>/dev/null)" ]; then
+    run "$x" "$s" settle && touch "$STATE/settle-$x-$s"
+  fi
+  run "$x" "$s" books
 done
 exit $rc

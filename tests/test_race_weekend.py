@@ -21,7 +21,7 @@ def _epoch(y, m, d, h=12):
     return str(int(datetime(y, m, d, h, tzinfo=timezone.utc).timestamp()))
 
 
-def gate(tmp_path, sport, now, count="1", *args, env_extra=None):
+def gate(tmp_path, sport, now, count="1"):
     """Run the gate with a fake `docker` that records the query and prints `count`; returns (exit code, query)."""
     log = tmp_path / "query.sql"
     log.unlink(missing_ok=True)
@@ -30,8 +30,8 @@ def gate(tmp_path, sport, now, count="1", *args, env_extra=None):
     (fake / "docker").write_text(f'#!/usr/bin/env bash\nprintf "%s" "${{@: -1}}" > "{log}"\necho " {count}"\n')
     (fake / "docker").chmod(0o755)
     env = dict(os.environ, PATH=f"{fake}:{os.environ['PATH']}", ENV_FILE="/dev/null", APP=str(ROOT),
-               RACE_WEEKEND_NOW=now, **(env_extra or {}))
-    rc = subprocess.run(["bash", str(GATE), sport, *args], env=env, capture_output=True, text=True).returncode
+               RACE_WEEKEND_NOW=now)
+    rc = subprocess.run(["bash", str(GATE), sport], env=env, capture_output=True, text=True).returncode
     return rc, (log.read_text() if log.exists() else None)
 
 
@@ -53,16 +53,6 @@ def test_gate_off_week_and_unknown_sport(tmp_path):
     assert gate(tmp_path, "f1", _epoch(2026, 10, 7)) == (1, None)        # Wednesday: no query at all
     assert gate(tmp_path, "f1", _epoch(2026, 10, 11), count="0")[0] == 1  # no event this week
     assert gate(tmp_path, "cycling", _epoch(2026, 10, 11)) == (1, None)  # not a sport code
-
-
-def test_lead_runs_any_day_with_an_event_ahead(tmp_path):
-    rc, q = gate(tmp_path, "f1", _epoch(2026, 10, 7), "1", "--lead")   # Wednesday: the lead sync runs
-    assert rc == 0
-    assert "e.start_date >= '2026-10-04'::date" in q and "e.start_date < '2026-10-14'::date" in q
-    _, q = gate(tmp_path, "f1", _epoch(2026, 10, 5), "1", "--lead", env_extra={"LEAD_DAYS": "10"})   # Monday
-    assert "e.start_date < '2026-10-15'::date" in q
-    assert gate(tmp_path, "f1", _epoch(2026, 10, 7), "0", "--lead")[0] == 1      # no event ahead
-    assert gate(tmp_path, "f1", _epoch(2026, 10, 7), "1", "--verbose") == (1, None)   # no --lead: still Thu to Sun
 
 
 def test_race_week_is_wednesday_to_tuesday():
