@@ -123,8 +123,8 @@ def decisions(conn, taker=False):
 def track_record(conn, uid, venue="polymarket", sport=None, sports=False):
     """Every weekend with signals or positions: event, strategy run, trades taken (taker) / fills (maker),
     positions, paper P&L (settled, else marked to the market), backtest replay or live. venue: 'polymarket'
-    (the default: the strategy's own record), 'private', 'kalshi' (the maker's replay on Kalshi's tape,
-    `f1 demo-history --venue kalshi`) or 'all'. A private-book event
+    (the default: the strategy's own record), 'private', any other exchange code ('kalshi', 'og': the profile's replay
+    on that exchange's tape, e.g. `f1 demo-history --venue kalshi`) or 'all'. A private-book event
     (pipelines/live_dh.py) has positions but no signals: it joins the history on the day the book ran, as its
     own "Private book" run. sports (RACINGLINES_SPORT_PAPER=1, pipelines/sport_paper.py): the NASCAR / MotoGP demo
     replays join the record on their race dates, whatever their venue, flagged `demo` (never a buy_all row)."""
@@ -140,7 +140,7 @@ def track_record(conn, uid, venue="polymarket", sport=None, sports=False):
                           count(*) FILTER (WHERE action = 'fill') AS fills,
                           bool_or(detail->>'backfill' = 'true') AS backfill
                    FROM strategy_signals WHERE user_id = :u
-                     AND (:v NOT IN ('polymarket', 'kalshi') OR coalesce(detail->>'venue', 'polymarket') = :v""" + (
+                     AND (:v IN ('private', 'all') OR coalesce(detail->>'venue', 'polymarket') = :v""" + (
                           " OR (TRUE" + demo + ")" if sports else "") + """)
                    GROUP BY event_key),
              p AS (SELECT event_key, count(*) FILTER (WHERE abs(yes_shares) + abs(no_shares) > 1e-9) AS positions,
