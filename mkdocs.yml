@@ -19,6 +19,7 @@ nav:
   - Sports and exchanges (status): coverage.md
   - Adding a sport: add-a-sport.md
   - Data:
+      - Market tape (record and backfill): market-tape.md
       - Sources & layout: data.md
       - Parser: parser.md
       - Database: database.md
