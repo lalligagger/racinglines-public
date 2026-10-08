@@ -88,6 +88,21 @@ def check_username(conn, username):
     return ""
 
 
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+EMAIL_MAX = 254
+
+
+def check_email(conn, email):
+    """'' if the (trimmed, lower-cased) email is valid and on no other account, else the message to show. New sign-ups
+    need one (owner, 2026-10-08); accounts made before then have none and keep working without it. Stored, like the
+    settings page's, as users.prefs.email."""
+    if not email or len(email) > EMAIL_MAX or not EMAIL_RE.match(email):
+        return "Please enter a valid email address."
+    if conn.execute(text("SELECT 1 FROM users WHERE lower(prefs->>'email') = :e"), dict(e=email)).first():
+        return "That email is already on an account. Sign in, or use another address."
+    return ""
+
+
 def check_password(password, confirm, username):
     if len(password) < PASSWORD_MIN:
         return f"Passwords need at least {PASSWORD_MIN} characters."

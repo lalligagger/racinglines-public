@@ -25,10 +25,10 @@ racinglines</textarea>
 </div>{% endif %}
 <div class="card"><h2>Add a user</h2>
 <form method="post" action="/admin/users">{{ csrf() }}
-  <label><span>Username</span><input name="username" required size="14"></label>
+  <label><span>Username</span><input name="username" required size="14" autocomplete="off"></label>
   <label><span>Display name</span><input name="display_name" size="16"></label>
   <label><span>Role</span><select name="role">{% for r in roles %}<option {% if r == 'basic' %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></label>
-  <label><span>Password (8+ chars)</span><input name="password" type="password" required size="14"></label>
+  <label><span>Password ({{ pw_min }}+ chars)</span><input name="password" type="password" required size="14" minlength="{{ pw_min }}" autocomplete="new-password"></label>
   <button class="primary">Create</button></form></div>
 <div class="card"><h2>Accounts</h2>{% if ledger %}<p class="muted">Every account starts with {{ "{:,}".format(grant) }} fantasy bucks (accounts.fantasy_ledger). Passwords are stored as hashes only: reset one, never read it.</p>{% endif %}<div class="scroll"><table>
 <thead><tr><th class="l">User</th><th class="l">Role</th><th>Active</th><th class="l">Display name</th><th class="l">New password</th><th></th><th class="l">Last seen</th><th>Markets</th><th>Bets placed</th>{% if ledger %}<th>Fantasy bucks</th>{% endif %}<th></th><th></th></tr></thead><tbody>

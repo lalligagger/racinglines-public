@@ -94,9 +94,16 @@ event: a race, or a competition's season
 
 ## Pages
 
+**Landing page** (`/login`, where every signed-out visit lands; owner, 2026-10-08). Business first: what the pricing
+does for sportsbooks that set their own lines, books on a platform provider's feed, and the providers themselves,
+then the "How it works" infographic, a contact line (hello@racinglines.bet) and, lower down, the fantasy-trading beta:
+sign up, the two demo buttons (no bigger than the sign-up link) and the sign-in form (`/login#account`). It names no
+sportsbook, operator or provider. The sign-up popup is gone, and the maintenance popup is off (`MAINTENANCE_NOTICE = ""`).
+
 **Beta sign-up** (`/signup`, `RACINGLINES_SIGNUP=1`, off by default; `racinglines/web/accounts.py`). A public page,
-linked from the sign-in page and from the popup demo visitors see ("Beta signups are live!"): username, password
-(twice, 10+ characters, stored only as a scrypt hash) and an 18+ / fantasy-money tick. Every beta account starts as
+linked from the landing page's "Fantasy trade with us" section: username, email (required since 2026-10-08, one
+account per address, stored as `users.prefs.email` like the settings page's), password (twice, 10+ characters, stored
+only as a scrypt hash) and an 18+ / fantasy-money tick. Accounts made before 2026-10-08 have no email and keep working. Every beta account starts as
 **pro** (owner, 2026-10-01; fantasy tiers come later, and an admin can change a role at `/admin/users`). One transaction
 creates the account and credits it **1,000 fantasy bucks**, then signs the person in; the demo maker's starting strategy is assigned when the Lab candidates exist. Ten attempts per IP per hour
 and a hidden honeypot field; passwords are never logged or echoed back.
@@ -107,8 +114,8 @@ never change the VM's database: `bash scripts/deploy/vm.sh accounts` backs the d
 setup` (idempotent; every existing active account also gets its 1,000) and switches sign-up on. Until then `/signup`
 says sign-up isn't open yet. Rollback: `vm.sh accounts off`.
 
-Sign-up asks for no email address, and we keep none. **Forgot your password?** (`/forgot`, linked from the sign-in page
-when sign-up is on) writes a reset request to hello@racinglines.bet for the person to send from any address (an
+No reset email is sent automatically. **Forgot your password?** (`/forgot`, linked from the sign-in form
+when sign-up is on) writes a reset request to hello@racinglines.bet for the person to send (an
 "Open in my email app" link and a Copy button); an admin resets the password and replies with the one-time password.
 
 Admins manage accounts at `/admin/users`: add, change role, deactivate, **Reset password** (a random one-time password
