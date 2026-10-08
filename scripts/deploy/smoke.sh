@@ -37,8 +37,8 @@ check() {   # check <expected status> <label> <curl args...>
   if [ "$got" = "$want" ]; then echo "ok    $got  $label"; else echo "FAIL  $got  $label (wanted $want)"; fail=1; fi
 }
 
-# wait up to 60 s for the app to answer at all (vm.sh deploy runs this seconds after the restart)
-for _ in $(seq 1 12); do
+# wait up to 90 s for the app to answer at all (external routing can be slow during simultaneous deploys on single VM)
+for _ in $(seq 1 18); do
   [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$URL/login")" = 200 ] && break; sleep 5
 done
 

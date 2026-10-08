@@ -72,7 +72,20 @@ jobs:
 
       - name: Smoke check staging.racinglines.bet as the staging instance
         if: ${{ env.HAS_GCP_KEY == 'true' && env.HAS_VM_TARGET == 'true' }}
-        run: SMOKE_EXPECT_ENV=staging bash scripts/deploy/smoke.sh "$STAGING_URL"
+        run: |
+          # Retry up to 3 times with 30s waits to handle single-VM routing delays during simultaneous deploys
+          for attempt in 1 2 3; do
+            echo "Smoke check attempt $attempt/3..."
+            if SMOKE_EXPECT_ENV=staging bash scripts/deploy/smoke.sh "$STAGING_URL"; then
+              exit 0
+            fi
+            if [ $attempt -lt 3 ]; then
+              echo "Smoke check failed, waiting 30s before retry..."
+              sleep 30
+            fi
+          done
+          echo "Smoke check failed after 3 attempts"
+          exit 1
 
       - name: Summary
         if: ${{ always() }}
