@@ -197,7 +197,7 @@ def test_the_weekend_mode_reproduces_the_base_commit(world, test_engine, sport):
 def test_both_modes_are_in_the_schema_and_weekend_stays_the_default():
     from racinglines.pipelines import sweep_settings as SS
     for sport in ("nascar", "motogp"):
-        assert SW.modes(sport) == ("sessions", "weekend") and SW.engine_of(sport) == "weekend"
+        assert SW.modes(sport)[:2] == ("sessions", "weekend") and SW.engine_of(sport) == "weekend"
         assert SW.time_key(sport) and SW.supports(sport)
         cls = SW.settings_class(sport)
         st = cls.from_dict()
@@ -212,6 +212,24 @@ def test_both_modes_are_in_the_schema_and_weekend_stays_the_default():
                                                      "after PR", "after Q1", "after Q2", "after Sprint", "after WUP")
     assert SW.late_labels("nascar", "sessions") == ("after Q", "race eve")
     assert SW.kinds("nascar", "sessions") == SW.kinds("nascar", "weekend")   # no weekend_kinds: the [replay] kinds
+    assert SW.modes("nascar") == ("sessions", "weekend", "race_day") and SW.modes("motogp") == ("sessions", "weekend")
+
+
+@pytest.mark.quick
+def test_the_race_day_mode_adds_its_stages_and_keeps_the_weekend_default():
+    T = pd.Timestamp
+    sp, sw = P.spec("nascar"), SW.spec("nascar")
+    assert SW.stage_labels("nascar") == ("T-3d", "T-1d", "race eve")                 # the default: unchanged
+    assert SW.stage_labels("nascar", "race_day") == ("T-3d", "T-1d", "race eve", "race morning")
+    assert "race morning" in SW.all_labels("nascar") and SW.late_labels("nascar", "race_day") == ("race eve", "race morning")
+    race = pd.Series(dict(start=T("2031-03-23")))
+    week = SW.race_plan("nascar", "weekend", race, [], sp, sw)
+    day = SW.race_plan("nascar", "race_day", race, [], sp, sw)
+    assert week["stages"][-1] == ("race eve", T("2031-03-22 18:00")) and week["until"] == T("2031-03-23")
+    assert day["stages"][-1] == ("race morning", T("2031-03-23 12:00")) and day["until"] == T("2031-03-23 15:00")
+    assert P.stage_list(sp) == sp["stages"]
+    with pytest.raises(ValueError):
+        P.stage_list(P.spec("motogp"), "race_day")                   # no race_day_stages in its schema
 
 
 @pytest.mark.quick

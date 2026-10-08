@@ -137,6 +137,16 @@ def _race_results(conn, race_id):
                        conn, params=dict(r=int(race_id)))
 
 
+def stage_list(sp, mode="weekend"):
+    """The [(label, hours)] of a stage mode: "weekend" (or None) the [replay] stages; "race_day" those plus the
+    [replay] race_day_stages (opt-in, so the weekend results stay reproducible: decision log 2026-10-08)."""
+    if mode in (None, "weekend"):
+        return list(sp["stages"])
+    if mode != "race_day" or not sp.get("race_day_stages"):
+        raise ValueError(f"stages {mode!r}: one of weekend, race_day (race_day needs [replay] race_day_stages)")
+    return list(sp["stages"]) + list(sp["race_day_stages"])
+
+
 def stage_times(race_start, sp):
     """[(label, time)] of the race's stages: [replay] stages are hours from 00:00 UTC on race day, which is
     race_day_offset days after the event's first day. Naive UTC."""
@@ -264,26 +274,34 @@ def kalshi_fees(trades):
 
 # --- the season -----------------------------------------------------------------------------------------
 
+def coherence_tol(sp, venue):
+    """The group coherence tolerance on `venue`: the sport's [replay] coherence_tol for that venue, else COHERENCE_TOL.
+    A per-kind sweep setting (coherence_tol_by_kind) still overrides it."""
+    return float((sp.get("coherence_tol") or {}).get(venue, COHERENCE_TOL))
+
+
 def _venue(conn, venue, race_links, stages, sp):
     from racinglines.markets.venue_replay import EXCHANGES
     start = min(t for _, t in stages) - timedelta(hours=1)
     end = max(t for _, t in stages) + timedelta(hours=1)
     gt = {k: int(v) for k, v in (sp.get("group_target") or {}).items()}
-    return EXCHANGES[venue](conn, race_links, start, end, gt, COHERENCE_TOL, STALE)
+    return EXCHANGES[venue](conn, race_links, start, end, gt, coherence_tol(sp, venue), STALE)
 
 
 def run(engine, sport, seasons=None, venue="kalshi", taker=None, min_volume_24h=MIN_VOLUME_24H, model_settings=None,
-        kinds=None, data=None, save=None, events=None, echo=print, buy_all=None, on_race=None):
+        kinds=None, data=None, save=None, events=None, echo=print, buy_all=None, on_race=None, stage_mode="weekend"):
     """The replay over `seasons` (None = every season with races). taker: TakerParams (None = the defaults).
     model_settings: dict for the model's Settings (seed defaults to SEED). kinds: a subset of [replay] kinds.
     data: the model's frame, already loaded. save: None, or dict(engine_url, batch) to store one model run per race.
     events: only these event keys ("latest" = the last race of the selection), e.g. for a spot check; the model still
     learns from every earlier race. buy_all: add the buy-one-of-everything mode (None = RACINGLINES_BUY_ALL).
     on_race: None, or a callable(race, markets) given each race's markets (race_markets) before they are traded
-    (pipelines/sport_paper.py stores the taker's trades from them as demo paper positions)."""
+    (pipelines/sport_paper.py stores the taker's trades from them as demo paper positions). stage_mode: stage_list's
+    mode ("race_day" adds the [replay] race_day_stages)."""
     from racinglines.markets.strategies import buy_everything as BA
     buy_all = BA.enabled(buy_all)
     sp = spec(sport)
+    sp = dict(sp, stages=stage_list(sp, stage_mode))
     if kinds:
         bad = set(kinds) - set(sp["kinds"])
         if bad:
@@ -351,7 +369,7 @@ def run(engine, sport, seasons=None, venue="kalshi", taker=None, min_volume_24h=
                                                               taker={k: v for k, v in t.__dict__.items() if k != "mode"},
                                                               model=model.name, model_settings=st.to_json(),
                                                               min_volume_24h=min_volume_24h, kinds=sp["kinds"],
-                                                              stages=sp["stages"], coherence_tol=COHERENCE_TOL,
+                                                              stages=sp["stages"], coherence_tol=coherence_tol(sp, venue),
                                                               group_target=sp.get("group_target") or {}))
     if buy_all:
         out = dict(out, **_buy_all(out, ba_trades))

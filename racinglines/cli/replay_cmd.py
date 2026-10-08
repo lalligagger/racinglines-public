@@ -54,6 +54,9 @@ def add_parser(sub, sport):
                         "races' trades and prices first (needs --backup), then replay.")
     p.add_argument("--require-tradeable", action="store_true",
                    help="Exit 1 unless some market was tradeable on some venue.")
+    p.add_argument("--stages", default="weekend", choices=["weekend", "race_day"],
+                   help=f"weekend: sports/{sport}.toml [replay] stages (the default, reproducible); race_day: those "
+                        "plus [replay] race_day_stages (opt-in).")
     p.add_argument("--buy-all", action="store_true",
                    help="Debug: also buy one YES and one NO of every priced, open market, no filters (mode buy_all).")
     return p
@@ -115,7 +118,7 @@ def run(args, sport, years):
                     events=events,
                     min_volume_24h=P.MIN_VOLUME_24H if args.min_volume is None else args.min_volume,
                     model_settings={"sims": args.sims} if args.sims else None, save=save if i == 0 else None,
-                    buy_all=True if args.buy_all else None)
+                    buy_all=True if args.buy_all else None, stage_mode=args.stages)
         data = out.pop("data")
         traded = traded or P.traded(out)
         print(P.format_report(out))
@@ -153,6 +156,9 @@ def add_demo_parser(sub, sport):
     p.add_argument("--reset", action="store_true", help="Delete this sport's demo rows on --venue for --users first "
                                                        "(alone: delete only).")
     p.add_argument("--backup", default=None, help="The database dump taken for this step (under 24 hours old).")
+    p.add_argument("--stages", default="weekend", choices=["weekend", "race_day"],
+                   help=f"weekend: sports/{sport}.toml [replay] stages (the default, reproducible); race_day: those "
+                        "plus [replay] race_day_stages (opt-in).")
     p.add_argument("--grid-venue", default=None, choices=["kalshi", "polymarket"],
                    help="Pick the settings from this venue's grid runs (default: --venue). Polymarket has no grid: "
                         "--venue polymarket --grid-venue kalshi trades Polymarket's tape with Kalshi's selection.")
@@ -195,7 +201,8 @@ def run_demo(args, sport):
     (Path(args.grid) / f"demo-selection-{args.venue}.md").write_text(md)
     events = args.events.split(",") if args.events else None
     rep = SP.backfill(engine, sport, settings, usernames=users, seasons=sel["seasons"], venue=args.venue,
-                      events=events, book=args.book, echo=lambda m: print(m, flush=True))
+                      events=events, book=args.book, echo=lambda m: print(m, flush=True),
+                      stage_mode=getattr(args, "stages", "weekend"))
     for u in sorted({r[0] for r in rep}):
         for y in sel["seasons"]:
             rs = [r for r in rep if r[0] == u and r[1].startswith(str(y))]
