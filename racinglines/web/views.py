@@ -87,6 +87,24 @@ def _other_exchanges():
     return sorted({"kalshi", *EX.CODES} - {"polymarket"})
 
 
+def book_total(events, maker=True):
+    """The private book's P&L across events, as [(time, P&L)]: each event's own running P&L, carried forward to every
+    poll time of any event, then summed. Sorting the events' curves together would interleave their separate running
+    totals (a sawtooth, and a false drawdown at each event's start)."""
+    from racinglines.pipelines import live as LV
+    series = []
+    for ev in events:
+        pts = LV.book_curve(ev, maker)
+        if pts:
+            s = pd.Series([v for _, v in pts], index=pd.DatetimeIndex([t for t, _ in pts]))
+            series.append(s[~s.index.duplicated(keep="last")].sort_index())
+    if not series:
+        return []
+    idx = sorted(set().union(*[set(s.index) for s in series]))
+    total = sum(s.reindex(idx, method="ffill").fillna(0.0) for s in series)     # before an event's first poll: 0
+    return list(zip(idx, total.tolist()))
+
+
 def _venue_names():
     """Display name by venue code, from the registry."""
     return {v.code: v.name for v in V.VENUES}
@@ -126,11 +144,36 @@ def board_page(request: Request, msg: str = "", c=Depends(conn)):
                        date=None if r["date"] is None or pd.isna(r["date"]) else pd.Timestamp(r["date"]).isoformat())
                  for r in calendar]
     from racinglines.web import sport_status as SS                  # RACINGLINES_SPORT_STATUS=1: every sport's status
-    return render(request, "board.html", sports=B.board(c, _maker(user)), h=B.headline(c, _maker(user)), kalshi=V.KALSHI_VENUE,
+    return render(request, "board.html", sports=B.board(c, _maker(user), detail=False), h=B.headline(c, _maker(user)), kalshi=V.KALSHI_VENUE,
                   disagree=D.panel(c) if D.ON["on"] else None,
                   sport_status=SS.status(c) if SS.enabled() else None, show_paper=True,
                   recorders=B.recorder_status(c, [v.code for v in V.EXCHANGES if v.code != "kalshi" or V.KALSHI_VENUE]),
                   calendar=calendar, cal_sports=cal_sports, cal_exchanges=cal_exchanges, cal_events=cal_events)
+
+
+@app.get("/markets/sport/{code}", response_class=HTMLResponse, dependencies=[allow(*ANY)])
+def board_sport(request: Request, code: str, c=Depends(conn)):
+    """One sport's body on the Markets board (race cards, season markets, exchange data), loaded when its collapsed
+    section is opened, so the page itself only reads each sport's header."""
+    user = request.state.user
+    if R.is_basic(user):
+        raise HTTPException(403)
+    got = B.board(c, _maker(user), only=code)
+    if not got:
+        raise HTTPException(404, "no such sport on the board")
+    return render(request, "_board_sport.html", s=got[0], kalshi=V.KALSHI_VENUE)
+
+
+@app.get("/markets/sport/{code}/recent", response_class=HTMLResponse, dependencies=[allow(*ANY)])
+def board_recent(request: Request, code: str, c=Depends(conn)):
+    """A sport's recent results on the Markets board (the winner, our pre-race price, the venues'), loaded when the
+    section is opened: each one re-reads a past race's whole market, the slowest part of the board."""
+    if R.is_basic(request.state.user):
+        raise HTTPException(403)
+    comp = c.execute(text("SELECT id FROM competitions WHERE code = :c"), dict(c=code)).scalar()
+    if comp is None:
+        raise HTTPException(404, "no such sport")
+    return render(request, "_board_recent.html", recent=B.recent_results(c, int(comp)), kalshi=V.KALSHI_VENUE)
 
 
 # ---------------------------------------------------------------------------
@@ -618,21 +661,27 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     live = _live_venues()                               # the venue registry decides which venues' rows show
     if venue and venue not in live and not sp:
         venue = ""
+    # the account's signals are read once and grouped (per weekend, per market), not looked up again for each
+    # position: the signals table has no (user, market) index, so a lookup per position scanned them all
     pos = rows(data.q(c, """
+        WITH s AS (SELECT event_key, market_key, action, strategy, detail FROM strategy_signals WHERE user_id = :u),
+             bf AS (SELECT event_key, bool_or(detail->>'backfill' = 'true') AS backfill FROM s GROUP BY 1),
+             tr AS (SELECT market_key,
+                           count(*) FILTER (WHERE action = 'fill' OR (action IN ('buy', 'sell')
+                                            AND coalesce(detail->>'followed', 'true') = 'true')) AS trades,
+                           bool_or(strategy = 'buy_all' OR detail->>'mode' = 'buy_all') AS buy_all
+                    FROM s GROUP BY 1)
         SELECT p.*, coalesce(ra.format->>'event_name', e.name) AS event_name, e.start_date,
-               coalesce(sp.code, 'private') AS sport,
-               (SELECT bool_or(detail->>'backfill' = 'true') FROM strategy_signals s
-                 WHERE s.user_id = p.user_id AND s.event_key = p.event_key) AS backfill,
-               (SELECT count(*) FROM strategy_signals s WHERE s.user_id = p.user_id AND s.market_key = p.market_key
-                  AND (s.action = 'fill' OR (s.action IN ('buy', 'sell') AND coalesce(s.detail->>'followed', 'true') = 'true'))) AS trades
+               coalesce(sp.code, 'private') AS sport, bf.backfill, coalesce(tr.trades, 0) AS trades
         FROM paper_positions p
+        LEFT JOIN bf ON bf.event_key = p.event_key
+        LEFT JOIN tr ON tr.market_key = p.market_key
         LEFT JOIN events e ON e.source_key = p.event_key
         LEFT JOIN seasons se ON se.id = e.season_id
         LEFT JOIN competitions co ON co.id = se.competition_id
         LEFT JOIN sports sp ON sp.id = co.sport_id
         LEFT JOIN races ra ON ra.event_id = e.id WHERE p.user_id = :u
-          AND NOT EXISTS (SELECT 1 FROM strategy_signals s WHERE s.user_id = p.user_id AND s.market_key = p.market_key
-                          AND (s.strategy = 'buy_all' OR s.detail->>'mode' = 'buy_all'))    -- the debug mode: never shown
+          AND NOT coalesce(tr.buy_all, false)                       -- the debug mode: never shown
           AND (p.venue = ANY(:live)"""
         + (" OR p.event_key IN (" + SPP.SPORT_KEYS + ")" if sp else "") + """)
         ORDER BY """ + ("e.start_date DESC NULLS LAST, " if sp else "") + """p.event_key DESC, p.kind, p.subject""",
@@ -737,7 +786,7 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     book = None
     if priv_events:
         from racinglines.web.viz import line_chart
-        curve = sorted(pt for ev in priv_events for pt in LV.book_curve(ev, maker))
+        curve = book_total(priv_events, maker)
         cum = [v for _, v in curve]
         book = dict(chart=line_chart({"pnl": curve}, {"pnl": "private book P&L, marked to fair"}), polls=len(curve),
                     max_dd=min((v - max(cum[:i + 1]) for i, v in enumerate(cum)), default=0.0))

@@ -127,11 +127,13 @@ def next_races(conn, competition_id, n=8):
         ORDER BY e.start_date, ra.id LIMIT :n""", c=competition_id, n=n)
 
 
-def board(conn, maker_id):
+def board(conn, maker_id, only=None, detail=True):
+    """One dict per sport shown on the Markets board. detail=False: only what a sport's collapsed header shows (name,
+    model run, status chips); the page loads each sport's body when it is opened (`only` = that competition code)."""
     from racinglines import exchanges as EX
     from racinglines import sports as SP
     from racinglines.markets import alerts
-    fresh = list(alerts.new_links(conn).values()) if conn is not None else []  # (race_id, competition_id) per new token
+    fresh = list(alerts.new_links(conn).values()) if conn is not None and detail else []  # (race_id, competition_id) per new token
 
     def _new_for(race_id=None, comp_id=None):
         """How many new tokens are for this exact race, or (race_id=None) this exact sport's season markets.
@@ -142,7 +144,7 @@ def board(conn, maker_id):
         forecasts = {r["competition"]: r for r in data.latest_forecasts(conn).to_dict("records")}
     from racinglines.web import sport_status as SS
     status_on = SS.enabled()                       # RACINGLINES_SPORT_STATUS=1: model sections for sports with as-of runs
-    ss_by_comp = {r["competition"]: r for r in SS.status(conn)} if conn is not None else {}  # quick-look chips, always on
+    ss_by_comp = {r["competition"]: r for r in SS.status(conn)} if conn is not None and not detail else {}  # header chips
     asof_by_comp = {}
     if conn is not None and status_on:
         for r in data.q(conn, """SELECT co.code AS competition, count(DISTINCT mr.params->>'event_key') AS races,
@@ -156,6 +158,8 @@ def board(conn, maker_id):
     sports = []
     for schema in sorted(map(SP.load, SP.SPORT_CODES), key=lambda s: s["sport"]["display_order"]):
         code, sport_code = schema["competition"]["code"], schema["sport"]["code"]
+        if only is not None and code != only:
+            continue
         tape = schema["sport"].get("model_family", "none") == "none"
         run, exch = forecasts.get(code), exch_by_comp.get(code, [])
         if run is None and not exch:
@@ -165,6 +169,10 @@ def board(conn, maker_id):
             b["url"] = (f"/markets/tapes#tapes-{sport_code}-{b['exchange']}" if tape
                         else f"/markets/{b['exchange']}" if b["exchange"] in ("polymarket", "kalshi") or b["exchange"] in EX.CODES
                         else None)
+        if not detail:
+            sports.append(dict(code=code, name=SPORT_NAME.get(code, schema["sport"]["name"]), run=run, tape=tape, asof=asof,
+                               calibration=schema["sport"].get("calibration"), status=ss_by_comp.get(code)))
+            continue
         upcoming, later, season, recent = [], [], None, []
         if run:
             comp_id = int(data.q(conn, "SELECT id FROM competitions WHERE code = :c", c=code)["id"].iloc[0])
@@ -179,7 +187,7 @@ def board(conn, maker_id):
             season = dict(new=_new_for(None, comp_id), info=s_info, top=_top(s_df, "champion"), venues=venue_summary(s_df), mine=_mine(s_df),
                           outcomes=len(s_df), constructors=_top(s_df, "constructors_champion", 2),
                           strategy=latest_season_strategy(conn, code))
-            recent = recent_results(conn, comp_id)
+            recent = True                                # loaded when its section is opened (views.board_recent)
         elif not tape and asof is not None:
             # a modeled sport with no live forecast run (NASCAR, MotoGP): the next races with the exchanges' prices
             # (no fair price until a forecast is stored), and the recent races with the model's as-of price
@@ -190,7 +198,7 @@ def board(conn, maker_id):
                                       [dict(_card(conn, int(r), maker_id), new=_new_for(int(r))) for r in nxt["race_id"].head(3)])
             later = [dict(title=t["name"], event_id=t["event_id"], race_id=int(t["race_id"]), date=t["start_date"],
                           new=_new_for(int(t["race_id"]))) for t in nxt.iloc[3:].to_dict("records")]
-            recent = recent_results(conn, comp_id)
+            recent = True                                # loaded when its section is opened (views.board_recent)
         elif exch:
             tape_events = []
             for b in exch:
