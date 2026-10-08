@@ -435,13 +435,13 @@ def _tickers(conn, event_tickers=None, open_only=False, sport=None):
                                  WHERE {' AND '.join(where)} ORDER BY l.condition_id, l.token_id"""), params).all()
 
 
-def fetch_trades(session, conn, event_tickers=None, since=None, kc=None, sport=None):
+def fetch_trades(session, conn, event_tickers=None, since=None, kc=None, sport=None, open_only=False):
     """Store every trade on the markets of the given Kalshi events (or of every event of `sport`). Idempotent.
-    Returns trades stored."""
+    since: only trades from then on; open_only: markets not closed (the recorder's pass). Returns trades stored."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
     kc = kc or K.Client()
     n = 0
-    for tok, ev, _ in _tickers(conn, event_tickers, sport=sport):
+    for tok, ev, _ in _tickers(conn, event_tickers, open_only=open_only, sport=sport):
         rows = trade_rows(tok, ev, kc.trades(tok, min_ts=int(since.timestamp()) if since else None))
         for i in range(0, len(rows), 1000):
             session.execute(pg_insert(m.MarketTrade).values(rows[i:i + 1000]).on_conflict_do_nothing(constraint="uq_market_trade"))

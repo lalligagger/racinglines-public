@@ -750,6 +750,13 @@ def test_tape_only_sync_records_under_its_own_competition(test_engine, monkeypat
         # the sport's whole tape without naming events: trades on every market, books on the open ones
         assert KS.fetch_trades(s, c, kc=kc, sport="nascar") == 2
         assert KS.fetch_trades(s, c, kc=kc, sport="nascar") == 2                                 # deduplicated
+        # the recorder's pass: open markets only, from a time on (scripts/vm/record_venues.sh)
+        n = len(log)
+        KS.fetch_trades(s, c, kc=kc, sport="nascar", open_only=True, since=datetime(2026, 1, 1, tzinfo=timezone.utc))
+        asked = [q for _, path, q in log[n:] if path == "/markets/trades"]
+        assert sorted(q["ticker"] for q in asked) == ["KXNASCAR-26-KLAR", "KXNASCARRACE-26NOV08-KLAR",
+                                                      "KXNASCARRACE-26NOV08-WBYR"]          # not the settled NOV01
+        assert all(q.get("min_ts") for q in asked)
         assert KS.snapshot_books(s, c, kc=kc, sport="nascar") == 3                               # not the settled one
         t0, t1 = datetime(2026, 11, 5, tzinfo=timezone.utc), datetime(2026, 11, 6, tzinfo=timezone.utc)
         assert KS.fetch_history(s, c, ["KXMOTOGPRACE-26QAT"], t0, t1, 60, kc=kc) == 2

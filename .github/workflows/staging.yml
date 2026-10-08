@@ -29,9 +29,10 @@ jobs:
     name: deploy-staging
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # the `production` environment only holds the VM's ssh secrets (GCP_SERVICE_ACCOUNT_KEY, GCP_PROJECT_ID, VM_NAME,
-    # VM_ZONE); staging is on the same VM. Rename the environment, or add a `staging` one with the same four, later.
-    environment: production
+    # Staging uses the same GCP secrets as production (both on the same VM), but a separate logical environment
+    # so GitHub's Deployments UI doesn't conflate staging deploys with production. The actual deploy target is
+    # /opt/racinglines-staging, controlled by vm.sh staging deploy (production's /opt/racinglines stays untouched).
+    environment: staging-secrets
     env:
       HAS_GCP_KEY: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY != '' }}
       HAS_VM_TARGET: ${{ secrets.GCP_PROJECT_ID != '' && secrets.VM_NAME != '' && secrets.VM_ZONE != '' }}
@@ -71,7 +72,20 @@ jobs:
 
       - name: Smoke check staging.racinglines.bet as the staging instance
         if: ${{ env.HAS_GCP_KEY == 'true' && env.HAS_VM_TARGET == 'true' }}
-        run: SMOKE_EXPECT_ENV=staging bash scripts/deploy/smoke.sh "$STAGING_URL"
+        run: |
+          # Retry up to 3 times with 30s waits to handle single-VM routing delays during simultaneous deploys
+          for attempt in 1 2 3; do
+            echo "Smoke check attempt $attempt/3..."
+            if SMOKE_EXPECT_ENV=staging bash scripts/deploy/smoke.sh "$STAGING_URL"; then
+              exit 0
+            fi
+            if [ $attempt -lt 3 ]; then
+              echo "Smoke check failed, waiting 30s before retry..."
+              sleep 30
+            fi
+          done
+          echo "Smoke check failed after 3 attempts"
+          exit 1
 
       - name: Summary
         if: ${{ always() }}

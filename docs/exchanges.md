@@ -69,7 +69,7 @@ again. The scan starts a day before the last sync that saw a pending link listed
 link is found or the feed ends, reads at most the endpoint's `max_pages` (500) a pass, and notes on each link still
 missing how far the feed was read (`params.settle_scanned_to`), so the next pass starts there (less an hour). It is
 idempotent, and `sync` keeps these values. An exchange whose schema has no settlement feed does nothing. On the VM,
-`scripts/vm/record_venues.sh` runs it once an hour (`SETTLE_MIN`, default 60) after the sync, on race weekends.
+`scripts/vm/record_venues.sh` runs it once an hour (`SETTLE_MIN`, default 60) after the sync, every day.
 
 ```bash
 racinglines markets --exchange og settle                  # outcomes of the closed F1 links

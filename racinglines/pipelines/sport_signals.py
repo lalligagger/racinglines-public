@@ -156,7 +156,8 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
     first, last = window(race, sp)
     if live and not first <= now <= last:
         return dict(base, note=f"{race.name}: signals start {first:%a %d %b}")
-    stages = [(lab, t) for lab, t in P.stage_times(race.start, sp) if t <= now]
+    mode = SW.mode_of(sport, st)
+    stages = [(lab, t) for lab, t in P.stage_times(race.start, dict(sp, stages=P.stage_list(sp, mode))) if t <= now]
     if not stages:
         return dict(base, note=f"{race.name}: no stage due yet")
     with engine.connect() as c:
@@ -265,7 +266,8 @@ def _maker(c, links, venue, sims_of, res, priced, sp, st, strategy, now, race):
     from racinglines.pipelines import weekend_sweep as WS
     stages = [(lab, t) for lab, t, _, _ in priced]
     day = pd.Timestamp(race.start) + pd.Timedelta(days=int(sp.get("race_day_offset", 0)))
-    until = day + pd.Timedelta(hours=float(SW.spec(sp["sport"])["quote_until_hours"]))
+    rd = SW.mode_of(sp["sport"], st) == "race_day"
+    until = day + pd.Timedelta(hours=float(SW.spec(sp["sport"])["race_day_quote_until_hours" if rd else "quote_until_hours"]))
     ev = SW.maker_event(c, links, venue, sims_of[stages[-1][0]], res, stages, max(until, stages[-1][1]),
                         books=st["fill"] == "queue")
     from racinglines.pipelines import position_replay as P

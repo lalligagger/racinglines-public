@@ -510,22 +510,26 @@ def fetch_history(session, conn, event_slugs, start, end, fidelity=60, tokens=No
 DATA_API = "https://data-api.polymarket.com"
 
 
-def fetch_trades(session, conn, event_slugs, page=500, max_offset=100_000, modeled_only=False, since=None, sport=None):
+def fetch_trades(session, conn, event_slugs, page=500, max_offset=100_000, modeled_only=False, since=None, sport=None,
+                 open_only=False):
     """Store every taker trade for the markets of the given events (Data API; with no events, of every
     Polymarket link of `sport`'s competition).
     `side` is the taker's side for `token_id`. Idempotent. Returns trades stored.
-    since (datetime, UTC): stop paging a market once a page reaches trades this old (newest come first)."""
+    since (datetime, UTC): stop paging a market once a page reaches trades this old (newest come first).
+    open_only: markets with an open outcome (the recorder's pass)."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
     if not event_slugs and sport:
         where, params = _sport_where(None, sport)
         conds = conn.execute(text(f"""SELECT DISTINCT ml.condition_id FROM market_links ml JOIN competitions co ON co.id = ml.competition_id
                                       WHERE ml.exchange = 'polymarket' AND {where} AND ml.condition_id IS NOT NULL
-                                      AND (NOT CAST(:m AS boolean) OR ml.prediction <> 'unmodeled')"""),
-                             dict(params, m=modeled_only)).scalars().all()
+                                      AND (NOT CAST(:m AS boolean) OR ml.prediction <> 'unmodeled')
+                                      AND (NOT CAST(:o AS boolean) OR NOT ml.closed)"""),
+                             dict(params, m=modeled_only, o=open_only)).scalars().all()
     else:
         conds = conn.execute(text("""SELECT DISTINCT condition_id FROM market_links WHERE event_slug = ANY(:s)
-                                     AND exchange = 'polymarket' AND condition_id IS NOT NULL AND (NOT CAST(:m AS boolean) OR prediction <> 'unmodeled')"""),
-                             dict(s=list(event_slugs or []), m=modeled_only)).scalars().all()
+                                     AND exchange = 'polymarket' AND condition_id IS NOT NULL AND (NOT CAST(:m AS boolean) OR prediction <> 'unmodeled')
+                                     AND (NOT CAST(:o AS boolean) OR NOT closed)"""),
+                             dict(s=list(event_slugs or []), m=modeled_only, o=open_only)).scalars().all()
     n = 0
     with httpx.Client(base_url=DATA_API, timeout=30) as c:
         for cond in conds:
@@ -559,7 +563,9 @@ def _levels(side, best_first_desc):
 
 def snapshot_books(session, conn, event_slugs=None, depth=10, sport=None):
     """One order-book snapshot for every open outcome token of the given events
-    (default: every open modeled market, season-long or for a race that hasn't been run;
+    (default: every open modeled market, season-long or for a race that hasn't been run, and every open F1 market
+    linked to such a race even when its kind isn't modeled yet, so a new kind's tape starts when the market is found,
+    not when the kind is promoted: practice fastest lap, extra drivers;
     with `sport` and no events: every open Polymarket link of that sport's competition).
     Returns snapshots stored."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -574,9 +580,11 @@ def snapshot_books(session, conn, event_slugs=None, depth=10, sport=None):
     else:
         toks = conn.execute(text("""
             SELECT ml.token_id FROM market_links ml LEFT JOIN races ra ON ra.id = ml.race_id
-            LEFT JOIN events e ON e.id = ra.event_id
-            WHERE NOT ml.closed AND ml.prediction <> 'unmodeled' AND ml.exchange = 'polymarket'
-              AND (ml.race_id IS NULL OR e.status <> 'completed')""")).scalars().all()
+            LEFT JOIN events e ON e.id = ra.event_id LEFT JOIN competitions co ON co.id = ml.competition_id
+            WHERE NOT ml.closed AND ml.exchange = 'polymarket'
+              AND (ml.prediction <> 'unmodeled' OR (ml.race_id IS NOT NULL AND co.code = :f1))
+              AND (ml.race_id IS NULL OR e.status <> 'completed')"""),
+            dict(f1=sports.load("f1")["competition"]["code"])).scalars().all()
     rows = []
     with httpx.Client(base_url=CLOB, timeout=30) as c:
         for i in range(0, len(toks), 100):
