@@ -302,3 +302,24 @@ def test_every_2026_launch_spec_loads(path):
         assert spec["window"]["open"] == ups[0]["at"].isoformat()
         assert spec["window"]["close"] == ups[-2]["at"].isoformat() == w["race_start"].isoformat()
         assert spec["window"]["results"] == ups[-1]["at"].isoformat()
+
+
+@pytest.mark.quick
+def test_live_exchange_prices_carry_their_age_and_flag_stale_ones():
+    mkts = [dict(key="race_win:100", kind="race_win", athlete_id=100, params=None, subject="Driver A", fair=0.33),
+            dict(key="race_win:101", kind="race_win", athlete_id=101, params=None, subject="Driver B", fair=0.20)]
+    links = pd.DataFrame([
+        dict(exchange="polymarket", prediction="race_win", athlete_id=100, params=None, last_price=0.45,
+             last_bid=None, last_ask=None, synced_at=pd.Timestamp("2026-10-04T11:55:00Z")),
+        dict(exchange="kalshi", prediction="race_win", athlete_id=100, params=None, last_price=0.41,
+             last_bid=None, last_ask=None, synced_at=pd.Timestamp("2026-10-04T11:00:00Z")),
+        dict(exchange="polymarket", prediction="race_win", athlete_id=101, params=None, last_price=0.22,
+             last_bid=None, last_ask=None, synced_at=None),
+    ])
+    out = F.attach_exchange_prices(mkts, links)
+    assert out[0]["exchange_prices"][0]["synced"].startswith("2026-10-04T11:55:00")
+    ages = F.venue_price_ages(out, pd.Timestamp("2026-10-04T12:00:00Z"))
+    by = {(s, q["code"]): q for s, q in ages}
+    assert by[("Driver A", "polymarket")]["age_min"] == 5 and not by[("Driver A", "polymarket")]["stale"]
+    assert by[("Driver A", "kalshi")]["age_min"] == 60 and by[("Driver A", "kalshi")]["stale"]
+    assert by[("Driver B", "polymarket")]["age_min"] is None and not by[("Driver B", "polymarket")]["stale"]

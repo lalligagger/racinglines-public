@@ -9,15 +9,33 @@ model prediction that prices it.
     "<GP>: Driver Pole Position"          race_pole         athlete, race
     "<GP>: Driver Fastest Lap"            race_fastest_lap  athlete, race
     "<GP>: Sprint Winner"                 race_sprint_win   athlete, race (the sprint stage, models/position_sim/pricing.py)
+        (2025: "F1 <GP>: Sprint Race Winner", "<GP> - Sprint Winner")
     "<GP>: Sprint Qualifying Pole Winner" race_sprint_pole  athlete, race
+    "<GP>: 2nd Place" .. "5th Place"      race_p2 .. race_p5   athlete, race (an exact finishing place)
+    "<GP>: Which Constructor scores 2nd?" .. "5th?", "... the second most points?"
+                                          race_constructor_p2 .. p5   race, params.team (the team's points rank)
+    "<GP>: Constructor Pole Position"     race_constructor_pole        race, params.team
+    "<GP>: Constructor Fastest Lap"       race_constructor_fastest_lap race, params.team
+    "<GP> – Constructor Matchups" / "McLaren vs. Red Bull"
+                                          race_constructor_h2h  race, params.team and params.opponent (both tokens)
+    "F1: Constructor to double podium at <GP>?"  race_team_double_podium  race, params.team
+    "F1: Will A finish ahead of B in the <GP>?"  race_h2h  athlete, race, params.opponent_id (the Yes token)
     "Will there be a safety car / red flag during the ... <GP>?", "Rain during the <GP>?"
                                           race_safety_car / race_red_flag / race_rain   race (no athlete)
     "F1 Drivers' Champion"                champion          athlete
+    "F1 Drivers Champion: 2nd Place" .. "5th Place"   standings_p2 .. p5   athlete
     "F1 Constructors' Champion"           constructors_champion  params.team
+    "F1 Constructors Champion: 2nd Place" .. "5th Place"   constructors_p2 .. p5   params.team
     "Will X win N+ Grands Prix in YYYY?"  season_wins_ge    athlete, params.n
     "Will A finish ahead of B in the YYYY Drivers' Championship?"  standings_h2h  athlete, params.opponent_id
     anything else                         unmodeled (listed with prices, no model price); linked to the race
-                                          when the title starts "<GP>: " (constructor fastest lap, ...)
+                                          when the title starts "<GP>: " (practice fastest lap, ...)
+
+Who each token names follows the kind's subject in markets/kinds.toml (a driver: the group title; a team: the group
+title as a team; a pair: the two outcomes, or the two names of a yes/no question), so a new kind with a known subject
+needs a title pattern here and nothing else. A race is matched by Resolver.race, the same name-and-date lookup for
+every family: a market on a race the calendar no longer has (the April 2026 Bahrain GP, cancelled; it ran at Sepang
+in October) keeps no race_id and stays unmodeled.
 
 Placeholders: Polymarket lists unnamed slots in some race events ("Driver A" to "Driver E", "Other" for "any
 other driver / constructor") so it can add outcomes later. They stay unmodeled, linked to the race, with
@@ -44,8 +62,9 @@ the sport is named, and the sync is additive: it upserts by token id and never d
 
 import json
 import re
+import sys
 import unicodedata
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from sqlalchemy import select, text
@@ -53,10 +72,12 @@ from sqlalchemy import select, text
 from racinglines import sports
 from racinglines.db import models as m
 from racinglines.markets import identity
+from racinglines.markets import kinds as K
 from racinglines.markets.kalshi.sync import gp_name
 from racinglines.sources import http
 
 GAMMA = "https://gamma-api.polymarket.com"
+HISTORY_WINDOW = timedelta(days=7)    # /prices-history span per request (the weekend windows that always worked)
 MATCH_DAYS = 10     # a race market's end date must be within this many days of the race
 TAGS = ("f1", "formula1")
 REREAD_MAX = 40     # events re-read by slug per pass when the active listing stopped returning them
@@ -95,8 +116,51 @@ PROP_KINDS = tuple(k for _, k in PROPS)        # yes/no for the whole race: no a
 PLACEHOLDER = re.compile(r"^(?:Driver [A-Z]|Other)$")      # unnamed slots in a race event (group title)
 
 
+ORDINAL = {"1st": 1, "first": 1, "2nd": 2, "second": 2, "3rd": 3, "third": 3, "4th": 4, "fourth": 4, "5th": 5,
+           "fifth": 5}
+_ORD = r"(1st|2nd|3rd|4th|5th|first|second|third|fourth|fifth)"
+# a place n -> its kind, per family (place 1 is the existing win / top constructor / champion kind)
+PLACE_KINDS = {
+    "race": {1: "race_win", 2: "race_p2", 3: "race_p3", 4: "race_p4", 5: "race_p5"},
+    "constructor": {1: "race_constructor_top", 2: "race_constructor_p2", 3: "race_constructor_p3",
+                    4: "race_constructor_p4", 5: "race_constructor_p5"},
+    "drivers": {1: "champion", 2: "standings_p2", 3: "standings_p3", 4: "standings_p4", 5: "standings_p5"},
+    "constructors": {1: "constructors_champion", 2: "constructors_p2", 3: "constructors_p3", 4: "constructors_p4",
+                     5: "constructors_p5"},
+}
+AHEAD = re.compile(r"Will (.+?) finish ahead of (.+?) (?:in|at) the ")       # a yes/no head-to-head: (A, B)
+
+
+def _place(family, word):
+    return PLACE_KINDS[family].get(ORDINAL[word.lower()], "unmodeled")
+
+
 def classify(event_title, question):
     t, q = (event_title or "").strip(), (question or "").strip()
+    gp, sep = r"^(?:F1:?\s+)?(.+?Grand Prix)", r"\s*(?::|–|-)?\s*"
+    if m_ := re.search(r"Drivers'? Champion(?:ship)?:\s*" + _ORD + r" Place$", t, re.I):
+        return _place("drivers", m_.group(1)), None
+    if m_ := re.search(r"Constructors'? Champion(?:ship)?:\s*" + _ORD + r" Place$", t, re.I):
+        return _place("constructors", m_.group(1)), None
+    if m_ := re.search(gp + sep + r"Sprint (?:Race )?Winner$", t, re.I):
+        return "race_sprint_win", m_.group(1)
+    if m_ := re.search(gp + sep + r"Sprint Qualifying Pole(?: Winner| Position)?$", t, re.I):
+        return "race_sprint_pole", m_.group(1)
+    if m_ := re.search(gp + sep + _ORD + r" Place$", t, re.I):
+        return _place("race", m_.group(2)), m_.group(1)
+    if m_ := re.search(gp + sep + r"Which Constructor scores (?:the )?" + _ORD + r"(?: most points| highest)?\??$",
+                       t, re.I):
+        return _place("constructor", m_.group(2)), m_.group(1)
+    if m_ := re.search(gp + sep + r"Constructor Pole(?: Position| Winner)?$", t, re.I):
+        return "race_constructor_pole", m_.group(1)
+    if m_ := re.search(gp + sep + r"Constructor Fastest Lap$", t, re.I):
+        return "race_constructor_fastest_lap", m_.group(1)
+    if m_ := re.search(gp + sep + r"Constructor Match-?ups?$", t, re.I):
+        return "race_constructor_h2h", m_.group(1)
+    if m_ := re.search(r"Constructor to double podium (?:at|in) (?:the )?(.+?Grand Prix)\??$", t, re.I):
+        return "race_team_double_podium", m_.group(1)
+    if (m_ := AHEAD.search(q)) and not re.search(r"Championship", q) and (g := gp_name(q)):
+        return "race_h2h", g
     if m_ := re.search(r"^(.*Grand Prix): Sprint Winner$", t):
         return "race_sprint_win", m_.group(1)
     if m_ := re.search(r"^(.*Grand Prix): Sprint Qualifying Pole Winner$", t):
@@ -208,6 +272,36 @@ class Resolver:
         return min(found)[1:] if found else (None, None)
 
 
+def targets_of(kind, question, group, outcomes, R):
+    """[(token index, athlete_id, params, outcome label)]: which outcome tokens of a market to link and who each one
+    names, from the kind's subject (markets/kinds.toml) and the listing. R: a Resolver (driver, team)."""
+    subject = K.KINDS[kind].subject if kind in K.KINDS else None
+    question, yes = question or "", outcomes[0] if outcomes else "Yes"
+    if kind == "standings_h2h":
+        mm = re.search(r"Will (.+?) finish ahead of (.+?) in the", question)
+        a, b = (R.driver(mm.group(1)), R.driver(mm.group(2))) if mm else (None, None)
+        return [(0, a, {"opponent_id": b}, yes)]
+    if kind == "season_wins_ge":
+        mm = re.search(r"Will (.+?) win (\d+)\+ Grands Prix", question)
+        return [(0, R.driver(mm.group(1)) if mm else None, {"n": int(mm.group(2)) if mm else None}, yes)]
+    if subject == "pair" and (mm := AHEAD.search(question)):           # one yes/no question: yes = A ahead of B
+        a, b = R.driver(mm.group(1)), R.driver(mm.group(2))
+        return [(0, a, {"opponent_id": b}, yes)]
+    if subject == "pair" and len(outcomes) == 2:                       # two tokens, one per driver
+        a, b = R.driver(outcomes[0]), R.driver(outcomes[1])
+        return [(0, a, {"opponent_id": b}, outcomes[0]), (1, b, {"opponent_id": a}, outcomes[1])]
+    if kind == "race_constructor_h2h":                                 # two tokens, one per team
+        if len(outcomes) != 2:
+            return [(0, None, None, yes)]
+        a, b = R.team(outcomes[0]), R.team(outcomes[1])
+        return [(0, None, {"team": a, "opponent": b}, outcomes[0]), (1, None, {"team": b, "opponent": a}, outcomes[1])]
+    if subject == "team":                                              # the group title is the team
+        return [(0, None, {"team": R.team(group)}, yes)]
+    if subject == "driver":                                            # the group title is the driver
+        return [(0, R.driver(group), None, yes)]
+    return [(0, None, None, yes)]
+
+
 def _events(closed_year=None, tags=TAGS):
     """Active events of the given Gamma tags (default F1's); with closed_year, also every closed event ending that year."""
     out = {}
@@ -279,11 +373,12 @@ def sync(session, conn, year=2026, include_closed=False, new=None, sport="f1", t
     """Fetch every active event (and with include_closed, every closed one of `year`) and upsert one
     market_links row per outcome token. Tokens seen for the first time get first_seen_at and, if `new`
     is a list, are appended to it (markets/alerts.py). F1 (the default) is classified and matched to its
-    drivers and races; any other sport (nascar, motogp, indycar) pages its schema's Gamma tags (or `tags`)
-    and files every link `unmodeled` under its own competition, whether or not the sport has a pricing model
-    (a model prices from results, not from this sync; the identity pass fills athlete_id and race_id).
+    drivers and races ([markets] titles in its schema); any other sport (nascar, motogp, indycar) pages its schema's
+    Gamma tags (or `tags`) and files its links under its own competition: its [identity] resolver, when it has one,
+    fills athlete_id, race_id and params.kind, and a link whose kind the schema's [markets] kinds list, fully
+    identified, is filed as that kind (identity.promote); every other link stays `unmodeled`.
     Additive: never deletes a row."""
-    tape = sport != "f1"
+    tape = not sports.titles_classified(sport)    # [markets] titles: F1's title classifier and Resolver
     if tape:
         tags = tuple(tags or sports.polymarket_tags(sport))
         if not tags:
@@ -315,28 +410,10 @@ def sync(session, conn, year=2026, include_closed=False, new=None, sport="f1", t
             race_id, race_key = R.race(gp, end) if gp and R else (None, None)
             group = mk.get("groupItemTitle") or ""
             closed = bool(mk.get("closed"))
-            # which outcome tokens to link, and to whom
-            targets = []   # (token_index, athlete_id, params, outcome_label)
-            if tape:       # the first outcome token, as F1's unmodeled markets: no athlete, no race
-                targets = [(0, None, None, outcomes[0] if outcomes else "Yes")]
-            elif kind == "race_h2h" and len(outcomes) == 2:
-                a, b = R.driver(outcomes[0]), R.driver(outcomes[1])
-                targets = [(0, a, {"opponent_id": b}, outcomes[0]), (1, b, {"opponent_id": a}, outcomes[1])]
-            elif kind == "standings_h2h":
-                mm = re.search(r"Will (.+?) finish ahead of (.+?) in the", mk.get("question") or "")
-                a, b = (R.driver(mm.group(1)), R.driver(mm.group(2))) if mm else (None, None)
-                targets = [(0, a, {"opponent_id": b}, outcomes[0] if outcomes else "Yes")]
-            elif kind == "season_wins_ge":
-                mm = re.search(r"Will (.+?) win (\d+)\+ Grands Prix", mk.get("question") or "")
-                targets = [(0, R.driver(mm.group(1)) if mm else None, {"n": int(mm.group(2)) if mm else None},
-                            outcomes[0] if outcomes else "Yes")]
-            elif kind in ("race_constructor_top", "constructors_champion"):
-                targets = [(0, None, {"team": R.team(group)}, outcomes[0] if outcomes else "Yes")]
-            elif kind in ("race_win", "race_podium", "race_pole", "race_fastest_lap", "race_sprint_win", "race_sprint_pole",
-                          "champion"):
-                targets = [(0, R.driver(group), None, outcomes[0] if outcomes else "Yes")]
-            else:
-                targets = [(0, None, None, outcomes[0] if outcomes else "Yes")]
+            # which outcome tokens to link, and to whom; a tape-only sport: the first outcome token, as F1's
+            # unmodeled markets (no athlete, no race)
+            targets = ([(0, None, None, outcomes[0] if outcomes else "Yes")] if tape
+                       else targets_of(kind, mk.get("question"), group, outcomes, R))
 
             for i, athlete_id, params, label in targets:
                 if i >= len(tokens):
@@ -369,6 +446,7 @@ def sync(session, conn, year=2026, include_closed=False, new=None, sport="f1", t
                     closed=closed, resolved_yes=resolved, synced_at=now, active=not closed)
                 if who:
                     who.fill([values])
+                    identity.promote(sport, [values])     # prediction = params.kind where [markets] kinds files it
                 link = session.scalars(select(m.MarketLink).filter_by(token_id=tokens[i])).first()
                 if link is None:
                     session.add(m.MarketLink(token_id=tokens[i], first_seen_at=now, **values))
@@ -379,7 +457,7 @@ def sync(session, conn, year=2026, include_closed=False, new=None, sport="f1", t
                     for k, v in values.items():
                         setattr(link, k, v)
                 stats["links"] += 1
-                if matched and kind != "unmodeled":
+                if values["prediction"] != "unmodeled":
                     stats["modeled"] += 1
                 elif not matched:
                     stats["unmatched"] += 1
@@ -413,12 +491,19 @@ def fetch_history(session, conn, event_slugs, start, end, fidelity=60, tokens=No
     elif tokens is None:
         tokens = conn.execute(text("SELECT token_id FROM market_links WHERE event_slug = ANY(:s) AND exchange = 'polymarket'"),
                               dict(s=list(event_slugs))).scalars().all()
-    n = 0
+    n, refused = 0, {}
     with httpx.Client(base_url=CLOB, timeout=20) as c:
         for tok in tokens:
-            r = http.get(c, "/prices-history", params={"market": tok, "startTs": int(start.timestamp()),
-                                                  "endTs": int(end.timestamp()), "fidelity": fidelity})
-            pts = r.json().get("history", []) if r.status_code == 200 else []
+            pts, a = [], start
+            while a < end:      # one request per HISTORY_WINDOW: a 37-day request stored nothing (2026-10-08 backfill)
+                b = min(a + HISTORY_WINDOW, end)
+                r = http.get(c, "/prices-history", params={"market": tok, "startTs": int(a.timestamp()),
+                                                      "endTs": int(b.timestamp()), "fidelity": fidelity})
+                if r.status_code == 200:
+                    pts += r.json().get("history", [])
+                else:
+                    refused[r.status_code] = r.text[:160]
+                a = b
             if not pts:
                 continue
             # the API can repeat a timestamp, and one upsert can't touch a row twice: keep the last point per ts
@@ -428,28 +513,34 @@ def fetch_history(session, conn, event_slugs, start, end, fidelity=60, tokens=No
                 index_elements=["token_id", "ts"], set_={"price": pg_insert(m.MarketPriceHistory).excluded.price}))
             n += len(rows)
     session.commit()
+    for code, body in refused.items():      # a refusal is said, not stored as a silent 0
+        print(f"polymarket history: HTTP {code} on some requests: {body}", file=sys.stderr)
     return n
 
 
 DATA_API = "https://data-api.polymarket.com"
 
 
-def fetch_trades(session, conn, event_slugs, page=500, max_offset=100_000, modeled_only=False, since=None, sport=None):
+def fetch_trades(session, conn, event_slugs, page=500, max_offset=100_000, modeled_only=False, since=None, sport=None,
+                 open_only=False):
     """Store every taker trade for the markets of the given events (Data API; with no events, of every
     Polymarket link of `sport`'s competition).
     `side` is the taker's side for `token_id`. Idempotent. Returns trades stored.
-    since (datetime, UTC): stop paging a market once a page reaches trades this old (newest come first)."""
+    since (datetime, UTC): stop paging a market once a page reaches trades this old (newest come first).
+    open_only: markets with an open outcome (the recorder's pass)."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
     if not event_slugs and sport:
         where, params = _sport_where(None, sport)
         conds = conn.execute(text(f"""SELECT DISTINCT ml.condition_id FROM market_links ml JOIN competitions co ON co.id = ml.competition_id
                                       WHERE ml.exchange = 'polymarket' AND {where} AND ml.condition_id IS NOT NULL
-                                      AND (NOT CAST(:m AS boolean) OR ml.prediction <> 'unmodeled')"""),
-                             dict(params, m=modeled_only)).scalars().all()
+                                      AND (NOT CAST(:m AS boolean) OR ml.prediction <> 'unmodeled')
+                                      AND (NOT CAST(:o AS boolean) OR NOT ml.closed)"""),
+                             dict(params, m=modeled_only, o=open_only)).scalars().all()
     else:
         conds = conn.execute(text("""SELECT DISTINCT condition_id FROM market_links WHERE event_slug = ANY(:s)
-                                     AND exchange = 'polymarket' AND condition_id IS NOT NULL AND (NOT CAST(:m AS boolean) OR prediction <> 'unmodeled')"""),
-                             dict(s=list(event_slugs or []), m=modeled_only)).scalars().all()
+                                     AND exchange = 'polymarket' AND condition_id IS NOT NULL AND (NOT CAST(:m AS boolean) OR prediction <> 'unmodeled')
+                                     AND (NOT CAST(:o AS boolean) OR NOT closed)"""),
+                             dict(s=list(event_slugs or []), m=modeled_only, o=open_only)).scalars().all()
     n = 0
     with httpx.Client(base_url=DATA_API, timeout=30) as c:
         for cond in conds:
@@ -483,7 +574,9 @@ def _levels(side, best_first_desc):
 
 def snapshot_books(session, conn, event_slugs=None, depth=10, sport=None):
     """One order-book snapshot for every open outcome token of the given events
-    (default: every open modeled market, season-long or for a race that hasn't been run;
+    (default: every open modeled market, season-long or for a race that hasn't been run, and every open F1 market
+    linked to such a race even when its kind isn't modeled yet, so a new kind's tape starts when the market is found,
+    not when the kind is promoted: practice fastest lap, extra drivers;
     with `sport` and no events: every open Polymarket link of that sport's competition).
     Returns snapshots stored."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -498,9 +591,11 @@ def snapshot_books(session, conn, event_slugs=None, depth=10, sport=None):
     else:
         toks = conn.execute(text("""
             SELECT ml.token_id FROM market_links ml LEFT JOIN races ra ON ra.id = ml.race_id
-            LEFT JOIN events e ON e.id = ra.event_id
-            WHERE NOT ml.closed AND ml.prediction <> 'unmodeled' AND ml.exchange = 'polymarket'
-              AND (ml.race_id IS NULL OR e.status <> 'completed')""")).scalars().all()
+            LEFT JOIN events e ON e.id = ra.event_id LEFT JOIN competitions co ON co.id = ml.competition_id
+            WHERE NOT ml.closed AND ml.exchange = 'polymarket'
+              AND (ml.prediction <> 'unmodeled' OR (ml.race_id IS NOT NULL AND co.code = :f1))
+              AND (ml.race_id IS NULL OR e.status <> 'completed')"""),
+            dict(f1=sports.load("f1")["competition"]["code"])).scalars().all()
     rows = []
     with httpx.Client(base_url=CLOB, timeout=30) as c:
         for i in range(0, len(toks), 100):

@@ -1,9 +1,8 @@
-{% set signup_cta = signup_on() and (not user or is_demo(user)) and request.url.path != '/signup' %}
-{% if maintenance_notice() or signup_cta %}
-<dialog id="site-notice" class="site-notice"{% if signup_cta %} data-signup="1"{% endif %} aria-describedby="site-notice-msg">
-  {% if signup_cta %}<p class="signup-cta"><b>Beta <a href="/signup">signups</a> are live!</b></p>{% endif %}
-  {% if maintenance_notice() %}<p id="site-notice-msg">{{ maintenance_notice() }}</p>{% endif %}
+{# The site-wide popup: only the maintenance notice (app.MAINTENANCE_NOTICE, off when ""). The sign-up popup was
+   dropped with the landing rebuild (owner, 2026-10-08); the landing page carries the sign-up link instead. #}
+{% if maintenance_notice() %}
+<dialog id="site-notice" class="site-notice" aria-describedby="site-notice-msg">
+  <p id="site-notice-msg">{{ maintenance_notice() }}</p>
   <form method="dialog"><button class="primary" autofocus>OK</button></form>
 </dialog>
-
 {% endif %}

@@ -78,6 +78,45 @@ def test_sql_guard_refuses_writes_and_hidden_tables(q, why):
         T.check_sql(q)
 
 
+@pytest.mark.parametrize("q", [
+    'select * from U&"\\0075sers"',                                          # a Unicode-escaped table name
+    "select query_to_xml('select password_hash from us'||'ers', true, true, '')",  # a query hidden in a string
+    "select pg_read_binary_file('/etc/passwd')", "select pg_stat_file('/etc/passwd')",
+    "select set_config('role', 'racinglines', true)", "select * from ts_stat('select 1')",
+    "select rolpassword from pg_authid", "select passwd from pg_catalog.pg_shadow",
+    "select E'\\'', pg_read_binary_file('/etc/passwd'), ''",                  # an escaped quote must not hide code
+    "select $q$x$q$, lo_get(1)",
+])
+def test_sql_guard_refuses_known_bypasses(q):
+    """The audit's bypasses (2026-10-05) and their kin. The guard is a first filter; the sql tool's own database role
+    (scripts/vm/mcp_sql_role.sh) is what keeps users and orders out of reach."""
+    with pytest.raises(ValueError):
+        T.check_sql(q)
+
+
+@pytest.mark.parametrize("q", [
+    "select * from model_runs where variant = 'gridq+pretrain+reset'",  # a keyword inside a value
+    "select $$delete me$$ as note", "select E'it''s', 'update' as word",
+])
+def test_sql_guard_reads_keywords_in_values_as_values(q):
+    assert T.check_sql(q)
+
+
+def test_sql_role_script_hides_the_same_tables():
+    from pathlib import Path
+    script = (Path(__file__).resolve().parents[1] / "scripts/vm/mcp_sql_role.sh").read_text()
+    hidden = next(line for line in script.splitlines() if line.startswith("HIDDEN="))
+    assert hidden.split("=", 1)[1].strip('"').split() == list(T.SQL_HIDDEN)
+
+
+def test_sql_tool_uses_its_own_login_when_set(monkeypatch):
+    from racinglines.mcp import server as S
+    monkeypatch.setenv("RACINGLINES_MCP_SQL_URL", "postgresql+psycopg://racinglines_mcp_ro:pw@localhost:5433/racinglines")
+    assert S._sql_engine().url.username == "racinglines_mcp_ro"
+    monkeypatch.delenv("RACINGLINES_MCP_SQL_URL")
+    assert S._sql_engine().url.username != "racinglines_mcp_ro"
+
+
 def test_job_params_validated_against_the_lab_catalog():
     jt, p = T._job_params("f1_backtest", {"races": 5, "sims": 300, "track": "on"})
     assert jt.code == "f1_backtest" and p == {"races": 5, "half_life": 120.0, "sims": 300, "track": "on"}
@@ -131,7 +170,8 @@ def test_tools_are_registered_with_descriptions(mcp):
     tools = mcp.run(go)
     names = {t.name for t in tools}
     assert names >= {"overview", "list_events", "list_markets", "get_market_history", "sql", "run_job", "get_job", "replay_maker",
-                     "edge_finder", "track_record", "describe_schema"}
+                     "edge_finder", "track_record", "describe_schema", "list_kinds", "map_book", "price_book",
+                     "settle_book"}
     assert all(t.description for t in tools)
     lm = next(t for t in tools if t.name == "list_markets")
     assert "race_id" in lm.input_schema["properties"] and lm.input_schema["properties"]["limit"]["default"] == 50
@@ -142,15 +182,42 @@ def test_reads_on_the_test_database(mcp):
     ov = mcp("overview")
     assert {v["code"] for v in ov["venues"]} >= {"polymarket", "private"} and ov["row_counts"]["events"] >= 0
     assert set(ov) >= {"seasons", "forecasts", "model_runs", "market_links", "users", "upcoming", "hint"}
-    ev = mcp("list_events", sport="f1", limit=5)
+    ev = mcp("list_events", competition="f1_wdc", limit=5)
     assert len(ev["rows"]) <= 5 and ev["total"] >= len(ev["rows"]) and ev["limit"] == 5
     sc = mcp("describe_schema", table="model_runs")
     assert sc["rows"] >= 0 and "params" in {c["name"] for c in sc["columns"]}
     assert mcp("describe_schema")["tables"][0]["table"] == "sports"
-    assert "forecasts" in mcp("get_forecast", sport="f1")
+    assert "forecasts" in mcp("get_forecast", competition="f1_wdc")
     assert mcp("edge_finder", year=2026)["configurations"] >= 0
     kind, text = mcp("describe_schema", table="nope")
     assert kind == "error" and "no table" in text
+
+
+def test_sports_come_from_the_database(mcp):
+    """Any sport with a competition row is reachable by its code (no list in the code); an unknown one says what exists."""
+    from sqlalchemy import text
+    with mcp.engine.begin() as c:
+        c.execute(text("INSERT INTO sports (code, name, result_kind) VALUES ('kart_test', 'Karting', 'time') ON CONFLICT DO NOTHING"))
+        c.execute(text("INSERT INTO leagues (code, name) VALUES ('kart_test_lg', 'Karting league') ON CONFLICT DO NOTHING"))
+        c.execute(text("""INSERT INTO competitions (code, name, league_id, sport_id)
+                          SELECT 'kart_test_cup', 'Karting cup', l.id, s.id FROM leagues l, sports s
+                          WHERE l.code = 'kart_test_lg' AND s.code = 'kart_test' ON CONFLICT DO NOTHING"""))
+        assert T.sports_of(c)["kart_test_cup"] == "kart_test"
+        assert T._sport_filter(c, sport="kart_test") == "kart_test_cup"
+        assert T._sport_filter(c, sport="kart_test_cup") == "kart_test_cup"
+        assert T._sport_filter(c, competition="anything") == "anything" and T._sport_filter(c) is None
+        with pytest.raises(ValueError, match="no sport 'curling'"):
+            T._sport_filter(c, sport="curling")
+    assert mcp("overview")["sports"]["kart_test_cup"] == "kart_test"
+    assert mcp("list_events", sport="kart_test")["rows"] == []
+    kind, text_ = mcp("list_events", sport="curling")
+    assert kind == "error" and "kart_test" in text_
+
+
+def test_edge_finder_and_track_record_take_venue_and_sport(mcp):
+    assert mcp("edge_finder", year=2026, venue="kalshi")["venue"] == "kalshi"
+    kind, text_ = mcp("edge_finder", year=2026, venue="nope")
+    assert kind == "error" and "polymarket" in text_
 
 
 def test_errors_reach_the_client_as_text(mcp):
@@ -458,6 +525,7 @@ def test_track_record_all_lists_one_row_per_weekend_and_venue(mcp):
         default = mcp("track_record", user="mcp-maker")
         assert "totals" not in default and "venue" not in default["rows"]["rows"][0]
         assert default["weekends"] == 1 and default["pnl"] == 3.0 and default["rows"]["rows"][0]["fills"] == 1
+        assert mcp("track_record", user="mcp-maker", sport="nascar")["weekends"] == 0    # no NASCAR weekend here
     finally:
         with mcp.engine.begin() as c:
             c.execute(T("DELETE FROM users WHERE username = 'mcp-maker'"))
@@ -510,3 +578,46 @@ def test_settings_page_token_is_the_one_the_server_accepts(test_engine, monkeypa
         assert "open to admin accounts" in client.get("/settings").text
     finally:
         A.app.dependency_overrides.clear()
+
+
+def test_list_markets_flags_stale_or_missing_exchange_prices(mcp, monkeypatch):
+    """freshness: per exchange, the newest synced_at over the event's links. An upcoming event with no link on a live
+    exchange, or a newest sync older than RACINGLINES_STALE_HOURS, is flagged; a completed one never is."""
+    from datetime import timedelta
+
+    import pandas as pd
+    from sqlalchemy import text
+    now = pd.Timestamp("2026-10-07T21:00Z")
+    with mcp.engine.begin() as c:
+        c.execute(text("INSERT INTO sports (code, name, result_kind) VALUES ('fresh_t', 'Fresh', 'time') ON CONFLICT DO NOTHING"))
+        c.execute(text("INSERT INTO leagues (code, name) VALUES ('fresh_t_lg', 'Fresh league') ON CONFLICT DO NOTHING"))
+        comp = c.execute(text("""INSERT INTO competitions (code, name, league_id, sport_id)
+                                 SELECT 'fresh_t_cup', 'Fresh cup', l.id, s.id FROM leagues l, sports s
+                                 WHERE l.code = 'fresh_t_lg' AND s.code = 'fresh_t' RETURNING id""")).scalar()
+        cat = c.execute(text("INSERT INTO categories (competition_id, code, name) VALUES (:c, 'DRV', 'Drivers') RETURNING id"),
+                        dict(c=comp)).scalar()
+        season = c.execute(text("INSERT INTO seasons (competition_id, year) VALUES (:c, 2026) RETURNING id"), dict(c=comp)).scalar()
+        ev = c.execute(text("""INSERT INTO events (season_id, source, source_key, name, start_date)
+                               VALUES (:s, 't', 'fresh-1', 'Fresh GP', '2026-10-11') RETURNING id"""), dict(s=season)).scalar()
+        race = c.execute(text("INSERT INTO races (event_id, category_id) VALUES (:e, :c) RETURNING id"),
+                         dict(e=ev, c=cat)).scalar()
+        for ex, hours in (("polymarket", 1), ("polymarket", 30), ("og", 5)):
+            c.execute(text("""INSERT INTO market_links (exchange, question, token_id, outcome, competition_id, race_id, prediction,
+                                                        synced_at) VALUES (:x, 'q', :t, 'Yes', :c, :r, 'race_win', :at)"""),
+                      dict(x=ex, t=f"fresh-{ex}-{hours}", c=comp, r=race, at=(now - timedelta(hours=hours)).to_pydatetime()))
+        f = T.freshness(c, event_id=ev, now=now)
+        by = {v["venue"]: v for v in f["venues"]}
+        assert f["stale_hours"] == 3 and f["any_stale"]
+        assert by["polymarket"]["links"] == 2 and by["polymarket"]["age_hours"] == 1 and not by["polymarket"]["stale"]
+        assert by["og"]["stale"] and by["og"]["reason"] == "newest sync 5.0 h old (limit 3 h)"
+        monkeypatch.setenv("RACINGLINES_STALE_HOURS", "6")
+        f = T.freshness(c, event_id=ev, now=now)
+        assert f["stale_hours"] == 6 and not {v["venue"]: v for v in f["venues"]}["og"]["stale"]
+        empty = c.execute(text("""INSERT INTO events (season_id, source, source_key, name, start_date)
+                                  VALUES (:s, 't', 'fresh-2', 'Bare GP', '2026-10-18') RETURNING id"""), dict(s=season)).scalar()
+        bare = T.freshness(c, event_id=empty, now=now)["venues"]
+        assert bare and all(v["stale"] and v["reason"] == "no linked markets" for v in bare)
+        assert not T.freshness(c, event_id=ev, upcoming=False, now=now)["any_stale"]
+        out = T.list_markets(c, race_id=race)
+        assert out["freshness"]["venues"] and "any_stale" in out["freshness"]
+        c.execute(text("DELETE FROM market_links WHERE token_id LIKE 'fresh-%'"))

@@ -334,7 +334,13 @@ Standing practice from the owner (2026-09-29), applied to every task, not one pa
 forecasts) follows a unified pattern:
 
 1. **Timing:** Thu-Sun UTC when that sport has active events in the next 7 days. Off-weeks: all polling skipped to
-   conserve API quota and avoid noise.
+   conserve API quota and avoid noise. **Exception, market prices (owner, 2026-10-07):** the Kalshi, OG.com and
+   Polymarket recorders (`record_venues.sh`, `pm_sync.sh`) poll every 5 minutes every day, all day (`WEEKEND_ONLY=1`
+   restores the race-weekend gate); `scripts/vm/tape_check.sh` logs a WARN after each sync for an upcoming event with no
+   links or a sync older than `STALE_HOURS` (default 3), shown by `vm.sh record status`. Every 15 minutes
+   (`TRADES_MIN`) both store the last 2 hours of trades on every open market, and `pm_sync.sh` also syncs and books
+   NASCAR and MotoGP on Polymarket (`PM_SPORTS`; the minute recorder books F1 only). Race-data APIs (FastF1) and
+   forecasts keep the race-weekend gate.
 2. **Helper:** `scripts/vm/race_weekend.sh <sport>` (exit 0 = in race weekend, run; exit 1 = off-week, skip)
    checks day-of-week and database for active events.
 3. **Services:** systemd timers (every 5 min) + one-shot services (run one polling pass):
@@ -350,8 +356,8 @@ forecasts) follows a unified pattern:
 
 **To control polling on the VM:**
 ```
-bash scripts/deploy/vm.sh record [off|status]      # Kalshi/OG.com, every 5 min, race weekends only
-bash scripts/deploy/vm.sh pm-sync [off|status]     # Polymarket, every 5 min, race weekends only
+bash scripts/deploy/vm.sh record [off|status]      # Kalshi/OG.com, every 5 min, every day
+bash scripts/deploy/vm.sh pm-sync [off|status]     # Polymarket, every 5 min, every day
 bash scripts/deploy/vm.sh forecast [off|status]    # NASCAR/MotoGP every 30 min on race weekends; F1 after each race result
 ```
 

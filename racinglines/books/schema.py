@@ -18,6 +18,10 @@ and Fastest Lap") is `kind = "combo"` with `legs = [...]` (two or more such tabl
 "drop_leg"` (default void_all), priced and settled by racinglines/markets/combos.py. Selections resolve to the entry list through
 an exact alias table at pricing time, never here and never fuzzily.
 
+Optional fields read by `racinglines book` (books/slips.py, docs/sportsbook/slips.md): `[book] sport`; `sport`, `event`,
+`race_id`, `driver_id`, `opponent_id` and a leg's own `odds` on any market table or combo leg (a slip across events and
+sports; a combo whose legs all carry odds may leave out the line's odds); a line's `id`; an exact `[aliases]` table.
+
 Odds presentations (`venue.odds`, `book.odds`; names provisional until the owner checks them, docs/todo.md):
 
     decimal       1.85          European sportsbooks: the payout per unit staked, stake included
@@ -147,7 +151,7 @@ COMBO = "combo"
 VOID_LEG = ("void_all", "drop_leg")
 
 
-def _combo(m, field, problems):
+def _combo(m, field, problems, fmt=None):
     """A combo (same-game parlay) line: `legs`, at least two market tables of single kinds (no combo inside a combo),
     and `void_leg` ("void_all" by default: a void leg voids the slip; "drop_leg": the rest decide). Priced and settled by
     racinglines/markets/combos.py once the legs' names resolve to entrants."""
@@ -164,10 +168,30 @@ def _combo(m, field, problems):
         if leg == "unmapped":
             problems.append(f"{field}.legs[{i}]: a combo's legs must all be mapped")
             continue
-        _market(leg, f"{field}.legs[{i}]", problems)
+        _market(leg, f"{field}.legs[{i}]", problems, fmt)
 
 
-def _market(m, field, problems):
+def _where(m, field, problems, fmt=None):
+    """The optional fields that place a market (or a combo's leg) on an event other than the book's, by exact keys
+    (racinglines/books/slips.py): `sport` (a sports/<code>.toml), `event` (the launch-spec key) or `race_id` (the DB's
+    races.id), and a leg's own `odds` in the book's format (a parlay priced from its legs' odds)."""
+    from racinglines import sports as SP
+    if "sport" in m and m["sport"] not in SP.SPORT_CODES:
+        problems.append(f"{field}.sport: {m['sport']!r} not in {SP.SPORT_CODES}")
+    if "event" in m and not (isinstance(m["event"], str) and EVENT_KEY.match(m["event"])):
+        problems.append(f"{field}.event: {m['event']!r} is not like 2026-17")
+    if "race_id" in m and (isinstance(m["race_id"], bool) or not isinstance(m["race_id"], int)):
+        problems.append(f"{field}.race_id: the DB race id, an integer")
+    for f in ("driver_id", "opponent_id"):
+        if f in m and (isinstance(m[f], bool) or not isinstance(m[f], int)):
+            problems.append(f"{field}.{f}: an athlete id, an integer")
+    if "odds" in m and fmt in ODDS_FORMATS:
+        bad = check_odds(m["odds"], fmt)
+        if bad:
+            problems.append(f"{field}.odds: {bad}")
+
+
+def _market(m, field, problems, fmt=None):
     """A line's market key: "unmapped", a table with a known kind and the fields that kind's subject needs, or a combo
     (kind = "combo", its legs each such a table)."""
     if m == "unmapped":
@@ -176,8 +200,9 @@ def _market(m, field, problems):
         problems.append(f'{field}: must be "unmapped" or a table with a kind')
         return
     kind = m.get("kind")
+    _where(m, field, problems, fmt)
     if kind == COMBO:
-        _combo(m, field, problems)
+        _combo(m, field, problems, fmt)
         return
     if kind not in KNOWN_KINDS:
         problems.append(f"{field}.kind: {kind!r} is not a known kind")
@@ -192,15 +217,17 @@ def _market(m, field, problems):
         need = {"driver": ("driver",), "team": ("team",), "field": ()}[spec["subject"]] + \
             (("line",) if spec.get("compare") == "over" else ())
         for f in need:
-            if f not in m:
+            if f not in m and f"{f}_id" not in m:
                 problems.append(f"{field}: kind {kind} " + ("needs a line" if f == "line" else f"names a {f}"))
         return
     payoff = k.payoff if k is not None else None
-    if payoff in ("top_n", "stage_top_n", "indicator", "mover") and "driver" not in m:
+    driver = "driver" in m or "driver_id" in m
+    opponent = "opponent" in m or "opponent_id" in m
+    if payoff in ("top_n", "stage_top_n", "indicator", "mover") and not driver:
         problems.append(f"{field}: kind {kind} names a driver")
     if payoff == "group_top" and "team" not in m:
         problems.append(f"{field}: kind {kind} names a team")
-    if payoff == "h2h" and ("driver" not in m or "opponent" not in m):
+    if payoff == "h2h" and not (driver and opponent):
         problems.append(f"{field}: kind {kind} names a driver and an opponent")
 
 
@@ -284,21 +311,38 @@ def validate_book(d, path="book"):
             problems.append(f"book.odds: {fmt!r} not in {ODDS_FORMATS}")
         if not (isinstance(b.get("event"), str) and EVENT_KEY.match(b["event"])):
             problems.append(f"book.event: {b.get('event')!r} is not like 2026-17")
+        from racinglines import sports as SP
+        if "sport" in b and b["sport"] not in SP.SPORT_CODES:
+            problems.append(f"book.sport: {b['sport']!r} not in {SP.SPORT_CODES}")
+    aliases = d.get("aliases", {})
+    if not isinstance(aliases, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in aliases.items()):
+        problems.append('aliases: a table of exact names, "venue name" = "display name"')
     lines = d.get("lines")
     if not isinstance(lines, list) or not lines:
         problems.append("[[lines]] missing")
     else:
+        ids = set()
         for i, ln in enumerate(lines):
             f = f"lines[{i}]"
+            m = ln.get("market")
+            # a parlay may leave its odds to its legs: the payout is the product of the legs' odds
+            legs_priced = isinstance(m, dict) and m.get("kind") == COMBO and isinstance(m.get("legs"), list) and \
+                all(isinstance(x, dict) and "odds" in x for x in m["legs"])
             for need in ("title", "selection", "odds", "market"):
+                if need == "odds" and legs_priced:
+                    continue
                 if need not in ln or ln[need] in (None, ""):
                     problems.append(f"{f}.{need} missing")
             if "odds" in ln and fmt in ODDS_FORMATS:
                 bad = check_odds(ln["odds"], fmt)
                 if bad:
                     problems.append(f"{f}.odds: {bad}")
+            if "id" in ln:
+                if not isinstance(ln["id"], str) or not ln["id"] or ln["id"] in ids:
+                    problems.append(f"{f}.id: {ln['id']!r} must be a unique non-empty string")
+                ids.add(ln.get("id"))
             if "market" in ln:
-                _market(ln["market"], f"{f}.market", problems)
+                _market(ln["market"], f"{f}.market", problems, fmt)
     if problems:
         raise BookError(path, problems)
     return d

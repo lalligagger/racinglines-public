@@ -24,8 +24,12 @@ from pathlib import Path
 
 from sqlalchemy import select, text
 
+from racinglines import exchanges, sports
 from racinglines.db import models as m
 from racinglines.db.config import get_engine, get_session
+from racinglines.pipelines import model_vs_market as MVM
+from racinglines.pipelines import season_strategy as SE
+from racinglines.pipelines import sweep_settings as SS
 
 ROOT = Path(__file__).resolve().parents[2]      # the repository
 LOG_MAX = 20_000
@@ -35,7 +39,7 @@ LOG_MAX = 20_000
 class Knob:
     name: str
     label: str
-    type: str = "float"          # float | int | choice | text | datetime | event | legs (combo legs, JSON)
+    type: str = "float"          # float | int | choice | text | datetime | event | years | legs (combo legs, JSON)
     default: object = None
     min: float | None = None
     max: float | None = None
@@ -43,15 +47,50 @@ class Knob:
     help: str = ""
 
 
+ANY_SPORT = "any"     # a job type whose `sport` knob picks the sport (the shared backtest core)
+
+
 @dataclass
 class JobType:
     code: str
-    sport: str
+    sport: str            # a sport code, or ANY_SPORT
     label: str
     what: str
     knobs: list
     argv: callable
     minutes: str = ""
+    venues: tuple = (None,)   # the exchanges it trades or scores against (the Lab launcher's columns); None: model only
+
+    def sport_of(self, params):
+        return params.get("sport", self.sport) if self.sport == ANY_SPORT else self.sport
+
+
+def modeled_sports():
+    """Sports whose schema names a pricing model (sports/<code>.toml [sport] pricing_model): each one runs through
+    the backtest core."""
+    return sorted((code for code in sports.SPORT_CODES if sports.load(code)["sport"].get("pricing_model")),
+                  key=lambda code: sports.load(code)["sport"]["display_order"])
+
+
+def sport_name(code):
+    s = sports.load(code)
+    return s["competition"].get("display_name") or s["sport"]["name"]
+
+
+def venue_name(code):
+    """'polymarket' -> 'Polymarket', 'og' -> 'OG.com' (exchanges/<code>.toml), None -> 'Model only'."""
+    if code is None:
+        return "Model only"
+    if code in exchanges.CODES:
+        return exchanges.load(code)["exchange"]["name"]
+    from racinglines.markets import venues as V
+    return next((v.name for v in V.VENUES if v.code == code), code)
+
+
+def sport_venues(code):
+    """The exchanges that list a sport: its schema's [markets] venues and every exchange schema naming it."""
+    listed = [v for v in sports.load(code).get("markets", {}).get("venues", []) if v != "private"]
+    return listed + [x for x in exchanges.CODES if code in exchanges.sports(x) and x not in listed]
 
 
 # model variants offered for the sweep: each switch alone, and the combinations worth comparing
@@ -60,10 +99,16 @@ MODEL_CHOICES = ["baseline", "grid", "gridq", "pretrain", "gbm", "tail", "reset"
 
 
 def _sweep_argv(p):
-    from racinglines.pipelines import sweep_settings as SS
     st = SS.Settings.from_dict(p.get("settings") or {})
     return ["-m", "racinglines", "f1", "--variant", st["variant"], "sweep", "--year", str(p.get("year", 2026)),
             "--no-fetch", "--save", *st.argv()]
+
+
+def _walk_forward_argv(p, out):
+    return (["-m", "racinglines", "backtest", "walk-forward", p["sport"], "--save", "--out-dir", str(Path(out).with_suffix(""))]
+            + (["--model", "global"] if p["model"] == "global" else [])
+            + (["--seasons", *p["seasons"].split()] if p["seasons"] else [])
+            + (["--venue", p["venue"]] if p["venue"] != "none" else []))
 
 
 def live_variant():
@@ -110,6 +155,16 @@ F1_TRACK = Knob("track", "Track/sector features", "choice", "on", choices=["on",
                 help="Use the sector-type car model at each circuit.")
 
 CATALOG = {j.code: j for j in [
+    JobType("walk_forward", ANY_SPORT, "Walk-forward backtest (model vs market)", "Price every past event of the sport "
+            "from data before it, through the shared backtest core, and score the model per market kind; with an "
+            "exchange, that exchange's price at the same moment is scored beside it on the markets linked by exact keys.",
+            [Knob("sport", "Sport", "choice", "f1", choices=modeled_sports()),
+             Knob("venue", "Score against", "choice", "none", choices=["none", *MVM.VENUES],
+                  help="An exchange's linked markets, priced at the same moment as the model."),
+             Knob("model", "Model", "choice", "own", choices=["own", "global"],
+                  help="own: the sport's pricing model; global: the sport-agnostic results model."),
+             Knob("seasons", "Seasons", "years", "", help="Blank: every season the model can score.")],
+            _walk_forward_argv, "a few minutes per season", venues=(None, *MVM.VENUES)),
     JobType("f1_backtest", "f1", "Backtest", "Price past races as of just before qualifying and just before the race, "
             "then score against results and the grid-only baseline.",
             [Knob("races", "Last N races", "int", 30, 3, 200, help="Fewer races = faster."),
@@ -134,7 +189,7 @@ CATALOG = {j.code: j for j in [
             lambda p, out: _f1_common(p) + ["diagnostic", "--event", p["event"], "--cutoff", p["cutoff"],
                                             "--sims", str(p["sims"]), "--save"]
             + (["--no-track"] if p["track"] == "off" else []),
-            "~1 min"),
+            "~1 min", venues=("polymarket",)),
     JobType("f1_combo", "f1", "Combo (same-game parlay) prices", "Price one event (past or upcoming) once as of a "
             "cutoff and read each combo's fair value from the same simulations, with every leg's marginal, their "
             "product and the lift; pole and fastest-lap legs are flagged when the simulation's correlation is off "
@@ -157,18 +212,20 @@ CATALOG = {j.code: j for j in [
             [Knob("year", "Season", "choice", "2026", choices=["2026", "2025"]),
              Knob("settings", "Settings", "sweep_settings", None)],
             lambda p, out: _sweep_argv(p),
-            "a few minutes per season (GBM longer)"),
+            "a few minutes per season (GBM longer)", venues=SS.VENUES),
     JobType("f1_season_strategy", "f1", "Season strategy (championships)", "Replay the default championship-market "
-            "strategy through the season on Polymarket's recorded prices: as-of season forecasts pre-season and after "
+            "strategy through the season on the exchange's recorded prices: as-of season forecasts pre-season and after "
             "every race, rebalance, settle eliminated markets, mark the rest. Forecasts already computed are reused.",
-            [Knob("min_edge", "Min edge to act (prob.)", "float", 0.03, 0.005, 0.5),
+            [Knob("venue", "Exchange", "choice", "polymarket", choices=list(SE.VENUES),
+                  help="Kalshi and OG.com replay their stored tape."),
+             Knob("min_edge", "Min edge to act (prob.)", "float", 0.03, 0.005, 0.5),
              Knob("stake_per_edge", "Stake per unit edge ($)", "float", 500, 10, 10000),
              Knob("max_stake", "Max stake per market ($)", "float", 150, 1, 10000),
              Knob("capital", "Capital cap ($)", "float", 1500, 50, 100000)],
             lambda p, out: ["-m", "racinglines", "f1", "season-strategy", "--no-fetch", "--save", "--min-edge", str(p["min_edge"]),
                             "--stake-per-edge", str(p["stake_per_edge"]), "--max-stake", str(p["max_stake"]),
-                            "--capital", str(p["capital"])],
-            "~1 min once forecasts exist"),
+                            "--capital", str(p["capital"]), "--venue", p.get("venue", "polymarket")],
+            "~1 min once forecasts exist", venues=SE.VENUES),
     JobType("dh_scenario", "mtb_dh", "Forward forecast (scenario)", "Simulate the remaining downhill rounds and the "
             "championship. Saved as a scenario; promote it to make it the live fair prices.",
             [Knob("label", "Scenario name", "text", "my scenario"),
@@ -189,6 +246,21 @@ CATALOG = {j.code: j for j in [
                             "--out-dir", str(Path(out).parent.parent / "mtb_dh" / "backtests")],
             "a few min"),
 ]}
+
+
+def launcher():
+    """The Lab launcher: a row per sport with a pricing model, a column per exchange any of them is listed on (and one
+    for the model alone), each cell the job types that run for that sport there. -> (venues, rows); a row is
+    dict(code, name, cells: {venue: None (not listed there) or [job types]}). Read from the schemas and this catalog."""
+    codes = modeled_sports()
+    listed = {code: sport_venues(code) for code in codes}
+    venues = [None] + [v for v in dict.fromkeys(v for code in codes for v in listed[code])]
+    out = []
+    for code in codes:
+        cells = {v: [jt for jt in CATALOG.values() if jt.sport in (code, ANY_SPORT) and v in jt.venues]
+                 if v is None or v in listed[code] else None for v in venues}
+        out.append(dict(code=code, name=sport_name(code), cells=cells))
+    return venues, out
 
 
 def parse(job_type, form):
@@ -218,6 +290,10 @@ def parse(job_type, form):
             if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", raw):
                 raise ValueError(f"{k.label}: use YYYY-MM-DDTHH:MM")
             out[k.name] = raw
+        elif k.type == "years":
+            if raw and not re.fullmatch(r"\d{4}( \d{4})*", " ".join(raw.replace(",", " ").split())):
+                raise ValueError(f"{k.label}: seasons as years, e.g. 2025 2026")
+            out[k.name] = " ".join(raw.replace(",", " ").split())
         elif k.type == "event":
             if not re.fullmatch(r"\d{4}-\d{1,2}", raw):
                 raise ValueError(f"{k.label}: pick an event")
@@ -255,7 +331,6 @@ def parse_sweep_settings(form):
     """{name: value} of the settings that differ from the defaults (validated), from the Lab form: one
     field per setting; booleans are checkboxes (with a hidden 'false' before each), multi-choice
     settings are checkbox groups."""
-    from racinglines.pipelines import sweep_settings as SS
     getlist = form.getlist if hasattr(form, "getlist") else (
         lambda k: [] if form.get(k) in (None, "") else (form[k] if isinstance(form[k], list) else [form[k]]))
     d = {}
@@ -280,7 +355,7 @@ def submit(job_type, params, user_id, engine=None):
     """Queue a job (the caller has validated `params` with parse()). `engine`: a database other than the default one."""
     from sqlalchemy.orm import sessionmaker
     with (sessionmaker(engine, expire_on_commit=False)() if engine is not None else get_session()) as s:
-        job = m.Job(kind=job_type.code, sport=job_type.sport, params=params, user_id=user_id, status="queued")
+        job = m.Job(kind=job_type.code, sport=job_type.sport_of(params), params=params, user_id=user_id, status="queued")
         s.add(job)
         s.commit()
         job_id = job.id
@@ -355,7 +430,7 @@ def _run_next():
             log.append(line)
             if line.startswith("progress "):
                 progress = line[9:][:200]
-            mt = re.search(r"Saved (?:\w+ )*run (\d+)", line)
+            mt = re.search(r"Saved (?:[\w-]+ )*run (\d+)", line)
             if mt:
                 run_id = int(mt.group(1))
             if time.time() - last_write > 1.5:

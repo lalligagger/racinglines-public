@@ -8,6 +8,9 @@ racinglines nascar <command>: NASCAR (Cup, from the free content feeds at cf.nas
                  --apply needs a fresh database dump (--backup FILE) and can be undone (--undo FILE).
     replay       Taker replay of Cup races against Kalshi's or Polymarket's recorded prices (read-only unless
                  --save; racinglines/pipelines/position_replay.py).
+    sweep        The season sweep of Cup races: the F1 sweep's taker modes and maker variants through each race's
+                 stages on one exchange (--venue polymarket | kalshi | og), for the search's tuned and
+                 held-out seasons (read-only unless --save; racinglines/pipelines/season_sweep.py).
     season       The Cup season forecast: the rest of the season simulated from today's points through the Chase,
                  champion / top-3 / top-10 / Chase odds per driver; --quotes puts the champion price beside every
                  exchange's champion quote on file. Read-only; off by default (RACINGLINES_NASCAR_SEASON=1).
@@ -72,7 +75,12 @@ def main(argv=None):
     replay_cmd.add_season_parser(sub, "nascar")
     replay_cmd.add_demo_parser(sub, "nascar")
     replay_cmd.add_forecast_parser(sub, "nascar")
+    replay_cmd.add_sweep_parser(sub, "nascar")
+    replay_cmd.add_signals_parser(sub, "nascar")
     args = ap.parse_args(argv)
+
+    if args.cmd == "signals":
+        return replay_cmd.run_signals(args, "nascar")
 
     if args.cmd == "season":
         return _season(args)
@@ -81,6 +89,8 @@ def main(argv=None):
         return replay_cmd.run_demo(args, "nascar")
     if args.cmd == "forecast":
         return replay_cmd.run_forecast(args, "nascar")
+    if args.cmd == "sweep":
+        return replay_cmd.run_sweep(args, "nascar")
     if args.cmd == "replay":
         return replay_cmd.run(args, "nascar", _years(args.years))
     if args.cmd == "season-replay":

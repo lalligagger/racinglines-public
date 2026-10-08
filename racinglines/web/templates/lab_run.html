@@ -1,5 +1,14 @@
 {% from "_macros.html" import csrf %}
 <h2>Run</h2>
+{% set venues, launch_rows = launch %}
+<p class="legend">Launch: every job that runs for a sport on an exchange, from the sport and exchange schemas. Pick one to open its form below with the sport and exchange set.</p>
+<div class="scroll"><table class="launcher">
+<thead><tr><th class="l">Sport</th>{% for v in venues %}<th class="l">{{ venue_name(v) }}</th>{% endfor %}</tr></thead><tbody>
+{% for r in launch_rows %}<tr><th class="l">{{ r.name }}</th>{% for v in venues %}{% set cell = r.cells[v] %}<td class="l">
+  {%- if cell is none %}<span class="muted" title="no {{ venue_name(v) }} markets for {{ r.name }} in the schemas">not listed</span>
+  {%- elif not cell %}<span class="muted" title="{{ venue_name(v) }} lists {{ r.name }}, but no job prices it there yet">no job yet</span>
+  {%- else %}{% for jt in cell %}<a href="/lab?job={{ jt.code }}{{ '&sport=' ~ r.code if jt.sport == 'any' }}{{ '&venue=' ~ v if v }}#run">{{ jt.label }}</a>{{ "<br>"|safe if not loop.last }}{% endfor %}{% endif %}</td>{% endfor %}</tr>
+{% endfor %}</tbody></table></div>
 {% for code, sport, jts in sports %}<h3>{{ sport }}</h3>
 <div class="cards">{% for jt in jts %}{% if jt.code == 'f1_sweep' %}{% include "lab_sweep_form.html" %}{% else %}
 <form method="post" action="/lab/run" class="ecard{{ " sel" if sel_job == jt.code }}">{{ csrf() }}<input type="hidden" name="job" value="{{ jt.code }}">
@@ -9,6 +18,7 @@
     {% elif k.type == 'event' %}<select name="{{ k.name }}" data-sets-cutoff>{% for e in events %}<option value="{{ e.key }}" data-cutoff="{{ e.default_cutoff }}" {{ 'selected' if e.key == sel_event }}>{{ e.venue }} {{ e.key }}{{ " · Polymarket" if e.tape }}</option>{% endfor %}</select>
     {% elif k.type == 'datetime' %}<input name="{{ k.name }}" value="{{ sel_cutoff }}" placeholder="YYYY-MM-DDTHH:MM">
     {% elif k.type == 'text' %}<input name="{{ k.name }}" value="{{ val }}" maxlength="60">
+    {% elif k.type == 'years' %}<input name="{{ k.name }}" value="{{ val }}" placeholder="every season" maxlength="60">
     {% elif k.type == 'legs' %}<textarea name="{{ k.name }}" rows="3" maxlength="4000" placeholder='[{"kind": "race_win", "driver": "Max Verstappen"}, {"kind": "race_fastest_lap", "driver": "Max Verstappen"}]'>{{ val or '' }}</textarea>
     {% else %}<input name="{{ k.name }}" type="number" value="{{ val }}" min="{{ k.min }}" max="{{ k.max }}" step="{{ '1' if k.type == 'int' else 'any' }}">{% endif %}</label>{% endfor %}</div>
   <div><button class="primary">Run</button></div>

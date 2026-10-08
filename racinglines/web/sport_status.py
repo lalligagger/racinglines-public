@@ -87,9 +87,10 @@ def status(conn):
         JOIN (SELECT DISTINCT ON (e.source_key) e.source_key, s.competition_id FROM events e
               JOIN seasons s ON s.id = e.season_id ORDER BY e.source_key, e.id) e ON e.source_key = p.event_key
         JOIN competitions co ON co.id = e.competition_id
-        WHERE u.prefs ? 'strategy_profile' AND p.venue <> 'private'
-          AND NOT EXISTS (SELECT 1 FROM strategy_signals x WHERE x.user_id = p.user_id AND x.market_key = p.market_key
-                          AND (x.strategy = 'buy_all' OR x.detail->>'mode' = 'buy_all'))
+        LEFT JOIN (SELECT DISTINCT user_id, market_key FROM strategy_signals          -- the debug mode, read once
+                   WHERE strategy = 'buy_all' OR detail->>'mode' = 'buy_all') x
+               ON x.user_id = p.user_id AND x.market_key = p.market_key
+        WHERE u.prefs ? 'strategy_profile' AND p.venue <> 'private' AND x.user_id IS NULL
         GROUP BY 1, 2 ORDER BY 1, 2""")
     from racinglines import exchanges as EX
     from racinglines.markets.venues import VENUES

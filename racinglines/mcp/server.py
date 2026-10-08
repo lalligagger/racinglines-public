@@ -9,6 +9,7 @@ Run form writes: a `jobs` row; the job's subprocess saves a model run (forecasts
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -51,16 +52,27 @@ def _engine():
     return get_engine(_URL)
 
 
+def _sql_engine():
+    """The sql tool's connection: RACINGLINES_MCP_SQL_URL when set (a login that can SELECT only the allowed tables,
+    made by scripts/vm/mcp_sql_role.sh), else the app's own. Only the role keeps users and orders out of reach; the
+    text check in tools.check_sql is a first filter."""
+    url = os.environ.get("RACINGLINES_MCP_SQL_URL")
+    if not url:
+        return _engine()
+    from racinglines.db.config import get_engine
+    return get_engine(url)
+
+
 def _json(obj):
     """One line of JSON: the text a chat client reads (an indented dump would double the bytes for nothing)."""
     return json.dumps(obj, default=str)
 
 
-def _read(fn, **kw):
+def _read(fn, engine=None, **kw):
     """Call a tools.py function inside a READ ONLY transaction; anticipated errors become tool errors the client sees."""
     from mcp.server.mcpserver.exceptions import ToolError
     try:
-        with _engine().begin() as c:
+        with (engine or _engine()).begin() as c:
             c.execute(text("SET TRANSACTION READ ONLY"))
             return _json(fn(c, **kw))
     except (ValueError, KeyError, TypeError) as ex:
@@ -131,7 +143,8 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
     @srv.tool()
     def list_events(sport: str | None = None, competition: str | None = None, season: int | None = None,
                     status: str | None = None, limit: int = 50, offset: int = 0) -> str:
-        """Events (race weekends / rounds), newest first. sport: f1 or mtb_dh; competition: f1_wdc or uci_dhi_wc;
+        """Events (race weekends / rounds), newest first. sport: a sport code (f1, nascar, motogp, mtb_dh, ...)
+        or competition: a competition code (overview() lists both);
         status: completed or scheduled. Each row has its id (for get_event) and source_key (e.g. 2026-15)."""
         return _read(T.list_events, sport=sport, competition=competition, season=season, status=status, limit=limit, offset=offset)
 
@@ -157,7 +170,10 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         """The market matrix: one row per outcome (kind x subject) with our fair value, each venue's quote (Polymarket,
         Kalshi when enabled, the private book), the gap and, for a past race, the result and the exchange price at the
         time we priced. Give race_id or event_id for a race weekend, or competition/sport for the season-long markets.
-        kinds: comma-separated (race_win, race_podium, race_top10, race_h2h, race_constructor_top, race_pole, champion, ...)."""
+        kinds: comma-separated (race_win, race_podium, race_top10, race_h2h, race_constructor_top, race_pole, champion, ...).
+        freshness: per exchange, the links and the newest price sync; `stale` (with the reason) when an upcoming event has
+        no linked market on a live exchange or its newest sync is older than RACINGLINES_STALE_HOURS (default 3):
+        quote those prices as possibly out of date."""
         return _read(T.list_markets, race_id=race_id, event_id=event_id, competition=competition, sport=sport, kinds=kinds,
                      limit=limit, offset=offset)
 
@@ -201,11 +217,13 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
 
     # --- strategy research ---------------------------------------------------------------------------
     @srv.tool()
-    def edge_finder(year: int = 2026, strategy: str | None = None, limit: int = 50, offset: int = 0) -> str:
+    def edge_finder(year: int = 2026, strategy: str | None = None, venue: str | None = None, limit: int = 50,
+                    offset: int = 0) -> str:
         """The Lab's Edge Finder from saved sweeps: every configuration (a full set of sweep settings) with a full-season
         sweep of `year`, and each strategy's full-season recap (P&L, volume, weekends up, drawdown, consistency, fills and
-        markout for makers). Nothing is simulated. strategy: update, hold, last, early, maker, maker_flat, ... (omit for all)."""
-        return _read(T.edge_finder, year=year, strategy=strategy, limit=limit, offset=offset)
+        markout for makers). Nothing is simulated. strategy: update, hold, last, early, maker, maker_flat, ... (omit for all).
+        venue: polymarket or kalshi, the exchange the sweep traded (omit for all; each row names its venue)."""
+        return _read(T.edge_finder, year=year, strategy=strategy, venue=venue, limit=limit, offset=offset)
 
     @srv.tool()
     def list_candidates(limit: int = 50, offset: int = 0) -> str:
@@ -239,11 +257,12 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
 
     # --- paper trading, live events, change log ------------------------------------------------------
     @srv.tool()
-    def track_record(user: str, venue: str = "polymarket") -> str:
+    def track_record(user: str, venue: str = "polymarket", sport: str | None = None) -> str:
         """A user's paper-trading record, one row per weekend: strategy, trades taken or fills, positions, P&L (settled or
         marked), backtest replay or live. venue: polymarket, kalshi (the maker's replay on Kalshi's tape), private, or all
-        (one row per weekend and venue, with a venue column and totals per venue). Users: see overview()."""
-        return _read(T.track_record, user=user, venue=venue, viewer=caller())
+        (one row per weekend and venue, with a venue column and totals per venue). sport: f1, nascar, motogp, ... (omit
+        for all; NASCAR and MotoGP paper rows show where RACINGLINES_SPORT_PAPER is on). Users: see overview()."""
+        return _read(T.track_record, user=user, venue=venue, sport=sport, viewer=caller())
 
     @srv.tool()
     def list_positions(user: str, venue: str | None = None, event_key: str | None = None, open_only: bool = False,
@@ -271,13 +290,42 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         """The data change log: ingests that changed the race history, athlete merges and notes, newest first."""
         return _read(T.data_changes, sport=sport, limit=limit, offset=offset)
 
+    # --- sportsbook slips ----------------------------------------------------------------------------
+    @srv.tool()
+    def list_kinds(sport: str | None = None) -> str:
+        """Every market kind (race winner, podium, top N, head-to-head, pole, sprint, props, ...) with the sports that
+        model it: what a book's lines may name for map_book / price_book. sport: f1, nascar, motogp, ... to list only
+        the kinds modeled there."""
+        return _plain(T.list_kinds, sport=sport)
+
+    @srv.tool()
+    def map_book(book: str) -> str:
+        """Match a generic sportsbook's book (TOML text: [book] venue, event, sport, odds format; [[lines]] with kind,
+        driver / opponent / team, odds; combos as legs; docs/sportsbook/slips.md) to exact races and athletes in the
+        database. Each line and leg comes back mapped, or unmapped with the reason. Nothing is stored."""
+        return _read(T.map_book, book=book)
+
+    @srv.tool()
+    def price_book(book: str, run_ids: list[int] | None = None) -> str:
+        """map_book, then price every leg and line: the book's implied probability, our model's (a stored model run:
+        the app's own choice, or run_ids to pin one per competition), the linked prediction market's (Polymarket,
+        Kalshi, OG.com) and the expected value of the bet against each. Same-race combos are priced jointly where the
+        simulations allow, and flagged otherwise. The two probabilities are never blended (owner decision)."""
+        return _read(T.price_book, book=book, run_ids=run_ids)
+
+    @srv.tool()
+    def settle_book(book: str) -> str:
+        """map_book, then settle each leg and line from the stored results: won, lost, void, manual or pending, with
+        the payout and profit per line at the book's odds."""
+        return _read(T.settle_book, book=book)
+
     # --- sql ----------------------------------------------------------------------------------------
     @srv.tool()
     def sql(query: str, limit: int = 50, offset: int = 0) -> str:
         """Run one read-only SQL query (SELECT / WITH ... SELECT / EXPLAIN) against the database, in a READ ONLY transaction
         with a 10 s timeout. The result is paged (limit at most 500; an outer LIMIT/OFFSET is applied for you). The users and
         orders tables are not readable. describe_schema() lists the tables and columns."""
-        return _read(T.sql, query=query, limit=limit, offset=offset)
+        return _read(T.sql, engine=_sql_engine(), query=query, limit=limit, offset=offset)
 
     # --- jobs ---------------------------------------------------------------------------------------
     @srv.tool()
