@@ -505,14 +505,16 @@ def test_basic_pages_never_name_the_strategy_behind_a_pick(clients):
 
 def test_landing_page_has_no_popup_unless_a_notice_is_set(monkeypatch):
     """The landing page (/login, owner 2026-10-08): business copy first, the fantasy-trading beta below with demo
-    buttons no bigger than the sign-up link, and no popup unless MAINTENANCE_NOTICE is set."""
+    buttons no bigger than the sign-up link, centered without same-page navigation, and no popup unless
+    MAINTENANCE_NOTICE is set."""
     from fastapi.testclient import TestClient
 
     from racinglines.web import app as A
     cl = TestClient(A.app)
     page = cl.get("/login").text
     assert 'id="site-notice"' not in page and "Beta <a" not in page
-    assert "Motorsport pricing for sportsbooks" in page and 'id="how"' in page and 'class="biz"' in page
+    assert "Motorsport pricing for sportsbooks" in page and 'class="biz"' in page
+    assert 'href="#' not in page and "How it works" not in page
     assert "We're still looking for individual users to fantasy trade with us!" in page.replace("&#39;", "'")
     assert ">Try as pro</button>" in page and ">Try as basic</button>" in page and 'id="account"' in page
     monkeypatch.setattr(A, "MAINTENANCE_NOTICE", "Down for a moment.")
