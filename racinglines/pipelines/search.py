@@ -21,18 +21,10 @@ After every finished job the leaderboard and a results export are rewritten.
     taker_stages = "pre-weekend,after FP1,after FP2"
     note = "why this job"        # shown on the leaderboard
 
-    [[job]]                      # the strategies traded on Kalshi's recorded tape instead of Polymarket's
-    year = 2026                  # (`f1 sweep --venue kalshi`; "og" = OG.com's). Its own baseline is added, on
-    venue = "kalshi"             # the same venue; a job's id covers the venue.
+    [[job]]                      # the maker strategies replayed on Kalshi's recorded tape instead of
+    year = 2026                  # Polymarket's (`f1 sweep --venue kalshi`; the takers read Polymarket either
+    venue = "kalshi"             # way). Its own baseline is added, on the same venue; a job's id covers the venue.
     variant = "gbm"
-
-    [[job]]                      # a season sweep of any sport whose schema has a [sweep] table and lists "sweep"
-    sport = "nascar"             # in [search] jobs (pipelines/season_sweep.py: `racinglines nascar sweep`): the
-    kind = "sweep"               # same taker modes and maker variants on the sport's own stages, kinds and model
-    venue = "kalshi"             # (its settings: the model's plus the shared taker / maker / markets ones)
-    year = 2025
-    min_edge = 0.08              # any setting; `stages = "weekend"` / "sessions" picks the stage mode (unset = the
-                                 # schema's [sweep] stages, so earlier results stay reproducible)
 
     [[job]]                      # championship markets entered at fixed points and held
     kind = "checkpoints"
@@ -87,37 +79,29 @@ from racinglines import paths
 from racinglines import progress as PG
 from racinglines.pipelines import sweep_settings as SS
 
+KINDS = {"f1": ("sweep", "checkpoints", "season_strategy"), "mtb_dh": ("walk_forward",)}
 SEASON_KINDS = ("sweep", "walk_forward")          # a season-long run with a default-settings baseline
 META = {"kind", "year", "rounds", "note", "id", "variants", "entries", "window", "sport", "replicates", "venue", "model"}
-DEFAULT_SPORT = "f1"                              # a job with no `sport` (and its ids, which leave the sport out)
-DEFAULT_VENUE = "polymarket"                      # a sweep with no `venue` (and its ids, which leave the venue out)
+VENUES = ("polymarket", "kalshi")               # a sweep's maker venue (weekend_sweep.run_sweep); Polymarket = as before
 SAVED = {"sweep": "Saved sweep run", "checkpoints": "Saved season checkpoints run",
          "season_strategy": "Saved season strategy run", "walk_forward": "Saved walk-forward run"}
 
 
-def settings_class(sport=DEFAULT_SPORT, model=None, kind=None):
-    """A job's settings schema: a sweep's (kind "sweep": pipelines/season_sweep.py, the sport's pricing model's
-    settings plus the shared taker / maker / markets ones; F1's is sweep_settings.Settings), else the sport's pricing
-    model's (sports/<code>.toml [sport] pricing_model; F1's is the sweep's), or model="global": the results model's,
-    with the sport's [model.defaults]."""
+def settings_class(sport="f1", model=None):
+    """The sport's settings schema (F1: the sweep's; others: their pricing model's; model="global": the results
+    model's, with the sport's [model.defaults])."""
     if model == "global":
         from racinglines.models.model_global import GlobalModel
         return GlobalModel.for_sport(sport).Settings
     if model:
         raise ValueError(f"unknown model {model!r}: only \"global\"")
+    if sport == "f1":
+        return SS.Settings
     from racinglines.models import race_model as RM
     try:
-        if kind == "sweep":
-            from racinglines.pipelines import season_sweep as SW
-            return SW.settings_class(sport)
         return RM.model_class(sport).Settings
-    except (ValueError, FileNotFoundError):
+    except ValueError:
         _unknown_sport(sport)
-
-
-def job_settings_class(j):
-    """settings_class for a job (or a job-like dict: sport, model, kind)."""
-    return settings_class(j.get("sport", DEFAULT_SPORT), j.get("model"), j.get("kind"))
 
 
 def _unknown_sport(sport):
@@ -125,22 +109,19 @@ def _unknown_sport(sport):
 
 
 def kinds_for(sport, model=None):
-    """Job kinds a sport's queue entries may have, the first being the default: its schema's [search] jobs (F1:
-    sweeps and season runs; NASCAR, MotoGP: the walk-forward and the sweep), else, for any sport with a pricing
-    model, the model-only walk-forward (so does any sport with `model = "global"`, F1 included). "sweep" counts
-    only where the schema also has a [sweep] stage mode (pipelines/season_sweep.py)."""
+    """Job kinds a sport's queue entries may have: F1's sweeps and season runs; any other sport with a pricing
+    model, the model-only walk-forward (so does any sport with `model = "global"`, F1 included)."""
     if model:
         settings_class(sport, model)           # raises for a sport without the model's schema hooks
         return ("walk_forward",)
+    if sport in KINDS:
+        return KINDS[sport]
     settings_class(sport)                      # raises for a sport without a pricing model
-    from racinglines import sports
-    from racinglines.pipelines import season_sweep as SW
-    jobs = tuple(sports.load(sport).get("search", {}).get("jobs") or ("walk_forward",))
-    return tuple(k for k in jobs if k != "sweep" or SW.supports(sport)) or ("walk_forward",)
+    return ("walk_forward",)
 
 
 def _settings(j):
-    cls = job_settings_class(j)
+    cls = settings_class(j.get("sport", "f1"), j.get("model"))
     extra = [k for k in j if k not in META and k not in cls.BY]
     if extra:
         raise ValueError(f"job {j.get('note', j)}: unknown keys {extra}")
@@ -148,24 +129,20 @@ def _settings(j):
 
 
 def job_id(j):
-    sport, model = j.get("sport", DEFAULT_SPORT), j.get("model")
-    kind = j.get("kind") or kinds_for(sport, model)[0]
+    sport, model = j.get("sport", "f1"), j.get("model")
+    kind = j.get("kind", "walk_forward" if model else KINDS.get(sport, ("walk_forward",))[0])
     key = dict(kind=kind, year=j.get("year"), rounds=j.get("rounds"))
-    if sport != DEFAULT_SPORT or model:               # F1 ids stay as they were
+    if sport != "f1" or model:                        # F1 ids stay as they were
         key["sport"] = sport
     if model:
         key["model"] = model
-    if j.get("venue", DEFAULT_VENUE) != DEFAULT_VENUE:  # Polymarket ids stay as they were
+    if j.get("venue", "polymarket") != "polymarket":  # Polymarket ids stay as they were
         key["venue"] = j["venue"]
     if kind == "checkpoints":
         key.update(variants=j.get("variants"), entries=j.get("entries"), window=j.get("window"))
     else:
-        key["settings"] = _settings(dict(j, kind=kind)).key
+        key["settings"] = _settings(j).key
     return hashlib.sha1(json.dumps(key, sort_keys=True, default=str).encode()).hexdigest()[:10]
-
-
-SWEEP_STRATEGIES = ("update", "hold", "last", "early", "maker", "maker_flat", "maker_skew", "maker_widen", "maker_all",
-                    "buy_all")                        # a sweep's strategy keys (weekend_sweep.TAKER_MODES, MAKERS)
 
 
 def _replicate(j, n):
@@ -182,17 +159,14 @@ def load(path):
     jobs, reps = [], {}
     for j0 in cfg.get("job", []):
         j0 = dict(j0)
-        sport, model = j0.get("sport", DEFAULT_SPORT), j0.get("model")
+        sport, model = j0.get("sport", "f1"), j0.get("model")
         allowed = kinds_for(sport, model)
         j0.setdefault("kind", allowed[0])
         j0.setdefault("year", 2026)
         if j0["kind"] not in allowed:
             raise ValueError(f"unknown job kind {j0['kind']!r} for {sport}; one of {allowed}")
-        if "venue" in j0:
-            from racinglines.pipelines import season_sweep as SW
-            ok = SW.venues(sport) if j0["kind"] == "sweep" and not model else (DEFAULT_VENUE,)
-            if j0["venue"] not in ok:
-                raise ValueError(f"job {j0.get('note', j0)}: venue {j0['venue']!r} is for {sport} sweeps, one of {ok}")
+        if j0.get("venue", "polymarket") not in VENUES or (j0.get("venue", "polymarket") != "polymarket" and j0["kind"] != "sweep"):
+            raise ValueError(f"job {j0.get('note', j0)}: venue {j0.get('venue')!r} is for sweeps, one of {VENUES}")
         n = int(j0.pop("replicates", 1) or 1)
         if n > 1:
             key = (sport, model, j0["year"], j0.get("rounds"))
@@ -205,19 +179,19 @@ def load(path):
                 jobs.append(j)
     base = []
     for sport, kind, year, rounds, venue, model in dict.fromkeys(
-            (j.get("sport", DEFAULT_SPORT), j["kind"], j["year"], j.get("rounds"), j.get("venue", DEFAULT_VENUE), j.get("model"))
+            (j.get("sport", "f1"), j["kind"], j["year"], j.get("rounds"), j.get("venue", "polymarket"), j.get("model"))
             for j in jobs if j["kind"] in SEASON_KINDS):
         b0 = dict(kind=kind, year=year, note="baseline (added automatically: same data as every job)")
-        if sport != DEFAULT_SPORT or model:
+        if sport != "f1" or model:
             b0["sport"] = sport
         if model:
             b0["model"] = model
         if rounds:
             b0["rounds"] = rounds
-        if venue != DEFAULT_VENUE:
+        if venue != "polymarket":
             b0["venue"] = venue
         for b in _replicate(b0, reps.get((sport, model, year, rounds), 1)):
-            b["settings"] = job_settings_class(b).from_dict({"seed": b["seed"]} if "seed" in b else {}).to_json()
+            b["settings"] = settings_class(sport, model).from_dict({"seed": b["seed"]} if "seed" in b else {}).to_json()
             b["id"] = job_id({k: v for k, v in b.items() if k != "settings"})
             if not any(x["id"] == b["id"] for x in jobs):
                 base.append(b)
@@ -226,18 +200,18 @@ def load(path):
     cands = []
     for c in cfg.get("candidate", []):
         c = dict(c)
-        sport, model = c.get("sport", DEFAULT_SPORT), c.get("model")
-        strategy = c.get("strategy", "maker")
-        cls = settings_class(sport, model, "sweep" if not model and strategy in SWEEP_STRATEGIES else None)
+        sport, model = c.get("sport", "f1"), c.get("model")
+        cls = settings_class(sport, model)
         st = cls.from_dict({k: v for k, v in c.items() if k in cls.BY and k not in META})
+        strategy = c.get("strategy", "maker")
         cand = dict(name=c.get("name") or st.label(), year=int(c.get("year", 2026)), strategy=strategy,
                     why=c.get("why", ""), settings=st.to_json(), settings_key=st.key,
                     id=c.get("id") or f"{strategy}-{cls.from_dict(dict(st, seed=None)).key}")   # as search-report names it
-        if sport != DEFAULT_SPORT or model:
+        if sport != "f1" or model:
             cand["sport"] = sport
         if model:
             cand["model"] = model
-        if c.get("venue", DEFAULT_VENUE) != DEFAULT_VENUE:
+        if c.get("venue", "polymarket") != "polymarket":
             cand["venue"] = c["venue"]
         cands.append(cand)
     return (dict(name=s.get("name", "search"), parallel=int(s.get("parallel", os.cpu_count() or 1)), grid=int(s.get("grid", 0) or 0),
@@ -247,52 +221,40 @@ def load(path):
 
 
 def argv(j):
-    """The command a job runs: a walk-forward is `racinglines backtest walk-forward <sport>`; every other kind is the
-    sport's own command, `racinglines <sport> [--variant V] sweep | season-checkpoints | season-strategy` (the
-    variant, a global flag of `racinglines f1`, where the settings have one)."""
-    sport = j.get("sport", DEFAULT_SPORT)
-    if j["kind"] == "walk_forward":
-        st = job_settings_class(j).from_dict(j["settings"])
-        return [sys.executable, "-m", "racinglines", "backtest", "walk-forward", sport, "--seasons",
+    if j.get("sport", "f1") != "f1" or j.get("model"):
+        st = settings_class(j.get("sport", "f1"), j.get("model")).from_dict(j["settings"])
+        return [sys.executable, "-m", "racinglines", "backtest", "walk-forward", j.get("sport", "f1"), "--seasons",
                 str(j["year"]), "--save"] + (["--model", j["model"]] if j.get("model") else []) + st.argv()
-    py = [sys.executable, "-m", "racinglines", sport]
+    py = [sys.executable, "-m", "racinglines", "f1"]
     if j["kind"] == "checkpoints":
         a = py + ["season-checkpoints", "--year", str(j["year"]), "--save"]
         for k in ("variants", "entries", "window"):
             if j.get(k) is not None:
                 a += ["--" + k, str(j[k])]
         return a
-    st = job_settings_class(j).from_dict(j["settings"])
-    if "variant" in st:
-        py = py + ["--variant", st["variant"]]
+    st = SS.Settings.from_dict(j["settings"])
     if j["kind"] == "season_strategy":
-        return py + ["season-strategy", "--year", str(j["year"]), "--no-fetch", "--save"]
-    a = py + ["sweep", "--year", str(j["year"]), "--no-fetch", "--save"]
+        return py + ["--variant", st["variant"], "season-strategy", "--year", str(j["year"]), "--no-fetch", "--save"]
+    a = py + ["--variant", st["variant"], "sweep", "--year", str(j["year"]), "--no-fetch", "--save"]
     if j.get("rounds"):
         a += ["--rounds", str(j["rounds"])]
-    if j.get("venue", DEFAULT_VENUE) != DEFAULT_VENUE:
+    if j.get("venue", "polymarket") != "polymarket":
         a += ["--venue", j["venue"]]
     return a + st.argv()
 
 
 def _grid_key(j):
-    """Sweeps with the same key can share one process (`f1 sweep --grid`, the "sessions" mode's): same season,
-    rounds and model."""
-    if j["kind"] != "sweep" or j.get("model"):
+    """Sweeps with the same key can share one process (`f1 sweep --grid`): same season, rounds and model."""
+    if j.get("sport", "f1") != "f1" or j["kind"] != "sweep":
         return None
-    from racinglines.pipelines import season_sweep as SW
-    st = job_settings_class(j).from_dict(j["settings"])
-    sport = j.get("sport", DEFAULT_SPORT)
-    if SW.mode_of(sport, st) != "sessions" or SW.time_key(sport):       # stored sessions: priced in the sweep itself
-        return None
-    return (j.get("sport", DEFAULT_SPORT), j["year"], j.get("rounds"), st.model_key, st["variant"])
+    st = SS.Settings.from_dict(j["settings"])
+    return (j["year"], j.get("rounds"), st.model_key, st["variant"])
 
 
 def _grid_settings(j):
     """A job's full settings for `f1 sweep --grid`: its own, plus its venue (a job-level key here)."""
-    st0 = job_settings_class(j).from_dict(j["settings"])
-    st = dict(st0.changed(), variant=st0["variant"])
-    if j.get("venue", DEFAULT_VENUE) != DEFAULT_VENUE:
+    st = dict(SS.Settings.from_dict(j["settings"]).changed(), variant=SS.Settings.from_dict(j["settings"])["variant"])
+    if j.get("venue", "polymarket") != "polymarket":
         st["venue"] = j["venue"]
     return st
 
@@ -365,8 +327,8 @@ def run(path, echo=print):
             else:
                 gf = out / "logs" / f"{j['id']}.grid.json"
                 gf.write_text(json.dumps([dict(job=x["id"], settings=_grid_settings(x)) for x in group]))
-                a = argv(dict(j, settings=job_settings_class(j).from_dict({"variant": job_settings_class(j).from_dict(j["settings"])["variant"]}).to_json(),
-                              venue=DEFAULT_VENUE)) + ["--grid", str(gf)]
+                a = argv(dict(j, settings=SS.Settings.from_dict({"variant": SS.Settings.from_dict(j["settings"])["variant"]}).to_json(),
+                              venue="polymarket")) + ["--grid", str(gf)]
             procs[j["id"]] = subprocess.Popen(a, stdout=log, stderr=subprocess.STDOUT, env=env, cwd=paths.ROOT)
             for x in group:
                 state[x["id"]] = dict(x, status="running", started=str(now), log=f"logs/{j['id']}.log",
@@ -385,16 +347,11 @@ def run(path, echo=print):
 def _title(j):
     if j["kind"] == "checkpoints":
         return f"checkpoints {j['year']} [{j.get('variants', 'default variants')}]"
-    st = job_settings_class(j).from_dict(j["settings"])
-    sport = j.get("sport", DEFAULT_SPORT)
-    if j["kind"] == "sweep":
-        kind = "" if sport == DEFAULT_SPORT else f"{sport} sweep "
-    else:
-        kind = (f"{j['model']} " if j.get("model") else "downhill " if sport == "mtb_dh" and j["kind"] == "walk_forward"
-                else f"{sport} walk-forward " if j["kind"] == "walk_forward" else j["kind"] + " ")
+    st = settings_class(j.get("sport", "f1"), j.get("model")).from_dict(j["settings"])
+    kind = "" if j["kind"] == "sweep" else (f"{j['model']} " if j.get("model") else "downhill " if j["kind"] == "walk_forward" else j["kind"] + " ")
     return f"{kind}{st.label()} · {j['year']}" + (
         f" · rounds {j['rounds']}" if j.get("rounds") else "") + (
-        f" · {j['venue']}" if j.get("venue", DEFAULT_VENUE) != DEFAULT_VENUE else "")
+        f" · {j['venue']}" if j.get("venue", "polymarket") != "polymarket" else "")
 
 
 def write_outputs(out, state, queue_path=None, echo=print):
@@ -421,20 +378,18 @@ def write_outputs(out, state, queue_path=None, echo=print):
                                                  default=str))
     lines = [f"# Search leaderboard ({datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC)", ""]
     sweeps = [(v, runs[v["run_id"]]) for v in done.values() if v["kind"] == "sweep" and v["run_id"] in runs]
-    for sport, year in sorted({(v.get("sport", DEFAULT_SPORT), v["year"]) for v, _ in sweeps},
-                              key=lambda x: (x[0] != DEFAULT_SPORT, x)):
-        cols = [(v, r) for v, r in sweeps if (v.get("sport", DEFAULT_SPORT), v["year"]) == (sport, year)]
-        cls = settings_class(sport, None, "sweep")
-        default = cls.from_dict().key
-        bases = {(v.get("rounds"), v.get("venue", DEFAULT_VENUE)): r for v, r in cols       # per venue: Kalshi's own
-                 if cls.from_dict(v["settings"]).key == default}
+    for year in sorted({v["year"] for v, _ in sweeps}):
+        cols = [(v, r) for v, r in sweeps if v["year"] == year]
+        default = SS.Settings.from_dict().key
+        bases = {(v.get("rounds"), v.get("venue", "polymarket")): r for v, r in cols       # per venue: Kalshi's own
+                 if SS.Settings.from_dict(v["settings"]).key == default}
         n_w = max((len(r["metrics"].get("weekends") or []) for _, r in cols), default=0)
-        lines += [f"## {year}: {'' if sport == DEFAULT_SPORT else sport + ' '}season sweeps ({n_w} weekends)", "",
+        lines += [f"## {year}: season sweeps ({n_w} weekends)", "",
                   "P&L in $ (weekends up) [difference from the baseline over the same weekends, same data]. "
                   "Best per strategy in **bold**.", ""]
-        lines.append("| Strategy | " + " | ".join(cls.from_dict(v["settings"]).label()
+        lines.append("| Strategy | " + " | ".join(SS.Settings.from_dict(v["settings"]).label()
                                                    + (f" · rounds {v['rounds']}" if v.get("rounds") else "")
-                                                   + (f" · {v['venue']}" if v.get("venue", DEFAULT_VENUE) != DEFAULT_VENUE else "")
+                                                   + (f" · {v['venue']}" if v.get("venue", "polymarket") != "polymarket" else "")
                                                    for v, _ in cols) + " |")
         lines.append("|---" * (len(cols) + 1) + "|")
         for key, label in EV.STRATEGIES:
@@ -446,7 +401,7 @@ def write_outputs(out, state, queue_path=None, echo=print):
                     cells.append("")
                     continue
                 t = r["metrics"]["totals"][key]
-                base = bases.get((v.get("rounds"), v.get("venue", DEFAULT_VENUE)))   # the baseline over the same weekends
+                base = bases.get((v.get("rounds"), v.get("venue", "polymarket")))   # the baseline over the same weekends
                 bt = (base["metrics"].get("totals") or {}) if base else {}
                 d = x - bt[key]["pnl"] if key in bt and r is not base else None
                 cell = f"{x:+,.0f} ({t['weekends_up']}/{t['weekends']})" + (f" [{d:+,.0f}]" if d is not None else "")
@@ -454,8 +409,8 @@ def write_outputs(out, state, queue_path=None, echo=print):
             lines.append(f"| {label} | " + " | ".join(cells) + " |")
         lines.append("")
     wfs = [(v, runs[v["run_id"]]) for v in done.values() if v["kind"] == "walk_forward" and v["run_id"] in runs]
-    for sport, model, year in sorted({(v.get("sport", DEFAULT_SPORT), v.get("model") or "", v["year"]) for v, _ in wfs}):
-        cols = [(v, r) for v, r in wfs if (v.get("sport", DEFAULT_SPORT), v.get("model") or "", v["year"]) == (sport, model, year)]
+    for sport, model, year in sorted({(v.get("sport", "f1"), v.get("model") or "", v["year"]) for v, _ in wfs}):
+        cols = [(v, r) for v, r in wfs if (v.get("sport", "f1"), v.get("model") or "", v["year"]) == (sport, model, year)]
         cls = settings_class(sport, model or None)
         bases = {v["settings"].get("seed"): r for v, r in cols            # the default settings, per seed
                  if cls.from_dict(v["settings"]).key == cls.from_dict({"seed": v["settings"].get("seed")}).key}
@@ -525,12 +480,6 @@ def import_results(path, engine_url=None, echo=print):
                 continue
             params = dict(r["params"] or {}, source=src)
             comp, cat = comp_f1, cat_f1
-            if r.get("kind", "sweep") == "sweep" and params.get("sport", DEFAULT_SPORT) != DEFAULT_SPORT:
-                from racinglines import sports              # another sport's sweep: its own competition
-                cs = sports.load(params["sport"])["competition"]
-                comp = c.execute(text("SELECT id FROM competitions WHERE code = :c"), dict(c=cs["code"])).scalar()
-                cat = c.execute(text("SELECT id FROM categories WHERE competition_id = :c AND code = :k"),
-                                dict(c=comp, k=next(iter(cs.get("categories") or {}), ""))).scalar()
             if r.get("kind") == "walk_forward":                # a downhill walk-forward
                 comp = c.execute(text("SELECT id FROM competitions WHERE code = 'uci_dhi_wc'")).scalar()
                 cat = c.execute(text("SELECT id FROM categories WHERE competition_id = :c AND code = :k"),
@@ -538,8 +487,6 @@ def import_results(path, engine_url=None, echo=print):
             season = c.execute(text("SELECT id FROM seasons WHERE competition_id = :c AND year = :y"),
                                dict(c=comp, y=int(params.get("year") or 0))).scalar()
             model = {"sweep": "f1_sector_sim", "walk_forward": "timed_runs"}.get(r.get("kind", "sweep"), r.get("kind", "sweep"))
-            if params.get("sport", DEFAULT_SPORT) != DEFAULT_SPORT and params.get("model"):
-                model = params["model"]                        # another sport's sweep: its pricing model's name
             new_ids[r["id"]] = c.execute(text("""INSERT INTO model_runs (competition_id, season_id, category_id, model, kind, params, metrics)
                                                  VALUES (:c, :s, :k, :m, :kind, CAST(:p AS jsonb), CAST(:x AS jsonb)) RETURNING id"""),
                                          dict(c=comp, s=season, k=cat, m=model, kind=r.get("kind", "sweep"),
@@ -547,7 +494,7 @@ def import_results(path, engine_url=None, echo=print):
             n += 1
         comp = comp_f1
         for cand in data.get("candidates", []):
-            if cand.get("sport", DEFAULT_SPORT) != DEFAULT_SPORT or cand.get("model"):   # the Lab is F1's (downhill candidates stay in the report)
+            if cand.get("sport", "f1") != "f1" or cand.get("model"):   # the Lab is F1's (downhill candidates stay in the report)
                 continue
             src = f"search:{name}:candidate:{cand['name']}"
             if c.execute(text("SELECT 1 FROM model_runs WHERE kind = 'candidate' AND params->>'source' = :s"),
@@ -565,7 +512,7 @@ def import_results(path, engine_url=None, echo=print):
 
 
 def add_candidate(conn, name, settings, year, strategy, why="", run_id=None, source="lab", competition_id=None,
-                  candidate_id=None, venue=None, sport=None):
+                  candidate_id=None, venue=None):
     """A Lab candidate: a named, complete settings set (+ the strategy it's for and the run it came from).
     candidate_id: the search report's stable id (<strategy>-<settings key without the seed>), when it has one.
     venue: the exchange a maker candidate was judged on and quotes ("kalshi"); None / Polymarket as before."""
@@ -577,5 +524,4 @@ def add_candidate(conn, name, settings, year, strategy, why="", run_id=None, sou
                                                        label=settings.label(), year=int(year), strategy=strategy,
                                                        why=why, run_id=run_id, source=source,
                                                        **({"candidate_id": candidate_id} if candidate_id else {}),
-                                                       **({"venue": venue} if venue and venue != DEFAULT_VENUE else {}),
-                                                       **({"sport": sport} if sport and sport != "f1" else {}))))).scalar()
+                                                       **({"venue": venue} if venue and venue != "polymarket" else {}))))).scalar()

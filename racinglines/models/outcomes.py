@@ -78,8 +78,7 @@ class SeasonSims:
 def from_position_sim(entrants, sim):
     """F1 (position_sim): `pos` is the classification with retirements last, `grid` the starting grid and `qual`
     the qualifying order when they differ (grid penalties; stage_rank["qual"] is always the qualifying order),
-    `fl` (with model.FASTEST_LAP) who set the fastest lap; `practice` (with model.PRACTICE_FASTEST) each practice
-    session's order of best laps under its name (stage_rank["fp1"], ...); `stages` (sprint weekends, pricing.price_stages) adds
+    `fl` (with model.FASTEST_LAP) who set the fastest lap; `stages` (sprint weekends, pricing.price_stages) adds
     each side stage's classification, finished and points under its name and its grid under its grid session's
     (stage_rank["sprint"], ["sprint_qual"])."""
     pos = sim["pos"]
@@ -89,8 +88,6 @@ def from_position_sim(entrants, sim):
             stage_rank[s["grid_from"]] = s["grid"]
         stage_rank[stage] = s["pos"]
         finished[stage], points[stage] = ~s["dnf"], s["points"]
-    for session, r in sim.get("practice", {}).items():     # practice best-lap orders (model.PRACTICE_FASTEST)
-        stage_rank.setdefault(session, r)
     return OutcomeSims(entrants=entrants["athlete_id"].tolist(), rank=pos, finished=~sim["dnf"],
                        stage_rank=stage_rank, points=sim["points"],
                        groups=entrants["team_key"].tolist() if "team_key" in entrants else None,

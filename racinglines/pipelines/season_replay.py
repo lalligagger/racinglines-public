@@ -132,7 +132,7 @@ def forecaster(engine, sport, year, n_sims=N_SIMS, seed=SEED, model_settings=Non
             results = motogp_points(conn, sp, year)
     sprints = sport == "motogp" and bool((results["kind"] == "sprint").any())
     settings = {"seed": seed, **(model_settings or {}), "sims": n_sims}
-    if sport == "nascar" and getattr(model, "noise_unit", None) == "places":     # a noise in places, not strength
+    if sport == "nascar":
         noise = NS.estimate_noise(data[(data["season"] >= year - 1) & (pd.to_datetime(data["date"]) <
                                                                      pd.Timestamp(sch["race_day"].iloc[0]))])
         if noise is not None:

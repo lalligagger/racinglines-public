@@ -124,15 +124,8 @@ def follow_rate(username, strategy):
     return (DEMO_FOLLOW.get(username) or {}).get(kind)
 
 
-DEFAULT_SPORT = "f1"                    # a profile with no `sport` (every one before other sports had signals)
-
-
-def pref(venue="polymarket", sport=DEFAULT_SPORT):
-    """The users.prefs key a sport and venue's profile lives under: F1 as before (Polymarket: the profile itself,
-    another venue strategy_profile_<venue>); another sport strategy_profile_<sport>_<venue>
-    (pipelines/sport_signals.py)."""
-    if sport != DEFAULT_SPORT:
-        return f"{PREF}_{sport}_{venue}"
+def pref(venue="polymarket"):
+    """The users.prefs key a venue's profile lives under (Polymarket: the profile as before)."""
     return PREF if venue == "polymarket" else f"{PREF}_{venue}"
 
 # The demo accounts' track record (pipelines/demo_history.py): backtest replays of real weekends, shown as
@@ -208,15 +201,9 @@ def load(conn, ref):
     if hit is None:
         raise ValueError(f"no candidate {ref!r} (racinglines f1 profiles creates A and C)")
     i, p = hit
-    sport = p.get("sport") or DEFAULT_SPORT          # another sport's candidate: its own sweep settings
-    if sport != DEFAULT_SPORT:
-        from racinglines.pipelines import season_sweep as SW
-        cls = SW.settings_class(sport)
-    else:
-        cls = SS.Settings
     return dict(candidate_id=i, name=p["name"], strategy=p["strategy"],
-                settings=cls.from_dict(p["settings"], strict=False).to_json(),
-                **({"venue": p["venue"]} if p.get("venue") else {}), **({"sport": sport} if sport != DEFAULT_SPORT else {}))
+                settings=SS.Settings.from_dict(p["settings"], strict=False).to_json(),
+                **({"venue": p["venue"]} if p.get("venue") else {}))
 
 
 def combo(conn, members, name, **extra):
@@ -229,27 +216,24 @@ def combo(conn, members, name, **extra):
                 candidate_id=None, members=ms, **extra)
 
 
-def assign(conn, user_id, profile, venue="polymarket", sport=DEFAULT_SPORT):
+def assign(conn, user_id, profile, venue="polymarket"):
     """Set (profile dict from load) or clear (None) a user's strategy profile; venue="kalshi" sets the
-    user's Kalshi profile (pref("kalshi")) and leaves the Polymarket one alone; another sport's profile is stored
-    with its `sport` under pref(venue, sport)."""
-    key = pref(venue, sport)
-    if profile is not None and sport != DEFAULT_SPORT:
-        profile = dict(profile, sport=sport)
+    user's Kalshi profile (pref("kalshi")) and leaves the Polymarket one alone."""
+    key = pref(venue)
     conn.execute(text(f"""UPDATE users SET prefs = CASE WHEN CAST(:v AS jsonb) IS NULL
                             THEN coalesce(prefs, '{{}}'::jsonb) - '{key}'
                             ELSE coalesce(prefs, '{{}}'::jsonb) || jsonb_build_object('{key}', CAST(:v AS jsonb)) END
                           WHERE id = :u"""), dict(u=user_id, v=None if profile is None else json.dumps(profile)))
 
 
-def of_user(conn, user_id, venue="polymarket", sport=DEFAULT_SPORT):
-    p = conn.execute(text(f"SELECT prefs->'{pref(venue, sport)}' FROM users WHERE id = :u"), dict(u=user_id)).scalar()
+def of_user(conn, user_id, venue="polymarket"):
+    p = conn.execute(text(f"SELECT prefs->'{pref(venue)}' FROM users WHERE id = :u"), dict(u=user_id)).scalar()
     return p or None
 
 
-def assigned(conn, venue="polymarket", sport=DEFAULT_SPORT):
-    """[(user_id, username, role, profile)] for every active user with a profile (for that sport, on that venue)."""
-    key = pref(venue, sport)
+def assigned(conn, venue="polymarket"):
+    """[(user_id, username, role, profile)] for every active user with a profile (on that venue)."""
+    key = pref(venue)
     rows = conn.execute(text(f"""SELECT id, username, role, prefs->'{key}' FROM users
                                 WHERE active AND prefs ? '{key}' ORDER BY id""")).all()
     from racinglines.web.roles import canonical

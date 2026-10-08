@@ -32,8 +32,7 @@ def forecast(engine, year, n_sims=N_SIMS, seed=SEED, stage_noise=5.0, race_noise
     standings: "feed" = NASCAR's points-feed.json when it is on disk (official points, penalties, seeds), else the
     points summed from race results; "results" = always the results. race_noise: "auto" = the spread of finishing
     positions measured on the last two seasons (NS.estimate_noise), a number = that many places, None = the race
-    model's own default (2.0, which puts most simulated wins on one favourite). "auto" applies only to a race model
-    whose noise is in places (`noise_unit`); the global results model keeps its own noise (strength units)."""
+    model's own default (2.0, which puts most simulated wins on one favourite)."""
     from sqlalchemy import text as sql
 
     from racinglines.models.race_model import Event
@@ -59,9 +58,7 @@ def forecast(engine, year, n_sims=N_SIMS, seed=SEED, stage_noise=5.0, race_noise
         state, matched = NS.apply_feed(fmt, state, feed, ids)
     data = model.load(engine.url.render_as_string(hide_password=False))
     noise = race_noise
-    if race_noise == "auto" and getattr(model, "noise_unit", None) != "places":
-        noise = None
-    elif race_noise == "auto":
+    if race_noise == "auto":
         noise = NS.estimate_noise(data[data["season"] >= year - 1])
     settings = {"seed": seed, **(model_settings or {}), "sims": n_sims}
     if noise is not None:

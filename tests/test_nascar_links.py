@@ -339,13 +339,11 @@ def test_the_kalshi_sync_stores_identity_and_a_second_sync_keeps_it(world):
     series = ["KXNASCARRACE", "KXNASCARCUPSERIES"]
     with world() as s:
         st = KS.sync(s, s.connection(), 2026, kc=FakeKalshi(), sport="nascar", series=series)
-        # C10: a Cup race win with its driver and race is filed as race_win (sports/nascar.toml [markets] kinds); the
-        # champion and the unresolved links stay unmodeled
-        assert st["links"] == 24 and st["modeled"] == 4 and st["identity"]["links"] == 24
+        assert st["links"] == 24 and st["modeled"] == 0 and st["identity"]["links"] == 24
         for _ in range(2):                                                         # the second sync must not undo the first
             link = s.scalars(select(m.MarketLink).filter_by(exchange="kalshi", token_id="KXNASCARRACE-SOUP26-BRKE")).one()
             assert (link.race_id, link.athlete_id) == (race_id_of(s, "2026-5630"), named(s, "Brad Keselowski"))
-            assert link.prediction == "race_win" and link.params["kind"] == "race_win" and link.params["series"] == "KXNASCARRACE"
+            assert link.prediction == "unmodeled" and link.params["kind"] == "race_win" and link.params["series"] == "KXNASCARRACE"
             KS.sync(s, s.connection(), 2026, kc=FakeKalshi(), sport="nascar", series=series)
             s.expire_all()
 

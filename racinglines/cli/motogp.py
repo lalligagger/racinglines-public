@@ -8,9 +8,6 @@ api.motogp.pulselive.com).
     compare      Backtest the baseline and recent-form challenger, and print model-promotion buy signals.
     replay       Taker replay of Grands Prix against Kalshi's or Polymarket's recorded prices (read-only unless
                  --save; racinglines/pipelines/position_replay.py).
-    sweep        The season sweep of Grands Prix: the F1 sweep's taker modes and maker variants through each race's
-                 stages on one exchange (--venue polymarket | kalshi), for the search's tuned and
-                 held-out seasons (read-only unless --save; racinglines/pipelines/season_sweep.py).
     season-replay  The riders' champion markets replayed through the season (Kalshi's KXMOTOGP, Polymarket's
                  championship winner): an as-of season forecast after every Grand Prix (models/motogp_season.py),
                  the championship sleeve's strategy at the recorded prices. Read-only; off by default
@@ -91,19 +88,12 @@ def main(argv=None):
     replay_cmd.add_season_parser(sub, "motogp")
     replay_cmd.add_demo_parser(sub, "motogp")
     replay_cmd.add_forecast_parser(sub, "motogp")
-    replay_cmd.add_sweep_parser(sub, "motogp")
-    replay_cmd.add_signals_parser(sub, "motogp")
     args = ap.parse_args(argv)
-
-    if args.cmd == "signals":
-        return replay_cmd.run_signals(args, "motogp")
 
     if args.cmd == "demo-history":
         return replay_cmd.run_demo(args, "motogp")
     if args.cmd == "forecast":
         return replay_cmd.run_forecast(args, "motogp")
-    if args.cmd == "sweep":
-        return replay_cmd.run_sweep(args, "motogp")
     if args.cmd == "replay":
         return replay_cmd.run(args, "motogp", _years(args.years))
     if args.cmd == "season-replay":

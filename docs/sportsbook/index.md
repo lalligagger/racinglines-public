@@ -39,7 +39,7 @@ type is a kind (with `fair` and `settle`) and one rule line per venue that lists
 `exchanges/`; a `venues/` file for an exchange would hold only its title rules, which for OG.com already live in
 `exchanges/og.toml` (one of the two should own them: **decision**).
 
-**The CLI around it** (all read-only against the app; nothing writes to `market_links` or any app table). `book map`, `book price` and `book settle` are built (2026-10-07): [Sportsbook slips](slips.md) has their actual interface, the EV definitions and the JSON fields. The table below is the original proposal; shrink, Kelly, picks CSV, writing back into the book file and the ledger update are not built:
+**The CLI around it** (all read-only against the app; nothing writes to `market_links` or any app table):
 
 | Command | Does |
 |---|---|

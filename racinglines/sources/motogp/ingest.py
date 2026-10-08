@@ -4,24 +4,13 @@ database, in the same standard shape every sport uses:
 
     event    one race weekend        source "motogp_api", source_key "<year>-<short_name>"
     race     event x category RDR    format = {kind: "motogp"}
-    rounds   one per session run     fp1.. | practice | qual1 | qual2 | qual | sprint | warmup | race: each session's
-                                     classification; "qual" is the combined qualifying order (below)
+    round    one, kind "race"        the RAC session's classification
     results  one per rider           position, status, time_ms, bib (rider number), team, extra (constructor,
                                      average_speed, points, gap to leader, laps)
 
 Riders are matched on AthleteIdentifier(scheme="motogp", value=<rider uuid>): the pulselive API's own id, stable
-across seasons (a name is never a join key). Only the MotoGP class (sports/motogp.toml's one competition).
-
-Qualifying: the API lists Q1 and Q2 as type "Q" with number 1 / 2 (tests/fixtures/market/motogp_sessions_2026_tha_
-motogp.json), stored as rounds qual1 / qual2. The weekend's qualifying order, the round the pole and grid markets read
-(kind "qual", as F1 and NASCAR store it), is derived from them: Q2's classification first (the pole and the front
-rows), then the Q1 riders who did not reach Q2 in their Q1 order. It is the qualifying result, not the starting grid
-(grid penalties are not in this API). A rider with no position in a session (no timed lap) follows the classified
-ones in it. Sprints (type "SPR", since 2023) are stored as round "sprint" wherever their classification was fetched.
-
-Events fetched before the per-session files existed have only <event>/classification.json (the race): it stands in
-for the RAC session's classification when that session has no file of its own, so re-ingesting such an event keeps
-its race.
+across seasons (a name is never a join key). Only the MotoGP class (sports/motogp.toml's one competition); only
+the race session (sprints, listed since 2023, are not ingested yet — a follow-up).
 
 `status`: the source's own `status` field is not yet documented; "INSTND" (every finisher seen in the 2026-09-29
 probe) is treated as classified ("OK"). Any other value is recorded as "DNF" and kept verbatim in extra.status_raw
@@ -47,9 +36,8 @@ SOURCE = "motogp_api"
 SCHEME = "motogp"
 CAT_CODE = "RDR"
 PARSER = "motogp_api"
-ROUND_ORDINAL = {"fp1": 1, "fp2": 2, "fp3": 3, "practice": 4, "qual1": 5, "qual2": 6, "qual": 6, "warmup": 7,
+ROUND_ORDINAL = {"fp1": 1, "fp2": 2, "fp3": 3, "practice": 4, "qual1": 5, "qual2": 6, "warmup": 7,
                  "sprint": 8, "race": 9}
-LEGACY = "legacy"                 # classification_by_id key of <event>/classification.json (the race only)
 
 
 def _clean(d):
@@ -69,8 +57,6 @@ def session_round_kind(session):
         return "practice"
     if kind in {"Q1", "Q2"}:
         return f"qual{int(kind[1])}"
-    if kind == "Q":                     # the API's Q1 / Q2: type "Q", number 1 / 2; a single session: no number
-        return f"qual{int(num)}" if num is not None else "qual"
     if kind == "SPR":
         return "sprint"
     if kind == "WUP":
@@ -126,47 +112,6 @@ def _rows_from_classification(classification):
     return out
 
 
-def combined_qualifying(q1, q2):
-    """The weekend's qualifying order from the Q1 and Q2 rows (each _rows_from_classification's shape): Q2's riders in
-    their Q2 order, then the Q1 riders not in Q2 in their Q1 order; within each, riders with no position follow the
-    placed ones. Positions are renumbered 1..n, placed riders first; status OK for a rider placed in their session,
-    DNS for one without a position there. Rows copy the session row (time, bib, team, extra) and add extra.session
-    (q1 / q2) and extra.session_position."""
-    def ordered(rows):
-        return sorted(rows, key=lambda r: (r.get("position") is None, r.get("position") or 0))
-    in_q2 = {r["rider_id"] for r in q2 if r.get("rider_id")}
-    picked = [(r, "q2") for r in ordered(q2)] + [(r, "q1") for r in ordered(q1) if r.get("rider_id") not in in_q2]
-    out = [dict(r, status="OK" if r.get("position") is not None else "DNS",
-                extra=_clean({**(r.get("extra") or {}), "session": sess, "session_position": r.get("position")}))
-           for r, sess in picked]
-    placed = [r for r in out if r["status"] == "OK"] + [r for r in out if r["status"] != "OK"]
-    for i, r in enumerate(placed, 1):
-        r["position"] = i
-    return placed
-
-
-def _one_round_per_kind(rounds):
-    """Keep one round per kind (rounds are UNIQUE on race and kind). A stopped and restarted session is listed twice
-    under one type (2016 NED has two RAC sessions); the later one, by date then number, is kept as the classification
-    of record, and the dropped session's date is noted in `superseded`. That the restart is the result of record is
-    inferred from how restarts are run, not checked against an official rule."""
-    keep = {}
-    for r in rounds:
-        ex = r.get("extra") or {}
-        prev = keep.get(r["kind"])
-        if prev is not None:
-            pex = prev.get("extra") or {}
-            if (str(ex.get("session_date") or ""), ex.get("number") or 0) < (
-                    str(pex.get("session_date") or ""), pex.get("number") or 0):
-                prev, r = r, prev
-            r["extra"] = {**(r.get("extra") or {}),
-                          "superseded": [*(r.get("extra") or {}).get("superseded", []),
-                                         *(prev.get("extra") or {}).get("superseded", []),
-                                         (prev.get("extra") or {}).get("session_date")]}
-        keep[r["kind"]] = r
-    return list(keep.values())
-
-
 def parse_event(year, ev, classification, sessions=None):
     """Everything to write for one event, as plain dicts (no database). None when there is no classified result.
 
@@ -183,8 +128,6 @@ def parse_event(year, ev, classification, sessions=None):
             if sid is None or kind is None:
                 continue
             cls = by_id.get(sid)
-            if cls is None and kind == "race":
-                cls = by_id.get(LEGACY)         # fetched before per-session files: the race's own file
             rows = _rows_from_classification(cls)
             if not rows:
                 continue
@@ -197,17 +140,8 @@ def parse_event(year, ev, classification, sessions=None):
                               "condition": session.get("condition")}),
                 rows=rows,
             ))
-        rounds = _one_round_per_kind(rounds)
         if not rounds:
             return None
-        got = {r["kind"]: r for r in rounds}
-        if "qual" not in got and ("qual1" in got or "qual2" in got):
-            q1, q2 = got.get("qual1", {}).get("rows", []), got.get("qual2", {}).get("rows", [])
-            last = got.get("qual2") or got["qual1"]
-            rounds.append(dict(kind="qual", name="QUALIFYING", ordinal=ROUND_ORDINAL["qual"],
-                               extra=_clean({"derived_from": [k for k in ("qual1", "qual2") if k in got],
-                                             "session_date": (last.get("extra") or {}).get("session_date")}),
-                               rows=combined_qualifying(q1, q2)))
         circuit = ev.get("circuit") or {}
         return dict(
             key=f"{year}-{ev['short_name']}", name=ev.get("name") or ev.get("sponsored_name"),
@@ -296,7 +230,7 @@ def ingest_event(session, comp, cat, year, short_name, force=False):
                 classification_by_id[sid] = data
     legacy = _read_json(cls_path)
     if legacy is not None:
-        classification_by_id[LEGACY] = legacy
+        classification_by_id["legacy"] = legacy
     if not classification_by_id:
         return "no classification"
     key = f"motogp:{year}-{short_name}"

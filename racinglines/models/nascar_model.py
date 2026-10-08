@@ -47,16 +47,10 @@ def _team_form(past, settings):
 
 
 def _field(ev):
-    """The start list in `ev.info["field"]`: the replay passes the race's entrants (pipelines/position_replay.py) and
-    `events` the event's own entry list (its rows that started), so exactly these entrants are priced, a newcomer at
-    the model's no-form base. Empty (an Event built by hand): every entrant in the history."""
+    """The start list the replay passes in `ev.info["field"]` (pipelines/position_replay.py): price exactly these
+    entrants, a newcomer at the model's no-form base. Empty (walk-forward, search): every entrant in the history,
+    as before."""
     return list((ev.info or {}).get("field") or [])
-
-
-def _started(rows):
-    """The rows of an event's entry list that started the race: every row but a DNS (did not start)."""
-    status = rows["status"] if "status" in rows else pd.Series("OK", index=rows.index)
-    return rows[status.fillna("OK").astype(str).str.upper() != "DNS"]
 
 
 class NascarCupSettings(SS.Settings):
@@ -81,7 +75,6 @@ class NascarCupRace:
     sport = "nascar"
     name = "nascar_results"
     Settings = NascarCupSettings
-    noise_unit = "places"          # `noise` is in finishing places (the season forecast's estimate_noise is too)
 
     @staticmethod
     def _driver_key(name):
@@ -215,13 +208,11 @@ class NascarCupRace:
         d = frame.drop_duplicates("race").sort_values("date")
         if seasons:
             d = d[d["season"].isin(seasons)]
-        entries = _started(frame).groupby("race")
         out = []
         for row in d.itertuples():
             event_name = getattr(row, "event_name", None)
-            field = self._entrant_ids(entries.get_group(row.race)) if row.race in entries.groups else []
             out.append(Event(id=row.race, season=int(row.season), cutoff=row.date,
-                             name=str(event_name or row.race), info={"field": field}))
+                             name=str(event_name or row.race)))
         return out
 
     def history(self, data, settings):

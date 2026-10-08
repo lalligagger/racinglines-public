@@ -8,24 +8,9 @@ racinglines backtest <command>: the backtest core for any sport with a pricing m
 
     racinglines backtest walk-forward mtb_dh --seasons 2025 --half-life-days 120 [--save]
     racinglines backtest walk-forward motogp --model global --seasons 2026     # the sport-agnostic results model
-    racinglines backtest walk-forward nascar --model nascar_recent_form        # a challenger ([sport] challengers)
     racinglines backtest walk-forward f1 --model global --seasons 2025 2026 --venue polymarket kalshi
                          # also scores each venue's price beside the model's (model_vs_market): for F1 at the first
                          # stage, 1 h before any running (--market-stage 'after Quali' for another)
-
-    coverage             read-only: per sport x exchange x market kind x season, the races linked, settled and taped
-                         (prices, trades, books in Postgres and the Parquet archive) and the parity tier that gives;
-                         season futures; per sport, the race results in the database and the declared results
-                         sources (racinglines/pipelines/coverage.py, docs/parity-rebuild.md "C0")
-
-    racinglines backtest coverage [--seasons 2025 2026] [--out DIR]
-
-    clv                  read-only: closing-line value of every paper bet (strategy_signals: the taker's followed
-                         trades, the maker's fills) on any sport and venue, per bet and per sport x venue x kind x
-                         strategy x profile: bets, mean CLV, share positive (racinglines/pipelines/clv.py, "C4")
-
-    racinglines backtest clv [--user NAME ...] [--sport nascar] [--venue kalshi] [--event KEY] [--asof UTC] [--summary] [--json]
-                             [--out DIR]
 """
 
 import argparse
@@ -36,22 +21,13 @@ import pandas as pd
 
 
 def pricing_model(sport, which=None):
-    """The sport's pricing model ([sport] pricing_model), or with which="global" the sport-agnostic results model
-    (models/model_global.py) pointed at the sport's schema ([model] / [replay] data hooks), or with which = a name
-    in [sport] challengers the challenger model it names (an earlier pricing model kept runnable)."""
+    """The sport's own pricing model, or with which="global" the sport-agnostic results model
+    (models/model_global.py) pointed at the sport's schema ([model] / [replay] data hooks)."""
     from racinglines.models import race_model as RM
     if which == "global":
         from racinglines.models.model_global import GlobalModel
         return GlobalModel.for_sport(sport)()
-    if which:
-        return RM.challenger(sport, which)()
     return RM.get(sport)
-
-
-def model_choices(sport):
-    """The --model values for `sport`: "global" and the names in its [sport] challengers."""
-    from racinglines.models import race_model as RM
-    return ("global",) + tuple(RM.challengers(sport)) if sport else ("global",)
 
 
 def run_walk_forward(model, data, st, seasons=None, kinds=None, out_dir=None, save=False, engine_url=None,
@@ -135,55 +111,17 @@ def main(argv=None):
     wf.add_argument("--kinds", help="Market kinds, comma-separated (default: every per-entrant kind the model prices).")
     wf.add_argument("--out-dir", help="Write the CSVs here (default: data/runs/<sport>/walk_forward).")
     wf.add_argument("--save", action="store_true", help="Store the run in the database (model_runs, kind walk_forward).")
-    wf.add_argument("--model", choices=model_choices(known.sport if known.cmd == "walk-forward" else None), default=None,
-                    help="global: the sport-agnostic results model (models/model_global.py); or a challenger named in "
-                         "the schema's [sport] challengers (an earlier pricing model). Default: [sport] pricing_model.")
+    wf.add_argument("--model", choices=("global",), default=None,
+                    help="Run the sport-agnostic results model (models/model_global.py) instead of the sport's own.")
     wf.add_argument("--venue", nargs="+", choices=("polymarket", "kalshi"), default=[],
                     help="Also score each exchange's price beside the model's (exact market links only), read at the "
                          "schema's first stage before any running where the sport has a session schedule (F1), else at the "
                          "event's cutoff.")
     wf.add_argument("--market-stage", default=None, metavar="LABEL",
                     help="Read the --venue prices at this stage of the schema's [stages] instead (F1: 'after Quali').")
-    cov = sub.add_parser("coverage", help="Read-only: linked, settled and taped races per sport, exchange, kind and season.")
-    cov.add_argument("--db", default=None, metavar="URL", help="Database URL (default: $DATABASE_URL).")
-    cov.add_argument("--seasons", nargs="+", type=int, help="Only these seasons (default: all).")
-    cov.add_argument("--out", default=None, metavar="DIR", help="Also write coverage_{combos,futures,results}.csv here.")
-    clv = sub.add_parser("clv", help="Read-only: closing-line value per paper bet, and per sport, venue, kind and profile.")
-    clv.add_argument("--db", default=None, metavar="URL", help="Database URL (default: $DATABASE_URL).")
-    clv.add_argument("--user", nargs="+", default=None, metavar="NAME", help="Only these users' bets.")
-    clv.add_argument("--sport", default=None, help="Only this sport (a sports/<code>.toml code).")
-    clv.add_argument("--venue", default=None, help="Only this venue (polymarket, kalshi, og).")
-    clv.add_argument("--event", default=None, metavar="KEY", help="Only this event key.")
-    clv.add_argument("--asof", default=None, metavar="UTC", help="Judge closes as of this time (default now).")
-    clv.add_argument("--summary", action="store_true", help="Print the aggregate only, not every bet.")
-    clv.add_argument("--json", action="store_true", help="Print JSON (summary and bets) instead of tables.")
-    clv.add_argument("--out", default=None, metavar="DIR", help="Also write clv_bets.csv and clv_summary.csv here.")
     if known.cmd == "walk-forward" and known.sport:
         SS.add_arguments(wf, pricing_model(known.sport, known.model).Settings)
     args = ap.parse_args(argv)
-    if args.cmd == "coverage":
-        from racinglines.db.config import get_engine
-        from racinglines.pipelines import coverage as COV
-        with get_engine(args.db).connect() as c:
-            res = COV.run(c, seasons=args.seasons)
-        print(COV.format_text(res))
-        if args.out:
-            print(f"\nCSVs -> {COV.write(res, args.out)}/")
-        return 0
-    if args.cmd == "clv":
-        import json
-
-        from racinglines.db.config import get_engine
-        from racinglines.pipelines import clv as CLV
-        with get_engine(args.db).connect() as c:
-            res = CLV.run(c, users=args.user, sport=args.sport, venue=args.venue, event=args.event,
-                          now=pd.Timestamp(args.asof, tz="UTC") if args.asof else None)
-        print(json.dumps(CLV.to_json(res), indent=1) if args.json else CLV.format_text(res, per_bet=not args.summary))
-        if args.out:
-            out = CLV.write(res, args.out)
-            if not args.json:
-                print(f"\nCSVs -> {out}/")
-        return 0
     model = pricing_model(args.sport, args.model)
     st = SS.from_args(args, model.Settings)
     data = model.load(args.db)

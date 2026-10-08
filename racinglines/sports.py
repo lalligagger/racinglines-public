@@ -11,9 +11,6 @@ the values from here, so a new sport starts with a new schema file.
     modeled(code)               False for a tape-only sport ([sport] model_family = "none": no model, no
                                 pipeline; its exchange markets are only recorded, docs/todo.md U9)
     kalshi_series(code)         the Kalshi series prefixes a sport's [markets.kalshi] names, () if none
-    kalshi_kinds(code)          {series ticker: kind} from [markets.kalshi] kinds, {} if none
-    titles_classified(code)     [markets] titles: the syncs classify from titles with the F1 resolver
-    link_kinds(code)            [markets] kinds: the kinds an identified link of the sport is filed as
     polymarket_tags(code)       the Gamma tag_slug values a sport's [markets.polymarket] names, () if none
     identity(code)              the package under racinglines/sources/ whose links module says which driver and race a
                                 market is about ([identity] resolver in the schema), None if the sport has none
@@ -53,60 +50,9 @@ def modeled(code):
     return load(code)["sport"].get("model_family", "none") != "none"
 
 
-CLASSIFIED_RULES = ("status_ok", "placed")
-
-
-def classified_rule(code):
-    """Who counts as classified when the sport's race markets settle ([results] classified, markets/payoffs.py):
-    "status_ok" (the default: results status OK) or "placed" (any car with a position). None for an unknown sport."""
-    try:
-        rule = load(code).get("results", {}).get("classified", "status_ok")
-    except FileNotFoundError:
-        return None
-    if rule not in CLASSIFIED_RULES:
-        raise ValueError(f"sports/{code}.toml [results] classified: {rule!r} not in {CLASSIFIED_RULES}")
-    return rule
-
-
-def race_sport(conn, race_id):
-    """The sport code of a race (its competition's schema), or None when no schema names the competition."""
-    from sqlalchemy import text
-    comp = conn.execute(text("""SELECT co.code FROM races ra JOIN events e ON e.id = ra.event_id
-                                JOIN seasons s ON s.id = e.season_id JOIN competitions co ON co.id = s.competition_id
-                                WHERE ra.id = :r"""), dict(r=int(race_id))).scalar()
-    for c in SPORT_CODES:
-        try:
-            if load(c)["competition"]["code"] == comp:
-                return c
-        except FileNotFoundError:
-            continue
-    return None
-
-
 def kalshi_series(code):
     """The Kalshi series ticker prefixes a sport's schema names ([markets.kalshi] series), as a tuple."""
     return tuple(load(code).get("markets", {}).get("kalshi", {}).get("series", ()))
-
-
-@cache
-def kalshi_kinds(code):
-    """{Kalshi series ticker: prediction kind} a sport's schema names ([markets.kalshi] kinds), {} if none: the exact
-    key a market's kind is read from before its titles."""
-    return dict(load(code).get("markets", {}).get("kalshi", {}).get("kinds", {}))
-
-
-@cache
-def titles_classified(code):
-    """Whether the syncs classify the sport's markets from the exchanges' titles and match them with the F1 resolver
-    ([markets] titles = true); otherwise its [identity] resolver, when it has one, says what each market is about."""
-    return bool(load(code).get("markets", {}).get("titles", False))
-
-
-@cache
-def link_kinds(code):
-    """The kinds a sport's links are filed as (market_links.prediction) once identified ([markets] kinds), () if none:
-    the kinds its pricing model prices. A link of another kind keeps params.kind and stays unmodeled."""
-    return tuple(load(code).get("markets", {}).get("kinds", ()))
 
 
 def polymarket_tags(code):

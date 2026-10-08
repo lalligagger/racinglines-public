@@ -19,10 +19,8 @@ schedule and its fairs from position_sim. Here, per race:
   3. At each stage of [replay] stages (hours from 00:00 UTC on race day), the venue (markets/venue_replay.py:
      Kalshi's or Polymarket's recorded prices and tape) says the price and whether the market was tradeable (priced,
      liquid, open, a coherent group), and the taker strategies (markets/strategies/taker_weekend.py) trade.
-  4. Only then the result settles each market, through markets/kinds.settle (the walk-forward's settlement): a top-n
-     market is YES when the driver is classified, by the sport's [results] classified rule, in the top n (NASCAR
-     "placed": every car is ranked, retirements by laps run; MotoGP "status_ok": an unclassified rider is NO); a
-     head-to-head goes by position.
+  4. Only then the result settles each market: by classified position (NASCAR classifies every car, retirements by
+     laps run; an unclassified MotoGP rider has no position and is NO for every top-n market).
 
 Markets: the sport's links on the venue whose kind is in [replay] kinds. The kind, driver and race come from the
 stored link (NASCAR's `nascar link --apply` writes params.kind, athlete_id and race_id), else from the sport's
@@ -53,7 +51,6 @@ from racinglines.markets.strategies import taker_weekend as RB
 
 N_OF = {"race_win": 1, "race_podium": 3, "race_top5": 5, "race_top10": 10, "race_top20": 20}
 TAKER_MODES = ("update", "hold", "last")
-UNMARKED_RULE = "placed"             # who is classified in a results frame without a `classified` column (see settle)
 STALE = timedelta(hours=6)
 COHERENCE_TOL = 0.25                 # as the F1 sweep's (a priori, not tuned for these sports)
 MIN_VOLUME_24H = 50.0                # $ traded in the market over the previous 24 h (the F1 taker's floor)
@@ -123,28 +120,11 @@ def select(rs, events=None):
 
 
 def race_results(conn, race_id):
-    """The race round's classification: athlete_id, position (NaN = unclassified), status, grid (the starting slot
-    stored in results.extra.grid, NaN where none is), and `classified` by the sport's [results] rule."""
-    from racinglines.markets import payoffs as PO
-    return PO.mark_sport(_race_results(conn, race_id), sports.race_sport(conn, race_id))
-
-
-def _race_results(conn, race_id):
+    """The race round's classification: athlete_id, position (NaN = unclassified), status."""
     return pd.read_sql(text("""
-        SELECT r.athlete_id, r.position, r.status, nullif(r.extra->>'grid', '')::float AS grid
-        FROM results r JOIN rounds ro ON ro.id = r.round_id
+        SELECT r.athlete_id, r.position, r.status FROM results r JOIN rounds ro ON ro.id = r.round_id
         WHERE ro.race_id = :r AND ro.kind = 'race' ORDER BY r.position NULLS LAST, r.athlete_id"""),
                        conn, params=dict(r=int(race_id)))
-
-
-def stage_list(sp, mode="weekend"):
-    """The [(label, hours)] of a stage mode: "weekend" (or None) the [replay] stages; "race_day" those plus the
-    [replay] race_day_stages (opt-in, so the weekend results stay reproducible: decision log 2026-10-08)."""
-    if mode in (None, "weekend"):
-        return list(sp["stages"])
-    if mode != "race_day" or not sp.get("race_day_stages"):
-        raise ValueError(f"stages {mode!r}: one of weekend, race_day (race_day needs [replay] race_day_stages)")
-    return list(sp["stages"]) + list(sp["race_day_stages"])
 
 
 def stage_times(race_start, sp):
@@ -213,18 +193,15 @@ def fair(sims, kind, athlete_id, opponent_id=None):
 
 
 def settle(kind, athlete_id, opponent_id, res):
-    """YES / NO / None through the one settlement of every kind (markets/kinds.settle; top-n: payoffs.top_n, classified
-    in the top n, so the replay, the season sweep and the walk-forward agree on a retirement or a disqualification).
-    race_results marks who is classified by the sport's [results] classified rule (NASCAR: placed; MotoGP: status OK).
-    A market whose driver has no row in the classification stays unsettled here (None: the link may name a driver
-    the result doesn't list), where kinds.settle says NO for a top-n market."""
-    from racinglines.markets import kinds as K
-    from racinglines.markets import payoffs as PO
-    if not (res["athlete_id"] == athlete_id).any():
+    """YES / NO from the classification (None when the athlete, or a head-to-head's opponent, has no result)."""
+    pos = {int(a): (np.inf if pd.isna(p) else float(p)) for a, p in zip(res["athlete_id"], res["position"])}
+    if athlete_id not in pos:
         return None
-    if PO.CLASSIFIED_COL not in res:         # a frame not loaded by race_results: the replay's rule before C5, any
-        res = PO.mark_classified(res, UNMARKED_RULE)       # placed car (race_results marks it by the sport's rule)
-    return K.settle(kind, athlete_id, None if opponent_id is None else {"opponent_id": opponent_id}, res)
+    if kind == "race_h2h":
+        if opponent_id not in pos or (np.isinf(pos[athlete_id]) and np.isinf(pos[opponent_id])):
+            return None
+        return bool(pos[athlete_id] < pos[opponent_id])
+    return bool(pos[athlete_id] <= N_OF[kind])
 
 
 def _open(link, t):
@@ -274,34 +251,26 @@ def kalshi_fees(trades):
 
 # --- the season -----------------------------------------------------------------------------------------
 
-def coherence_tol(sp, venue):
-    """The group coherence tolerance on `venue`: the sport's [replay] coherence_tol for that venue, else COHERENCE_TOL.
-    A per-kind sweep setting (coherence_tol_by_kind) still overrides it."""
-    return float((sp.get("coherence_tol") or {}).get(venue, COHERENCE_TOL))
-
-
 def _venue(conn, venue, race_links, stages, sp):
     from racinglines.markets.venue_replay import EXCHANGES
     start = min(t for _, t in stages) - timedelta(hours=1)
     end = max(t for _, t in stages) + timedelta(hours=1)
     gt = {k: int(v) for k, v in (sp.get("group_target") or {}).items()}
-    return EXCHANGES[venue](conn, race_links, start, end, gt, coherence_tol(sp, venue), STALE)
+    return EXCHANGES[venue](conn, race_links, start, end, gt, COHERENCE_TOL, STALE)
 
 
 def run(engine, sport, seasons=None, venue="kalshi", taker=None, min_volume_24h=MIN_VOLUME_24H, model_settings=None,
-        kinds=None, data=None, save=None, events=None, echo=print, buy_all=None, on_race=None, stage_mode="weekend"):
+        kinds=None, data=None, save=None, events=None, echo=print, buy_all=None, on_race=None):
     """The replay over `seasons` (None = every season with races). taker: TakerParams (None = the defaults).
     model_settings: dict for the model's Settings (seed defaults to SEED). kinds: a subset of [replay] kinds.
     data: the model's frame, already loaded. save: None, or dict(engine_url, batch) to store one model run per race.
     events: only these event keys ("latest" = the last race of the selection), e.g. for a spot check; the model still
     learns from every earlier race. buy_all: add the buy-one-of-everything mode (None = RACINGLINES_BUY_ALL).
     on_race: None, or a callable(race, markets) given each race's markets (race_markets) before they are traded
-    (pipelines/sport_paper.py stores the taker's trades from them as demo paper positions). stage_mode: stage_list's
-    mode ("race_day" adds the [replay] race_day_stages)."""
+    (pipelines/sport_paper.py stores the taker's trades from them as demo paper positions)."""
     from racinglines.markets.strategies import buy_everything as BA
     buy_all = BA.enabled(buy_all)
     sp = spec(sport)
-    sp = dict(sp, stages=stage_list(sp, stage_mode))
     if kinds:
         bad = set(kinds) - set(sp["kinds"])
         if bad:
@@ -369,7 +338,7 @@ def run(engine, sport, seasons=None, venue="kalshi", taker=None, min_volume_24h=
                                                               taker={k: v for k, v in t.__dict__.items() if k != "mode"},
                                                               model=model.name, model_settings=st.to_json(),
                                                               min_volume_24h=min_volume_24h, kinds=sp["kinds"],
-                                                              stages=sp["stages"], coherence_tol=coherence_tol(sp, venue),
+                                                              stages=sp["stages"], coherence_tol=COHERENCE_TOL,
                                                               group_target=sp.get("group_target") or {}))
     if buy_all:
         out = dict(out, **_buy_all(out, ba_trades))
@@ -522,12 +491,10 @@ def batch_id():
     return "replay-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
-def save_run(save, sp, model, st, race, sims, params=None):
+def save_run(save, sp, model, st, race, sims):
     """One as-of run of one race: model_runs (kind 'diagnostic', params.cutoff = the event's first day, so the race
     page reads it as the pre-race price) and race_predictions (win / podium / top 10; top 5 and top 20 in extra);
-    prediction records beside it when RACINGLINES_PREDICTION_RECORDS is on. Returns the run id.
-    params: the run's mode params instead of the replay's (mode "replay as-of" and save["batch"]), e.g. the live
-    signal engine's (pipelines/sport_signals.py)."""
+    prediction records beside it when RACINGLINES_PREDICTION_RECORDS is on. Returns the run id."""
     from racinglines.db import models as m
     from racinglines.db import records as REC
     from racinglines.db.config import get_session
@@ -540,10 +507,9 @@ def save_run(save, sp, model, st, race, sims, params=None):
                            dict(c=comp, y=int(race.season))).scalar()
         run = m.ModelRun(competition_id=comp, season_id=season, model=model.name, kind="diagnostic",
                          data_through=(cutoff - pd.Timedelta(days=1)).date(),
-                         params={**(dict(mode="replay as-of", replay_batch=save["batch"]) if params is None else {}),
-                                 **dict(sport=sp["sport"], event_key=race.event_key, cutoff=str(cutoff),
-                                        sims=int(sims.n_sims), model_settings=st.to_json(), model_key=st.model_key,
-                                        field=len(sims.entrants)), **(params or {})})
+                         params=dict(mode="replay as-of", replay_batch=save["batch"], sport=sp["sport"],
+                                     event_key=race.event_key, cutoff=str(cutoff), sims=int(sims.n_sims),
+                                     model_settings=st.to_json(), model_key=st.model_key, field=len(sims.entrants)))
         s.add(run)
         s.flush()
         for i, a in enumerate(sims.entrants):

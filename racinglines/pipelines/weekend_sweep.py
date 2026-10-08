@@ -13,15 +13,10 @@ For each race:
      maker replay (racinglines/markets/strategies/maker_replay.py) through the same stages.
   4. Only then read the result: settle, score, summarise.
 
-The venue is Polymarket unless the settings say another exchange of markets/venue_replay.py EXCHANGES
-(`--venue kalshi` / `--venue og`): then the race's links on that exchange are read (one market per token, never
-grouped by condition_id, which is Kalshi's event ticker), its tape per market from data/archive/markets/<venue>/,
-and the maker and taker pay its fees (Kalshi's schedule; OG.com's flat fee per contract on the taker's cost).
-Nothing about the default changes.
-
-This is the sweep's "sessions" engine: stages from a session schedule (FastF1's, sports/f1.toml [stages]) and one
-diagnostic run per stage. pipelines/season_sweep.py is the entry point for any sport; a sport whose schema says
-`[sweep] engine = "replay"` (NASCAR, MotoGP) runs there instead, on its [replay] stages and pricing model.
+The venue is Polymarket unless the settings say `venue = "kalshi"` (`--venue kalshi`): then the race's
+Kalshi links are read (one market per ticker, never grouped by condition_id, which is the event ticker),
+its tape per market from data/archive/markets/kalshi/, and the maker pays Kalshi's maker fee. Nothing
+about the default changes.
 
 The model uses qualifying, sprint and race results; practice pace isn't in the
 model yet, so our fair value only moves after sprint qualifying / sprint /
@@ -157,28 +152,30 @@ def price_stages(meas, hist, sched, engine, engine_url=None, n_sims=4000, repric
     price_stages.data_key = __import__("hashlib").sha1("|".join(data_keys).encode()).hexdigest()[:12]
     return out
 
-
 def _token0_links(conn, race_id, kinds=None):
-    return _links(conn, race_id, "polymarket", kinds)
+    links = pd.read_sql(text("""SELECT ml.*, a.display_name AS athlete FROM market_links ml
+                                LEFT JOIN athletes a ON a.id = ml.athlete_id
+                                WHERE ml.race_id = :r AND ml.prediction = ANY(:k) AND ml.exchange = 'polymarket'
+                                ORDER BY ml.id"""), conn,
+                        params=dict(r=race_id, k=list(kinds or KINDS)))
+    return links.drop_duplicates("condition_id", keep="first")
 
 
 def _links(conn, race_id, venue="polymarket", kinds=None):
-    """The race's tradeable links on a venue, one row per market (the exchange's MARKET_KEY): Polymarket's first
-    token per condition, or every Kalshi / OG.com token (a Kalshi condition_id is the event ticker, shared by all
-    its markets)."""
-    cls = _exchange(venue)
-    return cls.links(conn, race_id, kinds or KINDS).drop_duplicates(cls.MARKET_KEY, keep="first")
-
-
-def _exchange(venue):
-    from racinglines.markets.venue_replay import EXCHANGES
-    if venue not in EXCHANGES:
-        raise ValueError(f"unknown venue {venue!r}: one of {sorted(EXCHANGES)}")
-    return EXCHANGES[venue]
+    """The race's tradeable links on a venue, one row per market: Polymarket's outcome-0 token per condition,
+    or every Kalshi ticker (a Kalshi condition_id is the event ticker, shared by all its markets)."""
+    if venue == "polymarket":
+        return _token0_links(conn, race_id, kinds)
+    from racinglines.markets.venue_replay import Kalshi
+    if venue != Kalshi.code:
+        raise ValueError(f"unknown venue {venue!r}")
+    return Kalshi.links(conn, race_id, kinds or KINDS).drop_duplicates("token_id", keep="first")
 
 
 def _venue(conn, links, start, end, venue="polymarket", group_target=None):
-    return _exchange(venue)(conn, links, start, end, group_target or GROUP_TARGET, COHERENCE_TOL, STALE)
+    from racinglines.markets.venue_replay import Kalshi, Polymarket
+    cls = Polymarket if venue == "polymarket" else Kalshi
+    return cls(conn, links, start, end, group_target or GROUP_TARGET, COHERENCE_TOL, STALE)
 
 
 def _race_id(conn, event_key):
@@ -296,22 +293,6 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settin
     if markets is None:
         return None
     markets = [m for m in markets if m["kind"] in st["market_kinds"]]
-    from racinglines.markets.strategies import maker_replay as R
-    tape = lambda: _memo(("tape", w["event_key"], rids, st["fill"] == "queue", venue),          # noqa: E731
-                         lambda: R.load_event(conn, list(rids), books=st["fill"] == "queue",
-                                              **({} if venue == "polymarket" else dict(exchange=venue))))
-    return trade(markets, [lab for lab, _, _ in stage_runs], params_list, st, tape, widen_kinds, KINDS, echo)
-
-
-def trade(markets, labels, params_list, st, tape, widen_kinds=(), kinds=KINDS, echo=print):
-    """Trade one event's markets, any sport: every taker mode of params_list (and the buy_all debug mode), the
-    model and the market scored per stage and kind (`kinds`), the calibration rows, and the maker variants (MAKERS)
-    replayed on the event's tape. markets: [dict(key, kind, subject, stages, outcome)] (weekend_markets, or
-    season_sweep's); labels: the stage labels in order; tape(): the maker replay's event (markets, stages), raising
-    when the event has no tape. Returns dict(modes, trades, scores, calib, markets, tradeable_first / _last,
-    makers, markout_by_kind, maker)."""
-    from racinglines.pipelines import sweep_settings as SS
-    venue = SS.venue_of(st)
     out = dict(modes={}, trades={})
     for p in params_list:
         tr, per = RB.run_weekend(markets, p)
@@ -325,8 +306,8 @@ def trade(markets, labels, params_list, st, tape, widen_kinds=(), kinds=KINDS, e
         out["trades"][BA.MODE] = tr
     # model vs market at each stage, scored on the result (every kind; pole before qualifying)
     scores = []
-    for lab in labels:
-        for kind in kinds:
+    for lab, cutoff, _ in stage_runs:
+        for kind in KINDS:
             rows = [(s["fair"], s["price"], float(m["outcome"])) for m in markets if m["kind"] == kind
                     for s in m["stages"] if s["label"] == lab and s["fair"] is not None and s["price"] is not None
                     and m["outcome"] is not None and s["tradeable"]]
@@ -348,7 +329,9 @@ def trade(markets, labels, params_list, st, tape, widen_kinds=(), kinds=KINDS, e
         from dataclasses import replace
 
         from racinglines.markets.strategies import maker_replay as R
-        ev = tape()
+        ev = _memo(("tape", w["event_key"], rids, st["fill"] == "queue", venue),
+                   lambda: R.load_event(conn, list(rids), books=st["fill"] == "queue",
+                                        **({} if venue == "polymarket" else dict(exchange=venue))))
         ev = dict(ev, markets=[m for m in ev["markets"] if m.kind in st["market_kinds"]])
     except Exception as ex:  # noqa: BLE001  (no tape for this weekend)
         echo(f"  maker replay skipped: {ex}")
@@ -376,14 +359,6 @@ def taker_fee(venue):
     """The venue's taker fee rate for TakerParams.taker_fee (venue_replay.EXCHANGES: Kalshi 0.07, Polymarket 0)."""
     from racinglines.markets.venue_replay import EXCHANGES
     return EXCHANGES[venue].TAKER_FEE
-
-
-def taker_cost(cost, venue):
-    """The taker's cost per share on a venue: the settings' `cost` plus the venue's flat fee per contract
-    (venue_replay: OG.com's; nothing on Polymarket or Kalshi, whose fee is the rate in taker_fee)."""
-    from racinglines.markets.venue_replay import EXCHANGES
-    fee = EXCHANGES[venue].per_share_fee()
-    return cost + fee if fee else cost
 
 
 def maker_venue_opts(venue):
@@ -480,9 +455,6 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
         settings = SS.Settings.from_dict(dict(variant=variant, sims=n_sims, min_edge=t.min_edge,
                                               stake_per_edge=t.stake_per_edge, max_stake=t.max_stake, cost=t.cost))
     st = settings
-    if st.get("stages") not in (None, "sessions"):
-        raise ValueError(f"stages {st['stages']!r}: this is the session-schedule sweep (stages = \"sessions\"); "
-                         "the weekend mode needs [replay] stages in the sport's schema (pipelines/season_sweep.py)")
     sched = schedule(year, rounds)
     if fetch and SS.venue_of(st) != "polymarket":
         echo(f"progress {SS.venue_of(st)}: its tape is what the recorder and archive hold (nothing downloaded)")
@@ -505,60 +477,28 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
         data_key = price_stages.data_key
         if _SHARED is not None and not reprice:
             _SHARED[skey] = (stage_runs, data_key)
-    base, params_list = taker_params(st)
-    events = [dict(round=rnd, event_key=w["event_key"], event=w["name"], format=w["format"],
-                   stages=len(stage_runs[w["event_key"]]), last_run_id=stage_runs[w["event_key"]][-1][2], w=w)
-              for rnd, w in sched.items() if stage_runs.get(w["event_key"])]
-
-    def trade_event(ev, plist, widen_kinds):
-        with engine.connect() as c:
-            return weekend(c, ev["w"], stage_runs[ev["event_key"]], plist, echo=echo, widen_kinds=widen_kinds,
-                           settings=st)
-
-    out = season(events, trade_event, st, params_list, STAGE_ORDER, total=len(sched), echo=echo)
-    return dict(out, params=dict({k: v for k, v in base.__dict__.items() if k != "stages" and not
-                                  (k in ("scale", "max_deployed", "min_edge_by_kind", "thin_edge_mult", "kelly", "bankroll") and v == RB.TakerParams.__dataclass_fields__[k].default)},
-                                 sport="f1", venue=SS.venue_of(st), n_sims=st["sims"],
-                                 variant=st["variant"], data_lag_min=DATA_LAG.seconds // 60,
-                                 min_volume_24h=st["min_volume_24h"], coherence_tol=COHERENCE_TOL,
-                                 settings=st.to_json(), settings_key=st.key, model_key=st.model_key, data_key=data_key,
-                                 label=st.label(), weekends=len(out["weekends"])))
-
-
-STAGE_ORDER = ("pre-weekend", "after FP1", "after SQ", "after Sprint", "after FP2", "after FP3", "after Quali")
-
-
-def taker_params(st):
-    """(base TakerParams, one per TAKER_MODES) from sweep settings, any sport: the taker settings, the venue's fee
-    (taker_fee, taker_cost), entry timing (`taker_stages`: None = every stage, the setting's default)."""
-    from racinglines.pipelines import sweep_settings as SS
-    venue = SS.venue_of(st)
     base = RB.TakerParams(min_edge=st["min_edge"], stake_per_edge=st["stake_per_edge"], max_stake=st["max_stake"],
-                          cost=taker_cost(st["cost"], venue), late_stages=st["late_stages"],
-                          min_edge_h2h=st["min_edge_h2h"],
+                          cost=st["cost"], late_stages=st["late_stages"], min_edge_h2h=st["min_edge_h2h"],
                           min_edge_by_kind=tuple(SS.parse_map(st["min_edge_by_kind"]).items()),
-                          stages=None if st["taker_stages"] == st.BY["taker_stages"].default else st["taker_stages"],
+                          stages=None if st["taker_stages"] == SS.STAGES else st["taker_stages"],
                           max_deployed=st["max_deployed"], thin_edge_mult=st["thin_edge_mult"],
                           kelly=st["kelly"], bankroll=st["bankroll"] if st["kelly"] is not None else None,
-                          taker_fee=taker_fee(venue))
+                          taker_fee=taker_fee(SS.venue_of(st)))
     if st["kelly"] is not None and st["bankroll"] is None:
         raise ValueError("kelly sizing needs a bankroll (the `bankroll` setting)")
-    return base, [RB.TakerParams(**{**base.__dict__, "mode": m}) for m in TAKER_MODES]
-
-
-def season(events, trade_event, st, params_list, stage_order=(), total=None, echo=print):
-    """A season of events traded in order, any sport. events: [dict(round, event_key, event, format, stages,
-    last_run_id, ...)]; trade_event(event, params_list, widen_kinds) -> trade()'s dict, or None (no markets).
-    Bankroll-aware sizing carries each mode's balance from event to event; the maker_widen variant widens the
-    kinds whose maker markouts were negative in EARLIER events. Returns dict(weekends, by_stage, by_kind, totals,
-    trades, scores, calibration, reliability)."""
-    balance = {q.mode: st["bankroll"] for q in params_list}     # bankroll-aware sizing: each mode's balance
+    params_list = [RB.TakerParams(**{**base.__dict__, "mode": m}) for m in TAKER_MODES]
+    balance = {m: st["bankroll"] for m in TAKER_MODES}     # bankroll-aware sizing: each mode's balance
     rows, all_trades, all_scores, all_calib = [], [], [], []
     markouts = {}                      # market kind -> maker's 60-min markout so far (as of each weekend)
-    for ev in events:
-        plist = params_list if st["bankroll"] is None else \
-            [replace(q, scale=bankroll_scale(st["bankroll"], balance[q.mode])) for q in params_list]
-        r = trade_event(ev, plist, [k for k, v in markouts.items() if v < 0])
+    for rnd, w in sched.items():
+        runs = stage_runs.get(w["event_key"])
+        if not runs:
+            continue
+        with engine.connect() as c:
+            plist = params_list if st["bankroll"] is None else \
+                [replace(q, scale=bankroll_scale(st["bankroll"], balance[q.mode])) for q in params_list]
+            r = weekend(c, w, runs, plist, echo=echo, widen_kinds=[k for k, v in markouts.items() if v < 0],
+                        settings=st)
         if r is None:
             continue
         if st["bankroll"] is not None:
@@ -567,9 +507,9 @@ def season(events, trade_event, st, params_list, stage_order=(), total=None, ech
                 r["modes"][q.mode].update(scale=q.scale, balance=balance[q.mode])
         for k, v in r["markout_by_kind"].items():
             markouts[k] = markouts.get(k, 0.0) + v
-        row = dict(round=ev["round"], event_key=ev["event_key"], event=ev["event"], format=ev["format"],
-                   stages=ev["stages"], markets=r["markets"], tradeable_pre=r["tradeable_first"],
-                   tradeable_quali=r["tradeable_last"], last_run_id=ev["last_run_id"])
+        row = dict(round=rnd, event_key=w["event_key"], event=w["name"], format=w["format"], stages=len(runs),
+                   markets=r["markets"], tradeable_pre=r["tradeable_first"], tradeable_quali=r["tradeable_last"],
+                   last_run_id=runs[-1][2])
         for mode, s in r["modes"].items():
             row.update({f"{mode}_{k}": v for k, v in s.items()})
         for name, m in r["makers"].items():
@@ -577,14 +517,15 @@ def season(events, trade_event, st, params_list, stage_order=(), total=None, ech
         rows.append(row)
         t = r["trades"]["update"]
         if len(t):
-            all_trades.append(t.assign(event_key=ev["event_key"], event=ev["event"]))
-        all_scores += [dict(s, event_key=ev["event_key"]) for s in r["scores"]]
-        all_calib += [dict(c, event_key=ev["event_key"]) for c in r["calib"]]
-        echo(f"progress {len(rows)}/{total or len(events)} traded {ev['event_key']} {ev['event']}: "
+            all_trades.append(t.assign(event_key=w["event_key"], event=w["name"]))
+        all_scores += [dict(s, event_key=w["event_key"]) for s in r["scores"]]
+        all_calib += [dict(c, event_key=w["event_key"]) for c in r["calib"]]
+        echo(f"progress {len(rows)}/{len(sched)} traded {w['event_key']} {w['name']}: "
              f"update {row.get('update_pnl', 0):+.2f} · hold {row.get('hold_pnl', 0):+.2f} · "
-             f"last {row.get('last_pnl', 0):+.2f} · maker {row.get('maker_pnl', float('nan')):+.2f}")
+             f"after-quali {row.get('last_pnl', 0):+.2f} · maker {row.get('maker_pnl', float('nan')):+.2f}")
     weekends = pd.DataFrame(rows)
     trades = pd.concat(all_trades, ignore_index=True) if all_trades else pd.DataFrame()
+    stage_order = ["pre-weekend", "after FP1", "after SQ", "after Sprint", "after FP2", "after FP3", "after Quali"]
     by_stage = RB.by(trades, "stage")
     if len(by_stage):
         by_stage["o"] = by_stage["stage"].map({s: i for i, s in enumerate(stage_order)}).fillna(99)
@@ -607,4 +548,11 @@ def season(events, trade_event, st, params_list, stage_order=(), total=None, ech
                                 bought=float(weekends.get(spent, pd.Series(dtype=float)).fillna(0).sum()))
     return dict(weekends=weekends, by_stage=by_stage, by_kind=RB.by(trades, "kind"), totals=totals, trades=trades,
                 scores=score_stage, calibration=pd.concat([cal_all.assign(stage="all"), cal_stage], ignore_index=True),
-                reliability=rel)
+                reliability=rel,
+                params=dict({k: v for k, v in base.__dict__.items() if k != "stages" and not
+                             (k in ("scale", "max_deployed", "min_edge_by_kind", "thin_edge_mult", "kelly", "bankroll") and v == RB.TakerParams.__dataclass_fields__[k].default)},
+                            n_sims=st["sims"],
+                            variant=st["variant"], data_lag_min=DATA_LAG.seconds // 60,
+                            min_volume_24h=st["min_volume_24h"], coherence_tol=COHERENCE_TOL,
+                            settings=st.to_json(), settings_key=st.key, model_key=st.model_key, data_key=data_key,
+                            label=st.label(), weekends=len(weekends)))

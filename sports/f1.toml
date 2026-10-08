@@ -9,7 +9,6 @@ result_kind = "position"          # results are finishing positions
 model_family = "position_sim"     # racinglines/models/position_sim
 pricing_model = "racinglines.models.race_model:PositionSim"   # the backtest core's wrapper (docs/backtest-core.md)
 display_order = 0
-results_modules = ["racinglines.sources.fastf1"]   # what fetches its results (`backtest coverage`)
 
 [league]
 code = "fia_f1"
@@ -35,10 +34,6 @@ frames = ["entrants", "sessions", "classifications", "conditions", "venue_featur
 # frames whose source dates each row as it happens. None for F1: FastF1's archive publishes a session's results and
 # laps only once the session has ended, so every row of a session is available at that session's end
 live = []
-
-[results]
-classified = "status_ok"          # settlement: only an officially classified car (ClassifiedPosition a number) counts as
-                                  # classified for top-n, exact place and the biggest mover (markets/payoffs.py classified)
 
 [sessions]
 # minutes each session runs; its data is usable once it has ended
@@ -98,47 +93,6 @@ resets = [2014, 2017, 2022, 2026]
 venues = ["polymarket", "kalshi", "private"]
 standard_kinds = ["race_win", "race_podium", "race_top10"]           # the board's columns
 weekend_kinds = ["race_win", "race_podium", "race_h2h", "race_constructor_top", "race_pole"]   # traded in the sweep
-# The syncs classify F1's markets from the exchanges' titles and match drivers, teams and races with the F1 resolver
-# (racinglines/markets/kalshi/sync.py classify, polymarket/sync.py classify and Resolver); a sport without it files
-# its links through its [identity] resolver and [markets] kinds
-titles = true
-
-[markets.kalshi.kinds]
-# Kalshi series ticker -> kind: the exact key a market's kind is read from before its titles (the titles still give the
-# Grand Prix). A series not listed is classified from its titles; KXF1SPRINTFASTLAP stays unmodeled on purpose (no
-# model draws the sprint's fastest lap). Sprint kinds follow RACINGLINES_KALSHI_SPRINTS like the titles do.
-KXF1RACE = "race_win"
-KXF1RACEPODIUM = "race_podium"
-KXF1TOP10 = "race_top10"
-KXF1TOP5 = "race_top5"
-KXF1BIGGESTMOVER = "race_biggest_mover"
-KXF1POLE = "race_pole"
-KXF1POLEPOSITION = "race_pole"
-KXF1TOPCONSTRUCTOR = "race_constructor_top"
-KXF1FASTLAP = "race_fastest_lap"
-KXF1FASTESTLAP = "race_fastest_lap"
-KXF1H2H = "race_h2h"
-KXF1 = "champion"
-KXF1CONSTRUCTORS = "constructors_champion"
-KXF1RACESPRINT = "race_sprint_win"
-KXF1SPRINTPOLE = "race_sprint_pole"
-KXF1SPRINTTOP5 = "race_sprint_top5"
-KXF1SPRINTTOP10 = "race_sprint_top10"
-KXF1SPRINTTOPCONSTRUCTOR = "race_sprint_constructor_top"
-
-[sweep]
-# The season sweep (racinglines/pipelines/season_sweep.py; `racinglines f1 sweep`, search jobs of kind "sweep"):
-# the taker modes and maker variants, tuned on one season and held out on the other. `stages` is the default stage
-# mode (a sweep's `stages` setting picks another the schema supports): "sessions" = the session schedule
-# ([sessions.schedule], [stages]) with one diagnostic run per stage (pipelines/weekend_sweep.py); "weekend" needs
-# [replay] stages, which F1 has none of. The kinds are [markets] weekend_kinds; the venues are [markets] venues that
-# are exchanges, plus OG.com where exchanges/og.toml lists the sport.
-stages = "sessions"
-
-[search]
-# The search queue's job kinds for this sport (racinglines/pipelines/search.py, sweeps/*.toml); the first is the
-# default kind of a [[job]] that names none.
-jobs = ["sweep", "checkpoints", "season_strategy"]
 
 [names]                                   # one display name per event key: Markets board, race page, calendar, Live tab
 "2026-16" = "Malaysia GP"                 # FastF1 and the exchanges call it the Bahrain Grand Prix; it ran at Sepang

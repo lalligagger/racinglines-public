@@ -102,7 +102,7 @@ def test_kalshi_classifies_and_links_top5_and_biggest_mover():
     assert c("Bahrain Grand Prix Main Race: Biggest Mover", "Biggest Mover: Max Verstappen") == \
         ("race_biggest_mover", "Bahrain Grand Prix")
     assert c("Bahrain Grand Prix Main Race: Top 10 Finishers", "Main Race: Max Verstappen to finish top 10")[0] == "race_top10"
-    assert c("Singapore Grand Prix Sprint Race: Top 5 Finishers", "x", sprints=True)[0] == "race_sprint_top5"     # C10
+    assert c("Singapore Grand Prix Sprint Race: Top 5 Finishers", "x", sprints=True)[0] == "unmodeled"
     ev = dict(event_ticker="KXF1TOP5-BAH26", series_ticker="KXF1TOP5", title="Bahrain Grand Prix Main Race: Top 5 Finishers",
               markets=[dict(ticker="KXF1TOP5-BAH26-VER", event_ticker="KXF1TOP5-BAH26", status="active",
                             title="Main Race: Max Verstappen to finish top 5", yes_sub_title="Max Verstappen",
@@ -165,7 +165,7 @@ def test_polymarket_classifies_fastest_lap_props_and_other_race_events():
     assert c("Bahrain Grand Prix: Driver Fastest Lap", f"Will Max Verstappen achieve the fastest lap at {q}") == \
         ("race_fastest_lap", "Bahrain Grand Prix")
     assert c("Bahrain Grand Prix: Constructor Fastest Lap", f"Will Ferrari achieve the fastest lap at {q}") == \
-        ("race_constructor_fastest_lap", "Bahrain Grand Prix")                       # a team kind since C11
+        ("unmodeled", "Bahrain Grand Prix")
     for t, kind in ((f"Will there be a safety car during {q}", "race_safety_car"),
                     (f"Will there be a red flag during {q}", "race_red_flag"),
                     ("Rain during the Bahrain Grand Prix?", "race_rain")):
@@ -249,8 +249,7 @@ def test_polymarket_sync_links_fastest_lap_props_and_tags_placeholders(test_engi
         ("race_fastest_lap", ids["ver"], ids["race"])
     assert (got["rl-sc-y"]["prediction"], got["rl-sc-y"]["athlete_id"], got["rl-sc-y"]["race_id"]) == \
         ("race_safety_car", None, ids["race"])
-    assert (got["rl-cfl-f-y"]["prediction"], got["rl-cfl-f-y"]["race_id"], got["rl-cfl-f-y"]["params"]["team"]) == \
-        ("race_constructor_fastest_lap", ids["race"], "ferrari")                     # a team kind since C11
+    assert (got["rl-cfl-f-y"]["prediction"], got["rl-cfl-f-y"]["race_id"]) == ("unmodeled", ids["race"])
     for tok, kind in (("rl-fl-a-y", "race_fastest_lap"), ("rl-fl-o-y", "race_fastest_lap"), ("rl-win-a-y", "race_win")):
         assert (got[tok]["prediction"], got[tok]["race_id"], got[tok]["params"]["placeholder"]) == ("unmodeled", ids["race"], kind)
     assert "placeholder" not in got["rl-fl-ver-y"]["params"] and "placeholder" not in got["rl-cfl-f-y"]["params"]

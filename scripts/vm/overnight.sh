@@ -27,19 +27,9 @@
 # markers overnight-<mode>.done / .failed. Refuses to start while a racinglines-live-* unit is active.
 # Downhill is not run (owner, 2026-09-30). Nothing here touches the trading flags, a migration or the bucket.
 set -eEuo pipefail
-# TARGET=staging runs the same steps against staging (owner, 2026-10-07: parity rebuild on staging first): its env file,
-# checkout and database, and staging's live units. The database container is production's, so DC (docker compose)
-# always runs from /opt/racinglines. TARGET=prod, the default, is unchanged.
-TARGET=${TARGET:-prod}
-case "$TARGET" in
-  prod)    ENV_FILE=/etc/racinglines.env;         APP=/opt/racinglines;         DB=racinglines;         LIVE_GLOB='racinglines-live-*' ;;
-  staging) ENV_FILE=/etc/racinglines-staging.env; APP=/opt/racinglines-staging; DB=racinglines_staging; LIVE_GLOB='racinglines-staging-live-*' ;;
-  *) echo "TARGET must be prod or staging, not $TARGET"; exit 2 ;;
-esac
-DC() { (cd /opt/racinglines && docker compose "$@"); }
-set -a; . "$ENV_FILE"; set +a
+set -a; . /etc/racinglines.env; set +a
 export PYTHONUNBUFFERED=1   # the commands' own per-race and per-job lines reach the log as they happen, not in 8 KB blocks
-cd "$APP"
+cd /opt/racinglines
 MODE=${MODE:-dry}
 SPORTS=${SPORTS:-nascar motogp}
 TOP=${TOP:-10}
@@ -114,11 +104,11 @@ R=.venv/bin/racinglines
 PY=.venv/bin/python
 QUEUE=sweeps/overnight-vm.toml
 A_ARGS=(--taker-stages "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali" --min-edge 0.1 --min-edge-h2h 0.05)
-Q() { DC exec -T db psql -U racinglines "$DB" -c "$1"; }
+Q() { docker compose exec -T db psql -U racinglines racinglines -c "$1"; }
 code_of() { case "$1" in nascar) echo nascar_cup ;; motogp) echo motogp_wc ;; *) echo "$1" ;; esac; }
 ready() {            # "<events> <Kalshi links with a race>" for one sport (read-only)
   local co; co=$(code_of "$1")
-  DC exec -T db psql -U racinglines "$DB" -tA -F' ' -c "SELECT
+  docker compose exec -T db psql -U racinglines racinglines -tA -F' ' -c "SELECT
     (SELECT count(*) FROM events e JOIN seasons s ON s.id = e.season_id JOIN competitions co ON co.id = s.competition_id WHERE co.code = '$co'),
     (SELECT count(*) FROM market_links ml JOIN competitions co ON co.id = ml.competition_id WHERE co.code = '$co' AND ml.exchange = 'kalshi' AND ml.race_id IS NOT NULL)"
 }
@@ -168,7 +158,7 @@ sport_done() {      # one summary line per sport: "<sport> <finished|skipped> in
   progress "sport $1 $4 in $(( ($(date +%s) - $2) / 60 )) min${got:+ · $got}"
 }
 
-LIVE=$(systemctl list-units --no-legend --plain --state=active,activating "$LIVE_GLOB" || true)
+LIVE=$(systemctl list-units --no-legend --plain --state=active,activating 'racinglines-live-*' || true)
 if [ -n "$LIVE" ]; then
   progress "not starting: a live-event unit is active"
   echo "$LIVE"
@@ -187,8 +177,8 @@ counts() {
   Q "SELECT 'model_runs' AS t, count(*) FROM model_runs UNION ALL SELECT 'race_predictions', count(*) FROM race_predictions UNION ALL SELECT 'market_trades', count(*) FROM market_trades UNION ALL SELECT 'market_price_history', count(*) FROM market_price_history"
 }
 backup() {
-  B=data/backups/db/$DB-before-overnight-$1-$(date -u +%Y%m%dT%H%M%SZ).sql.gz
-  DC exec -T db pg_dump --no-owner --no-privileges -U racinglines "$DB" | gzip -6 > "$B"
+  B=data/backups/db/racinglines-before-overnight-$1-$(date -u +%Y%m%dT%H%M%SZ).sql.gz
+  docker compose exec -T db pg_dump --no-owner --no-privileges -U racinglines racinglines | gzip -6 > "$B"
   gunzip -c "$B" | tail -n 5 | grep -q 'PostgreSQL database dump complete'
   progress "backup $B ($(du -h "$B" | cut -f1))"
 }
@@ -298,8 +288,8 @@ replay() {
 story() {
   $PY -c "import inspect, sys; from racinglines.pipelines import story; sys.exit(0 if 'taker' in inspect.signature(story.decisions).parameters else 1)" \
     || { stop "no taker story in this checkout: merge PR #87 and run vm.sh deploy first"; return 1; }
-  B=data/backups/db/$DB-before-demo-taker-story-$(date -u +%Y%m%dT%H%M%SZ).sql.gz
-  DC exec -T db pg_dump --no-owner --no-privileges -U racinglines "$DB" | gzip -6 > "$B"
+  B=data/backups/db/racinglines-before-demo-taker-story-$(date -u +%Y%m%dT%H%M%SZ).sql.gz
+  docker compose exec -T db pg_dump --no-owner --no-privileges -U racinglines racinglines | gzip -6 > "$B"
   gunzip -c "$B" | tail -n 5 | grep -q 'PostgreSQL database dump complete'
   progress "backup $B ($(du -h "$B" | cut -f1))"
   START=$(date -u +%Y-%m-%dT%H:%M:%SZ)

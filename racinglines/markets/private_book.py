@@ -312,23 +312,16 @@ def settle_from_exchange(session, conn):
 
 
 def race_outcomes(conn, race_id):
-    """Official race classification for settlement: athlete -> (position, classified, team_key), and `grid`, the
-    starting grid slot the race round stores (results.extra.grid: F1's FastF1 GridPosition after penalties, 0 = pit
-    lane; NASCAR's starting_position; NaN where none is stored), which settles the biggest mover (payoffs.biggest_mover)."""
+    """Official race classification for settlement: athlete -> (position, classified, team_key)."""
     df = pd.read_sql(text("""
         SELECT r.athlete_id, r.position, r.status, coalesce(r.extra->>'team_id', r.team) AS team_id,
-               coalesce((r.extra->>'points')::float, 0) AS points, nullif(r.extra->>'grid', '')::float AS grid
+               coalesce((r.extra->>'points')::float, 0) AS points
         FROM results r JOIN rounds ro ON ro.id = r.round_id
         WHERE ro.race_id = :r AND ro.kind IN ('race', 'final')"""), conn, params=dict(r=race_id))
     q = pd.read_sql(text("""SELECT r.athlete_id, r.position AS qual_position FROM results r JOIN rounds ro ON ro.id = r.round_id
                             WHERE ro.race_id = :r AND ro.kind = 'qual'"""), conn, params=dict(r=race_id))
     out = df.merge(q, on="athlete_id", how="left") if len(df) else df.assign(qual_position=None)
-    if not len(out):
-        return out
-    from racinglines import sports
-    from racinglines.markets import payoffs as P
-    out = P.mark_sport(out, sports.race_sport(conn, race_id))     # who is classified: the sport's [results] rule
-    return out.merge(stage_outcomes(conn, race_id), on="athlete_id", how="left")
+    return out.merge(stage_outcomes(conn, race_id), on="athlete_id", how="left") if len(out) else out
 
 
 def stage_outcomes(conn, race_id):
@@ -367,8 +360,8 @@ def outcome_for(kind, athlete_id, params, res):
     from racinglines.markets import kinds as K
     from racinglines.models.position_sim.model import team_key
     k = K.KINDS.get(kind)
-    # a team market: a kind whose subject is a team (markets/kinds.toml: a team spec, or the legacy group_top)
-    grouped = k is not None and k.subject == "team"
+    # a team market: a declarative kind whose subject is a team (markets/kinds.toml), or the legacy group_top
+    grouped = k is not None and ((k.spec or {}).get("payoff", {}).get("subject") == "team" or k.payoff == "group_top")
     return K.settle(kind, athlete_id, params, res, group_key=team_key if grouped else None)
 
 

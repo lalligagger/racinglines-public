@@ -89,14 +89,6 @@ FL_SEED = 20261004           # salt of the fastest lap's own random stream (see 
 FL_FROM = "pace"             # how FASTEST_LAP draws it: "pace" (fastest_lap: race pace + noise) or "position" (variant
                              # "flpos": per finishing position weights from past races, fastest_lap_from_position)
 FL_TABLE = sports.SCHEMAS / "f1" / "fastest_lap.toml"
-PRACTICE_FASTEST = False     # draw each practice session's order of best laps (sim["practice"], practice.simulate):
-                             # the race_fp<n>_fastest kinds; every other price unchanged (variant "practicefast")
-# Practice best-lap deficit around the qualifying deficit, a fraction of a lap (a priori, not fitted against a score):
-# 0.7 %, the within-session spread of (practice best-lap deficit - qualifying deficit) on the 10 stored fixture
-# weekends (tests/fixtures/f1, 538 driver-sessions: FP1 0.73 %, FP2 0.73 %, FP3 0.57 %). Added to the qualifying draw
-# (qp + sigma_q noise), independent between teammates (programmes differ)
-PRACTICE_SIGMA = 0.007
-PRACTICE_SEED = 20261007     # salt of the practice draws' own random stream (+ the session's index)
 RESET_YEARS = frozenset(SCHEMA["regulations"]["resets"])       # sports/f1.toml
 # a past race counts as disrupted if it had a red flag, >= 10% of laps behind the safety car, or rain (set a priori)
 DISRUPTED_SC_SHARE, DISRUPTED_RAIN_SHARE, CHAOS_PRIOR_N = 0.10, 0.25, 4.0
@@ -293,9 +285,6 @@ def venue_track_features(prof, venue, before):
 # ---------------------------------------------------------------------------
 
 PRACTICE_KINDS = tuple(SCHEMA["sessions"]["practice"])
-# the practice sessions classified on their own (race_fp<n>_fastest): every practice session but a side stage's grid
-# session (Sprint Qualifying sets the sprint grid, priced as the sprint pole)
-PRACTICE_CLASSIFIED = tuple(k for k in PRACTICE_KINDS if k not in {c["grid_from"] for c in SIM_SESSIONS.values()})
 # a session's data is usable only once it has ended (a cutoff inside a session sees nothing of it)
 SESSION_MINUTES = dict(SCHEMA["sessions"]["minutes"])
 QUAL_DONE = pd.Timedelta(minutes=SESSION_MINUTES["qual"])

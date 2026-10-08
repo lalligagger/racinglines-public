@@ -21,9 +21,8 @@ import pandas as pd
 
 from racinglines.core import calibration as CAL
 from racinglines.markets import kinds as K
-from racinglines.markets import payoffs as P
 
-PER_ENTRANT = ("top_n", "stage_top_n", "reached", "indicator")   # indicator: a drawn yes/no (the fastest lap)
+PER_ENTRANT = ("top_n", "stage_top_n", "reached")
 
 
 def event_rows(ev, sims, res, kinds=None):
@@ -35,13 +34,9 @@ def event_rows(ev, sims, res, kinds=None):
     for kind in kinds:
         k = K.KINDS[kind]
         if k.payoff in PER_ENTRANT:
-            if kind in summ:
-                col = summ[kind]
-            elif k.payoff == "top_n":              # a top-n kind off by default (race_top5), priced when named
-                col = K.fair(kind, sims)
-            else:
+            if kind not in summ:
                 continue
-            for a, p in zip(sims.entrants, col):
+            for a, p in zip(sims.entrants, summ[kind]):
                 out.append(dict(kind=kind, athlete_id=a, opponent=None, fair=float(p),
                                 y=K.settle(kind, a, None, res)))
         elif k.payoff == "h2h":
@@ -71,7 +66,7 @@ def run(model, data, settings, seasons=None, kinds=None, echo=print, keep_sims=F
         cutoffs[ev.id] = ev.cutoff
         if keep_sims:
             kept.append((ev, sims))
-        r = event_rows(ev, sims, P.mark_sport(model.results(data, ev), getattr(model, "sport", None)), kinds)
+        r = event_rows(ev, sims, model.results(data, ev), kinds)
         rows.append(r)
         e = dict(season=ev.season, event_id=ev.id, event=ev.name, n_entrants=len(sims.entrants))
         for kind, g in r.dropna(subset=["y"]).groupby("kind", sort=False):

@@ -12,8 +12,6 @@ A sport points at it from its schema, and nothing here names a sport:
     source = "motogp_api"           # events.source whose race results are the history
     group = "team"                  # results column / extra key naming the entrant's team (group prior)
     prior = "uci_points"            # results.extra key: a pre-race rating of the entrant (rating prior)
-    sessions = ["qual"]             # other classifications of the weekend, by rounds.kind (side classifications)
-    best_lap = "race_fastest_lap"   # an indicator kind drawn from each race's best-lap order (the laps table)
     [model.defaults]                # per-sport defaults for the Settings below (decision-log entries)
     noise = 0.7
 
@@ -30,21 +28,6 @@ How it prices a race (every number from results on days strictly before the even
 
 The start list is `ev.info["field"]` (walk-forward builds it from the event's non-DNS rows; the replay passes the
 race's results); without one, every entrant with a start in the last half-life is priced.
-
-Side classifications (package C12b; docs/f1-roadmap.md decision log 2026-10-07 "NASCAR pole and fastest lap",
-provisional). The schema may name more orders to draw for the same field, each the race's structure on its own
-history (steps 1 and 2 on that classification's past results, then strength + noise, no retirements, no team or
-rating prior; the same half-life, prior weight, noise and uncertainty as the race, none tuned):
-
-    sessions = ["qual"]     each a rounds.kind: its order lands in stage_rank[kind], so the stage kinds price it
-                            (race_pole: stage_rank["qual"] == 1) and settle on the results' qual_position
-    best_lap = "<kind>"     the order of each past race's fastest laps (each car's best lap time in the race round,
-                            laps table): the car drawn first sets the fastest lap, sims.indicators[<kind>]; settled
-                            from the race's laps when every lap of the race distance is stored (laps_complete)
-
-A side classification is drawn only when its history has a result before the cutoff (else that kind stays unpriced),
-on a generator seeded from the shared one without advancing it, so the race prices, and every later race's, are the
-same with or without it.
 """
 
 from dataclasses import replace
@@ -55,7 +38,6 @@ import numpy as np
 import pandas as pd
 
 from racinglines import sports
-from racinglines.markets import payoffs as P
 from racinglines.models import outcomes as O
 from racinglines.models.race_model import Event
 from racinglines.pipelines import sweep_settings as SS
@@ -80,7 +62,6 @@ SETTINGS = [
 ]
 
 MIN_FINISHERS = 4          # an event with fewer classified finishers is neither history nor priced
-SIDE_SEED = 7_401          # salt of the side classifications' generator (sessions, best lap)
 DNF_PRIOR_N = 5.0          # pseudo-starts shrinking an entrant's DNF rate toward the field's
 REQUIRED = ("season", "race", "date", "athlete_id", "position", "status")
 _N = NormalDist()
@@ -121,30 +102,6 @@ def _day(ts):
     return int(ts.normalize().value // 86_400_000_000_000)
 
 
-def _side_rng(rng, salt):
-    """A generator seeded from `rng`'s current state, read and not advanced (position_sim model._side_rng's rule):
-    draws from it leave `rng`, and everything drawn from it next, unchanged."""
-    import hashlib
-    import json
-    state = json.dumps(rng.bit_generator.state, sort_keys=True, default=str)
-    return np.random.default_rng([salt, int(hashlib.sha256(state.encode()).hexdigest()[:16], 16)])
-
-
-def best_lap_order(laps):
-    """Each race's order of best laps from (race, athlete_id, lap_time_ms) rows, one per lap or per car: position =
-    the competition rank of the car's fastest lap time in the race (ties share it; times <= 0 or missing are no lap),
-    status OK. Other columns of the first row per (race, athlete_id) are kept."""
-    d = laps[pd.to_numeric(laps["lap_time_ms"], errors="coerce") > 0].copy()
-    if d.empty:
-        return d.assign(position=pd.Series(dtype=float), status=pd.Series(dtype=str))
-    d["lap_time_ms"] = d["lap_time_ms"].astype(float)
-    best = d.groupby(["race", "athlete_id"], sort=False)["lap_time_ms"].transform("min")
-    d = d.assign(lap_time_ms=best).drop_duplicates(["race", "athlete_id"])
-    d["position"] = d.groupby("race")["lap_time_ms"].rank(method="min")
-    d["status"] = "OK"
-    return d.reset_index(drop=True)
-
-
 def _frame(df):
     """The model's results frame: season, race (event key), date, athlete_id, position, status, and optionally
     name, team, prior, points. One row per entrant per race."""
@@ -168,25 +125,6 @@ def _strengths(d):
     return d, np.where(fin, -_probit(q), np.nan), fin
 
 
-def _groups(hist, n, j, inf, field, ev):
-    """Per entrant of `field`: its team (the group the team markets name), from the event's entry list
-    (`ev.info["groups"]`) or else the entrant's latest team in the history before the event; an entrant with neither
-    is a group of its own. None when there are no teams at all. Draws nothing, so the prices are unchanged."""
-    known = dict((ev.info or {}).get("groups") or {})
-    if not known and hist.team is None:
-        return None
-    last = {}
-    if hist.team is not None:
-        team = hist.team[:n]
-        has = inf & pd.notna(team)
-        last = pd.Series(team[has], index=j[has]).groupby(level=0).last().to_dict()
-    out = []
-    for i, a in enumerate(field):
-        g = known.get(int(a), last.get(i))
-        out.append(str(g) if g is not None and pd.notna(g) else f"entrant:{int(a)}")
-    return out
-
-
 class GlobalModel:
     """The sport-agnostic results model. `for_sport(code)` (called by race_model.model_class) binds it to a
     sport's schema; unbound it prices whatever frame `load(data=...)` is given."""
@@ -195,7 +133,6 @@ class GlobalModel:
     name = "global_results"                # model_runs.model
     Settings = GlobalSettings
     cfg = None                             # {competition, source, group, prior}: the schema's data hooks
-    noise_unit = "strength"                # `noise` is in strength units, not finishing places
 
     @classmethod
     def for_sport(cls, sport):
@@ -204,24 +141,13 @@ class GlobalModel:
         source = m.get("source") or s.get("replay", {}).get("source")
         if not source:
             raise ValueError(f"sports/{sport}.toml: GlobalModel needs [model] source (or [replay] source)")
-        sessions = list(m.get("sessions") or [])
-        best_lap = m.get("best_lap")
-        if any(not isinstance(k, str) or not k for k in sessions) or (best_lap is not None and not isinstance(best_lap, str)):
-            raise ValueError(f"sports/{sport}.toml: [model] sessions is a list of rounds.kind names, best_lap a kind")
         cfg = dict(competition=s["competition"]["code"], source=source, group=m.get("group"), prior=m.get("prior"))
-        cfg.update({k: v for k, v in dict(sessions=sessions, best_lap=best_lap).items() if v})   # only when named
         return type(f"GlobalModel[{sport}]", (cls,),
                     dict(sport=sport, cfg=cfg, Settings=_settings_class(dict(m.get("defaults", {})))))
 
-    sides = None                           # {name: results frame} of the side classifications, set by load()
-
     # --- data ---------------------------------------------------------------------------------------
-    def load(self, engine_url=None, data=None, sides=None):
-        """The race results frame. The side classifications the schema names ([model] sessions, best_lap) are read
-        too and kept on the model (self.sides: {stage or kind: frame in the race frame's shape; the best-lap frame
-        adds laps_complete}); with `data`, `sides` gives them (default: none)."""
+    def load(self, engine_url=None, data=None):
         if data is not None:
-            self.sides = {k: _frame(v) for k, v in (sides or {}).items()}
             return _frame(data)
         if self.cfg is None:
             raise ValueError("an unbound GlobalModel needs data=; bind it with for_sport(code) to read the database")
@@ -248,39 +174,7 @@ class GlobalModel:
                 JOIN seasons s ON s.id = ev.season_id JOIN competitions co ON co.id = s.competition_id
                 WHERE co.code = :c AND ev.source = :src AND r.athlete_id IS NOT NULL
                 ORDER BY ev.start_date, ev.id, r.position NULLS LAST"""), conn, params=params)
-            self.sides = self._load_sides(conn, params)
         return _frame(df)
-
-    def _load_sides(self, conn, params):
-        """{name: frame}: each [model] sessions round kind's results, and the [model] best_lap order (best_lap_order
-        of the race rounds' laps, with laps_complete from the race round)."""
-        from sqlalchemy import text
-        out = {}
-        for kind in (self.cfg or {}).get("sessions") or []:
-            df = pd.read_sql(text("""
-                SELECT s.year AS season, ev.id AS race, ev.name, ev.start_date::date AS date, r.athlete_id,
-                       r.position, r.status
-                FROM results r JOIN rounds ro ON ro.id = r.round_id AND ro.kind = :k
-                JOIN races ra ON ra.id = ro.race_id JOIN events ev ON ev.id = ra.event_id
-                JOIN seasons s ON s.id = ev.season_id JOIN competitions co ON co.id = s.competition_id
-                WHERE co.code = :c AND ev.source = :src AND r.athlete_id IS NOT NULL
-                ORDER BY ev.start_date, ev.id, r.position NULLS LAST"""), conn, params=dict(params, k=kind))
-            out[kind] = _frame(df)
-        kind = (self.cfg or {}).get("best_lap")
-        if kind:
-            df = pd.read_sql(text("""
-                SELECT s.year AS season, ev.id AS race, ev.name, ev.start_date::date AS date, r.athlete_id,
-                       min(l.lap_time_ms) AS lap_time_ms,
-                       coalesce((ro.extra->>'laps_complete')::boolean, true) AS laps_complete
-                FROM laps l JOIN results r ON r.id = l.result_id
-                JOIN rounds ro ON ro.id = r.round_id AND ro.kind = 'race'
-                JOIN races ra ON ra.id = ro.race_id JOIN events ev ON ev.id = ra.event_id
-                JOIN seasons s ON s.id = ev.season_id JOIN competitions co ON co.id = s.competition_id
-                WHERE co.code = :c AND ev.source = :src AND r.athlete_id IS NOT NULL AND l.lap_time_ms > 0
-                GROUP BY s.year, ev.id, ev.name, ev.start_date, r.athlete_id, ro.extra
-                ORDER BY ev.start_date, ev.id"""), conn, params=params)
-            out[kind] = _frame(best_lap_order(df))
-        return out
 
     @staticmethod
     def data_through(data):
@@ -299,11 +193,8 @@ class GlobalModel:
             if seasons and season not in seasons:
                 continue
             name = str(g["name"].iloc[0]) if "name" in g and pd.notna(g["name"].iloc[0]) else str(race)
-            info = {"field": sorted(started["athlete_id"].unique().tolist())}
-            if "team" in started and started["team"].notna().any():      # the entry list's teams (group markets)
-                t = started.dropna(subset=["team"]).drop_duplicates("athlete_id", keep="last")
-                info["groups"] = {int(a): str(x) for a, x in zip(t["athlete_id"], t["team"])}
-            out.append(Event(id=race, season=season, cutoff=g["date"].iloc[0], name=name, info=info))
+            out.append(Event(id=race, season=season, cutoff=g["date"].iloc[0], name=name,
+                             info={"field": sorted(started["athlete_id"].unique().tolist())}))
         return sorted(out, key=lambda e: (e.cutoff, str(e.id)))
 
     def history(self, data, settings):
@@ -311,14 +202,7 @@ class GlobalModel:
         return SimpleNamespace(
             t=(d["date"].to_numpy("datetime64[D]").astype(np.int64)), a=d["athlete_id"].to_numpy(), z=z, fin=fin,
             team=d["team"].to_numpy() if "team" in d and d["team"].notna().any() else None,
-            rating=d["prior"].to_numpy(float) if "prior" in d and d["prior"].notna().any() else None,
-            sides={name: self._side_history(f) for name, f in (self.sides or {}).items() if len(f)})
-
-    def _side_history(self, f):
-        """A side classification's history: t, a, z, fin as for the race (its events with MIN_FINISHERS placed)."""
-        d, z, fin = _strengths(f[f["race"].isin(self._complete_races(f))])
-        return SimpleNamespace(t=d["date"].to_numpy("datetime64[D]").astype(np.int64), a=d["athlete_id"].to_numpy(),
-                               z=z, fin=fin)
+            rating=d["prior"].to_numpy(float) if "prior" in d and d["prior"].notna().any() else None)
 
     @staticmethod
     def _complete_races(data):
@@ -378,37 +262,7 @@ class GlobalModel:
         else:
             dnf = np.zeros((settings["sims"], k), bool)
         rank = np.argsort(np.argsort(-(perf - 1e3 * dnf), axis=1), axis=1) + 1
-        stage_rank, indicators = self._price_sides(getattr(hist, "sides", None) or {}, cut, field, settings, rng)
-        return O.OutcomeSims(entrants=[int(x) for x in field], rank=rank, finished=~dnf,
-                             groups=_groups(hist, n, j, inf, field, ev), stage_rank=stage_rank, indicators=indicators)
-
-    def _price_sides(self, sides, cut, field, settings, rng):
-        """({session: rank}, {best-lap kind: drawn first}) for the side classifications with history before `cut`:
-        strength from that history (recency-weighted, shrunk to 0 by prior_weight) + noise, no retirements; every
-        draw on a side generator (the race's and later draws unchanged)."""
-        stage_rank, indicators = {}, {}
-        best = (self.cfg or {}).get("best_lap")
-        k = len(field)
-        for i, (name, h) in enumerate(sorted(sides.items())):
-            n = int(np.searchsorted(h.t, cut, side="left"))
-            if n == 0:
-                continue
-            w = 0.5 ** ((cut - h.t[:n]) / settings["half_life_days"])
-            j = pd.Index(field).get_indexer(h.a[:n])
-            f = h.fin[:n] & (j >= 0)
-            Wf = np.bincount(j[f], weights=w[f], minlength=k)
-            Wz = np.bincount(j[f], weights=(w * np.where(h.fin[:n], h.z[:n], 0.0))[f], minlength=k)
-            den = Wf + settings["prior_weight"]
-            mu = np.divide(Wz, den, out=np.zeros(k), where=den > 0)
-            sd = np.sqrt(settings["noise"] ** 2 + settings["uncertainty"] ** 2 / (Wf + 1.0))
-            g = _side_rng(rng, SIDE_SEED + i)
-            perf = mu + sd * g.standard_normal((settings["sims"], k))
-            order = np.argsort(np.argsort(-perf, axis=1), axis=1) + 1
-            if name == best:
-                indicators[name] = order == 1
-            else:
-                stage_rank[name] = order
-        return stage_rank, indicators
+        return O.OutcomeSims(entrants=[int(x) for x in field], rank=rank, finished=~dnf)
 
     def results(self, data, ev):
         """The classification in markets/kinds.settle's shape; unclassified entrants follow the finishers."""
@@ -416,23 +270,7 @@ class GlobalModel:
         pos = r["position"].to_numpy(float)
         missing = np.isnan(pos)
         pos[missing] = (np.nanmax(pos) if (~missing).any() else 0) + 1 + np.arange(missing.sum())
-        out = pd.DataFrame(dict(
+        return pd.DataFrame(dict(
             athlete_id=r["athlete_id"].to_numpy(), position=pos, status=r["status"].to_numpy(),
             qual_position=np.nan, team_id=r["team"].to_numpy() if "team" in r else None,
             points=r["points"].fillna(0.0).to_numpy(float) if "points" in r else 0.0))
-        best = (self.cfg or {}).get("best_lap")
-        for name, f in (self.sides or {}).items():
-            side = f[f["race"] == ev.id]
-            if side.empty:
-                continue
-            if name == best:
-                # settled only when every lap of the race distance is stored (else a missing lap could be faster)
-                if "laps_complete" in side and not side["laps_complete"].fillna(True).astype(bool).all():
-                    continue
-                first = set(side.loc[side["position"] == side["position"].min(), "athlete_id"])
-                out[name] = out["athlete_id"].isin(first)
-            else:
-                col = P.stage_col(name)
-                out[col] = out["athlete_id"].map(side.drop_duplicates("athlete_id").set_index("athlete_id")["position"]
-                                                 .astype(float))
-        return out

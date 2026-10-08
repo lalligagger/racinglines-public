@@ -10,7 +10,6 @@ name = "SailGP"
 result_kind = "position"          # finishing positions, once there is a model
 model_family = "none"             # tapes only: no model, no pricing_model, no live adapter
 display_order = 4
-results_modules = ["racinglines.sources.sailgp"]   # what fetches its results (`backtest coverage`)
 
 [league]
 code = "sailgp"

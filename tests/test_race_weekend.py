@@ -100,33 +100,3 @@ def test_gate_query_runs_and_counts_race_day(tmp_path, f1_events):
     _, q = gate(tmp_path, "f1", _epoch(2099, 3, 8))               # Sunday, race day of round 1
     with f1_events.connect() as c:
         assert c.execute(text(q.rstrip(";"))).scalar() == 1
-
-
-TAPE = ROOT / "scripts" / "vm" / "tape_check.sh"
-
-
-def tape(tmp_path, exchange, ever, rows):
-    """Run tape_check.sh with a fake `docker`: `ever` race links for the competition, then the per-event `rows`."""
-    fake = tmp_path / "bin"
-    fake.mkdir(exist_ok=True)
-    (fake / "docker").write_text('#!/usr/bin/env bash\ncase "${@: -1}" in\n'
-                                 f'  *"SELECT count(*) FROM market_links"*) echo "{ever}" ;;\n'
-                                 f"  *) printf '{rows}' ;;\nesac\n")
-    (fake / "docker").chmod(0o755)
-    env = dict(os.environ, PATH=f"{fake}:{os.environ['PATH']}", ENV_FILE="/dev/null", APP=str(ROOT))
-    out = subprocess.run(["bash", str(TAPE), exchange, "f1"], env=env, capture_output=True, text=True)
-    return out.returncode, out.stdout.splitlines()
-
-
-def test_tape_check_flags_missing_and_stale_links(tmp_path):
-    rc, lines = tape(tmp_path, "kalshi", 5, r"e1|Event one|0|\ne2|Event two|12|5.2\ne3|Event three|9|1.0\n")
-    assert rc == 1
-    assert lines[0] == "WARN kalshi f1 e1 Event one: no links with this race (sync, then link)"
-    assert lines[1].startswith("WARN kalshi f1 e2 Event two: 12 links, last sync 5.2 h ago")
-    assert lines[2].startswith("OK   kalshi f1 e3")
-    assert tape(tmp_path, "kalshi", 5, r"e3|Event three|9|1.0\n")[0] == 0
-
-
-def test_tape_check_skips_an_exchange_without_race_markets(tmp_path):
-    assert tape(tmp_path, "og", 0, "") == (0, ["SKIP og f1: no race market on this exchange for this sport yet"])
-    assert tape(tmp_path, "k;x", 5, "")[0] == 2

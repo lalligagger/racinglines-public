@@ -469,9 +469,9 @@ def load_event(conn, run_ids, sessions=None, books=False, exchange="polymarket",
     """Markets, fair values, public tape and outcomes for one event's diagnostic runs.
     sessions: [(kind, start)] (naive UTC) instead of the race's stored rounds (an event not yet run).
     books: also load the recorded order books (for fill="queue").
-    exchange: whose markets and tape (a venue_replay.EXCHANGES code: "polymarket", "kalshi" or "og"; their syncs
-    write the same tables). A Kalshi link's condition_id is its event ticker, shared by every market of the event,
-    so there (and on OG.com) each market is its own token, and its trades are read by token (tape_markets).
+    exchange: whose markets and tape ("polymarket", or "kalshi": markets/kalshi/ writes the same tables). A
+    Kalshi link's condition_id is its event ticker, shared by every market of the event, so there each market
+    is its own ticker (token_id), and its trades are read by ticker.
     rules: a cancelled race's outcomes by the exchange's rules (markets/settlement_rules.py: an outcome can then
     be a 0.5 payout or VOID); None reads RACINGLINES_CANCELLED_RACE_RULES, off by default."""
     from sqlalchemy import text
@@ -504,33 +504,9 @@ def load_event(conn, run_ids, sessions=None, books=False, exchange="polymarket",
         WHERE ml.race_id = :r AND ml.prediction = ANY(:k) AND ml.exchange = :x
         ORDER BY ml.id"""), conn, params=dict(r=race_id, k=list(MODELED), x=exchange))
     status = SR.race_status("f1", key, SR.db_status(conn, race_id)) if SR.enabled(rules) else None
+    if exchange == "kalshi":
+        return _load_kalshi(conn, links, runs, key, race_id, sessions, stages, qual_start, t0, t1, books, status)
     res = house.race_outcomes(conn, race_id)
-    cache = {}
-
-    def fairs_of(link):
-        return {r["run_id"]: D.model_prob(conn, link, cache, run_id=r["run_id"])[0] for r in runs}
-
-    def outcome_of(link, mids):
-        ath = None if pd.isna(link["athlete_id"]) else int(link["athlete_id"])
-        outcome = house.outcome_for(link["prediction"], ath, link["params"], res)
-        if status:
-            outcome = SR.apply(exchange, status, link["prediction"], link.get("group_title") or link.get("outcome"),
-                               outcome, last_price=_last_price(mids))
-        return outcome
-
-    markets = tape_markets(conn, links, exchange, t0, t1, fairs_of, outcome_of, books)
-    return dict(event_key=key, race_id=race_id, runs=runs, sessions=sorted(sessions), stages=stages, markets=markets,
-                qual_start=qual_start)
-
-
-def tape_markets(conn, links, exchange, t0, t1, fairs_of, outcome_of, books=False):
-    """[Market] of the links from the exchange's recorded tape over [t0, t1] (int64 ns UTC), for any sport.
-    fairs_of(link) -> {run_id: fair}; outcome_of(link, mids) -> the settled outcome (mids: the market's prices).
-    Polymarket: one market per condition, its outcome-0 token (a condition whose outcome-0 token isn't linked is
-    skipped: its trades can't be expressed from that side); every other exchange (venue_replay.EXCHANGES: Kalshi,
-    OG.com): one market per token, read from its own Parquet archive, trades already on the YES side."""
-    if exchange != "polymarket":
-        return _token_markets(conn, links, exchange, t0, t1, fairs_of, outcome_of, books)
     from racinglines.markets import store as MS
     conds = links["condition_id"].dropna().unique().tolist()
     a, b = pd.Timestamp(t0, tz="UTC"), pd.Timestamp(t1, tz="UTC")
@@ -542,16 +518,20 @@ def tape_markets(conn, links, exchange, t0, t1, fairs_of, outcome_of, books=Fals
     bk_by = dict(tuple(MS.read(conn, "books", tokens=links["token_id"].tolist(), start=a, end=b)
                        .groupby("token_id"))) if books else {}
     empty_px, empty_tr = all_px.iloc[0:0], all_tr.iloc[0:0]
-    markets = []
+    markets, cache = [], {}
     for cond, g in links.groupby("condition_id", sort=False):
         # the outcome-0 token: from the trade tape, else the first link of the condition
         g = g.assign(oi=g["token_id"].map(idx))
         link = g.sort_values("oi", na_position="last").iloc[0].to_dict()
         if not pd.isna(link["oi"]) and link["oi"] != 0:
             continue    # outcome-0 token isn't linked; can't express trades from its side
-        fairs = fairs_of(link)
+        fairs = {r["run_id"]: D.model_prob(conn, link, cache, run_id=r["run_id"])[0] for r in runs}
+        ath = None if pd.isna(link["athlete_id"]) else int(link["athlete_id"])
+        outcome = house.outcome_for(link["prediction"], ath, link["params"], res)
         mids = px_by.get(link["token_id"], empty_px)
-        outcome = outcome_of(link, mids)
+        if status:
+            outcome = SR.apply(exchange, status, link["prediction"], link.get("group_title") or link.get("outcome"),
+                               outcome, last_price=_last_price(mids))
         tr = tr_by.get(cond, empty_tr)
         yes_px, yes_buy = to_yes(tr["outcome_index"].to_numpy(), tr["side"].to_numpy(), tr["price"].to_numpy())
         subject = link["athlete"] or (link["params"] or {}).get("team") or link["group_title"]
@@ -567,28 +547,36 @@ def tape_markets(conn, links, exchange, t0, t1, fairs_of, outcome_of, books=Fals
                               tr_ts=_ns(tr["ts"]) if len(tr) else np.array([], dtype="int64"),
                               tr_px=np.asarray(yes_px, float), tr_sz=tr["size"].to_numpy(float), tr_buy=yes_buy,
                               link=link, **book))
-    return markets
+    return dict(event_key=key, race_id=race_id, runs=runs, sessions=sorted(sessions), stages=stages, markets=markets,
+                qual_start=qual_start)
 
 
-def _token_markets(conn, links, exchange, t0, t1, fairs_of, outcome_of, books=False):
-    """tape_markets for Kalshi-style exchanges: one Market per token (the YES contract; trades are already on its
-    side), the tape from the exchange's own archive, its prices as venue_replay reads them (tape_prices)."""
+def _load_kalshi(conn, links, runs, key, race_id, sessions, stages, qual_start, t0, t1, books, status=None):
+    """load_event for Kalshi links: one Market per ticker (YES contract; trades are already on its side).
+    status: the race's settlement_rules status (cancelled / relocated), applied to the outcomes."""
+    from racinglines.db import reads as D
+    from racinglines.markets import private_book as house
+    from racinglines.markets import settlement_rules as SR
     from racinglines.markets import store as MS
-    from racinglines.markets.venue_replay import EXCHANGES
+    res = house.race_outcomes(conn, race_id)
     toks = links["token_id"].tolist()
     a, b = pd.Timestamp(t0, tz="UTC"), pd.Timestamp(t1, tz="UTC")
-    root = MS.root_for(exchange)
+    root = MS.root_for("kalshi")
     all_tr = MS.read(conn, "trades", tokens=toks, start=a, end=b, root=root)
-    all_px = EXCHANGES[exchange].tape_prices(conn, toks, a, b)
+    all_px = MS.read(conn, "prices", tokens=toks, start=a, end=b, root=root)
     tr_by, px_by = dict(tuple(all_tr.groupby("token_id"))), dict(tuple(all_px.groupby("token_id")))
     bk_by = dict(tuple(MS.read(conn, "books", tokens=toks, start=a, end=b, root=root).groupby("token_id"))) if books else {}
     empty_px, empty_tr = all_px.iloc[0:0], all_tr.iloc[0:0]
-    markets = []
+    markets, cache = [], {}
     for link in links.to_dict("records"):
         tok = link["token_id"]
-        fairs = fairs_of(link)
+        fairs = {r["run_id"]: D.model_prob(conn, link, cache, run_id=r["run_id"])[0] for r in runs}
+        ath = None if pd.isna(link["athlete_id"]) else int(link["athlete_id"])
+        outcome = house.outcome_for(link["prediction"], ath, link["params"], res)
         mids, tr = px_by.get(tok, empty_px), tr_by.get(tok, empty_tr)
-        outcome = outcome_of(link, mids)
+        if status:
+            outcome = SR.apply("kalshi", status, link["prediction"], link.get("group_title") or link.get("outcome"),
+                               outcome, last_price=_last_price(mids))
         subject = link["athlete"] or (link["params"] or {}).get("team") or link["group_title"]
         if link["prediction"] == "race_h2h":
             subject = f"{link['athlete'] or link['outcome']} ahead ({link['question']})"
@@ -602,4 +590,5 @@ def _token_markets(conn, links, exchange, t0, t1, fairs_of, outcome_of, books=Fa
                               tr_ts=_ns(tr["ts"]) if len(tr) else np.array([], dtype="int64"),
                               tr_px=tr["price"].to_numpy(float), tr_sz=tr["size"].to_numpy(float),
                               tr_buy=(tr["side"] == "BUY").to_numpy(bool), link=link, **book))
-    return markets
+    return dict(event_key=key, race_id=race_id, runs=runs, sessions=sorted(sessions), stages=stages, markets=markets,
+                qual_start=qual_start)

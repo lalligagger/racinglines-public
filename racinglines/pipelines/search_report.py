@@ -22,8 +22,7 @@ Configuration: an optional [report] table in the queue file (defaults below), an
 another sport's jobs. Outputs, next to the search's state.json: stats.csv, ranking.csv, pnl_curves.json,
 candidates/<id>.json, candidates.toml, report.md; another sport's in a folder named after it.
 
-Any sport: sweeps (F1's, and any other sport's in a folder <sport>-sweep, its settings under [report.<sport>-sweep])
-are scored by each strategy's P&L per weekend; model-only walk-forwards (downhill)
+Any sport: F1 sweeps are scored by each strategy's P&L per weekend; model-only walk-forwards (downhill)
 by each market kind's score per event (−1000 × log loss, higher is better). The labels, noise floor,
 baselines, confirmation and ids work the same on either.
 """
@@ -262,14 +261,13 @@ def candidates(ranking, top):
 
 
 def write(out, jobs, metrics, strategies, cfg=None, twin=None, rerun=None, echo=print, cls=SS.Settings, sport="f1",
-          model=None, kind=None):
-    """Every output file, from finished jobs only. rerun(job-like dict) -> argv list, for re-run commands.
-    kind: the jobs' kind (None: F1's sweep, any other sport's or model's walk-forward)."""
+          model=None):
+    """Every output file, from finished jobs only. rerun(job-like dict) -> argv list, for re-run commands."""
     cfg = _config(cfg)
     rows, curves = stats(jobs, metrics, strategies, cfg, cls)
     ranking, floor, measured = rank(rows, curves, cfg, twin, cls)
-    kind = kind or ("sweep" if sport == "f1" and not model else "walk_forward")
-    job = dict(kind=kind, **({"sport": sport} if sport != "f1" or model else {}), **({"model": model} if model else {}))
+    job = dict(kind="sweep") if sport == "f1" and not model else dict(
+        kind="walk_forward", sport=sport, **({"model": model} if model else {}))
     (out / "pnl_curves.json").write_text(json.dumps(curves, default=str))
     cols = ["year", "rounds", "venue", "strategy", "label", "sims", "seed", "pnl", "vs_baseline", "weekends_up", "weekends",
             "max_drawdown", "sharpe", "pnl_without_best", "pnl_without_best2", "best_event", "gain_without_best", "best_gain_event", "run_id",
@@ -380,17 +378,10 @@ def run(queue_path, echo=print):
     def twin(st, year):
         return SS.Settings.from_dict(dict(st, variant=V.for_season(st["variant"], year)))
     result = None
-    f1 = [v for v in done if v["kind"] == "sweep" and v.get("sport", S.DEFAULT_SPORT) == S.DEFAULT_SPORT]
+    f1 = [v for v in done if v["kind"] == "sweep"]
     if f1:
         result = write(out, f1, metrics, EV.STRATEGIES, {k: v for k, v in rep.items() if not isinstance(v, dict)
                                                           or k == "noise"}, twin=twin, rerun=S.argv, echo=echo)
-    for sport in sorted({v["sport"] for v in done if v["kind"] == "sweep" and v.get("sport", S.DEFAULT_SPORT) != S.DEFAULT_SPORT}):
-        jobs = [v for v in done if v["kind"] == "sweep" and v.get("sport") == sport]     # another sport's sweeps
-        d = out / f"{sport}-sweep"
-        d.mkdir(exist_ok=True)
-        result = write(d, jobs, metrics, EV.STRATEGIES, dict({k: v for k, v in rep.items() if not isinstance(v, dict)
-                                                               or k == "noise"}, **rep.get(f"{sport}-sweep", {})),
-                       rerun=S.argv, echo=echo, cls=S.settings_class(sport, None, "sweep"), sport=sport, kind="sweep")
     for sport, model in sorted({(v.get("sport", "f1"), v.get("model") or "") for v in done if v["kind"] == "walk_forward"}):
         jobs = [v for v in done if v["kind"] == "walk_forward" and (v.get("sport", "f1"), v.get("model") or "") == (sport, model)]
         kinds = sorted({k[:-len("_score")] for j in jobs for w in (metrics.get(j["run_id"]) or {}).get("weekends") or []
