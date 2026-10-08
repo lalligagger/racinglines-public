@@ -87,6 +87,24 @@ def _other_exchanges():
     return sorted({"kalshi", *EX.CODES} - {"polymarket"})
 
 
+def book_total(events, maker=True):
+    """The private book's P&L across events, as [(time, P&L)]: each event's own running P&L, carried forward to every
+    poll time of any event, then summed. Sorting the events' curves together would interleave their separate running
+    totals (a sawtooth, and a false drawdown at each event's start)."""
+    from racinglines.pipelines import live as LV
+    series = []
+    for ev in events:
+        pts = LV.book_curve(ev, maker)
+        if pts:
+            s = pd.Series([v for _, v in pts], index=pd.DatetimeIndex([t for t, _ in pts]))
+            series.append(s[~s.index.duplicated(keep="last")].sort_index())
+    if not series:
+        return []
+    idx = sorted(set().union(*[set(s.index) for s in series]))
+    total = sum(s.reindex(idx, method="ffill").fillna(0.0) for s in series)     # before an event's first poll: 0
+    return list(zip(idx, total.tolist()))
+
+
 def _venue_names():
     """Display name by venue code, from the registry."""
     return {v.code: v.name for v in V.VENUES}
@@ -737,7 +755,7 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     book = None
     if priv_events:
         from racinglines.web.viz import line_chart
-        curve = sorted(pt for ev in priv_events for pt in LV.book_curve(ev, maker))
+        curve = book_total(priv_events, maker)
         cum = [v for _, v in curve]
         book = dict(chart=line_chart({"pnl": curve}, {"pnl": "private book P&L, marked to fair"}), polls=len(curve),
                     max_dd=min((v - max(cum[:i + 1]) for i, v in enumerate(cum)), default=0.0))
