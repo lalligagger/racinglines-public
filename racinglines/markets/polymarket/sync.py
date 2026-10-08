@@ -510,22 +510,26 @@ def fetch_history(session, conn, event_slugs, start, end, fidelity=60, tokens=No
 DATA_API = "https://data-api.polymarket.com"
 
 
-def fetch_trades(session, conn, event_slugs, page=500, max_offset=100_000, modeled_only=False, since=None, sport=None):
+def fetch_trades(session, conn, event_slugs, page=500, max_offset=100_000, modeled_only=False, since=None, sport=None,
+                 open_only=False):
     """Store every taker trade for the markets of the given events (Data API; with no events, of every
     Polymarket link of `sport`'s competition).
     `side` is the taker's side for `token_id`. Idempotent. Returns trades stored.
-    since (datetime, UTC): stop paging a market once a page reaches trades this old (newest come first)."""
+    since (datetime, UTC): stop paging a market once a page reaches trades this old (newest come first).
+    open_only: markets with an open outcome (the recorder's pass)."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
     if not event_slugs and sport:
         where, params = _sport_where(None, sport)
         conds = conn.execute(text(f"""SELECT DISTINCT ml.condition_id FROM market_links ml JOIN competitions co ON co.id = ml.competition_id
                                       WHERE ml.exchange = 'polymarket' AND {where} AND ml.condition_id IS NOT NULL
-                                      AND (NOT CAST(:m AS boolean) OR ml.prediction <> 'unmodeled')"""),
-                             dict(params, m=modeled_only)).scalars().all()
+                                      AND (NOT CAST(:m AS boolean) OR ml.prediction <> 'unmodeled')
+                                      AND (NOT CAST(:o AS boolean) OR NOT ml.closed)"""),
+                             dict(params, m=modeled_only, o=open_only)).scalars().all()
     else:
         conds = conn.execute(text("""SELECT DISTINCT condition_id FROM market_links WHERE event_slug = ANY(:s)
-                                     AND exchange = 'polymarket' AND condition_id IS NOT NULL AND (NOT CAST(:m AS boolean) OR prediction <> 'unmodeled')"""),
-                             dict(s=list(event_slugs or []), m=modeled_only)).scalars().all()
+                                     AND exchange = 'polymarket' AND condition_id IS NOT NULL AND (NOT CAST(:m AS boolean) OR prediction <> 'unmodeled')
+                                     AND (NOT CAST(:o AS boolean) OR NOT closed)"""),
+                             dict(s=list(event_slugs or []), m=modeled_only, o=open_only)).scalars().all()
     n = 0
     with httpx.Client(base_url=DATA_API, timeout=30) as c:
         for cond in conds:

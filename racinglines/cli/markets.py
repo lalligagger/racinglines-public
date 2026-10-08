@@ -19,7 +19,9 @@ unverified against the live Gamma API; markets/polymarket/sync.py). Additive: ro
     trades     [--events SLUG …]                          the tape of those events' markets
     history    [--events SLUG …] --start --end [--fidelity 60]   price history (minutes per point)
     books      [--events SLUG …]                          one order-book snapshot per open market
-(--sport f1 keeps the commands above; `record` is F1 only.)
+(--sport f1 keeps the commands above, except `trades --open [--since-hours H]`, which takes every open F1 market
+the same way; `record` is F1 only.) `trades --open --since-hours H` on any exchange: only markets not closed, only
+trades from H hours ago on (the recorder's pass, scripts/vm/record_venues.sh and pm_sync.sh).
 
 Kalshi (--exchange kalshi; markets/kalshi/, built on mocked responses, unverified against the live API):
     sync       [--year 2026] [--closed] [--series TICKER …]   the sport's Kalshi markets into market links
@@ -55,6 +57,14 @@ COMMANDS = {"sync": "pm-sync", "history": "pm-history", "trades": "pm-trades", "
             "archive": "pm-archive"}
 
 
+def _since(args):
+    """The trades command's --since-hours as a UTC datetime (None: every trade the exchange serves)."""
+    if getattr(args, "since_hours", None) is None:
+        return None
+    from datetime import datetime, timedelta, timezone
+    return datetime.now(timezone.utc) - timedelta(hours=args.since_hours)
+
+
 def kalshi_sports():
     """The sports the Kalshi sync knows: F1 and every schema with a [markets.kalshi] series list."""
     from racinglines import sports
@@ -82,6 +92,8 @@ def main(argv=None):
         return schema_exchange(known.exchange, known.db, rest, known.sport)
     if known.exchange == "kalshi":
         return kalshi(known.db, rest, known.sport)
+    if known.sport == "f1" and rest[:1] == ["trades"] and "--open" in rest:
+        return polymarket(known.db, rest, "f1")        # the recorder's pass: every open F1 market, as the other sports
     if known.sport != "f1":
         if known.sport not in polymarket_sports():
             print(f"--sport {known.sport}: only Kalshi lists it (--exchange kalshi)", file=sys.stderr)
@@ -191,6 +203,9 @@ def kalshi(db, argv, sport="f1"):
         p = sub.add_parser(name)
         p.add_argument("--events", nargs="+", default=None,
                        help=f"Kalshi event tickers (market_links.condition_id); default: every {sport} event")
+        if name == "trades":
+            p.add_argument("--open", action="store_true", help="Only markets not closed (the recorder's pass)")
+            p.add_argument("--since-hours", type=float, default=None, help="Only trades from this many hours ago on")
         if name == "history":
             p.add_argument("--start", required=True, help="UTC start, e.g. 2026-10-01T00:00")
             p.add_argument("--end", required=True, help="UTC end")
@@ -211,7 +226,7 @@ def kalshi(db, argv, sport="f1"):
         if args.cmd == "sync":
             print(KS.sync(s, c, args.year, include_closed=args.closed, sport=sport, series=args.series))
         elif args.cmd == "trades":
-            print(f"{KS.fetch_trades(s, c, args.events, sport=sport)} trades stored")
+            print(f"{KS.fetch_trades(s, c, args.events, since=_since(args), sport=sport, open_only=args.open)} trades stored")
         elif args.cmd == "history":
             t = [pd.Timestamp(x).tz_localize(timezone.utc).to_pydatetime() for x in (args.start, args.end)]
             print(f"{KS.fetch_history(s, c, args.events, t[0], t[1], args.period, sport=sport, save_raw=args.save_raw, from_raw=args.from_raw)} price points stored")
@@ -234,6 +249,9 @@ def polymarket(db, argv, sport):
         p = sub.add_parser(name)
         p.add_argument("--events", nargs="+", default=None,
                        help=f"Polymarket event slugs (market_links.event_slug); default: every {sport} event")
+        if name == "trades":
+            p.add_argument("--open", action="store_true", help="Only markets not closed (the recorder's pass)")
+            p.add_argument("--since-hours", type=float, default=None, help="Only trades from this many hours ago on")
         if name == "history":
             p.add_argument("--start", required=True, help="UTC start, e.g. 2026-10-01T00:00")
             p.add_argument("--end", required=True, help="UTC end")
@@ -249,7 +267,7 @@ def polymarket(db, argv, sport):
         if args.cmd == "sync":
             print(PS.sync(s, c, args.year, include_closed=args.closed, sport=sport, tags=args.tags))
         elif args.cmd == "trades":
-            print(f"{PS.fetch_trades(s, c, args.events, sport=sport)} trades stored")
+            print(f"{PS.fetch_trades(s, c, args.events, since=_since(args), sport=sport, open_only=args.open)} trades stored")
         elif args.cmd == "history":
             t = [pd.Timestamp(x).tz_localize(timezone.utc).to_pydatetime() for x in (args.start, args.end)]
             print(f"{PS.fetch_history(s, c, args.events, t[0], t[1], args.fidelity, sport=sport)} price points stored")
@@ -277,6 +295,9 @@ def schema_exchange(code, db, argv, sport="f1"):
     for name in ("trades", "history", "books"):
         p = sub.add_parser(name)
         p.add_argument("--events", nargs="+", default=None, help="Event symbols (market_links.condition_id); default: every event")
+        if name == "trades":
+            p.add_argument("--open", action="store_true", help="Only markets not closed (the recorder's pass)")
+            p.add_argument("--since-hours", type=float, default=None, help="Only trades from this many hours ago on")
         if name == "history":
             p.add_argument("--start", required=True, help="UTC start, e.g. 2026-09-01T00:00 (clipped to what the exchange keeps)")
             p.add_argument("--end", default=None, help="UTC end (default now)")
@@ -298,7 +319,7 @@ def schema_exchange(code, db, argv, sport="f1"):
             st = D.settle(s, c, code, sport, since=args.since, max_pages=args.max_pages)
             print(st if st.get("supported", True) else f"{code}: no settlement feed in exchanges/{code}.toml, nothing done")
         elif args.cmd == "trades":
-            print(f"{D.fetch_trades(s, c, code, sport=sport, events=args.events)} trades stored")
+            print(f"{D.fetch_trades(s, c, code, sport=sport, events=args.events, since=_since(args), open_only=args.open)} trades stored")
         elif args.cmd == "history":
             print(f"{D.fetch_history(s, c, code, args.start, args.end, sport=sport, events=args.events)} price rows stored")
         elif args.cmd == "books":

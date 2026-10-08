@@ -337,7 +337,9 @@ forecasts) follows a unified pattern:
    conserve API quota and avoid noise. **Exception, market prices (owner, 2026-10-07):** the Kalshi, OG.com and
    Polymarket recorders (`record_venues.sh`, `pm_sync.sh`) poll every 5 minutes every day, all day (`WEEKEND_ONLY=1`
    restores the race-weekend gate); `scripts/vm/tape_check.sh` logs a WARN after each sync for an upcoming event with no
-   links or a sync older than `STALE_HOURS` (default 3), shown by `vm.sh record status`. Race-data APIs (FastF1) and
+   links or a sync older than `STALE_HOURS` (default 3), shown by `vm.sh record status`. Every 15 minutes
+   (`TRADES_MIN`) both store the last 2 hours of trades on every open market, and `pm_sync.sh` also syncs and books
+   NASCAR and MotoGP on Polymarket (`PM_SPORTS`; the minute recorder books F1 only). Race-data APIs (FastF1) and
    forecasts keep the race-weekend gate.
 2. **Helper:** `scripts/vm/race_weekend.sh <sport>` (exit 0 = in race weekend, run; exit 1 = off-week, skip)
    checks day-of-week and database for active events.
