@@ -7,6 +7,7 @@ do what the Lab's Run form does.
 """
 
 import json
+import os
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -16,8 +17,6 @@ from sqlalchemy import text
 from racinglines.db import reads as data
 from racinglines.mcp import page as P
 
-SPORT_OF = {"f1_wdc": "f1", "uci_dhi_wc": "mtb_dh"}
-COMPETITION_OF = {v: k for k, v in SPORT_OF.items()}
 RUN_KINDS = ("forecast", "scenario", "diagnostic", "backtest", "sweep", "season_strategy", "season_checkpoints",
              "season_asof", "walk_forward", "candidate")
 # tables the sql tool never reads (login secrets; exchange credentials and responses)
@@ -48,12 +47,27 @@ TABLES = {
 }
 
 
-def _sport_filter(sport=None, competition=None):
+def sports_of(conn):
+    """{competition code: sport code}, from the competitions and sports tables (every sport the database holds)."""
+    return {r[0]: r[1] for r in conn.execute(text(
+        "SELECT co.code, sp.code FROM competitions co JOIN sports sp ON sp.id = co.sport_id ORDER BY co.code")).fetchall()}
+
+
+def _sport_filter(conn, sport=None, competition=None):
+    """The competition code a tool filters on: `competition` as given, else the one competition of `sport`."""
     if competition:
         return competition
-    if sport:
-        return COMPETITION_OF.get(sport, sport)
-    return None
+    if not sport:
+        return None
+    of = sports_of(conn)
+    if sport in of:                     # a competition code passed as the sport
+        return sport
+    comps = [c for c, s in of.items() if s == sport]
+    if len(comps) == 1:
+        return comps[0]
+    if comps:
+        raise ValueError(f"sport {sport!r} has several competitions ({', '.join(comps)}): pass competition")
+    raise ValueError(f"no sport {sport!r}; the database has {', '.join(sorted(set(of.values())))}")
 
 
 def _usernames(conn):
@@ -91,7 +105,7 @@ def overview(conn):
                                JOIN seasons s ON s.id = e.season_id JOIN competitions co ON co.id = s.competition_id
                                WHERE e.status <> 'completed' AND e.start_date >= current_date - 7 ORDER BY e.start_date LIMIT 6""")
     return dict(
-        sports={c: s for c, s in SPORT_OF.items()},
+        sports=sports_of(conn),
         seasons=[P.record(r) for r in seasons.to_dict("records")],
         forecasts=[P.record(r) for r in data.latest_forecasts(conn).to_dict("records")],
         model_runs=[P.record(r) for r in runs.to_dict("records")],
@@ -124,7 +138,7 @@ def describe_schema(conn, table=None):
 # ---------------------------------------------------------------------------------------------------
 
 def list_events(conn, sport=None, competition=None, season=None, status=None, limit=None, offset=0):
-    df = data.events(conn, competition=_sport_filter(sport, competition), season=season)
+    df = data.events(conn, competition=_sport_filter(conn, sport, competition), season=season)
     if status:
         df = df[df["status"] == status]
     return P.page(df, limit=limit, offset=offset)
@@ -217,7 +231,7 @@ def list_markets(conn, race_id=None, event_id=None, competition=None, sport=None
         head = dict(race_id=int(race_id), event_id=info["event_id"], title=info["title"], competition=info["competition"],
                     season=info["season"], status=info["status"], start_date=info["start_date"], race_start=info["race_start"])
     else:
-        comp = _sport_filter(sport, competition)
+        comp = _sport_filter(conn, sport, competition)
         if not comp:
             raise ValueError("give race_id, event_id, or competition/sport (season markets)")
         info, pricing, df = V.season_matrix(conn, comp)
@@ -231,9 +245,53 @@ def list_markets(conn, race_id=None, event_id=None, competition=None, sport=None
     by_kind = {}
     for r in rows:
         by_kind[r["kind"]] = by_kind.get(r["kind"], 0) + 1
+    scope = dict(event_id=head["event_id"]) if race_id is not None else dict(competition=head["competition"])
+    upcoming = race_id is None or head.get("status") != "completed"
     return dict(**P.record(head), pricing=P.record(pricing or {}), outcomes_by_kind=by_kind,
+                freshness=freshness(conn, upcoming=upcoming, **scope),
                 venues=[dict(venue=v["venue"].code, listed=v["listed"], volume=v["volume"]) for v in V.venue_summary(df)] if len(df) else [],
                 outcomes=P.page(rows, limit=limit, offset=offset))
+
+
+def stale_hours():
+    """How old a venue's newest market link sync may be before list_markets flags its prices stale:
+    RACINGLINES_STALE_HOURS, default 3 (polling runs every 5 minutes, so 3 h means several missed passes)."""
+    try:
+        return float(os.environ.get("RACINGLINES_STALE_HOURS") or 3)
+    except ValueError:
+        return 3.0
+
+
+def freshness(conn, event_id=None, competition=None, upcoming=True, now=None):
+    """Per exchange: links, the newest synced_at over the event's races (or the competition's season links, with no
+    race) and its age; `stale` when an upcoming event has no link on a live exchange or the newest sync is older than
+    stale_hours(). A completed event is never flagged: its prices are history."""
+    from racinglines.markets import venues as V
+    if event_id is not None:
+        df = data.q(conn, """SELECT ml.exchange, count(*) AS links, max(ml.synced_at) AS synced_at FROM market_links ml
+                             JOIN races ra ON ra.id = ml.race_id WHERE ra.event_id = :e GROUP BY 1""", e=int(event_id))
+    else:
+        df = data.q(conn, """SELECT ml.exchange, count(*) AS links, max(ml.synced_at) AS synced_at FROM market_links ml
+                             JOIN competitions co ON co.id = ml.competition_id
+                             WHERE co.code = :c AND ml.race_id IS NULL GROUP BY 1""", c=competition)
+    got = {r["exchange"]: r for r in df.to_dict("records")}
+    limit = stale_hours()
+    now = now or pd.Timestamp.now(tz="UTC")
+    codes = [v.code for v in V.EXCHANGES if v.status == "live"]
+    codes += [c for c in sorted(got) if c not in codes]
+    out = []
+    for code in codes:
+        r = got.get(code)
+        links = int(r["links"]) if r else 0
+        at = pd.Timestamp(r["synced_at"]) if r and r["synced_at"] is not None and not pd.isna(r["synced_at"]) else None
+        age = (now - at).total_seconds() / 3600 if at is not None else None
+        why = None
+        if upcoming:
+            why = ("no linked markets" if not links else "never synced" if at is None else
+                   f"newest sync {age:.1f} h old (limit {limit:g} h)" if age > limit else None)
+        out.append(dict(venue=code, links=links, synced_at=P.plain(at), age_hours=P.plain(age), stale=why is not None,
+                        reason=why))
+    return dict(stale_hours=limit, any_stale=any(r["stale"] for r in out), venues=out)
 
 
 def _tokens_for(conn, race_id=None, kind=None, athlete_id=None, subject=None, exchange=None, competition=None):
@@ -336,7 +394,7 @@ def get_market_history(conn, tokens=None, race_id=None, kind=None, athlete_id=No
 # ---------------------------------------------------------------------------------------------------
 
 def list_model_runs(conn, kind=None, competition=None, sport=None, season=None, limit=None, offset=0):
-    comp = _sport_filter(sport, competition)
+    comp = _sport_filter(conn, sport, competition)
     df = data.q(conn, """
         SELECT mr.id, mr.kind, co.code AS competition, s.year AS season, c.code AS category, mr.model, mr.created_at,
                mr.data_through, mr.params->>'variant' AS variant, mr.params->>'cutoff' AS cutoff, mr.params->>'event_key' AS event_key,
@@ -418,7 +476,7 @@ def get_predictions(conn, run_id, target=None, top=20, standings=False):
 
 def get_forecast(conn, competition=None, sport=None, category=None, top=10):
     """The live forecast (the run the web app shows): its next races' top probabilities and the championship."""
-    comp = _sport_filter(sport, competition)
+    comp = _sport_filter(conn, sport, competition)
     fc = data.latest_forecasts(conn)
     if comp:
         fc = fc[fc["competition"] == comp]
@@ -446,11 +504,15 @@ def get_forecast(conn, competition=None, sport=None, category=None, top=10):
 # strategy research: Edge Finder, diagnostics, maker replay
 # ---------------------------------------------------------------------------------------------------
 
-def edge_finder(conn, year=2026, strategy=None, limit=None, offset=0):
+def edge_finder(conn, year=2026, strategy=None, venue=None, limit=None, offset=0):
     """Every configuration with a full-season sweep of `year`, with the full-season recap of each strategy
     (P&L, volume, weekends up, drawdown, consistency): what the Lab's Edge Finder shows, from saved runs only."""
+    from racinglines.pipelines import sweep_settings as SS
     from racinglines.web import edge as E
-    cfgs = E.configs(conn, int(year))
+    if venue and venue not in SS.VENUES:
+        raise ValueError(f"venue is one of {', '.join(SS.VENUES)} (the exchanges a sweep trades)")
+    cfgs = {k: c for k, c in E.configs(conn, int(year)).items()
+            if not venue or (c["settings"]["venue"] or SS.DEFAULT_VENUE) == venue}
     strategies = [strategy] if strategy else E.STRATEGY_KEYS
     unknown = [s for s in strategies if s not in E.STRATEGY_LABEL]
     if unknown:
@@ -461,10 +523,11 @@ def edge_finder(conn, year=2026, strategy=None, limit=None, offset=0):
         weekends = (run or {}).get("metrics", {}).get("weekends") or []
         for s in strategies:
             rc = E.recap(weekends, s)
-            rows.append(dict(config=c["label"], settings_key=c["key"], run_id=c["run_id"], strategy=s,
+            rows.append(dict(config=c["label"], settings_key=c["key"], run_id=c["run_id"],
+                             venue=c["settings"]["venue"] or SS.DEFAULT_VENUE, strategy=s,
                              strategy_label=E.STRATEGY_LABEL[s], **{k: v for k, v in rc.items()}))
     rows.sort(key=lambda r: -(r["pnl"] or 0))
-    return dict(year=int(year), configurations=len(cfgs), strategies={k: E.STRATEGY_LABEL[k] for k in strategies},
+    return dict(year=int(year), venue=venue, configurations=len(cfgs), strategies={k: E.STRATEGY_LABEL[k] for k in strategies},
                 changed_settings={c["key"]: c["settings"].changed() for c in cfgs.values()},
                 rows=P.page(rows, limit=limit, offset=offset))
 
@@ -548,21 +611,23 @@ def _basic_viewer(viewer):
     return viewer if viewer and R.canonical(viewer.get("role")) == "basic" else None
 
 
-def track_record(conn, user, venue="polymarket", viewer=None):
+def track_record(conn, user, venue="polymarket", sport=None, viewer=None):
     """Every weekend of a user's paper record: strategy, trades or fills, positions, P&L. venue: polymarket, kalshi,
     private or all. 'all' lists one row per weekend AND venue (a `venue` column; the maker's weekends have a
     Polymarket and a Kalshi row) with `totals` per venue next to the grand total; `weekends` counts distinct weekends."""
+    from racinglines.pipelines import sport_paper as SP
     from racinglines.pipelines import story as S
     from racinglines.web import roles as R
     basic = _basic_viewer(viewer)
     uid = basic["id"] if basic else _user_id(conn, user)
     if basic:
         user = basic["username"]
-    tr = (lambda *a, **k: [R.basic_row(r) for r in S.track_record(*a, **k)]) if basic else S.track_record
+    full = lambda *a, **k: S.track_record(*a, sport=sport, sports=SP.enabled(), **k)      # noqa: E731
+    tr = (lambda *a, **k: [R.basic_row(r) for r in full(*a, **k)]) if basic else full
     if venue != "all":
         rows = tr(conn, uid, venue=venue)
         pnl = sum(r["pnl"] for r in rows)
-        return dict(user=user, venue=venue, weekends=len(rows), pnl=P.plain(pnl), up=sum(1 for r in rows if r["pnl"] > 0),
+        return dict(user=user, venue=venue, sport=sport, weekends=len(rows), pnl=P.plain(pnl), up=sum(1 for r in rows if r["pnl"] > 0),
                     rows=P.page([{k: v for k, v in r.items() if k != "date"} for r in rows], limit=P.MAX_LIMIT))
     rows, totals = [], []
     for v in TRACK_RECORD_VENUES:
@@ -574,7 +639,7 @@ def track_record(conn, user, venue="polymarket", viewer=None):
                                up=sum(1 for r in part if r["pnl"] > 0)))
     rows.sort(key=lambda r: (r["event_key"], TRACK_RECORD_VENUES.index(r["venue"])))
     pnl = sum(r["pnl"] for r in rows)
-    return dict(user=user, venue=venue, weekends=len({r["event_key"] for r in rows}), pnl=P.plain(pnl),
+    return dict(user=user, venue=venue, sport=sport, weekends=len({r["event_key"] for r in rows}), pnl=P.plain(pnl),
                 up=sum(1 for r in rows if r["pnl"] > 0), totals=totals, rows=P.page(rows, limit=P.MAX_LIMIT))
 
 
@@ -649,6 +714,12 @@ def data_changes(conn, sport=None, limit=None, offset=0):
 _SQL_FORBIDDEN = re.compile(r"\b(insert|update|delete|merge|drop|alter|create|truncate|grant|revoke|copy|vacuum|analyze|"
                             r"reindex|cluster|lock|listen|notify|set|reset|call|do|refresh|comment|security|pg_sleep|"
                             r"pg_read_file|pg_ls_dir|lo_import|lo_export|dblink)\b", re.I)
+# functions that run a query given as text (which hides a table name in a string), read server files or settings,
+# or reach other roles' secrets; and the catalogs holding role password hashes
+_SQL_FORBIDDEN_FN = re.compile(r"\b(query_to_xml\w*|cursor_to_xml\w*|table_to_xml\w*|schema_to_xml\w*|database_to_xml\w*|"
+                               r"ts_stat|ts_rewrite|set_config|pg_read_\w+|pg_stat_file|pg_ls_\w+|pg_file_\w+|lo_\w+|"
+                               r"dblink\w*|pg_terminate_backend|pg_cancel_backend|pg_reload_conf|pg_rotate_logfile|"
+                               r"pg_authid|pg_shadow|pg_user_mappings|pg_hba_file_rules)\b", re.I)
 
 
 def _strip_comments(sql):
@@ -656,8 +727,22 @@ def _strip_comments(sql):
     return re.sub(r"--[^\n]*", " ", sql)
 
 
+# one left-to-right pass, so a quote inside one kind of token never starts another: dollar-quoted, E'' (backslash
+# escapes), plain '' and "identifier"
+_SQL_TOKENS = re.compile(r"\$(\w*)\$.*?\$\1\$|(?<!\w)[eE]'(?:[^'\\]|\\.|'')*'|'(?:[^']|'')*'|\"(?:[^\"]|\"\")*\"", re.S)
+
+
+def _strip_literals(sql):
+    """The query with its string constants blanked ('..', E'..', $tag$..$tag$), so a word inside a value (a variant
+    named 'gridq+pretrain+reset') is not read as a keyword. Identifiers in double quotes are kept."""
+    return _SQL_TOKENS.sub(lambda m: m.group(0) if m.group(0).startswith('"') else "''", sql)
+
+
 def check_sql(query):
-    """The query text a client may run: one SELECT (or WITH ... SELECT), no writes, no hidden tables."""
+    """The query text a client may run: one SELECT (or WITH ... SELECT), no writes, no hidden tables.
+
+    A first filter only, with friendly errors: the real boundary is the database role the sql tool connects as
+    (RACINGLINES_MCP_SQL_URL, docs/mcp.md), which can read only the allowed tables."""
     q = _strip_comments(query or "").strip().rstrip(";").strip()
     if not q:
         raise ValueError("empty query")
@@ -665,7 +750,10 @@ def check_sql(query):
         raise ValueError("one statement only")
     if not re.match(r"(?is)^(select|with|table|values|explain)\b", q):
         raise ValueError("only SELECT (or WITH ... SELECT / EXPLAIN) queries")
-    if _SQL_FORBIDDEN.search(q):
+    if re.search(r"\bu&['\"]", q, re.I):
+        raise ValueError("Unicode-escaped names and strings (U&) are not accepted")
+    code = _strip_literals(q)
+    if _SQL_FORBIDDEN.search(code) or _SQL_FORBIDDEN_FN.search(code):
         raise ValueError("only read-only queries: no writes, DDL, settings, or server-side functions")
     for t in SQL_HIDDEN:
         if re.search(rf"\b{t}\b", q, re.I):
@@ -784,3 +872,68 @@ def cancel_job(engine, job_id):
         n = c.execute(text("""UPDATE jobs SET status = 'failed', finished_at = now(), progress = 'cancelled before it started'
                               WHERE id = :i AND status = 'queued'"""), dict(i=int(job_id))).rowcount
     return dict(job_id=int(job_id), cancelled=bool(n), note="" if n else "not queued (already running, done or failed)")
+
+
+# ---------------------------------------------------------------------------------------------------
+# sportsbook slips: map, price and settle a pasted book (racinglines/books/slips.py; nothing is stored)
+# ---------------------------------------------------------------------------------------------------
+
+def list_kinds(sport=None):
+    """Every market kind in the registry (markets/kinds.toml, markets/kinds.py) with the sports that model it: what a
+    book's `kind = ...` may name, and where price_book can expect a model price."""
+    from racinglines import sports as SPS
+    from racinglines.markets import kinds as K
+    from racinglines.pipelines import coverage as C
+    codes = SPS.SPORT_CODES
+    if sport and sport not in codes:
+        raise ValueError(f"no sport {sport!r}; one of {', '.join(codes)}")
+    rows = []
+    for code, k in K.KINDS.items():
+        modeled = [s for s in codes if C.modeled(s, code)]
+        if sport and sport not in modeled:
+            continue
+        rows.append(dict(kind=code, label=k.label, payoff=k.payoff, subject=k.subject, session=k.session,
+                         default=k.default, modeled_for=modeled))
+    return dict(sport=sport, kinds=len(rows), rows=P.page(rows, limit=P.MAX_LIMIT),
+                note="modeled_for: sports whose schema names a pricing model and lists the kind (coverage.modeled, the "
+                     "parity counter's rule); price_book reads a leg's model price from the stored run, so a kind outside "
+                     "this list prices only where a run stored it")
+
+
+def _book(text_):
+    from racinglines.books import slips as B
+    if not (text_ or "").strip():
+        raise ValueError("book: the book as TOML text (docs/sportsbook/slips.md)")
+    try:
+        return B.load_text(text_)
+    except Exception as ex:  # noqa: BLE001  (tomllib and the validator: a bad book is the caller's error)
+        raise ValueError(f"book: {ex}") from ex
+
+
+def _runs(conn, run_ids):
+    out = {}
+    for rid in run_ids or ():
+        r = data.model_run(conn, int(rid))
+        if r is None:
+            raise ValueError(f"no model run {rid}")
+        out[int(rid)] = r["competition"]
+    return out
+
+
+def map_book(conn, book):
+    """Each line and leg of a book matched to an exact race and athlete in the database, or unmapped with the reason."""
+    from racinglines.books import slips as B
+    return P.plain(B.map_book(conn, _book(book)), preview=False)
+
+
+def price_book(conn, book, run_ids=None):
+    """map_book plus, per leg and line: the book's own probability, the model's (a stored run), the linked prediction
+    market's, and EV against each. No blend of the two (an owner decision); both are shown."""
+    from racinglines.books import slips as B
+    return P.plain(B.price_book(conn, _book(book), runs=_runs(conn, run_ids)), preview=False)
+
+
+def settle_book(conn, book):
+    """map_book plus each leg's result and each line's result, payout and profit from the stored results."""
+    from racinglines.books import slips as B
+    return P.plain(B.settle_book(conn, _book(book)), preview=False)

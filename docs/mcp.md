@@ -132,6 +132,26 @@ In both modes the tools read as the owner (everything the admin sees) and can qu
 the Lab; per-role read scoping is a later change if makers get tokens. Tools that show paper trading take a
 `user` argument to pick an account.
 
+### The sql tool's database role
+
+The `sql` tool's text check (`check_sql` in `racinglines/mcp/tools.py`) is a first filter with friendly errors, not a
+boundary: the 2026-10-05 audit got past it to `users` with a Unicode-escaped name and a query held in a string, and the
+app's own database login is a superuser. The boundary is a login of its own, `racinglines_mcp_ro`: no superuser, read
+only, a 10 s statement timeout, and `SELECT` on every table except `users` and `orders` (tables a later migration adds
+are readable too). `RACINGLINES_MCP_SQL_URL` in `/etc/racinglines.env` points the `sql` tool at it; every other tool
+keeps the app's connection. Without the line, `sql` uses the app's login as before.
+
+```sh
+bash scripts/deploy/vm.sh backup mcp-sql-role                                     # first, from the Mac
+sudo bash -c 'cd /opt/racinglines && bash scripts/vm/mcp_sql_role.sh'             # on the VM: role, grants, env line, restart
+sudo bash -c 'cd /opt/racinglines && bash scripts/vm/mcp_sql_role.sh status'      # superuser=false, users/orders readable: false
+```
+
+Re-running it sets a new password and rewrites the line. `DB=racinglines_staging` grants staging's database instead
+(the role is shared by the Postgres container; staging runs no MCP unit today). Keep `RACINGLINES_MCP_ROLES` at
+`admin` until this has run on the VM. Undo: delete the `RACINGLINES_MCP_SQL_URL` line, restart `racinglines-mcp`,
+then `DROP OWNED BY racinglines_mcp_ro; DROP ROLE racinglines_mcp_ro;`.
+
 ### After every deploy
 
 `vm.sh deploy` restarts the unit only if it is running, after `update.sh` succeeds. The restart takes a few seconds:
@@ -171,16 +191,17 @@ exchange, venues, users and the next races. Then:
 | Tool | What it reads or does |
 |---|---|
 | `describe_schema(table)` | The tables with one-line meanings, or one table's columns (for `sql`). |
-| `list_events(sport, competition, season, status)`, `get_event(event_id \| source_key, include)` | Events and one event's races, classification, stored predictions and market matrix (`include=results,predictions,markets`). |
+| `list_events(sport, competition, season, status)`, `get_event(event_id \| source_key, include)` | Events (`sport` is any sport code the database holds: `overview()` lists them, from the `sports` and `competitions` tables) and one event's races, classification, stored predictions and market matrix (`include=results,predictions,markets`). |
 | `search_athletes(q)`, `get_athlete(athlete_id, include)` | Drivers and riders, their results and prediction history. |
-| `list_markets(race_id \| event_id \| competition, kinds)` | The venues matrix (`markets/venues.py`): one row per outcome with our fair value, each venue's quote (Polymarket, Kalshi with `RACINGLINES_KALSHI_VENUE=1`, the private book), the gap and, for a past race, the result and the exchange price at the time we priced. |
+| `list_markets(race_id \| event_id \| competition, kinds)` | The venues matrix (`markets/venues.py`): one row per outcome with our fair value, each venue's quote (Polymarket, Kalshi with `RACINGLINES_KALSHI_VENUE=1`, the private book), the gap and, for a past race, the result and the exchange price at the time we priced. `freshness` per exchange: links, the newest sync and `stale` with the reason when an upcoming event has no link on a live exchange or its newest sync is older than `RACINGLINES_STALE_HOURS` (default 3). |
 | `get_market_history(tokens \| race_id + kind/athlete_id/subject/exchange, series, start, end, resample)` | Exchange time series from the archive and the database (`markets/store.py`): prices (last per bucket), trades (count, volume, VWAP per bucket) or books (best bid/ask), at most 200 points per token. |
 | `list_model_runs(kind, ...)`, `get_model_run(run_id, path)`, `get_predictions(run_id, target, top, standings)` | Runs of every kind, one run's params and metrics (large metrics as a key map; `path='metrics.weekends'` for a part), per-athlete probabilities. |
 | `get_forecast(competition, category)` | The live forecast (the run the web app shows): the next races' top probabilities and the championship. |
-| `edge_finder(year, strategy)`, `list_candidates()` | The Lab's Edge Finder from saved sweeps: every configuration's full-season recap per strategy; the saved candidates. |
+| `edge_finder(year, strategy, venue)`, `list_candidates()` | The Lab's Edge Finder from saved sweeps: every configuration's full-season recap per strategy (`venue`: the exchange the sweep traded, a column on every row); the saved candidates. |
 | `list_diagnostics()`, `get_diagnostic(run_id)` | As-of diagnostic runs; one run's prices vs Polymarket at the cutoff, edges, scores and result. |
-| `track_record(user, venue)`, `list_positions(user, venue, event_key)`, `list_signals(user, event_key, status)` | Paper trading per account: the weekend record (Polymarket, Kalshi replay, private book; `venue='all'` lists one row per weekend and venue with a `venue` column and `totals` per venue), positions, signals. |
+| `track_record(user, venue, sport)`, `list_positions(user, venue, event_key)`, `list_signals(user, event_key, status)` | Paper trading per account: the weekend record (Polymarket, Kalshi replay, private book; `venue='all'` lists one row per weekend and venue with a `venue` column and `totals` per venue; `sport` keeps one sport's weekends, NASCAR and MotoGP paper rows included where `RACINGLINES_SPORT_PAPER` is on), positions, signals. |
 | `list_live_events()`, `data_changes()` | Settled live private-book events and the run folders present; the data change log. |
+| `list_kinds(sport)`, `map_book(book)`, `price_book(book, run_ids)`, `settle_book(book)` | Sportsbook slips ([sportsbook/slips.md](sportsbook/slips.md)): every market kind with the sports that model it; then a generic sportsbook's book, passed as TOML text, mapped to exact races and athletes, priced (the book's, the model's and the linked prediction market's probability, EV against each, never blended) or settled from the stored results. Nothing is stored. |
 | `sql(query, limit, offset)` | Any `SELECT` (or `WITH ... SELECT`, `EXPLAIN`), in a `READ ONLY` transaction with a 10 s timeout, paged. The `users` and `orders` tables are not readable. |
 
 **Scenarios** (the only tools that write anything, and only what the Lab's Run form writes):

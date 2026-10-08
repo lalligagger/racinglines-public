@@ -302,3 +302,48 @@ def test_same_race_legs_from_a_stored_combo_run(test_engine, db, book):
     finally:
         with test_engine.begin() as c:
             c.execute(text("DELETE FROM model_runs WHERE id = :i"), dict(i=rid))
+
+
+def test_mcp_tools_price_the_same_book(test_engine, db):
+    """The MCP tools (racinglines/mcp/tools.py) take the book as TOML text and return what the module returns."""
+    from racinglines.mcp import tools as T
+    with test_engine.connect() as c:
+        B.readonly(c)
+        mapped = T.map_book(c, BOOK)
+        priced = T.price_book(c, BOOK)
+        pinned = T.price_book(c, BOOK, run_ids=[db["f1_run"]])
+        settled = T.settle_book(c, BOOK)
+        c.rollback()
+    assert mapped["unmapped"] == ["ghost", "rf"]
+    win = _line(priced, "win")
+    assert win["ev_model"] == pytest.approx(0.40 * 3 - 1) and win["ev_market"] == pytest.approx(0.32 * 3 - 1)
+    assert _line(pinned, "win")["legs"][0]["run_id"] == db["f1_run"]
+    assert set(_line(priced, "win")) >= set(B.LINE_FIELDS) and set(win["legs"][0]) >= set(B.LEG_FIELDS)
+    assert {r["result"] for r in settled["lines"]} - {None} <= {"won", "lost", "void", "manual", "pending"}
+    json.dumps(priced)                                        # one line of JSON for the client
+
+
+def test_mcp_book_tools_refuse_bad_input(test_engine, db):
+    from racinglines.mcp import tools as T
+    with test_engine.connect() as c:
+        with pytest.raises(ValueError, match="book"):
+            T.map_book(c, "")
+        with pytest.raises(ValueError, match="book"):
+            T.map_book(c, "[book\nnot toml")
+        with pytest.raises(ValueError, match="no model run 987654321"):
+            T.price_book(c, BOOK, run_ids=[987654321])
+
+
+def test_mcp_list_kinds_names_the_sports_that_price_each():
+    from racinglines.markets import kinds as K
+    from racinglines.mcp import tools as T
+    out = T.list_kinds()
+    rows = out["rows"]["rows"]
+    assert out["kinds"] == len(K.KINDS) == len(rows)
+    by = {r["kind"]: r for r in rows}
+    assert any("f1" in r["modeled_for"] for r in rows)
+    f1 = T.list_kinds(sport="f1")
+    assert f1["kinds"] == sum("f1" in r["modeled_for"] for r in rows) and all("f1" in r["modeled_for"] for r in f1["rows"]["rows"])
+    assert set(by) == set(K.KINDS)
+    with pytest.raises(ValueError, match="no sport 'curling'"):
+        T.list_kinds(sport="curling")
