@@ -306,7 +306,7 @@ if ENV_LABEL:
         return response
 # Maintenance popup on the sign-in page and every app page, dismissed with "ok" once per browser session
 # (_site_notice.html). Set to "" to turn it off.
-MAINTENANCE_NOTICE = "We are working on things! You may experience downtime or dead links until we finish."
+MAINTENANCE_NOTICE = ""      # off since the landing rebuild (owner, 2026-10-08: "drop the modal"); text here turns it back on
 templates.env.globals["maintenance_notice"] = lambda: MAINTENANCE_NOTICE   # read at render time
 templates.env.globals["signup_on"] = lambda: signup_on()                    # RACINGLINES_SIGNUP=1: beta sign-up
 templates.env.globals["is_demo"] = lambda u: _demo.is_demo(u)
@@ -994,7 +994,7 @@ def place_bet(request: Request, market_id: int, side: str = Form(...), stake: fl
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request, next: str = "/", error: str = ""):
-    return templates.TemplateResponse(request, "login.html", dict(next=next, error=error))
+    return templates.TemplateResponse(request, "login.html", dict(next=next, error=error, support=SUPPORT_EMAIL))
 
 
 def _safe_next(nxt):
@@ -1016,7 +1016,7 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
     if user is None:
         _record_failure(ip)
         U.log(get_engine(), None, "login_failed", request, username=username)
-        return RedirectResponse(f"/login?next={quote(_safe_next(next), safe='/')}&error=1", status_code=303)
+        return RedirectResponse(f"/login?next={quote(_safe_next(next), safe='/')}&error=1#account", status_code=303)
     target = _safe_next(next) if next != "/" else "/markets"
     return _start_session(request, user, target)
 
@@ -1209,12 +1209,12 @@ def _signup_page(request, form=None, error="", status_code=200):
                                       pw_min=ACC.PASSWORD_MIN), status_code=status_code)
 
 
-SUPPORT_EMAIL = "hello@racinglines.bet"      # password resets are requested here; we store no user emails
+SUPPORT_EMAIL = "hello@racinglines.bet"      # password resets and business enquiries (the landing page) come here
 
 
 @app.get("/forgot", response_class=HTMLResponse)
 def forgot_password(request: Request):
-    """Forgot your password: we hold no email address, so the page writes a reset request to SUPPORT_EMAIL for the
+    """Forgot your password: no reset email is sent (older accounts have no email), so the page writes a reset request to SUPPORT_EMAIL for the
     person to send; an admin resets it at /admin/users and replies with a one-time password."""
     if not signup_on():
         raise HTTPException(404)
@@ -1230,7 +1230,7 @@ def signup_page(request: Request):
 
 @app.post("/signup", response_class=HTMLResponse)
 def signup(request: Request, username: str = Form(""), password: str = Form(""), confirm: str = Form(""),
-           adult: str = Form(""), website: str = Form("")):
+           email: str = Form(""), adult: str = Form(""), website: str = Form("")):
     from racinglines.web import accounts as ACC
     if not signup_on():
         raise HTTPException(404)
@@ -1246,15 +1246,16 @@ def signup(request: Request, username: str = Form(""), password: str = Form(""),
         return _signup_page(request, status_code=503)
     username = username.strip().lower()
     tier = SIGNUP_ROLE
-    form = dict(username=username[:30])
+    email = email.strip().lower()
+    form = dict(username=username[:30], email=email[:254])
     with get_engine().begin() as c:
         error = (ACC.check_username(c, username) or ACC.check_password(password, confirm, username)
-                 or ("Please confirm you're 18 or older." if not adult else ""))
+                 or ACC.check_email(c, email) or ("Please confirm you're 18 or older." if not adult else ""))
         if error:
             return _signup_page(request, form, error, status_code=400)
-        uid = c.execute(text("""INSERT INTO users (username, display_name, role, password_hash, active)
-                                VALUES (:u, :u, :r, :h, true) RETURNING id"""),
-                        dict(u=username, r=tier, h=U.hash_password(password))).scalar()
+        uid = c.execute(text("""INSERT INTO users (username, display_name, role, password_hash, active, prefs)
+                                VALUES (:u, :u, :r, :h, true, jsonb_build_object('email', CAST(:e AS text))) RETURNING id"""),
+                        dict(u=username, r=tier, h=U.hash_password(password), e=email)).scalar()
         ACC.grant(c, uid)
     # One taker strategy per new account, round-robin over PF.TAKER_TOP by user id, so the paper records cover every
     # strategy evenly and each account's record maps to exactly one (strategy diversity, owner 2026-10-06; replaces
