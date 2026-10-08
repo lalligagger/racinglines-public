@@ -26,7 +26,8 @@ def _countdown(d):
 
 def _top(df, kind, n=3):
     g = df[df["kind"] == kind] if len(df) else df
-    return g.head(n).to_dict("records") if len(g) else []
+    # a mixed column (an unpriced outcome among priced ones) holds NaN, which the templates would print as "nan%"
+    return [{k: (None if isinstance(v, float) and v != v else v) for k, v in r.items()} for r in g.head(n).to_dict("records")]
 
 
 def _mine(df):

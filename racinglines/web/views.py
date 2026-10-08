@@ -113,10 +113,10 @@ def _sport_names():
 def board_page(request: Request, msg: str = "", c=Depends(conn)):
     """Markets. Makers and admins: every sport's board (fair prices vs the venues), each in a collapsible
     section with its own exchange breakdown, and a calendar of every event across every sport, filterable by
-    sport and exchange. Takers: every open Polymarket market with their strategy's calls (app.bet_markets)."""
+    sport and exchange. Takers: every open Polymarket market with their strategy's calls (book_routes.bet_markets)."""
     user = request.state.user
     if R.is_basic(user):
-        from racinglines.web.app import bet_markets
+        from racinglines.web.book_routes import bet_markets
         return bet_markets(request, msg=msg, c=c)
     from racinglines.markets import disagree as D
     calendar = V.calendar_rows(c)
@@ -413,7 +413,7 @@ def _model_brier(c):
 
 @app.get("/lab", response_class=HTMLResponse)
 def lab_page(request: Request, job: str = "", event: str = "", variant: str = "", candidate: int = 0, cfg: str = "",
-             msg: str = "", user=allow(*PRO), c=Depends(conn)):
+             sport: str = "", venue: str = "", msg: str = "", user=allow(*PRO), c=Depends(conn)):
     """The Edge Finder leads (saved runs only, nothing is simulated on a visit); the other sections
     load on demand (/lab/section/{key}). Edge Finder combos and job knobs come from the user's prefs
     (database); which sections are open is a browser view setting."""
@@ -421,14 +421,15 @@ def lab_page(request: Request, job: str = "", event: str = "", variant: str = ""
 
     active = any(j["status"] in ("queued", "running") for j in _recent_jobs(c, user["id"]))
     open_now = (["run"] if job or event or variant or candidate or cfg else []) + (["jobs"] if active or msg else [])
-    q = {k: v for k, v in dict(job=job, event=event, variant=variant, candidate=candidate or "", cfg=cfg).items() if v}
+    q = {k: v for k, v in dict(job=job, event=event, variant=variant, candidate=candidate or "", cfg=cfg, sport=sport,
+                               venue=venue).items() if v}
     return render(request, "lab.html", sections=LAB_SECTIONS, open_now=open_now, query="?" + urlencode(q) if q else "",
                   active=active, msg=msg, brier=_model_brier(c), **_edge_ctx(c, user))
 
 
 @app.get("/lab/section/{key}", response_class=HTMLResponse)
 def lab_section(request: Request, key: str, job: str = "", event: str = "", variant: str = "", scope: str = "",
-                candidate: int = 0, cfg: str = "", user=allow(*PRO), c=Depends(conn)):
+                candidate: int = 0, cfg: str = "", sport: str = "", venue: str = "", user=allow(*PRO), c=Depends(conn)):
     from racinglines.web import edge
     from racinglines.web import prefs as P
     if key not in dict(LAB_SECTIONS):
@@ -455,11 +456,20 @@ def lab_section(request: Request, key: str, job: str = "", event: str = "", vari
             start, source = cf["settings"].to_json(), f"run #{cf['run_id']}"
         elif variant:
             start, source = {"variant": variant}, variant
-        ctx.update(sports=[(SP.load(sport)["competition"]["code"],
-                            V.SPORT_NAME.get(SP.load(sport)["competition"]["code"], SP.load(sport)["sport"]["name"]),
-                            [j for j in jobs.CATALOG.values() if j.sport == sport])
-                           for sport in dict.fromkeys(j.sport for j in jobs.CATALOG.values())],    # every sport with a job
-                   sel_job=job or ("f1_sweep" if variant or candidate or cfg else ""), events=evs, sel_event=sel_event,
+        sel_job = job if job in jobs.CATALOG else ("f1_sweep" if variant or candidate or cfg else "")
+        # a launcher link (?job=…&sport=…&venue=…) presets the chosen job's sport and exchange knobs
+        preset = {k: v for k, v in dict(sport=sport, venue=venue).items()
+                  if v and any(kn.name == k and v in kn.choices for kn in jobs.CATALOG[sel_job].knobs)} if sel_job else {}
+        if preset:
+            knobs[sel_job] = dict(knobs.get(sel_job, {}), **preset)
+        if sel_job == "f1_sweep" and venue in SS.VENUES:
+            start, source = dict(start, venue=venue), source or venue
+        ctx.update(sports=[(code, name, jts) for code, name, jts in
+                           [(jobs.ANY_SPORT, "Any sport", [j for j in jobs.CATALOG.values() if j.sport == jobs.ANY_SPORT])]
+                           + [(code, jobs.sport_name(code), [j for j in jobs.CATALOG.values() if j.sport == code])
+                              for code in jobs.modeled_sports()] if jts],
+                   launch=jobs.launcher(), venue_name=jobs.venue_name,
+                   sel_job=sel_job, events=evs, sel_event=sel_event,
                    sel_cutoff=sel["default_cutoff"] if sel else "", knobs=knobs, candidates=cands,
                    sweep_start=SS.Settings.from_dict(start, strict=False).to_json(), sweep_source=source,
                    sweep_groups=[(g, lab, [x for x in SS.SETTINGS if x.group == g]) for g, lab in SS.GROUPS],
@@ -717,7 +727,7 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     summary = dict(bets=len(my_bets), staked=float(my_bets["stake"].sum()), open=int((my_bets["status"] == "open").sum()),
                    pnl=float(my_bets["pnl"].sum())) if len(my_bets) else None
     from racinglines.pipelines import story
-    from racinglines.web.app import polymarket_calls
+    from racinglines.web.book_routes import polymarket_calls
     # the two venues are never plotted together: the Polymarket history (the strategy's record) and the
     # private book's P&L through its day(s), from the live snapshots; the page switches between them
     acct = story.account(c, user["id"], profile, maker, markers=False, sport=sport or None, sports=sp) \
