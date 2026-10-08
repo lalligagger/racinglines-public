@@ -37,7 +37,10 @@ fi
 
 # Get UTC day of week (0=Sunday, 1=Monday, ..., 4=Thursday); RACE_WEEKEND_NOW (epoch seconds) overrides now, for tests
 NOW_UTC=${RACE_WEEKEND_NOW:-$(date -u +%s)}
-DOW=$(date -u -d @"$NOW_UTC" +%w)  # 0=Sun, 1=Mon, ..., 4=Thu, ..., 6=Sat
+# An epoch second formatted in UTC: GNU date (the VM) takes -d @SECONDS, BSD date (macOS, where the tests also run)
+# takes -r SECONDS; GNU first, so the VM's path is unchanged
+utc() { date -u -d @"$1" "$2" 2>/dev/null || date -u -r "$1" "$2"; }
+DOW=$(utc "$NOW_UTC" +%w)  # 0=Sun, 1=Mon, ..., 4=Thu, ..., 6=Sat
 
 # Race weekend = Thursday (4) through Sunday (0), inclusive
 # In UTC terms: Thu=4, Fri=5, Sat=6, Sun=0
@@ -49,8 +52,8 @@ fi
 # Query: is there an active event for this sport in the next 7 days?
 # (backup check: if DB query fails, assume not a race weekend)
 if [ "$RACE_WEEKEND" -eq 1 ]; then
-  FROM=$(date -u -d @"$((NOW_UTC - 3 * 86400))" +%Y-%m-%d)
-  WEEK_LATER=$(date -u -d @"$((NOW_UTC + 604800))" +%Y-%m-%d)
+  FROM=$(utc "$((NOW_UTC - 3 * 86400))" +%Y-%m-%d)
+  WEEK_LATER=$(utc "$((NOW_UTC + 604800))" +%Y-%m-%d)
 
   QUERY="SELECT COUNT(*) FROM events e
          JOIN seasons s ON e.season_id = s.id

@@ -25,6 +25,7 @@ SWITCHES = {
     "rookie": dict(ROOKIE_CARRY=0.25),             # F1-2: a finished rookie season's teammate gaps count a quarter
     "fastlap": dict(FASTEST_LAP=True),             # adds the fastest lap (fl_prob); every other price unchanged
     "flpos": dict(FASTEST_LAP=True, FL_FROM="position"),   # the fastest lap from the simulated finishing order
+    "practicefast": dict(PRACTICE_FASTEST=True),   # adds each practice session's fastest lap; every other price unchanged
 }
 DESCRIPTION = {
     "baseline": "current model (shared car, practice prior, ridge finishing model)",
@@ -39,6 +40,9 @@ DESCRIPTION = {
                "the other prices are unchanged",
     "flpos": "also draws who sets the race's fastest lap from the simulated finishing order, with per-position "
              "weights from 2022-26 races (sports/f1/fastest_lap.toml); the other prices are unchanged",
+    "practicefast": "also draws each practice session's order of best laps (qualifying pace plus practice noise; the "
+                    "real order once the session has run), for the practice-fastest markets; the other prices are "
+                    "unchanged",
 }
 
 

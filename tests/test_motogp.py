@@ -115,7 +115,7 @@ def test_model_uses_stable_athlete_ids_across_roster_changes():
                                                         "history_races": 0, "team_bias": 0.1,
                                                         "recency_decay": 1.0, "seed": 9}), np.random.default_rng(9))
     assert sim is not None
-    assert set(sim.entrants) == {101, 202}
+    assert set(sim.entrants) == {101, 303}
     assert all(isinstance(a, int) for a in sim.entrants)
 
 

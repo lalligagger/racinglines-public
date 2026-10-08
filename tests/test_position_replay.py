@@ -224,15 +224,18 @@ def test_a_nascar_season_replays_on_kalshi_and_saves_and_undoes(world, test_engi
             P.write(out, tmp_path / "out")
             assert (tmp_path / "out" / "summary.json").is_file()
             runs = s.execute(text("SELECT id FROM model_runs WHERE params->>'replay_batch' = 'replay-test'")).scalars().all()
-            assert len(runs) == len(rs)                                           # one as-of run per race, traded or not
+            assert len(runs) == len(rs) - 1                  # one as-of run per race with history, traded or not
+            keys = s.execute(text("SELECT params->>'event_key' FROM model_runs WHERE id = ANY(:i)"), dict(i=runs)).scalars().all()
+            assert rs["event_key"].iloc[0] not in keys and set(keys) == set(rs["event_key"].iloc[1:])   # the first race:
+            # no results before it, so the model (GlobalModel) gives no price and nothing is saved
             n_pred = s.execute(text("SELECT count(*) FROM race_predictions WHERE model_run_id = ANY(:i)"), dict(i=runs)).scalar()
-            assert n_pred == sum(len(P.race_results(s.connection(), rid)) for rid in rs["race_id"])
+            assert n_pred == sum(len(P.race_results(s.connection(), rid)) for rid in rs["race_id"].iloc[1:])
             assert (tmp_path / str(runs[-1]) / "predictions.parquet").is_file()
             again = P.run(test_engine, "nascar", [2026], venue="kalshi", echo=lambda *a: None)
             assert again["totals"] == out["totals"]                               # reproducible from its settings
             one = P.run(test_engine, "nascar", [2026], venue="kalshi", events=["latest"], echo=lambda *a: None)
             assert list(one["races"]["event_key"]) == [race.event_key]            # the spot check: the last race only
-            assert P.undo(s, "replay-test") == len(rs)
+            assert P.undo(s, "replay-test") == len(runs)                          # the runs saved (races with history)
             s.commit()
             assert not s.execute(select(m.ModelRun.id).where(m.ModelRun.id.in_(runs))).all()
         finally:

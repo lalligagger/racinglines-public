@@ -17,9 +17,19 @@
 # racinglines-live-* unit is active. Undo: `racinglines <sport> demo-history --reset --users maker,taker --backup FILE`.
 # Touches no trading flag, no migration, no bucket, and never the F1 demo history.
 set -eEuo pipefail
-set -a; . /etc/racinglines.env; set +a
+# TARGET=staging runs the same steps against staging (owner, 2026-10-07: parity rebuild on staging first): its env file,
+# checkout and database, and staging's live units. The database container is production's, so DC (docker compose)
+# always runs from /opt/racinglines. TARGET=prod, the default, is unchanged.
+TARGET=${TARGET:-prod}
+case "$TARGET" in
+  prod)    ENV_FILE=/etc/racinglines.env;         APP=/opt/racinglines;         DB=racinglines;         LIVE_GLOB='racinglines-live-*' ;;
+  staging) ENV_FILE=/etc/racinglines-staging.env; APP=/opt/racinglines-staging; DB=racinglines_staging; LIVE_GLOB='racinglines-staging-live-*' ;;
+  *) echo "TARGET must be prod or staging, not $TARGET"; exit 2 ;;
+esac
+DC() { (cd /opt/racinglines && docker compose "$@"); }
+set -a; . "$ENV_FILE"; set +a
 export PYTHONUNBUFFERED=1 RACINGLINES_SPORT_PAPER=1
-cd /opt/racinglines
+cd "$APP"
 USERS=${USERS:-maker,taker}
 STEPS=${STEPS:-kalshi polymarket forecast}   # vm.sh demo extra: STEPS="polymarket forecast"
 BOOK=${BOOK:-best}   # best effort (owner 2026-09-30: paper P&L for as many sports as possible); kinds = the strict rule
@@ -33,11 +43,11 @@ rm -f "$DONE" "$FAILED"
 exec > >(tee -a "$LOG") 2>&1
 trap 'echo "DEMO-SETUP FAILED at line $LINENO (log $LOG)"; date -u > "$FAILED"' ERR
 R=.venv/bin/racinglines
-if systemctl list-units --no-legend --plain --state=active,activating 'racinglines-live-*' | grep -q .; then
+if systemctl list-units --no-legend --plain --state=active,activating "$LIVE_GLOB" | grep -q .; then
   echo "not starting: a live-event unit is active"; date -u > "$FAILED"; exit 1
 fi
-B=data/backups/db/racinglines-before-demo-setup-$UTC.sql.gz
-docker compose exec -T db pg_dump --no-owner --no-privileges -U racinglines racinglines | gzip -6 > "$B"
+B=data/backups/db/$DB-before-demo-setup-$UTC.sql.gz
+DC exec -T db pg_dump --no-owner --no-privileges -U racinglines "$DB" | gzip -6 > "$B"
 gunzip -c "$B" | tail -n 5 | grep -q 'PostgreSQL database dump complete'
 echo "backup $B ($(du -h "$B" | cut -f1))"
 has() { case " $STEPS " in *" $1 "*) return 0 ;; esac; return 1; }

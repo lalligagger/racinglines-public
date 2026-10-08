@@ -514,11 +514,12 @@ def test_sprint_markets_classify_with_the_flag(monkeypatch):
     assert c("Dutch Grand Prix Sprint Qualifying: Pole Position", "Will Oscar Piastri set the fastest valid qualifying lap time "
              "in the Sprint Qualifying session (SQ3) for the 2026 Dutch Grand Prix?") == ("race_sprint_pole", "Dutch Grand Prix")
     assert c("Qatar Grand Prix Sprint Race Winner?") == ("race_sprint_win", "Qatar Grand Prix")        # 2025's title
-    # the other sprint series stay unmodeled: no sprint fastest lap / top 5 / top 10 / top constructor model
+    # the sprint's top 5, top 10 and top constructor take the sprint kinds (C10); its fastest lap stays unmodeled: no
+    # model draws it
     assert c("Dutch Grand Prix Sprint Race: Fastest Lap", "Will Oscar Piastri record the fastest lap in the Sprint Race at the 2026 Dutch Grand Prix?")[0] == "unmodeled"
-    assert c("Dutch Grand Prix Sprint Race: Top 5 Finishers", "Will Oscar Piastri finish top 5 in the Sprint Race at the 2026 Dutch Grand Prix?")[0] == "unmodeled"
-    assert c("Dutch Grand Prix Sprint Race: Top 10 Finishers")[0] == "unmodeled"
-    assert c("Dutch Grand Prix Sprint Race: Top Constructor", "Will McLaren finish in first in the Sprint Race at the 2026 Dutch Grand Prix?")[0] == "unmodeled"
+    assert c("Dutch Grand Prix Sprint Race: Top 5 Finishers", "Will Oscar Piastri finish top 5 in the Sprint Race at the 2026 Dutch Grand Prix?")[0] == "race_sprint_top5"
+    assert c("Dutch Grand Prix Sprint Race: Top 10 Finishers")[0] == "race_sprint_top10"
+    assert c("Dutch Grand Prix Sprint Race: Top Constructor", "Will McLaren finish in first in the Sprint Race at the 2026 Dutch Grand Prix?")[0] == "race_sprint_constructor_top"
     # the main race is untouched by the flag
     assert c("Dutch Grand Prix Winner", "Will Oscar Piastri finish in first in the main race at the 2026 Dutch Grand Prix?")[0] == "race_win"
     assert c("Dutch Grand Prix Qualifying Session (Q3): Pole Position")[0] == "race_pole"
@@ -541,8 +542,8 @@ def test_sprint_markets_classify_with_the_flag(monkeypatch):
     kinds = {t.split("-")[0]: r["prediction"] for t, r in rows.items() if t.endswith("-PIA")}
     assert kinds == {"KXF1RACE": "race_win", "KXF1RACEPODIUM": "race_podium", "KXF1TOP10": "race_top10", "KXF1POLE": "race_pole",
                      "KXF1FASTLAP": "race_fastest_lap", "KXF1RACESPRINT": "race_sprint_win", "KXF1SPRINTPOLE": "race_sprint_pole",
-                     "KXF1TOP5": "unmodeled", "KXF1BIGGESTMOVER": "unmodeled", "KXF1SPRINTFASTLAP": "unmodeled",
-                     "KXF1SPRINTTOP5": "unmodeled", "KXF1SPRINTTOP10": "unmodeled"}
+                     "KXF1TOP5": "race_top5", "KXF1BIGGESTMOVER": "race_biggest_mover", "KXF1SPRINTFASTLAP": "unmodeled",
+                     "KXF1SPRINTTOP5": "race_sprint_top5", "KXF1SPRINTTOP10": "race_sprint_top10"}   # by series (C10)
 
 
 def test_sprint_markets_sync_with_a_model_price(test_engine, monkeypatch):
@@ -606,14 +607,14 @@ def test_sprint_markets_sync_with_a_model_price(test_engine, monkeypatch):
     monkeypatch.setenv(KS.SPRINT_FLAG, "1")
     with test_engine.connect() as c, get_session(url) as s:
         st = KS.sync(s, c, 2026, kc=Kc())
-        assert (st["links"], st["modeled"], st["new"]) == (88, 3, 0)    # the same rows, re-classified in place
+        assert (st["links"], st["modeled"], st["new"]) == (88, 4, 0)    # the same rows, re-classified in place (C10: + sprint top 5)
         after = links(c)
         assert after["KXF1RACESPRINT-DUTGP26-PIA"]["prediction"] == "race_sprint_win"
         assert after["KXF1SPRINTPOLE-DUTGP26-PIA"]["prediction"] == "race_sprint_pole"
-        assert after["KXF1SPRINTTOP5-DUTGP26-PIA"]["prediction"] == "unmodeled"
+        assert after["KXF1SPRINTTOP5-DUTGP26-PIA"]["prediction"] == "race_sprint_top5"
         assert model_prob(c, dict(after["KXF1RACESPRINT-DUTGP26-PIA"]))[0] == pytest.approx(0.31)    # the race win, until a sprint sim
         assert model_prob(c, dict(after["KXF1SPRINTPOLE-DUTGP26-PIA"]))[0] == pytest.approx(0.27)    # the pole probability
-        assert model_prob(c, dict(after["KXF1SPRINTTOP5-DUTGP26-PIA"])) == (None, None)
+        assert model_prob(c, dict(after["KXF1SPRINTTOP5-DUTGP26-PIA"]))[0] is None              # no stored column prices it
         # a run that simulates the sprint prices them from its own sprint probabilities
         s.execute(text("""UPDATE race_predictions SET extra = extra || '{"sprint_win_prob": 0.4, "sprint_pole_prob": 0.35}'::jsonb"""))
         s.commit()
@@ -749,6 +750,13 @@ def test_tape_only_sync_records_under_its_own_competition(test_engine, monkeypat
         # the sport's whole tape without naming events: trades on every market, books on the open ones
         assert KS.fetch_trades(s, c, kc=kc, sport="nascar") == 2
         assert KS.fetch_trades(s, c, kc=kc, sport="nascar") == 2                                 # deduplicated
+        # the recorder's pass: open markets only, from a time on (scripts/vm/record_venues.sh)
+        n = len(log)
+        KS.fetch_trades(s, c, kc=kc, sport="nascar", open_only=True, since=datetime(2026, 1, 1, tzinfo=timezone.utc))
+        asked = [q for _, path, q in log[n:] if path == "/markets/trades"]
+        assert sorted(q["ticker"] for q in asked) == ["KXNASCAR-26-KLAR", "KXNASCARRACE-26NOV08-KLAR",
+                                                      "KXNASCARRACE-26NOV08-WBYR"]          # not the settled NOV01
+        assert all(q.get("min_ts") for q in asked)
         assert KS.snapshot_books(s, c, kc=kc, sport="nascar") == 3                               # not the settled one
         t0, t1 = datetime(2026, 11, 5, tzinfo=timezone.utc), datetime(2026, 11, 6, tzinfo=timezone.utc)
         assert KS.fetch_history(s, c, ["KXMOTOGPRACE-26QAT"], t0, t1, 60, kc=kc) == 2

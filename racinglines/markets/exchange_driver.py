@@ -366,6 +366,7 @@ def sync(session, conn, code, sport="f1", year=2026, client=None, resolver=None)
     who = identity.linker(sport, conn) if not modeled else None
     if who:                                                          # a tape-only sport with a resolver: driver, race, kind
         who.fill(rows)
+        identity.promote(sport, rows)            # prediction = params.kind where [markets] kinds files it, identified
     now = datetime.now(timezone.utc)
     stats = dict(events=len(events), links=0, modeled=0, unmatched=0, new=0, closed=0)
     if who:
@@ -543,13 +544,14 @@ def trade_rows(schema, token, event, trades):
     return rows
 
 
-def fetch_trades(session, conn, code, sport=None, events=None, since=None, client=None):
-    """Store every trade the exchange still serves for the markets. Idempotent. Returns trades stored."""
+def fetch_trades(session, conn, code, sport=None, events=None, since=None, client=None, open_only=False):
+    """Store every trade the exchange still serves for the markets (open_only: markets not closed). Idempotent.
+    Returns trades stored."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
     client = client or Client(code)
     since = since or pd.Timestamp("2000-01-01", tz="UTC")           # clipped to the schema's window
     n = 0
-    for tok, ev in links_of(conn, code, sport, events):
+    for tok, ev in links_of(conn, code, sport, events, open_only=open_only):
         rows = trade_rows(client.schema, tok, ev, client.window("trades", tok, since))
         for i in range(0, len(rows), 1000):
             session.execute(pg_insert(m.MarketTrade).values(rows[i:i + 1000]).on_conflict_do_nothing(constraint="uq_market_trade"))
