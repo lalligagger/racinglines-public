@@ -166,3 +166,37 @@ def test_default_books_take_modeled_and_race_linked_f1_markets(test_engine, monk
     # a race-linked F1 market whose kind isn't modeled yet is booked; an unmodeled season market and another sport's
     # market are not
     assert {t for t in asked if t.startswith("bk-")} == {"bk-modeled-season", "bk-unmodeled-race"}
+
+
+@pytest.mark.quick
+def test_history_pulls_in_short_windows_and_says_refusals(monkeypatch, capsys):
+    """A 37-day /prices-history request stored nothing in the 2026-10-08 backfill: the span is cut into HISTORY_WINDOW
+    pieces, and a refused piece is printed instead of counted as a silent 0."""
+    from datetime import datetime, timezone
+    asked, real = [], httpx.Client
+
+    def handler(req):
+        q = {k: int(v) for k, v in req.url.params.items() if k in ("startTs", "endTs")}
+        asked.append((q["startTs"], q["endTs"]))
+        if q["endTs"] - q["startTs"] > PS.HISTORY_WINDOW.total_seconds():
+            return httpx.Response(400, json={"error": "interval too long"})
+        if len(asked) == 2:
+            return httpx.Response(500, text="flaky")
+        return httpx.Response(200, json={"history": [{"t": q["startTs"], "p": 0.5}]})
+    monkeypatch.setattr(PS.httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    monkeypatch.setattr(PS.http, "get", lambda c, path, params: c.get(path, params=params))
+
+    class Session:
+        def __init__(self):
+            self.rows = 0
+        def execute(self, stmt):
+            self.rows += 1
+        def commit(self):
+            pass
+    s = Session()
+    start, end = datetime(2026, 9, 1, tzinfo=timezone.utc), datetime(2026, 10, 8, 7, 37, tzinfo=timezone.utc)
+    n = PS.fetch_history(s, None, None, start, end, tokens=["tok"])
+    assert all(b - a <= PS.HISTORY_WINDOW.total_seconds() for a, b in asked)
+    assert asked[0][0] == int(start.timestamp()) and asked[-1][1] == int(end.timestamp())
+    assert len(asked) == 6 and n == 5                          # 37 days in 7-day pieces; the 500 piece is skipped
+    assert "HTTP 500" in capsys.readouterr().err

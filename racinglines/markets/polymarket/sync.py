@@ -62,8 +62,9 @@ the sport is named, and the sync is additive: it upserts by token id and never d
 
 import json
 import re
+import sys
 import unicodedata
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from sqlalchemy import select, text
@@ -76,6 +77,7 @@ from racinglines.markets.kalshi.sync import gp_name
 from racinglines.sources import http
 
 GAMMA = "https://gamma-api.polymarket.com"
+HISTORY_WINDOW = timedelta(days=7)    # /prices-history span per request (the weekend windows that always worked)
 MATCH_DAYS = 10     # a race market's end date must be within this many days of the race
 TAGS = ("f1", "formula1")
 REREAD_MAX = 40     # events re-read by slug per pass when the active listing stopped returning them
@@ -489,12 +491,19 @@ def fetch_history(session, conn, event_slugs, start, end, fidelity=60, tokens=No
     elif tokens is None:
         tokens = conn.execute(text("SELECT token_id FROM market_links WHERE event_slug = ANY(:s) AND exchange = 'polymarket'"),
                               dict(s=list(event_slugs))).scalars().all()
-    n = 0
+    n, refused = 0, {}
     with httpx.Client(base_url=CLOB, timeout=20) as c:
         for tok in tokens:
-            r = http.get(c, "/prices-history", params={"market": tok, "startTs": int(start.timestamp()),
-                                                  "endTs": int(end.timestamp()), "fidelity": fidelity})
-            pts = r.json().get("history", []) if r.status_code == 200 else []
+            pts, a = [], start
+            while a < end:      # one request per HISTORY_WINDOW: a 37-day request stored nothing (2026-10-08 backfill)
+                b = min(a + HISTORY_WINDOW, end)
+                r = http.get(c, "/prices-history", params={"market": tok, "startTs": int(a.timestamp()),
+                                                      "endTs": int(b.timestamp()), "fidelity": fidelity})
+                if r.status_code == 200:
+                    pts += r.json().get("history", [])
+                else:
+                    refused[r.status_code] = r.text[:160]
+                a = b
             if not pts:
                 continue
             # the API can repeat a timestamp, and one upsert can't touch a row twice: keep the last point per ts
@@ -504,6 +513,8 @@ def fetch_history(session, conn, event_slugs, start, end, fidelity=60, tokens=No
                 index_elements=["token_id", "ts"], set_={"price": pg_insert(m.MarketPriceHistory).excluded.price}))
             n += len(rows)
     session.commit()
+    for code, body in refused.items():      # a refusal is said, not stored as a silent 0
+        print(f"polymarket history: HTTP {code} on some requests: {body}", file=sys.stderr)
     return n
 
 
