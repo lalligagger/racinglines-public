@@ -3,7 +3,10 @@ markets are priced, liquid (24 h volume >= the floor), open, and in the race's f
 its coherence target. The checks are position_replay.race_markets' own, minus the model's fair.
 
     .venv/bin/python scripts/vm/why_untradeable.py nascar polymarket 2026 [event_key ...]
+
+PROBE_HOURS="-6,6,12,15" probes those hours from 00:00 UTC on race day instead of the schema's stages.
 """
+import os
 import sys
 
 from racinglines.db.config import get_engine
@@ -24,7 +27,9 @@ def main(sport, venue, year, *events):
             if not len(g):
                 continue
             field = set(int(a) for a in P.race_results(conn, r.race_id)["athlete_id"])
-            stages = P.stage_times(r.start, sp)
+            probe = os.environ.get("PROBE_HOURS")
+            stages = P.stage_times(r.start, dict(sp, stages=[[f"h{h}", float(h)] for h in probe.split(",")])
+                                   if probe else sp)
             v = P._venue(conn, venue, g, stages, sp)
             print(f"{r.event_key} {r.name}: {len(g)} markets, {int(g['athlete_id'].isin(field).sum())} in the field")
             for lab, t in stages:
