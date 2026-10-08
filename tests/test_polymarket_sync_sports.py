@@ -109,3 +109,53 @@ def test_tags_override_pages_the_named_slug(test_engine, gamma):
     assert {p["tag_slug"] for path, p in gamma if path == "/events"} == {"motogp-x"}
     with test_engine.begin() as c:
         c.execute(text("DELETE FROM market_links WHERE token_id LIKE 'tok-%'"))
+
+
+@pytest.mark.quick
+def test_cli_routes_f1_open_trades_to_the_generic_path(monkeypatch):
+    from racinglines.cli import markets as CM
+    calls = []
+    monkeypatch.setattr(CM, "polymarket", lambda db, argv, sport: calls.append((sport, argv)) or 0)
+    assert CM.main(["--sport", "f1", "trades", "--open", "--since-hours", "2"]) == 0      # the recorder's pass
+    assert calls == [("f1", ["trades", "--open", "--since-hours", "2"])]
+
+
+def test_default_books_take_modeled_and_race_linked_f1_markets(test_engine, monkeypatch):
+    from racinglines.db.config import get_session
+    from racinglines.db.ingest import seed
+    url = test_engine.url.render_as_string(hide_password=False)
+    with get_session(url) as s:
+        seed(s)
+        s.commit()
+    with test_engine.begin() as c:
+        c.execute(text("DELETE FROM market_links WHERE token_id LIKE 'bk-%'"))
+        c.execute(text("DELETE FROM events WHERE source_key = 'bk-upcoming'"))
+        c.execute(text("""INSERT INTO seasons (competition_id, year) SELECT id, 2099 FROM competitions WHERE code = 'f1_wdc'
+                          AND NOT EXISTS (SELECT 1 FROM seasons s WHERE s.competition_id = competitions.id AND s.year = 2099)"""))
+        ev = c.execute(text("""INSERT INTO events (season_id, source, source_key, name, start_date, status)
+                               SELECT s.id, 'test', 'bk-upcoming', 'Upcoming GP', '2099-10-11', 'scheduled' FROM seasons s
+                               JOIN competitions co ON co.id = s.competition_id WHERE co.code = 'f1_wdc' AND s.year = 2099
+                               RETURNING id""")).scalar()
+        race = c.execute(text("""INSERT INTO races (event_id, category_id) SELECT :e, cat.id FROM categories cat
+                                 JOIN competitions co ON co.id = cat.competition_id WHERE co.code = 'f1_wdc' LIMIT 1
+                                 RETURNING id"""), dict(e=ev)).scalar()
+        rows = [("bk-modeled-season", "champion", None, "f1_wdc"), ("bk-unmodeled-season", "unmodeled", None, "f1_wdc"),
+                ("bk-unmodeled-race", "unmodeled", race, "f1_wdc"), ("bk-nascar-race", "unmodeled", race, "nascar_cup")]
+        for tok, pred, rid, comp in rows:
+            c.execute(text("""INSERT INTO market_links (token_id, exchange, event_slug, prediction, question, outcome, competition_id,
+                                                        race_id, first_seen_at, synced_at, closed)
+                              SELECT :t, 'polymarket', 'bk', :p, 'Q?', 'Yes', id, :r, now(), now(), false
+                              FROM competitions WHERE code = :c"""), dict(t=tok, p=pred, r=rid, c=comp))
+    asked = []
+    monkeypatch.setattr(PS.http, "post", lambda c, path, json: asked.extend(x["token_id"] for x in json)
+                        or type("R", (), dict(status_code=200, json=lambda self: []))())
+    with test_engine.connect() as c, get_session(url) as s:
+        PS.snapshot_books(s, c)
+    with test_engine.begin() as c:
+        n = c.execute(text("SELECT count(*) FROM market_links WHERE token_id LIKE 'bk-%'")).scalar()
+        c.execute(text("DELETE FROM market_links WHERE token_id LIKE 'bk-%'"))
+        c.execute(text("DELETE FROM events WHERE source_key = 'bk-upcoming'"))
+    assert n == 4
+    # a race-linked F1 market whose kind isn't modeled yet is booked; an unmodeled season market and another sport's
+    # market are not
+    assert {t for t in asked if t.startswith("bk-")} == {"bk-modeled-season", "bk-unmodeled-race"}
