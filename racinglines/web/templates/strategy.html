@@ -2,8 +2,8 @@
 {% block title %}Strategy{% endblock %}
 {% block content %}
 {% call page_head("Strategy" ~ (" · " ~ viewer.username if viewer.id != user.id else ""), "The strategy this account runs: its calls on each race weekend, stage by stage, how it has done, and how it got here. Paper only: nothing is sent to an exchange.") %}
-<a href="/positions{{ '?venue=kalshi' if venue }}">What it holds: Positions →</a>
-{%- if kalshi %}<nav class="tabs" aria-label="Which exchange's record"><a href="?{{ 'user=' ~ viewer.username if viewer.id != user.id }}"{% if not venue %} aria-current="page"{% endif %}>Polymarket</a><a href="?venue=kalshi{{ '&user=' ~ viewer.username if viewer.id != user.id }}"{% if venue %} aria-current="page"{% endif %}>Kalshi</a></nav>{% endif %}
+<a href="/positions{{ '?venue=' ~ venue if venue }}">What it holds: Positions →</a>
+{%- if venue_tabs %}<nav class="tabs" aria-label="Which exchange's record"><a href="?{{ 'user=' ~ viewer.username if viewer.id != user.id }}"{% if not venue %} aria-current="page"{% endif %}>Polymarket</a>{% for k in venue_tabs %}<a href="?venue={{ k }}{{ '&user=' ~ viewer.username if viewer.id != user.id }}"{% if venue == k %} aria-current="page"{% endif %}>{{ venue_names.get(k, k) }}</a>{% endfor %}</nav>{% endif %}
 {% if users %}<form method="get" class="inline"><label><span>User</span><select name="user" data-autosubmit>
   {% for u in users %}<option {{ 'selected' if u == viewer.username }}>{{ u }}</option>{% endfor %}</select></label></form>{% endif %}
 {% if sport_options %}<form method="get" class="inline">
@@ -32,7 +32,7 @@
 <tbody>{% for m in mix %}<tr><td class="l">{{ sport_names.get(m.sport, m.sport) if m.sport else "–" }}</td><td class="l">{{ m.family }}</td><td>{{ m.weekends }}</td><td>{{ m.up }}</td>
 <td class="{{ pnl_cls(m.pnl) }}">{{ m.pnl|money(true) }}</td><td class="l">{% if m.demo %}<span class="pill no">demo replay, in-sample</span>{% endif %}</td></tr>{% endfor %}</tbody>
 </table></div></div>{% endif %}
-{% if record|selectattr('backfill')|list %}{% call demo_context() %}<span class="pill no">backtest replay</span> weekends were replayed from {% if venue == 'kalshi' %}Kalshi's real prices and trades (with Kalshi's maker fee){% else %}Polymarket's real prices and trades{% endif %} with the strategy this demo account ran then; they weren't traded live. Live paper trading starts with the next race weekend.{% endcall %}{% endif %}
+{% if record|selectattr('backfill')|list %}{% call demo_context() %}<span class="pill no">backtest replay</span> weekends were replayed from {% if venue %}{{ venue_names.get(venue, venue) }}'s real prices and trades (with its fees){% else %}Polymarket's real prices and trades{% endif %} with the strategy this demo account ran then; they weren't traded live. Live paper trading starts with the next race weekend.{% endcall %}{% endif %}
 
 {# --- one view at a time: the record, one weekend, how the account chooses --- #}
 <nav class="ptabs" data-tabs="strategy" role="tablist">

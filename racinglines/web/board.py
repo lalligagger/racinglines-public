@@ -6,6 +6,7 @@ markets, and recent results with how our pre-race price did. Plus a few headline
 numbers across everything.
 """
 
+import os
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -200,11 +201,54 @@ def board(conn, maker_id):
             later = tape_events[3:]
             season = None
             recent = []
+        sched = [u for u in upcoming if u.get("info") and u["info"].get("status") not in ("completed", "cancelled")]
+        if sched and conn is not None:                    # how fresh each venue's prices are, per upcoming event
+            fresh_by = event_sync(conn, [int(u["info"]["event_id"]) for u in sched],
+                                  [v for v in schema.get("markets", {}).get("venues", []) if v in EXCHANGE_CODES])
+            for u in sched:
+                u["sync"] = fresh_by.get(int(u["info"]["event_id"]), [])
         sports.append(dict(code=code, name=SPORT_NAME.get(code, schema["sport"]["name"]), run=run, tape=tape, asof=asof,
+                           calibration=schema["sport"].get("calibration"),
                            upcoming=upcoming, later=later, season=season, recent=recent, exchanges=exch,
                            status=ss_by_comp.get(code)))
     sports.sort(key=lambda s: SPORT_ORDER.get(s["code"], 9))
     return sports
+
+
+# An upcoming event's prices on a venue are flagged when the venue has no market linked to the event, or when the newest
+# sync of its links (market_links.synced_at) is older than this many hours (owner's missing-price P0, 2026-10-07).
+# RACINGLINES_SYNC_STALE_HOURS sets it; the syncs are moving to every 5 minutes, so it can come down then.
+SYNC_STALE_HOURS = float(os.environ.get("RACINGLINES_SYNC_STALE_HOURS", "3"))
+EXCHANGE_CODES = {v.code for v in VENUES if v.kind == "exchange" and v.status == "live"}
+
+
+def event_sync(conn, event_ids, venues, now=None):
+    """{event_id: [dict(code, name, links, last, hours, stale)]} for each of `venues` (exchange codes, in that order):
+    the market links whose race belongs to the event (exact race_id keys), the newest synced_at among them, its age
+    in hours, and stale = no links, or no sync time, or older than SYNC_STALE_HOURS."""
+    if not event_ids or not venues:
+        return {}
+    df = data.q(conn, """SELECT ra.event_id, ml.exchange, count(*) AS links, max(ml.synced_at) AS last
+                         FROM market_links ml JOIN races ra ON ra.id = ml.race_id
+                         WHERE ra.event_id = ANY(:e) AND ml.exchange = ANY(:x) GROUP BY 1, 2""",
+                e=[int(x) for x in event_ids], x=list(venues))
+    got = {(int(r["event_id"]), r["exchange"]): r for r in df.to_dict("records")}
+    now = pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz="UTC")
+    names = {v.code: v.name for v in VENUES}
+    out = {}
+    for e in event_ids:
+        rows = []
+        for code in venues:
+            r = got.get((int(e), code)) or {}
+            last = r.get("last")
+            last = None if last is None or pd.isna(last) else pd.Timestamp(last)
+            if last is not None and last.tzinfo is None:
+                last = last.tz_localize("UTC")
+            hours = None if last is None else max(0.0, (now - last).total_seconds() / 3600)
+            rows.append(dict(code=code, name=names.get(code, code), links=int(r.get("links") or 0), last=last, hours=hours,
+                             stale=last is None or hours > SYNC_STALE_HOURS, limit=SYNC_STALE_HOURS))
+        out[int(e)] = rows
+    return out
 
 
 STALE_MIN = 15          # a venue with no book snapshot for this long is "stale" (its recorder passes every 5 minutes)
