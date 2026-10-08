@@ -91,6 +91,11 @@ race_day_offset = 0               # the event's date is race day
 # the day before) is before qualifying on most weekends; the model reads race results only, so its fair is the same
 # at every stage and only the market moves.
 stages = [["T-3d", -72], ["T-1d", -24], ["race eve", -6]]
+# The opt-in "race_day" stage mode adds these to the stages above (`--stages race_day`, sweep setting stages=race_day),
+# so the weekend results stay reproducible. Polymarket's NASCAR volume comes on race morning: Window World 450 2026 had
+# no market over the $50 floor at race eve and 31 at 12:00 UTC (scripts/vm/why_untradeable.py on staging, 2026-10-08).
+# 12:00 UTC is 8 am ET, assumed before every Cup start (the race's start isn't in this schema). Decision log 2026-10-08.
+race_day_stages = [["race morning", 12]]
 group_target = { race_win = 1, race_podium = 3 }   # the coherence check's groups (a listing of top-5/10/20 is often partial)
 # Polymarket's race_win fields in a 40-car NASCAR race sum far above 1 (long shots on near-empty books: Daytona 500 2026
 # summed 1.99 the day before, Hollywood Casino 400 7.73 on average), so the F1 tolerance (0.25) blocked every race.
@@ -142,9 +147,10 @@ until_fallback_hours = 0                 # the race start when not stored: 00:00
 stages = "weekend"                # the default stage mode: the fixed [replay] stages, one pricing per race (the
                                   # replay's behaviour, kept reproducible). "sessions" ([sessions] above) is a sweep's
                                   # `stages` setting until the owner makes it the default
-late_stages = ["race eve", "after Q"]   # the stage-aware taker ("early") skips these (each mode: its own labels)
+late_stages = ["race eve", "race morning", "after Q"]   # the stage-aware taker ("early") skips these (each mode: its own labels)
 quote_until_hours = 0             # the maker stops quoting at this hour (UTC) of race day: before any race-day running
                                   # (the race's start time isn't in the schema)
+race_day_quote_until_hours = 15   # the same in the "race_day" mode: after its 12:00 UTC stage, 11 am ET (decision log 2026-10-08)
 
 [search]
 # The search queue's job kinds for this sport (racinglines/pipelines/search.py); the first is the default.

@@ -57,7 +57,8 @@ from racinglines import progress as PG
 from racinglines import sports
 from racinglines.pipelines import sweep_settings as SS
 
-MODES = SS.STAGE_MODES                 # ("sessions", "weekend")
+MODES = SS.STAGE_MODES + ("race_day",)   # ("sessions", "weekend"), plus "race_day": the weekend stages and [replay]
+                                         # race_day_stages (opt-in; F1's settings keep their two modes)
 
 
 # --- the schema ------------------------------------------------------------------------------------------
@@ -71,14 +72,16 @@ def spec(sport):
     if sw.get("stages") not in modes(sport):
         raise ValueError(f"sports/{sport}.toml [sweep] stages {sw.get('stages')!r}: one of the modes its schema "
                          f"supports, {modes(sport)} (sessions: [sessions.schedule]; weekend: [replay] stages)")
-    return dict(dict(late_stages=[], quote_until_hours=0.0), **sw)
+    sw = dict(dict(late_stages=[], quote_until_hours=0.0), **sw)
+    return dict(dict(race_day_quote_until_hours=sw["quote_until_hours"]), **sw)
 
 
 def modes(sport):
     """The stage modes the sport's schema supports: "sessions" with a session schedule ([sessions.schedule]),
-    "weekend" with fixed weekend stages ([replay] stages)."""
+    "weekend" with fixed weekend stages ([replay] stages), "race_day" with those and [replay] race_day_stages."""
     s = sports.load(sport)
-    have = dict(sessions=bool(s.get("sessions", {}).get("schedule")), weekend=bool(s.get("replay", {}).get("stages")))
+    have = dict(sessions=bool(s.get("sessions", {}).get("schedule")), weekend=bool(s.get("replay", {}).get("stages")),
+                race_day=bool(s.get("replay", {}).get("stages") and s["replay"].get("race_day_stages")))
     return tuple(m for m in MODES if have[m])
 
 
@@ -148,7 +151,8 @@ def stage_labels(sport, mode=None):
         from racinglines.core import stages as STG
         after = [f"after {short}" for _, short in STG.schedule(sport).values()]
         return (STG.spec(sport)["pre_label"], *dict.fromkeys(after))
-    return tuple(str(label) for label, _ in sports.load(sport)["replay"]["stages"])
+    from racinglines.pipelines import position_replay as P
+    return tuple(str(label) for label, _ in P.stage_list(sports.load(sport)["replay"], mode or engine_of(sport)))
 
 
 def all_labels(sport):
@@ -344,14 +348,18 @@ def race_plan(sport, mode, race, sessions, sp, sw):
     """One race's stages in the sweep's mode: dict(stages=[(label, time)], until (the maker quotes until then),
     closes, sessions, format). "sessions": session_stages from its stored session times (format "sessions"), or
     the [replay] stages when none is stored (format "weekend"); "weekend": the [replay] stages (format None, as
-    before)."""
+    before); "race_day": those and [replay] race_day_stages, the maker quoting until [sweep]
+    race_day_quote_until_hours (format None)."""
     from racinglines.pipelines import position_replay as P
     if mode == "sessions":
         got = session_stages(sport, race.start, sessions, sp)
         if got is not None:
             return dict(got, format="sessions")
     day = pd.Timestamp(race.start) + pd.Timedelta(days=int(sp.get("race_day_offset", 0)))
-    return dict(stages=P.stage_times(race.start, sp), until=day + pd.Timedelta(hours=float(sw["quote_until_hours"])),
+    rd = mode == "race_day"
+    hours = sw["race_day_quote_until_hours" if rd else "quote_until_hours"]
+    stages = P.stage_times(race.start, dict(sp, stages=P.stage_list(sp, "race_day" if rd else "weekend")))
+    return dict(stages=stages, until=day + pd.Timedelta(hours=float(hours)),
                 closes={}, sessions=None, format="weekend" if mode == "sessions" else None)
 
 
