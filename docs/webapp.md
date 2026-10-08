@@ -94,11 +94,12 @@ event: a race, or a competition's season
 
 ## Pages
 
-**Landing page** (`/login`, where every signed-out visit lands; owner, 2026-10-08). Business first: what the pricing
-does for sportsbooks that set their own lines, books on a platform provider's feed, and the providers themselves,
-then the "How it works" infographic, a contact line (hello@racinglines.bet) and, lower down, the fantasy-trading beta:
-sign up, the two demo buttons (no bigger than the sign-up link) and the sign-in form (`/login#account`). It names no
-sportsbook, operator or provider. The sign-up popup is gone, and the maintenance popup is off (`MAINTENANCE_NOTICE = ""`).
+**Landing page** (`/login`, where every signed-out visit lands; owner, 2026-10-08). A compact, centered page with no
+same-page navigation: what the pricing does for sportsbooks that set their own lines, books on a platform provider's
+feed, and the providers themselves; the business infographic; a contact line (hello@racinglines.bet); and the
+fantasy-trading beta with sign-up, the two demo buttons (no bigger than the sign-up link) and the sign-in form
+(`/login#account`). The infographic has no "How it works" heading. The page names no sportsbook, operator or provider.
+The sign-up popup is gone, and the maintenance popup is off (`MAINTENANCE_NOTICE = ""`).
 
 **Beta sign-up** (`/signup`, `RACINGLINES_SIGNUP=1`, off by default; `racinglines/web/accounts.py`). A public page,
 linked from the landing page's "Fantasy trade with us" section: username, email (required since 2026-10-08, one
