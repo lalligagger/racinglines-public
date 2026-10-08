@@ -91,6 +91,9 @@ race_day_offset = 2               # an event is filed by its first day (Friday);
 # (label, hours from 00:00 UTC on race day): "race eve" is 18:00 UTC on Saturday, after the sprint
 stages = [["T-3d", -72], ["T-1d", -24], ["race eve", -6]]
 group_target = { race_win = 1 }
+# Wide on Polymarket, as NASCAR's (sports/nascar.toml): the F1 tolerance (0.25) is for F1's books; owner 2026-10-08
+# "keep them wide to start". Decision log 2026-10-08.
+coherence_tol = { polymarket = 2.0 }
 
 [sessions]
 # The season sweep's "sessions" stage mode (racinglines/pipelines/season_sweep.py; C12a): a weekend's sessions are its

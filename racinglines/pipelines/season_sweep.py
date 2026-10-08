@@ -299,7 +299,7 @@ def replay_sweep(engine, sport, year, rounds=None, settings=None, echo=print):
                     and v == SW.RB.TakerParams.__dataclass_fields__[k].default)},
                   sport=sport, venue=venue, model=model.name, stages_mode=mode,
                   n_sims=ms.get("sims"), stages=[list(x) for x in sp["stages"]], kinds=list(sp["kinds"]),
-                  min_volume_24h=st["min_volume_24h"], coherence_tol=P.COHERENCE_TOL,
+                  min_volume_24h=st["min_volume_24h"], coherence_tol=P.coherence_tol(sp, venue),
                   group_target=dict(sp.get("group_target") or {}), quote_until_hours=sw["quote_until_hours"],
                   settings=st.to_json(), settings_key=st.key, model_key=st.model_key, data_key=data_key(data),
                   label=st.label(), weekends=len(out["weekends"]))

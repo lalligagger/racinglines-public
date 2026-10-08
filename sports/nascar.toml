@@ -92,6 +92,11 @@ race_day_offset = 0               # the event's date is race day
 # at every stage and only the market moves.
 stages = [["T-3d", -72], ["T-1d", -24], ["race eve", -6]]
 group_target = { race_win = 1, race_podium = 3 }   # the coherence check's groups (a listing of top-5/10/20 is often partial)
+# Polymarket's race_win fields in a 40-car NASCAR race sum far above 1 (long shots on near-empty books: Daytona 500 2026
+# summed 1.99 the day before, Hollywood Casino 400 7.73 on average), so the F1 tolerance (0.25) blocked every race.
+# Wide on Polymarket so the tape runs through the replay, sweep and paper (owner, 2026-10-08: "keep them wide to start");
+# the $50 24 h volume floor still keeps dead markets out. Decision log 2026-10-08.
+coherence_tol = { polymarket = 2.0 }
 
 [sessions]
 # The season sweep's "sessions" stage mode (racinglines/pipelines/season_sweep.py; C12a): a weekend's sessions are its

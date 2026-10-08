@@ -264,12 +264,18 @@ def kalshi_fees(trades):
 
 # --- the season -----------------------------------------------------------------------------------------
 
+def coherence_tol(sp, venue):
+    """The group coherence tolerance on `venue`: the sport's [replay] coherence_tol for that venue, else COHERENCE_TOL.
+    A per-kind sweep setting (coherence_tol_by_kind) still overrides it."""
+    return float((sp.get("coherence_tol") or {}).get(venue, COHERENCE_TOL))
+
+
 def _venue(conn, venue, race_links, stages, sp):
     from racinglines.markets.venue_replay import EXCHANGES
     start = min(t for _, t in stages) - timedelta(hours=1)
     end = max(t for _, t in stages) + timedelta(hours=1)
     gt = {k: int(v) for k, v in (sp.get("group_target") or {}).items()}
-    return EXCHANGES[venue](conn, race_links, start, end, gt, COHERENCE_TOL, STALE)
+    return EXCHANGES[venue](conn, race_links, start, end, gt, coherence_tol(sp, venue), STALE)
 
 
 def run(engine, sport, seasons=None, venue="kalshi", taker=None, min_volume_24h=MIN_VOLUME_24H, model_settings=None,
@@ -351,7 +357,7 @@ def run(engine, sport, seasons=None, venue="kalshi", taker=None, min_volume_24h=
                                                               taker={k: v for k, v in t.__dict__.items() if k != "mode"},
                                                               model=model.name, model_settings=st.to_json(),
                                                               min_volume_24h=min_volume_24h, kinds=sp["kinds"],
-                                                              stages=sp["stages"], coherence_tol=COHERENCE_TOL,
+                                                              stages=sp["stages"], coherence_tol=coherence_tol(sp, venue),
                                                               group_target=sp.get("group_target") or {}))
     if buy_all:
         out = dict(out, **_buy_all(out, ba_trades))
