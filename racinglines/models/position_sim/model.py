@@ -40,10 +40,12 @@ from before that race (no look-ahead in backtests).
    noise are split into a team part and a driver part, with the teammate
    correlation measured on earlier races (TEAMMATE_CORR). With FASTEST_LAP (variant
    "fastlap", off by default), also the fastest lap: the quickest classified car on
-   race pace + noise, drawn on a side stream so nothing else changes (fastest_lap).
+   race pace + noise, drawn on a side stream so nothing else changes (fastest_lap); with variant "flpos" instead
+   from the simulated finishing order and race pace (fastest_lap_from_position, sports/f1/fastest_lap.toml).
 """
 
 from dataclasses import dataclass
+from functools import cache
 
 import numpy as np
 import pandas as pd
@@ -84,12 +86,33 @@ FL_SIGMA = 0.006
 FL_RHO = 0.3                 # teammates' share of it: half the variance is race pace, whose teammate
                              # surprises correlate +0.63 (docs/f1.md), so 0.63 / 2
 FL_SEED = 20261004           # salt of the fastest lap's own random stream (see _side_rng)
+FL_FROM = "pace"             # how FASTEST_LAP draws it: "pace" (fastest_lap: race pace + noise) or "position" (variant
+                             # "flpos": per finishing position weights from past races, fastest_lap_from_position)
+FL_TABLE = sports.SCHEMAS / "f1" / "fastest_lap.toml"
 RESET_YEARS = frozenset(SCHEMA["regulations"]["resets"])       # sports/f1.toml
 # a past race counts as disrupted if it had a red flag, >= 10% of laps behind the safety car, or rain (set a priori)
 DISRUPTED_SC_SHARE, DISRUPTED_RAIN_SHARE, CHAOS_PRIOR_N = 0.10, 0.25, 4.0
 RACE_POINTS = list(SCHEMA["points"]["race"])                       # sports/f1.toml
 SPRINT_POINTS = sports.int_keys(SCHEMA["points"]["sprint_by_year"])
 SPRINT_POINTS_DEFAULT = list(SCHEMA["points"]["sprint"])
+# The race-like sessions simulated per weekend (sports/f1.toml [sessions.sim]): MAIN_STAGE is the Grand Prix, the
+# others are side stages (the sprint), each drawn on its own stream (_side_rng, salt STAGE_SEED + its index)
+SIM_SESSIONS = {k: dict(v) for k, v in SCHEMA["sessions"]["sim"].items()}
+MAIN_STAGE = "race"
+STAGE_SEED = 20261006
+
+
+def points_table(name, year):
+    """The [points] table `name` for a season (its <name>_by_year entry when the season has one)."""
+    pts = SCHEMA["points"]
+    return list(sports.int_keys(pts.get(f"{name}_by_year", {})).get(int(year), pts[name]))
+
+
+def grid_source(stage, year):
+    """The session whose order sets a side stage's grid in a season: the stage's grid_from_by_year entry when the
+    season has one (2021: Friday's qualifying set the sprint grid, there was no Sprint Qualifying), else grid_from."""
+    cfg = SIM_SESSIONS[stage]
+    return sports.int_keys(cfg.get("grid_from_by_year", {})).get(int(year), cfg["grid_from"])
 
 # team lineage across renames, so history carries over
 TEAM_ALIASES = {"racing_point": "aston_martin", "renault": "alpine", "toro_rosso": "rb", "alphatauri": "rb",
@@ -325,7 +348,14 @@ def fit_team_sector(sectors, now, use_track=True):
         # weighted ridge on [a, b] with priors a0, 0 (2x2 normal equations)
         A = np.array([[np.sum(W) + RIDGE_A, np.sum(W * x)], [np.sum(W * x), np.sum(W * x * x) + RIDGE_B]])
         rhs = np.array([np.sum(W * y) + RIDGE_A * a0, np.sum(W * x * y)])
-        a, b = np.linalg.solve(A, rhs)
+        try:
+            a, b = np.linalg.solve(A, rhs)
+            if np.isnan(a) or np.isnan(b):
+                a = (np.sum(W * y) + RIDGE_A * a0) / (np.sum(W) + RIDGE_A)
+                b = 0.0
+        except np.linalg.LinAlgError:
+            a = (np.sum(W * y) + RIDGE_A * a0) / (np.sum(W) + RIDGE_A)
+            b = 0.0
         out[team] = (float(a), float(b))
     return out, a0
 
@@ -347,7 +377,14 @@ def fit_team_race(drivers, xmap, now, use_track=True):
             continue
         A = np.array([[np.sum(W) + RIDGE_A, np.sum(W * x)], [np.sum(W * x), np.sum(W * x * x) + RIDGE_B]])
         rhs = np.array([np.sum(W * y) + RIDGE_A * c0, np.sum(W * x * y)])
-        c, dd = np.linalg.solve(A, rhs)
+        try:
+            c, dd = np.linalg.solve(A, rhs)
+            if np.isnan(c) or np.isnan(dd):
+                c = (np.sum(W * y) + RIDGE_A * c0) / (np.sum(W) + RIDGE_A)
+                dd = 0.0
+        except np.linalg.LinAlgError:
+            c = (np.sum(W * y) + RIDGE_A * c0) / (np.sum(W) + RIDGE_A)
+            dd = 0.0
         out[team] = (float(c), float(dd))
     return out, c0
 
@@ -633,12 +670,15 @@ def season_drift(e, n_sims, rng, team_sd=TEAM_DRIFT_SD, driver_sd=DRIVER_DRIFT_S
 
 
 def simulate_race(fm, e, tf, n_sims=10000, rng=None, grid_known=False, points=RACE_POINTS, pace_shock=None,
-                  chaos_p=None):
+                  chaos_p=None, grid_adjust=None):
     """e: entrants with qp, rp, p_dnf (and grid if grid_known). pace_shock: optional
     (n_sims, n) shift of both qualifying and race pace (see season_drift). chaos_p:
-    probability this race is disrupted (fm.chaos). Returns dict of (n_sims, n) arrays:
-    pos (finishing position, DNFs last), dnf, points, grid; with FASTEST_LAP also fl
-    (who set the race's fastest lap, see fastest_lap)."""
+    probability this race is disrupted (fm.chaos). grid_adjust: optional callable taking the
+    (n_sims, n) qualifying order (known or drawn) and returning the starting grid (grid
+    penalties, penalties.apply); it runs after the grid's draws and draws nothing itself.
+    Returns dict of (n_sims, n) arrays: pos (finishing position, DNFs last), dnf, points,
+    grid (the starting grid); with grid_adjust also qual (the qualifying order, for pole);
+    with FASTEST_LAP also fl (who set the race's fastest lap, see fastest_lap)."""
     rng = rng or np.random.default_rng(0)
     n = len(e)
     shock = pace_shock if pace_shock is not None else 0.0
@@ -650,6 +690,9 @@ def simulate_race(fm, e, tf, n_sims=10000, rng=None, grid_known=False, points=RA
     else:
         q = qp + _noise(rng, fm.sigma_q, fm.rho_q, teams, n_sims)
         grid = ranks(q).astype(float)
+    qual = grid
+    if grid_adjust is not None:
+        grid = np.asarray(grid_adjust(grid), float)
     g = (grid - 1) / max(n - 1, 1)
     rp_rel = (rp - rp.min(axis=1, keepdims=True)) * 100
     qp_rel = (qp - qp.min(axis=1, keepdims=True)) * 100
@@ -684,8 +727,11 @@ def simulate_race(fm, e, tf, n_sims=10000, rng=None, grid_known=False, points=RA
         pts += (pos == p) * v
     pts = np.where(dnf, 0, pts)
     out = dict(pos=pos, dnf=dnf, points=pts, grid=grid)
+    if grid_adjust is not None:
+        out["qual"] = qual
     if FASTEST_LAP:
-        out["fl"] = fastest_lap(rp, dnf, teams, rng)
+        out["fl"] = (fastest_lap_from_position(pos, dnf, rp, rng) if FL_FROM == "position"
+                     else fastest_lap(rp, dnf, teams, rng))
     return out
 
 
@@ -713,13 +759,61 @@ def fastest_lap(rp, dnf, teams, rng):
     return fl & ~dnf                           # a race where every car retired has no fastest lap
 
 
+@cache
+def fl_table(path=None):
+    """sports/f1/fastest_lap.toml as (weight per finishing position 1..99, pace_scale). A position's weight is its
+    band's rate, the fastest laps over the classified starts of every position in the band (`bands`, `by_position`);
+    a position past the last band takes the last band's."""
+    import tomllib
+    where = path or FL_TABLE
+    with open(where, "rb") as f:
+        t = tomllib.load(f)
+    rows = {r["position"]: r for r in t["by_position"]}
+    rates = []
+    for lo, hi in t["bands"]:
+        band = [r for p, r in rows.items() if lo <= p <= hi]
+        races = sum(r["races"] for r in band)
+        if not races:
+            raise ValueError(f"{where}: band {lo}-{hi} has no races")
+        rates.append((lo, hi, sum(r["fl"] for r in band) / races))
+    w = np.array([next((x for lo, hi, x in rates if lo <= p <= hi), rates[-1][2]) for p in range(1, 100)])
+    return w, float(t["fit"]["pace_scale"])
+
+
+def fastest_lap_from_position(pos, dnf, pace, rng, weights=None, pace_scale=None):
+    """(n_sims, n) bool: who sets the race's fastest lap in each simulation (variant "flpos"): one classified car,
+    drawn with probability proportional to weights[finishing position - 1] * exp(-(pace - the quickest classified
+    pace) / pace_scale), from sports/f1/fastest_lap.toml (fl_table: band rates and a pace scale from 2022-26 races). The fastest lap so
+    follows the simulated result (the winner sets it about a third of the time) and the car (a midfield winner in a
+    slow car less often than a top-car winner). pace: (n_sims, n) or (n,) race pace, a fraction of a lap, lower is
+    quicker. A retired car never gets it. Drawn on the same side stream as fastest_lap (_side_rng, FL_SEED), so every
+    other output is byte-identical with or without it."""
+    n_sims, n = pos.shape
+    if weights is None or pace_scale is None:
+        w0, s0 = fl_table()
+        weights = w0 if weights is None else weights
+        pace_scale = s0 if pace_scale is None else pace_scale
+    w = np.asarray(weights, float)
+    pace = np.broadcast_to(np.asarray(pace, float), (n_sims, n))
+    best = np.where(dnf, np.inf, pace).min(axis=1, keepdims=True)
+    gap = np.where(dnf, 0.0, pace - np.where(np.isfinite(best), best, 0.0))
+    p = np.where(dnf, 0.0, w[np.clip(np.asarray(pos, int), 1, len(w)) - 1] * np.exp(-gap / pace_scale))
+    tot = p.sum(axis=1, keepdims=True)
+    cum = np.cumsum(p, axis=1) / np.where(tot > 0, tot, 1.0)
+    u = _side_rng(rng, FL_SEED).random((n_sims, 1))
+    pick = np.minimum((cum <= u).sum(axis=1), n - 1)
+    fl = np.zeros(pos.shape, bool)
+    fl[np.arange(n_sims), pick] = True
+    return fl & (tot > 0) & ~dnf               # a race where every car retired has no fastest lap
+
+
 def summarize(e, sim):
     pos, dnf = sim["pos"], sim["dnf"]
     out = dict(
         athlete_id=e["athlete_id"].to_numpy(), driver=e["driver"].to_numpy() if "driver" in e else None,
         team_key=e["team_key"].to_numpy(),
         win_prob=((pos == 1) & ~dnf).mean(0), podium_prob=((pos <= 3) & ~dnf).mean(0),
-        top10_prob=((pos <= 10) & ~dnf).mean(0), pole_prob=(sim["grid"] == 1).mean(0),
+        top10_prob=((pos <= 10) & ~dnf).mean(0), pole_prob=(sim.get("qual", sim["grid"]) == 1).mean(0),
         dnf_prob=dnf.mean(0), exp_points=sim["points"].mean(0),
         exp_position=pos.mean(0),
         qp=e["qp"].to_numpy(), rp=e["rp"].to_numpy(),

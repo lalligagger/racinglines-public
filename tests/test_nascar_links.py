@@ -368,6 +368,7 @@ class FakeOG:
     def __init__(self):
         from racinglines import exchanges as EX
         self.schema = EX.load("og")
+        self.code = "og"
 
     def paged(self, endpoint, **params):
         return json.loads((MKT / "og_events_nascar.json").read_text())["result"]["data"]

@@ -42,8 +42,8 @@ synced series that the listing no longer returns (up to REREAD_MAX, most recentl
 status, result and last quote. A ticker Kalshi no longer serves (settled before its historical cutoff: a 404)
 closes once its end date has passed.
 
-* Sprint markets (docs/todo.md U5) are classified only with RACINGLINES_KALSHI_SPRINTS=1 (sprints_enabled);
-without it every sprint market stays unmodeled, as before. The sprint winner and sprint pole take the sprint
+* Sprint markets (docs/todo.md U5) are classified by default (sprints_enabled; on since 2026-10-06, owner);
+RACINGLINES_KALSHI_SPRINTS=0 (or false/no) turns it off and every sprint market stays unmodeled. The sprint winner and sprint pole take the sprint
 kinds of racinglines/markets/kinds.py (race_sprint_win settles after the Sprint, race_sprint_pole after SQ;
 sports/f1.toml closes them when the session starts) and are priced by db.reads.model_prob. The sprint's
 fastest lap, top 5, top 10 and top constructor stay unmodeled either way.
@@ -59,7 +59,7 @@ default F1 sync is unchanged.
 import json
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -84,8 +84,8 @@ REREAD_MAX = 100     # open links re-read by ticker per pass when their event le
 
 
 def sprints_enabled():
-    """Sprint markets are classified only when RACINGLINES_KALSHI_SPRINTS is 1/true/yes (off by default)."""
-    return os.environ.get(SPRINT_FLAG, "").lower() in ("1", "true", "yes")
+    """Sprint markets are classified unless RACINGLINES_KALSHI_SPRINTS is 0/false/no (on by default since 2026-10-06)."""
+    return os.environ.get(SPRINT_FLAG, "1").strip().lower() not in ("0", "false", "no", "off")
 
 
 def classify_sprint(low):
@@ -114,7 +114,7 @@ def gp_name(t):
 
 def classify(event_title, market_title="", gp=None, sprints=None):
     """(prediction kind, Grand Prix name or None) for a Kalshi market. gp: the Grand Prix when the titles
-    don't name it (head-to-heads). sprints: classify sprint markets (default: sprints_enabled(), off)."""
+    don't name it (head-to-heads). sprints: classify sprint markets (default: sprints_enabled(), on)."""
     t = f"{event_title or ''} {market_title or ''}"
     gp = gp_name(event_title) or gp_name(market_title) or gp
     low = t.lower()
@@ -431,6 +431,19 @@ def history_rows(ticker, candles):
     return list({r["ts"]: r for r in rows}.values())       # one row per ts: an upsert can't touch a row twice
 
 
+MAX_CANDLES = 4000      # per candlesticks request: Kalshi answers 400 above 5,000 (seen on the 2026-10-05 backfill)
+
+
+def _candles(kc, series, ticker, start, end, period):
+    """Every candle of [start, end], asked for in windows of at most MAX_CANDLES periods."""
+    out, a, step = [], start, timedelta(minutes=period * MAX_CANDLES)
+    while a < end:
+        b = min(a + step, end)
+        out += kc.candlesticks(series, ticker, a.timestamp(), b.timestamp(), period)
+        a = b
+    return out
+
+
 def _raw_path(raw_dir, series, ticker):
     return Path(raw_dir) / (series or "_") / f"{ticker}.json"
 
@@ -453,7 +466,7 @@ def fetch_history(session, conn, event_tickers, start, end, period=60, kc=None, 
                 continue
             candles = json.loads(f.read_text())["candlesticks"]
         else:
-            candles = kc.candlesticks(series, tok, start.timestamp(), end.timestamp(), period)
+            candles = _candles(kc, series, tok, start, end, period)
             if save_raw:
                 f = _raw_path(save_raw, series, tok)
                 f.parent.mkdir(parents=True, exist_ok=True)
@@ -468,6 +481,21 @@ def fetch_history(session, conn, event_tickers, start, end, period=60, kc=None, 
             session.commit()                     # per market: a long backfill keeps what it has if it stops
         n += len(rows)
     return n
+
+
+def coverage(conn, event_tickers=None, sport=None):
+    """How much of the stored price history (Parquet and Postgres) carries the candle's bid and ask, for the given
+    Kalshi events (or every event of `sport`): rows, with both sides, and prices outside the closing quote (a last
+    trade made before the book moved, so some are expected)."""
+    from racinglines.markets import store as MS
+    toks = [t for t, _, _ in _tickers(conn, event_tickers, sport=sport)]
+    ph = MS.read(conn, "prices", tokens=toks, root=MS.root_for("kalshi"))
+    both = ph.dropna(subset=["bid", "ask"])
+    gap = (both["bid"] - both["price"]).clip(lower=0) + (both["price"] - both["ask"]).clip(lower=0)
+    return dict(markets=int(ph["token_id"].nunique()), rows=len(ph), with_bid=int(ph["bid"].notna().sum()),
+                with_ask=int(ph["ask"].notna().sum()), both=len(both), outside=int((gap > 1e-9).sum()),
+                outside_5c=int((gap > 0.05).sum()), first=str(ph["ts"].min()) if len(ph) else None,
+                last=str(ph["ts"].max()) if len(ph) else None)
 
 
 def book_row(ticker, ob, ts, depth=10):

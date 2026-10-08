@@ -25,9 +25,12 @@ Kalshi (--exchange kalshi; markets/kalshi/, built on mocked responses, unverifie
     history    [--events TICKER …] --start --end [--period 60]   candlesticks (minutes: 1, 60, 1440): price, bid, ask
                [--save-raw DIR | --from-raw DIR]          also keep Kalshi's raw responses / re-import them offline
     books      [--events TICKER …]                       one order-book snapshot per open market
+    coverage   [--events TICKER …]                       stored prices with the candle's bid/ask (Parquet + Postgres)
 
 Exchanges defined as schemas (--exchange og; exchanges/<code>.toml, markets/exchange_driver.py), read-only:
     sync       [--year 2026]                             the sport's markets and quotes into market links
+    settle     [--since UTC] [--max-pages N]             outcomes of closed links from the settlement feed
+               (resolved_yes; a void is recorded in params and left empty); a schema with no feed does nothing
     trades     [--events SYMBOL …]                       the tape the exchange still serves (about a month)
     history    [--events SYMBOL …] --start [--end]       minute prices (clipped to what the exchange keeps)
     books      [--events SYMBOL …]                       one order-book snapshot per open market
@@ -162,7 +165,7 @@ def kalshi(db, argv, sport="f1"):
     p.add_argument("--year", type=int, default=2026)
     p.add_argument("--closed", action="store_true", help="Also settled events")
     p.add_argument("--series", nargs="+", default=None, help="Series tickers to sync instead of discovering them")
-    for name in ("trades", "history", "books"):
+    for name in ("trades", "history", "books", "coverage"):
         p = sub.add_parser(name)
         p.add_argument("--events", nargs="+", default=None,
                        help=f"Kalshi event tickers (market_links.condition_id); default: every {sport} event")
@@ -190,6 +193,8 @@ def kalshi(db, argv, sport="f1"):
         elif args.cmd == "history":
             t = [pd.Timestamp(x).tz_localize(timezone.utc).to_pydatetime() for x in (args.start, args.end)]
             print(f"{KS.fetch_history(s, c, args.events, t[0], t[1], args.period, sport=sport, save_raw=args.save_raw, from_raw=args.from_raw)} price points stored")
+        elif args.cmd == "coverage":
+            print(KS.coverage(c, args.events, sport=sport))
         else:
             print(f"{KS.snapshot_books(s, c, args.events, sport=sport)} book snapshots stored")
     return 0
@@ -241,6 +246,10 @@ def schema_exchange(code, db, argv, sport="f1"):
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("sync")
     p.add_argument("--year", type=int, default=2026)
+    p = sub.add_parser("settle", help="Outcomes of closed links from the exchange's settlement feed (resolved_yes).")
+    p.add_argument("--since", default=None, help="UTC time to scan the feed from (default: where each pending link's "
+                                                 "last pass stopped, else a day before its last sync)")
+    p.add_argument("--max-pages", type=int, default=None, help="Pages to read at most (default the schema's max_pages)")
     for name in ("trades", "history", "books"):
         p = sub.add_parser(name)
         p.add_argument("--events", nargs="+", default=None, help="Event symbols (market_links.condition_id); default: every event")
@@ -259,6 +268,9 @@ def schema_exchange(code, db, argv, sport="f1"):
     with get_engine(db).connect() as c, get_session(db) as s:
         if args.cmd == "sync":
             print(D.sync(s, c, code, sport, args.year))
+        elif args.cmd == "settle":
+            st = D.settle(s, c, code, sport, since=args.since, max_pages=args.max_pages)
+            print(st if st.get("supported", True) else f"{code}: no settlement feed in exchanges/{code}.toml, nothing done")
         elif args.cmd == "trades":
             print(f"{D.fetch_trades(s, c, code, sport=sport, events=args.events)} trades stored")
         elif args.cmd == "history":

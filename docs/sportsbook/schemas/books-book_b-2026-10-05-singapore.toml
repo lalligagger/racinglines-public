@@ -1,0 +1,147 @@
+# DRAFT (2026-10-06, roadmap example #2): the same book schema for an American-odds sportsbook. Transcribed from the
+# owner's sportsbook B screenshot (2026-10-05 22:59 PDT),
+# 22 prices, all 22 drivers of the board. Pricing itself belongs to the "track sportsbook bets" thread; this file only
+# shows the schema carrying a second venue and a second odds format with no change to the event file.
+
+[book]
+venue = "book_b"                       # venues/book_b.toml (not drafted; its one rule would be "^odds to win" -> race_win)
+event = "2026-17"                         # events/f1/2026-17-singapore.toml, unchanged
+captured_utc = "2026-10-06T05:59Z"        # screenshot file time 2026-10-05 22:59 PDT
+source = "screenshot"
+source_ref = "owner screenshot (outside the repo)"
+odds = "american"
+currency = "USD"                          # assumed from the venue; not shown on the screenshot (inferred)
+title_time = "Fri, 1:30 AM"               # as printed; the venue's local zone is unknown
+
+[[lines]]
+title = "Odds to Win Singapore Grand Prix"
+selection = "Max Verstappen"
+odds = +250
+market = { kind = "race_win", driver = "Max Verstappen" }
+
+[[lines]]
+title = "Odds to Win Singapore Grand Prix"
+selection = "Kimi Antonelli"
+odds = +325
+market = { kind = "race_win", driver = "Kimi Antonelli" }
+
+[[lines]]
+title = "Odds to Win Singapore Grand Prix"
+selection = "Lando Norris"
+odds = +550
+market = { kind = "race_win", driver = "Lando Norris" }
+
+[[lines]]
+title = "Odds to Win Singapore Grand Prix"
+selection = "Lewis Hamilton"
+odds = +600
+market = { kind = "race_win", driver = "Lewis Hamilton" }
+
+[[lines]]
+title = "Odds to Win Singapore Grand Prix"
+selection = "Charles Leclerc"
+odds = +650
+market = { kind = "race_win", driver = "Charles Leclerc" }
+
+[[lines]]
+title = "Odds to Win Singapore Grand Prix"
+selection = "George Russell"
+odds = +900
+market = { kind = "race_win", driver = "George Russell" }
+
+[[lines]]
+title = "Odds to Win Singapore Grand Prix"
+selection = "Oscar Piastri"
+odds = +1200
+market = { kind = "race_win", driver = "Oscar Piastri" }
+
+[[lines]]
+title = "Odds to Win Singapore Grand Prix"
+selection = "Isack Hadjar"
+odds = +1200
+market = { kind = "race_win", driver = "Isack Hadjar" }
+
+[[lines]]
+title = "Odds to Win Singapore Grand Prix"
+selection = "Fernando Alonso"
+odds = +50000
+market = { kind = "race_win", driver = "Fernando Alonso" }
+
+[[lines]]
+title = "Odds to Win Singapore Grand Prix"
+selection = "Lance Stroll"
+odds = +50000
+market = { kind = "race_win", driver = "Lance Stroll" }
+
+[[lines]]
+title = "Odds to Win Singapore Grand Prix"
+selection = "Pierre Gasly"
+odds = +50000
+market = { kind = "race_win", driver = "Pierre Gasly" }
+
+[[lines]]
+title = "Odds to Win Singapore Grand Prix"
+selection = "Franco Colapinto"
+odds = +50000
+market = { kind = "race_win", driver = "Franco Colapinto" }
+
+[[lines]]
+title = "Odds to Win Singapore Grand Prix"
+selection = "Esteban Ocon"
+odds = +50000
+market = { kind = "race_win", driver = "Esteban Ocon" }
+
+[[lines]]
+title = "Odds to Win Singapore Grand Prix"
+selection = "Oliver Bearman"
+odds = +50000
+market = { kind = "race_win", driver = "Oliver Bearman" }
+
+[[lines]]
+title = "Odds to Win Singapore Grand Prix"
+selection = "Liam Lawson"
+odds = +50000
+market = { kind = "race_win", driver = "Liam Lawson" }
+
+[[lines]]
+title = "Odds to Win Singapore Grand Prix"
+selection = "Arvid Lindblad"
+odds = +50000
+market = { kind = "race_win", driver = "Arvid Lindblad" }
+
+[[lines]]
+title = "Odds to Win Singapore Grand Prix"
+selection = "Carlos Sainz"
+odds = +50000
+market = { kind = "race_win", driver = "Carlos Sainz" }
+
+[[lines]]
+title = "Odds to Win Singapore Grand Prix"
+selection = "Alexander Albon"
+odds = +50000
+market = { kind = "race_win", driver = "Alexander Albon" }
+
+[[lines]]
+title = "Odds to Win Singapore Grand Prix"
+selection = "Nico Hulkenberg"
+odds = +50000
+market = { kind = "race_win", driver = "Nico Hulkenberg" }
+
+[[lines]]
+title = "Odds to Win Singapore Grand Prix"
+selection = "Gabriel Bortoleto"
+odds = +50000
+market = { kind = "race_win", driver = "Gabriel Bortoleto" }
+
+[[lines]]
+title = "Odds to Win Singapore Grand Prix"
+selection = "Sergio Perez"
+odds = +50000
+note = "price partly hidden behind a tooltip in the screenshot; read as +50000 (inferred)"
+market = { kind = "race_win", driver = "Sergio Perez" }
+
+[[lines]]
+title = "Odds to Win Singapore Grand Prix"
+selection = "Valtteri Bottas"
+odds = +50000
+market = { kind = "race_win", driver = "Valtteri Bottas" }

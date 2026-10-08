@@ -5,6 +5,7 @@ code paths run, values are invented.
 
     f1_frames()        a fake F1 season in the model's raw-table shape (results, laps,
                        track profiles), as f1 model load_frames returns from SQL
+    f1_sprint(...)     the same frames with a Sprint Qualifying and a Sprint added to some events
     f1_schedule()      the season calendar (a few rounds still to race)
     mtb_results_md()   downhill results files in ChronoRace's markdown-table format
     replay_markets()   exchange tapes (prices + trades) for the maker replay
@@ -102,6 +103,45 @@ def f1_frames(n_events=6, n_upcoming=2, seed=SEED):
                                        mean_places_gained=float(gained), grid_finish_rank_corr=0.7, street=False,
                                        qual_rain_share=0.0, race_rain_share=0.0)))
     return pd.DataFrame(res), pd.DataFrame(laps), pd.DataFrame(prof)
+
+
+def f1_sprint(res, laps, prof, event_ids, seed=SEED, sprint_points=(8, 7, 6, 5, 4, 3, 2, 1)):
+    """f1_frames' (res, laps, prof) with a sprint weekend's Sprint Qualifying and Sprint added to `event_ids`:
+    SQ the evening of FP1's day (laps, and classification rows as FastF1 stores them: no position, DNS), the
+    Sprint the next day between FP3 and qualifying (classification, points, grid = the SQ order). New frames;
+    the other events' rows are untouched."""
+    rng = np.random.default_rng(seed)
+    res, laps = res.copy(), laps.copy()
+    add_res, add_laps = [], []
+    for ev in event_ids:
+        r = res[res["event_id"] == ev]
+        day0 = pd.Timestamp(r.loc[r["round"] == "fp1", "session_ts"].iloc[0])
+        sq_ts, sp_ts = day0 + timedelta(hours=8), day0 + timedelta(days=1, hours=1, minutes=30)
+        q = laps[(laps["event_id"] == ev) & (laps["round"] == "qual")]
+        rows = r[r["round"] == "race"].drop_duplicates("athlete_id")
+        best = {}
+        for a, g in q.groupby("athlete_id"):
+            ts = g["lap_time_ms"].to_numpy(float) * (1 + rng.normal(0, 0.002, len(g)))
+            best[a] = ts.min()
+            for i, t in enumerate(ts, start=1):
+                add_laps.append(dict(g.iloc[0].to_dict(), round="sprint_qual", lap=i, lap_time_ms=round(t),
+                                     session_ts=str(sq_ts)))
+        sq_order = {a: i + 1 for i, a in enumerate(sorted(best, key=best.get))}
+        score = {a: sq_order.get(a, 21) + rng.normal(0, 2.0) for a in rows["athlete_id"]}
+        dnf = {a: rng.random() < 0.05 for a in score}
+        finish = sorted(score, key=lambda a: (dnf[a], score[a]))
+        for pos, a in enumerate(finish, start=1):
+            base = rows[rows["athlete_id"] == a].iloc[0].to_dict()
+            ok = not dnf[a]
+            ex = dict(team_id=base["extra"]["team_id"], abbreviation=base["extra"]["abbreviation"])
+            add_res.append(dict(base, round="sprint_qual", position=None, status="DNS", time_ms=None, extra=dict(ex),
+                                session_ts=str(sq_ts)))
+            add_res.append(dict(base, round="sprint", position=pos, status="OK" if ok else "DNF", time_ms=None,
+                                extra=dict(ex, grid=sq_order.get(a, 0),
+                                           points=sprint_points[pos - 1] if ok and pos <= len(sprint_points) else 0),
+                                session_ts=str(sp_ts)))
+    return (pd.concat([res, pd.DataFrame(add_res).dropna(axis=1, how="all")], ignore_index=True),
+            pd.concat([laps, pd.DataFrame(add_laps)], ignore_index=True), prof)
 
 
 def f1_schedule(n_events=6, n_upcoming=2):

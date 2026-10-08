@@ -166,6 +166,7 @@ standard errors.
 | `reset` | In a season with new technical regulations (2022, 2026; `sports/f1.toml`), earlier seasons' car pace counts a quarter (set a priori) |
 | `rookie` | Driver offsets: once a driver's rookie season is over, that season's teammate comparisons (the rookie's and the teammate's) count a quarter (set a priori) |
 | `fastlap` | No price changes: adds the race's fastest lap (race pace plus 0.6 % noise, among classified cars) as `extra.fl_prob`. Provisional and uncalibrated, so no backtest row; scored against Kalshi's resolved fastest-lap markets first |
+| `flpos` | No price changes: the fastest lap instead drawn from the simulated finishing order and race pace (per-position rates from 2022-26 races times a pace factor, `sports/f1/fastest_lap.toml`), so the winner sets it about a third of the time. Provisional (decision log 2026-10-07); used by combo pricing |
 
 **`gridq + pretrain`** (run 937 vs baseline run 931):
 

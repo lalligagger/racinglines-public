@@ -254,6 +254,9 @@ def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None, 
             open_ = STG.is_open(kind, t, w.get("closes", {"race_pole": w["qual_start"]}))
             ok = liquid and f is not None and open_ and coherent.get((kind, lab), True)
             stage = dict(label=lab, t=t, fair=f, price=price, tradeable=ok, open=open_)
+            q = venue.quote(link["token_id"], t)
+            if q is not None:                    # the taker buys at the ask and sells at the bid (Kalshi)
+                stage.update(bid=q[0], ask=q[1])
             if thin_depth and not liquid and price is not None and 0 < price < 1 and f is not None and open_ \
                     and coherent.get((kind, lab), True):
                 d = venue.touch_depth(link["token_id"], t)          # only the volume floor failed: is there size?
@@ -479,7 +482,10 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
                           min_edge_by_kind=tuple(SS.parse_map(st["min_edge_by_kind"]).items()),
                           stages=None if st["taker_stages"] == SS.STAGES else st["taker_stages"],
                           max_deployed=st["max_deployed"], thin_edge_mult=st["thin_edge_mult"],
+                          kelly=st["kelly"], bankroll=st["bankroll"] if st["kelly"] is not None else None,
                           taker_fee=taker_fee(SS.venue_of(st)))
+    if st["kelly"] is not None and st["bankroll"] is None:
+        raise ValueError("kelly sizing needs a bankroll (the `bankroll` setting)")
     params_list = [RB.TakerParams(**{**base.__dict__, "mode": m}) for m in TAKER_MODES]
     balance = {m: st["bankroll"] for m in TAKER_MODES}     # bankroll-aware sizing: each mode's balance
     rows, all_trades, all_scores, all_calib = [], [], [], []
@@ -544,7 +550,7 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
                 scores=score_stage, calibration=pd.concat([cal_all.assign(stage="all"), cal_stage], ignore_index=True),
                 reliability=rel,
                 params=dict({k: v for k, v in base.__dict__.items() if k != "stages" and not
-                             (k in ("scale", "max_deployed", "min_edge_by_kind", "thin_edge_mult") and v == RB.TakerParams.__dataclass_fields__[k].default)},
+                             (k in ("scale", "max_deployed", "min_edge_by_kind", "thin_edge_mult", "kelly", "bankroll") and v == RB.TakerParams.__dataclass_fields__[k].default)},
                             n_sims=st["sims"],
                             variant=st["variant"], data_lag_min=DATA_LAG.seconds // 60,
                             min_volume_24h=st["min_volume_24h"], coherence_tol=COHERENCE_TOL,

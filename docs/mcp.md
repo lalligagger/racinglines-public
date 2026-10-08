@@ -134,8 +134,14 @@ the Lab; per-role read scoping is a later change if makers get tokens. Tools tha
 
 ### After every deploy
 
-`vm.sh deploy` restarts the unit only if it is running, after `update.sh` succeeds. When a deploy's output
-ends early, or `systemctl status racinglines-mcp` shows an "active since" older than the deploy, restart by
+`vm.sh deploy` restarts the unit only if it is running, after `update.sh` succeeds. The restart takes a few seconds:
+on SIGTERM the server waits at most 10 seconds (`SHUTDOWN_GRACE_SEC` in `racinglines/mcp/server.py`) for requests in
+flight, then cancels them, and the unit's `TimeoutStopSec=20` is systemd's margin above that. Before 2026-10-06 the
+wait had no limit, so a chat client's open event stream held every restart until systemd's 90-second default killed
+the process, and the connector answered 502 for those 90 seconds; a client that was connected reconnects on its own.
+If a restart still takes more than 20 seconds, `journalctl -u racinglines-mcp` names what it waited on.
+
+When a deploy's output ends early, or `systemctl status racinglines-mcp` shows an "active since" older than the deploy, restart by
 hand: `sudo systemctl restart racinglines-mcp`. The unit is off by default on a fresh VM and stays whatever
 you last set it to.
 
@@ -182,7 +188,7 @@ exchange, venues, users and the next races. Then:
 | Tool | What it does |
 |---|---|
 | `list_job_types()` | The Lab's job catalog (`web/jobs.py`) with knobs, ranges and defaults, and every sweep setting. |
-| `run_job(job_type, params)` | Queue a job: `f1_backtest`, `f1_scenario` (a forward forecast saved as a scenario, never the live prices), `f1_diagnostic` (`event='2026-15'`, `cutoff='2026-09-25T13:30'`), `f1_sweep` (`year` + `settings`: any sweep setting), `f1_season_strategy`, `dh_scenario`, `dh_backtest`. Validated exactly as the Lab validates its form. |
+| `run_job(job_type, params)` | Queue a job: `f1_backtest`, `f1_scenario` (a forward forecast saved as a scenario, never the live prices), `f1_diagnostic` (`event='2026-15'`, `cutoff='2026-09-25T13:30'`), `f1_sweep` (`year` + `settings`: any sweep setting), `f1_season_strategy`, `f1_combo` (combo / same-game parlay prices for one event: `event='2026-17'`, `legs=[{"kind": "race_win", "driver": "Max Verstappen"}, {"kind": "race_fastest_lap", "driver": "Max Verstappen"}]` or several as `{name: [legs]}`, optional `cutoff` (default now), `variant` (default the core taker's variant, profile A, + `flpos`); the run's `metrics.combos` holds each fair value, leg marginals, product, lift and a `calibrated` flag, `metrics.checks` the simulation's P(pole-sitter wins) and P(winner sets the fastest lap) beside history; [sportsbook: combos](sportsbook/index.md)), `dh_scenario`, `dh_backtest`. Validated exactly as the Lab validates its form. |
 | `get_job(job_id, log_lines)`, `list_jobs(status)`, `cancel_job(job_id)` | Follow a job (status, progress, the last log lines, the model run it saved), list them, cancel one that has not started. |
 | `replay_maker(run_id, fill, half_spread, size, max_pos, max_capital, skew, max_disagree, min_volume_24h, pull_min, exchange, with_sweep)` | The event diagnostic's maker replay with every knob, against the real trade tape of Polymarket or Kalshi (`exchange`): synchronous, seconds, nothing stored. |
 

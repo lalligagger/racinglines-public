@@ -1,0 +1,74 @@
+# DRAFT (2026-10-06, roadmap example): a sportsbook as data, in the shape of exchanges/og.toml but with no [api]
+# block: a book arrives as a screenshot or a paste, not a feed. Proposed location: venues/book_a.toml (or
+# exchanges/<code>.toml with kind = "sportsbook"). Nothing reads this file yet.
+
+[venue]
+code = "book_a"
+name = "Sportsbook A"
+kind = "sportsbook"                       # exchange | sportsbook
+odds = "decimal"
+currency = "USDT"
+settles = "venue"                         # the book settles; we only check it against the classification
+# Observed, not from any published rule: specials voided for Malaysia 2026 (ledger notes), a sprint stake capped at 1
+# (ledger note 2026-10-05). Keep as notes until the venue's terms are read.
+notes = ["voided every 'specials' market for Malaysia 2026", "capped one sprint-winner stake at 1 USDT"]
+
+# Title rules: regex on the venue's market title (case-insensitive, first match wins), as exchanges/og.toml does for
+# OG.com contracts. `subject` says what the selection names. Selections are resolved to the event's entry list by an
+# exact name table (a "Sainz Jr, Carlos" -> "Carlos Sainz" alias file), never by fuzzy matching: an unknown name is
+# `unmapped` and reported.
+[[rules]]
+title = "^race winner$"
+kind = "race_win"
+subject = "driver"
+[[rules]]
+title = "^qualifying winner$"
+kind = "race_pole"
+subject = "driver"
+[[rules]]
+title = "^most team points$"
+kind = "race_constructor_top"
+subject = "team"
+[[rules]]
+title = "^race winning constructor$"
+kind = "race_constructor_win"             # proposed kind
+subject = "team"
+[[rules]]
+title = "to be classified\\?$"
+kind = "race_classified"                  # proposed kind; the driver is in the title, the selection is yes/no
+subject = "title_driver"
+yes_no = true
+[[rules]]
+title = "both cars classified\\?$"
+kind = "race_team_both_classified"        # proposed kind
+subject = "title_team"
+yes_no = true
+[[rules]]
+title = "^number of classified drivers$"
+kind = "race_n_classified"                # proposed kind; selection "Over 18.5" / "Under 18.5" carries the line
+subject = "line"
+[[rules]]
+title = "^classified as last finisher$"
+kind = "race_last_classified"             # proposed kind
+subject = "driver"
+[[rules]]
+title = "safety car period during race"
+kind = "race_safety_car"
+subject = "none"
+yes_no = true
+[[rules]]
+title = "red flag during race"
+kind = "race_red_flag"
+subject = "none"
+yes_no = true
+[[rules]]
+title = "^sprint race winner$"
+kind = "race_sprint_win"
+subject = "driver"
+[[rules]]
+title = "^sprint qualifying winner$"
+kind = "race_sprint_pole"
+subject = "driver"
+# Everything else on the board (fastest lap, VSC, retirements, pit stop, margins, leaders, nationality, FP1,
+# qualifying constructor/margin, sprint constructor/margins) has no rule on purpose: it stays unmapped until a kind
+# and a settlement exist (roadmap Section 3).
