@@ -310,7 +310,7 @@ def test_event_sync_flags_missing_and_old_venue_prices(monkeypatch):
 
 
 def test_board_shows_a_flag_for_stale_venues_only(jinja_env):
-    src = (Path(__file__).resolve().parents[1] / "racinglines" / "web" / "templates" / "board.html").read_text()
+    src = (Path(__file__).resolve().parents[1] / "racinglines" / "web" / "templates" / "_board_sport.html").read_text()
     macro = src[src.index("{% macro sync_flags"):src.index("{% endmacro %}") + len("{% endmacro %}")]
     t = jinja_env.from_string(macro + "{{ sync_flags(u) }}")
     u = dict(sync=[dict(name="Polymarket", links=40, hours=0.5, stale=False, limit=3.0),
