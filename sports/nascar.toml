@@ -15,6 +15,7 @@ model_family = "position_sim"     # result-based pricing model: conservative, so
 pricing_model = "racinglines.models.model_global:GlobalModel"
 # Other pricing models kept runnable (`racinglines backtest walk-forward nascar --model NAME`), by model_runs.model name
 challengers = { nascar_results = "racinglines.models.nascar_model:NascarCupRace", nascar_recent_form = "racinglines.models.nascar_model:NascarCupRaceChallenger" }
+calibration = "baseline"          # pages label its prices as baseline: settings untuned (docs/f1-roadmap.md decision log, 2026-10-07); drop once fitted on a held-out season
 display_order = 1
 results_modules = ["racinglines.sources.nascar"]   # what fetches its results (`backtest coverage`)
 

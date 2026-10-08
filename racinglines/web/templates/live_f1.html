@@ -73,10 +73,10 @@
 
 {% if maker and win_chart %}<section data-panel="chart" hidden><div class="card"><h2>Win probability through the weekend</h2>{{ chart(win_chart) }}</div></section>{% endif %}
 
-{% set venue_prices = [] %}{% for m in snap.markets %}{% for q in (m.exchange_prices or []) %}{% if q.mid is not none or q.bid is not none or q.ask is not none %}{% set venue_prices = venue_prices + [(m.subject, q)] %}{% endif %}{% endfor %}{% endfor %}
 {% if venue_prices %}<div class="card"><div class="section-head"><h2>Exchange prices</h2><span class="muted">compact check, model forecast stays primary</span></div>
-  <div class="tags">{% for subject, q in venue_prices[:10] %}<span class="chip"><b>{{ subject }}</b> · {{ q.name }} {% if q.mid is not none %}{{ "%.2f"|format(q.mid) }}{% elif q.bid is not none and q.ask is not none %}{{ "%.2f"|format(q.bid) }}–{{ "%.2f"|format(q.ask) }}{% elif q.bid is not none %}bid {{ "%.2f"|format(q.bid) }}{% elif q.ask is not none %}ask {{ "%.2f"|format(q.ask) }}{% endif %}</span>{% endfor %}</div>
-  <p class="legend">Live exchange prices are shown as a compact check against the model; the main narrative and the live forecast remain the focus.</p>
+  <div class="tags">{% for subject, q in venue_prices[:10] %}<span class="chip"><b>{{ subject }}</b> · {{ q.name }} {% if q.mid is not none %}{{ "%.2f"|format(q.mid) }}{% elif q.bid is not none and q.ask is not none %}{{ "%.2f"|format(q.bid) }}–{{ "%.2f"|format(q.ask) }}{% elif q.bid is not none %}bid {{ "%.2f"|format(q.bid) }}{% elif q.ask is not none %}ask {{ "%.2f"|format(q.ask) }}{% endif %} <span class="{{ 'bad' if q.stale else 'muted' }}">{% if q.age_min is none %}age unknown{% elif q.stale %}stale, {{ q.age_min }} min old{% else %}{{ q.age_min }} min ago{% endif %}</span></span>{% endfor %}</div>
+  {% if venue_stale %}<p class="legend bad">Some exchange prices are more than {{ stale_min }} minutes old, so they may be out of sync with the fair values above: the exchange's recorder may be behind.</p>{% endif %}
+  <p class="legend">Live exchange prices are shown as a compact check against the model; the main narrative and the live forecast remain the focus. Each price shows when the exchange sync last wrote it.</p>
 </div>{% endif %}
 
 {# --- every market, one type at a time --- #}
