@@ -88,7 +88,8 @@ def admin_users(request: Request, msg: str = "", c=Depends(conn)):
 def _users_page(request, c, msg="", onetime=None):
     """The users page. onetime: (username, temporary password) after a reset, shown once and never stored."""
     resp = render(request, "admin_users.html", users=rows(data.q(c, USERS_SQL)), roles=U.ROLES, msg=msg,
-                  balances=ACC.balances(c), ledger=ACC.ready(c), grant=ACC.SIGNUP_GRANT, onetime=onetime)
+                  balances=ACC.balances(c), ledger=ACC.ready(c), grant=ACC.SIGNUP_GRANT, onetime=onetime,
+                  pw_min=ACC.PASSWORD_MIN)
     resp.headers["Cache-Control"] = "no-store"
     return resp
 
@@ -99,9 +100,7 @@ def admin_user_create(request: Request, username: str = Form(...), password: str
     try:
         username = username.strip().lower()
         with get_engine().begin() as c:
-            error = ACC.check_username(c, username) or ACC.check_password(password, "", username)
-            if len(password) < 8:
-                error = error or "password must be at least 8 characters"
+            error = ACC.check_username(c, username) or ACC.check_password(password, password, username)   # one password field: no confirm to match
             if error:
                 raise ValueError(error)
             user_id = c.execute(text("""INSERT INTO users (username, display_name, role, password_hash, active)
