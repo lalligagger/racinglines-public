@@ -8,10 +8,13 @@ were probed from the owner's machine on 2026-09-29 (tests/fixtures/market/motogp
     <year>/categories.json                       the season's categories (MotoGP/Moto2/Moto3, id + legacy_id)
     <year>/<event_short_name>/sessions.json      MotoGP-class sessions of that event (FP1, PR, FP2, Q1, Q2, SPR, WUP, RAC)
     <year>/<event_short_name>/classification.json   the RAC (race) session's classification: one row per rider
+    <year>/<event_short_name>/<session_id>.classification.json   every finished session's classification (FP, PR,
+                                                Q1 / Q2 = type "Q" with number 1 / 2, SPR, WUP, RAC)
 
 Only the MotoGP class is fetched (sports/motogp.toml's only competition, "Riders"); Moto2/Moto3 are a separate
-competition this repo does not track. Only the race session's classification is fetched for now (sprints,
-listed since 2023, are a follow-up). Terms of use: sports/motogp.toml [results].terms.
+competition this repo does not track. A re-run (no --force) asks only for the session files not yet stored, so it
+fills in qualifying and the sprints of seasons first fetched race-only (the API typed Q1 / Q2 as "Q", which this
+filter used to skip). Terms of use: sports/motogp.toml [results].terms.
 
 Requests go through sources/http.py (paced per host). Already-downloaded files are skipped, so this is safe to
 re-run; --force asks again. An event with no RAC session yet (not run, or a test) is recorded as such and skipped.
@@ -129,7 +132,7 @@ def fetch(years, force=False, dry_run=False):
                 for session in sessions:
                     stype = session.get("type")
                     sid = session.get("id")
-                    if not sid or stype not in {"FP", "PR", "Q1", "Q2", "SPR", "WUP", "RAC"}:
+                    if not sid or stype not in {"FP", "PR", "Q", "Q1", "Q2", "SPR", "WUP", "RAC"}:   # Q: Q1 / Q2 by number
                         continue
                     if session.get("status") == "NOT-STARTED":
                         continue

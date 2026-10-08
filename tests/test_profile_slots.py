@@ -5,7 +5,7 @@ assignment to one slot that leaves the others alone."""
 def test_pref_keys_keep_the_f1_ones():
     from racinglines.pipelines import profiles as PF
     assert PF.pref() == PF.PREF == "strategy_profile" and PF.pref("kalshi") == PF.PREF_KALSHI
-    assert PF.pref("og", "nascar") == "strategy_profile_og_nascar" and PF.pref("polymarket", "motogp") == "strategy_profile_motogp"
+    assert PF.pref("og", "nascar") == "strategy_profile_nascar_og" and PF.pref("polymarket", "motogp") == "strategy_profile_motogp_polymarket"
 
 
 def test_admin_slots_come_from_the_schemas():

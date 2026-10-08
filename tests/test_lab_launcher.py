@@ -20,7 +20,7 @@ def test_launcher_rows_and_columns_come_from_the_schemas():
     assert cells["mtb_dh"]["kalshi"] is None                                      # not listed there
     assert cells["motogp"]["og"] is None and cells["nascar"]["og"] == []          # OG.com lists NASCAR, no job yet
     assert {"walk_forward", "f1_sweep", "f1_season_strategy"} <= set(cells["f1"]["kalshi"])
-    assert cells["f1"]["og"] == ["f1_season_strategy"]
+    assert cells["f1"]["og"] == ["f1_sweep", "f1_season_strategy"]                 # the sweep replays OG.com too
     assert cells["nascar"]["kalshi"] == ["walk_forward"] and cells["motogp"]["polymarket"] == ["walk_forward"]
 
 

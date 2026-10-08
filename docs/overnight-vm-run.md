@@ -90,6 +90,13 @@ M1 to M4 give every row and every column at least one cell. After that, in order
 `scripts/vm/overnight.sh`, as a transient systemd unit (`rl-overnight`), in one of five modes. It replaces the
 `rl-backfill` script of the backfill handoff (revision 3) and drops its downhill walk-forward.
 
+**Staging.** `TARGET=staging` runs any mode against staging instead of production. It reads
+`/etc/racinglines-staging.env`, works in `/opt/racinglines-staging`, backs up and queries `racinglines_staging`
+(`data/backups/db/racinglines_staging-before-overnight-<mode>-<UTC>.sql.gz`), and waits only for staging's own live
+units (`racinglines-staging-live-*`). `scripts/vm/demo_setup.sh` takes the same switch. Run staging's copy of the
+script: `sudo systemd-run --unit=rl-overnight-staging --uid=racinglines --setenv=TARGET=staging --setenv=MODE=replay
+/opt/racinglines-staging/scripts/vm/overnight.sh`. `TARGET=prod`, the default, is unchanged.
+
 | Mode | Writes | What |
 |---|---|---|
 | `dry` | nothing | cores, memory, disk; table counts; each sport's tape probe and last-race replay; **the F1 golden check** (profile A on 2026 at 4k, not saved) |

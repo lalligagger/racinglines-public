@@ -30,6 +30,20 @@ def record(session, kind, summary, sport=None, detail=None):
     return row
 
 
+def record_run(session, kind, sport, event_keys, run_id, variant=None, sims=None, code_version=None, data_key=None,
+               **more):
+    """One row for a stored pricing run that moves the board: kind "forecast" (a `forecast --save`) or "live-price"
+    (a live reprice by the signal engine). detail: the event keys, run id, model variant, simulations, code_version
+    and data_key (plus `more`). The caller commits."""
+    keys = list(event_keys or [])
+    shown = ", ".join(keys[:3]) + (f" and {len(keys) - 3} more" if len(keys) > 3 else "")
+    summary = (f"{sport} {kind} run {run_id}: {shown or 'no event'}"
+               + (f", {variant}" if variant else "") + (f", {sims} sims" if sims else ""))
+    detail = dict(run=run_id, events=keys, variant=variant, sims=sims, code_version=code_version, data_key=data_key,
+                  **more)
+    return record(session, kind, summary, sport=sport, detail=detail)
+
+
 def recent(session, limit=20, sport=None):
     q = select(m.DataChange).order_by(m.DataChange.at.desc(), m.DataChange.id.desc()).limit(limit)
     if sport:

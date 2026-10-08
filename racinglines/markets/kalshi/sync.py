@@ -22,10 +22,18 @@ NO is the mirror image). Titles are classified like Polymarket's. Checked agains
         Sprint Race at the 2026 Dutch Grand Prix?"                       KXF1RACESPRINT    race_sprint_win *
     "... Sprint Qualifying: Pole Position" / "... fastest valid
         qualifying lap time in the Sprint Qualifying session (SQ3) ..."  KXF1SPRINTPOLE    race_sprint_pole *
-    "... Sprint Race: Fastest Lap / Top 5 / Top 10 / Top Constructor"    KXF1SPRINT...     unmodeled
+    "... Sprint Race: Top 5 / Top 10 Finishers"                          KXF1SPRINTTOP5/10 race_sprint_top5/10 *
+    "... Sprint Race: Top Constructor" / "Will Alpine F1 Team finish in
+        first in the Sprint Race at ...?"         KXF1SPRINTTOPCONSTRUCTOR  race_sprint_constructor_top *
+    "... Sprint Race: Fastest Lap"                                        KXF1SPRINTFASTLAP unmodeled (no model draws it)
     "F1 Matchup: Verstappen vs Hamilton" / "Will Max Verstappen beat
         Lewis Hamilton in the racing matchup?" (main race)              KXF1H2H           race_h2h
-    Biggest Mover, Top 5, retirements, race occurrence, ...                                 unmodeled
+    retirements, race occurrence, transfers, ...                                            unmodeled
+
+The kind is read first from the series ticker, an exact key (sports/f1.toml [markets.kalshi.kinds]); the titles
+classify a series the table doesn't list, and give the Grand Prix either way. A link filed before a series was
+classified keeps its old `unmodeled` until a sync re-reads it: closed links only come back with --include-closed
+(KXF1TOP5's 330 and the sprint series were filed so on 2026-09-28, before #48 and the sprint kinds).
 
 yes_sub_title is the driver (or the team); race_h2h has params.opponent_id. Head-to-head titles don't name
 the Grand Prix: it's read from the event ticker's race code (KXF1H2H-BRIGP26VERHAM -> BRIGP26), which the
@@ -43,17 +51,20 @@ status, result and last quote. A ticker Kalshi no longer serves (settled before 
 closes once its end date has passed.
 
 * Sprint markets (docs/todo.md U5) are classified by default (sprints_enabled; on since 2026-10-06, owner);
-RACINGLINES_KALSHI_SPRINTS=0 (or false/no) turns it off and every sprint market stays unmodeled. The sprint winner and sprint pole take the sprint
-kinds of racinglines/markets/kinds.py (race_sprint_win settles after the Sprint, race_sprint_pole after SQ;
-sports/f1.toml closes them when the session starts) and are priced by db.reads.model_prob. The sprint's
-fastest lap, top 5, top 10 and top constructor stay unmodeled either way.
+RACINGLINES_KALSHI_SPRINTS=0 (or false/no) turns it off and every sprint market stays unmodeled. The sprint winner,
+sprint pole, top 5, top 10 and top constructor take the sprint kinds of markets/kinds.toml (race_sprint_win settles
+after the Sprint, race_sprint_pole after SQ; sports/f1.toml closes them when the session starts); the winner and
+pole are priced by db.reads.model_prob, the others only from a run's simulations (kinds.fair). The sprint's fastest
+lap stays unmodeled: no model draws it.
 
-Other series (docs/todo.md, U9): NASCAR Cup, MotoGP and IndyCar are tape-only sports (sports/<code>.toml,
-[markets.kalshi] series = the ticker prefixes, e.g. KXNASCAR). `sync(..., sport="nascar")` upserts their
-markets under their own competition, every link `unmodeled` (no classifier, no driver or race lookup), so
+Other series (docs/todo.md, U9): NASCAR Cup, MotoGP and IndyCar have no title classifier (only a schema with
+[markets] titles = true does: F1). Their schemas name the ticker prefixes ([markets.kalshi] series, e.g. KXNASCAR);
+`sync(..., sport="nascar")` upserts their markets under their own competition, no driver or race lookup by title, so
 trades, history and books record them like F1's; the archive pass sends the rows to Kalshi's tree by
-`market_links.exchange`. Nothing about them runs unless the sport is named (`--sport nascar`), so the
-default F1 sync is unchanged.
+`market_links.exchange`. A sport whose schema names an [identity] resolver has its links' kind, driver and race
+filled by it, and a link whose kind the schema's [markets] kinds list, fully identified, is filed as that kind
+(identity.promote); every other link stays `unmodeled`. Nothing about them runs unless the sport is named
+(`--sport nascar`), so the default F1 sync is unchanged.
 """
 
 import json
@@ -77,7 +88,9 @@ STOP = {"who", "will", "win", "the", "a", "an", "at", "in", "of", "formula", "on
 PROP = [(r"fastest lap", "race_fastest_lap"), (r"safety car", "race_safety_car"), (r"red[- ]flag", "race_red_flag"),
         (r"\brain", "race_rain")]
 SPRINT_FLAG = "RACINGLINES_KALSHI_SPRINTS"
-SPRINT_KINDS = ("race_sprint_win", "race_sprint_pole")
+SPRINT_TOP = {"5": "race_sprint_top5", "10": "race_sprint_top10"}      # KXF1SPRINTTOP5 / KXF1SPRINTTOP10
+SPRINT_KINDS = ("race_sprint_win", "race_sprint_pole") + tuple(SPRINT_TOP.values())   # one market per driver
+TEAM_KINDS = ("race_constructor_top", "race_sprint_constructor_top", "constructors_champion")   # yes_sub_title: a team
 ATHLETE_KINDS = ("race_win", "race_podium", "race_top10", "race_top5", "race_pole", "race_fastest_lap",
                  "race_biggest_mover", "champion")       # one market per driver: the driver is the yes_sub_title
 REREAD_MAX = 100     # open links re-read by ticker per pass when their event left the open listing
@@ -89,11 +102,16 @@ def sprints_enabled():
 
 
 def classify_sprint(low):
-    """The sprint kind of a lower-cased sprint title: the sprint winner ("Sprint Race Winner", "finish in first in
-    the Sprint Race"), sprint pole ("Sprint Qualifying: Pole Position", "SQ3"), else unmodeled (the sprint's
-    fastest lap, top 5 / top 10, top constructor, and any prop)."""
-    if re.search(r"constructor|\btop[- ]?\d+\b|fastest lap|podium|safety car|red[- ]flag|\brain|mover|retire", low):
+    """The sprint kind of a lower-cased sprint title: the top constructor ("Sprint Race: Top Constructor", "Will
+    Alpine F1 Team finish in first in the Sprint Race"), top 5 / top 10 ("Sprint Race: Top 5 Finishers"), sprint
+    pole ("Sprint Qualifying: Pole Position", "SQ3"), the sprint winner ("Sprint Race Winner", "finish in first in the
+    Sprint Race"), else unmodeled: the sprint's fastest lap (no model draws it), any other top N, and any prop."""
+    if re.search(r"fastest lap|podium|safety car|red[- ]flag|\brain|mover|retire", low):
         return "unmodeled"
+    if "constructor" in low:
+        return "race_sprint_constructor_top"
+    if mm := re.search(r"\btop[- ]?(\d+)\b", low):
+        return SPRINT_TOP.get(mm.group(1), "unmodeled")
     if re.search(r"\bpole\b|\bsq3\b", low):
         return "race_sprint_pole"
     if re.search(r"\bwin(ner)?\b|finish(es)? in (exactly )?first", low):
@@ -112,12 +130,31 @@ def gp_name(t):
     return f"{mm.group(1)} Grand Prix" if mm else None
 
 
-def classify(event_title, market_title="", gp=None, sprints=None):
+def is_sprint(kind):
+    """A kind of the sprint weekend's own rounds (the sprint, sprint qualifying): its row's session or stage."""
+    from racinglines.markets import kinds as K
+    k = K.KINDS.get(kind)
+    return k is not None and ("sprint" in (k.session, k.stage) or k.stage == "sprint_qual")
+
+
+def classify(event_title, market_title="", gp=None, sprints=None, series=None, sport="f1"):
     """(prediction kind, Grand Prix name or None) for a Kalshi market. gp: the Grand Prix when the titles
-    don't name it (head-to-heads). sprints: classify sprint markets (default: sprints_enabled(), on)."""
+    don't name it (head-to-heads). sprints: classify sprint markets (default: sprints_enabled(), on).
+    series: the market's series ticker; when the sport's schema maps it ([markets.kalshi] kinds), that is the kind
+    (an exact key), and the titles only give the Grand Prix. Otherwise the kind is read from the titles."""
     t = f"{event_title or ''} {market_title or ''}"
     gp = gp_name(event_title) or gp_name(market_title) or gp
     low = t.lower()
+    kind = sports.kalshi_kinds(sport).get(series) if series else None
+    if kind is not None:
+        from racinglines.markets import kinds as K
+        if K.KINDS[kind].payoff == "standings":
+            return kind, None
+        if not gp:
+            return "unmodeled", None
+        if is_sprint(kind) and not (sprints_enabled() if sprints is None else sprints):
+            return "unmodeled", gp
+        return kind, gp
     if re.search(r"constructors'? champion", low):
         return "constructors_champion", None
     if re.search(r"drivers'? champion", low) or (re.search(r"\bchampion(ship)?\b", low) and not gp):
@@ -212,7 +249,8 @@ def link_rows(events, resolver, modeled=True):
         code = _race_code(ev.get("event_ticker"))
         ev_gp = next((g for c, g in codes.items() if code.startswith(c)), None)
         for mk in ev.get("markets") or []:
-            kind, gp = classify(ev.get("title"), mk.get("title"), ev_gp) if modeled else ("unmodeled", None)
+            kind, gp = (classify(ev.get("title"), mk.get("title"), ev_gp, series=ev.get("series_ticker")) if modeled
+                        else ("unmodeled", None))
             sub = mk.get("yes_sub_title") or mk.get("subtitle") or ""
             end = _time(mk.get("close_time") or mk.get("expiration_time"))
             race_id, race_key = resolver.race(gp, end) if gp else (None, None)
@@ -221,7 +259,7 @@ def link_rows(events, resolver, modeled=True):
                 mm = re.search(r"Will (.+?) (?:finish ahead of|beat) (.+?)(?: at| in|\?|$)", mk.get("title") or "")
                 a, b = (resolver.driver(mm.group(1)), resolver.driver(mm.group(2))) if mm else (None, None)
                 athlete_id, params = a, {"opponent_id": b}
-            elif kind in ("race_constructor_top", "constructors_champion"):
+            elif kind in TEAM_KINDS:
                 params = {"team": resolver.team(sub)}
             elif kind in ATHLETE_KINDS + SPRINT_KINDS:
                 athlete_id = resolver.driver(sub)
@@ -285,7 +323,7 @@ def sync(session, conn, year=2026, include_closed=False, kc=None, sport="f1", se
     tickers instead of discovery. kc: a kalshi Client (default: a new one on the network)."""
     from racinglines.markets.polymarket.sync import Resolver
     comp, cat = competition(session, sport)
-    modeled = sport == "f1"                     # the classifier and the resolver know F1 only
+    modeled = sports.titles_classified(sport)   # [markets] titles: the title classifier and the F1 resolver
     kc = kc or K.Client()
     now = datetime.now(timezone.utc)
     events = []
@@ -311,6 +349,7 @@ def sync(session, conn, year=2026, include_closed=False, kc=None, sport="f1", se
     who = identity.linker(sport, conn) if not modeled else None      # a tape-only sport with a resolver: driver, race, kind
     if who:
         who.fill(rows)
+        identity.promote(sport, rows)            # prediction = params.kind where [markets] kinds files it, identified
         stats["identity"] = dict(who.counts)
     seen = {r["token_id"] for r in rows}
     for row in rows:
@@ -396,13 +435,13 @@ def _tickers(conn, event_tickers=None, open_only=False, sport=None):
                                  WHERE {' AND '.join(where)} ORDER BY l.condition_id, l.token_id"""), params).all()
 
 
-def fetch_trades(session, conn, event_tickers=None, since=None, kc=None, sport=None):
+def fetch_trades(session, conn, event_tickers=None, since=None, kc=None, sport=None, open_only=False):
     """Store every trade on the markets of the given Kalshi events (or of every event of `sport`). Idempotent.
-    Returns trades stored."""
+    since: only trades from then on; open_only: markets not closed (the recorder's pass). Returns trades stored."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
     kc = kc or K.Client()
     n = 0
-    for tok, ev, _ in _tickers(conn, event_tickers, sport=sport):
+    for tok, ev, _ in _tickers(conn, event_tickers, open_only=open_only, sport=sport):
         rows = trade_rows(tok, ev, kc.trades(tok, min_ts=int(since.timestamp()) if since else None))
         for i in range(0, len(rows), 1000):
             session.execute(pg_insert(m.MarketTrade).values(rows[i:i + 1000]).on_conflict_do_nothing(constraint="uq_market_trade"))

@@ -8,8 +8,9 @@ price, as F1 has from its own forecast.
     racinglines nascar forecast --save --backup FILE  # store one forecast run (model_runs + race_predictions)
     racinglines nascar forecast --undo RUN_ID         # delete a stored run (its predictions go with it)
 
-The field for an upcoming race is the latest completed race's classified entrants (the calendar holds no entry list
-yet). The model settings are the replay's (sports/<sport>.toml [replay], seed 7): nothing is tuned here. A sport with
+The field for an upcoming race is its own entry list where one is stored (the entrants of a session of that race
+already ingested from the weekend feed, such as practice or qualifying, less any DNS), else the latest completed
+race's classified entrants (the calendar holds no entry list before the weekend). The model settings are the replay's (sports/<sport>.toml [replay], seed 7): nothing is tuned here. A sport with
 no scheduled race stored (MotoGP until its calendar is ingested) has nothing to forecast and says so.
 """
 
@@ -49,6 +50,16 @@ def last_field(conn, sp):
     return r["event_key"], sorted(int(a) for a in res["athlete_id"])
 
 
+def entry_list(conn, race_id):
+    """[athlete ids] who have a result in any stored session of the race other than a DNS (practice, qualifying,
+    a sprint, from the weekend feed already ingested): the race's start list; [] when no session is stored."""
+    rows = conn.execute(text("""
+        SELECT DISTINCT r.athlete_id FROM results r JOIN rounds ro ON ro.id = r.round_id
+        WHERE ro.race_id = :r AND r.athlete_id IS NOT NULL AND upper(coalesce(r.status, 'OK')) <> 'DNS'
+        ORDER BY r.athlete_id"""), dict(r=int(race_id))).all()
+    return [int(a) for (a,) in rows]
+
+
 def forecast(engine, sport, n=N_RACES, today=None, data=None):
     """dict(sport, model, settings, field_from, races=[dict(race row, sims)], data) for the next n races."""
     from racinglines.models.race_model import Event
@@ -58,19 +69,23 @@ def forecast(engine, sport, n=N_RACES, today=None, data=None):
     with engine.connect() as conn:
         nxt = upcoming(conn, sp, n, today)
         src, field = last_field(conn, sp)
+        own = {int(r.race_id): entry_list(conn, r.race_id) for r in nxt.itertuples()}
     out = dict(sport=sport, sp=sp, model=model, settings=st, field_from=src, field=field, races=[])
-    if not len(nxt) or not field:
+    if not len(nxt) or not (field or any(own.values())):
         return dict(out, data=data)
     if data is None:
         data = model.load(engine.url.render_as_string(hide_password=False))
     hist = model.history(data, st)
     rng = np.random.default_rng(st.rng_seed)
     for r in nxt.itertuples():
+        entrants = own.get(int(r.race_id)) or field          # the race's own entry list, else the last race's field
+        if not entrants:
+            continue
         ev = Event(id=r.event_key, season=int(r.season), cutoff=r.start, name=str(r.name),
-                   info={"field": field})
+                   info={"field": entrants})
         sims = model.price(hist, ev, st, rng)
         if sims is not None:
-            out["races"].append(dict(race=r, sims=sims))
+            out["races"].append(dict(race=r, sims=sims, field_from=r.event_key if own.get(int(r.race_id)) else src))
     return dict(out, data=data)
 
 
@@ -79,7 +94,7 @@ def table(conn, fc, top=5):
     if not fc["races"]:
         return f"{fc['sport']}: nothing to forecast (no scheduled race stored, or no completed race to take a field from)"
     names = dict(conn.execute(text("SELECT id, display_name FROM athletes WHERE id = ANY(:i)"),
-                              dict(i=fc["field"])).all())
+                              dict(i=sorted({int(a) for x in fc["races"] for a in x["sims"].entrants}))).all())
     lines = [f"{fc['sport']} forecast ({fc['model'].name}; field from {fc['field_from']}, {len(fc['field'])} entrants)"]
     for x in fc["races"]:
         r, sims = x["race"], x["sims"]

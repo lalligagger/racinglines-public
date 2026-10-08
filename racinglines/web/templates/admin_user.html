@@ -6,7 +6,7 @@
 {% include "_admin_nav.html" %}
 <p class="muted">{{ u.display_name }} · created {{ u.created_at|fmt }} · <a href="/admin/activity?user={{ u.username }}">activity</a> · <a href="/admin/users">all users</a></p>
 <div class="card"><h2>Strategy profiles</h2>
-<p class="muted">The Lab candidate whose paper signals this user sees on <a href="/strategy">Strategy</a> (recommendations only: nothing is sent to an exchange), one per sport and exchange. Live paper signals run the Formula 1 · Polymarket profile today (its own settings may trade Kalshi); the others are kept for when the signals cover their sport and exchange.</p>
+<p class="muted">The Lab candidate whose paper signals this user sees on <a href="/strategy">Strategy</a> (recommendations only: nothing is sent to an exchange), one per sport and exchange. Each slot feeds the paper signals for its sport and exchange: Formula 1 through the session signals, other sports through the per-sport signals.</p>
 <div class="scroll"><table><thead><tr><th class="l">Sport · exchange</th><th class="l">Profile</th></tr></thead><tbody>
 {% for s in slots %}<tr><td class="l">{{ s.label }}</td><td class="l">{% if s.profile %}<b>{{ s.profile.name }}</b> <span class="muted">· {% if s.profile.members %}blend of {{ s.profile.members|map(attribute='code')|join(', ') }}{% else %}{{ s.profile.strategy }} · <code>{{ s.profile.settings.variant }}</code>{% endif %}</span>{% else %}<span class="muted">none</span>{% endif %}</td></tr>{% endfor %}
 </tbody></table></div>

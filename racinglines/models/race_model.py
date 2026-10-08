@@ -167,12 +167,15 @@ class PositionSim:
         return O.from_position_sim(ex["entrants"], ex["sim"])
 
     def results(self, data, ev):
+        from racinglines.models.position_sim import practice as PR
         o = data.drivers[data.drivers["event_id"] == ev.id]
         q = data.res[(data.res["event_id"] == ev.id) & (data.res["round"] == "qual")].set_index("athlete_id")["position"]
-        return pd.DataFrame(dict(athlete_id=o["athlete_id"].to_numpy(), position=o["position"].to_numpy(float),
-                                 status=o["status"].to_numpy(), qual_position=o["athlete_id"].map(q).to_numpy(float),
-                                 team_id=o["team_key"].to_numpy() if "team_key" in o else None,
-                                 points=o["points"].to_numpy(float) if "points" in o else 0.0))
+        out = pd.DataFrame(dict(athlete_id=o["athlete_id"].to_numpy(), position=o["position"].to_numpy(float),
+                                status=o["status"].to_numpy(), qual_position=o["athlete_id"].map(q).to_numpy(float),
+                                team_id=o["team_key"].to_numpy() if "team_key" in o else None,
+                                points=o["points"].to_numpy(float) if "points" in o else 0.0))
+        # each practice session's order of best laps (fp1_position, ...: the race_fp<n>_fastest kinds), where stored
+        return PR.with_positions(out, PR.classification(data.practice, ev.id))
 
 
 MODELS = {"mtb_dh": TimedRuns, "f1": PositionSim}
@@ -200,6 +203,26 @@ def model_class(sport):
     if sport not in MODELS:
         raise ValueError(f"no pricing model for sport {sport!r}: set [sport] pricing_model in sports/{sport}.toml")
     return MODELS[sport]
+
+
+def challengers(sport):
+    """{name: "module:Class"}: the sport's challenger models ([sport] challengers in sports/<code>.toml), earlier or
+    alternative pricing models kept runnable beside [sport] pricing_model (`backtest walk-forward --model NAME`)."""
+    from racinglines import sports
+    try:
+        return dict(sports.load(sport)["sport"].get("challengers") or {})
+    except FileNotFoundError:
+        return {}
+
+
+def challenger(sport, name):
+    """The challenger model class `name` of `sport`, bound to the sport's schema as the pricing model is."""
+    from importlib import import_module
+    refs = challengers(sport)
+    if name not in refs:
+        raise ValueError(f"sports/{sport}.toml [sport] challengers has no {name!r}; choose from {sorted(refs)}")
+    mod, _, cls = refs[name].partition(":")
+    return bind(getattr(import_module(mod), cls), sport)
 
 
 def get(sport):
