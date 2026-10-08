@@ -136,11 +136,11 @@ def test_default_books_take_modeled_and_race_linked_f1_markets(test_engine, monk
     with test_engine.begin() as c:
         c.execute(text("DELETE FROM market_links WHERE token_id LIKE 'bk-%'"))
         c.execute(text("DELETE FROM events WHERE source_key = 'bk-upcoming'"))
-        c.execute(text("""INSERT INTO seasons (competition_id, year) SELECT id, 2099 FROM competitions WHERE code = 'f1_wdc'
-                          AND NOT EXISTS (SELECT 1 FROM seasons s WHERE s.competition_id = competitions.id AND s.year = 2099)"""))
+        c.execute(text("""INSERT INTO seasons (competition_id, year) SELECT id, 2093 FROM competitions WHERE code = 'f1_wdc'
+                          AND NOT EXISTS (SELECT 1 FROM seasons s WHERE s.competition_id = competitions.id AND s.year = 2093)"""))
         ev = c.execute(text("""INSERT INTO events (season_id, source, source_key, name, start_date, status)
-                               SELECT s.id, 'test', 'bk-upcoming', 'Upcoming GP', '2099-10-11', 'scheduled' FROM seasons s
-                               JOIN competitions co ON co.id = s.competition_id WHERE co.code = 'f1_wdc' AND s.year = 2099
+                               SELECT s.id, 'test', 'bk-upcoming', 'Upcoming GP', '2093-10-11', 'scheduled' FROM seasons s
+                               JOIN competitions co ON co.id = s.competition_id WHERE co.code = 'f1_wdc' AND s.year = 2093
                                RETURNING id""")).scalar()
         race = c.execute(text("""INSERT INTO races (event_id, category_id) SELECT :e, cat.id FROM categories cat
                                  JOIN competitions co ON co.id = cat.competition_id WHERE co.code = 'f1_wdc' LIMIT 1
@@ -161,7 +161,8 @@ def test_default_books_take_modeled_and_race_linked_f1_markets(test_engine, monk
         n = c.execute(text("SELECT count(*) FROM market_links WHERE token_id LIKE 'bk-%'")).scalar()
         c.execute(text("DELETE FROM market_links WHERE token_id LIKE 'bk-%'"))
         c.execute(text("DELETE FROM events WHERE source_key = 'bk-upcoming'"))
-    assert n == 4
+        c.execute(text("DELETE FROM seasons WHERE year = 2093 AND NOT EXISTS (SELECT 1 FROM events e WHERE e.season_id = seasons.id)"))
+    assert n == 4                           # (2093: a far-future season no other test uses)
     # a race-linked F1 market whose kind isn't modeled yet is booked; an unmodeled season market and another sport's
     # market are not
     assert {t for t in asked if t.startswith("bk-")} == {"bk-modeled-season", "bk-unmodeled-race"}
