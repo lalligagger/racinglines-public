@@ -50,7 +50,10 @@ rc=0
 run() {   # run <exchange> <sport> <command> [args]: one line with the command's last output line and its time
   local t0=$SECONDS out
   say "$1 $2 $3: started"
-  if out=$(nice $R markets --exchange "$1" --sport "$2" "${@:3}" 2>&1); then
+  # the command's own 5-minute progress lines go to the journal as they come (a step can run for an hour); the rest
+  # is captured for the step's one summary line
+  if out=$(nice $R markets --exchange "$1" --sport "$2" "${@:3}" 2>&1 |
+           tee >(grep --line-buffered '^progress' | while read -r l; do say "$1 $2 $3: $l" >&2; done)); then
     say "$1 $2 $3: $(echo "$out" | grep -v '^progress' | tail -n 1) ($((SECONDS - t0)) s)"
   else
     rc=1; say "$1 $2 $3: FAILED ($((SECONDS - t0)) s): $(echo "$out" | tail -n 3 | tr '\n' ' ')"
