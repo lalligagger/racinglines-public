@@ -19,9 +19,10 @@ unverified against the live Gamma API; markets/polymarket/sync.py). Additive: ro
     trades     [--events SLUG …]                          the tape of those events' markets
     history    [--events SLUG …] --start --end [--fidelity 60]   price history (minutes per point)
     books      [--events SLUG …]                          one order-book snapshot per open market
-(--sport f1 keeps the commands above, except `trades --open [--since-hours H]`, which takes every open F1 market
+(--sport f1 keeps the commands above, except `trades` and `history` without --events, which take every F1 market
 the same way; `record` is F1 only.) `trades --open --since-hours H` on any exchange: only markets not closed, only
-trades from H hours ago on (the recorder's pass, scripts/vm/record_venues.sh and pm_sync.sh).
+trades from H hours ago on (the recorder's pass, scripts/vm/record_venues.sh and pm_sync.sh; the one-off backfill,
+scripts/vm/backfill_tape.sh, takes --since-hours alone).
 
 Kalshi (--exchange kalshi; markets/kalshi/, built on mocked responses, unverified against the live API):
     sync       [--year 2026] [--closed] [--series TICKER …]   the sport's Kalshi markets into market links
@@ -92,8 +93,8 @@ def main(argv=None):
         return schema_exchange(known.exchange, known.db, rest, known.sport)
     if known.exchange == "kalshi":
         return kalshi(known.db, rest, known.sport)
-    if known.sport == "f1" and rest[:1] == ["trades"] and "--open" in rest:
-        return polymarket(known.db, rest, "f1")        # the recorder's pass: every open F1 market, as the other sports
+    if known.sport == "f1" and rest[:1] in (["trades"], ["history"]) and "--events" not in rest:
+        return polymarket(known.db, rest, "f1")        # every F1 market, as the other sports (recorder, backfill_tape.sh)
     if known.sport != "f1":
         if known.sport not in polymarket_sports():
             print(f"--sport {known.sport}: only Kalshi lists it (--exchange kalshi)", file=sys.stderr)

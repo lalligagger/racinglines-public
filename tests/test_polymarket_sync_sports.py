@@ -112,12 +112,18 @@ def test_tags_override_pages_the_named_slug(test_engine, gamma):
 
 
 @pytest.mark.quick
-def test_cli_routes_f1_open_trades_to_the_generic_path(monkeypatch):
+def test_cli_routes_f1_trades_and_history_without_events_to_the_generic_path(monkeypatch):
     from racinglines.cli import markets as CM
     calls = []
     monkeypatch.setattr(CM, "polymarket", lambda db, argv, sport: calls.append((sport, argv)) or 0)
     assert CM.main(["--sport", "f1", "trades", "--open", "--since-hours", "2"]) == 0      # the recorder's pass
-    assert calls == [("f1", ["trades", "--open", "--since-hours", "2"])]
+    assert CM.main(["--sport", "f1", "history", "--start", "2026-09-01T00:00", "--end", "2026-10-08T00:00"]) == 0
+    assert calls == [("f1", ["trades", "--open", "--since-hours", "2"]),
+                     ("f1", ["history", "--start", "2026-09-01T00:00", "--end", "2026-10-08T00:00"])]
+    from racinglines.cli import f1 as F1
+    monkeypatch.setattr(F1, "main", lambda argv: calls.append(("f1.py", argv)) or 0)
+    assert CM.main(["--sport", "f1", "trades", "--events", "f1-singapore%"]) == 0               # named events: as before
+    assert calls[-1] == ("f1.py", ["pm-trades", "--events", "f1-singapore%"])
 
 
 def test_default_books_take_modeled_and_race_linked_f1_markets(test_engine, monkeypatch):
