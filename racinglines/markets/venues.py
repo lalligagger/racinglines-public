@@ -324,8 +324,11 @@ def _assemble(conn, base, exch, priv, names, results=None):
         rows.append(row)
     df = pd.DataFrame(rows)
     if len(df):
+        # priced outcomes first, by our fair; then the ones the model doesn't price (a driver not in the field), by
+        # the exchange's mid, so a stale quote on an unpriced driver can't top a card
+        df["priced"] = df["fair"].notna()
         df["sort"] = df["fair"].fillna(df["pm_mid"]).fillna(-1)
-        df = df.sort_values(["kind", "sort"], ascending=[True, False])
+        df = df.sort_values(["kind", "priced", "sort"], ascending=[True, False, False])
     return df
 
 
