@@ -206,6 +206,21 @@ def _status_and_pro(monkeypatch, s, uid, race):
     from racinglines.db import config
     from racinglines.web import sport_status as SS
     from racinglines.web.app import app
+    pending_uid = s.execute(text("""INSERT INTO users (username, password_hash, role, prefs)
+                                   VALUES ('pendingpaper', 'x', 'taker', '{"strategy_profile": {}}')
+                                   RETURNING id""")).scalar()
+    s.execute(text("""INSERT INTO paper_positions (user_id, event_key, market_key, kind, outcome)
+                      VALUES (:u, :e, 'pending-paper-market', 'race_win', NULL)"""),
+              dict(u=pending_uid, e=race.event_key))
+    s.commit()
+    try:
+        with config.get_engine(TEST_DB).connect() as c:
+            st = {r["sport"]: r for r in SS.status(c)}
+        assert "pendingpaper 1 races +0" in st["nascar"]["paper"]["text"]
+        assert "nan" not in st["nascar"]["paper"]["text"].lower()
+    finally:
+        s.execute(text("DELETE FROM users WHERE id = :u"), dict(u=pending_uid))
+        s.commit()
     with config.get_engine(TEST_DB).connect() as c:
         st = {r["sport"]: r for r in SS.status(c)}
     assert set(st) == set(sports.SPORT_CODES)                                   # every sport, data or not

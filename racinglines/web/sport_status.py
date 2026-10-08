@@ -81,6 +81,7 @@ def status(conn):
     paper = data.q(conn, """
         SELECT co.code AS competition, u.username,
                count(DISTINCT p.event_key) AS races,
+               count(*) FILTER (WHERE p.outcome IS NOT NULL) AS settled_positions,
                sum(p.cash + p.yes_shares * p.outcome::int + p.no_shares * (1 - p.outcome::int))
                    FILTER (WHERE p.outcome IS NOT NULL) AS pnl
         FROM paper_positions p JOIN users u ON u.id = p.user_id
@@ -192,10 +193,24 @@ def status(conn):
             row["paper"] = dict(state="none" if modeled else "na", short="—" if not modeled else "0",
                                 text="no paper record" if modeled else "—", sub="")
         else:
-            total = sum((u["pnl"] or 0) for u in pp.to_dict("records"))
-            row["paper"] = dict(state="ok", short=f"{total:+,.0f}",
-                                text=" · ".join(f"{u['username']} {_i(u['races'])} races "
-                                                 f"{(u['pnl'] or 0):+,.0f}" for u in pp.to_dict("records")),
+            account_pnls = []
+            invalid_pnl = False
+            total = 0.0
+            for u in pp.to_dict("records"):
+                if pd.isna(u["pnl"]):
+                    if _i(u["settled_positions"]):
+                        pnl_text = "P&L unavailable"
+                        invalid_pnl = True
+                    else:
+                        pnl_text = "+0"
+                else:
+                    value = float(u["pnl"])
+                    total += value
+                    pnl_text = f"{value:+,.0f}"
+                account_pnls.append(f"{u['username']} {_i(u['races'])} races {pnl_text}")
+            row["paper"] = dict(state="partial" if invalid_pnl else "ok",
+                                short="—" if invalid_pnl else f"{total:+,.0f}",
+                                text=" · ".join(account_pnls),
                                 sub="paper (settled P&L, $)")
         out.append(row)
     return out
