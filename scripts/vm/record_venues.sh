@@ -4,8 +4,8 @@
 # racinglines-recorder.service (`markets record`); this is the same idea for the other two venues, built only from the
 # existing read-only commands, so every exchange stays a schema, not new code:
 #
-#   racinglines markets --exchange kalshi --sport <s> sync | books      (markets/kalshi/sync.py)
-#   racinglines markets --exchange og     --sport <s> sync | settle | books   (exchanges/og.toml, markets/exchange_driver.py)
+#   racinglines markets --exchange kalshi --sport <s> sync | books | trades --open --since-hours H   (markets/kalshi/sync.py)
+#   racinglines markets --exchange og     --sport <s> sync | settle | books | trades   (exchanges/og.toml, markets/exchange_driver.py)
 #
 # Polling strategy (owner, 2026-10-07): every day, all day. Each 5-minute pass takes a book snapshot of every
 # open market of each PAIRS entry, so prices are on record between race weekends too (WEEKEND_ONLY=1 brings back the
@@ -16,7 +16,9 @@
 # new markets appear, settled ones close). Every SETTLE_MIN minutes (default 60), after the sync, a schema exchange
 # with a settlement feed (OG.com) records the outcomes of its closed links (`settle`: resolved_yes, and params
 # settled_at; bounded by the schema's max_pages and resumed from where the last pass stopped, so a pass reads a few
-# pages; Kalshi's outcomes come with its sync). Additive only; no trading, no buy-all. API limits are the
+# pages; Kalshi's outcomes come with its sync). Every TRADES_MIN minutes (default 15): the trades of the pair's open
+# markets from the last TRADES_HOURS (default 2; deduplicated), so the tape is on record between race pulls (a
+# 2026-10-08 comparison found no Kalshi trade stored after 29 Sep). Additive only; no trading, no buy-all. API limits are the
 # commands' own (polite HTTP pacing, sources/http.py; OG schema caps). One pair failing doesn't stop
 # others; the pass exits non-zero if any failed, so `systemctl status` shows it.
 #
@@ -31,6 +33,8 @@ cd "${APP:-/opt/racinglines}"
 PAIRS=${PAIRS:-kalshi:f1 og:f1 kalshi:nascar og:nascar kalshi:motogp}
 SYNC_MIN=${SYNC_MIN:-60}
 SETTLE_MIN=${SETTLE_MIN:-60}
+TRADES_MIN=${TRADES_MIN:-15}          # the trade tape of open markets every TRADES_MIN, the last TRADES_HOURS of it (the
+TRADES_HOURS=${TRADES_HOURS:-2}       # overlap is deduplicated by uq_market_trade); before 2026-10-08 no timer pulled trades
 WEEKEND_ONLY=${WEEKEND_ONLY:-0}       # 1: skip a sport outside its race weekend (the gate before 2026-10-07)
 STATE=data/runs/record-venues
 LOG=data/runs/logs/record-venues.log
@@ -66,9 +70,9 @@ rc=0
 tape_check() {   # tape_check <exchange> <sport>: WARN lines for an upcoming event with no links or a stale sync
   bash scripts/vm/tape_check.sh "$1" "$2" 2>&1 | while read -r line; do say "$line"; done || true
 }
-run() {   # run <exchange> <sport> <command>: one line with the command's last output line and its time
+run() {   # run <exchange> <sport> <command> [args]: one line with the command's last output line and its time
   local t0=$SECONDS out
-  if out=$(nice $R markets --exchange "$1" --sport "$2" "$3" 2>&1); then
+  if out=$(nice $R markets --exchange "$1" --sport "$2" "${@:3}" 2>&1); then
     say "$1 $2 $3: $(echo "$out" | tail -n 1) ($((SECONDS - t0)) s)"
   else
     rc=1; say "$1 $2 $3: FAILED ($((SECONDS - t0)) s): $(echo "$out" | tail -n 3 | tr '\n' ' ')"
@@ -90,5 +94,8 @@ for p in $PAIRS; do
     run "$x" "$s" settle && touch "$STATE/settle-$x-$s"
   fi
   run "$x" "$s" books
+  if [ -z "$(find "$STATE/trades-$x-$s" -mmin -"$TRADES_MIN" 2>/dev/null)" ]; then
+    run "$x" "$s" trades --open --since-hours "$TRADES_HOURS" && touch "$STATE/trades-$x-$s"
+  fi
 done
 exit $rc
