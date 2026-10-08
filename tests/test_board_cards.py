@@ -25,3 +25,10 @@ def test_unpriced_outcome_sorts_after_priced_and_reads_as_none():
     assert [o["subject"] for o in top] == ["A", "B", "Unpriced"]
     assert top[2]["fair"] is None and top[2]["pm_mid"] == 0.25
     assert isinstance(df, pd.DataFrame)
+
+
+def test_bar_draws_nothing_for_nan():
+    from racinglines.web.app import templates
+    bar = templates.env.from_string('{% from "_macros.html" import bar %}{{ bar(f, m) }}')
+    html = bar.render(f=float("nan"), m=0.015)
+    assert "nan" not in html and 'class="f"' not in html and 'data-venue="polymarket"' in html
