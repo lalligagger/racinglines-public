@@ -14,6 +14,7 @@ model_family = "position_sim"     # conservative, result-only pricing model
 pricing_model = "racinglines.models.model_global:GlobalModel"
 # Other pricing models kept runnable (`racinglines backtest walk-forward motogp --model NAME`), by model_runs.model name
 challengers = { motogp_results = "racinglines.models.motogp_model:MotoGPRace", motogp_recent_form = "racinglines.models.motogp_model:MotoGPRaceChallenger" }
+calibration = "baseline"          # pages label its prices as baseline: settings untuned (docs/f1-roadmap.md decision log, 2026-10-07); drop once fitted on a held-out season
 display_order = 2
 results_modules = ["racinglines.sources.motogp"]   # what fetches its results (`backtest coverage`)
 
