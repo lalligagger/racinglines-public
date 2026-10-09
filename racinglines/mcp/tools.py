@@ -83,11 +83,26 @@ def _user_id(conn, user):
     return ids[user]
 
 
+def _account_viewer(viewer):
+    """Hosted non-admin accounts can access only their own account data; stdio remains owner mode."""
+    from racinglines.web import roles as R
+    return viewer if viewer and R.canonical(viewer.get("role")) != "admin" else None
+
+
+def _account_id(conn, user, viewer):
+    scoped = _account_viewer(viewer)
+    if scoped:
+        if user is not None and user != scoped["username"]:
+            raise ValueError("MCP access is limited to your own account")
+        return scoped["id"], scoped["username"]
+    return _user_id(conn, user), user
+
+
 # ---------------------------------------------------------------------------------------------------
 # orientation
 # ---------------------------------------------------------------------------------------------------
 
-def overview(conn):
+def overview(conn, viewer=None):
     """What the database holds, so a client knows what to ask for."""
     from racinglines.markets import venues as V
     seasons = data.q(conn, """
@@ -98,9 +113,15 @@ def overview(conn):
     runs = data.q(conn, "SELECT kind, count(*) AS runs, max(created_at) AS latest FROM model_runs GROUP BY kind ORDER BY kind")
     links = data.q(conn, """SELECT exchange, count(*) AS links, count(*) FILTER (WHERE NOT closed) AS open,
                             count(DISTINCT race_id) AS races FROM market_links GROUP BY exchange ORDER BY exchange""")
-    users = data.q(conn, "SELECT username, role, prefs->'strategy_profile'->>'name' AS profile FROM users WHERE active ORDER BY id")
+    scoped = _account_viewer(viewer)
+    uid = scoped["id"] if scoped else None
+    users = data.q(conn, """SELECT username, role, prefs->'strategy_profile'->>'name' AS profile FROM users
+                           WHERE active AND (CAST(:u AS int) IS NULL OR id = :u) ORDER BY id""", u=uid)
     counts = {t: int(conn.execute(text(f"SELECT count(*) FROM {t}")).scalar())
-              for t in ("events", "results", "athletes", "market_links", "model_runs", "paper_positions", "strategy_signals", "jobs")}
+              for t in ("events", "results", "athletes", "market_links", "model_runs")}
+    for table in ("paper_positions", "strategy_signals", "jobs"):
+        counts[table] = int(conn.execute(text(
+            f"SELECT count(*) FROM {table} WHERE CAST(:u AS int) IS NULL OR user_id = :u"), dict(u=uid)).scalar())
     upcoming = data.q(conn, """SELECT e.id AS event_id, co.code AS competition, e.name, e.start_date FROM events e
                                JOIN seasons s ON s.id = e.season_id JOIN competitions co ON co.id = s.competition_id
                                WHERE e.status <> 'completed' AND e.start_date >= current_date - 7 ORDER BY e.start_date LIMIT 6""")
@@ -114,8 +135,10 @@ def overview(conn):
         users=[P.record(r) for r in users.to_dict("records")],
         upcoming=[P.record(r) for r in upcoming.to_dict("records")],
         row_counts=counts,
-        hint="Start with list_events / list_markets / get_forecast; use sql for anything else (read-only); "
-             "run_job for a simulation and get_job to follow it.",
+        hint="Start with list_events / list_markets / get_forecast; "
+             + ("account records and jobs are your own; SQL and audit tools are admin-only; " if scoped else
+                "use sql for anything else (read-only); ")
+             + "run_job for a simulation and get_job to follow it.",
     )
 
 
@@ -144,7 +167,7 @@ def list_events(conn, sport=None, competition=None, season=None, status=None, li
     return P.page(df, limit=limit, offset=offset)
 
 
-def get_event(conn, event_id=None, source_key=None, include="results"):
+def get_event(conn, event_id=None, source_key=None, include="results", viewer=None):
     """One event: its summary, and with include= any of results, predictions, markets (comma-separated)."""
     if event_id is None and source_key:
         row = data.q(conn, "SELECT id FROM events WHERE source_key = :k ORDER BY id DESC LIMIT 1", k=source_key)
@@ -168,7 +191,7 @@ def get_event(conn, event_id=None, source_key=None, include="results"):
         pr = data.event_predictions(conn, event_id)
         out["predictions"] = P.page(pr, limit=60, note="newest run first")
     if "markets" in wants:
-        out["markets"] = {int(r): list_markets(conn, race_id=int(r), limit=40) for r in races["race_id"]}
+        out["markets"] = {int(r): list_markets(conn, race_id=int(r), limit=40, viewer=viewer) for r in races["race_id"]}
     return out
 
 
@@ -215,17 +238,21 @@ def _matrix_rows(df):
     return rows
 
 
-def list_markets(conn, race_id=None, event_id=None, competition=None, sport=None, kinds=None, limit=None, offset=0):
+def list_markets(conn, race_id=None, event_id=None, competition=None, sport=None, kinds=None, limit=None, offset=0,
+                 viewer=None):
     """One row per outcome (kind x subject): our fair value, each venue's quote, the gap and, for a past race, the
     result. Give race_id (or event_id: its first race) for a race weekend, or competition/sport for the season markets."""
     from racinglines.markets import venues as V
+    from racinglines.markets import private_book as house
+    scoped = _account_viewer(viewer)
+    maker_id = scoped["id"] if scoped else house.ALL
     if race_id is None and event_id is not None:
         r = data.q(conn, "SELECT id FROM races WHERE event_id = :e ORDER BY id LIMIT 1", e=int(event_id))
         if not len(r):
             raise ValueError(f"event {event_id} has no races")
         race_id = int(r["id"].iloc[0])
     if race_id is not None:
-        info, pricing, df = V.event_matrix(conn, int(race_id))
+        info, pricing, df = V.event_matrix(conn, int(race_id), maker_id=maker_id)
         if info is None:
             raise ValueError(f"no race {race_id}")
         head = dict(race_id=int(race_id), event_id=info["event_id"], title=info["title"], competition=info["competition"],
@@ -234,7 +261,7 @@ def list_markets(conn, race_id=None, event_id=None, competition=None, sport=None
         comp = _sport_filter(conn, sport, competition)
         if not comp:
             raise ValueError("give race_id, event_id, or competition/sport (season markets)")
-        info, pricing, df = V.season_matrix(conn, comp)
+        info, pricing, df = V.season_matrix(conn, comp, maker_id=maker_id)
         if info is None:
             raise ValueError(f"no competition {comp!r}")
         head = dict(competition=comp, title=info["title"], scope="season")
@@ -619,9 +646,7 @@ def track_record(conn, user, venue="polymarket", sport=None, viewer=None):
     from racinglines.pipelines import story as S
     from racinglines.web import roles as R
     basic = _basic_viewer(viewer)
-    uid = basic["id"] if basic else _user_id(conn, user)
-    if basic:
-        user = basic["username"]
+    uid, user = _account_id(conn, basic["username"] if basic else user, viewer)
     full = lambda *a, **k: S.track_record(*a, sport=sport, sports=SP.enabled(), **k)      # noqa: E731
     tr = (lambda *a, **k: [R.basic_row(r) for r in full(*a, **k)]) if basic else full
     if venue != "all":
@@ -645,9 +670,7 @@ def track_record(conn, user, venue="polymarket", sport=None, viewer=None):
 
 def list_positions(conn, user, venue=None, event_key=None, open_only=False, limit=None, offset=0, viewer=None):
     basic = _basic_viewer(viewer)
-    uid = basic["id"] if basic else _user_id(conn, user)
-    if basic:
-        user = basic["username"]
+    uid, user = _account_id(conn, basic["username"] if basic else user, viewer)
     df = data.q(conn, """
         SELECT pp.event_key, pp.venue, pp.kind, pp.subject, pp.market_key, pp.yes_shares, pp.no_shares, pp.cash, pp.mark, pp.outcome,
                pp.bid, pp.ask, pp.quote_state, pp.updated_at,
@@ -664,7 +687,8 @@ def list_signals(conn, user=None, event_key=None, status=None, action=None, limi
     """Paper signals, newest first. A basic viewer: its own only, as roles.basic_signal shows them (no profile,
     strategy, member, fair value or edge; a `stars` rating instead)."""
     basic = _basic_viewer(viewer)
-    uid = basic["id"] if basic else (_user_id(conn, user) if user else None)
+    scoped = _account_viewer(viewer)
+    uid = _account_id(conn, basic["username"] if basic else user, viewer)[0] if scoped or user else None
     df = data.q(conn, """
         SELECT ss.id, u.username AS "user", ss.profile, ss.strategy, ss.event_key, ss.kind, ss.subject, ss.stage, ss.action, ss.side,
                ss.shares, ss.limit_price, ss.fair, ss.price, ss.edge, ss.heat, ss.target_cost, ss.status, ss.signal_ts, ss.market_key,
@@ -796,7 +820,7 @@ def list_job_types():
     for jt in J.CATALOG.values():
         knobs = []
         for k in jt.knobs:
-            if k.type == "sweep_settings":
+            if k.type in ("sweep_settings", "sport_sweep_settings"):
                 knobs.append(dict(name="settings", type="object", help="any sweep setting (see sweep_settings below); "
                                   "unset ones keep their defaults"))
             else:
@@ -805,7 +829,14 @@ def list_job_types():
         out.append(dict(job_type=jt.code, sport=jt.sport, label=jt.label, what=jt.what, takes=jt.minutes, knobs=knobs))
     settings = [dict(name=s.name, group=s.group, type=s.type, default=(list(s.default) if isinstance(s.default, tuple) else s.default),
                      min=s.min, max=s.max, choices=list(s.choices) or None, help=s.help) for s in SS.SETTINGS]
-    return dict(job_types=out, sweep_settings=settings, model_variants=J.MODEL_CHOICES,
+    from racinglines.pipelines import season_sweep as SW
+    sport_settings = {
+        code: [dict(name=s.name, group=s.group, type=s.type,
+                    default=list(s.default) if isinstance(s.default, tuple) else s.default,
+                    min=s.min, max=s.max, choices=list(s.choices) or None, help=s.help)
+               for s in SW.settings_class(code).SPEC]
+        for code in J.modeled_sports() if code != "f1" and SW.supports(code)}
+    return dict(job_types=out, sweep_settings=settings, sport_sweep_settings=sport_settings, model_variants=J.MODEL_CHOICES,
                 note="run_job(job_type, params) queues one; get_job(job_id) follows it; forecasts save as scenarios "
                      "(never the live prices); event is 'YYYY-R' (e.g. 2026-15), cutoff 'YYYY-MM-DDTHH:MM' UTC")
 
@@ -818,7 +849,7 @@ def _job_params(job_type, params):
     params = dict(params or {})
     form = {}
     for k in jt.knobs:
-        if k.type == "sweep_settings":
+        if k.type in ("sweep_settings", "sport_sweep_settings"):
             continue
         v = params.pop(k.name, None)
         if v is not None:
@@ -827,9 +858,11 @@ def _job_params(job_type, params):
     if params:
         raise ValueError(f"unknown knobs for {job_type}: {sorted(params)}")
     out = J.parse(jt, form)
-    if any(k.type == "sweep_settings" for k in jt.knobs):
+    if any(k.type in ("sweep_settings", "sport_sweep_settings") for k in jt.knobs):
         from racinglines.pipelines import sweep_settings as SS
-        st = SS.Settings.from_dict({k: v for k, v in (settings or {}).items()})
+        from racinglines.pipelines import season_sweep as SW
+        cls = SW.settings_class(jt.sport) if any(k.type == "sport_sweep_settings" for k in jt.knobs) else SS.Settings
+        st = cls.from_dict({k: v for k, v in (settings or {}).items()})
         out["settings"] = {k: (list(v) if isinstance(v, tuple) else v) for k, v in st.changed().items()}
     return jt, out
 
@@ -852,25 +885,35 @@ def _job_row(r, log_lines):
     return P.record(r)
 
 
-def get_job(conn, job_id, log_lines=20):
-    df = data.q(conn, "SELECT * FROM jobs WHERE id = :i", i=int(job_id))
+def get_job(conn, job_id, log_lines=20, viewer=None):
+    scoped = _account_viewer(viewer)
+    df = data.q(conn, """SELECT * FROM jobs WHERE id = :i
+                        AND (CAST(:u AS int) IS NULL OR user_id = :u)""",
+                i=int(job_id), u=scoped["id"] if scoped else None)
     if not len(df):
         raise ValueError(f"no job {job_id}")
     return _job_row(df.iloc[0].to_dict(), log_lines)
 
 
-def list_jobs(conn, status=None, limit=None, offset=0):
+def list_jobs(conn, status=None, limit=None, offset=0, viewer=None):
+    scoped = _account_viewer(viewer)
     df = data.q(conn, """SELECT j.id, j.kind, j.sport, j.status, j.progress, j.created_at, j.started_at, j.finished_at, j.result_run_id,
                                 j.params, u.username AS "user" FROM jobs j LEFT JOIN users u ON u.id = j.user_id
-                         WHERE (CAST(:s AS text) IS NULL OR j.status = CAST(:s AS text)) ORDER BY j.id DESC""", s=status)
+                         WHERE (CAST(:s AS text) IS NULL OR j.status = CAST(:s AS text))
+                         AND (CAST(:u AS int) IS NULL OR j.user_id = :u) ORDER BY j.id DESC""",
+                s=status, u=scoped["id"] if scoped else None)
     return P.page(df, limit=limit, offset=offset)
 
 
-def cancel_job(engine, job_id):
+def cancel_job(engine, job_id, viewer=None):
     """Cancel a job that is still queued (a running subprocess is left to finish)."""
     with engine.begin() as c:
+        get_job(c, job_id, log_lines=0, viewer=viewer)
+        scoped = _account_viewer(viewer)
         n = c.execute(text("""UPDATE jobs SET status = 'failed', finished_at = now(), progress = 'cancelled before it started'
-                              WHERE id = :i AND status = 'queued'"""), dict(i=int(job_id))).rowcount
+                              WHERE id = :i AND status = 'queued'
+                              AND (CAST(:u AS int) IS NULL OR user_id = :u)"""),
+                      dict(i=int(job_id), u=scoped["id"] if scoped else None)).rowcount
     return dict(job_id=int(job_id), cancelled=bool(n), note="" if n else "not queued (already running, done or failed)")
 
 

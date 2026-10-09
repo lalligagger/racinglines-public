@@ -734,7 +734,7 @@ racinglines mcp token admin [--revoke]             # issue (printed once) or rev
 | Option | Meaning |
 |---|---|
 | `--db URL` | Database URL (default `$DATABASE_URL`, else the local one). |
-| `--http` | Serve streamable HTTP instead of stdio. Every request must carry a bearer token of an active, non-demo account whose role is in `RACINGLINES_MCP_ROLES` (default `admin`): one from OAuth sign-in (signed with `APP_SECRET`; [MCP server](mcp.md#hosted-the-vm)) or an `rl_` token. |
+| `--http` | Serve streamable HTTP instead of stdio. Every request must carry a bearer token of an active, non-demo account whose role is in `RACINGLINES_MCP_ROLES` (default `admin,pro`): one from OAuth sign-in (signed with `APP_SECRET`; [MCP server](mcp.md#hosted-the-vm)) or an `rl_` token. Pro account records and jobs are scoped to the caller; SQL and audit tools are admin-only. |
 | `--host` / `--port` | Listen address in `--http` mode (default `127.0.0.1` / `8100`). |
 | `--no-jobs` | Don't run the Lab's job worker in this process: queued jobs wait for the web app's worker. |
 

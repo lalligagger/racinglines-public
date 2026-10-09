@@ -37,8 +37,14 @@ Claude Desktop (Settings > Developer > Edit config), the same idea:
 
 ### Hosted (the VM)
 
-Your account needs a role in `RACINGLINES_MCP_ROLES` (default `admin`); Settings > Connect Claude (MCP) says
-if it hasn't. Demo accounts never get access.
+Your account needs a role in `RACINGLINES_MCP_ROLES` (default `admin,pro`); Settings > Connect Claude (MCP) says
+if it hasn't. Demo accounts, including the `maker` demo, never get access. An explicit `admin` setting still
+restricts access to admins; both the web and MCP services must be restarted after changing this setting.
+
+Pro clients can read shared race data, forecasts and Lab research. Their paper records, positions, signals,
+private-book market details and jobs are scoped to their own account; another username or job id does not
+grant access. Raw SQL, schema inspection and the data-change audit are admin-only. Admins and local stdio
+retain owner access. Saved model runs and research results are shared, as in the Lab.
 
 1. **Connect.** No token to copy: the client opens racinglines.bet in your browser, you sign in if you aren't
    already, and press **Allow** once.
@@ -117,8 +123,10 @@ list below; changing a role takes effect on the next request.
 Tokens by hand, on the VM:
 
 Tokens are per web-app account: real accounts only (no demos), active, and with a role listed in
-`RACINGLINES_MCP_ROLES` in `/etc/racinglines.env` (default `admin`; `admin,pro` opens it to pro accounts (accounts still stored as `maker` count), then
-restart the unit). One token per account; issuing again replaces the old one. On the VM:
+`RACINGLINES_MCP_ROLES` in `/etc/racinglines.env` (default `admin,pro`; legacy `maker` roles count as pro, but
+the username `maker` is still excluded as a demo). If the env file explicitly sets `admin`, change it to
+`admin,pro` only after deploying the account-scoped version, then restart both the web and MCP units.
+One token per account; issuing again replaces the old one. On the VM:
 
 ```sh
 sudo -u racinglines bash -c 'set -a; . /etc/racinglines.env; set +a; cd /opt/racinglines && .venv/bin/racinglines mcp token <account>'
@@ -128,9 +136,9 @@ sudo -u racinglines bash -c 'set -a; . /etc/racinglines.env; set +a; cd /opt/rac
 
 Send the token to the person over something private; it is printed once and never again (only its SHA-256 is
 stored, in `users.prefs["mcp"]`). No restart is needed for a new or revoked token: every request looks it up.
-In both modes the tools read as the owner (everything the admin sees) and can queue what a maker can queue in
-the Lab; per-role read scoping is a later change if makers get tokens. Tools that show paper trading take a
-`user` argument to pick an account.
+Hosted tools apply the caller's account scope on every request. Pro accounts can queue Lab simulations and
+read or cancel only their own jobs; tools that take a `user` argument accept only their own username.
+Admins and local stdio retain owner access.
 
 ### The sql tool's database role
 
@@ -148,8 +156,9 @@ sudo bash -c 'cd /opt/racinglines && bash scripts/vm/mcp_sql_role.sh status'    
 ```
 
 Re-running it sets a new password and rewrites the line. `DB=racinglines_staging` grants staging's database instead
-(the role is shared by the Postgres container; staging runs no MCP unit today). Keep `RACINGLINES_MCP_ROLES` at
-`admin` until this has run on the VM. Undo: delete the `RACINGLINES_MCP_SQL_URL` line, restart `racinglines-mcp`,
+(the role is shared by the Postgres container; staging runs no MCP unit today). Pro callers cannot invoke the
+raw SQL tool even when the role is configured. Install this safeguard before using hosted admin SQL.
+Undo: delete the `RACINGLINES_MCP_SQL_URL` line, restart `racinglines-mcp`,
 then `DROP OWNED BY racinglines_mcp_ro; DROP ROLE racinglines_mcp_ro;`.
 
 ### After every deploy
