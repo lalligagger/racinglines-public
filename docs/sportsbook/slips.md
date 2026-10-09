@@ -19,6 +19,7 @@ command never writes to the database. Every query runs in a `READ ONLY` transact
 racinglines book map    FILE [--json] [--db URL]
 racinglines book price  FILE [--json] [--db URL] [--run ID ...] [--sims RACE_ID=FILE.npz ...]
 racinglines book settle FILE [--json] [--db URL]
+racinglines book render FILE --style hud|card|agnostic [--png] [--json-in PRICED.json]   # render.md
 ```
 
 | Command | Does |
@@ -47,6 +48,8 @@ The book file uses the [schema](index.md) as before, with these optional additio
   `odds` may then be left out).
 - `id` on a line: the name that output and errors use (default: its 1-based position).
 - `[aliases]`: an exact table from the venue's spelling to our display name (`"Alpha, Ann" = "Ann Alpha"`).
+- `box = [x, y, w, h]` on a line and `[book] image`: where `book render --style hud` puts the line's label on the
+  book's screenshot ([Bet-slip graphics](render.md#hud-placement-box)). Pricing ignores them; `--json` carries `box`.
 
 A slip is a line whose market is `kind = "combo"` with `legs = [...]` ([combos](index.md), `markets/combos.py`).
 This synthetic example has a single and a cross-sport parlay:
@@ -154,7 +157,7 @@ rules (`markets/settlement_rules.py`) are not applied here.
   (`mapped` / `unmapped`), `reason`, `n_legs`, `races` (race ids), `odds`, `decimal_odds`, `book_prob`, `model_prob`,
   `model_method` (`single`, `product`, `joint: simulations passed in`, `joint: stored combo run N`, joined by ` x `
   across races), `market_prob`, `market_method`, `flags`, `edge_model`, `edge_market`, `ev_model`, `ev_market`,
-  `result`, `payout`, `profit`, `legs`.
+  `result`, `payout`, `profit`, `box` (the line's HUD box, or null), `legs`.
 - `lines[].legs[]`: `line`, `leg` (`"3"` or `"3.2"`), `status`, `reason`, `sport`, `competition`, `season`, `round`,
   `event_key`, `race_id`, `event`, `kind`, `side`, `athlete_id`, `athlete`, `opponent_id`, `opponent`, `team`,
   `threshold` (an over/under line), `odds` (the leg's own). `price` adds `book_prob`, `run_id`, `run_source`,

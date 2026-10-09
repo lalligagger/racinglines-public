@@ -56,7 +56,7 @@ PRICE_FIELDS = ("book_prob", "run_id", "run_source", "model_prob", "model_note",
                 "market_bid", "market_ask", "market_synced_utc", "ev_model", "ev_market")
 LINE_FIELDS = ("line", "id", "title", "selection", "kind", "status", "reason", "n_legs", "races", "odds",
                "decimal_odds", "book_prob", "model_prob", "model_method", "market_prob", "market_method", "flags",
-               "edge_model", "edge_market", "ev_model", "ev_market", "result", "payout", "profit")
+               "edge_model", "edge_market", "ev_model", "ev_market", "result", "payout", "profit", "box")
 
 
 # --- loading -------------------------------------------------------------------------------------------------------
@@ -211,7 +211,7 @@ def map_book(conn, book, _db=None):
         m = ln["market"]
         row = dict.fromkeys(LINE_FIELDS)
         row.update(line=i + 1, id=ln.get("id", str(i + 1)), title=ln["title"], selection=ln["selection"],
-                   odds=ln.get("odds"))
+                   odds=ln.get("odds"), box=ln.get("box"))
         legs = []
         if m == "unmapped":
             row.update(kind=None, status="unmapped", reason="the book file marks this line unmapped", n_legs=0)
