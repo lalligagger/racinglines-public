@@ -32,3 +32,44 @@ def test_bar_draws_nothing_for_nan():
     bar = templates.env.from_string('{% from "_macros.html" import bar %}{{ bar(f, m) }}')
     html = bar.render(f=float("nan"), m=0.015)
     assert "nan" not in html and 'class="f"' not in html and 'data-venue="polymarket"' in html
+
+
+def test_collapsed_headers_never_read_tape_statistics(monkeypatch):
+    from racinglines.web import board as B, sport_status as SS
+    monkeypatch.setattr(B.data, "latest_forecasts", lambda c: pd.DataFrame([
+        dict(competition="f1_wdc", id=1)]))
+    monkeypatch.setattr(SS, "enabled", lambda: False)
+    monkeypatch.setattr(SS, "status", lambda c: [])
+    queries = []
+
+    def query(c, sql, **params):
+        queries.append(sql)
+        assert "SELECT DISTINCT co.code AS competition" in sql
+        return pd.DataFrame([dict(competition="sailgp_champ")])
+
+    def no_tape(*args, **kwargs):
+        raise AssertionError("collapsed headers must not scan tape history")
+
+    monkeypatch.setattr(B.data, "q", query)
+    monkeypatch.setattr(B, "exchange_breakdown", no_tape)
+    got = B.board(object(), 1, detail=False)
+    assert {s["code"] for s in got} == {"f1_wdc", "sailgp_champ"}
+    assert len(queries) == 1
+
+
+def test_opened_sport_limits_tape_statistics_to_that_competition(monkeypatch):
+    from racinglines.web import board as B, sport_status as SS
+    monkeypatch.setattr(B.data, "latest_forecasts", lambda c: pd.DataFrame())
+    monkeypatch.setattr(SS, "enabled", lambda: False)
+    from racinglines.markets import alerts
+    monkeypatch.setattr(alerts, "new_links", lambda c: {})
+    scopes = []
+
+    def breakdown(c, comps):
+        scopes.append(set(comps))
+        return [dict(competition="sailgp_champ", exchange="polymarket", events=[])]
+
+    monkeypatch.setattr(B, "exchange_breakdown", breakdown)
+    got = B.board(object(), 1, only="sailgp_champ")
+    assert scopes == [{"sailgp_champ"}]
+    assert [s["code"] for s in got] == ["sailgp_champ"]

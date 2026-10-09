@@ -706,7 +706,8 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
         LEFT JOIN seasons se ON se.id = e.season_id
         LEFT JOIN competitions co ON co.id = se.competition_id
         LEFT JOIN sports sp ON sp.id = co.sport_id
-        LEFT JOIN races ra ON ra.event_id = e.id WHERE p.user_id = :u
+        LEFT JOIN LATERAL (SELECT format FROM races WHERE event_id = e.id ORDER BY id LIMIT 1) ra ON true
+        WHERE p.user_id = :u
           AND NOT coalesce(tr.buy_all, false)                       -- the debug mode: never shown
           AND (p.venue = ANY(:live)"""
         + (" OR p.event_key IN (" + SPP.SPORT_KEYS + ")" if sp else "") + """)
