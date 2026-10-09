@@ -314,6 +314,8 @@ def validate_book(d, path="book"):
         from racinglines import sports as SP
         if "sport" in b and b["sport"] not in SP.SPORT_CODES:
             problems.append(f"book.sport: {b['sport']!r} not in {SP.SPORT_CODES}")
+        if "image" in b and not (isinstance(b["image"], str) and b["image"]):
+            problems.append("book.image: the screenshot's path, a string (relative to the book file)")
     aliases = d.get("aliases", {})
     if not isinstance(aliases, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in aliases.items()):
         problems.append('aliases: a table of exact names, "venue name" = "display name"')
@@ -343,6 +345,11 @@ def validate_book(d, path="book"):
                 ids.add(ln.get("id"))
             if "market" in ln:
                 _market(ln["market"], f"{f}.market", problems, fmt)
+            if "box" in ln:
+                bx = ln["box"]
+                if not (isinstance(bx, list) and len(bx) == 4 and all(isinstance(v, (int, float)) and
+                                                                     not isinstance(v, bool) and v >= 0 for v in bx)):
+                    problems.append(f"{f}.box: [x, y, w, h], four non-negative numbers (pixels on the screenshot)")
     if problems:
         raise BookError(path, problems)
     return d
