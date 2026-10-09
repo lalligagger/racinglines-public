@@ -230,8 +230,10 @@ def test_mcp_tools_hide_the_strategy_from_a_basic_caller(test_engine):
             assert "picks_mcp" in pos and "tok-900002" not in pos and "candidate" not in pos
             tr = json.dumps(T.track_record(c, "picks_other", venue="all", viewer=me), default=str)
             assert "T4" not in tr and "T8" not in tr and "picks_other" not in tr
-            # pro / admin (and stdio, viewer None): as before, every column, no rating
-            full = json.dumps(T.list_signals(c, user="picks_mcp", viewer=dict(id=other, username="picks_other", role="pro")),
+            with pytest.raises(ValueError, match="own account"):
+                T.list_signals(c, user="picks_mcp", viewer=dict(id=other, username="picks_other", role="pro"))
+            # Admin and stdio retain full columns; Pro sees those columns only on its own records.
+            full = json.dumps(T.list_signals(c, user="picks_mcp", viewer=dict(id=uid, username="picks_mcp", role="pro")),
                               default=str)
             assert '"fair"' in full and '"edge"' in full and "stars" not in full and "_member" not in full
             assert full == json.dumps(T.list_signals(c, user="picks_mcp"), default=str)

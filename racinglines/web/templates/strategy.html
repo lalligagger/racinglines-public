@@ -109,7 +109,7 @@ The tables below are that evidence, as the account saw it at each point.{% endca
 {% if ph %}<p>Then ran <b>{{ ph.profile }}</b> for {{ ph.weekends }} weekends ({{ ph.first.event_name }} to {{ ph.last.event_name }} {{ ph.last.event_key[:4] }}):
   <b class="{{ pnl_cls(ph.pnl) }}">{{ ph.pnl|money(true) }}</b>, {{ ph.up }}/{{ ph.weekends }} weekends up.</p>{% endif %}
 {% endfor %}
-<p class="legend">Evidence: each setup's saved season sweep in the Edge Finder (every weekend priced from its own sessions, traded on Polymarket's real prices and trades). Open the <a href="/lab">Lab</a> to see these setups side by side.</p>
+<p class="legend">Evidence: each setup's saved season sweep in the Edge Finder (every weekend priced from its own sessions, traded on Polymarket's real prices and trades). Open the <a href="/lab#demo-pool">Lab's F1 demo strategy history and pools</a> to see every candidate setup, all saved pool results, and {% if is_maker %}the M1–M3/C phase definitions{% else %}the TW1/TW2 phase definitions and the separate T1/A reference profile{% endif %}.</p>
 </div>
 </section>
 {% elif acct.taker %}{% set t = acct.taker %}<section data-panel="how" hidden>
@@ -125,6 +125,7 @@ market's later signals to the exit. Being choosy keeps its stakes small and give
 </tbody></table></div>
 {% if t.all_total is defined %}<p>Taking <i>every</i> recommendation over the same weekends would have made <b>{{ t.all_total|money(true) }}</b>
   (the second line on the chart), with more capital in play at once. The table shows how each heat tier has actually done: heat is a guide, not a guarantee.</p>{% endif %}
+<p class="legend">The <a href="/lab#demo-pool">Lab's F1 demo strategy history and pools</a> shows the saved results for the TW1/TW2 decision pool and the separate T1/A recommended profile.</p>
 </div>
 </section>{% endif %}
 {% endif %}

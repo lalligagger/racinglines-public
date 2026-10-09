@@ -118,8 +118,10 @@ can see, and `demo.guard` refuses all their writes, as today.
 
 Player makers are invited outsiders, so the model's fair values and edges are not theirs to relay to a taker. They
 see the fair value only where they need it to quote, as in [Fantasy trading](fantasy-trading.md). ROLE-1 tests that
-a player maker gets no edge from the `/markets` pages, `/strategy`, `/positions`, `/orders`, the `/live` picks or a race page. The MCP tools stay
-admin-only (`RACINGLINES_MCP_ROLES=admin`, the default).
+a player maker gets no edge from the `/markets` pages, `/strategy`, `/positions`, `/orders`, the `/live` picks or a race page.
+Player roles in this plan must not inherit Pro MCP research access. Current real Pro accounts have account-scoped
+MCP access (default `RACINGLINES_MCP_ROLES=admin,pro`; demos excluded); player-role restrictions remain a separate
+requirement when those roles are implemented.
 
 ---
 
@@ -1008,7 +1010,7 @@ season. The leaderboard says so in a footnote.
 - It returns rank, handle, equity or balance, roi, pnl, settled, hit_rate, max_drawdown, sharpe, events and
   computed_at, paged with `P.page`, ranked rows first.
 - Handles only.
-- Only accounts in `RACINGLINES_MCP_ROLES` (default `admin`, `mcp/auth.py`) can reach it. `docs/mcp.md` gets a line
+- Only accounts in `RACINGLINES_MCP_ROLES` (default `admin,pro`, `mcp/auth.py`; demos excluded) can reach it. `docs/mcp.md` gets a line
   for it.
 
 ---
@@ -1246,7 +1248,7 @@ secret, `APP_SECRET`, the SMTP token) live only there.
 | `MAX_STAKE` (existing) | `100` | The per-bet cap (F$100), alongside the season's `max_stake` |
 | `RACINGLINES_DEMO_USERS`, `RACINGLINES_DEMO_CONTEXT` (existing) | `maker,taker`, `1` | The demo accounts and the bubbles |
 | `ADMIN_USERNAME`, `ADMIN_PASSWORD` (existing) | `admin`, empty | `ensure_admin`. `ADMIN_USERNAME` is reserved |
-| `RACINGLINES_MCP_ROLES` (existing) | `admin` | Who can call the `leaderboard` tool |
+| `RACINGLINES_MCP_ROLES` (existing) | `admin,pro` | Who can call the `leaderboard` tool; demos excluded |
 
 Never touched: `POLYMARKET_TRADING_ENABLED`, `KALSHI_TRADING_ENABLED`.
 
