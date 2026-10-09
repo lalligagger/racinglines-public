@@ -94,7 +94,8 @@ def test_board_html_renders(jinja_env):
         {
             "code": "f1",
             "name": "Formula 1",
-            "status": {k: {"state": "ok", "short": "1", "text": k} for k in ("races", "markets", "backtests", "paper")},
+            "status": {k: {"state": "ok", "short": "1", "text": k} for k in
+                       ("races", "markets", "backtests", "sweeps", "paper")},
             "run": None,
             "tape": None,
             "asof": None,

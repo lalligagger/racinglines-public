@@ -104,6 +104,15 @@ def _sweep_argv(p):
             "--no-fetch", "--save", *st.argv()]
 
 
+def _sport_sweep_argv(sport):
+    def argv(p, out):
+        from racinglines.pipelines import season_sweep as SW
+
+        settings = SW.settings_class(sport).from_dict(p.get("settings") or {})
+        return ["-m", "racinglines", sport, "sweep", "--year", str(p.get("year", 2026)), "--save", *settings.argv()]
+    return argv
+
+
 def _walk_forward_argv(p, out):
     return (["-m", "racinglines", "backtest", "walk-forward", p["sport"], "--save", "--out-dir", str(Path(out).with_suffix(""))]
             + (["--model", "global"] if p["model"] == "global" else [])
@@ -247,6 +256,22 @@ CATALOG = {j.code: j for j in [
             "a few min"),
 ]}
 
+from racinglines.pipelines import season_sweep as _SEASON_SWEEP
+
+for _sport in sports.SPORT_CODES:
+    if _sport == "f1" or not _SEASON_SWEEP.supports(_sport):
+        continue
+    _settings = _SEASON_SWEEP.settings_class(_sport)
+    _venues = _SEASON_SWEEP.venues(_sport)
+    _code = f"{_sport}_sweep"
+    CATALOG[_code] = JobType(
+        _code, _sport, f"{sport_name(_sport)} strategy sweep",
+        "Replay the season on the selected exchange's stored prices, then calculate every taker and maker strategy's "
+        "simulated P&L weekend by weekend. Saved runs appear in Edge Finder.",
+        [Knob("year", "Season", "choice", "2026", choices=["2026", "2025"]),
+         Knob("settings", "Settings", "sport_sweep_settings", None)],
+        _sport_sweep_argv(_sport), "a few minutes per season", venues=_venues)
+
 
 def launcher():
     """The Lab launcher: a row per sport with a pricing model, a column per exchange any of them is listed on (and one
@@ -267,8 +292,13 @@ def parse(job_type, form):
     """Validate a submitted form against the job's knobs. Returns params or raises ValueError."""
     out = {}
     for k in job_type.knobs:
-        if k.type == "sweep_settings":                 # every field of the sweep settings schema
-            out[k.name] = parse_sweep_settings(form)
+        if k.type in ("sweep_settings", "sport_sweep_settings"):
+            settings_cls = SS.Settings
+            if k.type == "sport_sweep_settings":
+                from racinglines.pipelines import season_sweep as SW
+
+                settings_cls = SW.settings_class(job_type.sport)
+            out[k.name] = parse_sweep_settings(form, settings_cls)
             continue
         raw = (form.get(k.name) or "").strip()
         if raw == "" and k.default is not None:
@@ -327,14 +357,14 @@ def parse_legs(raw):
                       else combos[0][1], separators=(",", ":"))
 
 
-def parse_sweep_settings(form):
+def parse_sweep_settings(form, settings_cls=SS.Settings):
     """{name: value} of the settings that differ from the defaults (validated), from the Lab form: one
     field per setting; booleans are checkboxes (with a hidden 'false' before each), multi-choice
     settings are checkbox groups."""
     getlist = form.getlist if hasattr(form, "getlist") else (
         lambda k: [] if form.get(k) in (None, "") else (form[k] if isinstance(form[k], list) else [form[k]]))
     d = {}
-    for s in SS.SETTINGS:
+    for s in settings_cls.SPEC:
         if s.type == "multi":
             if form.get(f"{s.name}__present") is None:
                 continue
@@ -347,7 +377,7 @@ def parse_sweep_settings(form):
             raw = (form.get(s.name) or "").strip()
             if raw != "":
                 d[s.name] = raw
-    st = SS.Settings.from_dict(d)
+    st = settings_cls.from_dict(d)
     return {k: (list(v) if isinstance(v, tuple) else v) for k, v in st.changed().items()}
 
 

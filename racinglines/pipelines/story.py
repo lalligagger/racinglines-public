@@ -51,7 +51,7 @@ def _weekly(conn, year, pool=None):
     from sqlalchemy import text
 
     from racinglines.web import edge
-    cfgs = edge.configs(conn, year)
+    cfgs = edge.configs(conn, year, "f1", "polymarket")
     out = {}
     for settings, strategies in (POOL if pool is None else pool):
         st = SS.Settings.from_dict(settings)

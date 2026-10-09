@@ -444,6 +444,8 @@ def _edge_ctx(c, user):
     return dict(ef=ef, combos=[list(x) for x in cs], year=year, years=edge.YEARS, candidates=edge.candidates(c),
                 sport=sport, venue=venue, sports=sports, venues=venues, sport_names=_sport_names(),
                 venue_names=_venue_names(),
+                demo_pools=edge.demo_pools(c) if sport == "f1" and venue in ("", "polymarket") else [],
+                sweep_job=f"{sport}_sweep" if f"{sport}_sweep" in jobs.CATALOG else "",
                 models=[(cf["ref"], cf["label"]) for cf in ef["configs"]] or [("baseline", "baseline")],
                 strategies=[(k, edge.label(k)) for k in edge.STRATEGY_KEYS])
 
@@ -507,6 +509,30 @@ def lab_section(request: Request, key: str, job: str = "", event: str = "", vari
             knobs[sel_job] = dict(knobs.get(sel_job, {}), **preset)
         if sel_job == "f1_sweep" and venue in SS.VENUES:
             start, source = dict(start, venue=venue), source or venue
+        sweep_forms = {}
+        from racinglines.pipelines import season_sweep as SW
+        for code in jobs.modeled_sports():
+            code_job = f"{code}_sweep"
+            if code_job not in jobs.CATALOG:
+                continue
+            settings_cls = SW.settings_class(code)
+            last = knobs.get(code_job, {})
+            sport_start = dict(last.get("settings") or {})
+            if sel_job == code_job:
+                if cfg:
+                    saved = edge.configs(c, edge.year(c, user), code, venue or None)
+                    chosen = saved.get(edge.ref_key(cfg)) or next((x for x in saved.values() if x["ref"] == cfg), None)
+                    if chosen:
+                        sport_start = chosen["settings"].to_json()
+                if venue:
+                    sport_start["venue"] = venue
+            sweep_forms[code_job] = dict(
+                groups=[(g, dict(SS.GROUPS).get(g, g.replace("_", " ").title()),
+                         [x for x in settings_cls.SPEC if x.group == g])
+                        for g in dict.fromkeys(x.group for x in settings_cls.SPEC)],
+                defaults=settings_cls.from_dict().to_json(),
+                start=settings_cls.from_dict(sport_start, strict=False).to_json(),
+                year=last.get("year", "2026"))
         ctx.update(sports=[(code, name, jts) for code, name, jts in
                            [(jobs.ANY_SPORT, "Any sport", [j for j in jobs.CATALOG.values() if j.sport == jobs.ANY_SPORT])]
                            + [(code, jobs.sport_name(code), [j for j in jobs.CATALOG.values() if j.sport == code])
@@ -517,7 +543,7 @@ def lab_section(request: Request, key: str, job: str = "", event: str = "", vari
                    sweep_start=SS.Settings.from_dict(start, strict=False).to_json(), sweep_source=source,
                    sweep_groups=[(g, lab, [x for x in SS.SETTINGS if x.group == g]) for g, lab in SS.GROUPS],
                    sweep_defaults=SS.Settings.from_dict().to_json(), model_choices=jobs.MODEL_CHOICES,
-                   sel_candidate=candidate)
+                   sel_candidate=candidate, sweep_forms=sweep_forms)
     elif key == "jobs":
         scope = scope if scope in ("mine", "all") else "mine"
         js = _recent_jobs(c, user["id"] if scope == "mine" else None)
@@ -779,7 +805,7 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     from racinglines.web.book_routes import polymarket_calls
     # the two venues are never plotted together: the Polymarket history (the strategy's record) and the
     # private book's P&L through its day(s), from the live snapshots; the page switches between them
-    acct = story.account(c, user["id"], profile, maker, markers=False, sport=sport or None, sports=sp) \
+    acct = story.account(c, user["id"], profile, maker, markers=False, sport=sport or None, sports=False) \
         if profile else None
     if acct and basic:
         acct = _basic_acct(acct)
@@ -794,7 +820,7 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     vaccts = {}                                         # the record on every other exchange the account has rows on
     for code in _venue_order(venues):
         if code not in ("polymarket", "private") and profile:
-            a = story.account(c, user["id"], profile, maker, markers=False, venue=code)
+            a = story.account(c, user["id"], profile, maker, markers=False, venue=code, sport=sport or None)
             vaccts[code] = _basic_acct(a) if a and basic else a
     if venue in vaccts:
         plot = venue
@@ -810,7 +836,86 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
                   vtotal=sum(v["pnl"] for v in venues.values()), open_pos=open_,
                   cur=next((w for w in weekends if w["event_key"] == event), None),
                   vaccts=vaccts, venue_order=_venue_order(venues), venue_names=_venue_names(), kcoming=kcoming,
-                  sport_paper=bool(sp and demo_keys))
+                  sport_paper=bool(sp and demo_keys), show_backtests=bool(profile and not basic))
+
+
+@app.get("/positions/backtests", response_class=HTMLResponse, dependencies=[allow(*PRO)])
+def positions_backtests(request: Request, year: int | None = None, sport: str = "f1", venue: str = "polymarket",
+                        config: str = "", strategy: str = "", c=Depends(conn)):
+    """A selectable, saved full-season Edge Finder P&L curve, kept separate from an account's paper record."""
+    from racinglines.pipelines import profiles as PF
+    from racinglines.pipelines import sweep_settings as SS
+    from racinglines.web import edge as E
+    from racinglines.web.viz import line_chart
+
+    if year is not None and year not in E.YEARS:
+        raise HTTPException(400, f"year must be one of {', '.join(map(str, E.YEARS))}")
+    if strategy and strategy not in E.STRATEGY_LABEL:
+        raise HTTPException(400, "unknown saved-sweep strategy")
+
+    t1 = PF.TAKER_PROFILES["T1"]
+    t1_key = SS.Settings.from_dict(t1["settings"]).key
+    available_years = [y for y in E.YEARS if E.scopes(c, y)[0]]
+    if year is None:
+        for y in available_years:
+            if t1_key in E.configs(c, y, "f1", "polymarket"):
+                year = y
+                break
+        year = year or (available_years[0] if available_years else E.YEARS[0])
+
+    sports, _ = E.scopes(c, year)
+    sport = sport if sport in sports else (sports[0] if sports else "f1")
+    _, venues = E.scopes(c, year)
+    venues = [v for v in venues if E.configs(c, year, sport, v)]
+    venue = venue if venue in venues else (venues[0] if venues else "polymarket")
+    cfgs = E.configs(c, year, sport, venue)
+
+    selection_note = ""
+    if config and config not in cfgs:
+        selection_note = "That saved configuration is no longer available for this season, sport, and venue."
+    preferred = t1_key if sport == "f1" and venue == "polymarket" and t1_key in cfgs else None
+    key = config if config in cfgs else preferred or (SS.Settings.from_dict().key if SS.Settings.from_dict().key in cfgs
+                                                       else next(iter(cfgs), ""))
+    cfg = cfgs.get(key)
+    strategy = strategy or ("update" if key == t1_key else "maker")
+    curve = None
+    total = None
+    traded = 0
+    run_id = None
+    missing_dates = []
+    if cfg:
+        run = c.execute(text("SELECT metrics FROM model_runs WHERE id = :id"), dict(id=cfg["run_id"])).scalar_one()
+        run_id = cfg["run_id"]
+        weekends = (run or {}).get("weekends") or []
+        traded_rows = [w for w in weekends if w.get(f"{strategy}_pnl") is not None]
+        traded = len(traded_rows)
+        if traded_rows:
+            event_keys = [w["event_key"] for w in traded_rows]
+            comp = SP.load(sport)["competition"]["code"]
+            dates = dict(c.execute(text("""SELECT e.source_key, e.start_date
+                                        FROM events e JOIN seasons se ON se.id = e.season_id
+                                        JOIN competitions co ON co.id = se.competition_id
+                                        WHERE co.code = :comp AND se.year = :year
+                                          AND e.source_key = ANY(:keys)"""),
+                                   dict(comp=comp, year=year, keys=event_keys)).all())
+            missing_dates = [w["event_key"] for w in traded_rows if w["event_key"] not in dates]
+            if not missing_dates:
+                points, total = E.cumulative_curve(weekends, strategy, dates)
+                curve = line_chart({"saved": points}, {"saved": "saved backtest, cumulative P&L"})
+                run_id = cfg["run_id"]
+    if sport == "f1" and venue == "polymarket" and t1_key not in cfgs:
+        selection_note = (selection_note + " " if selection_note else "") + \
+            "T1/A has an aggregate candidate score, but no complete-season saved sweep is available for this selection."
+    cfg_options = sorted(cfgs.values(), key=lambda x: (x["key"] != t1_key, x["label"]))
+    strategy_name = E.label(strategy) if strategy in E.STRATEGY_LABEL else strategy
+    cfg_name = t1["name"] if cfg and key == t1_key else (cfg["label"] if cfg else "")
+    sweep_job = f"{sport}_sweep" if f"{sport}_sweep" in jobs.CATALOG else ""
+    return render(request, "positions_backtests.html", years=available_years, year=year, sports=sports, sport=sport,
+                  venues=venues, venue=venue, configs=cfg_options, config=key, strategy=strategy,
+                  strategies=E.STRATEGY_KEYS, strategy_labels=E.STRATEGY_LABEL, backtest_chart=curve, total=total,
+                  traded=traded, run_id=run_id, config_name=cfg_name, strategy_name=strategy_name,
+                  missing_dates=missing_dates, selection_note=selection_note, t1_key=t1_key, sweep_job=sweep_job,
+                  sport_names=_sport_names(), venue_names=_venue_names())
 
 
 # ---------------------------------------------------------------------------

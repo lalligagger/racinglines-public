@@ -58,6 +58,11 @@ Weekend by weekend: <a href="/strategy?venue={{ k }}">Strategy, on {{ nm }}</a>.
 <p class="legend">Private book: its P&amp;L at every one of the {{ book.polls }} polls of the live event (UTC), marked to fair, settled at the result.
 Worst drawdown <b class="bad">{{ book.max_dd|money(true) }}</b> from a peak, through the day.</p></div>{% endif %}
 </div>{% endif %}
+{% if show_backtests %}<details class="card quiet" id="backtests" hx-get="/positions/backtests" hx-trigger="toggle once"
+  hx-target="#positions-backtests-result" hx-swap="innerHTML">
+  <summary><h3>Explore saved strategy P&amp;L</h3><span class="sum">sport · season · venue · setup · strategy; separate from your account</span></summary>
+  <div id="positions-backtests-result"><p class="legend">Open to load saved Edge Finder sweeps.</p></div>
+</details>{% endif %}
 
 <div class="card"><h2>By market type</h2><div class="scroll"><table><thead><tr><th class="l">Market type</th><th>Positions</th><th>Open</th><th>Held to the result, made money</th><th>P&amp;L</th></tr></thead><tbody>
 {% for k in by_kind %}<tr><td class="l">{{ k.kind|kind }}</td><td>{{ k.n }}</td><td>{{ k.open }}</td><td>{{ k.won }}/{{ k.settled }}</td>

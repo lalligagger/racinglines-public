@@ -15,7 +15,7 @@ configurations x strategy that the Lab's Edge Finder sweep form can start from.
 import math
 
 import pandas as pd
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
 from racinglines.models.position_sim import evaluate as EV
 from racinglines.pipelines import sweep_settings as SS
@@ -72,7 +72,26 @@ def run_sport(params):
 
 def run_venue(params):
     """The exchange a sweep run traded: its settings' `venue`, or Polymarket while unset."""
-    return SS.venue_of((params or {}).get("settings") or {})
+    return (params or {}).get("venue") or SS.venue_of((params or {}).get("settings") or {})
+
+
+def settings_class(sport):
+    from racinglines.pipelines import season_sweep as SW
+
+    return SW.settings_class(sport)
+
+
+def _resolve(ref, cfgs, sport):
+    """Resolve the user's combo reference against this sport's settings schema."""
+    match = next((key for key, cfg in cfgs.items() if cfg["ref"] == ref), None)
+    if match is not None:
+        return match
+    if isinstance(ref, str) and ref.startswith("cfg:"):
+        return ref_key(ref)
+    try:
+        return settings_class(sport).from_dict({"variant": ref}).key
+    except (ValueError, TypeError):
+        return None
 
 
 def scope(conn, user_id):
@@ -136,26 +155,29 @@ def configs(conn, year=2026, sport="f1", venue=None):
     configuration with a full-season sweep of `year` (as many weekends as the most complete sweep of
     that season on the same venue); the latest run per configuration. One sport at a time (F1 by default, also for
     None), since a configuration's key doesn't name its sport; venue: only that exchange's sweeps (None: all)."""
+    sport = sport or "f1"
     rows = conn.execute(text("""SELECT id, params, jsonb_array_length(coalesce(metrics->'weekends', '[]'::jsonb)) n
                                 FROM model_runs WHERE kind = 'sweep' AND (params->>'year')::int = :y ORDER BY id"""),
                         dict(y=year)).fetchall()
     rows = [r for r in rows if run_sport(r[1]) == (sport or "f1") and (venue is None or run_venue(r[1]) == venue)]
-    venue = lambda p: ((p or {}).get("settings") or {}).get("venue") or "polymarket"     # noqa: E731
+    venue_of = run_venue
     full = {}                          # per venue: Kalshi listed a 2025 weekend Polymarket didn't (Imola)
     for r in rows:
         if not ((r[1] or {}).get("rounds") and "settings" in (r[1] or {})):
-            full[venue(r[1])] = max(full.get(venue(r[1]), 0), r[2])
+            full[venue_of(r[1])] = max(full.get(venue_of(r[1]), 0), r[2])
     out = {}
     for rid, params, n in rows:
-        if n < full.get(venue(params), 0) or n == 0 or ((params or {}).get("rounds") and "settings" in (params or {})):
+        if n < full.get(venue_of(params), 0) or n == 0 or ((params or {}).get("rounds") and "settings" in (params or {})):
             continue                                   # partial seasons (explicit rounds) never count
         try:
-            st = SS.Settings.from_run_params(params)
+            st = settings_class(sport).from_run_params(params)
         except ValueError:
             continue
         plain = set(st.changed()) <= {"variant"}                   # only the model variant differs
-        out[st.key] = dict(key=st.key, ref=st["variant"] if plain else "cfg:" + st.key, settings=st, label=st.label(),
-                           run_id=int(rid), weekends=int(n), data_key=(params or {}).get("data_key"))
+        ref = st.get("variant", "baseline") if plain else "cfg:" + st.key
+        out[st.key] = dict(key=st.key, ref=ref, settings=st, label=st.label(),
+                           run_id=int(rid), weekends=int(n), data_key=(params or {}).get("data_key"),
+                           venue=venue_of(params))
     return out
 
 
@@ -189,10 +211,120 @@ def recap(weekends, strategy):
     return out
 
 
+def demo_pools(conn):
+    """Saved F1 Polymarket results for the demo maker/taker decision pools and named history phases."""
+    from racinglines.pipelines import profiles as PF
+    from racinglines.pipelines import story
+
+    years = (2025, 2026)
+    configs_by_year = {year: configs(conn, year, "f1", "polymarket") for year in years}
+    wanted_keys = {SS.Settings.from_dict(settings).key for settings, _ in story.POOL + story.TAKER_POOL}
+    wanted_keys.add(SS.Settings.from_dict(PF.TAKER_PROFILES["T1"]["settings"]).key)
+    run_ids = sorted({cfg["run_id"] for cfgs in configs_by_year.values()
+                      for key, cfg in cfgs.items() if key in wanted_keys})
+    metrics_by_id = {}
+    if run_ids:
+        stmt = text("SELECT id, metrics FROM model_runs WHERE id IN :ids").bindparams(
+            bindparam("ids", expanding=True))
+        metrics_by_id = {int(r[0]): (r[1] or {}) for r in conn.execute(stmt, dict(ids=run_ids)).all()}
+
+    profiles = {**PF.PROFILES, **PF.HISTORY_PROFILES}
+    pool_specs = (
+        ("Demo maker", "maker", story.POOL,
+         "The fixed maker pool behind M1, M2, M3 and C. These are saved Polymarket F1 season sweeps, not runs launched by opening Lab."),
+        ("Demo taker", "taker", story.TAKER_POOL,
+         "The fixed taker pool behind TW1 and TW2. T1/A is shown separately: it is a recommended profile, not one of these walk-forward pool rows."),
+    )
+    out = []
+    for name, username, pool, description in pool_specs:
+        phase_by_combo = {}
+        phases = []
+        for code, year, first_round, last_round in PF.HISTORY.get(username, []):
+            profile = profiles.get(code)
+            if profile is None:
+                continue
+            settings = SS.Settings.from_dict(profile["settings"])
+            rounds = f"rounds {first_round}–{last_round}" if last_round < 99 else f"round {first_round}–season end"
+            phase = dict(code=code, name=profile["name"], period=f"{year} · {rounds}",
+                         strategy=profile["strategy"], settings=settings.label(), why=profile["why"])
+            phases.append(phase)
+            phase_by_combo.setdefault((settings.key, profile["strategy"]), []).append(phase)
+
+        rows = []
+        for settings_dict, strategies in pool:
+            settings = SS.Settings.from_dict(settings_dict)
+            cfgs = {year: configs_by_year[year].get(settings.key) for year in years}
+            for strategy in strategies:
+                results = {}
+                for year in years:
+                    cfg = cfgs[year]
+                    if cfg is None:
+                        results[year] = None
+                        continue
+                    metrics = metrics_by_id.get(cfg["run_id"], {})
+                    results[year] = dict(recap(metrics.get("weekends"), strategy),
+                                         run_id=cfg["run_id"], config=cfg["label"])
+                rows.append(dict(settings=settings.label(), strategy=strategy,
+                                 phases=phase_by_combo.get((settings.key, strategy), []), results=results))
+
+        decision_checks = []
+        for index, decision in enumerate(story.decisions(conn, taker=username == "taker")):
+            expected = phases[min(index, len(phases) - 1)] if phases else None
+            required = decision["known"] if decision["known"] not in (0, 99) else \
+                (story.SEASON_WEEKENDS if decision["known"] == 99 else 0)
+            saved_evidence = all(row["results"][2025] and row["results"][2025]["weekends"] >= required
+                                 for row in rows) if required else True
+            complete_pool = decision["known"] == 0 or (
+                decision["candidates"] == len(rows) and saved_evidence)
+            checked = dict(decision, expected_phase=expected, pool_complete=complete_pool, history_matches=None)
+            if decision["table"] and expected and complete_pool:
+                expected_profile = profiles[expected["code"]]
+                expected_key = SS.Settings.from_dict(expected_profile["settings"]).key
+                checked["history_matches"] = (
+                    SS.Settings.from_dict(decision["chosen_settings"]).key == expected_key
+                    and decision["chosen_strategy"] == expected_profile["strategy"])
+            decision_checks.append(checked)
+
+        out.append(dict(name=name, username=username, description=description, phases=phases, rows=rows,
+                        pool_size=len(rows), decision_checks=decision_checks))
+
+    taker = next(p for p in out if p["username"] == "taker")
+    t1 = PF.TAKER_PROFILES["T1"]
+    t1_settings = SS.Settings.from_dict(t1["settings"])
+    taker["reference"] = dict(name=t1["name"], why=t1["why"], strategy=t1["strategy"],
+                              settings=t1_settings.label(), results={
+                                  year: (dict(recap(metrics_by_id.get(cfg["run_id"], {}).get("weekends"),
+                                                    t1["strategy"]),
+                                              run_id=cfg["run_id"], config=cfg["label"])
+                                         if (cfg := configs_by_year[year].get(t1_settings.key)) else None)
+                                  for year in years})
+    return out
+
+
+def cumulative_curve(weekends, strategy, dates):
+    """Cumulative saved weekend P&L in event-date order; never infer missing event dates."""
+    key = f"{strategy}_pnl"
+    traded = [w for w in weekends or [] if w.get(key) is not None]
+    missing = [w["event_key"] for w in traded if w["event_key"] not in dates]
+    if missing:
+        raise ValueError(f"saved sweep events have no matching calendar date: {', '.join(missing)}")
+    rows = sorted(((pd.Timestamp(dates[w["event_key"]]), float(w[key])) for w in traded),
+                  key=lambda x: x[0])
+    if not rows:
+        return [], 0.0
+    points = [(rows[0][0] - pd.Timedelta(seconds=1), 0.0)]
+    total = 0.0
+    for ts, pnl in rows:
+        total += pnl
+        points.append((ts, total))
+    return points, total
+
+
 def build(conn, cs, year=2026, sport="f1", venue=None):
     """Everything the Edge Finder template shows, from saved runs only (sport / venue: the filter; venue None for all)."""
+    sport = sport or "f1"
     cfgs = configs(conn, year, sport, venue)
-    default_key = SS.Settings.from_dict().key
+    default_key = settings_class(sport).from_dict().key
     runs = {}
 
     def run_of(key):
@@ -205,9 +337,9 @@ def build(conn, cs, year=2026, sport="f1", venue=None):
         """The default-settings sweep priced from the same data (else the latest one)."""
         dk = (run or {}).get("params", {}).get("data_key")
         same = conn.execute(text("""SELECT id, params FROM model_runs WHERE kind = 'sweep' AND (params->>'year')::int = :y
-                                    AND coalesce(params->>'sport', 'f1') = 'f1'
+                                    AND coalesce(params->>'sport', 'f1') = :sport
                                     AND params->>'data_key' = :d AND params->>'settings_key' = :k ORDER BY id DESC LIMIT 1"""),
-                            dict(y=year, d=dk or "", k=default_key)).fetchone() if dk else None
+                            dict(y=year, sport=sport, d=dk or "", k=default_key)).fetchone() if dk else None
         if same:
             if same[0] not in runs:
                 runs[same[0]] = _run(conn, same[0])
@@ -221,7 +353,7 @@ def build(conn, cs, year=2026, sport="f1", venue=None):
                      up=t["weekends_up"], weekends=t["weekends"])
     cards, columns, missing, recaps = [], [], [], []
     for ref, s in cs:
-        key = ref_key(ref)
+        key = _resolve(ref, cfgs, sport)
         cfg = cfgs.get(key)
         run = run_of(key)
         t = ((run or {}).get("metrics", {}).get("totals") or {}).get(s)
