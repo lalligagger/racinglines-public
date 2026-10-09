@@ -5,11 +5,16 @@ sports/road_cycling/events/<event>.toml; everything per kind of race (itt, road)
 
     events       List the event files.
     fetch        Fetch ProCyclingStats results for a kind (itt | road) into data/raw/road_cycling/ (Mac only:
-                 cached per page, safe to re-run; `pip install procyclingstats cloudscraper` first).
+                 cached per page, safe to re-run; `pip install cloudscraper selectolax` first).
     startlist    Fetch an event's start list (its [event] pcs race) into its startlist_file.
+    probe        Fetch one PCS page (e.g. race/milano-sanremo/2025/result), save its HTML under
+                 data/raw/road_cycling/pcs/probe/ and print what parses from it: the first check when a fetch fails.
     price        Price an event's book: futures, matchups and fractional-Kelly stakes, written to
                  reports/<event>/. --calibrate grid-searches the kind's [model.<kind>.grid] walk-forward first
                  and prices with the best setting; --settings-from prices with a saved setting row.
+    reliability  Calibration check for a kind (itt | road): every rider's walk-forward win / top-3 / top-10 chance
+                 in every backtest race vs what happened, by probability bucket and by model rank (favourites vs
+                 long shots), plus the best-fitting temperature. Writes reports/reliability-<kind>/.
 
 Nothing here runs by default, writes to the database, or touches the VM.
 """
@@ -120,6 +125,38 @@ def cmd_price(a):
     return 0
 
 
+def cmd_reliability(a):
+    from racinglines.models import cycling as C
+    block = C.model_block(a.kind)
+    s = dict(block["defaults"])
+    if a.settings_from:
+        row = pd.read_csv(a.settings_from).iloc[0]
+        s = {k: float(row[k]) if k in row else v for k, v in s.items()}
+    raw = C.to_raw(C.load_results(a.kind, a.data), a.kind, block["rules"])
+    tr = C.target_races(raw, a.kind, a.since)
+    print(f"{a.kind}: {len(tr)} backtest races since {a.since} "
+          f"{tr['date'].str[:4].value_counts().sort_index().to_dict()} · settings {json.dumps(s)}", flush=True)
+    rel = C.reliability(raw, a.kind, s, a.since, a.terrain, a.sims)
+    if rel.empty:
+        raise SystemExit("no backtest race had 10+ earlier races to fit on")
+    out = Path(a.out or ROOT / "reports" / f"reliability-{a.kind}")
+    out.mkdir(parents=True, exist_ok=True)
+    rel.to_csv(out / "reliability_riders.csv", index=False)
+    tables = {"win_by_prob": ("p_win", "won", C.WIN_BUCKETS), "win_by_rank": ("model_rank", "won", C.RANK_BUCKETS),
+              "top3_by_rank": ("model_rank", "top3", C.RANK_BUCKETS),
+              "top10_by_rank": ("model_rank", "top10", C.RANK_BUCKETS)}
+    for name, (by, hit, edges) in tables.items():
+        t = C.reliability_table(rel, by, hit, edges)
+        t.to_csv(out / f"{name}.csv", index=False)
+        _show(f"{name.upper()} (z > 2: the model under-rates this bucket; z < -2: over-rates it)", t)
+    temp = C.temperature(rel)
+    pd.DataFrame([temp]).to_csv(out / "temperature.csv", index=False)
+    print(f"\ntemperature over {temp['races']} races: best a = {temp['a']:.2f} (a > 1: favourites too long) · "
+          f"winner log loss {temp['win_ll_a1']:.3f} at a = 1, {temp['win_ll_best']:.3f} at best a (in-sample)")
+    print(f"wrote {out}/ reliability_riders.csv {' '.join(f'{n}.csv' for n in tables)} temperature.csv")
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="racinglines cycling", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -133,6 +170,8 @@ def main(argv=None):
     sl = sub.add_parser("startlist", help="fetch an event's start list (Mac only)")
     sl.add_argument("event")
     sl.add_argument("--data")
+    pr = sub.add_parser("probe", help="fetch one PCS page, save it and show what parses (Mac only)")
+    pr.add_argument("url", help="PCS path, e.g. race/milano-sanremo/2025/result")
     p = sub.add_parser("price", help="price an event's book")
     p.add_argument("event", help="event id (file stem in sports/road_cycling/events/) or a path to an event file")
     p.add_argument("--data", help="results folder (default: [results] dir)")
@@ -144,6 +183,14 @@ def main(argv=None):
     p.add_argument("--sims", type=int, default=50000)
     p.add_argument("--bankroll", type=float, default=400.0)
     p.add_argument("--kelly", type=float, default=0.25, help="Kelly fraction (0.25 = quarter Kelly)")
+    r = sub.add_parser("reliability", help="calibration check: favourites vs long shots, walk-forward")
+    r.add_argument("kind", choices=["itt", "road"])
+    r.add_argument("--data", help="results folder (default: [results] dir)")
+    r.add_argument("--out", help="output folder (default: reports/reliability-<kind>/)")
+    r.add_argument("--since", default="2021-01-01", help="first backtest race date")
+    r.add_argument("--settings-from", help="settings row CSV (settings.csv from a price run); default: schema")
+    r.add_argument("--terrain", default="hilly", choices=["hilly", "flat"])
+    r.add_argument("--sims", type=int, default=4000)
     a = ap.parse_args(argv)
 
     if a.cmd == "events":
@@ -162,4 +209,11 @@ def main(argv=None):
         ev = C.load_event(a.event)
         pcs.fetch_startlist(ev["event"]["pcs"], C.startlist_file(ev, a.data))
         return 0
+    if a.cmd == "probe":
+        from racinglines.models import cycling as C
+        from racinglines.sources import pcs
+        pcs.probe(a.url, ROOT / C.schema()["results"]["dir"] / "pcs" / "probe")
+        return 0
+    if a.cmd == "reliability":
+        return cmd_reliability(a)
     return cmd_price(a)

@@ -24,12 +24,15 @@ by noise_scale and the incident (DNF / bad day) rate by incident_scale.
     fit / simulate / score              one fit, sims x riders log times (inf = out), backtest scores
     backtest(raw, kind, settings)       walk-forward: refit monthly on earlier months, score each target race
     summarize(bt)                       per-setting means, ranked on winner and pairwise log loss
+    reliability / reliability_table     every rider's walk-forward win / top-3 / top-10 chance vs what happened,
+    temperature                         by probability and model-rank bucket (favourites vs long shots)
     price(event, raw, start, s, ...)    futures and matchup frames for the event's book
     stakes(fut, mu, bankroll, kelly)    fractional-Kelly stakes on every positive edge
 
 The CLI is `racinglines cycling` (racinglines/cli/cycling.py); docs/road-cycling.md has the workflow.
 """
 
+import itertools
 import tomllib
 import unicodedata
 from pathlib import Path
@@ -313,6 +316,67 @@ def backtest(raw, kind, settings, since, terrain="hilly", n_sims=2000):
                     rows.append(dict(**s, race=ev, date=r["date"], field=len(tgt), cat=r["cat"],
                                      winner=tgt["rider_name"].iloc[0], **score(t)))
     return pd.DataFrame(rows)
+
+
+def reliability(raw, kind, s, since, terrain="hilly", n_sims=4000):
+    """Every rider's walk-forward probabilities in every backtest race, for a calibration check: one fit per month
+    on earlier results (as backtest), simulated over the race's whole field, DNFs included (they lost). One row per
+    rider per race: p_win / p_top3 / p_top10, the model's rank, and what happened (won, top3, top10)."""
+    races = target_races(raw, kind, since).copy()
+    races["month"] = races["date"].str[:7]
+    months = races["month"].unique()
+    rows = []
+    for i, mo in enumerate(months, 1):
+        progress.update(i, len(months), f"fit month {mo}")
+        train = raw[raw["event_date"] < mo + "-01"]
+        if train["event_id"].nunique() < 10:
+            continue
+        m = fit(train, kind, s, terrain)
+        for ev, r in races[races["month"] == mo].iterrows():
+            tgt = raw[raw["event_id"] == ev].drop_duplicates("rider_id")
+            pos = tgt["rank_at_split"].where(tgt["status"] == "OK").rank(method="first").to_numpy()
+            rk = ranks(simulate(m, tgt["rider_id"].tolist(), n_sims, 11, s, kind, vpk=r["vpk"]))
+            p = {k: (rk <= k).mean(0) for k in (1, 3, 10)}
+            rows.append(pd.DataFrame(dict(
+                race=ev, date=r["date"], cat=r["cat"], field=len(tgt), rider=tgt["rider_name"].to_numpy(),
+                p_win=p[1], p_top3=p[3], p_top10=p[10], model_rank=pd.Series(-p[1]).rank(method="first").to_numpy(),
+                won=pos == 1, top3=pos <= 3, top10=pos <= 10)))
+    return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
+
+
+WIN_BUCKETS = [0, 0.005, 0.01, 0.02, 0.05, 0.10, 0.20, 0.35, 1.0]
+RANK_BUCKETS = [0, 1, 3, 5, 10, 20, 10**6]
+TEMPERATURES = np.arange(0.5, 3.01, 0.05)
+
+
+def reliability_table(rel, by, hit, edges):
+    """Predicted vs actual per bucket of `by` (a probability, or model_rank): riders, mean predicted, actual rate,
+    expected and actual hits, and z = (actual - expected) / sd. z above 2 means the model under-rates that bucket."""
+    rank = by == "model_rank"
+    names = [f"{a + 1}" if b == a + 1 else f"{a + 1}+" if b >= 10**6 else f"{a + 1}-{b}" for a, b in
+             itertools.pairwise(edges)] if rank else None
+    b = pd.cut(rel[by], edges, right=rank, include_lowest=True, labels=names)
+    pcol = {"won": "p_win", "top3": "p_top3", "top10": "p_top10"}[hit]
+    g = rel.assign(bucket=b, var=rel[pcol] * (1 - rel[pcol])).groupby("bucket", observed=True)
+    t = g.agg(riders=(pcol, "size"), predicted=(pcol, "mean"), actual=(hit, "mean"), expected_hits=(pcol, "sum"),
+              hits=(hit, "sum"), var=("var", "sum")).reset_index()
+    t["z"] = (t["hits"] - t["expected_hits"]) / np.sqrt(t.pop("var")).replace(0, np.nan)
+    return t
+
+
+def temperature(rel, grid=TEMPERATURES):
+    """The power a in p_i^a / sum_j p_j^a (per race) that best fits the actual winners, and the winner log loss at
+    a = 1 and at the best a. a > 1 means the model's favourites should be sharper (long shots too long a chance).
+    Fitted on the same races it scores: a diagnostic, not a setting."""
+    d = rel[["race", "p_win", "won"]].copy()
+    d["lp"] = np.log(d["p_win"].clip(lower=1e-4))
+    d = d[d["race"].isin(d.loc[d["won"], "race"])]
+    def ll(a):
+        lse = (a * d["lp"]).groupby(d["race"]).transform(lambda x: np.log(np.exp(x).sum()))
+        return float(-(a * d["lp"] - lse)[d["won"]].mean())
+    scores = {round(float(a), 2): ll(a) for a in grid}
+    best = min(scores, key=scores.get)
+    return dict(races=int(d["race"].nunique()), a=best, win_ll_a1=ll(1.0), win_ll_best=scores[best])
 
 
 def summarize(bt, keys):
