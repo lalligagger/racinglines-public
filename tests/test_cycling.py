@@ -85,6 +85,20 @@ def test_backtest_scores_months_walk_forward():
     assert len(summ) == 2 and summ["win_ll"].notna().all()
 
 
+def test_reliability_buckets_every_rider_walk_forward(tmp_path):
+    res = _results("road", n_races=50, field=70)
+    raw = C.to_raw(res, "road", C.model_block("road")["rules"])
+    rel = C.reliability(raw, "road", dict(C.model_block("road")["defaults"]), since="2022-06-01", n_sims=300)
+    per_race = rel.groupby("race")
+    assert (per_race["won"].sum() == 1).all() and (per_race["p_win"].sum().between(0.9, 1.0001)).all()
+    assert (per_race["field"].first() == per_race.size()).all()             # DNFs are in the field
+    t = C.reliability_table(rel, "model_rank", "won", C.RANK_BUCKETS)
+    assert t["riders"].sum() == len(rel) and t["hits"].sum() == rel["race"].nunique()
+    assert C.reliability_table(rel, "p_win", "won", C.WIN_BUCKETS)["riders"].sum() == len(rel)
+    temp = C.temperature(rel)
+    assert temp["win_ll_best"] <= temp["win_ll_a1"] + 1e-9
+
+
 def test_book_names_need_one_match():
     res = _results("road", n_races=2)
     ev = _event("road")

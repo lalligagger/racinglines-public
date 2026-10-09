@@ -56,6 +56,22 @@ racinglines cycling price 2026-10-06-tre-valli-varesine --settings-from reports/
 loss and the pairwise log loss of the top 40 finishers, ranked by the mean rank of the two. It prints the chosen
 setting's scores by season. `price` writes `settings.csv`, `futures.csv`, `matchups.csv` and `stakes.csv`.
 
+## Calibration check: favourites vs long shots (Core backlog C48)
+
+`racinglines cycling reliability <kind>` refits walk-forward month by month (as `--calibrate` does) and records
+every rider's win, top-3 and top-10 chance in every backtest race, DNFs included, against what happened. It prints
+and writes to `reports/reliability-<kind>/`: `win_by_prob.csv` (riders bucketed by win chance), `win_by_rank.csv`,
+`top3_by_rank.csv`, `top10_by_rank.csv` (by the model's rank: 1, 2-3, 4-5, 6-10, 11-20, 21+), each with
+predicted vs actual rate and `z = (hits - expected) / sd` (z above 2: the bucket is under-rated), plus
+`temperature.csv`, the power `a` in `p^a / Σp^a` that best fits the winners (above 1: favourites too long, long
+shots too short). The temperature is fitted in-sample, so it is a diagnostic; any fix goes through the decision log.
+
+```
+# LOCAL (Mac)
+racinglines cycling reliability road --settings-from reports/<event>/settings.csv
+racinglines cycling reliability itt
+```
+
 ## Decision log
 
 | Date | Kind | Decision | Why | Supersedes |
