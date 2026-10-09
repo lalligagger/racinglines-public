@@ -171,6 +171,7 @@ def _pages(monkeypatch, uid, race):
 
     from conftest import TEST_DB
     from racinglines.db import config
+    from racinglines.pipelines import story
     from racinglines.web import users as U
     from racinglines.web.app import app
     with config.get_engine(TEST_DB).begin() as c:
@@ -180,10 +181,23 @@ def _pages(monkeypatch, uid, race):
     try:
         cl = TestClient(app)
         cl.post("/login", data=dict(username="sptest", password="pw"))
+        account = story.account
+        calls = []
+
+        def tracked_account(*args, **kwargs):
+            calls.append(kwargs)
+            return account(*args, **kwargs)
+
+        monkeypatch.setattr(story, "account", tracked_account)
         for on in ("1", "0"):
             monkeypatch.setenv(SP.SWITCH, on)
-            pos, st = cl.get("/positions"), cl.get("/strategy")
+            calls.clear()
+            pos = cl.get("/positions")
+            assert pos.status_code == 200 and calls and all(not c.get("sports", False) for c in calls)
+            calls.clear()
+            st = cl.get("/strategy")
             assert pos.status_code == 200 and st.status_code == 200
+            assert any(c.get("sports", False) == (on == "1") for c in calls)
             ev = cl.get(f"/positions?event={race.event_key}")
             assert ev.status_code == 200
             for page in (pos.text, st.text):
@@ -196,7 +210,7 @@ def _pages(monkeypatch, uid, race):
 
 
 def _status_and_pro(monkeypatch, s, uid, race):
-    """RACINGLINES_SPORT_STATUS=1: Markets lists every sport with its race data, markets, model, backtests and paper
+    """RACINGLINES_SPORT_STATUS=1: Markets lists every sport with its race data, markets, model, backtests, sweeps and paper
     record (NASCAR's demo rows counted, the buy_all row not); off, the page is as before. A Pro account running the
     taker on NASCAR sees its record split by sport and strategy on Strategy."""
     from fastapi.testclient import TestClient
@@ -224,6 +238,7 @@ def _status_and_pro(monkeypatch, s, uid, race):
     with config.get_engine(TEST_DB).connect() as c:
         st = {r["sport"]: r for r in SS.status(c)}
     assert set(st) == set(sports.SPORT_CODES)                                   # every sport, data or not
+    assert all("sweeps" in row for row in st.values())
     assert st["nascar"]["races"]["state"] in ("ok", "partial") and st["nascar"]["paper"]["state"] == "ok"
     assert "sptest 1 races" in st["nascar"]["paper"]["text"]                    # the buy_all race is not counted
     assert st["indycar"]["model"]["state"] == "na" and st["mtb_dh"]["paper"]["state"] == "none"
@@ -240,7 +255,8 @@ def _status_and_pro(monkeypatch, s, uid, race):
             assert page.status_code == 200
             assert ("Every sport: status" in page.text) == (on == "1")
             if on == "1":
-                assert "NASCAR" in page.text and "tape only" in page.text and "buy_all" not in page.text
+                assert "NASCAR" in page.text and "tape only" in page.text and "sweeps" in page.text
+                assert "buy_all" not in page.text
         # a replay save (`nascar replay --save`: an as-of run before the race) puts NASCAR's model on the board: the
         # section says so, and the recent race shows what the model had on its winner
         res = P.race_results(s.connection(), race.race_id).sort_values("position")
