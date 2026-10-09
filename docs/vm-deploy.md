@@ -73,7 +73,7 @@ be repeated without reading the whole page.
 | `deploy/vm/setup.sh` | One-time VM setup, run by `vm.sh setup`: packages, the `racinglines` user, a read-only deploy key, `/opt/racinglines` on `main`, a Python 3.14 venv (uv), Postgres, `/etc/racinglines.env`, the units |
 | `deploy/vm/update.sh [ref]` | On the VM, run by `vm.sh deploy`: checkout, `pip install`, `alembic upgrade head`, `racinglines db seed` (reference rows for every sport schema, idempotent upserts). The only database writes a deploy makes |
 | `deploy/vm/build_docs.sh` | Piped over ssh by `vm.sh deploy` (after the timers resume) and `vm.sh docs`: builds `site/`, which the app serves at `/docs`, from the checkout's `docs/` (installs `requirements-docs.txt` into the venv the first time). Fail-soft: a failure logs a `docs:` line and the old site stays. Touches only `site/` and the venv |
-| `deploy/vm/untrack.sh <ref>` | Piped over ssh by `vm.sh deploy` before `update.sh`: files the VM's current commit tracks and `<ref>` doesn't are backed up to `data/backups/files/racinglines-before-untrack-<UTC>.tar.gz` and untracked with a local commit, so the checkout leaves them on disk. It moved the VM from the private history to the public one without deleting `data/`, the test fixtures or the pitch images |
+| `deploy/vm/untrack.sh <ref>` | Piped over ssh by `vm.sh deploy` before `update.sh`: files the VM's current commit tracks and `<ref>` doesn't are backed up to `data/backups/files/racinglines-before-untrack-<UTC>.tar.gz` and untracked with a local commit, so the checkout leaves them on disk. It moved the VM from the private history to the public one without deleting `data/`, the test fixtures or the pitch images. Untracked files `<ref>` starts tracking are moved to `data/backups/files/moved-aside-<UTC>/` first, so the checkout cannot refuse |
 | `deploy/vm/systemd/` | `racinglines-web`, `racinglines-recorder` (the Mac's recorder LaunchAgent), `racinglines-signals` + timer (every 5 min), `racinglines-record-venues` + timer (Kalshi and OG.com books every 5 min, enabled by `vm.sh record`), and per-event templates `racinglines-live-f1@<event>` + timer and `racinglines-live-dh@<event>` |
 | `deploy/vm/compose.override.yml` | Postgres on the VM's loopback only |
 | `deploy/vm/racinglines.env.example` | The VM's settings file (`/etc/racinglines.env`: the admin password, `APP_SECRET`, alerts) |
@@ -130,10 +130,11 @@ below, or through the site's admin views. (A deploy's own database writes are `a
   data and results to git doesn't work on the public repo. Results go back through `bucket.py push`.
 - **Without `tests/fixtures/` every golden test skips** (`conftest.py` skips, not fails): on a fresh public checkout
   `pytest -m "not live"` reports about 50 fixture skips and still looks green.
-- **Re-adding an untracked file to git can stop a deploy half-way.** If a commit starts tracking a path the VM keeps
-  as an untracked file (the pitch images, `tests/fixtures/`), `git checkout` refuses ("untracked working tree files
-  would be overwritten") after `untrack.sh`, and the timers stay paused. Before merging such a commit, move the VM's
-  copies aside over ssh; then deploy.
+- **Re-adding an untracked file to git is handled by the deploy.** If a commit starts tracking a path the VM keeps
+  as an untracked file (a template copied by hand, the pitch images, `tests/fixtures/`), `untrack.sh` moves the VM's
+  copy to `data/backups/files/moved-aside-<UTC>/` before the checkout, which then writes the repo's version. Nothing
+  is deleted; restore from that folder if the VM's copy was the one you wanted. (Before 2026-10-08 the checkout
+  refused with "untracked working tree files would be overwritten" and the deploy needed a manual move.)
 - **New data a PR needs doesn't arrive with the merge.** A new sport's tape, a FastF1 backfill, a replay grid or a
   forecast is a VM step after the deploy (a script under `scripts/vm/` run as a transient unit, backup first), named
   in the PR and run by the owner. Schemas and seeds do arrive (`db seed` runs on every deploy).
