@@ -147,6 +147,11 @@ the Markets, My Book and Positions pages links to Strategy and Positions.
 
 **Makers and admin**
 
+Markets initially loads sport headers without reading tape-history statistics. Opening a sport loads only that
+competition's race cards and exchange breakdown; Recent results loads separately on open. Positions counts each
+ledger row once, even when its event has multiple race categories. The race lookup supplies a single display name,
+not additional positions; private-book chart totals and ledger totals can still differ while fair marks are unsettled.
+
 | Page | What it shows |
 |---|---|
 | **Markets** (`/markets`; `/` redirects here), makers and admin | **Headline numbers:** exchange outcomes we price and their volume, order books recording, my open markets and worst case, F1 model vs grid-only baseline, running jobs.<br>**Per sport** (F1 first):<br>• next three races as cards: countdown, venue badges (live / pending / soon / mine), a **new** badge for markets first listed in the last 48 hours, our top-3 win probabilities with the exchange price as a tick;<br>• the season card;<br>• later races;<br>• recent results: winner, our pre-race price, Polymarket at the same time;<br>• **Exchange data**: per exchange, the markets linked for the sport and the trades, price points and book snapshots stored for them, counted over the Parquet archive and the Postgres buffer (the archive is counted in a background thread, never in the request; a zero shows as n/a), with each exchange's historical coverage under the table ([Data](data.md#what-the-exchange-data-counts-show)).<br>With `RACINGLINES_SPORT_STATUS=1` the page opens with **Every sport: status** ([below](#accounts-demo-users-vs-polymarkets-takers)). |

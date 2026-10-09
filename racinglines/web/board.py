@@ -153,8 +153,16 @@ def board(conn, maker_id, only=None, detail=True):
                                  WHERE mr.kind = 'diagnostic' AND mr.params ? 'replay_batch' GROUP BY 1""").to_dict("records"):
             asof_by_comp[r["competition"]] = r
     exch_by_comp = {}
-    for b in exchange_breakdown(conn):
-        exch_by_comp.setdefault(b["competition"], []).append(b)
+    linked_comps = set()
+    if detail:
+        comps = {s["competition"]["code"]: s for s in map(SP.load, SP.SPORT_CODES)
+                 if s["competition"]["code"] == only} if only is not None else None
+        for b in exchange_breakdown(conn, comps):
+            exch_by_comp.setdefault(b["competition"], []).append(b)
+    elif conn is not None:
+        links = data.q(conn, """SELECT DISTINCT co.code AS competition
+                               FROM market_links ml JOIN competitions co ON co.id = ml.competition_id""")
+        linked_comps = set(links["competition"])
     sports = []
     for schema in sorted(map(SP.load, SP.SPORT_CODES), key=lambda s: s["sport"]["display_order"]):
         code, sport_code = schema["competition"]["code"], schema["sport"]["code"]
@@ -162,7 +170,7 @@ def board(conn, maker_id, only=None, detail=True):
             continue
         tape = schema["sport"].get("model_family", "none") == "none"
         run, exch = forecasts.get(code), exch_by_comp.get(code, [])
-        if run is None and not exch:
+        if run is None and not exch and code not in linked_comps:
             continue                                     # nothing to show yet: no forecast, no linked market
         asof = asof_by_comp.get(code) if run is None and status_on else None
         for b in exch:                                    # where "N markets on Kalshi" etc. links to
