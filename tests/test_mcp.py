@@ -273,7 +273,7 @@ def test_docs_are_resources(mcp):
 
 # --- per-account tokens for the hosted mode -----------------------------------------------------------
 
-def test_tokens_are_per_account_and_only_for_allowed_real_accounts(test_engine):
+def test_tokens_are_per_account_and_only_for_allowed_real_accounts(test_engine, monkeypatch):
     from sqlalchemy import text
     from racinglines.mcp import auth
     from racinglines.web import users as U
@@ -294,8 +294,12 @@ def test_tokens_are_per_account_and_only_for_allowed_real_accounts(test_engine):
     assert auth.lookup(test_engine, "rl_" + "0" * 48) is None and auth.lookup(test_engine, "") is None
     tok2 = auth.new_token(test_engine, "t_admin")                                     # re-issue voids the old one
     assert auth.lookup(test_engine, tok) is None and auth.lookup(test_engine, tok2)["username"] == "t_admin"
+    pro_token = auth.new_token(test_engine, "t_maker")
+    assert auth.lookup(test_engine, pro_token)["role"] == "pro"
+    monkeypatch.setattr(auth, "ROLES", ("admin",))
+    assert auth.lookup(test_engine, pro_token) is None
     with pytest.raises(ValueError, match="role"):
-        auth.new_token(test_engine, "t_maker")                                        # RACINGLINES_MCP_ROLES=admin (pro is not)
+        auth.new_token(test_engine, "t_maker")                                        # explicit admin-only override
     with pytest.raises(ValueError, match="inactive"):
         auth.new_token(test_engine, "t_gone")
     with pytest.raises(ValueError, match="no account"):
@@ -305,18 +309,102 @@ def test_tokens_are_per_account_and_only_for_allowed_real_accounts(test_engine):
     assert auth.lookup(test_engine, tok2) is None
 
 
-def test_demo_accounts_never_get_a_token(test_engine, monkeypatch):
-    from racinglines.mcp import auth
+@pytest.mark.parametrize("username,role", [("t_demo", "admin"), ("maker", "pro")])
+def test_demo_accounts_never_get_a_token(test_engine, monkeypatch, username, role):
+    from racinglines.mcp import auth, oauth
     from racinglines.web import demo, users as U
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy import text
-    monkeypatch.setattr(demo, "DEMO_USERS", {"t_demo"})
+    monkeypatch.setattr(demo, "DEMO_USERS", set())
     with sessionmaker(test_engine)() as s:
-        if not s.execute(text("SELECT 1 FROM users WHERE username = 't_demo'"), {}).first():
-            U.create_user(s, "t_demo", "pw", "admin")
+        if not s.execute(text("SELECT 1 FROM users WHERE username = :u"), dict(u=username)).first():
+            U.create_user(s, username, "pw", role)
         s.commit()
+    token = auth.new_token(test_engine, username)
+    monkeypatch.setattr(demo, "DEMO_USERS", {username})
     with pytest.raises(ValueError, match="demo"):
-        auth.new_token(test_engine, "t_demo")
+        auth.new_token(test_engine, username)
+    assert auth.lookup(test_engine, token) is None
+    assert oauth.account(test_engine, username=username) is None
+
+
+def test_pro_mcp_scopes_accounts_and_jobs_and_blocks_admin_tools(mcp, monkeypatch):
+    from sqlalchemy import text
+    from racinglines.mcp import server as S
+    with mcp.engine.begin() as c:
+        ids = {}
+        for name in ("mcp-pro-own", "mcp-pro-other"):
+            uid = c.execute(text("""INSERT INTO users (username, password_hash, role) VALUES (:n, 'x', 'pro')
+                                    RETURNING id"""), dict(n=name)).scalar()
+            ids[name] = uid
+            c.execute(text("""INSERT INTO paper_positions
+                (user_id, event_key, market_key, kind, subject, yes_shares, cash, outcome, venue)
+                VALUES (:u, '2099-02', :n, 'race_win', :subject, 0, 5, true, 'polymarket')"""),
+                      dict(u=uid, n=name, subject=name))
+            c.execute(text("""INSERT INTO strategy_signals
+                (user_id, profile, strategy, event_key, market_key, kind, subject, stage, dedupe,
+                 action, side, status, signal_ts, detail)
+                VALUES (:u, 'test', 'maker', '2099-02', :n, 'race_win', :subject,
+                        'after FP2', :dedupe, 'quote', 'bid', 'new', now(), '{"venue":"polymarket"}'::jsonb)"""),
+                      dict(u=uid, n=name, subject=name, dedupe=name))
+    try:
+        who = dict(id=ids["mcp-pro-own"], username="mcp-pro-own", role="pro")
+        monkeypatch.setattr(S, "caller", lambda: who)
+        ov = mcp("overview")
+        assert [r["username"] for r in ov["users"]] == ["mcp-pro-own"]
+        assert ov["row_counts"]["paper_positions"] == 1
+        own = mcp("list_positions", user="mcp-pro-own")
+        assert own["positions"]["total"] == 1
+        signals = mcp("list_signals")
+        assert signals["total"] == 1 and signals["rows"][0]["user"] == "mcp-pro-own"
+        record = mcp("track_record", user="mcp-pro-own")
+        assert record["user"] == "mcp-pro-own" and record["pnl"] == 5
+        for name in ("list_positions", "track_record", "list_signals"):
+            denied = mcp(name, user="mcp-pro-other")
+            assert denied[0] == "error" and "own account" in denied[1]
+        for name, args in (("sql", dict(query="SELECT * FROM paper_positions")),
+                           ("describe_schema", {}), ("data_changes", {})):
+            denied = mcp(name, **args)
+            assert denied[0] == "error" and "admin-only" in denied[1]
+        mine = mcp("run_job", job_type="f1_backtest", params=dict(races=3, sims=300))
+        other = T.run_job(mcp.engine, "f1_backtest", dict(races=3, sims=300), user_id=ids["mcp-pro-other"])
+        assert mcp("get_job", job_id=mine["job_id"])["user_id"] == who["id"]
+        assert {r["id"] for r in mcp("list_jobs")["rows"]} == {mine["job_id"]}
+        for name in ("get_job", "cancel_job"):
+            assert mcp(name, job_id=other["job_id"])[0] == "error"
+        assert mcp("cancel_job", job_id=mine["job_id"])["cancelled"]
+        with mcp.engine.connect() as c:
+            assert c.execute(text("SELECT status FROM jobs WHERE id = :i"), dict(i=other["job_id"])).scalar() == "queued"
+        who["role"] = "admin"
+        assert mcp("list_positions", user="mcp-pro-other")["positions"]["total"] == 1
+        assert mcp("sql", query="SELECT 1 AS n")["rows"][0]["n"] == 1
+    finally:
+        with mcp.engine.begin() as c:
+            for uid in ids.values():
+                c.execute(text("DELETE FROM jobs WHERE user_id = :u"), dict(u=uid))
+                c.execute(text("DELETE FROM users WHERE id = :u"), dict(u=uid))
+
+
+def test_pro_market_matrix_uses_own_book_and_event_propagates_viewer(monkeypatch):
+    from racinglines.markets import private_book as house
+    from racinglines.markets import venues as V
+    own = dict(id=11, username="pro", role="pro")
+    seen = []
+
+    def matrix(conn, race_id, maker_id=house.ALL):
+        seen.append(maker_id)
+        return dict(event_id=1, title="race", competition="f1_wdc", season=2026, status="scheduled",
+                    start_date=None, race_start=None), {}, pd.DataFrame()
+
+    monkeypatch.setattr(V, "event_matrix", matrix)
+    monkeypatch.setattr(T, "freshness", lambda *args, **kwargs: {})
+    T.list_markets(None, race_id=1, viewer=own)
+    T.list_markets(None, race_id=1, viewer=dict(own, role="admin"))
+    assert seen == [11, house.ALL]
+    monkeypatch.setattr(T.data, "event", lambda *args: {"id": 1})
+    monkeypatch.setattr(T.data, "q", lambda *args, **kwargs: pd.DataFrame([dict(race_id=1)]))
+    T.get_event(None, event_id=1, include="markets", viewer=own)
+    assert seen[-1] == 11
 
 
 def _http(test_engine, monkeypatch):
@@ -374,9 +462,10 @@ def test_rl_tokens_still_open_the_hosted_server(test_engine, monkeypatch):
         assert client.post("/mcp", json=PING, headers={**HDR, "Authorization": f"Bearer {tok}"}).status_code == 401
 
 
-def test_oauth_sign_in_from_register_to_refresh(test_engine, monkeypatch):
+@pytest.mark.parametrize("account_role", ["admin", "pro"])
+def test_oauth_sign_in_from_register_to_refresh(test_engine, monkeypatch, account_role):
     """The connector flow: register, /authorize to the web app's Allow page, Allow as a signed-in admin, code for
-    tokens (once), a tool call as that account, refresh, and Disconnect ending it all. A pro account gets no Allow."""
+    tokens (once), a tool call as that account, refresh, and Disconnect ending it all. Basic accounts get no Allow."""
     import base64
     import hashlib
     from urllib.parse import parse_qs, urlparse
@@ -388,11 +477,11 @@ def test_oauth_sign_in_from_register_to_refresh(test_engine, monkeypatch):
     from racinglines.web import app as A
     from racinglines.web import users as U
     with sessionmaker(test_engine)() as s:
-        for name, role in (("t_admin", "admin"), ("t_maker", "pro")):
+        for name, role in (("t_admin", "admin"), ("t_maker", "pro"), ("t_basic", "basic")):
             if not s.execute(text("SELECT 1 FROM users WHERE username = :u"), dict(u=name)).first():
                 U.create_user(s, name, "pw", role)
         s.commit()
-        ids = dict(s.execute(text("SELECT username, id FROM users WHERE username IN ('t_admin', 't_maker')")).fetchall())
+        ids = dict(s.execute(text("SELECT username, id FROM users WHERE username IN ('t_admin', 't_maker', 't_basic')")).fetchall())
     monkeypatch.setattr(A, "get_engine", lambda *a: test_engine)
     monkeypatch.setattr(A, "get_session", lambda *a: sessionmaker(test_engine, expire_on_commit=False)())
     who = {}
@@ -426,11 +515,12 @@ def test_oauth_sign_in_from_register_to_refresh(test_engine, monkeypatch):
                 return parse_qs(urlparse(loc).query)["req"][0]
 
             req = authorize()
-            who.update(u="t_maker", r="pro")
+            who.update(u="t_basic", r="basic")
             assert "isn't one" in web.get("/mcp/authorize", params=dict(req=req)).text
             assert web.post("/mcp/authorize", data=dict(csrf_token=A.CSRF_TOKEN, req=req, decision="allow"),
                             follow_redirects=False).status_code == 403
-            who.update(u="t_admin", r="admin")
+            account_name = "t_admin" if account_role == "admin" else "t_maker"
+            who.update(u=account_name, r=account_role)
             page = web.get("/mcp/authorize", params=dict(req=req))
             assert "Allow" in page.text and page.headers["x-frame-options"] == "DENY"
             r = web.post("/mcp/authorize", data=dict(csrf_token=A.CSRF_TOKEN, req=req, decision="allow"), follow_redirects=False)
@@ -450,7 +540,7 @@ def test_oauth_sign_in_from_register_to_refresh(test_engine, monkeypatch):
             out = mcp_http.post("/mcp", json=call, headers=auth_hdr).json()
             job = json.loads(out["result"]["content"][0]["text"])
             with test_engine.connect() as c:                                            # filed under the signed-in account
-                assert c.execute(text("SELECT user_id FROM jobs WHERE id = :i"), dict(i=job["job_id"])).scalar() == ids["t_admin"]
+                assert c.execute(text("SELECT user_id FROM jobs WHERE id = :i"), dict(i=job["job_id"])).scalar() == ids[account_name]
             assert "Claude" in web.get("/settings").text
             ref = mcp_http.post("/token", data=dict(grant_type="refresh_token", refresh_token=rt, client_id=client_id))
             assert ref.status_code == 200, ref.text
@@ -480,6 +570,7 @@ def test_admin_mcp_page_lists_and_disconnects(test_engine, monkeypatch):
         uid = c.execute(text("SELECT id FROM users WHERE username = 't_admin'")).scalar()
     oauth._seen(test_engine, uid, "Claude")
     monkeypatch.setattr(AD, "get_engine", lambda *a: test_engine)
+    monkeypatch.setattr(A, "get_engine", lambda *a: test_engine)
 
     def as_admin(request: Request):
         request.state.user = dict(id=uid, username="t_admin", role="admin", sid=None)
@@ -573,7 +664,11 @@ def test_settings_page_token_is_the_one_the_server_accepts(test_engine, monkeypa
         assert auth.lookup(test_engine, tok) is None
         with test_engine.connect() as c:
             assert c.execute(text("SELECT prefs->>'email' FROM users WHERE username = 't_admin'")).scalar() == "a@b.co"
-        who.update(u="t_maker", r="pro")                                                   # RACINGLINES_MCP_ROLES=admin
+        who.update(u="t_maker", r="pro")
+        pro_token = client.post("/api/settings/token/generate", data=dict(csrf_token=A.CSRF_TOKEN))
+        assert pro_token.status_code == 200
+        assert auth.lookup(test_engine, pro_token.json()["token"])["username"] == "t_maker"
+        monkeypatch.setattr(auth, "ROLES", ("admin",))                                    # explicit admin-only override
         assert client.post("/api/settings/token/generate", data=dict(csrf_token=A.CSRF_TOKEN)).status_code == 403
         assert "open to admin accounts" in client.get("/settings").text
     finally:

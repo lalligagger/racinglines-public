@@ -6,8 +6,9 @@ Who may reach the hosted server (`racinglines mcp --http`): real web-app account
 
 A token is `rl_` + 48 hex characters; only its SHA-256 is stored, in users.prefs["mcp"] (issued_at, token_sha256),
 so the users table keeps no secret that could be replayed. A request is accepted when its token matches an active,
-non-demo account whose role is in RACINGLINES_MCP_ROLES (default `admin`; set `admin,pro` to open it to pro accounts
-later). Stdio mode has no tokens: whoever can run the command on that machine is the owner.
+non-demo account whose role is in RACINGLINES_MCP_ROLES (default `admin,pro`; set `admin` for admin-only access).
+Pro callers can access only their own account records and jobs. Stdio mode has no tokens: whoever can run the
+command on that machine is the owner.
 """
 
 import hashlib
@@ -21,7 +22,7 @@ from sqlalchemy import text
 from racinglines.web import roles as R
 
 PREFIX = "rl_"
-ROLES = tuple(r.strip() for r in os.environ.get("RACINGLINES_MCP_ROLES", "admin").split(",") if r.strip())
+ROLES = tuple(r.strip() for r in os.environ.get("RACINGLINES_MCP_ROLES", "admin,pro").split(",") if r.strip())
 
 
 def _demo_users():

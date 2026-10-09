@@ -42,6 +42,10 @@ How to use it:
   columns are the venue's quotes at the time shown.
 - Resources racinglines://docs/<page> hold the documentation (model.md, market-making.md, f1-forecast.md, ...).
 """
+INSTRUCTIONS += """
+Hosted Pro accounts can read shared race data and Lab research, but account records and jobs are limited to
+their own account. sql, describe_schema and data_changes are admin-only. Demo accounts cannot sign in.
+"""
 
 
 _URL = None
@@ -71,6 +75,8 @@ def _json(obj):
 def _read(fn, engine=None, **kw):
     """Call a tools.py function inside a READ ONLY transaction; anticipated errors become tool errors the client sees."""
     from mcp.server.mcpserver.exceptions import ToolError
+    if fn in (T.sql, T.describe_schema, T.data_changes):
+        _require_admin()
     try:
         with (engine or _engine()).begin() as c:
             c.execute(text("SET TRANSACTION READ ONLY"))
@@ -112,6 +118,14 @@ def caller_id():
     return c["id"] if c else None
 
 
+def _require_admin():
+    from mcp.server.mcpserver.exceptions import ToolError
+    from racinglines.web import roles as R
+    who = caller()
+    if who and R.canonical(who.get("role")) != "admin":
+        raise ToolError("This MCP tool is admin-only; use the account-scoped and research tools instead")
+
+
 def build(jobs_worker=False, engine_url=None, oauth=False):
     """The server with every tool and resource registered. `jobs_worker`: run the Lab's job worker in this process
     (queued jobs run here when no web app is running). `engine_url`: a database other than $DATABASE_URL. `oauth`:
@@ -132,7 +146,7 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
     def overview() -> str:
         """What the database holds: sports, seasons, the live forecast per competition, model runs by kind, market
         links per exchange, venues, users and the next races. Call this first."""
-        return _read(T.overview)
+        return _read(T.overview, viewer=caller())
 
     @srv.tool()
     def describe_schema(table: str | None = None) -> str:
@@ -152,7 +166,7 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
     def get_event(event_id: int | None = None, source_key: str | None = None, include: str = "results") -> str:
         """One event by id or source_key ('2026-15', '20260821_mtb'): its races and, per `include` (comma-separated:
         results, predictions, markets), the final classification, every stored prediction, the venues matrix."""
-        return _read(T.get_event, event_id=event_id, source_key=source_key, include=include)
+        return _read(T.get_event, event_id=event_id, source_key=source_key, include=include, viewer=caller())
 
     @srv.tool()
     def search_athletes(q: str | None = None, limit: int = 50) -> str:
@@ -175,7 +189,7 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         no linked market on a live exchange or its newest sync is older than RACINGLINES_STALE_HOURS (default 3):
         quote those prices as possibly out of date."""
         return _read(T.list_markets, race_id=race_id, event_id=event_id, competition=competition, sport=sport, kinds=kinds,
-                     limit=limit, offset=offset)
+                     limit=limit, offset=offset, viewer=caller())
 
     @srv.tool()
     def get_market_history(tokens: str | None = None, race_id: int | None = None, kind: str | None = None,
@@ -325,6 +339,7 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         """Run one read-only SQL query (SELECT / WITH ... SELECT / EXPLAIN) against the database, in a READ ONLY transaction
         with a 10 s timeout. The result is paged (limit at most 500; an outer LIMIT/OFFSET is applied for you). The users and
         orders tables are not readable. describe_schema() lists the tables and columns."""
+        _require_admin()
         return _read(T.sql, engine=_sql_engine(), query=query, limit=limit, offset=offset)
 
     # --- jobs ---------------------------------------------------------------------------------------
@@ -348,17 +363,17 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
     @srv.tool()
     def get_job(job_id: int, log_lines: int = 20) -> str:
         """A job's status (queued, running, done, failed), progress, the last log lines and result_run_id."""
-        return _read(T.get_job, job_id=job_id, log_lines=log_lines)
+        return _read(T.get_job, job_id=job_id, log_lines=log_lines, viewer=caller())
 
     @srv.tool()
     def list_jobs(status: str | None = None, limit: int = 50, offset: int = 0) -> str:
         """Jobs, newest first (the Lab's and this server's)."""
-        return _read(T.list_jobs, status=status, limit=limit, offset=offset)
+        return _read(T.list_jobs, status=status, limit=limit, offset=offset, viewer=caller())
 
     @srv.tool()
     def cancel_job(job_id: int) -> str:
         """Cancel a job that has not started yet."""
-        return _write(T.cancel_job, job_id=job_id)
+        return _write(T.cancel_job, job_id=job_id, viewer=caller())
 
     # --- resources: the docs and the sport schemas ---------------------------------------------------
     @srv.resource("racinglines://docs", name="docs-index", description="The documentation pages available as racinglines://docs/<page>")
