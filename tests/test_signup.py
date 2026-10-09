@@ -6,7 +6,8 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
-GOOD = dict(username="Ada_Lovelace", password="correct horse battery", confirm="correct horse battery", adult="1")
+GOOD = dict(username="Ada_Lovelace", email="Ada@Example.com", password="correct horse battery",
+            confirm="correct horse battery", adult="1")
 
 
 # --- no database -------------------------------------------------------------------------------------------------
@@ -55,8 +56,8 @@ def test_closed_until_setup_has_run(monkeypatch):
     client = TestClient(A.app)
     assert "isn't open yet" in client.get("/signup").text
     assert client.post("/signup", data=GOOD).status_code == 503
-    page = client.get("/login").text                      # the landing page and its popup link to sign-up
-    assert 'Beta <a href="/signup">signups</a> are live!' in page and page.count('href="/signup"') == 2
+    page = client.get("/login").text                      # the landing page links to sign-up once; no popup (2026-10-08)
+    assert 'id="site-notice"' not in page and page.count('href="/signup"') == 1
     assert 'href="/forgot"' in page
     forgot = client.get("/forgot").text                    # no email on file: a reset request to us, prefilled
     assert "mailto:hello@racinglines.bet?subject=Password%20reset%20request" in forgot and "Username:" in forgot
@@ -121,13 +122,39 @@ def test_signup_creates_a_hashed_account_with_1000_bucks(app_db):
                       follow_redirects=False).headers["location"] == "/markets"
 
 
+def test_signups_get_different_taker_strategies(app_db):
+    """Each new account gets one strategy from TAKER_TOP, round-robin by user id (owner, 2026-10-06)."""
+    from sqlalchemy import text
+    from racinglines.db.config import get_engine
+    from racinglines.pipelines import profiles as PF
+    with get_engine().begin() as c:                     # candidates need the F1 championship (search.add_candidate)
+        c.execute(text("INSERT INTO sports (code, name) VALUES ('f1', 'F1') ON CONFLICT DO NOTHING"))
+        c.execute(text("INSERT INTO leagues (code, name) VALUES ('f1', 'F1') ON CONFLICT DO NOTHING"))
+        c.execute(text("""INSERT INTO competitions (code, name, league_id, sport_id)
+                          SELECT 'f1_wdc', 'F1', l.id, s.id FROM leagues l, sports s WHERE l.code = 'f1' AND s.code = 'f1'
+                          ON CONFLICT DO NOTHING"""))
+    for name in ("ada_one", "ada_two"):
+        app_db._signup_hits.clear()
+        assert TestClient(app_db.app).post("/signup", data=dict(GOOD, username=name, email=f"{name}@example.com"),
+                                           follow_redirects=False).status_code == 303
+    with get_engine().connect() as c:
+        ids = [c.execute(text("SELECT id FROM users WHERE username = :u"), dict(u=n)).scalar() for n in ("ada_one", "ada_two")]
+        names = [PF.of_user(c, i)["name"] for i in ids]
+    assert ids[1] == ids[0] + 1
+    taker = {PF.PROFILES[code]["name"] for code in PF.TAKER_TOP}
+    assert names[0] != names[1] and set(names) <= taker
+    assert names == [PF.PROFILES[PF.TAKER_TOP[i % len(PF.TAKER_TOP)]]["name"] for i in ids]
+
+
 @pytest.mark.parametrize("change, msg", [(dict(username="ADA_LOVELACE"), "taken"), (dict(username="admin"), "reserved"),
                                          (dict(password="short", confirm="short"), "at least"),
                                          (dict(confirm="something else"), "match"),
-                                         (dict(adult=""), "18")])
+                                         (dict(adult=""), "18"), (dict(email=""), "valid email"),
+                                         (dict(email="ada at example"), "valid email"),
+                                         (dict(username="ada_two", email="ADA@example.com "), "already on an account")])
 def test_signup_refusals(app_db, change, msg):
     client = TestClient(app_db.app)
-    if msg == "taken":
+    if msg in ("taken", "already on an account"):
         assert client.post("/signup", data=GOOD, follow_redirects=False).status_code == 303
         client = TestClient(app_db.app)
     r = client.post("/signup", data=dict(GOOD, **change), follow_redirects=False)
@@ -182,3 +209,30 @@ def test_cli(app_db, capsys):
     with get_session() as s:
         assert not U.authenticate(s, "carol", temp)
     assert CLI.main(["remove", "carol"]) == 0 and float(_balance("carol") or 0) == 0
+
+
+def test_signup_stores_the_email_and_older_accounts_sign_in_without_one(app_db):
+    """New sign-ups need an email (owner, 2026-10-08), kept lower-cased in users.prefs.email; accounts made before
+    have none and still sign in."""
+    from sqlalchemy import text
+    from racinglines.db.config import get_engine
+    assert TestClient(app_db.app).post("/signup", data=GOOD, follow_redirects=False).status_code == 303
+    with get_engine().connect() as c:
+        assert c.execute(text("SELECT prefs->>'email' FROM users WHERE username = 'ada_lovelace'")).scalar() == "ada@example.com"
+        assert c.execute(text("SELECT prefs->>'email' FROM users WHERE username = 'taker'")).scalar() is None
+    r = TestClient(app_db.app).post("/login", data=dict(username="taker", password="password"), follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/markets"
+
+
+def test_admin_creates_a_user_from_the_one_password_field(app_db):
+    """The admin form has one password field: it used to be checked against an empty confirmation and always failed
+    with "The two passwords don't match" (owner report, 2026-10-08)."""
+    client, csrf = _admin(app_db)
+    page = client.get("/admin/users").text
+    assert 'autocomplete="new-password"' in page and "Password (10+ chars)" in page
+    r = client.post("/admin/users", data=dict(csrf_token=csrf, username="New_Pro", display_name="", role="pro",
+                                              password="a long enough password"), follow_redirects=True)
+    assert "Created pro new_pro" in r.text
+    r = client.post("/admin/users", data=dict(csrf_token=csrf, username="newer", display_name="", role="basic",
+                                              password="short"), follow_redirects=True)
+    assert "at least 10" in r.text

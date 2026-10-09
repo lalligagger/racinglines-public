@@ -52,6 +52,7 @@ HISTORY_START = pd.Timestamp("2025-12-09", tz="UTC")
 SLEEVE_USER = "maker"                      # the demo maker: the account the championship sleeve belongs to
 SLEEVE_EVENT = "{year}-season"             # paper_positions.event_key of the sleeve
 KALSHI_TAKER_FEE = 0.07                    # Kalshi's taker fee rate: fee = rate x price x (1 - price) per contract
+VENUES = ("polymarket", "kalshi", "og")    # the exchanges run_season replays (`f1 season-strategy --venue`)
 MIN_VOLUME_BY = {"og": 0}                  # the exchanges held to another floor than MIN_VOLUME (OG.com: none, thin books)
 
 

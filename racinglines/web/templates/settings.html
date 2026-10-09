@@ -31,6 +31,8 @@
 
 <div class="card"><h2>Connect Claude (MCP)</h2>
 <p class="muted">Let Claude, or any MCP client, read racinglines data and queue Lab jobs as you. Server: <code>{{ mcp_url }}</code></p>
+<p class="muted">Pro access includes shared race data and Lab research, plus your own positions, signals and jobs.
+Other accounts' records and jobs are not accessible. SQL and audit tools are admin-only; demo accounts cannot connect.</p>
 {% if not mcp_allowed %}
 <p class="warning">MCP access is open to {{ mcp_roles }} accounts; ask an admin if you need it.</p>
 {% else %}

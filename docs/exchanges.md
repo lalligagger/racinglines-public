@@ -43,6 +43,7 @@ the one of that name held closest to the sync date, because its expiry (2026-11-
 racinglines markets --exchange og sync                    # the F1 futures and their quotes, into market links
 racinglines markets --exchange og --sport nascar sync     # NASCAR Cup Champion, tape only
 racinglines markets --exchange og --sport sailgp sync     # SailGP Championship Winner, tape only
+racinglines markets --exchange og settle                  # who won: resolved_yes on closed links (below)
 racinglines markets --exchange og trades                  # the tape the API still serves (about a month)
 racinglines markets --exchange og history --start 2026-09-01T00:00     # minute prices (31 days at most per call)
 racinglines markets --exchange og books                   # one 50-level order-book snapshot per open market
@@ -53,6 +54,27 @@ racinglines markets --exchange og --sport nascar buy-all  # debug: one YES + one
 The API keeps only about a month of trades and minute prices, so `trades` and `history` should run at least
 weekly, or that history is lost. Prices, trades and books are archived per exchange
 (`data/archive/markets/og/`), like Kalshi's.
+
+### Outcomes: the settlement feed
+
+OG.com drops an instrument from `get-instruments`, `get-events` and `get-tickers` once it settles, so a sync can
+only mark the link closed, never say who won. `settle` reads the schema's optional `[endpoints.settlements]` and
+`[fields.settlement]` (OG.com: `get-expired-settlement-price`, rows `{i, x, v, t}`, every instrument the exchange
+settles, mostly FX and crypto, about 20,000 rows per 12 hours, paged by `since` in nanoseconds then `cursor`) and
+writes each closed, unresolved link's outcome: `resolved_yes` true when a YES contract paid 1, false when it paid 0
+(matched on `token_id` = the instrument symbol), with `params.settled_at` (the settle time; sports contracts settle
+when decided, not at their nominal expiry), `params.settlement` and `params.settlement_value`. A void (any value
+between, OG.com's 0.50) leaves `resolved_yes` empty and is noted as `settlement = "void"`, so it is not looked for
+again. The scan starts a day before the last sync that saw a pending link listed, stops as soon as every pending
+link is found or the feed ends, reads at most the endpoint's `max_pages` (500) a pass, and notes on each link still
+missing how far the feed was read (`params.settle_scanned_to`), so the next pass starts there (less an hour). It is
+idempotent, and `sync` keeps these values. An exchange whose schema has no settlement feed does nothing. On the VM,
+`scripts/vm/record_venues.sh` runs it once an hour (`SETTLE_MIN`, default 60) after the sync, every day.
+
+```bash
+racinglines markets --exchange og settle                  # outcomes of the closed F1 links
+racinglines markets --exchange og --sport nascar settle --since 2026-09-29T00:00   # rescan from a fixed time
+```
 
 ### The fair-price indicator
 

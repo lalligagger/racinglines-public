@@ -17,3 +17,4 @@ include = ["racinglines*"]
 
 [tool.setuptools.package-data]
 "racinglines.web" = ["templates/*.html", "static/*"]
+"racinglines.weather" = ["*.toml"]

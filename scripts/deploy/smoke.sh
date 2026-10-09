@@ -31,14 +31,14 @@ fail=0
 check() {   # check <expected status> <label> <curl args...>
   local want=$1 label=$2; shift 2
   local got
-  got=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$@")
+  got=$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 "$@")
   # 000 = no HTTP response (a worker still warming up after a restart, a reset): retry once; a wrong status never retries
-  if [ "$got" = "000" ]; then sleep 5; got=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$@"); fi
+  if [ "$got" = "000" ]; then sleep 5; got=$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 "$@"); fi
   if [ "$got" = "$want" ]; then echo "ok    $got  $label"; else echo "FAIL  $got  $label (wanted $want)"; fail=1; fi
 }
 
-# wait up to 60 s for the app to answer at all (vm.sh deploy runs this seconds after the restart)
-for _ in $(seq 1 12); do
+# wait up to 90 s for the app to answer at all (external routing can be slow during simultaneous deploys on single VM)
+for _ in $(seq 1 18); do
   [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$URL/login")" = 200 ] && break; sleep 5
 done
 

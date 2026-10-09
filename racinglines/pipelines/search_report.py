@@ -9,7 +9,10 @@ search showed a backtest needs (docs/backtest-core.md, Part 1):
   - baselines at the same fidelity: each run is compared with the default settings at its own
     simulation count, over the same rounds;
   - confirmation: the same combo at `confirm_sims` simulations, when the search ran it;
-  - concentration: P&L without the best event, and which event that was;
+  - concentration: P&L without the best event (and which event that was) and without the best two;
+  - shape: steady (still up without its best two events in every season), concentrated (up in every season,
+    but not without its best two in one of them), mixed (up in one season, down in another) or losing (down in
+    every season);
   - stable candidate ids: `<strategy>-<settings_key>`, never a position in a list;
   - finished jobs only: a job still running (or failed) is never read.
 
@@ -19,7 +22,8 @@ Configuration: an optional [report] table in the queue file (defaults below), an
 another sport's jobs. Outputs, next to the search's state.json: stats.csv, ranking.csv, pnl_curves.json,
 candidates/<id>.json, candidates.toml, report.md; another sport's in a folder named after it.
 
-Any sport: F1 sweeps are scored by each strategy's P&L per weekend; model-only walk-forwards (downhill)
+Any sport: sweeps (F1's, and any other sport's in a folder <sport>-sweep, its settings under [report.<sport>-sweep])
+are scored by each strategy's P&L per weekend; model-only walk-forwards (downhill)
 by each market kind's score per event (−1000 × log loss, higher is better). The labels, noise floor,
 baselines, confirmation and ids work the same on either.
 """
@@ -32,7 +36,7 @@ import pandas as pd
 
 from racinglines.pipelines import sweep_settings as SS
 
-DEFAULTS = dict(target=2026, holdout=[2025], confirm_sims=16000, top=25, season_events=24,
+DEFAULTS = dict(target=2026, holdout=[2025], confirm_sims=16000, rank_sims=None, top=25, season_events=24,
                 noise=dict(taker=150.0, maker=350.0, model=25.0), value="pnl", unit="P&L")
 # another sport's defaults, under [report.<sport>] in the queue; "global" is the results model's (any sport)
 SPORT_DEFAULTS = {"mtb_dh": dict(confirm_sims=20000, season_events=10, value="score", unit="score"),
@@ -47,7 +51,7 @@ def family(strategy):
 
 def curve_stats(pnls, season_events):
     """Total, weekends up, max drawdown (peak to trough from 0 before the first event), Sharpe (mean / sd of
-    event P&L x sqrt(events per season)), and the total without the best event."""
+    event P&L x sqrt(events per season)), and the total without the best event and without the best two."""
     cum, peak, dd, c = [], 0.0, 0.0, 0.0
     for x in pnls:
         c += x
@@ -58,9 +62,23 @@ def curve_stats(pnls, season_events):
     mean = c / n if n else 0.0
     sd = math.sqrt(sum((x - mean) ** 2 for x in pnls) / (n - 1)) if n > 1 else 0.0
     best = max(range(n), key=lambda i: pnls[i]) if n else None
+    top2 = sum(sorted(pnls, reverse=True)[:2])
     return dict(pnl=c, weekends=n, weekends_up=sum(x > 0 for x in pnls), max_drawdown=dd,
                 sharpe=(mean / sd * math.sqrt(season_events)) if sd > 0 else 0.0, mean_weekend=mean,
-                sd_weekend=sd, pnl_without_best=c - pnls[best] if n else 0.0, best_index=best), cum
+                sd_weekend=sd, pnl_without_best=c - pnls[best] if n else 0.0, pnl_without_best2=c - top2,
+                best_index=best), cum
+
+
+def shape(pnls, without_best2):
+    """steady / concentrated / mixed / losing from each season's P&L and P&L without its best two events
+    ("" if a season is missing). These describe the record, not the risk."""
+    if any(v is None for v in list(pnls) + list(without_best2)):
+        return ""
+    if all(v <= 0 for v in pnls):
+        return "losing"
+    if any(v <= 0 for v in pnls):
+        return "mixed"
+    return "steady" if all(v > 0 for v in without_best2) else "concentrated"
 
 
 def _config(cfg):
@@ -161,7 +179,7 @@ def rank(rows, curves, cfg=None, twin=None, cls=SS.Settings):
         key = cls.from_dict(_without(st, "seed")).key
         return by.get((year, key, strat, venue))
 
-    default_sims = cls.BY["sims"].default
+    default_sims = cfg["rank_sims"] or cls.BY["sims"].default      # the fidelity combos are ranked at
     out = []
     for (year, combo, strat, venue), rs in by.items():
         st = settings[rs[0]["settings_key"]]
@@ -192,7 +210,9 @@ def rank(rows, curves, cfg=None, twin=None, cls=SS.Settings):
             c = lookup(yy, dict(s_, sims=cfg["confirm_sims"]), strat, venue) \
                 or lookup(yy, dict(st, sims=cfg["confirm_sims"]), strat, venue)
             conf[yy] = mean_of(c, "vs_baseline") if c else None
-        if label in ("robust", "target only", "held-out-led"):
+        if cfg["confirm_sims"] == default_sims:                    # ranked at the confirmation fidelity already
+            confirmed = ""
+        elif label in ("robust", "target only", "held-out-led"):
             need = {"robust": list(conf), "target only": [year], "held-out-led": cfg["holdout"]}[label]
             confirmed = "not run" if any(conf[y] is None for y in need) else \
                 ("yes" if all(conf[y] > 0 for y in need) else "no")
@@ -208,11 +228,16 @@ def rank(rows, curves, cfg=None, twin=None, cls=SS.Settings):
         # better than the baseline isn't the same as profitable (params-4h: hold strategies beat a losing
         # baseline in 2025 and still lost money)
         loses = [str(y) for y, v in [(year, pnl_t), *pnl_h.items()] if pnl and v is not None and v < 0]
+        wb2_t = mean_of(rs, "pnl_without_best2")
+        wb2_h = {hy: mean_of(h, "pnl_without_best2") if h else None for hy, h in held.items()}
+        shp = shape([pnl_t, *pnl_h.values()], [wb2_t, *wb2_h.values()]) if pnl else ""
         rec = dict(id=f"{strat}-{combo}" + ("" if venue == "polymarket" else f"-{venue}"), strategy=strat,
                    settings_key=combo, label_settings=st.label(), venue=venue,
-                   verdict=label, confirmed=confirmed, loses_money_in=",".join(loses), score=score, noise_floor=nf, replicates=len(rs),
+                   verdict=label, shape=shp, confirmed=confirmed, loses_money_in=",".join(loses), score=score, noise_floor=nf, replicates=len(rs),
                    pnl_target=pnl_t, vs_base_target=d_t, sharpe_target=mean_of(rs, "sharpe"),
                    dd_target=mean_of(rs, "max_drawdown"), without_best_target=mean_of(rs, "pnl_without_best"),
+                   without_best2_target=wb2_t, weekends_up_target=mean_of(rs, "weekends_up"),
+                   weekends_target=mean_of(rs, "weekends"),
                    best_event_target=rs[0]["best_event"], gain_without_best_target=mean_of(rs, "gain_without_best"),
                    best_gain_event_target=rs[0]["best_gain_event"], settings=st.to_json(),
                    run_target=rs[0]["run_id"])
@@ -220,6 +245,8 @@ def rank(rows, curves, cfg=None, twin=None, cls=SS.Settings):
             h = held[hy] or []
             rec.update({f"pnl_{hy}": pnl_h[hy], f"vs_base_{hy}": d_h[hy], f"sharpe_{hy}": mean_of(h, "sharpe"),
                         f"dd_{hy}": mean_of(h, "max_drawdown"), f"without_best_{hy}": mean_of(h, "pnl_without_best"),
+                        f"without_best2_{hy}": wb2_h[hy], f"weekends_up_{hy}": mean_of(h, "weekends_up"),
+                        f"weekends_{hy}": mean_of(h, "weekends"),
                         f"gain_without_best_{hy}": mean_of(h, "gain_without_best"),
                         f"run_{hy}": h[0]["run_id"] if h else None,
                         f"settings_{hy}": settings[h[0]["settings_key"]].to_json() if h else None})
@@ -235,16 +262,17 @@ def candidates(ranking, top):
 
 
 def write(out, jobs, metrics, strategies, cfg=None, twin=None, rerun=None, echo=print, cls=SS.Settings, sport="f1",
-          model=None):
-    """Every output file, from finished jobs only. rerun(job-like dict) -> argv list, for re-run commands."""
+          model=None, kind=None):
+    """Every output file, from finished jobs only. rerun(job-like dict) -> argv list, for re-run commands.
+    kind: the jobs' kind (None: F1's sweep, any other sport's or model's walk-forward)."""
     cfg = _config(cfg)
     rows, curves = stats(jobs, metrics, strategies, cfg, cls)
     ranking, floor, measured = rank(rows, curves, cfg, twin, cls)
-    job = dict(kind="sweep") if sport == "f1" and not model else dict(
-        kind="walk_forward", sport=sport, **({"model": model} if model else {}))
+    kind = kind or ("sweep" if sport == "f1" and not model else "walk_forward")
+    job = dict(kind=kind, **({"sport": sport} if sport != "f1" or model else {}), **({"model": model} if model else {}))
     (out / "pnl_curves.json").write_text(json.dumps(curves, default=str))
     cols = ["year", "rounds", "venue", "strategy", "label", "sims", "seed", "pnl", "vs_baseline", "weekends_up", "weekends",
-            "max_drawdown", "sharpe", "pnl_without_best", "best_event", "gain_without_best", "best_gain_event", "run_id",
+            "max_drawdown", "sharpe", "pnl_without_best", "pnl_without_best2", "best_event", "gain_without_best", "best_gain_event", "run_id",
             "job", "settings_key", "note"]
     _csv(out / "stats.csv", sorted(rows, key=lambda r: (r["year"], r["strategy"], -r["pnl"])), cols)
     rcols = [c for c in ranking[0] if not c.startswith("settings")] if ranking else []
@@ -297,19 +325,25 @@ def summary_md(ranking, top, floor, measured, cfg):
              "*Confirmed* re-checks the label's seasons at " f"{cfg['confirm_sims']:,} simulations. "
              f"*Without best* is the target-season {u} without its best event; *gain without best*, its gain over the "
              "baseline without the event where it gained most. *Loses money in*: better than the "
-             "baseline there, but still a loss (P&L only)." + (" Scores are −1000 × log loss per event, summed: "
+             "baseline there, but still a loss (P&L only). *Shape*: **steady** is still up without its best two events "
+             "in every season, **concentrated** is up in every season but not without its best two in one of them, "
+             "**mixed** is up in one season and down in another, **losing** is down in every season." + (" Scores are −1000 × log loss per event, summed: "
                                                                 "higher is better." if u == "score" else ""), "",
-             "| Id | Strategy | Settings | Label | Confirmed | " + f"{cfg['target']} | vs baseline | Without best | "
+             "| Id | Strategy | Settings | Label | Shape | Confirmed | " + f"{cfg['target']} | vs baseline | Without best | "
              "Gain without best | " + " | ".join(f"{y} | vs baseline" for y in hy) + " | Loses money in |",
-             "|---" * (10 + 2 * len(hy)) + "|"]
+             "|---" * (11 + 2 * len(hy)) + "|"]
     f = lambda v: "" if v is None else f"{v:+,.0f}"                                         # noqa: E731
     for r in top:
-        lines.append(f"| `{r['id']}` | {r['strategy']} | {r['label_settings']} | {r['verdict']} | {r['confirmed']} | "
+        lines.append(f"| `{r['id']}` | {r['strategy']} | {r['label_settings']} | {r['verdict']} | {r['shape']} | "
+                     f"{r['confirmed']} | "
                      f"{f(r['pnl_target'])} | {f(r['vs_base_target'])} | {f(r['without_best_target'])} "
                      f"({r['best_event_target']}) | {f(r['gain_without_best_target'])} ({r['best_gain_event_target']}) | "
                      + " | ".join(f"{f(r[f'pnl_{y}'])} | {f(r[f'vs_base_{y}'])}" for y in hy) + f" | {r['loses_money_in']} |")
     counts = pd.Series([r["verdict"] for r in ranking]).value_counts().to_dict() if ranking else {}
+    shapes = pd.Series([r["shape"] for r in ranking if r["shape"]]).value_counts().to_dict() if ranking else {}
     lines += ["", "Combos by label: " + ", ".join(f"{k} {v}" for k, v in counts.items()), ""]
+    if shapes:
+        lines += ["Combos by shape: " + ", ".join(f"{k} {v}" for k, v in shapes.items()), ""]
     return "\n".join(lines)
 
 
@@ -346,10 +380,17 @@ def run(queue_path, echo=print):
     def twin(st, year):
         return SS.Settings.from_dict(dict(st, variant=V.for_season(st["variant"], year)))
     result = None
-    f1 = [v for v in done if v["kind"] == "sweep"]
+    f1 = [v for v in done if v["kind"] == "sweep" and v.get("sport", S.DEFAULT_SPORT) == S.DEFAULT_SPORT]
     if f1:
         result = write(out, f1, metrics, EV.STRATEGIES, {k: v for k, v in rep.items() if not isinstance(v, dict)
                                                           or k == "noise"}, twin=twin, rerun=S.argv, echo=echo)
+    for sport in sorted({v["sport"] for v in done if v["kind"] == "sweep" and v.get("sport", S.DEFAULT_SPORT) != S.DEFAULT_SPORT}):
+        jobs = [v for v in done if v["kind"] == "sweep" and v.get("sport") == sport]     # another sport's sweeps
+        d = out / f"{sport}-sweep"
+        d.mkdir(exist_ok=True)
+        result = write(d, jobs, metrics, EV.STRATEGIES, dict({k: v for k, v in rep.items() if not isinstance(v, dict)
+                                                               or k == "noise"}, **rep.get(f"{sport}-sweep", {})),
+                       rerun=S.argv, echo=echo, cls=S.settings_class(sport, None, "sweep"), sport=sport, kind="sweep")
     for sport, model in sorted({(v.get("sport", "f1"), v.get("model") or "") for v in done if v["kind"] == "walk_forward"}):
         jobs = [v for v in done if v["kind"] == "walk_forward" and (v.get("sport", "f1"), v.get("model") or "") == (sport, model)]
         kinds = sorted({k[:-len("_score")] for j in jobs for w in (metrics.get(j["run_id"]) or {}).get("weekends") or []

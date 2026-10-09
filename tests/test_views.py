@@ -503,13 +503,19 @@ def test_basic_pages_never_name_the_strategy_behind_a_pick(clients):
             c.execute(T("DELETE FROM strategy_signals WHERE event_key = '2099-03'"))
 
 
-def test_maintenance_popup_on_login_and_switches_off(monkeypatch):
+def test_landing_page_has_no_popup_unless_a_notice_is_set(monkeypatch):
+    """The landing page (/login, owner 2026-10-08): business copy first, the fantasy-trading beta below with demo
+    buttons no bigger than the sign-up link, centered without same-page navigation, and no popup unless
+    MAINTENANCE_NOTICE is set."""
     from fastapi.testclient import TestClient
 
     from racinglines.web import app as A
     cl = TestClient(A.app)
     page = cl.get("/login").text
-    assert "<p id=\"site-notice-msg\">We are working on things! You may experience downtimeor dead links until we finish.</p>" in page
-    assert page.count("<button") == 3 + 1 and '<form method="dialog"><button class="primary" autofocus>ok</button></form>' in page
-    monkeypatch.setattr(A, "MAINTENANCE_NOTICE", "")
-    assert 'id="site-notice"' not in cl.get("/login").text
+    assert 'id="site-notice"' not in page and "Beta <a" not in page
+    assert "Motorsport pricing for sportsbooks" in page and 'class="biz"' in page
+    assert 'href="#' not in page and "How it works" not in page
+    assert "We're still looking for individual users to fantasy trade with us!" in page.replace("&#39;", "'")
+    assert ">Try as pro</button>" in page and ">Try as basic</button>" in page and 'id="account"' in page
+    monkeypatch.setattr(A, "MAINTENANCE_NOTICE", "Down for a moment.")
+    assert '<p id="site-notice-msg">Down for a moment.</p>' in cl.get("/login").text

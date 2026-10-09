@@ -13,15 +13,15 @@ import pytest
 from conftest import FIX, require_market_fixtures
 
 require_market_fixtures(
-    "race_list_2026",
-    "weekend_feed_2026_5624",
-    "lap_times_2026_5624",
-    "pit_data_2026_5624",
-    "loopstats_2026_5624",
-    "lap_times_2026_5628",
-    "weekend_feed_2026_5596",
-    "weekend_feed_2017_4599",
-    "weekend_feed_2026_5624",
+    "nascar_race_list_2026",
+    "nascar_weekend_feed_2026_5624",
+    "nascar_lap_times_2026_5624",
+    "nascar_pit_data_2026_5624",
+    "nascar_loopstats_2026_5624",
+    "nascar_lap_times_2026_5628",
+    "nascar_weekend_feed_2026_5596",
+    "nascar_weekend_feed_2017_4599",
+    "nascar_weekend_feed_2026_5624",
 )
 
 from racinglines.sources import http
@@ -151,6 +151,16 @@ def test_practice_qualifying_and_entries_that_never_started():
 
 
 @pytest.mark.quick
+def test_race_start_in_utc_from_the_weekends_own_offset():
+    """The feed's race_date is local with no zone; the weekend's runs (run_date local, run_date_utc) give the offset
+    (C42): Daytona 500 2026, 14:30 local, practice 10:00 local = 15:00 UTC, so 19:30 UTC."""
+    p = I.parse_race(2026, 5596, {"weekend-feed": fx("weekend_feed_2026_5596")}, 1)
+    race = p["rounds"][-1]["extra"]
+    assert race["race_date_local"] == "2026-02-15T14:30:00" and race["run_date_utc"] == "2026-02-15T19:30:00"
+    assert I._race_start_utc({"weekend_runs": [{"run_date": "2026-02-11T10:00:00"}]}, "2026-02-15T14:30:00") is None
+
+
+@pytest.mark.quick
 def test_the_2017_shape_parses_without_the_newer_fields():
     p = I.parse_race(2017, 4599, {"weekend-feed": fx("weekend_feed_2017_4599")})
     assert p["series_round"] is None and [r["kind"] for r in p["rounds"]] == ["fp1", "fp2", "fp3", "qual", "race"]
@@ -194,9 +204,9 @@ def _nascar_data():
 
 def test_nascar_model_contract_and_in_memory_pricing_are_valid():
     from racinglines.models.nascar_model import NascarCupRace
-    from racinglines.models.race_model import model_class
+    from racinglines.models.race_model import challenger
 
-    assert model_class("nascar").__name__ == "NascarCupRace"
+    assert challenger("nascar", "nascar_results").__name__ == "NascarCupRace"
 
     df = pd.DataFrame([
         {"season": 2026, "event_id": "2026-5624", "race_key": "2026-5624", "date": pd.Timestamp("2026-09-06"),
@@ -244,7 +254,7 @@ def test_nascar_model_prices_by_athlete_id_across_roster_changes():
                                                         "history_races": 0, "team_bias": 0.1,
                                                         "recency_decay": 1.0, "seed": 7}), rng)
     assert sim is not None
-    assert set(sim.entrants) == {101, 202}
+    assert set(sim.entrants) == {101, 303}
     assert all(isinstance(a, int) for a in sim.entrants)
 
 
@@ -280,7 +290,7 @@ def test_nascar_model_runs_through_the_backtest_engine():
     from racinglines.models import race_model as RM
     from racinglines.core import walk_forward as WF
 
-    model = RM.get("nascar")
+    model = RM.challenger("nascar", "nascar_results")()
     data = _nascar_data()
     settings = model.Settings.from_dict({"sims": 200, "shrink": 2.0, "noise": 0.75, "seed": 7})
 
@@ -297,7 +307,7 @@ def test_nascar_challenger_runs_and_tracks_recent_form():
     from racinglines.core import walk_forward as WF
 
     data = _nascar_data()
-    baseline = RM.get("nascar")
+    baseline = RM.challenger("nascar", "nascar_results")()
     challenger = NascarCupRaceChallenger()
 
     base_settings = baseline.Settings.from_dict({"sims": 200, "shrink": 2.0, "noise": 0.75, "seed": 7})
@@ -527,6 +537,22 @@ def test_ingest_writes_events_rounds_results_and_laps(db):
         assert len(dns) == 4 and all(r.position is None for r in dns)
         assert s.scalars(select(m.Athlete).join(m.AthleteIdentifier).where(
             m.AthleteIdentifier.scheme == "nascar", m.AthleteIdentifier.value == "4153")).one().display_name == "Christopher Bell"
+
+
+def test_a_driver_first_stored_without_a_name_is_named_by_a_later_ingest(db):
+    """Driver 4180 (Austin Cindric) first appears in a 2019 feed row with no name, so the athlete was stored as
+    "NASCAR driver 4180" and never renamed (staging, 2026-10-07). A later feed that carries the name now fixes it."""
+    from sqlalchemy import select
+    from racinglines.db import models as m
+    with db() as s:
+        I.ingest(s, [2026], today=TODAY, echo=lambda *_: None)
+        bell = s.scalars(select(m.Athlete).join(m.AthleteIdentifier).where(
+            m.AthleteIdentifier.scheme == "nascar", m.AthleteIdentifier.value == "4153")).one()
+        bell.display_name = I.placeholder_name(4153)
+        s.flush()
+        I.ingest(s, [2026], force=True, today=TODAY, echo=lambda *_: None)
+        s.refresh(bell)
+        assert bell.display_name == "Christopher Bell"
 
 
 def test_reingest_is_a_no_op_and_force_rebuilds_without_duplicating(db):

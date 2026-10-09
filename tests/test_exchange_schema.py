@@ -18,16 +18,16 @@ from racinglines.markets import exchange_driver as D
 
 FIX = Path(__file__).parent / "fixtures" / "market"
 require_market_fixtures(
-    "events_f1_futures",
-    "events_f1",
-    "events_nascar",
-    "events_sailgp",
-    "events_page1",
-    "instruments_f1",
-    "tickers",
-    "book",
-    "trades",
-    "ticker_histories",
+    "og_events_f1_futures",
+    "og_events_f1",
+    "og_events_nascar",
+    "og_events_sailgp",
+    "og_events_page1",
+    "og_instruments_f1",
+    "og_tickers",
+    "og_book",
+    "og_trades",
+    "og_ticker_histories",
 )
 
 

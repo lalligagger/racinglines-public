@@ -85,6 +85,8 @@ def test_board_html_renders(jinja_env):
         "bt_win": 0.0456,
         "bt_grid": 0.0512,
         "jobs_active": 1,
+        "brier_win": 0.081,
+        "brier_grid": 0.094,
     }
     
     # Sports list - one sport card per section
@@ -92,6 +94,8 @@ def test_board_html_renders(jinja_env):
         {
             "code": "f1",
             "name": "Formula 1",
+            "status": {k: {"state": "ok", "short": "1", "text": k} for k in
+                       ("races", "markets", "backtests", "sweeps", "paper")},
             "run": None,
             "tape": None,
             "asof": None,
@@ -124,6 +128,7 @@ def test_board_html_renders(jinja_env):
         {
             "code": "mtb_dh",
             "name": "MTB Downhill",
+            "calibration": "baseline",     # [sport] calibration: the board labels its prices
             "run": None,
             "tape": None,
             "asof": None,
@@ -183,6 +188,12 @@ def test_board_html_renders(jinja_env):
     assert len(html) > 0
     assert "Markets" in html
     assert "Formula 1" in html
+    assert "0.081" in html
+    assert "lower is better" in html
+    assert "grid-only 0.094" in html
+    assert "simulated trades in fantasy bucks; nothing is sent to an exchange" in html
+    assert "markets in your private book that are still open" in html
+    assert html.count("baseline prices") == 1         # only the sport whose schema says calibration = "baseline"
 
 
 def test_board_html_with_sport_status(jinja_env):
@@ -264,3 +275,49 @@ def test_board_html_with_sport_status(jinja_env):
     assert isinstance(html, str)
     assert len(html) > 0
     assert "Formula 1" in html
+
+
+def test_board_html_model_accuracy_without_backtest(jinja_env):
+    """The Model accuracy KPI shows a dash and 'no backtest yet' when there is no baseline backtest."""
+    headline = {
+        "outcomes": 0, "markets": 0, "volume": 0, "recording": 0, "recorded_at": None,
+        "my_open": 0, "my_staked": 0.0, "my_worst": 0.0, "jobs_active": 0,
+        "brier_win": None, "brier_grid": None,
+    }
+    context = {
+        "h": headline, "sports": [], "calendar": [], "cal_events": [], "cal_sports": [], "cal_exchanges": [],
+        "kalshi": False, "schema_exchanges": [], "tapes": False, "signals_nav": None, "sport_status": None,
+        "user": {"sid": "test", "email": "test@example.com"}, "storage_ns": "", "trading": None, "live_nav": None,
+    }
+    html = jinja_env.get_template("board.html").render(**context)
+    assert "Model accuracy" in html
+    assert "no backtest yet" in html
+    assert "lower is better" not in html
+
+
+def test_event_sync_flags_missing_and_old_venue_prices(monkeypatch):
+    """Per upcoming event and venue: no linked market, or a newest sync older than SYNC_STALE_HOURS, is stale."""
+    from racinglines.web import board as B
+    rows = pd.DataFrame([dict(event_id=7, exchange="polymarket", links=40, last=pd.Timestamp("2026-10-07T11:30:00Z")),
+                         dict(event_id=7, exchange="kalshi", links=12, last=pd.Timestamp("2026-10-07T06:00:00Z"))])
+    monkeypatch.setattr(B.data, "q", lambda conn, sql, **kw: rows)
+    monkeypatch.setattr(B, "SYNC_STALE_HOURS", 3.0)
+    out = B.event_sync(object(), [7, 8], ["polymarket", "kalshi"], now="2026-10-07T12:00:00Z")
+    by = {(e, v["code"]): v for e, vs in out.items() for v in vs}
+    assert not by[(7, "polymarket")]["stale"] and by[(7, "polymarket")]["hours"] == pytest.approx(0.5)
+    assert by[(7, "kalshi")]["stale"] and by[(7, "kalshi")]["hours"] == pytest.approx(6.0)
+    assert by[(8, "polymarket")]["stale"] and by[(8, "polymarket")]["links"] == 0
+    assert B.event_sync(object(), [], ["kalshi"]) == {} and B.event_sync(object(), [7], []) == {}
+
+
+def test_board_shows_a_flag_for_stale_venues_only(jinja_env):
+    src = (Path(__file__).resolve().parents[1] / "racinglines" / "web" / "templates" / "_board_sport.html").read_text()
+    macro = src[src.index("{% macro sync_flags"):src.index("{% endmacro %}") + len("{% endmacro %}")]
+    t = jinja_env.from_string(macro + "{{ sync_flags(u) }}")
+    u = dict(sync=[dict(name="Polymarket", links=40, hours=0.5, stale=False, limit=3.0),
+                   dict(name="Kalshi", links=12, hours=6.2, stale=True, limit=3.0),
+                   dict(name="OG.com", links=0, hours=None, stale=True, limit=3.0)])
+    html = t.render(u=u)
+    assert "Kalshi: synced 6 h ago" in html and "OG.com: no markets linked" in html and "Polymarket" not in html
+    assert "over 3 h old" in html
+    assert t.render(u=dict(sync=[])).strip() == ""

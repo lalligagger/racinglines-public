@@ -22,6 +22,7 @@ The data contract every page reads, so a new sport or exchange needs no template
 
 import datetime
 import os
+import time
 from dataclasses import dataclass
 from typing import TypedDict
 
@@ -323,8 +324,11 @@ def _assemble(conn, base, exch, priv, names, results=None):
         rows.append(row)
     df = pd.DataFrame(rows)
     if len(df):
+        # priced outcomes first, by our fair; then the ones the model doesn't price (a driver not in the field), by
+        # the exchange's mid, so a stale quote on an unpriced driver can't top a card
+        df["priced"] = df["fair"].notna()
         df["sort"] = df["fair"].fillna(df["pm_mid"]).fillna(-1)
-        df = df.sort_values(["kind", "sort"], ascending=[True, False])
+        df = df.sort_values(["kind", "priced", "sort"], ascending=[True, False, False])
     return df
 
 
@@ -490,10 +494,27 @@ def tape_sports():
     return [s for s in _SCHEMAS if s["sport"].get("model_family", "none") == "none"]
 
 
+_EXCHANGE_BREAKDOWN_CACHE: list | None = None   # the every-sport result, reused for _EXCHANGE_BREAKDOWN_TTL seconds
+_EXCHANGE_BREAKDOWN_TIME = 0.0
+_EXCHANGE_BREAKDOWN_TTL = 60
+
+
 def exchange_breakdown(conn, comps=None) -> list[ExchangeBlock]:
     """One ExchangeBlock per sport x exchange: market links and what's been recorded on them. `comps`: {competition
     code: schema} to include (default every sport). Used by /markets/tapes (tape-only sports only) and the
-    Markets board (every sport, alongside its own venue chips)."""
+    Markets board (every sport, alongside its own venue chips). The every-sport call (`comps` None) is cached
+    in memory for _EXCHANGE_BREAKDOWN_TTL seconds, per process, so repeated /markets loads skip the queries."""
+    global _EXCHANGE_BREAKDOWN_CACHE, _EXCHANGE_BREAKDOWN_TIME
+    if comps is not None:
+        return _exchange_breakdown(conn, comps)
+    now = time.monotonic()
+    if _EXCHANGE_BREAKDOWN_CACHE is None or now - _EXCHANGE_BREAKDOWN_TIME >= _EXCHANGE_BREAKDOWN_TTL:
+        _EXCHANGE_BREAKDOWN_CACHE = _exchange_breakdown(conn, None)
+        _EXCHANGE_BREAKDOWN_TIME = now
+    return list(_EXCHANGE_BREAKDOWN_CACHE)
+
+
+def _exchange_breakdown(conn, comps=None) -> list[ExchangeBlock]:
     comps = comps if comps is not None else {s["competition"]["code"]: s for s in _SCHEMAS}
     if not comps:
         return []

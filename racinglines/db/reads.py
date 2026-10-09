@@ -176,14 +176,16 @@ PREDICTION_COLUMNS = {
 }
 # every prediction kind a market can be linked to (see racinglines/markets/polymarket/sync.py): the one registry
 PREDICTION_KINDS = [c for c in K.KINDS]
-# F1 sprint weekends (Kalshi's sprint markets, RACINGLINES_KALSHI_SPRINTS=1): a run that simulates the sprint
+# F1 sprint weekends (Kalshi's sprint markets, on unless RACINGLINES_KALSHI_SPRINTS=0): a run that simulates the sprint
 # stores extra.sprint_pole_prob / sprint_win_prob; until then the sprint is priced as the model's race:
 # sprint pole from the qualifying-pace pole probability (SQ3 is the same session type), the sprint winner from
 # the race win probability (the season forecast already simulates sprints this way, with sprint points)
 SPRINT_FALLBACK = {"race_sprint_pole": "pole_prob", "race_sprint_win": "win_prob"}
 # per-race kinds read from race_predictions.extra: fl_prob only from runs priced with the position_sim `fastlap`
-# variant; top5_prob / mover_prob from F1 runs saved since 2026-10-04 (older runs leave those links unpriced)
+# variant; top5_prob / mover_prob from F1 runs saved since 2026-10-04 (older runs leave those links unpriced); top20_prob
+# from the NASCAR / MotoGP replay and forecast runs (pipelines/position_replay.py, sport_forecast.py)
 EXTRA_PROB = {"race_pole": "pole_prob", "race_fastest_lap": "fl_prob", "race_top5": "top5_prob",
+              "race_top20": "top20_prob",
               "race_biggest_mover": "mover_prob"}
 
 
@@ -262,8 +264,8 @@ def model_prob(conn, link, _cache=None, run_id=None):
                 p = extra.get(kind.replace("race_", "") + "_prob")
                 if p is None:
                     p = extra.get("pole_prob") if kind == "race_sprint_pole" else df["win_prob"]
-            else:
-                p = df[PREDICTION_COLUMNS[kind]]
+            else:     # a kind no stored column holds (the sprint's podium, top 8, ...): unpriced, not an error
+                p = df.get(PREDICTION_COLUMNS.get(kind))
     if p is None or pd.isna(p):
         return None, run_id
     p = float(p)

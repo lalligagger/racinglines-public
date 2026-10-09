@@ -7,84 +7,22 @@
 <div class="kpis">
   <div class="kpi"><div class="l">Exchange outcomes we price</div><div class="v">{{ h.outcomes }}</div><div class="s">{{ h.markets }} markets · {{ ("$" ~ "{:,.1f}M".format(h.volume / 1e6)) if h.volume >= 1e6 else (h.volume|money(false, false)) }} traded</div></div>
   <div class="kpi"><div class="l">Order books recording</div><div class="v {{ 'good' if h.recording else 'muted' }}">{{ h.recording or "off" }}</div><div class="s">{% if h.recorded_at %}last {{ h.recorded_at|fmt }}{% elif user.role == 'admin' %}start <code>racinglines markets record</code>{% else %}not yet{% endif %}</div></div>
-  <div class="kpi"><div class="l">My open markets</div><div class="v">{{ h.my_open }}</div><div class="s">staked against me {{ h.my_staked|money(false, false) }} · worst case <span class="{{ 'bad' if h.my_worst < 0 }}">{{ h.my_worst|money(false, false) }}</span></div></div>
+  <div class="kpi"><div class="l"><span tabindex="0" data-tooltip="Brier score: mean squared error of the win probabilities, 0 is perfect">Model accuracy</span></div><div class="v">{{ "%.3f"|format(h.brier_win) if h.brier_win is number else "—" }}</div><div class="s">{% if h.brier_win is number %}win Brier, latest backtest · lower is better{% if h.brier_grid is number %} · grid-only {{ "%.3f"|format(h.brier_grid) }}{% endif %}{% else %}no backtest yet{% if user.role == 'admin' %} · <a href="/lab#run">run one</a>{% endif %}{% endif %}</div></div>
+  <div class="kpi"><div class="l">My <span tabindex="0" data-tooltip="markets in your private book that are still open">open markets</span></div><div class="v">{{ h.my_open }}</div><div class="s">staked against me {{ h.my_staked|money(false, false) }} · worst case <span class="{{ 'bad' if h.my_worst < 0 }}">{{ h.my_worst|money(false, false) }}</span></div></div>
   <div class="kpi"><div class="l">Model jobs running</div><div class="v">{{ h.jobs_active }}</div><div class="s"><a href="/lab#run">launch a backtest or scenario</a></div></div>
 </div>
 {% include "_recorders.html" %}
 
 {% for s in sports %}
 <details class="card" data-remember="markets:sport:{{ s.code }}">
-<summary class="sport-sum"><div class="sport-head"><h2 class="h-inline">{{ s.name }}</h2> <span class="sum">{% if s.run %}live prices from run <a href="/lab/runs/{{ s.run.id }}">#{{ s.run.id }}</a> · {{ s.run.created_at|fmt }}{% elif s.asof %}model: pre-race prices for {{ "{:,}".format(s.asof.races) }} past races (replay saves, latest {{ s.asof.at|fmt }}) · no live forecast yet, so upcoming races show exchange prices only{% else %}market data only · no model{% endif %}</span></div>
-{% if s.status %}<div class="qstats">{{ status_badge("races", s.status.races) }}{{ status_badge("markets", s.status.markets) }}{{ status_badge("backtests", s.status.backtests) }}{{ status_badge("paper", s.status.paper) }}</div>{% endif %}
+<summary class="sport-sum"><div class="sport-head"><h2 class="h-inline">{{ s.name }}</h2>{% if s.calibration == "baseline" and not s.tape %} <span class="pill warn" tabindex="0" data-tooltip="a model whose settings are not tuned yet: a rough guide, not a calibrated fair price">baseline prices</span>{% endif %} <span class="sum">{% if s.run %}live prices from run <a href="/lab/runs/{{ s.run.id }}">#{{ s.run.id }}</a> · {{ s.run.created_at|fmt }}{% elif s.asof %}model: pre-race prices for {{ "{:,}".format(s.asof.races) }} past races (replay saves, latest {{ s.asof.at|fmt }}) · no live forecast yet, so upcoming races show exchange prices only{% else %}market data only · no model{% endif %}</span></div>
+{% if s.status %}<div class="qstats">{{ status_badge("races", s.status.races) }}{{ status_badge("markets", s.status.markets) }}{{ status_badge("backtests", s.status.backtests) }}{{ status_badge("sweeps", s.status.sweeps) }}<span tabindex="0" data-tooltip="simulated trades in fantasy bucks; nothing is sent to an exchange">{{ status_badge("paper", s.status.paper) }}</span></div>{% endif %}
 </summary>
-{% if s.run or s.tape or s.asof %}
-<div class="cards">
-  {% if s.run %}
-  {% for u in s.upcoming %}
-  <div class="ecard">
-    <div><h3><a href="/races/{{ u.info.race_id }}">{{ u.info.title }}</a>{% if u.new %} <a href="/markets/polymarket?show=all&sport={{ s.code }}">{{ new_badge(u.new) }}</a>{% endif %}</h3>
-      <div class="when">{{ u.info.start_date|fmt }} · {% if u.info.status == 'completed' %}<span class="good">resolved</span>{% if u.winner %} · winner {{ u.winner }}{% endif %}{% elif u.info.status == 'in_progress' %}<span class="warn">in progress</span>{% else %}{{ u.countdown }}{% endif %}{% if u.next %} · <b>next</b>{% endif %}</div></div>
-    {{ venue_chips(u.venues, u.mine) }}
-    <div>{% for o in u.top %}<div class="pr"><span>{{ o.subject }}</span>{{ bar(o.fair, o.pm_mid, "", (o.venues.kalshi.mid if o.venues and o.venues.kalshi else none)) }}<span class="num">{{ pct(o.fair) }}</span></div>{% endfor %}
-      <div class="legend">win probability{% if u.top and u.top[0].pm_mid is not none %} · <i class="sw-warn"></i>Polymarket{% endif %}</div></div>
-    <div><a href="/races/{{ u.info.race_id }}">{{ u.outcomes }} outcomes →</a></div>
-  </div>
-  {% endfor %}
-  <div class="ecard">
-    <div><h3><a href="/seasons/{{ s.code }}">{{ s.run.season }} championship</a>{% if s.season.new %} <a href="/markets/polymarket?show=all&sport={{ s.code }}">{{ new_badge(s.season.new) }}</a>{% endif %}</h3><div class="when">season-long markets</div></div>
-    {{ venue_chips(s.season.venues, s.season.mine) }}
-    <div>{% for o in s.season.top %}<div class="pr"><span>{{ o.subject }}</span>{{ bar(o.fair, o.pm_mid, "", (o.venues.kalshi.mid if o.venues and o.venues.kalshi else none)) }}<span class="num">{{ pct(o.fair) }}</span></div>{% endfor %}
-      <div class="legend">champion probability{% if s.season.top and s.season.top[0].pm_mid is not none %} · <i class="sw-warn"></i>Polymarket{% endif %}</div></div>
-    {% if s.season.constructors %}<div class="legend">Constructors: {% for o in s.season.constructors %}{{ o.subject }} {{ pct(o.fair) }}{{ " · " if not loop.last }}{% endfor %}</div>{% endif %}
-    <div><a href="/seasons/{{ s.code }}">{{ s.season.outcomes }} outcomes →</a></div>
-  </div>
-  {% elif s.asof %}
-  {% for u in s.upcoming %}
-  <div class="ecard">
-    <div><h3><a href="/races/{{ u.info.race_id }}">{{ u.info.title }}</a></h3>
-      <div class="when">{{ u.info.start_date|fmt }} · {% if u.info.status == 'completed' %}<span class="good">resolved</span>{% if u.winner %} · winner {{ u.winner }}{% endif %}{% else %}{{ u.countdown }}{% endif %}{% if u.next %} · <b>next</b>{% endif %}</div></div>
-    {{ venue_chips(u.venues, u.mine) }}
-    {% if u.info.status != 'completed' %}<div class="legend">no fair price yet: the model prices this race once a forecast is stored</div>{% endif %}
-    <div><a href="/races/{{ u.info.race_id }}">{{ u.outcomes }} outcomes →</a></div>
-  </div>
-  {% else %}<div class="ecard"><div class="legend">No upcoming race in the calendar.</div></div>{% endfor %}
-  {% elif s.tape %}
-  {% for u in s.upcoming %}
-  <div class="ecard">
-    <div><h3>{{ u.title }}</h3><div class="when">{{ u.date|fmt if u.date else "undated" }} · {{ u.status }}</div></div>
-    {% if u.exchanges %}<div class="legend">{% for x in u.exchanges %}<span class="pill live">{{ x }}</span>{% endfor %}</div>{% endif %}
-    {% if u.url %}<div><a href="{{ u.url }}">Open tape →</a></div>{% endif %}
-  </div>
-  {% endfor %}
-  {% endif %}
-</div>
-{% if (s.run or s.asof) and s.later %}<p class="legend">Later: {% for l in s.later[:6] %}<a href="/races/{{ l.race_id }}">{{ l.title }}</a>{% if l.new %} {{ new_badge(l.new) }}{% endif %} {{ l.date|fmt }}{{ " · " if not loop.last }}{% endfor %}{% if s.later|length > 6 %} · +{{ s.later|length - 6 }} more{% endif %}</p>{% endif %}
-{% if s.tape and s.later %}<p class="legend">Later: {% for l in s.later[:6] %}{% if l.url %}<a href="{{ l.url }}">{{ l.title }}</a>{% else %}{{ l.title }}{% endif %}{% if l.date %} {{ l.date|fmt }}{% endif %}{{ " · " if not loop.last }}{% endfor %}{% if s.later|length > 6 %} · <a href="/markets/tapes">+{{ s.later|length - 6 }} more on Recorded tapes →</a>{% endif %}</p>{% endif %}
-{% if (s.run or s.asof) and s.recent %}<details class="card quiet" data-remember="markets:{{ s.code }}:recent"><summary><h3>Recent results</h3><span class="sum">{{ s.recent|length }} · last: {{ s.recent[0].info.title }}, winner {{ s.recent[0].winner }}{% if s.recent[0].our is not none %}, we had {{ pct(s.recent[0].our) }}{% endif %}</span></summary>
-<div class="recent">{% for r in s.recent %}<div>
-  <a href="/races/{{ r.info.race_id }}"><b>{{ r.info.title }}</b></a> <span class="muted">{{ r.info.start_date|fmt }}</span><br>
-  Winner <b>{{ r.winner }}</b>{% if r.our is not none %} · we had <b>{{ pct(r.our) }}</b>{% endif %}{% if r.pm is not none %} · Polymarket {{ pct(r.pm) }}{% endif %}{% if kalshi and r.kalshi is not none %} · Kalshi {{ pct(r.kalshi) }}{% endif %}
-  <div class="legend">{{ r.source }}{% if r.diag %} · <a href="/lab/diagnostics/{{ r.diag }}">diagnostic →</a>{% endif %}</div>
-</div>{% endfor %}</div></details>{% endif %}
-{% endif %}
-{% if s.exchanges %}
-<div class="legend mt">Exchange data{% if not s.run %} (no model: market data only){% endif %}</div>
-<div class="scroll" data-rows="8"><table>
-<thead><tr><th class="l">Exchange</th><th>Markets</th><th>Open</th><th>Volume</th><th>Trades</th><th>Price points</th><th>Books</th><th>Synced</th></tr></thead>
-<tbody>{% for b in s.exchanges %}<tr>
-<td class="l">{% if b.url %}<a href="{{ b.url }}">{{ b.exchange_name }}</a>{% else %}{{ b.exchange_name }}{% endif %}</td>
-<td>{{ b.markets }}</td><td class="{{ 'muted' if not b.open }}">{{ b.open }}</td><td>{{ "{:,.0f}".format(b.volume) }}</td>
-{% for n in (b.trades, b.prices, b.books) %}<td class="{{ 'good' if n else 'muted' }}"{% if not n and b.coverage %} title="{{ b.coverage }}"{% endif %}>{{ "{:,}".format(n) if n else "n/a" }}</td>
-{% endfor %}
-<td>{{ b.synced|fmt }}</td>
-</tr>{% endfor %}</tbody>
-</table></div>
-<p class="legend">Counts are every row each exchange's feed has given us (archive and live buffer), never paper or demo trades. n/a: nothing stored. {% for b in s.exchanges if b.coverage %}{{ b.coverage }}{{ " " if not loop.last }}{% endfor %}</p>
-{% endif %}
+<div class="sport-body" hx-get="/markets/sport/{{ s.code }}" hx-trigger="toggle from:closest details once" hx-swap="innerHTML"><p class="legend">Loading…</p></div>
 </details>
 {% endfor %}
 {% if disagree %}<details class="card" data-remember="markets:disagree" open><summary><h2>Cross-venue disagreement</h2><span class="sum">{{ disagree.n_above }} of {{ disagree.rows|length }} outcomes above fees · last tick {{ disagree.last|fmt }}</span></summary>
-<p class="legend">Polymarket vs Kalshi on every outcome listed on both, at the log's latest tick{% if user.role == 'admin' %} (<code>racinglines markets disagree</code>){% endif %}. Gap = Kalshi mid − Polymarket mid; net = |gap| − both taker fees; edge = the better taker trade vs our fair, net of fees. Greyed rows: a venue's tape shows nothing traded in the prior 24 h, so the gap is on paper.</p>
+<p class="legend">Polymarket vs Kalshi on every outcome listed on both, at the log's latest tick{% if user.role == 'admin' %} (<code>racinglines markets disagree</code>){% endif %}. Gap = Kalshi mid − Polymarket mid; net = |gap| − both <span tabindex="0" data-tooltip="cost to buy or sell right now">taker fees</span>; edge = the better taker trade vs our fair, net of fees. <span tabindex="0" data-tooltip="no recent trade activity; pricing is theoretical">Greyed rows</span>: a venue's tape shows nothing traded in the prior 24 h, so the gap is on paper.</p>
 <div class="scroll" data-rows="20" data-filter="filter outcomes"><table>
 <thead><tr><th class="l">Outcome</th><th class="l hide-sm">Event</th><th>Polymarket</th><th>Kalshi</th><th>Fair</th><th class="hide-sm">PM edge</th><th class="hide-sm">Kalshi edge</th><th class="hide-sm">Gap</th><th>Net</th><th class="hide-sm">At (UTC)</th></tr></thead>
 <tbody>{% for r in disagree.rows %}<tr{% if not r.liquid %} class="muted"{% endif %}>

@@ -24,9 +24,10 @@
 {# A signed money amount coloured by its sign: +$12.30 green, -$4.00 red, $0.00 plain. #}
 {% macro pnl(v, bold=False) %}{% if v is not none %}<{{ 'b' if bold else 'span' }} class="{{ pnl_cls(v) }}">{{ v|money(true) }}</{{ 'b' if bold else 'span' }}>{% endif %}{% endmacro %}
 {% macro bar(fair, mid=None, cls="", kalshi_mid=None) -%}
+{%- set fair = fair if fair == fair else none %}{% set mid = mid if mid == mid else none %}{% set kalshi_mid = kalshi_mid if kalshi_mid == kalshi_mid else none %}
 <div class="bar {{ cls }}" title="our fair {{ '%.1f%%'|format(fair * 100) if fair is not none }}{% if mid is not none %} · Polymarket {{ '%.1f%%'|format(mid * 100) }}{% endif %}{% if kalshi_mid is not none %} · Kalshi {{ '%.1f%%'|format(kalshi_mid * 100) }}{% endif %}">{% if fair is not none %}<div class="f" style="width:{{ [fair * 100, 100]|min }}%"></div>{% endif %}{% if mid is not none %}<div class="m" data-venue="polymarket" style="left:calc({{ [mid * 100, 100]|min }}% - 1px)"></div>{% endif %}{% if kalshi_mid is not none %}<div class="m" data-venue="kalshi" style="left:calc({{ [kalshi_mid * 100, 100]|min }}% - 1px); display:none;"></div>{% endif %}</div>
 {%- endmacro %}
-{% macro pct(p, digits=0) -%}{% if p is not none %}{{ ("%." ~ digits ~ "f%%")|format(p * 100) }}{% else %}–{% endif %}{%- endmacro %}
+{% macro pct(p, digits=0) -%}{% set lo = 0.5 / 10 ** digits %}{% if p is none or p != p %}–{% elif 0 < p * 100 < lo %}&lt;{{ ("%." ~ digits ~ "f%%")|format(lo * 2) }}{% elif 100 - lo < p * 100 < 100 %}&gt;{{ ("%." ~ digits ~ "f%%")|format(100 - lo * 2) }}{% else %}{{ ("%." ~ digits ~ "f%%")|format(p * 100) }}{% endif %}{%- endmacro %}
 {% macro venue_chips(venues, mine=None) -%}
 <div class="chips">{% set ns = namespace(first_live=true) %}{% for v in venues %}{% if v.venue.kind == 'private' %}{% if mine and mine.open %}<span class="chip mine" title="my open markets · worst case">Private book · {{ mine.open }} mine</span>{% else %}<span class="chip pending" title="no private markets yet">Private book</span>{% endif %}
 {% elif v.venue.status == 'soon' %}<span class="chip soon" title="coming soon">{{ v.venue.name }} · soon</span>

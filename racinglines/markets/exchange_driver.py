@@ -9,6 +9,7 @@ the schema. Read-only by construction: the driver only issues GETs of public mar
 
     Client(schema)                         GET an endpoint; paged / batched calls as the schema says
     sync(session, conn, code, sport)       events -> instruments -> market_links (+ quotes), one call
+    settle(session, conn, code, sport)     the settlement feed -> resolved_yes on closed links (who won)
     fetch_trades / fetch_history / snapshot_books                      the tape, minute prices and books
     fair_report(conn, code, sport)         the model's fair price beside the exchange's quote, net of the fee
 
@@ -25,6 +26,7 @@ import pandas as pd
 from sqlalchemy import select, text
 
 from racinglines import exchanges as EX
+from racinglines import progress
 from racinglines.db import models as m
 from racinglines.markets import identity
 from racinglines.markets.kalshi import sync as KS
@@ -171,15 +173,20 @@ class Client:
         body = self.call(endpoint, **params)
         return EX.dig(body, self.schema["endpoints"][endpoint]["data"]) or []
 
-    def paged(self, endpoint, **params):
-        """Every row of a cursor-paged endpoint."""
-        ep, out, cursor = self.schema["endpoints"][endpoint], [], None
+    def pages(self, endpoint, **params):
+        """Each page's rows of a cursor-paged endpoint, one list per call, until a page names no next cursor. A
+        caller that has what it needs stops iterating, and no further page is asked for."""
+        ep, cursor = self.schema["endpoints"][endpoint], None
         while True:
             body = self.call(endpoint, **{ep["cursor_param"]: cursor}, **params)
-            out += EX.dig(body, ep["data"]) or []
+            yield EX.dig(body, ep["data"]) or []
             cursor = EX.dig(body, ep["next"])
             if not cursor:
-                return out
+                return
+
+    def paged(self, endpoint, **params):
+        """Every row of a cursor-paged endpoint."""
+        return [r for page in self.pages(endpoint, **params) for r in page]
 
     def batched(self, endpoint, values, **params):
         """Every row of an endpoint that takes comma-separated ids, `batch_size` at a time (and paged, if it pages)."""
@@ -359,6 +366,7 @@ def sync(session, conn, code, sport="f1", year=2026, client=None, resolver=None)
     who = identity.linker(sport, conn) if not modeled else None
     if who:                                                          # a tape-only sport with a resolver: driver, race, kind
         who.fill(rows)
+        identity.promote(sport, rows)            # prediction = params.kind where [markets] kinds files it, identified
     now = datetime.now(timezone.utc)
     stats = dict(events=len(events), links=0, modeled=0, unmatched=0, new=0, closed=0)
     if who:
@@ -371,6 +379,11 @@ def sync(session, conn, code, sport="f1", year=2026, client=None, resolver=None)
             session.add(m.MarketLink(token_id=tok, first_seen_at=now, **values))
             stats["new"] += 1
         else:
+            if values.get("resolved_yes") is None:          # the listing never carries an outcome: keep settle()'s
+                values.pop("resolved_yes", None)
+            kept = {k: v for k, v in (link.params or {}).items() if k in SETTLE_KEYS}
+            if kept:
+                values["params"] = {**(values.get("params") or {}), **kept}
             for k, v in values.items():
                 setattr(link, k, v)
         stats["links"] += 1
@@ -380,6 +393,118 @@ def sync(session, conn, code, sport="f1", year=2026, client=None, resolver=None)
         if link.token_id not in live and (link.condition_id or "").startswith(prefixes):      # left the listing
             link.closed, link.active = True, False
             stats["closed"] += 1
+    session.commit()
+    return stats
+
+
+# ----- settlements: who won -----
+
+# The params keys settle() writes on a link. sync() rewrites params from the listing, so it carries these over.
+SETTLE_KEYS = ("settlement", "settlement_value", "settled_at", "settle_scanned_to")
+
+
+def settlement(schema, row):
+    """(token, outcome, value, settled_at) of one settlement-feed row (schema fields.settlement). outcome: True when a
+    YES contract paid 1, False when it paid 0, None for anything between (OG.com's 0.50: a void). None for a row
+    with no instrument or no value."""
+    fs = schema["fields"]["settlement"]
+    tok, v = EX.dig(row, fs["instrument"]), price(EX.dig(row, fs["value"]))
+    if tok in (None, "") or v is None:
+        return None
+    outcome = True if abs(v - 1) < 1e-9 else False if abs(v) < 1e-9 else None
+    return str(tok), outcome, v, when(EX.dig(row, fs["ts"]), fs.get("ts_unit", "ms"))
+
+
+def scan_settlements(client, tokens, since, max_pages=None):
+    """Read the exchange's settlement feed forward from `since`, keeping the rows of `tokens`. Stops when every token
+    is found, when the feed ends (a page with no next cursor) or after `max_pages` pages (default the endpoint's
+    `max_pages`), so a pass is bounded. -> (found {token: (outcome, value, settled_at)}, stats: pages, scanned,
+    exhausted (the feed ended), last_ts (the latest settle time read))."""
+    ep, schema = client.schema["endpoints"]["settlements"], client.schema
+    fs = schema["fields"]["settlement"]
+    want, found = set(tokens), {}
+    st = dict(pages=0, scanned=0, exhausted=False, last_ts=None)
+    cap = max_pages or ep.get("max_pages", 500)
+    for rows in client.pages("settlements", **{ep["start_param"]: epoch(since, ep["start_unit"])}):
+        st["pages"] += 1
+        st["scanned"] += len(rows)
+        for r in rows:
+            ts = when(EX.dig(r, fs["ts"]), fs.get("ts_unit", "ms"))
+            if ts is not None and (st["last_ts"] is None or ts > st["last_ts"]):
+                st["last_ts"] = ts
+            s = settlement(schema, r)
+            if s and s[0] in want and s[0] not in found:
+                found[s[0]] = s[1:]
+        progress.update(item=f"settlement page {st['pages']} of at most {cap}: {st['scanned']} rows read, "
+                             f"{len(found)} of {len(want)} links found")
+        if len(found) == len(want) or st["pages"] >= cap:
+            break
+    else:
+        st["exhausted"] = True
+    return found, st
+
+
+def pending(session, code, competition_id):
+    """The exchange's closed links of a competition still waiting for an outcome: resolved_yes empty and no void
+    recorded (params.settlement)."""
+    q = select(m.MarketLink).filter_by(exchange=code, closed=True, competition_id=competition_id) \
+        .where(m.MarketLink.resolved_yes.is_(None)).order_by(m.MarketLink.token_id)
+    return [lk for lk in session.scalars(q) if not (lk.params or {}).get("settlement")]
+
+
+def scan_from(link, now=None):
+    """Where the feed scan starts for one link: an hour before where the last pass stopped looking for it
+    (params.settle_scanned_to), else a day before the last sync that saw it listed (synced_at, else first_seen_at;
+    an instrument leaves the listing when it settles, so its settlement comes after that), else 30 days ago."""
+    p = link.params or {}
+    if p.get("settle_scanned_to"):
+        return utc(p["settle_scanned_to"]) - pd.Timedelta(hours=1)
+    seen = link.synced_at or link.first_seen_at
+    if seen is not None:
+        return utc(seen) - pd.Timedelta(days=1)
+    return utc(now or datetime.now(timezone.utc)) - pd.Timedelta(days=30)
+
+
+def settle(session, conn, code, sport="f1", since=None, client=None, max_pages=None):
+    """Record the exchange's outcomes on its closed, unresolved links of `sport` from its settlement feed (schema
+    endpoints.settlements and fields.settlement): resolved_yes True / False, plus params settled_at, settlement
+    ("yes" / "no" / "void") and settlement_value. A void (a value neither 1 nor 0) leaves resolved_yes empty; its
+    params.settlement keeps it from being looked for again. since: where the scan starts (default: the earliest
+    scan_from of the pending links). A link not found gets params.settle_scanned_to (the pass's start when the feed
+    was read to its end, else the latest settle time read), so the next pass reads only what is new. Idempotent: a
+    resolved or void link is never pending again. An exchange whose schema has no settlement feed does nothing.
+    Returns stats: links (pending at the start), pages, scanned, matched, resolved, yes, no, void, pending (still)."""
+    schema = EX.load(code)
+    if "settlements" not in schema.get("endpoints", {}):
+        return dict(supported=False)
+    sport_cfg(schema, sport)
+    comp, _ = KS.competition(session, sport)
+    links = pending(session, code, comp.id)
+    stats = dict(links=len(links), pages=0, scanned=0, matched=0, resolved=0, yes=0, no=0, void=0, pending=len(links))
+    if not links:
+        return stats
+    now = datetime.now(timezone.utc)
+    since = utc(since) if since is not None else min(scan_from(lk, now) for lk in links)
+    found, st = scan_settlements(client or Client(code), [lk.token_id for lk in links], since, max_pages)
+    stats.update(pages=st["pages"], scanned=st["scanned"], since=since.isoformat())
+    mark = now if st["exhausted"] else st["last_ts"]                 # how far the feed has been read for the rest
+    for lk in links:
+        params = dict(lk.params or {})
+        hit = found.get(lk.token_id)
+        if hit is None:
+            if mark is not None:
+                params["settle_scanned_to"] = mark.isoformat()
+                lk.params = params
+            continue
+        outcome, value, at = hit
+        params.pop("settle_scanned_to", None)
+        params.update(settlement={True: "yes", False: "no", None: "void"}[outcome], settlement_value=value,
+                      settled_at=at.isoformat() if at else None)
+        lk.params, lk.resolved_yes, lk.closed, lk.active = params, outcome, True, False
+        stats["matched"] += 1
+        stats["void" if outcome is None else "yes" if outcome else "no"] += 1
+        stats["resolved"] += outcome is not None
+    stats["pending"] = len(links) - stats["matched"]
     session.commit()
     return stats
 
@@ -419,13 +544,14 @@ def trade_rows(schema, token, event, trades):
     return rows
 
 
-def fetch_trades(session, conn, code, sport=None, events=None, since=None, client=None):
-    """Store every trade the exchange still serves for the markets. Idempotent. Returns trades stored."""
+def fetch_trades(session, conn, code, sport=None, events=None, since=None, client=None, open_only=False):
+    """Store every trade the exchange still serves for the markets (open_only: markets not closed). Idempotent.
+    Returns trades stored."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
     client = client or Client(code)
     since = since or pd.Timestamp("2000-01-01", tz="UTC")           # clipped to the schema's window
     n = 0
-    for tok, ev in links_of(conn, code, sport, events):
+    for tok, ev in links_of(conn, code, sport, events, open_only=open_only):
         rows = trade_rows(client.schema, tok, ev, client.window("trades", tok, since))
         for i in range(0, len(rows), 1000):
             session.execute(pg_insert(m.MarketTrade).values(rows[i:i + 1000]).on_conflict_do_nothing(constraint="uq_market_trade"))

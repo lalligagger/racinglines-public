@@ -6,6 +6,7 @@ markets, and recent results with how our pre-race price did. Plus a few headline
 numbers across everything.
 """
 
+import os
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -25,7 +26,8 @@ def _countdown(d):
 
 def _top(df, kind, n=3):
     g = df[df["kind"] == kind] if len(df) else df
-    return g.head(n).to_dict("records") if len(g) else []
+    # a mixed column (an unpriced outcome among priced ones) holds NaN, which the templates would print as "nan%"
+    return [{k: (None if isinstance(v, float) and v != v else v) for k, v in r.items()} for r in g.head(n).to_dict("records")]
 
 
 def _mine(df):
@@ -125,11 +127,13 @@ def next_races(conn, competition_id, n=8):
         ORDER BY e.start_date, ra.id LIMIT :n""", c=competition_id, n=n)
 
 
-def board(conn, maker_id):
+def board(conn, maker_id, only=None, detail=True):
+    """One dict per sport shown on the Markets board. detail=False: only what a sport's collapsed header shows (name,
+    model run, status chips); the page loads each sport's body when it is opened (`only` = that competition code)."""
     from racinglines import exchanges as EX
     from racinglines import sports as SP
     from racinglines.markets import alerts
-    fresh = list(alerts.new_links(conn).values()) if conn is not None else []  # (race_id, competition_id) per new token
+    fresh = list(alerts.new_links(conn).values()) if conn is not None and detail else []  # (race_id, competition_id) per new token
 
     def _new_for(race_id=None, comp_id=None):
         """How many new tokens are for this exact race, or (race_id=None) this exact sport's season markets.
@@ -140,7 +144,7 @@ def board(conn, maker_id):
         forecasts = {r["competition"]: r for r in data.latest_forecasts(conn).to_dict("records")}
     from racinglines.web import sport_status as SS
     status_on = SS.enabled()                       # RACINGLINES_SPORT_STATUS=1: model sections for sports with as-of runs
-    ss_by_comp = {r["competition"]: r for r in SS.status(conn)} if conn is not None else {}  # quick-look chips, always on
+    ss_by_comp = {r["competition"]: r for r in SS.status(conn)} if conn is not None and not detail else {}  # header chips
     asof_by_comp = {}
     if conn is not None and status_on:
         for r in data.q(conn, """SELECT co.code AS competition, count(DISTINCT mr.params->>'event_key') AS races,
@@ -149,20 +153,34 @@ def board(conn, maker_id):
                                  WHERE mr.kind = 'diagnostic' AND mr.params ? 'replay_batch' GROUP BY 1""").to_dict("records"):
             asof_by_comp[r["competition"]] = r
     exch_by_comp = {}
-    for b in exchange_breakdown(conn):
-        exch_by_comp.setdefault(b["competition"], []).append(b)
+    linked_comps = set()
+    if detail:
+        comps = {s["competition"]["code"]: s for s in map(SP.load, SP.SPORT_CODES)
+                 if s["competition"]["code"] == only} if only is not None else None
+        for b in exchange_breakdown(conn, comps):
+            exch_by_comp.setdefault(b["competition"], []).append(b)
+    elif conn is not None:
+        links = data.q(conn, """SELECT DISTINCT co.code AS competition
+                               FROM market_links ml JOIN competitions co ON co.id = ml.competition_id""")
+        linked_comps = set(links["competition"])
     sports = []
     for schema in sorted(map(SP.load, SP.SPORT_CODES), key=lambda s: s["sport"]["display_order"]):
         code, sport_code = schema["competition"]["code"], schema["sport"]["code"]
+        if only is not None and code != only:
+            continue
         tape = schema["sport"].get("model_family", "none") == "none"
         run, exch = forecasts.get(code), exch_by_comp.get(code, [])
-        if run is None and not exch:
+        if run is None and not exch and code not in linked_comps:
             continue                                     # nothing to show yet: no forecast, no linked market
         asof = asof_by_comp.get(code) if run is None and status_on else None
         for b in exch:                                    # where "N markets on Kalshi" etc. links to
             b["url"] = (f"/markets/tapes#tapes-{sport_code}-{b['exchange']}" if tape
                         else f"/markets/{b['exchange']}" if b["exchange"] in ("polymarket", "kalshi") or b["exchange"] in EX.CODES
                         else None)
+        if not detail:
+            sports.append(dict(code=code, name=SPORT_NAME.get(code, schema["sport"]["name"]), run=run, tape=tape, asof=asof,
+                               calibration=schema["sport"].get("calibration"), status=ss_by_comp.get(code)))
+            continue
         upcoming, later, season, recent = [], [], None, []
         if run:
             comp_id = int(data.q(conn, "SELECT id FROM competitions WHERE code = :c", c=code)["id"].iloc[0])
@@ -177,7 +195,7 @@ def board(conn, maker_id):
             season = dict(new=_new_for(None, comp_id), info=s_info, top=_top(s_df, "champion"), venues=venue_summary(s_df), mine=_mine(s_df),
                           outcomes=len(s_df), constructors=_top(s_df, "constructors_champion", 2),
                           strategy=latest_season_strategy(conn, code))
-            recent = recent_results(conn, comp_id)
+            recent = True                                # loaded when its section is opened (views.board_recent)
         elif not tape and asof is not None:
             # a modeled sport with no live forecast run (NASCAR, MotoGP): the next races with the exchanges' prices
             # (no fair price until a forecast is stored), and the recent races with the model's as-of price
@@ -188,7 +206,7 @@ def board(conn, maker_id):
                                       [dict(_card(conn, int(r), maker_id), new=_new_for(int(r))) for r in nxt["race_id"].head(3)])
             later = [dict(title=t["name"], event_id=t["event_id"], race_id=int(t["race_id"]), date=t["start_date"],
                           new=_new_for(int(t["race_id"]))) for t in nxt.iloc[3:].to_dict("records")]
-            recent = recent_results(conn, comp_id)
+            recent = True                                # loaded when its section is opened (views.board_recent)
         elif exch:
             tape_events = []
             for b in exch:
@@ -199,11 +217,54 @@ def board(conn, maker_id):
             later = tape_events[3:]
             season = None
             recent = []
+        sched = [u for u in upcoming if u.get("info") and u["info"].get("status") not in ("completed", "cancelled")]
+        if sched and conn is not None:                    # how fresh each venue's prices are, per upcoming event
+            fresh_by = event_sync(conn, [int(u["info"]["event_id"]) for u in sched],
+                                  [v for v in schema.get("markets", {}).get("venues", []) if v in EXCHANGE_CODES])
+            for u in sched:
+                u["sync"] = fresh_by.get(int(u["info"]["event_id"]), [])
         sports.append(dict(code=code, name=SPORT_NAME.get(code, schema["sport"]["name"]), run=run, tape=tape, asof=asof,
+                           calibration=schema["sport"].get("calibration"),
                            upcoming=upcoming, later=later, season=season, recent=recent, exchanges=exch,
                            status=ss_by_comp.get(code)))
     sports.sort(key=lambda s: SPORT_ORDER.get(s["code"], 9))
     return sports
+
+
+# An upcoming event's prices on a venue are flagged when the venue has no market linked to the event, or when the newest
+# sync of its links (market_links.synced_at) is older than this many hours (owner's missing-price P0, 2026-10-07).
+# RACINGLINES_SYNC_STALE_HOURS sets it; the syncs are moving to every 5 minutes, so it can come down then.
+SYNC_STALE_HOURS = float(os.environ.get("RACINGLINES_SYNC_STALE_HOURS", "3"))
+EXCHANGE_CODES = {v.code for v in VENUES if v.kind == "exchange" and v.status == "live"}
+
+
+def event_sync(conn, event_ids, venues, now=None):
+    """{event_id: [dict(code, name, links, last, hours, stale)]} for each of `venues` (exchange codes, in that order):
+    the market links whose race belongs to the event (exact race_id keys), the newest synced_at among them, its age
+    in hours, and stale = no links, or no sync time, or older than SYNC_STALE_HOURS."""
+    if not event_ids or not venues:
+        return {}
+    df = data.q(conn, """SELECT ra.event_id, ml.exchange, count(*) AS links, max(ml.synced_at) AS last
+                         FROM market_links ml JOIN races ra ON ra.id = ml.race_id
+                         WHERE ra.event_id = ANY(:e) AND ml.exchange = ANY(:x) GROUP BY 1, 2""",
+                e=[int(x) for x in event_ids], x=list(venues))
+    got = {(int(r["event_id"]), r["exchange"]): r for r in df.to_dict("records")}
+    now = pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz="UTC")
+    names = {v.code: v.name for v in VENUES}
+    out = {}
+    for e in event_ids:
+        rows = []
+        for code in venues:
+            r = got.get((int(e), code)) or {}
+            last = r.get("last")
+            last = None if last is None or pd.isna(last) else pd.Timestamp(last)
+            if last is not None and last.tzinfo is None:
+                last = last.tz_localize("UTC")
+            hours = None if last is None else max(0.0, (now - last).total_seconds() / 3600)
+            rows.append(dict(code=code, name=names.get(code, code), links=int(r.get("links") or 0), last=last, hours=hours,
+                             stale=last is None or hours > SYNC_STALE_HOURS, limit=SYNC_STALE_HOURS))
+        out[int(e)] = rows
+    return out
 
 
 STALE_MIN = 15          # a venue with no book snapshot for this long is "stale" (its recorder passes every 5 minutes)
@@ -262,11 +323,12 @@ def headline(conn, maker_id):
     rec_n = int(rec["n"].iloc[0] or 0) if len(rec) and rec["n"].iloc[0] is not None else 0
     bk = house.book(conn, maker_id=maker_id, status="open")
     jobs = data.q(conn, "SELECT count(*) FILTER (WHERE status IN ('queued', 'running')) AS active FROM jobs").iloc[0]
+    brier_win, brier_grid = model_brier(conn)
     return dict(outcomes=int(ex["outcomes"]), markets=int(ex["markets"]), volume=float(ex["volume"]), synced=ex["synced"],
                 recording=rec_n, recorded_at=rec_ts,
                 my_open=len(bk), my_worst=float(bk["worst"].sum()) if len(bk) else 0.0,
                 my_staked=float(bk["staked"].sum()) if len(bk) else 0.0,
-                jobs_active=int(jobs["active"]))
+                jobs_active=int(jobs["active"]), brier_win=brier_win, brier_grid=brier_grid)
 
 
 def model_brier(conn):

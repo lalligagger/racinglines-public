@@ -74,6 +74,17 @@ HEAT_WEIGHT = {1: 0.6, 2: 1.0, 3: 1.4}    # relative chance of following an entr
 HEAT_MIX_MEAN = 0.9                       # mean weight over A's backtest entries (1/2 warm, 1/4 hot, 1/4 very hot)
 
 
+def _stages(w):
+    """The side stages (sports/f1.toml [sessions.sim], e.g. the sprint) this weekend has, from the schedule's
+    FastF1 event format, so a live run prices them before their sessions' data exists (pricing.price_stages)."""
+    from racinglines.models.position_sim import model as M
+    from racinglines.sources.fastf1.fetch import SPRINT_FORMATS
+    if not w or str(w.get("format", "")) not in SPRINT_FORMATS:
+        return []
+    return [k for k in M.SIM_SESSIONS if k != M.MAIN_STAGE]
+
+
+
 # ---------------------------------------------------------------------------
 # Pure pieces (tested without a database)
 # ---------------------------------------------------------------------------
@@ -258,8 +269,10 @@ def refresh_markets(engine, engine_url, w, now, echo=print, venue="polymarket"):
     from racinglines.markets import store as MS
     if venue == "polymarket":
         from racinglines.markets.polymarket.sync import fetch_history, fetch_trades
-    else:
+    elif venue == "kalshi":
         from racinglines.markets.kalshi.sync import fetch_history, fetch_trades
+    else:                                        # an exchange defined as data (exchanges/<code>.toml, e.g. OG.com)
+        return _refresh_exchange(engine, engine_url, w, now, venue, echo)
     with engine.connect() as c:
         rid = WS._race_id(c, w["event_key"])
         links = WS._links(c, rid, venue) if rid else pd.DataFrame()
@@ -281,6 +294,26 @@ def refresh_markets(engine, engine_url, w, now, echo=print, venue="polymarket"):
                 n = fetch_history(s, c, events, since.to_pydatetime(), now.tz_localize("UTC").to_pydatetime(), period=1)
                 k = fetch_trades(s, c, events, since=recent)
     echo(f"  {venue.capitalize()}: {n} price points, {k} trades")
+
+
+def _refresh_exchange(engine, engine_url, w, now, venue, echo=print):
+    """refresh_markets for an exchange driven by its schema (markets/exchange_driver.py): the trades and minute
+    prices of the event's markets over the last day (idempotent upserts)."""
+    from racinglines.db.config import get_session
+    from racinglines.markets import exchange_driver as D
+    start = (now - timedelta(hours=26)).tz_localize("UTC").to_pydatetime()
+    end = now.tz_localize("UTC").to_pydatetime()
+    with engine.connect() as c:
+        rid = WS._race_id(c, w["event_key"])
+        links = WS._links(c, rid, venue) if rid else pd.DataFrame()
+        if not len(links):
+            echo(f"  no {venue} markets linked to this event yet")
+            return
+        events = sorted(set(links["condition_id"].dropna()))
+        with get_session(engine_url) as s:
+            k = D.fetch_trades(s, c, venue, events=events, since=start)
+            n = D.fetch_history(s, c, venue, start, end, events=events)
+    echo(f"  {venue}: {n} price points, {k} trades")
 
 
 def _entrants(meas, event_id, cutoff):
@@ -335,17 +368,20 @@ def price_stages_now(meas, hist, w, st, engine, engine_url, now, echo=print):
         if hit is None:
             if raced:
                 _, summ, ex, _ = run.diagnostic(meas, hist, w["event_key"], cutoff, n_sims=st["sims"],
-                                                use_track=st["track_features"], seed=st.rng_seed)
+                                                use_track=st["track_features"], seed=st.rng_seed, stages=_stages(w))
             else:
                 summ, ex = run.price_race(meas, hist, cutoff, event_id, n_sims=st["sims"],
                                           rng=np.random.default_rng(st.rng_seed), use_track=st["track_features"],
-                                          entrants=_entrants(meas, event_id, cutoff), venue=_venue(meas, event_id, w))
+                                          entrants=_entrants(meas, event_id, cutoff), venue=_venue(meas, event_id, w),
+                                          stages=_stages(w), event_key=w["event_key"])
             extra = dict(model_key=mk, data_key=dk, model_settings={n: st.to_json()[n] for n in SS.MODEL_NAMES},
                          live=not raced)
             if st["variant"] != "baseline":
                 extra["variant"] = st["variant"]
             rid = run.save_diagnostic(engine_url, w["event_key"], cutoff, summ, ex, st["sims"], sweep_stage=label,
                                       **extra)
+            if extra["live"]:                     # a live reprice moves the board: log it (once per stage stored)
+                log_live_price(engine_url, w["event_key"], rid, st, dk, stage=label)
             hit = (rid, now)
             echo(f"  {label}: priced (run #{rid})")
         out.append((label, cutoff, *hit))
@@ -420,7 +456,8 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
                                          tol_by_kind=SS.parse_map(st["coherence_tol_by_kind"]))
             markets = [m for m in markets or [] if m["kind"] in st["market_kinds"]]
             p = RB.TakerParams(min_edge=st["min_edge"], stake_per_edge=st["stake_per_edge"], max_stake=st["max_stake"],
-                               cost=st["cost"], late_stages=st["late_stages"], min_edge_h2h=st["min_edge_h2h"],
+                               cost=WS.taker_cost(st["cost"], venue), late_stages=st["late_stages"],
+                               min_edge_h2h=st["min_edge_h2h"],
                                min_edge_by_kind=tuple(SS.parse_map(st["min_edge_by_kind"]).items()),
                                stages=None if st["taker_stages"] == SS.STAGES else st["taker_stages"], mode=strategy,
                                thin_edge_mult=st["thin_edge_mult"], taker_fee=WS.taker_fee(venue))
@@ -469,6 +506,13 @@ def _maker(c, w, runs, st, strategy, now, live, venue="polymarket"):
     ev = R.load_event(c, [r for _, _, r in runs], sessions=sessions, books=st["fill"] == "queue",
                       **({} if venue == "polymarket" else dict(exchange=venue)))
     ev = dict(ev, markets=[m for m in ev["markets"] if m.kind in st["market_kinds"]])
+    return maker_run(ev, st, strategy, now, {rid: lab for lab, _, rid in runs}, venue)
+
+
+def maker_run(ev, st, strategy, now, labels, venue="polymarket"):
+    """The maker replay of an event (maker_replay.load_event's shape, any sport) up to `now`: its signals, paper
+    positions and quote state. labels: the event's stage run_id -> stage label."""
+    from racinglines.markets.strategies import maker_replay as R
     now_ns = R._ns(now)
     ev["stages"] = truncate_stages(ev["stages"], now_ns)
     opts = dict(WS.MAKERS[strategy])
@@ -477,7 +521,6 @@ def _maker(c, w, runs, st, strategy, now, live, venue="polymarket"):
     opts.pop("widen", None)            # widening needs earlier weekends' markouts; not applied live
     p = replace(WS.maker_params(st, venue), **opts)     # the sweep's maker parameters, volume floor included
     rep = R.replay(ev, p)
-    labels = {rid: lab for lab, _, rid in runs}
     sigs, state = maker_state(rep["quotes"], rep["fills"], ev["markets"], labels, now_ns)
     pos = []
     for r in rep["positions"].to_dict("records"):
@@ -530,7 +573,7 @@ def store(conn, user_id, out, follow_rate=None, history=False, venue=None):
     follow_rate: a taker user's (see Following); history: a backfilled weekend (a backtest replay shown
     as the account's track record): taken / passed statuses, already seen, flagged detail.backfill.
     venue: another exchange ("kalshi"; default: the computation's own, out["venue"]): its signals carry detail.venue
-    and only that venue's positions are replaced; a Polymarket run leaves Kalshi's positions alone."""
+    and only that venue's positions are replaced; a Polymarket run leaves every other venue's positions alone."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
     from racinglines.db import models as m
@@ -563,9 +606,11 @@ def store(conn, user_id, out, follow_rate=None, history=False, venue=None):
                              WHERE user_id = :u AND candidate_id IS NOT DISTINCT FROM :c AND event_key = :e
                                AND status IN ('new', 'alerted') AND stage <> :s"""),
                      dict(u=user_id, c=pr.get("candidate_id"), e=w["event_key"], s=out["stages"][-1][0]))
+    # only this run's venue: a Polymarket run (venue None) replaces Polymarket's rows, never Kalshi's, OG.com's or
+    # the live maker's ('private') for the same event
     conn.execute(text("""DELETE FROM paper_positions WHERE user_id = :u AND candidate_id IS NOT DISTINCT FROM :c
-                         AND event_key = :e AND """ + ("venue = :v" if venue else "venue NOT LIKE 'kalshi%'")),
-                 dict(u=user_id, c=pr.get("candidate_id"), e=w["event_key"], v=venue))
+                         AND event_key = :e AND venue = :v"""),
+                 dict(u=user_id, c=pr.get("candidate_id"), e=w["event_key"], v=venue or "polymarket"))
     for p in positions:
         row = dict(user_id=user_id, candidate_id=pr.get("candidate_id"), race_id=out.get("race_id"),
                    event_key=w["event_key"], **{k: _clean(v) for k, v in p.items()})
@@ -576,12 +621,13 @@ def store(conn, user_id, out, follow_rate=None, history=False, venue=None):
 
 
 def run_all(engine, engine_url, users=None, profile_ref=None, now=None, event="next", fetch=True, alert=True,
-            echo=print):
+            echo=print, venue="polymarket"):
     """Every active user with a profile (or `users`, usernames), one computation per distinct profile (a blend:
-    one per member, see compute_all)."""
+    one per member, see compute_all). venue: whose profiles (profiles.pref(venue); Polymarket, the timer's pass, by
+    default); each still trades its own `venue` setting."""
     from racinglines.pipelines import profiles as PF
     with engine.connect() as c:
-        targets = [(uid, prof) for uid, name, _, prof in PF.assigned(c) if not users or name in users]
+        targets = [(uid, prof) for uid, name, _, prof in PF.assigned(c, venue=venue) if not users or name in users]
         if profile_ref is not None:            # this profile instead of the users' own
             prof = PF.load(c, profile_ref)
             targets = [(uid, prof) for uid, _ in targets]
@@ -602,12 +648,13 @@ def run_all(engine, engine_url, users=None, profile_ref=None, now=None, event="n
     return report
 
 
-def _run_one(engine, engine_url, prof, out, uids, rate, now, alert, echo):
-    """Store one computation for its users and alert the new signals. -> the report row."""
+def _run_one(engine, engine_url, prof, out, uids, rate, now, alert, echo, upcoming="f1"):
+    """Store one computation for its users and alert the new signals. -> the report row. upcoming: price the next
+    races between weekends (price_upcoming, the F1 Markets page's calls); None for another sport's run."""
     from racinglines.markets import alerts
     if out.get("note"):
         echo(f"  {out['note']}")
-    if prof["strategy"] in WS.TAKER_MODES and not out["stages"]:
+    if upcoming and prof["strategy"] in WS.TAKER_MODES and not out["stages"]:
         try:                                         # between weekends: the Markets page's current calls
             price_upcoming(engine, engine_url, prof, now=now, echo=echo)
         except Exception as ex:                      # noqa: BLE001
@@ -676,8 +723,11 @@ def latest_run(conn, profile, event_key):
 
 def price_upcoming(engine, engine_url, profile, now=None, n=3, echo=print, cache=None):
     """Between race weekends: price each of the next `n` races that has race markets listed on the profile's
-    venue, as of now, with the profile's model, unless a pricing from the same data exists (the data only
-    changes when a session runs, so this is a one-off per race). Returns {event_key: run id}."""
+    venue, as of now, with the profile's model, unless a pricing from the same data by the same code exists (the
+    data only changes when a session runs and the code only when a deploy lands, so this is a one-off per race
+    per deploy: the Markets board reads the newest of these runs, so a model change reaches it at the next pass).
+    Returns {event_key: run id}."""
+    from racinglines.db.queries import code_version
     from racinglines.models.position_sim import pricing as run
     st = SS.Settings.from_dict(profile["settings"], strict=False)
     venue = SS.venue_of(st)
@@ -698,12 +748,13 @@ def price_upcoming(engine, engine_url, profile, now=None, n=3, echo=print, cache
         hist = cache.get(("hist", st.model_key))
         if hist is None:
             hist = cache[("hist", st.model_key)] = run.history(meas, st["track_features"])
-        dk = SS.data_key(meas.view(now))
+        dk, cv = SS.data_key(meas.view(now)), code_version()
         for w in todo:
             with engine.connect() as c:
                 have = c.execute(text("""SELECT id FROM model_runs WHERE kind = 'diagnostic' AND params->>'model_key' = :m
-                                           AND params->>'event_key' = :k AND params->>'data_key' = :d ORDER BY id DESC LIMIT 1"""),
-                                 dict(m=st.model_key, k=w["event_key"], d=dk)).scalar()
+                                           AND params->>'event_key' = :k AND params->>'data_key' = :d
+                                           AND code_version IS NOT DISTINCT FROM :cv ORDER BY id DESC LIMIT 1"""),
+                                 dict(m=st.model_key, k=w["event_key"], d=dk, cv=cv)).scalar()
             if have:
                 out[w["event_key"]] = have
                 continue
@@ -712,15 +763,30 @@ def price_upcoming(engine, engine_url, profile, now=None, n=3, echo=print, cache
             event_id = int(ev["event_id"].iloc[0]) if len(ev) else None
             summ, ex = run.price_race(meas, hist, now, event_id, n_sims=st["sims"], rng=np.random.default_rng(st.rng_seed),
                                       use_track=st["track_features"], entrants=_entrants(meas, event_id, now),
-                                      venue=_venue(meas, event_id, w))
+                                      venue=_venue(meas, event_id, w), stages=_stages(w), event_key=w["event_key"])
             extra = dict(model_key=st.model_key, data_key=dk, live=True,
                          model_settings={k: st.to_json()[k] for k in SS.MODEL_NAMES})
             if st["variant"] != "baseline":
                 extra["variant"] = st["variant"]
             out[w["event_key"]] = run.save_diagnostic(engine_url, w["event_key"], now, summ, ex, st["sims"],
                                                       sweep_stage=NOW_STAGE, **extra)
+            log_live_price(engine_url, w["event_key"], out[w["event_key"]], st, dk, code_version=cv, stage=NOW_STAGE)
             echo(f"  {w['name']}: priced as of now for {profile['name']} (run #{out[w['event_key']]})")
     return out
+
+
+def log_live_price(engine_url, event_key, run_id, st, data_key, code_version=None, stage=None, sport="f1"):
+    """A data_changes row ("live-price") for a live reprice the signal engine just stored. Called only when a new
+    run is saved: a stage's pricing is stored once (reused by every later 5-minute pass) and an as-of-now pricing
+    only when the data or the code changed, so this is a handful of rows per weekend, not one per pass."""
+    from racinglines.db import changes
+    from racinglines.db.config import get_session
+    from racinglines.db.queries import code_version as cv_now
+    with get_session(engine_url) as s:
+        changes.record_run(s, "live-price", sport, [event_key], run_id, variant=st["variant"], sims=st["sims"],
+                           code_version=code_version or cv_now(), data_key=data_key, stage=stage,
+                           model_key=st.model_key)
+        s.commit()
 
 
 def maker_call(profile, kind, fair, price, volume_24h=None):

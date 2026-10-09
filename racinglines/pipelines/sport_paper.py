@@ -252,9 +252,10 @@ def race_rows(markets_by_setting, venue, sport, book):
 
 
 def backfill(engine, sport, settings, usernames=("taker",), seasons=None, venue="kalshi", events=None, book="kinds",
-             echo=print):
+             echo=print, stage_mode="weekend"):
     """Replay each season (one run per season and setting, as the grid ran them, so the trades match its trades.csv)
-    and store every race's trades as the accounts' demo paper rows. settings: {(edge, volume): [kinds]}.
+    and store every race's trades as the accounts' demo paper rows. settings: {(edge, volume): [kinds]}. stage_mode:
+    position_replay.stage_list's ("race_day" adds the [replay] race_day_stages).
     Returns [(user, event_key, race, signals, P&L)]."""
     from racinglines.markets.strategies import taker_weekend as RB
     from racinglines.pipelines import position_replay as P
@@ -276,14 +277,16 @@ def backfill(engine, sport, settings, usernames=("taker",), seasons=None, venue=
             def keep(r, markets, key=(edge, vol)):
                 races.setdefault(r.event_key, dict(r=r, by={}))["by"][key] = markets
             out = P.run(engine, sport, [year], venue=venue, taker=RB.TakerParams(min_edge=edge), min_volume_24h=vol,
-                        kinds=kinds, data=data, events=events, echo=lambda *a: None, buy_all=False, on_race=keep)
+                        kinds=kinds, data=data, events=events, echo=lambda *a: None, buy_all=False, on_race=keep,
+                        stage_mode=stage_mode)
             data = out.pop("data")
         for key, x in races.items():
             r = x["r"]
             sigs, pos = race_rows(x["by"], venue, sport, book)
             if not sigs:
                 continue
-            stages = [(lab, t, None, None) for lab, t in P.stage_times(r.start, P.spec(sport))]
+            sp = P.spec(sport)
+            stages = [(lab, t, None, None) for lab, t in P.stage_times(r.start, dict(sp, stages=P.stage_list(sp, stage_mode)))]
             o = dict(profile=prof, event=dict(event_key=key), race_id=int(r.race_id), stages=stages, signals=sigs,
                      positions=pos, venue=venue)
             for username, uid in uids.items():

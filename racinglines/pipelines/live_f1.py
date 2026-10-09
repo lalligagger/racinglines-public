@@ -208,11 +208,32 @@ def attach_exchange_prices(mkts, links):
             ask = None if ask is None or pd.isna(ask) else float(ask)
             if mid is None and bid is None and ask is None:
                 continue
+            synced = row.get("synced_at")       # when the sync last wrote these prices (None: unknown)
             prices.append(dict(code=code, name=EXCHANGE_LABELS.get(code, code.replace("_", " ").title()),
                                mid=mid, bid=bid, ask=ask, slug=row.get("event_slug"),
-                               token=row.get("token_id")))
+                               token=row.get("token_id"),
+                               synced=None if synced is None or pd.isna(synced) else _iso(synced)))
         prices.sort(key=lambda x: (EXCHANGE_ORDER.index(x["code"]) if x["code"] in EXCHANGE_ORDER else len(EXCHANGE_ORDER), x["code"]))
         out.append(dict(market, exchange_prices=prices))
+    return out
+
+
+PRICE_STALE_MIN = 15   # an exchange price older than this is flagged stale (the Markets board's rule, web/board.py STALE_MIN)
+
+
+def venue_price_ages(markets, asof):
+    """(subject, price) for every exchange price on the snapshot's markets, each price with its age in minutes as of
+    `asof` (now, or the snapshot's time in a replay) and stale=True past PRICE_STALE_MIN. A price with no sync time
+    (snapshots written before it was recorded) has age None and is not called stale: its age is unknown."""
+    out = []
+    for m in markets:
+        for q in m.get("exchange_prices") or []:
+            if q.get("mid") is None and q.get("bid") is None and q.get("ask") is None:
+                continue
+            age = None
+            if q.get("synced"):
+                age = max(0, int((pd.Timestamp(asof) - pd.Timestamp(q["synced"])).total_seconds() // 60))
+            out.append((m["subject"], dict(q, age_min=age, stale=age is not None and age > PRICE_STALE_MIN)))
     return out
 
 
@@ -258,11 +279,18 @@ def markets(conn, event_key, run_id, source="last_listed", kinds=KINDS, props=No
 
 
 def prop_markets(conn, event_key, run_id, kinds, props=None):
-    """The prop markets among `kinds` ([] when none is listed, the default)."""
+    """The prop markets among `kinds` ([] when none is listed, the default). The race's latest saved wet vote
+    (`racinglines weather fetch ... --session race=...`, weather/wet.py), when there is one, prices race_rain and
+    race_red_flag given the forecast; [live.props] weather = false turns that off."""
     pk = tuple(k for k in kinds if k in PROP_KINDS)
     if not pk:
         return []
-    return P.markets(conn, event_key, run_id, pk, (props or {}).get("prior_n", P.PRIOR_N))
+    props = props or {}
+    vote = None
+    if props.get("weather", True):
+        from racinglines.weather import wet as WET
+        vote = WET.load_vote(event_key)
+    return P.markets(conn, event_key, run_id, pk, props.get("prior_n", P.PRIOR_N), wet_vote=vote)
 
 
 # ---------------------------------------------------------------------------
@@ -601,7 +629,7 @@ def step(spec, now=None, fetch=True, unfreeze=False, echo=print, engine=None, en
         rid = race_id(c, event_key)
         if rid is not None:
             links = pd.read_sql(text("""SELECT exchange, prediction, athlete_id, params, last_price, last_bid,
-                last_ask, token_id, event_slug FROM market_links WHERE race_id = :r AND prediction IS NOT NULL"""),
+                last_ask, token_id, event_slug, synced_at FROM market_links WHERE race_id = :r AND prediction IS NOT NULL"""),
                                c, params=dict(r=rid))
             mkts = attach_exchange_prices(mkts, links)
             diffs = compare_exchange_prices(links, threshold=0.005)
@@ -853,6 +881,8 @@ def view(run, snap, picks, hist, mode, maker):
     for e in reversed(polls[-3:]):
         for f in sorted(e["fills"], key=lambda f: f.get("ts") or "", reverse=True)[:6]:
             recent.append(dict(f, subject=subj.get(f["key"], f["key"]), kind=KIND_LABEL.get(kind_of.get(f["key"]), "")))
+    asof = pd.Timestamp(snap["ts"]) if mode == "replay" else pd.Timestamp.now(tz="UTC")
+    venue_prices = venue_price_ages(snap["markets"], asof)
     chart = None
     hist = sorted(list(hist) + inrace_points(run, snap, replay=mode == "replay"), key=lambda h: pd.Timestamp(h["ts"]))
     if maker and len(hist) >= 2:
@@ -862,4 +892,6 @@ def view(run, snap, picks, hist, mode, maker):
         chart = line_chart(series, {k: k for k in series}, money=False, h=190)
     return dict(groups=groups, picks=rows, tot=tot, book=markets_ if polls else None, positions=positions[:12],
                 recent=recent[:12], crowd=snap.get("crowd"), mpnl=snap.get("maker_pnl"), win_chart=chart,
+                venue_prices=venue_prices, venue_stale=any(q["stale"] for _, q in venue_prices),
+                stale_min=PRICE_STALE_MIN,
                 age=int((pd.Timestamp.now(tz="UTC") - pd.Timestamp(snap["ts"])).total_seconds()))

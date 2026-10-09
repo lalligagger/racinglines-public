@@ -1,25 +1,94 @@
 {% extends "base_public.html" %}
-{% block title %}Sign in · racinglines{% endblock %}
+{% block title %}racinglines · motorsport pricing for sportsbooks{% endblock %}
+{% block main_class %}landing{% endblock %}
 {% block content %}
-<h1>racinglines</h1>
-<p class="sub">Fair prices and market making for race sports.</p>
-{% if error == "throttled" %}<p class="bad" role="alert">Too many failed sign-ins. Wait 15 minutes and try again.</p>{% elif error %}<p class="bad" role="alert">Wrong username or password.</p>{% endif %}
+{# The signed-out landing page (owner, 2026-10-08): the business case first, then the fantasy-trading beta (sign up,
+   try the demo, sign in). No sportsbook, operator or provider is named here. #}
+<header class="lp-top">
+  <a class="lp-brand" href="/login"><img src="/static/brand/logo.svg" alt="" width="32" height="32"><span>racing<b>lines</b></span></a>
+</header>
 
-<p class="muted">pro = the maker tools (quotes, book, Lab); basic = the taker picks.</p>
-<div class="demo">
-  <form method="post" action="/login"><input type="hidden" name="username" value="maker"><input type="hidden" name="password" value="password"><input type="hidden" name="next" value="{{ next }}">
-    <button class="maker"><b>Try as pro</b><span>Model fair prices, quote markets, run every strategy, backtest and replay in the Lab</span></button></form>
-  <form method="post" action="/login"><input type="hidden" name="username" value="taker"><input type="hidden" name="password" value="password"><input type="hidden" name="next" value="{{ next }}">
-    <button class="taker"><b>Try as basic</b><span>Follow a taker strategy's calls on the open markets, no model numbers</span></button></form>
-</div>
-<p class="confused"><a href="/racinglines101">I'm already confused.</a></p>
+<section class="lp-hero">
+  <p class="lp-eyebrow">Motorsport pricing for sportsbooks</p>
+  <h1>Fair odds for race sports, checked against the markets.</h1>
+  <p class="lp-lede">racinglines models every driver's and rider's chances from race data, reads the prediction
+    markets alongside, and turns both into a fair price for each outcome. Use it to set your own motorsport lines, to
+    check the lines your sportsbook provider sends you, or to offer markets your feed doesn't carry yet.</p>
+  <div class="lp-cta"><a class="button primary" href="mailto:{{ support }}?subject=racinglines%20for%20our%20book">Talk to us</a></div>
+</section>
 
-<p class="or">{% if signup_on() %}<a href="/signup">Sign up</a> or log in{% else %}or sign in{% endif %}</p>
-<form method="post" action="/login" class="card">
-  <input type="hidden" name="next" value="{{ next }}">
-  <label><span>Username</span><input name="username" autocomplete="username" required></label>
-  <label><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
-  <button class="primary mt">Sign in</button>
-</form>
-{% if signup_on() %}<p class="confused"><a href="/forgot">Forgot your password?</a></p>{% endif %}
+<section class="lp-who" aria-label="Who it's for">
+  <div class="lp-card"><h2>Books that set their own lines</h2>
+    <p>An independent fair price for every motorsport market you list, next to the exchanges' prices, so you can see
+      where your line has drifted before your customers do.</p></div>
+  <div class="lp-card"><h2>Books that run on a provider's feed</h2>
+    <p>A second opinion on the motorsport lines your platform provider sends, and prices for the head-to-heads,
+      top-N finishes and futures its feed leaves out.</p></div>
+  <div class="lp-card"><h2>Platform providers and resellers</h2>
+    <p>A motorsport pricing module you can offer to every operator you serve, without building a race model of
+      your own.</p></div>
+</section>
+
+<section class="lp-section">
+  <figure class="biz" aria-labelledby="biz-cap">
+    <div class="biz-col biz-in">
+      <div class="biz-node"><svg viewBox="-80 -90 120 180" aria-hidden="true"><circle cx="-50" cy="-66" r="18" fill="#fff"/><g fill="none" stroke="#4d7cff" stroke-width="8"><circle cx="-50" cy="-22" r="18"/><circle cx="-50" cy="22" r="18"/><circle cx="-50" cy="66" r="18"/><circle cx="-2" cy="-44" r="18"/><circle cx="-2" cy="0" r="18"/><circle cx="-2" cy="44" r="18"/></g></svg>
+        <div><b>Race data</b><span>results, qualifying, grids and penalties, season by season</span></div></div>
+      <div class="biz-node"><svg viewBox="-90 -80 180 160" aria-hidden="true"><g fill="#4d7cff"><rect x="-80" y="-62" width="160" height="20" rx="10" opacity=".32"/><rect x="-80" y="-62" width="115" height="20" rx="10"/><rect x="-80" y="-10" width="160" height="20" rx="10" opacity=".32"/><rect x="-80" y="-10" width="74" height="20" rx="10"/><rect x="-80" y="42" width="160" height="20" rx="10" opacity=".32"/><rect x="-80" y="42" width="38" height="20" rx="10"/></g><g fill="#fff"><rect x="51" y="-70" width="6" height="36" rx="3"/><rect x="-29" y="-18" width="6" height="36" rx="3"/><rect x="-19" y="34" width="6" height="36" rx="3"/></g></svg>
+        <div><b>Market prices</b><span>Polymarket, Kalshi and OG.com books, recorded every five minutes</span></div></div>
+    </div>
+    <div class="biz-link" aria-hidden="true"><i></i></div>
+    <div class="biz-col biz-core">
+      <div class="biz-engine"><img src="/static/brand/logo.svg" alt="" width="64" height="64">
+        <b>A fair price for every outcome</b>
+        <span>stamped with the time it was made, and replayed against the markets' recorded books to show how it
+          would have traded</span></div>
+    </div>
+    <div class="biz-link" aria-hidden="true"><i></i></div>
+    <div class="biz-col biz-out">
+      <div class="biz-use"><b>Pricing your own lines</b><span>Compare each line with the fair price and the markets,
+        and see where to move it.</span></div>
+      <div class="biz-use"><b>On a provider's feed</b><span>Check the feed's motorsport lines, and add the markets it
+        doesn't carry.</span></div>
+      <div class="biz-use"><b>Serving many operators</b><span>Offer one motorsport module across every book you
+        power.</span></div>
+    </div>
+    <figcaption id="biz-cap" class="biz-foot">
+      <span><b>Sports</b> Formula 1 · NASCAR Cup · MotoGP · UCI downhill</span>
+      <span><b>Markets</b> race winner · podium and top-N · head-to-head · pole · championship, by sport</span>
+    </figcaption>
+  </figure>
+  <p class="lp-open"><b>Something else in mind?</b> Trading desks, media, data partners: we're open to exploring other
+    use cases. <a href="mailto:{{ support }}?subject=racinglines%20use%20case">Tell us what you need.</a></p>
+</section>
+
+<section id="contact" class="lp-section lp-contact">
+  <h2 class="lp-h">Talk to us</h2>
+  <p>Write to <a href="mailto:{{ support }}">{{ support }}</a> with the sports and markets you care about, and how you
+    take prices today (your own traders or a provider's feed). Prices are available in the web app and through our
+    hosted MCP server.</p>
+</section>
+
+<section id="account" class="lp-section lp-account">
+  <h2 class="lp-h">Fantasy trade with us</h2>
+  <p class="lp-beta"><b>We're still looking for individual users to fantasy trade with us!</b> Beta accounts follow our
+    prices with fantasy bucks only; nothing is ever sent to an exchange.</p>
+  <div class="lp-actions">{% if signup_on() %}<a class="button primary" href="/signup">Sign up</a>{% endif %}
+    <form method="post" action="/login"><input type="hidden" name="username" value="maker"><input type="hidden" name="password" value="password"><input type="hidden" name="next" value="{{ next }}">
+      <button title="Model fair prices, quote markets, run every strategy, backtest and replay in the Lab">Try as pro</button></form>
+    <form method="post" action="/login"><input type="hidden" name="username" value="taker"><input type="hidden" name="password" value="password"><input type="hidden" name="next" value="{{ next }}">
+      <button title="Follow a taker strategy's calls on the open markets, no model numbers">Try as basic</button></form>
+    <a href="/racinglines101">I'm already confused.</a></div>
+  <p class="hint">Pro is the maker tools (quotes, book, Lab); basic is a taker strategy's picks.</p>
+
+  {% if error == "throttled" %}<p class="bad" role="alert">Too many failed sign-ins. Wait 15 minutes and try again.</p>{% elif error %}<p class="bad" role="alert">Wrong username or password.</p>{% endif %}
+  <form method="post" action="/login" class="card lp-signin">
+    <input type="hidden" name="next" value="{{ next }}">
+    <h3>Sign in</h3>
+    <label><span>Username</span><input name="username" autocomplete="username" required></label>
+    <label><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
+    <button class="primary mt">Sign in</button>
+    {% if signup_on() %}<p class="hint"><a href="/forgot">Forgot your password?</a></p>{% endif %}
+  </form>
+</section>
 {% endblock %}

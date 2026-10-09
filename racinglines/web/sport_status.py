@@ -7,7 +7,8 @@ disappearing from the page.
     market data   links per exchange (with a race / open), the last sync
     model         the schema's model family, the latest forecast run (a live price), the stored as-of replay runs
                   (`<sport> replay --save`: a pre-race price per race), the season-forecast runs
-    backtests     backtest / sweep runs in the database, the replay settings grid on disk (data/runs/replay-grid/<sport>)
+    backtests     model backtest runs and the replay settings grid on disk (data/runs/replay-grid/<sport>)
+    sweeps        saved Edge Finder strategy sweeps
     paper         the demo accounts' paper record for the sport (races, P&L), never a buy_all row
 
 Everything is read-only and counted from the tables (no Parquet archive scan: the exchange data table below it on the
@@ -81,15 +82,17 @@ def status(conn):
     paper = data.q(conn, """
         SELECT co.code AS competition, u.username,
                count(DISTINCT p.event_key) AS races,
+               count(*) FILTER (WHERE p.outcome IS NOT NULL) AS settled_positions,
                sum(p.cash + p.yes_shares * p.outcome::int + p.no_shares * (1 - p.outcome::int))
                    FILTER (WHERE p.outcome IS NOT NULL) AS pnl
         FROM paper_positions p JOIN users u ON u.id = p.user_id
         JOIN (SELECT DISTINCT ON (e.source_key) e.source_key, s.competition_id FROM events e
               JOIN seasons s ON s.id = e.season_id ORDER BY e.source_key, e.id) e ON e.source_key = p.event_key
         JOIN competitions co ON co.id = e.competition_id
-        WHERE u.prefs ? 'strategy_profile' AND p.venue <> 'private'
-          AND NOT EXISTS (SELECT 1 FROM strategy_signals x WHERE x.user_id = p.user_id AND x.market_key = p.market_key
-                          AND (x.strategy = 'buy_all' OR x.detail->>'mode' = 'buy_all'))
+        LEFT JOIN (SELECT DISTINCT user_id, market_key FROM strategy_signals          -- the debug mode, read once
+                   WHERE strategy = 'buy_all' OR detail->>'mode' = 'buy_all') x
+               ON x.user_id = p.user_id AND x.market_key = p.market_key
+        WHERE u.prefs ? 'strategy_profile' AND p.venue <> 'private' AND x.user_id IS NULL
         GROUP BY 1, 2 ORDER BY 1, 2""")
     from racinglines import exchanges as EX
     from racinglines.markets.venues import VENUES
@@ -165,7 +168,7 @@ def status(conn):
             row["model"] = dict(state="ok" if fc else ("partial" if asof or season else "none"),
                                 text=" · ".join(parts), sub=" · ".join(sub))
 
-        bt = kind("backtest")
+        bt, sw = kind("backtest"), kind("sweep")
         grid = _grid(sport)
         parts, sub = [], []
         if bt:
@@ -185,16 +188,38 @@ def status(conn):
                                                                                    ("none" if modeled else "na")),
                                 short=short, text=" · ".join(parts), sub=" · ".join(sub),
                                 note="indicative, in-sample" if grid and sport != "f1" else "")
+        if not modeled:
+            row["sweeps"] = dict(state="na", short="—", text="no model", sub="")
+        elif sw:
+            row["sweeps"] = dict(state="ok", short=f"{sw['n']:,}", text=f"{sw['n']:,} saved strategy sweeps",
+                                 sub=f"latest #{sw['last_id']} {pd.Timestamp(sw['at']):%d %b %Y}")
+        else:
+            row["sweeps"] = dict(state="none", short="0", text="no strategy sweep saved",
+                                 sub="run an Edge Finder sweep to save per-weekend strategy results")
 
         pp = paper[paper["competition"] == comp]
         if not len(pp):
             row["paper"] = dict(state="none" if modeled else "na", short="—" if not modeled else "0",
                                 text="no paper record" if modeled else "—", sub="")
         else:
-            total = sum((u["pnl"] or 0) for u in pp.to_dict("records"))
-            row["paper"] = dict(state="ok", short=f"{total:+,.0f}",
-                                text=" · ".join(f"{u['username']} {_i(u['races'])} races "
-                                                 f"{(u['pnl'] or 0):+,.0f}" for u in pp.to_dict("records")),
+            account_pnls = []
+            invalid_pnl = False
+            total = 0.0
+            for u in pp.to_dict("records"):
+                if pd.isna(u["pnl"]):
+                    if _i(u["settled_positions"]):
+                        pnl_text = "P&L unavailable"
+                        invalid_pnl = True
+                    else:
+                        pnl_text = "+0"
+                else:
+                    value = float(u["pnl"])
+                    total += value
+                    pnl_text = f"{value:+,.0f}"
+                account_pnls.append(f"{u['username']} {_i(u['races'])} races {pnl_text}")
+            row["paper"] = dict(state="partial" if invalid_pnl else "ok",
+                                short="—" if invalid_pnl else f"{total:+,.0f}",
+                                text=" · ".join(account_pnls),
                                 sub="paper (settled P&L, $)")
         out.append(row)
     return out

@@ -109,8 +109,8 @@ branches, one PR per track (owner, 2026-09-30); the track is named on each item.
 - [ ] **STG · high priority (owner, 2026-09-30): finish CI and a staging environment.** CI deploys `main` since
       2026-10-01; tests in CI, a real staging deploy, an off-VM data copy, a migration gate and a live-window freeze
       are open: STG-1 to STG-11 in [Staging and CI deploys](#staging-and-ci-deploys).
-- [x] **U5** Kalshi sprint markets before Singapore (11 Oct); built in PR #36 behind `RACINGLINES_KALSHI_SPRINTS`, merged. Priced from the race's pole and win odds
-      until **U13**, a real sprint model, lands ([F1 model](#f1-model)).
+- [x] **U5** Kalshi sprint markets before Singapore (11 Oct); built in PR #36, merged; on by default since 2026-10-06 (`RACINGLINES_KALSHI_SPRINTS=0` turns it off). Priced from the race's pole and win odds
+      until **U13**, the sprint stage, lands (in progress, [F1 model](#f1-model)).
 - [ ] **U3** Kalshi maker profile K: swept (PRs #38, #41, merged; K = `gbm`, 2¢, 10-pt filter, 25 shares, $400 volume floor); **freezing it is the owner's call** before the United States GP (25 Oct).
 - [x] **U7** Cross-venue disagreement log (PR #35, behind `RACINGLINES_DISAGREE`); **U8** settlement rules for relocated or cancelled races (PR #27, behind `RACINGLINES_CANCELLED_RACE_RULES`). Both merged; the owner's two assumptions for U8 are still to confirm.
 - [x] Per-weekend reconciliation (`f1 reconcile`, PR #37) and the pricing scorecard (`f1 scorecard`, PR #28), both merged; run them after every weekend ([Paper trading](#paper-trading)).
@@ -192,12 +192,14 @@ For every F1 weekend, T1 or T3:
 | Go on **STG-1 to STG-11**; first STG-5 (off-VM data copy: VM service account write access to the bucket), STG-2 (tests in CI), STG-8 (migration gate). Also: fixtures in git or bucket (STG-7), staging on the same VM or its own, keyless GCP auth or key, Cloudflare Access or password (STG-1) | Now: HIGH | Yes; STG-5 first: today the VM's disk is the only copy |
 | Next engine plan task after T5 | Any time | T2 |
 | Turn on `RACINGLINES_OG_VENUE=1` on the VM (the OG.com column) | Before the soft launch | Yes: read-only, fair-price indicator only |
-| Kalshi bid/ask candles re-pull (backup first) | Before any Kalshi taker result counts | Yes |
+| Kalshi bid/ask candles re-pull (backup first) | Before any Kalshi taker result counts | Approved 2026-10-05: automate it on the VM |
 | Sign-off for new VM timers: Kalshi recorder (U2), tapes (U9), OG.com recorder, NASCAR forecast refresh | Before round 17 | Yes, one at a time, each with a backup |
 | Price-column migration and the audit scorecard (engine plan) | After round 16 | Owner's call; migration needs a backup and sign-off |
 | Replay race spread for NASCAR (2.0 places vs a measured ~7) | Before any NASCAR result is read as edge | Owner's call, with a decision-log entry |
 | Close draft #97 (superseded by #110) | Any time | Yes |
 | History purge for data off GitHub (force-push) | Last stage | Needs the owner's spoken OK in the same turn |
+| Open-Meteo's free API is non-commercial only ([Weather forecasts](weather.md)): paid plan, or MET Norway (free for commercial use, not built) | Before billing goes live (G3, 2027) | Stay on the free tier while there is no revenue; decide with the first paid tier |
+| Odds presentation names in the sportsbook schema: `decimal`, `american`, `fractional`, `cents` (Kalshi), `dollars` (Polymarket, OG.com), `prob` ([Sportsbook schema](sportsbook/index.md)) | After PR #69 merges | Owner checks the names; a rename is one line in `racinglines/books/schema.py` plus the docs table |
 | Fantasy soft launch decisions DEC-1 to DEC-23 ([Fantasy soft launch](fantasy-launch.md#decisions)) | Batch A Wed 30 Sep 18:00 PDT; B Mon 5 Oct; C Wed 7 Oct; go/no-go Thu 8 Oct 12:00 PDT | Per the [runbook's decision table](fantasy-runbook.md#decisions) |
 
 ## Exchanges
@@ -220,7 +222,7 @@ venue with live F1 race markets this year.
       *Done when:* a replay of 2026 round 15 through the engine on Kalshi matches `f1 demo-history
       --venue kalshi` for C to the cent, and A's Kalshi taker replay matches the sweep's trades
       (`scripts/signals_parity.py --venue kalshi`). No order is sent; `KALSHI_TRADING_ENABLED` stays unset.
-- [x] **U5 · P1 · Kalshi sprint markets** (PR #36, merged, behind `RACINGLINES_KALSHI_SPRINTS`). Map sprint winner and sprint pole (`KXF1*` sprint tickers,
+- [x] **U5 · P1 · Kalshi sprint markets** (PR #36, merged; on by default since 2026-10-06, `RACINGLINES_KALSHI_SPRINTS=0` turns it off). Map sprint winner and sprint pole (`KXF1*` sprint tickers,
       `unmodeled` today) to the sprint stages (after SQ, after Sprint). Check on the Dutch GP (round 12).
       *Done when:* Singapore's Kalshi sprint markets sync with a model price.
 - [x] **U7 · P1 · Cross-venue disagreement log** (PR #35, merged, behind `RACINGLINES_DISAGREE`; Polymarket and Kalshi only, OG.com not joined yet). For each F1 outcome linked on both venues (race and
@@ -228,7 +230,7 @@ venue with live F1 race markets this year.
       pass (a table or a view over `market_price_history`), with a report
       (`racinglines markets disagree --event …`) and a panel on the Markets page.
       *Done when:* the report lists the gaps above fees for the championship markets, day by day.
-- [ ] **OG.com follow-ups (new, from [Coverage](coverage.md#ogcom)):** (a) a VM recorder timer running `trades`, `history` and `books` at least weekly (S, the API forgets after about a month); (b) confirm the $0.02 fee in OG.com's fee schedule (S); (c) per-Grand-Prix `[[rules]]` in `exchanges/og.toml` once a live race market is seen (S); (d) join OG.com to the U7 log (S–M). (e) done: a `/markets/og` page and a generic per-schema-exchange route, plus `/markets/tapes` (PR #49; found by the 2026-09-29 spot-check, [Coverage](coverage.md#the-gaps-ranked)).
+- [ ] **OG.com follow-ups (new, from [Coverage](coverage.md#ogcom)):** (a) a VM recorder timer running `trades`, `history` and `books` at least weekly (S, the API forgets after about a month); (b) confirm the $0.02 fee in OG.com's fee schedule (S); (c) per-Grand-Prix `[[rules]]` in `exchanges/og.toml` once a live race market is seen (S); (d) join OG.com to the U7 log (S–M). (e) done: a `/markets/og` page and a generic per-schema-exchange route, plus `/markets/tapes` (PR #49; found by the 2026-09-29 spot-check, [Coverage](coverage.md#the-gaps-ranked)). (f) outcomes, built 2026-10-06 and not yet run on the VM, since the listing drops a settled instrument and 0 of 44 closed OG.com links had `resolved_yes` (2026-10-06): `markets --exchange og settle` reads the settlement feed (`get-expired-settlement-price`, probed from the Mac 2026-10-06), hourly in `record_venues.sh` ([Exchanges](exchanges.md#outcomes-the-settlement-feed)); the first passes backfill the 44 (at most 500 pages, about 12 days of feed, per pass; back up first).
 - [ ] **Coinbase F1 weekend patch (temporary):** a public GraphQL fallback for this weekend's F1 race markets and
       event page, shown behind a schema switch and a short-term TODO. Future work: formal market mapping, driver/team
       resolution, stable persisted-query tracking, and a proper auth/key path if Coinbase exposes one for deeper history.
@@ -245,9 +247,9 @@ venue with live F1 race markets this year.
 Phase [F1-8](f1-roadmap.md#f1-8-live-paper-trade-validation-polymarket), now on every venue that lists;
 how it works: [Paper trading](paper-trading.md). Recommendations and paper fills only; no order is placed.
 
-- [ ] **P0 · Freeze the profiles and pre-register the rules.** A and C (and K once U3 is done) are fixed
-      until 31 Dec, their settings and the date recorded in the [F1 roadmap](f1-roadmap.md#decision-log).
-      Any change makes a new profile with its own count. Rules:
+- [ ] **P0 · Pre-register the rules; profiles stay tunable (owner, 2026-10-05: no freezes).** A, C and K can
+      be re-tuned at any time. Each change is recorded with its date in the
+      [F1 roadmap](f1-roadmap.md#decision-log) and starts a new settings version with its own live count. Rules:
       [validation plan](paper-trading.md#validation-plan).
 - [ ] Run A (demo taker) and C (demo maker) live on every weekend Polymarket or Kalshi lists, through 2026
       and into 2027. Built and scheduled for Polymarket (the signal engine); Kalshi needs U1.
@@ -259,7 +261,7 @@ how it works: [Paper trading](paper-trading.md). Recommendations and paper fills
       [Kalshi history](kalshi-history.md). **Result (PRs #38, #41, corrected 2026-09-29):** K = `gbm`, 2¢ quotes, 10-point
       disagreement filter, 25 shares, $400 24-hour volume floor: **+$490 (2026), +$659 (2025)**, at 16,000 simulations
       +$453 / +$741, against profile C's −$119 / +$510. The first 2025 figure (+$855) missed Imola 2025, which only
-      Kalshi listed (−$195). Owner: freeze K?
+      Kalshi listed (−$195). Owner (2026-10-05): K's settings stay tunable; log each change in the decision log and keep its live record per settings version.
 - [x] **P1 · Per-weekend reconciliation** (PR #37, merged). `racinglines f1 reconcile --event 2026-NN --profile X --venue V`:
       live paper fills and markouts against the replay of the same weekend on the recorded tape (the
       conservative "through" fill rule), flagging a weekend outside the validation rules. Its output goes
@@ -270,6 +272,36 @@ how it works: [Paper trading](paper-trading.md). Recommendations and paper fills
 - [x] **P1 · `track_record(venue='all')` in the MCP server** (PR #30, merged; original problem: lists one row per weekend while its total sums
       every venue (the maker's weekends mix Polymarket and Kalshi rows). Return one row per weekend and
       venue, with a `venue` column and a total per venue.
+- [ ] **P1 · Closing-line value (CLV) in backtests and live** (owner, 2026-10-05). For every replayed and live
+      fill, record the venue's price when the market closes (lights out for race kinds, the session start for
+      pole), and report CLV = close minus entry, signed for our side, in points and in percent. Report it per
+      profile, venue, market kind and weekend, next to P&L in the sweep stats, `f1 reconcile` and
+      `f1 scorecard`. Polymarket tapes first. Kalshi uses the recorder's bid/ask books from 2026-09-30 on;
+      Kalshi history waits for the bid/ask re-pull, because its last-trade candles spike. Hand-placed
+      sportsbook bets get the same field in the project's bet ledger, using an exchange's close as a proxy
+      where the book publishes none.
+      *Done when:* the 2025 and 2026 replays of A, C and K report mean CLV, and the weekend report shows it.
+      **Paper bets done (C4):** `racinglines backtest clv` reports CLV for every stored paper bet, any sport and
+      venue ([CLI](cli.md#racinglines-backtest-clv)). Still open: the sweep stats, `f1 reconcile`, `f1 scorecard` and
+      the weekend report.
+      **G1 definition (owner, 2026-10-07):** the go-live gate reads CLV as the plain mean per bet against the fill
+      price, every decided bet counting once (the wider gate: more bets, even if the P&L reads less sharp). Storing
+      sweep trades one row per trade, so sweeps get CLV too, is a nice-to-have (core backlog C41).
+- [ ] **P1 · On-demand strategy previews** (owner, 2026-10-06). One command that prices the coming weekend
+      from a stored stage run and shows what each strategy (T1–T10, TB) would enter now, at a chosen bankroll
+      and caps (half- and quarter-Kelly). It writes two tables per strategy: the markets it would pick (side,
+      shares, cost) and every other modelled market with its skip reason, such as no edge, the volume
+      filter or a cap. It must be read-only, with no orders and no database writes, and it marks
+      apparent-value trades that fail a filter as watchlist only. **First version (PR #64):**
+      `scripts/strategy_preview.py`, with tests and `docs/strategy-preview.md`. It's standalone
+      and read-only, works for any event and source run at 4k or 16k, and was first run on Singapore
+      2026-10-05 at $1,000, $50 a market and $250 in total. Every trade there was blocked by zero recorded
+      24-hour Polymarket volume, so the preview should also show the venue's own 24-hour volume next to ours.
+      *Done when:* it's a `racinglines f1` subcommand documented in `docs/cli.md`, and it shows the venue's
+      volume.
+- [ ] **P2 · Stale line in `docs/coverage.md`** (owner, 2026-10-05). Its summary says Polymarket has listed no F1
+      race since 28 Aug 2026, but the Malaysia audit (round 16, 2026-10-04) linked 139 Polymarket tokens, titled
+      "Bahrain Grand Prix". Check which recent rounds Polymarket listed and correct the summary and the grid.
 - [ ] **P2 · Sizing review (~12 Nov),** after 4–6 live weekends on real markets (T3 weekends don't count):
       walk-forward re-run of A, A-lite, C, K, B (#06) and A′ (#08) with rounds 16–20 added, then a sizing
       rule from `bankroll` / `max_deployed` (owner's call, e.g. A-lite → A).
@@ -320,14 +352,48 @@ events are T3 unless a venue lists the event.
 
 Phased plan and ground rules: [F1 roadmap](f1-roadmap.md).
 
-- [ ] **U13 · P2 · Sprint-race pricing model.** For now (U5, PR #36) Kalshi's sprint winner and sprint pole
-      markets price from the race's win and pole probabilities as a stand-in; the owner approved that for
-      Singapore (2026-09-29). Simulate the sprint itself: sprint qualifying as its own stage, a shorter race
-      (about a third of the distance: less tyre and pit variance, fewer retirements), and write
-      `extra.sprint_pole_prob` / `extra.sprint_win_prob` on the stage runs, which the pricing already reads
-      first. Backtest on the 2025–26 sprint weekends against Kalshi's and Polymarket's sprint prices.
+- [ ] **P1 · Grid penalties (branch `work/grid-penalties`).** Confirmed penalties in `sports/f1/grid_penalties.toml`
+      move the race's or sprint's starting grid before it is simulated ([F1 model](f1.md#model-racinglinesmodelsposition_simmodelpy),
+      "Grid penalties"); first row: Russell to the back for Singapore (2026-17). Re-price Singapore once it ships.
+- [ ] **P2 · Weather-aware position-model variant `gridq+pretrain+reset-WX`** (owner, 2026-10-06: "later branch", not
+      the weather PR). The disruption mixture (more noise and retirements in disrupted races) weighted by the race's
+      forecast rain probability (`weather/wet.p_wet_series`, lead 5 days) instead of history alone; then the strategies on it
+      (`A-WX` against `A`) in their own sweep under the promotion rule. Until then a `-WX` strategy name would be
+      byte-for-byte its baseline: nothing weather-aware feeds win, podium, h2h, constructor or pole. Decided after the
+      5-day forecast backtest found the forecast beats the circuit history for rain, is neutral for red flags and adds
+      nothing for safety car or DNF ([Weather forecasts](weather.md), [decision log](f1-roadmap.md#decision-log)).
+- [ ] **U13 · P2 · Sprint-race pricing model. In progress (2026-10-06, branch `work/sprint-stage`).** Until U5
+      (PR #36) Kalshi's sprint winner and sprint pole markets priced from the race's win and pole probabilities
+      as a stand-in; the owner approved that for Singapore (2026-09-29).
+      **Landed:**
+      - **The sprint stage** ([F1 model](f1.md#model-racinglinesmodelsposition_simmodelpy), step 6). It is
+        schema-driven (`[sessions.sim]` in `sports/f1.toml`) and drawn on a side stream, so Grand Prix prices are
+        byte-identical. It prices from the GP finishing model with the sprint points and `dnf_scale` 0.5
+        (provisional, [decision log](f1-roadmap.md#decision-log)).
+      - **Grid:** SQ's laps ranked by best valid lap once SQ has run, else simulated. After the sprint, its
+        actual result. Per year (`grid_from_by_year`): the 2021 sprint takes its grid from `qual` (no SQ then).
+      - **Outputs:** `extra.sprint_win_prob` / `sprint_pole_prob` on every run of a sprint weekend; sprint arrays
+        in the sims and records.
+      - **Kinds:** `race_sprint_podium` / `_top8` / `_h2h` / `_constructor_top` (`default=False`; out of every
+        book per DEC-12), settled from `race_outcomes`' sprint columns.
+      - **Polymarket:** `<GP>: Sprint Winner` and `<GP>: Sprint Qualifying Pole Winner` link as
+        `race_sprint_win` / `race_sprint_pole`.
+      - **Walk-forward:** `racinglines f1 sprint-check`, run on the owner's Mac (2026-10-06): the stage beats the
+        GP-win stand-in once the SQ order is known ([decision log](f1-roadmap.md#decision-log)).
+      **Open:**
+      - **Sprint backfill on the VM:** `f1 fetch --sprints-from 2023` for the 12 missing 2023–25 weekends
+        (a database write: backup first, data-changes entry). Then refit `dnf_scale` and decide whether a
+        sprint-specific grid weight or noise earns a setting.
+      - **SQ order:** segment-aware SQ1/SQ2/SQ3 ordering (best lap per segment, not over the whole session)
+        and a TeamId fill for SQ rows (FastF1 leaves both empty). Also SQ positions in `ingest.py`, if FastF1
+        ever gives them.
+      - **Settlement timing:** `race_sprint_pole` settles from the sprint's starting grid (`extra.grid`, after
+        penalties), so not before the sprint has run.
+      - **Live stage runs** before SQ only see the sprint when the caller passes `stages=` (the weekend's rows
+        don't exist yet): wire it from the schedule in `signals` / `weekend_sweep` if sprint kinds go live.
+      - **Replay** against the Kalshi and Polymarket sprint tapes.
       *Done when:* sprint markets price from the sprint simulation and beat the race-odds stand-in on the
-      backtest.
+      walk-forward and the tape replay.
 - [ ] **U10 · P3 · F1 pre-season testing:** ingest FastF1's testing sessions as a stage before round 1 for
       the forecast and the season strategy, so the pre-season forecast sees what the market sees.
       *Done when:* a 2026 re-run with testing moves the pre-season constructors' odds toward the market's
@@ -343,7 +409,8 @@ Phased plan and ground rules: [F1 roadmap](f1-roadmap.md).
       in the sync classifiers (they're `unmodeled` today) and backtest against their prices.
 - [ ] Fastest lap from the simulation (`fastlap` variant, off, 2026-10-04): price stage runs with it, score
       `extra.fl_prob` against Kalshi's resolved `race_fastest_lap` links on the VM, then the owner decides
-      whether a profile takes it ([decision log](f1-roadmap.md#decision-log)).
+      whether a profile takes it ([decision log](f1-roadmap.md#decision-log)). Score `flpos` (2026-10-07: the fastest
+      lap from the simulated finishing order and pace) the same way, beside it.
 
 ## New sports
 

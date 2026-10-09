@@ -296,8 +296,9 @@ FROM market_links WHERE created_at >= '2026-10-01' GROUP BY 1, 2 ORDER BY 1, 2;
 SQL
 ```
 
-Only if DEC-12 = yes and Kalshi lists R17 sprint markets. Turning on sprint classification retags links on the
-next Kalshi sync, so the backup comes first (`CLAUDE.md`).
+Sprint classification is on by default since 2026-10-06 (owner), so the env line below is no longer needed: the
+first Kalshi sync after that deploy retags the sprint links. Take the `kalshi-sprints` backup before that merge
+instead. To turn sprints off, set `RACINGLINES_KALSHI_SPRINTS=0` the same way.
 
 ```sh
 # VM (production) — OWNER-9 step 2, Wed 7 Oct: sprint markets on (DEC-12)

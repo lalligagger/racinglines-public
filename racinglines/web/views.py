@@ -74,6 +74,48 @@ def _sport_options(rows, sport=""):
     return sorted((code for code in seen if code), key=lambda code: (order.get(code, 99), str(code)))
 
 
+def _live_venues():
+    """The venue codes whose rows the pages show: every live venue in the registry (Kalshi with its switch on, each
+    schema exchange with its own switch, the private book)."""
+    return [v.code for v in V.VENUES if v.status == "live"]
+
+
+def _other_exchanges():
+    """Every exchange code but Polymarket (whether its switch is on or not): rows on these are another venue's record,
+    kept out of the Polymarket view."""
+    from racinglines import exchanges as EX
+    return sorted({"kalshi", *EX.CODES} - {"polymarket"})
+
+
+def book_total(events, maker=True):
+    """The private book's P&L across events, as [(time, P&L)]: each event's own running P&L, carried forward to every
+    poll time of any event, then summed. Sorting the events' curves together would interleave their separate running
+    totals (a sawtooth, and a false drawdown at each event's start)."""
+    from racinglines.pipelines import live as LV
+    series = []
+    for ev in events:
+        pts = LV.book_curve(ev, maker)
+        if pts:
+            s = pd.Series([v for _, v in pts], index=pd.DatetimeIndex([t for t, _ in pts]))
+            series.append(s[~s.index.duplicated(keep="last")].sort_index())
+    if not series:
+        return []
+    idx = sorted(set().union(*[set(s.index) for s in series]))
+    total = sum(s.reindex(idx, method="ffill").fillna(0.0) for s in series)     # before an event's first poll: 0
+    return list(zip(idx, total.tolist()))
+
+
+def _venue_names():
+    """Display name by venue code, from the registry."""
+    return {v.code: v.name for v in V.VENUES}
+
+
+def _venue_order(codes):
+    """The given venue codes in the registry's order (Polymarket first), unknown codes after, the private book last."""
+    order = {v.code: i for i, v in enumerate(V.VENUES) if v.code != "private"}
+    return sorted(codes, key=lambda c: (c == "private", order.get(c, len(order)), c))
+
+
 def _sport_names():
     """Display names by competition code (V.SPORT_NAME) and by sport code (what the record and positions carry)."""
     by_sport = {s["sport"]["code"]: s["competition"].get("display_name", s["sport"]["name"])
@@ -89,10 +131,10 @@ def _sport_names():
 def board_page(request: Request, msg: str = "", c=Depends(conn)):
     """Markets. Makers and admins: every sport's board (fair prices vs the venues), each in a collapsible
     section with its own exchange breakdown, and a calendar of every event across every sport, filterable by
-    sport and exchange. Takers: every open Polymarket market with their strategy's calls (app.bet_markets)."""
+    sport and exchange. Takers: every open Polymarket market with their strategy's calls (book_routes.bet_markets)."""
     user = request.state.user
     if R.is_basic(user):
-        from racinglines.web.app import bet_markets
+        from racinglines.web.book_routes import bet_markets
         return bet_markets(request, msg=msg, c=c)
     from racinglines.markets import disagree as D
     calendar = V.calendar_rows(c)
@@ -102,11 +144,36 @@ def board_page(request: Request, msg: str = "", c=Depends(conn)):
                        date=None if r["date"] is None or pd.isna(r["date"]) else pd.Timestamp(r["date"]).isoformat())
                  for r in calendar]
     from racinglines.web import sport_status as SS                  # RACINGLINES_SPORT_STATUS=1: every sport's status
-    return render(request, "board.html", sports=B.board(c, _maker(user)), h=B.headline(c, _maker(user)), kalshi=V.KALSHI_VENUE,
+    return render(request, "board.html", sports=B.board(c, _maker(user), detail=False), h=B.headline(c, _maker(user)), kalshi=V.KALSHI_VENUE,
                   disagree=D.panel(c) if D.ON["on"] else None,
                   sport_status=SS.status(c) if SS.enabled() else None, show_paper=True,
                   recorders=B.recorder_status(c, [v.code for v in V.EXCHANGES if v.code != "kalshi" or V.KALSHI_VENUE]),
                   calendar=calendar, cal_sports=cal_sports, cal_exchanges=cal_exchanges, cal_events=cal_events)
+
+
+@app.get("/markets/sport/{code}", response_class=HTMLResponse, dependencies=[allow(*ANY)])
+def board_sport(request: Request, code: str, c=Depends(conn)):
+    """One sport's body on the Markets board (race cards, season markets, exchange data), loaded when its collapsed
+    section is opened, so the page itself only reads each sport's header."""
+    user = request.state.user
+    if R.is_basic(user):
+        raise HTTPException(403)
+    got = B.board(c, _maker(user), only=code)
+    if not got:
+        raise HTTPException(404, "no such sport on the board")
+    return render(request, "_board_sport.html", s=got[0], kalshi=V.KALSHI_VENUE)
+
+
+@app.get("/markets/sport/{code}/recent", response_class=HTMLResponse, dependencies=[allow(*ANY)])
+def board_recent(request: Request, code: str, c=Depends(conn)):
+    """A sport's recent results on the Markets board (the winner, our pre-race price, the venues'), loaded when the
+    section is opened: each one re-reads a past race's whole market, the slowest part of the board."""
+    if R.is_basic(request.state.user):
+        raise HTTPException(403)
+    comp = c.execute(text("SELECT id FROM competitions WHERE code = :c"), dict(c=code)).scalar()
+    if comp is None:
+        raise HTTPException(404, "no such sport")
+    return render(request, "_board_recent.html", recent=B.recent_results(c, int(comp)), kalshi=V.KALSHI_VENUE)
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +208,23 @@ def _race_chart(c, info, pricing, df, exchange="polymarket"):
     return out
 
 
+def _diagnostic_job(competition):
+    """The Lab's event-diagnostic job for a competition's sport (e.g. f1_diagnostic), None when it has none."""
+    try:
+        sport = SP.by_competition(competition)["sport"]["code"]
+    except StopIteration:
+        return None
+    return next((j.code for j in jobs.CATALOG.values() if j.sport == sport and j.code.endswith("_diagnostic")), None)
+
+
+def _calibration(competition):
+    """The sport schema's [sport] calibration for a competition code (e.g. "baseline"), None when unset or unknown."""
+    try:
+        return SP.by_competition(competition)["sport"].get("calibration")
+    except StopIteration:
+        return None
+
+
 @app.get("/races/{race_id}", response_class=HTMLResponse)
 def race_page(request: Request, race_id: int, msg: str = "", c=Depends(conn)):
     user = request.state.user
@@ -173,7 +257,8 @@ def race_page(request: Request, race_id: int, msg: str = "", c=Depends(conn)):
                   charts=charts, countdown=B._countdown(info["start_date"]),
                   kalshi=V.KALSHI_VENUE,
                   diag_runs=diag_runs, msg=msg, kind_label=V.KIND_LABEL, placeholders=V.placeholders(c, race_id),
-                  quote_kinds=list(V.STANDARD_KINDS.get(info["competition"], ("race_win", "race_podium"))))
+                  quote_kinds=list(V.STANDARD_KINDS.get(info["competition"], ("race_win", "race_podium"))),
+                  calibration=_calibration(info["competition"]), diag_job=_diagnostic_job(info["competition"]))
 
 
 @app.get("/seasons/{code}", response_class=HTMLResponse, dependencies=[allow(*PRO)])
@@ -188,7 +273,7 @@ def season_page(request: Request, code: str, c=Depends(conn)):
                   season=True, strategy=latest_season_strategy(c, code), venue_sum=V.venue_summary(df), mine=B._mine(df), exchanges=V.EXCHANGES,
                   kalshi=V.KALSHI_VENUE, charts=[],
                   has_pm=bool(len(df) and df["pm_mid"].notna().any()), countdown="", diag_runs=[],
-                  msg="", kind_label=V.KIND_LABEL, quote_kinds=[])
+                  msg="", kind_label=V.KIND_LABEL, quote_kinds=[], calibration=_calibration(code))
 
 
 # ---------------------------------------------------------------------------
@@ -218,8 +303,7 @@ def book_page(request: Request, maker: str = "", c=Depends(conn), user=allow(*PR
                     JOIN competitions co ON co.id = mr.competition_id WHERE mr.id = ANY(:r)""", r=runs).to_dict("records")}
         for rk, g in bk.groupby("race_key", sort=False):
             mt = meta.get(rk, {})
-            title = "Season-long markets" if rk == 0 else (
-                f"{mt.get('venue')} GP" if mt.get("competition") == "f1_wdc" else mt.get("venue"))
+            title = "Season-long markets" if rk == 0 else V.race_title(mt.get("competition"), None, mt.get("venue"), None)
             code = None
             if rk == 0:
                 ids = [int(x) for x in g["model_run_id"].dropna()]
@@ -354,8 +438,14 @@ def _edge_ctx(c, user):
     from racinglines.web import edge
     cs = edge.combos(c, user)
     year = edge.year(c, user)
-    ef = edge.build(c, cs, year)
+    sport, venue = edge.scope(c, user)
+    sports, venues = edge.scopes(c, year)
+    ef = edge.build(c, cs, year, sport, venue)
     return dict(ef=ef, combos=[list(x) for x in cs], year=year, years=edge.YEARS, candidates=edge.candidates(c),
+                sport=sport, venue=venue, sports=sports, venues=venues, sport_names=_sport_names(),
+                venue_names=_venue_names(),
+                demo_pools=edge.demo_pools(c) if sport == "f1" and venue in ("", "polymarket") else [],
+                sweep_job=f"{sport}_sweep" if f"{sport}_sweep" in jobs.CATALOG else "",
                 models=[(cf["ref"], cf["label"]) for cf in ef["configs"]] or [("baseline", "baseline")],
                 strategies=[(k, edge.label(k)) for k in edge.STRATEGY_KEYS])
 
@@ -368,7 +458,7 @@ def _model_brier(c):
 
 @app.get("/lab", response_class=HTMLResponse)
 def lab_page(request: Request, job: str = "", event: str = "", variant: str = "", candidate: int = 0, cfg: str = "",
-             msg: str = "", user=allow(*PRO), c=Depends(conn)):
+             sport: str = "", venue: str = "", msg: str = "", user=allow(*PRO), c=Depends(conn)):
     """The Edge Finder leads (saved runs only, nothing is simulated on a visit); the other sections
     load on demand (/lab/section/{key}). Edge Finder combos and job knobs come from the user's prefs
     (database); which sections are open is a browser view setting."""
@@ -376,14 +466,15 @@ def lab_page(request: Request, job: str = "", event: str = "", variant: str = ""
 
     active = any(j["status"] in ("queued", "running") for j in _recent_jobs(c, user["id"]))
     open_now = (["run"] if job or event or variant or candidate or cfg else []) + (["jobs"] if active or msg else [])
-    q = {k: v for k, v in dict(job=job, event=event, variant=variant, candidate=candidate or "", cfg=cfg).items() if v}
+    q = {k: v for k, v in dict(job=job, event=event, variant=variant, candidate=candidate or "", cfg=cfg, sport=sport,
+                               venue=venue).items() if v}
     return render(request, "lab.html", sections=LAB_SECTIONS, open_now=open_now, query="?" + urlencode(q) if q else "",
                   active=active, msg=msg, brier=_model_brier(c), **_edge_ctx(c, user))
 
 
 @app.get("/lab/section/{key}", response_class=HTMLResponse)
 def lab_section(request: Request, key: str, job: str = "", event: str = "", variant: str = "", scope: str = "",
-                candidate: int = 0, cfg: str = "", user=allow(*PRO), c=Depends(conn)):
+                candidate: int = 0, cfg: str = "", sport: str = "", venue: str = "", user=allow(*PRO), c=Depends(conn)):
     from racinglines.web import edge
     from racinglines.web import prefs as P
     if key not in dict(LAB_SECTIONS):
@@ -410,14 +501,49 @@ def lab_section(request: Request, key: str, job: str = "", event: str = "", vari
             start, source = cf["settings"].to_json(), f"run #{cf['run_id']}"
         elif variant:
             start, source = {"variant": variant}, variant
-        ctx.update(sports=[(code, V.SPORT_NAME[code], [j for j in jobs.CATALOG.values() if j.sport == sport])
-                           for code, sport in (("f1_wdc", "f1"), ("uci_dhi_wc", "mtb_dh"))],
-                   sel_job=job or ("f1_sweep" if variant or candidate or cfg else ""), events=evs, sel_event=sel_event,
+        sel_job = job if job in jobs.CATALOG else ("f1_sweep" if variant or candidate or cfg else "")
+        # a launcher link (?job=…&sport=…&venue=…) presets the chosen job's sport and exchange knobs
+        preset = {k: v for k, v in dict(sport=sport, venue=venue).items()
+                  if v and any(kn.name == k and v in kn.choices for kn in jobs.CATALOG[sel_job].knobs)} if sel_job else {}
+        if preset:
+            knobs[sel_job] = dict(knobs.get(sel_job, {}), **preset)
+        if sel_job == "f1_sweep" and venue in SS.VENUES:
+            start, source = dict(start, venue=venue), source or venue
+        sweep_forms = {}
+        from racinglines.pipelines import season_sweep as SW
+        for code in jobs.modeled_sports():
+            code_job = f"{code}_sweep"
+            if code_job not in jobs.CATALOG:
+                continue
+            settings_cls = SW.settings_class(code)
+            last = knobs.get(code_job, {})
+            sport_start = dict(last.get("settings") or {})
+            if sel_job == code_job:
+                if cfg:
+                    saved = edge.configs(c, edge.year(c, user), code, venue or None)
+                    chosen = saved.get(edge.ref_key(cfg)) or next((x for x in saved.values() if x["ref"] == cfg), None)
+                    if chosen:
+                        sport_start = chosen["settings"].to_json()
+                if venue:
+                    sport_start["venue"] = venue
+            sweep_forms[code_job] = dict(
+                groups=[(g, dict(SS.GROUPS).get(g, g.replace("_", " ").title()),
+                         [x for x in settings_cls.SPEC if x.group == g])
+                        for g in dict.fromkeys(x.group for x in settings_cls.SPEC)],
+                defaults=settings_cls.from_dict().to_json(),
+                start=settings_cls.from_dict(sport_start, strict=False).to_json(),
+                year=last.get("year", "2026"))
+        ctx.update(sports=[(code, name, jts) for code, name, jts in
+                           [(jobs.ANY_SPORT, "Any sport", [j for j in jobs.CATALOG.values() if j.sport == jobs.ANY_SPORT])]
+                           + [(code, jobs.sport_name(code), [j for j in jobs.CATALOG.values() if j.sport == code])
+                              for code in jobs.modeled_sports()] if jts],
+                   launch=jobs.launcher(), venue_name=jobs.venue_name,
+                   sel_job=sel_job, events=evs, sel_event=sel_event,
                    sel_cutoff=sel["default_cutoff"] if sel else "", knobs=knobs, candidates=cands,
                    sweep_start=SS.Settings.from_dict(start, strict=False).to_json(), sweep_source=source,
                    sweep_groups=[(g, lab, [x for x in SS.SETTINGS if x.group == g]) for g, lab in SS.GROUPS],
                    sweep_defaults=SS.Settings.from_dict().to_json(), model_choices=jobs.MODEL_CHOICES,
-                   sel_candidate=candidate)
+                   sel_candidate=candidate, sweep_forms=sweep_forms)
     elif key == "jobs":
         scope = scope if scope in ("mine", "all") else "mine"
         js = _recent_jobs(c, user["id"] if scope == "mine" else None)
@@ -447,6 +573,18 @@ async def lab_edge(request: Request, user=allow(*PRO), c=Depends(conn)):
         if y not in edge.YEARS:
             raise HTTPException(400, "unknown season")
         P.put(c, user, "edge_year", y)
+        return render(request, "lab_edge.html", **_edge_ctx(c, user))
+    if form.get("action") == "scope":                  # the sport (one at a time) / venue ("" for all) filter
+        from racinglines.web import prefs as P
+        sport, venue = edge.scope(c, user)
+        if "sport" in form:
+            sport = form.get("sport") or "f1"
+        if "venue" in form:
+            venue = form.get("venue") or None
+        sports, venues = edge.scopes(c, edge.year(c, user))
+        if (sport != "f1" and sport not in sports) or (venue and venue not in venues):
+            raise HTTPException(400, "no sweep for that sport or venue")
+        P.put(c, user, "edge_scope", dict(sport=sport, venue=venue))
         return render(request, "lab_edge.html", **_edge_ctx(c, user))
     try:
         cs = edge.apply(edge.combos(c, user), form.get("action", ""), form.get("variant", ""),
@@ -546,27 +684,35 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     profile = PF.of_user(c, user["id"])
     maker = bool(profile and profile.get("strategy") not in WS.TAKER_MODES)
     sp = SPP.enabled()                                  # RACINGLINES_SPORT_PAPER=1: NASCAR / MotoGP demo rows too
-    if venue == "kalshi" and not (V.KALSHI_VENUE or sp):       # the Kalshi filter exists only with a switch on
+    live = _live_venues()                               # the venue registry decides which venues' rows show
+    if venue and venue not in live and not sp:
         venue = ""
+    # the account's signals are read once and grouped (per weekend, per market), not looked up again for each
+    # position: the signals table has no (user, market) index, so a lookup per position scanned them all
     pos = rows(data.q(c, """
+        WITH s AS (SELECT event_key, market_key, action, strategy, detail FROM strategy_signals WHERE user_id = :u),
+             bf AS (SELECT event_key, bool_or(detail->>'backfill' = 'true') AS backfill FROM s GROUP BY 1),
+             tr AS (SELECT market_key,
+                           count(*) FILTER (WHERE action = 'fill' OR (action IN ('buy', 'sell')
+                                            AND coalesce(detail->>'followed', 'true') = 'true')) AS trades,
+                           bool_or(strategy = 'buy_all' OR detail->>'mode' = 'buy_all') AS buy_all
+                    FROM s GROUP BY 1)
         SELECT p.*, coalesce(ra.format->>'event_name', e.name) AS event_name, e.start_date,
-               coalesce(sp.code, 'private') AS sport,
-               (SELECT bool_or(detail->>'backfill' = 'true') FROM strategy_signals s
-                 WHERE s.user_id = p.user_id AND s.event_key = p.event_key) AS backfill,
-               (SELECT count(*) FROM strategy_signals s WHERE s.user_id = p.user_id AND s.market_key = p.market_key
-                  AND (s.action = 'fill' OR (s.action IN ('buy', 'sell') AND coalesce(s.detail->>'followed', 'true') = 'true'))) AS trades
+               coalesce(sp.code, 'private') AS sport, bf.backfill, coalesce(tr.trades, 0) AS trades
         FROM paper_positions p
+        LEFT JOIN bf ON bf.event_key = p.event_key
+        LEFT JOIN tr ON tr.market_key = p.market_key
         LEFT JOIN events e ON e.source_key = p.event_key
         LEFT JOIN seasons se ON se.id = e.season_id
         LEFT JOIN competitions co ON co.id = se.competition_id
         LEFT JOIN sports sp ON sp.id = co.sport_id
-        LEFT JOIN races ra ON ra.event_id = e.id WHERE p.user_id = :u
-          AND NOT EXISTS (SELECT 1 FROM strategy_signals s WHERE s.user_id = p.user_id AND s.market_key = p.market_key
-                          AND (s.strategy = 'buy_all' OR s.detail->>'mode' = 'buy_all'))    -- the debug mode: never shown
-          AND (p.venue NOT LIKE 'kalshi%' OR :k"""
+        LEFT JOIN LATERAL (SELECT format FROM races WHERE event_id = e.id ORDER BY id LIMIT 1) ra ON true
+        WHERE p.user_id = :u
+          AND NOT coalesce(tr.buy_all, false)                       -- the debug mode: never shown
+          AND (p.venue = ANY(:live)"""
         + (" OR p.event_key IN (" + SPP.SPORT_KEYS + ")" if sp else "") + """)
         ORDER BY """ + ("e.start_date DESC NULLS LAST, " if sp else "") + """p.event_key DESC, p.kind, p.subject""",
-        u=user["id"], k=V.KALSHI_VENUE))
+        u=user["id"], live=live))
     if sport:
         sport = sport.lower()
         pos = [p for p in pos if (p.get("sport") or "").lower() == sport]
@@ -647,37 +793,38 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
                                      AND (action = 'fill' OR (action IN ('buy', 'sell')
                                           AND coalesce(detail->>'followed', 'true') = 'true'))
                                    ORDER BY signal_ts, id""", u=user["id"], e=event))
-        # the maker's Kalshi replay flags its signals detail.venue = 'kalshi': shown with the switch, one venue at a time
+        # a replay on another exchange flags its signals detail.venue (e.g. 'kalshi'): live venues only, one at a time
         tv = lambda t: (t["detail"] or {}).get("venue") or "polymarket"  # noqa: E731
-        ok_k = V.KALSHI_VENUE or (sp and event in demo_keys)
-        trades = [t for t in trades if (ok_k or not tv(t).startswith("kalshi"))
-                  and (not ok_k or not venue or tv(t) == venue or venue == "private")]
+        trades = [t for t in trades if (tv(t) in live or (sp and event in demo_keys))
+                  and (not venue or venue == "private" or tv(t) == venue)]
         if basic:
             trades = [R.basic_signal(t, profile) for t in trades]
     my_bets = house.taker_bets(c, user["id"]) if R.is_basic(user) else pd.DataFrame()
     summary = dict(bets=len(my_bets), staked=float(my_bets["stake"].sum()), open=int((my_bets["status"] == "open").sum()),
                    pnl=float(my_bets["pnl"].sum())) if len(my_bets) else None
     from racinglines.pipelines import story
-    from racinglines.web.app import polymarket_calls
+    from racinglines.web.book_routes import polymarket_calls
     # the two venues are never plotted together: the Polymarket history (the strategy's record) and the
     # private book's P&L through its day(s), from the live snapshots; the page switches between them
-    acct = story.account(c, user["id"], profile, maker, markers=False, sport=sport or None, sports=sp) \
+    acct = story.account(c, user["id"], profile, maker, markers=False, sport=sport or None, sports=False) \
         if profile else None
     if acct and basic:
         acct = _basic_acct(acct)
     book = None
     if priv_events:
         from racinglines.web.viz import line_chart
-        curve = sorted(pt for ev in priv_events for pt in LV.book_curve(ev, maker))
+        curve = book_total(priv_events, maker)
         cum = [v for _, v in curve]
         book = dict(chart=line_chart({"pnl": curve}, {"pnl": "private book P&L, marked to fair"}), polls=len(curve),
                     max_dd=min((v - max(cum[:i + 1]) for i, v in enumerate(cum)), default=0.0))
     plot = "private" if venue == "private" or (book and not acct) else "polymarket"
-    kacct = None
-    if V.KALSHI_VENUE and "kalshi" in venues and maker:          # the maker's record on Kalshi's tape
-        kacct = story.account(c, user["id"], profile, maker, markers=False, venue="kalshi")
-        if venue == "kalshi":
-            plot = "kalshi"
+    vaccts = {}                                         # the record on every other exchange the account has rows on
+    for code in _venue_order(venues):
+        if code not in ("polymarket", "private") and profile:
+            a = story.account(c, user["id"], profile, maker, markers=False, venue=code, sport=sport or None)
+            vaccts[code] = _basic_acct(a) if a and basic else a
+    if venue in vaccts:
+        plot = venue
     coming = polymarket_calls(c, profile, n_races=2) if profile else None
     kcoming = polymarket_calls(c, profile, n_races=2, exchange="kalshi") if profile and V.KALSHI_VENUE else None
     sport_options = _sport_options(pos, sport)
@@ -689,8 +836,87 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
                   sport_options=sport_options, sport_names=_sport_names(), link=link, book=book, plot=plot,
                   vtotal=sum(v["pnl"] for v in venues.values()), open_pos=open_,
                   cur=next((w for w in weekends if w["event_key"] == event), None),
-                  kalshi=V.KALSHI_VENUE or bool(sp and demo_keys), kacct=kacct, kcoming=kcoming,
-                  sport_paper=bool(sp and demo_keys))
+                  vaccts=vaccts, venue_order=_venue_order(venues), venue_names=_venue_names(), kcoming=kcoming,
+                  sport_paper=bool(sp and demo_keys), show_backtests=bool(profile and not basic))
+
+
+@app.get("/positions/backtests", response_class=HTMLResponse, dependencies=[allow(*PRO)])
+def positions_backtests(request: Request, year: int | None = None, sport: str = "f1", venue: str = "polymarket",
+                        config: str = "", strategy: str = "", c=Depends(conn)):
+    """A selectable, saved full-season Edge Finder P&L curve, kept separate from an account's paper record."""
+    from racinglines.pipelines import profiles as PF
+    from racinglines.pipelines import sweep_settings as SS
+    from racinglines.web import edge as E
+    from racinglines.web.viz import line_chart
+
+    if year is not None and year not in E.YEARS:
+        raise HTTPException(400, f"year must be one of {', '.join(map(str, E.YEARS))}")
+    if strategy and strategy not in E.STRATEGY_LABEL:
+        raise HTTPException(400, "unknown saved-sweep strategy")
+
+    t1 = PF.TAKER_PROFILES["T1"]
+    t1_key = SS.Settings.from_dict(t1["settings"]).key
+    available_years = [y for y in E.YEARS if E.scopes(c, y)[0]]
+    if year is None:
+        for y in available_years:
+            if t1_key in E.configs(c, y, "f1", "polymarket"):
+                year = y
+                break
+        year = year or (available_years[0] if available_years else E.YEARS[0])
+
+    sports, _ = E.scopes(c, year)
+    sport = sport if sport in sports else (sports[0] if sports else "f1")
+    _, venues = E.scopes(c, year)
+    venues = [v for v in venues if E.configs(c, year, sport, v)]
+    venue = venue if venue in venues else (venues[0] if venues else "polymarket")
+    cfgs = E.configs(c, year, sport, venue)
+
+    selection_note = ""
+    if config and config not in cfgs:
+        selection_note = "That saved configuration is no longer available for this season, sport, and venue."
+    preferred = t1_key if sport == "f1" and venue == "polymarket" and t1_key in cfgs else None
+    key = config if config in cfgs else preferred or (SS.Settings.from_dict().key if SS.Settings.from_dict().key in cfgs
+                                                       else next(iter(cfgs), ""))
+    cfg = cfgs.get(key)
+    strategy = strategy or ("update" if key == t1_key else "maker")
+    curve = None
+    total = None
+    traded = 0
+    run_id = None
+    missing_dates = []
+    if cfg:
+        run = c.execute(text("SELECT metrics FROM model_runs WHERE id = :id"), dict(id=cfg["run_id"])).scalar_one()
+        run_id = cfg["run_id"]
+        weekends = (run or {}).get("weekends") or []
+        traded_rows = [w for w in weekends if w.get(f"{strategy}_pnl") is not None]
+        traded = len(traded_rows)
+        if traded_rows:
+            event_keys = [w["event_key"] for w in traded_rows]
+            comp = SP.load(sport)["competition"]["code"]
+            dates = dict(c.execute(text("""SELECT e.source_key, e.start_date
+                                        FROM events e JOIN seasons se ON se.id = e.season_id
+                                        JOIN competitions co ON co.id = se.competition_id
+                                        WHERE co.code = :comp AND se.year = :year
+                                          AND e.source_key = ANY(:keys)"""),
+                                   dict(comp=comp, year=year, keys=event_keys)).all())
+            missing_dates = [w["event_key"] for w in traded_rows if w["event_key"] not in dates]
+            if not missing_dates:
+                points, total = E.cumulative_curve(weekends, strategy, dates)
+                curve = line_chart({"saved": points}, {"saved": "saved backtest, cumulative P&L"})
+                run_id = cfg["run_id"]
+    if sport == "f1" and venue == "polymarket" and t1_key not in cfgs:
+        selection_note = (selection_note + " " if selection_note else "") + \
+            "T1/A has an aggregate candidate score, but no complete-season saved sweep is available for this selection."
+    cfg_options = sorted(cfgs.values(), key=lambda x: (x["key"] != t1_key, x["label"]))
+    strategy_name = E.label(strategy) if strategy in E.STRATEGY_LABEL else strategy
+    cfg_name = t1["name"] if cfg and key == t1_key else (cfg["label"] if cfg else "")
+    sweep_job = f"{sport}_sweep" if f"{sport}_sweep" in jobs.CATALOG else ""
+    return render(request, "positions_backtests.html", years=available_years, year=year, sports=sports, sport=sport,
+                  venues=venues, venue=venue, configs=cfg_options, config=key, strategy=strategy,
+                  strategies=E.STRATEGY_KEYS, strategy_labels=E.STRATEGY_LABEL, backtest_chart=curve, total=total,
+                  traded=traded, run_id=run_id, config_name=cfg_name, strategy_name=strategy_name,
+                  missing_dates=missing_dates, selection_note=selection_note, t1_key=t1_key, sweep_job=sweep_job,
+                  sport_names=_sport_names(), venue_names=_venue_names())
 
 
 # ---------------------------------------------------------------------------
@@ -707,6 +933,7 @@ def signals_page(request: Request, user: str = "", event: str = "", venue: str =
 
     from racinglines.markets.alerts import signal_line
     from racinglines.pipelines import profiles as PF
+    from racinglines.pipelines import weekend_sweep as WS
     from racinglines.pipelines.signals import HEAT_LABEL
     me = request.state.user
     uid = me["id"]
@@ -716,10 +943,17 @@ def signals_page(request: Request, user: str = "", event: str = "", venue: str =
     profile = PF.of_user(c, uid)
     show_fair = not R.is_basic(me)
     basic = not show_fair                            # basic: never which strategy made a pick (roles.basic_*)
+    # what the running strategy is, from its profile's `why` (pro and admin only: it names the strategy)
+    profile_why = next((pr.get("why") for pr in {**PF.PROFILES, **PF.HISTORY_PROFILES}.values()
+                        if profile and pr.get("name") == profile.get("name")), None) if show_fair else None
     from racinglines.pipelines import story
-    is_maker = bool(profile and not profile.get("strategy", "update").startswith(("update", "hold", "last", "early")))
-    # venue=kalshi (with RACINGLINES_KALSHI_VENUE=1): the maker's same profiles replayed on Kalshi's tape
-    venue = "kalshi" if venue == "kalshi" and V.KALSHI_VENUE and is_maker else ""
+    is_maker = bool(profile and profile.get("strategy", "update") not in WS.TAKER_MODES)
+    # venue=<exchange> (a live venue in the registry other than Polymarket, e.g. kalshi or og): the same profile's
+    # record on that exchange's tape, where the account has rows there
+    other = [v for v in _live_venues() if v not in ("polymarket", "private")]
+    has = set(c.execute(T("SELECT DISTINCT venue FROM paper_positions WHERE user_id = :u"), dict(u=uid)).scalars())
+    venue_tabs = [v for v in other if v in has]
+    venue = venue if venue in venue_tabs else ""
     sp = SPP.enabled() and not venue                # RACINGLINES_SPORT_PAPER=1: the NASCAR / MotoGP demo rows join the record
     acct = story.account(c, uid, profile, is_maker, venue=venue or "polymarket", sport=sport or None, sports=sp,
                          **({"markers": False} if basic else {}))
@@ -735,12 +969,12 @@ def signals_page(request: Request, user: str = "", event: str = "", venue: str =
                            ORDER BY kind, subject""", u=uid, e=ev, v=venue) if ev else pd.DataFrame()
     else:
         sig = data.q(c, """SELECT * FROM strategy_signals WHERE user_id = :u AND event_key = :e
-                           AND (coalesce(detail->>'venue', 'polymarket') NOT LIKE 'kalshi%'""" + (
+                           AND (NOT coalesce(detail->>'venue', 'polymarket') = ANY(:x)""" + (
                            " OR event_key IN (" + SPP.SPORT_KEYS + ")" if sp else "") + """)
-                           ORDER BY signal_ts DESC NULLS LAST, id DESC""", u=uid, e=ev) if ev else pd.DataFrame()
-        pos = data.q(c, """SELECT * FROM paper_positions WHERE user_id = :u AND event_key = :e AND (venue NOT LIKE 'kalshi%'""" + (
+                           ORDER BY signal_ts DESC NULLS LAST, id DESC""", u=uid, e=ev, x=_other_exchanges()) if ev else pd.DataFrame()
+        pos = data.q(c, """SELECT * FROM paper_positions WHERE user_id = :u AND event_key = :e AND (NOT venue = ANY(:x)""" + (
                            " OR event_key IN (" + SPP.SPORT_KEYS + ")" if sp else "") + """)
-                           ORDER BY kind, subject""", u=uid, e=ev) if ev else pd.DataFrame()
+                           ORDER BY kind, subject""", u=uid, e=ev, x=_other_exchanges()) if ev else pd.DataFrame()
     stages = []
     for lab, g in (sig.groupby("stage", sort=False) if len(sig) else []):
         items = rows(g)
@@ -766,14 +1000,14 @@ def signals_page(request: Request, user: str = "", event: str = "", venue: str =
                 s.commit()
     users = c.execute(T("""SELECT username FROM users WHERE prefs ? 'strategy_profile' ORDER BY id""")).scalars().all() \
         if me["role"] == "admin" else []
-    maker = False if basic else bool(cur and not cur["strategy"].startswith(("update", "hold", "last", "early"))) if cur else is_maker
+    maker = False if basic else bool(cur and cur["strategy"] not in WS.TAKER_MODES) if cur else is_maker
     sport_options = _sport_options(record, sport)
     return render(request, "strategy.html", viewer=viewer, profile=R.basic_view_profile(profile) if basic else profile,
-                  show_fair=show_fair, stages=stages,
+                  show_fair=show_fair, profile_why=profile_why, stages=stages,
                   positions=positions, cur=cur, event_key=ev, users=users, maker=maker, record=record,
                   seasons=seasons, total=total, acct=acct, is_maker=is_maker, heat_label=HEAT_LABEL,
                   venue=venue, sport=sport, sport_options=sport_options, sport_names=_sport_names(),
-                  kalshi=V.KALSHI_VENUE and is_maker, mix=None if basic else story.mix(record))
+                  venue_tabs=venue_tabs, venue_names=_venue_names(), mix=None if basic else story.mix(record))
 
 
 # ---------------------------------------------------------------------------

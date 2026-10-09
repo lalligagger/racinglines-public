@@ -123,6 +123,8 @@ The public MotoGP results API at `api.motogp.pulselive.com` is the source gate f
 
 ## Exchange history: Kalshi and Polymarket
 
+How the tape is recorded every 5 minutes, and how to backfill a gap: [Market tape](market-tape.md).
+
 Both exchanges' F1 history lands in the same tables (`market_links`, `market_price_history`, `market_trades`,
 `market_book_snapshots`; `market_links.exchange` tells them apart) and is archived in the same Parquet layout,
 one tree per exchange: `data/archive/markets/<exchange>/{prices,trades,books}/month=YYYY-MM/*.parquet`.

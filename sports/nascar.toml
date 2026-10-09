@@ -9,8 +9,15 @@ code = "nascar"
 name = "NASCAR Cup Series"
 result_kind = "position"          # finishing positions
 model_family = "position_sim"     # result-based pricing model: conservative, source-faithful, uses race results only
-pricing_model = "racinglines.models.nascar_model:NascarCupRace"
+# The sport-agnostic results model (models/model_global.py: start list, retirements, team groups), with [model] below.
+# Confirmed by the owner 2026-10-07 (staging first): docs/f1-roadmap.md decision log 2026-10-07 "GlobalModel for NASCAR and
+# MotoGP". Its settings are the model's a priori defaults (no [model.defaults]), none tuned.
+pricing_model = "racinglines.models.model_global:GlobalModel"
+# Other pricing models kept runnable (`racinglines backtest walk-forward nascar --model NAME`), by model_runs.model name
+challengers = { nascar_results = "racinglines.models.nascar_model:NascarCupRace", nascar_recent_form = "racinglines.models.nascar_model:NascarCupRaceChallenger" }
+calibration = "baseline"          # pages label its prices as baseline: settings untuned (docs/f1-roadmap.md decision log, 2026-10-07); drop once fitted on a held-out season
 display_order = 1
+results_modules = ["racinglines.sources.nascar"]   # what fetches its results (`backtest coverage`)
 
 [league]
 code = "nascar"
@@ -26,6 +33,11 @@ categories = { DRV = ["Drivers", "X", "elite"] }
 [markets]
 venues = ["polymarket", "kalshi"]
 standard_kinds = ["race_win", "race_podium", "race_top10"]   # the board's columns (on by default, owner 2026-09-30): priced by the replay's saved runs
+# The kinds a link is filed as (market_links.prediction) once the [identity] resolver has its kind, driver and race
+# (and a head-to-head's opponent): the race payoffs the Cup model prices from its simulations (markets/kinds.toml).
+# Pole and fastest lap are priced since C12b ([model] sessions, best_lap below). Every other kind (team win, mover,
+# champion, ...) keeps params.kind and stays unmodeled
+kinds = ["race_win", "race_podium", "race_top5", "race_top10", "race_top20", "race_h2h", "race_pole", "race_fastest_lap"]
 
 [markets.kalshi]
 # Kalshi series tickers to sync, by prefix: every Sports series whose ticker starts with one of these
@@ -45,6 +57,11 @@ tags = ["nascar"]
 resolver = "nascar"
 
 [results]
+# Who counts as classified when a race market settles (markets/payoffs.py classified: top-n, exact place, biggest mover):
+# "placed", every car with a finishing position: NASCAR's official finishing order ranks every car that started, the
+# ones out of the race (DNF) by laps run. INFERRED from the feed (sources/nascar/ingest.py), not checked against the
+# venues' rule text (owner question, docs/f1-roadmap.md decision log 2026-10-07). Default "status_ok" (status OK only).
+classified = "placed"
 # General rule for every results source: the official feed remains first choice; a public fallback is allowed only
 # for missing seasons and only when the schema says it is a low-quality summary, never a full replacement.
 # This is the generic "source-fidelity fallback" policy used by the schema and any result-source handlers.
@@ -57,6 +74,12 @@ fallbacks = [{ source = "wikipedia", quality = "summary_only", scope = "race_sum
 # Data hooks for the sport-agnostic results model (racinglines/models/model_global.py, `--model global`); the
 # history's events.source is the [replay] source below. No setting here is tuned.
 group = "team"                    # results.team, for the optional team-form prior
+# Side classifications (models/model_global.py; docs/f1-roadmap.md decision log 2026-10-07 "NASCAR pole and fastest
+# lap", provisional, a priori): the qualifying order drawn from past qualifying results (round "qual", the final
+# qualifying session; a rained-out qualifying writes none) prices race_pole, and the order of each past race's best
+# laps (laps table, 2020 on) prices race_fastest_lap. Same half-life, prior weight, noise and uncertainty as the race
+sessions = ["qual"]
+best_lap = "race_fastest_lap"
 
 [replay]
 # The taker replay (racinglines/pipelines/position_replay.py; `racinglines nascar replay`). All values are a priori
@@ -69,4 +92,67 @@ race_day_offset = 0               # the event's date is race day
 # the day before) is before qualifying on most weekends; the model reads race results only, so its fair is the same
 # at every stage and only the market moves.
 stages = [["T-3d", -72], ["T-1d", -24], ["race eve", -6]]
+# The opt-in "race_day" stage mode adds these to the stages above (`--stages race_day`, sweep setting stages=race_day),
+# so the weekend results stay reproducible. Polymarket's NASCAR volume comes on race morning: Window World 450 2026 had
+# no market over the $50 floor at race eve and 31 at 12:00 UTC (scripts/vm/why_untradeable.py on staging, 2026-10-08).
+# 12:00 UTC is 8 am ET, assumed before every Cup start (the race's start isn't in this schema). Decision log 2026-10-08.
+race_day_stages = [["race morning", 12]]
 group_target = { race_win = 1, race_podium = 3 }   # the coherence check's groups (a listing of top-5/10/20 is often partial)
+# Polymarket's race_win fields in a 40-car NASCAR race sum far above 1 (long shots on near-empty books: Daytona 500 2026
+# summed 1.99 the day before, Hollywood Casino 400 7.73 on average), so the F1 tolerance (0.25) blocked every race.
+# Wide on Polymarket so the tape runs through the replay, sweep and paper (owner, 2026-10-08: "keep them wide to start");
+# the $50 24 h volume floor still keeps dead markets out. Decision log 2026-10-08.
+coherence_tol = { polymarket = 2.0 }
+
+[sessions]
+# The season sweep's "sessions" stage mode (racinglines/pipelines/season_sweep.py; C12a): a weekend's sessions are its
+# stored rounds (racinglines/sources/nascar/ingest.py: fp1.., qual1.., qual) whose kind is a [sessions.schedule] name,
+# each starting at rounds.extra.run_date_utc (the weekend feed's run time in UTC). Stored from 2019 (a read-only
+# query on 2026-10-07: 206 of 283 fp1 rounds, 200 of 270 qual rounds; the 2017 fixture's feed has no UTC time); a
+# round without it is not a stage, and an event with none is traded on the [replay] stages. Sessions that were never
+# run (rained out) have no round. The race round's run_date_utc is the feed's local race_date plus the weekend's own
+# UTC offset (run_date_utc - run_date of its latest run; ingest._race_start_utc, C42); a weekend whose runs carry no
+# UTC time has none, and its race start is [stages] until_fallback_hours.
+time_key = "run_date_utc"
+
+# round kind -> (minutes, short label). Minutes are a priori (no session length is stored): docs/f1-roadmap.md
+# decision log 2026-10-07 "NASCAR and MotoGP session schedules". Stage 1 and stage 2 are run inside the race: no
+# round, no stored time, and after the race start where the stages end, so they are not stages (pricing on a stage
+# result needs an in-race model and the in-race tape)
+[sessions.schedule]
+fp1 = [50, "P1"]
+fp2 = [50, "P2"]
+fp3 = [50, "P3"]
+fp4 = [50, "P4"]
+fp5 = [50, "P5"]
+qual1 = [60, "Q1"]                       # a non-final qualifying round, where the feed has several
+qual2 = [60, "Q2"]
+qual = [60, "Q"]                         # the (final) qualifying round: the starting grid
+
+# When a weekend is priced and traded in the "sessions" mode (racinglines/core/stages.py, as F1's): a stage 1 h
+# before the first session, then 30 min after each session ends, until the race. A priori, as F1's values
+[stages]
+pre_label = "pre-weekend"
+pre_minutes = 60
+lag_minutes = 30
+until = "race"
+until_fallback_hours = 0                 # the race start when not stored: 00:00 UTC on race day, before any Cup
+                                         # green flag (the [sweep] quote_until_hours assumption): a later session's
+                                         # stage is dropped, never traded after the start
+
+[sweep]
+# The season sweep (racinglines/pipelines/season_sweep.py; `racinglines nascar sweep`, search jobs of kind "sweep"): the
+# F1 sweep's taker modes and maker variants on the [replay] stages, kinds and group targets, priced by [sport]
+# pricing_model from results strictly before the event, settled by classified position. Venues: [markets] venues,
+# plus OG.com where exchanges/og.toml lists the sport. A priori values, none tuned.
+stages = "weekend"                # the default stage mode: the fixed [replay] stages, one pricing per race (the
+                                  # replay's behaviour, kept reproducible). "sessions" ([sessions] above) is a sweep's
+                                  # `stages` setting until the owner makes it the default
+late_stages = ["race eve", "race morning", "after Q"]   # the stage-aware taker ("early") skips these (each mode: its own labels)
+quote_until_hours = 0             # the maker stops quoting at this hour (UTC) of race day: before any race-day running
+                                  # (the race's start time isn't in the schema)
+race_day_quote_until_hours = 15   # the same in the "race_day" mode: after its 12:00 UTC stage, 11 am ET (decision log 2026-10-08)
+
+[search]
+# The search queue's job kinds for this sport (racinglines/pipelines/search.py); the first is the default.
+jobs = ["walk_forward", "sweep"]

@@ -78,6 +78,45 @@ def test_sql_guard_refuses_writes_and_hidden_tables(q, why):
         T.check_sql(q)
 
 
+@pytest.mark.parametrize("q", [
+    'select * from U&"\\0075sers"',                                          # a Unicode-escaped table name
+    "select query_to_xml('select password_hash from us'||'ers', true, true, '')",  # a query hidden in a string
+    "select pg_read_binary_file('/etc/passwd')", "select pg_stat_file('/etc/passwd')",
+    "select set_config('role', 'racinglines', true)", "select * from ts_stat('select 1')",
+    "select rolpassword from pg_authid", "select passwd from pg_catalog.pg_shadow",
+    "select E'\\'', pg_read_binary_file('/etc/passwd'), ''",                  # an escaped quote must not hide code
+    "select $q$x$q$, lo_get(1)",
+])
+def test_sql_guard_refuses_known_bypasses(q):
+    """The audit's bypasses (2026-10-05) and their kin. The guard is a first filter; the sql tool's own database role
+    (scripts/vm/mcp_sql_role.sh) is what keeps users and orders out of reach."""
+    with pytest.raises(ValueError):
+        T.check_sql(q)
+
+
+@pytest.mark.parametrize("q", [
+    "select * from model_runs where variant = 'gridq+pretrain+reset'",  # a keyword inside a value
+    "select $$delete me$$ as note", "select E'it''s', 'update' as word",
+])
+def test_sql_guard_reads_keywords_in_values_as_values(q):
+    assert T.check_sql(q)
+
+
+def test_sql_role_script_hides_the_same_tables():
+    from pathlib import Path
+    script = (Path(__file__).resolve().parents[1] / "scripts/vm/mcp_sql_role.sh").read_text()
+    hidden = next(line for line in script.splitlines() if line.startswith("HIDDEN="))
+    assert hidden.split("=", 1)[1].strip('"').split() == list(T.SQL_HIDDEN)
+
+
+def test_sql_tool_uses_its_own_login_when_set(monkeypatch):
+    from racinglines.mcp import server as S
+    monkeypatch.setenv("RACINGLINES_MCP_SQL_URL", "postgresql+psycopg://racinglines_mcp_ro:pw@localhost:5433/racinglines")
+    assert S._sql_engine().url.username == "racinglines_mcp_ro"
+    monkeypatch.delenv("RACINGLINES_MCP_SQL_URL")
+    assert S._sql_engine().url.username != "racinglines_mcp_ro"
+
+
 def test_job_params_validated_against_the_lab_catalog():
     jt, p = T._job_params("f1_backtest", {"races": 5, "sims": 300, "track": "on"})
     assert jt.code == "f1_backtest" and p == {"races": 5, "half_life": 120.0, "sims": 300, "track": "on"}
@@ -131,7 +170,8 @@ def test_tools_are_registered_with_descriptions(mcp):
     tools = mcp.run(go)
     names = {t.name for t in tools}
     assert names >= {"overview", "list_events", "list_markets", "get_market_history", "sql", "run_job", "get_job", "replay_maker",
-                     "edge_finder", "track_record", "describe_schema"}
+                     "edge_finder", "track_record", "describe_schema", "list_kinds", "map_book", "price_book",
+                     "settle_book"}
     assert all(t.description for t in tools)
     lm = next(t for t in tools if t.name == "list_markets")
     assert "race_id" in lm.input_schema["properties"] and lm.input_schema["properties"]["limit"]["default"] == 50
@@ -142,15 +182,42 @@ def test_reads_on_the_test_database(mcp):
     ov = mcp("overview")
     assert {v["code"] for v in ov["venues"]} >= {"polymarket", "private"} and ov["row_counts"]["events"] >= 0
     assert set(ov) >= {"seasons", "forecasts", "model_runs", "market_links", "users", "upcoming", "hint"}
-    ev = mcp("list_events", sport="f1", limit=5)
+    ev = mcp("list_events", competition="f1_wdc", limit=5)
     assert len(ev["rows"]) <= 5 and ev["total"] >= len(ev["rows"]) and ev["limit"] == 5
     sc = mcp("describe_schema", table="model_runs")
     assert sc["rows"] >= 0 and "params" in {c["name"] for c in sc["columns"]}
     assert mcp("describe_schema")["tables"][0]["table"] == "sports"
-    assert "forecasts" in mcp("get_forecast", sport="f1")
+    assert "forecasts" in mcp("get_forecast", competition="f1_wdc")
     assert mcp("edge_finder", year=2026)["configurations"] >= 0
     kind, text = mcp("describe_schema", table="nope")
     assert kind == "error" and "no table" in text
+
+
+def test_sports_come_from_the_database(mcp):
+    """Any sport with a competition row is reachable by its code (no list in the code); an unknown one says what exists."""
+    from sqlalchemy import text
+    with mcp.engine.begin() as c:
+        c.execute(text("INSERT INTO sports (code, name, result_kind) VALUES ('kart_test', 'Karting', 'time') ON CONFLICT DO NOTHING"))
+        c.execute(text("INSERT INTO leagues (code, name) VALUES ('kart_test_lg', 'Karting league') ON CONFLICT DO NOTHING"))
+        c.execute(text("""INSERT INTO competitions (code, name, league_id, sport_id)
+                          SELECT 'kart_test_cup', 'Karting cup', l.id, s.id FROM leagues l, sports s
+                          WHERE l.code = 'kart_test_lg' AND s.code = 'kart_test' ON CONFLICT DO NOTHING"""))
+        assert T.sports_of(c)["kart_test_cup"] == "kart_test"
+        assert T._sport_filter(c, sport="kart_test") == "kart_test_cup"
+        assert T._sport_filter(c, sport="kart_test_cup") == "kart_test_cup"
+        assert T._sport_filter(c, competition="anything") == "anything" and T._sport_filter(c) is None
+        with pytest.raises(ValueError, match="no sport 'curling'"):
+            T._sport_filter(c, sport="curling")
+    assert mcp("overview")["sports"]["kart_test_cup"] == "kart_test"
+    assert mcp("list_events", sport="kart_test")["rows"] == []
+    kind, text_ = mcp("list_events", sport="curling")
+    assert kind == "error" and "kart_test" in text_
+
+
+def test_edge_finder_and_track_record_take_venue_and_sport(mcp):
+    assert mcp("edge_finder", year=2026, venue="kalshi")["venue"] == "kalshi"
+    kind, text_ = mcp("edge_finder", year=2026, venue="nope")
+    assert kind == "error" and "polymarket" in text_
 
 
 def test_errors_reach_the_client_as_text(mcp):
@@ -206,7 +273,7 @@ def test_docs_are_resources(mcp):
 
 # --- per-account tokens for the hosted mode -----------------------------------------------------------
 
-def test_tokens_are_per_account_and_only_for_allowed_real_accounts(test_engine):
+def test_tokens_are_per_account_and_only_for_allowed_real_accounts(test_engine, monkeypatch):
     from sqlalchemy import text
     from racinglines.mcp import auth
     from racinglines.web import users as U
@@ -227,8 +294,12 @@ def test_tokens_are_per_account_and_only_for_allowed_real_accounts(test_engine):
     assert auth.lookup(test_engine, "rl_" + "0" * 48) is None and auth.lookup(test_engine, "") is None
     tok2 = auth.new_token(test_engine, "t_admin")                                     # re-issue voids the old one
     assert auth.lookup(test_engine, tok) is None and auth.lookup(test_engine, tok2)["username"] == "t_admin"
+    pro_token = auth.new_token(test_engine, "t_maker")
+    assert auth.lookup(test_engine, pro_token)["role"] == "pro"
+    monkeypatch.setattr(auth, "ROLES", ("admin",))
+    assert auth.lookup(test_engine, pro_token) is None
     with pytest.raises(ValueError, match="role"):
-        auth.new_token(test_engine, "t_maker")                                        # RACINGLINES_MCP_ROLES=admin (pro is not)
+        auth.new_token(test_engine, "t_maker")                                        # explicit admin-only override
     with pytest.raises(ValueError, match="inactive"):
         auth.new_token(test_engine, "t_gone")
     with pytest.raises(ValueError, match="no account"):
@@ -238,18 +309,102 @@ def test_tokens_are_per_account_and_only_for_allowed_real_accounts(test_engine):
     assert auth.lookup(test_engine, tok2) is None
 
 
-def test_demo_accounts_never_get_a_token(test_engine, monkeypatch):
-    from racinglines.mcp import auth
+@pytest.mark.parametrize("username,role", [("t_demo", "admin"), ("maker", "pro")])
+def test_demo_accounts_never_get_a_token(test_engine, monkeypatch, username, role):
+    from racinglines.mcp import auth, oauth
     from racinglines.web import demo, users as U
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy import text
-    monkeypatch.setattr(demo, "DEMO_USERS", {"t_demo"})
+    monkeypatch.setattr(demo, "DEMO_USERS", set())
     with sessionmaker(test_engine)() as s:
-        if not s.execute(text("SELECT 1 FROM users WHERE username = 't_demo'"), {}).first():
-            U.create_user(s, "t_demo", "pw", "admin")
+        if not s.execute(text("SELECT 1 FROM users WHERE username = :u"), dict(u=username)).first():
+            U.create_user(s, username, "pw", role)
         s.commit()
+    token = auth.new_token(test_engine, username)
+    monkeypatch.setattr(demo, "DEMO_USERS", {username})
     with pytest.raises(ValueError, match="demo"):
-        auth.new_token(test_engine, "t_demo")
+        auth.new_token(test_engine, username)
+    assert auth.lookup(test_engine, token) is None
+    assert oauth.account(test_engine, username=username) is None
+
+
+def test_pro_mcp_scopes_accounts_and_jobs_and_blocks_admin_tools(mcp, monkeypatch):
+    from sqlalchemy import text
+    from racinglines.mcp import server as S
+    with mcp.engine.begin() as c:
+        ids = {}
+        for name in ("mcp-pro-own", "mcp-pro-other"):
+            uid = c.execute(text("""INSERT INTO users (username, password_hash, role) VALUES (:n, 'x', 'pro')
+                                    RETURNING id"""), dict(n=name)).scalar()
+            ids[name] = uid
+            c.execute(text("""INSERT INTO paper_positions
+                (user_id, event_key, market_key, kind, subject, yes_shares, cash, outcome, venue)
+                VALUES (:u, '2099-02', :n, 'race_win', :subject, 0, 5, true, 'polymarket')"""),
+                      dict(u=uid, n=name, subject=name))
+            c.execute(text("""INSERT INTO strategy_signals
+                (user_id, profile, strategy, event_key, market_key, kind, subject, stage, dedupe,
+                 action, side, status, signal_ts, detail)
+                VALUES (:u, 'test', 'maker', '2099-02', :n, 'race_win', :subject,
+                        'after FP2', :dedupe, 'quote', 'bid', 'new', now(), '{"venue":"polymarket"}'::jsonb)"""),
+                      dict(u=uid, n=name, subject=name, dedupe=name))
+    try:
+        who = dict(id=ids["mcp-pro-own"], username="mcp-pro-own", role="pro")
+        monkeypatch.setattr(S, "caller", lambda: who)
+        ov = mcp("overview")
+        assert [r["username"] for r in ov["users"]] == ["mcp-pro-own"]
+        assert ov["row_counts"]["paper_positions"] == 1
+        own = mcp("list_positions", user="mcp-pro-own")
+        assert own["positions"]["total"] == 1
+        signals = mcp("list_signals")
+        assert signals["total"] == 1 and signals["rows"][0]["user"] == "mcp-pro-own"
+        record = mcp("track_record", user="mcp-pro-own")
+        assert record["user"] == "mcp-pro-own" and record["pnl"] == 5
+        for name in ("list_positions", "track_record", "list_signals"):
+            denied = mcp(name, user="mcp-pro-other")
+            assert denied[0] == "error" and "own account" in denied[1]
+        for name, args in (("sql", dict(query="SELECT * FROM paper_positions")),
+                           ("describe_schema", {}), ("data_changes", {})):
+            denied = mcp(name, **args)
+            assert denied[0] == "error" and "admin-only" in denied[1]
+        mine = mcp("run_job", job_type="f1_backtest", params=dict(races=3, sims=300))
+        other = T.run_job(mcp.engine, "f1_backtest", dict(races=3, sims=300), user_id=ids["mcp-pro-other"])
+        assert mcp("get_job", job_id=mine["job_id"])["user_id"] == who["id"]
+        assert {r["id"] for r in mcp("list_jobs")["rows"]} == {mine["job_id"]}
+        for name in ("get_job", "cancel_job"):
+            assert mcp(name, job_id=other["job_id"])[0] == "error"
+        assert mcp("cancel_job", job_id=mine["job_id"])["cancelled"]
+        with mcp.engine.connect() as c:
+            assert c.execute(text("SELECT status FROM jobs WHERE id = :i"), dict(i=other["job_id"])).scalar() == "queued"
+        who["role"] = "admin"
+        assert mcp("list_positions", user="mcp-pro-other")["positions"]["total"] == 1
+        assert mcp("sql", query="SELECT 1 AS n")["rows"][0]["n"] == 1
+    finally:
+        with mcp.engine.begin() as c:
+            for uid in ids.values():
+                c.execute(text("DELETE FROM jobs WHERE user_id = :u"), dict(u=uid))
+                c.execute(text("DELETE FROM users WHERE id = :u"), dict(u=uid))
+
+
+def test_pro_market_matrix_uses_own_book_and_event_propagates_viewer(monkeypatch):
+    from racinglines.markets import private_book as house
+    from racinglines.markets import venues as V
+    own = dict(id=11, username="pro", role="pro")
+    seen = []
+
+    def matrix(conn, race_id, maker_id=house.ALL):
+        seen.append(maker_id)
+        return dict(event_id=1, title="race", competition="f1_wdc", season=2026, status="scheduled",
+                    start_date=None, race_start=None), {}, pd.DataFrame()
+
+    monkeypatch.setattr(V, "event_matrix", matrix)
+    monkeypatch.setattr(T, "freshness", lambda *args, **kwargs: {})
+    T.list_markets(None, race_id=1, viewer=own)
+    T.list_markets(None, race_id=1, viewer=dict(own, role="admin"))
+    assert seen == [11, house.ALL]
+    monkeypatch.setattr(T.data, "event", lambda *args: {"id": 1})
+    monkeypatch.setattr(T.data, "q", lambda *args, **kwargs: pd.DataFrame([dict(race_id=1)]))
+    T.get_event(None, event_id=1, include="markets", viewer=own)
+    assert seen[-1] == 11
 
 
 def _http(test_engine, monkeypatch):
@@ -259,6 +414,34 @@ def _http(test_engine, monkeypatch):
     monkeypatch.setenv("APP_SECRET", "test-secret")
     url = test_engine.url.render_as_string(hide_password=False)
     return TestClient(S.http_app(S.build(engine_url=url, oauth=True)), base_url="https://mcp.racinglines.bet")
+
+
+def test_hosted_server_stops_within_its_grace_period(monkeypatch):
+    """A restart (every deploy) must not wait on a client's open event stream: serve() gives uvicorn a finite graceful
+    shutdown, and every unit's TimeoutStopSec leaves systemd a margin above it instead of the 90 s default."""
+    import re
+    from pathlib import Path
+    import uvicorn
+    from racinglines.cli import web as W
+    from racinglines.mcp import auth, oauth
+    from racinglines.mcp import server as S
+    seen = {}
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kw: seen.update(kw))
+    monkeypatch.setattr(S, "build", lambda **kw: object())
+    monkeypatch.setattr(S, "http_app", lambda srv: srv)
+    monkeypatch.setattr(S, "_engine", lambda: None)
+    monkeypatch.setattr(auth, "holders", lambda e: [])
+    monkeypatch.setattr(oauth, "warn_if_disabled", lambda: None)
+    S.serve(http=True)
+    assert 0 < seen["timeout_graceful_shutdown"] == S.SHUTDOWN_GRACE_SEC
+    seen.clear()
+    W.main()
+    assert 0 < seen["timeout_graceful_shutdown"] == W.SHUTDOWN_GRACE_SEC
+    units = Path(__file__).resolve().parent.parent / "deploy/vm/systemd"
+    for name, grace in [("racinglines-mcp.service", S.SHUTDOWN_GRACE_SEC), ("racinglines-web.service", W.SHUTDOWN_GRACE_SEC),
+                        ("racinglines-staging-web.service", W.SHUTDOWN_GRACE_SEC)]:
+        m = re.search(r"^TimeoutStopSec=(\d+)$", (units / name).read_text(), re.M)
+        assert m and grace < int(m.group(1)) < 90, name
 
 
 PING = {"jsonrpc": "2.0", "id": 1, "method": "ping"}
@@ -279,9 +462,10 @@ def test_rl_tokens_still_open_the_hosted_server(test_engine, monkeypatch):
         assert client.post("/mcp", json=PING, headers={**HDR, "Authorization": f"Bearer {tok}"}).status_code == 401
 
 
-def test_oauth_sign_in_from_register_to_refresh(test_engine, monkeypatch):
+@pytest.mark.parametrize("account_role", ["admin", "pro"])
+def test_oauth_sign_in_from_register_to_refresh(test_engine, monkeypatch, account_role):
     """The connector flow: register, /authorize to the web app's Allow page, Allow as a signed-in admin, code for
-    tokens (once), a tool call as that account, refresh, and Disconnect ending it all. A pro account gets no Allow."""
+    tokens (once), a tool call as that account, refresh, and Disconnect ending it all. Basic accounts get no Allow."""
     import base64
     import hashlib
     from urllib.parse import parse_qs, urlparse
@@ -293,11 +477,11 @@ def test_oauth_sign_in_from_register_to_refresh(test_engine, monkeypatch):
     from racinglines.web import app as A
     from racinglines.web import users as U
     with sessionmaker(test_engine)() as s:
-        for name, role in (("t_admin", "admin"), ("t_maker", "pro")):
+        for name, role in (("t_admin", "admin"), ("t_maker", "pro"), ("t_basic", "basic")):
             if not s.execute(text("SELECT 1 FROM users WHERE username = :u"), dict(u=name)).first():
                 U.create_user(s, name, "pw", role)
         s.commit()
-        ids = dict(s.execute(text("SELECT username, id FROM users WHERE username IN ('t_admin', 't_maker')")).fetchall())
+        ids = dict(s.execute(text("SELECT username, id FROM users WHERE username IN ('t_admin', 't_maker', 't_basic')")).fetchall())
     monkeypatch.setattr(A, "get_engine", lambda *a: test_engine)
     monkeypatch.setattr(A, "get_session", lambda *a: sessionmaker(test_engine, expire_on_commit=False)())
     who = {}
@@ -331,11 +515,12 @@ def test_oauth_sign_in_from_register_to_refresh(test_engine, monkeypatch):
                 return parse_qs(urlparse(loc).query)["req"][0]
 
             req = authorize()
-            who.update(u="t_maker", r="pro")
+            who.update(u="t_basic", r="basic")
             assert "isn't one" in web.get("/mcp/authorize", params=dict(req=req)).text
             assert web.post("/mcp/authorize", data=dict(csrf_token=A.CSRF_TOKEN, req=req, decision="allow"),
                             follow_redirects=False).status_code == 403
-            who.update(u="t_admin", r="admin")
+            account_name = "t_admin" if account_role == "admin" else "t_maker"
+            who.update(u=account_name, r=account_role)
             page = web.get("/mcp/authorize", params=dict(req=req))
             assert "Allow" in page.text and page.headers["x-frame-options"] == "DENY"
             r = web.post("/mcp/authorize", data=dict(csrf_token=A.CSRF_TOKEN, req=req, decision="allow"), follow_redirects=False)
@@ -355,7 +540,7 @@ def test_oauth_sign_in_from_register_to_refresh(test_engine, monkeypatch):
             out = mcp_http.post("/mcp", json=call, headers=auth_hdr).json()
             job = json.loads(out["result"]["content"][0]["text"])
             with test_engine.connect() as c:                                            # filed under the signed-in account
-                assert c.execute(text("SELECT user_id FROM jobs WHERE id = :i"), dict(i=job["job_id"])).scalar() == ids["t_admin"]
+                assert c.execute(text("SELECT user_id FROM jobs WHERE id = :i"), dict(i=job["job_id"])).scalar() == ids[account_name]
             assert "Claude" in web.get("/settings").text
             ref = mcp_http.post("/token", data=dict(grant_type="refresh_token", refresh_token=rt, client_id=client_id))
             assert ref.status_code == 200, ref.text
@@ -385,6 +570,7 @@ def test_admin_mcp_page_lists_and_disconnects(test_engine, monkeypatch):
         uid = c.execute(text("SELECT id FROM users WHERE username = 't_admin'")).scalar()
     oauth._seen(test_engine, uid, "Claude")
     monkeypatch.setattr(AD, "get_engine", lambda *a: test_engine)
+    monkeypatch.setattr(A, "get_engine", lambda *a: test_engine)
 
     def as_admin(request: Request):
         request.state.user = dict(id=uid, username="t_admin", role="admin", sid=None)
@@ -430,6 +616,7 @@ def test_track_record_all_lists_one_row_per_weekend_and_venue(mcp):
         default = mcp("track_record", user="mcp-maker")
         assert "totals" not in default and "venue" not in default["rows"]["rows"][0]
         assert default["weekends"] == 1 and default["pnl"] == 3.0 and default["rows"]["rows"][0]["fills"] == 1
+        assert mcp("track_record", user="mcp-maker", sport="nascar")["weekends"] == 0    # no NASCAR weekend here
     finally:
         with mcp.engine.begin() as c:
             c.execute(T("DELETE FROM users WHERE username = 'mcp-maker'"))
@@ -477,8 +664,55 @@ def test_settings_page_token_is_the_one_the_server_accepts(test_engine, monkeypa
         assert auth.lookup(test_engine, tok) is None
         with test_engine.connect() as c:
             assert c.execute(text("SELECT prefs->>'email' FROM users WHERE username = 't_admin'")).scalar() == "a@b.co"
-        who.update(u="t_maker", r="pro")                                                   # RACINGLINES_MCP_ROLES=admin
+        who.update(u="t_maker", r="pro")
+        pro_token = client.post("/api/settings/token/generate", data=dict(csrf_token=A.CSRF_TOKEN))
+        assert pro_token.status_code == 200
+        assert auth.lookup(test_engine, pro_token.json()["token"])["username"] == "t_maker"
+        monkeypatch.setattr(auth, "ROLES", ("admin",))                                    # explicit admin-only override
         assert client.post("/api/settings/token/generate", data=dict(csrf_token=A.CSRF_TOKEN)).status_code == 403
         assert "open to admin accounts" in client.get("/settings").text
     finally:
         A.app.dependency_overrides.clear()
+
+
+def test_list_markets_flags_stale_or_missing_exchange_prices(mcp, monkeypatch):
+    """freshness: per exchange, the newest synced_at over the event's links. An upcoming event with no link on a live
+    exchange, or a newest sync older than RACINGLINES_STALE_HOURS, is flagged; a completed one never is."""
+    from datetime import timedelta
+
+    import pandas as pd
+    from sqlalchemy import text
+    now = pd.Timestamp("2026-10-07T21:00Z")
+    with mcp.engine.begin() as c:
+        c.execute(text("INSERT INTO sports (code, name, result_kind) VALUES ('fresh_t', 'Fresh', 'time') ON CONFLICT DO NOTHING"))
+        c.execute(text("INSERT INTO leagues (code, name) VALUES ('fresh_t_lg', 'Fresh league') ON CONFLICT DO NOTHING"))
+        comp = c.execute(text("""INSERT INTO competitions (code, name, league_id, sport_id)
+                                 SELECT 'fresh_t_cup', 'Fresh cup', l.id, s.id FROM leagues l, sports s
+                                 WHERE l.code = 'fresh_t_lg' AND s.code = 'fresh_t' RETURNING id""")).scalar()
+        cat = c.execute(text("INSERT INTO categories (competition_id, code, name) VALUES (:c, 'DRV', 'Drivers') RETURNING id"),
+                        dict(c=comp)).scalar()
+        season = c.execute(text("INSERT INTO seasons (competition_id, year) VALUES (:c, 2026) RETURNING id"), dict(c=comp)).scalar()
+        ev = c.execute(text("""INSERT INTO events (season_id, source, source_key, name, start_date)
+                               VALUES (:s, 't', 'fresh-1', 'Fresh GP', '2026-10-11') RETURNING id"""), dict(s=season)).scalar()
+        race = c.execute(text("INSERT INTO races (event_id, category_id) VALUES (:e, :c) RETURNING id"),
+                         dict(e=ev, c=cat)).scalar()
+        for ex, hours in (("polymarket", 1), ("polymarket", 30), ("og", 5)):
+            c.execute(text("""INSERT INTO market_links (exchange, question, token_id, outcome, competition_id, race_id, prediction,
+                                                        synced_at) VALUES (:x, 'q', :t, 'Yes', :c, :r, 'race_win', :at)"""),
+                      dict(x=ex, t=f"fresh-{ex}-{hours}", c=comp, r=race, at=(now - timedelta(hours=hours)).to_pydatetime()))
+        f = T.freshness(c, event_id=ev, now=now)
+        by = {v["venue"]: v for v in f["venues"]}
+        assert f["stale_hours"] == 3 and f["any_stale"]
+        assert by["polymarket"]["links"] == 2 and by["polymarket"]["age_hours"] == 1 and not by["polymarket"]["stale"]
+        assert by["og"]["stale"] and by["og"]["reason"] == "newest sync 5.0 h old (limit 3 h)"
+        monkeypatch.setenv("RACINGLINES_STALE_HOURS", "6")
+        f = T.freshness(c, event_id=ev, now=now)
+        assert f["stale_hours"] == 6 and not {v["venue"]: v for v in f["venues"]}["og"]["stale"]
+        empty = c.execute(text("""INSERT INTO events (season_id, source, source_key, name, start_date)
+                                  VALUES (:s, 't', 'fresh-2', 'Bare GP', '2026-10-18') RETURNING id"""), dict(s=season)).scalar()
+        bare = T.freshness(c, event_id=empty, now=now)["venues"]
+        assert bare and all(v["stale"] and v["reason"] == "no linked markets" for v in bare)
+        assert not T.freshness(c, event_id=ev, upcoming=False, now=now)["any_stale"]
+        out = T.list_markets(c, race_id=race)
+        assert out["freshness"]["venues"] and "any_stale" in out["freshness"]
+        c.execute(text("DELETE FROM market_links WHERE token_id LIKE 'fresh-%'"))

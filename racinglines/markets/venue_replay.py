@@ -46,6 +46,7 @@ class Polymarket:
     code = "polymarket"
     TAKER_FEE = 0.0                  # the venue's fee schedule: rate x contracts x P x (1 - P), rounded up to the
     MAKER_FEE = 0.0                  # cent (Polymarket charges neither on these markets)
+    MARKET_KEY = "condition_id"      # one market per condition (its outcome-0 token); Kalshi / OG.com: per token
 
     def __init__(self, conn, links, start, end, group_target=None, coherence_tol=0.25, stale=STALE):
         from racinglines.markets import store as MS
@@ -75,6 +76,10 @@ class Polymarket:
             return 0.0
         a, b = g["ts"].searchsorted(t - timedelta(hours=24)), g["ts"].searchsorted(t, side="right")
         return float(g["usd"].iloc[a:b].sum())
+
+    def quote(self, token, t):
+        """(bid, ask) a taker would have met at t, or None: the venue then trades at price() (Polymarket)."""
+        return None
 
     tol_by_kind = {}                 # {kind: tolerance} over coherence_tol (coherence_tol_by_kind); {} = none
     books = None                     # {token: (ts, bids, asks)} once load_books() ran (thin_edge_mult)
@@ -127,17 +132,44 @@ class Polymarket:
         ath = None if pd.isna(market["athlete_id"]) else int(market["athlete_id"])
         return house.outcome_for(market["prediction"], ath, market["params"], res)
 
+    @classmethod
+    def links(cls, conn, race_id, kinds):
+        """The race's links on this exchange of these kinds (every token; one market per MARKET_KEY is the caller's
+        drop_duplicates), in link order."""
+        from sqlalchemy import text
+        return pd.read_sql(text("""SELECT ml.*, a.display_name AS athlete FROM market_links ml
+                                   LEFT JOIN athletes a ON a.id = ml.athlete_id
+                                   WHERE ml.race_id = :r AND ml.prediction = ANY(:k) AND ml.exchange = :x
+                                   ORDER BY ml.id"""), conn, params=dict(r=race_id, k=list(kinds), x=cls.code))
+
+    @classmethod
+    def per_share_fee(cls):
+        """A flat fee in dollars per contract traded (OG.com's), added to a taker's cost per share; 0 here."""
+        return 0.0
+
+    @classmethod
+    def tape_prices(cls, conn, tokens, start, end):
+        """(token_id, ts, price) of the tokens over [start, end] (UTC), from this exchange's store: what a maker
+        replay reads as the market's price (markets/strategies/maker_replay.py)."""
+        from racinglines.markets import store as MS
+        return MS.read(conn, "prices", tokens=list(tokens), start=start, end=end, root=MS.root_for(cls.code))
+
 
 class Kalshi(Polymarket):
     """Recorded Kalshi data for one weekend: markets/kalshi/sync.py stores Kalshi's candlesticks, tape (contracts
     pay $1, so USD volume = price x contracts) and links (exchange 'kalshi', token = the market's YES contract) in
     the tables Polymarket uses, so reading them is the same. What differs is the fee: Kalshi charges takers
     ceil(TAKER_FEE x contracts x P x (1 - P)) in cents per order (Kalshi's published schedule for most markets;
-    check the market's own before relying on it). Built and tested on mocked data only."""
+    check the market's own before relying on it), and the taker's price: quote() gives the bid and ask at t, from
+    the recorded order book (every 5 minutes on the VM since 2026-09-30) when a snapshot is at most BOOK_AGE old,
+    else from the last hourly candle's closing bid and ask (within the staleness window), so a taker buys at the
+    ask and sells at the bid instead of at the last trade."""
 
     code = "kalshi"
+    MARKET_KEY = "token_id"          # a Kalshi condition_id is the event ticker, shared by every market of the event
     TAKER_FEE = 0.07
     MAKER_FEE = 0.0175               # on most markets (check the market's own schedule)
+    BOOK_AGE = timedelta(minutes=10)  # a book snapshot older than this gives way to the candle's quote
 
     def __init__(self, conn, links, start, end, group_target=None, coherence_tol=0.25, stale=STALE):
         """As Polymarket's, but a Kalshi link's condition_id is its event ticker (every driver's market of the
@@ -149,13 +181,34 @@ class Kalshi(Polymarket):
         self.coherence_tol = coherence_tol
         a, b = pd.Timestamp(start).tz_localize("UTC"), pd.Timestamp(end).tz_localize("UTC")
         root, toks = MS.root_for(self.code), links["token_id"].tolist()
-        ph = MS.read(conn, "prices", tokens=toks, start=a, end=b, root=root)[["token_id", "ts", "price"]]
+        ph = MS.read(conn, "prices", tokens=toks, start=a, end=b, root=root).reindex(
+            columns=["token_id", "ts", "price", "bid", "ask"])
         tr = MS.read(conn, "trades", tokens=toks, start=a - timedelta(hours=24), end=b, root=root)
         tr = tr.assign(usd=tr["price"] * tr["size"])[["token_id", "ts", "usd"]]
-        for df in (ph, tr):
+        bk = MS.read(conn, "books", tokens=toks, start=a - self.BOOK_AGE, end=b, root=root)
+        bk = bk.reindex(columns=["token_id", "ts", "best_bid", "best_ask"]).rename(columns=dict(best_bid="bid", best_ask="ask"))
+        for df in (ph, tr, bk):
             df["ts"] = pd.to_datetime(df["ts"], utc=True).dt.tz_localize(None)
         self.prices = {t: g for t, g in ph.groupby("token_id")}
         self.trades = {t: g for t, g in tr.groupby("token_id")}
+        self.book_quotes = {t: g.sort_values("ts") for t, g in bk.groupby("token_id")}
+
+    @staticmethod
+    def _quote_at(g, t, max_age):
+        """(bid, ask) of the last row of g at or before t, if it is at most max_age old and both sides quote."""
+        if g is None or not len(g) or "bid" not in g:
+            return None
+        i = pd.DatetimeIndex(g["ts"]).searchsorted(pd.Timestamp(t), side="right") - 1
+        if i < 0 or pd.Timestamp(t) - g["ts"].iloc[i] > max_age:
+            return None
+        bid, ask = g["bid"].iloc[i], g["ask"].iloc[i]
+        if pd.isna(bid) or pd.isna(ask) or not 0 < bid <= ask < 1:
+            return None
+        return float(bid), float(ask)
+
+    def quote(self, token, t):
+        return self._quote_at(getattr(self, "book_quotes", {}).get(token), t, self.BOOK_AGE) or \
+            self._quote_at(self.prices.get(token), t, self.stale)
 
     def view(self, market, t, min_volume_24h):
         p = self.price(market["token_id"], t)
@@ -167,14 +220,6 @@ class Kalshi(Polymarket):
         """Dollars for one taker order of `contracts` at `price` (rounded up to the cent)."""
         return math.ceil(round(cls.TAKER_FEE * contracts * price * (1 - price) * 100, 6)) / 100
 
-    @staticmethod
-    def links(conn, race_id, kinds):
-        """The race's Kalshi links of these kinds, one per market (the YES contract)."""
-        from sqlalchemy import text
-        return pd.read_sql(text("""SELECT ml.*, a.display_name AS athlete FROM market_links ml
-                                   LEFT JOIN athletes a ON a.id = ml.athlete_id
-                                   WHERE ml.race_id = :r AND ml.prediction = ANY(:k) AND ml.exchange = 'kalshi'
-                                   ORDER BY ml.id"""), conn, params=dict(r=race_id, k=list(kinds)))
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +269,9 @@ class OG(Kalshi):
         tr["ts"] = pd.to_datetime(tr["ts"], utc=True).dt.tz_localize(None)
         self.trades = {t: g for t, g in tr.groupby("token_id")}
 
+    def quote(self, token, t):
+        return None                  # OG trades at its observed price (no recorded quote rule yet)
+
     @classmethod
     def observed(cls, prices, trades, books):
         """(token_id, ts, price) of every price the store holds, time-ordered: minute prices other than the empty
@@ -252,13 +300,20 @@ class OG(Kalshi):
         """Dollars of OG.com's flat taker fee on the trades (per contract bought or sold)."""
         return float(trades["shares"].abs().sum() * cls.fee_per_contract()) if len(trades) else 0.0
 
-    @staticmethod
-    def links(conn, race_id, kinds):
-        from sqlalchemy import text
-        return pd.read_sql(text("""SELECT ml.*, a.display_name AS athlete FROM market_links ml
-                                   LEFT JOIN athletes a ON a.id = ml.athlete_id
-                                   WHERE ml.race_id = :r AND ml.prediction = ANY(:k) AND ml.exchange = 'og'
-                                   ORDER BY ml.id"""), conn, params=dict(r=race_id, k=list(kinds)))
+    @classmethod
+    def per_share_fee(cls):
+        return cls.fee_per_contract()
+
+    @classmethod
+    def tape_prices(cls, conn, tokens, start, end):
+        """The observed prices (observed(): the minute prices without the empty book's 0.50, the trades, the books'
+        quotes), so a maker replay never reads the empty book's midpoint as a market."""
+        from racinglines.markets import store as MS
+        root, toks = MS.root_for(cls.code), list(tokens)
+        ph = MS.read(conn, "prices", tokens=toks, start=start, end=end, root=root)[["token_id", "ts", "price"]]
+        tr = MS.read(conn, "trades", tokens=toks, start=start, end=end, root=root)
+        bk = MS.read(conn, "books", tokens=toks, start=start, end=end, root=root)
+        return cls.observed(ph, tr, bk)
 
 
 EXCHANGES = {v.code: v for v in (Polymarket, Kalshi, OG)}  # code -> venue class: its fees, how its tape is read
