@@ -32,6 +32,7 @@ by noise_scale and the incident (DNF / bad day) rate by incident_scale.
 The CLI is `racinglines cycling` (racinglines/cli/cycling.py); docs/road-cycling.md has the workflow.
 """
 
+import itertools
 import tomllib
 import unicodedata
 from pathlib import Path
@@ -345,6 +346,7 @@ def reliability(raw, kind, s, since, terrain="hilly", n_sims=4000):
 
 WIN_BUCKETS = [0, 0.005, 0.01, 0.02, 0.05, 0.10, 0.20, 0.35, 1.0]
 RANK_BUCKETS = [0, 1, 3, 5, 10, 20, 10**6]
+TEMPERATURES = np.arange(0.5, 3.01, 0.05)
 
 
 def reliability_table(rel, by, hit, edges):
@@ -352,7 +354,7 @@ def reliability_table(rel, by, hit, edges):
     expected and actual hits, and z = (actual - expected) / sd. z above 2 means the model under-rates that bucket."""
     rank = by == "model_rank"
     names = [f"{a + 1}" if b == a + 1 else f"{a + 1}+" if b >= 10**6 else f"{a + 1}-{b}" for a, b in
-             zip(edges, edges[1:])] if rank else None
+             itertools.pairwise(edges)] if rank else None
     b = pd.cut(rel[by], edges, right=rank, include_lowest=True, labels=names)
     pcol = {"won": "p_win", "top3": "p_top3", "top10": "p_top10"}[hit]
     g = rel.assign(bucket=b, var=rel[pcol] * (1 - rel[pcol])).groupby("bucket", observed=True)
@@ -362,7 +364,7 @@ def reliability_table(rel, by, hit, edges):
     return t
 
 
-def temperature(rel, grid=np.arange(0.5, 3.01, 0.05)):
+def temperature(rel, grid=TEMPERATURES):
     """The power a in p_i^a / sum_j p_j^a (per race) that best fits the actual winners, and the winner log loss at
     a = 1 and at the best a. a > 1 means the model's favourites should be sharper (long shots too long a chance).
     Fitted on the same races it scores: a diagnostic, not a setting."""
