@@ -2,8 +2,8 @@
 /mybets: the owner's personal bets calendar, a standalone HTML page kept on the server, not in the repo.
 
 The page is a file under the data folder (RACINGLINES_MYBETS, default data/mybets/index.html), copied onto the VM
-by hand like any other data. It is served as is: no site header, no nav, and no page links to it. Admin only, behind
-the usual sign-in. Missing file: 404.
+by hand like any other data. It is served as is: no site header, no nav, and no page links to it. Public, like
+/pitch (PUBLIC_PATHS in web/app.py): no sign-in. Missing file: 404.
 """
 
 import os
@@ -13,14 +13,14 @@ from fastapi import HTTPException
 from fastapi.responses import FileResponse
 
 from racinglines.paths import DATA
-from racinglines.web.app import allow, app
+from racinglines.web.app import app
 
 
 def page() -> Path:
     return Path(os.environ.get("RACINGLINES_MYBETS", DATA / "mybets" / "index.html"))
 
 
-@app.get("/mybets", dependencies=[allow("admin")])
+@app.get("/mybets")
 def mybets():
     p = page()
     if not p.is_file():
