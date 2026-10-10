@@ -38,6 +38,7 @@ SOURCE = "f1timing"
 ROUND_KIND = {"FP1": "fp1", "FP2": "fp2", "FP3": "fp3", "SQ": "sprint_qual", "Q": "qual", "S": "sprint", "R": "race"}
 ROUND_ORDINAL = {"fp1": -3, "fp2": -2, "fp3": -1, "sprint_qual": 1, "qual": 2, "sprint": 4, "race": 5}
 PRACTICE = ("fp1", "fp2", "fp3")
+SPRINT_FORMATS = ("sprint", "sprint_shootout", "sprint_qualifying")
 
 
 def _num(v):
@@ -105,7 +106,7 @@ def track_profile(q_laps, race_results, meta_q, meta_r, venue_slug):
 def ingest_event(session, year, rnd, force=False):
     files = event_files(year, rnd)
     metas = {p.name.split("_")[1].split(".")[0]: json.loads(p.read_text()) for p in files if p.suffix == ".json"}
-    if "R" not in metas and "Q" not in metas:
+    if not metas:
         return "no sessions"
     sha = hashlib.sha256(b"".join(p.read_bytes() for p in files)).hexdigest()
     key = f"f1:{year}-{rnd:02d}"
@@ -113,7 +114,8 @@ def ingest_event(session, year, rnd, force=False):
     if src and src.sha256 == sha and not force:
         return "unchanged"
 
-    meta = metas.get("R") or metas.get("Q")
+    # a weekend is stored as each session ends (FP1 first), not only once qualifying or the race is in
+    meta = metas.get("R") or metas.get("Q") or next(metas[c] for c in ROUND_KIND if c in metas)
     comp = session.scalars(select(m.Competition).filter_by(code=COMPETITION)).one()
     cat = session.scalars(select(m.Category).filter_by(competition_id=comp.id, code=CATEGORY)).one()
     season = _upsert(session, m.Season, dict(competition_id=comp.id, year=year))
@@ -123,7 +125,7 @@ def ingest_event(session, year, rnd, force=False):
                     name=meta.get("official_name") or meta["event_name"], start_date=date.fromisoformat(meta["event_date"]),
                     venue_id=venue.id, series_round=rnd, status="completed" if has_race else "in_progress")
     race = _upsert(session, m.Race, dict(event_id=event.id, category_id=cat.id))
-    race.format = dict(kind="f1", sprint="S" in metas, total_laps=(metas.get("R") or {}).get("total_laps"),
+    race.format = dict(kind="f1", sprint="S" in metas or "SQ" in metas or meta.get("event_format") in SPRINT_FORMATS, total_laps=(metas.get("R") or {}).get("total_laps"),
                        event_format=meta.get("event_format"), event_name=meta.get("event_name"))
     session.execute(delete(m.Round).where(m.Round.race_id == race.id))
     session.flush()
@@ -133,10 +135,14 @@ def ingest_event(session, year, rnd, force=False):
     # some sessions (e.g. sprint qualifying) come without driver/team ids: fill them from the
     # weekend's qualifying or race classification by car number
     ref = {}
-    for code in ("R", "Q"):
-        if code in metas:
-            rr = pd.read_parquet(DATA / str(year) / f"{rnd:02d}_{code}.results.parquet")
-            for r in rr.itertuples():
+    # classification by car number; before this weekend's qualifying, the season's earlier rounds fill the gaps
+    for path in [DATA / str(year) / f"{rnd:02d}_{code}.results.parquet" for code in ("R", "Q") if code in metas] + \
+            [p for r_ in range(rnd - 1, 0, -1) for p in (DATA / str(year) / f"{r_:02d}_R.results.parquet",
+                                                          DATA / str(year) / f"{r_:02d}_Q.results.parquet")]:
+        if not path.exists():
+            continue
+        for r in pd.read_parquet(path).itertuples():
+            if pd.notna(r.DriverId) and str(r.DriverId).strip():
                 ref.setdefault(str(r.DriverNumber), dict(DriverId=r.DriverId, TeamId=r.TeamId, CountryCode=r.CountryCode))
     for code, kind in ROUND_KIND.items():
         if code not in metas:
