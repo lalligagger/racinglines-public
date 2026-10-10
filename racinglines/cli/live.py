@@ -8,6 +8,7 @@ racinglines live: launch and run a live private-book event, for any sport (pipel
     racinglines live run live/mtb_dh/20260925_mtb.toml     # downhill: the poll loop, locked (one loop per final)
     racinglines live run live/f1/2026-15.toml --simulate --no-fetch     # a rehearsal on a simulated clock
     racinglines live agent live/f1/2026-16.toml --install  # a macOS LaunchAgent: one step every 5 minutes, locked
+    racinglines live auto                                  # F1: step every event whose window is open (a 5-min timer)
     racinglines live status                                # every event: live / replay / settled, last update, lateness
     racinglines live report live/f1/2026-16.toml           # the event report (Markdown + charts + PDF)
     racinglines live settle live/mtb_dh/20260925_mtb.toml  # record a settled event in the database (live_events)
@@ -57,6 +58,13 @@ def main(argv=None):
             p.add_argument("--from", dest="start", default=None, help="Simulated clock start (UTC)")
             p.add_argument("--tick", type=int, default=None, help="Minutes between simulated steps (default: the sport's step_min)")
             p.add_argument("--minutes", type=int, default=0, help="Stop after this many (real) minutes")
+    p = sub.add_parser("auto", help="F1: one step of every committed spec whose window is open (from its opening "
+                                    "to a day after its results), so no event has to be started by hand.")
+    p.add_argument("--sport", default="f1", help="Only F1 steps on a timer (downhill runs its own poll loop)")
+    p.add_argument("--now", default=None, help="The (simulated) UTC time, e.g. 2026-10-10T09:30")
+    p.add_argument("--list", action="store_true", help="Only print the open events' keys, one per line (f1_push_auto.sh)")
+    for flag in ("--no-fetch", "--unfreeze", "--no-sync", "--no-alert"):
+        p.add_argument(flag, action="store_true")
     p = sub.add_parser("agent", help="Write (and load) a macOS LaunchAgent for a spec: a step every 5 min, locked, logged.")
     p.add_argument("spec")
     g = p.add_mutually_exclusive_group()
@@ -126,6 +134,55 @@ def cmd_step(args):
         _echo(f"{spec['event']}: nothing new" + (f" · next: {st['next']} (due {st['due'][:16]} UTC"
                                                  + (f", {st['late_h']} h late" if st["late_h"] else "") + ")" if st["next"] else " · settled"))
     return 0
+
+
+AUTO_LEAD_H, AUTO_TAIL_H = 1, 24      # live auto: from an hour before the window opens to a day after its results
+
+
+def due_specs(sport, now):
+    """The committed specs (live/<sport>/*.toml) whose window is open at `now` (naive UTC): from AUTO_LEAD_H before
+    the opening to AUTO_TAIL_H after the results, so each session's update, the close and the settlement all run."""
+    import pandas as pd
+
+    from racinglines.pipelines import live as LV
+    out = []
+    for p in sorted((LV.SPECS / sport).glob("*.toml")) if (LV.SPECS / sport).exists() else []:
+        try:
+            spec = LV.load_spec(p)
+            w = spec.get("window") or {}
+            if not w.get("open"):                        # a rehearsal (no window): only run by hand, --simulate
+                continue
+            a, b = pd.Timestamp(w["open"]), pd.Timestamp(w.get("results") or w["close"])
+        except Exception as ex:                          # noqa: BLE001
+            print(f"{p.name}: unreadable spec, skipped ({type(ex).__name__}: {ex})", file=sys.stderr, flush=True)
+            continue
+        if a - pd.Timedelta(hours=AUTO_LEAD_H) <= now <= b + pd.Timedelta(hours=AUTO_TAIL_H):
+            out.append(spec)
+    return out
+
+
+def cmd_auto(args):
+    import pandas as pd
+    if args.sport != "f1":
+        sys.exit("live auto: only F1 steps on a timer (downhill: `racinglines live run` per final)")
+    now = pd.Timestamp(args.now) if args.now else pd.Timestamp.now(tz="UTC").tz_localize(None)
+    specs = due_specs(args.sport, now)
+    if args.list:
+        for spec in specs:
+            print(spec["event"])
+        return 0
+    if not specs:
+        _echo(f"live auto: no {args.sport} event window open at {now:%Y-%m-%d %H:%M} UTC")
+        return 0
+    rc = 0
+    for spec in specs:                           # one event's failure doesn't stop the others' steps
+        args.spec = spec["path"]
+        try:
+            cmd_step(args)
+        except Exception as ex:                  # noqa: BLE001
+            rc = 1
+            _echo(f"{spec['event']}: step FAILED: {type(ex).__name__}: {ex}")
+    return rc
 
 
 def cmd_run(args):

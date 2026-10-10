@@ -14,7 +14,7 @@ each one starts were probed from the owner's machine on 2026-09-29 (tests/fixtur
 Series ids: 1 Cup, 2 Xfinity, 3 Trucks. A MISSING object is HTTP 403 (S3 AccessDenied), not 404: it means "no
 such file" and is never retried. A missing feed is recorded as <name>.missing beside where it would be, so a
 re-run does not ask again; --force asks again. Races run in the last few days are not marked missing (a feed
-may simply not be published yet). Already-downloaded files are skipped, so this is safe to re-run after each
+may simply not be published yet), and their feeds are asked for again on every run (one stored mid-race is not final). Already-downloaded files are skipped, so this is safe to re-run after each
 race weekend. Requests go through sources/http.py (one per second to the host).
 """
 
@@ -154,11 +154,13 @@ def fetch(years, series=1, feeds=None, races=None, force=False, dry_run=False, c
                     path = feed_path(year, series, name, rid)
                     url = tpl.format(year=year, series=series, race=rid)
                     if dry_run:
-                        if force or not (path.exists() or path.with_suffix(".missing").exists()):
+                        if force or recent or not (path.exists() or path.with_suffix(".missing").exists()):
                             counts["planned"] += 1
                         continue
+                    # a recent race's feeds are asked for again on every run: one stored while the race was still
+                    # running (a Sunday-night race ends after midnight UTC) would otherwise be kept as final
                     _tally(counts, echo, f"{year} {rid} {name}", url,
-                           lambda: fetch_feed(c, url, path, force=force, mark_missing=not recent))
+                           lambda: fetch_feed(c, url, path, force=force or recent, mark_missing=not recent))
     finally:
         if own:
             c.close()
