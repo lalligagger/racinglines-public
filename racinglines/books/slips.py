@@ -254,17 +254,17 @@ def _flip(p, side):
 
 
 def _run_for(db, leg, runs):
-    """(run_id, source) the model's price comes from: a run passed in for this leg's competition, else the app's own
+    """(run_id, source, stale) the model's price comes from: a run passed in for this leg's competition, else the app's own
     choice for the race (markets/venues.pricing_run: the live stage or forecast before the race, the latest as-of run
-    made before it once it has run)."""
+    made before it once it has run). stale: pricing_run's verdict, or None (a --run is taken as given)."""
     from racinglines.markets.venues import pricing_run, race_info
     for rid, comp in (runs or {}).items():
         if comp == leg["competition"]:
-            return rid, "--run"
+            return rid, "--run", None
     ck = ("run", leg["race_id"])
     if ck not in db.cache:
         r = pricing_run(db.conn, race_info(db.conn, leg["race_id"]))
-        db.cache[ck] = (r["run_id"], r["source"])
+        db.cache[ck] = (r["run_id"], r["source"], r.get("stale"))
     return db.cache[ck]
 
 
@@ -272,9 +272,11 @@ def _model(db, leg, runs):
     from racinglines.db.reads import model_prob
     if leg["kind"] not in K.KINDS:
         return None, None, None, "a race prop: no stored model price (models/position_sim/props.py prices it live)"
-    run_id, source = _run_for(db, leg, runs)
+    run_id, source, stale = _run_for(db, leg, runs)
     if run_id is None:
         return None, None, source, "no model run prices this race"
+    if stale:              # a session ended and the model hasn't re-run on it: no price rather than an old one
+        return None, run_id, source, stale["why"]
     comp = db.q("SELECT competition_id, category_id FROM races ra JOIN events e ON e.id = ra.event_id "
                 "JOIN seasons s ON s.id = e.season_id WHERE ra.id = :r", r=leg["race_id"]).iloc[0]
     params = dict(_params(leg), event_key=f"{leg['season']}-{(leg['round'] or 0):02d}")
