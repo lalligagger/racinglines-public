@@ -246,6 +246,9 @@ def _missing_sessions(meas, w, now):
     year, rnd = (int(x) for x in w["event_key"].split("-"))
     ev = meas.res[(meas.res["year"] == year) & (meas.res["series_round"] == rnd)]
     have = set(ev["round"])
+    q = ev[ev["round"] == "qual"]
+    if len(q) and q["position"].isna().all():    # stored before it had an order (FastF1 right after the session):
+        have.discard("qual")                     # ingest again, which reads the order from the laps
     out = [lab for lab, cutoff in w["stages"] if lab in STAGE_ROUND and cutoff <= now
            and STAGE_ROUND[lab] not in have]
     if w["race_start"] + RACE_DONE <= now and "race" not in have:
