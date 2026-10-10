@@ -312,7 +312,14 @@ deploy is simpler to undo: `vm.sh deploy <previous commit>`.
 
 Each event's spec runs as a unit, in place of `racinglines live agent --install`, which is macOS only.
 The run folder's lock works the same on the VM's disk.
-From the Mac, `bash scripts/deploy/vm.sh live 2026-16` enables an F1 event's timer and `vm.sh live 2026-16 off`
+**Every F1 event, without starting one by hand:** `bash scripts/deploy/vm.sh live auto` enables
+`racinglines-live-auto.timer` once. Every 5 minutes it steps each committed spec (`live/f1/*.toml`) whose window is
+open, from an hour before the book opens to a day after the results (`racinglines live auto`), so each finished
+session is ingested and priced, the book closes at lights out and settles, and outside every window a pass does
+nothing (nothing to turn off when an event is complete). `vm.sh live auto off` disables it; staging's twin is
+`vm.sh staging live auto`.
+
+From the Mac, `bash scripts/deploy/vm.sh live 2026-16` enables one F1 event's timer and `vm.sh live 2026-16 off`
 disables it. On the VM itself:
 ```sh
 sudo systemctl enable --now racinglines-live-f1@2026-16.timer     # F1: one step every 5 minutes
