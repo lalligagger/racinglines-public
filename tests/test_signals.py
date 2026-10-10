@@ -152,6 +152,19 @@ def test_missing_sessions_include_the_race_once_it_is_over():
     assert SG.in_weekend(w, w["race_start"] + pd.Timedelta(hours=20))
 
 
+
+def test_qualifying_without_an_order_counts_as_missing():
+    """Qualifying stored before FastF1 had its classification (no positions) is fetched and ingested again, so the
+    ingest can read the order from the laps; once it has positions it is in."""
+    from types import SimpleNamespace
+    t = pd.Timestamp("2099-10-03 13:00")
+    w = dict(event_key="2099-17", race_start=t + pd.Timedelta(days=1),
+             stages=[("after Quali", t + pd.Timedelta(hours=2))])
+    res = pd.DataFrame(dict(year=[2099] * 2, series_round=[17] * 2, round=["qual"] * 2, position=[None, None]))
+    later = t + pd.Timedelta(hours=3)
+    assert SG._missing_sessions(SimpleNamespace(res=res), w, later) == ["after Quali"]
+    assert SG._missing_sessions(SimpleNamespace(res=res.assign(position=[1, 2])), w, later) == []
+
 def test_follow_rate_prefers_hotter_entries_and_follows_markets_through():
     keys = [f"m{i}" for i in range(6000)]
     heats = [1] * 3000 + [2] * 1500 + [3] * 1500                 # A's backtest mix
