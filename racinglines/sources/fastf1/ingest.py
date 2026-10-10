@@ -67,6 +67,45 @@ def event_files(year, rnd):
     return sorted((DATA / str(year)).glob(f"{rnd:02d}_*"))
 
 
+Q3_CARS = 10        # qualifying knockout: the last segment's field; Q1 and Q2 each drop half of the rest
+
+
+def knockout_from_laps(res, laps):
+    """Qualifying classification from the laps when the results carry none (FastF1 right after the session, before
+    the official classification is out: no Position, no Q1-Q3). Each driver's segment is read from when they last
+    crossed the line (Q3_CARS latest are Q3, then the Q2 and Q1 eliminations by count); the segments' best valid laps
+    become Q1-Q3 and order each group. Returns res with Position and Q1-Q3 filled, or res unchanged when it has
+    positions or the laps have no session times."""
+    if res["Position"].notna().any() or "Time" not in laps or laps["Time"].isna().all():
+        return res
+    num = laps["DriverNumber"].astype(str)
+    last = laps.groupby(num)["Time"].max()
+    order = list(last.sort_values(ascending=False).index)
+    n = len(res)
+    q2_out = max(0, (n - Q3_CARS) // 2)
+    q3, q2 = order[:Q3_CARS], order[Q3_CARS:Q3_CARS + q2_out]
+    q2_end = last[q2].max() if q2 else None
+    q1_end = last[order[Q3_CARS + q2_out:]].max() if len(order) > Q3_CARS + q2_out else None
+    ok = laps["LapTime"].notna() & ~laps.get("Deleted", pd.Series(False, index=laps.index)).fillna(False).astype(bool)
+    seg = pd.Series(3, index=laps.index)
+    if q2_end is not None:
+        seg[laps["Time"] <= q2_end] = 2
+    if q1_end is not None:
+        seg[laps["Time"] <= q1_end] = 1
+    best = {k: laps[ok & (seg == k)].groupby(num[ok & (seg == k)])["LapTime"].min() for k in (1, 2, 3)}
+    res = res.copy()
+    key = res["DriverNumber"].astype(str)
+    for k in (1, 2, 3):
+        res[f"Q{k}"] = key.map(best[k])
+    group = key.map({d: 0 for d in q3} | {d: 1 for d in q2}).fillna(2)
+    seg_best = [res["Q3"], res["Q2"], res["Q1"]]
+    own = pd.Series([seg_best[int(g)].iloc[i] for i, g in enumerate(group)], index=res.index)
+    rank = pd.DataFrame(dict(g=group, t=own.fillna(float("inf")), q2=res["Q2"].fillna(float("inf")),
+                             q1=res["Q1"].fillna(float("inf")))).sort_values(["g", "t", "q2", "q1"])
+    res.loc[rank.index, "Position"] = range(1, len(rank) + 1)
+    return res
+
+
 def track_profile(q_laps, race_results, meta_q, meta_r, venue_slug):
     """Track features from each driver's fastest clean qualifying lap and the race classification."""
     f = {"venue": venue_slug, "street": venue_slug in registry.STREET_CIRCUITS}
@@ -108,7 +147,11 @@ def ingest_event(session, year, rnd, force=False):
     metas = {p.name.split("_")[1].split(".")[0]: json.loads(p.read_text()) for p in files if p.suffix == ".json"}
     if not metas:
         return "no sessions"
-    sha = hashlib.sha256(b"".join(p.read_bytes() for p in files)).hexdigest()
+    # a qualifying stored with its order read from the laps (knockout_from_laps) is a different reading of the same
+    # files: the marker makes a weekend stored before that reading existed ingest once more
+    q_res = DATA / str(year) / f"{rnd:02d}_Q.results.parquet"
+    from_laps = b"q-order-from-laps" if "Q" in metas and q_res.exists() and pd.read_parquet(q_res)["Position"].isna().all() else b""
+    sha = hashlib.sha256(b"".join(p.read_bytes() for p in files) + from_laps).hexdigest()
     key = f"f1:{year}-{rnd:02d}"
     src = session.scalars(select(m.SourceFile).filter_by(path=key)).first()
     if src and src.sha256 == sha and not force:
@@ -154,6 +197,8 @@ def ingest_event(session, year, rnd, force=False):
             res.loc[blank, col] = res.loc[blank, "DriverNumber"].astype(str).map(lambda n: ref.get(n, {}).get(col))
         res = res[res["DriverId"].notna() & (res["DriverId"].astype(str).str.strip() != "")]
         laps = pd.read_parquet(base.with_suffix(".laps.parquet"))
+        if code == "Q":
+            res = knockout_from_laps(res, laps)
         frames[code] = (res, laps)
         mt = metas[code]
         rnd_row = m.Round(race_id=race.id, kind=kind, ordinal=ROUND_ORDINAL[kind], name=kind,

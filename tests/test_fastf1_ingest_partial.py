@@ -57,3 +57,29 @@ def test_practice_and_sprint_qualifying_are_stored_before_qualifying(tmp_path, t
     meas = run.Measurements.load(test_engine)       # a weekend with no qualifying yet loads like any other
     ev17 = meas.res[(meas.res["year"] == 2026) & (meas.res["series_round"] == 17)]
     assert set(ev17["round"]) == {"fp1", "sprint_qual"}
+
+
+def test_qualifying_order_from_laps_when_the_results_have_none():
+    """Right after qualifying FastF1 gives no Position and no Q1-Q3: the knockout order is read from the laps (22 cars:
+    Q3 is the 10 that ran last, then 6 out in Q2, 6 out in Q1). A Q2 lap faster than a Q3 runner's best still ranks
+    11th, and a Q3 runner with no Q3 time ranks behind those who set one."""
+    from racinglines.sources.fastf1 import ingest as I
+    n = 22
+    res = pd.DataFrame(dict(DriverNumber=[str(i) for i in range(1, n + 1)], Position=[None] * n,
+                            Q1=[None] * n, Q2=[None] * n, Q3=[None] * n))
+    rows = []
+    for i in range(1, n + 1):
+        rows.append((str(i), 100.0, 90.0 + i * 0.1))                 # Q1: everyone, slower car = higher number
+        if i <= 16:
+            rows.append((str(i), 1500.0, 89.0 + i * 0.1))            # Q2: the top 16
+        if i <= 10 and i != 9:
+            rows.append((str(i), 2400.0, 88.5 + i * 0.1))            # Q3: the top 10, car 9 sets no time
+    rows.append(("11", 1510.0, 88.0))                                 # car 11's Q2 lap beats every Q3 lap
+    rows.append(("9", 2300.0, None))                                  # car 9 goes out in Q3 but sets no lap time
+    laps = pd.DataFrame(rows, columns=["DriverNumber", "Time", "LapTime"])
+    out = I.knockout_from_laps(res, laps).set_index("DriverNumber")
+    assert [int(out.loc[str(i), "Position"]) for i in range(1, 11)] == [1, 2, 3, 4, 5, 6, 7, 8, 10, 9]
+    assert int(out.loc["11", "Position"]) == 11 and int(out.loc["17", "Position"]) == 17
+    assert out.loc["1", "Q3"] == 88.6 and out.loc["11", "Q2"] == 88.0 and pd.isna(out.loc["9", "Q3"])
+    has = res.assign(Position=range(1, n + 1))
+    assert I.knockout_from_laps(has, laps) is has                    # an official classification is kept as it is
