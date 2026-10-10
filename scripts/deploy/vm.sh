@@ -7,6 +7,8 @@
 #                                               # on the Mac it first stops the Mac's recorder and signals agents
 #   bash scripts/deploy/vm.sh live <event> [off] # a live event on the VM: live/f1/<event>.toml's timer (a step every
 #                                               # 5 minutes) or live/mtb_dh/<event>.toml's poll loop; off: disable it
+#   bash scripts/deploy/vm.sh live auto [off]    # every F1 event whose window is open, from the committed specs, one
+#                                               # step each every 5 minutes: no event is started or stopped by hand
 #   bash scripts/deploy/vm.sh record [off|status] # the Kalshi and OG.com recorder (scripts/vm/record_venues.sh): a pass
 #                                               # every 5 minutes (the first one backs the database up); status: last
 #                                               # passes and book snapshots per venue per 5 minutes
@@ -27,7 +29,7 @@
 #   bash scripts/deploy/vm.sh accounts [off]    # beta sign-up: back up the database, create the accounts schema and
 #                                               # fantasy-bucks ledger (racinglines users setup, idempotent), switch
 #                                               # RACINGLINES_SIGNUP on, check /signup; off: the switch off (the ledger stays)
-#   bash scripts/deploy/vm.sh staging setup [ref] | deploy [ref] | status | logs | reset | off | live <event> [off]
+#   bash scripts/deploy/vm.sh staging setup [ref] | deploy [ref] | status | logs | reset | off | live <event>|auto [off]
 #                                               # staging.racinglines.bet: a second app copy on the VM (port 8010,
 #                                               # its own database racinglines_staging and data folder; live: its own
 #                                               # run of a live event, like `vm.sh live`). deploy never pauses
@@ -82,9 +84,11 @@ case "${1:-}" in
     ;;
   live)
     ev="${2:-}"
-    if [ -n "$ev" ] && [ -f "live/f1/$ev.toml" ]; then t="racinglines-live-f1@$ev.timer"
+    # auto: every F1 event whose window is open, from the committed specs (no per-event start or stop by hand)
+    if [ "$ev" = auto ]; then t="racinglines-live-auto.timer"
+    elif [ -n "$ev" ] && [ -f "live/f1/$ev.toml" ]; then t="racinglines-live-f1@$ev.timer"
     elif [ -n "$ev" ] && [ -f "live/mtb_dh/$ev.toml" ]; then t="racinglines-live-dh@$ev.service"   # the poll loop, no timer
-    else echo "usage: vm.sh live <event> [off], with live/f1/<event>.toml or live/mtb_dh/<event>.toml in the repo"; exit 1; fi
+    else echo "usage: vm.sh live <event>|auto [off], with live/f1/<event>.toml or live/mtb_dh/<event>.toml in the repo"; exit 1; fi
     if [ "${3:-}" = off ]; then
       remote "sudo systemctl disable --now $t && echo '$t: off'"
     else
@@ -315,9 +319,10 @@ case "${1:-}" in
       live)
         # staging's own live run (its data folder and database), the twin of `vm.sh live`; production's are untouched
         ev="${3:-}"
-        if [ -n "$ev" ] && [ -f "live/f1/$ev.toml" ]; then u="racinglines-staging-live-f1@"; t="${u}$ev.timer"
+        if [ "$ev" = auto ]; then u="racinglines-staging-live-auto"; t="${u}.timer"
+        elif [ -n "$ev" ] && [ -f "live/f1/$ev.toml" ]; then u="racinglines-staging-live-f1@"; t="${u}$ev.timer"
         elif [ -n "$ev" ] && [ -f "live/mtb_dh/$ev.toml" ]; then u="racinglines-staging-live-dh@"; t="${u}$ev.service"
-        else echo "usage: vm.sh staging live <event> [off], with live/f1/<event>.toml or live/mtb_dh/<event>.toml in the repo"; exit 1; fi
+        else echo "usage: vm.sh staging live <event>|auto [off], with live/f1/<event>.toml or live/mtb_dh/<event>.toml in the repo"; exit 1; fi
         if [ "${4:-}" = off ]; then
           remote "sudo systemctl disable --now $t && echo '$t: off'"
         else

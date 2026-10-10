@@ -312,7 +312,14 @@ deploy is simpler to undo: `vm.sh deploy <previous commit>`.
 
 Each event's spec runs as a unit, in place of `racinglines live agent --install`, which is macOS only.
 The run folder's lock works the same on the VM's disk.
-From the Mac, `bash scripts/deploy/vm.sh live 2026-16` enables an F1 event's timer and `vm.sh live 2026-16 off`
+**Every F1 event, without starting one by hand:** `bash scripts/deploy/vm.sh live auto` enables
+`racinglines-live-auto.timer` once. Every 5 minutes it steps each committed spec (`live/f1/*.toml`) whose window is
+open, from an hour before the book opens to a day after the results (`racinglines live auto`), so each finished
+session is ingested and priced, the book closes at lights out and settles, and outside every window a pass does
+nothing (nothing to turn off when an event is complete). `vm.sh live auto off` disables it; staging's twin is
+`vm.sh staging live auto`.
+
+From the Mac, `bash scripts/deploy/vm.sh live 2026-16` enables one F1 event's timer and `vm.sh live 2026-16 off`
 disables it. On the VM itself:
 ```sh
 sudo systemctl enable --now racinglines-live-f1@2026-16.timer     # F1: one step every 5 minutes
@@ -330,6 +337,11 @@ race is in:
 - **Live timing, staging only:** while a session runs, every 2 minutes (`RELAY_SEC`) it writes the live-timing panel's
   snapshot to staging's `data/runs/f1_relay/<year>-<round>.json`. The panel (`racinglines/web/f1_live.py`) reads that
   file while it is under 10 minutes old and asks FastF1 itself otherwise.
+
+**Started by itself:** `bash scripts/deploy/f1_push_auto.sh install` (once, on the Mac) loads a LaunchAgent that
+starts `caffeinate -i f1_push.sh <event>` whenever an F1 event's window is open (`racinglines live auto --list`) and no
+push is running or the race is already on the VM; `f1_push_auto.sh remove` unloads it. The Mac still has to be awake
+and online through the weekend. Log: `data/runs/logs/f1_push_auto.log` and `f1_push-<event>.log`.
 
 A downhill final's ChronoRace feed works from the VM.
 

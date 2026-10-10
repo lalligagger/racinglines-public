@@ -39,6 +39,9 @@ case "$REMOTE" in /*) REMOTE="$REMOTE/$Y" ;; *) log "couldn't read the VM's data
 read -r STG_RAW STG_DATA <<< "$(folders /opt/racinglines-staging /etc/racinglines-staging.env)"
 case "$STG_RAW" in /*) STG_RAW="$STG_RAW/$Y"; RELAY="$STG_DATA/runs/f1_relay" ;; *) STG_RAW=""; RELAY="" ;; esac
 PUSHED="$LOCAL/.pushed-$EV"
+# the VM stores the round as soon as the files land, and its line is printed here: an ingest error (2026-17's
+# qualifying, 10 Oct: blank driver ids rolled the whole weekend back) shows on the Mac instead of only in a journal
+INGEST="cd /opt/racinglines && sudo -u racinglines -H bash -c 'set -a; . /etc/racinglines.env; set +a; .venv/bin/racinglines f1 ingest --years $Y' 2>&1 | grep -E ' R$RR: |rror' | sed 's/^/VM ingest: /'"
 mkdir -p "$LOCAL"
 touch "$PUSHED"
 # when each session is live (epoch seconds), from FastF1's schedule: "start end" per line
@@ -108,7 +111,7 @@ while true; do
       gcloud compute scp "$tgz" "$VM:/tmp/f1_push_$EV.tgz" --project "$PROJECT" --zone "$ZONE" --tunnel-through-iap
       stg=""
       [ -n "$STG_RAW" ] && stg=" && sudo -u racinglines mkdir -p $STG_RAW && sudo -u racinglines tar --warning=no-unknown-keyword -xzf /tmp/f1_push_$EV.tgz -C $STG_RAW && { ! systemctl is-enabled -q racinglines-staging-live-f1@$EV.timer || sudo systemctl start --no-block racinglines-staging-live-f1@$EV.service; } && echo 'on staging, files copied'"
-      remote "sudo -u racinglines mkdir -p $REMOTE && sudo -u racinglines tar --warning=no-unknown-keyword -xzf /tmp/f1_push_$EV.tgz -C $REMOTE && sudo systemctl start --no-block racinglines-live-f1@$EV.service && echo 'on the VM, live step started'$stg; rm -f /tmp/f1_push_$EV.tgz"
+      remote "sudo -u racinglines mkdir -p $REMOTE && sudo -u racinglines tar --warning=no-unknown-keyword -xzf /tmp/f1_push_$EV.tgz -C $REMOTE && { $INGEST; true; } && sudo systemctl start --no-block racinglines-live-f1@$EV.service && echo 'on the VM, live step started'$stg; rm -f /tmp/f1_push_$EV.tgz"
       rm -f "$tgz"
       printf '%s\n' "${new[@]}" >> "$PUSHED"
       log "pushed ${#new[@]} files: ${new[*]}"
