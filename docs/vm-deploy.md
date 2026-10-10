@@ -338,6 +338,11 @@ race is in:
   snapshot to staging's `data/runs/f1_relay/<year>-<round>.json`. The panel (`racinglines/web/f1_live.py`) reads that
   file while it is under 10 minutes old and asks FastF1 itself otherwise.
 
+**Started by itself:** `bash scripts/deploy/f1_push_auto.sh install` (once, on the Mac) loads a LaunchAgent that
+starts `caffeinate -i f1_push.sh <event>` whenever an F1 event's window is open (`racinglines live auto --list`) and no
+push is running or the race is already on the VM; `f1_push_auto.sh remove` unloads it. The Mac still has to be awake
+and online through the weekend. Log: `data/runs/logs/f1_push_auto.log` and `f1_push-<event>.log`.
+
 A downhill final's ChronoRace feed works from the VM.
 
 Only `vm.sh start` (without `web`) enables the recorder and signals, and only `vm.sh live` (or the lines above)

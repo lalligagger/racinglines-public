@@ -62,6 +62,7 @@ def main(argv=None):
                                     "to a day after its results), so no event has to be started by hand.")
     p.add_argument("--sport", default="f1", help="Only F1 steps on a timer (downhill runs its own poll loop)")
     p.add_argument("--now", default=None, help="The (simulated) UTC time, e.g. 2026-10-10T09:30")
+    p.add_argument("--list", action="store_true", help="Only print the open events' keys, one per line (f1_push_auto.sh)")
     for flag in ("--no-fetch", "--unfreeze", "--no-sync", "--no-alert"):
         p.add_argument(flag, action="store_true")
     p = sub.add_parser("agent", help="Write (and load) a macOS LaunchAgent for a spec: a step every 5 min, locked, logged.")
@@ -149,9 +150,11 @@ def due_specs(sport, now):
         try:
             spec = LV.load_spec(p)
             w = spec.get("window") or {}
+            if not w.get("open"):                        # a rehearsal (no window): only run by hand, --simulate
+                continue
             a, b = pd.Timestamp(w["open"]), pd.Timestamp(w.get("results") or w["close"])
         except Exception as ex:                          # noqa: BLE001
-            _echo(f"{p.name}: unreadable spec, skipped ({type(ex).__name__}: {ex})")
+            print(f"{p.name}: unreadable spec, skipped ({type(ex).__name__}: {ex})", file=sys.stderr, flush=True)
             continue
         if a - pd.Timedelta(hours=AUTO_LEAD_H) <= now <= b + pd.Timedelta(hours=AUTO_TAIL_H):
             out.append(spec)
@@ -164,6 +167,10 @@ def cmd_auto(args):
         sys.exit("live auto: only F1 steps on a timer (downhill: `racinglines live run` per final)")
     now = pd.Timestamp(args.now) if args.now else pd.Timestamp.now(tz="UTC").tz_localize(None)
     specs = due_specs(args.sport, now)
+    if args.list:
+        for spec in specs:
+            print(spec["event"])
+        return 0
     if not specs:
         _echo(f"live auto: no {args.sport} event window open at {now:%Y-%m-%d %H:%M} UTC")
         return 0
