@@ -3,6 +3,7 @@
 # (enable with `bash scripts/deploy/vm.sh forecast`, stop with `vm.sh forecast off`). Runs the NASCAR and MotoGP forecasts
 # after each race to keep pricing fresh, and the F1 forecast (the championship fairs) once per new F1 classification.
 #
+#   racinglines nascar fetch|ingest --years <this year>     NASCAR results first (race weekends and Mondays UTC)
 #   racinglines nascar forecast --save --backup <path>
 #   racinglines motogp forecast --save --backup <path>
 #   racinglines f1 forecast --year <this year> --save        only when a race classification arrived since the last
@@ -89,6 +90,26 @@ f1() {   # the F1 forecast, once per new race classification of this season
   fi
 }
 
+results() {   # NASCAR results: fetch and ingest this season's feeds before the forecast, so a race's result (and the
+  # entry list it carries) is stored the same night. Race weekends, plus Mondays UTC: a Sunday-night race ends after
+  # midnight UTC. fetch asks again for a race of the last 3 days, so a feed stored mid-race is replaced.
+  local year t0=$SECONDS out
+  year=$(date -u +%Y)
+  if ! bash scripts/vm/race_weekend.sh nascar >/dev/null 2>&1 && [ "$(date -u +%u)" != 1 ]; then
+    say "nascar results: off-week, skipped"
+    return 0
+  fi
+  # the feeds and lap setting of overnight.sh's results step, so races it already stored are left unchanged
+  out=$(nice $R nascar fetch --years "$year" --feeds race_list_basic,points-feed,weekend-feed 2>&1) ||
+    say "nascar results: fetch had errors, ingesting what is stored: $(echo "$out" | tail -n 2 | tr '\n' ' ')"
+  if out=$(nice $R nascar ingest --years "$year" --no-laps 2>&1); then
+    say "nascar results: $(echo "$out" | tail -n 1) ($((SECONDS - t0)) s)"
+  else
+    rc=1; say "nascar results: FAILED ($((SECONDS - t0)) s): $(echo "$out" | tail -n 3 | tr '\n' ' ')"
+  fi
+}
+
+results
 run nascar
 run motogp
 f1
