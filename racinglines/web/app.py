@@ -58,7 +58,7 @@ CSRF_TOKEN = hmac.new(_SECRET.encode(), b"csrf", hashlib.sha256).hexdigest()
 security = HTTPBasic(realm="racinglines", auto_error=False)
 SESSION_COOKIE = "rl_session"
 SESSION_HOURS = 12
-PUBLIC_PATHS = ("/login", "/static", "/racinglines101", "/signup", "/forgot", "/pitch")
+PUBLIC_PATHS = ("/login", "/static", "/racinglines101", "/signup", "/forgot", "/pitch", "/mybets")
 
 # failed-login throttle: per client IP, MAX_FAILURES within FAILURE_WINDOW seconds -> 429
 MAX_FAILURES = 8
