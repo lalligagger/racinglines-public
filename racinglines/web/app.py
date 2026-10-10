@@ -58,7 +58,7 @@ CSRF_TOKEN = hmac.new(_SECRET.encode(), b"csrf", hashlib.sha256).hexdigest()
 security = HTTPBasic(realm="racinglines", auto_error=False)
 SESSION_COOKIE = "rl_session"
 SESSION_HOURS = 12
-PUBLIC_PATHS = ("/login", "/static", "/racinglines101", "/signup", "/forgot", "/pitch")
+PUBLIC_PATHS = ("/login", "/static", "/racinglines101", "/signup", "/forgot", "/pitch", "/mybets")
 
 # failed-login throttle: per client IP, MAX_FAILURES within FAILURE_WINDOW seconds -> 429
 MAX_FAILURES = 8
@@ -646,6 +646,7 @@ from racinglines.web import order_routes  # noqa: E402,F401  (linked markets and
 from racinglines.web import book_routes  # noqa: E402,F401  (the private book and the taker's calls)
 from racinglines.web import exchange_routes  # noqa: E402,F401  (exchange boards and tapes)
 from racinglines.web import diag_routes  # noqa: E402,F401  (single-event diagnostics)
+from racinglines.web import mybets  # noqa: E402,F401  (/mybets, the owner's bets calendar from the data folder)
 from racinglines.web.book_routes import bet_markets, polymarket_calls  # noqa: E402,F401  (used by views.py)
 
 
