@@ -85,12 +85,96 @@ def test_backtest_scores_months_walk_forward():
     assert len(summ) == 2 and summ["win_ll"].notna().all()
 
 
+def test_reliability_buckets_every_rider_walk_forward(tmp_path):
+    res = _results("road", n_races=50, field=70)
+    raw = C.to_raw(res, "road", C.model_block("road")["rules"])
+    rel = C.reliability(raw, "road", dict(C.model_block("road")["defaults"]), since="2022-06-01", n_sims=300)
+    per_race = rel.groupby("race")
+    assert (per_race["won"].sum() == 1).all() and (per_race["p_win"].sum().between(0.9, 1.0001)).all()
+    assert (per_race["field"].first() == per_race.size()).all()             # DNFs are in the field
+    t = C.reliability_table(rel, "model_rank", "won", C.RANK_BUCKETS)
+    assert t["riders"].sum() == len(rel) and t["hits"].sum() == rel["race"].nunique()
+    assert C.reliability_table(rel, "p_win", "won", C.WIN_BUCKETS)["riders"].sum() == len(rel)
+    temp = C.temperature(rel)
+    assert temp["win_ll_best"] <= temp["win_ll_a1"] + 1e-9
+
+
 def test_book_names_need_one_match():
     res = _results("road", n_races=2)
     ev = _event("road")
     ev["names"]["Pidcock"] = "rider"                    # matches every "RIDER NumberN"
     ids, bad = C.book_ids(ev, res.head(0)[["rider", "rider_url"]], res)
     assert "Pidcock" not in ids and any(b.startswith("Pidcock") for b in bad)
+
+
+RESULT_HTML = """<html><body>
+<div class="page-content"><ul class="list keyvalueList">
+<li><div class="title">Date:</div><div class="value">22 March 2025, 10:10</div></li>
+<li><div class="title">Distance:</div><div class="value">289 km</div></li>
+<li><div class="title">Vertical meters:</div><div class="value">2,234</div></li>
+<li><div class="title">ProfileScore:</div><div class="value">71</div></li>
+<li><div class="title">Classification:</div><div class="value">1.UWT</div></li>
+</ul><span class="icon profile p2 mg_rp4"></span>
+<div class="resultTabs"><table class="unit results results6"><thead><tr>
+<th>Rnk</th><th>BIB</th><th>H2H</th><th>Rider</th><th>Team</th><th>UCI</th><th>Pnt</th><th>Timelag</th><th>Time won/lost</th></tr></thead><tbody>
+<tr><td>1</td><td>1</td><td></td><td><span class="flag nl"></span> <a href="rider/mathieu-van-der-poel">VAN DER POEL Mathieu</a></td>
+<td><a href="team/alpecin-2025">Alpecin</a></td><td>500</td><td>275</td><td class="hide cu600">6:22:53<span class="hide">6:22:53</span></td><td class="time">0:01:10</td></tr>
+<tr><td>2</td><td>2</td><td></td><td><span class="flag it"></span> <a href="/rider/filippo-ganna">GANNA Filippo</a></td>
+<td><a href="team/ineos-2025">Ineos</a></td><td>400</td><td>200</td><td><font>,,</font></td><td class="time">0:00:40</td></tr>
+<tr><td>3</td><td>3</td><td></td><td><span class="flag si"></span> <a href="rider/tadej-pogacar">POGAČAR Tadej</a></td>
+<td><a href="team/uae-2025">UAE</a></td><td>325</td><td>150</td><td>0:02<span class="hide">0:02</span></td><td class="time"></td></tr>
+<tr><td>DNF</td><td>4</td><td></td><td><span class="flag be"></span> <a href="rider/remco-evenepoel">EVENEPOEL Remco</a></td>
+<td><a href="team/soudal-2025">Soudal</a></td><td></td><td></td><td class="time ar">-</td></tr>
+</tbody></table></div></div></body></html>"""
+
+STARTLIST_HTML = """<html><body><div class="sidebar"><a href="rider/someone-else">Popular rider</a></div>
+<div class="page-content"><ul class="startlist_v4">
+<li><a class="team" href="team/uae-2026">UAE Team Emirates</a><ul>
+<li><a href="rider/tadej-pogacar">POGAČAR Tadej</a></li><li><a href="rider/isaac-del-toro">DEL TORO Isaac</a></li></ul></li>
+<li><a class="team" href="team/soudal-2026">Soudal Quick-Step</a><ul>
+<li><a href="rider/remco-evenepoel">EVENEPOEL Remco</a></li></ul></li>
+</ul></div></body></html>"""
+
+
+GC_HTML = """<html><body><ul class="tabs tabnav resultTabs">
+<li><a data-id="1" href="#">Stage</a></li><li><a data-id="2" href="#">GC</a></li><li><a data-id="3">Points</a></li></ul>
+<div class="resTab" data-id="1"><table class="results"><thead><tr><th>Rnk</th><th>Rider</th><th>Time</th></tr></thead>
+<tbody><tr><td>1</td><td><a href="rider/wout-van-aert">VAN AERT Wout</a></td><td>2:39:10</td></tr>
+<tr><td>2</td><td><a href="rider/tadej-pogacar">POGAČAR Tadej</a></td><td>0:19</td></tr></tbody></table></div>
+<div class="resTab hide" data-id="2"><table class="results"><thead><tr><th>Rnk</th><th>Rider</th><th>Time</th></tr></thead>
+<tbody><tr><td>1</td><td><a href="rider/tadej-pogacar">POGAČAR Tadej</a></td><td>76:00:32</td></tr>
+<tr><td>2</td><td><a href="rider/jonas-vingegaard">VINGEGAARD Jonas</a></td><td>+4:24</td></tr></tbody></table></div>
+<div class="resTab hide" data-id="3"><table class="results"><tbody><tr><td>1</td>
+<td><a href="rider/jonathan-milan">MILAN Jonathan</a></td></tr></tbody></table></div></body></html>"""
+
+
+def test_pcs_reads_the_gc_tab_not_the_stage():
+    pytest.importorskip("selectolax")
+    gc = pcs.parse_results(GC_HTML, "GC")
+    assert [r["rider_url"] for r in gc] == ["rider/tadej-pogacar", "rider/jonas-vingegaard"]
+    rows = pcs.stage_rows(gc, {}, "tdf", "gc", "u")
+    assert [r["gap_s"] for r in rows] == [0, 264] and rows[0]["winner_time_s"] == 76 * 3600 + 32
+    assert pcs.parse_results(GC_HTML)[0]["rider_url"] == "rider/wout-van-aert"
+    no_ids = GC_HTML.replace(' data-id="2"', "").replace(' data-id="1"', "").replace(' data-id="3"', "")
+    assert pcs.parse_results(no_ids, "GC")[0]["rider_url"] == "rider/tadej-pogacar"   # tab position fallback
+
+
+def test_pcs_parses_results_info_and_startlist_markup():
+    pytest.importorskip("selectolax")
+    table = pcs.parse_results(RESULT_HTML)
+    assert [r["rider_url"] for r in table] == ["rider/mathieu-van-der-poel", "rider/filippo-ganna",
+                                               "rider/tadej-pogacar", "rider/remco-evenepoel"]
+    assert [r["rank"] for r in table] == [1, 2, 3, None] and table[3]["status"] == "DNF"
+    info = pcs.page_info(RESULT_HTML)
+    assert info == dict(date="2025-03-22", distance_km=289.0, vert_m=2234.0, profile_score=71.0,
+                        race_class="1.UWT", profile_icon="p2")
+    rows = pcs.stage_rows(table, info, "milano-sanremo-2025", "oneday", "u")
+    assert [r["gap_s"] for r in rows] == [0, 0, 2, None]
+    assert [r["status"] for r in rows] == ["OK", "OK", "OK", "DNF"]
+    sl = pcs.parse_startlist(STARTLIST_HTML)
+    assert [(r["rider_url"], r["team"]) for r in sl] == [("rider/tadej-pogacar", "UAE Team Emirates"),
+                                                        ("rider/isaac-del-toro", "UAE Team Emirates"),
+                                                        ("rider/remco-evenepoel", "Soudal Quick-Step")]
 
 
 def test_pcs_rows_read_times_and_gaps():
