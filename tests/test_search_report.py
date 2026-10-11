@@ -113,7 +113,7 @@ def test_outputs_and_stable_candidate_ids(tmp_path):
         j, m = _job(i, y, p, **st)
         jobs.append(j)
         metrics.update(m)
-    R.write(tmp_path, jobs, metrics, STRATS, rerun=lambda j: ["racinglines", "f1", "sweep", "--year", str(j["year"])],
+    R.write(tmp_path, jobs, metrics, STRATS, rerun=lambda j: ["racinglines", "strategy", "sweep", "f1", "--year", str(j["year"])],
             echo=lambda m: None)
     cid = f"update-{SS.Settings.from_dict(A).key}"
     doc = json.loads((tmp_path / "candidates" / f"{cid}.json").read_text())

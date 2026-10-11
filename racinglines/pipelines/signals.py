@@ -258,9 +258,9 @@ def _missing_sessions(meas, w, now):
 
 def refresh_fastf1(w, echo=print):
     year, rnd = (int(x) for x in w["event_key"].split("-"))
-    rl = [sys.executable, "-m", "racinglines", "f1"]
-    for argv in (["fetch", "--years", str(year), "--rounds", str(rnd), "--sessions", FASTF1_SESSIONS],
-                 ["ingest", "--years", str(year)]):
+    rl = [sys.executable, "-m", "racinglines", "data"]
+    for argv in (["fetch", "f1", "--years", str(year), "--rounds", str(rnd), "--sessions", FASTF1_SESSIONS],
+                 ["ingest", "f1", "--years", str(year)]):
         r = subprocess.run(rl + argv, capture_output=True, text=True, timeout=1800)
         echo(f"  f1 {argv[0]}: {'ok' if r.returncode == 0 else 'failed'} {r.stdout.strip().splitlines()[-1:] or ''}")
 
