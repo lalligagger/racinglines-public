@@ -109,8 +109,9 @@ it, the saved `result` (the JSON the command prints with `--json`), the `render`
 `recorded`. `python scripts/demo/record_term.py` re-renders the saved results through the CLI's own Rich renderer
 (`racinglines/cli/rich_view.py`) into `racinglines/web/term/<id>.html`; add `--run` on a machine that can run the
 commands (the hosted server's token for `--demo`) to refresh the results first, then update `recorded`. The test
-`tests/test_term.py` fails if a committed render no longer matches its result. The demo book
-(`racinglines/web/term/singapore-2026.toml`) holds real prices one generic sportsbook showed; no sportsbook is named.
+`tests/test_term.py` fails if a committed render no longer matches its result. The page starts
+with the CLI's offline `--demo` (a bundled synthetic sample: no database, no hosted server, no real model prices);
+runs on the hosted server may come later (owner, 2026-10-11).
 
 **Beta sign-up** (`/signup`, `RACINGLINES_SIGNUP=1`, off by default; `racinglines/web/accounts.py`). A public page,
 linked from the landing page's "Fantasy trade with us" section: username, email (required since 2026-10-08, one

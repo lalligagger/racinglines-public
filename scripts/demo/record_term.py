@@ -28,7 +28,7 @@ FORMAT = '<pre class="term-out">{code}</pre>'
 
 
 def demos():
-    return tomllib.loads((TERM / "demos.toml").read_text())["demo"]
+    return tomllib.loads((TERM / "demos.toml").read_text()).get("demo", [])
 
 
 def render(d):

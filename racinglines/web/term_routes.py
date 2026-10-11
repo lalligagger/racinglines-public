@@ -18,7 +18,7 @@ TERM = Path(__file__).resolve().parent / "term"
 def demos():
     """[demo dict + `html`, the recorded output] in demos.toml order; a demo not yet rendered is left out."""
     out = []
-    for d in tomllib.loads((TERM / "demos.toml").read_text())["demo"]:
+    for d in tomllib.loads((TERM / "demos.toml").read_text()).get("demo", []):
         f = TERM / f"{d['id']}.html"
         if f.is_file():
             out.append(dict(d, html=f.read_text()))

@@ -23,9 +23,10 @@ def test_term_is_public_and_shows_each_recorded_command():
     from racinglines.web.app import app
     r = TestClient(app).get("/term", follow_redirects=False)
     assert r.status_code == 200
-    for d in tomllib.loads((term_routes.TERM / "demos.toml").read_text())["demo"]:
+    for d in tomllib.loads((term_routes.TERM / "demos.toml").read_text()).get("demo", []):
         assert d["command"] in r.text and f'id="{d["id"]}"' in r.text
-    assert 'class="term-out"' in r.text and "book price" in r.text
+    if not term_routes.demos():
+        assert "No recordings yet" in r.text
 
 
 def test_every_demo_has_a_saved_result_and_a_render_that_matches_it():
