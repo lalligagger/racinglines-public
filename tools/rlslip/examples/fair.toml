@@ -1,0 +1,52 @@
+# Synthetic example. Each price is the yes / over side of one market; a leg on the no / under side, or an h2h listed
+# the other way round, is the complement. `sport` and `event` default to the book's.
+[fair]
+source = "synthetic example"
+as_of_utc = "2026-10-07T09:00Z"
+
+[[prices]]
+kind = "race_win"
+driver = "Ann Alpha"
+model = 0.38
+market = 0.33
+
+[[prices]]
+kind = "race_win"
+driver = "Bea Beta"
+model = 0.40
+market = 0.46
+
+[[prices]]
+kind = "race_win"
+driver = "Field"
+model = 0.22
+market = 0.21
+
+[[prices]]
+kind = "race_podium"
+driver = "Ann Alpha"
+model = 0.78
+market = 0.74
+
+[[prices]]
+kind = "h2h"
+driver = "Ann Alpha"
+opponent = "Bea Beta"
+model = 0.47
+market = 0.42
+
+[[prices]]
+sport = "nascar"
+event = "2026-30"
+kind = "race_win"
+driver = "Cora Cup"
+model = 0.52
+market = 0.50
+
+[[prices]]
+sport = "motogp"
+event = "2026-18"
+kind = "race_win"
+driver = "Dan Duke"
+model = 0.27
+market = 0.24

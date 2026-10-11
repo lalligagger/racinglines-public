@@ -1,0 +1,63 @@
+# Synthetic example (made-up names and numbers, like docs/sportsbook/slips.md): one venue's lines for one event.
+[book]
+venue = "book_x"
+event = "2026-17"
+sport = "f1"
+captured_utc = "2026-10-07T09:00Z"
+source = "paste"
+odds = "decimal"
+currency = "USD"
+
+[[lines]]
+id = "win-a"
+title = "Race Winner"
+selection = "Ann Alpha"
+odds = 3.0
+market = { kind = "race_win", driver = "Ann Alpha" }
+
+[[lines]]
+id = "win-b"
+title = "Race Winner"
+selection = "Bea Beta"
+odds = 2.2
+market = { kind = "race_win", driver = "Bea Beta" }
+
+[[lines]]
+id = "win-f"
+title = "Race Winner"
+selection = "Field"
+odds = 4.0
+market = { kind = "race_win", driver = "Field" }
+
+[[lines]]
+id = "h2h"
+title = "Head to Head"
+selection = "Bea Beta"
+odds = 1.75
+market = { kind = "h2h", driver = "Bea Beta", opponent = "Ann Alpha" }
+
+[[lines]]
+id = "sgp"
+title = "Same Race Combo"
+selection = "Ann Alpha win + podium"
+odds = 2.6
+market = { kind = "combo", legs = [
+  { kind = "race_win", driver = "Ann Alpha" },
+  { kind = "race_podium", driver = "Ann Alpha" },
+] }
+
+[[lines]]
+id = "parlay"
+title = "Parlay"
+selection = "Cora Cup win + Dan Duke win"
+market = { kind = "combo", legs = [
+  { kind = "race_win", driver = "Cora Cup", sport = "nascar", event = "2026-30", odds = 2.0 },
+  { kind = "race_win", driver = "Dan Duke", sport = "motogp", event = "2026-18", odds = 4.0 },
+] }
+
+[[lines]]
+id = "red"
+title = "Red Flag"
+selection = "No"
+odds = 1.5
+market = "unmapped"
