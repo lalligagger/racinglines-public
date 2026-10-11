@@ -108,6 +108,31 @@ BANKROLL_SINCE = "2025-01-01"
 # the demo maker's saved Edge Finder: the setups it ran, newest first (M1 = the baseline maker, also the benchmark)
 DEMO_EDGE_FINDER = {"maker": [("C", "maker"), ("M3", "maker"), ("M2", "maker"), ("M1", "maker")]}
 DEMO_EDGE_YEAR = 2026
+# Maker strategies for users (owner, 2026-10-11 22:29Z): "For the Alpha Fantasy Launch we can remove maker strategies
+# completely. We will add them back for the Beta test." Closed: no account but admin can be assigned a maker profile
+# (web/roles.allowed_profile), the picker doesn't offer one (open_codes), and the signal engine skips any maker profile
+# outside the demo accounts (signals.run_all). Nothing is deleted: profiles, candidates, sweeps, the demo maker and its
+# paper positions stay. Set True for Beta.
+MAKERS_OPEN = False
+
+
+def is_maker(profile):
+    """A maker profile (a PROFILES entry or an assigned profile): one strategy that isn't a taker mode. A blend is a
+    maker if any member is."""
+    if not profile:
+        return False
+    if is_combo(profile):
+        return any(is_maker(PROFILES.get(m[0]) if isinstance(m, (list, tuple)) else m.get("member") or PROFILES.get(m["code"]))
+                   for m in profile["members"])
+    from racinglines.pipelines import weekend_sweep as WS
+    return profile.get("strategy", "update") not in WS.TAKER_MODES
+
+
+def open_codes(codes):
+    """The codes users may pick from, in order: makers drop out while MAKERS_OPEN is off."""
+    return tuple(c for c in codes if MAKERS_OPEN or not is_maker(PROFILES.get(c)))
+
+
 PREF = "strategy_profile"
 PREF_KALSHI = "strategy_profile_kalshi"
 

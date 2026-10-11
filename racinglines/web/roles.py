@@ -94,7 +94,11 @@ def _is_basic_draw(profile, user_id):
 def allowed_profile(role, profile, user_id=None, legacy_ok=False):
     """May an account with this role run this strategy profile (a dict from profiles.load / basic_profile, or None)?
     Admin and pro: any. Basic: only its own draw (basic_profile; with user_id, checked against basic_members).
-    legacy_ok: also a profile in LEGACY_BASIC_PROFILES, which a basic account already running one keeps."""
+    legacy_ok: also a profile in LEGACY_BASIC_PROFILES, which a basic account already running one keeps.
+    While profiles.MAKERS_OPEN is off (Alpha), a maker profile is admin-only."""
+    from racinglines.pipelines import profiles as PF
+    if profile is not None and not PF.MAKERS_OPEN and canonical(role) != "admin" and PF.is_maker(profile):
+        return False
     if profile is None or canonical(role) in PRO:
         return True
     if _is_basic_draw(profile, user_id):
