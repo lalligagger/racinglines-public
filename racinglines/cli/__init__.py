@@ -22,7 +22,7 @@ SPORT is f1, mtb_dh, nascar, motogp or cycling, e.g. `racinglines model forecast
 import sys
 
 GROUPS = ("data", "model", "strategy", "weather", "backtest", "markets", "book", "db", "live", "web", "users", "mcp", "check")
-# the sport-first form (`racinglines f1 forecast`): an alias that still runs, with a notice on stderr, not listed
+# the sport-first form (`racinglines f1 forecast`): deprecated, an alias for one version with a notice on stderr, not listed
 VERB_GROUPS = ("data", "model", "strategy")
 SPORT_FIRST = ("f1", "mtb_dh", "nascar", "motogp", "cycling")
 
@@ -37,7 +37,8 @@ def _notice(argv):
         return
     group = cmd and verbs.group_of(cmd, argv[0])
     if group and not {"-h", "--help"} & set(argv):
-        print(f"note: `racinglines {argv[0]} {cmd}` is now `racinglines {group} {cmd} {argv[0]}`", file=sys.stderr)
+        print(f"deprecated: `racinglines {argv[0]} {cmd}` is going away, use `racinglines {group} {cmd} {argv[0]}`",
+              file=sys.stderr)
 
 
 def main(argv=None):

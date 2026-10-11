@@ -32,8 +32,9 @@ racinglines model backtest f1 --variant grid --save     # the sport's own option
 racinglines strategy replay f1 --runs 1298,1299,1300 --sweep
 ```
 
-The old sport-first form (`racinglines f1 forecast --save`) still runs the same code and prints a one-line note on
-stderr naming the new form; it is no longer listed in the help, and nothing in the repo calls it. The mapping lives in
+The old sport-first form (the sport before the command) is deprecated: for one version it still runs and prints a
+one-line note on stderr naming the new form, then it is removed. Nothing in the repo calls it
+(`tests/test_no_old_cli_forms.py` checks code, scripts, systemd units and docs). The mapping lives in
 `racinglines/cli/verbs.py`; which sports offer which command is read from each sport's parser
 (`racinglines/cli/<sport>.py`), so a new command only needs a group there.
 
@@ -563,7 +564,7 @@ racinglines strategy reconcile f1 --event YEAR-ROUND --profile A|C|ID|NAME [--ve
 ## racinglines markets
 
 Exchange data (Polymarket; F1 is the only sport listed). `racinglines markets CMD`
-is the same as `racinglines f1 pm-CMD`; group options are `--exchange polymarket`
+is the same as `racinglines data pm-CMD f1`; group options are `--exchange polymarket`
 and `--sport f1` (the defaults) and `--db URL`.
 
 ```
