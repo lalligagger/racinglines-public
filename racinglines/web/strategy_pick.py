@@ -9,7 +9,7 @@ for them; this page is the user-facing side of what /admin/users/<id> does (admi
                  (TUNABLE) on a single strategy; a blend runs as tuned
 
 The page shows every sport and exchange a strategy could point at (admin.profile_slots; owner, 2026-10-11 22:30Z:
-"pointing a strat at a particular sport"), but only F1 on Polymarket can be picked: it is the one slot the VM's signal
+"pointing a strat at a particular sport"), to admins only, and only F1 on Polymarket can be picked: it is the one slot the VM's signal
 timer runs (deploy/vm/systemd/racinglines-signals.service), and the library's strategies carry F1's stages and kinds,
 so on another sport they would fail or change (library/core/2026-10-11-strategies-per-sport.md). The others show as
 "coming soon" until Core adds per-sport strategies.
@@ -49,10 +49,13 @@ TUNABLE = {k: tuple((n, label, *UI_RANGES[n], step, unit) for n, label, step, un
 F1_SLOT = "f1:polymarket"
 
 
-def slots():
-    """Every sport and exchange a strategy could point at, F1 on Polymarket first: [dict(key, label, open)]; only F1 on
-    Polymarket is open (see the docstring)."""
+def slots(user):
+    """The sport tabs: admins see every sport and exchange a strategy could point at (F1 on Polymarket first, the only
+    one open; see the docstring); everyone else sees none, as F1 on Polymarket is all they can pick in the Alpha (the
+    owner hid MotoGP for it, 2026-10-11 22:59Z). -> [dict(key, label, open)]."""
     from racinglines.web.admin import profile_slots
+    if R.canonical(user["role"]) != "admin":
+        return []
     return [dict(s, open=s["key"] == F1_SLOT) for s in profile_slots()]
 
 
@@ -150,7 +153,7 @@ def pick_page(request: Request, msg: str = ""):
     return render(request, "strategy_pick.html", opts=opts, profile=profile, now=now,
                   chosen=now or (opts[0]["code"] if R.is_basic(me) else DEFAULT), locked=demo.is_demo(me) or bool(w),
                   demo_locked=demo.is_demo(me), weekend_note=lock_note(w) if w else "", msg=msg, basic=R.is_basic(me),
-                  slots=slots())
+                  slots=slots(me))
 
 
 def _adjusted(code, form):
@@ -182,10 +185,13 @@ def _adjusted(code, form):
 
 
 @app.post("/strategy/pick", dependencies=[Depends(check_csrf), allow(*ANY)])
-async def pick_save(request: Request, code: str = Form(""), rolled: str = Form("")):
+async def pick_save(request: Request, code: str = Form(""), rolled: str = Form(""), slot: str = Form(F1_SLOT)):
     me = request.state.user
     if demo.is_demo(me):
         return RedirectResponse("/strategy/pick?msg=The demo accounts keep their strategy.", status_code=303)
+    if slot != F1_SLOT:                             # only F1 on Polymarket can be picked in the Alpha
+        return RedirectResponse("/strategy/pick?msg=Error: only Formula 1 on Polymarket can be picked for now.",
+                                status_code=303)
     w = open_weekend()
     if w is not None:                               # a pick, a slider, a dice roll or a stop: all wait for the window
         return RedirectResponse("/strategy/pick?msg=Error: " + lock_note(w), status_code=303)

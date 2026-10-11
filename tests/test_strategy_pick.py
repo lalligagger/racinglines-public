@@ -143,11 +143,21 @@ def test_inside_a_weekend_the_page_is_read_only_and_saves_are_refused(app_db, mo
     assert _profile("ada") == before
 
 
-def test_other_sports_show_as_coming_soon(app_db):
-    """Only F1 on Polymarket runs library strategies today (library/core/2026-10-11-strategies-per-sport.md)."""
+def test_only_f1_on_polymarket_can_be_picked(app_db):
+    """Only F1 on Polymarket runs library strategies today (library/core/2026-10-11-strategies-per-sport.md): a pro sees
+    no sport tabs and can't save another slot; an admin sees the others as coming soon."""
     from racinglines.web import strategy_pick as SP
     client, csrf, page = _login(app_db, "cal")
-    others = [x for x in SP.slots() if not x["open"]]
-    assert [x["key"] for x in SP.slots() if x["open"]] == ["f1:polymarket"]
-    if others:
-        assert "coming soon" in page and others[0]["label"] in page
+    assert "pick-slots" not in page and SP.slots({"role": "pro"}) == []
+    r = client.post("/strategy/pick", data={"csrf_token": csrf, "code": "T1", "slot": "nascar:kalshi"},
+                    follow_redirects=False)
+    assert "Error" in r.headers["location"] and _profile("cal") is None
+    admin = SP.slots({"role": "admin"})
+    assert [x["key"] for x in admin if x["open"]] == ["f1:polymarket"]
+    if len(admin) > 1:
+        from racinglines.db import config
+        from racinglines.web import users as U
+        with config.get_session() as s:
+            U.create_user(s, "dee", "dee-password-1", "admin")
+        page = _login(app_db, "dee")[2]
+        assert "coming soon" in page and admin[1]["label"] in page
