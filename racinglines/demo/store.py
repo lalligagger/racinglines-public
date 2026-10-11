@@ -31,6 +31,7 @@ from pathlib import Path
 MARKER = "demo-store.json"
 BUNDLED = Path(__file__).resolve().parent / "packs"
 DEFAULT_PACK = "kart"
+DEFAULT_SECTION = ""                        # [[quickstart]] entries with no `section` key
 
 
 @dataclass
@@ -51,6 +52,19 @@ class Pack:
     @property
     def quickstart(self):
         return list(self.manifest.get("quickstart", []))
+
+    def sections(self):
+        """The quickstart grouped by its entries' optional `section` key, in first-seen order: [(name, [steps])]. An
+        entry without one is in DEFAULT_SECTION (a pack with only that renders as one ungrouped list)."""
+        out = {}
+        for step in self.quickstart:
+            out.setdefault(step.get("section") or DEFAULT_SECTION, []).append(step)
+        return list(out.items())
+
+    @property
+    def remote(self):
+        """[remote]: where the pack's hosted store is served (mcp_url), for `--demo PACK --remote`."""
+        return dict(self.manifest.get("remote") or {})
 
     @property
     def load(self):
@@ -144,14 +158,26 @@ def status(pack, url, data):
 
 @contextmanager
 def _bar(console):
-    """progress(done, total, what): a Rich bar when rich is installed, else a line per step."""
-    try:
-        from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
-    except ImportError:
-        def plain(done, total, what):
-            print(f"demo store: {what} ({done:.0f}/{total})", flush=True)
-        yield plain
+    """progress(done, total, what): a redrawing Rich bar on a terminal; otherwise one line per new step (styled when
+    `console` is a Rich console, plain text without one)."""
+    from racinglines.cli import tty
+    if console is None or not tty.interactive(console.file):
+        last = []
+
+        def lines(done, total, what):
+            key = what.split(" R")[0] if what.startswith("generating: ") else what     # a line per season generated
+            if last and last[-1] == key:
+                return
+            last.append(key)
+            if console is None:
+                print(f"demo store: {what} ({done:.0f}/{total})", flush=True)
+            else:
+                from rich.markup import escape
+                n = "" if what.startswith("generating: ") else f"[dim]{done:.0f}/{total}[/] "
+                console.print(f"🔧 [bold]demo store[/] {n}{escape(what)}")
+        yield lines
         return
+    from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
     with Progress(TextColumn("[bold]demo store[/]"), BarColumn(bar_width=30), MofNCompleteColumn(), TimeElapsedColumn(),
                   TextColumn("[dim]{task.description}"), console=console, transient=False) as bar:
         task = bar.add_task("", total=None)
@@ -213,7 +239,7 @@ def build(pack, url, data, console=None, options=None):
             say(3 + i, cmd)
             argv = shlex.split(cmd)
             argv = argv[1:] if argv[:1] == ["racinglines"] else argv
-            p = subprocess.run([sys.executable, "-m", "racinglines", *argv], env=env_for(url, data),
+            p = subprocess.run([sys.executable, "-m", "racinglines", *argv], env=dict(env_for(url, data), NO_COLOR="1"),
                                capture_output=True, text=True)
             if p.returncode != 0:
                 raise SystemExit(f"demo store: `{cmd}` failed ({p.returncode}):\n{p.stdout[-3000:]}\n{p.stderr[-3000:]}")

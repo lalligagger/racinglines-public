@@ -1,10 +1,12 @@
 """
 /term: the demo pack's quickstart, recorded and replayed in the browser, public like /pitch (PUBLIC_PATHS in
 web/app.py). No shell runs here: scripts/demo/record_term.py runs the quickstart's commands once, snapshots the list
-(racinglines/web/term/quickstart.json) and saves each command's output as an HTML fragment, which the page types out
-after its command.
+(racinglines/web/term/quickstart.json) and saves each command's output as an HTML fragment. Each replay waits paused on
+its full command; Play types it and plays the output, one step at a time, so a reader can follow along in their own
+shell. Steps with a pack `section` group under it (the quickstart's parts).
 """
 
+import itertools
 import json
 import tomllib
 from pathlib import Path
@@ -31,4 +33,6 @@ def demos():
 @app.get("/term", response_class=HTMLResponse)
 def term(request: Request):
     recorded = tomllib.loads((TERM / "demos.toml").read_text()).get("recorded", "")
-    return render(request, "term.html", demos=demos(), recorded=recorded)
+    ds = demos()
+    parts = [(k, list(g)) for k, g in itertools.groupby(ds, lambda d: d.get("section", ""))]
+    return render(request, "term.html", demos=ds, parts=parts, recorded=recorded)

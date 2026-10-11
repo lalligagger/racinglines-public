@@ -13,6 +13,7 @@ Guard rails:
     by construction), whatever the knobs.
 """
 
+import os
 import re
 import subprocess
 import sys
@@ -474,7 +475,9 @@ def _run_next():
         job_id = job.id
     log, last_write, status, run_id = [], 0.0, "failed", None
     try:
-        p = subprocess.Popen(argv, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        # the job's log is shown as text (the Lab, get_job): Rich layout and emojis without escape codes (cli/tty.py)
+        p = subprocess.Popen(argv, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+                             env=dict(os.environ, NO_COLOR="1"))
         progress = "running"
         for line in p.stdout:
             line = line.rstrip()

@@ -1,49 +1,52 @@
-Cutoff 2026-10-11 19:03:41.904873 UTC · latest data used {'results': '2026-10-04 14:00:00', 'race measurements': '2026-10-04 14:00:00', 'qualifying sectors': '2026-10-03 14:00:00', 'track profiles': '2026-10-04 14:00:00', 'practice': '2026-10-03 10:30:00'}
-Finishing model coef {'g': np.float64(0.375), 'g_ease': np.float64(-0.058), 'rp_rel': np.float64(0.059), 'rp_ease': np.float64(0.031), 'qp_rel': np.float64(0.17), 'street_g': np.float64(0.0)} sigma 0.143; season drift (as-of) {'team_sd': 0.0, 'driver_sd': 0.0}
+progress 0/1 building history (track features on)
+[1m📊 backtest, track features on[0m
+progress 10/33 2024 R10 rainbow-road
+progress 20/33 2025 R08 sherbet-land
+progress 30/33 2026 R06 dk-jungle
+progress 33/33 2026 R09 bowser-s-castle
+[3m📊 [0m[1;3mTrack features ON: mean over 32 races[0m[3m                                               [0m
+╭────────┬─────────────┬─────────────┬─────────┬────────┬──────────────────┬──────────╮
+│[1m [0m[1mmarket[0m[1m [0m│[1m [0m[1mstage      [0m[1m [0m│[1m [0m[1mmodel Brier[0m[1m [0m│[1m [0m[1muniform[0m[1m [0m│[1m [0m[1m  grid[0m[1m [0m│[1m [0m[1mskill vs uniform[0m[1m [0m│[1m [0m[1mlog loss[0m[1m [0m│
+├────────┼─────────────┼─────────────┼─────────┼────────┼──────────────────┼──────────┤
+│ win    │[2m [0m[2mpre weekend[0m[2m [0m│      [1;32m0.0411[0m │  0.0475 │      [2m–[0m │  [32m█▎         +14%[0m │   0.1382 │
+│        │[2m [0m[2mpre quali  [0m[2m [0m│      [1;32m0.0409[0m │  0.0475 │      [2m–[0m │  [32m█▍         +14%[0m │   0.1344 │
+│        │[2m [0m[2mpre race   [0m[2m [0m│      [1;32m0.0409[0m │  0.0475 │ [32m0.0437[0m │  [32m█▍         +14%[0m │   0.1329 │
+├────────┼─────────────┼─────────────┼─────────┼────────┼──────────────────┼──────────┤
+│ podium │[2m [0m[2mpre weekend[0m[2m [0m│      [1;32m0.0808[0m │  0.1275 │      [2m–[0m │  [32m███▋       +37%[0m │   0.2484 │
+│        │[2m [0m[2mpre quali  [0m[2m [0m│      [1;32m0.0759[0m │  0.1275 │      [2m–[0m │  [32m████       +40%[0m │   0.2353 │
+│        │[2m [0m[2mpre race   [0m[2m [0m│      [1;32m0.0725[0m │  0.1275 │ [32m0.0841[0m │  [32m████▎      +43%[0m │   0.2274 │
+├────────┼─────────────┼─────────────┼─────────┼────────┼──────────────────┼──────────┤
+│ top10  │[2m [0m[2mpre weekend[0m[2m [0m│      [1;32m0.1372[0m │  0.2500 │      [2m–[0m │  [32m████▌      +45%[0m │   0.4401 │
+│        │[2m [0m[2mpre quali  [0m[2m [0m│      [1;32m0.1294[0m │  0.2500 │      [2m–[0m │  [32m████▊      +48%[0m │   0.4195 │
+│        │[2m [0m[2mpre race   [0m[2m [0m│      [1;32m0.1220[0m │  0.2500 │ [32m0.1355[0m │  [32m█████      +51%[0m │   0.3952 │
+╰────────┴─────────────┴─────────────┴─────────┴────────┴──────────────────┴──────────╯
+🏁 favourite won [1m22%[0m of 32 races · rank correlation [1m0.87[0m · mean winner probability [1m20.3%[0m
+   [32mbest call[0m  2024 R09 Bowser S Castle: Peach won at [1m40.8%[0m
+   [33mupset[0m      2025 R08 Sherbet Land: Donkey Kong won at [1m3.0%[0m (favourite Peach)
+progress 0/1 building history (track features off)
+[1m📊 backtest, track features off[0m
+progress 10/33 2024 R10 rainbow-road
+progress 20/33 2025 R08 sherbet-land
+progress 30/33 2026 R06 dk-jungle
+progress 33/33 2026 R09 bowser-s-castle
+[3m📊 [0m[1;3mTrack features OFF: mean over 32 races[0m[3m                                              [0m
+╭────────┬─────────────┬─────────────┬─────────┬────────┬──────────────────┬──────────╮
+│[1m [0m[1mmarket[0m[1m [0m│[1m [0m[1mstage      [0m[1m [0m│[1m [0m[1mmodel Brier[0m[1m [0m│[1m [0m[1muniform[0m[1m [0m│[1m [0m[1m  grid[0m[1m [0m│[1m [0m[1mskill vs uniform[0m[1m [0m│[1m [0m[1mlog loss[0m[1m [0m│
+├────────┼─────────────┼─────────────┼─────────┼────────┼──────────────────┼──────────┤
+│ win    │[2m [0m[2mpre weekend[0m[2m [0m│      [1;32m0.0410[0m │  0.0475 │      [2m–[0m │  [32m█▍         +14%[0m │   0.1384 │
+│        │[2m [0m[2mpre quali  [0m[2m [0m│      [1;32m0.0409[0m │  0.0475 │      [2m–[0m │  [32m█▍         +14%[0m │   0.1344 │
+│        │[2m [0m[2mpre race   [0m[2m [0m│      [1;32m0.0409[0m │  0.0475 │ [32m0.0437[0m │  [32m█▍         +14%[0m │   0.1328 │
+├────────┼─────────────┼─────────────┼─────────┼────────┼──────────────────┼──────────┤
+│ podium │[2m [0m[2mpre weekend[0m[2m [0m│      [1;32m0.0823[0m │  0.1275 │      [2m–[0m │  [32m███▌       +35%[0m │   0.2519 │
+│        │[2m [0m[2mpre quali  [0m[2m [0m│      [1;32m0.0759[0m │  0.1275 │      [2m–[0m │  [32m████       +40%[0m │   0.2353 │
+│        │[2m [0m[2mpre race   [0m[2m [0m│      [1;32m0.0725[0m │  0.1275 │ [32m0.0841[0m │  [32m████▎      +43%[0m │   0.2275 │
+├────────┼─────────────┼─────────────┼─────────┼────────┼──────────────────┼──────────┤
+│ top10  │[2m [0m[2mpre weekend[0m[2m [0m│      [1;32m0.1416[0m │  0.2500 │      [2m–[0m │  [32m████▎      +43%[0m │   0.4539 │
+│        │[2m [0m[2mpre quali  [0m[2m [0m│      [1;32m0.1303[0m │  0.2500 │      [2m–[0m │  [32m████▊      +48%[0m │   0.4222 │
+│        │[2m [0m[2mpre race   [0m[2m [0m│      [1;32m0.1221[0m │  0.2500 │ [32m0.1355[0m │  [32m█████      +51%[0m │   0.3955 │
+╰────────┴─────────────┴─────────────┴─────────┴────────┴──────────────────┴──────────╯
+🏁 favourite won [1m22%[0m of 32 races · rank correlation [1m0.87[0m · mean winner probability [1m20.3%[0m
+   [32mbest call[0m  2024 R09 Bowser S Castle: Peach won at [1m40.9%[0m
+   [33mupset[0m      2025 R08 Sherbet Land: Donkey Kong won at [1m3.0%[0m (favourite Peach)
 
---- R10 Rainbow Road Grand Prix (18 Oct) ---
-     driver team_key win_prob podium_prob top10_prob dnf_prob  exp_points
-      Mario mushroom    25.1%       59.8%      95.9%     3.2%        15.2
-     Bowser    koopa    20.8%       50.9%      85.3%    13.7%        13.2
-      Luigi mushroom    17.6%       48.8%      95.0%     3.2%        13.4
-      Peach    royal    13.1%       41.0%      91.3%     5.8%        11.9
-      Daisy    royal     9.2%       32.5%      90.0%     5.8%        10.5
- Bowser Jr.    koopa     6.9%       26.1%      80.2%    14.3%         8.8
-Donkey Kong     kong     2.6%       12.8%      79.7%     3.2%         6.4
-      Yoshi    yoshi     2.3%       11.6%      76.5%     6.8%         6.0
-      Birdo    yoshi     1.0%        5.7%      64.3%     6.8%         4.1
- Diddy Kong     kong     0.8%        5.8%      67.6%     3.2%         4.2
-
---- R11 Wario Stadium Grand Prix (01 Nov) ---
-     driver team_key win_prob podium_prob top10_prob dnf_prob  exp_points
-      Mario mushroom    29.8%       66.1%      96.6%     2.9%        16.3
-      Luigi mushroom    23.2%       57.5%      95.8%     3.2%        14.9
-     Bowser    koopa    12.9%       39.5%      83.8%    14.1%        11.2
-      Peach    royal    12.5%       40.1%      91.8%     5.7%        11.9
-      Daisy    royal     9.1%       31.3%      90.1%     5.8%        10.4
-Donkey Kong     kong     5.7%       23.6%      89.7%     3.2%         9.0
- Bowser Jr.    koopa     3.0%       15.7%      76.7%    14.1%         6.8
- Diddy Kong     kong     1.9%       11.3%      81.1%     3.6%         6.2
-      Yoshi    yoshi     1.1%        7.6%      73.0%     7.4%         5.0
-      Birdo    yoshi     0.5%        3.7%      60.1%     7.0%         3.3
-
---- 2026 drivers' championship ---
-     driver  current_points  exp_points champion_prob top3_prob
-      Luigi             198         246         98.5%    100.0%
-      Mario             152         205          1.5%    100.0%
-      Peach             131         171          0.0%     96.6%
-     Bowser              92         133          0.0%      3.3%
-      Daisy              77         112          0.0%      0.0%
-Donkey Kong              79         104          0.0%      0.0%
- Bowser Jr.              75         102          0.0%      0.0%
-      Birdo              44          56          0.0%      0.0%
-      Yoshi              35          54          0.0%      0.0%
- Diddy Kong              35          52          0.0%      0.0%
-              team  current_points  exp_points champion_prob
-   Mushroom Racing             350         451        100.0%
-      Royal Racing             208         283          0.0%
-  Koopa Kart Works             167         235          0.0%
-Kong Jungle Racing             114         156          0.0%
-   Yoshi Island GP              79         110          0.0%
-
-Saved forecast run 2.
+Per-race rows -> data/demo/kart/runs/f1/backtests/backtest_20261011_2227.csv
