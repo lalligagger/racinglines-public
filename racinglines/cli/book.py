@@ -27,7 +27,8 @@ Where the data comes from (map, price, settle), three modes; the default is the 
 
 Options (map, price, settle):
     --json                 the whole result as JSON (stable keys: docs/sportsbook/slips.md#json-output)
-    --rich                 a coloured terminal table (Rich; racinglines/cli/rich_view.py) instead of plain text
+    --rich                 a coloured table (Rich; racinglines/cli/rich_view.py): the default; --plain (any command) or
+                           RACINGLINES_PLAIN=1 prints the plain text
     --db URL               the database (default DATABASE_URL)
 price only:
     --run ID               price legs of that run's competition from it (repeatable; default: the app's own choice
@@ -171,6 +172,7 @@ def _print(cmd, out):
 
 
 def main(argv=None):
+    from racinglines.cli import tty as TTY
     parser = _parser()
     args = parser.parse_args(argv)
     tops = [f for f in ("demo", "remote", "local") if getattr(args, f"top_{f}")]
@@ -227,9 +229,7 @@ def main(argv=None):
         args.file = args.file or (str(SRC.pack().book) if SRC.pack().book else None)
         print("demo: the demo store's synthetic data (made-up names, results and prices); nothing is traded",
               file=sys.stderr)
-        if not args.json and importlib.util.find_spec("rich"):
-            args.rich = True
-        elif not args.json and not args.rich:
+        if not args.json and not args.rich and not importlib.util.find_spec("rich"):
             print("(plain text: pip install rich for the coloured tables)", file=sys.stderr)
     if not args.file:
         print(f"book {args.cmd}: a book FILE is needed (or --demo for a demo pack's book)", file=sys.stderr)
@@ -258,7 +258,7 @@ def main(argv=None):
             conn.rollback()
     if args.json:
         print(json.dumps(out, indent=2, default=str))
-    elif args.rich:
+    elif args.rich or not TTY.plain():            # Rich by default; --plain / RACINGLINES_PLAIN=1 for the plain text
         from racinglines.cli import rich_view
         rich_view.render(args.cmd, out)
     else:

@@ -230,6 +230,7 @@ def test_kart_quickstart_runs_on_the_store(demo_env):
     for step in store.find("kart").quickstart:
         argv = step["run"].split()[1:]
         outs.append(_run(env, *argv, *small.get(" ".join(argv[:3]), [])))
+    outs.append(_run(env, "live", "report", "f1/demo-2026-09", "--demo"))   # not in the kart quickstart, still works
     joined = "\n".join(outs)
     assert "Track features ON: mean over 3 races" in joined and "Saved forecast run" in joined
     assert "2026-09 results:" in joined and "simulated 2026-09" in joined
@@ -316,8 +317,42 @@ commands = ["racinglines data ingest mtb_dh"]
 
 [[quickstart]]
 title = "Backtest"
+section = "Model"
 run = "racinglines model backtest mtb_dh --demo tinydh --db --sims 200"
+
+[[quickstart]]
+title = "Forecast"
+section = "Race week"
+run = "racinglines model forecast mtb_dh --demo tinydh --db"
+
+[[quickstart]]
+title = "Look at the store"
+section = "Model"
+run = "racinglines db stats --demo tinydh"
 """
+
+
+def test_quickstart_sections_group_with_no_code(tmp_path, monkeypatch):
+    """[[quickstart]] entries' optional `section` key: one heading per section in first-seen order in the rendered doc
+    and in --commands; a pack with none (kart) renders as one plain list."""
+    import importlib.util
+    from racinglines.demo import store
+    (tmp_path / "tinydh").mkdir()
+    (tmp_path / "tinydh" / "pack.toml").write_text(TINY_DH)
+    monkeypatch.setenv("RACINGLINES_DEMO_PACKS", str(tmp_path))
+    spec = importlib.util.spec_from_file_location("build_quickstart", ROOT / "scripts" / "build_quickstart.py")
+    BQ = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(BQ)
+    pk = store.find("tinydh")
+    assert [(n, [s["title"] for s in steps]) for n, steps in pk.sections()] == \
+        [("Model", ["Backtest", "Look at the store"]), ("Race week", ["Forecast"])]
+    md = BQ.render(pk)
+    assert md.index("#### Model") < md.index("**1. Backtest.**") < md.index("**2. Look at the store.**") \
+        < md.index("#### Race week") < md.index("**1. Forecast.**")
+    assert "####" not in BQ.render(store.find("kart")) and [n for n, _ in store.find("kart").sections()] == [""]
+    p = subprocess.run([sys.executable, str(ROOT / "scripts" / "build_quickstart.py"), "--commands", "tinydh",
+                        "--section", "Race week"], capture_output=True, text=True, env=dict(os.environ))
+    assert p.returncode == 0 and p.stdout.split("\n")[0] == "racinglines model forecast mtb_dh --demo tinydh --db"
 
 
 def test_a_second_pack_needs_no_code(test_engine, tmp_path_factory):

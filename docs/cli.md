@@ -32,6 +32,15 @@ racinglines model backtest f1 --variant grid --save     # the sport's own option
 racinglines strategy replay f1 --runs 1298,1299,1300 --sweep
 ```
 
+**Output.** `db stats`, `model backtest f1`, `model forecast f1`, `live run`, `live report` and `book map|price|settle`
+print Rich output by default (colour, tables, probability bars, a few emojis for steps and events), also when piped or
+recorded; redrawing progress bars only on a terminal (off one, or with `TTY_INTERACTIVE=0`, each line prints once).
+`--plain` on any command, or `RACINGLINES_PLAIN=1`, prints the plain text instead; `--json` is always pure JSON.
+`NO_COLOR` drops every escape code and keeps the layout and emojis; `FORCE_COLOR` keeps colour. Under systemd
+(`JOURNAL_STREAM` set) the output carries no escape codes, so journalctl never shows `[blob data]`. The lines scripts
+and the Lab read stay plain text in every mode: `progress i/n ...`, `Saved ... run N.`, `Per-race rows -> FILE`
+(`racinglines/cli/tty.py`).
+
 The old sport-first form (the sport before the command) is deprecated: for one version it still runs and prints a
 one-line note on stderr naming the new form, then it is removed. Nothing in the repo calls it
 (`tests/test_no_old_cli_forms.py` checks code, scripts, systemd units and docs). The mapping lives in

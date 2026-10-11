@@ -263,7 +263,7 @@ def test_settle_from_the_stored_classification(test_engine, db, book):
     assert _line(out, "ghost")["result"] is None
 
 
-def test_cli_json_is_stable(test_engine, db, book, tmp_path, capsys):
+def test_cli_json_is_stable(test_engine, db, book, tmp_path, capsys, monkeypatch):
     from racinglines.cli import book as CLI
     p = tmp_path / "book.toml"
     p.write_text(BOOK)
@@ -275,6 +275,7 @@ def test_cli_json_is_stable(test_engine, db, book, tmp_path, capsys):
         assert set(r) == set(B.LINE_FIELDS) | {"legs"}
         for lg in r["legs"]:
             assert set(lg) == set(B.LEG_FIELDS) | set(B.PRICE_FIELDS) | {"quotes"}
+    monkeypatch.setenv("RACINGLINES_PLAIN", "1")                              # the plain text format (--plain)
     assert CLI.main(["map", str(p), "--db", url]) == 0
     assert "Unmapped lines: ghost, rf" in capsys.readouterr().out
     assert CLI.main(["settle", str(p), "--json", "--db", url]) == 0

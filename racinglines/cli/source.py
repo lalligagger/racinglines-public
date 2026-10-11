@@ -103,17 +103,15 @@ def ensure(pk, url, data, console=None):
     say(f"demo: building the {pk.name} pack's store ({why}): database {store._db_name(url)}, folder {data}. "
         f"Synthetic data, made once (a few minutes).")
     store.build(pk, url, data, console=err)
-    say(f"demo: the {pk.name} store is ready ({pk.sport} data; `racinglines db stats --demo {pk.name}`)")
+    say(f"demo: the {pk.name} store is ready ({pk.sport} data; `racinglines db stats --demo {pk.name}`)"
+        + (f" {pk.manifest['tagline']}" if pk.manifest.get("tagline") else ""))
 
 
 def _console(console):
     if console is not None:
         return console
-    try:
-        from rich.console import Console
-    except ImportError:
-        return None
-    return Console(stderr=True, highlight=False)
+    from racinglines.cli import tty
+    return tty.console(stderr=True)
 
 
 def _safe(url):
@@ -241,6 +239,9 @@ def apply(argv):
     know it) and the pack's store selected, local or hosted."""
     from racinglines.db import config as DBC
     DBC.fallback = default_url                       # the first-run choice, only when a command needs a database
+    if "--plain" in argv:                            # the plain text instead of Rich output (racinglines/cli/tty.py)
+        argv = [a for a in argv if a != "--plain"]
+        os.environ["RACINGLINES_PLAIN"] = "1"
     rest, ref, given = take_demo(argv)
     if not given:
         return argv

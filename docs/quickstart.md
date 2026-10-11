@@ -51,42 +51,35 @@ The steps below are rendered from the pack's manifest (`racinglines/demo/packs/k
 
 <!-- quickstart: kart -->
 
-**1. Build and look at the demo store.** The first --demo command builds the store (a few minutes, with a progress bar): the database, the synthetic files, the real ingest and the exchange links. Later commands reuse it.
+**1. 🍄 Build and look at the demo store.** The first --demo command builds the store (a few minutes, with a progress bar): the database, the synthetic files, the real ingest and the exchange links. Later commands reuse it.
 
 ```
 # LOCAL (Mac), or any machine with Postgres
 racinglines db stats --demo
 ```
 
-**2. Backtest the model.** Every past race priced as of before the weekend, before qualifying and before the race, with track features on and off, scored against the results and against uniform and grid baselines.
+**2. 📊 Backtest the model.** Every past race priced as of before the weekend, before qualifying and before the race, with track features on and off, scored against the results and against uniform and grid baselines.
 
 ```
 # LOCAL (Mac), or any machine with Postgres
 racinglines model backtest f1 --demo
 ```
 
-**3. Forecast the rest of the season.** The next races (Rainbow Road is a sprint weekend) and both championships; --save stores the run the book and the web app read.
+**3. 🔮 Forecast the rest of the season.** The next races (Rainbow Road is a sprint weekend) and both championships; --save stores the run the book and the web app read.
 
 ```
 # LOCAL (Mac), or any machine with Postgres
 racinglines model forecast f1 --demo --save
 ```
 
-**4. Run a live private book.** Bowser's Castle (round 9) replayed on a simulated clock: the maker's book opens before practice, reprices after each session from the model's stage runs, 100 simulated takers trade against it, the book closes at lights out and settles from the results.
+**4. 🏁 Run a live private book.** Bowser's Castle (round 9) replayed on a simulated clock: the maker's book opens before practice, reprices after each session from the model's stage runs, 100 simulated takers trade against it, the book closes at lights out and settles from the results.
 
 ```
 # LOCAL (Mac), or any machine with Postgres
 racinglines live run f1/demo-2026-09 --demo --simulate --no-fetch
 ```
 
-**5. The live event's report.** Markdown, charts and a PDF in the run folder (data/demo/kart/runs/live/demo-2026-09/report/).
-
-```
-# LOCAL (Mac), or any machine with Postgres
-racinglines live report f1/demo-2026-09 --demo --pdf
-```
-
-**6. Price a sportsbook's lines.** The pack's sportsbook book (a generic sportsbook's lines on rounds 10 and 11) against the model's forecast and the exchanges' quotes: EV against each, side by side.
+**5. 💰 Price a sportsbook's lines.** The pack's sportsbook book (a generic sportsbook's lines on rounds 10 and 11) against the model's forecast and the exchanges' quotes: EV against each, side by side.
 
 ```
 # LOCAL (Mac), or any machine with Postgres
@@ -94,9 +87,13 @@ racinglines book price --demo
 ```
 <!-- /quickstart -->
 
-Measured on a cloud container (one CPU, 2026-10-11): the store build about 50 s, the backtest about 40 s, the
-forecast about 10 s, the live run about 30 s, the report and the book a few seconds each. The PDF needs weasyprint
-or a headless Chrome; leave out `--pdf` without them.
+The output is Rich (colours, tables, bars), also when piped or recorded; add `--plain` to any command for the plain
+text, or set `NO_COLOR=1` for the same layout without colour codes ([CLI: Output](cli.md#cli-reference)).
+
+Measured on a cloud container (one CPU, 2026-10-11): the store build about 45 s, the backtest about 35 s, the
+forecast about 10 s, the live run about 30 s, the book a few seconds. After the live run,
+`racinglines live report f1/demo-2026-09 --demo --pdf` writes its report (Markdown, charts and a PDF, which needs
+weasyprint or a headless Chrome) under `data/demo/kart/runs/live/demo-2026-09/report/`.
 
 Where things go: the database `racinglines_demo_kart`, and the folder `data/demo/kart/` (the generated FastF1 files
 under `raw/`, the exchange links under `archive/`, run outputs under `runs/`, the live spec under `live/`). Both

@@ -877,12 +877,19 @@ def run_job(engine, job_type, params=None, user_id=None):
                 note=f"{jt.label}: {jt.minutes or 'a while'}. get_job({job_id}) for progress; the run it saves is result_run_id")
 
 
+JOB_LOG_LINES_MAX = 500
+
+
 def _job_row(r, log_lines):
+    """A job row with the last `log_lines` lines of its log (at most JOB_LOG_LINES_MAX, whole: the log is the point,
+    so it is not cut to the 20-item list preview the other fields get)."""
     log = r.pop("log", None) or ""
     lines = log.splitlines()
-    r["log_tail"] = lines[-int(log_lines):] if log_lines else []
+    n = min(int(log_lines or 0), JOB_LOG_LINES_MAX)
     r["log_lines"] = len(lines)
-    return P.record(r)
+    out = P.record(r)
+    out["log_tail"] = lines[-n:] if n else []
+    return out
 
 
 def get_job(conn, job_id, log_lines=20, viewer=None):

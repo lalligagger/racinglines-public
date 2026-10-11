@@ -33,7 +33,8 @@ A folder with a `pack.toml` manifest, bundled under `racinglines/demo/packs/<nam
 | `[generator]` | optional: `entry = "module:function"` writing more data files into the data folder, and its `input` |
 | `[load] commands` | the real `racinglines ...` commands that load the data into the database, in order |
 | `[book] file` | the sportsbook book `racinglines book price --demo` prices when no FILE is given |
-| `[[quickstart]]` | the pack's quickstart: `title`, `run` (the command), `about`; rendered into [Quickstart](quickstart.md) by `scripts/build_quickstart.py` and replayed by the web app's `/term` page |
+| `tagline` | optional: a line printed once the store is ready (a pack's flavour lives here, never in a command) |
+| `[[quickstart]]` | the pack's quickstart: `title`, `run` (the command), `about`, optional `section` (steps group under one heading per section, in first-seen order; none: one list); rendered into [Quickstart](quickstart.md) by `scripts/build_quickstart.py` (`--commands PACK [--section NAME]` lists them) and replayed by the web app's `/term` page (`Pack.sections()` in `racinglines/demo/store.py`) |
 
 The store build (`racinglines/demo/store.py`): create the database (its name must contain `demo`), Alembic upgrade
 head and the seed (`racinglines db init`), copy the files, run the generator, run each load command as a

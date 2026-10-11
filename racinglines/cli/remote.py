@@ -272,7 +272,7 @@ def run(cmd, raw_book, server=None, runs=(), open_browser=None):
 JOBS = {("f1", "backtest"): "f1_backtest", ("f1", "forecast"): "f1_scenario",
         ("mtb_dh", "backtest"): "dh_backtest", ("mtb_dh", "forecast"): "dh_scenario"}
 POLL_SEC = 1.0
-TAIL = 20                                  # get_job's log_tail comes whole up to 20 lines (mcp/page.py)
+TAIL = 200                                 # log lines per get_job poll (the tool returns up to 500)
 
 
 def _job_parser(job):
