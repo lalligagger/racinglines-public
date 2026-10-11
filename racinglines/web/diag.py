@@ -160,6 +160,37 @@ DEFAULT_KNOBS = dict(fill="through", half_spread=0.02, size=50, max_pos=250, max
                      max_disagree=0.15, min_volume_24h=100, pull_min=15)
 
 
+def _event(conn, runs, exchange="polymarket"):
+    """The event's tape (maker_replay.load_event), loaded once per (runs, exchange)."""
+    from racinglines.markets.strategies import maker_replay as R
+    ek = runs if exchange == "polymarket" else (runs, exchange)
+    if ek not in _EVENT_CACHE:
+        _EVENT_CACHE[ek] = R.load_event(conn, runs, exchange=exchange)
+    return _EVENT_CACHE[ek]
+
+
+_TAPE_CACHE = {}
+
+
+def tape(conn, run_id, exchange="polymarket"):
+    """The event's tape and the page's default knobs as gzipped JSON, for the replay that runs in the browser
+    (wasm/, static/replay.js): the same data and settings diag.replay uses, so the browser's numbers match the
+    server's for the same knobs. Cached per (runs, exchange)."""
+    import gzip
+    import json
+
+    from racinglines.markets.strategies import maker_replay as R
+    from racinglines.markets.strategies.replay_json import event_json, params_json
+    runs = tuple(int(i) for i in event_runs(conn, run_id)["id"])
+    key = (runs, exchange)
+    if key not in _TAPE_CACHE:
+        knobs = dict(DEFAULT_KNOBS, **(dict(maker_fee=R.KALSHI_MAKER_FEE) if exchange != "polymarket" else {}))
+        body = dict(event=event_json(_event(conn, runs, exchange)), params=params_json(R.Params(**knobs)),
+                    exchange=exchange, runs=list(runs))
+        _TAPE_CACHE[key] = gzip.compress(json.dumps(body, separators=(",", ":")).encode(), compresslevel=6)
+    return _TAPE_CACHE[key]
+
+
 def replay(conn, run_id, with_sweep=True, exchange="polymarket", **knobs):
     """Replay a maker quoting Polymarket (or `exchange="kalshi"`: Kalshi's tape, with its maker fee) through the
     event, repricing at each diagnostic run's cutoff. `knobs` are markets.strategies.maker_replay.Params fields
@@ -172,10 +203,7 @@ def replay(conn, run_id, with_sweep=True, exchange="polymarket", **knobs):
     key = (runs, tuple(sorted(knobs.items())), with_sweep) + ((exchange,) if exchange != "polymarket" else ())
     if key in _REPLAY_CACHE:
         return _REPLAY_CACHE[key]
-    ek = runs if exchange == "polymarket" else (runs, exchange)
-    if ek not in _EVENT_CACHE:
-        _EVENT_CACHE[ek] = R.load_event(conn, runs, exchange=exchange)
-    ev = _EVENT_CACHE[ek]
+    ev = _event(conn, runs, exchange)
     p = R.Params(**knobs)
     res = R.replay(ev, p)
     f = res["fills"]

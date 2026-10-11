@@ -8,7 +8,7 @@
 //!
 //! Browser interface (no wasm-bindgen; JSON in and out through linear memory, see racinglines/web/static/replay.js):
 //!   alloc(len) -> ptr, dealloc(ptr, len)
-//!   load(ptr, len) -> 0 | 1          the event (markets with tapes, stages), kept until the next load
+//!   load(ptr, len) -> 0 | 1          the tape JSON (the event: markets with tapes, stages), kept until the next load
 //!   run(ptr, len) -> ptr             params JSON in; result JSON out, its length at result_len()
 
 use serde::{Deserialize, Serialize};
@@ -365,10 +365,15 @@ mod browser {
         String::from_utf8_lossy(std::slice::from_raw_parts(ptr, len)).into_owned()
     }
 
-    /// The event's JSON: 0 when loaded, 1 when it doesn't parse.
+    /// The tape JSON as served (`{"event": ..., "params": ...}`) or a bare event: 0 when loaded, 1 when it
+    /// doesn't parse.
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Doc { Tape { event: Event }, Bare(Event) }
+
     #[no_mangle]
     pub unsafe extern "C" fn load(ptr: *const u8, len: usize) -> u32 {
-        match serde_json::from_str::<Event>(&text(ptr, len)) {
+        match serde_json::from_str::<Doc>(&text(ptr, len)).map(|d| match d { Doc::Tape { event } | Doc::Bare(event) => event }) {
             Ok(ev) => { let cum = notional_prefix(&ev); EVENT.with(|e| *e.borrow_mut() = Some((ev, cum))); 0 }
             Err(_) => 1,
         }
