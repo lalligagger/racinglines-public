@@ -61,7 +61,7 @@
 #    absent     no | void                    a driver missing from the results settles NO or void (default void)
 # wx    optional: how a probability of rain moves the price (racinglines/markets/kinds.py Kind.wx). "dnf": priced from
 #       drivers' dnf_prob scaled by props.wx_scale (the circuit's wet-or-dry retirement rate,
-#       models/position_sim/props.py) when a probability of rain is given; set on every kind whose predicate is
+#       models/props.py) when a probability of rain is given; set on every kind whose predicate is
 #       classified, retired, last_classified or nth_retired. Omitted: weather doesn't move it.
 #
 # Settlement details for the declarative predicates: classified = status OK; retired = status DNF or DSQ (a DNS is
@@ -186,7 +186,7 @@ payoff = "mover"
 stage = "qual"
 default = false
 
-# The sprint as a race of its own (models/position_sim/pricing.price_stages, docs/todo.md U13): the race payoffs on the
+# The sprint as a race of its own (models/inputs/laps_pricing.price_stages, docs/todo.md U13): the race payoffs on the
 # sprint's classification and points. Kept out of every default set and live book (owner, DEC-12) until their
 # settlement is proven
 
@@ -542,7 +542,7 @@ payoff = { subject = "team", predicate = "top", n = 3, aggregate = "all" }
 # Practice fastest lap (Polymarket's "<GP>: Practice 1 / 2 / 3 Fastest Lap"; C12b): who sets the session's fastest lap.
 # Priced from sims.stage_rank["fp<n>"], each practice session's order of best laps that position_sim draws behind its
 # `practicefast` variant (model.PRACTICE_FASTEST, off by default; the real order once the session has run); settled on
-# the results' fp<n>_position, the session's order of best laps from the stored laps (models/position_sim/practice.py):
+# the results' fp<n>_position, the session's order of best laps from the stored laps (models/inputs/practice.py):
 # undecidable when the session's laps aren't stored. A driver who set no lap in a session that ran is a NO
 
 [[kinds]]

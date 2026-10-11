@@ -6,7 +6,7 @@ model settings ([model.itt], [model.road]: defaults, calibration grid, course an
 an event file (sports/road_cycling/events/<id>.toml) holds the course, the start list file and the book. A new
 race is a new event file; a new kind of race is a new [model.<kind>] block.
 
-Two kinds of result, one engine (racinglines.models.timed_runs.fit_season_model):
+Two kinds of result, one engine (racinglines.models.inputs.run_times.fit_season_model):
 
   itt   Individual time trials: log finishing times. Optional per-rider climbing term (slope of a rider's
         residual log time on the course's climbing in m/km), scaled by climb_scale for the event's course.
@@ -43,7 +43,7 @@ import pandas as pd
 
 from racinglines import progress, sports
 from racinglines.core.stats import ranks
-from racinglines.models.timed_runs import model as TM
+from racinglines.models.inputs.run_times import model as TM
 from racinglines.paths import ROOT
 
 SPORT = "road_cycling"

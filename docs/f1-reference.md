@@ -12,7 +12,7 @@ each maps onto what racinglines already does.
 
 ## Starting point: what the baseline already does
 
-The current F1 model (`racinglines/models/position_sim/`, see [Formula 1](f1.md))
+The current F1 model (the one engine's laps core, `racinglines/models/inputs/`, see [Formula 1](f1.md))
 is the **baseline**. Every idea on this page is measured against it and must
 not break it.
 

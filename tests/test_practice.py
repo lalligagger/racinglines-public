@@ -24,7 +24,7 @@ def test_view_only_has_practice_sessions_before_the_cutoff(meas):
 
 
 def test_future_practice_row_raises(meas):
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     eid, s = _event(meas)
     cutoff = s["fp1"] - pd.Timedelta(minutes=1)
     v = meas.view(cutoff)
@@ -35,7 +35,7 @@ def test_future_practice_row_raises(meas):
 
 
 def test_training_rows_are_priced_before_that_weekends_practice(meas):
-    from racinglines.models.position_sim import practice as PR
+    from racinglines.models.inputs import practice as PR
     tr = PR.training_rows(meas)
     assert len(tr) and {"qp_pre", "best_1", "q_def"} <= set(tr.columns)
     # a blend fitted as of an event's start uses only events whose race had finished
@@ -46,7 +46,7 @@ def test_training_rows_are_priced_before_that_weekends_practice(meas):
 
 
 def test_prior_moves_prices_only_once_practice_has_run(meas):
-    from racinglines.models.position_sim import practice as PR
+    from racinglines.models.inputs import practice as PR
     eid, s = _event(meas)
     blend = PR.fit(PR.training_rows(meas), s["fp1"])
     e = pd.DataFrame(dict(athlete_id=meas.practice.loc[meas.practice["event_id"] == eid, "athlete_id"].unique(), qp=0.01, rp=0.01))

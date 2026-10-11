@@ -170,7 +170,7 @@ def test_walk_forward_hands_back_sims_only_when_asked():
 
 
 def test_f1_writer_archives_forecast_sims_but_not_stage_runs(tmp_path, monkeypatch):
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     from racinglines.testing import synthetic as SY
     monkeypatch.setenv(REC.ROOT_ENV, str(tmp_path))
     m = run.Measurements.from_frames(*SY.f1_frames())

@@ -62,7 +62,7 @@ def test_generator_writes_fastf1_shapes_reproducibly(tmp_path):
 def test_offline_schedule_reads_the_saved_copy(tmp_path, monkeypatch):
     """RACINGLINES_OFFLINE=1: the schedule comes from data/raw/f1/fastf1/<year>/schedule.parquet, FastF1 never called."""
     from racinglines.demo import generate as G
-    from racinglines.models.position_sim import pricing as P
+    from racinglines.models.inputs import laps_pricing as P
     from racinglines.sources.fastf1 import fetch as F
     (tmp_path / "2026").mkdir()
     G.schedule(G.world(), 2026).to_parquet(tmp_path / "2026" / "schedule.parquet", index=False)

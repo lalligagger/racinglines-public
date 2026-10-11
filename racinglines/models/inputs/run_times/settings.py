@@ -1,7 +1,7 @@
 """
 Every setting of a downhill walk-forward, in the same schema as the F1 sweep's
 (racinglines/pipelines/sweep_settings.py): the same keys, labels, flags and search queue handling.
-Defaults are today's model (models/timed_runs/model.py), so the default key is the baseline.
+Defaults are today's model (models/inputs/run_times/model.py), so the default key is the baseline.
 
     s = DHSettings.from_dict({"half_life_days": 120, "prior_n": 1.5})
     with s.applied():            # module-level model switches (EPS_DF) set for the duration

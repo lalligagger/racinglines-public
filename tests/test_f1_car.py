@@ -3,7 +3,7 @@
 import numpy as np
 import pandas as pd
 
-from racinglines.models.position_sim import model as M
+from racinglines.models.inputs import laps as M
 
 
 def test_teammate_noise_is_correlated_with_the_right_spread():

@@ -6,7 +6,7 @@ racinglines f1 <command>: Formula 1.
     ingest       Load data/raw/f1/fastf1/ into the database (events, results, laps, track profiles).
     (exchange data: racinglines markets sync | history | trades | record | archive)
 
-  Pricing (all through models.position_sim.pricing.price_race with a hard as-of cutoff)
+  Pricing (all through models.inputs.laps_pricing.price_race with a hard as-of cutoff)
     backtest     HISTORICAL: price every past race as of just before qualifying and just
                  before the race; score against outcomes. Saved as kind='backtest'.
     compare      Two saved backtest runs, paired by race: challenger − baseline ± 2 SE per metric
@@ -15,7 +15,7 @@ racinglines f1 <command>: Formula 1.
                  variant, paired vs baseline) and 2026 P&L (latest sweep + season strategy per variant).
     diagnostic   ONE PAST EVENT at a chosen cutoff (e.g. yesterday); saved as kind='diagnostic'.
     combo        Combos (same-game parlays) on ONE EVENT, past or upcoming, as of a cutoff (default now): each
-                 combo's fair value and its legs' marginals from one pricing (models/position_sim/combo_job.py);
+                 combo's fair value and its legs' marginals from one pricing (models/combo_job.py);
                  saved as kind='combo' with the prices in metrics (the Lab job f1_combo).
     sweep        Every race of a season traded through the weekend: price before any running
                  and after each session, trade Polymarket (update / hold / after-quali taker
@@ -34,10 +34,10 @@ racinglines f1 <command>: Formula 1.
     forecast     LIVE: cutoff = now; upcoming races + championships. Saved as kind='forecast'
                  (the only kind the web app uses for live fair prices).
     props        Race props (safety car, red flag, rain, fastest lap) for one event from the race
-                 history, or --check: their walk-forward calibration (models/position_sim/props.py).
+                 history, or --check: their walk-forward calibration (models/props.py).
     sprint-check Walk-forward check of the sprint stage on every stored sprint weekend: sprint-winner Brier
                  and log loss vs the Grand Prix win stand-in, and sprint vs GP retirements
-                 (models/position_sim/sprint_check.py). Read-only; nothing is stored.
+                 (models/sprint_check.py). Read-only; nothing is stored.
 """
 
 import argparse
@@ -60,10 +60,10 @@ def main(argv=None):
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--db", default=None, help="Database URL (default: $DATABASE_URL / docker-compose).")
     ap.add_argument("--variant", default="baseline",
-                    help="Model variant for pricing (position_sim/variants.py), e.g. grid, gbm, grid+tail. "
+                    help="Model variant for pricing (models/variants.py), e.g. grid, gbm, grid+tail. "
                          "Saved runs record it.")
     ap.add_argument("--half-life", type=float, default=None,
-                    help="Recency half-life in days for the pace models (default: position_sim.model.HALF_LIFE_DAYS).")
+                    help="Recency half-life in days for the pace models (default: inputs.laps.HALF_LIFE_DAYS).")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("fetch")
     p.add_argument("--years", default="2026,2025,2024,2023,2022,2021,2020")
@@ -259,7 +259,7 @@ def main(argv=None):
     p = sub.add_parser("inrace-backfill", help="After a race: the Live tab's in-race win chart from the race's laps, "
                                                "one point per lap, as if the live-timing relay had run all race.")
     p.add_argument("--event", required=True, help="YEAR-ROUND, e.g. 2026-16.")
-    p = sub.add_parser("sprint-check", help="Walk-forward check of the sprint stage (position_sim/sprint_check.py).")
+    p = sub.add_parser("sprint-check", help="Walk-forward check of the sprint stage (models/sprint_check.py).")
     p.add_argument("--from", dest="start_year", type=int, default=2021, help="First season scored")
     p.add_argument("--sims", type=int, default=4000)
     p.add_argument("--out", default=None, metavar="CSV", help="Also write the per-weekend rows here")
@@ -272,7 +272,7 @@ def main(argv=None):
     p.add_argument("--history", default=None, metavar="CSV",
                    help="--check: score a history CSV (props.history()'s columns) instead of the database")
     p.add_argument("--dnf-check", default=None, metavar="CSV",
-                   help="The position simulation's DNF calibration on an as-of export (position_sim/dnf_check.py)")
+                   help="The position simulation's DNF calibration on an as-of export (models/dnf_check.py)")
     p.add_argument("--forecast", default=None, metavar="CSV",
                    help="--check / --dnf-check: the weather leads CSV (racinglines weather leads; weather/wet.py "
                         "p_wet_series) adds the -WX variants; needs a race history (--history CSV or the database)")
@@ -280,7 +280,7 @@ def main(argv=None):
     from racinglines.cli.verbs import retitle
     retitle(ap, "f1")
     args = ap.parse_args(argv)
-    from racinglines.models.position_sim import variants as V
+    from racinglines.models import variants as V
     V.switches(args.variant)                         # fail fast on an unknown name
     with V.use(args.variant):
         return _run(args)
@@ -421,7 +421,7 @@ def _run(args):
         LF.backfill_inrace(year, rnd)
         return
     if args.cmd == "props":
-        from racinglines.models.position_sim import props as PR
+        from racinglines.models import props as PR
         prior_n = PR.PRIOR_N if args.prior_n is None else args.prior_n
         fc = hist = None
         if args.forecast:
@@ -433,7 +433,7 @@ def _run(args):
                     hist = PR.history(c)
             fc = WET.p_wet_series(hist, pd.read_csv(args.forecast), args.lead, prior_n=prior_n)
         if args.dnf_check:
-            from racinglines.models.position_sim import dnf_check as DC
+            from racinglines.models import dnf_check as DC
             wx = {} if fc is None else dict(forecast=fc, history_df=hist, prior_n=prior_n)
             print(DC.render(DC.check(pd.read_csv(args.dnf_check), **wx)))
             return
@@ -806,7 +806,7 @@ def _run(args):
     if args.cmd == "season-checkpoints":
         from racinglines import paths
         from racinglines.pipelines import season_checkpoints as SC
-        from racinglines.models.position_sim import variants as V
+        from racinglines.models import variants as V
         variants = [v.strip() for v in args.variants.split(",")] if args.variants else list(SC.VARIANTS)
         entries = tuple(int(x) for x in args.entries.split(","))
         for v in variants:
@@ -963,7 +963,7 @@ def _run(args):
             print(f"{len(slugs)} events, {fetch_history(s, c, slugs, start, end, args.fidelity)} price points stored")
         return
 
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     meas = run.Measurements.load(engine)
 
     if args.half_life:
@@ -971,7 +971,7 @@ def _run(args):
     knobs = dict(half_life_days=run.M.HALF_LIFE_DAYS)
 
     if args.cmd == "compare":
-        from racinglines.models.position_sim import evaluate as EV
+        from racinglines.models import evaluate as EV
         with engine.connect() as c:
             (pa, a), (pb, b) = EV.load_run(c, args.baseline), EV.load_run(c, args.challenger)
         print(f"Run {args.baseline} ({pa.get('variant', 'baseline')}) vs run {args.challenger} "
@@ -989,7 +989,7 @@ def _run(args):
         return
     if args.cmd == "matrix":
         from racinglines import paths
-        from racinglines.models.position_sim import evaluate as EV
+        from racinglines.models import evaluate as EV
         with engine.connect() as c:
             m = EV.matrix(c, [v.strip() for v in args.variants.split(",")], args.year)
         md = EV.format_matrix(m)
@@ -1033,7 +1033,7 @@ def _run(args):
     hist = run.history(meas, use_track)
 
     if args.cmd == "sprint-check":
-        from racinglines.models.position_sim import sprint_check as SC
+        from racinglines.models import sprint_check as SC
         out = SC.check(meas, hist, start_year=args.start_year, n_sims=args.sims)
         print(SC.render(out))
         if args.out:
@@ -1056,7 +1056,7 @@ def _run(args):
     if args.cmd == "combo":
         import json as _json
 
-        from racinglines.models.position_sim import combo_job as CJ
+        from racinglines.models import combo_job as CJ
         cutoff = pd.Timestamp(args.cutoff) if args.cutoff else pd.Timestamp.now(tz="UTC").tz_localize(None).floor("min")
         metrics, ex = CJ.run(meas, hist, args.event, cutoff, args.legs, n_sims=args.sims, use_track=use_track)
         print("Leakage audit:", ex["audit"])

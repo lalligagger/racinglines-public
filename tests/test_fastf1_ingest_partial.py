@@ -53,7 +53,7 @@ def test_practice_and_sprint_qualifying_are_stored_before_qualifying(tmp_path, t
         assert kinds == ["fp1", "sprint_qual"]
         sq = s.scalars(select(m.Round).filter_by(race_id=race.id, kind="sprint_qual")).one()
         assert len(s.scalars(select(m.Result).filter_by(round_id=sq.id)).all()) == 2      # ids filled from round 16
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     meas = run.Measurements.load(test_engine)       # a weekend with no qualifying yet loads like any other
     ev17 = meas.res[(meas.res["year"] == 2026) & (meas.res["series_round"] == 17)]
     assert set(ev17["round"]) == {"fp1", "sprint_qual"}

@@ -177,7 +177,7 @@ def test_open_meteo_hourly_only_and_a_missing_field_fails_loudly():
 
 # --- the wet-race forecast (weather/wet.py) and the forecasts of past races (open_meteo.lead_rows) ---
 
-from racinglines.models.position_sim import props as P  # noqa: E402
+from racinglines.models import props as P  # noqa: E402
 from racinglines.weather import wet as WET  # noqa: E402
 
 LEADS_FIXTURE = Path(__file__).parent / "fixtures" / "weather" / "open_meteo-leads-f1.csv"

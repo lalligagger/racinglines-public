@@ -22,9 +22,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from racinglines import sports
 from racinglines.paths import ROOT
 
-PATH = ROOT / "sports" / "f1" / "grid_penalties.toml"
+PATH = ROOT / "sports" / sports.declaring("grid") / "grid_penalties.toml"   # the sport declaring the grid input
 KINDS = ("back", "pit_lane", "places")
 REQUIRED = ("event", "driver", "session", "kind", "source")
 EVENT_KEY = re.compile(r"^\d{4}-\d{2}$")
@@ -46,7 +47,7 @@ def _timestamp(v):
 
 
 def _validate(i, row):
-    from racinglines.models.position_sim import model as M
+    from racinglines.models.inputs import laps as M
     where = f"grid penalty {i + 1} ({row.get('event')}, {row.get('driver')})"
     missing = [k for k in REQUIRED if not row.get(k)]
     if missing:

@@ -72,7 +72,7 @@ def test_each_run_only_used_sessions_before_its_cutoff(runs):
 
 
 def test_measurement_view_refuses_future_data(engine):
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     meas = run.Measurements.load(engine)
     cutoff = QUALI - pd.Timedelta(hours=1)
     v = meas.view(cutoff)

@@ -43,7 +43,7 @@ import pandas as pd
 from racinglines import sports
 from racinglines.frames._util import empty, gap_to_leader, shape
 from racinglines.frames.schema import FrameError
-from racinglines.models.timed_runs import actual_event_points, completed_events
+from racinglines.models.inputs.run_times import actual_event_points, completed_events
 
 DAY = pd.Timedelta(days=1)
 AFTER_LAST_DAY = DAY + pd.Timedelta(hours=12)      # noon UTC of the day after the weekend's last day

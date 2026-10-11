@@ -60,7 +60,7 @@ def test_ingest_and_tidy(test_engine):
 
 @pytest.fixture(scope="module")
 def dh():
-    from racinglines.models import timed_runs as P
+    from racinglines.models.inputs import run_times as P
     raw = pd.read_parquet(need("mtb", "tidy_2025_2026.parquet"))
     raw = raw[raw["round"].isin(P.RUN_WEIGHTS)]
     target = P.select_target(raw, 2026, "ME")

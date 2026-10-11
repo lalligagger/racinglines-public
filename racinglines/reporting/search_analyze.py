@@ -29,7 +29,7 @@ from sqlalchemy import text
 
 from racinglines import paths
 from racinglines.db.config import get_engine
-from racinglines.models.position_sim import evaluate as EV
+from racinglines.models import evaluate as EV
 from racinglines.pipelines import sweep_settings as SS
 from racinglines.reporting.metrics import curve_stats
 

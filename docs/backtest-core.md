@@ -3,7 +3,9 @@
 The plan for backtesting (and tuning) any timed or racing sport against any prediction exchange with one
 set of code. It is the backtest counterpart of the
 [multi-sport live design](f1-live-roadmap.md#multi-sport-design-one-live-core-one-adapter-per-sport): one
-shared core, and per sport only data (`sports/<code>.toml`), a data source and a model wrapper.
+shared core, and per sport only data (`sports/<code>.toml`) and a data source. Since 2026-10-11 there is one
+pricing model for every modelled sport, the [one engine](#one-engine-schema-declared-inputs), whose inputs and
+defaults each sport's schema declares.
 
 **Status:** step 1 done (market kinds, sweep calibration, search report); steps 2–6 proposed.
 Every step ships off by default, with today's F1 and downhill outputs byte-identical.
@@ -45,20 +47,75 @@ Both model families already simulate the same thing: a matrix of finishing ranks
 
 | Contract | What it is | Where | Status |
 |---|---|---|---|
-| **Outcome simulations** | `OutcomeSims`: entrants, `(n_sims × n)` classification ranks, finished flags, earlier rounds' ranks, rounds reached, points, groups | `racinglines/models/outcomes.py` | done: adapters for `position_sim` and `timed_runs` |
+| **Outcome simulations** | `OutcomeSims`: entrants, `(n_sims × n)` classification ranks, finished flags, earlier rounds' ranks, rounds reached, points, groups | `racinglines/models/outcomes.py` | done: adapters for the laps core (`from_position_sim`) and the run-times core (`from_timed_runs`) |
 | **Market kinds** | One definition per kind gives its fair value from `OutcomeSims` **and** its settlement from the official result | `racinglines/markets/kinds.py` | done: win, podium, top 10, pole, makes the Final, head-to-head, top constructor; `private_book.outcome_for` settles through it |
-| **Pricing model** | `load`, `events(data, settings, seasons)` (each with its cutoff), `history(data, settings)`, `price(hist, event, settings, rng) -> OutcomeSims`, `results(data, event)` for settlement, and the model's own `Settings` | `racinglines/models/race_model.py` | done: `TimedRuns` (downhill) and `PositionSim` (F1, pre-race) |
+| **Pricing model** | `load`, `events(data, settings, seasons)` (each with its cutoff), `history(data, settings)`, `price(hist, event, settings, rng) -> OutcomeSims`, `results(data, event)` for settlement, and the model's own `Settings` | `racinglines/models/race_model.py` (contract), `racinglines/models/model_global.py` (the engine) | done: one engine, `GlobalModel`, for every modelled sport; its cores are the former `PositionSim` (F1), `TimedRuns` (downhill) and results model, the first two kept runnable as challengers |
 | **Walk-forward engine** | Prices every event from data before it, settles every kind the simulations support, scores them; model-only until a venue is given | `racinglines/core/walk_forward.py` | done: `racinglines model walk-forward mtb_dh` |
 | **Stages** | When new information arrives: a `[stages]` table per sport (first stage, data lag, the session never traded, early closes) turned into `[(label, cutoff)]` | `sports/<code>.toml`, `racinglines/core/stages.py` | done: the F1 sweep's stages and the pole market's close come from `sports/f1.toml`; downhill prices once, "pre-event" |
 | **Venues** | `markets()`, `view(market, t)` (public data up to t only), costs, fill model, resolution | `racinglines/markets/venue_replay.py` | done: `Polymarket` (the F1 sweep reads through it) and `PrivateBook` (a live run's book replayed); model-only is no venue. `Kalshi` reads what `markets/kalshi/` stores in the same tables, per market ticker, with Kalshi's taker fee; the maker replay reads Kalshi through `load_event(exchange="kalshi")` with its maker fee ([Kalshi history](kalshi-history.md)) |
 | **Search** | One queue for every sport, with the held-out rule, seed replicates, confirmation and stable ids built in | `racinglines/pipelines/search*.py` | done: `sport = "mtb_dh"` jobs, `replicates = N`, candidate ids carried into the Lab |
 
 **Settings.** Shared groups (timing, taker, maker, markets, guards: `SHARED_SETTINGS`) plus the model's own
-group (`MODEL_SETTINGS`; downhill's is `models/timed_runs/settings.py`). Per-kind overrides generalise
+group (`MODEL_SETTINGS`; downhill's is `models/inputs/run_times/settings.py`), whose per-sport defaults are the
+schema's `[model.defaults]`. Per-kind overrides generalise
 `min_edge_h2h`: `min_edge_by_kind = "race_h2h=0.05,race_podium=0.08"` gives each listed kind its own entry
 threshold (over `min_edge` and `min_edge_h2h`), the params-4h lesson that the edge sits in some kinds and
 not others. `settings_key` / `model_key` keep today's hashing (settings at an unset default are left
 out), so saved keys never change: every saved sweep's and stage run's key recomputes to what it was.
+
+### One engine, schema-declared inputs
+
+Owner, 2026-10-11: "Single global model ... For ALL sports, we will want to be able to handle high-level and/or
+granular data." There are no sport-specific models, only schemas that declare the model's inputs and defaults
+(decision log 2026-10-11 "One engine", **provisional, staging only**). Every modelled sport's
+`[sport] pricing_model` is `racinglines.models.model_global:GlobalModel` (`tests/test_one_engine.py` guards it):
+
+```toml
+[model]
+inputs = ["results", "qualifying", "grid", "practice", "laps", "sectors"]    # F1
+name = "f1_sector_sim"          # model_runs.model of its runs (optional; default: the core's name)
+[model.defaults]                # the per-sport defaults of the engine's settings
+half_life_days = 120.0
+```
+
+| Sport | `[model] inputs` | Core | Stored as (`model_runs.model`) |
+|---|---|---|---|
+| F1 | results, qualifying, grid, practice, laps, sectors | laps | `f1_sector_sim` |
+| Downhill | run_times, practice | run_times | `timed_runs` |
+| NASCAR | results, qualifying, fastest_lap | results | `global_results` |
+| MotoGP | results, qualifying | results | `global_results` |
+
+How the schema drives it, with no `if sport == ...` anywhere (`racinglines/models/inputs/__init__.py`):
+
+- **Inputs are layers.** Each input names a module: `inputs/results.py` (finishing positions), `inputs/laps.py`
+  (lap pace, the sector fit, the finishing model and the Monte Carlo), `inputs/practice.py`, `inputs/grid.py`
+  (grid penalties), `inputs/laps_pricing.py` (the as-of view and `price_race`), `inputs/run_times/` (timed runs).
+- **The inputs pick the core.** `core_for(inputs)` takes the core whose required inputs are all declared, the most
+  specific one when several fit: results only → the results core (`inputs/results.py`); results, qualifying, grid
+  and laps → the laps core (`inputs/laps_core.py`); run_times → the run-times core (`inputs/run_times/core.py`). A
+  declared input the core doesn't read is an error, so nothing declared is silently ignored. High-level data
+  (results) and granular data (laps, sectors, run times) both work: a sport declares what it has.
+- **Optional inputs gate their settings.** An undeclared `sectors` turns `track_features` off by default, an
+  undeclared `practice` turns `practice_prior` off (laps core) or leaves the timed training runs out (run-times core).
+- **Defaults are schema.** `[model.defaults]` holds the sport's settings; F1's and downhill's equal the code's, so
+  every settings key and saved sweep key is unchanged.
+- **Lower levels stay runnable.** `GlobalModel.for_sport(code, core="results")` is the engine at the results level
+  (`backtest walk-forward f1 --model global`), with `[model.results.defaults]` if any. The engines F1 and downhill
+  had before are `[sport] challengers` (`--model f1_sector_sim`, `--model timed_runs`): the same cores with the
+  code's settings.
+
+**Price-preserving.** The cores keep the algorithms they had as separate models, so with the same seed and data the
+engine reproduces every price: F1 equals `race_model.PositionSim` and `laps_pricing.price_race`, downhill equals
+`race_model.TimedRuns`, NASCAR and MotoGP equal the counts origin/staging's `GlobalModel` gave
+(`tests/test_one_engine.py`, synthetic data). Blending the cores (laps into NASCAR and MotoGP, one strength model)
+is phase 2, after validation.
+
+**Limits.** The laps, grid and run-times layers read their constants (points, sessions, regulation resets, formats,
+the penalty file) from the one schema that declares them, found by `sports.declaring(input)`; a second sport
+declaring `laps` raises until those constants are bound per sport. The F1 commands that use
+`sweep_settings.Settings` directly (`racinglines model ... f1`, the live book, the signal engine) keep the code's
+defaults, which the guard test pins to the schema's. The old import paths `racinglines.models.position_sim` and
+`racinglines.models.timed_runs` are deprecated aliases of the new modules for one version.
 
 ### The walk-forward engine
 
@@ -67,7 +124,7 @@ out), so saved keys never change: every saved sweep's and stage run's key recomp
 model through `racinglines/core/walk_forward.py`: every completed event is priced from the runs before it
 with its real start list and format, every market kind is settled from the official result, and the
 fair values are scored (Brier, log loss, ECE, reliability bins) per kind and per season. The model's
-settings (`racinglines/models/timed_runs/settings.py`: category, sims, half-life, pace shrinkage, junior
+settings (`racinglines/models/inputs/run_times/settings.py`: category, sims, half-life, pace shrinkage, junior
 weight, training scope, t noise, seed) use the same schema, keys and flags as the F1 sweep's, so the
 search queue treats a downhill job like an F1 one. `--save` stores a `walk_forward` model run whose
 per-event scores (`<kind>_score` = −1000 × log loss, higher is better) are the search report's curves.
@@ -132,16 +189,18 @@ real Whistler book is checked by `tests/test_venue_replay.py` where the data buc
 This is the backtest step only; the whole sequence (results source, link identity, preflight, app) is
 [Adding a sport](add-a-sport.md).
 
-A sport joins the backtest core with two things and no change to the engine, the market kinds, the
-search or the report:
+A sport joins the backtest core with its schema and its data, and no change to the engine, the market
+kinds, the search or the report:
 
-1. **`sports/<code>.toml`**: its schema, with `[sport] pricing_model = "module:Class"` naming its
-   wrapper, its `[competition]` (where saved runs are filed) and, when it trades through a weekend, its
-   `[stages]`.
-2. **The wrapper**: a class with the pricing-model contract (`racinglines/models/race_model.py`): `load`
-   (its data source), `seasons`, `events` (each with its cutoff), `history`, `price` → `OutcomeSims`,
-   `results` (for settlement), `data_through`, and its own `Settings` (the sweep settings schema with its
-   model group; seed and sims are expected).
+1. **`sports/<code>.toml`**: its schema, with `[sport] pricing_model = "racinglines.models.model_global:GlobalModel"`
+   (the one engine), `[model] inputs` (the data it has, which pick the engine's core) and `[model.defaults]`, its
+   `[competition]` (where saved runs are filed) and, when it trades through a weekend, its `[stages]`.
+2. **Its data**, in the shape the declared inputs read (results rows for `results`, the tidy runs frame for
+   `run_times`, `Measurements` for `laps`). A kind of data no input reads yet is a new input layer and, if no core
+   prices it, a new core in `racinglines/models/inputs/` with the pricing-model contract
+   (`racinglines/models/race_model.py`: `load`, `seasons`, `events` with cutoffs, `history`, `price` →
+   `OutcomeSims`, `results`, `data_through`, `Settings`, plus `bind`), chosen by inputs, never by sport. A test can
+   still plug in a class of its own as `pricing_model` (`tests/toy_backtest.py`).
 
 3. **A season sweep (optional)**: `[sweep] stages = "weekend"` with a `[replay]` table (stages as hours from
    00:00 UTC on race day, kinds, group targets) makes the F1 sweep's taker modes and maker variants run on it
@@ -168,16 +227,18 @@ a queue job with `sport = "<code>"` searches it (with `replicates`), and `search
 `tests/toy_backtest.py` is a complete example: a synthetic running race (data source and a form model in
 one module) that `tests/test_backtest_toy.py` takes through all of that, including the command line.
 
-#### The global results model: a wrapper that is only a schema
+#### The results level: a sport that is only a schema
 
-A sport whose history is a table of finishing positions needs no wrapper of its own: point it at
-`racinglines/models/model_global.py` and describe its data in the schema. The model names no sport;
-`race_model.model_class(code)` binds it to the schema's `[model]` block.
+A sport whose history is a table of finishing positions declares `inputs = ["results"]` (plus `qualifying` /
+`fastest_lap` for its side classifications) and the engine prices it with the results core
+(`racinglines/models/inputs/results.py`, which `model_global.py` was before the one engine). Nothing names a sport;
+`race_model.model_class(code)` binds the engine to the schema's `[model]` block.
 
 ```toml
 [sport]
 pricing_model = "racinglines.models.model_global:GlobalModel"
 [model]
+inputs = ["results"]
 source = "motogp_api"     # events.source of the results (or the [replay] source)
 group = "team"            # optional: results column / results.extra key naming the team (group prior)
 prior = "uci_points"      # optional: results.extra key, a rating the entrant had before the race
@@ -188,8 +249,8 @@ It is the "fuzzy-data" model: every finish becomes a field-size-free strength (s
 of 5), an entrant's strength is their recency-weighted mean shrunk toward a prior by how few starts they
 have, and a race is a strength-plus-noise draw with a shrunk retirement rate. It needs no laps, no fixed
 schedule and no full participation, so every sport with price tapes and a results history can be backtested
-with it, whatever else it has. Settings, hooks and the leakage rule (days strictly before the event) are in the
-module's docstring. A sport that keeps its own model still gets it side by side:
+with it, whatever else it has (`--model global`: the engine at the results level). Settings, hooks and the leakage
+rule (days strictly before the event) are in the module's docstring. Side by side with the sport's own level:
 
 ```
 racinglines backtest walk-forward motogp --model global --seasons 2026
@@ -265,7 +326,7 @@ podium and top 10 and "target only" on win and fastest qualifier.
 
 ```toml
 [[job]]
-sport = "mtb_dh"               # the downhill model's settings (racinglines/models/timed_runs/settings.py)
+sport = "mtb_dh"               # the downhill model's settings (racinglines/models/inputs/run_times/settings.py)
 year = 2026
 prior_n = 1.5
 replicates = 3                 # this job and its season's baseline at 3 seeds each
@@ -296,5 +357,6 @@ holdout = [2025]
 | 4 ✓ | `Venue` interface: Polymarket behind it, Kalshi mock, private-book venue with the simulated crowd | F1 sweep identical; the Whistler book replays as a backtest (synthetic finals here; Whistler where the bucket is) |
 | 5 ✓ | Stages from the schema; per-kind strategy overrides; settings split | Saved F1 `settings_key`s unchanged (every saved sweep and 1,245 stage runs here); full F1 sweeps identical |
 | 6 ✓ | "Adding a sport": schema + data source + model wrapper, nothing else | A synthetic third sport passes the suite (`tests/test_backtest_toy.py`) |
+| 7 (staging) | One engine: `GlobalModel` the only `pricing_model`, inputs and defaults in the schema | Every price equal to the old engines' (`tests/test_one_engine.py`); prod waits for the owner |
 
 The live engine keeps working throughout; once step 4 lands it can use the same venues and kinds.

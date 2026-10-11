@@ -5,16 +5,17 @@ actually took, in the order it has to happen. Each step links to the section tha
 checklist, not a second copy. Written 2026-09-30 from the code on `main`.
 
 The short version: a sport is mostly **data**: a schema file, plus exchange schemas for any new venue. Code is needed for
-two things only, a **results adapter** and a **model wrapper**, and neither is needed for a tape-only sport. A few
+one thing only, a **results adapter**, and not for a tape-only sport: the model is the one engine, configured by the
+schema's `[model] inputs` and `[model.defaults]` ([step 6](#6-model-inputs-replay-and-backtest)). A few
 places still name the sports in code (listed in [step 9](#9-the-places-that-still-name-the-sports)).
 
 ## 1. Decide: tape only, or results-backed
 
 | | Tape only | Results-backed |
 |---|---|---|
-| `[sport] model_family` | `"none"` | the model family (`position_sim` for NASCAR and MotoGP) |
+| `[sport] model_family` | `"none"` | `"global"`: the one engine, for every modelled sport |
 | What you get | exchange links (all `unmodeled`) and the recorded tape: prices, trades, books | the same, plus results, a model, replays, forecasts, the demo paper record |
-| Needs | a sport schema with `[markets.*]` | a cleared results source, a results adapter, a model wrapper |
+| Needs | a sport schema with `[markets.*]` | a cleared results source, a results adapter, `[model] inputs` in the schema |
 | Examples | IndyCar, road cycling, Le Mans, SailGP | NASCAR Cup, MotoGP |
 
 A sport starts tape only and moves to results-backed only when a results source is **cleared**: its terms of use allow
@@ -30,7 +31,9 @@ Every section the code reads, as data ([Database](database.md#multi-sport-design
 not schema):
 
 - `[sport]`: `code`, `name`, `result_kind`, `model_family`, `display_order`, and for a modeled sport
-  `pricing_model = "module:Class"`. `[league]` and `[competition]` (`code`, `name`, `display_name`, `categories`).
+  `pricing_model = "racinglines.models.model_global:GlobalModel"` (every modelled sport's, `tests/test_one_engine.py`)
+  with `[model] inputs` and `[model.defaults]` (step 6). `[league]` and `[competition]` (`code`, `name`,
+  `display_name`, `categories`).
   `tests/test_sports.py` checks the required keys for every schema.
 - `[markets]`: `venues` and `standard_kinds` (the board's columns; `[]` for a tape-only sport).
 - `[markets.kalshi] series`: the Kalshi series ticker **prefixes** to sync (e.g. `KXNASCAR`, `KXMOTOGP`).
@@ -107,11 +110,23 @@ The replay checks readiness per race too: it counts races with markets, markets 
 race with no stored price as `NO TAPE`, and prints `NOT TRADED` with the reason for a venue with nothing tradeable
 (`--require-tradeable` exits 1). `--tape probe` asks each exchange about 3 markets before any pull.
 
-## 6. Model wrapper, replay and backtest
+## 6. Model inputs, replay and backtest
 
-- **The wrapper** is a class with the pricing-model contract, named by `[sport] pricing_model`
-  ([Backtest core](backtest-core.md#adding-a-sport)). Then `racinglines backtest walk-forward <code>` and the search
-  work without engine changes.
+- **The model** is the one engine (owner, 2026-10-11: no sport-specific models, only schemas that declare the model's
+  inputs; [Backtest core](backtest-core.md#one-engine-schema-declared-inputs)). The schema declares the data the sport
+  has, high-level or granular, and the engine prices at that level:
+
+    ```toml
+    [model]
+    inputs = ["results", "qualifying"]       # MotoGP; F1: + "grid", "practice", "laps", "sectors"; downhill: "run_times", "practice"
+    source = "motogp_api"                    # the results core's hooks: events.source, group, prior, sessions, best_lap
+    [model.defaults]                         # per-sport defaults of the engine's settings (decision-log entries)
+    ```
+
+    The inputs pick the engine's core (`racinglines/models/inputs/__init__.py`: results, laps or run_times), never the
+    sport's name, and an input the core doesn't read is an error. Data no input reads yet means a new input layer
+    under `racinglines/models/inputs/`, not a sport model. Then `racinglines backtest walk-forward <code>` and the
+    search work without engine changes; an older model can stay runnable as a `[sport] challengers` entry.
 - **The taker replay** (`racinglines strategy replay <sport>`, [CLI](cli.md#nascar-commands)) needs only the `[replay]`
   section. `--tape pull --backup FILE` pulls the selected races' tape; `--save --backup FILE` stores one as-of model run
   per race, which the board's recent results and the status table read.
@@ -170,6 +185,7 @@ that should reach them needs an edit there:
 | `scripts/vm/overnight.sh` `SPORTS`, `code_of`, `prep` | the overnight run's sports, their competition codes and how their results load |
 | `scripts/vm/demo_setup.sh` | `for S in nascar motogp` |
 | `racinglines/web/board.py` `recent_results`, `next_races` | category codes `DRV`, `ME`, `RDR` |
+| `racinglines/models/inputs/laps.py`, `grid.py`, `run_times/model.py` | read their constants from the one schema declaring `laps`, `grid` or `run_times` (`sports.declaring`): a second sport with those inputs needs them bound per sport first |
 | `racinglines/markets/kalshi/sync.py` | only F1 is classified into model kinds (`modeled = sport == "f1"`); every other sport's links are `unmodeled` and get their identity from the resolver |
 
 ## Related

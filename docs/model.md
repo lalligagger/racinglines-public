@@ -1,6 +1,6 @@
 # Downhill model
 
-The downhill season model lives in `racinglines/models/timed_runs/` (section 7) and is driven by
+The downhill season model lives in `racinglines/models/inputs/run_times/` (section 7) and is driven by
 `racinglines model forecast mtb_dh` and `racinglines model backtest mtb_dh`. It answers:
 
 - Before a weekend: what's each rider's chance to make the Final, finish top 10,
@@ -281,7 +281,7 @@ events faster by 0.3% or 0.6% of run time is worse on every market; shifting the
 changes log loss by under 0.001. With the 240-day half-life the pace already follows form.
 
 **The defaults since 2026-09-28** (owner's OK): `PRIOR_N` 0.5, `HALF_LIFE_DAYS` 240,
-`CATEGORY_WEIGHTS["MJ"]` 0.25 in `models/timed_runs/model.py`. They were picked on the same 43
+`CATEGORY_WEIGHTS["MJ"]` 0.25 in `models/inputs/run_times/model.py`. They were picked on the same 43
 rounds they're scored on, so the gains are in-sample: check them on 2026's next rounds. The old
 behaviour is `--prior-n 1.5 --half-life-days 120 --junior-weight 0.5`.
 

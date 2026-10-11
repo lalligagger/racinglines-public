@@ -1,4 +1,4 @@
-"""The f1_combo Lab job (racinglines/web/jobs.py, models/position_sim/combo_job.py): registered with its knobs, legs
+"""The f1_combo Lab job (racinglines/web/jobs.py, models/combo_job.py): registered with its knobs, legs
 validated before queueing, names resolved by exact keys only, the calibration checks and flags, and the metrics it
 stores. Synthetic data, no database."""
 
@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 from racinglines.models.outcomes import OutcomeSims
-from racinglines.models.position_sim import combo_job as CJ
+from racinglines.models import combo_job as CJ
 from racinglines.web import jobs as J
 
 pytestmark = pytest.mark.quick
@@ -100,8 +100,8 @@ def test_parse_combos_shapes():
 
 
 def test_run_prices_a_synthetic_event_end_to_end():
-    from racinglines.models.position_sim import pricing as run
-    from racinglines.models.position_sim import variants as V
+    from racinglines.models.inputs import laps_pricing as run
+    from racinglines.models import variants as V
     from racinglines.testing import synthetic as SY
     m = run.Measurements.from_frames(*SY.f1_frames())
     hist = run.history(m)
