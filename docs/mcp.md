@@ -20,7 +20,8 @@ Run form can queue, and every job it queues is filed under your account.
 
 The `racinglines` CLI is an MCP client too, for the sportsbook commands: `racinglines book price FILE --remote`
 prices your book file on the hosted server with no database of your own ([From the command line](#from-the-command-line-racinglines-book-remote)).
-Trying the CLI needs no MCP at all: `racinglines book price --demo` runs a bundled synthetic sample offline.
+Trying the CLI needs no MCP at all: `racinglines book price --demo` prices a synthetic sample book on a local demo
+store ([Quickstart](quickstart.md)).
 
 ### Local (stdio)
 
@@ -40,6 +41,11 @@ Claude Desktop (Settings > Developer > Edit config), the same idea:
 ```
 
 ### Hosted (the VM)
+
+!!! warning "Remote access is in testing"
+    racinglines.bet remote access is in testing (#aintcare mode). A review of venue and data-feed terms is pending,
+    so data served here is for testing only. Every command that connects to the hosted server prints this warning on
+    stderr (`racinglines/cli/remote.py`).
 
 Your account needs a role in `RACINGLINES_MCP_ROLES` (default `admin,pro`); Settings > Connect Claude (MCP) says
 if it hasn't. Demo accounts, including the `maker` demo, never get access. An explicit `admin` setting still
@@ -89,7 +95,7 @@ and only one of them uses MCP:
 
 | Mode | MCP? | What it runs on |
 |---|---|---|
-| `--demo` | No | A bundled synthetic book and its stored results: no database, network or account. The first thing to run after installing the package |
+| `--demo [PACK]` | No (with `--remote`: yes, the hosted demo store) | A demo store: a local database of synthetic data from a data pack, built on first use, priced by the same code as `--local` ([Quickstart](quickstart.md)). The first thing to run after installing |
 | `--remote` | Yes, the hosted server | Your book file, sent as text to the `map_book` / `price_book` / `settle_book` tools; the result is the same dict `--json` prints locally, rendered the same way (`racinglines/cli/remote.py`) |
 | `--local` (default) | No | Your own database (`--db`, `DATABASE_URL`) |
 
@@ -315,4 +321,5 @@ client round trip over an in-memory transport against the test database (tools, 
 the resources), and the token lifecycle with the bearer check of the hosted mode. No network.
 `tests/test_book_slips.py` runs the CLI's `--remote` against a local hosted server (OAuth on, uvicorn on
 127.0.0.1): with an `rl_` token, with a wrong one (401), and through the browser sign-in, its stored login and
-logout. `tests/test_book_demo.py` checks the bundled `--demo` results are what the code returns.
+logout, and that the #aintcare testing warning is printed for remote and not for local or demo. `tests/test_demo_store.py`
+builds a demo store and prices the kart pack's book on it.

@@ -201,3 +201,17 @@ def test_a_second_pack_needs_no_code(test_engine, tmp_path_factory):
         assert "2026" in out
     finally:
         _drop(url)
+
+
+def test_quickstart_doc_is_rendered_from_the_pack():
+    """docs/quickstart.md's command blocks come from the pack manifests (scripts/build_quickstart.py)."""
+    p = subprocess.run([sys.executable, str(ROOT / "scripts" / "build_quickstart.py"), "--check"], capture_output=True,
+                       text=True)
+    assert p.returncode == 0, p.stderr
+
+
+def test_quickstart_doc_is_rendered_from_the_pack():
+    """docs/quickstart.md's command blocks come from the pack manifests (scripts/build_quickstart.py)."""
+    p = subprocess.run([sys.executable, str(ROOT / "scripts" / "build_quickstart.py"), "--check"], capture_output=True,
+                       text=True)
+    assert p.returncode == 0, p.stderr

@@ -56,13 +56,13 @@ def _parser():
                       ("settle", "Results and payouts from the stored classification.")):
         s = sub.add_parser(name, help=hlp)
         s.add_argument("file", nargs="?", help="a book file (books/<venue>/<date>-<event>.toml, "
-                                               "docs/sportsbook/index.md); with --demo, default the bundled sample")
+                                               "docs/sportsbook/index.md); with --demo, default the pack's book")
         s.add_argument("--json", action="store_true", help="print the result as JSON")
         s.add_argument("--rich", action="store_true", help="print a coloured terminal table (Rich)")
         s.add_argument("--db", default=None, help="database URL (default DATABASE_URL)")
         mode = s.add_mutually_exclusive_group()
         mode.add_argument("--demo", action="store_true",
-                          help="the demo store: a local database of synthetic data (built on first use)")
+                          help="a demo store: a local database of synthetic data from a data pack (`--demo PACK` for another pack; default kart)")
         mode.add_argument("--remote", action="store_true",
                           help="the VM's hosted MCP server: browser sign-in, or RACINGLINES_MCP_TOKEN")
         mode.add_argument("--local", action="store_true", help="a local database (the default unless the defaults "
@@ -225,7 +225,7 @@ def main(argv=None):
         elif not args.json and not args.rich:
             print("(plain text: pip install rich for the coloured tables)", file=sys.stderr)
     if not args.file:
-        print(f"book {args.cmd}: a book FILE is needed (or --demo for the bundled sample)", file=sys.stderr)
+        print(f"book {args.cmd}: a book FILE is needed (or --demo for a demo pack's book)", file=sys.stderr)
         return 2
     from racinglines.books import schema as S
     from racinglines.books import slips as B
