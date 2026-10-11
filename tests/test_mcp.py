@@ -848,6 +848,16 @@ odds = 3.0
 market = { kind = "race_win", driver = "Ann Alpha" }
 """
         assert refused("map_book", book=book) and refused("price_book", book=book) and refused("settle_book", book=book)
+        # jobs: the catalog leaves the sport out, and queueing or reading one of its jobs is refused
+        jt = mcp("list_job_types")
+        assert "motogp_sweep" not in {j["job_type"] for j in jt["job_types"]} and "motogp" not in jt["sport_sweep_settings"]
+        wf = next(j for j in jt["job_types"] if j["job_type"] == "walk_forward")
+        assert "motogp" not in next(k for k in wf["knobs"] if k["name"] == "sport")["choices"]
+        assert refused("run_job", job_type="motogp_sweep", params=dict(year=2026))
+        assert refused("run_job", job_type="walk_forward", params=dict(sport="motogp"))
+        hidden_job = T.run_job(mcp.engine, "motogp_sweep", dict(year=2026), user_id=uid)["job_id"]   # queued as an admin would
+        assert refused("get_job", job_id=hidden_job) and refused("cancel_job", job_id=hidden_job)
+        assert hidden_job not in {r["id"] for r in mcp("list_jobs")["rows"]}
 
         async def schema(client):
             try:
@@ -863,9 +873,12 @@ market = { kind = "race_win", driver = "Ann Alpha" }
         assert mcp("get_athlete", athlete_id=c_athlete)["athlete"]["id"] == c_athlete
         assert mcp("list_positions", user="mcp-pro-hide")["positions"]["total"] == 1
         assert mcp("list_kinds", sport="motogp")["sport"] == "motogp"
+        assert mcp("get_job", job_id=hidden_job)["id"] == hidden_job
+        assert "motogp_sweep" in {j["job_type"] for j in mcp("list_job_types")["job_types"]}
     finally:
         with mcp.engine.begin() as c:
             c.execute(text("DELETE FROM market_links WHERE token_id = 'hide-tok'"))
+            c.execute(text("DELETE FROM jobs WHERE user_id = :u"), dict(u=uid))
             c.execute(text("DELETE FROM paper_positions WHERE user_id = :u"), dict(u=uid))
             c.execute(text("DELETE FROM users WHERE id = :u"), dict(u=uid))
             c.execute(text("DELETE FROM race_predictions WHERE model_run_id = :r"), dict(r=run))

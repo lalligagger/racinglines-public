@@ -950,16 +950,20 @@ def sql(conn, query, limit=None, offset=0):
 def list_job_types():
     from racinglines.pipelines import sweep_settings as SS
     from racinglines.web import jobs as J
+    hidden = HIDDEN.get()
     out = []
     for jt in J.CATALOG.values():
+        if jt.sport in hidden:
+            continue
         knobs = []
         for k in jt.knobs:
             if k.type in ("sweep_settings", "sport_sweep_settings"):
                 knobs.append(dict(name="settings", type="object", help="any sweep setting (see sweep_settings below); "
                                   "unset ones keep their defaults"))
             else:
+                choices = [c for c in k.choices if not (k.name == "sport" and c in hidden)] if k.choices else None
                 knobs.append(dict(name=k.name, type=k.type, default=k.default, min=k.min, max=k.max,
-                                  choices=k.choices or None, help=k.help))
+                                  choices=choices or None, help=k.help))
         out.append(dict(job_type=jt.code, sport=jt.sport, label=jt.label, what=jt.what, takes=jt.minutes, knobs=knobs))
     settings = [dict(name=s.name, group=s.group, type=s.type, default=(list(s.default) if isinstance(s.default, tuple) else s.default),
                      min=s.min, max=s.max, choices=list(s.choices) or None, help=s.help) for s in SS.SETTINGS]
@@ -969,7 +973,7 @@ def list_job_types():
                     default=list(s.default) if isinstance(s.default, tuple) else s.default,
                     min=s.min, max=s.max, choices=list(s.choices) or None, help=s.help)
                for s in SW.settings_class(code).SPEC]
-        for code in J.modeled_sports() if code != "f1" and SW.supports(code)}
+        for code in J.modeled_sports() if code != "f1" and code not in hidden and SW.supports(code)}
     return dict(job_types=out, sweep_settings=settings, sport_sweep_settings=sport_settings, model_variants=J.MODEL_CHOICES,
                 note="run_job(job_type, params) queues one; get_job(job_id) follows it; forecasts save as scenarios "
                      "(never the live prices); event is 'YYYY-R' (e.g. 2026-15), cutoff 'YYYY-MM-DDTHH:MM' UTC")
@@ -1006,6 +1010,9 @@ def run_job(engine, job_type, params=None, user_id=None):
     Returns its id; `get_job` follows it. The job runs once a worker (this server's, or the web app's) picks it up."""
     from racinglines.web import jobs as J
     jt, p = _job_params(job_type, params)
+    hidden = HIDDEN.get()
+    if jt.sport in hidden or jt.sport_of(p) in hidden:          # as the Lab's Run form (web/views.py lab_run)
+        raise not_available(jt.sport if jt.sport in hidden else jt.sport_of(p))
     job_id = J.submit(jt, p, user_id, engine=engine)
     return dict(job_id=int(job_id), job_type=jt.code, params=p, status="queued",
                 note=f"{jt.label}: {jt.minutes or 'a while'}. get_job({job_id}) for progress; the run it saves is result_run_id")
@@ -1033,7 +1040,10 @@ def get_job(conn, job_id, log_lines=20, viewer=None):
                 i=int(job_id), u=scoped["id"] if scoped else None)
     if not len(df):
         raise ValueError(f"no job {job_id}")
-    return _job_row(df.iloc[0].to_dict(), log_lines)
+    row = df.iloc[0].to_dict()
+    if row.get("sport") in HIDDEN.get():
+        raise not_available(f"job {job_id}")
+    return _job_row(row, log_lines)
 
 
 def list_jobs(conn, status=None, limit=None, offset=0, viewer=None):
@@ -1043,6 +1053,7 @@ def list_jobs(conn, status=None, limit=None, offset=0, viewer=None):
                          WHERE (CAST(:s AS text) IS NULL OR j.status = CAST(:s AS text))
                          AND (CAST(:u AS int) IS NULL OR j.user_id = :u) ORDER BY j.id DESC""",
                 s=status, u=scoped["id"] if scoped else None)
+    df = df[~df["sport"].isin(HIDDEN.get())] if len(df) else df
     return P.page(df, limit=limit, offset=offset)
 
 
