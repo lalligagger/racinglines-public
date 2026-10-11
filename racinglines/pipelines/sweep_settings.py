@@ -1,6 +1,6 @@
 """
 Every setting of a season sweep, in one schema: the model, entry timing, taker and maker strategy
-parameters, and which markets to trade. The same schema drives the `racinglines f1 sweep` flags, the
+parameters, and which markets to trade. The same schema drives the `racinglines strategy sweep f1` flags, the
 Lab's Edge Finder sweep form, the search queue (sweeps/*.toml) and each saved sweep's params, so any
 model x strategy combo found anywhere can be recreated exactly (the simulations are seeded).
 

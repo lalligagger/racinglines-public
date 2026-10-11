@@ -35,7 +35,7 @@ def _years(spec):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="racinglines nascar", description=__doc__,
+    ap = argparse.ArgumentParser(prog="racinglines <group> <command> nascar", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--db", default=None, help="Database URL (default: $DATABASE_URL / docker-compose).")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -77,6 +77,8 @@ def main(argv=None):
     replay_cmd.add_forecast_parser(sub, "nascar")
     replay_cmd.add_sweep_parser(sub, "nascar")
     replay_cmd.add_signals_parser(sub, "nascar")
+    from racinglines.cli.verbs import retitle
+    retitle(ap, "nascar")
     args = ap.parse_args(argv)
 
     if args.cmd == "signals":
@@ -149,7 +151,7 @@ def _link(args):
                            sport="nascar", detail=dict(backup=backup.name, undo=report["undo"], links=report["links"],
                                                        changed=report["changed"], shapes=report["shapes"]))
             s.commit()
-            print(f"\nWrote {report['changed']:,} links. Undo: racinglines nascar link --undo {report['undo']}")
+            print(f"\nWrote {report['changed']:,} links. Undo: racinglines data link nascar --undo {report['undo']}")
         else:
             print("\nNothing to change.")
     return 0
@@ -160,7 +162,7 @@ def _season(args):
     from racinglines.pipelines import nascar_season as NSP
 
     if not NSP.enabled():
-        sys.exit(f"racinglines nascar season is off by default: set {NSP.SWITCH}=1 to run it (read-only)")
+        sys.exit(f"racinglines model season nascar is off by default: set {NSP.SWITCH}=1 to run it (read-only)")
     engine = get_engine(args.db)
     frame, state, audit = NSP.forecast(engine, args.year, n_sims=args.sims or NSP.N_SIMS,
                                        seed=NSP.SEED if args.seed is None else args.seed, stage_noise=args.stage_noise,

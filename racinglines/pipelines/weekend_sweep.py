@@ -29,7 +29,6 @@ qualifying, while the market moves after every session.
 """
 
 import copy
-import logging
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import timedelta
@@ -67,27 +66,15 @@ MAKERS = {"maker": {},
 WIDEN = 1.5                          # half-spread multiplier for widened market kinds
 
 
-SCHEDULE_COLS = ["RoundNumber", "EventName", "EventFormat"] + [f"Session{i}{x}" for i in range(1, 6) for x in ("", "DateUtc")]
+from racinglines.sources.fastf1.fetch import SCHEDULE_COLS  # noqa: E402,F401  (kept importable from here)
 
 
 def _event_schedule(year):
     """FastF1's event schedule, saved next to the raw files (data/raw/f1/fastf1/<year>/schedule.parquet)
-    so a machine without access to FastF1's servers (e.g. a cloud session) can still build the sweep."""
-    import fastf1
-    from racinglines.sources.fastf1.fetch import CACHE, OUT
-    snap = OUT / str(year) / "schedule.parquet"
-    try:
-        logging.getLogger("fastf1").setLevel(logging.ERROR)
-        CACHE.mkdir(parents=True, exist_ok=True)
-        fastf1.Cache.enable_cache(str(CACHE))
-        sch = pd.DataFrame(fastf1.get_event_schedule(year, include_testing=False))[SCHEDULE_COLS]
-        if snap.parent.is_dir():
-            sch.to_parquet(snap, index=False)
-        return sch
-    except Exception:  # noqa: BLE001  (offline: fall back to the saved copy)
-        if snap.is_file():
-            return pd.read_parquet(snap)
-        raise
+    so a machine without access to FastF1's servers (e.g. a cloud session) can still build the sweep
+    (sources/fastf1/fetch.event_schedule; RACINGLINES_OFFLINE=1 reads only the saved copy)."""
+    from racinglines.sources.fastf1.fetch import event_schedule
+    return event_schedule(year)
 
 
 def schedule(year, rounds=None):

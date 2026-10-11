@@ -43,7 +43,7 @@ class DHSettings(SS.Settings):
         pass
 
     def fit_kw(self):
-        """Keyword arguments of fit_season_model / walk_forward_season (as `racinglines mtb_dh backtest`)."""
+        """Keyword arguments of fit_season_model / walk_forward_season (as `racinglines model backtest mtb_dh`)."""
         return dict(train_scope=self["train_scope"], half_life_days=self["half_life_days"],
                     category_weights={"MJ": self["junior_weight"]}, prior_n=self["prior_n"])
 

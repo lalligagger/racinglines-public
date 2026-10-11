@@ -1,6 +1,6 @@
 """
 Combo (same-game parlay) prices for one F1 event: the Lab job `f1_combo` (racinglines/web/jobs.py), run as
-`racinglines f1 --variant <v> combo --event 2026-17 --legs '<json>' [--cutoff ...] --save`.
+`racinglines model combo f1 --variant <v> --event 2026-17 --legs '<json>' [--cutoff ...] --save`.
 
     parse_combos(text)                   the --legs JSON as [(name, [leg, ...])]
     resolve(legs, entrants)              names -> athlete ids and team keys, exact keys only (never fuzzy)

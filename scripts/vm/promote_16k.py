@@ -1,10 +1,10 @@
 """
 Promote a search's top combos to 16,000 simulations: the second half of the overnight VM run
-(docs/overnight-vm-run.md). Reads the candidates.toml that `racinglines f1 search-report` wrote, keeps the best
+(docs/overnight-vm-run.md). Reads the candidates.toml that `racinglines strategy search-report f1` wrote, keeps the best
 `--top` distinct settings that a taker could really have traded (no 24 h volume floor under $25, Polymarket only:
 Kalshi's taker replay fills at last-trade prints, data/runs/search/taker-resweep/REPORT.md section 3), and appends
 one [[job]] per season at `--sims` to the queue, plus profile A and the default baseline at the same fidelity.
-Running `racinglines f1 search` on the same queue again then runs only the new jobs (finished ones are kept in
+Running `racinglines strategy search f1` on the same queue again then runs only the new jobs (finished ones are kept in
 state.json), and `f1 search-report` fills the report's Confirmed column from them.
 
     python scripts/vm/promote_16k.py sweeps/overnight-vm.toml --top 10
@@ -82,7 +82,7 @@ def main(argv=None):
     name = tomllib.loads(text).get("search", {}).get("name", "search")
     cf = Path(a.candidates) if a.candidates else Path("data/runs/search") / name / "candidates.toml"
     if not cf.exists():
-        sys.exit(f"{cf} not found: run `racinglines f1 search-report {q}` first")
+        sys.exit(f"{cf} not found: run `racinglines strategy search-report f1 {q}` first")
     picked = pick(tomllib.loads(cf.read_text()).get("candidate", []), a.top)
     if not picked:
         sys.exit(f"no tradeable Polymarket candidate in {cf}: nothing promoted")

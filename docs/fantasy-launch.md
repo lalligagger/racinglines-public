@@ -221,7 +221,7 @@ REPORT: reports/2026-10-11-singapore-fantasy/report.md (+ img/), rendered with r
 - **More than one VM,** a second tunnel connector, or a move to Cloud Run ([Google Cloud proposal](google-cloud.md)).
 - **The engine roadmap** (PR #66), which is unrelated.
 - **Work in flight in another thread (2026-09-29), not planned here:** the maker `/markets` calendar fix (PR #70,
-  merged), the NASCAR data fetch on the VM (`racinglines nascar fetch`, 2017-2026) and its ingest, which comes next
+  merged), the NASCAR data fetch on the VM (`racinglines data fetch nascar`, 2017-2026) and its ingest, which comes next
   and needs its own `data_changes` entry. The fantasy work touches different code (auth, users, the private book,
   paper positions, new tables), but the VM is shared: check with the owner before a deploy lands during a long
   fetch or ingest.

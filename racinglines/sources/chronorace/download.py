@@ -56,13 +56,13 @@ USAGE
     pip install requests
 
     # Discover events for a year/discipline without downloading anything:
-    racinglines mtb_dh download --year 2026 --discipline DH --category "Elite Men" --list-only
+    racinglines data download mtb_dh --year 2026 --discipline DH --category "Elite Men" --list-only
 
     # Download everything found:
-    racinglines mtb_dh download --year 2026 --discipline DH --category "Elite Men" --out-dir results/
+    racinglines data download mtb_dh --year 2026 --discipline DH --category "Elite Men" --out-dir results/
 
     # Skip the Wikipedia scrape and give exact ChronoRace slugs yourself:
-    racinglines mtb_dh download --events 20260821_mtb 20260611_mtb \\
+    racinglines data download mtb_dh --events 20260821_mtb 20260611_mtb \\
         --discipline DH --category "Elite Men" --out-dir results/
 
 Categories accepted (case/spacing-insensitive): "Elite Men", "Elite Women",

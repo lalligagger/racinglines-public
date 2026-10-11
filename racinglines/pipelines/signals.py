@@ -3,8 +3,8 @@ Live paper signals: what each user's strategy profile (pipelines/profiles.py) wo
 race weekend, stage by stage, computed by the backtest's own code. Recommendations and paper fills only:
 nothing here places an order.
 
-    racinglines f1 signals                         # every user with a profile, the weekend in progress
-    racinglines f1 signals --profile A --event 15 --asof 2026-09-27T12:00 --no-fetch   # replay (prints only)
+    racinglines strategy signals f1                         # every user with a profile, the weekend in progress
+    racinglines strategy signals f1 --profile A --event 15 --asof 2026-09-27T12:00 --no-fetch   # replay (prints only)
 
 Per run:
   1. Data (live only): FastF1 fetch + ingest when a finished session's data is missing; Polymarket
@@ -258,9 +258,9 @@ def _missing_sessions(meas, w, now):
 
 def refresh_fastf1(w, echo=print):
     year, rnd = (int(x) for x in w["event_key"].split("-"))
-    rl = [sys.executable, "-m", "racinglines", "f1"]
-    for argv in (["fetch", "--years", str(year), "--rounds", str(rnd), "--sessions", FASTF1_SESSIONS],
-                 ["ingest", "--years", str(year)]):
+    rl = [sys.executable, "-m", "racinglines", "data"]
+    for argv in (["fetch", "f1", "--years", str(year), "--rounds", str(rnd), "--sessions", FASTF1_SESSIONS],
+                 ["ingest", "f1", "--years", str(year)]):
         r = subprocess.run(rl + argv, capture_output=True, text=True, timeout=1800)
         echo(f"  f1 {argv[0]}: {'ok' if r.returncode == 0 else 'failed'} {r.stdout.strip().splitlines()[-1:] or ''}")
 

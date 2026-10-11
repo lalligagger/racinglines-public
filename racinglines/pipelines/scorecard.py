@@ -3,8 +3,8 @@ The pricing scorecard of an exchange weekend (docs/paper-trading.md, validation 
 cutoff of the weekend (core/stages.py), the model's fair value of every linked market kind scored against
 the result and against the venue's mid at that cutoff, traded or not.
 
-    racinglines f1 scorecard --event 2026-15 --venue both
-    racinglines f1 scorecard --all --year 2025 --venue polymarket
+    racinglines strategy scorecard f1 --event 2026-15 --venue both
+    racinglines strategy scorecard f1 --all --year 2025 --venue polymarket
 
 Nothing is priced here: the fair values are the stored stage runs (kind='diagnostic', one per stage, as
 the sweep and the live signals store them, chosen by the model settings' `model_key`). The venue's mid
@@ -197,7 +197,7 @@ def weekend(conn, w, venue, model_key):
     rows = weekend_rows(conn, w, runs, venue)
     note = []
     if missing:
-        note.append(f"no stage run for {', '.join(missing)} (model_key {model_key}; run `f1 sweep` or `f1 signals` first)")
+        note.append(f"no stage run for {', '.join(missing)} (model_key {model_key}; run `racinglines strategy sweep f1` or `racinglines strategy signals f1` first)")
     if not len(rows) and runs:
         note.append(f"no {venue} markets linked")
     note += notes(rows, venue)

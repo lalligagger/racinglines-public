@@ -81,7 +81,7 @@ group = "team"                    # results.team, for the optional team-form pri
 sessions = ["qual"]
 
 [replay]
-# The taker replay (racinglines/pipelines/position_replay.py; `racinglines motogp replay`). Links stored before the
+# The taker replay (racinglines/pipelines/position_replay.py; `racinglines strategy replay motogp`). Links stored before the
 # [identity] resolver was turned on are identified in memory (racinglines/sources/motogp/links.py); the replay writes
 # nothing to market_links. A priori values, none tuned:
 # docs/f1-roadmap.md decision log, 2026-09-30 "NASCAR / MotoGP taker replay".
@@ -130,7 +130,7 @@ until_fallback_hours = 0                 # the race start when its round stores 
                                          # [sweep] quote_until_hours assumption): a later session's stage is dropped
 
 [sweep]
-# The season sweep (racinglines/pipelines/season_sweep.py; `racinglines motogp sweep`, search jobs of kind "sweep"): the
+# The season sweep (racinglines/pipelines/season_sweep.py; `racinglines strategy sweep motogp`, search jobs of kind "sweep"): the
 # F1 sweep's taker modes and maker variants on the [replay] stages, kinds and group targets, priced by [sport]
 # pricing_model from results strictly before the event, settled by classified position. Venues: [markets] venues,
 # plus OG.com where exchanges/og.toml lists the sport. A priori values, none tuned.

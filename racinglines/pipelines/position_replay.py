@@ -28,7 +28,7 @@ Markets: the sport's links on the venue whose kind is in [replay] kinds. The kin
 stored link (NASCAR's `nascar link --apply` writes params.kind, athlete_id and race_id), else from the sport's
 matcher run in memory ([replay] linker): nothing is written to market_links.
 
-Run with `racinglines nascar replay` / `racinglines motogp replay` (every exchange the sport lists on, by default).
+Run with `racinglines strategy replay nascar` / `racinglines strategy replay motogp` (every exchange the sport lists on, by default).
 `save` also stores one as-of model run per race (model_runs kind 'diagnostic' + race_predictions, and prediction
 records with the sims, on for these sports unless RACINGLINES_PREDICTION_RECORDS is set off); the CLI asks for a
 fresh backup first and every saved run carries the batch

@@ -10,7 +10,7 @@ standings head-to-head, season wins).
 
 Every remaining race is priced by the sport's own race model (sports/nascar.toml `pricing_model`, an OutcomeSims per
 race); this module only turns those finishing orders into championship points and applies the format. Nothing here
-reads or writes the database: `load_state` (below) and `racinglines nascar season` do the reading, read-only.
+reads or writes the database: `load_state` (below) and `racinglines model season nascar` do the reading, read-only.
 
 What each race scores (checked against the 2026 weekend feeds in tests/fixtures/market, see test_nascar_season.py):
 finishing points 55 for the win, 35 for 2nd, 34 for 3rd, ... 1 point from 36th down; 10..1 to the top 10 of each

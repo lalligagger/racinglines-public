@@ -13,7 +13,7 @@ with its standard error over weekends), and per weekend the retirements in the s
 Prix (DNF + DSQ over the starters, DNS left out) beside the simulated sprint DNF share, the evidence for
 [sessions.sim] sprint.dnf_scale in sports/f1.toml.
 
-    racinglines f1 sprint-check [--from 2021] [--sims 4000] [--out sprint_check.csv]
+    racinglines model sprint-check f1 [--from 2021] [--sims 4000] [--out sprint_check.csv]
 """
 
 import numpy as np

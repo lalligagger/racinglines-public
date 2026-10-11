@@ -86,7 +86,7 @@ def generate(session, conn, race_id, kinds, top_n, spread, maker_id=None):
     still use the model price. Returns (created, repriced)."""
     preds = latest_race_predictions(conn, race_id)
     if preds.empty:
-        raise ValueError("no forecast predictions for this race; run racinglines mtb_dh forecast --db --save")
+        raise ValueError("no forecast predictions for this race; run racinglines model forecast mtb_dh --db --save")
     venue, cat = race_label(session, race_id)
     is_f1 = (session.get(m.Race, race_id).format or {}).get("kind") == "f1"
     created = repriced = 0

@@ -4,9 +4,9 @@
 reads only this CSV, so any new data source only needs a parser path.
 
 ```
-racinglines mtb_dh parse --inspect <file>                              # print what was detected, write nothing
-racinglines mtb_dh parse --input-dir data/raw/mtb_dh/chronorace --out splits.csv
-racinglines mtb_dh parse --input-file a.md --input-file b.html --out splits.csv
+racinglines data parse mtb_dh --inspect <file>                              # print what was detected, write nothing
+racinglines data parse mtb_dh --input-dir data/raw/mtb_dh/chronorace --out splits.csv
+racinglines data parse mtb_dh --input-file a.md --input-file b.html --out splits.csv
 ```
 
 ## Input formats

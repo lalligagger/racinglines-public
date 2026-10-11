@@ -111,7 +111,7 @@ def variant_switches():
 
 def _sweep_argv(p):
     st = SS.Settings.from_dict(p.get("settings") or {})
-    return ["-m", "racinglines", "f1", "--variant", st["variant"], "sweep", "--year", str(p.get("year", 2026)),
+    return ["-m", "racinglines", "strategy", "sweep", "f1", "--variant", st["variant"], "--year", str(p.get("year", 2026)),
             "--no-fetch", "--save", *st.argv()]
 
 
@@ -120,7 +120,7 @@ def _sport_sweep_argv(sport):
         from racinglines.pipelines import season_sweep as SW
 
         settings = SW.settings_class(sport).from_dict(p.get("settings") or {})
-        return ["-m", "racinglines", sport, "sweep", "--year", str(p.get("year", 2026)), "--save", *settings.argv()]
+        return ["-m", "racinglines", "strategy", "sweep", sport, "--year", str(p.get("year", 2026)), "--save", *settings.argv()]
     return argv
 
 
@@ -159,14 +159,14 @@ def combo_variants():
 
 
 def _combo_argv(p):
-    return (["-m", "racinglines", "f1", "--variant", p["variant"], "--half-life", str(p["half_life"]), "combo",
+    return (["-m", "racinglines", "model", "combo", "f1", "--variant", p["variant"], "--half-life", str(p["half_life"]),
              "--event", p["event"], "--legs", p["legs"], "--sims", str(p["sims"]), "--save"]
             + ([] if p["cutoff"] == "now" else ["--cutoff", p["cutoff"]])
             + (["--no-track"] if p["track"] == "off" else []))
 
 
-def _f1_common(p):
-    return ["-m", "racinglines", "f1", "--half-life", str(p["half_life"])]
+def _f1_common(p, command):
+    return ["-m", "racinglines", "model", command, "f1", "--half-life", str(p["half_life"])]
 
 
 def _setting(name):
@@ -204,21 +204,21 @@ CATALOG = {j.code: j for j in [
              Knob("sims", "Simulations per race", "int", 2000, 200, 10000),
              Knob("track", "Track/sector features", "choice", "both", choices=["both", "on", "off"],
                   help="'both' runs twice to compare.")],
-            lambda p, out: _f1_common(p) + ["backtest", "--races", str(p["races"]), "--sims", str(p["sims"]),
+            lambda p, out: _f1_common(p, "backtest") + ["--races", str(p["races"]), "--sims", str(p["sims"]),
                                             "--track", p["track"], "--start-year", "2021", "--out", out, "--save"],
             "~1 min per 30 races"),
     JobType("f1_scenario", "f1", "Forward forecast (scenario)", "Price every remaining race and the championships "
             "with data up to now. Saved as a scenario; promote it to make it the live fair prices.",
             [Knob("label", "Scenario name", "text", "my scenario"), HALF_LIFE,
              _sims(10000), F1_TRACK],
-            lambda p, out: _f1_common(p) + ["forecast", "--sims", str(p["sims"]), "--save", "--scenario", p["label"]]
+            lambda p, out: _f1_common(p, "forecast") + ["--sims", str(p["sims"]), "--save", "--scenario", p["label"]]
             + (["--no-track"] if p["track"] == "off" else []),
             "~1-2 min"),
     JobType("f1_diagnostic", "f1", "Event diagnostic", "Price one past race as of a cutoff (e.g. the evening before), "
             "then compare with Polymarket at that time and the result.",
             [Knob("event", "Event", "event"), Knob("cutoff", "As of (UTC)", "datetime"), HALF_LIFE,
              _sims(10000), F1_TRACK],
-            lambda p, out: _f1_common(p) + ["diagnostic", "--event", p["event"], "--cutoff", p["cutoff"],
+            lambda p, out: _f1_common(p, "diagnostic") + ["--event", p["event"], "--cutoff", p["cutoff"],
                                             "--sims", str(p["sims"]), "--save"]
             + (["--no-track"] if p["track"] == "off" else []),
             "~1 min", venues=("polymarket",)),
@@ -254,7 +254,7 @@ CATALOG = {j.code: j for j in [
              Knob("stake_per_edge", "Stake per unit edge ($)", "float", 500, 10, 10000),
              Knob("max_stake", "Max stake per market ($)", "float", 150, 1, 10000),
              Knob("capital", "Capital cap ($)", "float", 1500, 50, 100000)],
-            lambda p, out: ["-m", "racinglines", "f1", "season-strategy", "--no-fetch", "--save", "--min-edge", str(p["min_edge"]),
+            lambda p, out: ["-m", "racinglines", "strategy", "season-strategy", "f1", "--no-fetch", "--save", "--min-edge", str(p["min_edge"]),
                             "--stake-per-edge", str(p["stake_per_edge"]), "--max-stake", str(p["max_stake"]),
                             "--capital", str(p["capital"]), "--venue", p.get("venue", "polymarket")],
             "~1 min once forecasts exist", venues=SE.VENUES),
@@ -264,7 +264,7 @@ CATALOG = {j.code: j for j in [
              Knob("half_life", "Recency half-life (days)", "float", 240, 20, 2000),
              Knob("junior_weight", "Weight of junior results", "float", 0.25, 0, 1),
              _sims(10000)],
-            lambda p, out: ["-m", "racinglines", "mtb_dh", "forecast", "--db", "--save", "--scenario", p["label"],
+            lambda p, out: ["-m", "racinglines", "model", "forecast", "mtb_dh", "--db", "--save", "--scenario", p["label"],
                             "--half-life-days", str(p["half_life"]), "--junior-weight", str(p["junior_weight"]),
                             "--sims", str(p["sims"]), "--out-dir", str(Path(out).parent.parent / "mtb_dh" / "season")],
             "~1 min"),
@@ -273,7 +273,7 @@ CATALOG = {j.code: j for j in [
             [Knob("half_life", "Recency half-life (days)", "float", 240, 20, 2000),
              Knob("junior_weight", "Weight of junior results", "float", 0.25, 0, 1),
              Knob("sims", "Simulations", "int", 2000, 200, 10000)],
-            lambda p, out: ["-m", "racinglines", "mtb_dh", "backtest", "--db", "--save", "--half-life-days", str(p["half_life"]),
+            lambda p, out: ["-m", "racinglines", "model", "backtest", "mtb_dh", "--db", "--save", "--half-life-days", str(p["half_life"]),
                             "--junior-weight", str(p["junior_weight"]), "--sims", str(p["sims"]),
                             "--out-dir", str(Path(out).parent.parent / "mtb_dh" / "backtests")],
             "a few min"),

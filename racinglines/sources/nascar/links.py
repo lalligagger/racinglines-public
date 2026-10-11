@@ -4,7 +4,7 @@ exchange, so the same real-world outcome gets the same athlete, race and kind wh
 
     Linker(conn).identify(link)     what a link (a market_links row, or the dict a sync is about to store) is about
     Linker(conn).fill(rows)         the same, written into the rows' athlete_id / race_id / params (never raises)
-    relink(session, conn, ...)      the pass over the links already in the database (`racinglines nascar link`)
+    relink(session, conn, ...)      the pass over the links already in the database (`racinglines data link nascar`)
 
 What is filled, and what is not:
 
@@ -351,7 +351,7 @@ def relink(session, conn, exchange=None, apply=False, undo_path=None, echo=print
         f"WHERE {where} ORDER BY l.id"), args).all()]
     L = Linker(conn)
     if not L.has_data():
-        echo("no NASCAR drivers in the database yet (racinglines nascar fetch, then ingest): only kinds and series are filled")
+        echo("no NASCAR drivers in the database yet (racinglines data fetch nascar, then ingest): only kinds and series are filled")
     shapes = defaultdict(Counter)
     keys = defaultdict(set)
     changes = []

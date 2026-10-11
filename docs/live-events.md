@@ -13,7 +13,7 @@ is **Formula 1: the Bahrain GP at Sepang, Malaysia (2–4 October 2026)**; see b
 |---|---|
 | Code | The shared live core (`pipelines/live.py`, `markets/crowd.py`, `markets/quoting.py`) and the downhill adapter `racinglines/pipelines/live_dh.py`; the page is `/live` (`racinglines/web/views.py`, `templates/live.html` + `live_mtb_dh.html`) |
 | Settings | `sports/mtb_dh.toml` `[live]`: cadence, market kinds, spreads, crowd size and budgets (`live_dh`'s constants read them) |
-| Command | `racinglines mtb_dh live --slug 20260925_mtb --final 3 --quali 2,91 --conditions "clear, rutted"` |
+| Command | `racinglines strategy live mtb_dh --slug 20260925_mtb --final 3 --quali 2,91 --conditions "clear, rutted"` |
 | Updates | The engine polls the timing feed every 5 s (`--interval`); the page refreshes itself every 15 s |
 | Tab | **Live** is in the nav for every signed-in user once an event has been recorded: a **green** dot while it runs (not over, updated in the last 6 hours), **grey** once it is over, when the page is a replay |
 | Replay | After the final, `/live` shows the event as it stood at any saved snapshot (`?t=20260927T223221`, default the end): a timeline slider, step ◀ ▶, and play at 10× / 30× / 60× real time. Timing, rank probabilities, quotes, the win-probability chart and the private book (rebuilt from the crowd's fills up to that moment: `live_dh.book_at`) are all as they were then |
@@ -156,7 +156,7 @@ feed and any overrides of the sport's `[live]` settings.
 | `racinglines live settle <spec>` | Record the event in the database (`live_events`: dates, the book's P&L, the crowd's totals), so the demo accounts' story and the web app don't need the run folder. Idempotent |
 | `racinglines live report <spec> [--pdf]` | The event report in the run folder's `report/`: the book's P&L by update, the crowd, the demo taker's picks, and the fair-price scorecard (Brier score and log loss per market kind at each update; the biggest moves). Markdown, HTML, SVG charts, and a PDF through headless Chrome |
 
-`racinglines mtb_dh live …` still works as before. `step` options: `--now` (a simulated UTC time), `--no-fetch`,
+`racinglines strategy live mtb_dh …` still works as before. `step` options: `--now` (a simulated UTC time), `--no-fetch`,
 `--no-sync` (don't write positions), `--no-alert`, `--unfreeze`.
 
 ## Formula 1: a weekend's private book

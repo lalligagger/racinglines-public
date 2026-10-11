@@ -30,8 +30,8 @@ The two profiles come from the params-4h cloud search (see
   (**Strategy profile**).
 
 ```
-racinglines f1 profiles                  # list; create A and C as Lab candidates if missing
-racinglines f1 profiles --assign-demo    # demo taker -> A, demo maker -> C
+racinglines strategy profiles f1                  # list; create A and C as Lab candidates if missing
+racinglines strategy profiles f1 --assign-demo    # demo taker -> A, demo maker -> C
 ```
 
 ### The head-to-head threshold
@@ -89,10 +89,10 @@ Paper only, on every venue. See [Kalshi history](kalshi-history.md#in-the-signal
 its result, and the paper positions settle. Outside that window a run only notes when signals start.
 
 ```
-racinglines f1 signals                                   # every user with a profile, the weekend in progress
-racinglines f1 signals --profile A --user taker          # this profile, these users
-racinglines f1 signals --event 2026-15 --asof 2026-09-27T12:00 --no-fetch   # replay (prints only)
-racinglines f1 signals --no-alert                        # store, don't notify
+racinglines strategy signals f1                                   # every user with a profile, the weekend in progress
+racinglines strategy signals f1 --profile A --user taker          # this profile, these users
+racinglines strategy signals f1 --event 2026-15 --asof 2026-09-27T12:00 --no-fetch   # replay (prints only)
+racinglines strategy signals f1 --no-alert                        # store, don't notify
 ```
 
 | Option | Meaning |
@@ -104,7 +104,7 @@ racinglines f1 signals --no-alert                        # store, don't notify
 | `--no-fetch` | Don't refresh FastF1 or Polymarket data first |
 | `--no-alert` | Don't send alerts |
 
-**The launchd agent** `scripts/bet.racinglines.signals.plist` runs `racinglines f1 signals` every 5
+**The launchd agent** `scripts/bet.racinglines.signals.plist` runs `racinglines strategy signals f1` every 5
 minutes (log: `data/runs/logs/signals.log`):
 
 ```
@@ -135,7 +135,7 @@ market, not only this weekend's signals:
 ### Parity with the sweep
 
 `scripts/signals_parity.py` replays a taker profile on a past weekend with the signal engine and runs
-`racinglines f1 sweep` on the same round with the same settings, then compares market, stage, side,
+`racinglines strategy sweep f1` on the same round with the same settings, then compares market, stage, side,
 shares and price of every trade (exit 1 on a difference). A maker profile is replayed as `demo-history`
 replays it (a day after the race, settled) and compared with the sweep's maker on fills and settled P&L,
 and with the demo maker's stored record for that weekend when there is one. `--venue kalshi` gives the
@@ -258,7 +258,7 @@ app they carry a **new** badge for 48 hours on the Markets board's race cards an
 
 - `racinglines markets record` re-syncs Polymarket every 30 minutes and alerts on what's new
   (`--no-alerts` turns it off).
-- `racinglines f1 pm-sync --alert` is a one-off sync that alerts too.
+- `racinglines data pm-sync f1 --alert` is a one-off sync that alerts too.
 
 **Signals.** One batched message per signal run and profile: each new signal as a line (stage, action,
 side, shares, limit price, and the heat, never the fair value).
@@ -290,10 +290,10 @@ engine's replay mode, the same path as the sweep). Every row is flagged `detail.
 "backtest replay" in the app.
 
 ```
-racinglines f1 demo-history                  # backfill (idempotent)
-racinglines f1 demo-history --reset          # delete the backfill, then rebuild it
-racinglines f1 demo-history --user taker     # one account only
-racinglines f1 demo-history --venue kalshi   # the maker's record on Kalshi's tape, stored apart (off by default)
+racinglines strategy demo-history f1                  # backfill (idempotent)
+racinglines strategy demo-history f1 --reset          # delete the backfill, then rebuild it
+racinglines strategy demo-history f1 --user taker     # one account only
+racinglines strategy demo-history f1 --venue kalshi   # the maker's record on Kalshi's tape, stored apart (off by default)
 ```
 
 The Kalshi record uses the same profiles and the same maker replay, filled by Kalshi's real taker trades
@@ -373,7 +373,7 @@ Taking every recommendation would have made +$2,606.
 The result-only sports are included in the demo taker's portfolio by default (since 2026-09-30, commit 7ebf513: an
 unset `RACINGLINES_SPORT_PAPER` counts as on; `1`, `true`, `yes` or `on` also mean on, and any other value, such as `0`
 or an empty string, turns it off); set `RACINGLINES_SPORT_PAPER=0` to hide them again ([`pipelines/sport_paper.py`](https://github.com/lalligagger/racinglines-public/blob/main/racinglines/pipelines/sport_paper.py)).
-`racinglines nascar demo-history` (and `motogp demo-history`) replays every race of the seasons in the overnight settings
+`racinglines strategy demo-history nascar` (and `motogp demo-history`) replays every race of the seasons in the overnight settings
 grid (`data/runs/replay-grid/<sport>/`, runs `<year>-e<edge>-v<volume>`) with the taker replay (`nascar replay`), and
 stores each race's `update` trades as the account's backfilled signals and paper positions on the exchange
 (`paper_positions.venue = 'kalshi'`, `candidate_id` empty, the sport's own event keys), each position's cash net of the
@@ -429,7 +429,7 @@ separate trial.
 | A · core taker | demo taker | Polymarket, Kalshi | As in [Strategy profiles](#strategy-profiles). Judged on A's own calls; the demo taker's followed third is shown too |
 | C · maker sleeve | demo maker | Polymarket, Kalshi | As in [Strategy profiles](#strategy-profiles). On Kalshi it is a control: its Kalshi replay lost $119 in 2026 |
 | K · Kalshi maker | demo maker | Kalshi | Chosen by a Kalshi sweep and frozen before round 18 (Roadmap U3) |
-| Championship sleeve | demo maker | Both | `racinglines f1 season-strategy --paper --venue polymarket --after-round N` and the same with `--venue kalshi`, run by hand after each race (nothing schedules it); stored as paper positions under venue `season:<venue>`, event `<year>-season`, which A, C and K's records never read. See [Season strategy](market-making.md#the-championship-sleeve) |
+| Championship sleeve | demo maker | Both | `racinglines strategy season-strategy f1 --paper --venue polymarket --after-round N` and the same with `--venue kalshi`, run by hand after each race (nothing schedules it); stored as paper positions under venue `season:<venue>`, event `<year>-season`, which A, C and K's records never read. See [Season strategy](market-making.md#the-championship-sleeve) |
 
 Any change to a profile makes a new profile with its own count.
 
@@ -438,8 +438,8 @@ Any change to a profile makes a new profile with its own count.
 1. **Each weekend against its replay.** Re-run the backtest's replay of the same weekend on the recorded
    tape (the conservative "through" fill rule). Live fill counts and markouts should be within ±25% of
    the replay's, and live P&L inside the replay's noise band. A weekend outside is flagged and explained
-   before the next one. `racinglines f1 reconcile --event 2026-NN --profile A|C --venue V` does this
-   ([CLI](cli.md#racinglines-f1)): the account's stored signals and positions against `signals.compute`
+   before the next one. `racinglines strategy reconcile f1 --event 2026-NN --profile A|C --venue V` does this
+   ([CLI](cli.md#f1-commands)): the account's stored signals and positions against `signals.compute`
    replayed as of a day after the race, both reduced to fills, 60-minute markouts read from the same tape,
    and P&L to resolution (a taker is judged on its own calls, the demo taker's followed third shown too).
    The noise band comes from seed replicates ([Backtest core](backtest-core.md#the-search-report), the
@@ -448,7 +448,7 @@ Any change to a profile makes a new profile with its own count.
    taker / 350 maker) scaled to one weekend of 24 (±31 / ±71). Markouts within $1 of the replay's never
    miss. A weekend whose rows are the backfilled replay is a self-check and must match to the cent.
 2. **The pricing scorecard on every weekend,** traded or not: Brier and log loss of the fair values
-   against the result and against the venue's mid at each stage. `racinglines f1 scorecard --event
+   against the result and against the venue's mid at each stage. `racinglines strategy scorecard f1 --event
    YEAR-ROUND --venue both` scores a Polymarket or Kalshi weekend from its stored stage runs (per stage
    and market kind, and pooled; `--all --year` for a season; see [F1 evaluation](f1-evaluation.md#the-weekend-scorecard)),
    `racinglines live report` a private book.

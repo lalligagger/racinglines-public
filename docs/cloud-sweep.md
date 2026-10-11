@@ -44,19 +44,19 @@ checks it).
   `db snapshot-import`. Market prices and trades are read straight from the committed Parquet archive,
   so the VM needs no Polymarket access. (Without a snapshot it falls back to `f1 ingest` from the
   committed FastF1 files and `f1 pm-links-import`, or `pm-sync` if the links file is missing too.)
-- **`racinglines f1 search sweeps/<queue>.toml`** runs the queue: up to `parallel` sweeps at once,
+- **`racinglines strategy search f1 sweeps/<queue>.toml`** runs the queue: up to `parallel` sweeps at once,
   each saved as a normal sweep run. It **re-reads the queue file whenever a slot frees**, so editing
   pending `[[job]]` entries steers it. It stops starting jobs after `hours`. After every finished job
   it rewrites `data/runs/search/<name>/leaderboard.md` and `results.json`. A queue can mix sports:
   a job with `sport = "mtb_dh"` (or any sport with a pricing model) runs a walk-forward (`racinglines
   backtest walk-forward <sport>`, model only, scored per market kind) with the downhill model's settings, and gets its own default baseline
   per season. A job with `sport = "nascar"` (or `"motogp"`) and `kind = "sweep"` runs that sport's season sweep
-  (`racinglines <sport> sweep`, [`pipelines/season_sweep.py`](https://github.com/lalligagger/racinglines-public/blob/main/racinglines/pipelines/season_sweep.py)):
+  (`racinglines strategy sweep <sport>`, [`pipelines/season_sweep.py`](https://github.com/lalligagger/racinglines-public/blob/main/racinglines/pipelines/season_sweep.py)):
   the same taker modes and maker variants on the sport's `[replay]` stages, kinds and pricing model, with
   `venue = "kalshi"` / `"polymarket"` / `"og"` where the sport lists it; its saved run carries `sport` and `venue`
   in its params, and its baseline is its own (same sport, season and venue). `replicates = N` on any job runs it
   (and its season's baseline) at N seeds.
-- **`racinglines f1 search-import <results.json>`** loads a finished search's sweep runs into your
+- **`racinglines strategy search-import f1 <results.json>`** loads a finished search's sweep runs into your
   local database (marked `params.source`), so they show up in the Lab's Edge Finder and Model variants.
 
 ## One-time setup
@@ -123,12 +123,12 @@ The session follows these steps. They're written for the agent.
 1. **Bring-up:** run `bash scripts/cloud/start.sh` in the background and wait for `ready`. If a step
    fails, fix the cause (not the data), note it, and re-run: the script is idempotent.
 2. **Start the search** in the background:
-   `.venv/bin/racinglines f1 search sweeps/<queue>.toml > data/runs/search/<name>.log 2>&1`.
+   `.venv/bin/racinglines strategy search f1 sweeps/<queue>.toml > data/runs/search/<name>.log 2>&1`.
    Stay active until it prints `finished`: an idle session's VM is reclaimed and running work is lost.
 3. **Every 10 minutes:** read `data/runs/search/<name>/leaderboard.md` and `state.json`, then steer
    the queue by editing pending `[[job]]` entries. Every edit gets a `note` saying why.
     - **Explore anything in the settings schema** (`racinglines/pipelines/sweep_settings.py`,
-      `racinglines f1 sweep -h`): model variant and switch combos, half-life, shrinkage, simulations,
+      `racinglines strategy sweep f1 -h`): model variant and switch combos, half-life, shrinkage, simulations,
       track features and practice prior (the model's inputs), entry timing (`taker_stages`,
       `late_stages`), taker and maker parameters, market kinds and filters; and the championship
       jobs' variants and entry points.
@@ -149,7 +149,7 @@ The session follows these steps. They're written for the agent.
    the few best. They're imported as Lab candidates, loadable into the Edge Finder sweep form.
 5. **Every 30 minutes and at the end:** commit `data/runs/search/<name>/` and the queue file, and
    push the branch (`git add data/runs/search sweeps && git commit -m "search: <name> progress" && git push`).
-6. **At the end:** run `racinglines f1 search-report sweeps/<queue>.toml` for the labels, noise floor,
+6. **At the end:** run `racinglines strategy search-report f1 sweeps/<queue>.toml` for the labels, noise floor,
    confirmations and candidates ([Backtest core](backtest-core.md#the-search-report)); to measure the
    noise floor rather than assume it, give the leading combos `replicates = 3` (their baseline gets the
    same). Downhill jobs are reported in `data/runs/search/<name>/mtb_dh/`. Then write `data/runs/search/<name>/REPORT.md`: what ran, the leaderboard, the best combo
@@ -161,7 +161,7 @@ The session follows these steps. They're written for the agent.
 
 ```bash
 git fetch origin cloud/poc && git checkout origin/cloud/poc -- data/runs/search/poc
-racinglines f1 search-import data/runs/search/poc/results.json
+racinglines strategy search-import f1 data/runs/search/poc/results.json
 ```
 
 The imported runs appear in the Lab: every full-season configuration can be added to the Edge Finder,

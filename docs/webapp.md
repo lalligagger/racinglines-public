@@ -239,7 +239,7 @@ account basic while it runs something else. A basic account already running **A*
 keeps working, role edits included, until it is re-assigned (`roles.LEGACY_BASIC_PROFILES`).
 
 **The taker shortlist and blends.** `profiles.TAKER_TOP` ranks ten taker profiles, **T1** to **T10**, from the taker
-re-sweep (Lab candidates with source `taker-resweep`, created by `racinglines f1 profiles` like A and C). A *blend*
+re-sweep (Lab candidates with source `taker-resweep`, created by `racinglines strategy profiles f1` like A and C). A *blend*
 (`profiles.COMBOS`; today **TB**, half T1 and half T8) is a profile with `members` `[(code, weight)]` instead of one
 strategy: the signal engine and the demo backfill run each member as itself with its stakes scaled by its weight
 (`TakerParams.scale`; the $2 minimum rebalance is not scaled), store its rows under its own candidate and the blend's
@@ -276,7 +276,7 @@ Three accounts are easy to mix up. They are separate entities:
 | `polymarket-takers` (system, no login) | The Polymarket traders whose real trades filled a replayed maker | Replay fills recorded from a diagnostic page (*Record the replay's fills*); its P&L is that maker's P&L reversed |
 
 Both demo accounts' weekends before live paper trading began are **backtest replays**
-(`racinglines f1 demo-history`, `pipelines/demo_history.py`): real Polymarket prices and trades, the
+(`racinglines strategy demo-history f1`, `pipelines/demo_history.py`): real Polymarket prices and trades, the
 strategy the account ran then, flagged in the database (`detail.backfill`) and labelled in the app.
 The maker can also have a Kalshi record (`f1 demo-history --venue kalshi`, [Kalshi history](kalshi-history.md)).
 Positions shows it beside the Polymarket record and Strategy under its Polymarket / Kalshi switch
@@ -399,10 +399,10 @@ further:
 ## Getting predictions for an event weekend
 
 ```
-racinglines mtb_dh download --events 20260925_mtb --discipline DH --category "Elite Men"  --out-dir data/raw/mtb_dh/chronorace/
-racinglines mtb_dh download --events 20260925_mtb --discipline DH --category "Junior Men" --out-dir data/raw/mtb_dh/chronorace/
-racinglines mtb_dh ingest data/raw/mtb_dh/chronorace
-racinglines mtb_dh forecast --db --save --backtest 0
+racinglines data download mtb_dh --events 20260925_mtb --discipline DH --category "Elite Men"  --out-dir data/raw/mtb_dh/chronorace/
+racinglines data download mtb_dh --events 20260925_mtb --discipline DH --category "Junior Men" --out-dir data/raw/mtb_dh/chronorace/
+racinglines data ingest mtb_dh data/raw/mtb_dh/chronorace
+racinglines model forecast mtb_dh --db --save --backtest 0
 ```
 
 An event that's in the data but has no Final results yet (Timed Training done, Q1

@@ -43,7 +43,7 @@ def test_nascar_strategy_sweep_uses_its_sport_settings_and_saved_cli():
     assert p["year"] == "2025" and p["settings"]["venue"] == "kalshi"
     assert p["settings"]["min_edge"] == 0.07 and jt.sport_of(p) == "nascar"
     argv = jt.argv(p, "/runs/jobs/job_7.csv")
-    assert argv[:7] == ["-m", "racinglines", "nascar", "sweep", "--year", "2025", "--save"]
+    assert argv[:8] == ["-m", "racinglines", "strategy", "sweep", "nascar", "--year", "2025", "--save"]
     assert argv[-2:] == ["--venue", "kalshi"] and "--min-edge" in argv
 
 
