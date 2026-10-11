@@ -373,7 +373,11 @@ Three modes: `--demo [PACK]` (a local demo store of synthetic data), `--remote` 
 the #aintcare warning), `--local` (the default);
 `book config` sets the default, `book logout` forgets the `--remote` sign-in. See [Sportsbook slips](sportsbook/slips.md).
 `--demo [PACK]` works on every command, not only `book`: it switches the data source to a demo store and nothing else
-([Quickstart](quickstart.md), [Demo data packs](demo.md)).
+([Quickstart](quickstart.md), [Demo data packs](demo.md)); `--demo --remote` uses the pack's hosted demo store for the
+commands the hosted server runs. `model backtest|forecast f1|mtb_dh --remote` runs the command as the hosted server's
+Lab job (`run_job`, then `get_job` until it finishes, its log printed as it arrives; the job's options only).
+When no database is configured, the first command that needs one asks once, local or remote, and saves the answer
+as `source` ([Quickstart: First run](quickstart.md#2-first-run-choose-where-the-data-comes-from)).
 
 ## Road cycling commands
 

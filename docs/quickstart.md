@@ -40,7 +40,9 @@ With no terminal to ask on (a script, CI), it prints the same two options and ex
 run `racinglines book config source local` (or `remote`) instead. `racinglines book config source local|remote`
 changes the answer later. One resolver makes this choice and the `--demo` one (`racinglines/cli/source.py`).
 
-`--demo` always uses a local demo store for now (the remote demo is coming next, [4. Remote](#4-remote-testing)).
+With `source = "remote"`, `--demo` sends the commands the hosted server runs to the pack's hosted demo store
+([4. Remote](#4-remote-testing)); the others need a local store (`docker compose up -d`, then
+`racinglines book config source local`).
 
 ## 3. The quickstart, on the kart pack
 
@@ -114,9 +116,24 @@ and trades per market; the kart pack carries quotes only, not a tape).
 `racinglines book price FILE --remote` runs the book commands on the hosted MCP server instead of a local database
 (sign-in through the browser the first time; [MCP: Hosted](mcp.md#hosted-the-vm)).
 
-**Coming next, not working yet:** the remote demo, `--demo` together with `--remote` (or with `source = "remote"`):
-the same quickstart sent to a hosted demo store that holds a pack's synthetic data only, never production data. Until
-it lands, `--demo` always uses a local demo store ([Demo data packs](demo.md#the-hosted-demo-store-coming-next)).
+**The remote demo:** `--demo` together with `--remote` (or `--demo` with `source = "remote"`) sends the quickstart's
+hosted commands to the pack's hosted demo store (`racinglines mcp --http --demo` on the VM, over its own database built
+from the pack: synthetic data only, never production's), with nothing to install but the CLI itself:
+
+```
+# LOCAL (Mac), or any machine with Python: no Postgres needed
+racinglines book price --demo --remote                      # the pack's book, priced on the hosted demo store
+racinglines model backtest f1 --demo --remote --races 10    # the backtest as a hosted job, its log printed as it runs
+racinglines model forecast f1 --demo --remote               # a forecast scenario on the hosted demo store
+```
+
+The first one opens the browser to sign in (a racinglines.bet account with MCP access: Pro or admin,
+[MCP: Hosted](mcp.md#hosted-the-vm)). On the hosted store the model commands run as the server's Lab jobs
+(`run_job`, followed with `get_job`), so they take the job's options only (`--races`, `--sims`, `--track`,
+`--half-life`, `--scenario`; `--half-life-days`, `--junior-weight` for `mtb_dh`) and the run is saved there. `db stats`,
+`live run` and `live report` need a local store. The pack names its server (`[remote] mcp_url` in `pack.toml`;
+`RACINGLINES_DEMO_MCP_URL` overrides it). It answers once the owner has built it on the VM
+(`scripts/vm/demo_store.sh`, [Demo data packs](demo.md#the-hosted-demo-store)).
 
 ## 5. Rebuild the data yourself
 
