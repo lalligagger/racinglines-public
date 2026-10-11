@@ -10,17 +10,22 @@
 <h1>Quickstart</h1>
 <p class="lede">racinglines is a Python package first: the web app and the hosted MCP server run the same code. These are
   the quickstart's commands, run with <code>--demo</code> on a made-up Formula 1 world with a Mario Kart grid that ships
-  with the package, recorded and replayed here; nothing runs on this page.</p>
-{% for d in demos %}
+  with the package, recorded and replayed here; nothing runs on this page.
+  Press Play on each step to run it, at your own pace alongside your own terminal.</p>
+{# Steps group under their pack section ([[quickstart]] section = "..."), numbered within it; no sections, one list. #}
+{% for section, steps in parts %}
+{% if section %}<h2 class="term-part">{{ section }}</h2>{% endif %}
+{% for d in steps %}
 <section class="term-demo" id="{{ d.id }}">
-  <h2>{{ loop.index }}. {{ d.title }}</h2>
+  <h3>{{ loop.index }}. {{ d.title }}</h3>
   <p>{{ d.about }}</p>
   <div class="term" data-term>
-    <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><button type="button" class="term-replay" data-term-replay hidden>Replay</button></div>
-    <div class="term-cmd"><span class="term-prompt" aria-hidden="true">$ </span><code data-term-cmd>{{ d.command }}</code></div>
+    <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i></div>
+    <div class="term-cmd"><span class="term-prompt" aria-hidden="true">$ </span><code data-term-cmd>{{ d.command }}</code><button type="button" class="term-play" data-term-play hidden>Play</button></div>
     <div class="term-body" data-term-out>{{ d.html|safe }}</div>
   </div>
 </section>
+{% endfor %}
 {% else %}
 <p>No recordings yet.</p>
 {% endfor %}

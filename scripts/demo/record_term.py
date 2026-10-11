@@ -53,7 +53,8 @@ def quickstart(pack):
     found = store.find(pack)
     if found is None:
         sys.exit(f"no demo pack {pack!r} (racinglines/demo/packs/)")
-    return [{"id": f"step-{i}", "title": s["title"], "command": s["run"], "about": s.get("about", "")}
+    return [{"id": f"step-{i}", "title": s["title"], "command": s["run"], "about": s.get("about", ""),
+             **({"section": s["section"]} if s.get("section") else {})}      # the page's part headings
             for i, s in enumerate(found.quickstart, 1)]
 
 
