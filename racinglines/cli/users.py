@@ -7,6 +7,10 @@
     racinglines users reset-password NAME           a new one-time password, printed once
     racinglines users remove NAME                   delete an account with no markets or bets (else deactivate)
     racinglines users deactivate NAME | activate NAME
+    racinglines users reset-fantasy [--keep maker,taker] [--apply]
+                                                    every active account but --keep back to one 1,000 grant and no
+                                                    trading history (paper positions, signals, house bets); counts
+                                                    only without --apply (on the VM: scripts/vm/reset_fantasy.sh)
 
 Passwords are never read back: they are stored as scrypt hashes, and a reset prints a fresh one exactly once.
 """
@@ -25,6 +29,10 @@ def main(argv=None):
     a = sub.add_parser("add")
     a.add_argument("name")
     a.add_argument("--role", default="basic", choices=("basic", "pro", "admin"))
+    r = sub.add_parser("reset-fantasy")
+    r.add_argument("--keep", default="maker,taker", help="accounts left as they are (comma-separated)")
+    r.add_argument("--apply", action="store_true", help="write; without it the command only counts")
+    r.add_argument("--note", default="reset", help="the new grant's ledger note")
     for cmd in ("reset-password", "remove", "deactivate", "activate"):
         sub.add_parser(cmd).add_argument("name")
     args = ap.parse_args(argv)
@@ -37,6 +45,23 @@ def main(argv=None):
     if args.cmd == "setup":
         n = ACC.setup(eng)
         print(f"accounts.fantasy_ledger ready; {n} signup grants of {ACC.SIGNUP_GRANT} added")
+        return 0
+    if args.cmd == "reset-fantasy":
+        keep = tuple(k.strip() for k in args.keep.split(",") if k.strip())
+        with (eng.begin() if args.apply else eng.connect()) as c:
+            if not ACC.ready(c):
+                print("no accounts ledger yet: racinglines users setup")
+                return 1
+            rows = ACC.reset(c, keep=keep, apply=args.apply, note=args.note)
+        cols = [t for t, _ in ACC.HISTORY]
+        print(f"{'id':>5}  {'username':<30} {'action':<7} {'ledger':>6} {'balance':>10} " + " ".join(f"{t:>17}" for t in cols))
+        for r in rows:
+            act = "keep" if r["kept"] else ("reset" if args.apply else "would")
+            print(f"{r['id']:>5}  {r['username']:<30} {act:<7} {r['ledger_rows']:>6} {r['balance']:>10,.0f} "
+                  + " ".join(f"{r[t]:>17,}" for t in cols))
+        n = sum(not r["kept"] for r in rows)
+        print(f"{'reset' if args.apply else 'dry run: would reset'} {n} accounts to {ACC.SIGNUP_GRANT} and no history; "
+              f"kept {', '.join(keep) or 'none'}" + ("" if args.apply else " (--apply writes)"))
         return 0
     if args.cmd == "list":
         with eng.connect() as c:

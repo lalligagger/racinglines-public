@@ -236,3 +236,30 @@ def test_admin_creates_a_user_from_the_one_password_field(app_db):
     r = client.post("/admin/users", data=dict(csrf_token=csrf, username="newer", display_name="", role="basic",
                                               password="short"), follow_redirects=True)
     assert "at least 10" in r.text
+
+
+def test_reset_fantasy_keeps_the_demo_accounts(app_db, capsys):
+    """Owner, 2026-10-11: every account but maker/taker back to one 1,000 grant and no trading history."""
+    from sqlalchemy import text
+    from racinglines.cli import users as CLI
+    from racinglines.db.config import get_engine
+    with get_engine().begin() as c:
+        ids = dict(c.execute(text("SELECT username, id FROM users")).all())
+        for name in ("boss", "taker"):
+            c.execute(text("""INSERT INTO paper_positions (user_id, event_key, market_key, kind, yes_shares, no_shares, cash,
+                                                           venue) VALUES (:u, '2026-17', 'm1', 'race_win', 1, 0, -0.5,
+                                                           'polymarket')"""), dict(u=ids[name]))
+        c.execute(text("INSERT INTO accounts.fantasy_ledger (user_id, amount, reason) VALUES (:u, -40, 'stake')"),
+                  dict(u=ids["boss"]))
+    assert CLI.main(["reset-fantasy"]) == 0                           # dry run: counts, writes nothing
+    out = capsys.readouterr().out
+    assert "would" in out and "dry run: would reset 1 accounts" in out
+    assert float(_balance("boss")) == 960
+    assert CLI.main(["reset-fantasy", "--apply", "--note", "reset test"]) == 0
+    with get_engine().connect() as c:
+        pos = dict(c.execute(text("SELECT user_id, count(*) FROM paper_positions GROUP BY user_id")).all())
+        rows = c.execute(text("SELECT amount, reason, note FROM accounts.fantasy_ledger WHERE user_id = :u"),
+                         dict(u=ids["boss"])).all()
+    assert pos == {ids["taker"]: 1}                                   # the demo taker's history is untouched
+    assert [(float(a), r, n) for a, r, n in rows] == [(1000.0, "signup_grant", "reset test")]
+    assert float(_balance("taker")) == 1000
