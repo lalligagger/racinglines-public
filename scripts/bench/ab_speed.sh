@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # A/B speed test: the same read-only backtest on two git refs (default origin/main vs origin/staging), timed, with
-# a check that both print exactly the same results; then, optionally, the same maker replays as WebAssembly.
+# a check that both print exactly the same results; then, optionally, the same maker replays in Rust (wasm/), natively and as WebAssembly.
 #
 # The backtest is `racinglines f1 replay --runs <ids> --sweep`: one weekend's tape loaded from the archive, then
 # 18 maker replays (touch, through and sweep()'s 16-combo grid). It only reads the database.
@@ -70,15 +70,15 @@ printf 'speedup B vs A: %sx, %s\n' "$(awk -v a="${BEST[A]}" -v b="${BEST[B]}" 'B
 [ "$same" = "identical output" ] || exit 1
 
 if [ "${WASM:-0}" = 1 ]; then
-    K=scripts/bench/replay_kernel
+    K=wasm
     command -v cargo >/dev/null && command -v node >/dev/null || { log "WASM=1 needs cargo and node"; exit 1; }
-    log "kernel inputs: the same weekend and the same 18 replays (read-only)"
+    log "replay inputs: the same weekend and the same 18 replays (read-only)"
     "$PY" scripts/bench/replay_dump.py --runs "$RUNS" --out "$TMP/in.json"
     log "Rust native"
-    (cd "$K" && cargo build -q --release && ./target/release/replay_kernel "$TMP/in.json" "$TMP/native.json" 5)
+    (cd "$K" && cargo build -q --release --bin replay && ./target/release/replay "$TMP/in.json" "$TMP/native.json" 5)
     "$PY" scripts/bench/replay_dump.py --runs "$RUNS" --check "$TMP/native.json"
     log "WebAssembly (wasm32-wasip1 under node)"
-    (cd "$K" && cargo build -q --release --target wasm32-wasip1 && node --no-warnings run_wasi.mjs "$TMP" in.json wasm.json 5)
+    (cd "$K" && cargo build -q --release --bin replay --target wasm32-wasip1 && node --no-warnings run_wasi.mjs "$TMP" in.json wasm.json 5)
     cmp -s "$TMP/native.json" "$TMP/wasm.json" && log "wasm output identical to native" \
         || { log "wasm output differs from native"; exit 1; }
 fi
