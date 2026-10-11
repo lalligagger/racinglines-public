@@ -27,7 +27,7 @@ After every finished job the leaderboard and a results export are rewritten.
     variant = "gbm"
 
     [[job]]                      # a season sweep of any sport whose schema has a [sweep] table and lists "sweep"
-    sport = "nascar"             # in [search] jobs (pipelines/season_sweep.py: `racinglines nascar sweep`): the
+    sport = "nascar"             # in [search] jobs (pipelines/season_sweep.py: `racinglines strategy sweep nascar`): the
     kind = "sweep"               # same taker modes and maker variants on the sport's own stages, kinds and model
     venue = "kalshi"             # (its settings: the model's plus the shared taker / maker / markets ones)
     year = 2025
@@ -70,8 +70,7 @@ The default-settings baseline (sweep or walk-forward) of every sport and season 
 automatically (it runs first),
 so every comparison is against a baseline priced from exactly the same data. A job's id covers its
 kind, season, rounds and every setting, so the same job never runs twice. Outputs, in
-data/runs/search/<name>/: state.json, leaderboard.md, results.json (for `racinglines f1
-search-import`), logs/<id>.log.
+data/runs/search/<name>/: state.json, leaderboard.md, results.json (for `racinglines strategy search-import f1`), logs/<id>.log.
 """
 
 import hashlib

@@ -3,8 +3,8 @@ Live paper signals: what each user's strategy profile (pipelines/profiles.py) wo
 race weekend, stage by stage, computed by the backtest's own code. Recommendations and paper fills only:
 nothing here places an order.
 
-    racinglines f1 signals                         # every user with a profile, the weekend in progress
-    racinglines f1 signals --profile A --event 15 --asof 2026-09-27T12:00 --no-fetch   # replay (prints only)
+    racinglines strategy signals f1                         # every user with a profile, the weekend in progress
+    racinglines strategy signals f1 --profile A --event 15 --asof 2026-09-27T12:00 --no-fetch   # replay (prints only)
 
 Per run:
   1. Data (live only): FastF1 fetch + ingest when a finished session's data is missing; Polymarket

@@ -4,8 +4,8 @@
 # added by the steering agent around the round-1 leaders (each with a note), then the top settings are
 # confirmed at 16,000 simulations. Plan: project files taker-resweep/PLAN.md.
 #
-#   racinglines f1 search sweeps/taker-resweep.toml
-#   racinglines f1 search-report sweeps/taker-resweep.toml
+#   racinglines strategy search f1 sweeps/taker-resweep.toml
+#   racinglines strategy search-report f1 sweeps/taker-resweep.toml
 
 [search]
 name = "taker-resweep"

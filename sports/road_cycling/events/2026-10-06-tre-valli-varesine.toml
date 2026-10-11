@@ -1,6 +1,6 @@
 # 2026 Tre Valli Varesine (1.Pro, hilly one-day race, Varese). Book transcribed from the owner's screenshots
 # (2026-10-05): the winner list as far as the screenshot shows it, and 18 head-to-heads (better finish wins; both
-# out is void on most books). `racinglines cycling price 2026-10-06-tre-valli-varesine --calibrate`.
+# out is void on most books). `racinglines model price cycling 2026-10-06-tre-valli-varesine --calibrate`.
 
 [event]
 name = "Tre Valli Varesine"

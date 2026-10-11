@@ -4,7 +4,7 @@ racinglines db <command>
     init      Create or upgrade the schema to the latest migration (Alembic), then seed reference data.
     seed      Upsert sports / leagues / competitions / categories / venues from registry.py.
     stats     Row counts and coverage per season and category.
-    export    Write the tidy frame (same columns as `racinglines mtb_dh parse`'s CSV) for a competition to CSV.
+    export    Write the tidy frame (same columns as `racinglines data parse mtb_dh`'s CSV) for a competition to CSV.
     snapshot-export  The tables the models read, with ids, to data/archive/db/ (Parquet).
     snapshot-import  Load that snapshot into a fresh database: an exact replica (same ids, same prices).
     merge-athletes   Merge two athletes that are the same person (e.g. a name change found by UCI ID).

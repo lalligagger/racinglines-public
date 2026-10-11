@@ -21,8 +21,8 @@ This is the `-WX` twin of the live simulation variant: gridq+pretrain+reset-WX w
 its retirements scaled the same way. Races without a forecast or a history row get no model-WX price; the summary adds
 the paired difference `model-WX - model` (Brier and log loss, with the Brier difference's se) over the rows both price.
 
-    racinglines f1 props --dnf-check dnf_asof.csv
-    racinglines f1 props --dnf-check dnf_asof.csv --history history.csv --forecast leads.csv --lead 5
+    racinglines model props f1 --dnf-check dnf_asof.csv
+    racinglines model props f1 --dnf-check dnf_asof.csv --history history.csv --forecast leads.csv --lead 5
 """
 
 import numpy as np

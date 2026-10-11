@@ -48,7 +48,7 @@ Both model families already simulate the same thing: a matrix of finishing ranks
 | **Outcome simulations** | `OutcomeSims`: entrants, `(n_sims × n)` classification ranks, finished flags, earlier rounds' ranks, rounds reached, points, groups | `racinglines/models/outcomes.py` | done: adapters for `position_sim` and `timed_runs` |
 | **Market kinds** | One definition per kind gives its fair value from `OutcomeSims` **and** its settlement from the official result | `racinglines/markets/kinds.py` | done: win, podium, top 10, pole, makes the Final, head-to-head, top constructor; `private_book.outcome_for` settles through it |
 | **Pricing model** | `load`, `events(data, settings, seasons)` (each with its cutoff), `history(data, settings)`, `price(hist, event, settings, rng) -> OutcomeSims`, `results(data, event)` for settlement, and the model's own `Settings` | `racinglines/models/race_model.py` | done: `TimedRuns` (downhill) and `PositionSim` (F1, pre-race) |
-| **Walk-forward engine** | Prices every event from data before it, settles every kind the simulations support, scores them; model-only until a venue is given | `racinglines/core/walk_forward.py` | done: `racinglines mtb_dh walk-forward` |
+| **Walk-forward engine** | Prices every event from data before it, settles every kind the simulations support, scores them; model-only until a venue is given | `racinglines/core/walk_forward.py` | done: `racinglines model walk-forward mtb_dh` |
 | **Stages** | When new information arrives: a `[stages]` table per sport (first stage, data lag, the session never traded, early closes) turned into `[(label, cutoff)]` | `sports/<code>.toml`, `racinglines/core/stages.py` | done: the F1 sweep's stages and the pole market's close come from `sports/f1.toml`; downhill prices once, "pre-event" |
 | **Venues** | `markets()`, `view(market, t)` (public data up to t only), costs, fill model, resolution | `racinglines/markets/venue_replay.py` | done: `Polymarket` (the F1 sweep reads through it) and `PrivateBook` (a live run's book replayed); model-only is no venue. `Kalshi` reads what `markets/kalshi/` stores in the same tables, per market ticker, with Kalshi's taker fee; the maker replay reads Kalshi through `load_event(exchange="kalshi")` with its maker fee ([Kalshi history](kalshi-history.md)) |
 | **Search** | One queue for every sport, with the held-out rule, seed replicates, confirmation and stable ids built in | `racinglines/pipelines/search*.py` | done: `sport = "mtb_dh"` jobs, `replicates = N`, candidate ids carried into the Lab |
@@ -63,7 +63,7 @@ out), so saved keys never change: every saved sweep's and stage run's key recomp
 ### The walk-forward engine
 
 `racinglines backtest walk-forward mtb_dh [--seasons 2025 2026] [--seed N] [--save]` (or
-`racinglines mtb_dh walk-forward --db`, which also reads a tidy CSV with `--data`) runs a sport's pricing
+`racinglines model walk-forward mtb_dh --db`, which also reads a tidy CSV with `--data`) runs a sport's pricing
 model through `racinglines/core/walk_forward.py`: every completed event is priced from the runs before it
 with its real start list and format, every market kind is settled from the official result, and the
 fair values are scored (Brier, log loss, ECE, reliability bins) per kind and per season. The model's
@@ -226,7 +226,7 @@ mild lookahead on who started (the same for model and market, which price a fiel
 
 ### Calibration in every sweep
 
-`racinglines f1 sweep --reliability` scores **our fair value and the exchange's price side by side** at
+`racinglines strategy sweep f1 --reliability` scores **our fair value and the exchange's price side by side** at
 every tradeable stage: Brier, log loss and ECE per market kind and stage, and reliability bins with a z
 per bin (`racinglines/core/calibration.py`, shared by every sport). Pooled rows count a market once per
 stage it was tradeable, so they are correlated; compare model with market on the same rows rather than
@@ -234,7 +234,7 @@ reading the absolute numbers.
 
 ### The search report
 
-`racinglines f1 search-report QUEUE.toml` turns a finished search into labelled results
+`racinglines strategy search-report f1 QUEUE.toml` turns a finished search into labelled results
 (`racinglines/pipelines/search_report.py`):
 
 - **Labels** against the default-settings baseline, beyond a noise floor: **robust** (every season),

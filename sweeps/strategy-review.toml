@@ -6,8 +6,8 @@
 # Writes only analysis records: stage runs (each priced once and reused) and one saved sweep run per job, which the
 # report reads. No data fetch. Back up first (see the handoff).
 #
-#   racinglines f1 search sweeps/strategy-review.toml
-#   racinglines f1 search-report sweeps/strategy-review.toml
+#   racinglines strategy search f1 sweeps/strategy-review.toml
+#   racinglines strategy search-report f1 sweeps/strategy-review.toml
 
 [search]
 name = "strategy-review"

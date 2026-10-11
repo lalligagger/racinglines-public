@@ -357,7 +357,7 @@ def test_race_outcomes_carry_the_sprint_and_the_private_book_settles_it(test_eng
         assert mk[("race_sprint_pole", 1)] not in settled          # pit-lane start: no SQ position, undecided
 
 
-# --- the walk-forward check (racinglines f1 sprint-check) -------------------------------------------------
+# --- the walk-forward check (racinglines model sprint-check f1) -------------------------------------------------
 
 def test_sprint_check_scores_each_sprint_weekend_against_the_gp_stand_in(sprint):
     from racinglines.models.position_sim import sprint_check as SC

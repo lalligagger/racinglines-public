@@ -464,7 +464,7 @@ def test_the_link_command_needs_a_fresh_backup_before_it_writes(world, tmp_path,
 
 
 def test_the_season_forecast_finds_every_venues_cup_champion_contract(world):
-    """racinglines nascar season --quotes: OG.com's 17 contracts and Kalshi's Cup series market, read as they are
+    """racinglines model season nascar --quotes: OG.com's 17 contracts and Kalshi's Cup series market, read as they are
     listed (nothing stored), all Cup champion 2026; the Xfinity/Trucks champion and race markets are left out."""
     from racinglines.pipelines import nascar_season as NSP
     with world() as s:

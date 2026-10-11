@@ -83,7 +83,7 @@ nothing more.
   `athlete_id`, `race_id` and `params` (`kind`, season, …) and never raises (`racinglines/markets/identity.py` loads it
   from `[identity] resolver`). The Kalshi, Polymarket and OG.com syncs call it on every new link of the sport, so the
   same outcome gets the same identity on every exchange. `prediction` stays `unmodeled` outside F1.
-- **Links stored before the resolver existed** are fixed by a database pass (`racinglines nascar link [--apply
+- **Links stored before the resolver existed** are fixed by a database pass (`racinglines data link nascar [--apply
   --backup FILE] [--undo FILE]`, a dry run by default) or identified in memory by the replay (MotoGP).
 - **How races are matched differs by sport.** NASCAR matches the race's *name* within the season (a date alone would
   pick the O'Reilly race the day before at the same track); MotoGP maps the Kalshi series (`KXMOTOGPRACE` is the Grand

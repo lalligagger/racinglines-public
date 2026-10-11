@@ -39,7 +39,7 @@ series = ["KXCYCLING", "KXCYCLINGSTAGE", "KXCYCLINGTEAM", "KXCYCLINGJERSEY"]
 # --- the book model (racinglines/models/cycling.py, docs/road-cycling.md) -------------------------------------------
 
 [results]
-# ProCyclingStats, fetched on the owner's Mac only (`racinglines cycling fetch`, racinglines/sources/pcs.py): the
+# ProCyclingStats, fetched on the owner's Mac only (`racinglines data fetch cycling`, racinglines/sources/pcs.py): the
 # cloud sandbox can't reach it. Terms: personal, non-commercial use reviewed by the owner (2026-10-05); one request
 # at a time, pace_s apart. Files live in `dir` (gitignored), one per kind of result.
 source = "procyclingstats"

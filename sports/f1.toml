@@ -127,7 +127,7 @@ KXF1SPRINTTOP10 = "race_sprint_top10"
 KXF1SPRINTTOPCONSTRUCTOR = "race_sprint_constructor_top"
 
 [sweep]
-# The season sweep (racinglines/pipelines/season_sweep.py; `racinglines f1 sweep`, search jobs of kind "sweep"):
+# The season sweep (racinglines/pipelines/season_sweep.py; `racinglines strategy sweep f1`, search jobs of kind "sweep"):
 # the taker modes and maker variants, tuned on one season and held out on the other. `stages` is the default stage
 # mode (a sweep's `stages` setting picks another the schema supports): "sessions" = the session schedule
 # ([sessions.schedule], [stages]) with one diagnostic run per stage (pipelines/weekend_sweep.py); "weekend" needs

@@ -41,7 +41,7 @@ case "$STG_RAW" in /*) STG_RAW="$STG_RAW/$Y"; RELAY="$STG_DATA/runs/f1_relay" ;;
 PUSHED="$LOCAL/.pushed-$EV"
 # the VM stores the round as soon as the files land, and its line is printed here: an ingest error (2026-17's
 # qualifying, 10 Oct: blank driver ids rolled the whole weekend back) shows on the Mac instead of only in a journal
-INGEST="cd /opt/racinglines && sudo -u racinglines -H bash -c 'set -a; . /etc/racinglines.env; set +a; .venv/bin/racinglines f1 ingest --years $Y' 2>&1 | grep -E ' R$RR: |rror' | sed 's/^/VM ingest: /'"
+INGEST="cd /opt/racinglines && sudo -u racinglines -H bash -c 'set -a; . /etc/racinglines.env; set +a; .venv/bin/racinglines data ingest f1 --years $Y' 2>&1 | grep -E ' R$RR: |rror' | sed 's/^/VM ingest: /'"
 mkdir -p "$LOCAL"
 touch "$PUSHED"
 # when each session is live (epoch seconds), from FastF1's schedule: "start end" per line
@@ -94,7 +94,7 @@ while true; do
   if [ "$(( $(date +%s) - last ))" -ge "$((EVERY * 60))" ]; then
     last=$(date +%s)
     n=$((n + 1))
-    "$PY" -m racinglines f1 fetch --years "$Y" --rounds "$R" --sessions FP1,FP2,FP3,SQ,Q,S,R 2>&1 | grep -v "cleared FastF1" || true
+    "$PY" -m racinglines data fetch f1 --years "$Y" --rounds "$R" --sessions FP1,FP2,FP3,SQ,Q,S,R 2>&1 | grep -v "cleared FastF1" || true
     new=()
     all=()
     for f in "$LOCAL/${RR}"_*; do

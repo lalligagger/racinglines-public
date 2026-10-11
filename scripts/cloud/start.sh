@@ -57,13 +57,13 @@ elif [ -f data/archive/db/manifest.json ]; then
     # exact replica of the exporting database (same ids -> identical seeded prices)
     log "model tables from the committed snapshot";      $RL db snapshot-import
 else
-    log "F1 results, laps, track profiles (2020-2026)"; $RL f1 ingest --years 2020-2026 | tail -2
+    log "F1 results, laps, track profiles (2020-2026)"; $RL data ingest f1 --years 2020-2026 | tail -2
     # market links from the committed file (no Polymarket access needed); pm-sync only if it's missing
     if [ -f data/archive/markets/polymarket/links/market_links.parquet ]; then
-        log "Polymarket market links (committed file)"; $RL f1 pm-links-import
+        log "Polymarket market links (committed file)"; $RL data pm-links-import f1
     else
-        log "Polymarket market links (API)";            $RL f1 pm-sync --year 2025 --closed
-                                                        $RL f1 pm-sync --year 2026 --closed
+        log "Polymarket market links (API)";            $RL data pm-sync f1 --year 2025 --closed
+                                                        $RL data pm-sync f1 --year 2026 --closed
     fi
 fi
 log "check";                                            $RL check --offline | tail -3

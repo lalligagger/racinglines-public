@@ -1,7 +1,7 @@
 # Downhill model
 
 The downhill season model lives in `racinglines/models/timed_runs/` (section 7) and is driven by
-`racinglines mtb_dh forecast` and `racinglines mtb_dh backtest`. It answers:
+`racinglines model forecast mtb_dh` and `racinglines model backtest mtb_dh`. It answers:
 
 - Before a weekend: what's each rider's chance to make the Final, finish top 10,
   reach the podium, or win? How many championship points do they get on average?
@@ -171,8 +171,8 @@ points = QUAL_POINTS[qualifying rank] + FINAL_POINTS[final rank]
     `FINAL_POINTS` (250/210/180/…/11 for places 1–30) and `QUAL_POINTS`
     (60/50/40/…/2 for places 1–20) are **placeholders**, and the same tables are
     used for every era. See [Roadmap](todo.md#points-validation). Official tables, once entered,
-    go in `points_schemes` per era (`racinglines mtb_dh points import`), and `--points db` uses them
-    ([CLI](cli.md#racinglines-mtb_dh-points)).
+    go in `points_schemes` per era (`racinglines data points mtb_dh import`), and `--points db` uses them
+    ([CLI](cli.md#racinglines-data-points-mtb_dh)).
 
 ## Forecasting the rest of the season
 
@@ -221,7 +221,7 @@ stored in `race_predictions.extra`. These use the placeholder points tables.
 
 ## Calibration
 
-`racinglines mtb_dh backtest --db --reliability` (2026-09-28, cloud build-out): every
+`racinglines model backtest mtb_dh --db --reliability` (2026-09-28, cloud build-out): every
 walk-forward round of 2021–2026, 43 rounds and 5,171 rider-rounds, elite men.
 
 **The odds are too flat where it matters most.** Win and podium are close to calibrated.

@@ -503,7 +503,7 @@ def _run(args):
                          fetch=not args.no_fetch, alert=not args.no_alert, echo=lambda m: print(m, flush=True),
                          venue=args.venue)
         if not rep:
-            print("no user has a strategy profile (racinglines f1 profiles --assign-demo)")
+            print("no user has a strategy profile (racinglines strategy profiles f1 --assign-demo)")
         return
     if args.cmd == "pm-sync":
         from racinglines.markets.polymarket.sync import sync

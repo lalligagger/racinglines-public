@@ -36,11 +36,11 @@ Fastest lap: from history, how often the fastest lap goes to a driver finishing 
 or not finishing (per driver in that bucket); a driver's price is his bucket probabilities from the stage run
 (win, podium, top 10, DNF) times those rates, scaled so the field sums to 1.
 
-    racinglines f1 props 2026-16                  # the prices for an event
-    racinglines f1 props --check --from 2022      # walk-forward calibration of the yes/no props
-    racinglines f1 props --check --history h.csv  # the same on a history CSV (history()'s columns), no database
-    racinglines f1 props --dnf-check dnf.csv      # the position simulation's DNF calibration (dnf_check.py)
-    racinglines f1 props --check --history h.csv --forecast leads.csv --lead 5     # adds climatology-WX
+    racinglines model props f1 2026-16                  # the prices for an event
+    racinglines model props f1 --check --from 2022      # walk-forward calibration of the yes/no props
+    racinglines model props f1 --check --history h.csv  # the same on a history CSV (history()'s columns), no database
+    racinglines model props f1 --dnf-check dnf.csv      # the position simulation's DNF calibration (dnf_check.py)
+    racinglines model props f1 --check --history h.csv --forecast leads.csv --lead 5     # adds climatology-WX
 """
 
 import numpy as np

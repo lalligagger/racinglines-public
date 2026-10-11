@@ -4,8 +4,8 @@
 # automatic baseline is the default maker on Kalshi. The takers in these runs read Polymarket, as always:
 # only the maker_* columns are read.
 #
-#   racinglines f1 search sweeps/kalshi-maker-k.toml
-#   racinglines f1 search-report sweeps/kalshi-maker-k.toml
+#   racinglines strategy search f1 sweeps/kalshi-maker-k.toml
+#   racinglines strategy search-report f1 sweeps/kalshi-maker-k.toml
 
 [search]
 name = "kalshi-maker-k"

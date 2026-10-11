@@ -3,10 +3,10 @@
 # (enable with `bash scripts/deploy/vm.sh forecast`, stop with `vm.sh forecast off`). Runs the NASCAR and MotoGP forecasts
 # after each race to keep pricing fresh, and the F1 forecast (the championship fairs) once per new F1 classification.
 #
-#   racinglines nascar fetch|ingest --years <this year>     NASCAR results first (race weekends and Mondays UTC)
-#   racinglines nascar forecast --save --backup <path>
-#   racinglines motogp forecast --save --backup <path>
-#   racinglines f1 forecast --year <this year> --save        only when a race classification arrived since the last
+#   racinglines data fetch|ingest nascar --years <this year>     NASCAR results first (race weekends and Mondays UTC)
+#   racinglines model forecast nascar --save --backup <path>
+#   racinglines model forecast motogp --save --backup <path>
+#   racinglines model forecast f1 --year <this year> --save        only when a race classification arrived since the last
 #                                                            F1 pass (count kept in data/runs/forecast-refresh/f1-results;
 #                                                            the first pass only starts the count)
 #
@@ -81,7 +81,7 @@ f1() {   # the F1 forecast, once per new race classification of this season
     say "f1 forecast: no new classification ($n this season), skipped"
     return 0
   fi
-  if out=$(nice $R f1 forecast --year "$year" --save 2>&1); then
+  if out=$(nice $R model forecast f1 --year "$year" --save 2>&1); then
     echo "$n" > "$STATE/f1-results"
     say "f1 forecast: $(echo "$out" | tail -n 1) after classification $n ($((SECONDS - t0)) s)"
   else
@@ -100,9 +100,9 @@ results() {   # NASCAR results: fetch and ingest this season's feeds before the 
     return 0
   fi
   # the feeds and lap setting of overnight.sh's results step, so races it already stored are left unchanged
-  out=$(nice $R nascar fetch --years "$year" --feeds race_list_basic,points-feed,weekend-feed 2>&1) ||
+  out=$(nice $R data fetch nascar --years "$year" --feeds race_list_basic,points-feed,weekend-feed 2>&1) ||
     say "nascar results: fetch had errors, ingesting what is stored: $(echo "$out" | tail -n 2 | tr '\n' ' ')"
-  if out=$(nice $R nascar ingest --years "$year" --no-laps 2>&1); then
+  if out=$(nice $R data ingest nascar --years "$year" --no-laps 2>&1); then
     say "nascar results: $(echo "$out" | tail -n 1) ($((SECONDS - t0)) s)"
   else
     rc=1; say "nascar results: FAILED ($((SECONDS - t0)) s): $(echo "$out" | tail -n 3 | tr '\n' ' ')"

@@ -84,7 +84,7 @@ Suggested; keep the names consistent with the existing CLI:
 | `racinglines live status` | Every event: live / replay / settled, last update, lateness |
 | `racinglines live report <spec>` | The event report (Markdown + charts + PDF), generalised from the Whistler report |
 
-`racinglines mtb_dh live …` keeps working (delegating to the new path), and the Whistler
+`racinglines strategy live mtb_dh …` keeps working (delegating to the new path), and the Whistler
 run folder keeps rendering and replaying exactly as it does today.
 
 **Adding a sport** should mean: a `[live]` section, a launch spec, an adapter module
@@ -437,10 +437,10 @@ defaults are untouched.
 - The pre-push hook passes.
 - Track B: the downhill golden tests (`tests/test_pipeline_mtb.py`) fail after the merge, as expected:
   the new defaults change their outputs. Review, then `UPDATE_GOLDEN=1 python -m pytest tests/test_pipeline_mtb.py`.
-- Track B: `racinglines mtb_dh backtest --db --reliability` should give about the log losses in
+- Track B: `racinglines model backtest mtb_dh --db --reliability` should give about the log losses in
   [Calibration](model.md#calibration) (make-Final 0.361); `--prior-n 1.5 --half-life-days 120
   --junior-weight 0.5` gives the old model.
-- Track B: `racinglines f1 --variant rookie backtest --save` to store the `rookie` runs in the owner's
+- Track B: `racinglines model backtest f1 --variant rookie --save` to store the `rookie` runs in the owner's
   database (runs 1288/1289 exist only in the bucket, `results/cloud-buildout-track-b/f1-backtests/`).
 
 **Environment notes (cloud):** without the bucket key the database is the committed snapshot: no

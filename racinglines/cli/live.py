@@ -425,7 +425,7 @@ def cmd_reprice(args):
     spec = _spec(args.spec)
     ad = LV.adapter(spec["sport"])
     if not hasattr(ad, "reprice"):
-        print(f"{spec['sport']}: no raw feed to re-price (F1 re-prices stages with racinglines f1 diagnostic)")
+        print(f"{spec['sport']}: no raw feed to re-price (F1 re-prices stages with racinglines model diagnostic f1)")
         return 1
     f = spec["feed"]
     kw = dict(n_sims=args.sims) if args.sims else {}

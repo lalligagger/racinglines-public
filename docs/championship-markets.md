@@ -15,7 +15,7 @@ means the market is synced and recorded, but no model prices it.
 | F1 | Polymarket | Season wins ("win N+ Grands Prix") | question wording | `season_wins_ge` | **Model**: forecast `extra.wins_ge` |
 | F1 | Polymarket | Standings head-to-head | question wording | `standings_h2h` | **Model**: forecast `extra.ahead_of` |
 | F1 | OG.com | Drivers' / Constructors' champion | `F1-00001-2026`, `F1-00002-2026` (20 contracts) | `champion` / `constructors_champion` (exchanges/og.toml) | **Model** (venue shown with `RACINGLINES_OG_VENUE=1`) |
-| NASCAR | Kalshi | Cup champion | `KXNASCARCUPSERIES`, `KXNASCARCUPCHAMP` | `params.kind = champion`, link `unmodeled` (sources/nascar/links.py) | **Model, offline**: `racinglines nascar season --quotes` (off by default, read-only) |
+| NASCAR | Kalshi | Cup champion | `KXNASCARCUPSERIES`, `KXNASCARCUPCHAMP` | `params.kind = champion`, link `unmodeled` (sources/nascar/links.py) | **Model, offline**: `racinglines model season nascar --quotes` (off by default, read-only) |
 | NASCAR | Polymarket | Cup champion | `nascar-cup-series-2026-champion-…` | `champion` from the wording | **Model, offline**: the same |
 | NASCAR | OG.com | Cup champion | `NSCAR-00002-2026` (17 contracts) | `champion`; og.toml `modeled = false` | **Model, offline**: the same |
 | NASCAR | Kalshi | Regular-season champion | `KXNASCARCUPSEASON` | `regular_season_champion` | Quote only (settled for 2026: the regular season ended 29 Aug) |
@@ -55,7 +55,7 @@ the NASCAR model does. What is missing:
 
 Steps 1-3 need a probe from the Mac first (standing rule), so none of this is built.
 
-**Update (2026-09-30): a replay-only version is built** (`racinglines motogp season-replay`, off by default with
+**Update (2026-09-30): a replay-only version is built** (`racinglines strategy season-replay motogp`, off by default with
 `RACINGLINES_SEASON_REPLAY=1`, read-only). It covers the steps above without changing any stored link.
 - `models/motogp_season.py` supplies the points format (5).
 - The remaining schedule is the stored events plus the fetched `events.json` (2).
@@ -66,7 +66,7 @@ Steps 1-3 need a probe from the Mac first (standing rule), so none of this is bu
 
 ## Championship replays (backtests)
 
-`racinglines nascar season-replay` and `racinglines motogp season-replay` (`pipelines/season_replay.py`) trade the F1
+`racinglines strategy season-replay nascar` and `racinglines strategy season-replay motogp` (`pipelines/season_replay.py`) trade the F1
 championship sleeve's default strategy (`markets/strategies/season.py`) against each exchange's recorded champion
 prices.
 - **Decisions:** one at 12:00 UTC the day after each points race.
@@ -79,7 +79,7 @@ Both commands are read-only and off by default (`RACINGLINES_SEASON_REPLAY=1`). 
 `summary.json`); `--venue all` (the default) runs every exchange the sport lists, one report each
 ([CLI](cli.md#racinglines-nascar)).
 
-The F1 replay takes `--venue kalshi|og` too: `racinglines f1 season-strategy --venue kalshi|og` replays the default
+The F1 replay takes `--venue kalshi|og` too: `racinglines strategy season-strategy f1 --venue kalshi|og` replays the default
 championship strategy on that exchange's stored tape (no fetch). Kalshi is costed at its taker fee; OG.com at its flat
 $0.02 per contract, with no volume floor and prices read as its replay venue reads them (an empty book's 0.50 dropped).
 Polymarket stays the default and its output is unchanged. `--save` with another venue stores kind `season_venue_replay`,

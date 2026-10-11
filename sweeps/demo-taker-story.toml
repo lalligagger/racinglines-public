@@ -3,7 +3,7 @@
 # decision with the evidence the account had then. Only 2025: the rule's decisions all read 2025 weekends.
 # Settings only; nothing here changes a default. The default-settings baseline is added by the search itself.
 #
-#   racinglines f1 search sweeps/demo-taker-story.toml
+#   racinglines strategy search f1 sweeps/demo-taker-story.toml
 
 [search]
 name = "demo-taker-story"

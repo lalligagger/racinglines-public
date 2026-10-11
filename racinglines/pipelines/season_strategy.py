@@ -14,8 +14,8 @@ list (identities only) instead of the 2025 field.
 
 The championship sleeve (paper only, off by default; docs/paper-trading.md):
 
-    racinglines f1 season-strategy --paper --venue polymarket --after-round 15
-    racinglines f1 season-strategy --paper --venue kalshi --after-round 15
+    racinglines strategy season-strategy f1 --paper --venue polymarket --after-round 15
+    racinglines strategy season-strategy f1 --paper --venue kalshi --after-round 15
 
 The replay itself (no --paper) takes the same --venue, and also OG.com (`--venue og`, OG.com's 20 drivers' and
 constructors' champion contracts, exchanges/og.toml): Polymarket stays the default and its output is unchanged. OG.com

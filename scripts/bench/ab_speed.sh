@@ -2,7 +2,7 @@
 # A/B speed test: the same read-only backtest on two git refs (default origin/main vs origin/staging), timed, with
 # a check that both print exactly the same results; then, optionally, the same maker replays in Rust (wasm/), natively and as WebAssembly.
 #
-# The backtest is `racinglines f1 replay --runs <ids> --sweep`: one weekend's tape loaded from the archive, then
+# The backtest is `racinglines strategy replay f1 --runs <ids> --sweep`: one weekend's tape loaded from the archive, then
 # 18 maker replays (touch, through and sweep()'s 16-combo grid). It only reads the database.
 #
 #   # VM (production database, read-only): the env file and the app's venv

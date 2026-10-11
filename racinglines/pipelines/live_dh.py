@@ -1,7 +1,7 @@
 """
 Live downhill final: poll UCI's live timing (ChronoRace), simulate the rest of the final, and re-quote.
 
-    racinglines mtb_dh live --slug 20260925_mtb --final 3 --quali 2,91 --conditions "clear, rutted"
+    racinglines strategy live mtb_dh --slug 20260925_mtb --final 3 --quali 2,91 --conditions "clear, rutted"
 
 Every --interval seconds:
   1. **Feed.** The final's live JSON: who has finished (time), who is on course (latest split), who is

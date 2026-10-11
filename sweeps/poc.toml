@@ -1,5 +1,5 @@
 # Cloud sweep proof of concept: one hour, one worker session (docs/cloud-sweep.md).
-# `racinglines f1 search sweeps/poc.toml` re-reads this file whenever a slot frees: add, reorder or
+# `racinglines strategy search f1 sweeps/poc.toml` re-reads this file whenever a slot frees: add, reorder or
 # delete PENDING [[job]] entries to steer it (running/finished ones are never re-run). Any setting of
 # racinglines/pipelines/sweep_settings.py can go in a job; the rest stay at their defaults. The
 # default-settings baseline of each season is added automatically and runs first.

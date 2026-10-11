@@ -336,15 +336,15 @@ Then the full pipeline:
 docker compose up -d                                   # PostgreSQL on localhost:5433 (or a conda Postgres: see Database)
 racinglines db init                                    # tables + reference data
 
-racinglines f1 fetch && racinglines f1 ingest          # F1 sessions (FastF1) -> database
-racinglines f1 forecast --save                         # live F1 prices: remaining races + championships
+racinglines data fetch f1 && racinglines data ingest f1          # F1 sessions (FastF1) -> database
+racinglines model forecast f1 --save                         # live F1 prices: remaining races + championships
 racinglines markets sync                               # Polymarket's F1 markets
 
-racinglines mtb_dh ingest                              # downhill event files -> database
-racinglines mtb_dh forecast --db --save                # downhill season forecast
+racinglines data ingest mtb_dh                              # downhill event files -> database
+racinglines model forecast mtb_dh --db --save                # downhill season forecast
 
-racinglines f1 profiles --assign-demo                  # strategy profiles A and C for the demo accounts
-racinglines f1 signals                                 # live paper signals (outside a race weekend: a no-op)
+racinglines strategy profiles f1 --assign-demo                  # strategy profiles A and C for the demo accounts
+racinglines strategy signals f1                                 # live paper signals (outside a race weekend: a no-op)
 ADMIN_PASSWORD=... racinglines web                     # the app on http://127.0.0.1:8000
 ```
 

@@ -1,4 +1,4 @@
-"""Benchmark helper (read-only on the database): the maker replays that `racinglines f1 replay --runs ... --sweep`
+"""Benchmark helper (read-only on the database): the maker replays that `racinglines strategy replay f1 --runs ... --sweep`
 runs, as input for the Rust/WebAssembly replay in wasm/, and the check that its quotes and fills equal the Python
 replay's exactly and its summaries agree.
 
