@@ -69,7 +69,15 @@ backtests. The pages below have the details.
 python3.14 -m venv .venv && source .venv/bin/activate  # Python 3.11+
 pip install -r requirements.txt && pip install -e .   # dependencies + the `racinglines` command
 racinglines check                                      # code, data endpoints, database (~10 s)
-racinglines book price --demo                          # the sportsbook EV demo: a bundled sample, no database
+```
+
+The demo, no database or network ([Demo](demo.md)): the whole pipeline on a synthetic Mario Kart season, in four steps:
+
+```
+racinglines demo backtest                              # 1. history, the pace model, a walk-forward sweep (~6 s)
+racinglines demo forecast                              # 2. the next race: 400,000 simulated races (~5 s)
+racinglines demo race --pdf                            # 3. live: Wario's book re-quotes every sector, 100 Toads trade
+racinglines book price --demo                          # 4. sportsbook lines vs the model and the exchanges
 ```
 
 Then the full pipeline:

@@ -352,7 +352,15 @@ linked prediction markets, read-only and CLI only: `map FILE` (exact-key mapping
 kind; unmapped legs listed), `price FILE [--run ID] [--sims RACE_ID=FILE]` (model fair, market price, book implied
 probability, EV against model and against market; same-race legs jointly from simulations or flagged
 `correlated: EV approximate`), `settle FILE` (results and payouts from the stored classification); `--json` on each.
-See [Sportsbook slips](sportsbook/slips.md).
+Three modes: `--demo` (a bundled synthetic book, offline), `--remote` (the hosted MCP server), `--local` (the default);
+`book config` sets the default, `book logout` forgets the `--remote` sign-in. See [Sportsbook slips](sportsbook/slips.md).
+
+## racinglines demo
+
+The pipeline end to end on a synthetic Mario Kart season, no database or network: `backtest` (history and a
+walk-forward sweep of the pace model), `forecast` (the next race from 400,000 simulated races), `race` (live: Wario's
+book against 100 simulated takers, then the event report; `--pdf`). `--seed`, `--track`, `--out`, `--sims`, `--delay`.
+See [Demo](demo.md).
 
 ## racinglines cycling
 
