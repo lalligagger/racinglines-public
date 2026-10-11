@@ -16,13 +16,14 @@ racinglines <group> <command> [options]
     users     setup | list | add | reset-password | remove | deactivate | activate   (accounts, fantasy bucks)
     mcp       the MCP server: the data and simulations for a chat client (docs/mcp.md)
     check     quick validation: code on synthetic data, data endpoints, database
+    demo      backtest | forecast | race   (the pipeline end to end on a synthetic Mario Kart season, no database)
 
 `racinglines <group> -h` for a group's commands and options.
 """
 
 import sys
 
-GROUPS = ("f1", "mtb_dh", "nascar", "motogp", "cycling", "weather", "backtest", "markets", "book", "db", "live", "web", "users", "mcp", "check")
+GROUPS = ("f1", "mtb_dh", "nascar", "motogp", "cycling", "weather", "backtest", "markets", "book", "db", "live", "web", "users", "mcp", "check", "demo")
 
 
 def main(argv=None):

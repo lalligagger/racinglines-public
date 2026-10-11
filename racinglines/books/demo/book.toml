@@ -42,9 +42,9 @@ market = { kind = "race_podium", driver = "Peach" }
 [[lines]]
 id = "top5"
 title = "Top 5 Finish"
-selection = "Toad"
+selection = "Daisy"
 odds = 1.9
-market = { kind = "race_top5", driver = "Toad" }
+market = { kind = "race_top5", driver = "Daisy" }
 
 [[lines]]
 id = "top10"
@@ -77,9 +77,9 @@ market = { kind = "race_fastest_lap", driver = "Luigi" }
 [[lines]]
 id = "h2h"
 title = "Head to Head"
-selection = "Peach v Toad"
+selection = "Peach v Daisy"
 odds = 1.8
-market = { kind = "race_h2h", driver = "Peach", opponent = "Toad" }
+market = { kind = "race_h2h", driver = "Peach", opponent = "Daisy" }
 
 [[lines]]
 id = "mover"
@@ -122,11 +122,11 @@ market = { kind = "combo", legs = [
 [[lines]]
 id = "sgp-product"
 title = "Same Race Combo"
-selection = "Peach podium + Toad top 10"
+selection = "Peach podium + Daisy top 10"
 odds = 2.5
 market = { kind = "combo", legs = [
   { kind = "race_podium", driver = "Peach" },
-  { kind = "race_top10", driver = "Toad" },
+  { kind = "race_top10", driver = "Daisy" },
 ] }
 
 [[lines]]

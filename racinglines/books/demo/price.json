@@ -267,7 +267,7 @@
    "kind": "race_top5",
    "legs": [
     {
-     "athlete": "Toad",
+     "athlete": "Daisy",
      "athlete_id": 4,
      "book_prob": null,
      "competition": "f1_wdc",
@@ -316,7 +316,7 @@
    ],
    "reason": null,
    "result": null,
-   "selection": "Toad",
+   "selection": "Daisy",
    "status": "mapped",
    "title": "Top 5 Finish"
   },
@@ -633,7 +633,7 @@
      "model_note": null,
      "model_prob": 0.58,
      "odds": null,
-     "opponent": "Toad",
+     "opponent": "Daisy",
      "opponent_id": 4,
      "quotes": [
       {
@@ -644,7 +644,7 @@
        "link_id": 6,
        "prob": 0.54,
        "synced_utc": "2026-10-20T08:55Z",
-       "token_id": "demo-p-h2h-toad-peach"
+       "token_id": "demo-p-h2h-daisy-peach"
       }
      ],
      "race_id": 1,
@@ -674,7 +674,7 @@
    ],
    "reason": null,
    "result": null,
-   "selection": "Peach v Toad",
+   "selection": "Peach v Daisy",
    "status": "mapped",
    "title": "Head to Head"
   },
@@ -1119,7 +1119,7 @@
      "threshold": null
     },
     {
-     "athlete": "Toad",
+     "athlete": "Daisy",
      "athlete_id": 4,
      "book_prob": null,
      "competition": "f1_wdc",
@@ -1168,7 +1168,7 @@
    ],
    "reason": null,
    "result": null,
-   "selection": "Peach podium + Toad top 10",
+   "selection": "Peach podium + Daisy top 10",
    "status": "mapped",
    "title": "Same Race Combo"
   },
