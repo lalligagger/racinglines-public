@@ -4,7 +4,7 @@ Profile A on Kalshi turned out to rest on two weekends a season ([Kalshi history
 owner asked for every F1 strategy so far to be backtested on Polymarket and Kalshi side by side, with rolling Kelly
 sizing on a $10,000 bankroll, and sorted into steady and lumpy. This page is that review: 80 jobs (19 settings sets
 × 2 venues × 2 seasons, plus 4 baselines) at 16,000 simulations, 342 strategy rows, run on the VM from 2026-10-05
-23:46Z (queue `sweeps/strategy-review.toml`, report `racinglines f1 search-report sweeps/strategy-review.toml`).
+23:46Z (queue `sweeps/strategy-review.toml`, report `racinglines strategy search-report f1 sweeps/strategy-review.toml`).
 
 **Verdict: A (T1) stays the core taker, on Polymarket only.** It is steady there: up in both seasons, and still up
 without each season's two best weekends. On Kalshi no taker is steady. Every taker is up in 2026 because of

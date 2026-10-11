@@ -1,5 +1,5 @@
 # NASCAR Cup Series: started as a tape-only sport (docs/todo.md, U9); now has results (cf.nascar.com), a simple result-only
-# pricing model (below) and the taker replay (`racinglines nascar replay`). Its Kalshi, Polymarket and OG.com markets are synced
+# pricing model (below) and the taker replay (`racinglines strategy replay nascar`). Its Kalshi, Polymarket and OG.com markets are synced
 # and recorded (links unmodeled but identified: driver, race, contract; prices / trades / books archived per exchange) when asked for by name
 # (`racinglines markets [--exchange kalshi] --sport nascar ...`). Read by racinglines/sports.py; the syncs read
 # [markets.kalshi] and [markets.polymarket]. Status and caveats: docs/coverage.md.
@@ -53,7 +53,7 @@ tags = ["nascar"]
 [identity]
 # Which driver, race and contract a market is about, whichever exchange listed it (racinglines/sources/nascar/links.py).
 # The syncs fill athlete_id, race_id and params (kind, nascar_series, season) on every link of this sport; `prediction`
-# stays unmodeled. `racinglines nascar link` does the same for links already in the database.
+# stays unmodeled. `racinglines data link nascar` does the same for links already in the database.
 resolver = "nascar"
 
 [results]
@@ -82,7 +82,7 @@ sessions = ["qual"]
 best_lap = "race_fastest_lap"
 
 [replay]
-# The taker replay (racinglines/pipelines/position_replay.py; `racinglines nascar replay`). All values are a priori
+# The taker replay (racinglines/pipelines/position_replay.py; `racinglines strategy replay nascar`). All values are a priori
 # starting points, none tuned: docs/f1-roadmap.md decision log, 2026-09-30 "NASCAR / MotoGP taker replay".
 source = "nascar_cf"              # the events the model and the settlement read
 linker = "nascar"                 # a link not yet identified by `nascar link --apply` is identified in memory
@@ -141,7 +141,7 @@ until_fallback_hours = 0                 # the race start when not stored: 00:00
                                          # stage is dropped, never traded after the start
 
 [sweep]
-# The season sweep (racinglines/pipelines/season_sweep.py; `racinglines nascar sweep`, search jobs of kind "sweep"): the
+# The season sweep (racinglines/pipelines/season_sweep.py; `racinglines strategy sweep nascar`, search jobs of kind "sweep"): the
 # F1 sweep's taker modes and maker variants on the [replay] stages, kinds and group targets, priced by [sport]
 # pricing_model from results strictly before the event, settled by classified position. Venues: [markets] venues,
 # plus OG.com where exchanges/og.toml lists the sport. A priori values, none tuned.

@@ -147,7 +147,7 @@ These line numbers come from grep and are approximate.
 - **The sweep is F1-only.** `weekend_sweep.py` loads `sports.load("f1")` at import and branches `venue ==
   "polymarket"` else Kalshi, with no OG.com. `search.py` `KINDS` maps only `f1` and `mtb_dh`, and it branches on
   `sport == "f1"` in four places.
-- **Paper signals are F1-only.** That covers `racinglines f1 signals` and the polymarket-or-other branches in
+- **Paper signals are F1-only.** That covers `racinglines strategy signals f1` and the polymarket-or-other branches in
   `signals.py`. NASCAR and MotoGP have only the in-sample, update-mode backfill (`sport_paper.py`).
 - **Sweep runs don't record the sport.** No `sweep` run has a `sport` key in `params`.
 - **The NASCAR and MotoGP pricing model is overconfident.** In the 2026-10-07 A/B/C study, the form model priced

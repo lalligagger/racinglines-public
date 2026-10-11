@@ -94,6 +94,6 @@ After each session: re-download, ingest and re-run (see
 [Web app](webapp.md#getting-predictions-for-an-event-weekend)).
 
 ```
-racinglines mtb_dh ingest data/raw/mtb_dh/chronorace
-racinglines mtb_dh forecast --db --save --backtest 0 --remaining 2   # 10k sims, seed 42
+racinglines data ingest mtb_dh data/raw/mtb_dh/chronorace
+racinglines model forecast mtb_dh --db --save --backtest 0 --remaining 2   # 10k sims, seed 42
 ```

@@ -4,7 +4,7 @@ Championship points tables for UCI downhill, by season (docs/todo.md, Points val
 Two sources:
   schema   sports/mtb_dh.toml [points]: one PLACEHOLDER table for every season (today's default)
   db       the points_schemes table: one row per competition, era and round kind, entered by the
-           owner from the official UCI scales (`racinglines mtb_dh points import`); seasons with no
+           owner from the official UCI scales (`racinglines data points mtb_dh import`); seasons with no
            row fall back to the schema
 
     schemes = load(conn)                  # {season: Scheme} from points_schemes

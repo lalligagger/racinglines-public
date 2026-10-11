@@ -13,9 +13,9 @@ The two recommended by the params-4h cloud search (data/runs/search/params-4h/RE
        sweeps/kalshi-maker-k.toml); the settings below are the sweep's winner under the params-4h
        held-out rule. The candidate carries venue = "kalshi": it is judged on and quotes Kalshi.
 
-    racinglines f1 profiles                      # list, and create A / C / K as Lab candidates if missing
-    racinglines f1 profiles --assign-demo        # demo taker -> A, demo maker -> C
-    racinglines f1 profiles --assign-demo --venue kalshi   # demo maker -> K, as its Kalshi profile (explicit;
+    racinglines strategy profiles f1                      # list, and create A / C / K as Lab candidates if missing
+    racinglines strategy profiles f1 --assign-demo        # demo taker -> A, demo maker -> C
+    racinglines strategy profiles f1 --assign-demo --venue kalshi   # demo maker -> K, as its Kalshi profile (explicit;
                                                            # nothing reads it until the signal engine runs Kalshi)
 
     T1..T10  the taker shortlist (TAKER_TOP, ranked; source "taker-resweep"): what pro accounts pick from, and
@@ -206,7 +206,7 @@ def load(conn, ref):
         name = codes[ref.upper()]["name"] if ref.upper() in codes else ref
         hit = next(((i, p) for i, p in reversed(rows) if p.get("name") == name), None)
     if hit is None:
-        raise ValueError(f"no candidate {ref!r} (racinglines f1 profiles creates A and C)")
+        raise ValueError(f"no candidate {ref!r} (racinglines strategy profiles f1 creates A and C)")
     i, p = hit
     sport = p.get("sport") or DEFAULT_SPORT          # another sport's candidate: its own sweep settings
     if sport != DEFAULT_SPORT:

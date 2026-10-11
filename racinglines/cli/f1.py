@@ -56,7 +56,7 @@ def _years(spec):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="racinglines f1", description=__doc__,
+    ap = argparse.ArgumentParser(prog="racinglines <group> <command> f1", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--db", default=None, help="Database URL (default: $DATABASE_URL / docker-compose).")
     ap.add_argument("--variant", default="baseline",
@@ -277,6 +277,8 @@ def main(argv=None):
                    help="--check / --dnf-check: the weather leads CSV (racinglines weather leads; weather/wet.py "
                         "p_wet_series) adds the -WX variants; needs a race history (--history CSV or the database)")
     p.add_argument("--lead", type=int, default=5, help="--forecast: the forecast issued this many days before (default 5)")
+    from racinglines.cli.verbs import retitle
+    retitle(ap, "f1")
     args = ap.parse_args(argv)
     from racinglines.models.position_sim import variants as V
     V.switches(args.variant)                         # fail fast on an unknown name
@@ -344,6 +346,22 @@ def _save_sweep(args, out):
                                            **(dict(calibration=records(out["calibration"]),
                                                    reliability=records(out["reliability"]))
                                               if args.reliability else {})))
+
+
+def _progress_echo(every=10):
+    """The backtest's per-race `progress i/n ...` lines: every one on a terminal; otherwise (a log, a job, a recorded
+    replay) every `every`-th and the last, and the heartbeat (racinglines/progress.py) keeps its 5-minute line."""
+    from racinglines import progress as PG
+    tty = sys.stdout.isatty()
+
+    def echo(m):
+        if not tty and m.startswith("progress ") and "/" in m.split()[1]:
+            i, n = m.split()[1].split("/", 1)
+            PG.update(int(i), int(n), m.split(" ", 2)[-1])
+            if int(i) % every and i != n:
+                return
+        print(m, flush=True)
+    return echo
 
 
 def race_week(race_date):
@@ -503,7 +521,7 @@ def _run(args):
                          fetch=not args.no_fetch, alert=not args.no_alert, echo=lambda m: print(m, flush=True),
                          venue=args.venue)
         if not rep:
-            print("no user has a strategy profile (racinglines f1 profiles --assign-demo)")
+            print("no user has a strategy profile (racinglines strategy profiles f1 --assign-demo)")
         return
     if args.cmd == "pm-sync":
         from racinglines.markets.polymarket.sync import sync
@@ -989,7 +1007,7 @@ def _run(args):
             print(f"progress 0/1 building history (track features {'on' if use_track else 'off'})", flush=True)
             hist = run.history(meas, use_track)
             bt = run.backtest(meas, hist, args.start_year, args.sims, use_track, last_n=args.races,
-                              echo=lambda m: print(m, flush=True), keep_probs=True)
+                              echo=_progress_echo(), keep_probs=True)
             bt["track_features"] = use_track
             results.append(bt)
             print(f"\n=== Track features {'ON' if use_track else 'OFF'}: mean over {bt['event_id'].nunique()} races ===")

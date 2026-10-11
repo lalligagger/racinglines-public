@@ -40,7 +40,7 @@ not schema):
   is about (step 4).
 - `[results]`: the source's host, `terms` and `limits` from the probe (step 3), and the fallback rule.
 - `[replay]`: the taker replay's `source` (the `events.source` its model reads), `linker`, `kinds`,
-  `race_day_offset`, `stages` and `group_target` ([CLI](cli.md#racinglines-nascar)). All a priori; tuning any of them
+  `race_day_offset`, `stages` and `group_target` ([CLI](cli.md#nascar-commands)). All a priori; tuning any of them
   needs a decision-log entry.
 - `[data] frames` and `[live]` only when the sport has input frames or a live simulation
   ([Input frames](frames.md#add-a-sport), [Live events](live-events.md#adding-a-sport)); NASCAR and MotoGP have neither.
@@ -83,7 +83,7 @@ nothing more.
   `athlete_id`, `race_id` and `params` (`kind`, season, …) and never raises (`racinglines/markets/identity.py` loads it
   from `[identity] resolver`). The Kalshi, Polymarket and OG.com syncs call it on every new link of the sport, so the
   same outcome gets the same identity on every exchange. `prediction` stays `unmodeled` outside F1.
-- **Links stored before the resolver existed** are fixed by a database pass (`racinglines nascar link [--apply
+- **Links stored before the resolver existed** are fixed by a database pass (`racinglines data link nascar [--apply
   --backup FILE] [--undo FILE]`, a dry run by default) or identified in memory by the replay (MotoGP).
 - **How races are matched differs by sport.** NASCAR matches the race's *name* within the season (a date alone would
   pick the O'Reilly race the day before at the same track); MotoGP maps the Kalshi series (`KXMOTOGPRACE` is the Grand
@@ -112,7 +112,7 @@ race with no stored price as `NO TAPE`, and prints `NOT TRADED` with the reason 
 - **The wrapper** is a class with the pricing-model contract, named by `[sport] pricing_model`
   ([Backtest core](backtest-core.md#adding-a-sport)). Then `racinglines backtest walk-forward <code>` and the search
   work without engine changes.
-- **The taker replay** (`racinglines <sport> replay`, [CLI](cli.md#racinglines-nascar)) needs only the `[replay]`
+- **The taker replay** (`racinglines strategy replay <sport>`, [CLI](cli.md#nascar-commands)) needs only the `[replay]`
   section. `--tape pull --backup FILE` pulls the selected races' tape; `--save --backup FILE` stores one as-of model run
   per race, which the board's recent results and the status table read.
 - **The settings grid** is the overnight run's read-only grid (`scripts/vm/replay_grid.py`, runs
@@ -130,11 +130,11 @@ race with no stored price as `NO TAPE`, and prints `NOT TRADED` with the reason 
 - **Board section.** A modeled sport with replay saves but no live forecast gets a board section (recent results with
   the model's pre-race price; next races with the exchanges' prices). The race-card queries in `racinglines/web/board.py`
   filter on the category codes `DRV`, `ME` and `RDR`, so a sport with another category code needs adding there.
-- **Demo paper record.** `racinglines <sport> demo-history --grid data/runs/replay-grid/<sport> --backup FILE` stores
+- **Demo paper record.** `racinglines strategy demo-history <sport> --grid data/runs/replay-grid/<sport> --backup FILE` stores
   the replay's trades as the demo accounts' paper positions (in-sample, labelled so; on the VM, `vm.sh demo`)
   ([Paper trading](paper-trading.md#nascar-and-motogp-demo-in-sample-off-by-default)). The sport has to be in
   `sport_paper.SPORTS` and in the loops of `scripts/vm/demo_setup.sh`.
-- **Forecast.** `racinglines <sport> forecast --save --backup FILE` prices the next scheduled races and stores a
+- **Forecast.** `racinglines model forecast <sport> --save --backup FILE` prices the next scheduled races and stores a
   `forecast` run, which the board, race pages and exchange markets read as live prices; `--undo RUN_ID` removes it.
   **It needs an upcoming calendar**: with no scheduled race stored (MotoGP today) it says so and stores nothing.
 

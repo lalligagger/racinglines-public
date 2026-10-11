@@ -68,12 +68,15 @@ def spec_path(sport, event):
 
 
 def load_spec(path):
-    """A launch spec (path, or 'sport/event'): dict(sport, event, run, title, feed, window, market_set, live=
-    the sport's [live] settings with the spec's [live] overrides, path)."""
+    """A launch spec (path, or 'sport/event': live/<sport>/<event>.toml in the repository, else the same under the data
+    folder, data/live/, where specs that come with their data live): dict(sport, event, run, title, feed, window,
+    market_set, live= the sport's [live] settings with the spec's [live] overrides, path)."""
     from pathlib import Path
     p = Path(path)
     if not p.exists() and not p.suffix:
         p = SPECS / f"{path}.toml"
+        if not p.exists() and (paths.DATA / "live" / f"{path}.toml").exists():
+            p = paths.DATA / "live" / f"{path}.toml"
     spec = tomllib.loads(p.read_text())
     feed = spec.get("feed") or {}
     spec.setdefault("run", f"{feed['slug']}_{feed['final']}" if feed.get("final") else spec["event"])

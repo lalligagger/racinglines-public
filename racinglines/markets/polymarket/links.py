@@ -1,6 +1,6 @@
 """
 Polymarket market links as a file, so a machine that can't reach Polymarket's API (e.g. a cloud session
-whose network blocks it) gets exactly the links `racinglines f1 pm-sync` built here.
+whose network blocks it) gets exactly the links `racinglines data pm-sync f1` built here.
 
 market_links rows refer to database ids (race, athlete, competition, category, and an h2h opponent in
 params), which differ between databases. The export swaps each for a stable key, and the import swaps
@@ -11,10 +11,10 @@ them back in the target database:
     competition -> competitions.code;  category -> categories.code
     params.opponent_id -> params.opponent_key (same driverId)
 
-    racinglines f1 pm-links-export      # -> data/archive/markets/polymarket/links/market_links.parquet
-    racinglines f1 pm-links-import      # replaces each token's row; reports rows whose keys don't resolve
-    racinglines f1 pm-links-export --exchange kalshi   # the same for Kalshi's links -> .../kalshi/links/
-    racinglines f1 pm-links-import --exchange kalshi
+    racinglines data pm-links-export f1      # -> data/archive/markets/polymarket/links/market_links.parquet
+    racinglines data pm-links-import f1      # replaces each token's row; reports rows whose keys don't resolve
+    racinglines data pm-links-export f1 --exchange kalshi   # the same for Kalshi's links -> .../kalshi/links/
+    racinglines data pm-links-import f1 --exchange kalshi
 """
 
 import json

@@ -40,15 +40,15 @@ each sized on its own, with `thin_data` marking a rider with under 5 results.
 ## Workflow (Mac)
 
 The cloud sandbox can't reach ProCyclingStats, so fetching runs on the Mac. Fetching is cached per page and safe to
-re-run; it needs `pip install cloudscraper selectolax` (not in `requirements.txt`: nothing on the VM needs them). Pages are parsed by `racinglines/sources/pcs.py` itself, not the `procyclingstats` package, whose results selector stopped matching PCS on 2026-10-05. When a fetch fails, `racinglines cycling probe race/<slug>/<year>/result` saves the page and prints what parses.
+re-run; it needs `pip install cloudscraper selectolax` (not in `requirements.txt`: nothing on the VM needs them). Pages are parsed by `racinglines/sources/pcs.py` itself, not the `procyclingstats` package, whose results selector stopped matching PCS on 2026-10-05. When a fetch fails, `racinglines data probe cycling race/<slug>/<year>/result` saves the page and prints what parses.
 
 ```
 # LOCAL (Mac)
-racinglines cycling events
-racinglines cycling fetch road --seasons 2020-2026
-racinglines cycling startlist 2026-10-06-tre-valli-varesine
-racinglines cycling price 2026-10-06-tre-valli-varesine --calibrate
-racinglines cycling price 2026-10-06-tre-valli-varesine --settings-from reports/2026-10-06-tre-valli-varesine/calibration.csv
+racinglines data events cycling
+racinglines data fetch cycling road --seasons 2020-2026
+racinglines data startlist cycling 2026-10-06-tre-valli-varesine
+racinglines model price cycling 2026-10-06-tre-valli-varesine --calibrate
+racinglines model price cycling 2026-10-06-tre-valli-varesine --settings-from reports/2026-10-06-tre-valli-varesine/calibration.csv
 ```
 
 `--calibrate` grid-searches `[model.<kind>.grid]` walk-forward on the kind's backtest races since `--since`
@@ -58,7 +58,7 @@ setting's scores by season. `price` writes `settings.csv`, `futures.csv`, `match
 
 ## Calibration check: favourites vs long shots (Core backlog C48)
 
-`racinglines cycling reliability <kind>` refits walk-forward month by month (as `--calibrate` does) and records
+`racinglines model reliability cycling <kind>` refits walk-forward month by month (as `--calibrate` does) and records
 every rider's win, top-3 and top-10 chance in every backtest race, DNFs included, against what happened. It prints
 and writes to `reports/reliability-<kind>/`: `win_by_prob.csv` (riders bucketed by win chance), `win_by_rank.csv`,
 `top3_by_rank.csv`, `top10_by_rank.csv` (by the model's rank: 1, 2-3, 4-5, 6-10, 11-20, 21+), each with
@@ -68,8 +68,8 @@ shots too short). The temperature is fitted in-sample, so it is a diagnostic; an
 
 ```
 # LOCAL (Mac)
-racinglines cycling reliability road --settings-from reports/<event>/settings.csv
-racinglines cycling reliability itt
+racinglines model reliability cycling road --settings-from reports/<event>/settings.csv
+racinglines model reliability cycling itt
 ```
 
 ## Decision log

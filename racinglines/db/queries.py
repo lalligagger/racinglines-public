@@ -56,7 +56,7 @@ def load_tidy(engine, competition="uci_dhi_wc", with_splits=True):
         spl = pd.read_sql(SPLITS_SQL, conn, params=dict(competition=competition)) if with_splits else None
     if res.empty:
         raise SystemExit(f"No results in the database for competition '{competition}'. "
-                         f"Run: racinglines mtb_dh ingest data/raw/mtb_dh/chronorace")
+                         f"Run: racinglines data ingest mtb_dh data/raw/mtb_dh/chronorace")
 
     res["event_id"] = res["source_key"] + "_" + res["category"]
     res["event_date"] = pd.to_datetime(res["event_date"]).dt.strftime("%Y-%m-%d")

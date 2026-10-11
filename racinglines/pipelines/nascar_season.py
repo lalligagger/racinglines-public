@@ -1,5 +1,5 @@
 """
-`racinglines nascar season`: the NASCAR Cup season forecast (models/nascar_season.py) and, with --quotes, its Cup
+`racinglines model season nascar`: the NASCAR Cup season forecast (models/nascar_season.py) and, with --quotes, its Cup
 champion price beside every exchange's champion quote on file (market_links: OG.com's 17 contracts, Kalshi's
 KXNASCARCUPSERIES / CUPCHAMP, Polymarket's champion market). Read-only: nothing is written to the database, and
 nothing changes on the board, in the app or in any sync (OG.com's NASCAR links stay `modeled = false` in
@@ -50,7 +50,7 @@ def forecast(engine, year, n_sims=N_SIMS, seed=SEED, stage_noise=5.0, race_noise
             int(v): int(a) for v, a in conn.execute(sql("SELECT value, athlete_id FROM athlete_identifiers WHERE scheme = 'nascar'"))
             if str(v).isdigit()}
     if schedule.empty or results.empty:
-        raise ValueError(f"no {year} Cup points races with results in the database (racinglines nascar ingest)")
+        raise ValueError(f"no {year} Cup points races with results in the database (racinglines data ingest nascar)")
     state = NS.standings_now(fmt, results, schedule)
     computed = state
     feed = fetch.read(fetch.feed_path(year, 1, "points-feed")) if standings == "feed" else None
@@ -177,7 +177,7 @@ def feed_check(audit):
     if audit.get("standings_mode") == "results":
         return "points feed: not used (--standings results), standings summed from race results"
     if not feed:
-        return "points feed: not on disk (racinglines nascar fetch --years YEAR --feeds points-feed), standings from results"
+        return "points feed: not on disk (racinglines data fetch nascar --years YEAR --feeds points-feed), standings from results"
     st = audit.get("standings", "")
     if comp is None or "matched" not in st:
         return f"points feed: on disk but no driver matched a NASCAR id ({st})"

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-racinglines mtb_dh parse: ingest UCI DH (ChronoRace-style) result exports into one tidy
+racinglines data parse mtb_dh: ingest UCI DH (ChronoRace-style) result exports into one tidy
 long-format CSV the timed-runs model can consume.
 
 WHY IT'S BUILT THIS WAY
@@ -65,9 +65,9 @@ track_condition str   "dry" | "wet" | "mixed" | "unknown" (fill in manually
 
 Usage
 -----
-    racinglines mtb_dh parse --inspect raw/some_event.html
-    racinglines mtb_dh parse --input-dir raw/ --out splits.csv
-    racinglines mtb_dh parse --input-dir raw/ --out splits.csv --conditions-file conditions.csv
+    racinglines data parse mtb_dh --inspect raw/some_event.html
+    racinglines data parse mtb_dh --input-dir raw/ --out splits.csv
+    racinglines data parse mtb_dh --input-dir raw/ --out splits.csv --conditions-file conditions.csv
 """
 
 import argparse

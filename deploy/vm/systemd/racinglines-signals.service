@@ -8,4 +8,4 @@ Type=oneshot
 User=racinglines
 WorkingDirectory=/opt/racinglines
 EnvironmentFile=/etc/racinglines.env
-ExecStart=/opt/racinglines/.venv/bin/racinglines f1 signals
+ExecStart=/opt/racinglines/.venv/bin/racinglines strategy signals f1

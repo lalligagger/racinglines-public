@@ -8,7 +8,7 @@ Comparing F1 model runs (docs/f1-roadmap.md, F1-1).
     calibration_error(..) the bins' weighted mean |predicted - observed| (ECE)
 
 Inputs are backtest rows (pricing.backtest), e.g. the `events` stored with a saved
-backtest run (`racinglines f1 backtest --save`).
+backtest run (`racinglines model backtest f1 --save`).
 """
 
 import numpy as np

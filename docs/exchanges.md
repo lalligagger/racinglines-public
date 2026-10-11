@@ -90,7 +90,7 @@ its fee schedule**). A market with no bid (most of OG.com's F1 books are asks on
 one-cent ask is not a tradable quote: read the call as an indicator, not a signal. No backtest sits behind it yet:
 OG.com is a replay venue since #88, but no strategy has been replayed on its markets yet: the champion replays that
 read its futures are merged, off by default and not yet run on the VM (`f1 season-strategy --venue og`, #95;
-`RACINGLINES_SEASON_REPLAY=1 racinglines nascar season-replay --venue og`, #96;
+`RACINGLINES_SEASON_REPLAY=1 racinglines strategy season-replay nascar --venue og`, #96;
 [Championship markets](championship-markets.md#championship-replays-backtests)), and its tape starts on 2026-09-29. The same fair price shows beside the OG.com quote on the season board when the
 switch is on.
 
@@ -106,7 +106,7 @@ owner, buy-all never appears in reporting or the web app (Positions, the nav P&L
 `buy_all` row, and `demo-history` never stores one), and no cell of the
 [status matrix](coverage.md#the-status-matrix) counts it as a backtest. OG.com lists season futures only (F1
 champions, the NASCAR Cup champion, SailGP), so buy-all is today the only replay that reaches its markets: the race replays'
-`--buy-all` ([CLI](cli.md)) find no OG.com race markets to buy today, and OG.com lists no MotoGP. The race replay does read OG.com as a venue (`racinglines nascar replay --venue og`, and in `--venue all`), so race markets flow in as soon as OG.com lists them and they are synced. Both read every stored price whatever its spread or depth, except a stored 0.50 from an empty book; a trade at any price counts.
+`--buy-all` ([CLI](cli.md)) find no OG.com race markets to buy today, and OG.com lists no MotoGP. The race replay does read OG.com as a venue (`racinglines strategy replay nascar --venue og`, and in `--venue all`), so race markets flow in as soon as OG.com lists them and they are synced. Both read every stored price whatever its spread or depth, except a stored 0.50 from an empty book; a trade at any price counts.
 
 Nothing here places an order. OG.com's private API needs FCM onboarding and signed requests, which is a separate
 step for the owner.

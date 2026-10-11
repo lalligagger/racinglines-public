@@ -5,7 +5,7 @@ the model's fair value is not read. The venue's costs still apply (the per-share
 one, the taker fee), so a market's pair loses exactly its costs and fees; what the P&L cells show is that every
 market of a sport x exchange reached the replay, was priced and settled (and per side, how YES and NO fared).
 
-Off by default: the replays run it only when asked (`--buy-all` on `racinglines nascar|motogp replay`, or
+Off by default: the replays run it only when asked (`--buy-all` on `racinglines strategy replay nascar|motogp`, or
 RACINGLINES_BUY_ALL=1, which the F1 weekend sweep reads too). Backtest and paper only; nothing here places an order.
 It is reported as its own mode, `buy_all`, beside the taker's modes, whose results are unchanged.
 

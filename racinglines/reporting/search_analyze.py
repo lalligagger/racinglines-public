@@ -84,7 +84,7 @@ def main(argv=None):
     sims = []
     for jid, v in sorted(done.items(), key=lambda kv: kv[1]["run_id"]):
         st = SS.Settings.from_dict(v["settings"])
-        cmd = ["racinglines", "f1", "--variant", st["variant"], "sweep", "--year", str(v["year"]), "--no-fetch", "--save"]
+        cmd = ["racinglines", "strategy", "sweep", "f1", "--variant", st["variant"], "--year", str(v["year"]), "--no-fetch", "--save"]
         sims.append(dict(job=jid, run_id=v["run_id"], year=v["year"], note=v.get("note", ""), label=st.label(),
                          settings_key=st.key, model_key=st.model_key, changed=st.changed(), settings=st.to_json(),
                          command=" ".join(cmd + [f"'{a}'" if " " in a else a for a in st.argv()])))
@@ -201,7 +201,7 @@ def main(argv=None):
         st = sets[r["settings_key"]]
         name = f"{r['strategy']} · {st.label()}"
         fn = f"{i:02d}-{r['strategy']}-{r['settings_key']}.json"
-        cmd = lambda y, s: " ".join(["racinglines", "f1", "--variant", s["variant"], "sweep", "--year", str(y),
+        cmd = lambda y, s: " ".join(["racinglines", "strategy", "sweep", "f1", "--variant", s["variant"], "--year", str(y),
                                      "--no-fetch", "--save"] + [f"'{a}'" if " " in a else a for a in s.argv()])
         doc = dict(rank=i, name=name, strategy=r["strategy"], verdict=r["verdict"], settings=st.to_json(),
                    settings_key=st.key, changed={k: v for k, v in st.to_json().items() if st[k] != SS.BY_NAME[k].default},
