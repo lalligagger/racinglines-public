@@ -648,6 +648,7 @@ from racinglines.web import exchange_routes  # noqa: E402,F401  (exchange boards
 from racinglines.web import diag_routes  # noqa: E402,F401  (single-event diagnostics)
 from racinglines.web import mybets  # noqa: E402,F401  (/mybets, the owner's bets calendar from the data folder)
 from racinglines.web import term_routes  # noqa: E402,F401  (/term, recorded CLI runs)
+from racinglines.web import strategy_pick  # noqa: E402,F401  (/strategy/pick, the account's own strategy)
 from racinglines.web.book_routes import bet_markets, polymarket_calls  # noqa: E402,F401  (used by views.py)
 
 

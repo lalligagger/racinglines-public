@@ -329,6 +329,17 @@
     btn.addEventListener("click", () => termPlay(t));
   });
 
+  // --- /strategy/pick: each slider shows its value (points for probabilities, $ or shares otherwise) ---
+  document.querySelectorAll(".pick input[type=range]").forEach(r => {
+    const out = document.querySelector(`[data-out="${r.name}"]`);
+    const show = () => {
+      const v = Number(r.value), u = r.dataset.unit;
+      out.textContent = u === "pts" ? `${Math.round(v * 100)} pts` : u === "$" ? `$${v}` : `${v} ${u}`;
+      if (Number(r.dataset.default) !== v) out.textContent += " (adjusted)";
+    };
+    r.addEventListener("input", show); show();
+  });
+
   // --- Lab: sections open on demand (HTMX loads them on their "open" event), remembered per browser ---
   const lab = document.getElementById("lab");
   if (lab) {

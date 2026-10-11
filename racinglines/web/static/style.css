@@ -500,3 +500,17 @@ a.button.primary:hover { filter: brightness(1.08); color: #fff; }
 .term[data-running] .term-body { overflow: hidden; }
 .term:has(.term-body[hidden]) .term-cmd, .term:not(:has(.term-body)) .term-cmd { padding-bottom: 12px; }
 .term[data-typing] .term-cmd code::after { content: "▋"; color: #4d7cff; }
+
+/* ---- /strategy/pick: the account's own strategy (templates/strategy_pick.html) ---- */
+.pick fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.pick-opt { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; padding: 12px 14px; margin: 0 0 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--card); cursor: pointer; }
+.pick-opt:has(input[type=radio]:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.pick-opt > input[type=radio] { grid-row: span 3; margin-top: 3px; accent-color: var(--accent); }
+.pick-head { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pick-why { color: var(--muted); font-size: 13px; max-width: 80ch; }
+.pick-tune { display: none; grid-column: 2; margin-top: 8px; gap: 10px; }
+.pick-opt:has(input[type=radio]:checked) .pick-tune { display: grid; }
+.pick-slider { display: grid; gap: 2px; font-size: 13.5px; max-width: 520px; }
+.pick-slider input[type=range] { width: 100%; padding: 0; margin: 0; accent-color: var(--accent); }
+.pick-toggle { font-size: 13.5px; display: flex; gap: 8px; align-items: center; }
+.pick-now { font-size: 15px; }

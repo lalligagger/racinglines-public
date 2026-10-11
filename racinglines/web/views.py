@@ -924,8 +924,14 @@ def positions_backtests(request: Request, year: int | None = None, sport: str = 
 # Signals: the live paper signals of the user's strategy profile (pipelines/signals.py)
 # ---------------------------------------------------------------------------
 
+def _demo_user(me):
+    from racinglines.web import demo
+    return demo.is_demo(me)
+
+
 @app.get("/strategy", response_class=HTMLResponse, dependencies=[allow(*ANY)])
-def signals_page(request: Request, user: str = "", event: str = "", venue: str = "", sport: str = "", c=Depends(conn)):
+def signals_page(request: Request, user: str = "", event: str = "", venue: str = "", sport: str = "", msg: str = "",
+                 c=Depends(conn)):
     """The account's track record (every weekend: profile, trades, paper P&L), then one weekend's signals by
     stage and its paper positions (default: the latest). Takers see what to do and how hot it is (the
     modelled EV, graded), never our fair value or edge. Backfilled weekends are backtest replays and are
@@ -1008,7 +1014,8 @@ def signals_page(request: Request, user: str = "", event: str = "", venue: str =
                   positions=positions, cur=cur, event_key=ev, users=users, maker=maker, record=record,
                   seasons=seasons, total=total, acct=acct, is_maker=is_maker, heat_label=HEAT_LABEL,
                   venue=venue, sport=sport, sport_options=sport_options, sport_names=_sport_names(),
-                  venue_tabs=venue_tabs, venue_names=_venue_names(), mix=None if basic else story.mix(record))
+                  venue_tabs=venue_tabs, venue_names=_venue_names(), mix=None if basic else story.mix(record),
+                  msg=msg, can_pick=uid == me["id"] and not _demo_user(me))
 
 
 # ---------------------------------------------------------------------------
