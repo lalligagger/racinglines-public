@@ -281,6 +281,22 @@ def test_cli_json_is_stable(test_engine, db, book, tmp_path, capsys):
     assert _line(json.loads(capsys.readouterr().out), "win")["result"] == "won"
 
 
+def test_cli_rich_and_view_render_every_command(test_engine, db, book, tmp_path, capsys):
+    from racinglines.cli import book as CLI
+    p = tmp_path / "book.toml"
+    p.write_text(BOOK)
+    url = test_engine.url.render_as_string(hide_password=False)
+    for cmd, expect in (("map", "unmapped lines"), ("price", "assumptions"), ("settle", "payout")):
+        assert CLI.main([cmd, str(p), "--rich", "--db", url]) == 0
+        text = capsys.readouterr().out
+        assert f"book {cmd}" in text and expect in text and "parlay" in text
+        assert CLI.main([cmd, str(p), "--json", "--db", url]) == 0
+        saved = tmp_path / f"{cmd}.json"
+        saved.write_text(capsys.readouterr().out)
+        assert CLI.main(["view", str(saved)]) == 0
+        assert f"book {cmd}" in capsys.readouterr().out
+
+
 def test_same_race_legs_from_a_stored_combo_run(test_engine, db, book):
     """A stored f1_combo run (model_runs kind "combo") holding exactly the slip's legs prices it jointly."""
     from sqlalchemy import text
