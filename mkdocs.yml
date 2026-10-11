@@ -76,6 +76,7 @@ nav:
   - Background:
       - Project history: history.md
       - F1 reference: f1-reference.md
+  - PyPI page (example): pypi-example.md
 
 validation:
   anchors: warn          # broken #anchor links fail `mkdocs build --strict` (pre-push hook)
