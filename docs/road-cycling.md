@@ -2,7 +2,7 @@
 
 Road cycling has no exchange model yet (its Kalshi markets are tape-only, `docs/todo.md` U9), but its sportsbook
 lines (race winner, head-to-head) are priced from results by the **book model**: the timed-runs engine
-(`racinglines/models/timed_runs/model.py`, the downhill model) fitted on ProCyclingStats results.
+(`racinglines/models/inputs/run_times/model.py`, the downhill model) fitted on ProCyclingStats results.
 
 Everything is data:
 

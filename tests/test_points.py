@@ -1,12 +1,12 @@
-"""Downhill championship points tables (racinglines/models/timed_runs/points.py): per-season schemes
+"""Downhill championship points tables (racinglines/models/inputs/run_times/points.py): per-season schemes
 from points_schemes, the owner's entry file, and reconciliation with official standings. The official
 UCI scales aren't in the repo yet, so these tests use the placeholders and synthetic results."""
 
 import pandas as pd
 import pytest
 
-from racinglines.models.timed_runs import model as M
-from racinglines.models.timed_runs import points as P
+from racinglines.models.inputs.run_times import model as M
+from racinglines.models.inputs.run_times import points as P
 from racinglines.paths import ROOT
 
 TEMPLATE = ROOT / "sports" / "points" / "uci_dhi_wc.toml"

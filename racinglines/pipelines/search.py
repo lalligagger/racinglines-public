@@ -46,7 +46,7 @@ After every finished job the leaderboard and a results export are rewritten.
     variant = "pretrain"
 
     [[job]]                      # a downhill walk-forward (model-only: calibration per market kind)
-    sport = "mtb_dh"             # the sport's own settings (racinglines/models/timed_runs/settings.py)
+    sport = "mtb_dh"             # the sport's own settings (racinglines/models/inputs/run_times/settings.py)
     year = 2025
     half_life_days = 120
     replicates = 3               # any job: the same job at this many seeds (the default seed, 1, 2, ...);
@@ -400,7 +400,7 @@ def write_outputs(out, state, queue_path=None, echo=print):
     from sqlalchemy import text
 
     from racinglines.db.config import get_engine
-    from racinglines.models.position_sim import evaluate as EV
+    from racinglines.models import evaluate as EV
     from racinglines.pipelines import season_checkpoints as SC
     done = {k: v for k, v in state.items() if v.get("run_id")}
     runs = {}

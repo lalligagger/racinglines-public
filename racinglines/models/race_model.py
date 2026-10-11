@@ -35,17 +35,17 @@ class Event:
 
 
 class TimedRuns:
-    """Downhill (models/timed_runs): one event per race weekend, priced from every run before it with
+    """Downhill (models/inputs/run_times): one event per race weekend, priced from every run before it with
     its actual start list and format, as walk_forward_season does."""
 
     sport = "mtb_dh"
     name = "timed_runs"                  # model_runs.model
 
-    from racinglines.models.timed_runs.settings import DHSettings as Settings
+    from racinglines.models.inputs.run_times.settings import DHSettings as Settings
 
     def load(self, engine_url=None, competition="uci_dhi_wc", data=None):
         """The tidy runs frame (database, or `data`: a frame already loaded)."""
-        from racinglines.models.timed_runs import RUN_WEIGHTS
+        from racinglines.models.inputs.run_times import RUN_WEIGHTS
         if data is None:
             from racinglines.db.config import get_engine
             from racinglines.db.queries import load_tidy
@@ -58,7 +58,7 @@ class TimedRuns:
 
     def seasons(self, data, settings, min_events=3):
         """Seasons of the category with min_events or more completed events (as `mtb_dh backtest`)."""
-        from racinglines.models.timed_runs import completed_events, select_target
+        from racinglines.models.inputs.run_times import completed_events, select_target
         years = data.loc[data["category"] == settings["category"], "event_date"].astype(str).str[:4]
         out = []
         for y in sorted(years.unique()):
@@ -68,8 +68,8 @@ class TimedRuns:
         return out
 
     def events(self, data, settings, seasons=None):
-        from racinglines.models.timed_runs import completed_events, event_format, event_order, select_target
-        from racinglines.models.timed_runs.season import _event_date
+        from racinglines.models.inputs.run_times import completed_events, event_format, event_order, select_target
+        from racinglines.models.inputs.run_times.season import _event_date
         cat = settings["category"]
         out = []
         for season in seasons or self.seasons(data, settings):
@@ -88,8 +88,8 @@ class TimedRuns:
 
     def price(self, hist, ev, settings, rng):
         """None when the event can't be priced (nothing to learn from yet, or no final results)."""
-        from racinglines.models.timed_runs import event_starters, fit_season_model, simulate_weekend
-        from racinglines.models.timed_runs.season import _training_rows
+        from racinglines.models.inputs.run_times import event_starters, fit_season_model, simulate_weekend
+        from racinglines.models.inputs.run_times.season import _training_rows
         target, fmt = ev.info["target"], ev.info["format"]
         kw = settings.fit_kw()
         train = _training_rows(hist, target, ev.cutoff, kw.pop("train_scope"))
@@ -106,7 +106,7 @@ class TimedRuns:
     def results(self, data, ev):
         """Final classification (position = final rank, status OK when ranked in the Final), the points
         qualifier's rank, points and who reached the Final."""
-        from racinglines.models.timed_runs import actual_event_points
+        from racinglines.models.inputs.run_times import actual_event_points
         target = ev.info["target"]
         pts = actual_event_points(target)
         pts = pts[pts["event_id"] == ev.id]
@@ -131,7 +131,7 @@ class PositionSim:
     from racinglines.pipelines.sweep_settings import Settings
 
     def load(self, engine_url=None, data=None):
-        from racinglines.models.position_sim import pricing as run
+        from racinglines.models.inputs import laps_pricing as run
         if data is None:
             from racinglines.db.config import get_engine
             data = run.Measurements.load(get_engine(engine_url))
@@ -145,7 +145,7 @@ class PositionSim:
         return sorted(int(y) for y in data.drivers["year"].dropna().unique())
 
     def events(self, data, settings, seasons=None):
-        from racinglines.models.position_sim import pricing as run
+        from racinglines.models.inputs import laps_pricing as run
         d = data.drivers.drop_duplicates("event_id").sort_values("r_ts")
         if seasons:
             d = d[d["year"].isin(seasons)]
@@ -155,19 +155,19 @@ class PositionSim:
     def history(self, data, settings):
         from types import SimpleNamespace
 
-        from racinglines.models.position_sim import pricing as run
+        from racinglines.models.inputs import laps_pricing as run
         with settings.applied():
             return SimpleNamespace(meas=data, hist=run.history(data, settings["track_features"]))
 
     def price(self, hist, ev, settings, rng):
-        from racinglines.models.position_sim import pricing as run
+        from racinglines.models.inputs import laps_pricing as run
         with settings.applied():
             _, ex = run.price_race(hist.meas, hist.hist, ev.cutoff, ev.id, n_sims=settings["sims"], rng=rng,
                                    use_track=settings["track_features"])
         return O.from_position_sim(ex["entrants"], ex["sim"])
 
     def results(self, data, ev):
-        from racinglines.models.position_sim import practice as PR
+        from racinglines.models.inputs import practice as PR
         o = data.drivers[data.drivers["event_id"] == ev.id]
         q = data.res[(data.res["event_id"] == ev.id) & (data.res["round"] == "qual")].set_index("athlete_id")["position"]
         out = pd.DataFrame(dict(athlete_id=o["athlete_id"].to_numpy(), position=o["position"].to_numpy(float),

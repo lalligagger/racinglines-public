@@ -550,7 +550,7 @@ def lab_section(request: Request, key: str, job: str = "", event: str = "", vari
         js = _recent_jobs(c, user["id"] if scope == "mine" else None)
         ctx.update(jobs=js, scope=scope, active=any(j["status"] in ("queued", "running") for j in js))
     elif key == "models":
-        from racinglines.models.position_sim import evaluate as EV
+        from racinglines.models import evaluate as EV
         ctx.update(pnl=EV.strategy_pnl(c))
     elif key == "scenarios":
         ctx.update(scenarios=scenarios(c), forecasts=rows(data.latest_forecasts(c)))

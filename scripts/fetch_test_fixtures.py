@@ -106,8 +106,8 @@ def build_f1(engine):
     from racinglines.db.config import get_session
     from racinglines.markets.polymarket.sync import sync
     from racinglines.markets.strategies import maker_replay as R
-    from racinglines.models.position_sim import model as M
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps as M
+    from racinglines.models.inputs import laps_pricing as run
     from racinglines.pipelines import weekend_sweep as SW
     from racinglines.sources.fastf1 import fetch
     from racinglines.sources.fastf1.ingest import ingest
@@ -181,7 +181,7 @@ def build_f1_season(engine, meas=None, hist=None):
     import pandas as pd
 
     from racinglines.db.config import get_session
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     from racinglines.pipelines import season_strategy as SE
     if meas is None:
         meas = run.Measurements.load(engine)

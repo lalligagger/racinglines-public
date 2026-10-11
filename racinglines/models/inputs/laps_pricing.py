@@ -39,8 +39,8 @@ import numpy as np
 import pandas as pd
 
 from racinglines.models import outcomes as O
-from racinglines.models.position_sim import model as M
-from racinglines.models.position_sim import penalties as GP
+from racinglines.models.inputs import laps as M
+from racinglines.models.inputs import grid as GP
 from racinglines.core.stats import brier, ranks
 
 ONE_MIN = pd.Timedelta(minutes=1)
@@ -74,7 +74,7 @@ class Measurements:
 
     @classmethod
     def from_frames(cls, res, laps, prof):
-        """From the raw SQL frames (see position_sim.model.load_frames), e.g. pinned test fixtures."""
+        """From the raw SQL frames (see inputs.laps.load_frames), e.g. pinned test fixtures."""
         res, laps, prof = M.prepare(res, laps, prof)
         drivers, sectors = M.event_measurements(res, laps, prof)
         return cls(res, prof, drivers, sectors, M.practice_measurements(laps), None, M.event_x(prof),
@@ -245,7 +245,7 @@ def price_stages(meas, v, event_id, e, fm, tf, rng, n_sims, chaos_p, stages=None
 def history(meas, use_track=True):
     """One row per entrant per completed race, with features computed as of one
     minute before that race's start (qualifying known) and its outcome."""
-    from racinglines.models.position_sim import practice as PR
+    from racinglines.models.inputs import practice as PR
     ptrain = PR.training_rows(meas, use_track) if PR.USE_PRACTICE else pd.DataFrame()
     rows = []
     events = meas.drivers.drop_duplicates("event_id").sort_values("r_ts")
@@ -312,7 +312,7 @@ def price_race(meas, hist, cutoff, event_id, n_sims=10000, rng=None, use_track=T
     snap = M.snapshot(v.drivers, v.sectors, v.xmap if use_track else {}, v.cutoff, use_track)
     tf = M.venue_track_features(v.prof, venue, v.cutoff)
     e = M.predict_paces(snap, entrants, tf).reset_index(drop=True)
-    from racinglines.models.position_sim import practice as PR
+    from racinglines.models.inputs import practice as PR
     e, sigma_q = PR.apply(e, v.practice, event_id, PR.fit(hist.attrs.get("practice_train"), v.cutoff))
     grid = qualifying_grid(v, event_id, e) if event_id is not None else None
     fm = M.fit_finish(hist, v.cutoff, use_track, no_practice=M.PRE_PRACTICE_TRAIN and sigma_q is None,
@@ -398,7 +398,7 @@ def backtest(meas, hist, start_year=2021, n_sims=4000, use_track=True, modes=(PR
              echo=None, last_n=None, keep_probs=False):
     """One row per race x mode with Brier / log-loss scores. keep_probs: also keep each
     driver's win / podium / top-10 probability and outcome (column `pred`), for
-    reliability curves (position_sim/evaluate.py)."""
+    reliability curves (models/evaluate.py)."""
     rng = np.random.default_rng(seed)
     rows = []
     events = meas.drivers[meas.drivers["year"] >= start_year].drop_duplicates("event_id").sort_values("r_ts")

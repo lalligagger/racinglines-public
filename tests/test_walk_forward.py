@@ -18,7 +18,7 @@ pytestmark = pytest.mark.quick
 
 @pytest.fixture(scope="module")
 def dh():
-    from racinglines.models.timed_runs import RUN_WEIGHTS
+    from racinglines.models.inputs.run_times import RUN_WEIGHTS
     from racinglines.sources.chronorace.parse import parse_markdown_tables_file
     from racinglines.testing import synthetic as SY
     d = Path(tempfile.mkdtemp(prefix="racinglines-test-"))
@@ -30,7 +30,7 @@ def dh():
 
 
 def test_downhill_engine_equals_walk_forward_season(dh):
-    from racinglines.models.timed_runs import completed_events, select_target, walk_forward_season
+    from racinglines.models.inputs.run_times import completed_events, select_target, walk_forward_season
     m, data = dh
     st = m.Settings.from_dict(dict(sims=400, seed=7))
     seasons = m.seasons(data, st)
@@ -82,7 +82,7 @@ def test_f1_settings_keys_did_not_move():
 
 def test_f1_wrapper_prices_as_price_race():
     from racinglines.markets import kinds as K
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     from racinglines.testing import synthetic as SY
     m = RM.get("f1")
     data = m.load(data=run.Measurements.from_frames(*SY.f1_frames()))

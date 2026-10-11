@@ -1,5 +1,5 @@
 # Confirmed grid penalties, per event and session, applied to the simulated or known grid before the race is simulated
-# (racinglines/models/position_sim/penalties.py). kind: "back" (back of the grid), "pit_lane" (priced as back of the grid), or
+# (racinglines/models/inputs/grid.py). kind: "back" (back of the grid), "pit_lane" (priced as back of the grid), or
 # "places" with `places = N`. Only penalties confirmed by the team or the FIA go here, with a source.
 #
 #   event      the event key YYYY-RR (season and championship round, as `f1 diagnostic` takes it)

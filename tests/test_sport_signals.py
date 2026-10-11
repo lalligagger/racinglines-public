@@ -142,7 +142,7 @@ def test_f1_forecast_save_and_a_live_reprice_each_log_one_change(test_engine, mo
 
     from conftest import TEST_DB
     from racinglines.cli import f1 as CLI
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     from racinglines.pipelines import sweep_settings as SS
     view = SimpleNamespace(res=pd.DataFrame(dict(position=[1.0, 2.0])))
     meas = SimpleNamespace(view=lambda cutoff: view)

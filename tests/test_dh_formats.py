@@ -6,8 +6,8 @@ import pandas as pd
 import pytest
 
 from racinglines.db import registry
-from racinglines.models import timed_runs as P
-from racinglines.models.timed_runs import model as TM
+from racinglines.models.inputs import run_times as P
+from racinglines.models.inputs.run_times import model as TM
 from racinglines.sources.chronorace.parse import parse_markdown_tables_file
 from racinglines.testing import synthetic as SY
 

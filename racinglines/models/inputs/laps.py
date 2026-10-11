@@ -68,7 +68,7 @@ FINISH_RHO_SCALE = 1.0 # fraction of the measured teammate finishing correlation
 X_CENTER, X_SCALE = 250.0, 50.0
 
 # Challenger switches (docs/f1-roadmap.md, F1-2 / F1-3). The defaults reproduce the
-# baseline exactly; position_sim/variants.py names combinations for comparisons.
+# baseline exactly; models/variants.py names combinations for comparisons.
 FINISH_MODEL = "ridge"       # "ridge" | "gbm": gradient-boosted finishing model, monotone in grid and pace gaps
 GRID_TERMS = False           # front-of-grid term log(grid)/log(n): True = always, "known" = only once the grid is known
 PRE_PRACTICE_TRAIN = False   # before any practice at the event, use a finishing model trained on no-practice paces

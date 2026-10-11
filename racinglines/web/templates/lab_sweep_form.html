@@ -16,7 +16,7 @@
     <label title="{{ s.help }}" data-setting="{{ s.name }}"><span>{{ s.label }}</span>
     {% if s.name == 'variant' %}<input name="variant" value="{{ v }}" list="variant-choices" maxlength="80" autocomplete="off" data-variant-text>
       <datalist id="variant-choices">{% for m in model_choices %}<option value="{{ m }}">{% endfor %}</datalist>
-      {# the switches of models/position_sim/variants.py as checkboxes; app.js joins the ticked ones into the field above
+      {# the switches of models/variants.py as checkboxes; app.js joins the ticked ones into the field above
          (in this order, so a combination keeps the name its stored stages are keyed by) #}
       <span class="checks variant-switches">{% for sw, why in variant_switches %}<label class="inline" title="{{ why }}"><input type="checkbox" data-switch="{{ sw }}"{% if sw in exclusive_switches %} data-exclusive="{{ exclusive_switches|join(' ') }}"{% endif %}> {{ sw }}</label>{% endfor %}</span>
     {% elif s.type == 'bool' %}<span class="check"><input type="hidden" name="{{ s.name }}" value="false"><input type="checkbox" name="{{ s.name }}" value="true" {{ 'checked' if v }}> on</span>

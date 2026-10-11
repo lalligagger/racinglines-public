@@ -107,7 +107,7 @@ def test_non_f1_sweep_form_renders_sport_specific_settings():
 
 
 def test_f1_sweep_form_offers_the_variant_switches_as_checkboxes():
-    from racinglines.models.position_sim import variants as V
+    from racinglines.models import variants as V
     from racinglines.pipelines import sweep_settings as SS
     from racinglines.web.app import templates
 

@@ -126,7 +126,7 @@ SETTINGS = [
 BY_NAME = {s.name: s for s in SETTINGS}
 # The split (docs/backtest-core.md): the pricing model's own group, and the groups any sport's backtest shares
 # (entry timing, taker, maker, markets and their guards). Another model family's settings are its own model
-# group plus these once it trades a venue (models/timed_runs/settings.py is model-only so far).
+# group plus these once it trades a venue (models/inputs/run_times/settings.py is model-only so far).
 MODEL_SETTINGS = [s for s in SETTINGS if s.group == "model"]
 SHARED_SETTINGS = [s for s in SETTINGS if s.group != "model"]
 GROUPS = (("model", "Model"), ("timing", "Entry timing"), ("taker", "Taker strategies"),
@@ -177,7 +177,7 @@ class Settings(dict):
     """A full, validated set of sweep settings (missing ones take their defaults).
 
     The schema is a class attribute, so another model family defines its own settings by subclassing
-    (e.g. racinglines/models/timed_runs/settings.py) and keeps the same keys, labels and flags."""
+    (e.g. racinglines/models/inputs/run_times/settings.py) and keeps the same keys, labels and flags."""
 
     SPEC = SETTINGS
     BY = BY_NAME
@@ -202,7 +202,7 @@ class Settings(dict):
         return out
 
     def _validate(self):
-        from racinglines.models.position_sim import variants as V
+        from racinglines.models import variants as V
         V.switches(self["variant"])                                  # raises on an unknown switch
 
     @classmethod
@@ -258,9 +258,9 @@ class Settings(dict):
     @contextmanager
     def applied(self):
         """Model settings (and the variant's switches) in force for the duration."""
-        from racinglines.models.position_sim import model as M
-        from racinglines.models.position_sim import practice as PR
-        from racinglines.models.position_sim import variants as V
+        from racinglines.models.inputs import laps as M
+        from racinglines.models.inputs import practice as PR
+        from racinglines.models import variants as V
         mods = {"model": M, "practice": PR}
         old = []
         try:

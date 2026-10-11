@@ -45,7 +45,7 @@ classified = "status_ok"          # settlement: only an officially classified ca
 minutes = { fp1 = 60, fp2 = 60, fp3 = 60, sprint_qual = 45, qual = 60, sprint = 45, race = 150 }
 practice = ["fp1", "fp2", "fp3", "sprint_qual"]
 
-# The race-like sessions the pricer simulates (models/position_sim/pricing.py price_race), each with the session its
+# The race-like sessions the pricer simulates (models/inputs/laps_pricing.py price_race), each with the session its
 # grid comes from, its points table ([points] below, with <points>_by_year) and its retirement rate as a multiple of
 # the race's (dnf_scale, default 1.0). `race` is the Grand Prix itself and keeps its own code path; every other entry
 # is a stage priced only on weekends that have it (format.sprint), on its own random stream, so no Grand Prix price
@@ -162,7 +162,7 @@ stale_h = 30                    # the Live tab stays green between updates while
 
 [live.markets]
 kinds = ["race_win", "race_podium", "race_pole", "race_h2h", "race_constructor_top"]
-# opt-in props (models/position_sim/props.py): "race_safety_car", "race_red_flag", "race_rain", "race_fastest_lap";
+# opt-in props (models/props.py): "race_safety_car", "race_red_flag", "race_rain", "race_fastest_lap";
 # add them here or in a launch spec. [live.props] prior_n (default 16) sets the per-circuit shrinkage
 h2h_from = "last_listed"        # head-to-head pairs: the last race Polymarket listed (or an event key)
 

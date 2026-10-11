@@ -46,7 +46,7 @@ def _timestamp(v):
 
 
 def _validate(i, row):
-    from racinglines.models.position_sim import model as M
+    from racinglines.models.inputs import laps as M
     where = f"grid penalty {i + 1} ({row.get('event')}, {row.get('driver')})"
     missing = [k for k in REQUIRED if not row.get(k)]
     if missing:

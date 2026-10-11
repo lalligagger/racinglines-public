@@ -2,7 +2,7 @@
 Sport schemas: what differs between sports, as data (sports/<code>.toml).
 
 Existing modules keep their own constant names (registry.COMPETITIONS,
-position_sim.model.SESSION_MINUTES, timed_runs.model.FINAL_POINTS, ...) and take
+inputs.laps.SESSION_MINUTES, run_times.model.FINAL_POINTS, ...) and take
 the values from here, so a new sport starts with a new schema file.
 
     load("f1")                  the parsed schema

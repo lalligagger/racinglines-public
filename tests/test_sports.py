@@ -27,8 +27,8 @@ def test_schema_has_required_keys(code):
 def test_modules_read_the_schemas():
     from racinglines.db import registry
     from racinglines.markets import venues
-    from racinglines.models import timed_runs
-    from racinglines.models.position_sim import model
+    from racinglines.models.inputs import run_times as timed_runs
+    from racinglines.models.inputs import laps as model
     f1, dh = sports.load("f1"), sports.load("mtb_dh")
     assert set(registry.SPORTS) == set(sports.SPORT_CODES)
     assert model.RACE_POINTS == f1["points"]["race"]

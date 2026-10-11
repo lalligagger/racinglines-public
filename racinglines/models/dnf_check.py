@@ -28,7 +28,7 @@ the paired difference `model-WX - model` (Brier and log loss, with the Brier dif
 import numpy as np
 import pandas as pd
 
-from racinglines.models.position_sim import props as PR
+from racinglines.models import props as PR
 
 RETIRED = ("DNF", "DSQ")
 BUCKETS = (0.0, 0.05, 0.10, 0.15, 0.20, 1.0)

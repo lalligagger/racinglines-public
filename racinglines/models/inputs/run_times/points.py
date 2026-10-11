@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 import pandas as pd
 from sqlalchemy import text
 
-from racinglines.models.timed_runs import model as M
+from racinglines.models.inputs.run_times import model as M
 
 QUAL_ROUNDS = ("qual", "qual1", "qual2", "semi")
 

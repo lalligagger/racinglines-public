@@ -54,7 +54,7 @@ Both model families already simulate the same thing: a matrix of finishing ranks
 | **Search** | One queue for every sport, with the held-out rule, seed replicates, confirmation and stable ids built in | `racinglines/pipelines/search*.py` | done: `sport = "mtb_dh"` jobs, `replicates = N`, candidate ids carried into the Lab |
 
 **Settings.** Shared groups (timing, taker, maker, markets, guards: `SHARED_SETTINGS`) plus the model's own
-group (`MODEL_SETTINGS`; downhill's is `models/timed_runs/settings.py`). Per-kind overrides generalise
+group (`MODEL_SETTINGS`; downhill's is `models/inputs/run_times/settings.py`). Per-kind overrides generalise
 `min_edge_h2h`: `min_edge_by_kind = "race_h2h=0.05,race_podium=0.08"` gives each listed kind its own entry
 threshold (over `min_edge` and `min_edge_h2h`), the params-4h lesson that the edge sits in some kinds and
 not others. `settings_key` / `model_key` keep today's hashing (settings at an unset default are left
@@ -67,7 +67,7 @@ out), so saved keys never change: every saved sweep's and stage run's key recomp
 model through `racinglines/core/walk_forward.py`: every completed event is priced from the runs before it
 with its real start list and format, every market kind is settled from the official result, and the
 fair values are scored (Brier, log loss, ECE, reliability bins) per kind and per season. The model's
-settings (`racinglines/models/timed_runs/settings.py`: category, sims, half-life, pace shrinkage, junior
+settings (`racinglines/models/inputs/run_times/settings.py`: category, sims, half-life, pace shrinkage, junior
 weight, training scope, t noise, seed) use the same schema, keys and flags as the F1 sweep's, so the
 search queue treats a downhill job like an F1 one. `--save` stores a `walk_forward` model run whose
 per-event scores (`<kind>_score` = −1000 × log loss, higher is better) are the search report's curves.
@@ -265,7 +265,7 @@ podium and top 10 and "target only" on win and fastest qualifier.
 
 ```toml
 [[job]]
-sport = "mtb_dh"               # the downhill model's settings (racinglines/models/timed_runs/settings.py)
+sport = "mtb_dh"               # the downhill model's settings (racinglines/models/inputs/run_times/settings.py)
 year = 2026
 prior_n = 1.5
 replicates = 3                 # this job and its season's baseline at 3 seeds each

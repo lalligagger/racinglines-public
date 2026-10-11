@@ -36,7 +36,7 @@ event in depth, then on a whole season.
 Neither one feeds the live app. Live fair prices come only from
 `kind = 'forecast'` runs.
 
-**No leakage.** Every run prices through `position_sim.pricing.price_race` with a hard cutoff:
+**No leakage.** Every run prices through `inputs.laps_pricing.price_race` with a hard cutoff:
 
 - `Measurements.view(cutoff)` keeps only sessions that started before the cutoff.
 - `assert_no_leak` raises `LeakageError` if anything later gets through.

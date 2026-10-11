@@ -77,7 +77,7 @@ HEAT_MIX_MEAN = 0.9                       # mean weight over A's backtest entrie
 def _stages(w):
     """The side stages (sports/f1.toml [sessions.sim], e.g. the sprint) this weekend has, from the schedule's
     FastF1 event format, so a live run prices them before their sessions' data exists (pricing.price_stages)."""
-    from racinglines.models.position_sim import model as M
+    from racinglines.models.inputs import laps as M
     from racinglines.sources.fastf1.fetch import SPRINT_FORMATS
     if not w or str(w.get("format", "")) not in SPRINT_FORMATS:
         return []
@@ -322,7 +322,7 @@ def _refresh_exchange(engine, engine_url, w, now, venue, echo=print):
 def _entrants(meas, event_id, cutoff):
     """Who races, from what's known at the cutoff: this weekend's qualifying (or sprint qualifying,
     FP3, FP2) classification, else the last race's field. FP1 is skipped: reserve drivers run it."""
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     v = meas.view(cutoff)
     if event_id is not None:
         for code in ("qual", "sprint_qual", "fp3", "fp2"):
@@ -337,7 +337,7 @@ def _venue(meas, event_id, w):
     if event_id is not None:
         return meas.res.loc[meas.res["event_id"] == event_id, "venue"].iloc[0]
     from racinglines.db.ingest import _slugify
-    from racinglines.models.position_sim.pricing import upcoming_schedule
+    from racinglines.models.inputs.laps_pricing import upcoming_schedule
     year, rnd = (int(x) for x in w["event_key"].split("-"))
     s = upcoming_schedule(year)
     return _slugify(s.loc[s["round"] == rnd, "location"].iloc[0])
@@ -346,7 +346,7 @@ def _venue(meas, event_id, w):
 def price_stages_now(meas, hist, w, st, engine, engine_url, now, echo=print):
     """[(label, cutoff, run_id, priced_at)] for the stages whose cutoff has passed and whose session data is
     in; stops at the first stage still waiting for data. Reuses the sweep's cached stage runs."""
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     year, rnd = (int(x) for x in w["event_key"].split("-"))
     ev = meas.res[(meas.res["year"] == year) & (meas.res["series_round"] == rnd)]
     event_id = int(ev["event_id"].iloc[0]) if len(ev) else None
@@ -417,7 +417,7 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
     and recorded tape, its maker fee).
     scale: a taker's stake multiplier (TakerParams.scale; a blend member's weight, see compute_all).
     -> dict(event, stages, signals, positions, venue, note)."""
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     st = SS.Settings.from_dict(profile["settings"], strict=False)
     venue = resolve_venue(st, venue, live)
     now = pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz="UTC").tz_localize(None)
@@ -731,7 +731,7 @@ def price_upcoming(engine, engine_url, profile, now=None, n=3, echo=print, cache
     per deploy: the Markets board reads the newest of these runs, so a model change reaches it at the next pass).
     Returns {event_key: run id}."""
     from racinglines.db.queries import code_version
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     st = SS.Settings.from_dict(profile["settings"], strict=False)
     venue = SS.venue_of(st)
     now = pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz="UTC").tz_localize(None)

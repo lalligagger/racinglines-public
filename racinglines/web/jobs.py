@@ -98,14 +98,14 @@ MODEL_CHOICES = ["baseline", "grid", "gridq", "pretrain", "gbm", "tail", "reset"
                  "pretrain+reset", "gridq+pretrain+reset", "gridq+pretrain+tail"]
 
 
-# the switches a variant combines (models/position_sim/variants.py), offered as checkboxes in the sweep form; fastlap
+# the switches a variant combines (models/variants.py), offered as checkboxes in the sweep form; fastlap
 # and flpos both draw the fastest lap, so only one of them can be on
 EXCLUSIVE_SWITCHES = ("fastlap", "flpos")
 
 
 def variant_switches():
     """[(switch, description)] in variants.SWITCHES order, baseline left out (it is no switch at all)."""
-    from racinglines.models.position_sim import variants as V
+    from racinglines.models import variants as V
     return [(k, V.DESCRIPTION.get(k, "")) for k in V.SWITCHES if k != "baseline"]
 
 
@@ -363,7 +363,7 @@ def parse_legs(raw):
     priced per simulation and names what it needs (a driver counts as an athlete). Returns compact JSON."""
     import json
     from racinglines.markets import combos as C
-    from racinglines.models.position_sim import combo_job as CJ
+    from racinglines.models import combo_job as CJ
     if not raw or len(raw) > 4000:
         raise ValueError("Legs: JSON, up to 4000 characters")
     combos = CJ.parse_combos(raw)

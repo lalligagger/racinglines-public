@@ -228,7 +228,7 @@ def strategy_pnl(conn, year=2026):
     """dict(variants, rows, runs): one row per strategy, one column per model variant that has a
     saved sweep for `year` (baseline first). Cells: dict(pnl, up) or None."""
     from sqlalchemy import text
-    from racinglines.models.position_sim import variants as V
+    from racinglines.models import variants as V
     found = [r[0] for r in conn.execute(text("""SELECT DISTINCT coalesce(params->>'variant', 'baseline') FROM model_runs
                                                 WHERE kind = 'sweep' AND (params->>'year')::int = :y
                                                   AND coalesce(params->>'sport', 'f1') = 'f1'"""), dict(y=year))]

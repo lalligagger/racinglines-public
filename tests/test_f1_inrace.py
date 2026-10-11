@@ -1,8 +1,8 @@
-"""In-race win chart: live timing -> win probabilities (models/position_sim/inrace.py, pipelines/live_f1.inrace_points)."""
+"""In-race win chart: live timing -> win probabilities (models/inrace.py, pipelines/live_f1.inrace_points)."""
 
 import json
 
-from racinglines.models.position_sim import inrace as IR
+from racinglines.models import inrace as IR
 
 PRIOR = {"A": 0.5, "B": 0.3, "C": 0.15, "D": 0.05}
 
