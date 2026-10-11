@@ -543,6 +543,7 @@ def lab_section(request: Request, key: str, job: str = "", event: str = "", vari
                    sweep_start=SS.Settings.from_dict(start, strict=False).to_json(), sweep_source=source,
                    sweep_groups=[(g, lab, [x for x in SS.SETTINGS if x.group == g]) for g, lab in SS.GROUPS],
                    sweep_defaults=SS.Settings.from_dict().to_json(), model_choices=jobs.MODEL_CHOICES,
+                   variant_switches=jobs.variant_switches(), exclusive_switches=jobs.EXCLUSIVE_SWITCHES,
                    sel_candidate=candidate, sweep_forms=sweep_forms)
     elif key == "jobs":
         scope = scope if scope in ("mine", "all") else "mine"
