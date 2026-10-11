@@ -65,10 +65,10 @@ and its generator). Adding a pack is adding a folder: no command, flag, schema, 
 The synthetic exchanges are data like the rest: prices drawn around the generator's own odds with an exchange's
 noise and spread. No real exchange data is in any pack.
 
-## The hosted demo store
+## The hosted demo store (coming next)
 
-`racinglines book ... --demo --remote` (or `--demo` with `source = "remote"` in `~/.config/racinglines/cli.toml`)
-sends the request to the hosted MCP server's demo store instead of a local one. On the VM that store is the kart pack
-built into its own database (`racinglines_demo_kart`), never production's, by `scripts/vm/demo_store.sh` (owner-run:
-it takes a backup first). Remote access is in testing; every remote command prints the #aintcare warning
+Not working yet. The plan: `--demo --remote` (or `--demo` with `source = "remote"` in
+`~/.config/racinglines/cli.toml`) sends the quickstart's requests to a hosted MCP server over a demo store (the kart
+pack built into its own database on the VM, never production's) instead of a local one. Until it lands, `--demo`
+always builds and uses a local store. Remote access is in testing; every remote command prints the #aintcare warning
 ([Quickstart: Remote](quickstart.md#4-remote-testing)).

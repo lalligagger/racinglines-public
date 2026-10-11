@@ -95,7 +95,7 @@ and only one of them uses MCP:
 
 | Mode | MCP? | What it runs on |
 |---|---|---|
-| `--demo [PACK]` | No (with `--remote`: yes, the hosted demo store) | A demo store: a local database of synthetic data from a data pack, built on first use, priced by the same code as `--local` ([Quickstart](quickstart.md)). The first thing to run after installing |
+| `--demo [PACK]` | No (a hosted demo store is coming next) | A demo store: a local database of synthetic data from a data pack, built on first use, priced by the same code as `--local` ([Quickstart](quickstart.md)). The first thing to run after installing |
 | `--remote` | Yes, the hosted server | Your book file, sent as text to the `map_book` / `price_book` / `settle_book` tools; the result is the same dict `--json` prints locally, rendered the same way (`racinglines/cli/remote.py`) |
 | `--local` (default) | No | Your own database (`--db`, `DATABASE_URL`) |
 

@@ -25,7 +25,7 @@ docker-compose user has it). No API key, no account and no network access are ne
 ## 2. First run: choose where the data comes from
 
 The first command that needs a database, when none is configured (no `DATABASE_URL`, no `db` or `source` in
-`~/.config/racinglines/cli.toml`), asks once:
+`~/.config/racinglines/cli.toml`), will ask once:
 
 ```
 racinglines needs a database. Choose one:
@@ -33,9 +33,9 @@ racinglines needs a database. Choose one:
   2) remote: sign in to racinglines.bet and run `book` commands on the hosted server (testing)
 ```
 
-The answer is saved as `source` in `~/.config/racinglines/cli.toml` (`racinglines book config source local|remote`
-changes it later). Without a terminal (a script, CI) nothing is asked: the command exits with status 2 and prints the
-two options. `--demo` always uses a local demo store unless `--remote` is given too (below).
+**Coming next, not working yet:** this first-run question. Until it lands, a command with no `DATABASE_URL` uses the
+docker-compose database (localhost:5433), and `racinglines book config source local|remote` sets the `book` commands'
+default by hand. `--demo` always uses a local demo store.
 
 ## 3. The quickstart, on the kart pack
 
@@ -107,16 +107,11 @@ and trades per market; the kart pack carries quotes only, not a tape).
     stderr.
 
 `racinglines book price FILE --remote` runs the book commands on the hosted MCP server instead of a local database
-(sign-in through the browser the first time; [MCP: Hosted](mcp.md#hosted-the-vm)). `--demo --remote` sends the same request
-to the hosted server's demo store, which holds the kart pack's synthetic data only, never production data:
+(sign-in through the browser the first time; [MCP: Hosted](mcp.md#hosted-the-vm)).
 
-```
-# LOCAL (Mac)
-racinglines book price --demo --remote
-```
-
-The hosted demo store is set up on the VM by `scripts/vm/demo_store.sh` (owner-run, backup first; see
-[Demo data packs](demo.md#the-hosted-demo-store)).
+**Coming next, not working yet:** the remote demo, `--demo` together with `--remote` (or with `source = "remote"`):
+the same quickstart sent to a hosted demo store that holds a pack's synthetic data only, never production data. Until
+it lands, `--demo` always uses a local demo store ([Demo data packs](demo.md#the-hosted-demo-store-coming-next)).
 
 ## 5. Rebuild the data yourself
 
