@@ -19,6 +19,8 @@ the values from here, so a new sport starts with a new schema file.
                                 market is about ([identity] resolver in the schema), None if the sport has none
     frames(code)                the L1 input frames a sport's [data] frames names, () if the block is absent
                                 (racinglines/frames, docs/frames.md)
+    audience(code)              who the web app shows the sport to ([sport] audience): "all" (the default) or "admin"
+    admin_only()                the sport codes whose audience is "admin"; admin_only_competitions() their competitions
 """
 
 import tomllib
@@ -59,6 +61,30 @@ def declaring(model_input):
         raise ValueError(f"[model] inputs: {len(codes)} sports declare {model_input!r} ({codes}); its layer reads "
                          "one sport's schema at import, so exactly one may until it is bound per sport")
     return codes[0]
+
+
+AUDIENCES = ("all", "admin")
+
+
+def audience(code):
+    """Who the web app shows the sport to ([sport] audience): "all" (the default) or "admin" (owner, 2026-10-11, MotoGP
+    for the Alpha: a venue's or data feed's terms keep its results and prices off user pages). Only what users see
+    changes: the sport is still recorded, priced and settled, the CLI and admins see all of it, and nothing is deleted.
+    Flipping the key back to "all" shows it again."""
+    got = load(code)["sport"].get("audience", "all")
+    if got not in AUDIENCES:
+        raise ValueError(f"sports/{code}.toml [sport] audience: {got!r} not in {AUDIENCES}")
+    return got
+
+
+def admin_only():
+    """The sport codes the web app shows to admins only ([sport] audience = "admin")."""
+    return frozenset(c for c in SPORT_CODES if audience(c) == "admin")
+
+
+def admin_only_competitions():
+    """The competition codes of the admin-only sports."""
+    return frozenset(load(c)["competition"]["code"] for c in admin_only())
 
 
 def modeled(code):

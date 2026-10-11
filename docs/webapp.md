@@ -92,6 +92,19 @@ event: a race, or a competition's season
 - **Adding a venue:** add a `VENUES` entry and rows in `market_links` with
   `exchange = <code>`. Every page then shows its column.
 
+## Sports shown to admins only
+
+One schema key decides which sports users see: `[sport] audience` in `sports/<code>.toml`, `"all"` by default.
+With `audience = "admin"`, the sport is left out of every page for everyone but admins. Its race, event, season,
+run, diagnostic and athlete pages, and its JSON API rows, answer 404. That covers the Markets board and calendar,
+the exchange lists, the Lab (Edge Finder, run forms, jobs, backtests, scenarios, diagnostics, runs), Positions,
+Strategy and its track record, Live, Settings and the landing page's sports line. The web app is the only reader
+(`racinglines/web/audience.py`): the sport is still recorded, priced and settled, the CLI shows it, and nothing is
+deleted. Setting the key back to `"all"` shows it again; it is code, so the change is a deploy.
+
+MotoGP is admin-only for the Alpha (owner, 2026-10-11, "Hide for Alpha": the motogp.com terms keep its results and
+prices off user pages).
+
 ## Pages
 
 **Landing page** (`/login`, where every signed-out visit lands; owner, 2026-10-08). A compact, centered page with no
