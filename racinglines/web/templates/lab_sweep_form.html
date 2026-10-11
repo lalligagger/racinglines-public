@@ -14,8 +14,11 @@
   <fieldset class="settings-group"><legend>{{ glabel }}</legend><div class="jobform">
   {% for s in items %}{% set v = sweep_start.get(s.name) %}
     <label title="{{ s.help }}" data-setting="{{ s.name }}"><span>{{ s.label }}</span>
-    {% if s.name == 'variant' %}<input name="variant" value="{{ v }}" list="variant-choices" maxlength="80" autocomplete="off">
+    {% if s.name == 'variant' %}<input name="variant" value="{{ v }}" list="variant-choices" maxlength="80" autocomplete="off" data-variant-text>
       <datalist id="variant-choices">{% for m in model_choices %}<option value="{{ m }}">{% endfor %}</datalist>
+      {# the switches of models/position_sim/variants.py as checkboxes; app.js joins the ticked ones into the field above
+         (in this order, so a combination keeps the name its stored stages are keyed by) #}
+      <span class="checks variant-switches">{% for sw, why in variant_switches %}<label class="inline" title="{{ why }}"><input type="checkbox" data-switch="{{ sw }}"{% if sw in exclusive_switches %} data-exclusive="{{ exclusive_switches|join(' ') }}"{% endif %}> {{ sw }}</label>{% endfor %}</span>
     {% elif s.type == 'bool' %}<span class="check"><input type="hidden" name="{{ s.name }}" value="false"><input type="checkbox" name="{{ s.name }}" value="true" {{ 'checked' if v }}> on</span>
     {% elif s.type == 'map' %}<input name="{{ s.name }}" value="{{ v or '' }}" placeholder="not set, e.g. race_h2h=0.05" maxlength="200" autocomplete="off">
     {% elif s.type == 'choice' %}<select name="{{ s.name }}">{% for ch in s.choices %}<option {{ 'selected' if ch == v }}>{{ ch }}</option>{% endfor %}</select>
@@ -24,5 +27,7 @@
     </label>
   {% endfor %}</div></fieldset>
   {% endfor %}
-  <div><button class="primary">Run sweep</button> <span class="legend" data-changed-count></span></div>
+  <div><button class="primary">Run sweep</button> <span class="legend" data-changed-count></span>
+    <p class="hint" data-scenario-note hidden>A run with settings changed from the defaults is a scenario: its results are not calibrated, and a
+      tuned value becomes a default only through a decision-log entry.</p></div>
 </form>
