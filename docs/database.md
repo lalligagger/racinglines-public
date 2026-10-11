@@ -307,7 +307,7 @@ Migrations so far (in order, `migrations/versions/`):
 - **UCI IDs:** add `uci` identifiers at ingest once the downloader writes them.
   That merges riders whose name changed.
 - **Points:** fill `points_schemes` with official tables and have the model read
-  points from it instead of the constants in `racinglines/models/timed_runs/`.
+  points from it instead of the constants in `racinglines/models/inputs/run_times/`.
 - **Scheduled events in the forecast:** in-progress events are forecast with their
   start lists, and scheduled events can be added in the web app. But
   `forecast_season` doesn't yet read `scheduled` events (with no start list) as

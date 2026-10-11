@@ -197,7 +197,7 @@ def test_settlement_edge_cases():
 
 def test_team_markets_settle_through_the_private_book_team_keys():
     from racinglines.markets import private_book as house
-    from racinglines.models.position_sim.model import team_key
+    from racinglines.models.inputs.laps import team_key
     names = ["McLaren", "McLaren", "Ferrari", "Ferrari", "Haas F1 Team", "Haas F1 Team", "Alpine"]
     res = RES.assign(team_id=names)
     haas, alpine = team_key("Haas F1 Team"), team_key("Alpine")
@@ -209,7 +209,7 @@ def test_team_markets_settle_through_the_private_book_team_keys():
 def test_every_race_kind_added_prices_on_position_sim():
     """The F1 position_sim's own simulations price every race kind added here (the fastest-lap team kind only from a
     run that draws the fastest lap, as race_fastest_lap)."""
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     from racinglines.testing import synthetic as SY
     m = run.Measurements.from_frames(*SY.f1_frames())
     hist = run.history(m)

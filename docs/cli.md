@@ -32,6 +32,15 @@ racinglines model backtest f1 --variant grid --save     # the sport's own option
 racinglines strategy replay f1 --runs 1298,1299,1300 --sweep
 ```
 
+**Output.** `db stats`, `model backtest f1`, `model forecast f1`, `live run`, `live report` and `book map|price|settle`
+print Rich output by default (colour, tables, probability bars, a few emojis for steps and events), also when piped or
+recorded; redrawing progress bars only on a terminal (off one, or with `TTY_INTERACTIVE=0`, each line prints once).
+`--plain` on any command, or `RACINGLINES_PLAIN=1`, prints the plain text instead; `--json` is always pure JSON.
+`NO_COLOR` drops every escape code and keeps the layout and emojis; `FORCE_COLOR` keeps colour. Under systemd
+(`JOURNAL_STREAM` set) the output carries no escape codes, so journalctl never shows `[blob data]`. The lines scripts
+and the Lab read stay plain text in every mode: `progress i/n ...`, `Saved ... run N.`, `Per-race rows -> FILE`
+(`racinglines/cli/tty.py`).
+
 The old sport-first form (the sport before the command) is deprecated: for one version it still runs and prints a
 one-line note on stderr naming the new form, then it is removed. Nothing in the repo calls it
 (`tests/test_no_old_cli_forms.py` checks code, scripts, systemd units and docs). The mapping lives in
@@ -373,7 +382,11 @@ Three modes: `--demo [PACK]` (a local demo store of synthetic data), `--remote` 
 the #aintcare warning), `--local` (the default);
 `book config` sets the default, `book logout` forgets the `--remote` sign-in. See [Sportsbook slips](sportsbook/slips.md).
 `--demo [PACK]` works on every command, not only `book`: it switches the data source to a demo store and nothing else
-([Quickstart](quickstart.md), [Demo data packs](demo.md)).
+([Quickstart](quickstart.md), [Demo data packs](demo.md)); `--demo --remote` uses the pack's hosted demo store for the
+commands the hosted server runs. `model backtest|forecast f1|mtb_dh --remote` runs the command as the hosted server's
+Lab job (`run_job`, then `get_job` until it finishes, its log printed as it arrives; the job's options only).
+When no database is configured, the first command that needs one asks once, local or remote, and saves the answer
+as `source` ([Quickstart: First run](quickstart.md#2-first-run-choose-where-the-data-comes-from)).
 
 ## Road cycling commands
 
@@ -386,7 +399,7 @@ on the timed-runs engine: `events`, `fetch itt|road`, `startlist <event>`, `pric
 `racinglines model props f1 --check --history <csv>` runs the walk-forward calibration of the yes/no props on a history CSV
 (`props.history()`'s columns) with no database, scoring the red flag and safety car given wet or dry as well
 (`climatology`, `wet_oracle`); `--dnf-check <csv>` scores the position simulation's `dnf_prob` against the
-classification (`models/position_sim/dnf_check.py`). Both are read-only; see the decision log of 2026-10-06 in
+classification (`models/dnf_check.py`). Both are read-only; see the decision log of 2026-10-06 in
 [F1 roadmap](f1-roadmap.md#decision-log).
 
 `--forecast <csv> [--lead N]` (the leads CSV of `racinglines weather leads`, e.g.
@@ -444,8 +457,8 @@ Options every F1 command takes (anywhere after `f1`):
 | Option | Meaning |
 |---|---|
 | `--db URL` | Database URL (default: `$DATABASE_URL`, else the local one). |
-| `--variant NAME` | Model variant from `racinglines/models/position_sim/variants.py`: `baseline` (default), `grid`, `gridq`, `pretrain`, `gbm`, `tail`, `reset`, or a combination such as `gridq+pretrain+reset`. Saved runs record it; the sweep and season strategy reuse only stored pricing from the same variant. The web app's live prices use baseline runs. |
-| `--half-life DAYS` | Recency half-life of the pace models (default `position_sim.model.HALF_LIFE_DAYS`). |
+| `--variant NAME` | Model variant from `racinglines/models/variants.py`: `baseline` (default), `grid`, `gridq`, `pretrain`, `gbm`, `tail`, `reset`, or a combination such as `gridq+pretrain+reset`. Saved runs record it; the sweep and season strategy reuse only stored pricing from the same variant. The web app's live prices use baseline runs. |
+| `--half-life DAYS` | Recency half-life of the pace models (default `inputs.laps.HALF_LIFE_DAYS`). |
 
 ### Data
 

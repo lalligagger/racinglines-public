@@ -95,7 +95,7 @@ and only one of them uses MCP:
 
 | Mode | MCP? | What it runs on |
 |---|---|---|
-| `--demo [PACK]` | No (a hosted demo store is coming next) | A demo store: a local database of synthetic data from a data pack, built on first use, priced by the same code as `--local` ([Quickstart](quickstart.md)). The first thing to run after installing |
+| `--demo [PACK]` | No; with `--remote`, the pack's hosted demo store | A demo store: a local database of synthetic data from a data pack, built on first use, priced by the same code as `--local` ([Quickstart](quickstart.md)). The first thing to run after installing. `--demo --remote` sends it to the pack's hosted demo store instead (synthetic data only; [Demo data packs](demo.md#the-hosted-demo-store)) |
 | `--remote` | Yes, the hosted server | Your book file, sent as text to the `map_book` / `price_book` / `settle_book` tools; the result is the same dict `--json` prints locally, rendered the same way (`racinglines/cli/remote.py`) |
 | `--local` (default) | No | Your own database (`--db`, `DATABASE_URL`) |
 
@@ -216,6 +216,15 @@ Re-running it sets a new password and rewrites the line. `DB=racinglines_staging
 raw SQL tool even when the role is configured. Install this safeguard before using hosted admin SQL.
 Undo: delete the `RACINGLINES_MCP_SQL_URL` line, restart `racinglines-mcp`,
 then `DROP OWNED BY racinglines_mcp_ro; DROP ROLE racinglines_mcp_ro;`.
+
+### A second server over a demo store
+
+`racinglines mcp --http --port 8766 --demo kart` serves a data pack's demo store (synthetic data only; its own database
+and `data/demo/kart/`) for `racinglines ... --demo --remote` ([Demo data packs](demo.md#the-hosted-demo-store)).
+`RACINGLINES_MCP_ACCOUNTS_URL` names the database the accounts, `rl_` tokens and OAuth sign-ins are read from when
+it is not the served one (there: production's, so the same accounts sign in); with it set, jobs are filed without an
+owner and every signed-in caller sees the store's jobs. `scripts/vm/demo_store.sh build` (backup first) and `serve`
+set it up; the owner runs them and adds the `mcp-demo.racinglines.bet` hostname (`localhost:8766`) to the tunnel.
 
 ### After every deploy
 

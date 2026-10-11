@@ -17,7 +17,7 @@ import math
 import pandas as pd
 from sqlalchemy import bindparam, text
 
-from racinglines.models.position_sim import evaluate as EV
+from racinglines.models import evaluate as EV
 from racinglines.pipelines import sweep_settings as SS
 from racinglines.web import prefs as P
 

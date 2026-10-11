@@ -46,7 +46,7 @@ After every finished job the leaderboard and a results export are rewritten.
     variant = "pretrain"
 
     [[job]]                      # a downhill walk-forward (model-only: calibration per market kind)
-    sport = "mtb_dh"             # the sport's own settings (racinglines/models/timed_runs/settings.py)
+    sport = "mtb_dh"             # the sport's own settings (racinglines/models/inputs/run_times/settings.py)
     year = 2025
     half_life_days = 120
     replicates = 3               # any job: the same job at this many seeds (the default seed, 1, 2, ...);
@@ -97,11 +97,12 @@ SAVED = {"sweep": "Saved sweep run", "checkpoints": "Saved season checkpoints ru
 def settings_class(sport=DEFAULT_SPORT, model=None, kind=None):
     """A job's settings schema: a sweep's (kind "sweep": pipelines/season_sweep.py, the sport's pricing model's
     settings plus the shared taker / maker / markets ones; F1's is sweep_settings.Settings), else the sport's pricing
-    model's (sports/<code>.toml [sport] pricing_model; F1's is the sweep's), or model="global": the results model's,
-    with the sport's [model.defaults]."""
+    model's (sports/<code>.toml [sport] pricing_model, the one engine; F1's is the sweep's), or model="global": the
+    engine's at the results level, with that level's defaults ([model.defaults] where the results level is the
+    schema's own)."""
     if model == "global":
         from racinglines.models.model_global import GlobalModel
-        return GlobalModel.for_sport(sport).Settings
+        return GlobalModel.for_sport(sport, core="results").Settings
     if model:
         raise ValueError(f"unknown model {model!r}: only \"global\"")
     from racinglines.models import race_model as RM
@@ -400,7 +401,7 @@ def write_outputs(out, state, queue_path=None, echo=print):
     from sqlalchemy import text
 
     from racinglines.db.config import get_engine
-    from racinglines.models.position_sim import evaluate as EV
+    from racinglines.models import evaluate as EV
     from racinglines.pipelines import season_checkpoints as SC
     done = {k: v for k, v in state.items() if v.get("run_id")}
     runs = {}

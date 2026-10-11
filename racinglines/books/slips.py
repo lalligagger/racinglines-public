@@ -271,7 +271,7 @@ def _run_for(db, leg, runs):
 def _model(db, leg, runs):
     from racinglines.db.reads import model_prob
     if leg["kind"] not in K.KINDS:
-        return None, None, None, "a race prop: no stored model price (models/position_sim/props.py prices it live)"
+        return None, None, None, "a race prop: no stored model price (models/props.py prices it live)"
     run_id, source, stale = _run_for(db, leg, runs)
     if run_id is None:
         return None, None, source, "no model run prices this race"

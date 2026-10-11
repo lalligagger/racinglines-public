@@ -2,7 +2,7 @@
 Sport schemas: what differs between sports, as data (sports/<code>.toml).
 
 Existing modules keep their own constant names (registry.COMPETITIONS,
-position_sim.model.SESSION_MINUTES, timed_runs.model.FINAL_POINTS, ...) and take
+inputs.laps.SESSION_MINUTES, run_times.model.FINAL_POINTS, ...) and take
 the values from here, so a new sport starts with a new schema file.
 
     load("f1")                  the parsed schema
@@ -46,6 +46,19 @@ def event_title(competition, event_key, default):
     except StopIteration:
         return default
     return names.get(str(event_key), default)
+
+
+@cache
+def declaring(model_input):
+    """The one sport whose [model] inputs declares `model_input`. An input layer that reads its constants from a
+    schema at import (inputs/laps.py, inputs/grid.py, inputs/run_times/model.py: points, sessions, regulation
+    resets, formats) finds its schema here instead of naming a sport. ValueError when no sport or several do: a second
+    sport with that input needs the layer's constants bound per sport first (decision log 2026-10-11 "One engine")."""
+    codes = [c for c in SPORT_CODES if model_input in (load(c).get("model", {}).get("inputs") or ())]
+    if len(codes) != 1:
+        raise ValueError(f"[model] inputs: {len(codes)} sports declare {model_input!r} ({codes}); its layer reads "
+                         "one sport's schema at import, so exactly one may until it is bound per sport")
+    return codes[0]
 
 
 def modeled(code):

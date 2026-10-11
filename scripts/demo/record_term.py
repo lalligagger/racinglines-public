@@ -56,12 +56,15 @@ def quickstart(pack):
     if found is None:
         sys.exit(f"no demo pack {pack!r} (racinglines/demo/packs/)")
     return [{"id": f"step-{i}", "title": s["title"], "command": s["run"], "about": s.get("about", ""),
+             "record": s.get("record", True),
              **({"section": s["section"]} if s.get("section") else {})}      # the page's part headings
             for i, s in enumerate(found.quickstart, 1)]
 
 
 def render(d):
-    """A demo's saved terminal output (ANSI) -> the HTML fragment."""
+    """A demo's saved terminal output (ANSI) -> the HTML fragment (empty for a step with `record = false`)."""
+    if not d.get("record", True):
+        return ""
     console = Console(record=True, width=WIDTH, force_terminal=True, color_system="truecolor", file=io.StringIO())
     ansi = OSC.sub("", (TERM / f"{d['id']}.ansi").read_text())
     console.print(Text.from_ansi(ansi), soft_wrap=True)
@@ -93,6 +96,8 @@ def main(argv=None):
         steps = quickstart(config().get("pack", "kart"))
         outs = {}
         for d in steps:     # run them all first: a failure leaves the saved recording as it was
+            if not d.get("record", True):                   # shown, never run: no .ansi, an empty fragment
+                continue
             outs[d["id"]] = run(d)
             print(f"{d['id']}: ran `{d['command']}`", flush=True)
         for old in TERM.glob("step-*.*"):

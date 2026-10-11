@@ -39,8 +39,8 @@ import numpy as np
 import pandas as pd
 
 from racinglines.models import outcomes as O
-from racinglines.models.position_sim import model as M
-from racinglines.models.position_sim import penalties as GP
+from racinglines.models.inputs import laps as M
+from racinglines.models.inputs import grid as GP
 from racinglines.core.stats import brier, ranks
 
 ONE_MIN = pd.Timedelta(minutes=1)
@@ -74,7 +74,7 @@ class Measurements:
 
     @classmethod
     def from_frames(cls, res, laps, prof):
-        """From the raw SQL frames (see position_sim.model.load_frames), e.g. pinned test fixtures."""
+        """From the raw SQL frames (see inputs.laps.load_frames), e.g. pinned test fixtures."""
         res, laps, prof = M.prepare(res, laps, prof)
         drivers, sectors = M.event_measurements(res, laps, prof)
         return cls(res, prof, drivers, sectors, M.practice_measurements(laps), None, M.event_x(prof),
@@ -245,7 +245,7 @@ def price_stages(meas, v, event_id, e, fm, tf, rng, n_sims, chaos_p, stages=None
 def history(meas, use_track=True):
     """One row per entrant per completed race, with features computed as of one
     minute before that race's start (qualifying known) and its outcome."""
-    from racinglines.models.position_sim import practice as PR
+    from racinglines.models.inputs import practice as PR
     ptrain = PR.training_rows(meas, use_track) if PR.USE_PRACTICE else pd.DataFrame()
     rows = []
     events = meas.drivers.drop_duplicates("event_id").sort_values("r_ts")
@@ -312,7 +312,7 @@ def price_race(meas, hist, cutoff, event_id, n_sims=10000, rng=None, use_track=T
     snap = M.snapshot(v.drivers, v.sectors, v.xmap if use_track else {}, v.cutoff, use_track)
     tf = M.venue_track_features(v.prof, venue, v.cutoff)
     e = M.predict_paces(snap, entrants, tf).reset_index(drop=True)
-    from racinglines.models.position_sim import practice as PR
+    from racinglines.models.inputs import practice as PR
     e, sigma_q = PR.apply(e, v.practice, event_id, PR.fit(hist.attrs.get("practice_train"), v.cutoff))
     grid = qualifying_grid(v, event_id, e) if event_id is not None else None
     fm = M.fit_finish(hist, v.cutoff, use_track, no_practice=M.PRE_PRACTICE_TRAIN and sigma_q is None,
@@ -398,7 +398,7 @@ def backtest(meas, hist, start_year=2021, n_sims=4000, use_track=True, modes=(PR
              echo=None, last_n=None, keep_probs=False):
     """One row per race x mode with Brier / log-loss scores. keep_probs: also keep each
     driver's win / podium / top-10 probability and outcome (column `pred`), for
-    reliability curves (position_sim/evaluate.py)."""
+    reliability curves (models/evaluate.py)."""
     rng = np.random.default_rng(seed)
     rows = []
     events = meas.drivers[meas.drivers["year"] >= start_year].drop_duplicates("event_id").sort_values("r_ts")
@@ -605,7 +605,7 @@ def forecast(meas, hist, year, cutoff=None, n_sims=10000, seed=42, schedule=None
             if records_enabled():         # prediction records: keep the event's simulations for save_forecast
                 from racinglines.core import stages as STG
                 per_event[-1]["outcome"] = dict(sims=O.from_position_sim(ex["entrants"], ex["sim"]),
-                                                stage=STG.spec("f1")["pre_label"], cutoff=cutoff, archive=True)
+                                                stage=STG.spec(M.SPORT)["pre_label"], cutoff=cutoff, archive=True)
 
     rank = ranks(-(total + rng.random(total.shape) * 1e-3))
     ahead = (rank[:, :, None] < rank[:, None, :]).mean(0)
@@ -646,7 +646,7 @@ def save_forecast(engine_url, year, per_event, standings, params, metrics, kind=
 
     preds, event_ids = [], {}
     with get_session(engine_url) as s:
-        comp = s.scalars(select(m.Competition).filter_by(code="f1_wdc")).one()
+        comp = s.scalars(select(m.Competition).filter_by(code=M.COMPETITION)).one()
         cat = s.scalars(select(m.Category).filter_by(competition_id=comp.id, code="DRV")).one()
         season = _upsert(s, m.Season, dict(competition_id=comp.id, year=year))
         for ev in per_event:
@@ -662,7 +662,7 @@ def save_forecast(engine_url, year, per_event, standings, params, metrics, kind=
             event_ids[key] = event.id
             race = _upsert(s, m.Race, dict(event_id=event.id, category_id=cat.id))
             if race.format is None:
-                race.format = dict(kind="f1", sprint=ev["sprint"], event_name=ev["name"])
+                race.format = dict(kind=M.SPORT, sprint=ev["sprint"], event_name=ev["name"])
             elif ev["name"] and race.format.get("event_name") != ev["name"]:     # repair a stale name
                 race.format = dict(race.format, event_name=ev["name"])
             s.commit()
@@ -671,7 +671,7 @@ def save_forecast(engine_url, year, per_event, standings, params, metrics, kind=
                                               make_final_prob=None))
     with get_session(engine_url) as s:
         run_id = save_model_run(
-            s, competition="f1_wdc", season=year, category="DRV", model="f1_sector_sim", kind=kind,
+            s, competition=M.COMPETITION, season=year, category="DRV", model=M.RUN_NAME, kind=kind,
             data_through=_date.today(), params=params, metrics=metrics,
             race_predictions=pd.concat(preds, ignore_index=True) if preds else None,
             standings=standings.assign(rider_id=lambda d: "ath:" + d["athlete_id"].astype(str)) if standings is not None else None)
@@ -695,7 +695,7 @@ def _write_records(run_id, year, per_event, event_ids):
         if not oc:
             continue
         key = f"{year}-{ev['round']:02d}"
-        frames.append(oc["sims"].to_records(run_id, "f1", "f1_sector_sim", year, event_ids.get(key), key, oc["stage"],
+        frames.append(oc["sims"].to_records(run_id, M.SPORT, M.RUN_NAME, year, event_ids.get(key), key, oc["stage"],
                                             oc["cutoff"]))
         if oc.get("archive"):
             archive[key] = oc["sims"]

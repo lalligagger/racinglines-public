@@ -29,7 +29,7 @@ def _venues(n, rng):
 
 
 def f1_frames(n_events=6, n_upcoming=2, seed=SEED):
-    """(res, laps, prof): the three frames of position_sim.model.load_frames, for a fake season."""
+    """(res, laps, prof): the three frames of inputs.laps.load_frames, for a fake season."""
     rng = np.random.default_rng(seed)
     car_a = np.sort(rng.uniform(0.0, 0.010, len(TEAMS)))         # team base deficit (fraction of lap time)
     car_b = rng.normal(0, 0.004, len(TEAMS))                       # sensitivity to fast sectors

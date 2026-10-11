@@ -43,7 +43,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from racinglines.models.position_sim import props as P
+from racinglines.models import props as P
 from racinglines.weather import open_meteo as OM
 from racinglines.weather import schema as S
 

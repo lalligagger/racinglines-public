@@ -49,7 +49,7 @@ def test_ingest(test_engine, monkeypatch):
     from sqlalchemy.orm import sessionmaker
 
     from racinglines.sources.fastf1 import ingest as I
-    from racinglines.models.position_sim import model as M
+    from racinglines.models.inputs import laps as M
     monkeypatch.setattr(I, "DATA", need("f1", "raw"))
     with sessionmaker(test_engine)() as s:
         I.seed(s)
@@ -78,8 +78,8 @@ def test_measurements(f1_meas):
 # --- 4. car / driver model at a cutoff -----------------------------------------
 
 def test_car_model(f1_meas):
-    from racinglines.models.position_sim import model as M
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps as M
+    from racinglines.models.inputs import laps_pricing as run
     s = _sessions(f1_meas)
     cutoff = s["fp1"] - pd.Timedelta(minutes=1)
     v = f1_meas.view(cutoff)
@@ -94,8 +94,8 @@ def test_car_model(f1_meas):
 # --- 5. history + finishing model + practice prior ------------------------------
 
 def test_history_and_finishing_model(f1_meas, f1_hist):
-    from racinglines.models.position_sim import model as M
-    from racinglines.models.position_sim import practice as PR
+    from racinglines.models.inputs import laps as M
+    from racinglines.models.inputs import practice as PR
     h = f1_hist
     s = _sessions(f1_meas)
     fm = M.fit_finish(h, s["race"])
@@ -111,7 +111,7 @@ def test_history_and_finishing_model(f1_meas, f1_hist):
 
 @pytest.mark.parametrize("stage", ["pre_weekend", "after_fp3", "after_quali"])
 def test_price_race(f1_meas, f1_hist, stage):
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     s = _sessions(f1_meas)
     cutoff = {"pre_weekend": s["fp1"] - pd.Timedelta(hours=1), "after_fp3": s["qual"] - pd.Timedelta(minutes=5),
               "after_quali": s["qual"] + pd.Timedelta(hours=2)}[stage]
@@ -127,7 +127,7 @@ def test_price_race(f1_meas, f1_hist, stage):
 # --- 7. backtest ----------------------------------------------------------------
 
 def test_backtest(f1_meas, f1_hist):
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     bt = run.backtest(f1_meas, f1_hist, 2026, 1500, True, seed=3, last_n=3)
     check("f1_backtest", dict(rows=bt[["event_id", "mode", "brier_win", "brier_podium", "brier_top10", "winner_prob",
                                        "brier_teammate_h2h"]].sort_values(["event_id", "mode"]),
@@ -137,7 +137,7 @@ def test_backtest(f1_meas, f1_hist):
 # --- 8. season forecast (championships) -----------------------------------------
 
 def test_season_forecast(f1_meas, f1_hist, f1_schedule):
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     s = _sessions(f1_meas)
     _, st, ex = run.forecast(f1_meas, f1_hist, 2026, cutoff=s["race"] + pd.Timedelta(hours=4), n_sims=1500,
                              schedule=f1_schedule, race_prices=False)

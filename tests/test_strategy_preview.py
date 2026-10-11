@@ -226,7 +226,7 @@ def mocked_compute(monkeypatch, folder, *, writable=False, mutation=None, sims=4
     import sqlalchemy
 
     from racinglines.db import reads
-    from racinglines.models.position_sim import pricing
+    from racinglines.models.inputs import laps_pricing as pricing
 
     frozen = snapshot()
     frozen["commit"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()

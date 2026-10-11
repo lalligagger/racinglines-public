@@ -150,7 +150,7 @@ cars, and 0.0438 / 0.1187 / 0.248 in 2026 (22 cars).
 ### Model variants (F1 roadmap F1-2, F1-3)
 
 Challengers to the baseline, each behind a switch that defaults off
-(`racinglines/models/position_sim/variants.py`, `racinglines f1 --variant NAME`).
+(`racinglines/models/variants.py`, `racinglines f1 --variant NAME`).
 Every variant goes through the same `price_race` path and leakage guards, over
 the same 129 races (runs above), compared with `racinglines model compare f1`:
 differences are variant − baseline, negative is better, bold is beyond 2

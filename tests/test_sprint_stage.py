@@ -1,4 +1,4 @@
-"""The sprint as a stage of its own (models/position_sim/pricing.price_stages, sports/f1.toml [sessions.sim],
+"""The sprint as a stage of its own (models/inputs/laps_pricing.price_stages, sports/f1.toml [sessions.sim],
 docs/todo.md U13): a sprint weekend prices the sprint from the Grand Prix's paces and finishing model with the
 schema's points and retirement scale, the grid from Sprint Qualifying's laps, the actual result once it has run;
 the Grand Prix's arrays and the caller's random stream don't move; a stage before SQ or the sprint never reads
@@ -9,8 +9,8 @@ import pandas as pd
 import pytest
 
 from racinglines.models import outcomes as O
-from racinglines.models.position_sim import model as M
-from racinglines.models.position_sim import pricing as run
+from racinglines.models.inputs import laps as M
+from racinglines.models.inputs import laps_pricing as run
 from racinglines.testing import synthetic as SY
 
 pytestmark = pytest.mark.quick
@@ -360,7 +360,7 @@ def test_race_outcomes_carry_the_sprint_and_the_private_book_settles_it(test_eng
 # --- the walk-forward check (racinglines model sprint-check f1) -------------------------------------------------
 
 def test_sprint_check_scores_each_sprint_weekend_against_the_gp_stand_in(sprint):
-    from racinglines.models.position_sim import sprint_check as SC
+    from racinglines.models import sprint_check as SC
     m, hist, eid = sprint
     df = SC.check(m, hist, start_year=2026, n_sims=300)
     sprints = sorted(m.res.loc[m.res["round"] == "sprint", "event_id"].unique())
@@ -450,7 +450,7 @@ def test_a_2021_weekend_takes_the_sprint_grid_from_qualifying_and_a_2025_one_fro
 
 
 def test_sprint_check_cuts_a_2021_weekend_off_before_qualifying():
-    from racinglines.models.position_sim import sprint_check as SC
+    from racinglines.models import sprint_check as SC
     (res, laps, prof), eid25 = _frames()
     eid21 = sorted(res["event_id"].unique())[-3]
     res, laps = _as_2021(res, laps, eid21)

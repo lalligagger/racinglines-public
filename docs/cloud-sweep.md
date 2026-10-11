@@ -134,7 +134,7 @@ The session follows these steps. They're written for the agent.
       jobs' variants and entry points.
     - **New ideas in code are allowed** (a new model input, strategy rule or entry rule) under the
       roadmap's ground rules: behind a new setting in `sweep_settings.py` (or a switch in
-      `position_sim/variants.py`) whose default is today's behavior, with a test, so the baseline and
+      `models/variants.py`) whose default is today's behavior, with a test, so the baseline and
       every earlier result are unchanged (`python -m pytest -m "not live"` must pass). Commit code
       changes separately from results.
     - **Replace what can't teach anything new:** drop a pending job whose question an earlier result

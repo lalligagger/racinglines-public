@@ -330,8 +330,8 @@ def compute(args):
     from racinglines.db import config, reads
     from racinglines.markets import venue_replay
     from racinglines.markets.strategies import taker_weekend as rb
-    from racinglines.models.position_sim import model as position_model
-    from racinglines.models.position_sim import pricing
+    from racinglines.models.inputs import laps as position_model
+    from racinglines.models.inputs import laps_pricing as pricing
     from racinglines.pipelines import profiles, signals
     from racinglines.pipelines import sweep_settings as ss
     from racinglines.pipelines import weekend_sweep as ws

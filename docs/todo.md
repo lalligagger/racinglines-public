@@ -353,7 +353,7 @@ events are T3 unless a venue lists the event.
 Phased plan and ground rules: [F1 roadmap](f1-roadmap.md).
 
 - [ ] **P1 · Grid penalties (branch `work/grid-penalties`).** Confirmed penalties in `sports/f1/grid_penalties.toml`
-      move the race's or sprint's starting grid before it is simulated ([F1 model](f1.md#model-racinglinesmodelsposition_simmodelpy),
+      move the race's or sprint's starting grid before it is simulated ([F1 model](f1.md#model-racinglinesmodelsinputslapspy),
       "Grid penalties"); first row: Russell to the back for Singapore (2026-17). Re-price Singapore once it ships.
 - [ ] **P2 · Weather-aware position-model variant `gridq+pretrain+reset-WX`** (owner, 2026-10-06: "later branch", not
       the weather PR). The disruption mixture (more noise and retirements in disrupted races) weighted by the race's
@@ -366,7 +366,7 @@ Phased plan and ground rules: [F1 roadmap](f1-roadmap.md).
       (PR #36) Kalshi's sprint winner and sprint pole markets priced from the race's win and pole probabilities
       as a stand-in; the owner approved that for Singapore (2026-09-29).
       **Landed:**
-      - **The sprint stage** ([F1 model](f1.md#model-racinglinesmodelsposition_simmodelpy), step 6). It is
+      - **The sprint stage** ([F1 model](f1.md#model-racinglinesmodelsinputslapspy), step 6). It is
         schema-driven (`[sessions.sim]` in `sports/f1.toml`) and drawn on a side stream, so Grand Prix prices are
         byte-identical. It prices from the GP finishing model with the sprint points and `dnf_scale` 0.5
         (provisional, [decision log](f1-roadmap.md#decision-log)).
@@ -494,7 +494,7 @@ The database and API plumbing are in place and the source gate is complete: the 
 
 ## Points validation
 
-The points tables in `racinglines/models/timed_runs/` (`FINAL_POINTS`, `QUAL_POINTS`,
+The points tables in `racinglines/models/inputs/run_times/` (`FINAL_POINTS`, `QUAL_POINTS`,
 `QUAL_POINTS_ROUND`) are **placeholders**, and the same tables are used for every
 season. Until they're fixed, every number measured in points (expected points,
 standings, champion odds, `spearman_points`) is approximate. Off-season work (U11).
@@ -809,7 +809,7 @@ Finished items, moved here from the sections above on 2026-09-28, with the dates
       season's teammate comparisons to a quarter. Small gain on win odds before qualifying;
       teammate head-to-heads better in 2026, worse in 2021 ([F1 evaluation](f1-evaluation.md#model-variants-f1-roadmap-f1-2-f1-3)).
       Not promoted (2026-09-28, cloud build-out).
-- [x] Price fastest lap, safety car / red flag, rain (F1-3): `models/position_sim/props.py`,
+- [x] Price fastest lap, safety car / red flag, rain (F1-3): `models/props.py`,
       `racinglines model props f1`; opt-in kinds for a live book (2026-09-28, cloud). Per-circuit rates
       don't beat the field rate on 2022–2026 ([F1 roadmap](f1-roadmap.md#decision-log)).
 - [x] Polymarket sync and repricing on a schedule during race weekends: the recorder re-syncs

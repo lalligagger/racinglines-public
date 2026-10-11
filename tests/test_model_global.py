@@ -213,7 +213,7 @@ def test_the_schema_binds_the_model_and_sets_its_defaults(toy):
     assert PR.model_for({"model": "racinglines.models.model_global:GlobalModel", "sport": "toy_global"}).sport == "toy_global"
     with pytest.raises(ValueError, match="unknown settings"):
         G._settings_class({"nope": 1})
-    with pytest.raises(ValueError, match="needs"):                    # mtb_dh has no [model] and no [replay] source
-        G.GlobalModel.for_sport("mtb_dh")
+    with pytest.raises(ValueError, match="needs"):                    # the results level needs the results input
+        G.GlobalModel.for_sport("mtb_dh", core="results")       # downhill declares run times, no finishing positions
     with pytest.raises(ValueError, match="needs data"):
         G.GlobalModel().load()

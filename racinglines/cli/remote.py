@@ -262,3 +262,83 @@ def run(cmd, raw_book, server=None, runs=(), open_browser=None):
     if cmd == "price" and runs:
         args["run_ids"] = list(runs)
     return call(TOOLS[cmd], args, server, open_browser=open_browser)
+
+
+# --- model commands as hosted jobs ---------------------------------------------------------------------------------
+# `racinglines model backtest|forecast SPORT --remote`: the command's Lab job (racinglines/web/jobs.py CATALOG) queued
+# on the hosted server with run_job and followed with get_job, its log printed as it arrives. The server runs the same
+# CLI command in its own worker; the flags below are the ones the job takes (its knobs), the rest are local only.
+
+JOBS = {("f1", "backtest"): "f1_backtest", ("f1", "forecast"): "f1_scenario",
+        ("mtb_dh", "backtest"): "dh_backtest", ("mtb_dh", "forecast"): "dh_scenario"}
+POLL_SEC = 1.0
+TAIL = 200                                 # log lines per get_job poll (the tool returns up to 500)
+
+
+def _job_parser(job):
+    import argparse
+    ap = argparse.ArgumentParser(prog=f"--remote ({job})", add_help=False)
+    ap.add_argument("--sims", type=int)
+    if job.startswith("f1_"):
+        ap.add_argument("--half-life", dest="half_life", type=float)
+    else:
+        ap.add_argument("--half-life-days", dest="half_life", type=float)
+        ap.add_argument("--junior-weight", dest="junior_weight", type=float)
+    if job == "f1_backtest":
+        ap.add_argument("--races", type=int)
+        ap.add_argument("--track", choices=["both", "on", "off"])
+    if job.endswith("_scenario"):
+        ap.add_argument("--scenario", dest="label")
+    if job == "f1_scenario":
+        ap.add_argument("--no-track", dest="track", action="store_const", const="off")
+    ap.add_argument("--save", action="store_true")              # implied: a hosted job always saves its run
+    ap.add_argument("--db", nargs="?", const="")                 # mtb_dh's "read the database": the server's always
+    return ap
+
+
+def job_params(sport, command, argv):
+    """(job type, params) for `model COMMAND SPORT argv --remote`. Raises RemoteError on a flag the job doesn't take."""
+    job = JOBS.get((sport, command))
+    if job is None:
+        raise RemoteError(f"model {command} {sport} doesn't run on the hosted server (it runs: "
+                          f"{', '.join(f'model {c} {s}' for s, c in JOBS)})")
+    known, extra = _job_parser(job).parse_known_args([a for a in argv if a != "--remote"])
+    if extra:
+        raise RemoteError(f"{' '.join(extra)}: local only; on the hosted server model {command} {sport} takes "
+                          + ", ".join(sorted(o for a in _job_parser(job)._actions for o in a.option_strings
+                                             if o not in ("--save", "--db"))))
+    params = {k: v for k, v in vars(known).items() if v is not None and k not in ("save", "db")}
+    if job.endswith("_scenario"):
+        params.setdefault("label", f"cli {command}")
+    return job, params
+
+
+def run_model(sport, command, argv, server=None, out=None, poll=POLL_SEC, sleep=None):
+    """Queue the job, print its log as it arrives (stdout), and return 0 when it is done, 1 when it failed."""
+    import time
+    out = out or sys.stdout
+    sleep = sleep or time.sleep
+    job, params = job_params(sport, command, argv)
+    q = call("run_job", dict(job_type=job, params=params), server)
+    job_id = q["job_id"]
+    print(f"queued {job} as job {job_id} on {url(server)} ({', '.join(f'{k}={v}' for k, v in q['params'].items())})",
+          file=sys.stderr, flush=True)
+    seen = 0
+    from racinglines import progress as PG
+    while True:
+        j = call("get_job", dict(job_id=job_id, log_lines=TAIL), server)
+        n, tail = j.get("log_lines", 0), j.get("log_tail") or []
+        new = n - seen
+        if new > len(tail):
+            print(f"... ({new - len(tail)} log lines not shown; get_job({job_id}) on the server)", file=out, flush=True)
+        for line in tail[len(tail) - min(max(new, 0), len(tail)):]:
+            print(line, file=out, flush=True)
+        seen = n
+        PG.update(item=f"job {job_id} {j['status']}: {j.get('progress') or ''}"[:120])
+        if j["status"] in ("done", "failed"):
+            break
+        sleep(poll)
+    run = j.get("result_run_id")
+    print(f"job {job_id} {j['status']}" + (f": model run {run} on the hosted server (get_model_run({run}))" if run else
+                                           f" ({j.get('progress')})"), file=sys.stderr, flush=True)
+    return 0 if j["status"] == "done" else 1

@@ -67,7 +67,7 @@ def test_candidates_are_parsed_with_full_settings(tmp_path):
 
 
 def test_downhill_jobs_get_their_own_settings_baseline_and_command(tmp_path):
-    from racinglines.models.timed_runs.settings import DHSettings
+    from racinglines.models.inputs.run_times.settings import DHSettings
     _, jobs, _ = S.load(_queue(tmp_path, '[[job]]\nsport = "mtb_dh"\nyear = 2025\nhalf_life_days = 120\n'
                                          '[[job]]\nvariant = "gridq"\n'))
     assert [(j.get("sport", "f1"), j["kind"], j["year"], j["note"][:8] if "baseline" in j.get("note", "") else "")

@@ -227,6 +227,22 @@ MAINTENANCE_NOTICE = ""      # off since the landing rebuild (owner, 2026-10-08:
 templates.env.globals["maintenance_notice"] = lambda: MAINTENANCE_NOTICE   # read at render time
 templates.env.globals["signup_on"] = lambda: signup_on()                    # RACINGLINES_SIGNUP=1: beta sign-up
 templates.env.globals["is_demo"] = lambda u: _demo.is_demo(u)
+
+
+def needs_email(user):
+    """A signed-in registered account with no email on file (accounts made before 2026-10-08): base.html then shows
+    the add-email popup (owner, 2026-10-11). Demo accounts never; read at render time, False if anything fails."""
+    if not isinstance(user, dict) or not user.get("id") or _demo.is_demo(user):
+        return False
+    try:
+        with get_engine().connect() as c:
+            email = c.execute(text("SELECT prefs->>'email' FROM users WHERE id = :u"), dict(u=user["id"])).scalar()
+    except Exception:                                   # noqa: BLE001  the popup never breaks a page
+        return False
+    return not (email or "").strip()
+
+
+templates.env.globals["needs_email"] = needs_email
 # the stylesheet's and scripts' URLs carry the newest static file's mtime, so a change is a new URL: no stale copy from the browser or
 # Cloudflare's edge cache (read at render time)
 templates.env.globals["css_v"] = lambda: int(max(p.stat().st_mtime for p in (HERE / "static").glob("*.*")))
@@ -460,6 +476,29 @@ def update_settings(request: Request, email: str = Form(""), exchange: str = For
     return templates.TemplateResponse(request, "settings.html", dict(
         email=email, exchange=exchange, sports=sports, success="Settings saved", **_mcp_context(user),
     ))
+
+
+@app.post("/settings/email", dependencies=[Depends(check_csrf), allow(*ANY)])
+def add_email(request: Request, email: str = Form(""), next: str = Form("/markets")):
+    """The add-email popup (_site_notice.html) for accounts with no email: saves users.prefs.email after the sign-up
+    checks (valid, on no other account) and goes back to the page; an error opens Settings with the message."""
+    from racinglines.web import accounts as ACC
+    user = request.state.user
+    if _demo.is_demo(user):
+        raise HTTPException(404)
+    email = email.strip().lower()
+    with get_engine().begin() as c:
+        error = ACC.check_email(c, email)
+        if not error:
+            c.execute(text("""UPDATE users SET prefs = coalesce(prefs, '{}'::jsonb) || jsonb_build_object('email', CAST(:e AS text))
+                              WHERE id = :u"""), dict(e=email, u=user["id"]))
+    if error:
+        prefs = _prefs(user["id"])
+        return templates.TemplateResponse(request, "settings.html", dict(
+            email=email, exchange=prefs.get("exchange", "polymarket"), sports=prefs.get("sports", ["f1"]),
+            error=error, **_mcp_context(user)), status_code=400)
+    audit(request, "add_email")
+    return RedirectResponse(_safe_next(next), status_code=303)
 
 
 # ---------------------------------------------------------------------------

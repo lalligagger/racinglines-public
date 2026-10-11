@@ -8,7 +8,7 @@ so market code reads an `OutcomeSims` and never a model's own arrays. A yes/no t
 doesn't decide, which a model draws itself (F1's fastest lap), rides along in `indicators`.
 
     sims = from_position_sim(entrants, sim)     # F1: pricing.price_race's extras["sim"], ["entrants"]
-    sims = from_timed_runs(riders, sim)         # downhill: timed_runs.model.simulate_weekend
+    sims = from_timed_runs(riders, sim)         # downhill: run_times.model.simulate_weekend
     markets.kinds.fair("race_podium", sims)     # per-entrant fair values
 
 Adapters only re-label arrays (no copies of the random draws, no new randomness), so prices built on

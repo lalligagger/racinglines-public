@@ -13,7 +13,7 @@ views over what the model already holds: no database query, and nothing about ho
 
 `available_at` (naive UTC, like everything in position_sim):
   - Session rows (sessions, classifications): the session's end, start + `[sessions] minutes` in sports/f1.toml,
-    through position_sim.model.session_end, the function Measurements.view gates `res` with. No lag is added: the
+    through inputs.laps.session_end, the function Measurements.view gates `res` with. No lag is added: the
     30 minutes of `[stages] lag_minutes` move a stage's *cutoff* after a session ends, and `view` has none.
   - official_results: the race's end, the same rule.
   - conditions, venue_features: come from `track_profiles`, computed from the race results, so a profile is
@@ -40,8 +40,8 @@ import numpy as np
 import pandas as pd
 
 from racinglines.frames._util import empty, gap_to_leader, shape
-from racinglines.models.position_sim import model as M
-from racinglines.models.position_sim.pricing import entry_list
+from racinglines.models.inputs import laps as M
+from racinglines.models.inputs.laps_pricing import entry_list
 
 WEATHER = {"qual": ("qual_rain_share", "qual_track_temp"), "race": ("race_rain_share", "race_track_temp")}
 PROFILE_META = ("event_id", "start_date", "venue", "ready_ts")      # the profile's own columns; the rest are features

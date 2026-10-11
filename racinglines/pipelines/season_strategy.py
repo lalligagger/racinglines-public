@@ -3,7 +3,7 @@ Default season-long strategy for the championship markets (drivers' and construc
 champion), replayed through the season on Polymarket's recorded prices.
 
 Decisions: pre-season (PRESEASON_DAYS before the first practice), then one hour
-after every race ends. At each, an as-of season forecast (position_sim.pricing.forecast with the
+after every race ends. At each, an as-of season forecast (inputs.laps_pricing.forecast with the
 cutoff; only data from sessions that had ended) gives our fair values; the strategy
 (racinglines/markets/strategies/season.py) rebalances and holds. Execution is at Polymarket's hourly price one
 hour after the decision plus a per-market cost (half the recorded spread, 0.5c if
@@ -109,7 +109,7 @@ def asof_forecasts(engine, engine_url, meas, hist, year, times, n_sims=5000, ref
     same model variant are reused (runs stored without a variant are the baseline)."""
     from racinglines.db.queries import records
 
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     with engine.connect() as c:
         have = pd.read_sql(text("""SELECT id, params->>'cutoff' AS cutoff FROM model_runs WHERE kind = 'season_asof'
                                    AND (params->>'year')::int = :y
@@ -218,7 +218,7 @@ def run_season(engine, engine_url, year=2026, params=SS.SeasonParams(), fetch=Tr
     from racinglines.db.config import get_session
     from racinglines.db import reads as D
 
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     with engine.connect() as c:
         links = season_links(c, year, exchange)
     if exchange == "polymarket":
@@ -321,7 +321,7 @@ def sleeve_rebalance(engine, engine_url, year=2026, after_round=None, exchange="
     (paper_positions rows: market_key, kind, subject, yes_shares, no_shares, cash, mark, outcome), summary).
     Marks are the latest recorded price as of `now` (default: now); markets that had closed by then carry
     their outcome. Nothing is written."""
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     now = pd.Timestamp.now(tz="UTC") if now is None else pd.Timestamp(now)
     now = now.tz_localize("UTC") if now.tzinfo is None else now.tz_convert("UTC")
     with engine.connect() as c:
