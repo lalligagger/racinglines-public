@@ -159,6 +159,16 @@ def test_touch_fills_at_least_as_much_as_through(event):
     assert t >= th
 
 
+
+@pytest.mark.parametrize("fill", ["touch", "through"])
+def test_replay_matches_the_reference_implementation(event, fill):
+    """The speed rewrite of the replay gives exactly the original's quotes, fills and positions on the recorded event."""
+    from racinglines.markets.strategies import maker_replay as R
+    from replay_reference import replay as reference_replay
+    from test_replay_parity import _same
+    p = R.Params(fill=fill)
+    _same(R.replay(event, p), reference_replay(event, p))
+
 # --- the web page -------------------------------------------------------------
 
 def test_diag_page_roles(engine, runs):

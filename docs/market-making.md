@@ -130,6 +130,18 @@ Results are broken down by pricing stage and market type. The report also shows
 why markets weren't quoted and a sweep of half-spread × fill rule × disagreement
 filter.
 
+### The replay in the browser
+
+The diagnostic page's *Live replay* runs the same maker replay on the visitor's computer: the Rust port in `wasm/`
+(`src/lib.rs`: the replay, the fill scoring and the summaries), compiled to WebAssembly by `bash wasm/build.sh` into
+`racinglines/web/static/replay.wasm` (committed, so the VM needs no Rust). `racinglines/web/static/replay.js` loads it
+with the event's tape (`/lab/diagnostics/{id}/tape.json`, written by
+`racinglines/markets/strategies/replay_json.py`) and re-runs the replay as the knobs move. The Python replay stays the
+reference: `tests/test_wasm_replay.py` runs the committed `.wasm` under Node and checks the summaries, stages and skip
+reasons against `maker_replay.replay`, and `scripts/bench/replay_dump.py --check` compares every quote and fill on a
+real weekend. A change to the replay's rules goes into the Python first, then `src/lib.rs`, then `wasm/build.sh`.
+Only the touch and through fill rules are ported; the queue rule needs recorded order books and stays on the server.
+
 **Polymarket's takers in the app.** On the diagnostic page (`/lab/diagnostics/{id}`), *Record the replay's
 fills* writes each fill as a bet by the `polymarket-takers` system account (no
 login) on the demo `maker`'s in-app market. That account stands in for the

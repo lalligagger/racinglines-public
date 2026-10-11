@@ -98,6 +98,17 @@ MODEL_CHOICES = ["baseline", "grid", "gridq", "pretrain", "gbm", "tail", "reset"
                  "pretrain+reset", "gridq+pretrain+reset", "gridq+pretrain+tail"]
 
 
+# the switches a variant combines (models/position_sim/variants.py), offered as checkboxes in the sweep form; fastlap
+# and flpos both draw the fastest lap, so only one of them can be on
+EXCLUSIVE_SWITCHES = ("fastlap", "flpos")
+
+
+def variant_switches():
+    """[(switch, description)] in variants.SWITCHES order, baseline left out (it is no switch at all)."""
+    from racinglines.models.position_sim import variants as V
+    return [(k, V.DESCRIPTION.get(k, "")) for k in V.SWITCHES if k != "baseline"]
+
+
 def _sweep_argv(p):
     st = SS.Settings.from_dict(p.get("settings") or {})
     return ["-m", "racinglines", "f1", "--variant", st["variant"], "sweep", "--year", str(p.get("year", 2026)),
@@ -158,8 +169,20 @@ def _f1_common(p):
     return ["-m", "racinglines", "f1", "--half-life", str(p["half_life"])]
 
 
-HALF_LIFE = Knob("half_life", "Recency half-life (days)", "float", 120, 20, 720,
+def _setting(name):
+    return next(s for s in SS.SETTINGS if s.name == name)
+
+
+# F1 knobs that are also sweep settings take their default and range from the schema (pipelines/sweep_settings.py), so
+# the Lab, the sweep flags and MCP can't drift apart; simulation counts keep each job's own default (a backtest prices
+# many races, a forecast one season)
+HALF_LIFE = Knob("half_life", _setting("half_life_days").label, "float", _setting("half_life_days").default,
+                 _setting("half_life_days").min, _setting("half_life_days").max,
                  help="How fast old races fade from the pace models.")
+
+
+def _sims(default, label="Simulations"):
+    return Knob("sims", label, "int", default, _setting("sims").min, _setting("sims").max)
 F1_TRACK = Knob("track", "Track/sector features", "choice", "on", choices=["on", "off"],
                 help="Use the sector-type car model at each circuit.")
 
@@ -187,14 +210,14 @@ CATALOG = {j.code: j for j in [
     JobType("f1_scenario", "f1", "Forward forecast (scenario)", "Price every remaining race and the championships "
             "with data up to now. Saved as a scenario; promote it to make it the live fair prices.",
             [Knob("label", "Scenario name", "text", "my scenario"), HALF_LIFE,
-             Knob("sims", "Simulations", "int", 10000, 1000, 50000), F1_TRACK],
+             _sims(10000), F1_TRACK],
             lambda p, out: _f1_common(p) + ["forecast", "--sims", str(p["sims"]), "--save", "--scenario", p["label"]]
             + (["--no-track"] if p["track"] == "off" else []),
             "~1-2 min"),
     JobType("f1_diagnostic", "f1", "Event diagnostic", "Price one past race as of a cutoff (e.g. the evening before), "
             "then compare with Polymarket at that time and the result.",
             [Knob("event", "Event", "event"), Knob("cutoff", "As of (UTC)", "datetime"), HALF_LIFE,
-             Knob("sims", "Simulations", "int", 10000, 1000, 50000), F1_TRACK],
+             _sims(10000), F1_TRACK],
             lambda p, out: _f1_common(p) + ["diagnostic", "--event", p["event"], "--cutoff", p["cutoff"],
                                             "--sims", str(p["sims"]), "--save"]
             + (["--no-track"] if p["track"] == "off" else []),
@@ -211,7 +234,7 @@ CATALOG = {j.code: j for j in [
                        'needs (markets/combos.py)'),
              Knob("variant", "Model variant", "choice", combo_variants()[0], choices=combo_variants(),
                   help="the live book's variant plus flpos (the fastest lap from the simulated result) by default"),
-             HALF_LIFE, Knob("sims", "Simulations", "int", 10000, 1000, 50000), F1_TRACK],
+             HALF_LIFE, _sims(10000), F1_TRACK],
             lambda p, out: _combo_argv(p),
             "~1 min"),
     JobType("f1_sweep", "f1", "Edge Finder sweep (every weekend of the season)", "Every raced weekend of the "
@@ -240,7 +263,7 @@ CATALOG = {j.code: j for j in [
             [Knob("label", "Scenario name", "text", "my scenario"),
              Knob("half_life", "Recency half-life (days)", "float", 240, 20, 2000),
              Knob("junior_weight", "Weight of junior results", "float", 0.25, 0, 1),
-             Knob("sims", "Simulations", "int", 10000, 1000, 50000)],
+             _sims(10000)],
             lambda p, out: ["-m", "racinglines", "mtb_dh", "forecast", "--db", "--save", "--scenario", p["label"],
                             "--half-life-days", str(p["half_life"]), "--junior-weight", str(p["junior_weight"]),
                             "--sims", str(p["sims"]), "--out-dir", str(Path(out).parent.parent / "mtb_dh" / "season")],

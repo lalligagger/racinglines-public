@@ -1,0 +1,25 @@
+[package]
+name = "racinglines_replay"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# The maker replay for the browser (wasm32-unknown-unknown, see build.sh) and a command-line runner for benchmarks
+# and the parity test (native or wasm32-wasip1).
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "replay"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# float_roundtrip: parse every float exactly as Python wrote it (the default parser can be off by one bit)
+serde_json = { version = "1", features = ["float_roundtrip"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

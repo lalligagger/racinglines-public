@@ -373,28 +373,67 @@
         else els[0].value = v === null ? "" : v;
       });
     }
+    // a stored value and the field's value are the same setting: "not set" (null) reads as an empty field, an empty
+    // checkbox group, or a select's first option (the setting's fallback, e.g. the default exchange)
+    function same(form, k, v, stored) {
+      if (stored === undefined) return true;
+      if (stored === null) {
+        const sel = form.querySelector(`select[name="${k}"]`);
+        return v === null || v === "" || (Array.isArray(v) && !v.length) || (sel && sel.options.length && v === sel.options[0].value);
+      }
+      return JSON.stringify(v) === JSON.stringify(stored) || (typeof v === "number" && Number(stored) === v);
+    }
     function markChanged(form) {
       const src = JSON.parse(form.dataset.source || "{}"), now = readSettings(form);
       let n = 0;
       form.querySelectorAll("[data-setting]").forEach(l => {
-        const k = l.dataset.setting, a = JSON.stringify(now[k]), b = JSON.stringify(src[k]);
-        const changed = src[k] !== undefined && a !== b && !(typeof now[k] === "number" && Number(src[k]) === now[k]);
+        const k = l.dataset.setting, changed = !same(form, k, now[k], src[k]);
         l.classList.toggle("changed", changed); if (changed) n++;
       });
       const c = form.querySelector("[data-changed-count]");
       if (c) c.textContent = n ? `${n} setting${n > 1 ? "s" : ""} changed from the starting point` : "";
+      // anything off the defaults makes the run a scenario (not calibrated)
+      const defs = JSON.parse(form.dataset.defaults || "{}"), note = form.querySelector("[data-scenario-note]");
+      if (note) note.hidden = Object.keys(defs).every(k => !(k in now) || same(form, k, now[k], defs[k]));
     }
+    // the model variant: the switch checkboxes and the text field mirror each other; ticked switches join with "+" in
+    // the checkboxes' order, none ticked is "baseline"
+    function syncSwitches(form) {
+      const t = form.querySelector("[data-variant-text]");
+      if (!t) return;
+      const on = t.value.split("+").map(x => x.trim());
+      form.querySelectorAll("[data-switch]").forEach(b => { b.checked = on.includes(b.dataset.switch); });
+    }
+    function switchesToText(form, changed) {
+      if (changed && changed.checked && changed.dataset.exclusive)
+        form.querySelectorAll("[data-switch]").forEach(b => {
+          if (b !== changed && changed.dataset.exclusive.split(" ").includes(b.dataset.switch)) b.checked = false;
+        });
+      const on = [...form.querySelectorAll("[data-switch]")].filter(b => b.checked).map(b => b.dataset.switch);
+      form.querySelector("[data-variant-text]").value = on.length ? on.join("+") : "baseline";
+    }
+    document.querySelectorAll("#sweep-form").forEach(syncSwitches);
+    document.addEventListener("htmx:afterSwap", e => {
+      const f = e.detail.target.querySelector && e.detail.target.querySelector("#sweep-form");
+      if (f) syncSwitches(f);
+    });
     document.addEventListener("change", e => {
       const sel = e.target.closest("[data-start-from]");
       if (sel) {
         const form = sel.form, st = JSON.parse(sel.selectedOptions[0].dataset.settings || "{}");
         form.dataset.source = JSON.stringify(Object.assign(JSON.parse(form.dataset.defaults), st));
         fillSettings(form, JSON.parse(form.dataset.source));
+        syncSwitches(form);
       }
       const form = e.target.closest("#sweep-form");
+      if (form && e.target.matches("[data-switch]")) switchesToText(form, e.target);
       if (form) markChanged(form);
     });
-    document.addEventListener("input", e => { const form = e.target.closest("#sweep-form"); if (form) markChanged(form); });
+    document.addEventListener("input", e => {
+      const form = e.target.closest("#sweep-form");
+      if (form && e.target.matches("[data-variant-text]")) syncSwitches(form);
+      if (form) markChanged(form);
+    });
     const hashKey = location.hash.slice(1);
     if (document.querySelector(`[data-section="${hashKey}"]`)) open.add(hashKey);
     [...open].forEach(k => show(k, true, hashKey === k));
