@@ -21,6 +21,7 @@ re-run; --force asks again. An event with no RAC session yet (not run, or a test
 """
 
 import json
+from datetime import date
 
 import httpx
 
@@ -70,13 +71,28 @@ def seasons(force=False):
     return {r["year"]: r["id"] for r in rows}
 
 
-def fetch(years, force=False, dry_run=False):
+def _started(ev, today):
+    return bool(ev.get("date_start")) and date.fromisoformat(ev["date_start"][:10]) <= today
+
+
+def _race_finished(sessions):
+    return any(s.get("type") == "RAC" and s.get("status") == "FINISHED" for s in sessions or [])
+
+
+def fetch(years, force=False, dry_run=False, refresh=False, today=None):
     """Download events, the MotoGP category id, every finished session and its classification for each season in
     `years`. The public JSON does not expose lap-by-lap or sector data, but it does expose a result table per
     session (FP/Q/WUP/SPR/RAC), which is enough to match the F1-like session pipeline without inventing a richer
     source. A dry run still fetches the cheap season-level lists (events, categories: one call each) to count
     accurately, but never the many per-event sessions/classification calls. Returns counts: {seasons, events,
-    classifications, skipped, errors}."""
+    classifications, skipped, errors}.
+
+    refresh (the VM's forecast-refresh step, scripts/vm/forecast-refresh.sh): ask again for each season's events.json
+    (one call: the calendar, including events not run yet), and for the sessions.json of every event that has started
+    (date_start on or before `today`) whose stored sessions show no FINISHED race, so a weekend first fetched before it
+    ran is seen again; a session's classification is asked for only once that session is FINISHED, so a
+    classification taken mid-session is never stored (a stored file is never asked for again without --force)."""
+    today = today or date.today()
     counts = dict(seasons=0, events=0, classifications=0, skipped=0, errors=0)
     season_ids = seasons(force=force)
     with client() as c:
@@ -86,7 +102,7 @@ def fetch(years, force=False, dry_run=False):
                 counts["errors"] += 1
                 continue
             ev_path = season_path(year) / "events.json"
-            events = None if force else _read(ev_path)
+            events = None if force or refresh else _read(ev_path)
             cat_path = season_path(year) / "categories.json"
             cats = None if force else _read(cat_path)
             if events is None:
@@ -116,6 +132,8 @@ def fetch(years, force=False, dry_run=False):
                     counts["events"] += 1
                     continue
                 sessions = None if force else _read(sess_path)
+                if refresh and sessions is not None and _started(ev, today) and not _race_finished(sessions):
+                    sessions = None                      # the weekend has run (or is running) since it was stored
                 if sessions is None:
                     try:
                         sessions = get(c, "/results/sessions", eventUuid=ev["id"], categoryUuid=cat_id)
@@ -136,6 +154,8 @@ def fetch(years, force=False, dry_run=False):
                         continue
                     if session.get("status") == "NOT-STARTED":
                         continue
+                    if refresh and session.get("status") != "FINISHED":
+                        continue                         # still running: asked for again on a later pass
                     session_cls_path = event_path(year, short) / f"{sid}.classification.json"
                     if not force and session_cls_path.exists():
                         continue
