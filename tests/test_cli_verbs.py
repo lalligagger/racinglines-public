@@ -77,3 +77,17 @@ def test_no_command_shares_an_option_with_its_sport(module):
         if isinstance(a, argparse._SubParsersAction):
             for name, sub in a.choices.items():
                 assert not own & {s for x in sub._actions for s in x.option_strings}, (module, name)
+
+
+
+def test_a_command_in_another_group_names_it(capsys):
+    assert VB.main("model", ["sweep", "f1"]) == 2
+    assert "racinglines strategy sweep f1" in capsys.readouterr().err
+    assert VB.main("model", ["sweep"]) == 2
+    assert "racinglines strategy sweep SPORT" in capsys.readouterr().err
+
+
+def test_usage_lines_use_the_new_form():
+    p = VB.parser_of("f1")
+    sub = next(a for a in p._actions if a.choices and "sweep" in (a.choices or {})).choices["sweep"]
+    assert sub.format_usage().startswith("usage: racinglines strategy sweep f1")

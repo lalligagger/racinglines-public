@@ -197,7 +197,7 @@ def weekend(conn, w, venue, model_key):
     rows = weekend_rows(conn, w, runs, venue)
     note = []
     if missing:
-        note.append(f"no stage run for {', '.join(missing)} (model_key {model_key}; run `f1 sweep` or `f1 signals` first)")
+        note.append(f"no stage run for {', '.join(missing)} (model_key {model_key}; run `racinglines strategy sweep f1` or `racinglines strategy signals f1` first)")
     if not len(rows) and runs:
         note.append(f"no {venue} markets linked")
     note += notes(rows, venue)

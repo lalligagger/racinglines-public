@@ -2,8 +2,8 @@
 Task-first commands: `racinglines <group> <command> SPORT [options]`, the sport an argument rather than a top-level
 command. The groups and which command belongs to which are below; which sports offer a command, its help and its
 options come from the sport's own parser (racinglines/cli/<sport>.py), read at run time, so nothing is listed twice.
-`racinglines model forecast f1 --save` runs exactly what `racinglines f1 forecast --save` runs; the sport-first form
-still works (the VM's timers, scripts and the Lab's jobs use it) but is no longer listed in the help.
+Every caller in the repo uses this form (tests/test_no_old_cli_forms.py). The old sport-first form is deprecated: an
+alias with a notice (cli/__init__.py) for one version, then removed.
 """
 
 import argparse
@@ -61,6 +61,21 @@ def parser_of(module):
     finally:
         argparse.ArgumentParser.parse_args, argparse.ArgumentParser.parse_known_args = saved
     raise RuntimeError(f"racinglines.cli.{module} has no argparse parser")
+
+
+def retitle(parser, module):
+    """Name a sport parser's commands by their new form, so `usage:` and error lines read `racinglines model forecast
+    f1` (nested commands follow: `racinglines data points mtb_dh import`). Each sport module calls it before parsing."""
+    parser.prog = f"racinglines <group> <command> {module}"
+
+    def walk(p, prefix):
+        for a in p._actions:
+            if isinstance(a, argparse._SubParsersAction):
+                for name, sub in a.choices.items():
+                    sub.prog = prefix(name)
+                    walk(sub, lambda n, base=sub.prog: f"{base} {n}")
+    walk(parser, lambda name: f"racinglines {group_of(name, module) or '<group>'} {name} {module}")
+    return parser
 
 
 def _subcommands(parser):
@@ -165,13 +180,20 @@ def main(group, argv):
     cmd, rest = argv[0], argv[1:]
     if not rest or rest[0] not in SPORTS:
         offered = [m for m in MODULES if cmd in commands(m) and group_of(cmd, m) == group]
-        if not offered:
+        elsewhere = sorted({group_of(cmd, m) for m in MODULES if cmd in commands(m)} - {group})
+        if not offered and elsewhere:
+            print(f"racinglines {group} {cmd}: it is under {' and '.join(elsewhere)}: "
+                  f"`racinglines {elsewhere[0]} {cmd} SPORT`", file=sys.stderr)
+        elif not offered:
             print(f"racinglines {group}: no command {cmd!r}\n\n{_help(group)}", file=sys.stderr)
         else:
             print(f"racinglines {group} {cmd} SPORT: the sport is one of {', '.join(offered)}", file=sys.stderr)
         return 2
     module, rest = SPORTS[rest[0]], rest[1:]
-    if group_of(cmd, module) != group or cmd not in commands(module):
+    if cmd in commands(module) and group_of(cmd, module) != group:
+        print(f"racinglines {group} {cmd}: it is `racinglines {group_of(cmd, module)} {cmd} {module}`", file=sys.stderr)
+        return 2
+    if cmd not in commands(module):
         print(f"racinglines {group} {cmd}: not offered for {module}; `racinglines {group} -h` lists what is",
               file=sys.stderr)
         return 2

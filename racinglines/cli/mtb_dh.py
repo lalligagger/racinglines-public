@@ -335,10 +335,10 @@ def main(argv=None):
     if argv and argv[0] in ("download", "parse"):          # standalone tools with their own options
         from racinglines.sources.chronorace import download, parse
         mod = download if argv[0] == "download" else parse
-        sys.argv = [f"racinglines mtb_dh {argv[0]}"] + argv[1:]
+        sys.argv = [f"racinglines data {argv[0]} mtb_dh"] + argv[1:]
         return mod.main()
     from racinglines import paths
-    ap = argparse.ArgumentParser(prog="racinglines mtb_dh", description=__doc__,
+    ap = argparse.ArgumentParser(prog="racinglines <group> <command> mtb_dh", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("download", help="Download Chronorace result files (see: racinglines data download mtb_dh -h).")
@@ -446,6 +446,8 @@ def main(argv=None):
     live_p.add_argument("--once", action="store_true", help="One update, then exit")
     live_p.set_defaults(func=cmd_live)
 
+    from racinglines.cli.verbs import retitle
+    retitle(ap, "mtb_dh")
     args = ap.parse_args(argv)
     return args.func(args)
 

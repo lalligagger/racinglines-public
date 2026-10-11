@@ -248,17 +248,17 @@ replay() {
     nice $R markets --sport "$S" sync --year 2025 --closed
     nice $R markets --sport "$S" sync --year 2026 --closed
     step "$S Kalshi tape pull and replay 2016-2026"
-    nice $R "$S" replay --years 2016-2026 --venue kalshi --tape pull --backup "$B" --require-tradeable \
+    nice $R strategy replay "$S" --years 2016-2026 --venue kalshi --tape pull --backup "$B" --require-tradeable \
       || { stop "$S: no tradeable Kalshi market (see the log's NO MARKETS / NO TAPE / NOT TRADED lines): skipped"; sport_done "$S" "$T_S" "$L_S" skipped; continue; }
     tally "$S Kalshi" "$L_S"
     step "$S Polymarket tape pull and replay 2016-2026"
-    nice $R "$S" replay --years 2016-2026 --venue polymarket --tape pull --backup "$B"
+    nice $R strategy replay "$S" --years 2016-2026 --venue polymarket --tape pull --backup "$B"
     tally "$S Polymarket" "$L_S"
     step "$S price-spike check"
     $PY scripts/vm/replay_grid.py spikes "$S" kalshi
     $PY scripts/vm/replay_grid.py spikes "$S" polymarket || true
     say "$S: replay saves"
-    RACINGLINES_PREDICTION_RECORDS=1 nice $R "$S" replay --years 2016-2026 --save --backup "$B"
+    RACINGLINES_PREDICTION_RECORDS=1 nice $R strategy replay "$S" --years 2016-2026 --save --backup "$B"
     tally "$S saves" "$L_S"
     say "$S: settings grid on Kalshi (read-only), stops starting runs after $GRID_HOURS h"
     G=data/runs/replay-grid/$S
@@ -266,7 +266,7 @@ replay() {
     T0=$(date +%s)
     for Y in 2026 2025; do for E in 0.05 0.08 0.10 0.15; do for V in 50 200; do
       if [ $(( $(date +%s) - T0 )) -gt $(( GRID_HOURS * 3600 )) ]; then echo "grid: time up, skipping $Y e$E v$V"; continue; fi
-      nice $R "$S" replay --years "$Y" --venue kalshi --min-edge "$E" --min-volume "$V" --out "$G/$Y-e$E-v$V" > "$G/$Y-e$E-v$V.log" 2>&1 \
+      nice $R strategy replay "$S" --years "$Y" --venue kalshi --min-edge "$E" --min-volume "$V" --out "$G/$Y-e$E-v$V" > "$G/$Y-e$E-v$V.log" 2>&1 \
         || { fail; progress "grid run failed: $S $Y edge $E floor $V (see $G/$Y-e$E-v$V.log)"; }
     done; done; done
     step "$S grid ranking"
@@ -274,7 +274,7 @@ replay() {
     progress "$S grid top 3 (edge, floor): $(grep '^TOP ' "$G/rank.txt" | cut -d' ' -f2- | paste -sd ';' - | sed 's/;/; /g' || true)"
     step "$S grid top 3 at 16k (6 runs)"
     { grep '^TOP ' "$G/rank.txt" || true; } | while read -r _ E V; do for Y in 2026 2025; do
-      nice $R "$S" replay --years "$Y" --venue kalshi --min-edge "$E" --min-volume "$V" --sims 16000 --out "$G/$Y-e$E-v$V-s16000" > "$G/$Y-e$E-v$V-s16000.log" 2>&1 \
+      nice $R strategy replay "$S" --years "$Y" --venue kalshi --min-edge "$E" --min-volume "$V" --sims 16000 --out "$G/$Y-e$E-v$V-s16000" > "$G/$Y-e$E-v$V-s16000.log" 2>&1 \
         || { fail; progress "grid 16k run failed: $S $Y edge $E floor $V"; }
     done; done
     $PY scripts/vm/replay_grid.py rank "$G" --top 3
@@ -326,8 +326,8 @@ case "$MODE" in
   dry)
     for S in $SPORTS; do
       $PY scripts/vm/replay_grid.py spikes "$S" kalshi || true
-      nice $R "$S" replay --years 2026 --events latest --tape probe
-      nice $R "$S" replay --years 2026 --events latest
+      nice $R strategy replay "$S" --years 2026 --events latest --tape probe
+      nice $R strategy replay "$S" --years 2026 --events latest
     done
     golden
     echo "dry run done: nothing written" ;;
