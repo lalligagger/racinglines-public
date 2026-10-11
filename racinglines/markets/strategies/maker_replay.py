@@ -37,6 +37,7 @@ competing makers are only what the recorded books show (top 10 levels, once a mi
 """
 
 import math
+from bisect import bisect_right
 from dataclasses import dataclass, field, replace
 
 import numpy as np
@@ -206,48 +207,126 @@ def _cap(q, sgn, price, cash, inv, cond, p):
     return lo
 
 
+class _Tape:
+    """One market's public record as Python lists, for the replay's scalar lookups: bisect on a list is several
+    times cheaper than np.searchsorted on one value, and the 24 h volume is a difference of prefix sums. Reads only
+    what PublicView would show at t (indices from bisect_right(..., t)), so nothing after t is seen."""
+    __slots__ = ("mid_ts", "mid_px", "tr_ts", "tr_px", "tr_sz", "tr_buy", "cum", "_mk")
+
+    def __init__(self, mk: Market):
+        self._mk = mk
+        self.mid_ts, self.mid_px = mk.mid_ts.tolist(), np.asarray(mk.mid_px, float).tolist()
+        self.tr_ts, self.tr_px = mk.tr_ts.tolist(), np.asarray(mk.tr_px, float).tolist()
+        self.tr_sz, self.tr_buy = np.asarray(mk.tr_sz, float).tolist(), [bool(x) for x in mk.tr_buy]
+        self.cum = np.concatenate([[0.0], np.cumsum(np.asarray(mk.tr_px, float) * np.asarray(mk.tr_sz, float))]).tolist()
+
+    def mid(self, t):
+        i = bisect_right(self.mid_ts, t)
+        return self.mid_px[i - 1] if i else None
+
+    def volume(self, t, threshold, hours=24):
+        """PublicView(mk, t).volume(hours): the prefix-sum difference, or the exact sum when that is within rounding
+        of `threshold`, so the thin-market test decides exactly as before."""
+        j = bisect_right(self.tr_ts, t)
+        k = bisect_right(self.tr_ts, t - int(hours * 3600e9))
+        v = self.cum[j] - self.cum[k]
+        if abs(v - threshold) <= 1e-6 * max(1.0, abs(threshold)):
+            mk = self._mk
+            v = float((mk.tr_px[k:j] * mk.tr_sz[k:j]).sum())
+        return v
+
+
+def _tick_round(x, tick, up):
+    """np.ceil / np.floor of round(x / tick, 6), times tick (math.* for finite values: same result, faster)."""
+    y = round(x / tick, 6)
+    if math.isfinite(y):
+        return (math.ceil(y) if up else math.floor(y)) * tick
+    return (np.ceil(y) if up else np.floor(y)) * tick
+
+
+def _quote(fair, tape: _Tape, t, inv, p: Params, capital_used):
+    """quote(fair, PublicView(mk, t), ...) read from the market's _Tape: the same rules in the same order, the 24 h
+    volume only computed when the earlier tests pass."""
+    if fair is None or fair != fair:
+        return None, None, "no fair"
+    mid = tape.mid(t)
+    if mid is None:
+        return None, None, "no market price"
+    if not (p.price_band[0] <= mid <= p.price_band[1]):
+        return None, None, "outside price band"
+    if tape.volume(t, p.min_volume_24h) < p.min_volume_24h:
+        return None, None, "thin"
+    if p.max_disagree is not None and abs(fair - mid) > p.max_disagree:
+        return None, None, "disagree"
+    shift = -p.skew * p.half_spread * inv / p.max_pos
+    bid = _tick_round(fair - p.half_spread + shift, p.tick, up=False)
+    ask = _tick_round(fair + p.half_spread + shift, p.tick, up=True)
+    bid = min(bid, _tick_round(mid, p.tick, up=True) - p.tick)          # post-only: never cross the market
+    ask = max(ask, _tick_round(mid, p.tick, up=False) + p.tick)
+    bid = None if bid < p.tick else round(bid, 4)
+    ask = None if ask > 1 - p.tick else round(ask, 4)
+    at_cap = capital_used >= p.max_capital
+    if bid is not None and (inv >= p.max_pos or (at_cap and inv >= 0)):
+        bid = None
+    if ask is not None and (inv <= -p.max_pos or (at_cap and inv <= 0)):
+        ask = None
+    return bid, ask, None if (bid is not None or ask is not None) else "limit"
+
+
 def replay(data, p: Params = Params()):
     """data = dict(markets=[Market], stages=[dict(run_id, start, end)]) with times in
-    int64 ns. Returns dict(fills, quotes, positions)."""
+    int64 ns. Returns dict(fills, quotes, positions).
+    The rules are quote()'s and PublicView's, run on per-market lists (_Tape) for speed; tests/test_replay_parity.py
+    checks the results equal the original implementation's exactly."""
     step = int(p.step_min * 60e9)
     pull = int(p.pull_min * 60e9)
-    cash = {m.cond: 0.0 for m in data["markets"]}
-    inv = {m.cond: 0.0 for m in data["markets"]}
+    markets = data["markets"]
+    tapes = [_Tape(mk) for mk in markets]
+    cash = {m.cond: 0.0 for m in markets}
+    inv = {m.cond: 0.0 for m in markets}
     fills, quotes = [], []
     by_kind = p.half_spread_by_kind or {}
     queue = {}                     # fill="queue": (cond, side) -> [price, size ahead of us]
     booked = [0, 0]                # fill="queue": quoted sides with a usable book, all quoted sides
+    touch, use_queue = p.fill in ("touch", "queue"), p.fill == "queue"
     for st in data["stages"]:
         t, end = st["start"], st["end"] - (pull if st.get("session_end", True) else 0)
+        run_id = st["run_id"]
         while t < end:
             t_next = min(t + step, end)
             used = _used(cash, inv)
             pt = p
             if p.info_skew and st.get("session_end", True):     # skew harder as the next session approaches
                 pt = replace(p, skew=p.skew * (1 + p.info_skew * np.exp(-(st["end"] - t) / (p.info_tau_h * 3600e9))))
-            for mk in data["markets"]:
-                fair = mk.fairs.get(st["run_id"])
-                view = PublicView(mk, t)
-                pk = replace(pt, half_spread=by_kind[mk.kind]) if mk.kind in by_kind else pt
-                bid, ask, why = quote(fair, view, inv[mk.cond], pk, used)
-                quotes.append((t, mk.cond, st["run_id"], bid, ask, why))
+            by_kind_p = {}
+            for mk, tp in zip(markets, tapes):
+                fair = mk.fairs.get(run_id)
+                a = bisect_right(tp.tr_ts, t)
+                if mk.kind in by_kind:
+                    pk = by_kind_p.get(mk.kind)
+                    if pk is None:
+                        pk = by_kind_p[mk.kind] = replace(pt, half_spread=by_kind[mk.kind])
+                else:
+                    pk = pt
+                bid, ask, why = _quote(fair, tp, t, inv[mk.cond], pk, used)
+                quotes.append((t, mk.cond, run_id, bid, ask, why))
                 if bid is None and ask is None:
                     continue
-                if p.fill == "queue":
+                if use_queue:
                     for side, px_q in (("bid", bid), ("ask", ask)):
                         _join_queue(queue, mk, t, side, px_q, p, booked)
                 # trades strictly after the quote was placed, up to the next requote
-                a = np.searchsorted(mk.tr_ts, t, side="right")
-                b = np.searchsorted(mk.tr_ts, t_next, side="right")
+                b = bisect_right(tp.tr_ts, t_next)
                 left_bid = left_ask = p.size
+                tr_px, tr_sz, tr_buy = tp.tr_px, tp.tr_sz, tp.tr_buy
                 for k in range(a, b):
-                    px, sz, buy = mk.tr_px[k], mk.tr_sz[k], mk.tr_buy[k]
-                    if p.fill == "queue":
+                    px, sz, buy = tr_px[k], tr_sz[k], tr_buy[k]
+                    if use_queue:
                         side, px_q = ("ask", ask) if buy else ("bid", bid)
                         sz = _after_queue(queue.get((mk.cond, side)), px, sz, px_q, buy)
                         if sz <= 0:
                             continue
-                    if not buy and bid is not None and left_bid > 0 and (px <= bid if p.fill in ("touch", "queue") else px < bid):
+                    if not buy and bid is not None and left_bid > 0 and (px <= bid if touch else px < bid):
                         q = _cap(min(sz, left_bid, p.max_pos - inv[mk.cond]), +1, bid, cash, inv, mk.cond, p)
                         if q > 0:
                             left_bid -= q
@@ -255,8 +334,8 @@ def replay(data, p: Params = Params()):
                             cash[mk.cond] -= q * bid
                             if p.maker_fee:
                                 cash[mk.cond] -= venue_fee(p.maker_fee, bid, q)
-                            fills.append((int(mk.tr_ts[k]), mk.cond, st["run_id"], "buy", bid, q, fair))
-                    elif buy and ask is not None and left_ask > 0 and (px >= ask if p.fill in ("touch", "queue") else px > ask):
+                            fills.append((tp.tr_ts[k], mk.cond, run_id, "buy", bid, q, fair))
+                    elif buy and ask is not None and left_ask > 0 and (px >= ask if touch else px > ask):
                         q = _cap(min(sz, left_ask, p.max_pos + inv[mk.cond]), -1, ask, cash, inv, mk.cond, p)
                         if q > 0:
                             left_ask -= q
@@ -264,18 +343,18 @@ def replay(data, p: Params = Params()):
                             cash[mk.cond] += q * ask
                             if p.maker_fee:
                                 cash[mk.cond] -= venue_fee(p.maker_fee, ask, q)
-                            fills.append((int(mk.tr_ts[k]), mk.cond, st["run_id"], "sell", ask, q, fair))
+                            fills.append((tp.tr_ts[k], mk.cond, run_id, "sell", ask, q, fair))
             t = t_next
         if p.flatten_before_qual and st["end"] == data.get("qual_start"):
-            for mk in data["markets"]:           # take the market to go flat before qualifying
-                q, mid = inv[mk.cond], PublicView(mk, end).mid()
+            for mk, tp in zip(markets, tapes):   # take the market to go flat before qualifying
+                q, mid = inv[mk.cond], tp.mid(end)
                 if abs(q) < 1e-9 or mid is None:
                     continue
                 px = min(mid + p.taker_cost, 1.0) if q < 0 else max(mid - p.taker_cost, 0.0)
                 cash[mk.cond] += q * px
                 inv[mk.cond] = 0.0
-                fills.append((int(end), mk.cond, st["run_id"], "sell" if q > 0 else "buy", px, abs(q),
-                              mk.fairs.get(st["run_id"])))
+                fills.append((int(end), mk.cond, run_id, "sell" if q > 0 else "buy", px, abs(q),
+                              mk.fairs.get(run_id)))
     fills = pd.DataFrame(fills, columns=["ts", "cond", "run_id", "side", "price", "qty", "fair"])
     quotes = pd.DataFrame(quotes, columns=["ts", "cond", "run_id", "bid", "ask", "skip"])
     out = dict(fills=_score_fills(fills, data), quotes=quotes, positions=_positions(data, cash, inv), params=p)
