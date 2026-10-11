@@ -20,6 +20,10 @@ racinglines book map    FILE [--json] [--db URL]
 racinglines book price  FILE [--json] [--db URL] [--run ID ...] [--sims RACE_ID=FILE.npz ...]
 racinglines book settle FILE [--json] [--db URL]
 racinglines book view   RESULT.json
+
+# anywhere, no local data: the same commands on the VM (an rl_ token, read without echo)
+read -rs RACINGLINES_MCP_TOKEN && export RACINGLINES_MCP_TOKEN
+racinglines book price  FILE --demo --rich
 ```
 
 | Command | Does |
@@ -33,7 +37,9 @@ racinglines book view   RESULT.json
 |---|---|
 | `--json` | The whole result as JSON (fields below) |
 | `--rich` | A coloured terminal table ([Rich](https://github.com/Textualize/rich), `racinglines/cli/rich_view.py`) instead of plain text: one row per line with a slip's legs nested under it, EV and results green above zero and red below, flags, unmapped lines and assumptions in panels |
-| `--db URL` | The database (default `DATABASE_URL`) |
+| `--db URL` | The database (default `DATABASE_URL`). Local is the default: you need the data and a database of your own |
+| `--demo` | Run on the VM instead: the book file is sent to the hosted MCP server's `map_book` / `price_book` / `settle_book` tools ([MCP: Hosted](../mcp.md)), which return the same result, so `--json`, `--rich` and plain text work unchanged. Needs `RACINGLINES_MCP_TOKEN`, an account's `rl_` token (web app: Settings > Connect Claude (MCP) > Get a token). Read-only, like every MCP read. `--db` and `--sims` are local only (`racinglines/cli/remote.py`) |
+| `--mcp-url URL` | The hosted server for `--demo` (default `RACINGLINES_MCP_URL`, else `https://mcp.racinglines.bet/mcp`, the production VM; staging runs no MCP server) |
 | `--run ID` | Price the legs of that run's competition from this model run (repeatable, one per sport). Default: the app's own choice per race, `markets/venues.pricing_run` (the live stage or forecast run before the race, the latest as-of run made before the start once it has run) |
 | `--sims RACE_ID=FILE` | An `OutcomeSims` archive (`models/outcomes.save_sims`) for one race. Legs on that race are then priced jointly from it (repeatable) |
 

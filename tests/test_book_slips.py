@@ -297,6 +297,70 @@ def test_cli_rich_and_view_render_every_command(test_engine, db, book, tmp_path,
         assert f"book {cmd}" in capsys.readouterr().out
 
 
+@pytest.fixture
+def hosted(test_engine, monkeypatch):
+    """The hosted MCP server (OAuth on, rl_ tokens) bound to the test database, served over HTTP on a free local port
+    in a thread: (url, token of an admin account)."""
+    import socket
+    import threading
+    import time
+    import uvicorn
+    from sqlalchemy import text
+    from sqlalchemy.orm import sessionmaker
+    from racinglines.mcp import auth
+    from racinglines.mcp import server as MS
+    from racinglines.web import users as U
+    monkeypatch.setenv("APP_SECRET", "test-secret")
+    with sessionmaker(test_engine)() as s:
+        if not s.execute(text("SELECT 1 FROM users WHERE username = 'b_admin'")).first():
+            U.create_user(s, "b_admin", "pw", "admin")
+        s.commit()
+    tok = auth.new_token(test_engine, "b_admin")
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    app = MS.http_app(MS.build(engine_url=test_engine.url.render_as_string(hide_password=False), oauth=True))
+    srv = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
+    th = threading.Thread(target=srv.run, daemon=True)
+    th.start()
+    for _ in range(100):
+        if srv.started:
+            break
+        time.sleep(0.05)
+    try:
+        yield f"http://127.0.0.1:{port}/mcp", tok
+    finally:
+        srv.should_exit = True
+        th.join(5)
+        MS._URL = None
+
+
+def test_demo_mode_prices_on_the_hosted_server_like_local(test_engine, db, book, hosted, tmp_path, capsys,
+                                                          monkeypatch):
+    from racinglines.cli import book as CLI
+    url, tok = hosted
+    p = tmp_path / "book.toml"
+    p.write_text(BOOK)
+    db_url = test_engine.url.render_as_string(hide_password=False)
+    monkeypatch.delenv("RACINGLINES_MCP_TOKEN", raising=False)
+    assert CLI.main(["price", str(p), "--demo", "--mcp-url", url]) == 2                       # no token: refused
+    assert "RACINGLINES_MCP_TOKEN" in capsys.readouterr().err
+    monkeypatch.setenv("RACINGLINES_MCP_TOKEN", "rl_wrong")
+    assert CLI.main(["price", str(p), "--demo", "--mcp-url", url]) == 2
+    assert "401" in capsys.readouterr().err
+    monkeypatch.setenv("RACINGLINES_MCP_TOKEN", tok)
+    for cmd in ("map", "price", "settle"):
+        assert CLI.main([cmd, str(p), "--json", "--db", db_url]) == 0
+        local = json.loads(capsys.readouterr().out)
+        assert CLI.main([cmd, str(p), "--json", "--demo", "--mcp-url", url]) == 0
+        remote = json.loads(capsys.readouterr().out)
+        assert [(r["id"], r["status"], r.get("ev_model"), r.get("result")) for r in remote["lines"]] == \
+               [(r["id"], r["status"], r.get("ev_model"), r.get("result")) for r in local["lines"]]
+    assert CLI.main(["price", str(p), "--rich", "--demo", "--mcp-url", url]) == 0
+    assert "book price" in capsys.readouterr().out
+    assert CLI.main(["price", str(p), "--demo", "--db", db_url]) == 2                          # local-only options
+
+
 def test_same_race_legs_from_a_stored_combo_run(test_engine, db, book):
     """A stored f1_combo run (model_runs kind "combo") holding exactly the slip's legs prices it jointly."""
     from sqlalchemy import text

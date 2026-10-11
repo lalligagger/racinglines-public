@@ -11,7 +11,10 @@ database.
 Options (map, price, settle):
     --json                 the whole result as JSON (stable keys: docs/sportsbook/slips.md#json-output)
     --rich                 a coloured terminal table (Rich; racinglines/cli/rich_view.py) instead of plain text
-    --db URL               the database (default DATABASE_URL)
+    --db URL               the database (default DATABASE_URL): local is the default
+    --demo                 run on the VM's hosted MCP server instead of a local database (racinglines/cli/remote.py):
+                           needs RACINGLINES_MCP_TOKEN (an rl_ token); --mcp-url URL or RACINGLINES_MCP_URL to point
+                           elsewhere (default https://mcp.racinglines.bet/mcp)
 price only:
     --run ID               price legs of that run's competition from it (repeatable; default: the app's own choice
                            per race, markets/venues.pricing_run)
@@ -38,6 +41,10 @@ def _parser():
         s.add_argument("--json", action="store_true", help="print the result as JSON")
         s.add_argument("--rich", action="store_true", help="print a coloured terminal table (Rich)")
         s.add_argument("--db", default=None, help="database URL (default DATABASE_URL)")
+        s.add_argument("--demo", action="store_true",
+                       help="run on the VM's hosted MCP server, not a local database (needs RACINGLINES_MCP_TOKEN)")
+        s.add_argument("--mcp-url", default=None, help="the hosted server for --demo (default RACINGLINES_MCP_URL, "
+                                                       "else https://mcp.racinglines.bet/mcp)")
         if name == "price":
             s.add_argument("--run", type=int, action="append", default=[], help="a model run id (repeatable)")
             s.add_argument("--sims", action="append", default=[], metavar="RACE_ID=FILE",
@@ -134,9 +141,20 @@ def main(argv=None):
     except (S.BookError, OSError) as e:
         print(f"book: {e}", file=sys.stderr)
         return 2
-    with get_engine(args.db).connect() as conn:
-        out = run(args.cmd, book, conn, getattr(args, "run", ()), getattr(args, "sims", ()))
-        conn.rollback()
+    if args.demo:
+        from racinglines.cli import remote
+        if args.db or getattr(args, "sims", None):
+            print("book: --demo runs on the hosted server: --db and --sims are local only", file=sys.stderr)
+            return 2
+        try:
+            out = remote.run(args.cmd, open(args.file).read(), args.mcp_url, getattr(args, "run", ()))
+        except remote.RemoteError as e:
+            print(f"book --demo: {e}", file=sys.stderr)
+            return 2
+    else:
+        with get_engine(args.db).connect() as conn:
+            out = run(args.cmd, book, conn, getattr(args, "run", ()), getattr(args, "sims", ()))
+            conn.rollback()
     if args.json:
         print(json.dumps(out, indent=2, default=str))
     elif args.rich:
