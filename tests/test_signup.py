@@ -236,7 +236,7 @@ def test_demo_accounts_see_the_signup_notice_and_link(monkeypatch):
     notice = A.templates.env.get_template("_site_notice.html")
 
     def page(user, path="/markets"):
-        return notice.render(user=user, request=SimpleNamespace(url=SimpleNamespace(path=path)))
+        return notice.render(user=user, request=SimpleNamespace(url=SimpleNamespace(path=path, query="")))
 
     maker, pro = dict(username="maker", role="pro"), dict(username="someone", role="pro")
     monkeypatch.setenv("RACINGLINES_SIGNUP", "1")
@@ -244,7 +244,7 @@ def test_demo_accounts_see_the_signup_notice_and_link(monkeypatch):
     assert 'id="site-notice"' not in page(maker, "/signup")            # not on the sign-up page itself
     assert 'id="site-notice"' not in page(pro) and 'id="site-notice"' not in page(None, "/login")
     top = A.templates.env.get_template("base.html")
-    req = SimpleNamespace(url=SimpleNamespace(path="/markets"))
+    req = SimpleNamespace(url=SimpleNamespace(path="/markets", query=""))
     demo_bar = top.render(user=maker, request=req, trading=None)
     assert 'class="signup-link" href="/signup"' in demo_bar and 'href="/settings"' not in demo_bar
     own_bar = top.render(user=pro, request=req, trading=None)
@@ -286,3 +286,26 @@ def test_reset_fantasy_keeps_the_demo_accounts(app_db, capsys):
         prefs = dict(c.execute(text("SELECT username, prefs FROM users")).all())
     assert prefs["boss"] == {"email": "x@example.com"}                 # no strategy left, other prefs kept
     assert set(prefs["taker"]) >= {"strategy_profile", "strategy_profile_kalshi"}
+
+
+def test_accounts_without_an_email_get_the_add_email_popup(app_db):
+    """A registered account with no email gets the add-email popup on app pages (not Settings) until it saves one
+    (owner, 2026-10-11). The save runs the sign-up checks: a valid address, on no other account."""
+    from sqlalchemy import text
+    from racinglines.db.config import get_engine
+    client, csrf = _admin(app_db)
+    page = client.get("/admin/users").text
+    assert 'action="/settings/email"' in page and 'data-key="email"' in page
+    assert 'action="/settings/email"' not in client.get("/settings").text
+    with get_engine().begin() as c:
+        c.execute(text("""UPDATE users SET prefs = coalesce(prefs, '{}'::jsonb) || '{"email": "taken@example.com"}'::jsonb
+                          WHERE username = 'taker'"""))
+    for bad, msg in (("not-an-email", "valid email"), ("Taken@Example.com", "already on an account")):
+        r = client.post("/settings/email", data=dict(csrf_token=csrf, email=bad, next="/admin/users"))
+        assert r.status_code == 400 and msg in r.text
+    r = client.post("/settings/email", data=dict(csrf_token=csrf, email=" Boss@Example.com ", next="//evil.example"),
+                    follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/markets"     # off-site targets fall back
+    with get_engine().connect() as c:
+        assert c.execute(text("SELECT prefs->>'email' FROM users WHERE username = 'boss'")).scalar() == "boss@example.com"
+    assert 'action="/settings/email"' not in client.get("/admin/users").text

@@ -127,14 +127,15 @@
     }
     u.addEventListener("input", sync); sync();
   }
-  // the site notice: shown once per browser session (the sign-up variant has its own key, and also sets the plain one)
+  // the site notice: shown once per browser session (the sign-up variant has its own key and also sets the plain one;
+  // the add-email popup, data-key="email", has its own key only)
   function noticeInit() {
     const d = document.getElementById("site-notice");
     if (!d) return;
-    const k = "racinglines-notice-ok" + (d.dataset.signup ? "-signup" : "");
+    const k = "racinglines-notice-ok" + (d.dataset.signup ? "-signup" : d.dataset.key ? "-" + d.dataset.key : "");
     try { if (sessionStorage.getItem(k)) return; } catch (e) {}
     d.addEventListener("close", () => {
-      try { sessionStorage.setItem(k, "1"); sessionStorage.setItem("racinglines-notice-ok", "1"); } catch (e) {} });
+      try { sessionStorage.setItem(k, "1"); if (!d.dataset.key) sessionStorage.setItem("racinglines-notice-ok", "1"); } catch (e) {} });
     if (d.showModal) d.showModal(); else d.setAttribute("open", "");
   }
 

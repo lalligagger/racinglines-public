@@ -99,7 +99,7 @@ same-page navigation: what the pricing does for sportsbooks that set their own l
 feed, and the providers themselves; the business infographic; a contact line (hello@racinglines.bet); and the
 fantasy-trading beta with sign-up, the two demo buttons (no bigger than the sign-up link) and the sign-in form
 (`/login#account`). The infographic has no "How it works" heading. The page names no sportsbook, operator or provider.
-The landing page has no popup, and the maintenance popup is off (`MAINTENANCE_NOTICE = ""`). The demo accounts (maker, taker) still get the sign-up popup, once per browser session, and a **Sign up** link in the top bar, while sign-up is on (owner, 2026-10-11). Registered accounts get neither; there is no add-email popup, and an account without an email can add one under Settings.
+The landing page has no popup, and the maintenance popup is off (`MAINTENANCE_NOTICE = ""`). The demo accounts (maker, taker) still get the sign-up popup, once per browser session, and a **Sign up** link in the top bar, while sign-up is on (owner, 2026-10-11). Registered accounts get neither. A registered account with no email (made before email was required at sign-up) gets an add-email popup instead, once per browser session, on every app page but Settings, until it saves one; the save (`POST /settings/email`) runs the sign-up checks (a valid address, on no other account).
 
 **Quickstart replay** (`/term`, public like `/pitch`; owner, 2026-10-11). A terminal-styled replay of the
 quickstart (`docs/quickstart.md`): its commands, each with `--demo` (the kart demo pack, a synthetic F1 world: no real names
