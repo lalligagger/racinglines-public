@@ -171,7 +171,11 @@ def test_demo_and_defaults_need_no_database(tmp_path, monkeypatch, capsys):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     assert CLI.main(["price", "--demo", "--json"]) == 0
     assert {r["id"] for r in json.loads(capsys.readouterr().out)["lines"]} >= {"win", "sgp-joint", "parlay", "typo"}
+    assert CLI.main(["--demo", "map", "--json"]) == 0                          # the mode before the command too
+    assert json.loads(capsys.readouterr().out)["unmapped"] == ["typo"]
     assert CLI.main(["price", "book.toml", "--demo"]) == 2                     # the demo takes no FILE
+    with pytest.raises(SystemExit):
+        CLI.main(["--demo", "price", "--remote"])                              # one mode only
     assert CLI.main(["config", "source", "demo"]) == 0
     assert CLI.main(["config", "db", "postgresql+psycopg://u:secret@h/db"]) == 0
     capsys.readouterr()
