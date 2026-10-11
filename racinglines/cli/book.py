@@ -16,7 +16,9 @@ Where the data comes from (map, price, settle), three modes; the default is the 
     --demo [PACK]          a demo store (racinglines/cli/source.py): a separate local database of synthetic data from a
                            data pack (default kart), built on first use, priced by the same code as --local. FILE
                            defaults to the pack's book (racinglines/demo/packs/kart/book.toml); `racinglines model
-                           forecast f1 --demo --save` first gives it model prices. Rich by default
+                           forecast f1 --demo --save` first gives it model prices. Rich by default.
+                           `--demo [PACK] --remote` (or the defaults file's source = remote) prices it on the pack's
+                           hosted demo store instead (its [remote] mcp_url; synthetic data only)
     --remote               the VM's hosted MCP server (racinglines/cli/remote.py): live model runs and exchange prices.
                            Signs in through the browser the first time (kept in ~/.config/racinglines/mcp-login.json),
                            or uses RACINGLINES_MCP_TOKEN (an rl_ token) when set. --mcp-url URL, RACINGLINES_MCP_URL or
@@ -25,7 +27,8 @@ Where the data comes from (map, price, settle), three modes; the default is the 
 
 Options (map, price, settle):
     --json                 the whole result as JSON (stable keys: docs/sportsbook/slips.md#json-output)
-    --rich                 a coloured terminal table (Rich; racinglines/cli/rich_view.py) instead of plain text
+    --rich                 a coloured table (Rich; racinglines/cli/rich_view.py): the default; --plain (any command) or
+                           RACINGLINES_PLAIN=1 prints the plain text
     --db URL               the database (default DATABASE_URL)
 price only:
     --run ID               price legs of that run's competition from it (repeatable; default: the app's own choice
@@ -169,6 +172,7 @@ def _print(cmd, out):
 
 
 def main(argv=None):
+    from racinglines.cli import tty as TTY
     parser = _parser()
     args = parser.parse_args(argv)
     tops = [f for f in ("demo", "remote", "local") if getattr(args, f"top_{f}")]
@@ -203,9 +207,14 @@ def main(argv=None):
         return 2
     from racinglines.cli import source as SRC
     if SRC.demo_active():                                  # `--demo [PACK]`, taken out by the CLI's source resolver
-        if args.remote or args.local:
-            parser.error("give one of --demo, --remote, --local")
-        args.demo = True
+        if args.remote:                                    # the pack's hosted store (source.use_remote_demo)
+            args.file = args.file or (str(SRC.pack().book) if SRC.pack().book else None)
+            from racinglines.cli import remote as RM
+            RM.warn()                                      # the testing warning first, as on every remote run
+            print(f"demo: the {SRC.demo_active()} pack's hosted demo store (synthetic data); nothing is traded",
+                  file=sys.stderr)
+        else:
+            args.demo, args.local = True, False
     if not (args.demo or args.remote or args.local):
         source = defaults.get("source", "local")
         args.demo, args.remote = source == "demo", source == "remote"
@@ -220,9 +229,7 @@ def main(argv=None):
         args.file = args.file or (str(SRC.pack().book) if SRC.pack().book else None)
         print("demo: the demo store's synthetic data (made-up names, results and prices); nothing is traded",
               file=sys.stderr)
-        if not args.json and importlib.util.find_spec("rich"):
-            args.rich = True
-        elif not args.json and not args.rich:
+        if not args.json and not args.rich and not importlib.util.find_spec("rich"):
             print("(plain text: pip install rich for the coloured tables)", file=sys.stderr)
     if not args.file:
         print(f"book {args.cmd}: a book FILE is needed (or --demo for a demo pack's book)", file=sys.stderr)
@@ -251,7 +258,7 @@ def main(argv=None):
             conn.rollback()
     if args.json:
         print(json.dumps(out, indent=2, default=str))
-    elif args.rich:
+    elif args.rich or not TTY.plain():            # Rich by default; --plain / RACINGLINES_PLAIN=1 for the plain text
         from racinglines.cli import rich_view
         rich_view.render(args.cmd, out)
     else:

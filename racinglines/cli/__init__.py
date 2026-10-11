@@ -53,11 +53,14 @@ def main(argv=None):
         from racinglines import progress
         progress.start(" ".join(a for a in argv[:3 if argv[0] in VERB_GROUPS else 2] if not a.startswith("-")))   # stderr, every 5 min (progress.py)
     from racinglines.cli import source
-    argv = source.apply(argv)                      # the data source (--demo) before any module reads it
-    if argv[0] in VERB_GROUPS:
-        from racinglines.cli import verbs
-        return verbs.main(argv[0], argv[1:])
-    if argv[0] in SPORT_FIRST:
-        _notice(argv)
-    mod = importlib.import_module(f"racinglines.cli.{argv[0]}")
-    return mod.main(argv[1:])
+    argv = source.apply(argv)                      # the data source (--demo, first run) before any module reads it
+    try:
+        if argv[0] in VERB_GROUPS:
+            from racinglines.cli import verbs
+            return verbs.main(argv[0], argv[1:])
+        if argv[0] in SPORT_FIRST:
+            _notice(argv)
+        mod = importlib.import_module(f"racinglines.cli.{argv[0]}")
+        return mod.main(argv[1:])
+    finally:
+        source.reset()

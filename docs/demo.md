@@ -33,7 +33,8 @@ A folder with a `pack.toml` manifest, bundled under `racinglines/demo/packs/<nam
 | `[generator]` | optional: `entry = "module:function"` writing more data files into the data folder, and its `input` |
 | `[load] commands` | the real `racinglines ...` commands that load the data into the database, in order |
 | `[book] file` | the sportsbook book `racinglines book price --demo` prices when no FILE is given |
-| `[[quickstart]]` | the pack's quickstart: `title`, `run` (the command), `about`; rendered into [Quickstart](quickstart.md) by `scripts/build_quickstart.py` and replayed by the web app's `/term` page |
+| `tagline` | optional: a line printed once the store is ready (a pack's flavour lives here, never in a command) |
+| `[[quickstart]]` | the pack's quickstart: `title`, `run` (the command), `about`, optional `section` (steps group under one heading per section, in first-seen order; none: one list); rendered into [Quickstart](quickstart.md) by `scripts/build_quickstart.py` (`--commands PACK [--section NAME]` lists them) and replayed by the web app's `/term` page (`Pack.sections()` in `racinglines/demo/store.py`) |
 
 The store build (`racinglines/demo/store.py`): create the database (its name must contain `demo`), Alembic upgrade
 head and the seed (`racinglines db init`), copy the files, run the generator, run each load command as a
@@ -65,10 +66,24 @@ and its generator). Adding a pack is adding a folder: no command, flag, schema, 
 The synthetic exchanges are data like the rest: prices drawn around the generator's own odds with an exchange's
 noise and spread. No real exchange data is in any pack.
 
-## The hosted demo store (coming next)
+## The hosted demo store
 
-Not working yet. The plan: `--demo --remote` (or `--demo` with `source = "remote"` in
-`~/.config/racinglines/cli.toml`) sends the quickstart's requests to a hosted MCP server over a demo store (the kart
-pack built into its own database on the VM, never production's) instead of a local one. Until it lands, `--demo`
-always builds and uses a local store. Remote access is in testing; every remote command prints the #aintcare warning
+`--demo [PACK] --remote`, or `--demo` with `source = "remote"` in `~/.config/racinglines/cli.toml`, uses the pack's
+hosted store instead of a local one. The resolver builds nothing locally: it points the command's own `--remote`
+path at the pack's demo MCP server (`[remote] mcp_url` in `pack.toml`, `RACINGLINES_DEMO_MCP_URL` overrides it) and
+adds `--remote`. Only the commands the hosted server runs take it: `book map|price|settle` (the pack's book sent to
+the `map_book` / `price_book` / `settle_book` tools) and `model backtest|forecast f1|mtb_dh` (the command's Lab job,
+queued with `run_job` and followed with `get_job`; `racinglines/cli/remote.py`). `model backtest f1 --remote` without
+`--demo` runs the same way on whichever server `--remote` names.
+
+The server is the normal one with `--demo`: `racinglines mcp --http --port 8766 --demo kart` on the VM serves the
+kart store (its own database `racinglines_demo_kart` and `data/demo/kart/`, built by the same `store.build`), and its
+job worker runs the jobs on it. Accounts, `rl_` tokens and OAuth sign-ins are read from production's database
+(`RACINGLINES_MCP_ACCOUNTS_URL`), so the same Pro and admin accounts sign in, and the store has no account rows of its
+own: jobs are filed without an owner, so every signed-in caller sees the store's jobs and can cancel a queued one
+(acceptable on a synthetic store). Account-scoped reads (`overview`'s users, `track_record`, `list_positions`,
+`list_signals`, our maker's quotes in `list_markets`) show nothing to a non-admin caller there, because a caller's id
+belongs to production's users table, not the store's. `scripts/vm/demo_store.sh`
+builds it (`build`, backup first) and starts the server (`serve`); the owner runs both and adds the `mcp-demo`
+hostname to the tunnel. Remote access is in testing; every remote command prints the #aintcare warning
 ([Quickstart: Remote](quickstart.md#4-remote-testing)).

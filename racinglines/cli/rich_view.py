@@ -100,7 +100,9 @@ def _columns(cmd):
 def render(cmd, out, console=None):
     """Print a map / price / settle result dict to `console` (a rich Console; default: stdout)."""
     box, Console, Group, Panel, Table, Text = _rich()
-    console = console or Console()
+    if console is None:
+        from racinglines.cli import tty
+        console = tty.console() or Console()      # forced colour off a terminal too (cli/tty.py), NO_COLOR honoured
     b = out["book"]
     head = " · ".join(str(x) for x in (b.get("venue"), f"event {b.get('event')}", b.get("sport"),
                                        f"captured {b.get('captured_utc')}", f"odds {b.get('odds')}",

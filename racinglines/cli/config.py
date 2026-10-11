@@ -2,7 +2,7 @@
 The CLI's defaults file, for people who run their own server: which data source `racinglines book` uses when no
 --demo / --remote / --local flag is given, and where. ~/.config/racinglines/cli.toml (RACINGLINES_CLI_CONFIG to move it):
 
-    source = "remote"                              # local (default) | remote | demo
+    source = "remote"                              # local (default) | remote | demo; set by the first-run question
     mcp_url = "https://mcp.example.com/mcp"        # the hosted MCP server --remote uses
     db = "postgresql+psycopg://...@host/racinglines"   # the database local mode uses when DATABASE_URL is unset
 

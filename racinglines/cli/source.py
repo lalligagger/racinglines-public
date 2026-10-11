@@ -9,8 +9,16 @@ apply() before anything else is imported, so the settings below reach every modu
                     the commands themselves run unchanged. Sets DATABASE_URL, RACINGLINES_DATA and
                     RACINGLINES_OFFLINE=1 (FastF1's servers are never called; the store's files are the record).
 
+    --demo [PACK] --remote   (or `source = "remote"` in the CLI defaults file) the pack's hosted store instead: the
+                    commands the hosted server runs (`book map|price|settle`, `model backtest|forecast f1|mtb_dh`) are
+                    sent to the pack's demo MCP server (pack.toml [remote] mcp_url) with their usual --remote path.
+
+    First run: when no database is configured (no DATABASE_URL, no `db` or `source` in the CLI defaults file) the
+    first command that needs one asks once, local or remote, and saves the answer as `source` (choose_first_run).
+
     RACINGLINES_DEMO_DATABASE_URL   the demo database (default: the configured URL, named racinglines_demo_<pack>)
     RACINGLINES_DEMO_DATA           the demo data folder (default data/demo/<pack>, gitignored)
+    RACINGLINES_DEMO_MCP_URL        the hosted demo server (default: the pack's [remote] mcp_url)
 """
 
 import os
@@ -30,9 +38,9 @@ def _config():
 
 
 def base_url():
-    """The configured database: DATABASE_URL, else the CLI defaults file's `db`, else docker-compose's."""
-    from racinglines.db.config import DEFAULT_URL
-    return os.environ.get("DATABASE_URL") or _config().get("db") or DEFAULT_URL
+    """The configured database: DATABASE_URL, else the CLI defaults file's `db`, else docker-compose's (asking the
+    first-run question first when nothing is configured)."""
+    return os.environ.get("DATABASE_URL") or default_url()
 
 
 def _slug(name):
@@ -95,17 +103,15 @@ def ensure(pk, url, data, console=None):
     say(f"demo: building the {pk.name} pack's store ({why}): database {store._db_name(url)}, folder {data}. "
         f"Synthetic data, made once (a few minutes).")
     store.build(pk, url, data, console=err)
-    say(f"demo: the {pk.name} store is ready ({pk.sport} data; `racinglines db stats --demo {pk.name}`)")
+    say(f"demo: the {pk.name} store is ready ({pk.sport} data; `racinglines db stats --demo {pk.name}`)"
+        + (f" {pk.manifest['tagline']}" if pk.manifest.get("tagline") else ""))
 
 
 def _console(console):
     if console is not None:
         return console
-    try:
-        from rich.console import Console
-    except ImportError:
-        return None
-    return Console(stderr=True, highlight=False)
+    from racinglines.cli import tty
+    return tty.console(stderr=True)
 
 
 def _safe(url):
@@ -133,11 +139,121 @@ def take_demo(argv):
     return out, ref, given
 
 
+# ---------------------------------------------------------------------------
+# First run: no database configured (no DATABASE_URL, no `db` or `source` in the CLI defaults file)
+# ---------------------------------------------------------------------------
+
+FIRST_RUN = """racinglines needs a database, and none is configured (no DATABASE_URL, no `db` or `source` in {path}).
+  1) local:  the Postgres of docker-compose.yml on localhost:5433; start it with one command, `docker compose up -d`
+             (then every command works; add --demo for the synthetic demo store, docs/quickstart.md)
+  2) remote: sign in to racinglines.bet (the browser opens on first use) and run `racinglines book map|price|settle`
+             on the hosted server (in testing); other commands still need a local database"""
+
+
+def configured():
+    return bool(os.environ.get("DATABASE_URL")) or bool({"db", "source"} & set(_config()))
+
+
+def default_url():
+    """The database a command uses when it names none and DATABASE_URL is unset (db.config.fallback while a CLI command
+    runs): the defaults file's `db`; else, once `source` is set, docker-compose's; else the first-run choice."""
+    from racinglines.cli import config as C
+    from racinglines.db.config import DEFAULT_URL
+    cfg = _config()
+    if cfg.get("db"):
+        return cfg["db"]
+    src = cfg.get("source") or choose_first_run()
+    if src == "remote":
+        raise SystemExit("this command needs a database, and the defaults file's source is remote (racinglines.bet runs "
+                         "only `racinglines book map|price|settle`). Start a local one with `docker compose up -d` and "
+                         f"set `racinglines book config source local`, or set DATABASE_URL ({C.path()}).")
+    return DEFAULT_URL
+
+
+def choose_first_run(ask=None):
+    """Ask once which source to use (1 local, 2 remote), save it as `source` in the defaults file and return it. With no
+    terminal, print the options and exit 2."""
+    from racinglines.cli import config as C
+    text = FIRST_RUN.format(path=C.path())
+    tty = ask is not None or (sys.stdin.isatty() and sys.stderr.isatty())
+    if not tty:
+        print(text + "\n\nNo terminal to ask on: choose with `racinglines book config source local` (or remote), or set "
+              "DATABASE_URL.", file=sys.stderr)
+        raise SystemExit(2)
+    ask = ask or (lambda prompt: input(prompt))
+    print(text, file=sys.stderr)
+    while True:
+        a = ask("Choose 1 or 2 [1]: ").strip().lower() or "1"
+        if a in ("1", "local"):
+            src = "local"
+            break
+        if a in ("2", "remote"):
+            src = "remote"
+            break
+    C.set_key("source", src)
+    print(f"saved source = {src} in {C.path()} (`racinglines book config source local|remote` changes it)", file=sys.stderr)
+    if src == "local":
+        print("start the database with `docker compose up -d` if it isn't running (port 5433)", file=sys.stderr)
+    return src
+
+
+def source_choice():
+    """local or remote: the defaults file's `source` (its `demo` counts as local), else local once a database is
+    configured, else the first-run answer."""
+    src = _config().get("source")
+    if src:
+        return "remote" if src == "remote" else "local"
+    return "local" if configured() else choose_first_run()
+
+
+# the commands the hosted server runs (their own --remote path): book map|price|settle, model backtest|forecast
+REMOTE_COMMANDS = (("book", ("map", "price", "settle"), None), ("model", ("backtest", "forecast"), ("f1", "mtb_dh")))
+
+
+def remote_capable(argv):
+    return any(argv[:1] == [g] and argv[1:2] and argv[1] in cmds and (sports is None or argv[2:3] and argv[2] in sports)
+               for g, cmds, sports in REMOTE_COMMANDS)
+
+
+def demo_mcp_url(pk):
+    url = os.environ.get("RACINGLINES_DEMO_MCP_URL") or pk.remote.get("mcp_url")
+    if not url:
+        raise SystemExit(f"--demo {pk.name} --remote: the pack names no hosted demo server ([remote] mcp_url); "
+                         f"run it locally with --local")
+    return url
+
+
+def use_remote_demo(ref, argv):
+    """`--demo [PACK]` on the hosted store: the command's own --remote path, aimed at the pack's demo MCP server."""
+    pk = pack(ref)
+    if not remote_capable(argv):
+        names = "; ".join(f"{g} {'|'.join(c)}" + (f" {'|'.join(s)}" if s else "") for g, c, s in REMOTE_COMMANDS)
+        raise SystemExit(f"--demo with the remote source: the hosted demo store runs only {names}. This command needs "
+                         f"a local store: add --local (book) or set `racinglines book config source local`.")
+    os.environ.update(RACINGLINES_DEMO=pk.name, RACINGLINES_MCP_URL=demo_mcp_url(pk))
+    return argv if "--remote" in argv else argv + ["--remote"]
+
+
 def apply(argv):
     """The argv a command should parse, after the data source is set: `--demo [PACK]` is taken out (the commands don't
-    know it) and the pack's store selected."""
+    know it) and the pack's store selected, local or hosted."""
+    from racinglines.db import config as DBC
+    DBC.fallback = default_url                       # the first-run choice, only when a command needs a database
+    if "--plain" in argv:                            # the plain text instead of Rich output (racinglines/cli/tty.py)
+        argv = [a for a in argv if a != "--plain"]
+        os.environ["RACINGLINES_PLAIN"] = "1"
     rest, ref, given = take_demo(argv)
     if not given:
         return argv
-    use_demo(ref, build=not {"-h", "--help"} & set(rest))
+    helping = bool({"-h", "--help"} & set(rest))
+    remote = "--remote" in rest or ("--local" not in rest and not helping and source_choice() == "remote")
+    if remote:
+        return use_remote_demo(ref, rest)
+    use_demo(ref, build=not helping)
     return rest
+
+
+def reset():
+    """After a command: library callers outside the CLI get DEFAULT_URL again."""
+    from racinglines.db import config as DBC
+    DBC.fallback = None

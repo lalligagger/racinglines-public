@@ -1,8 +1,8 @@
-{% extends "base.html" %}{% from "_macros.html" import empty, pnl_cls, chart, demo_context, kpi, pnl, page_head %}
+{% extends "base.html" %}{% from "_macros.html" import empty, pnl_cls, chart, demo_context, kpi, pnl, page_head, flash %}
 {% block title %}Strategy{% endblock %}
 {% block content %}
 {% call page_head("Strategy" ~ (" · " ~ viewer.username if viewer.id != user.id else ""), "The strategy this account runs: its calls on each race weekend, stage by stage, how it has done, and how it got here. Paper only: nothing is sent to an exchange.") %}
-<a href="/positions{{ '?venue=' ~ venue if venue }}">What it holds: Positions →</a>
+{% if can_pick %}<a href="/strategy/pick">{{ "Change strategy" if profile else "Pick a strategy" }}</a> · {% endif %}<a href="/positions{{ '?venue=' ~ venue if venue }}">What it holds: Positions →</a>
 {%- if venue_tabs %}<nav class="tabs" aria-label="Which exchange's record"><a href="?{{ 'user=' ~ viewer.username if viewer.id != user.id }}"{% if not venue %} aria-current="page"{% endif %}>Polymarket</a>{% for k in venue_tabs %}<a href="?venue={{ k }}{{ '&user=' ~ viewer.username if viewer.id != user.id }}"{% if venue == k %} aria-current="page"{% endif %}>{{ venue_names.get(k, k) }}</a>{% endfor %}</nav>{% endif %}
 {% if users %}<form method="get" class="inline"><label><span>User</span><select name="user" data-autosubmit>
   {% for u in users %}<option {{ 'selected' if u == viewer.username }}>{{ u }}</option>{% endfor %}</select></label></form>{% endif %}
@@ -15,7 +15,11 @@
   </select></label>
 </form>{% endif %}{% endcall %}
 
-{% if not profile and not record %}<p class="muted">No strategy profile is assigned to this account. An admin can assign one on the user's admin page.</p>{% else %}
+{{ flash(msg) }}
+{% if not profile and not record %}{% if can_pick %}<div class="card empty-pick"><h2>No strategy yet</h2>
+<p>This account doesn't paper-trade anything until you pick a strategy. Start with the shortlist's first, or choose and tune your own.</p>
+<p><a class="button primary" href="/strategy/pick">Pick a strategy</a></p></div>
+{% else %}<p class="muted">No strategy profile is assigned to this account. An admin can assign one on the user's admin page.</p>{% endif %}{% else %}
 {% set k = acct.kpis %}
 <div class="kpis hero">
   <div class="kpi"><div class="l">Running now</div><div class="v sm">{{ profile.name if profile else "–" }}</div><div class="s">{{ profile.strategy if profile }}{% if show_fair and profile %} · <code>{{ profile.settings.variant }}</code>{% endif %}{% if profile and profile.follow_rate %} · takes about {{ "%.0f"|format(profile.follow_rate * 100) }}% of signals{% endif %}</div></div>

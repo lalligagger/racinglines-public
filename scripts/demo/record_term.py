@@ -11,6 +11,8 @@ racinglines/web/term/quickstart.json, then runs each command as a user would typ
 off (the final frame of each progress bar or live table), and saves what it printed (stdout and stderr, as a terminal
 shows them) as racinglines/web/term/<id>.ansi. Absolute paths of this checkout, $HOME and the temp folder are cut, so
 paths read relative to the repo. For a true first run, drop the demo store first (its database and data/demo/<pack>/).
+--run needs a configured database (DATABASE_URL, e.g. a local Postgres): the commands run with no terminal, so a
+first-run prompt can't ask. Nothing saved changes unless every command succeeds.
 Rendering turns each saved .ansi into racinglines/web/term/<id>.html, an HTML fragment the page includes as is.
 """
 
@@ -53,12 +55,16 @@ def quickstart(pack):
     found = store.find(pack)
     if found is None:
         sys.exit(f"no demo pack {pack!r} (racinglines/demo/packs/)")
-    return [{"id": f"step-{i}", "title": s["title"], "command": s["run"], "about": s.get("about", "")}
+    return [{"id": f"step-{i}", "title": s["title"], "command": s["run"], "about": s.get("about", ""),
+             "record": s.get("record", True),
+             **({"section": s["section"]} if s.get("section") else {})}      # the page's part headings
             for i, s in enumerate(found.quickstart, 1)]
 
 
 def render(d):
-    """A demo's saved terminal output (ANSI) -> the HTML fragment."""
+    """A demo's saved terminal output (ANSI) -> the HTML fragment (empty for a step with `record = false`)."""
+    if not d.get("record", True):
+        return ""
     console = Console(record=True, width=WIDTH, force_terminal=True, color_system="truecolor", file=io.StringIO())
     ansi = OSC.sub("", (TERM / f"{d['id']}.ansi").read_text())
     console.print(Text.from_ansi(ansi), soft_wrap=True)
@@ -66,19 +72,20 @@ def render(d):
 
 
 def run(d):
-    """Execute the step's command and save what it printed."""
+    """Execute the step's command and return what it printed."""
     argv = shlex.split(d["command"])
     argv = [sys.executable, "-m", *argv] if argv[0] == "racinglines" else argv
     env = dict(os.environ, COLUMNS=str(WIDTH), FORCE_COLOR="1", TTY_INTERACTIVE="0", PYTHONUNBUFFERED="1")
     try:
         out = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, check=True, env=env).stdout
     except subprocess.CalledProcessError as e:
-        sys.exit(f"{d['id']}: `{d['command']}` failed (exit {e.returncode}):\n{e.stdout}")
+        hint = "" if os.environ.get("DATABASE_URL") else "\n(DATABASE_URL is not set: the recorder needs a configured database)"
+        sys.exit(f"{d['id']}: `{d['command']}` failed (exit {e.returncode}); nothing saved changed:\n{e.stdout}{hint}")
     roots = {str(ROOT), os.getcwd(), str(Path.home()), tempfile.gettempdir(),
              *filter(None, env.get("PYTHONPATH", "").split(os.pathsep))}
     for r in sorted(roots, key=len, reverse=True):
         out = out.replace(r.rstrip("/") + "/", "")
-    (TERM / f"{d['id']}.ansi").write_text(out)
+    return out
 
 
 def main(argv=None):
@@ -87,13 +94,19 @@ def main(argv=None):
     args = ap.parse_args(argv)
     if args.run:
         steps = quickstart(config().get("pack", "kart"))
+        outs = {}
+        for d in steps:     # run them all first: a failure leaves the saved recording as it was
+            if not d.get("record", True):                   # shown, never run: no .ansi, an empty fragment
+                continue
+            outs[d["id"]] = run(d)
+            print(f"{d['id']}: ran `{d['command']}`", flush=True)
         for old in TERM.glob("step-*.*"):
             old.unlink()
+        for k, out in outs.items():
+            (TERM / f"{k}.ansi").write_text(out)
         (TERM / "quickstart.json").write_text(json.dumps(steps, indent=2) + "\n")
+        print("all steps ran; update `recorded` in demos.toml", flush=True)
     for d in demos():
-        if args.run:
-            run(d)
-            print(f"{d['id']}: ran `{d['command']}`; update `recorded` in demos.toml", flush=True)
         (TERM / f"{d['id']}.html").write_text(render(d))
         print(f"{d['id']}: rendered {TERM / (d['id'] + '.html')}", flush=True)
 

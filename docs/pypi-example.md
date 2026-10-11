@@ -61,8 +61,7 @@ racinglines db stats --demo                                       # 1. build the
 racinglines model backtest f1 --demo                              # 2. every past race priced and scored
 racinglines model forecast f1 --demo --save                       # 3. the rest of the season and the championships
 racinglines live run f1/demo-2026-09 --demo --simulate --no-fetch # 4. a live private book on a simulated clock
-racinglines live report f1/demo-2026-09 --demo --pdf              # 5. the live event's report
-racinglines book price --demo                                     # 6. sportsbook lines: EV against model and exchanges
+racinglines book price --demo                                     # 5. sportsbook lines: EV against model and exchanges
 ```
 
 These are the real commands: `--demo` only switches the data source ([Quickstart](quickstart.md)).
@@ -71,7 +70,7 @@ These are the real commands: `--demo` only switches the data source ([Quickstart
 
 | | What you need | What runs |
 |---|---|---|
-| **Demo** | `pip install racinglines` and PostgreSQL | The six steps above, on a bundled synthetic data pack, with no network or account |
+| **Demo** | `pip install racinglines` and PostgreSQL | The five steps above, on a bundled synthetic data pack, with no network or account |
 | **Hosted** | A [racinglines.bet](https://racinglines.bet) account with MCP access | `racinglines book price FILE --remote` prices your own book file on the hosted server; the first run signs in through the browser |
 | **Self-hosted** | PostgreSQL and `racinglines[server]` | The full pipeline below on your own data, and your own MCP server (`racinglines book config mcp_url URL` makes it the CLI default) |
 

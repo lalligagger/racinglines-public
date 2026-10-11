@@ -197,5 +197,12 @@ def main(group, argv):
         print(f"racinglines {group} {cmd}: not offered for {module}; `racinglines {group} -h` lists what is",
               file=sys.stderr)
         return 2
+    if group == "model" and "--remote" in rest and "-h" not in rest and "--help" not in rest:
+        from racinglines.cli import remote          # the command's Lab job on the hosted server (cli/remote.py)
+        try:
+            return remote.run_model(module, cmd, rest)
+        except remote.RemoteError as e:
+            print(f"model {cmd} {module} --remote: {e}", file=sys.stderr)
+            return 2
     front, back = _hoist(parser_of(module), rest)
     return importlib.import_module(f"racinglines.cli.{module}").main(front + [cmd] + back)
