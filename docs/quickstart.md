@@ -25,17 +25,22 @@ docker-compose user has it). No API key, no account and no network access are ne
 ## 2. First run: choose where the data comes from
 
 The first command that needs a database, when none is configured (no `DATABASE_URL`, no `db` or `source` in
-`~/.config/racinglines/cli.toml`), will ask once:
+`~/.config/racinglines/cli.toml`), asks once and saves the answer as `source` in that file:
 
 ```
-racinglines needs a database. Choose one:
-  1) local: the Postgres from `docker compose up -d` (localhost:5433)
-  2) remote: sign in to racinglines.bet and run `book` commands on the hosted server (testing)
+racinglines needs a database, and none is configured (no DATABASE_URL, no `db` or `source` in ~/.config/racinglines/cli.toml).
+  1) local:  the Postgres of docker-compose.yml on localhost:5433; start it with one command, `docker compose up -d`
+             (then every command works; add --demo for the synthetic demo store, docs/quickstart.md)
+  2) remote: sign in to racinglines.bet (the browser opens on first use) and run `racinglines book map|price|settle`
+             on the hosted server (in testing); other commands still need a local database
+Choose 1 or 2 [1]:
 ```
 
-**Coming next, not working yet:** this first-run question. Until it lands, a command with no `DATABASE_URL` uses the
-docker-compose database (localhost:5433), and `racinglines book config source local|remote` sets the `book` commands'
-default by hand. `--demo` always uses a local demo store.
+With no terminal to ask on (a script, CI), it prints the same two options and exits with code 2; set `DATABASE_URL` or
+run `racinglines book config source local` (or `remote`) instead. `racinglines book config source local|remote`
+changes the answer later. One resolver makes this choice and the `--demo` one (`racinglines/cli/source.py`).
+
+`--demo` always uses a local demo store for now (the remote demo is coming next, [4. Remote](#4-remote-testing)).
 
 ## 3. The quickstart, on the kart pack
 

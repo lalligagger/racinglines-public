@@ -38,6 +38,48 @@ def test_demo_flag_only_switches_the_source(monkeypatch, tmp_path):
     assert source.take_demo(["live", "run", "--demo", "f1/x"]) == (["live", "run", "f1/x"], None, True)   # not a pack
     with pytest.raises(SystemExit, match="no pack"):
         source.pack("nonesuch")
+    source.reset()
+
+
+def _no_config(monkeypatch, tmp_path):
+    for k in ("DATABASE_URL", "RACINGLINES_DEMO", "RACINGLINES_DEMO_DATABASE_URL"):
+        monkeypatch.setenv(k, "")
+        monkeypatch.delenv(k)
+    monkeypatch.setenv("RACINGLINES_CLI_CONFIG", str(tmp_path / "cli.toml"))
+
+
+def test_first_run_asks_once_and_saves_the_source(monkeypatch, tmp_path, capsys):
+    """No database configured: the first command that needs one asks local or remote (once, saved as `source`); with no
+    terminal it prints both options and exits 2. A configured `db` or DATABASE_URL is used without asking."""
+    from racinglines.cli import config as C
+    from racinglines.cli import source
+    from racinglines.db import config as DBC
+    _no_config(monkeypatch, tmp_path)
+    assert not source.configured()
+    monkeypatch.setattr(sys, "stdin", open(os.devnull))              # no terminal
+    with pytest.raises(SystemExit) as ex:
+        source.choose_first_run()
+    err = capsys.readouterr().err
+    assert ex.value.code == 2 and "1) local" in err and "2) remote" in err and "docker compose up -d" in err
+    assert not (tmp_path / "cli.toml").exists()
+    answers = iter(["x", "1"])
+    assert source.choose_first_run(ask=lambda prompt: next(answers)) == "local"
+    assert C.load() == {"source": "local"} and source.configured()
+    assert source.default_url() == DBC.DEFAULT_URL                    # asked once: no question now
+    C.set_key("source", "remote")
+    with pytest.raises(SystemExit, match="source is remote"):
+        source.default_url()                                          # a database command with the remote source
+    C.set_key("db", "postgresql+psycopg://u:p@mine:5432/rl")
+    assert source.default_url() == "postgresql+psycopg://u:p@mine:5432/rl"
+    try:                                                              # what get_engine() sees while a command runs
+        source.apply(["db", "stats"])
+        assert DBC.database_url() == "postgresql+psycopg://u:p@mine:5432/rl"
+        monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://u:p@env:5432/rl")
+        assert DBC.database_url() == "postgresql+psycopg://u:p@env:5432/rl"
+    finally:
+        source.reset()
+    monkeypatch.delenv("DATABASE_URL")
+    assert DBC.database_url() == DBC.DEFAULT_URL                      # library callers outside a command
 
 
 def test_generator_writes_fastf1_shapes_reproducibly(tmp_path):
@@ -109,7 +151,8 @@ def _store(test_engine, tmp_path_factory, name, pack_ref, options=None, packs_di
     finally:
         if packs_dir:
             os.environ.pop("RACINGLINES_DEMO_PACKS") if old is None else os.environ.update(RACINGLINES_DEMO_PACKS=old)
-    env = dict(os.environ, RACINGLINES_DEMO_DATABASE_URL=url, RACINGLINES_DEMO_DATA=str(data),
+    env = dict(os.environ, DATABASE_URL=test_engine.url.render_as_string(hide_password=False),   # configured: no first-run question
+               RACINGLINES_DEMO_DATABASE_URL=url, RACINGLINES_DEMO_DATA=str(data),
                RACINGLINES_PROGRESS_SEC="0", RACINGLINES_CLI_CONFIG=str(data.parent / "cli.toml"), COLUMNS="160")
     if packs_dir:
         env["RACINGLINES_DEMO_PACKS"] = str(packs_dir)
