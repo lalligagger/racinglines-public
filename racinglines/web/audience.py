@@ -1,7 +1,8 @@
 """
-Which sports a signed-in user sees ([sport] audience in sports/<code>.toml, racinglines/sports.py audience): an
-"admin" sport is left out of every page for everyone but admins, and its pages answer 404. Only the web app reads it:
-recording, pricing, settlement and the CLI carry on, and no data is deleted.
+Which sports a signed-in user sees ([sport] audience in sports/<code>.toml): the web app's side of the one gate,
+racinglines.sports.is_public, which the MCP tools call too. An "admin" sport is left out of every page for everyone but
+admins, and its pages answer 404. Only user-facing readers ask: recording, pricing, settlement and the CLI carry on,
+and no data is deleted. A signed-out visitor (user None here) is a user, not an internal caller.
 
     hidden(user)            the sport codes this user doesn't see (none for an admin)
     hidden_comps(user)      their competition codes
@@ -15,20 +16,20 @@ from fastapi import HTTPException
 from racinglines import sports as SP
 
 
-def _admin(user):
-    return isinstance(user, dict) and user.get("role") == "admin"
+def _who(user):
+    return user if isinstance(user, dict) else {}             # signed out: a visitor, never an internal caller
 
 
 def hidden(user):
-    return frozenset() if _admin(user) else SP.admin_only()
+    return frozenset(c for c in SP.SPORT_CODES if not SP.is_public(c, _who(user)))
 
 
 def hidden_comps(user):
-    return frozenset() if _admin(user) else SP.admin_only_competitions()
+    return frozenset(SP.load(c)["competition"]["code"] for c in hidden(user))
 
 
 def shown(user, code):
-    return not code or (code not in hidden(user) and code not in hidden_comps(user))
+    return SP.is_public(code, _who(user))
 
 
 def guard(user, code):

@@ -26,6 +26,9 @@ def test_the_schema_key_decides_and_admins_see_everything():
         with pytest.raises(HTTPException):
             A.guard(user, "motogp_wc")
     A.guard(ADMIN, "motogp_wc")
+    # the one gate the MCP tools share: None is an internal caller (CLI, stdio MCP), not a visitor
+    assert SP.is_public("motogp", None) and SP.is_public("motogp_wc", ADMIN) and SP.is_public("f1", PRO)
+    assert not SP.is_public("motogp", PRO) and not SP.is_public("motogp_wc", {}) and SP.is_public("unknown", PRO)
 
 
 @pytest.mark.quick
