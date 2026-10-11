@@ -276,6 +276,21 @@ class Settings(dict):
                 setattr(mod, attr, v)
 
 
+def with_defaults(cls, defaults, where="[model.defaults]"):
+    """`cls` with a sport's per-sport defaults (sports/<code>.toml [model.defaults], read by the one engine,
+    models/model_global.py). Unknown names are an error; a default equal to the code's leaves every key unchanged,
+    since the keys hash the values (Settings._key)."""
+    from dataclasses import replace
+    defaults = dict(defaults or {})
+    unknown = sorted(set(defaults) - set(cls.BY))
+    if unknown:
+        raise ValueError(f"{where} names unknown settings {unknown}; choose from {sorted(cls.BY)}")
+    if not defaults:
+        return cls
+    spec = [replace(s, default=_coerce(s, defaults[s.name])) if s.name in defaults else s for s in cls.SPEC]
+    return type(cls.__name__, (cls,), dict(SPEC=spec, BY={s.name: s for s in spec}, MODEL=list(cls.MODEL)))
+
+
 def venue_of(settings):
     """The exchange a settings set trades: its `venue`, or its class's default (polymarket) while unset."""
     return settings.get("venue") or getattr(settings, "DEFAULT_VENUE", DEFAULT_VENUE)

@@ -605,7 +605,7 @@ def forecast(meas, hist, year, cutoff=None, n_sims=10000, seed=42, schedule=None
             if records_enabled():         # prediction records: keep the event's simulations for save_forecast
                 from racinglines.core import stages as STG
                 per_event[-1]["outcome"] = dict(sims=O.from_position_sim(ex["entrants"], ex["sim"]),
-                                                stage=STG.spec("f1")["pre_label"], cutoff=cutoff, archive=True)
+                                                stage=STG.spec(M.SPORT)["pre_label"], cutoff=cutoff, archive=True)
 
     rank = ranks(-(total + rng.random(total.shape) * 1e-3))
     ahead = (rank[:, :, None] < rank[:, None, :]).mean(0)
@@ -646,7 +646,7 @@ def save_forecast(engine_url, year, per_event, standings, params, metrics, kind=
 
     preds, event_ids = [], {}
     with get_session(engine_url) as s:
-        comp = s.scalars(select(m.Competition).filter_by(code="f1_wdc")).one()
+        comp = s.scalars(select(m.Competition).filter_by(code=M.COMPETITION)).one()
         cat = s.scalars(select(m.Category).filter_by(competition_id=comp.id, code="DRV")).one()
         season = _upsert(s, m.Season, dict(competition_id=comp.id, year=year))
         for ev in per_event:
@@ -662,7 +662,7 @@ def save_forecast(engine_url, year, per_event, standings, params, metrics, kind=
             event_ids[key] = event.id
             race = _upsert(s, m.Race, dict(event_id=event.id, category_id=cat.id))
             if race.format is None:
-                race.format = dict(kind="f1", sprint=ev["sprint"], event_name=ev["name"])
+                race.format = dict(kind=M.SPORT, sprint=ev["sprint"], event_name=ev["name"])
             elif ev["name"] and race.format.get("event_name") != ev["name"]:     # repair a stale name
                 race.format = dict(race.format, event_name=ev["name"])
             s.commit()
@@ -671,7 +671,7 @@ def save_forecast(engine_url, year, per_event, standings, params, metrics, kind=
                                               make_final_prob=None))
     with get_session(engine_url) as s:
         run_id = save_model_run(
-            s, competition="f1_wdc", season=year, category="DRV", model="f1_sector_sim", kind=kind,
+            s, competition=M.COMPETITION, season=year, category="DRV", model=M.RUN_NAME, kind=kind,
             data_through=_date.today(), params=params, metrics=metrics,
             race_predictions=pd.concat(preds, ignore_index=True) if preds else None,
             standings=standings.assign(rider_id=lambda d: "ath:" + d["athlete_id"].astype(str)) if standings is not None else None)
@@ -695,7 +695,7 @@ def _write_records(run_id, year, per_event, event_ids):
         if not oc:
             continue
         key = f"{year}-{ev['round']:02d}"
-        frames.append(oc["sims"].to_records(run_id, "f1", "f1_sector_sim", year, event_ids.get(key), key, oc["stage"],
+        frames.append(oc["sims"].to_records(run_id, M.SPORT, M.RUN_NAME, year, event_ids.get(key), key, oc["stage"],
                                             oc["cutoff"]))
         if oc.get("archive"):
             archive[key] = oc["sims"]

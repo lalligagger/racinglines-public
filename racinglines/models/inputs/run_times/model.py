@@ -10,7 +10,7 @@ from racinglines import sports
 from racinglines.core.stats import ranks
 
 RNG = np.random.default_rng(42)
-SCHEMA = sports.load("mtb_dh")
+SCHEMA = sports.load(sports.declaring("run_times"))   # the sport whose [model] inputs declare run_times
 
 # ---------------------------------------------------------------------------
 # 7. Season simulation: full race weekend (Q1 -> Q2 -> Final) Monte Carlo
