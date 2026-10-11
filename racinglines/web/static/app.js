@@ -292,25 +292,52 @@
   openHashDetails();
   forgotInit();
   noticeInit();
-  // --- /term: type each recorded command, then show its output (no JS: everything is shown at once) ---
+  // --- /term: each replay waits paused on its full command; Play re-types it, then plays the output (no JS: all shown) ---
   function termPlay(t) {
-    const cmd = t.querySelector("[data-term-cmd]"), out = t.querySelector("[data-term-out]"), btn = t.querySelector("[data-term-replay]");
-    const full = cmd.dataset.full || (cmd.dataset.full = cmd.textContent);
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    out.hidden = true; btn.hidden = true; t.setAttribute("data-typing", ""); cmd.textContent = "";
+    const cmd = t.querySelector("[data-term-cmd]"), out = t.querySelector("[data-term-out]"), btn = t.querySelector("[data-term-play]");
+    const full = cmd.dataset.full;
+    btn.disabled = true;
+    const done = () => { t.removeAttribute("data-typing"); t.removeAttribute("data-running"); if (out) out.style.maxHeight = ""; btn.disabled = false; btn.textContent = "Replay"; };
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) { if (out) out.hidden = false; return done(); }
+    if (out) out.hidden = true; t.setAttribute("data-typing", ""); cmd.textContent = "";
     let i = 0;
+    const run = () => {     // the "run": the output scrolls in line by line, like the command printing it
+      if (!out) return done();     // a step shown but not run (pack record = false): typing is all there is
+      t.removeAttribute("data-typing"); t.setAttribute("data-running", "");
+      out.style.maxHeight = "0px"; out.hidden = false;
+      const h = out.scrollHeight, step = Math.max(16, h / 120), t0 = performance.now();
+      const grow = () => {
+        const shown = Math.min(h, step * Math.floor((performance.now() - t0) / 25));
+        out.style.maxHeight = shown + "px";
+        shown < h ? requestAnimationFrame(grow) : done();
+      };
+      requestAnimationFrame(grow);
+    };
     const tick = () => {
       cmd.textContent = full.slice(0, ++i);
       if (i < full.length) return setTimeout(tick, 28 + Math.random() * 40);
-      setTimeout(() => { t.removeAttribute("data-typing"); out.hidden = false; btn.hidden = false; }, 350);
+      setTimeout(run, 350);
     };
-    setTimeout(tick, 400);
+    setTimeout(tick, 250);
   }
   document.querySelectorAll("[data-term]").forEach(t => {
-    t.querySelector("[data-term-replay]").addEventListener("click", () => termPlay(t));
-    if (!("IntersectionObserver" in window)) return termPlay(t);
-    const io = new IntersectionObserver(es => { if (es[0].isIntersecting) { io.disconnect(); termPlay(t); } }, {threshold: 0.3});
-    io.observe(t);
+    const cmd = t.querySelector("[data-term-cmd]"), btn = t.querySelector("[data-term-play]");
+    cmd.dataset.full = cmd.textContent;
+    const out = t.querySelector("[data-term-out]");
+    if (out) out.hidden = true;     // paused: only the command, in full
+    btn.hidden = false;
+    btn.addEventListener("click", () => termPlay(t));
+  });
+
+  // --- /strategy/pick: each slider shows its value (points for probabilities, $ or shares otherwise) ---
+  document.querySelectorAll(".pick input[type=range]").forEach(r => {
+    const out = document.querySelector(`[data-out="${r.name}"]`);
+    const show = () => {
+      const v = Number(r.value), u = r.dataset.unit;
+      out.textContent = u === "pts" ? `${Math.round(v * 100)} pts` : u === "$" ? `$${v}` : `${v} ${u}`;
+      if (Number(r.dataset.default) !== v) out.textContent += " (adjusted)";
+    };
+    r.addEventListener("input", show); show();
   });
 
   // --- Lab: sections open on demand (HTMX loads them on their "open" event), remembered per browser ---

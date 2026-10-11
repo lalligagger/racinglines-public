@@ -2,6 +2,7 @@
 
 import html
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -64,3 +65,33 @@ def test_terminal_links_never_reach_the_page(tmp_path, monkeypatch):
     monkeypatch.setattr(rec, "TERM", tmp_path)
     html = rec.render({"id": "x"})
     assert "click" in html and "javascript" not in html and "<a " not in html and "href" not in html
+
+
+def test_steps_group_under_their_section_and_wait_on_play(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from racinglines.web.app import app
+    steps = [{"id": f"s{i}", "title": f"t{i}", "command": f"racinglines c{i}", "about": "", "section": sec}
+             for i, sec in enumerate(["Part one", "Part one", "Part two"], 1)]
+    (tmp_path / "quickstart.json").write_text(json.dumps(steps))
+    for s in steps:     # s3 is shown but not run (pack record = false): an empty fragment
+        (tmp_path / f"{s['id']}.html").write_text("" if s["id"] == "s3" else "<pre>out</pre>")
+    (tmp_path / "demos.toml").write_text('recorded = "x"\n')
+    monkeypatch.setattr(term_routes, "TERM", tmp_path)
+    html = TestClient(app).get("/term").text
+    assert html.count('class="term-part"') == 2 and html.index("Part one") < html.index("Part two")
+    assert "1. t1" in html and "2. t2" in html and "1. t3" in html       # numbered within each part
+    assert html.count("data-term-play") == 3                             # each step waits paused on Play
+    assert html.count("data-term-out") == 2 and "racinglines c3" in html  # the unrun step is its command only
+
+
+def test_a_failed_run_keeps_the_saved_recording(tmp_path, monkeypatch):
+    rec = _recorder()
+    (tmp_path / "step-1.ansi").write_text("old")
+    (tmp_path / "quickstart.json").write_text("[]")
+    monkeypatch.setattr(rec, "TERM", tmp_path)
+    monkeypatch.setattr(rec, "config", dict)
+    monkeypatch.setattr(rec, "quickstart", lambda pack: [{"id": "step-1", "title": "t", "command": "false", "about": ""}])
+    with pytest.raises(SystemExit):
+        rec.main(["--run"])
+    assert (tmp_path / "step-1.ansi").read_text() == "old" and (tmp_path / "quickstart.json").read_text() == "[]"

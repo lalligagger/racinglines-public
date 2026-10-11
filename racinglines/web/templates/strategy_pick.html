@@ -1,0 +1,38 @@
+{% extends "base.html" %}{% from "_macros.html" import page_head, flash, csrf %}
+{% block title %}Pick a strategy{% endblock %}
+{% block content %}
+{# web/strategy_pick.py: the user's own pick (no strategy runs until there is one); admins assign others on /admin/users/<id>. #}
+{% call page_head("Pick a strategy", "The strategy this account paper-trades on Formula 1 at Polymarket's prices. Nothing is sent to an exchange, and you can change it any time.") %}
+<a href="/strategy">← Strategy</a>{% endcall %}
+{{ flash(msg) }}
+<p class="pick-now">Running now: <b>{{ profile.name if profile else "nothing yet" }}</b>{% if not profile %}. Pick one below to start getting calls.{% endif %}</p>
+{% if locked %}<p class="muted">This is a demo account: it keeps the strategy it shows, so the page is read-only here.</p>{% endif %}
+<form method="post" action="/strategy/pick" class="pick">
+  {{ csrf() }}
+  <fieldset aria-label="Strategy"{{ ' disabled' if locked }}>
+  {% for o in opts %}
+  <label class="pick-opt">
+    <input type="radio" name="code" value="{{ o.code }}"{{ ' checked' if o.code == chosen }}>
+    <span class="pick-head"><b>{{ o.name }}</b>
+      {% if o.rank %}<span class="pill">#{{ o.rank }} on the shortlist</span>{% endif %}
+      {% if o.code == now %}<span class="pill good">running</span>{% endif %}
+      <span class="pill no">{{ "maker" if o.kind == "maker" else ("blend" if o.code == "TB" else "taker") }}</span></span>
+    <span class="pick-why">{{ o.why }}</span>
+    {% if o.sliders or o.pre is not none %}
+    <span class="pick-tune">
+      {% for s in o.sliders %}
+      <span class="pick-slider"><span>{{ s.label }}: <b data-out="{{ o.code }}:{{ s.name }}">{% if s.unit == "pts" %}{{ (s.value * 100)|round|int }} pts{% elif s.unit == "$" %}${{ s.value|int }}{% else %}{{ s.value|int }} {{ s.unit }}{% endif %}</b></span>
+        <input type="range" name="{{ o.code }}:{{ s.name }}" min="{{ s.lo }}" max="{{ s.hi }}" step="{{ s.step }}" value="{{ s.value }}" data-unit="{{ s.unit }}" data-default="{{ s.value }}"></span>
+      {% endfor %}
+      {% if o.pre is not none %}<span class="pick-toggle"><input type="checkbox" name="{{ o.code }}:pre_weekend" value="1"{{ ' checked' if o.pre }}> Also trade before the weekend starts (before FP1)</span>{% endif %}
+      <span class="legend">Moving these makes it your own version ("adjusted"): the results quoted above were for the settings it starts with.</span>
+    </span>
+    {% endif %}
+  </label>
+  {% endfor %}
+  <p><button type="submit" class="primary">Run this strategy</button></p>
+  </fieldset>
+</form>
+{% if profile and not locked %}<form method="post" action="/strategy/pick" class="inline">{{ csrf() }}<input type="hidden" name="code" value="none">
+  <button type="submit">Stop: run no strategy</button></form>{% endif %}
+{% endblock %}

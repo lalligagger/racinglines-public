@@ -1,4 +1,4 @@
-🔮 [1mforecast 2026[0m · cutoff [36m2026-10-11 21:56 UTC[0m · latest results [36m2026-10-04 14:00[0m
+🔮 [1mforecast 2026[0m · cutoff [36m2026-10-11 22:21 UTC[0m · latest results [36m2026-10-04 14:00[0m
 [3m🏁 [0m[1;3mR10 Rainbow Road Grand Prix[0m[3m [0m[2;3m(18 Oct)[0m[3m                                                                 [0m
 ╭─────────────┬──────────┬───────┬────────────────┬────────┬────────────────┬────────┬───────┬─────────╮
 │[1m [0m[1mdriver     [0m[1m [0m│[1m [0m[1mteam    [0m[1m [0m│[1m [0m[1m  win[0m[1m [0m│[1m [0m[1m              [0m[1m [0m│[1m [0m[1mpodium[0m[1m [0m│[1m [0m[1m              [0m[1m [0m│[1m [0m[1mtop 10[0m[1m [0m│[1m [0m[1m  DNF[0m[1m [0m│[1m [0m[1mexp pts[0m[1m [0m│
@@ -57,4 +57,4 @@
 [2mfinishing model coef {'g': 0.375, 'g_ease': -0.058, 'rp_rel': 0.059, 'rp_ease': 0.031, 'qp_rel': 0.17, 'street_g': 0.0} [0m
 [2msigma 0.143; season drift (as-of) {'team_sd': 0.0, 'driver_sd': 0.0}[0m
 
-Saved forecast run 2.
+Saved forecast run 8.
