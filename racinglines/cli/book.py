@@ -43,6 +43,10 @@ import pandas as pd
 def _parser():
     p = argparse.ArgumentParser(prog="racinglines book", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    top = p.add_mutually_exclusive_group()                 # also before the command: `book --demo price`
+    for flag in ("demo", "remote", "local"):
+        top.add_argument(f"--{flag}", dest=f"top_{flag}", action="store_true", help=f"as `--{flag}` after the command")
+    p.add_argument("--mcp-url", dest="top_mcp_url", default=None, help="as `--mcp-url` after the command")
     sub = p.add_subparsers(dest="cmd", required=True)
     for name, hlp in (("map", "Resolve each line's legs by exact keys."),
                       ("price", "Model fair, market price, book implied probability and EV per leg and per slip."),
@@ -168,7 +172,17 @@ def _print(cmd, out):
 
 
 def main(argv=None):
-    args = _parser().parse_args(argv)
+    parser = _parser()
+    args = parser.parse_args(argv)
+    tops = [f for f in ("demo", "remote", "local") if getattr(args, f"top_{f}")]
+    if tops and args.cmd not in ("map", "price", "settle"):
+        parser.error(f"--{tops[0]} applies to map, price and settle")
+    if tops:
+        if any(getattr(args, f) for f in ("demo", "remote", "local") if f not in tops):
+            parser.error("give one of --demo, --remote, --local")
+        setattr(args, tops[0], True)
+    if args.top_mcp_url and args.cmd in ("map", "price", "settle", "logout"):
+        args.mcp_url = args.mcp_url or args.top_mcp_url
     if args.cmd == "view":
         from racinglines.cli import rich_view
         try:
