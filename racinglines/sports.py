@@ -21,6 +21,7 @@ the values from here, so a new sport starts with a new schema file.
                                 (racinglines/frames, docs/frames.md)
     audience(code)              who the web app shows the sport to ([sport] audience): "all" (the default) or "admin"
     admin_only()                the sport codes whose audience is "admin"; admin_only_competitions() their competitions
+    is_public(code, user)       the one gate (web pages and MCP tools): may this user see the sport or competition code?
 """
 
 import tomllib
@@ -75,6 +76,17 @@ def audience(code):
     if got not in AUDIENCES:
         raise ValueError(f"sports/{code}.toml [sport] audience: {got!r} not in {AUDIENCES}")
     return got
+
+
+def is_public(code, user=None):
+    """The one gate every user-facing reader calls (web pages, MCP tools): whether `user` may see a sport or competition
+    code. True for an admin (user["role"] == "admin"), for None (an internal caller: the CLI, the stdio MCP server,
+    pricing and recording) and for an empty or unknown code; else whether the sport's [sport] audience is "all". A
+    signed-out web visitor is not None: the web app passes {} (web/audience.py)."""
+    if user is None or not code or (isinstance(user, dict) and user.get("role") == "admin"):
+        return True
+    sport = code if code in SPORT_CODES else next((c for c in SPORT_CODES if load(c)["competition"]["code"] == code), None)
+    return sport is None or audience(sport) == "all"
 
 
 def admin_only():

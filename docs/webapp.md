@@ -98,8 +98,9 @@ One schema key decides which sports users see: `[sport] audience` in `sports/<co
 With `audience = "admin"`, the sport is left out of every page for everyone but admins. Its race, event, season,
 run, diagnostic and athlete pages, and its JSON API rows, answer 404. That covers the Markets board and calendar,
 the exchange lists, the Lab (Edge Finder, run forms, jobs, backtests, scenarios, diagnostics, runs), Positions,
-Strategy and its track record, Live, Settings and the landing page's sports line. The web app is the only reader
-(`racinglines/web/audience.py`): the sport is still recorded, priced and settled, the CLI shows it, and nothing is
+Strategy and its track record, Live, Settings and the landing page's sports line. One gate decides it,
+`racinglines.sports.is_public(code, user)` (the web app's side is `racinglines/web/audience.py`; the MCP tools use the
+same gate), and only user-facing readers ask: the sport is still recorded, priced and settled, the CLI shows it, and nothing is
 deleted. Setting the key back to `"all"` shows it again; it is code, so the change is a deploy.
 
 MotoGP is admin-only for the Alpha (owner, 2026-10-11, "Hide for Alpha": the motogp.com terms keep its results and
