@@ -1,8 +1,25 @@
-{# The site-wide popup: only the maintenance notice (app.MAINTENANCE_NOTICE, off when ""). The sign-up popup was
-   dropped with the landing rebuild (owner, 2026-10-08); the landing page carries the sign-up link instead. #}
-{% if maintenance_notice() %}
-<dialog id="site-notice" class="site-notice" aria-describedby="site-notice-msg">
-  <p id="site-notice-msg">{{ maintenance_notice() }}</p>
+{# The site-wide popup: the maintenance notice (app.MAINTENANCE_NOTICE, off when "") and, for the demo accounts only,
+   the sign-up notice with its link (owner, 2026-10-11: demo visitors still see it). The signed-out landing page has no
+   popup since the landing rebuild (owner, 2026-10-08); it carries the sign-up link instead. #}
+{% set npath = request.url.path if request else '' %}
+{% set signup_cta = signup_on() and is_demo(user) and npath != '/signup' %}
+{% if maintenance_notice() or signup_cta %}
+<dialog id="site-notice" class="site-notice"{% if signup_cta %} data-signup="1"{% endif %} aria-describedby="site-notice-msg">
+  {% if signup_cta %}<p class="signup-cta"><b>Beta <a href="/signup">signups</a> are live!</b></p>{% endif %}
+  {% if maintenance_notice() %}<p id="site-notice-msg">{{ maintenance_notice() }}</p>{% endif %}
   <form method="dialog"><button class="primary" autofocus>OK</button></form>
+</dialog>
+{% endif %}
+{# The add-email popup (owner, 2026-10-11): a registered account with no email on file (made before email was required
+   at sign-up), once per browser session, on every app page but Settings. Demo accounts never see it. #}
+{% if not (maintenance_notice() or signup_cta) and request and npath not in ('/settings', '/settings/email') and needs_email(user) %}
+<dialog id="site-notice" class="site-notice email-notice" data-key="email" aria-labelledby="email-notice-title">
+  <form method="post" action="/settings/email">{% from "_macros.html" import csrf %}{{ csrf() }}
+    <input type="hidden" name="next" value="{{ npath }}{{ '?' ~ request.url.query if request.url.query }}">
+    <p id="email-notice-title"><b>Add your email</b> so we can send you updates. We never share it.</p>
+    <p><input name="email" type="email" required maxlength="254" placeholder="your@email.com" autocomplete="email" aria-label="Email"></p>
+    <p><button class="primary">Save</button> <button type="submit" formmethod="dialog" formnovalidate>Not now</button></p>
+  </form>
+  <p class="muted">You can change it later under <a href="/settings">Settings</a>.</p>
 </dialog>
 {% endif %}
