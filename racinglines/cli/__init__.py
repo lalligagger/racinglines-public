@@ -1,48 +1,38 @@
 """
-racinglines <command> [--sport SPORT] [options]
+racinglines <group> <command> [options]
 
-{commands}
-  Groups
-    backtest  walk-forward SPORT | coverage | clv   (the backtest core, any sport with a pricing model)
+    f1        fetch | ingest | forecast | backtest | diagnostic | sweep | season-strategy | replay
+    mtb_dh    download | parse | ingest | forecast | backtest | walk-forward
+    nascar    fetch | ingest   (the free content feeds: results, stages, laps)
+    motogp    fetch | ingest   (the free public results API: race classifications)
+    cycling   events | fetch | startlist | probe | price | reliability   (road cycling sportsbook lines: TTs and road races)
+    weather   probe | fetch | show   (weather forecasts per event: Weather Underground, docs/weather.md)
+    backtest  walk-forward SPORT   (the backtest core, any sport with a pricing model); coverage, clv (read-only)
     markets   sync | history | trades | record | archive
     book      map | price | settle | view   (generic sportsbook lines and slips: model and market EV, docs/sportsbook/slips.md)
-    live      new | step | run | agent | status | report   (a live private-book event, any sport)
-    weather   probe | fetch | show   (weather forecasts per event, docs/weather.md)
     db        init | seed | stats | export
-    users     setup | list | add | reset-password | remove | deactivate | activate   (accounts, fantasy bucks)
+    live      new | step | run | agent | status | report   (a live private-book event, any sport)
     web       serve the web app
+    users     setup | list | add | reset-password | remove | deactivate | activate   (accounts, fantasy bucks)
     mcp       the MCP server: the data and simulations for a chat client (docs/mcp.md)
     check     quick validation: code on synthetic data, data endpoints, database
 
-SPORT is f1, mtb_dh, nascar, motogp or cycling; without --sport, $RACINGLINES_SPORT, else the one sport offering the
-command. `racinglines <command> --sport SPORT -h` gives a command's options, `racinglines <group> -h` a group's.
+`racinglines <group> -h` for a group's commands and options.
 """
 
 import sys
 
-GROUPS = ("weather", "backtest", "markets", "book", "db", "live", "web", "users", "mcp", "check")
-# the sport-first form (`racinglines f1 forecast`): still runs, not listed (the VM's timers, scripts and Lab jobs use it)
-SPORT_FIRST = ("f1", "mtb_dh", "nascar", "motogp", "cycling")
-BACKTEST_CORE = ("walk-forward", "coverage", "clv", "-h", "--help")     # `backtest` without these is a sport's backtest
-
-
-def _usage():
-    from racinglines.cli import flat
-    return __doc__.replace("{commands}", flat.help_text())
+GROUPS = ("f1", "mtb_dh", "nascar", "motogp", "cycling", "weather", "backtest", "markets", "book", "db", "live", "web", "users", "mcp", "check")
 
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    from racinglines.cli import flat
-    known = GROUPS + SPORT_FIRST + flat.COMMANDS
-    if not argv or argv[0] in ("-h", "--help") or argv[0] not in known:
-        print(_usage())
+    if not argv or argv[0] in ("-h", "--help") or argv[0] not in GROUPS:
+        print(__doc__)
         return 0 if argv and argv[0] in ("-h", "--help") else 2
     import importlib
     if argv[0] not in ("web", "mcp"):              # servers, not jobs: no heartbeat
         from racinglines import progress
         progress.start(" ".join(a for a in argv[:2] if not a.startswith("-")))   # stderr, every 5 min (progress.py)
-    if argv[0] in flat.COMMANDS and not (argv[0] == "backtest" and len(argv) > 1 and argv[1] in BACKTEST_CORE):
-        return flat.main(argv[0], argv[1:])
     mod = importlib.import_module(f"racinglines.cli.{argv[0]}")
     return mod.main(argv[1:])
