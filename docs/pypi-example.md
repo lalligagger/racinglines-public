@@ -3,7 +3,7 @@
 !!! warning "Example only, not a release"
     This is a draft of what the racinglines page on PyPI could look like. The package is **not on PyPI**: nothing has
     been uploaded and the name is not registered. Publishing waits for the owner's go. Some commands below use the
-    new CLI tree (task groups such as `racinglines model forecast`, `--demo` on each step), which is still being built,
+    new CLI tree (task groups such as `racinglines model forecast f1`, `--demo [PACK]` on any command), which is still being built,
     and the licence wording is an open question.
 
 ## Draft metadata
@@ -42,33 +42,36 @@ trading.
 ### Install
 
 ```
-pip install racinglines            # the CLI and the offline demo
+pip install racinglines            # the CLI and the demo
 pip install "racinglines[remote]"  # + the hosted server (sign in through the browser)
 pip install "racinglines[server]"  # + everything to run your own database, web app and MCP server
 ```
 
-Python 3.12 or newer.
+Python 3.11 or newer, and PostgreSQL for the demo store.
 
 ### Try it in a minute: the demo
 
-`--demo` runs the whole pipeline end to end on a synthetic sport, in the terminal, with no database, network or
-account: a Mario Kart season. Every driver's pace, every item and every bet is made up; it is play money.
+`--demo [PACK]` on any command runs that same command on a demo store: a separate database and data folder built
+from a data pack by the real ingest. The default pack, `kart`, is a synthetic Formula 1 world with a Mario Kart grid;
+every pace, result and price is made up, and it is play money. It needs PostgreSQL (the demo database is created
+next to yours) but no network or account.
 
 ```
-racinglines model backtest --demo     # 1. five seasons of history, the pace model, a walk-forward sweep
-racinglines model forecast --demo     # 2. the next race: win / podium / top-5 probabilities and fair odds
-racinglines live run --demo           # 3. the race live: a bookie re-quotes every sector, 100 simulated takers trade
-racinglines book price --demo         # 4. sportsbook lines and slips: EV against the model and the exchanges
+racinglines db stats --demo                                       # 1. build the demo store and look at it
+racinglines model backtest f1 --demo                              # 2. every past race priced and scored
+racinglines model forecast f1 --demo --save                       # 3. the rest of the season and the championships
+racinglines live run f1/demo-2026-09 --demo --simulate --no-fetch # 4. a live private book on a simulated clock
+racinglines live report f1/demo-2026-09 --demo --pdf              # 5. the live event's report
+racinglines book price --demo                                     # 6. sportsbook lines: EV against model and exchanges
 ```
 
-Each step is a miniature of the real one and shares its code where it exists: the live race uses the same quoting,
-simulated crowd and event report as a real private-book event. `--seed N` repeats a run exactly.
+These are the real commands: `--demo` only switches the data source ([Quickstart](quickstart.md)).
 
 ### Three ways to run it
 
 | | What you need | What runs |
 |---|---|---|
-| **Demo** | `pip install racinglines` | The four steps above, on bundled synthetic data, offline |
+| **Demo** | `pip install racinglines` and PostgreSQL | The six steps above, on a bundled synthetic data pack, with no network or account |
 | **Hosted** | A [racinglines.bet](https://racinglines.bet) account with MCP access | `racinglines book price FILE --remote` prices your own book file on the hosted server; the first run signs in through the browser |
 | **Self-hosted** | PostgreSQL and `racinglines[server]` | The full pipeline below on your own data, and your own MCP server (`racinglines book config mcp_url URL` makes it the CLI default) |
 
@@ -76,12 +79,12 @@ simulated crowd and event report as a real private-book event. `--seed N` repeat
 
 ```
 docker compose up -d                  # PostgreSQL (the repo's docker-compose.yml)
-racinglines admin db init             # tables + reference data
+racinglines db init                   # tables + reference data
 racinglines data fetch f1             # F1 sessions (FastF1)
 racinglines data ingest f1            #   -> database
 racinglines model forecast f1 --save  # live F1 prices: remaining races + championships
 racinglines markets sync              # exchange market links
-racinglines admin check               # code, data endpoints, database
+racinglines check                     # code, data endpoints, database
 ```
 
 ### What it does
