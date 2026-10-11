@@ -120,3 +120,36 @@ def test_the_board_leaves_hidden_competitions_out(site, test_engine, monkeypatch
         shown = [s["code"] for s in B.board(c, 0, detail=False, hide=A.hidden_comps(PRO))]
     assert "motogp_wc" in every and "f1_wdc" in every
     assert "motogp_wc" not in shown and "f1_wdc" in shown
+
+
+def test_lab_jobs_and_book_quotes_leave_a_hidden_sport_out_for_users(site, test_engine):
+    """Core review of #132: a MotoGP job's log tail (P&L) in Lab Jobs scope=all, and MotoGP races in /book/quotes."""
+    from sqlalchemy import text
+    boss, ada, _ = site
+    races = {}
+    with test_engine.begin() as c:
+        for comp, key, sport in (("motogp_wc", "aud-motogp-next", "motogp"), ("f1_wdc", "aud-f1-next", "f1")):
+            cid = c.execute(text("SELECT id FROM competitions WHERE code = :c"), dict(c=comp)).scalar()
+            sid = c.execute(text("SELECT id FROM seasons WHERE competition_id = :c AND year = 2026"), dict(c=cid)).scalar()
+            cat = c.execute(text("SELECT id FROM categories WHERE competition_id = :c ORDER BY id LIMIT 1"),
+                            dict(c=cid)).scalar()
+            eid = c.execute(text("""INSERT INTO events (season_id, source, source_key, name, start_date, status)
+                                    VALUES (:s, 'test', :k, :n, :d, 'scheduled')
+                                    ON CONFLICT (season_id, source, source_key) DO UPDATE SET status = 'scheduled'
+                                    RETURNING id"""), dict(s=sid, k=key, n=key, d=date(2026, 12, 1))).scalar()
+            races[comp] = c.execute(text("""INSERT INTO races (event_id, category_id) VALUES (:e, :c)
+                                            ON CONFLICT (event_id, category_id) DO UPDATE SET event_id = :e
+                                            RETURNING id"""), dict(e=eid, c=cat)).scalar()
+            c.execute(text("""INSERT INTO jobs (user_id, kind, sport, status, log)
+                              SELECT id, :k, :s, 'done', :log FROM users WHERE username = 'aud_boss'"""),
+                      dict(k=f"{sport}_sweep", s=sport, log=f"aud-log-{sport}"))
+    jobs_user, jobs_admin = ada.get("/lab/section/jobs?scope=all").text, boss.get("/lab/section/jobs?scope=all").text
+    assert "aud-log-motogp" not in jobs_user and "aud-log-f1" in jobs_user
+    assert "aud-log-motogp" in jobs_admin
+    quotes_user, quotes_admin = ada.get("/book/quotes").text, boss.get("/book/quotes").text
+    assert f'<option value="{races["motogp_wc"]}"' not in quotes_user and f'<option value="{races["f1_wdc"]}"' in quotes_user
+    assert f'<option value="{races["motogp_wc"]}"' in quotes_admin
+    for url in (f"/book/quotes?race_id={races['motogp_wc']}", f"/book/quotes/sheet?race_id={races['motogp_wc']}"):
+        assert ada.get(url).status_code == 404, url
+        assert boss.get(url).status_code == 200, url
+    assert ada.get(f"/book/quotes?race_id={races['f1_wdc']}").status_code == 200

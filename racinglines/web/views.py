@@ -437,10 +437,13 @@ LAB_SECTIONS = [("run", "Run"), ("jobs", "Jobs"), ("models", "Model variants"), 
                 ("backtests", "Backtests"), ("diagnostics", "Event diagnostics"), ("runs", "All runs")]
 
 
-def _recent_jobs(c, user_id=None):
-    """The 15 most recent jobs; only this user's when user_id is given."""
+def _recent_jobs(c, user_id=None, hide=()):
+    """The 15 most recent jobs; only this user's when user_id is given. No jobs of a sport in hide ([sport] audience):
+    their log tails carry that sport's P&L."""
     return rows(data.q(c, """SELECT j.*, u.username FROM jobs j LEFT JOIN users u ON u.id = j.user_id
-                             WHERE CAST(:u AS integer) IS NULL OR j.user_id = CAST(:u AS integer) ORDER BY j.id DESC LIMIT 15""", u=user_id))
+                             WHERE (CAST(:u AS integer) IS NULL OR j.user_id = CAST(:u AS integer))
+                               AND NOT coalesce(j.sport, '') = ANY(CAST(:h AS text[]))
+                             ORDER BY j.id DESC LIMIT 15""", u=user_id, h=list(hide)))
 
 
 def _edge_ctx(c, user):
@@ -475,7 +478,7 @@ def lab_page(request: Request, job: str = "", event: str = "", variant: str = ""
     (database); which sections are open is a browser view setting."""
     from urllib.parse import urlencode
 
-    active = any(j["status"] in ("queued", "running") for j in _recent_jobs(c, user["id"]))
+    active = any(j["status"] in ("queued", "running") for j in _recent_jobs(c, user["id"], A.hidden(user)))
     open_now = (["run"] if job or event or variant or candidate or cfg else []) + (["jobs"] if active or msg else [])
     q = {k: v for k, v in dict(job=job, event=event, variant=variant, candidate=candidate or "", cfg=cfg, sport=sport,
                                venue=venue).items() if v}
@@ -560,7 +563,7 @@ def lab_section(request: Request, key: str, job: str = "", event: str = "", vari
                    sel_candidate=candidate, sweep_forms=sweep_forms, hidden_sports=A.hidden(user))
     elif key == "jobs":
         scope = scope if scope in ("mine", "all") else "mine"
-        js = _recent_jobs(c, user["id"] if scope == "mine" else None)
+        js = _recent_jobs(c, user["id"] if scope == "mine" else None, A.hidden(user))
         ctx.update(jobs=js, scope=scope, active=any(j["status"] in ("queued", "running") for j in js))
     elif key == "models":
         from racinglines.models import evaluate as EV
