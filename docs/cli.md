@@ -12,7 +12,7 @@ racinglines strategy  <command> SPORT   replay | sweep | season-replay | season-
                                         scorecard | signals | demo-history | reconcile | profiles | search (F1) | live
 racinglines backtest  walk-forward SPORT | coverage | clv
 racinglines markets   sync | history | trades | record | archive
-racinglines book      map | price | settle | view       (sportsbook lines and slips, docs/sportsbook/slips.md)
+racinglines book      map | price | settle | export | view   (sportsbook lines and slips, docs/sportsbook/slips.md)
 racinglines weather   probe | fetch | show              (weather forecasts per event: Open-Meteo, no key)
 racinglines db        init | seed | stats | export | snapshot-export | snapshot-import | merge-athletes | changes
 racinglines live      new | step | run | agent | status | report | settle | reprice
@@ -377,7 +377,9 @@ Generic sportsbook lines and slips (singles and parlays across F1, NASCAR and Mo
 linked prediction markets, read-only and CLI only: `map FILE` (exact-key mapping of every leg to race, athletes and
 kind; unmapped legs listed), `price FILE [--run ID] [--sims RACE_ID=FILE]` (model fair, market price, book implied
 probability, EV against model and against market; same-race legs jointly from simulations or flagged
-`correlated: EV approximate`), `settle FILE` (results and payouts from the stored classification); `--json` on each.
+`correlated: EV approximate`), `settle FILE` (results and payouts from the stored classification); `--json` on each. `export FILE --ledger
+OUT.csv [--force]` writes the staked lines (a line's `stake`, `placed_utc`), priced and settled, as ledger rows
+([Ledger export](sportsbook/slips.md#ledger-export)).
 Three modes: `--demo [PACK]` (a local demo store of synthetic data), `--remote` (the hosted MCP server; in testing, it prints
 the #aintcare warning), `--local` (the default);
 `book config` sets the default, `book logout` forgets the `--remote` sign-in. See [Sportsbook slips](sportsbook/slips.md).
