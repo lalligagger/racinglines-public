@@ -87,3 +87,16 @@ def test_model_demo_runs_the_tour_without_a_sport(monkeypatch):
     assert VB.main("model", ["forecast", "f1", "--demo"]) == 0          # a sport given with --demo is ignored
     assert seen == [("backtest", 3), ("forecast", 7)]
     assert VB.main("model", ["compare", "--demo"]) == 2                   # only backtest and forecast have a demo
+
+
+def test_a_command_in_another_group_names_it(capsys):
+    assert VB.main("model", ["sweep", "f1"]) == 2
+    assert "racinglines strategy sweep f1" in capsys.readouterr().err
+    assert VB.main("model", ["sweep"]) == 2
+    assert "racinglines strategy sweep SPORT" in capsys.readouterr().err
+
+
+def test_usage_lines_use_the_new_form():
+    p = VB.parser_of("f1")
+    sub = next(a for a in p._actions if a.choices and "sweep" in (a.choices or {})).choices["sweep"]
+    assert sub.format_usage().startswith("usage: racinglines strategy sweep f1")

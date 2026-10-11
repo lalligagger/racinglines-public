@@ -158,7 +158,7 @@ def cmd_reliability(a):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="racinglines cycling", description=__doc__,
+    ap = argparse.ArgumentParser(prog="racinglines <group> <command> cycling", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("events", help="list the event files")
@@ -191,6 +191,8 @@ def main(argv=None):
     r.add_argument("--settings-from", help="settings row CSV (settings.csv from a price run); default: schema")
     r.add_argument("--terrain", default="hilly", choices=["hilly", "flat"])
     r.add_argument("--sims", type=int, default=4000)
+    from racinglines.cli.verbs import retitle
+    retitle(ap, "cycling")
     a = ap.parse_args(argv)
 
     if a.cmd == "events":

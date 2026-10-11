@@ -250,7 +250,7 @@ from the core):
 ### What runs
 
 A new engine, `racinglines/pipelines/live_f1.py`, the F1 counterpart of `live_dh.py`,
-run as `racinglines f1 live --event 2026-16`. Every run is **one idempotent step**: it
+run as `racinglines strategy live f1 --event 2026-16`. Every run is **one idempotent step**: it
 acts only when something new has happened since the last run, and does nothing
 otherwise. A LaunchAgent calls it every 5 minutes, like the signal engine, so there's
 no long-running process to supervise.

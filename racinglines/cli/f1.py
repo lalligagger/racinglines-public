@@ -56,7 +56,7 @@ def _years(spec):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="racinglines f1", description=__doc__,
+    ap = argparse.ArgumentParser(prog="racinglines <group> <command> f1", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--db", default=None, help="Database URL (default: $DATABASE_URL / docker-compose).")
     ap.add_argument("--variant", default="baseline",
@@ -277,6 +277,8 @@ def main(argv=None):
                    help="--check / --dnf-check: the weather leads CSV (racinglines weather leads; weather/wet.py "
                         "p_wet_series) adds the -WX variants; needs a race history (--history CSV or the database)")
     p.add_argument("--lead", type=int, default=5, help="--forecast: the forecast issued this many days before (default 5)")
+    from racinglines.cli.verbs import retitle
+    retitle(ap, "f1")
     args = ap.parse_args(argv)
     from racinglines.models.position_sim import variants as V
     V.switches(args.variant)                         # fail fast on an unknown name

@@ -321,13 +321,13 @@ racinglines data points mtb_dh check --db --season 2026 --through-round 7 --stan
 (the schema's scales copied into each era). The owner replaces them with the official UCI scales,
 sets `official = true` and cites the source.
 
-## racinglines nascar
+## NASCAR commands
 
 NASCAR Cup, from the content feeds at `cf.nascar.com` (no key). See [Data](data.md#nascar-content-feeds-verified-2026-09-29).
 
 ```
 racinglines data fetch nascar [--years 2026] [--series 1] [--feeds a,b] [--races 5624,5628] [--force] [--dry-run]
-racinglines data ingest nascar [--years 2026] [--series 1] [--force] [--no-laps]        (group option: --db URL)
+racinglines data ingest nascar [--years 2026] [--series 1] [--force] [--no-laps]        (--db URL anywhere after the sport)
 racinglines data link nascar [--exchange kalshi] [--apply --backup FILE] [--undo FILE]
 racinglines strategy replay nascar [--years 2025-2026] [--venue all|kalshi|polymarket|og] [--kinds a,b] [--min-edge X] [--min-volume USD]
                           [--events KEY,...|latest] [--tape probe|pull] [--require-tradeable] [--buy-all]
@@ -373,7 +373,7 @@ Three modes: `--demo` (a bundled synthetic book, offline), `--remote` (the hoste
 `book config` sets the default, `book logout` forgets the `--remote` sign-in. See [Sportsbook slips](sportsbook/slips.md).
 `--demo` on `model backtest`, `model forecast` and `live run` runs the Mario Kart tour instead: see [Demo](demo.md).
 
-## racinglines cycling
+## Road cycling commands
 
 Road cycling sportsbook lines (winner, head-to-head) for time trials and road races, from ProCyclingStats results
 on the timed-runs engine: `events`, `fetch itt|road`, `startlist <event>`, `price <event> [--calibrate]`. See
@@ -433,11 +433,11 @@ racinglines db [--db URL] changes [--add TEXT] [--sport mtb_dh] [--limit 20]
 | `merge-athletes` | Merge athlete `DROP` into `KEEP` (the same person, e.g. a name change that downhill ingest reports once files carry UCI IDs): every table referring to athletes moves to `KEEP`, then `DROP` is deleted. Refuses, changing nothing, if a row would collide (both in the same round). `--dry-run` only reports. It changes the downhill history the model sees, so it's the owner's call. Logged in the data change log. |
 | `changes` | The [data change log](data-changes.md), newest first: every ingest that changed data, every merge, and notes (`--add "why"`). |
 
-## racinglines f1
+## F1 commands
 
 Formula 1. See [Formula 1](f1.md).
 
-Group options go before the command:
+Options every F1 command takes (anywhere after `f1`):
 
 | Option | Meaning |
 |---|---|
@@ -460,14 +460,14 @@ racinglines data ingest f1 [--years 2020-2026] [--force]
 ### Pricing and evaluation
 
 ```
-racinglines f1 [--variant NAME] [--half-life DAYS] backtest [--start-year 2021] [--races N] [--track both|on|off] [--no-track] [--sims 4000] [--out CSV] [--save]
+racinglines model backtest f1 [--variant NAME] [--half-life DAYS] [--start-year 2021] [--races N] [--track both|on|off] [--no-track] [--sims 4000] [--out CSV] [--save]
 racinglines model compare f1 BASELINE_RUN CHALLENGER_RUN [--reliability]
 racinglines model matrix f1 [--variants baseline,grid,gridq,pretrain,gbm,tail,gridq+pretrain] [--year 2026] [--out MD]
-racinglines f1 [--half-life DAYS] diagnostic --event 2026-15 --cutoff 2026-09-25T13:30 [--sims 10000] [--no-track] [--save]
-racinglines f1 [--half-life DAYS] forecast [--year 2026] [--sims 10000] [--no-track] [--save [--scenario LABEL]] [--top 10]
+racinglines model diagnostic f1 [--half-life DAYS] --event 2026-15 --cutoff 2026-09-25T13:30 [--sims 10000] [--no-track] [--save]
+racinglines model forecast f1 [--half-life DAYS] [--year 2026] [--sims 10000] [--no-track] [--save [--scenario LABEL]] [--top 10]
 racinglines model props f1 EVENT [--run STAGE_RUN] [--prior-n 16]  |  racinglines model props f1 --check [--from 2022]
-racinglines f1 [--variant NAME] scorecard --event 2026-15 [--venue polymarket|kalshi|both] [--model-key KEY] [--out DIR]
-racinglines f1 [--variant NAME] scorecard --all --year 2025 [--rounds 1-12] [--venue polymarket|kalshi|both]
+racinglines strategy scorecard f1 [--variant NAME] --event 2026-15 [--venue polymarket|kalshi|both] [--model-key KEY] [--out DIR]
+racinglines strategy scorecard f1 [--variant NAME] --all --year 2025 [--rounds 1-12] [--venue polymarket|kalshi|both]
 ```
 
 | Command | What it does |
@@ -483,7 +483,7 @@ racinglines f1 [--variant NAME] scorecard --all --year 2025 [--rounds 1-12] [--v
 ### Trading research
 
 ```
-racinglines f1 [--variant NAME] sweep [--year 2026] [--rounds 1-15] [--no-fetch | --fetch-only] [--reprice] [--reliability] [--save] [SETTINGS …]
+racinglines strategy sweep f1 [--variant NAME] [--year 2026] [--rounds 1-15] [--no-fetch | --fetch-only] [--reprice] [--reliability] [--save] [SETTINGS …]
 racinglines strategy season-strategy f1 [--venue {polymarket,kalshi,og}] [--year 2026] [--sims 5000] [--no-fetch] [--reforecast] [--min-edge 0.03] [--stake-per-edge 500] [--max-stake 150] [--capital 1500] [--save]
 racinglines strategy season-strategy f1 --paper --venue {polymarket,kalshi} [--after-round N] [--user maker] [--no-fetch] [--save] [SIZING …]
 racinglines strategy season-checkpoints f1 [--variants V1,V2] [--year 2026] [--entries 0,3,6] [--window 3] [--sims 5000] [--out MD] [--save]
@@ -499,7 +499,7 @@ racinglines strategy search-import f1 RESULTS.json
 | `season-strategy` | The championship-market strategy through the season: as-of season forecasts pre-season and after every race, trades at Polymarket's recorded prices (plus spread and slippage), settles eliminated markets, marks the rest. `--reforecast` recomputes the cached forecasts. `--venue kalshi` or `--venue og` replays the same strategy on that exchange's stored tape instead (no fetch; Kalshi costed at its taker fee, OG.com at its flat $0.02 per contract with no volume floor and prices read as its replay venue reads them, an empty book's 0.50 dropped); Polymarket stays the default and its output is unchanged, and `--save` stores another venue's replay as kind `season_venue_replay` so no page reads it as Polymarket's. **`--paper`** is the championship sleeve (paper only, off unless given): replay through the decision after `--after-round` (default: the last raced round) on `--venue` (Polymarket's championship markets, or Kalshi's `KXF1` / `KXF1CONSTRUCTORS` champion markets by ticker, costed at the taker fee) and store that rebalance as the demo maker's (`--user`) paper positions under venue `season:<venue>`, event `<year>-season`, replacing the previous store on that venue; the weekend records of A, C and K never read that venue. `--save` also stores the rebalance as a run of kind `season_sleeve`. See [Paper trading](paper-trading.md#validation-plan). |
 | `season-checkpoints` | Championship markets entered at fixed points (pre-season, after 3 and after 6 grands prix; `--entries`) and held, one $500 book each, per model variant (`--variants`). Scores each entry over the next 3 GPs (`--window`) and to date: P&L, how far the market moved toward our fair value, and the share of our edge it closed. Writes `data/runs/f1/season_checkpoints.md`; `--save` stores kind `season_checkpoints`. See [Checkpoint entries](market-making.md#checkpoint-entries). |
 | `replay` | Replay a maker quoting Polymarket through an event's diagnostic runs (ids in time order), with both fill rules, against the real trade tape. `--sweep` adds the half-spread and fill-rule sensitivity table. |
-| `search QUEUE.toml` | Run a queue of season sweeps in parallel (`[search] parallel`, `hours`), each saved as a sweep run. The queue file (e.g. `sweeps/poc.toml`, `sweeps/params-4h.toml`) is re-read whenever a slot frees, so pending `[[job]]` entries can be edited while it runs. A job with `venue = "kalshi"` (or `"og"`) runs `sweep --venue kalshi` (the strategies on Kalshi's tape) and gets its own baseline on that venue; a job with `sport = "nascar"` (or `"motogp"`) and `kind = "sweep"` runs `racinglines <sport> sweep` the same way (any sport whose schema has a `[sweep]` table and lists `"sweep"` in `[search] jobs`); its id and title carry the venue, and a `[[candidate]]` may carry it too (e.g. `sweeps/kalshi-maker-k.toml`). `[search] grid = N` runs up to N sweeps of the same season and model in one process (`sweep --grid`: the measurements, stage pricings, markets and maker tape are read once; every saved run is what its own process would save), and `history_cache = true` keeps rating histories in `data/cache/history/`; `parallel` defaults to every core. Writes `data/runs/search/<name>/` (`leaderboard.md`, `results.json`, `state.json`, logs). `--leaderboard` only rewrites the leaderboard from `state.json`. See [Cloud sweeps](cloud-sweep.md). |
+| `search QUEUE.toml` | Run a queue of season sweeps in parallel (`[search] parallel`, `hours`), each saved as a sweep run. The queue file (e.g. `sweeps/poc.toml`, `sweeps/params-4h.toml`) is re-read whenever a slot frees, so pending `[[job]]` entries can be edited while it runs. A job with `venue = "kalshi"` (or `"og"`) runs `sweep --venue kalshi` (the strategies on Kalshi's tape) and gets its own baseline on that venue; a job with `sport = "nascar"` (or `"motogp"`) and `kind = "sweep"` runs `racinglines strategy sweep <sport>` the same way (any sport whose schema has a `[sweep]` table and lists `"sweep"` in `[search] jobs`); its id and title carry the venue, and a `[[candidate]]` may carry it too (e.g. `sweeps/kalshi-maker-k.toml`). `[search] grid = N` runs up to N sweeps of the same season and model in one process (`sweep --grid`: the measurements, stage pricings, markets and maker tape are read once; every saved run is what its own process would save), and `history_cache = true` keeps rating histories in `data/cache/history/`; `parallel` defaults to every core. Writes `data/runs/search/<name>/` (`leaderboard.md`, `results.json`, `state.json`, logs). `--leaderboard` only rewrites the leaderboard from `state.json`. See [Cloud sweeps](cloud-sweep.md). |
 | `search-report QUEUE.toml` | Analyse a search's finished sweeps with the checks in [Backtest core](backtest-core.md#the-search-report): labels against the baseline in the target and held-out seasons beyond a noise floor (from seed replicates when the search ran them), same-fidelity baselines, confirmation at more simulations, P&L without the best event and without the best two, a shape label describing the record, not the risk (steady: still up without its best two events in every season; concentrated: up in every season but not without its best two in one; mixed: up in one season, down in another; losing: down in every season), and candidates with stable ids (`<strategy>-<settings_key>`). An optional `[report]` table in the queue sets `target`, `holdout`, `confirm_sims`, `rank_sims` (the simulation count combos are ranked at; default the settings' 4,000), `top`, `noise`. Writes `stats.csv`, `ranking.csv`, `pnl_curves.json`, `candidates/`, `candidates.toml` and `report.md` next to `state.json`. |
 | `search-import RESULTS.json` | Load a search's sweep runs (e.g. from a cloud session) into this database, marked with `params.source`. |
 

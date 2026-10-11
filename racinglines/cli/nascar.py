@@ -35,7 +35,7 @@ def _years(spec):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="racinglines nascar", description=__doc__,
+    ap = argparse.ArgumentParser(prog="racinglines <group> <command> nascar", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--db", default=None, help="Database URL (default: $DATABASE_URL / docker-compose).")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -77,6 +77,8 @@ def main(argv=None):
     replay_cmd.add_forecast_parser(sub, "nascar")
     replay_cmd.add_sweep_parser(sub, "nascar")
     replay_cmd.add_signals_parser(sub, "nascar")
+    from racinglines.cli.verbs import retitle
+    retitle(ap, "nascar")
     args = ap.parse_args(argv)
 
     if args.cmd == "signals":

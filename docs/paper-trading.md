@@ -439,7 +439,7 @@ Any change to a profile makes a new profile with its own count.
    tape (the conservative "through" fill rule). Live fill counts and markouts should be within ±25% of
    the replay's, and live P&L inside the replay's noise band. A weekend outside is flagged and explained
    before the next one. `racinglines strategy reconcile f1 --event 2026-NN --profile A|C --venue V` does this
-   ([CLI](cli.md#racinglines-f1)): the account's stored signals and positions against `signals.compute`
+   ([CLI](cli.md#f1-commands)): the account's stored signals and positions against `signals.compute`
    replayed as of a day after the race, both reduced to fills, 60-minute markouts read from the same tape,
    and P&L to resolution (a taker is judged on its own calls, the demo taker's followed third shown too).
    The noise band comes from seed replicates ([Backtest core](backtest-core.md#the-search-report), the

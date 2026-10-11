@@ -54,7 +54,7 @@ run() {   # run <sport>: refresh forecast for a sport if in race weekend
     say "$sport forecast: off-week, skipped"
     return 0
   fi
-  if out=$(nice $R "$sport" forecast --save --backup "$B" 2>&1); then
+  if out=$(nice $R model forecast "$sport" --save --backup "$B" 2>&1); then
     say "$sport forecast: $(echo "$out" | tail -n 1) ($((SECONDS - t0)) s)"
   else
     rc=1; say "$sport forecast: FAILED ($((SECONDS - t0)) s): $(echo "$out" | tail -n 3 | tr '\n' ' ')"

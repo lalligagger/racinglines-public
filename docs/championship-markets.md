@@ -77,7 +77,7 @@ prices.
 Both commands are read-only and off by default (`RACINGLINES_SEASON_REPLAY=1`). They write only CSVs under
 `data/runs/season-replay/<sport>-<venue>-<year>/` (`decisions.csv`, `trades.csv`, `positions.csv`, `equity.csv`,
 `summary.json`); `--venue all` (the default) runs every exchange the sport lists, one report each
-([CLI](cli.md#racinglines-nascar)).
+([CLI](cli.md#nascar-commands)).
 
 The F1 replay takes `--venue kalshi|og` too: `racinglines strategy season-strategy f1 --venue kalshi|og` replays the default
 championship strategy on that exchange's stored tape (no fetch). Kalshi is costed at its taker fee; OG.com at its flat
