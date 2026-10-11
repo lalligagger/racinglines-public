@@ -286,10 +286,11 @@ def parse_map(v):
     return {k: float(x) for k, _, x in (i.partition("=") for i in v.split(","))} if v else {}
 
 
-def add_arguments(parser, cls=None):
-    """One flag per setting (the variant is the f1 group's global --variant)."""
+def add_arguments(parser, cls=None, skip=()):
+    """One flag per setting (the variant is the f1 group's global --variant). skip: settings whose flag the command
+    already has with another meaning (walk-forward's --venue scores exchanges; the sweep's venue picks the tape)."""
     for s in (cls or Settings).SPEC:
-        if s.name == "variant":
+        if s.name == "variant" or s.name in skip:
             continue
         dflt = ",".join(s.default) if s.type == "multi" else "not set" if s.default is None else s.default
         kw = dict(default=None, help=f"{s.label} (default {dflt})."
@@ -297,9 +298,10 @@ def add_arguments(parser, cls=None):
         parser.add_argument("--" + s.name.replace("_", "-"), **kw)
 
 
-def from_args(args, cls=None):
+def from_args(args, cls=None, skip=()):
     cls = cls or Settings
-    d = {s.name: getattr(args, s.name) for s in cls.SPEC if s.name != "variant" and getattr(args, s.name, None) is not None}
+    d = {s.name: getattr(args, s.name) for s in cls.SPEC
+         if s.name != "variant" and s.name not in skip and getattr(args, s.name, None) is not None}
     if "variant" in cls.BY:
         d["variant"] = getattr(args, "variant", "baseline") or "baseline"
     return cls.from_dict(d)
