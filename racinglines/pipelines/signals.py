@@ -631,6 +631,12 @@ def run_all(engine, engine_url, users=None, profile_ref=None, now=None, event="n
     from racinglines.pipelines import profiles as PF
     with engine.connect() as c:
         targets = [(uid, prof) for uid, name, _, prof in PF.assigned(c, venue=venue) if not users or name in users]
+        if not PF.MAKERS_OPEN:                 # Alpha: makers run only for the demo accounts (profiles.MAKERS_OPEN)
+            names = {uid: name for uid, name, _, _ in PF.assigned(c, venue=venue)}
+            skipped = [names[uid] for uid, prof in targets if PF.is_maker(prof) and names[uid] not in PF.DEMO]
+            if skipped:
+                echo(f"maker strategies are closed for Alpha: skipped {', '.join(skipped)}")
+            targets = [(uid, prof) for uid, prof in targets if not PF.is_maker(prof) or names[uid] in PF.DEMO]
         if profile_ref is not None:            # this profile instead of the users' own
             prof = PF.load(c, profile_ref)
             targets = [(uid, prof) for uid, _ in targets]
