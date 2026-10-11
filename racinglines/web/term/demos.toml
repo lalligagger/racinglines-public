@@ -7,15 +7,24 @@
 # when `result` was produced, shown on the page.
 #
 # The page starts with the CLI's offline --demo (bundled synthetic sample, no database, no hosted server; owner,
-# 2026-10-11). Runs that price real races on the hosted server may come later. Until the first demo is recorded the
-# page says so. A demo entry looks like:
-#
-# [[demo]]
-# id = "price"
-# title = "Price a sportsbook's lines against the model and the markets"
-# command = "racinglines book price --demo --rich"
-# run = ["racinglines", "book", "price", "--demo"]
-# result = "price.json"
-# render = "price"
-# recorded = "2026-10-11, offline sample"
-# caption = "What the run shows."
+# 2026-10-11). Runs that price real races on the hosted server may come later.
+
+[[demo]]
+id = "price"
+title = "Price a sportsbook's lines against the model and the markets"
+command = "racinglines book price --demo"
+run = ["racinglines", "book", "price", "--demo"]
+result = "price.json"
+render = "price"
+recorded = "2026-10-11, offline synthetic sample"
+caption = "A made-up grid and a made-up book: 16 lines across the F1 kinds we price (win, P2, podium, top 5 and 10, pole, sprint win and pole, fastest lap, head-to-head, biggest mover, red flag, combos). Each line shows the book's price, the model's and the exchanges', side by side, and the EV against each. One line uses a name the book file can't map, to show how that is flagged."
+
+[[demo]]
+id = "settle"
+title = "Settle the same lines from the results"
+command = "racinglines book settle --demo"
+run = ["racinglines", "book", "settle", "--demo"]
+result = "settle.json"
+render = "settle"
+recorded = "2026-10-11, offline synthetic sample"
+caption = "The same synthetic book, settled from its made-up results: won, lost, void, pending (a parlay leg not raced yet) or left for a manual call, with the payout and profit per line."
