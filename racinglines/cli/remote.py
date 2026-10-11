@@ -128,8 +128,9 @@ def _callback_port(server):
     return _free_port()
 
 
-def _wait_for_callback(port):
-    """Serve one GET /callback on 127.0.0.1:port and return its query parameters (code, state, or error)."""
+def _listen(port):
+    """Bind the sign-in callback server on 127.0.0.1:port. Bound before the browser opens, so a fast browser (or a
+    test's) never finds the port closed; `_wait_for_callback` then serves it."""
     from http.server import BaseHTTPRequestHandler, HTTPServer
     from urllib.parse import parse_qs, urlparse
     got = {}
@@ -157,6 +158,13 @@ def _wait_for_callback(port):
         raise RemoteError(f"can't listen on 127.0.0.1:{port} for the sign-in ({ex}); "
                           "run `racinglines book logout` and try again") from ex
     httpd.timeout = 1
+    httpd.got = got
+    return httpd
+
+
+def _wait_for_callback(httpd):
+    """Serve one GET /callback on the bound server and return its query parameters (code, state, or error)."""
+    got = httpd.got
     with httpd:
         for _ in range(CALLBACK_WAIT_SEC):
             httpd.handle_request()
@@ -174,7 +182,8 @@ def oauth(server, open_browser=None):
     pending = {}
 
     async def redirect(auth_url):
-        pending["t"] = threading.Thread(target=lambda: pending.update(r=_safe_wait(port)), daemon=True)
+        httpd = _listen(port)
+        pending["t"] = threading.Thread(target=lambda: pending.update(r=_safe_wait(httpd)), daemon=True)
         pending["t"].start()
         print(f"Sign in to racinglines in your browser (this URL if it does not open):\n  {auth_url}", file=sys.stderr)
         if open_browser:
@@ -199,9 +208,9 @@ def oauth(server, open_browser=None):
                                redirect_handler=redirect, callback_handler=callback)
 
 
-def _safe_wait(port):
+def _safe_wait(httpd):
     try:
-        return _wait_for_callback(port)
+        return _wait_for_callback(httpd)
     except Exception as ex:  # noqa: BLE001  (handed to the callback handler, which raises it)
         return ex
 
