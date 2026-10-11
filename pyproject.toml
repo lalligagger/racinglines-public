@@ -1,13 +1,76 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]          # 77+: SPDX `license` string and `license-files`
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "racinglines"
 version = "0.2.0"
-description = "Fair prices and market making for race sports (F1, UCI downhill)"
-requires-python = ">=3.11"
-dependencies = []            # install the pinned environment with: pip install -r requirements.txt
+description = "Fair prices and market making for race sports: F1, MotoGP, NASCAR and UCI downhill against prediction markets"
+readme = "PYPI.md"                     # the PyPI page; README.md stays the GitHub page (its relative links break on PyPI)
+requires-python = ">=3.12"                # numpy 2.5 (the pinned and floor version) needs 3.12
+license = "LicenseRef-racinglines-NC"   # LICENSE: MIT text plus a non-commercial restriction, so not plain MIT
+license-files = ["LICENSE"]
+authors = [{ name = "Kevin Lalli" }]
+keywords = ["formula 1", "f1", "motorsport", "prediction markets", "polymarket", "kalshi", "market making",
+            "sports betting", "monte carlo", "backtesting", "mcp"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+# What `pip install racinglines` needs for the offline demo (racinglines/demo, books/demo); requirements.txt stays the
+# exact pinned environment the pipelines, backtests and tests were run with, and its versions are the floors here.
+dependencies = [
+    "numpy>=2.5",
+    "pandas>=2.3,<3",                  # FastF1 requires pandas < 3
+    "rich>=15",
+]
+
+[project.optional-dependencies]
+remote = [                             # --remote: the hosted MCP server, browser sign-in
+    "mcp>=2.2",
+]
+server = [                             # self-hosted: data sources, database, web app, MCP server, reports
+    "racinglines[remote]",
+    "scikit-learn>=1.9",
+    "pyarrow>=25",
+    "requests>=2.34",
+    "fastf1>=3.8",
+    "httpx>=0.28",
+    "beautifulsoup4>=4.15",
+    "lxml>=6.1",
+    "SQLAlchemy>=2.1",
+    "psycopg[binary]>=3.3",
+    "alembic>=1.20",
+    "fastapi>=0.141",
+    "uvicorn[standard]>=0.54",
+    "python-multipart>=0.0.32",
+    "python-socketio>=5.12",
+    "Jinja2>=3.1",
+    "py-clob-client-v2>=1.2",
+    "Markdown>=3.10",
+    "matplotlib>=3.10",
+]
+dev = [
+    "racinglines[server]",
+    "pytest>=9.1",
+]
+
+[project.urls]
+Homepage = "https://racinglines.bet"
+Source = "https://github.com/lalligagger/racinglines-public"
+Documentation = "https://github.com/lalligagger/racinglines-public/tree/main/docs"
+Issues = "https://github.com/lalligagger/racinglines-public/issues"
 
 [project.scripts]
 racinglines = "racinglines.cli:main"
