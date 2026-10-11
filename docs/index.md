@@ -69,6 +69,7 @@ backtests. The pages below have the details.
 python3.14 -m venv .venv && source .venv/bin/activate  # Python 3.11+
 pip install -r requirements.txt && pip install -e .   # dependencies + the `racinglines` command
 racinglines check                                      # code, data endpoints, database (~10 s)
+racinglines book price --demo                          # the sportsbook EV demo: a bundled sample, no database
 ```
 
 Then the full pipeline:
