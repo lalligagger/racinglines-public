@@ -1,7 +1,6 @@
 """The public /term page: recorded CLI runs (racinglines/web/term/demos.toml), and the recorder that renders them."""
 
 import importlib.util
-import json
 import tomllib
 from pathlib import Path
 
@@ -29,12 +28,12 @@ def test_term_is_public_and_shows_each_recorded_command():
         assert "No recordings yet" in r.text
 
 
-def test_every_demo_has_a_saved_result_and_a_render_that_matches_it():
+def test_every_demo_has_saved_output_and_a_render_that_matches_it():
     rec = _recorder()
     for d in rec.demos():
-        out = json.loads((term_routes.TERM / d["result"]).read_text())
-        assert out["lines"] and d["render"] in ("map", "price", "settle")
-        # the committed fragment is what the recorder makes from the committed result (re-record after any change)
+        ansi = (term_routes.TERM / f"{d['id']}.ansi").read_text()
+        assert ansi.strip() and "/home/" not in ansi and "/tmp/" not in ansi     # paths read relative to the repo
+        # the committed fragment is what the recorder makes from the committed output (re-record after any change)
         assert (term_routes.TERM / f"{d['id']}.html").read_text() == rec.render(d)
 
 

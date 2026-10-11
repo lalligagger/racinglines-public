@@ -1,0 +1,34 @@
+[31m╭──────────────────────────────────────────────────────────────────────────╮[0m
+[31m│[0m [1m🏁 Step 3 of 4 · Race · Rainbow Road[0m                                     [31m│[0m
+[31m│[0m [2m3 laps x 6 sectors, 4,000 simulations of the rest of the race per update[0m [31m│[0m
+[31m╰──────────────────────────────────────────────────────────────────────────╯[0m
+[1mWario[0m opens the book on Rainbow Road: win and podium for 8 drivers, 100 Toads with $10-200 each. Every sector the model 
+re-prices the rest of the race and Wario re-quotes.
+[?25l[31m╭─[0m[31m───────────────────────────────────────[0m[31m 🍄 Wario's book [0m[31m────────────────────────────────────────[0m[31m─╮[0m
+[31m│[0m [1m🏎️  Rainbow Road · Finish[0m [32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [2m18/18 sectors[0m                           [31m│[0m
+[31m│[0m 🍄 Luigi hits a mushroom boost                                                                   [31m│[0m
+[31m│[0m ┏━━━┳━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━┓       [31m│[0m
+[31m│[0m ┃[1m [0m[1m [0m[1m [0m┃[1m [0m[1mdriver      [0m[1m [0m┃[1m [0m[1m   gap[0m[1m [0m┃[1m [0m[1m   win[0m[1m [0m┃[1m [0m[1mbid / ask[0m[1m [0m┃[1m [0m[1mpodium[0m[1m [0m┃[1m [0m[1mbid / ask[0m[1m [0m┃[1m [0m[1mWario's win pos.[0m[1m [0m┃       [31m│[0m
+[31m│[0m ┡━━━╇━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━┩       [31m│[0m
+[31m│[0m │ 1 │ Mario        │ leader │ 100.0% │     –     │ 100.0% │     –     │ [32m            +841[0m │       [31m│[0m
+[31m│[0m │ 2 │ Luigi        │ +2.04s │   0.0% │     –     │ 100.0% │     –     │ [31m          -1,821[0m │       [31m│[0m
+[31m│[0m │ 3 │ Peach        │ +3.57s │   0.0% │     –     │ 100.0% │     –     │ [31m          -1,442[0m │       [31m│[0m
+[31m│[0m │ 4 │ Daisy        │ +5.80s │   0.0% │     –     │   0.0% │     –     │ [31m            -439[0m │       [31m│[0m
+[31m│[0m │ 5 │ Koopa Troopa │ +5.83s │   0.0% │     –     │   0.0% │     –     │ [31m            -812[0m │       [31m│[0m
+[31m│[0m │ 6 │ Bowser       │ +6.04s │   0.0% │     –     │   0.0% │     –     │ [31m          -2,018[0m │       [31m│[0m
+[31m│[0m │ 7 │ Donkey Kong  │ +6.48s │   0.0% │     –     │   0.0% │     –     │ [31m          -2,451[0m │       [31m│[0m
+[31m│[0m │ 8 │ Yoshi        │ +6.58s │   0.0% │     –     │   0.0% │     –     │ [31m          -1,017[0m │       [31m│[0m
+[31m│[0m └───┴──────────────┴────────┴────────┴───────────┴────────┴───────────┴──────────────────┘       [31m│[0m
+[31m│[0m [1mWario's book [0m[32m+$1,554.27[0m[2m marked to fair · [0m[1mToads: [0m241 fills (+0), $4,532 traded, 93 of 100 betting [31m│[0m
+[31m╰──────────────────────────────────────────────────────────────────────────────────────────────────╯[0m
+[?25h
+[32m╭─[0m[32m─────────────────────────────────────────────[0m[32m 🏁 Finish · Rainbow Road [0m[32m─────────────────────────────────────────────[0m[32m─╮[0m
+[32m│[0m 🥇🥈🥉        Mario  Luigi  Peach                                                                                    [32m│[0m
+[32m│[0m Wario's book  [32m+$1,554.27[0m settled, on $4,532 traded in 241 fills                                                      [32m│[0m
+[32m│[0m The Toads     25 up, 68 down; median -$9.90, best +$139.40, worst -$150.20                                           [32m│[0m
+[32m│[0m               [2mThe Toads bet at random, with no view of their own: Wario's edge is the spread, kept centred on the [0m   [32m│[0m
+[32m│[0m               [2mmodel's fair.[0m                                                                                          [32m│[0m
+[32m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[0m
+Report: data/demo/kart/runs/live/kart-rainbow-road-7/report/report.md
+        data/demo/kart/runs/live/kart-rainbow-road-7/report/report.pdf
+Next: [1mracinglines book price --demo[0m (step 4: sportsbook lines against the model and the exchanges)

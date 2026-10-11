@@ -1,15 +1,16 @@
 {% extends "base_public.html" %}
-{% block title %}racinglines · the command line{% endblock %}
+{% block title %}racinglines · quickstart{% endblock %}
 {% block main_class %}termpage{% endblock %}
 {% block content %}
-{# Public: recorded runs of the CLI (racinglines/web/term/demos.toml), not a live shell. Re-record with
+{# Public: the quickstart's CLI runs, recorded (racinglines/web/term/demos.toml), not a live shell. Re-record with
    scripts/demo/record_term.py when the commands change. #}
 <header class="lp-top">
   <a class="lp-brand" href="/login"><img src="/static/brand/logo.svg" alt="" width="32" height="32"><span>racing<b>lines</b></span></a>
 </header>
-<h1>The command line</h1>
+<h1>Quickstart</h1>
 <p class="lede">racinglines is a Python package first: the web app and the hosted MCP server run the same code. These are
-  recorded runs of real commands, replayed here; nothing runs on this page.</p>
+  the quickstart's four commands, run on a made-up Mario Kart sport that ships with the package, recorded and replayed
+  here; nothing runs on this page.</p>
 {% for d in demos %}
 <section class="term-demo" id="{{ d.id }}">
   <h2>{{ d.title }}</h2>

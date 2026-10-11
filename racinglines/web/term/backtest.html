@@ -1,0 +1,46 @@
+<pre class="term-out"><span style="color: #f4005f; text-decoration-color: #f4005f">╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮</span>
+<span style="color: #f4005f; text-decoration-color: #f4005f">│</span> <span style="font-weight: bold">🏁 Step 1 of 4 · Backtest</span>                                                                                            <span style="color: #f4005f; text-decoration-color: #f4005f">│</span>
+<span style="color: #f4005f; text-decoration-color: #f4005f">│</span> <span style="color: #727272; text-decoration-color: #727272">5 seasons x 4 tracks (Rainbow Road, Bowser&#x27;s Castle, Mario Circuit, Moo Moo Meadows), 8 drivers; the pace model </span>     <span style="color: #f4005f; text-decoration-color: #f4005f">│</span>
+<span style="color: #f4005f; text-decoration-color: #f4005f">│</span> <span style="color: #727272; text-decoration-color: #727272">swept walk-forward</span>                                                                                                   <span style="color: #f4005f; text-decoration-color: #f4005f">│</span>
+<span style="color: #f4005f; text-decoration-color: #f4005f">╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯</span>
+🍄 Building the history...
+   20 races, 607 items thrown
+🏎️  <span style="color: #98e024; text-decoration-color: #98e024">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span> <span style="color: #98e024; text-decoration-color: #98e024">192/192</span> <span style="color: #fd971f; text-decoration-color: #fd971f">0:00:04</span> · <span style="color: #58d1eb; text-decoration-color: #58d1eb">0:00:00</span> <span style="color: #727272; text-decoration-color: #727272">2025 Moo Moo Meadows · half-life all, shrink 5</span>
+
+<span style="font-style: italic">Walk-forward: 16 races priced before the start, 2,500 simulations each                    </span>
+┏━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┓
+┃<span style="font-weight: bold"> half-life </span>┃<span style="font-weight: bold">         shrink </span>┃<span style="font-weight: bold"> win Brier </span>┃<span style="font-weight: bold"> win log loss </span>┃<span style="font-weight: bold"> podium Brier </span>┃<span style="font-weight: bold"> podium log loss </span>┃
+┡━━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━┩
+│<span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">       all </span>│<span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">              2 </span>│<span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">    0.0959 </span>│<span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">       0.3200 </span>│<span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">       0.2024 </span>│<span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">          0.5855 </span>│
+│         8 │              2 │    0.0972 │       0.3244 │       0.2012 │          0.5824 │
+│         4 │              2 │    0.0983 │       0.3258 │       0.2003 │          0.5816 │
+│       all │              5 │    0.0971 │       0.3247 │       0.2026 │          0.5879 │
+│         2 │              2 │    0.1002 │       0.3314 │       0.2000 │          0.5820 │
+│       all │              0 │    0.0977 │       0.3258 │       0.2050 │          0.5909 │
+│         8 │              5 │    0.0983 │       0.3286 │       0.2029 │          0.5886 │
+│         8 │              0 │    0.0991 │       0.3300 │       0.2046 │          0.5906 │
+│         4 │              0 │    0.1012 │       0.3330 │       0.2027 │          0.5879 │
+│         4 │              5 │    0.0995 │       0.3338 │       0.2035 │          0.5911 │
+│         2 │              0 │    0.1040 │       0.3379 │       0.2017 │          0.5877 │
+│         2 │              5 │    0.1011 │       0.3389 │       0.2064 │          0.5991 │
+│<span style="color: #727272; text-decoration-color: #727272">  baseline </span>│<span style="color: #727272; text-decoration-color: #727272"> everyone equal </span>│<span style="color: #727272; text-decoration-color: #727272">    0.1094 </span>│<span style="color: #727272; text-decoration-color: #727272">       0.3768 </span>│<span style="color: #727272; text-decoration-color: #727272">       0.2344 </span>│<span style="color: #727272; text-decoration-color: #727272">          0.6616 </span>│
+└───────────┴────────────────┴───────────┴──────────────┴──────────────┴─────────────────┘
+Chosen: half-life <span style="font-weight: bold">all</span> races, shrink <span style="font-weight: bold">2</span>: log loss 12.8% better than everyone-equal (lower is better).
+<span style="font-style: italic">Fitted pace vs the hidden truth            </span>
+┏━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━┳━━━━━━━━┓
+┃<span style="font-weight: bold"> driver       </span>┃<span style="font-weight: bold"> fitted </span>┃<span style="font-weight: bold">   true </span>┃<span style="font-weight: bold">  error </span>┃
+┡━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━╇━━━━━━━━┩
+│ Mario        │ +0.148 │ +0.207 │ -0.059 │
+│ Bowser       │ +0.038 │ +0.015 │ +0.023 │
+│ Peach        │ +0.037 │ +0.021 │ +0.017 │
+│ Luigi        │ +0.020 │ +0.020 │ +0.000 │
+│ Yoshi        │ +0.000 │ -0.038 │ +0.038 │
+│ Daisy        │ -0.033 │ +0.006 │ -0.038 │
+│ Koopa Troopa │ -0.102 │ -0.075 │ -0.028 │
+│ Donkey Kong  │ -0.128 │ -0.155 │ +0.027 │
+└──────────────┴────────┴────────┴────────┘
+<span style="color: #727272; text-decoration-color: #727272; font-style: italic">seconds per sector faster than the field   </span>
+<span style="color: #98e024; text-decoration-color: #98e024">✓</span> 4.7 s · model saved to data/demo/kart/model.json
+Next: <span style="font-weight: bold">racinglines model forecast --demo</span>
+
+</pre>

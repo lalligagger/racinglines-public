@@ -101,17 +101,17 @@ fantasy-trading beta with sign-up, the two demo buttons (no bigger than the sign
 (`/login#account`). The infographic has no "How it works" heading. The page names no sportsbook, operator or provider.
 The sign-up popup is gone, and the maintenance popup is off (`MAINTENANCE_NOTICE = ""`).
 
-**Command line** (`/term`, public like `/pitch`; owner, 2026-10-11). Recorded runs of real CLI commands,
-replayed in the browser: each command is typed at a prompt, then its output appears (shown at once without JavaScript or
-with reduced motion). Nothing runs on the server, so there is no shell to sandbox. `racinglines/web/term/demos.toml` is
-the one place the page's commands are written; each demo names its displayed `command`, the `run` argv that refreshes
-it, the saved `result` (the JSON the command prints with `--json`), the `render` (map, price or settle) and when it was
-`recorded`. `python scripts/demo/record_term.py` re-renders the saved results through the CLI's own Rich renderer
-(`racinglines/cli/rich_view.py`) into `racinglines/web/term/<id>.html`; add `--run` on a machine that can run the
-commands (the hosted server's token for `--demo`) to refresh the results first, then update `recorded`. The test
-`tests/test_term.py` fails if a committed render no longer matches its result. The page starts
-with the CLI's offline `--demo` (a bundled synthetic sample: no database, no hosted server, no real model prices);
-runs on the hosted server may come later (owner, 2026-10-11).
+**Quickstart replay** (`/term`, public like `/pitch`; owner, 2026-10-11). A terminal-styled replay of the quickstart:
+its four commands (`model backtest`, `model forecast`, `live run`, `book price`, each with `--demo`, the bundled
+synthetic Mario Kart sport: no database, no hosted server, no real model prices), each typed at a prompt, then its
+recorded output (shown at once without JavaScript or with reduced motion). Nothing runs on the server, so there is no
+shell to sandbox. `racinglines/web/term/demos.toml` is the one place the page's commands are written: each demo names
+its displayed `command`, the `run` argv the recorder executes and when it was `recorded`.
+`python scripts/demo/record_term.py --run` runs each command in colour with Rich's animations off (the final frame of
+each progress bar or live table), saves its stdout as `racinglines/web/term/<id>.ansi` with this checkout's absolute
+path cut, and renders `<id>.html`; without `--run` it re-renders the saved output only. Re-record whenever the
+quickstart or the CLI changes, then update `recorded`. `tests/test_term.py` fails if a committed render no longer
+matches its output. Runs on the hosted server may come later (owner, 2026-10-11).
 
 **Beta sign-up** (`/signup`, `RACINGLINES_SIGNUP=1`, off by default; `racinglines/web/accounts.py`). A public page,
 linked from the landing page's "Fantasy trade with us" section: username, email (required since 2026-10-08, one
