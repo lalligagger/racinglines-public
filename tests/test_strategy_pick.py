@@ -59,6 +59,7 @@ def app_db(test_engine, monkeypatch):
     with config.get_session() as s:
         U.create_user(s, "ada", "ada-password-1", "pro")
         U.create_user(s, "bea", "bea-password-1", "basic")
+        U.create_user(s, "cal", "cal-password-1", "pro")
     yield A
     config.get_engine.cache_clear()
 
@@ -95,8 +96,11 @@ def test_a_pro_account_starts_empty_then_picks_and_tunes(app_db):
     page = client.get("/strategy/pick").text
     assert 'value="T1" checked' in page and "12 pts" in page            # back where the user left it
     assert "data-roll-any" in page and "data-roll " in page              # the dice (they roll in the browser)
-    client.post("/strategy/pick", data={"csrf_token": csrf, "code": "C", "C:size": "40", "rolled": "1"})
-    assert _profile("ada")["rolled"] is True and _profile("ada")["settings"]["size"] == 40
+    client.post("/strategy/pick", data={"csrf_token": csrf, "code": "T3", "T3:min_volume_24h": "400", "rolled": "1"})
+    assert _profile("ada")["rolled"] is True and _profile("ada")["settings"]["min_volume_24h"] == 400
+    assert "C · maker" not in page                                       # Alpha: no makers (profiles.MAKERS_OPEN)
+    r = client.post("/strategy/pick", data={"csrf_token": csrf, "code": "C"}, follow_redirects=False)
+    assert "Error" in r.headers["location"] and _profile("ada")["base"] == "T3"
     client.post("/strategy/pick", data={"csrf_token": csrf, "code": "TB"})
     assert _profile("ada")["members"]                                    # a blend runs as tuned
     client.post("/strategy/pick", data={"csrf_token": csrf, "code": "none"})
@@ -137,3 +141,26 @@ def test_inside_a_weekend_the_page_is_read_only_and_saves_are_refused(app_db, mo
         r = client.post("/strategy/pick", data={"csrf_token": csrf, **data}, follow_redirects=False)
         assert "paused%20during%20Test%20GP" in r.headers["location"]
     assert _profile("ada") == before
+
+
+def test_a_pro_account_points_a_strategy_at_another_sport(app_db):
+    from racinglines.web import strategy_pick as SP
+    client, csrf, page = _login(app_db, "cal")
+    other = next((x for x in SP.slots({"role": "pro"}) if x["sport"] != "f1"), None)
+    if other is None:
+        pytest.skip("no other modeled sport with an exchange in the schemas")
+    assert f"slot={other['key']}" in page                                # a tab per sport and exchange
+    page = client.get(f"/strategy/pick?slot={other['key']}").text
+    assert "live calls aren't on yet" in page and 'value="d-update"' in page and "pre_weekend" not in page
+    r = client.post("/strategy/pick", data={"csrf_token": csrf, "slot": other["key"], "code": "d-update",
+                                            "d-update:min_edge": "0.12"}, follow_redirects=False)
+    assert "Saved" in r.headers["location"]
+    from sqlalchemy import text
+
+    from racinglines.db.config import get_engine
+    from racinglines.pipelines import profiles as PF
+    with get_engine().connect() as c:
+        uid = c.execute(text("SELECT id FROM users WHERE username = 'cal'")).scalar()
+        p = PF.of_user(c, uid, other["venue"], other["sport"])
+        assert PF.of_user(c, uid) is None                                # F1 untouched
+    assert p["sport"] == other["sport"] and p["settings"]["min_edge"] == 0.12 and p["adjusted"] == {"min_edge": 0.12}

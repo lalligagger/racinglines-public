@@ -50,6 +50,8 @@ HERE = Path(__file__).resolve().parent
 from contextlib import asynccontextmanager  # noqa: E402
 
 from racinglines.web import users as U  # noqa: E402
+from racinglines.pipelines import profiles as _PF  # noqa: E402
+from racinglines.web import ranges as _ranges  # noqa: E402
 from racinglines.web import roles as R  # noqa: E402
 
 _SECRET = os.environ.get("APP_SECRET") or secrets.token_hex(32)
@@ -243,6 +245,8 @@ def needs_email(user):
 
 
 templates.env.globals["needs_email"] = needs_email
+templates.env.globals["ui_range"] = _ranges.ui_range                             # capped numeric inputs (web/ranges.py)
+templates.env.globals["makers_on"] = lambda: _PF.MAKERS_OPEN                   # Alpha: off (profiles.MAKERS_OPEN)
 # the stylesheet's and scripts' URLs carry the newest static file's mtime, so a change is a new URL: no stale copy from the browser or
 # Cloudflare's edge cache (read at render time)
 templates.env.globals["css_v"] = lambda: int(max(p.stat().st_mtime for p in (HERE / "static").glob("*.*")))

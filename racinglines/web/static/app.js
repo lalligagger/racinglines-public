@@ -78,6 +78,35 @@
     store.set("tabs." + nav.dataset.tabs, key);
     if (setHash && key) history.replaceState(null, "", "#" + key);
   }
+  // --- Lab Run: pick a sport, then a job; only that job's form shows (no JS: every form shows) ---
+  function runPickInit(root) {
+    (root.querySelectorAll ? root : document).querySelectorAll("[data-run-pick]").forEach(pick => {
+      const box = pick.parentElement, sportSel = pick.querySelector("[data-run-sport]"), jobSel = pick.querySelector("[data-run-job]");
+      const secs = [...box.querySelectorAll(".run-sport[data-sport]")];
+      if (!secs.length) return;
+      const show = () => {
+        secs.forEach(sec => {
+          const on = sec.dataset.sport === sportSel.value;
+          sec.hidden = !on;
+          sec.querySelectorAll(".run-job").forEach(j => { j.hidden = !on || j.dataset.job !== jobSel.value; });
+        });
+      };
+      const fill = (want) => {
+        const sec = secs.find(x => x.dataset.sport === sportSel.value);
+        const jobs = [...sec.querySelectorAll(".run-job")];
+        jobSel.replaceChildren(...jobs.map(j => new Option(j.dataset.label, j.dataset.job)));
+        jobSel.value = jobs.some(j => j.dataset.job === want) ? want : (jobs[0] && jobs[0].dataset.job);
+        show();
+      };
+      const sel = box.querySelector(".run-job[data-sel]");
+      const first = sel ? sel.closest(".run-sport") : secs[0];
+      sportSel.value = first.dataset.sport;
+      fill(sel ? sel.dataset.job : null);
+      sportSel.addEventListener("change", () => fill(null));
+      jobSel.addEventListener("change", show);
+      pick.hidden = false;
+    });
+  }
   function tabsInit(root) {
     const nav = root.querySelector ? root.querySelector("[data-tabs]") : null;
     if (!nav) return;
@@ -285,7 +314,7 @@
       t.dataset.localized = "1";
     });
   }
-  function initAll(root) { tabsInit(root); detailsInit(root); tableInit(root); calendarInit(root); localTimeInit(root); }
+  function initAll(root) { tabsInit(root); runPickInit(root); detailsInit(root); tableInit(root); calendarInit(root); localTimeInit(root); }
   document.addEventListener("htmx:afterSwap", e => initAll(e.detail.target));
 
   document.addEventListener("DOMContentLoaded", () => {
