@@ -48,6 +48,9 @@ def pricing_model(sport, which=None):
     return RM.get(sport)
 
 
+WF_OWN_FLAGS = ("venue",)   # walk-forward flags a model setting of the same name must not shadow (F1's sweep venue)
+
+
 def model_choices(sport):
     """The --model values for `sport`: "global" and the names in its [sport] challengers."""
     from racinglines.models import race_model as RM
@@ -159,7 +162,7 @@ def main(argv=None):
     clv.add_argument("--json", action="store_true", help="Print JSON (summary and bets) instead of tables.")
     clv.add_argument("--out", default=None, metavar="DIR", help="Also write clv_bets.csv and clv_summary.csv here.")
     if known.cmd == "walk-forward" and known.sport:
-        SS.add_arguments(wf, pricing_model(known.sport, known.model).Settings)
+        SS.add_arguments(wf, pricing_model(known.sport, known.model).Settings, skip=WF_OWN_FLAGS)
     args = ap.parse_args(argv)
     if args.cmd == "coverage":
         from racinglines.db.config import get_engine
@@ -185,7 +188,7 @@ def main(argv=None):
                 print(f"\nCSVs -> {out}/")
         return 0
     model = pricing_model(args.sport, args.model)
-    st = SS.from_args(args, model.Settings)
+    st = SS.from_args(args, model.Settings, skip=WF_OWN_FLAGS)
     data = model.load(args.db)
     run_walk_forward(model, data, st, seasons=args.seasons, kinds=args.kinds.split(",") if args.kinds else None,
                      out_dir=args.out_dir or paths.runs(args.sport, "walk_forward", mkdir=False), save=args.save,

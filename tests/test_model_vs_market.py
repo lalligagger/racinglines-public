@@ -91,3 +91,21 @@ def test_stage_time_is_the_first_stage_unless_one_is_named():
 
 def test_stage_times_is_empty_for_a_sport_without_a_session_schedule():
     assert MVM.stage_times("motogp", [1, 2]) == {} and MVM.stage_times("f1", []) == {}
+
+
+@pytest.mark.parametrize("model", [[], ["--model", "global"]])
+def test_walk_forward_venue_flag_parses_for_every_f1_model(model, monkeypatch):
+    """F1's own settings have a `venue` (the sweep's tape); walk-forward's --venue (exchanges to score) must not clash
+    with it (Lab job 2026-10-11: argparse 'conflicting option string: --venue')."""
+    from racinglines.cli import backtest as BT
+    seen = {}
+    monkeypatch.setattr(BT, "run_walk_forward", lambda model, data, st, **kw: seen.update(st=st, **kw))
+    real = BT.pricing_model
+
+    def no_db(sport, which=None):                       # the real model and Settings, without reading a database
+        m = real(sport, which)
+        m.load = lambda db=None: None
+        return m
+    monkeypatch.setattr(BT, "pricing_model", no_db)
+    assert BT.main(["walk-forward", "f1", "--venue", "kalshi", "polymarket", *model]) == 0
+    assert seen["venues"] == ["kalshi", "polymarket"]
