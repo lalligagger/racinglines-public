@@ -16,6 +16,8 @@ racinglines <group> <command> [SPORT] [options]
     check     quick validation: code on synthetic data, data endpoints, database
 
 SPORT is f1, mtb_dh, nascar, motogp or cycling, e.g. `racinglines model forecast f1 --save`.
+--demo on any command: the same command on the demo store, a separate database and data folder of synthetic data
+(built on first use; racinglines/cli/source.py, docs/quickstart.md), e.g. `racinglines model forecast f1 --demo --save`.
 `racinglines <group> -h` lists a group's commands and the sports that offer each.
 """
 
@@ -50,6 +52,8 @@ def main(argv=None):
     if argv[0] not in ("web", "mcp"):              # servers, not jobs: no heartbeat
         from racinglines import progress
         progress.start(" ".join(a for a in argv[:3 if argv[0] in VERB_GROUPS else 2] if not a.startswith("-")))   # stderr, every 5 min (progress.py)
+    from racinglines.cli import source
+    argv = source.apply(argv)                      # the data source (--demo) before any module reads it
     if argv[0] in VERB_GROUPS:
         from racinglines.cli import verbs
         return verbs.main(argv[0], argv[1:])

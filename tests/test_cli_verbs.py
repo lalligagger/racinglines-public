@@ -79,15 +79,6 @@ def test_no_command_shares_an_option_with_its_sport(module):
                 assert not own & {s for x in sub._actions for s in x.option_strings}, (module, name)
 
 
-def test_model_demo_runs_the_tour_without_a_sport(monkeypatch):
-    from racinglines.demo import tour
-    seen = []
-    monkeypatch.setattr(tour, "run", lambda step, args: seen.append((step, args.seed)) or 0)
-    assert VB.main("model", ["backtest", "--demo", "--seed", "3"]) == 0
-    assert VB.main("model", ["forecast", "f1", "--demo"]) == 0          # a sport given with --demo is ignored
-    assert seen == [("backtest", 3), ("forecast", 7)]
-    assert VB.main("model", ["compare", "--demo"]) == 2                   # only backtest and forecast have a demo
-
 
 def test_a_command_in_another_group_names_it(capsys):
     assert VB.main("model", ["sweep", "f1"]) == 2

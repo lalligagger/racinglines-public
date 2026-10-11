@@ -167,23 +167,10 @@ def _help(group):
             h = SHARED.get(c, h) if len(sports) > 1 else h
             lines.append(f"    {c:<18} {' '.join(sports):<28} {h}")
     if group == "model":
-        lines += ["", "No data yet? `racinglines model backtest --demo`, then `model forecast --demo`: an offline demo"
-                  " (docs/demo.md)."]
+        lines += ["", "No data yet? Add --demo to any command, e.g. `racinglines model backtest f1 --demo`: the same"
+                  " command on a synthetic demo store (docs/quickstart.md)."]
     lines += ["", f"`racinglines {group} <command> SPORT -h` for a command's options."]
     return "\n".join(lines)
-
-
-# `racinglines model backtest|forecast --demo`: the offline Mario Kart tour (racinglines/demo/tour.py), no sport
-DEMO = {("model", "backtest"), ("model", "forecast")}
-
-
-def _demo(step, argv):
-    from racinglines.demo import tour
-    p = argparse.ArgumentParser(prog=f"racinglines model {step}",
-                                description=f"Step of the offline demo tour: {tour.COMMANDS[step]} (docs/demo.md).")
-    p.add_argument("--demo", action="store_true", required=True)
-    tour.add_arguments(p, step)
-    return tour.run(step, p.parse_args(argv))
 
 
 def main(group, argv):
@@ -191,8 +178,6 @@ def main(group, argv):
         print(_help(group))
         return 0 if argv else 2
     cmd, rest = argv[0], argv[1:]
-    if (group, cmd) in DEMO and "--demo" in rest:
-        return _demo(cmd, [a for a in rest if a not in SPORTS])
     if not rest or rest[0] not in SPORTS:
         offered = [m for m in MODULES if cmd in commands(m) and group_of(cmd, m) == group]
         elsewhere = sorted({group_of(cmd, m) for m in MODULES if cmd in commands(m)} - {group})

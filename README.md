@@ -329,13 +329,14 @@ pip install -r requirements.txt && pip install -e .   # dependencies + the `raci
 racinglines check                                      # code, data endpoints, database (~10 s)
 ```
 
-The demo, no database or network ([Demo](docs/demo.md)): the whole pipeline on a synthetic Mario Kart season, in four steps:
+The demo ([Quickstart](docs/quickstart.md)): the real commands on a synthetic Mario Kart season, a separate database
+built on first use (needs Postgres: `docker compose up -d`):
 
 ```
-racinglines model backtest --demo                      # 1. history, the pace model, a walk-forward sweep (~6 s)
-racinglines model forecast --demo                      # 2. the next race: 400,000 simulated races (~5 s)
-racinglines live run --demo --pdf                      # 3. live: Wario's book re-quotes every sector, 100 Toads trade
-racinglines book price --demo                          # 4. sportsbook lines vs the model and the exchanges
+racinglines model backtest f1 --demo                   # every past race priced as of before it, scored
+racinglines model forecast f1 --demo --save            # the rest of the season and the championships
+racinglines live run f1/demo-2026-09 --demo --simulate --no-fetch   # a live private book, 100 simulated takers
+racinglines book price --demo                          # sportsbook lines vs the model and the exchanges
 ```
 
 Then the full pipeline:

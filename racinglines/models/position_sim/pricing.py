@@ -505,17 +505,16 @@ def diagnostic(meas, hist, event_key, cutoff, n_sims=10000, seed=42, use_track=T
 # ---------------------------------------------------------------------------
 
 def upcoming_schedule(year):
-    """Season schedule from FastF1 (dates/venues/sprint flags only, no results)."""
-    import logging
-
-    import fastf1
-    from racinglines.sources.fastf1.fetch import CACHE, SPRINT_FORMATS
-    logging.getLogger("fastf1").setLevel(logging.ERROR)
-    CACHE.mkdir(parents=True, exist_ok=True)
-    fastf1.Cache.enable_cache(str(CACHE))
-    s = fastf1.get_event_schedule(year, include_testing=False)
-    return pd.DataFrame(dict(round=s["RoundNumber"].astype(int), name=s["EventName"], official=s["OfficialEventName"],
-                             location=s["Location"], date=pd.to_datetime(s["EventDate"]),
+    """Season schedule from FastF1 (dates/venues/sprint flags only, no results): sources/fastf1/fetch.event_schedule,
+    which reads the saved copy offline (RACINGLINES_OFFLINE=1) or when FastF1 can't be reached. A copy saved before
+    it kept the venue and race day falls back to the event name and the last session's day."""
+    from racinglines.sources.fastf1.fetch import SPRINT_FORMATS, event_schedule
+    s = event_schedule(year)
+    last = s[[f"Session{i}DateUtc" for i in range(5, 0, -1) if f"Session{i}DateUtc" in s]].bfill(axis=1).iloc[:, 0]
+    date = pd.to_datetime(s["EventDate"]) if "EventDate" in s else pd.to_datetime(last).dt.normalize()
+    return pd.DataFrame(dict(round=s["RoundNumber"].astype(int), name=s["EventName"],
+                             official=s["OfficialEventName"] if "OfficialEventName" in s else s["EventName"],
+                             location=s["Location"] if "Location" in s else s["EventName"], date=date,
                              sprint=s["EventFormat"].astype(str).isin(SPRINT_FORMATS)))
 
 

@@ -369,9 +369,11 @@ linked prediction markets, read-only and CLI only: `map FILE` (exact-key mapping
 kind; unmapped legs listed), `price FILE [--run ID] [--sims RACE_ID=FILE]` (model fair, market price, book implied
 probability, EV against model and against market; same-race legs jointly from simulations or flagged
 `correlated: EV approximate`), `settle FILE` (results and payouts from the stored classification); `--json` on each.
-Three modes: `--demo` (a bundled synthetic book, offline), `--remote` (the hosted MCP server), `--local` (the default);
+Three modes: `--demo [PACK]` (a local demo store of synthetic data), `--remote` (the hosted MCP server; in testing, it prints
+the #aintcare warning), `--local` (the default);
 `book config` sets the default, `book logout` forgets the `--remote` sign-in. See [Sportsbook slips](sportsbook/slips.md).
-`--demo` on `model backtest`, `model forecast` and `live run` runs the Mario Kart tour instead: see [Demo](demo.md).
+`--demo [PACK]` works on every command, not only `book`: it switches the data source to a demo store and nothing else
+([Quickstart](quickstart.md), [Demo data packs](demo.md)).
 
 ## Road cycling commands
 

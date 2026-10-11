@@ -1,42 +1,74 @@
-# Demo: the pipeline in four steps
+# Demo data packs
 
-The `--demo` flag runs the whole pipeline end to end on a synthetic sport, in the terminal, with no database, network
-or account: a Mario Kart season. Every driver's pace, every item and every bet is made up
-(`racinglines/demo/kart.toml`); it is play money and nothing is traded anywhere. Each step is the miniature of a real
-one, with the same shared code where it exists: the live race uses the private book's quoting and crowd
-(`markets/quoting.py`, `markets/crowd.py`) and writes the run folder `racinglines live report` reads, as the Whistler
-downhill final did ([Live events](live-events.md)).
+`--demo [PACK]` on any command runs that command, unchanged, on a **demo store**: a separate Postgres database and
+data folder filled from a **data pack** by the real pipeline. The commands to run are in the
+[Quickstart](quickstart.md). This page is how it works and how to add a pack.
 
-```
-# LOCAL (Mac), or any machine with the package and requirements.txt installed (model ... --demo: with the CLI tree's
-# task groups, option A, owner 2026-10-11; the tour's code is racinglines/demo/tour.py)
-racinglines model backtest --demo
-racinglines model forecast --demo
-racinglines live run --demo --pdf
-racinglines book price --demo
-```
+## What `--demo` does
 
-| Step | Command | What it does | The real pipeline's version |
-|---|---|---|---|
-| 1 | `model backtest --demo` | Builds five seasons of history (four tracks a season, 20 races), then fits each driver's pace and sweeps the fit's settings walk-forward: every race after the first four priced before the start by Monte Carlo (2,500 runs) with each of 12 settings, scored by Brier score and log loss against an everyone-equal baseline. Prints the leaderboard and the fitted pace beside the hidden truth (a synthetic sport can show it). About 6 s, with a progress bar | `racinglines backtest walk-forward`, the sweeps ([F1 evaluation](f1-evaluation.md)) |
-| 2 | `model forecast --demo` | The next race at Rainbow Road from the chosen setting: 400,000 simulated races, win / podium / top-5 probabilities and fair odds, with the Monte Carlo error. About 5 s, with a progress bar | `racinglines model forecast f1 --save` ([F1 forecast](f1-forecast.md)) |
-| 3 | `live run --demo` | The race live, sector by sector (3 laps x 6 sectors): the model re-prices the rest of the race (4,000 runs per update), **Wario**, the one bookie, re-quotes win and podium on every driver, and **100 Toads** (simulated anonymous takers, $10-200 each, a random side each time) trade against him. Ends with the podium, Wario's settled P&L, the Toads' results and the event report (Markdown, HTML, and a PDF with `--pdf`) | `racinglines live run`, `racinglines live report` ([Live events](live-events.md)) |
-| 4 | `book price --demo` | Sportsbook lines and slips against the model and the exchanges: EV against each, side by side | `racinglines book price` ([Sportsbook slips](sportsbook/slips.md)) |
+One resolver (`racinglines/cli/source.py`, called by `racinglines/cli/__init__.py` before anything else) takes
+`--demo [PACK]` out of the arguments and points the process at the pack's store:
 
-**The race model.** Each sector every driver takes the track's sector time, minus their pace, plus noise, plus the
-items: a mushroom boost (likelier the further back), a banana, a red shell (anyone but the leader), a blue shell (the
-leader). The true pace drifts a little from season to season, so the backtest's sweep has something to find (how much
-to weight recent races, how far to shrink toward an average kart). The fit uses the clean sectors only (the feed
-says where an item hit) and the simulation adds the items back.
+| Setting | Demo value | Default location |
+|---|---|---|
+| `DATABASE_URL` | the pack's database, on the same server as the configured one | `racinglines_demo_<pack>` (`RACINGLINES_DEMO_DATABASE_URL` overrides) |
+| `RACINGLINES_DATA` | the pack's data folder: raw files, archives, run outputs, live specs | `data/demo/<pack>/` (gitignored; `RACINGLINES_DEMO_DATA` overrides) |
+| `RACINGLINES_OFFLINE=1` | FastF1's servers are never called: the store's files are the record | (a general switch, also for machines without FastF1 access) |
 
-**Why Wario wins.** The Toads bet at random, with no view of their own, so the book's edge is its spread (2 cents
-each side of fair, leaning against inventory), kept centred by the model. A crowd with an edge would be a different
-demo.
+Then the command runs as it always does. There is no demo branch in any command, model or pipeline: the backtest is
+`pricing.backtest`, the forecast `pricing.forecast`, the live book `pipelines/live_f1.py` with the real crowd and
+quoting, the book `books/slips.py`. `PACK` defaults to `kart`; `--demo=PACK` works too. The first `--demo` command
+builds the store when it is missing or when the pack has changed (a Rich progress bar; a few minutes).
 
-**Options.** `--seed N` (default 7) makes the history, the race and every fill repeat exactly; `--track` picks the
-forecast and race track (`rainbow-road`, `bowsers-castle`, `mario-circuit`, `moo-moo-meadows`); `--out DIR` (default
-`data/demo/kart`) holds `model.json`, `forecast.json` and the race's run folder (`runs/live/kart-<track>-<seed>/`,
-with `report/`); `--sims` sets the Monte Carlo runs; `--delay S` the pause between race updates on screen (0.6 s).
-Rich draws every step (`pip install -r requirements.txt`).
+## What a pack is
 
-**Checks.** `python -m pytest tests/test_demo_kart.py` runs all three tour steps on small settings (seconds, no database).
+A folder with a `pack.toml` manifest, bundled under `racinglines/demo/packs/<name>/` or in a folder named by
+`RACINGLINES_DEMO_PACKS` (several, separated by `:`). The manifest holds data and the names of real commands only:
+
+| Key | What |
+|---|---|
+| `name`, `title`, `about` | the pack's name (what `--demo NAME` takes) and description |
+| `sport` | an **existing** sport schema (`sports/<sport>.toml`) the data is stored under: no new sport, no new schema |
+| `files` | a folder copied as is into the data folder (e.g. `raw/...` files a real ingest reads, live specs under `live/`) |
+| `[generator]` | optional: `entry = "module:function"` writing more data files into the data folder, and its `input` |
+| `[load] commands` | the real `racinglines ...` commands that load the data into the database, in order |
+| `[book] file` | the sportsbook book `racinglines book price --demo` prices when no FILE is given |
+| `[[quickstart]]` | the pack's quickstart: `title`, `run` (the command), `about`; rendered into [Quickstart](quickstart.md) by `scripts/build_quickstart.py` and replayed by the web app's `/term` page |
+
+The store build (`racinglines/demo/store.py`): create the database (its name must contain `demo`), Alembic upgrade
+head and the seed (`racinglines db init`), copy the files, run the generator, run each load command as a
+subprocess on the store, record a `data_changes` line, write a marker (`demo-store.json`, a fingerprint of the pack
+and its generator). Adding a pack is adding a folder: no command, flag, schema, sport file or code path changes.
+`tests/test_demo_store.py` builds a second, tiny pack under `mtb_dh` (synthetic ChronoRace result files loaded by
+`racinglines data ingest mtb_dh`) and runs its backtest through the same code.
+
+## The kart pack
+
+`racinglines/demo/packs/kart/`: a synthetic Formula 1 world with a Mario Kart grid, stored under the F1 schema.
+
+- `world.toml`, the generator's input: three seasons (2024-2026, twelve rounds each, 2026's rounds 1-9 raced, sprints
+  at rounds 3, 6 and 10), 20 drivers in 10 teams (Mario, Luigi, Peach, Bowser, ...), twelve tracks (Mario Circuit,
+  Rainbow Road, Bowser's Castle, ...), each team's car pace and the driver offsets, the tracks' lap times, sector
+  shares, trap speeds, how hard passing is and how often a safety car comes out. These are the synthetic world's
+  hidden truth; the real model never reads them, it fits the generated laps.
+- `racinglines/demo/generate.py` writes FastF1-shaped files for every raced session (practice, sprint qualifying,
+  sprint, qualifying, race: results, laps with sectors and speed traps, meta with weather) and each season's
+  schedule, the shapes `sources/fastf1/fetch.py` saves; and quotes from a synthetic Polymarket (win, podium, pole,
+  teammates' head-to-heads) and Kalshi (win, podium, 2nd place) on rounds 9-11, in the file
+  `racinglines data pm-links-export` writes. Seeded: the same input gives the same files.
+- The load: `data ingest f1` (the real FastF1 ingest: events, results, laps, track profiles), `model forecast f1
+  --save` (files the unraced rounds as scheduled races), `data pm-links-import f1` for each exchange.
+- `files/live/f1/demo-2026-09.toml`: the live rehearsal's launch spec (round 9, already raced, so the book settles):
+  `[live.crowd] takers = 100`.
+- `book.toml`: a generic sportsbook's lines on rounds 10 and 11, one per F1 pricing feature of `book price`.
+
+The synthetic exchanges are data like the rest: prices drawn around the generator's own odds with an exchange's
+noise and spread. No real exchange data is in any pack.
+
+## The hosted demo store
+
+`racinglines book ... --demo --remote` (or `--demo` with `source = "remote"` in `~/.config/racinglines/cli.toml`)
+sends the request to the hosted MCP server's demo store instead of a local one. On the VM that store is the kart pack
+built into its own database (`racinglines_demo_kart`), never production's, by `scripts/vm/demo_store.sh` (owner-run:
+it takes a backup first). Remote access is in testing; every remote command prints the #aintcare warning
+([Quickstart: Remote](quickstart.md#4-remote-testing)).

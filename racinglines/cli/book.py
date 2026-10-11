@@ -13,8 +13,10 @@ database.
 Where the data comes from (map, price, settle), three modes; the default is the defaults file's `source`, else local:
     --local                a local database (--db, else DATABASE_URL, else the defaults file's `db`): you rebuild the
                            data or run the app and its MCP server yourself
-    --demo                 no database, no network, no account: the bundled synthetic sample book
-                           (racinglines/books/demo/) and its stored results; FILE is left out. Rich by default
+    --demo [PACK]          a demo store (racinglines/cli/source.py): a separate local database of synthetic data from a
+                           data pack (default kart), built on first use, priced by the same code as --local. FILE
+                           defaults to the pack's book (racinglines/demo/packs/kart/book.toml); `racinglines model
+                           forecast f1 --demo --save` first gives it model prices. Rich by default
     --remote               the VM's hosted MCP server (racinglines/cli/remote.py): live model runs and exchange prices.
                            Signs in through the browser the first time (kept in ~/.config/racinglines/mcp-login.json),
                            or uses RACINGLINES_MCP_TOKEN (an rl_ token) when set. --mcp-url URL, RACINGLINES_MCP_URL or
@@ -54,13 +56,13 @@ def _parser():
                       ("settle", "Results and payouts from the stored classification.")):
         s = sub.add_parser(name, help=hlp)
         s.add_argument("file", nargs="?", help="a book file (books/<venue>/<date>-<event>.toml, "
-                                               "docs/sportsbook/index.md); left out with --demo")
+                                               "docs/sportsbook/index.md); with --demo, default the pack's book")
         s.add_argument("--json", action="store_true", help="print the result as JSON")
         s.add_argument("--rich", action="store_true", help="print a coloured terminal table (Rich)")
         s.add_argument("--db", default=None, help="database URL (default DATABASE_URL)")
         mode = s.add_mutually_exclusive_group()
         mode.add_argument("--demo", action="store_true",
-                          help="the bundled synthetic sample and its stored results: no database, network or account")
+                          help="a demo store: a local database of synthetic data from a data pack (`--demo PACK` for another pack; default kart)")
         mode.add_argument("--remote", action="store_true",
                           help="the VM's hosted MCP server: browser sign-in, or RACINGLINES_MCP_TOKEN")
         mode.add_argument("--local", action="store_true", help="a local database (the default unless the defaults "
@@ -96,12 +98,6 @@ def _config(C, args):
     C.set_key(args.key, None if args.unset else args.value)
     print(f"{'removed' if args.unset else 'set'} {args.key} in {C.path()}")
     return 0
-
-
-def demo(cmd):
-    """The bundled sample's stored result for `cmd` (racinglines/books/demo/<cmd>.json)."""
-    from importlib.resources import files
-    return json.loads((files("racinglines.books") / "demo" / f"{cmd}.json").read_text())
 
 
 def _kind(out):
@@ -205,32 +201,31 @@ def main(argv=None):
     except ValueError as e:
         print(f"book: {e}", file=sys.stderr)
         return 2
+    from racinglines.cli import source as SRC
+    if SRC.demo_active():                                  # `--demo [PACK]`, taken out by the CLI's source resolver
+        if args.remote or args.local:
+            parser.error("give one of --demo, --remote, --local")
+        args.demo = True
     if not (args.demo or args.remote or args.local):
         source = defaults.get("source", "local")
         args.demo, args.remote = source == "demo", source == "remote"
     args.mcp_url = args.mcp_url or os.environ.get("RACINGLINES_MCP_URL") or defaults.get("mcp_url")
     if not args.db and not os.environ.get("DATABASE_URL"):
         args.db = defaults.get("db")
-    local_only = getattr(args, "sims", None) or getattr(args, "run", None) or (args.db and args.db != defaults.get("db"))
     if args.demo:
-        if args.file or local_only:
-            print("book --demo: prices the bundled sample only; leave out FILE, --db, --run and --sims "
-                  "(--remote prices your own book on the VM)", file=sys.stderr)
+        if args.db and args.db != defaults.get("db"):
+            print("book --demo: prices on the demo store; leave out --db (--local --db URL for your own)", file=sys.stderr)
             return 2
-        print("demo: the bundled synthetic sample (racinglines/books/demo/book.toml): made-up names and prices, "
-              "no database or network", file=sys.stderr)
-        out = demo(args.cmd)
-        if args.json:
-            print(json.dumps(out, indent=2, default=str))
-        elif importlib.util.find_spec("rich"):
-            from racinglines.cli import rich_view
-            rich_view.render(args.cmd, out)
-        else:                                              # the demo still works before `pip install -r requirements.txt`
+        args.db = SRC.use_demo()
+        args.file = args.file or (str(SRC.pack().book) if SRC.pack().book else None)
+        print("demo: the demo store's synthetic data (made-up names, results and prices); nothing is traded",
+              file=sys.stderr)
+        if not args.json and importlib.util.find_spec("rich"):
+            args.rich = True
+        elif not args.json and not args.rich:
             print("(plain text: pip install rich for the coloured tables)", file=sys.stderr)
-            _print(args.cmd, out)
-        return 0
     if not args.file:
-        print(f"book {args.cmd}: a book FILE is needed (or --demo for the bundled sample)", file=sys.stderr)
+        print(f"book {args.cmd}: a book FILE is needed (or --demo for a demo pack's book)", file=sys.stderr)
         return 2
     from racinglines.books import schema as S
     from racinglines.books import slips as B

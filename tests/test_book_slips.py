@@ -347,15 +347,23 @@ def test_remote_mode_prices_on_the_hosted_server_like_local(test_engine, db, boo
     p = tmp_path / "book.toml"
     p.write_text(BOOK)
     db_url = test_engine.url.render_as_string(hide_password=False)
+    from racinglines.cli import remote as RM
     monkeypatch.setenv("RACINGLINES_MCP_TOKEN", "rl_wrong")
+    monkeypatch.setattr(RM, "_warned", False)
     assert CLI.main(["price", str(p), "--remote", "--mcp-url", url]) == 2
-    assert "401" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "401" in err and err.startswith(RM.WARNING)                      # the testing warning, before anything else
     monkeypatch.setenv("RACINGLINES_MCP_TOKEN", tok)
     for cmd in ("map", "price", "settle"):
         assert CLI.main([cmd, str(p), "--json", "--db", db_url]) == 0
-        local = json.loads(capsys.readouterr().out)
+        out = capsys.readouterr()
+        local = json.loads(out.out)
+        assert "aintcare" not in out.err                                      # local: no warning
+        monkeypatch.setattr(RM, "_warned", False)                             # a new command run
         assert CLI.main([cmd, str(p), "--json", "--remote", "--mcp-url", url]) == 0
-        remote = json.loads(capsys.readouterr().out)
+        out = capsys.readouterr()
+        remote = json.loads(out.out)                                          # stdout stays clean JSON
+        assert out.err.count("#aintcare mode") == 1
         assert [(r["id"], r["status"], r.get("ev_model"), r.get("result")) for r in remote["lines"]] == \
                [(r["id"], r["status"], r.get("ev_model"), r.get("result")) for r in local["lines"]]
     assert CLI.main(["price", str(p), "--rich", "--remote", "--mcp-url", url]) == 0

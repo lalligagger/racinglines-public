@@ -1,16 +1,17 @@
-# The bundled demo book: `racinglines book map | price | settle --demo` (no database, network or account). Synthetic, on
-# a Mario Kart grid: round 21 is the Rainbow Road Grand Prix, round 22 Bowser's Castle; every odds and price is made up.
-# It shows each F1 pricing feature `racinglines book price` has: the model kinds a stored run prices, exchange quotes
-# from Kalshi and Polymarket, sides, an h2h listed the other way round, sprint fallbacks, an exchange-only kind, a race
-# prop, same-race combos priced jointly and as a flagged product, a cross-race parlay, and an unmapped line. Its results
-# (*.json next to it) are what map_book / price_book / settle_book return for it on the synthetic database in
-# tests/test_book_demo.py, which checks they match.
+# The bundled demo book: `racinglines book map | price | settle --demo`, priced by the real code against the demo store
+# (racinglines/demo/store.py: a synthetic database the `--demo` flag builds on first use). A Mario Kart grid under the
+# F1 schema: round 10 of 2026 is the Rainbow Road Grand Prix (a sprint weekend), round 11 Wario Stadium; every odds is
+# made up. It shows the F1 pricing features `racinglines book price` has: the model kinds a stored forecast prices
+# (run `racinglines model forecast f1 --demo --save` first), exchange quotes from Kalshi and Polymarket, sides, an h2h
+# listed the other way round, sprint fallbacks, an exchange-only kind, a race prop, a same-race combo (priced jointly
+# once `racinglines model combo f1 --demo --event 2026-10 ... --save` stored one, else as a flagged product), a
+# cross-race parlay, and an unmapped line. A "generic sportsbook" stands in for the venue.
 
 [book]
 venue = "book_demo"
-event = "2026-21"
+event = "2026-10"
 sport = "f1"
-captured_utc = "2026-10-20T09:00Z"
+captured_utc = "2026-10-15T09:00Z"
 source = "paste"
 odds = "decimal"
 currency = "USD"
@@ -77,9 +78,9 @@ market = { kind = "race_fastest_lap", driver = "Luigi" }
 [[lines]]
 id = "h2h"
 title = "Head to Head"
-selection = "Peach v Daisy"
-odds = 1.8
-market = { kind = "race_h2h", driver = "Peach", opponent = "Daisy" }
+selection = "Daisy v Peach"
+odds = 2.1
+market = { kind = "race_h2h", driver = "Daisy", opponent = "Peach" }
 
 [[lines]]
 id = "mover"
@@ -132,10 +133,10 @@ market = { kind = "combo", legs = [
 [[lines]]
 id = "parlay"
 title = "Parlay"
-selection = "Mario wins Rainbow Road and Bowser's Castle"
+selection = "Mario wins Rainbow Road and Wario Stadium"
 market = { kind = "combo", legs = [
   { kind = "race_win", driver = "Mario", odds = 3.2 },
-  { kind = "race_win", driver = "Mario", event = "2026-22", odds = 3.0 },
+  { kind = "race_win", driver = "Mario", event = "2026-11", odds = 3.0 },
 ] }
 
 [[lines]]

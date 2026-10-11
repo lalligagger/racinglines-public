@@ -1,26 +1,22 @@
-"""The bundled demo of `racinglines book --demo` (racinglines/books/demo/): its book priced, mapped and settled by the real
-code on a synthetic F1 database built here, so the stored results stay what the code returns. The grid is Mario Kart's;
-every odds and price is made up. Skipped without the Postgres test database.
-
-When a result field changes, regenerate the stored results:
-    RACINGLINES_WRITE_DEMO=1 python -m pytest tests/test_book_demo.py
+"""The kart demo pack's book (racinglines/demo/packs/kart/book.toml, `racinglines book price --demo`): mapped, priced and settled by
+the real code on a small synthetic F1 database built here (hand-placed prices, so each pricing feature is pinned), and
+the CLI's source modes (--demo, --local, the defaults file). The demo store itself (racinglines/demo/store.py) and
+the book priced on it: tests/test_demo_store.py. The grid is Mario Kart's; every odds and price is made up. Skipped
+without the Postgres test database.
 """
 
 import json
-import os
-import re
 import tomllib
 from datetime import date, datetime, timezone
-from pathlib import Path
 
 import pytest
 from sqlalchemy import select, text
 
 from racinglines.books import schema as S
 from racinglines.books import slips as B
+from racinglines.demo import store
 
-DEMO = Path(B.__file__).parent / "demo"
-DB_IDS = ("race_id", "races", "athlete_id", "opponent_id", "run_id", "link_id", "token_id")
+DEMO = store.BUNDLED / "kart"
 DRIVERS = {  # key: (name, team, win, podium, top10, extra)
     "mario": ("Mario", "mushroom", 0.36, 0.68, 0.95, dict(pole_prob=0.40, fl_prob=0.22, top5_prob=0.82, mover_prob=0.03,
                                                     sprint_win_prob=0.38)),
@@ -31,13 +27,13 @@ DRIVERS = {  # key: (name, team, win, podium, top10, extra)
     "yoshi": ("Yoshi", "koopa", 0.06, 0.15, 0.70, dict(pole_prob=0.04, fl_prob=0.10, top5_prob=0.28, mover_prob=0.22)),
 }
 H2H = {("peach", "daisy"): 0.58}
-RESULT = ("mario", "peach", "luigi", "daisy", "yoshi", "bowser")             # round 21's finishing order
+RESULT = ("mario", "peach", "luigi", "daisy", "yoshi", "bowser")             # round 10's finishing order
 
 
 @pytest.fixture(scope="module")
 def demo_db(test_engine):
-    """Two F1 races (rounds 21 and 22 of 2026) with a forecast run each, exchange links, a stored combo run, and round
-    21's classification; removed afterwards."""
+    """Two F1 races (rounds 10 and 11 of 2026) with a forecast run each, exchange links, a stored combo run, and round
+    10's classification; removed afterwards."""
     from racinglines.db import models as m
     from racinglines.db.config import get_session
     from racinglines.db.ingest import _upsert, seed
@@ -68,13 +64,13 @@ def demo_db(test_engine):
             made["runs"].append(run.id)
             return ra, run
 
-        r21, run21 = race(21, "Rainbow Road Grand Prix", {})
+        r21, run21 = race(10, "Rainbow Road Grand Prix", {})
         for k, (_, _, win, pod, top10, extra) in DRIVERS.items():
             h2h = {str(ids[o]): p for (a, o), p in H2H.items() if a == k}
             h2h.update({str(ids[a]): 1 - p for (a, o), p in H2H.items() if o == k})
             s.add(m.RacePrediction(model_run_id=run21.id, race_id=r21.id, target="t21", athlete_id=ids[k], win_prob=win,
                                    podium_prob=pod, top10_prob=top10, extra=dict(extra, h2h=h2h)))
-        r22, run22 = race(22, "Bowser's Castle Grand Prix", {})
+        r22, run22 = race(11, "Wario Stadium Grand Prix", {})
         for k, (_, _, win, pod, top10, _) in DRIVERS.items():
             s.add(m.RacePrediction(model_run_id=run22.id, race_id=r22.id, target="t22", athlete_id=ids[k],
                                    win_prob=win * 0.95, podium_prob=pod, top10_prob=top10, extra={}))
@@ -91,7 +87,7 @@ def demo_db(test_engine):
         link("kalshi", "race_win", 0.18, 0.21, "demo-k-win-luigi", t2, "luigi")
         link("kalshi", "race_podium", 0.40, 0.45, "demo-k-pod-peach", t2, "peach")
         link("polymarket", "race_pole", 0.36, 0.40, "demo-p-pole-mario", t2, "mario")
-        link("polymarket", "race_h2h", 0.44, 0.48, "demo-p-h2h-daisy-peach", t2, "daisy", {"opponent_id": ids["peach"]})
+        link("polymarket", "race_h2h", 0.44, 0.48, "demo-p-h2h-peach-daisy", t2, "peach", {"opponent_id": ids["daisy"]})
         link("kalshi", "race_p2", 0.20, 0.24, "demo-k-p2-luigi", t2, "luigi")                # no model price: market only
         link("kalshi", "race_win", 0.31, 0.35, "demo-k-win-mario-22", t2, "mario", ra=r22)
         rd = m.Round(race_id=r21.id, kind="race", ordinal=2)
@@ -107,24 +103,13 @@ def demo_db(test_engine):
         made["runs"].append(c.execute(text("""INSERT INTO model_runs (competition_id, model, kind, params, metrics)
                                               SELECT id, 'f1_sector_sim', 'combo', CAST(:p AS jsonb), CAST(:m AS jsonb)
                                               FROM competitions WHERE code = 'f1_wdc' RETURNING id"""),
-                                      dict(p=json.dumps(dict(event_key="2026-21")), m=json.dumps(metrics))).scalar())
+                                      dict(p=json.dumps(dict(event_key="2026-10")), m=json.dumps(metrics))).scalar())
     yield ids
     with test_engine.begin() as c:
         c.execute(text("DELETE FROM market_links WHERE token_id LIKE 'demo-%'"))
         c.execute(text("DELETE FROM model_runs WHERE id = ANY(:r)"), dict(r=made["runs"]))
         c.execute(text("DELETE FROM events WHERE id = ANY(:e)"), dict(e=made["events"]))
         c.execute(text("DELETE FROM athletes WHERE id = ANY(:a)"), dict(a=made["athletes"]))
-
-
-def _no_ids(v):
-    """A result with the database's row ids dropped: they depend on insertion order, not on the code."""
-    if isinstance(v, dict):
-        return {k: _no_ids(x) for k, x in v.items() if k not in DB_IDS}
-    if isinstance(v, list):
-        return [_no_ids(x) for x in v]
-    if isinstance(v, str):
-        return re.sub(r"\brun \d+", "run N", v)
-    return v
 
 
 def _results(test_engine):
@@ -134,16 +119,6 @@ def _results(test_engine):
         out = dict(map=B.map_book(c, book), price=B.price_book(c, book), settle=B.settle_book(c, book))
         c.rollback()
     return {k: json.loads(json.dumps(v, default=str, sort_keys=True)) for k, v in out.items()}
-
-
-def test_demo_bundle_is_what_the_code_returns(test_engine, demo_db):
-    from racinglines.cli import book as CLI
-    fresh = _results(test_engine)
-    if os.environ.get("RACINGLINES_WRITE_DEMO"):
-        for cmd, got in fresh.items():
-            (DEMO / f"{cmd}.json").write_text(json.dumps(got, indent=1, sort_keys=True) + "\n")
-    for cmd, got in fresh.items():
-        assert _no_ids(got) == _no_ids(CLI.demo(cmd)), cmd
 
 
 def test_demo_shows_every_f1_pricing_feature(test_engine, demo_db):
@@ -163,17 +138,33 @@ def test_demo_shows_every_f1_pricing_feature(test_engine, demo_db):
     assert price["typo"]["status"] == "unmapped"
 
 
-def test_demo_and_defaults_need_no_database(tmp_path, monkeypatch, capsys):
-    """--demo runs with nothing set up; the defaults file picks the mode when no flag does, and flags win over it."""
-    from racinglines.cli import book as CLI
-    from racinglines.cli import config as C
+@pytest.fixture
+def demo_source(test_engine, demo_db, tmp_path, monkeypatch):
+    """--demo pointed at this module's database (the source resolver's one entry, racinglines/cli/source.use_demo)."""
+    from racinglines.cli import source
+    url = test_engine.url.render_as_string(hide_password=False)
+    monkeypatch.setattr(source, "use_demo", lambda **k: url)
     monkeypatch.setenv("RACINGLINES_CLI_CONFIG", str(tmp_path / "cli.toml"))
     monkeypatch.delenv("DATABASE_URL", raising=False)
+    return url
+
+
+def test_demo_mode_and_defaults(demo_source, tmp_path, capsys):
+    """--demo prices the bundled book on the demo store; the defaults file picks the mode when no flag does, and flags
+    win over it."""
+    from racinglines.cli import book as CLI
+    from racinglines.cli import config as C
     assert CLI.main(["price", "--demo", "--json"]) == 0
-    assert {r["id"] for r in json.loads(capsys.readouterr().out)["lines"]} >= {"win", "sgp-joint", "parlay", "typo"}
+    out = capsys.readouterr()
+    assert "aintcare" not in out.err                                           # demo is local: no remote warning
+    price = {r["id"]: r for r in json.loads(out.out)["lines"]}
+    assert set(price) >= {"win", "sgp-joint", "parlay", "typo"} and price["win"]["model_prob"] == pytest.approx(0.36)
     assert CLI.main(["--demo", "map", "--json"]) == 0                          # the mode before the command too
     assert json.loads(capsys.readouterr().out)["unmapped"] == ["typo"]
-    assert CLI.main(["price", "book.toml", "--demo"]) == 2                     # the demo takes no FILE
+    from racinglines.cli import source
+    assert CLI.main(["price", str(source.pack().book), "--demo", "--json"]) == 0   # a FILE on the demo store
+    capsys.readouterr()
+    assert CLI.main(["price", "--demo", "--db", "postgresql+psycopg://u@h/x"]) == 2   # the demo is its own database
     with pytest.raises(SystemExit):
         CLI.main(["--demo", "price", "--remote"])                              # one mode only
     assert CLI.main(["config", "source", "demo"]) == 0
@@ -184,18 +175,19 @@ def test_demo_and_defaults_need_no_database(tmp_path, monkeypatch, capsys):
     assert "source" in shown and "secret" not in shown                         # a db URL can hold a password
     assert oct((tmp_path / "cli.toml").stat().st_mode & 0o777) == "0o600"
     assert CLI.main(["settle", "--json"]) == 0                                 # source = demo, no flag
-    assert json.loads(capsys.readouterr().out)["book"]["venue"] == "book_demo"
+    out = json.loads(capsys.readouterr().out)
+    assert out["book"]["venue"] == "book_demo"
+    assert {r["id"]: r["result"] for r in out["lines"]}["win"] == "won"         # round 10's classification
     assert CLI.main(["settle", "--local"]) == 2                                # the flag wins: local needs a FILE
     assert CLI.main(["config", "source", "nowhere"]) == 2
     assert CLI.main(["config", "colour", "red"]) == 2
     assert CLI.main(["config", "source", "--unset"]) == 0 and "source" not in C.load()
 
 
-def test_demo_without_rich_prints_plain_text(tmp_path, monkeypatch, capsys):
+def test_demo_without_rich_prints_plain_text(demo_source, monkeypatch, capsys):
     """Right after `pip install -e .` (no requirements.txt) rich may be missing: the demo still prints."""
     import importlib.util
     from racinglines.cli import book as CLI
-    monkeypatch.setenv("RACINGLINES_CLI_CONFIG", str(tmp_path / "cli.toml"))
     real = importlib.util.find_spec
     monkeypatch.setattr(importlib.util, "find_spec", lambda name, *a: None if name == "rich" else real(name, *a))
     assert CLI.main(["price", "--demo"]) == 0
