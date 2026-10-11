@@ -128,8 +128,9 @@ def _callback_port(server):
     return _free_port()
 
 
-def _wait_for_callback(port):
-    """Serve one GET /callback on 127.0.0.1:port and return its query parameters (code, state, or error)."""
+def _wait_for_callback(port, ready=None):
+    """Serve one GET /callback on 127.0.0.1:port and return its query parameters (code, state, or error). `ready`
+    (a threading.Event) is set once the port is bound, or binding failed, so the browser never opens first."""
     from http.server import BaseHTTPRequestHandler, HTTPServer
     from urllib.parse import parse_qs, urlparse
     got = {}
@@ -154,9 +155,13 @@ def _wait_for_callback(port):
     try:
         httpd = HTTPServer(("127.0.0.1", port), Handler)
     except OSError as ex:
+        if ready is not None:
+            ready.set()
         raise RemoteError(f"can't listen on 127.0.0.1:{port} for the sign-in ({ex}); "
                           "run `racinglines book logout` and try again") from ex
     httpd.timeout = 1
+    if ready is not None:
+        ready.set()
     with httpd:
         for _ in range(CALLBACK_WAIT_SEC):
             httpd.handle_request()
@@ -174,8 +179,10 @@ def oauth(server, open_browser=None):
     pending = {}
 
     async def redirect(auth_url):
-        pending["t"] = threading.Thread(target=lambda: pending.update(r=_safe_wait(port)), daemon=True)
+        ready = threading.Event()
+        pending["t"] = threading.Thread(target=lambda: pending.update(r=_safe_wait(port, ready)), daemon=True)
         pending["t"].start()
+        await asyncio.to_thread(ready.wait, 10)        # listening before the browser can come back to it
         print(f"Sign in to racinglines in your browser (this URL if it does not open):\n  {auth_url}", file=sys.stderr)
         if open_browser:
             await asyncio.to_thread(open_browser, auth_url)
@@ -199,9 +206,9 @@ def oauth(server, open_browser=None):
                                redirect_handler=redirect, callback_handler=callback)
 
 
-def _safe_wait(port):
+def _safe_wait(port, ready=None):
     try:
-        return _wait_for_callback(port)
+        return _wait_for_callback(port, ready)
     except Exception as ex:  # noqa: BLE001  (handed to the callback handler, which raises it)
         return ex
 
