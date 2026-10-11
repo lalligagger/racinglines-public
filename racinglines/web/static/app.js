@@ -329,16 +329,44 @@
     btn.addEventListener("click", () => termPlay(t));
   });
 
-  // --- /strategy/pick: each slider shows its value (points for probabilities, $ or shares otherwise) ---
-  document.querySelectorAll(".pick input[type=range]").forEach(r => {
-    const out = document.querySelector(`[data-out="${r.name}"]`);
-    const show = () => {
-      const v = Number(r.value), u = r.dataset.unit;
+  // --- /strategy/pick: each slider shows its value (points for probabilities, $ or shares otherwise); the dice roll
+  // sliders at random, up to `spread` of each slider's range away from the strategy's own setting (no JS: no dice) ---
+  const pick = document.querySelector("form.pick");
+  if (pick) {
+    const show = r => {
+      const out = pick.querySelector(`[data-out="${r.name}"]`), v = Number(r.value), u = r.dataset.unit;
       out.textContent = u === "pts" ? `${Math.round(v * 100)} pts` : u === "$" ? `$${v}` : `${v} ${u}`;
-      if (Number(r.dataset.default) !== v) out.textContent += " (adjusted)";
+      if (Math.abs(Number(r.dataset.base) - v) > 1e-9) out.textContent += " (adjusted)";
     };
-    r.addEventListener("input", show); show();
-  });
+    const spread = pick.querySelector("[data-spread]");
+    const roll = opt => {
+      const k = spread ? Number(spread.value) : 1;
+      opt.querySelectorAll("input[type=range]").forEach(r => {
+        const lo = Number(r.min), hi = Number(r.max), step = Number(r.step), base = Number(r.dataset.base);
+        const v = base + (Math.random() * 2 - 1) * k * (hi - lo);
+        r.value = Math.min(hi, Math.max(lo, lo + Math.round((v - lo) / step) * step));
+        show(r);
+      });
+      const pre = opt.querySelector("input[type=checkbox]");
+      if (pre && Math.random() < k / 2) pre.checked = !pre.checked;
+      pick.querySelector("[data-rolled]").value = "1";
+    };
+    pick.querySelectorAll("input[type=range]:not([data-spread])").forEach(r => { r.addEventListener("input", () => show(r)); show(r); });
+    pick.querySelectorAll("[data-roll]").forEach(btn => { btn.hidden = false; btn.addEventListener("click", e => { e.preventDefault(); roll(btn.closest(".pick-opt")); }); });
+    const any = pick.querySelector("[data-roll-any]");
+    if (any) {
+      pick.querySelector("[data-dice]").hidden = false;
+      const so = pick.querySelector("[data-spread-out]");
+      spread.addEventListener("input", () => { so.textContent = `${Math.round(spread.value * 100)}%`; });
+      any.addEventListener("click", () => {     // a strategy with settings to roll, then its settings
+        const opts = [...pick.querySelectorAll(".pick-opt")].filter(o => o.querySelector("[data-roll]"));
+        const opt = opts[Math.floor(Math.random() * opts.length)];
+        opt.querySelector("input[type=radio]").checked = true;
+        roll(opt);
+        opt.scrollIntoView({block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"});
+      });
+    }
+  }
 
   // --- Lab: sections open on demand (HTMX loads them on their "open" event), remembered per browser ---
   const lab = document.getElementById("lab");

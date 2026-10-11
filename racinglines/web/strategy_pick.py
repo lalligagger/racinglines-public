@@ -8,7 +8,9 @@ for them; this page is the user-facing side of what /admin/users/<id> does (admi
                  the few settings worth a slider (TUNABLE) on a single strategy; a blend runs as tuned
 
 Saving goes through profiles.assign (F1 on Polymarket, the slot the signal engine runs). The demo accounts keep the
-profiles assign_demo gives them: they see the page but can't save. Split out of web/app.py, which imports this module.
+profiles assign_demo gives them: they see the page but can't save. The dice (owner, 2026-10-11 22:20Z: "let the user input
+RNG'ed values ... high temperature / lots of variation once we have a few dozen users") roll the sliders in the browser
+(app.js), as far from the strategy's own settings as the spread allows; a rolled save is marked `rolled` on the profile. Split out of web/app.py, which imports this module.
 """
 
 from fastapi import Depends, Form, Request
@@ -48,7 +50,8 @@ def tunables(pr):
     sl = []
     for name, label, lo, hi, step, unit in TUNABLE[k]:
         v = st[name] if st[name] is not None else st["min_edge"] if name == "min_edge_h2h" else lo
-        sl.append(dict(name=name, label=label, lo=lo, hi=hi, step=step, unit=unit, value=min(max(float(v), lo), hi)))
+        v = min(max(float(v), lo), hi)
+        sl.append(dict(name=name, label=label, lo=lo, hi=hi, step=step, unit=unit, value=v, base=v))
     pre = (PRE in (st["taker_stages"] or ())) if k == "taker" else None
     return sl, pre
 
@@ -124,7 +127,7 @@ def _adjusted(code, form):
 
 
 @app.post("/strategy/pick", dependencies=[Depends(check_csrf), allow(*ANY)])
-async def pick_save(request: Request, code: str = Form("")):
+async def pick_save(request: Request, code: str = Form(""), rolled: str = Form("")):
     me = request.state.user
     if demo.is_demo(me):
         return RedirectResponse("/strategy/pick?msg=The demo accounts keep their strategy.", status_code=303)
@@ -145,14 +148,14 @@ async def pick_save(request: Request, code: str = Form("")):
             settings, moved = _adjusted(code, form)
             if moved:
                 new = dict(new, name=f"{PF.PROFILES[code]['name']} · adjusted", settings=SS.Settings.from_dict(
-                    settings, strict=False).to_json(), adjusted=moved)
+                    settings, strict=False).to_json(), adjusted=moved, **({"rolled": True} if rolled == "1" else {}))
         if new is not None:
             new = dict(new, base=code)
         if not R.allowed_profile(me["role"], new, user_id=me["id"]):
             return RedirectResponse("/strategy/pick?msg=Error: that strategy isn't open to this account.", status_code=303)
         PF.assign(c, me["id"], new)
     audit(request, "strategy_pick", old=(old or {}).get("name"), new=(new or {}).get("name"),
-          adjusted=(new or {}).get("adjusted"))
+          adjusted=(new or {}).get("adjusted"), rolled=bool((new or {}).get("rolled")))
     if new is None:
         return RedirectResponse("/strategy/pick?msg=Stopped: nothing trades for this account until you pick again.",
                                 status_code=303)

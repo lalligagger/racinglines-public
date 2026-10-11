@@ -75,6 +75,9 @@ def test_a_pro_account_starts_empty_then_picks_and_tunes(app_db):
     assert p["settings"]["min_edge"] == 0.12 and p["adjusted"] == {"min_edge": 0.12} and p["candidate_id"]
     page = client.get("/strategy/pick").text
     assert 'value="T1" checked' in page and "12 pts" in page            # back where the user left it
+    assert "data-roll-any" in page and "data-roll " in page              # the dice (they roll in the browser)
+    client.post("/strategy/pick", data={"csrf_token": csrf, "code": "C", "C:size": "40", "rolled": "1"})
+    assert _profile("ada")["rolled"] is True and _profile("ada")["settings"]["size"] == 40
     client.post("/strategy/pick", data={"csrf_token": csrf, "code": "TB"})
     assert _profile("ada")["members"]                                    # a blend runs as tuned
     client.post("/strategy/pick", data={"csrf_token": csrf, "code": "none"})
