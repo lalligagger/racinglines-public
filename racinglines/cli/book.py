@@ -16,7 +16,9 @@ Where the data comes from (map, price, settle), three modes; the default is the 
     --demo [PACK]          a demo store (racinglines/cli/source.py): a separate local database of synthetic data from a
                            data pack (default kart), built on first use, priced by the same code as --local. FILE
                            defaults to the pack's book (racinglines/demo/packs/kart/book.toml); `racinglines model
-                           forecast f1 --demo --save` first gives it model prices. Rich by default
+                           forecast f1 --demo --save` first gives it model prices. Rich by default.
+                           `--demo [PACK] --remote` (or the defaults file's source = remote) prices it on the pack's
+                           hosted demo store instead (its [remote] mcp_url; synthetic data only)
     --remote               the VM's hosted MCP server (racinglines/cli/remote.py): live model runs and exchange prices.
                            Signs in through the browser the first time (kept in ~/.config/racinglines/mcp-login.json),
                            or uses RACINGLINES_MCP_TOKEN (an rl_ token) when set. --mcp-url URL, RACINGLINES_MCP_URL or
@@ -203,9 +205,14 @@ def main(argv=None):
         return 2
     from racinglines.cli import source as SRC
     if SRC.demo_active():                                  # `--demo [PACK]`, taken out by the CLI's source resolver
-        if args.remote or args.local:
-            parser.error("give one of --demo, --remote, --local")
-        args.demo = True
+        if args.remote:                                    # the pack's hosted store (source.use_remote_demo)
+            args.file = args.file or (str(SRC.pack().book) if SRC.pack().book else None)
+            from racinglines.cli import remote as RM
+            RM.warn()                                      # the testing warning first, as on every remote run
+            print(f"demo: the {SRC.demo_active()} pack's hosted demo store (synthetic data); nothing is traded",
+                  file=sys.stderr)
+        else:
+            args.demo, args.local = True, False
     if not (args.demo or args.remote or args.local):
         source = defaults.get("source", "local")
         args.demo, args.remote = source == "demo", source == "remote"

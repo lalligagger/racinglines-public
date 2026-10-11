@@ -53,6 +53,11 @@ class Pack:
         return list(self.manifest.get("quickstart", []))
 
     @property
+    def remote(self):
+        """[remote]: where the pack's hosted store is served (mcp_url), for `--demo PACK --remote`."""
+        return dict(self.manifest.get("remote") or {})
+
+    @property
     def load(self):
         return list((self.manifest.get("load") or {}).get("commands", []))
 

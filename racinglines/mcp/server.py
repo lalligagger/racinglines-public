@@ -56,6 +56,24 @@ def _engine():
     return get_engine(_URL)
 
 
+def accounts_url():
+    """RACINGLINES_MCP_ACCOUNTS_URL: the database the accounts, tokens and sign-ins are read from, when it isn't the
+    served one (a second server over a shared research store, e.g. a demo store with no account rows of its own).
+    None: the served database holds the accounts too (the default)."""
+    return os.environ.get("RACINGLINES_MCP_ACCOUNTS_URL") or None
+
+
+def _accounts_engine():
+    from racinglines.db.config import get_engine
+    return get_engine(accounts_url()) if accounts_url() else _engine()
+
+
+def _owner():
+    """Who a job is filed under and whose jobs a caller sees: the caller, except on a shared store (accounts elsewhere:
+    no account rows here, so jobs are filed without an owner and every signed-in caller sees them)."""
+    return (None, None) if accounts_url() else (caller_id(), caller())
+
+
 def _sql_engine():
     """The sql tool's connection: RACINGLINES_MCP_SQL_URL when set (a login that can SELECT only the allowed tables,
     made by scripts/vm/mcp_sql_role.sh), else the app's own. Only the role keeps users and orders out of reach; the
@@ -138,7 +156,7 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
     kw = {}
     if oauth:
         from racinglines.mcp import oauth as O
-        kw = dict(auth_server_provider=O.provider(_engine), auth=O.auth_settings())
+        kw = dict(auth_server_provider=O.provider(_accounts_engine), auth=O.auth_settings())
     srv = MCPServer(NAME, instructions=INSTRUCTIONS, log_level="WARNING", **kw)
 
     # --- orientation --------------------------------------------------------------------------------
@@ -358,22 +376,22 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         Verstappen"}], several combos as {name: [legs]}, optional cutoff, variant; get_model_run(result_run_id) has
         metrics.combos and metrics.checks), dh_scenario, dh_backtest. params: the job type's knobs (list_job_types). Returns the
         job id; get_job follows it and names the model run it saved (result_run_id)."""
-        return _write(T.run_job, job_type=job_type, params=params, user_id=caller_id())
+        return _write(T.run_job, job_type=job_type, params=params, user_id=_owner()[0])
 
     @srv.tool()
     def get_job(job_id: int, log_lines: int = 20) -> str:
         """A job's status (queued, running, done, failed), progress, the last log lines and result_run_id."""
-        return _read(T.get_job, job_id=job_id, log_lines=log_lines, viewer=caller())
+        return _read(T.get_job, job_id=job_id, log_lines=log_lines, viewer=_owner()[1])
 
     @srv.tool()
     def list_jobs(status: str | None = None, limit: int = 50, offset: int = 0) -> str:
         """Jobs, newest first (the Lab's and this server's)."""
-        return _read(T.list_jobs, status=status, limit=limit, offset=offset, viewer=caller())
+        return _read(T.list_jobs, status=status, limit=limit, offset=offset, viewer=_owner()[1])
 
     @srv.tool()
     def cancel_job(job_id: int) -> str:
         """Cancel a job that has not started yet."""
-        return _write(T.cancel_job, job_id=job_id, viewer=caller())
+        return _write(T.cancel_job, job_id=job_id, viewer=_owner()[1])
 
     # --- resources: the docs and the sport schemas ---------------------------------------------------
     @srv.resource("racinglines://docs", name="docs-index", description="The documentation pages available as racinglines://docs/<page>")
@@ -430,7 +448,7 @@ def serve(http=False, host="127.0.0.1", port=DEFAULT_PORT, jobs_worker=True):
         srv.run("stdio")
         return
     oauth.warn_if_disabled()
-    who = auth.holders(_engine())
+    who = auth.holders(_accounts_engine())
     print("accounts with an rl_ token: " + (", ".join(f"{u} ({r})" for u, r, _ in who) or "none") +
           f"; OAuth sign-in for roles {', '.join(auth.ROLES)} via {oauth.WEB_URL}", file=sys.stderr)
     if host not in ("127.0.0.1", "localhost"):

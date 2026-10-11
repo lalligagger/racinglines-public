@@ -9,11 +9,16 @@ apply() before anything else is imported, so the settings below reach every modu
                     the commands themselves run unchanged. Sets DATABASE_URL, RACINGLINES_DATA and
                     RACINGLINES_OFFLINE=1 (FastF1's servers are never called; the store's files are the record).
 
+    --demo [PACK] --remote   (or `source = "remote"` in the CLI defaults file) the pack's hosted store instead: the
+                    commands the hosted server runs (`book map|price|settle`, `model backtest|forecast f1|mtb_dh`) are
+                    sent to the pack's demo MCP server (pack.toml [remote] mcp_url) with their usual --remote path.
+
     First run: when no database is configured (no DATABASE_URL, no `db` or `source` in the CLI defaults file) the
     first command that needs one asks once, local or remote, and saves the answer as `source` (choose_first_run).
 
     RACINGLINES_DEMO_DATABASE_URL   the demo database (default: the configured URL, named racinglines_demo_<pack>)
     RACINGLINES_DEMO_DATA           the demo data folder (default data/demo/<pack>, gitignored)
+    RACINGLINES_DEMO_MCP_URL        the hosted demo server (default: the pack's [remote] mcp_url)
 """
 
 import os
@@ -194,15 +199,56 @@ def choose_first_run(ask=None):
     return src
 
 
+def source_choice():
+    """local or remote: the defaults file's `source` (its `demo` counts as local), else local once a database is
+    configured, else the first-run answer."""
+    src = _config().get("source")
+    if src:
+        return "remote" if src == "remote" else "local"
+    return "local" if configured() else choose_first_run()
+
+
+# the commands the hosted server runs (their own --remote path): book map|price|settle, model backtest|forecast
+REMOTE_COMMANDS = (("book", ("map", "price", "settle"), None), ("model", ("backtest", "forecast"), ("f1", "mtb_dh")))
+
+
+def remote_capable(argv):
+    return any(argv[:1] == [g] and argv[1:2] and argv[1] in cmds and (sports is None or argv[2:3] and argv[2] in sports)
+               for g, cmds, sports in REMOTE_COMMANDS)
+
+
+def demo_mcp_url(pk):
+    url = os.environ.get("RACINGLINES_DEMO_MCP_URL") or pk.remote.get("mcp_url")
+    if not url:
+        raise SystemExit(f"--demo {pk.name} --remote: the pack names no hosted demo server ([remote] mcp_url); "
+                         f"run it locally with --local")
+    return url
+
+
+def use_remote_demo(ref, argv):
+    """`--demo [PACK]` on the hosted store: the command's own --remote path, aimed at the pack's demo MCP server."""
+    pk = pack(ref)
+    if not remote_capable(argv):
+        names = "; ".join(f"{g} {'|'.join(c)}" + (f" {'|'.join(s)}" if s else "") for g, c, s in REMOTE_COMMANDS)
+        raise SystemExit(f"--demo with the remote source: the hosted demo store runs only {names}. This command needs "
+                         f"a local store: add --local (book) or set `racinglines book config source local`.")
+    os.environ.update(RACINGLINES_DEMO=pk.name, RACINGLINES_MCP_URL=demo_mcp_url(pk))
+    return argv if "--remote" in argv else argv + ["--remote"]
+
+
 def apply(argv):
     """The argv a command should parse, after the data source is set: `--demo [PACK]` is taken out (the commands don't
-    know it) and the pack's store selected."""
+    know it) and the pack's store selected, local or hosted."""
     from racinglines.db import config as DBC
     DBC.fallback = default_url                       # the first-run choice, only when a command needs a database
     rest, ref, given = take_demo(argv)
     if not given:
         return argv
-    use_demo(ref, build=not {"-h", "--help"} & set(rest))
+    helping = bool({"-h", "--help"} & set(rest))
+    remote = "--remote" in rest or ("--local" not in rest and not helping and source_choice() == "remote")
+    if remote:
+        return use_remote_demo(ref, rest)
+    use_demo(ref, build=not helping)
     return rest
 
 

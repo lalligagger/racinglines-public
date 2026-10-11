@@ -42,7 +42,7 @@ def test_demo_flag_only_switches_the_source(monkeypatch, tmp_path):
 
 
 def _no_config(monkeypatch, tmp_path):
-    for k in ("DATABASE_URL", "RACINGLINES_DEMO", "RACINGLINES_DEMO_DATABASE_URL"):
+    for k in ("DATABASE_URL", "RACINGLINES_DEMO", "RACINGLINES_DEMO_DATABASE_URL", "RACINGLINES_DEMO_MCP_URL"):
         monkeypatch.setenv(k, "")
         monkeypatch.delenv(k)
     monkeypatch.setenv("RACINGLINES_CLI_CONFIG", str(tmp_path / "cli.toml"))
@@ -80,6 +80,40 @@ def test_first_run_asks_once_and_saves_the_source(monkeypatch, tmp_path, capsys)
         source.reset()
     monkeypatch.delenv("DATABASE_URL")
     assert DBC.database_url() == DBC.DEFAULT_URL                      # library callers outside a command
+
+
+def test_demo_with_the_remote_source_aims_at_the_hosted_store(monkeypatch, tmp_path):
+    """`--demo --remote`, or `--demo` with source = remote: the command's own --remote path, at the pack's demo server;
+    only the commands the hosted server runs; never a local build."""
+    from racinglines.cli import config as C
+    from racinglines.cli import source
+    _no_config(monkeypatch, tmp_path)
+    monkeypatch.setenv("RACINGLINES_MCP_URL", "https://example.invalid/mcp")
+    monkeypatch.setattr(source, "ensure", lambda *a, **k: pytest.fail("no local store on the remote source"))
+    pk = source.pack("kart")
+    assert pk.remote["mcp_url"].startswith("https://")
+    assert source.apply(["book", "price", "--demo", "--remote", "--json"]) == ["book", "price", "--remote", "--json"]
+    assert os.environ["RACINGLINES_MCP_URL"] == pk.remote["mcp_url"] and os.environ["RACINGLINES_DEMO"] == "kart"
+    C.set_key("source", "remote")
+    monkeypatch.setenv("RACINGLINES_DEMO_MCP_URL", "http://127.0.0.1:9/mcp")
+    assert source.apply(["model", "backtest", "f1", "--demo", "--races", "3"]) == \
+        ["model", "backtest", "f1", "--races", "3", "--remote"]
+    assert os.environ["RACINGLINES_MCP_URL"] == "http://127.0.0.1:9/mcp"
+    with pytest.raises(SystemExit, match="needs a local store"):
+        source.apply(["live", "run", "f1/demo-2026-09", "--demo", "--simulate"])
+    source.reset()
+
+
+def test_remote_model_flags_map_to_the_hosted_job():
+    from racinglines.cli import remote as RM
+    assert RM.job_params("f1", "backtest", ["--races", "3", "--sims", "300", "--track", "on", "--remote"]) == \
+        ("f1_backtest", {"races": 3, "sims": 300, "track": "on"})
+    assert RM.job_params("f1", "forecast", ["--save", "--no-track"]) == ("f1_scenario", {"track": "off", "label": "cli forecast"})
+    assert RM.job_params("mtb_dh", "backtest", ["--db", "--half-life-days", "100"]) == ("dh_backtest", {"half_life": 100.0})
+    with pytest.raises(RM.RemoteError, match="local only"):
+        RM.job_params("f1", "backtest", ["--start-year", "2024"])
+    with pytest.raises(RM.RemoteError, match="doesn't run on the hosted server"):
+        RM.job_params("nascar", "backtest", [])
 
 
 def test_generator_writes_fastf1_shapes_reproducibly(tmp_path):
@@ -205,6 +239,71 @@ def test_kart_quickstart_runs_on_the_store(demo_env):
     assert lines["win"]["model_prob"] is not None and lines["win"]["market_prob"] is not None
     assert lines["p2"]["model_prob"] is None and lines["p2"]["legs"][0]["market_exchange"] == "kalshi"
     assert price["unmapped"] == ["typo"]
+
+
+def _free_port():
+    import socket
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+def test_remote_demo_runs_on_a_hosted_demo_store(test_engine, demo_env, tmp_path):
+    """`--demo --remote` (and `source = "remote"`): the hosted demo server is the VM's command, `racinglines mcp --http
+    --demo` (scripts/vm/demo_store.sh), over the demo store, with the accounts read from another database
+    (RACINGLINES_MCP_ACCOUNTS_URL, production's on the VM, the test database here). A Pro account's rl_ token prices
+    the pack's book and runs the backtest and forecast as hosted jobs; nothing touches a local store."""
+    import time
+    import urllib.request
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy import text
+    from racinglines.cli import remote as RM
+    from racinglines.mcp import auth
+    from racinglines.web import users as U
+    env, _ = demo_env
+    with sessionmaker(test_engine)() as s:
+        if not s.execute(text("SELECT 1 FROM users WHERE username = 'demo_pro'")).first():
+            U.create_user(s, "demo_pro", "pw", "pro")
+        s.commit()
+    tok = auth.new_token(test_engine, "demo_pro")
+    port = _free_port()
+    mcp = f"http://127.0.0.1:{port}/mcp"
+    accounts = test_engine.url.render_as_string(hide_password=False)
+    srv_env = dict(env, APP_SECRET="test-secret", RACINGLINES_MCP_ACCOUNTS_URL=accounts, RACINGLINES_MCP_URL=mcp)
+    log = open(tmp_path / "mcp.log", "w")
+    srv = subprocess.Popen([sys.executable, "-m", "racinglines", "mcp", "--http", "--port", str(port), "--demo"],
+                           cwd=ROOT, env=srv_env, stdout=log, stderr=subprocess.STDOUT)
+    try:
+        for _ in range(200):
+            try:
+                urllib.request.urlopen(urllib.request.Request(mcp, method="POST", data=b"{}"), timeout=1)
+            except urllib.error.HTTPError:
+                break                                                # 401: up
+            except OSError:
+                time.sleep(0.1)
+        cli = dict(env, RACINGLINES_DEMO_MCP_URL=mcp, RACINGLINES_MCP_TOKEN=tok,
+                   RACINGLINES_DEMO_DATABASE_URL="postgresql+psycopg://nobody:x@127.0.0.1:1/racinglines_demo_nowhere")
+        p = subprocess.run([sys.executable, "-m", "racinglines", "book", "price", "--demo", "--remote", "--json"],
+                           cwd=ROOT, env=cli, capture_output=True, text=True, timeout=300)
+        assert p.returncode == 0, p.stderr[-3000:] + (tmp_path / "mcp.log").read_text()[-3000:]
+        assert p.stderr.startswith(RM.WARNING) and p.stderr.count("#aintcare") == 1
+        lines = {r["id"]: r for r in json.loads(p.stdout)["lines"]}             # stdout: clean JSON
+        assert lines["win"]["market_prob"] is not None and json.loads(p.stdout)["unmapped"] == ["typo"]
+        (Path(cli["RACINGLINES_CLI_CONFIG"])).write_text('source = "remote"\n')        # the defaults file's source
+        out = _run(cli, "model", "backtest", "f1", "--demo", "--races", "3", "--sims", "300", "--track", "on")
+        assert "Track features ON: mean over 3 races" in out
+        out = _run(cli, "model", "forecast", "f1", "--demo", "--sims", "1000")
+        assert "Saved" in out and "scenario" in out.lower()
+        bad = subprocess.run([sys.executable, "-m", "racinglines", "db", "stats", "--demo"], cwd=ROOT, env=cli,
+                             capture_output=True, text=True, timeout=120)
+        assert bad.returncode != 0 and "needs a local store" in bad.stderr
+        bad = subprocess.run([sys.executable, "-m", "racinglines", "model", "backtest", "f1", "--demo", "--variant", "x"],
+                             cwd=ROOT, env=cli, capture_output=True, text=True, timeout=120)
+        assert bad.returncode == 2 and "local only" in bad.stderr
+    finally:
+        srv.terminate()
+        srv.wait(20)
+        log.close()
 
 
 TINY_DH = """name = "tinydh"

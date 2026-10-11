@@ -34,6 +34,11 @@ commands = [
 [book]
 file = "book.toml"              # `racinglines book price --demo` prices it when no FILE is given
 
+[remote]
+# The pack's hosted store (`--demo --remote`, or --demo with source = "remote"): `racinglines mcp --http --demo` on the
+# VM, over its own database built from this pack (scripts/vm/demo_store.sh), never production's.
+mcp_url = "https://mcp-demo.racinglines.bet/mcp"
+
 # The quickstart: docs/quickstart.md's command blocks are rendered from these (scripts/build_quickstart.py), and the
 # web app's /term replay lists the same commands. In order; each runs as written.
 [[quickstart]]
