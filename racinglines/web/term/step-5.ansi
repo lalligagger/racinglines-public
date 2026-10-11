@@ -1,7 +1,11 @@
-{
- "md": "runs/live/demo-2026-09/report/report.md",
- "html": "runs/live/demo-2026-09/report/report.html",
- "pnl.svg": "runs/live/demo-2026-09/report/pnl.svg",
- "scorecard.svg": "runs/live/demo-2026-09/report/scorecard.svg",
- "pdf": "runs/live/demo-2026-09/report/report.pdf"
-}
+simulated 2026-09 to 2026-10-02 10:25:00: 0 updates
+[33mdemo-2026-09 was already settled: nothing new to simulate[0m [2m(its run folder runs/live/demo-2026-09)[0m
+[32m╭─[0m[32m 🏁 [0m[1;32mBowser's Castle Grand Prix 2026 (synthetic)[0m[32m [0m[32m──────────────────[0m[32m─╮[0m
+[32m│[0m [2mopened           [0m[2m  [0m2026-10-02T10:30 UTC                            [32m│[0m
+[32m│[0m [2msettled          [0m[2m  [0m2026-10-04T17:00 UTC                            [32m│[0m
+[32m│[0m [2m💰 maker P&L     [0m[2m  [0m[1;32m+2,380.44[0m                                       [32m│[0m
+[32m│[0m [2m   from the crowd[0m[2m  [0m[1;32m+2,337.26[0m                                       [32m│[0m
+[32m│[0m [2m   from the picks[0m[2m  [0m[1;32m+43.18[0m                                          [32m│[0m
+[32m│[0m [2m👥 fills         [0m[2m  [0m210  [2m($6,858 traded)[0m                            [32m│[0m
+[32m│[0m [2m   bettors       [0m[2m  [0m88: [32m24 up[0m, [31m64 down[0m, best [1;32m+219.11[0m, worst [31m-185.33[0m [32m│[0m
+[32m╰────────────────────────────────────────────────────────────────────╯[0m

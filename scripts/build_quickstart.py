@@ -14,6 +14,7 @@ Usage:
     python3 scripts/build_quickstart.py              # rewrite docs/quickstart.md's blocks
     python3 scripts/build_quickstart.py --check      # exit 1 if a block is out of date (tests/test_demo_store.py)
     python3 scripts/build_quickstart.py --commands kart   # the pack's commands, one per line (for demos.toml)
+    python3 scripts/build_quickstart.py --commands kart --section NAME   # one section's (a [[quickstart]] `section` key)
 """
 
 import argparse
@@ -28,11 +29,15 @@ BLOCK = re.compile(r"(<!--\s*quickstart:\s*([\w-]+)\s*-->\n)(.*?)(<!--\s*/quicks
 
 
 def render(pack):
-    """The Markdown of one pack's quickstart: a numbered step per [[quickstart]] entry, each with its command."""
+    """The Markdown of one pack's quickstart: a numbered step per [[quickstart]] entry, each with its command, grouped
+    under a heading per `section` (first-seen order) when the pack names any; one plain list when it names none."""
     out = []
-    for i, step in enumerate(pack.quickstart, 1):
-        out += [f"**{i}. {step['title']}.** {step.get('about', '')}".rstrip(), "",
-                "```", "# LOCAL (Mac), or any machine with Postgres", step["run"], "```", ""]
+    for name, steps in pack.sections():
+        if name:
+            out += [f"#### {name}", ""]
+        for i, step in enumerate(steps, 1):
+            out += [f"**{i}. {step['title']}.** {step.get('about', '')}".rstrip(), "",
+                    "```", "# LOCAL (Mac), or any machine with Postgres", step["run"], "```", ""]
     return "\n".join(out)
 
 
@@ -51,10 +56,17 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--commands", metavar="PACK")
+    ap.add_argument("--section", metavar="NAME", help="with --commands: only that section's commands")
     args = ap.parse_args(argv)
     if args.commands:
         from racinglines.demo import store
-        print("\n".join(s["run"] for s in store.find(args.commands).quickstart))
+        groups = store.find(args.commands).sections()
+        if args.section is not None:
+            groups = [g for g in groups if g[0] == args.section]
+            if not groups:
+                print(f"{args.commands}: no section {args.section!r}", file=sys.stderr)
+                return 2
+        print("\n".join(s["run"] for _, steps in groups for s in steps))
         return 0
     old = DOC.read_text()
     new = build(old)

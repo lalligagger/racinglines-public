@@ -28,7 +28,7 @@ The model's fair probabilities are useful in two places, and the data behind bot
 
 | Mode | Flag | Needs | For |
 |---|---|---|---|
-| **Demo** | `--demo [PACK]` | Postgres (`docker compose up -d`); no data, network or account | A first look. The kart pack's book (`racinglines/demo/packs/kart/book.toml`, a Mario Kart grid) priced by the real code on a local demo store of synthetic data, built on first use, showing each F1 pricing feature ([Quickstart](../quickstart.md)). |
+| **Demo** | `--demo [PACK]` | Postgres (`docker compose up -d`); no data, network or account | A first look. The kart pack's book (`racinglines/demo/packs/kart/book.toml`, a Mario Kart grid) priced by the real code on a local demo store of synthetic data, built on first use, showing each F1 pricing feature ([Quickstart](../quickstart.md)). `--demo --remote` prices it on the pack's hosted demo store instead, with no local database ([Demo data packs](../demo.md#the-hosted-demo-store)). |
 | **Hosted** | `--remote` | A racinglines.bet account with MCP access ([MCP: Hosted](../mcp.md#hosted-the-vm)) | Your own book file priced on the VM's live data through the hosted MCP server. The first run opens your browser to sign in. |
 | **Local** | `--local` (the default) | Your own database with the data rebuilt (or your own server, below) | Everything, including `--run` and `--sims` |
 

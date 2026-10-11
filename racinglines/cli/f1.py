@@ -364,6 +364,90 @@ def _progress_echo(every=10):
     return echo
 
 
+def _backtest_rich(con, title, bt, summ):
+    """A backtest pass on the console: the model against the uniform and grid baselines per market (Brier, lower is
+    better; skill = the share of the uniform baseline's Brier the model removes), then the per-race highlights."""
+    from rich import box
+    from rich.table import Table
+
+    from racinglines.cli import tty
+    s = summ.T                                              # metric x mode
+    modes = [m for m in ("pre_weekend", "pre_quali", "pre_race") if m in s.columns]
+    t = Table(box=box.ROUNDED, title=f"📊 [bold]{title}[/]", title_justify="left", header_style="bold")
+    t.add_column("market")
+    t.add_column("stage", style="dim")
+    for c in ("model Brier", "uniform", "grid", "skill vs uniform", "log loss"):
+        t.add_column(c, justify="right")
+    for mk in ("win", "podium", "top10"):
+        for i, mode in enumerate(modes):
+            model, uni = s.at[f"brier_{mk}", mode], s.at[f"brier_{mk}_uniform", mode]
+            grid = s.at[f"brier_{mk}_grid", mode] if f"brier_{mk}_grid" in s.index else float("nan")
+            skill = 1 - model / uni if uni else float("nan")
+            beat_grid = grid == grid and model < grid
+            t.add_row(mk if i == 0 else "", mode.replace("_", " "),
+                      f"[bold {'green' if model < uni else 'red'}]{model:.4f}[/]", f"{uni:.4f}",
+                      f"[dim]–[/]" if grid != grid else (f"[green]{grid:.4f}[/]" if beat_grid else f"{grid:.4f}"),
+                      f"[{'green' if skill > 0 else 'red'}]{tty.bar(max(skill, 0), 10)} {skill:+.0%}[/]",
+                      f"{s.at[f'logloss_{mk}', mode]:.4f}" if f"logloss_{mk}" in s.index else "–",
+                      end_section=i == len(modes) - 1)
+    con.print(t)
+    r = bt[bt["mode"] == ("pre_race" if "pre_race" in modes else modes[-1])]
+    if len(r):
+        fav = (r["winner"] == r["favourite"]).mean()
+        best = r.loc[r["winner_prob"].idxmax()]
+        upset = r.loc[r["winner_prob"].idxmin()]
+        name = lambda x: f"{int(x['year'])} R{int(x['round']):02d} {str(x['venue']).replace('-', ' ').title()}"  # noqa: E731
+        con.print(f"🏁 favourite won [bold]{fav:.0%}[/] of {len(r)} races · rank correlation "
+                  f"[bold]{r['spearman'].mean():.2f}[/] · mean winner probability [bold]{r['winner_prob'].mean():.1%}[/]")
+        con.print(f"   [green]best call[/]  {name(best)}: {best['winner']} won at [bold]{best['winner_prob']:.1%}[/]")
+        con.print(f"   [yellow]upset[/]      {name(upset)}: {upset['winner']} won at [bold]{upset['winner_prob']:.1%}[/]"
+                  f" (favourite {upset['favourite']})")
+
+
+def _forecast_rich(con, year, per_event, standings, constructors, top, extras):
+    """The forecast on the console: the next races' win and podium probabilities with bars, then both championships."""
+    from rich import box
+    from rich.table import Table
+
+    from racinglines.cli import tty
+    con.print(f"🔮 [bold]forecast {year}[/] · cutoff [cyan]{str(extras['cutoff'])[:16]} UTC[/] · latest results "
+              f"[cyan]{str(extras['latest_data'].get('results', '?'))[:16]}[/]")
+    for ev in per_event[:2]:
+        t = Table(box=box.ROUNDED, header_style="bold", title_justify="left",
+                  title=f"🏁 [bold]R{ev['round']} {ev['name']}[/] [dim]({ev['date']:%d %b})[/]")
+        t.add_column("driver")
+        t.add_column("team", style="dim")
+        t.add_column("win", justify="right")
+        t.add_column("", style="green")
+        t.add_column("podium", justify="right")
+        t.add_column("", style="cyan")
+        t.add_column("top 10", justify="right", style="dim")
+        t.add_column("DNF", justify="right", style="dim")
+        t.add_column("exp pts", justify="right")
+        for i, r in enumerate(ev["summary"].head(top).to_dict("records")):
+            t.add_row(f"[bold]{r['driver']}[/]" if i == 0 else r["driver"], str(r["team_key"]),
+                      tty.pct(r["win_prob"]), tty.bar(r["win_prob"], 14), tty.pct(r["podium_prob"]),
+                      tty.bar(r["podium_prob"], 14), tty.pct(r["top10_prob"]), tty.pct(r["dnf_prob"]),
+                      f"{r['exp_points']:.1f}")
+        con.print(t)
+    t = Table(box=box.ROUNDED, header_style="bold", title=f"🏆 [bold]{year} drivers' championship[/]",
+              title_justify="left")
+    for c, j in (("driver", "left"), ("points", "right"), ("expected", "right"), ("champion", "right"),
+                 ("", "left"), ("top 3", "right")):
+        t.add_column(c, justify=j)
+    for r in standings.head(top).to_dict("records"):
+        t.add_row(r["driver"], f"{r['current_points']:.0f}", f"{r['exp_points']:.0f}", tty.pct(r["champion_prob"]),
+                  f"[yellow]{tty.bar(r['champion_prob'], 14)}[/]", tty.pct(r["top3_prob"]))
+    con.print(t)
+    t = Table(box=box.SIMPLE_HEAD, header_style="bold", title="[bold]constructors[/]", title_justify="left")
+    for c, j in (("team", "left"), ("points", "right"), ("expected", "right"), ("champion", "right"), ("", "left")):
+        t.add_column(c, justify=j)
+    for r in constructors.head(5).to_dict("records"):
+        t.add_row(r["team"], f"{r['current_points']:.0f}", f"{r['exp_points']:.0f}", tty.pct(r["champion_prob"]),
+                  f"[yellow]{tty.bar(r['champion_prob'], 14)}[/]")
+    con.print(t)
+
+
 def race_week(race_date):
     """The FastF1 recorder's window around a race day: the Wednesday before it to the Tuesday after (inclusive)."""
     from datetime import timedelta
@@ -1002,16 +1086,28 @@ def _run(args):
     if args.cmd == "backtest":
         if args.no_track:
             args.track = "off"
+        from racinglines.cli import tty
+        con = tty.console()
         results = []
         for use_track in {"both": [True, False], "on": [True], "off": [False]}[args.track]:
             print(f"progress 0/1 building history (track features {'on' if use_track else 'off'})", flush=True)
             hist = run.history(meas, use_track)
-            bt = run.backtest(meas, hist, args.start_year, args.sims, use_track, last_n=args.races,
-                              echo=_progress_echo(), keep_probs=True)
+            if con is None:
+                bt = run.backtest(meas, hist, args.start_year, args.sims, use_track, last_n=args.races,
+                                  echo=_progress_echo(), keep_probs=True)
+            else:
+                with tty.Progress(con) as pr:
+                    pr.new(f"📊 backtest, track features {'on' if use_track else 'off'}")
+                    bt = run.backtest(meas, hist, args.start_year, args.sims, use_track, last_n=args.races,
+                                      echo=pr.echo, keep_probs=True)
             bt["track_features"] = use_track
             results.append(bt)
-            print(f"\n=== Track features {'ON' if use_track else 'OFF'}: mean over {bt['event_id'].nunique()} races ===")
-            print(run.summarize_backtest(bt).round(4).T.to_string())
+            title = f"Track features {'ON' if use_track else 'OFF'}: mean over {bt['event_id'].nunique()} races"
+            if con is None:
+                print(f"\n=== {title} ===")
+                print(run.summarize_backtest(bt).round(4).T.to_string())
+            else:
+                _backtest_rich(con, title, bt, run.summarize_backtest(bt))
         out = pd.concat(results, ignore_index=True)
         from racinglines import paths
         dest = args.out or paths.runs("f1", "backtests") / f"backtest_{pd.Timestamp.now():%Y%m%d_%H%M}.csv"
@@ -1081,18 +1177,26 @@ def _run(args):
     if args.cmd == "forecast":
         per_event, standings, extras = run.forecast(meas, hist, args.year, n_sims=args.sims, use_track=use_track)
         fm = extras["model"]
-        print(f"Cutoff {extras['cutoff']} UTC · latest data used {extras['latest_data']}")
-        print(f"Finishing model coef {dict(zip(run.M.FEATURES, fm.coef.round(3)))} sigma {fm.sigma:.3f}; "
-              f"season drift (as-of) {extras['drift']}")
-        for ev in per_event[:2]:
+        from racinglines.cli import tty
+        con = tty.console()
+        if con is not None:
+            _forecast_rich(con, args.year, per_event, standings, extras["constructors"], args.top, extras)
+            con.print(f"[dim]finishing model coef {dict(zip(run.M.FEATURES, [float(c) for c in fm.coef.round(3)]))} "
+                      f"sigma {fm.sigma:.3f}; season drift (as-of) {extras['drift']}[/]")
+        else:
+            print(f"Cutoff {extras['cutoff']} UTC · latest data used {extras['latest_data']}")
+            print(f"Finishing model coef {dict(zip(run.M.FEATURES, fm.coef.round(3)))} sigma {fm.sigma:.3f}; "
+                  f"season drift (as-of) {extras['drift']}")
+        for ev in per_event[:2] if con is None else []:
             print(f"\n--- R{ev['round']} {ev['name']} ({ev['date']:%d %b}) ---")
             cols = ["driver", "team_key", "win_prob", "podium_prob", "top10_prob", "dnf_prob", "exp_points"]
             print(ev["summary"][cols].head(args.top).to_string(index=False, formatters=fmt, float_format="{:.1f}".format))
-        print(f"\n--- {args.year} drivers' championship ---")
-        print(standings[["driver", "current_points", "exp_points", "champion_prob", "top3_prob"]]
-              .head(args.top).to_string(index=False, formatters=fmt, float_format="{:.0f}".format))
-        print(extras["constructors"][["team", "current_points", "exp_points", "champion_prob"]]
-              .head(5).to_string(index=False, formatters=fmt, float_format="{:.0f}".format))
+        if con is None:
+            print(f"\n--- {args.year} drivers' championship ---")
+            print(standings[["driver", "current_points", "exp_points", "champion_prob", "top3_prob"]]
+                  .head(args.top).to_string(index=False, formatters=fmt, float_format="{:.0f}".format))
+            print(extras["constructors"][["team", "current_points", "exp_points", "champion_prob"]]
+                  .head(5).to_string(index=False, formatters=fmt, float_format="{:.0f}".format))
         if args.save:
             params = dict(cutoff=extras["cutoff"], half_life_days=run.M.HALF_LIFE_DAYS, sims=args.sims,
                           track_features=use_track, label=args.scenario,
