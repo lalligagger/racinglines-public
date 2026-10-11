@@ -1,42 +1,11 @@
-# The public /term page (racinglines/web/term_routes.py): the quickstart's commands, recorded and replayed in the
-# browser. The one place the page's commands are written: when the CLI or the quickstart changes, edit `command` and
-# `run` here and re-record with
-#   python scripts/demo/record_term.py --run      # runs each `run`, saves its output as <id>.ansi, renders <id>.html
+# The public /term page (racinglines/web/term_routes.py): the demo pack's quickstart, recorded and replayed in the
+# browser. The commands are not written here: they are the pack's [[quickstart]] list
+# (racinglines/demo/packs/<pack>/pack.toml), the same one docs/quickstart.md is built from. When it or the CLI changes,
+# re-record (drop the demo store first for a true first run) and update `recorded`:
+#   python scripts/demo/record_term.py --run      # snapshots the list to quickstart.json, runs it, saves <id>.ansi/.html
 #   python scripts/demo/record_term.py            # re-renders the saved output only
-# `command` is what the page shows typed at the prompt; `run` is the argv the recorder executes; `recorded` is when,
-# shown on the page.
 #
-# The quickstart runs offline on the bundled synthetic Mario Kart sport (`--demo`; owner, 2026-10-11: start with the
-# no-MCP demo, synthetic is fine). Runs against the hosted server may come later.
+# Offline, synthetic data only (owner, 2026-10-11: start with the no-MCP demo, synthetic is fine).
 
-[[demo]]
-id = "backtest"
-title = "1. Backtest the model on five made-up seasons"
-command = "racinglines model backtest --demo"
-run = ["racinglines", "model", "backtest", "--demo"]
-recorded = "2026-10-11, offline synthetic sport"
-caption = "Builds 20 races of history, fits each driver's pace and sweeps the fit's settings walk-forward: every race priced before its start, scored against an everyone-equal baseline. A synthetic sport can show the hidden truth beside the fit."
-
-[[demo]]
-id = "forecast"
-title = "2. Forecast the next race"
-command = "racinglines model forecast --demo"
-run = ["racinglines", "model", "forecast", "--demo"]
-recorded = "2026-10-11, offline synthetic sport"
-caption = "The chosen setting prices the next race at Rainbow Road from simulated races: win, podium and top-5 probabilities, fair odds and the Monte Carlo error."
-
-[[demo]]
-id = "live"
-title = "3. Run the race live and make a market in it"
-command = "racinglines live run --demo --pdf"
-run = ["racinglines", "live", "run", "--demo", "--pdf"]
-recorded = "2026-10-11, offline synthetic sport"
-caption = "Sector by sector, the model re-prices the rest of the race, Wario's book re-quotes win and podium on every driver, and 100 simulated takers trade against it. This is the final frame: the podium, the book's settled P&L and the event report."
-
-[[demo]]
-id = "book"
-title = "4. Price a sportsbook's lines against the model and the exchanges"
-command = "racinglines book price --demo"
-run = ["racinglines", "book", "price", "--demo"]
-recorded = "2026-10-11, offline synthetic sport"
-caption = "A made-up book on the same grid: 16 lines across 13 F1 market kinds, with the book's price, the model's and the exchanges' side by side and the EV against each. One line uses a name the book file can't map, to show how that is flagged."
+pack = "kart"
+recorded = "2026-10-11, on a fresh demo store"

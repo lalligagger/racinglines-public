@@ -9,21 +9,21 @@
 </header>
 <h1>Quickstart</h1>
 <p class="lede">racinglines is a Python package first: the web app and the hosted MCP server run the same code. These are
-  the quickstart's four commands, run on a made-up Mario Kart sport that ships with the package, recorded and replayed
-  here; nothing runs on this page.</p>
+  the quickstart's commands, run with <code>--demo</code> on a made-up Formula 1 world with a Mario Kart grid that ships
+  with the package, recorded and replayed here; nothing runs on this page.</p>
 {% for d in demos %}
 <section class="term-demo" id="{{ d.id }}">
-  <h2>{{ d.title }}</h2>
-  <p>{{ d.caption }}</p>
+  <h2>{{ loop.index }}. {{ d.title }}</h2>
+  <p>{{ d.about }}</p>
   <div class="term" data-term>
     <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><button type="button" class="term-replay" data-term-replay hidden>Replay</button></div>
     <div class="term-cmd"><span class="term-prompt" aria-hidden="true">$ </span><code data-term-cmd>{{ d.command }}</code></div>
     <div class="term-body" data-term-out>{{ d.html|safe }}</div>
   </div>
-  <p class="hint">Recorded {{ d.recorded }}.</p>
 </section>
 {% else %}
 <p>No recordings yet.</p>
 {% endfor %}
+{% if demos and recorded %}<p class="hint">Recorded {{ recorded }}.</p>{% endif %}
 <p class="hint"><a href="/login#account">Try the web app</a> · <a href="/racinglines101">What is racinglines?</a></p>
 {% endblock %}

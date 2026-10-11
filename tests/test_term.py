@@ -1,8 +1,9 @@
 """The public /term page: recorded CLI runs (racinglines/web/term/demos.toml), and the recorder that renders them."""
 
 import importlib.util
-import tomllib
 from pathlib import Path
+
+import pytest
 
 from racinglines.web import term_routes
 
@@ -22,7 +23,7 @@ def test_term_is_public_and_shows_each_recorded_command():
     from racinglines.web.app import app
     r = TestClient(app).get("/term", follow_redirects=False)
     assert r.status_code == 200
-    for d in tomllib.loads((term_routes.TERM / "demos.toml").read_text()).get("demo", []):
+    for d in term_routes.demos():
         assert d["command"] in r.text and f'id="{d["id"]}"' in r.text
     if not term_routes.demos():
         assert "No recordings yet" in r.text
@@ -37,8 +38,18 @@ def test_every_demo_has_saved_output_and_a_render_that_matches_it():
         assert (term_routes.TERM / f"{d['id']}.html").read_text() == rec.render(d)
 
 
+def test_the_page_replays_the_packs_quickstart_as_written():
+    # one source: the recorded list is the pack manifest's [[quickstart]] (docs/quickstart.md is built from it too)
+    store = pytest.importorskip("racinglines.demo.store")
+    rec = _recorder()
+    pack = rec.config().get("pack", "kart")
+    if store.find(pack) is None:
+        pytest.skip(f"no {pack} demo pack in this checkout")
+    assert rec.demos() == rec.quickstart(pack), "re-record: python scripts/demo/record_term.py --run"
+
+
 def test_a_demo_not_yet_rendered_is_left_out(tmp_path, monkeypatch):
-    (tmp_path / "demos.toml").write_text('[[demo]]\nid = "nope"\ntitle = "t"\ncommand = "c"\n')
+    (tmp_path / "quickstart.json").write_text('[{"id": "nope", "title": "t", "command": "c", "about": ""}]')
     monkeypatch.setattr(term_routes, "TERM", tmp_path)
     assert term_routes.demos() == []
 

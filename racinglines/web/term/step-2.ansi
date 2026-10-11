@@ -1,0 +1,108 @@
+progress 0/1 building history (track features on)
+progress 1/33 2024 R01 mario-circuit
+progress 2/33 2024 R02 moo-moo-meadows
+progress 3/33 2024 R03 koopa-beach
+progress 4/33 2024 R04 luigi-raceway
+progress 5/33 2024 R05 toad-harbor
+progress 6/33 2024 R06 dk-jungle
+progress 7/33 2024 R07 yoshi-valley
+progress 8/33 2024 R08 sherbet-land
+progress 9/33 2024 R09 bowser-s-castle
+progress 10/33 2024 R10 rainbow-road
+progress 11/33 2024 R11 wario-stadium
+progress 12/33 2024 R12 peach-gardens
+progress 13/33 2025 R01 mario-circuit
+progress 14/33 2025 R02 moo-moo-meadows
+progress 15/33 2025 R03 koopa-beach
+progress 16/33 2025 R04 luigi-raceway
+progress 17/33 2025 R05 toad-harbor
+progress 18/33 2025 R06 dk-jungle
+progress 19/33 2025 R07 yoshi-valley
+progress 20/33 2025 R08 sherbet-land
+progress 21/33 2025 R09 bowser-s-castle
+progress 22/33 2025 R10 rainbow-road
+progress 23/33 2025 R11 wario-stadium
+progress 24/33 2025 R12 peach-gardens
+progress 25/33 2026 R01 mario-circuit
+progress 26/33 2026 R02 moo-moo-meadows
+progress 27/33 2026 R03 koopa-beach
+progress 28/33 2026 R04 luigi-raceway
+progress 29/33 2026 R05 toad-harbor
+progress 30/33 2026 R06 dk-jungle
+progress 31/33 2026 R07 yoshi-valley
+progress 32/33 2026 R08 sherbet-land
+progress 33/33 2026 R09 bowser-s-castle
+
+=== Track features ON: mean over 32 races ===
+mode                   pre_quali  pre_race  pre_weekend
+brier_teammate_h2h        0.2409    0.2320       0.2418
+brier_constructor_top     0.0568    0.0561       0.0603
+brier_win                 0.0409    0.0409       0.0411
+logloss_win               0.1344    0.1329       0.1382
+brier_win_uniform         0.0475    0.0475       0.0475
+brier_podium              0.0759    0.0725       0.0808
+logloss_podium            0.2353    0.2274       0.2484
+brier_podium_uniform      0.1275    0.1275       0.1275
+brier_top10               0.1294    0.1220       0.1372
+logloss_top10             0.4195    0.3952       0.4401
+brier_top10_uniform       0.2500    0.2500       0.2500
+brier_win_grid               NaN    0.0437          NaN
+brier_podium_grid            NaN    0.0841          NaN
+brier_top10_grid             NaN    0.1355          NaN
+winner_prob               0.1914    0.2030       0.1745
+spearman                  0.8449    0.8660       0.8153
+progress 0/1 building history (track features off)
+progress 1/33 2024 R01 mario-circuit
+progress 2/33 2024 R02 moo-moo-meadows
+progress 3/33 2024 R03 koopa-beach
+progress 4/33 2024 R04 luigi-raceway
+progress 5/33 2024 R05 toad-harbor
+progress 6/33 2024 R06 dk-jungle
+progress 7/33 2024 R07 yoshi-valley
+progress 8/33 2024 R08 sherbet-land
+progress 9/33 2024 R09 bowser-s-castle
+progress 10/33 2024 R10 rainbow-road
+progress 11/33 2024 R11 wario-stadium
+progress 12/33 2024 R12 peach-gardens
+progress 13/33 2025 R01 mario-circuit
+progress 14/33 2025 R02 moo-moo-meadows
+progress 15/33 2025 R03 koopa-beach
+progress 16/33 2025 R04 luigi-raceway
+progress 17/33 2025 R05 toad-harbor
+progress 18/33 2025 R06 dk-jungle
+progress 19/33 2025 R07 yoshi-valley
+progress 20/33 2025 R08 sherbet-land
+progress 21/33 2025 R09 bowser-s-castle
+progress 22/33 2025 R10 rainbow-road
+progress 23/33 2025 R11 wario-stadium
+progress 24/33 2025 R12 peach-gardens
+progress 25/33 2026 R01 mario-circuit
+progress 26/33 2026 R02 moo-moo-meadows
+progress 27/33 2026 R03 koopa-beach
+progress 28/33 2026 R04 luigi-raceway
+progress 29/33 2026 R05 toad-harbor
+progress 30/33 2026 R06 dk-jungle
+progress 31/33 2026 R07 yoshi-valley
+progress 32/33 2026 R08 sherbet-land
+progress 33/33 2026 R09 bowser-s-castle
+
+=== Track features OFF: mean over 32 races ===
+mode                   pre_quali  pre_race  pre_weekend
+brier_teammate_h2h        0.2408    0.2318       0.2419
+brier_constructor_top     0.0562    0.0557       0.0600
+brier_win                 0.0409    0.0409       0.0410
+logloss_win               0.1344    0.1328       0.1384
+brier_win_uniform         0.0475    0.0475       0.0475
+brier_podium              0.0759    0.0725       0.0823
+logloss_podium            0.2353    0.2275       0.2519
+brier_podium_uniform      0.1275    0.1275       0.1275
+brier_top10               0.1303    0.1221       0.1416
+logloss_top10             0.4222    0.3955       0.4539
+brier_top10_uniform       0.2500    0.2500       0.2500
+brier_win_grid               NaN    0.0437          NaN
+brier_podium_grid            NaN    0.0841          NaN
+brier_top10_grid             NaN    0.1355          NaN
+winner_prob               0.1922    0.2034       0.1752
+spearman                  0.8443    0.8666       0.8046
+
+Per-race rows -> data/demo/kart/runs/f1/backtests/backtest_20261011_1851.csv
