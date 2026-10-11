@@ -755,3 +755,111 @@ def test_shared_store_never_reads_account_rows_by_a_foreign_id(mcp, monkeypatch)
             c.execute(text("DELETE FROM strategy_signals WHERE user_id = :u"), dict(u=uid))
             c.execute(text("DELETE FROM paper_positions WHERE user_id = :u"), dict(u=uid))
             c.execute(text("DELETE FROM users WHERE id = :u"), dict(u=uid))
+
+
+def test_hidden_sports_follow_the_schema_switch_and_spare_admins(monkeypatch):
+    """[sport] public = false (sports.is_public): hidden from non-admin accounts; admins and stdio see every sport."""
+    from racinglines import sports as SC
+    assert T.hidden_sports(None) == frozenset() and T.hidden_sports(dict(role="admin")) == frozenset()
+    assert "motogp" in T.hidden_sports(dict(id=1, username="p", role="pro"))          # the Alpha switch, 2026-10-11
+    monkeypatch.setattr(SC, "is_public", lambda code, user=None: code != "f1")
+    assert "f1" in T.hidden_sports(dict(role="pro")) and T.hidden_sports(dict(role="admin")) == frozenset()
+
+
+def test_list_kinds_leaves_out_a_hidden_sport():
+    token = T.HIDDEN.set(frozenset({"motogp"}))
+    try:
+        with pytest.raises(ValueError, match="motogp is not available"):
+            T.list_kinds(sport="motogp")
+        assert all("motogp" not in r["modeled_for"] for r in T.list_kinds()["rows"]["rows"])
+    finally:
+        T.HIDDEN.reset(token)
+
+
+def test_a_hidden_sport_is_missing_for_pro_and_shown_to_admins(mcp, monkeypatch):
+    """Every tool family, as a pro caller with one hidden sport: lists leave it out, and naming it (sport, competition,
+    event, race, run, token, book, schema) answers 'not available'. An admin reads all of it as before."""
+    from sqlalchemy import text
+    from racinglines.mcp import server as S
+    with mcp.engine.begin() as c:
+        c.execute(text("INSERT INTO sports (code, name, result_kind) VALUES ('hide_t', 'Hidden', 'position') ON CONFLICT DO NOTHING"))
+        c.execute(text("INSERT INTO leagues (code, name) VALUES ('hide_t_lg', 'Hidden league') ON CONFLICT DO NOTHING"))
+        comp = c.execute(text("""INSERT INTO competitions (code, name, league_id, sport_id)
+                                 SELECT 'hide_t_cup', 'Hidden cup', l.id, s.id FROM leagues l, sports s
+                                 WHERE l.code = 'hide_t_lg' AND s.code = 'hide_t' RETURNING id""")).scalar()
+        cat = c.execute(text("INSERT INTO categories (competition_id, code, name) VALUES (:c, 'RDR', 'Riders') RETURNING id"),
+                        dict(c=comp)).scalar()
+        season = c.execute(text("INSERT INTO seasons (competition_id, year) VALUES (:c, 2026) RETURNING id"), dict(c=comp)).scalar()
+        ev = c.execute(text("""INSERT INTO events (season_id, source, source_key, name, start_date)
+                               VALUES (:s, 't', 'hide-1', 'Hidden GP', current_date + 3) RETURNING id"""), dict(s=season)).scalar()
+        race = c.execute(text("INSERT INTO races (event_id, category_id) VALUES (:e, :c) RETURNING id"), dict(e=ev, c=cat)).scalar()
+        run = c.execute(text("""INSERT INTO model_runs (competition_id, model, kind, params, metrics)
+                                VALUES (:c, 'test', 'forecast', '{}', '{}') RETURNING id"""), dict(c=comp)).scalar()
+        c.execute(text("""INSERT INTO market_links (exchange, question, token_id, outcome, competition_id, race_id, prediction)
+                          VALUES ('kalshi', 'q', 'hide-tok', 'Yes', :c, :r, 'race_win')"""), dict(c=comp, r=race))
+        uid = c.execute(text("INSERT INTO users (username, password_hash, role) VALUES ('mcp-pro-hide', 'x', 'pro') RETURNING id")).scalar()
+        c.execute(text("""INSERT INTO paper_positions (user_id, event_key, market_key, kind, subject, yes_shares, cash, outcome, venue)
+                          VALUES (:u, 'hide-1', 'hide-m', 'race_win', 'Rider', 0, 5, NULL, 'kalshi')"""), dict(u=uid))
+    who = dict(id=uid, username="mcp-pro-hide", role="pro")
+    monkeypatch.setattr(S, "caller", lambda: who)
+    monkeypatch.setattr(T, "hidden_sports", lambda v: frozenset({"hide_t", "motogp"})
+                        if v and v.get("role") != "admin" else frozenset())
+    refused = lambda name, **a: (lambda r: r[0] == "error" and "not available" in r[1])(mcp(name, **a))  # noqa: E731
+    try:
+        # events and the orientation
+        assert "hide_t_cup" not in mcp("overview")["sports"]
+        assert refused("list_events", sport="hide_t") and refused("list_events", competition="hide_t_cup")
+        assert ev not in {r["id"] for r in mcp("list_events", limit=500)["rows"]}
+        assert refused("get_event", event_id=ev) and refused("get_event", source_key="hide-1")
+        # markets
+        assert refused("list_markets", race_id=race) and refused("list_markets", event_id=ev)
+        assert refused("list_markets", sport="hide_t") and refused("get_market_history", race_id=race)
+        assert mcp("get_market_history", tokens="hide-tok")["tokens"] == []
+        # model runs and forecasts
+        assert run not in {r["id"] for r in mcp("list_model_runs", limit=500)["rows"]}
+        assert refused("list_model_runs", sport="hide_t") and refused("get_model_run", run_id=run)
+        assert refused("get_predictions", run_id=run) and refused("get_forecast", sport="hide_t")
+        assert "hide_t_cup" not in {f["run"]["competition"] for f in mcp("get_forecast")["forecasts"]}
+        assert refused("get_diagnostic", run_id=run) and refused("replay_maker", run_id=run)
+        # paper trading
+        assert mcp("list_positions", user="mcp-pro-hide")["positions"]["total"] == 0
+        assert refused("track_record", user="mcp-pro-hide", sport="hide_t")
+        # kinds, books and the schema resource
+        assert refused("list_kinds", sport="motogp")
+        book = """[book]
+venue = "book_x"
+event = "2026-17"
+sport = "motogp"
+captured_utc = "2026-10-11T09:00Z"
+source = "paste"
+odds = "decimal"
+currency = "USD"
+
+[[lines]]
+id = "win"
+title = "Race Winner"
+selection = "Ann Alpha"
+odds = 3.0
+market = { kind = "race_win", driver = "Ann Alpha" }
+"""
+        assert refused("map_book", book=book) and refused("price_book", book=book) and refused("settle_book", book=book)
+
+        async def schema(client):
+            try:
+                await client.read_resource("racinglines://sports/motogp")
+            except Exception as ex:  # noqa: BLE001
+                return str(ex)
+        assert "not available" in mcp.run(schema)
+        # an admin reads all of it
+        who["role"] = "admin"
+        assert mcp("overview")["sports"]["hide_t_cup"] == "hide_t"
+        assert mcp("get_event", event_id=ev, include="")["event"]["id"] == ev
+        assert mcp("get_model_run", run_id=run)["run"]["id"] == run
+        assert mcp("list_positions", user="mcp-pro-hide")["positions"]["total"] == 1
+        assert mcp("list_kinds", sport="motogp")["sport"] == "motogp"
+    finally:
+        with mcp.engine.begin() as c:
+            c.execute(text("DELETE FROM market_links WHERE token_id = 'hide-tok'"))
+            c.execute(text("DELETE FROM paper_positions WHERE user_id = :u"), dict(u=uid))
+            c.execute(text("DELETE FROM users WHERE id = :u"), dict(u=uid))
+            c.execute(text("DELETE FROM model_runs WHERE id = :r"), dict(r=run))
