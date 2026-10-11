@@ -33,6 +33,7 @@ price only:
 """
 
 import argparse
+import importlib.util
 import json
 import os
 import sys
@@ -221,9 +222,12 @@ def main(argv=None):
         out = demo(args.cmd)
         if args.json:
             print(json.dumps(out, indent=2, default=str))
-        else:
+        elif importlib.util.find_spec("rich"):
             from racinglines.cli import rich_view
             rich_view.render(args.cmd, out)
+        else:                                              # the demo still works before `pip install -r requirements.txt`
+            print("(plain text: pip install rich for the coloured tables)", file=sys.stderr)
+            _print(args.cmd, out)
         return 0
     if not args.file:
         print(f"book {args.cmd}: a book FILE is needed (or --demo for the bundled sample)", file=sys.stderr)
