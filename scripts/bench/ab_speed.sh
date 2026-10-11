@@ -78,7 +78,7 @@ if [ "${WASM:-0}" = 1 ]; then
     (cd "$K" && cargo build -q --release && ./target/release/replay_kernel "$TMP/in.json" "$TMP/native.json" 5)
     "$PY" scripts/bench/replay_dump.py --runs "$RUNS" --check "$TMP/native.json"
     log "WebAssembly (wasm32-wasip1 under node)"
-    (cd "$K" && cargo build -q --release --target wasm32-wasip1 && node run_wasi.mjs "$TMP" in.json wasm.json 5)
+    (cd "$K" && cargo build -q --release --target wasm32-wasip1 && node --no-warnings run_wasi.mjs "$TMP" in.json wasm.json 5)
     cmp -s "$TMP/native.json" "$TMP/wasm.json" && log "wasm output identical to native" \
         || { log "wasm output differs from native"; exit 1; }
 fi

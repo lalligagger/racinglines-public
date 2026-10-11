@@ -6,8 +6,34 @@ from dataclasses import replace
 import numpy as np
 import pandas as pd
 
-from racinglines.markets.strategies.maker_replay import (Params, PublicView, _after_queue, _cap, _join_queue,
-                                                         _positions, _score_fills, _used, venue_fee)
+from racinglines.markets.strategies.maker_replay import (Params, PublicView, _after_queue, _join_queue, _positions,
+                                                         _score_fills, venue_fee)
+
+
+def _worst_case(cash, inv):
+    """Worst-case P&L of one market's position: YES resolves 0 or 1."""
+    return min(cash, cash + inv)
+
+
+def _used(cash, inv):
+    return -sum(min(0.0, _worst_case(cash[c], inv[c])) for c in cash)
+
+
+def _cap(q, sgn, price, cash, inv, cond, p):
+    """Largest fill <= q that keeps the event's worst-case loss within max_capital
+    (a fill that reduces risk is never cut)."""
+    def used_after(x):
+        c, i = dict(cash), dict(inv)
+        c[cond] -= sgn * x * price
+        i[cond] += sgn * x
+        return _used(c, i)
+    if q <= 0 or used_after(q) <= p.max_capital + 1e-9 or used_after(q) <= _used(cash, inv):
+        return max(q, 0.0)
+    lo, hi = 0.0, q
+    for _ in range(30):
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if used_after(mid) <= p.max_capital else (lo, mid)
+    return lo
 
 
 def quote(fair, view: PublicView, inv, p: Params, capital_used=0.0):

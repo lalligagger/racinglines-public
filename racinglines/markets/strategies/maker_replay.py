@@ -193,12 +193,14 @@ def _used(cash, inv):
 def _cap(q, sgn, price, cash, inv, cond, p):
     """Largest fill <= q that keeps the event's worst-case loss within max_capital
     (a fill that reduces risk is never cut)."""
-    def used_after(x):
-        c, i = dict(cash), dict(inv)
-        c[cond] -= sgn * x * price
-        i[cond] += sgn * x
-        return _used(c, i)
-    if q <= 0 or used_after(q) <= p.max_capital + 1e-9 or used_after(q) <= _used(cash, inv):
+    terms = [min(0.0, _worst_case(cash[c], inv[c])) for c in cash]     # _used's terms, in its order
+    k = list(cash).index(cond)
+
+    def used_after(x):             # _used after the fill: only this market's term changes, the sum keeps its order
+        terms[k] = min(0.0, _worst_case(cash[cond] - sgn * x * price, inv[cond] + sgn * x))
+        return -sum(terms)
+    before = -sum(terms)
+    if q <= 0 or used_after(q) <= p.max_capital + 1e-9 or used_after(q) <= before:
         return max(q, 0.0)
     lo, hi = 0.0, q
     for _ in range(30):
@@ -289,12 +291,14 @@ def replay(data, p: Params = Params()):
     queue = {}                     # fill="queue": (cond, side) -> [price, size ahead of us]
     booked = [0, 0]                # fill="queue": quoted sides with a usable book, all quoted sides
     touch, use_queue = p.fill in ("touch", "queue"), p.fill == "queue"
+    used, filled = 0.0, True       # _used(cash, inv), recomputed only after cash or inventory changed
     for st in data["stages"]:
         t, end = st["start"], st["end"] - (pull if st.get("session_end", True) else 0)
         run_id = st["run_id"]
         while t < end:
             t_next = min(t + step, end)
-            used = _used(cash, inv)
+            if filled:
+                used, filled = _used(cash, inv), False
             pt = p
             if p.info_skew and st.get("session_end", True):     # skew harder as the next session approaches
                 pt = replace(p, skew=p.skew * (1 + p.info_skew * np.exp(-(st["end"] - t) / (p.info_tau_h * 3600e9))))
@@ -330,6 +334,7 @@ def replay(data, p: Params = Params()):
                         q = _cap(min(sz, left_bid, p.max_pos - inv[mk.cond]), +1, bid, cash, inv, mk.cond, p)
                         if q > 0:
                             left_bid -= q
+                            filled = True
                             inv[mk.cond] += q
                             cash[mk.cond] -= q * bid
                             if p.maker_fee:
@@ -339,6 +344,7 @@ def replay(data, p: Params = Params()):
                         q = _cap(min(sz, left_ask, p.max_pos + inv[mk.cond]), -1, ask, cash, inv, mk.cond, p)
                         if q > 0:
                             left_ask -= q
+                            filled = True
                             inv[mk.cond] -= q
                             cash[mk.cond] += q * ask
                             if p.maker_fee:
@@ -353,6 +359,7 @@ def replay(data, p: Params = Params()):
                 px = min(mid + p.taker_cost, 1.0) if q < 0 else max(mid - p.taker_cost, 0.0)
                 cash[mk.cond] += q * px
                 inv[mk.cond] = 0.0
+                filled = True
                 fills.append((int(end), mk.cond, run_id, "sell" if q > 0 else "buy", px, abs(q),
                               mk.fairs.get(run_id)))
     fills = pd.DataFrame(fills, columns=["ts", "cond", "run_id", "side", "price", "qty", "fair"])
