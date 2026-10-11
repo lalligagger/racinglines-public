@@ -1,37 +1,31 @@
 [
   {
     "id": "step-1",
-    "title": "Build and look at the demo store",
+    "title": "\ud83c\udf44 Build and look at the demo store",
     "command": "racinglines db stats --demo",
     "about": "The first --demo command builds the store (a few minutes, with a progress bar): the database, the synthetic files, the real ingest and the exchange links. Later commands reuse it."
   },
   {
     "id": "step-2",
-    "title": "Backtest the model",
+    "title": "\ud83d\udcca Backtest the model",
     "command": "racinglines model backtest f1 --demo",
     "about": "Every past race priced as of before the weekend, before qualifying and before the race, with track features on and off, scored against the results and against uniform and grid baselines."
   },
   {
     "id": "step-3",
-    "title": "Forecast the rest of the season",
+    "title": "\ud83d\udd2e Forecast the rest of the season",
     "command": "racinglines model forecast f1 --demo --save",
     "about": "The next races (Rainbow Road is a sprint weekend) and both championships; --save stores the run the book and the web app read."
   },
   {
     "id": "step-4",
-    "title": "Run a live private book",
+    "title": "\ud83c\udfc1 Run a live private book",
     "command": "racinglines live run f1/demo-2026-09 --demo --simulate --no-fetch",
     "about": "Bowser's Castle (round 9) replayed on a simulated clock: the maker's book opens before practice, reprices after each session from the model's stage runs, 100 simulated takers trade against it, the book closes at lights out and settles from the results."
   },
   {
     "id": "step-5",
-    "title": "The live event's report",
-    "command": "racinglines live report f1/demo-2026-09 --demo --pdf",
-    "about": "Markdown, charts and a PDF in the run folder (data/demo/kart/runs/live/demo-2026-09/report/)."
-  },
-  {
-    "id": "step-6",
-    "title": "Price a sportsbook's lines",
+    "title": "\ud83d\udcb0 Price a sportsbook's lines",
     "command": "racinglines book price --demo",
     "about": "The pack's sportsbook book (a generic sportsbook's lines on rounds 10 and 11) against the model's forecast and the exchanges' quotes: EV against each, side by side."
   }

@@ -1,52 +1,54 @@
 <pre class="term-out">progress 0/1 building history (track features on)
+<span style="font-weight: bold">📊 backtest, track features on</span>
 progress 10/33 2024 R10 rainbow-road
 progress 20/33 2025 R08 sherbet-land
 progress 30/33 2026 R06 dk-jungle
 progress 33/33 2026 R09 bowser-s-castle
-
-=== Track features ON: mean over 32 races ===
-mode                   pre_quali  pre_race  pre_weekend
-brier_teammate_h2h        0.2409    0.2320       0.2418
-brier_constructor_top     0.0568    0.0561       0.0603
-brier_win                 0.0409    0.0409       0.0411
-logloss_win               0.1344    0.1329       0.1382
-brier_win_uniform         0.0475    0.0475       0.0475
-brier_podium              0.0759    0.0725       0.0808
-logloss_podium            0.2353    0.2274       0.2484
-brier_podium_uniform      0.1275    0.1275       0.1275
-brier_top10               0.1294    0.1220       0.1372
-logloss_top10             0.4195    0.3952       0.4401
-brier_top10_uniform       0.2500    0.2500       0.2500
-brier_win_grid               NaN    0.0437          NaN
-brier_podium_grid            NaN    0.0841          NaN
-brier_top10_grid             NaN    0.1355          NaN
-winner_prob               0.1914    0.2030       0.1745
-spearman                  0.8449    0.8660       0.8153
+<span style="font-style: italic">📊 </span><span style="font-weight: bold; font-style: italic">Track features ON: mean over 32 races</span><span style="font-style: italic">                                               </span>
+╭────────┬─────────────┬─────────────┬─────────┬────────┬──────────────────┬──────────╮
+│<span style="font-weight: bold"> market </span>│<span style="font-weight: bold"> stage       </span>│<span style="font-weight: bold"> model Brier </span>│<span style="font-weight: bold"> uniform </span>│<span style="font-weight: bold">   grid </span>│<span style="font-weight: bold"> skill vs uniform </span>│<span style="font-weight: bold"> log loss </span>│
+├────────┼─────────────┼─────────────┼─────────┼────────┼──────────────────┼──────────┤
+│ win    │<span style="color: #727272; text-decoration-color: #727272"> pre weekend </span>│      <span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">0.0411</span> │  0.0475 │      <span style="color: #727272; text-decoration-color: #727272">–</span> │  <span style="color: #98e024; text-decoration-color: #98e024">█▎         +14%</span> │   0.1382 │
+│        │<span style="color: #727272; text-decoration-color: #727272"> pre quali   </span>│      <span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">0.0409</span> │  0.0475 │      <span style="color: #727272; text-decoration-color: #727272">–</span> │  <span style="color: #98e024; text-decoration-color: #98e024">█▍         +14%</span> │   0.1344 │
+│        │<span style="color: #727272; text-decoration-color: #727272"> pre race    </span>│      <span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">0.0409</span> │  0.0475 │ <span style="color: #98e024; text-decoration-color: #98e024">0.0437</span> │  <span style="color: #98e024; text-decoration-color: #98e024">█▍         +14%</span> │   0.1329 │
+├────────┼─────────────┼─────────────┼─────────┼────────┼──────────────────┼──────────┤
+│ podium │<span style="color: #727272; text-decoration-color: #727272"> pre weekend </span>│      <span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">0.0808</span> │  0.1275 │      <span style="color: #727272; text-decoration-color: #727272">–</span> │  <span style="color: #98e024; text-decoration-color: #98e024">███▋       +37%</span> │   0.2484 │
+│        │<span style="color: #727272; text-decoration-color: #727272"> pre quali   </span>│      <span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">0.0759</span> │  0.1275 │      <span style="color: #727272; text-decoration-color: #727272">–</span> │  <span style="color: #98e024; text-decoration-color: #98e024">████       +40%</span> │   0.2353 │
+│        │<span style="color: #727272; text-decoration-color: #727272"> pre race    </span>│      <span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">0.0725</span> │  0.1275 │ <span style="color: #98e024; text-decoration-color: #98e024">0.0841</span> │  <span style="color: #98e024; text-decoration-color: #98e024">████▎      +43%</span> │   0.2274 │
+├────────┼─────────────┼─────────────┼─────────┼────────┼──────────────────┼──────────┤
+│ top10  │<span style="color: #727272; text-decoration-color: #727272"> pre weekend </span>│      <span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">0.1372</span> │  0.2500 │      <span style="color: #727272; text-decoration-color: #727272">–</span> │  <span style="color: #98e024; text-decoration-color: #98e024">████▌      +45%</span> │   0.4401 │
+│        │<span style="color: #727272; text-decoration-color: #727272"> pre quali   </span>│      <span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">0.1294</span> │  0.2500 │      <span style="color: #727272; text-decoration-color: #727272">–</span> │  <span style="color: #98e024; text-decoration-color: #98e024">████▊      +48%</span> │   0.4195 │
+│        │<span style="color: #727272; text-decoration-color: #727272"> pre race    </span>│      <span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">0.1220</span> │  0.2500 │ <span style="color: #98e024; text-decoration-color: #98e024">0.1355</span> │  <span style="color: #98e024; text-decoration-color: #98e024">█████      +51%</span> │   0.3952 │
+╰────────┴─────────────┴─────────────┴─────────┴────────┴──────────────────┴──────────╯
+🏁 favourite won <span style="font-weight: bold">22%</span> of 32 races · rank correlation <span style="font-weight: bold">0.87</span> · mean winner probability <span style="font-weight: bold">20.3%</span>
+   <span style="color: #98e024; text-decoration-color: #98e024">best call</span>  2024 R09 Bowser S Castle: Peach won at <span style="font-weight: bold">40.8%</span>
+   <span style="color: #fd971f; text-decoration-color: #fd971f">upset</span>      2025 R08 Sherbet Land: Donkey Kong won at <span style="font-weight: bold">3.0%</span> (favourite Peach)
 progress 0/1 building history (track features off)
+<span style="font-weight: bold">📊 backtest, track features off</span>
 progress 10/33 2024 R10 rainbow-road
 progress 20/33 2025 R08 sherbet-land
 progress 30/33 2026 R06 dk-jungle
 progress 33/33 2026 R09 bowser-s-castle
+<span style="font-style: italic">📊 </span><span style="font-weight: bold; font-style: italic">Track features OFF: mean over 32 races</span><span style="font-style: italic">                                              </span>
+╭────────┬─────────────┬─────────────┬─────────┬────────┬──────────────────┬──────────╮
+│<span style="font-weight: bold"> market </span>│<span style="font-weight: bold"> stage       </span>│<span style="font-weight: bold"> model Brier </span>│<span style="font-weight: bold"> uniform </span>│<span style="font-weight: bold">   grid </span>│<span style="font-weight: bold"> skill vs uniform </span>│<span style="font-weight: bold"> log loss </span>│
+├────────┼─────────────┼─────────────┼─────────┼────────┼──────────────────┼──────────┤
+│ win    │<span style="color: #727272; text-decoration-color: #727272"> pre weekend </span>│      <span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">0.0410</span> │  0.0475 │      <span style="color: #727272; text-decoration-color: #727272">–</span> │  <span style="color: #98e024; text-decoration-color: #98e024">█▍         +14%</span> │   0.1384 │
+│        │<span style="color: #727272; text-decoration-color: #727272"> pre quali   </span>│      <span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">0.0409</span> │  0.0475 │      <span style="color: #727272; text-decoration-color: #727272">–</span> │  <span style="color: #98e024; text-decoration-color: #98e024">█▍         +14%</span> │   0.1344 │
+│        │<span style="color: #727272; text-decoration-color: #727272"> pre race    </span>│      <span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">0.0409</span> │  0.0475 │ <span style="color: #98e024; text-decoration-color: #98e024">0.0437</span> │  <span style="color: #98e024; text-decoration-color: #98e024">█▍         +14%</span> │   0.1328 │
+├────────┼─────────────┼─────────────┼─────────┼────────┼──────────────────┼──────────┤
+│ podium │<span style="color: #727272; text-decoration-color: #727272"> pre weekend </span>│      <span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">0.0823</span> │  0.1275 │      <span style="color: #727272; text-decoration-color: #727272">–</span> │  <span style="color: #98e024; text-decoration-color: #98e024">███▌       +35%</span> │   0.2519 │
+│        │<span style="color: #727272; text-decoration-color: #727272"> pre quali   </span>│      <span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">0.0759</span> │  0.1275 │      <span style="color: #727272; text-decoration-color: #727272">–</span> │  <span style="color: #98e024; text-decoration-color: #98e024">████       +40%</span> │   0.2353 │
+│        │<span style="color: #727272; text-decoration-color: #727272"> pre race    </span>│      <span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">0.0725</span> │  0.1275 │ <span style="color: #98e024; text-decoration-color: #98e024">0.0841</span> │  <span style="color: #98e024; text-decoration-color: #98e024">████▎      +43%</span> │   0.2275 │
+├────────┼─────────────┼─────────────┼─────────┼────────┼──────────────────┼──────────┤
+│ top10  │<span style="color: #727272; text-decoration-color: #727272"> pre weekend </span>│      <span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">0.1416</span> │  0.2500 │      <span style="color: #727272; text-decoration-color: #727272">–</span> │  <span style="color: #98e024; text-decoration-color: #98e024">████▎      +43%</span> │   0.4539 │
+│        │<span style="color: #727272; text-decoration-color: #727272"> pre quali   </span>│      <span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">0.1303</span> │  0.2500 │      <span style="color: #727272; text-decoration-color: #727272">–</span> │  <span style="color: #98e024; text-decoration-color: #98e024">████▊      +48%</span> │   0.4222 │
+│        │<span style="color: #727272; text-decoration-color: #727272"> pre race    </span>│      <span style="color: #98e024; text-decoration-color: #98e024; font-weight: bold">0.1221</span> │  0.2500 │ <span style="color: #98e024; text-decoration-color: #98e024">0.1355</span> │  <span style="color: #98e024; text-decoration-color: #98e024">█████      +51%</span> │   0.3955 │
+╰────────┴─────────────┴─────────────┴─────────┴────────┴──────────────────┴──────────╯
+🏁 favourite won <span style="font-weight: bold">22%</span> of 32 races · rank correlation <span style="font-weight: bold">0.87</span> · mean winner probability <span style="font-weight: bold">20.3%</span>
+   <span style="color: #98e024; text-decoration-color: #98e024">best call</span>  2024 R09 Bowser S Castle: Peach won at <span style="font-weight: bold">40.9%</span>
+   <span style="color: #fd971f; text-decoration-color: #fd971f">upset</span>      2025 R08 Sherbet Land: Donkey Kong won at <span style="font-weight: bold">3.0%</span> (favourite Peach)
 
-=== Track features OFF: mean over 32 races ===
-mode                   pre_quali  pre_race  pre_weekend
-brier_teammate_h2h        0.2408    0.2318       0.2419
-brier_constructor_top     0.0562    0.0557       0.0600
-brier_win                 0.0409    0.0409       0.0410
-logloss_win               0.1344    0.1328       0.1384
-brier_win_uniform         0.0475    0.0475       0.0475
-brier_podium              0.0759    0.0725       0.0823
-logloss_podium            0.2353    0.2275       0.2519
-brier_podium_uniform      0.1275    0.1275       0.1275
-brier_top10               0.1303    0.1221       0.1416
-logloss_top10             0.4222    0.3955       0.4539
-brier_top10_uniform       0.2500    0.2500       0.2500
-brier_win_grid               NaN    0.0437          NaN
-brier_podium_grid            NaN    0.0841          NaN
-brier_top10_grid             NaN    0.1355          NaN
-winner_prob               0.1922    0.2034       0.1752
-spearman                  0.8443    0.8666       0.8046
-
-Per-race rows -&gt; data/demo/kart/runs/f1/backtests/backtest_20261011_1903.csv
+Per-race rows -&gt; data/demo/kart/runs/f1/backtests/backtest_20261011_2146.csv
 
 </pre>

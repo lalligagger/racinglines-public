@@ -1,50 +1,52 @@
 progress 0/1 building history (track features on)
+[1m📊 backtest, track features on[0m
 progress 10/33 2024 R10 rainbow-road
 progress 20/33 2025 R08 sherbet-land
 progress 30/33 2026 R06 dk-jungle
 progress 33/33 2026 R09 bowser-s-castle
-
-=== Track features ON: mean over 32 races ===
-mode                   pre_quali  pre_race  pre_weekend
-brier_teammate_h2h        0.2409    0.2320       0.2418
-brier_constructor_top     0.0568    0.0561       0.0603
-brier_win                 0.0409    0.0409       0.0411
-logloss_win               0.1344    0.1329       0.1382
-brier_win_uniform         0.0475    0.0475       0.0475
-brier_podium              0.0759    0.0725       0.0808
-logloss_podium            0.2353    0.2274       0.2484
-brier_podium_uniform      0.1275    0.1275       0.1275
-brier_top10               0.1294    0.1220       0.1372
-logloss_top10             0.4195    0.3952       0.4401
-brier_top10_uniform       0.2500    0.2500       0.2500
-brier_win_grid               NaN    0.0437          NaN
-brier_podium_grid            NaN    0.0841          NaN
-brier_top10_grid             NaN    0.1355          NaN
-winner_prob               0.1914    0.2030       0.1745
-spearman                  0.8449    0.8660       0.8153
+[3m📊 [0m[1;3mTrack features ON: mean over 32 races[0m[3m                                               [0m
+╭────────┬─────────────┬─────────────┬─────────┬────────┬──────────────────┬──────────╮
+│[1m [0m[1mmarket[0m[1m [0m│[1m [0m[1mstage      [0m[1m [0m│[1m [0m[1mmodel Brier[0m[1m [0m│[1m [0m[1muniform[0m[1m [0m│[1m [0m[1m  grid[0m[1m [0m│[1m [0m[1mskill vs uniform[0m[1m [0m│[1m [0m[1mlog loss[0m[1m [0m│
+├────────┼─────────────┼─────────────┼─────────┼────────┼──────────────────┼──────────┤
+│ win    │[2m [0m[2mpre weekend[0m[2m [0m│      [1;32m0.0411[0m │  0.0475 │      [2m–[0m │  [32m█▎         +14%[0m │   0.1382 │
+│        │[2m [0m[2mpre quali  [0m[2m [0m│      [1;32m0.0409[0m │  0.0475 │      [2m–[0m │  [32m█▍         +14%[0m │   0.1344 │
+│        │[2m [0m[2mpre race   [0m[2m [0m│      [1;32m0.0409[0m │  0.0475 │ [32m0.0437[0m │  [32m█▍         +14%[0m │   0.1329 │
+├────────┼─────────────┼─────────────┼─────────┼────────┼──────────────────┼──────────┤
+│ podium │[2m [0m[2mpre weekend[0m[2m [0m│      [1;32m0.0808[0m │  0.1275 │      [2m–[0m │  [32m███▋       +37%[0m │   0.2484 │
+│        │[2m [0m[2mpre quali  [0m[2m [0m│      [1;32m0.0759[0m │  0.1275 │      [2m–[0m │  [32m████       +40%[0m │   0.2353 │
+│        │[2m [0m[2mpre race   [0m[2m [0m│      [1;32m0.0725[0m │  0.1275 │ [32m0.0841[0m │  [32m████▎      +43%[0m │   0.2274 │
+├────────┼─────────────┼─────────────┼─────────┼────────┼──────────────────┼──────────┤
+│ top10  │[2m [0m[2mpre weekend[0m[2m [0m│      [1;32m0.1372[0m │  0.2500 │      [2m–[0m │  [32m████▌      +45%[0m │   0.4401 │
+│        │[2m [0m[2mpre quali  [0m[2m [0m│      [1;32m0.1294[0m │  0.2500 │      [2m–[0m │  [32m████▊      +48%[0m │   0.4195 │
+│        │[2m [0m[2mpre race   [0m[2m [0m│      [1;32m0.1220[0m │  0.2500 │ [32m0.1355[0m │  [32m█████      +51%[0m │   0.3952 │
+╰────────┴─────────────┴─────────────┴─────────┴────────┴──────────────────┴──────────╯
+🏁 favourite won [1m22%[0m of 32 races · rank correlation [1m0.87[0m · mean winner probability [1m20.3%[0m
+   [32mbest call[0m  2024 R09 Bowser S Castle: Peach won at [1m40.8%[0m
+   [33mupset[0m      2025 R08 Sherbet Land: Donkey Kong won at [1m3.0%[0m (favourite Peach)
 progress 0/1 building history (track features off)
+[1m📊 backtest, track features off[0m
 progress 10/33 2024 R10 rainbow-road
 progress 20/33 2025 R08 sherbet-land
 progress 30/33 2026 R06 dk-jungle
 progress 33/33 2026 R09 bowser-s-castle
+[3m📊 [0m[1;3mTrack features OFF: mean over 32 races[0m[3m                                              [0m
+╭────────┬─────────────┬─────────────┬─────────┬────────┬──────────────────┬──────────╮
+│[1m [0m[1mmarket[0m[1m [0m│[1m [0m[1mstage      [0m[1m [0m│[1m [0m[1mmodel Brier[0m[1m [0m│[1m [0m[1muniform[0m[1m [0m│[1m [0m[1m  grid[0m[1m [0m│[1m [0m[1mskill vs uniform[0m[1m [0m│[1m [0m[1mlog loss[0m[1m [0m│
+├────────┼─────────────┼─────────────┼─────────┼────────┼──────────────────┼──────────┤
+│ win    │[2m [0m[2mpre weekend[0m[2m [0m│      [1;32m0.0410[0m │  0.0475 │      [2m–[0m │  [32m█▍         +14%[0m │   0.1384 │
+│        │[2m [0m[2mpre quali  [0m[2m [0m│      [1;32m0.0409[0m │  0.0475 │      [2m–[0m │  [32m█▍         +14%[0m │   0.1344 │
+│        │[2m [0m[2mpre race   [0m[2m [0m│      [1;32m0.0409[0m │  0.0475 │ [32m0.0437[0m │  [32m█▍         +14%[0m │   0.1328 │
+├────────┼─────────────┼─────────────┼─────────┼────────┼──────────────────┼──────────┤
+│ podium │[2m [0m[2mpre weekend[0m[2m [0m│      [1;32m0.0823[0m │  0.1275 │      [2m–[0m │  [32m███▌       +35%[0m │   0.2519 │
+│        │[2m [0m[2mpre quali  [0m[2m [0m│      [1;32m0.0759[0m │  0.1275 │      [2m–[0m │  [32m████       +40%[0m │   0.2353 │
+│        │[2m [0m[2mpre race   [0m[2m [0m│      [1;32m0.0725[0m │  0.1275 │ [32m0.0841[0m │  [32m████▎      +43%[0m │   0.2275 │
+├────────┼─────────────┼─────────────┼─────────┼────────┼──────────────────┼──────────┤
+│ top10  │[2m [0m[2mpre weekend[0m[2m [0m│      [1;32m0.1416[0m │  0.2500 │      [2m–[0m │  [32m████▎      +43%[0m │   0.4539 │
+│        │[2m [0m[2mpre quali  [0m[2m [0m│      [1;32m0.1303[0m │  0.2500 │      [2m–[0m │  [32m████▊      +48%[0m │   0.4222 │
+│        │[2m [0m[2mpre race   [0m[2m [0m│      [1;32m0.1221[0m │  0.2500 │ [32m0.1355[0m │  [32m█████      +51%[0m │   0.3955 │
+╰────────┴─────────────┴─────────────┴─────────┴────────┴──────────────────┴──────────╯
+🏁 favourite won [1m22%[0m of 32 races · rank correlation [1m0.87[0m · mean winner probability [1m20.3%[0m
+   [32mbest call[0m  2024 R09 Bowser S Castle: Peach won at [1m40.9%[0m
+   [33mupset[0m      2025 R08 Sherbet Land: Donkey Kong won at [1m3.0%[0m (favourite Peach)
 
-=== Track features OFF: mean over 32 races ===
-mode                   pre_quali  pre_race  pre_weekend
-brier_teammate_h2h        0.2408    0.2318       0.2419
-brier_constructor_top     0.0562    0.0557       0.0600
-brier_win                 0.0409    0.0409       0.0410
-logloss_win               0.1344    0.1328       0.1384
-brier_win_uniform         0.0475    0.0475       0.0475
-brier_podium              0.0759    0.0725       0.0823
-logloss_podium            0.2353    0.2275       0.2519
-brier_podium_uniform      0.1275    0.1275       0.1275
-brier_top10               0.1303    0.1221       0.1416
-logloss_top10             0.4222    0.3955       0.4539
-brier_top10_uniform       0.2500    0.2500       0.2500
-brier_win_grid               NaN    0.0437          NaN
-brier_podium_grid            NaN    0.0841          NaN
-brier_top10_grid             NaN    0.1355          NaN
-winner_prob               0.1922    0.2034       0.1752
-spearman                  0.8443    0.8666       0.8046
-
-Per-race rows -> data/demo/kart/runs/f1/backtests/backtest_20261011_1903.csv
+Per-race rows -> data/demo/kart/runs/f1/backtests/backtest_20261011_2146.csv

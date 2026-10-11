@@ -1,50 +1,61 @@
-<pre class="term-out">Cutoff 2026-10-11 19:03:41.904873 UTC · latest data used {&#x27;results&#x27;: &#x27;2026-10-04 14:00:00&#x27;, &#x27;race measurements&#x27;: &#x27;2026-10-04 14:00:00&#x27;, &#x27;qualifying sectors&#x27;: &#x27;2026-10-03 14:00:00&#x27;, &#x27;track profiles&#x27;: &#x27;2026-10-04 14:00:00&#x27;, &#x27;practice&#x27;: &#x27;2026-10-03 10:30:00&#x27;}
-Finishing model coef {&#x27;g&#x27;: np.float64(0.375), &#x27;g_ease&#x27;: np.float64(-0.058), &#x27;rp_rel&#x27;: np.float64(0.059), &#x27;rp_ease&#x27;: np.float64(0.031), &#x27;qp_rel&#x27;: np.float64(0.17), &#x27;street_g&#x27;: np.float64(0.0)} sigma 0.143; season drift (as-of) {&#x27;team_sd&#x27;: 0.0, &#x27;driver_sd&#x27;: 0.0}
-
---- R10 Rainbow Road Grand Prix (18 Oct) ---
-     driver team_key win_prob podium_prob top10_prob dnf_prob  exp_points
-      Mario mushroom    25.1%       59.8%      95.9%     3.2%        15.2
-     Bowser    koopa    20.8%       50.9%      85.3%    13.7%        13.2
-      Luigi mushroom    17.6%       48.8%      95.0%     3.2%        13.4
-      Peach    royal    13.1%       41.0%      91.3%     5.8%        11.9
-      Daisy    royal     9.2%       32.5%      90.0%     5.8%        10.5
- Bowser Jr.    koopa     6.9%       26.1%      80.2%    14.3%         8.8
-Donkey Kong     kong     2.6%       12.8%      79.7%     3.2%         6.4
-      Yoshi    yoshi     2.3%       11.6%      76.5%     6.8%         6.0
-      Birdo    yoshi     1.0%        5.7%      64.3%     6.8%         4.1
- Diddy Kong     kong     0.8%        5.8%      67.6%     3.2%         4.2
-
---- R11 Wario Stadium Grand Prix (01 Nov) ---
-     driver team_key win_prob podium_prob top10_prob dnf_prob  exp_points
-      Mario mushroom    29.8%       66.1%      96.6%     2.9%        16.3
-      Luigi mushroom    23.2%       57.5%      95.8%     3.2%        14.9
-     Bowser    koopa    12.9%       39.5%      83.8%    14.1%        11.2
-      Peach    royal    12.5%       40.1%      91.8%     5.7%        11.9
-      Daisy    royal     9.1%       31.3%      90.1%     5.8%        10.4
-Donkey Kong     kong     5.7%       23.6%      89.7%     3.2%         9.0
- Bowser Jr.    koopa     3.0%       15.7%      76.7%    14.1%         6.8
- Diddy Kong     kong     1.9%       11.3%      81.1%     3.6%         6.2
-      Yoshi    yoshi     1.1%        7.6%      73.0%     7.4%         5.0
-      Birdo    yoshi     0.5%        3.7%      60.1%     7.0%         3.3
-
---- 2026 drivers&#x27; championship ---
-     driver  current_points  exp_points champion_prob top3_prob
-      Luigi             198         246         98.5%    100.0%
-      Mario             152         205          1.5%    100.0%
-      Peach             131         171          0.0%     96.6%
-     Bowser              92         133          0.0%      3.3%
-      Daisy              77         112          0.0%      0.0%
-Donkey Kong              79         104          0.0%      0.0%
- Bowser Jr.              75         102          0.0%      0.0%
-      Birdo              44          56          0.0%      0.0%
-      Yoshi              35          54          0.0%      0.0%
- Diddy Kong              35          52          0.0%      0.0%
-              team  current_points  exp_points champion_prob
-   Mushroom Racing             350         451        100.0%
-      Royal Racing             208         283          0.0%
-  Koopa Kart Works             167         235          0.0%
-Kong Jungle Racing             114         156          0.0%
-   Yoshi Island GP              79         110          0.0%
+<pre class="term-out">🔮 <span style="font-weight: bold">forecast 2026</span> · cutoff <span style="color: #58d1eb; text-decoration-color: #58d1eb">2026-10-11 21:46 UTC</span> · latest results <span style="color: #58d1eb; text-decoration-color: #58d1eb">2026-10-04 14:00</span>
+<span style="font-style: italic">🏁 </span><span style="font-weight: bold; font-style: italic">R10 Rainbow Road Grand Prix</span><span style="font-style: italic"> </span><span style="color: #727272; text-decoration-color: #727272; font-style: italic">(18 Oct)</span><span style="font-style: italic">                                                                 </span>
+╭─────────────┬──────────┬───────┬────────────────┬────────┬────────────────┬────────┬───────┬─────────╮
+│<span style="font-weight: bold"> driver      </span>│<span style="font-weight: bold"> team     </span>│<span style="font-weight: bold">   win </span>│<span style="font-weight: bold">                </span>│<span style="font-weight: bold"> podium </span>│<span style="font-weight: bold">                </span>│<span style="font-weight: bold"> top 10 </span>│<span style="font-weight: bold">   DNF </span>│<span style="font-weight: bold"> exp pts </span>│
+├─────────────┼──────────┼───────┼────────────────┼────────┼────────────────┼────────┼───────┼─────────┤
+│ <span style="font-weight: bold">Mario</span>       │<span style="color: #727272; text-decoration-color: #727272"> mushroom </span>│ 25.1% │<span style="color: #98e024; text-decoration-color: #98e024"> ███▌           </span>│  59.8% │<span style="color: #58d1eb; text-decoration-color: #58d1eb"> ████████▎      </span>│<span style="color: #727272; text-decoration-color: #727272">  95.9% </span>│<span style="color: #727272; text-decoration-color: #727272">  3.2% </span>│    15.2 │
+│ Bowser      │<span style="color: #727272; text-decoration-color: #727272"> koopa    </span>│ 20.8% │<span style="color: #98e024; text-decoration-color: #98e024"> ██▉            </span>│  50.9% │<span style="color: #58d1eb; text-decoration-color: #58d1eb"> ███████▏       </span>│<span style="color: #727272; text-decoration-color: #727272">  85.3% </span>│<span style="color: #727272; text-decoration-color: #727272"> 13.7% </span>│    13.2 │
+│ Luigi       │<span style="color: #727272; text-decoration-color: #727272"> mushroom </span>│ 17.6% │<span style="color: #98e024; text-decoration-color: #98e024"> ██▍            </span>│  48.8% │<span style="color: #58d1eb; text-decoration-color: #58d1eb"> ██████▊        </span>│<span style="color: #727272; text-decoration-color: #727272">  95.0% </span>│<span style="color: #727272; text-decoration-color: #727272">  3.2% </span>│    13.4 │
+│ Peach       │<span style="color: #727272; text-decoration-color: #727272"> royal    </span>│ 13.1% │<span style="color: #98e024; text-decoration-color: #98e024"> █▊             </span>│  41.0% │<span style="color: #58d1eb; text-decoration-color: #58d1eb"> █████▋         </span>│<span style="color: #727272; text-decoration-color: #727272">  91.3% </span>│<span style="color: #727272; text-decoration-color: #727272">  5.8% </span>│    11.9 │
+│ Daisy       │<span style="color: #727272; text-decoration-color: #727272"> royal    </span>│  9.2% │<span style="color: #98e024; text-decoration-color: #98e024"> █▎             </span>│  32.5% │<span style="color: #58d1eb; text-decoration-color: #58d1eb"> ████▌          </span>│<span style="color: #727272; text-decoration-color: #727272">  90.0% </span>│<span style="color: #727272; text-decoration-color: #727272">  5.8% </span>│    10.5 │
+│ Bowser Jr.  │<span style="color: #727272; text-decoration-color: #727272"> koopa    </span>│  6.9% │<span style="color: #98e024; text-decoration-color: #98e024"> ▉              </span>│  26.1% │<span style="color: #58d1eb; text-decoration-color: #58d1eb"> ███▋           </span>│<span style="color: #727272; text-decoration-color: #727272">  80.2% </span>│<span style="color: #727272; text-decoration-color: #727272"> 14.3% </span>│     8.8 │
+│ Donkey Kong │<span style="color: #727272; text-decoration-color: #727272"> kong     </span>│  2.6% │<span style="color: #98e024; text-decoration-color: #98e024"> ▎              </span>│  12.8% │<span style="color: #58d1eb; text-decoration-color: #58d1eb"> █▊             </span>│<span style="color: #727272; text-decoration-color: #727272">  79.7% </span>│<span style="color: #727272; text-decoration-color: #727272">  3.2% </span>│     6.4 │
+│ Yoshi       │<span style="color: #727272; text-decoration-color: #727272"> yoshi    </span>│  2.3% │<span style="color: #98e024; text-decoration-color: #98e024"> ▎              </span>│  11.6% │<span style="color: #58d1eb; text-decoration-color: #58d1eb"> █▌             </span>│<span style="color: #727272; text-decoration-color: #727272">  76.5% </span>│<span style="color: #727272; text-decoration-color: #727272">  6.8% </span>│     6.0 │
+│ Birdo       │<span style="color: #727272; text-decoration-color: #727272"> yoshi    </span>│  1.0% │<span style="color: #98e024; text-decoration-color: #98e024"> ▏              </span>│   5.7% │<span style="color: #58d1eb; text-decoration-color: #58d1eb"> ▊              </span>│<span style="color: #727272; text-decoration-color: #727272">  64.3% </span>│<span style="color: #727272; text-decoration-color: #727272">  6.8% </span>│     4.1 │
+│ Diddy Kong  │<span style="color: #727272; text-decoration-color: #727272"> kong     </span>│  0.8% │<span style="color: #98e024; text-decoration-color: #98e024">                </span>│   5.8% │<span style="color: #58d1eb; text-decoration-color: #58d1eb"> ▊              </span>│<span style="color: #727272; text-decoration-color: #727272">  67.6% </span>│<span style="color: #727272; text-decoration-color: #727272">  3.2% </span>│     4.2 │
+╰─────────────┴──────────┴───────┴────────────────┴────────┴────────────────┴────────┴───────┴─────────╯
+<span style="font-style: italic">🏁 </span><span style="font-weight: bold; font-style: italic">R11 Wario Stadium Grand Prix</span><span style="font-style: italic"> </span><span style="color: #727272; text-decoration-color: #727272; font-style: italic">(01 Nov)</span><span style="font-style: italic">                                                                </span>
+╭─────────────┬──────────┬───────┬────────────────┬────────┬────────────────┬────────┬───────┬─────────╮
+│<span style="font-weight: bold"> driver      </span>│<span style="font-weight: bold"> team     </span>│<span style="font-weight: bold">   win </span>│<span style="font-weight: bold">                </span>│<span style="font-weight: bold"> podium </span>│<span style="font-weight: bold">                </span>│<span style="font-weight: bold"> top 10 </span>│<span style="font-weight: bold">   DNF </span>│<span style="font-weight: bold"> exp pts </span>│
+├─────────────┼──────────┼───────┼────────────────┼────────┼────────────────┼────────┼───────┼─────────┤
+│ <span style="font-weight: bold">Mario</span>       │<span style="color: #727272; text-decoration-color: #727272"> mushroom </span>│ 29.8% │<span style="color: #98e024; text-decoration-color: #98e024"> ████▏          </span>│  66.1% │<span style="color: #58d1eb; text-decoration-color: #58d1eb"> █████████▏     </span>│<span style="color: #727272; text-decoration-color: #727272">  96.6% </span>│<span style="color: #727272; text-decoration-color: #727272">  2.9% </span>│    16.3 │
+│ Luigi       │<span style="color: #727272; text-decoration-color: #727272"> mushroom </span>│ 23.2% │<span style="color: #98e024; text-decoration-color: #98e024"> ███▏           </span>│  57.5% │<span style="color: #58d1eb; text-decoration-color: #58d1eb"> ████████       </span>│<span style="color: #727272; text-decoration-color: #727272">  95.8% </span>│<span style="color: #727272; text-decoration-color: #727272">  3.2% </span>│    14.9 │
+│ Bowser      │<span style="color: #727272; text-decoration-color: #727272"> koopa    </span>│ 12.9% │<span style="color: #98e024; text-decoration-color: #98e024"> █▊             </span>│  39.5% │<span style="color: #58d1eb; text-decoration-color: #58d1eb"> █████▌         </span>│<span style="color: #727272; text-decoration-color: #727272">  83.8% </span>│<span style="color: #727272; text-decoration-color: #727272"> 14.1% </span>│    11.2 │
+│ Peach       │<span style="color: #727272; text-decoration-color: #727272"> royal    </span>│ 12.5% │<span style="color: #98e024; text-decoration-color: #98e024"> █▊             </span>│  40.1% │<span style="color: #58d1eb; text-decoration-color: #58d1eb"> █████▌         </span>│<span style="color: #727272; text-decoration-color: #727272">  91.8% </span>│<span style="color: #727272; text-decoration-color: #727272">  5.7% </span>│    11.9 │
+│ Daisy       │<span style="color: #727272; text-decoration-color: #727272"> royal    </span>│  9.1% │<span style="color: #98e024; text-decoration-color: #98e024"> █▎             </span>│  31.3% │<span style="color: #58d1eb; text-decoration-color: #58d1eb"> ████▍          </span>│<span style="color: #727272; text-decoration-color: #727272">  90.1% </span>│<span style="color: #727272; text-decoration-color: #727272">  5.8% </span>│    10.4 │
+│ Donkey Kong │<span style="color: #727272; text-decoration-color: #727272"> kong     </span>│  5.7% │<span style="color: #98e024; text-decoration-color: #98e024"> ▊              </span>│  23.6% │<span style="color: #58d1eb; text-decoration-color: #58d1eb"> ███▎           </span>│<span style="color: #727272; text-decoration-color: #727272">  89.7% </span>│<span style="color: #727272; text-decoration-color: #727272">  3.2% </span>│     9.0 │
+│ Bowser Jr.  │<span style="color: #727272; text-decoration-color: #727272"> koopa    </span>│  3.0% │<span style="color: #98e024; text-decoration-color: #98e024"> ▍              </span>│  15.7% │<span style="color: #58d1eb; text-decoration-color: #58d1eb"> ██▏            </span>│<span style="color: #727272; text-decoration-color: #727272">  76.7% </span>│<span style="color: #727272; text-decoration-color: #727272"> 14.1% </span>│     6.8 │
+│ Diddy Kong  │<span style="color: #727272; text-decoration-color: #727272"> kong     </span>│  1.9% │<span style="color: #98e024; text-decoration-color: #98e024"> ▎              </span>│  11.3% │<span style="color: #58d1eb; text-decoration-color: #58d1eb"> █▌             </span>│<span style="color: #727272; text-decoration-color: #727272">  81.1% </span>│<span style="color: #727272; text-decoration-color: #727272">  3.6% </span>│     6.2 │
+│ Yoshi       │<span style="color: #727272; text-decoration-color: #727272"> yoshi    </span>│  1.1% │<span style="color: #98e024; text-decoration-color: #98e024"> ▏              </span>│   7.6% │<span style="color: #58d1eb; text-decoration-color: #58d1eb"> █              </span>│<span style="color: #727272; text-decoration-color: #727272">  73.0% </span>│<span style="color: #727272; text-decoration-color: #727272">  7.4% </span>│     5.0 │
+│ Birdo       │<span style="color: #727272; text-decoration-color: #727272"> yoshi    </span>│  0.5% │<span style="color: #98e024; text-decoration-color: #98e024">                </span>│   3.7% │<span style="color: #58d1eb; text-decoration-color: #58d1eb"> ▌              </span>│<span style="color: #727272; text-decoration-color: #727272">  60.1% </span>│<span style="color: #727272; text-decoration-color: #727272">  7.0% </span>│     3.3 │
+╰─────────────┴──────────┴───────┴────────────────┴────────┴────────────────┴────────┴───────┴─────────╯
+<span style="font-style: italic">🏆 </span><span style="font-weight: bold; font-style: italic">2026 drivers&#x27; championship</span><span style="font-style: italic">                                           </span>
+╭─────────────┬────────┬──────────┬──────────┬────────────────┬────────╮
+│<span style="font-weight: bold"> driver      </span>│<span style="font-weight: bold"> points </span>│<span style="font-weight: bold"> expected </span>│<span style="font-weight: bold"> champion </span>│<span style="font-weight: bold">                </span>│<span style="font-weight: bold">  top 3 </span>│
+├─────────────┼────────┼──────────┼──────────┼────────────────┼────────┤
+│ Luigi       │    198 │      246 │    98.5% │ <span style="color: #fd971f; text-decoration-color: #fd971f">█████████████▊</span> │ 100.0% │
+│ Mario       │    152 │      205 │     1.5% │ <span style="color: #fd971f; text-decoration-color: #fd971f">▏             </span> │ 100.0% │
+│ Peach       │    131 │      171 │     0.0% │ <span style="color: #fd971f; text-decoration-color: #fd971f">              </span> │  96.6% │
+│ Bowser      │     92 │      133 │     0.0% │ <span style="color: #fd971f; text-decoration-color: #fd971f">              </span> │   3.3% │
+│ Daisy       │     77 │      112 │     0.0% │ <span style="color: #fd971f; text-decoration-color: #fd971f">              </span> │   0.0% │
+│ Donkey Kong │     79 │      104 │     0.0% │ <span style="color: #fd971f; text-decoration-color: #fd971f">              </span> │   0.0% │
+│ Bowser Jr.  │     75 │      102 │     0.0% │ <span style="color: #fd971f; text-decoration-color: #fd971f">              </span> │   0.0% │
+│ Birdo       │     44 │       56 │     0.0% │ <span style="color: #fd971f; text-decoration-color: #fd971f">              </span> │   0.0% │
+│ Yoshi       │     35 │       54 │     0.0% │ <span style="color: #fd971f; text-decoration-color: #fd971f">              </span> │   0.0% │
+│ Diddy Kong  │     35 │       52 │     0.0% │ <span style="color: #fd971f; text-decoration-color: #fd971f">              </span> │   0.0% │
+╰─────────────┴────────┴──────────┴──────────┴────────────────┴────────╯
+<span style="font-weight: bold; font-style: italic">constructors</span><span style="font-style: italic">                                                          </span>
+                                                                      
+ <span style="font-weight: bold"> team               </span> <span style="font-weight: bold"> points </span> <span style="font-weight: bold"> expected </span> <span style="font-weight: bold"> champion </span> <span style="font-weight: bold">                </span> 
+ ──────────────────────────────────────────────────────────────────── 
+  Mushroom Racing         350        451     100.0%   <span style="color: #fd971f; text-decoration-color: #fd971f">██████████████</span>  
+  Royal Racing            208        283       0.0%   <span style="color: #fd971f; text-decoration-color: #fd971f">              </span>  
+  Koopa Kart Works        167        235       0.0%   <span style="color: #fd971f; text-decoration-color: #fd971f">              </span>  
+  Kong Jungle Racing      114        156       0.0%   <span style="color: #fd971f; text-decoration-color: #fd971f">              </span>  
+  Yoshi Island GP          79        110       0.0%   <span style="color: #fd971f; text-decoration-color: #fd971f">              </span>  
+                                                                      
+<span style="color: #727272; text-decoration-color: #727272">finishing model coef {&#x27;g&#x27;: 0.375, &#x27;g_ease&#x27;: -0.058, &#x27;rp_rel&#x27;: 0.059, &#x27;rp_ease&#x27;: 0.031, &#x27;qp_rel&#x27;: 0.17, &#x27;street_g&#x27;: 0.0} </span>
+<span style="color: #727272; text-decoration-color: #727272">sigma 0.143; season drift (as-of) {&#x27;team_sd&#x27;: 0.0, &#x27;driver_sd&#x27;: 0.0}</span>
 
 Saved forecast run 2.
 
