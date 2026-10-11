@@ -758,12 +758,12 @@ def test_shared_store_never_reads_account_rows_by_a_foreign_id(mcp, monkeypatch)
 
 
 def test_hidden_sports_follow_the_schema_switch_and_spare_admins(monkeypatch):
-    """[sport] public = false (sports.is_public): hidden from non-admin accounts; admins and stdio see every sport."""
+    """[sport] audience = "admin" (web/audience.py): hidden from non-admin accounts; admins and stdio see every sport."""
     from racinglines import sports as SC
     assert T.hidden_sports(None) == frozenset() and T.hidden_sports(dict(role="admin")) == frozenset()
     assert "motogp" in T.hidden_sports(dict(id=1, username="p", role="pro"))          # the Alpha switch, 2026-10-11
-    monkeypatch.setattr(SC, "is_public", lambda code, user=None: code != "f1")
-    assert "f1" in T.hidden_sports(dict(role="pro")) and T.hidden_sports(dict(role="admin")) == frozenset()
+    monkeypatch.setattr(SC, "admin_only", lambda: frozenset({"f1"}))
+    assert T.hidden_sports(dict(role="pro")) == {"f1"} and T.hidden_sports(dict(role="admin")) == frozenset()
 
 
 def test_list_kinds_leaves_out_a_hidden_sport():
@@ -795,6 +795,9 @@ def test_a_hidden_sport_is_missing_for_pro_and_shown_to_admins(mcp, monkeypatch)
         race = c.execute(text("INSERT INTO races (event_id, category_id) VALUES (:e, :c) RETURNING id"), dict(e=ev, c=cat)).scalar()
         run = c.execute(text("""INSERT INTO model_runs (competition_id, model, kind, params, metrics)
                                 VALUES (:c, 'test', 'forecast', '{}', '{}') RETURNING id"""), dict(c=comp)).scalar()
+        c_athlete = c.execute(text("INSERT INTO athletes (display_name) VALUES ('Hidden Rider') RETURNING id")).scalar()
+        c.execute(text("""INSERT INTO race_predictions (model_run_id, race_id, athlete_id, target, win_prob)
+                          VALUES (:m, :r, :a, 'race', 0.5)"""), dict(m=run, r=race, a=c_athlete))
         c.execute(text("""INSERT INTO market_links (exchange, question, token_id, outcome, competition_id, race_id, prediction)
                           VALUES ('kalshi', 'q', 'hide-tok', 'Yes', :c, :r, 'race_win')"""), dict(c=comp, r=race))
         uid = c.execute(text("INSERT INTO users (username, password_hash, role) VALUES ('mcp-pro-hide', 'x', 'pro') RETURNING id")).scalar()
@@ -811,6 +814,8 @@ def test_a_hidden_sport_is_missing_for_pro_and_shown_to_admins(mcp, monkeypatch)
         assert refused("list_events", sport="hide_t") and refused("list_events", competition="hide_t_cup")
         assert ev not in {r["id"] for r in mcp("list_events", limit=500)["rows"]}
         assert refused("get_event", event_id=ev) and refused("get_event", source_key="hide-1")
+        rider = c_athlete
+        assert refused("get_athlete", athlete_id=rider)
         # markets
         assert refused("list_markets", race_id=race) and refused("list_markets", event_id=ev)
         assert refused("list_markets", sport="hide_t") and refused("get_market_history", race_id=race)
@@ -855,6 +860,7 @@ market = { kind = "race_win", driver = "Ann Alpha" }
         assert mcp("overview")["sports"]["hide_t_cup"] == "hide_t"
         assert mcp("get_event", event_id=ev, include="")["event"]["id"] == ev
         assert mcp("get_model_run", run_id=run)["run"]["id"] == run
+        assert mcp("get_athlete", athlete_id=c_athlete)["athlete"]["id"] == c_athlete
         assert mcp("list_positions", user="mcp-pro-hide")["positions"]["total"] == 1
         assert mcp("list_kinds", sport="motogp")["sport"] == "motogp"
     finally:
@@ -862,4 +868,5 @@ market = { kind = "race_win", driver = "Ann Alpha" }
             c.execute(text("DELETE FROM market_links WHERE token_id = 'hide-tok'"))
             c.execute(text("DELETE FROM paper_positions WHERE user_id = :u"), dict(u=uid))
             c.execute(text("DELETE FROM users WHERE id = :u"), dict(u=uid))
+            c.execute(text("DELETE FROM race_predictions WHERE model_run_id = :r"), dict(r=run))
             c.execute(text("DELETE FROM model_runs WHERE id = :r"), dict(r=run))

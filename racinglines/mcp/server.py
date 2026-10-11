@@ -93,7 +93,7 @@ def _json(obj):
 
 @contextmanager
 def _sports_shown():
-    """The tool call's hidden sports (tools.HIDDEN): the ones sports.is_public turns away from the caller, none for an
+    """The tool call's hidden sports (tools.HIDDEN): the admin-only ones (web/audience.py) for a non-admin caller, none for an
     admin or over stdio. Every tool reads them, so a hidden sport is missing from lists and 'not available' by name."""
     token = T.HIDDEN.set(T.hidden_sports(caller()))
     try:

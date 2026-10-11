@@ -56,7 +56,8 @@ private-book market details and jobs are scoped to their own account; another us
 grant access. Raw SQL, schema inspection and the data-change audit are admin-only. Admins and local stdio
 retain owner access. Saved model runs and research results are shared, as in the Lab.
 
-A sport whose schema says `public = false` (`sports.is_public`; MotoGP since 2026-10-11, for the Alpha) is hidden from
+A sport whose schema says `audience = "admin"` (`web/audience.py`, as on the web pages; MotoGP since 2026-10-11, for the
+Alpha) is hidden from
 every non-admin account: it is missing from every list (overview, events, markets, model runs, forecasts,
 diagnostics, paper records, kinds), and naming it, or one of its events, races, runs, tokens or its schema resource,
 or pricing a book on it, answers "not available". Admins and local stdio still see it.
