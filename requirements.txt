@@ -32,6 +32,9 @@ py-clob-client-v2==1.2.0 # Polymarket's official CLOB V2 client (order signing /
 # MCP server (racinglines mcp): the data and simulations for a chat client
 mcp==2.2.0
 
+# terminal output (racinglines book --rich / book view)
+rich==15.0.0
+
 # tests (python -m pytest)
 pytest==9.1.1
 
