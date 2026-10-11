@@ -413,9 +413,12 @@ force push is fine there, `staging` is a deploy pointer, not history).
 4. Create the `staging` branch and merge into it; watch the `staging-deploy` run; `bash scripts/deploy/vm.sh status`
    shows production's commit and timers unchanged.
 
-Not done yet: Cloudflare Access in front of staging (today it has the app's own login, as production), a docs build
-for staging's `/docs` (`build_docs.sh` is production-only), the Mac's trycloudflare script (`scripts/deploy/staging.sh`,
-ad hoc only).
+`vm.sh staging deploy` also builds staging's own `/docs` from its checkout (`deploy/vm/build_docs.sh
+/opt/racinglines-staging`, fail-soft like production's; before 2026-10-11 staging had no docs build and `/docs/`
+answered 404).
+
+Not done yet: Cloudflare Access in front of staging (today it has the app's own login, as production), the Mac's
+trycloudflare script (`scripts/deploy/staging.sh`, ad hoc only).
 
 ## Later
 

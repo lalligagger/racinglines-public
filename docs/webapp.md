@@ -101,6 +101,19 @@ fantasy-trading beta with sign-up, the two demo buttons (no bigger than the sign
 (`/login#account`). The infographic has no "How it works" heading. The page names no sportsbook, operator or provider.
 The sign-up popup is gone, and the maintenance popup is off (`MAINTENANCE_NOTICE = ""`).
 
+**Quickstart replay** (`/term`, public like `/pitch`; owner, 2026-10-11). A terminal-styled replay of the
+quickstart (`docs/quickstart.md`): its commands, each with `--demo` (the kart demo pack, a synthetic F1 world: no real names
+or model prices), typed at a prompt one by one, each followed by its recorded output (shown at once without JavaScript or
+with reduced motion). Nothing runs on the server, so there is no shell to sandbox. The commands are not written in the
+web app: they are the pack's `[[quickstart]]` list (`racinglines/demo/packs/kart/pack.toml`), the same list
+`docs/quickstart.md` is built from. `python scripts/demo/record_term.py --run` snapshots that list into
+`racinglines/web/term/quickstart.json`, runs each command in colour with Rich's animations off (the final frame of each
+progress bar or live table), saves what it printed as `racinglines/web/term/<id>.ansi` with absolute paths cut, and
+renders `<id>.html`; without `--run` it re-renders the saved output only. Drop the demo store first for a true first
+run, and update `recorded` in `racinglines/web/term/demos.toml`. `tests/test_term.py` fails if a committed render no
+longer matches its output, or if the recorded list differs from the pack's quickstart. Runs on the hosted server may
+come later (owner, 2026-10-11).
+
 **Beta sign-up** (`/signup`, `RACINGLINES_SIGNUP=1`, off by default; `racinglines/web/accounts.py`). A public page,
 linked from the landing page's "Fantasy trade with us" section: username, email (required since 2026-10-08, one
 account per address, stored as `users.prefs.email` like the settings page's), password (twice, 10+ characters, stored

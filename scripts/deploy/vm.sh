@@ -304,6 +304,9 @@ case "${1:-}" in
         log "staging deploy $ref (production's timers keep running)"
         remote "cd $STG && sudo -u racinglines -H bash -s -- $ref" < deploy/vm/staging/update.sh
         remote "sudo install -m 644 $STG/deploy/vm/systemd/$SU.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl restart $SU && sleep 3 && systemctl is-active $SU"
+        # staging's own /docs (its checkout's site/), fail-soft like production's
+        log "docs site (/docs)"
+        remote "sudo -u racinglines -H bash -s -- $STG" < deploy/vm/build_docs.sh || log "docs build didn't finish: staging's /docs keeps its old site"
         log "smoke check on the VM (expects the staging instance: X-Racinglines-Env: staging)"
         remote "cd $STG && SMOKE_EXPECT_ENV=staging bash scripts/deploy/smoke.sh http://127.0.0.1:8010"
         ;;

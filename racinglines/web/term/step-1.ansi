@@ -1,0 +1,26 @@
+demo: building the kart pack's store (no database): database racinglines_demo_kart, folder 
+data/demo/kart. Synthetic data, made once (a few minutes).
+[?25l[1mdemo store[0m [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m7/7[0m [33m0:00:36[0m [2mready[0m
+[?25h
+demo: the kart store is ready (f1 data; `racinglines db stats --demo kart`)
+sports                        8
+leagues                       8
+competitions                  8
+categories                   11
+venues                       27
+events                       36
+races                        36
+rounds                      165
+athletes                     20
+athlete_identifiers          20
+results                    3300
+splits                        0
+source_files                 33
+model_runs                    1
+race_predictions             60
+standings_predictions        20
+
+competition  year category  events  rounds  results
+     f1_wdc  2024      DRV      12      60     1200
+     f1_wdc  2025      DRV      12      60     1200
+     f1_wdc  2026      DRV       9      45      900
