@@ -51,35 +51,42 @@ The steps below are rendered from the pack's manifest (`racinglines/demo/packs/k
 
 <!-- quickstart: kart -->
 
-**1. 🍄 Build and look at the demo store.** The first --demo command builds the store (a few minutes, with a progress bar): the database, the synthetic files, the real ingest and the exchange links. Later commands reuse it.
+**1. 📦 Install racinglines.** From a clone of the repository, in a virtualenv with Python 3.11+: the dependencies and the `racinglines` command.
+
+```
+# LOCAL (Mac), or any machine with Postgres
+pip install -r requirements.txt && pip install -e .
+```
+
+**2. 🍄 Build and look at the demo store.** The first --demo command builds the store (a few minutes, with a progress bar): the database, the synthetic files, the real ingest and the exchange links. Later commands reuse it.
 
 ```
 # LOCAL (Mac), or any machine with Postgres
 racinglines db stats --demo
 ```
 
-**2. 📊 Backtest the model.** Every past race priced as of before the weekend, before qualifying and before the race, with track features on and off, scored against the results and against uniform and grid baselines.
+**3. 📊 Backtest the model.** Every past race priced as of before the weekend, before qualifying and before the race, with track features on and off, scored against the results and against uniform and grid baselines.
 
 ```
 # LOCAL (Mac), or any machine with Postgres
 racinglines model backtest f1 --demo
 ```
 
-**3. 🔮 Forecast the rest of the season.** The next races (Rainbow Road is a sprint weekend) and both championships; --save stores the run the book and the web app read.
+**4. 🔮 Forecast the rest of the season.** The next races (Rainbow Road is a sprint weekend) and both championships; --save stores the run the book and the web app read.
 
 ```
 # LOCAL (Mac), or any machine with Postgres
 racinglines model forecast f1 --demo --save
 ```
 
-**4. 🏁 Run a live private book.** Bowser's Castle (round 9) replayed on a simulated clock: the maker's book opens before practice, reprices after each session from the model's stage runs, 100 simulated takers trade against it, the book closes at lights out and settles from the results.
+**5. 🏁 Run a live private book.** Bowser's Castle (round 9) replayed on a simulated clock: the maker's book opens before practice, reprices after each session from the model's stage runs, 100 simulated takers trade against it, the book closes at lights out and settles from the results.
 
 ```
 # LOCAL (Mac), or any machine with Postgres
 racinglines live run f1/demo-2026-09 --demo --simulate --no-fetch
 ```
 
-**5. 💰 Price a sportsbook's lines.** The pack's sportsbook book (a generic sportsbook's lines on rounds 10 and 11) against the model's forecast and the exchanges' quotes: EV against each, side by side.
+**6. 💰 Price a sportsbook's lines.** The pack's sportsbook book (a generic sportsbook's lines on rounds 10 and 11) against the model's forecast and the exchanges' quotes: EV against each, side by side.
 
 ```
 # LOCAL (Mac), or any machine with Postgres

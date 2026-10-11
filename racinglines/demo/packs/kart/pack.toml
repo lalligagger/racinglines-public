@@ -41,7 +41,14 @@ file = "book.toml"              # `racinglines book price --demo` prices it when
 mcp_url = "https://mcp-demo.racinglines.bet/mcp"
 
 # The quickstart: docs/quickstart.md's command blocks are rendered from these (scripts/build_quickstart.py), and the
-# web app's /term replay lists the same commands. In order; each runs as written.
+# web app's /term replay lists the same commands. In order; each runs as written, except a step with
+# `record = false`, which tools show but never run (the /term recorder types it without output; the tests skip it).
+[[quickstart]]
+title = "📦 Install racinglines"
+run = "pip install -r requirements.txt && pip install -e ."
+about = "From a clone of the repository, in a virtualenv with Python 3.11+: the dependencies and the `racinglines` command."
+record = false
+
 [[quickstart]]
 title = "🍄 Build and look at the demo store"
 run = "racinglines db stats --demo"

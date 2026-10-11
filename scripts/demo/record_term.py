@@ -53,12 +53,14 @@ def quickstart(pack):
     found = store.find(pack)
     if found is None:
         sys.exit(f"no demo pack {pack!r} (racinglines/demo/packs/)")
-    return [{"id": f"step-{i}", "title": s["title"], "command": s["run"], "about": s.get("about", "")}
-            for i, s in enumerate(found.quickstart, 1)]
+    return [{"id": f"step-{i}", "title": s["title"], "command": s["run"], "about": s.get("about", ""),
+             "record": s.get("record", True)} for i, s in enumerate(found.quickstart, 1)]
 
 
 def render(d):
-    """A demo's saved terminal output (ANSI) -> the HTML fragment."""
+    """A demo's saved terminal output (ANSI) -> the HTML fragment (empty for a step with `record = false`)."""
+    if not d.get("record", True):
+        return ""
     console = Console(record=True, width=WIDTH, force_terminal=True, color_system="truecolor", file=io.StringIO())
     ansi = OSC.sub("", (TERM / f"{d['id']}.ansi").read_text())
     console.print(Text.from_ansi(ansi), soft_wrap=True)
@@ -91,7 +93,7 @@ def main(argv=None):
             old.unlink()
         (TERM / "quickstart.json").write_text(json.dumps(steps, indent=2) + "\n")
     for d in demos():
-        if args.run:
+        if args.run and d.get("record", True):
             run(d)
             print(f"{d['id']}: ran `{d['command']}`; update `recorded` in demos.toml", flush=True)
         (TERM / f"{d['id']}.html").write_text(render(d))

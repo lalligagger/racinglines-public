@@ -1,5 +1,6 @@
 """The public /term page: recorded CLI runs (racinglines/web/term/demos.toml), and the recorder that renders them."""
 
+import html
 import importlib.util
 from pathlib import Path
 
@@ -24,7 +25,7 @@ def test_term_is_public_and_shows_each_recorded_command():
     r = TestClient(app).get("/term", follow_redirects=False)
     assert r.status_code == 200
     for d in term_routes.demos():
-        assert d["command"] in r.text and f'id="{d["id"]}"' in r.text
+        assert html.escape(d["command"], quote=False) in r.text and f'id="{d["id"]}"' in r.text
     if not term_routes.demos():
         assert "No recordings yet" in r.text
 
@@ -32,6 +33,9 @@ def test_term_is_public_and_shows_each_recorded_command():
 def test_every_demo_has_saved_output_and_a_render_that_matches_it():
     rec = _recorder()
     for d in rec.demos():
+        if not d.get("record", True):                                            # shown, never run (pack.toml)
+            assert (term_routes.TERM / f"{d['id']}.html").read_text() == ""
+            continue
         ansi = (term_routes.TERM / f"{d['id']}.ansi").read_text()
         assert ansi.strip() and "/home/" not in ansi and "/tmp/" not in ansi     # paths read relative to the repo
         # the committed fragment is what the recorder makes from the committed output (re-record after any change)
