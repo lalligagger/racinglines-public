@@ -236,3 +236,30 @@ def test_admin_creates_a_user_from_the_one_password_field(app_db):
     r = client.post("/admin/users", data=dict(csrf_token=csrf, username="newer", display_name="", role="basic",
                                               password="short"), follow_redirects=True)
     assert "at least 10" in r.text
+
+
+@pytest.mark.quick
+def test_demo_accounts_see_the_signup_notice_and_link(monkeypatch):
+    """The demo accounts (maker / taker) get the sign-up popup and a Sign up link in the top bar (owner, 2026-10-11);
+    registered accounts and the signed-out landing page get neither, and nobody gets it while sign-up is off."""
+    from types import SimpleNamespace
+
+    from racinglines.web import app as A
+    notice = A.templates.env.get_template("_site_notice.html")
+
+    def page(user, path="/markets"):
+        return notice.render(user=user, request=SimpleNamespace(url=SimpleNamespace(path=path)))
+
+    maker, pro = dict(username="maker", role="pro"), dict(username="someone", role="pro")
+    monkeypatch.setenv("RACINGLINES_SIGNUP", "1")
+    assert 'data-signup="1"' in page(maker) and '<a href="/signup">signups</a>' in page(maker)
+    assert 'id="site-notice"' not in page(maker, "/signup")            # not on the sign-up page itself
+    assert 'id="site-notice"' not in page(pro) and 'id="site-notice"' not in page(None, "/login")
+    top = A.templates.env.get_template("base.html")
+    req = SimpleNamespace(url=SimpleNamespace(path="/markets"))
+    demo_bar = top.render(user=maker, request=req, trading=None)
+    assert 'class="signup-link" href="/signup"' in demo_bar and 'href="/settings"' not in demo_bar
+    own_bar = top.render(user=pro, request=req, trading=None)
+    assert 'href="/settings"' in own_bar and "signup-link" not in own_bar
+    monkeypatch.setenv("RACINGLINES_SIGNUP", "0")
+    assert 'id="site-notice"' not in page(maker) and "signup-link" not in top.render(user=maker, request=req, trading=None)
