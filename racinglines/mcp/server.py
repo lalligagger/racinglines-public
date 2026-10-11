@@ -131,6 +131,22 @@ def caller():
     return dict(id=int(t.subject), username=(t.claims or {}).get("username"), role=(t.claims or {}).get("role"))
 
 
+NO_ACCOUNT = -1                                  # matches no users.id (serial ids start at 1)
+
+
+def _viewer():
+    """The viewer the account-scoped reads use: the caller, except a non-admin caller on a shared store (accounts
+    elsewhere): its id belongs to the accounts database, not this one, where the same number can be another account's
+    rows (the demo store's maker or taker). There it reads as an account with no rows here, so overview, track_record,
+    list_positions, list_signals and the maker quotes in list_markets show none of the store's account data."""
+    c = caller()
+    if c and accounts_url():
+        from racinglines.web import roles as R
+        if R.canonical(c.get("role")) != "admin":
+            return dict(c, id=NO_ACCOUNT)
+    return c
+
+
 def caller_id():
     c = caller()
     return c["id"] if c else None
@@ -164,7 +180,7 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
     def overview() -> str:
         """What the database holds: sports, seasons, the live forecast per competition, model runs by kind, market
         links per exchange, venues, users and the next races. Call this first."""
-        return _read(T.overview, viewer=caller())
+        return _read(T.overview, viewer=_viewer())
 
     @srv.tool()
     def describe_schema(table: str | None = None) -> str:
@@ -184,7 +200,7 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
     def get_event(event_id: int | None = None, source_key: str | None = None, include: str = "results") -> str:
         """One event by id or source_key ('2026-15', '20260821_mtb'): its races and, per `include` (comma-separated:
         results, predictions, markets), the final classification, every stored prediction, the venues matrix."""
-        return _read(T.get_event, event_id=event_id, source_key=source_key, include=include, viewer=caller())
+        return _read(T.get_event, event_id=event_id, source_key=source_key, include=include, viewer=_viewer())
 
     @srv.tool()
     def search_athletes(q: str | None = None, limit: int = 50) -> str:
@@ -207,7 +223,7 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         no linked market on a live exchange or its newest sync is older than RACINGLINES_STALE_HOURS (default 3):
         quote those prices as possibly out of date."""
         return _read(T.list_markets, race_id=race_id, event_id=event_id, competition=competition, sport=sport, kinds=kinds,
-                     limit=limit, offset=offset, viewer=caller())
+                     limit=limit, offset=offset, viewer=_viewer())
 
     @srv.tool()
     def get_market_history(tokens: str | None = None, race_id: int | None = None, kind: str | None = None,
@@ -294,14 +310,14 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         marked), backtest replay or live. venue: polymarket, kalshi (the maker's replay on Kalshi's tape), private, or all
         (one row per weekend and venue, with a venue column and totals per venue). sport: f1, nascar, motogp, ... (omit
         for all; NASCAR and MotoGP paper rows show where RACINGLINES_SPORT_PAPER is on). Users: see overview()."""
-        return _read(T.track_record, user=user, venue=venue, sport=sport, viewer=caller())
+        return _read(T.track_record, user=user, venue=venue, sport=sport, viewer=_viewer())
 
     @srv.tool()
     def list_positions(user: str, venue: str | None = None, event_key: str | None = None, open_only: bool = False,
                        limit: int = 50, offset: int = 0) -> str:
         """A user's paper positions (YES/NO shares, cash, mark, outcome, P&L) with totals per venue."""
         return _read(T.list_positions, user=user, venue=venue, event_key=event_key, open_only=open_only, limit=limit,
-                     offset=offset, viewer=caller())
+                     offset=offset, viewer=_viewer())
 
     @srv.tool()
     def list_signals(user: str | None = None, event_key: str | None = None, status: str | None = None,
@@ -309,7 +325,7 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         """Paper signals (what a strategy profile would do: buy/sell recommendations, quote/pull, paper fills), newest first.
         status: new, alerted, expired, filled_paper; action: buy, sell, quote, pull, fill."""
         return _read(T.list_signals, user=user, event_key=event_key, status=status, action=action, limit=limit,
-                     offset=offset, viewer=caller())
+                     offset=offset, viewer=_viewer())
 
     @srv.tool()
     def list_live_events(limit: int = 50, offset: int = 0) -> str:

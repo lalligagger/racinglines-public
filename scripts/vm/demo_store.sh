@@ -22,6 +22,10 @@
 # role (RACINGLINES_MCP_SQL_URL) is unset for this server, so sql reads the demo database. No real exchange data, no
 # `data pull`, no trading flag, no migration of production's database, no timer.
 #
+# Known risk (Core review, 2026-10-11): this server holds production's full app DATABASE_URL on a public hostname,
+# only to read accounts and write tokens and OAuth sign-ins. Before serving real users, give it a login limited to
+# users and the token/OAuth tables (like scripts/vm/mcp_sql_role.sh does for sql) as RACINGLINES_MCP_ACCOUNTS_URL.
+#
 # Not on deploys: `vm.sh deploy` restarts the listed services only; rerun `demo_store.sh serve` after a deploy to pick
 # up new code, and `build` when the pack changed (a build on an up-to-date store does nothing). A transient unit does
 # not survive a reboot: rerun `serve`. Stop: `sudo systemctl stop racinglines-mcp-demo`. Remove the store:
