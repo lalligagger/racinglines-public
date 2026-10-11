@@ -8,9 +8,14 @@ for them; this page is the user-facing side of what /admin/users/<id> does (admi
                  the few settings worth a slider (TUNABLE) on a single strategy; a blend runs as tuned
 
 Saving goes through profiles.assign (F1 on Polymarket, the slot the signal engine runs). The demo accounts keep the
-profiles assign_demo gives them: they see the page but can't save. Split out of web/app.py, which imports this module.
+profiles assign_demo gives them: they see the page but can't save. The dice (owner, 2026-10-11 22:20Z: "let the user input
+RNG'ed values ... high temperature / lots of variation once we have a few dozen users") roll the sliders in the browser
+(app.js), as far from the strategy's own settings as the spread allows; a rolled save is marked `rolled` on the profile. Split out of web/app.py, which imports this module.
 """
 
+import time
+
+import pandas as pd
 from fastapi import Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
@@ -34,6 +39,39 @@ TUNABLE = {
 }
 
 
+_SCHED = {}                                 # year -> (loaded at, schedule): the page reads it, so cache it an hour
+
+
+def _schedule(year):
+    from racinglines.pipelines import weekend_sweep as WS
+    hit = _SCHED.get(year)
+    if hit is None or time.time() - hit[0] > 3600:
+        hit = _SCHED[year] = (time.time(), WS.schedule(year))
+    return hit[1]
+
+
+def open_weekend(now=None):
+    """The F1 weekend whose signal window is open at `now` (naive UTC; default now), else None. The signal engine
+    replays a weekend's stages so far with the profile's current settings (pipelines/signals.compute), so a change
+    inside the window would rewrite that weekend's earlier entries with hindsight: saves wait until it closes
+    (Core review, 2026-10-11). Same window as the engine: signals.in_weekend (race start - WEEKEND_LEAD to + WEEKEND_TAIL).
+    No schedule (FastF1 unreachable and nothing saved): None, logged; the engine can't run then either."""
+    from racinglines.pipelines import signals as SG
+    now = pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz="UTC").tz_localize(None)
+    try:
+        _, w = SG.pick_event(_schedule(now.year), now)
+    except Exception as ex:                         # noqa: BLE001
+        print(f"strategy_pick: no F1 schedule for {now.year}: {ex}", flush=True)
+        return None
+    return w if w is not None and SG.in_weekend(w, now) else None
+
+
+def lock_note(w):
+    from racinglines.pipelines import signals as SG
+    return (f"Strategy changes are paused during {w['name']}: they open again about a day after the race "
+            f"({w['race_start'] + SG.WEEKEND_TAIL:%a %d %b, %H:%M} UTC), so a change never rewrites this weekend's calls.")
+
+
 def kind(profile):
     from racinglines.pipelines import weekend_sweep as WS
     return "taker" if profile.get("strategy", "update") in WS.TAKER_MODES else "maker"
@@ -48,7 +86,8 @@ def tunables(pr):
     sl = []
     for name, label, lo, hi, step, unit in TUNABLE[k]:
         v = st[name] if st[name] is not None else st["min_edge"] if name == "min_edge_h2h" else lo
-        sl.append(dict(name=name, label=label, lo=lo, hi=hi, step=step, unit=unit, value=min(max(float(v), lo), hi)))
+        v = min(max(float(v), lo), hi)
+        sl.append(dict(name=name, label=label, lo=lo, hi=hi, step=step, unit=unit, value=v, base=v))
     pre = (PRE in (st["taker_stages"] or ())) if k == "taker" else None
     return sl, pre
 
@@ -90,9 +129,10 @@ def pick_page(request: Request, msg: str = ""):
                     sl["value"] = min(max(float(st[sl["name"]]), sl["lo"]), sl["hi"])
             if o["pre"] is not None:
                 o["pre"] = PRE in (st["taker_stages"] or ())
+    w = open_weekend()
     return render(request, "strategy_pick.html", opts=opts, profile=profile, now=now,
-                  chosen=now or (opts[0]["code"] if R.is_basic(me) else DEFAULT), locked=demo.is_demo(me), msg=msg,
-                  basic=R.is_basic(me))
+                  chosen=now or (opts[0]["code"] if R.is_basic(me) else DEFAULT), locked=demo.is_demo(me) or bool(w),
+                  demo_locked=demo.is_demo(me), weekend_note=lock_note(w) if w else "", msg=msg, basic=R.is_basic(me))
 
 
 def _adjusted(code, form):
@@ -124,10 +164,13 @@ def _adjusted(code, form):
 
 
 @app.post("/strategy/pick", dependencies=[Depends(check_csrf), allow(*ANY)])
-async def pick_save(request: Request, code: str = Form("")):
+async def pick_save(request: Request, code: str = Form(""), rolled: str = Form("")):
     me = request.state.user
     if demo.is_demo(me):
         return RedirectResponse("/strategy/pick?msg=The demo accounts keep their strategy.", status_code=303)
+    w = open_weekend()
+    if w is not None:                               # a pick, a slider, a dice roll or a stop: all wait for the window
+        return RedirectResponse("/strategy/pick?msg=Error: " + lock_note(w), status_code=303)
     form = await request.form()
     allowed = {o["code"] for o in options(me)}
     with get_engine().begin() as c:
@@ -145,16 +188,16 @@ async def pick_save(request: Request, code: str = Form("")):
             settings, moved = _adjusted(code, form)
             if moved:
                 new = dict(new, name=f"{PF.PROFILES[code]['name']} · adjusted", settings=SS.Settings.from_dict(
-                    settings, strict=False).to_json(), adjusted=moved)
+                    settings, strict=False).to_json(), adjusted=moved, **({"rolled": True} if rolled == "1" else {}))
         if new is not None:
             new = dict(new, base=code)
         if not R.allowed_profile(me["role"], new, user_id=me["id"]):
             return RedirectResponse("/strategy/pick?msg=Error: that strategy isn't open to this account.", status_code=303)
         PF.assign(c, me["id"], new)
     audit(request, "strategy_pick", old=(old or {}).get("name"), new=(new or {}).get("name"),
-          adjusted=(new or {}).get("adjusted"))
+          adjusted=(new or {}).get("adjusted"), rolled=bool((new or {}).get("rolled")))
     if new is None:
         return RedirectResponse("/strategy/pick?msg=Stopped: nothing trades for this account until you pick again.",
                                 status_code=303)
-    return RedirectResponse("/strategy?msg=" + f"Now running {new['name']}. Its calls start with the next pricing "
-                            "update.", status_code=303)
+    return RedirectResponse("/strategy?msg=" + f"Now running {new['name']}. Its calls start when the next race "
+                            "weekend's signals open, four days before the race.", status_code=303)
