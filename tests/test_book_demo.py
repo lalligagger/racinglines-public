@@ -189,3 +189,15 @@ def test_demo_and_defaults_need_no_database(tmp_path, monkeypatch, capsys):
     assert CLI.main(["config", "source", "nowhere"]) == 2
     assert CLI.main(["config", "colour", "red"]) == 2
     assert CLI.main(["config", "source", "--unset"]) == 0 and "source" not in C.load()
+
+
+def test_demo_without_rich_prints_plain_text(tmp_path, monkeypatch, capsys):
+    """Right after `pip install -e .` (no requirements.txt) rich may be missing: the demo still prints."""
+    import importlib.util
+    from racinglines.cli import book as CLI
+    monkeypatch.setenv("RACINGLINES_CLI_CONFIG", str(tmp_path / "cli.toml"))
+    real = importlib.util.find_spec
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name, *a: None if name == "rich" else real(name, *a))
+    assert CLI.main(["price", "--demo"]) == 0
+    out = capsys.readouterr()
+    assert "Lines" in out.out and "pip install rich" in out.err
