@@ -9,7 +9,8 @@
     racinglines users deactivate NAME | activate NAME
     racinglines users reset-fantasy [--keep maker,taker] [--apply]
                                                     every active account but --keep back to one 1,000 grant and no
-                                                    trading history (paper positions, signals, house bets); counts
+                                                    trading history (paper positions, signals, house bets) and no
+                                                    strategy profile; counts
                                                     only without --apply (on the VM: scripts/vm/reset_fantasy.sh)
 
 Passwords are never read back: they are stored as scrypt hashes, and a reset prints a fresh one exactly once.
@@ -54,13 +55,14 @@ def main(argv=None):
                 return 1
             rows = ACC.reset(c, keep=keep, apply=args.apply, note=args.note)
         cols = [t for t, _ in ACC.HISTORY]
-        print(f"{'id':>5}  {'username':<30} {'action':<7} {'ledger':>6} {'balance':>10} " + " ".join(f"{t:>17}" for t in cols))
+        print(f"{'id':>5}  {'username':<30} {'action':<7} {'ledger':>6} {'balance':>10} {'profiles':>8} "
+              + " ".join(f"{t:>17}" for t in cols))
         for r in rows:
             act = "keep" if r["kept"] else ("reset" if args.apply else "would")
-            print(f"{r['id']:>5}  {r['username']:<30} {act:<7} {r['ledger_rows']:>6} {r['balance']:>10,.0f} "
+            print(f"{r['id']:>5}  {r['username']:<30} {act:<7} {r['ledger_rows']:>6} {r['balance']:>10,.0f} {r['profiles']:>8} "
                   + " ".join(f"{r[t]:>17,}" for t in cols))
         n = sum(not r["kept"] for r in rows)
-        print(f"{'reset' if args.apply else 'dry run: would reset'} {n} accounts to {ACC.SIGNUP_GRANT} and no history; "
+        print(f"{'reset' if args.apply else 'dry run: would reset'} {n} accounts to {ACC.SIGNUP_GRANT}, no history and no strategy; "
               f"kept {', '.join(keep) or 'none'}" + ("" if args.apply else " (--apply writes)"))
         return 0
     if args.cmd == "list":
