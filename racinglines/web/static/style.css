@@ -523,8 +523,9 @@ a.button.primary:hover { filter: brightness(1.08); color: #fff; }
 .pick-spread input[type=range] { width: 100%; padding: 0; margin: 0; accent-color: var(--accent); }
 /* /strategy/pick: one tab per sport and exchange */
 .pick-slots { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
-.pick-slots a { display: grid; gap: 1px; padding: 6px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--card); text-decoration: none; color: inherit; font-size: 13px; }
-.pick-slots a[aria-current] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.pick-slots > span { display: grid; gap: 1px; padding: 6px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--card); text-decoration: none; color: inherit; font-size: 13px; }
+.pick-slots .soon { opacity: .6; border-style: dashed; }
+.pick-slots [aria-current] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .pick-slots .muted { font-size: 12px; }
 /* Lab: numbered first steps, folded extras, one job form at a time (app.js runPickInit) */
 .lab-steps { margin: 0 0 12px; padding-left: 22px; display: grid; gap: 4px; }

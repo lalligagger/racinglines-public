@@ -15,7 +15,7 @@ def test_sliders_clamp_and_only_moved_settings_count():
     assert moved == {}                                                  # untouched: the strategy as tuned
     settings, moved = SP._adjusted("T1", {"T1:min_edge": "0.5", "T1:min_volume_24h": "120", "T1:pre_weekend": "1",
                                           "T2:min_edge": "0.04"})
-    assert moved == {"min_edge": 0.2, "min_volume_24h": 100.0, "pre_weekend": True}   # clamped, stepped; T2's ignored
+    assert moved == {"min_edge": 0.15, "min_volume_24h": 100.0, "pre_weekend": True}   # clamped, stepped; T2's ignored
     assert settings["taker_stages"][0] == "pre-weekend" and settings["min_edge_h2h"] == 0.05
     settings, moved = SP._adjusted("C", {"C:max_disagree": "0.08"})
     assert moved == {"max_disagree": 0.08}
@@ -143,24 +143,11 @@ def test_inside_a_weekend_the_page_is_read_only_and_saves_are_refused(app_db, mo
     assert _profile("ada") == before
 
 
-def test_a_pro_account_points_a_strategy_at_another_sport(app_db):
+def test_other_sports_show_as_coming_soon(app_db):
+    """Only F1 on Polymarket runs library strategies today (library/core/2026-10-11-strategies-per-sport.md)."""
     from racinglines.web import strategy_pick as SP
     client, csrf, page = _login(app_db, "cal")
-    other = next((x for x in SP.slots({"role": "pro"}) if x["sport"] != "f1"), None)
-    if other is None:
-        pytest.skip("no other modeled sport with an exchange in the schemas")
-    assert f"slot={other['key']}" in page                                # a tab per sport and exchange
-    page = client.get(f"/strategy/pick?slot={other['key']}").text
-    assert "live calls aren't on yet" in page and 'value="d-update"' in page and "pre_weekend" not in page
-    r = client.post("/strategy/pick", data={"csrf_token": csrf, "slot": other["key"], "code": "d-update",
-                                            "d-update:min_edge": "0.12"}, follow_redirects=False)
-    assert "Saved" in r.headers["location"]
-    from sqlalchemy import text
-
-    from racinglines.db.config import get_engine
-    from racinglines.pipelines import profiles as PF
-    with get_engine().connect() as c:
-        uid = c.execute(text("SELECT id FROM users WHERE username = 'cal'")).scalar()
-        p = PF.of_user(c, uid, other["venue"], other["sport"])
-        assert PF.of_user(c, uid) is None                                # F1 untouched
-    assert p["sport"] == other["sport"] and p["settings"]["min_edge"] == 0.12 and p["adjusted"] == {"min_edge": 0.12}
+    others = [x for x in SP.slots() if not x["open"]]
+    assert [x["key"] for x in SP.slots() if x["open"]] == ["f1:polymarket"]
+    if others:
+        assert "coming soon" in page and others[0]["label"] in page
