@@ -1,5 +1,5 @@
 """
-The Mario Kart demo's engine (`racinglines demo`, racinglines/cli/demo.py): the pipeline end to end on a synthetic
+The Mario Kart tour's engine (the `--demo` flag; racinglines/demo/tour.py): the pipeline end to end on a synthetic
 sport, in miniature, with no database or network. Settings in racinglines/demo/kart.toml; everything is made up.
 
     history(cfg, seed)                 seasons of past races: every driver's sector times, the items, the result

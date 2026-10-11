@@ -1,14 +1,15 @@
 """
-racinglines demo: the pipeline end to end on a synthetic Mario Kart season, in four steps, all in the terminal. No
-database, network or account; everything is made up (racinglines/demo/kart.toml). Play money, nothing is traded.
+The Mario Kart tour: the pipeline end to end on a synthetic season, behind each real command's `--demo` flag (CLI tree
+option A, owner 2026-10-11: no root `demo` group). No database, network or account; everything is made up
+(racinglines/demo/kart.toml, engine racinglines/demo/kart.py). Play money, nothing is traded.
 
-    racinglines demo backtest          1. five seasons of history, the pace model fitted and swept walk-forward
-    racinglines demo forecast          2. the next race at Rainbow Road: 400,000 simulated races
-    racinglines demo race              3. the race live: Wario's book re-quotes every sector, 100 Toads trade, the report
-    racinglines book price --demo      4. sportsbook lines against the model and the exchanges (docs/sportsbook/slips.md)
+    racinglines model backtest --demo      1. five seasons of history, the pace model fitted and swept walk-forward
+    racinglines model forecast --demo      2. the next race at Rainbow Road: 400,000 simulated races
+    racinglines live run --demo            3. the race live: Wario's book re-quotes every sector, 100 Toads trade, the report
+    racinglines book price --demo          4. sportsbook lines against the model and the exchanges (docs/sportsbook/slips.md)
 
-Options:
-    --seed N        the whole demo's seed (default 7): the same seed gives the same history, race and fills
+A command wires its flag with add_arguments(parser, step) and run(step, args) (or main(step, argv)). Options:
+    --seed N        the whole tour's seed (default 7): the same seed gives the same history, race and fills
     --track KEY     forecast and race: rainbow-road (default), bowsers-castle, mario-circuit, moo-moo-meadows
     --out DIR       where the steps keep their files (default data/demo/kart): model.json, forecast.json and the race's
                     run folder (runs/live/kart-<track>-<seed>/, with report/report.md, .html and with --pdf .pdf)
@@ -19,7 +20,6 @@ Options:
 
 import argparse
 import json
-import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -29,26 +29,24 @@ from racinglines import paths
 STEPS = ("backtest", "forecast", "race")
 
 
-def _parser():
-    p = argparse.ArgumentParser(prog="racinglines demo", description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = p.add_subparsers(dest="cmd")
-    for name, hlp in (("backtest", "Step 1: history, the pace model, a walk-forward sweep of its settings."),
-                      ("forecast", "Step 2: the next race's probabilities from a big Monte Carlo."),
-                      ("race", "Step 3: the race live against Wario's book and the Toads, then the report.")):
-        s = sub.add_parser(name, help=hlp)
-        s.add_argument("--seed", type=int, default=7)
-        s.add_argument("--out", default=None, help="the demo's folder (default data/demo/kart)")
-        if name != "backtest":
-            s.add_argument("--track", default="rainbow-road")
-        if name == "backtest":
-            s.add_argument("--seasons", type=int, default=5)
-            s.add_argument("--sims", type=int, default=2500)
-        if name == "forecast":
-            s.add_argument("--sims", type=int, default=400_000)
-        if name == "race":
-            s.add_argument("--delay", type=float, default=0.6)
-            s.add_argument("--pdf", action="store_true")
+COMMANDS = {"backtest": "racinglines model backtest --demo", "forecast": "racinglines model forecast --demo",
+            "race": "racinglines live run --demo", "book": "racinglines book price --demo"}
+
+
+def add_arguments(p, step):
+    """The tour's options for one step on a command's parser (the command adds --demo itself)."""
+    p.add_argument("--seed", type=int, default=7, help="demo: the tour's seed")
+    p.add_argument("--out", default=None, help="demo: the tour's folder (default data/demo/kart)")
+    if step != "backtest":
+        p.add_argument("--track", default="rainbow-road", help="demo: the track")
+    if step == "backtest":
+        p.add_argument("--seasons", type=int, default=5, help="demo: seasons of history")
+        p.add_argument("--sims", type=int, default=2500, help="demo: Monte Carlo runs per race priced")
+    if step == "forecast":
+        p.add_argument("--sims", type=int, default=400_000, help="demo: Monte Carlo runs")
+    if step == "race":
+        p.add_argument("--delay", type=float, default=0.6, help="demo: seconds between updates on screen")
+        p.add_argument("--pdf", action="store_true", help="demo: also render the report as a PDF")
     return p
 
 
@@ -56,7 +54,7 @@ def _rich():
     try:
         import rich  # noqa: F401
     except ImportError as e:
-        raise SystemExit(f"racinglines demo needs the rich package (pip install -r requirements.txt): {e}")
+        raise SystemExit(f"the Mario Kart tour (--demo) needs the rich package (pip install -r requirements.txt): {e}")
     from rich.console import Console
     return Console(highlight=False)
 
@@ -92,7 +90,7 @@ def _pct(x):
 def _model(out):
     f = out / "model.json"
     if not f.exists():
-        raise SystemExit(f"no model at {f}: run `racinglines demo backtest` first (step 1)")
+        raise SystemExit(f"no model at {f}: run `{COMMANDS['backtest']}` first (step 1)")
     return json.loads(f.read_text())
 
 
@@ -149,7 +147,7 @@ def cmd_backtest(args, con):
         p.add_row(cfg["drivers"][i]["name"], f"{pace[i]:+.3f}", f"{tc[i]:+.3f}", f"{pace[i] - tc[i]:+.3f}")
     con.print(p)
     con.print(f"[green]✓[/] {time.time() - t0:.1f} s · model saved to {out / 'model.json'}")
-    con.print("Next: [bold]racinglines demo forecast[/]")
+    con.print(f"Next: [bold]{COMMANDS['forecast']}[/]")
     return 0
 
 
@@ -184,7 +182,7 @@ def cmd_forecast(args, con):
     se = max((p * (1 - p) / args.sims) ** 0.5 for p in fc["race_win"])
     con.print(f"[dim]Monte Carlo error at most ±{1.96 * se:.2%} (95%) on any win probability.[/]")
     con.print(f"[green]✓[/] {time.time() - t0:.1f} s · saved to {out / 'forecast.json'}")
-    con.print("Next: [bold]racinglines demo race[/]")
+    con.print(f"Next: [bold]{COMMANDS['race']}[/]")
     return 0
 
 
@@ -284,19 +282,16 @@ def cmd_race(args, con):
     con.print(f"Report: {files['md']}" + (f"\n        {files['pdf']}" if files.get("pdf") else
                                           f"\n        {files['html']}" + ("" if not args.pdf else
                                                                            " [dim](no PDF: needs weasyprint or Chrome)[/]")))
-    con.print("Next: [bold]racinglines book price --demo[/] (step 4: sportsbook lines against the model and the exchanges)")
+    con.print(f"Next: [bold]{COMMANDS['book']}[/] (step 4: sportsbook lines against the model and the exchanges)")
     return 0
 
 
-def main(argv=None):
-    p = _parser()
-    args = p.parse_args(argv)
-    if args.cmd is None:
-        print(__doc__.strip())
-        return 0
-    con = _rich()
-    return {"backtest": cmd_backtest, "forecast": cmd_forecast, "race": cmd_race}[args.cmd](args, con)
+def run(step, args):
+    """Run one step ("backtest", "forecast", "race") with parsed args (add_arguments' options)."""
+    return {"backtest": cmd_backtest, "forecast": cmd_forecast, "race": cmd_race}[step](args, _rich())
 
 
-if __name__ == "__main__":
-    sys.exit(main())
+def main(step, argv=None):
+    """Parse argv with the step's options and run it (tests, and a command that hands its argv over)."""
+    p = add_arguments(argparse.ArgumentParser(prog=COMMANDS[step]), step)
+    return run(step, p.parse_args(argv))

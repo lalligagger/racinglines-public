@@ -74,9 +74,9 @@ racinglines check                                      # code, data endpoints, d
 The demo, no database or network ([Demo](demo.md)): the whole pipeline on a synthetic Mario Kart season, in four steps:
 
 ```
-racinglines demo backtest                              # 1. history, the pace model, a walk-forward sweep (~6 s)
-racinglines demo forecast                              # 2. the next race: 400,000 simulated races (~5 s)
-racinglines demo race --pdf                            # 3. live: Wario's book re-quotes every sector, 100 Toads trade
+racinglines model backtest --demo                      # 1. history, the pace model, a walk-forward sweep (~6 s)
+racinglines model forecast --demo                      # 2. the next race: 400,000 simulated races (~5 s)
+racinglines live run --demo --pdf                      # 3. live: Wario's book re-quotes every sector, 100 Toads trade
 racinglines book price --demo                          # 4. sportsbook lines vs the model and the exchanges
 ```
 

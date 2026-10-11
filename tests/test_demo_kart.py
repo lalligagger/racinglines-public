@@ -1,4 +1,4 @@
-"""`racinglines demo` (racinglines/demo/kart.py, racinglines/cli/demo.py): the Mario Kart pipeline in four steps, on
+"""The Mario Kart tour behind --demo (racinglines/demo/kart.py, racinglines/demo/tour.py): the pipeline in four steps, on
 small settings so it runs in seconds. Everything synthetic; no network, no database."""
 
 import json
@@ -29,22 +29,22 @@ def test_engine_prices_a_coherent_race():
 
 
 def test_the_four_steps_run_and_repeat(tmp_path, capsys):
-    from racinglines.cli import demo as CLI
+    from racinglines.demo import tour as T
     out = str(tmp_path / "kart")
-    with pytest.raises(SystemExit, match="demo backtest"):
-        CLI.main(["forecast", "--out", out])                               # no model yet: says which step comes first
-    assert CLI.main(["backtest", "--out", out, "--seasons", "2", "--sims", "100"]) == 0
+    with pytest.raises(SystemExit, match="model backtest --demo"):
+        T.main("forecast", ["--out", out])                               # no model yet: says which step comes first
+    assert T.main("backtest", ["--out", out, "--seasons", "2", "--sims", "100"]) == 0
     text = capsys.readouterr().out
     assert "Step 1 of 4" in text and "Walk-forward" in text and "baseline" in text
     model = json.loads((tmp_path / "kart" / "model.json").read_text())
     assert len(model["pace"]) == len(K.load()["drivers"])
-    assert CLI.main(["forecast", "--out", out, "--sims", "20000"]) == 0
+    assert T.main("forecast", ["--out", out, "--sims", "20000"]) == 0
     fc = json.loads((tmp_path / "kart" / "forecast.json").read_text())
     assert sum(fc["race_win"]) == pytest.approx(1.0)
     assert "Rainbow Road: before the start" in capsys.readouterr().out
-    assert CLI.main(["race", "--out", out, "--delay", "0"]) == 0
+    assert T.main("race", ["--out", out, "--delay", "0"]) == 0
     text = capsys.readouterr().out
-    assert "Finish" in text and "Wario's book" in text and "racinglines book price --demo" in text
+    assert "Finish" in text and "Wario's book" in text and "book price --demo" in text
     run = tmp_path / "kart" / "runs" / "live" / "kart-rainbow-road-7"
     snaps = sorted((run / "snaps").glob("*.json.gz"))
     assert len(snaps) == K.n_sectors(K.load()) + 1                         # the start, every sector
@@ -55,6 +55,7 @@ def test_the_four_steps_run_and_repeat(tmp_path, capsys):
     assert "Wario's own book" in md and "100 simulated anonymous takers (Toads)" in md
     assert "demo taker" not in md                                          # no demo taker in this one
     pnl = latest["maker_pnl"]["total"]
-    assert CLI.main(["race", "--out", out, "--delay", "0"]) == 0           # the same seed: the same race and fills
+    from racinglines.cli import live as CL
+    assert CL.main(["run", "--demo", "--out", out, "--delay", "0"]) == 0   # `live run --demo`: the same seed, the same race
     assert json.loads((run / "latest.json").read_text())["maker_pnl"]["total"] == pytest.approx(pnl)
     assert len(sorted((run / "snaps").glob("*.json.gz"))) == len(snaps)    # a re-run starts clean
