@@ -41,3 +41,11 @@ def test_a_demo_not_yet_rendered_is_left_out(tmp_path, monkeypatch):
     (tmp_path / "demos.toml").write_text('[[demo]]\nid = "nope"\ntitle = "t"\ncommand = "c"\n')
     monkeypatch.setattr(term_routes, "TERM", tmp_path)
     assert term_routes.demos() == []
+
+
+def test_terminal_links_never_reach_the_page(tmp_path, monkeypatch):
+    rec = _recorder()
+    (tmp_path / "x.ansi").write_text("\x1b]8;;javascript:alert(1)\x1b\\click\x1b]8;;\x1b\\ ok\x1b]8;;https://e.x\x07b\x1b]8;;\x07\n")
+    monkeypatch.setattr(rec, "TERM", tmp_path)
+    html = rec.render({"id": "x"})
+    assert "click" in html and "javascript" not in html and "<a " not in html and "href" not in html

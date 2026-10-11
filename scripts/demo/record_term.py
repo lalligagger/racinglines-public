@@ -13,8 +13,10 @@ racinglines/web/term/<id>.html, an HTML fragment the page includes as is.
 import argparse
 import io
 import os
+import re
 import subprocess
 import sys
+import tempfile
 import tomllib
 from pathlib import Path
 
@@ -26,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[2]
 TERM = ROOT / "racinglines" / "web" / "term"
 WIDTH = 120     # terminal columns of a recording; the page scrolls sideways on a phone
 FORMAT = '<pre class="term-out">{code}</pre>'
+OSC = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")    # OSC sequences (OSC-8 links): the page includes the HTML as is
 
 
 def demos():
@@ -35,7 +38,8 @@ def demos():
 def render(d):
     """A demo's saved terminal output (ANSI) -> the HTML fragment."""
     console = Console(record=True, width=WIDTH, force_terminal=True, color_system="truecolor", file=io.StringIO())
-    console.print(Text.from_ansi((TERM / f"{d['id']}.ansi").read_text()), soft_wrap=True)
+    ansi = OSC.sub("", (TERM / f"{d['id']}.ansi").read_text())
+    console.print(Text.from_ansi(ansi), soft_wrap=True)
     return console.export_html(theme=MONOKAI, inline_styles=True, code_format=FORMAT)
 
 
@@ -43,8 +47,12 @@ def run(d):
     """Execute the demo's command and save what it printed to stdout."""
     argv = [sys.executable, "-m", *d["run"]] if d["run"][0] == "racinglines" else d["run"]
     env = dict(os.environ, COLUMNS=str(WIDTH), FORCE_COLOR="1", TTY_INTERACTIVE="0", PYTHONUNBUFFERED="1")
-    out = subprocess.run(argv, capture_output=True, text=True, check=True, env=env).stdout
-    roots = {str(ROOT), os.getcwd(), *filter(None, env.get("PYTHONPATH", "").split(os.pathsep))}
+    try:
+        out = subprocess.run(argv, capture_output=True, text=True, check=True, env=env).stdout
+    except subprocess.CalledProcessError as e:
+        sys.exit(f"{d['id']}: `{d['command']}` failed (exit {e.returncode}):\n{e.stderr}")
+    roots = {str(ROOT), os.getcwd(), str(Path.home()), tempfile.gettempdir(),
+             *filter(None, env.get("PYTHONPATH", "").split(os.pathsep))}
     for r in sorted(roots, key=len, reverse=True):
         out = out.replace(r.rstrip("/") + "/", "")
     (TERM / f"{d['id']}.ansi").write_text(out)
