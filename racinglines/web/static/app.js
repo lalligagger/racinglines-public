@@ -292,6 +292,27 @@
   openHashDetails();
   forgotInit();
   noticeInit();
+  // --- /term: type each recorded command, then show its output (no JS: everything is shown at once) ---
+  function termPlay(t) {
+    const cmd = t.querySelector("[data-term-cmd]"), out = t.querySelector("[data-term-out]"), btn = t.querySelector("[data-term-replay]");
+    const full = cmd.dataset.full || (cmd.dataset.full = cmd.textContent);
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    out.hidden = true; btn.hidden = true; t.setAttribute("data-typing", ""); cmd.textContent = "";
+    let i = 0;
+    const tick = () => {
+      cmd.textContent = full.slice(0, ++i);
+      if (i < full.length) return setTimeout(tick, 28 + Math.random() * 40);
+      setTimeout(() => { t.removeAttribute("data-typing"); out.hidden = false; btn.hidden = false; }, 350);
+    };
+    setTimeout(tick, 400);
+  }
+  document.querySelectorAll("[data-term]").forEach(t => {
+    t.querySelector("[data-term-replay]").addEventListener("click", () => termPlay(t));
+    if (!("IntersectionObserver" in window)) return termPlay(t);
+    const io = new IntersectionObserver(es => { if (es[0].isIntersecting) { io.disconnect(); termPlay(t); } }, {threshold: 0.3});
+    io.observe(t);
+  });
+
   // --- Lab: sections open on demand (HTMX loads them on their "open" event), remembered per browser ---
   const lab = document.getElementById("lab");
   if (lab) {

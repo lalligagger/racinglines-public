@@ -1,0 +1,19 @@
+# The public /term page (racinglines/web/term_routes.py): recorded CLI runs, replayed in the browser. The one place the
+# page's commands are written: when the CLI changes, edit `command` and `run` here and re-record with
+#   python scripts/demo/record_term.py --run      # LOCAL (Mac): runs each `run` (+ --json), saves `result`, renders
+#   python scripts/demo/record_term.py            # anywhere: re-renders the saved results only
+# `command` is what the page shows typed at the prompt; `run` is the argv the recorder executes to refresh `result`
+# (the JSON the command prints with --json); `render` is the rich_view renderer (map, price or settle); `recorded` is
+# when `result` was produced, shown on the page.
+
+[[demo]]
+id = "price"
+title = "Price a sportsbook's lines against the model and the markets"
+command = "racinglines book price singapore-2026.toml --demo --rich"
+run = ["racinglines", "book", "price", "racinglines/web/term/singapore-2026.toml", "--demo"]
+result = "singapore-2026.price.json"
+render = "price"
+recorded = "2026-10-11 16:57 UTC on the hosted server, after the exchanges had priced in the race (near 0 or 1) and before its results were stored, so the market column reads as settled"
+caption = """Ten real lines one generic sportsbook showed for the 2026 Singapore Grand Prix. Each mapped line gets the
+book's implied probability, our model's, the linked exchange's and the expected value against each; the parlay is
+flagged because its legs are on one race, and the pit-stop line stays unmapped because no market kind covers it."""

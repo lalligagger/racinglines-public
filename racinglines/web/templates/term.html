@@ -1,0 +1,28 @@
+{% extends "base_public.html" %}
+{% block title %}racinglines · the command line{% endblock %}
+{% block main_class %}termpage{% endblock %}
+{% block content %}
+{# Public: recorded runs of the CLI (racinglines/web/term/demos.toml), not a live shell. Re-record with
+   scripts/demo/record_term.py when the commands change. #}
+<header class="lp-top">
+  <a class="lp-brand" href="/login"><img src="/static/brand/logo.svg" alt="" width="32" height="32"><span>racing<b>lines</b></span></a>
+</header>
+<h1>The command line</h1>
+<p class="lede">racinglines is a Python package first: the web app and the hosted MCP server run the same code. These are
+  recorded runs of real commands, replayed here; nothing runs on this page.</p>
+{% for d in demos %}
+<section class="term-demo" id="{{ d.id }}">
+  <h2>{{ d.title }}</h2>
+  <p>{{ d.caption }}</p>
+  <div class="term" data-term>
+    <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><button type="button" class="term-replay" data-term-replay hidden>Replay</button></div>
+    <div class="term-cmd"><span class="term-prompt" aria-hidden="true">$ </span><code data-term-cmd>{{ d.command }}</code></div>
+    <div class="term-body" data-term-out>{{ d.html|safe }}</div>
+  </div>
+  <p class="hint">Recorded {{ d.recorded }}.</p>
+</section>
+{% else %}
+<p>No recordings yet.</p>
+{% endfor %}
+<p class="hint"><a href="/login#account">Try the web app</a> · <a href="/racinglines101">What is racinglines?</a></p>
+{% endblock %}
