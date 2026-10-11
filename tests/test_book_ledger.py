@@ -129,3 +129,16 @@ def test_write_csv_refuses_an_existing_file_and_never_appends(tmp_path):
     with open(out, newline="") as f:
         got = list(csv.DictReader(f))
     assert len(got) == 2 and tuple(got[0]) == L.LEDGER_COLUMNS
+
+
+def test_a_real_f1_event_uses_the_schema_name():
+    """The event cell takes the race's one display name (sports/f1.toml [names] over "<venue> GP"), as the ledger writes
+    it: Singapore, not its venue Marina Bay."""
+    from racinglines.markets.venues import race_title
+    title = race_title("f1_wdc", "2026-17", "Marina Bay", "FORMULA 1 SINGAPORE AIRLINES SINGAPORE GRAND PRIX 2026")
+    assert title == "Singapore GP"
+    book = _book("decimal", [dict(id="a", title="Race Winner", selection="Ann Alpha", odds=3.0, stake=5)])
+    priced, settled = _out(book, [("won", 3.0)])
+    for o in (priced, settled):
+        o["lines"][0]["legs"] = [dict(_leg(), event=title)]
+    assert L.rows(book, priced, settled)[0][0]["event"] == "2026-17 Singapore GP"
