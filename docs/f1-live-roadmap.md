@@ -308,7 +308,7 @@ Off unless the launch spec (or `sports/f1.toml`) lists them in `[live.markets] k
 | `race_fastest_lap` | one per driver | the stage run's win / podium / top-10 / DNF odds × how often each finishing bucket set the fastest lap; sums to 1 | the race's quickest timed lap |
 
 `[live.props] prior_n` overrides the prior. The Live tab shows the yes/no props in one card and
-fastest lap in its own. Model: `models/position_sim/props.py`; `racinglines model props f1 2026-16` prints them.
+fastest lap in its own. Model: `models/props.py`; `racinglines model props f1 2026-16` prints them.
 
 **Every fair price is kept, whether or not anyone trades it.** Each update saves all
 100 fair values and quotes. The report can then show how our prices moved through the

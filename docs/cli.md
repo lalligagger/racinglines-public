@@ -401,7 +401,7 @@ on the timed-runs engine: `events`, `fetch itt|road`, `startlist <event>`, `pric
 `racinglines model props f1 --check --history <csv>` runs the walk-forward calibration of the yes/no props on a history CSV
 (`props.history()`'s columns) with no database, scoring the red flag and safety car given wet or dry as well
 (`climatology`, `wet_oracle`); `--dnf-check <csv>` scores the position simulation's `dnf_prob` against the
-classification (`models/position_sim/dnf_check.py`). Both are read-only; see the decision log of 2026-10-06 in
+classification (`models/dnf_check.py`). Both are read-only; see the decision log of 2026-10-06 in
 [F1 roadmap](f1-roadmap.md#decision-log).
 
 `--forecast <csv> [--lead N]` (the leads CSV of `racinglines weather leads`, e.g.
@@ -459,8 +459,8 @@ Options every F1 command takes (anywhere after `f1`):
 | Option | Meaning |
 |---|---|
 | `--db URL` | Database URL (default: `$DATABASE_URL`, else the local one). |
-| `--variant NAME` | Model variant from `racinglines/models/position_sim/variants.py`: `baseline` (default), `grid`, `gridq`, `pretrain`, `gbm`, `tail`, `reset`, or a combination such as `gridq+pretrain+reset`. Saved runs record it; the sweep and season strategy reuse only stored pricing from the same variant. The web app's live prices use baseline runs. |
-| `--half-life DAYS` | Recency half-life of the pace models (default `position_sim.model.HALF_LIFE_DAYS`). |
+| `--variant NAME` | Model variant from `racinglines/models/variants.py`: `baseline` (default), `grid`, `gridq`, `pretrain`, `gbm`, `tail`, `reset`, or a combination such as `gridq+pretrain+reset`. Saved runs record it; the sweep and season strategy reuse only stored pricing from the same variant. The web app's live prices use baseline runs. |
+| `--half-life DAYS` | Recency half-life of the pace models (default `inputs.laps.HALF_LIFE_DAYS`). |
 
 ### Data
 

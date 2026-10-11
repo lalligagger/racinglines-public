@@ -80,7 +80,10 @@ The server is the normal one with `--demo`: `racinglines mcp --http --port 8766 
 kart store (its own database `racinglines_demo_kart` and `data/demo/kart/`, built by the same `store.build`), and its
 job worker runs the jobs on it. Accounts, `rl_` tokens and OAuth sign-ins are read from production's database
 (`RACINGLINES_MCP_ACCOUNTS_URL`), so the same Pro and admin accounts sign in, and the store has no account rows of its
-own: jobs are filed without an owner, and every signed-in caller sees the store's jobs. `scripts/vm/demo_store.sh`
+own: jobs are filed without an owner, so every signed-in caller sees the store's jobs and can cancel a queued one
+(acceptable on a synthetic store). Account-scoped reads (`overview`'s users, `track_record`, `list_positions`,
+`list_signals`, our maker's quotes in `list_markets`) show nothing to a non-admin caller there, because a caller's id
+belongs to production's users table, not the store's. `scripts/vm/demo_store.sh`
 builds it (`build`, backup first) and starts the server (`serve`); the owner runs both and adds the `mcp-demo`
 hostname to the tunnel. Remote access is in testing; every remote command prints the #aintcare warning
 ([Quickstart: Remote](quickstart.md#4-remote-testing)).

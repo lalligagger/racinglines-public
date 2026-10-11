@@ -138,7 +138,7 @@ def test_generator_writes_fastf1_shapes_reproducibly(tmp_path):
 def test_offline_schedule_reads_the_saved_copy(tmp_path, monkeypatch):
     """RACINGLINES_OFFLINE=1: the schedule comes from data/raw/f1/fastf1/<year>/schedule.parquet, FastF1 never called."""
     from racinglines.demo import generate as G
-    from racinglines.models.position_sim import pricing as P
+    from racinglines.models.inputs import laps_pricing as P
     from racinglines.sources.fastf1 import fetch as F
     (tmp_path / "2026").mkdir()
     G.schedule(G.world(), 2026).to_parquet(tmp_path / "2026" / "schedule.parquet", index=False)
@@ -228,6 +228,8 @@ def test_kart_quickstart_runs_on_the_store(demo_env):
     small = {"model backtest f1": ["--races", "3", "--sims", "300", "--track", "on"], "model forecast f1": ["--sims", "500"]}
     outs = []
     for step in store.find("kart").quickstart:
+        if not step.get("record", True):                                 # the install step: shown, never run
+            continue
         argv = step["run"].split()[1:]
         outs.append(_run(env, *argv, *small.get(" ".join(argv[:3]), [])))
     outs.append(_run(env, "live", "report", "f1/demo-2026-09", "--demo"))   # not in the kart quickstart, still works

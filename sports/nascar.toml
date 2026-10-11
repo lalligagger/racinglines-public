@@ -8,8 +8,9 @@
 code = "nascar"
 name = "NASCAR Cup Series"
 result_kind = "position"          # finishing positions
-model_family = "position_sim"     # result-based pricing model: conservative, source-faithful, uses race results only
-# The sport-agnostic results model (models/model_global.py: start list, retirements, team groups), with [model] below.
+model_family = "global"           # the one engine (racinglines/models/model_global.py) at the results level, [model] below
+# The one engine (models/model_global.py; its results core, models/inputs/results.py: start list, retirements, team
+# groups), with [model] below.
 # Confirmed by the owner 2026-10-07 (staging first): docs/f1-roadmap.md decision log 2026-10-07 "GlobalModel for NASCAR and
 # MotoGP". Its settings are the model's a priori defaults (no [model.defaults]), none tuned.
 pricing_model = "racinglines.models.model_global:GlobalModel"
@@ -71,10 +72,13 @@ fallback_rule = "official_then_public_summary_fallback"
 fallbacks = [{ source = "wikipedia", quality = "summary_only", scope = "race_summary", allow = true, notes = "Only for missing seasons when no official archive exists; never for full result reconstruction." }]
 
 [model]
-# Data hooks for the sport-agnostic results model (racinglines/models/model_global.py, `--model global`); the
-# history's events.source is the [replay] source below. No setting here is tuned.
-group = "team"                    # results.team, for the optional team-form prior
-# Side classifications (models/model_global.py; docs/f1-roadmap.md decision log 2026-10-07 "NASCAR pole and fastest
+# The one engine's inputs and data hooks (racinglines/models/inputs/__init__.py; results core: models/inputs/results.py); the
+# history's events.source is the [replay] source below. No setting here is tuned. Inputs as before the one engine
+# (decision log 2026-10-11 "One engine"): finishing positions, the qualifying order (sessions) and each race's best-lap
+# order (best_lap); no lap pace yet (blending laps in is phase 2, after validation)
+inputs = ["results", "qualifying", "fastest_lap"]
+group = "team"                   # results.team, for the optional team-form prior
+# Side classifications (models/inputs/results.py; docs/f1-roadmap.md decision log 2026-10-07 "NASCAR pole and fastest
 # lap", provisional, a priori): the qualifying order drawn from past qualifying results (round "qual", the final
 # qualifying session; a rained-out qualifying writes none) prices race_pole, and the order of each past race's best
 # laps (laps table, 2020 on) prices race_fastest_lap. Same half-life, prior weight, noise and uncertainty as the race

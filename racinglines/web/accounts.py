@@ -69,6 +69,45 @@ def grant(conn, user_id, amount=SIGNUP_GRANT, reason=GRANT_REASON, note=None):
                  dict(u=user_id, a=amount, r=reason, n=note))
 
 
+# Per-user trading history the reset clears (owner, 2026-10-11: "seed all users with 1k fantasy bucks, and zero trading
+# history"): (table, user column). house_markets a user quotes as a maker are not history and stay. The reset also clears
+# every strategy profile (users.prefs strategy_profile*, pipelines/profiles.pref): "no default strategy until they
+# select one" (owner, 2026-10-11 22:04Z).
+HISTORY = (("strategy_signals", "user_id"), ("paper_positions", "user_id"), ("house_bets", "taker_id"))
+KEEP = ("maker", "taker")                 # the demo accounts (web/demo.DEMO_USERS): their history never changes here
+
+
+PROFILE_KEYS = "SELECT k FROM jsonb_object_keys(coalesce(prefs, '{}'::jsonb)) k WHERE k LIKE 'strategy\\_profile%'"
+
+
+def reset(conn, keep=KEEP, apply=False, note="reset"):
+    """Every active account but `keep` back to one SIGNUP_GRANT, no trading history and no strategy: its fantasy_ledger
+    rows and HISTORY rows deleted, its strategy profiles removed, one signup grant written (`note`). The ledger is append-only everywhere else; this is the one
+    deliberate rewrite, run on the VM after a backup (scripts/vm/reset_fantasy.sh). apply=False (the default) only
+    counts. Returns one dict per account: id, username, kept, ledger rows and balance, its profiles (pref keys) and each
+    HISTORY table's rows."""
+    users = conn.execute(text("SELECT id, username FROM users WHERE active ORDER BY id")).all()
+    out = []
+    for uid, name in users:
+        row = dict(id=uid, username=name, kept=name in keep)
+        led = conn.execute(text("SELECT count(*), coalesce(sum(amount), 0) FROM accounts.fantasy_ledger WHERE user_id = :u"),
+                           dict(u=uid)).one()
+        row.update(ledger_rows=int(led[0]), balance=float(led[1]),
+                   profiles=conn.execute(text(f"SELECT count(*) FROM users, LATERAL ({PROFILE_KEYS}) p WHERE id = :u"),
+                                         dict(u=uid)).scalar())
+        for table, col in HISTORY:
+            row[table] = conn.execute(text(f"SELECT count(*) FROM {table} WHERE {col} = :u"), dict(u=uid)).scalar()
+        out.append(row)
+        if apply and not row["kept"]:
+            for table, col in HISTORY:
+                conn.execute(text(f"DELETE FROM {table} WHERE {col} = :u"), dict(u=uid))
+            conn.execute(text("DELETE FROM accounts.fantasy_ledger WHERE user_id = :u"), dict(u=uid))
+            conn.execute(text(f"UPDATE users SET prefs = coalesce(prefs, '{{}}'::jsonb) - ARRAY({PROFILE_KEYS}) WHERE id = :u"),
+                         dict(u=uid))
+            grant(conn, uid, note=note)
+    return out
+
+
 def balances(conn):
     """{user_id: balance} for every account with a ledger row; {} before setup."""
     if not ready(conn):

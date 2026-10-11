@@ -207,7 +207,7 @@ def test_f1_available_at_agrees_with_the_measurements_view(f1, f1_meas):
 
 def test_f1_frames_match_what_the_model_reads(f1, f1_meas):
     """official_results carries what PositionSim.results settles on; the entrants are the model's entry list."""
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     from racinglines.models.race_model import Event, PositionSim
     o = f1["official_results"]
     for event_id in sorted(o["event_id"].unique())[:3]:
@@ -302,9 +302,9 @@ def test_mtb_sessions_and_available_at(dh):
 
 
 def test_mtb_available_at_reproduces_the_models_own_as_of_rule(dh, dh_data):
-    """The model trains on rows with event_date < cutoff (timed_runs.season._training_rows). At each event's date
+    """The model trains on rows with event_date < cutoff (run_times.season._training_rows). At each event's date
     the frame shows the same rows (no two events here are on consecutive days; it is only ever stricter than that)."""
-    from racinglines.models.timed_runs import _training_rows
+    from racinglines.models.inputs.run_times import _training_rows
     finish = dh_data[dh_data["sector_id"] == "FINISH"]
     for date in sorted(dh_data["event_date"].unique()):
         model_rows = _training_rows(finish, None, date)
@@ -329,7 +329,7 @@ def test_mtb_official_results_match_the_models_results(dh, dh_data):
         assert (got["status"].to_numpy() == want["status"].to_numpy()).all(), ev.id
         assert np.allclose(got["points"], want["points"]), ev.id
         assert (got["rounds_reached"].map(lambda r: "final" in r).to_numpy() == want["reached_final"].to_numpy()).all()
-    from racinglines.models.timed_runs import completed_events
+    from racinglines.models.inputs.run_times import completed_events
     assert set(o["event_id"]) == set(completed_events(dh_data[dh_data["sector_id"] == "FINISH"]))
     assert not o.duplicated(["event_id", "athlete_id"]).any()
     assert o["rounds_reached"].map(lambda r: isinstance(r, tuple)).all()

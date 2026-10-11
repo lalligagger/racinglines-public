@@ -63,7 +63,7 @@ def parse_combos(text):
 def _athlete(value, entrants, where):
     """An athlete id: an id of the entry list, or a driver's full name or surname matched exactly after normalising
     (penalties.normalise: lowercase, no accents or punctuation); a surname two entrants share is an error."""
-    from racinglines.models.position_sim.penalties import normalise
+    from racinglines.models.inputs.grid import normalise
     ids = entrants["athlete_id"].tolist()
     if not isinstance(value, str) and value in ids:
         return value
@@ -79,7 +79,7 @@ def _athlete(value, entrants, where):
 
 
 def _team(value, entrants, where):
-    from racinglines.models.position_sim.penalties import normalise
+    from racinglines.models.inputs.grid import normalise
     keys = sorted(set(entrants["team_key"].astype(str)))
     hit = [k for k in keys if normalise(k) == normalise(value) or k == value]
     if len(hit) != 1:
@@ -177,7 +177,7 @@ def price_event(meas, hist, event_key, cutoff, n_sims=10000, seed=42, use_track=
     """(sims, entrants, summary, extras) for one event as of `cutoff`: a raced event through pricing.diagnostic, an
     upcoming one through price_race with the live path's entrants, venue and side stages (pipelines/signals.py)."""
     from racinglines.models import outcomes as O
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     from racinglines.pipelines import signals as SG
     year, rnd = (int(x) for x in event_key.split("-"))
     key = f"{year}-{rnd:02d}"

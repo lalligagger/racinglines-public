@@ -54,7 +54,10 @@ from sqlalchemy import text
 from racinglines import sports
 from racinglines.db.registry import STREET_CIRCUITS
 
-SCHEMA = sports.load("f1")
+SPORT = sports.declaring("laps")      # the sport whose [model] inputs declare laps (sports/f1.toml)
+SCHEMA = sports.load(SPORT)
+COMPETITION = SCHEMA["competition"]["code"]
+RUN_NAME = SCHEMA.get("model", {}).get("name", "lap_sim")   # model_runs.model of its runs (f1_sector_sim)
 from racinglines.core.stats import ranks
 from racinglines.markets.kinds import biggest_mover
 
@@ -68,7 +71,7 @@ FINISH_RHO_SCALE = 1.0 # fraction of the measured teammate finishing correlation
 X_CENTER, X_SCALE = 250.0, 50.0
 
 # Challenger switches (docs/f1-roadmap.md, F1-2 / F1-3). The defaults reproduce the
-# baseline exactly; position_sim/variants.py names combinations for comparisons.
+# baseline exactly; models/variants.py names combinations for comparisons.
 FINISH_MODEL = "ridge"       # "ridge" | "gbm": gradient-boosted finishing model, monotone in grid and pace gaps
 GRID_TERMS = False           # front-of-grid term log(grid)/log(n): True = always, "known" = only once the grid is known
 PRE_PRACTICE_TRAIN = False   # before any practice at the event, use a finishing model trained on no-practice paces
@@ -88,7 +91,7 @@ FL_RHO = 0.3                 # teammates' share of it: half the variance is race
 FL_SEED = 20261004           # salt of the fastest lap's own random stream (see _side_rng)
 FL_FROM = "pace"             # how FASTEST_LAP draws it: "pace" (fastest_lap: race pace + noise) or "position" (variant
                              # "flpos": per finishing position weights from past races, fastest_lap_from_position)
-FL_TABLE = sports.SCHEMAS / "f1" / "fastest_lap.toml"
+FL_TABLE = sports.SCHEMAS / SPORT / "fastest_lap.toml"
 PRACTICE_FASTEST = False     # draw each practice session's order of best laps (sim["practice"], practice.simulate):
                              # the race_fp<n>_fastest kinds; every other price unchanged (variant "practicefast")
 # Practice best-lap deficit around the qualifying deficit, a fraction of a lap (a priori, not fitted against a score):
@@ -136,7 +139,7 @@ def team_key(team_id):
 # Loading
 # ---------------------------------------------------------------------------
 
-RESULTS_SQL = """
+RESULTS_SQL = f"""
 SELECT e.id AS event_id, e.start_date, s.year, e.series_round, e.status AS event_status, v.slug AS venue,
        ra.id AS race_id, ro.kind AS round, r.athlete_id, a.display_name AS driver, r.position, r.status,
        r.time_ms, r.team, r.extra, ro.extra->>'session_date' AS session_ts
@@ -144,16 +147,16 @@ FROM results r JOIN rounds ro ON ro.id = r.round_id JOIN races ra ON ra.id = ro.
 JOIN events e ON e.id = ra.event_id JOIN seasons s ON s.id = e.season_id
 JOIN competitions co ON co.id = s.competition_id LEFT JOIN venues v ON v.id = e.venue_id
 JOIN athletes a ON a.id = r.athlete_id
-WHERE co.code = 'f1_wdc'
+WHERE co.code = '{COMPETITION}'
 """
 
-LAPS_SQL = """
+LAPS_SQL = f"""
 SELECT ra.event_id, ro.kind AS round, r.athlete_id, l.lap, l.lap_time_ms, l.s1_ms, l.s2_ms, l.s3_ms,
        l.pit_in, l.pit_out, l.track_status, l.is_accurate, l.deleted, l.stint, ro.extra->>'session_date' AS session_ts
 FROM laps l JOIN results r ON r.id = l.result_id JOIN rounds ro ON ro.id = r.round_id
 JOIN races ra ON ra.id = ro.race_id JOIN events e ON e.id = ra.event_id JOIN seasons s ON s.id = e.season_id
 JOIN competitions co ON co.id = s.competition_id
-WHERE co.code = 'f1_wdc' AND ro.kind IN ('qual', 'race', 'fp1', 'fp2', 'fp3', 'sprint_qual')
+WHERE co.code = '{COMPETITION}' AND ro.kind IN ('qual', 'race', 'fp1', 'fp2', 'fp3', 'sprint_qual')
 """
 
 PROFILE_SQL = """

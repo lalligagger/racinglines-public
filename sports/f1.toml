@@ -1,13 +1,16 @@
 # Formula 1: what differs from other sports, as data. Read by racinglines/sports.py;
-# the code keeps its own constant names (e.g. model.SESSION_MINUTES) and takes the
+# the code keeps its own constant names (e.g. inputs/laps.py SESSION_MINUTES) and takes the
 # values from here. Changing a value here changes results: re-run the tests.
 
 [sport]
 code = "f1"
 name = "Formula 1"
 result_kind = "position"          # results are finishing positions
-model_family = "position_sim"     # racinglines/models/position_sim
-pricing_model = "racinglines.models.race_model:PositionSim"   # the backtest core's wrapper (docs/backtest-core.md)
+model_family = "global"           # the one engine (racinglines/models/model_global.py), with [model] below
+pricing_model = "racinglines.models.model_global:GlobalModel"   # every modelled sport's (docs/backtest-core.md)
+# F1's engine before the one engine, kept runnable for comparisons (`racinglines backtest walk-forward f1 --model
+# f1_sector_sim`): the same laps core and settings, so its prices equal the engine's (tests/test_one_engine.py)
+challengers = { f1_sector_sim = "racinglines.models.race_model:PositionSim" }
 display_order = 0
 results_modules = ["racinglines.sources.fastf1"]   # what fetches its results (`backtest coverage`)
 
@@ -22,11 +25,34 @@ name = "Formula 1 World Championship (Drivers)"
 categories = { DRV = ["Drivers", "X", "elite"] }
 
 [model]
-# Data hooks for the sport-agnostic results model (racinglines/models/model_global.py, `racinglines backtest
-# walk-forward f1 --model global`): the F1 pricing model above reads laps and sectors; this one reads finishing
-# positions only. No setting here is tuned.
+# The one engine's inputs (racinglines/models/inputs/__init__.py): they pick the laps core (models/inputs/laps_core.py,
+# the F1 engine that was race_model.PositionSim) and the layers it reads: lap pace and the finishing model
+# (inputs/laps.py), the car's sector fit (sectors: setting track_features), the practice prior (inputs/practice.py:
+# practice_prior), the qualifying order as the grid, moved by confirmed penalties (inputs/grid.py). Decision log
+# 2026-10-11 "One engine" (provisional, staging only): every price as before.
+inputs = ["results", "qualifying", "grid", "practice", "laps", "sectors"]
+name = "f1_sector_sim"            # model_runs.model of its runs: the name saved runs, Edge Finder and golden runs match
+# The results level (`racinglines backtest walk-forward f1 --model global`: finishing positions only) reads these
+# hooks; no setting there is tuned.
 source = "f1timing"               # the events whose race results are the history
 group = "team"                    # results.team: the constructor, for the optional team-form prior
+
+[model.defaults]
+# The engine's per-sport defaults: F1's settings as they were (racinglines/pipelines/sweep_settings.py, the model
+# group; decision-log entries in docs/f1-roadmap.md). Equal to the code's, so every settings key and price is
+# unchanged (tests/test_one_engine.py pins them). The live and sweep profiles pick their variant themselves
+# (pipelines/profiles.py: gridq+pretrain+reset); the default variant is the baseline.
+variant = "baseline"
+sims = 4000
+half_life_days = 120.0            # recency half-life of the pace models (inputs/laps.py HALF_LIFE_DAYS)
+track_features = true             # the car's fast/slow-sector profile matched to the track (input "sectors")
+practice_prior = true             # the weekend's practice laps once they exist (input "practice")
+ridge_team = 2.0                  # team base pace shrinkage, in events (RIDGE_A)
+ridge_slope = 6.0                 # fast/slow-sector slope shrinkage, in events (RIDGE_B)
+driver_prior_n = 3.0              # driver-vs-teammate offset shrinkage, in races (DRIVER_PRIOR_N)
+teammate_corr = true              # teammates share part of the noise (TEAMMATE_CORR)
+finish_rho_scale = 1.0            # share of the measured teammate finishing correlation (FINISH_RHO_SCALE)
+reset_weight = 0.25               # with the reset switch: weight of earlier seasons' car data (REG_RESET_WEIGHT)
 
 [data]
 # the L1 input frames this sport's adapter (racinglines/frames/f1.py) builds from Measurements, docs/frames.md.
@@ -45,7 +71,7 @@ classified = "status_ok"          # settlement: only an officially classified ca
 minutes = { fp1 = 60, fp2 = 60, fp3 = 60, sprint_qual = 45, qual = 60, sprint = 45, race = 150 }
 practice = ["fp1", "fp2", "fp3", "sprint_qual"]
 
-# The race-like sessions the pricer simulates (models/position_sim/pricing.py price_race), each with the session its
+# The race-like sessions the pricer simulates (models/inputs/laps_pricing.py price_race), each with the session its
 # grid comes from, its points table ([points] below, with <points>_by_year) and its retirement rate as a multiple of
 # the race's (dnf_scale, default 1.0). `race` is the Grand Prix itself and keeps its own code path; every other entry
 # is a stage priced only on weekends that have it (format.sprint), on its own random stream, so no Grand Prix price
@@ -91,7 +117,7 @@ street = ["monte-carlo", "monaco", "baku", "marina-bay", "singapore", "jeddah", 
 
 [regulations]
 # seasons that start under new technical regulations (new cars): earlier seasons' car pace
-# carries over less (position_sim REG_RESET switch)
+# carries over less (inputs/laps.py REG_RESET switch)
 resets = [2014, 2017, 2022, 2026]
 
 [markets]
@@ -163,7 +189,7 @@ stale_h = 30                    # the Live tab stays green between updates while
 
 [live.markets]
 kinds = ["race_win", "race_podium", "race_pole", "race_h2h", "race_constructor_top"]
-# opt-in props (models/position_sim/props.py): "race_safety_car", "race_red_flag", "race_rain", "race_fastest_lap";
+# opt-in props (models/props.py): "race_safety_car", "race_red_flag", "race_rain", "race_fastest_lap";
 # add them here or in a launch spec. [live.props] prior_n (default 16) sets the per-circuit shrinkage
 h2h_from = "last_listed"        # head-to-head pairs: the last race Polymarket listed (or an event key)
 

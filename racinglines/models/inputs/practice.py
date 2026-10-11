@@ -26,7 +26,7 @@ score() is its walk-forward: each session priced one minute before it starts, sc
 import numpy as np
 import pandas as pd
 
-from racinglines.models.position_sim import model as M
+from racinglines.models.inputs import laps as M
 
 USE_PRACTICE = True
 MIN_EVENTS = 6
@@ -46,7 +46,7 @@ def session_features(prac, event_id):
 
 def training_rows(meas, use_track=True):
     """One pass over events with practice data (see module docstring)."""
-    from racinglines.models.position_sim.pricing import entry_list
+    from racinglines.models.inputs.laps_pricing import entry_list
     if meas.practice is None or meas.practice.empty:
         return pd.DataFrame()
     first = meas.practice.groupby("event_id")["session_ts"].min()
@@ -209,7 +209,7 @@ def score(meas, hist, n_sims=2000, seed=0, events=None, use_track=True):
     row per event x session: n (drivers priced), fastest (athlete id), p_fastest (the model's fair for them), logloss
     (-log of it, floored at 1e-4), uniform (log n), brier (over every driver), favourite and its fair. `events`: event
     ids to score (default every event with practice laps). One seeded generator for the run, in date order."""
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     rng = np.random.default_rng(seed)
     cls = classification(meas.practice)
     order = meas.drivers.drop_duplicates("event_id").sort_values("r_ts")["event_id"].tolist()

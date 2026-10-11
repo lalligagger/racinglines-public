@@ -126,7 +126,7 @@ SETTINGS = [
 BY_NAME = {s.name: s for s in SETTINGS}
 # The split (docs/backtest-core.md): the pricing model's own group, and the groups any sport's backtest shares
 # (entry timing, taker, maker, markets and their guards). Another model family's settings are its own model
-# group plus these once it trades a venue (models/timed_runs/settings.py is model-only so far).
+# group plus these once it trades a venue (models/inputs/run_times/settings.py is model-only so far).
 MODEL_SETTINGS = [s for s in SETTINGS if s.group == "model"]
 SHARED_SETTINGS = [s for s in SETTINGS if s.group != "model"]
 GROUPS = (("model", "Model"), ("timing", "Entry timing"), ("taker", "Taker strategies"),
@@ -177,7 +177,7 @@ class Settings(dict):
     """A full, validated set of sweep settings (missing ones take their defaults).
 
     The schema is a class attribute, so another model family defines its own settings by subclassing
-    (e.g. racinglines/models/timed_runs/settings.py) and keeps the same keys, labels and flags."""
+    (e.g. racinglines/models/inputs/run_times/settings.py) and keeps the same keys, labels and flags."""
 
     SPEC = SETTINGS
     BY = BY_NAME
@@ -202,7 +202,7 @@ class Settings(dict):
         return out
 
     def _validate(self):
-        from racinglines.models.position_sim import variants as V
+        from racinglines.models import variants as V
         V.switches(self["variant"])                                  # raises on an unknown switch
 
     @classmethod
@@ -258,9 +258,9 @@ class Settings(dict):
     @contextmanager
     def applied(self):
         """Model settings (and the variant's switches) in force for the duration."""
-        from racinglines.models.position_sim import model as M
-        from racinglines.models.position_sim import practice as PR
-        from racinglines.models.position_sim import variants as V
+        from racinglines.models.inputs import laps as M
+        from racinglines.models.inputs import practice as PR
+        from racinglines.models import variants as V
         mods = {"model": M, "practice": PR}
         old = []
         try:
@@ -276,6 +276,21 @@ class Settings(dict):
                 setattr(mod, attr, v)
 
 
+def with_defaults(cls, defaults, where="[model.defaults]"):
+    """`cls` with a sport's per-sport defaults (sports/<code>.toml [model.defaults], read by the one engine,
+    models/model_global.py). Unknown names are an error; a default equal to the code's leaves every key unchanged,
+    since the keys hash the values (Settings._key)."""
+    from dataclasses import replace
+    defaults = dict(defaults or {})
+    unknown = sorted(set(defaults) - set(cls.BY))
+    if unknown:
+        raise ValueError(f"{where} names unknown settings {unknown}; choose from {sorted(cls.BY)}")
+    if not defaults:
+        return cls
+    spec = [replace(s, default=_coerce(s, defaults[s.name])) if s.name in defaults else s for s in cls.SPEC]
+    return type(cls.__name__, (cls,), dict(SPEC=spec, BY={s.name: s for s in spec}, MODEL=list(cls.MODEL)))
+
+
 def venue_of(settings):
     """The exchange a settings set trades: its `venue`, or its class's default (polymarket) while unset."""
     return settings.get("venue") or getattr(settings, "DEFAULT_VENUE", DEFAULT_VENUE)
@@ -286,10 +301,11 @@ def parse_map(v):
     return {k: float(x) for k, _, x in (i.partition("=") for i in v.split(","))} if v else {}
 
 
-def add_arguments(parser, cls=None):
-    """One flag per setting (the variant is the f1 group's global --variant)."""
+def add_arguments(parser, cls=None, skip=()):
+    """One flag per setting (the variant is the f1 group's global --variant). skip: settings whose flag the command
+    already has with another meaning (walk-forward's --venue scores exchanges; the sweep's venue picks the tape)."""
     for s in (cls or Settings).SPEC:
-        if s.name == "variant":
+        if s.name == "variant" or s.name in skip:
             continue
         dflt = ",".join(s.default) if s.type == "multi" else "not set" if s.default is None else s.default
         kw = dict(default=None, help=f"{s.label} (default {dflt})."
@@ -297,9 +313,10 @@ def add_arguments(parser, cls=None):
         parser.add_argument("--" + s.name.replace("_", "-"), **kw)
 
 
-def from_args(args, cls=None):
+def from_args(args, cls=None, skip=()):
     cls = cls or Settings
-    d = {s.name: getattr(args, s.name) for s in cls.SPEC if s.name != "variant" and getattr(args, s.name, None) is not None}
+    d = {s.name: getattr(args, s.name) for s in cls.SPEC
+         if s.name != "variant" and s.name not in skip and getattr(args, s.name, None) is not None}
     if "variant" in cls.BY:
         d["variant"] = getattr(args, "variant", "baseline") or "baseline"
     return cls.from_dict(d)

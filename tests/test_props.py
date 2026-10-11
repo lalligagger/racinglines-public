@@ -1,11 +1,11 @@
-"""F1 race props (models/position_sim/props.py): per-circuit rates shrunk to the field, fastest-lap prices from
+"""F1 race props (models/props.py): per-circuit rates shrunk to the field, fastest-lap prices from
 finishing odds, and their place in the live book (opt-in kinds only), on synthetic data."""
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from racinglines.models.position_sim import props as P
+from racinglines.models import props as P
 from racinglines.pipelines import live as LV
 from racinglines.pipelines import live_f1 as F
 
@@ -87,7 +87,7 @@ def test_check_runs_on_a_history_frame_with_the_wet_methods():
 
 @pytest.mark.quick
 def test_dnf_check_scores_the_model_against_flat_rates():
-    from racinglines.models.position_sim import dnf_check as DC
+    from racinglines.models import dnf_check as DC
     rows = []
     for race in (1, 2):
         for run, cutoff in ((10 * race, "2026-01-01"), (10 * race + 1, "2026-01-02")):    # the later run is scored

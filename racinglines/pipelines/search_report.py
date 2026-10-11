@@ -363,8 +363,8 @@ def run(queue_path, echo=print):
 
     from racinglines import paths
     from racinglines.db.config import get_engine
-    from racinglines.models.position_sim import evaluate as EV
-    from racinglines.models.position_sim import variants as V
+    from racinglines.models import evaluate as EV
+    from racinglines.models import variants as V
     from racinglines.pipelines import search as S
     from racinglines.markets import kinds as K
     cfg, _, _ = S.load(queue_path)

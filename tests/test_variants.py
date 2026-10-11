@@ -1,4 +1,4 @@
-"""Model variants (position_sim/variants.py) and the comparison tools (position_sim/evaluate.py).
+"""Model variants (models/variants.py) and the comparison tools (models/evaluate.py).
 
 The baseline is untouched by construction: every switch defaults off, and the golden files
 of test_pipeline_f1 pin it. Here: switches set and restore, each variant prices a race
@@ -8,9 +8,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from racinglines.models.position_sim import evaluate as EV
-from racinglines.models.position_sim import model as M
-from racinglines.models.position_sim import variants as V
+from racinglines.models import evaluate as EV
+from racinglines.models.inputs import laps as M
+from racinglines.models import variants as V
 
 
 def test_use_sets_and_restores_switches():
@@ -31,7 +31,7 @@ def test_grid_terms_only_when_known():
 
 @pytest.mark.parametrize("variant", ["grid", "gridq", "pretrain", "tail", "rookie"])
 def test_variant_prices_a_race_and_guards_leakage(f1_meas, variant):
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     eid = int(f1_meas.drivers["event_id"].max())
     s = f1_meas.sessions(eid)
     with V.use(variant):
@@ -68,7 +68,7 @@ def test_reliability_bins():
 def test_reg_reset_discounts_earlier_seasons_only_in_a_reset_year():
     import pandas as pd
 
-    from racinglines.models.position_sim import model as M
+    from racinglines.models.inputs import laps as M
     dates = pd.Series(pd.to_datetime(["2025-11-30", "2026-03-08"]))
     base = M._car_weights(dates, pd.Timestamp("2026-04-01"))
     assert list(base) == list(M._weights(dates, pd.Timestamp("2026-04-01")))      # off: unchanged

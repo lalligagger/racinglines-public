@@ -9,7 +9,7 @@ The three sportsbook schemas (docs/sportsbook/index.md), validated the way frame
 Each returns the parsed dict, or raises BookError listing every problem found, each naming the field. The checks:
 required sections and fields, odds that can be odds (decimal > 1; American an integer of at least 100 either way),
 UTC times (ISO 8601 ending in Z, or "unknown"), every market kind in the kinds registry or among the props
-(models/position_sim/props.PROP_KINDS), every line either mapped to a market key or `"unmapped"`, every rule a
+(models/props.PROP_KINDS), every line either mapped to a market key or `"unmapped"`, every rule a
 compilable regex. A kind the registry has but no model prices yet still passes: pricing says so, not loading.
 
 Market keys are `(kind, subject, params)` in the registry's vocabulary: a mapped line's `market` table carries `kind`
@@ -44,7 +44,7 @@ import tomllib
 from pathlib import Path
 
 from racinglines.markets import kinds as K
-from racinglines.models.position_sim.props import PROP_KINDS
+from racinglines.models.props import PROP_KINDS
 
 KNOWN_KINDS = frozenset(K.KINDS) | frozenset(PROP_KINDS)
 VENUE_KINDS = ("exchange", "sportsbook")

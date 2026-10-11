@@ -20,8 +20,8 @@ import numpy as np
 import pandas as pd
 
 from racinglines.core.stats import brier
-from racinglines.models.position_sim import model as M
-from racinglines.models.position_sim import pricing as run
+from racinglines.models.inputs import laps as M
+from racinglines.models.inputs import laps_pricing as run
 
 STAGE = "sprint"
 RETIRED = ("DNF", "DSQ")

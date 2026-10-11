@@ -1,4 +1,4 @@
-"""Downhill calibration tools (racinglines/models/timed_runs): the walk-forward's per-rider rows,
+"""Downhill calibration tools (racinglines/models/inputs/run_times): the walk-forward's per-rider rows,
 the reliability table, and the model switches (--prior-n, --eps-df). Synthetic data, no database."""
 
 import argparse
@@ -9,9 +9,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from racinglines.models import timed_runs as P
-from racinglines.models.timed_runs import model as TM
-from racinglines.models.timed_runs import season as SE
+from racinglines.models.inputs import run_times as P
+from racinglines.models.inputs.run_times import model as TM
+from racinglines.models.inputs.run_times import season as SE
 
 pytestmark = pytest.mark.quick
 

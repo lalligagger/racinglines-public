@@ -12,7 +12,7 @@ Names combine with "+". Each run that prices with a variant records its name
 
 from contextlib import contextmanager
 
-from racinglines.models.position_sim import model as M
+from racinglines.models.inputs import laps as M
 
 SWITCHES = {
     "baseline": {},

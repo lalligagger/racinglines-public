@@ -1,4 +1,4 @@
-"""F1 practice fastest lap (models/position_sim/practice.py, model.PRACTICE_FASTEST, variant "practicefast", package
+"""F1 practice fastest lap (models/inputs/practice.py, model.PRACTICE_FASTEST, variant "practicefast", package
 C12b): off by default; when on, every other price is byte-identical, each practice session's fair sums to 1 over the
 field, the real order replaces the draw once the session has run, the kinds settle on the stored laps' order, and the
 walk-forward scores it. The pinned F1 fixtures (tests/fixtures/f1), plus the throwaway test database for outcomes()."""
@@ -9,10 +9,10 @@ import pytest
 
 from racinglines.markets import kinds as K
 from racinglines.models import outcomes as O
-from racinglines.models.position_sim import model as M
-from racinglines.models.position_sim import practice as PR
-from racinglines.models.position_sim import pricing as run
-from racinglines.models.position_sim import variants as V
+from racinglines.models.inputs import laps as M
+from racinglines.models.inputs import practice as PR
+from racinglines.models.inputs import laps_pricing as run
+from racinglines.models import variants as V
 
 KINDS = ("race_fp1_fastest", "race_fp2_fastest", "race_fp3_fastest")
 
