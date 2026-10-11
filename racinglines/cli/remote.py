@@ -24,6 +24,18 @@ DEFAULT_URL = "https://mcp.racinglines.bet/mcp"
 TOOLS = {"map": "map_book", "price": "price_book", "settle": "settle_book"}
 LOGIN_FILE = Path(os.environ.get("RACINGLINES_MCP_LOGIN", "~/.config/racinglines/mcp-login.json")).expanduser()
 CALLBACK_WAIT_SEC = 300
+WARNING = ("warning: racinglines.bet remote access is in testing (#aintcare mode). A review of venue and data-feed "
+           "terms is pending, so data served here is for testing only.")
+_warned = False
+
+
+def warn():
+    """The remote-access warning on stderr, once per command run, before anything the server returns (stdout stays
+    clean for --json). Every remote path goes through call(), which calls this first."""
+    global _warned
+    if not _warned:
+        print(WARNING, file=sys.stderr, flush=True)
+        _warned = True
 
 
 class RemoteError(RuntimeError):
@@ -198,6 +210,7 @@ def call(tool, arguments, server=None, tok=None, http_client=None, open_browser=
     """Call one tool on the hosted server and return its parsed JSON: with an rl_ token (`tok`, else
     RACINGLINES_MCP_TOKEN) when there is one, else the browser sign-in. `http_client` (an httpx2.AsyncClient) and
     `open_browser` are for tests."""
+    warn()
     from mcp import ClientSession
     from mcp.client.streamable_http import streamable_http_client
     from mcp.shared._httpx_utils import create_mcp_http_client
