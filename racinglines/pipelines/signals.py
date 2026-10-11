@@ -3,8 +3,8 @@ Live paper signals: what each user's strategy profile (pipelines/profiles.py) wo
 race weekend, stage by stage, computed by the backtest's own code. Recommendations and paper fills only:
 nothing here places an order.
 
-    racinglines f1 signals                         # every user with a profile, the weekend in progress
-    racinglines f1 signals --profile A --event 15 --asof 2026-09-27T12:00 --no-fetch   # replay (prints only)
+    racinglines strategy signals f1                         # every user with a profile, the weekend in progress
+    racinglines strategy signals f1 --profile A --event 15 --asof 2026-09-27T12:00 --no-fetch   # replay (prints only)
 
 Per run:
   1. Data (live only): FastF1 fetch + ingest when a finished session's data is missing; Polymarket
@@ -77,7 +77,7 @@ HEAT_MIX_MEAN = 0.9                       # mean weight over A's backtest entrie
 def _stages(w):
     """The side stages (sports/f1.toml [sessions.sim], e.g. the sprint) this weekend has, from the schedule's
     FastF1 event format, so a live run prices them before their sessions' data exists (pricing.price_stages)."""
-    from racinglines.models.position_sim import model as M
+    from racinglines.models.inputs import laps as M
     from racinglines.sources.fastf1.fetch import SPRINT_FORMATS
     if not w or str(w.get("format", "")) not in SPRINT_FORMATS:
         return []
@@ -246,6 +246,9 @@ def _missing_sessions(meas, w, now):
     year, rnd = (int(x) for x in w["event_key"].split("-"))
     ev = meas.res[(meas.res["year"] == year) & (meas.res["series_round"] == rnd)]
     have = set(ev["round"])
+    q = ev[ev["round"] == "qual"]
+    if len(q) and q["position"].isna().all():    # stored before it had an order (FastF1 right after the session):
+        have.discard("qual")                     # ingest again, which reads the order from the laps
     out = [lab for lab, cutoff in w["stages"] if lab in STAGE_ROUND and cutoff <= now
            and STAGE_ROUND[lab] not in have]
     if w["race_start"] + RACE_DONE <= now and "race" not in have:
@@ -255,9 +258,9 @@ def _missing_sessions(meas, w, now):
 
 def refresh_fastf1(w, echo=print):
     year, rnd = (int(x) for x in w["event_key"].split("-"))
-    rl = [sys.executable, "-m", "racinglines", "f1"]
-    for argv in (["fetch", "--years", str(year), "--rounds", str(rnd), "--sessions", FASTF1_SESSIONS],
-                 ["ingest", "--years", str(year)]):
+    rl = [sys.executable, "-m", "racinglines", "data"]
+    for argv in (["fetch", "f1", "--years", str(year), "--rounds", str(rnd), "--sessions", FASTF1_SESSIONS],
+                 ["ingest", "f1", "--years", str(year)]):
         r = subprocess.run(rl + argv, capture_output=True, text=True, timeout=1800)
         echo(f"  f1 {argv[0]}: {'ok' if r.returncode == 0 else 'failed'} {r.stdout.strip().splitlines()[-1:] or ''}")
 
@@ -319,7 +322,7 @@ def _refresh_exchange(engine, engine_url, w, now, venue, echo=print):
 def _entrants(meas, event_id, cutoff):
     """Who races, from what's known at the cutoff: this weekend's qualifying (or sprint qualifying,
     FP3, FP2) classification, else the last race's field. FP1 is skipped: reserve drivers run it."""
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     v = meas.view(cutoff)
     if event_id is not None:
         for code in ("qual", "sprint_qual", "fp3", "fp2"):
@@ -334,7 +337,7 @@ def _venue(meas, event_id, w):
     if event_id is not None:
         return meas.res.loc[meas.res["event_id"] == event_id, "venue"].iloc[0]
     from racinglines.db.ingest import _slugify
-    from racinglines.models.position_sim.pricing import upcoming_schedule
+    from racinglines.models.inputs.laps_pricing import upcoming_schedule
     year, rnd = (int(x) for x in w["event_key"].split("-"))
     s = upcoming_schedule(year)
     return _slugify(s.loc[s["round"] == rnd, "location"].iloc[0])
@@ -343,7 +346,7 @@ def _venue(meas, event_id, w):
 def price_stages_now(meas, hist, w, st, engine, engine_url, now, echo=print):
     """[(label, cutoff, run_id, priced_at)] for the stages whose cutoff has passed and whose session data is
     in; stops at the first stage still waiting for data. Reuses the sweep's cached stage runs."""
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     year, rnd = (int(x) for x in w["event_key"].split("-"))
     ev = meas.res[(meas.res["year"] == year) & (meas.res["series_round"] == rnd)]
     event_id = int(ev["event_id"].iloc[0]) if len(ev) else None
@@ -414,7 +417,7 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
     and recorded tape, its maker fee).
     scale: a taker's stake multiplier (TakerParams.scale; a blend member's weight, see compute_all).
     -> dict(event, stages, signals, positions, venue, note)."""
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     st = SS.Settings.from_dict(profile["settings"], strict=False)
     venue = resolve_venue(st, venue, live)
     now = pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz="UTC").tz_localize(None)
@@ -628,6 +631,12 @@ def run_all(engine, engine_url, users=None, profile_ref=None, now=None, event="n
     from racinglines.pipelines import profiles as PF
     with engine.connect() as c:
         targets = [(uid, prof) for uid, name, _, prof in PF.assigned(c, venue=venue) if not users or name in users]
+        if not PF.MAKERS_OPEN:                 # Alpha: makers run only for the demo accounts (profiles.MAKERS_OPEN)
+            names = {uid: name for uid, name, _, _ in PF.assigned(c, venue=venue)}
+            skipped = [names[uid] for uid, prof in targets if PF.is_maker(prof) and names[uid] not in PF.DEMO]
+            if skipped:
+                echo(f"maker strategies are closed for Alpha: skipped {', '.join(skipped)}")
+            targets = [(uid, prof) for uid, prof in targets if not PF.is_maker(prof) or names[uid] in PF.DEMO]
         if profile_ref is not None:            # this profile instead of the users' own
             prof = PF.load(c, profile_ref)
             targets = [(uid, prof) for uid, _ in targets]
@@ -728,7 +737,7 @@ def price_upcoming(engine, engine_url, profile, now=None, n=3, echo=print, cache
     per deploy: the Markets board reads the newest of these runs, so a model change reaches it at the next pass).
     Returns {event_key: run id}."""
     from racinglines.db.queries import code_version
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     st = SS.Settings.from_dict(profile["settings"], strict=False)
     venue = SS.venue_of(st)
     now = pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz="UTC").tz_localize(None)

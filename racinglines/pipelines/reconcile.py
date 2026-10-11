@@ -2,8 +2,8 @@
 Per-weekend reconciliation: a profile's live paper trading of one race weekend against the backtest's
 replay of the same weekend on the recorded tape (docs/paper-trading.md, validation rule 1).
 
-    racinglines f1 reconcile --event 2026-15 --profile C --venue polymarket
-    racinglines f1 reconcile --event 2026-15 --profile A --user taker --replicates 0 --markdown
+    racinglines strategy reconcile f1 --event 2026-15 --profile C --venue polymarket
+    racinglines strategy reconcile f1 --event 2026-15 --profile A --user taker --replicates 0 --markdown
 
 Live side: the strategy_signals and paper_positions the signal engine (pipelines/signals.py) stored for
 the account on that weekend and venue. Replay side: signals.compute(live=False) as of a day after the

@@ -9,7 +9,9 @@
 <details class="muted"><summary>About these positions</summary>
 <p class="legend">Paper only: nothing was sent to Polymarket. Polymarket history is {{ "the maker's fills" if maker else "your strategy's calls" }}{% if sport_paper %}; NASCAR and MotoGP are taker replays on the exchanges' recorded prices (a demo: strategies picked in-sample){% else %}{% for k in others %}; {{ venue_names.get(k, k) }} is the same profile replayed on {{ venue_names.get(k, k) }}'s recorded tape{% endfor %}{% endif %}{% if venues.private %}; the private book is {{ "the one you ran" if maker else "the one you bet into" }} live (a demo, in fantasy bucks){% endif %}.</p></details>
 
-{% if not paper.n and not my_bets and not venues %}{{ empty("No positions yet." ~ (" This account has no strategy profile." if not profile else "")) }}{% else %}
+{% if not paper.n and not my_bets and not venues %}{% if profile %}{{ empty("No positions yet.") }}{% else %}<div class="card empty-pick"><h2>No positions yet</h2>
+<p>Nothing trades for this account until you pick a strategy; its paper positions show here from the next pricing update.</p>
+<p><a class="button primary" href="/strategy/pick">Pick a strategy</a></p></div>{% endif %}{% else %}
 {# --- the headline: P&L per venue (each one a filter), then the ledger's state --- #}
 <div class="kpis hero">
 {% if venues|length > 1 %}{% for key in venue_order %}{% set v = venues[key] %}{% set label = venue_names.get(key, key) ~ " P&L" %}{% set sub = "paper history" if key == 'polymarket' else ("live, fantasy bucks" if key == 'private' else "paper, on " ~ venue_names.get(key, key) ~ "'s tape") %}

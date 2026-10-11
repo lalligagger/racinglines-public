@@ -1,0 +1,14 @@
+# Every F1 live event whose window is open, one step each: `racinglines live auto` (cli/live.py) reads the committed
+# specs (live/f1/*.toml), so no event is started or stopped by hand. Outside every window a pass does nothing.
+# Each event's run-folder lock stops it overlapping a per-event racinglines-live-f1@ step.
+#   bash scripts/deploy/vm.sh live auto [off]
+[Unit]
+Description=racinglines live step, every open F1 event
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=racinglines
+WorkingDirectory=/opt/racinglines
+EnvironmentFile=/etc/racinglines.env
+ExecStart=/opt/racinglines/.venv/bin/racinglines live auto

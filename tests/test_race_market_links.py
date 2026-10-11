@@ -18,7 +18,7 @@ from racinglines.markets import kinds as K
 from racinglines.markets.kalshi import sync as KS
 from racinglines.markets.polymarket import sync as PS
 from racinglines.models import outcomes as O
-from racinglines.models.position_sim import model as M
+from racinglines.models.inputs import laps as M
 
 # --- the two simulated kinds ---------------------------------------------------------------------------------
 

@@ -290,7 +290,7 @@ def fetch(kind, seasons, data_dir=None, limit=None):
             print(f"{race} | FAILED {type(ex).__name__}: {ex}", flush=True)
         time.sleep(pace)
         if fetched == 0 and len(failed) >= 10:
-            raise SystemExit(f"the first {len(failed)} pages all failed; stopping. Run `racinglines cycling probe "
+            raise SystemExit(f"the first {len(failed)} pages all failed; stopping. Run `racinglines data probe cycling "
                              f"{pages[0][2]}` and report what it prints.")
     cached = sorted(cache.glob("*.csv"))
     if not cached:

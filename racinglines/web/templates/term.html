@@ -1,0 +1,34 @@
+{% extends "base_public.html" %}
+{% block title %}racinglines · quickstart{% endblock %}
+{% block main_class %}termpage{% endblock %}
+{% block content %}
+{# Public: the quickstart's CLI runs, recorded (racinglines/web/term/demos.toml), not a live shell. Re-record with
+   scripts/demo/record_term.py when the commands change. #}
+<header class="lp-top">
+  <a class="lp-brand" href="/login"><img src="/static/brand/logo.svg" alt="" width="32" height="32"><span>racing<b>lines</b></span></a>
+</header>
+<h1>Quickstart</h1>
+<p class="lede">racinglines is a Python package first: the web app and the hosted MCP server run the same code. These are
+  the quickstart's commands, run with <code>--demo</code> on a made-up Formula 1 world with a Mario Kart grid that ships
+  with the package, recorded and replayed here; nothing runs on this page.
+  Press Play on each step to run it, at your own pace alongside your own terminal.</p>
+{# Steps group under their pack section ([[quickstart]] section = "..."), numbered within it; no sections, one list. #}
+{% for section, steps in parts %}
+{% if section %}<h2 class="term-part">{{ section }}</h2>{% endif %}
+{% for d in steps %}
+<section class="term-demo" id="{{ d.id }}">
+  <h3>{{ loop.index }}. {{ d.title }}</h3>
+  <p>{{ d.about }}</p>
+  <div class="term" data-term>
+    <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i></div>
+    <div class="term-cmd"><span class="term-prompt" aria-hidden="true">$ </span><code data-term-cmd>{{ d.command }}</code><button type="button" class="term-play" data-term-play hidden>Play</button></div>
+    {% if d.html %}<div class="term-body" data-term-out>{{ d.html|safe }}</div>{% endif %}{# record = false: typed, not run #}
+  </div>
+</section>
+{% endfor %}
+{% else %}
+<p>No recordings yet.</p>
+{% endfor %}
+{% if demos and recorded %}<p class="hint">Recorded {{ recorded }}.</p>{% endif %}
+<p class="hint"><a href="/login#account">Try the web app</a> · <a href="/racinglines101">What is racinglines?</a></p>
+{% endblock %}

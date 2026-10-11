@@ -37,7 +37,7 @@ PARSER = "chronorace_md"
 def ingest_file(session, path, competition="uci_dhi_wc", force=False):
     """Ingest one downloaded event file. Returns a short status string."""
     from racinglines.sources.chronorace.parse import is_markdown_tables_file, parse_markdown_tables_file
-    from racinglines.models.timed_runs import event_format
+    from racinglines.models.inputs.run_times import event_format
 
     path = Path(path)
     sha = hashlib.sha256(path.read_bytes()).hexdigest()

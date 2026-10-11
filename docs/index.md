@@ -71,21 +71,31 @@ pip install -r requirements.txt && pip install -e .   # dependencies + the `raci
 racinglines check                                      # code, data endpoints, database (~10 s)
 ```
 
+The demo ([Quickstart](quickstart.md)): the real commands on a synthetic Mario Kart season, a separate database
+built on first use (needs Postgres: `docker compose up -d`):
+
+```
+racinglines model backtest f1 --demo                   # every past race priced as of before it, scored
+racinglines model forecast f1 --demo --save            # the rest of the season and the championships
+racinglines live run f1/demo-2026-09 --demo --simulate --no-fetch   # a live private book, 100 simulated takers
+racinglines book price --demo                          # sportsbook lines vs the model and the exchanges
+```
+
 Then the full pipeline:
 
 ```
 docker compose up -d                                   # PostgreSQL on localhost:5433 (or a conda Postgres: see Database)
 racinglines db init                                    # tables + reference data
 
-racinglines f1 fetch && racinglines f1 ingest          # F1 sessions (FastF1) -> database
-racinglines f1 forecast --save                         # live F1 prices: remaining races + championships
+racinglines data fetch f1 && racinglines data ingest f1          # F1 sessions (FastF1) -> database
+racinglines model forecast f1 --save                         # live F1 prices: remaining races + championships
 racinglines markets sync                               # Polymarket's F1 markets
 
-racinglines mtb_dh ingest                              # downhill event files -> database
-racinglines mtb_dh forecast --db --save                # downhill season forecast
+racinglines data ingest mtb_dh                              # downhill event files -> database
+racinglines model forecast mtb_dh --db --save                # downhill season forecast
 
-racinglines f1 profiles --assign-demo                  # strategy profiles A and C for the demo accounts
-racinglines f1 signals                                 # live paper signals (outside a race weekend: a no-op)
+racinglines strategy profiles f1 --assign-demo                  # strategy profiles A and C for the demo accounts
+racinglines strategy signals f1                                 # live paper signals (outside a race weekend: a no-op)
 ADMIN_PASSWORD=... racinglines web                     # the app on http://127.0.0.1:8000
 ```
 
@@ -234,7 +244,7 @@ plus mkdocs's other dependencies, then run `mkdocs build` and open
 |---|---|
 | `racinglines/cli/` | The `racinglines` command: `f1`, `mtb_dh`, `markets`, `db`, `web`, `check` |
 | `racinglines/sources/` | Data sources: `fastf1/` (fetch, ingest), `chronorace/` (download, parse, ingest), `http.py` (paced, retried requests for every source) |
-| `racinglines/models/` | Model families: `position_sim/` (F1: car/driver pace, practice prior, variants, race and season pricing), `timed_runs/` (downhill: log-time model, weekend and season simulation) |
+| `racinglines/models/` | The one engine, `model_global.py` (every modelled sport's pricing model, its inputs declared in `sports/<code>.toml` [model]), and its input layers in `inputs/`: `laps.py`, `laps_pricing.py`, `practice.py`, `grid.py` (F1: car/driver pace, sectors, practice prior, race and season pricing), `run_times/` (downhill: log-time model, weekend and season simulation), `results.py` (finishing positions); `variants.py`, `props.py`, `evaluate.py` beside them |
 | `racinglines/markets/` | Exchanges and books: Polymarket `sync`/`trade`/`links`, Kalshi `client`/`sync`/`trade`, the Parquet `store`, `venues`, the `private_book`, new-market and signal `alerts`, and `strategies/` (maker replay, weekend taker, season) |
 | `racinglines/pipelines/` | Multi-stage runs: `weekend_sweep`, `sweep_settings`, `search` (settings searches), `season_strategy`, `season_checkpoints`, `profiles`, `signals` (live paper trading), `story` and `demo_history` (the demo accounts) |
 | `racinglines/db/` | Database: models, reads, queries, shared ingest helpers, the `snapshot`, registry of sports and venues |

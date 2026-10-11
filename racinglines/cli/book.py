@@ -9,9 +9,29 @@ database.
     render   one HTML page (and --png) of the priced board: hud (on the book's screenshot), card, or agnostic (model
              and exchanges only), with stakes from markets/books.toml (docs/sportsbook/render.md)
     new      a book file draft from loose text ("A over B 1.57", "A vs B 1.57 2.25", "Name 4.35"): --from-text
+    view     render a saved --json result of map, price or settle with Rich (no database)
+    logout   forget the browser sign-in that --remote keeps
+    config   show or set the CLI's defaults (racinglines/cli/config.py): `config`, `config KEY VALUE`, `config KEY --unset`
 
-Options (every command):
+Where the data comes from (map, price, settle), three modes; the default is the defaults file's `source`, else local:
+    --local                a local database (--db, else DATABASE_URL, else the defaults file's `db`): you rebuild the
+                           data or run the app and its MCP server yourself
+    --demo [PACK]          a demo store (racinglines/cli/source.py): a separate local database of synthetic data from a
+                           data pack (default kart), built on first use, priced by the same code as --local. FILE
+                           defaults to the pack's book (racinglines/demo/packs/kart/book.toml); `racinglines model
+                           forecast f1 --demo --save` first gives it model prices. Rich by default.
+                           `--demo [PACK] --remote` (or the defaults file's source = remote) prices it on the pack's
+                           hosted demo store instead (its [remote] mcp_url; synthetic data only)
+    --remote               the VM's hosted MCP server (racinglines/cli/remote.py): live model runs and exchange prices.
+                           Signs in through the browser the first time (kept in ~/.config/racinglines/mcp-login.json),
+                           or uses RACINGLINES_MCP_TOKEN (an rl_ token) when set. --mcp-url URL, RACINGLINES_MCP_URL or
+                           the defaults file's `mcp_url` point it at your own server (default
+                           https://mcp.racinglines.bet/mcp)
+
+Options (map, price, settle):
     --json                 the whole result as JSON (stable keys: docs/sportsbook/slips.md#json-output)
+    --rich                 a coloured table (Rich; racinglines/cli/rich_view.py): the default; --plain (any command) or
+                           RACINGLINES_PLAIN=1 prints the plain text
     --db URL               the database (default DATABASE_URL)
 price only:
     --run ID               price legs of that run's competition from it (repeatable; default: the app's own choice
@@ -27,7 +47,9 @@ new:
 """
 
 import argparse
+import importlib.util
 import json
+import os
 import sys
 
 import pandas as pd
@@ -36,6 +58,10 @@ import pandas as pd
 def _parser():
     p = argparse.ArgumentParser(prog="racinglines book", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    top = p.add_mutually_exclusive_group()                 # also before the command: `book --demo price`
+    for flag in ("demo", "remote", "local"):
+        top.add_argument(f"--{flag}", dest=f"top_{flag}", action="store_true", help=f"as `--{flag}` after the command")
+    p.add_argument("--mcp-url", dest="top_mcp_url", default=None, help="as `--mcp-url` after the command")
     sub = p.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("render", help="An HTML page (and PNG) of the priced board: hud, card or agnostic.")
     r.add_argument("file", nargs="?", help="a book file, or a cycling price output folder / futures.csv / matchups.csv")
@@ -63,14 +89,56 @@ def _parser():
                       ("price", "Model fair, market price, book implied probability and EV per leg and per slip."),
                       ("settle", "Results and payouts from the stored classification.")):
         s = sub.add_parser(name, help=hlp)
-        s.add_argument("file", help="a book file (books/<venue>/<date>-<event>.toml, docs/sportsbook/index.md)")
+        s.add_argument("file", nargs="?", help="a book file (books/<venue>/<date>-<event>.toml, "
+                                               "docs/sportsbook/index.md); with --demo, default the pack's book")
         s.add_argument("--json", action="store_true", help="print the result as JSON")
+        s.add_argument("--rich", action="store_true", help="print a coloured terminal table (Rich)")
         s.add_argument("--db", default=None, help="database URL (default DATABASE_URL)")
+        mode = s.add_mutually_exclusive_group()
+        mode.add_argument("--demo", action="store_true",
+                          help="a demo store: a local database of synthetic data from a data pack (`--demo PACK` for another pack; default kart)")
+        mode.add_argument("--remote", action="store_true",
+                          help="the VM's hosted MCP server: browser sign-in, or RACINGLINES_MCP_TOKEN")
+        mode.add_argument("--local", action="store_true", help="a local database (the default unless the defaults "
+                                                               "file says otherwise)")
+        s.add_argument("--mcp-url", default=None, help="the hosted server for --remote (default RACINGLINES_MCP_URL, "
+                                                       "else https://mcp.racinglines.bet/mcp)")
         if name == "price":
             s.add_argument("--run", type=int, action="append", default=[], help="a model run id (repeatable)")
             s.add_argument("--sims", action="append", default=[], metavar="RACE_ID=FILE",
                            help="simulations for one race, for joint same-race pricing (repeatable)")
+    v = sub.add_parser("view", help="Render a saved --json result with Rich (no database).")
+    v.add_argument("file", help="the JSON a map, price or settle --json printed ('-' for stdin)")
+    lo = sub.add_parser("logout", help="Forget the browser sign-in --remote keeps.")
+    lo.add_argument("--mcp-url", default=None, help="only this server's sign-in (default: every server's)")
+    cf = sub.add_parser("config", help="Show or set the CLI's defaults (source, mcp_url, db).")
+    cf.add_argument("key", nargs="?", help="source (local / remote / demo), mcp_url or db")
+    cf.add_argument("value", nargs="?")
+    cf.add_argument("--unset", action="store_true", help="remove KEY")
     return p
+
+
+def _config(C, args):
+    if args.key is None:
+        data = C.load()
+        print(f"# {C.path()}" + ("" if data else " (none: every default applies)"))
+        for k in C.KEYS:
+            if k in data:
+                print(f"{k} = {'<set>' if k == 'db' else data[k]}")       # a db URL can carry a password
+        return 0
+    if not args.unset and args.value is None:
+        print(f"book config {args.key}: give a VALUE, or --unset", file=sys.stderr)
+        return 2
+    C.set_key(args.key, None if args.unset else args.value)
+    print(f"{'removed' if args.unset else 'set'} {args.key} in {C.path()}")
+    return 0
+
+
+def _kind(out):
+    """Which command made a result dict: price adds assumptions, settle adds a result to every leg."""
+    if "assumptions" in out:
+        return "price"
+    return "settle" if any("result" in lg for r in out.get("lines", []) for lg in r.get("legs", [])) else "map"
 
 
 def _sims(specs):
@@ -203,7 +271,16 @@ def _new(args):
 
 
 def main(argv=None):
-    args = _parser().parse_args(argv)
+    from racinglines.cli import tty as TTY
+    parser = _parser()
+    args = parser.parse_args(argv)
+    tops = [f for f in ("demo", "remote", "local") if getattr(args, f"top_{f}")]
+    if tops and args.cmd not in ("map", "price", "settle"):
+        parser.error(f"--{tops[0]} applies to map, price and settle")
+    if tops:
+        if any(getattr(args, f) for f in ("demo", "remote", "local") if f not in tops):
+            parser.error("give one of --demo, --remote, --local")
+        setattr(args, tops[0], True)
     if args.cmd in ("render", "new"):
         from racinglines.books import render as R
         from racinglines.books import schema as S
@@ -212,6 +289,58 @@ def main(argv=None):
         except (R.RenderError, S.BookError, OSError) as e:
             print(f"book {args.cmd}: {e}", file=sys.stderr)
             return 2
+    if args.top_mcp_url and args.cmd in ("map", "price", "settle", "logout"):
+        args.mcp_url = args.mcp_url or args.top_mcp_url
+    if args.cmd == "view":
+        from racinglines.cli import rich_view
+        try:
+            out = json.load(sys.stdin if args.file == "-" else open(args.file))
+        except (OSError, ValueError) as e:
+            print(f"book view: {e}", file=sys.stderr)
+            return 2
+        rich_view.render(_kind(out), out)
+        return 0
+    from racinglines.cli import config as C
+    if args.cmd == "logout":
+        from racinglines.cli import remote
+        print("signed out" if remote.logout(args.mcp_url) else "no stored sign-in")
+        return 0
+    try:
+        if args.cmd == "config":
+            return _config(C, args)
+        defaults = C.load()
+    except ValueError as e:
+        print(f"book: {e}", file=sys.stderr)
+        return 2
+    from racinglines.cli import source as SRC
+    if SRC.demo_active():                                  # `--demo [PACK]`, taken out by the CLI's source resolver
+        if args.remote:                                    # the pack's hosted store (source.use_remote_demo)
+            args.file = args.file or (str(SRC.pack().book) if SRC.pack().book else None)
+            from racinglines.cli import remote as RM
+            RM.warn()                                      # the testing warning first, as on every remote run
+            print(f"demo: the {SRC.demo_active()} pack's hosted demo store (synthetic data); nothing is traded",
+                  file=sys.stderr)
+        else:
+            args.demo, args.local = True, False
+    if not (args.demo or args.remote or args.local):
+        source = defaults.get("source", "local")
+        args.demo, args.remote = source == "demo", source == "remote"
+    args.mcp_url = args.mcp_url or os.environ.get("RACINGLINES_MCP_URL") or defaults.get("mcp_url")
+    if not args.db and not os.environ.get("DATABASE_URL"):
+        args.db = defaults.get("db")
+    if args.demo:
+        if args.db and args.db != defaults.get("db"):
+            print("book --demo: prices on the demo store; leave out --db (--local --db URL for your own)", file=sys.stderr)
+            return 2
+        args.db = SRC.use_demo()
+        args.file = args.file or (str(SRC.pack().book) if SRC.pack().book else None)
+        print("demo: the demo store's synthetic data (made-up names, results and prices); nothing is traded",
+              file=sys.stderr)
+        if not args.json and not args.rich and not importlib.util.find_spec("rich"):
+            print("(plain text: pip install rich for the coloured tables)", file=sys.stderr)
+    if not args.file:
+        print(f"book {args.cmd}: a book FILE is needed (or --demo for a demo pack's book)", file=sys.stderr)
+        return 2
     from racinglines.books import schema as S
     from racinglines.books import slips as B
     from racinglines.db.config import get_engine
@@ -220,11 +349,25 @@ def main(argv=None):
     except (S.BookError, OSError) as e:
         print(f"book: {e}", file=sys.stderr)
         return 2
-    with get_engine(args.db).connect() as conn:
-        out = run(args.cmd, book, conn, getattr(args, "run", ()), getattr(args, "sims", ()))
-        conn.rollback()
+    if args.remote:
+        from racinglines.cli import remote
+        if (args.db and args.db != defaults.get("db")) or getattr(args, "sims", None):
+            print("book --remote: runs on the hosted server; --db and --sims are local only", file=sys.stderr)
+            return 2
+        try:
+            out = remote.run(args.cmd, open(args.file).read(), args.mcp_url, getattr(args, "run", ()))
+        except remote.RemoteError as e:
+            print(f"book --remote: {e}", file=sys.stderr)
+            return 2
+    else:
+        with get_engine(args.db).connect() as conn:
+            out = run(args.cmd, book, conn, getattr(args, "run", ()), getattr(args, "sims", ()))
+            conn.rollback()
     if args.json:
         print(json.dumps(out, indent=2, default=str))
+    elif args.rich or not TTY.plain():            # Rich by default; --plain / RACINGLINES_PLAIN=1 for the plain text
+        from racinglines.cli import rich_view
+        rich_view.render(args.cmd, out)
     else:
         _print(args.cmd, out)
     return 0

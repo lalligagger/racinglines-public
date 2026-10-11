@@ -26,7 +26,7 @@ wait 15 minutes or restart the app on a fresh client/IP and rerun the valid-auth
 The repo started with two scaffolds written before any real data existed:
 
 - `racinglines/sources/chronorace/parse.py` handled HTML, CSV and JSON inputs, with guessed column names.
-- `racinglines/models/timed_runs/` had the per-race model: Elo ratings, a gradient-boosted `pct_back`
+- `racinglines/models/inputs/run_times/` had the per-race model: Elo ratings, a gradient-boosted `pct_back`
   regressor, and Plackett–Luce win probabilities.
 
 ## 1. Copy/paste parser
@@ -393,7 +393,7 @@ came from a short script that calls the library functions directly:
 import numpy as np
 from racinglines.db.config import get_engine
 from racinglines.db.queries import load_tidy
-from racinglines.models import timed_runs as P
+from racinglines.models.inputs import run_times as P
 raw = load_tidy(get_engine())
 target = P.select_target(raw, 2026, "ME")
 for scope, hl, jw in [("season", 75, .5), ("all", 120, 0), ("all", 120, .5), ("all", 240, .5)]:

@@ -29,14 +29,14 @@ event in depth, then on a whole season.
 | | Backtest | Diagnostic |
 |---|---|---|
 | Question | Is the model calibrated across many past races? | What would we have quoted for one event, and how would it have gone? |
-| Command | `racinglines f1 backtest` | `racinglines f1 diagnostic --event 2026-15 --cutoff 2026-09-25T13:30 --save` |
+| Command | `racinglines model backtest f1` | `racinglines model diagnostic f1 --event 2026-15 --cutoff 2026-09-25T13:30 --save` |
 | Prices | Every race, before qualifying and before the race | One event at a chosen cutoff |
 | Stored as | `model_runs.kind = 'backtest'` | `model_runs.kind = 'diagnostic'` |
 
 Neither one feeds the live app. Live fair prices come only from
 `kind = 'forecast'` runs.
 
-**No leakage.** Every run prices through `position_sim.pricing.price_race` with a hard cutoff:
+**No leakage.** Every run prices through `inputs.laps_pricing.price_race` with a hard cutoff:
 
 - `Measurements.view(cutoff)` keeps only sessions that started before the cutoff.
 - `assert_no_leak` raises `LeakageError` if anything later gets through.
@@ -130,6 +130,18 @@ Results are broken down by pricing stage and market type. The report also shows
 why markets weren't quoted and a sweep of half-spread × fill rule × disagreement
 filter.
 
+### The replay in the browser
+
+The diagnostic page's *Live replay* runs the same maker replay on the visitor's computer: the Rust port in `wasm/`
+(`src/lib.rs`: the replay, the fill scoring and the summaries), compiled to WebAssembly by `bash wasm/build.sh` into
+`racinglines/web/static/replay.wasm` (committed, so the VM needs no Rust). `racinglines/web/static/replay.js` loads it
+with the event's tape (`/lab/diagnostics/{id}/tape.json`, written by
+`racinglines/markets/strategies/replay_json.py`) and re-runs the replay as the knobs move. The Python replay stays the
+reference: `tests/test_wasm_replay.py` runs the committed `.wasm` under Node and checks the summaries, stages and skip
+reasons against `maker_replay.replay`, and `scripts/bench/replay_dump.py --check` compares every quote and fill on a
+real weekend. A change to the replay's rules goes into the Python first, then `src/lib.rs`, then `wasm/build.sh`.
+Only the touch and through fill rules are ported; the queue rule needs recorded order books and stays on the server.
+
 **Polymarket's takers in the app.** On the diagnostic page (`/lab/diagnostics/{id}`), *Record the replay's
 fills* writes each fill as a bet by the `polymarket-takers` system account (no
 login) on the demo `maker`'s in-app market. That account stands in for the
@@ -194,7 +206,7 @@ luck on good trades: the model was wrong on those two positions.
 
 ## Season sweep
 
-`racinglines f1 sweep --save` (or the Lab's **Edge Finder sweep** job, which adds its combos to the Edge Finder) trades every raced
+`racinglines strategy sweep f1 --save` (or the Lab's **Edge Finder sweep** job, which adds its combos to the Edge Finder) trades every raced
 weekend of a season through its sessions:
 
 1. **Stages** come from the real session schedule (FastF1):
@@ -361,7 +373,7 @@ Baseline model, 2026 rounds 1–15 (sweep run 574):
 
 ## Model × strategy matrix
 
-`racinglines f1 matrix` puts every model variant (see
+`racinglines model matrix f1` puts every model variant (see
 [Model variants](f1.md#model-variants-f1-roadmap-f1-2-f1-3)) against every
 trading strategy on the same 2026 weekends. Each variant is re-priced at every
 stage, then traded by each strategy on Polymarket's recorded prices.
@@ -487,7 +499,7 @@ Live paper trading of A and C, and how it's checked against these numbers, is in
 
 ## Season strategy (championship markets)
 
-`racinglines f1 season-strategy --save` replays a default strategy for
+`racinglines strategy season-strategy f1 --save` replays a default strategy for
 Polymarket's drivers' and constructors' championship markets through 2026. Its
 latest run feeds the Markets board and the race pages.
 
@@ -523,8 +535,8 @@ The same strategy runs live as a paper sleeve, one per exchange, off unless
 invoked:
 
 ```
-racinglines f1 season-strategy --paper --venue polymarket --after-round 16
-racinglines f1 season-strategy --paper --venue kalshi --after-round 16
+racinglines strategy season-strategy f1 --paper --venue polymarket --after-round 16
+racinglines strategy season-strategy f1 --paper --venue kalshi --after-round 16
 ```
 
 Each replays the strategy from pre-season through the decision after that
@@ -551,7 +563,7 @@ expects little of it.
 
 ### Checkpoint entries
 
-`racinglines f1 season-checkpoints` asks a narrower question than the strategy
+`racinglines strategy season-checkpoints f1` asks a narrower question than the strategy
 above: **if a desk takes a championship position at a fixed point in the season
 and holds it, does the market come to our number?** It separates the model's
 view from how fast the market reacts to each race.

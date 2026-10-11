@@ -27,7 +27,7 @@ Markets (key: what YES means):
     race_pole:<athlete>            takes pole                        extra.pole_prob       settles after qualifying
     race_h2h:<a>:<b>               a finishes ahead of b             extra.h2h[b]          pairs: the last race Polymarket listed
     race_constructor_top:<team>    the team scores the most points   metrics.race_constructor_top
-Props, off by default (listed only when [live.markets] kinds names them; models/position_sim/props.py):
+Props, off by default (listed only when [live.markets] kinds names them; models/props.py):
     race_safety_car / race_red_flag / race_rain     yes/no, per-circuit rates from the race history
     race_fastest_lap:<athlete>     sets the race's fastest lap       the stage run's finishing odds x history
 Settlement: private_book.outcome_for on the official classification. A demo experiment: play money, nothing
@@ -44,7 +44,7 @@ from sqlalchemy import text
 
 from racinglines.markets import crowd as C
 from racinglines.markets import quoting as Q
-from racinglines.models.position_sim import props as P
+from racinglines.models import props as P
 from racinglines.pipelines import live as LV
 
 KINDS = ("race_win", "race_podium", "race_pole", "race_h2h", "race_constructor_top")     # the default market set
@@ -681,7 +681,7 @@ def _crowd(st, book, cp, event_key, label, end, out):
 
 def _refresh(w, now, cache, echo, engine):
     """Live only: fetch and ingest a finished session's FastF1 data when it's missing (signals.py)."""
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     from racinglines.pipelines import signals as SG
     meas = cache.get("meas") or run.Measurements.load(engine)
     if SG._missing_sessions(meas, w, now):
@@ -692,7 +692,7 @@ def _refresh(w, now, cache, echo, engine):
 def _stage_runs(spec, w, now, fetch, cache, echo, engine, engine_url):
     """[(stage label, run id)] for the stages priced so far with the maker's profile (signals.price_stages_now:
     a stored run is reused, a missing one priced and stored)."""
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     from racinglines.pipelines import profiles as PF
     from racinglines.pipelines import signals as SG
     from racinglines.pipelines import sweep_settings as SS
@@ -712,7 +712,7 @@ def _stage_runs(spec, w, now, fetch, cache, echo, engine, engine_url):
 
 # ---------------------------------------------------------------------------
 # In-race win chart: live timing (the Mac relay, web/f1_live.py) or, after the race, its laps
-# (backfill_inrace) -> models/position_sim/inrace.py
+# (backfill_inrace) -> models/inrace.py
 # ---------------------------------------------------------------------------
 
 RACE_LAPS = 56       # race distance for the in-race chart; Sepang (2026-16). RACINGLINES_RACE_LAPS overrides
@@ -730,7 +730,7 @@ def inrace_points(run, snap, now=None, replay=False):
     import os
     import re
 
-    from racinglines.models.position_sim import inrace as IR
+    from racinglines.models import inrace as IR
     from racinglines.web import f1_live as FL
     key = str(snap.get("event_key") or run)
     m = re.fullmatch(r"(\d{4})-(\d{1,2})", key)
@@ -795,7 +795,7 @@ def backfill_inrace(year, rnd, echo=print):
     """After the race, the in-race win chart as if the relay had run all race: one point per lap from the race's
     laps (data/raw/f1/fastf1/<year>/<round>_R.*, pushed by scripts/deploy/f1_push.sh or f1 fetch), priced from the
     last live-book update before lights out. Rewrites the store; returns how many points it wrote."""
-    from racinglines.models.position_sim import inrace as IR
+    from racinglines.models import inrace as IR
     from racinglines.sources.fastf1.fetch import OUT
     base = OUT / str(year) / f"{rnd:02d}_R"
     meta = json.loads(base.with_suffix(".meta.json").read_text())

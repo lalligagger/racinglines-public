@@ -8,7 +8,7 @@ model prediction that prices it.
     "<GP>: Which Constructor Scores 1st?" race_constructor_top   race, params.team
     "<GP>: Driver Pole Position"          race_pole         athlete, race
     "<GP>: Driver Fastest Lap"            race_fastest_lap  athlete, race
-    "<GP>: Sprint Winner"                 race_sprint_win   athlete, race (the sprint stage, models/position_sim/pricing.py)
+    "<GP>: Sprint Winner"                 race_sprint_win   athlete, race (the sprint stage, models/inputs/laps_pricing.py)
         (2025: "F1 <GP>: Sprint Race Winner", "<GP> - Sprint Winner")
     "<GP>: Sprint Qualifying Pole Winner" race_sprint_pole  athlete, race
     "<GP>: 2nd Place" .. "5th Place"      race_p2 .. race_p5   athlete, race (an exact finishing place)

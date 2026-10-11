@@ -113,7 +113,7 @@ def test_outputs_and_stable_candidate_ids(tmp_path):
         j, m = _job(i, y, p, **st)
         jobs.append(j)
         metrics.update(m)
-    R.write(tmp_path, jobs, metrics, STRATS, rerun=lambda j: ["racinglines", "f1", "sweep", "--year", str(j["year"])],
+    R.write(tmp_path, jobs, metrics, STRATS, rerun=lambda j: ["racinglines", "strategy", "sweep", "f1", "--year", str(j["year"])],
             echo=lambda m: None)
     cid = f"update-{SS.Settings.from_dict(A).key}"
     doc = json.loads((tmp_path / "candidates" / f"{cid}.json").read_text())
@@ -125,7 +125,7 @@ def test_outputs_and_stable_candidate_ids(tmp_path):
 
 
 def test_seasonal_switches_are_dropped_outside_their_season():
-    from racinglines.models.position_sim import variants as V
+    from racinglines.models import variants as V
     assert V.for_season("gridq+pretrain+reset", 2025) == "gridq+pretrain"
     assert V.for_season("gridq+pretrain+reset", 2026) == "gridq+pretrain+reset"
     assert V.for_season("reset", 2024) == "baseline"
@@ -140,7 +140,7 @@ def test_beating_a_losing_baseline_is_flagged_when_it_still_loses():
 
 
 def test_model_only_scores_use_the_sports_settings_and_rank_by_gain(tmp_path):
-    from racinglines.models.timed_runs.settings import DHSettings
+    from racinglines.models.inputs.run_times.settings import DHSettings
     cfg = dict(R.SPORT_DEFAULTS["mtb_dh"], target=2026, holdout=[2025])
 
     def job(i, year, scores, **st):

@@ -716,3 +716,42 @@ def test_list_markets_flags_stale_or_missing_exchange_prices(mcp, monkeypatch):
         out = T.list_markets(c, race_id=race)
         assert out["freshness"]["venues"] and "any_stale" in out["freshness"]
         c.execute(text("DELETE FROM market_links WHERE token_id LIKE 'fresh-%'"))
+
+
+def test_shared_store_never_reads_account_rows_by_a_foreign_id(mcp, monkeypatch):
+    """RACINGLINES_MCP_ACCOUNTS_URL (the demo server): the caller's id is the accounts database's, so on the served
+    store the same number can be another account's rows (its maker or taker). A non-admin caller sees none of them."""
+    from sqlalchemy import text
+    from racinglines.mcp import server as S
+    with mcp.engine.begin() as c:
+        uid = c.execute(text("""INSERT INTO users (username, password_hash, role) VALUES ('mcp-store-maker', 'x', 'pro')
+                                RETURNING id""")).scalar()
+        c.execute(text("""INSERT INTO paper_positions
+            (user_id, event_key, market_key, kind, subject, yes_shares, cash, outcome, venue)
+            VALUES (:u, '2099-03', 'store', 'race_win', 'store', 0, 7, true, 'polymarket')"""), dict(u=uid))
+        c.execute(text("""INSERT INTO strategy_signals
+            (user_id, profile, strategy, event_key, market_key, kind, subject, stage, dedupe,
+             action, side, status, signal_ts, detail)
+            VALUES (:u, 'test', 'maker', '2099-03', 'store', 'race_win', 'store',
+                    'after FP2', 'store-shared', 'quote', 'bid', 'new', now(), '{"venue":"polymarket"}'::jsonb)"""),
+                  dict(u=uid))
+    try:
+        monkeypatch.setenv("RACINGLINES_MCP_ACCOUNTS_URL", "postgresql+psycopg://accounts.invalid/racinglines")
+        who = dict(id=uid, username="prod-pro", role="pro")                 # a production id that collides
+        monkeypatch.setattr(S, "caller", lambda: who)
+        ov = mcp("overview")
+        assert ov["users"] == [] and ov["row_counts"]["paper_positions"] == 0
+        assert ov["row_counts"]["strategy_signals"] == 0
+        assert mcp("list_positions", user="prod-pro")["positions"]["total"] == 0
+        assert mcp("list_signals")["total"] == 0
+        record = mcp("track_record", user="prod-pro")
+        assert not isinstance(record, tuple) and not record.get("pnl")
+        denied = mcp("list_positions", user="mcp-store-maker")
+        assert denied[0] == "error" and "own account" in denied[1]
+        who["role"] = "admin"                                                # admins read the store as its owner
+        assert mcp("list_positions", user="mcp-store-maker")["positions"]["total"] == 1
+    finally:
+        with mcp.engine.begin() as c:
+            c.execute(text("DELETE FROM strategy_signals WHERE user_id = :u"), dict(u=uid))
+            c.execute(text("DELETE FROM paper_positions WHERE user_id = :u"), dict(u=uid))
+            c.execute(text("DELETE FROM users WHERE id = :u"), dict(u=uid))

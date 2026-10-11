@@ -18,7 +18,7 @@ pytestmark = pytest.mark.quick
 
 @pytest.fixture(scope="module")
 def f1_priced():
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     from racinglines.testing import synthetic as SY
     m = run.Measurements.from_frames(*SY.f1_frames())
     hist = run.history(m)
@@ -56,8 +56,8 @@ def test_constructor_top_is_a_distribution_close_to_price_race(f1_priced):
 
 @pytest.fixture(scope="module")
 def dh_sim():
-    from racinglines.models import timed_runs as P
-    from racinglines.models.timed_runs import model as TM
+    from racinglines.models.inputs import run_times as P
+    from racinglines.models.inputs.run_times import model as TM
     from racinglines.sources.chronorace.parse import parse_markdown_tables_file
     from racinglines.testing import synthetic as SY
     d = Path(tempfile.mkdtemp(prefix="racinglines-test-"))
@@ -72,7 +72,7 @@ def dh_sim():
 
 
 def test_downhill_summary_equals_the_catalogue(dh_sim):
-    from racinglines.models.timed_runs import model as TM
+    from racinglines.models.inputs.run_times import model as TM
     model, riders, sim = dh_sim
     got = K.summary(O.from_timed_runs(riders, sim)).set_index("athlete_id")
     want = TM.summarize_weekend(model, riders, sim).set_index("rider_id").loc[got.index]

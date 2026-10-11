@@ -67,7 +67,7 @@ be repeated without reading the whole page.
 | `deploy/vm/staging/`, `deploy/vm/systemd/racinglines-staging-web.service`, `deploy/ci/staging.yml` | Staging on the VM and its workflow ([Staging](#staging)) |
 | `.github/workflows/predeploy.yml` | `main-merge-gate`, the CI workflow ([The flow](#the-flow)). Cloud sessions can't push changes to it (the token lacks the workflow scope): ship a patch for the owner |
 | `scripts/deploy/smoke.sh <url>` | The smoke check (any machine with curl) |
-| `vm.sh demo`, `demo extra`, `demo status` | The multi-sport demo. `demo`: writes `RACINGLINES_SPORT_STATUS=1` and `RACINGLINES_SPORT_PAPER=1` to `/etc/racinglines.env` (replacing any earlier lines for them), restarts the web app, then starts `scripts/vm/demo_setup.sh` as the transient unit `rl-demo` (refused while `rl-demo` is already running). The script refuses to start while a `racinglines-live-*` unit is active, backs up first (`data/backups/db/racinglines-before-demo-setup-<UTC>.sql.gz`, trailer checked), then for NASCAR and MotoGP (a sport with no settings grid under `data/runs/replay-grid/<sport>` is skipped with a `SKIP` line): the steps in `STEPS`, default `kalshi polymarket forecast`: `kalshi` prints the grid's selection and runs `demo-history --grid … --book best --users maker,taker` on Kalshi; `polymarket` the same on Polymarket's tape with the Kalshi grid's selection (`--venue polymarket --grid-venue kalshi`); `forecast` runs `<sport> forecast --save` (MotoGP has no scheduled race stored, so it stores nothing). `demo extra` runs only `polymarket forecast`. `demo status` shows the unit, the `demo-setup.done` / `.failed` markers and the latest log's key lines (`data/runs/logs/demo-setup-<UTC>.log`). Every write logs a `data_changes` row naming the backup; undo with `racinglines <sport> demo-history --reset --users maker,taker --backup FILE` (per venue) and `<sport> forecast --undo RUN_ID`. Touches no trading flag, migration or bucket, and never the F1 demo history ([Paper trading](paper-trading.md#nascar-and-motogp-demo-in-sample-off-by-default)) |
+| `vm.sh demo`, `demo extra`, `demo status` | The multi-sport demo. `demo`: writes `RACINGLINES_SPORT_STATUS=1` and `RACINGLINES_SPORT_PAPER=1` to `/etc/racinglines.env` (replacing any earlier lines for them), restarts the web app, then starts `scripts/vm/demo_setup.sh` as the transient unit `rl-demo` (refused while `rl-demo` is already running). The script refuses to start while a `racinglines-live-*` unit is active, backs up first (`data/backups/db/racinglines-before-demo-setup-<UTC>.sql.gz`, trailer checked), then for NASCAR and MotoGP (a sport with no settings grid under `data/runs/replay-grid/<sport>` is skipped with a `SKIP` line): the steps in `STEPS`, default `kalshi polymarket forecast`: `kalshi` prints the grid's selection and runs `demo-history --grid … --book best --users maker,taker` on Kalshi; `polymarket` the same on Polymarket's tape with the Kalshi grid's selection (`--venue polymarket --grid-venue kalshi`); `forecast` runs `<sport> forecast --save` (MotoGP has no scheduled race stored, so it stores nothing). `demo extra` runs only `polymarket forecast`. `demo status` shows the unit, the `demo-setup.done` / `.failed` markers and the latest log's key lines (`data/runs/logs/demo-setup-<UTC>.log`). Every write logs a `data_changes` row naming the backup; undo with `racinglines strategy demo-history <sport> --reset --users maker,taker --backup FILE` (per venue) and `<sport> forecast --undo RUN_ID`. Touches no trading flag, migration or bucket, and never the F1 demo history ([Paper trading](paper-trading.md#nascar-and-motogp-demo-in-sample-off-by-default)) |
 | `vm.sh switch <NAME> on\|off` | An app switch in `/etc/racinglines.env` (`RACINGLINES_*` only, e.g. `RACINGLINES_OG_VENUE`: the OG.com column and `/markets/og`), replacing any earlier line for it, then the web app restarted. Refuses any `*TRADING*` flag |
 | `vm.sh record`, `record off`, `record status` | The Kalshi and OG.com recorder: enables `racinglines-record-venues.timer`, a pass of `scripts/vm/record_venues.sh` every 5 minutes. Each pass stores one order-book snapshot per open market for `kalshi:f1 og:f1 kalshi:nascar og:nascar kalshi:motogp` (`markets --exchange <x> --sport <s> books`) and, once an hour per pair, that pair's `sync` first (links and quotes upserted). Additive only, read-only APIs, no trading. The first pass on a box backs the database up (`data/backups/db/racinglines-before-record-venues-<UTC>.sql.gz`) and adds a `data_changes` note naming it. One line per pair per pass in the journal and `data/runs/logs/record-venues.log`; `record status` prints the last ones and the book snapshots stored per venue per 5 minutes. `vm.sh deploy` pauses and resumes it with the other timers |
 | `deploy/vm/setup.sh` | One-time VM setup, run by `vm.sh setup`: packages, the `racinglines` user, a read-only deploy key, `/opt/racinglines` on `main`, a Python 3.14 venv (uv), Postgres, `/etc/racinglines.env`, the units |
@@ -313,7 +313,14 @@ deploy is simpler to undo: `vm.sh deploy <previous commit>`.
 
 Each event's spec runs as a unit, in place of `racinglines live agent --install`, which is macOS only.
 The run folder's lock works the same on the VM's disk.
-From the Mac, `bash scripts/deploy/vm.sh live 2026-16` enables an F1 event's timer and `vm.sh live 2026-16 off`
+**Every F1 event, without starting one by hand:** `bash scripts/deploy/vm.sh live auto` enables
+`racinglines-live-auto.timer` once. Every 5 minutes it steps each committed spec (`live/f1/*.toml`) whose window is
+open, from an hour before the book opens to a day after the results (`racinglines live auto`), so each finished
+session is ingested and priced, the book closes at lights out and settles, and outside every window a pass does
+nothing (nothing to turn off when an event is complete). `vm.sh live auto off` disables it; staging's twin is
+`vm.sh staging live auto`.
+
+From the Mac, `bash scripts/deploy/vm.sh live 2026-16` enables one F1 event's timer and `vm.sh live 2026-16 off`
 disables it. On the VM itself:
 ```sh
 sudo systemctl enable --now racinglines-live-f1@2026-16.timer     # F1: one step every 5 minutes
@@ -331,6 +338,11 @@ race is in:
 - **Live timing, staging only:** while a session runs, every 2 minutes (`RELAY_SEC`) it writes the live-timing panel's
   snapshot to staging's `data/runs/f1_relay/<year>-<round>.json`. The panel (`racinglines/web/f1_live.py`) reads that
   file while it is under 10 minutes old and asks FastF1 itself otherwise.
+
+**Started by itself:** `bash scripts/deploy/f1_push_auto.sh install` (once, on the Mac) loads a LaunchAgent that
+starts `caffeinate -i f1_push.sh <event>` whenever an F1 event's window is open (`racinglines live auto --list`) and no
+push is running or the race is already on the VM; `f1_push_auto.sh remove` unloads it. The Mac still has to be awake
+and online through the weekend. Log: `data/runs/logs/f1_push_auto.log` and `f1_push-<event>.log`.
 
 A downhill final's ChronoRace feed works from the VM.
 
@@ -401,9 +413,12 @@ force push is fine there, `staging` is a deploy pointer, not history).
 4. Create the `staging` branch and merge into it; watch the `staging-deploy` run; `bash scripts/deploy/vm.sh status`
    shows production's commit and timers unchanged.
 
-Not done yet: Cloudflare Access in front of staging (today it has the app's own login, as production), a docs build
-for staging's `/docs` (`build_docs.sh` is production-only), the Mac's trycloudflare script (`scripts/deploy/staging.sh`,
-ad hoc only).
+`vm.sh staging deploy` also builds staging's own `/docs` from its checkout (`deploy/vm/build_docs.sh
+/opt/racinglines-staging`, fail-soft like production's; before 2026-10-11 staging had no docs build and `/docs/`
+answered 404).
+
+Not done yet: Cloudflare Access in front of staging (today it has the app's own login, as production), the Mac's
+trycloudflare script (`scripts/deploy/staging.sh`, ad hoc only).
 
 ## Later
 

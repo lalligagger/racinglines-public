@@ -38,6 +38,7 @@ SOURCE = "f1timing"
 ROUND_KIND = {"FP1": "fp1", "FP2": "fp2", "FP3": "fp3", "SQ": "sprint_qual", "Q": "qual", "S": "sprint", "R": "race"}
 ROUND_ORDINAL = {"fp1": -3, "fp2": -2, "fp3": -1, "sprint_qual": 1, "qual": 2, "sprint": 4, "race": 5}
 PRACTICE = ("fp1", "fp2", "fp3")
+SPRINT_FORMATS = ("sprint", "sprint_shootout", "sprint_qualifying")
 
 
 def _num(v):
@@ -64,6 +65,45 @@ def _status(row, kind):
 
 def event_files(year, rnd):
     return sorted((DATA / str(year)).glob(f"{rnd:02d}_*"))
+
+
+Q3_CARS = 10        # qualifying knockout: the last segment's field; Q1 and Q2 each drop half of the rest
+
+
+def knockout_from_laps(res, laps):
+    """Qualifying classification from the laps when the results carry none (FastF1 right after the session, before
+    the official classification is out: no Position, no Q1-Q3). Each driver's segment is read from when they last
+    crossed the line (Q3_CARS latest are Q3, then the Q2 and Q1 eliminations by count); the segments' best valid laps
+    become Q1-Q3 and order each group. Returns res with Position and Q1-Q3 filled, or res unchanged when it has
+    positions or the laps have no session times."""
+    if res["Position"].notna().any() or "Time" not in laps or laps["Time"].isna().all():
+        return res
+    num = laps["DriverNumber"].astype(str)
+    last = laps.groupby(num)["Time"].max()
+    order = list(last.sort_values(ascending=False).index)
+    n = len(res)
+    q2_out = max(0, (n - Q3_CARS) // 2)
+    q3, q2 = order[:Q3_CARS], order[Q3_CARS:Q3_CARS + q2_out]
+    q2_end = last[q2].max() if q2 else None
+    q1_end = last[order[Q3_CARS + q2_out:]].max() if len(order) > Q3_CARS + q2_out else None
+    ok = laps["LapTime"].notna() & ~laps.get("Deleted", pd.Series(False, index=laps.index)).fillna(False).astype(bool)
+    seg = pd.Series(3, index=laps.index)
+    if q2_end is not None:
+        seg[laps["Time"] <= q2_end] = 2
+    if q1_end is not None:
+        seg[laps["Time"] <= q1_end] = 1
+    best = {k: laps[ok & (seg == k)].groupby(num[ok & (seg == k)])["LapTime"].min() for k in (1, 2, 3)}
+    res = res.copy()
+    key = res["DriverNumber"].astype(str)
+    for k in (1, 2, 3):
+        res[f"Q{k}"] = key.map(best[k])
+    group = key.map({d: 0 for d in q3} | {d: 1 for d in q2}).fillna(2)
+    seg_best = [res["Q3"], res["Q2"], res["Q1"]]
+    own = pd.Series([seg_best[int(g)].iloc[i] for i, g in enumerate(group)], index=res.index)
+    rank = pd.DataFrame(dict(g=group, t=own.fillna(float("inf")), q2=res["Q2"].fillna(float("inf")),
+                             q1=res["Q1"].fillna(float("inf")))).sort_values(["g", "t", "q2", "q1"])
+    res.loc[rank.index, "Position"] = range(1, len(rank) + 1)
+    return res
 
 
 def track_profile(q_laps, race_results, meta_q, meta_r, venue_slug):
@@ -105,15 +145,20 @@ def track_profile(q_laps, race_results, meta_q, meta_r, venue_slug):
 def ingest_event(session, year, rnd, force=False):
     files = event_files(year, rnd)
     metas = {p.name.split("_")[1].split(".")[0]: json.loads(p.read_text()) for p in files if p.suffix == ".json"}
-    if "R" not in metas and "Q" not in metas:
+    if not metas:
         return "no sessions"
-    sha = hashlib.sha256(b"".join(p.read_bytes() for p in files)).hexdigest()
+    # a qualifying stored with its order read from the laps (knockout_from_laps) is a different reading of the same
+    # files: the marker makes a weekend stored before that reading existed ingest once more
+    q_res = DATA / str(year) / f"{rnd:02d}_Q.results.parquet"
+    from_laps = b"q-order-from-laps" if "Q" in metas and q_res.exists() and pd.read_parquet(q_res)["Position"].isna().all() else b""
+    sha = hashlib.sha256(b"".join(p.read_bytes() for p in files) + from_laps).hexdigest()
     key = f"f1:{year}-{rnd:02d}"
     src = session.scalars(select(m.SourceFile).filter_by(path=key)).first()
     if src and src.sha256 == sha and not force:
         return "unchanged"
 
-    meta = metas.get("R") or metas.get("Q")
+    # a weekend is stored as each session ends (FP1 first), not only once qualifying or the race is in
+    meta = metas.get("R") or metas.get("Q") or next(metas[c] for c in ROUND_KIND if c in metas)
     comp = session.scalars(select(m.Competition).filter_by(code=COMPETITION)).one()
     cat = session.scalars(select(m.Category).filter_by(competition_id=comp.id, code=CATEGORY)).one()
     season = _upsert(session, m.Season, dict(competition_id=comp.id, year=year))
@@ -123,7 +168,7 @@ def ingest_event(session, year, rnd, force=False):
                     name=meta.get("official_name") or meta["event_name"], start_date=date.fromisoformat(meta["event_date"]),
                     venue_id=venue.id, series_round=rnd, status="completed" if has_race else "in_progress")
     race = _upsert(session, m.Race, dict(event_id=event.id, category_id=cat.id))
-    race.format = dict(kind="f1", sprint="S" in metas, total_laps=(metas.get("R") or {}).get("total_laps"),
+    race.format = dict(kind="f1", sprint="S" in metas or "SQ" in metas or meta.get("event_format") in SPRINT_FORMATS, total_laps=(metas.get("R") or {}).get("total_laps"),
                        event_format=meta.get("event_format"), event_name=meta.get("event_name"))
     session.execute(delete(m.Round).where(m.Round.race_id == race.id))
     session.flush()
@@ -133,10 +178,14 @@ def ingest_event(session, year, rnd, force=False):
     # some sessions (e.g. sprint qualifying) come without driver/team ids: fill them from the
     # weekend's qualifying or race classification by car number
     ref = {}
-    for code in ("R", "Q"):
-        if code in metas:
-            rr = pd.read_parquet(DATA / str(year) / f"{rnd:02d}_{code}.results.parquet")
-            for r in rr.itertuples():
+    # classification by car number; before this weekend's qualifying, the season's earlier rounds fill the gaps
+    for path in [DATA / str(year) / f"{rnd:02d}_{code}.results.parquet" for code in ("R", "Q") if code in metas] + \
+            [p for r_ in range(rnd - 1, 0, -1) for p in (DATA / str(year) / f"{r_:02d}_R.results.parquet",
+                                                          DATA / str(year) / f"{r_:02d}_Q.results.parquet")]:
+        if not path.exists():
+            continue
+        for r in pd.read_parquet(path).itertuples():
+            if pd.notna(r.DriverId) and str(r.DriverId).strip():
                 ref.setdefault(str(r.DriverNumber), dict(DriverId=r.DriverId, TeamId=r.TeamId, CountryCode=r.CountryCode))
     for code, kind in ROUND_KIND.items():
         if code not in metas:
@@ -148,6 +197,8 @@ def ingest_event(session, year, rnd, force=False):
             res.loc[blank, col] = res.loc[blank, "DriverNumber"].astype(str).map(lambda n: ref.get(n, {}).get(col))
         res = res[res["DriverId"].notna() & (res["DriverId"].astype(str).str.strip() != "")]
         laps = pd.read_parquet(base.with_suffix(".laps.parquet"))
+        if code == "Q":
+            res = knockout_from_laps(res, laps)
         frames[code] = (res, laps)
         mt = metas[code]
         rnd_row = m.Round(race_id=race.id, kind=kind, ordinal=ROUND_ORDINAL[kind], name=kind,

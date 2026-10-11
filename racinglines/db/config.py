@@ -13,10 +13,15 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 DEFAULT_URL = "postgresql+psycopg://racinglines:racinglines@localhost:5433/racinglines"
+# What database_url() falls back to when neither a URL nor DATABASE_URL is given: None = DEFAULT_URL. The CLI sets it
+# while a command runs (racinglines/cli/source.py: the defaults file's `db`, or the first-run choice).
+fallback = None
 
 
 def database_url(url=None):
-    return url or os.environ.get("DATABASE_URL", DEFAULT_URL)
+    if url or os.environ.get("DATABASE_URL"):
+        return url or os.environ["DATABASE_URL"]
+    return fallback() if fallback else DEFAULT_URL
 
 
 @lru_cache(maxsize=None)

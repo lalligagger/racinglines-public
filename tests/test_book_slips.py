@@ -263,7 +263,7 @@ def test_settle_from_the_stored_classification(test_engine, db, book):
     assert _line(out, "ghost")["result"] is None
 
 
-def test_cli_json_is_stable(test_engine, db, book, tmp_path, capsys):
+def test_cli_json_is_stable(test_engine, db, book, tmp_path, capsys, monkeypatch):
     from racinglines.cli import book as CLI
     p = tmp_path / "book.toml"
     p.write_text(BOOK)
@@ -275,10 +275,132 @@ def test_cli_json_is_stable(test_engine, db, book, tmp_path, capsys):
         assert set(r) == set(B.LINE_FIELDS) | {"legs"}
         for lg in r["legs"]:
             assert set(lg) == set(B.LEG_FIELDS) | set(B.PRICE_FIELDS) | {"quotes"}
+    monkeypatch.setenv("RACINGLINES_PLAIN", "1")                              # the plain text format (--plain)
     assert CLI.main(["map", str(p), "--db", url]) == 0
     assert "Unmapped lines: ghost, rf" in capsys.readouterr().out
     assert CLI.main(["settle", str(p), "--json", "--db", url]) == 0
     assert _line(json.loads(capsys.readouterr().out), "win")["result"] == "won"
+
+
+def test_cli_rich_and_view_render_every_command(test_engine, db, book, tmp_path, capsys):
+    from racinglines.cli import book as CLI
+    p = tmp_path / "book.toml"
+    p.write_text(BOOK)
+    url = test_engine.url.render_as_string(hide_password=False)
+    for cmd, expect in (("map", "unmapped lines"), ("price", "assumptions"), ("settle", "payout")):
+        assert CLI.main([cmd, str(p), "--rich", "--db", url]) == 0
+        text = capsys.readouterr().out
+        assert f"book {cmd}" in text and expect in text and "parlay" in text
+        assert CLI.main([cmd, str(p), "--json", "--db", url]) == 0
+        saved = tmp_path / f"{cmd}.json"
+        saved.write_text(capsys.readouterr().out)
+        assert CLI.main(["view", str(saved)]) == 0
+        assert f"book {cmd}" in capsys.readouterr().out
+
+
+@pytest.fixture
+def hosted(test_engine, monkeypatch, tmp_path):
+    """The hosted MCP server (OAuth on, rl_ tokens) bound to the test database, served over HTTP on a free local port
+    in a thread: (url, token of an admin account)."""
+    import socket
+    import threading
+    import time
+    import uvicorn
+    from sqlalchemy import text
+    from sqlalchemy.orm import sessionmaker
+    from racinglines.mcp import auth
+    from racinglines.mcp import server as MS
+    from racinglines.web import users as U
+    monkeypatch.setenv("APP_SECRET", "test-secret")
+    with sessionmaker(test_engine)() as s:
+        if not s.execute(text("SELECT 1 FROM users WHERE username = 'b_admin'")).first():
+            U.create_user(s, "b_admin", "pw", "admin")
+        s.commit()
+    tok = auth.new_token(test_engine, "b_admin")
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    from racinglines.cli import remote
+    from racinglines.mcp import oauth
+    monkeypatch.setattr(oauth, "MCP_URL", f"http://127.0.0.1:{port}/mcp")
+    monkeypatch.setattr(oauth, "ISSUER", f"http://127.0.0.1:{port}")
+    monkeypatch.setattr(remote, "LOGIN_FILE", tmp_path / "mcp-login.json")
+    app = MS.http_app(MS.build(engine_url=test_engine.url.render_as_string(hide_password=False), oauth=True))
+    srv = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
+    th = threading.Thread(target=srv.run, daemon=True)
+    th.start()
+    for _ in range(100):
+        if srv.started:
+            break
+        time.sleep(0.05)
+    try:
+        yield f"http://127.0.0.1:{port}/mcp", tok
+    finally:
+        srv.should_exit = True
+        th.join(5)
+        MS._URL = None
+
+
+def test_remote_mode_prices_on_the_hosted_server_like_local(test_engine, db, book, hosted, tmp_path, capsys,
+                                                            monkeypatch):
+    from racinglines.cli import book as CLI
+    url, tok = hosted
+    p = tmp_path / "book.toml"
+    p.write_text(BOOK)
+    db_url = test_engine.url.render_as_string(hide_password=False)
+    from racinglines.cli import remote as RM
+    monkeypatch.setenv("RACINGLINES_MCP_TOKEN", "rl_wrong")
+    monkeypatch.setattr(RM, "_warned", False)
+    assert CLI.main(["price", str(p), "--remote", "--mcp-url", url]) == 2
+    err = capsys.readouterr().err
+    assert "401" in err and err.startswith(RM.WARNING)                      # the testing warning, before anything else
+    monkeypatch.setenv("RACINGLINES_MCP_TOKEN", tok)
+    for cmd in ("map", "price", "settle"):
+        assert CLI.main([cmd, str(p), "--json", "--db", db_url]) == 0
+        out = capsys.readouterr()
+        local = json.loads(out.out)
+        assert "aintcare" not in out.err                                      # local: no warning
+        monkeypatch.setattr(RM, "_warned", False)                             # a new command run
+        assert CLI.main([cmd, str(p), "--json", "--remote", "--mcp-url", url]) == 0
+        out = capsys.readouterr()
+        remote = json.loads(out.out)                                          # stdout stays clean JSON
+        assert out.err.count("#aintcare mode") == 1
+        assert [(r["id"], r["status"], r.get("ev_model"), r.get("result")) for r in remote["lines"]] == \
+               [(r["id"], r["status"], r.get("ev_model"), r.get("result")) for r in local["lines"]]
+    assert CLI.main(["price", str(p), "--rich", "--remote", "--mcp-url", url]) == 0
+    assert "book price" in capsys.readouterr().out
+    assert CLI.main(["price", str(p), "--remote", "--db", db_url]) == 2                        # local-only options
+
+
+def test_remote_browser_sign_in_is_kept_and_refreshed(test_engine, db, hosted, monkeypatch):
+    """No token: the first call registers the CLI, sends the browser to /authorize, and the web app's Allow (here
+    oauth.approve, as the signed-in account) redirects to the CLI's loopback callback; the login is stored (mode 600)
+    and the next call needs no browser. `logout` forgets it."""
+    import httpx
+    from urllib.parse import parse_qs, urlparse
+    from sqlalchemy import text
+    from racinglines.cli import remote
+    from racinglines.mcp import oauth
+    url, _ = hosted
+    monkeypatch.delenv("RACINGLINES_MCP_TOKEN", raising=False)
+    with test_engine.connect() as c:
+        uid = c.execute(text("SELECT id FROM users WHERE username = 'b_admin'")).scalar()
+    opened = []
+
+    def browser(auth_url):                         # the user's browser: /authorize, the Allow page, the callback
+        opened.append(auth_url)
+        consent = httpx.get(auth_url).headers["location"]
+        back = oauth.approve(parse_qs(urlparse(consent).query)["req"][0], {"id": uid})
+        httpx.get(back)
+
+    out = remote.run("price", BOOK, url, open_browser=browser)
+    assert len(opened) == 1 and {r["id"] for r in out["lines"]} >= {"win", "parlay"}
+    stored = json.loads(remote.LOGIN_FILE.read_text())[url]
+    assert stored["tokens"]["access_token"] and stored["tokens"]["refresh_token"]
+    assert remote.LOGIN_FILE.stat().st_mode & 0o777 == 0o600
+    assert remote.run("map", BOOK, url, open_browser=browser)["unmapped"] == ["ghost", "rf"]
+    assert len(opened) == 1                                                        # kept: no second sign-in
+    assert remote.logout(url) and not remote.LOGIN_FILE.exists()
 
 
 def test_same_race_legs_from_a_stored_combo_run(test_engine, db, book):

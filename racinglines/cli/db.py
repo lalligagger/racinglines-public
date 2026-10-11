@@ -4,7 +4,7 @@ racinglines db <command>
     init      Create or upgrade the schema to the latest migration (Alembic), then seed reference data.
     seed      Upsert sports / leagues / competitions / categories / venues from registry.py.
     stats     Row counts and coverage per season and category.
-    export    Write the tidy frame (same columns as `racinglines mtb_dh parse`'s CSV) for a competition to CSV.
+    export    Write the tidy frame (same columns as `racinglines data parse mtb_dh`'s CSV) for a competition to CSV.
     snapshot-export  The tables the models read, with ids, to data/archive/db/ (Parquet).
     snapshot-import  Load that snapshot into a fresh database: an exact replica (same ids, same prices).
     merge-athletes   Merge two athletes that are the same person (e.g. a name change found by UCI ID).
@@ -56,14 +56,54 @@ GROUP BY 1, 2, 3 ORDER BY 1, 2, 3
 def cmd_stats(args):
     import pandas as pd
 
+    from racinglines.cli import tty
     eng = get_engine(args.db)
+    tables = ["sports", "leagues", "competitions", "categories", "venues", "events", "races", "rounds",
+              "athletes", "athlete_identifiers", "results", "splits", "source_files", "model_runs",
+              "race_predictions", "standings_predictions"]
     with eng.connect() as conn:
-        for t in ["sports", "leagues", "competitions", "categories", "venues", "events", "races", "rounds",
-                  "athletes", "athlete_identifiers", "results", "splits", "source_files", "model_runs",
-                  "race_predictions", "standings_predictions"]:
-            print(f"{t:<22} {conn.execute(text(f'SELECT count(*) FROM {t}')).scalar():>8}")
+        counts = {t: conn.execute(text(f'SELECT count(*) FROM {t}')).scalar() for t in tables}
+        cov = pd.read_sql(text(STATS_SQL), conn)
+    con = tty.console()
+    if con is None:
+        for t in tables:
+            print(f"{t:<22} {counts[t]:>8}")
         print()
-        print(pd.read_sql(text(STATS_SQL), conn).to_string(index=False))
+        print(cov.to_string(index=False))
+        return
+    _stats_rich(con, eng, counts, cov)
+
+
+STATS_GROUPS = (("📅 calendar", ("sports", "leagues", "competitions", "categories", "venues", "events", "races", "rounds")),
+                ("🏁 results", ("athletes", "athlete_identifiers", "results", "splits", "source_files")),
+                ("🔮 model", ("model_runs", "race_predictions", "standings_predictions")))
+
+
+def _stats_rich(con, eng, counts, cov):
+    """db stats as a panel: the row counts grouped, then the coverage per competition and season."""
+    from rich import box
+    from rich.panel import Panel
+    from rich.table import Table
+    groups = []
+    for title, names in STATS_GROUPS:
+        t = Table(box=None, show_header=False, title=f"[bold]{title}[/]", title_justify="left", pad_edge=False)
+        t.add_column(style="dim")
+        t.add_column(justify="right", style="bold cyan")
+        for n in names:
+            t.add_row(n.replace("_", " "), f"{counts[n]:,}" if counts[n] else "[dim]0[/]")
+        groups.append(t)
+    db = eng.url.database
+    grid = Table.grid(padding=(0, 4))
+    grid.add_row(*groups)
+    con.print(Panel.fit(grid, title=f"📦 [bold]database {db}[/]", title_align="left",
+                        border_style="blue", box=box.ROUNDED))
+    t = Table(box=box.SIMPLE_HEAD, title="[bold]coverage[/]", title_justify="left", header_style="bold")
+    for c in cov.columns:
+        t.add_column(c.replace("_", " "), justify="right" if cov[c].dtype.kind in "iuf" else "left")
+    for r in cov.to_dict("records"):
+        t.add_row(*[f"{int(v):,}" if c not in ("year", "season") and cov[c].dtype.kind in "iu" else str(v)
+                    for c, v in r.items()])
+    con.print(t)
 
 
 def cmd_export(args):

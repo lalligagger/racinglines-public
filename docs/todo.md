@@ -262,7 +262,7 @@ how it works: [Paper trading](paper-trading.md). Recommendations and paper fills
       disagreement filter, 25 shares, $400 24-hour volume floor: **+$490 (2026), +$659 (2025)**, at 16,000 simulations
       +$453 / +$741, against profile C's −$119 / +$510. The first 2025 figure (+$855) missed Imola 2025, which only
       Kalshi listed (−$195). Owner (2026-10-05): K's settings stay tunable; log each change in the decision log and keep its live record per settings version.
-- [x] **P1 · Per-weekend reconciliation** (PR #37, merged). `racinglines f1 reconcile --event 2026-NN --profile X --venue V`:
+- [x] **P1 · Per-weekend reconciliation** (PR #37, merged). `racinglines strategy reconcile f1 --event 2026-NN --profile X --venue V`:
       live paper fills and markouts against the replay of the same weekend on the recorded tape (the
       conservative "through" fill rule), flagging a weekend outside the validation rules. Its output goes
       into the weekend's report.
@@ -353,7 +353,7 @@ events are T3 unless a venue lists the event.
 Phased plan and ground rules: [F1 roadmap](f1-roadmap.md).
 
 - [ ] **P1 · Grid penalties (branch `work/grid-penalties`).** Confirmed penalties in `sports/f1/grid_penalties.toml`
-      move the race's or sprint's starting grid before it is simulated ([F1 model](f1.md#model-racinglinesmodelsposition_simmodelpy),
+      move the race's or sprint's starting grid before it is simulated ([F1 model](f1.md#model-racinglinesmodelsinputslapspy),
       "Grid penalties"); first row: Russell to the back for Singapore (2026-17). Re-price Singapore once it ships.
 - [ ] **P2 · Weather-aware position-model variant `gridq+pretrain+reset-WX`** (owner, 2026-10-06: "later branch", not
       the weather PR). The disruption mixture (more noise and retirements in disrupted races) weighted by the race's
@@ -366,7 +366,7 @@ Phased plan and ground rules: [F1 roadmap](f1-roadmap.md).
       (PR #36) Kalshi's sprint winner and sprint pole markets priced from the race's win and pole probabilities
       as a stand-in; the owner approved that for Singapore (2026-09-29).
       **Landed:**
-      - **The sprint stage** ([F1 model](f1.md#model-racinglinesmodelsposition_simmodelpy), step 6). It is
+      - **The sprint stage** ([F1 model](f1.md#model-racinglinesmodelsinputslapspy), step 6). It is
         schema-driven (`[sessions.sim]` in `sports/f1.toml`) and drawn on a side stream, so Grand Prix prices are
         byte-identical. It prices from the GP finishing model with the sprint points and `dnf_scale` 0.5
         (provisional, [decision log](f1-roadmap.md#decision-log)).
@@ -378,7 +378,7 @@ Phased plan and ground rules: [F1 roadmap](f1-roadmap.md).
         book per DEC-12), settled from `race_outcomes`' sprint columns.
       - **Polymarket:** `<GP>: Sprint Winner` and `<GP>: Sprint Qualifying Pole Winner` link as
         `race_sprint_win` / `race_sprint_pole`.
-      - **Walk-forward:** `racinglines f1 sprint-check`, run on the owner's Mac (2026-10-06): the stage beats the
+      - **Walk-forward:** `racinglines model sprint-check f1`, run on the owner's Mac (2026-10-06): the stage beats the
         GP-win stand-in once the SQ order is known ([decision log](f1-roadmap.md#decision-log)).
       **Open:**
       - **Sprint backfill on the VM:** `f1 fetch --sprints-from 2023` for the 12 missing 2023–25 weekends
@@ -436,7 +436,7 @@ local-league plans. As of 2026-09 the ranking is led by exchange depth:
       model is a 2027 question ([Sports and exchanges](coverage.md#the-status-matrix)).
 ### MotoGP prediction model track
 
-The database and API plumbing are in place and the source gate is complete: the public MotoGP results API is verified for season/event/standings/classification data, and the first pass stays within that contract. **Status 2026-09-30:** `sports/motogp.toml` now has `model_family = "position_sim"` and `pricing_model = MotoGPRaceChallenger` (a result-only form model, Sunday race only), the taker replay runs it (`racinglines motogp replay`, #82), and the board's race-win column is on by default (owner, 2026-09-30). That happened **before M5's gate was met**: the model has not been compared with a naive baseline, the Kalshi replay has no held-out season (2025 lists no MotoGP race markets) and its ranking has not been read. Read its prices as a baseline, not an edge ([Sports and exchanges](coverage.md#model-status-by-sport)).
+The database and API plumbing are in place and the source gate is complete: the public MotoGP results API is verified for season/event/standings/classification data, and the first pass stays within that contract. **Status 2026-09-30:** `sports/motogp.toml` now has `model_family = "position_sim"` and `pricing_model = MotoGPRaceChallenger` (a result-only form model, Sunday race only), the taker replay runs it (`racinglines strategy replay motogp`, #82), and the board's race-win column is on by default (owner, 2026-09-30). That happened **before M5's gate was met**: the model has not been compared with a naive baseline, the Kalshi replay has no held-out season (2025 lists no MotoGP race markets) and its ranking has not been read. Read its prices as a baseline, not an edge ([Sports and exchanges](coverage.md#model-status-by-sport)).
 
 - [x] **M0 · MotoGP source gate:** verify the public API and document the actual data that exists (`api.motogp.pulselive.com`, race classification and standings only; no JSON lap or sector splits). Record the limits in [Data](data.md#other-series-tapes-nascar-motogp-indycar-road-cycling-le-mans-sailgp) (the MotoGP limits paragraph itself is still to be written there).
 - [x] **M1 · MotoGP model skeleton** (`models/motogp_model.py`; circuit history not used): create the sport-specific model settings + variant plumbing in the same schema as the F1 sweep (`sweep_settings.py` / `f1`-style run params), but without the F1-only assumptions. Base the first variant on rider form, team-level strength, and circuit history using the already-ingested results table.
@@ -451,15 +451,15 @@ The database and API plumbing are in place and the source gate is complete: the 
       schemas can state the exchange's own caps (`limits`), checked when the schema loads. Kalshi's
       `KXNASCARTRUCKSERIES` (35 links) and `KXNASCARAUTOPARTSSERIES` (40) match the `KXNASCAR` prefix and landed under
       `nascar_cup`; the owner chose to **tag** them (2026-09-29), not filter: done by the market-link pass (`params.nascar_series`,
-      applied to the stored links by `racinglines nascar link`). Still open: the Polymarket tag slugs above.
+      applied to the stored links by `racinglines data link nascar`). Still open: the Polymarket tag slugs above.
 - [x] **NASCAR and MotoGP in the app** (#108–#112, deployed 2026-09-30): the Markets "Every sport: status" table
       (`RACINGLINES_SPORT_STATUS=1`), NASCAR and MotoGP sections with replay-save prices, next races and recent
       results, sport filters on the strategy pages, and the demo accounts' NASCAR and MotoGP paper rows labelled
       "demo replay, in-sample" (`RACINGLINES_SPORT_PAPER=1`, `nascar|motogp demo-history`, run on the VM by
       `vm.sh demo`). Kalshi: NASCAR Pro −$278.31 (2025) / +$6,525.45 (2026), Basic −$357.23 / +$2,657.23; MotoGP
       2026 Pro +$31.25, Basic +$7.70. In-sample: the settings were picked on the same seasons.
-- [x] **Next-race forecasts** (#112): `racinglines nascar forecast` stored run #9068 (South Point 400); the board and
-      race pages show its fair price. Undo: `racinglines nascar forecast --undo 9068`.
+- [x] **Next-race forecasts** (#112): `racinglines model forecast nascar` stored run #9068 (South Point 400); the board and
+      race pages show its fair price. Undo: `racinglines model forecast nascar --undo 9068`.
 - [ ] **Forecast refresh after each race** (track `recorders`): today a forecast is stored once, by hand, so NASCAR's
       price goes stale after each Chase race. A VM timer after results land; sign-off needed.
 - [ ] **MotoGP calendar ingest** (track `sports-coverage`): upcoming events from the MotoGP API, so MotoGP gets a
@@ -478,11 +478,11 @@ The database and API plumbing are in place and the source gate is complete: the 
 - [x] **P2 · NASCAR data sources** (research, PR #25, merged): results, qualifying, practice and lap data
       (NASCAR's public feeds, community archives), their terms and history depth; written up in
       [Data](data.md).
-- [x] **NASCAR results adapter** (`racinglines nascar fetch | ingest`; the feeds probed 2026-09-29, findings in
+- [x] **NASCAR results adapter** (`racinglines data fetch nascar | ingest`; the feeds probed 2026-09-29, findings in
       [Data](data.md#nascar-content-feeds-verified-2026-09-29)). **Done on the VM 2026-09-30** (backup first): 408 Cup events 2016–2026 ingested and 7,544 Kalshi links identified with a race ([Data changes](data-changes.md)). The original plan:
       database backup, then Cup 2017–2026 on the VM with a `data_changes` entry (three races were fetched on the Mac
       on 2026-09-29 and the pit feed read: real stops, `nascar_pit_data_2026_5628.json`). Built since: scheduled events for upcoming races and the driver/race resolver (`sources/nascar/identity.py`);
-      **the market-link pass** (`sources/nascar/links.py`, `racinglines nascar link`, and inside the Kalshi, Polymarket and OG.com syncs): race by name within its season,
+      **the market-link pass** (`sources/nascar/links.py`, `racinglines data link nascar`, and inside the Kalshi, Polymarket and OG.com syncs): race by name within its season,
       driver, contract kind, and a `cup | xfinity | trucks` tag, with `prediction` left `unmodeled` (tested on the real Kalshi and Polymarket listings).
       Next, in order (VM, owner): full pull and `ingest` after a backup; then `link` dry run, read the unresolved list, `link --apply --backup FILE`; then the
       readiness audit. OG.com's NASCAR contracts and Kalshi head-to-heads were sampled from the Mac (PR #68) and the pass handles both.
@@ -494,7 +494,7 @@ The database and API plumbing are in place and the source gate is complete: the 
 
 ## Points validation
 
-The points tables in `racinglines/models/timed_runs/` (`FINAL_POINTS`, `QUAL_POINTS`,
+The points tables in `racinglines/models/inputs/run_times/` (`FINAL_POINTS`, `QUAL_POINTS`,
 `QUAL_POINTS_ROUND`) are **placeholders**, and the same tables are used for every
 season. Until they're fixed, every number measured in points (expected points,
 standings, champion odds, `spearman_points`) is approximate. Off-season work (U11).
@@ -514,7 +514,7 @@ standings, champion odds, `spearman_points`) is approximate. Off-season work (U1
   - [ ] Ties
   - [ ] Protected or wildcard riders
   - [ ] Bonus or double-points rounds
-- [ ] **Reconcile:** `racinglines mtb_dh points check --season 2026 --through-round 7
+- [ ] **Reconcile:** `racinglines data points mtb_dh check --season 2026 --through-round 7
       --standings …` compares each rider's cumulative total with the official standings
       (built; needs the official tables and standings). Every rider should match exactly.
       Repeat for one past season.
@@ -590,7 +590,7 @@ Downhill model.
 - [ ] Market-making loop (F1-5, deferred): re-quote linked markets automatically when the model or
       book moves, within per-market and total exposure limits.
 - [ ] Have `forecast_season` read `scheduled` events (no start list yet) as named rounds instead of `remaining_round`.
-- [ ] Ingest on a schedule: download, then `racinglines mtb_dh ingest` for new rounds.
+- [ ] Ingest on a schedule: download, then `racinglines data ingest mtb_dh` for new rounds.
 - [ ] Ingest the other input formats (copy/paste, HTML, JSON) into the database.
 - [ ] Tests: parser fixtures (one file per format era), `event_format`,
       `actual_event_points`, the rider-ID normalization check.
@@ -748,7 +748,7 @@ Finished items, moved here from the sections above on 2026-09-28, with the dates
 ### Done: Points validation
 
 - [x] Store the tables in the `points_schemes` database table (per competition,
-      era and round kind), and have the model read them from there: `racinglines mtb_dh points
+      era and round kind), and have the model read them from there: `racinglines data points mtb_dh
       import`, and `--points db` on `forecast` and `backtest` (default: the schema's placeholders).
       The entry file `sports/points/uci_dhi_wc.toml` holds placeholders for every era until the
       official scales are in (2026-09-28, cloud build-out).
@@ -795,8 +795,8 @@ Finished items, moved here from the sections above on 2026-09-28, with the dates
 
 ### Done: F1 model
 
-- [x] **Evaluation (F1-1):** `racinglines f1 compare RUN_A RUN_B` (paired ± 2 SE, log loss,
-      reliability bins) and `racinglines f1 matrix`; model-vs-Polymarket Brier for every market kind.
+- [x] **Evaluation (F1-1):** `racinglines model compare f1 RUN_A RUN_B` (paired ± 2 SE, log loss,
+      reliability bins) and `racinglines model matrix f1`; model-vs-Polymarket Brier for every market kind.
 - [x] **Front of the grid (F1-2):** `gridq` closes the gap to the grid-only baseline after qualifying.
 - [x] **Pre-practice pricing (F1-2):** `pretrain` (a no-practice finishing model) closes the regression.
 - [x] **Chaotic-race tail and correlated DNFs (F1-3):** `tail` is neutral at every stage; not promoted.
@@ -809,8 +809,8 @@ Finished items, moved here from the sections above on 2026-09-28, with the dates
       season's teammate comparisons to a quarter. Small gain on win odds before qualifying;
       teammate head-to-heads better in 2026, worse in 2021 ([F1 evaluation](f1-evaluation.md#model-variants-f1-roadmap-f1-2-f1-3)).
       Not promoted (2026-09-28, cloud build-out).
-- [x] Price fastest lap, safety car / red flag, rain (F1-3): `models/position_sim/props.py`,
-      `racinglines f1 props`; opt-in kinds for a live book (2026-09-28, cloud). Per-circuit rates
+- [x] Price fastest lap, safety car / red flag, rain (F1-3): `models/props.py`,
+      `racinglines model props f1`; opt-in kinds for a live book (2026-09-28, cloud). Per-circuit rates
       don't beat the field rate on 2022–2026 ([F1 roadmap](f1-roadmap.md#decision-log)).
 - [x] Polymarket sync and repricing on a schedule during race weekends: the recorder re-syncs
       every 30 min; the signal engine prices each stage as its data arrives (every 5 min).

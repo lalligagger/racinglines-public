@@ -28,7 +28,7 @@ racinglines book price books/book_a/2026-10-10-singapore.toml --json > priced.js
 racinglines book render --json-in priced.json --style card --png
 racinglines book render books/book_a/2026-10-10-singapore.toml --json-in priced.json --style hud --png   # boxes and image from the file
 
-# LOCAL (Mac) — road cycling: the folder `racinglines cycling price` wrote
+# LOCAL (Mac) — road cycling: the folder `racinglines model price cycling` wrote
 racinglines book render reports/2026-10-10-il-lombardia --style agnostic --png
 
 # LOCAL (Mac) — a book file draft from pasted lines
@@ -111,7 +111,7 @@ decision in [slips](slips.md#model-and-market-no-blend)): sizing uses the lower 
 
 ## Road cycling
 
-`racinglines cycling price` writes `reports/<event>/futures.csv` (rider, `win_p`, the book's `book` odds) and
+`racinglines model price cycling` writes `reports/<event>/futures.csv` (rider, `win_p`, the book's `book` odds) and
 `matchups.csv` (`a`, `a_odds`, `a_p`, `b`, `b_odds`, `b_p`). `render` reads them as they are (`rows_from_cycling`):
 one "to win" line per rider and both sides of each matchup. It names `settings.csv` and the files' write time in the
 footer. What is missing from the cycling CLI on main today:

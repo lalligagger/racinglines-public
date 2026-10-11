@@ -122,28 +122,16 @@ def test_signup_creates_a_hashed_account_with_1000_bucks(app_db):
                       follow_redirects=False).headers["location"] == "/markets"
 
 
-def test_signups_get_different_taker_strategies(app_db):
-    """Each new account gets one strategy from TAKER_TOP, round-robin by user id (owner, 2026-10-06)."""
+def test_signups_start_with_no_strategy(app_db):
+    """No default strategy until the user picks one (owner, 2026-10-11 22:04Z; replaces the TAKER_TOP round-robin)."""
     from sqlalchemy import text
     from racinglines.db.config import get_engine
     from racinglines.pipelines import profiles as PF
-    with get_engine().begin() as c:                     # candidates need the F1 championship (search.add_candidate)
-        c.execute(text("INSERT INTO sports (code, name) VALUES ('f1', 'F1') ON CONFLICT DO NOTHING"))
-        c.execute(text("INSERT INTO leagues (code, name) VALUES ('f1', 'F1') ON CONFLICT DO NOTHING"))
-        c.execute(text("""INSERT INTO competitions (code, name, league_id, sport_id)
-                          SELECT 'f1_wdc', 'F1', l.id, s.id FROM leagues l, sports s WHERE l.code = 'f1' AND s.code = 'f1'
-                          ON CONFLICT DO NOTHING"""))
-    for name in ("ada_one", "ada_two"):
-        app_db._signup_hits.clear()
-        assert TestClient(app_db.app).post("/signup", data=dict(GOOD, username=name, email=f"{name}@example.com"),
-                                           follow_redirects=False).status_code == 303
+    assert TestClient(app_db.app).post("/signup", data=GOOD, follow_redirects=False).status_code == 303
     with get_engine().connect() as c:
-        ids = [c.execute(text("SELECT id FROM users WHERE username = :u"), dict(u=n)).scalar() for n in ("ada_one", "ada_two")]
-        names = [PF.of_user(c, i)["name"] for i in ids]
-    assert ids[1] == ids[0] + 1
-    taker = {PF.PROFILES[code]["name"] for code in PF.TAKER_TOP}
-    assert names[0] != names[1] and set(names) <= taker
-    assert names == [PF.PROFILES[PF.TAKER_TOP[i % len(PF.TAKER_TOP)]]["name"] for i in ids]
+        uid = c.execute(text("SELECT id FROM users WHERE username = 'ada_lovelace'")).scalar()
+        assert PF.of_user(c, uid) is None
+        assert c.execute(text("SELECT count(*) FROM paper_positions WHERE user_id = :u"), dict(u=uid)).scalar() == 0
 
 
 @pytest.mark.parametrize("change, msg", [(dict(username="ADA_LOVELACE"), "taken"), (dict(username="admin"), "reserved"),
@@ -236,3 +224,88 @@ def test_admin_creates_a_user_from_the_one_password_field(app_db):
     r = client.post("/admin/users", data=dict(csrf_token=csrf, username="newer", display_name="", role="basic",
                                               password="short"), follow_redirects=True)
     assert "at least 10" in r.text
+
+
+@pytest.mark.quick
+def test_demo_accounts_see_the_signup_notice_and_link(monkeypatch):
+    """The demo accounts (maker / taker) get the sign-up popup and a Sign up link in the top bar (owner, 2026-10-11);
+    registered accounts and the signed-out landing page get neither, and nobody gets it while sign-up is off."""
+    from types import SimpleNamespace
+
+    from racinglines.web import app as A
+    notice = A.templates.env.get_template("_site_notice.html")
+
+    def page(user, path="/markets"):
+        return notice.render(user=user, request=SimpleNamespace(url=SimpleNamespace(path=path, query="")))
+
+    maker, pro = dict(username="maker", role="pro"), dict(username="someone", role="pro")
+    monkeypatch.setenv("RACINGLINES_SIGNUP", "1")
+    assert 'data-signup="1"' in page(maker) and '<a href="/signup">signups</a>' in page(maker)
+    assert 'id="site-notice"' not in page(maker, "/signup")            # not on the sign-up page itself
+    assert 'id="site-notice"' not in page(pro) and 'id="site-notice"' not in page(None, "/login")
+    top = A.templates.env.get_template("base.html")
+    req = SimpleNamespace(url=SimpleNamespace(path="/markets", query=""))
+    demo_bar = top.render(user=maker, request=req, trading=None)
+    assert 'class="signup-link" href="/signup"' in demo_bar and 'href="/settings"' not in demo_bar
+    own_bar = top.render(user=pro, request=req, trading=None)
+    assert 'href="/settings"' in own_bar and "signup-link" not in own_bar
+    monkeypatch.setenv("RACINGLINES_SIGNUP", "0")
+    assert 'id="site-notice"' not in page(maker) and "signup-link" not in top.render(user=maker, request=req, trading=None)
+
+
+def test_reset_fantasy_keeps_the_demo_accounts(app_db, capsys):
+    """Owner, 2026-10-11: every account but maker/taker back to one 1,000 grant and no trading history."""
+    from sqlalchemy import text
+    from racinglines.cli import users as CLI
+    from racinglines.db.config import get_engine
+    with get_engine().begin() as c:
+        ids = dict(c.execute(text("SELECT username, id FROM users")).all())
+        for name in ("boss", "taker"):
+            c.execute(text("""INSERT INTO paper_positions (user_id, event_key, market_key, kind, yes_shares, no_shares, cash,
+                                                           venue) VALUES (:u, '2026-17', 'm1', 'race_win', 1, 0, -0.5,
+                                                           'polymarket')"""), dict(u=ids[name]))
+        c.execute(text("INSERT INTO accounts.fantasy_ledger (user_id, amount, reason) VALUES (:u, -40, 'stake')"),
+                  dict(u=ids["boss"]))
+        for name in ("boss", "taker"):                                # a profile on two venues, and an unrelated pref
+            c.execute(text("""UPDATE users SET prefs = coalesce(prefs, '{}'::jsonb) || '{"strategy_profile": {"name": "A"},
+                              "strategy_profile_kalshi": {"name": "K"}, "email": "x@example.com"}'::jsonb WHERE id = :u"""),
+                      dict(u=ids[name]))
+    assert CLI.main(["reset-fantasy"]) == 0                           # dry run: counts, writes nothing
+    out = capsys.readouterr().out
+    assert "would" in out and "dry run: would reset 1 accounts" in out
+    assert float(_balance("boss")) == 960
+    assert CLI.main(["reset-fantasy", "--apply", "--note", "reset test"]) == 0
+    with get_engine().connect() as c:
+        pos = dict(c.execute(text("SELECT user_id, count(*) FROM paper_positions GROUP BY user_id")).all())
+        rows = c.execute(text("SELECT amount, reason, note FROM accounts.fantasy_ledger WHERE user_id = :u"),
+                         dict(u=ids["boss"])).all()
+    assert pos == {ids["taker"]: 1}                                   # the demo taker's history is untouched
+    assert [(float(a), r, n) for a, r, n in rows] == [(1000.0, "signup_grant", "reset test")]
+    assert float(_balance("taker")) == 1000
+    with get_engine().connect() as c:
+        prefs = dict(c.execute(text("SELECT username, prefs FROM users")).all())
+    assert prefs["boss"] == {"email": "x@example.com"}                 # no strategy left, other prefs kept
+    assert set(prefs["taker"]) >= {"strategy_profile", "strategy_profile_kalshi"}
+
+
+def test_accounts_without_an_email_get_the_add_email_popup(app_db):
+    """A registered account with no email gets the add-email popup on app pages (not Settings) until it saves one
+    (owner, 2026-10-11). The save runs the sign-up checks: a valid address, on no other account."""
+    from sqlalchemy import text
+    from racinglines.db.config import get_engine
+    client, csrf = _admin(app_db)
+    page = client.get("/admin/users").text
+    assert 'action="/settings/email"' in page and 'data-key="email"' in page
+    assert 'action="/settings/email"' not in client.get("/settings").text
+    with get_engine().begin() as c:
+        c.execute(text("""UPDATE users SET prefs = coalesce(prefs, '{}'::jsonb) || '{"email": "taken@example.com"}'::jsonb
+                          WHERE username = 'taker'"""))
+    for bad, msg in (("not-an-email", "valid email"), ("Taken@Example.com", "already on an account")):
+        r = client.post("/settings/email", data=dict(csrf_token=csrf, email=bad, next="/admin/users"))
+        assert r.status_code == 400 and msg in r.text
+    r = client.post("/settings/email", data=dict(csrf_token=csrf, email=" Boss@Example.com ", next="//evil.example"),
+                    follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/markets"     # off-site targets fall back
+    with get_engine().connect() as c:
+        assert c.execute(text("SELECT prefs->>'email' FROM users WHERE username = 'boss'")).scalar() == "boss@example.com"
+    assert 'action="/settings/email"' not in client.get("/admin/users").text

@@ -5,8 +5,8 @@
     .venv/bin/python scripts/signals_parity.py --venue kalshi        # the same on Kalshi's links and tape
     .venv/bin/python scripts/signals_parity.py --profile C --venue kalshi   # a maker: fills and settled P&L
 
-Replays `racinglines f1 signals` at the race start (every stage known, markets read at each cutoff) and runs
-`racinglines f1 sweep --rounds N --no-fetch` with the profile's settings; compares market, stage, side,
+Replays `racinglines strategy signals f1` at the race start (every stage known, markets read at each cutoff) and runs
+`racinglines strategy sweep f1 --rounds N --no-fetch` with the profile's settings; compares market, stage, side,
 shares and price of every taker trade. --reprice makes the sweep price every stage itself. Exit 1 on a diff.
 
 --venue kalshi gives the profile the `venue = kalshi` setting for both sides (the switch the signal engine and

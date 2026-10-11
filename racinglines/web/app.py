@@ -58,7 +58,7 @@ CSRF_TOKEN = hmac.new(_SECRET.encode(), b"csrf", hashlib.sha256).hexdigest()
 security = HTTPBasic(realm="racinglines", auto_error=False)
 SESSION_COOKIE = "rl_session"
 SESSION_HOURS = 12
-PUBLIC_PATHS = ("/login", "/static", "/racinglines101", "/signup", "/forgot", "/pitch")
+PUBLIC_PATHS = ("/login", "/static", "/racinglines101", "/signup", "/forgot", "/pitch", "/mybets", "/term")
 
 # failed-login throttle: per client IP, MAX_FAILURES within FAILURE_WINDOW seconds -> 429
 MAX_FAILURES = 8
@@ -227,6 +227,22 @@ MAINTENANCE_NOTICE = ""      # off since the landing rebuild (owner, 2026-10-08:
 templates.env.globals["maintenance_notice"] = lambda: MAINTENANCE_NOTICE   # read at render time
 templates.env.globals["signup_on"] = lambda: signup_on()                    # RACINGLINES_SIGNUP=1: beta sign-up
 templates.env.globals["is_demo"] = lambda u: _demo.is_demo(u)
+
+
+def needs_email(user):
+    """A signed-in registered account with no email on file (accounts made before 2026-10-08): base.html then shows
+    the add-email popup (owner, 2026-10-11). Demo accounts never; read at render time, False if anything fails."""
+    if not isinstance(user, dict) or not user.get("id") or _demo.is_demo(user):
+        return False
+    try:
+        with get_engine().connect() as c:
+            email = c.execute(text("SELECT prefs->>'email' FROM users WHERE id = :u"), dict(u=user["id"])).scalar()
+    except Exception:                                   # noqa: BLE001  the popup never breaks a page
+        return False
+    return not (email or "").strip()
+
+
+templates.env.globals["needs_email"] = needs_email
 # the stylesheet's and scripts' URLs carry the newest static file's mtime, so a change is a new URL: no stale copy from the browser or
 # Cloudflare's edge cache (read at render time)
 templates.env.globals["css_v"] = lambda: int(max(p.stat().st_mtime for p in (HERE / "static").glob("*.*")))
@@ -462,6 +478,29 @@ def update_settings(request: Request, email: str = Form(""), exchange: str = For
     ))
 
 
+@app.post("/settings/email", dependencies=[Depends(check_csrf), allow(*ANY)])
+def add_email(request: Request, email: str = Form(""), next: str = Form("/markets")):
+    """The add-email popup (_site_notice.html) for accounts with no email: saves users.prefs.email after the sign-up
+    checks (valid, on no other account) and goes back to the page; an error opens Settings with the message."""
+    from racinglines.web import accounts as ACC
+    user = request.state.user
+    if _demo.is_demo(user):
+        raise HTTPException(404)
+    email = email.strip().lower()
+    with get_engine().begin() as c:
+        error = ACC.check_email(c, email)
+        if not error:
+            c.execute(text("""UPDATE users SET prefs = coalesce(prefs, '{}'::jsonb) || jsonb_build_object('email', CAST(:e AS text))
+                              WHERE id = :u"""), dict(e=email, u=user["id"]))
+    if error:
+        prefs = _prefs(user["id"])
+        return templates.TemplateResponse(request, "settings.html", dict(
+            email=email, exchange=prefs.get("exchange", "polymarket"), sports=prefs.get("sports", ["f1"]),
+            error=error, **_mcp_context(user)), status_code=400)
+    audit(request, "add_email")
+    return RedirectResponse(_safe_next(next), status_code=303)
+
+
 # ---------------------------------------------------------------------------
 # MCP token from the Settings page: the same token `racinglines mcp token <account>` issues (racinglines/mcp/auth.py),
 # one per account, shown once; the hosted MCP server accepts it at once.
@@ -618,18 +657,8 @@ def signup(request: Request, username: str = Form(""), password: str = Form(""),
                                 VALUES (:u, :u, :r, :h, true, jsonb_build_object('email', CAST(:e AS text))) RETURNING id"""),
                         dict(u=username, r=tier, h=U.hash_password(password), e=email)).scalar()
         ACC.grant(c, uid)
-    # One taker strategy per new account, round-robin over PF.TAKER_TOP by user id, so the paper records cover every
-    # strategy evenly and each account's record maps to exactly one (strategy diversity, owner 2026-10-06; replaces
-    # "start on A", 2026-10-01). No bankroll, no history, so Strategy and Positions start empty. A failure here
-    # leaves the account fine, just unassigned (an admin can assign one).
-    try:
-        from racinglines.pipelines import profiles as PF
-        with get_engine().begin() as c:
-            cands = PF.ensure_candidates(c)
-            code = PF.TAKER_TOP[uid % len(PF.TAKER_TOP)]
-            PF.assign(c, uid, PF.load(c, cands[code]))
-    except Exception as ex:                         # noqa: BLE001
-        print(f"signup: no starting profile for user {uid}: {ex}", flush=True)
+    # No starting strategy (owner, 2026-10-11: "no default strategy until they select one"; replaces the TAKER_TOP
+    # round-robin of 2026-10-06): an account paper-trades nothing until its user picks a strategy.
     with get_session() as s:
         user = _user_dict(U.get_user(s, user_id=uid))
     U.log(get_engine(), user, "signup", request, grant=ACC.SIGNUP_GRANT)
@@ -646,6 +675,9 @@ from racinglines.web import order_routes  # noqa: E402,F401  (linked markets and
 from racinglines.web import book_routes  # noqa: E402,F401  (the private book and the taker's calls)
 from racinglines.web import exchange_routes  # noqa: E402,F401  (exchange boards and tapes)
 from racinglines.web import diag_routes  # noqa: E402,F401  (single-event diagnostics)
+from racinglines.web import mybets  # noqa: E402,F401  (/mybets, the owner's bets calendar from the data folder)
+from racinglines.web import term_routes  # noqa: E402,F401  (/term, recorded CLI runs)
+from racinglines.web import strategy_pick  # noqa: E402,F401  (/strategy/pick, the account's own strategy)
 from racinglines.web.book_routes import bet_markets, polymarket_calls  # noqa: E402,F401  (used by views.py)
 
 

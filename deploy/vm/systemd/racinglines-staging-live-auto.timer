@@ -1,0 +1,9 @@
+[Unit]
+Description=racinglines live step every 5 minutes, every open F1 event (staging)
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

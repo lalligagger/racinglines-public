@@ -13,9 +13,9 @@ The two recommended by the params-4h cloud search (data/runs/search/params-4h/RE
        sweeps/kalshi-maker-k.toml); the settings below are the sweep's winner under the params-4h
        held-out rule. The candidate carries venue = "kalshi": it is judged on and quotes Kalshi.
 
-    racinglines f1 profiles                      # list, and create A / C / K as Lab candidates if missing
-    racinglines f1 profiles --assign-demo        # demo taker -> A, demo maker -> C
-    racinglines f1 profiles --assign-demo --venue kalshi   # demo maker -> K, as its Kalshi profile (explicit;
+    racinglines strategy profiles f1                      # list, and create A / C / K as Lab candidates if missing
+    racinglines strategy profiles f1 --assign-demo        # demo taker -> A, demo maker -> C
+    racinglines strategy profiles f1 --assign-demo --venue kalshi   # demo maker -> K, as its Kalshi profile (explicit;
                                                            # nothing reads it until the signal engine runs Kalshi)
 
     T1..T10  the taker shortlist (TAKER_TOP, ranked; source "taker-resweep"): what pro accounts pick from, and
@@ -108,6 +108,31 @@ BANKROLL_SINCE = "2025-01-01"
 # the demo maker's saved Edge Finder: the setups it ran, newest first (M1 = the baseline maker, also the benchmark)
 DEMO_EDGE_FINDER = {"maker": [("C", "maker"), ("M3", "maker"), ("M2", "maker"), ("M1", "maker")]}
 DEMO_EDGE_YEAR = 2026
+# Maker strategies for users (owner, 2026-10-11 22:29Z): "For the Alpha Fantasy Launch we can remove maker strategies
+# completely. We will add them back for the Beta test." Closed: no account but admin can be assigned a maker profile
+# (web/roles.allowed_profile), the picker doesn't offer one (open_codes), and the signal engine skips any maker profile
+# outside the demo accounts (signals.run_all). Nothing is deleted: profiles, candidates, sweeps, the demo maker and its
+# paper positions stay. Set True for Beta.
+MAKERS_OPEN = False
+
+
+def is_maker(profile):
+    """A maker profile (a PROFILES entry or an assigned profile): one strategy that isn't a taker mode. A blend is a
+    maker if any member is."""
+    if not profile:
+        return False
+    if is_combo(profile):
+        return any(is_maker(PROFILES.get(m[0]) if isinstance(m, (list, tuple)) else m.get("member") or PROFILES.get(m["code"]))
+                   for m in profile["members"])
+    from racinglines.pipelines import weekend_sweep as WS
+    return profile.get("strategy", "update") not in WS.TAKER_MODES
+
+
+def open_codes(codes):
+    """The codes users may pick from, in order: makers drop out while MAKERS_OPEN is off."""
+    return tuple(c for c in codes if MAKERS_OPEN or not is_maker(PROFILES.get(c)))
+
+
 PREF = "strategy_profile"
 PREF_KALSHI = "strategy_profile_kalshi"
 
@@ -206,7 +231,7 @@ def load(conn, ref):
         name = codes[ref.upper()]["name"] if ref.upper() in codes else ref
         hit = next(((i, p) for i, p in reversed(rows) if p.get("name") == name), None)
     if hit is None:
-        raise ValueError(f"no candidate {ref!r} (racinglines f1 profiles creates A and C)")
+        raise ValueError(f"no candidate {ref!r} (racinglines strategy profiles f1 creates A and C)")
     i, p = hit
     sport = p.get("sport") or DEFAULT_SPORT          # another sport's candidate: its own sweep settings
     if sport != DEFAULT_SPORT:

@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from racinglines.models.position_sim import props as PR
+from racinglines.models import props as PR
 from racinglines.weather import open_meteo as OM
 from racinglines.weather import wet as WET
 
@@ -183,7 +183,7 @@ def test_market_set_scales_dnf_prob_for_the_dnf_kinds():
 
 
 def test_dnf_check_adds_model_wx():
-    from racinglines.models.position_sim import dnf_check as DC
+    from racinglines.models import dnf_check as DC
     h = _history()
     fc = WET.p_wet_series(h, _leads(), 5)
     rows = []

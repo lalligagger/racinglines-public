@@ -1,0 +1,19 @@
+[34m╭─[0m[34m 📦 [0m[1;34mdatabase racinglines_demo_kart[0m[34m [0m[34m──────────────────────────────────────────[0m[34m─╮[0m
+[34m│[0m [1;3m📅 calendar[0m[3m      [0m    [1;3m🏁 results[0m[3m                [0m    [1;3m🔮 model[0m[3m                  [0m [34m│[0m
+[34m│[0m [2msports      [0m[2m [0m[1;36m [0m[1;36m  8[0m    [2mathletes           [0m[2m [0m[1;36m [0m[1;36m   20[0m    [2mmodel runs           [0m[2m [0m[1;36m [0m[1;36m  8[0m [34m│[0m
+[34m│[0m [2mleagues     [0m[2m [0m[1;36m [0m[1;36m  8[0m    [2mathlete identifiers[0m[2m [0m[1;36m [0m[1;36m   20[0m    [2mrace predictions     [0m[2m [0m[1;36m [0m[1;36m280[0m [34m│[0m
+[34m│[0m [2mcompetitions[0m[2m [0m[1;36m [0m[1;36m  8[0m    [2mresults            [0m[2m [0m[1;36m [0m[1;36m3,300[0m    [2mstandings predictions[0m[2m [0m[1;36m [0m[1;36m 60[0m [34m│[0m
+[34m│[0m [2mcategories  [0m[2m [0m[1;36m [0m[1;36m 11[0m    [2msplits             [0m[2m [0m[1;36m [0m[1;36m    [0m[1;2;36m0[0m                               [34m│[0m
+[34m│[0m [2mvenues      [0m[2m [0m[1;36m [0m[1;36m 27[0m    [2msource files       [0m[2m [0m[1;36m [0m[1;36m   33[0m                               [34m│[0m
+[34m│[0m [2mevents      [0m[2m [0m[1;36m [0m[1;36m 36[0m                                                             [34m│[0m
+[34m│[0m [2mraces       [0m[2m [0m[1;36m [0m[1;36m 36[0m                                                             [34m│[0m
+[34m│[0m [2mrounds      [0m[2m [0m[1;36m [0m[1;36m165[0m                                                             [34m│[0m
+[34m╰───────────────────────────────────────────────────────────────────────────────╯[0m
+[1;3mcoverage[0m[3m                                                     [0m
+                                                             
+ [1m [0m[1mcompetition[0m[1m [0m [1m [0m[1myear[0m[1m [0m [1m [0m[1mcategory[0m[1m [0m [1m [0m[1mevents[0m[1m [0m [1m [0m[1mrounds[0m[1m [0m [1m [0m[1mresults[0m[1m [0m 
+ ─────────────────────────────────────────────────────────── 
+  f1_wdc        2024   DRV            12       60     1,200  
+  f1_wdc        2025   DRV            12       60     1,200  
+  f1_wdc        2026   DRV             9       45       900  
+                                                             

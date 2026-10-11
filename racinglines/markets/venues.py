@@ -227,6 +227,51 @@ def race_info(conn, race_id):
     return info
 
 
+_STAGES = {}                            # event_key -> (fetched at, F1 weekend stages or None), kept an hour
+STAGES_TTL_S = 3600
+
+
+def _f1_stages(event_key):
+    """[(label, cutoff)] of an F1 weekend from its schedule (weekend_sweep.schedule: a session's end + the data lag),
+    cached an hour; None when the schedule can't be read."""
+    hit = _STAGES.get(event_key)
+    if hit and time.time() - hit[0] < STAGES_TTL_S:
+        return hit[1]
+    try:
+        from racinglines.pipelines import weekend_sweep as WS
+        y, r = (int(x) for x in event_key.split("-"))
+        stages = WS.schedule(y, rounds=[r])[r]["stages"]
+    except Exception:                                    # noqa: BLE001  (no schedule: no verdict, not a false alarm)
+        stages = None
+    _STAGES[event_key] = (time.time(), stages)
+    return stages
+
+
+def stale_model(conn, info, run_id, now=None):
+    """Why an upcoming race's model price is out of date, or None. Owner rule (2026-10-10): when a session ends, the
+    model re-runs with its data before anything is re-priced. So an F1 run priced from data older than the latest
+    finished session (its stage cutoff: session end + the data lag) is stale until the live step prices that stage.
+    -> dict(stage, due, as_of, why) or None. Other sports' sessions aren't checked yet."""
+    if run_id is None or info.get("status") == "completed" or info.get("competition") != "f1_wdc":
+        return None
+    stages = _f1_stages(str(info.get("source_key")))
+    now = pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz="UTC").tz_localize(None)
+    done = [(lab, cut) for lab, cut in (stages or [])[1:] if cut <= now]    # [0] is the pre-weekend stage, no session
+    if not done:
+        return None
+    lab, cut = done[-1]
+    df = data.q(conn, """SELECT coalesce((params->>'cutoff')::timestamp, created_at::timestamp) AS as_of
+                         FROM model_runs WHERE id = :m""", m=int(run_id))
+    if not len(df) or df["as_of"].iloc[0] is None or pd.isna(df["as_of"].iloc[0]):
+        return None
+    as_of = pd.Timestamp(df["as_of"].iloc[0])
+    if as_of >= cut:
+        return None
+    return dict(stage=lab, due=cut, as_of=as_of,
+                why=f"model not updated since {lab}: run {run_id} is priced as of {as_of:%a %d %b %H:%M} UTC, "
+                    f"{lab} data was due {cut:%a %d %b %H:%M} UTC")
+
+
 def pricing_run(conn, info):
     """Which run our fair values come from: the live forecast for upcoming races; for
     a past race, the latest as-of price made before it started (diagnostic, else a
@@ -242,14 +287,16 @@ def pricing_run(conn, info):
                           comp=info["competition_id"], cat=info["category_id"], r=info["race_id"])
         if len(stage_run):
             rid = int(stage_run["id"].iloc[0])
-            return dict(run_id=rid, source="live stage", as_of=None, cadence="updated every 5 min during sessions")
+            return dict(run_id=rid, source="live stage", as_of=None, cadence="updated every 5 min during sessions",
+                        stale=stale_model(conn, info, rid))
         # Fall back to forecast run
         rid, _ = data.latest_forecast_run(conn, info["competition_id"], info["category_id"])
         has = rid and len(data.q(conn, "SELECT 1 FROM race_predictions WHERE model_run_id = :m AND race_id = :r LIMIT 1",
                                  m=rid, r=info["race_id"]))
         if has:
             cadence_text = "updated live during sessions" if competition == "f1_wdc" else "updated daily"
-            return dict(run_id=rid, source="live forecast", as_of=None, cadence=cadence_text)
+            return dict(run_id=rid, source="live forecast", as_of=None, cadence=cadence_text,
+                        stale=stale_model(conn, info, rid))
     start = info["race_start"] if info["race_start"] is not None and not pd.isna(info["race_start"]) else \
         pd.Timestamp(info["start_date"])
     df = data.q(conn, """

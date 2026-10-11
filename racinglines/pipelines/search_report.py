@@ -16,7 +16,7 @@ search showed a backtest needs (docs/backtest-core.md, Part 1):
   - stable candidate ids: `<strategy>-<settings_key>`, never a position in a list;
   - finished jobs only: a job still running (or failed) is never read.
 
-    racinglines f1 search-report sweeps/params-4h.toml
+    racinglines strategy search-report f1 sweeps/params-4h.toml
 
 Configuration: an optional [report] table in the queue file (defaults below), and [report.<sport>] for
 another sport's jobs. Outputs, next to the search's state.json: stats.csv, ranking.csv, pnl_curves.json,
@@ -281,7 +281,7 @@ def write(out, jobs, metrics, strategies, cfg=None, twin=None, rerun=None, echo=
     cdir.mkdir(exist_ok=True)
     for f in cdir.glob("*.json"):
         f.unlink()
-    toml = ["# Top combos of this search as [[candidate]] entries (racinglines f1 search-report).", ""]
+    toml = ["# Top combos of this search as [[candidate]] entries (racinglines strategy search-report f1).", ""]
     top = candidates(ranking, cfg["top"])
     for i, r in enumerate(top, 1):
         st = cls.from_dict(r["settings"])
@@ -363,8 +363,8 @@ def run(queue_path, echo=print):
 
     from racinglines import paths
     from racinglines.db.config import get_engine
-    from racinglines.models.position_sim import evaluate as EV
-    from racinglines.models.position_sim import variants as V
+    from racinglines.models import evaluate as EV
+    from racinglines.models import variants as V
     from racinglines.pipelines import search as S
     from racinglines.markets import kinds as K
     cfg, _, _ = S.load(queue_path)

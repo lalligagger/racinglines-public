@@ -250,7 +250,7 @@ from the core):
 ### What runs
 
 A new engine, `racinglines/pipelines/live_f1.py`, the F1 counterpart of `live_dh.py`,
-run as `racinglines f1 live --event 2026-16`. Every run is **one idempotent step**: it
+run as `racinglines strategy live f1 --event 2026-16`. Every run is **one idempotent step**: it
 acts only when something new has happened since the last run, and does nothing
 otherwise. A LaunchAgent calls it every 5 minutes, like the signal engine, so there's
 no long-running process to supervise.
@@ -308,7 +308,7 @@ Off unless the launch spec (or `sports/f1.toml`) lists them in `[live.markets] k
 | `race_fastest_lap` | one per driver | the stage run's win / podium / top-10 / DNF odds × how often each finishing bucket set the fastest lap; sums to 1 | the race's quickest timed lap |
 
 `[live.props] prior_n` overrides the prior. The Live tab shows the yes/no props in one card and
-fastest lap in its own. Model: `models/position_sim/props.py`; `racinglines f1 props 2026-16` prints them.
+fastest lap in its own. Model: `models/props.py`; `racinglines model props f1 2026-16` prints them.
 
 **Every fair price is kept, whether or not anyone trades it.** Each update saves all
 100 fair values and quotes. The report can then show how our prices moved through the
@@ -398,7 +398,7 @@ Each item lists what "done" means. B0 matters in every scenario.
 - [x] **B8. Report command** *(Thu, stretch)*
   - `racinglines live report <spec> [--pdf]`, generalising the Whistler report: book P&L by update, the crowd, the demo taker, and the fair-price scorecard (Brier score and log loss per market kind at each update, and the biggest moves). Written to the run folder's `report/`: Markdown, HTML with the charts inline, SVG charts, and a PDF through headless Chrome.
   - Done: Whistler's report from its run folder (run folder unchanged); tests on the synthetic third sport.
-  - Also (owner's local work, 2026-09-28): `racinglines f1 search-analyze <search> [--write-candidates] [--plot] [--noise] [--html REPORT.md]` analyses a saved F1 sweep search (curves, rankings, candidate files, charts, a noise summary, print-friendly HTML) under `data/runs/search/<search>/`, beside `search-report`. Folding the two together is open.
+  - Also (owner's local work, 2026-09-28): `racinglines strategy search-analyze f1 <search> [--write-candidates] [--plot] [--noise] [--html REPORT.md]` analyses a saved F1 sweep search (curves, rankings, candidate files, charts, a noise summary, print-friendly HTML) under `data/runs/search/<search>/`, beside `search-report`. Folding the two together is open.
 
 ### Weekend runbook (PDT)
 

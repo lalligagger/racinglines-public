@@ -72,7 +72,7 @@ def test_each_run_only_used_sessions_before_its_cutoff(runs):
 
 
 def test_measurement_view_refuses_future_data(engine):
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     meas = run.Measurements.load(engine)
     cutoff = QUALI - pd.Timedelta(hours=1)
     v = meas.view(cutoff)
@@ -158,6 +158,16 @@ def test_touch_fills_at_least_as_much_as_through(event):
     th = R.summary(R.replay(event, R.Params(fill="through"))).loc["total", "shares"]
     assert t >= th
 
+
+
+@pytest.mark.parametrize("fill", ["touch", "through"])
+def test_replay_matches_the_reference_implementation(event, fill):
+    """The speed rewrite of the replay gives exactly the original's quotes, fills and positions on the recorded event."""
+    from racinglines.markets.strategies import maker_replay as R
+    from replay_reference import replay as reference_replay
+    from test_replay_parity import _same
+    p = R.Params(fill=fill)
+    _same(R.replay(event, p), reference_replay(event, p))
 
 # --- the web page -------------------------------------------------------------
 

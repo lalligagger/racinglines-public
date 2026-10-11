@@ -16,6 +16,7 @@ FastF1 keeps its own HTTP cache in data/cache/fastf1 (cleared after each fetch).
 import argparse
 import json
 import logging
+import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,6 +42,43 @@ LAP_COLS = ["Driver", "DriverNumber", "Team", "LapNumber", "Stint", "LapTime", "
             "PitInTime", "PitOutTime", "TrackStatus", "Position", "Deleted", "IsAccurate", "LapStartTime", "Time"]
 RESULT_COLS = ["DriverNumber", "Abbreviation", "DriverId", "FullName", "CountryCode", "TeamName", "TeamId",
                "Position", "ClassifiedPosition", "GridPosition", "Status", "Points", "Laps", "Q1", "Q2", "Q3", "Time"]
+
+
+# the event schedule's columns kept in <year>/schedule.parquet (event_schedule): the stages (sessions and their UTC
+# starts) and what the forecast's calendar reads (round, names, location, race day, format)
+SCHEDULE_COLS = ["RoundNumber", "Country", "Location", "OfficialEventName", "EventDate", "EventName", "EventFormat"] + \
+    [f"Session{i}{x}" for i in range(1, 6) for x in ("", "DateUtc")]
+
+
+def offline():
+    """RACINGLINES_OFFLINE=1: never call FastF1's servers, read only what is already under data/raw/f1/fastf1 (a
+    machine without access to them, e.g. a cloud session, or a store built from files, e.g. the demo's)."""
+    return os.environ.get("RACINGLINES_OFFLINE", "").strip().lower() not in ("", "0", "false", "no")
+
+
+def event_schedule(year, save=True):
+    """FastF1's event schedule for a season (SCHEDULE_COLS), saved next to the raw files
+    (data/raw/f1/fastf1/<year>/schedule.parquet) when that folder exists and `save`. Offline (offline()) the saved copy
+    is read without trying FastF1; online, the saved copy is the fallback when FastF1 can't be reached."""
+    snap = OUT / str(year) / "schedule.parquet"
+    if offline():
+        if snap.is_file():
+            return pd.read_parquet(snap)
+        raise FileNotFoundError(f"offline (RACINGLINES_OFFLINE): no saved schedule at {snap}")
+    try:
+        import fastf1
+        logging.getLogger("fastf1").setLevel(logging.ERROR)
+        CACHE.mkdir(parents=True, exist_ok=True)
+        fastf1.Cache.enable_cache(str(CACHE))
+        sch = pd.DataFrame(fastf1.get_event_schedule(year, include_testing=False))
+        sch = sch[[c for c in SCHEDULE_COLS if c in sch]]
+        if save and snap.parent.is_dir():
+            sch.to_parquet(snap, index=False)
+        return sch
+    except Exception:  # noqa: BLE001  (unreachable: fall back to the saved copy)
+        if snap.is_file():
+            return pd.read_parquet(snap)
+        raise
 
 
 def _seconds(df, cols):

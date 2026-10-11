@@ -65,6 +65,20 @@ def test_the_line_renders_every_state():
     assert templates.env.get_template("_recorders.html").render(recorders=None).strip() == ""
 
 
+
+def test_staging_says_it_has_no_recorder(monkeypatch):
+    """Staging (RACINGLINES_ENV=staging) runs no recorder, so its books stop at the copy from production: the line says
+    so with the newest snapshot it has, rather than an old "synced" time that reads like a stopped recorder."""
+    from racinglines.web.app import templates
+    monkeypatch.setitem(templates.env.globals, "env_label", lambda: "staging")
+    recs = [dict(name="Polymarket", state="stale", recent=0, linked=40, last=NOW - timedelta(days=7), minutes=1e4),
+            dict(name="Kalshi", state="stale", recent=0, linked=120, last=NOW - timedelta(days=7, minutes=1), minutes=1e4),
+            dict(name="OG.com", state="none", recent=0, linked=0, last=None, minutes=None)]
+    html = templates.env.get_template("_recorders.html").render(recorders=recs)
+    assert "staging runs no recorder" in html and "2026-09-25 12:00 UTC" in html and "synced" not in html
+    none = [dict(r, last=None, state="none") for r in recs]
+    assert "its copy date" in templates.env.get_template("_recorders.html").render(recorders=none)
+
 def test_exchange_pages_load_with_no_data_at_all(monkeypatch):
     """/markets/kalshi with nothing linked and the status query failing (no database): the page loads and says so."""
     from fastapi.testclient import TestClient

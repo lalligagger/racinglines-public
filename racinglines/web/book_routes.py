@@ -252,7 +252,7 @@ def polymarket_calls(c, profile, n_races=3, exchange="polymarket"):
     sched = WS.schedule(now.year)
     upcoming = [w for _, w in sorted(sched.items()) if w["race_start"].tz_localize("UTC") > now][:n_races]
     try:
-        from racinglines.models.position_sim.pricing import upcoming_schedule
+        from racinglines.models.inputs.laps_pricing import upcoming_schedule
         loc = dict(upcoming_schedule(now.year)[["round", "location"]].itertuples(index=False))
     except Exception:                                   # noqa: BLE001  (offline: names only)
         loc = {}

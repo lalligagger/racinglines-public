@@ -60,17 +60,17 @@ those in `model_runs.metrics` (per race under `events`, averaged under
 
 Each per-race row also has `year`, `round`, `venue`, `mode` (`pre_weekend`,
 `pre_quali`, `pre_race`), `cutoff`, `winner` and `favourite`. Differences
-between two runs are paired by race (`racinglines f1 compare`): challenger −
+between two runs are paired by race (`racinglines model compare f1`): challenger −
 baseline, ± 2 standard errors over races; negative is better.
 
 ## Types of backtest
 
 | Type | Command | What it does |
 |---|---|---|
-| As-of backtest | `racinglines f1 backtest --save` | Every race since 2021, priced before practice, before qualifying and after qualifying with a hard as-of cutoff (`price_race`), then scored. Saved as `kind='backtest'`. Runs with and without track features. |
-| Weekend season sweep | `racinglines f1 sweep --year 2026 --save` | Every raced weekend of a season, priced before any running and 30 min after each session, and scored against Polymarket's price at the same moment. Also trades the markets (P&L in [Market making](market-making.md#season-sweep)). Saved as `kind='sweep'`. |
-| Championship checkpoints | `racinglines f1 season-checkpoints` | As-of season forecasts (pre-season, after 3 and after 6 Grands Prix) enter championship markets and hold them; P&L over the next 3 GPs and to date, per variant. Saved as `kind='season_checkpoints'`; results in [Market making](market-making.md). |
-| Single event | `racinglines f1 diagnostic --event 2026-15 --cutoff … --save` | One past event as of any cutoff. Saved as `kind='diagnostic'`. |
+| As-of backtest | `racinglines model backtest f1 --save` | Every race since 2021, priced before practice, before qualifying and after qualifying with a hard as-of cutoff (`price_race`), then scored. Saved as `kind='backtest'`. Runs with and without track features. |
+| Weekend season sweep | `racinglines strategy sweep f1 --year 2026 --save` | Every raced weekend of a season, priced before any running and 30 min after each session, and scored against Polymarket's price at the same moment. Also trades the markets (P&L in [Market making](market-making.md#season-sweep)). Saved as `kind='sweep'`. |
+| Championship checkpoints | `racinglines strategy season-checkpoints f1` | As-of season forecasts (pre-season, after 3 and after 6 Grands Prix) enter championship markets and hold them; P&L over the next 3 GPs and to date, per variant. Saved as `kind='season_checkpoints'`; results in [Market making](market-making.md). |
+| Single event | `racinglines model diagnostic f1 --event 2026-15 --cutoff … --save` | One past event as of any cutoff. Saved as `kind='diagnostic'`. |
 
 Leakage guards: each price uses only sessions that ended before the cutoff, and
 outcomes are read only after pricing.
@@ -96,7 +96,7 @@ half-life, track features on. One run per model variant:
 
 † Run in a cloud session on a copy of the database, so these ids aren't in the owner's database;
 the runs are in the bucket (`results/cloud-buildout-track-b/f1-backtests/`). Re-run locally with
-`racinglines f1 --variant rookie backtest --save`.
+`racinglines model backtest f1 --variant rookie --save`.
 
 ### Per season
 
@@ -150,9 +150,9 @@ cars, and 0.0438 / 0.1187 / 0.248 in 2026 (22 cars).
 ### Model variants (F1 roadmap F1-2, F1-3)
 
 Challengers to the baseline, each behind a switch that defaults off
-(`racinglines/models/position_sim/variants.py`, `racinglines f1 --variant NAME`).
+(`racinglines/models/variants.py`, `racinglines f1 --variant NAME`).
 Every variant goes through the same `price_race` path and leakage guards, over
-the same 129 races (runs above), compared with `racinglines f1 compare`:
+the same 129 races (runs above), compared with `racinglines model compare f1`:
 differences are variant − baseline, negative is better, bold is beyond 2
 standard errors.
 
@@ -229,7 +229,7 @@ standard errors.
 
 ### Calibration
 
-`racinglines f1 compare 931 937 --reliability`:
+`racinglines model compare f1 931 937 --reliability`:
 
 - **Before qualifying, win probabilities are too flat.** Drivers priced 20–35%
   won 45% of the time, and those under 2% won 0.07%.
@@ -329,7 +329,7 @@ the same as with the defaults). *n* is the number of priced outcomes.
 
 ### The weekend scorecard
 
-`racinglines f1 scorecard --event 2026-15 --venue both` is the same comparison for one exchange
+`racinglines strategy scorecard f1 --event 2026-15 --venue both` is the same comparison for one exchange
 weekend, traded or not ([Paper trading](paper-trading.md#validation-plan), validation rule 2): at each
 stage cutoff, the stored stage runs' fair values for every linked market kind, against the result and
 against the venue's mid at that cutoff (`--all --year 2025` for a season, per weekend and pooled). It
@@ -358,13 +358,13 @@ markets the venue priced then (`paired`); a multi-outcome group whose prices don
 ## Reproduce
 
 ```
-racinglines f1 backtest --save                   # all races, three stages (run 931)
-racinglines f1 --variant gridq+pretrain+reset backtest --save   # a variant (run 955)
-racinglines f1 compare 931 955                   # paired differences ± 2 SE
-racinglines f1 compare 931 937 --reliability     # calibration tables
-racinglines f1 sweep --year 2026 --save          # 2026 weekends vs Polymarket (run 622)
-racinglines f1 sweep --year 2025 --save          # 2025 weekends vs Polymarket (run 1190)
-racinglines f1 season-checkpoints                # championship-market entries
+racinglines model backtest f1 --save                   # all races, three stages (run 931)
+racinglines model backtest f1 --variant gridq+pretrain+reset --save   # a variant (run 955)
+racinglines model compare f1 931 955                   # paired differences ± 2 SE
+racinglines model compare f1 931 937 --reliability     # calibration tables
+racinglines strategy sweep f1 --year 2026 --save          # 2026 weekends vs Polymarket (run 622)
+racinglines strategy sweep f1 --year 2025 --save          # 2025 weekends vs Polymarket (run 1190)
+racinglines strategy season-checkpoints f1                # championship-market entries
 ```
 
 All of these can also be launched from the web app's **Lab**, with your own

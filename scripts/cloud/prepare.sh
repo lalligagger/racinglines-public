@@ -18,6 +18,6 @@ for name in ("prices", "trades"):
     print(f"archive {name}: {MS.archive(eng, name, older_than=timedelta(0))} rows moved to Parquet")
 PYEOF
 .venv/bin/racinglines db snapshot-export
-.venv/bin/racinglines f1 pm-links-export
+.venv/bin/racinglines data pm-links-export f1
 $PY -m pytest -q tests/test_no_data_in_git.py
 echo "ready to commit: $(git status --short --untracked-files=all data | wc -l | tr -d ' ') data files changed"

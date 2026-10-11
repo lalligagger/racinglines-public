@@ -86,7 +86,7 @@ def generate(session, conn, race_id, kinds, top_n, spread, maker_id=None):
     still use the model price. Returns (created, repriced)."""
     preds = latest_race_predictions(conn, race_id)
     if preds.empty:
-        raise ValueError("no forecast predictions for this race; run racinglines mtb_dh forecast --db --save")
+        raise ValueError("no forecast predictions for this race; run racinglines model forecast mtb_dh --db --save")
     venue, cat = race_label(session, race_id)
     is_f1 = (session.get(m.Race, race_id).format or {}).get("kind") == "f1"
     created = repriced = 0
@@ -337,7 +337,7 @@ def stage_outcomes(conn, race_id):
     Qualifying is stored without positions, so its order is the stage's starting grid (FastF1's GridPosition,
     results.extra.grid: after penalties, 0 = pit lane = none), known once the stage has run; an SQ position
     stored in the classification wins when there is one. Empty frame (just athlete_id) on a weekend without one."""
-    from racinglines.models.position_sim.model import MAIN_STAGE, SIM_SESSIONS
+    from racinglines.models.inputs.laps import MAIN_STAGE, SIM_SESSIONS
     # the current-format grid session (grid_from); 2021's per-year source (grid_from_by_year: qual) is not read here,
     # no venue listed 2021 sprint markets, so none are settled by this
     side = {k: v["grid_from"] for k, v in SIM_SESSIONS.items() if k != MAIN_STAGE}
@@ -365,7 +365,7 @@ def outcome_for(kind, athlete_id, params, res):
     """YES/NO for a race market from the official classification (None if undecidable): the kind's
     settlement in racinglines/markets/kinds.py."""
     from racinglines.markets import kinds as K
-    from racinglines.models.position_sim.model import team_key
+    from racinglines.models.inputs.laps import team_key
     k = K.KINDS.get(kind)
     # a team market: a kind whose subject is a team (markets/kinds.toml: a team spec, or the legacy group_top)
     grouped = k is not None and k.subject == "team"

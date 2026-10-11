@@ -60,7 +60,7 @@ instead.
 
 ## Results: every season with data (2021–2026)
 
-Model run 938 (2026-09-27), command `racinglines mtb_dh backtest --db --save`. Settings: training scope
+Model run 938 (2026-09-27), command `racinglines model backtest mtb_dh --db --save`. Settings: training scope
 `all`, 120-day half-life, junior weight 0.5, 4,000 simulations per round: the defaults before
 2026-09-28. The current defaults (half-life 240, junior weight 0.5 → 0.25, `prior_n` 1.5 → 0.5)
 and their results are in [Calibration](model.md#calibration).

@@ -4,9 +4,9 @@ Demo paper portfolios for the result-only sports (NASCAR Cup, MotoGP): each past
 shows them beside the F1 demo history (pipelines/demo_history.py). On by default for demo setups: set
 RACINGLINES_SPORT_PAPER=0 to hide them, or 1 to force the explicit opt-in in a non-demo environment.
 
-    racinglines nascar demo-history --pick data/runs/replay-grid/nascar             # print the selection, write nothing
-    racinglines nascar demo-history --grid data/runs/replay-grid/nascar --backup FILE [--users taker] [--events latest]
-    racinglines nascar demo-history --reset --backup FILE [--users taker]            # this sport's rows only
+    racinglines strategy demo-history nascar --pick data/runs/replay-grid/nascar             # print the selection, write nothing
+    racinglines strategy demo-history nascar --grid data/runs/replay-grid/nascar --backup FILE [--users taker] [--events latest]
+    racinglines strategy demo-history nascar --reset --backup FILE [--users taker]            # this sport's rows only
 
 The strategy per market kind is the settings grid's best (the overnight run's read-only grid, scripts/vm/replay_grid.py,
 runs named <year>-e<edge>-v<volume> under data/runs/replay-grid/<sport>/, each with kalshi/trades.csv):

@@ -49,7 +49,7 @@ def _close(x, target, tol, what):
 # --- code on synthetic data -------------------------------------------------------
 
 def f1_code_checks():
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     from racinglines.testing import synthetic as SY
     state = {}
 
@@ -131,7 +131,7 @@ def market_code_checks():
 
 
 def mtb_code_checks():
-    from racinglines.models import timed_runs as P
+    from racinglines.models.inputs import run_times as P
     from racinglines.sources.chronorace.parse import parse_markdown_tables_file
     from racinglines.testing import synthetic as SY
     state = {}

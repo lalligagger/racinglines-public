@@ -109,6 +109,13 @@ def _read_tree(name, tokens, conditions, start, end, root):
     if end is not None:
         g = ds.field("ts") <= pa.scalar(_utc(end), type=pa.timestamp("us", tz="UTC"))
         f = g if f is None else f & g
+    if "month" in d.schema.names:  # a row lives in its own ts's month, so only those partitions need opening
+        if start is not None:
+            g = ds.field("month") >= _utc(start).strftime("%Y-%m")
+            f = g if f is None else f & g
+        if end is not None:
+            g = ds.field("month") <= _utc(end).strftime("%Y-%m")
+            f = g if f is None else f & g
     t = d.to_table(filter=f, columns=STORES[name]["cols"])
     return t.to_pandas()
 

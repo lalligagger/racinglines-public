@@ -16,9 +16,10 @@ def test_aliases_and_db_spellings():
     assert R.is_basic(dict(role="taker")) and R.is_basic(dict(role="basic")) and not R.is_basic(dict(role="pro"))
 
 
-def test_basic_tier_runs_only_its_own_draw():
+def test_basic_tier_runs_only_its_own_draw(monkeypatch):
     from racinglines.pipelines import profiles as PF
     from racinglines.web import roles as R
+    monkeypatch.setattr(PF, "MAKERS_OPEN", True)              # the tiers as in Beta (Alpha: tests/test_alpha_no_makers.py)
     a = dict(name=PF.PROFILES["A"]["name"], strategy="update")
     c = dict(name=PF.PROFILES["C"]["name"], strategy="maker")
 

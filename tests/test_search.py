@@ -51,10 +51,10 @@ def test_unknown_keys_and_bad_values_are_rejected(tmp_path):
 def test_command_lines():
     j = dict(kind="sweep", year=2025, rounds="1-5",
              settings=SS.Settings.from_dict(dict(variant="gridq+pretrain", min_edge=0.03)).to_json())
-    assert S.argv(j)[1:] == ["-m", "racinglines", "f1", "--variant", "gridq+pretrain", "sweep", "--year", "2025",
+    assert S.argv(j)[1:] == ["-m", "racinglines", "strategy", "sweep", "f1", "--variant", "gridq+pretrain", "--year", "2025",
                              "--no-fetch", "--save", "--rounds", "1-5", "--min-edge", "0.03"]
     c = S.argv(dict(kind="checkpoints", year=2026, variants="baseline,reset", entries="0,3,6"))
-    assert c[4:] == ["season-checkpoints", "--year", "2026", "--save", "--variants", "baseline,reset",
+    assert c[4:] == ["season-checkpoints", "f1", "--year", "2026", "--save", "--variants", "baseline,reset",
                      "--entries", "0,3,6"]
 
 
@@ -67,7 +67,7 @@ def test_candidates_are_parsed_with_full_settings(tmp_path):
 
 
 def test_downhill_jobs_get_their_own_settings_baseline_and_command(tmp_path):
-    from racinglines.models.timed_runs.settings import DHSettings
+    from racinglines.models.inputs.run_times.settings import DHSettings
     _, jobs, _ = S.load(_queue(tmp_path, '[[job]]\nsport = "mtb_dh"\nyear = 2025\nhalf_life_days = 120\n'
                                          '[[job]]\nvariant = "gridq"\n'))
     assert [(j.get("sport", "f1"), j["kind"], j["year"], j["note"][:8] if "baseline" in j.get("note", "") else "")
@@ -155,7 +155,7 @@ def test_a_kalshi_sweep_job_gets_its_own_id_baseline_and_command(tmp_path):
                                              'venue = "kalshi"\n'))
     assert [(j["settings"]["variant"], j.get("venue", "polymarket")) for j in jobs] == \
         [("baseline", "kalshi"), ("baseline", "polymarket"), ("gbm", "kalshi"), ("gbm", "polymarket")]
-    assert S.argv(jobs[2])[6:] == ["sweep", "--year", "2026", "--no-fetch", "--save", "--venue", "kalshi"]
+    assert S.argv(jobs[2])[4:] == ["sweep", "f1", "--variant", "gbm", "--year", "2026", "--no-fetch", "--save", "--venue", "kalshi"]
     assert "--venue" not in S.argv(jobs[3]) and "venue" not in jobs[3]
     assert cands[0]["venue"] == "kalshi" and S._title(jobs[2]).endswith(" · kalshi")
     with pytest.raises(ValueError, match="venue"):

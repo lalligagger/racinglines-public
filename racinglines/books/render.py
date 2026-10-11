@@ -10,7 +10,7 @@ board, in three styles (docs/sportsbook/render.md):
                decimal odds worth taking
 
 Input is `price_book`'s result (racinglines/books/slips.py; `book price --json` saved to a file renders without a
-database) or the road-cycling CLI's price outputs (`racinglines cycling price` writes reports/<event>/futures.csv and
+database) or the road-cycling CLI's price outputs (`racinglines model price cycling` writes reports/<event>/futures.csv and
 matchups.csv). Both become the same normalized line rows, `rows_from_priced` / `rows_from_cycling`.
 
 Sizing is data (markets/books.toml [stake], overridable per call): one function, `size`, for every sport and venue.
@@ -154,7 +154,7 @@ def rows_from_priced(priced, settings, book=None):
 
 
 def rows_from_cycling(path):
-    """(meta, rows) from `racinglines cycling price` output: a folder holding futures.csv and/or matchups.csv (and
+    """(meta, rows) from `racinglines model price cycling` output: a folder holding futures.csv and/or matchups.csv (and
     settings.csv), or one of those files. Model only: no exchange lists these races, so the v2 rule (which needs a
     market price) passes on every line and says so. The cycling model's own prices are used as they are."""
     import pandas as pd
@@ -164,7 +164,7 @@ def rows_from_cycling(path):
     if p.is_file():
         files = {k: v for k, v in files.items() if v == p or k == "settings.csv"}
     if not any(files[f].exists() for f in ("futures.csv", "matchups.csv") if f in files):
-        raise RenderError(f"{path}: no futures.csv or matchups.csv (racinglines cycling price writes them)")
+        raise RenderError(f"{path}: no futures.csv or matchups.csv (racinglines model price cycling writes them)")
     rows = []
     fut = files.get("futures.csv")
     if fut is not None and fut.exists():
@@ -188,7 +188,7 @@ def rows_from_cycling(path):
     mtime = max(f.stat().st_mtime for f in files.values() if f.exists())
     meta = dict(venue=None, event=folder.name, sport="road_cycling", captured_utc=None, event_name=folder.name,
                 odds="decimal", image=None, models=[f"road-cycling model, {folder.name}/" + sline],
-                model_source=f"racinglines cycling price output, written "
+                model_source=f"racinglines model price cycling output, written "
                              f"{datetime.fromtimestamp(mtime, timezone.utc):%Y-%m-%dT%H:%MZ}",
                 syncs={})
     return meta, rows
