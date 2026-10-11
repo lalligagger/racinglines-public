@@ -758,11 +758,11 @@ def test_shared_store_never_reads_account_rows_by_a_foreign_id(mcp, monkeypatch)
 
 
 def test_hidden_sports_follow_the_schema_switch_and_spare_admins(monkeypatch):
-    """[sport] audience = "admin" (web/audience.py): hidden from non-admin accounts; admins and stdio see every sport."""
+    """sports.is_public ([sport] audience = "admin"): hidden from non-admin accounts; admins and stdio see every sport."""
     from racinglines import sports as SC
     assert T.hidden_sports(None) == frozenset() and T.hidden_sports(dict(role="admin")) == frozenset()
     assert "motogp" in T.hidden_sports(dict(id=1, username="p", role="pro"))          # the Alpha switch, 2026-10-11
-    monkeypatch.setattr(SC, "admin_only", lambda: frozenset({"f1"}))
+    monkeypatch.setattr(SC, "audience", lambda code: "admin" if code == "f1" else "all")
     assert T.hidden_sports(dict(role="pro")) == {"f1"} and T.hidden_sports(dict(role="admin")) == frozenset()
 
 

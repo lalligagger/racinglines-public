@@ -61,7 +61,7 @@ def sports_of(conn):
 
 
 # ---------------------------------------------------------------------------------------------------
-# sports a caller may not see: [sport] audience = "admin" (web/audience.py), for non-admin accounts
+# sports a caller may not see: sports.is_public ([sport] audience = "admin"), for non-admin accounts
 # ---------------------------------------------------------------------------------------------------
 
 # The sport codes this request may not see. server.py sets it per tool call from the caller (hidden_sports); empty for
@@ -70,13 +70,14 @@ HIDDEN = contextvars.ContextVar("racinglines_mcp_hidden_sports", default=frozens
 
 
 def hidden_sports(viewer):
-    """The sports `viewer` (server.caller(): dict(id, username, role), None over stdio) may not see: the admin-only
-    ones ([sport] audience = "admin", web/audience.py, as the web pages). None for internal callers and admins."""
-    from racinglines.web import audience as A
+    """The sports `viewer` (server.caller(): dict(id, username, role), None over stdio) may not see: the ones the one
+    gate, sports.is_public, turns away ([sport] audience = "admin", as on the web pages). None for internal callers and
+    admins."""
+    from racinglines import sports as SC
     from racinglines.web import roles as R
     if not viewer or R.canonical(viewer.get("role")) == "admin":
         return frozenset()
-    return A.hidden(viewer)
+    return frozenset(c for c in SC.SPORT_CODES if not SC.is_public(c, viewer))
 
 
 def not_available(what):
