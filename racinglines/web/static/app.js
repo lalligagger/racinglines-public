@@ -373,20 +373,28 @@
         else els[0].value = v === null ? "" : v;
       });
     }
+    // a stored value and the field's value are the same setting: "not set" (null) reads as an empty field, an empty
+    // checkbox group, or a select's first option (the setting's fallback, e.g. the default exchange)
+    function same(form, k, v, stored) {
+      if (stored === undefined) return true;
+      if (stored === null) {
+        const sel = form.querySelector(`select[name="${k}"]`);
+        return v === null || v === "" || (Array.isArray(v) && !v.length) || (sel && sel.options.length && v === sel.options[0].value);
+      }
+      return JSON.stringify(v) === JSON.stringify(stored) || (typeof v === "number" && Number(stored) === v);
+    }
     function markChanged(form) {
       const src = JSON.parse(form.dataset.source || "{}"), now = readSettings(form);
       let n = 0;
       form.querySelectorAll("[data-setting]").forEach(l => {
-        const k = l.dataset.setting, a = JSON.stringify(now[k]), b = JSON.stringify(src[k]);
-        const changed = src[k] !== undefined && a !== b && !(typeof now[k] === "number" && Number(src[k]) === now[k]);
+        const k = l.dataset.setting, changed = !same(form, k, now[k], src[k]);
         l.classList.toggle("changed", changed); if (changed) n++;
       });
       const c = form.querySelector("[data-changed-count]");
       if (c) c.textContent = n ? `${n} setting${n > 1 ? "s" : ""} changed from the starting point` : "";
       // anything off the defaults makes the run a scenario (not calibrated)
       const defs = JSON.parse(form.dataset.defaults || "{}"), note = form.querySelector("[data-scenario-note]");
-      if (note) note.hidden = !Object.keys(defs).some(k => k in now && JSON.stringify(now[k]) !== JSON.stringify(defs[k])
-        && !(typeof now[k] === "number" && Number(defs[k]) === now[k]));
+      if (note) note.hidden = Object.keys(defs).every(k => !(k in now) || same(form, k, now[k], defs[k]));
     }
     // the model variant: the switch checkboxes and the text field mirror each other; ticked switches join with "+" in
     // the checkboxes' order, none ticked is "baseline"
