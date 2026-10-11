@@ -1,9 +1,9 @@
 """Benchmark helper (read-only on the database): the maker replays that `racinglines f1 replay --runs ... --sweep`
-runs, as input for the Rust/WebAssembly kernel in scripts/bench/replay_kernel, and the check that the kernel's
-quotes and fills equal the Python replay's exactly.
+runs, as input for the Rust/WebAssembly replay in wasm/, and the check that its quotes and fills equal the Python
+replay's exactly and its summaries agree.
 
     python scripts/bench/replay_dump.py --runs 1298,1299,1300,1301,1302 --out /tmp/replay_input.json
-    python scripts/bench/replay_dump.py --runs 1298,1299,1300,1301,1302 --check /tmp/kernel_out.json
+    python scripts/bench/replay_dump.py --runs 1298,1299,1300,1301,1302 --check /tmp/replay_output.json
 """
 
 import argparse
@@ -15,8 +15,11 @@ from dataclasses import replace
 
 from racinglines.db.config import get_engine
 from racinglines.markets.strategies import maker_replay as R
+from racinglines.markets.strategies.replay_json import event_json, params_json
 
 REASONS = {None: 0, "no fair": 1, "no market price": 2, "outside price band": 3, "thin": 4, "disagree": 5, "limit": 6}
+COLUMNS = ("markets", "quoted_share", "fills", "shares", "notional", "spread_pnl", "markout_60m", "model_edge", "pnl",
+           "worst_case")
 
 
 def param_sets():
@@ -34,41 +37,48 @@ def _f(x):
 
 
 def dump(data, params, path):
-    ev = dict(stages=[dict(run_id=int(s["run_id"]), start=int(s["start"]), end=int(s["end"]),
-                           session_end=bool(s.get("session_end", True))) for s in data["stages"]],
-              qual_start=None if data.get("qual_start") is None else int(data["qual_start"]),
-              markets=[dict(kind=m.kind, fairs={str(k): _f(v) for k, v in m.fairs.items()},
-                            mid_ts=m.mid_ts.astype("int64").tolist(), mid_px=m.mid_px.astype(float).tolist(),
-                            tr_ts=m.tr_ts.astype("int64").tolist(), tr_px=m.tr_px.astype(float).tolist(),
-                            tr_sz=m.tr_sz.astype(float).tolist(), tr_buy=[bool(x) for x in m.tr_buy])
-                       for m in data["markets"]])
-    calls = [dict(event=0, p=dict(half_spread=p.half_spread, tick=p.tick, size=p.size, max_pos=p.max_pos,
-                                  max_capital=p.max_capital, skew=p.skew, step_min=p.step_min, pull_min=p.pull_min,
-                                  min_volume_24h=p.min_volume_24h, band_lo=p.price_band[0], band_hi=p.price_band[1],
-                                  max_disagree=p.max_disagree, touch=p.fill == "touch",
-                                  flatten_before_qual=p.flatten_before_qual, taker_cost=p.taker_cost,
-                                  info_skew=p.info_skew, info_tau_h=p.info_tau_h, by_kind=p.half_spread_by_kind or {},
-                                  maker_fee=p.maker_fee)) for p in params]
     with open(path, "w") as f:
-        json.dump(dict(events=[ev], calls=calls), f)
+        json.dump(dict(event=event_json(data), calls=[params_json(p) for p in params]), f)
+
+
+def compare(data, p, k):
+    """The differences between the Python replay with `p` and one call's output of the wasm/ runner: [] when every
+    quote and fill is equal and the per-kind summary agrees to 1e-9 (sums may add in a different order)."""
+    conds = {m.cond: i for i, m in enumerate(data["markets"])}
+    res = R.replay(data, p)
+    q = res["quotes"]
+    py_q = [[int(t), conds[c], int(r), _f(b), _f(a), REASONS[w]]
+            for t, c, r, b, a, w in zip(q.ts, q.cond, q.run_id, q.bid, q.ask, q.skip)]
+    f = res["fills"]
+    py_f = [[int(t), conds[c], int(r), s == "buy", float(px), float(n)]
+            for t, c, r, s, px, n in zip(f.ts, f.cond, f.run_id, f.side, f.price, f.qty)]
+    bad = []
+    if py_q != k["quotes"]:
+        bad.append("quotes")
+    if sorted(py_f) != sorted(k["fills"]):
+        bad.append("fills")
+    py_s = R.summary(res)
+    for row in k["summary"]["summary"]:
+        for col in COLUMNS:
+            a, b = float(py_s.loc[row["kind"], col]), float(row[col])
+            if not math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-9):
+                bad.append(f"summary {row['kind']} {col}: python {a} wasm {b}")
+    if len(k["summary"]["summary"]) != len(py_s):
+        bad.append("summary rows")
+    return bad
 
 
 def check(data, params, path):
-    """0 when every quote and fill of the kernel equals the Python replay's."""
-    kernel = json.load(open(path))
-    conds = {m.cond: i for i, m in enumerate(data["markets"])}
+    """0 when every call agrees (compare())."""
+    out = json.load(open(path))
     t0, bad = time.perf_counter(), 0
-    for p, k in zip(params, kernel):
-        res = R.replay(data, p)
-        q = res["quotes"]
-        py_q = [[int(t), conds[c], int(r), _f(b), _f(a), REASONS[w]]
-                for t, c, r, b, a, w in zip(q.ts, q.cond, q.run_id, q.bid, q.ask, q.skip)]
-        f = res["fills"]
-        py_f = sorted([int(t), conds[c], int(r), s == "buy", float(px), float(n)]
-                      for t, c, r, s, px, n in zip(f.ts, f.cond, f.run_id, f.side, f.price, f.qty))
-        bad += (py_q != k["quotes"]) + (py_f != sorted(k["fills"]))
+    for p, k in zip(params, out):
+        diff = compare(data, p, k)
+        bad += bool(diff)
+        for d in diff[:5]:
+            print(f"  {p.fill} h={p.half_spread} d={p.max_disagree}: {d}")
     print(f"python replays: {len(params)} in {time.perf_counter() - t0:.2f} s; "
-          f"{'identical' if not bad else f'{bad} differences'} to the kernel's quotes and fills")
+          f"{'identical' if not bad else f'{bad} calls differ'} (quotes and fills exact, summaries to 1e-9)")
     return 1 if bad else 0
 
 

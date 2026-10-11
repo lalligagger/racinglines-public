@@ -104,3 +104,40 @@ def test_non_f1_sweep_form_renders_sport_specific_settings():
     assert 'name="job" value="nascar_sweep"' in html
     assert 'name="year"' in html and 'name="prior_weight"' in html and 'name="venue"' in html
     assert "historical simulation, not a live strategy" in html
+
+
+def test_f1_sweep_form_offers_the_variant_switches_as_checkboxes():
+    from racinglines.models.position_sim import variants as V
+    from racinglines.pipelines import sweep_settings as SS
+    from racinglines.web.app import templates
+
+    switches = jobs.variant_switches()
+    assert [s for s, _ in switches] == [k for k in V.SWITCHES if k != "baseline"]
+    start = SS.Settings.from_dict({"variant": "gridq+pretrain"}).to_json()
+    html = templates.env.get_template("lab_sweep_form.html").render(
+        jt=jobs.CATALOG["f1_sweep"], sel_job="f1_sweep", sweep_defaults=SS.Settings.from_dict().to_json(),
+        sweep_start=start, sweep_source="", knobs={}, candidates=[], sel_candidate=0,
+        sweep_groups=[(g, lab, [x for x in SS.SETTINGS if x.group == g]) for g, lab in SS.GROUPS],
+        model_choices=jobs.MODEL_CHOICES, variant_switches=switches, exclusive_switches=jobs.EXCLUSIVE_SWITCHES,
+        csrf=lambda: "")
+    assert 'name="variant" value="gridq+pretrain"' in html and "data-variant-text" in html
+    for s, _ in switches:
+        assert f'data-switch="{s}"' in html
+    assert html.count('data-exclusive="fastlap flpos"') == 2
+    assert "data-scenario-note hidden" in html
+    # the switches post nothing themselves: the variant still comes from the one text field
+    assert jobs.parse(jobs.CATALOG["f1_sweep"], {"year": "2026", "variant": "gridq+pretrain"})["settings"] == \
+        {"variant": "gridq+pretrain"}
+
+
+def test_f1_knobs_that_are_sweep_settings_read_the_schema():
+    from racinglines.pipelines import sweep_settings as SS
+
+    hl = next(s for s in SS.SETTINGS if s.name == "half_life_days")
+    sims = next(s for s in SS.SETTINGS if s.name == "sims")
+    for code in ("f1_backtest", "f1_scenario", "f1_diagnostic", "f1_combo"):
+        k = {k.name: k for k in jobs.CATALOG[code].knobs}
+        assert (k["half_life"].default, k["half_life"].min, k["half_life"].max) == (hl.default, hl.min, hl.max)
+    for code in ("f1_scenario", "f1_diagnostic", "f1_combo"):
+        k = {k.name: k for k in jobs.CATALOG[code].knobs}["sims"]
+        assert (k.default, k.min, k.max) == (10000, sims.min, sims.max)

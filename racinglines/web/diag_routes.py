@@ -5,7 +5,7 @@ Split out of web/app.py, which imports this module to register the routes.
 
 import pandas as pd
 from fastapi import Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from racinglines.db.config import get_session
 from racinglines.markets import venues as V
@@ -47,6 +47,21 @@ def diag_page(request: Request, run_id: int, msg: str = "", fill: str = "through
                   rp_skips=rows(rp["skips"]), rp_sweep=rows(rp["sweep"]), rp_top=rows(top),
                   rp_positions=rows(rp["positions"]), fill=fill, h=h, runs=rows(diag.event_runs(c, run_id)),
                   consts=dict(paper_edge=diag.PAPER_EDGE, paper_stake=diag.PAPER_STAKE), venue=venue, kalshi=V.KALSHI_VENUE)
+
+
+@app.get("/lab/diagnostics/{run_id}/tape.json", dependencies=[allow(*PRO)])
+def diag_tape(request: Request, run_id: int, venue: str = "", c=Depends(conn)):
+    """The event's tape for the maker replay in the browser (static/replay.js): markets, fairs per stage, minute
+    mids, trades and outcomes, with the page's default knobs. Gzipped (sent as such when the browser accepts it)."""
+    if not len(diag.event_runs(c, run_id)):
+        raise HTTPException(404)
+    exchange = "kalshi" if venue == "kalshi" and V.KALSHI_VENUE else "polymarket"
+    body = diag.tape(c, run_id, exchange)
+    headers = {"Cache-Control": "private, max-age=3600", "Vary": "Accept-Encoding"}
+    if "gzip" in request.headers.get("accept-encoding", ""):
+        return Response(body, media_type="application/json", headers=dict(headers, **{"Content-Encoding": "gzip"}))
+    import gzip
+    return Response(gzip.decompress(body), media_type="application/json", headers=headers)
 
 
 @app.post("/lab/diagnostics/{run_id}/example", dependencies=[Depends(check_csrf)])
