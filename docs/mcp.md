@@ -18,6 +18,10 @@ that machine is the owner. **Hosted** you connect to `https://mcp.racinglines.be
 web-app account (or use a token from Settings); your Claude then sees what the app's data shows and can queue what the Lab's
 Run form can queue, and every job it queues is filed under your account.
 
+The `racinglines` CLI is an MCP client too, for the sportsbook commands: `racinglines book price FILE --remote`
+prices your book file on the hosted server with no database of your own ([From the command line](#from-the-command-line-racinglines-book-remote)).
+Trying the CLI needs no MCP at all: `racinglines book price --demo` runs a bundled synthetic sample offline.
+
 ### Local (stdio)
 
 The client launches `racinglines mcp` as a subprocess with your environment (`DATABASE_URL`,
@@ -77,6 +81,52 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST https://mcp.racinglines.bet/mcp
   -H "Authorization: Bearer rl_YOUR_TOKEN" -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" -d '{"jsonrpc":"2.0","id":1,"method":"ping"}'
 ```
+
+### From the command line (`racinglines book --remote`)
+
+`racinglines book map | price | settle` has three modes ([Sportsbook slips: Three ways in](sportsbook/slips.md#three-ways-in)),
+and only one of them uses MCP:
+
+| Mode | MCP? | What it runs on |
+|---|---|---|
+| `--demo` | No | A bundled synthetic book and its stored results: no database, network or account. The first thing to run after installing the package |
+| `--remote` | Yes, the hosted server | Your book file, sent as text to the `map_book` / `price_book` / `settle_book` tools; the result is the same dict `--json` prints locally, rendered the same way (`racinglines/cli/remote.py`) |
+| `--local` (default) | No | Your own database (`--db`, `DATABASE_URL`) |
+
+```
+# LOCAL (Mac): the first --remote opens the browser to sign in; later runs reuse the login
+racinglines book price FILE --remote --rich
+racinglines book logout                       # forget the login
+```
+
+Sign-in is the connector flow above: the CLI registers itself as the client `racinglines CLI` (dynamic client
+registration, PKCE, a loopback redirect to `http://127.0.0.1:<port>/callback`), prints the racinglines.bet URL and
+opens it, and waits up to 5 minutes for **Allow**. The login is kept in `~/.config/racinglines/mcp-login.json` (mode
+600, one entry per server URL; `RACINGLINES_MCP_LOGIN` moves it) and refreshed on its own, so it shows under
+Settings like any other sign-in, and **Disconnect all** ends it too. The same account rules apply: a role in
+`RACINGLINES_MCP_ROLES`, no demo accounts.
+
+**A token instead** (scripts, machines with no browser): when `RACINGLINES_MCP_TOKEN` holds an `rl_` token, the CLI
+sends it as the bearer and skips the sign-in. Read it without echo:
+
+```
+# LOCAL (Mac)
+read -rs -p "rl_ token: " RACINGLINES_MCP_TOKEN && echo && export RACINGLINES_MCP_TOKEN
+racinglines book price FILE --remote
+```
+
+**Your own server.** If you host the server yourself ([Once: host the server](#once-host-the-server)), point the CLI
+at it once and make `--remote` the default (`racinglines/cli/config.py`, `~/.config/racinglines/cli.toml`):
+
+```
+# LOCAL (Mac)
+racinglines book config mcp_url https://mcp.example.com/mcp
+racinglines book config source remote          # plain `racinglines book price FILE` now goes there
+```
+
+`--mcp-url` and `RACINGLINES_MCP_URL` override `mcp_url` for one run. A 401 means the token or login is wrong,
+revoked, or for an account without MCP access: `racinglines book logout` and run again to sign in afresh. Staging
+runs no MCP server, so `--remote` always means production unless you point it elsewhere.
 
 ## Giving access, as an admin
 
@@ -263,3 +313,6 @@ these is a deliberate change, not a switch.
 `python -m pytest tests/test_mcp.py` (part of the regression suite): the envelope's caps, the SQL guard, and a
 client round trip over an in-memory transport against the test database (tools, errors, paging, a queued job,
 the resources), and the token lifecycle with the bearer check of the hosted mode. No network.
+`tests/test_book_slips.py` runs the CLI's `--remote` against a local hosted server (OAuth on, uvicorn on
+127.0.0.1): with an `rl_` token, with a wrong one (401), and through the browser sign-in, its stored login and
+logout. `tests/test_book_demo.py` checks the bundled `--demo` results are what the code returns.
