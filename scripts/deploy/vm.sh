@@ -13,9 +13,12 @@
 #                                               # every 5 minutes (the first one backs the database up); status: last
 #                                               # passes and book snapshots per venue per 5 minutes
 #   bash scripts/deploy/vm.sh pm-sync [off|status]# Polymarket market links sync (scripts/vm/pm_sync.sh): a pass
-#                                               # every 5 minutes during race weekends; status: last passes
-#   bash scripts/deploy/vm.sh forecast [off|status] # NASCAR and MotoGP forecast refresh: every 30 minutes during
-#                                               # race weekends, and F1 once per new race result; status: last passes
+#                                               # every 5 minutes, every day (WEEKEND_ONLY=1: race weekends only);
+#                                               # status: last passes
+#   bash scripts/deploy/vm.sh forecast [off|status] # forecast refresh (scripts/vm/forecast-refresh.sh): a pass every
+#                                               # 30 minutes; NASCAR and MotoGP forecasts only on their race weekends
+#                                               # (scripts/vm/race_weekend.sh), F1 once per new race result;
+#                                               # status: last passes
 #   bash scripts/deploy/vm.sh switch <NAME> on|off # an app switch (RACINGLINES_*, e.g. RACINGLINES_OG_VENUE) in
 #                                               # /etc/racinglines.env, web app restarted; never a trading flag
 #   bash scripts/deploy/vm.sh deploy [ref]      # checkout (default main), install, migrate, restart, smoke check
