@@ -126,14 +126,21 @@ def _step(spec, args, now=None, cache=None):
         return ad.step(spec, now=now or args.now, echo=_echo, **kw)
 
 
-def cmd_step(args):
+SETTLED_HINT = ("settled: nothing left to step (a per-event timer for it can go off: "
+                "bash scripts/deploy/vm.sh live {event} off; live auto drops it a day after its results)")
+
+
+def cmd_step(args, auto=False):
     spec = _spec(args.spec)
     s = _step(spec, args)
     if s is None and spec["sport"] == "f1":
         from racinglines.pipelines import live_f1 as F
         st = F.status(spec, args.now)
-        _echo(f"{spec['event']}: nothing new" + (f" · next: {st['next']} (due {st['due'][:16]} UTC"
-                                                 + (f", {st['late_h']} h late" if st["late_h"] else "") + ")" if st["next"] else " · settled"))
+        if st["next"]:
+            _echo(f"{spec['event']}: nothing new · next: {st['next']} (due {st['due'][:16]} UTC"
+                  + (f", {st['late_h']} h late" if st["late_h"] else "") + ")")
+        else:                                    # a step on a settled event does nothing: say what turns it off
+            _echo(f"{spec['event']}: nothing new · " + ("settled" if auto else SETTLED_HINT.format(event=spec["event"])))
     return 0
 
 
@@ -179,7 +186,7 @@ def cmd_auto(args):
     for spec in specs:                           # one event's failure doesn't stop the others' steps
         args.spec = spec["path"]
         try:
-            cmd_step(args)
+            cmd_step(args, auto=True)
         except Exception as ex:                  # noqa: BLE001
             rc = 1
             _echo(f"{spec['event']}: step FAILED: {type(ex).__name__}: {ex}")

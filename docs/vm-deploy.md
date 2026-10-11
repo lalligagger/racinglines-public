@@ -320,12 +320,19 @@ session is ingested and priced, the book closes at lights out and settles, and o
 nothing (nothing to turn off when an event is complete). `vm.sh live auto off` disables it; staging's twin is
 `vm.sh staging live auto`.
 
-From the Mac, `bash scripts/deploy/vm.sh live 2026-16` enables one F1 event's timer and `vm.sh live 2026-16 off`
-disables it. On the VM itself:
+**Prefer `live auto` for F1.** Live timers go off once an event is complete (owner rule), and only `live auto` does
+that by itself. From the Mac, `bash scripts/deploy/vm.sh live 2026-16` for a spec with a `[window]` therefore enables
+`racinglines-live-auto.timer` (and disables a `racinglines-live-f1@2026-16.timer` left on from before) instead of a
+per-event timer; staging's `vm.sh staging live 2026-16` does the same with its twin. Only a rehearsal spec (no
+`[window]`) still gets its own `racinglines-live-f1@<event>.timer`, which steps every 5 minutes until
+`vm.sh live <event> off`: a step on a settled event does nothing and prints
+`settled: nothing left to step (a per-event timer for it can go off: ...)`. An event that needs a step after live
+auto has dropped it (more than a day after its results) gets one by hand, with no timer left on. On the VM itself:
 ```sh
-sudo systemctl enable --now racinglines-live-f1@2026-16.timer     # F1: one step every 5 minutes
+sudo systemctl enable --now racinglines-live-auto.timer           # F1: every event whose window is open
+sudo systemctl start racinglines-live-f1@2026-16.service          # F1: one step of one event, now (no timer)
 sudo systemctl enable --now racinglines-live-dh@<event>           # downhill: the poll loop
-sudo systemctl disable --now racinglines-live-f1@2026-16.timer    # when the event is settled
+sudo systemctl disable --now racinglines-live-f1@2026-16.timer    # a per-event timer left on: off
 ```
 **F1 sessions come from the Mac (since 3 Oct 2026).** F1's timing archive answers 403 to the VM's cloud address, so
 FastF1 can't fetch there (the live step logs "waiting for the session's data" all weekend). During an F1 weekend, run
