@@ -17,7 +17,7 @@
 # folder: the checkout itself is not touched.
 set -euo pipefail
 export PYTHONUNBUFFERED=1
-RUNS="${1:?diagnostic run ids, e.g. 1298,1299,1300,1301,1302 (one weekend's stages, as for f1 replay --runs)}"
+RUNS="${1:?diagnostic run ids of one weekend, as for f1 replay --runs, e.g. 1298,1299,1300,1301,1302}"
 case "$RUNS" in *[!0-9,]*) echo "ab_speed: run ids must be digits and commas" >&2; exit 2 ;; esac
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$ROOT"
