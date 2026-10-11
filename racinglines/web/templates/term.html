@@ -22,7 +22,7 @@
   <div class="term" data-term>
     <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i></div>
     <div class="term-cmd"><span class="term-prompt" aria-hidden="true">$ </span><code data-term-cmd>{{ d.command }}</code><button type="button" class="term-play" data-term-play hidden>Play</button></div>
-    <div class="term-body" data-term-out>{{ d.html|safe }}</div>
+    {% if d.html %}<div class="term-body" data-term-out>{{ d.html|safe }}</div>{% endif %}{# record = false: typed, not run #}
   </div>
 </section>
 {% endfor %}

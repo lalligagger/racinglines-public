@@ -297,11 +297,12 @@
     const cmd = t.querySelector("[data-term-cmd]"), out = t.querySelector("[data-term-out]"), btn = t.querySelector("[data-term-play]");
     const full = cmd.dataset.full;
     btn.disabled = true;
-    const done = () => { t.removeAttribute("data-typing"); t.removeAttribute("data-running"); out.style.maxHeight = ""; btn.disabled = false; btn.textContent = "Replay"; };
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) { out.hidden = false; return done(); }
-    out.hidden = true; t.setAttribute("data-typing", ""); cmd.textContent = "";
+    const done = () => { t.removeAttribute("data-typing"); t.removeAttribute("data-running"); if (out) out.style.maxHeight = ""; btn.disabled = false; btn.textContent = "Replay"; };
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) { if (out) out.hidden = false; return done(); }
+    if (out) out.hidden = true; t.setAttribute("data-typing", ""); cmd.textContent = "";
     let i = 0;
     const run = () => {     // the "run": the output scrolls in line by line, like the command printing it
+      if (!out) return done();     // a step shown but not run (pack record = false): typing is all there is
       t.removeAttribute("data-typing"); t.setAttribute("data-running", "");
       out.style.maxHeight = "0px"; out.hidden = false;
       const h = out.scrollHeight, step = Math.max(16, h / 120), t0 = performance.now();
@@ -322,7 +323,8 @@
   document.querySelectorAll("[data-term]").forEach(t => {
     const cmd = t.querySelector("[data-term-cmd]"), btn = t.querySelector("[data-term-play]");
     cmd.dataset.full = cmd.textContent;
-    t.querySelector("[data-term-out]").hidden = true;     // paused: only the command, in full
+    const out = t.querySelector("[data-term-out]");
+    if (out) out.hidden = true;     // paused: only the command, in full
     btn.hidden = false;
     btn.addEventListener("click", () => termPlay(t));
   });

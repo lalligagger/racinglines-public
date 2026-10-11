@@ -498,5 +498,5 @@ a.button.primary:hover { filter: brightness(1.08); color: #fff; }
 .term-body { overflow-x: auto; padding: 4px 14px 14px; }
 .term-out { margin: 0; font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #e6e6e6; background: none; }
 .term[data-running] .term-body { overflow: hidden; }
-.term:has(.term-body[hidden]) .term-cmd { padding-bottom: 12px; }
+.term:has(.term-body[hidden]) .term-cmd, .term:not(:has(.term-body)) .term-cmd { padding-bottom: 12px; }
 .term[data-typing] .term-cmd code::after { content: "▋"; color: #4d7cff; }
