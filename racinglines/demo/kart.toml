@@ -1,0 +1,88 @@
+# The Mario Kart live demo (`racinglines live demo`, racinglines/demo/kart.py): a synthetic race run through the live
+# private book's shared core (markets/quoting.py, markets/crowd.py, pipelines/live_report.py), the way the Whistler
+# downhill final ran (docs/live-events.md), all in the terminal. Everything here is made up: the drivers' pace, the items,
+# the crowd. Play money; nothing is traded anywhere.
+
+title = "Mario Kart Grand Prix"
+laps = 3
+sectors = 6                 # per lap; the book re-prices and re-quotes after every sector
+sims = 4000                 # Monte Carlo runs of the rest of the race per update
+interval_s = 20             # simulated seconds between updates (the run folder's timestamps)
+start = "2026-11-01T12:00:00+00:00"
+
+[bookie]                    # the one maker: quotes every market from the model's fair
+name = "Wario"
+
+[quoting]                   # markets/quoting.py Params
+half_spread = 0.02
+max_pos = 2500.0
+skew = 1.0
+floor_bid = true           # a long shot keeps a 1c bid, so a Toad can sell it too
+
+[crowd]                     # markets/crowd.py Params: anonymous takers, a random side each time
+name = "Toads"
+takers = 100
+p = 0.012                   # per Toad, per quoted market, per update
+budget = [10.0, 200.0]
+bet = [0.2, 0.8]
+min_bet = 2.0
+max_pos = 2500.0
+seed = 20261101
+
+[model]
+error = 0.05                # the model's pace estimate = true pace + this much noise (s per sector): good, not perfect
+
+[items]                     # per driver and sector, scaled by the track's chaos
+boost = { p = 0.05, back = 0.10, s = -0.8, text = "🍄 {name} hits a mushroom boost" }   # p + back x how far back
+banana = { p = 0.05, s = 0.7, text = "🍌 {name} spins out on a banana" }
+red_shell = { p = 0.04, s = 1.5, text = "🔴 a red shell hits {name}" }                   # anyone but the leader
+blue_shell = { p = 0.03, s = 2.5, text = "🔵 a blue shell hits the leader, {name}" }     # per sector, the leader only
+
+[[drivers]]                 # pace: seconds per sector faster than an average kart
+name = "Mario"
+pace = 0.30
+[[drivers]]
+name = "Luigi"
+pace = 0.24
+[[drivers]]
+name = "Peach"
+pace = 0.20
+[[drivers]]
+name = "Bowser"
+pace = 0.18
+[[drivers]]
+name = "Yoshi"
+pace = 0.12
+[[drivers]]
+name = "Daisy"
+pace = 0.08
+[[drivers]]
+name = "Donkey Kong"
+pace = 0.04
+[[drivers]]
+name = "Koopa Troopa"
+pace = 0.0
+
+[tracks.rainbow-road]
+name = "Rainbow Road"
+sector_s = 14.0
+noise = 0.40                # s per sector, each driver
+chaos = 1.5                 # items x this
+
+[tracks.bowsers-castle]
+name = "Bowser's Castle"
+sector_s = 12.0
+noise = 0.35
+chaos = 1.2
+
+[tracks.mario-circuit]
+name = "Mario Circuit"
+sector_s = 10.0
+noise = 0.25
+chaos = 1.0
+
+[tracks.moo-moo-meadows]
+name = "Moo Moo Meadows"
+sector_s = 9.0
+noise = 0.20
+chaos = 0.7

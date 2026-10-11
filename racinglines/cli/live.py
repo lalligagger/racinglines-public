@@ -7,6 +7,7 @@ racinglines live: launch and run a live private-book event, for any sport (pipel
     racinglines live run live/f1/2026-16.toml              # step at the sport's cadence until the event is settled
     racinglines live run live/mtb_dh/20260925_mtb.toml     # downhill: the poll loop, locked (one loop per final)
     racinglines live run live/f1/2026-15.toml --simulate --no-fetch     # a rehearsal on a simulated clock
+    racinglines live run --demo                            # the Mario Kart tour's race: synthetic, no database or network
     racinglines live agent live/f1/2026-16.toml --install  # a macOS LaunchAgent: one step every 5 minutes, locked
     racinglines live auto                                  # F1: step every event whose window is open (a 5-min timer)
     racinglines live status                                # every event: live / replay / settled, last update, lateness
@@ -46,7 +47,12 @@ def main(argv=None):
     p.add_argument("--force", action="store_true", help="Overwrite an existing spec")
     for name, hlp in (("step", "One idempotent update."), ("run", "Step at the sport's cadence until the event is settled (downhill: one locked poll loop per final).")):
         p = sub.add_parser(name, help=hlp)
-        p.add_argument("spec")
+        p.add_argument("spec", nargs="?" if name == "run" else None)
+        if name == "run":
+            from racinglines.demo import tour
+            p.add_argument("--demo", action="store_true",
+                           help="the Mario Kart tour's race (step 3 of 4): Wario's book and 100 Toads, no database or network")
+            tour.add_arguments(p, "race")
         p.add_argument("--now", default=None, help="F1: the (simulated) UTC time of this step, e.g. 2026-09-24T07:35")
         p.add_argument("--no-fetch", action="store_true", help="F1: don't fetch FastF1 data (offline, a rehearsal)")
         p.add_argument("--unfreeze", action="store_true", help="Run with changed settings (they are frozen at the opening)")
@@ -187,6 +193,11 @@ def cmd_auto(args):
 
 def cmd_run(args):
     import pandas as pd
+    if args.demo:
+        from racinglines.demo import tour
+        return tour.run("race", args)
+    if not args.spec:
+        sys.exit("live run: a SPEC is needed (or --demo for the Mario Kart tour)")
     spec = _spec(args.spec)
     if spec["sport"] != "f1":
         from racinglines.pipelines import live as LV

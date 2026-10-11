@@ -26,12 +26,12 @@ DRIVERS = {  # key: (name, team, win, podium, top10, extra)
                                                     sprint_win_prob=0.38)),
     "luigi": ("Luigi", "mushroom", 0.22, 0.52, 0.92, dict(pole_prob=0.24, fl_prob=0.18, top5_prob=0.70, mover_prob=0.05)),
     "peach": ("Peach", "royal", 0.16, 0.44, 0.88, dict(pole_prob=0.15, fl_prob=0.15, top5_prob=0.62, mover_prob=0.08)),
-    "toad": ("Toad", "royal", 0.12, 0.34, 0.85, dict(pole_prob=0.11, fl_prob=0.14, top5_prob=0.55, mover_prob=0.10)),
+    "daisy": ("Daisy", "royal", 0.12, 0.34, 0.85, dict(pole_prob=0.11, fl_prob=0.14, top5_prob=0.55, mover_prob=0.10)),
     "bowser": ("Bowser", "koopa", 0.08, 0.20, 0.78, dict(pole_prob=0.06, fl_prob=0.12, top5_prob=0.36, mover_prob=0.18)),
     "yoshi": ("Yoshi", "koopa", 0.06, 0.15, 0.70, dict(pole_prob=0.04, fl_prob=0.10, top5_prob=0.28, mover_prob=0.22)),
 }
-H2H = {("peach", "toad"): 0.58}
-RESULT = ("mario", "peach", "luigi", "toad", "yoshi", "bowser")             # round 21's finishing order
+H2H = {("peach", "daisy"): 0.58}
+RESULT = ("mario", "peach", "luigi", "daisy", "yoshi", "bowser")             # round 21's finishing order
 
 
 @pytest.fixture(scope="module")
@@ -91,7 +91,7 @@ def demo_db(test_engine):
         link("kalshi", "race_win", 0.18, 0.21, "demo-k-win-luigi", t2, "luigi")
         link("kalshi", "race_podium", 0.40, 0.45, "demo-k-pod-peach", t2, "peach")
         link("polymarket", "race_pole", 0.36, 0.40, "demo-p-pole-mario", t2, "mario")
-        link("polymarket", "race_h2h", 0.44, 0.48, "demo-p-h2h-toad-peach", t2, "toad", {"opponent_id": ids["peach"]})
+        link("polymarket", "race_h2h", 0.44, 0.48, "demo-p-h2h-daisy-peach", t2, "daisy", {"opponent_id": ids["peach"]})
         link("kalshi", "race_p2", 0.20, 0.24, "demo-k-p2-luigi", t2, "luigi")                # no model price: market only
         link("kalshi", "race_win", 0.31, 0.35, "demo-k-win-mario-22", t2, "mario", ra=r22)
         rd = m.Round(race_id=r21.id, kind="race", ordinal=2)

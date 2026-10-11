@@ -179,7 +179,7 @@
    "kind": "race_top5",
    "legs": [
     {
-     "athlete": "Toad",
+     "athlete": "Daisy",
      "athlete_id": 4,
      "competition": "f1_wdc",
      "event": "Rainbow Road Grand Prix",
@@ -216,7 +216,7 @@
    ],
    "reason": null,
    "result": "won",
-   "selection": "Toad",
+   "selection": "Daisy",
    "status": "mapped",
    "title": "Top 5 Finish"
   },
@@ -453,7 +453,7 @@
      "leg": "9",
      "line": 9,
      "odds": null,
-     "opponent": "Toad",
+     "opponent": "Daisy",
      "opponent_id": 4,
      "race_id": 1,
      "reason": null,
@@ -481,7 +481,7 @@
    ],
    "reason": null,
    "result": "won",
-   "selection": "Peach v Toad",
+   "selection": "Peach v Daisy",
    "status": "mapped",
    "title": "Head to Head"
   },
@@ -808,7 +808,7 @@
      "threshold": null
     },
     {
-     "athlete": "Toad",
+     "athlete": "Daisy",
      "athlete_id": 4,
      "competition": "f1_wdc",
      "event": "Rainbow Road Grand Prix",
@@ -845,7 +845,7 @@
    ],
    "reason": null,
    "result": "won",
-   "selection": "Peach podium + Toad top 10",
+   "selection": "Peach podium + Daisy top 10",
    "status": "mapped",
    "title": "Same Race Combo"
   },
