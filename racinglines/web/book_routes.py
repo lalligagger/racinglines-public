@@ -186,9 +186,10 @@ def bet_markets(request: Request, msg: str = "", c=None):          # served at /
         except ValueError:
             profile = None
     view = R.basic_view_profile(profile) if R.is_basic(user) else profile       # basic: "Your picks", no strategy name
+    from racinglines.web import audience as A
     from racinglines.web import sport_status as SS                  # RACINGLINES_SPORT_STATUS=1: every sport's status
     return render(request, "bet.html", msg=msg, profile=view, **polymarket_calls(c, profile),
-                  sport_status=SS.status(c) if SS.enabled() else None, show_paper=False)
+                  sport_status=SS.status(c, A.hidden_comps(user)) if SS.enabled() else None, show_paper=False)
 
 
 def polymarket_calls(c, profile, n_races=3, exchange="polymarket"):

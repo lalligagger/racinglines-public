@@ -227,6 +227,8 @@ MAINTENANCE_NOTICE = ""      # off since the landing rebuild (owner, 2026-10-08:
 templates.env.globals["maintenance_notice"] = lambda: MAINTENANCE_NOTICE   # read at render time
 templates.env.globals["signup_on"] = lambda: signup_on()                    # RACINGLINES_SIGNUP=1: beta sign-up
 templates.env.globals["is_demo"] = lambda u: _demo.is_demo(u)
+from racinglines.web import audience as _audience  # noqa: E402  [sport] audience: which sports a user sees
+templates.env.globals["sport_shown"] = lambda code, user=None: _audience.shown(user, code)   # signed out: as a user
 
 
 def needs_email(user):
@@ -266,16 +268,19 @@ def _signals_nav(user):
                                          (prefs->'strategy_profile'->'bankroll'->>'start')::float,
                                          (SELECT count(*) FROM strategy_signals WHERE user_id = :u AND seen_at IS NULL
                                             AND status <> 'expired'
+                                            AND NOT coalesce(detail->>'sport', '') = ANY(CAST(:hs AS text[]))
                                             AND (CAST(:since AS timestamptz) IS NULL OR created_at > CAST(:since AS timestamptz))),
                                          (SELECT sum(cash + yes_shares * coalesce(outcome::int, mark)
                                                  + no_shares * (1 - coalesce(outcome::int, mark)))
                                             FROM paper_positions WHERE user_id = :u AND (venue = 'polymarket'
-                                                 OR (:sp AND event_key IN (""" + SP.SPORT_KEYS + """)))),
+                                                 OR (:sp AND event_key IN (""" + SP.SPORT_KEYS
+                                                 + " AND NOT detail->>'sport' = ANY(CAST(:hs AS text[]))" + """)))),
                                          (SELECT sum(cash + yes_shares * coalesce(outcome::int, mark)
                                                  + no_shares * (1 - coalesce(outcome::int, mark)))
                                             FROM paper_positions WHERE user_id = :u AND venue = 'private')
                                   FROM users WHERE id = :u"""),
-                          dict(u=user["id"], since=_seen_since(user), sp=SP.enabled())).first()
+                          dict(u=user["id"], since=_seen_since(user), sp=SP.enabled(),
+                               hs=list(_audience.hidden(user)))).first()    # [sport] audience: hidden sports don't count
     except Exception:                                   # noqa: BLE001  the nav never breaks a page
         return None
     if r is None or not (r[0] or user["role"] == "admin"):
@@ -451,7 +456,7 @@ def settings_page(request: Request):
         email=prefs.get("email", ""),
         exchange=prefs.get("exchange", "polymarket"),
         sports=prefs.get("sports", ["f1"]),
-        **_mcp_context(user),
+        **_mcp_context(user), hidden_sports=_audience.hidden(user),
     ))
 
 
@@ -467,6 +472,7 @@ def update_settings(request: Request, email: str = Form(""), exchange: str = For
     if email and not re.match(r"^[^@]+@[^@]+\.[^@]+$", email):
         return templates.TemplateResponse(request, "settings.html", dict(
             email=email, exchange=exchange, sports=sports, error="Invalid email address", **_mcp_context(user),
+            hidden_sports=_audience.hidden(user),
         ), status_code=400)
     with get_session() as s:     # merge: the session user carries no prefs, and prefs also hold the MCP token and seen-at marks
         u = s.query(m.User).filter_by(id=user["id"]).first()
@@ -475,6 +481,7 @@ def update_settings(request: Request, email: str = Form(""), exchange: str = For
     audit(request, "update_settings", email=bool(email), exchange=exchange, sports=sports)
     return templates.TemplateResponse(request, "settings.html", dict(
         email=email, exchange=exchange, sports=sports, success="Settings saved", **_mcp_context(user),
+        hidden_sports=_audience.hidden(user),
     ))
 
 
@@ -496,7 +503,7 @@ def add_email(request: Request, email: str = Form(""), next: str = Form("/market
         prefs = _prefs(user["id"])
         return templates.TemplateResponse(request, "settings.html", dict(
             email=email, exchange=prefs.get("exchange", "polymarket"), sports=prefs.get("sports", ["f1"]),
-            error=error, **_mcp_context(user)), status_code=400)
+            error=error, **_mcp_context(user), hidden_sports=_audience.hidden(user)), status_code=400)
     audit(request, "add_email")
     return RedirectResponse(_safe_next(next), status_code=303)
 
