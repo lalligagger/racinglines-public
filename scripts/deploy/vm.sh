@@ -14,6 +14,9 @@
 #   bash scripts/deploy/vm.sh record [off|status] # the Kalshi and OG.com recorder (scripts/vm/record_venues.sh): a pass
 #                                               # every 5 minutes (the first one backs the database up); status: last
 #                                               # passes and book snapshots per venue per 5 minutes
+#   bash scripts/deploy/vm.sh record fastf1 [on|off|status] # the FastF1 session recorder (scripts/vm/record_fastf1.sh):
+#                                               # a pass every 5 minutes on F1 race weekends; status: is-enabled,
+#                                               # next run, last passes and snapshots stored
 #   bash scripts/deploy/vm.sh pm-sync [off|status]# Polymarket market links sync (scripts/vm/pm_sync.sh): a pass
 #                                               # every 5 minutes, every day (WEEKEND_ONLY=1: race weekends only);
 #                                               # status: last passes
@@ -110,6 +113,18 @@ case "${1:-}" in
     fi
     ;;
   record)
+    if [ "${2:-}" = fastf1 ]; then
+      # the FastF1 session recorder (scripts/vm/record_fastf1.sh), F1 race weekends only. It has stored no row on the VM
+      # so far: F1's timing archive answers 403 there (docs/vm-deploy.md), and its log says BLOCKED when it does
+      t=racinglines-record-fastf1.timer
+      case "${3:-}" in
+        off) remote "sudo systemctl disable --now $t && echo '$t: off'" ;;
+        status) remote "systemctl is-enabled $t; systemctl --no-pager list-timers $t | head -n 2; cd $APP && sudo -u racinglines -H scripts/vm/record_fastf1.sh status" ;;
+        ""|on) remote "sudo systemctl enable --now $t && systemctl --no-pager list-timers $t" ;;
+        *) echo "usage: vm.sh record fastf1 [on|off|status]"; exit 1 ;;
+      esac
+      exit 0
+    fi
     t=racinglines-record-venues.timer
     case "${2:-}" in
       off) remote "sudo systemctl disable --now $t && echo '$t: off'" ;;

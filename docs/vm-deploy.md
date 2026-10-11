@@ -335,7 +335,9 @@ sudo systemctl enable --now racinglines-live-dh@<event>           # downhill: th
 sudo systemctl disable --now racinglines-live-f1@2026-16.timer    # a per-event timer left on: off
 ```
 **F1 sessions come from the Mac (since 3 Oct 2026).** F1's timing archive answers 403 to the VM's cloud address, so
-FastF1 can't fetch there (the live step logs "waiting for the session's data" all weekend). During an F1 weekend, run
+FastF1 can't fetch there (the live step logs "waiting for the session's data" all weekend). The same block keeps the
+FastF1 session recorder (`racinglines-record-fastf1.timer`, `bash scripts/deploy/vm.sh record fastf1 [on|off|status]`)
+from storing anything: on a race weekend its log says `fastf1: BLOCKED` when the archive answers 403. During an F1 weekend, run
 `caffeinate -i bash scripts/deploy/f1_push.sh 2026-16` on the Mac, one process for both halves of the weekend, until the
 race is in:
 
