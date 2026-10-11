@@ -2,8 +2,8 @@
 """
 build_quickstart.py — Render the demo packs' quickstart steps into docs/quickstart.md, from each pack's manifest
 (racinglines/demo/packs/<name>/pack.toml, [[quickstart]]). The manifest is the source of truth: the doc's generated
-block, and the command list the web app's /term replay records (scripts/demo/record_term.py reads
-racinglines/web/term/demos.toml), both come from it, so a new pack gets its quickstart for free.
+block here, and the commands the web app's /term replay records (scripts/demo/record_term.py reads the same
+[[quickstart]] entries through racinglines.demo.store), both come from it, so a new pack gets its quickstart for free.
 
 A generated block in the doc, replaced on every build:
 
