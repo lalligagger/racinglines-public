@@ -1,4 +1,4 @@
-Cutoff 2026-10-11 18:51:14.986404 UTC · latest data used {'results': '2026-10-04 14:00:00', 'race measurements': '2026-10-04 14:00:00', 'qualifying sectors': '2026-10-03 14:00:00', 'track profiles': '2026-10-04 14:00:00', 'practice': '2026-10-03 10:30:00'}
+Cutoff 2026-10-11 19:03:41.904873 UTC · latest data used {'results': '2026-10-04 14:00:00', 'race measurements': '2026-10-04 14:00:00', 'qualifying sectors': '2026-10-03 14:00:00', 'track profiles': '2026-10-04 14:00:00', 'practice': '2026-10-03 10:30:00'}
 Finishing model coef {'g': np.float64(0.375), 'g_ease': np.float64(-0.058), 'rp_rel': np.float64(0.059), 'rp_ease': np.float64(0.031), 'qp_rel': np.float64(0.17), 'street_g': np.float64(0.0)} sigma 0.143; season drift (as-of) {'team_sd': 0.0, 'driver_sd': 0.0}
 
 --- R10 Rainbow Road Grand Prix (18 Oct) ---

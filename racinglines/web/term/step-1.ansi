@@ -1,6 +1,6 @@
 demo: building the kart pack's store (no database): database racinglines_demo_kart, folder 
 data/demo/kart. Synthetic data, made once (a few minutes).
-[?25l[1mdemo store[0m [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m7/7[0m [33m0:00:37[0m [2mready[0m
+[?25l[1mdemo store[0m [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m7/7[0m [33m0:00:36[0m [2mready[0m
 [?25h
 demo: the kart store is ready (f1 data; `racinglines db stats --demo kart`)
 sports                        8
