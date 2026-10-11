@@ -3,11 +3,12 @@
 {% block title %}Pick a strategy{% endblock %}
 {% block content %}
 {# web/strategy_pick.py: the user's own pick (no strategy runs until there is one); admins assign others on /admin/users/<id>. #}
-{% call page_head("Pick a strategy", "The strategy this account paper-trades on Formula 1 at Polymarket's prices. Nothing is sent to an exchange, and you can change it any time.") %}
+{% call page_head("Pick a strategy", "The strategy this account paper-trades on Formula 1 at Polymarket's prices (other sports and exchanges come later). Nothing is sent to an exchange, and you can change it between race weekends.") %}
 <a href="/strategy">← Strategy</a>{% endcall %}
 {{ flash(msg) }}
 <p class="pick-now">Running now: <b>{{ profile.name if profile else "nothing yet" }}</b>{% if not profile %}. Pick one below to start getting calls.{% endif %}</p>
-{% if locked %}<p class="muted">This is a demo account: it keeps the strategy it shows, so the page is read-only here.</p>{% endif %}
+{% if demo_locked %}<p class="muted">This is a demo account: it keeps the strategy it shows, so the page is read-only here.</p>
+{% elif weekend_note %}<p class="flash bad" role="status">{{ weekend_note }}</p>{% endif %}
 <form method="post" action="/strategy/pick" class="pick">
   {{ csrf() }}
   <fieldset aria-label="Strategy"{{ ' disabled' if locked }}>

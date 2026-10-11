@@ -21,6 +21,23 @@ def test_sliders_clamp_and_only_moved_settings_count():
     assert moved == {"max_disagree": 0.08}
 
 
+@pytest.mark.quick
+def test_saves_wait_while_a_weekends_signal_window_is_open(monkeypatch):
+    """Race start - 4 days to + 24 h (signals.in_weekend): a change then would rewrite the weekend with hindsight."""
+    import pandas as pd
+
+    from racinglines.web import strategy_pick as SP
+    race = pd.Timestamp("2026-10-11 12:00")
+    monkeypatch.setattr(SP, "_schedule", lambda year: {18: dict(name="Test GP", race_start=race)})
+    assert SP.open_weekend(race - pd.Timedelta(days=4, minutes=1)) is None
+    assert SP.open_weekend(race - pd.Timedelta(days=3))["name"] == "Test GP"
+    assert SP.open_weekend(race + pd.Timedelta(hours=23))["name"] == "Test GP"
+    assert SP.open_weekend(race + pd.Timedelta(hours=25)) is None
+    assert "Mon 12 Oct, 12:00 UTC" in SP.lock_note(SP.open_weekend(race))
+    monkeypatch.setattr(SP, "_schedule", lambda year: (_ for _ in ()).throw(OSError("offline")))
+    assert SP.open_weekend(race) is None                                # no schedule: the engine can't run either
+
+
 @pytest.fixture
 def app_db(test_engine, monkeypatch):
     from sqlalchemy import text
@@ -37,6 +54,8 @@ def app_db(test_engine, monkeypatch):
                           ON CONFLICT DO NOTHING"""))
     monkeypatch.setenv("DATABASE_URL", test_engine.url.render_as_string(hide_password=False))
     config.get_engine.cache_clear()
+    from racinglines.web import strategy_pick as SP
+    monkeypatch.setattr(SP, "open_weekend", lambda now=None: None)     # between weekends (the lock has its own tests)
     with config.get_session() as s:
         U.create_user(s, "ada", "ada-password-1", "pro")
         U.create_user(s, "bea", "bea-password-1", "basic")
@@ -101,3 +120,20 @@ def test_the_demo_accounts_keep_their_strategy(app_db, monkeypatch):
     assert "read-only" in page
     r = client.post("/strategy/pick", data={"csrf_token": csrf, "code": "T1"}, follow_redirects=False)
     assert "demo" in r.headers["location"] and _profile("ada") is None     # the demo guard, or the page's own
+
+
+def test_inside_a_weekend_the_page_is_read_only_and_saves_are_refused(app_db, monkeypatch):
+    import pandas as pd
+
+    from racinglines.web import strategy_pick as SP
+    client, csrf, _ = _login(app_db, "ada")
+    client.post("/strategy/pick", data={"csrf_token": csrf, "code": "T1"})
+    before = _profile("ada")
+    monkeypatch.setattr(SP, "open_weekend", lambda now=None: dict(name="Test GP", race_start=pd.Timestamp("2026-10-11 12:00")))
+    page = client.get("/strategy/pick").text
+    assert "paused during Test GP" in page and "<fieldset aria-label=\"Strategy\" disabled>" in page
+    assert "Stop: run no strategy" not in page
+    for data in ({"code": "T7"}, {"code": "T1", "T1:min_edge": "0.15", "rolled": "1"}, {"code": "none"}):
+        r = client.post("/strategy/pick", data={"csrf_token": csrf, **data}, follow_redirects=False)
+        assert "paused%20during%20Test%20GP" in r.headers["location"]
+    assert _profile("ada") == before
