@@ -1,0 +1,48 @@
+[
+  {
+    "id": "f1-singapore-2",
+    "title": "The same profile on Polymarket",
+    "command": "racinglines strategy signals f1 --profile A --event 2026-17 --venue polymarket --asof 2026-10-09T10:05Z --no-fetch --book singapore-polymarket.toml",
+    "about": "The same moment and the same model on Polymarket's tape, written in dollars. The two exchanges list different markets and quote them differently, so the picks differ.",
+    "record": true,
+    "section": "F1 Singapore: pre-race picks",
+    "group": "polymarket",
+    "optional": true
+  },
+  {
+    "id": "f1-singapore-4",
+    "title": "Price the Polymarket book",
+    "command": "racinglines book price singapore-polymarket.toml --asof 2026-10-09T10:05Z",
+    "about": "The same for the Polymarket picks.",
+    "record": true,
+    "section": "F1 Singapore: pre-race picks",
+    "group": "polymarket"
+  },
+  {
+    "id": "f1-singapore-6",
+    "title": "After Sprint Qualifying: Polymarket",
+    "command": "racinglines book price singapore-polymarket.toml --asof 2026-10-09T13:50Z",
+    "about": "The Polymarket picks after Sprint Qualifying.",
+    "record": true,
+    "section": "F1 Singapore: through the sessions",
+    "group": "polymarket"
+  },
+  {
+    "id": "f1-singapore-8",
+    "title": "After the Sprint: Polymarket",
+    "command": "racinglines book price singapore-polymarket.toml --asof 2026-10-10T10:20Z",
+    "about": "The Polymarket picks after the Sprint.",
+    "record": true,
+    "section": "F1 Singapore: through the sessions",
+    "group": "polymarket"
+  },
+  {
+    "id": "f1-singapore-10",
+    "title": "After Qualifying: Polymarket",
+    "command": "racinglines book price singapore-polymarket.toml --asof 2026-10-10T15:05Z",
+    "about": "The Polymarket picks after Qualifying.",
+    "record": true,
+    "section": "F1 Singapore: through the sessions",
+    "group": "polymarket"
+  }
+]
