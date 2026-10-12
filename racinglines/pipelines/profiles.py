@@ -108,12 +108,12 @@ BANKROLL_SINCE = "2025-01-01"
 # the demo maker's saved Edge Finder: the setups it ran, newest first (M1 = the baseline maker, also the benchmark)
 DEMO_EDGE_FINDER = {"maker": [("C", "maker"), ("M3", "maker"), ("M2", "maker"), ("M1", "maker")]}
 DEMO_EDGE_YEAR = 2026
-# Maker strategies for users (owner, 2026-10-11 22:29Z): "For the Alpha Fantasy Launch we can remove maker strategies
-# completely. We will add them back for the Beta test." Closed: no account but admin can be assigned a maker profile
-# (web/roles.allowed_profile), the picker doesn't offer one (open_codes), and the signal engine skips any maker profile
-# outside the demo accounts (signals.run_all). Nothing is deleted: profiles, candidates, sweeps, the demo maker and its
-# paper positions stay. Set True for Beta.
-MAKERS_OPEN = False
+# Maker strategies for users. Closed for the Alpha on 2026-10-11 22:29Z ("For the Alpha Fantasy Launch we can remove
+# maker strategies completely"), open again on 2026-10-12 05:11Z (owner: "include maker strategies, we will see how it
+# goes"). Closed means: no account but admin can be assigned a maker profile (web/roles.allowed_profile), the picker
+# doesn't offer one (open_codes), the web pages hide maker strategies (web/edge.SHOWN_KEYS) and the signal engine skips
+# any maker profile outside the demo accounts (signals.run_all). Nothing is deleted either way.
+MAKERS_OPEN = True
 
 
 def is_maker(profile):

@@ -36,10 +36,11 @@ The two profiles come from the params-4h cloud search (see
   signal window is open, the same window the engine runs in (`signals.in_weekend`: from `WEEKEND_LEAD`, 4 days, before
   the race start to `WEEKEND_TAIL`, 24 hours, after it), because the engine replays the weekend's stages with the
   profile's current settings and a change would rewrite the weekend's earlier calls.
-- **Makers closed for Alpha** (owner, 2026-10-11): while `profiles.MAKERS_OPEN` is `False`, only an admin account can
-  be assigned a maker profile (`web/roles.allowed_profile`; a pro account's save of maker C on `/strategy/pick` is
-  refused), and the signal engine skips every maker profile except the demo accounts' (`signals.run_all`). Nothing
-  is deleted; set it `True` for Beta.
+- **Makers open for Alpha** (owner, 2026-10-12: "include maker strategies, we will see how it goes"; they had been
+  closed on 2026-10-11): `profiles.MAKERS_OPEN` is `True`, so a pro account can pick maker C on `/strategy/pick` and the
+  signal engine runs it. Set it `False` to close them again: then only an admin account can be assigned a maker
+  profile (`web/roles.allowed_profile`), the web pages hide maker strategies, and the signal engine skips every maker
+  profile except the demo accounts' (`signals.run_all`). Nothing is deleted either way.
 
 ```
 racinglines strategy profiles f1                  # list; create A and C as Lab candidates if missing
