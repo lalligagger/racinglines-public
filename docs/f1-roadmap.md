@@ -19,7 +19,10 @@ schemas). Each phase starts only after the owner confirms it.
 ### 1. The baseline stays in place
 
 The current `position_sim` model is the baseline and stays the default until a
-challenger beats it under the promotion rule below.
+challenger beats it under the promotion rule below. Since the one engine (staging, 2026-10-11; decision log
+"One engine") it runs as the laps core of `racinglines/models/model_global.py`, prices unchanged and runs still
+stored as `f1_sector_sim`; `race_model.PositionSim` stays as a challenger
+([One engine](backtest-core.md#one-engine-schema-declared-inputs)).
 
 - **Every new behavior ships behind a switch that defaults to today's behavior.**
   With the default, every existing stage produces the same output, and the
