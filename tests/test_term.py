@@ -23,7 +23,10 @@ def test_term_is_public_and_shows_each_recorded_command():
     from fastapi.testclient import TestClient
 
     from racinglines.web.app import app
-    r = TestClient(app).get("/term", follow_redirects=False)
+    cl = TestClient(app)
+    old = cl.get("/term", follow_redirects=False)
+    assert old.status_code == 307 and old.headers["location"] == "/docs/quickstart/term"
+    r = cl.get("/docs/quickstart/term", follow_redirects=False)
     assert r.status_code == 200
     for d in term_routes.demos():
         assert html.escape(d["command"], quote=False) in r.text and f'id="{d["id"]}"' in r.text
@@ -78,7 +81,7 @@ def test_steps_group_under_their_section_and_wait_on_play(tmp_path, monkeypatch)
         (tmp_path / f"{s['id']}.html").write_text("" if s["id"] == "s3" else "<pre>out</pre>")
     (tmp_path / "demos.toml").write_text('recorded = "x"\n')
     monkeypatch.setattr(term_routes, "TERM", tmp_path)
-    html = TestClient(app).get("/term").text
+    html = TestClient(app).get("/docs/quickstart/term").text
     assert html.count('class="term-part"') == 2 and html.index("Part one") < html.index("Part two")
     assert "1. t1" in html and "2. t2" in html and "1. t3" in html       # numbered within each part
     assert html.count("data-term-play") == 3                             # each step waits paused on Play
@@ -98,3 +101,36 @@ def test_a_failed_run_keeps_the_saved_recording(tmp_path, monkeypatch):
     with pytest.raises(SystemExit):
         rec.main(["--run"])
     assert (tmp_path / "step-1.ansi").read_text() == "old" and (tmp_path / "quickstart.json").read_text() == "[]"
+
+
+def test_replay_is_public_by_exact_path_only(tmp_path, monkeypatch):
+    """/docs/quickstart/term is public, but not as a prefix: /docs/quickstart/term/../../webapp/ reaches the /docs
+    catch-all, which resolves the dots inside site/, so it must need a session. Sent as a raw ASGI path, since
+    TestClient normalizes the dots away."""
+    import asyncio
+
+    from racinglines.web import info_routes
+    from racinglines.web.app import app
+    (tmp_path / "webapp").mkdir()
+    (tmp_path / "index.html").write_text("docs")
+    (tmp_path / "webapp" / "index.html").write_text("webapp docs")
+    monkeypatch.setattr(info_routes, "SITE", tmp_path)          # a built docs site, so the catch-all would serve it
+
+    async def status(path):
+        sent = []
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(msg):
+            if msg["type"] == "http.response.start":
+                sent.append(msg["status"])
+        scope = {"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "GET", "scheme": "http",
+                 "path": path, "raw_path": path.encode(), "query_string": b"", "root_path": "",
+                 "headers": [(b"host", b"testserver")], "client": ("127.0.0.1", 1), "server": ("testserver", 80)}
+        await app(scope, receive, send)
+        return sent[0]
+    assert asyncio.run(status("/docs/quickstart/term")) == 200
+    for path in ("/docs/quickstart/term/../../webapp/", "/docs/quickstart/term/../../"):
+        assert asyncio.run(status(path)) in (303, 307, 401, 404), path      # sent to sign in, or not found
+

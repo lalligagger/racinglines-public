@@ -47,7 +47,7 @@ With `source = "remote"`, `--demo` sends the commands the hosted server runs to 
 ## 3. The quickstart, on the kart pack
 
 The steps below are rendered from the pack's manifest (`racinglines/demo/packs/kart/pack.toml`, `[[quickstart]]`) by
-`python3 scripts/build_quickstart.py`; the web app's `/term` replay records the same commands. Run them in order.
+`python3 scripts/build_quickstart.py`; the web app's [quickstart replay](https://racinglines.bet/docs/quickstart/term) (`/docs/quickstart/term`; `/term` redirects there) records the same commands. Run them in order.
 
 <!-- quickstart: kart -->
 

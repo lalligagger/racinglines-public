@@ -121,7 +121,7 @@ to `/login`. Pages behind sign-in keep their own paths (`/markets`, `/lab`, ...)
 sent to `/signin?next=...`. The infographic has no "How it works" heading. The page names no sportsbook, operator or provider.
 The landing page has no popup, and the maintenance popup is off (`MAINTENANCE_NOTICE = ""`). The demo accounts (maker, taker) still get the sign-up popup, once per browser session, and a **Sign up** link in the top bar, while sign-up is on (owner, 2026-10-11). Registered accounts get neither. A registered account with no email (made before email was required at sign-up) gets an add-email popup instead, once per browser session, on every app page but Settings, until it saves one; the save (`POST /settings/email`) runs the sign-up checks (a valid address, on no other account).
 
-**Quickstart replay** (`/term`, public like `/pitch`; owner, 2026-10-11). A terminal-styled replay of the
+**Quickstart replay** (`/docs/quickstart/term`, under the docs' Quickstart since 2026-10-12, public like `/pitch` while the rest of `/docs` needs a sign-in; `/term` redirects there; owner, 2026-10-11). A terminal-styled replay of the
 quickstart (`docs/quickstart.md`): its commands, each with `--demo` (the kart demo pack, a synthetic F1 world: no real names
 or model prices), typed at a prompt one by one, each followed by its recorded output (shown at once without JavaScript or
 with reduced motion). Steps with a pack `section` group into parts; with more than one part, a part nav switches between them (large tabs across the top on a phone, a sidebar from 900 px wide; owner, 2026-10-12), one part at a time, kept in the URL hash (`#part-2`). Nothing runs on the server, so there is no shell to sandbox. The commands are not written in the
@@ -211,7 +211,7 @@ not additional positions; private-book chart totals and ledger totals can still 
 
 | Page | What it shows |
 |---|---|
-| **Racinglines 101** (`/racinglines101`, public: no sign-in) | A plain-language intro to makers, takers and the paper-trading demo. Linked from the sign-in page as **I'm already confused.** |
+| **Racinglines 101** (`/racinglines101`, public: no sign-in) | A plain-language intro in three parts, one section at a time with the /term section nav: how we trade (makers, takers, the demo strategies), how the prediction engine works (pace, the simulation, prices, what's real), and using the app. Linked from the landing page as **What is this?** `/racinglines102` redirects to its engine part. |
 | **Sign in** (`/signin`, also `/login`; `/logout` returns to `/`) | The standard username/password form, which the admin uses; it posts to `/login`. One **Try the demo** button, here and on the landing page (`/#account`), signs in as the pro demo account `maker` (owner, 2026-10-12: one demo, no pro/basic choice). The basic demo account `taker` still signs in through the form (password `password`). |
 | **Pitch** (`/pitch`) | Serves `pitch.html`. Public: no sign-in, like the login and sign-up pages. |
 | **Docs** (`/docs/`) | Serves these docs as built in `site/` (the pre-push hook builds them; or `python -m mkdocs build -d site`), behind the same login. |

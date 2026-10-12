@@ -344,6 +344,25 @@ pre.log { max-height: 220px; overflow: auto; font-size: 11px; background: var(--
 .r101 .role-card.taker { border-top: 3px solid var(--good); }
 .r101 table { table-layout: fixed; width: 100%; }
 .r101 table td, .r101 table th { vertical-align: top; white-space: normal; overflow-wrap: anywhere; }
+/* /racinglines101: three parts, one shown at a time with the /term part nav (tabs on a phone, a sidebar when wide);
+   the shown part's section links open under its tab */
+.r101.r-seq { max-width: 1060px; }
+.r-seq .term-partbox { max-width: 760px; min-width: 0; }
+.r-seq .term-partbox > .term-part { margin-top: 4px; border-top: 0; font-size: 24px; }
+.r-seq .r-sec > h3 { margin: 32px 0 8px; font-size: 18px; }
+.r-seq .r-sec:first-of-type > h3 { margin-top: 16px; }
+.r-pager { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line); padding-top: 16px; }
+.r-nav { flex-wrap: wrap; }
+.r-nav .r-sub { flex: 1 0 100%; display: flex; gap: 6px; overflow-x: auto; padding: 2px 0; }
+.r-nav .r-sub a { flex: none; min-width: 0; display: block; padding: 6px 10px; font-size: 13px; font-weight: 500; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--card); white-space: nowrap; }
+.term-layout.js .r-nav a[data-term-tab]:not([aria-current]) + .r-sub { display: none; }
+.r-nav > .r-sub { order: 99; }
+@media (min-width: 900px) {
+  .r-nav { flex-wrap: nowrap; }
+  .r-nav > .r-sub { order: 0; flex: none; flex-direction: column; gap: 0; overflow: visible; margin: 2px 0 8px 12px; padding: 0 0 0 10px; border-left: 2px solid var(--line); }
+  .r-nav .r-sub a { padding: 5px 4px; border: 0; background: none; white-space: normal; color: var(--muted); }
+  .r-nav .r-sub a:hover { color: var(--fg); }
+}
 .r101 table th:first-child { width: 22%; }
 .r101 .back { display: inline-block; margin-top: 28px; }
 

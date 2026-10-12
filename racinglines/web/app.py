@@ -60,7 +60,8 @@ CSRF_TOKEN = hmac.new(_SECRET.encode(), b"csrf", hashlib.sha256).hexdigest()
 security = HTTPBasic(realm="racinglines", auto_error=False)
 SESSION_COOKIE = "rl_session"
 SESSION_HOURS = 12
-PUBLIC_PATHS = ("/login", "/signin", "/static", "/racinglines101", "/signup", "/forgot", "/pitch", "/mybets", "/term")
+PUBLIC_PATHS = ("/login", "/signin", "/static", "/racinglines101", "/racinglines102", "/signup", "/forgot", "/pitch", "/mybets", "/term")
+PUBLIC_EXACT = {"/", "/docs/quickstart/term"}  # public by exact path only: the landing page; a prefix would open /docs/quickstart/term/../..
 
 # failed-login throttle: per client IP, MAX_FAILURES within FAILURE_WINDOW seconds -> 429
 MAX_FAILURES = 8
@@ -118,7 +119,7 @@ def authenticate(request: Request, creds: HTTPBasicCredentials | None = Depends(
     """Signed session cookie (from /login) or HTTP Basic credentials (scripts / curl).
     The user and role are re-read from the database on every request, so
     deactivating a user or changing a role takes effect immediately."""
-    if request.url.path == "/" or request.url.path.startswith(PUBLIC_PATHS):   # "/" exactly: the public landing page
+    if request.url.path in PUBLIC_EXACT or request.url.path.startswith(PUBLIC_PATHS):
         return None
     uid, sid = _session(request.cookies.get(SESSION_COOKIE))
     if uid is not None:
@@ -698,7 +699,7 @@ from racinglines.web import book_routes  # noqa: E402,F401  (the private book an
 from racinglines.web import exchange_routes  # noqa: E402,F401  (exchange boards and tapes)
 from racinglines.web import diag_routes  # noqa: E402,F401  (single-event diagnostics)
 from racinglines.web import mybets  # noqa: E402,F401  (/mybets, the owner's bets calendar from the data folder)
-from racinglines.web import term_routes  # noqa: E402,F401  (/term, recorded CLI runs)
+from racinglines.web import term_routes  # noqa: E402,F401  (/docs/quickstart/term, recorded CLI runs)
 from racinglines.web import strategy_pick  # noqa: E402,F401  (/strategy/pick, the account's own strategy)
 from racinglines.web.book_routes import bet_markets, polymarket_calls  # noqa: E402,F401  (used by views.py)
 
