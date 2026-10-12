@@ -104,6 +104,21 @@ def cash(conn, user_id):
                               dict(u=user_id)).scalar())
 
 
+# what the followed strategy's trades have done to the shared F$ cash (owner, 2026-10-12 21:04Z: "Only 1k to use for
+# both"): what its buys paid and sales got (paper_positions.cash), plus the payout of every settled position.
+STRATEGY_CASH = """
+    SELECT coalesce(sum(cash + CASE WHEN outcome IS NULL THEN 0
+                                    ELSE yes_shares * (CASE WHEN outcome THEN 1 ELSE 0 END)
+                                         + no_shares * (CASE WHEN outcome THEN 0 ELSE 1 END) END), 0)
+    FROM paper_positions WHERE user_id = :u AND venue <> 'private'"""
+
+
+def available(conn, user_id):
+    """F$ the player can trade with by hand: their cash plus what their strategy's trades have paid or got. Hand trades
+    and the followed strategy share one F$1,000 (fantasy/sizing.player_bankroll is the strategy's side)."""
+    return cash(conn, user_id) + float(conn.execute(text(STRATEGY_CASH), dict(u=user_id)).scalar())
+
+
 def has_grant(conn, user_id):
     return conn.execute(text("SELECT 1 FROM accounts.fantasy_ledger WHERE user_id = :u LIMIT 1"),
                         dict(u=user_id)).first() is not None
@@ -183,7 +198,7 @@ def summary(conn, user_id, quotes=None):
     srow = conn.execute(text(f"SELECT pnl, n FROM ({STRATEGY_PNL}) s WHERE user_id = :u"), dict(u=user_id)).first()
     strat = float(srow[0]) if srow and srow[0] is not None else 0.0
     manual = round(c + held - grant, 2)
-    return dict(grant=grant, cash=round(c, 2), held=round(held, 2), open=len(pos), unpriced=unpriced,
+    return dict(grant=grant, cash=round(available(conn, user_id), 2), held=round(held, 2), open=len(pos), unpriced=unpriced,
                 manual_pnl=manual, strategy_pnl=round(strat, 2), strategy_positions=int(srow[1]) if srow else 0,
                 total=round(grant + manual + strat, 2))
 

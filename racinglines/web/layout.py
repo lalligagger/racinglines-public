@@ -11,6 +11,11 @@ keeps only the GitHub badge and the account links (19:21Z). Those pages are arch
 templates stay, and with the alpha layout off (RACINGLINES_LAYOUT=classic, or fantasy off, as on production today)
 the old bar comes back unchanged. With it on, live events and private books answer 404 except to admins, so they can
 be revisited. docs/alpha-layout.md lists what is hidden and how to bring it back.
+
+One user level (owner, 2026-10-12 21:04Z: "re-merge the two user levels, only use pro for fantasy, and think about
+the feature segregation later"): under the alpha layout a basic account is treated as pro on every request (role()),
+so everyone gets the Lab, the full strategy picker and the tweaks. Nothing is written: users.role keeps its stored
+value, and with the layout off the basic tier comes back unchanged.
 """
 
 import os
@@ -28,6 +33,11 @@ def alpha():
         return v == "alpha"
     from racinglines.fantasy import ledger as FL
     return FL.on()
+
+
+def role(stored):
+    """The role a request runs as: 'basic' reads as 'pro' under the alpha layout, anything else unchanged."""
+    return "pro" if stored == "basic" and alpha() else stored
 
 
 def hidden(path, user):

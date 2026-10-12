@@ -66,14 +66,14 @@ def test_the_alpha_picker_shows_the_five_styles_by_name_and_no_codes(app_db, alp
         assert R.BASIC_NAME not in page and 'value="C"' not in page
 
 
-def test_the_tweak_drawer_has_exactly_two_sliders_closed_for_pro_none_for_basic(app_db, alpha):  # noqa: F811
+def test_the_tweak_drawer_has_exactly_two_sliders_closed_for_everyone(app_db, alpha):  # noqa: F811
     page = _login(app_db, "ada")[2]
     drawer = re.search(r"<details class=\"pick-tweak\" data-tweak>(.*?)</details>", page, re.S)
     assert drawer, "a closed <details> drawer"
     names = re.findall(r'<input type="range" name="([^"]+)"', drawer.group(1))
     assert names == ["tweak:min_edge", "tweak:min_volume_24h"] and "data-roll" in drawer.group(1)
     assert "untested: scored live from the next race weekend" in drawer.group(1)
-    assert "pick-tweak" not in _login(app_db, "bea")[2]                 # a basic account follows a style as tuned
+    assert "pick-tweak" in _login(app_db, "bea")[2]                     # one user level: basic gets it too (21:04Z)
 
 
 def test_alpha_refuses_codes_outside_the_five_except_for_admins(app_db, alpha):  # noqa: F811
@@ -107,10 +107,10 @@ def test_basic_and_pro_follow_a_style_by_name_with_their_sizing(app_db, alpha): 
     assert _profile("ada")["sizing"] == "standard"
 
 
-def test_a_basic_tweak_is_ignored_and_a_pro_tweak_is_saved(app_db, alpha):  # noqa: F811
+def test_tweaks_are_saved_for_basic_and_pro_alike(app_db, alpha):  # noqa: F811
     client, csrf, _ = _login(app_db, "bea")
     _post(client, csrf, code="T1", **{"tweak:min_edge": "0.15", "tweak_from:min_edge": "0.10"})
-    assert _profile("bea")["name"] == "Steady" and not _profile("bea").get("adjusted")
+    assert _profile("bea")["adjusted"] == {"min_edge": 0.15}           # basic runs as pro under the alpha layout
     client, csrf, _ = _login(app_db, "ada")
     _post(client, csrf, code="T1", **{"tweak:min_edge": "0.12", "tweak_from:min_edge": "0.10",
                                      "tweak:min_volume_24h": "0", "tweak_from:min_volume_24h": "0"})
@@ -127,3 +127,11 @@ def test_the_alpha_strategy_page_drops_the_how_it_chooses_tab(app_db, monkeypatc
     page = client.get("/strategy").text
     assert 'data-tab="how"' not in page and 'name="sport"' not in page
     assert "Fantasy P&amp;L" in page                                     # the hero KPIs stay
+
+
+def test_basic_runs_as_pro_only_under_the_alpha_layout(monkeypatch):
+    from racinglines.web import layout
+    monkeypatch.setenv("RACINGLINES_LAYOUT", "alpha")
+    assert (layout.role("basic"), layout.role("pro"), layout.role("admin")) == ("pro", "pro", "admin")
+    monkeypatch.setenv("RACINGLINES_LAYOUT", "classic")
+    assert layout.role("basic") == "basic"

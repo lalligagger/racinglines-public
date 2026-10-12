@@ -113,7 +113,8 @@ def _session_user_id(cookie):
 
 
 def _user_dict(u):
-    return dict(id=u.id, username=u.username, role=R.canonical(u.role), display_name=u.display_name or u.username)
+    return dict(id=u.id, username=u.username, role=_layout.role(R.canonical(u.role)),   # alpha: basic runs as pro
+                display_name=u.display_name or u.username)
 
 
 def authenticate(request: Request, creds: HTTPBasicCredentials | None = Depends(security)):

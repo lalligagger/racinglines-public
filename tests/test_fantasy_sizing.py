@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 from sqlalchemy import text
 
+from racinglines.fantasy import ledger as FL
 from racinglines.fantasy import sizing as FS
 from racinglines.markets.strategies import taker_weekend as RB
 from racinglines.pipelines import signals as SG
@@ -128,10 +129,12 @@ def test_player_bankroll_reads_the_grant_and_the_strategys_own_pnl(players, test
         _paper(c, players["bea"], "2026-17", cash=-1000.0, yes=1000.0, outcome=False, key="lost")  # -1,000
         bust = FS.player_bankroll(c, players["bea"], EVENT)
         assert (bust.scale, bust.cap) == (0.0, 0.0)
-        # manual trades (the cash ledger) never move the strategy's bankroll
+        # hand trades share the same F$1,000: a F$400 hand loss shrinks the strategy's bankroll too
         c.execute(text("""INSERT INTO accounts.fantasy_ledger (user_id, amount, reason, ref_table, ref_id)
                           VALUES (:u, -400, 'trade', 'fantasy_fills', 1)"""), dict(u=players["ada"]))
-        assert FS.player_bankroll(c, players["ada"], EVENT).scale == pytest.approx(1.5)
+        assert FS.player_bankroll(c, players["ada"], EVENT).scale == pytest.approx(1.1)
+        # and hand trades can spend only what the strategy hasn't tied up: 1,000 - 400 - 100 + 600 - 50
+        assert FL.available(c, players["ada"]) == pytest.approx(1050.0)
         assert FS.player_bankroll(c, players["taker"], EVENT) is None                 # the demo account
 
 

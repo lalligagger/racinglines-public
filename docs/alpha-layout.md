@@ -56,11 +56,13 @@ backtests ("backtest, season P&L at our standard sizing", copied from the profil
   `pipelines/profiles.py`. Users never see the codes or the `why` text.
 - **Sizing:** Standard (the backtests' fixed stakes) or Kelly, with a fraction slider from 10% to 100% (default 25%),
   quick picks for Quarter, Half and Full, and a tier label (Nitty, Shark, Spicy, Degen). Kelly is labelled untested.
-  The choice is saved on the profile as `sizing` and `kelly`. The signal engine doesn't read it yet.
-- **Tweak drawer** (closed by default, Pro and admin only): two sliders (edge needed, market volume) and the dice. A
+  The choice is saved on the profile as `sizing` and `kelly`, and the live signal pass sizes to it (`fantasy/sizing.py`).
+  Hand trades and the followed strategy share one F$1,000: each can use only what the other hasn't tied up.
+- **Tweak drawer** (closed by default, everyone): two sliders (edge needed, market volume) and the dice. A
   moved slider is labelled "untested: scored live from the next race weekend".
-- Basic accounts pick from the same five by name instead of the random "Your picks" draw. An account already running
-  a draw keeps it.
+- **One user level** (owner, 21:04Z): under the alpha layout a basic account runs as pro (`layout.role`), so everyone
+  gets the Lab, the full picker and the tweaks. `users.role` is not rewritten; the classic layout brings the basic tier
+  back. An account already running a "Your picks" draw keeps it until it picks a style.
 - Makers, the TB blend and the other codes aren't offered. `POST /strategy/pick` refuses them for everyone but admins
   (`MAKERS_OPEN` is untouched, so the Edge Finder still shows makers).
 - Saves still pause during a race weekend's signal window.

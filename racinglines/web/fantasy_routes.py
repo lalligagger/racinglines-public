@@ -146,7 +146,7 @@ def fantasy_trade(request: Request, link: int = 0, q: str = "", msg: str = "", a
                     book.update(no_bids=nb, no_asks=na)
                 held = [p for p in FL.positions(c, me["id"], open_only=True) if p["market_link_id"] == sel["id"]]
                 pos = held[0] if held else None
-        cash = FL.cash(c, me["id"])
+        cash = FL.available(c, me["id"])
     events = []
     for m in markets:
         if not events or events[-1]["title"] != (m["event_title"] or "Season"):

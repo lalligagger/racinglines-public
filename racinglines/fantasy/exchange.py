@@ -368,7 +368,7 @@ def place(engine, user, link_id, side, action, shares, limit, client_key=None, n
             if not fills:
                 raise Rejected("no_liquidity")
             f = fee(link["exchange"], fills)
-            if action == "buy" and n * p + worst_fee(link["exchange"], n, p) > L.cash(c, user["id"]) + 1e-9:
+            if action == "buy" and n * p + worst_fee(link["exchange"], n, p) > L.available(c, user["id"]) + 1e-9:
                 raise Rejected("insufficient_balance")
         except Rejected as ex:
             out = _reject(c, user, lid, link, side, action, n, p, ex.reason, client_key, book=snap)

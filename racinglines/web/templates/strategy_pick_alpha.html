@@ -29,7 +29,7 @@
   </div>
   <div class="pick-sizing">
     <span class="l">Sizing</span>
-    <label><input type="radio" name="sizing" value="standard"{{ ' checked' if sizing != "kelly" }}> Standard: the backtests' stakes, scaled to your strategy's F$ balance</label>
+    <label><input type="radio" name="sizing" value="standard"{{ ' checked' if sizing != "kelly" }}> Standard: the backtests' stakes, scaled to your F$ balance (one F$1,000 for this and your own trades)</label>
     <label><input type="radio" name="sizing" value="kelly"{{ ' checked' if sizing == "kelly" }}> Kelly <span class="pill no">untested for this strategy</span></label>
     <div class="pick-kelly" data-kelly-box data-labels='{{ kelly_labels|tojson }}'>
       <span class="pick-slider"><span>Kelly fraction: <b data-kelly-out>{{ (kelly * 100)|round|int }}%</b> <b data-kelly-label>{{ kelly_label }}</b></span>
