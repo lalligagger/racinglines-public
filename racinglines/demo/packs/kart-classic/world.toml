@@ -1,0 +1,270 @@
+# The kart-classic pack's synthetic world, the first kart world with made-up lap times (racinglines/demo/mk_demo/generate.py):
+# the INPUT of the data generator, not a schema. The generator turns it into FastF1-shaped files
+# (data/raw/f1/fastf1/<year>/ under the demo data folder) and exchange quotes, which the real F1 ingest and the real
+# commands then read. A Mario Kart grid under the real F1 schema: the drivers, teams and tracks are made up, every pace,
+# result and price is invented. Play money; nothing is traded anywhere.
+
+title = "Mario Kart Grand Prix"
+seed = 20261011
+seasons = [2024, 2025, 2026]     # full seasons, then the season to forecast and run live
+rounds = 12                     # per season
+raced_2026 = 9                  # rounds 1-9 of 2026 have results; 10-12 are still to race
+last_raced = "2026-10-04"       # race day of 2026's last raced round; rounds are 14 days apart
+season_start = { 2024 = "2024-03-03", 2025 = "2025-03-02" }
+sprint_rounds = [3, 6, 10]      # Sprint weekends (FP1, Sprint Qualifying, Sprint, Qualifying, Race)
+race_laps = 24
+live_round = 9                  # exchange quotes on the live rehearsal (files/live/f1/demo-2026-09.toml) ...
+book_rounds = [10, 11]          # ... and on the pack's sportsbook book's events (book.toml)
+
+# Teams: car pace as a fraction of a lap slower than the best car, and how much faster sectors suit it (slope)
+[[teams]]
+id = "mushroom"
+name = "Mushroom Racing"
+pace = 0.000
+slope = 0.002
+[[teams]]
+id = "koopa"
+name = "Koopa Kart Works"
+pace = 0.002
+slope = -0.003
+[[teams]]
+id = "royal"
+name = "Royal Racing"
+pace = 0.003
+slope = 0.000
+[[teams]]
+id = "kong"
+name = "Kong Jungle Racing"
+pace = 0.005
+slope = 0.004
+[[teams]]
+id = "yoshi"
+name = "Yoshi Island GP"
+pace = 0.006
+slope = -0.002
+[[teams]]
+id = "ghost"
+name = "Boo Mansion Racing"
+pace = 0.008
+slope = 0.001
+[[teams]]
+id = "comet"
+name = "Comet Observatory"
+pace = 0.009
+slope = -0.004
+[[teams]]
+id = "shell"
+name = "Shell Cup Team"
+pace = 0.011
+slope = 0.003
+[[teams]]
+id = "pinball"
+name = "Waluigi Pinball Racing"
+pace = 0.012
+slope = -0.001
+[[teams]]
+id = "shyguy"
+name = "Shy Guy Falls Racing"
+pace = 0.014
+slope = 0.002
+
+# Drivers: offset to the team's car (fraction of a lap; negative = faster), retirement rate per race
+[[drivers]]
+name = "Mario"
+team = "mushroom"
+number = 1
+offset = -0.0015
+[[drivers]]
+name = "Luigi"
+team = "mushroom"
+number = 2
+offset = 0.0005
+[[drivers]]
+name = "Bowser"
+team = "koopa"
+number = 3
+offset = -0.0010
+[[drivers]]
+name = "Bowser Jr."
+team = "koopa"
+number = 4
+offset = 0.0015
+[[drivers]]
+name = "Peach"
+team = "royal"
+number = 5
+offset = -0.0008
+[[drivers]]
+name = "Daisy"
+team = "royal"
+number = 6
+offset = 0.0002
+[[drivers]]
+name = "Donkey Kong"
+team = "kong"
+number = 7
+offset = -0.0005
+[[drivers]]
+name = "Diddy Kong"
+team = "kong"
+number = 8
+offset = 0.0010
+[[drivers]]
+name = "Yoshi"
+team = "yoshi"
+number = 9
+offset = -0.0006
+[[drivers]]
+name = "Birdo"
+team = "yoshi"
+number = 10
+offset = 0.0008
+[[drivers]]
+name = "King Boo"
+team = "ghost"
+number = 11
+offset = -0.0004
+[[drivers]]
+name = "Dry Bones"
+team = "ghost"
+number = 12
+offset = 0.0012
+[[drivers]]
+name = "Rosalina"
+team = "comet"
+number = 13
+offset = -0.0012
+[[drivers]]
+name = "Metal Mario"
+team = "comet"
+number = 14
+offset = 0.0006
+[[drivers]]
+name = "Koopa Troopa"
+team = "shell"
+number = 15
+offset = 0.0000
+[[drivers]]
+name = "Lakitu"
+team = "shell"
+number = 16
+offset = 0.0014
+[[drivers]]
+name = "Waluigi"
+team = "pinball"
+number = 17
+offset = -0.0003
+[[drivers]]
+name = "Pink Gold Peach"
+team = "pinball"
+number = 18
+offset = 0.0009
+[[drivers]]
+name = "Shy Guy"
+team = "shyguy"
+number = 19
+offset = -0.0002
+[[drivers]]
+name = "Toadette"
+team = "shyguy"
+number = 20
+offset = 0.0011
+
+# Tracks, in calendar order: lap time (s), sector shares, trap speeds (km/h: I1, I2, finish line, speed trap),
+# how hard it is to pass (seconds lost per grid place over a race), safety-car and rain chances per race
+[[tracks]]
+name = "Mario Circuit"
+lap_s = 82.0
+shares = [0.32, 0.36, 0.32]
+speeds = [255, 230, 280, 305]
+hold_s = 1.2
+sc = 0.25
+rain = 0.10
+[[tracks]]
+name = "Moo Moo Meadows"
+lap_s = 78.0
+shares = [0.30, 0.38, 0.32]
+speeds = [270, 245, 290, 315]
+hold_s = 0.8
+sc = 0.15
+rain = 0.20
+[[tracks]]
+name = "Koopa Beach"
+lap_s = 88.0
+shares = [0.34, 0.33, 0.33]
+speeds = [240, 215, 265, 300]
+hold_s = 1.6
+sc = 0.30
+rain = 0.10
+[[tracks]]
+name = "Luigi Raceway"
+lap_s = 75.0
+shares = [0.31, 0.34, 0.35]
+speeds = [300, 270, 310, 330]
+hold_s = 0.6
+sc = 0.15
+rain = 0.15
+[[tracks]]
+name = "Toad Harbor"
+lap_s = 95.0
+shares = [0.35, 0.33, 0.32]
+speeds = [205, 190, 235, 285]
+hold_s = 2.6
+sc = 0.55
+rain = 0.15
+[[tracks]]
+name = "DK Jungle"
+lap_s = 90.0
+shares = [0.33, 0.35, 0.32]
+speeds = [225, 210, 250, 295]
+hold_s = 1.4
+sc = 0.30
+rain = 0.35
+[[tracks]]
+name = "Yoshi Valley"
+lap_s = 86.0
+shares = [0.33, 0.34, 0.33]
+speeds = [245, 225, 260, 300]
+hold_s = 1.1
+sc = 0.25
+rain = 0.20
+[[tracks]]
+name = "Sherbet Land"
+lap_s = 80.0
+shares = [0.32, 0.35, 0.33]
+speeds = [260, 235, 275, 310]
+hold_s = 1.0
+sc = 0.20
+rain = 0.05
+[[tracks]]
+name = "Bowser's Castle"
+lap_s = 92.0
+shares = [0.34, 0.34, 0.32]
+speeds = [215, 200, 240, 290]
+hold_s = 2.2
+sc = 0.45
+rain = 0.05
+[[tracks]]
+name = "Rainbow Road"
+lap_s = 98.0
+shares = [0.33, 0.33, 0.34]
+speeds = [285, 260, 300, 335]
+hold_s = 0.9
+sc = 0.40
+rain = 0.0
+[[tracks]]
+name = "Wario Stadium"
+lap_s = 84.0
+shares = [0.33, 0.34, 0.33]
+speeds = [250, 228, 268, 302]
+hold_s = 1.3
+sc = 0.30
+rain = 0.10
+[[tracks]]
+name = "Peach Gardens"
+lap_s = 79.0
+shares = [0.31, 0.36, 0.33]
+speeds = [265, 240, 285, 312]
+hold_s = 1.5
+sc = 0.20
+rain = 0.25
