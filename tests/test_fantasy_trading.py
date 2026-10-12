@@ -242,7 +242,16 @@ def _login(name):
     return client
 
 
-def test_pages_trade_and_leaderboard(db, monkeypatch):
+def _board(page):
+    """The leaderboard section of /history."""
+    return page.split('<section id="leaderboard"', 1)[1].split("</section>", 1)[0]
+
+
+def _main_nav(page):
+    return page.split('<nav aria-label="Main">', 1)[1].split("</nav>", 1)[0]
+
+
+def test_pages_trade_and_history(db, monkeypatch):
     from racinglines.fantasy import exchange as FX
     eng = db["engine"]
     recent = datetime.now(timezone.utc) - timedelta(minutes=1)
@@ -251,30 +260,160 @@ def test_pages_trade_and_leaderboard(db, monkeypatch):
                           VALUES ('PM-CHAMP-VER', :ts, 0.39, 0.41, CAST(:b AS jsonb), CAST(:a AS jsonb))"""),
                   dict(ts=recent, b=str(BIDS), a=str(ASKS)))
     ada = _login("ada")
-    home = ada.get("/fantasy").text
-    assert "1,000.00" in home and "Trade by hand" in home and "Pick a strategy" in home
-    page = ada.get("/fantasy/trade").text
-    assert "Verstappen" in page and f'href="/fantasy/trade?link={db["links"]["champ"]}"' in page
-    page = ada.get(f"/fantasy/trade?link={db['links']['champ']}").text
+    home = ada.get("/history")
+    assert home.status_code == 200
+    assert "1,000.00" in home.text and "Pick one" in home.text and 'id="leaderboard"' in home.text
+    page = ada.get("/trade")
+    assert page.status_code == 200
+    assert "Verstappen" in page.text and f'href="/trade?link={db["links"]["champ"]}"' in page.text
+    assert "/fantasy/trade" not in page.text and 'href="/history"' in page.text
+    page = ada.get(f"/trade?link={db['links']['champ']}").text
     csrf = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
     key = re.search(r'name="client_key" value="([^"]+)"', page).group(1)
     form = dict(csrf_token=csrf, market_link_id=str(db["links"]["champ"]), side="yes", action="buy", shares="100",
                 limit_price="0.41", client_key=key)
     r = ada.post("/fantasy/orders", data=form, follow_redirects=False)
-    assert r.status_code == 303 and "Bought%20100%20YES" in r.headers["location"]
+    assert r.status_code == 303 and r.headers["location"].startswith("/trade?link=")
+    assert "Bought%20100%20YES" in r.headers["location"]
     r = ada.post("/fantasy/orders", data=form, follow_redirects=False)              # a double submit
     assert "already%20placed" in r.headers["location"]
     assert _rows(eng, "SELECT count(*) FROM accounts.fantasy_orders WHERE status <> 'rejected'")[0][0] == 1
-    board = _login("bea").get("/leaderboard").text
-    assert board.index("bea") < board.index("ada")           # ada paid 41 for shares worth 39 at the bid
-    assert "taker" not in board.split("<tbody>")[1]          # demo accounts aren't ranked
+    hist = ada.get("/history").text                         # the open trade, its Sell link and the order by hand
+    assert f'href="/trade?link={db["links"]["champ"]}&action=sell&side=yes"' in hist
+    assert "Orders by hand" in hist and "filled" in hist
+    board = _board(_login("bea").get("/history").text)
+    assert board.index("bea") < board.index("ada")           # both unranked (1 trade); ada's shares are worth 39 at the bid
+    assert "taker" not in board.split("<tbody>")[1]          # demo accounts aren't listed
     monkeypatch.setenv("RACINGLINES_FANTASY", "0")
-    assert ada.get("/fantasy").status_code == 404 and ada.get("/leaderboard").status_code == 404
+    for path in ("/history", "/trade", "/fantasy", "/leaderboard"):
+        assert ada.get(path, follow_redirects=False).status_code == 404
     assert FX.TEXT["no_liquidity"]
+
+
+def test_history_lists_refused_orders_and_the_curve(db):
+    from racinglines.fantasy import exchange as FX
+    eng, ada = db["engine"], db["users"]["ada"]
+    FX.place(eng, ada, db["links"]["win"], "yes", "buy", 10, 0.42, now=NOW, get_book=book())
+    FX.place(eng, ada, db["links"]["win"], "yes", "buy", 10, 0.40, now=NOW, get_book=book())       # no liquidity
+    FX.place(eng, ada, db["links"]["win"], "yes", "sell", 5, 0.39, now=NOW, get_book=book())
+    page = _login("ada").get("/history").text
+    assert "refused: " + FX.TEXT["no_liquidity"] in page
+    assert '<svg class="chart"' in page and ">now</text>" in page    # F$ through the run, the last point marked
+
+
+def test_old_addresses_redirect(db):
+    ada = _login("ada")
+    r = ada.get("/fantasy", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/history"
+    r = ada.get("/fantasy/trade?link=1", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/trade?link=1"
+    r = ada.get("/fantasy/trade", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/trade"
+    r = ada.get("/leaderboard", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/history#leaderboard"
+
+
+def test_ranked_scores_gates_and_orders(db, monkeypatch):
+    """fantasy/ledger.ranked: score = ROI x sqrt(trades), ranked best first; below MIN_TRADES unranked, after the
+    ranked ones, by total F$."""
+    from racinglines.fantasy import exchange as FX
+    from racinglines.fantasy import ledger as FL
+    eng, u = db["engine"], db["users"]
+    for _ in range(FL.MIN_TRADES):                           # ada: MIN_TRADES buys of 10 YES at 0.41 (Kalshi fee each)
+        assert FX.place(eng, u["ada"], db["links"]["win"], "yes", "buy", 10, 0.41, now=NOW, get_book=book())["ok"]
+    assert FX.place(eng, u["bea"], db["links"]["win"], "yes", "buy", 10, 0.41, now=NOW, get_book=book())["ok"]
+    with eng.connect() as c:
+        rows = {r["username"]: r for r in FL.ranked(c)}
+        order = [r["username"] for r in FL.ranked(c)]
+    a, b, cal = rows["ada"], rows["bea"], rows["cal"]
+    assert a["trades"] == FL.MIN_TRADES and b["trades"] == 1 and cal["trades"] == 0
+    assert a["staked"] == pytest.approx(FL.MIN_TRADES * (4.10 + 0.17))      # cost plus the Kalshi fee, per order
+    assert a["roi"] == pytest.approx((a["manual_pnl"] + a["strategy_pnl"]) / a["staked"])
+    assert a["score"] == pytest.approx(a["roi"] * FL.MIN_TRADES ** 0.5, abs=1e-4) and a["rank"] == 1
+    assert b["score"] is None and b["rank"] is None and b["roi"] is not None   # one trade: unranked
+    assert cal["roi"] is None and cal["score"] is None and cal["rank"] is None
+    assert order == ["ada", "cal", "bea"]                    # ranked first; then cal (1,000) before bea (less)
+    monkeypatch.setattr(FL, "MIN_TRADES", 1)                  # with the gate at one trade both rank, by score
+    with eng.connect() as c:
+        rows = FL.ranked(c)
+    ranked = [r for r in rows if r["rank"]]
+    assert [r["rank"] for r in ranked] == [1, 2] and ranked[0]["score"] >= ranked[1]["score"]
+    assert {r["username"] for r in ranked} == {"ada", "bea"} and rows[-1]["username"] == "cal"
+    # the page lists the unranked with "–" in rank and explains the score
+    board = _board(_login("cal").get("/history").text)
+    assert "ROI × √trades" in board
+
+
+def test_history_page_marks_unranked_players(db):
+    from racinglines.fantasy import exchange as FX
+    from racinglines.fantasy import ledger as FL
+    eng, u = db["engine"], db["users"]
+    for _ in range(FL.MIN_TRADES):
+        FX.place(eng, u["ada"], db["links"]["win"], "yes", "buy", 10, 0.41, now=NOW, get_book=book())
+    board = _board(_login("bea").get("/history").text)
+    body = board.split("<tbody>")[1]
+    first, *rest = body.split("</tr>")[:3]
+    assert "ada" in first and '<td class="num">1</td>' in first
+    assert all('<td class="num">–</td>' in r for r in rest)
+    assert f"needs {FL.MIN_TRADES} trades to be ranked" in board
+
+
+def _make_admin():
+    from racinglines.db import config
+    from racinglines.web import users as U
+    with config.get_session() as s:
+        U.create_user(s, "ola", "ola-password-1", "admin")
+
+
+def test_alpha_archives_live_and_book(db, monkeypatch):
+    """Under the alpha layout (fantasy on), /live and /book are 404 to everyone but admins; classic keeps them."""
+    _make_admin()
+    ada, ola = _login("ada"), _login("ola")
+    for path in ("/live", "/book"):
+        assert ada.get(path).status_code == 404, path
+        assert ola.get(path).status_code == 200, path
+    monkeypatch.setenv("RACINGLINES_LAYOUT", "classic")
+    for path in ("/live", "/book"):
+        assert ada.get(path).status_code == 200, path
+        assert ola.get(path).status_code == 200, path
+
+
+def test_nav_four_tabs_under_alpha_old_bar_under_classic(db, monkeypatch):
+    _make_admin()
+    ada = _login("ada")
+    nav = _main_nav(ada.get("/history").text)
+    assert [h for h in re.findall(r'href="([^"]+)"', nav)] == ["/markets", "/trade", "/history", "/lab"]
+    page = ada.get("/history").text
+    assert 'href="/pitch"' not in page and 'href="/docs/"' not in page and "racinglines-public" in page
+    assert 'href="/logout"' in page and 'href="/settings"' in page
+    nav = _main_nav(_login("ola").get("/history").text)
+    assert re.findall(r'href="([^"]+)"', nav) == ["/markets", "/trade", "/history", "/lab", "/admin"]
+    monkeypatch.setenv("RACINGLINES_LAYOUT", "classic")
+    page = ada.get("/history").text
+    hrefs = re.findall(r'href="([^"]+)"', _main_nav(page))
+    assert {"/markets", "/strategy", "/positions", "/trade", "/history", "/book", "/lab"} <= set(hrefs)
+    assert "/fantasy" not in hrefs and "/leaderboard" not in hrefs
+    assert 'href="/pitch"' in page and 'href="/docs/"' in page
+
+
+def test_positions_hides_the_private_book_under_alpha(db, monkeypatch):
+    uid = db["users"]["ada"]["id"]
+    with db["engine"].begin() as c:
+        c.execute(text("""INSERT INTO paper_positions (user_id, venue, event_key, market_key, kind, subject, yes_shares,
+                                                       no_shares, cash, mark)
+                          VALUES (:u, 'private', '2026-09-27-whistler', 'priv-1', 'race_win', 'Privaterider', 10, 0,
+                                  -4, 0.5)"""), dict(u=uid))
+    ada = _login("ada")
+    page = ada.get("/positions").text
+    assert "Privaterider" not in page and 'value="private"' not in page and "Private book" not in page
+    assert ada.get("/positions?venue=private").status_code == 200
+    monkeypatch.setenv("RACINGLINES_LAYOUT", "classic")
+    page = ada.get("/positions").text
+    assert "Privaterider" in page and 'value="private"' in page
 
 
 def test_pages_say_not_set_up_before_setup(db, monkeypatch):
     with db["engine"].begin() as c:
         c.execute(text("DROP TABLE accounts.fantasy_fills, accounts.fantasy_positions, accounts.fantasy_orders"))
     ada = _login("ada")
-    assert "Not open yet" in ada.get("/fantasy").text and "Not open yet" in ada.get("/leaderboard").text
+    assert "Not open yet" in ada.get("/history").text and "Not open yet" in ada.get("/trade").text

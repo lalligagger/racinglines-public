@@ -714,6 +714,9 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     live = _live_venues()                               # the venue registry decides which venues' rows show
     if venue and venue not in live and not sp:
         venue = ""
+    hide_private = LAYOUT.alpha()                       # the alpha layout archives the private book (web/layout.py)
+    if hide_private and venue == "private":
+        venue = ""
     # the account's signals are read once and grouped (per weekend, per market), not looked up again for each
     # position: the signals table has no (user, market) index, so a lookup per position scanned them all
     pos = rows(data.q(c, """
@@ -748,6 +751,8 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     for p in pos:
         p["demo_sport"] = p["event_key"] in demo_keys                   # a NASCAR / MotoGP demo replay (in-sample)
     pos = [p for p in pos if p["trades"] or p["venue"] == "private"]      # markets the account actually traded
+    if hide_private:
+        pos = [p for p in pos if p["venue"] != "private"]
     basic = R.is_basic(user)                        # basic: never which strategy made a pick (roles.basic_*)
     if basic:
         pos = [R.basic_position(p) for p in pos]
@@ -827,7 +832,7 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
                   and (not venue or venue == "private" or tv(t) == venue)]
         if basic:
             trades = [R.basic_signal(t, profile) for t in trades]
-    my_bets = house.taker_bets(c, user["id"]) if R.is_basic(user) else pd.DataFrame()
+    my_bets = house.taker_bets(c, user["id"]) if R.is_basic(user) and not hide_private else pd.DataFrame()
     summary = dict(bets=len(my_bets), staked=float(my_bets["stake"].sum()), open=int((my_bets["status"] == "open").sum()),
                    pnl=float(my_bets["pnl"].sum())) if len(my_bets) else None
     from racinglines.pipelines import story
@@ -866,7 +871,8 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
                   vtotal=sum(v["pnl"] for v in venues.values()), open_pos=open_,
                   cur=next((w for w in weekends if w["event_key"] == event), None),
                   vaccts=vaccts, venue_order=_venue_order(venues), venue_names=_venue_names(), kcoming=kcoming,
-                  sport_paper=bool(sp and demo_keys), show_backtests=bool(profile and not basic))
+                  sport_paper=bool(sp and demo_keys), show_backtests=bool(profile and not basic),
+                  hide_private=hide_private)
 
 
 @app.get("/positions/backtests", response_class=HTMLResponse, dependencies=[allow(*PRO)])

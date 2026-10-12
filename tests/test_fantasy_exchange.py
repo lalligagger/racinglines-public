@@ -97,3 +97,40 @@ def test_off_unless_switched_on_or_staging(monkeypatch):
     monkeypatch.delenv("RACINGLINES_ENV")
     monkeypatch.setenv("RACINGLINES_FANTASY", "1")
     assert FL.on()
+
+
+@pytest.mark.quick
+def test_score_is_roi_times_sqrt_trades_from_min_trades():
+    """The leaderboard's score (fantasy/ledger.score): ROI = P&L / staked, score = ROI x sqrt(trades), none below
+    MIN_TRADES or with nothing staked."""
+    from racinglines.fantasy import ledger as FL
+    n = FL.MIN_TRADES
+    roi, s = FL.score(20.0, 200.0, n)
+    assert roi == pytest.approx(0.1) and s == pytest.approx(round(0.1 * n ** 0.5, 4))
+    roi, s = FL.score(-50.0, 100.0, 4 * n)
+    assert roi == pytest.approx(-0.5) and s == pytest.approx(-0.5 * (4 * n) ** 0.5, abs=1e-4)
+    assert FL.score(20.0, 200.0, n - 1) == (pytest.approx(0.1), None)          # too few trades to be ranked
+    assert FL.score(5.0, 0.0, n + 3) == (None, None)                          # nothing staked: no ROI
+    # more trades at the same ROI score higher
+    assert FL.score(10.0, 100.0, 4 * n)[1] > FL.score(10.0, 100.0, n)[1]
+
+
+@pytest.mark.quick
+def test_alpha_layout_switch(monkeypatch):
+    """web/layout.alpha(): RACINGLINES_LAYOUT=alpha|classic wins; unset, it follows the fantasy switch (staging)."""
+    from racinglines.web import layout as L
+    for k in ("RACINGLINES_LAYOUT", "RACINGLINES_FANTASY", "RACINGLINES_ENV"):
+        monkeypatch.delenv(k, raising=False)
+    assert not L.alpha()
+    monkeypatch.setenv("RACINGLINES_ENV", "staging")
+    assert L.alpha()
+    monkeypatch.setenv("RACINGLINES_LAYOUT", "classic")
+    assert not L.alpha()
+    monkeypatch.delenv("RACINGLINES_ENV")
+    monkeypatch.setenv("RACINGLINES_LAYOUT", "alpha")
+    assert L.alpha()
+    admin, pro = dict(role="admin"), dict(role="pro")
+    assert L.hidden("/live", pro) and L.hidden("/book/quotes", pro) and L.hidden("/live/f1", None)
+    assert not L.hidden("/live", admin) and not L.hidden("/markets", pro) and not L.hidden("/trade", pro)
+    monkeypatch.setenv("RACINGLINES_LAYOUT", "classic")
+    assert not L.hidden("/live", pro) and not L.hidden("/book", pro)
