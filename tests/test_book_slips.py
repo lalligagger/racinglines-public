@@ -554,3 +554,10 @@ def test_a_replays_entries_become_a_book_that_prices(test_engine, db, tmp_path):
     with pytest.raises(BP.PicksError, match="no trades"):
         with test_engine.connect() as c:
             BP.book_toml(c, dict(out, signals=[]), "2026-10-09T10:05")
+
+
+def test_a_replay_time_with_a_z_is_the_same_naive_utc_moment():
+    import pandas as pd
+
+    from racinglines.pipelines import signals as SG
+    assert SG._naive_utc("2026-10-09T07:35Z") == SG._naive_utc("2026-10-09T07:35") == pd.Timestamp("2026-10-09 07:35")
