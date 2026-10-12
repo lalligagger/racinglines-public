@@ -35,6 +35,8 @@ not schema):
   with `[model] inputs` and `[model.defaults]` (step 6). `[league]` and `[competition]` (`code`, `name`,
   `display_name`, `categories`).
   `tests/test_sports.py` checks the required keys for every schema.
+  Optional `audience = "admin"`: the web app shows the sport to admins only, and its pages answer 404 for everyone
+  else; recording, pricing, settlement and the CLI are unchanged ([Web app: Sports shown to admins only](webapp.md#sports-shown-to-admins-only)).
 - `[markets]`: `venues` and `standard_kinds` (the board's columns; `[]` for a tape-only sport).
 - `[markets.kalshi] series`: the Kalshi series ticker **prefixes** to sync (e.g. `KXNASCAR`, `KXMOTOGP`).
 - `[markets.polymarket] tags`: the Gamma `tag_slug` values to page. **These slugs are unverified** until checked
