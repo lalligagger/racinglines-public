@@ -115,6 +115,12 @@ def test_pack_sport_name_reads_as_its_stored_sport():
     assert source.sport_names(kart, ["book", "price", "karts.toml"]) == ["book", "price", "karts.toml"]
 
 
+def test_kart_classic_pack_loads_and_answers_to_kart():
+    from racinglines.demo import store
+    pk = store.find("kart-classic")
+    assert pk is not None and (pk.sport, pk.sport_name) == ("f1", "kart") and (pk.path / "world.toml").is_file()
+
+
 def test_remote_model_flags_map_to_the_hosted_job():
     from racinglines.cli import remote as RM
     assert RM.job_params("f1", "backtest", ["--races", "3", "--sims", "300", "--track", "on", "--remote"]) == \
