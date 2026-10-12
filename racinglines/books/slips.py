@@ -264,7 +264,7 @@ def _run_for(db, leg, runs):
         if comp == leg["competition"]:
             return rid, "--run", None
     ck = ("run", leg["race_id"])
-    if ck not in db.cache and db.asof is not None:
+    if ck not in db.cache and getattr(db, "asof", None) is not None:
         db.cache[ck] = (*_asof_run(db, leg["race_id"]), None)
     if ck not in db.cache:
         r = pricing_run(db.conn, race_info(db.conn, leg["race_id"]))
