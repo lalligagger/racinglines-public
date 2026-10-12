@@ -141,10 +141,24 @@ def test_generator_writes_fastf1_shapes_reproducibly(tmp_path):
     assert list(res.columns) == F.RESULT_COLS and list(laps.columns) == F.LAP_COLS
     assert len(res) == 20 and res["Points"].sum() == sum(G.RACE_POINTS)
     meta = json.loads((tmp_path / "a" / "2026" / "01_R.meta.json").read_text())
-    assert meta["synthetic"] and meta["location"] == "Mario Circuit"
+    assert meta["synthetic"] and meta["location"] == "Mario Raceway"
     sch = pd.read_parquet(tmp_path / "a" / "2026" / "schedule.parquet")
     assert list(sch.columns) == F.SCHEDULE_COLS and len(sch) == w["rounds"]
 
+
+
+def test_no_generated_lap_beats_a_world_record():
+    """The kart world's tracks are Mario Kart 64 courses: every lap the generator writes, in every session of every
+    raced weekend, is slower than the course's single-lap world record without shortcuts (world.toml wr_lap_s)."""
+    from racinglines.demo import generate as G
+    w = G.world()
+    W = G.World(w)
+    for year, rnd, tr, day, sprint in G.calendar(w):
+        if not G.raced(w, year, rnd):
+            continue
+        assert tr["lap_s"] > tr["wr_lap_s"] and tr["wr_race_s"] > 3 * tr["wr_lap_s"]
+        for code, (_, laps, _) in G.weekend(W, year, rnd, tr, day, sprint).items():
+            assert laps["LapTime"].min() > tr["wr_lap_s"], (year, rnd, tr["name"], code)
 
 def test_offline_schedule_reads_the_saved_copy(tmp_path, monkeypatch):
     """RACINGLINES_OFFLINE=1: the schedule comes from data/raw/f1/fastf1/<year>/schedule.parquet, FastF1 never called."""
