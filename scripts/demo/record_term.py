@@ -14,6 +14,8 @@ shows them) as racinglines/web/term/<id>.ansi. Absolute paths of this checkout, 
 paths read relative to the repo. For a true first run, drop the demo store first (its database and data/demo/<pack>/).
 --run needs a configured database (DATABASE_URL, e.g. a local Postgres): the commands run with no terminal, so a
 first-run prompt can't ask. Nothing saved changes unless every command succeeds.
+A part's step may set `group` and `optional = true`: when an optional step fails, it and every later step of its group
+are left out of the recording (e.g. a replay that makes no trades on one exchange) instead of failing the run.
 Extra parts (demos.toml `parts`) are steps files next to it, racinglines/web/term/<part>.toml, with [[steps]] like the
 pack's [[quickstart]]; they follow the pack's steps on the page. `--run --part NAME` records one of them instead of the
 pack: its steps run one after another in one fresh folder (so a file one step writes is there for the next) and save
@@ -78,7 +80,8 @@ def part(name):
         sys.exit(f"no part {name!r} in demos.toml `parts`")
     steps = tomllib.loads((TERM / f"{name}.toml").read_text())["steps"]
     return [{"id": f"{name}-{i}", "title": s["title"], "command": s["run"], "about": s.get("about", ""),
-             "record": s.get("record", True), **({"section": s["section"]} if s.get("section") else {})}
+             "record": s.get("record", True), **({"section": s["section"]} if s.get("section") else {}),
+             **{k: s[k] for k in ("group", "optional") if k in s}}
             for i, s in enumerate(steps, 1)]
 
 
@@ -92,6 +95,10 @@ def render(d):
     return console.export_html(theme=MONOKAI, inline_styles=True, code_format=FORMAT)
 
 
+class Skipped(Exception):
+    """An `optional` step failed: it and the rest of its `group` are left out of the recording."""
+
+
 def run(d, cwd=None):
     """Execute the step's command (in `cwd`, default here) and return what it printed."""
     argv = shlex.split(d["command"])
@@ -102,6 +109,10 @@ def run(d, cwd=None):
         out = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, check=True, env=env,
                              cwd=cwd).stdout
     except subprocess.CalledProcessError as e:
+        if d.get("optional"):
+            print(f"{d['id']}: optional step failed (exit {e.returncode}), left out with the rest of group "
+                  f"{d.get('group')!r}:\n{e.stdout}", flush=True)
+            raise Skipped(d.get("group")) from None
         hint = "" if os.environ.get("DATABASE_URL") else "\n(DATABASE_URL is not set: the recorder needs a configured database)"
         sys.exit(f"{d['id']}: `{d['command']}` failed (exit {e.returncode}); nothing saved changed:\n{e.stdout}{hint}")
     roots = {str(ROOT), os.getcwd(), *([str(cwd)] if cwd else []), str(Path.home()), tempfile.gettempdir(),
@@ -126,12 +137,21 @@ def main(argv=None):
         dest = Path(args.out) if args.out else TERM
         dest.mkdir(parents=True, exist_ok=True)
         work = tempfile.mkdtemp(prefix="term-") if args.part else None     # one folder for the whole part
-        outs = {}
+        outs, dropped = {}, set()
         for d in steps:     # run them all first: a failure leaves the saved recording as it was
             if not d.get("record", True):                   # shown, never run: no .ansi, an empty fragment
                 continue
-            outs[d["id"]] = run(d, cwd=work)
+            if d.get("group") is not None and d["group"] in dropped:
+                continue
+            try:
+                outs[d["id"]] = run(d, cwd=work)
+            except Skipped as e:
+                dropped.add(e.args[0])
+                continue
             print(f"{d['id']}: ran `{d['command']}`", flush=True)
+        steps = [d for d in steps if d.get("group") is None or d["group"] not in dropped]
+        if not steps:
+            sys.exit("every step was left out (optional groups that failed): nothing saved changed")
         for old in dest.glob(f"{args.part}-*.*" if args.part else "step-*.*"):
             old.unlink()
         for k, out in outs.items():

@@ -58,7 +58,8 @@ def test_the_page_replays_the_packs_quickstart_as_written():
     for name in rec.config().get("parts", []):      # an extra part, once recorded, is its steps file as written
         f = term_routes.TERM / f"{name}.json"
         if f.is_file():
-            assert json.loads(f.read_text()) == rec.part(name), f"re-record on the VM: {name}"
+            want = {d["id"]: d for d in rec.part(name)}       # an optional group may have been left out
+            assert all(want.get(d["id"]) == d for d in json.loads(f.read_text())), f"re-record on the VM: {name}"
 
 
 def test_extra_parts_follow_the_pack_and_its_steps_take_the_default_section(tmp_path, monkeypatch):
@@ -176,3 +177,30 @@ def test_replay_is_public_by_exact_path_only(tmp_path, monkeypatch):
     for path in ("/docs/quickstart/term/../../webapp/", "/docs/quickstart/term/../../"):
         assert asyncio.run(status(path)) in (303, 307, 401, 404), path      # sent to sign in, or not found
 
+
+
+def test_an_optional_step_that_fails_drops_its_group_only(tmp_path, monkeypatch):
+    rec = _recorder()
+    term = tmp_path / "term"
+    term.mkdir()
+    (term / "demos.toml").write_text('parts = ["p"]\n')
+    (term / "p.toml").write_text('[[steps]]\ntitle = "a"\nrun = "false"\ngroup = "k"\noptional = true\n'
+                                 '[[steps]]\ntitle = "b"\nrun = "echo k2"\ngroup = "k"\n'
+                                 '[[steps]]\ntitle = "c"\nrun = "echo pm"\ngroup = "pm"\n')
+    monkeypatch.setattr(rec, "TERM", term)
+    out = tmp_path / "out"
+    rec.main(["--run", "--part", "p", "--out", str(out)])
+    assert [d["id"] for d in json.loads((out / "p.json").read_text())] == ["p-3"]
+    assert sorted(f.name for f in out.iterdir()) == ["p-3.ansi", "p.json"]
+
+
+def test_a_part_whose_every_group_failed_saves_nothing(tmp_path, monkeypatch):
+    rec = _recorder()
+    term = tmp_path / "term"
+    term.mkdir()
+    (term / "demos.toml").write_text('parts = ["p"]\n')
+    (term / "p.toml").write_text('[[steps]]\ntitle = "a"\nrun = "false"\ngroup = "k"\noptional = true\n')
+    monkeypatch.setattr(rec, "TERM", term)
+    with pytest.raises(SystemExit):
+        rec.main(["--run", "--part", "p", "--out", str(tmp_path / "out")])
+    assert not (tmp_path / "out" / "p.json").exists()
