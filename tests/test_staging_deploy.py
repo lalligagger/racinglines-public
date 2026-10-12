@@ -129,3 +129,31 @@ def test_vm_sh_venv_check_refuses_the_same_way(tmp_path):
     stg.unlink()
     stg.mkdir()
     assert subprocess.run(["bash", "-c", snippet], check=False).returncode == 0
+
+
+def _deploy_wait(tmp_path, active):
+    """Run vm.sh deploy's wait step locally with a fake systemctl: -> (exit code, units it stopped)."""
+    line = next(ln for ln in VM_SH.splitlines() if "seq 60" in ln and "activating" in ln)
+    fake = tmp_path / "bin"
+    fake.mkdir(exist_ok=True)
+    stopped = tmp_path / "stopped"
+    stopped.write_text("")
+    (fake / "systemctl").write_text('#!/bin/bash\nif [ "$1" = stop ]; then echo "$2" >> "$STOPPED"; exit 0; fi\n'
+                                    'for u in $ACTIVE; do echo "$u loaded activating start x"; done\n')
+    (fake / "sudo").write_text('#!/bin/bash\n"$@"\n')
+    (fake / "seq").write_text("#!/bin/bash\necho 1\n")
+    (fake / "sleep").write_text("#!/bin/bash\n")
+    for f in fake.iterdir():
+        f.chmod(0o755)
+    script = ('remote() { bash -c "$1"; }\nsteps=" racinglines-signals.service racinglines-live-f1@x.service"\nrc=0\n'
+              + line.strip() + '\nexit "$rc"\n')
+    env = {"PATH": f"{fake}:/usr/bin:/bin", "ACTIVE": active, "STOPPED": str(stopped)}
+    r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env, check=False)
+    return r.returncode, stopped.read_text().split()
+
+
+def test_deploy_stops_a_slow_signals_pass_but_waits_for_live_steps(tmp_path):
+    assert _deploy_wait(tmp_path, "") == (0, [])
+    assert _deploy_wait(tmp_path, "racinglines-signals.service") == (0, ["racinglines-signals.service"])
+    assert _deploy_wait(tmp_path, "racinglines-live-f1@x.service racinglines-signals.service") == (1, [])
+    assert _deploy_wait(tmp_path, "racinglines-live-f1@x.service") == (1, [])

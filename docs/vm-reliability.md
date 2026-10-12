@@ -120,7 +120,8 @@ From the repo (`deploy/vm/systemd/`, `scripts/deploy/vm.sh`, [VM deploy](vm-depl
 1. Lists the VM's active `racinglines-*.timer` units (live-event steps and signals today; after this plan also health,
    backup, kalshi-sync and fantasy), plus any left in `/var/lib/racinglines/deploy-paused` by an earlier deploy.
 2. Writes that list to `/var/lib/racinglines/deploy-paused`, stops the timers, and waits up to 5 minutes for a step
-   already running. If one is still running, or the connection drops, nothing is deployed and the timers resume.
+   already running. A signals pass still running alone is stopped; if another step is still running, or the
+   connection drops, nothing is deployed and the timers resume.
 3. Runs `deploy/vm/update.sh <ref>`: checkout, `pip install`, `docker compose up -d --wait db`,
    `alembic upgrade head`, `racinglines db seed`.
 4. Installs the unit files, runs `daemon-reload`, and restarts web, recorder and MCP (`try-restart`: only those
