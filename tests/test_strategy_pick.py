@@ -99,9 +99,8 @@ def test_a_pro_account_starts_empty_then_picks_and_tunes(app_db):
     client.post("/strategy/pick", data={"csrf_token": csrf, "code": "T3", "T3:min_volume_24h": "400", "rolled": "1"})
     assert _profile("ada")["rolled"] is True and _profile("ada")["settings"]["min_volume_24h"] == 400
     r = client.post("/strategy/pick", data={"csrf_token": csrf, "code": "C"}, follow_redirects=False)
-    if PF.MAKERS_OPEN:                                                   # makers offered (owner 2026-10-12)
-        assert "C · maker" in page and _profile("ada")["base"] == "C"
-        client.post("/strategy/pick", data={"csrf_token": csrf, "code": "T3"})
+    if PF.MAKERS_OPEN:                                                   # makers offered (owner, 2026-10-12 05:11Z)
+        assert "C · maker" in page and "Error" not in r.headers["location"] and _profile("ada")["base"] == "C"
     else:                                                                # closed: not listed, a save is refused
         assert "C · maker" not in page
         assert "Error" in r.headers["location"] and _profile("ada")["base"] == "T3"
@@ -165,3 +164,17 @@ def test_only_f1_on_polymarket_can_be_picked(app_db):
             U.create_user(s, "dee", "dee-password-1", "admin")
         page = _login(app_db, "dee")[2]
         assert "coming soon" in page and admin[1]["label"] in page
+
+
+def test_makers_are_open_offered_saved_and_shown_in_the_edge_finder(app_db):
+    """Owner, 2026-10-12 05:11Z: "include maker strategies, we will see how it goes"."""
+    from racinglines.pipelines import profiles as PF
+    from racinglines.web import edge as E
+    assert PF.MAKERS_OPEN
+    client, csrf, page = _login(app_db, "ada")
+    assert 'value="C"' in page and "C · maker" in page                    # offered in the picker
+    r = client.post("/strategy/pick", data={"csrf_token": csrf, "code": "C"}, follow_redirects=False)
+    assert r.status_code == 303 and "Error" not in r.headers["location"]
+    assert _profile("ada")["base"] == "C"                                # saved
+    assert "maker" in E.SHOWN_KEYS and E.BENCHMARK_STRATEGY == "maker"
+    assert E.label("maker") in client.get("/lab").text                   # the Edge Finder offers makers

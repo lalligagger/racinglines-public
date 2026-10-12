@@ -248,7 +248,7 @@ def needs_email(user):
 
 templates.env.globals["needs_email"] = needs_email
 templates.env.globals["ui_range"] = _ranges.ui_range                             # capped numeric inputs (web/ranges.py)
-templates.env.globals["makers_on"] = lambda: _PF.MAKERS_OPEN                   # Alpha: off (profiles.MAKERS_OPEN)
+templates.env.globals["makers_on"] = lambda: _PF.MAKERS_OPEN                   # on from 2026-10-12 (profiles.MAKERS_OPEN)
 # the stylesheet's and scripts' URLs carry the newest static file's mtime, so a change is a new URL: no stale copy from the browser or
 # Cloudflare's edge cache (read at render time)
 templates.env.globals["css_v"] = lambda: int(max(p.stat().st_mtime for p in (HERE / "static").glob("*.*")))
