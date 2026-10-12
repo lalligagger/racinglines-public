@@ -23,7 +23,10 @@ def test_term_is_public_and_shows_each_recorded_command():
     from fastapi.testclient import TestClient
 
     from racinglines.web.app import app
-    r = TestClient(app).get("/term", follow_redirects=False)
+    cl = TestClient(app)
+    old = cl.get("/term", follow_redirects=False)
+    assert old.status_code == 307 and old.headers["location"] == "/docs/quickstart/term"
+    r = cl.get("/docs/quickstart/term", follow_redirects=False)
     assert r.status_code == 200
     for d in term_routes.demos():
         assert html.escape(d["command"], quote=False) in r.text and f'id="{d["id"]}"' in r.text
@@ -78,7 +81,7 @@ def test_steps_group_under_their_section_and_wait_on_play(tmp_path, monkeypatch)
         (tmp_path / f"{s['id']}.html").write_text("" if s["id"] == "s3" else "<pre>out</pre>")
     (tmp_path / "demos.toml").write_text('recorded = "x"\n')
     monkeypatch.setattr(term_routes, "TERM", tmp_path)
-    html = TestClient(app).get("/term").text
+    html = TestClient(app).get("/docs/quickstart/term").text
     assert html.count('class="term-part"') == 2 and html.index("Part one") < html.index("Part two")
     assert "1. t1" in html and "2. t2" in html and "1. t3" in html       # numbered within each part
     assert html.count("data-term-play") == 3                             # each step waits paused on Play
