@@ -89,6 +89,25 @@ TAKER_PROFILES = {
                 why="taker-resweep rank 7: the baseline model at a 10-pt edge. Robust: defaults-2026-10 (16 + 23 weekends, 16k): 2026 +728 (0.55, 504), 2025 +757 (0.71, 656)."),
 }
 TAKER_TOP = ("T7", "T1", "T2", "T3", "T4", "T5", "T10", "T6", "T9", "T8")     # ranked, best first (worse season per weekend, 16k)
+# The alpha layout's five styles (web/layout.alpha, web/strategy_pick.py; owner, 2026-10-12 19:23-19:25Z: "down select
+# from strategies we have previously validated ... human readable names / descriptions. For a first-timer ... variety
+# rather than best performance"; library/process/2026-10-12-alpha-lab-strategies.md). Users see the label, the blurb
+# and the backtest, never the code or the `why`. `backtest` is (2026, 2025) season P&L in dollars at the default sizing,
+# copied from each code's `why` above (tests/test_alpha_styles.py checks they match); `in_sample`: tuned on the same
+# seasons it is scored on (web/edge.py flags `early`). Data only: reorder ALPHA_ORDER or reword a blurb here.
+ALPHA_STYLES = {
+    "T1": dict(label="Steady", backtest=(1376, 1432),
+               blurb="Buys only when our price beats the market by 10 points (5 on head-to-heads), during the weekend's sessions."),
+    "T2": dict(label="Head start", backtest=(1244, 1400),
+               blurb="Steady, but it may also buy before the weekend begins."),
+    "T8": dict(label="Early bird", backtest=(3145, 757), in_sample=True,
+               blurb="Trades practice and the sprint, then stops before final practice and qualifying. It's busier and swings more."),
+    "T6": dict(label="Big markets only", backtest=(689, 608),
+               blurb="Steady, but only where $200+ traded that day. It has the smallest drawdowns."),
+    "T5": dict(label="Hair trigger", backtest=(860, 816),
+               blurb="Buys on an 8-point edge instead of 10, so it trades a lot more."),
+}
+ALPHA_ORDER = ("T1", "T2", "T8", "T6", "T5")
 # Blends (combos): `members` [(code, weight)] instead of one strategy. Each member runs as itself with its stakes
 # scaled by its weight (signals.compute_all); its signals carry detail.member. A blend is not a Lab candidate.
 COMBOS = {

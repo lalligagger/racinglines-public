@@ -91,10 +91,23 @@ def _is_basic_draw(profile, user_id):
     return len(codes) == BASIC_PICKS and all(c in PF.TAKER_TOP for c in codes)
 
 
+def is_alpha_style(profile):
+    """One of the alpha layout's five styles (profiles.ALPHA_STYLES) as tuned: a single strategy saved from
+    /strategy/pick with its `base` code, no tweak, and that code's own settings (sizing may be any)."""
+    from racinglines.pipelines import profiles as PF
+    from racinglines.pipelines import sweep_settings as SS
+    code = (profile or {}).get("base")
+    if code not in PF.ALPHA_STYLES or PF.is_combo(profile) or profile.get("adjusted") or not profile.get("settings"):
+        return False
+    key = lambda st: SS.Settings.from_dict(st, strict=False).key                     # noqa: E731
+    return key(profile["settings"]) == key(PF.PROFILES[code]["settings"])
+
+
 def allowed_profile(role, profile, user_id=None, legacy_ok=False):
     """May an account with this role run this strategy profile (a dict from profiles.load / basic_profile, or None)?
     Admin and pro: any. Basic: only its own draw (basic_profile; with user_id, checked against basic_members).
     legacy_ok: also a profile in LEGACY_BASIC_PROFILES, which a basic account already running one keeps.
+    Under the alpha layout (web/layout.alpha) a basic account may also run one of the five styles (is_alpha_style).
     While profiles.MAKERS_OPEN is off (Alpha), a maker profile is admin-only."""
     from racinglines.pipelines import profiles as PF
     if profile is not None and not PF.MAKERS_OPEN and canonical(role) != "admin" and PF.is_maker(profile):
@@ -102,6 +115,9 @@ def allowed_profile(role, profile, user_id=None, legacy_ok=False):
     if profile is None or canonical(role) in PRO:
         return True
     if _is_basic_draw(profile, user_id):
+        return True
+    from racinglines.web import layout
+    if layout.alpha() and is_alpha_style(profile):
         return True
     if legacy_ok:
         from racinglines.pipelines import profiles as PF
@@ -169,5 +185,8 @@ def basic_view_profile(profile):
     """The profile dict the pages show a basic account: BASIC_NAME, a taker, its follow rate and bankroll only."""
     if profile is None:
         return None
+    if is_alpha_style(profile):                     # a style picked by name (alpha): its name is all it shows
+        return dict(name=profile["name"], strategy="taker", basic=True,
+                    **{k: profile[k] for k in ("follow_rate", "bankroll") if k in profile})
     return dict(name=BASIC_NAME, strategy="taker", basic=True,
                 **{k: profile[k] for k in ("follow_rate", "bankroll") if k in profile})

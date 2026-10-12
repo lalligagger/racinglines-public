@@ -38,6 +38,35 @@ recorded bid). The code is `fantasy/ledger.py` (`MIN_TRADES`, `TRADE_STATS`, `sc
 
 `POST /fantasy/orders` keeps its address and sends you back to `/trade?link=...`.
 
+### Picking a style (`/strategy/pick`)
+
+Under the alpha layout the picker is five **style cards** instead of the full list (owner, 2026-10-12 19:23-19:55Z,
+asking for variety over best performance). Each card has a name, one sentence for a first-timer, its 2026 and 2025
+backtests ("backtest, season P&L at our standard sizing", copied from the profile's `why` line) and a Follow button.
+
+| Style | Profile | Note |
+|---|---|---|
+| Steady | T1 | |
+| Head start | T2 | |
+| Early bird | T8 | labelled in-sample: tuned on the same seasons it is scored on |
+| Big markets only | T6 | |
+| Hair trigger | T5 | |
+
+- The names, sentences, numbers and order are one data structure: `ALPHA_STYLES` and `ALPHA_ORDER` in
+  `pipelines/profiles.py`. Users never see the codes or the `why` text.
+- **Sizing:** Standard (the backtests' fixed stakes) or Kelly, with a fraction slider from 10% to 100% (default 25%),
+  quick picks for Quarter, Half and Full, and a tier label (Nitty, Shark, Spicy, Degen). Kelly is labelled untested.
+  The choice is saved on the profile as `sizing` and `kelly`. The signal engine doesn't read it yet.
+- **Tweak drawer** (closed by default, Pro and admin only): two sliders (edge needed, market volume) and the dice. A
+  moved slider is labelled "untested: scored live from the next race weekend".
+- Basic accounts pick from the same five by name instead of the random "Your picks" draw. An account already running
+  a draw keeps it.
+- Makers, the TB blend and the other codes aren't offered. `POST /strategy/pick` refuses them for everyone but admins
+  (`MAKERS_OPEN` is untouched, so the Edge Finder still shows makers).
+- Saves still pause during a race weekend's signal window.
+- `/strategy` drops the venue tabs, the sport select and the "How it chooses" tab. Admins keep the user select.
+- The switch is `strategy_pick.alpha_picker()`. With the classic layout the page is unchanged.
+
 ## What it hides
 
 - **Live events:** `/live` and everything under it. The bar's Live link goes too.
