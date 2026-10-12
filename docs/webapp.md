@@ -108,14 +108,17 @@ prices off user pages).
 
 ## Pages
 
-**Landing page** (`/login`, where every signed-out visit lands; owner, 2026-10-08, reworked 2026-10-12). A compact,
+**Landing page** (`/`, public; owner, 2026-10-08, reworked and moved to the index 2026-10-12; a signed-in browser
+going to `/` lands on the Markets board). A compact,
 centered page with no same-page navigation: a one-line **fantasy league alpha** strip above the hero (sign-up, the two
-demo buttons and the 101 link; `/login#account`); the hero, whose eyebrow reads "Sportsbook pricing for all racing
+demo buttons and the 101 link; `/#account`); the hero, whose eyebrow reads "Sportsbook pricing for all racing
 disciplines", with its **Talk to us** button; what the pricing does for sportsbooks that set their own lines, books on
 a platform provider's feed, and the providers themselves; the business infographic; and a dated **News** feed, newest
 first, with the PyPI release marked upcoming, each sport and exchange added on the earliest date the project history
-states, and the X and Substack links under it. The sign-in form has its own page, `/signin`, linked top right; its
-form still posts to `/login`, and an old `/login?error=` link is sent there. The infographic has no "How it works" heading. The page names no sportsbook, operator or provider.
+states, and the X and Substack links under it. The sign-in form has its own page, `/signin`, linked top right; `/login`
+shows the same page (old links, `smoke.sh`, `vm.sh status` and the uptime monitor keep their 200), and the form posts
+to `/login`. Pages behind sign-in keep their own paths (`/markets`, `/lab`, ...); a signed-out browser asking for one is
+sent to `/signin?next=...`. The infographic has no "How it works" heading. The page names no sportsbook, operator or provider.
 The landing page has no popup, and the maintenance popup is off (`MAINTENANCE_NOTICE = ""`). The demo accounts (maker, taker) still get the sign-up popup, once per browser session, and a **Sign up** link in the top bar, while sign-up is on (owner, 2026-10-11). Registered accounts get neither. A registered account with no email (made before email was required at sign-up) gets an add-email popup instead, once per browser session, on every app page but Settings, until it saves one; the save (`POST /settings/email`) runs the sign-up checks (a valid address, on no other account).
 
 **Quickstart replay** (`/term`, public like `/pitch`; owner, 2026-10-11). A terminal-styled replay of the
@@ -209,7 +212,7 @@ not additional positions; private-book chart totals and ledger totals can still 
 | Page | What it shows |
 |---|---|
 | **Racinglines 101** (`/racinglines101`, public: no sign-in) | A plain-language intro to makers, takers and the paper-trading demo. Linked from the sign-in page as **I'm already confused.** |
-| **Sign in** (`/signin`, `/logout`) | The standard username/password form, which the admin uses; it posts to `/login`. The two one-click demo buttons (**Try as pro**, **Try as basic**; the `maker` / `taker` accounts, which keep their usernames, password `password`) are on the landing page (`/login#account`). |
+| **Sign in** (`/signin`, also `/login`; `/logout` returns to `/`) | The standard username/password form, which the admin uses; it posts to `/login`. The two one-click demo buttons (**Try as pro**, **Try as basic**; the `maker` / `taker` accounts, which keep their usernames, password `password`) are on the landing page (`/#account`). |
 | **Pitch** (`/pitch`) | Serves `pitch.html`. Public: no sign-in, like the login and sign-up pages. |
 | **Docs** (`/docs/`) | Serves these docs as built in `site/` (the pre-push hook builds them; or `python -m mkdocs build -d site`), behind the same login. |
 

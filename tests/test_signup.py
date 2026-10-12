@@ -42,7 +42,7 @@ def test_off_by_default(monkeypatch):
     client = TestClient(A.app)
     assert client.get("/signup").status_code == 404 and client.get("/forgot").status_code == 404
     assert client.post("/signup", data=GOOD).status_code == 404
-    page = client.get("/login").text
+    page = client.get("/").text
     assert "/signup" not in page and "signups</a> are live" not in page
 
 
@@ -56,7 +56,7 @@ def test_closed_until_setup_has_run(monkeypatch):
     client = TestClient(A.app)
     assert "isn't open yet" in client.get("/signup").text
     assert client.post("/signup", data=GOOD).status_code == 503
-    page = client.get("/login").text                      # the landing page links to sign-up once; no popup (2026-10-08)
+    page = client.get("/").text                           # the landing page links to sign-up once; no popup (2026-10-08)
     assert 'id="site-notice"' not in page and page.count('href="/signup"') == 1
     assert 'href="/forgot"' in client.get("/signin").text           # the sign-in form has its own page (2026-10-12)
     forgot = client.get("/forgot").text                    # no email on file: a reset request to us, prefilled
