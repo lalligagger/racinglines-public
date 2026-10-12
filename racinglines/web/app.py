@@ -228,6 +228,15 @@ if ENV_LABEL:
         response = await call_next(request)
         response.headers["X-Racinglines-Env"] = ENV_LABEL
         return response
+
+
+# X-Racinglines-Layout: alpha or classic (web/layout.py), so the smoke check knows whether live events and private books
+# are archived (404 to non-admins) or open, without a setting of its own.
+@app.middleware("http")
+async def _layout_header(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Racinglines-Layout"] = "alpha" if _layout.alpha() else "classic"
+    return response
 # Maintenance popup on the sign-in page and every app page, dismissed with "ok" once per browser session
 # (_site_notice.html). Set to "" to turn it off.
 MAINTENANCE_NOTICE = ""      # off since the landing rebuild (owner, 2026-10-08: "drop the modal"); text here turns it back on
