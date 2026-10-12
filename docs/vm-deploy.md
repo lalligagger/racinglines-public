@@ -367,7 +367,7 @@ the `staging` branch deploys staging and nothing else**. `main` keeps deploying 
 | Branch that deploys it | `main` (`main-merge-gate`) | `staging` (`staging-deploy`, `.github/workflows/staging.yml`) |
 | Checkout on the VM | `/opt/racinglines` | `/opt/racinglines-staging` |
 | Web app | `racinglines-web`, 127.0.0.1:8000 | `racinglines-staging-web`, 127.0.0.1:8010 |
-| Database | `racinglines` | `racinglines_staging`, in the same Postgres container, copied from production by `staging setup` / `staging reset` (`pg_dump \| psql`: production is only read); its race and market tables caught up by `staging refresh` ([Staging: refresh](#staging-refresh)) |
+| Database | `racinglines` | `racinglines_staging`, in the same Postgres container, copied from production by `staging setup` / `staging reset` (`pg_dump \| psql`: production is only read); kept current by the [data mirror](#staging-the-data-mirror) once it is on |
 | Settings | `/etc/racinglines.env` | `/etc/racinglines-staging.env`: production's switches and admin password, its own `DATABASE_URL`, data folder (`/opt/racinglines-staging/data`, empty: no archive Parquet, no pitch images), `APP_SECRET`, `RACINGLINES_URL`, `RACINGLINES_ENV=staging`, `WEB_PORT=8010`; **no trading flags, no ntfy topic, no alert webhook** |
 | Timers and other units | recorder, signals, live events, record-venues, MCP | only its own live events, by hand (`vm.sh staging live <event>`: `racinglines-staging-live-f1@` / `racinglines-staging-live-dh@`, its data folder and database); no recorder or signals (two recorders would split the book history) |
 | Live timing button (F1, `/live`) | off (`RACINGLINES_F1_STREAM` unset) | on by default: an opt-in websocket per viewer polling FastF1, or the Mac's relay while `f1_push.sh` runs, with a debug log (`racinglines/web/f1_live.py`) |
@@ -399,8 +399,7 @@ force push is fine there, `staging` is a deploy pointer, not history).
 | `staging deploy [ref]` | What CI runs on a merge to `staging` (above) |
 | `staging status` | The staging checkout's commit, the unit, and `GET /login` with its env header |
 | `staging logs` | `journalctl -u racinglines-staging-web` |
-| `staging refresh [plan]` | Production's race, market and model-run data again, staging's accounts, fantasy, jobs and positions kept ([Staging: refresh](#staging-refresh)); `plan` is read-only |
-| `staging reset` | Drop `racinglines_staging` and copy production's rows and live run folders (`data/runs/live`) again (production only read). It wipes staging's own accounts and app state too: to catch up, use `staging refresh` |
+| `staging reset` | Drop `racinglines_staging` and copy production's rows and live run folders (`data/runs/live`) again (production only read). It wipes staging's own accounts and app state too, and refuses while the [mirror](#staging-the-data-mirror) is on |
 | `staging live <event> [off]` | Staging's own run of a live event (`live/f1/<event>.toml`: a step every 5 minutes; `live/mtb_dh/<event>.toml`: the poll loop), like `vm.sh live` for production; it carries on from the run folder `staging reset` copied |
 | `staging off` | Stop and disable the unit; the checkout, database and env file stay |
 
@@ -451,43 +450,66 @@ sudo systemctl restart racinglines-staging-web
 
 The first print names `/opt/racinglines/racinglines/__init__.py`, the second `/opt/racinglines-staging/racinglines/__init__.py`.
 
-### Staging: refresh
+### Staging: the data mirror
 
-**Why staging drifts.** `racinglines_staging` is a copy of production made once, by `staging setup` or `staging reset`.
-Staging runs no recorder, signals or pricing timers (two recorders would split the book history), so from the minute
-it is copied it misses every new market price, trade, book, model run and result production records. Meanwhile
-staging builds up state of its own: accounts, the fantasy ledger, jobs, paper positions, trading tables. Before
-2026-10-12 the only way to catch up was `staging reset`, which drops the whole database and takes that state with it.
+**Why staging drifted.** `racinglines_staging` is a copy of production made once, by `staging setup` or `staging
+reset`. Staging runs no recorder, signals or pricing timers (two recorders would split the book history), so from the
+minute it was copied it missed every new market price, trade, book, model run and result production recorded, while
+it built up state of its own (test accounts, fantasy, jobs, trading tables). Catching up meant `staging reset`, which
+drops the whole database, that state with it. Copying production at every staging deploy has the same two problems:
+stale between deploys, and staging's own rows wiped each time.
 
-**`bash scripts/deploy/vm.sh staging refresh`** catches staging up without that loss (`racinglines/db/refresh.py`):
+**The mirror** (`racinglines/db/mirror.py`, since 2026-10-12) keeps staging a live copy of production with Postgres
+logical replication: production publishes its tables, staging subscribes, and production's inserts, updates and
+deletes arrive in staging within seconds. Nothing to refresh, nothing copied at deploy. Production is only read: the
+subscription connects as `racinglines_mirror` (REPLICATION, SELECT on the mirrored tables, read-only by default); on
+and off add or drop that role, the publication `racinglines_staging_mirror` and its replication slot in production's
+catalog, and no production row is ever written. TRUNCATE is not published.
 
-1. backs up `racinglines_staging` to `/opt/racinglines-staging/data/backups/db/racinglines_staging-before-refresh-<UTC>.sql.gz`;
-2. in one transaction on staging (the staging app shows the old data until it commits; a failure changes nothing),
-   replaces the **shared tables** (`refresh.SHARED`: sports and competitions, events, races, results, laps,
-   athletes, model runs and predictions, market links, the market tape, live events, the data change log) with
-   production's rows, read in one read-only snapshot;
-3. copies production's live run folders (`data/runs/live`) over staging's, and links staging's `data/archive` to
-   production's, so staging reads the full market history (Parquet) in place. Staging never archives:
-   `markets.store.archive` refuses when `RACINGLINES_ENV=staging`.
+**Scope** (`vm.sh mirror on <scope>`, default `data`):
 
-Everything else is staging's own and is never touched: users, activity, jobs, paper positions, signals, orders, the
-house book, the `accounts` schema (fantasy, trading), `alembic_version`, and any table not listed in `SHARED` (the
-safe default for a new table). Production is only read; no production timer, service or setting is touched, so a
-refresh is fine during a live window.
+| Scope | What follows production | What stays staging's own |
+|---|---|---|
+| `data` | `mirror.DATA`: race history, athletes, model runs and predictions, market links, prices, trades, books, live events, data changes | users, the fantasy ledger, paper positions, signals, orders, the house book, activity, jobs |
+| `accounts` | `data` + users, email preferences, `accounts.fantasy_ledger` | paper positions, signals, orders, the house book, activity, jobs |
+| `all` | every table in `public` and `accounts` production has | jobs (staging's worker must never run production's queued jobs), `alembic_version` |
 
-**Staging's own rows in a shared table survive.** The first refresh moves staging's id sequences for the shared
-tables to 1,000,000,000 (`refresh.OFFSET`), and every refresh keeps the rows at or above it (in a table without an id,
-the rows whose parent is): a Lab job's model run, a staging live run, a reference row a staging deploy seeded before
-production had it. When production later gets the same row (the same unique key, say a new competition), staging's
-row becomes production's and staging's references follow it. Rows staging made **before** its first refresh share
-production's id range and are replaced; `staging refresh plan` counts them per table, and the backup keeps them.
+A table only staging has (a migration production hasn't run yet, or `fantasy_setup.sh` tables) stays staging's until
+production has it and `mirror on` runs again. `mirror status` lists what is staging's own.
 
-**Columns:** a refresh copies the columns both databases have, so staging can be a migration ahead of production (a
-new column takes its default). A table staging has and production doesn't yet is skipped and left alone.
+**Staging can still write.** Its own rows in a mirrored table (a test account, a Lab job's model run, a reference row a
+staging deploy seeded first) take ids from 1,000,000,000 (`mirror.OFFSET`) up, so they never collide with production's.
+If production later gets the same unique key (say a new competition, seeded on staging first), replication would stop
+on the duplicate: `racinglines-staging-mirror-check.timer` runs `mirror repair` every 5 minutes, which makes staging's
+row production's, points staging's references at it, and replication carries on. Staging's edits to production's rows
+last until production changes that row. A staging migration that drops or renames a column on a mirrored table stops
+replication of that table until production runs the same migration (`mirror status` warns; production keeps at most
+2 GB of WAL for a stalled mirror, `max_slot_wal_keep_size`, then the mirror breaks, never production: `mirror off`,
+then `on`). The check timer also copies production's newer live run folders (`data/runs/live`) over staging's, and
+`mirror on` links staging's `data/archive` to production's, so staging reads the market history the recorder moved to
+Parquet; staging never archives (`markets.store.archive` refuses when `RACINGLINES_ENV=staging`).
 
-**Cost:** production's database is about 2.6 GB (2026-10-12, `pg_stat_user_tables`; book snapshots 1.3 GB, trades
-0.65 GB), so a refresh takes minutes and prints a progress line every minute during a long copy. The deleted rows'
-space is reused by the next refresh (`VACUUM`), so staging's size should level off rather than grow with every refresh.
+**Turning it on** (owner, in order; the first two are production changes):
+
+```
+# LOCAL (Mac): production backup, then wal_level=logical (restarts production's database: timers paused, seconds)
+bash scripts/deploy/vm.sh backup before-staging-mirror
+bash scripts/deploy/vm.sh postgres logical
+```
+
+```
+# LOCAL (Mac): read-only preview: per table, the staging rows production doesn't have as-is (replaced on first mirror)
+bash scripts/deploy/vm.sh mirror plan data
+```
+
+```
+# LOCAL (Mac): back up staging, subscribe (the first copy of about 2.6 GB runs in the background), check
+bash scripts/deploy/vm.sh mirror on data
+bash scripts/deploy/vm.sh mirror status
+```
+
+`vm.sh staging reset` refuses while the mirror is on (production holds a slot for staging's database): `mirror off`
+first. `mirror off` keeps staging's rows as of then.
 
 ## Later
 
