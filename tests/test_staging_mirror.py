@@ -47,8 +47,9 @@ def dbs():
     stg = M.connect(_db("racinglines_mirror_staging"))
     u = urlparse(prod_url)
     old = M.PUBLISHER
-    M.PUBLISHER = f"host={u.hostname} port={u.port or 5432} dbname={u.path.lstrip('/')}"
-    yield prod, stg
+    # the subscription's worker runs inside the server (a Docker container on the Mac and the VM): the server's own port
+    M.PUBLISHER = f"host=127.0.0.1 port={M.one(prod, 'SHOW port')} dbname={u.path.lstrip('/')}"
+    yield prod, stg, prod_url
     M.turn_off(prod, stg)
     M.PUBLISHER = old
     prod.close()
@@ -70,7 +71,7 @@ def until(check, seconds=30):
 
 
 def test_mirror_follows_production_and_keeps_staging_rows(dbs):
-    prod, stg = dbs
+    prod, stg, prod_url = dbs
     seed = ("INSERT INTO sports (code, name) VALUES ('f1', 'Formula 1')",
             "INSERT INTO leagues (code, name) VALUES ('fia', 'FIA')",
             "INSERT INTO competitions (code, name, league_id, sport_id) VALUES ('f1_wdc', 'F1', 1, 1)",
@@ -81,7 +82,7 @@ def test_mirror_follows_production_and_keeps_staging_rows(dbs):
     sql(stg, "INSERT INTO model_runs (competition_id, model, kind) VALUES (1, 'c8', 'backtest')",   # collides on id 6
         "INSERT INTO users (username, role, password_hash) VALUES ('alpha1', 'user', 'x')")
 
-    M.turn_on(M.connect(prod.info.dsn), stg, "data")
+    M.turn_on(M.connect(prod_url), stg, "data")
     assert until(lambda: M.one(stg, "SELECT count(*) FROM model_runs") == 8)
     assert M.one(stg, "SELECT count(*) FROM users WHERE username = 'alpha1'") == 1   # data scope: accounts stay
     assert M.status(prod, stg)
@@ -111,7 +112,7 @@ def test_mirror_follows_production_and_keeps_staging_rows(dbs):
 
     # widening the scope adds accounts; staging's own account ids stay clear of production's
     sql(prod, "INSERT INTO users (username, role, password_hash) VALUES ('prod_user', 'user', 'x')")
-    M.turn_on(M.connect(prod.info.dsn), stg, "accounts")
+    M.turn_on(M.connect(prod_url), stg, "accounts")
     assert until(lambda: M.one(stg, "SELECT count(*) FROM users WHERE username = 'prod_user'") == 1)
     assert M.one(stg, "INSERT INTO users (username, role, password_hash) VALUES ('stg_test', 'user', 'x') "
                       "RETURNING id") >= M.OFFSET
