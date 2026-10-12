@@ -98,9 +98,13 @@ def test_a_pro_account_starts_empty_then_picks_and_tunes(app_db):
     assert "data-roll-any" in page and "data-roll " in page              # the dice (they roll in the browser)
     client.post("/strategy/pick", data={"csrf_token": csrf, "code": "T3", "T3:min_volume_24h": "400", "rolled": "1"})
     assert _profile("ada")["rolled"] is True and _profile("ada")["settings"]["min_volume_24h"] == 400
-    assert "C · maker" not in page                                       # Alpha: no makers (profiles.MAKERS_OPEN)
     r = client.post("/strategy/pick", data={"csrf_token": csrf, "code": "C"}, follow_redirects=False)
-    assert "Error" in r.headers["location"] and _profile("ada")["base"] == "T3"
+    if PF.MAKERS_OPEN:                                                   # makers offered (owner 2026-10-12)
+        assert "C · maker" in page and _profile("ada")["base"] == "C"
+        client.post("/strategy/pick", data={"csrf_token": csrf, "code": "T3"})
+    else:                                                                # closed: not listed, a save is refused
+        assert "C · maker" not in page
+        assert "Error" in r.headers["location"] and _profile("ada")["base"] == "T3"
     client.post("/strategy/pick", data={"csrf_token": csrf, "code": "TB"})
     assert _profile("ada")["members"]                                    # a blend runs as tuned
     client.post("/strategy/pick", data={"csrf_token": csrf, "code": "none"})

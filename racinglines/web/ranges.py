@@ -23,7 +23,7 @@ UI_RANGES = {
     # markets
     "min_volume_24h": (0, 400),
     # maker (hidden while profiles.MAKERS_OPEN is off)
-    "half_spread": (0.005, 0.10), "size": (10, 200), "max_pos": (50, 1000), "skew": (0, 3), "max_disagree": (0.05, 0.20),
+    "half_spread": (0.005, 0.10), "size": (10, 100), "max_pos": (50, 1000), "skew": (0, 3), "max_disagree": (0.05, 0.15),
     "maker_min_volume_24h": (0, 1000), "info_skew": (0, 5), "widen": (1, 3),
     # event diagnostic replay sliders (diag.html) besides the above
     "max_capital": (100, 5000), "pull_min": (0, 120),
