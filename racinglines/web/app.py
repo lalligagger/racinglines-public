@@ -249,6 +249,8 @@ def needs_email(user):
 
 templates.env.globals["needs_email"] = needs_email
 templates.env.globals["ui_range"] = _ranges.ui_range                             # capped numeric inputs (web/ranges.py)
+from racinglines.fantasy import ledger as _FL  # noqa: E402
+templates.env.globals["fantasy_on"] = _FL.on                                    # /fantasy and /leaderboard (staging only)
 templates.env.globals["makers_on"] = lambda: _PF.MAKERS_OPEN                   # on from 2026-10-12 (profiles.MAKERS_OPEN)
 # the stylesheet's and scripts' URLs carry the newest static file's mtime, so a change is a new URL: no stale copy from the browser or
 # Cloudflare's edge cache (read at render time)
@@ -701,6 +703,7 @@ from racinglines.web import diag_routes  # noqa: E402,F401  (single-event diagno
 from racinglines.web import mybets  # noqa: E402,F401  (/mybets, the owner's bets calendar from the data folder)
 from racinglines.web import term_routes  # noqa: E402,F401  (/docs/quickstart/term, recorded CLI runs)
 from racinglines.web import strategy_pick  # noqa: E402,F401  (/strategy/pick, the account's own strategy)
+from racinglines.web import fantasy_routes  # noqa: E402,F401  (/fantasy, manual F$ trading, /leaderboard; staging only)
 from racinglines.web.book_routes import bet_markets, polymarket_calls  # noqa: E402,F401  (used by views.py)
 
 
