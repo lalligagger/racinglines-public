@@ -23,7 +23,7 @@ startup.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | `admin` / random | Required on every page. Browsers get a sign-in page (`/login`, 12-hour session cookie); scripts can use HTTP Basic (`curl -u admin:PASSWORD`). |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | `admin` / random | Required on every page. Browsers get a sign-in page (`/signin`, posting to `/login`; 12-hour session cookie); scripts can use HTTP Basic (`curl -u admin:PASSWORD`). |
 | `APP_SECRET` | random per start | Signs the session cookie and the anti-forgery token on every form. Set it to keep sessions across restarts. |
 | `WEB_HOST` / `WEB_PORT` | `127.0.0.1` / `8000` | Listen address. Keep it on localhost or a private network. |
 | `DATABASE_URL` | docker-compose DB | See [Database](database.md). |
@@ -110,9 +110,11 @@ prices off user pages).
 
 **Landing page** (`/login`, where every signed-out visit lands; owner, 2026-10-08). A compact, centered page with no
 same-page navigation: what the pricing does for sportsbooks that set their own lines, books on a platform provider's
-feed, and the providers themselves; the business infographic; a contact line (hello@racinglines.bet); and the
-fantasy-trading beta with sign-up, the two demo buttons (no bigger than the sign-up link) and the sign-in form
-(`/login#account`). The infographic has no "How it works" heading. The page names no sportsbook, operator or provider.
+feed, and the providers themselves; the business infographic; a **News** list under it (fantasy sign-ups for alpha
+testers, the PyPI release, X and Substack; owner, 2026-10-12); a contact line (hello@racinglines.bet); and the
+fantasy-trading beta with sign-up and the two demo buttons, no bigger than the sign-up link (`/login#account`). The
+sign-in form has its own page, `/signin`, linked top right and under the demo buttons (owner, 2026-10-12); its form
+still posts to `/login`, and an old `/login?error=` link is sent there. The infographic has no "How it works" heading. The page names no sportsbook, operator or provider.
 The landing page has no popup, and the maintenance popup is off (`MAINTENANCE_NOTICE = ""`). The demo accounts (maker, taker) still get the sign-up popup, once per browser session, and a **Sign up** link in the top bar, while sign-up is on (owner, 2026-10-11). Registered accounts get neither. A registered account with no email (made before email was required at sign-up) gets an add-email popup instead, once per browser session, on every app page but Settings, until it saves one; the save (`POST /settings/email`) runs the sign-up checks (a valid address, on no other account).
 
 **Quickstart replay** (`/term`, public like `/pitch`; owner, 2026-10-11). A terminal-styled replay of the
@@ -206,7 +208,7 @@ not additional positions; private-book chart totals and ledger totals can still 
 | Page | What it shows |
 |---|---|
 | **Racinglines 101** (`/racinglines101`, public: no sign-in) | A plain-language intro to makers, takers and the paper-trading demo. Linked from the sign-in page as **I'm already confused.** |
-| **Sign in** (`/login`, `/logout`) | Two one-click demo buttons (**Try as pro**, **Try as basic**; the `maker` / `taker` accounts, which keep their usernames, password `password`) above the standard username/password form, which the admin uses. |
+| **Sign in** (`/signin`, `/logout`) | The standard username/password form, which the admin uses; it posts to `/login`. The two one-click demo buttons (**Try as pro**, **Try as basic**; the `maker` / `taker` accounts, which keep their usernames, password `password`) are on the landing page (`/login#account`). |
 | **Pitch** (`/pitch`) | Serves `pitch.html`. Public: no sign-in, like the login and sign-up pages. |
 | **Docs** (`/docs/`) | Serves these docs as built in `site/` (the pre-push hook builds them; or `python -m mkdocs build -d site`), behind the same login. |
 
@@ -373,7 +375,7 @@ none is set. Other users are created on `/admin/users`.
 - **Accounts:** users come from the `users` table. The session cookie carries the
   user id, and the user and role are re-read on every request, so a deactivation
   or role change takes effect immediately.
-- **Browsers:** sent to `/login`. A correct username and password set an HttpOnly,
+- **Browsers:** sent to `/signin`. A correct username and password set an HttpOnly,
   SameSite=Lax cookie signed with `APP_SECRET` that lasts 12 hours. It's marked
   `Secure` when the request came over HTTPS (e.g. through the tunnel).
 - **Scripts:** HTTP Basic (`curl -u admin:PASSWORD …`) is accepted on every route.
@@ -588,7 +590,7 @@ Using FastAPI's test client against the Docker database:
   - auto-settle waits for the Final;
   - manual settlement.
 - **Sign-in:**
-  - a browser without a session is redirected to `/login`;
+  - a browser without a session is redirected to `/signin`;
   - wrong password → error;
   - right password → cookie → 200;
   - Basic auth → 200;

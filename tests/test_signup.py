@@ -58,7 +58,7 @@ def test_closed_until_setup_has_run(monkeypatch):
     assert client.post("/signup", data=GOOD).status_code == 503
     page = client.get("/login").text                      # the landing page links to sign-up once; no popup (2026-10-08)
     assert 'id="site-notice"' not in page and page.count('href="/signup"') == 1
-    assert 'href="/forgot"' in page
+    assert 'href="/forgot"' in client.get("/signin").text           # the sign-in form has its own page (2026-10-12)
     forgot = client.get("/forgot").text                    # no email on file: a reset request to us, prefilled
     assert "mailto:hello@racinglines.bet?subject=Password%20reset%20request" in forgot and "Username:" in forgot
 
@@ -173,7 +173,7 @@ def test_admin_reset_shows_a_one_time_password_and_remove(app_db):
     assert temp not in client.get("/admin/users").text                    # shown once
     fresh = TestClient(app_db.app)
     assert fresh.post("/login", data=dict(username="taker", password="password"),
-                      follow_redirects=False).headers["location"].startswith("/login")   # old one is gone
+                      follow_redirects=False).headers["location"].startswith("/signin")   # old one is gone
     assert fresh.post("/login", data=dict(username="taker", password=temp),
                       follow_redirects=False).headers["location"] == "/markets"
     assert "can&#39;t be removed" in client.post(f"/admin/users/{uid}/delete", data=dict(csrf_token=csrf)).text  # demo login

@@ -2,10 +2,12 @@
 {% block title %}racinglines · motorsport pricing for sportsbooks{% endblock %}
 {% block main_class %}landing{% endblock %}
 {% block content %}
-{# The signed-out landing page (owner, 2026-10-08): the business case first, then the fantasy-trading beta (sign up,
-   try the demo, sign in). No sportsbook, operator or provider is named here. #}
+{# The signed-out landing page (owner, 2026-10-08): the business case first, then news, then the fantasy-trading beta
+   (sign up, try the demo). Signing in has its own page, /signin (owner, 2026-10-12). No sportsbook, operator or
+   provider is named here. #}
 <header class="lp-top">
   <a class="lp-brand" href="/login"><img src="/static/brand/logo.svg" alt="" width="32" height="32"><span>racing<b>lines</b></span></a>
+  <a class="lp-signin-link" href="/signin{{ '?next=' ~ next|urlencode if next and next != '/' }}">Sign in</a>
 </header>
 
 <section class="lp-hero">
@@ -62,6 +64,16 @@
     use cases. <a href="mailto:{{ support }}?subject=racinglines%20use%20case">Tell us what you need.</a></p>
 </section>
 
+<section id="news" class="lp-section lp-news">
+  <h2 class="lp-h">News</h2>
+  <ul>
+    <li><b>Fantasy sign-ups are live for alpha testers.</b>{% if signup_on() %} <a href="#account">Join the alpha.</a>{% endif %}</li>
+    <li><b>We're releasing racinglines as an open-source PyPI package this week.</b> Stay tuned.</li>
+    <li><a href="https://x.com/racinglines_bet" rel="noopener" target="_blank">Follow us on X (@racinglines_bet)</a>
+      and on <a href="https://racinglinesdotbet.substack.com" rel="noopener" target="_blank">Substack (racinglinesdotbet.substack.com)</a>.</li>
+  </ul>
+</section>
+
 <section id="contact" class="lp-section lp-contact">
   <h2 class="lp-h">Talk to us</h2>
   <p>Write to <a href="mailto:{{ support }}">{{ support }}</a> with the sports and markets you care about, and how you
@@ -81,14 +93,6 @@
     <a href="/racinglines101">I'm already confused.</a></div>
   <p class="hint">Pro is the maker tools (quotes, book, Lab); basic is a taker strategy's picks.</p>
 
-  {% if error == "throttled" %}<p class="bad" role="alert">Too many failed sign-ins. Wait 15 minutes and try again.</p>{% elif error %}<p class="bad" role="alert">Wrong username or password.</p>{% endif %}
-  <form method="post" action="/login" class="card lp-signin">
-    <input type="hidden" name="next" value="{{ next }}">
-    <h3>Sign in</h3>
-    <label><span>Username</span><input name="username" autocomplete="username" required></label>
-    <label><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
-    <button class="primary mt">Sign in</button>
-    {% if signup_on() %}<p class="hint"><a href="/forgot">Forgot your password?</a></p>{% endif %}
-  </form>
+  <p class="hint">Already have an account? <a href="/signin{{ '?next=' ~ next|urlencode if next and next != '/' }}">Sign in</a></p>
 </section>
 {% endblock %}

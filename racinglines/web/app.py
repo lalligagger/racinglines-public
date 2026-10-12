@@ -58,7 +58,7 @@ CSRF_TOKEN = hmac.new(_SECRET.encode(), b"csrf", hashlib.sha256).hexdigest()
 security = HTTPBasic(realm="racinglines", auto_error=False)
 SESSION_COOKIE = "rl_session"
 SESSION_HOURS = 12
-PUBLIC_PATHS = ("/login", "/static", "/racinglines101", "/signup", "/forgot", "/pitch", "/mybets", "/term")
+PUBLIC_PATHS = ("/login", "/signin", "/static", "/racinglines101", "/signup", "/forgot", "/pitch", "/mybets", "/term")
 
 # failed-login throttle: per client IP, MAX_FAILURES within FAILURE_WINDOW seconds -> 429
 MAX_FAILURES = 8
@@ -137,7 +137,7 @@ def authenticate(request: Request, creds: HTTPBasicCredentials | None = Depends(
         _record_failure(ip)
         U.log(get_engine(), None, "login_failed", request, username=creds.username, via="basic")
     if request.method == "GET" and "text/html" in request.headers.get("accept", ""):
-        raise HTTPException(status.HTTP_303_SEE_OTHER, headers={"Location": "/login?next=" + quote(
+        raise HTTPException(status.HTTP_303_SEE_OTHER, headers={"Location": "/signin?next=" + quote(
                                 request.url.path + (f"?{request.url.query}" if request.url.query else ""), safe="/")})
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated",
                         headers={"WWW-Authenticate": 'Basic realm="racinglines"'})
@@ -331,7 +331,7 @@ def _error_page(request, code):
 @app.exception_handler(StarletteHTTPException)
 async def _http_error(request: Request, exc: StarletteHTTPException):
     if exc.status_code == 429 and request.method == "POST" and request.url.path == "/login" and _wants_html(request):
-        return RedirectResponse("/login?error=throttled", status_code=303)
+        return RedirectResponse("/signin?error=throttled", status_code=303)
     if exc.status_code in ERROR_TEXT and _wants_html(request):
         resp = _error_page(request, exc.status_code)
         if resp is not None:
@@ -376,7 +376,16 @@ SITE = ROOT / "site"     # the built docs (mkdocs build -d site; the pre-push ho
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request, next: str = "/", error: str = ""):
-    return templates.TemplateResponse(request, "login.html", dict(next=next, error=error, support=SUPPORT_EMAIL))
+    """The signed-out landing page. Signing in is /signin; an old sign-in link with an error goes there."""
+    if error:
+        return RedirectResponse(f"/signin?next={quote(_safe_next(next), safe='/')}&error={quote(error)}", status_code=303)
+    return templates.TemplateResponse(request, "login.html", dict(next=next, support=SUPPORT_EMAIL))
+
+
+@app.get("/signin", response_class=HTMLResponse)
+def signin_page(request: Request, next: str = "/", error: str = ""):
+    """Sign in (owner, 2026-10-12: off the landing, on its own page). The form posts to /login."""
+    return templates.TemplateResponse(request, "signin.html", dict(next=next, error=error, support=SUPPORT_EMAIL))
 
 
 def _safe_next(nxt):
@@ -398,7 +407,7 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
     if user is None:
         _record_failure(ip)
         U.log(get_engine(), None, "login_failed", request, username=username)
-        return RedirectResponse(f"/login?next={quote(_safe_next(next), safe='/')}&error=1#account", status_code=303)
+        return RedirectResponse(f"/signin?next={quote(_safe_next(next), safe='/')}&error=1", status_code=303)
     target = _safe_next(next) if next != "/" else "/markets"
     return _start_session(request, user, target)
 
