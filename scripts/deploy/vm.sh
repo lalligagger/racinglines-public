@@ -57,6 +57,13 @@ remote() { gcloud compute ssh "$VM" --project "$PROJECT" --zone "$ZONE" --tunnel
 as_app() { remote "cd $APP && sudo -u racinglines -H env RACINGLINES_GCS_BUCKET=$BUCKET $1"; }
 SERVICES="racinglines-web racinglines-recorder"
 PAUSED=/var/lib/racinglines/deploy-paused    # timers a deploy paused and hasn't resumed yet (deploy resumes them)
+# production and staging each need their own venv (docs/vm-deploy.md#separate-venvs): checked before a deploy changes anything
+venv_check() {
+  remote 'p=/opt/racinglines/.venv; s=/opt/racinglines-staging/.venv
+    for v in $p $s; do if [ -L $v ]; then echo "refusing: $v is a symlink (to $(readlink -f $v))"; exit 1; fi; done
+    if [ -e $p ] && [ -e $s ] && [ "$(readlink -f $p)" = "$(readlink -f $s)" ]; then echo "refusing: $p and $s are the same venv"; exit 1; fi' ||
+    { echo "production and staging must not share a venv (docs/vm-deploy.md#separate-venvs): nothing paused, nothing deployed"; exit 1; }
+}
 
 case "${1:-}" in
   setup)
@@ -140,6 +147,7 @@ case "${1:-}" in
     # tail: a fresh CI runner's first ssh prints its key generation on stdout ahead of the command's own output
     origin=$(as_app "git remote get-url origin" | tail -n 1) || { echo "couldn't reach the VM: nothing paused, nothing deployed"; exit 1; }
     [ "$origin" = "$REPO_URL" ] || { echo "the VM checkout fetches from $origin, not $REPO_URL: run bash scripts/deploy/vm.sh repoint first. Nothing paused, nothing deployed."; exit 1; }
+    venv_check
     # Pause, don't refuse. The timers (racinglines-live-f1@<event>.timer, racinglines-signals.timer) start oneshot
     # steps every 5 minutes; stop them and wait for a step already running ("activating"), so no step runs while
     # update.sh rewrites the checkout. Each step is idempotent and catches up: an F1 live step does every update
@@ -295,6 +303,7 @@ case "${1:-}" in
         ref="${3:-staging}"
         origin=$(as_stg "git remote get-url origin" | tail -n 1) || { echo "couldn't reach the VM or $STG is missing: run bash scripts/deploy/vm.sh staging setup first"; exit 1; }
         [ "$origin" = "$REPO_URL" ] || { echo "$STG fetches from $origin, not $REPO_URL: nothing deployed"; exit 1; }
+        venv_check
         # Check for concurrent staging workflow runs and warn (but don't block)
         if command -v gh >/dev/null 2>&1; then
           if gh run list --workflow staging.yml --status in_progress --limit 1 2>/dev/null | grep -q .; then

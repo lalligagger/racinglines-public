@@ -17,6 +17,17 @@
 #   $STG/data/runs/live                 with a new database copy, production's live run folders, copied
 # Production's checkout, database, /etc/racinglines.env, units and timers are not read for writing and not restarted.
 set -euo pipefail
+# Production and staging must not share a venv: one's `pip install -e .` re-points the other's imports (2026-10-12:
+# /opt/racinglines-staging/.venv was a symlink to production's, so prod jobs ran staging code). Refuse before any change.
+venv_guard() {
+  local p=${1:-/opt/racinglines/.venv} s=${2:-/opt/racinglines-staging/.venv} v
+  for v in "$p" "$s"; do
+    if [ -L "$v" ]; then echo "refusing: $v is a symlink (to $(readlink -f "$v")); give it its own venv (docs/vm-deploy.md#separate-venvs)"; exit 1; fi
+  done
+  if [ -e "$p" ] && [ -e "$s" ] && [ "$(readlink -f "$p")" = "$(readlink -f "$s")" ]; then
+    echo "refusing: $p and $s are the same venv (docs/vm-deploy.md#separate-venvs)"; exit 1
+  fi
+}
 # all in a function: this script arrives on ssh's stdin (vm.sh pipes it), so bash must read it whole before running
 # anything; otherwise `docker compose exec -T` reads the rest of the script as its own stdin and setup stops silently
 main() {
@@ -43,10 +54,13 @@ as bash -c "cd $STG && git fetch --quiet --prune origin && \
   git log -1 --format='staging checkout at %h %s'"
 
 log "venv (the same Python as production)"
+venv_guard
 if [ ! -x "$STG/.venv/bin/python" ]; then
   as sh -c "cd $STG && UV_PYTHON_INSTALL_DIR=\$HOME/.uv-python /opt/uv/bin/uv venv --quiet --seed --python 3.14 .venv"
 fi
 as sh -c "cd $STG && .venv/bin/pip install --quiet -r requirements.txt -e ."
+f=$(as sh -c "cd / && $STG/.venv/bin/python -I -c 'import racinglines; print(racinglines.__file__)'")
+case "$f" in "$STG"/*) ;; *) echo "refusing: $STG/.venv imports racinglines from $f"; exit 1 ;; esac
 as mkdir -p "$STG/data/runs/logs" "$STG/data/backups/db"
 
 log "database $DB (in production's Postgres container)"
