@@ -132,6 +132,12 @@ def test_unknown_override(st):
         R.load_settings(dict(nope=1))
 
 
+@pytest.mark.parametrize("over", [dict(bank=0), dict(bank=-500), dict(kelly=0), dict(kelly=-0.5)])
+def test_bank_and_kelly_must_be_positive(over):
+    with pytest.raises(R.RenderError, match="must be > 0"):
+        R.load_settings(over)
+
+
 def test_ticks_and_min_odds(rows, st):
     r = _by(rows[1])
     assert R.ticks(r["win-ann"], st) == [("kalshi", pytest.approx(0.38))]          # Polymarket's 15-point spread: no tick
@@ -202,6 +208,24 @@ def test_parse_text_decimal():
         ("Head to Head", "Cid Cee", 1.57), ("Head to Head", "Dee Delta", 2.25)]
     assert lines[3]["parsed"] == "h2h: Dee Delta over Cid Cee"
     assert [(n, why.split(" (")[0]) for n, _, why in bad] == [(6, "no pattern matched"), (7, "odds are not valid decimal odds")]
+
+
+def test_parse_text_refuses_two_prices_on_one_name():
+    lines, bad = R.parse_text("Verstappen 1.57 2.25\nAnn Alpha 4.35\n", "decimal")
+    assert [ln["selection"] for ln in lines] == ["Ann Alpha"]
+    assert [(n, why.split(":")[0]) for n, _, why in bad] == [(1, "a name ends in a price")]
+
+
+@pytest.mark.parametrize("line", ["Norris vs Piastri 1.57", "Norris v. Piastri 1.57", "Norris over Piastri 1.57 2.25",
+                                  "Norris vs Piastri 1.57 2.25 3.1"])
+def test_parse_text_refuses_one_price_h2h_and_extra_prices(line):
+    lines, bad = R.parse_text(line + "\n", "decimal")
+    assert lines == [] and len(bad) == 1
+
+
+def test_parse_text_keeps_multi_word_names():
+    lines, bad = R.parse_text("Norris beats Piastri Oscar 1.57\nCarlos Sainz Jr 9.5\n", "decimal")
+    assert not bad and [(ln["selection"], ln["odds"]) for ln in lines] == [("Norris", 1.57), ("Carlos Sainz Jr", 9.5)]
 
 
 def test_parse_text_american_and_book_file(tmp_path):

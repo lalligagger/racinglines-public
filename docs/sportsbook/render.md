@@ -45,7 +45,7 @@ racinglines book new --from-text board.txt --venue book_a --event 2026-17 --odds
 | `--chrome PATH` | The Chromium to use. Without it: `$RACINGLINES_CHROME`, then `chromium`, `chromium-browser`, `google-chrome`, `google-chrome-stable` or `chrome` on `PATH`, then `/opt/pw-browsers/chromium-*/chrome-linux/chrome` (Playwright) and the macOS app folders. If none is found, the command stops with an error that lists where it looked |
 | `--json-in PRICED.json` | A saved `book price --json` result. Given together with a book file, the file supplies `box` and `image` (for JSON saved before those fields existed) |
 | `--run ID`, `--db URL` | As for `book price` |
-| `--bank --kelly --cap --min-ev --scale --drop-under` | Override `markets/books.toml [stake]` for this call. The owner's nominal sizing is `--scale 0.1 --drop-under 0.50` |
+| `--bank --kelly --cap --min-ev --scale --drop-under` | Override `markets/books.toml [stake]` for this call. `bank` and `kelly` must be above 0. The owner's nominal sizing is `--scale 0.1 --drop-under 0.50` |
 
 ## HUD placement: `box`
 
@@ -138,7 +138,8 @@ Odds are read in `--odds` (`decimal`, `american` such as `+150` and `-118`, `fra
 `prob`) and checked like a book file's. Titles and selections are kept as written. Every market is left `"unmapped"`,
 and its note records what the line was read as. Write each market table, then run `book map`. Lines that match no
 pattern, or whose odds are not valid in the format, are listed at the top of the file and on the terminal. They are
-not guessed. The command refuses to overwrite an existing file.
+not guessed. That includes a name that ends in a price (`Cid Cee 1.57 2.25`, `A vs B 1.57 2.25 3.1`) and a single
+price on a matchup (`Ann Alpha vs Bea Beta 1.57`): write both prices with `vs`, or one side with `over`. The command refuses to overwrite an existing file.
 
 ## Decision log
 

@@ -65,6 +65,9 @@ def load_settings(overrides=None, path=SETTINGS):
             if k not in st["stake"]:
                 raise RenderError(f"unknown stake setting {k!r}: {', '.join(st['stake'])}")
             st["stake"][k] = v
+    for k in ("bank", "kelly"):
+        if not st["stake"][k] > 0:
+            raise RenderError(f"stake setting {k} must be > 0, got {st['stake'][k]!r}")
     return st
 
 
@@ -548,6 +551,8 @@ def to_png(html_path, png_path, chrome=None, dpr=1):
 _ODD = {"decimal": r"\d+(?:\.\d+)?", "american": r"[+-]\d{3,}", "fractional": r"\d+/\d+"}
 _ODD["prob"] = _ODD["dollars"] = r"0?\.\d+"
 _ODD["cents"] = r"\d{1,2}"
+_EG = {"decimal": "1.57", "american": "+150", "fractional": "4/7", "prob": ".64", "dollars": ".64", "cents": "64"}
+_H2H_WORD = re.compile(r"\s(?:vs\.?|v\.?|over|beats|ahead of)\s", re.I)
 
 
 def _odds(tok, fmt):
@@ -563,10 +568,11 @@ def parse_text(text, odds="decimal"):
         Race Winner:             a line ending in a colon sets the title of the lines after it
     Titles and selections stay as written; each line's market is left "unmapped" for `book map` and review, with the
     shape it was read as in `parsed`. A line that matches none of these (or whose odds aren't odds in `odds`) is
-    returned in `unparsed` with the reason, never guessed."""
+    returned in `unparsed` with the reason, never guessed: so is a name that ends in a price ("A 1.57 2.25") and a
+    single price on a head to head ("A vs B 1.57")."""
     if odds not in _ODD:
         raise RenderError(f"--odds {odds!r} not in {tuple(_ODD)}")
-    o = _ODD[odds]
+    o, o_eg = _ODD[odds], _EG[odds]
     pats = (("vs", re.compile(rf"^(?P<a>.+?)\s+(?:vs\.?|v\.?)\s+(?P<b>.+?)\s+(?P<oa>{o})\s+(?P<ob>{o})$", re.I)),
             ("over", re.compile(rf"^(?P<a>.+?)\s+(?:over|beats|ahead of)\s+(?P<b>.+?)\s+(?P<oa>{o})$", re.I)),
             ("single", re.compile(rf"^(?P<a>.*?[^\d\s+/.-].*?)\s+(?P<oa>{o})$")))
@@ -592,6 +598,13 @@ def parse_text(text, odds="decimal"):
             bad.append((n, s, f"odds are not valid {odds} odds"))
             continue
         a, b = g["a"].strip(), (g.get("b") or "").strip()
+        if any(x and re.fullmatch(o, x.split()[-1]) for x in (a, b)):
+            bad.append((n, s, f"a name ends in a price: too many prices for a {shape} line (one name \"A {o_eg}\", "
+                              f"one side \"A over B {o_eg}\", both sides \"A vs B {o_eg} {o_eg}\")"))
+            continue
+        if shape == "single" and _H2H_WORD.search(f" {a} "):
+            bad.append((n, s, "a head to head needs a price per side (\"A vs B p1 p2\") or \"A over B p\""))
+            continue
         if shape == "single":
             lines.append(dict(title=title or "Winner", selection=a, odds=vals[0], parsed=f"winner: {a}", src=n))
             continue
