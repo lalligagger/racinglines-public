@@ -97,10 +97,19 @@ units (`racinglines-staging-live-*`). `scripts/vm/demo_setup.sh` takes the same 
 script: `sudo systemd-run --unit=rl-overnight-staging --uid=racinglines --setenv=TARGET=staging --setenv=MODE=replay
 /opt/racinglines-staging/scripts/vm/overnight.sh`. `TARGET=prod`, the default, is unchanged.
 
+**Queue.** `QUEUE` names the search queue `f1` mode runs (default `sweeps/overnight-vm.toml`). The script reads the
+queue's `[search] name` (it stops if there is none) and writes the run to `data/runs/search/<name>/`, with the promoted
+queue copied there as `queue-promoted.toml`; the checkout's queue file is then restored, so the next `vm.sh deploy`
+finds a clean tree. `sweeps/defaults-2026-10.toml` is the queue for the default-strategies refresh of the F1
+Polymarket taker library (owner's go, 2026-10-11): its header has the phases, the job count and the promotion rule,
+and the command, run as a transient unit: `TARGET=staging MODE=f1 QUEUE=sweeps/defaults-2026-10.toml
+scripts/vm/overnight.sh`.
+
 | Mode | Writes | What |
 |---|---|---|
 | `dry` | nothing | cores, memory, disk; table counts; each sport's tape probe and last-race replay; **the F1 golden check** (profile A on 2026 at 4k, not saved) |
-| `f1` | sweep runs, walk-forward | backup; the broad sweep (`sweeps/overnight-vm.toml`); `search-report`; `scripts/vm/promote_16k.py` appends the top 10 plus profile A and the default settings at 16k; the 16k confirmations; `search-report` again; with `F1_EXTRAS=1` only, the F1 walk-forward and the default F1 sweeps saved (as the backfill's `full` did; off by default since the 2-vCPU resize) |
+| `f1` | sweep runs, walk-forward | backup; the broad sweep (`QUEUE`, default `sweeps/overnight-vm.toml`; output in `data/runs/search/<its [search] name>/`); `search-report`; `scripts/vm/promote_16k.py` appends the top 10 plus profile A and the default settings at 16k; the 16k confirmations; `search-report` again; with `F1_EXTRAS=1` only, the F1 walk-forward and the default F1 sweeps saved (as the backfill's `full` did; off by default since the 2-vCPU resize) |
+| `search` | sweep runs | backup; the F1 search `QUEUE` exactly as written (no promotion, no extras); `search-report`; a `data_changes` entry naming the backup. For a small confirmation queue, such as the defaults-2026-10 seed check (`sweeps/seedcheck-2026-10.toml`) |
 | `replay` | links, tape, replay runs | backup; for each of `SPORTS` (default NASCAR and MotoGP together): **if the preflight finds 0 events or 0 Kalshi links with a race, it first fetches and ingests the sport's results 2016-2026, re-syncs Kalshi and (NASCAR) runs `nascar link --apply`**; Kalshi and Polymarket link syncs for 2025 and 2026 (closed included); tape pull and replay (a sport with no tradeable Kalshi market is skipped with a STOP line, the rest go on); the spike check; the replay saves; a read-only settings grid and its top 3 at 16k; then OG.com's read-only buy-all for F1 and NASCAR (PR #88) |
 | `story` | 16 sweep runs, the taker's demo backfill | backup; evidence sweeps; a gate that stops on a different pick; the taker's backfill rebuilt ([below](#demo-taker-walk-forward-story)) |
 | `sports` | replay and story | `replay`, then `story`: the resume after the 2026-09-30 failure (F1 already done) |
@@ -240,13 +249,13 @@ shows the taker's decisions with their evidence). It must be merged and deployed
 `story` mode runs after the NASCAR part, in this order, and leaves an `overnight-story.done` or `.failed` marker:
 
 1. **Backup:** `data/backups/db/racinglines-before-demo-taker-story-<UTC>.sql.gz`, trailer checked.
-2. **Evidence sweeps:** `racinglines f1 search sweeps/demo-taker-story.toml` (2025, the 16 settings of the story's
+2. **Evidence sweeps:** `racinglines strategy search f1 sweeps/demo-taker-story.toml` (2025, the 16 settings of the story's
    pool, 2 at a time, about 20 to 40 minutes), logged to `data/runs/search/demo-taker-story.log`. It must end with
    `search: finished (16 done)`. They are saved runs (model_runs), so no bucket stage runs at the same time.
 3. **Gate, an explicit stop:** `scripts/vm/story_gate.py` runs `story.decisions(conn, taker=True)` and must see the
    defaults before round 1, then `update · gridq+pretrain+reset · min_edge=0.1` after 2025 round 8, kept twice, with
    32 candidates at the last decision. Anything else, or 0 candidates, stops the mode with nothing reset.
-4. **Rebuild:** `racinglines f1 demo-history --reset --user taker`. **Always with `--user taker`.** Never a bare
+4. **Rebuild:** `racinglines strategy demo-history f1 --reset --user taker`. **Always with `--user taker`.** Never a bare
    `--reset`, and never `f1 demo-history --venue polymarket --reset` without it: that would also delete the demo
    maker's Polymarket record, which may not rebuild on the VM.
 5. **Log:** a `data_changes` row naming the backup; the thread adds the `docs/data-changes.md` line in the morning.
@@ -299,8 +308,8 @@ shows the taker's decisions with their evidence). It must be merged and deployed
 7. **After the run's marker is in: the NASCAR champion forecast** (PR #93, already on the VM, no redeploy). Read-only:
    `nascar fetch` only downloads the points feed to `data/raw/nascar/`, and `nascar season` writes nothing to the
    database, so no backup. It fills the NASCAR × OG.com cell at the priced level:
-   `racinglines nascar fetch --years 2026 --feeds points-feed`, then
-   `RACINGLINES_NASCAR_SEASON=1 racinglines nascar season --quotes --csv data/runs/nascar-season-2026.csv`.
+   `racinglines data fetch nascar --years 2026 --feeds points-feed`, then
+   `RACINGLINES_NASCAR_SEASON=1 racinglines model season nascar --quotes --csv data/runs/nascar-season-2026.csv`.
 8. **Later, each with its own go:** M3 (OG.com venue switch), M4 if MotoGP didn't join tonight (`MODE=replay SPORTS=motogp`), N1 to N5, and bucket stages 3 onward.
 
 ### Expected time (estimates from the cloud sweep's rate, not measured on the VM)
@@ -328,7 +337,7 @@ for a later `MODE=replay SPORTS=motogp`). The 16k top 10 stays: it feeds the Pro
 ## Rollback
 
 - **Demo taker story:** restore `racinglines-before-demo-taker-story-…` (the step 1 dump).
-- **Replay saves:** `racinglines nascar replay --undo BATCH`, with the batch ids from the log (`grep "batch replay-"`).
+- **Replay saves:** `racinglines strategy replay nascar --undo BATCH`, with the batch ids from the log (`grep "batch replay-"`).
 - **Sweep and walk-forward runs:** ordinary saved runs; they can stay.
 - **Links and tape:** additive upserts of exchange data, the kind the recorder writes; harmless to keep.
 - **Last resort:** restore `racinglines-before-overnight-f1-…` or `…-replay-…`. A restore also drops anything written

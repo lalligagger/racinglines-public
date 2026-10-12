@@ -50,7 +50,7 @@ def _grid(sport):
                 at=pd.Timestamp(md.stat().st_mtime, unit="s", tz="UTC") if md.is_file() else None)
 
 
-def status(conn):
+def status(conn, hide=frozenset()):
     """One dict per sport (schema display order): name, competition, modeled, and a cell per column, each
     dict(state=ok|partial|none|na, text=..., sub=...)."""
     races = data.q(conn, """
@@ -103,6 +103,8 @@ def status(conn):
     out = []
     for schema in sorted(map(SP.load, SP.SPORT_CODES), key=lambda s: s["sport"]["display_order"]):
         comp, sport = schema["competition"]["code"], schema["sport"]["code"]
+        if comp in hide:                                 # a sport this user doesn't see (web/audience.py)
+            continue
         family = schema["sport"].get("model_family", "none")
         modeled = family != "none"
         row = dict(sport=sport, competition=comp, modeled=modeled, family=family,

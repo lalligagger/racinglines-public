@@ -14,6 +14,14 @@ and Plackett-Luce) is now the yardstick those two models are missing, not only a
 matrix below is updated for MotoGP's results ingest. Status per sport and venue: [Sports and exchanges](coverage.md). The task-by-task implementation plan (twelve
 tasks, roles, files, tests, backups) is the owner's "Engine Implementation Plan" page; the phases here are its skeleton.
 
+**Update 2026-10-11 (staging; decision log in the [F1 roadmap](f1-roadmap.md), "One engine", provisional).** Every
+modelled sport's `[sport] pricing_model` is now `racinglines.models.model_global:GlobalModel`, and `sports/<code>.toml`
+`[model] inputs` picks one of three cores (`racinglines/models/inputs/__init__.py`): results (NASCAR, MotoGP), laps
+(F1) and run_times (downhill). The cores keep the algorithms of `position_sim`, `timed_runs` and the results model, so
+prices are unchanged (`tests/test_one_engine.py`); `PositionSim`, `TimedRuns`, `NascarCupRace` and
+`MotoGPRaceChallenger` stay as `[sport] challengers`. The tables below are as of 2026-09-29 and still name the old
+models. Details: [One engine](backtest-core.md#one-engine-schema-declared-inputs).
+
 **The goal.** A model is developed once, joins "the engine", and runs on any sport and any exchange that
 has the data it needs. For that we need three things:
 
@@ -42,13 +50,13 @@ the one piece between those two ends that is still missing: **combining models**
 
 | # | Gap | Evidence | Blocks |
 |---|---|---|---|
-| G1 | **No standard input schema.** Each model's `load()` reads its own frames: F1 builds `Measurements` (sector deficits, practice, profiles), downhill a tidy runs frame | `position_sim/pricing.py:56`, `race_model.py` `TimedRuns.load` | Moving a model to another sport; algorithms that need only results (Plackett-Luce) |
+| G1 | **No standard input schema.** Each model's `load()` reads its own frames: F1 builds `Measurements` (sector deficits, practice, profiles), downhill a tidy runs frame | `models/inputs/laps_pricing.py:56`, `race_model.py` `TimedRuns.load` | Moving a model to another sport; algorithms that need only results (Plackett-Luce) |
 | G2 | **The leak guard is F1-only.** `Measurements.view(cutoff)`, `assert_no_leak` and `LeakageError` know F1 session names. Downhill and any new model rely on convention | `pricing.py:46–100` | Trusting a new model's backtest |
 | G3 | **Market prices can't be a model input.** Venues exist only on the trading side | `venue_replay.view` is used by the sweep, not by `price` | Model × market combination and market-implied strengths (algorithms A and B in the [models research](#related)) |
 | G4 | **Two F1 pricing paths.** `PositionSim` (walk-forward) prices only before the race. Stage pricing (the sweep, signals, forecast) goes through `price_race` directly. The contract has one cutoff per event, not events × stages | `race_model.py:127`, `weekend_sweep.py`, `signals.py` | Scoring any F1 challenger at every stage through the engine |
 | G5 | **No composition, one model per sport.** `pricing_model` names one class. Variants are module-level globals toggled by a context manager, so two variants can't coexist in one process | `sports/f1.toml:10`, `variants.py:53` | Ensembles, challengers side by side, a combiner that reads two models' outputs |
 | G6 | **Outputs are wide and split.** `race_predictions` has fixed columns (win, podium, top 10, make_final) plus `extra` JSON. Kinds are defined twice (`markets/kinds.py`, `db/reads.py` `PREDICTION_KINDS`), and `reads.py` branches per kind. `OutcomeSims` isn't kept, so a new kind can't be priced on an old run | `db/models.py:234`, `reads.py:170–262` | Adding a kind or a sport without touching reads; re-pricing history |
-| G7 | **Evaluation and reports are per sport.** `f1 backtest`, `compare`, `matrix` and `scorecard` are F1-only. `mtb_dh backtest` is the legacy path. There's no generic report builder (an open question in `CLAUDE.md`) | `position_sim/evaluate.py`, `pipelines/scorecard.py` | One comparison, one scorecard and one report format for every model |
+| G7 | **Evaluation and reports are per sport.** `f1 backtest`, `compare`, `matrix` and `scorecard` are F1-only. `mtb_dh backtest` is the legacy path. There's no generic report builder (an open question in `CLAUDE.md`) | `models/evaluate.py`, `pipelines/scorecard.py` | One comparison, one scorecard and one report format for every model |
 | G8 | **Consumers hard-code sports.** `SPORT_OF` in the MCP server, competition tuples in the web views, one job type per sport | `mcp/tools.py:19`, `web/views.py:350,704`, `web/jobs.py:123` | A new sport appearing in the app without code |
 | G9 | **Exchange ingest isn't uniform.** Polymarket and Kalshi have their own packages and F1-title regex classifiers. OG.com uses the schema driver with rules in its TOML | `polymarket/sync.py:73`, `kalshi/sync.py:100`, `exchange_driver.py` | Linking a new sport's markets to kinds on every venue |
 | G10 | **Sport-shaped tables.** `laps` has F1 columns (three sectors, four speed traps, tyres), and `track_profiles` is computed from F1 timing only | `db/models.py:386,412` | Lap-level models for NASCAR / MotoGP |

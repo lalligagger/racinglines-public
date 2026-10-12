@@ -11,6 +11,7 @@ Run form writes: a `jobs` row; the job's subprocess saves a model run (forecasts
 import json
 import os
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 from sqlalchemy import text
@@ -56,6 +57,24 @@ def _engine():
     return get_engine(_URL)
 
 
+def accounts_url():
+    """RACINGLINES_MCP_ACCOUNTS_URL: the database the accounts, tokens and sign-ins are read from, when it isn't the
+    served one (a second server over a shared research store, e.g. a demo store with no account rows of its own).
+    None: the served database holds the accounts too (the default)."""
+    return os.environ.get("RACINGLINES_MCP_ACCOUNTS_URL") or None
+
+
+def _accounts_engine():
+    from racinglines.db.config import get_engine
+    return get_engine(accounts_url()) if accounts_url() else _engine()
+
+
+def _owner():
+    """Who a job is filed under and whose jobs a caller sees: the caller, except on a shared store (accounts elsewhere:
+    no account rows here, so jobs are filed without an owner and every signed-in caller sees them)."""
+    return (None, None) if accounts_url() else (caller_id(), caller())
+
+
 def _sql_engine():
     """The sql tool's connection: RACINGLINES_MCP_SQL_URL when set (a login that can SELECT only the allowed tables,
     made by scripts/vm/mcp_sql_role.sh), else the app's own. Only the role keeps users and orders out of reach; the
@@ -72,13 +91,24 @@ def _json(obj):
     return json.dumps(obj, default=str)
 
 
+@contextmanager
+def _sports_shown():
+    """The tool call's hidden sports (tools.HIDDEN): the ones sports.is_public turns away from a non-admin caller, none for an
+    admin or over stdio. Every tool reads them, so a hidden sport is missing from lists and 'not available' by name."""
+    token = T.HIDDEN.set(T.hidden_sports(caller()))
+    try:
+        yield
+    finally:
+        T.HIDDEN.reset(token)
+
+
 def _read(fn, engine=None, **kw):
     """Call a tools.py function inside a READ ONLY transaction; anticipated errors become tool errors the client sees."""
     from mcp.server.mcpserver.exceptions import ToolError
     if fn in (T.sql, T.describe_schema, T.data_changes):
         _require_admin()
     try:
-        with (engine or _engine()).begin() as c:
+        with _sports_shown(), (engine or _engine()).begin() as c:
             c.execute(text("SET TRANSACTION READ ONLY"))
             return _json(fn(c, **kw))
     except (ValueError, KeyError, TypeError) as ex:
@@ -90,7 +120,8 @@ def _read(fn, engine=None, **kw):
 def _plain(fn, **kw):
     from mcp.server.mcpserver.exceptions import ToolError
     try:
-        return _json(fn(**kw))
+        with _sports_shown():
+            return _json(fn(**kw))
     except (ValueError, KeyError, TypeError) as ex:
         raise ToolError(str(ex)) from ex
 
@@ -99,7 +130,8 @@ def _write(fn, **kw):
     """The job tools: they write a jobs row (what the Lab's Run form does), nothing else."""
     from mcp.server.mcpserver.exceptions import ToolError
     try:
-        return _json(fn(_engine(), **kw))
+        with _sports_shown():
+            return _json(fn(_engine(), **kw))
     except (ValueError, KeyError, TypeError) as ex:
         raise ToolError(str(ex)) from ex
 
@@ -111,6 +143,22 @@ def caller():
     if t is None or not t.subject:
         return None
     return dict(id=int(t.subject), username=(t.claims or {}).get("username"), role=(t.claims or {}).get("role"))
+
+
+NO_ACCOUNT = -1                                  # matches no users.id (serial ids start at 1)
+
+
+def _viewer():
+    """The viewer the account-scoped reads use: the caller, except a non-admin caller on a shared store (accounts
+    elsewhere): its id belongs to the accounts database, not this one, where the same number can be another account's
+    rows (the demo store's maker or taker). There it reads as an account with no rows here, so overview, track_record,
+    list_positions, list_signals and the maker quotes in list_markets show none of the store's account data."""
+    c = caller()
+    if c and accounts_url():
+        from racinglines.web import roles as R
+        if R.canonical(c.get("role")) != "admin":
+            return dict(c, id=NO_ACCOUNT)
+    return c
 
 
 def caller_id():
@@ -138,7 +186,7 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
     kw = {}
     if oauth:
         from racinglines.mcp import oauth as O
-        kw = dict(auth_server_provider=O.provider(_engine), auth=O.auth_settings())
+        kw = dict(auth_server_provider=O.provider(_accounts_engine), auth=O.auth_settings())
     srv = MCPServer(NAME, instructions=INSTRUCTIONS, log_level="WARNING", **kw)
 
     # --- orientation --------------------------------------------------------------------------------
@@ -146,7 +194,7 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
     def overview() -> str:
         """What the database holds: sports, seasons, the live forecast per competition, model runs by kind, market
         links per exchange, venues, users and the next races. Call this first."""
-        return _read(T.overview, viewer=caller())
+        return _read(T.overview, viewer=_viewer())
 
     @srv.tool()
     def describe_schema(table: str | None = None) -> str:
@@ -166,7 +214,7 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
     def get_event(event_id: int | None = None, source_key: str | None = None, include: str = "results") -> str:
         """One event by id or source_key ('2026-15', '20260821_mtb'): its races and, per `include` (comma-separated:
         results, predictions, markets), the final classification, every stored prediction, the venues matrix."""
-        return _read(T.get_event, event_id=event_id, source_key=source_key, include=include, viewer=caller())
+        return _read(T.get_event, event_id=event_id, source_key=source_key, include=include, viewer=_viewer())
 
     @srv.tool()
     def search_athletes(q: str | None = None, limit: int = 50) -> str:
@@ -189,7 +237,7 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         no linked market on a live exchange or its newest sync is older than RACINGLINES_STALE_HOURS (default 3):
         quote those prices as possibly out of date."""
         return _read(T.list_markets, race_id=race_id, event_id=event_id, competition=competition, sport=sport, kinds=kinds,
-                     limit=limit, offset=offset, viewer=caller())
+                     limit=limit, offset=offset, viewer=_viewer())
 
     @srv.tool()
     def get_market_history(tokens: str | None = None, race_id: int | None = None, kind: str | None = None,
@@ -276,14 +324,14 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         marked), backtest replay or live. venue: polymarket, kalshi (the maker's replay on Kalshi's tape), private, or all
         (one row per weekend and venue, with a venue column and totals per venue). sport: f1, nascar, motogp, ... (omit
         for all; NASCAR and MotoGP paper rows show where RACINGLINES_SPORT_PAPER is on). Users: see overview()."""
-        return _read(T.track_record, user=user, venue=venue, sport=sport, viewer=caller())
+        return _read(T.track_record, user=user, venue=venue, sport=sport, viewer=_viewer())
 
     @srv.tool()
     def list_positions(user: str, venue: str | None = None, event_key: str | None = None, open_only: bool = False,
                        limit: int = 50, offset: int = 0) -> str:
         """A user's paper positions (YES/NO shares, cash, mark, outcome, P&L) with totals per venue."""
         return _read(T.list_positions, user=user, venue=venue, event_key=event_key, open_only=open_only, limit=limit,
-                     offset=offset, viewer=caller())
+                     offset=offset, viewer=_viewer())
 
     @srv.tool()
     def list_signals(user: str | None = None, event_key: str | None = None, status: str | None = None,
@@ -291,7 +339,7 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         """Paper signals (what a strategy profile would do: buy/sell recommendations, quote/pull, paper fills), newest first.
         status: new, alerted, expired, filled_paper; action: buy, sell, quote, pull, fill."""
         return _read(T.list_signals, user=user, event_key=event_key, status=status, action=action, limit=limit,
-                     offset=offset, viewer=caller())
+                     offset=offset, viewer=_viewer())
 
     @srv.tool()
     def list_live_events(limit: int = 50, offset: int = 0) -> str:
@@ -358,22 +406,22 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         Verstappen"}], several combos as {name: [legs]}, optional cutoff, variant; get_model_run(result_run_id) has
         metrics.combos and metrics.checks), dh_scenario, dh_backtest. params: the job type's knobs (list_job_types). Returns the
         job id; get_job follows it and names the model run it saved (result_run_id)."""
-        return _write(T.run_job, job_type=job_type, params=params, user_id=caller_id())
+        return _write(T.run_job, job_type=job_type, params=params, user_id=_owner()[0])
 
     @srv.tool()
     def get_job(job_id: int, log_lines: int = 20) -> str:
         """A job's status (queued, running, done, failed), progress, the last log lines and result_run_id."""
-        return _read(T.get_job, job_id=job_id, log_lines=log_lines, viewer=caller())
+        return _read(T.get_job, job_id=job_id, log_lines=log_lines, viewer=_owner()[1])
 
     @srv.tool()
     def list_jobs(status: str | None = None, limit: int = 50, offset: int = 0) -> str:
         """Jobs, newest first (the Lab's and this server's)."""
-        return _read(T.list_jobs, status=status, limit=limit, offset=offset, viewer=caller())
+        return _read(T.list_jobs, status=status, limit=limit, offset=offset, viewer=_owner()[1])
 
     @srv.tool()
     def cancel_job(job_id: int) -> str:
         """Cancel a job that has not started yet."""
-        return _write(T.cancel_job, job_id=job_id, viewer=caller())
+        return _write(T.cancel_job, job_id=job_id, viewer=_owner()[1])
 
     # --- resources: the docs and the sport schemas ---------------------------------------------------
     @srv.resource("racinglines://docs", name="docs-index", description="The documentation pages available as racinglines://docs/<page>")
@@ -395,6 +443,8 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         p = SPORTS / f"{code}.toml"
         if "/" in code or not p.exists():
             raise ResourceError(f"no sport {code!r}")
+        if code in T.hidden_sports(caller()):
+            raise ResourceError(f"{code} is not available")
         return p.read_text()
 
     if jobs_worker:
@@ -430,7 +480,7 @@ def serve(http=False, host="127.0.0.1", port=DEFAULT_PORT, jobs_worker=True):
         srv.run("stdio")
         return
     oauth.warn_if_disabled()
-    who = auth.holders(_engine())
+    who = auth.holders(_accounts_engine())
     print("accounts with an rl_ token: " + (", ".join(f"{u} ({r})" for u, r, _ in who) or "none") +
           f"; OAuth sign-in for roles {', '.join(auth.ROLES)} via {oauth.WEB_URL}", file=sys.stderr)
     if host not in ("127.0.0.1", "localhost"):

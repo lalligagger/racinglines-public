@@ -7,7 +7,7 @@
 # MODE:
 #   dry     read-only: counts, cores, memory and disk, each sport's tape probe and last-race replay, and the F1
 #           golden check (profile A on 2026, not saved). Writes nothing.
-#   f1      backup, then the F1 broad sweep (sweeps/overnight-vm.toml), search-report, promote the top 10 to 16k,
+#   f1      backup, then the F1 broad sweep (QUEUE, default sweeps/overnight-vm.toml; output data/runs/search/<its [search] name>/), search-report, promote the top 10 to 16k,
 #           the 16k confirmations, search-report again; then the F1 walk-forward and the default F1 sweeps saved.
 #   replay  backup, then for each of SPORTS (default "nascar motogp"): re-sync links on Kalshi and Polymarket, pull the tape
 #           and replay it (Kalshi must be tradeable), the price-spike check, the replay saves, then a read-only
@@ -15,6 +15,8 @@
 #   story   the demo taker's walk-forward story (needs PR #87 deployed): backup; the evidence sweeps
 #           (sweeps/demo-taker-story.toml); gate: scripts/vm/story_gate.py must print GATE OK, else stop with nothing
 #           reset; then `f1 demo-history --reset --user taker`. Always --user taker: never the maker's record.
+#   search  backup, then the F1 search QUEUE exactly as written (no promotion, no extras), search-report, and a
+#           data_changes entry: for a small confirmation queue such as sweeps/seedcheck-2026-10.toml.
 #   sports  replay, then story (skips F1).
 #   all     replay, then story, then f1, in one unit (the sports first: F1 has been backtested for days).
 #
@@ -112,7 +114,9 @@ trap 'kill "${HB:-0}" 2>/dev/null || true; rm -f "$PHASE_F" "$STEP_F" "$FAILS_F"
 HB=$!
 R=.venv/bin/racinglines
 PY=.venv/bin/python
-QUEUE=sweeps/overnight-vm.toml
+QUEUE=${QUEUE:-sweeps/overnight-vm.toml}       # MODE=f1's search queue; its [search] name is the output folder
+QNAME=$(awk -F'"' '/^name *=/{print $2; exit}' "$QUEUE")
+[ -n "$QNAME" ] || { echo "no [search] name in $QUEUE"; exit 2; }
 A_ARGS=(--taker-stages "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali" --min-edge 0.1 --min-edge-h2h 0.05)
 Q() { DC exec -T db psql -U racinglines "$DB" -c "$1"; }
 code_of() { case "$1" in nascar) echo nascar_cup ;; motogp) echo motogp_wc ;; *) echo "$1" ;; esac; }
@@ -132,21 +136,21 @@ prep() {             # load a sport's results and identify its Kalshi links (wri
   say "$S: results and link identity (the database had none)"
   step "$S results fetch 2016-2026"
   if [ "$S" = nascar ]; then
-    nice $R nascar fetch --years 2016-2026 --feeds race_list_basic,points-feed,weekend-feed || true
+    nice $R data fetch nascar --years 2016-2026 --feeds race_list_basic,points-feed,weekend-feed || true
     step "$S results ingest 2016-2026"
-    nice $R nascar ingest --years 2016-2026 --no-laps
+    nice $R data ingest nascar --years 2016-2026 --no-laps
   else
-    nice $R motogp fetch --years 2016-2026 || true
+    nice $R data fetch motogp --years 2016-2026 || true
     step "$S results ingest 2025-2026 (the seasons with Kalshi markets), then 2016-2024"
     # Newest first: ingest commits per event and stops at the first error, and the older seasons' pages have not
     # been ingested anywhere yet (the 2026-09-30 sports run failed here). An older season's error is logged, not fatal.
-    nice $R motogp ingest --years 2025-2026
-    nice $R motogp ingest --years 2016-2024 || progress "motogp ingest 2016-2024 failed (see the log): going on with 2025-2026"
+    nice $R data ingest motogp --years 2025-2026
+    nice $R data ingest motogp --years 2016-2024 || progress "motogp ingest 2016-2024 failed (see the log): going on with 2025-2026"
   fi
   step "$S Kalshi link sync 2025, 2026"
   nice $R markets --exchange kalshi --sport "$S" sync --year 2025 --closed
   nice $R markets --exchange kalshi --sport "$S" sync --year 2026 --closed
-  if [ "$S" = nascar ]; then step "nascar link --apply"; nice $R nascar link --apply --backup "$B"; fi
+  if [ "$S" = nascar ]; then step "nascar link --apply"; nice $R data link nascar --apply --backup "$B"; fi
   $R db changes --add "Overnight run: $S results fetched and ingested 2016-2026, Kalshi links re-synced$([ "$S" = nascar ] && echo ' and identified (nascar link --apply)'); backup $B"
 }
 say() {             # a phase starts: close the one before, log the new one
@@ -194,19 +198,19 @@ backup() {
 }
 golden() {
   say "F1 golden check (profile A, 2026, not saved; passes if update P&L is +843 to +1,643)"
-  nice $R f1 --variant gridq+pretrain+reset sweep --year 2026 --no-fetch "${A_ARGS[@]}"
+  nice $R strategy sweep f1 --variant gridq+pretrain+reset --year 2026 --no-fetch "${A_ARGS[@]}"
 }
 f1() {
   backup f1
   START=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   say "F1 broad sweep (4k)"
-  nice $R f1 search "$QUEUE"
-  nice $R f1 search-report "$QUEUE"
+  nice $R strategy search f1 "$QUEUE"
+  nice $R strategy search-report f1 "$QUEUE"
   $PY scripts/vm/promote_16k.py "$QUEUE" --top "$TOP"
   say "F1 top $TOP at 16k"
-  nice $R f1 search "$QUEUE"
-  nice $R f1 search-report "$QUEUE"
-  cp "$QUEUE" data/runs/search/overnight-vm/queue-promoted.toml
+  nice $R strategy search f1 "$QUEUE"
+  nice $R strategy search-report f1 "$QUEUE"
+  cp "$QUEUE" "data/runs/search/$QNAME/queue-promoted.toml"
   git checkout -- "$QUEUE"                         # keep the checkout clean for the next vm.sh deploy
   EXTRAS="not run (F1_EXTRAS=0)"
   if [ "$F1_EXTRAS" = 1 ]; then
@@ -214,17 +218,26 @@ f1() {
     step "F1 walk-forward"
     nice $R backtest walk-forward f1 --save
     step "F1 sweep 2025 Polymarket"
-    nice $R f1 sweep --year 2025 --no-fetch --save --reliability
+    nice $R strategy sweep f1 --year 2025 --no-fetch --save --reliability
     step "F1 sweep 2026 Polymarket"
-    nice $R f1 sweep --year 2026 --no-fetch --save --reliability
+    nice $R strategy sweep f1 --year 2026 --no-fetch --save --reliability
     step "F1 sweep 2025 Kalshi"
-    nice $R f1 sweep --year 2025 --no-fetch --venue kalshi --save --reliability
+    nice $R strategy sweep f1 --year 2025 --no-fetch --venue kalshi --save --reliability
     step "F1 sweep 2026 Kalshi"
-    nice $R f1 sweep --year 2026 --no-fetch --venue kalshi --save --reliability
+    nice $R strategy sweep f1 --year 2026 --no-fetch --venue kalshi --save --reliability
     EXTRAS="saved"
   fi
   Q "SELECT model, kind, count(*) FROM model_runs WHERE created_at >= '$START' GROUP BY 1, 2 ORDER BY 1, 2"
-  $R db changes --add "Overnight F1 on the VM from $START: search overnight-vm (broad at 4k, top $TOP at 16k; data/runs/search/overnight-vm/), f1 walk-forward and default sweeps 2025-2026 on polymarket and kalshi $EXTRAS; backup $B"
+  $R db changes --add "Overnight F1 on the VM from $START: search $QNAME (broad at 4k, top $TOP at 16k; data/runs/search/$QNAME/), f1 walk-forward and default sweeps 2025-2026 on polymarket and kalshi $EXTRAS; backup $B"
+}
+search() {
+  backup search
+  START=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  say "F1 search $QNAME ($QUEUE, as written)"
+  nice $R strategy search f1 "$QUEUE"
+  nice $R strategy search-report f1 "$QUEUE"
+  Q "SELECT model, kind, count(*) FROM model_runs WHERE created_at >= '$START' GROUP BY 1, 2 ORDER BY 1, 2"
+  $R db changes --add "F1 search $QNAME on the VM ($TARGET) from $START: $QUEUE as written, no promotion (data/runs/search/$QNAME/); backup $B"
 }
 replay() {
   $PY -c "import sys; from racinglines.markets.kalshi.sync import history_rows as h; sys.exit(0 if not h('t', [dict(yes_bid=dict(close=0), yes_ask=dict(close=100), end_period_ts=0)]) else 1)" \
@@ -248,17 +261,17 @@ replay() {
     nice $R markets --sport "$S" sync --year 2025 --closed
     nice $R markets --sport "$S" sync --year 2026 --closed
     step "$S Kalshi tape pull and replay 2016-2026"
-    nice $R "$S" replay --years 2016-2026 --venue kalshi --tape pull --backup "$B" --require-tradeable \
+    nice $R strategy replay "$S" --years 2016-2026 --venue kalshi --tape pull --backup "$B" --require-tradeable \
       || { stop "$S: no tradeable Kalshi market (see the log's NO MARKETS / NO TAPE / NOT TRADED lines): skipped"; sport_done "$S" "$T_S" "$L_S" skipped; continue; }
     tally "$S Kalshi" "$L_S"
     step "$S Polymarket tape pull and replay 2016-2026"
-    nice $R "$S" replay --years 2016-2026 --venue polymarket --tape pull --backup "$B"
+    nice $R strategy replay "$S" --years 2016-2026 --venue polymarket --tape pull --backup "$B"
     tally "$S Polymarket" "$L_S"
     step "$S price-spike check"
     $PY scripts/vm/replay_grid.py spikes "$S" kalshi
     $PY scripts/vm/replay_grid.py spikes "$S" polymarket || true
     say "$S: replay saves"
-    RACINGLINES_PREDICTION_RECORDS=1 nice $R "$S" replay --years 2016-2026 --save --backup "$B"
+    RACINGLINES_PREDICTION_RECORDS=1 nice $R strategy replay "$S" --years 2016-2026 --save --backup "$B"
     tally "$S saves" "$L_S"
     say "$S: settings grid on Kalshi (read-only), stops starting runs after $GRID_HOURS h"
     G=data/runs/replay-grid/$S
@@ -266,7 +279,7 @@ replay() {
     T0=$(date +%s)
     for Y in 2026 2025; do for E in 0.05 0.08 0.10 0.15; do for V in 50 200; do
       if [ $(( $(date +%s) - T0 )) -gt $(( GRID_HOURS * 3600 )) ]; then echo "grid: time up, skipping $Y e$E v$V"; continue; fi
-      nice $R "$S" replay --years "$Y" --venue kalshi --min-edge "$E" --min-volume "$V" --out "$G/$Y-e$E-v$V" > "$G/$Y-e$E-v$V.log" 2>&1 \
+      nice $R strategy replay "$S" --years "$Y" --venue kalshi --min-edge "$E" --min-volume "$V" --out "$G/$Y-e$E-v$V" > "$G/$Y-e$E-v$V.log" 2>&1 \
         || { fail; progress "grid run failed: $S $Y edge $E floor $V (see $G/$Y-e$E-v$V.log)"; }
     done; done; done
     step "$S grid ranking"
@@ -274,7 +287,7 @@ replay() {
     progress "$S grid top 3 (edge, floor): $(grep '^TOP ' "$G/rank.txt" | cut -d' ' -f2- | paste -sd ';' - | sed 's/;/; /g' || true)"
     step "$S grid top 3 at 16k (6 runs)"
     { grep '^TOP ' "$G/rank.txt" || true; } | while read -r _ E V; do for Y in 2026 2025; do
-      nice $R "$S" replay --years "$Y" --venue kalshi --min-edge "$E" --min-volume "$V" --sims 16000 --out "$G/$Y-e$E-v$V-s16000" > "$G/$Y-e$E-v$V-s16000.log" 2>&1 \
+      nice $R strategy replay "$S" --years "$Y" --venue kalshi --min-edge "$E" --min-volume "$V" --sims 16000 --out "$G/$Y-e$E-v$V-s16000" > "$G/$Y-e$E-v$V-s16000.log" 2>&1 \
         || { fail; progress "grid 16k run failed: $S $Y edge $E floor $V"; }
     done; done
     $PY scripts/vm/replay_grid.py rank "$G" --top 3
@@ -305,14 +318,14 @@ story() {
   START=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   say "demo taker story: evidence sweeps"
   mkdir -p data/runs/search
-  nice $R f1 search sweeps/demo-taker-story.toml > data/runs/search/demo-taker-story.log 2>&1
+  nice $R strategy search f1 sweeps/demo-taker-story.toml > data/runs/search/demo-taker-story.log 2>&1
   tail -n 1 data/runs/search/demo-taker-story.log
   grep -Eq "search: finished \((1[6-9]|[2-9][0-9]) done\)" data/runs/search/demo-taker-story.log \
     || { stop "the evidence search didn't finish 16 sweeps (data/runs/search/demo-taker-story.log): nothing reset"; return 1; }
   say "demo taker story: gate"
   $PY scripts/vm/story_gate.py || { stop "the taker story's gate: the taker's backfill was not reset"; return 1; }
   say "demo taker story: rebuild the taker's backfill (taker only)"
-  nice $R f1 demo-history --reset --user taker
+  nice $R strategy demo-history f1 --reset --user taker
   $R db changes --add "Demo taker walk-forward story on the VM from $START: evidence sweeps (search demo-taker-story), gate passed, taker backfill rebuilt with f1 demo-history --reset --user taker (TW1 2025 r1-8, TW2 from r9); backup $B"
 }
 
@@ -326,17 +339,18 @@ case "$MODE" in
   dry)
     for S in $SPORTS; do
       $PY scripts/vm/replay_grid.py spikes "$S" kalshi || true
-      nice $R "$S" replay --years 2026 --events latest --tape probe
-      nice $R "$S" replay --years 2026 --events latest
+      nice $R strategy replay "$S" --years 2026 --events latest --tape probe
+      nice $R strategy replay "$S" --years 2026 --events latest
     done
     golden
     echo "dry run done: nothing written" ;;
   f1) f1 ;;
+  search) search ;;
   replay) replay ;;
   story) story ;;
   sports) replay; story ;;
   all) replay; story; f1 ;;
-  *) echo "MODE must be dry, f1, replay, story, sports or all"; exit 1 ;;
+  *) echo "MODE must be dry, f1, search, replay, story, sports or all"; exit 1 ;;
 esac
 echo "mode=$MODE sports=$SPORTS log=$LOG" > "$DONE"
 progress "done: $(phase_line); FINISHED, marker $DONE"

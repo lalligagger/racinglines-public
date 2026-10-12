@@ -1,5 +1,6 @@
 {% extends "base.html" %}{% from "_macros.html" import pnl_cls, csrf, table, flash, page_head %}
 {% block title %}Diagnostic · {{ d.event.venue }}{% endblock %}
+{% block head %}<script src="/static/replay.js?v={{ css_v() }}" defer></script>{% endblock %}
 {% block content %}
 <p class="crumbs"><a href="/lab">Lab</a> › Diagnostics</p>
 {% set head_title %}{{ d.event.venue }} · as of {{ d.params.cutoff }} UTC{% endset %}
@@ -58,6 +59,25 @@
 It skips markets priced outside {{ "%.0f"|format(rp.params.price_band[0] * 100) }}–{{ "%.0f"|format(rp.params.price_band[1] * 100) }}¢, with under {{ rp.params.min_volume_24h|money(false, false) }} traded in the last 24 h, {% if rp.params.max_disagree %}or where our fair is more than {{ "%.0f"|format(rp.params.max_disagree * 100) }} pts from the market{% else %}(disagreement filter off){% endif %}.
 Limits: {{ "%.0f"|format(rp.params.size) }} shares per quote, {{ "%.0f"|format(rp.params.max_pos) }} shares per market, {{ rp.params.max_capital|money(false, false) }} worst-case loss for the event.
 It only gets filled by <b>real taker trades that came after its quote</b> — takers see prices, not our fair value.{% if venue == 'kalshi' %} Kalshi charges makers a fee: ceil({{ rp.params.maker_fee }} × contracts × P × (1 − P)) cents per fill, taken from the P&amp;L.{% endif %}</p>
+<div class="card mt" data-wasm-replay="/lab/diagnostics/{{ d.run.id }}/tape.json{{ '?venue=kalshi' if venue == 'kalshi' else '' }}" data-wasm="/static/replay.wasm?v={{ css_v() }}">
+<h3>Live replay, run in your browser</h3>
+<p class="muted">Downloads this event's tape once (about 2 MB) and re-runs the whole replay on your computer as you move the knobs, with the same rules and data as the server replay below.</p>
+<p><button type="button" class="primary" data-start>Start the live replay</button> <span data-status class="muted"></span></p>
+<div data-controls hidden><div class="jobform">
+<label><span>Fill rule</span><select data-knob="fill"><option value="through" {{ 'selected' if fill == 'through' }}>through (conservative)</option><option value="touch" {{ 'selected' if fill == 'touch' }}>touch (optimistic)</option></select></label>
+<label><span>Half-spread <b data-show="half_spread"></b></span><input data-knob="half_spread" type="range" {% set r = ui_range("half_spread", rp.params.half_spread) %}min="{{ r[0] }}" max="{{ r[1] }}" step="0.005" value="{{ rp.params.half_spread }}"></label>
+<label><span>Shares per quote <b data-show="size"></b></span><input data-knob="size" type="range" {% set r = ui_range("size", rp.params.size) %}min="{{ r[0] }}" max="{{ r[1] }}" step="1" value="{{ rp.params.size }}"></label>
+<label><span>Max shares per market <b data-show="max_pos"></b></span><input data-knob="max_pos" type="range" {% set r = ui_range("max_pos", rp.params.max_pos) %}min="{{ r[0] }}" max="{{ r[1] }}" step="10" value="{{ rp.params.max_pos }}"></label>
+<label><span>Max worst-case loss $ <b data-show="max_capital"></b></span><input data-knob="max_capital" type="range" {% set r = ui_range("max_capital", rp.params.max_capital) %}min="{{ r[0] }}" max="{{ r[1] }}" step="10" value="{{ rp.params.max_capital }}"></label>
+<label><span>Inventory skew <b data-show="skew"></b></span><input data-knob="skew" type="range" {% set r = ui_range("skew", rp.params.skew) %}min="{{ r[0] }}" max="{{ r[1] }}" step="0.25" value="{{ rp.params.skew }}"></label>
+<label><span>Skip if |fair − market| &gt; <b data-show="max_disagree"></b></span><input data-knob="max_disagree" type="range" {% set r = ui_range("max_disagree", rp.params.max_disagree or 0) %}min="{{ r[0] }}" max="{{ r[1] }}" step="0.01" value="{{ rp.params.max_disagree or 0 }}"></label>
+<label><span>Min $ traded, last 24 h <b data-show="min_volume_24h"></b></span><input data-knob="min_volume_24h" type="range" {% set r = ui_range("min_volume_24h", rp.params.min_volume_24h or 0) %}min="{{ r[0] }}" max="{{ r[1] }}" step="50" value="{{ (rp.params.min_volume_24h or 0)|int }}"></label>
+<label><span>Pull before session (min) <b data-show="pull_min"></b></span><input data-knob="pull_min" type="range" {% set r = ui_range("pull_min", rp.params.pull_min) %}min="{{ r[0] }}" max="{{ r[1] }}" step="5" value="{{ rp.params.pull_min }}"></label>
+</div>
+<p class="legend">Ranges are the server form's, narrowed to what a slider can reach (the form below takes any value). Half-spread is in dollars per share (0.02 = 2¢); disagreement 0 turns the filter off.</p>
+<div data-out></div></div>
+</div>
+<h3 class="mt">Server replay</h3>
 <form method="get" class="jobform mt">
 {%- if kalshi %}<label><span>Exchange</span><select name="venue"><option value="">Polymarket</option><option value="kalshi" {{ 'selected' if venue == 'kalshi' }}>Kalshi</option></select></label>{% endif %}
 <label><span>Fill rule</span><select name="fill"><option value="through" {{ 'selected' if fill == 'through' }}>through (conservative)</option><option value="touch" {{ 'selected' if fill == 'touch' }}>touch (optimistic)</option></select></label>

@@ -4,8 +4,8 @@ racinglines mtb_dh <command>: UCI downhill.
     download   Download event result files from Chronorace (data/raw/mtb_dh/chronorace)
     parse      Parse downloaded / pasted result files into a tidy CSV
     ingest     Load downloaded event files into the database
-    forecast   Simulate the rest of the season and the championship (was: racinglines mtb_dh forecast)
-    backtest   Walk-forward backtest over past seasons (was: racinglines mtb_dh backtest)
+    forecast   Simulate the rest of the season and the championship (was: racinglines model forecast mtb_dh)
+    backtest   Walk-forward backtest over past seasons (was: racinglines model backtest mtb_dh)
     points     Championship points tables: import the official scales, show them, check against standings
 """
 
@@ -16,21 +16,21 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from racinglines.models.timed_runs import (
+from racinglines.models.inputs.run_times import (
     CATEGORY_WEIGHTS, HALF_LIFE_DAYS, RUN_WEIGHTS, _spearman, backtest_season, completed_events,
     forecast_season, select_target, walk_forward_season,
 )
-from racinglines.models.timed_runs.model import FINAL_POINTS, QUAL_POINTS, QUAL_POINTS_ROUND  # noqa: F401
+from racinglines.models.inputs.run_times.model import FINAL_POINTS, QUAL_POINTS, QUAL_POINTS_ROUND  # noqa: F401
 
 def load_splits(args):
-    """Tidy frame from the database (--db) or a tidy CSV from `racinglines mtb_dh parse` (--data)."""
+    """Tidy frame from the database (--db) or a tidy CSV from `racinglines data parse mtb_dh` (--data)."""
     if args.db is not None:
         from racinglines.db.config import get_engine
         from racinglines.db.queries import load_tidy
         raw = load_tidy(get_engine(args.db or None), competition=args.competition, with_splits=False)
         return raw[raw["round"].isin(RUN_WEIGHTS)]
     if not args.data:
-        raise SystemExit("Pass --db [URL] (database) or --data splits.csv (`racinglines mtb_dh parse` output).")
+        raise SystemExit("Pass --db [URL] (database) or --data splits.csv (`racinglines data parse mtb_dh` output).")
     raw = pd.read_csv(args.data)
     return raw[raw["discipline"].eq("DHI") & raw["round"].isin(RUN_WEIGHTS)] if "discipline" in raw else raw
 
@@ -38,7 +38,7 @@ def load_splits(args):
 def _model_switches(args):
     """--prior-n and --eps-df (docs/todo.md, Model): fit_kw for the first, the model's EPS_DF for the
     second. Unset = today's model."""
-    from racinglines.models.timed_runs import model as TM
+    from racinglines.models.inputs.run_times import model as TM
     if getattr(args, "eps_df", None) is not None:
         if args.eps_df <= 2:
             raise SystemExit("--eps-df must be above 2 (the t distribution's variance is finite above 2).")
@@ -56,7 +56,7 @@ def _points_scheme(args, season):
     if getattr(args, "points", "schema") == "schema":
         return None
     from racinglines.db.config import get_engine
-    from racinglines.models.timed_runs import points as P
+    from racinglines.models.inputs.run_times import points as P
     with get_engine(args.db or None).connect() as c:
         scheme = P.scheme_for(season, P.load(c, args.competition))
     args.points_official = scheme.official
@@ -69,7 +69,7 @@ def _save_run(args, raw, target, *, kind, fit_kw, metrics, race_predictions=None
     from racinglines.db.queries import save_model_run
 
     params = {k: v for k, v in fit_kw.items() if k != "category_weights"}
-    from racinglines.models.timed_runs import model as TM
+    from racinglines.models.inputs.run_times import model as TM
     if TM.EPS_DF is not None:
         params["eps_df"] = TM.EPS_DF
     params.update(junior_weight=args.junior_weight, sims=args.sims, seed=args.seed, final_points=TM.FINAL_POINTS,
@@ -103,7 +103,7 @@ def cmd_backtest(args):
           f"half-life {args.half_life_days:.0f} days, junior weight {args.junior_weight}\n")
 
     per_event, per_season, riders = [], [], []
-    from racinglines.models.timed_runs import points as P
+    from racinglines.models.inputs.run_times import points as P
     for season in seasons:
         with P.use(_points_scheme(args, int(season))):
             target = select_target(raw, season, args.category)
@@ -151,7 +151,7 @@ def cmd_backtest(args):
                    "brier_final", "brier_final_base", "top10_hits", "winner_pred_win_prob"]].mean()
     print("\nAll events: " + ", ".join(f"{k}={v:.4f}" for k, v in all_mean.items()))
     if args.reliability:
-        from racinglines.models.timed_runs.season import calibration
+        from racinglines.models.inputs.run_times.season import calibration
         rel = calibration(pd.concat(riders, ignore_index=True))
         rel.to_csv(out_dir / "backtest_reliability.csv", index=False)
         print("\n=== Reliability (every walk-forward round; z = (observed - predicted) / binomial SE) ===")
@@ -184,7 +184,7 @@ def cmd_season(args):
     if target.empty:
         raise SystemExit(f"No rows for season={args.season} category={args.category}.")
     season = target["event_date"].astype(str).str[:4].iloc[0]
-    from racinglines.models.timed_runs import points as P
+    from racinglines.models.inputs.run_times import points as P
     with P.use(_points_scheme(args, int(season))):
         return _season(args, raw, target, season)
 
@@ -295,7 +295,7 @@ def _season(args, raw, target, season):
 def _add_source_args(p):
     p.add_argument("--db", nargs="?", const="", default=None, metavar="URL",
                    help="Read from the database ($DATABASE_URL or the docker-compose default if no URL).")
-    p.add_argument("--data", help="Or read a tidy CSV from `racinglines mtb_dh parse` instead of the database.")
+    p.add_argument("--data", help="Or read a tidy CSV from `racinglines data parse mtb_dh` instead of the database.")
     p.add_argument("--competition", default="uci_dhi_wc", help="Competition code in the database.")
     p.add_argument("--save", action="store_true", help="Store the model run and predictions in the database.")
     p.add_argument("--points", choices=["schema", "db"], default="schema",
@@ -335,14 +335,14 @@ def main(argv=None):
     if argv and argv[0] in ("download", "parse"):          # standalone tools with their own options
         from racinglines.sources.chronorace import download, parse
         mod = download if argv[0] == "download" else parse
-        sys.argv = [f"racinglines mtb_dh {argv[0]}"] + argv[1:]
+        sys.argv = [f"racinglines data {argv[0]} mtb_dh"] + argv[1:]
         return mod.main()
     from racinglines import paths
-    ap = argparse.ArgumentParser(prog="racinglines mtb_dh", description=__doc__,
+    ap = argparse.ArgumentParser(prog="racinglines <group> <command> mtb_dh", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("download", help="Download Chronorace result files (see: racinglines mtb_dh download -h).")
-    sub.add_parser("parse", help="Parse result files into a tidy CSV (see: racinglines mtb_dh parse -h).")
+    sub.add_parser("download", help="Download Chronorace result files (see: racinglines data download mtb_dh -h).")
+    sub.add_parser("parse", help="Parse result files into a tidy CSV (see: racinglines data parse mtb_dh -h).")
 
     ing = sub.add_parser("ingest", help="Load downloaded event files into the database.")
     ing.add_argument("paths", nargs="*", help="Files or directories (default: data/raw/mtb_dh/chronorace).")
@@ -411,7 +411,7 @@ def main(argv=None):
     wf_p.add_argument("--seasons", nargs="+", type=int, help="Seasons (default: all with 3+ completed events).")
     wf_p.add_argument("--kinds", help="Market kinds, comma-separated (default: every per-rider kind the model "
                                       "prices; race_h2h adds head-to-heads).")
-    from racinglines.models.timed_runs.settings import DHSettings
+    from racinglines.models.inputs.run_times.settings import DHSettings
     from racinglines.pipelines import sweep_settings as SS
     SS.add_arguments(wf_p, DHSettings)
     wf_p.set_defaults(func=cmd_walk_forward)
@@ -446,12 +446,14 @@ def main(argv=None):
     live_p.add_argument("--once", action="store_true", help="One update, then exit")
     live_p.set_defaults(func=cmd_live)
 
+    from racinglines.cli.verbs import retitle
+    retitle(ap, "mtb_dh")
     args = ap.parse_args(argv)
     return args.func(args)
 
 
 def cmd_points(args):
-    from racinglines.models.timed_runs import points as P
+    from racinglines.models.inputs.run_times import points as P
     if args.action == "import":
         from racinglines.db.config import get_session
         rows = P.read_file(args.file)

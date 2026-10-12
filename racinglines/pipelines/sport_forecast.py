@@ -4,9 +4,9 @@ A live forecast for the result-only sports' next races (NASCAR Cup, MotoGP): the
 in the calendar, stored as a `forecast` model run so the board, the race pages and the exchange markets get a fair
 price, as F1 has from its own forecast.
 
-    racinglines nascar forecast                       # print the next races' favourites, write nothing
-    racinglines nascar forecast --save --backup FILE  # store one forecast run (model_runs + race_predictions)
-    racinglines nascar forecast --undo RUN_ID         # delete a stored run (its predictions go with it)
+    racinglines model forecast nascar                       # print the next races' favourites, write nothing
+    racinglines model forecast nascar --save --backup FILE  # store one forecast run (model_runs + race_predictions)
+    racinglines model forecast nascar --undo RUN_ID         # delete a stored run (its predictions go with it)
 
 The field for an upcoming race is its own entry list where one is stored (the entrants of a session of that race
 already ingested from the weekend feed, such as practice or qualifying, less any DNS), else the latest completed

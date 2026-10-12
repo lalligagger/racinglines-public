@@ -1,6 +1,6 @@
 # DRAFT (2026-10-06): the common market vocabulary across the venues seen so far. One canonical code per market type,
 # in the style of racinglines/markets/kinds.py (codes marked status = "exists" are that file's codes, unchanged;
-# "props" exist in models/position_sim/props.py but not in the registry; "proposed" are new names in the same style).
+# "props" exist in models/props.py but not in the registry; "proposed" are new names in the same style).
 # `venues` lists where the market has been seen and the venue's own wording; a venue absent from a row has not listed it
 # in the material at hand. Sources: sportsbook A Singapore board (63 markets, 2026-10-05 22:33 PDT), sportsbook C Singapore
 # screenshots (4 groups), sportsbook B Singapore winner board (1 group), the ledger's Malaysia rows (sportsbook A, 2026-10-03),

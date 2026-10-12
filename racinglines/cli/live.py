@@ -7,6 +7,7 @@ racinglines live: launch and run a live private-book event, for any sport (pipel
     racinglines live run live/f1/2026-16.toml              # step at the sport's cadence until the event is settled
     racinglines live run live/mtb_dh/20260925_mtb.toml     # downhill: the poll loop, locked (one loop per final)
     racinglines live run live/f1/2026-15.toml --simulate --no-fetch     # a rehearsal on a simulated clock
+    racinglines live run kart/demo-2026-09 --demo --simulate --no-fetch   # the kart demo pack's rehearsal (docs/quickstart.md)
     racinglines live agent live/f1/2026-16.toml --install  # a macOS LaunchAgent: one step every 5 minutes, locked
     racinglines live auto                                  # F1: step every event whose window is open (a 5-min timer)
     racinglines live status                                # every event: live / replay / settled, last update, lateness
@@ -113,6 +114,88 @@ def _echo(m):
     print(m, flush=True)
 
 
+KIND_ICON = {"open": "🚦", "stage": "🔄", "close": "🔒", "results": "🏁"}
+
+
+def _snap_panel(snap, top=8):
+    """One update of a live F1 book as a Rich panel: the win markets (our fair, its move, our quotes, the exchanges'
+    mids, the maker's inventory), the crowd and the maker's P&L. Printed once per update (static lines, so it reads the
+    same in a terminal, a log or a recording)."""
+    from rich import box
+    from rich.console import Group
+    from rich.panel import Panel
+    from rich.table import Table
+
+    from racinglines.cli import tty
+    u = snap["update"]
+    done = sum(1 for x in snap["updates"] if x["state"] == "done")
+    wins = sorted((m for m in snap["markets"] if m["kind"] == "race_win" and m.get("fair") is not None),
+                  key=lambda m: -m["fair"])[:top]
+    venues = []
+    for m in wins:
+        for x in m.get("exchange_prices") or []:
+            if x["name"] not in venues:
+                venues.append(x["name"])
+    t = Table(box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False)
+    for c, j in (("driver", "left"), ("fair", "right"), ("", "left"), ("move", "right"), ("bid", "right"),
+                 ("ask", "right"), *((v, "right") for v in venues), ("inventory", "right")):
+        t.add_column(c, justify=j)
+    for m in wins:
+        prev = m.get("prev_fair")
+        move = "" if prev is None else (f"[green]▲ {100 * (m['fair'] - prev):.1f}[/]" if m["fair"] > prev + 0.0005 else
+                                        f"[red]▼ {100 * (prev - m['fair']):.1f}[/]" if m["fair"] < prev - 0.0005 else "[dim]=[/]")
+        who = m["subject"] + (" ✅" if m.get("outcome") is True else " ❌" if m.get("outcome") is False else "")
+        ex = {x["name"]: x.get("mid") for x in m.get("exchange_prices") or []}
+        inv = m.get("inv")
+        t.add_row(f"[bold]{who}[/]" if m.get("outcome") else who, tty.pct(m["fair"]),
+                  f"[green]{tty.bar(m['fair'], 12)}[/]", move, tty.pct(m.get("bid")), tty.pct(m.get("ask")),
+                  *(f"[magenta]{tty.pct(ex.get(v))}[/]" for v in venues),
+                  "[dim]–[/]" if not inv else f"{inv:+,.0f}")
+    c, p = snap.get("crowd") or {}, snap.get("maker_pnl") or {}
+    lines = [t,
+             f"👥 crowd: [bold]{c.get('last_fills', 0)}[/] fills this update · {c.get('fills', 0):,} in all · "
+             f"${c.get('volume', 0):,.0f} traded · {c.get('active', 0)} of {c.get('takers', 0)} takers still betting",
+             f"💰 maker P&L {tty.signed(p.get('total'))}  [dim](crowd {p.get('crowd', 0):+,.2f}, "
+             f"picks {p.get('taker', 0):+,.2f})[/]"]
+    cls = (snap.get("classification") or {}).get("rows") or []
+    if cls:
+        rnd = (snap.get("classification") or {}).get("round") or ""
+        lines.append(f"🏁 {rnd}: " + " · ".join(f"[bold]P{r['pos']}[/] {r['driver']}" for r in cls[:3]))
+    for n in snap.get("note") or []:
+        lines.append(f"[yellow]{n}[/]")
+    if snap.get("next_label"):
+        lines.append(f"[dim]next: {snap['next_label']} at {str(snap['next_at'])[:16]} UTC[/]")
+    title = (f"{KIND_ICON.get(u['kind'], '•')} [bold]{snap.get('title') or snap['event_key']}[/] · {u['label']} "
+             f"[dim]({done} of {len(snap['updates'])} · {str(snap['ts'])[:16]} UTC)[/]")
+    style = "green" if snap.get("done") else ("yellow" if snap.get("closed") else "blue")
+    return Panel(Group(*lines), title=title, title_align="left", border_style=style, box=box.ROUNDED, expand=False)
+
+
+def _summary_panel(run):
+    """A settled run's record (pipelines/live.py summary, read-only) as a small Rich panel."""
+    from rich import box
+    from rich.panel import Panel
+    from rich.table import Table
+
+    from racinglines.cli import tty
+    from racinglines.pipelines import live as LV
+    s = LV.summary(run)
+    t = Table.grid(padding=(0, 2))
+    t.add_column(style="dim")
+    t.add_column()
+    t.add_row("opened", str(s["opened_at"])[:16] + " UTC")
+    t.add_row("settled", str(s["settled_at"])[:16] + " UTC" if s["settled_at"] else "[yellow]not yet[/]")
+    t.add_row("💰 maker P&L", tty.signed(s["maker_pnl"]))
+    t.add_row("   from the crowd", tty.signed(s["crowd_pnl"]))
+    t.add_row("   from the picks", tty.signed(s["taker_pnl"]))
+    t.add_row("👥 fills", f"{s['fills'] or 0:,}  [dim](${s['volume'] or 0:,.0f} traded)[/]")
+    cr = (s.get("detail") or {}).get("crowd_results") or {}
+    if cr:
+        t.add_row("   bettors", f"{cr.get('bettors', 0)}: [green]{cr.get('up', 0)} up[/], [red]{cr.get('down', 0)} down[/],"
+                                f" best {tty.signed(cr.get('best'))}, worst {tty.signed(cr.get('worst'))}")
+    return Panel.fit(t, title=f"🏁 [bold]{s['title']}[/]", title_align="left", border_style="green", box=box.ROUNDED)
+
+
 def _step(spec, args, now=None, cache=None):
     from racinglines.pipelines import live as LV
     ad = LV.adapter(spec["sport"])
@@ -195,18 +278,28 @@ def cmd_run(args):
     from racinglines.pipelines import live_f1 as F
     tick = pd.Timedelta(minutes=args.tick or spec["live"]["poll"].get("step_min", 5))
     cache = {}
+    from racinglines.cli import tty
+    con = tty.console()
     if args.simulate:
         ups, _ = F.plan(spec["event"])
         t = pd.Timestamp(args.start) if args.start else ups[0]["at"] - tick
         end = ups[-1]["at"] + pd.Timedelta(hours=6)
         n = 0
         while t <= end:
-            if _step(spec, args, now=t, cache=cache) is not None:
+            snap = _step(spec, args, now=t, cache=cache)
+            if snap is not None:
                 n += 1
+                if con is not None and isinstance(snap, dict) and snap.get("update"):
+                    con.print(_snap_panel(snap))
             if F.status(spec, t)["settled"]:
                 break
             t += tick
         _echo(f"simulated {spec['event']} to {t}: {n} updates")
+        if con is not None and F.status(spec, t)["settled"]:
+            if not n:
+                con.print(f"[yellow]{spec['run']} was already settled: nothing new to simulate[/] [dim](its run folder "
+                          f"{paths.rel(F.LV.folder(spec['run']))})[/]")
+            con.print(_summary_panel(spec["run"]))
         return 0
     t0 = time.time()
     while True:
@@ -405,7 +498,25 @@ def cmd_report(args):
     from racinglines.pipelines import live_report as R
     spec = _spec(args.spec)
     out = R.write(spec, pdf=args.pdf)
-    print(json.dumps({k: paths.rel(v) if hasattr(v, "parts") else v for k, v in out.items()}, indent=1))
+    files = {k: paths.rel(v) if hasattr(v, "parts") else v for k, v in out.items()}
+    from racinglines.cli import tty
+    con = tty.console()
+    if con is None:
+        print(json.dumps(files, indent=1))
+        return 0
+    from rich import box
+    from rich.table import Table
+    if spec["sport"] == "f1":
+        try:
+            con.print(_summary_panel(spec["run"]))
+        except (ValueError, OSError, KeyError) as ex:        # a run with no snapshot yet: the files are still listed
+            con.print(f"[yellow]no summary: {ex}[/]")
+    t = Table(box=box.SIMPLE_HEAD, header_style="bold", title="📄 [bold]report files[/]", title_justify="left")
+    t.add_column("what")
+    t.add_column("file", style="cyan")
+    for k, v in files.items():
+        t.add_row(k, str(v))
+    con.print(t)
     return 0
 
 
@@ -425,7 +536,7 @@ def cmd_reprice(args):
     spec = _spec(args.spec)
     ad = LV.adapter(spec["sport"])
     if not hasattr(ad, "reprice"):
-        print(f"{spec['sport']}: no raw feed to re-price (F1 re-prices stages with racinglines f1 diagnostic)")
+        print(f"{spec['sport']}: no raw feed to re-price (F1 re-prices stages with racinglines model diagnostic f1)")
         return 1
     f = spec["feed"]
     kw = dict(n_sims=args.sims) if args.sims else {}

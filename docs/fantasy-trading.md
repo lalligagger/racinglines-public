@@ -564,8 +564,8 @@ and under a minute (the 29 Sep hand dump was 14.5 MB), inside the unit's 15 min 
 `pre-settle-<season slug>-futures`.
 
 The tick prints one line: `closed=N book_settled=N mirrored_settled=N positions_settled=N ledger_entries=N queued=N`.
-The race classification reaches `results` through `signals.refresh_fastf1` (`racinglines f1 fetch` then
-`racinglines f1 ingest`), which the live-f1 unit's results update and the signals timer both run.
+The race classification reaches `results` through `signals.refresh_fastf1` (`racinglines data fetch f1` then
+`racinglines data ingest f1`), which the live-f1 unit's results update and the signals timer both run.
 
 ### Idempotency and the re-settle guard
 
@@ -908,7 +908,7 @@ BACKUPS: pre-change data/backups/db/racinglines-before-<task>-<UTC>.sql.gz (CLAU
       implement / Sonnet) adds the `ALLOWED_DATA` entry and merges in P0 as `work/exch-0`.
 - [x] **The tick under the off switch.** Decided: the tick ignores `RACINGLINES_FANTASY` and gates on season data
       (see [The unit](#the-unit-deployvmsystemd-new)); `test_tick_settles_with_the_fantasy_switch_off` covers it.
-- [ ] **Link rebuilds.** `racinglines f1 pm-links-import` deletes and re-inserts `market_links` rows
+- [ ] **Link rebuilds.** `racinglines data pm-links-import f1` deletes and re-inserts `market_links` rows
       (`markets/polymarket/links.py:103`). With `ON DELETE RESTRICT` from the fantasy tables it will refuse any token
       that has fantasy orders. That is intended on the VM (the import is for cloud sessions). ACC-1's reviewer
       confirms RESTRICT over SET NULL.

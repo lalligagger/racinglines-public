@@ -50,6 +50,8 @@ HERE = Path(__file__).resolve().parent
 from contextlib import asynccontextmanager  # noqa: E402
 
 from racinglines.web import users as U  # noqa: E402
+from racinglines.pipelines import profiles as _PF  # noqa: E402
+from racinglines.web import ranges as _ranges  # noqa: E402
 from racinglines.web import roles as R  # noqa: E402
 
 _SECRET = os.environ.get("APP_SECRET") or secrets.token_hex(32)
@@ -58,7 +60,8 @@ CSRF_TOKEN = hmac.new(_SECRET.encode(), b"csrf", hashlib.sha256).hexdigest()
 security = HTTPBasic(realm="racinglines", auto_error=False)
 SESSION_COOKIE = "rl_session"
 SESSION_HOURS = 12
-PUBLIC_PATHS = ("/login", "/static", "/racinglines101", "/signup", "/forgot", "/pitch", "/mybets")
+PUBLIC_PATHS = ("/login", "/signin", "/static", "/racinglines101", "/racinglines102", "/signup", "/forgot", "/pitch", "/mybets", "/term")
+PUBLIC_EXACT = {"/", "/docs/quickstart/term"}  # public by exact path only: the landing page; a prefix would open /docs/quickstart/term/../..
 
 # failed-login throttle: per client IP, MAX_FAILURES within FAILURE_WINDOW seconds -> 429
 MAX_FAILURES = 8
@@ -116,7 +119,7 @@ def authenticate(request: Request, creds: HTTPBasicCredentials | None = Depends(
     """Signed session cookie (from /login) or HTTP Basic credentials (scripts / curl).
     The user and role are re-read from the database on every request, so
     deactivating a user or changing a role takes effect immediately."""
-    if request.url.path.startswith(PUBLIC_PATHS):
+    if request.url.path in PUBLIC_EXACT or request.url.path.startswith(PUBLIC_PATHS):
         return None
     uid, sid = _session(request.cookies.get(SESSION_COOKIE))
     if uid is not None:
@@ -137,7 +140,7 @@ def authenticate(request: Request, creds: HTTPBasicCredentials | None = Depends(
         _record_failure(ip)
         U.log(get_engine(), None, "login_failed", request, username=creds.username, via="basic")
     if request.method == "GET" and "text/html" in request.headers.get("accept", ""):
-        raise HTTPException(status.HTTP_303_SEE_OTHER, headers={"Location": "/login?next=" + quote(
+        raise HTTPException(status.HTTP_303_SEE_OTHER, headers={"Location": "/signin?next=" + quote(
                                 request.url.path + (f"?{request.url.query}" if request.url.query else ""), safe="/")})
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated",
                         headers={"WWW-Authenticate": 'Basic realm="racinglines"'})
@@ -227,6 +230,26 @@ MAINTENANCE_NOTICE = ""      # off since the landing rebuild (owner, 2026-10-08:
 templates.env.globals["maintenance_notice"] = lambda: MAINTENANCE_NOTICE   # read at render time
 templates.env.globals["signup_on"] = lambda: signup_on()                    # RACINGLINES_SIGNUP=1: beta sign-up
 templates.env.globals["is_demo"] = lambda u: _demo.is_demo(u)
+from racinglines.web import audience as _audience  # noqa: E402  [sport] audience: which sports a user sees
+templates.env.globals["sport_shown"] = lambda code, user=None: _audience.shown(user, code)   # signed out: as a user
+
+
+def needs_email(user):
+    """A signed-in registered account with no email on file (accounts made before 2026-10-08): base.html then shows
+    the add-email popup (owner, 2026-10-11). Demo accounts never; read at render time, False if anything fails."""
+    if not isinstance(user, dict) or not user.get("id") or _demo.is_demo(user):
+        return False
+    try:
+        with get_engine().connect() as c:
+            email = c.execute(text("SELECT prefs->>'email' FROM users WHERE id = :u"), dict(u=user["id"])).scalar()
+    except Exception:                                   # noqa: BLE001  the popup never breaks a page
+        return False
+    return not (email or "").strip()
+
+
+templates.env.globals["needs_email"] = needs_email
+templates.env.globals["ui_range"] = _ranges.ui_range                             # capped numeric inputs (web/ranges.py)
+templates.env.globals["makers_on"] = lambda: _PF.MAKERS_OPEN                   # on from 2026-10-12 (profiles.MAKERS_OPEN)
 # the stylesheet's and scripts' URLs carry the newest static file's mtime, so a change is a new URL: no stale copy from the browser or
 # Cloudflare's edge cache (read at render time)
 templates.env.globals["css_v"] = lambda: int(max(p.stat().st_mtime for p in (HERE / "static").glob("*.*")))
@@ -250,16 +273,19 @@ def _signals_nav(user):
                                          (prefs->'strategy_profile'->'bankroll'->>'start')::float,
                                          (SELECT count(*) FROM strategy_signals WHERE user_id = :u AND seen_at IS NULL
                                             AND status <> 'expired'
+                                            AND NOT coalesce(detail->>'sport', '') = ANY(CAST(:hs AS text[]))
                                             AND (CAST(:since AS timestamptz) IS NULL OR created_at > CAST(:since AS timestamptz))),
                                          (SELECT sum(cash + yes_shares * coalesce(outcome::int, mark)
                                                  + no_shares * (1 - coalesce(outcome::int, mark)))
                                             FROM paper_positions WHERE user_id = :u AND (venue = 'polymarket'
-                                                 OR (:sp AND event_key IN (""" + SP.SPORT_KEYS + """)))),
+                                                 OR (:sp AND event_key IN (""" + SP.SPORT_KEYS
+                                                 + " AND NOT detail->>'sport' = ANY(CAST(:hs AS text[]))" + """)))),
                                          (SELECT sum(cash + yes_shares * coalesce(outcome::int, mark)
                                                  + no_shares * (1 - coalesce(outcome::int, mark)))
                                             FROM paper_positions WHERE user_id = :u AND venue = 'private')
                                   FROM users WHERE id = :u"""),
-                          dict(u=user["id"], since=_seen_since(user), sp=SP.enabled())).first()
+                          dict(u=user["id"], since=_seen_since(user), sp=SP.enabled(),
+                               hs=list(_audience.hidden(user)))).first()    # [sport] audience: hidden sports don't count
     except Exception:                                   # noqa: BLE001  the nav never breaks a page
         return None
     if r is None or not (r[0] or user["role"] == "admin"):
@@ -300,7 +326,7 @@ def _wants_html(request):
 def _error_page(request, code):
     user = getattr(request.state, "user", None)
     try:
-        resp = render(request, "error.html", code=code, message=ERROR_TEXT[code], home="/markets" if user else "/login")
+        resp = render(request, "error.html", code=code, message=ERROR_TEXT[code], home="/markets" if user else "/")
         resp.status_code = code
         return resp
     except Exception:                                  # noqa: BLE001  never let the error page itself fail
@@ -310,7 +336,7 @@ def _error_page(request, code):
 @app.exception_handler(StarletteHTTPException)
 async def _http_error(request: Request, exc: StarletteHTTPException):
     if exc.status_code == 429 and request.method == "POST" and request.url.path == "/login" and _wants_html(request):
-        return RedirectResponse("/login?error=throttled", status_code=303)
+        return RedirectResponse("/signin?error=throttled", status_code=303)
     if exc.status_code in ERROR_TEXT and _wants_html(request):
         resp = _error_page(request, exc.status_code)
         if resp is not None:
@@ -353,9 +379,20 @@ SITE = ROOT / "site"     # the built docs (mkdocs build -d site; the pre-push ho
 # Login / logout
 # ---------------------------------------------------------------------------
 
+@app.get("/", response_class=HTMLResponse)
+def landing_page(request: Request, next: str = "/"):
+    """The public landing page, at the site's index (owner, 2026-10-12). A signed-in browser goes on to the board."""
+    if _session(request.cookies.get(SESSION_COOKIE))[0] is not None:
+        return RedirectResponse("/markets", status_code=303)
+    return templates.TemplateResponse(request, "login.html", dict(next=next, support=SUPPORT_EMAIL))
+
+
+@app.get("/signin", response_class=HTMLResponse)
 @app.get("/login", response_class=HTMLResponse)
-def login_page(request: Request, next: str = "/", error: str = ""):
-    return templates.TemplateResponse(request, "login.html", dict(next=next, error=error, support=SUPPORT_EMAIL))
+def signin_page(request: Request, next: str = "/", error: str = ""):
+    """Sign in (owner, 2026-10-12: off the landing, on its own page). /login shows the same page, so old links,
+    smoke.sh and `vm.sh status` keep a 200 there; the form posts to /login."""
+    return templates.TemplateResponse(request, "signin.html", dict(next=next, error=error, support=SUPPORT_EMAIL))
 
 
 def _safe_next(nxt):
@@ -377,7 +414,7 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
     if user is None:
         _record_failure(ip)
         U.log(get_engine(), None, "login_failed", request, username=username)
-        return RedirectResponse(f"/login?next={quote(_safe_next(next), safe='/')}&error=1#account", status_code=303)
+        return RedirectResponse(f"/signin?next={quote(_safe_next(next), safe='/')}&error=1", status_code=303)
     target = _safe_next(next) if next != "/" else "/markets"
     return _start_session(request, user, target)
 
@@ -402,7 +439,7 @@ def logout(request: Request):
     sid = _session(request.cookies.get(SESSION_COOKIE))[1]
     if sid:
         demo.reset(sid)
-    resp = RedirectResponse("/login", status_code=303)
+    resp = RedirectResponse("/", status_code=303)
     resp.delete_cookie(SESSION_COOKIE)
     return resp
 
@@ -435,7 +472,7 @@ def settings_page(request: Request):
         email=prefs.get("email", ""),
         exchange=prefs.get("exchange", "polymarket"),
         sports=prefs.get("sports", ["f1"]),
-        **_mcp_context(user),
+        **_mcp_context(user), hidden_sports=_audience.hidden(user),
     ))
 
 
@@ -451,6 +488,7 @@ def update_settings(request: Request, email: str = Form(""), exchange: str = For
     if email and not re.match(r"^[^@]+@[^@]+\.[^@]+$", email):
         return templates.TemplateResponse(request, "settings.html", dict(
             email=email, exchange=exchange, sports=sports, error="Invalid email address", **_mcp_context(user),
+            hidden_sports=_audience.hidden(user),
         ), status_code=400)
     with get_session() as s:     # merge: the session user carries no prefs, and prefs also hold the MCP token and seen-at marks
         u = s.query(m.User).filter_by(id=user["id"]).first()
@@ -459,7 +497,31 @@ def update_settings(request: Request, email: str = Form(""), exchange: str = For
     audit(request, "update_settings", email=bool(email), exchange=exchange, sports=sports)
     return templates.TemplateResponse(request, "settings.html", dict(
         email=email, exchange=exchange, sports=sports, success="Settings saved", **_mcp_context(user),
+        hidden_sports=_audience.hidden(user),
     ))
+
+
+@app.post("/settings/email", dependencies=[Depends(check_csrf), allow(*ANY)])
+def add_email(request: Request, email: str = Form(""), next: str = Form("/markets")):
+    """The add-email popup (_site_notice.html) for accounts with no email: saves users.prefs.email after the sign-up
+    checks (valid, on no other account) and goes back to the page; an error opens Settings with the message."""
+    from racinglines.web import accounts as ACC
+    user = request.state.user
+    if _demo.is_demo(user):
+        raise HTTPException(404)
+    email = email.strip().lower()
+    with get_engine().begin() as c:
+        error = ACC.check_email(c, email)
+        if not error:
+            c.execute(text("""UPDATE users SET prefs = coalesce(prefs, '{}'::jsonb) || jsonb_build_object('email', CAST(:e AS text))
+                              WHERE id = :u"""), dict(e=email, u=user["id"]))
+    if error:
+        prefs = _prefs(user["id"])
+        return templates.TemplateResponse(request, "settings.html", dict(
+            email=email, exchange=prefs.get("exchange", "polymarket"), sports=prefs.get("sports", ["f1"]),
+            error=error, **_mcp_context(user), hidden_sports=_audience.hidden(user)), status_code=400)
+    audit(request, "add_email")
+    return RedirectResponse(_safe_next(next), status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -618,18 +680,8 @@ def signup(request: Request, username: str = Form(""), password: str = Form(""),
                                 VALUES (:u, :u, :r, :h, true, jsonb_build_object('email', CAST(:e AS text))) RETURNING id"""),
                         dict(u=username, r=tier, h=U.hash_password(password), e=email)).scalar()
         ACC.grant(c, uid)
-    # One taker strategy per new account, round-robin over PF.TAKER_TOP by user id, so the paper records cover every
-    # strategy evenly and each account's record maps to exactly one (strategy diversity, owner 2026-10-06; replaces
-    # "start on A", 2026-10-01). No bankroll, no history, so Strategy and Positions start empty. A failure here
-    # leaves the account fine, just unassigned (an admin can assign one).
-    try:
-        from racinglines.pipelines import profiles as PF
-        with get_engine().begin() as c:
-            cands = PF.ensure_candidates(c)
-            code = PF.TAKER_TOP[uid % len(PF.TAKER_TOP)]
-            PF.assign(c, uid, PF.load(c, cands[code]))
-    except Exception as ex:                         # noqa: BLE001
-        print(f"signup: no starting profile for user {uid}: {ex}", flush=True)
+    # No starting strategy (owner, 2026-10-11: "no default strategy until they select one"; replaces the TAKER_TOP
+    # round-robin of 2026-10-06): an account paper-trades nothing until its user picks a strategy.
     with get_session() as s:
         user = _user_dict(U.get_user(s, user_id=uid))
     U.log(get_engine(), user, "signup", request, grant=ACC.SIGNUP_GRANT)
@@ -647,6 +699,8 @@ from racinglines.web import book_routes  # noqa: E402,F401  (the private book an
 from racinglines.web import exchange_routes  # noqa: E402,F401  (exchange boards and tapes)
 from racinglines.web import diag_routes  # noqa: E402,F401  (single-event diagnostics)
 from racinglines.web import mybets  # noqa: E402,F401  (/mybets, the owner's bets calendar from the data folder)
+from racinglines.web import term_routes  # noqa: E402,F401  (/docs/quickstart/term, recorded CLI runs)
+from racinglines.web import strategy_pick  # noqa: E402,F401  (/strategy/pick, the account's own strategy)
 from racinglines.web.book_routes import bet_markets, polymarket_calls  # noqa: E402,F401  (used by views.py)
 
 

@@ -6,8 +6,11 @@
 code = "mtb_dh"
 name = "Mountain bike downhill"
 result_kind = "time"              # results are run times
-model_family = "timed_runs"       # racinglines/models/timed_runs
-pricing_model = "racinglines.models.race_model:TimedRuns"   # the backtest core's wrapper (docs/backtest-core.md)
+model_family = "global"           # the one engine (racinglines/models/model_global.py), with [model] below
+pricing_model = "racinglines.models.model_global:GlobalModel"   # every modelled sport's (docs/backtest-core.md)
+# Downhill's engine before the one engine, kept runnable for comparisons (`racinglines backtest walk-forward mtb_dh
+# --model timed_runs`): the same run-times core and settings, so its prices equal the engine's (tests/test_one_engine.py)
+challengers = { timed_runs = "racinglines.models.race_model:TimedRuns" }
 display_order = 5
 results_modules = ["racinglines.sources.chronorace"]   # what fetches its results (`backtest coverage`)
 
@@ -34,6 +37,25 @@ race = ["qual", "qual1", "qual2", "semi", "final"]
 run_weights = { practice = 0.5, qual = 1.0, qual1 = 1.0, qual2 = 1.0, semi = 1.0, final = 1.0 }
 # format for unraced rounds; past events use their own, inferred from results
 default_format = { kind = "q1q2", q1_to_final = 20, q2_to_final = 10 }
+
+[model]
+# The one engine's inputs (racinglines/models/inputs/__init__.py): timed runs pick the run-times core
+# (models/inputs/run_times/core.py, the downhill engine that was race_model.TimedRuns); "practice" adds the timed
+# training runs at [rounds] run_weights.practice. Decision log 2026-10-11 "One engine" (provisional, staging only):
+# every price as before.
+inputs = ["run_times", "practice"]
+name = "timed_runs"               # model_runs.model of its runs, as before
+
+[model.defaults]
+# The engine's per-sport defaults: downhill's settings as they were (models/inputs/run_times/settings.py DHSettings,
+# from models/inputs/run_times/model.py's constants). Equal to the code's, so every settings key and price is
+# unchanged (tests/test_one_engine.py pins them). eps_df stays unset (normal run noise): TOML has no "not set".
+category = "ME"
+sims = 5000
+half_life_days = 240.0            # HALF_LIFE_DAYS
+prior_n = 0.5                     # rider pace shrinkage toward the field median, in runs' weight (PRIOR_N)
+junior_weight = 0.25              # junior runs' training weight (CATEGORY_WEIGHTS["MJ"])
+train_scope = "all"
 
 [data]
 # the L1 input frames this sport's adapter (racinglines/frames/mtb_dh.py) builds from the tidy runs frame, docs/frames.md

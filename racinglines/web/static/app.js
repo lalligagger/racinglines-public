@@ -78,6 +78,35 @@
     store.set("tabs." + nav.dataset.tabs, key);
     if (setHash && key) history.replaceState(null, "", "#" + key);
   }
+  // --- Lab Run: pick a sport, then a job; only that job's form shows (no JS: every form shows) ---
+  function runPickInit(root) {
+    (root.querySelectorAll ? root : document).querySelectorAll("[data-run-pick]").forEach(pick => {
+      const box = pick.parentElement, sportSel = pick.querySelector("[data-run-sport]"), jobSel = pick.querySelector("[data-run-job]");
+      const secs = [...box.querySelectorAll(".run-sport[data-sport]")];
+      if (!secs.length) return;
+      const show = () => {
+        secs.forEach(sec => {
+          const on = sec.dataset.sport === sportSel.value;
+          sec.hidden = !on;
+          sec.querySelectorAll(".run-job").forEach(j => { j.hidden = !on || j.dataset.job !== jobSel.value; });
+        });
+      };
+      const fill = (want) => {
+        const sec = secs.find(x => x.dataset.sport === sportSel.value);
+        const jobs = [...sec.querySelectorAll(".run-job")];
+        jobSel.replaceChildren(...jobs.map(j => new Option(j.dataset.label, j.dataset.job)));
+        jobSel.value = jobs.some(j => j.dataset.job === want) ? want : (jobs[0] && jobs[0].dataset.job);
+        show();
+      };
+      const sel = box.querySelector(".run-job[data-sel]");
+      const first = sel ? sel.closest(".run-sport") : secs[0];
+      sportSel.value = first.dataset.sport;
+      fill(sel ? sel.dataset.job : null);
+      sportSel.addEventListener("change", () => fill(null));
+      jobSel.addEventListener("change", show);
+      pick.hidden = false;
+    });
+  }
   function tabsInit(root) {
     const nav = root.querySelector ? root.querySelector("[data-tabs]") : null;
     if (!nav) return;
@@ -127,14 +156,15 @@
     }
     u.addEventListener("input", sync); sync();
   }
-  // the site notice: shown once per browser session (the sign-up variant has its own key, and also sets the plain one)
+  // the site notice: shown once per browser session (the sign-up variant has its own key and also sets the plain one;
+  // the add-email popup, data-key="email", has its own key only)
   function noticeInit() {
     const d = document.getElementById("site-notice");
     if (!d) return;
-    const k = "racinglines-notice-ok" + (d.dataset.signup ? "-signup" : "");
+    const k = "racinglines-notice-ok" + (d.dataset.signup ? "-signup" : d.dataset.key ? "-" + d.dataset.key : "");
     try { if (sessionStorage.getItem(k)) return; } catch (e) {}
     d.addEventListener("close", () => {
-      try { sessionStorage.setItem(k, "1"); sessionStorage.setItem("racinglines-notice-ok", "1"); } catch (e) {} });
+      try { sessionStorage.setItem(k, "1"); if (!d.dataset.key) sessionStorage.setItem("racinglines-notice-ok", "1"); } catch (e) {} });
     if (d.showModal) d.showModal(); else d.setAttribute("open", "");
   }
 
@@ -284,7 +314,7 @@
       t.dataset.localized = "1";
     });
   }
-  function initAll(root) { tabsInit(root); detailsInit(root); tableInit(root); calendarInit(root); localTimeInit(root); }
+  function initAll(root) { tabsInit(root); runPickInit(root); detailsInit(root); tableInit(root); calendarInit(root); localTimeInit(root); }
   document.addEventListener("htmx:afterSwap", e => initAll(e.detail.target));
 
   document.addEventListener("DOMContentLoaded", () => {
@@ -292,6 +322,117 @@
   openHashDetails();
   forgotInit();
   noticeInit();
+  // --- /term: each replay waits paused on its full command; Play re-types it, then plays the output (no JS: all shown) ---
+  function termPlay(t) {
+    const cmd = t.querySelector("[data-term-cmd]"), out = t.querySelector("[data-term-out]"), btn = t.querySelector("[data-term-play]");
+    const full = cmd.dataset.full;
+    btn.disabled = true;
+    const done = () => { t.removeAttribute("data-typing"); t.removeAttribute("data-running"); if (out) out.style.maxHeight = ""; btn.disabled = false; btn.textContent = "Replay"; };
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) { if (out) out.hidden = false; return done(); }
+    if (out) out.hidden = true; t.setAttribute("data-typing", ""); cmd.textContent = "";
+    let i = 0;
+    const run = () => {     // the "run": the output scrolls in line by line, like the command printing it
+      if (!out) return done();     // a step shown but not run (pack record = false): typing is all there is
+      t.removeAttribute("data-typing"); t.setAttribute("data-running", "");
+      out.style.maxHeight = "0px"; out.hidden = false;
+      const h = out.scrollHeight, step = Math.max(16, h / 120), t0 = performance.now();
+      const grow = () => {
+        const shown = Math.min(h, step * Math.floor((performance.now() - t0) / 25));
+        out.style.maxHeight = shown + "px";
+        shown < h ? requestAnimationFrame(grow) : done();
+      };
+      requestAnimationFrame(grow);
+    };
+    const tick = () => {
+      cmd.textContent = full.slice(0, ++i);
+      if (i < full.length) return setTimeout(tick, 28 + Math.random() * 40);
+      setTimeout(run, 350);
+    };
+    setTimeout(tick, 250);
+  }
+  document.querySelectorAll("[data-term]").forEach(t => {
+    const cmd = t.querySelector("[data-term-cmd]"), btn = t.querySelector("[data-term-play]");
+    cmd.dataset.full = cmd.textContent;
+    const out = t.querySelector("[data-term-out]");
+    if (out) out.hidden = true;     // paused: only the command, in full
+    btn.hidden = false;
+    btn.addEventListener("click", () => termPlay(t));
+  });
+
+  // --- /term parts: one part at a time, picked from the tabs (phone) or sidebar (wide); the URL hash keeps the part ---
+  const parts = document.querySelector("[data-term-parts]");
+  if (parts) {
+    const boxes = [...parts.querySelectorAll(".term-partbox")], tabs = [...parts.querySelectorAll(".term-nav [data-term-tab]")];
+    const showPart = (id, scroll) => {
+      if (!boxes.some(b => b.id === id)) id = boxes[0].id;
+      boxes.forEach(b => { b.hidden = b.id !== id; });
+      tabs.forEach(a => a.toggleAttribute("aria-current", a.dataset.termTab === id));
+      const cur = tabs.find(a => a.dataset.termTab === id), nav = cur && cur.parentElement;
+      if (nav && nav.scrollWidth > nav.clientWidth)       // phone tabs: bring the current one into view
+        nav.scrollLeft = cur.offsetLeft - nav.offsetLeft - (nav.clientWidth - cur.offsetWidth) / 2;
+      if (scroll) parts.scrollIntoView({block: "start"});
+    };
+    const fromHash = () => {     // #part-2, or a step's id inside a part
+      const el = location.hash && document.getElementById(location.hash.slice(1));
+      const box = el && el.closest(".term-partbox");
+      return box ? box.id : null;
+    };
+    parts.addEventListener("click", e => {
+      const a = e.target.closest("[data-term-tab]");
+      if (!a) return;
+      e.preventDefault();
+      history.replaceState(null, "", "#" + a.dataset.termTab);
+      showPart(a.dataset.termTab, true);
+    });
+    const toTarget = () => {     // a hash inside a part (a step, a section): show its part, then scroll to it
+      showPart(fromHash(), false);
+      const el = location.hash && document.getElementById(location.hash.slice(1));
+      if (el && !el.classList.contains("term-partbox")) el.scrollIntoView({block: "start"});
+    };
+    window.addEventListener("hashchange", toTarget);
+    parts.classList.add("js");
+    toTarget();
+  }
+
+  // --- /strategy/pick: each slider shows its value (points for probabilities, $ or shares otherwise); the dice roll
+  // sliders at random, up to `spread` of each slider's range away from the strategy's own setting (no JS: no dice) ---
+  const pick = document.querySelector("form.pick");
+  if (pick) {
+    const show = r => {
+      const out = pick.querySelector(`[data-out="${r.name}"]`), v = Number(r.value), u = r.dataset.unit;
+      out.textContent = u === "pts" ? `${Math.round(v * 100)} pts` : u === "$" ? `$${v}` : `${v} ${u}`;
+      if (Math.abs(Number(r.dataset.base) - v) > 1e-9) out.textContent += " (adjusted)";
+    };
+    const spread = pick.querySelector("[data-spread]");
+    const roll = opt => {
+      const k = spread ? Number(spread.value) : 1;
+      opt.querySelectorAll("input[type=range]").forEach(r => {
+        const lo = Number(r.min), hi = Number(r.max), step = Number(r.step), base = Number(r.dataset.base);
+        const v = base + (Math.random() * 2 - 1) * k * (hi - lo);
+        r.value = Math.min(hi, Math.max(lo, lo + Math.round((v - lo) / step) * step));
+        show(r);
+      });
+      const pre = opt.querySelector("input[type=checkbox]");
+      if (pre && Math.random() < k / 2) pre.checked = !pre.checked;
+      pick.querySelector("[data-rolled]").value = "1";
+    };
+    pick.querySelectorAll("input[type=range]:not([data-spread])").forEach(r => { r.addEventListener("input", () => show(r)); show(r); });
+    pick.querySelectorAll("[data-roll]").forEach(btn => { btn.hidden = false; btn.addEventListener("click", e => { e.preventDefault(); roll(btn.closest(".pick-opt")); }); });
+    const any = pick.querySelector("[data-roll-any]");
+    if (any) {
+      pick.querySelector("[data-dice]").hidden = false;
+      const so = pick.querySelector("[data-spread-out]");
+      spread.addEventListener("input", () => { so.textContent = `${Math.round(spread.value * 100)}%`; });
+      any.addEventListener("click", () => {     // a strategy with settings to roll, then its settings
+        const opts = [...pick.querySelectorAll(".pick-opt")].filter(o => o.querySelector("[data-roll]"));
+        const opt = opts[Math.floor(Math.random() * opts.length)];
+        opt.querySelector("input[type=radio]").checked = true;
+        roll(opt);
+        opt.scrollIntoView({block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"});
+      });
+    }
+  }
+
   // --- Lab: sections open on demand (HTMX loads them on their "open" event), remembered per browser ---
   const lab = document.getElementById("lab");
   if (lab) {
@@ -373,28 +514,67 @@
         else els[0].value = v === null ? "" : v;
       });
     }
+    // a stored value and the field's value are the same setting: "not set" (null) reads as an empty field, an empty
+    // checkbox group, or a select's first option (the setting's fallback, e.g. the default exchange)
+    function same(form, k, v, stored) {
+      if (stored === undefined) return true;
+      if (stored === null) {
+        const sel = form.querySelector(`select[name="${k}"]`);
+        return v === null || v === "" || (Array.isArray(v) && !v.length) || (sel && sel.options.length && v === sel.options[0].value);
+      }
+      return JSON.stringify(v) === JSON.stringify(stored) || (typeof v === "number" && Number(stored) === v);
+    }
     function markChanged(form) {
       const src = JSON.parse(form.dataset.source || "{}"), now = readSettings(form);
       let n = 0;
       form.querySelectorAll("[data-setting]").forEach(l => {
-        const k = l.dataset.setting, a = JSON.stringify(now[k]), b = JSON.stringify(src[k]);
-        const changed = src[k] !== undefined && a !== b && !(typeof now[k] === "number" && Number(src[k]) === now[k]);
+        const k = l.dataset.setting, changed = !same(form, k, now[k], src[k]);
         l.classList.toggle("changed", changed); if (changed) n++;
       });
       const c = form.querySelector("[data-changed-count]");
       if (c) c.textContent = n ? `${n} setting${n > 1 ? "s" : ""} changed from the starting point` : "";
+      // anything off the defaults makes the run a scenario (not calibrated)
+      const defs = JSON.parse(form.dataset.defaults || "{}"), note = form.querySelector("[data-scenario-note]");
+      if (note) note.hidden = Object.keys(defs).every(k => !(k in now) || same(form, k, now[k], defs[k]));
     }
+    // the model variant: the switch checkboxes and the text field mirror each other; ticked switches join with "+" in
+    // the checkboxes' order, none ticked is "baseline"
+    function syncSwitches(form) {
+      const t = form.querySelector("[data-variant-text]");
+      if (!t) return;
+      const on = t.value.split("+").map(x => x.trim());
+      form.querySelectorAll("[data-switch]").forEach(b => { b.checked = on.includes(b.dataset.switch); });
+    }
+    function switchesToText(form, changed) {
+      if (changed && changed.checked && changed.dataset.exclusive)
+        form.querySelectorAll("[data-switch]").forEach(b => {
+          if (b !== changed && changed.dataset.exclusive.split(" ").includes(b.dataset.switch)) b.checked = false;
+        });
+      const on = [...form.querySelectorAll("[data-switch]")].filter(b => b.checked).map(b => b.dataset.switch);
+      form.querySelector("[data-variant-text]").value = on.length ? on.join("+") : "baseline";
+    }
+    document.querySelectorAll("#sweep-form").forEach(syncSwitches);
+    document.addEventListener("htmx:afterSwap", e => {
+      const f = e.detail.target.querySelector && e.detail.target.querySelector("#sweep-form");
+      if (f) syncSwitches(f);
+    });
     document.addEventListener("change", e => {
       const sel = e.target.closest("[data-start-from]");
       if (sel) {
         const form = sel.form, st = JSON.parse(sel.selectedOptions[0].dataset.settings || "{}");
         form.dataset.source = JSON.stringify(Object.assign(JSON.parse(form.dataset.defaults), st));
         fillSettings(form, JSON.parse(form.dataset.source));
+        syncSwitches(form);
       }
       const form = e.target.closest("#sweep-form");
+      if (form && e.target.matches("[data-switch]")) switchesToText(form, e.target);
       if (form) markChanged(form);
     });
-    document.addEventListener("input", e => { const form = e.target.closest("#sweep-form"); if (form) markChanged(form); });
+    document.addEventListener("input", e => {
+      const form = e.target.closest("#sweep-form");
+      if (form && e.target.matches("[data-variant-text]")) syncSwitches(form);
+      if (form) markChanged(form);
+    });
     const hashKey = location.hash.slice(1);
     if (document.querySelector(`[data-section="${hashKey}"]`)) open.add(hashKey);
     [...open].forEach(k => show(k, true, hashKey === k));

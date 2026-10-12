@@ -172,8 +172,10 @@ sports** ([Roadmap](todo.md#new-sports), U9); two have since moved on:
 
 - **NASCAR Cup and MotoGP** now have results (NASCAR's `cf.nascar.com` feeds; MotoGP's public results API), an
   `[identity]` resolver that fills each link's driver or rider, race and `params.kind`, and a simple result-only
-  pricing model (`model_family = "position_sim"`, `pricing_model` in the schema). The taker replay
-  (`racinglines nascar|motogp replay`) and the board's race columns read them. `prediction` stays `unmodeled` on
+  pricing model: the one engine at the results level (`model_family = "global"`, `pricing_model =
+  "racinglines.models.model_global:GlobalModel"` in the schema; `NascarCupRace` and `MotoGPRaceChallenger` are
+  challengers). The taker replay
+  (`racinglines strategy replay nascar|motogp`) and the board's race columns read them. `prediction` stays `unmodeled` on
   their links. What that model is and how far its results go: [Sports and exchanges](coverage.md).
 - **IndyCar, road cycling, Le Mans and SailGP** are still tape only (`model_family = "none"`, no `pricing_model`,
   no `[live]`): nothing prices them, the board and the Lab don't list them, `racinglines check` doesn't run them,
@@ -230,7 +232,7 @@ And nothing is downloaded twice:
 - **FastF1:** sessions already on disk are skipped; each season's schedule is saved
   (`data/raw/f1/fastf1/<year>/schedule.parquet`) and used when FastF1 can't be reached.
 - **Polymarket race weekends:** a weekend whose prices are stored is skipped
-  (`racinglines f1 sweep --fetch-only`); championship history is fetched in 7-day windows, and
+  (`racinglines strategy sweep f1 --fetch-only`); championship history is fetched in 7-day windows, and
   windows already stored are skipped.
 - **Sweeps** with `--no-fetch` (and every search job) never download; stage prices are cached by model settings and data.
 
@@ -487,7 +489,7 @@ number.** The pit feed has no driver id; the ingest joins it to results on the c
 
 ### The adapter
 
-`racinglines nascar fetch` (`sources/nascar/fetch.py`) → `racinglines nascar ingest` (`sources/nascar/ingest.py`),
+`racinglines data fetch nascar` (`sources/nascar/fetch.py`) → `racinglines data ingest nascar` (`sources/nascar/ingest.py`),
 the F1 pattern ([Formula 1](f1.md)) with NASCAR's own shape:
 
 | Table | NASCAR |
@@ -524,7 +526,7 @@ is what a later step promotes when there is a model. A listing it cannot place k
 ("no race of that season named", "2 races share the name and the date does not pick one", "driver: unknown").
 
 *Where it runs.* Inside the syncs (Kalshi, Polymarket and OG.com, for a sport whose schema names a resolver), so a re-sync never undoes it, and as a
-pass over the links already stored: `racinglines nascar link` (dry run by default: totals, then one line per exchange, Kalshi series, class and kind
+pass over the links already stored: `racinglines data link nascar` (dry run by default: totals, then one line per exchange, Kalshi series, class and kind
 with how many got a driver and a race, then the unresolved names). `--apply` needs `--backup FILE` (a database dump under 24 hours old), writes only
 `athlete_id`, `race_id` and `params` of the links that change, records a `data_changes` entry, and writes the previous values of every changed
 link to `data/backups/db/nascar-links-undo-<UTC>.json`; `--undo FILE` puts them back one link at a time, so undoing does not mean restoring a dump

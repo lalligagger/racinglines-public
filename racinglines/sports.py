@@ -2,7 +2,7 @@
 Sport schemas: what differs between sports, as data (sports/<code>.toml).
 
 Existing modules keep their own constant names (registry.COMPETITIONS,
-position_sim.model.SESSION_MINUTES, timed_runs.model.FINAL_POINTS, ...) and take
+inputs.laps.SESSION_MINUTES, run_times.model.FINAL_POINTS, ...) and take
 the values from here, so a new sport starts with a new schema file.
 
     load("f1")                  the parsed schema
@@ -19,6 +19,9 @@ the values from here, so a new sport starts with a new schema file.
                                 market is about ([identity] resolver in the schema), None if the sport has none
     frames(code)                the L1 input frames a sport's [data] frames names, () if the block is absent
                                 (racinglines/frames, docs/frames.md)
+    audience(code)              who the web app shows the sport to ([sport] audience): "all" (the default) or "admin"
+    admin_only()                the sport codes whose audience is "admin"; admin_only_competitions() their competitions
+    is_public(code, user)       the one gate (web pages and MCP tools): may this user see the sport or competition code?
 """
 
 import tomllib
@@ -46,6 +49,54 @@ def event_title(competition, event_key, default):
     except StopIteration:
         return default
     return names.get(str(event_key), default)
+
+
+@cache
+def declaring(model_input):
+    """The one sport whose [model] inputs declares `model_input`. An input layer that reads its constants from a
+    schema at import (inputs/laps.py, inputs/grid.py, inputs/run_times/model.py: points, sessions, regulation
+    resets, formats) finds its schema here instead of naming a sport. ValueError when no sport or several do: a second
+    sport with that input needs the layer's constants bound per sport first (decision log 2026-10-11 "One engine")."""
+    codes = [c for c in SPORT_CODES if model_input in (load(c).get("model", {}).get("inputs") or ())]
+    if len(codes) != 1:
+        raise ValueError(f"[model] inputs: {len(codes)} sports declare {model_input!r} ({codes}); its layer reads "
+                         "one sport's schema at import, so exactly one may until it is bound per sport")
+    return codes[0]
+
+
+AUDIENCES = ("all", "admin")
+
+
+def audience(code):
+    """Who the web app shows the sport to ([sport] audience): "all" (the default) or "admin" (owner, 2026-10-11, MotoGP
+    for the Alpha: a venue's or data feed's terms keep its results and prices off user pages). Only what users see
+    changes: the sport is still recorded, priced and settled, the CLI and admins see all of it, and nothing is deleted.
+    Flipping the key back to "all" shows it again."""
+    got = load(code)["sport"].get("audience", "all")
+    if got not in AUDIENCES:
+        raise ValueError(f"sports/{code}.toml [sport] audience: {got!r} not in {AUDIENCES}")
+    return got
+
+
+def is_public(code, user=None):
+    """The one gate every user-facing reader calls (web pages, MCP tools): whether `user` may see a sport or competition
+    code. True for an admin (user["role"] == "admin"), for None (an internal caller: the CLI, the stdio MCP server,
+    pricing and recording) and for an empty or unknown code; else whether the sport's [sport] audience is "all". A
+    signed-out web visitor is not None: the web app passes {} (web/audience.py)."""
+    if user is None or not code or (isinstance(user, dict) and user.get("role") == "admin"):
+        return True
+    sport = code if code in SPORT_CODES else next((c for c in SPORT_CODES if load(c)["competition"]["code"] == code), None)
+    return sport is None or audience(sport) == "all"
+
+
+def admin_only():
+    """The sport codes the web app shows to admins only ([sport] audience = "admin")."""
+    return frozenset(c for c in SPORT_CODES if audience(c) == "admin")
+
+
+def admin_only_competitions():
+    """The competition codes of the admin-only sports."""
+    return frozenset(load(c)["competition"]["code"] for c in admin_only())
 
 
 def modeled(code):

@@ -84,11 +84,11 @@ prices; the Polymarket page compares them with the market
 After each session: fetch, ingest and re-run.
 
 ```
-racinglines f1 fetch --years 2026
-racinglines f1 ingest --years 2026
-racinglines f1 forecast --year 2026 --save     # live: cutoff = now; remaining races + championships
+racinglines data fetch f1 --years 2026
+racinglines data ingest f1 --years 2026
+racinglines model forecast f1 --year 2026 --save     # live: cutoff = now; remaining races + championships
 ```
 
-A saved forecast becomes the one the web app uses. `racinglines f1 pm-sync` (or
+A saved forecast becomes the one the web app uses. `racinglines data pm-sync f1` (or
 the **Refresh** button on `/markets/polymarket`) picks up new Polymarket markets
 once they are listed.

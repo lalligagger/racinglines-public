@@ -160,12 +160,15 @@ def build(run):
     res = crowd.get("results") or {}
     mp = latest.get("maker_pnl") or {}
     L = [f"# {title}: event report", ""]
-    L += [f"A private-book event (`{run}`, {ev.get('sport') or d['meta'].get('sport') or 'mtb_dh'}): the demo maker's own book, "
-          "1,000 simulated anonymous takers and the demo taker, play money. Nothing was traded anywhere. "
+    maker = d["meta"].get("maker") or "the demo maker"
+    who = f"{crowd.get('takers') or 1000:,} simulated anonymous takers" + (f" ({d['meta']['crowd']})" if d["meta"].get("crowd") else "")
+    L += [f"A private-book event (`{run}`, {ev.get('sport') or d['meta'].get('sport') or 'mtb_dh'}): {maker}'s own book, "
+          f"{who}{' and the demo taker' if picks else ''}, play money. Nothing was traded anywhere. "
           f"{'Settled' if latest.get('done') else 'Not settled yet: open markets are marked to fair'}. "
           f"Book opened {(d['opened'] or '?')[:16].replace('T', ' ')} UTC; last update {latest['ts'][:16].replace('T', ' ')} UTC.", ""]
     L += ["## Summary", "", "| | |", "|---|---|",
-          f"| The maker's event P&L | {_money(mp.get('total', 0))} (vs the crowd {_money(mp.get('crowd', 0))}, vs the demo taker {_money(mp.get('taker', 0))}) |",
+          f"| The maker's event P&L | {_money(mp.get('total', 0))} (vs the crowd {_money(mp.get('crowd', 0))}"
+          + (f", vs the demo taker {_money(mp.get('taker', 0))}" if picks else "") + ") |",
           f"| Crowd | {crowd.get('fills', 0):,} fills, ${crowd.get('volume', 0):,.0f} volume, {crowd.get('active', 0)} of {crowd.get('takers', 0)} takers bet |",
           f"| The crowd's results | {res.get('up', 0)} up, {res.get('down', 0)} down; median {_money(res.get('median', 0))}, best {_money(res.get('best', 0))}, worst {_money(res.get('worst', 0))} |" if res else "| The crowd's results | – |",
           f"| Updates | {len(snaps)} snapshots; {len(hist)} priced updates |",
@@ -173,9 +176,11 @@ def build(run):
     if pnl:
         L += ["## The book's P&L by update", "",
               "Marked to fair at each update (settled where the result was known).", "",
-              "| Update | UTC | Crowd fills | vs the crowd | vs the demo taker | Total |", "|---|---|---|---|---|---|"]
+              "| Update | UTC | Crowd fills | vs the crowd |" + (" vs the demo taker |" if picks else "") + " Total |",
+              "|---|---|---|---|" + ("---|" if picks else "") + "---|"]
         for r in _pick(pnl):
-            L.append(f"| {r['label']} | {r['ts'][5:16].replace('T', ' ')} | {r['fills'] or 0:,} | {_money(r['crowd'])} | {_money(r['taker'])} | **{_money(r['total'])}** |")
+            L.append(f"| {r['label']} | {r['ts'][5:16].replace('T', ' ')} | {r['fills'] or 0:,} | {_money(r['crowd'])} |"
+                     + (f" {_money(r['taker'])} |" if picks else "") + f" **{_money(r['total'])}** |")
         L += ["", "![The book's P&L](pnl.svg)", ""]
     if picks:
         L += ["## The demo taker's picks", "", "| Bet | Paid | Shares | Result | Taker P&L |", "|---|---|---|---|---|"]
@@ -211,10 +216,10 @@ def build(run):
     svgs = {}
     if pnl:
         ts = [pd.Timestamp(r["ts"]) for r in pnl]
-        svgs["pnl.svg"] = svg(line_chart({"total": list(zip(ts, [r["total"] for r in pnl])),
-                                          "crowd": list(zip(ts, [r["crowd"] for r in pnl])),
-                                          "taker": list(zip(ts, [r["taker"] for r in pnl]))},
-                                         {"total": "total", "crowd": "vs the crowd", "taker": "vs the demo taker"}),
+        series = {"total": list(zip(ts, [r["total"] for r in pnl])), "crowd": list(zip(ts, [r["crowd"] for r in pnl]))}
+        if picks:
+            series["taker"] = list(zip(ts, [r["taker"] for r in pnl]))
+        svgs["pnl.svg"] = svg(line_chart(series, {"total": "total", "crowd": "vs the crowd", "taker": "vs the demo taker"}),
                               "The maker's P&L ($), marked to fair")
     if sc:
         series = {}

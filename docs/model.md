@@ -1,15 +1,18 @@
 # Downhill model
 
-The downhill season model lives in `racinglines/models/timed_runs/` (section 7) and is driven by
-`racinglines mtb_dh forecast` and `racinglines mtb_dh backtest`. It answers:
+The downhill season model lives in `racinglines/models/inputs/run_times/` (section 7) and is driven by
+`racinglines model forecast mtb_dh` and `racinglines model backtest mtb_dh`. It answers:
 
 - Before a weekend: what's each rider's chance to make the Final, finish top 10,
   reach the podium, or win? How many championship points do they get on average?
 - Mid-season: how will the championship end up?
 
 How accurate it is: [Downhill evaluation](evaluation.md). The live 2026
-projection: [Downhill forecast](forecast.md). Formula 1 uses a different model
-family: [F1 model](f1.md).
+projection: [Downhill forecast](forecast.md). Since the one engine (staging, 2026-10-11) this model is the
+run-times core of `racinglines/models/model_global.py`, chosen by the inputs `sports/mtb_dh.toml` declares
+(`run_times`, `practice`); its runs are still stored as `timed_runs`, and every price is unchanged
+([One engine](backtest-core.md#one-engine-schema-declared-inputs)). Formula 1 runs the same engine on its laps core:
+[F1 model](f1.md).
 
 ## Overview
 
@@ -171,8 +174,8 @@ points = QUAL_POINTS[qualifying rank] + FINAL_POINTS[final rank]
     `FINAL_POINTS` (250/210/180/…/11 for places 1–30) and `QUAL_POINTS`
     (60/50/40/…/2 for places 1–20) are **placeholders**, and the same tables are
     used for every era. See [Roadmap](todo.md#points-validation). Official tables, once entered,
-    go in `points_schemes` per era (`racinglines mtb_dh points import`), and `--points db` uses them
-    ([CLI](cli.md#racinglines-mtb_dh-points)).
+    go in `points_schemes` per era (`racinglines data points mtb_dh import`), and `--points db` uses them
+    ([CLI](cli.md#racinglines-data-points-mtb_dh)).
 
 ## Forecasting the rest of the season
 
@@ -221,7 +224,7 @@ stored in `race_predictions.extra`. These use the placeholder points tables.
 
 ## Calibration
 
-`racinglines mtb_dh backtest --db --reliability` (2026-09-28, cloud build-out): every
+`racinglines model backtest mtb_dh --db --reliability` (2026-09-28, cloud build-out): every
 walk-forward round of 2021–2026, 43 rounds and 5,171 rider-rounds, elite men.
 
 **The odds are too flat where it matters most.** Win and podium are close to calibrated.
@@ -281,7 +284,7 @@ events faster by 0.3% or 0.6% of run time is worse on every market; shifting the
 changes log loss by under 0.001. With the 240-day half-life the pace already follows form.
 
 **The defaults since 2026-09-28** (owner's OK): `PRIOR_N` 0.5, `HALF_LIFE_DAYS` 240,
-`CATEGORY_WEIGHTS["MJ"]` 0.25 in `models/timed_runs/model.py`. They were picked on the same 43
+`CATEGORY_WEIGHTS["MJ"]` 0.25 in `models/inputs/run_times/model.py`. They were picked on the same 43
 rounds they're scored on, so the gains are in-sample: check them on 2026's next rounds. The old
 behaviour is `--prior-n 1.5 --half-life-days 120 --junior-weight 0.5`.
 

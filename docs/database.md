@@ -29,7 +29,7 @@ already on 5432.
 pip install -r requirements.txt
 docker compose up -d                # Postgres 17 on localhost:5433
 racinglines db init                 # create tables (migrations) + reference data
-racinglines mtb_dh ingest data/raw/mtb_dh/chronorace
+racinglines data ingest mtb_dh data/raw/mtb_dh/chronorace
 racinglines db stats
 ```
 
@@ -59,8 +59,8 @@ export DATABASE_URL=postgresql+psycopg://USER:PASSWORD@localhost:5432/racingline
 racinglines db init
 ```
 
-A new database can be filled from the raw files (`racinglines f1 ingest`,
-`racinglines mtb_dh ingest`, `racinglines f1 pm-sync`) or, as an exact replica, from
+A new database can be filled from the raw files (`racinglines data ingest f1`,
+`racinglines data ingest mtb_dh`, `racinglines data pm-sync f1`) or, as an exact replica, from
 the [snapshot](#snapshot-an-exact-replica).
 
 ## Data model
@@ -135,7 +135,7 @@ tables. A demo visitor's changes go to a per-session overlay and are never saved
 | `edge_finder` | The Lab's Edge Finder combos, `[[ref, strategy], …]` (ref: a variant or `cfg:<settings key>`) | Edge Finder (`racinglines/web/edge.py`) |
 | `edge_year` | The Edge Finder's season | Edge Finder |
 | `job_knobs` | Last-used knobs per Lab job type | Lab job forms |
-| `strategy_profile` | The profile the user runs: `name`, `strategy`, `settings` (full sweep settings), `candidate_id`; optionally `follow_rate` (share of taker recommendations followed, e.g. 0.33 for the demo taker; set in code only) and `bankroll` (`start` in $, `since` date) | `racinglines f1 profiles --assign-demo`, the Lab |
+| `strategy_profile` | The profile the user runs: `name`, `strategy`, `settings` (full sweep settings), `candidate_id`; optionally `follow_rate` (share of taker recommendations followed, e.g. 0.33 for the demo taker; set in code only) and `bankroll` (`start` in $, `since` date) | `racinglines strategy profiles f1 --assign-demo`, the Lab |
 
 The profile keeps the full settings, so deleting its Lab candidate doesn't break the
 assignment.
@@ -143,7 +143,7 @@ assignment.
 ## Ingest
 
 ```
-racinglines mtb_dh ingest data/raw/mtb_dh/chronorace [more files or dirs ...] [--competition uci_dhi_wc] [--force]
+racinglines data ingest mtb_dh data/raw/mtb_dh/chronorace [more files or dirs ...] [--competition uci_dhi_wc] [--force]
 ```
 
 Each downloaded file is one event × category, and becomes one race:
@@ -182,12 +182,12 @@ progress. The full load takes about 8 seconds.
 
 ## Using it from the model
 
-`racinglines mtb_dh forecast` and `racinglines mtb_dh backtest` read from the database with
+`racinglines model forecast mtb_dh` and `racinglines model backtest mtb_dh` read from the database with
 `--db`, and store their output with `--save`:
 
 ```
-racinglines mtb_dh forecast   --db --walk-forward --save    # 2026 forecast, stored as a model run
-racinglines mtb_dh backtest --db --save                   # 2021–2026 backtest metrics
+racinglines model forecast mtb_dh   --db --walk-forward --save    # 2026 forecast, stored as a model run
+racinglines model backtest mtb_dh --db --save                   # 2021–2026 backtest metrics
 ```
 
 `racinglines.db.queries.load_tidy()` returns the same tidy layout as `racinglines/sources/chronorace/parse.py`'s CSV,
@@ -260,10 +260,10 @@ racinglines db snapshot-import     # replaces these tables, resets the id sequen
 **Rebuilding everything from it.** The snapshot plus the committed Parquet archive
 are enough to rebuild the working database. After `snapshot-import`:
 
-1. `racinglines f1 forecast --save`: the live forecast the web app prices from.
+1. `racinglines model forecast f1 --save`: the live forecast the web app prices from.
 2. Web-app accounts aren't in the snapshot: create the demo `maker` / `taker`
-   accounts, run `racinglines f1 profiles --assign-demo`, then
-   `racinglines f1 demo-history` for their track record.
+   accounts, run `racinglines strategy profiles f1 --assign-demo`, then
+   `racinglines strategy demo-history f1` for their track record.
 3. Re-run the saved research with `--save`: backtests per model variant (and the
    downhill backtest), season sweeps per variant and profile (2025 and 2026), the
    season strategy and the season checkpoints.
@@ -307,7 +307,7 @@ Migrations so far (in order, `migrations/versions/`):
 - **UCI IDs:** add `uci` identifiers at ingest once the downloader writes them.
   That merges riders whose name changed.
 - **Points:** fill `points_schemes` with official tables and have the model read
-  points from it instead of the constants in `racinglines/models/timed_runs/`.
+  points from it instead of the constants in `racinglines/models/inputs/run_times/`.
 - **Scheduled events in the forecast:** in-progress events are forecast with their
   start lists, and scheduled events can be added in the web app. But
   `forecast_season` doesn't yet read `scheduled` events (with no start list) as

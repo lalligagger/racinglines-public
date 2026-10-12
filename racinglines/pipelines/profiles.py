@@ -13,9 +13,9 @@ The two recommended by the params-4h cloud search (data/runs/search/params-4h/RE
        sweeps/kalshi-maker-k.toml); the settings below are the sweep's winner under the params-4h
        held-out rule. The candidate carries venue = "kalshi": it is judged on and quotes Kalshi.
 
-    racinglines f1 profiles                      # list, and create A / C / K as Lab candidates if missing
-    racinglines f1 profiles --assign-demo        # demo taker -> A, demo maker -> C
-    racinglines f1 profiles --assign-demo --venue kalshi   # demo maker -> K, as its Kalshi profile (explicit;
+    racinglines strategy profiles f1                      # list, and create A / C / K as Lab candidates if missing
+    racinglines strategy profiles f1 --assign-demo        # demo taker -> A, demo maker -> C
+    racinglines strategy profiles f1 --assign-demo --venue kalshi   # demo maker -> K, as its Kalshi profile (explicit;
                                                            # nothing reads it until the signal engine runs Kalshi)
 
     T1..T10  the taker shortlist (TAKER_TOP, ranked; source "taker-resweep"): what pro accounts pick from, and
@@ -46,7 +46,7 @@ PROFILES = {
                         "taker_stages": LIVE_STAGES},
               why="params-4h #09 + head-to-head at 5 pts. Robust in both seasons: 2026 +1,232 (Sharpe 1.53, "
                   "max DD 249), 2025 +1,237 (1.35, 306), both without the h2h change; noise range "
-                  "+1,270 ± 67 / +1,020 ± 149."),
+                  "+1,270 ± 67 / +1,020 ± 149. defaults-2026-10 (16 + 23 weekends, 16k): 2026 +1,376 (1.27, 249), 2025 +1,432 (1.55, 233)."),
     "C": dict(name="C · maker sleeve (gbm)", strategy="maker",
               settings={"variant": "gbm", "max_disagree": 0.05, "size": 25},
               why="params-4h #24. Profitable in both seasons with the smallest drawdowns: 2026 +653 "
@@ -64,36 +64,36 @@ _T1 = {"variant": "gridq+pretrain+reset", "min_edge": 0.10, "min_edge_h2h": 0.05
 _T7 = dict(_T1, coherence_tol_by_kind="race_podium=0.35")
 TAKER_PROFILES = {
     "T1": dict(name="T1 · update, core (A's settings)", strategy="update", settings=dict(_T1),
-               why="taker-resweep rank 2 (= profile A). Robust: 16k 2026 +1,389 (Sharpe 1.29, max DD 249), 2025 +1,432 (1.55, 233); 4k +1,243 / +1,363."),
+               why="taker-resweep rank 2 (= profile A). Robust: defaults-2026-10 (16 + 23 weekends, 16k): 2026 +1,376 (Sharpe 1.27, max DD 249), 2025 +1,432 (1.55, 233)."),
     "T2": dict(name="T2 · update, every stage", strategy="update",
                settings={"variant": "gridq+pretrain+reset", "min_edge": 0.10, "min_edge_h2h": 0.05},
-               why="taker-resweep rank 3: A with pre-weekend entry. Robust, not better than A: 16k 2026 +1,256 (1.13, 289), 2025 +1,400 (1.53, 239)."),
+               why="taker-resweep rank 3: A with pre-weekend entry. Robust, not better than A: defaults-2026-10 (16 + 23 weekends, 16k): 2026 +1,244 (1.11, 289), 2025 +1,400 (1.53, 239)."),
     "T3": dict(name="T3 · update, gridq+pretrain", strategy="update",
                settings={"variant": "gridq+pretrain", "min_edge": 0.10},
-               why="taker-resweep rank 4: gridq+pretrain, 10-pt edge. Robust: 16k 2026 +960 (0.85, 292), 2025 +900 (0.97, 439); 2026 rests on one weekend."),
+               why="taker-resweep rank 4: gridq+pretrain, 10-pt edge. Robust: defaults-2026-10 (16 + 23 weekends, 16k): 2026 +983 (0.86, 287), 2025 +786 (0.83, 446); 2026 rests on one weekend."),
     "T4": dict(name="T4 · update, gbm", strategy="update", settings={"variant": "gbm", "min_edge": 0.10},
-               why="taker-resweep rank 5: gbm, 10-pt edge. Robust: 16k 2026 +739 (0.80, 389), 2025 +881 (0.84, 420)."),
+               why="taker-resweep rank 5: gbm, 10-pt edge. Robust: defaults-2026-10 (16 + 23 weekends, 16k): 2026 +659 (0.72, 406), 2025 +841 (0.79, 448)."),
     "T5": dict(name="T5 · update, 8-pt edges", strategy="update",
                settings={"variant": "gridq+pretrain+reset", "min_edge": 0.08},
-               why="taker-resweep rank 6: 8-pt edge, more trades. Robust: 16k 2026 +872 (0.80, 399), 2025 +816 (0.81, 412)."),
+               why="taker-resweep rank 6: 8-pt edge, more trades. Robust: defaults-2026-10 (16 + 23 weekends, 16k): 2026 +860 (0.79, 399), 2025 +816 (0.81, 412)."),
     "T6": dict(name="T6 · update, $200 volume floor", strategy="update", settings=dict(_T1, min_volume_24h=200),
-               why="taker-resweep rank 8: A in markets with $200+ traded in 24 h. Robust, smallest drawdowns: 16k 2026 +702 (0.73, 260), 2025 +608 (0.78, 225)."),
+               why="taker-resweep rank 8: A in markets with $200+ traded in 24 h. Robust, smallest drawdowns: defaults-2026-10 (16 + 23 weekends, 16k): 2026 +689 (0.72, 260), 2025 +608 (0.78, 225)."),
     "T7": dict(name="T7 · update, loose podium coherence", strategy="update", settings=dict(_T7),
-               why="taker-resweep rank 1: A with podium coherence 0.35. Robust but within noise of A: 16k 2026 +1,271 (1.18, 249), 2025 +1,456 (1.58, 213)."),
-    "T8": dict(name="T8 · stage-aware (early)", strategy="early", settings=dict(_T1),
-               why="taker-resweep rank 10: A's settings on the stage-aware taker. 2026-led: 16k 2026 +2,707 (1.57, 214), 2025 +546 (0.96, 412)."),
+               why="taker-resweep rank 1: A with podium coherence 0.35. Robust but within noise of A: defaults-2026-10 (16 + 23 weekends, 16k): 2026 +1,258 (1.17, 249), 2025 +1,456 (1.58, 213)."),
+    "T8": dict(name="T8 · stage-aware (early, $25 volume floor)", strategy="early", settings=dict(_T1, min_volume_24h=25),
+               why="defaults-2026-10: A's settings on the stage-aware taker at a $25 volume floor. 2026-led: 16k 2026 +3,145 (1.65, 231), 2025 +757 (1.36, 424); +438 / +211 over the $50 floor, +473 / +233 and +475 / +224 at seeds 1 and 2 (seedcheck-2026-10)."),
     "T9": dict(name="T9 · stage-aware, loose podium coherence", strategy="early", settings=dict(_T7),
-               why="taker-resweep rank 9: T8 with podium coherence 0.35. 2026-led: 16k 2026 +2,794 (1.62, 214), 2025 +570 (1.00, 412)."),
+               why="taker-resweep rank 9: T8 with podium coherence 0.35. 2026-led: defaults-2026-10 (16 + 23 weekends, 16k): 2026 +2,794 (1.62, 214), 2025 +570 (1.00, 412)."),
     "T10": dict(name="T10 · update, baseline model", strategy="update",
                 settings={"variant": "baseline", "min_edge": 0.10},
-                why="taker-resweep rank 7: the baseline model at a 10-pt edge. Robust: 16k 2026 +740 (0.56, 504), 2025 +757 (0.71, 656)."),
+                why="taker-resweep rank 7: the baseline model at a 10-pt edge. Robust: defaults-2026-10 (16 + 23 weekends, 16k): 2026 +728 (0.55, 504), 2025 +757 (0.71, 656)."),
 }
 TAKER_TOP = ("T7", "T1", "T2", "T3", "T4", "T5", "T10", "T6", "T9", "T8")     # ranked, best first (worse season per weekend, 16k)
 # Blends (combos): `members` [(code, weight)] instead of one strategy. Each member runs as itself with its stakes
 # scaled by its weight (signals.compute_all); its signals carry detail.member. A blend is not a Lab candidate.
 COMBOS = {
     "TB": dict(name="TB · blended taker (update + stage-aware)", members=[("T1", 0.5), ("T8", 0.5)],
-               why="taker-resweep recommended blend: half T1, half T8 (same model, two entry rules). 16k 2026 +2,048 (Sharpe 1.48, max DD 227), 2025 +989 (1.56, 250). Chosen on both seasons, so no held-out season."),
+               why="taker-resweep recommended blend: half T1, half T8 (same model, two entry rules). defaults-2026-10 (16 + 23 weekends, 16k): 2026 +2,261, 2025 +1,094 with T8 at its $25 floor (seedcheck-2026-10, default seed). Chosen on both seasons, so no held-out season."),
 }
 PROFILES.update(TAKER_PROFILES)
 PROFILES.update(COMBOS)
@@ -108,6 +108,31 @@ BANKROLL_SINCE = "2025-01-01"
 # the demo maker's saved Edge Finder: the setups it ran, newest first (M1 = the baseline maker, also the benchmark)
 DEMO_EDGE_FINDER = {"maker": [("C", "maker"), ("M3", "maker"), ("M2", "maker"), ("M1", "maker")]}
 DEMO_EDGE_YEAR = 2026
+# Maker strategies for users. Closed for the Alpha on 2026-10-11 22:29Z ("For the Alpha Fantasy Launch we can remove
+# maker strategies completely"), open again on 2026-10-12 05:11Z (owner: "include maker strategies, we will see how it
+# goes"). Closed means: no account but admin can be assigned a maker profile (web/roles.allowed_profile), the picker
+# doesn't offer one (open_codes), the web pages hide maker strategies (web/edge.SHOWN_KEYS) and the signal engine skips
+# any maker profile outside the demo accounts (signals.run_all). Nothing is deleted either way.
+MAKERS_OPEN = True
+
+
+def is_maker(profile):
+    """A maker profile (a PROFILES entry or an assigned profile): one strategy that isn't a taker mode. A blend is a
+    maker if any member is."""
+    if not profile:
+        return False
+    if is_combo(profile):
+        return any(is_maker(PROFILES.get(m[0]) if isinstance(m, (list, tuple)) else m.get("member") or PROFILES.get(m["code"]))
+                   for m in profile["members"])
+    from racinglines.pipelines import weekend_sweep as WS
+    return profile.get("strategy", "update") not in WS.TAKER_MODES
+
+
+def open_codes(codes):
+    """The codes users may pick from, in order: makers drop out while MAKERS_OPEN is off."""
+    return tuple(c for c in codes if MAKERS_OPEN or not is_maker(PROFILES.get(c)))
+
+
 PREF = "strategy_profile"
 PREF_KALSHI = "strategy_profile_kalshi"
 
@@ -206,7 +231,7 @@ def load(conn, ref):
         name = codes[ref.upper()]["name"] if ref.upper() in codes else ref
         hit = next(((i, p) for i, p in reversed(rows) if p.get("name") == name), None)
     if hit is None:
-        raise ValueError(f"no candidate {ref!r} (racinglines f1 profiles creates A and C)")
+        raise ValueError(f"no candidate {ref!r} (racinglines strategy profiles f1 creates A and C)")
     i, p = hit
     sport = p.get("sport") or DEFAULT_SPORT          # another sport's candidate: its own sweep settings
     if sport != DEFAULT_SPORT:

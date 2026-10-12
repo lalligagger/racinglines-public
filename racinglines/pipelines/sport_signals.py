@@ -1,8 +1,8 @@
 """
 Live paper signals for any sport on an exchange, run by the sport's own stage mode (pipelines/season_sweep.py):
 
-    racinglines nascar signals                      # every user with a NASCAR profile, on every venue it names
-    racinglines motogp signals --venue og --profile 123 --event 2026-5630 --asof 2026-10-03T20:00   # replay, prints only
+    racinglines strategy signals nascar                      # every user with a NASCAR profile, on every venue it names
+    racinglines strategy signals motogp --venue og --profile 123 --event 2026-5630 --asof 2026-10-03T20:00   # replay, prints only
 
 A profile names its sport (profile["sport"]; F1 when unset) and its venue (the `venue` setting; unset = the sport's
 first exchange, season_sweep.settings_class). A user's profile for a sport and venue lives in users.prefs under

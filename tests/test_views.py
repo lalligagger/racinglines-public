@@ -138,7 +138,9 @@ def test_taker_is_kept_to_prices(clients):
 def test_old_urls_redirect(clients):
     """Routes match page names; every old URL redirects (web/legacy.py), keeping its query string."""
     m = clients[0]["maker"]
-    for old, new in (("/", "/markets"), ("/bet", "/markets"), ("/me", "/positions"), ("/signals?event=2026-15", "/strategy?event=2026-15"),
+    r = m.get("/", follow_redirects=False)                   # the index is the landing page; signed in, it goes on to the board
+    assert r.status_code == 303 and r.headers["location"] == "/markets"
+    for old, new in (("/bet", "/markets"), ("/me", "/positions"), ("/signals?event=2026-15", "/strategy?event=2026-15"),
                      ("/pm", "/markets/polymarket"), ("/house?race_id=5", "/book/quotes?race_id=5"),
                      ("/house/7", "/book/markets/7"), ("/race/3", "/races/3"), ("/season/f1_wdc", "/seasons/f1_wdc"),
                      ("/diag/9", "/lab/diagnostics/9"), ("/runs/4", "/lab/runs/4"), ("/markets/12", "/markets/linked/12")):
@@ -257,8 +259,19 @@ def test_racinglines101_is_public_and_linked_from_login():
     cl = TestClient(app)
     r = cl.get("/racinglines101", follow_redirects=False)
     assert r.status_code == 200 and "Racinglines 101" in r.text and "paper trades" in r.text
-    assert 'href="/racinglines101">I\'m already confused.</a>' in cl.get("/login").text
+    assert 'href="/racinglines101">What is this?</a>' in cl.get("/").text
 
+
+def test_racinglines101_has_three_parts_and_102_redirects_to_the_engine():
+    from fastapi.testclient import TestClient
+
+    from racinglines.web.app import app
+    cl = TestClient(app)
+    t = cl.get("/racinglines101").text
+    assert "data-term-parts" in t and all(g in t for g in ("How we trade", "How the engine works", "Using the app"))
+    assert 'data-term-tab="engine"' in t and 'href="#simulate"' in t and 'id="simulate"' in t and "10,000" in t
+    r = cl.get("/racinglines102", follow_redirects=False)
+    assert r.status_code == 307 and r.headers["location"] == "/racinglines101#engine"
 
 def test_pitch_is_public():
     from fastapi.testclient import TestClient
@@ -511,11 +524,10 @@ def test_landing_page_has_no_popup_unless_a_notice_is_set(monkeypatch):
 
     from racinglines.web import app as A
     cl = TestClient(A.app)
-    page = cl.get("/login").text
+    page = cl.get("/").text                                 # the landing page lives at the index (2026-10-12)
     assert 'id="site-notice"' not in page and "Beta <a" not in page
-    assert "Motorsport pricing for sportsbooks" in page and 'class="biz"' in page
+    assert "Sportsbook pricing for all racing disciplines" in page and 'class="biz"' in page
     assert 'href="#' not in page and "How it works" not in page
-    assert "We're still looking for individual users to fantasy trade with us!" in page.replace("&#39;", "'")
-    assert ">Try as pro</button>" in page and ">Try as basic</button>" in page and 'id="account"' in page
+    assert ">Try the demo</button>" in page and "Try as basic" not in page and 'id="account"' in page
     monkeypatch.setattr(A, "MAINTENANCE_NOTICE", "Down for a moment.")
-    assert '<p id="site-notice-msg">Down for a moment.</p>' in cl.get("/login").text
+    assert '<p id="site-notice-msg">Down for a moment.</p>' in cl.get("/").text

@@ -63,13 +63,13 @@ def f1_frames():
 
 @pytest.fixture(scope="session")
 def f1_meas(f1_frames):
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     return run.Measurements.from_frames(*f1_frames)
 
 
 @pytest.fixture(scope="session")
 def f1_hist(f1_meas):
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     return run.history(f1_meas)
 
 

@@ -1,5 +1,5 @@
 # Who sets the race's fastest lap, by finishing position and race pace: the weights of position_sim's "flpos" variant
-# (racinglines/models/position_sim/model.py fastest_lap_from_position, FL_FROM = "position"; decision log 2026-10-07 in
+# (racinglines/models/inputs/laps.py fastest_lap_from_position, FL_FROM = "position"; decision log 2026-10-07 in
 # docs/f1-roadmap.md, provisional). In each simulation the fastest lap goes to one classified car i, drawn with
 # probability proportional to
 #

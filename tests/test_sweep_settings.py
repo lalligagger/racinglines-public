@@ -13,8 +13,8 @@ pytestmark = pytest.mark.quick
 def test_defaults_match_the_code_they_configure():
     from racinglines.markets.strategies import maker_replay as R
     from racinglines.markets.strategies.taker_weekend import TakerParams
-    from racinglines.models.position_sim import model as M
-    from racinglines.models.position_sim import practice as PR
+    from racinglines.models.inputs import laps as M
+    from racinglines.models.inputs import practice as PR
     from racinglines.pipelines import weekend_sweep as W
     d = SS.Settings.from_dict()
     t, m = TakerParams(), R.Params()
@@ -65,8 +65,8 @@ def test_old_saved_params_are_read():
 
 
 def test_applied_sets_and_restores_model_globals():
-    from racinglines.models.position_sim import model as M
-    from racinglines.models.position_sim import practice as PR
+    from racinglines.models.inputs import laps as M
+    from racinglines.models.inputs import practice as PR
     before = (M.HALF_LIFE_DAYS, PR.USE_PRACTICE, M.GRID_TERMS)
     with SS.Settings.from_dict(dict(variant="gridq", half_life_days=90, practice_prior=False)).applied():
         assert (M.HALF_LIFE_DAYS, PR.USE_PRACTICE, M.GRID_TERMS) == (90.0, False, "known")
@@ -134,7 +134,7 @@ def test_seed_draws_independent_noise():
     import numpy as np
     import pandas as pd
 
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     from racinglines.testing import synthetic as SY
     m = run.Measurements.from_frames(*SY.f1_frames())
     h = run.history(m)
@@ -212,7 +212,7 @@ def test_history_is_built_only_when_a_stage_needs_pricing(monkeypatch, tmp_path)
     import pandas as pd
 
     from racinglines import paths
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     from racinglines.pipelines import weekend_sweep as WS
     calls = []
     monkeypatch.setattr(run, "history", lambda meas, use_track: calls.append(1) or pd.DataFrame({"x": [1, 2]}))

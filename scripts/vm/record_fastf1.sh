@@ -27,7 +27,7 @@ say() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*" | tee -a "$LOG"; }
 if [ "${1:-}" = status ]; then   # vm.sh record fastf1 status
   echo "--- last passes ($LOG)"
   tail -n 12 "$LOG" 2>/dev/null || echo "no pass yet"
-  $R f1 record --status 2>&1 || echo "DB unavailable"
+  $R data record f1 --status 2>&1 || echo "DB unavailable"
   exit 0
 fi
 
@@ -39,7 +39,7 @@ fi
 
 rc=0
 say "fetching current F1 session"
-if out=$($R f1 record 2>&1); then
+if out=$($R data record f1 2>&1); then
   say "fastf1: $(echo "$out" | tail -n 1)"
 else
   rc=1

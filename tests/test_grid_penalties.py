@@ -1,4 +1,4 @@
-"""Confirmed grid penalties (sports/f1/grid_penalties.toml, models/position_sim/penalties.py): apply() moves the
+"""Confirmed grid penalties (sports/f1/grid_penalties.toml, models/inputs/grid.py): apply() moves the
 penalised drivers on known arrays; price_race starts a back-of-grid driver from the back without adding or moving a
 random draw; a weekend without a penalty prices exactly as before; the sprint stage takes its own session's
 penalties; a penalty announced after the cutoff is left out (the as-of rule). Synthetic data, no database; every
@@ -11,8 +11,8 @@ import pandas as pd
 import pytest
 
 from racinglines.models import outcomes as O
-from racinglines.models.position_sim import penalties as GP
-from racinglines.models.position_sim import pricing as run
+from racinglines.models.inputs import grid as GP
+from racinglines.models.inputs import laps_pricing as run
 from racinglines.testing import synthetic as SY
 
 pytestmark = pytest.mark.quick

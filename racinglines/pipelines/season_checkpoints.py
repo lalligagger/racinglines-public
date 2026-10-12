@@ -100,8 +100,8 @@ def run(engine, engine_url, variants=VARIANTS, year=2026, p=SS.SeasonParams(), e
         n_sims=5000, echo=print):
     """Score every variant. Only the entry forecasts are needed; missing ones are computed and
     stored (kind 'season_asof', keyed by variant), so a new combo costs len(entries) forecasts."""
-    from racinglines.models.position_sim import pricing as run_
-    from racinglines.models.position_sim import variants as V
+    from racinglines.models.inputs import laps_pricing as run_
+    from racinglines.models import variants as V
     with engine.connect() as c:
         links = SE.season_links(c, year)
         markets = SE.build_markets(c, links)

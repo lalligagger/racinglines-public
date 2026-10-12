@@ -56,7 +56,7 @@ PRICE_FIELDS = ("book_prob", "run_id", "run_source", "model_prob", "model_note",
                 "market_bid", "market_ask", "market_synced_utc", "ev_model", "ev_market")
 LINE_FIELDS = ("line", "id", "title", "selection", "kind", "status", "reason", "n_legs", "races", "odds",
                "decimal_odds", "book_prob", "model_prob", "model_method", "market_prob", "market_method", "flags",
-               "edge_model", "edge_market", "ev_model", "ev_market", "result", "payout", "profit")
+               "edge_model", "edge_market", "ev_model", "ev_market", "result", "payout", "profit", "box")
 
 
 # --- loading -------------------------------------------------------------------------------------------------------
@@ -211,7 +211,7 @@ def map_book(conn, book, _db=None):
         m = ln["market"]
         row = dict.fromkeys(LINE_FIELDS)
         row.update(line=i + 1, id=ln.get("id", str(i + 1)), title=ln["title"], selection=ln["selection"],
-                   odds=ln.get("odds"))
+                   odds=ln.get("odds"), box=ln.get("box"))
         legs = []
         if m == "unmapped":
             row.update(kind=None, status="unmapped", reason="the book file marks this line unmapped", n_legs=0)
@@ -271,7 +271,7 @@ def _run_for(db, leg, runs):
 def _model(db, leg, runs):
     from racinglines.db.reads import model_prob
     if leg["kind"] not in K.KINDS:
-        return None, None, None, "a race prop: no stored model price (models/position_sim/props.py prices it live)"
+        return None, None, None, "a race prop: no stored model price (models/props.py prices it live)"
     run_id, source, stale = _run_for(db, leg, runs)
     if run_id is None:
         return None, None, source, "no model run prices this race"

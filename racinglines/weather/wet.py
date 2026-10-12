@@ -25,7 +25,7 @@ forecast API for the same models and `racinglines weather fetch --session race=.
                                            vote at each lead (from the leads CSV; default the committed fixture)
     votes(leads_df)                        the leads CSV's per-model rows as one vote per race and lead
     p_wet_series(hist, leads_df, lead)     walk-forward p_wet per race_id at one lead: the -WX checks' forecast
-                                           (racinglines f1 props --check / --dnf-check --forecast CSV --lead N)
+                                           (racinglines model props f1 --check / --dnf-check --forecast CSV --lead N)
     score(rows, hist, lead)                Brier and log loss of rain, red flag and safety car per method, and the
                                            DNF count (MAE, Poisson deviance) per method; the forecast-aware method is
                                            its base's name + "-WX" (wx_name: circuit-WX, climatology-WX)
@@ -43,7 +43,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from racinglines.models.position_sim import props as P
+from racinglines.models import props as P
 from racinglines.weather import open_meteo as OM
 from racinglines.weather import schema as S
 

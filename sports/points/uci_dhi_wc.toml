@@ -4,8 +4,8 @@
 # each era. Replace `points` with the official UCI scales (UCI MTB regulations Part 4, or the
 # standings PDFs on ChronoRace), set `official = true`, cite the source in `note`, then:
 #
-#   racinglines mtb_dh points import sports/points/uci_dhi_wc.toml --db
-#   racinglines mtb_dh points check --season 2026 --standings standings_2026_r7.csv --db
+#   racinglines data points mtb_dh import sports/points/uci_dhi_wc.toml --db
+#   racinglines data points mtb_dh check --season 2026 --standings standings_2026_r7.csv --db
 #
 # round_kind: final | qual | qual1 | semi (the qualifying round that pays points in that era).
 # points[0] = 1st place; places beyond the list score 0.

@@ -8,11 +8,11 @@
 #
 # Size: 48 settings x 2 seasons + A's 2 extra seeds x 2 + 6 baselines = 106 jobs at 4,000 sims.
 #
-#   racinglines f1 search sweeps/overnight-vm.toml
-#   racinglines f1 search-report sweeps/overnight-vm.toml
+#   racinglines strategy search f1 sweeps/overnight-vm.toml
+#   racinglines strategy search-report f1 sweeps/overnight-vm.toml
 #   python scripts/vm/promote_16k.py sweeps/overnight-vm.toml --top 10
-#   racinglines f1 search sweeps/overnight-vm.toml        (again: runs only the 16k block)
-#   racinglines f1 search-report sweeps/overnight-vm.toml
+#   racinglines strategy search f1 sweeps/overnight-vm.toml        (again: runs only the 16k block)
+#   racinglines strategy search-report f1 sweeps/overnight-vm.toml
 
 [search]
 name = "overnight-vm"

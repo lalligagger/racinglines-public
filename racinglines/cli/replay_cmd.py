@@ -1,5 +1,5 @@
 """
-`racinglines nascar replay` / `racinglines motogp replay`: the taker replay of a result-only sport against an
+`racinglines strategy replay nascar` / `racinglines strategy replay motogp`: the taker replay of a result-only sport against an
 exchange's recorded prices (racinglines/pipelines/position_replay.py). Read-only unless --save.
 
     --venue all            the default: Kalshi then Polymarket (the sport's [markets] venues), then OG.com where
@@ -283,7 +283,7 @@ def run_season(args, sport):
     from racinglines.pipelines import position_replay as P
     from racinglines.pipelines import season_replay as SR
     if not SR.enabled():
-        sys.exit(f"racinglines {sport} season-replay is off by default: set {SR.SWITCH}=1 to run it (read-only)")
+        sys.exit(f"racinglines strategy season-replay {sport} is off by default: set {SR.SWITCH}=1 to run it (read-only)")
     over = {k: v for k, v in dict(min_edge=args.min_edge, stake_per_edge=args.stake_per_edge, max_stake=args.max_stake,
                                   capital=args.capital).items() if v is not None}
     params = SR.SS.SeasonParams(**{**SR.DEFAULT_PARAMS.__dict__, **over})
@@ -302,7 +302,7 @@ def run_season(args, sport):
 # --- sweep: the season sweep, taker modes and maker variants (pipelines/season_sweep.py) -------------------------
 
 def add_sweep_parser(sub, sport):
-    """`racinglines <sport> sweep`: the season sweep on the sport's [sweep] engine, as `racinglines f1 sweep` (the
+    """`racinglines strategy sweep <sport>`: the season sweep on the sport's [sweep] engine, as `racinglines strategy sweep f1` (the
     search runs both the same way: sweeps/*.toml jobs of kind "sweep")."""
     from racinglines.pipelines import season_sweep as S
     from racinglines.pipelines import sweep_settings as SS

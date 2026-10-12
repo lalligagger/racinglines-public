@@ -15,7 +15,7 @@ Strategy-profile signals (pipelines/signals.py) go out through the same channels
   page's race cards, the Polymarket page).
 
     racinglines markets record                     # alerts on by default (--no-alerts to turn off)
-    racinglines f1 pm-sync --alert                 # a one-off sync that alerts too
+    racinglines data pm-sync f1 --alert                 # a one-off sync that alerts too
 """
 
 import json

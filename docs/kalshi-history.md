@@ -22,7 +22,7 @@ shared by every driver's market of the event, so Kalshi code reads and groups th
 The same tables and archive take the **other sports** (NASCAR Cup, MotoGP, IndyCar, and since PR #50 UCI road cycling, Le Mans and SailGP): synced only when named
 (`markets --exchange kalshi --sport nascar sync`), under their own competitions, every link `unmodeled`, so the F1
 replays below (which read F1's modeled links) never see them. NASCAR and MotoGP have their own taker replay
-(`racinglines nascar|motogp replay`, [CLI](cli.md)); its results are in [Sports and exchanges](coverage.md).
+(`racinglines strategy replay nascar|motogp`, [CLI](cli.md)); its results are in [Sports and exchanges](coverage.md).
 [Data](data.md#other-series-tapes-nascar-motogp-indycar-road-cycling-le-mans-sailgp), [CLI](cli.md#kalshi-exchange-kalshi).
 
 ## Sprint weekends
@@ -58,7 +58,7 @@ What this means for the replays:
 
 ## The maker's record on Kalshi
 
-    racinglines f1 demo-history --venue kalshi [--reset]
+    racinglines strategy demo-history f1 --venue kalshi [--reset]
 
 This runs the same profiles as the Polymarket record (M1-M3 in 2025, C in 2026) and the same maker replay,
 filled by Kalshi's real taker trades, with Kalshi's maker fee (`maker_replay.KALSHI_MAKER_FEE`: 0.0175 x C x P x (1 − P),
@@ -119,7 +119,7 @@ podium +$9.94. Hungary 2025 (M2, −$508) is most of M2's loss.
 
 A strategy profile paper-trades Kalshi when its settings say `venue = "kalshi"` (roadmap U1; the setting
 is optional, unset by default and left out of every settings key, so every Polymarket profile and saved
-sweep is untouched). Then `racinglines f1 signals`, `f1 sweep --venue kalshi` and the Lab's sweeps read
+sweep is untouched). Then `racinglines strategy signals f1`, `f1 sweep --venue kalshi` and the Lab's sweeps read
 the race's `exchange='kalshi'` links, one market per ticker (never grouped by `condition_id`, the event
 ticker), Kalshi's tape per market (its own 24 h volume), and the maker pays `KALSHI_MAKER_FEE`; the taker
 strategies (`taker_weekend`) and the maker replay run unchanged on top. Signals carry
@@ -156,7 +156,7 @@ market ticker (`token_id`), where Polymarket's group by condition.
 ## Profile K
 
 `K · Kalshi maker` is the maker tuned on Kalshi's own tape: the queue `sweeps/kalshi-maker-k.toml`
-(`racinglines f1 search`, then `search-report`), every job with `venue = "kalshi"`, so each run replays the
+(`racinglines strategy search f1`, then `search-report`), every job with `venue = "kalshi"`, so each run replays the
 five maker strategies on Kalshi's markets and trades with its maker fee (`f1 sweep --venue kalshi`) against a
 default-settings baseline on the same venue. Judged as params-4h was: 2026 the target, 2025 held out, maker
 noise floor ±350, ranked by 2026 P&L less any 2025 loss.
@@ -213,8 +213,8 @@ before).
 The full table of every combo × maker strategy, with the 16k columns, is in the project files
 (`roadmap-spinup/u3-kalshi-maker-k/`).
 
-**Assigning K is an explicit step.** `racinglines f1 profiles` creates K as a Lab candidate
-(`params.venue = "kalshi"`); `racinglines f1 profiles --assign-demo --venue kalshi` stores it as the demo
+**Assigning K is an explicit step.** `racinglines strategy profiles f1` creates K as a Lab candidate
+(`params.venue = "kalshi"`); `racinglines strategy profiles f1 --assign-demo --venue kalshi` stores it as the demo
 maker's Kalshi profile (`users.prefs["strategy_profile_kalshi"]`), beside its Polymarket profile C, which it
 leaves alone. Nothing reads that key until the signal engine runs Kalshi, so the deployed app doesn't change.
 
@@ -259,7 +259,7 @@ would have shown as a spread, not a price.
 ### First taker results at the touch (2026-10-05)
 
 The first Kalshi taker sweep worth reading: before bid/ask candles were stored, the taker replay traded at the last
-trade and wasn't usable. Run on the VM at `7ba8fd0` (PR #55's merge) with `racinglines f1 sweep --year <year>
+trade and wasn't usable. Run on the VM at `7ba8fd0` (PR #55's merge) with `racinglines strategy sweep f1 --year <year>
 --venue kalshi --no-fetch`, baseline settings, nothing saved.
 
 Stored history behind it (`racinglines markets --exchange kalshi coverage`): 3,855 markets, 600,409 price rows from

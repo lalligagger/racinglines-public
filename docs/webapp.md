@@ -23,7 +23,7 @@ startup.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | `admin` / random | Required on every page. Browsers get a sign-in page (`/login`, 12-hour session cookie); scripts can use HTTP Basic (`curl -u admin:PASSWORD`). |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | `admin` / random | Required on every page. Browsers get a sign-in page (`/signin`, posting to `/login`; 12-hour session cookie); scripts can use HTTP Basic (`curl -u admin:PASSWORD`). |
 | `APP_SECRET` | random per start | Signs the session cookie and the anti-forgery token on every form. Set it to keep sessions across restarts. |
 | `WEB_HOST` / `WEB_PORT` | `127.0.0.1` / `8000` | Listen address. Keep it on localhost or a private network. |
 | `DATABASE_URL` | docker-compose DB | See [Database](database.md). |
@@ -92,14 +92,47 @@ event: a race, or a competition's season
 - **Adding a venue:** add a `VENUES` entry and rows in `market_links` with
   `exchange = <code>`. Every page then shows its column.
 
+## Sports shown to admins only
+
+One schema key decides which sports users see: `[sport] audience` in `sports/<code>.toml`, `"all"` by default.
+With `audience = "admin"`, the sport is left out of every page for everyone but admins. Its race, event, season,
+run, diagnostic and athlete pages, and its JSON API rows, answer 404. That covers the Markets board and calendar,
+the exchange lists, the Lab (Edge Finder, run forms, jobs, backtests, scenarios, diagnostics, runs), Positions,
+Strategy and its track record, Live, Settings and the landing page's sports line. One gate decides it,
+`racinglines.sports.is_public(code, user)` (the web app's side is `racinglines/web/audience.py`; the MCP tools use the
+same gate), and only user-facing readers ask: the sport is still recorded, priced and settled, the CLI shows it, and nothing is
+deleted. Setting the key back to `"all"` shows it again; it is code, so the change is a deploy.
+
+MotoGP is admin-only for the Alpha (owner, 2026-10-11, "Hide for Alpha": the motogp.com terms keep its results and
+prices off user pages).
+
 ## Pages
 
-**Landing page** (`/login`, where every signed-out visit lands; owner, 2026-10-08). A compact, centered page with no
-same-page navigation: what the pricing does for sportsbooks that set their own lines, books on a platform provider's
-feed, and the providers themselves; the business infographic; a contact line (hello@racinglines.bet); and the
-fantasy-trading beta with sign-up, the two demo buttons (no bigger than the sign-up link) and the sign-in form
-(`/login#account`). The infographic has no "How it works" heading. The page names no sportsbook, operator or provider.
-The sign-up popup is gone, and the maintenance popup is off (`MAINTENANCE_NOTICE = ""`).
+**Landing page** (`/`, public; owner, 2026-10-08, reworked and moved to the index 2026-10-12; a signed-in browser
+going to `/` lands on the Markets board). A compact,
+centered page with no same-page navigation: a one-line **fantasy league alpha** strip above the hero (sign-up, the two
+one **Try the demo** button that signs in as the pro demo account `maker`, and the 101 link; `/#account`); the hero, whose eyebrow reads "Sportsbook pricing for all racing
+disciplines", with its **Talk to us** button; what the pricing does for sportsbooks that set their own lines, books on
+a platform provider's feed, and the providers themselves; the business infographic; and a dated **News** feed, newest
+first, with the PyPI release marked upcoming, each sport and exchange added on the earliest date the project history
+states, and the X and Substack links under it. The sign-in form has its own page, `/signin`, linked top right; `/login`
+shows the same page (old links, `smoke.sh`, `vm.sh status` and the uptime monitor keep their 200), and the form posts
+to `/login`. Pages behind sign-in keep their own paths (`/markets`, `/lab`, ...); a signed-out browser asking for one is
+sent to `/signin?next=...`. The infographic has no "How it works" heading. The page names no sportsbook, operator or provider.
+The landing page has no popup, and the maintenance popup is off (`MAINTENANCE_NOTICE = ""`). The demo accounts (maker, taker) still get the sign-up popup, once per browser session, and a **Sign up** link in the top bar, while sign-up is on (owner, 2026-10-11). Registered accounts get neither. A registered account with no email (made before email was required at sign-up) gets an add-email popup instead, once per browser session, on every app page but Settings, until it saves one; the save (`POST /settings/email`) runs the sign-up checks (a valid address, on no other account).
+
+**Quickstart replay** (`/docs/quickstart/term`, under the docs' Quickstart since 2026-10-12, public like `/pitch` while the rest of `/docs` needs a sign-in; `/term` redirects there; owner, 2026-10-11). A terminal-styled replay of the
+quickstart (`docs/quickstart.md`): its commands, each with `--demo` (the kart demo pack, a synthetic F1 world: no real names
+or model prices), typed at a prompt one by one, each followed by its recorded output (shown at once without JavaScript or
+with reduced motion). Steps with a pack `section` group into parts; with more than one part, a part nav switches between them (large tabs across the top on a phone, a sidebar from 900 px wide; owner, 2026-10-12), one part at a time, kept in the URL hash (`#part-2`). Nothing runs on the server, so there is no shell to sandbox. The commands are not written in the
+web app: they are the pack's `[[quickstart]]` list (`racinglines/demo/packs/kart/pack.toml`), the same list
+`docs/quickstart.md` is built from. `python scripts/demo/record_term.py --run` snapshots that list into
+`racinglines/web/term/quickstart.json`, runs each command in colour with Rich's animations off (the final frame of each
+progress bar or live table), saves what it printed as `racinglines/web/term/<id>.ansi` with absolute paths cut, and
+renders `<id>.html`; without `--run` it re-renders the saved output only. Drop the demo store first for a true first
+run, and update `recorded` in `racinglines/web/term/demos.toml`. `tests/test_term.py` fails if a committed render no
+longer matches its output, or if the recorded list differs from the pack's quickstart. Runs on the hosted server may
+come later (owner, 2026-10-11).
 
 **Beta sign-up** (`/signup`, `RACINGLINES_SIGNUP=1`, off by default; `racinglines/web/accounts.py`). A public page,
 linked from the landing page's "Fantasy trade with us" section: username, email (required since 2026-10-08, one
@@ -142,6 +175,7 @@ the Markets, My Book and Positions pages links to Strategy and Positions.
 |---|---|
 | **Markets** (`/markets`), **takers** | Every open Polymarket F1 market (upcoming races first, listed or not yet, then season markets and everything else) with the account's strategy profile's current call on each: side, shares, the most to pay, and heat (`signals.call`; see [Paper trading](paper-trading.md#the-current-call-on-any-market)). Never a fair value or edge. |
 | **Strategy** (`/strategy`) | The account's story: paper bankroll (start, now, return), worst drawdown, most capital in use, weekends up, a bankroll curve, and how it has used racinglines. For a maker, every strategy decision with the Edge Finder evidence it had at the time and what the chosen setup then made; for a taker, what it was offered and took by heat, against taking every recommendation. Polymarket only: private-book results are on Positions. Then the track record (every weekend: strategy, trades or fills, P&L, bankroll; backtest replay or live paper) and any weekend's signals by stage, with a link to its positions. Takers never see fair values or edges, only the heat. Admins can pick any user. |
+| **Pick a strategy** (`/strategy/pick`) | The account picks what it paper-trades; a new account runs nothing until it does (owner, 2026-10-11). Formula 1 on Polymarket is the one slot open today; admins also see every other sport and exchange as *coming soon* (the library's strategies carry F1's stages and kinds, and only F1 on Polymarket has a signal timer). Basic accounts pick **Your picks** (their own draw of three from the taker shortlist) or nothing. Pro accounts pick from the taker shortlist (ranked) or the recommended blend and maker C (while `profiles.MAKERS_OPEN` is on, as it is from 2026-10-12), and can move a single strategy's few sliders (minimum edge, head-to-head edge, volume floor; ranges capped to what has been backtested, `racinglines/web/ranges.py`) and the pre-weekend toggle, which saves it as their own "adjusted" version; the dice roll a strategy or its sliders. Saves wait while a race's signal window is open. Strategy and Positions point here while an account has no strategy. The demo accounts keep theirs. |
 | **Live** (`/live`, every signed-in user; green dot while a final runs, grey once it is over and the page is a replay with a timeline, step and play controls) | A race followed live: leaderboard, riders on course and their split positions, who's up next. Makers also see every rider's rank probabilities, their auto-updating quotes, the private book (crowd fills, positions, event P&L, the crowd's results) and a win-probability chart; takers see their picks' P&L. Refreshes itself every 15 s. See [Live events](live-events.md). |
 | **Positions** (`/positions`) | The account's ledger. Three highlight cells: **Polymarket P&L** (paper history), **Private book P&L** (live, play money) and **Total P&L**; click one to show only that venue below (`?venue=polymarket|private`). Open and settled counts and realised P&L for the venues shown; a **P&L history** chart with a Polymarket / Private book switch (the two are never plotted together): the Polymarket bankroll curve with its worst drawdown and Sharpe ratio (mean / s.d. of weekend P&L × √24), or the private book's P&L at every poll of the live event (from its saved snapshots) with its worst drawdown. **Explore saved strategy P&L** loads a separate curve from a complete, saved Edge Finder sweep; select its season, sport, venue, settings and strategy. It is a historical simulation, never added to the account's actual paper P&L. The rest of the page shows **Coming up** (the next races' calls for a taker, where it would quote for a maker, from `signals.call` / `maker_call`); totals by market type; every position (open, settled, closed), sorted by weekend or by P&L (`?sort=pnl` best first, `-pnl` worst first; the P&L column header toggles it), and with a weekend picked the executions behind it (trades taken or paper fills). A taker's in-app bets, if any, below. With `RACINGLINES_SPORT_PAPER` on (the default), the demo accounts' NASCAR and MotoGP rows are listed too, with race names and dates and a *demo replay, in-sample* pill ([Paper trading](paper-trading.md#nascar-and-motogp-demo-in-sample-off-by-default)). Positions never shows a position made by the debug `buy_all` mode. |
 
@@ -160,8 +194,8 @@ not additional positions; private-book chart totals and ledger totals can still 
 | **Polymarket** (`/markets/polymarket`, linked from Markets) | Every listed F1 event, including outcomes we don't price, with **new** badges (48 hours), **Mirror into my book** and refresh. |
 | **My Book** (`/book`; **Books** for admin) | Positions across venues. Totals: open markets, bets against me, stakes, EV at fair and worst case (open markets only), settled P&L. One row per event, linking to the race page and to Quotes. Admin can filter by maker. |
 | **Quotes** (`/book/quotes`, `/book/markets/{id}`, `/book/quotes/sheet`) | The private book per race, behind My Book: create and reprice, close, record offline bets, settle, quote sheet. See [Private book](#private-book-markets-we-quote). The quote sheet is open to every role. |
-| **Lab** (`/lab`) | **Leads with the Edge Finder**, the headline feature for a maker account, per season (**2026**: every weekend raced so far; **2025**: as if live from its first race). A pinned **benchmark** (the conservative maker on the baseline at default settings) that nothing replaces; a card per chosen combo (a saved configuration × a strategy) with its P&L vs the baseline priced from the same data and vs the benchmark; a **full-season recap** (P&L, volume, return on volume, weekends up, average and s.d. per weekend, best and worst weekend, max drawdown, consistency, fills and markout for makers); and P&L per weekend with season totals. Nothing is simulated on a visit.<br>**Explore:** choose any saved sport, season, venue, setup and taker or maker strategy. The Edge Finder combines settings already present in complete saved sweeps; it does not invent a curve when per-weekend results are missing. A separate curve is also available under Positions and is kept apart from account P&L. For F1 Polymarket, **Demo strategy history and pools** lists the entire fixed maker and taker decision pools, the M1–M3/C and TW1/TW2 phases, saved results by season and direct links to each saved run. It also recomputes the historical decision rule from current saved sweeps and flags when those results no longer reproduce the recorded phase. T1/A is listed separately because it is a recommended profile, not part of the taker demo's decision pool; its matching saved sweep uses the sweep's sizing, not the flat-size resweep score.<br>**Strategy sweeps:** Run supports full-season simulations for Formula 1, NASCAR and MotoGP. Change the sport's model/settings, season and venue; the sweep trades every supported strategy against recorded exchange prices and saves per-weekend simulated P&L for Edge Finder. Jobs shows progress and the saved run. A walk-forward backtest is a different job: it scores model predictions against outcomes (and optionally exchange prices), not a trading strategy's P&L. Downhill has a model-only walk-forward but no strategy sweep; road cycling and tape-only sports are not sweep-enabled in this app.<br>**Candidates:** ★ on an F1 card saves that configuration × strategy as a named candidate (searches add theirs on import; strategy profiles are candidates too). **Load in Lab** opens the F1 **Edge Finder sweep** form (Run) with every setting filled in. **F1 sweep form:** every setting of `racinglines/pipelines/sweep_settings.py`, grouped (model, entry timing, taker, maker, markets), with **Start from** (defaults, your last run, or a candidate), the season and the maker venue. NASCAR and MotoGP use their sport-specific settings and exchanges.<br>**Sections, toggled on demand** (each loads from `/lab/section/{key}` the first time it's opened; `/lab#diagnostics` opens one): **Run**; **Jobs** (yours, or everyone's); **Model variants** (F1 only; click a cell to add that combo); **Scenarios** with **Promote to live**; **Backtests** (+ Edge Finder per model); **Event diagnostics**; **All runs**.<br>**What's stored where:** Edge Finder combos, season and job settings in `users.prefs`; candidates as `model_runs` (`kind='candidate'`); open sections and the jobs filter in the browser; jobs, runs and bets in their own tables. |
-| **Event diagnostic** (`/lab/diagnostics/{id}`) | One past event as of a cutoff: our prices vs Polymarket, scoring, the paper taking strategy, and the **maker replay with every strategy knob**. Knobs: fill rule, half-spread, shares per quote, max shares per market, max worst-case loss, inventory skew, disagreement filter, minimum 24 h volume, pull time. Replays take a few seconds. See [Market making](market-making.md). `/lab/diagnostics` opens the Lab's diagnostics section. |
+| **Lab** (`/lab`) | **Leads with the Edge Finder**, the headline feature for a maker account, per season (**2026**: every weekend raced so far; **2025**: as if live from its first race). A pinned **benchmark** (the conservative maker on the baseline at default settings) that nothing replaces; a card per chosen combo (a saved configuration × a strategy) with its P&L vs the baseline priced from the same data and vs the benchmark; a **full-season recap** (P&L, volume, return on volume, weekends up, average and s.d. per weekend, best and worst weekend, max drawdown, consistency, fills and markout for makers); and P&L per weekend with season totals. Nothing is simulated on a visit.<br>**Explore:** choose any saved sport, season, venue, setup and taker or maker strategy. The Edge Finder combines settings already present in complete saved sweeps; it does not invent a curve when per-weekend results are missing. A separate curve is also available under Positions and is kept apart from account P&L. For F1 Polymarket, **Demo strategy history and pools** lists the entire fixed maker and taker decision pools, the M1–M3/C and TW1/TW2 phases, saved results by season and direct links to each saved run. It also recomputes the historical decision rule from current saved sweeps and flags when those results no longer reproduce the recorded phase. T1/A is listed separately because it is a recommended profile, not part of the taker demo's decision pool; its matching saved sweep uses the sweep's sizing, not the flat-size resweep score.<br>**Strategy sweeps:** Run supports full-season simulations for Formula 1, NASCAR and MotoGP. Change the sport's model/settings, season and venue; the sweep trades every supported strategy against recorded exchange prices and saves per-weekend simulated P&L for Edge Finder. Jobs shows progress and the saved run. A walk-forward backtest is a different job: it scores model predictions against outcomes (and optionally exchange prices), not a trading strategy's P&L. Downhill has a model-only walk-forward but no strategy sweep; road cycling and tape-only sports are not sweep-enabled in this app.<br>**Candidates:** ★ on an F1 card saves that configuration × strategy as a named candidate (searches add theirs on import; strategy profiles are candidates too). **Load in Lab** opens the F1 **Edge Finder sweep** form (Run) with every setting filled in. **F1 sweep form:** every setting of `racinglines/pipelines/sweep_settings.py`, grouped (model, entry timing, taker, maker, markets), with **Start from** (defaults, your last run, or a candidate), the season and the maker venue. NASCAR and MotoGP use their sport-specific settings and exchanges.<br>**Sections, toggled on demand** (each loads from `/lab/section/{key}` the first time it's opened; `/lab#diagnostics` opens one): **Run**; **Jobs** (yours, or everyone's); **Model variants** (F1 only; click a cell to add that combo); **Scenarios** with **Promote to live**; **Backtests** (+ Edge Finder per model); **Event diagnostics**; **All runs**.<br>**Alpha Fantasy Launch:** makers are open again (owner, 2026-10-12; maker sliders capped at 10–100 shares per quote and a 0.05–0.15 disagreement cut-off). When `profiles.MAKERS_OPEN` is off, maker strategies are hidden: the Edge Finder's strategy lists, defaults and candidates show takers only, its benchmark is the baseline `update` taker, and the sweep forms keep the maker settings hidden at their values. **Run** shows one form at a time (pick a sport, then a job) with its main inputs first and the rest under **More settings**; numeric inputs are capped to sensible ranges (`racinglines/web/ranges.py`, inside the engine's own bounds, widened only to hold a saved value).<br>**What's stored where:** Edge Finder combos, season and job settings in `users.prefs`; candidates as `model_runs` (`kind='candidate'`); open sections and the jobs filter in the browser; jobs, runs and bets in their own tables. |
+| **Event diagnostic** (`/lab/diagnostics/{id}`) | One past event as of a cutoff: our prices vs Polymarket, scoring, the paper taking strategy, and the **maker replay with every strategy knob**. Knobs: fill rule, half-spread, shares per quote, max shares per market, max worst-case loss, inventory skew, disagreement filter, minimum 24 h volume, pull time. Replays take a few seconds. **Live replay:** *Start the live replay* downloads the event's tape once (`/lab/diagnostics/{id}/tape.json`, about 2 MB gzipped) and the replay compiled to WebAssembly (`/static/replay.wasm`), then re-runs the whole event in the browser on every slider move (tens of milliseconds), with the server's rules and numbers; touch and through fills only (queue stays on the server). See [Market making](market-making.md#the-replay-in-the-browser). `/lab/diagnostics` opens the Lab's diagnostics section. |
 | **Run detail** (`/lab/runs/{id}`) | One stored run: parameters, metrics, predictions. `/lab/runs` redirects to the Lab. |
 | **Events / Athletes** (`/events/{id}`, `/athletes/{id}`; linked from Markets and race pages) | Results and prediction history for one event or athlete. No index/search page (removed). Every role can open them; takers don't see predictions. |
 
@@ -177,8 +211,8 @@ not additional positions; private-book chart totals and ledger totals can still 
 
 | Page | What it shows |
 |---|---|
-| **Racinglines 101** (`/racinglines101`, public: no sign-in) | A plain-language intro to makers, takers and the paper-trading demo. Linked from the sign-in page as **I'm already confused.** |
-| **Sign in** (`/login`, `/logout`) | Two one-click demo buttons (**Try as pro**, **Try as basic**; the `maker` / `taker` accounts, which keep their usernames, password `password`) above the standard username/password form, which the admin uses. |
+| **Racinglines 101** (`/racinglines101`, public: no sign-in) | A plain-language intro in three parts, one section at a time with the /term section nav: how we trade (makers, takers, the demo strategies), how the prediction engine works (pace, the simulation, prices, what's real), and using the app. Linked from the landing page as **What is this?** `/racinglines102` redirects to its engine part. |
+| **Sign in** (`/signin`, also `/login`; `/logout` returns to `/`) | The standard username/password form, which the admin uses; it posts to `/login`. One **Try the demo** button, here and on the landing page (`/#account`), signs in as the pro demo account `maker` (owner, 2026-10-12: one demo, no pro/basic choice). The basic demo account `taker` still signs in through the form (password `password`). |
 | **Pitch** (`/pitch`) | Serves `pitch.html`. Public: no sign-in, like the login and sign-up pages. |
 | **Docs** (`/docs/`) | Serves these docs as built in `site/` (the pre-push hook builds them; or `python -m mkdocs build -d site`), behind the same login. |
 
@@ -226,7 +260,7 @@ account basic while it runs something else. A basic account already running **A*
 keeps working, role edits included, until it is re-assigned (`roles.LEGACY_BASIC_PROFILES`).
 
 **The taker shortlist and blends.** `profiles.TAKER_TOP` ranks ten taker profiles, **T1** to **T10**, from the taker
-re-sweep (Lab candidates with source `taker-resweep`, created by `racinglines f1 profiles` like A and C). A *blend*
+re-sweep (Lab candidates with source `taker-resweep`, created by `racinglines strategy profiles f1` like A and C). A *blend*
 (`profiles.COMBOS`; today **TB**, half T1 and half T8) is a profile with `members` `[(code, weight)]` instead of one
 strategy: the signal engine and the demo backfill run each member as itself with its stakes scaled by its weight
 (`TakerParams.scale`; the $2 minimum rebalance is not scaled), store its rows under its own candidate and the blend's
@@ -258,12 +292,12 @@ Three accounts are easy to mix up. They are separate entities:
 
 | Account | What it is | Its trades |
 |---|---|---|
-| `maker` (demo, **Try as pro**) | Our maker, $10,000 paper bankroll from 2025-01-01. 2025: M1 (the defaults: conservative maker, baseline model), then M2 (grid-aware maker, 10-pt filter) after round 8, then M3 (gbm maker, 7-pt filter) after round 16; profile C since the start of 2026. Each switch follows a fixed rule on the Edge Finder's walk-forward evidence (`pipelines/story.py`) | Its own quotes and paper fills (**Strategy**, **Positions**); the in-app markets it opens |
-| `taker` (demo, **Try as basic**) | Our taker, $1,000 paper bankroll from 2025-01-01: TW1 (the defaults) for 2025 rounds 1-8, then TW2 (grid-aware model with the reset, 10-pt edge) by the same walk-forward rule as the maker ([Paper trading](paper-trading.md#the-takers-history)), following about a third of its recommendations (`follow_rate` 0.33, hotter entries more often). Bankrolls and the follow rate are set in code (`profiles.DEMO_BANKROLL`, `DEMO_FOLLOW`, per account and kind of strategy: the basic demo takes 0.33 of its taker picks, the pro demo fills every pick of a taker strategy when it runs one), not in the UI. See [Paper trading](paper-trading.md#the-demo-accounts) | Its own paper trades (**Strategy**, **Positions**) and any bets placed in the app |
+| `maker` (demo, **Try the demo**) | Our maker, $10,000 paper bankroll from 2025-01-01. 2025: M1 (the defaults: conservative maker, baseline model), then M2 (grid-aware maker, 10-pt filter) after round 8, then M3 (gbm maker, 7-pt filter) after round 16; profile C since the start of 2026. Each switch follows a fixed rule on the Edge Finder's walk-forward evidence (`pipelines/story.py`) | Its own quotes and paper fills (**Strategy**, **Positions**); the in-app markets it opens |
+| `taker` (demo, signs in by name; no button since 2026-10-12) | Our taker, $1,000 paper bankroll from 2025-01-01: TW1 (the defaults) for 2025 rounds 1-8, then TW2 (grid-aware model with the reset, 10-pt edge) by the same walk-forward rule as the maker ([Paper trading](paper-trading.md#the-takers-history)), following about a third of its recommendations (`follow_rate` 0.33, hotter entries more often). Bankrolls and the follow rate are set in code (`profiles.DEMO_BANKROLL`, `DEMO_FOLLOW`, per account and kind of strategy: the basic demo takes 0.33 of its taker picks, the pro demo fills every pick of a taker strategy when it runs one), not in the UI. See [Paper trading](paper-trading.md#the-demo-accounts) | Its own paper trades (**Strategy**, **Positions**) and any bets placed in the app |
 | `polymarket-takers` (system, no login) | The Polymarket traders whose real trades filled a replayed maker | Replay fills recorded from a diagnostic page (*Record the replay's fills*); its P&L is that maker's P&L reversed |
 
 Both demo accounts' weekends before live paper trading began are **backtest replays**
-(`racinglines f1 demo-history`, `pipelines/demo_history.py`): real Polymarket prices and trades, the
+(`racinglines strategy demo-history f1`, `pipelines/demo_history.py`): real Polymarket prices and trades, the
 strategy the account ran then, flagged in the database (`detail.backfill`) and labelled in the app.
 The maker can also have a Kalshi record (`f1 demo-history --venue kalshi`, [Kalshi history](kalshi-history.md)).
 Positions shows it beside the Polymarket record and Strategy under its Polymarket / Kalshi switch
@@ -345,7 +379,7 @@ none is set. Other users are created on `/admin/users`.
 - **Accounts:** users come from the `users` table. The session cookie carries the
   user id, and the user and role are re-read on every request, so a deactivation
   or role change takes effect immediately.
-- **Browsers:** sent to `/login`. A correct username and password set an HttpOnly,
+- **Browsers:** sent to `/signin`. A correct username and password set an HttpOnly,
   SameSite=Lax cookie signed with `APP_SECRET` that lasts 12 hours. It's marked
   `Secure` when the request came over HTTPS (e.g. through the tunnel).
 - **Scripts:** HTTP Basic (`curl -u admin:PASSWORD …`) is accepted on every route.
@@ -386,10 +420,10 @@ further:
 ## Getting predictions for an event weekend
 
 ```
-racinglines mtb_dh download --events 20260925_mtb --discipline DH --category "Elite Men"  --out-dir data/raw/mtb_dh/chronorace/
-racinglines mtb_dh download --events 20260925_mtb --discipline DH --category "Junior Men" --out-dir data/raw/mtb_dh/chronorace/
-racinglines mtb_dh ingest data/raw/mtb_dh/chronorace
-racinglines mtb_dh forecast --db --save --backtest 0
+racinglines data download mtb_dh --events 20260925_mtb --discipline DH --category "Elite Men"  --out-dir data/raw/mtb_dh/chronorace/
+racinglines data download mtb_dh --events 20260925_mtb --discipline DH --category "Junior Men" --out-dir data/raw/mtb_dh/chronorace/
+racinglines data ingest mtb_dh data/raw/mtb_dh/chronorace
+racinglines model forecast mtb_dh --db --save --backtest 0
 ```
 
 An event that's in the data but has no Final results yet (Timed Training done, Q1
@@ -560,7 +594,7 @@ Using FastAPI's test client against the Docker database:
   - auto-settle waits for the Final;
   - manual settlement.
 - **Sign-in:**
-  - a browser without a session is redirected to `/login`;
+  - a browser without a session is redirected to `/signin`;
   - wrong password → error;
   - right password → cookie → 200;
   - Basic auth → 200;

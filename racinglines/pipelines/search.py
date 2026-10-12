@@ -27,7 +27,7 @@ After every finished job the leaderboard and a results export are rewritten.
     variant = "gbm"
 
     [[job]]                      # a season sweep of any sport whose schema has a [sweep] table and lists "sweep"
-    sport = "nascar"             # in [search] jobs (pipelines/season_sweep.py: `racinglines nascar sweep`): the
+    sport = "nascar"             # in [search] jobs (pipelines/season_sweep.py: `racinglines strategy sweep nascar`): the
     kind = "sweep"               # same taker modes and maker variants on the sport's own stages, kinds and model
     venue = "kalshi"             # (its settings: the model's plus the shared taker / maker / markets ones)
     year = 2025
@@ -46,7 +46,7 @@ After every finished job the leaderboard and a results export are rewritten.
     variant = "pretrain"
 
     [[job]]                      # a downhill walk-forward (model-only: calibration per market kind)
-    sport = "mtb_dh"             # the sport's own settings (racinglines/models/timed_runs/settings.py)
+    sport = "mtb_dh"             # the sport's own settings (racinglines/models/inputs/run_times/settings.py)
     year = 2025
     half_life_days = 120
     replicates = 3               # any job: the same job at this many seeds (the default seed, 1, 2, ...);
@@ -70,8 +70,7 @@ The default-settings baseline (sweep or walk-forward) of every sport and season 
 automatically (it runs first),
 so every comparison is against a baseline priced from exactly the same data. A job's id covers its
 kind, season, rounds and every setting, so the same job never runs twice. Outputs, in
-data/runs/search/<name>/: state.json, leaderboard.md, results.json (for `racinglines f1
-search-import`), logs/<id>.log.
+data/runs/search/<name>/: state.json, leaderboard.md, results.json (for `racinglines strategy search-import f1`), logs/<id>.log.
 """
 
 import hashlib
@@ -98,11 +97,12 @@ SAVED = {"sweep": "Saved sweep run", "checkpoints": "Saved season checkpoints ru
 def settings_class(sport=DEFAULT_SPORT, model=None, kind=None):
     """A job's settings schema: a sweep's (kind "sweep": pipelines/season_sweep.py, the sport's pricing model's
     settings plus the shared taker / maker / markets ones; F1's is sweep_settings.Settings), else the sport's pricing
-    model's (sports/<code>.toml [sport] pricing_model; F1's is the sweep's), or model="global": the results model's,
-    with the sport's [model.defaults]."""
+    model's (sports/<code>.toml [sport] pricing_model, the one engine; F1's is the sweep's), or model="global": the
+    engine's at the results level, with that level's defaults ([model.defaults] where the results level is the
+    schema's own)."""
     if model == "global":
         from racinglines.models.model_global import GlobalModel
-        return GlobalModel.for_sport(sport).Settings
+        return GlobalModel.for_sport(sport, core="results").Settings
     if model:
         raise ValueError(f"unknown model {model!r}: only \"global\"")
     from racinglines.models import race_model as RM
@@ -248,26 +248,25 @@ def load(path):
 
 def argv(j):
     """The command a job runs: a walk-forward is `racinglines backtest walk-forward <sport>`; every other kind is the
-    sport's own command, `racinglines <sport> [--variant V] sweep | season-checkpoints | season-strategy` (the
-    variant, a global flag of `racinglines f1`, where the settings have one)."""
+    sport's command, `racinglines strategy sweep | season-checkpoints | season-strategy <sport> [--variant V]` (the
+    variant, an option of every f1 command, where the settings have one)."""
     sport = j.get("sport", DEFAULT_SPORT)
     if j["kind"] == "walk_forward":
         st = job_settings_class(j).from_dict(j["settings"])
         return [sys.executable, "-m", "racinglines", "backtest", "walk-forward", sport, "--seasons",
                 str(j["year"]), "--save"] + (["--model", j["model"]] if j.get("model") else []) + st.argv()
-    py = [sys.executable, "-m", "racinglines", sport]
+    py = [sys.executable, "-m", "racinglines", "strategy"]
     if j["kind"] == "checkpoints":
-        a = py + ["season-checkpoints", "--year", str(j["year"]), "--save"]
+        a = py + ["season-checkpoints", sport, "--year", str(j["year"]), "--save"]
         for k in ("variants", "entries", "window"):
             if j.get(k) is not None:
                 a += ["--" + k, str(j[k])]
         return a
     st = job_settings_class(j).from_dict(j["settings"])
-    if "variant" in st:
-        py = py + ["--variant", st["variant"]]
+    variant = ["--variant", st["variant"]] if "variant" in st else []
     if j["kind"] == "season_strategy":
-        return py + ["season-strategy", "--year", str(j["year"]), "--no-fetch", "--save"]
-    a = py + ["sweep", "--year", str(j["year"]), "--no-fetch", "--save"]
+        return py + ["season-strategy", sport, *variant, "--year", str(j["year"]), "--no-fetch", "--save"]
+    a = py + ["sweep", sport, *variant, "--year", str(j["year"]), "--no-fetch", "--save"]
     if j.get("rounds"):
         a += ["--rounds", str(j["rounds"])]
     if j.get("venue", DEFAULT_VENUE) != DEFAULT_VENUE:
@@ -402,7 +401,7 @@ def write_outputs(out, state, queue_path=None, echo=print):
     from sqlalchemy import text
 
     from racinglines.db.config import get_engine
-    from racinglines.models.position_sim import evaluate as EV
+    from racinglines.models import evaluate as EV
     from racinglines.pipelines import season_checkpoints as SC
     done = {k: v for k, v in state.items() if v.get("run_id")}
     runs = {}

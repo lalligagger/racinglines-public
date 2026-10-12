@@ -15,9 +15,10 @@ takers too), and what goes public beyond the private demo is the owner's call (d
 import json
 import os
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 
 from racinglines.db import reads as data
+from racinglines.web import audience as A
 from racinglines.web.app import app, conn
 
 PREFIX = "/api/v1"
@@ -44,15 +45,21 @@ def _plain(d):
 
 
 @app.get(PREFIX + "/events", dependencies=[Depends(_on)])
-def api_events(season: int | None = None, competition: str | None = None, c=Depends(conn)):
-    return dict(events=_records(data.events(c, competition=competition, season=season)))
+def api_events(request: Request, season: int | None = None, competition: str | None = None, c=Depends(conn)):
+    A.guard(getattr(request.state, "user", None), competition)
+    df = data.events(c, competition=competition, season=season)
+    hide = A.hidden_comps(getattr(request.state, "user", None))   # sports this user doesn't see ([sport] audience)
+    if hide and len(df) and "competition" in df:
+        df = df[~df["competition"].isin(hide)]
+    return dict(events=_records(df))
 
 
 @app.get(PREFIX + "/events/{event_id}", dependencies=[Depends(_on)])
-def api_event(event_id: int, c=Depends(conn)):
+def api_event(request: Request, event_id: int, c=Depends(conn)):
     ev = data.event(c, event_id)
     if not ev:
         raise HTTPException(404, f"no event {event_id}")
+    A.guard(getattr(request.state, "user", None), ev["competition"])
     keep = ("id", "name", "start_date", "status", "source", "source_key", "series_round", "season", "venue",
             "country", "competition")
     return dict(event=_plain({k: ev.get(k) for k in keep}), results=_records(data.event_results(c, event_id)))
@@ -64,9 +71,10 @@ def api_athletes(q: str | None = None, limit: int = 200, c=Depends(conn)):
 
 
 @app.get(PREFIX + "/athletes/{athlete_id}", dependencies=[Depends(_on)])
-def api_athlete(athlete_id: int, c=Depends(conn)):
+def api_athlete(request: Request, athlete_id: int, c=Depends(conn)):
     a = data.athlete(c, athlete_id)
     if not a:
         raise HTTPException(404, f"no athlete {athlete_id}")
+    A.guard_athlete(c, getattr(request.state, "user", None), athlete_id)
     keep = ("id", "display_name", "nation", "identifiers")
     return dict(athlete=_plain({k: a.get(k) for k in keep if k in a}), results=_records(data.athlete_results(c, athlete_id)))

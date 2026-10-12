@@ -120,14 +120,15 @@ def decisions(conn, taker=False):
 # One account's story: bankroll, track record, phases, and what drove them
 # ---------------------------------------------------------------------------
 
-def track_record(conn, uid, venue="polymarket", sport=None, sports=False):
+def track_record(conn, uid, venue="polymarket", sport=None, sports=False, hide=()):
     """Every weekend with signals or positions: event, strategy run, trades taken (taker) / fills (maker),
     positions, paper P&L (settled, else marked to the market), backtest replay or live. venue: 'polymarket'
     (the default: the strategy's own record), 'private', any other exchange code ('kalshi', 'og': the profile's replay
     on that exchange's tape, e.g. `f1 demo-history --venue kalshi`) or 'all'. A private-book event
     (pipelines/live_dh.py) has positions but no signals: it joins the history on the day the book ran, as its
     own "Private book" run. sports (RACINGLINES_SPORT_PAPER=1, pipelines/sport_paper.py): the NASCAR / MotoGP demo
-    replays join the record on their race dates, whatever their venue, flagged `demo` (never a buy_all row)."""
+    replays join the record on their race dates, whatever their venue, flagged `demo` (never a buy_all row). hide: sport
+    codes left out (the web app's [sport] audience, web/audience.py)."""
     import pandas as pd
     from sqlalchemy import text
 
@@ -167,6 +168,7 @@ def track_record(conn, uid, venue="polymarket", sport=None, sports=False):
                    ORDER BY event_key, opened_at) le USING (event_key)
         WHERE (:v <> 'private' AND s.event_key IS NOT NULL) OR (:v <> 'polymarket' AND p.private) ORDER BY event_key""")
     rows = [dict(r) for r in conn.execute(q, dict(u=uid, v=venue)).mappings()]
+    rows = [r for r in rows if r.get("sport") not in hide]
     if sport:
         sport = sport.lower()
         rows = [r for r in rows if (r.get("sport") or "").lower() == sport]
@@ -281,13 +283,13 @@ def phases(record):
 SEASON_WEEKENDS = 24            # Sharpe per season, as in the params-4h report: mean / s.d. of weekend P&L x sqrt(24)
 
 
-def account(conn, uid, profile, maker, markers=True, venue="polymarket", sport=None, sports=False):
+def account(conn, uid, profile, maker, markers=True, venue="polymarket", sport=None, sports=False, hide=()):
     """Everything the Strategy page tells about one account: KPIs (with the worst drawdown and the Sharpe
     ratio over the full history), bankroll curve (markers: dashed lines at strategy switches), phases,
     track record (with running balance), and the maker's decisions or the taker's detail. venue: as in
     track_record (the Strategy page: Polymarket only). sports: as in track_record (RACINGLINES_SPORT_PAPER=1)."""
     from racinglines.web.viz import line_chart
-    record = track_record(conn, uid, venue, sport=sport, sports=sports)
+    record = track_record(conn, uid, venue, sport=sport, sports=sports, hide=hide)
     bank = (profile or {}).get("bankroll") or {}
     start = float(bank.get("start") or 0.0)
     peak = deployed(conn, uid)

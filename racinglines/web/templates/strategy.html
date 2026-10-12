@@ -1,8 +1,8 @@
-{% extends "base.html" %}{% from "_macros.html" import empty, pnl_cls, chart, demo_context, kpi, pnl, page_head %}
+{% extends "base.html" %}{% from "_macros.html" import empty, pnl_cls, chart, demo_context, kpi, pnl, page_head, flash %}
 {% block title %}Strategy{% endblock %}
 {% block content %}
 {% call page_head("Strategy" ~ (" · " ~ viewer.username if viewer.id != user.id else ""), "The strategy this account runs: its calls on each race weekend, stage by stage, how it has done, and how it got here. Paper only: nothing is sent to an exchange.") %}
-<a href="/positions{{ '?venue=' ~ venue if venue }}">What it holds: Positions →</a>
+{% if can_pick %}<a href="/strategy/pick">{{ "Change strategy" if profile else "Pick a strategy" }}</a> · {% endif %}<a href="/positions{{ '?venue=' ~ venue if venue }}">What it holds: Positions →</a>
 {%- if venue_tabs %}<nav class="tabs" aria-label="Which exchange's record"><a href="?{{ 'user=' ~ viewer.username if viewer.id != user.id }}"{% if not venue %} aria-current="page"{% endif %}>Polymarket</a>{% for k in venue_tabs %}<a href="?venue={{ k }}{{ '&user=' ~ viewer.username if viewer.id != user.id }}"{% if venue == k %} aria-current="page"{% endif %}>{{ venue_names.get(k, k) }}</a>{% endfor %}</nav>{% endif %}
 {% if users %}<form method="get" class="inline"><label><span>User</span><select name="user" data-autosubmit>
   {% for u in users %}<option {{ 'selected' if u == viewer.username }}>{{ u }}</option>{% endfor %}</select></label></form>{% endif %}
@@ -15,7 +15,11 @@
   </select></label>
 </form>{% endif %}{% endcall %}
 
-{% if not profile and not record %}<p class="muted">No strategy profile is assigned to this account. An admin can assign one on the user's admin page.</p>{% else %}
+{{ flash(msg) }}
+{% if not profile and not record %}{% if can_pick %}<div class="card empty-pick"><h2>No strategy yet</h2>
+<p>This account doesn't paper-trade anything until you pick a strategy. Start with the shortlist's first, or choose and tune your own.</p>
+<p><a class="button primary" href="/strategy/pick">Pick a strategy</a></p></div>
+{% else %}<p class="muted">No strategy profile is assigned to this account. An admin can assign one on the user's admin page.</p>{% endif %}{% else %}
 {% set k = acct.kpis %}
 <div class="kpis hero">
   <div class="kpi"><div class="l">Running now</div><div class="v sm">{{ profile.name if profile else "–" }}</div><div class="s">{{ profile.strategy if profile }}{% if show_fair and profile %} · <code>{{ profile.settings.variant }}</code>{% endif %}{% if profile and profile.follow_rate %} · takes about {{ "%.0f"|format(profile.follow_rate * 100) }}% of signals{% endif %}</div></div>
@@ -25,7 +29,7 @@
   <div class="kpi"><div class="l">Weekends up</div><div class="v">{{ k.up }}/{{ k.weekends }}</div><div class="s">{% for y in seasons %}{{ y.year }}: {{ y.pnl|money(true) }}{{ " · " if not loop.last }}{% endfor %}</div></div>
 </div>
 {% if show_fair and profile_why %}<p class="legend">{{ profile_why }}</p>{% endif %}
-{% if record|selectattr('demo')|list %}{% call demo_context() %}<span class="pill no">demo replay, in-sample</span> NASCAR and MotoGP races are the taker replay on the exchange's recorded prices (after its taker fee), each market kind traded with the setting that did best on these same seasons: a demo of the strategy, not evidence of an edge.{% endcall %}{% endif %}
+{% if record|selectattr('demo')|list %}{% call demo_context() %}<span class="pill no">demo replay, in-sample</span> {{ 'NASCAR and MotoGP races are' if sport_shown('motogp', user) else 'NASCAR races are' }} the taker replay on the exchange's recorded prices (after its taker fee), each market kind traded with the setting that did best on these same seasons: a demo of the strategy, not evidence of an edge.{% endcall %}{% endif %}
 {% if show_fair and mix and (mix|length > 1 or mix[0].family == 'taker') %}<div class="card"><h2>Where the P&amp;L came from</h2>
 <p class="legend">This account's paper record by sport and kind of strategy. <span tabindex="0" data-tooltip="quotes both sides, earns spread">Maker</span>: quotes both sides and earns the spread. <span tabindex="0" data-tooltip="takes model's edge at market price">Taker</span>: takes the model's edge at the market's price.</p>
 <div class="scroll"><table><thead><tr><th class="l">Sport</th><th class="l">Strategy</th><th>Races / weekends</th><th>Up</th><th>Fantasy P&amp;L</th><th class="l"></th></tr></thead>

@@ -14,7 +14,7 @@
 # scheduled races (the board's live prices). A sport with no grid is skipped with a SKIP line. Each run records a data_changes row naming the backup.
 #
 # Log: data/runs/logs/demo-setup-<UTC>.log; markers demo-setup.done / .failed. Refuses to start while a
-# racinglines-live-* unit is active. Undo: `racinglines <sport> demo-history --reset --users maker,taker --backup FILE`.
+# racinglines-live-* unit is active. Undo: `racinglines strategy demo-history <sport> --reset --users maker,taker --backup FILE`.
 # Touches no trading flag, no migration, no bucket, and never the F1 demo history.
 set -eEuo pipefail
 # TARGET=staging runs the same steps against staging (owner, 2026-10-07: parity rebuild on staging first): its env file,
@@ -56,19 +56,19 @@ for S in nascar motogp; do
   if ! ls "$G"/*/kalshi/summary.json >/dev/null 2>&1; then echo "SKIP $S: no settings grid in $G"; continue; fi
   if has kalshi; then
     echo "== $S kalshi: selection from $G"
-    nice $R "$S" demo-history --pick "$G"
+    nice $R strategy demo-history "$S" --pick "$G"
     echo "== $S kalshi: demo-history for $USERS"
-    nice $R "$S" demo-history --grid "$G" --book "$BOOK" --users "$USERS" --backup "$B"
+    nice $R strategy demo-history "$S" --grid "$G" --book "$BOOK" --users "$USERS" --backup "$B"
   fi
   if has polymarket; then     # no Polymarket grid: Kalshi's selection, traded on Polymarket's own tape and fees
     echo "== $S polymarket: demo-history for $USERS (settings from the Kalshi grid)"
-    nice $R "$S" demo-history --grid "$G" --venue polymarket --grid-venue kalshi --book "$BOOK" --users "$USERS" --backup "$B"
+    nice $R strategy demo-history "$S" --grid "$G" --venue polymarket --grid-venue kalshi --book "$BOOK" --users "$USERS" --backup "$B"
   fi
 done
 if has forecast; then
   for S in nascar motogp; do
     echo "== $S forecast: the next races priced by the model"
-    nice $R "$S" forecast --save --backup "$B"
+    nice $R model forecast "$S" --save --backup "$B"
   done
 fi
 echo "DEMO-SETUP DONE (log $LOG, backup $B)"

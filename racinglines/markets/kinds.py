@@ -43,7 +43,7 @@ class Kind:
     default: bool = True      # False: priced only when named (fair(), a model's own summary); left out of summary(),
                               # to_records and the walk-forward default set, so adding one changes no existing output
     spec: dict | None = field(default=None, compare=False)   # payoff "spec": {"payoff": {...}, "settle": {...}}
-    wx: str | None = None     # how a probability of rain moves its price (models/position_sim/props.py): None, not at
+    wx: str | None = None     # how a probability of rain moves its price (models/props.py): None, not at
                               # all; "rate" a yes/no rate priced with props.rate_wx; "dnf" its drivers' dnf_prob scaled by
                               # props.wx_scale before pricing. Declarative kinds: `wx = "..."` in markets/kinds.toml
     session: str | None = None   # a market on an earlier round raced as its own classification (F1: "sprint"):
@@ -101,7 +101,7 @@ def load(path=None):
 KINDS = load()
 LEGACY = tuple(k for k in KINDS.values() if k.spec is None)
 
-# The race props priced from the race history (models/position_sim/props.py), not from simulations: kinds for their
+# The race props priced from the race history (models/props.py), not from simulations: kinds for their
 # `wx` only, kept out of KINDS so the prediction kinds (db/reads.PREDICTION_KINDS) and every summary stay as they are.
 # The red flag is priced given a probability of rain; the safety car is not (conditioning it was worse in the
 # walk-forward, decision log 2026-10-06) and rain is the forecast itself.

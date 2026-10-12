@@ -11,8 +11,8 @@ import pytest
 
 from racinglines.markets import kinds as K
 from racinglines.models import outcomes as O
-from racinglines.models.position_sim import model as M
-from racinglines.models.position_sim import variants as V
+from racinglines.models.inputs import laps as M
+from racinglines.models import variants as V
 
 SIM_KEYS = ("pos", "dnf", "points", "grid")
 
@@ -87,7 +87,7 @@ def test_switch_adds_fl_and_every_other_output_is_byte_identical(case, variant):
 def test_price_race_with_fastlap_is_otherwise_identical(variant):
     """Through the one pricing path: the summary, head-to-heads and the constructor tie-break (drawn from the
     main stream after the simulation) are unchanged; fl_prob is the catalogue's fair value and is recorded."""
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     from racinglines.testing import synthetic as SY
     m = run.Measurements.from_frames(*SY.f1_frames())
     hist = run.history(m)
@@ -147,7 +147,7 @@ def test_side_stream_is_reproducible_and_differs_between_races():
 def test_fastest_lap_quote_doesnt_see_the_race_it_prices():
     """Leakage rule: rewrite the priced race's own laps (after the cutoff) so another car is fastest; the
     fastest-lap prices don't move."""
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     from racinglines.testing import synthetic as SY
     res, laps, prof = SY.f1_frames()
     eid = int(res.loc[res["event_status"] == "completed", "event_id"].max())
@@ -284,7 +284,7 @@ def test_flpos_win_pole_fastest_lap_before_qualifying():
     """Through price_race before qualifying: pole comes from the simulated qualifying order (it varies between
     simulations) and the race is simulated from that same draw, so the three legs on one driver move together."""
     from racinglines.markets import combos as C
-    from racinglines.models.position_sim import pricing as run
+    from racinglines.models.inputs import laps_pricing as run
     from racinglines.testing import synthetic as SY
     m = run.Measurements.from_frames(*SY.f1_frames())
     hist = run.history(m)
