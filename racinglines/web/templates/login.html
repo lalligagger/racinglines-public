@@ -2,8 +2,8 @@
 {% block title %}racinglines · sportsbook pricing for all racing disciplines{% endblock %}
 {% block main_class %}landing{% endblock %}
 {% block content %}
-{# The signed-out landing page (owner, 2026-10-08; reworked 2026-10-12): a one-line fantasy-alpha strip (sign up, try
-   the demo), the business case, then a dated news feed. Signing in has its own page, /signin. No sportsbook, operator
+{# The signed-out landing page (owner, 2026-10-08; reworked 2026-10-12): a one-line fantasy-alpha strip (sign up, one
+   "Try the demo" button that signs in as the pro demo account, maker; the taker account still signs in by name), the business case, then a dated news feed. Signing in has its own page, /signin. No sportsbook, operator
    or provider is named here. #}
 <header class="lp-top">
   <a class="lp-brand" href="/"><img src="/static/brand/logo.svg" alt="" width="32" height="32"><span>racing<b>lines</b></span></a>
@@ -14,9 +14,7 @@
   <p><b>Fantasy league alpha</b> is open: trade our prices with fantasy bucks.</p>
   <div class="lp-actions">{% if signup_on() %}<a class="button primary" href="/signup">Sign up</a>{% endif %}
     <form method="post" action="/login"><input type="hidden" name="username" value="maker"><input type="hidden" name="password" value="password"><input type="hidden" name="next" value="{{ next }}">
-      <button title="Model fair prices, quote markets, run every strategy, backtest and replay in the Lab">Try as pro</button></form>
-    <form method="post" action="/login"><input type="hidden" name="username" value="taker"><input type="hidden" name="password" value="password"><input type="hidden" name="next" value="{{ next }}">
-      <button title="Follow a taker strategy's calls on the open markets, no model numbers">Try as basic</button></form>
+      <button title="Fair prices, quotes, every strategy, backtests and replays in the Lab">Try the demo</button></form>
     <a href="/racinglines101">What is this?</a></div>
 </section>
 

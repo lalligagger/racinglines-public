@@ -111,7 +111,7 @@ prices off user pages).
 **Landing page** (`/`, public; owner, 2026-10-08, reworked and moved to the index 2026-10-12; a signed-in browser
 going to `/` lands on the Markets board). A compact,
 centered page with no same-page navigation: a one-line **fantasy league alpha** strip above the hero (sign-up, the two
-demo buttons and the 101 link; `/#account`); the hero, whose eyebrow reads "Sportsbook pricing for all racing
+one **Try the demo** button that signs in as the pro demo account `maker`, and the 101 link; `/#account`); the hero, whose eyebrow reads "Sportsbook pricing for all racing
 disciplines", with its **Talk to us** button; what the pricing does for sportsbooks that set their own lines, books on
 a platform provider's feed, and the providers themselves; the business infographic; and a dated **News** feed, newest
 first, with the PyPI release marked upcoming, each sport and exchange added on the earliest date the project history
@@ -212,7 +212,7 @@ not additional positions; private-book chart totals and ledger totals can still 
 | Page | What it shows |
 |---|---|
 | **Racinglines 101** (`/racinglines101`, public: no sign-in) | A plain-language intro to makers, takers and the paper-trading demo. Linked from the sign-in page as **I'm already confused.** |
-| **Sign in** (`/signin`, also `/login`; `/logout` returns to `/`) | The standard username/password form, which the admin uses; it posts to `/login`. The two one-click demo buttons (**Try as pro**, **Try as basic**; the `maker` / `taker` accounts, which keep their usernames, password `password`) are on the landing page (`/#account`). |
+| **Sign in** (`/signin`, also `/login`; `/logout` returns to `/`) | The standard username/password form, which the admin uses; it posts to `/login`. One **Try the demo** button, here and on the landing page (`/#account`), signs in as the pro demo account `maker` (owner, 2026-10-12: one demo, no pro/basic choice). The basic demo account `taker` still signs in through the form (password `password`). |
 | **Pitch** (`/pitch`) | Serves `pitch.html`. Public: no sign-in, like the login and sign-up pages. |
 | **Docs** (`/docs/`) | Serves these docs as built in `site/` (the pre-push hook builds them; or `python -m mkdocs build -d site`), behind the same login. |
 
@@ -292,8 +292,8 @@ Three accounts are easy to mix up. They are separate entities:
 
 | Account | What it is | Its trades |
 |---|---|---|
-| `maker` (demo, **Try as pro**) | Our maker, $10,000 paper bankroll from 2025-01-01. 2025: M1 (the defaults: conservative maker, baseline model), then M2 (grid-aware maker, 10-pt filter) after round 8, then M3 (gbm maker, 7-pt filter) after round 16; profile C since the start of 2026. Each switch follows a fixed rule on the Edge Finder's walk-forward evidence (`pipelines/story.py`) | Its own quotes and paper fills (**Strategy**, **Positions**); the in-app markets it opens |
-| `taker` (demo, **Try as basic**) | Our taker, $1,000 paper bankroll from 2025-01-01: TW1 (the defaults) for 2025 rounds 1-8, then TW2 (grid-aware model with the reset, 10-pt edge) by the same walk-forward rule as the maker ([Paper trading](paper-trading.md#the-takers-history)), following about a third of its recommendations (`follow_rate` 0.33, hotter entries more often). Bankrolls and the follow rate are set in code (`profiles.DEMO_BANKROLL`, `DEMO_FOLLOW`, per account and kind of strategy: the basic demo takes 0.33 of its taker picks, the pro demo fills every pick of a taker strategy when it runs one), not in the UI. See [Paper trading](paper-trading.md#the-demo-accounts) | Its own paper trades (**Strategy**, **Positions**) and any bets placed in the app |
+| `maker` (demo, **Try the demo**) | Our maker, $10,000 paper bankroll from 2025-01-01. 2025: M1 (the defaults: conservative maker, baseline model), then M2 (grid-aware maker, 10-pt filter) after round 8, then M3 (gbm maker, 7-pt filter) after round 16; profile C since the start of 2026. Each switch follows a fixed rule on the Edge Finder's walk-forward evidence (`pipelines/story.py`) | Its own quotes and paper fills (**Strategy**, **Positions**); the in-app markets it opens |
+| `taker` (demo, signs in by name; no button since 2026-10-12) | Our taker, $1,000 paper bankroll from 2025-01-01: TW1 (the defaults) for 2025 rounds 1-8, then TW2 (grid-aware model with the reset, 10-pt edge) by the same walk-forward rule as the maker ([Paper trading](paper-trading.md#the-takers-history)), following about a third of its recommendations (`follow_rate` 0.33, hotter entries more often). Bankrolls and the follow rate are set in code (`profiles.DEMO_BANKROLL`, `DEMO_FOLLOW`, per account and kind of strategy: the basic demo takes 0.33 of its taker picks, the pro demo fills every pick of a taker strategy when it runs one), not in the UI. See [Paper trading](paper-trading.md#the-demo-accounts) | Its own paper trades (**Strategy**, **Positions**) and any bets placed in the app |
 | `polymarket-takers` (system, no login) | The Polymarket traders whose real trades filled a replayed maker | Replay fills recorded from a diagnostic page (*Record the replay's fills*); its P&L is that maker's P&L reversed |
 
 Both demo accounts' weekends before live paper trading began are **backtest replays**

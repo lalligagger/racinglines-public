@@ -37,7 +37,7 @@ def test_the_landing_has_news_and_no_sign_in_form_and_sign_in_has_its_own_page()
     assert '<a href="https://x.com/racinglines_bet" rel="noopener" target="_blank">Follow us on X</a>' in landing and "@racinglines_bet" not in landing
     assert '<a href="/docs/quickstart/term">Sneak peek →</a>' in landing      # the PyPI item links the quickstart replay
     assert 'href="https://racinglinesdotbet.substack.com"' in landing
-    assert 'value="maker"' in landing and 'value="taker"' in landing           # the demo buttons stay on the landing
+    assert 'value="maker"' in landing and 'value="taker"' not in landing       # one demo button: the pro account
     page = client.get("/signin?next=/positions").text
     assert 'action="/login"' in page and 'name="password" type="password"' in page and 'value="/positions"' in page
     assert "Wrong username" not in page and "Wrong username" in client.get("/signin?error=1").text
@@ -72,3 +72,13 @@ def test_the_index_is_the_public_landing_and_a_signed_in_browser_goes_on_to_the_
     monkeypatch.setattr(A, "_session", lambda cookie: (1, None))
     r = client.get("/", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/markets"
+
+
+@pytest.mark.quick
+def test_the_sign_in_page_starts_the_demo_itself():
+    """Owner, 2026-10-12: "Try demo" on the sign-in page landed on the landing page; it now signs in as the pro demo
+    account (one demo, no pro/basic choice). The taker account still signs in by name."""
+    from racinglines.web import app as A
+    page = TestClient(A.app).get("/signin").text
+    assert 'name="username" value="maker"' in page and 'value="taker"' not in page and ">Try the demo</b>" in page
+    assert "#account" not in page

@@ -517,6 +517,6 @@ def test_landing_page_has_no_popup_unless_a_notice_is_set(monkeypatch):
     assert 'id="site-notice"' not in page and "Beta <a" not in page
     assert "Sportsbook pricing for all racing disciplines" in page and 'class="biz"' in page
     assert 'href="#' not in page and "How it works" not in page
-    assert ">Try as pro</button>" in page and ">Try as basic</button>" in page and 'id="account"' in page
+    assert ">Try the demo</button>" in page and "Try as basic" not in page and 'id="account"' in page
     monkeypatch.setattr(A, "MAINTENANCE_NOTICE", "Down for a moment.")
     assert '<p id="site-notice-msg">Down for a moment.</p>' in cl.get("/").text

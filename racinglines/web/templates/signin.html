@@ -12,5 +12,8 @@
   <button class="primary mt">Sign in</button>
   {% if signup_on() %}<p class="hint"><a href="/forgot">Forgot your password?</a></p>{% endif %}
 </form>
-<p class="confused">{% if signup_on() %}<a href="/signup">New here? Sign up</a> · {% endif %}<a href="/{{ '?next=' ~ next|urlencode if next and next != '/' }}#account">Try the demo</a> · <a href="/">Home</a></p>
+<p class="or">or try the demo, no account needed</p>
+<form method="post" action="/login" class="demo-one"><input type="hidden" name="username" value="maker"><input type="hidden" name="password" value="password"><input type="hidden" name="next" value="{{ next }}">
+  <button class="maker"><b>Try the demo</b><span>Fair prices, quotes, every strategy and the Lab</span></button></form>
+<p class="confused">{% if signup_on() %}<a href="/signup">New here? Sign up</a> · {% endif %}<a href="/">Home</a></p>
 {% endblock %}

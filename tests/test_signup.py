@@ -310,3 +310,11 @@ def test_accounts_without_an_email_get_the_add_email_popup(app_db):
     with get_engine().connect() as c:
         assert c.execute(text("SELECT prefs->>'email' FROM users WHERE username = 'boss'")).scalar() == "boss@example.com"
     assert 'action="/settings/email"' not in client.get("/admin/users").text
+
+
+
+def test_the_taker_demo_account_still_signs_in_by_name(app_db):
+    """The basic demo has no button any more, but the taker login is kept (owner, 2026-10-12)."""
+    from racinglines.web import app as A
+    r = TestClient(A.app).post("/login", data=dict(username="taker", password="password"), follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/markets"

@@ -327,6 +327,9 @@ pre.log { max-height: 220px; overflow: auto; font-size: 11px; background: var(--
 .login .demo button b { display: block; font-size: 15px; margin-bottom: 2px; }
 .login .demo button span { font-size: 12px; color: var(--muted); }
 .login .demo button.maker:hover { border-color: var(--accent); } .login .demo button.taker:hover { border-color: var(--good); }
+.login .demo-one { margin: 0; } .login .demo-one button { width: 100%; padding: 12px 10px; text-align: left; border-radius: 8px; color: var(--fg); }
+.login .demo-one button b { display: block; font-size: 15px; margin-bottom: 2px; } .login .demo-one button span { font-size: 12px; color: var(--muted); }
+.login .demo-one button:hover { border-color: var(--accent); }
 .login .confused { text-align: center; margin: 10px 0 0; font-size: 13px; }
 .login .or { text-align: center; color: var(--muted); font-size: 12px; margin: 14px 0 6px; }
 .login label { display: block; margin: 6px 0; } .login input { width: 100%; }
