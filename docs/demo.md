@@ -48,9 +48,10 @@ and its generator). Adding a pack is adding a folder: no command, flag, schema, 
 `racinglines/demo/packs/kart/`: a synthetic Formula 1 world with a Mario Kart grid, stored under the F1 schema.
 
 - `world.toml`, the generator's input: three seasons (2024-2026, twelve rounds each, 2026's rounds 1-9 raced, sprints
-  at rounds 3, 6 and 10), 20 drivers in 10 teams (Mario, Luigi, Peach, Bowser, ...), twelve tracks (Mario Circuit,
-  Rainbow Road, Bowser's Castle, ...), each team's car pace and the driver offsets, the tracks' lap times, sector
-  shares, trap speeds, how hard passing is and how often a safety car comes out. These are the synthetic world's
+  at rounds 3, 6 and 10), 20 drivers in 10 teams (Mario, Luigi, Peach, Bowser, ...), twelve tracks (Mario Kart 64's Mario
+  Raceway, Rainbow Road, Bowser's Castle, ...), each team's car pace and the driver offsets, the tracks' lap times
+  (5 % off each course's real single-lap world record without shortcuts, from mkwrs.com, so no generated lap beats a
+  record), sector shares, trap speeds, how hard passing is and how often a safety car comes out. These are the synthetic world's
   hidden truth; the real model never reads them, it fits the generated laps.
 - `racinglines/demo/generate.py` writes FastF1-shaped files for every raced session (practice, sprint qualifying,
   sprint, qualifying, race: results, laps with sectors and speed traps, meta with weather) and each season's

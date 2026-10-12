@@ -169,27 +169,37 @@ team = "shyguy"
 number = 20
 offset = 0.0011
 
-# Tracks, in calendar order: lap time (s), sector shares, trap speeds (km/h: I1, I2, finish line, speed trap),
-# how hard it is to pass (seconds lost per grid place over a race), safety-car and rain chances per race
+# Tracks, in calendar order: twelve of Mario Kart 64's sixteen courses. lap_s is the lap the best car runs on a clean
+# lap, 5 % slower than the course's single-lap world record (wr_lap_s), so no generated lap beats a record
+# (tests/test_demo_store.py). wr_lap_s and wr_race_s are the current Mario Kart 64 world records without shortcuts, on
+# NTSC, for one lap and for the three-lap course: mkwrs.com's mk64_wrs.csv, downloaded 2026-10-11 (the generator reads
+# only lap_s; the records are kept beside it as the source). Then sector shares, trap speeds (km/h: I1, I2, finish
+# line, speed trap), how hard it is to pass (seconds lost per grid place over a race), safety-car and rain chances.
 [[tracks]]
-name = "Mario Circuit"
-lap_s = 82.0
+name = "Mario Raceway"
+lap_s = 24.1
+wr_lap_s = 22.95
+wr_race_s = 72.77
 shares = [0.32, 0.36, 0.32]
 speeds = [255, 230, 280, 305]
 hold_s = 1.2
 sc = 0.25
 rain = 0.10
 [[tracks]]
-name = "Moo Moo Meadows"
-lap_s = 78.0
+name = "Moo Moo Farm"
+lap_s = 24.2
+wr_lap_s = 23.07
+wr_race_s = 71.28
 shares = [0.30, 0.38, 0.32]
 speeds = [270, 245, 290, 315]
 hold_s = 0.8
 sc = 0.15
 rain = 0.20
 [[tracks]]
-name = "Koopa Beach"
-lap_s = 88.0
+name = "Koopa Troopa Beach"
+lap_s = 26.8
+wr_lap_s = 25.57
+wr_race_s = 79.15
 shares = [0.34, 0.33, 0.33]
 speeds = [240, 215, 265, 300]
 hold_s = 1.6
@@ -197,23 +207,29 @@ sc = 0.30
 rain = 0.10
 [[tracks]]
 name = "Luigi Raceway"
-lap_s = 75.0
+lap_s = 32.8
+wr_lap_s = 31.21
+wr_race_s = 97.80
 shares = [0.31, 0.34, 0.35]
 speeds = [300, 270, 310, 330]
 hold_s = 0.6
 sc = 0.15
 rain = 0.15
 [[tracks]]
-name = "Toad Harbor"
-lap_s = 95.0
+name = "Toad's Turnpike"
+lap_s = 51.2
+wr_lap_s = 48.76
+wr_race_s = 147.67
 shares = [0.35, 0.33, 0.32]
 speeds = [205, 190, 235, 285]
 hold_s = 2.6
 sc = 0.55
 rain = 0.15
 [[tracks]]
-name = "DK Jungle"
-lap_s = 90.0
+name = "D.K.'s Jungle Parkway"
+lap_s = 36.7
+wr_lap_s = 34.95
+wr_race_s = 109.46
 shares = [0.33, 0.35, 0.32]
 speeds = [225, 210, 250, 295]
 hold_s = 1.4
@@ -221,7 +237,9 @@ sc = 0.30
 rain = 0.35
 [[tracks]]
 name = "Yoshi Valley"
-lap_s = 86.0
+lap_s = 27.0
+wr_lap_s = 25.71
+wr_race_s = 83.58
 shares = [0.33, 0.34, 0.33]
 speeds = [245, 225, 260, 300]
 hold_s = 1.1
@@ -229,7 +247,9 @@ sc = 0.25
 rain = 0.20
 [[tracks]]
 name = "Sherbet Land"
-lap_s = 80.0
+lap_s = 32.9
+wr_lap_s = 31.34
+wr_race_s = 95.57
 shares = [0.32, 0.35, 0.33]
 speeds = [260, 235, 275, 310]
 hold_s = 1.0
@@ -237,7 +257,9 @@ sc = 0.20
 rain = 0.05
 [[tracks]]
 name = "Bowser's Castle"
-lap_s = 92.0
+lap_s = 37.5
+wr_lap_s = 35.75
+wr_race_s = 109.66
 shares = [0.34, 0.34, 0.32]
 speeds = [215, 200, 240, 290]
 hold_s = 2.2
@@ -245,7 +267,9 @@ sc = 0.45
 rain = 0.05
 [[tracks]]
 name = "Rainbow Road"
-lap_s = 98.0
+lap_s = 101.4
+wr_lap_s = 96.58
+wr_race_s = 291.87
 shares = [0.33, 0.33, 0.34]
 speeds = [285, 260, 300, 335]
 hold_s = 0.9
@@ -253,15 +277,19 @@ sc = 0.40
 rain = 0.0
 [[tracks]]
 name = "Wario Stadium"
-lap_s = 84.0
+lap_s = 74.8
+wr_lap_s = 71.24
+wr_race_s = 215.75
 shares = [0.33, 0.34, 0.33]
 speeds = [250, 228, 268, 302]
 hold_s = 1.3
 sc = 0.30
 rain = 0.10
 [[tracks]]
-name = "Peach Gardens"
-lap_s = 79.0
+name = "Royal Raceway"
+lap_s = 48.2
+wr_lap_s = 45.86
+wr_race_s = 142.22
 shares = [0.31, 0.36, 0.33]
 speeds = [265, 240, 285, 312]
 hold_s = 1.5
