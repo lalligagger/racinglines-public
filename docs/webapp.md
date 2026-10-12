@@ -132,7 +132,14 @@ progress bar or live table), saves what it printed as `racinglines/web/term/<id>
 renders `<id>.html`; without `--run` it re-renders the saved output only. Drop the demo store first for a true first
 run, and update `recorded` in `racinglines/web/term/demos.toml`. `tests/test_term.py` fails if a committed render no
 longer matches its output, or if the recorded list differs from the pack's quickstart. Runs on the hosted server may
-come later (owner, 2026-10-11).
+come later (owner, 2026-10-11). The pack's steps take `section` from `demos.toml` (Kart quickstart) when they have none.
+Extra parts follow them (`demos.toml` `parts`), each a steps file next to it: `f1-singapore.toml` is the 2026
+Singapore GP on the real data and Kalshi and Polymarket tapes (owner, 2026-10-11: staging only), Part 2 the pre-race
+picks of profile A on each exchange written to a book (`strategy signals f1 --asof ... --book`) and priced, Part 3 the
+same books repriced after each session (`book price --asof`). That data is on the VM, so those parts are recorded there,
+against staging, by `scripts/vm/record_term_f1.sh` (a backup first, then `record_term.py --run --part f1-singapore --out
+DIR`, which leaves the checkout alone and packs DIR.tar.gz); unpack it into `racinglines/web/term/` and render. A part
+shows once it is recorded.
 
 **Beta sign-up** (`/signup`, `RACINGLINES_SIGNUP=1`, off by default; `racinglines/web/accounts.py`). A public page,
 linked from the landing page's "Fantasy trade with us" section: username, email (required since 2026-10-08, one

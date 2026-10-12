@@ -47,7 +47,7 @@ racinglines book price FILE --remote --rich
 ```
 # LOCAL (Mac) or VM: your own database
 racinglines book map    FILE [--json] [--db URL]
-racinglines book price  FILE [--json] [--db URL] [--run ID ...] [--sims RACE_ID=FILE.npz ...]
+racinglines book price  FILE [--json] [--db URL] [--run ID ...] [--sims RACE_ID=FILE.npz ...] [--asof UTC]
 racinglines book settle FILE [--json] [--db URL]
 racinglines book render FILE --style hud|card|agnostic [--png] [--json-in PRICED.json]   # render.md
 racinglines book export FILE --ledger OUT.csv [--force] [--db URL] [--run ID ...]
@@ -108,6 +108,7 @@ Flags win over environment variables, which win over the file: `--demo / --remot
 | `--local` | Your own database, even when the defaults file says otherwise |
 | `--mcp-url URL` | The server for `--remote` (default `RACINGLINES_MCP_URL`, else `mcp_url` in the defaults file, else `https://mcp.racinglines.bet/mcp`, the production VM; staging runs no MCP server) |
 | `--run ID` | Price the legs of that run's competition from this model run (repeatable, one per sport). Default: the app's own choice per race, `markets/venues.pricing_run` (the live stage or forecast run before the race, the latest as-of run made before the start once it has run) |
+| `--asof UTC` | Price the book as it stood at that moment (local only): each race's newest stage or forecast run cut off by then (its `cutoff`, else when it was made) unless `--run` names one, and each exchange leg's last tape price by then (the stored price history and its Parquet archive), with no bid or ask. For following a book through a weekend after the fact, e.g. a replay's picks (`strategy signals f1 --asof T --book`, [Paper trading](../paper-trading.md#the-signal-engine)) |
 | `--sims RACE_ID=FILE` | An `OutcomeSims` archive (`models/outcomes.save_sims`) for one race. Legs on that race are then priced jointly from it (repeatable) |
 
 ## The book file
