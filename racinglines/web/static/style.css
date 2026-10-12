@@ -341,6 +341,9 @@ pre.log { max-height: 220px; overflow: auto; font-size: 11px; background: var(--
 .r101 .role-card.taker { border-top: 3px solid var(--good); }
 .r101 table { table-layout: fixed; width: 100%; }
 .r101 table td, .r101 table th { vertical-align: top; white-space: normal; overflow-wrap: anywhere; }
+/* /racinglines102: an intro sequence in parts, with the /term part nav (tabs on a phone, a sidebar when wide) */
+.r101.r-seq { max-width: 1060px; }
+.r-seq .term-partbox { max-width: 760px; min-width: 0; }
 .r101 table th:first-child { width: 22%; }
 .r101 .back { display: inline-block; margin-top: 28px; }
 

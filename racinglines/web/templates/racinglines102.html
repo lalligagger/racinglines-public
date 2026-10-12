@@ -1,18 +1,31 @@
 {% extends "base_public.html" %}
 {% block title %}Racinglines 102{% endblock %}
-{% block main_class %}r101{% endblock %}
+{% block main_class %}r101 r-seq{% endblock %}
 {% block content %}
 <p class="crumbs"><a href="/login">racinglines</a> › <a href="/racinglines101">101</a> › 102</p>
 <h1>Racinglines 102</h1>
 <p class="sub">Where the edge comes from, how a strategy picks from it, and the one kind of trade that knowingly gives a little of it back.
 Read <a href="/racinglines101">Racinglines 101</a> first for makers and takers.</p>
 
-<h2>The one-sentence version</h2>
+<div class="term-layout" data-term-parts>
+<nav class="term-nav" aria-label="Racinglines 102 parts">
+  <a href="#part-1" data-term-tab="part-1"><span class="term-nav-n">Part 1</span> The short version</a>
+  <a href="#part-2" data-term-tab="part-2"><span class="term-nav-n">Part 2</span> The model finds the gaps</a>
+  <a href="#part-3" data-term-tab="part-3"><span class="term-nav-n">Part 3</span> Strategies filter them</a>
+  <a href="#part-4" data-term-tab="part-4"><span class="term-nav-n">Part 4</span> After the bet</a>
+  <a href="#part-5" data-term-tab="part-5"><span class="term-nav-n">Part 5</span> Giving edge back</a>
+</nav>
+<div class="term-parts">
+<div class="term-partbox" id="part-1">
+<h2 class="term-part">Part 1: The short version</h2>
 <p>The model prices every line; a strategy only acts where the model's price and the market's price are far enough apart, always on the side the
 model calls cheap. So no strategy ever <i>opens</i> a bet the model thinks is a losing one. Once it holds a position, though, it will sometimes
 sell for less than the model says it's worth, on purpose, to carry less risk.</p>
 
-<h2>Step 1: the model finds the gaps</h2>
+<p class="term-next"><a href="#part-2" data-term-tab="part-2">Next: Part 2, The model finds the gaps →</a></p>
+</div>
+<div class="term-partbox" id="part-2">
+<h2 class="term-part">Part 2: The model finds the gaps</h2>
 <p>For every market, the prediction engine gives a <b>fair</b> probability. The exchange gives a <b>price</b>. The gap between them is the <b>edge</b>:</p>
 <ul>
   <li>Model says Norris wins 45%, the market sells YES at 30¢: the edge is +15 points on YES. Buying YES is <b>+EV</b> (positive expected value).</li>
@@ -21,7 +34,10 @@ sell for less than the model says it's worth, on purpose, to carry less risk.</p
 <p>"+EV" here always means <i>by the model's own numbers</i>. A gap is only real if the model is right, which is why the strategies below don't
 trade every gap they see.</p>
 
-<h2>Step 2: the strategy filters them</h2>
+<p class="term-next"><a href="#part-3" data-term-tab="part-3">Next: Part 3, Strategies filter them →</a></p>
+</div>
+<div class="term-partbox" id="part-3">
+<h2 class="term-part">Part 3: Strategies filter them</h2>
 <div class="roles">
   <div class="role-card taker"><h3>Takers pick lines</h3>
     <p>Strategy A buys only when the gap is at least <b>10 points</b> (5 for head-to-head markets), and only in markets that are open, liquid,
@@ -35,7 +51,10 @@ trade every gap they see.</p>
 The costs are added to the price when the bet is sized. At a 10-point threshold that can't turn a trade negative, but anyone who set the threshold
 below the costs could. The Kelly sizing option checks the edge <i>after</i> costs and bets nothing when it's gone.</p>
 
-<h2>Step 3: after the bet, the model keeps moving</h2>
+<p class="term-next"><a href="#part-4" data-term-tab="part-4">Next: Part 4, After the bet →</a></p>
+</div>
+<div class="term-partbox" id="part-4">
+<h2 class="term-part">Part 4: After the bet</h2>
 <p>Strategy A is an <b>update</b> taker: after every practice, sprint and qualifying session it re-prices each market and resizes its position to fit
 the new gap. That gives three possible outcomes for a bet it already holds.</p>
 <div class="scroll"><table>
@@ -51,7 +70,10 @@ But the model now values that share at 20¢, and the market will pay 25¢ for it
 it plays no part in the decision. That is the honest answer to "can we minimize a loss on a -EV play?": when the model turns against a bet, the
 strategy gets out at the best price on offer, and getting out is itself the +EV trade.</p>
 
-<h2>When a strategy knowingly gives up edge</h2>
+<p class="term-next"><a href="#part-5" data-term-tab="part-5">Next: Part 5, Giving edge back →</a></p>
+</div>
+<div class="term-partbox" id="part-5">
+<h2 class="term-part">Part 5: Giving edge back</h2>
 <p>A few rules trade some expected value for less risk. They are deliberate, and each is named so it can be tested:</p>
 <ul>
   <li><b>The taker trimming a shrinking gap</b> (above). On by default in update mode. The <i>stage-aware</i> taker (mode <code>early</code>) stops trading
@@ -62,7 +84,7 @@ strategy gets out at the best price on offer, and getting out is itself the +EV 
     Both can sell below the model's price to shed a position before the biggest news of the weekend. Both are <b>off</b> by default, and off in C.</li>
 </ul>
 
-<h2>What doesn't exist</h2>
+<h3>What doesn't exist</h3>
 <ul>
   <li><b>No stop-loss.</b> No strategy sells because a position is down money. Strategies sell because the <i>model</i> changed its mind, never because
     the price did.</li>
@@ -73,9 +95,13 @@ strategy gets out at the best price on offer, and getting out is itself the +EV 
 <p>A "cut it when it's gone against us" rule could be added as a new taker setting (for example, exit when the model's fair has moved some number of
 points against the entry). Like every tuned setting, it would have to win a backtest sweep in both seasons before it became a default.</p>
 
-<h2>The caveat that sits under all of this</h2>
+<h3>The caveat that sits under all of this</h3>
 <p class="note">Every "+EV" on this page is the model's opinion. The strategies are built to trust it only where it has earned trust: big gaps for takers,
 small ones for makers, and a paper-trading season to see whether the backtests hold up.</p>
+
+</div>
+</div>
+</div>
 
 <a class="back" href="/racinglines101">← Back to Racinglines 101</a>
 {% endblock %}

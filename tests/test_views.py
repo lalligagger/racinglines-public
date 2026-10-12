@@ -268,6 +268,7 @@ def test_racinglines102_is_public_and_linked_from_101():
     r = cl.get("/racinglines102", follow_redirects=False)
     assert r.status_code == 200 and "Racinglines 102" in r.text and "No stop-loss" in r.text
     assert 'href="/racinglines102"' in cl.get("/racinglines101").text
+    assert "data-term-parts" in r.text and 'data-term-tab="part-5"' in r.text   # the /term part nav
 
 
 def test_pitch_is_public():
