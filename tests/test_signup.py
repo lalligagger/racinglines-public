@@ -296,6 +296,7 @@ def test_accounts_without_an_email_get_the_add_email_popup(app_db):
     client, csrf = _admin(app_db)
     page = client.get("/admin/users").text
     assert 'action="/settings/email"' in page and 'data-key="email"' in page
+    assert "confirm a reset request" in page and "fantasy update" in page and "Skip for now" in page   # why we ask, and it's skippable
     assert 'action="/settings/email"' not in client.get("/settings").text
     with get_engine().begin() as c:
         c.execute(text("""UPDATE users SET prefs = coalesce(prefs, '{}'::jsonb) || '{"email": "taken@example.com"}'::jsonb
