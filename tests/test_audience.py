@@ -153,3 +153,9 @@ def test_lab_jobs_and_book_quotes_leave_a_hidden_sport_out_for_users(site, test_
         assert ada.get(url).status_code == 404, url
         assert boss.get(url).status_code == 200, url
     assert ada.get(f"/book/quotes?race_id={races['f1_wdc']}").status_code == 200
+
+
+def test_markets_board_key_hides_downhill_from_the_markets_page_only():
+    # owner, 2026-10-12: "UCI road only. Hide UCI DH for now" — off the Markets page for everyone, still public elsewhere
+    assert SP.off_board_competitions() == {"uci_dhi_wc"}
+    assert SP.is_public("mtb_dh", PRO) and SP.audience("mtb_dh") == "all"

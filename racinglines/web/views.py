@@ -142,6 +142,7 @@ def board_page(request: Request, msg: str = "", c=Depends(conn)):
         return bet_markets(request, msg=msg, c=c)
     from racinglines.markets import disagree as D
     hide = A.hidden_comps(user)                                     # sports this user doesn't see ([sport] audience)
+    hide |= SP.off_board_competitions()                             # and sports off the Markets page ([sport] markets_board)
     calendar = [r for r in V.calendar_rows(c) if r["sport"] not in hide]
     cal_sports = sorted({(r["sport"], r["sport_name"]) for r in calendar}, key=lambda x: V.SPORT_ORDER.get(x[0], 9))
     cal_exchanges = sorted({x for r in calendar for x in r["exchanges"]})
