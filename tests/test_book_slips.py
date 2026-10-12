@@ -496,3 +496,68 @@ def test_mcp_list_kinds_names_the_sports_that_price_each():
     assert set(by) == set(K.KINDS)
     with pytest.raises(ValueError, match="no sport 'curling'"):
         T.list_kinds(sport="curling")
+
+
+def test_price_as_of_a_moment_uses_that_runs_cutoff_and_the_tape_then(test_engine, db, book):
+    """`book price --asof`: the newest run cut off by then (a stage run re-priced later still counts by its cutoff)
+    and each exchange's last tape price then, never today's bid/ask."""
+    from sqlalchemy import text
+    with test_engine.begin() as c:
+        rid = c.execute(text("""INSERT INTO model_runs (competition_id, season_id, category_id, model, kind, params,
+                                created_at)
+                                SELECT competition_id, season_id, category_id, 'test', 'diagnostic',
+                                       '{"cutoff": "2026-10-09 10:00:00", "sweep_stage": "after FP1"}', now()
+                                FROM model_runs WHERE id = :r RETURNING id"""), dict(r=db["f1_run"])).scalar()
+        c.execute(text("""INSERT INTO race_predictions (model_run_id, race_id, target, athlete_id, win_prob, podium_prob,
+                          top10_prob, extra) VALUES (:m, :r, 'asof', :a, 0.55, 0.8, 0.9, '{}')"""),
+                  dict(m=rid, r=db["f1_race"], a=db["ann"]))
+        c.execute(text("""INSERT INTO market_price_history (token_id, ts, price) VALUES
+                          ('tok-f1-ann', '2026-10-09 09:00+00', 0.28), ('tok-f1-ann', '2026-10-10 09:00+00', 0.50)"""))
+    try:
+        then = _price(test_engine, book, asof="2026-10-09T10:05Z")
+        leg = _line(then, "win")["legs"][0]
+        assert (leg["run_id"], leg["run_source"], leg["model_prob"]) == (rid, "as of 2026-10-09T10:00Z", pytest.approx(0.55))
+        assert (leg["market_prob"], leg["market_bid"], leg["market_ask"]) == (pytest.approx(0.28), None, None)
+        assert leg["market_synced_utc"] == "2026-10-09T10:05Z" and then["asof"] == "2026-10-09T10:05Z"
+        later = _line(_price(test_engine, book, asof="2026-10-10T10:00Z"), "win")["legs"][0]
+        assert later["market_prob"] == pytest.approx(0.50) and later["run_id"] == rid
+        before = _line(_price(test_engine, book, asof="2026-10-09T08:00Z"), "win")
+        assert before["legs"][0]["model_prob"] is None and before["legs"][0]["run_source"].startswith("no run cut off")
+        assert before["legs"][0]["market_prob"] is None                  # no tape before then
+    finally:
+        with test_engine.begin() as c:
+            c.execute(text("DELETE FROM market_price_history WHERE token_id = 'tok-f1-ann'"))
+            c.execute(text("DELETE FROM model_runs WHERE id = :m"), dict(m=rid))
+
+
+def test_a_replays_entries_become_a_book_that_prices(test_engine, db, tmp_path):
+    """`strategy signals --asof --book`: each buy becomes a line at its own price (Kalshi in cents), its driver named by
+    the link's athlete id; sells are left out and counted."""
+    from racinglines.books import picks as BP
+    out = dict(event=dict(name="Testing Grand Prix", event_key="2026-17"), profile=dict(name="A"), venue="kalshi",
+               signals=[dict(market_key="tok-f1-ann", kind="race_win", subject="Ann Alpha", stage="pre-weekend",
+                             action="buy", side="YES", shares=10.0, limit_price=0.314, signal_ts="2026-10-09 07:30"),
+                        dict(market_key="tok-f1-ann", kind="race_win", subject="Ann Alpha", stage="after FP1",
+                             action="sell", side="YES", shares=4.0, limit_price=0.4, signal_ts="2026-10-09 10:00")])
+    with test_engine.connect() as c:
+        body, n, left = BP.book_toml(c, out, "2026-10-09T10:05")
+    assert (n, left) == (1, 0) and "Sells and trims left out: 1." in body
+    p = tmp_path / "picks.toml"
+    p.write_text(body)
+    bk = S.load_book(p)
+    ln = bk["lines"][0]
+    assert (bk["book"]["venue"], bk["book"]["odds"], ln["odds"], ln["stake"], ln["placed_utc"]) == \
+        ("kalshi", "cents", 31, 3.14, "2026-10-09T07:30Z")
+    assert ln["market"] == {"kind": "race_win", "driver": "Ann Alpha", "driver_id": db["ann"]}
+    leg = _line(_price(test_engine, bk), "1")["legs"][0]
+    assert leg["status"] == "mapped" and leg["athlete_id"] == db["ann"]
+    with pytest.raises(BP.PicksError, match="no trades"):
+        with test_engine.connect() as c:
+            BP.book_toml(c, dict(out, signals=[]), "2026-10-09T10:05")
+
+
+def test_a_replay_time_with_a_z_is_the_same_naive_utc_moment():
+    import pandas as pd
+
+    from racinglines.pipelines import signals as SG
+    assert SG._naive_utc("2026-10-09T07:35Z") == SG._naive_utc("2026-10-09T07:35") == pd.Timestamp("2026-10-09 07:35")
