@@ -21,9 +21,9 @@ optional = true
 
 [[steps]]
 section = "F1 Singapore: pre-race picks"
-title = "The same profile on Polymarket"
+title = "Profile A's picks on Polymarket, into a book"
 run = "racinglines strategy signals f1 --profile A --event 2026-17 --venue polymarket --asof 2026-10-09T10:05Z --no-fetch --book singapore-polymarket.toml"
-about = "The same moment and the same model on Polymarket's tape, written in dollars. The two exchanges list different markets and quote them differently, so the picks differ."
+about = "Friday, after first practice: the core taker profile replays the weekend up to that moment against Polymarket's recorded order book, and every entry it would have taken is written to a book file, in dollars, at the price it was taken at. (Its Kalshi replay took no trades at that point, so Kalshi is left out.)"
 group = "polymarket"
 optional = true
 
@@ -38,7 +38,7 @@ group = "kalshi"
 section = "F1 Singapore: pre-race picks"
 title = "Price the Polymarket book"
 run = "racinglines book price singapore-polymarket.toml --asof 2026-10-09T10:05Z"
-about = "The same for the Polymarket picks."
+about = "Each pick against the model's fair price and the exchange's last tape price at that moment: the edge it was taken on."
 group = "polymarket"
 
 [[steps]]
