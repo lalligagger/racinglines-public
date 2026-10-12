@@ -141,7 +141,7 @@ def test_generator_writes_fastf1_shapes_reproducibly(tmp_path):
     assert list(res.columns) == F.RESULT_COLS and list(laps.columns) == F.LAP_COLS
     assert len(res) == 20 and res["Points"].sum() == sum(G.RACE_POINTS)
     meta = json.loads((tmp_path / "a" / "2026" / "01_R.meta.json").read_text())
-    assert meta["synthetic"] and meta["location"] == "Mario Circuit"
+    assert meta["synthetic"] and meta["location"] == "Mario Kart Stadium"
     sch = pd.read_parquet(tmp_path / "a" / "2026" / "schedule.parquet")
     assert list(sch.columns) == F.SCHEDULE_COLS and len(sch) == w["rounds"]
 
