@@ -9,8 +9,8 @@
 {% if not ready %}<div class="card"><h2>Not open yet</h2><p>Fantasy trading hasn't been set up on this site yet.</p></div>{% else %}
 
 <div class="kpis hero">
-  {{ kpi("Total F$", s.total, "your 1,000 plus both P&Ls" ~ (" · rank " ~ mine.rank ~ " of " ~ rows|selectattr("rank")|list|length if mine and mine.rank else ""), "money") }}
-  {{ kpi("Cash", s.cash, "what you can trade with now", "money") }}
+  {{ kpi("Total F$", "F${:,.2f}".format(s.total), "your 1,000 plus both P&Ls" ~ (" · rank " ~ mine.rank ~ " of " ~ rows|selectattr("rank")|list|length if mine and mine.rank else "")) }}
+  {{ kpi("Cash", "F${:,.2f}".format(s.cash), "what you can trade with now") }}
   {{ kpi("By hand", s.manual_pnl, s.open ~ " open, worth " ~ "F$%.2f"|format(s.held) ~ " now" ~ (" (" ~ s.unpriced ~ " unpriced)" if s.unpriced else ""), "money") }}
   {{ kpi("Strategy", s.strategy_pnl, (profile.name if profile else "none picked") ~ " · " ~ s.strategy_positions ~ " positions", "money") }}
 </div>
