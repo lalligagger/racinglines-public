@@ -15,6 +15,8 @@
 #   story   the demo taker's walk-forward story (needs PR #87 deployed): backup; the evidence sweeps
 #           (sweeps/demo-taker-story.toml); gate: scripts/vm/story_gate.py must print GATE OK, else stop with nothing
 #           reset; then `f1 demo-history --reset --user taker`. Always --user taker: never the maker's record.
+#   search  backup, then the F1 search QUEUE exactly as written (no promotion, no extras), search-report, and a
+#           data_changes entry: for a small confirmation queue such as sweeps/seedcheck-2026-10.toml.
 #   sports  replay, then story (skips F1).
 #   all     replay, then story, then f1, in one unit (the sports first: F1 has been backtested for days).
 #
@@ -228,6 +230,15 @@ f1() {
   Q "SELECT model, kind, count(*) FROM model_runs WHERE created_at >= '$START' GROUP BY 1, 2 ORDER BY 1, 2"
   $R db changes --add "Overnight F1 on the VM from $START: search $QNAME (broad at 4k, top $TOP at 16k; data/runs/search/$QNAME/), f1 walk-forward and default sweeps 2025-2026 on polymarket and kalshi $EXTRAS; backup $B"
 }
+search() {
+  backup search
+  START=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  say "F1 search $QNAME ($QUEUE, as written)"
+  nice $R strategy search f1 "$QUEUE"
+  nice $R strategy search-report f1 "$QUEUE"
+  Q "SELECT model, kind, count(*) FROM model_runs WHERE created_at >= '$START' GROUP BY 1, 2 ORDER BY 1, 2"
+  $R db changes --add "F1 search $QNAME on the VM ($TARGET) from $START: $QUEUE as written, no promotion (data/runs/search/$QNAME/); backup $B"
+}
 replay() {
   $PY -c "import sys; from racinglines.markets.kalshi.sync import history_rows as h; sys.exit(0 if not h('t', [dict(yes_bid=dict(close=0), yes_ask=dict(close=100), end_period_ts=0)]) else 1)" \
     || { stop "this checkout still stores an empty Kalshi book's candle as a 0.50 price (kalshi/sync.py history_rows): deploy the candle fix before pulling tape"; return 1; }
@@ -334,11 +345,12 @@ case "$MODE" in
     golden
     echo "dry run done: nothing written" ;;
   f1) f1 ;;
+  search) search ;;
   replay) replay ;;
   story) story ;;
   sports) replay; story ;;
   all) replay; story; f1 ;;
-  *) echo "MODE must be dry, f1, replay, story, sports or all"; exit 1 ;;
+  *) echo "MODE must be dry, f1, search, replay, story, sports or all"; exit 1 ;;
 esac
 echo "mode=$MODE sports=$SPORTS log=$LOG" > "$DONE"
 progress "done: $(phase_line); FINISHED, marker $DONE"

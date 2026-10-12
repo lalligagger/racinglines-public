@@ -1,0 +1,143 @@
+# Seed check for the defaults-2026-10 T8 proposal (owner chose "Seed check first", 2026-10-12 05:18Z; report
+# library/core/2026-10-12-defaults-sweep-report.md section 6). Profile A against A with a $25 24 h volume floor, at the
+# default seed and seeds 1 and 2, both seasons, 16k: 12 jobs, plus the 2 baselines the search adds. Each run yields
+# both taker modes (update and stage-aware), so the stage-aware pair is T8 against the $25 candidate. Promote the $25 floor only if its paired gain on
+# stage-aware stays above the $150 noise floor in both seasons at every seed (docs/f1-roadmap.md section 5).
+#
+#   sudo systemd-run --unit=rl-seedcheck --uid=racinglines --setenv=TARGET=staging --setenv=MODE=search \
+#     --setenv=QUEUE=sweeps/seedcheck-2026-10.toml /opt/racinglines-staging/scripts/vm/overnight.sh
+
+[search]
+name = "seedcheck-2026-10"
+parallel = 2          # 2 vCPU, niced, beside prod's 5-minute recorders and signals
+grid = 8
+history_cache = true
+hours = 1.0
+grace_minutes = 10
+
+[report]
+target = 2026
+holdout = [2025]
+top = 10
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "seed check: A, seed default"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "seed check: A, seed default"
+
+[[job]]
+year = 2026
+sims = 16000
+seed = 1
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "seed check: A, seed 1"
+
+[[job]]
+year = 2025
+sims = 16000
+seed = 1
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "seed check: A, seed 1"
+
+[[job]]
+year = 2026
+sims = 16000
+seed = 2
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "seed check: A, seed 2"
+
+[[job]]
+year = 2025
+sims = 16000
+seed = 2
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+note = "seed check: A, seed 2"
+
+[[job]]
+year = 2026
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+min_volume_24h = 25.0
+note = "seed check: A at a $25 floor, seed default"
+
+[[job]]
+year = 2025
+sims = 16000
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+min_volume_24h = 25.0
+note = "seed check: A at a $25 floor, seed default"
+
+[[job]]
+year = 2026
+sims = 16000
+seed = 1
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+min_volume_24h = 25.0
+note = "seed check: A at a $25 floor, seed 1"
+
+[[job]]
+year = 2025
+sims = 16000
+seed = 1
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+min_volume_24h = 25.0
+note = "seed check: A at a $25 floor, seed 1"
+
+[[job]]
+year = 2026
+sims = 16000
+seed = 2
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+min_volume_24h = 25.0
+note = "seed check: A at a $25 floor, seed 2"
+
+[[job]]
+year = 2025
+sims = 16000
+seed = 2
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+min_volume_24h = 25.0
+note = "seed check: A at a $25 floor, seed 2"
