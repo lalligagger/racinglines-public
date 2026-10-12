@@ -203,11 +203,19 @@ def prepare(res, laps, prof):
 # Per-event measurements
 # ---------------------------------------------------------------------------
 
+def _deleted(laps):
+    """The laps' `deleted` flag as bools, a missing flag counting as not deleted. The column is object dtype (None, True,
+    False); fillna on it no longer downcasts silently in pandas 2.2+, so opt in to that behaviour here: same values,
+    no FutureWarning."""
+    with pd.option_context("future.no_silent_downcasting", True):
+        return laps["deleted"].fillna(False).astype(bool)
+
+
 def event_measurements(res, laps, prof):
     """One row per (event, driver) with qualifying/race-pace deficits, plus one
     row per (event, team, sector) with sector deficits and trap speeds."""
     q = laps[(laps["round"] == "qual") & laps["lap_time_ms"].notna()].copy()
-    q = q[~q["deleted"].fillna(False).astype(bool)]
+    q = q[~_deleted(q)]
     best = q.groupby(["event_id", "athlete_id"])["lap_time_ms"].min().rename("q_best").reset_index()
     best["q_def"] = best["q_best"] / best.groupby("event_id")["q_best"].transform("min") - 1
     secs = q.groupby(["event_id", "athlete_id"])[["s1_ms", "s2_ms", "s3_ms"]].min().reset_index()
@@ -317,7 +325,7 @@ def practice_measurements(laps):
     p = laps[laps["round"].isin(PRACTICE_KINDS) & laps["lap_time_ms"].notna()].copy()
     if p.empty:
         return pd.DataFrame(columns=["event_id", "round", "athlete_id", "session_ts", "best_def", "long_def"])
-    p = p[~p["deleted"].fillna(False).astype(bool)]
+    p = p[~_deleted(p)]
     p = p[p["lap_time_ms"] <= 1.07 * p.groupby(["event_id", "round"])["lap_time_ms"].transform("min")]
     key = ["event_id", "round", "athlete_id"]
     best = p.groupby(key).agg(best=("lap_time_ms", "min"), session_ts=("session_ts", "first")).reset_index()
