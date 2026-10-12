@@ -359,6 +359,33 @@
     btn.addEventListener("click", () => termPlay(t));
   });
 
+  // --- /term parts: one part at a time, picked from the tabs (phone) or sidebar (wide); the URL hash keeps the part ---
+  const parts = document.querySelector("[data-term-parts]");
+  if (parts) {
+    const boxes = [...parts.querySelectorAll(".term-partbox")], tabs = [...parts.querySelectorAll(".term-nav [data-term-tab]")];
+    const showPart = (id, scroll) => {
+      if (!boxes.some(b => b.id === id)) id = boxes[0].id;
+      boxes.forEach(b => { b.hidden = b.id !== id; });
+      tabs.forEach(a => a.toggleAttribute("aria-current", a.dataset.termTab === id));
+      if (scroll) parts.scrollIntoView({block: "start"});
+    };
+    const fromHash = () => {     // #part-2, or a step's id inside a part
+      const el = location.hash && document.getElementById(location.hash.slice(1));
+      const box = el && el.closest(".term-partbox");
+      return box ? box.id : null;
+    };
+    parts.addEventListener("click", e => {
+      const a = e.target.closest("[data-term-tab]");
+      if (!a) return;
+      e.preventDefault();
+      history.replaceState(null, "", "#" + a.dataset.termTab);
+      showPart(a.dataset.termTab, true);
+    });
+    window.addEventListener("hashchange", () => showPart(fromHash(), false));
+    parts.classList.add("js");
+    showPart(fromHash(), false);
+  }
+
   // --- /strategy/pick: each slider shows its value (points for probabilities, $ or shares otherwise); the dice roll
   // sliders at random, up to `spread` of each slider's range away from the strategy's own setting (no JS: no dice) ---
   const pick = document.querySelector("form.pick");
