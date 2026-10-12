@@ -10,7 +10,7 @@ MONEY"). What is built, and where it differs from the design below:
 
 | | First cut | Design (below) |
 |---|---|---|
-| Pages | `/fantasy` (My F$: total, cash, open trades, the strategy you follow, recent orders), `/fantasy/trade`, `POST /fantasy/orders`, `/leaderboard` (`racinglines/web/fantasy_routes.py`) | `/fantasy/markets` |
+| Pages | `/trade` (the markets and one market's book with the order form), `POST /fantasy/orders`, `/history` (your F$, every trade by hand and by your strategy, F$ through the run, and the leaderboard ranked by ROI × √trades) (`racinglines/web/fantasy_routes.py`). The first cut's `/fantasy`, `/fantasy/trade` and `/leaderboard` redirect there ([Alpha layout](alpha-layout.md)) | `/fantasy/markets` |
 | Switch | `RACINGLINES_FANTASY=1`, or unset on staging (`RACINGLINES_ENV=staging`); off on production | `RACINGLINES_FANTASY` + `RACINGLINES_FANTASY_EXCHANGE` |
 | Prices | The recorder's latest `market_book_snapshots` row for the link's token, refused past 15 minutes (`RACINGLINES_FANTASY_BOOK_MAX_AGE_MIN`). Staging has no recorder, so `RACINGLINES_FANTASY_BOOKS_URL` points it at production's database (read-only) | A live fetch per order through `markets/books.py` (needs EXCH-0) |
 | Who trades | Every active account with a ledger grant; demo accounts look only | Season members with the taker role |

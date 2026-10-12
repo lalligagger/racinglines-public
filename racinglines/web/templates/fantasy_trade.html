@@ -2,7 +2,7 @@
 {% block title %}Trade{% endblock %}
 {% block content %}
 {% call page_head("Trade by hand", "F1 markets on Kalshi and Polymarket at their latest recorded prices. Fantasy bucks only: nothing is sent to an exchange.") %}
-<a href="/fantasy">My F$ →</a>{% endcall %}
+<a href="/history">History →</a>{% endcall %}
 {{ flash(msg) }}
 {% if not ready %}<div class="card"><h2>Not open yet</h2><p>Fantasy trading hasn't been set up on this site yet.</p></div>{% else %}
 
@@ -35,14 +35,14 @@
 </div>{% endif %}
 
 <div class="card"><h2>Markets <span class="muted">{{ n }}</span></h2>
-<form method="get" action="/fantasy/trade" class="tabs"><input name="q" value="{{ q }}" placeholder="Driver, team or race"> <button type="submit">Search</button>{% if q %} <a href="/fantasy/trade">Clear</a>{% endif %}</form>
+<form method="get" action="/trade" class="tabs"><input name="q" value="{{ q }}" placeholder="Driver, team or race"> <button type="submit">Search</button>{% if q %} <a href="/trade">Clear</a>{% endif %}</form>
 {% if events %}{% for ev in events %}<h3>{{ ev.title }}{% if ev.start %} <span class="muted">{{ ev.start|fmt }}</span>{% endif %}</h3>
 <div class="scroll" data-rows="12"><table>
 <thead><tr><th>Market</th><th>Kind</th><th>Exchange</th><th class="num">YES bid</th><th class="num">YES ask</th><th></th></tr></thead>
 <tbody>{% for m in ev.markets %}<tr{% if sel and sel.id == m.id %} class="sel"{% endif %}>
   <td class="wrap">{{ m.group_title or m.question }}</td><td>{{ m.kind|kind }}</td><td>{{ m.exchange|capitalize }}</td>
   <td class="num">{{ "%.2f"|format(m.bid) if m.bid is not none else "–" }}</td><td class="num">{{ "%.2f"|format(m.ask) if m.ask is not none else "–" }}</td>
-  <td><a href="/fantasy/trade?link={{ m.id }}{{ '&q=' ~ q|urlencode if q }}">Trade</a></td>
+  <td><a href="/trade?link={{ m.id }}{{ '&q=' ~ q|urlencode if q }}">Trade</a></td>
 </tr>{% endfor %}</tbody></table></div>{% endfor %}
 {% else %}{{ empty("No F1 markets with a recorded book in the last day" ~ (" match that search." if q else ".")) }}{% endif %}</div>
 {% endif %}

@@ -104,6 +104,21 @@ def cash(conn, user_id):
                               dict(u=user_id)).scalar())
 
 
+# what the followed strategy's trades have done to the shared F$ cash (owner, 2026-10-12 21:04Z: "Only 1k to use for
+# both"): what its buys paid and sales got (paper_positions.cash), plus the payout of every settled position.
+STRATEGY_CASH = """
+    SELECT coalesce(sum(cash + CASE WHEN outcome IS NULL THEN 0
+                                    ELSE yes_shares * (CASE WHEN outcome THEN 1 ELSE 0 END)
+                                         + no_shares * (CASE WHEN outcome THEN 0 ELSE 1 END) END), 0)
+    FROM paper_positions WHERE user_id = :u AND venue <> 'private'"""
+
+
+def available(conn, user_id):
+    """F$ the player can trade with by hand: their cash plus what their strategy's trades have paid or got. Hand trades
+    and the followed strategy share one F$1,000 (fantasy/sizing.player_bankroll is the strategy's side)."""
+    return cash(conn, user_id) + float(conn.execute(text(STRATEGY_CASH), dict(u=user_id)).scalar())
+
+
 def has_grant(conn, user_id):
     return conn.execute(text("SELECT 1 FROM accounts.fantasy_ledger WHERE user_id = :u LIMIT 1"),
                         dict(u=user_id)).first() is not None
@@ -161,12 +176,13 @@ def orders(conn, user_id, limit=20):
 
 
 # the strategy a player follows trades paper_positions (pipelines/signals.py); its P&L is the positions page's rule
-# (web/views.py positions_page): cash + YES x y + NO x (1 - y), y = the outcome once settled, else the latest mark
+# (web/views.py positions_page): cash + YES x y + NO x (1 - y), y = the outcome once settled, else the latest mark.
+# The private book (venue 'private', a demo archived for the alpha) is not fantasy money and never counts.
 STRATEGY_PNL = """
     SELECT user_id, sum(cash + yes_shares * y + no_shares * (1 - y)) AS pnl, count(*) AS n
     FROM (SELECT user_id, cash, yes_shares, no_shares,
                  coalesce(CASE WHEN outcome IS NULL THEN NULL WHEN outcome THEN 1.0 ELSE 0.0 END, mark) AS y
-          FROM paper_positions) p
+          FROM paper_positions WHERE venue <> 'private') p
     WHERE y IS NOT NULL GROUP BY user_id"""
 
 
@@ -182,7 +198,7 @@ def summary(conn, user_id, quotes=None):
     srow = conn.execute(text(f"SELECT pnl, n FROM ({STRATEGY_PNL}) s WHERE user_id = :u"), dict(u=user_id)).first()
     strat = float(srow[0]) if srow and srow[0] is not None else 0.0
     manual = round(c + held - grant, 2)
-    return dict(grant=grant, cash=round(c, 2), held=round(held, 2), open=len(pos), unpriced=unpriced,
+    return dict(grant=grant, cash=round(available(conn, user_id), 2), held=round(held, 2), open=len(pos), unpriced=unpriced,
                 manual_pnl=manual, strategy_pnl=round(strat, 2), strategy_positions=int(srow[1]) if srow else 0,
                 total=round(grant + manual + strat, 2))
 
@@ -230,3 +246,66 @@ def leaderboard(conn, hide=(), quotes=None):
     for i, r in enumerate(out, 1):
         r["rank"] = i
     return out
+
+
+# The leaderboard's score (owner, 2026-10-12 19:18Z: "roi times square root of total trades or something like that"):
+# ROI = P&L / F$ staked, score = ROI x sqrt(trades). A player needs MIN_TRADES to be ranked, so one lucky trade can't
+# top the board. Trades and stakes count both sources: an order filled by hand (staked = what its buys paid, fees
+# included) and a market the followed strategy traded (staked = what it paid in, net of what it sold back).
+MIN_TRADES = 5
+
+TRADE_STATS = """
+    WITH m AS (SELECT o.user_id, count(DISTINCT o.id) AS trades,
+                      coalesce(sum(f.shares * f.price + f.fee) FILTER (WHERE f.action = 'buy'), 0) AS staked
+               FROM accounts.fantasy_orders o JOIN accounts.fantasy_fills f ON f.order_id = o.id GROUP BY o.user_id),
+         s AS (SELECT user_id, count(*) AS trades, coalesce(sum(greatest(-cash, 0)), 0) AS staked
+               FROM paper_positions WHERE venue <> 'private' AND (yes_shares > 0 OR no_shares > 0 OR cash <> 0)
+               GROUP BY user_id)
+    SELECT coalesce(m.user_id, s.user_id) AS user_id, coalesce(m.trades, 0) + coalesce(s.trades, 0) AS trades,
+           coalesce(m.staked, 0) + coalesce(s.staked, 0) AS staked
+    FROM m FULL JOIN s ON s.user_id = m.user_id"""
+
+
+def score(pnl, staked, trades):
+    """(roi, score) for the leaderboard; roi is None with nothing staked, score None below MIN_TRADES."""
+    roi = pnl / staked if staked > 0 else None
+    return roi, (round(roi * trades ** 0.5, 4) if roi is not None and trades >= MIN_TRADES else None)
+
+
+def ranked(conn, hide=(), quotes=None):
+    """leaderboard() with each player's trades, F$ staked, ROI and score, ranked by score (best first); players below
+    MIN_TRADES follow, unranked, by total F$. -> [dict(..., trades, staked, roi, score, rank or None)]"""
+    rows = leaderboard(conn, hide=hide, quotes=quotes)
+    st = {r[0]: (int(r[1]), float(r[2])) for r in conn.execute(text(TRADE_STATS))}
+    ids = dict(conn.execute(text("SELECT username, id FROM users WHERE username = ANY(:n)"),
+                            dict(n=[r["username"] for r in rows])).all())
+    for r in rows:
+        r["trades"], r["staked"] = st.get(ids.get(r["username"]), (0, 0.0))
+        r["roi"], r["score"] = score(r["manual_pnl"] + r["strategy_pnl"], r["staked"], r["trades"])
+    rows.sort(key=lambda r: (r["score"] is None, -(r["score"] or 0), -r["total"], r["username"]))
+    n = 0
+    for r in rows:
+        r["rank"] = (n := n + 1) if r["score"] is not None else None
+    return rows
+
+
+def manual_curve(conn, user_id, quotes=None):
+    """The account's F$ by hand through the run: after each order, cash plus what its open positions cost (so a trade
+    moves it only by its fee until it is sold or settled), then a last point now with open positions at their mark.
+    -> [(ts, value)]"""
+    rs = conn.execute(text("""
+        SELECT o.created_at AS ts, f.action, f.shares * f.price AS amt, f.fee
+        FROM accounts.fantasy_orders o JOIN accounts.fantasy_fills f ON f.order_id = o.id
+        WHERE o.user_id = :u ORDER BY o.created_at, f.id"""), dict(u=user_id)).mappings().all()
+    grant = float(conn.execute(text("""SELECT coalesce(sum(amount), 0) FROM accounts.fantasy_ledger
+                                       WHERE user_id = :u AND ref_table IS NULL"""), dict(u=user_id)).scalar())
+    if not rs:
+        return []
+    pts, v = [], grant
+    for r in rs:
+        v -= float(r["fee"])                       # at cost, a buy or a sell changes the value only by its fee ...
+        pts.append((r["ts"], round(v, 2)))
+    s = summary(conn, user_id, quotes=quotes)      # ... and the last point marks the open positions (and realised P&L)
+    from datetime import datetime, timezone
+    pts.append((datetime.now(timezone.utc), round(grant + s["manual_pnl"], 2)))
+    return pts

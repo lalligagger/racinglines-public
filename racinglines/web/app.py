@@ -53,6 +53,7 @@ from racinglines.web import users as U  # noqa: E402
 from racinglines.pipelines import profiles as _PF  # noqa: E402
 from racinglines.web import ranges as _ranges  # noqa: E402
 from racinglines.web import roles as R  # noqa: E402
+from racinglines.web import layout as _layout  # noqa: E402
 
 _SECRET = os.environ.get("APP_SECRET") or secrets.token_hex(32)
 CSRF_TOKEN = hmac.new(_SECRET.encode(), b"csrf", hashlib.sha256).hexdigest()
@@ -112,7 +113,8 @@ def _session_user_id(cookie):
 
 
 def _user_dict(u):
-    return dict(id=u.id, username=u.username, role=R.canonical(u.role), display_name=u.display_name or u.username)
+    return dict(id=u.id, username=u.username, role=_layout.role(R.canonical(u.role)),   # alpha: basic runs as pro
+                display_name=u.display_name or u.username)
 
 
 def authenticate(request: Request, creds: HTTPBasicCredentials | None = Depends(security)):
@@ -127,6 +129,7 @@ def authenticate(request: Request, creds: HTTPBasicCredentials | None = Depends(
             u = U.get_user(s, user_id=uid)
             if u and u.active:
                 request.state.user = dict(_user_dict(u), sid=sid)
+                _layout.guard(request)                  # the alpha layout's archived pages (web/layout.py)
                 return request.state.user
     ip = client_ip(request)
     if creds:
@@ -136,6 +139,7 @@ def authenticate(request: Request, creds: HTTPBasicCredentials | None = Depends(
             u = U.authenticate(s, creds.username, creds.password)
             if u:
                 request.state.user = _user_dict(u)
+                _layout.guard(request)
                 return request.state.user
         _record_failure(ip)
         U.log(get_engine(), None, "login_failed", request, username=creds.username, via="basic")
@@ -250,7 +254,8 @@ def needs_email(user):
 templates.env.globals["needs_email"] = needs_email
 templates.env.globals["ui_range"] = _ranges.ui_range                             # capped numeric inputs (web/ranges.py)
 from racinglines.fantasy import ledger as _FL  # noqa: E402
-templates.env.globals["fantasy_on"] = _FL.on                                    # /fantasy and /leaderboard (staging only)
+templates.env.globals["fantasy_on"] = _FL.on                                    # /trade and /history (staging only)
+templates.env.globals["alpha_layout"] = _layout.alpha                           # the four-tab alpha bar (web/layout.py)
 templates.env.globals["makers_on"] = lambda: _PF.MAKERS_OPEN                   # on from 2026-10-12 (profiles.MAKERS_OPEN)
 # the stylesheet's and scripts' URLs carry the newest static file's mtime, so a change is a new URL: no stale copy from the browser or
 # Cloudflare's edge cache (read at render time)
@@ -703,7 +708,7 @@ from racinglines.web import diag_routes  # noqa: E402,F401  (single-event diagno
 from racinglines.web import mybets  # noqa: E402,F401  (/mybets, the owner's bets calendar from the data folder)
 from racinglines.web import term_routes  # noqa: E402,F401  (/docs/quickstart/term, recorded CLI runs)
 from racinglines.web import strategy_pick  # noqa: E402,F401  (/strategy/pick, the account's own strategy)
-from racinglines.web import fantasy_routes  # noqa: E402,F401  (/fantasy, manual F$ trading, /leaderboard; staging only)
+from racinglines.web import fantasy_routes  # noqa: E402,F401  (/trade, /history: fantasy trading; staging only)
 from racinglines.web.book_routes import bet_markets, polymarket_calls  # noqa: E402,F401  (used by views.py)
 
 
