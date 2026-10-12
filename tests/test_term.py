@@ -83,6 +83,9 @@ def test_steps_group_under_their_section_and_wait_on_play(tmp_path, monkeypatch)
     assert "1. t1" in html and "2. t2" in html and "1. t3" in html       # numbered within each part
     assert html.count("data-term-play") == 3                             # each step waits paused on Play
     assert html.count("data-term-out") == 2 and "racinglines c3" in html  # the unrun step is its command only
+    # two parts: a part nav (tabs on a phone, a sidebar when wide), each part its own box, a link on to the next
+    assert "data-term-parts" in html and html.count('data-term-tab="part-') == 3     # 2 tabs + 1 "next"
+    assert 'id="part-1"' in html and 'id="part-2"' in html and "Next: Part 2, Part two" in html
 
 
 def test_a_failed_run_keeps_the_saved_recording(tmp_path, monkeypatch):

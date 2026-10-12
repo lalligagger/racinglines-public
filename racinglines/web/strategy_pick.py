@@ -4,8 +4,15 @@ select one ... defaults + sensible toggles/sliders"). Sign-up assigns none, so u
 for them; this page is the user-facing side of what /admin/users/<id> does (admin.admin_user_profile).
 
     basic        "Your picks" (roles.basic_profile: its own draw of BASIC_PICKS from the taker shortlist), or none
-    pro, admin   the taker shortlist (profiles.TAKER_TOP, ranked), the recommended blend (COMBOS) and maker C, with
-                 the few settings worth a slider (TUNABLE) on a single strategy; a blend runs as tuned
+    pro, admin   the taker shortlist (profiles.TAKER_TOP, ranked), the recommended blend (COMBOS) and maker C (only
+                 with profiles.MAKERS_OPEN; off for the Alpha Fantasy Launch), with the few settings worth a slider
+                 (TUNABLE) on a single strategy; a blend runs as tuned
+
+The page shows every sport and exchange a strategy could point at (admin.profile_slots; owner, 2026-10-11 22:30Z:
+"pointing a strat at a particular sport"), to admins only, and only F1 on Polymarket can be picked: it is the one slot the VM's signal
+timer runs (deploy/vm/systemd/racinglines-signals.service), and the library's strategies carry F1's stages and kinds,
+so on another sport they would fail or change (library/core/2026-10-11-strategies-per-sport.md). The others show as
+"coming soon" until Core adds per-sport strategies.
 
 Saving goes through profiles.assign (F1 on Polymarket, the slot the signal engine runs). The demo accounts keep the
 profiles assign_demo gives them: they see the page but can't save. The dice (owner, 2026-10-11 22:20Z: "let the user input
@@ -24,19 +31,32 @@ from racinglines.pipelines import sweep_settings as SS
 from racinglines.web import demo
 from racinglines.web import roles as R
 from racinglines.web.app import ANY, allow, app, audit, check_csrf, get_engine, render
+from racinglines.web.ranges import UI_RANGES
 
-PRO_CODES = (*PF.TAKER_TOP, "TB", "C")     # what a pro account picks from, in this order (TAKER_TOP is ranked)
+# what a pro account picks from, in this order (TAKER_TOP is ranked); no makers while profiles.MAKERS_OPEN is off
+PRO_CODES = PF.open_codes((*PF.TAKER_TOP, "TB", "C"))
 DEFAULT = PF.TAKER_TOP[0]                   # preselected when the account runs nothing yet: the shortlist's first
 PRE = "pre-weekend"
-# The settings a user may move, per kind of strategy: (setting, label, low, high, step, unit). Probabilities show as
-# points (x100). Each range sits inside its sweep_settings.Setting bounds; anything else stays as the strategy has it.
-TUNABLE = {
-    "taker": (("min_edge", "Minimum edge to take a price", 0.03, 0.20, 0.01, "pts"),
-              ("min_edge_h2h", "Minimum edge on head-to-head markets", 0.03, 0.20, 0.01, "pts"),
-              ("min_volume_24h", "Only markets with this much traded in the last 24 h", 0, 1000, 50, "$")),
-    "maker": (("max_disagree", "Stop quoting where the model and the market differ by more than", 0.03, 0.20, 0.01, "pts"),
-              ("size", "Shares per quote", 10, 100, 5, "shares")),
-}
+# The settings a user may move, per kind of strategy: (setting, label, low, high, step, unit), the range from the web
+# forms' caps (web/ranges.py: what has been backtested). Probabilities show as points (x100). Anything else stays as
+# the strategy has it.
+_T = {"taker": (("min_edge", "Minimum edge to take a price", 0.01, "pts"),
+                ("min_edge_h2h", "Minimum edge on head-to-head markets", 0.01, "pts"),
+                ("min_volume_24h", "Only markets with this much traded in the last 24 h", 50, "$")),
+      "maker": (("max_disagree", "Stop quoting where the model and the market differ by more than", 0.01, "pts"),
+                ("size", "Shares per quote", 5, "shares"))}
+TUNABLE = {k: tuple((n, label, *UI_RANGES[n], step, unit) for n, label, step, unit in v) for k, v in _T.items()}
+F1_SLOT = "f1:polymarket"
+
+
+def slots(user):
+    """The sport tabs: admins see every sport and exchange a strategy could point at (F1 on Polymarket first, the only
+    one open; see the docstring); everyone else sees none, as F1 on Polymarket is all they can pick in the Alpha (the
+    owner hid MotoGP for it, 2026-10-11 22:59Z). -> [dict(key, label, open)]."""
+    from racinglines.web.admin import profile_slots
+    if R.canonical(user["role"]) != "admin":
+        return []
+    return [dict(s, open=s["key"] == F1_SLOT) for s in profile_slots()]
 
 
 _SCHED = {}                                 # year -> (loaded at, schedule): the page reads it, so cache it an hour
@@ -132,7 +152,8 @@ def pick_page(request: Request, msg: str = ""):
     w = open_weekend()
     return render(request, "strategy_pick.html", opts=opts, profile=profile, now=now,
                   chosen=now or (opts[0]["code"] if R.is_basic(me) else DEFAULT), locked=demo.is_demo(me) or bool(w),
-                  demo_locked=demo.is_demo(me), weekend_note=lock_note(w) if w else "", msg=msg, basic=R.is_basic(me))
+                  demo_locked=demo.is_demo(me), weekend_note=lock_note(w) if w else "", msg=msg, basic=R.is_basic(me),
+                  slots=slots(me))
 
 
 def _adjusted(code, form):
@@ -164,10 +185,13 @@ def _adjusted(code, form):
 
 
 @app.post("/strategy/pick", dependencies=[Depends(check_csrf), allow(*ANY)])
-async def pick_save(request: Request, code: str = Form(""), rolled: str = Form("")):
+async def pick_save(request: Request, code: str = Form(""), rolled: str = Form(""), slot: str = Form(F1_SLOT)):
     me = request.state.user
     if demo.is_demo(me):
         return RedirectResponse("/strategy/pick?msg=The demo accounts keep their strategy.", status_code=303)
+    if slot != F1_SLOT:                             # only F1 on Polymarket can be picked in the Alpha
+        return RedirectResponse("/strategy/pick?msg=Error: only Formula 1 on Polymarket can be picked for now.",
+                                status_code=303)
     w = open_weekend()
     if w is not None:                               # a pick, a slider, a dice roll or a stop: all wait for the window
         return RedirectResponse("/strategy/pick?msg=Error: " + lock_note(w), status_code=303)

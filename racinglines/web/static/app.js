@@ -78,6 +78,35 @@
     store.set("tabs." + nav.dataset.tabs, key);
     if (setHash && key) history.replaceState(null, "", "#" + key);
   }
+  // --- Lab Run: pick a sport, then a job; only that job's form shows (no JS: every form shows) ---
+  function runPickInit(root) {
+    (root.querySelectorAll ? root : document).querySelectorAll("[data-run-pick]").forEach(pick => {
+      const box = pick.parentElement, sportSel = pick.querySelector("[data-run-sport]"), jobSel = pick.querySelector("[data-run-job]");
+      const secs = [...box.querySelectorAll(".run-sport[data-sport]")];
+      if (!secs.length) return;
+      const show = () => {
+        secs.forEach(sec => {
+          const on = sec.dataset.sport === sportSel.value;
+          sec.hidden = !on;
+          sec.querySelectorAll(".run-job").forEach(j => { j.hidden = !on || j.dataset.job !== jobSel.value; });
+        });
+      };
+      const fill = (want) => {
+        const sec = secs.find(x => x.dataset.sport === sportSel.value);
+        const jobs = [...sec.querySelectorAll(".run-job")];
+        jobSel.replaceChildren(...jobs.map(j => new Option(j.dataset.label, j.dataset.job)));
+        jobSel.value = jobs.some(j => j.dataset.job === want) ? want : (jobs[0] && jobs[0].dataset.job);
+        show();
+      };
+      const sel = box.querySelector(".run-job[data-sel]");
+      const first = sel ? sel.closest(".run-sport") : secs[0];
+      sportSel.value = first.dataset.sport;
+      fill(sel ? sel.dataset.job : null);
+      sportSel.addEventListener("change", () => fill(null));
+      jobSel.addEventListener("change", show);
+      pick.hidden = false;
+    });
+  }
   function tabsInit(root) {
     const nav = root.querySelector ? root.querySelector("[data-tabs]") : null;
     if (!nav) return;
@@ -285,7 +314,7 @@
       t.dataset.localized = "1";
     });
   }
-  function initAll(root) { tabsInit(root); detailsInit(root); tableInit(root); calendarInit(root); localTimeInit(root); }
+  function initAll(root) { tabsInit(root); runPickInit(root); detailsInit(root); tableInit(root); calendarInit(root); localTimeInit(root); }
   document.addEventListener("htmx:afterSwap", e => initAll(e.detail.target));
 
   document.addEventListener("DOMContentLoaded", () => {
@@ -329,6 +358,33 @@
     btn.hidden = false;
     btn.addEventListener("click", () => termPlay(t));
   });
+
+  // --- /term parts: one part at a time, picked from the tabs (phone) or sidebar (wide); the URL hash keeps the part ---
+  const parts = document.querySelector("[data-term-parts]");
+  if (parts) {
+    const boxes = [...parts.querySelectorAll(".term-partbox")], tabs = [...parts.querySelectorAll(".term-nav [data-term-tab]")];
+    const showPart = (id, scroll) => {
+      if (!boxes.some(b => b.id === id)) id = boxes[0].id;
+      boxes.forEach(b => { b.hidden = b.id !== id; });
+      tabs.forEach(a => a.toggleAttribute("aria-current", a.dataset.termTab === id));
+      if (scroll) parts.scrollIntoView({block: "start"});
+    };
+    const fromHash = () => {     // #part-2, or a step's id inside a part
+      const el = location.hash && document.getElementById(location.hash.slice(1));
+      const box = el && el.closest(".term-partbox");
+      return box ? box.id : null;
+    };
+    parts.addEventListener("click", e => {
+      const a = e.target.closest("[data-term-tab]");
+      if (!a) return;
+      e.preventDefault();
+      history.replaceState(null, "", "#" + a.dataset.termTab);
+      showPart(a.dataset.termTab, true);
+    });
+    window.addEventListener("hashchange", () => showPart(fromHash(), false));
+    parts.classList.add("js");
+    showPart(fromHash(), false);
+  }
 
   // --- /strategy/pick: each slider shows its value (points for probabilities, $ or shares otherwise); the dice roll
   // sliders at random, up to `spread` of each slider's range away from the strategy's own setting (no JS: no dice) ---

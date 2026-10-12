@@ -3,9 +3,12 @@
 {% block title %}Pick a strategy{% endblock %}
 {% block content %}
 {# web/strategy_pick.py: the user's own pick (no strategy runs until there is one); admins assign others on /admin/users/<id>. #}
-{% call page_head("Pick a strategy", "The strategy this account paper-trades on Formula 1 at Polymarket's prices (other sports and exchanges come later). Nothing is sent to an exchange, and you can change it between race weekends.") %}
+{% call page_head("Pick a strategy", "The strategy this account paper-trades at the exchange's real prices: Formula 1 on Polymarket today, other sports and exchanges coming soon. Nothing is sent to an exchange, and you can change it between race weekends.") %}
 <a href="/strategy">← Strategy</a>{% endcall %}
 {{ flash(msg) }}
+{% if slots|length > 1 %}<nav class="pick-slots" aria-label="Sport and exchange">{% for x in slots %}
+  {% if x.open %}<span aria-current="page"><b>{{ x.label }}</b><span class="muted">{{ profile.name if profile else "nothing yet" }}</span></span>
+  {% else %}<span class="soon" title="Strategies for {{ x.label }} are on the way: today only F1 on Polymarket gets live calls."><b>{{ x.label }}</b><span class="muted">coming soon</span></span>{% endif %}{% endfor %}</nav>{% endif %}
 <p class="pick-now">Running now: <b>{{ profile.name if profile else "nothing yet" }}</b>{% if not profile %}. Pick one below to start getting calls.{% endif %}</p>
 {% if demo_locked %}<p class="muted">This is a demo account: it keeps the strategy it shows, so the page is read-only here.</p>
 {% elif weekend_note %}<p class="flash bad" role="status">{{ weekend_note }}</p>{% endif %}
