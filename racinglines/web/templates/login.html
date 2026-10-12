@@ -2,11 +2,11 @@
 {% block title %}racinglines · sportsbook pricing for all racing disciplines{% endblock %}
 {% block main_class %}landing{% endblock %}
 {% block content %}
-{# The signed-out landing page (owner, 2026-10-08; reworked 2026-10-12): a one-line fantasy-alpha strip (sign up, try
-   the demo), the business case, then a dated news feed. Signing in has its own page, /signin. No sportsbook, operator
+{# The signed-out landing page (owner, 2026-10-08; reworked 2026-10-12): a one-line fantasy-alpha strip (sign up, one
+   "Try the demo" button that signs in as the pro demo account, maker; the taker account still signs in by name), the business case, then a dated news feed. Signing in has its own page, /signin. No sportsbook, operator
    or provider is named here. #}
 <header class="lp-top">
-  <a class="lp-brand" href="/login"><img src="/static/brand/logo.svg" alt="" width="32" height="32"><span>racing<b>lines</b></span></a>
+  <a class="lp-brand" href="/"><img src="/static/brand/logo.svg" alt="" width="32" height="32"><span>racing<b>lines</b></span></a>
   <a class="lp-signin-link" href="/signin{{ '?next=' ~ next|urlencode if next and next != '/' }}">Sign in</a>
 </header>
 
@@ -14,9 +14,7 @@
   <p><b>Fantasy league alpha</b> is open: trade our prices with fantasy bucks.</p>
   <div class="lp-actions">{% if signup_on() %}<a class="button primary" href="/signup">Sign up</a>{% endif %}
     <form method="post" action="/login"><input type="hidden" name="username" value="maker"><input type="hidden" name="password" value="password"><input type="hidden" name="next" value="{{ next }}">
-      <button title="Model fair prices, quote markets, run every strategy, backtest and replay in the Lab">Try as pro</button></form>
-    <form method="post" action="/login"><input type="hidden" name="username" value="taker"><input type="hidden" name="password" value="password"><input type="hidden" name="next" value="{{ next }}">
-      <button title="Follow a taker strategy's calls on the open markets, no model numbers">Try as basic</button></form>
+      <button title="Fair prices, quotes, every strategy, backtests and replays in the Lab">Try the demo</button></form>
     <a href="/racinglines101">What is this?</a></div>
 </section>
 
@@ -75,16 +73,16 @@
 {# The news feed, newest first; an undated item ("Upcoming", "Now") carries a tag instead. Each date is the earliest
    one the project history states: F1 docs/f1-roadmap.md (F1-0 done 2026-09-26), downhill the Whistler book
    (2026-09-27), Kalshi and OG.com docs/data-changes.md (2026-09-28, 2026-09-29, 2026-10-01), NASCAR the roadmap's
-   decision log and docs/data-changes.md (2026-09-30). The F1 backtest figures are run 931 in docs/f1-evaluation.md. #}
+   decision log and docs/data-changes.md (2026-09-30). The F1 figure is run 931 in docs/f1-evaluation.md: after qualifying the winner averaged 27.5% against about 5% uniform. #}
 {% set news = [
-  ("", "Upcoming", "We're releasing racinglines as an open-source PyPI package this week. Stay tuned.", "/term", "Sneak peek"),
+  ("", "Upcoming", "We're releasing racinglines as an open-source PyPI package this week. Stay tuned.", "/docs/quickstart/term", "Sneak peek"),
   ("", "Now", "Fantasy sign-ups are live for alpha testers."),
   ("2026-10-01", "1 Oct 2026", "Added Kalshi and OG.com order books, recorded every five minutes."),
   ("2026-09-30", "30 Sep 2026", "Added NASCAR Cup."),
   ("2026-09-29", "29 Sep 2026", "Added OG.com prices."),
   ("2026-09-28", "28 Sep 2026", "Added Kalshi prices, including their Formula 1 markets from 2025 and 2026."),
   ("2026-09-27", "27 Sep 2026", "Added UCI downhill, with a priced book for Whistler."),
-  ("2026-09-26", "26 Sep 2026", "Added Formula 1, backtested on 129 races since 2021 at 4,000 simulations each. After qualifying, the eventual winner gets a 27.5% win price on average, against about 5% for a blind guess.")
+  ("2026-09-26", "26 Sep 2026", "Added Formula 1. In a 129-race backtest, our model gave the eventual winner over five times the chance a blind guess would.")
 ] %}
 <section id="news" class="lp-section lp-news">
   <h2 class="lp-h">News</h2>

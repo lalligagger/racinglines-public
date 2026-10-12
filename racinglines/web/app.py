@@ -61,7 +61,7 @@ security = HTTPBasic(realm="racinglines", auto_error=False)
 SESSION_COOKIE = "rl_session"
 SESSION_HOURS = 12
 PUBLIC_PATHS = ("/login", "/signin", "/static", "/racinglines101", "/racinglines102", "/signup", "/forgot", "/pitch", "/mybets", "/term")
-PUBLIC_EXACT = {"/docs/quickstart/term"}     # public by exact path only: a prefix would open /docs/quickstart/term/../..
+PUBLIC_EXACT = {"/", "/docs/quickstart/term"}  # public by exact path only: the landing page; a prefix would open /docs/quickstart/term/../..
 
 # failed-login throttle: per client IP, MAX_FAILURES within FAILURE_WINDOW seconds -> 429
 MAX_FAILURES = 8
@@ -326,7 +326,7 @@ def _wants_html(request):
 def _error_page(request, code):
     user = getattr(request.state, "user", None)
     try:
-        resp = render(request, "error.html", code=code, message=ERROR_TEXT[code], home="/markets" if user else "/login")
+        resp = render(request, "error.html", code=code, message=ERROR_TEXT[code], home="/markets" if user else "/")
         resp.status_code = code
         return resp
     except Exception:                                  # noqa: BLE001  never let the error page itself fail
@@ -379,17 +379,19 @@ SITE = ROOT / "site"     # the built docs (mkdocs build -d site; the pre-push ho
 # Login / logout
 # ---------------------------------------------------------------------------
 
-@app.get("/login", response_class=HTMLResponse)
-def login_page(request: Request, next: str = "/", error: str = ""):
-    """The signed-out landing page. Signing in is /signin; an old sign-in link with an error goes there."""
-    if error:
-        return RedirectResponse(f"/signin?next={quote(_safe_next(next), safe='/')}&error={quote(error)}", status_code=303)
+@app.get("/", response_class=HTMLResponse)
+def landing_page(request: Request, next: str = "/"):
+    """The public landing page, at the site's index (owner, 2026-10-12). A signed-in browser goes on to the board."""
+    if _session(request.cookies.get(SESSION_COOKIE))[0] is not None:
+        return RedirectResponse("/markets", status_code=303)
     return templates.TemplateResponse(request, "login.html", dict(next=next, support=SUPPORT_EMAIL))
 
 
 @app.get("/signin", response_class=HTMLResponse)
+@app.get("/login", response_class=HTMLResponse)
 def signin_page(request: Request, next: str = "/", error: str = ""):
-    """Sign in (owner, 2026-10-12: off the landing, on its own page). The form posts to /login."""
+    """Sign in (owner, 2026-10-12: off the landing, on its own page). /login shows the same page, so old links,
+    smoke.sh and `vm.sh status` keep a 200 there; the form posts to /login."""
     return templates.TemplateResponse(request, "signin.html", dict(next=next, error=error, support=SUPPORT_EMAIL))
 
 
@@ -437,7 +439,7 @@ def logout(request: Request):
     sid = _session(request.cookies.get(SESSION_COOKIE))[1]
     if sid:
         demo.reset(sid)
-    resp = RedirectResponse("/login", status_code=303)
+    resp = RedirectResponse("/", status_code=303)
     resp.delete_cookie(SESSION_COOKIE)
     return resp
 

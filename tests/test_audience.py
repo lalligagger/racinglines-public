@@ -48,7 +48,7 @@ def test_flipping_the_key_back_shows_the_sport_again(monkeypatch):
 @pytest.mark.quick
 def test_the_landing_page_leaves_a_hidden_sport_out():
     from racinglines.web import app as WA
-    page = TestClient(WA.app).get("/login").text
+    page = TestClient(WA.app).get("/").text
     assert "Formula 1 · NASCAR Cup · UCI downhill" in page and "MotoGP" not in page
 
 
