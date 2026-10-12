@@ -245,12 +245,22 @@ def apply(argv):
     rest, ref, given = take_demo(argv)
     if not given:
         return argv
+    rest = sport_names(pack(ref), rest)
     helping = bool({"-h", "--help"} & set(rest))
     remote = "--remote" in rest or ("--local" not in rest and not helping and source_choice() == "remote")
     if remote:
         return use_remote_demo(ref, rest)
     use_demo(ref, build=not helping)
     return rest
+
+
+def sport_names(pk, argv):
+    """The pack's `sport_name` on the command line (and as a live spec's folder, `kart/demo-2026-09`) read as the
+    sport it is stored under, so `model backtest kart --demo` runs the f1 commands on the kart store."""
+    alias, sport = pk.sport_name, pk.sport
+    if alias == sport:
+        return argv
+    return [sport if a == alias else sport + a[len(alias):] if a.startswith(alias + "/") else a for a in argv]
 
 
 def reset():

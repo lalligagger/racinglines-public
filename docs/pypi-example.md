@@ -58,10 +58,9 @@ next to yours) but no network or account.
 
 ```
 racinglines db stats --demo                                       # 1. build the demo store and look at it
-racinglines model backtest f1 --demo                              # 2. every past race priced and scored
-racinglines model forecast f1 --demo --save                       # 3. the rest of the season and the championships
-racinglines live run f1/demo-2026-09 --demo --simulate --no-fetch # 4. a live private book on a simulated clock
-racinglines book price --demo                                     # 5. sportsbook lines: EV against model and exchanges
+racinglines model backtest kart --demo                            # 2. every past race priced and scored
+racinglines model forecast kart --demo --save                     # 3. the rest of the season and the championships
+racinglines live run kart/demo-2026-09 --demo --simulate --no-fetch # 4. a live private book on a simulated clock
 ```
 
 These are the real commands: `--demo` only switches the data source ([Quickstart](quickstart.md)).

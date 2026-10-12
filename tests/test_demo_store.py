@@ -104,6 +104,17 @@ def test_demo_with_the_remote_source_aims_at_the_hosted_store(monkeypatch, tmp_p
     source.reset()
 
 
+def test_pack_sport_name_reads_as_its_stored_sport():
+    from racinglines.cli import source
+    from racinglines.demo import store
+    kart = store.find("kart")
+    assert (kart.sport, kart.sport_name) == ("f1", "kart")
+    assert source.sport_names(kart, ["model", "backtest", "kart", "--races", "3"]) == ["model", "backtest", "f1", "--races", "3"]
+    assert source.sport_names(kart, ["live", "run", "kart/demo-2026-09", "--simulate"]) == ["live", "run", "f1/demo-2026-09", "--simulate"]
+    assert source.sport_names(kart, ["model", "backtest", "f1"]) == ["model", "backtest", "f1"]     # the stored name still works
+    assert source.sport_names(kart, ["book", "price", "karts.toml"]) == ["book", "price", "karts.toml"]
+
+
 def test_remote_model_flags_map_to_the_hosted_job():
     from racinglines.cli import remote as RM
     assert RM.job_params("f1", "backtest", ["--races", "3", "--sims", "300", "--track", "on", "--remote"]) == \
@@ -225,7 +236,7 @@ def test_kart_quickstart_runs_on_the_store(demo_env):
     unchanged, on the demo store."""
     from racinglines.demo import store
     env, _ = demo_env
-    small = {"model backtest f1": ["--races", "3", "--sims", "300", "--track", "on"], "model forecast f1": ["--sims", "500"]}
+    small = {"model backtest kart": ["--races", "3", "--sims", "300", "--track", "on"], "model forecast kart": ["--sims", "500"]}
     outs = []
     for step in store.find("kart").quickstart:
         if not step.get("record", True):                                 # the install step: shown, never run
