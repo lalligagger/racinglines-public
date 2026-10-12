@@ -19,7 +19,7 @@ Where the data comes from (map, price, settle, export), three modes; the default
     --demo [PACK]          a demo store (racinglines/cli/source.py): a separate local database of synthetic data from a
                            data pack (default kart), built on first use, priced by the same code as --local. FILE
                            defaults to the pack's book (racinglines/demo/packs/kart/book.toml); `racinglines model
-                           forecast f1 --demo --save` first gives it model prices. Rich by default.
+                           forecast kart --demo --save` first gives it model prices. Rich by default.
                            `--demo [PACK] --remote` (or the defaults file's source = remote) prices it on the pack's
                            hosted demo store instead (its [remote] mcp_url; synthetic data only)
     --remote               the VM's hosted MCP server (racinglines/cli/remote.py): live model runs and exchange prices.

@@ -45,6 +45,12 @@ class Pack:
         return self.manifest["sport"]
 
     @property
+    def sport_name(self):
+        """The name the pack's sport answers to on the command line under --demo (`sport_name`, default the stored
+        sport): kart's commands say `kart` while the data sits under the f1 schema."""
+        return self.manifest.get("sport_name") or self.sport
+
+    @property
     def book(self):
         f = (self.manifest.get("book") or {}).get("file")
         return self.path / f if f else None

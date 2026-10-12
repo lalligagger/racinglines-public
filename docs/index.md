@@ -75,10 +75,9 @@ The demo ([Quickstart](quickstart.md)): the real commands on a synthetic Mario K
 built on first use (needs Postgres: `docker compose up -d`):
 
 ```
-racinglines model backtest f1 --demo                   # every past race priced as of before it, scored
-racinglines model forecast f1 --demo --save            # the rest of the season and the championships
-racinglines live run f1/demo-2026-09 --demo --simulate --no-fetch   # a live private book, 100 simulated takers
-racinglines book price --demo                          # sportsbook lines vs the model and the exchanges
+racinglines model backtest kart --demo                 # every past race priced as of before it, scored
+racinglines model forecast kart --demo --save          # the rest of the season and the championships
+racinglines live run kart/demo-2026-09 --demo --simulate --no-fetch # a live private book, 100 simulated takers
 ```
 
 Then the full pipeline:

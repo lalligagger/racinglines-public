@@ -8,6 +8,7 @@ name = "kart"
 title = "Mario Kart Grand Prix"
 tagline = "Let's-a go! 🍄"          # printed once the store is ready (flavour is pack data, not code)
 sport = "f1"                    # stored under the F1 schema (sports/f1.toml): the drivers, teams and tracks are made up
+sport_name = "kart"             # what the quickstart's commands call it: `model backtest kart --demo` (read as f1)
 about = """A synthetic Formula 1 world with a Mario Kart grid: three seasons (2024-2026, twelve rounds each; 2026's
 rounds 1-9 raced), 20 drivers in 10 teams, FastF1-shaped practice, qualifying, sprint and race files, and quotes from
 a synthetic Polymarket and Kalshi on the live rehearsal's and the book's races. Every pace, result and price is
@@ -56,20 +57,16 @@ about = "The first --demo command builds the store (a few minutes, with a progre
 
 [[quickstart]]
 title = "📊 Backtest the model"
-run = "racinglines model backtest f1 --demo"
+run = "racinglines model backtest kart --demo"
 about = "Every past race priced as of before the weekend, before qualifying and before the race, with track features on and off, scored against the results and against uniform and grid baselines."
 
 [[quickstart]]
 title = "🔮 Forecast the rest of the season"
-run = "racinglines model forecast f1 --demo --save"
+run = "racinglines model forecast kart --demo --save"
 about = "The next races (Rainbow Road is a sprint weekend) and both championships; --save stores the run the book and the web app read."
 
 [[quickstart]]
 title = "🏁 Run a live private book"
-run = "racinglines live run f1/demo-2026-09 --demo --simulate --no-fetch"
+run = "racinglines live run kart/demo-2026-09 --demo --simulate --no-fetch"
 about = "Bowser's Castle (round 9) replayed on a simulated clock: the maker's book opens before practice, reprices after each session from the model's stage runs, 100 simulated takers trade against it, the book closes at lights out and settles from the results."
 
-[[quickstart]]
-title = "💰 Price a sportsbook's lines"
-run = "racinglines book price --demo"
-about = "The pack's sportsbook book (a generic sportsbook's lines on rounds 10 and 11) against the model's forecast and the exchanges' quotes: EV against each, side by side."
