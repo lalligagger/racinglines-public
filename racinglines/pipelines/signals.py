@@ -408,6 +408,12 @@ def resolve_venue(settings, venue=None, live=True):
     return venue
 
 
+def _naive_utc(t):
+    """A time as the naive UTC the stage cutoffs use: "2026-10-09T07:35Z" and "2026-10-09T07:35" are the same moment."""
+    t = pd.Timestamp(t)
+    return t.tz_convert("UTC").tz_localize(None) if t.tzinfo else t
+
+
 def compute(engine, engine_url, profile, now=None, event="next", live=True, fetch=True, echo=print, cache=None,
             venue=None, scale=1.0):
     """Signals and positions of one profile at `now` (naive UTC; default the current time).
@@ -420,7 +426,7 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
     from racinglines.models.inputs import laps_pricing as run
     st = SS.Settings.from_dict(profile["settings"], strict=False)
     venue = resolve_venue(st, venue, live)
-    now = pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz="UTC").tz_localize(None)
+    now = _naive_utc(now) if now is not None else pd.Timestamp.now(tz="UTC").tz_localize(None)
     year = int(str(event).split("-")[0]) if "-" in str(event or "") else now.year     # "2026-15" or a round
     sched = WS.schedule(year)
     rnd, w = pick_event(sched, now, event)
@@ -740,7 +746,7 @@ def price_upcoming(engine, engine_url, profile, now=None, n=3, echo=print, cache
     from racinglines.models.inputs import laps_pricing as run
     st = SS.Settings.from_dict(profile["settings"], strict=False)
     venue = SS.venue_of(st)
-    now = pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz="UTC").tz_localize(None)
+    now = _naive_utc(now) if now is not None else pd.Timestamp.now(tz="UTC").tz_localize(None)
     sched = WS.schedule(now.year)
     todo = [w for r, w in sorted(sched.items()) if w["race_start"] > now][:n]
     out = {}
