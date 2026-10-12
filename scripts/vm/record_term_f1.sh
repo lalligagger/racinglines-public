@@ -2,9 +2,9 @@
 # Record the /term page's F1 parts (racinglines/web/term/f1-singapore.toml: the 2026 Singapore GP on the real data and
 # the real Kalshi and Polymarket tapes) on the VM, where that data is, with staging's code (owner, 2026-10-11 21:47Z: staging only).
 #
-#   TARGET=prod-ro     the default: staging's code against production's database through the read-only login
-#                      racinglines_mcp_ro (RACINGLINES_MCP_SQL_URL in /etc/racinglines.env, scripts/vm/mcp_sql_role.sh)
-#                      and production's data folder (its market archive). Nothing can be written: no backup, no note.
+#   TARGET=prod-ro     the default: staging's code against production's database in read-only sessions (production's
+#                      login with PGOPTIONS default_transaction_read_only=on: any write fails) and production's data
+#                      folder (its market archive). Nothing is written to the database: no backup, no note.
 #                      Owner, 2026-10-12: get the demo recorded; staging's missing Singapore data is a separate fix.
 #   TARGET=staging     staging's code and database (a backup and a data_changes note, as below)
 #   PART=f1-singapore  the steps file (demos.toml `parts`)
@@ -29,9 +29,8 @@ case "$TARGET" in
 esac
 DC() { (cd "${DC_DIR:-/opt/racinglines}" && docker compose "$@"); }   # the database container is production's
 set -a; . "$ENV_FILE"; set +a
-if [ "$RO" = 1 ]; then
-  [ -n "${RACINGLINES_MCP_SQL_URL:-}" ] || { echo "no RACINGLINES_MCP_SQL_URL in $ENV_FILE (scripts/vm/mcp_sql_role.sh)"; exit 2; }
-  export DATABASE_URL=$RACINGLINES_MCP_SQL_URL RACINGLINES_DATA=${RACINGLINES_DATA:-/opt/racinglines/data}
+if [ "$RO" = 1 ]; then      # libpq reads PGOPTIONS: every connection starts read-only
+  export PGOPTIONS="-c default_transaction_read_only=on" RACINGLINES_DATA=${RACINGLINES_DATA:-/opt/racinglines/data}
 fi
 export PYTHONUNBUFFERED=1
 cd "$APP"
@@ -45,7 +44,7 @@ say() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*" | tee -a "$LOG"; }
 
 B=data/backups/db/$DB-before-record-term-$PART-$STAMP.sql.gz
 if [ "$RO" = 1 ]; then
-  say "record $PART on $TARGET: read-only login, $RACINGLINES_DATA; no backup needed"
+  say "record $PART on $TARGET: read-only sessions, $RACINGLINES_DATA; no backup needed"
 else
 say "record $PART on $TARGET: backing up to $B"
 DC exec -T db pg_dump --no-owner --no-privileges -U racinglines "$DB" | gzip -6 > "$B"
