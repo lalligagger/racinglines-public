@@ -42,7 +42,7 @@ def test_off_by_default(monkeypatch):
     client = TestClient(A.app)
     assert client.get("/signup").status_code == 404 and client.get("/forgot").status_code == 404
     assert client.post("/signup", data=GOOD).status_code == 404
-    page = client.get("/login").text
+    page = client.get("/").text
     assert "/signup" not in page and "signups</a> are live" not in page
 
 
@@ -56,7 +56,7 @@ def test_closed_until_setup_has_run(monkeypatch):
     client = TestClient(A.app)
     assert "isn't open yet" in client.get("/signup").text
     assert client.post("/signup", data=GOOD).status_code == 503
-    page = client.get("/login").text                      # the landing page links to sign-up once; no popup (2026-10-08)
+    page = client.get("/").text                           # the landing page links to sign-up once; no popup (2026-10-08)
     assert 'id="site-notice"' not in page and page.count('href="/signup"') == 1
     assert 'href="/forgot"' in client.get("/signin").text           # the sign-in form has its own page (2026-10-12)
     forgot = client.get("/forgot").text                    # no email on file: a reset request to us, prefilled
@@ -310,3 +310,11 @@ def test_accounts_without_an_email_get_the_add_email_popup(app_db):
     with get_engine().connect() as c:
         assert c.execute(text("SELECT prefs->>'email' FROM users WHERE username = 'boss'")).scalar() == "boss@example.com"
     assert 'action="/settings/email"' not in client.get("/admin/users").text
+
+
+
+def test_the_taker_demo_account_still_signs_in_by_name(app_db):
+    """The basic demo has no button any more, but the taker login is kept (owner, 2026-10-12)."""
+    from racinglines.web import app as A
+    r = TestClient(A.app).post("/login", data=dict(username="taker", password="password"), follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/markets"
