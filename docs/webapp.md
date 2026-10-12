@@ -104,7 +104,7 @@ The landing page has no popup, and the maintenance popup is off (`MAINTENANCE_NO
 **Quickstart replay** (`/term`, public like `/pitch`; owner, 2026-10-11). A terminal-styled replay of the
 quickstart (`docs/quickstart.md`): its commands, each with `--demo` (the kart demo pack, a synthetic F1 world: no real names
 or model prices), typed at a prompt one by one, each followed by its recorded output (shown at once without JavaScript or
-with reduced motion). Nothing runs on the server, so there is no shell to sandbox. The commands are not written in the
+with reduced motion). Steps with a pack `section` group into parts; with more than one part, a part nav switches between them (large tabs across the top on a phone, a sidebar from 900 px wide; owner, 2026-10-12), one part at a time, kept in the URL hash (`#part-2`). Nothing runs on the server, so there is no shell to sandbox. The commands are not written in the
 web app: they are the pack's `[[quickstart]]` list (`racinglines/demo/packs/kart/pack.toml`), the same list
 `docs/quickstart.md` is built from. `python scripts/demo/record_term.py --run` snapshots that list into
 `racinglines/web/term/quickstart.json`, runs each command in colour with Rich's animations off (the final frame of each
