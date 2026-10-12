@@ -161,12 +161,13 @@ def orders(conn, user_id, limit=20):
 
 
 # the strategy a player follows trades paper_positions (pipelines/signals.py); its P&L is the positions page's rule
-# (web/views.py positions_page): cash + YES x y + NO x (1 - y), y = the outcome once settled, else the latest mark
+# (web/views.py positions_page): cash + YES x y + NO x (1 - y), y = the outcome once settled, else the latest mark.
+# The private book (venue 'private', a demo archived for the alpha) is not fantasy money and never counts.
 STRATEGY_PNL = """
     SELECT user_id, sum(cash + yes_shares * y + no_shares * (1 - y)) AS pnl, count(*) AS n
     FROM (SELECT user_id, cash, yes_shares, no_shares,
                  coalesce(CASE WHEN outcome IS NULL THEN NULL WHEN outcome THEN 1.0 ELSE 0.0 END, mark) AS y
-          FROM paper_positions) p
+          FROM paper_positions WHERE venue <> 'private') p
     WHERE y IS NOT NULL GROUP BY user_id"""
 
 
@@ -243,7 +244,8 @@ TRADE_STATS = """
                       coalesce(sum(f.shares * f.price + f.fee) FILTER (WHERE f.action = 'buy'), 0) AS staked
                FROM accounts.fantasy_orders o JOIN accounts.fantasy_fills f ON f.order_id = o.id GROUP BY o.user_id),
          s AS (SELECT user_id, count(*) AS trades, coalesce(sum(greatest(-cash, 0)), 0) AS staked
-               FROM paper_positions WHERE yes_shares > 0 OR no_shares > 0 OR cash <> 0 GROUP BY user_id)
+               FROM paper_positions WHERE venue <> 'private' AND (yes_shares > 0 OR no_shares > 0 OR cash <> 0)
+               GROUP BY user_id)
     SELECT coalesce(m.user_id, s.user_id) AS user_id, coalesce(m.trades, 0) + coalesce(s.trades, 0) AS trades,
            coalesce(m.staked, 0) + coalesce(s.staked, 0) AS staked
     FROM m FULL JOIN s ON s.user_id = m.user_id"""

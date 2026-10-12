@@ -32,7 +32,8 @@ def alpha():
 
 def hidden(path, user):
     """True when the alpha layout hides this page from this user."""
-    return alpha() and not (user and user.get("role") == "admin") and path.startswith(HIDDEN_PREFIXES)
+    under = any(path == p or path.startswith(p + "/") for p in HIDDEN_PREFIXES)     # /book/..., not /bookmarks
+    return alpha() and not (user and user.get("role") == "admin") and under
 
 
 def guard(request):

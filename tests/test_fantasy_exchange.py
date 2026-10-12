@@ -132,5 +132,6 @@ def test_alpha_layout_switch(monkeypatch):
     admin, pro = dict(role="admin"), dict(role="pro")
     assert L.hidden("/live", pro) and L.hidden("/book/quotes", pro) and L.hidden("/live/f1", None)
     assert not L.hidden("/live", admin) and not L.hidden("/markets", pro) and not L.hidden("/trade", pro)
+    assert not L.hidden("/bookmarks", pro) and not L.hidden("/lively", pro)                     # whole path segments only
     monkeypatch.setenv("RACINGLINES_LAYOUT", "classic")
     assert not L.hidden("/live", pro) and not L.hidden("/book", pro)
