@@ -55,7 +55,7 @@ and its generator). Adding a pack is adding a folder: no command, flag, schema, 
   passing come from course profiles where there is one, and how much each team gains on fast or tight tracks from its
   drivers' in-game stats. These are the synthetic world's hidden truth; the real model never reads them, it fits the
   generated laps. `--demo kart-classic` is the first kart world, with made-up F1-length lap times.
-- `racinglines/demo/generate.py` writes FastF1-shaped files for every raced session (practice, sprint qualifying,
+- `racinglines/demo/mk_demo/generate.py` writes FastF1-shaped files for every raced session (practice, sprint qualifying,
   sprint, qualifying, race: results, laps with sectors and speed traps, meta with weather) and each season's
   schedule, the shapes `sources/fastf1/fetch.py` saves; and quotes from a synthetic Polymarket (win, podium, pole,
   teammates' head-to-heads) and Kalshi (win, podium, 2nd place) on rounds 9-11, in the file

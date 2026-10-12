@@ -1,4 +1,4 @@
-"""The demo store behind `--demo` (racinglines/cli/source.py, racinglines/demo/store.py, racinglines/demo/generate.py):
+"""The demo store behind `--demo` (racinglines/cli/source.py, racinglines/demo/store.py, racinglines/demo/mk_demo/generate.py):
 the generator writes FastF1-shaped files, the real ingest loads them into a separate database, and the real commands
 run on it unchanged. The end-to-end test builds a smaller store (the two newest seasons) into a database next to the
 test one and runs the quickstart's commands as subprocesses, with small settings. Skipped without Postgres.
@@ -128,7 +128,7 @@ def test_remote_model_flags_map_to_the_hosted_job():
 
 
 def test_generator_writes_fastf1_shapes_reproducibly(tmp_path):
-    from racinglines.demo import generate as G
+    from racinglines.demo.mk_demo import generate as G
     from racinglines.sources.fastf1 import fetch as F
     w = dict(G.world(), seasons=[2026], raced_2026=2)
     G.write_fastf1(tmp_path / "a", w)
@@ -150,7 +150,7 @@ def test_generator_writes_fastf1_shapes_reproducibly(tmp_path):
 def test_no_generated_lap_beats_a_world_record():
     """The kart world's tracks are Mario Kart 8 Deluxe courses: every lap the generator writes, in every session of
     every raced weekend, is slower than the course's fastest 150cc record lap (world.toml wr_lap_s)."""
-    from racinglines.demo import generate as G
+    from racinglines.demo.mk_demo import generate as G
     w = G.world()
     W = G.World(w)
     for year, rnd, tr, day, sprint in G.calendar(w):
@@ -163,7 +163,7 @@ def test_no_generated_lap_beats_a_world_record():
 
 def test_offline_schedule_reads_the_saved_copy(tmp_path, monkeypatch):
     """RACINGLINES_OFFLINE=1: the schedule comes from data/raw/f1/fastf1/<year>/schedule.parquet, FastF1 never called."""
-    from racinglines.demo import generate as G
+    from racinglines.demo.mk_demo import generate as G
     from racinglines.models.inputs import laps_pricing as P
     from racinglines.sources.fastf1 import fetch as F
     (tmp_path / "2026").mkdir()
