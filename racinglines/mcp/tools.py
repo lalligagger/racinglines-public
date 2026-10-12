@@ -1228,7 +1228,7 @@ def fantasy_leaderboard(conn, limit=None, offset=0, books=None):
 
 
 def fantasy_markets(conn, q=None, limit=None, offset=0, books=None):
-    """The markets a player may trade now (F1 on Kalshi and Polymarket) with the best recorded YES bid and ask and
+    """The markets a player may trade now (Formula 1 only for now, on Kalshi and Polymarket) with the best recorded YES bid and ask and
     when that book was recorded; markets with no book in the last day are left out. q: a search on the question,
     driver or event."""
     from racinglines.fantasy import exchange as FX
@@ -1251,7 +1251,9 @@ def fantasy_book(conn, market_link_id, books=None):
     from racinglines.fantasy import exchange as FX
     _fantasy_on()
     link = FX._link(conn, int(market_link_id))
-    if link is None or link["sport"] != FX.SPORT or link["exchange"] not in FX.EXCHANGES:
+    if link is not None and not FX.sport_ok(link):
+        raise ValueError(FX.TEXT["sport_not_tradable"])
+    if link is None or link["exchange"] not in FX.EXCHANGES:
         raise ValueError(f"no tradable market {market_link_id}")
     book = FX.latest_book(books or conn.engine, link["token_id"])
     if book is None:

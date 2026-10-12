@@ -136,6 +136,9 @@ def fantasy_trade(request: Request, link: int = 0, q: str = "", msg: str = "", a
                                            event_title FROM market_links WHERE id = :i"""), dict(i=link)).mappings().first()
             if sel is not None:
                 sel = dict(sel)
+                full = FX._link(c, sel["id"])
+                sel["sport_ok"], sel["sport"] = FX.sport_ok(full), full["sport"]
+            if sel is not None and sel["sport_ok"]:
                 book = FX.latest_book(_books(), sel["token_id"])
                 if book:
                     nb, na = FX.yes_to_no(book["bids"], book["asks"])

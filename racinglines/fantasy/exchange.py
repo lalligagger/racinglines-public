@@ -50,11 +50,12 @@ RACE_KINDS = ("race_win", "race_podium", "race_top5", "race_top10", "race_pole",
 SPRINT_KINDS = ("race_sprint_win", "race_sprint_pole")
 SEASON_KINDS = ("champion", "constructors_champion")
 EXCHANGES = ("kalshi", "polymarket")
-REASONS = ("bad_input", "not_a_member", "kind_not_tradable", "market_closed", "session_started", "no_schedule",
+REASONS = ("bad_input", "not_a_member", "sport_not_tradable", "kind_not_tradable", "market_closed", "session_started", "no_schedule",
            "book_unavailable", "stale_book", "no_liquidity", "over_order_cap", "insufficient_balance",
            "opposite_side_held", "sell_exceeds_position")
 TEXT = {"bad_input": "Check the side, the shares (a whole number) and the limit (0.01 to 0.99).",
         "not_a_member": "This account can't trade fantasy markets.",
+        "sport_not_tradable": "Fantasy trading is Formula 1 only for now: this market can't be traded.",
         "kind_not_tradable": "This market can't be traded here yet.",
         "market_closed": "This market is closed or already settled.",
         "session_started": "This market closed when its session started.",
@@ -259,11 +260,18 @@ def _close(conn, link):
     return clv.closes(conn, [dict(link)]).get((int(link["race_id"]), link["prediction"]), (None, ""))[0]
 
 
+def sport_ok(link):
+    """True when a link's sport is the one fantasy trading covers (F1 only to start: owner, 2026-10-12 23:07Z)."""
+    return link is not None and link["sport"] == SPORT
+
+
 def check_link(conn, link, now):
     """Refuse a link a player may not trade now (kind, venue, sport, closed, resolved, past its close)."""
     if link is None:
         raise Rejected("bad_input")
-    if link["sport"] != SPORT or link["exchange"] not in EXCHANGES or link["prediction"] not in tradable()[link["exchange"]]:
+    if link["sport"] != SPORT:
+        raise Rejected("sport_not_tradable")              # owner, 2026-10-12: F1 only to start
+    if link["exchange"] not in EXCHANGES or link["prediction"] not in tradable()[link["exchange"]]:
         raise Rejected("kind_not_tradable")
     if link["exchange"] == "polymarket" and link["prediction"] == "race_h2h" and link["condition_id"]:
         first = conn.execute(text("SELECT min(id) FROM market_links WHERE condition_id = :c AND exchange = 'polymarket'"),

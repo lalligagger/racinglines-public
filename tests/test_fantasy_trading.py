@@ -146,9 +146,14 @@ def test_every_rejection_writes_a_row_and_an_audit_entry(db):
     assert _reason(db, link="motogp") == "no_schedule"       # a race kind with no race: fails closed
     with eng.begin() as c:
         c.execute(text("UPDATE sports SET code = 'f1x' WHERE code = 'f1'"))
-    assert _reason(db) == "kind_not_tradable"
+    assert _reason(db) == "sport_not_tradable"
     with eng.begin() as c:
         c.execute(text("UPDATE sports SET code = 'f1' WHERE code = 'f1x'"))
+    with eng.begin() as c:                                   # an F1 market of a kind fantasy doesn't trade
+        c.execute(text("UPDATE market_links SET exchange = 'nowhere' WHERE id = :i"), dict(i=db["links"]["win"]))
+    assert _reason(db) == "kind_not_tradable"
+    with eng.begin() as c:
+        c.execute(text("UPDATE market_links SET exchange = 'kalshi' WHERE id = :i"), dict(i=db["links"]["win"]))
     assert _reason(db, link="pole") == "session_started"     # qualifying started an hour ago
     assert _reason(db, now=RACE + timedelta(minutes=1)) == "session_started"
     with eng.begin() as c:
@@ -548,3 +553,23 @@ def test_mcp_fantasy_tools_are_own_account_and_trade_like_the_page(db, monkeypat
     owner = _mcp_client(eng, monkeypatch, None)
     assert "which account" in owner("fantasy_order", market_link_id=champ, side="yes", action="buy", shares=1,
                                     limit_price=0.41)[1]
+
+
+def test_other_sports_are_view_only_with_a_notice(db):
+    """Fantasy trading is F1 only for now (owner, 2026-10-12 23:07Z): a non-F1 market says so on Trade and is refused."""
+    from racinglines.fantasy import exchange as FX
+    eng = db["engine"]
+    with eng.begin() as c:
+        c.execute(text("INSERT INTO sports (code, name) VALUES ('nascar', 'NASCAR') ON CONFLICT DO NOTHING"))
+        c.execute(text("INSERT INTO leagues (code, name) VALUES ('nascar', 'NASCAR') ON CONFLICT DO NOTHING"))
+        comp = c.execute(text("""INSERT INTO competitions (code, name, league_id, sport_id)
+                                 SELECT 'nascar_cup_t', 'Cup', l.id, s.id FROM leagues l, sports s
+                                 WHERE l.code = 'nascar' AND s.code = 'nascar' RETURNING id""")).scalar()
+        lid = c.execute(text("""INSERT INTO market_links (exchange, question, token_id, outcome, competition_id, prediction,
+                                                          group_title, last_bid, last_ask)
+                                VALUES ('kalshi', 'race_win Larson', 'KX-NASCAR-LAR', 'Yes', :c, 'race_win', 'Larson', 0.2, 0.22)
+                                RETURNING id"""), dict(c=comp)).scalar()
+    page = _login("ada").get(f"/trade?link={lid}").text
+    assert "Fantasy trading is Formula 1 only for now" in page and 'action="/fantasy/orders"' not in page
+    r = FX.place(eng, db["users"]["ada"], lid, "yes", "buy", 10, 0.22, now=NOW, get_book=book())
+    assert not r["ok"] and r["reason"] == "sport_not_tradable" and "Formula 1 only" in r["message"]
