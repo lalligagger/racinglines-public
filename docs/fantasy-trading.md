@@ -1,7 +1,27 @@
 # Fantasy trading: exchange markets and private books
 
-**Status:** draft for the owner, Tue 2026-09-29. Nothing on this page is built yet. Every feature is behind a switch
-that is off by default.
+**Status:** draft for the owner, Tue 2026-09-29. Every feature is behind a switch that is off by default. A first cut
+of exchange paper trading for takers is built (2026-10-12, staging only): see [First cut](#first-cut-2026-10-12).
+
+## First cut (2026-10-12)
+
+The owner asked for "first-cut manual trading, staging only" and a balance players can see ("NO REAL TRADES OR
+MONEY"). What is built, and where it differs from the design below:
+
+| | First cut | Design (below) |
+|---|---|---|
+| Pages | `/fantasy` (My F$: total, cash, open trades, the strategy you follow, recent orders), `/fantasy/trade`, `POST /fantasy/orders`, `/leaderboard` (`racinglines/web/fantasy_routes.py`) | `/fantasy/markets` |
+| Switch | `RACINGLINES_FANTASY=1`, or unset on staging (`RACINGLINES_ENV=staging`); off on production | `RACINGLINES_FANTASY` + `RACINGLINES_FANTASY_EXCHANGE` |
+| Prices | The recorder's latest `market_book_snapshots` row for the link's token, refused past 15 minutes (`RACINGLINES_FANTASY_BOOK_MAX_AGE_MIN`). Staging has no recorder, so `RACINGLINES_FANTASY_BOOKS_URL` points it at production's database (read-only) | A live fetch per order through `markets/books.py` (needs EXCH-0) |
+| Who trades | Every active account with a ledger grant; demo accounts look only | Season members with the taker role |
+| Ledger | `accounts.fantasy_ledger` (the 1,000 grant) gains `ref_table`/`ref_id`: one `trade` row per fill, one `fee` row per order | `bankroll_entries`, season-scoped |
+| Tables | `accounts.fantasy_orders`, `fantasy_fills`, `fantasy_positions`, created by `racinglines users setup` (no Alembic migration; a deploy writes nothing) | Alembic `fantasy_schema_v1` |
+| Closing | The deciding round's stored start (`pipelines/clv.closes`); a race link without one is refused | The FastF1 schedule parquet; season futures paused during sessions |
+| Settlement | Not built: open trades count at the best recorded bid | SETTLE-1 |
+| Total F$ | The 1,000 grant + manual P&L + the followed strategy's paper P&L (`paper_positions`) | `fantasy_stats` |
+
+The fill model, NO-side derivation, fee rules, order cap, rate limit and rejection codes are the design's, in
+`racinglines/fantasy/exchange.py`; tests in `tests/test_fantasy_exchange.py` and `tests/test_fantasy_trading.py`.
 
 From the soft launch (Thu 8 Oct 18:00 PDT [Fri 9 Oct 01:00 UTC]), invited players trade F1 with F$, which is paper
 money. There are two ways to trade. A **taker** makes exchange paper trades: orders fill against Kalshi's or
