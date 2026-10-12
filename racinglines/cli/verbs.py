@@ -17,7 +17,7 @@ MODULES = ("f1", "mtb_dh", "nascar", "motogp", "cycling")
 
 GROUPS = {
     "data": ("results, sessions, feeds and market links into the database", (
-        "fetch", "download", "parse", "ingest", "link", "events", "startlist", "probe", "points", "record",
+        "fetch", "download", "parse", "ingest", "link", "events", "startlist", "schedule", "probe", "points", "record",
         "inrace-backfill", "pm-sync", "pm-links-export", "pm-links-import", "pm-history", "pm-trades", "pm-record",
         "pm-archive")),
     "model": ("pricing: forecasts, backtests, model comparisons, one-event diagnostics", (
