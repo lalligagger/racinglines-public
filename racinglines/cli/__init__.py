@@ -7,7 +7,7 @@ racinglines <group> <command> [SPORT] [options]
     backtest  walk-forward SPORT | coverage | clv   (the backtest core, any sport with a pricing model)
     weather   probe | fetch | show   (weather forecasts per event: Weather Underground, docs/weather.md)
     markets   sync | history | trades | record | archive
-    book      map | price | settle | view   (generic sportsbook lines and slips: model and market EV, docs/sportsbook/slips.md)
+    book      map | price | settle | view | render | new   (generic sportsbook lines and slips: model and market EV, docs/sportsbook/slips.md)
     db        init | seed | stats | export
     live      new | step | run | agent | status | report   (a live private-book event, any sport)
     web       serve the web app

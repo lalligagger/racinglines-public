@@ -49,6 +49,7 @@ racinglines book price FILE --remote --rich
 racinglines book map    FILE [--json] [--db URL]
 racinglines book price  FILE [--json] [--db URL] [--run ID ...] [--sims RACE_ID=FILE.npz ...]
 racinglines book settle FILE [--json] [--db URL]
+racinglines book render FILE --style hud|card|agnostic [--png] [--json-in PRICED.json]   # render.md
 racinglines book export FILE --ledger OUT.csv [--force] [--db URL] [--run ID ...]
 racinglines book view   RESULT.json
 ```
@@ -122,9 +123,12 @@ The book file uses the [schema](index.md) as before, with these optional additio
   `odds` may then be left out).
 - `id` on a line: the name that output and errors use (default: its 1-based position).
 - `stake` on a line: the bet placed, a number above 0 in `book.currency` (a Kalshi `cents` book: dollars). Read by
-  `book export`; a line without one is a quote, not a bet.
+  `book export`; a line without one is a quote, not a bet. It is not the recommended stake `book render` prints
+  ([Bet-slip graphics](render.md#sizing-the-v2-rule-as-data)), which is never written into the file.
 - `placed_utc` on a line: when the bet was placed (`2026-10-03T22:32Z`), else the book's `captured_utc`.
 - `[aliases]`: an exact table from the venue's spelling to our display name (`"Alpha, Ann" = "Ann Alpha"`).
+- `box = [x, y, w, h]` on a line and `[book] image`: where `book render --style hud` puts the line's label on the
+  book's screenshot ([Bet-slip graphics](render.md#hud-placement-box)). Pricing ignores them; `--json` carries `box`.
 
 A slip is a line whose market is `kind = "combo"` with `legs = [...]` ([combos](index.md), `markets/combos.py`).
 This synthetic example has a single and a cross-sport parlay:
@@ -256,7 +260,7 @@ The row builder (`ledger.rows`) returns dicts, so a database table can take the 
   (`mapped` / `unmapped`), `reason`, `n_legs`, `races` (race ids), `odds`, `decimal_odds`, `book_prob`, `model_prob`,
   `model_method` (`single`, `product`, `joint: simulations passed in`, `joint: stored combo run N`, joined by ` x `
   across races), `market_prob`, `market_method`, `flags`, `edge_model`, `edge_market`, `ev_model`, `ev_market`,
-  `result`, `payout`, `profit`, `legs`.
+  `result`, `payout`, `profit`, `box` (the line's HUD box, or null), `legs`.
 - `lines[].legs[]`: `line`, `leg` (`"3"` or `"3.2"`), `status`, `reason`, `sport`, `competition`, `season`, `round`,
   `event_key`, `race_id`, `event`, `kind`, `side`, `athlete_id`, `athlete`, `opponent_id`, `opponent`, `team`,
   `threshold` (an over/under line), `odds` (the leg's own). `price` adds `book_prob`, `run_id`, `run_source`,

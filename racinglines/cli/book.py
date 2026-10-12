@@ -6,6 +6,9 @@ database.
     map      resolve every line's legs to a race, athletes and a kind by exact keys; list what stays unmapped
     price    + the model's fair, the linked exchange price, the book's implied probability, EV against each
     settle   + each leg's and line's result from the stored classification, and the payout per unit staked
+    render   one HTML page (and --png) of the priced board: hud (on the book's screenshot), card, or agnostic (model
+             and exchanges only), with stakes from markets/books.toml (docs/sportsbook/render.md)
+    new      a book file draft from loose text ("A over B 1.57", "A vs B 1.57 2.25", "Name 4.35"): --from-text
     export   the book's staked lines (a line's `stake`, `placed_utc`) priced and settled, as ledger rows:
              `--ledger OUT.csv` (racinglines/books/ledger.py, docs/sportsbook/slips.md#ledger-export); refuses an
              existing OUT unless --force, never appends
@@ -38,6 +41,12 @@ price and export:
                            per race, markets/venues.pricing_run)
     --sims RACE_ID=FILE    an OutcomeSims archive (.npz, models/outcomes.save_sims) for a race: legs on that race are
                            priced jointly from it (repeatable)
+render (FILE = a book file, priced like `price`; or a cycling price output folder or CSV; or leave it out with
+--json-in):
+    --style hud|card|agnostic   --image PNG   --out PATH.html   --png   --chrome PATH   --json-in PRICED.json
+    --bank --kelly --cap --min-ev --scale --drop-under    override markets/books.toml [stake]
+new:
+    --from-text TXT --venue CODE --event KEY --odds FORMAT --out FILE.toml [--sport CODE] [--currency USD]
 """
 
 import argparse
@@ -59,6 +68,28 @@ def _parser():
         top.add_argument(f"--{flag}", dest=f"top_{flag}", action="store_true", help=f"as `--{flag}` after the command")
     p.add_argument("--mcp-url", dest="top_mcp_url", default=None, help="as `--mcp-url` after the command")
     sub = p.add_subparsers(dest="cmd", required=True)
+    r = sub.add_parser("render", help="An HTML page (and PNG) of the priced board: hud, card or agnostic.")
+    r.add_argument("file", nargs="?", help="a book file, or a cycling price output folder / futures.csv / matchups.csv")
+    r.add_argument("--style", choices=("hud", "card", "agnostic"), default="card")
+    r.add_argument("--image", help="the book's screenshot (hud; default: [book] image in the book file)")
+    r.add_argument("--out", help="the HTML file (default: <file stem>-<style>.html next to the input)")
+    r.add_argument("--png", action="store_true", help="also write a PNG beside the HTML (needs a Chromium)")
+    r.add_argument("--chrome", help="the Chromium to use (default: $RACINGLINES_CHROME, then PATH, then Playwright's)")
+    r.add_argument("--json-in", help="a saved `book price --json` result: render without a database")
+    r.add_argument("--db", default=None, help="database URL (default DATABASE_URL)")
+    r.add_argument("--run", type=int, action="append", default=[], help="a model run id (repeatable)")
+    for opt, hlp in (("bank", "bank in $"), ("kelly", "Kelly fraction"), ("cap", "per venue per event cap in $"),
+                     ("min-ev", "minimum EV against each required price"), ("scale", "multiply every stake"),
+                     ("drop-under", "drop stakes under this, after --scale")):
+        r.add_argument(f"--{opt}", type=float, default=None, help=hlp + " (default: markets/books.toml [stake])")
+    n = sub.add_parser("new", help="A book file draft from loose text lines.")
+    n.add_argument("--from-text", required=True, help="a text file, one bet per line ('-' for stdin)")
+    n.add_argument("--venue", required=True, help="the venue code, e.g. book_a")
+    n.add_argument("--event", required=True, help="the event key, e.g. 2026-17")
+    n.add_argument("--odds", default="decimal", choices=("decimal", "american", "fractional", "cents", "dollars", "prob"))
+    n.add_argument("--sport", help="[book] sport (sports/<code>.toml)")
+    n.add_argument("--currency", default="USD")
+    n.add_argument("--out", required=True, help="the book file to write (refuses to overwrite)")
     for name, hlp in (("map", "Resolve each line's legs by exact keys."),
                       ("price", "Model fair, market price, book implied probability and EV per leg and per slip."),
                       ("settle", "Results and payouts from the stored classification."),
@@ -181,6 +212,74 @@ def _print(cmd, out):
         print("\nAssumptions:\n" + "\n".join(f"  - {a}" for a in out["assumptions"]))
 
 
+def _render(args):
+    from pathlib import Path
+
+    from racinglines.books import render as R
+    from racinglines.books import slips as B
+    overrides = {k.replace("-", "_"): getattr(args, k.replace("-", "_"))
+                 for k in ("bank", "kelly", "cap", "min-ev", "scale", "drop-under")}
+    st = R.load_settings(overrides)
+    src = Path(args.file) if args.file else None
+    book = None
+    if src is not None and (src.is_dir() or src.suffix == ".csv"):
+        meta, rows = R.rows_from_cycling(src)
+    else:
+        if src is not None and src.suffix == ".json" and not args.json_in:
+            args.json_in, src = str(src), None
+        if src is not None:
+            book = B.load_file(src)
+        if args.json_in:
+            priced = json.loads(Path(args.json_in).read_text())
+        elif book is not None:
+            from racinglines.db.config import get_engine
+            with get_engine(args.db).connect() as conn:
+                priced = run("price", book, conn, args.run)
+                conn.rollback()
+        else:
+            raise R.RenderError("give a book file, a cycling price output, or --json-in PRICED.json")
+        meta, rows = R.rows_from_priced(priced, st, book)
+    image = args.image
+    if image is None and meta.get("image") and src is not None:
+        image = str((src.parent / meta["image"]))
+    stem = (src or Path(args.json_in)).resolve()
+    out = Path(args.out) if args.out else stem.parent / f"{stem.stem}-{args.style}.html"
+    page, sized, summary = R.render(meta, rows, args.style, st, image)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(page)
+    print(f"wrote {out}")
+    if args.style != "agnostic":
+        for r in sized:
+            if r["verdict"] == "BET":
+                print(f"  BET ${r['stake']:7.2f}  {r['selection']}" + (f" over {r['opponent']}" if r["opponent"] else "")
+                      + f" @ {r['decimal_odds']:.2f}")
+        print(f"  {summary['n_bets']} bets, ${summary['total']:.2f}" + (" (scaled to the cap)" if summary["capped"] else ""))
+    if args.png:
+        png = R.to_png(out, out.with_suffix(".png"), args.chrome, st["render"]["dpr"][args.style])
+        print(f"wrote {png}")
+    return 0
+
+
+def _new(args):
+    import sys as _sys
+    from pathlib import Path
+
+    from racinglines.books import render as R
+    text = _sys.stdin.read() if args.from_text == "-" else Path(args.from_text).read_text()
+    lines, bad = R.parse_text(text, args.odds)
+    out = Path(args.out)
+    if out.exists():
+        raise R.RenderError(f"{out} exists: not overwritten")
+    if not lines:
+        raise R.RenderError("no line parsed: " + "; ".join(f"line {n}: {s!r} ({why})" for n, s, why in bad))
+    out.write_text(R.book_toml(lines, bad, args.venue, args.event, args.odds, args.sport, args.currency,
+                               source_ref=f"from {args.from_text}"))
+    print(f"wrote {out}: {len(lines)} lines, every market \"unmapped\" (write the market tables, then `book map`)")
+    for n, s, why in bad:
+        print(f"  not parsed, line {n}: {s!r} ({why})")
+    return 0
+
+
 def _export(args, book):
     """`book export`: price and settle the book (locally or on the hosted server), then write the ledger rows."""
     from racinglines.books import ledger as L
@@ -231,6 +330,14 @@ def main(argv=None):
         if any(getattr(args, f) for f in ("demo", "remote", "local") if f not in tops):
             parser.error("give one of --demo, --remote, --local")
         setattr(args, tops[0], True)
+    if args.cmd in ("render", "new"):
+        from racinglines.books import render as R
+        from racinglines.books import schema as S
+        try:
+            return _render(args) if args.cmd == "render" else _new(args)
+        except (R.RenderError, S.BookError, OSError) as e:
+            print(f"book {args.cmd}: {e}", file=sys.stderr)
+            return 2
     if args.top_mcp_url and args.cmd in BOOK_COMMANDS + ("logout",):
         args.mcp_url = args.mcp_url or args.top_mcp_url
     if args.cmd == "view":
