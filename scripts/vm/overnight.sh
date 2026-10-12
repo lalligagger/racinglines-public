@@ -7,7 +7,7 @@
 # MODE:
 #   dry     read-only: counts, cores, memory and disk, each sport's tape probe and last-race replay, and the F1
 #           golden check (profile A on 2026, not saved). Writes nothing.
-#   f1      backup, then the F1 broad sweep (sweeps/overnight-vm.toml), search-report, promote the top 10 to 16k,
+#   f1      backup, then the F1 broad sweep (QUEUE, default sweeps/overnight-vm.toml; output data/runs/search/<its [search] name>/), search-report, promote the top 10 to 16k,
 #           the 16k confirmations, search-report again; then the F1 walk-forward and the default F1 sweeps saved.
 #   replay  backup, then for each of SPORTS (default "nascar motogp"): re-sync links on Kalshi and Polymarket, pull the tape
 #           and replay it (Kalshi must be tradeable), the price-spike check, the replay saves, then a read-only
@@ -112,7 +112,9 @@ trap 'kill "${HB:-0}" 2>/dev/null || true; rm -f "$PHASE_F" "$STEP_F" "$FAILS_F"
 HB=$!
 R=.venv/bin/racinglines
 PY=.venv/bin/python
-QUEUE=sweeps/overnight-vm.toml
+QUEUE=${QUEUE:-sweeps/overnight-vm.toml}       # MODE=f1's search queue; its [search] name is the output folder
+QNAME=$(awk -F'"' '/^name *=/{print $2; exit}' "$QUEUE")
+[ -n "$QNAME" ] || { echo "no [search] name in $QUEUE"; exit 2; }
 A_ARGS=(--taker-stages "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali" --min-edge 0.1 --min-edge-h2h 0.05)
 Q() { DC exec -T db psql -U racinglines "$DB" -c "$1"; }
 code_of() { case "$1" in nascar) echo nascar_cup ;; motogp) echo motogp_wc ;; *) echo "$1" ;; esac; }
@@ -206,7 +208,7 @@ f1() {
   say "F1 top $TOP at 16k"
   nice $R strategy search f1 "$QUEUE"
   nice $R strategy search-report f1 "$QUEUE"
-  cp "$QUEUE" data/runs/search/overnight-vm/queue-promoted.toml
+  cp "$QUEUE" "data/runs/search/$QNAME/queue-promoted.toml"
   git checkout -- "$QUEUE"                         # keep the checkout clean for the next vm.sh deploy
   EXTRAS="not run (F1_EXTRAS=0)"
   if [ "$F1_EXTRAS" = 1 ]; then
@@ -224,7 +226,7 @@ f1() {
     EXTRAS="saved"
   fi
   Q "SELECT model, kind, count(*) FROM model_runs WHERE created_at >= '$START' GROUP BY 1, 2 ORDER BY 1, 2"
-  $R db changes --add "Overnight F1 on the VM from $START: search overnight-vm (broad at 4k, top $TOP at 16k; data/runs/search/overnight-vm/), f1 walk-forward and default sweeps 2025-2026 on polymarket and kalshi $EXTRAS; backup $B"
+  $R db changes --add "Overnight F1 on the VM from $START: search $QNAME (broad at 4k, top $TOP at 16k; data/runs/search/$QNAME/), f1 walk-forward and default sweeps 2025-2026 on polymarket and kalshi $EXTRAS; backup $B"
 }
 replay() {
   $PY -c "import sys; from racinglines.markets.kalshi.sync import history_rows as h; sys.exit(0 if not h('t', [dict(yes_bid=dict(close=0), yes_ask=dict(close=100), end_period_ts=0)]) else 1)" \
