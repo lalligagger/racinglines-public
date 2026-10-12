@@ -149,6 +149,51 @@ def follow_rate(username, strategy):
     return (DEMO_FOLLOW.get(username) or {}).get(kind)
 
 
+# A fantasy player's sizing choice for the strategy they follow (owner, 2026-10-12 19:52Z and 19:53Z: "expose some
+# dynamic sizing options like half or quarter kelly"): `sizing` = "standard" (the bankroll-scaled linear rule,
+# fantasy/sizing.py; the default) or "kelly" with `kelly` = the fraction, 0.10 to 1.00. Stored on the user's assigned
+# profile (users.prefs, pref()); read only by the live signal pass for registered players (signals.for_player), so
+# the demo accounts, backtests and sweeps never see it. No profile's own settings change.
+SIZINGS = ("standard", "kelly")
+KELLY_RANGE = (0.10, 1.00)
+
+
+def kelly_value(sizing, kelly):
+    """The Kelly fraction a (sizing, kelly) choice means, or None for standard sizing: anything but sizing "kelly"
+    with a number from 0.10 to 1.00 is standard."""
+    if sizing != "kelly" or isinstance(kelly, bool):
+        return None
+    try:
+        k = float(kelly)
+    except (TypeError, ValueError):
+        return None
+    return k if KELLY_RANGE[0] <= k <= KELLY_RANGE[1] else None
+
+
+def sizing_of(profile):
+    """A profile's Kelly fraction (its `sizing` = "kelly" and `kelly` in KELLY_RANGE), or None = standard sizing."""
+    profile = profile or {}
+    return kelly_value(profile.get("sizing"), profile.get("kelly"))
+
+
+def set_sizing(conn, user_id, sizing, kelly=None, venue="polymarket", sport=None):
+    """Save a user's sizing choice on their assigned profile (the picker's form fields `sizing` = "standard" | "kelly"
+    and `kelly` = 0.10 to 1.00). Raises ValueError for anything else, or when the user has no profile for that venue
+    and sport."""
+    sport = sport or DEFAULT_SPORT
+    if sizing not in SIZINGS:
+        raise ValueError(f"sizing {sizing!r}: one of {', '.join(SIZINGS)}")
+    k = kelly_value(sizing, kelly)
+    if sizing == "kelly" and k is None:
+        raise ValueError(f"kelly {kelly!r}: a fraction from {KELLY_RANGE[0]:.2f} to {KELLY_RANGE[1]:.2f}")
+    prof = of_user(conn, user_id, venue=venue, sport=sport)
+    if prof is None:
+        raise ValueError("no strategy profile to size")
+    prof = {k_: v for k_, v in prof.items() if k_ != "kelly"}
+    assign(conn, user_id, dict(prof, sizing=sizing, **({"kelly": k} if k is not None else {})), venue=venue,
+           sport=sport)
+
+
 DEFAULT_SPORT = "f1"                    # a profile with no `sport` (every one before other sports had signals)
 
 
@@ -261,6 +306,10 @@ def assign(conn, user_id, profile, venue="polymarket", sport=DEFAULT_SPORT):
     key = pref(venue, sport)
     if profile is not None and sport != DEFAULT_SPORT:
         profile = dict(profile, sport=sport)
+    if profile is not None and "sizing" not in profile:     # a new strategy keeps the player's sizing choice
+        had = sizing_of(of_user(conn, user_id, venue=venue, sport=sport))
+        if had is not None:
+            profile = dict(profile, sizing="kelly", kelly=had)
     conn.execute(text(f"""UPDATE users SET prefs = CASE WHEN CAST(:v AS jsonb) IS NULL
                             THEN coalesce(prefs, '{{}}'::jsonb) - '{key}'
                             ELSE coalesce(prefs, '{{}}'::jsonb) || jsonb_build_object('{key}', CAST(:v AS jsonb)) END
