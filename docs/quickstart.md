@@ -51,8 +51,6 @@ The steps below are rendered from the pack's manifest (`racinglines/demo/packs/k
 
 <!-- quickstart: kart -->
 
-#### Set up
-
 **1. 📦 Install racinglines.** From a clone of the repository, in a virtualenv with Python 3.11+: the dependencies and the `racinglines` command.
 
 ```
@@ -67,25 +65,21 @@ pip install -r requirements.txt && pip install -e .
 racinglines db stats --demo
 ```
 
-#### Model the season
-
-**1. 📊 Backtest the model.** Every past race priced as of before the weekend, before qualifying and before the race, with track features on and off, scored against the results and against uniform and grid baselines.
+**3. 📊 Backtest the model.** Every past race priced as of before the weekend, before qualifying and before the race, with track features on and off, scored against the results and against uniform and grid baselines.
 
 ```
 # LOCAL (Mac), or any machine with Postgres
 racinglines model backtest kart --demo
 ```
 
-**2. 🔮 Forecast the rest of the season.** The next races (Rainbow Road is a sprint weekend) and both championships; --save stores the run the book and the web app read.
+**4. 🔮 Forecast the rest of the season.** The next races (Rainbow Road is a sprint weekend) and both championships; --save stores the run the book and the web app read.
 
 ```
 # LOCAL (Mac), or any machine with Postgres
 racinglines model forecast kart --demo --save
 ```
 
-#### Run Wario's book
-
-**1. 🏁 Run a live private book.** Bowser's Castle (round 9) replayed on a simulated clock: the maker's book opens before practice, reprices after each session from the model's stage runs, 100 simulated takers trade against it, the book closes at lights out and settles from the results.
+**5. 🏁 Run a live private book.** Bowser's Castle (round 9) replayed on a simulated clock: the maker's book opens before practice, reprices after each session from the model's stage runs, 100 simulated takers trade against it, the book closes at lights out and settles from the results.
 
 ```
 # LOCAL (Mac), or any machine with Postgres

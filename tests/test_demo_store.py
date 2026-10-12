@@ -368,7 +368,7 @@ run = "racinglines db stats --demo tinydh"
 
 def test_quickstart_sections_group_with_no_code(tmp_path, monkeypatch):
     """[[quickstart]] entries' optional `section` key: one heading per section in first-seen order in the rendered doc
-    and in --commands; a pack with none renders as one plain list."""
+    and in --commands; a pack with none (kart) renders as one plain list."""
     import importlib.util
     from racinglines.demo import store
     (tmp_path / "tinydh").mkdir()
@@ -383,9 +383,7 @@ def test_quickstart_sections_group_with_no_code(tmp_path, monkeypatch):
     md = BQ.render(pk)
     assert md.index("#### Model") < md.index("**1. Backtest.**") < md.index("**2. Look at the store.**") \
         < md.index("#### Race week") < md.index("**1. Forecast.**")
-    assert [n for n, _ in store.find("kart").sections()] == ["Set up", "Model the season", "Run Wario's book"]
-    pk.manifest["quickstart"] = [{k: v for k, v in q.items() if k != "section"} for q in pk.quickstart]
-    assert "####" not in BQ.render(pk) and [n for n, _ in pk.sections()] == [""]
+    assert "####" not in BQ.render(store.find("kart")) and [n for n, _ in store.find("kart").sections()] == [""]
     p = subprocess.run([sys.executable, str(ROOT / "scripts" / "build_quickstart.py"), "--commands", "tinydh",
                         "--section", "Race week"], capture_output=True, text=True, env=dict(os.environ))
     assert p.returncode == 0 and p.stdout.split("\n")[0] == "racinglines model forecast mtb_dh --demo tinydh --db"
