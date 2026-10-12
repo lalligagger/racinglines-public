@@ -148,12 +148,15 @@ _BOOKS = {}
 
 
 def books_engine(default):
-    """The engine books are read from: RACINGLINES_FANTASY_BOOKS_URL (staging: production's database), else `default`."""
+    """The engine books are read from: RACINGLINES_FANTASY_BOOKS_URL (staging: production's database), else `default`.
+    That engine is read-only whatever the URL says: every session starts with default_transaction_read_only on, so
+    a staging bug can't write to production."""
     url = os.environ.get("RACINGLINES_FANTASY_BOOKS_URL", "").strip()
     if not url:
         return default
     if url not in _BOOKS:
-        _BOOKS[url] = create_engine(url, pool_pre_ping=True, pool_size=2, max_overflow=2)
+        _BOOKS[url] = create_engine(url, pool_pre_ping=True, pool_size=2, max_overflow=2,
+                                    connect_args={"options": "-c default_transaction_read_only=on"})
     return _BOOKS[url]
 
 
@@ -355,9 +358,11 @@ def place(engine, user, link_id, side, action, shares, limit, client_key=None, n
         try:
             link = _link(c, lid)
             check_link(c, link, now)
-            pos = c.execute(text("""SELECT yes_shares, no_shares, cost FROM accounts.fantasy_positions
+            pos = c.execute(text("""SELECT yes_shares, no_shares, cost, status FROM accounts.fantasy_positions
                                     WHERE user_id = :u AND market_link_id = :l FOR UPDATE"""),
                             dict(u=user["id"], l=lid)).first()
+            if pos is not None and pos[3] != "open":
+                raise Rejected("market_closed")                 # settled (settle below): paid out, nothing to trade
             held_yes, held_no, cost = (float(pos[0]), float(pos[1]), float(pos[2])) if pos else (0.0, 0.0, 0.0)
             held = held_yes if side == "yes" else held_no
             if action == "buy" and (held_no if side == "yes" else held_yes) > 0:
@@ -412,3 +417,50 @@ def place(engine, user, link_id, side, action, shares, limit, client_key=None, n
         _audit(c, user, "fantasy_order", order_id=oid, link=lid, side=side, order=action, fills=fills, fee=f)
     return dict(ok=True, order_id=oid, status=status, reason=None, fills=fills, fee=f,
                 message="", position=dict(side=side, shares=new_held, cost=round(new_cost, 2)))
+
+
+# --- settlement ---------------------------------------------------------------------------------------------------
+
+def settle(engine, books=None):
+    """Pay out every open hand-trade position whose market has resolved: YES shares pay F$1 each on a YES outcome, NO
+    shares on a NO, the position becomes 'settled' (outcome, payout, settled_at) and one ledger row (reason 'settle',
+    ref fantasy_positions) credits the payout. Idempotent: a position settles once (status check under the row lock,
+    and the ledger's unique (ref_table, ref_id, reason) index).
+
+    Resolution is read by token id from `books` (books_engine: production's market_links on staging, whose own links
+    are not synced), exact keys only. Called when the Trade and History pages load, so staging, which has no timers,
+    settles too. -> number of positions settled"""
+    books = books or books_engine(engine)
+    with engine.connect() as c:
+        if not L.ready(c):
+            return 0
+        rows = c.execute(text("""
+            SELECT p.id, ml.token_id FROM accounts.fantasy_positions p JOIN market_links ml ON ml.id = p.market_link_id
+            WHERE p.status = 'open' AND (p.yes_shares > 0 OR p.no_shares > 0) AND ml.token_id IS NOT NULL""")).all()
+    if not rows:
+        return 0
+    with books.connect() as b:
+        done = dict(b.execute(text("""SELECT DISTINCT ON (token_id) token_id, resolved_yes FROM market_links
+                                      WHERE token_id = ANY(:t) AND resolved_yes IS NOT NULL ORDER BY token_id, id"""),
+                              dict(t=list({t for _, t in rows}))).all())
+    n = 0
+    for pid, token in rows:
+        if token not in done:
+            continue
+        yes = bool(done[token])
+        with engine.begin() as c:
+            r = c.execute(text("""
+                UPDATE accounts.fantasy_positions SET status = 'settled', outcome = :o, settled_at = now(),
+                    updated_at = now(), payout = CASE WHEN :o THEN yes_shares ELSE no_shares END
+                WHERE id = :i AND status = 'open' RETURNING user_id, payout, yes_shares, no_shares"""),
+                dict(i=pid, o=yes)).first()
+            if r is None:
+                continue
+            if r.payout > 0:
+                c.execute(text("""INSERT INTO accounts.fantasy_ledger (user_id, amount, reason, note, ref_table, ref_id)
+                                  VALUES (:u, :a, 'settle', :n, 'fantasy_positions', :i)
+                                  ON CONFLICT DO NOTHING"""),
+                          dict(u=r.user_id, a=r.payout, i=pid,
+                               n=f"settled {'YES' if yes else 'NO'}: {r.payout:g} shares paid F$1"))
+            n += 1
+    return n

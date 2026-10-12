@@ -14,6 +14,7 @@ Before `racinglines users setup` has created the trading tables the pages say so
 nothing here reaches an exchange (fantasy/exchange.py). Split out of web/app.py, which imports this module.
 """
 
+import logging
 import uuid
 from urllib.parse import quote
 
@@ -26,6 +27,7 @@ from racinglines.fantasy import ledger as FL
 from racinglines.web import demo
 from racinglines.web.app import ANY, allow, app, audit, check_csrf, get_engine, render
 
+log = logging.getLogger(__name__)
 HIDDEN = ("polymarket-takers",)          # the system account (web/accounts.RESERVED); demo accounts are added at call time
 
 
@@ -42,6 +44,15 @@ def _ready():
 
 def _books():
     return FX.books_engine(get_engine())
+
+
+def _settle():
+    """Pay out resolved hand trades before a page shows balances (FX.settle; staging has no timers to do it). A
+    failure is logged and the page still loads with the positions as they were."""
+    try:
+        FX.settle(get_engine(), _books())
+    except Exception:                                    # noqa: BLE001 — never block the page on settlement
+        log.exception("fantasy settle failed")
 
 
 def _strategy_trades(c, user_id):
@@ -70,6 +81,7 @@ def history_page(request: Request, msg: str = ""):
     me = request.state.user
     if not _ready():
         return render(request, "history.html", ready=False, msg=msg, rows=[])
+    _settle()
     from racinglines.pipelines import profiles as PF
     from racinglines.web.viz import line_chart
     with get_engine().connect() as c:
@@ -125,6 +137,7 @@ def fantasy_trade(request: Request, link: int = 0, q: str = "", msg: str = "", a
     me = request.state.user
     if not _ready():
         return render(request, "fantasy_trade.html", ready=False, msg=msg)
+    _settle()
     eng = get_engine()
     q = q.strip()[:60]
     with eng.connect() as c:

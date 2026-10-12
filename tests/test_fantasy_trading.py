@@ -315,7 +315,7 @@ def test_old_addresses_redirect(db):
 
 def test_ranked_scores_gates_and_orders(db, monkeypatch):
     """fantasy/ledger.ranked: score = ROI x sqrt(trades), ranked best first; below MIN_TRADES unranked, after the
-    ranked ones, by total F$."""
+    ranked ones, by P&L."""
     from racinglines.fantasy import exchange as FX
     from racinglines.fantasy import ledger as FL
     eng, u = db["engine"], db["users"]
@@ -332,7 +332,8 @@ def test_ranked_scores_gates_and_orders(db, monkeypatch):
     assert a["score"] == pytest.approx(a["roi"] * FL.MIN_TRADES ** 0.5, abs=1e-4) and a["rank"] == 1
     assert b["score"] is None and b["rank"] is None and b["roi"] is not None   # one trade: unranked
     assert cal["roi"] is None and cal["score"] is None and cal["rank"] is None
-    assert order == ["ada", "cal", "bea"]                    # ranked first; then cal (1,000) before bea (less)
+    assert order == ["ada", "cal", "bea"]                    # ranked first; then cal (P&L 0) before bea (a fee down)
+    assert a["pnl"] == pytest.approx(a["manual_pnl"] + a["strategy_pnl"])
     monkeypatch.setattr(FL, "MIN_TRADES", 1)                  # with the gate at one trade both rank, by score
     with eng.connect() as c:
         rows = FL.ranked(c)
@@ -342,6 +343,7 @@ def test_ranked_scores_gates_and_orders(db, monkeypatch):
     # the page lists the unranked with "–" in rank and explains the score
     board = _board(_login("cal").get("/history").text)
     assert "ROI × √trades" in board
+    assert "Total F$" not in board and "1,000" not in board                # P&L and ROI, never a balance
 
 
 def test_history_page_marks_unranked_players(db):
@@ -417,3 +419,45 @@ def test_pages_say_not_set_up_before_setup(db, monkeypatch):
         c.execute(text("DROP TABLE accounts.fantasy_fills, accounts.fantasy_positions, accounts.fantasy_orders"))
     ada = _login("ada")
     assert "Not open yet" in ada.get("/history").text and "Not open yet" in ada.get("/trade").text
+
+
+def test_settle_pays_resolved_hand_trades_once_and_closes_them(db):
+    from racinglines.fantasy import exchange as FX
+    from racinglines.fantasy import ledger as FL
+    eng, ada, bea = db["engine"], db["users"]["ada"], db["users"]["bea"]
+    assert FX.place(eng, ada, db["links"]["win"], "yes", "buy", 100, 0.42, now=NOW, get_book=book())["ok"]
+    assert FX.place(eng, bea, db["links"]["win"], "no", "buy", 100, 0.61, now=NOW, get_book=book())["ok"]
+    assert FX.place(eng, ada, db["links"]["champ"], "yes", "buy", 10, 0.42, now=NOW, get_book=book())["ok"]
+    assert FX.settle(eng) == 0                                          # nothing resolved yet
+    with eng.begin() as c:
+        c.execute(text("UPDATE market_links SET resolved_yes = true WHERE id = :i"), dict(i=db["links"]["win"]))
+    with eng.connect() as c:
+        before = FL.cash(c, ada["id"]), FL.cash(c, bea["id"])
+    assert FX.settle(eng) == 2 and FX.settle(eng) == 0                  # once only
+    with eng.connect() as c:
+        assert FL.cash(c, ada["id"]) == pytest.approx(before[0] + 100)  # 100 YES x F$1
+        assert FL.cash(c, bea["id"]) == pytest.approx(before[1])        # the NO side gets nothing
+        assert [p["market_link_id"] for p in FL.positions(c, ada["id"], open_only=True)] == [db["links"]["champ"]]
+        s = FL.summary(c, ada["id"])
+    assert s["manual_pnl"] == pytest.approx(100 - 41.0 - 1.70 + (10 * 0.39 - 4.10), abs=0.01)
+    st = _rows(eng, "SELECT status, outcome, payout FROM accounts.fantasy_positions WHERE user_id = :u AND market_link_id = :l",
+               u=ada["id"], l=db["links"]["win"])
+    assert st == [("settled", True, 100)]
+    # a settled position can't be traded again
+    r = FX.place(eng, ada, db["links"]["win"], "yes", "sell", 10, 0.39, now=NOW, get_book=book())
+    assert not r["ok"] and r["reason"] == "market_closed"
+
+
+def test_books_engine_from_another_url_is_read_only(test_engine, monkeypatch):
+    from sqlalchemy.exc import DBAPIError
+
+    from racinglines.fantasy import exchange as FX
+    monkeypatch.setenv("RACINGLINES_FANTASY_BOOKS_URL", test_engine.url.render_as_string(hide_password=False))
+    FX._BOOKS.clear()
+    b = FX.books_engine(test_engine)
+    assert b is not test_engine
+    with b.connect() as c:
+        assert c.execute(text("SELECT 1")).scalar() == 1
+        with pytest.raises(DBAPIError, match="read-only"):
+            c.execute(text("CREATE TABLE fantasy_ro_probe (x int)"))
+    FX._BOOKS.clear()

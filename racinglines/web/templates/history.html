@@ -60,12 +60,12 @@ the last point, marked "now", values open trades at what they would sell for now
 
 <section id="leaderboard" class="card"><h2>Leaderboard</h2>
 {% if rows %}<div class="scroll"><table>
-<thead><tr><th class="num">#</th><th>Player</th><th class="num">Score</th><th class="num">ROI</th><th class="num">Trades</th><th class="num">Total F$</th><th class="num">By hand</th><th class="num">Strategy</th></tr></thead>
+<thead><tr><th class="num">#</th><th>Player</th><th class="num">Score</th><th class="num">ROI</th><th class="num">Trades</th><th class="num">P&amp;L</th><th class="num">By hand</th><th class="num">Strategy</th></tr></thead>
 <tbody>{% for r in rows %}<tr{% if user and r.username == user.username %} class="sel"{% endif %}>
   <td class="num">{{ r.rank if r.rank else "–" }}</td><td>{{ r.username }}{% if user and r.username == user.username %} <span class="pill new">you</span>{% endif %}</td>
   <td class="num">{% if r.score is not none %}<b>{{ "%.2f"|format(r.score) }}</b>{% else %}<span class="muted">–</span>{% endif %}</td>
   <td class="num">{{ "%.1f%%"|format(r.roi * 100) if r.roi is not none else "–" }}</td><td class="num">{{ r.trades }}</td>
-  <td class="num">{{ "{:,.2f}".format(r.total) }}</td><td class="num">{{ pnl(r.manual_pnl) }}</td><td class="num">{{ pnl(r.strategy_pnl) }}</td>
+  <td class="num">{{ pnl(r.pnl) }}</td><td class="num">{{ pnl(r.manual_pnl) }}</td><td class="num">{{ pnl(r.strategy_pnl) }}</td>
 </tr>{% endfor %}</tbody></table></div>
 <p class="muted">Score = ROI × √trades, where ROI is P&amp;L (by hand plus strategy) over the F$ staked, and trades counts
 your filled orders plus the markets your strategy traded. A player needs {{ min_trades }} trades to be ranked; those with
