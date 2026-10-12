@@ -34,7 +34,8 @@ def test_the_landing_has_news_and_no_sign_in_form_and_sign_in_has_its_own_page()
     assert 'name="password" type="password"' not in landing and 'href="/signin"' in landing
     assert 'id="news"' in landing and landing.index('id="news"') > landing.index('class="biz"')
     assert "Fantasy sign-ups are live for alpha testers." in landing and "open-source PyPI package this week" in landing
-    assert '<a href="https://x.com/racinglines_bet" rel="noopener" target="_blank">Follow us on X (@racinglines_bet)</a>' in landing
+    assert '<a href="https://x.com/racinglines_bet" rel="noopener" target="_blank">Follow us on X</a>' in landing and "@racinglines_bet" not in landing
+    assert '<a href="/term">Sneak peek →</a>' in landing                       # the PyPI item links the /term replay
     assert 'href="https://racinglinesdotbet.substack.com"' in landing
     assert 'value="maker"' in landing and 'value="taker"' in landing           # the demo buttons stay on the landing
     page = client.get("/signin?next=/positions").text
