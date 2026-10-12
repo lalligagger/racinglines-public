@@ -82,7 +82,8 @@ be repeated without reading the whole page.
 
 `vm.sh deploy` never refuses for a live event, and has no `--force`. It pauses the VM's active timers (each
 event's `racinglines-live-f1@<event>.timer` and `racinglines-signals.timer`) and waits up to 5 minutes for a step
-already running. Then it deploys, runs each live event's catch-up step, and starts the timers again. Every step is
+already running; a signals pass that is the only step still running after that is stopped (each profile's writes
+are one transaction and the resumed timer runs a fresh pass). Then it deploys, runs each live event's catch-up step, and starts the timers again. Every step is
 idempotent and catches up: an F1 live step does every update that fell due during the pause, its crowd batch covers
 the whole window since the last update (`pipelines/live_f1.py` `due`, `_crowd`), and signals inserts with `ON
 CONFLICT DO NOTHING`. The paused list is written to `/var/lib/racinglines/deploy-paused` on the VM before anything

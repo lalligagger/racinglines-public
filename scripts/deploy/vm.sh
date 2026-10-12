@@ -183,7 +183,11 @@ case "${1:-}" in
       remote "sudo mkdir -p ${PAUSED%/*} && echo '$timers' | sudo tee $PAUSED >/dev/null && sudo systemctl stop$timers"
       log "waiting up to 5 minutes for a step in progress"
       rc=0
-      remote "for i in \$(seq 60); do systemctl list-units --no-legend --plain --state=activating$steps | grep -q . || exit 0; sleep 5; done; echo 'still running:'; systemctl list-units --no-legend --plain --state=activating$steps | awk '{print \$1}'; exit 1" || rc=$?
+      # A signals pass can outlast the wait (about 6 minutes on 2026-10-12, so with its 5-minute timer one is nearly
+      # always running): when it is the only step left it is stopped. Safe to cut short: each profile's signals and
+      # positions are one transaction, inserts are ON CONFLICT DO NOTHING, and the resumed timer runs a fresh pass
+      # (pipelines/signals.py _run_one, store). Live-event and other steps still get the full wait.
+      remote "for i in \$(seq 60); do systemctl list-units --no-legend --plain --state=activating$steps | grep -q . || exit 0; sleep 5; done; left=\$(systemctl list-units --no-legend --plain --state=activating$steps | awk '{print \$1}'); if [ \"\$left\" = racinglines-signals.service ]; then echo 'stopping the signals pass still running (the resumed timer runs a fresh one)'; sudo systemctl stop racinglines-signals.service && exit 0; fi; echo 'still running:'; echo \"\$left\"; exit 1" || rc=$?
       if [ "$rc" -ne 0 ]; then
         remote "sudo systemctl start$timers && sudo rm -f $PAUSED" && trap - EXIT
         if [ "$rc" -eq 1 ]; then
