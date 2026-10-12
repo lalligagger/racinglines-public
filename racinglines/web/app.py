@@ -60,7 +60,8 @@ CSRF_TOKEN = hmac.new(_SECRET.encode(), b"csrf", hashlib.sha256).hexdigest()
 security = HTTPBasic(realm="racinglines", auto_error=False)
 SESSION_COOKIE = "rl_session"
 SESSION_HOURS = 12
-PUBLIC_PATHS = ("/login", "/signin", "/static", "/racinglines101", "/racinglines102", "/signup", "/forgot", "/pitch", "/mybets", "/term", "/docs/quickstart/term")
+PUBLIC_PATHS = ("/login", "/signin", "/static", "/racinglines101", "/racinglines102", "/signup", "/forgot", "/pitch", "/mybets", "/term")
+PUBLIC_EXACT = {"/docs/quickstart/term"}     # public by exact path only: a prefix would open /docs/quickstart/term/../..
 
 # failed-login throttle: per client IP, MAX_FAILURES within FAILURE_WINDOW seconds -> 429
 MAX_FAILURES = 8
@@ -118,7 +119,7 @@ def authenticate(request: Request, creds: HTTPBasicCredentials | None = Depends(
     """Signed session cookie (from /login) or HTTP Basic credentials (scripts / curl).
     The user and role are re-read from the database on every request, so
     deactivating a user or changing a role takes effect immediately."""
-    if request.url.path.startswith(PUBLIC_PATHS):
+    if request.url.path in PUBLIC_EXACT or request.url.path.startswith(PUBLIC_PATHS):
         return None
     uid, sid = _session(request.cookies.get(SESSION_COOKIE))
     if uid is not None:
