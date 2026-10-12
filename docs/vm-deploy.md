@@ -367,7 +367,7 @@ the `staging` branch deploys staging and nothing else**. `main` keeps deploying 
 | Branch that deploys it | `main` (`main-merge-gate`) | `staging` (`staging-deploy`, `.github/workflows/staging.yml`) |
 | Checkout on the VM | `/opt/racinglines` | `/opt/racinglines-staging` |
 | Web app | `racinglines-web`, 127.0.0.1:8000 | `racinglines-staging-web`, 127.0.0.1:8010 |
-| Database | `racinglines` | `racinglines_staging`, in the same Postgres container, copied from production by `staging setup` / `staging reset` (`pg_dump \| psql`: production is only read) |
+| Database | `racinglines` | `racinglines_staging`, in the same Postgres container, copied from production by `staging setup` / `staging reset` (`pg_dump \| psql`: production is only read); its race and market tables caught up by `staging refresh` ([Staging: refresh](#staging-refresh)) |
 | Settings | `/etc/racinglines.env` | `/etc/racinglines-staging.env`: production's switches and admin password, its own `DATABASE_URL`, data folder (`/opt/racinglines-staging/data`, empty: no archive Parquet, no pitch images), `APP_SECRET`, `RACINGLINES_URL`, `RACINGLINES_ENV=staging`, `WEB_PORT=8010`; **no trading flags, no ntfy topic, no alert webhook** |
 | Timers and other units | recorder, signals, live events, record-venues, MCP | only its own live events, by hand (`vm.sh staging live <event>`: `racinglines-staging-live-f1@` / `racinglines-staging-live-dh@`, its data folder and database); no recorder or signals (two recorders would split the book history) |
 | Live timing button (F1, `/live`) | off (`RACINGLINES_F1_STREAM` unset) | on by default: an opt-in websocket per viewer polling FastF1, or the Mac's relay while `f1_push.sh` runs, with a debug log (`racinglines/web/f1_live.py`) |
@@ -399,7 +399,8 @@ force push is fine there, `staging` is a deploy pointer, not history).
 | `staging deploy [ref]` | What CI runs on a merge to `staging` (above) |
 | `staging status` | The staging checkout's commit, the unit, and `GET /login` with its env header |
 | `staging logs` | `journalctl -u racinglines-staging-web` |
-| `staging reset` | Drop `racinglines_staging` and copy production's rows and live run folders (`data/runs/live`) again (production only read) |
+| `staging refresh [plan]` | Production's race, market and model-run data again, staging's accounts, fantasy, jobs and positions kept ([Staging: refresh](#staging-refresh)); `plan` is read-only |
+| `staging reset` | Drop `racinglines_staging` and copy production's rows and live run folders (`data/runs/live`) again (production only read). It wipes staging's own accounts and app state too: to catch up, use `staging refresh` |
 | `staging live <event> [off]` | Staging's own run of a live event (`live/f1/<event>.toml`: a step every 5 minutes; `live/mtb_dh/<event>.toml`: the poll loop), like `vm.sh live` for production; it carries on from the run folder `staging reset` copied |
 | `staging off` | Stop and disable the unit; the checkout, database and env file stay |
 
@@ -449,6 +450,44 @@ sudo systemctl restart racinglines-staging-web
 ```
 
 The first print names `/opt/racinglines/racinglines/__init__.py`, the second `/opt/racinglines-staging/racinglines/__init__.py`.
+
+### Staging: refresh
+
+**Why staging drifts.** `racinglines_staging` is a copy of production made once, by `staging setup` or `staging reset`.
+Staging runs no recorder, signals or pricing timers (two recorders would split the book history), so from the minute
+it is copied it misses every new market price, trade, book, model run and result production records. Meanwhile
+staging builds up state of its own: accounts, the fantasy ledger, jobs, paper positions, trading tables. Before
+2026-10-12 the only way to catch up was `staging reset`, which drops the whole database and takes that state with it.
+
+**`bash scripts/deploy/vm.sh staging refresh`** catches staging up without that loss (`racinglines/db/refresh.py`):
+
+1. backs up `racinglines_staging` to `/opt/racinglines-staging/data/backups/db/racinglines_staging-before-refresh-<UTC>.sql.gz`;
+2. in one transaction on staging (the staging app shows the old data until it commits; a failure changes nothing),
+   replaces the **shared tables** (`refresh.SHARED`: sports and competitions, events, races, results, laps,
+   athletes, model runs and predictions, market links, the market tape, live events, the data change log) with
+   production's rows, read in one read-only snapshot;
+3. copies production's live run folders (`data/runs/live`) over staging's, and links staging's `data/archive` to
+   production's, so staging reads the full market history (Parquet) in place. Staging never archives:
+   `markets.store.archive` refuses when `RACINGLINES_ENV=staging`.
+
+Everything else is staging's own and is never touched: users, activity, jobs, paper positions, signals, orders, the
+house book, the `accounts` schema (fantasy, trading), `alembic_version`, and any table not listed in `SHARED` (the
+safe default for a new table). Production is only read; no production timer, service or setting is touched, so a
+refresh is fine during a live window.
+
+**Staging's own rows in a shared table survive.** The first refresh moves staging's id sequences for the shared
+tables to 1,000,000,000 (`refresh.OFFSET`), and every refresh keeps the rows at or above it (in a table without an id,
+the rows whose parent is): a Lab job's model run, a staging live run, a reference row a staging deploy seeded before
+production had it. When production later gets the same row (the same unique key, say a new competition), staging's
+row becomes production's and staging's references follow it. Rows staging made **before** its first refresh share
+production's id range and are replaced; `staging refresh plan` counts them per table, and the backup keeps them.
+
+**Columns:** a refresh copies the columns both databases have, so staging can be a migration ahead of production (a
+new column takes its default). A table staging has and production doesn't yet is skipped and left alone.
+
+**Cost:** production's database is about 2.6 GB (2026-10-12, `pg_stat_user_tables`; book snapshots 1.3 GB, trades
+0.65 GB), so a refresh takes minutes and prints a progress line every minute during a long copy. The deleted rows'
+space is reused by the next refresh (`VACUUM`), so staging's size should level off rather than grow with every refresh.
 
 ## Later
 

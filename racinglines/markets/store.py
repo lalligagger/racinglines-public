@@ -26,6 +26,7 @@ still-open season-long markets. Everything else is stale and moves to Parquet.
 """
 
 import json
+import os
 import threading
 import time
 import uuid
@@ -236,6 +237,9 @@ def archive(engine, name, older_than=timedelta(hours=6), tokens=None, root=None,
     transaction commits). By default: rows older than `older_than`. With policy=True: every row
     that isn't hot (see hot_tokens), whatever its age. `tokens` limits it (tests). Rows go to their
     exchange's tree, or all to `root` when given. Returns rows moved."""
+    if root is None and os.environ.get("RACINGLINES_ENV") == "staging":
+        # staging reads production's archive in place (`vm.sh staging refresh` links it): it never writes there
+        raise SystemExit("staging never archives: its data/archive is production's (docs/vm-deploy.md, Staging: refresh)")
     s = STORES[name]
     now = datetime.now(timezone.utc)
     keep_all, keep_recent = [], []

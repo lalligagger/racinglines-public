@@ -29,10 +29,11 @@
 #   bash scripts/deploy/vm.sh accounts [off]    # beta sign-up: back up the database, create the accounts schema and
 #                                               # fantasy-bucks ledger (racinglines users setup, idempotent), switch
 #                                               # RACINGLINES_SIGNUP on, check /signup; off: the switch off (the ledger stays)
-#   bash scripts/deploy/vm.sh staging setup [ref] | deploy [ref] | status | logs | reset | off | live <event>|auto [off]
+#   bash scripts/deploy/vm.sh staging setup [ref] | deploy [ref] | status | logs | refresh [plan] | reset | off | live <event>|auto [off]
 #                                               # staging.racinglines.bet: a second app copy on the VM (port 8010,
 #                                               # its own database racinglines_staging and data folder; live: its own
-#                                               # run of a live event, like `vm.sh live`). deploy never pauses
+#                                               # run of a live event, like `vm.sh live`; refresh: production's race,
+#                                               # market and model-run data again, staging's accounts kept). deploy never pauses
 #                                               # production's timers or touches its database; CI runs it on a merge
 #                                               # to the `staging` branch (deploy/ci/staging.yml). docs/vm-deploy.md "Staging"
 #   bash scripts/deploy/vm.sh status | logs [unit] | ssh
@@ -299,6 +300,21 @@ case "${1:-}" in
         log "staging setup (checkout, venv, database copy, env file, unit)"
         remote "sudo REF=${3:-staging} RESET_DB=0 bash -s" < deploy/vm/staging/setup.sh
         ;;
+      refresh)
+        # production's race, market and model-run data copied into staging again, staging's accounts, fantasy, jobs
+        # and positions kept (racinglines/db/refresh.py; docs/vm-deploy.md "Staging: refresh"). Production is only
+        # read. plan: read-only, per table what would change
+        m="cd $STG && sudo -u racinglines -H bash -c 'set -a; . /etc/racinglines-staging.env; set +a; PYTHONUNBUFFERED=1 .venv/bin/python -m racinglines.db.refresh"
+        if [ "${3:-}" = plan ]; then remote "$m plan'"; exit 0; fi
+        log "backing up racinglines_staging first"
+        remote "cd $APP && sudo -u racinglines -H bash -c 'set -euo pipefail; mkdir -p $STG/data/backups/db; b=$STG/data/backups/db/racinglines_staging-before-refresh-\$(date -u +%Y%m%dT%H%M%SZ).sql.gz; docker compose exec -T db pg_dump --no-owner --no-privileges -U racinglines racinglines_staging | gzip -6 > \$b; ls -lh \$b'"
+        log "staging refresh (one transaction: staging shows the old data until it's done)"
+        remote "$m run'"
+        # live events are run folders as well as rows: production's are copied over staging's (staging's own runs stay);
+        # the market archive (Parquet) is read in place: staging never runs the archive pass
+        log "production's live run folders and market archive"
+        remote "sudo -u racinglines -H bash -c 'set -e; mkdir -p $STG/data/runs/live; [ -d $APP/data/runs/live ] && cp -a $APP/data/runs/live/. $STG/data/runs/live/; for d in archive; do t=$STG/data/\$d; if [ -d \$t ] && [ ! -L \$t ]; then mv \$t \$t.pre-refresh; fi; ln -sfn $APP/data/\$d \$t; done; echo live runs: \$(ls $STG/data/runs/live)'"
+        ;;
       reset)
         log "staging reset: drop racinglines_staging and copy production's rows again (production is only read)"
         remote "sudo REF=${3:-staging} RESET_DB=1 bash -s" < deploy/vm/staging/setup.sh
@@ -345,7 +361,7 @@ case "${1:-}" in
           remote "sudo install -m 644 $STG/deploy/vm/systemd/${u}.* /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now $t && systemctl --no-pager is-active $t"
         fi
         ;;
-      *) echo "usage: vm.sh staging setup [ref] | deploy [ref] | status | logs | reset | off | live <event> [off]"; exit 1 ;;
+      *) echo "usage: vm.sh staging setup [ref] | deploy [ref] | status | logs | refresh [plan] | reset | off | live <event> [off]"; exit 1 ;;
     esac
     ;;
   status)
