@@ -107,23 +107,6 @@ def fantasy_home(request: Request):
     return RedirectResponse("/history", status_code=303)
 
 
-def _markets(c, search=""):
-    """The links a player may trade now, newest events first: F1, Kalshi and Polymarket, open and unresolved, in the
-    tradable kinds. Closing times are checked when an order is placed. -> [dict]"""
-    kinds = sorted({k for ks in FX.tradable().values() for k in ks})
-    rs = c.execute(text("""
-        SELECT ml.id, ml.exchange, ml.token_id, ml.prediction AS kind, ml.question, ml.group_title, ml.outcome,
-               ml.event_title, ml.last_bid, ml.last_ask, e.start_date
-        FROM market_links ml JOIN competitions co ON co.id = ml.competition_id JOIN sports sp ON sp.id = co.sport_id
-        LEFT JOIN races ra ON ra.id = ml.race_id LEFT JOIN events e ON e.id = ra.event_id
-        WHERE sp.code = :sport AND ml.exchange = ANY(:x) AND ml.prediction = ANY(:k) AND ml.active AND NOT ml.closed
-          AND ml.resolved_yes IS NULL AND (e.start_date IS NULL OR e.start_date >= current_date - 1)
-          AND (:q = '' OR ml.question ILIKE :like OR ml.group_title ILIKE :like OR ml.event_title ILIKE :like)
-        ORDER BY e.start_date NULLS LAST, ml.event_title, ml.exchange, ml.prediction, ml.group_title, ml.id"""),
-        dict(sport=FX.SPORT, x=list(FX.EXCHANGES), k=kinds, q=search, like=f"%{search}%")).mappings().all()
-    return [dict(r) for r in rs]
-
-
 @app.get("/fantasy/trade", dependencies=[allow(*ANY)])
 def fantasy_trade_old(request: Request):
     _gate()
@@ -141,7 +124,7 @@ def fantasy_trade(request: Request, link: int = 0, q: str = "", msg: str = "", a
     eng = get_engine()
     q = q.strip()[:60]
     with eng.connect() as c:
-        markets = _markets(c, q)
+        markets = FX.markets(c, q)
         quotes = FX.quotes(_books(), [m["token_id"] for m in markets])
         for m in markets:
             b, a, ts = quotes.get(m["token_id"], (None, None, None))

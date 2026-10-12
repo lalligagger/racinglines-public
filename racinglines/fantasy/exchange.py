@@ -200,16 +200,35 @@ def rate_ok(user_id, now=None):
         return True
 
 
+def markets(c, search=""):
+    """The links a player may trade now, newest events first: F1, Kalshi and Polymarket, open and unresolved, in the
+    tradable kinds. Closing times are checked when an order is placed. -> [dict]"""
+    kinds = sorted({k for ks in tradable().values() for k in ks})
+    rs = c.execute(text("""
+        SELECT ml.id, ml.exchange, ml.token_id, ml.prediction AS kind, ml.question, ml.group_title, ml.outcome,
+               ml.event_title, ml.last_bid, ml.last_ask, e.start_date
+        FROM market_links ml JOIN competitions co ON co.id = ml.competition_id JOIN sports sp ON sp.id = co.sport_id
+        LEFT JOIN races ra ON ra.id = ml.race_id LEFT JOIN events e ON e.id = ra.event_id
+        WHERE sp.code = :sport AND ml.exchange = ANY(:x) AND ml.prediction = ANY(:k) AND ml.active AND NOT ml.closed
+          AND ml.resolved_yes IS NULL AND (e.start_date IS NULL OR e.start_date >= current_date - 1)
+          AND (:q = '' OR ml.question ILIKE :like OR ml.group_title ILIKE :like OR ml.event_title ILIKE :like)
+        ORDER BY e.start_date NULLS LAST, ml.event_title, ml.exchange, ml.prediction, ml.group_title, ml.id"""),
+        dict(sport=SPORT, x=list(EXCHANGES), k=kinds, q=search, like=f"%{search}%")).mappings().all()
+    return [dict(r) for r in rs]
+
+
 # --- the order ---------------------------------------------------------------------------------------------------
 
-def _link(conn, link_id):
-    return conn.execute(text("""
+_LINK_SQL = """
         SELECT ml.id, ml.exchange, ml.token_id, ml.condition_id, ml.prediction, ml.params, ml.race_id, ml.closed,
                ml.active, ml.resolved_yes, ml.end_date, co.code AS competition, sp.code AS sport, e.start_date
         FROM market_links ml JOIN competitions co ON co.id = ml.competition_id
         LEFT JOIN sports sp ON sp.id = co.sport_id
-        LEFT JOIN races ra ON ra.id = ml.race_id LEFT JOIN events e ON e.id = ra.event_id
-        WHERE ml.id = :i"""), dict(i=link_id)).mappings().first()
+        LEFT JOIN races ra ON ra.id = ml.race_id LEFT JOIN events e ON e.id = ra.event_id"""
+
+
+def _link(conn, link_id):
+    return conn.execute(text(_LINK_SQL + " WHERE ml.id = :i"), dict(i=link_id)).mappings().first()
 
 
 def closes_at(conn, link):
@@ -217,13 +236,27 @@ def closes_at(conn, link):
     whose deciding round has no stored start (pipelines/clv.closes)."""
     if link["prediction"] in SEASON_KINDS:
         return None
-    if link["race_id"] is None:
-        raise Rejected("no_schedule")
-    from racinglines.pipelines import clv
-    t, _rule = clv.closes(conn, [dict(link)]).get((int(link["race_id"]), link["prediction"]), (None, ""))
+    t = _close(conn, link)
+    if t is None and link.get("token_id"):
+        # staging's own rounds carry no session starts (no schedule ingest there): ask the books database (production),
+        # matching the same token exactly, read-only
+        books = books_engine(conn.engine)
+        if books is not conn.engine:
+            with books.connect() as b:
+                there = b.execute(text(_LINK_SQL + " WHERE ml.token_id = :t ORDER BY ml.id LIMIT 1"),
+                                  dict(t=link["token_id"])).mappings().first()
+                t = _close(b, there) if there is not None else None
     if t is None:
         raise Rejected("no_schedule")
     return t.tz_localize("UTC").to_pydatetime() if getattr(t, "tzinfo", None) is None else t.to_pydatetime()
+
+
+def _close(conn, link):
+    """The deciding round's stored start for a race link in this database (pipelines/clv.closes), or None."""
+    if link["race_id"] is None:
+        return None
+    from racinglines.pipelines import clv
+    return clv.closes(conn, [dict(link)]).get((int(link["race_id"]), link["prediction"]), (None, ""))[0]
 
 
 def check_link(conn, link, now):
@@ -267,6 +300,8 @@ def _num(v, width):
 
 
 def _audit(conn, user, what, **detail):
+    if user.get("via"):                                  # "mcp" for an order placed through the MCP server
+        detail["via"] = user["via"]
     conn.execute(text("""INSERT INTO activity_log (user_id, username, role, action, detail)
                          VALUES (:u, :n, :r, :a, CAST(:d AS jsonb))"""),
                  dict(u=user["id"], n=user.get("username"), r=user.get("role"), a=what,

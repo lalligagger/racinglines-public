@@ -461,3 +461,90 @@ def test_books_engine_from_another_url_is_read_only(test_engine, monkeypatch):
         with pytest.raises(DBAPIError, match="read-only"):
             c.execute(text("CREATE TABLE fantasy_ro_probe (x int)"))
     FX._BOOKS.clear()
+
+
+def test_close_falls_back_to_the_books_database_by_token(db, monkeypatch):
+    """Staging's rounds have no session starts: the close comes from the books database's link with the same token."""
+    import pandas as pd
+    from sqlalchemy import create_engine
+
+    from racinglines.fantasy import exchange as FX
+    eng = db["engine"]
+    other = create_engine(eng.url)                                       # stands in for production's database
+    seen = []
+
+    def close(conn, link):
+        seen.append(conn.engine is other)
+        return pd.Timestamp("2026-10-19 19:00") if conn.engine is other else None
+    monkeypatch.setattr(FX, "_close", close)
+    monkeypatch.setattr(FX, "books_engine", lambda default: other)
+    with eng.connect() as c:
+        link = FX._link(c, db["links"]["win"])
+        assert FX.closes_at(c, link).isoformat() == "2026-10-19T19:00:00+00:00" and seen == [False, True]
+        monkeypatch.setattr(FX, "books_engine", lambda default: default)  # no separate books database: refused
+        with pytest.raises(FX.Rejected):
+            FX.closes_at(c, link)
+    other.dispose()
+
+
+def _mcp_client(engine, monkeypatch, who):
+    """mcp(name, **args) against a server on the test database, called as `who` (None = stdio, the owner)."""
+    import asyncio
+    import json
+
+    from mcp import Client
+
+    from racinglines.mcp import server as S
+    monkeypatch.setattr(S, "caller", lambda: who)
+    url = engine.url.render_as_string(hide_password=False)
+
+    def call(name, **args):
+        async def go():
+            async with Client(S.build(engine_url=url)) as client:
+                r = await client.call_tool(name, args)
+                t = r.content[0].text
+                return ("error", t) if r.is_error else json.loads(t)
+        try:
+            return asyncio.run(go())
+        finally:
+            S._URL = None
+    return call
+
+
+def test_mcp_fantasy_tools_are_own_account_and_trade_like_the_page(db, monkeypatch):
+    from racinglines.fantasy import exchange as FX
+    eng, u = db["engine"], db["users"]
+    champ = db["links"]["champ"]
+    with eng.begin() as c:
+        c.execute(text("""INSERT INTO market_book_snapshots (token_id, ts, best_bid, best_ask, bids, asks)
+                          VALUES ('PM-CHAMP-VER', :ts, 0.39, 0.41, CAST(:b AS jsonb), CAST(:a AS jsonb))"""),
+                  dict(ts=datetime.now(timezone.utc) - timedelta(minutes=1), b=str(BIDS), a=str(ASKS)))
+    FX._BOOKS.clear()
+    mcp = _mcp_client(eng, monkeypatch, dict(u["ada"], role="pro"))
+    assert any(m["market_link_id"] == champ for m in mcp("fantasy_markets", q="Verstappen")["markets"]["rows"])
+    book = mcp("fantasy_book", market_link_id=champ)
+    assert book["yes_asks"][0] == [0.41, 120] and len(book["no_bids"]) <= FX.DEPTH
+    r = mcp("fantasy_order", market_link_id=champ, side="yes", action="buy", shares=10, limit_price=0.41)
+    assert r["ok"] and r["user"] == "ada" and r["fills"] == [[0.41, 10]] and r["cash"] == pytest.approx(1000 - 4.10)
+    bal = mcp("fantasy_balance")
+    assert bal["user"] == "ada" and bal["open"] == 1
+    assert mcp("fantasy_positions")["positions"]["rows"][0]["shares"] == 10
+    assert mcp("fantasy_orders")["orders"]["rows"][0]["status"] == "filled"
+    # guardrails: another account is out of reach for reads and orders, and the leaderboard has no balances
+    for name in ("fantasy_balance", "fantasy_positions", "fantasy_orders"):
+        denied = mcp(name, user="bea")
+        assert denied[0] == "error" and "own account" in denied[1], name
+    denied = mcp("fantasy_order", market_link_id=champ, side="yes", action="buy", shares=1, limit_price=0.41, user="bea")
+    assert denied[0] == "error" and "own account" in denied[1]
+    rows = mcp("fantasy_leaderboard")["rows"]["rows"]
+    assert {"total", "cash", "grant"}.isdisjoint(rows[0]) and "pnl" in rows[0]
+    assert _rows(eng, "SELECT count(*) FROM accounts.fantasy_orders WHERE user_id = :u", u=u["bea"]["id"]) == [(0,)]
+    assert _rows(eng, "SELECT detail->>'via' FROM activity_log WHERE action = 'fantasy_order'") == [("mcp",)]
+    # an admin over HTTP still trades only as itself; stdio must name the account
+    admin = _mcp_client(eng, monkeypatch, dict(u["cal"], role="admin"))
+    assert admin("fantasy_balance", user="bea")["user"] == "bea"            # an admin may read others
+    assert "own account" in admin("fantasy_order", market_link_id=champ, side="yes", action="buy", shares=1,
+                                  limit_price=0.41, user="bea")[1]
+    owner = _mcp_client(eng, monkeypatch, None)
+    assert "which account" in owner("fantasy_order", market_link_id=champ, side="yes", action="buy", shares=1,
+                                    limit_price=0.41)[1]
