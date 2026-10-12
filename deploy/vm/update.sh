@@ -3,9 +3,26 @@
 # scripts/deploy/vm.sh deploy (which then restarts the services). See docs/vm-deploy.md.
 #   deploy/vm/update.sh [ref]      # default main; a branch name or a commit
 set -euo pipefail
+# Production and staging must not share a venv: one's `pip install -e .` re-points the other's imports (2026-10-12:
+# /opt/racinglines-staging/.venv was a symlink to production's, so prod jobs ran staging code). Refuse before any change.
+venv_guard() {
+  local p=${1:-/opt/racinglines/.venv} s=${2:-/opt/racinglines-staging/.venv} v
+  for v in "$p" "$s"; do
+    if [ -L "$v" ]; then echo "refusing: $v is a symlink (to $(readlink -f "$v")); give it its own venv (docs/vm-deploy.md#separate-venvs)"; exit 1; fi
+  done
+  if [ -e "$p" ] && [ -e "$s" ] && [ "$(readlink -f "$p")" = "$(readlink -f "$s")" ]; then
+    echo "refusing: $p and $s are the same venv (docs/vm-deploy.md#separate-venvs)"; exit 1
+  fi
+}
+# after `pip install -e .`: this venv must import racinglines from this checkout (-I: not from the current directory)
+imports_here() {
+  local f; f=$(.venv/bin/python -I -c 'import racinglines; print(racinglines.__file__)')
+  case "$f" in "$PWD"/*) ;; *) echo "refusing: $PWD/.venv imports racinglines from $f, not this checkout"; exit 1 ;; esac
+}
 # all in a function: bash reads it whole before the checkout below rewrites this file
 main() {
   cd /opt/racinglines
+  venv_guard
   ref="${1:-main}"
   log() { echo "[update $(date -u +%H:%M:%S)] $*"; }
 
@@ -17,6 +34,7 @@ main() {
 
   log "pip install"
   .venv/bin/pip install --quiet -r requirements.txt -e .
+  imports_here
 
   log "database up"
   docker compose up -d --wait db

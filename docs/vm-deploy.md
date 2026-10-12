@@ -421,6 +421,34 @@ answered 404).
 Not done yet: Cloudflare Access in front of staging (today it has the app's own login, as production), the Mac's
 trycloudflare script (`scripts/deploy/staging.sh`, ad hoc only).
 
+### Separate venvs
+
+Production (`/opt/racinglines/.venv`) and staging (`/opt/racinglines-staging/.venv`) each need their own venv. Both
+checkouts are installed editable (`pip install -e .`), so a shared venv imports `racinglines` from whichever checkout
+installed last: on 2026-10-12 staging's `.venv` was a symlink to production's (staging `setup.sh` only made a venv
+when `.venv/bin/python` was missing, and a symlink passes that test), so production's jobs ran staging's code.
+
+`vm.sh deploy`, `vm.sh staging deploy`, both `update.sh` scripts and both `setup.sh` scripts now refuse to run when
+either `.venv` is a symlink or the two resolve to the same folder (`vm.sh deploy` checks before it pauses anything),
+and after `pip install` each update checks that its venv imports `racinglines` from its own checkout.
+
+To fix a shared venv, after production's checkout is at the commit it should run (its deploy's `pip install -e .`
+points the shared venv back at `/opt/racinglines`):
+
+```
+# VM (production), as the app user: give staging its own venv (rm on a symlink removes only the link)
+sudo -u racinglines -H bash -c 'cd /opt/racinglines-staging && rm .venv && UV_PYTHON_INSTALL_DIR=$HOME/.uv-python /opt/uv/bin/uv venv --quiet --seed --python 3.14 .venv && .venv/bin/pip install --quiet -r requirements.txt -e .'
+```
+
+```
+# VM (production): each venv imports its own checkout, then restart staging's web app on its new venv
+cd / && /opt/racinglines/.venv/bin/python -I -c 'import racinglines; print(racinglines.__file__)'
+cd / && /opt/racinglines-staging/.venv/bin/python -I -c 'import racinglines; print(racinglines.__file__)'
+sudo systemctl restart racinglines-staging-web
+```
+
+The first print names `/opt/racinglines/racinglines/__init__.py`, the second `/opt/racinglines-staging/racinglines/__init__.py`.
+
 ## Later
 
 - ~~`staging.racinglines.bet` on the Mac's tunnel, replacing the temp address.~~ Done 2026-10-01 on the VM ([Staging](#staging)).
