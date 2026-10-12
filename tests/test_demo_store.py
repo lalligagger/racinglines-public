@@ -1,4 +1,4 @@
-"""The demo store behind `--demo` (racinglines/cli/source.py, racinglines/demo/store.py, racinglines/demo/generate.py):
+"""The demo store behind `--demo` (racinglines/cli/source.py, racinglines/demo/store.py, racinglines/demo/mk_demo/generate.py):
 the generator writes FastF1-shaped files, the real ingest loads them into a separate database, and the real commands
 run on it unchanged. The end-to-end test builds a smaller store (the two newest seasons) into a database next to the
 test one and runs the quickstart's commands as subprocesses, with small settings. Skipped without Postgres.
@@ -104,6 +104,23 @@ def test_demo_with_the_remote_source_aims_at_the_hosted_store(monkeypatch, tmp_p
     source.reset()
 
 
+def test_pack_sport_name_reads_as_its_stored_sport():
+    from racinglines.cli import source
+    from racinglines.demo import store
+    kart = store.find("kart")
+    assert (kart.sport, kart.sport_name) == ("f1", "kart")
+    assert source.sport_names(kart, ["model", "backtest", "kart", "--races", "3"]) == ["model", "backtest", "f1", "--races", "3"]
+    assert source.sport_names(kart, ["live", "run", "kart/demo-2026-09", "--simulate"]) == ["live", "run", "f1/demo-2026-09", "--simulate"]
+    assert source.sport_names(kart, ["model", "backtest", "f1"]) == ["model", "backtest", "f1"]     # the stored name still works
+    assert source.sport_names(kart, ["book", "price", "karts.toml"]) == ["book", "price", "karts.toml"]
+
+
+def test_kart_classic_pack_loads_and_answers_to_kart():
+    from racinglines.demo import store
+    pk = store.find("kart-classic")
+    assert pk is not None and (pk.sport, pk.sport_name) == ("f1", "kart") and (pk.path / "world.toml").is_file()
+
+
 def test_remote_model_flags_map_to_the_hosted_job():
     from racinglines.cli import remote as RM
     assert RM.job_params("f1", "backtest", ["--races", "3", "--sims", "300", "--track", "on", "--remote"]) == \
@@ -117,7 +134,7 @@ def test_remote_model_flags_map_to_the_hosted_job():
 
 
 def test_generator_writes_fastf1_shapes_reproducibly(tmp_path):
-    from racinglines.demo import generate as G
+    from racinglines.demo.mk_demo import generate as G
     from racinglines.sources.fastf1 import fetch as F
     w = dict(G.world(), seasons=[2026], raced_2026=2)
     G.write_fastf1(tmp_path / "a", w)
@@ -130,14 +147,29 @@ def test_generator_writes_fastf1_shapes_reproducibly(tmp_path):
     assert list(res.columns) == F.RESULT_COLS and list(laps.columns) == F.LAP_COLS
     assert len(res) == 20 and res["Points"].sum() == sum(G.RACE_POINTS)
     meta = json.loads((tmp_path / "a" / "2026" / "01_R.meta.json").read_text())
-    assert meta["synthetic"] and meta["location"] == "Mario Circuit"
+    assert meta["synthetic"] and meta["location"] == "Mario Kart Stadium"
     sch = pd.read_parquet(tmp_path / "a" / "2026" / "schedule.parquet")
     assert list(sch.columns) == F.SCHEDULE_COLS and len(sch) == w["rounds"]
 
 
+
+def test_no_generated_lap_beats_a_world_record():
+    """The kart world's tracks are Mario Kart 8 Deluxe courses: every lap the generator writes, in every session of
+    every raced weekend, is slower than the course's fastest 150cc record lap (world.toml wr_lap_s)."""
+    from racinglines.demo.mk_demo import generate as G
+    w = G.world()
+    W = G.World(w)
+    for year, rnd, tr, day, sprint in G.calendar(w):
+        if not G.raced(w, year, rnd):
+            continue
+        assert tr["lap_s"] > tr["wr_lap_s"] and tr["wr_race_s"] > 3 * tr["wr_lap_s"]
+        for code, (_, laps, _) in G.weekend(W, year, rnd, tr, day, sprint).items():
+            assert laps["LapTime"].min() > tr["wr_lap_s"], (year, rnd, tr["name"], code)
+
+
 def test_offline_schedule_reads_the_saved_copy(tmp_path, monkeypatch):
     """RACINGLINES_OFFLINE=1: the schedule comes from data/raw/f1/fastf1/<year>/schedule.parquet, FastF1 never called."""
-    from racinglines.demo import generate as G
+    from racinglines.demo.mk_demo import generate as G
     from racinglines.models.inputs import laps_pricing as P
     from racinglines.sources.fastf1 import fetch as F
     (tmp_path / "2026").mkdir()
@@ -225,7 +257,7 @@ def test_kart_quickstart_runs_on_the_store(demo_env):
     unchanged, on the demo store."""
     from racinglines.demo import store
     env, _ = demo_env
-    small = {"model backtest f1": ["--races", "3", "--sims", "300", "--track", "on"], "model forecast f1": ["--sims", "500"]}
+    small = {"model backtest kart": ["--races", "3", "--sims", "300", "--track", "on"], "model forecast kart": ["--sims", "500"]}
     outs = []
     for step in store.find("kart").quickstart:
         if not step.get("record", True):                                 # the install step: shown, never run

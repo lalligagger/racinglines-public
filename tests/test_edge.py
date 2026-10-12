@@ -10,7 +10,7 @@ pytestmark = pytest.mark.quick
 
 def test_default_is_baseline_with_every_strategy():
     assert E.apply([], "reset") == E.DEFAULT
-    assert [s for _, s in E.DEFAULT] == E.STRATEGY_KEYS
+    assert [s for _, s in E.DEFAULT] == E.SHOWN_KEYS
 
 
 def test_add_remove_toggle():
@@ -25,7 +25,7 @@ def test_add_remove_toggle():
 def test_add_model_and_strategy_follow_what_is_shown():
     cs = [("baseline", "maker"), ("baseline", "hold")]
     assert E.apply(cs, "add_model", "reset") == cs + [("reset", "maker"), ("reset", "hold")]
-    assert E.apply([], "add_model", "reset") == [("reset", s) for s in E.STRATEGY_KEYS]
+    assert E.apply([], "add_model", "reset") == [("reset", s) for s in E.SHOWN_KEYS]
     assert E.apply(cs + [("reset", "maker")], "add_strategy", strategy="last") == \
         cs + [("reset", "maker"), ("baseline", "last"), ("reset", "last")]
     assert E.apply([], "add_strategy", strategy="last") == [("baseline", "last")]

@@ -69,28 +69,21 @@ racinglines db stats --demo
 
 ```
 # LOCAL (Mac), or any machine with Postgres
-racinglines model backtest f1 --demo
+racinglines model backtest kart --demo
 ```
 
 **4. 🔮 Forecast the rest of the season.** The next races (Rainbow Road is a sprint weekend) and both championships; --save stores the run the book and the web app read.
 
 ```
 # LOCAL (Mac), or any machine with Postgres
-racinglines model forecast f1 --demo --save
+racinglines model forecast kart --demo --save
 ```
 
 **5. 🏁 Run a live private book.** Bowser's Castle (round 9) replayed on a simulated clock: the maker's book opens before practice, reprices after each session from the model's stage runs, 100 simulated takers trade against it, the book closes at lights out and settles from the results.
 
 ```
 # LOCAL (Mac), or any machine with Postgres
-racinglines live run f1/demo-2026-09 --demo --simulate --no-fetch
-```
-
-**6. 💰 Price a sportsbook's lines.** The pack's sportsbook book (a generic sportsbook's lines on rounds 10 and 11) against the model's forecast and the exchanges' quotes: EV against each, side by side.
-
-```
-# LOCAL (Mac), or any machine with Postgres
-racinglines book price --demo
+racinglines live run kart/demo-2026-09 --demo --simulate --no-fetch
 ```
 <!-- /quickstart -->
 
@@ -99,7 +92,7 @@ text, or set `NO_COLOR=1` for the same layout without colour codes ([CLI: Output
 
 Measured on a cloud container (one CPU, 2026-10-11): the store build about 45 s, the backtest about 35 s, the
 forecast about 10 s, the live run about 30 s, the book a few seconds. After the live run,
-`racinglines live report f1/demo-2026-09 --demo --pdf` writes its report (Markdown, charts and a PDF, which needs
+`racinglines live report kart/demo-2026-09 --demo --pdf` writes its report (Markdown, charts and a PDF, which needs
 weasyprint or a headless Chrome) under `data/demo/kart/runs/live/demo-2026-09/report/`.
 
 Where things go: the database `racinglines_demo_kart`, and the folder `data/demo/kart/` (the generated FastF1 files
@@ -127,8 +120,8 @@ from the pack: synthetic data only, never production's), with nothing to install
 ```
 # LOCAL (Mac), or any machine with Python: no Postgres needed
 racinglines book price --demo --remote                      # the pack's book, priced on the hosted demo store
-racinglines model backtest f1 --demo --remote --races 10    # the backtest as a hosted job, its log printed as it runs
-racinglines model forecast f1 --demo --remote               # a forecast scenario on the hosted demo store
+racinglines model backtest kart --demo --remote --races 10  # the backtest as a hosted job, its log printed as it runs
+racinglines model forecast kart --demo --remote             # a forecast scenario on the hosted demo store
 ```
 
 The first one opens the browser to sign in (a racinglines.bet account with MCP access: Pro or admin,

@@ -2,7 +2,7 @@
 # (racinglines/demo/store.py: a synthetic database the `--demo` flag builds on first use). A Mario Kart grid under the
 # F1 schema: round 10 of 2026 is the Rainbow Road Grand Prix (a sprint weekend), round 11 Wario Stadium; every odds is
 # made up. It shows the F1 pricing features `racinglines book price` has: the model kinds a stored forecast prices
-# (run `racinglines model forecast f1 --demo --save` first), exchange quotes from Kalshi and Polymarket, sides, an h2h
+# (run `racinglines model forecast kart --demo --save` first), exchange quotes from Kalshi and Polymarket, sides, an h2h
 # listed the other way round, sprint fallbacks, an exchange-only kind, a race prop, a same-race combo (priced jointly
 # once `racinglines model combo f1 --demo --event 2026-10 ... --save` stored one, else as a flagged product), a
 # cross-race parlay, and an unmapped line. A "generic sportsbook" stands in for the venue.
