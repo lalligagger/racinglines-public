@@ -6,6 +6,8 @@ must carry an account's bearer token (racinglines/mcp/auth.py: `racinglines mcp 
 
 Every read tool runs in its own READ ONLY transaction. The job tools (run_job, cancel_job) write what the Lab's
 Run form writes: a `jobs` row; the job's subprocess saves a model run (forecasts as scenarios, never promoted).
+fantasy_order writes what the Trade page writes (fantasy/exchange.place, the caller's own account only), and the
+fantasy reads first pay out resolved hand trades as the Trade and History pages do (fantasy/exchange.settle).
 """
 
 import json
@@ -33,6 +35,8 @@ How to use it:
   outcome), get_market_history (exchange prices, trades, books; resampled), list_model_runs / get_model_run /
   get_predictions, get_forecast, edge_finder (sweep results per strategy), list_diagnostics / get_diagnostic,
   track_record / list_positions / list_signals (paper trading), list_live_events, data_changes.
+- Fantasy trading (F$ only, your own account): fantasy_balance, fantasy_positions, fantasy_orders, fantasy_leaderboard,
+  fantasy_markets, fantasy_book, and fantasy_order (one immediate-or-cancel order, as the Trade page places it).
 - Anything else: sql(query) — read-only SELECT, paged. describe_schema() lists the tables.
 - Scenarios: list_job_types() then run_job(job_type, params) queues a Lab job (backtest, forecast scenario, event
   diagnostic, Edge Finder sweep, season strategy, downhill scenario/backtest); get_job(job_id) follows it and gives the
@@ -132,6 +136,35 @@ def _write(fn, **kw):
     try:
         with _sports_shown():
             return _json(fn(_engine(), **kw))
+    except (ValueError, KeyError, TypeError) as ex:
+        raise ToolError(str(ex)) from ex
+
+
+def _books():
+    from racinglines.fantasy import exchange as FX
+    return FX.books_engine(_engine())
+
+
+def _fantasy_read(fn, **kw):
+    """A fantasy read: resolved hand trades are paid out first (fantasy/exchange.settle, the same step the Trade and
+    History pages run; it writes only accounts.fantasy_positions and the ledger), then the READ ONLY read, with the
+    recorded books and resolutions from the read-only books engine."""
+    import logging
+    from racinglines.fantasy import exchange as FX
+    from racinglines.fantasy import ledger as FL
+    if FL.on():
+        try:
+            FX.settle(_engine(), _books())
+        except Exception:  # noqa: BLE001  (never block a read on settlement)
+            logging.getLogger(__name__).exception("fantasy settle failed")
+    return _read(fn, books=_books(), **kw)
+
+
+def _fantasy_write(**kw):
+    """fantasy_order: one F$ order through fantasy/exchange.place, on the caller's own account (tools.fantasy_order)."""
+    from mcp.server.mcpserver.exceptions import ToolError
+    try:
+        return _json(T.fantasy_order(_engine(), viewer=_viewer(), **kw))
     except (ValueError, KeyError, TypeError) as ex:
         raise ToolError(str(ex)) from ex
 
@@ -340,6 +373,53 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         status: new, alerted, expired, filled_paper; action: buy, sell, quote, pull, fill."""
         return _read(T.list_signals, user=user, event_key=event_key, status=status, action=action, limit=limit,
                      offset=offset, viewer=_viewer())
+
+    # --- fantasy trading (F$ only; the Trade and History tabs) -------------------------------------------
+    @srv.tool()
+    def fantasy_balance(user: str | None = None) -> str:
+        """Your fantasy account: total F$ (the 1,000 plus both P&Ls), cash you can trade with now (shared with the
+        strategy you follow), open hand trades at their mark, hand-trade P&L and strategy P&L. Hosted accounts see their
+        own only; user is for the owner."""
+        return _fantasy_read(T.fantasy_balance, user=user, viewer=_viewer())
+
+    @srv.tool()
+    def fantasy_positions(user: str | None = None, open_only: bool = True, limit: int = 50, offset: int = 0) -> str:
+        """Your hand-trade positions: market, side, shares, cost, fees, worth now, P&L; open_only=False adds the settled
+        ones (outcome, payout)."""
+        return _fantasy_read(T.fantasy_positions, user=user, open_only=open_only, limit=limit, offset=offset,
+                             viewer=_viewer())
+
+    @srv.tool()
+    def fantasy_orders(user: str | None = None, limit: int = 50, offset: int = 0) -> str:
+        """Your orders by hand, newest first, with fills, average price, fee, and the reason for any refused order."""
+        return _read(T.fantasy_orders, user=user, limit=limit, offset=offset, viewer=_viewer())
+
+    @srv.tool()
+    def fantasy_leaderboard(limit: int = 50, offset: int = 0) -> str:
+        """The fantasy leaderboard: rank, score (ROI x sqrt(trades)), ROI, trades and P&L. Never balances."""
+        return _fantasy_read(T.fantasy_leaderboard, limit=limit, offset=offset)
+
+    @srv.tool()
+    def fantasy_markets(q: str | None = None, limit: int = 50, offset: int = 0) -> str:
+        """Markets you can trade with F$ now (F1 on Kalshi and Polymarket) with the best recorded YES bid and ask and
+        the book's time. q searches the question, driver or event. Use market_link_id with fantasy_book and fantasy_order."""
+        return _read(T.fantasy_markets, q=q, limit=limit, offset=offset, books=_books())
+
+    @srv.tool()
+    def fantasy_book(market_link_id: int) -> str:
+        """One market's latest recorded book, YES and NO sides, up to the 10 levels an order may walk."""
+        return _read(T.fantasy_book, market_link_id=market_link_id, books=_books())
+
+    @srv.tool()
+    def fantasy_order(market_link_id: int, side: str, action: str, shares: int, limit_price: float,
+                      client_key: str | None = None, user: str | None = None) -> str:
+        """Place one immediate-or-cancel F$ order on your own account, exactly as the Trade page does: side yes|no,
+        action buy|sell, whole shares, limit_price 0.01-0.99. It fills against the latest recorded book (refused past
+        15 minutes old) up to 10 levels at or better than your limit; the rest is cancelled. F$100 per order at most,
+        never more than your cash, never short. client_key makes a retry safe. Nothing reaches an exchange. user: only
+        over stdio (the owner naming the account)."""
+        return _fantasy_write(market_link_id=market_link_id, side=side, action=action, shares=shares,
+                              limit_price=limit_price, client_key=client_key, user=user)
 
     @srv.tool()
     def list_live_events(limit: int = 50, offset: int = 0) -> str:

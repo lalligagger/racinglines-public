@@ -50,11 +50,12 @@ RACE_KINDS = ("race_win", "race_podium", "race_top5", "race_top10", "race_pole",
 SPRINT_KINDS = ("race_sprint_win", "race_sprint_pole")
 SEASON_KINDS = ("champion", "constructors_champion")
 EXCHANGES = ("kalshi", "polymarket")
-REASONS = ("bad_input", "not_a_member", "kind_not_tradable", "market_closed", "session_started", "no_schedule",
+REASONS = ("bad_input", "not_a_member", "sport_not_tradable", "kind_not_tradable", "market_closed", "session_started", "no_schedule",
            "book_unavailable", "stale_book", "no_liquidity", "over_order_cap", "insufficient_balance",
            "opposite_side_held", "sell_exceeds_position")
 TEXT = {"bad_input": "Check the side, the shares (a whole number) and the limit (0.01 to 0.99).",
         "not_a_member": "This account can't trade fantasy markets.",
+        "sport_not_tradable": "Fantasy trading is Formula 1 only for now: this market can't be traded.",
         "kind_not_tradable": "This market can't be traded here yet.",
         "market_closed": "This market is closed or already settled.",
         "session_started": "This market closed when its session started.",
@@ -148,12 +149,15 @@ _BOOKS = {}
 
 
 def books_engine(default):
-    """The engine books are read from: RACINGLINES_FANTASY_BOOKS_URL (staging: production's database), else `default`."""
+    """The engine books are read from: RACINGLINES_FANTASY_BOOKS_URL (staging: production's database), else `default`.
+    That engine is read-only whatever the URL says: every session starts with default_transaction_read_only on, so
+    a staging bug can't write to production."""
     url = os.environ.get("RACINGLINES_FANTASY_BOOKS_URL", "").strip()
     if not url:
         return default
     if url not in _BOOKS:
-        _BOOKS[url] = create_engine(url, pool_pre_ping=True, pool_size=2, max_overflow=2)
+        _BOOKS[url] = create_engine(url, pool_pre_ping=True, pool_size=2, max_overflow=2,
+                                    connect_args={"options": "-c default_transaction_read_only=on"})
     return _BOOKS[url]
 
 
@@ -197,16 +201,35 @@ def rate_ok(user_id, now=None):
         return True
 
 
+def markets(c, search=""):
+    """The links a player may trade now, newest events first: F1, Kalshi and Polymarket, open and unresolved, in the
+    tradable kinds. Closing times are checked when an order is placed. -> [dict]"""
+    kinds = sorted({k for ks in tradable().values() for k in ks})
+    rs = c.execute(text("""
+        SELECT ml.id, ml.exchange, ml.token_id, ml.prediction AS kind, ml.question, ml.group_title, ml.outcome,
+               ml.event_title, ml.last_bid, ml.last_ask, e.start_date
+        FROM market_links ml JOIN competitions co ON co.id = ml.competition_id JOIN sports sp ON sp.id = co.sport_id
+        LEFT JOIN races ra ON ra.id = ml.race_id LEFT JOIN events e ON e.id = ra.event_id
+        WHERE sp.code = :sport AND ml.exchange = ANY(:x) AND ml.prediction = ANY(:k) AND ml.active AND NOT ml.closed
+          AND ml.resolved_yes IS NULL AND (e.start_date IS NULL OR e.start_date >= current_date - 1)
+          AND (:q = '' OR ml.question ILIKE :like OR ml.group_title ILIKE :like OR ml.event_title ILIKE :like)
+        ORDER BY e.start_date NULLS LAST, ml.event_title, ml.exchange, ml.prediction, ml.group_title, ml.id"""),
+        dict(sport=SPORT, x=list(EXCHANGES), k=kinds, q=search, like=f"%{search}%")).mappings().all()
+    return [dict(r) for r in rs]
+
+
 # --- the order ---------------------------------------------------------------------------------------------------
 
-def _link(conn, link_id):
-    return conn.execute(text("""
+_LINK_SQL = """
         SELECT ml.id, ml.exchange, ml.token_id, ml.condition_id, ml.prediction, ml.params, ml.race_id, ml.closed,
                ml.active, ml.resolved_yes, ml.end_date, co.code AS competition, sp.code AS sport, e.start_date
         FROM market_links ml JOIN competitions co ON co.id = ml.competition_id
         LEFT JOIN sports sp ON sp.id = co.sport_id
-        LEFT JOIN races ra ON ra.id = ml.race_id LEFT JOIN events e ON e.id = ra.event_id
-        WHERE ml.id = :i"""), dict(i=link_id)).mappings().first()
+        LEFT JOIN races ra ON ra.id = ml.race_id LEFT JOIN events e ON e.id = ra.event_id"""
+
+
+def _link(conn, link_id):
+    return conn.execute(text(_LINK_SQL + " WHERE ml.id = :i"), dict(i=link_id)).mappings().first()
 
 
 def closes_at(conn, link):
@@ -214,20 +237,41 @@ def closes_at(conn, link):
     whose deciding round has no stored start (pipelines/clv.closes)."""
     if link["prediction"] in SEASON_KINDS:
         return None
-    if link["race_id"] is None:
-        raise Rejected("no_schedule")
-    from racinglines.pipelines import clv
-    t, _rule = clv.closes(conn, [dict(link)]).get((int(link["race_id"]), link["prediction"]), (None, ""))
+    t = _close(conn, link)
+    if t is None and link.get("token_id"):
+        # staging's own rounds carry no session starts (no schedule ingest there): ask the books database (production),
+        # matching the same token exactly, read-only
+        books = books_engine(conn.engine)
+        if books is not conn.engine:
+            with books.connect() as b:
+                there = b.execute(text(_LINK_SQL + " WHERE ml.token_id = :t ORDER BY ml.id LIMIT 1"),
+                                  dict(t=link["token_id"])).mappings().first()
+                t = _close(b, there) if there is not None else None
     if t is None:
         raise Rejected("no_schedule")
     return t.tz_localize("UTC").to_pydatetime() if getattr(t, "tzinfo", None) is None else t.to_pydatetime()
+
+
+def _close(conn, link):
+    """The deciding round's stored start for a race link in this database (pipelines/clv.closes), or None."""
+    if link["race_id"] is None:
+        return None
+    from racinglines.pipelines import clv
+    return clv.closes(conn, [dict(link)]).get((int(link["race_id"]), link["prediction"]), (None, ""))[0]
+
+
+def sport_ok(link):
+    """True when a link's sport is the one fantasy trading covers (F1 only to start: owner, 2026-10-12 23:07Z)."""
+    return link is not None and link["sport"] == SPORT
 
 
 def check_link(conn, link, now):
     """Refuse a link a player may not trade now (kind, venue, sport, closed, resolved, past its close)."""
     if link is None:
         raise Rejected("bad_input")
-    if link["sport"] != SPORT or link["exchange"] not in EXCHANGES or link["prediction"] not in tradable()[link["exchange"]]:
+    if link["sport"] != SPORT:
+        raise Rejected("sport_not_tradable")              # owner, 2026-10-12: F1 only to start
+    if link["exchange"] not in EXCHANGES or link["prediction"] not in tradable()[link["exchange"]]:
         raise Rejected("kind_not_tradable")
     if link["exchange"] == "polymarket" and link["prediction"] == "race_h2h" and link["condition_id"]:
         first = conn.execute(text("SELECT min(id) FROM market_links WHERE condition_id = :c AND exchange = 'polymarket'"),
@@ -264,6 +308,8 @@ def _num(v, width):
 
 
 def _audit(conn, user, what, **detail):
+    if user.get("via"):                                  # "mcp" for an order placed through the MCP server
+        detail["via"] = user["via"]
     conn.execute(text("""INSERT INTO activity_log (user_id, username, role, action, detail)
                          VALUES (:u, :n, :r, :a, CAST(:d AS jsonb))"""),
                  dict(u=user["id"], n=user.get("username"), r=user.get("role"), a=what,
@@ -355,9 +401,11 @@ def place(engine, user, link_id, side, action, shares, limit, client_key=None, n
         try:
             link = _link(c, lid)
             check_link(c, link, now)
-            pos = c.execute(text("""SELECT yes_shares, no_shares, cost FROM accounts.fantasy_positions
+            pos = c.execute(text("""SELECT yes_shares, no_shares, cost, status FROM accounts.fantasy_positions
                                     WHERE user_id = :u AND market_link_id = :l FOR UPDATE"""),
                             dict(u=user["id"], l=lid)).first()
+            if pos is not None and pos[3] != "open":
+                raise Rejected("market_closed")                 # settled (settle below): paid out, nothing to trade
             held_yes, held_no, cost = (float(pos[0]), float(pos[1]), float(pos[2])) if pos else (0.0, 0.0, 0.0)
             held = held_yes if side == "yes" else held_no
             if action == "buy" and (held_no if side == "yes" else held_yes) > 0:
@@ -412,3 +460,50 @@ def place(engine, user, link_id, side, action, shares, limit, client_key=None, n
         _audit(c, user, "fantasy_order", order_id=oid, link=lid, side=side, order=action, fills=fills, fee=f)
     return dict(ok=True, order_id=oid, status=status, reason=None, fills=fills, fee=f,
                 message="", position=dict(side=side, shares=new_held, cost=round(new_cost, 2)))
+
+
+# --- settlement ---------------------------------------------------------------------------------------------------
+
+def settle(engine, books=None):
+    """Pay out every open hand-trade position whose market has resolved: YES shares pay F$1 each on a YES outcome, NO
+    shares on a NO, the position becomes 'settled' (outcome, payout, settled_at) and one ledger row (reason 'settle',
+    ref fantasy_positions) credits the payout. Idempotent: a position settles once (status check under the row lock,
+    and the ledger's unique (ref_table, ref_id, reason) index).
+
+    Resolution is read by token id from `books` (books_engine: production's market_links on staging, whose own links
+    are not synced), exact keys only. Called when the Trade and History pages load, so staging, which has no timers,
+    settles too. -> number of positions settled"""
+    books = books or books_engine(engine)
+    with engine.connect() as c:
+        if not L.ready(c):
+            return 0
+        rows = c.execute(text("""
+            SELECT p.id, ml.token_id FROM accounts.fantasy_positions p JOIN market_links ml ON ml.id = p.market_link_id
+            WHERE p.status = 'open' AND (p.yes_shares > 0 OR p.no_shares > 0) AND ml.token_id IS NOT NULL""")).all()
+    if not rows:
+        return 0
+    with books.connect() as b:
+        done = dict(b.execute(text("""SELECT DISTINCT ON (token_id) token_id, resolved_yes FROM market_links
+                                      WHERE token_id = ANY(:t) AND resolved_yes IS NOT NULL ORDER BY token_id, id"""),
+                              dict(t=list({t for _, t in rows}))).all())
+    n = 0
+    for pid, token in rows:
+        if token not in done:
+            continue
+        yes = bool(done[token])
+        with engine.begin() as c:
+            r = c.execute(text("""
+                UPDATE accounts.fantasy_positions SET status = 'settled', outcome = :o, settled_at = now(),
+                    updated_at = now(), payout = CASE WHEN :o THEN yes_shares ELSE no_shares END
+                WHERE id = :i AND status = 'open' RETURNING user_id, payout, yes_shares, no_shares"""),
+                dict(i=pid, o=yes)).first()
+            if r is None:
+                continue
+            if r.payout > 0:
+                c.execute(text("""INSERT INTO accounts.fantasy_ledger (user_id, amount, reason, note, ref_table, ref_id)
+                                  VALUES (:u, :a, 'settle', :n, 'fantasy_positions', :i)
+                                  ON CONFLICT DO NOTHING"""),
+                          dict(u=r.user_id, a=r.payout, i=pid,
+                               n=f"settled {'YES' if yes else 'NO'}: {r.payout:g} shares paid F$1"))
+            n += 1
+    return n
