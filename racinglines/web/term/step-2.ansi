@@ -3,9 +3,9 @@ data/demo/kart. Synthetic data, made once (a few minutes).
 🔧 [1mdemo store[0m [2m0/7[0m creating the database
 🔧 [1mdemo store[0m [2m1/7[0m schema and reference data (alembic upgrade head, seed)
 🔧 [1mdemo store[0m [2m2/7[0m the pack's data files
-🔧 [1mdemo store[0m generating: 2024 R01 Mario Circuit
-🔧 [1mdemo store[0m generating: 2025 R01 Mario Circuit
-🔧 [1mdemo store[0m generating: 2026 R01 Mario Circuit
+🔧 [1mdemo store[0m generating: 2024 R01 Mario Kart Stadium
+🔧 [1mdemo store[0m generating: 2025 R01 Mario Kart Stadium
+🔧 [1mdemo store[0m generating: 2026 R01 Mario Kart Stadium
 🔧 [1mdemo store[0m generating: files written
 🔧 [1mdemo store[0m generating: exchange odds 2026-09
 🔧 [1mdemo store[0m generating: exchange odds 2026-10

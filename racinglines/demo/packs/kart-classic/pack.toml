@@ -8,6 +8,7 @@ name = "kart-classic"
 title = "Mario Kart Grand Prix (classic)"
 tagline = "Let's-a go! 🍄"
 sport = "f1"
+sport_name = "kart"             # commands say `kart` (read as f1), as in the kart pack
 about = """The first kart demo world: three seasons (2024-2026, twelve rounds each; 2026's rounds 1-9 raced), 20
 drivers in 10 teams, made-up F1-length lap times. Every pace, result and price is invented; play money, nothing is
 traded anywhere."""
