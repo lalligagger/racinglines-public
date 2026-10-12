@@ -108,13 +108,14 @@ prices off user pages).
 
 ## Pages
 
-**Landing page** (`/login`, where every signed-out visit lands; owner, 2026-10-08). A compact, centered page with no
-same-page navigation: what the pricing does for sportsbooks that set their own lines, books on a platform provider's
-feed, and the providers themselves; the business infographic; a **News** list under it (fantasy sign-ups for alpha
-testers, the PyPI release, X and Substack; owner, 2026-10-12); a contact line (hello@racinglines.bet); and the
-fantasy-trading beta with sign-up and the two demo buttons, no bigger than the sign-up link (`/login#account`). The
-sign-in form has its own page, `/signin`, linked top right and under the demo buttons (owner, 2026-10-12); its form
-still posts to `/login`, and an old `/login?error=` link is sent there. The infographic has no "How it works" heading. The page names no sportsbook, operator or provider.
+**Landing page** (`/login`, where every signed-out visit lands; owner, 2026-10-08, reworked 2026-10-12). A compact,
+centered page with no same-page navigation: a one-line **fantasy league alpha** strip above the hero (sign-up, the two
+demo buttons and the 101 link; `/login#account`); the hero, whose eyebrow reads "Sportsbook pricing for all racing
+disciplines", with its **Talk to us** button; what the pricing does for sportsbooks that set their own lines, books on
+a platform provider's feed, and the providers themselves; the business infographic; and a dated **News** feed, newest
+first, with the PyPI release marked upcoming, each sport and exchange added on the earliest date the project history
+states, and the X and Substack links under it. The sign-in form has its own page, `/signin`, linked top right; its
+form still posts to `/login`, and an old `/login?error=` link is sent there. The infographic has no "How it works" heading. The page names no sportsbook, operator or provider.
 The landing page has no popup, and the maintenance popup is off (`MAINTENANCE_NOTICE = ""`). The demo accounts (maker, taker) still get the sign-up popup, once per browser session, and a **Sign up** link in the top bar, while sign-up is on (owner, 2026-10-11). Registered accounts get neither. A registered account with no email (made before email was required at sign-up) gets an add-email popup instead, once per browser session, on every app page but Settings, until it saves one; the save (`POST /settings/email`) runs the sign-up checks (a valid address, on no other account).
 
 **Quickstart replay** (`/docs/quickstart/term`, under the docs' Quickstart since 2026-10-12, public like `/pitch` while the rest of `/docs` needs a sign-in; `/term` redirects there; owner, 2026-10-11). A terminal-styled replay of the
