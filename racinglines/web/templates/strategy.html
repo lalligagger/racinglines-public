@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% from "_macros.html" import empty, pnl_cls, chart, demo_context, kpi, pnl, page_head, flash %}
 {% block title %}Strategy{% endblock %}
 {% block content %}
+{% include "_lab_nav.html" %}
 {% call page_head("Strategy" ~ (" · " ~ viewer.username if viewer.id != user.id else ""), "The strategy this account runs: its calls on each race weekend, stage by stage, how it has done, and how it got here. Paper only: nothing is sent to an exchange.") %}
 {% if can_pick %}<a href="/strategy/pick">{{ "Change strategy" if profile else "Pick a strategy" }}</a> · {% endif %}<a href="/positions{{ '?venue=' ~ venue if venue }}">What it holds: Positions →</a>
 {%- if venue_tabs %}<nav class="tabs" aria-label="Which exchange's record"><a href="?{{ 'user=' ~ viewer.username if viewer.id != user.id }}"{% if not venue %} aria-current="page"{% endif %}>Polymarket</a>{% for k in venue_tabs %}<a href="?venue={{ k }}{{ '&user=' ~ viewer.username if viewer.id != user.id }}"{% if venue == k %} aria-current="page"{% endif %}>{{ venue_names.get(k, k) }}</a>{% endfor %}</nav>{% endif %}

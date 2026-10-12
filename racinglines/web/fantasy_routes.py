@@ -2,11 +2,12 @@
 The fantasy pages (owner, 2026-10-12 08:40Z, staging only): an account's F$ ("1k balance they can see"), trading by
 hand ("first-cut manual trading") next to following a strategy, and the leaderboard.
 
-    /fantasy               your F$: the total, cash, open trades, the followed strategy, recent orders
-    /fantasy/trade         the tradable F1 markets with their recorded best prices; ?link=<id> opens one market's
-                           book and the order form
+    /trade                 the tradable F1 markets with their recorded best prices; ?link=<id> opens one market's
+                           book and the order form (the alpha's Trade tab)
     POST /fantasy/orders   one IOC paper order (fantasy/exchange.place), then back to the market with the result
-    /leaderboard           every registered account ranked by total F$
+    /history               the alpha's History tab: your F$, every trade (by hand and by your strategy), F$ through
+                           the run, and the leaderboard (ROI x sqrt(trades), fantasy/ledger.ranked)
+    /fantasy, /fantasy/trade, /leaderboard   the first cut's addresses, redirected to the two above
 
 All of it is off unless fantasy/ledger.on() (RACINGLINES_FANTASY=1, or staging with the switch unset): 404 otherwise.
 Before `racinglines users setup` has created the trading tables the pages say so and nothing is written. F$ only:
@@ -43,24 +44,54 @@ def _books():
     return FX.books_engine(get_engine())
 
 
-@app.get("/fantasy", response_class=HTMLResponse, dependencies=[allow(*ANY)])
-def fantasy_home(request: Request, msg: str = ""):
+def _strategy_trades(c, user_id):
+    """The markets the followed strategy traded for this account (paper_positions, the alpha leaves the private book
+    out), newest weekend first, with each one's P&L by the positions page's rule. -> [dict]"""
+    rs = c.execute(text("""
+        SELECT p.event_key, p.kind, p.subject, p.market_key, p.yes_shares, p.no_shares, p.cash, p.mark, p.outcome,
+               p.updated_at, coalesce(ra.format->>'event_name', e.name) AS event_name
+        FROM paper_positions p LEFT JOIN races ra ON ra.id = p.race_id LEFT JOIN events e ON e.id = ra.event_id
+        WHERE p.user_id = :u AND p.venue <> 'private' AND (p.yes_shares > 0 OR p.no_shares > 0 OR p.cash <> 0)
+        ORDER BY p.event_key DESC, p.updated_at DESC LIMIT 200"""), dict(u=user_id)).mappings().all()
+    out = []
+    for r in rs:
+        r = dict(r)
+        y = (1.0 if r["outcome"] else 0.0) if r["outcome"] is not None else r["mark"]
+        r["pnl"] = None if y is None else round(r["cash"] + r["yes_shares"] * y + r["no_shares"] * (1 - y), 2)
+        r["side"] = "yes" if r["yes_shares"] > 0 else ("no" if r["no_shares"] > 0 else None)
+        r["state"] = "settled" if r["outcome"] is not None else ("open" if r["side"] else "closed")
+        out.append(r)
+    return out
+
+
+@app.get("/history", response_class=HTMLResponse, dependencies=[allow(*ANY)])
+def history_page(request: Request, msg: str = ""):
     _gate()
     me = request.state.user
     if not _ready():
-        return render(request, "fantasy.html", ready=False, msg=msg)
+        return render(request, "history.html", ready=False, msg=msg, rows=[])
     from racinglines.pipelines import profiles as PF
-    eng = get_engine()
-    with eng.connect() as c:
+    from racinglines.web.viz import line_chart
+    with get_engine().connect() as c:
         q = FX.quotes(_books(), FL.open_tokens(c, me["id"]))
         s = FL.summary(c, me["id"], quotes=q)
         pos = FL.positions(c, me["id"], open_only=True, quotes=q)
-        recent = FL.orders(c, me["id"], limit=15)
+        recent = FL.orders(c, me["id"], limit=100)
+        strat = _strategy_trades(c, me["id"])
+        curve = FL.manual_curve(c, me["id"], quotes=q)
         profile = PF.of_user(c, me["id"])
-        board = FL.leaderboard(c, hide=(*HIDDEN, *demo.DEMO_USERS), quotes=FX.quotes(_books(), FL.open_tokens(c)))
-    rank = next((r["rank"] for r in board if r["username"] == me["username"]), None)
-    return render(request, "fantasy.html", ready=True, s=s, positions=pos, orders=recent, profile=profile, rank=rank,
-                  players=len(board), msg=msg, is_demo_user=demo.is_demo(me), reasons=FX.TEXT)
+        board = FL.ranked(c, hide=(*HIDDEN, *demo.DEMO_USERS), quotes=FX.quotes(_books(), FL.open_tokens(c)))
+    mine = next((r for r in board if r["username"] == me["username"]), None)
+    chart = line_chart({"hand": curve}, labels={"hand": "F$ by hand"}, include_zero=False) if len(curve) >= 2 else None
+    return render(request, "history.html", ready=True, s=s, positions=pos, orders=recent, strat=strat, chart=chart,
+                  profile=profile, mine=mine, rows=board, min_trades=FL.MIN_TRADES, msg=msg,
+                  is_demo_user=demo.is_demo(me), reasons=FX.TEXT)
+
+
+@app.get("/fantasy", dependencies=[allow(*ANY)])
+def fantasy_home(request: Request):
+    _gate()
+    return RedirectResponse("/history", status_code=303)
 
 
 def _markets(c, search=""):
@@ -80,7 +111,14 @@ def _markets(c, search=""):
     return [dict(r) for r in rs]
 
 
-@app.get("/fantasy/trade", response_class=HTMLResponse, dependencies=[allow(*ANY)])
+@app.get("/fantasy/trade", dependencies=[allow(*ANY)])
+def fantasy_trade_old(request: Request):
+    _gate()
+    qs = request.url.query
+    return RedirectResponse("/trade" + (f"?{qs}" if qs else ""), status_code=303)
+
+
+@app.get("/trade", response_class=HTMLResponse, dependencies=[allow(*ANY)])
 def fantasy_trade(request: Request, link: int = 0, q: str = "", msg: str = "", action: str = "buy", side: str = "yes"):
     _gate()
     me = request.state.user
@@ -124,7 +162,7 @@ def fantasy_order(request: Request, market_link_id: str = Form(""), side: str = 
                   shares: str = Form(""), limit_price: str = Form(""), client_key: str = Form("")):
     _gate()
     me = request.state.user
-    back = f"/fantasy/trade?link={market_link_id}" if market_link_id.isdigit() else "/fantasy/trade"
+    back = f"/trade?link={market_link_id}" if market_link_id.isdigit() else "/trade"
     if not _ready():
         msg = "Error: fantasy trading isn't set up yet."
     elif not FX.rate_ok(me["id"]):
@@ -146,11 +184,7 @@ def fantasy_order(request: Request, market_link_id: str = Form(""), side: str = 
     return RedirectResponse(f"{back}{sep}msg={quote(msg)}", status_code=303)
 
 
-@app.get("/leaderboard", response_class=HTMLResponse, dependencies=[allow(*ANY)])
+@app.get("/leaderboard", dependencies=[allow(*ANY)])
 def leaderboard_page(request: Request):
     _gate()
-    if not _ready():
-        return render(request, "leaderboard.html", ready=False, rows=[])
-    with get_engine().connect() as c:
-        rows = FL.leaderboard(c, hide=(*HIDDEN, *demo.DEMO_USERS), quotes=FX.quotes(_books(), FL.open_tokens(c)))
-    return render(request, "leaderboard.html", ready=True, rows=rows)
+    return RedirectResponse("/history#leaderboard", status_code=303)

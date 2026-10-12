@@ -25,6 +25,7 @@ from racinglines.web import board as B
 from racinglines.web import diag
 from racinglines.markets import private_book as house
 from racinglines.web import jobs
+from racinglines.web import layout as LAYOUT
 from racinglines.markets import venues as V
 from racinglines.web import roles as R
 from racinglines.web.app import ANY, PRO, allow, app, audit, check_csrf, conn, data, render, rows
@@ -472,11 +473,17 @@ def _model_brier(c):
 
 @app.get("/lab", response_class=HTMLResponse)
 def lab_page(request: Request, job: str = "", event: str = "", variant: str = "", candidate: int = 0, cfg: str = "",
-             sport: str = "", venue: str = "", msg: str = "", user=allow(*PRO), c=Depends(conn)):
+             sport: str = "", venue: str = "", msg: str = "", user=allow(*ANY), c=Depends(conn)):
     """The Edge Finder leads (saved runs only, nothing is simulated on a visit); the other sections
     load on demand (/lab/section/{key}). Edge Finder combos and job knobs come from the user's prefs
-    (database); which sections are open is a browser view setting."""
+    (database); which sections are open is a browser view setting. Under the alpha layout the Lab tab is everyone's
+    (web/layout.py): an account without Pro opens its strategy's performance instead."""
     from urllib.parse import urlencode
+
+    if user["role"] not in PRO:
+        if LAYOUT.alpha():
+            return RedirectResponse("/strategy", status_code=303)
+        raise HTTPException(403)
 
     active = any(j["status"] in ("queued", "running") for j in _recent_jobs(c, user["id"], A.hidden(user)))
     open_now = (["run"] if job or event or variant or candidate or cfg else []) + (["jobs"] if active or msg else [])

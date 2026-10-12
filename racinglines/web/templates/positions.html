@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% from "_macros.html" import empty, table, demo_context, chart, kpi, pnl, pnl_cls, page_head %}
 {% block title %}Positions{% endblock %}
 {% block content %}
+{% include "_lab_nav.html" %}
 {% set priv = venue == 'private' %}
 {% set others = venue_order|reject('in', ['polymarket', 'private'])|list %}{# exchanges besides Polymarket the account has rows on #}
 {% set on = ["Polymarket"] %}{% for k in others %}{% set _ = on.append(venue_names.get(k, k)) %}{% endfor %}{% if venues.private %}{% set _ = on.append("Private book") %}{% endif %}
