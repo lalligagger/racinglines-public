@@ -206,8 +206,8 @@ def source_choice():
     return "local" if configured() else choose_first_run()
 
 
-# the commands the hosted server runs (their own --remote path): book map|price|settle, model backtest|forecast
-REMOTE_COMMANDS = (("book", ("map", "price", "settle"), None), ("model", ("backtest", "forecast"), ("f1", "mtb_dh")))
+# the commands the hosted server runs (their own --remote path): book map|price|settle|export, model backtest|forecast
+REMOTE_COMMANDS = (("book", ("map", "price", "settle", "export"), None), ("model", ("backtest", "forecast"), ("f1", "mtb_dh")))
 
 
 def remote_capable(argv):

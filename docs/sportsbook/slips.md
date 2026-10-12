@@ -49,6 +49,7 @@ racinglines book price FILE --remote --rich
 racinglines book map    FILE [--json] [--db URL]
 racinglines book price  FILE [--json] [--db URL] [--run ID ...] [--sims RACE_ID=FILE.npz ...]
 racinglines book settle FILE [--json] [--db URL]
+racinglines book export FILE --ledger OUT.csv [--force] [--db URL] [--run ID ...]
 racinglines book view   RESULT.json
 ```
 
@@ -120,6 +121,9 @@ The book file uses the [schema](index.md) as before, with these optional additio
 - `odds` on a combo's leg: a parlay with no quoted odds of its own pays the product of its legs' odds (the line's
   `odds` may then be left out).
 - `id` on a line: the name that output and errors use (default: its 1-based position).
+- `stake` on a line: the bet placed, a number above 0 in `book.currency` (a Kalshi `cents` book: dollars). Read by
+  `book export`; a line without one is a quote, not a bet.
+- `placed_utc` on a line: when the bet was placed (`2026-10-03T22:32Z`), else the book's `captured_utc`.
 - `[aliases]`: an exact table from the venue's spelling to our display name (`"Alpha, Ann" = "Ann Alpha"`).
 
 A slip is a line whose market is `kind = "combo"` with `legs = [...]` ([combos](index.md), `markets/combos.py`).
@@ -217,6 +221,30 @@ manual. A void leg voids the line and returns the stake (payout 1) under `void_l
 `"drop_leg"`, the other legs decide, and the payout is re-priced from their odds when the legs carry odds; otherwise
 the payout is left to the book. A won line pays `d`. Payout and profit are per unit staked. Cancelled-race venue
 rules (`markets/settlement_rules.py`) are not applied here.
+
+## Ledger export
+
+`racinglines book export FILE --ledger OUT.csv` (`racinglines/books/ledger.py`) prices and settles the book (local,
+`--demo` or `--remote`, as the other commands) and writes its staked lines as ledger rows, one per bet, with the
+columns `date_utc, sport, event, venue, market, selection, stake, currency, odds_taken, our_fair_prob, closing_odds,
+result, payout, follower, notes`. It writes OUT only: it refuses an existing file unless `--force` is given and never
+appends. Lines without a `stake` are skipped and counted on stderr.
+
+| Column | From |
+|---|---|
+| `date_utc` | the line's `placed_utc`, else the book's `captured_utc`, to the minute |
+| `sport`, `event` | the line's legs as mapped: `<season>-<round> <event>` (e.g. `2026-16 Malaysia GP`), joined with ` + ` across races; an unmapped line gets the book's event key, said in `notes` |
+| `venue`, `currency` | the book's, as given (never converted) |
+| `market`, `selection`, `stake` | the line's title, selection and stake |
+| `odds_taken` | decimal odds, the payout per unit staked; the book's own quote goes in `notes` when it is not decimal |
+| `our_fair_prob` | the model's probability of the whole bet (`book price`), blank without one |
+| `closing_odds`, `follower` | blank |
+| `result` | `won`, `lost` or `void` from our own results (`book settle`, noted `settled: ours`); otherwise `open`, with the reason (pending, manual, unmapped) in `notes` |
+| `payout` | the total returned: won = stake × the line's payout, lost = 0, void = the stake, open blank |
+
+An exchange quote (`cents`, `dollars`) also notes the number of $1 contracts the stake buys. A `cents` book must have
+`currency = "USD"`, since a Kalshi contract pays $1; anything else is refused, so a stake can't be written in cents.
+The row builder (`ledger.rows`) returns dicts, so a database table can take the same rows.
 
 ## JSON output
 

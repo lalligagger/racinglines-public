@@ -18,7 +18,8 @@ def test_the_malaysia_round_has_one_name():
 
 def test_race_title_uses_the_name_table_then_the_venue():
     assert V.race_title("f1_wdc", "2026-16", "Sakhir", "Bahrain Grand Prix") == "Malaysia GP"
-    assert V.race_title("f1_wdc", "2026-17", "Marina Bay", "Singapore Grand Prix") == "Marina Bay GP"
+    assert V.race_title("f1_wdc", "2026-17", "Marina Bay", "Singapore Grand Prix") == "Singapore GP"
+    assert V.race_title("f1_wdc", "2026-15", "Baku", "Azerbaijan Grand Prix") == "Baku GP"
     assert V.race_title("mtb_dh", "20260927", "Whistler", "Crankworx") == "Whistler"
 
 

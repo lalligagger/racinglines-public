@@ -168,6 +168,7 @@ jobs = ["sweep", "checkpoints", "season_strategy"]
 
 [names]                                   # one display name per event key: Markets board, race page, calendar, Live tab
 "2026-16" = "Malaysia GP"                 # FastF1 and the exchanges call it the Bahrain Grand Prix; it ran at Sepang
+"2026-17" = "Singapore GP"                # the venue is Marina Bay; the owner's ledger and the exchanges say Singapore
 
 [live]
 # A race weekend's private book (pipelines/live_f1.py): updated at session ends from the model's stage runs,
