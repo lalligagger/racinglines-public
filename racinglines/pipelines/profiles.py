@@ -80,8 +80,8 @@ TAKER_PROFILES = {
                why="taker-resweep rank 8: A in markets with $200+ traded in 24 h. Robust, smallest drawdowns: defaults-2026-10 (16 + 23 weekends, 16k): 2026 +689 (0.72, 260), 2025 +608 (0.78, 225)."),
     "T7": dict(name="T7 · update, loose podium coherence", strategy="update", settings=dict(_T7),
                why="taker-resweep rank 1: A with podium coherence 0.35. Robust but within noise of A: defaults-2026-10 (16 + 23 weekends, 16k): 2026 +1,258 (1.17, 249), 2025 +1,456 (1.58, 213)."),
-    "T8": dict(name="T8 · stage-aware (early)", strategy="early", settings=dict(_T1),
-               why="taker-resweep rank 10: A's settings on the stage-aware taker. 2026-led: defaults-2026-10 (16 + 23 weekends, 16k): 2026 +2,707 (1.57, 214), 2025 +546 (0.96, 412)."),
+    "T8": dict(name="T8 · stage-aware (early, $25 volume floor)", strategy="early", settings=dict(_T1, min_volume_24h=25),
+               why="defaults-2026-10: A's settings on the stage-aware taker at a $25 volume floor. 2026-led: 16k 2026 +3,145 (1.65, 231), 2025 +757 (1.36, 424); +438 / +211 over the $50 floor, +473 / +233 and +475 / +224 at seeds 1 and 2 (seedcheck-2026-10)."),
     "T9": dict(name="T9 · stage-aware, loose podium coherence", strategy="early", settings=dict(_T7),
                why="taker-resweep rank 9: T8 with podium coherence 0.35. 2026-led: defaults-2026-10 (16 + 23 weekends, 16k): 2026 +2,794 (1.62, 214), 2025 +570 (1.00, 412)."),
     "T10": dict(name="T10 · update, baseline model", strategy="update",
@@ -93,7 +93,7 @@ TAKER_TOP = ("T7", "T1", "T2", "T3", "T4", "T5", "T10", "T6", "T9", "T8")     # 
 # scaled by its weight (signals.compute_all); its signals carry detail.member. A blend is not a Lab candidate.
 COMBOS = {
     "TB": dict(name="TB · blended taker (update + stage-aware)", members=[("T1", 0.5), ("T8", 0.5)],
-               why="taker-resweep recommended blend: half T1, half T8 (same model, two entry rules). defaults-2026-10 (16 + 23 weekends, 16k): 2026 +2,042 (Sharpe 1.47, max DD 227), 2025 +989 (1.56, 250). Chosen on both seasons, so no held-out season."),
+               why="taker-resweep recommended blend: half T1, half T8 (same model, two entry rules). defaults-2026-10 (16 + 23 weekends, 16k): 2026 +2,261, 2025 +1,094 with T8 at its $25 floor (seedcheck-2026-10, default seed). Chosen on both seasons, so no held-out season."),
 }
 PROFILES.update(TAKER_PROFILES)
 PROFILES.update(COMBOS)

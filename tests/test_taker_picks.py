@@ -32,7 +32,7 @@ def test_shortlist_is_ten_valid_taker_profiles_and_blends_name_them():
         assert pr["strategy"] in SG.WS.TAKER_MODES and pr["name"].startswith(code + " ")
         SS.Settings.from_dict(pr["settings"])                                   # valid settings, strictly
     assert PF.PROFILES["T1"]["settings"] == PF.PROFILES["A"]["settings"]
-    assert PF.PROFILES["T8"]["strategy"] == "early" and PF.PROFILES["T8"]["settings"] == PF.PROFILES["T1"]["settings"]
+    assert PF.PROFILES["T8"]["strategy"] == "early" and PF.PROFILES["T8"]["settings"] == dict(PF.PROFILES["T1"]["settings"], min_volume_24h=25)   # 2026-10-12 decision log
     tb = PF.PROFILES["TB"]
     assert PF.is_combo(tb) and tb["members"] == [("T1", 0.5), ("T8", 0.5)] and not PF.is_combo(PF.PROFILES["A"])
     for pr in PF.COMBOS.values():
