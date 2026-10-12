@@ -15,6 +15,24 @@ files in `data/archive/<sport>/` (both git-ignored; `data/raw` is the record, so
 without a copy). Since 2026-10-01 nothing under `data/` is in git, and production data lives on the VM: back up
 there with `vm.sh backup <purpose>`.
 
+## 2026-10-12 · Production: fantasy reset for the Alpha Fantasy Launch
+
+Database `racinglines` (production), right after the Alpha deploy (#146, 1d646ae). Staging was not touched.
+
+**Why.** The owner's decision of 2026-10-11 was that the per-user ledger is the fantasy ledger. Every account except
+`maker` and `taker` starts again from a single 1,000 grant, with no trading history and no strategy profile, so each
+user picks a profile in the app. The old history was paper trades that the signal engine made automatically from
+each account's sign-up profile over the 2026-16 and 2026-17 weekends. Nobody traded by hand, and there were no house
+bets. Singapore (2026-17) was already completed when the reset ran.
+
+**What.** `scripts/vm/reset_fantasy.sh` with `TARGET=prod APPLY=1` (dry run first). It reset 18 accounts and deleted
+their paper positions, strategy signals and strategy profiles. `maker` and `taker` were kept. It wrote `data_changes`
+note 422.
+
+**Backup** (on the VM, under `/opt/racinglines/data/backups/db/`): `racinglines-before-fantasy-reset-20261012T082442Z.sql.gz`.
+
+**Undo.** Restore that backup with `vm.sh restore`. This also undoes anything written after 08:24Z.
+
 ## 2026-10-07 · Staging only: parity sprint data run (NASCAR, MotoGP, Kalshi, NASCAR links)
 
 Database `racinglines_staging` only; production was not touched.

@@ -57,6 +57,13 @@ remote() { gcloud compute ssh "$VM" --project "$PROJECT" --zone "$ZONE" --tunnel
 as_app() { remote "cd $APP && sudo -u racinglines -H env RACINGLINES_GCS_BUCKET=$BUCKET $1"; }
 SERVICES="racinglines-web racinglines-recorder"
 PAUSED=/var/lib/racinglines/deploy-paused    # timers a deploy paused and hasn't resumed yet (deploy resumes them)
+# production and staging each need their own venv (docs/vm-deploy.md#separate-venvs): checked before a deploy changes anything
+venv_check() {
+  remote 'p=/opt/racinglines/.venv; s=/opt/racinglines-staging/.venv
+    for v in $p $s; do if [ -L $v ]; then echo "refusing: $v is a symlink (to $(readlink -f $v))"; exit 1; fi; done
+    if [ -e $p ] && [ -e $s ] && [ "$(readlink -f $p)" = "$(readlink -f $s)" ]; then echo "refusing: $p and $s are the same venv"; exit 1; fi' ||
+    { echo "production and staging must not share a venv (docs/vm-deploy.md#separate-venvs): nothing paused, nothing deployed"; exit 1; }
+}
 
 case "${1:-}" in
   setup)
@@ -140,6 +147,7 @@ case "${1:-}" in
     # tail: a fresh CI runner's first ssh prints its key generation on stdout ahead of the command's own output
     origin=$(as_app "git remote get-url origin" | tail -n 1) || { echo "couldn't reach the VM: nothing paused, nothing deployed"; exit 1; }
     [ "$origin" = "$REPO_URL" ] || { echo "the VM checkout fetches from $origin, not $REPO_URL: run bash scripts/deploy/vm.sh repoint first. Nothing paused, nothing deployed."; exit 1; }
+    venv_check
     # Pause, don't refuse. The timers (racinglines-live-f1@<event>.timer, racinglines-signals.timer) start oneshot
     # steps every 5 minutes; stop them and wait for a step already running ("activating"), so no step runs while
     # update.sh rewrites the checkout. Each step is idempotent and catches up: an F1 live step does every update
@@ -175,7 +183,11 @@ case "${1:-}" in
       remote "sudo mkdir -p ${PAUSED%/*} && echo '$timers' | sudo tee $PAUSED >/dev/null && sudo systemctl stop$timers"
       log "waiting up to 5 minutes for a step in progress"
       rc=0
-      remote "for i in \$(seq 60); do systemctl list-units --no-legend --plain --state=activating$steps | grep -q . || exit 0; sleep 5; done; echo 'still running:'; systemctl list-units --no-legend --plain --state=activating$steps | awk '{print \$1}'; exit 1" || rc=$?
+      # A signals pass can outlast the wait (about 6 minutes on 2026-10-12, so with its 5-minute timer one is nearly
+      # always running): when it is the only step left it is stopped. Safe to cut short: each profile's signals and
+      # positions are one transaction, inserts are ON CONFLICT DO NOTHING, and the resumed timer runs a fresh pass
+      # (pipelines/signals.py _run_one, store). Live-event and other steps still get the full wait.
+      remote "for i in \$(seq 60); do systemctl list-units --no-legend --plain --state=activating$steps | grep -q . || exit 0; sleep 5; done; left=\$(systemctl list-units --no-legend --plain --state=activating$steps | awk '{print \$1}'); if [ \"\$left\" = racinglines-signals.service ]; then echo 'stopping the signals pass still running (the resumed timer runs a fresh one)'; sudo systemctl stop racinglines-signals.service && exit 0; fi; echo 'still running:'; echo \"\$left\"; exit 1" || rc=$?
       if [ "$rc" -ne 0 ]; then
         remote "sudo systemctl start$timers && sudo rm -f $PAUSED" && trap - EXIT
         if [ "$rc" -eq 1 ]; then
@@ -295,6 +307,7 @@ case "${1:-}" in
         ref="${3:-staging}"
         origin=$(as_stg "git remote get-url origin" | tail -n 1) || { echo "couldn't reach the VM or $STG is missing: run bash scripts/deploy/vm.sh staging setup first"; exit 1; }
         [ "$origin" = "$REPO_URL" ] || { echo "$STG fetches from $origin, not $REPO_URL: nothing deployed"; exit 1; }
+        venv_check
         # Check for concurrent staging workflow runs and warn (but don't block)
         if command -v gh >/dev/null 2>&1; then
           if gh run list --workflow staging.yml --status in_progress --limit 1 2>/dev/null | grep -q .; then
