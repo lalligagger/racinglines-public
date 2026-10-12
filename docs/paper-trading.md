@@ -28,6 +28,18 @@ The two profiles come from the params-4h cloud search (see
 - **Assigned per user** in `users.prefs["strategy_profile"]`, with the full settings, so deleting the
   candidate doesn't break the assignment. An admin sets or clears it on `/admin/users/{id}`
   (**Strategy profile**).
+- **Picked by the account** on `/strategy/pick` ([Web app](webapp.md)). Sign-up assigns no profile, so a new
+  account trades nothing until it picks one (owner, 2026-10-11); `racinglines users reset-fantasy` clears profiles
+  too. The dice roll a strategy's sliders in the browser, and a rolled save is marked `rolled` on the profile. The
+  demo accounts keep theirs.
+- **No changes during a race weekend.** A pick, a slider, a dice roll or a stop is refused while the F1 weekend's
+  signal window is open, the same window the engine runs in (`signals.in_weekend`: from `WEEKEND_LEAD`, 4 days, before
+  the race start to `WEEKEND_TAIL`, 24 hours, after it), because the engine replays the weekend's stages with the
+  profile's current settings and a change would rewrite the weekend's earlier calls.
+- **Makers closed for Alpha** (owner, 2026-10-11): while `profiles.MAKERS_OPEN` is `False`, only an admin account can
+  be assigned a maker profile (`web/roles.allowed_profile`; a pro account's save of maker C on `/strategy/pick` is
+  refused), and the signal engine skips every maker profile except the demo accounts' (`signals.run_all`). Nothing
+  is deleted; set it `True` for Beta.
 
 ```
 racinglines strategy profiles f1                  # list; create A and C as Lab candidates if missing

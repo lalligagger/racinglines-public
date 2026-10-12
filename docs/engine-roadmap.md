@@ -14,6 +14,14 @@ and Plackett-Luce) is now the yardstick those two models are missing, not only a
 matrix below is updated for MotoGP's results ingest. Status per sport and venue: [Sports and exchanges](coverage.md). The task-by-task implementation plan (twelve
 tasks, roles, files, tests, backups) is the owner's "Engine Implementation Plan" page; the phases here are its skeleton.
 
+**Update 2026-10-11 (staging; decision log in the [F1 roadmap](f1-roadmap.md), "One engine", provisional).** Every
+modelled sport's `[sport] pricing_model` is now `racinglines.models.model_global:GlobalModel`, and `sports/<code>.toml`
+`[model] inputs` picks one of three cores (`racinglines/models/inputs/__init__.py`): results (NASCAR, MotoGP), laps
+(F1) and run_times (downhill). The cores keep the algorithms of `position_sim`, `timed_runs` and the results model, so
+prices are unchanged (`tests/test_one_engine.py`); `PositionSim`, `TimedRuns`, `NascarCupRace` and
+`MotoGPRaceChallenger` stay as `[sport] challengers`. The tables below are as of 2026-09-29 and still name the old
+models. Details: [One engine](backtest-core.md#one-engine-schema-declared-inputs).
+
 **The goal.** A model is developed once, joins "the engine", and runs on any sport and any exchange that
 has the data it needs. For that we need three things:
 

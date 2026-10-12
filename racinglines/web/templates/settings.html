@@ -20,7 +20,7 @@
   <label><span>Sports</span>
     <div class="checkbox-group">
       <label><input type="checkbox" name="sports" value="f1" {% if 'f1' in sports %}checked{% endif %}> Formula 1</label>
-      <label><input type="checkbox" name="sports" value="motogp" {% if 'motogp' in sports %}checked{% endif %}> MotoGP</label>
+      {% if 'motogp' not in hidden_sports %}<label><input type="checkbox" name="sports" value="motogp" {% if 'motogp' in sports %}checked{% endif %}> MotoGP</label>{% endif %}
       <label><input type="checkbox" name="sports" value="nascar" {% if 'nascar' in sports %}checked{% endif %}> NASCAR</label>
     </div>
   </label>

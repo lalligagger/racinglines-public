@@ -262,13 +262,14 @@ def create_example(session, conn, run_id, maker_id, taker, fill="through"):
 # Summary for the /diag hub
 # ---------------------------------------------------------------------------
 
-def event_summaries(conn):
+def event_summaries(conn, hide=()):
     """One row per event with diagnostics: runs, model vs Polymarket at the latest
-    cutoff, and the maker replay's P&L (conservative fills, +-2c)."""
+    cutoff, and the maker replay's P&L (conservative fills, +-2c). hide: competition codes left out (web/audience.py)."""
     runs = data.q(conn, """
         SELECT mr.id, mr.params->>'event_key' AS event_key, mr.params->>'cutoff' AS cutoff
-        FROM model_runs mr WHERE mr.kind = 'diagnostic' AND NOT mr.params ? 'sweep_stage'
-        ORDER BY (mr.params->>'cutoff')::timestamp""")
+        FROM model_runs mr JOIN competitions co ON co.id = mr.competition_id
+        WHERE mr.kind = 'diagnostic' AND NOT mr.params ? 'sweep_stage' AND NOT co.code = ANY(CAST(:h AS text[]))
+        ORDER BY (mr.params->>'cutoff')::timestamp""", h=list(hide))
     out = []
     for key, g in runs.groupby("event_key", sort=False):
         last = int(g["id"].iloc[-1])
@@ -296,16 +297,16 @@ def event_summaries(conn):
     return out
 
 
-def recent_runs(conn, limit=20):
+def recent_runs(conn, limit=20, hide=()):
     """Every kind of model run, newest first; forecasts that a newer forecast of the
-    same competition replaced are marked superseded."""
+    same competition replaced are marked superseded. hide: competition codes left out (web/audience.py)."""
     df = data.q(conn, """
         SELECT mr.id, mr.created_at, mr.kind, co.name AS competition, s.year AS season,
                coalesce(mr.params->>'event_key', '') AS event_key, coalesce(mr.params->>'cutoff', '') AS cutoff,
                mr.id <> max(mr.id) OVER (PARTITION BY mr.competition_id, mr.category_id, mr.kind) AS superseded
         FROM model_runs mr JOIN competitions co ON co.id = mr.competition_id
-        LEFT JOIN seasons s ON s.id = mr.season_id
-        ORDER BY mr.id DESC LIMIT :n""", n=limit)
+        LEFT JOIN seasons s ON s.id = mr.season_id WHERE NOT co.code = ANY(CAST(:h AS text[]))
+        ORDER BY mr.id DESC LIMIT :n""", n=limit, h=list(hide))
     df["superseded"] = df["superseded"] & (df["kind"] != "diagnostic")
     df["season"] = df["season"].astype("Int64").astype(object).where(df["season"].notna(), None)
     df["cutoff"] = df["cutoff"].str[:16]

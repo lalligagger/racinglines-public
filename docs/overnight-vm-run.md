@@ -97,10 +97,18 @@ units (`racinglines-staging-live-*`). `scripts/vm/demo_setup.sh` takes the same 
 script: `sudo systemd-run --unit=rl-overnight-staging --uid=racinglines --setenv=TARGET=staging --setenv=MODE=replay
 /opt/racinglines-staging/scripts/vm/overnight.sh`. `TARGET=prod`, the default, is unchanged.
 
+**Queue.** `QUEUE` names the search queue `f1` mode runs (default `sweeps/overnight-vm.toml`). The script reads the
+queue's `[search] name` (it stops if there is none) and writes the run to `data/runs/search/<name>/`, with the promoted
+queue copied there as `queue-promoted.toml`; the checkout's queue file is then restored, so the next `vm.sh deploy`
+finds a clean tree. `sweeps/defaults-2026-10.toml` is the queue for the default-strategies refresh of the F1
+Polymarket taker library (owner's go, 2026-10-11): its header has the phases, the job count and the promotion rule,
+and the command, run as a transient unit: `TARGET=staging MODE=f1 QUEUE=sweeps/defaults-2026-10.toml
+scripts/vm/overnight.sh`.
+
 | Mode | Writes | What |
 |---|---|---|
 | `dry` | nothing | cores, memory, disk; table counts; each sport's tape probe and last-race replay; **the F1 golden check** (profile A on 2026 at 4k, not saved) |
-| `f1` | sweep runs, walk-forward | backup; the broad sweep (`sweeps/overnight-vm.toml`); `search-report`; `scripts/vm/promote_16k.py` appends the top 10 plus profile A and the default settings at 16k; the 16k confirmations; `search-report` again; with `F1_EXTRAS=1` only, the F1 walk-forward and the default F1 sweeps saved (as the backfill's `full` did; off by default since the 2-vCPU resize) |
+| `f1` | sweep runs, walk-forward | backup; the broad sweep (`QUEUE`, default `sweeps/overnight-vm.toml`; output in `data/runs/search/<its [search] name>/`); `search-report`; `scripts/vm/promote_16k.py` appends the top 10 plus profile A and the default settings at 16k; the 16k confirmations; `search-report` again; with `F1_EXTRAS=1` only, the F1 walk-forward and the default F1 sweeps saved (as the backfill's `full` did; off by default since the 2-vCPU resize) |
 | `replay` | links, tape, replay runs | backup; for each of `SPORTS` (default NASCAR and MotoGP together): **if the preflight finds 0 events or 0 Kalshi links with a race, it first fetches and ingests the sport's results 2016-2026, re-syncs Kalshi and (NASCAR) runs `nascar link --apply`**; Kalshi and Polymarket link syncs for 2025 and 2026 (closed included); tape pull and replay (a sport with no tradeable Kalshi market is skipped with a STOP line, the rest go on); the spike check; the replay saves; a read-only settings grid and its top 3 at 16k; then OG.com's read-only buy-all for F1 and NASCAR (PR #88) |
 | `story` | 16 sweep runs, the taker's demo backfill | backup; evidence sweeps; a gate that stops on a different pick; the taker's backfill rebuilt ([below](#demo-taker-walk-forward-story)) |
 | `sports` | replay and story | `replay`, then `story`: the resume after the 2026-09-30 failure (F1 already done) |

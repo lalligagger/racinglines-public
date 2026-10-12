@@ -8,8 +8,11 @@ The downhill season model lives in `racinglines/models/inputs/run_times/` (secti
 - Mid-season: how will the championship end up?
 
 How accurate it is: [Downhill evaluation](evaluation.md). The live 2026
-projection: [Downhill forecast](forecast.md). Formula 1 uses a different model
-family: [F1 model](f1.md).
+projection: [Downhill forecast](forecast.md). Since the one engine (staging, 2026-10-11) this model is the
+run-times core of `racinglines/models/model_global.py`, chosen by the inputs `sports/mtb_dh.toml` declares
+(`run_times`, `practice`); its runs are still stored as `timed_runs`, and every price is unchanged
+([One engine](backtest-core.md#one-engine-schema-declared-inputs)). Formula 1 runs the same engine on its laps core:
+[F1 model](f1.md).
 
 ## Overview
 

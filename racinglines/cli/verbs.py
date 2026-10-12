@@ -167,7 +167,7 @@ def _help(group):
             h = SHARED.get(c, h) if len(sports) > 1 else h
             lines.append(f"    {c:<18} {' '.join(sports):<28} {h}")
     if group == "model":
-        lines += ["", "No data yet? Add --demo to any command, e.g. `racinglines model backtest f1 --demo`: the same"
+        lines += ["", "No data yet? Add --demo to any command, e.g. `racinglines model backtest kart --demo`: the same"
                   " command on a synthetic demo store (docs/quickstart.md)."]
     lines += ["", f"`racinglines {group} <command> SPORT -h` for a command's options."]
     return "\n".join(lines)

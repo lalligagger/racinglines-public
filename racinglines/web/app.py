@@ -60,7 +60,7 @@ CSRF_TOKEN = hmac.new(_SECRET.encode(), b"csrf", hashlib.sha256).hexdigest()
 security = HTTPBasic(realm="racinglines", auto_error=False)
 SESSION_COOKIE = "rl_session"
 SESSION_HOURS = 12
-PUBLIC_PATHS = ("/login", "/static", "/racinglines101", "/signup", "/forgot", "/pitch", "/mybets", "/term")
+PUBLIC_PATHS = ("/login", "/signin", "/static", "/racinglines101", "/signup", "/forgot", "/pitch", "/mybets", "/term")
 
 # failed-login throttle: per client IP, MAX_FAILURES within FAILURE_WINDOW seconds -> 429
 MAX_FAILURES = 8
@@ -139,7 +139,7 @@ def authenticate(request: Request, creds: HTTPBasicCredentials | None = Depends(
         _record_failure(ip)
         U.log(get_engine(), None, "login_failed", request, username=creds.username, via="basic")
     if request.method == "GET" and "text/html" in request.headers.get("accept", ""):
-        raise HTTPException(status.HTTP_303_SEE_OTHER, headers={"Location": "/login?next=" + quote(
+        raise HTTPException(status.HTTP_303_SEE_OTHER, headers={"Location": "/signin?next=" + quote(
                                 request.url.path + (f"?{request.url.query}" if request.url.query else ""), safe="/")})
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated",
                         headers={"WWW-Authenticate": 'Basic realm="racinglines"'})
@@ -229,6 +229,8 @@ MAINTENANCE_NOTICE = ""      # off since the landing rebuild (owner, 2026-10-08:
 templates.env.globals["maintenance_notice"] = lambda: MAINTENANCE_NOTICE   # read at render time
 templates.env.globals["signup_on"] = lambda: signup_on()                    # RACINGLINES_SIGNUP=1: beta sign-up
 templates.env.globals["is_demo"] = lambda u: _demo.is_demo(u)
+from racinglines.web import audience as _audience  # noqa: E402  [sport] audience: which sports a user sees
+templates.env.globals["sport_shown"] = lambda code, user=None: _audience.shown(user, code)   # signed out: as a user
 
 
 def needs_email(user):
@@ -270,16 +272,19 @@ def _signals_nav(user):
                                          (prefs->'strategy_profile'->'bankroll'->>'start')::float,
                                          (SELECT count(*) FROM strategy_signals WHERE user_id = :u AND seen_at IS NULL
                                             AND status <> 'expired'
+                                            AND NOT coalesce(detail->>'sport', '') = ANY(CAST(:hs AS text[]))
                                             AND (CAST(:since AS timestamptz) IS NULL OR created_at > CAST(:since AS timestamptz))),
                                          (SELECT sum(cash + yes_shares * coalesce(outcome::int, mark)
                                                  + no_shares * (1 - coalesce(outcome::int, mark)))
                                             FROM paper_positions WHERE user_id = :u AND (venue = 'polymarket'
-                                                 OR (:sp AND event_key IN (""" + SP.SPORT_KEYS + """)))),
+                                                 OR (:sp AND event_key IN (""" + SP.SPORT_KEYS
+                                                 + " AND NOT detail->>'sport' = ANY(CAST(:hs AS text[]))" + """)))),
                                          (SELECT sum(cash + yes_shares * coalesce(outcome::int, mark)
                                                  + no_shares * (1 - coalesce(outcome::int, mark)))
                                             FROM paper_positions WHERE user_id = :u AND venue = 'private')
                                   FROM users WHERE id = :u"""),
-                          dict(u=user["id"], since=_seen_since(user), sp=SP.enabled())).first()
+                          dict(u=user["id"], since=_seen_since(user), sp=SP.enabled(),
+                               hs=list(_audience.hidden(user)))).first()    # [sport] audience: hidden sports don't count
     except Exception:                                   # noqa: BLE001  the nav never breaks a page
         return None
     if r is None or not (r[0] or user["role"] == "admin"):
@@ -330,7 +335,7 @@ def _error_page(request, code):
 @app.exception_handler(StarletteHTTPException)
 async def _http_error(request: Request, exc: StarletteHTTPException):
     if exc.status_code == 429 and request.method == "POST" and request.url.path == "/login" and _wants_html(request):
-        return RedirectResponse("/login?error=throttled", status_code=303)
+        return RedirectResponse("/signin?error=throttled", status_code=303)
     if exc.status_code in ERROR_TEXT and _wants_html(request):
         resp = _error_page(request, exc.status_code)
         if resp is not None:
@@ -375,7 +380,16 @@ SITE = ROOT / "site"     # the built docs (mkdocs build -d site; the pre-push ho
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request, next: str = "/", error: str = ""):
-    return templates.TemplateResponse(request, "login.html", dict(next=next, error=error, support=SUPPORT_EMAIL))
+    """The signed-out landing page. Signing in is /signin; an old sign-in link with an error goes there."""
+    if error:
+        return RedirectResponse(f"/signin?next={quote(_safe_next(next), safe='/')}&error={quote(error)}", status_code=303)
+    return templates.TemplateResponse(request, "login.html", dict(next=next, support=SUPPORT_EMAIL))
+
+
+@app.get("/signin", response_class=HTMLResponse)
+def signin_page(request: Request, next: str = "/", error: str = ""):
+    """Sign in (owner, 2026-10-12: off the landing, on its own page). The form posts to /login."""
+    return templates.TemplateResponse(request, "signin.html", dict(next=next, error=error, support=SUPPORT_EMAIL))
 
 
 def _safe_next(nxt):
@@ -397,7 +411,7 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
     if user is None:
         _record_failure(ip)
         U.log(get_engine(), None, "login_failed", request, username=username)
-        return RedirectResponse(f"/login?next={quote(_safe_next(next), safe='/')}&error=1#account", status_code=303)
+        return RedirectResponse(f"/signin?next={quote(_safe_next(next), safe='/')}&error=1", status_code=303)
     target = _safe_next(next) if next != "/" else "/markets"
     return _start_session(request, user, target)
 
@@ -455,7 +469,7 @@ def settings_page(request: Request):
         email=prefs.get("email", ""),
         exchange=prefs.get("exchange", "polymarket"),
         sports=prefs.get("sports", ["f1"]),
-        **_mcp_context(user),
+        **_mcp_context(user), hidden_sports=_audience.hidden(user),
     ))
 
 
@@ -471,6 +485,7 @@ def update_settings(request: Request, email: str = Form(""), exchange: str = For
     if email and not re.match(r"^[^@]+@[^@]+\.[^@]+$", email):
         return templates.TemplateResponse(request, "settings.html", dict(
             email=email, exchange=exchange, sports=sports, error="Invalid email address", **_mcp_context(user),
+            hidden_sports=_audience.hidden(user),
         ), status_code=400)
     with get_session() as s:     # merge: the session user carries no prefs, and prefs also hold the MCP token and seen-at marks
         u = s.query(m.User).filter_by(id=user["id"]).first()
@@ -479,6 +494,7 @@ def update_settings(request: Request, email: str = Form(""), exchange: str = For
     audit(request, "update_settings", email=bool(email), exchange=exchange, sports=sports)
     return templates.TemplateResponse(request, "settings.html", dict(
         email=email, exchange=exchange, sports=sports, success="Settings saved", **_mcp_context(user),
+        hidden_sports=_audience.hidden(user),
     ))
 
 
@@ -500,7 +516,7 @@ def add_email(request: Request, email: str = Form(""), next: str = Form("/market
         prefs = _prefs(user["id"])
         return templates.TemplateResponse(request, "settings.html", dict(
             email=email, exchange=prefs.get("exchange", "polymarket"), sports=prefs.get("sports", ["f1"]),
-            error=error, **_mcp_context(user)), status_code=400)
+            error=error, **_mcp_context(user), hidden_sports=_audience.hidden(user)), status_code=400)
     audit(request, "add_email")
     return RedirectResponse(_safe_next(next), status_code=303)
 

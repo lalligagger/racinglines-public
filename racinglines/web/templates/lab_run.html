@@ -2,7 +2,7 @@
 {# One job form at a time: pick a sport and a job (app.js runPickInit; with no JS every form shows). Each form shows its
    main inputs; the rest wait under "More settings", still submitted with their saved values. #}
 {% macro knob(k, val) %}<label title="{{ k.help }}"><span>{{ k.label }}</span>
-    {% if k.type == 'choice' %}<select name="{{ k.name }}">{% for ch in k.choices %}<option {{ 'selected' if ch == val }}>{{ ch }}</option>{% endfor %}</select>
+    {% if k.type == 'choice' %}<select name="{{ k.name }}">{% for ch in k.choices if k.name != 'sport' or ch not in hidden_sports %}<option {{ 'selected' if ch == val }}>{{ ch }}</option>{% endfor %}</select>
     {% elif k.type == 'event' %}<select name="{{ k.name }}" data-sets-cutoff>{% for e in events %}<option value="{{ e.key }}" data-cutoff="{{ e.default_cutoff }}" {{ 'selected' if e.key == sel_event }}>{{ e.venue }} {{ e.key }}{{ " · Polymarket" if e.tape }}</option>{% endfor %}</select>
     {% elif k.type == 'datetime' %}<input name="{{ k.name }}" value="{{ sel_cutoff }}" placeholder="YYYY-MM-DDTHH:MM">
     {% elif k.type == 'text' %}<input name="{{ k.name }}" value="{{ val }}" maxlength="60">
@@ -31,7 +31,7 @@
 <details class="fold"><summary>Which jobs run on which exchange</summary>
 <div class="scroll"><table class="launcher">
 <thead><tr><th class="l">Sport</th>{% for v in venues %}<th class="l">{{ venue_name(v) }}</th>{% endfor %}</tr></thead><tbody>
-{% for r in launch_rows %}<tr><th class="l">{{ r.name }}</th>{% for v in venues %}{% set cell = r.cells[v] %}<td class="l">
+{% for r in launch_rows if r.code not in hidden_sports %}<tr><th class="l">{{ r.name }}</th>{% for v in venues %}{% set cell = r.cells[v] %}<td class="l">
   {%- if cell is none %}<span class="muted" title="no {{ venue_name(v) }} markets for {{ r.name }} in the schemas">not listed</span>
   {%- elif not cell %}<span class="muted" title="{{ venue_name(v) }} lists {{ r.name }}, but no job prices it there yet">no job yet</span>
   {%- else %}{% for jt in cell %}<a href="/lab?job={{ jt.code }}{{ '&sport=' ~ r.code if jt.sport == 'any' }}{{ '&venue=' ~ v if v }}#run">{{ jt.label }}</a>{{ "<br>"|safe if not loop.last }}{% endfor %}{% endif %}</td>{% endfor %}</tr>

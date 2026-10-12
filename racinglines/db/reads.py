@@ -75,7 +75,7 @@ def model_run(conn, run_id):
 def events(conn, competition=None, season=None):
     return q(conn, """
         SELECT e.id, s.year AS season, e.start_date, e.name, v.name AS venue, v.country, e.series_round,
-               e.status, e.source_key,
+               e.status, e.source_key, co.code AS competition,
                (SELECT count(*) FROM races ra WHERE ra.event_id = e.id) AS races
         FROM events e JOIN seasons s ON s.id = e.season_id JOIN competitions co ON co.id = s.competition_id
         LEFT JOIN venues v ON v.id = e.venue_id
@@ -147,6 +147,16 @@ def athlete_results(conn, athlete_id):
         LEFT JOIN venues v ON v.id = e.venue_id
         WHERE r.athlete_id = :id AND ro.kind <> 'practice'
         ORDER BY e.start_date DESC, ro.ordinal DESC""", id=athlete_id)
+
+
+def athlete_competitions(conn, athlete_id):
+    """The competition codes an athlete has a result or a prediction in."""
+    return set(conn.execute(text("""
+        SELECT co.code FROM results r JOIN rounds ro ON ro.id = r.round_id JOIN races ra ON ra.id = ro.race_id
+        JOIN events e ON e.id = ra.event_id JOIN seasons s ON s.id = e.season_id
+        JOIN competitions co ON co.id = s.competition_id WHERE r.athlete_id = :a
+        UNION SELECT co.code FROM race_predictions rp JOIN model_runs mr ON mr.id = rp.model_run_id
+        JOIN competitions co ON co.id = mr.competition_id WHERE rp.athlete_id = :a"""), dict(a=int(athlete_id))).scalars())
 
 
 def athlete_predictions(conn, athlete_id):
