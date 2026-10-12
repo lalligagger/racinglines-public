@@ -18,9 +18,9 @@ invented; play money, nothing is traded anywhere."""
 files = "files"
 
 # The data generator: writes the FastF1 files and the exchange links into the demo data folder (DATA, not code
-# paths: racinglines/demo/generate.py)
+# paths: racinglines/demo/mk_demo/generate.py)
 [generator]
-entry = "racinglines.demo.generate:write_pack"
+entry = "racinglines.demo.mk_demo.generate:write_pack"
 input = "world.toml"
 
 [load]

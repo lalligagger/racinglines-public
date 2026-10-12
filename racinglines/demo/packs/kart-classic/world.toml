@@ -1,4 +1,4 @@
-# The kart-classic pack's synthetic world, the first kart world with made-up lap times (racinglines/demo/generate.py):
+# The kart-classic pack's synthetic world, the first kart world with made-up lap times (racinglines/demo/mk_demo/generate.py):
 # the INPUT of the data generator, not a schema. The generator turns it into FastF1-shaped files
 # (data/raw/f1/fastf1/<year>/ under the demo data folder) and exchange quotes, which the real F1 ingest and the real
 # commands then read. A Mario Kart grid under the real F1 schema: the drivers, teams and tracks are made up, every pace,

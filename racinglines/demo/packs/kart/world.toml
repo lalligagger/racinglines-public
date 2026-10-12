@@ -1,4 +1,4 @@
-# The kart pack's synthetic world (racinglines/demo/generate.py): the INPUT of the data generator, not a schema. The generator
+# The kart pack's synthetic world (racinglines/demo/mk_demo/generate.py): the INPUT of the data generator, not a schema. The generator
 # turns it into FastF1-shaped files (data/raw/f1/fastf1/<year>/ under the demo data folder) and exchange quotes, which the
 # real F1 ingest and the real commands then read. A Mario Kart grid under the real F1 schema: the drivers and teams
 # are made up, the tracks' lap times come from real Mario Kart 8 Deluxe records (below), and every pace, result and
