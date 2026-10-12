@@ -208,6 +208,7 @@ not additional positions; private-book chart totals and ledger totals can still 
 | Page | What it shows |
 |---|---|
 | **Racinglines 101** (`/racinglines101`, public: no sign-in) | A plain-language intro to makers, takers and the paper-trading demo. Linked from the sign-in page as **I'm already confused.** |
+| **Racinglines 102** (`/racinglines102`, public) | The follow-on to 101: how the model finds +EV lines, how taker and maker strategies filter them, and the trades that knowingly give edge back (trimming, inventory lean, flattening). Linked from the end of 101. |
 | **Sign in** (`/signin`, `/logout`) | The standard username/password form, which the admin uses; it posts to `/login`. The two one-click demo buttons (**Try as pro**, **Try as basic**; the `maker` / `taker` accounts, which keep their usernames, password `password`) are on the landing page (`/login#account`). |
 | **Pitch** (`/pitch`) | Serves `pitch.html`. Public: no sign-in, like the login and sign-up pages. |
 | **Docs** (`/docs/`) | Serves these docs as built in `site/` (the pre-push hook builds them; or `python -m mkdocs build -d site`), behind the same login. |

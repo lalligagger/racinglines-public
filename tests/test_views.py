@@ -260,6 +260,16 @@ def test_racinglines101_is_public_and_linked_from_login():
     assert 'href="/racinglines101">I\'m already confused.</a>' in cl.get("/login").text
 
 
+def test_racinglines102_is_public_and_linked_from_101():
+    from fastapi.testclient import TestClient
+
+    from racinglines.web.app import app
+    cl = TestClient(app)
+    r = cl.get("/racinglines102", follow_redirects=False)
+    assert r.status_code == 200 and "Racinglines 102" in r.text and "No stop-loss" in r.text
+    assert 'href="/racinglines102"' in cl.get("/racinglines101").text
+
+
 def test_pitch_is_public():
     from fastapi.testclient import TestClient
 

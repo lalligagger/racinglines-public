@@ -48,6 +48,12 @@ def racinglines101(request: Request):
     return render(request, "racinglines101.html")
 
 
+@app.get("/racinglines102", response_class=HTMLResponse)
+def racinglines102(request: Request):
+    """Plain-language follow-on to 101: how the model finds +EV lines, how strategies filter them, and when they give edge back (public)."""
+    return render(request, "racinglines102.html")
+
+
 @app.get("/pitch", response_class=HTMLResponse)
 def pitch():
     """The pitch deck (pitch.html at the repo root), public like /login and /signup."""
