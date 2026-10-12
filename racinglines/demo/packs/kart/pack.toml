@@ -46,27 +46,32 @@ mcp_url = "https://mcp-demo.racinglines.bet/mcp"
 # `record = false`, which tools show but never run (the /term recorder types it without output; the tests skip it).
 [[quickstart]]
 title = "📦 Install racinglines"
+section = "Set up"
 run = "pip install -r requirements.txt && pip install -e ."
 about = "From a clone of the repository, in a virtualenv with Python 3.11+: the dependencies and the `racinglines` command."
 record = false
 
 [[quickstart]]
 title = "🍄 Build and look at the demo store"
+section = "Set up"
 run = "racinglines db stats --demo"
 about = "The first --demo command builds the store (a few minutes, with a progress bar): the database, the synthetic files, the real ingest and the exchange links. Later commands reuse it."
 
 [[quickstart]]
 title = "📊 Backtest the model"
+section = "Model the season"
 run = "racinglines model backtest kart --demo"
 about = "Every past race priced as of before the weekend, before qualifying and before the race, with track features on and off, scored against the results and against uniform and grid baselines."
 
 [[quickstart]]
 title = "🔮 Forecast the rest of the season"
+section = "Model the season"
 run = "racinglines model forecast kart --demo --save"
 about = "The next races (Rainbow Road is a sprint weekend) and both championships; --save stores the run the book and the web app read."
 
 [[quickstart]]
 title = "🏁 Run a live private book"
+section = "Run Wario's book"
 run = "racinglines live run kart/demo-2026-09 --demo --simulate --no-fetch"
 about = "Bowser's Castle (round 9) replayed on a simulated clock: the maker's book opens before practice, reprices after each session from the model's stage runs, 100 simulated takers trade against it, the book closes at lights out and settles from the results."
 
