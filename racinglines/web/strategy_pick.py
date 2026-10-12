@@ -59,11 +59,11 @@ F1_SLOT = "f1:polymarket"
 # --- the alpha picker (alpha_picker) ---
 ALPHA_TWEAKS = ("min_edge", "min_volume_24h")       # the tweak drawer's two sliders, with TUNABLE's caps
 TWEAK = "tweak:"                                    # the drawer's field prefix: applied to the card picked
-# Sizing for a followed strategy (owner, 2026-10-12 19:53Z): Standard (the backtests' fixed dollar sizing) or Kelly at a
-# fraction. TODO: moves to profiles.SIZINGS when the engine side (built on another branch) lands; signals.py doesn't
-# read these yet.
-SIZINGS = ("standard", "kelly")
-KELLY = dict(lo=0.10, hi=1.00, step=0.05, default=0.25)
+# Sizing for a followed strategy (owner, 2026-10-12 19:53Z): Standard (stakes scaled to the player's F$1,000) or Kelly at
+# a fraction. The allowed values and their meaning live in profiles (SIZINGS, KELLY_RANGE); the signal engine reads
+# them through profiles.sizing_of (fantasy/sizing.py).
+SIZINGS = PF.SIZINGS
+KELLY = dict(lo=PF.KELLY_RANGE[0], hi=PF.KELLY_RANGE[1], step=0.05, default=0.25)
 KELLY_PICKS = (("Quarter", 0.25), ("Half", 0.50), ("Full", 1.00))
 # the label beside the Kelly slider, "nitty to degen", one emoji per tier (owner, 19:53-19:55Z): (highest fraction, label)
 KELLY_LABELS = ((0.25, "Nitty ☕"), (0.50, "Shark 🦈"), (0.80, "Spicy 🌡️"), (1.00, "Degen 🤠"))
