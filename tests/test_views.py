@@ -260,16 +260,16 @@ def test_racinglines101_is_public_and_linked_from_login():
     assert 'href="/racinglines101">I\'m already confused.</a>' in cl.get("/login").text
 
 
-def test_racinglines102_is_public_and_linked_from_101():
+def test_racinglines101_has_three_parts_and_102_redirects_to_the_engine():
     from fastapi.testclient import TestClient
 
     from racinglines.web.app import app
     cl = TestClient(app)
+    t = cl.get("/racinglines101").text
+    assert "data-term-parts" in t and all(g in t for g in ("How we trade", "How the engine works", "Using the app"))
+    assert 'data-term-tab="engine"' in t and "10,000" in t
     r = cl.get("/racinglines102", follow_redirects=False)
-    assert r.status_code == 200 and "Racinglines 102" in r.text and "No stop-loss" in r.text
-    assert 'href="/racinglines102"' in cl.get("/racinglines101").text
-    assert "data-term-parts" in r.text and 'data-term-tab="part-5"' in r.text   # the /term part nav
-
+    assert r.status_code == 307 and r.headers["location"] == "/racinglines101#engine"
 
 def test_pitch_is_public():
     from fastapi.testclient import TestClient

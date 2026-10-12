@@ -44,14 +44,14 @@ def event_by_key(source_key: str, c=Depends(conn)):
 
 @app.get("/racinglines101", response_class=HTMLResponse)
 def racinglines101(request: Request):
-    """Plain-language intro to makers, takers (the pro and basic tiers) and the paper-trading demo (public, linked from the login page)."""
+    """Plain-language intro in three parts with a section nav: how we trade, how the prediction engine works, using the app (public, linked from the login page)."""
     return render(request, "racinglines101.html")
 
 
-@app.get("/racinglines102", response_class=HTMLResponse)
-def racinglines102(request: Request):
-    """Plain-language follow-on to 101: how the model finds +EV lines, how strategies filter them, and when they give edge back (public)."""
-    return render(request, "racinglines102.html")
+@app.get("/racinglines102")
+def racinglines102():
+    """The engine half of Racinglines 101, which is one page in three parts (public)."""
+    return RedirectResponse("/racinglines101#engine", status_code=307)
 
 
 @app.get("/pitch", response_class=HTMLResponse)

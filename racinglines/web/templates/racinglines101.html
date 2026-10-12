@@ -1,17 +1,43 @@
 {% extends "base_public.html" %}
 {% block title %}Racinglines 101{% endblock %}
-{% block main_class %}r101{% endblock %}
+{% block main_class %}r101 r-seq{% endblock %}
 {% block content %}
 <p class="crumbs"><a href="/login">racinglines</a> › 101</p>
 <h1>Racinglines 101</h1>
-<p class="sub">The short version of what this demo does, for anyone who just clicked "I'm already confused."</p>
+<p class="sub">The short version of what this demo does, for anyone who just clicked "I'm already confused": how we trade, how the prediction engine works, and how to use the app.</p>
 
-<h2>The one-sentence version</h2>
+<div class="term-layout" data-term-parts>
+<nav class="term-nav r-nav" aria-label="Racinglines 101 sections">
+  <p class="r-nav-group">How we trade</p>
+  <a href="#short" data-term-tab="short">The one-sentence version</a>
+  <a href="#roles" data-term-tab="roles">Makers and takers</a>
+  <a href="#why-two" data-term-tab="why-two">Why two roles</a>
+  <a href="#strategies" data-term-tab="strategies">The two demo strategies</a>
+  <a href="#against" data-term-tab="against">Betting against the model?</a>
+  <p class="r-nav-group">How the engine works</p>
+  <a href="#engine" data-term-tab="engine">One engine for every sport</a>
+  <a href="#pace" data-term-tab="pace">Measuring who's fast</a>
+  <a href="#simulate" data-term-tab="simulate">Running the race 10,000 times</a>
+  <a href="#prices" data-term-tab="prices">From simulations to prices</a>
+  <a href="#weekend" data-term-tab="weekend">Updating through the weekend</a>
+  <a href="#real" data-term-tab="real">What's real and what isn't</a>
+  <p class="r-nav-group">Using the app</p>
+  <a href="#app" data-term-tab="app">The web app</a>
+  <a href="#cli" data-term-tab="cli">The command line</a>
+  <a href="#mcp" data-term-tab="mcp">Claude, through MCP</a>
+</nav>
+<div class="term-parts">
+<div class="term-partbox" id="short">
+<p class="r-eyebrow">How we trade</p>
+<h2 class="term-part">The one-sentence version</h2>
 <p>We built a computer model that guesses how an F1 race will go (who wins, who makes the podium, who beats their teammate),
 and we use it to trade on <a href="https://polymarket.com" target="_blank" rel="noopener">Polymarket</a>, a site where people bet on those questions.
 There are two ways to trade, and this demo shows both.</p>
-
-<h2>Makers and takers, explained like you're five</h2>
+<p class="term-next"><a href="#roles" data-term-tab="roles">Next: Makers and takers →</a></p>
+</div>
+<div class="term-partbox" id="roles">
+<p class="r-eyebrow">How we trade</p>
+<h2 class="term-part">Makers and takers</h2>
 <p>Think of a currency exchange booth at an airport. The booth posts two prices: what it pays for your dollars, and what it charges you for them.
 The booth is the <b>maker</b>. You, walking up and trading at those prices, are the <b>taker</b>.</p>
 <div class="roles">
@@ -24,8 +50,11 @@ The booth is the <b>maker</b>. You, walking up and trading at those prices, are 
 </div>
 <p>On Polymarket, a "price" is a probability. If "Norris wins" trades at 30¢, the crowd thinks he has about a 30% chance.
 If our model says 45%, that's a bargain to a taker. To a maker, it's a sign to quote around 45¢ instead of 30¢, or not at all.</p>
-
-<h2>Why split the roles?</h2>
+<p class="term-next"><a href="#why-two" data-term-tab="why-two">Next: Why two roles →</a></p>
+</div>
+<div class="term-partbox" id="why-two">
+<p class="r-eyebrow">How we trade</p>
+<h2 class="term-part">Why two roles</h2>
 <ul>
   <li><b>They make money in different ways.</b> A maker earns small, steady amounts from the gap between its prices. A taker earns occasional,
     larger amounts when it spots a mispriced market. In our backtests the two barely move together, so running both is steadier than running either one.</li>
@@ -34,19 +63,11 @@ If our model says 45%, that's a bargain to a taker. To a maker, it's a sign to q
   <li><b>The model is the maker's secret sauce.</b> If takers could see the fair price the maker's quotes come from, they could trade against the maker
     whenever its quotes lagged the model. So, like a real exchange booth, the maker keeps its model to itself.</li>
 </ul>
-
-<h2>How the web app differs for each</h2>
-<div class="scroll"><table>
-<thead><tr><th class="l"></th><th class="l">Maker</th><th class="l">Taker</th></tr></thead><tbody>
-<tr><td class="l"><b>Markets</b></td><td class="l">Every upcoming race with our fair probabilities next to Polymarket's prices</td><td class="l">Every open Polymarket F1 market, with its strategy's call on each</td></tr>
-<tr><td class="l"><b>Strategy</b></td><td class="l">Where its quotes sit on each weekend, stage by stage, with the model's fair price and edge; its track record and the evidence behind each change of setup</td><td class="l">What to buy or sell, how many shares, the most to pay, and a <i>heat</i> rating (warm, hot, very hot); its track record</td></tr>
-<tr><td class="l"><b>Positions</b></td><td class="l">Its inventory in every market, paper fills, P&amp;L history, and where it would quote next</td><td class="l">Everything it holds and has held, P&amp;L history, and the next race's calls</td></tr>
-<tr><td class="l"><b>My book</b></td><td class="l">Its own in-app markets: opens them, sets the prices, watches its exposure</td><td class="l">Not available</td></tr>
-<tr><td class="l"><b>The Lab</b></td><td class="l">Backtests, the Edge Finder, model runs, race-by-race diagnostics</td><td class="l">Not available</td></tr>
-<tr><td class="l"><b>Can see the model?</b></td><td class="l"><b>Yes</b>: every fair price, every setting, every backtest</td><td class="l"><b>No</b>: heat says how strongly the model likes a trade, without revealing its numbers</td></tr>
-</tbody></table></div>
-
-<h2>The two strategies in this demo</h2>
+<p class="term-next"><a href="#strategies" data-term-tab="strategies">Next: The two demo strategies →</a></p>
+</div>
+<div class="term-partbox" id="strategies">
+<p class="r-eyebrow">How we trade</p>
+<h2 class="term-part">The two demo strategies</h2>
 <p><b>pro = the maker tools (quotes, book, Lab); basic = the taker picks.</b></p>
 <p><b>Try as basic</b> follows A; <b>Try as pro</b> runs C. In the app the two account tiers are <b>pro</b> (every maker and taker strategy, the private book and the Lab's backtests) and <b>basic</b> (a blend of three taker strategies drawn from the top of the taker list for each account, shown as &ldquo;Your picks&rdquo;, and never the model's numbers or which strategy made a pick).</p>
 <div class="roles">
@@ -58,8 +79,103 @@ If our model says 45%, that's a bargain to a taker. To a maker, it's a sign to q
     It stays out of thin markets, near-certain ones, and any market where the model and the crowd disagree by more than 5 points.</p></div>
 </div>
 <p>Both were chosen by testing hundreds of setting combinations on past races, then keeping only the ones that made money in <i>both</i> seasons we have market data for.</p>
+<p class="term-next"><a href="#against" data-term-tab="against">Next: Betting against the model? →</a></p>
+</div>
+<div class="term-partbox" id="against">
+<p class="r-eyebrow">How we trade</p>
+<h2 class="term-part">Betting against the model?</h2>
 
-<h2>What's real and what isn't</h2>
+<p>No. Every strategy takes its lead from the model. A taker only buys the side the model calls cheap, and a maker only quotes around the model's own price,
+staying out of markets where it and the crowd disagree too much.</p>
+<p>A bet can still be sold at a loss. Strategy A re-prices after every session, so if the model changes its mind, A sells. When the market will pay more
+than the model now thinks the bet is worth, selling is the better deal, whatever A paid for it. If the gap only shrinks, A sells part of the bet to carry
+less risk. There is no stop-loss: a strategy sells because the model changed, never just because the price moved against it.</p>
+<p class="term-next"><a href="#engine" data-term-tab="engine">Next: One engine for every sport →</a></p>
+</div>
+<div class="term-partbox" id="engine">
+<p class="r-eyebrow">How the engine works</p>
+<h2 class="term-part">One engine for every sport</h2>
+
+<p>Behind every price on this site is one prediction engine. It doesn't know what F1 or downhill is. Each sport comes with a short description
+of the data it has, and the engine prices whatever it's given: just finishing positions, or every lap and sector time, or every timed run.</p>
+<div class="scroll"><table>
+<thead><tr><th class="l">Sport</th><th class="l">What the engine reads</th></tr></thead><tbody>
+<tr><td class="l"><b>F1</b></td><td class="l">Results, qualifying, the starting grid, practice, every lap and every sector</td></tr>
+<tr><td class="l"><b>Downhill MTB</b></td><td class="l">Every timed run, practice included</td></tr>
+<tr><td class="l"><b>NASCAR</b></td><td class="l">Results, qualifying and fastest laps</td></tr>
+<tr><td class="l"><b>MotoGP</b></td><td class="l">Results and qualifying</td></tr>
+</tbody></table></div>
+<p>More detail means sharper prices, but the steps are the same in every sport: measure how fast everyone is, run the race thousands of times
+on a computer, and count.</p>
+<p class="term-next"><a href="#pace" data-term-tab="pace">Next: Measuring who's fast →</a></p>
+</div>
+<div class="term-partbox" id="pace">
+<p class="r-eyebrow">How the engine works</p>
+<h2 class="term-part">Measuring who's fast</h2>
+
+<p>The engine starts by turning past races into a pace for every competitor. Three ideas do most of the work.</p>
+<ul>
+  <li><b>Recent races count more.</b> A race's weight halves every 120 days in F1 (240 in downhill), so last month matters more than last season,
+    but last season still counts.</li>
+  <li><b>A few results aren't enough to be a favourite.</b> Everyone is pulled toward the middle of the field until they've raced enough to
+    earn their place. One lucky weekend doesn't make a rookie a title contender.</li>
+  <li><b>The right kind of evidence.</b> Finishing 2nd of 5 says less than 2nd of 40, so results are scaled by the size of the field.
+    In downhill, times are compared as percentages, so a 2-second gap means the same on a short track and a long one.</li>
+</ul>
+<p>F1 gets a richer version. The engine splits pace into the <b>car</b> (shared by both drivers in a team) and the <b>driver</b> (how they compare
+with their teammate). In our data the car explains about 60% of the spread in qualifying and 86% in race pace. It also learns how each car does on
+fast and slow sections of track, so it can tell a team that shines in Monza from one that shines in Monaco.</p>
+<p class="term-next"><a href="#simulate" data-term-tab="simulate">Next: Running the race 10,000 times →</a></p>
+</div>
+<div class="term-partbox" id="simulate">
+<p class="r-eyebrow">How the engine works</p>
+<h2 class="term-part">Running the race 10,000 times</h2>
+
+<p>A pace isn't a prediction. Races have crashes, bad starts and lucky safety cars. So the engine runs the race on a computer, over and over:
+10,000 times for an F1 race. Each run is one version of Sunday.</p>
+<div class="roles">
+  <div class="role-card"><h3>What goes into one run</h3>
+    <p>A starting grid (the real one once qualifying is over, a simulated one before), each driver's expected pace, a dose of random luck,
+    and a chance of retiring based on the team's recent reliability. Confirmed grid penalties move drivers back before the start.</p></div>
+  <div class="role-card"><h3>Teammates share some luck</h3>
+    <p>A car with a bad setup is usually slow for both drivers. So part of the random luck is drawn once per team and shared by both drivers,
+    measured from past races: about half of it in qualifying, a fifth in the race.</p></div>
+</div>
+<p>Overtaking matters too. At a track where passing is hard, the grid decides more of the result; at one where it's easy, race pace does.
+The engine learns how much from each circuit's history.</p>
+<p class="term-next"><a href="#prices" data-term-tab="prices">Next: From simulations to prices →</a></p>
+</div>
+<div class="term-partbox" id="prices">
+<p class="r-eyebrow">How the engine works</p>
+<h2 class="term-part">From simulations to prices</h2>
+
+<p>Once the engine has 10,000 versions of the race, every question is a count.</p>
+<div class="scroll"><table>
+<thead><tr><th class="l">Market</th><th class="l">How it's priced</th></tr></thead><tbody>
+<tr><td class="l"><b>Win</b></td><td class="l">Norris wins 4,500 of 10,000 runs: 45%</td></tr>
+<tr><td class="l"><b>Podium, top 10</b></td><td class="l">The share of runs he finishes in the top 3, or top 10</td></tr>
+<tr><td class="l"><b>Head-to-head</b></td><td class="l">The share of runs he finishes ahead of the other driver</td></tr>
+<tr><td class="l"><b>Pole</b></td><td class="l">The share of runs he's first on the simulated grid</td></tr>
+<tr><td class="l"><b>Championship</b></td><td class="l">Today's points plus every remaining race simulated, many times over</td></tr>
+</tbody></table></div>
+<p>Because every market comes from the same runs, the prices agree with each other. A driver can't be more likely to win than to finish on the podium.
+That 45% is the <b>fair</b> price the strategies compare with the market's.</p>
+<p class="term-next"><a href="#weekend" data-term-tab="weekend">Next: Updating through the weekend →</a></p>
+</div>
+<div class="term-partbox" id="weekend">
+<p class="r-eyebrow">How the engine works</p>
+<h2 class="term-part">Updating through the weekend</h2>
+
+<p>The engine re-prices after every session: each practice, sprint qualifying, the sprint and qualifying. Practice laps sharpen the pace estimates;
+once qualifying is over, the simulated grid is replaced by the real one. On a sprint weekend the sprint is priced as a race of its own,
+with its own grid and points.</p>
+<p>Prices are always <b>as of</b> a moment. A price made on Friday night only uses what was known on Friday night. That rule is what makes a backtest
+honest: replaying last season, the engine never sees a result before it happened.</p>
+<p class="term-next"><a href="#real" data-term-tab="real">Next: What's real and what isn't →</a></p>
+</div>
+<div class="term-partbox" id="real">
+<p class="r-eyebrow">How the engine works</p>
+<h2 class="term-part">What's real and what isn't</h2>
 <p class="note"><b>This is an early demo that paper trades.</b> From now through 2027, the two strategies follow real Polymarket F1 markets live, race weekend
 by race weekend, and record the trades they <i>would</i> make at the real prices. No real orders are placed and no real money moves.</p>
 <ul>
@@ -73,8 +189,53 @@ by race weekend, and record the trades they <i>would</i> make at the real prices
     The <b>demo taker</b> has always followed A, taking about a third of its recommendations (the hotter ones more often).
     Each account's Strategy page shows the whole story: cumulative paper P&amp;L, every decision and the evidence behind it, and every weekend.</li>
 </ul>
-
-<p>Next: <a href="/racinglines102">Racinglines 102</a>, where the edge comes from, how a strategy filters it, and whether it ever sells at a loss.</p>
+<p class="term-next"><a href="#app" data-term-tab="app">Next: The web app →</a></p>
+</div>
+<div class="term-partbox" id="app">
+<p class="r-eyebrow">Using the app</p>
+<h2 class="term-part">The web app</h2>
+<p>This site. Sign in to see the markets, the strategies and your positions. What you see depends on whether your account is a maker (pro) or a taker (basic).</p>
+<div class="scroll"><table>
+<thead><tr><th class="l"></th><th class="l">Maker</th><th class="l">Taker</th></tr></thead><tbody>
+<tr><td class="l"><b>Markets</b></td><td class="l">Every upcoming race with our fair probabilities next to Polymarket's prices</td><td class="l">Every open Polymarket F1 market, with its strategy's call on each</td></tr>
+<tr><td class="l"><b>Strategy</b></td><td class="l">Where its quotes sit on each weekend, stage by stage, with the model's fair price and edge; its track record and the evidence behind each change of setup</td><td class="l">What to buy or sell, how many shares, the most to pay, and a <i>heat</i> rating (warm, hot, very hot); its track record</td></tr>
+<tr><td class="l"><b>Positions</b></td><td class="l">Its inventory in every market, paper fills, P&amp;L history, and where it would quote next</td><td class="l">Everything it holds and has held, P&amp;L history, and the next race's calls</td></tr>
+<tr><td class="l"><b>My book</b></td><td class="l">Its own in-app markets: opens them, sets the prices, watches its exposure</td><td class="l">Not available</td></tr>
+<tr><td class="l"><b>The Lab</b></td><td class="l">Backtests, the Edge Finder, model runs, race-by-race diagnostics</td><td class="l">Not available</td></tr>
+<tr><td class="l"><b>Can see the model?</b></td><td class="l"><b>Yes</b>: every fair price, every setting, every backtest</td><td class="l"><b>No</b>: heat says how strongly the model likes a trade, without revealing its numbers</td></tr>
+</tbody></table></div>
+<p class="term-next"><a href="#cli" data-term-tab="cli">Next: The command line →</a></p>
+</div>
+<div class="term-partbox" id="cli">
+<p class="r-eyebrow">Using the app</p>
+<h2 class="term-part">The command line</h2>
+<p>Everything the site does runs from one command, <code>racinglines</code>, installed with the Python package. The task comes first and the sport second:</p>
+<div class="scroll"><table>
+<thead><tr><th class="l">Command</th><th class="l">What it does</th></tr></thead><tbody>
+<tr><td class="l"><code>racinglines model backtest kart --demo</code></td><td class="l">Prices every past race as of before it, and scores the prices</td></tr>
+<tr><td class="l"><code>racinglines model forecast kart --demo --save</code></td><td class="l">Simulates the rest of the season and the championships</td></tr>
+<tr><td class="l"><code>racinglines live run kart/demo-2026-09 --demo --simulate --no-fetch</code></td><td class="l">Runs a live private book against 100 simulated takers</td></tr>
+</tbody></table></div>
+<p><code>--demo</code> runs the real engine on a made-up Mario Kart season, so you can try it without any race data of your own. Swap <code>kart</code> for
+<code>f1</code>, <code>nascar</code>, <code>motogp</code> or <code>mtb_dh</code> once you have the data. To watch it first, <a href="/docs/quickstart/term">the quickstart replay</a>
+replays the same commands in your browser.</p>
+<p class="term-next"><a href="#mcp" data-term-tab="mcp">Next: Claude, through MCP →</a></p>
+</div>
+<div class="term-partbox" id="mcp">
+<p class="r-eyebrow">Using the app</p>
+<h2 class="term-part">Claude, through MCP</h2>
+<p><code>racinglines mcp</code> starts an MCP server, which lets Claude (or any other MCP client) work with the same data and simulations as the site and the
+command line. You ask in plain English, and Claude picks the tools:</p>
+<ul>
+  <li>"What did we have for the Baku winner the evening before qualifying, and what did Polymarket say?"</li>
+  <li>"How did the maker do on Kalshi in 2025?"</li>
+  <li>"Replay that with a 3¢ spread."</li>
+</ul>
+<p>There are two ways in. <b>Locally</b>, you run the server on your own machine against your own database. <b>Hosted</b>, you connect Claude to
+racinglines.bet and sign in with your account, and every job it starts is filed under your account. Remote access is still in testing.</p>
+</div>
+</div>
+</div>
 
 <a class="back" href="/login">← Back to the home page and the demo</a>
 {% endblock %}

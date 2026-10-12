@@ -341,9 +341,14 @@ pre.log { max-height: 220px; overflow: auto; font-size: 11px; background: var(--
 .r101 .role-card.taker { border-top: 3px solid var(--good); }
 .r101 table { table-layout: fixed; width: 100%; }
 .r101 table td, .r101 table th { vertical-align: top; white-space: normal; overflow-wrap: anywhere; }
-/* /racinglines102: an intro sequence in parts, with the /term part nav (tabs on a phone, a sidebar when wide) */
+/* /racinglines101 in three parts, with the /term part nav (tabs on a phone, a sidebar when wide) */
 .r101.r-seq { max-width: 1060px; }
 .r-seq .term-partbox { max-width: 760px; min-width: 0; }
+.r-nav .r-nav-group { flex: none; align-self: center; margin: 0 2px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+.r-nav a { font-size: 14px; }
+.r-seq .r-eyebrow { margin: 20px 0 0; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.r-seq .term-layout.js .term-partbox > .term-part, .r-seq .term-partbox > .term-part { margin-top: 4px; border-top: 0; }
+@media (min-width: 900px) { .r-nav { gap: 4px; } .r-nav .r-nav-group { align-self: start; margin: 14px 0 2px; } .r-nav .r-nav-group:first-child { margin-top: 0; } .r-nav a { padding: 8px 12px; } }
 .r101 table th:first-child { width: 22%; }
 .r101 .back { display: inline-block; margin-top: 28px; }
 

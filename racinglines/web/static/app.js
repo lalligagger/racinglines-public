@@ -367,6 +367,9 @@
       if (!boxes.some(b => b.id === id)) id = boxes[0].id;
       boxes.forEach(b => { b.hidden = b.id !== id; });
       tabs.forEach(a => a.toggleAttribute("aria-current", a.dataset.termTab === id));
+      const cur = tabs.find(a => a.dataset.termTab === id), nav = cur && cur.parentElement;
+      if (nav && nav.scrollWidth > nav.clientWidth)       // phone tabs: bring the current one into view
+        nav.scrollLeft = cur.offsetLeft - nav.offsetLeft - (nav.clientWidth - cur.offsetWidth) / 2;
       if (scroll) parts.scrollIntoView({block: "start"});
     };
     const fromHash = () => {     // #part-2, or a step's id inside a part
