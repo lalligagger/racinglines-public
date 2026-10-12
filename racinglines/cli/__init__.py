@@ -17,7 +17,7 @@ racinglines <group> <command> [SPORT] [options]
 
 SPORT is f1, mtb_dh, nascar, motogp or cycling, e.g. `racinglines model forecast f1 --save`.
 --demo on any command: the same command on the demo store, a separate database and data folder of synthetic data
-(built on first use; racinglines/cli/source.py, docs/quickstart.md), e.g. `racinglines model forecast f1 --demo --save`.
+(built on first use; racinglines/cli/source.py, docs/quickstart.md), e.g. `racinglines model forecast kart --demo --save`.
 `racinglines <group> -h` lists a group's commands and the sports that offer each.
 """
 

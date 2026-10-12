@@ -39,7 +39,7 @@ def test_collapsed_headers_never_read_tape_statistics(monkeypatch):
     monkeypatch.setattr(B.data, "latest_forecasts", lambda c: pd.DataFrame([
         dict(competition="f1_wdc", id=1)]))
     monkeypatch.setattr(SS, "enabled", lambda: False)
-    monkeypatch.setattr(SS, "status", lambda c: [])
+    monkeypatch.setattr(SS, "status", lambda c, hide=(): [])
     queries = []
 
     def query(c, sql, **params):

@@ -17,6 +17,10 @@ pricing_model = "racinglines.models.model_global:GlobalModel"
 challengers = { motogp_results = "racinglines.models.motogp_model:MotoGPRace", motogp_recent_form = "racinglines.models.motogp_model:MotoGPRaceChallenger" }
 calibration = "baseline"          # pages label its prices as baseline: settings untuned (docs/f1-roadmap.md decision log, 2026-10-07); drop once fitted on a held-out season
 display_order = 2
+# Who the web app shows MotoGP to (owner, 2026-10-11 22:59Z, "Hide for Alpha"): admins only, because the motogp.com terms
+# keep its results and prices off user pages (data-terms review, 2026-10-11). Still recorded, priced and
+# settled; nothing is deleted. "all" (the default for every sport) shows it again.
+audience = "admin"
 results_modules = ["racinglines.sources.motogp"]   # what fetches its results (`backtest coverage`)
 
 [league]

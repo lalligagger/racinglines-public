@@ -7,6 +7,7 @@ import pandas as pd
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from racinglines.web import audience as A
 from racinglines.web import roles as R
 from racinglines.web.app import ANY, PRO, allow, app, audit, check_csrf, conn, data, render, rows  # noqa: F401
 from racinglines.web.app import ROOT, SITE
@@ -22,6 +23,7 @@ def run_detail(request: Request, run_id: int, c=Depends(conn)):
     run = data.model_run(c, run_id)
     if not run:
         raise HTTPException(404)
+    A.guard(request.state.user, run["competition"])
     metrics = {k: pd.DataFrame(v) if isinstance(v, list) else pd.DataFrame([v])
                for k, v in (run.get("metrics") or {}).items()}
     targets = rows(data.run_race_targets(c, run_id))
@@ -81,6 +83,7 @@ def event_detail(request: Request, event_id: int, c=Depends(conn)):
     ev = data.event(c, event_id)
     if not ev:
         raise HTTPException(404)
+    A.guard(request.state.user, ev["competition"])
     res = data.event_results(c, event_id)
     groups = [dict(category=cat, round=rnd, table=rows(g))
               for (cat, _, rnd), g in res.groupby(["category", "ordinal", "round"], sort=True)] if len(res) else []
@@ -97,5 +100,6 @@ def athlete_detail(request: Request, athlete_id: int, c=Depends(conn)):
     a = data.athlete(c, athlete_id)
     if not a:
         raise HTTPException(404)
+    A.guard_athlete(c, request.state.user, athlete_id)
     preds = [] if R.is_basic(request.state.user) else rows(data.athlete_predictions(c, athlete_id))
     return render(request, "athlete.html", a=a, results=rows(data.athlete_results(c, athlete_id)), preds=preds)

@@ -9,17 +9,20 @@ database.
     render   one HTML page (and --png) of the priced board: hud (on the book's screenshot), card, or agnostic (model
              and exchanges only), with stakes from markets/books.toml (docs/sportsbook/render.md)
     new      a book file draft from loose text ("A over B 1.57", "A vs B 1.57 2.25", "Name 4.35"): --from-text
+    export   the book's staked lines (a line's `stake`, `placed_utc`) priced and settled, as ledger rows:
+             `--ledger OUT.csv` (racinglines/books/ledger.py, docs/sportsbook/slips.md#ledger-export); refuses an
+             existing OUT unless --force, never appends
     view     render a saved --json result of map, price or settle with Rich (no database)
     logout   forget the browser sign-in that --remote keeps
     config   show or set the CLI's defaults (racinglines/cli/config.py): `config`, `config KEY VALUE`, `config KEY --unset`
 
-Where the data comes from (map, price, settle), three modes; the default is the defaults file's `source`, else local:
+Where the data comes from (map, price, settle, export), three modes; the default is the defaults file's `source`, else local:
     --local                a local database (--db, else DATABASE_URL, else the defaults file's `db`): you rebuild the
                            data or run the app and its MCP server yourself
     --demo [PACK]          a demo store (racinglines/cli/source.py): a separate local database of synthetic data from a
                            data pack (default kart), built on first use, priced by the same code as --local. FILE
                            defaults to the pack's book (racinglines/demo/packs/kart/book.toml); `racinglines model
-                           forecast f1 --demo --save` first gives it model prices. Rich by default.
+                           forecast kart --demo --save` first gives it model prices. Rich by default.
                            `--demo [PACK] --remote` (or the defaults file's source = remote) prices it on the pack's
                            hosted demo store instead (its [remote] mcp_url; synthetic data only)
     --remote               the VM's hosted MCP server (racinglines/cli/remote.py): live model runs and exchange prices.
@@ -28,12 +31,12 @@ Where the data comes from (map, price, settle), three modes; the default is the 
                            the defaults file's `mcp_url` point it at your own server (default
                            https://mcp.racinglines.bet/mcp)
 
-Options (map, price, settle):
+Options (map, price, settle, export):
     --json                 the whole result as JSON (stable keys: docs/sportsbook/slips.md#json-output)
     --rich                 a coloured table (Rich; racinglines/cli/rich_view.py): the default; --plain (any command) or
                            RACINGLINES_PLAIN=1 prints the plain text
     --db URL               the database (default DATABASE_URL)
-price only:
+price and export:
     --run ID               price legs of that run's competition from it (repeatable; default: the app's own choice
                            per race, markets/venues.pricing_run)
     --sims RACE_ID=FILE    an OutcomeSims archive (.npz, models/outcomes.save_sims) for a race: legs on that race are
@@ -53,6 +56,8 @@ import os
 import sys
 
 import pandas as pd
+
+BOOK_COMMANDS = ("map", "price", "settle", "export")
 
 
 def _parser():
@@ -87,7 +92,8 @@ def _parser():
     n.add_argument("--out", required=True, help="the book file to write (refuses to overwrite)")
     for name, hlp in (("map", "Resolve each line's legs by exact keys."),
                       ("price", "Model fair, market price, book implied probability and EV per leg and per slip."),
-                      ("settle", "Results and payouts from the stored classification.")):
+                      ("settle", "Results and payouts from the stored classification."),
+                      ("export", "The staked lines, priced and settled, as ledger rows (--ledger OUT.csv).")):
         s = sub.add_parser(name, help=hlp)
         s.add_argument("file", nargs="?", help="a book file (books/<venue>/<date>-<event>.toml, "
                                                "docs/sportsbook/index.md); with --demo, default the pack's book")
@@ -103,7 +109,11 @@ def _parser():
                                                                "file says otherwise)")
         s.add_argument("--mcp-url", default=None, help="the hosted server for --remote (default RACINGLINES_MCP_URL, "
                                                        "else https://mcp.racinglines.bet/mcp)")
-        if name == "price":
+        if name == "export":
+            s.add_argument("--ledger", required=True, metavar="OUT.csv",
+                           help="write the ledger rows here (a new file: refuses an existing one unless --force)")
+            s.add_argument("--force", action="store_true", help="replace an existing OUT (never appends)")
+        if name in ("price", "export"):
             s.add_argument("--run", type=int, action="append", default=[], help="a model run id (repeatable)")
             s.add_argument("--sims", action="append", default=[], metavar="RACE_ID=FILE",
                            help="simulations for one race, for joint same-race pricing (repeatable)")
@@ -270,13 +280,52 @@ def _new(args):
     return 0
 
 
+def _export(args, book):
+    """`book export`: price and settle the book (locally or on the hosted server), then write the ledger rows."""
+    from racinglines.books import ledger as L
+    if os.path.exists(args.ledger) and not args.force:
+        print(f"book export: {args.ledger} exists: give --force to replace it (the exporter never appends)",
+              file=sys.stderr)
+        return 2
+    try:
+        L.check_units(book)
+        if args.remote:
+            from racinglines.cli import remote
+            with open(args.file) as f:
+                raw = f.read()
+            try:
+                priced = remote.run("price", raw, args.mcp_url, args.run)
+                settled = remote.run("settle", raw, args.mcp_url)
+            except remote.RemoteError as e:
+                print(f"book --remote: {e}", file=sys.stderr)
+                return 2
+            rows, skipped = L.rows(book, priced, settled)
+        else:
+            from racinglines.books import slips as B
+            from racinglines.db.config import get_engine
+            with get_engine(args.db).connect() as conn:
+                B.readonly(conn)
+                rows, skipped = L.ledger_rows(conn, book, runs=_runs(conn, args.run), sims=_sims(args.sims))
+                conn.rollback()
+        L.write_csv(rows, args.ledger, force=args.force)
+    except L.LedgerError as e:
+        print(f"book export: {e}", file=sys.stderr)
+        return 2
+    settled_n = sum(r["result"] != "open" for r in rows)
+    print(f"wrote {len(rows)} bet(s) to {args.ledger} ({settled_n} settled by our own results, "
+          f"{len(rows) - settled_n} open)")
+    if skipped:
+        print(f"book export: {len(skipped)} line(s) without a stake skipped: {', '.join(skipped)}", file=sys.stderr)
+    return 0
+
+
 def main(argv=None):
     from racinglines.cli import tty as TTY
     parser = _parser()
     args = parser.parse_args(argv)
     tops = [f for f in ("demo", "remote", "local") if getattr(args, f"top_{f}")]
-    if tops and args.cmd not in ("map", "price", "settle"):
-        parser.error(f"--{tops[0]} applies to map, price and settle")
+    if tops and args.cmd not in BOOK_COMMANDS:
+        parser.error(f"--{tops[0]} applies to map, price, settle and export")
     if tops:
         if any(getattr(args, f) for f in ("demo", "remote", "local") if f not in tops):
             parser.error("give one of --demo, --remote, --local")
@@ -289,7 +338,7 @@ def main(argv=None):
         except (R.RenderError, S.BookError, OSError) as e:
             print(f"book {args.cmd}: {e}", file=sys.stderr)
             return 2
-    if args.top_mcp_url and args.cmd in ("map", "price", "settle", "logout"):
+    if args.top_mcp_url and args.cmd in BOOK_COMMANDS + ("logout",):
         args.mcp_url = args.mcp_url or args.top_mcp_url
     if args.cmd == "view":
         from racinglines.cli import rich_view
@@ -349,6 +398,8 @@ def main(argv=None):
     except (S.BookError, OSError) as e:
         print(f"book: {e}", file=sys.stderr)
         return 2
+    if args.cmd == "export":
+        return _export(args, book)
     if args.remote:
         from racinglines.cli import remote
         if (args.db and args.db != defaults.get("db")) or getattr(args, "sims", None):

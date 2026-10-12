@@ -28,6 +28,7 @@ def client(monkeypatch):
     monkeypatch.setattr(data, "athlete", lambda c, i: dict(id=11, display_name="A", nation="CAN", birth_year=1999,
                                                            gender="M", identifiers=[]) if i == 11 else None)
     monkeypatch.setattr(data, "athlete_results", lambda c, i: res.drop(columns=["athlete"]))
+    monkeypatch.setattr(data, "athlete_competitions", lambda c, i: {"uci_dhi_wc"})
     try:
         yield TestClient(A.app)
     finally:

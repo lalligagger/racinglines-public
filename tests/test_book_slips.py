@@ -282,6 +282,33 @@ def test_cli_json_is_stable(test_engine, db, book, tmp_path, capsys, monkeypatch
     assert _line(json.loads(capsys.readouterr().out), "win")["result"] == "won"
 
 
+def test_cli_export_writes_ledger_rows(test_engine, db, tmp_path, capsys):
+    """`book export --ledger`: the staked lines priced and settled on the database, as ledger rows."""
+    import csv
+
+    from racinglines.books import ledger as L
+    from racinglines.cli import book as CLI
+    staked = BOOK.replace('id = "win"\n', 'id = "win"\nstake = 10\nplaced_utc = "2026-10-06T18:05Z"\n', 1) \
+                 .replace('id = "h2h"\n', 'id = "h2h"\nstake = 4\n', 1).replace('id = "ghost"\n', 'id = "ghost"\nstake = 1\n', 1)
+    p, out = tmp_path / "book.toml", tmp_path / "bets.csv"
+    p.write_text(staked)
+    url = test_engine.url.render_as_string(hide_password=False)
+    assert CLI.main(["export", str(p), "--ledger", str(out), "--db", url]) == 0
+    io = capsys.readouterr()
+    assert "wrote 3 bet(s)" in io.out and "4 line(s) without a stake skipped: parlay, sgp, rf, lose" in io.err
+    with open(out, newline="") as f:
+        rows = {r["notes"].split(";")[0][4:]: r for r in csv.DictReader(f)}
+    win, h2h, ghost = rows["win"], rows["h2h"], rows["ghost"]
+    assert (win["date_utc"], win["event"], win["odds_taken"], win["our_fair_prob"], win["result"], win["payout"]) == \
+        ("2026-10-06T18:05Z", "2026-17 Testing Grand Prix", "3.00", "0.40", "won", "30.00")
+    assert (h2h["result"], h2h["payout"], h2h["date_utc"]) == ("lost", "0.00", "2026-10-07T09:00Z")
+    assert ghost["result"] == "open" and ghost["event"] == "2026-17" and "unmapped" in ghost["notes"]
+    assert list(rows["win"]) == list(L.LEDGER_COLUMNS)
+    assert CLI.main(["export", str(p), "--ledger", str(out), "--db", url]) == 2          # never overwrites
+    assert "--force" in capsys.readouterr().err
+    assert CLI.main(["export", str(p), "--ledger", str(out), "--db", url, "--force"]) == 0
+
+
 def test_cli_rich_and_view_render_every_command(test_engine, db, book, tmp_path, capsys):
     from racinglines.cli import book as CLI
     p = tmp_path / "book.toml"

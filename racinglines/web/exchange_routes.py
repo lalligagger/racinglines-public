@@ -16,6 +16,7 @@ from racinglines import exchanges, sports
 from racinglines.db.config import get_engine, get_session
 from racinglines.markets import private_book as house
 from racinglines.markets import venues as V
+from racinglines.web import audience as A
 from racinglines.web.app import ANY, PRO, allow, app, audit, check_csrf, conn, data, render, rows  # noqa: F401
 
 
@@ -35,8 +36,9 @@ def _exchange_board(request, c, user, exchange, event, show, closed, spread_pct,
         WHERE ml.exchange = :x AND (CAST(:closed AS int) = 1 OR NOT ml.closed)
           AND (CAST(:ev AS text) IS NULL OR ml.event_slug = CAST(:ev AS text))
           AND (CAST(:sport AS text) IS NULL OR co.code = CAST(:sport AS text))
+          AND NOT coalesce(co.code, '') = ANY(CAST(:h AS text[]))       -- sports this user doesn't see ([sport] audience)
         ORDER BY ml.end_date NULLS LAST, ml.event_title, ml.last_price DESC NULLS LAST""", closed=closed, ev=event or None,
-                   sport=sport or None, x=exchange)
+                   sport=sport or None, x=exchange, h=list(A.hidden_comps(user)))
     mine = set(data.q(c, "SELECT market_link_id FROM house_markets WHERE maker_id = :u AND market_link_id IS NOT NULL",
                       u=user["id"])["market_link_id"].dropna().astype(int))
     from racinglines.markets import alerts
@@ -76,7 +78,8 @@ def _exchange_board(request, c, user, exchange, event, show, closed, spread_pct,
     if schema:
         venue = next(v for v in V.SCHEMA_EXCHANGES if v.code == exchange)
         return render(request, "exchange.html", mode="schema", venue=venue, fee=fee, **ctx,
-                      sports=[V.SPORT_NAME.get(sports.load(x)["competition"]["code"], x) for x in exchanges.sports(exchange)])
+                      sports=[V.SPORT_NAME.get(sports.load(x)["competition"]["code"], x) for x in exchanges.sports(exchange)
+                              if A.shown(user, x)])
     if exchange == "kalshi":
         return render(request, "exchange.html", mode="kalshi", venue=next(v for v in V.EXCHANGES if v.code == "kalshi"), **ctx)
     return render(request, "exchange.html", mode="pm", venue=SimpleNamespace(name="Polymarket", code="polymarket", url=""), **ctx)

@@ -78,7 +78,10 @@ market = { kind = "race_h2h", driver = "Ann Alpha", opponent = "Bea Beta" }
 
 ## Sizing: the v2 rule, as data
 
-`markets/books.toml [stake]` holds the rule. One function (`render.size`) applies it to every sport and venue:
+`markets/books.toml [stake]` holds the rule. The stakes `book render` prints are recommended stakes from this rule; they
+are never written back. A line's `stake` key in the book file is the bet actually placed, read only by `book export`
+([Ledger export](slips.md#ledger-export)), and `book render` ignores it. One function (`render.size`) applies the
+rule to every sport and venue:
 
 1. **Market price.** The market price is the tightest linked exchange quote that has both a bid and an ask and a
    spread (ask - bid) of at most `[market] max_spread` (0.20), taken at its mid. A tie in spread goes to the most

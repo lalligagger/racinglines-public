@@ -11,6 +11,7 @@ Run form writes: a `jobs` row; the job's subprocess saves a model run (forecasts
 import json
 import os
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 from sqlalchemy import text
@@ -90,13 +91,24 @@ def _json(obj):
     return json.dumps(obj, default=str)
 
 
+@contextmanager
+def _sports_shown():
+    """The tool call's hidden sports (tools.HIDDEN): the ones sports.is_public turns away from a non-admin caller, none for an
+    admin or over stdio. Every tool reads them, so a hidden sport is missing from lists and 'not available' by name."""
+    token = T.HIDDEN.set(T.hidden_sports(caller()))
+    try:
+        yield
+    finally:
+        T.HIDDEN.reset(token)
+
+
 def _read(fn, engine=None, **kw):
     """Call a tools.py function inside a READ ONLY transaction; anticipated errors become tool errors the client sees."""
     from mcp.server.mcpserver.exceptions import ToolError
     if fn in (T.sql, T.describe_schema, T.data_changes):
         _require_admin()
     try:
-        with (engine or _engine()).begin() as c:
+        with _sports_shown(), (engine or _engine()).begin() as c:
             c.execute(text("SET TRANSACTION READ ONLY"))
             return _json(fn(c, **kw))
     except (ValueError, KeyError, TypeError) as ex:
@@ -108,7 +120,8 @@ def _read(fn, engine=None, **kw):
 def _plain(fn, **kw):
     from mcp.server.mcpserver.exceptions import ToolError
     try:
-        return _json(fn(**kw))
+        with _sports_shown():
+            return _json(fn(**kw))
     except (ValueError, KeyError, TypeError) as ex:
         raise ToolError(str(ex)) from ex
 
@@ -117,7 +130,8 @@ def _write(fn, **kw):
     """The job tools: they write a jobs row (what the Lab's Run form does), nothing else."""
     from mcp.server.mcpserver.exceptions import ToolError
     try:
-        return _json(fn(_engine(), **kw))
+        with _sports_shown():
+            return _json(fn(_engine(), **kw))
     except (ValueError, KeyError, TypeError) as ex:
         raise ToolError(str(ex)) from ex
 
@@ -429,6 +443,8 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         p = SPORTS / f"{code}.toml"
         if "/" in code or not p.exists():
             raise ResourceError(f"no sport {code!r}")
+        if code in T.hidden_sports(caller()):
+            raise ResourceError(f"{code} is not available")
         return p.read_text()
 
     if jobs_worker:

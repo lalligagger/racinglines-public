@@ -69,28 +69,21 @@ racinglines db stats --demo
 
 ```
 # LOCAL (Mac), or any machine with Postgres
-racinglines model backtest f1 --demo
+racinglines model backtest kart --demo
 ```
 
 **4. 🔮 Forecast the rest of the season.** The next races (Rainbow Road is a sprint weekend) and both championships; --save stores the run the book and the web app read.
 
 ```
 # LOCAL (Mac), or any machine with Postgres
-racinglines model forecast f1 --demo --save
+racinglines model forecast kart --demo --save
 ```
 
 **5. 🏁 Run a live private book.** Bowser's Castle (round 9) replayed on a simulated clock: the maker's book opens before practice, reprices after each session from the model's stage runs, 100 simulated takers trade against it, the book closes at lights out and settles from the results.
 
 ```
 # LOCAL (Mac), or any machine with Postgres
-racinglines live run f1/demo-2026-09 --demo --simulate --no-fetch
-```
-
-**6. 💰 Price a sportsbook's lines.** The pack's sportsbook book (a generic sportsbook's lines on rounds 10 and 11) against the model's forecast and the exchanges' quotes: EV against each, side by side.
-
-```
-# LOCAL (Mac), or any machine with Postgres
-racinglines book price --demo
+racinglines live run kart/demo-2026-09 --demo --simulate --no-fetch
 ```
 <!-- /quickstart -->
 
