@@ -408,7 +408,7 @@ def turn_off(prod, stg):
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="python -m racinglines.db.mirror", description=__doc__.strip().split("\n\n")[0])
     ap.add_argument("command", choices=("plan", "on", "status", "repair", "off"))
-    ap.add_argument("--scope", choices=SCOPES, default="data", help="what follows production (default: data)")
+    ap.add_argument("--scope", choices=SCOPES, default="all", help="what follows production (default: all, the owner's pick 2026-10-12)")
     a = ap.parse_args(argv)
     prod_url, stg_url = urls()
     prod, stg = connect(prod_url, read_only=a.command not in ("on", "off")), connect(stg_url)

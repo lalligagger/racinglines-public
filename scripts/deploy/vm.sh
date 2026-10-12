@@ -326,7 +326,7 @@ case "${1:-}" in
     # catalog gets that role, a publication and a slot (on/off), and no production row is ever written.
     STG=/opt/racinglines-staging
     m() { remote "cd $STG && sudo -u racinglines -H bash -c 'set -a; . /etc/racinglines-staging.env; set +a; PYTHONUNBUFFERED=1 .venv/bin/python -m racinglines.db.mirror $1'"; }
-    scope="${3:-data}"
+    scope="${3:-all}"
     case "$scope" in data|accounts|all) ;; *) echo "scope: data | accounts | all"; exit 1 ;; esac
     case "${2:-}" in
       plan) m "plan --scope $scope" ;;

@@ -466,7 +466,7 @@ subscription connects as `racinglines_mirror` (REPLICATION, SELECT on the mirror
 and off add or drop that role, the publication `racinglines_staging_mirror` and its replication slot in production's
 catalog, and no production row is ever written. TRUNCATE is not published.
 
-**Scope** (`vm.sh mirror on <scope>`, default `data`):
+**Scope** (`vm.sh mirror on <scope>`, default `all`, the owner's pick 2026-10-12):
 
 | Scope | What follows production | What stays staging's own |
 |---|---|---|
@@ -499,12 +499,12 @@ bash scripts/deploy/vm.sh postgres logical
 
 ```
 # LOCAL (Mac): read-only preview: per table, the staging rows production doesn't have as-is (replaced on first mirror)
-bash scripts/deploy/vm.sh mirror plan data
+bash scripts/deploy/vm.sh mirror plan all
 ```
 
 ```
 # LOCAL (Mac): back up staging, subscribe (the first copy of about 2.6 GB runs in the background), check
-bash scripts/deploy/vm.sh mirror on data
+bash scripts/deploy/vm.sh mirror on all
 bash scripts/deploy/vm.sh mirror status
 ```
 
