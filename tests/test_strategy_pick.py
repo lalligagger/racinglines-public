@@ -15,7 +15,7 @@ def test_sliders_clamp_and_only_moved_settings_count():
     assert moved == {}                                                  # untouched: the strategy as tuned
     settings, moved = SP._adjusted("T1", {"T1:min_edge": "0.5", "T1:min_volume_24h": "120", "T1:pre_weekend": "1",
                                           "T2:min_edge": "0.04"})
-    assert moved == {"min_edge": 0.2, "min_volume_24h": 100.0, "pre_weekend": True}   # clamped, stepped; T2's ignored
+    assert moved == {"min_edge": 0.15, "min_volume_24h": 100.0, "pre_weekend": True}   # clamped, stepped; T2's ignored
     assert settings["taker_stages"][0] == "pre-weekend" and settings["min_edge_h2h"] == 0.05
     settings, moved = SP._adjusted("C", {"C:max_disagree": "0.08"})
     assert moved == {"max_disagree": 0.08}
@@ -59,6 +59,7 @@ def app_db(test_engine, monkeypatch):
     with config.get_session() as s:
         U.create_user(s, "ada", "ada-password-1", "pro")
         U.create_user(s, "bea", "bea-password-1", "basic")
+        U.create_user(s, "cal", "cal-password-1", "pro")
     yield A
     config.get_engine.cache_clear()
 
@@ -95,10 +96,11 @@ def test_a_pro_account_starts_empty_then_picks_and_tunes(app_db):
     page = client.get("/strategy/pick").text
     assert 'value="T1" checked' in page and "12 pts" in page            # back where the user left it
     assert "data-roll-any" in page and "data-roll " in page              # the dice (they roll in the browser)
-    client.post("/strategy/pick", data={"csrf_token": csrf, "code": "T1", "T1:min_edge": "0.15", "rolled": "1"})
-    assert _profile("ada")["rolled"] is True and _profile("ada")["settings"]["min_edge"] == 0.15
+    client.post("/strategy/pick", data={"csrf_token": csrf, "code": "T3", "T3:min_volume_24h": "400", "rolled": "1"})
+    assert _profile("ada")["rolled"] is True and _profile("ada")["settings"]["min_volume_24h"] == 400
+    assert "C · maker" not in page                                       # Alpha: no makers (profiles.MAKERS_OPEN)
     r = client.post("/strategy/pick", data={"csrf_token": csrf, "code": "C"}, follow_redirects=False)
-    assert "Error" in r.headers["location"] and _profile("ada")["base"] == "T1"   # Alpha: makers closed (profiles.MAKERS_OPEN)
+    assert "Error" in r.headers["location"] and _profile("ada")["base"] == "T3"
     client.post("/strategy/pick", data={"csrf_token": csrf, "code": "TB"})
     assert _profile("ada")["members"]                                    # a blend runs as tuned
     client.post("/strategy/pick", data={"csrf_token": csrf, "code": "none"})
@@ -139,3 +141,23 @@ def test_inside_a_weekend_the_page_is_read_only_and_saves_are_refused(app_db, mo
         r = client.post("/strategy/pick", data={"csrf_token": csrf, **data}, follow_redirects=False)
         assert "paused%20during%20Test%20GP" in r.headers["location"]
     assert _profile("ada") == before
+
+
+def test_only_f1_on_polymarket_can_be_picked(app_db):
+    """Only F1 on Polymarket runs library strategies today (library/core/2026-10-11-strategies-per-sport.md): a pro sees
+    no sport tabs and can't save another slot; an admin sees the others as coming soon."""
+    from racinglines.web import strategy_pick as SP
+    client, csrf, page = _login(app_db, "cal")
+    assert "pick-slots" not in page and SP.slots({"role": "pro"}) == []
+    r = client.post("/strategy/pick", data={"csrf_token": csrf, "code": "T1", "slot": "nascar:kalshi"},
+                    follow_redirects=False)
+    assert "Error" in r.headers["location"] and _profile("cal") is None
+    admin = SP.slots({"role": "admin"})
+    assert [x["key"] for x in admin if x["open"]] == ["f1:polymarket"]
+    if len(admin) > 1:
+        from racinglines.db import config
+        from racinglines.web import users as U
+        with config.get_session() as s:
+            U.create_user(s, "dee", "dee-password-1", "admin")
+        page = _login(app_db, "dee")[2]
+        assert "coming soon" in page and admin[1]["label"] in page

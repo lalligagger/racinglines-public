@@ -493,6 +493,19 @@ a.button.primary:hover { filter: brightness(1.08); color: #fff; }
 .term-bar { display: flex; gap: 6px; align-items: center; padding: 8px 12px; background: #202329; }
 .term-bar i { width: 10px; height: 10px; border-radius: 50%; background: #3a3e46; }
 .term-part { margin: 40px 0 0; padding-top: 12px; border-top: 1px solid var(--line); }
+/* /term part nav: large tabs across the top on a phone, a sticky sidebar on a wide screen */
+.term-layout { margin-top: 20px; }
+.term-nav { display: flex; gap: 6px; position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 8px 0; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.term-nav a { flex: 1 1 0; min-width: 110px; display: grid; gap: 2px; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--card); color: inherit; text-decoration: none; font-weight: 600; font-size: 15px; line-height: 1.25; }
+.term-nav-n { font-size: 12px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.term-nav a[aria-current] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.term-layout.js .term-partbox > .term-part { border-top: 0; margin-top: 20px; }
+.term-next { margin-top: 28px; font-weight: 600; }
+@media (min-width: 900px) {
+  .term-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 32px; align-items: start; }
+  .term-nav { flex-direction: column; top: 16px; border-bottom: 0; padding: 0; overflow: visible; }
+  .term-nav a { flex: none; min-width: 0; }
+}
 .term-play { float: right; margin-left: 12px; font: 12px/1.4 system-ui, sans-serif; padding: 3px 12px; background: #4d7cff; color: #fff; border: 0; border-radius: 6px; cursor: pointer; }
 .term-play::before { content: "▶ "; }
 .term-play:disabled { opacity: .5; cursor: default; }
@@ -523,3 +536,20 @@ a.button.primary:hover { filter: brightness(1.08); color: #fff; }
 .pick-dice { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: end; margin: 0 0 12px; }
 .pick-spread { display: grid; gap: 2px; font-size: 13px; flex: 1 1 260px; max-width: 420px; }
 .pick-spread input[type=range] { width: 100%; padding: 0; margin: 0; accent-color: var(--accent); }
+/* /strategy/pick: one tab per sport and exchange */
+.pick-slots { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.pick-slots > span { display: grid; gap: 1px; padding: 6px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--card); text-decoration: none; color: inherit; font-size: 13px; }
+.pick-slots .soon { opacity: .6; border-style: dashed; }
+.pick-slots [aria-current] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.pick-slots .muted { font-size: 12px; }
+/* Lab: numbered first steps, folded extras, one job form at a time (app.js runPickInit) */
+.lab-steps { margin: 0 0 12px; padding-left: 22px; display: grid; gap: 4px; }
+details.fold { margin: 10px 0; }
+details.fold > summary { font-weight: 600; padding: 4px 0; }
+details.more { margin: 4px 0; }
+details.more > summary { font-size: 13px; color: var(--muted); padding: 4px 0; }
+.run-pick { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: end; margin: 0 0 12px; }
+.run-pick label { margin: 0; display: grid; gap: 2px; font-size: 13px; }
+.run-pick select { min-width: 200px; }
+.run-pick ~ .run-sport .run-sport-name { display: none; }
+.run-pick:not([hidden]) ~ .run-sport .cards { display: block; max-width: 760px; }
