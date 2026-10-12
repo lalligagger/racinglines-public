@@ -384,9 +384,14 @@
       history.replaceState(null, "", "#" + a.dataset.termTab);
       showPart(a.dataset.termTab, true);
     });
-    window.addEventListener("hashchange", () => showPart(fromHash(), false));
+    const toTarget = () => {     // a hash inside a part (a step, a section): show its part, then scroll to it
+      showPart(fromHash(), false);
+      const el = location.hash && document.getElementById(location.hash.slice(1));
+      if (el && !el.classList.contains("term-partbox")) el.scrollIntoView({block: "start"});
+    };
+    window.addEventListener("hashchange", toTarget);
     parts.classList.add("js");
-    showPart(fromHash(), false);
+    toTarget();
   }
 
   // --- /strategy/pick: each slider shows its value (points for probabilities, $ or shares otherwise); the dice roll
