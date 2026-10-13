@@ -389,12 +389,12 @@ def test_nav_four_tabs_under_alpha_old_bar_under_classic(db, monkeypatch):
     _make_admin()
     ada = _login("ada")
     nav = _main_nav(ada.get("/history").text)
-    assert [h for h in re.findall(r'href="([^"]+)"', nav)] == ["/markets", "/trade", "/history", "/lab"]
+    assert [h for h in re.findall(r'href="([^"]+)"', nav)] == ["/markets", "/trade", "/history", "/strategy/pick"]  # Lab opens on Follow a strategy (owner, 2026-10-13)
     page = ada.get("/history").text
     assert 'href="/pitch"' not in page and 'href="/docs/"' not in page and "racinglines-public" in page
     assert 'href="/logout"' in page and 'href="/settings"' in page
     nav = _main_nav(_login("ola").get("/history").text)
-    assert re.findall(r'href="([^"]+)"', nav) == ["/markets", "/trade", "/history", "/lab", "/admin"]
+    assert re.findall(r'href="([^"]+)"', nav) == ["/markets", "/trade", "/history", "/strategy/pick", "/admin"]
     monkeypatch.setenv("RACINGLINES_LAYOUT", "classic")
     page = ada.get("/history").text
     hrefs = re.findall(r'href="([^"]+)"', _main_nav(page))
