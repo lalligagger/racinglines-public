@@ -52,6 +52,9 @@ def main(argv=None):
     p.add_argument("--series", type=int, default=1)
     p.add_argument("--force", action="store_true", help="Rebuild races whose files have not changed.")
     p.add_argument("--no-laps", action="store_true", help="Skip the lap table (8,000 to 18,000 rows per race).")
+    from racinglines.db import schedule as SCH
+    p = SCH.add_parser(sub, "nascar")
+    p.add_argument("--series", type=int, default=1)
     p = sub.add_parser("link", help="Identify the driver, race and contract of stored market links.")
     p.add_argument("--exchange", default=None, help="Only this exchange's links (kalshi, polymarket, og).")
     p.add_argument("--apply", action="store_true", help="Write the changes (default: a dry run that only reports).")
@@ -97,6 +100,17 @@ def main(argv=None):
         return replay_cmd.run(args, "nascar", _years(args.years))
     if args.cmd == "season-replay":
         return replay_cmd.run_season(args, "nascar")
+    if args.cmd == "schedule":
+        from racinglines.db import schedule as SCH
+        from racinglines.sources.nascar import ingest as NI
+
+        def plan(s, through, today):
+            counts = {}
+            for year in range(today.year, through.year + 1):
+                for k, v in NI.write_schedule(s, year, args.series, through, today).items():
+                    counts[k] = counts.get(k, 0) + v
+            return counts
+        return SCH.run(args, "nascar", NI.SOURCE, plan)
     if args.cmd == "link":
         return _link(args)
     if args.cmd == "fetch":

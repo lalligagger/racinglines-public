@@ -146,9 +146,14 @@ def test_every_rejection_writes_a_row_and_an_audit_entry(db):
     assert _reason(db, link="motogp") == "no_schedule"       # a race kind with no race: fails closed
     with eng.begin() as c:
         c.execute(text("UPDATE sports SET code = 'f1x' WHERE code = 'f1'"))
-    assert _reason(db) == "kind_not_tradable"
+    assert _reason(db) == "sport_not_tradable"
     with eng.begin() as c:
         c.execute(text("UPDATE sports SET code = 'f1' WHERE code = 'f1x'"))
+    with eng.begin() as c:                                   # an F1 market of a kind fantasy doesn't trade
+        c.execute(text("UPDATE market_links SET exchange = 'nowhere' WHERE id = :i"), dict(i=db["links"]["win"]))
+    assert _reason(db) == "kind_not_tradable"
+    with eng.begin() as c:
+        c.execute(text("UPDATE market_links SET exchange = 'kalshi' WHERE id = :i"), dict(i=db["links"]["win"]))
     assert _reason(db, link="pole") == "session_started"     # qualifying started an hour ago
     assert _reason(db, now=RACE + timedelta(minutes=1)) == "session_started"
     with eng.begin() as c:
@@ -315,7 +320,7 @@ def test_old_addresses_redirect(db):
 
 def test_ranked_scores_gates_and_orders(db, monkeypatch):
     """fantasy/ledger.ranked: score = ROI x sqrt(trades), ranked best first; below MIN_TRADES unranked, after the
-    ranked ones, by total F$."""
+    ranked ones, by P&L."""
     from racinglines.fantasy import exchange as FX
     from racinglines.fantasy import ledger as FL
     eng, u = db["engine"], db["users"]
@@ -332,7 +337,8 @@ def test_ranked_scores_gates_and_orders(db, monkeypatch):
     assert a["score"] == pytest.approx(a["roi"] * FL.MIN_TRADES ** 0.5, abs=1e-4) and a["rank"] == 1
     assert b["score"] is None and b["rank"] is None and b["roi"] is not None   # one trade: unranked
     assert cal["roi"] is None and cal["score"] is None and cal["rank"] is None
-    assert order == ["ada", "cal", "bea"]                    # ranked first; then cal (1,000) before bea (less)
+    assert order == ["ada", "cal", "bea"]                    # ranked first; then cal (P&L 0) before bea (a fee down)
+    assert a["pnl"] == pytest.approx(a["manual_pnl"] + a["strategy_pnl"])
     monkeypatch.setattr(FL, "MIN_TRADES", 1)                  # with the gate at one trade both rank, by score
     with eng.connect() as c:
         rows = FL.ranked(c)
@@ -342,6 +348,7 @@ def test_ranked_scores_gates_and_orders(db, monkeypatch):
     # the page lists the unranked with "–" in rank and explains the score
     board = _board(_login("cal").get("/history").text)
     assert "ROI × √trades" in board
+    assert "Total F$" not in board and "1,000" not in board                # P&L and ROI, never a balance
 
 
 def test_history_page_marks_unranked_players(db):
@@ -417,3 +424,152 @@ def test_pages_say_not_set_up_before_setup(db, monkeypatch):
         c.execute(text("DROP TABLE accounts.fantasy_fills, accounts.fantasy_positions, accounts.fantasy_orders"))
     ada = _login("ada")
     assert "Not open yet" in ada.get("/history").text and "Not open yet" in ada.get("/trade").text
+
+
+def test_settle_pays_resolved_hand_trades_once_and_closes_them(db):
+    from racinglines.fantasy import exchange as FX
+    from racinglines.fantasy import ledger as FL
+    eng, ada, bea = db["engine"], db["users"]["ada"], db["users"]["bea"]
+    assert FX.place(eng, ada, db["links"]["win"], "yes", "buy", 100, 0.42, now=NOW, get_book=book())["ok"]
+    assert FX.place(eng, bea, db["links"]["win"], "no", "buy", 100, 0.61, now=NOW, get_book=book())["ok"]
+    assert FX.place(eng, ada, db["links"]["champ"], "yes", "buy", 10, 0.42, now=NOW, get_book=book())["ok"]
+    assert FX.settle(eng) == 0                                          # nothing resolved yet
+    with eng.begin() as c:
+        c.execute(text("UPDATE market_links SET resolved_yes = true WHERE id = :i"), dict(i=db["links"]["win"]))
+    with eng.connect() as c:
+        before = FL.cash(c, ada["id"]), FL.cash(c, bea["id"])
+    assert FX.settle(eng) == 2 and FX.settle(eng) == 0                  # once only
+    with eng.connect() as c:
+        assert FL.cash(c, ada["id"]) == pytest.approx(before[0] + 100)  # 100 YES x F$1
+        assert FL.cash(c, bea["id"]) == pytest.approx(before[1])        # the NO side gets nothing
+        assert [p["market_link_id"] for p in FL.positions(c, ada["id"], open_only=True)] == [db["links"]["champ"]]
+        s = FL.summary(c, ada["id"])
+    assert s["manual_pnl"] == pytest.approx(100 - 41.0 - 1.70 + (10 * 0.39 - 4.10), abs=0.01)
+    st = _rows(eng, "SELECT status, outcome, payout FROM accounts.fantasy_positions WHERE user_id = :u AND market_link_id = :l",
+               u=ada["id"], l=db["links"]["win"])
+    assert st == [("settled", True, 100)]
+    # a settled position can't be traded again
+    r = FX.place(eng, ada, db["links"]["win"], "yes", "sell", 10, 0.39, now=NOW, get_book=book())
+    assert not r["ok"] and r["reason"] == "market_closed"
+
+
+def test_books_engine_from_another_url_is_read_only(test_engine, monkeypatch):
+    from sqlalchemy.exc import DBAPIError
+
+    from racinglines.fantasy import exchange as FX
+    monkeypatch.setenv("RACINGLINES_FANTASY_BOOKS_URL", test_engine.url.render_as_string(hide_password=False))
+    FX._BOOKS.clear()
+    b = FX.books_engine(test_engine)
+    assert b is not test_engine
+    with b.connect() as c:
+        assert c.execute(text("SELECT 1")).scalar() == 1
+        with pytest.raises(DBAPIError, match="read-only"):
+            c.execute(text("CREATE TABLE fantasy_ro_probe (x int)"))
+    FX._BOOKS.clear()
+
+
+def test_close_falls_back_to_the_books_database_by_token(db, monkeypatch):
+    """Staging's rounds have no session starts: the close comes from the books database's link with the same token."""
+    import pandas as pd
+    from sqlalchemy import create_engine
+
+    from racinglines.fantasy import exchange as FX
+    eng = db["engine"]
+    other = create_engine(eng.url)                                       # stands in for production's database
+    seen = []
+
+    def close(conn, link):
+        seen.append(conn.engine is other)
+        return pd.Timestamp("2026-10-19 19:00") if conn.engine is other else None
+    monkeypatch.setattr(FX, "_close", close)
+    monkeypatch.setattr(FX, "books_engine", lambda default: other)
+    with eng.connect() as c:
+        link = FX._link(c, db["links"]["win"])
+        assert FX.closes_at(c, link).isoformat() == "2026-10-19T19:00:00+00:00" and seen == [False, True]
+        monkeypatch.setattr(FX, "books_engine", lambda default: default)  # no separate books database: refused
+        with pytest.raises(FX.Rejected):
+            FX.closes_at(c, link)
+    other.dispose()
+
+
+def _mcp_client(engine, monkeypatch, who):
+    """mcp(name, **args) against a server on the test database, called as `who` (None = stdio, the owner)."""
+    import asyncio
+    import json
+
+    from mcp import Client
+
+    from racinglines.mcp import server as S
+    monkeypatch.setattr(S, "caller", lambda: who)
+    url = engine.url.render_as_string(hide_password=False)
+
+    def call(name, **args):
+        async def go():
+            async with Client(S.build(engine_url=url)) as client:
+                r = await client.call_tool(name, args)
+                t = r.content[0].text
+                return ("error", t) if r.is_error else json.loads(t)
+        try:
+            return asyncio.run(go())
+        finally:
+            S._URL = None
+    return call
+
+
+def test_mcp_fantasy_tools_are_own_account_and_trade_like_the_page(db, monkeypatch):
+    from racinglines.fantasy import exchange as FX
+    eng, u = db["engine"], db["users"]
+    champ = db["links"]["champ"]
+    with eng.begin() as c:
+        c.execute(text("""INSERT INTO market_book_snapshots (token_id, ts, best_bid, best_ask, bids, asks)
+                          VALUES ('PM-CHAMP-VER', :ts, 0.39, 0.41, CAST(:b AS jsonb), CAST(:a AS jsonb))"""),
+                  dict(ts=datetime.now(timezone.utc) - timedelta(minutes=1), b=str(BIDS), a=str(ASKS)))
+    FX._BOOKS.clear()
+    mcp = _mcp_client(eng, monkeypatch, dict(u["ada"], role="pro"))
+    assert any(m["market_link_id"] == champ for m in mcp("fantasy_markets", q="Verstappen")["markets"]["rows"])
+    book = mcp("fantasy_book", market_link_id=champ)
+    assert book["yes_asks"][0] == [0.41, 120] and len(book["no_bids"]) <= FX.DEPTH
+    r = mcp("fantasy_order", market_link_id=champ, side="yes", action="buy", shares=10, limit_price=0.41)
+    assert r["ok"] and r["user"] == "ada" and r["fills"] == [[0.41, 10]] and r["cash"] == pytest.approx(1000 - 4.10)
+    bal = mcp("fantasy_balance")
+    assert bal["user"] == "ada" and bal["open"] == 1
+    assert mcp("fantasy_positions")["positions"]["rows"][0]["shares"] == 10
+    assert mcp("fantasy_orders")["orders"]["rows"][0]["status"] == "filled"
+    # guardrails: another account is out of reach for reads and orders, and the leaderboard has no balances
+    for name in ("fantasy_balance", "fantasy_positions", "fantasy_orders"):
+        denied = mcp(name, user="bea")
+        assert denied[0] == "error" and "own account" in denied[1], name
+    denied = mcp("fantasy_order", market_link_id=champ, side="yes", action="buy", shares=1, limit_price=0.41, user="bea")
+    assert denied[0] == "error" and "own account" in denied[1]
+    rows = mcp("fantasy_leaderboard")["rows"]["rows"]
+    assert {"total", "cash", "grant"}.isdisjoint(rows[0]) and "pnl" in rows[0]
+    assert _rows(eng, "SELECT count(*) FROM accounts.fantasy_orders WHERE user_id = :u", u=u["bea"]["id"]) == [(0,)]
+    assert _rows(eng, "SELECT detail->>'via' FROM activity_log WHERE action = 'fantasy_order'") == [("mcp",)]
+    # an admin over HTTP still trades only as itself; stdio must name the account
+    admin = _mcp_client(eng, monkeypatch, dict(u["cal"], role="admin"))
+    assert admin("fantasy_balance", user="bea")["user"] == "bea"            # an admin may read others
+    assert "own account" in admin("fantasy_order", market_link_id=champ, side="yes", action="buy", shares=1,
+                                  limit_price=0.41, user="bea")[1]
+    owner = _mcp_client(eng, monkeypatch, None)
+    assert "which account" in owner("fantasy_order", market_link_id=champ, side="yes", action="buy", shares=1,
+                                    limit_price=0.41)[1]
+
+
+def test_other_sports_are_view_only_with_a_notice(db):
+    """Fantasy trading is F1 only for now (owner, 2026-10-12 23:07Z): a non-F1 market says so on Trade and is refused."""
+    from racinglines.fantasy import exchange as FX
+    eng = db["engine"]
+    with eng.begin() as c:
+        c.execute(text("INSERT INTO sports (code, name) VALUES ('nascar', 'NASCAR') ON CONFLICT DO NOTHING"))
+        c.execute(text("INSERT INTO leagues (code, name) VALUES ('nascar', 'NASCAR') ON CONFLICT DO NOTHING"))
+        comp = c.execute(text("""INSERT INTO competitions (code, name, league_id, sport_id)
+                                 SELECT 'nascar_cup_t', 'Cup', l.id, s.id FROM leagues l, sports s
+                                 WHERE l.code = 'nascar' AND s.code = 'nascar' RETURNING id""")).scalar()
+        lid = c.execute(text("""INSERT INTO market_links (exchange, question, token_id, outcome, competition_id, prediction,
+                                                          group_title, last_bid, last_ask)
+                                VALUES ('kalshi', 'race_win Larson', 'KX-NASCAR-LAR', 'Yes', :c, 'race_win', 'Larson', 0.2, 0.22)
+                                RETURNING id"""), dict(c=comp)).scalar()
+    page = _login("ada").get(f"/trade?link={lid}").text
+    assert "Fantasy trading is Formula 1 only for now" in page and 'action="/fantasy/orders"' not in page
+    r = FX.place(eng, db["users"]["ada"], lid, "yes", "buy", 10, 0.22, now=NOW, get_book=book())
+    assert not r["ok"] and r["reason"] == "sport_not_tradable" and "Formula 1 only" in r["message"]

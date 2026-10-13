@@ -14,6 +14,7 @@ Before `racinglines users setup` has created the trading tables the pages say so
 nothing here reaches an exchange (fantasy/exchange.py). Split out of web/app.py, which imports this module.
 """
 
+import logging
 import uuid
 from urllib.parse import quote
 
@@ -26,6 +27,7 @@ from racinglines.fantasy import ledger as FL
 from racinglines.web import demo
 from racinglines.web.app import ANY, allow, app, audit, check_csrf, get_engine, render
 
+log = logging.getLogger(__name__)
 HIDDEN = ("polymarket-takers",)          # the system account (web/accounts.RESERVED); demo accounts are added at call time
 
 
@@ -42,6 +44,15 @@ def _ready():
 
 def _books():
     return FX.books_engine(get_engine())
+
+
+def _settle():
+    """Pay out resolved hand trades before a page shows balances (FX.settle; staging has no timers to do it). A
+    failure is logged and the page still loads with the positions as they were."""
+    try:
+        FX.settle(get_engine(), _books())
+    except Exception:                                    # noqa: BLE001 — never block the page on settlement
+        log.exception("fantasy settle failed")
 
 
 def _strategy_trades(c, user_id):
@@ -70,6 +81,7 @@ def history_page(request: Request, msg: str = ""):
     me = request.state.user
     if not _ready():
         return render(request, "history.html", ready=False, msg=msg, rows=[])
+    _settle()
     from racinglines.pipelines import profiles as PF
     from racinglines.web.viz import line_chart
     with get_engine().connect() as c:
@@ -95,23 +107,6 @@ def fantasy_home(request: Request):
     return RedirectResponse("/history", status_code=303)
 
 
-def _markets(c, search=""):
-    """The links a player may trade now, newest events first: F1, Kalshi and Polymarket, open and unresolved, in the
-    tradable kinds. Closing times are checked when an order is placed. -> [dict]"""
-    kinds = sorted({k for ks in FX.tradable().values() for k in ks})
-    rs = c.execute(text("""
-        SELECT ml.id, ml.exchange, ml.token_id, ml.prediction AS kind, ml.question, ml.group_title, ml.outcome,
-               ml.event_title, ml.last_bid, ml.last_ask, e.start_date
-        FROM market_links ml JOIN competitions co ON co.id = ml.competition_id JOIN sports sp ON sp.id = co.sport_id
-        LEFT JOIN races ra ON ra.id = ml.race_id LEFT JOIN events e ON e.id = ra.event_id
-        WHERE sp.code = :sport AND ml.exchange = ANY(:x) AND ml.prediction = ANY(:k) AND ml.active AND NOT ml.closed
-          AND ml.resolved_yes IS NULL AND (e.start_date IS NULL OR e.start_date >= current_date - 1)
-          AND (:q = '' OR ml.question ILIKE :like OR ml.group_title ILIKE :like OR ml.event_title ILIKE :like)
-        ORDER BY e.start_date NULLS LAST, ml.event_title, ml.exchange, ml.prediction, ml.group_title, ml.id"""),
-        dict(sport=FX.SPORT, x=list(FX.EXCHANGES), k=kinds, q=search, like=f"%{search}%")).mappings().all()
-    return [dict(r) for r in rs]
-
-
 @app.get("/fantasy/trade", dependencies=[allow(*ANY)])
 def fantasy_trade_old(request: Request):
     _gate()
@@ -125,10 +120,11 @@ def fantasy_trade(request: Request, link: int = 0, q: str = "", msg: str = "", a
     me = request.state.user
     if not _ready():
         return render(request, "fantasy_trade.html", ready=False, msg=msg)
+    _settle()
     eng = get_engine()
     q = q.strip()[:60]
     with eng.connect() as c:
-        markets = _markets(c, q)
+        markets = FX.markets(c, q)
         quotes = FX.quotes(_books(), [m["token_id"] for m in markets])
         for m in markets:
             b, a, ts = quotes.get(m["token_id"], (None, None, None))
@@ -140,6 +136,9 @@ def fantasy_trade(request: Request, link: int = 0, q: str = "", msg: str = "", a
                                            event_title FROM market_links WHERE id = :i"""), dict(i=link)).mappings().first()
             if sel is not None:
                 sel = dict(sel)
+                full = FX._link(c, sel["id"])
+                sel["sport_ok"], sel["sport"] = FX.sport_ok(full), full["sport"]
+            if sel is not None and sel["sport_ok"]:
                 book = FX.latest_book(_books(), sel["token_id"])
                 if book:
                     nb, na = FX.yes_to_no(book["bids"], book["asks"])

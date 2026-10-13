@@ -274,15 +274,17 @@ def score(pnl, staked, trades):
 
 def ranked(conn, hide=(), quotes=None):
     """leaderboard() with each player's trades, F$ staked, ROI and score, ranked by score (best first); players below
-    MIN_TRADES follow, unranked, by total F$. -> [dict(..., trades, staked, roi, score, rank or None)]"""
+    MIN_TRADES follow, unranked, by P&L. The page shows P&L and ROI, never a player's balance (owner, 2026-10-12
+    22:36Z). -> [dict(..., trades, staked, pnl, roi, score, rank or None)]"""
     rows = leaderboard(conn, hide=hide, quotes=quotes)
     st = {r[0]: (int(r[1]), float(r[2])) for r in conn.execute(text(TRADE_STATS))}
     ids = dict(conn.execute(text("SELECT username, id FROM users WHERE username = ANY(:n)"),
                             dict(n=[r["username"] for r in rows])).all())
     for r in rows:
         r["trades"], r["staked"] = st.get(ids.get(r["username"]), (0, 0.0))
-        r["roi"], r["score"] = score(r["manual_pnl"] + r["strategy_pnl"], r["staked"], r["trades"])
-    rows.sort(key=lambda r: (r["score"] is None, -(r["score"] or 0), -r["total"], r["username"]))
+        r["pnl"] = round(r["manual_pnl"] + r["strategy_pnl"], 2)
+        r["roi"], r["score"] = score(r["pnl"], r["staked"], r["trades"])
+    rows.sort(key=lambda r: (r["score"] is None, -(r["score"] or 0), -r["pnl"], r["username"]))
     n = 0
     for r in rows:
         r["rank"] = (n := n + 1) if r["score"] is not None else None

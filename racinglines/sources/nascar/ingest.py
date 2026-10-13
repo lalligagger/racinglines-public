@@ -388,3 +388,80 @@ def ingest(session, years, series=1, force=False, laps=True, today=None, echo=pr
             counts[k] = counts.get(k, 0) + 1
             echo(f"  {year} {rid}: {status}")
     return counts
+
+
+# a race-list schedule entry's run_type -> the round kind the weekend feed's ingest writes (1 practice, 2 qualifying
+# as in weekend_runs; 3 the race)
+SCHEDULE_RUN_KIND = {1: "fp", 2: "qual", 3: "race"}
+
+
+def _utc_text(text):
+    """A UTC start as the ingest stores run_date_utc ("YYYY-MM-DDTHH:MM:SS"); None when it does not parse."""
+    try:
+        t = datetime.fromisoformat(str(text).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if t.tzinfo is not None:
+        from datetime import timezone
+        t = t.astimezone(timezone.utc).replace(tzinfo=None)
+    return t.isoformat(timespec="seconds")
+
+
+def schedule_sessions(race_row):
+    """A race-list row's sessions as scheduled rounds (db/schedule.write_sessions), from its `schedule` entries that
+    carry a UTC start (start_time_utc) and a run_type of 1, 2 or 3, named like the weekend feed's ingest names them
+    (fp1.., qual1.. with the last qualifying run "qual", race). Empty when the row has no such entries: no start is
+    ever derived from the local race_date."""
+    runs = sorted(((_utc_text(e.get("start_time_utc")), e) for e in race_row.get("schedule") or []
+                   if isinstance(e, dict) and e.get("start_time_utc") and e.get("run_type") in SCHEDULE_RUN_KIND),
+                  key=lambda x: x[0] or "")
+    runs = [(t, e) for t, e in runs if t]
+    practice = [x for x in runs if x[1]["run_type"] == 1]
+    qual = [x for x in runs if x[1]["run_type"] == 2]
+    race = [x for x in runs if x[1]["run_type"] == 3]
+    out, ordinal = [], 0
+
+    def add(kind, t, e):
+        nonlocal ordinal
+        ordinal += 1
+        out.append(dict(kind=kind, ordinal=ordinal, name=(e.get("event_name") or kind).strip(), start=t))
+
+    for i, (t, e) in enumerate(practice, 1):
+        add(f"fp{i}", t, e)
+    for i, (t, e) in enumerate(qual, 1):
+        add("qual" if i == len(qual) else f"qual{i}", t, e)
+    if race:
+        add("race", *race[-1])
+    return out
+
+
+def write_schedule(session, year, series, through, today, echo=print):
+    """Scheduled rounds (db/schedule.py) for the stored race list's races dated up to `through` that are stored as
+    events and not completed, from the list's own UTC session starts (schedule_sessions). Returns per-outcome counts."""
+    from racinglines.db import schedule as SCH
+    counts = {}
+    for r in F.race_rows(year, series):
+        if not r.get("race_date"):
+            continue
+        day = SCH.parse_day(r["race_date"])
+        if not SCH.in_window(day, today, through):
+            continue
+        key = f"{year}-{r['race_id']}"
+        event, race = SCH.upcoming_race(session, SOURCE, key)
+        if event is None:
+            status = "no stored event"
+        elif race is None:
+            status = "completed, untouched" if event.status == "completed" else "no race row"
+        else:
+            sess = schedule_sessions(r)
+            if not sess:
+                status = "no UTC session starts in the race list: nothing written"
+                counts["no_times"] = counts.get("no_times", 0) + 1
+            else:
+                n = SCH.write_sessions(session, race.id, sess, "run_date_utc", "nascar race_list_basic")
+                status = ", ".join(f"{v} {k}" for k, v in n.items() if v)
+                for k, v in n.items():
+                    counts[k] = counts.get(k, 0) + v
+                status += "  [" + "; ".join(f"{s['kind']} {s['start']}" for s in sess) + "]"
+        echo(f"  {key} {(r.get('race_name') or '').strip()} ({day}): {status}")
+    return counts

@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% from "_macros.html" import csrf, empty, flash, page_head, source_note %}
 {% block title %}Trade{% endblock %}
 {% block content %}
-{% call page_head("Trade by hand", "F1 markets on Kalshi and Polymarket at their latest recorded prices. Fantasy bucks only: nothing is sent to an exchange.") %}
+{% call page_head("Trade by hand", "Formula 1 markets on Kalshi and Polymarket at their latest recorded prices. Fantasy trading is F1 only for now. Fantasy bucks only: nothing is sent to an exchange.") %}
 <a href="/history">History →</a>{% endcall %}
 {{ flash(msg) }}
 {% if not ready %}<div class="card"><h2>Not open yet</h2><p>Fantasy trading hasn't been set up on this site yet.</p></div>{% else %}
@@ -9,7 +9,8 @@
 {% if sel %}<div class="card accent">
   <h2>{{ sel.group_title or sel.question }}</h2>
   <p class="muted">{{ sel.event_title or "" }} · {{ sel.exchange|capitalize }} · {{ sel.kind|kind }}{% if sel.group_title and sel.question != sel.group_title %} · {{ sel.question }}{% endif %}</p>
-  {% if not book %}<p>No order book has been recorded for this market yet, so it can't be traded.</p>{% else %}
+  {% if not sel.sport_ok %}<p class="flash bad" role="status"><b>Fantasy trading is Formula 1 only for now.</b> This {{ (sel.sport or "")|upper }} market can't be traded here; you can follow its prices on <a href="/markets">Markets</a>.</p>
+  {% elif not book %}<p>No order book has been recorded for this market yet, so it can't be traded.</p>{% else %}
   <p class="muted">Book recorded {{ book.ts|fmt }} (orders are refused once it is over {{ "%.0f"|format(max_age) }} minutes old). Cash: F${{ "{:,.2f}".format(cash) }}{% if pos %} · you hold {{ "%g"|format(pos.shares) }} {{ pos.side|upper }}, cost F${{ "%.2f"|format(pos.cost) }}{% endif %}.</p>
   <div class="grid">
     {% for name, bids, asks in [("YES", book.bids, book.asks), ("NO", book.no_bids, book.no_asks)] %}

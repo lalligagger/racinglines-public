@@ -40,7 +40,9 @@ the live timers (below), but the web app restarts for a few seconds.
 
 The smoke check signs in as the demo accounts (`SMOKE_PASSWORD`, default the public demo password). It
 checks `/login`, that a request without credentials gets 401, the main pages for maker and taker, and that
-`/book/quotes` is maker-only. It makes GET requests only and never sends a wrong password (that would warm the
+`/book/quotes` is maker-only. Under the alpha layout (the app's `X-Racinglines-Layout: alpha` header,
+[Alpha layout](alpha-layout.md)) it checks `/trade` and `/history` instead and expects the archived `/live` and `/book`
+pages to answer 404. It makes GET requests only and never sends a wrong password (that would warm the
 app's 15-minute failed-login throttle).
 
 `staging.racinglines.bet` is the required public staging route. If the hostname is absent or misconfigured,
