@@ -13,6 +13,12 @@
                                                     trading history (paper positions, signals, house bets) and no
                                                     strategy profile; counts
                                                     only without --apply (on the VM: scripts/vm/reset_fantasy.sh)
+    racinglines users season-demo [--seed N] [--year 2026] [--apply]
+                                                    every fantasy player follows a random alpha style at a random
+                                                    weekend share and follow rate through the season so far, replayed
+                                                    on the real tapes (fantasy/season_demo.py); a database whose name
+                                                    contains "demo" only; the draw only without --apply (on the VM:
+                                                    scripts/vm/season_demo.sh)
 
 Passwords are never read back: they are stored as scrypt hashes, and a reset prints a fresh one exactly once.
 """
@@ -35,6 +41,10 @@ def main(argv=None):
     r.add_argument("--keep", default="maker,taker", help="accounts left as they are (comma-separated)")
     r.add_argument("--apply", action="store_true", help="write; without it the command only counts")
     r.add_argument("--note", default="reset", help="the new grant's ledger note")
+    d = sub.add_parser("season-demo")
+    d.add_argument("--seed", type=int, default=2026, help="the draw's seed (default 2026): same seed, same demo")
+    d.add_argument("--year", type=int, default=2026)
+    d.add_argument("--apply", action="store_true", help="write; without it the command only prints the draw")
     for cmd in ("reset-password", "remove", "deactivate", "activate"):
         sub.add_parser(cmd).add_argument("name")
     args = ap.parse_args(argv)
@@ -65,6 +75,20 @@ def main(argv=None):
         n = sum(not r["kept"] for r in rows)
         print(f"{'reset' if args.apply else 'dry run: would reset'} {n} accounts to {ACC.SIGNUP_GRANT}, no history and no strategy; "
               f"kept {', '.join(keep) or 'none'}" + ("" if args.apply else " (--apply writes)"))
+        return 0
+    if args.cmd == "season-demo":
+        from racinglines.db.config import database_url
+        from racinglines.fantasy import season_demo as SD
+        try:
+            _, rep = SD.build(eng, database_url(), seed=args.seed, year=args.year, apply=args.apply,
+                              echo=lambda m: print(m, flush=True))
+        except ValueError as e:
+            print(e)
+            return 1
+        for u in sorted({r[0] for r in rep}):
+            rs = [r for r in rep if r[0] == u]
+            print(f"{u:<24} {rs[0][1]:3s} {len(rs):2d} weekends, {sum(r[3] for r in rs):4d} picks taken, "
+                  f"paper P&L F${sum(r[4] for r in rs):+,.2f}")
         return 0
     if args.cmd == "list":
         with eng.connect() as c:
