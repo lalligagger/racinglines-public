@@ -114,7 +114,10 @@ def simulate_gc(stages, field, m_itt, m_road, s_itt, s_road, curves, g, date, si
         if cls == "itt":
             m = dict(m_itt, mu=pd.concat([m_itt["mu"], pd.Series(mi_x, index=ids[k:])]))
             vpk = (st.get("vert_m") or 0) / st["distance_km"] if st.get("distance_km") else None
-            t = C.simulate(m, ids, sims, int(rng.integers(1 << 31)), s_itt, "itt", vpk=vpk)
+            s_tt = dict(s_itt)
+            if st["distance_km"] <= g.get("short_tt_km", 0):     # prologues and short TTs: their own noise
+                s_tt["noise_scale"] = g["short_tt_noise_scale"]
+            t = C.simulate(m, ids, sims, int(rng.integers(1 << 31)), s_tt, "itt", vpk=vpk)
             secs = st["distance_km"] / g["itt_kmh"] * 3600.0
             out = ~np.isfinite(t)
             tt = np.where(out, np.nan, t)
