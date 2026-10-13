@@ -1,5 +1,6 @@
 # staging.racinglines.bet: a second copy of the web app on the VM, from /opt/racinglines-staging, on 127.0.0.1:8010
-# (cloudflared forwards the staging hostname there). Its own database (racinglines_staging) and settings
+# (cloudflared forwards the staging hostname there). Its own database (racinglines_staging, or the season demo's
+# racinglines_staging_demo while /etc/racinglines-staging-db.env says so) and settings
 # (/etc/racinglines-staging.env, no trading flags). Installed by deploy/vm/staging/setup.sh; a production deploy
 # installs the file too but never enables or restarts it. docs/vm-deploy.md "Staging".
 [Unit]
@@ -11,6 +12,8 @@ Wants=network-online.target
 User=racinglines
 WorkingDirectory=/opt/racinglines-staging
 EnvironmentFile=/etc/racinglines-staging.env
+# the database switch (vm.sh staging db demo|main): present only while staging serves the season demo's database
+EnvironmentFile=-/etc/racinglines-staging-db.env
 Environment=WEB_PORT=8010
 ExecStart=/opt/racinglines-staging/.venv/bin/racinglines web
 Restart=always
