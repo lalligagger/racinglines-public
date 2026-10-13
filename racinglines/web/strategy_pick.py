@@ -93,14 +93,17 @@ def display_name(profile):
 
 
 def alpha_options(user):
-    """The five style cards, in ALPHA_ORDER: [dict(code, label, blurb, backtest, in_sample, sliders)]; sliders are
-    the drawer's two at the style's own values, for pro and admin only (a basic account runs a style as tuned)."""
+    """The five style cards, in ALPHA_ORDER: [dict(code, label, blurb, backtest, roi, in_sample, sliders)]; sliders are
+    the drawer's two at the style's own values, for pro and admin only (a basic account runs a style as tuned). roi:
+    each season's backtest P&L as a return on the F$1,000 grant (standard sizing stakes a F$1,000 balance as the
+    backtests did); the card shows only that, never dollars (owner, 2026-10-13)."""
+    from racinglines.web.accounts import SIGNUP_GRANT
     out = []
     for code in PF.ALPHA_ORDER:
         st = PF.ALPHA_STYLES[code]
         sl = [x for x in tunables(PF.PROFILES[code])[0] if x["name"] in ALPHA_TWEAKS] if not R.is_basic(user) else []
         out.append(dict(code=code, label=st["label"], blurb=st["blurb"], backtest=st["backtest"],
-                        in_sample=bool(st.get("in_sample")), sliders=sl))
+                        roi=tuple(v / SIGNUP_GRANT for v in st["backtest"]), in_sample=bool(st.get("in_sample")), sliders=sl))
     return out
 
 
