@@ -697,18 +697,38 @@ def run_all(engine, engine_url, users=None, profile_ref=None, now=None, event="n
         if PF.is_combo(prof):
             echo(f"{prof['name']} (blend of {', '.join(m['code'] for m in prof['members'])}) for users {uids}")
             outs = compute_all(engine, engine_url, prof, now=now, event=event, fetch=fetch, echo=echo)
-            report += [_run_one(engine, engine_url, out["profile"], out, uids, rate, now, alert, echo, kelly=kelly)
-                       for out in outs]
+            report += [_run_one(engine, engine_url, out["profile"], out, uids, rate, now, alert, echo, kelly=kelly,
+                                guard=guard(prof, venue) if profile_ref is None else None) for out in outs]
             continue
         echo(f"{prof['name']} ({prof['strategy']}) for users {uids}")
         out = compute(engine, engine_url, prof, now=now, event=event, fetch=fetch, echo=echo)
-        report.append(_run_one(engine, engine_url, prof, out, uids, rate, now, alert, echo, kelly=kelly))
+        report.append(_run_one(engine, engine_url, prof, out, uids, rate, now, alert, echo, kelly=kelly,
+                               guard=guard(prof, venue) if profile_ref is None else None))
     return report
 
 
-def _run_one(engine, engine_url, prof, out, uids, rate, now, alert, echo, upcoming="f1", kelly=None):
+def guard(prof, venue="polymarket", sport=None):
+    """What _run_one re-checks before it stores: the group's profile (combo_key) and where it lives in users.prefs."""
+    from racinglines.pipelines import profiles as PF
+    return dict(key=combo_key(prof), venue=venue, sport=sport or PF.DEFAULT_SPORT)
+
+
+def still_assigned(conn, uids, key, venue="polymarket", sport=None):
+    """The users in `uids` who still run the profile `key` (combo_key), read with their rows locked FOR SHARE until the
+    caller's transaction ends. A pass loads the profiles first and computes for minutes; a fantasy reset
+    (web/accounts.reset, which locks the same rows FOR UPDATE) or a new pick in between would otherwise get the old
+    profile's positions written back (cback, race 17 of 2026: written 36 s after the 12 Oct reset)."""
+    from racinglines.pipelines import profiles as PF
+    k = PF.pref(venue, sport or PF.DEFAULT_SPORT)
+    rows = conn.execute(text(f"SELECT id, prefs->'{k}' FROM users WHERE id = ANY(:u) AND active ORDER BY id FOR SHARE"),
+                        dict(u=list(uids))).all()
+    return [uid for uid in uids if any(i == uid and p and combo_key(p) == key for i, p in rows)]
+
+
+def _run_one(engine, engine_url, prof, out, uids, rate, now, alert, echo, upcoming="f1", kelly=None, guard=None):
     """Store one computation for its users and alert the new signals. -> the report row. upcoming: price the next
-    races between weekends (price_upcoming, the F1 Markets page's calls); None for another sport's run."""
+    races between weekends (price_upcoming, the F1 Markets page's calls); None for another sport's run. guard (see
+    guard()): store only for the users who still run this profile when the store starts (still_assigned)."""
     from racinglines.markets import alerts
     if out.get("note"):
         echo(f"  {out['note']}")
@@ -720,8 +740,15 @@ def _run_one(engine, engine_url, prof, out, uids, rate, now, alert, echo, upcomi
     if not out["stages"]:
         return dict(profile=prof["name"], note=out.get("note"), new=0)
     with engine.begin() as c:
+        if guard is not None:
+            keep = still_assigned(c, uids, **guard)
+            if len(keep) < len(uids):
+                echo(f"  users {[u for u in uids if u not in keep]} no longer run {prof['name']}: not stored for them")
+            uids = keep
         new = {uid: store(c, uid, for_player(c, uid, out, kelly=(kelly or {}).get(uid)), follow_rate=rate[uid])
                for uid in uids}
+    if not uids:
+        return dict(profile=prof["name"], stage=out["stages"][-1][0], signals=len(out["signals"]), new=0)
     n_new = sum(len(v) for v in new.values())
     echo(f"  {out['event']['name']} · {out['stages'][-1][0]} · {len(out['signals'])} signals "
          f"({n_new} new) · {len(out['positions'])} positions")

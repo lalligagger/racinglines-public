@@ -89,7 +89,10 @@ def reset(conn, keep=KEEP, apply=False, note="reset"):
     counts. Returns one dict per account: id, username, kept, ledger rows and balance, its profiles (pref keys) and each
     HISTORY table's rows."""
     from racinglines.fantasy import ledger as FL
-    users = conn.execute(text("SELECT id, username FROM users WHERE active ORDER BY id")).all()
+    # apply: lock the rows first, so a signals pass storing right now (signals.still_assigned, FOR SHARE) either commits
+    # before the deletes below or waits and then finds no profile; never positions written back after the reset
+    users = conn.execute(text("SELECT id, username FROM users WHERE active ORDER BY id"
+                              + (" FOR UPDATE" if apply else ""))).all()
     out = []
     for uid, name in users:
         row = dict(id=uid, username=name, kept=name in keep)
