@@ -5,8 +5,9 @@ Kalshi by ticker (Probalytics platform_id = our token_id), Polymarket by conditi
 links come from the VM's archive (data/archive/markets/<venue>/links/market_links.parquet, competition_code f1_wdc),
 copied to data/probalytics/links/our_<venue>_links.parquet.
 
-Every output file is written once and skipped when it exists, so a later, wider run fills in only what is missing
-(the owner's "y-small now, the rest of y later"). Each file's query, range and row count go to MANIFEST.jsonl.
+Every output file is written once and skipped while it is current (MANIFEST.jsonl records the links key it was
+written with; a wider set of markets refetches it), so a later, wider run fills in only what is missing (the owner's
+"y-small now, the rest of y later"). Each file's query, range, row count and links key go to MANIFEST.jsonl.
 
     books   books/<YYYY-MM-DD>_F1_<VENUE>.parquet   every snapshot of the day, all levels (same columns as the
                                                     2026-10-07 pull, plus `state`)
@@ -128,13 +129,37 @@ def manifest(**row):
 
 
 def our_ids(venue):
-    """Our F1 markets for a venue, by exact key: Kalshi tickers or Polymarket condition ids."""
+    """Our F1 markets for a venue, by exact key: Kalshi tickers or Polymarket condition ids. The union of the VM
+    archive's links snapshot (links/our_<venue>_links.parquet) and an export of the live table
+    (links/db_f1_links.csv: exchange, token_id, condition_id, ...; the snapshot lags, 2026-09-28 on 10-13)."""
     import pandas as pd
-    p = OUT / "links" / f"our_{venue}_links.parquet"
-    d = pd.read_parquet(p)
-    d = d[d.competition_code == "f1_wdc"]
     col = "token_id" if venue == "kalshi" else "condition_id"
-    return sorted(d[col].dropna().unique())
+    ids = set()
+    p = OUT / "links" / f"our_{venue}_links.parquet"
+    if p.exists():
+        d = pd.read_parquet(p)
+        ids |= set(d.loc[d.competition_code == "f1_wdc", col].dropna())
+    c = OUT / "links" / "db_f1_links.csv"
+    if c.exists():
+        d = pd.read_csv(c, dtype=str)
+        ids |= set(d.loc[d.exchange == venue, col].dropna())
+    return sorted(ids)
+
+
+def written_keys():
+    """{file relative to OUT: the links key it was written with}, from MANIFEST.jsonl (the last entry wins)."""
+    m = OUT / "MANIFEST.jsonl"
+    out = {}
+    if m.exists():
+        for line in m.read_text().splitlines():
+            r = json.loads(line)
+            out[r["file"]] = r.get("links_key")
+    return out
+
+
+def current(path, key):
+    """The file exists and was written with this links key (a wider set of markets makes it stale)."""
+    return path.exists() and written_keys().get(str(path.relative_to(OUT))) == key
 
 
 def market_map(venue):
@@ -184,7 +209,7 @@ def chunks(m, size=CHUNK):
 def fetch(path, sql_for, m, size=CHUNK, **meta):
     """sql_for(in_list) run once per chunk of the markets m, as Parquet, joined into path (atomically); skipped
     when path exists. Returns rows written, or None if skipped."""
-    if path.exists():
+    if current(path, meta.get("links_key")):
         return None
     free = shutil.disk_usage(OUT).free / 1e9
     if free < MIN_FREE_GB:
@@ -199,7 +224,7 @@ def fetch(path, sql_for, m, size=CHUNK, **meta):
     tab = pa.concat_tables(parts, promote_options="permissive") if len(parts) > 1 else parts[0]
     tmp = path.with_suffix(".part")
     pq.write_table(tab, tmp, compression="zstd")
-    tmp.rename(path)
+    tmp.replace(path)
     size = path.stat().st_size
     manifest(file=str(path.relative_to(OUT)), rows=tab.num_rows, bytes=size, sec=round(time.time() - t, 1), **meta)
     log(f"{path.name}: {tab.num_rows:,} rows, {size / 1e6:.1f} MB, {time.time() - t:.0f}s")
@@ -225,7 +250,7 @@ def run_books(venues, start, end):
         m, key = market_map(v)
         for d in days(max(start, BOOKS_FROM[v]), end):
             p = OUT / "books" / f"{d:%Y-%m-%d}_F1_{VENUES[v]}.parquet"
-            if not p.exists():
+            if not current(p, key):
                 jobs.append((v, m, key, d, p))
     STATE["total"] = len(jobs)
     for v, m, key, d, p in jobs:
@@ -245,9 +270,8 @@ def run_fills(venues, start, end):
             nxt = (mo + timedelta(days=32)).replace(day=1)
             p = OUT / "fills" / f"F1_{VENUES[v]}_{mo:%Y-%m}.parquet"
             # the current month is never final: refetch it each run
-            if p.exists() and nxt <= date.today():
+            if current(p, key) and nxt <= date.today():
                 continue
-            p.unlink(missing_ok=True)
             jobs.append((v, m, key, mo, nxt, p))
     STATE["total"] = len(jobs)
     for v, m, key, mo, nxt, p in jobs:
@@ -279,7 +303,7 @@ def run_stages(venues, year):
         for ev, stages in by_ev.items():
             stages = [(lab, t) for lab, t in stages if t.date() >= BOOKS_FROM[v]]
             p = OUT / "stages" / f"{ev}_{VENUES[v]}.parquet"
-            if stages and not p.exists():
+            if stages and not current(p, key):
                 jobs.append((v, m, key, ev, stages, p))
     STATE["total"] = len(jobs)
     for v, m, key, ev, stages, p in jobs:
