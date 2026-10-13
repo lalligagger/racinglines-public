@@ -9,8 +9,10 @@ starts sees it unchanged. Rules:
   * a completed event is never touched;
   * a round the ingest wrote (no "scheduled" flag: the session has run) is kept as it is;
   * a scheduled round's start is updated when the source moves it, and nothing is ever deleted here;
-  * the sport's ingest rebuilds a race's rounds when a session ends (its delete-then-insert drops the scheduled ones),
-    so run the schedule again after an ingest to put back the sessions still to come.
+  * the sport's ingest rebuilds a race's rounds when a session ends; it clears them with clear_for_ingest, which keeps
+    the scheduled rounds of sessions still to come (F1 since 2026-10-13), so a mid-weekend ingest no longer drops them;
+  * scripts/vm/schedule_sync.sh (racinglines-schedule-sync.timer) reruns the schedule every 6 hours and writes, after
+    its own backup, only when a session was added or moved.
 
 Times are the source's own; nothing here guesses one. A session with no start in the source is skipped and counted.
 """
@@ -43,6 +45,18 @@ def write_sessions(session, race_id, sessions, time_key, source):
             out["unchanged"] += 1
     session.flush()
     return out
+
+
+def clear_for_ingest(session, race_id, kinds, final=False):
+    """Delete race `race_id`'s rounds before an ingest rebuilds them from its files, except the scheduled rounds (no
+    results) of sessions the ingest has no files for yet (kind not in `kinds`), which keep their start time until their
+    own session is ingested. `final` (the race is in, the event completes) clears those too. Returns how many it kept."""
+    from sqlalchemy import delete
+    keep = [] if final else [r.id for r in session.scalars(select(m.Round).filter_by(race_id=race_id))
+                             if (r.extra or {}).get("scheduled") and r.kind not in kinds
+                             and not session.scalars(select(m.Result.id).filter_by(round_id=r.id).limit(1)).first()]
+    session.execute(delete(m.Round).where(m.Round.race_id == race_id, m.Round.id.not_in(keep)))
+    return len(keep)
 
 
 def upcoming_race(session, source, source_key):
