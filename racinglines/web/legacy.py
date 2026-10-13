@@ -32,7 +32,7 @@ def _redirect(target):
     return moved
 
 
-# "/" was here (to /markets) until the landing page moved to the index (owner, 2026-10-12); a signed-in browser
-# still lands on /markets from "/" (app.landing_page).
+# "/" was here (to /markets) until the landing page moved to the index (owner, 2026-10-12); since 2026-10-13 a
+# signed-in browser sees the landing page there too (app.landing_page).
 for old, new in {**MOVED, **MOVED_PREFIX}.items():
     app.add_api_route(old, _redirect(new), methods=["GET"], include_in_schema=False)

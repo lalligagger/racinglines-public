@@ -399,10 +399,10 @@ SITE = ROOT / "site"     # the built docs (mkdocs build -d site; the pre-push ho
 
 @app.get("/", response_class=HTMLResponse)
 def landing_page(request: Request, next: str = "/"):
-    """The public landing page, at the site's index (owner, 2026-10-12). A signed-in browser goes on to the board."""
-    if _session(request.cookies.get(SESSION_COOKIE))[0] is not None:
-        return RedirectResponse("/markets", status_code=303)
-    return templates.TemplateResponse(request, "login.html", dict(next=next, support=SUPPORT_EMAIL))
+    """The public landing page, at the site's index (owner, 2026-10-12). A signed-in browser sees it too, with an
+    "Open the app" link in place of "Sign in" (owner, 2026-10-13: the Home link must reach the landing page)."""
+    signed_in = _session(request.cookies.get(SESSION_COOKIE))[0] is not None
+    return templates.TemplateResponse(request, "login.html", dict(next=next, support=SUPPORT_EMAIL, signed_in=signed_in))
 
 
 @app.get("/signin", response_class=HTMLResponse)
