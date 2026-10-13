@@ -7,7 +7,7 @@
    or provider is named here. #}
 <header class="lp-top">
   <a class="lp-brand" href="/"><img src="/static/brand/logo.svg" alt="" width="32" height="32"><span>racing<b>lines</b></span></a>
-  <a class="lp-signin-link" href="/signin{{ '?next=' ~ next|urlencode if next and next != '/' }}">Sign in</a>
+  {% if signed_in %}<a class="lp-signin-link" href="/markets">Open the app</a>{% else %}<a class="lp-signin-link" href="/signin{{ '?next=' ~ next|urlencode if next and next != '/' }}">Sign in</a>{% endif %}
 </header>
 
 <section id="account" class="lp-alpha" aria-label="Fantasy league alpha">
