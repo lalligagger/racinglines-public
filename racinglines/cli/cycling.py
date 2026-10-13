@@ -134,6 +134,82 @@ def cmd_price(a):
     return 0
 
 
+def _stages_file(data):
+    from racinglines.models import cycling as C
+    f = C.results_file("stages", data)
+    if not f.exists():
+        raise SystemExit(f"no stages results file {f}: run `racinglines data fetch cycling stages` on the Mac first")
+    return pd.read_csv(f)
+
+
+def cmd_gc_price(a):
+    from racinglines.models import cycling as C
+    from racinglines.models import cycling_gc as G
+    ev = C.load_event(a.event)
+    if "stages" not in ev:
+        raise SystemExit(f"{a.event} has no [[stages]]: gc-price is for stage races")
+    g = {**G.gc_block(), **ev.get("gc", {})}
+    stages = _stages_file(a.data)
+    s_itt, s_road = ev["settings"]["itt"], ev["settings"]["road"]
+    itt_raw, road_raw = G.history("itt", stages, a.data), G.history("road", stages, a.data)
+    sl = C.startlist_file(ev, a.data)
+    start = pd.read_csv(sl) if sl.exists() else pd.DataFrame(columns=["rider", "rider_url"])
+    res = pd.concat([C.load_results("itt", a.data), C.load_results("road", a.data), stages], ignore_index=True)
+    ids, bad = C.book_ids(ev, start, res)
+    if bad:
+        print("UNMATCHED BOOK NAMES (not priced; fix [names] in the event file):\n  " + "\n  ".join(bad))
+    for st in ev["stages"]:
+        if st.get("result_file"):
+            r = pd.read_csv(Path(a.data or ROOT / C.schema()["results"]["dir"]) / st["result_file"])
+            st["actual"] = r.set_index("rider_url")["gap_s"].astype(float).where(r.set_index("rider_url")["status"]
+                                                                                 .eq("OK"), np.inf)
+    curves = G.gap_curves(stages, g["classes"])
+    print(f"{ev['event']['name']}: {len(ev['stages'])} stages, start list {len(start)} riders, "
+          f"road-stage gap curves {dict((k, len(v[0])) for k, v in curves.items())}")
+    fits = (*G.fits_before(itt_raw, road_raw, ev["event"]["date"], s_itt, s_road), s_itt, s_road)
+    fut, mu, full, per_stage, field = G.price_gc(ev, ids, start, fits, curves, a.sims)
+    _show("GC FUTURES (edge = win_p x book - 1)", fut)
+    _show("GC MATCHUPS (both out void)", mu)
+    b = C.stakes(fut.assign(results=0, gc=0), mu.assign(results=0), a.bankroll, a.kelly)
+    _show(f"STAKES, each line on its own ({a.kelly:g} Kelly on ${a.bankroll:.0f})", b.drop(columns=["results",
+                                                                                                  "thin_data"]))
+    out = Path(a.out or ROOT / "reports" / ev["id"])
+    out.mkdir(parents=True, exist_ok=True)
+    fut.to_csv(out / "gc_futures.csv", index=False)
+    mu.to_csv(out / "gc_matchups.csv", index=False)
+    np.savez_compressed(out / "gc_sims.npz", total=full, field=np.array(field, dtype=object),
+                        **{f"stage_{i}": x for i, x in enumerate(per_stage)})
+    print(f"wrote {out}/ gc_futures.csv gc_matchups.csv gc_sims.npz")
+    return 0
+
+
+def cmd_gc_backtest(a):
+    from racinglines.models import cycling as C
+    from racinglines.models import cycling_gc as G
+    stages = _stages_file(a.data)
+    s_itt = dict(C.model_block("itt")["defaults"])
+    s_road = dict(C.model_block("road")["defaults"])
+    for kv in a.set or []:
+        k, _, v = kv.partition("=")
+        kind, _, key = k.partition(".")
+        {"itt": s_itt, "road": s_road}[kind][key] = _value(v)
+    itt_raw, road_raw = G.history("itt", stages, a.data), G.history("road", stages, a.data)
+    gset = {}
+    for kv in a.gc or []:
+        k, _, v = kv.partition("=")
+        gset[k] = json.loads(v)
+    bt = G.backtest_gc(stages, itt_raw, road_raw, s_itt, s_road, a.since, a.sims, gset)
+    out = Path(a.out or ROOT / "reports" / "gc-backtest")
+    out.mkdir(parents=True, exist_ok=True)
+    bt.to_csv(out / "gc_backtest.csv", index=False)
+    _show("GC BACKTEST (walk-forward, per race)", bt)
+    if len(bt):
+        print(f"\n{len(bt)} races: win_ll {bt['win_ll'].mean():.3f} (uniform {np.log(bt['field']).mean():.3f}) · "
+              f"pair_ll {bt['pair_ll'].mean():.3f} (coin {np.log(2):.3f}) · favourite won {bt['fav_won'].mean():.2f} "
+              f"vs mean favourite p {bt['fav_p'].mean():.2f} · winner's p {bt['p_winner'].mean():.3f}")
+    return 0
+
+
 def cmd_reliability(a):
     from racinglines.models import cycling as C
     block = C.model_block(a.kind)
@@ -239,6 +315,20 @@ def main(argv=None):
     p.add_argument("--sims", type=int, default=50000)
     p.add_argument("--bankroll", type=float, default=400.0)
     p.add_argument("--kelly", type=float, default=0.25, help="Kelly fraction (0.25 = quarter Kelly)")
+    gp = sub.add_parser("gc-price", help="price a stage race's GC book (event file with [[stages]])")
+    gp.add_argument("event")
+    gp.add_argument("--data", help="results folder (default: [results] dir)")
+    gp.add_argument("--out", help="output folder (default: reports/<event>/)")
+    gp.add_argument("--sims", type=int, default=20000)
+    gp.add_argument("--bankroll", type=float, default=1000.0)
+    gp.add_argument("--kelly", type=float, default=0.25, help="Kelly fraction (0.25 = quarter Kelly)")
+    gb = sub.add_parser("gc-backtest", help="walk-forward GC check on past stage races (needs the stages file)")
+    gb.add_argument("--data", help="results folder (default: [results] dir)")
+    gb.add_argument("--out", help="output folder (default: reports/gc-backtest/)")
+    gb.add_argument("--since", default="2024-01-01")
+    gb.add_argument("--sims", type=int, default=3000)
+    gb.add_argument("--set", action="append", metavar="KIND.KEY=VALUE", help="e.g. road.noise_scale=1.2")
+    gb.add_argument("--gc", action="append", metavar="KEY=JSON", help="override [model.gc], e.g. abandon=0.02")
     r = sub.add_parser("reliability", help="calibration check: favourites vs long shots, walk-forward")
     r.add_argument("kind", choices=["itt", "road"])
     r.add_argument("--data", help="results folder (default: [results] dir)")
@@ -291,6 +381,10 @@ def main(argv=None):
         return 0
     if a.cmd == "reliability":
         return cmd_reliability(a)
+    if a.cmd == "gc-price":
+        return cmd_gc_price(a)
+    if a.cmd == "gc-backtest":
+        return cmd_gc_backtest(a)
     if a.cmd == "ingest":
         return cmd_ingest(a)
     if a.cmd == "schedule":
