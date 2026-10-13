@@ -337,6 +337,7 @@ NASCAR Cup, from the content feeds at `cf.nascar.com` (no key). See [Data](data.
 ```
 racinglines data fetch nascar [--years 2026] [--series 1] [--feeds a,b] [--races 5624,5628] [--force] [--dry-run]
 racinglines data ingest nascar [--years 2026] [--series 1] [--force] [--no-laps]        (--db URL anywhere after the sport)
+racinglines data schedule nascar [--through 2026-11-30] [--series 1] [--apply --backup FILE] [--undo --backup FILE]
 racinglines data link nascar [--exchange kalshi] [--apply --backup FILE] [--undo FILE]
 racinglines strategy replay nascar [--years 2025-2026] [--venue all|kalshi|polymarket|og] [--kinds a,b] [--min-edge X] [--min-volume USD]
                           [--events KEY,...|latest] [--tape probe|pull] [--require-tradeable] [--buy-all]
@@ -467,12 +468,14 @@ Options every F1 command takes (anywhere after `f1`):
 ```
 racinglines data fetch f1 [--years 2026,2025,…] [--sessions Q,S,R] [--rounds 6-15] [--sprints-from 2026] [--force]
 racinglines data ingest f1 [--years 2020-2026] [--force]
+racinglines data schedule f1 [--through 2026-11-30] [--apply --backup FILE] [--undo --backup FILE]
 ```
 
 | Command | What it does |
 |---|---|
 | `fetch` | Download sessions from the F1 live-timing archive (FastF1) into `data/raw/f1/fastf1/<year>/`, newest seasons first (default `--years` 2026 back to 2020). `--sessions` takes `Q,S,R` (default) and/or practice `FP1,FP2,FP3,SQ`; `--rounds` limits to some rounds. `--sprints-from YEAR` fetches sprint races from that season on (default 2026). Sessions already on disk are skipped (`--force` re-downloads). Waits out FastF1's 500 calls/hour limit. Saves each season's schedule (`schedule.parquet`). |
 | `ingest` | Load `data/raw/f1/fastf1/` into the database: events, results, laps, track profiles. Unchanged events are skipped (`--force` reloads). |
+| `schedule` | Store the UTC starts of sessions still to run (FastF1's event schedule; NASCAR: the stored race list's `schedule` entries with `start_time_utc`) as scheduled rounds with no results (`racinglines/db/schedule.py`), so a market on an upcoming session has a close (`pipelines/clv.closes`). Events up to `--through` (default 30 Nov) that are stored and not completed; a round the ingest wrote is kept, a moved session is updated, nothing is guessed. A dry run unless `--apply --backup FILE`; `--undo` removes the scheduled rounds. An ingest rebuilds a weekend's rounds, so run it again after one. |
 
 ### Pricing and evaluation
 
