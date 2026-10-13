@@ -25,7 +25,7 @@ GROUPS = {
         "season", "price", "reliability", "search")),
     "strategy": ("trading: replays against exchange tapes, season sweeps, paper signals, strategy searches", (
         "replay", "sweep", "season-replay", "season-strategy", "season-checkpoints", "scorecard", "signals",
-        "demo-history", "reconcile", "profiles", "search", "search-report", "search-import", "search-analyze", "live")),
+        "demo-history", "reconcile", "profiles", "search", "search-report", "search-import", "search-analyze", "live", "golden-tape")),
 }
 
 

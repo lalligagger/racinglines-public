@@ -147,6 +147,14 @@ def main(argv=None):
     p.add_argument("--stats", action="store_true", help="Only show where the rows are.")
     p = sub.add_parser("record", help="Live F1 session recorder: fetch current session via FastF1 and store snapshot to database.")
     p.add_argument("--status", action="store_true", help="Show last passes and snapshots stored (default: record one snapshot).")
+    p = sub.add_parser("golden-tape", help="The golden sweep on our tape and on a second one (RACINGLINES_TAPE layout, e.g. "
+                                          "Probalytics'), weekend by weekend against the pass marks; writes "
+                                          "data/runs/golden-tape/<tape>-<year>/REPORT.md. Downloads nothing, writes no database.")
+    p.add_argument("--tape", required=True, help="The second tape's folder: <tape>/polymarket/{prices,trades,books}/month=...")
+    p.add_argument("--year", type=int, default=2026)
+    p.add_argument("--rounds", default=None, help="e.g. 1-17 (default: every raced round)")
+    p.add_argument("--seeds", type=int, default=3, help="The golden job at this many seeds (default 3, as the queue)")
+    p.add_argument("--out", default=None, help="Report folder (default data/runs/golden-tape/<tape>-<year>)")
     p = sub.add_parser("sweep")
     p.add_argument("--year", type=int, default=2026)
     p.add_argument("--rounds", default=None, help="e.g. 1-15 (default: every raced round)")
@@ -950,6 +958,13 @@ def _run(args):
                     params=dict(year=args.year, entries=list(entries), window=args.window, variants=variants),
                     metrics=dict(rows=records(df.assign(end=df["end"].astype(str)))))
             print(f"Saved season checkpoints run {run_id}.")
+        return
+    if args.cmd == "golden-tape":
+        from racinglines.pipelines import golden_tape as GT
+        tapes, gold, out = GT.run(engine, args.db, args.tape, args.year, _years(args.rounds) if args.rounds else None,
+                                  args.seeds, args.out, echo=lambda m: print(m, flush=True))
+        print((out / "REPORT.md").read_text().split("## Tapes")[0].rstrip())
+        print(f"Report: {out / 'REPORT.md'}")
         return
     if args.cmd == "sweep":
         from racinglines.pipelines import sweep_settings as SS

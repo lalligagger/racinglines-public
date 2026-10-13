@@ -19,6 +19,10 @@ Every reader goes through `read()` / `last_before()`, which merge both and drop
 duplicates, so callers never care where a row lives. Metadata (market_links),
 results and model runs stay in Postgres.
 
+A second tape (RACINGLINES_TAPE=<dir>, laid out like data/archive/markets: <dir>/<exchange>/<name>/month=...): every
+read() and last_before() reads only that tree and never Postgres, so a sweep or replay runs unchanged on another
+source's prices, trades and books (pipelines/golden_tape.py, the golden check on Probalytics' tape).
+
 Retention (`hot_tokens`, used by `archive(..., policy=True)`): Postgres keeps the
 market data the app presents live, i.e. every upcoming / in-progress race, the
 most recent completed race of each competition, and the last RECENT_DAYS of
@@ -26,10 +30,12 @@ still-open season-long markets. Everything else is stale and moves to Parquet.
 """
 
 import json
+import os
 import threading
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pandas as pd
 import pyarrow as pa
@@ -64,11 +70,29 @@ def _utc(t):
     return (t.tz_localize("UTC") if t.tzinfo is None else t.tz_convert("UTC")).to_pydatetime()
 
 
+TAPE = "RACINGLINES_TAPE"
+
+
+def tape():
+    """The second tape's folder (RACINGLINES_TAPE), or None: our own archive and Postgres."""
+    t = os.environ.get(TAPE, "").strip()
+    return Path(t) if t else None
+
+
+def _on_tape(conn, root):
+    """(conn, root) for a read: unchanged without a second tape; with one, no Postgres and the same exchange's tree
+    inside the tape (root None: every exchange in it)."""
+    t = tape()
+    if t is None:
+        return conn, root
+    return None, (None if root is None else t / Path(root).name)
+
+
 def _roots(root=None):
-    """The Parquet trees to read: `root`, else every exchange's (archive/markets/<exchange>/)."""
+    """The Parquet trees to read: `root`, else every exchange's (archive/markets/<exchange>/, or the second tape's)."""
     if root is not None:
         return [root]
-    base = paths.archive_markets().parent
+    base = tape() or paths.archive_markets().parent
     return sorted(p for p in base.iterdir() if p.is_dir()) if base.exists() else []
 
 
@@ -164,6 +188,7 @@ def read(conn, name, *, tokens=None, conditions=None, start=None, end=None, root
     """Rows of store `name` (prices / trades / books), from Parquet and Postgres, ts UTC-aware, sorted."""
     if (tokens is not None and not len(tokens)) or (conditions is not None and not len(conditions)):
         return pd.DataFrame(columns=STORES[name]["cols"])
+    conn, root = _on_tape(conn, root)
     pg = _read_pg(conn, name, tokens, conditions, start, end) if conn is not None else None
     return merge(_read_parquet(name, tokens, conditions, start, end, root), pg, name)
 
@@ -174,6 +199,7 @@ def last_before(conn, tokens, t, lookback=timedelta(days=30), root=None):
     tokens = list(tokens)
     if not tokens:
         return {}
+    conn, root = _on_tape(conn, root)
     t = _utc(t)
     parts = [_read_parquet("prices", tokens, None, t - lookback, t, root)]
     if conn is not None:
