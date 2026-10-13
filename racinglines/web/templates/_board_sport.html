@@ -1,4 +1,4 @@
-{% from "_macros.html" import bar, pct, venue_chips, new_badge %}
+{% from "_macros.html" import bar, pct, venue_chips, new_badge, source_note %}
 {# One sport's body on the Markets board, loaded when its section is opened (views.board_sport). #}
 {% macro sync_flags(u) %}{% set stale = (u.sync or [])|selectattr("stale")|list %}{% if stale %}<div class="chips">{% for v in stale %}<span class="pill warn" tabindex="0" data-tooltip="exchange prices for this race may be missing or out of date: flagged when no market is linked or the newest sync is over {{ '%g'|format(v.limit) }} h old">{{ v.name }}: {% if not v.links %}no markets linked{% elif v.hours is none %}never synced{% elif v.hours < 48 %}synced {{ '%.0f'|format(v.hours) }} h ago{% else %}synced {{ '%.0f'|format(v.hours / 24) }} days ago{% endif %}</span>{% endfor %}</div>{% endif %}{% endmacro %}
 {% if s.run or s.tape or s.asof %}
@@ -63,3 +63,4 @@
 </table></div>
 <p class="legend">Counts are every row each exchange's feed has given us (archive and live buffer), never paper or demo trades. n/a: nothing stored. {% for b in s.exchanges if b.coverage %}{{ b.coverage }}{{ " " if not loop.last }}{% endfor %}</p>
 {% endif %}
+{{ source_note(s.code, s.exchanges, s.run, (s.asof.at if s.asof else none), model=(s.asof is not none)) }}

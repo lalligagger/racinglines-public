@@ -53,7 +53,7 @@ def test_sport_codes_and_short_names(monkeypatch, quiet):
 def test_wrong_group_missing_or_unknown_sport(capsys, quiet):
     assert cli.main(["model", "forecast"]) == 2
     assert "f1, mtb_dh, nascar, motogp" in capsys.readouterr().err
-    assert cli.main(["model", "forecast", "cycling"]) == 2                 # not offered for that sport
+    assert cli.main(["model", "walk-forward", "cycling"]) == 2             # not offered for that sport
     assert cli.main(["data", "forecast", "f1"]) == 2                       # a model command, not data
     assert cli.main(["model", "nope", "f1"]) == 2
 

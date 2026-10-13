@@ -1,6 +1,6 @@
 {# One page for every venue's linked markets. mode: "pm" (Polymarket), "kalshi", or "schema" (a venue defined as a schema,
    with taker-fee edges). venue: name, code, url. Only the legend, the edge columns and a few labels differ by mode. #}
-{% extends "base.html" %}{% from "_macros.html" import csrf, new_badge, flash, page_head, edge_cell %}
+{% extends "base.html" %}{% from "_macros.html" import csrf, new_badge, flash, page_head, edge_cell, source_note %}
 {% set pm = mode == "pm" %}{% set schema = mode not in ("pm", "kalshi") %}{# a schema venue is the default #}
 {% block title %}{{ venue.name }}{% endblock %}
 {% block content %}
@@ -17,6 +17,7 @@
 {% if sport %}<input type="hidden" name="sport" value="{{ sport }}">{% endif %}
 <span class="links">Last sync {{ synced|fmt }}{% if not pm %} · <a href="/markets/polymarket">Polymarket markets</a>{% endif %}{% if sport %} · <a href="/markets/{{ venue.code }}?show={{ show }}&closed={{ closed }}">every sport</a>{% endif %}</span></form>
 {% if not pm %}{% include "_recorders.html" %}{% endif %}
+{{ source_note(sport or note_sports, [venue.code], model=true) }}
 {% if schema %}<p class="legend">Edge YES = our fair − ask − fee (buy YES at the ask); edge NO = bid − our fair − fee (buy NO at 1 − bid); the fee is {{ venue.name }}'s taker fee, {{ fee|money }} per contract (unverified against its fee schedule). Call = the side with a positive edge after the fee. A one-sided quote gets an edge on its quoted side only: a book nobody will trade against is not an edge. ⚠ marks gaps over 10 pts: usually a model blind spot rather than an edge; check before quoting.</p>
 {% else %}<p class="legend">Edge = our fair − {{ venue.name }} mid (positive = we think YES is cheap). ⚠ marks gaps over 10 pts: usually a model blind spot rather than an edge; check before quoting.{% if not pm %} Kalshi lists one YES contract per outcome; volume is in contracts ($1 each at settlement).{% endif %}</p>{% endif %}
 {% if not events %}<p class="muted">{% if pm %}No linked markets yet. Refresh from Polymarket.{% elif schema %}No {{ venue.name }} markets linked. Refresh from {{ venue.name }}, or include closed markets.{% else %}No open Kalshi markets linked. Refresh from Kalshi, or include closed markets to see past races.{% endif %}</p>{% endif %}

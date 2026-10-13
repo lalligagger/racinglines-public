@@ -108,4 +108,5 @@ def athlete_detail(request: Request, athlete_id: int, c=Depends(conn)):
         raise HTTPException(404)
     A.guard_athlete(c, request.state.user, athlete_id)
     preds = [] if R.is_basic(request.state.user) else rows(data.athlete_predictions(c, athlete_id))
-    return render(request, "athlete.html", a=a, results=rows(data.athlete_results(c, athlete_id)), preds=preds)
+    return render(request, "athlete.html", a=a, results=rows(data.athlete_results(c, athlete_id)), preds=preds,
+                  competitions=sorted(data.athlete_competitions(c, athlete_id)))   # for the source note

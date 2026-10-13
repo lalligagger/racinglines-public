@@ -18,10 +18,11 @@ ADMIN, PRO = dict(id=1, username="boss", role="admin"), dict(id=2, username="ada
 @pytest.mark.quick
 def test_the_schema_key_decides_and_admins_see_everything():
     assert SP.audience("motogp") == "admin" and SP.audience("f1") == "all" and SP.audience("nascar") == "all"
-    assert SP.admin_only() == {"motogp"} and SP.admin_only_competitions() == {"motogp_wc"}
+    assert SP.admin_only() == {"motogp", "road_cycling"}             # road cycling: PCS terms review (2026-10-12)
+    assert SP.admin_only_competitions() == {"motogp_wc", "uci_road_wt"}
     assert A.hidden(ADMIN) == set() and A.hidden_comps(ADMIN) == set()
     for user in (PRO, None):                                      # a user, or nobody signed in
-        assert A.hidden(user) == {"motogp"} and not A.shown(user, "motogp") and not A.shown(user, "motogp_wc")
+        assert A.hidden(user) == {"motogp", "road_cycling"} and not A.shown(user, "motogp") and not A.shown(user, "motogp_wc")
         assert A.shown(user, "f1") and A.shown(user, "f1_wdc") and A.shown(user, "") and A.shown(user, None)
         with pytest.raises(HTTPException):
             A.guard(user, "motogp_wc")
@@ -39,7 +40,7 @@ def test_flipping_the_key_back_shows_the_sport_again(monkeypatch):
         s = real(code)
         return dict(s, sport={k: v for k, v in s["sport"].items() if k != "audience"}) if code == "motogp" else s
     monkeypatch.setattr(SP, "load", load)
-    assert SP.audience("motogp") == "all" and SP.admin_only() == set() and A.shown(PRO, "motogp_wc")
+    assert SP.audience("motogp") == "all" and SP.admin_only() == {"road_cycling"} and A.shown(PRO, "motogp_wc")
     monkeypatch.setattr(SP, "load", lambda code: dict(real(code), sport=dict(real(code)["sport"], audience="nobody")))
     with pytest.raises(ValueError):
         SP.audience("f1")
@@ -153,3 +154,9 @@ def test_lab_jobs_and_book_quotes_leave_a_hidden_sport_out_for_users(site, test_
         assert ada.get(url).status_code == 404, url
         assert boss.get(url).status_code == 200, url
     assert ada.get(f"/book/quotes?race_id={races['f1_wdc']}").status_code == 200
+
+
+def test_markets_board_key_hides_downhill_from_the_markets_page_only():
+    # owner, 2026-10-12: "UCI road only. Hide UCI DH for now" — off the Markets page for everyone, still public elsewhere
+    assert SP.off_board_competitions() == {"uci_dhi_wc"}
+    assert SP.is_public("mtb_dh", PRO) and SP.audience("mtb_dh") == "all"

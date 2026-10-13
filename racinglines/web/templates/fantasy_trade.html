@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_macros.html" import csrf, empty, flash, page_head %}
+{% extends "base.html" %}{% from "_macros.html" import csrf, empty, flash, page_head, source_note %}
 {% block title %}Trade{% endblock %}
 {% block content %}
 {% call page_head("Trade by hand", "Formula 1 markets on Kalshi and Polymarket at their latest recorded prices. Fantasy trading is F1 only for now. Fantasy bucks only: nothing is sent to an exchange.") %}
@@ -45,6 +45,7 @@
   <td class="num">{{ "%.2f"|format(m.bid) if m.bid is not none else "–" }}</td><td class="num">{{ "%.2f"|format(m.ask) if m.ask is not none else "–" }}</td>
   <td><a href="/trade?link={{ m.id }}{{ '&q=' ~ q|urlencode if q }}">Trade</a></td>
 </tr>{% endfor %}</tbody></table></div>{% endfor %}
-{% else %}{{ empty("No F1 markets with a recorded book in the last day" ~ (" match that search." if q else ".")) }}{% endif %}</div>
+{% else %}{{ empty("No F1 markets with a recorded book in the last day" ~ (" match that search." if q else ".")) }}{% endif %}
+{{ source_note(note_sport, note_venues) }}</div>
 {% endif %}
 {% endblock %}

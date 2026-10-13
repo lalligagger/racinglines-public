@@ -1,16 +1,26 @@
-# UCI road cycling. On the exchange side a tape-only sport (docs/todo.md, U9): its Kalshi markets are synced and
-# recorded (links unmodeled, prices / trades / books archived per exchange) when asked for by name
-# (`racinglines markets --exchange kalshi --sport road_cycling ...`), and the board prices nothing.
-# Sportsbook lines (winner, head-to-head) are priced from results by the book model: [results] and [model.*] below,
-# racinglines/models/cycling.py, `racinglines cycling ...`, one event file per race in
-# sports/road_cycling/events/ (docs/road-cycling.md). Read by racinglines/sports.py. Nothing runs by default.
+# UCI road cycling. A schema-driven sport on the one engine (racinglines/models/model_global.py, its results core
+# models/inputs/results.py): ProCyclingStats results (racinglines/sources/pcs.py, fetched on the owner's Mac) are loaded
+# into events / races / results (racinglines/sources/pcs_ingest.py, `racinglines data ingest cycling`), an upcoming race
+# and its start list are scheduled (`racinglines data schedule cycling <event>`), and `racinglines model forecast
+# cycling --save` stores the forecast run the Markets board reads (docs/road-cycling.md). Its Kalshi markets are synced and
+# recorded when asked for by name (`racinglines markets --exchange kalshi --sport road_cycling ...`).
+# The sportsbook tool (racinglines/models/cycling.py, `racinglines model price cycling ...`, [model.itt] / [model.road]
+# below, sports/road_cycling/events/) stays as it was: a separate book-pricing tool, not the board's model, and not a
+# [sport] challengers entry (it has no race_model contract: load / history / price). Read by racinglines/sports.py.
 
 [sport]
 code = "road_cycling"
 name = "UCI road cycling"
-result_kind = "position"          # finishing positions, once there is a model
-model_family = "none"             # tapes only: no model, no pricing_model, no live adapter
+result_kind = "position"          # finishing positions
+model_family = "global"           # the one engine at the results level, [model] below
+# Provisional, a priori, nothing tuned: docs/f1-roadmap.md decision log 2026-10-12 "Road cycling on the one engine"
+pricing_model = "racinglines.models.model_global:GlobalModel"
+calibration = "baseline"          # pages label its prices as baseline: settings untuned (decision log 2026-10-12)
 display_order = 6
+# Who the web app shows road cycling to: admins only. ProCyclingStats' terms were reviewed by the owner for personal,
+# non-commercial use (2026-10-05, [results] below); admin-only until the owner's data-terms review clears it. Still
+# ingested, priced and recorded; "all" shows it again.
+audience = "admin"
 results_modules = ["racinglines.sources.pcs"]   # what fetches its results (`backtest coverage`)
 
 [league]
@@ -26,7 +36,11 @@ categories = { RDR = ["Riders", "X", "elite"] }
 
 [markets]
 venues = ["kalshi"]
-standard_kinds = []               # nothing is priced, so the board has no columns for it
+# The board's columns: per-rider fairs from the forecast run (race_predictions win / podium / top 10)
+standard_kinds = ["race_win", "race_podium", "race_top10"]
+# The kinds the model prices for a link ([forecast] h2h stores the head-to-heads). No resolver files Kalshi's cycling
+# links yet ([identity]), so they stay unmodeled until one does
+kinds = ["race_win", "race_podium", "race_top5", "race_top10", "race_top20", "race_h2h"]
 
 [markets.kalshi]
 # Kalshi series tickers to sync, by prefix: every Sports series whose ticker starts with one of these
@@ -35,6 +49,35 @@ standard_kinds = []               # nothing is priced, so the board has no colum
 # already matches the other three by prefix (series_for uses startswith); they are listed for the reader.
 # The sync's `--closed` flag pulls the settled 2026 history Kalshi still serves.
 series = ["KXCYCLING", "KXCYCLINGSTAGE", "KXCYCLINGTEAM", "KXCYCLINGJERSEY"]
+
+# --- the one engine ---------------------------------------------------------------------------------------------------
+
+[model]
+# The engine's inputs and data hooks (racinglines/models/inputs/__init__.py; results core: models/inputs/results.py).
+# Finishing positions only: PCS gives a classification per race, fields of 100-180 riders that change from race to race.
+inputs = ["results"]
+source = "pcs_road"               # events.source of the history: one-day races and stage-race final GCs (the "road"
+                                  # results file); ITTs are stored as "pcs_itt" and left out of it
+group = "team"                    # results.team, for the optional team-form prior (group_weight, 0 = off). The PCS
+                                  # results files carry no team, only start lists do: inert until results have one
+
+[model.defaults]
+# Every value a priori, none tuned (decision log 2026-10-12 "Road cycling on the one engine"); the engine's own
+# defaults are sims 2000, half-life 240 d, prior weight 3, noise 0.8, uncertainty 0.5
+sims = 4000                       # a priori: 100-180 riders, so the long shots' win chances need more draws
+half_life_days = 365.0            # a priori: riders race 40-70 days a year, fewer per kind of race (the book model's
+                                  # road guess, [model.road.defaults] half_life)
+prior_weight = 3.0                # a priori: the engine's default
+noise = 1.0                       # a priori: wider than the motor sports' 0.8 (bunch finishes, crashes, team orders),
+                                  # so favourites are not over-confident before any calibration
+uncertainty = 0.5                 # a priori: the engine's default
+dnf = true                        # a priori: retirements drawn from each rider's shrunk DNF rate (the engine's default)
+
+[forecast]
+# The sport forecast (racinglines/pipelines/sport_forecast.py, `racinglines model forecast cycling`)
+field = "entry_list"              # price only a race with its own start list (`data schedule cycling`), never the last
+                                  # race's riders
+h2h = true                        # store every pair's head-to-head (race_predictions.extra.h2h)
 
 # --- the book model (racinglines/models/cycling.py, docs/road-cycling.md) -------------------------------------------
 
@@ -134,3 +177,9 @@ weak_field = 60
 [model.road.backtest]
 min_field = 60
 categories = ["ME", "WH"]             # hilly one-day races, any field strength
+
+[sources]
+# The compact source note on every page, MCP answer, book render and report that shows this sport's data
+# (racinglines/attribution.py).
+# Results/timing feed(s) as data, taken from [results] source above; racinglines/sources/pcs.py BASE.
+results = [{ name = "ProCyclingStats", url = "https://www.procyclingstats.com/" }]

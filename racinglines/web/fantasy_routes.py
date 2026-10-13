@@ -98,7 +98,7 @@ def history_page(request: Request, msg: str = ""):
                         markers=[(curve[-1][0], "now")]) if len(curve) >= 2 else None)   # the last point is at mark
     return render(request, "history.html", ready=True, s=s, positions=pos, orders=recent, strat=strat, chart=chart,
                   profile=profile, mine=mine, rows=board, min_trades=FL.MIN_TRADES, msg=msg,
-                  is_demo_user=demo.is_demo(me), reasons=FX.TEXT)
+                  is_demo_user=demo.is_demo(me), reasons=FX.TEXT, note_sport=FX.SPORT, note_venues=list(FX.EXCHANGES))
 
 
 @app.get("/fantasy", dependencies=[allow(*ANY)])
@@ -154,7 +154,7 @@ def fantasy_trade(request: Request, link: int = 0, q: str = "", msg: str = "", a
     return render(request, "fantasy_trade.html", ready=True, events=events, n=len(markets), sel=sel, book=book,
                   pos=pos, cash=cash, q=q, msg=msg, action=action if action in ("buy", "sell") else "buy",
                   side=side if side in ("yes", "no") else "yes", client_key=uuid.uuid4().hex, max_stake=FX.MAX_STAKE,
-                  max_age=FX.MAX_AGE_MIN, is_demo_user=demo.is_demo(me))
+                  max_age=FX.MAX_AGE_MIN, is_demo_user=demo.is_demo(me), note_sport=FX.SPORT, note_venues=list(FX.EXCHANGES))
 
 
 @app.post("/fantasy/orders", dependencies=[Depends(check_csrf), allow(*ANY)])
