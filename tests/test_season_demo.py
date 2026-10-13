@@ -108,7 +108,13 @@ def players_db(test_engine, monkeypatch):
         for name in ("ada", "bea", "cal", "dan", "maker"):
             U.create_user(s, name, f"{name}-password-1", "pro")
     ACC.setup(config.get_engine())
-    return test_engine
+    yield test_engine
+    with test_engine.begin() as c:                                         # leave the shared test database as found
+        for t in ("strategy_signals", "paper_positions"):
+            c.execute(text(f"DELETE FROM {t}"))
+        c.execute(text("DROP SCHEMA IF EXISTS accounts CASCADE"))
+        c.execute(text("DELETE FROM users WHERE username = ANY(:n)"), dict(n=["ada", "bea", "cal", "dan", "maker"]))
+    config.get_engine.cache_clear()
 
 
 def _fake_compute(calls):
