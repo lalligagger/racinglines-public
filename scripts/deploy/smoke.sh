@@ -56,11 +56,27 @@ if [ -n "${SMOKE_EXPECT_ENV:-}" ]; then
   else echo "FAIL  env  X-Racinglines-Env: '${got_env:-none}' (wanted $SMOKE_EXPECT_ENV: this is not the $SMOKE_EXPECT_ENV instance)"; fail=1; fi
 fi
 check 401 "GET /markets without credentials" "$URL/markets"
-for path in /markets /pitch /racinglines101 /live /live/f1; do
+# the app says which layout it runs (X-Racinglines-Layout, web/layout.py): under the alpha layout live events and
+# private books are archived (404 to the demo accounts) and Trade and History take their place
+layout=$(curl -s -o /dev/null -w '%header{x-racinglines-layout}' --max-time 30 "$URL/login")
+echo "info  layout: ${layout:-classic (no header)}"
+for path in /markets /pitch /racinglines101; do
   for user in maker taker; do check 200 "GET $path as $user" -u "$user:$PW" "$URL$path"; done
 done
-check 200 "GET /book/quotes as maker" -u "maker:$PW" "$URL/book/quotes"
-check 403 "GET /book/quotes as taker (maker-only)" -u "taker:$PW" "$URL/book/quotes"
+if [ "$layout" = alpha ]; then
+  for path in /trade /history; do
+    for user in maker taker; do check 200 "GET $path as $user" -u "$user:$PW" "$URL$path"; done
+  done
+  for path in /live /live/f1 /book/quotes; do
+    for user in maker taker; do check 404 "GET $path as $user (archived under alpha)" -u "$user:$PW" "$URL$path"; done
+  done
+else
+  for path in /live /live/f1; do
+    for user in maker taker; do check 200 "GET $path as $user" -u "$user:$PW" "$URL$path"; done
+  done
+  check 200 "GET /book/quotes as maker" -u "maker:$PW" "$URL/book/quotes"
+  check 403 "GET /book/quotes as taker (maker-only)" -u "taker:$PW" "$URL/book/quotes"
+fi
 
 if [ "${SMOKE_SIGNUP:-}" = 1 ]; then
   if [ "${SMOKE_EXPECT_ENV:-}" != staging ]; then echo "FAIL  signup smoke runs only with SMOKE_EXPECT_ENV=staging"; fail=1
