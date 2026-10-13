@@ -346,7 +346,9 @@ events are T3 unless a venue lists the event.
       instead of the touch/through bounds. The queue model is built (`--fill queue`,
       [queue rule](market-making.md#the-queue-rule), tested on synthetic books, 2026-09-28,
       cloud build-out); running it needs several weekends of recorded books (Polymarket and, with U2, Kalshi).
-- [ ] Liquidity rewards as a replay P&L line; optional fractional-Kelly caps.
+- [ ] Liquidity rewards as a replay P&L line; optional fractional-Kelly caps. The data now builds up: the recorders store
+      each venue's reward programs on our open markets hourly, only changes (`markets rewards`, markets/rewards.py,
+      `data/archive/markets/<exchange>/rewards/`, 2026-10-13).
 
 ## F1 model
 

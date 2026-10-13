@@ -18,7 +18,9 @@
 # settled_at; bounded by the schema's max_pages and resumed from where the last pass stopped, so a pass reads a few
 # pages; Kalshi's outcomes come with its sync). Every TRADES_MIN minutes (default 15): the trades of the pair's open
 # markets from the last TRADES_HOURS (default 2; deduplicated), so the tape is on record between race pulls (a
-# 2026-10-08 comparison found no Kalshi trade stored after 29 Sep). Additive only; no trading, no buy-all. API limits are the
+# 2026-10-08 comparison found no Kalshi trade stored after 29 Sep). Every REWARDS_MIN minutes (default 60), Kalshi
+# pairs only: the incentive programs (liquidity rewards) on the pair's open markets, a row stored only when one appears,
+# changes or ends (`rewards`, markets/rewards.py, data/archive/markets/kalshi/rewards/). Additive only; no trading, no buy-all. API limits are the
 # commands' own (polite HTTP pacing, sources/http.py; OG schema caps). One pair failing doesn't stop
 # others; the pass exits non-zero if any failed, so `systemctl status` shows it.
 #
@@ -35,6 +37,8 @@ SYNC_MIN=${SYNC_MIN:-60}
 SETTLE_MIN=${SETTLE_MIN:-60}
 TRADES_MIN=${TRADES_MIN:-15}          # the trade tape of open markets every TRADES_MIN, the last TRADES_HOURS of it (the
 TRADES_HOURS=${TRADES_HOURS:-2}       # overlap is deduplicated by uq_market_trade); before 2026-10-08 no timer pulled trades
+REWARDS_MIN=${REWARDS_MIN:-60}        # Kalshi's incentive programs on the pair's open markets, every REWARDS_MIN (Parquet,
+                                      # only changes stored; markets/rewards.py)
 WEEKEND_ONLY=${WEEKEND_ONLY:-0}       # 1: skip a sport outside its race weekend (the gate before 2026-10-07)
 STATE=data/runs/record-venues
 LOG=data/runs/logs/record-venues.log
@@ -96,6 +100,9 @@ for p in $PAIRS; do
   run "$x" "$s" books
   if [ -z "$(find "$STATE/trades-$x-$s" -mmin -"$TRADES_MIN" 2>/dev/null)" ]; then
     run "$x" "$s" trades --open --since-hours "$TRADES_HOURS" && touch "$STATE/trades-$x-$s"
+  fi
+  if [ "$x" = kalshi ] && [ -z "$(find "$STATE/rewards-$x-$s" -mmin -"$REWARDS_MIN" 2>/dev/null)" ]; then
+    run "$x" "$s" rewards && touch "$STATE/rewards-$x-$s"
   fi
 done
 exit $rc

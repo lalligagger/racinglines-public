@@ -8,7 +8,9 @@
 # Command: racinglines markets --exchange polymarket sync (markets/polymarket/sync.py). Also (2026-10-08, after a
 # comparison with a third-party book feed found no NASCAR/MotoGP Polymarket books and no trade tape between race pulls):
 # every TRADES_MIN the recent trades of every open market (`trades --open --since-hours`), and for PM_SPORTS
-# (nascar, motogp) a sync every SYNC_MIN and one book snapshot per open market on every pass.
+# (nascar, motogp) a sync every SYNC_MIN and one book snapshot per open market on every pass. Every REWARDS_MIN (default
+# 60), every sport: the liquidity rewards on its open markets (`rewards`, markets/rewards.py; a row only when a reward
+# appears, changes or ends, data/archive/markets/polymarket/rewards/).
 #
 # Polling strategy (owner, 2026-10-07): every 5-minute pass, every day, all day (WEEKEND_ONLY=1 brings back the old
 # gate: only Thu to Sun of an F1 race weekend, scripts/vm/race_weekend.sh), then a tape check (scripts/vm/tape_check.sh,
@@ -44,6 +46,7 @@ PM_SPORTS=${PM_SPORTS:-nascar motogp}   # the tape-only sports' Polymarket marke
 SYNC_MIN=${SYNC_MIN:-60}                # their sync, every SYNC_MIN (F1's: every pass)
 TRADES_MIN=${TRADES_MIN:-15}            # every sport's trade tape of open markets, the last TRADES_HOURS of it, every
 TRADES_HOURS=${TRADES_HOURS:-2}         # TRADES_MIN (the overlap is deduplicated by uq_market_trade)
+REWARDS_MIN=${REWARDS_MIN:-60}          # every sport's liquidity rewards on its open markets, every REWARDS_MIN
 STATE=data/runs/pm-sync
 mkdir -p "$STATE"
 
@@ -63,6 +66,11 @@ trades() {   # trades <sport>: the open markets' recent trades, every TRADES_MIN
     run "$1" trades --open --since-hours "$TRADES_HOURS" && touch "$STATE/trades-$1"
   fi
 }
+rewards() {   # rewards <sport>: the CLOB's reward programs on the sport's open markets (only changes stored), every REWARDS_MIN
+  if [ -z "$(find "$STATE/rewards-$1" -mmin -"$REWARDS_MIN" 2>/dev/null)" ]; then
+    run "$1" rewards && touch "$STATE/rewards-$1"
+  fi
+}
 check() {   # an upcoming event with no Polymarket links or a stale sync (scripts/vm/tape_check.sh): WARN lines in the log
   bash scripts/vm/tape_check.sh polymarket "$1" 2>&1 | while read -r line; do say "$line"; done || true
 }
@@ -70,6 +78,7 @@ check() {   # an upcoming event with no Polymarket links or a stale sync (script
 run f1 sync
 check f1
 trades f1
+rewards f1
 for s in $PM_SPORTS; do
   if [ -z "$(find "$STATE/sync-$s" -mmin -"$SYNC_MIN" 2>/dev/null)" ]; then
     run "$s" sync && touch "$STATE/sync-$s"
@@ -77,5 +86,6 @@ for s in $PM_SPORTS; do
   fi
   run "$s" books
   trades "$s"
+  rewards "$s"
 done
 exit $rc

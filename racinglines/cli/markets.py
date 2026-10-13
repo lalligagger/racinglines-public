@@ -8,6 +8,8 @@ racinglines markets <command>: exchange data (Polymarket and Kalshi; F1 plus the
     archive    Move stale prices / trades / books from Postgres to Parquet (--stats: sizes)
     disagree   Cross-venue disagreement log: Polymarket vs Kalshi on every outcome listed on both, per tick
                (--event 2026-15, a round number, or season [--year]; --start/--end UTC, --step minutes, --no-save)
+    rewards    Read-only, --exchange polymarket|kalshi, any --sport: the venue's liquidity-reward programs on our open
+               links, stored where they changed (data/archive/markets/<exchange>/rewards/; markets/rewards.py)
     settle-check  Read-only, any --exchange and --sport: our outcome from the results (markets/kinds.settle) beside
                the exchange's resolved_yes on every resolved link; lists disagreements, exit 1 if any [--out FILE.csv]
 
@@ -89,6 +91,8 @@ def main(argv=None):
     known, rest = ap.parse_known_args(argv)
     if rest and rest[0] == "settle-check":
         return settle_check(known.exchange, known.db, known.sport, rest[1:])
+    if rest and rest[0] == "rewards" and known.exchange in ("polymarket", "kalshi"):
+        return rewards(known.exchange, known.db, known.sport, rest[1:])
     if known.exchange in exchanges.CODES:
         return schema_exchange(known.exchange, known.db, rest, known.sport)
     if known.exchange == "kalshi":
@@ -107,6 +111,16 @@ def main(argv=None):
         return 0 if rest and rest[0] in ("-h", "--help") else 2
     from . import f1
     return f1.main((["--db", known.db] if known.db else []) + [COMMANDS[rest[0]]] + rest[1:])
+
+
+def rewards(exchange, db, sport="f1", argv=()):
+    """racinglines markets --exchange polymarket|kalshi [--sport S] rewards: one pass of markets/rewards.record."""
+    argparse.ArgumentParser(prog=f"racinglines markets --exchange {exchange} --sport {sport} rewards").parse_args(list(argv))
+    from racinglines.db.config import get_engine
+    from racinglines.markets import rewards as RW
+    with get_engine(db).connect() as c:
+        print(RW.record(c, exchange, sport))
+    return 0
 
 
 def settle_check(exchange, db, sport="f1", argv=()):
