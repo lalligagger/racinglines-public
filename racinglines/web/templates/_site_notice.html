@@ -13,13 +13,16 @@
 {# The add-email popup (owner, 2026-10-11): a registered account with no email on file (made before email was required
    at sign-up), once per browser session, on every app page but Settings. Demo accounts never see it. #}
 {% if not (maintenance_notice() or signup_cta) and request and npath not in ('/settings', '/settings/email') and needs_email(user) %}
-<dialog id="site-notice" class="site-notice email-notice" data-key="email" aria-labelledby="email-notice-title">
+<dialog id="site-notice" class="site-notice email-notice" data-key="email" aria-labelledby="email-notice-title" aria-describedby="email-notice-why">
   <form method="post" action="/settings/email">{% from "_macros.html" import csrf %}{{ csrf() }}
     <input type="hidden" name="next" value="{{ npath }}{{ '?' ~ request.url.query if request.url.query }}">
-    <p id="email-notice-title"><b>Add your email</b> so we can send you updates. We never share it.</p>
+    <p id="email-notice-title"><b>Add an email so you don't get locked out.</b></p>
+    <p id="email-notice-why">If you forget your password, the email on your account is how we confirm a reset request
+    really comes from you. Without one, we may not be able to get you back in. We'll also send the odd fantasy update,
+    and nothing else. We never share it.</p>
     <p><input name="email" type="email" required maxlength="254" placeholder="your@email.com" autocomplete="email" aria-label="Email"></p>
-    <p><button class="primary">Save</button> <button type="submit" formmethod="dialog" formnovalidate>Not now</button></p>
+    <p><button class="primary">Save</button> <button type="submit" formmethod="dialog" formnovalidate>Skip for now</button></p>
   </form>
-  <p class="muted">You can change it later under <a href="/settings">Settings</a>.</p>
+  <p class="muted">Skipping is fine: you can add or change it any time under <a href="/settings">Settings</a>.</p>
 </dialog>
 {% endif %}

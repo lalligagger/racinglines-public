@@ -7,6 +7,17 @@
 # 3. the checkout in /opt/racinglines (main, or REF), its venv, the database, /etc/racinglines.env
 # 4. the systemd units (installed, not started: vm.sh start does that)
 set -euo pipefail
+# Production and staging must not share a venv: one's `pip install -e .` re-points the other's imports (2026-10-12:
+# /opt/racinglines-staging/.venv was a symlink to production's, so prod jobs ran staging code). Refuse before any change.
+venv_guard() {
+  local p=${1:-/opt/racinglines/.venv} s=${2:-/opt/racinglines-staging/.venv} v
+  for v in "$p" "$s"; do
+    if [ -L "$v" ]; then echo "refusing: $v is a symlink (to $(readlink -f "$v")); give it its own venv (docs/vm-deploy.md#separate-venvs)"; exit 1; fi
+  done
+  if [ -e "$p" ] && [ -e "$s" ] && [ "$(readlink -f "$p")" = "$(readlink -f "$s")" ]; then
+    echo "refusing: $p and $s are the same venv (docs/vm-deploy.md#separate-venvs)"; exit 1
+  fi
+}
 REPO="${REPO:-https://github.com/lalligagger/racinglines-public.git}"
 REF="${REF:-main}"      # the branch to clone first (vm.sh setup <branch> tests an unmerged branch)
 APP=/opt/racinglines
@@ -51,6 +62,7 @@ if [ ! -d "$APP/.git" ]; then
 fi
 
 log "python 3.14 venv"
+venv_guard
 [ -x "$APP/.venv/bin/python" ] || as sh -c "cd $APP && UV_PYTHON_INSTALL_DIR=\$HOME/.uv-python /opt/uv/bin/uv venv --quiet --seed --python 3.14 .venv"
 as sh -c "cd $APP && .venv/bin/pip install --quiet -r requirements.txt -e ."
 

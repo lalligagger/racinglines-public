@@ -17,7 +17,7 @@ from starlette.requests import Request
 
 from racinglines.web.app import app
 
-MOVED = {"/": "/markets", "/bet": "/markets", "/me": "/positions", "/signals": "/strategy",
+MOVED = {"/bet": "/markets", "/me": "/positions", "/signals": "/strategy",
          "/pm": "/markets/polymarket", "/house": "/book/quotes", "/house/sheet": "/book/quotes/sheet",
          "/diag": "/lab/diagnostics", "/runs": "/lab/runs", "/markets/lookup": "/markets/linked/lookup"}
 MOVED_PREFIX = {"/house/{market_id:int}": "/book/markets/{market_id}", "/race/{race_id:int}": "/races/{race_id}",
@@ -32,5 +32,7 @@ def _redirect(target):
     return moved
 
 
+# "/" was here (to /markets) until the landing page moved to the index (owner, 2026-10-12); since 2026-10-13 a
+# signed-in browser sees the landing page there too (app.landing_page).
 for old, new in {**MOVED, **MOVED_PREFIX}.items():
     app.add_api_route(old, _redirect(new), methods=["GET"], include_in_schema=False)

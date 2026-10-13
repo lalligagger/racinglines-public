@@ -17,7 +17,7 @@ MODULES = ("f1", "mtb_dh", "nascar", "motogp", "cycling")
 
 GROUPS = {
     "data": ("results, sessions, feeds and market links into the database", (
-        "fetch", "download", "parse", "ingest", "link", "events", "startlist", "probe", "points", "record",
+        "fetch", "download", "parse", "ingest", "schedule", "link", "events", "startlist", "probe", "points", "record",
         "inrace-backfill", "pm-sync", "pm-links-export", "pm-links-import", "pm-history", "pm-trades", "pm-record",
         "pm-archive")),
     "model": ("pricing: forecasts, backtests, model comparisons, one-event diagnostics", (
@@ -167,7 +167,7 @@ def _help(group):
             h = SHARED.get(c, h) if len(sports) > 1 else h
             lines.append(f"    {c:<18} {' '.join(sports):<28} {h}")
     if group == "model":
-        lines += ["", "No data yet? Add --demo to any command, e.g. `racinglines model backtest f1 --demo`: the same"
+        lines += ["", "No data yet? Add --demo to any command, e.g. `racinglines model backtest kart --demo`: the same"
                   " command on a synthetic demo store (docs/quickstart.md)."]
     lines += ["", f"`racinglines {group} <command> SPORT -h` for a command's options."]
     return "\n".join(lines)

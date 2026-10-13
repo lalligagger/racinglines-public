@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_macros.html" import empty, pnl_cls, bar, pct, venue_chips, chart, csrf, flash, edge_cell %}
+{% extends "base.html" %}{% from "_macros.html" import empty, pnl_cls, bar, pct, venue_chips, chart, csrf, flash, edge_cell, source_note %}
 {% block title %}{{ info.title }}{% endblock %}
 {% block content %}
 <p class="crumbs"><a href="/markets">Markets</a> › {{ info.sport }}{% if info.season %} › {{ info.season }}{% endif %}{% if info.event_id %} › <a href="/events/{{ info.event_id }}">event page</a>{% endif %}</p>
@@ -14,6 +14,7 @@
   <div class="kpi"><div class="l">Venues</div>{{ venue_chips(venue_sum, mine) }}</div>
   <div class="kpi"><div class="l">My book here</div><div class="v">{{ mine.open }}</div><div class="s">open markets · staked {{ mine.staked|money(false, false) }} · worst <span class="{{ 'bad' if mine.worst < 0 }}">{{ mine.worst|money(false, false) }}</span></div></div>
 </div>
+{{ source_note(info.competition, venue_sum|selectattr("listed")|list, pricing.run_id, pricing.as_of, model=(pricing.run_id is not none or pricing.as_of is not none)) }}
 
 {# --- one view at a time: each market type, the chart, the season strategy, the classification, quoting --- #}
 <nav class="ptabs" data-tabs="race" role="tablist">

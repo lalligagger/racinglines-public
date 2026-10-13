@@ -127,7 +127,7 @@ def next_races(conn, competition_id, n=8):
         ORDER BY e.start_date, ra.id LIMIT :n""", c=competition_id, n=n)
 
 
-def board(conn, maker_id, only=None, detail=True):
+def board(conn, maker_id, only=None, detail=True, hide=frozenset()):
     """One dict per sport shown on the Markets board. detail=False: only what a sport's collapsed header shows (name,
     model run, status chips); the page loads each sport's body when it is opened (`only` = that competition code)."""
     from racinglines import exchanges as EX
@@ -144,7 +144,7 @@ def board(conn, maker_id, only=None, detail=True):
         forecasts = {r["competition"]: r for r in data.latest_forecasts(conn).to_dict("records")}
     from racinglines.web import sport_status as SS
     status_on = SS.enabled()                       # RACINGLINES_SPORT_STATUS=1: model sections for sports with as-of runs
-    ss_by_comp = {r["competition"]: r for r in SS.status(conn)} if conn is not None and not detail else {}  # header chips
+    ss_by_comp = {r["competition"]: r for r in SS.status(conn, hide)} if conn is not None and not detail else {}  # header chips
     asof_by_comp = {}
     if conn is not None and status_on:
         for r in data.q(conn, """SELECT co.code AS competition, count(DISTINCT mr.params->>'event_key') AS races,
@@ -166,8 +166,8 @@ def board(conn, maker_id, only=None, detail=True):
     sports = []
     for schema in sorted(map(SP.load, SP.SPORT_CODES), key=lambda s: s["sport"]["display_order"]):
         code, sport_code = schema["competition"]["code"], schema["sport"]["code"]
-        if only is not None and code != only:
-            continue
+        if (only is not None and code != only) or code in hide:
+            continue                                     # hide: competitions this user doesn't see (web/audience.py)
         tape = schema["sport"].get("model_family", "none") == "none"
         run, exch = forecasts.get(code), exch_by_comp.get(code, [])
         if run is None and not exch and code not in linked_comps:

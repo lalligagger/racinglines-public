@@ -34,7 +34,7 @@ A folder with a `pack.toml` manifest, bundled under `racinglines/demo/packs/<nam
 | `[load] commands` | the real `racinglines ...` commands that load the data into the database, in order |
 | `[book] file` | the sportsbook book `racinglines book price --demo` prices when no FILE is given |
 | `tagline` | optional: a line printed once the store is ready (a pack's flavour lives here, never in a command) |
-| `[[quickstart]]` | the pack's quickstart: `title`, `run` (the command), `about`, optional `section` (steps group under one heading per section, in first-seen order; none: one list); rendered into [Quickstart](quickstart.md) by `scripts/build_quickstart.py` (`--commands PACK [--section NAME]` lists them) and replayed by the web app's `/term` page (`Pack.sections()` in `racinglines/demo/store.py`) |
+| `[[quickstart]]` | the pack's quickstart: `title`, `run` (the command), `about`, optional `section` (steps group under one heading per section, in first-seen order; none: one list); rendered into [Quickstart](quickstart.md) by `scripts/build_quickstart.py` (`--commands PACK [--section NAME]` lists them) and replayed by the web app's `/docs/quickstart/term` page (`Pack.sections()` in `racinglines/demo/store.py`) |
 
 The store build (`racinglines/demo/store.py`): create the database (its name must contain `demo`), Alembic upgrade
 head and the seed (`racinglines db init`), copy the files, run the generator, run each load command as a
@@ -48,11 +48,14 @@ and its generator). Adding a pack is adding a folder: no command, flag, schema, 
 `racinglines/demo/packs/kart/`: a synthetic Formula 1 world with a Mario Kart grid, stored under the F1 schema.
 
 - `world.toml`, the generator's input: three seasons (2024-2026, twelve rounds each, 2026's rounds 1-9 raced, sprints
-  at rounds 3, 6 and 10), 20 drivers in 10 teams (Mario, Luigi, Peach, Bowser, ...), twelve tracks (Mario Circuit,
-  Rainbow Road, Bowser's Castle, ...), each team's car pace and the driver offsets, the tracks' lap times, sector
-  shares, trap speeds, how hard passing is and how often a safety car comes out. These are the synthetic world's
-  hidden truth; the real model never reads them, it fits the generated laps.
-- `racinglines/demo/generate.py` writes FastF1-shaped files for every raced session (practice, sprint qualifying,
+  at rounds 3, 6 and 10), 20 drivers in 10 teams (Mario, Luigi, Peach, Bowser, ...), twelve tracks (Mario Kart 8
+  Deluxe's Mario Kart Stadium, Rainbow Road, Bowser's Castle, ...), each team's car pace and the driver offsets, the
+  tracks' lap times (5 % off each course's fastest 150cc world-record lap, from mkwrs.com, so no generated lap beats a
+  record), sector shares, trap speeds, how hard passing is and how often a safety car comes out. Sector speeds and
+  passing come from course profiles where there is one, and how much each team gains on fast or tight tracks from its
+  drivers' in-game stats. These are the synthetic world's hidden truth; the real model never reads them, it fits the
+  generated laps. `--demo kart-classic` is the first kart world, with made-up F1-length lap times.
+- `racinglines/demo/mk_demo/generate.py` writes FastF1-shaped files for every raced session (practice, sprint qualifying,
   sprint, qualifying, race: results, laps with sectors and speed traps, meta with weather) and each season's
   schedule, the shapes `sources/fastf1/fetch.py` saves; and quotes from a synthetic Polymarket (win, podium, pole,
   teammates' head-to-heads) and Kalshi (win, podium, 2nd place) on rounds 9-11, in the file

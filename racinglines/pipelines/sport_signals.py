@@ -202,13 +202,12 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
             if scale != 1.0:
                 p = replace(p, scale=p.scale * scale)
             base["signals"], base["positions"] = SG.taker_signals(markets, p)
+            base["_taker"] = SG.taker_inputs(markets, p)
         elif strategy in WS.MAKERS:
             base.update(_maker(c, links, venue, sims_of, res, priced, sp, st, strategy, now, race))
         else:
             raise ValueError(f"unknown strategy {strategy!r}")
-    base["signals"] = [dict(s, detail=dict(s.get("detail") or {}, sport=sport, venue=venue)) for s in base["signals"]]
-    base["positions"] = [dict(p, venue=venue) for p in base["positions"]]
-    return base
+    return SG.tag(base, detail=dict(sport=sport, venue=venue), position=dict(venue=venue))
 
 
 def price_stages(engine, engine_url, sp, model, st, ms, hist, data, race, stages, res, live, now, echo=print):
@@ -316,14 +315,16 @@ def run_all(engine, engine_url, sport, venues=None, users=None, profile_ref=None
             if profile_ref is not None:
                 prof = dict(PF.load(c, profile_ref), sport=sport)
                 targets = [(uid, prof) for uid, _ in targets]
-        groups, rate = {}, {}
+        groups, rate, kelly = {}, {}, {}
         for uid, prof in targets:
             groups.setdefault(SG.combo_key(prof), (prof, []))[1].append(uid)
             rate[uid] = prof.get("follow_rate")
+            kelly[uid] = PF.sizing_of(prof)
         cache = {}
         for prof, uids in groups.values():
             prof = dict(prof, sport=sport)
             echo(f"{prof['name']} ({prof['strategy']}, {sport} on {venue}) for users {uids}")
             out = compute(engine, engine_url, prof, now=now, event=event, fetch=fetch, echo=echo, cache=cache)
-            report.append(SG._run_one(engine, engine_url, prof, out, uids, rate, now, alert, echo, upcoming=None))
+            report.append(SG._run_one(engine, engine_url, prof, out, uids, rate, now, alert, echo, upcoming=None,
+                                      kelly=kelly))
     return report

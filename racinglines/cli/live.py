@@ -7,7 +7,7 @@ racinglines live: launch and run a live private-book event, for any sport (pipel
     racinglines live run live/f1/2026-16.toml              # step at the sport's cadence until the event is settled
     racinglines live run live/mtb_dh/20260925_mtb.toml     # downhill: the poll loop, locked (one loop per final)
     racinglines live run live/f1/2026-15.toml --simulate --no-fetch     # a rehearsal on a simulated clock
-    racinglines live run f1/demo-2026-09 --demo --simulate --no-fetch   # the kart demo pack's rehearsal (docs/quickstart.md)
+    racinglines live run kart/demo-2026-09 --demo --simulate --no-fetch   # the kart demo pack's rehearsal (docs/quickstart.md)
     racinglines live agent live/f1/2026-16.toml --install  # a macOS LaunchAgent: one step every 5 minutes, locked
     racinglines live auto                                  # F1: step every event whose window is open (a 5-min timer)
     racinglines live status                                # every event: live / replay / settled, last update, lateness

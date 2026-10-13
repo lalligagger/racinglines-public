@@ -7,7 +7,7 @@ racinglines <group> <command> [SPORT] [options]
     backtest  walk-forward SPORT | coverage | clv   (the backtest core, any sport with a pricing model)
     weather   probe | fetch | show   (weather forecasts per event: Weather Underground, docs/weather.md)
     markets   sync | history | trades | record | archive
-    book      map | price | settle | view   (generic sportsbook lines and slips: model and market EV, docs/sportsbook/slips.md)
+    book      map | price | settle | view | render | new   (generic sportsbook lines and slips: model and market EV, docs/sportsbook/slips.md)
     db        init | seed | stats | export
     live      new | step | run | agent | status | report   (a live private-book event, any sport)
     web       serve the web app
@@ -17,7 +17,7 @@ racinglines <group> <command> [SPORT] [options]
 
 SPORT is f1, mtb_dh, nascar, motogp or cycling, e.g. `racinglines model forecast f1 --save`.
 --demo on any command: the same command on the demo store, a separate database and data folder of synthetic data
-(built on first use; racinglines/cli/source.py, docs/quickstart.md), e.g. `racinglines model forecast f1 --demo --save`.
+(built on first use; racinglines/cli/source.py, docs/quickstart.md), e.g. `racinglines model forecast kart --demo --save`.
 `racinglines <group> -h` lists a group's commands and the sports that offer each.
 """
 

@@ -28,6 +28,19 @@ The two profiles come from the params-4h cloud search (see
 - **Assigned per user** in `users.prefs["strategy_profile"]`, with the full settings, so deleting the
   candidate doesn't break the assignment. An admin sets or clears it on `/admin/users/{id}`
   (**Strategy profile**).
+- **Picked by the account** on `/strategy/pick` ([Web app](webapp.md)). Sign-up assigns no profile, so a new
+  account trades nothing until it picks one (owner, 2026-10-11); `racinglines users reset-fantasy` clears profiles
+  too. The dice roll a strategy's sliders in the browser, and a rolled save is marked `rolled` on the profile. The
+  demo accounts keep theirs.
+- **No changes during a race weekend.** A pick, a slider, a dice roll or a stop is refused while the F1 weekend's
+  signal window is open, the same window the engine runs in (`signals.in_weekend`: from `WEEKEND_LEAD`, 4 days, before
+  the race start to `WEEKEND_TAIL`, 24 hours, after it), because the engine replays the weekend's stages with the
+  profile's current settings and a change would rewrite the weekend's earlier calls.
+- **Makers open for Alpha** (owner, 2026-10-12: "include maker strategies, we will see how it goes"; they had been
+  closed on 2026-10-11): `profiles.MAKERS_OPEN` is `True`, so a pro account can pick maker C on `/strategy/pick` and the
+  signal engine runs it. Set it `False` to close them again: then only an admin account can be assigned a maker
+  profile (`web/roles.allowed_profile`), the web pages hide maker strategies, and the signal engine skips every maker
+  profile except the demo accounts' (`signals.run_all`). Nothing is deleted either way.
 
 ```
 racinglines strategy profiles f1                  # list; create A and C as Lab candidates if missing
@@ -92,6 +105,8 @@ its result, and the paper positions settle. Outside that window a run only notes
 racinglines strategy signals f1                                   # every user with a profile, the weekend in progress
 racinglines strategy signals f1 --profile A --user taker          # this profile, these users
 racinglines strategy signals f1 --event 2026-15 --asof 2026-09-27T12:00 --no-fetch   # replay (prints only)
+racinglines strategy signals f1 --profile A --event 2026-17 --venue kalshi --asof 2026-10-09T07:35Z --no-fetch \
+    --book picks.toml                                             # replay on Kalshi, its entries as a book file
 racinglines strategy signals f1 --no-alert                        # store, don't notify
 ```
 
@@ -101,6 +116,8 @@ racinglines strategy signals f1 --no-alert                        # store, don't
 | `--user` | Only these usernames |
 | `--event` | `next` (default), a round number, or `YEAR-ROUND` |
 | `--asof` | **Replay** at this UTC time: markets read at each stage's cutoff, exactly like the sweep; prints a table with our fair values and stores nothing |
+| `--venue` | `polymarket` (default), `kalshi` or `og`: whose stored profiles run; with `--asof` and `--profile`, the exchange the replay trades on (its links and tape) |
+| `--book OUT.toml` | With `--asof` and one `--profile`: also write the replay's buys as a book file (`racinglines/books/picks.py`) on that exchange, Kalshi in cents and Polymarket or OG.com in dollars, each at the price it was taken at with its cost as the stake, its market named by the link's exact athlete ids. Sells are counted, not written. Follow it with `racinglines book price OUT.toml --asof T` ([Sportsbook slips](sportsbook/slips.md)). Refuses an existing file |
 | `--no-fetch` | Don't refresh FastF1 or Polymarket data first |
 | `--no-alert` | Don't send alerts |
 

@@ -24,6 +24,8 @@
 #                                               # 30 minutes; NASCAR and MotoGP forecasts only on their race weekends
 #                                               # (scripts/vm/race_weekend.sh), F1 once per new race result;
 #                                               # status: last passes
+#   bash scripts/deploy/vm.sh schedule [off|status] # session start times (scripts/vm/schedule_sync.sh): a dry run every
+#                                               # 6 hours, a backup and the write only when a session is added or moved
 #   bash scripts/deploy/vm.sh switch <NAME> on|off # an app switch (RACINGLINES_*, e.g. RACINGLINES_OG_VENUE) in
 #                                               # /etc/racinglines.env, web app restarted; never a trading flag
 #   bash scripts/deploy/vm.sh deploy [ref]      # checkout (default main), install, migrate, restart, smoke check
@@ -37,7 +39,11 @@
 #   bash scripts/deploy/vm.sh accounts [off]    # beta sign-up: back up the database, create the accounts schema and
 #                                               # fantasy-bucks ledger (racinglines users setup, idempotent), switch
 #                                               # RACINGLINES_SIGNUP on, check /signup; off: the switch off (the ledger stays)
-#   bash scripts/deploy/vm.sh staging setup [ref] | deploy [ref] | status | logs | reset | off | live <event>|auto [off]
+#   bash scripts/deploy/vm.sh staging setup [ref] | deploy [ref] [--db demo|main] | status | logs | reset | off | live <event>|auto [off]
+#   bash scripts/deploy/vm.sh staging demo-db build|status  # the season demo's own database racinglines_staging_demo
+#                                               # (scripts/vm/season_demo.sh, backup first; it persists across deploys)
+#   bash scripts/deploy/vm.sh staging db demo|main|status   # which database staging serves (/etc/racinglines-staging-db.env),
+#                                               # then a staging deploy of the current checkout; CI deploys keep it
 #                                               # staging.racinglines.bet: a second app copy on the VM (port 8010,
 #                                               # its own database racinglines_staging and data folder; live: its own
 #                                               # run of a live event, like `vm.sh live`). deploy never pauses
@@ -65,6 +71,13 @@ remote() { gcloud compute ssh "$VM" --project "$PROJECT" --zone "$ZONE" --tunnel
 as_app() { remote "cd $APP && sudo -u racinglines -H env RACINGLINES_GCS_BUCKET=$BUCKET $1"; }
 SERVICES="racinglines-web racinglines-recorder"
 PAUSED=/var/lib/racinglines/deploy-paused    # timers a deploy paused and hasn't resumed yet (deploy resumes them)
+# production and staging each need their own venv (docs/vm-deploy.md#separate-venvs): checked before a deploy changes anything
+venv_check() {
+  remote 'p=/opt/racinglines/.venv; s=/opt/racinglines-staging/.venv
+    for v in $p $s; do if [ -L $v ]; then echo "refusing: $v is a symlink (to $(readlink -f $v))"; exit 1; fi; done
+    if [ -e $p ] && [ -e $s ] && [ "$(readlink -f $p)" = "$(readlink -f $s)" ]; then echo "refusing: $p and $s are the same venv"; exit 1; fi' ||
+    { echo "production and staging must not share a venv (docs/vm-deploy.md#separate-venvs): nothing paused, nothing deployed"; exit 1; }
+}
 
 case "${1:-}" in
   setup)
@@ -142,6 +155,15 @@ case "${1:-}" in
       *) echo "usage: vm.sh forecast [off|status]"; exit 1 ;;
     esac
     ;;
+  schedule)
+    t=racinglines-schedule-sync.timer
+    case "${2:-}" in
+      off) remote "sudo systemctl disable --now $t && echo '$t: off'" ;;
+      status) remote "cd $APP && sudo -u racinglines -H scripts/vm/schedule_sync.sh status" ;;
+      "") remote "sudo systemctl enable --now $t && systemctl --no-pager list-timers $t" ;;
+      *) echo "usage: vm.sh schedule [off|status]"; exit 1 ;;
+    esac
+    ;;
   pm-sync)
     t=racinglines-pm-sync.timer
     case "${2:-}" in
@@ -168,6 +190,7 @@ case "${1:-}" in
     # tail: a fresh CI runner's first ssh prints its key generation on stdout ahead of the command's own output
     origin=$(as_app "git remote get-url origin" | tail -n 1) || { echo "couldn't reach the VM: nothing paused, nothing deployed"; exit 1; }
     [ "$origin" = "$REPO_URL" ] || { echo "the VM checkout fetches from $origin, not $REPO_URL: run bash scripts/deploy/vm.sh repoint first. Nothing paused, nothing deployed."; exit 1; }
+    venv_check
     # Pause, don't refuse. The timers (racinglines-live-f1@<event>.timer, racinglines-signals.timer) start oneshot
     # steps every 5 minutes; stop them and wait for a step already running ("activating"), so no step runs while
     # update.sh rewrites the checkout. Each step is idempotent and catches up: an F1 live step does every update
@@ -203,7 +226,11 @@ case "${1:-}" in
       remote "sudo mkdir -p ${PAUSED%/*} && echo '$timers' | sudo tee $PAUSED >/dev/null && sudo systemctl stop$timers"
       log "waiting up to 5 minutes for a step in progress"
       rc=0
-      remote "for i in \$(seq 60); do systemctl list-units --no-legend --plain --state=activating$steps | grep -q . || exit 0; sleep 5; done; echo 'still running:'; systemctl list-units --no-legend --plain --state=activating$steps | awk '{print \$1}'; exit 1" || rc=$?
+      # A signals pass can outlast the wait (about 6 minutes on 2026-10-12, so with its 5-minute timer one is nearly
+      # always running): when it is the only step left it is stopped. Safe to cut short: each profile's signals and
+      # positions are one transaction, inserts are ON CONFLICT DO NOTHING, and the resumed timer runs a fresh pass
+      # (pipelines/signals.py _run_one, store). Live-event and other steps still get the full wait.
+      remote "for i in \$(seq 60); do systemctl list-units --no-legend --plain --state=activating$steps | grep -q . || exit 0; sleep 5; done; left=\$(systemctl list-units --no-legend --plain --state=activating$steps | awk '{print \$1}'); if [ \"\$left\" = racinglines-signals.service ]; then echo 'stopping the signals pass still running (the resumed timer runs a fresh one)'; sudo systemctl stop racinglines-signals.service && exit 0; fi; echo 'still running:'; echo \"\$left\"; exit 1" || rc=$?
       if [ "$rc" -ne 0 ]; then
         remote "sudo systemctl start$timers && sudo rm -f $PAUSED" && trap - EXIT
         if [ "$rc" -eq 1 ]; then
@@ -321,8 +348,14 @@ case "${1:-}" in
         ;;
       deploy)
         ref="${3:-staging}"
+        case "$ref" in --db) ref=staging; set -- "$1" "$2" staging "$3" "${4:-}" ;; esac
+        if [ "${4:-}" = --db ]; then
+          case "${5:-}" in demo|main) bash "$SCRIPT_PATH" staging db "$5" --no-deploy ;;
+            *) echo "usage: vm.sh staging deploy [ref] [--db demo|main]"; exit 1 ;; esac
+        fi
         origin=$(as_stg "git remote get-url origin" | tail -n 1) || { echo "couldn't reach the VM or $STG is missing: run bash scripts/deploy/vm.sh staging setup first"; exit 1; }
         [ "$origin" = "$REPO_URL" ] || { echo "$STG fetches from $origin, not $REPO_URL: nothing deployed"; exit 1; }
+        venv_check
         # Check for concurrent staging workflow runs and warn (but don't block)
         if command -v gh >/dev/null 2>&1; then
           if gh run list --workflow staging.yml --status in_progress --limit 1 2>/dev/null | grep -q .; then
@@ -337,6 +370,36 @@ case "${1:-}" in
         remote "sudo -u racinglines -H bash -s -- $STG" < deploy/vm/build_docs.sh || log "docs build didn't finish: staging's /docs keeps its old site"
         log "smoke check on the VM (expects the staging instance: X-Racinglines-Env: staging)"
         remote "cd $STG && SMOKE_EXPECT_ENV=staging bash scripts/deploy/smoke.sh http://127.0.0.1:8010"
+        ;;
+      db)
+        # the database switch: demo = the season demo's racinglines_staging_demo, main = racinglines_staging (the
+        # default). One override file the web unit reads after its env file; staging deploys (CI too) keep it.
+        DBENV=/etc/racinglines-staging-db.env
+        case "${3:-}" in
+          demo)
+            remote "cd /opt/racinglines && sudo -u racinglines docker compose exec -T db psql -U racinglines -d postgres -tAc \"SELECT 1 FROM pg_database WHERE datname='racinglines_staging_demo'\" | grep -q 1" ||
+              { echo "no racinglines_staging_demo yet: bash scripts/deploy/vm.sh staging demo-db build first"; exit 1; }
+            remote "u=\$(sudo grep -E '^DATABASE_URL=' /etc/racinglines-staging.env | tail -n 1 | cut -d= -f2-); echo \"DATABASE_URL=\${u%/*}/racinglines_staging_demo\" | sudo tee $DBENV.tmp >/dev/null && sudo install -o root -g racinglines -m 640 $DBENV.tmp $DBENV && sudo rm -f $DBENV.tmp && echo 'staging database: demo (racinglines_staging_demo)'" ;;
+          main)
+            remote "sudo rm -f $DBENV && echo 'staging database: main (racinglines_staging)'" ;;
+          status|"")
+            remote "if [ -f $DBENV ]; then echo 'staging database: demo'; sudo cat $DBENV | sed 's/:[^:@]*@/:***@/'; else echo 'staging database: main (racinglines_staging)'; fi"
+            exit 0 ;;
+          *) echo "usage: vm.sh staging db demo|main|status"; exit 1 ;;
+        esac
+        [ "${4:-}" = --no-deploy ] && exit 0
+        ref=$(as_stg "git rev-parse HEAD" | tail -n 1)
+        log "redeploying staging's checkout ${ref:0:12} on the switched database"
+        exec bash "$SCRIPT_PATH" staging deploy "$ref"
+        ;;
+      demo-db)
+        case "${3:-status}" in
+          build)
+            remote "sudo systemctl is-active --quiet rl-season-demo && { echo 'rl-season-demo is already running'; exit 1; }; sudo systemctl reset-failed rl-season-demo 2>/dev/null; sudo systemd-run --unit=rl-season-demo --uid=racinglines --setenv=SEED=${SEED:-2026} --setenv=YEAR=${YEAR:-2026} --setenv=COPY=${COPY:-0} --setenv=SOURCE=${SOURCE:-racinglines} bash $STG/scripts/vm/season_demo.sh && echo 'started rl-season-demo: bash scripts/deploy/vm.sh staging demo-db status'" ;;
+          status)
+            remote "systemctl --no-pager is-active rl-season-demo; cd $STG && ls -t data/runs/logs/season-demo-*.log 2>/dev/null | head -n 1 | xargs -r tail -n 15; ls data/runs/logs/season-demo.done data/runs/logs/season-demo.failed 2>/dev/null || true" ;;
+          *) echo "usage: vm.sh staging demo-db build|status (env SEED, YEAR, COPY=1 re-copies, SOURCE=racinglines|racinglines_staging)"; exit 1 ;;
+        esac
         ;;
       status)
         remote "cd $STG 2>/dev/null && sudo -u racinglines -H git log -1 --format='staging: %h %s (%cr)' || echo 'staging: not set up'; systemctl --no-pager list-units '$SU*' 'racinglines-staging-live-*' ; systemctl --no-pager list-timers 'racinglines-staging-live-*' ; curl -s -o /dev/null -w 'GET http://127.0.0.1:8010/login: %{http_code}  X-Racinglines-Env: %header{x-racinglines-env}\n' http://127.0.0.1:8010/login || true"
@@ -366,7 +429,7 @@ case "${1:-}" in
           remote "${pre}sudo install -m 644 $STG/deploy/vm/systemd/${u}.* /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now $t && systemctl --no-pager is-active $t"
         fi
         ;;
-      *) echo "usage: vm.sh staging setup [ref] | deploy [ref] | status | logs | reset | off | live <event> [off]"; exit 1 ;;
+      *) echo "usage: vm.sh staging setup [ref] | deploy [ref] [--db demo|main] | db demo|main|status | demo-db build|status | status | logs | reset | off | live <event> [off]"; exit 1 ;;
     esac
     ;;
   status)

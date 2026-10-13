@@ -172,7 +172,9 @@ sports** ([Roadmap](todo.md#new-sports), U9); two have since moved on:
 
 - **NASCAR Cup and MotoGP** now have results (NASCAR's `cf.nascar.com` feeds; MotoGP's public results API), an
   `[identity]` resolver that fills each link's driver or rider, race and `params.kind`, and a simple result-only
-  pricing model (`model_family = "position_sim"`, `pricing_model` in the schema). The taker replay
+  pricing model: the one engine at the results level (`model_family = "global"`, `pricing_model =
+  "racinglines.models.model_global:GlobalModel"` in the schema; `NascarCupRace` and `MotoGPRaceChallenger` are
+  challengers). The taker replay
   (`racinglines strategy replay nascar|motogp`) and the board's race columns read them. `prediction` stays `unmodeled` on
   their links. What that model is and how far its results go: [Sports and exchanges](coverage.md).
 - **IndyCar, road cycling, Le Mans and SailGP** are still tape only (`model_family = "none"`, no `pricing_model`,

@@ -78,6 +78,35 @@
     store.set("tabs." + nav.dataset.tabs, key);
     if (setHash && key) history.replaceState(null, "", "#" + key);
   }
+  // --- Lab Run: pick a sport, then a job; only that job's form shows (no JS: every form shows) ---
+  function runPickInit(root) {
+    (root.querySelectorAll ? root : document).querySelectorAll("[data-run-pick]").forEach(pick => {
+      const box = pick.parentElement, sportSel = pick.querySelector("[data-run-sport]"), jobSel = pick.querySelector("[data-run-job]");
+      const secs = [...box.querySelectorAll(".run-sport[data-sport]")];
+      if (!secs.length) return;
+      const show = () => {
+        secs.forEach(sec => {
+          const on = sec.dataset.sport === sportSel.value;
+          sec.hidden = !on;
+          sec.querySelectorAll(".run-job").forEach(j => { j.hidden = !on || j.dataset.job !== jobSel.value; });
+        });
+      };
+      const fill = (want) => {
+        const sec = secs.find(x => x.dataset.sport === sportSel.value);
+        const jobs = [...sec.querySelectorAll(".run-job")];
+        jobSel.replaceChildren(...jobs.map(j => new Option(j.dataset.label, j.dataset.job)));
+        jobSel.value = jobs.some(j => j.dataset.job === want) ? want : (jobs[0] && jobs[0].dataset.job);
+        show();
+      };
+      const sel = box.querySelector(".run-job[data-sel]");
+      const first = sel ? sel.closest(".run-sport") : secs[0];
+      sportSel.value = first.dataset.sport;
+      fill(sel ? sel.dataset.job : null);
+      sportSel.addEventListener("change", () => fill(null));
+      jobSel.addEventListener("change", show);
+      pick.hidden = false;
+    });
+  }
   function tabsInit(root) {
     const nav = root.querySelector ? root.querySelector("[data-tabs]") : null;
     if (!nav) return;
@@ -285,7 +314,7 @@
       t.dataset.localized = "1";
     });
   }
-  function initAll(root) { tabsInit(root); detailsInit(root); tableInit(root); calendarInit(root); localTimeInit(root); }
+  function initAll(root) { tabsInit(root); runPickInit(root); detailsInit(root); tableInit(root); calendarInit(root); localTimeInit(root); }
   document.addEventListener("htmx:afterSwap", e => initAll(e.detail.target));
 
   document.addEventListener("DOMContentLoaded", () => {
@@ -330,6 +359,41 @@
     btn.addEventListener("click", () => termPlay(t));
   });
 
+  // --- /term parts: one part at a time, picked from the tabs (phone) or sidebar (wide); the URL hash keeps the part ---
+  const parts = document.querySelector("[data-term-parts]");
+  if (parts) {
+    const boxes = [...parts.querySelectorAll(".term-partbox")], tabs = [...parts.querySelectorAll(".term-nav [data-term-tab]")];
+    const showPart = (id, scroll) => {
+      if (!boxes.some(b => b.id === id)) id = boxes[0].id;
+      boxes.forEach(b => { b.hidden = b.id !== id; });
+      tabs.forEach(a => a.toggleAttribute("aria-current", a.dataset.termTab === id));
+      const cur = tabs.find(a => a.dataset.termTab === id), nav = cur && cur.parentElement;
+      if (nav && nav.scrollWidth > nav.clientWidth)       // phone tabs: bring the current one into view
+        nav.scrollLeft = cur.offsetLeft - nav.offsetLeft - (nav.clientWidth - cur.offsetWidth) / 2;
+      if (scroll) parts.scrollIntoView({block: "start"});
+    };
+    const fromHash = () => {     // #part-2, or a step's id inside a part
+      const el = location.hash && document.getElementById(location.hash.slice(1));
+      const box = el && el.closest(".term-partbox");
+      return box ? box.id : null;
+    };
+    parts.addEventListener("click", e => {
+      const a = e.target.closest("[data-term-tab]");
+      if (!a) return;
+      e.preventDefault();
+      history.replaceState(null, "", "#" + a.dataset.termTab);
+      showPart(a.dataset.termTab, true);
+    });
+    const toTarget = () => {     // a hash inside a part (a step, a section): show its part, then scroll to it
+      showPart(fromHash(), false);
+      const el = location.hash && document.getElementById(location.hash.slice(1));
+      if (el && !el.classList.contains("term-partbox")) el.scrollIntoView({block: "start"});
+    };
+    window.addEventListener("hashchange", toTarget);
+    parts.classList.add("js");
+    toTarget();
+  }
+
   // --- /strategy/pick: each slider shows its value (points for probabilities, $ or shares otherwise); the dice roll
   // sliders at random, up to `spread` of each slider's range away from the strategy's own setting (no JS: no dice) ---
   const pick = document.querySelector("form.pick");
@@ -337,7 +401,10 @@
     const show = r => {
       const out = pick.querySelector(`[data-out="${r.name}"]`), v = Number(r.value), u = r.dataset.unit;
       out.textContent = u === "pts" ? `${Math.round(v * 100)} pts` : u === "$" ? `$${v}` : `${v} ${u}`;
-      if (Math.abs(Number(r.dataset.base) - v) > 1e-9) out.textContent += " (adjusted)";
+      const moved = Math.abs(Number(r.dataset.base) - v) > 1e-9;
+      const note = r.parentElement.querySelector("[data-untested]");     // the alpha drawer: "untested" instead
+      if (note) note.hidden = !moved;
+      else if (moved) out.textContent += " (adjusted)";
     };
     const spread = pick.querySelector("[data-spread]");
     const roll = opt => {
@@ -352,8 +419,24 @@
       if (pre && Math.random() < k / 2) pre.checked = !pre.checked;
       pick.querySelector("[data-rolled]").value = "1";
     };
-    pick.querySelectorAll("input[type=range]:not([data-spread])").forEach(r => { r.addEventListener("input", () => show(r)); show(r); });
-    pick.querySelectorAll("[data-roll]").forEach(btn => { btn.hidden = false; btn.addEventListener("click", e => { e.preventDefault(); roll(btn.closest(".pick-opt")); }); });
+    pick.querySelectorAll("input[type=range]:not([data-spread]):not([data-kelly])").forEach(r => { r.addEventListener("input", () => show(r)); show(r); });
+    pick.querySelectorAll("[data-roll]").forEach(btn => { btn.hidden = false; btn.addEventListener("click", e => { e.preventDefault(); roll(btn.closest(".pick-opt, [data-tweak]")); }); });
+    // the alpha's Kelly slider: its percent and its tier ("nitty to degen", strategy_pick.KELLY_LABELS), quick picks
+    const kbox = pick.querySelector("[data-kelly-box]");
+    if (kbox) {
+      const k = kbox.querySelector("[data-kelly]"), tiers = JSON.parse(kbox.dataset.labels);
+      const showK = () => {
+        const v = Number(k.value);
+        kbox.querySelector("[data-kelly-out]").textContent = `${Math.round(v * 100)}%`;
+        kbox.querySelector("[data-kelly-label]").textContent = (tiers.find(t => v <= t[0] + 1e-9) || tiers[tiers.length - 1])[1];
+      };
+      k.addEventListener("input", showK);
+      kbox.querySelectorAll("[data-kelly-pick]").forEach(b => b.addEventListener("click", () => {
+        k.value = b.dataset.kellyPick; showK();
+        const kr = pick.querySelector("input[name=sizing][value=kelly]"); if (kr) kr.checked = true;
+      }));
+      showK();
+    }
     const any = pick.querySelector("[data-roll-any]");
     if (any) {
       pick.querySelector("[data-dice]").hidden = false;

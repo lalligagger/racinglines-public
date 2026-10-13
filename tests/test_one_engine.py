@@ -67,7 +67,8 @@ def test_every_modelled_sport_prices_with_the_one_engine(code):
 def test_the_schemas_pick_the_cores_by_their_inputs():
     got = {c: (RM.model_class(c).core, RM.model_class(c).name) for c in MODELLED}
     assert got == {"f1": ("laps", "f1_sector_sim"), "mtb_dh": ("run_times", "timed_runs"),
-                   "nascar": ("results", "global_results"), "motogp": ("results", "global_results")}
+                   "nascar": ("results", "global_results"), "motogp": ("results", "global_results"),
+                   "road_cycling": ("results", "global_results")}
 
 
 def test_no_engine_module_names_a_sport():

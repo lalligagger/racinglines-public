@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Fantasy reset (owner, 2026-10-11: "seed all users with 1k fantasy bucks, and zero trading history"): every active
 # account but the demo maker and taker back to one 1,000-buck signup grant, with its paper positions, strategy signals
-# and house-book bets deleted (racinglines users reset-fantasy, web/accounts.reset). Accounts keep their strategy profile,
-# so paper trading starts again on the next race weekend. maker and taker are never touched.
+# and house-book bets deleted (racinglines users reset-fantasy, web/accounts.reset). Their strategy profiles are removed
+# too: paper trading starts again once the user picks a strategy (/strategy/pick). maker and taker are never touched.
 #
 #   TARGET=prod|staging   which app and database (default staging)
 #   APPLY=1               write; without it the run is a dry run that only prints the per-account counts

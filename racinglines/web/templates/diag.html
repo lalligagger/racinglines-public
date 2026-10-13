@@ -65,14 +65,14 @@ It only gets filled by <b>real taker trades that came after its quote</b> — ta
 <p><button type="button" class="primary" data-start>Start the live replay</button> <span data-status class="muted"></span></p>
 <div data-controls hidden><div class="jobform">
 <label><span>Fill rule</span><select data-knob="fill"><option value="through" {{ 'selected' if fill == 'through' }}>through (conservative)</option><option value="touch" {{ 'selected' if fill == 'touch' }}>touch (optimistic)</option></select></label>
-<label><span>Half-spread <b data-show="half_spread"></b></span><input data-knob="half_spread" type="range" min="0.005" max="0.2" step="0.005" value="{{ rp.params.half_spread }}"></label>
-<label><span>Shares per quote <b data-show="size"></b></span><input data-knob="size" type="range" min="1" max="500" step="1" value="{{ [rp.params.size, 500]|min|int }}"></label>
-<label><span>Max shares per market <b data-show="max_pos"></b></span><input data-knob="max_pos" type="range" min="10" max="2500" step="10" value="{{ [rp.params.max_pos, 2500]|min|int }}"></label>
-<label><span>Max worst-case loss $ <b data-show="max_capital"></b></span><input data-knob="max_capital" type="range" min="10" max="10000" step="10" value="{{ [rp.params.max_capital, 10000]|min|int }}"></label>
-<label><span>Inventory skew <b data-show="skew"></b></span><input data-knob="skew" type="range" min="0" max="5" step="0.25" value="{{ rp.params.skew }}"></label>
-<label><span>Skip if |fair − market| &gt; <b data-show="max_disagree"></b></span><input data-knob="max_disagree" type="range" min="0" max="1" step="0.01" value="{{ rp.params.max_disagree or 0 }}"></label>
-<label><span>Min $ traded, last 24 h <b data-show="min_volume_24h"></b></span><input data-knob="min_volume_24h" type="range" min="0" max="5000" step="50" value="{{ [rp.params.min_volume_24h, 5000]|min|int }}"></label>
-<label><span>Pull before session (min) <b data-show="pull_min"></b></span><input data-knob="pull_min" type="range" min="0" max="240" step="5" value="{{ rp.params.pull_min }}"></label>
+<label><span>Half-spread <b data-show="half_spread"></b></span><input data-knob="half_spread" type="range" {% set r = ui_range("half_spread", rp.params.half_spread) %}min="{{ r[0] }}" max="{{ r[1] }}" step="0.005" value="{{ rp.params.half_spread }}"></label>
+<label><span>Shares per quote <b data-show="size"></b></span><input data-knob="size" type="range" {% set r = ui_range("size", rp.params.size) %}min="{{ r[0] }}" max="{{ r[1] }}" step="1" value="{{ rp.params.size }}"></label>
+<label><span>Max shares per market <b data-show="max_pos"></b></span><input data-knob="max_pos" type="range" {% set r = ui_range("max_pos", rp.params.max_pos) %}min="{{ r[0] }}" max="{{ r[1] }}" step="10" value="{{ rp.params.max_pos }}"></label>
+<label><span>Max worst-case loss $ <b data-show="max_capital"></b></span><input data-knob="max_capital" type="range" {% set r = ui_range("max_capital", rp.params.max_capital) %}min="{{ r[0] }}" max="{{ r[1] }}" step="10" value="{{ rp.params.max_capital }}"></label>
+<label><span>Inventory skew <b data-show="skew"></b></span><input data-knob="skew" type="range" {% set r = ui_range("skew", rp.params.skew) %}min="{{ r[0] }}" max="{{ r[1] }}" step="0.25" value="{{ rp.params.skew }}"></label>
+<label><span>Skip if |fair − market| &gt; <b data-show="max_disagree"></b></span><input data-knob="max_disagree" type="range" {% set r = ui_range("max_disagree", rp.params.max_disagree or 0) %}min="{{ r[0] }}" max="{{ r[1] }}" step="0.01" value="{{ rp.params.max_disagree or 0 }}"></label>
+<label><span>Min $ traded, last 24 h <b data-show="min_volume_24h"></b></span><input data-knob="min_volume_24h" type="range" {% set r = ui_range("min_volume_24h", rp.params.min_volume_24h or 0) %}min="{{ r[0] }}" max="{{ r[1] }}" step="50" value="{{ (rp.params.min_volume_24h or 0)|int }}"></label>
+<label><span>Pull before session (min) <b data-show="pull_min"></b></span><input data-knob="pull_min" type="range" {% set r = ui_range("pull_min", rp.params.pull_min) %}min="{{ r[0] }}" max="{{ r[1] }}" step="5" value="{{ rp.params.pull_min }}"></label>
 </div>
 <p class="legend">Ranges are the server form's, narrowed to what a slider can reach (the form below takes any value). Half-spread is in dollars per share (0.02 = 2¢); disagreement 0 turns the filter off.</p>
 <div data-out></div></div>

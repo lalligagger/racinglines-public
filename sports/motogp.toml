@@ -17,6 +17,10 @@ pricing_model = "racinglines.models.model_global:GlobalModel"
 challengers = { motogp_results = "racinglines.models.motogp_model:MotoGPRace", motogp_recent_form = "racinglines.models.motogp_model:MotoGPRaceChallenger" }
 calibration = "baseline"          # pages label its prices as baseline: settings untuned (docs/f1-roadmap.md decision log, 2026-10-07); drop once fitted on a held-out season
 display_order = 2
+# Who the web app shows MotoGP to (owner, 2026-10-11 22:59Z, "Hide for Alpha"): admins only, because the motogp.com terms
+# keep its results and prices off user pages (data-terms review, 2026-10-11). Still recorded, priced and
+# settled; nothing is deleted. "all" (the default for every sport) shows it again.
+audience = "admin"
 results_modules = ["racinglines.sources.motogp"]   # what fetches its results (`backtest coverage`)
 
 [league]
@@ -149,3 +153,9 @@ quote_until_hours = 0             # the maker stops quoting at this hour (UTC) o
 [search]
 # The search queue's job kinds for this sport (racinglines/pipelines/search.py); the first is the default.
 jobs = ["walk_forward", "sweep"]
+
+[sources]
+# The compact source note on every page, MCP answer, book render and report that shows this sport's data
+# (racinglines/attribution.py).
+# Results/timing feed(s) as data, taken from [results] host and terms above; racinglines/sources/motogp/__init__.py.
+results = [{ name = "motogp.com results API (Pulselive)", url = "https://api.motogp.pulselive.com/motogp/v1" }]

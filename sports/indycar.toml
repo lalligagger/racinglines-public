@@ -44,3 +44,9 @@ tags = ["indycar"]
 # technically public and keyless but is still INDYCAR's content, so the same terms almost certainly cover it too
 # — do not ingest either without INDYCAR, LLC's written permission. No [results] table here on purpose: adding
 # one would read as "cleared to use," which this is not.
+
+[sources]
+# The compact source note on every page, MCP answer, book render and report that shows this sport's data
+# (racinglines/attribution.py).
+# Results/timing feed(s) as data, taken from racinglines/sources/indycar/__init__.py, fetch.py BASE.
+results = [{ name = "Wikipedia", url = "https://en.wikipedia.org" }]

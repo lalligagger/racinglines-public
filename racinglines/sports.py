@@ -19,6 +19,10 @@ the values from here, so a new sport starts with a new schema file.
                                 market is about ([identity] resolver in the schema), None if the sport has none
     frames(code)                the L1 input frames a sport's [data] frames names, () if the block is absent
                                 (racinglines/frames, docs/frames.md)
+    audience(code)              who the web app shows the sport to ([sport] audience): "all" (the default) or "admin"
+    admin_only()                the sport codes whose audience is "admin"; admin_only_competitions() their competitions
+    off_board_competitions()    the competitions left off the Markets page for everyone ([sport] markets_board = false)
+    is_public(code, user)       the one gate (web pages and MCP tools): may this user see the sport or competition code?
 """
 
 import tomllib
@@ -59,6 +63,48 @@ def declaring(model_input):
         raise ValueError(f"[model] inputs: {len(codes)} sports declare {model_input!r} ({codes}); its layer reads "
                          "one sport's schema at import, so exactly one may until it is bound per sport")
     return codes[0]
+
+
+AUDIENCES = ("all", "admin")
+
+
+def audience(code):
+    """Who the web app shows the sport to ([sport] audience): "all" (the default) or "admin" (owner, 2026-10-11, MotoGP
+    for the Alpha: a venue's or data feed's terms keep its results and prices off user pages). Only what users see
+    changes: the sport is still recorded, priced and settled, the CLI and admins see all of it, and nothing is deleted.
+    Flipping the key back to "all" shows it again."""
+    got = load(code)["sport"].get("audience", "all")
+    if got not in AUDIENCES:
+        raise ValueError(f"sports/{code}.toml [sport] audience: {got!r} not in {AUDIENCES}")
+    return got
+
+
+def is_public(code, user=None):
+    """The one gate every user-facing reader calls (web pages, MCP tools): whether `user` may see a sport or competition
+    code. True for an admin (user["role"] == "admin"), for None (an internal caller: the CLI, the stdio MCP server,
+    pricing and recording) and for an empty or unknown code; else whether the sport's [sport] audience is "all". A
+    signed-out web visitor is not None: the web app passes {} (web/audience.py)."""
+    if user is None or not code or (isinstance(user, dict) and user.get("role") == "admin"):
+        return True
+    sport = code if code in SPORT_CODES else next((c for c in SPORT_CODES if load(c)["competition"]["code"] == code), None)
+    return sport is None or audience(sport) == "all"
+
+
+def admin_only():
+    """The sport codes the web app shows to admins only ([sport] audience = "admin")."""
+    return frozenset(c for c in SPORT_CODES if audience(c) == "admin")
+
+
+def admin_only_competitions():
+    """The competition codes of the admin-only sports."""
+    return frozenset(load(c)["competition"]["code"] for c in admin_only())
+
+
+def off_board_competitions():
+    """The competition codes the Markets page leaves out for everyone, admins included ([sport] markets_board = false;
+    owner, 2026-10-12, "Hide UCI DH for now"). Only the Markets page's sections and calendar: the sport's own pages,
+    recording, pricing and settlement carry on. Deleting the key (default true) puts it back."""
+    return frozenset(load(c)["competition"]["code"] for c in SPORT_CODES if not load(c)["sport"].get("markets_board", True))
 
 
 def modeled(code):

@@ -46,7 +46,7 @@ PROFILES = {
                         "taker_stages": LIVE_STAGES},
               why="params-4h #09 + head-to-head at 5 pts. Robust in both seasons: 2026 +1,232 (Sharpe 1.53, "
                   "max DD 249), 2025 +1,237 (1.35, 306), both without the h2h change; noise range "
-                  "+1,270 ± 67 / +1,020 ± 149."),
+                  "+1,270 ± 67 / +1,020 ± 149. defaults-2026-10 (16 + 23 weekends, 16k): 2026 +1,376 (1.27, 249), 2025 +1,432 (1.55, 233)."),
     "C": dict(name="C · maker sleeve (gbm)", strategy="maker",
               settings={"variant": "gbm", "max_disagree": 0.05, "size": 25},
               why="params-4h #24. Profitable in both seasons with the smallest drawdowns: 2026 +653 "
@@ -64,36 +64,55 @@ _T1 = {"variant": "gridq+pretrain+reset", "min_edge": 0.10, "min_edge_h2h": 0.05
 _T7 = dict(_T1, coherence_tol_by_kind="race_podium=0.35")
 TAKER_PROFILES = {
     "T1": dict(name="T1 · update, core (A's settings)", strategy="update", settings=dict(_T1),
-               why="taker-resweep rank 2 (= profile A). Robust: 16k 2026 +1,389 (Sharpe 1.29, max DD 249), 2025 +1,432 (1.55, 233); 4k +1,243 / +1,363."),
+               why="taker-resweep rank 2 (= profile A). Robust: defaults-2026-10 (16 + 23 weekends, 16k): 2026 +1,376 (Sharpe 1.27, max DD 249), 2025 +1,432 (1.55, 233)."),
     "T2": dict(name="T2 · update, every stage", strategy="update",
                settings={"variant": "gridq+pretrain+reset", "min_edge": 0.10, "min_edge_h2h": 0.05},
-               why="taker-resweep rank 3: A with pre-weekend entry. Robust, not better than A: 16k 2026 +1,256 (1.13, 289), 2025 +1,400 (1.53, 239)."),
+               why="taker-resweep rank 3: A with pre-weekend entry. Robust, not better than A: defaults-2026-10 (16 + 23 weekends, 16k): 2026 +1,244 (1.11, 289), 2025 +1,400 (1.53, 239)."),
     "T3": dict(name="T3 · update, gridq+pretrain", strategy="update",
                settings={"variant": "gridq+pretrain", "min_edge": 0.10},
-               why="taker-resweep rank 4: gridq+pretrain, 10-pt edge. Robust: 16k 2026 +960 (0.85, 292), 2025 +900 (0.97, 439); 2026 rests on one weekend."),
+               why="taker-resweep rank 4: gridq+pretrain, 10-pt edge. Robust: defaults-2026-10 (16 + 23 weekends, 16k): 2026 +983 (0.86, 287), 2025 +786 (0.83, 446); 2026 rests on one weekend."),
     "T4": dict(name="T4 · update, gbm", strategy="update", settings={"variant": "gbm", "min_edge": 0.10},
-               why="taker-resweep rank 5: gbm, 10-pt edge. Robust: 16k 2026 +739 (0.80, 389), 2025 +881 (0.84, 420)."),
+               why="taker-resweep rank 5: gbm, 10-pt edge. Robust: defaults-2026-10 (16 + 23 weekends, 16k): 2026 +659 (0.72, 406), 2025 +841 (0.79, 448)."),
     "T5": dict(name="T5 · update, 8-pt edges", strategy="update",
                settings={"variant": "gridq+pretrain+reset", "min_edge": 0.08},
-               why="taker-resweep rank 6: 8-pt edge, more trades. Robust: 16k 2026 +872 (0.80, 399), 2025 +816 (0.81, 412)."),
+               why="taker-resweep rank 6: 8-pt edge, more trades. Robust: defaults-2026-10 (16 + 23 weekends, 16k): 2026 +860 (0.79, 399), 2025 +816 (0.81, 412)."),
     "T6": dict(name="T6 · update, $200 volume floor", strategy="update", settings=dict(_T1, min_volume_24h=200),
-               why="taker-resweep rank 8: A in markets with $200+ traded in 24 h. Robust, smallest drawdowns: 16k 2026 +702 (0.73, 260), 2025 +608 (0.78, 225)."),
+               why="taker-resweep rank 8: A in markets with $200+ traded in 24 h. Robust, smallest drawdowns: defaults-2026-10 (16 + 23 weekends, 16k): 2026 +689 (0.72, 260), 2025 +608 (0.78, 225)."),
     "T7": dict(name="T7 · update, loose podium coherence", strategy="update", settings=dict(_T7),
-               why="taker-resweep rank 1: A with podium coherence 0.35. Robust but within noise of A: 16k 2026 +1,271 (1.18, 249), 2025 +1,456 (1.58, 213)."),
-    "T8": dict(name="T8 · stage-aware (early)", strategy="early", settings=dict(_T1),
-               why="taker-resweep rank 10: A's settings on the stage-aware taker. 2026-led: 16k 2026 +2,707 (1.57, 214), 2025 +546 (0.96, 412)."),
+               why="taker-resweep rank 1: A with podium coherence 0.35. Robust but within noise of A: defaults-2026-10 (16 + 23 weekends, 16k): 2026 +1,258 (1.17, 249), 2025 +1,456 (1.58, 213)."),
+    "T8": dict(name="T8 · stage-aware (early, $25 volume floor)", strategy="early", settings=dict(_T1, min_volume_24h=25),
+               why="defaults-2026-10: A's settings on the stage-aware taker at a $25 volume floor. 2026-led: 16k 2026 +3,145 (1.65, 231), 2025 +757 (1.36, 424); +438 / +211 over the $50 floor, +473 / +233 and +475 / +224 at seeds 1 and 2 (seedcheck-2026-10)."),
     "T9": dict(name="T9 · stage-aware, loose podium coherence", strategy="early", settings=dict(_T7),
-               why="taker-resweep rank 9: T8 with podium coherence 0.35. 2026-led: 16k 2026 +2,794 (1.62, 214), 2025 +570 (1.00, 412)."),
+               why="taker-resweep rank 9: T8 with podium coherence 0.35. 2026-led: defaults-2026-10 (16 + 23 weekends, 16k): 2026 +2,794 (1.62, 214), 2025 +570 (1.00, 412)."),
     "T10": dict(name="T10 · update, baseline model", strategy="update",
                 settings={"variant": "baseline", "min_edge": 0.10},
-                why="taker-resweep rank 7: the baseline model at a 10-pt edge. Robust: 16k 2026 +740 (0.56, 504), 2025 +757 (0.71, 656)."),
+                why="taker-resweep rank 7: the baseline model at a 10-pt edge. Robust: defaults-2026-10 (16 + 23 weekends, 16k): 2026 +728 (0.55, 504), 2025 +757 (0.71, 656)."),
 }
 TAKER_TOP = ("T7", "T1", "T2", "T3", "T4", "T5", "T10", "T6", "T9", "T8")     # ranked, best first (worse season per weekend, 16k)
+# The alpha layout's five styles (web/layout.alpha, web/strategy_pick.py; owner, 2026-10-12 19:23-19:25Z: "down select
+# from strategies we have previously validated ... human readable names / descriptions. For a first-timer ... variety
+# rather than best performance"; library/process/2026-10-12-alpha-lab-strategies.md). Users see the label, the blurb
+# and the backtest, never the code or the `why`. `backtest` is (2026, 2025) season P&L in dollars at the default sizing,
+# copied from each code's `why` above (tests/test_alpha_styles.py checks they match); `in_sample`: tuned on the same
+# seasons it is scored on (web/edge.py flags `early`). Data only: reorder ALPHA_ORDER or reword a blurb here.
+ALPHA_STYLES = {
+    "T1": dict(label="Steady", backtest=(1376, 1432),
+               blurb="Buys only when our price beats the market by 10 points (5 on head-to-heads), during the weekend's sessions."),
+    "T2": dict(label="Head start", backtest=(1244, 1400),
+               blurb="Steady, but it may also buy before the weekend begins."),
+    "T8": dict(label="Early bird", backtest=(3145, 757), in_sample=True,
+               blurb="Trades practice and the sprint, then stops before final practice and qualifying. It's busier and swings more."),
+    "T6": dict(label="Big markets only", backtest=(689, 608),
+               blurb="Steady, but only where $200+ traded that day. It has the smallest drawdowns."),
+    "T5": dict(label="Hair trigger", backtest=(860, 816),
+               blurb="Buys on an 8-point edge instead of 10, so it trades a lot more."),
+}
+ALPHA_ORDER = ("T1", "T2", "T8", "T6", "T5")
 # Blends (combos): `members` [(code, weight)] instead of one strategy. Each member runs as itself with its stakes
 # scaled by its weight (signals.compute_all); its signals carry detail.member. A blend is not a Lab candidate.
 COMBOS = {
     "TB": dict(name="TB · blended taker (update + stage-aware)", members=[("T1", 0.5), ("T8", 0.5)],
-               why="taker-resweep recommended blend: half T1, half T8 (same model, two entry rules). 16k 2026 +2,048 (Sharpe 1.48, max DD 227), 2025 +989 (1.56, 250). Chosen on both seasons, so no held-out season."),
+               why="taker-resweep recommended blend: half T1, half T8 (same model, two entry rules). defaults-2026-10 (16 + 23 weekends, 16k): 2026 +2,261, 2025 +1,094 with T8 at its $25 floor (seedcheck-2026-10, default seed). Chosen on both seasons, so no held-out season."),
 }
 PROFILES.update(TAKER_PROFILES)
 PROFILES.update(COMBOS)
@@ -108,12 +127,12 @@ BANKROLL_SINCE = "2025-01-01"
 # the demo maker's saved Edge Finder: the setups it ran, newest first (M1 = the baseline maker, also the benchmark)
 DEMO_EDGE_FINDER = {"maker": [("C", "maker"), ("M3", "maker"), ("M2", "maker"), ("M1", "maker")]}
 DEMO_EDGE_YEAR = 2026
-# Maker strategies for users (owner, 2026-10-11 22:29Z): "For the Alpha Fantasy Launch we can remove maker strategies
-# completely. We will add them back for the Beta test." Closed: no account but admin can be assigned a maker profile
-# (web/roles.allowed_profile), the picker doesn't offer one (open_codes), and the signal engine skips any maker profile
-# outside the demo accounts (signals.run_all). Nothing is deleted: profiles, candidates, sweeps, the demo maker and its
-# paper positions stay. Set True for Beta.
-MAKERS_OPEN = False
+# Maker strategies for users. Closed for the Alpha on 2026-10-11 22:29Z ("For the Alpha Fantasy Launch we can remove
+# maker strategies completely"), open again on 2026-10-12 05:11Z (owner: "include maker strategies, we will see how it
+# goes"). Closed means: no account but admin can be assigned a maker profile (web/roles.allowed_profile), the picker
+# doesn't offer one (open_codes), the web pages hide maker strategies (web/edge.SHOWN_KEYS) and the signal engine skips
+# any maker profile outside the demo accounts (signals.run_all). Nothing is deleted either way.
+MAKERS_OPEN = True
 
 
 def is_maker(profile):
@@ -147,6 +166,51 @@ def follow_rate(username, strategy):
     from racinglines.pipelines import weekend_sweep as WS
     kind = "taker" if strategy in WS.TAKER_MODES else "maker"
     return (DEMO_FOLLOW.get(username) or {}).get(kind)
+
+
+# A fantasy player's sizing choice for the strategy they follow (owner, 2026-10-12 19:52Z and 19:53Z: "expose some
+# dynamic sizing options like half or quarter kelly"): `sizing` = "standard" (the bankroll-scaled linear rule,
+# fantasy/sizing.py; the default) or "kelly" with `kelly` = the fraction, 0.10 to 1.00. Stored on the user's assigned
+# profile (users.prefs, pref()); read only by the live signal pass for registered players (signals.for_player), so
+# the demo accounts, backtests and sweeps never see it. No profile's own settings change.
+SIZINGS = ("standard", "kelly")
+KELLY_RANGE = (0.10, 1.00)
+
+
+def kelly_value(sizing, kelly):
+    """The Kelly fraction a (sizing, kelly) choice means, or None for standard sizing: anything but sizing "kelly"
+    with a number from 0.10 to 1.00 is standard."""
+    if sizing != "kelly" or isinstance(kelly, bool):
+        return None
+    try:
+        k = float(kelly)
+    except (TypeError, ValueError):
+        return None
+    return k if KELLY_RANGE[0] <= k <= KELLY_RANGE[1] else None
+
+
+def sizing_of(profile):
+    """A profile's Kelly fraction (its `sizing` = "kelly" and `kelly` in KELLY_RANGE), or None = standard sizing."""
+    profile = profile or {}
+    return kelly_value(profile.get("sizing"), profile.get("kelly"))
+
+
+def set_sizing(conn, user_id, sizing, kelly=None, venue="polymarket", sport=None):
+    """Save a user's sizing choice on their assigned profile (the picker's form fields `sizing` = "standard" | "kelly"
+    and `kelly` = 0.10 to 1.00). Raises ValueError for anything else, or when the user has no profile for that venue
+    and sport."""
+    sport = sport or DEFAULT_SPORT
+    if sizing not in SIZINGS:
+        raise ValueError(f"sizing {sizing!r}: one of {', '.join(SIZINGS)}")
+    k = kelly_value(sizing, kelly)
+    if sizing == "kelly" and k is None:
+        raise ValueError(f"kelly {kelly!r}: a fraction from {KELLY_RANGE[0]:.2f} to {KELLY_RANGE[1]:.2f}")
+    prof = of_user(conn, user_id, venue=venue, sport=sport)
+    if prof is None:
+        raise ValueError("no strategy profile to size")
+    prof = {k_: v for k_, v in prof.items() if k_ != "kelly"}
+    assign(conn, user_id, dict(prof, sizing=sizing, **({"kelly": k} if k is not None else {})), venue=venue,
+           sport=sport)
 
 
 DEFAULT_SPORT = "f1"                    # a profile with no `sport` (every one before other sports had signals)
@@ -261,6 +325,10 @@ def assign(conn, user_id, profile, venue="polymarket", sport=DEFAULT_SPORT):
     key = pref(venue, sport)
     if profile is not None and sport != DEFAULT_SPORT:
         profile = dict(profile, sport=sport)
+    if profile is not None and "sizing" not in profile:     # a new strategy keeps the player's sizing choice
+        had = sizing_of(of_user(conn, user_id, venue=venue, sport=sport))
+        if had is not None:
+            profile = dict(profile, sizing="kelly", kelly=had)
     conn.execute(text(f"""UPDATE users SET prefs = CASE WHEN CAST(:v AS jsonb) IS NULL
                             THEN coalesce(prefs, '{{}}'::jsonb) - '{key}'
                             ELSE coalesce(prefs, '{{}}'::jsonb) || jsonb_build_object('{key}', CAST(:v AS jsonb)) END

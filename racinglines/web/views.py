@@ -20,10 +20,12 @@ from racinglines import sports as SP
 from racinglines.db.config import get_session
 from racinglines.pipelines import sport_paper as SPP
 
+from racinglines.web import audience as A
 from racinglines.web import board as B
 from racinglines.web import diag
 from racinglines.markets import private_book as house
 from racinglines.web import jobs
+from racinglines.web import layout as LAYOUT
 from racinglines.markets import venues as V
 from racinglines.web import roles as R
 from racinglines.web.app import ANY, PRO, allow, app, audit, check_csrf, conn, data, render, rows
@@ -55,9 +57,10 @@ def _basic_acct(acct):
                 decisions=None)                              # the story's decisions name every setup
 
 
-def _sport_options(rows, sport=""):
+def _sport_options(rows, sport="", user=None):
     """Every modeled sport in the app, plus any sport we have live rows for. This keeps the dropdown populated
-    even when a sport has sparse or no current track-record data, instead of dropping it entirely."""
+    even when a sport has sparse or no current track-record data, instead of dropping it entirely. Sports `user`
+    doesn't see ([sport] audience) are left out."""
     seen = set()
     for row in rows:
         code = row.get("sport") if isinstance(row, dict) else row
@@ -71,6 +74,7 @@ def _sport_options(rows, sport=""):
     if sport:
         seen.add(sport)
     order = {code: i for i, code in enumerate(SP.SPORT_CODES)}
+    seen = {code for code in seen if A.shown(user, code)}
     return sorted((code for code in seen if code), key=lambda code: (order.get(code, 99), str(code)))
 
 
@@ -137,16 +141,18 @@ def board_page(request: Request, msg: str = "", c=Depends(conn)):
         from racinglines.web.book_routes import bet_markets
         return bet_markets(request, msg=msg, c=c)
     from racinglines.markets import disagree as D
-    calendar = V.calendar_rows(c)
+    hide = A.hidden_comps(user)                                     # sports this user doesn't see ([sport] audience)
+    hide |= SP.off_board_competitions()                             # and sports off the Markets page ([sport] markets_board)
+    calendar = [r for r in V.calendar_rows(c) if r["sport"] not in hide]
     cal_sports = sorted({(r["sport"], r["sport_name"]) for r in calendar}, key=lambda x: V.SPORT_ORDER.get(x[0], 9))
     cal_exchanges = sorted({x for r in calendar for x in r["exchanges"]})
     cal_events = [dict(sport=r["sport"], title=r["title"], status=r["status"], exchanges=r["exchanges"], url=r["url"],
                        date=None if r["date"] is None or pd.isna(r["date"]) else pd.Timestamp(r["date"]).isoformat())
                  for r in calendar]
     from racinglines.web import sport_status as SS                  # RACINGLINES_SPORT_STATUS=1: every sport's status
-    return render(request, "board.html", sports=B.board(c, _maker(user), detail=False), h=B.headline(c, _maker(user)), kalshi=V.KALSHI_VENUE,
+    return render(request, "board.html", sports=B.board(c, _maker(user), detail=False, hide=hide), h=B.headline(c, _maker(user)), kalshi=V.KALSHI_VENUE,
                   disagree=D.panel(c) if D.ON["on"] else None,
-                  sport_status=SS.status(c) if SS.enabled() else None, show_paper=True,
+                  sport_status=SS.status(c, hide) if SS.enabled() else None, show_paper=True,
                   recorders=B.recorder_status(c, [v.code for v in V.EXCHANGES if v.code != "kalshi" or V.KALSHI_VENUE]),
                   calendar=calendar, cal_sports=cal_sports, cal_exchanges=cal_exchanges, cal_events=cal_events)
 
@@ -158,6 +164,7 @@ def board_sport(request: Request, code: str, c=Depends(conn)):
     user = request.state.user
     if R.is_basic(user):
         raise HTTPException(403)
+    A.guard(user, code)
     got = B.board(c, _maker(user), only=code)
     if not got:
         raise HTTPException(404, "no such sport on the board")
@@ -170,10 +177,11 @@ def board_recent(request: Request, code: str, c=Depends(conn)):
     section is opened: each one re-reads a past race's whole market, the slowest part of the board."""
     if R.is_basic(request.state.user):
         raise HTTPException(403)
+    A.guard(request.state.user, code)
     comp = c.execute(text("SELECT id FROM competitions WHERE code = :c"), dict(c=code)).scalar()
     if comp is None:
         raise HTTPException(404, "no such sport")
-    return render(request, "_board_recent.html", recent=B.recent_results(c, int(comp)), kalshi=V.KALSHI_VENUE)
+    return render(request, "_board_recent.html", recent=B.recent_results(c, int(comp)), kalshi=V.KALSHI_VENUE, code=code)
 
 
 # ---------------------------------------------------------------------------
@@ -233,6 +241,7 @@ def race_page(request: Request, race_id: int, msg: str = "", c=Depends(conn)):
     info, pricing, df = V.event_matrix(c, race_id, _maker(user))
     if info is None:
         raise HTTPException(404)
+    A.guard(user, info["competition"])
     completed = info["status"] == "completed"
     wins = df[df["kind"] == "race_win"] if len(df) else df
     fav = rows(wins.head(1))[0] if len(wins) else None
@@ -263,6 +272,7 @@ def race_page(request: Request, race_id: int, msg: str = "", c=Depends(conn)):
 
 @app.get("/seasons/{code}", response_class=HTMLResponse, dependencies=[allow(*PRO)])
 def season_page(request: Request, code: str, c=Depends(conn)):
+    A.guard(request.state.user, code)
     info, pricing, df = V.season_matrix(c, code, _maker(request.state.user))
     if info is None:
         raise HTTPException(404)
@@ -331,12 +341,13 @@ def book_page(request: Request, maker: str = "", c=Depends(conn), user=allow(*PR
 # Lab: launch runs, compare them, diagnostics
 # ---------------------------------------------------------------------------
 
-def backtest_runs(c, limit=12):
+def backtest_runs(c, limit=12, hide=()):
     df = data.q(c, """
         SELECT mr.id, mr.created_at, co.code AS competition, mr.params, mr.metrics->'summary' AS summary,
                jsonb_array_length(coalesce(mr.metrics->'events', '[]'::jsonb)) AS rows_
         FROM model_runs mr JOIN competitions co ON co.id = mr.competition_id
-        WHERE mr.kind = 'backtest' ORDER BY mr.id DESC LIMIT :n""", n=limit)
+        WHERE mr.kind = 'backtest' AND NOT co.code = ANY(CAST(:h AS text[])) ORDER BY mr.id DESC LIMIT :n""",
+                n=limit, h=list(hide))
     out = []
     for r in df.to_dict("records"):
         p, s = r["params"] or {}, r["summary"] or {}
@@ -356,12 +367,12 @@ def backtest_runs(c, limit=12):
     return out
 
 
-def scenarios(c):
+def scenarios(c, hide=()):
     df = data.q(c, """
         SELECT mr.id, mr.created_at, mr.kind, co.code AS competition, mr.competition_id, mr.category_id, mr.params
         FROM model_runs mr JOIN competitions co ON co.id = mr.competition_id
-        WHERE mr.kind = 'scenario' OR (mr.kind = 'forecast' AND mr.params ? 'label')
-        ORDER BY mr.id DESC LIMIT 12""")
+        WHERE (mr.kind = 'scenario' OR (mr.kind = 'forecast' AND mr.params ? 'label')) AND NOT co.code = ANY(CAST(:h AS text[]))
+        ORDER BY mr.id DESC LIMIT 12""", h=list(hide))
     out = []
     for r in df.to_dict("records"):
         live, _ = data.latest_forecast_run(c, r["competition_id"], r["category_id"])
@@ -428,10 +439,13 @@ LAB_SECTIONS = [("run", "Run"), ("jobs", "Jobs"), ("models", "Model variants"), 
                 ("backtests", "Backtests"), ("diagnostics", "Event diagnostics"), ("runs", "All runs")]
 
 
-def _recent_jobs(c, user_id=None):
-    """The 15 most recent jobs; only this user's when user_id is given."""
+def _recent_jobs(c, user_id=None, hide=()):
+    """The 15 most recent jobs; only this user's when user_id is given. No jobs of a sport in hide ([sport] audience):
+    their log tails carry that sport's P&L."""
     return rows(data.q(c, """SELECT j.*, u.username FROM jobs j LEFT JOIN users u ON u.id = j.user_id
-                             WHERE CAST(:u AS integer) IS NULL OR j.user_id = CAST(:u AS integer) ORDER BY j.id DESC LIMIT 15""", u=user_id))
+                             WHERE (CAST(:u AS integer) IS NULL OR j.user_id = CAST(:u AS integer))
+                               AND NOT coalesce(j.sport, '') = ANY(CAST(:h AS text[]))
+                             ORDER BY j.id DESC LIMIT 15""", u=user_id, h=list(hide)))
 
 
 def _edge_ctx(c, user):
@@ -440,14 +454,16 @@ def _edge_ctx(c, user):
     year = edge.year(c, user)
     sport, venue = edge.scope(c, user)
     sports, venues = edge.scopes(c, year)
+    sports = [x for x in sports if A.shown(user, x)]       # a sport this user doesn't see has no Edge Finder rows
+    sport = sport if A.shown(user, sport) else "f1"
     ef = edge.build(c, cs, year, sport, venue)
-    return dict(ef=ef, combos=[list(x) for x in cs], year=year, years=edge.YEARS, candidates=edge.candidates(c),
+    return dict(ef=ef, combos=[list(x) for x in cs], year=year, years=edge.YEARS, candidates=edge.shown_candidates(c),
                 sport=sport, venue=venue, sports=sports, venues=venues, sport_names=_sport_names(),
                 venue_names=_venue_names(),
                 demo_pools=edge.demo_pools(c) if sport == "f1" and venue in ("", "polymarket") else [],
                 sweep_job=f"{sport}_sweep" if f"{sport}_sweep" in jobs.CATALOG else "",
                 models=[(cf["ref"], cf["label"]) for cf in ef["configs"]] or [("baseline", "baseline")],
-                strategies=[(k, edge.label(k)) for k in edge.STRATEGY_KEYS])
+                strategies=[(k, edge.label(k)) for k in edge.SHOWN_KEYS])
 
 
 def _model_brier(c):
@@ -458,13 +474,19 @@ def _model_brier(c):
 
 @app.get("/lab", response_class=HTMLResponse)
 def lab_page(request: Request, job: str = "", event: str = "", variant: str = "", candidate: int = 0, cfg: str = "",
-             sport: str = "", venue: str = "", msg: str = "", user=allow(*PRO), c=Depends(conn)):
+             sport: str = "", venue: str = "", msg: str = "", user=allow(*ANY), c=Depends(conn)):
     """The Edge Finder leads (saved runs only, nothing is simulated on a visit); the other sections
     load on demand (/lab/section/{key}). Edge Finder combos and job knobs come from the user's prefs
-    (database); which sections are open is a browser view setting."""
+    (database); which sections are open is a browser view setting. Under the alpha layout the Lab tab is everyone's
+    (web/layout.py): an account without Pro opens its strategy's performance instead."""
     from urllib.parse import urlencode
 
-    active = any(j["status"] in ("queued", "running") for j in _recent_jobs(c, user["id"]))
+    if user["role"] not in PRO:
+        if LAYOUT.alpha():
+            return RedirectResponse("/strategy", status_code=303)
+        raise HTTPException(403)
+
+    active = any(j["status"] in ("queued", "running") for j in _recent_jobs(c, user["id"], A.hidden(user)))
     open_now = (["run"] if job or event or variant or candidate or cfg else []) + (["jobs"] if active or msg else [])
     q = {k: v for k, v in dict(job=job, event=event, variant=variant, candidate=candidate or "", cfg=cfg, sport=sport,
                                venue=venue).items() if v}
@@ -480,6 +502,7 @@ def lab_section(request: Request, key: str, job: str = "", event: str = "", vari
     if key not in dict(LAB_SECTIONS):
         raise HTTPException(404)
     pr = P.get(c, user)
+    hide = A.hidden_comps(user)
     ctx = dict(combos=[list(x) for x in edge.combos(c, user)])
     if key == "run":
         evs = _events_for_diagnostic(c)
@@ -491,7 +514,7 @@ def lab_section(request: Request, key: str, job: str = "", event: str = "", vari
         sel = next((e for e in evs if e["key"] == sel_event), None)
         from racinglines.pipelines import sweep_settings as SS
         knobs = {code: dict(v) for code, v in (pr.get("job_knobs") or {}).items()}     # last used, per job type
-        cands = edge.candidates(c)
+        cands = edge.shown_candidates(c)
         # the sweep form starts from: a candidate, a saved configuration, a variant, or the user's last run
         start = dict(knobs.get("f1_sweep", {}).get("settings") or {})
         source = ""
@@ -511,7 +534,8 @@ def lab_section(request: Request, key: str, job: str = "", event: str = "", vari
             start, source = dict(start, venue=venue), source or venue
         sweep_forms = {}
         from racinglines.pipelines import season_sweep as SW
-        for code in jobs.modeled_sports():
+        shown = [code for code in jobs.modeled_sports() if A.shown(user, code)]   # [sport] audience
+        for code in shown:
             code_job = f"{code}_sweep"
             if code_job not in jobs.CATALOG:
                 continue
@@ -536,7 +560,7 @@ def lab_section(request: Request, key: str, job: str = "", event: str = "", vari
         ctx.update(sports=[(code, name, jts) for code, name, jts in
                            [(jobs.ANY_SPORT, "Any sport", [j for j in jobs.CATALOG.values() if j.sport == jobs.ANY_SPORT])]
                            + [(code, jobs.sport_name(code), [j for j in jobs.CATALOG.values() if j.sport == code])
-                              for code in jobs.modeled_sports()] if jts],
+                              for code in shown] if jts],
                    launch=jobs.launcher(), venue_name=jobs.venue_name,
                    sel_job=sel_job, events=evs, sel_event=sel_event,
                    sel_cutoff=sel["default_cutoff"] if sel else "", knobs=knobs, candidates=cands,
@@ -544,22 +568,23 @@ def lab_section(request: Request, key: str, job: str = "", event: str = "", vari
                    sweep_groups=[(g, lab, [x for x in SS.SETTINGS if x.group == g]) for g, lab in SS.GROUPS],
                    sweep_defaults=SS.Settings.from_dict().to_json(), model_choices=jobs.MODEL_CHOICES,
                    variant_switches=jobs.variant_switches(), exclusive_switches=jobs.EXCLUSIVE_SWITCHES,
-                   sel_candidate=candidate, sweep_forms=sweep_forms)
+                   sel_candidate=candidate, sweep_forms=sweep_forms, hidden_sports=A.hidden(user))
     elif key == "jobs":
         scope = scope if scope in ("mine", "all") else "mine"
-        js = _recent_jobs(c, user["id"] if scope == "mine" else None)
+        js = _recent_jobs(c, user["id"] if scope == "mine" else None, A.hidden(user))
         ctx.update(jobs=js, scope=scope, active=any(j["status"] in ("queued", "running") for j in js))
     elif key == "models":
         from racinglines.models import evaluate as EV
         ctx.update(pnl=EV.strategy_pnl(c))
     elif key == "scenarios":
-        ctx.update(scenarios=scenarios(c), forecasts=rows(data.latest_forecasts(c)))
+        fc = data.latest_forecasts(c)
+        ctx.update(scenarios=scenarios(c, hide), forecasts=rows(fc[~fc["competition"].isin(hide)] if len(fc) else fc))
     elif key == "backtests":
-        ctx.update(backtests=backtest_runs(c), swept=set(edge.swept_variants(c)))
+        ctx.update(backtests=backtest_runs(c, hide=hide), swept=set(edge.swept_variants(c)))
     elif key == "diagnostics":
-        ctx.update(event_diags=diag.event_summaries(c), kalshi=V.KALSHI_VENUE)
+        ctx.update(event_diags=diag.event_summaries(c, hide), kalshi=V.KALSHI_VENUE)
     elif key == "runs":
-        ctx.update(recent=rows(diag.recent_runs(c)))
+        ctx.update(recent=rows(diag.recent_runs(c, hide=hide)))
     return render(request, f"lab_{key}.html", **ctx)
 
 
@@ -583,7 +608,7 @@ async def lab_edge(request: Request, user=allow(*PRO), c=Depends(conn)):
         if "venue" in form:
             venue = form.get("venue") or None
         sports, venues = edge.scopes(c, edge.year(c, user))
-        if (sport != "f1" and sport not in sports) or (venue and venue not in venues):
+        if (sport != "f1" and sport not in sports) or not A.shown(user, sport) or (venue and venue not in venues):
             raise HTTPException(400, "no sweep for that sport or venue")
         P.put(c, user, "edge_scope", dict(sport=sport, venue=venue))
         return render(request, "lab_edge.html", **_edge_ctx(c, user))
@@ -638,12 +663,14 @@ def _remember_knobs(user, code, params):
 async def lab_run(request: Request, user=allow(*PRO)):
     form = await request.form()
     jt = jobs.CATALOG.get(form.get("job"))
-    if jt is None:
+    if jt is None or not A.shown(user, jt.sport):
         raise HTTPException(400, "unknown job")
     try:
         params = jobs.parse(jt, form)
     except (ValueError, TypeError) as e:
         return RedirectResponse(f"/lab?job={jt.code}&msg=Error: {e}#run", status_code=303)
+    if not A.shown(user, params.get("sport")):          # the shared core's sport knob: [sport] audience
+        raise HTTPException(400, "unknown sport")
     job_id = jobs.submit(jt, params, user["id"])
     audit(request, "job_submit", job_id=job_id, kind=jt.code, params=params)
     _remember_knobs(user, jt.code, params)
@@ -688,6 +715,9 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     live = _live_venues()                               # the venue registry decides which venues' rows show
     if venue and venue not in live and not sp:
         venue = ""
+    hide_private = LAYOUT.alpha()                       # the alpha layout archives the private book (web/layout.py)
+    if hide_private and venue == "private":
+        venue = ""
     # the account's signals are read once and grouped (per weekend, per market), not looked up again for each
     # position: the signals table has no (user, market) index, so a lookup per position scanned them all
     pos = rows(data.q(c, """
@@ -714,6 +744,7 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
         + (" OR p.event_key IN (" + SPP.SPORT_KEYS + ")" if sp else "") + """)
         ORDER BY """ + ("e.start_date DESC NULLS LAST, " if sp else "") + """p.event_key DESC, p.kind, p.subject""",
         u=user["id"], live=live))
+    pos = [p for p in pos if A.shown(user, p.get("sport"))]         # [sport] audience: admin-only sports left out
     if sport:
         sport = sport.lower()
         pos = [p for p in pos if (p.get("sport") or "").lower() == sport]
@@ -721,6 +752,8 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     for p in pos:
         p["demo_sport"] = p["event_key"] in demo_keys                   # a NASCAR / MotoGP demo replay (in-sample)
     pos = [p for p in pos if p["trades"] or p["venue"] == "private"]      # markets the account actually traded
+    if hide_private:
+        pos = [p for p in pos if p["venue"] != "private"]
     basic = R.is_basic(user)                        # basic: never which strategy made a pick (roles.basic_*)
     if basic:
         pos = [R.basic_position(p) for p in pos]
@@ -800,15 +833,15 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
                   and (not venue or venue == "private" or tv(t) == venue)]
         if basic:
             trades = [R.basic_signal(t, profile) for t in trades]
-    my_bets = house.taker_bets(c, user["id"]) if R.is_basic(user) else pd.DataFrame()
+    my_bets = house.taker_bets(c, user["id"]) if R.is_basic(user) and not hide_private else pd.DataFrame()
     summary = dict(bets=len(my_bets), staked=float(my_bets["stake"].sum()), open=int((my_bets["status"] == "open").sum()),
                    pnl=float(my_bets["pnl"].sum())) if len(my_bets) else None
     from racinglines.pipelines import story
     from racinglines.web.book_routes import polymarket_calls
     # the two venues are never plotted together: the Polymarket history (the strategy's record) and the
     # private book's P&L through its day(s), from the live snapshots; the page switches between them
-    acct = story.account(c, user["id"], profile, maker, markers=False, sport=sport or None, sports=False) \
-        if profile else None
+    acct = story.account(c, user["id"], profile, maker, markers=False, sport=sport or None, sports=False,
+                         hide=A.hidden(user)) if profile else None
     if acct and basic:
         acct = _basic_acct(acct)
     book = None
@@ -822,13 +855,14 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     vaccts = {}                                         # the record on every other exchange the account has rows on
     for code in _venue_order(venues):
         if code not in ("polymarket", "private") and profile:
-            a = story.account(c, user["id"], profile, maker, markers=False, venue=code, sport=sport or None)
+            a = story.account(c, user["id"], profile, maker, markers=False, venue=code, sport=sport or None,
+                              hide=A.hidden(user))
             vaccts[code] = _basic_acct(a) if a and basic else a
     if venue in vaccts:
         plot = venue
     coming = polymarket_calls(c, profile, n_races=2) if profile else None
     kcoming = polymarket_calls(c, profile, n_races=2, exchange="kalshi") if profile and V.KALSHI_VENUE else None
-    sport_options = _sport_options(pos, sport)
+    sport_options = _sport_options(pos, sport, user)
     return render(request, "positions.html", profile=R.basic_view_profile(profile) if basic else profile, maker=maker,
                   paper=paper, shown=shown,
                   weekends=weekends, event=event, by_kind=sorted(by_kind.values(), key=lambda k: -k["n"]),
@@ -838,7 +872,9 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
                   vtotal=sum(v["pnl"] for v in venues.values()), open_pos=open_,
                   cur=next((w for w in weekends if w["event_key"] == event), None),
                   vaccts=vaccts, venue_order=_venue_order(venues), venue_names=_venue_names(), kcoming=kcoming,
-                  sport_paper=bool(sp and demo_keys), show_backtests=bool(profile and not basic))
+                  sport_paper=bool(sp and demo_keys), show_backtests=bool(profile and not basic),
+                  hide_private=hide_private,
+                  note_sports=[sport] if sport else sorted({p["sport"] for p in pos if isinstance(p.get("sport"), str)}))   # source note
 
 
 @app.get("/positions/backtests", response_class=HTMLResponse, dependencies=[allow(*PRO)])
@@ -866,6 +902,7 @@ def positions_backtests(request: Request, year: int | None = None, sport: str = 
         year = year or (available_years[0] if available_years else E.YEARS[0])
 
     sports, _ = E.scopes(c, year)
+    sports = [x for x in sports if A.shown(request.state.user, x)]     # [sport] audience
     sport = sport if sport in sports else (sports[0] if sports else "f1")
     _, venues = E.scopes(c, year)
     venues = [v for v in venues if E.configs(c, year, sport, v)]
@@ -879,7 +916,7 @@ def positions_backtests(request: Request, year: int | None = None, sport: str = 
     key = config if config in cfgs else preferred or (SS.Settings.from_dict().key if SS.Settings.from_dict().key in cfgs
                                                        else next(iter(cfgs), ""))
     cfg = cfgs.get(key)
-    strategy = strategy or ("update" if key == t1_key else "maker")
+    strategy = strategy if strategy in E.SHOWN_KEYS else ("update" if key == t1_key or not PF.MAKERS_OPEN else "maker")
     curve = None
     total = None
     traded = 0
@@ -914,7 +951,7 @@ def positions_backtests(request: Request, year: int | None = None, sport: str = 
     sweep_job = f"{sport}_sweep" if f"{sport}_sweep" in jobs.CATALOG else ""
     return render(request, "positions_backtests.html", years=available_years, year=year, sports=sports, sport=sport,
                   venues=venues, venue=venue, configs=cfg_options, config=key, strategy=strategy,
-                  strategies=E.STRATEGY_KEYS, strategy_labels=E.STRATEGY_LABEL, backtest_chart=curve, total=total,
+                  strategies=E.SHOWN_KEYS, strategy_labels=E.STRATEGY_LABEL, backtest_chart=curve, total=total,
                   traded=traded, run_id=run_id, config_name=cfg_name, strategy_name=strategy_name,
                   missing_dates=missing_dates, selection_note=selection_note, t1_key=t1_key, sweep_job=sweep_job,
                   sport_names=_sport_names(), venue_names=_venue_names())
@@ -963,10 +1000,12 @@ def signals_page(request: Request, user: str = "", event: str = "", venue: str =
     venue = venue if venue in venue_tabs else ""
     sp = SPP.enabled() and not venue                # RACINGLINES_SPORT_PAPER=1: the NASCAR / MotoGP demo rows join the record
     acct = story.account(c, uid, profile, is_maker, venue=venue or "polymarket", sport=sport or None, sports=sp,
-                         **({"markers": False} if basic else {}))
+                         hide=A.hidden(me), **({"markers": False} if basic else {}))
     if basic:
         acct = _basic_acct(acct)
     record, seasons, total = acct["record"], acct["seasons"], acct["kpis"]["total"]
+    if event and event not in {r["event_key"] for r in record}:
+        event = ""                                  # not in this account's record (or a sport this viewer doesn't see)
     ev = event or (record[-1]["event_key"] if record else None)
     cur = next((r for r in record if r["event_key"] == ev), None)
     if venue:
@@ -1008,7 +1047,7 @@ def signals_page(request: Request, user: str = "", event: str = "", venue: str =
     users = c.execute(T("""SELECT username FROM users WHERE prefs ? 'strategy_profile' ORDER BY id""")).scalars().all() \
         if me["role"] == "admin" else []
     maker = False if basic else bool(cur and cur["strategy"] not in WS.TAKER_MODES) if cur else is_maker
-    sport_options = _sport_options(record, sport)
+    sport_options = _sport_options(record, sport, me)
     return render(request, "strategy.html", viewer=viewer, profile=R.basic_view_profile(profile) if basic else profile,
                   show_fair=show_fair, profile_why=profile_why, stages=stages,
                   positions=positions, cur=cur, event_key=ev, users=users, maker=maker, record=record,
@@ -1030,7 +1069,7 @@ def live_page(request: Request, partial: int = 0, t: str = "", event: str = ""):
     every market's quotes. Makers also see the model and the book; takers see their picks' P&L. Once the
     event is over it is a replay: the page as it was at any saved snapshot (t, e.g. 20260927T223221; default
     the end), stepped or played through on a timeline."""
-    ctx = live_context(event, t, not R.is_basic(request.state.user), partial)
+    ctx = live_context(event, t, not R.is_basic(request.state.user), partial, A.hidden(request.state.user))
     return render(request, "live_partial.html" if partial else "live.html", **ctx)
 
 
@@ -1044,14 +1083,15 @@ def live_f1_page(request: Request):
 
 
 
-def live_context(event="", t="", maker=True, partial=0):
+def live_context(event="", t="", maker=True, partial=0, hide=()):
     """The Live tab's template context: the registry's event, live or as of a replay snapshot, with the
-    sport's body from its adapter (no database: the run folder only)."""
+    sport's body from its adapter (no database: the run folder only). hide: sport codes left out ([sport] audience)."""
     from urllib.parse import quote
 
     from racinglines.pipelines import live as LV
     from racinglines.web import f1_live as FL
-    ev = LV.find(event or None)
+    evs = [e for e in LV.events() if e["sport"] not in hide]
+    ev = next((e for e in evs if event in (e["run"], e["event_key"])), None) if event else (evs[0] if evs else None)
     mode = LV.state(ev["run"]) if ev else None
     times = LV.snap_times(ev["run"]) if ev else []
     if ev and t and t in times:
@@ -1071,7 +1111,7 @@ def live_context(event="", t="", maker=True, partial=0):
                t=selected, current_run=(ev or {}).get("run"),
                sport=(ev or {}).get("sport") or "mtb_dh",
                evq=f"event={quote(ev['run'], safe='')}&" if event and ev else "",   # the registry's name, URL-quoted
-               events=LV.events(), f1_stream=FL.enabled(), stream_event=(ev or {}).get("event_key"))
+               events=evs, f1_stream=FL.enabled(), stream_event=(ev or {}).get("event_key"))
     if snap and ev:
         ctx.update(LV.adapter(ctx["sport"]).view(ev["run"], snap, picks, hist, mode, maker))
     return ctx

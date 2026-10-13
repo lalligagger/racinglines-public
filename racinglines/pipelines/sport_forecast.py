@@ -12,6 +12,16 @@ The field for an upcoming race is its own entry list where one is stored (the en
 already ingested from the weekend feed, such as practice or qualifying, less any DNS), else the latest completed
 race's classified entrants (the calendar holds no entry list before the weekend). The model settings are the replay's (sports/<sport>.toml [replay], seed 7): nothing is tuned here. A sport with
 no scheduled race stored (MotoGP until its calendar is ingested) has nothing to forecast and says so.
+
+A schema may add a [forecast] table (every key optional; without it, the behaviour above):
+
+    [forecast]
+    field = "entry_list"     price only races with their own entry list (a sport whose fields change from race to race,
+                             road cycling: the last race's field would be a different race's riders)
+    h2h = true               also store each entrant's head-to-head chance against every other entrant
+                             (race_predictions.extra.h2h {opponent id: P(ahead)}), which prices race_h2h links
+
+The sport's events source is its [replay] source, else its [model] source (a sport with no taker replay).
 """
 
 from datetime import datetime, timezone
@@ -23,6 +33,28 @@ from sqlalchemy import text
 from racinglines.pipelines import position_replay as P
 
 N_RACES = 3
+
+
+def spec(sport):
+    """position_replay.spec, or for a sport with no [replay] table the same keys from [model] source."""
+    from racinglines import sports
+    s = sports.load(sport)
+    if s.get("replay"):
+        return P.spec(sport)
+    src = s.get("model", {}).get("source")
+    if not src:
+        raise ValueError(f"sports/{sport}.toml: the forecast needs [replay] source or [model] source")
+    return dict(sport=sport, source=src, competition=s["competition"]["code"], model=s["sport"]["pricing_model"])
+
+
+def options(sport):
+    """The schema's [forecast] table with its defaults: field ("last_race" or "entry_list"), h2h (bool)."""
+    from racinglines import sports
+    f = dict(sports.load(sport).get("forecast", {}))
+    out = dict(field=f.pop("field", "last_race"), h2h=bool(f.pop("h2h", False)))
+    if f or out["field"] not in ("last_race", "entry_list"):
+        raise ValueError(f"sports/{sport}.toml [forecast]: field is last_race | entry_list, h2h a bool; got {f or out}")
+    return out
 
 
 def upcoming(conn, sp, n=N_RACES, today=None):
@@ -63,14 +95,17 @@ def entry_list(conn, race_id):
 def forecast(engine, sport, n=N_RACES, today=None, data=None):
     """dict(sport, model, settings, field_from, races=[dict(race row, sims)], data) for the next n races."""
     from racinglines.models.race_model import Event
-    sp = P.spec(sport)
+    sp = spec(sport)
+    opt = options(sport)
     model = P.model_for(sp)
     st = model.Settings.from_dict({"seed": P.SEED})
     with engine.connect() as conn:
         nxt = upcoming(conn, sp, n, today)
         src, field = last_field(conn, sp)
         own = {int(r.race_id): entry_list(conn, r.race_id) for r in nxt.itertuples()}
-    out = dict(sport=sport, sp=sp, model=model, settings=st, field_from=src, field=field, races=[])
+    if opt["field"] == "entry_list":                         # only a race's own entry list is its field
+        src, field = "each race's own entry list", []
+    out = dict(sport=sport, sp=sp, model=model, settings=st, field_from=src, field=field, races=[], h2h=opt["h2h"])
     if not len(nxt) or not (field or any(own.values())):
         return dict(out, data=data)
     if data is None:
@@ -132,13 +167,28 @@ def save(engine_url, fc):
         for x in fc["races"]:
             r, sims = x["race"], x["sims"]
             p = {k: [P.fair(sims, k, a) for a in sims.entrants] for k in P.N_OF}
+            h2h = head_to_heads(sims) if fc.get("h2h") else None
             for i, a in enumerate(sims.entrants):
+                extra = dict(top5_prob=p["race_top5"][i], top20_prob=p["race_top20"][i])
+                if h2h is not None:
+                    extra["h2h"] = h2h[i]
                 s.add(m.RacePrediction(model_run_id=run.id, race_id=int(r.race_id), target=f"race:{r.event_key}",
                                        athlete_id=int(a), win_prob=p["race_win"][i], podium_prob=p["race_podium"][i],
-                                       top10_prob=p["race_top10"][i],
-                                       extra=dict(top5_prob=p["race_top5"][i], top20_prob=p["race_top20"][i])))
+                                       top10_prob=p["race_top10"][i], extra=extra))
         s.commit()
         return run.id
+
+
+def head_to_heads(sims, digits=4):
+    """Per entrant (sims.entrants order): {opponent id (str): P(finishing ahead of them)}, every other entrant, as
+    position_replay.fair's race_h2h (the better simulated rank; retirements are ranked last)."""
+    rank = np.asarray(sims.rank)
+    ids = [str(int(a)) for a in sims.entrants]
+    out = []
+    for i in range(rank.shape[1]):
+        p = (rank[:, [i]] < rank).mean(axis=0)
+        out.append({ids[j]: round(float(p[j]), digits) for j in range(rank.shape[1]) if j != i})
+    return out
 
 
 def undo(session, run_id):

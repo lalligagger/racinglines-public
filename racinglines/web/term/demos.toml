@@ -8,4 +8,9 @@
 # Offline, synthetic data only (owner, 2026-10-11: start with the no-MCP demo, synthetic is fine).
 
 pack = "kart"
-recorded = "2026-10-11, on a fresh demo store"
+section = "Kart quickstart"     # the pack's steps' part heading (a [[quickstart]] step with its own `section` keeps it)
+# Extra parts after the pack's, each a steps file here (<part>.toml) recorded on its own; shown once recorded.
+#   f1-singapore: the 2026 Singapore GP on real data and tapes, recorded on the VM against staging
+#   (scripts/vm/record_term_f1.sh), then copied here and rendered (python scripts/demo/record_term.py).
+parts = ["f1-singapore"]
+recorded = "2026-10-12, on a fresh demo store"

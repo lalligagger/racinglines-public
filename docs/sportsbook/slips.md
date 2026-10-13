@@ -47,8 +47,10 @@ racinglines book price FILE --remote --rich
 ```
 # LOCAL (Mac) or VM: your own database
 racinglines book map    FILE [--json] [--db URL]
-racinglines book price  FILE [--json] [--db URL] [--run ID ...] [--sims RACE_ID=FILE.npz ...]
+racinglines book price  FILE [--json] [--db URL] [--run ID ...] [--sims RACE_ID=FILE.npz ...] [--asof UTC]
 racinglines book settle FILE [--json] [--db URL]
+racinglines book render FILE --style hud|card|agnostic [--png] [--json-in PRICED.json]   # render.md
+racinglines book export FILE --ledger OUT.csv [--force] [--db URL] [--run ID ...]
 racinglines book view   RESULT.json
 ```
 
@@ -106,6 +108,7 @@ Flags win over environment variables, which win over the file: `--demo / --remot
 | `--local` | Your own database, even when the defaults file says otherwise |
 | `--mcp-url URL` | The server for `--remote` (default `RACINGLINES_MCP_URL`, else `mcp_url` in the defaults file, else `https://mcp.racinglines.bet/mcp`, the production VM; staging runs no MCP server) |
 | `--run ID` | Price the legs of that run's competition from this model run (repeatable, one per sport). Default: the app's own choice per race, `markets/venues.pricing_run` (the live stage or forecast run before the race, the latest as-of run made before the start once it has run) |
+| `--asof UTC` | Price the book as it stood at that moment (local only): each race's newest stage or forecast run cut off by then (its `cutoff`, else when it was made) unless `--run` names one, and each exchange leg's last tape price by then (the stored price history and its Parquet archive), with no bid or ask. For following a book through a weekend after the fact, e.g. a replay's picks (`strategy signals f1 --asof T --book`, [Paper trading](../paper-trading.md#the-signal-engine)) |
 | `--sims RACE_ID=FILE` | An `OutcomeSims` archive (`models/outcomes.save_sims`) for one race. Legs on that race are then priced jointly from it (repeatable) |
 
 ## The book file
@@ -120,7 +123,13 @@ The book file uses the [schema](index.md) as before, with these optional additio
 - `odds` on a combo's leg: a parlay with no quoted odds of its own pays the product of its legs' odds (the line's
   `odds` may then be left out).
 - `id` on a line: the name that output and errors use (default: its 1-based position).
+- `stake` on a line: the bet placed, a number above 0 in `book.currency` (a Kalshi `cents` book: dollars). Read by
+  `book export`; a line without one is a quote, not a bet. It is not the recommended stake `book render` prints
+  ([Bet-slip graphics](render.md#sizing-the-v2-rule-as-data)), which is never written into the file.
+- `placed_utc` on a line: when the bet was placed (`2026-10-03T22:32Z`), else the book's `captured_utc`.
 - `[aliases]`: an exact table from the venue's spelling to our display name (`"Alpha, Ann" = "Ann Alpha"`).
+- `box = [x, y, w, h]` on a line and `[book] image`: where `book render --style hud` puts the line's label on the
+  book's screenshot ([Bet-slip graphics](render.md#hud-placement-box)). Pricing ignores them; `--json` carries `box`.
 
 A slip is a line whose market is `kind = "combo"` with `legs = [...]` ([combos](index.md), `markets/combos.py`).
 This synthetic example has a single and a cross-sport parlay:
@@ -218,6 +227,30 @@ manual. A void leg voids the line and returns the stake (payout 1) under `void_l
 the payout is left to the book. A won line pays `d`. Payout and profit are per unit staked. Cancelled-race venue
 rules (`markets/settlement_rules.py`) are not applied here.
 
+## Ledger export
+
+`racinglines book export FILE --ledger OUT.csv` (`racinglines/books/ledger.py`) prices and settles the book (local,
+`--demo` or `--remote`, as the other commands) and writes its staked lines as ledger rows, one per bet, with the
+columns `date_utc, sport, event, venue, market, selection, stake, currency, odds_taken, our_fair_prob, closing_odds,
+result, payout, follower, notes`. It writes OUT only: it refuses an existing file unless `--force` is given and never
+appends. Lines without a `stake` are skipped and counted on stderr.
+
+| Column | From |
+|---|---|
+| `date_utc` | the line's `placed_utc`, else the book's `captured_utc`, to the minute |
+| `sport`, `event` | the line's legs as mapped: `<season>-<round> <event>` (e.g. `2026-16 Malaysia GP`), joined with ` + ` across races; an unmapped line gets the book's event key, said in `notes` |
+| `venue`, `currency` | the book's, as given (never converted) |
+| `market`, `selection`, `stake` | the line's title, selection and stake |
+| `odds_taken` | decimal odds, the payout per unit staked; the book's own quote goes in `notes` when it is not decimal |
+| `our_fair_prob` | the model's probability of the whole bet (`book price`), blank without one |
+| `closing_odds`, `follower` | blank |
+| `result` | `won`, `lost` or `void` from our own results (`book settle`, noted `settled: ours`); otherwise `open`, with the reason (pending, manual, unmapped) in `notes` |
+| `payout` | the total returned: won = stake × the line's payout, lost = 0, void = the stake, open blank |
+
+An exchange quote (`cents`, `dollars`) also notes the number of $1 contracts the stake buys. A `cents` book must have
+`currency = "USD"`, since a Kalshi contract pays $1; anything else is refused, so a stake can't be written in cents.
+The row builder (`ledger.rows`) returns dicts, so a database table can take the same rows.
+
 ## JSON output
 
 `--json` prints one object. Its keys are stable, every key is always present, and a value that does not apply is
@@ -228,7 +261,7 @@ rules (`markets/settlement_rules.py`) are not applied here.
   (`mapped` / `unmapped`), `reason`, `n_legs`, `races` (race ids), `odds`, `decimal_odds`, `book_prob`, `model_prob`,
   `model_method` (`single`, `product`, `joint: simulations passed in`, `joint: stored combo run N`, joined by ` x `
   across races), `market_prob`, `market_method`, `flags`, `edge_model`, `edge_market`, `ev_model`, `ev_market`,
-  `result`, `payout`, `profit`, `legs`.
+  `result`, `payout`, `profit`, `box` (the line's HUD box, or null), `legs`.
 - `lines[].legs[]`: `line`, `leg` (`"3"` or `"3.2"`), `status`, `reason`, `sport`, `competition`, `season`, `round`,
   `event_key`, `race_id`, `event`, `kind`, `side`, `athlete_id`, `athlete`, `opponent_id`, `opponent`, `team`,
   `threshold` (an over/under line), `odds` (the leg's own). `price` adds `book_prob`, `run_id`, `run_source`,

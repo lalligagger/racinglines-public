@@ -56,7 +56,7 @@ PRICE_FIELDS = ("book_prob", "run_id", "run_source", "model_prob", "model_note",
                 "market_bid", "market_ask", "market_synced_utc", "ev_model", "ev_market")
 LINE_FIELDS = ("line", "id", "title", "selection", "kind", "status", "reason", "n_legs", "races", "odds",
                "decimal_odds", "book_prob", "model_prob", "model_method", "market_prob", "market_method", "flags",
-               "edge_model", "edge_market", "ev_model", "ev_market", "result", "payout", "profit")
+               "edge_model", "edge_market", "ev_model", "ev_market", "result", "payout", "profit", "box")
 
 
 # --- loading -------------------------------------------------------------------------------------------------------
@@ -90,8 +90,10 @@ def decimal_odds(odds, fmt):
 class _Db:
     """Per-call caches of the read-only lookups."""
 
-    def __init__(self, conn):
+    def __init__(self, conn, asof=None):
         self.conn, self.races, self.fields, self.results, self.cache = conn, {}, {}, {}, {}
+        self.asof = None if asof is None else pd.Timestamp(asof).tz_convert("UTC") if pd.Timestamp(asof).tzinfo \
+            else pd.Timestamp(asof).tz_localize("UTC")            # price as of this moment (price_book's asof)
 
     def q(self, sql, **params):
         return pd.read_sql(text(sql), self.conn, params=params)
@@ -211,7 +213,7 @@ def map_book(conn, book, _db=None):
         m = ln["market"]
         row = dict.fromkeys(LINE_FIELDS)
         row.update(line=i + 1, id=ln.get("id", str(i + 1)), title=ln["title"], selection=ln["selection"],
-                   odds=ln.get("odds"))
+                   odds=ln.get("odds"), box=ln.get("box"))
         legs = []
         if m == "unmapped":
             row.update(kind=None, status="unmapped", reason="the book file marks this line unmapped", n_legs=0)
@@ -262,10 +264,27 @@ def _run_for(db, leg, runs):
         if comp == leg["competition"]:
             return rid, "--run", None
     ck = ("run", leg["race_id"])
+    if ck not in db.cache and getattr(db, "asof", None) is not None:
+        db.cache[ck] = (*_asof_run(db, leg["race_id"]), None)
     if ck not in db.cache:
         r = pricing_run(db.conn, race_info(db.conn, leg["race_id"]))
         db.cache[ck] = (r["run_id"], r["source"], r.get("stale"))
     return db.cache[ck]
+
+
+def _asof_run(db, race_id):
+    """(run_id, source) of the race's newest diagnostic or forecast run whose data cutoff (params.cutoff, else when it
+    was made) is at or before db.asof: the model's price as it stood then. A run made later but cut off before asof
+    (a stage re-priced after the fact) counts: it saw nothing after its cutoff."""
+    df = db.q("""SELECT mr.id, coalesce((mr.params->>'cutoff')::timestamp, mr.created_at::timestamp) AS cutoff
+                 FROM model_runs mr WHERE mr.kind IN ('diagnostic', 'forecast')
+                   AND EXISTS (SELECT 1 FROM race_predictions rp WHERE rp.model_run_id = mr.id AND rp.race_id = :r)
+                   AND coalesce((mr.params->>'cutoff')::timestamp, mr.created_at::timestamp) <= :t
+                 ORDER BY cutoff DESC, mr.created_at DESC LIMIT 1""",
+              r=race_id, t=db.asof.tz_localize(None).to_pydatetime())
+    if not len(df):
+        return None, f"no run cut off by {db.asof:%Y-%m-%dT%H:%MZ}"
+    return int(df["id"].iloc[0]), f"as of {pd.Timestamp(df['cutoff'].iloc[0]):%Y-%m-%dT%H:%MZ}"
 
 
 def _model(db, leg, runs):
@@ -317,8 +336,12 @@ def _market(db, leg):
         elif aid != leg["athlete_id"] or p.get("team") != leg["team"] or \
                 (leg["threshold"] is not None and p.get("line") != leg["threshold"]):
             continue
-        tape = store.last_before(db.conn, [link["token_id"]], datetime.now(timezone.utc))
-        px, bid, ask = _quote_prob(link, tape)
+        if db.asof is not None:             # the tape's last trade price then: the link's bid/ask are today's
+            px, bid, ask = store.last_before(db.conn, [link["token_id"]], db.asof).get(link["token_id"]), None, None
+            link = dict(link, synced_at=db.asof)
+        else:
+            tape = store.last_before(db.conn, [link["token_id"]], datetime.now(timezone.utc))
+            px, bid, ask = _quote_prob(link, tape)
         if px is None:
             continue
         if link["invert"] or flip:
@@ -405,11 +428,13 @@ def _joint(db, group, sims):
     return p, "product", fallback + [f"race {group[0]['race_id']}: {len(group)} legs on one race, {CORRELATED}"]
 
 
-def price_book(conn, book, runs=None, sims=None, _db=None):
+def price_book(conn, book, runs=None, sims=None, _db=None, asof=None):
     """map_book + per leg: book_prob (a leg's own odds), model_prob, market_prob, ev_model, ev_market; per line: the
     payout, book_prob, model_prob and market_prob of the whole bet, the method behind each, flags and EVs.
-    runs: {run_id: competition code} to price from instead of the app's choice; sims: {race_id: OutcomeSims}."""
-    db = _db or _Db(conn)
+    runs: {run_id: competition code} to price from instead of the app's choice; sims: {race_id: OutcomeSims}.
+    asof (UTC): price as it stood then, to follow a book through a weekend: the model from the newest run cut off by
+    then (_asof_run), the market from each linked exchange's last tape price by then (no bid/ask)."""
+    db = _db or _Db(conn, asof)
     out = map_book(conn, book, db)
     fmt = book["book"]["odds"]
     for row in out["lines"]:
@@ -456,6 +481,10 @@ def price_book(conn, book, runs=None, sims=None, _db=None):
                    flags=flags, edge_model=None if pm is None else _r(pm - book_p),
                    edge_market=None if pk is None else _r(pk - book_p), ev_model=_ev(pm, dec), ev_market=_ev(pk, dec))
     out.update(assumptions=list(ASSUMPTIONS), blend="none (owner, 2026-10-07; docs/sportsbook/slips.md)")
+    if db.asof is not None:
+        out.update(asof=db.asof.strftime("%Y-%m-%dT%H:%MZ"))
+        out["assumptions"].append(f"As of {out['asof']}: the model's newest run cut off by then, and each exchange's "
+                                  "last tape price by then (no bid/ask).")
     return out
 
 

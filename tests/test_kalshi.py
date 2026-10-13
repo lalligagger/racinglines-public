@@ -681,7 +681,8 @@ def test_market_only_sports_have_schemas_and_series():
             ("road_cycling", "uci_road_wt", ("KXCYCLING", "KXCYCLINGSTAGE", "KXCYCLINGTEAM", "KXCYCLINGJERSEY"), ["kalshi"]),
             ("sailgp", "sailgp_champ", ("KXSAILGP", "KXSAILGPRACE"), ["kalshi", "og"])):
         s = sports.load(code)
-        assert not sports.modeled(code) and "pricing_model" not in s["sport"] and "live" not in s
+        modeled = code == "road_cycling"                            # road cycling is on the one engine (2026-10-12)
+        assert sports.modeled(code) == modeled and ("pricing_model" in s["sport"]) == modeled and "live" not in s
         assert s["competition"]["code"] == comp and sports.kalshi_series(code) == series
         assert s["markets"]["venues"] == venues
     assert sports.modeled("f1") and sports.modeled("mtb_dh") and sports.kalshi_series("f1") == ()

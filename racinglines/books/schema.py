@@ -20,7 +20,9 @@ an exact alias table at pricing time, never here and never fuzzily.
 
 Optional fields read by `racinglines book` (books/slips.py, docs/sportsbook/slips.md): `[book] sport`; `sport`, `event`,
 `race_id`, `driver_id`, `opponent_id` and a leg's own `odds` on any market table or combo leg (a slip across events and
-sports; a combo whose legs all carry odds may leave out the line's odds); a line's `id`; an exact `[aliases]` table.
+sports; a combo whose legs all carry odds may leave out the line's odds); a line's `id`; an exact `[aliases]` table. Read by
+`racinglines book export` (books/ledger.py): a line's `stake` (the bet placed, in book.currency, a number above 0) and
+`placed_utc` (when it was placed).
 
 Odds presentations (`venue.odds`, `book.odds`; names provisional until the owner checks them, docs/todo.md):
 
@@ -314,6 +316,8 @@ def validate_book(d, path="book"):
         from racinglines import sports as SP
         if "sport" in b and b["sport"] not in SP.SPORT_CODES:
             problems.append(f"book.sport: {b['sport']!r} not in {SP.SPORT_CODES}")
+        if "image" in b and not (isinstance(b["image"], str) and b["image"]):
+            problems.append("book.image: the screenshot's path, a string (relative to the book file)")
     aliases = d.get("aliases", {})
     if not isinstance(aliases, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in aliases.items()):
         problems.append('aliases: a table of exact names, "venue name" = "display name"')
@@ -337,12 +341,22 @@ def validate_book(d, path="book"):
                 bad = check_odds(ln["odds"], fmt)
                 if bad:
                     problems.append(f"{f}.odds: {bad}")
+            if "stake" in ln and (isinstance(ln["stake"], bool) or not isinstance(ln["stake"], (int, float))
+                                  or ln["stake"] <= 0):
+                problems.append(f"{f}.stake: {ln['stake']!r} must be a number above 0, in book.currency")
+            if "placed_utc" in ln:
+                _utc(ln["placed_utc"], f"{f}.placed_utc", problems, allow_unknown=False)
             if "id" in ln:
                 if not isinstance(ln["id"], str) or not ln["id"] or ln["id"] in ids:
                     problems.append(f"{f}.id: {ln['id']!r} must be a unique non-empty string")
                 ids.add(ln.get("id"))
             if "market" in ln:
                 _market(ln["market"], f"{f}.market", problems, fmt)
+            if "box" in ln:
+                bx = ln["box"]
+                if not (isinstance(bx, list) and len(bx) == 4 and all(isinstance(v, (int, float)) and
+                                                                     not isinstance(v, bool) and v >= 0 for v in bx)):
+                    problems.append(f"{f}.box: [x, y, w, h], four non-negative numbers (pixels on the screenshot)")
     if problems:
         raise BookError(path, problems)
     return d

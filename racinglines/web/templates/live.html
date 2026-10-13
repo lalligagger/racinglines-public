@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "base.html" %}{% from "_macros.html" import source_note %}
 {% block title %}Live{% endblock %}
 {% block content %}
 {# The shell: a replay bar once the event is over (app.js steps the slider; each step fetches the page as of that
@@ -40,6 +40,7 @@
     <span id="fs-state" class="muted small">off</span>
   </div>
   <div id="fs-table"></div>
+  {{ source_note("f1") }}
   {% if user.role == 'admin' %}<details><summary class="small">Debug log</summary>
     <pre id="fs-log" class="small" style="max-height:16em;overflow:auto;white-space:pre-wrap;margin:0"></pre>
     <button type="button" id="fs-copy" class="small">Copy log</button>

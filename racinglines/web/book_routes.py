@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from racinglines.db import models as m
 from racinglines.db.config import get_session
 from racinglines.markets import private_book as house
+from racinglines.web import audience as A
 from racinglines.web import roles as R
 from racinglines.web import users as U
 from racinglines.web.app import ANY, PRO, allow, app, audit, check_csrf, conn, data, render, rows  # noqa: F401
@@ -21,7 +22,8 @@ from racinglines.web.app import ANY, PRO, allow, app, audit, check_csrf, conn, d
 MAX_STAKE = float(os.environ.get("MAX_STAKE", "100"))   # per-bet cap for taker bets (demo)
 
 
-def _races_for_house(c):
+def _races_for_house(c, hide=()):
+    """Races to quote: upcoming ones and any with markets, none of a competition in hide ([sport] audience)."""
     season = data.q(c, "SELECT count(*) AS n FROM house_markets WHERE race_id IS NULL AND status = 'open'")
     pseudo = [dict(race_id=0, venue="Season-long markets (championships, props)", start_date=None, category="",
                    status="open", markets=int(season["n"].iloc[0]))] if int(season["n"].iloc[0]) else []
@@ -29,9 +31,20 @@ def _races_for_house(c):
         SELECT ra.id AS race_id, v.name AS venue, e.start_date, c.code AS category, e.status,
                (SELECT count(*) FROM house_markets hm WHERE hm.race_id = ra.id) AS markets
         FROM races ra JOIN events e ON e.id = ra.event_id JOIN categories c ON c.id = ra.category_id
+        JOIN seasons se ON se.id = e.season_id JOIN competitions co ON co.id = se.competition_id
         LEFT JOIN venues v ON v.id = e.venue_id
-        WHERE e.status <> 'completed' OR EXISTS (SELECT 1 FROM house_markets hm WHERE hm.race_id = ra.id)
-        ORDER BY e.start_date, c.code"""))
+        WHERE (e.status <> 'completed' OR EXISTS (SELECT 1 FROM house_markets hm WHERE hm.race_id = ra.id))
+          AND NOT co.code = ANY(CAST(:h AS text[]))
+        ORDER BY e.start_date, c.code""", h=list(hide)))
+
+
+def _guard_race(c, user, race_id):
+    """404 for a race of a competition this user doesn't see; race 0 is the season-long pseudo race."""
+    if race_id:
+        comp = data.q(c, """SELECT co.code FROM races ra JOIN events e ON e.id = ra.event_id
+                            JOIN seasons se ON se.id = e.season_id JOIN competitions co ON co.id = se.competition_id
+                            WHERE ra.id = :r""", r=race_id)
+        A.guard(user, comp["code"].iloc[0] if len(comp) else "")
 
 
 def _own_market(user, market_id):
@@ -48,9 +61,10 @@ def _own_market(user, market_id):
 @app.get("/book/quotes", response_class=HTMLResponse)
 def house_book(request: Request, race_id: int | None = None, maker: str = "", msg: str = "", c=Depends(conn),
                user=allow(*PRO)):
-    races = _races_for_house(c)
+    races = _races_for_house(c, A.hidden_comps(user))
     if race_id is None and races:
         race_id = races[0]["race_id"]
+    _guard_race(c, user, race_id)
     if user["role"] == "pro":
         maker_filter = user["id"]
     elif maker == "house":
@@ -75,6 +89,7 @@ def house_book(request: Request, race_id: int | None = None, maker: str = "", ms
 async def house_generate(request: Request, c=Depends(conn), user=allow(*PRO)):
     form = await request.form()
     race_id = int(form["race_id"])
+    _guard_race(c, user, race_id)
     kinds = [k for k in form.getlist("kinds") if k in house.PROB_FIELD]
     top_n, spread = int(form.get("top_n", 15)), float(form.get("spread_pct", 6)) / 100
     try:
@@ -100,8 +115,9 @@ def house_settle_auto(request: Request, race_id: int = Form(...), c=Depends(conn
     return RedirectResponse(f"/book/quotes?race_id={race_id}&msg={msg}", status_code=303)
 
 
-@app.get("/book/quotes/sheet", response_class=HTMLResponse, dependencies=[allow(*ANY)])
-def house_sheet(request: Request, race_id: int, c=Depends(conn)):
+@app.get("/book/quotes/sheet", response_class=HTMLResponse)
+def house_sheet(request: Request, race_id: int, c=Depends(conn), user=allow(*ANY)):
+    _guard_race(c, user, race_id)
     bk = house.book(c, race_id, status="open")
     with get_session() as s:
         venue, cat = house.race_label(s, race_id)
@@ -186,9 +202,10 @@ def bet_markets(request: Request, msg: str = "", c=None):          # served at /
         except ValueError:
             profile = None
     view = R.basic_view_profile(profile) if R.is_basic(user) else profile       # basic: "Your picks", no strategy name
+    from racinglines.web import audience as A
     from racinglines.web import sport_status as SS                  # RACINGLINES_SPORT_STATUS=1: every sport's status
     return render(request, "bet.html", msg=msg, profile=view, **polymarket_calls(c, profile),
-                  sport_status=SS.status(c) if SS.enabled() else None, show_paper=False)
+                  sport_status=SS.status(c, A.hidden_comps(user)) if SS.enabled() else None, show_paper=False)
 
 
 def polymarket_calls(c, profile, n_races=3, exchange="polymarket"):

@@ -128,6 +128,7 @@ def test_the_tape_route_sends_gzip_or_plain_json(monkeypatch):
     body = gzip.compress(b'{"event": {}}')
     monkeypatch.setattr(diag, "event_runs", lambda c, run_id: pd.DataFrame({"id": [7] if run_id == 7 else []}))
     monkeypatch.setattr(diag, "tape", lambda c, run_id, exchange: body)
+    monkeypatch.setattr(diag_routes.data, "model_run", lambda c, run_id: dict(competition="f1_wdc"))   # [sport] audience
     client = TestClient(A.app)
     r = client.get("/lab/diagnostics/7/tape.json", headers={"Accept-Encoding": "gzip"})
     assert r.status_code == 200 and r.headers["content-encoding"] == "gzip" and r.json() == {"event": {}}
