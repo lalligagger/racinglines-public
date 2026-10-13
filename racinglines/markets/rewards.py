@@ -17,7 +17,8 @@ false), not every pass, so the files stay small:
 
     data/archive/markets/<exchange>/rewards/month=YYYY-MM/part-<utc>-<id>.parquet
 
-The last state per program is kept in data/runs/rewards/<exchange>-<sport>.json to compare against.
+The last state per program is kept in data/runs/rewards/<exchange>-<sport>.json to compare against. An empty response
+from the venue (no program on any market) is never saved: it stores nothing and leaves that state as it was.
 """
 
 import json
@@ -153,8 +154,11 @@ def record(conn, exchange, sport, root=None, state_dir=None, fetch=None, now=Non
     one-line summary for the recorder's log."""
     fetch = fetch or (polymarket_programs if exchange == "polymarket" else kalshi_programs)
     now = now or datetime.now(timezone.utc)
+    everything = fetch()
+    if not everything:      # an empty venue list is a bad response, not every program ending: store and forget nothing
+        return "empty rewards response from the venue: nothing stored"
     links = linked_markets(conn, exchange, sport)
-    progs = [dict(p, event=links[p["market"]]) for p in fetch() if p["market"] in links]
+    progs = [dict(p, event=links[p["market"]]) for p in everything if p["market"] in links]
     sf = (state_dir or paths.runs("rewards")) / f"{exchange}-{sport}.json"
     last = json.loads(sf.read_text()) if sf.exists() else {}
     rows, state = changes(progs, last, now)

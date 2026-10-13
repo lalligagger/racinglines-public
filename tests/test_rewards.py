@@ -49,3 +49,10 @@ def test_only_changes_stored(tmp_path):
     assert RW._write("kalshi", rows + gone, root=tmp_path) == 2
     df = RW.read("kalshi", root=tmp_path)
     assert list(df["active"]) == [True, False] and df["period_reward"].iloc[0] == 100.0
+
+
+def test_empty_response_saves_nothing(tmp_path):
+    (tmp_path / "kalshi-f1.json").write_text(json.dumps({"p1": {"market": "KXF1POLE-BAH26-VER"}}))
+    out = RW.record(None, "kalshi", "f1", root=tmp_path, state_dir=tmp_path, fetch=lambda: [])
+    assert out.startswith("empty") and not list(tmp_path.rglob("*.parquet"))
+    assert json.loads((tmp_path / "kalshi-f1.json").read_text()) == {"p1": {"market": "KXF1POLE-BAH26-VER"}}
