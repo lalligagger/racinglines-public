@@ -128,7 +128,7 @@ def test_maker_pages(clients):
 def test_taker_is_kept_to_prices(clients):
     cl, races = clients
     t = cl["taker"]
-    assert t.get("/", follow_redirects=False).headers["location"] == "/markets"
+    assert t.get("/", follow_redirects=False).status_code == 200            # the landing page, signed in too
     assert t.get(f"/races/{races[0]}", follow_redirects=False).status_code == 303
     for path in ("/lab", "/book", "/seasons/f1_wdc"):
         assert t.get(path).status_code == 403, path
@@ -138,8 +138,8 @@ def test_taker_is_kept_to_prices(clients):
 def test_old_urls_redirect(clients):
     """Routes match page names; every old URL redirects (web/legacy.py), keeping its query string."""
     m = clients[0]["maker"]
-    r = m.get("/", follow_redirects=False)                   # the index is the landing page; signed in, it goes on to the board
-    assert r.status_code == 303 and r.headers["location"] == "/markets"
+    r = m.get("/", follow_redirects=False)                   # the index is the landing page, signed in too (owner, 2026-10-13)
+    assert r.status_code == 200 and 'href="/markets">Open the app</a>' in r.text
     for old, new in (("/bet", "/markets"), ("/me", "/positions"), ("/signals?event=2026-15", "/strategy?event=2026-15"),
                      ("/pm", "/markets/polymarket"), ("/house?race_id=5", "/book/quotes?race_id=5"),
                      ("/house/7", "/book/markets/7"), ("/race/3", "/races/3"), ("/season/f1_wdc", "/seasons/f1_wdc"),

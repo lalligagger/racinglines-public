@@ -109,7 +109,7 @@ prices off user pages).
 ## Pages
 
 **Landing page** (`/`, public; owner, 2026-10-08, reworked and moved to the index 2026-10-12; a signed-in browser
-going to `/` lands on the Markets board). A compact,
+sees it too, with "Open the app" in place of "Sign in", since 2026-10-13). A compact,
 centered page with no same-page navigation: a one-line **fantasy league alpha** strip above the hero (sign-up, the two
 one **Try the demo** button that signs in as the pro demo account `maker`, and the 101 link; `/#account`); the hero, whose eyebrow reads "Sportsbook pricing for all racing
 disciplines", with its **Talk to us** button; what the pricing does for sportsbooks that set their own lines, books on
