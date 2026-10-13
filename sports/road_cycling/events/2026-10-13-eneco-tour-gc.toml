@@ -1,7 +1,7 @@
 # Eneco Tour 2026 (Netherlands, 13-18 Oct), overall (GC). Stages from wielerflits.nl and touretappe.nl (2026-10-13);
 # profile icons are our reading of the route (PCS had none in the cloud), bonus seconds the [model.gc] default.
 # Book: the owner's overall winner and overall matchup screenshots, 2026-10-13 15:15-15:17Z (the winner list is cut at
-# the screenshot's end). `racinglines cycling gc-price 2026-10-13-eneco-tour-gc`.
+# the screenshot's end). `racinglines model gc-price cycling 2026-10-13-eneco-tour-gc`.
 
 [event]
 name = "Eneco Tour (GC)"

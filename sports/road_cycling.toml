@@ -139,7 +139,7 @@ stage_races = ["tour-down-under", "uae-tour", "paris-nice", "tirreno-adriatico",
 
 [model.gc]
 # Stage-race GC (racinglines/models/cycling_gc.py): the sum of simulated stage gaps. First version 2026-10-13 for the
-# Eneco Tour; every value a priori until `racinglines cycling gc-backtest` has run (decision log in docs/road-cycling.md).
+# Eneco Tour; every value a priori until `racinglines model gc-backtest cycling` has run (decision log in docs/road-cycling.md).
 bonus = [10, 6, 4]                    # finish bonus seconds for places 1-3 (most stage races; an event's [gc] overrides)
 itt_kmh = 50.0                        # a time trial's winning speed, for its length in seconds
 abandon = 0.01                        # chance a rider abandons on a road stage
