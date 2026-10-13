@@ -109,3 +109,26 @@ def test_f1_schedule_writes_upcoming_sessions_and_keeps_what_ran(f1_events):
     from racinglines.db import schedule as SCH
     assert SCH.undo(s, I.SOURCE) == 7
     s.rollback()
+
+
+def test_an_ingest_keeps_the_sessions_still_to_come(f1_events):
+    """A mid-weekend ingest (FP1 in) rebuilds the race's rounds but keeps the scheduled ones not yet run; the race's
+    ingest (the event completes) clears whatever is still flagged scheduled (a cancelled session)."""
+    from sqlalchemy import select
+
+    from racinglines.db import models as m
+    from racinglines.db import schedule as SCH
+    s, ids = f1_events
+    rid = ids["2026-18"]
+    SCH.write_sessions(s, rid, [dict(kind=k, ordinal=o, name=k, start=f"2026-10-2{d} 18:00:00")
+                                for k, o, d in (("fp1", -3, 3), ("qual", 2, 4), ("race", 5, 5))], "session_date", "test")
+    assert SCH.clear_for_ingest(s, rid, {"fp1"}) == 2
+    s.add(m.Round(race_id=rid, kind="fp1", ordinal=-3, name="fp1", extra=dict(session_date="2026-10-23 18:00:00")))
+    s.flush()
+    kinds = lambda: {r.kind: bool((r.extra or {}).get("scheduled")) for r in s.scalars(select(m.Round).filter_by(race_id=rid))}
+    assert kinds() == dict(fp1=False, qual=True, race=True)
+    assert SCH.clear_for_ingest(s, rid, {"fp1", "qual"}) == 1                            # qual in: only the race is left
+    assert kinds() == dict(race=True)
+    assert SCH.clear_for_ingest(s, rid, {"fp1", "race"}, final=True) == 0
+    assert kinds() == {}
+    s.rollback()

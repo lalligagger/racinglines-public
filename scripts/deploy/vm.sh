@@ -16,6 +16,8 @@
 #                                               # every 5 minutes during race weekends; status: last passes
 #   bash scripts/deploy/vm.sh forecast [off|status] # NASCAR and MotoGP forecast refresh: every 30 minutes during
 #                                               # race weekends, and F1 once per new race result; status: last passes
+#   bash scripts/deploy/vm.sh schedule [off|status] # session start times (scripts/vm/schedule_sync.sh): a dry run every
+#                                               # 6 hours, a backup and the write only when a session is added or moved
 #   bash scripts/deploy/vm.sh switch <NAME> on|off # an app switch (RACINGLINES_*, e.g. RACINGLINES_OG_VENUE) in
 #                                               # /etc/racinglines.env, web app restarted; never a trading flag
 #   bash scripts/deploy/vm.sh deploy [ref]      # checkout (default main), install, migrate, restart, smoke check
@@ -119,6 +121,15 @@ case "${1:-}" in
       status) remote "cd $APP && sudo -u racinglines -H scripts/vm/forecast-refresh.sh status" ;;
       "") remote "sudo systemctl enable --now $t && systemctl --no-pager list-timers $t" ;;
       *) echo "usage: vm.sh forecast [off|status]"; exit 1 ;;
+    esac
+    ;;
+  schedule)
+    t=racinglines-schedule-sync.timer
+    case "${2:-}" in
+      off) remote "sudo systemctl disable --now $t && echo '$t: off'" ;;
+      status) remote "cd $APP && sudo -u racinglines -H scripts/vm/schedule_sync.sh status" ;;
+      "") remote "sudo systemctl enable --now $t && systemctl --no-pager list-timers $t" ;;
+      *) echo "usage: vm.sh schedule [off|status]"; exit 1 ;;
     esac
     ;;
   pm-sync)
