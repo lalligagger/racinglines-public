@@ -426,6 +426,31 @@ answered 404).
 Not done yet: Cloudflare Access in front of staging (today it has the app's own login, as production), the Mac's
 trycloudflare script (`scripts/deploy/staging.sh`, ad hoc only).
 
+### Season demo database
+
+A third database, `racinglines_staging_demo`, beside `racinglines_staging` in production's Postgres container (owner,
+2026-10-13: every user on a random strategy at various participation rates through the 2026 F1 season, its own
+database, kept, and picked by a switch on a staging deploy). It persists: deploys never drop or re-copy it.
+
+```
+# LOCAL (Mac): build it (a copy of production, only read, on the first run; a backup of the demo database first after that)
+bash scripts/deploy/vm.sh staging demo-db build          # SEED=2026 YEAR=2026 COPY=1 (re-copy) SOURCE=racinglines|racinglines_staging
+bash scripts/deploy/vm.sh staging demo-db status         # the unit, the log's tail, season-demo.done / .failed
+```
+
+```
+# LOCAL (Mac): the switch (it redeploys staging's current checkout against the chosen database)
+bash scripts/deploy/vm.sh staging db demo                # staging serves racinglines_staging_demo
+bash scripts/deploy/vm.sh staging db main                # back to racinglines_staging
+bash scripts/deploy/vm.sh staging deploy <ref> --db demo # a deploy that switches too
+```
+
+The switch is one file, `/etc/racinglines-staging-db.env` (`DATABASE_URL` of the demo database), which the staging web
+unit reads after `/etc/racinglines-staging.env` and `deploy/vm/staging/update.sh` migrates; with it absent staging is
+as before. CI's staging deploys leave it alone, so the choice holds until `vm.sh staging db main`. Staging's live units
+keep `racinglines_staging`. The demo itself is `racinglines users season-demo` (racinglines/fantasy/season_demo.py,
+writes only a database whose name contains "demo"), run by `scripts/vm/season_demo.sh`.
+
 ### Separate venvs
 
 Production (`/opt/racinglines/.venv`) and staging (`/opt/racinglines-staging/.venv`) each need their own venv. Both
