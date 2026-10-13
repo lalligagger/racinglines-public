@@ -348,12 +348,14 @@ def _timelag_rows(heads, table):
 
 def parse_stage_page(html):
     """A stage page -> (stage rows, GC-after-the-stage rows), both in parse_results' shape. The stage table is the
-    first result table; the GC is the first later one with a 'Prev.' (yesterday's rank) column and no points
-    ('Pnt') column. The GC rows are [] when the page has none (a one-stage race)."""
+    first result table; the GC is the first later one with two 'Timelag' columns (its own and the hidden one) and
+    at least half the stage's rows, which rules out the youth classification (checked on real pages 2026-10-13:
+    the GC table carries a 'Pnt' column too). The GC rows are [] when the page has none (a one-stage race)."""
     tabs = [x for x in _result_tables(_tree(html)) if "Timelag" in x[0]]
     if not tabs:
         raise ValueError("no result table with a Timelag column on the page")
-    gc = next((x for x in tabs[1:] if "Prev." in x[0] and "Pnt" not in x[0]), None)
+    n = len(tabs[0][1].css("tbody tr"))
+    gc = next((x for x in tabs[1:] if x[0].count("Timelag") >= 2 and len(x[1].css("tbody tr")) >= n / 2), None)
     return _timelag_rows(*tabs[0]), (_timelag_rows(*gc) if gc else [])
 
 

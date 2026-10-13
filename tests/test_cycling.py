@@ -189,7 +189,8 @@ def test_pcs_rows_read_times_and_gaps():
 
 
 # A stage page as PCS serves it (2026-10): result tables inside `resultCont` blocks, the stage first and the GC after
-# it; a hidden GC 'Timelag' column sits left of the real one, and the stage menu lists every stage.
+# it (a one-row youth table before it must not be taken for the GC); a hidden GC 'Timelag' column sits left of the
+# real one, and the stage menu lists every stage.
 STAGE_HTML = """<html><body><select><option value="race/mini-tour-2025-prologue">Prologue | A - A</option>
 <option value="race/mini-tour-2025-stage-1">Stage 1 | A - B</option>
 <option value="race/mini-tour-2025-stage-2">Stage 2 (ITT) | B - B</option>
@@ -202,11 +203,15 @@ STAGE_HTML = """<html><body><select><option value="race/mini-tour-2025-prologue"
 <tr><td>3</td><td>2</td><td>+0:04</td><td><a href="rider/c-c">C C</a></td><td></td><td>0:12</td></tr>
 <tr><td>DNF</td><td></td><td></td><td><a href="rider/d-d">D D</a></td><td></td><td></td></tr>
 </tbody></table></div>
-<div class="resultCont "><table><thead><tr><th>Rnk</th><th>Prev.</th><th>Rider</th><th></th><th>Timelag</th></tr>
-</thead><tbody>
-<tr><td>1</td><td>1</td><td><a href="rider/b-b">B B</a></td><td></td><td>7:00:10</td></tr>
-<tr><td>2</td><td>2</td><td><a href="rider/c-c">C C</a></td><td></td><td>0:16</td></tr>
-<tr><td>3</td><td>4</td><td><a href="rider/a-a">A A</a></td><td></td><td>0:20</td></tr>
+<div class="resultCont hide"><table><thead><tr><th>Rnk</th><th>Timelag</th><th>Prev.</th><th>Rider</th><th>Pnt</th>
+<th>Timelag</th></tr></thead><tbody>
+<tr><td>1</td><td>+0:00</td><td>1</td><td><a href="rider/c-c">C C</a></td><td>9</td><td>9:00:00</td></tr>
+</tbody></table></div>
+<div class="resultCont "><table><thead><tr><th>Rnk</th><th>Timelag</th><th>Prev.</th><th>Rider</th><th>Pnt</th>
+<th>Timelag</th></tr></thead><tbody>
+<tr><td>1</td><td>+0:00</td><td>1</td><td><a href="rider/b-b">B B</a></td><td>3</td><td>7:00:10</td></tr>
+<tr><td>2</td><td>+0:16</td><td>2</td><td><a href="rider/c-c">C C</a></td><td>2</td><td>0:16</td></tr>
+<tr><td>3</td><td>+0:20</td><td>4</td><td><a href="rider/a-a">A A</a></td><td>1</td><td>0:20</td></tr>
 </tbody></table></div>
 <div class="resultCont hide"><table><thead><tr><th>Rnk</th><th>Prev.</th><th>Rider</th><th>Pnt</th><th>Timelag</th>
 </tr></thead><tbody><tr><td>1</td><td>1</td><td><a href="rider/a-a">A A</a></td><td>50</td><td>9:99</td></tr>

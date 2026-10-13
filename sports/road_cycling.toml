@@ -125,17 +125,17 @@ stage_race_gc = ["tour-down-under", "uae-tour", "paris-nice", "tirreno-adriatico
 # Every stage of these stage races: the stage result and the GC after it (`racinglines data fetch cycling stages`,
 # pcs.fetch_stages), the history the stage-race GC model fits its time gaps and bonus seconds on. The main stage races
 # plus the short flat / time-trial races like the Eneco Tour (2026-10-13). A slug PCS doesn't know is logged as
-# FAILED and skipped.
+# FAILED and skipped; PCS answers 500 for one (current names checked on the Mac 2026-10-13).
 stage_races = ["tour-down-under", "uae-tour", "paris-nice", "tirreno-adriatico", "volta-a-catalunya",
-               "itzulia-basque-country", "tour-of-the-alps", "tour-de-romandie", "dauphine", "tour-de-suisse",
+               "itzulia-basque-country", "tour-of-the-alps", "tour-de-romandie", "tour-auvergne-rhone-alpes", "tour-de-suisse",
                "giro-d-italia", "tour-de-france", "vuelta-a-espana", "tour-de-pologne", "deutschland-tour",
-               "volta-ao-algarve", "o-gran-camino", "tour-of-oman", "settimana-coppi-bartali", "tour-de-l-ain",
+               "volta-ao-algarve", "gran-camino", "tour-of-oman", "settimana-internazionale-coppi-e-bartali", "tour-de-l-ain",
                "vuelta-a-burgos", "arctic-race-of-norway", "tour-de-luxembourg", "giro-di-sicilia", "tour-of-austria",
-               "renewi-tour", "benelux-tour", "tour-of-holland", "zlm-tour", "baloise-belgium-tour", "tour-of-denmark",
+               "renewi-tour", "zlm-tour", "tour-of-belgium", "tour-of-denmark",
                "tour-of-britain", "tour-of-norway", "tour-poitou-charentes-en-nouvelle-aquitaine",
                "boucles-de-la-mayenne", "tour-de-wallonie", "4-jours-de-dunkerque", "etoile-de-besseges",
-               "tour-de-la-provence", "volta-a-la-comunitat-valenciana", "vuelta-a-andalucia", "tour-of-slovenia",
-               "czech-tour", "tour-of-slovakia", "tour-of-guangxi", "tour-of-turkey"]
+               "tour-cycliste-international-la-provence", "vuelta-a-la-comunidad-valenciana", "ruta-del-sol",
+               "tour-of-slovenia", "czech-tour", "okolo-slovenska", "tour-of-guangxi", "tour-of-turkey"]
 
 [model.gc]
 # Stage-race GC (racinglines/models/cycling_gc.py): the sum of simulated stage gaps. First version 2026-10-13 for the
