@@ -14,7 +14,7 @@ trading on recorded books, leaderboard (staging only)", #151). Check it out to s
 | **Markets** | `/markets` | Unchanged: the prediction markets now, and what the model says about the busiest prices | `web/views.py`, `templates/board.html` |
 | **Trade** | `/trade` | Fantasy trading on the recorded order books: pick a market, see its book, place an IOC order in F$. An order never goes past the recorded book (depth 10) | `web/fantasy_routes.py`, `templates/fantasy_trade.html`, `fantasy/exchange.py` |
 | **History** | `/history` | Your F$ (total, cash, by hand, strategy), F$ by hand through the run, open trades with Sell links, every order by hand (refused ones with the reason), your strategy's trades, and the leaderboard (`/history#leaderboard`) | `web/fantasy_routes.py` `history_page`, `templates/history.html`, `fantasy/ledger.py` |
-| **Lab** | `/lab` | The advanced tools: follow a strategy (`/strategy/pick`), its performance (`/strategy`), its positions (`/positions`), and for Pro accounts backtests and research (`/lab`). An account without Pro that opens `/lab` goes to `/strategy`. The unread-signals badge sits on the tab | `templates/_lab_nav.html` |
+| **Lab** | `/strategy/pick` | Opens on Follow a strategy (owner, 2026-10-13). The advanced tools: follow a strategy (`/strategy/pick`), its performance (`/strategy`), its positions (`/positions`), and for Pro accounts backtests and research (`/lab`). An account without Pro that opens `/lab` goes to `/strategy`. The unread-signals badge sits on the tab | `templates/_lab_nav.html` |
 
 Admins also get **Admin**. The right side of the top bar keeps only the GitHub badge and the account links (name,
 Settings or Sign up, Log out).

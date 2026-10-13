@@ -13,7 +13,7 @@
   <nav aria-label="Main">
   {% if user and alpha_layout is defined and alpha_layout() %}{# web/layout.py: the alpha's four tabs; the old bar below is kept for RACINGLINES_LAYOUT=classic #}
   {{ nav("/markets", "Markets") }}{{ nav("/trade", "Trade") }}{{ nav("/history", "History") }}
-  <a href="/lab"{% if path == '/lab' or path.startswith(('/lab/', '/strategy', '/positions')) %} aria-current="page"{% endif %}>Lab{% if signals_nav and signals_nav.unread %} <span class="pill new" title="new calls from the strategy you follow">{{ signals_nav.unread }}</span>{% endif %}</a>
+  <a href="/strategy/pick"{% if path == '/lab' or path.startswith(('/lab/', '/strategy', '/positions')) %} aria-current="page"{% endif %}>Lab{% if signals_nav and signals_nav.unread %} <span class="pill new" title="new calls from the strategy you follow">{{ signals_nav.unread }}</span>{% endif %}</a>
   {% if user.role == 'admin' %}<span class="sep" aria-hidden="true"></span>{{ nav("/admin", "Admin") }}{% endif %}
   {% else %}
   {% if user %}{{ nav("/markets", "Markets") }}
