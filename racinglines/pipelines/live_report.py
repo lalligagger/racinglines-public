@@ -213,6 +213,10 @@ def build(run):
     s = d["meta"].get("settings")
     if s:
         L += ["## Settings (frozen at the opening)", "", "```json", json.dumps(s, indent=1, default=str)[:4000], "```", ""]
+    from racinglines import attribution                  # the compact source note (results feed, model as of the last update)
+    note = attribution.note(ev.get("sport") or d["meta"].get("sport") or "mtb_dh", None, None, latest["ts"], model=True)["text"]
+    if note:
+        L += [note + ".", ""]
     svgs = {}
     if pnl:
         ts = [pd.Timestamp(r["ts"]) for r in pnl]

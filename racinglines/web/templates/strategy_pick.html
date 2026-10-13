@@ -2,6 +2,7 @@
 {% macro die() %}<svg class="die" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="8" cy="8" r="1.6" fill="currentColor"/><circle cx="16" cy="8" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="8" cy="16" r="1.6" fill="currentColor"/><circle cx="16" cy="16" r="1.6" fill="currentColor"/></svg>{% endmacro %}
 {% block title %}Pick a strategy{% endblock %}
 {% block content %}
+{% include "_lab_nav.html" %}
 {# web/strategy_pick.py: the user's own pick (no strategy runs until there is one); admins assign others on /admin/users/<id>. #}
 {% call page_head("Pick a strategy", "The strategy this account paper-trades at the exchange's real prices: Formula 1 on Polymarket today, other sports and exchanges coming soon. Nothing is sent to an exchange, and you can change it between race weekends.") %}
 <a href="/strategy">← Strategy</a>{% endcall %}

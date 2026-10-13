@@ -1,8 +1,15 @@
-# Road cycling: sportsbook lines
+# Road cycling
 
-Road cycling has no exchange model yet (its Kalshi markets are tape-only, `docs/todo.md` U9), but its sportsbook
-lines (race winner, head-to-head) are priced from results by the **book model**: the timed-runs engine
-(`racinglines/models/inputs/run_times/model.py`, the downhill model) fitted on ProCyclingStats results.
+Road cycling is priced two ways, from the same ProCyclingStats results:
+
+- **On the Markets board, by the one engine** (since 2026-10-12, provisional): `sports/road_cycling.toml` `[model]`
+  declares the results input of `racinglines.models.model_global:GlobalModel`, like NASCAR and MotoGP. Results and
+  upcoming start lists are loaded into the database, and `racinglines model forecast cycling --save` stores the run
+  the board shows (win, podium, top 10 per rider; every head-to-head in the run). Admins only (`[sport] audience`), labelled
+  baseline: every setting is a priori ([Board pricing](#board-pricing-the-one-engine) below).
+- **Sportsbook lines, by the book model** (unchanged): the timed-runs engine
+  (`racinglines/models/inputs/run_times/model.py`, the downhill model) fitted on the same results, below. It is a
+  separate tool for pricing a bookmaker's lines, not the board's model.
 
 Everything is data:
 
@@ -71,6 +78,63 @@ shots too short). The temperature is fitted in-sample, so it is a diagnostic; an
 racinglines model reliability cycling road --settings-from reports/<event>/settings.csv
 racinglines model reliability cycling itt
 ```
+
+## Board pricing: the one engine
+
+What the engine reads: `events.source = "pcs_road"` (one-day races and stage-race final GCs from the road results file;
+the ITT file is stored as `pcs_itt` and left out of the history), one `race` round per race, riders matched on their
+PCS rider slug (`athlete_identifiers` scheme `pcs`, exact keys). A scheduled race is an event with status
+`scheduled` and a `startlist` round: the forecast prices only races with their own start list (`[forecast] field =
+"entry_list"`), and the results ingested for it later complete the same event. Settings: `[model.defaults]`, all a
+priori (decision log 2026-10-12 in [F1 roadmap](f1-roadmap.md#decision-log)).
+
+Every write needs a database dump under 24 hours old (`--backup`) and logs a `data_changes` row. In order, one
+step at a time (the event file is `sports/road_cycling/events/<event>.toml`: `[event]` name, kind, date, pcs,
+startlist_file; `<event>` below is its file name without `.toml`):
+
+```
+# LOCAL (Mac) — 1. this season's results and the race's start list (cached per page, safe to re-run)
+racinglines data fetch cycling road --seasons 2020-2026
+racinglines data startlist cycling <event>
+```
+
+```
+# LOCAL (Mac) — 2. copy both files to the VM (data never arrives by merge)
+gcloud compute scp data/raw/road_cycling/road_results_pcs.csv data/raw/road_cycling/<startlist_file> racinglines-vm:~/ --project racinglines --zone us-west1-b --tunnel-through-iap
+```
+
+The event file itself arrives with the code (a merge), or is copied the same way and given to `schedule` by its path.
+
+```
+# VM (production) — 3. back up the database, from the Mac; note the file it prints
+bash scripts/deploy/vm.sh backup road-cycling-ingest
+```
+
+```
+# VM (production) — 4. after `bash scripts/deploy/vm.sh ssh`: put the files in place, ingest, schedule, look at the forecast
+sudo -u racinglines mkdir -p /opt/racinglines/data/raw/road_cycling
+sudo install -o racinglines -g racinglines -m 644 ~/road_results_pcs.csv ~/<startlist_file> /opt/racinglines/data/raw/road_cycling/
+cd /opt/racinglines
+sudo -u racinglines -H bash -c 'set -a; . /etc/racinglines.env; set +a; .venv/bin/racinglines data ingest cycling --backup <backup file>'
+sudo -u racinglines -H bash -c 'set -a; . /etc/racinglines.env; set +a; .venv/bin/racinglines data schedule cycling <event> --backup <backup file>'
+sudo -u racinglines -H bash -c 'set -a; . /etc/racinglines.env; set +a; .venv/bin/racinglines model forecast cycling'
+```
+
+```
+# VM (production) — 5. store the forecast the board shows (undo: `racinglines model forecast cycling --undo <run id>`)
+sudo -u racinglines -H bash -c 'set -a; . /etc/racinglines.env; set +a; .venv/bin/racinglines model forecast cycling --save --backup <backup file>'
+```
+
+`data ingest cycling` takes `--kind itt` for the ITT file and `--csv FILE` for a file elsewhere; it rebuilds only the
+races whose rows changed (`--force`: all). A start list fetched again is loaded by running `schedule` again. The
+forecast is not on the forecast-refresh timer (`scripts/vm/forecast-refresh.sh` runs NASCAR and MotoGP): re-run step 5
+after new results or a new start list. To check the engine on the history: `racinglines backtest walk-forward
+road_cycling --seasons 2025` (read-only).
+
+What this doesn't do yet: no Kalshi cycling link is identified ([identity] has no resolver), so the board shows fair
+prices with no exchange price beside them; head-to-heads are stored in the run (`race_predictions.extra.h2h`) for a
+link to read, not shown as board columns; a rider with no stored result is priced at the field average with the
+engine's extra spread for few starts.
 
 ## Decision log
 

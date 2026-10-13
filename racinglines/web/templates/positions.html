@@ -1,13 +1,15 @@
-{% extends "base.html" %}{% from "_macros.html" import empty, table, demo_context, chart, kpi, pnl, pnl_cls, page_head %}
+{% extends "base.html" %}{% from "_macros.html" import empty, table, demo_context, chart, kpi, pnl, pnl_cls, page_head, source_note %}
 {% block title %}Positions{% endblock %}
 {% block content %}
+{% include "_lab_nav.html" %}
 {% set priv = venue == 'private' %}
 {% set others = venue_order|reject('in', ['polymarket', 'private'])|list %}{# exchanges besides Polymarket the account has rows on #}
-{% set on = ["Polymarket"] %}{% for k in others %}{% set _ = on.append(venue_names.get(k, k)) %}{% endfor %}{% if venues.private %}{% set _ = on.append("Private book") %}{% endif %}
+{% set on = ["Polymarket"] %}{% for k in others %}{% set _ = on.append(venue_names.get(k, k)) %}{% endfor %}{% if venues.private and not hide_private %}{% set _ = on.append("Private book") %}{% endif %}
 {% call page_head("Positions" ~ (" · " ~ cur.name if cur else ""), "Your fantasy-bucks positions on " ~ on|join(", ") ~ ".") %}
 <a href="/strategy">Strategy: what it recommended, and why →</a>{% endcall %}
 <details class="muted"><summary>About these positions</summary>
-<p class="legend">Paper only: nothing was sent to Polymarket. Polymarket history is {{ "the maker's fills" if maker else "your strategy's calls" }}{% if sport_paper %}; {{ 'NASCAR and MotoGP are' if sport_shown('motogp', user) else 'NASCAR is' }} taker replays on the exchanges' recorded prices (a demo: strategies picked in-sample){% else %}{% for k in others %}; {{ venue_names.get(k, k) }} is the same profile replayed on {{ venue_names.get(k, k) }}'s recorded tape{% endfor %}{% endif %}{% if venues.private %}; the private book is {{ "the one you ran" if maker else "the one you bet into" }} live (a demo, in fantasy bucks){% endif %}.</p></details>
+<p class="legend">Paper only: nothing was sent to Polymarket. Polymarket history is {{ "the maker's fills" if maker else "your strategy's calls" }}{% if sport_paper %}; {{ 'NASCAR and MotoGP are' if sport_shown('motogp', user) else 'NASCAR is' }} taker replays on the exchanges' recorded prices (a demo: strategies picked in-sample){% else %}{% for k in others %}; {{ venue_names.get(k, k) }} is the same profile replayed on {{ venue_names.get(k, k) }}'s recorded tape{% endfor %}{% endif %}{% if venues.private and not hide_private %}; the private book is {{ "the one you ran" if maker else "the one you bet into" }} live (a demo, in fantasy bucks){% endif %}.</p></details>
+{{ source_note(note_sports, venue_order, model=(profile is not none)) }}
 
 {% if not paper.n and not my_bets and not venues %}{% if profile %}{{ empty("No positions yet.") }}{% else %}<div class="card empty-pick"><h2>No positions yet</h2>
 <p>Nothing trades for this account until you pick a strategy; its paper positions show here from the next pricing update.</p>
@@ -29,7 +31,7 @@
 
 {# --- one view at a time --- #}
 {% set vplots = [] %}{% for k, a in vaccts.items() if a and a.chart and a.record and venue in ('', k) %}{% set _ = vplots.append(k) %}{% endfor %}
-{% set has_poly = acct and acct.chart and venue in ('', 'polymarket') %}{% set has_book = book and book.chart and venue in ('', 'private') %}
+{% set has_poly = acct and acct.chart and venue in ('', 'polymarket') %}{% set has_book = book and book.chart and venue in ('', 'private') and not hide_private %}
 {% set n_plots = (1 if has_poly else 0) + (1 if has_book else 0) + vplots|length %}
 {% set show_coming = coming and not priv %}
 <nav class="ptabs" data-tabs="positions" role="tablist">
@@ -70,7 +72,7 @@ Worst drawdown <b class="bad">{{ book.max_dd|money(true) }}</b> from a peak, thr
 {% for k in by_kind %}<tr><td class="l">{{ k.kind|kind }}</td><td>{{ k.n }}</td><td>{{ k.open }}</td><td>{{ k.won }}/{{ k.settled }}</td>
   <td>{{ pnl(k.pnl) }}</td></tr>{% endfor %}
 </tbody></table></div></div>
-{% if maker %}<p class="legend">In-app markets you quote are on <a href="/book">My book</a>.</p>{% endif %}
+{% if maker and not hide_private %}<p class="legend">In-app markets you quote are on <a href="/book">My book</a>.</p>{% endif %}
 </section>
 
 {# --- what the strategy would do next --- #}
@@ -97,7 +99,7 @@ Worst drawdown <b class="bad">{{ book.max_dd|money(true) }}</b> from a peak, thr
 <section data-panel="ledger" hidden>
 <div class="card"><div class="section-head"><h2>{{ "Positions" if not cur else "Positions this weekend" }}</h2><span class="spacer"></span>
 <form method="get" class="toolbar mb0"><label><span>Venue</span><select name="venue" data-autosubmit>
-  <option value="">all venues</option><option value="polymarket" {{ 'selected' if venue == 'polymarket' }}>Polymarket (paper)</option>{% for k in others %}<option value="{{ k }}" {{ 'selected' if venue == k }}>{{ venue_names.get(k, k) }} (paper)</option>{% endfor %}<option value="private" {{ 'selected' if venue == 'private' }}>Private book</option>
+  <option value="">all venues</option><option value="polymarket" {{ 'selected' if venue == 'polymarket' }}>Polymarket (paper)</option>{% for k in others %}<option value="{{ k }}" {{ 'selected' if venue == k }}>{{ venue_names.get(k, k) }} (paper)</option>{% endfor %}{% if not hide_private %}<option value="private" {{ 'selected' if venue == 'private' }}>Private book</option>{% endif %}
 </select></label>
 <label><span>Sport</span><select name="sport" data-autosubmit>
   <option value="">all sports</option>

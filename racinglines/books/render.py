@@ -305,8 +305,12 @@ def _excolor(settings, code):
 
 
 def footer(meta, settings, agnostic=False):
-    """The provenance every output carries."""
-    parts = ["Model: " + ("; ".join(meta["models"]) or "none") + f" · source: {meta['model_source']}"]
+    """The provenance every output carries, starting with the compact source note (racinglines/attribution.py): the
+    sport's results feed(s), the exchanges quoted and, unless agnostic, the book's lines as generic sportsbook lines
+    (never the book's brand)."""
+    from racinglines import attribution
+    note = attribution.note(meta.get("sport"), list(meta.get("syncs") or ()), sportsbook=not agnostic)["text"]
+    parts = ([note] if note else []) + ["Model: " + ("; ".join(meta["models"]) or "none") + f" · source: {meta['model_source']}"]
     if meta["syncs"]:
         parts.append("Markets synced: " + ", ".join(f"{_exname(settings, x)} {t}" for x, t in meta["syncs"].items()))
     else:

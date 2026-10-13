@@ -12,6 +12,9 @@ pricing_model = "racinglines.models.model_global:GlobalModel"   # every modelled
 # --model timed_runs`): the same run-times core and settings, so its prices equal the engine's (tests/test_one_engine.py)
 challengers = { timed_runs = "racinglines.models.race_model:TimedRuns" }
 display_order = 5
+# Left off the Markets page (sections and calendar) for everyone, admins included (owner, 2026-10-12: "UCI road only. Hide
+# UCI DH for now"). Its own pages, the live viewer, recording and pricing are unchanged; delete this line to show it again.
+markets_board = false
 results_modules = ["racinglines.sources.chronorace"]   # what fetches its results (`backtest coverage`)
 
 [league]
@@ -150,3 +153,9 @@ late_pace = 50.0                # ... and the crowd trades at 50x the normal rat
 [live.freeze]
 market = "a rider's markets are pulled after their last split"
 close = "when the final is over"
+
+[sources]
+# The compact source note on every page, MCP answer, book render and report that shows this sport's data
+# (racinglines/attribution.py).
+# Results/timing feed(s) as data, taken from [live] stream / [live.sources] urls below; racinglines/sources/chronorace/download.py.
+results = [{ name = "ChronoRace (UCI timing)", url = "https://prod.chronorace.be/" }]

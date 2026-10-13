@@ -1,7 +1,9 @@
 """
-racinglines cycling <command>: road cycling sportsbook lines (winner, head-to-head) from results, on the timed-runs
-engine (racinglines/models/cycling.py; workflow in docs/road-cycling.md). Everything per race is in an event file,
-sports/road_cycling/events/<event>.toml; everything per kind of race (itt, road) in sports/road_cycling.toml.
+racinglines cycling <command>: road cycling. The board's prices come from the one engine (sports/road_cycling.toml
+[model]: `ingest`, `schedule`, `forecast` below); the sportsbook lines (winner, head-to-head) from the book model on the
+timed-runs engine (racinglines/models/cycling.py: `price`, `reliability`). Workflow in docs/road-cycling.md. Everything
+per race is in an event file, sports/road_cycling/events/<event>.toml; everything per kind of race (itt, road) in
+sports/road_cycling.toml.
 
     events       List the event files.
     fetch        Fetch ProCyclingStats results for a kind (itt | road) into data/raw/road_cycling/ (Mac only:
@@ -15,8 +17,15 @@ sports/road_cycling/events/<event>.toml; everything per kind of race (itt, road)
     reliability  Calibration check for a kind (itt | road): every rider's walk-forward win / top-3 / top-10 chance
                  in every backtest race vs what happened, by probability bucket and by model rank (favourites vs
                  long shots), plus the best-fitting temperature. Writes reports/reliability-<kind>/.
+    ingest       Load a PCS results file (pcs.COLUMNS; default the kind's [results] file) into the database as
+                 events, races and results (racinglines/sources/pcs_ingest.py; idempotent per race; --backup FILE).
+    schedule     Load an upcoming race from its event file, with its start list file, as a scheduled event whose
+                 start list is the field the forecast prices (--backup FILE).
+    forecast     Price the scheduled races with the one engine (read-only unless --save --backup FILE): the run the
+                 Markets board shows (racinglines/pipelines/sport_forecast.py).
 
-Nothing here runs by default, writes to the database, or touches the VM.
+Only ingest, schedule and forecast --save write to the database (each needs a backup under 24 hours old and logs a
+data_changes row); nothing runs by default or touches the VM by itself.
 """
 
 import argparse
@@ -157,9 +166,55 @@ def cmd_reliability(a):
     return 0
 
 
+def cmd_ingest(a):
+    from racinglines.cli import replay_cmd
+    from racinglines.db import changes
+    from racinglines.db.config import get_session
+    from racinglines.models import cycling as C
+    from racinglines.sources import pcs_ingest as PI
+    replay_cmd._backup_ok(a, "road_cycling", "ingest writes events, races, results and athletes")
+    csv = Path(a.csv) if a.csv else C.results_file(a.kind, a.data)
+    if not csv.exists():
+        raise SystemExit(f"no results file {csv} (copy it from the Mac: docs/road-cycling.md)")
+    with get_session(a.db) as s:
+        rep = PI.ingest(s, csv, a.kind, force=a.force, echo=lambda m: print(m, flush=True))
+        written = {k: v for k, v in rep.items() if v != "unchanged"}
+        n = sum(int(v.split()[0]) for v in written.values())
+        changes.record(s, "ingest", f"road_cycling {a.kind} results from {csv.name}: {len(written)} races rebuilt, "
+                       f"{n} results ({len(rep) - len(written)} unchanged); backup {Path(a.backup).name}",
+                       sport="road_cycling", detail=dict(file=csv.name, kind=a.kind, source=PI.source(a.kind),
+                                                         races=len(written), results=n, backup=Path(a.backup).name))
+        s.commit()
+    print(f"{a.kind}: {len(rep)} races in {csv.name}; {len(written)} written ({n} results), "
+          f"{len(rep) - len(written)} unchanged", flush=True)
+    return 0
+
+
+def cmd_schedule(a):
+    from racinglines.cli import replay_cmd
+    from racinglines.db import changes
+    from racinglines.db.config import get_session
+    from racinglines.sources import pcs_ingest as PI
+    replay_cmd._backup_ok(a, "road_cycling", "schedule writes an event, its race and its start list")
+    with get_session(a.db) as s:
+        got = PI.schedule_event(s, a.event, a.startlist, a.data)
+        ev = got["event"]
+        changes.record(s, "schedule", f"road_cycling {ev.source_key} ({ev.start_date}, {ev.status}): start list of "
+                       f"{got['riders']} riders from {got['startlist'].name if got['startlist'] else 'no file'}; "
+                       f"backup {Path(a.backup).name}", sport="road_cycling",
+                       detail=dict(event=ev.source_key, source=ev.source, riders=got["riders"],
+                                   backup=Path(a.backup).name))
+        s.commit()
+        print(f"{ev.source}:{ev.source_key} {ev.name} {ev.start_date} ({ev.status}): "
+              + (f"start list {got['riders']} riders from {got['startlist']}" if got["startlist"] else
+                 "NO start list file: the forecast prices it once one is loaded"), flush=True)
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="racinglines <group> <command> cycling", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--db", default=None, help="Database URL (default: $DATABASE_URL / docker-compose).")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("events", help="list the event files")
     f = sub.add_parser("fetch", help="fetch ProCyclingStats results for a kind (Mac only)")
@@ -191,6 +246,20 @@ def main(argv=None):
     r.add_argument("--settings-from", help="settings row CSV (settings.csv from a price run); default: schema")
     r.add_argument("--terrain", default="hilly", choices=["hilly", "flat"])
     r.add_argument("--sims", type=int, default=4000)
+    i = sub.add_parser("ingest", help="load a PCS results file into the database (events, races, results)")
+    i.add_argument("--kind", choices=["road", "itt"], default="road",
+                   help="road (default): one-day races and stage-race GCs, the engine's history; itt: time trials")
+    i.add_argument("--csv", help="results file (default: the kind's [results] file under --data)")
+    i.add_argument("--data", help="results folder (default: [results] dir)")
+    i.add_argument("--force", action="store_true", help="rebuild races whose rows have not changed")
+    i.add_argument("--backup", required=True, help="the database dump taken for this step (under 24 hours old)")
+    sc = sub.add_parser("schedule", help="load an upcoming race and its start list from its event file")
+    sc.add_argument("event", help="event id (file stem in sports/road_cycling/events/) or a path to an event file")
+    sc.add_argument("--startlist", help="start list file (default: the event's startlist_file under --data)")
+    sc.add_argument("--data", help="results folder (default: [results] dir)")
+    sc.add_argument("--backup", required=True, help="the database dump taken for this step (under 24 hours old)")
+    from racinglines.cli import replay_cmd
+    replay_cmd.add_forecast_parser(sub, "road_cycling")
     from racinglines.cli.verbs import retitle
     retitle(ap, "cycling")
     a = ap.parse_args(argv)
@@ -218,4 +287,11 @@ def main(argv=None):
         return 0
     if a.cmd == "reliability":
         return cmd_reliability(a)
+    if a.cmd == "ingest":
+        return cmd_ingest(a)
+    if a.cmd == "schedule":
+        return cmd_schedule(a)
+    if a.cmd == "forecast":
+        from racinglines.cli import replay_cmd
+        return replay_cmd.run_forecast(a, "road_cycling") or 0
     return cmd_price(a)

@@ -1,7 +1,8 @@
 """racinglines users  ->  web-app accounts and the fantasy-bucks ledger from the command line (web/accounts.py).
 
-    racinglines users setup                         the accounts schema and ledger (idempotent); every active
-                                                    account without its 1,000 signup grant gets it
+    racinglines users setup                         the accounts schema, ledger and manual-trading tables
+                                                    (idempotent; fantasy/ledger.py); every active account
+                                                    without its 1,000 signup grant gets it
     racinglines users list                          accounts, role, active, fantasy bucks
     racinglines users add NAME --role basic|pro|admin   a new account; prints a one-time password
     racinglines users reset-password NAME           a new one-time password, printed once
@@ -45,7 +46,7 @@ def main(argv=None):
 
     if args.cmd == "setup":
         n = ACC.setup(eng)
-        print(f"accounts.fantasy_ledger ready; {n} signup grants of {ACC.SIGNUP_GRANT} added")
+        print(f"accounts.fantasy_ledger and the fantasy trading tables ready; {n} signup grants of {ACC.SIGNUP_GRANT} added")
         return 0
     if args.cmd == "reset-fantasy":
         keep = tuple(k.strip() for k in args.keep.split(",") if k.strip())

@@ -30,3 +30,9 @@ standard_kinds = []               # nothing is priced, so the board has no colum
 # Kalshi series tickers to sync, by prefix: every Sports series whose ticker starts with one of these
 # (`sync --series TICKER ...` overrides the list). Off by default: only `--sport le_mans` syncs them.
 series = ["KXLEMANS24H"]
+
+[sources]
+# The compact source note on every page, MCP answer, book render and report that shows this sport's data
+# (racinglines/attribution.py).
+# Results/timing feed(s) as data, taken from racinglines/sources/wec/__init__.py and fetch.py docstrings.
+results = [{ name = "motorsport.com", url = "https://www.motorsport.com/" }]

@@ -153,3 +153,9 @@ quote_until_hours = 0             # the maker stops quoting at this hour (UTC) o
 [search]
 # The search queue's job kinds for this sport (racinglines/pipelines/search.py); the first is the default.
 jobs = ["walk_forward", "sweep"]
+
+[sources]
+# The compact source note on every page, MCP answer, book render and report that shows this sport's data
+# (racinglines/attribution.py).
+# Results/timing feed(s) as data, taken from [results] host and terms above; racinglines/sources/motogp/__init__.py.
+results = [{ name = "motogp.com results API (Pulselive)", url = "https://api.motogp.pulselive.com/motogp/v1" }]

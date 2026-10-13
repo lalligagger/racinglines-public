@@ -21,6 +21,7 @@ the values from here, so a new sport starts with a new schema file.
                                 (racinglines/frames, docs/frames.md)
     audience(code)              who the web app shows the sport to ([sport] audience): "all" (the default) or "admin"
     admin_only()                the sport codes whose audience is "admin"; admin_only_competitions() their competitions
+    off_board_competitions()    the competitions left off the Markets page for everyone ([sport] markets_board = false)
     is_public(code, user)       the one gate (web pages and MCP tools): may this user see the sport or competition code?
 """
 
@@ -97,6 +98,13 @@ def admin_only():
 def admin_only_competitions():
     """The competition codes of the admin-only sports."""
     return frozenset(load(c)["competition"]["code"] for c in admin_only())
+
+
+def off_board_competitions():
+    """The competition codes the Markets page leaves out for everyone, admins included ([sport] markets_board = false;
+    owner, 2026-10-12, "Hide UCI DH for now"). Only the Markets page's sections and calendar: the sport's own pages,
+    recording, pricing and settlement carry on. Deleting the key (default true) puts it back."""
+    return frozenset(load(c)["competition"]["code"] for c in SPORT_CODES if not load(c)["sport"].get("markets_board", True))
 
 
 def modeled(code):

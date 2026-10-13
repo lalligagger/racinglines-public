@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_macros.html" import page_head, empty %}
+{% extends "base.html" %}{% from "_macros.html" import page_head, empty, source_note %}
 {% block title %}Recorded tapes{% endblock %}
 {% block content %}
 <p class="crumbs"><a href="/markets">Markets</a> › Recorded tapes</p>
@@ -19,6 +19,7 @@
     <td class="hide-sm {{ 'good' if e.books else 'muted' }}">{{ "{:,}".format(e.books) }}</td><td class="hide-sm">{{ e.books_last|fmt if e.books_last else "–" }}</td>
     <td>{{ e.end_date|fmt }}</td></tr>{% endfor %}
   </tbody></table></div>
+  {{ source_note(b.competition, [b.exchange]) }}
 </details>
 {% endfor %}
 {% endblock %}

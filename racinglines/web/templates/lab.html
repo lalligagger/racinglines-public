@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% from "_macros.html" import csrf, flash, page_head %}
 {% block title %}Lab{% endblock %}
 {% block content %}
+{% include "_lab_nav.html" %}
 {{ page_head("Lab", "Test the model and the trading strategies before money is at risk. Everything here prices with a hard as-of cutoff (no future data); forecasts launched here are scenarios and only change live prices when promoted.") }}
 {{ flash(msg) }}
 <ol class="lab-steps">

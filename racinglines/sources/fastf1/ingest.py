@@ -296,3 +296,53 @@ def ingest(session, years, force=False, echo=print):
             counts[k] = counts.get(k, 0) + 1
             echo(f"  {year} R{rnd:02d}: {status}")
     return counts
+
+
+# the event schedule's session names (fetch.SCHEDULE_NAME) -> session codes
+SCHEDULE_CODE = {"Practice 1": "FP1", "Practice 2": "FP2", "Practice 3": "FP3", "Sprint Qualifying": "SQ",
+                 "Sprint Shootout": "SQ", "Qualifying": "Q", "Sprint": "S", "Race": "R"}
+
+
+def schedule_sessions(event):
+    """One schedule row's sessions as scheduled rounds (db/schedule.write_sessions): kind, ordinal, name and the UTC
+    start in the ingest's session_date format ("YYYY-MM-DD HH:MM:SS"). A session with no UTC start is left out."""
+    out = []
+    for i in range(1, 6):
+        code = SCHEDULE_CODE.get(str(event.get(f"Session{i}")))
+        t = event.get(f"Session{i}DateUtc")
+        if code is None or t is None or pd.isna(t):
+            continue
+        kind = ROUND_KIND[code]
+        out.append(dict(kind=kind, ordinal=ROUND_ORDINAL[kind], name=kind,
+                        start=str(pd.Timestamp(t).tz_localize(None) if pd.Timestamp(t).tzinfo else pd.Timestamp(t))))
+    return out
+
+
+def write_schedule(session, schedule, year, through, today, echo=print):
+    """Scheduled rounds (db/schedule.py) for the weekends in FastF1's event schedule (fetch.event_schedule) dated up to
+    `through` that are stored as events and not completed. An event whose stored date differs from the schedule's
+    race day is skipped (a calendar change the forecast has not filed yet). Returns per-outcome counts."""
+    from racinglines.db import schedule as SCH
+    counts = {}
+    for ev in schedule.to_dict("records"):
+        rnd = int(ev["RoundNumber"])
+        day = pd.Timestamp(ev["EventDate"]).date()
+        if not SCH.in_window(day, today, through):
+            continue
+        key = f"{year}-{rnd:02d}"
+        event, race = SCH.upcoming_race(session, SOURCE, key)
+        if event is None:
+            status = "no stored event"
+        elif race is None:
+            status = "completed, untouched" if event.status == "completed" else "no race row"
+        elif event.start_date != day:
+            status = f"skipped: stored date {event.start_date} is not the schedule's {day}"
+        else:
+            sess = schedule_sessions(ev)
+            n = SCH.write_sessions(session, race.id, sess, "session_date", "fastf1 event schedule")
+            status = ", ".join(f"{v} {k}" for k, v in n.items() if v) or "no sessions dated"
+            for k, v in n.items():
+                counts[k] = counts.get(k, 0) + v
+            status += "  [" + "; ".join(f"{s['kind']} {s['start']}" for s in sess) + "]"
+        echo(f"  {key} {ev.get('EventName')}: {status}")
+    return counts

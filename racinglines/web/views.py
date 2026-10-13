@@ -25,6 +25,7 @@ from racinglines.web import board as B
 from racinglines.web import diag
 from racinglines.markets import private_book as house
 from racinglines.web import jobs
+from racinglines.web import layout as LAYOUT
 from racinglines.markets import venues as V
 from racinglines.web import roles as R
 from racinglines.web.app import ANY, PRO, allow, app, audit, check_csrf, conn, data, render, rows
@@ -141,6 +142,7 @@ def board_page(request: Request, msg: str = "", c=Depends(conn)):
         return bet_markets(request, msg=msg, c=c)
     from racinglines.markets import disagree as D
     hide = A.hidden_comps(user)                                     # sports this user doesn't see ([sport] audience)
+    hide |= SP.off_board_competitions()                             # and sports off the Markets page ([sport] markets_board)
     calendar = [r for r in V.calendar_rows(c) if r["sport"] not in hide]
     cal_sports = sorted({(r["sport"], r["sport_name"]) for r in calendar}, key=lambda x: V.SPORT_ORDER.get(x[0], 9))
     cal_exchanges = sorted({x for r in calendar for x in r["exchanges"]})
@@ -179,7 +181,7 @@ def board_recent(request: Request, code: str, c=Depends(conn)):
     comp = c.execute(text("SELECT id FROM competitions WHERE code = :c"), dict(c=code)).scalar()
     if comp is None:
         raise HTTPException(404, "no such sport")
-    return render(request, "_board_recent.html", recent=B.recent_results(c, int(comp)), kalshi=V.KALSHI_VENUE)
+    return render(request, "_board_recent.html", recent=B.recent_results(c, int(comp)), kalshi=V.KALSHI_VENUE, code=code)
 
 
 # ---------------------------------------------------------------------------
@@ -472,11 +474,17 @@ def _model_brier(c):
 
 @app.get("/lab", response_class=HTMLResponse)
 def lab_page(request: Request, job: str = "", event: str = "", variant: str = "", candidate: int = 0, cfg: str = "",
-             sport: str = "", venue: str = "", msg: str = "", user=allow(*PRO), c=Depends(conn)):
+             sport: str = "", venue: str = "", msg: str = "", user=allow(*ANY), c=Depends(conn)):
     """The Edge Finder leads (saved runs only, nothing is simulated on a visit); the other sections
     load on demand (/lab/section/{key}). Edge Finder combos and job knobs come from the user's prefs
-    (database); which sections are open is a browser view setting."""
+    (database); which sections are open is a browser view setting. Under the alpha layout the Lab tab is everyone's
+    (web/layout.py): an account without Pro opens its strategy's performance instead."""
     from urllib.parse import urlencode
+
+    if user["role"] not in PRO:
+        if LAYOUT.alpha():
+            return RedirectResponse("/strategy", status_code=303)
+        raise HTTPException(403)
 
     active = any(j["status"] in ("queued", "running") for j in _recent_jobs(c, user["id"], A.hidden(user)))
     open_now = (["run"] if job or event or variant or candidate or cfg else []) + (["jobs"] if active or msg else [])
@@ -707,6 +715,9 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     live = _live_venues()                               # the venue registry decides which venues' rows show
     if venue and venue not in live and not sp:
         venue = ""
+    hide_private = LAYOUT.alpha()                       # the alpha layout archives the private book (web/layout.py)
+    if hide_private and venue == "private":
+        venue = ""
     # the account's signals are read once and grouped (per weekend, per market), not looked up again for each
     # position: the signals table has no (user, market) index, so a lookup per position scanned them all
     pos = rows(data.q(c, """
@@ -741,6 +752,8 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
     for p in pos:
         p["demo_sport"] = p["event_key"] in demo_keys                   # a NASCAR / MotoGP demo replay (in-sample)
     pos = [p for p in pos if p["trades"] or p["venue"] == "private"]      # markets the account actually traded
+    if hide_private:
+        pos = [p for p in pos if p["venue"] != "private"]
     basic = R.is_basic(user)                        # basic: never which strategy made a pick (roles.basic_*)
     if basic:
         pos = [R.basic_position(p) for p in pos]
@@ -820,7 +833,7 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
                   and (not venue or venue == "private" or tv(t) == venue)]
         if basic:
             trades = [R.basic_signal(t, profile) for t in trades]
-    my_bets = house.taker_bets(c, user["id"]) if R.is_basic(user) else pd.DataFrame()
+    my_bets = house.taker_bets(c, user["id"]) if R.is_basic(user) and not hide_private else pd.DataFrame()
     summary = dict(bets=len(my_bets), staked=float(my_bets["stake"].sum()), open=int((my_bets["status"] == "open").sum()),
                    pnl=float(my_bets["pnl"].sum())) if len(my_bets) else None
     from racinglines.pipelines import story
@@ -859,7 +872,9 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
                   vtotal=sum(v["pnl"] for v in venues.values()), open_pos=open_,
                   cur=next((w for w in weekends if w["event_key"] == event), None),
                   vaccts=vaccts, venue_order=_venue_order(venues), venue_names=_venue_names(), kcoming=kcoming,
-                  sport_paper=bool(sp and demo_keys), show_backtests=bool(profile and not basic))
+                  sport_paper=bool(sp and demo_keys), show_backtests=bool(profile and not basic),
+                  hide_private=hide_private,
+                  note_sports=[sport] if sport else sorted({p["sport"] for p in pos if isinstance(p.get("sport"), str)}))   # source note
 
 
 @app.get("/positions/backtests", response_class=HTMLResponse, dependencies=[allow(*PRO)])

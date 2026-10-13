@@ -160,3 +160,9 @@ race_day_quote_until_hours = 15   # the same in the "race_day" mode: after its 1
 [search]
 # The search queue's job kinds for this sport (racinglines/pipelines/search.py); the first is the default.
 jobs = ["walk_forward", "sweep"]
+
+[sources]
+# The compact source note on every page, MCP answer, book render and report that shows this sport's data
+# (racinglines/attribution.py).
+# Results/timing feed(s) as data, taken from racinglines/sources/nascar/fetch.py docstring.
+results = [{ name = "NASCAR content feeds", url = "https://cf.nascar.com/" }]

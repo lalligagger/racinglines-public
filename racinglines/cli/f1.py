@@ -74,6 +74,8 @@ def main(argv=None):
     p = sub.add_parser("ingest")
     p.add_argument("--years", default="2020-2026")
     p.add_argument("--force", action="store_true")
+    from racinglines.db import schedule as SCH
+    SCH.add_parser(sub, "f1")
     p = sub.add_parser("pm-sync")
     p.add_argument("--year", type=int, default=2026)
     p.add_argument("--closed", action="store_true", help="Also every closed event of that year (e.g. a past season).")
@@ -502,6 +504,18 @@ def _run(args):
         with get_session(args.db) as s:
             print("Done:", ingest(s, _years(args.years), force=args.force))
         return
+    if args.cmd == "schedule":
+        from racinglines.db import schedule as SCH
+        from racinglines.sources.fastf1 import fetch as FF
+        from racinglines.sources.fastf1 import ingest as FI
+
+        def plan(s, through, today):
+            counts = {}
+            for year in range(today.year, through.year + 1):
+                for k, v in FI.write_schedule(s, FF.event_schedule(year), year, through, today).items():
+                    counts[k] = counts.get(k, 0) + v
+            return counts
+        return SCH.run(args, "f1", FI.SOURCE, plan)
     if args.cmd == "inrace-backfill":
         from racinglines.pipelines import live_f1 as LF
         year, rnd = (int(x) for x in args.event.split("-"))
