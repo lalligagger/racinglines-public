@@ -1,17 +1,17 @@
 """Data and model diagram for the Eneco Tour report: existing pieces grey, new ones (2026-10-13) blue, missing red."""
 import sys
 out = sys.argv[1]
-W, H = 1180, 760
-cols = {0: 20, 1: 260, 2: 520, 3: 780, 4: 990}
-heads = ["DATA", "MODEL INPUTS", "MODELS", "SIMULATION", "MARKETS & PICKS"]
+W, H = 1215, 680
+cols = {0: 20, 1: 275, 2: 530, 3: 760, 4: 985}
+heads = ["DATA", "MODEL INPUTS", "MODELS", "SIMULATION", "MARKETS &amp; PICKS"]
 C = {"old": ("#eef0f3", "#8a93a0"), "new": ("#e3eefc", "#2f6fd1"), "miss": ("#fdecec", "#c94141")}
 N = {}
 nodes = [
  ("itt", 0, 70, "old", ["PCS ITT results", "itt_results_pcs.csv", "2020 to 20 Sep 2026"]),
  ("road", 0, 160, "old", ["PCS one-day road results", "road_results_pcs.csv", "to 6 Oct 2026"]),
- ("stg", 0, 250, "new", ["PCS stage results + GC", "after every stage", "stage_results_pcs.csv (fetch_stages)"]),
+ ("stg", 0, 250, "new", ["PCS stage results + GC", "after every stage (fetch_stages)", "stage_results_pcs.csv"]),
  ("route", 0, 350, "new", ["Eneco route, 6 stages", "wielerflits / touretappe", "-> event file [[stages]]"]),
- ("sl", 0, 440, "miss", ["Eneco start list (PCS)", "not available: field =", "book riders + stand-ins"]),
+ ("sl", 0, 440, "new", ["Eneco start list (PCS)", "race/eneco-tour/2026, 88", "riders (+ stand-ins to 140)"]),
  ("boards", 0, 530, "new", ["Book boards (owner", "screenshots, transcribed):", "prologue + GC win & h2h"]),
  ("ittin", 1, 70, "old", ["Rider TT ability (log time)", "incidents, climbing term"]),
  ("short", 1, 150, "new", ["Short-TT noise 2.0", "(TT <= 15 km, backtested)"]),
@@ -27,7 +27,7 @@ nodes = [
  ("slip", 4, 410, "new", ["Recommended slip", "(paper, settle later)"]),
  ("bt", 3, 420, "new", ["Walk-forward backtests:", "short TTs, past", "stage-race GCs"]),
 ]
-bw, lh = 200, 15
+bw, lh = 215, 15
 svg = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" '
        'font-family="Inter, DejaVu Sans, sans-serif">',
        '<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">'
@@ -57,8 +57,8 @@ for a, b in edges:
         x1, y1, x2, y2 = xa + bw / 2, ya + ha, xb + bw / 2, yb - 2
     mx = (x1 + x2) / 2
     svg.append(f'<path d="M{x1},{y1} C{mx},{y1} {mx},{y2} {x2},{y2}" fill="none" stroke="#777" stroke-width="1.1" marker-end="url(#a)"/>')
-ly = 640
-for i, (k, lab) in enumerate([("old", "existing (before today)"), ("new", "new today (2026-10-13)"), ("miss", "missing / stand-in")]):
+ly = 630
+for i, (k, lab) in enumerate([("old", "existing (before today)"), ("new", "new today (2026-10-13)")]):
     fill, stroke = C[k]
     svg.append(f'<rect x="{20 + i * 250}" y="{ly}" width="26" height="16" rx="4" fill="{fill}" stroke="{stroke}"/>'
                f'<text x="{54 + i * 250}" y="{ly + 13}" font-size="12" fill="#333">{lab}</text>')
