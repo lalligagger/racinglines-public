@@ -67,7 +67,10 @@ $R db seed
 $R users setup
 echo "== production's market archive -> $STG/data/archive (production is only read)"
 mkdir -p data/archive "data/raw/f1/fastf1/$YEAR"
-[ -d "$APP/data/archive" ] && cp -a -u "$APP/data/archive/." data/archive/
+# staging's data/archive may already be production's (a symlink): then there is nothing to copy
+if [ -d "$APP/data/archive" ] && [ "$(readlink -f "$APP/data/archive")" != "$(readlink -f data/archive)" ]; then
+  cp -a -u "$APP/data/archive/." data/archive/
+fi
 s=data/raw/f1/fastf1/$YEAR/schedule.parquet
 [ -f "$s" ] || { [ -f "$APP/$s" ] && cp -a "$APP/$s" "$s"; } || true
 echo "== the draw (seed $SEED)"
