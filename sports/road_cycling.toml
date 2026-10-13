@@ -88,7 +88,7 @@ h2h = true                        # store every pair's head-to-head (race_predic
 source = "procyclingstats"
 dir = "data/raw/road_cycling"
 pace_s = 2.0
-files = { itt = "itt_results_pcs.csv", road = "road_results_pcs.csv" }
+files = { itt = "itt_results_pcs.csv", road = "road_results_pcs.csv", stages = "stage_results_pcs.csv" }
 
 [results.itt]
 # Individual time trials: championships and national championships (one-day pages), and every ITT stage (stage
@@ -120,6 +120,22 @@ stage_race_gc = ["tour-down-under", "uae-tour", "paris-nice", "tirreno-adriatico
                  "volta-ao-algarve", "o-gran-camino", "tour-of-oman", "settimana-coppi-bartali",
                  "tour-de-l-ain", "vuelta-a-burgos", "arctic-race-of-norway", "tour-de-luxembourg",
                  "giro-di-sicilia", "tour-of-austria"]
+
+[results.stages]
+# Every stage of these stage races: the stage result and the GC after it (`racinglines data fetch cycling stages`,
+# pcs.fetch_stages), the history the stage-race GC model fits its time gaps and bonus seconds on. The main stage races
+# plus the short flat / time-trial races like the Eneco Tour (2026-10-13). A slug PCS doesn't know is logged as
+# FAILED and skipped.
+stage_races = ["tour-down-under", "uae-tour", "paris-nice", "tirreno-adriatico", "volta-a-catalunya",
+               "itzulia-basque-country", "tour-of-the-alps", "tour-de-romandie", "dauphine", "tour-de-suisse",
+               "giro-d-italia", "tour-de-france", "vuelta-a-espana", "tour-de-pologne", "deutschland-tour",
+               "volta-ao-algarve", "o-gran-camino", "tour-of-oman", "settimana-coppi-bartali", "tour-de-l-ain",
+               "vuelta-a-burgos", "arctic-race-of-norway", "tour-de-luxembourg", "giro-di-sicilia", "tour-of-austria",
+               "renewi-tour", "benelux-tour", "tour-of-holland", "zlm-tour", "baloise-belgium-tour", "tour-of-denmark",
+               "tour-of-britain", "tour-of-norway", "tour-poitou-charentes-en-nouvelle-aquitaine",
+               "boucles-de-la-mayenne", "tour-de-wallonie", "4-jours-de-dunkerque", "etoile-de-besseges",
+               "tour-de-la-provence", "volta-a-la-comunitat-valenciana", "vuelta-a-andalucia", "tour-of-slovenia",
+               "czech-tour", "tour-of-slovakia", "tour-of-guangxi", "tour-of-turkey"]
 
 [model.itt]
 # Calibrated walk-forward on 73 strong-field ITTs 2021-26 (2026-10-05, decision log in docs/road-cycling.md).

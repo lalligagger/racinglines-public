@@ -6,7 +6,7 @@ per race is in an event file, sports/road_cycling/events/<event>.toml; everythin
 sports/road_cycling.toml.
 
     events       List the event files.
-    fetch        Fetch ProCyclingStats results for a kind (itt | road) into data/raw/road_cycling/ (Mac only:
+    fetch        Fetch ProCyclingStats results for a kind (itt | road | stages) into data/raw/road_cycling/ (Mac only:
                  cached per page, safe to re-run; `pip install cloudscraper selectolax` first).
     startlist    Fetch an event's start list (its [event] pcs race) into its startlist_file.
     probe        Fetch one PCS page (e.g. race/milano-sanremo/2025/result), save its HTML under
@@ -218,7 +218,8 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("events", help="list the event files")
     f = sub.add_parser("fetch", help="fetch ProCyclingStats results for a kind (Mac only)")
-    f.add_argument("kind", choices=["itt", "road"])
+    f.add_argument("kind", choices=["itt", "road", "stages"],
+                   help="stages: every stage of the [results.stages] races with the GC after it")
     f.add_argument("--seasons", default="2020-2026", help="e.g. 2020-2026")
     f.add_argument("--data", help="results folder (default: [results] dir)")
     f.add_argument("--limit", type=int, help="fetch at most this many pages (a dry check)")
@@ -272,7 +273,10 @@ def main(argv=None):
         return 0
     if a.cmd == "fetch":
         from racinglines.sources import pcs
-        pcs.fetch(a.kind, _years(a.seasons), a.data, a.limit)
+        if a.kind == "stages":
+            pcs.fetch_stages(_years(a.seasons), a.data, a.limit)
+        else:
+            pcs.fetch(a.kind, _years(a.seasons), a.data, a.limit)
         return 0
     if a.cmd == "startlist":
         from racinglines.models import cycling as C

@@ -13,9 +13,12 @@ Every page is cached as one CSV under <dir>/pcs/<kind>/, so a re-run fetches onl
 file for the kind ([results] files) is rebuilt from the cache at the end. One request at a time, `pace_s` apart.
 
     fetch(kind, seasons)                 every race of a kind -> results file (rows per finisher, see COLUMNS)
+    fetch_stages(seasons)                every stage of the [results.stages] races: the stage result and the GC after it,
+                                         one row per rider per stage (STAGE_COLUMNS) -> the stages results file
     fetch_startlist(pcs_race, out_csv)   a race's start list -> rider, rider_url, nationality, team
     probe(url, out_dir)                  fetch one page, save its HTML, print what parses (for debugging)
-    parse_results(html) / page_info(html) / parse_startlist(html) / stage_rows(...)   pure, tested on fixtures
+    parse_results(html) / page_info(html) / parse_startlist(html) / stage_rows(...) / parse_stage_page(html) /
+    stage_list(html, slug, year)         pure, tested on fixtures
 """
 
 import re
@@ -303,6 +306,142 @@ def fetch(kind, seasons, data_dir=None, limit=None):
     out.to_csv(dest, index=False)
     print(f"{kind}: {out['race'].nunique()} races, {len(out)} rows -> {dest} · {len(failed)} failed "
           f"{failed[:10]}", flush=True)
+    return out
+
+
+STAGE_COLUMNS = COLUMNS + ["stage", "stage_type", "gc_position", "gc_gap_s", "gc_time_s"]
+
+
+def _result_tables(tree):
+    """The result tables of a stage page in page order (stage, GC, points, KOM, youth, teams), each as
+    (headers, table): every table with rider links inside a `resultCont` block."""
+    out = []
+    for t in tree.css("div.resultCont table"):
+        if t.css_first('tbody a[href*="rider/"]'):
+            out.append(([th.text(strip=True) for th in t.css("thead th")], t))
+    return out
+
+
+def _timelag_rows(heads, table):
+    """[{rider_name, rider_url, nationality, rank, status, time}] reading the LAST 'Timelag' column, which holds the
+    winner's time and then the gaps (PCS also carries a hidden GC 'Timelag' column further left)."""
+    j = len(heads) - 1 - heads[::-1].index("Timelag")
+    i_rank = heads.index("Rnk") if "Rnk" in heads else 0
+    rows, prev = [], None
+    for tr in table.css("tbody tr"):
+        a = tr.css_first('a[href*="rider/"]')
+        tds = tr.css("td")
+        if a is None or j >= len(tds):
+            continue
+        rank_txt = tds[i_rank].text(strip=True)
+        t = tds[j].text(strip=True).replace(" ", "")
+        t = prev if t in ("", ",,") else t
+        prev = t
+        flag = tr.css_first(".flag")
+        fl = (flag.attributes.get("class") or "").split() if flag else []
+        rows.append(dict(rider_name=a.text(strip=True), rider_url=_rider_href(a.attributes.get("href") or ""),
+                         nationality=fl[1].upper() if len(fl) > 1 else None,
+                         rank=int(rank_txt) if rank_txt.isdigit() else None,
+                         status="DF" if rank_txt.isdigit() else rank_txt.upper(), time=t))
+    return rows
+
+
+def parse_stage_page(html):
+    """A stage page -> (stage rows, GC-after-the-stage rows), both in parse_results' shape. The stage table is the
+    first result table; the GC is the first later one with a 'Prev.' (yesterday's rank) column and no points
+    ('Pnt') column. The GC rows are [] when the page has none (a one-stage race)."""
+    tabs = [x for x in _result_tables(_tree(html)) if "Timelag" in x[0]]
+    if not tabs:
+        raise ValueError("no result table with a Timelag column on the page")
+    gc = next((x for x in tabs[1:] if "Prev." in x[0] and "Pnt" not in x[0]), None)
+    return _timelag_rows(*tabs[0]), (_timelag_rows(*gc) if gc else [])
+
+
+def stage_list(html, slug, year):
+    """[(path, stage, stage_type)] of a stage race from the stage menu on any of its pages, in race order:
+    ('race/x/2025/stage-5', 'stage-5', 'ITT'). stage_type is ITT, TTT, prologue or road (from the menu label)."""
+    out = []
+    for m in re.finditer(rf'<option value="race/{re.escape(slug)}-{year}-(prologue|stage-[0-9]+[a-z]?)"[^>]*>([^<]*)<',
+                         html):
+        stage, label = m.group(1), m.group(2)
+        kind = ("TTT" if "(TTT)" in label else "ITT" if "(ITT)" in label else
+                "prologue" if stage == "prologue" or "prologue" in label.lower() else "road")
+        out.append((f"race/{slug}/{year}/{stage}", stage, kind))
+    return list(dict.fromkeys(out))
+
+
+def stage_page_rows(html, race, stage, stage_type, url):
+    """STAGE_COLUMNS rows for one stage page: the stage's own result (positions, gaps) joined to the GC after it
+    (gc_position, gc_gap_s behind the leader, gc_time_s the rider's total time)."""
+    st, gc = parse_stage_page(html)
+    rows = stage_rows(st, page_info(html), race, "stage", url)
+    lead, g = None, {}
+    for r in gc:
+        t = hms(r.get("time"))
+        if t is None:
+            continue
+        if lead is None:
+            lead = t
+        gap = t - lead if t >= lead else t
+        g[r["rider_url"]] = (r.get("rank"), gap, lead + gap)
+    for r in rows:
+        pos, gap, tot = g.get(r["rider_url"], (None, None, None))
+        r.update(stage=stage, stage_type=stage_type, gc_position=pos, gc_gap_s=gap, gc_time_s=tot)
+    return rows
+
+
+def fetch_stages(seasons, data_dir=None, limit=None):
+    """Every stage of every [results.stages] race in `seasons` (cached per page under <dir>/pcs/stages/), then the
+    stages results file rebuilt from the cache. Each race's stage menu is read from its GC page."""
+    r = sports.load("road_cycling")["results"]
+    pace = float(r.get("pace_s", 2.0))
+    base = Path(data_dir or ROOT / r["dir"])
+    cache = base / "pcs" / "stages"
+    cache.mkdir(parents=True, exist_ok=True)
+    races = [(slug, y) for y in seasons for slug in r["stages"]["stage_races"]]
+    failed, fetched, done = [], 0, 0
+    for i, (slug, y) in enumerate(races, 1):
+        progress.update(i, len(races), f"{slug}-{y}")
+        menu = cache / f"{slug}-{y}.menu.csv"
+        if menu.exists():
+            stages = list(pd.read_csv(menu).itertuples(index=False, name=None))
+        else:
+            try:
+                stages = stage_list(_get(f"race/{slug}/{y}/gc"), slug, y)
+            except Exception as ex:
+                failed.append(f"{slug}-{y}")
+                print(f"{slug}-{y} | FAILED stage menu {type(ex).__name__}: {ex}", flush=True)
+                time.sleep(pace)
+                continue
+            pd.DataFrame(stages, columns=["path", "stage", "stage_type"]).to_csv(menu, index=False)
+            time.sleep(pace)
+        for path, stage, kind in stages:
+            f = cache / f"{slug}-{y}-{stage}.csv"
+            if f.exists():
+                continue
+            if limit is not None and done >= limit:
+                break
+            done += 1
+            try:
+                rows = stage_page_rows(_get(path), f"{slug}-{y}", stage, kind, path)
+                pd.DataFrame(rows, columns=STAGE_COLUMNS).to_csv(f, index=False)
+                fetched += 1
+                print(f"{slug}-{y} {stage} ({kind}) | {len(rows)}", flush=True)
+            except Exception as ex:
+                failed.append(f"{slug}-{y}-{stage}")
+                print(f"{slug}-{y} {stage} | FAILED {type(ex).__name__}: {ex}", flush=True)
+            time.sleep(pace)
+        if fetched == 0 and len(failed) >= 10:
+            raise SystemExit(f"the first {len(failed)} pages all failed; stopping. Run `racinglines data probe cycling "
+                             f"race/{races[0][0]}/{races[0][1]}/gc` and report what it prints.")
+    cached = sorted(p for p in cache.glob("*.csv") if not p.name.endswith(".menu.csv"))
+    if not cached:
+        raise SystemExit(f"no stage pages fetched ({len(failed)} failed); nothing written")
+    out = pd.concat([pd.read_csv(p) for p in cached], ignore_index=True)
+    dest = base / r["files"]["stages"]
+    out.to_csv(dest, index=False)
+    print(f"stages: {out['race'].nunique()} races, {out.groupby(['race', 'stage']).ngroups} stages, {len(out)} rows "
+          f"-> {dest} · {len(failed)} failed {failed[:10]}", flush=True)
     return out
 
 

@@ -186,3 +186,41 @@ def test_pcs_rows_read_times_and_gaps():
     assert [r["gap_s"] for r in rows[:3]] == [0, 15, 28]
     assert rows[0]["winner_time_s"] == 1632
     assert [r["status"] for r in rows] == ["OK", "OK", "OK", "DNF"] and rows[3]["position"] is None
+
+
+# A stage page as PCS serves it (2026-10): result tables inside `resultCont` blocks, the stage first and the GC after
+# it; a hidden GC 'Timelag' column sits left of the real one, and the stage menu lists every stage.
+STAGE_HTML = """<html><body><select><option value="race/mini-tour-2025-prologue">Prologue | A - A</option>
+<option value="race/mini-tour-2025-stage-1">Stage 1 | A - B</option>
+<option value="race/mini-tour-2025-stage-2">Stage 2 (ITT) | B - B</option>
+<option value="race/mini-tour-2025-gc">General classification</option></select>
+<ul class="infolist"><li><div>Date:</div><div>14 August 2025</div></li><li><div>Distance:</div><div>150 km</div></li></ul>
+<div class="resultCont hide"><table><thead><tr><th>Rnk</th><th>GC</th><th>Timelag</th><th>Rider</th><th></th>
+<th>Timelag</th></tr></thead><tbody>
+<tr><td>1</td><td>3</td><td>+9:99</td><td><a href="rider/a-a">A A</a></td><td></td><td>3:30:00</td></tr>
+<tr><td>2</td><td>1</td><td>+0:00</td><td><a href="rider/b-b">B B</a></td><td></td><td>,,</td></tr>
+<tr><td>3</td><td>2</td><td>+0:04</td><td><a href="rider/c-c">C C</a></td><td></td><td>0:12</td></tr>
+<tr><td>DNF</td><td></td><td></td><td><a href="rider/d-d">D D</a></td><td></td><td></td></tr>
+</tbody></table></div>
+<div class="resultCont "><table><thead><tr><th>Rnk</th><th>Prev.</th><th>Rider</th><th></th><th>Timelag</th></tr>
+</thead><tbody>
+<tr><td>1</td><td>1</td><td><a href="rider/b-b">B B</a></td><td></td><td>7:00:10</td></tr>
+<tr><td>2</td><td>2</td><td><a href="rider/c-c">C C</a></td><td></td><td>0:16</td></tr>
+<tr><td>3</td><td>4</td><td><a href="rider/a-a">A A</a></td><td></td><td>0:20</td></tr>
+</tbody></table></div>
+<div class="resultCont hide"><table><thead><tr><th>Rnk</th><th>Prev.</th><th>Rider</th><th>Pnt</th><th>Timelag</th>
+</tr></thead><tbody><tr><td>1</td><td>1</td><td><a href="rider/a-a">A A</a></td><td>50</td><td>9:99</td></tr>
+</tbody></table></div></body></html>"""
+
+
+def test_pcs_stage_page_reads_the_stage_and_the_gc_after_it():
+    pytest.importorskip("selectolax")
+    from racinglines.sources import pcs
+    assert pcs.stage_list(STAGE_HTML, "mini-tour", 2025) == [
+        ("race/mini-tour/2025/prologue", "prologue", "prologue"), ("race/mini-tour/2025/stage-1", "stage-1", "road"),
+        ("race/mini-tour/2025/stage-2", "stage-2", "ITT")]
+    rows = {r["rider_url"]: r for r in pcs.stage_page_rows(STAGE_HTML, "mini-tour-2025", "stage-1", "road", "x")}
+    assert [rows[u]["gap_s"] for u in ("rider/a-a", "rider/b-b", "rider/c-c")] == [0, 0, 12]
+    assert rows["rider/d-d"]["status"] == "DNF" and rows["rider/d-d"]["gc_gap_s"] is None
+    assert [rows[u]["gc_gap_s"] for u in ("rider/b-b", "rider/c-c", "rider/a-a")] == [0, 16, 20]
+    assert rows["rider/a-a"]["gc_time_s"] == 7 * 3600 + 10 + 20 and rows["rider/a-a"]["gc_position"] == 3
