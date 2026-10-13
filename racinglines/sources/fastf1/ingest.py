@@ -21,7 +21,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import delete, insert, select
+from sqlalchemy import insert, select
 
 from racinglines.db import models as m
 from racinglines.db import registry
@@ -170,7 +170,9 @@ def ingest_event(session, year, rnd, force=False):
     race = _upsert(session, m.Race, dict(event_id=event.id, category_id=cat.id))
     race.format = dict(kind="f1", sprint="S" in metas or "SQ" in metas or meta.get("event_format") in SPRINT_FORMATS, total_laps=(metas.get("R") or {}).get("total_laps"),
                        event_format=meta.get("event_format"), event_name=meta.get("event_name"))
-    session.execute(delete(m.Round).where(m.Round.race_id == race.id))
+    # the sessions still to come keep their scheduled rounds (db/schedule.py), so their markets keep a close
+    from racinglines.db import schedule as SCH
+    SCH.clear_for_ingest(session, race.id, {ROUND_KIND[c] for c in metas if c in ROUND_KIND}, final=has_race)
     session.flush()
 
     n_results = n_laps = 0

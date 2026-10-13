@@ -1,0 +1,12 @@
+[Unit]
+Description=racinglines session schedule sync every 6 hours
+
+[Timer]
+OnActiveSec=1min
+OnBootSec=5min
+OnUnitActiveSec=6h
+AccuracySec=1min
+Unit=racinglines-schedule-sync.service
+
+[Install]
+WantedBy=timers.target
