@@ -1,0 +1,18 @@
+# Session start times kept loaded, one pass (scripts/vm/schedule_sync.sh): a dry run of `racinglines data schedule f1`,
+# and a backup then the write only when a session would be added or moved. Started by the .timer; enabled by vm.sh schedule.
+# Logs: journalctl -u racinglines-schedule-sync, and data/runs/logs/schedule-sync.log
+[Unit]
+Description=racinglines session schedule sync
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=racinglines
+WorkingDirectory=/opt/racinglines
+ExecStart=/opt/racinglines/scripts/vm/schedule_sync.sh
+TimeoutStartSec=20min
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=racinglines-schedule-sync
+Environment=PYTHONUNBUFFERED=1
