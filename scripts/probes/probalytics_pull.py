@@ -318,7 +318,7 @@ def run_stages(venues, year):
                     f"SELECT '{lab}' AS stage, toDateTime64('{t}', 6, 'UTC') AS cutoff, toString(market_id) AS mkt, "
                     f"any(market_platform_id) AS market_platform_id, any(toString(platform)) AS platform, "
                     f"outcome.platform_id AS outcome_pid, any(outcome.name) AS outcome_name, "
-                    f"max(timestamp) AS timestamp, argMax(toString(continuity), timestamp) AS continuity, "
+                    f"max(timestamp) AS snap_ts, argMax(toString(continuity), timestamp) AS continuity, "
                     f"argMax(toString(state), timestamp) AS state, argMax(bids, timestamp) AS b, "
                     f"argMax(asks, timestamp) AS a, length(b) AS n_bids, length(a) AS n_asks, "
                     f"arrayMap(x -> toFloat64(x.price), b) AS bid_px, arrayMap(x -> toFloat64(x.size), b) AS bid_sz, "
@@ -326,7 +326,7 @@ def run_stages(venues, year):
                     f"FROM orderbook_snapshots WHERE market_id IN ({lst}) AND timestamp > '{lo}' AND timestamp <= '{t}' "
                     f"GROUP BY market_id, outcome.platform_id")
             return ("SELECT stage, cutoff, mkt AS market_id, market_platform_id, platform, outcome_pid, outcome_name, "
-                    "timestamp, continuity, state, n_bids, n_asks, bid_px, bid_sz, ask_px, ask_sz FROM ("
+                    "snap_ts AS timestamp, continuity, state, n_bids, n_asks, bid_px, bid_sz, ask_px, ask_sz FROM ("
                     + " UNION ALL ".join(parts) + ")")
         fetch(p, sql, m, size=CHUNK // len(stages), kind="stages", venue=v, event=ev,
               stages=[lab for lab, _ in stages], lookback_h=LOOKBACK_H, links_key=key)
