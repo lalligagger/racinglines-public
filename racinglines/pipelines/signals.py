@@ -243,6 +243,27 @@ def in_weekend(w, now):
     return w["race_start"] - WEEKEND_LEAD <= now <= w["race_start"] + WEEKEND_TAIL
 
 
+def settled(engine, profile, event_key, venue="polymarket"):
+    """True once the event's race result is stored and this profile's stored rows for it (every user's, this venue)
+    hold no open position: a live pass would only price the completed event again (the WEEKEND_TAIL day) and store
+    the same rows. A profile with nothing stored yet for the event, or no candidate id to find its rows by, is never
+    skipped (its first pass stores it)."""
+    if profile.get("candidate_id") is None:
+        return False
+    with engine.connect() as c:
+        return bool(c.execute(text("""
+            SELECT EXISTS (SELECT 1 FROM results r JOIN rounds ro ON ro.id = r.round_id JOIN races ra ON ra.id = ro.race_id
+                           JOIN events e ON e.id = ra.event_id WHERE e.source_key = :e AND ro.kind = 'race')
+               AND (EXISTS (SELECT 1 FROM paper_positions WHERE candidate_id IS NOT DISTINCT FROM :c AND event_key = :e
+                                                            AND venue = :v)
+                    OR EXISTS (SELECT 1 FROM strategy_signals WHERE candidate_id IS NOT DISTINCT FROM :c
+                                                                AND event_key = :e))
+               AND NOT EXISTS (SELECT 1 FROM paper_positions WHERE candidate_id IS NOT DISTINCT FROM :c
+                                 AND event_key = :e AND venue = :v AND outcome IS NULL
+                                 AND (yes_shares <> 0 OR no_shares <> 0))"""),
+            dict(e=event_key, c=profile.get("candidate_id"), v=venue or "polymarket")).scalar())
+
+
 def _missing_sessions(meas, w, now):
     """Sessions of this weekend that ended (plus the data lag) but aren't in the database yet, the race
     included (its result settles the paper positions)."""
@@ -438,6 +459,8 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
         return dict(base, note="no race weekend left this season")
     if live and not in_weekend(w, now):
         return dict(base, note=f"{w['name']}: signals start {(w['race_start'] - WEEKEND_LEAD):%a %d %b}")
+    if live and settled(engine, profile, w["event_key"], venue):
+        return dict(base, note=f"{w['name']}: complete, its paper positions settled: nothing left to price")
     cache = {} if cache is None else cache
     meas = cache["meas"] if "meas" in cache else run.Measurements.load(engine)
     if live and fetch:
