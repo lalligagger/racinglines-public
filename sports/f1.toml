@@ -214,3 +214,9 @@ late_pace = 3.0                 # ... at 3x the rate
 
 [live.picks]
 stake = 25.0                    # the demo taker's hype picks, placed at the book's opening
+
+[sources]
+# The compact source note on every page, MCP answer, book render and report that shows this sport's data
+# (racinglines/attribution.py).
+# Results/timing feed(s) as data, taken from racinglines/sources/fastf1/fetch.py docstring ("the official F1 live-timing archive (via FastF1)"); URL docs/f1-reference.md.
+results = [{ name = "F1 live timing via FastF1", url = "https://docs.fastf1.dev/" }]

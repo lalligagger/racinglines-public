@@ -167,6 +167,28 @@ def _sport_filter(conn, sport=None, competition=None):
     raise ValueError(f"no sport {sport!r}; the database has {', '.join(sorted(set(of.values())))}")
 
 
+def _sources(sport=None, venues=None, run=None, as_of=None, model=False):
+    """The compact source note every answer with event, result or price data carries (racinglines/attribution.py):
+    {results: [{name, url}], prices: [venue names], fair: "racinglines model (run #N, as of ...)" or None, text}."""
+    from racinglines import attribution
+    n = attribution.note(sport, venues, run, as_of, model=model)
+    return {k: n[k] for k in ("results", "prices", "fair", "text")}
+
+
+def _token_sources(conn, toks, run=None):
+    """_sources for a list of market tokens: their sports and exchanges, read by exact token id."""
+    got = conn.execute(text("""SELECT DISTINCT co.code, ml.exchange FROM market_links ml
+                               JOIN competitions co ON co.id = ml.competition_id WHERE ml.token_id = ANY(:t)"""),
+                       dict(t=list(toks))).fetchall()
+    return _sources(sorted({r[0] for r in got}), sorted({r[1] for r in got}))
+
+
+def _run_competition(conn, run_id):
+    """The competition code of a model run, None when it has none."""
+    return conn.execute(text("""SELECT co.code FROM model_runs mr JOIN competitions co ON co.id = mr.competition_id
+                                WHERE mr.id = :r"""), dict(r=int(run_id))).scalar()
+
+
 def _usernames(conn):
     return {r[0]: int(r[1]) for r in conn.execute(text("SELECT username, id FROM users")).fetchall()}
 
@@ -270,7 +292,9 @@ def list_events(conn, sport=None, competition=None, season=None, status=None, li
                       id="event_ids")
     if status:
         df = df[df["status"] == status]
-    return P.page(df, limit=limit, offset=offset)
+    out = P.page(df, limit=limit, offset=offset)
+    out["sources"] = _sources(sorted(set(df["competition"].dropna())) if len(df) else _sport_filter(conn, sport, competition))
+    return out
 
 
 def get_event(conn, event_id=None, source_key=None, include="results", viewer=None):
@@ -299,6 +323,8 @@ def get_event(conn, event_id=None, source_key=None, include="results", viewer=No
         out["predictions"] = P.page(pr, limit=60, note="newest run first")
     if "markets" in wants:
         out["markets"] = {int(r): list_markets(conn, race_id=int(r), limit=40, viewer=viewer) for r in races["race_id"]}
+    shown = [v["venue"] for m in out.get("markets", {}).values() for v in m.get("venues", []) if v.get("listed")]
+    out["sources"] = _sources(ev.get("competition"), shown, model="predictions" in wants or "markets" in wants)
     return out
 
 
@@ -320,6 +346,8 @@ def get_athlete(conn, athlete_id, include="results"):
         out["results"] = P.page(_drop_hidden(conn, data.athlete_results(conn, athlete_id), event_id="event_ids"), limit=60)
     if "predictions" in wants:
         out["predictions"] = P.page(_drop_hidden(conn, data.athlete_predictions(conn, athlete_id), run="run_ids"), limit=60)
+    comps = data.athlete_competitions(conn, athlete_id) if comps is None else comps
+    out["sources"] = _sources(sorted(comps - (h["competitions"] if h else set())), model="predictions" in wants)
     return out
 
 
@@ -386,10 +414,14 @@ def list_markets(conn, race_id=None, event_id=None, competition=None, sport=None
         by_kind[r["kind"]] = by_kind.get(r["kind"], 0) + 1
     scope = dict(event_id=head["event_id"]) if race_id is not None else dict(competition=head["competition"])
     upcoming = race_id is None or head.get("status") != "completed"
-    return dict(**P.record(head), pricing=P.record(pricing or {}), outcomes_by_kind=by_kind,
+    venues = [dict(venue=v["venue"].code, listed=v["listed"], volume=v["volume"]) for v in V.venue_summary(df)] if len(df) else []
+    pr = pricing or {}
+    return dict(**P.record(head), pricing=P.record(pr), outcomes_by_kind=by_kind,
                 freshness=freshness(conn, upcoming=upcoming, **scope),
-                venues=[dict(venue=v["venue"].code, listed=v["listed"], volume=v["volume"]) for v in V.venue_summary(df)] if len(df) else [],
-                outcomes=P.page(rows, limit=limit, offset=offset))
+                venues=venues,
+                outcomes=P.page(rows, limit=limit, offset=offset),
+                sources=_sources(head["competition"], [v["venue"] for v in venues if v["listed"]], pr.get("run_id"),
+                                 pr.get("as_of"), model=pr.get("run_id") is not None or pr.get("as_of") is not None))
 
 
 def stale_hours():
@@ -534,7 +566,8 @@ def get_market_history(conn, tokens=None, race_id=None, kind=None, athlete_id=No
     return dict(tokens=[P.record(names.get(t, dict(token_id=t))) for t in toks], series=series,
                 window=dict(start=P.plain(df["ts"].min()), end=P.plain(df["ts"].max()), rows_read=int(len(df)),
                             bucket=str(step) if step is not None else None),
-                rows=P.page(out, limit=limit or 200, offset=offset, max_bytes=P.MAX_BYTES * 2))
+                rows=P.page(out, limit=limit or 200, offset=offset, max_bytes=P.MAX_BYTES * 2),
+                sources=_token_sources(conn, toks))
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -622,7 +655,8 @@ def get_predictions(conn, run_id, target=None, top=20, standings=False):
         target = targets["target"].iloc[0]
     df = data.race_predictions(conn, int(run_id), target, limit=P.clamp(top, 20))
     t = targets[targets["target"] == target]
-    return dict(target=P.record(t.iloc[0].to_dict()) if len(t) else dict(target=target), predictions=P.page(df, limit=top))
+    return dict(target=P.record(t.iloc[0].to_dict()) if len(t) else dict(target=target), predictions=P.page(df, limit=top),
+                sources=_sources(_run_competition(conn, run_id), run=int(run_id)))
 
 
 def get_forecast(conn, competition=None, sport=None, category=None, top=10):
@@ -647,7 +681,7 @@ def get_forecast(conn, competition=None, sport=None, category=None, top=10):
                               top=[P.record(x) for x in preds.to_dict("records")]))
         st = data.standings_predictions(conn, rid, limit=P.clamp(top, 10))
         out.append(dict(run=P.record(r), next_races=races, standings=[P.record(x) for x in st.to_dict("records")],
-                        targets=int(len(targets))))
+                        targets=int(len(targets)), sources=_sources(r.get("competition"), run=rid, as_of=r.get("created_at"))))
     return dict(forecasts=out)
 
 
@@ -720,7 +754,9 @@ def get_diagnostic(conn, run_id, top=25):
                 predictions=P.page(d["preds"].drop(columns=["extra"], errors="ignore"), limit=top, note="by win probability"),
                 markets=P.page(mk, limit=top, note="largest |edge| first"),
                 result=P.page(d["result"], limit=top),
-                paper_pnl=P.plain(mk["paper_pnl"].sum()) if len(mk) and "paper_pnl" in mk else None)
+                paper_pnl=P.plain(mk["paper_pnl"].sum()) if len(mk) and "paper_pnl" in mk else None,
+                sources=_sources(_run_competition(conn, run_id), ["polymarket"] if "pm_cut" in mk.columns else None,
+                                 int(run_id), d["cutoff"]))
 
 
 REPLAY_KNOBS = ("fill", "half_spread", "size", "max_pos", "max_capital", "skew", "max_disagree", "min_volume_24h", "pull_min")
@@ -783,7 +819,8 @@ def track_record(conn, user, venue="polymarket", sport=None, viewer=None):
         rows = tr(conn, uid, venue=venue)
         pnl = sum(r["pnl"] for r in rows)
         return dict(user=user, venue=venue, sport=sport, weekends=len(rows), pnl=P.plain(pnl), up=sum(1 for r in rows if r["pnl"] > 0),
-                    rows=P.page([{k: v for k, v in r.items() if k != "date"} for r in rows], limit=P.MAX_LIMIT))
+                    rows=P.page([{k: v for k, v in r.items() if k != "date"} for r in rows], limit=P.MAX_LIMIT),
+                    sources=_sources(sport, [venue], model=True))
     rows, totals = [], []
     for v in TRACK_RECORD_VENUES:
         part = tr(conn, uid, venue=v)
@@ -795,7 +832,8 @@ def track_record(conn, user, venue="polymarket", sport=None, viewer=None):
     rows.sort(key=lambda r: (r["event_key"], TRACK_RECORD_VENUES.index(r["venue"])))
     pnl = sum(r["pnl"] for r in rows)
     return dict(user=user, venue=venue, sport=sport, weekends=len({r["event_key"] for r in rows}), pnl=P.plain(pnl),
-                up=sum(1 for r in rows if r["pnl"] > 0), totals=totals, rows=P.page(rows, limit=P.MAX_LIMIT))
+                up=sum(1 for r in rows if r["pnl"] > 0), totals=totals, rows=P.page(rows, limit=P.MAX_LIMIT),
+                sources=_sources(sport, [x["venue"] for x in totals], model=True))
 
 
 def list_positions(conn, user, venue=None, event_key=None, open_only=False, limit=None, offset=0, viewer=None):
@@ -856,7 +894,9 @@ def list_live_events(conn, limit=None, offset=0):
     except Exception as ex:  # noqa: BLE001
         folders, state = [], f"unreadable: {ex}"
     folders = [f for f in folders if f["sport"] not in HIDDEN.get()]
-    return dict(state=state, settled=P.page(df, limit=limit, offset=offset), run_folders=[P.record(f) for f in folders][:20])
+    seen = sorted({*(df["sport"].dropna() if len(df) else ()), *(f["sport"] for f in folders if f.get("sport"))})
+    return dict(state=state, settled=P.page(df, limit=limit, offset=offset), run_folders=[P.record(f) for f in folders][:20],
+                sources=_sources(seen, model=True))
 
 
 def data_changes(conn, sport=None, limit=None, offset=0):

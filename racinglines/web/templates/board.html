@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_macros.html" import pnl_cls, bar, pct, venue_chips, new_badge, paper_banner, page_head, status_badge %}
+{% extends "base.html" %}{% from "_macros.html" import pnl_cls, bar, pct, venue_chips, new_badge, paper_banner, page_head, status_badge, source_note %}
 {% block title %}Markets{% endblock %}
 {% block content %}
 {% call page_head("Markets", "Every sport we price: what's next, what's live on each venue, and how we did lately.") %}<a href="/markets/polymarket">All Polymarket markets →</a>{% if kalshi %} <a href="/markets/kalshi">All Kalshi markets →</a>{% endif %}{% for v in schema_exchanges %} <a href="/markets/{{ v.code }}">All {{ v.name }} markets →</a>{% endfor %}{% if tapes %} <a href="/markets/tapes">Recorded tapes →</a>{% endif %}{% endcall %}
@@ -35,6 +35,7 @@
 <td class="hide-sm">{{ "%+.1f"|format(r.gap * 100) }}</td><td{% if r.above %} class="good"{% endif %}>{{ "%+.1f"|format(r.gap_net * 100) }}</td><td class="hide-sm">{{ r.ts|fmt }}</td>
 </tr>{% endfor %}</tbody></table></div>
 {% if disagree.days %}<div class="legend">Last {{ disagree.window }} days, liquid rows above fees: {% for d in disagree.days %}{{ d.day }} {{ d.above_fees }}/{{ d.liquid }}{{ " · " if not loop.last }}{% endfor %}</div>{% endif %}
+{{ source_note(none, ["polymarket", "kalshi"], model=true) }}
 </details>{% endif %}
 <details class="card" data-remember="markets:calendar" open>
 <summary><h2>Calendar</h2><span class="sum">{{ calendar|length }} events across every sport and venue</span></summary>
@@ -54,6 +55,7 @@
 <div class="cal-weekdays"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
 <div class="cal-grid" data-cal-grid></div>
 </div>
+{{ source_note(cal_sports|map("first")|list, cal_exchanges) }}
 </details>
 <p class="legend mt">Browse <a href="/markets/polymarket">all Polymarket markets</a> ·{% if kalshi %} <a href="/markets/kalshi">all Kalshi markets</a> ·{% endif %}{% for v in schema_exchanges %} <a href="/markets/{{ v.code }}">all {{ v.name }} markets</a> ·{% endfor %}{% if tapes %} <a href="/markets/tapes">recorded tapes</a>{% endif %}. Bars: our fair probability; the orange tick is the exchange price.</p>
 {% if sport_status %}{% include "_sport_status.html" %}{% endif %}

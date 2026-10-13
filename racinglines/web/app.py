@@ -236,6 +236,8 @@ templates.env.globals["signup_on"] = lambda: signup_on()                    # RA
 templates.env.globals["is_demo"] = lambda u: _demo.is_demo(u)
 from racinglines.web import audience as _audience  # noqa: E402  [sport] audience: which sports a user sees
 templates.env.globals["sport_shown"] = lambda code, user=None: _audience.shown(user, code)   # signed out: as a user
+from racinglines import attribution as _attribution  # noqa: E402  the one-line source note (_macros.html source_note)
+templates.env.globals["sources_note"] = _attribution.note
 
 
 def needs_email(user):

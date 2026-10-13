@@ -1,4 +1,4 @@
-{% extends "base_public.html" %}
+{% extends "base_public.html" %}{% from "_macros.html" import source_note %}
 {% block title %}racinglines · quickstart{% endblock %}
 {% block main_class %}termpage{% endblock %}
 {% block content %}
@@ -46,5 +46,6 @@
 </div>
 </div>
 {% if demos and recorded %}<p class="hint">Recorded {{ recorded }}.</p>{% endif %}
+{% if parts|length > 1 %}{{ source_note("f1", ["polymarket"], model=true) }}{% endif %}{# the F1 parts on real data #}
 <p class="hint"><a href="/#account">Try the web app</a> · <a href="/racinglines101">What is racinglines?</a></p>
 {% endblock %}

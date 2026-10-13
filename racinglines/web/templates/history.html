@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_macros.html" import chart as svg_chart, empty, flash, kpi, pnl, page_head %}
+{% extends "base.html" %}{% from "_macros.html" import chart as svg_chart, empty, flash, kpi, pnl, page_head, source_note %}
 {% block title %}History{% endblock %}
 {% block content %}
 {# web/fantasy_routes.py history_page: the alpha's History tab (web/layout.py). Your F$, every trade by hand and by the
@@ -14,6 +14,7 @@
   {{ kpi("By hand", s.manual_pnl, s.open ~ " open, worth " ~ "F$%.2f"|format(s.held) ~ " now" ~ (" (" ~ s.unpriced ~ " unpriced)" if s.unpriced else ""), "money") }}
   {{ kpi("Strategy", s.strategy_pnl, (profile.name if profile else "none picked") ~ " · " ~ s.strategy_positions ~ " positions", "money") }}
 </div>
+{{ source_note(note_sport, note_venues, model=(profile is not none)) }}
 
 <div class="card"><h2>F$ by hand through the run</h2>
 {% if chart %}{{ svg_chart(chart) }}

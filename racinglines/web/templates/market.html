@@ -1,9 +1,10 @@
-{% extends "base.html" %}{% from "_macros.html" import table, csrf, page_head %}
+{% extends "base.html" %}{% from "_macros.html" import table, csrf, page_head, source_note %}
 {% block title %}{{ link.question }}{% endblock %}
 {% block content %}
 <p class="crumbs"><a href="/admin">Admin</a> › <a href="/markets/linked">Linked markets</a> › Market</p>
 {{ page_head(link.question) }}
 <p class="muted">Outcome <b>{{ link.outcome }}</b>{% if link.invert %} (pays if the prediction fails){% endif %} · {{ link.athlete }} · {{ link.prediction }} · {{ link.venue or "next round / season" }} · token <code>{{ link.token_id }}</code></p>
+{{ source_note(link.competition, [link.exchange], run_id if prob is not none else none) }}
 <div class="grid">
 <div class="card"><h2>Model</h2>
   {% if prob is not none %}<p>Fair price: <b>{{ prob|fmt("model_prob") }}</b> · from run <a href="/lab/runs/{{ run_id }}">#{{ run_id }}</a></p>

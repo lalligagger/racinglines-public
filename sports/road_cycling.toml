@@ -177,3 +177,9 @@ weak_field = 60
 [model.road.backtest]
 min_field = 60
 categories = ["ME", "WH"]             # hilly one-day races, any field strength
+
+[sources]
+# The compact source note on every page, MCP answer, book render and report that shows this sport's data
+# (racinglines/attribution.py).
+# Results/timing feed(s) as data, taken from [results] source above; racinglines/sources/pcs.py BASE.
+results = [{ name = "ProCyclingStats", url = "https://www.procyclingstats.com/" }]

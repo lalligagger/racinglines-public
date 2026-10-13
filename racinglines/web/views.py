@@ -181,7 +181,7 @@ def board_recent(request: Request, code: str, c=Depends(conn)):
     comp = c.execute(text("SELECT id FROM competitions WHERE code = :c"), dict(c=code)).scalar()
     if comp is None:
         raise HTTPException(404, "no such sport")
-    return render(request, "_board_recent.html", recent=B.recent_results(c, int(comp)), kalshi=V.KALSHI_VENUE)
+    return render(request, "_board_recent.html", recent=B.recent_results(c, int(comp)), kalshi=V.KALSHI_VENUE, code=code)
 
 
 # ---------------------------------------------------------------------------
@@ -873,7 +873,8 @@ def positions_page(request: Request, event: str = "", venue: str = "", sort: str
                   cur=next((w for w in weekends if w["event_key"] == event), None),
                   vaccts=vaccts, venue_order=_venue_order(venues), venue_names=_venue_names(), kcoming=kcoming,
                   sport_paper=bool(sp and demo_keys), show_backtests=bool(profile and not basic),
-                  hide_private=hide_private)
+                  hide_private=hide_private,
+                  note_sports=[sport] if sport else sorted({p["sport"] for p in pos if isinstance(p.get("sport"), str)}))   # source note
 
 
 @app.get("/positions/backtests", response_class=HTMLResponse, dependencies=[allow(*PRO)])

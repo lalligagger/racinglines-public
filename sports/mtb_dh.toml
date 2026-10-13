@@ -153,3 +153,9 @@ late_pace = 50.0                # ... and the crowd trades at 50x the normal rat
 [live.freeze]
 market = "a rider's markets are pulled after their last split"
 close = "when the final is over"
+
+[sources]
+# The compact source note on every page, MCP answer, book render and report that shows this sport's data
+# (racinglines/attribution.py).
+# Results/timing feed(s) as data, taken from [live] stream / [live.sources] urls below; racinglines/sources/chronorace/download.py.
+results = [{ name = "ChronoRace (UCI timing)", url = "https://prod.chronorace.be/" }]

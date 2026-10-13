@@ -67,3 +67,11 @@
    dropped for real users: RACINGLINES_DEMO_CONTEXT=0 hides every one; before launch, delete the calls
    (grep -rn demo_context racinglines/web/templates). Not used on the 101 page, which is the demo's own. #}
 {% macro demo_context(title="") %}{% if demo_context_on() %}<aside class="info-bubble" data-tag="demo-context" role="note"><span class="info-icon" aria-hidden="true">i</span><div>{% if title %}<b>{{ title }}</b> {% endif %}{{ caller() }}</div></aside>{% endif %}{% endmacro %}
+
+{# The compact source note (owner, 2026-10-13): one muted line naming where a page's numbers come from: the sport's results
+   feed(s) (sports/<code>.toml [sources]), the price venues shown, and the model run behind the fair values
+   (racinglines/attribution.py note). sport: a sport or competition code, or a list; venues: codes, names or Venue objects. #}
+{% macro source_note(sport=none, venues=none, run=none, as_of=none, model=false, sportsbook=false) -%}
+{%- if sources_note is defined %}{% set n = sources_note(sport, venues, run, as_of, model, sportsbook) -%}
+{%- if n.parts %}<p class="legend source-note">Sources: {% for p in n.parts %}{{ p.label }}: {% for i in p.entries %}{% if i.url %}<a href="{{ i.url }}" rel="nofollow noopener">{{ i.name }}</a>{% else %}{{ i.name }}{% endif %}{{ ", " if not loop.last }}{% endfor %}{{ " · " if not loop.last }}{% endfor %}</p>{% endif %}{% endif %}
+{%- endmacro %}

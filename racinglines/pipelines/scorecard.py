@@ -205,6 +205,12 @@ def weekend(conn, w, venue, model_key):
                 scores=score(rows) if len(rows) else score([]), note="; ".join(note))
 
 
+def _source_note(venue):
+    """The compact source note (racinglines/attribution.py): F1's results feed, the venue, the stored stage runs."""
+    from racinglines import attribution
+    return attribution.note("f1", [venue], model=True)["text"] + "."
+
+
 def markdown(res, model_key):
     sc = res["scores"]
     L = [f"# Pricing scorecard: {res['event_key']} {res['name']} on {res['venue']}", "",
@@ -220,6 +226,7 @@ def markdown(res, model_key):
         L += [format_table(sc), ""]
         pooled = score(res["rows"], by=("kind",))
         L += ["All stages pooled (a market counts once per stage):", "", format_table(pooled, first=("kind",)), ""]
+    L += ["", _source_note(res["venue"])]
     return "\n".join(L)
 
 
@@ -278,6 +285,7 @@ def season_markdown(out, model_key):
         L += ["## Per market kind, all stages and weekends pooled", "", format_table(out["by_kind"], first=("kind",)), ""]
     if len(out["by_stage"]):
         L += ["## Per stage and market kind, all weekends pooled", "", format_table(out["by_stage"]), ""]
+    L += ["", _source_note(out["venue"])]
     return "\n".join(L)
 
 
