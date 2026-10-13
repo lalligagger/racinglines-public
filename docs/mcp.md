@@ -324,6 +324,12 @@ Every tabular result goes through one envelope (`racinglines/mcp/page.py`):
   previewed with their size in lists and returned whole by the `get_*` tool for one row.
 - **`sql`:** an outer `LIMIT/OFFSET` is applied for you, plus the row and byte caps; one statement, reads only.
 - Results are one line of JSON (no indentation), which halves the bytes an indented dump would cost.
+- **Tables for the terminal:** a result that holds a list of records also comes with a drawn table of it
+  (`racinglines/mcp/view.py`, at most 30 rows and 12 columns per table), so Claude Code shows a table in the terminal.
+  The table is the first text block and the JSON is always the last one, which is the block the CLI's `--remote` path
+  parses. The tools return no `structuredContent`, so a client shows the text blocks. Colour is off by default because
+  escape codes are just noise to a client that shows text as is. `RACINGLINES_MCP_COLOR=1` on the server turns it on:
+  bold headers, signed EV, edge and P&L columns green above zero and red below.
 
 ## What it can't do
 

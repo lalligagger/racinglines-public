@@ -245,7 +245,7 @@ def call(tool, arguments, server=None, tok=None, http_client=None, open_browser=
         raise
     except Exception as ex:  # noqa: BLE001  (network, TLS, 401: one line the user can act on)
         raise RemoteError(f"{url(server)}: {_reason(ex, statuses)}") from ex
-    text = r.content[0].text if r.content else ""
+    text = r.content[-1].text if r.content else ""
     if r.is_error:
         raise RemoteError(f"{tool}: {text}")
     return json.loads(text)
