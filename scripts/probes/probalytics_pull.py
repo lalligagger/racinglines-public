@@ -20,6 +20,10 @@ written with; a wider set of markets refetches it), so a later, wider run fills 
     python scripts/probes/probalytics_pull.py fills  --from 2025-06-01
     python scripts/probes/probalytics_pull.py books  --from 2026-09-01
     python scripts/probes/probalytics_pull.py stages --year 2026
+    # cycling (owner 2026-10-14, ahead of NASCAR): no market_links yet, so by series / race names
+    python scripts/probes/probalytics_pull.py fills  --set cycling --from 2025-01-01
+    python scripts/probes/probalytics_pull.py books  --set cycling --venue kalshi     --from 2026-05-09
+    python scripts/probes/probalytics_pull.py books  --set cycling --venue polymarket --from 2025-11-20
     # the rest of y, later (only missing days are fetched)
     python scripts/probes/probalytics_pull.py books  --venue polymarket --from 2025-11-20
     python scripts/probes/probalytics_pull.py books  --venue kalshi     --from 2026-05-09
@@ -195,7 +199,41 @@ def market_map_extra(venue):
     return m, key
 
 
+# Other sports with no market_links yet, by discovery for the archive (owner 2026-10-14: cycling ahead of NASCAR):
+# Kalshi by series prefix, Polymarket by race and rider names, markets created since `since`
+_CYC_RACES = ("tour de france|giro d.italia|vuelta a espa|paris-roubaix|milan-san ?remo|tour of flanders|"
+              "ronde van vlaanderen|li.ge-bastogne|il lombardia|strade bianche|tour de suisse|dauphin|"
+              "world road (race )?championship|uci road|tour down under|paris-nice|tirreno|amstel gold|"
+              "fl.che wallonne|gent-wevelgem|klasikoa|tour of guangxi|grand prix cycliste|tour de pologne|cycling")
+DISCOVERY = {
+    "CYC": dict(since="2025-01-01", kalshi="(platform_id LIKE 'KXCYCLING%' OR platform_id LIKE 'KXTOURDEFRANCE%')",
+                polymarket=(f"match(lower(title), '{_CYC_RACES}') "
+                            "AND NOT match(lower(title), 'anyone say|trump say|ncaa|formula|nascar|motogp|indycar')")),
+}
+
+
+def market_map_discovery(venue, tag):
+    """{uuid: platform_id} of a DISCOVERY set, cached with titles in links/probalytics_<venue>_<tag>.json."""
+    d = DISCOVERY[tag]
+    cache = OUT / "links" / f"probalytics_{venue}_{tag.lower()}.json"
+    key = tag.lower() + hashlib.sha1((d[venue] + d["since"]).encode()).hexdigest()[:9]
+    if cache.exists():
+        c = json.loads(cache.read_text())
+        if c["key"] == key:
+            return c["map"], key
+    body = ch(f"SELECT toString(id), platform_id, title FROM markets WHERE platform = '{VENUES[venue]}' "
+              f"AND market_type != 'PARLAY' AND created_at >= '{d['since']}' AND {d[venue]}")
+    rows = list({r[0]: r for r in json.loads(body)["data"]}.values())
+    m = {u: p for u, p, _ in rows}
+    (OUT / "links").mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps(dict(key=key, found=len(m), map=m, titles={u: t for u, _, t in rows})))
+    log(f"{venue}: {len(m)} {tag} markets on Probalytics (key {key})")
+    return m, key
+
+
 def markets_for(venue):
+    if SET in DISCOVERY:
+        return market_map_discovery(venue, SET)
     return market_map_extra(venue) if SET == "F1X" else market_map(venue)
 
 
@@ -377,12 +415,13 @@ def main():
     ap.add_argument("--from", dest="start", type=date.fromisoformat, default=date(2025, 6, 1))
     ap.add_argument("--to", dest="end", type=date.fromisoformat, default=date.today())
     ap.add_argument("--year", type=int, default=2026)
-    ap.add_argument("--set", choices=["linked", "extra"], default="linked",
-                    help="linked: our F1 market_links (exact keys); extra: F1 markets on Probalytics we have not linked")
+    ap.add_argument("--set", choices=["linked", "extra", "cycling"], default="linked",
+                    help="linked: our F1 market_links (exact keys); extra: F1 markets on Probalytics we have not linked; "
+                         "cycling: road cycling by discovery (DISCOVERY['CYC'], files tagged CYC)")
     a = ap.parse_args()
     venues = list(VENUES) if a.venue == "both" else [a.venue]
     global SET
-    SET = "F1X" if a.set == "extra" else "F1"
+    SET = {"extra": "F1X", "cycling": "CYC"}.get(a.set, "F1")
     threading.Thread(target=heartbeat, daemon=True).start()
     log(f"probalytics_pull {a.what} {venues} -> {OUT}")
     {"books": lambda: run_books(venues, a.start, a.end), "fills": lambda: run_fills(venues, a.start, a.end),
