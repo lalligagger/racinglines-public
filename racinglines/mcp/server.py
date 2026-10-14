@@ -19,6 +19,7 @@ from pathlib import Path
 from sqlalchemy import text
 
 from racinglines.mcp import tools as T
+from racinglines.mcp import view as V
 
 NAME = "racinglines"
 DOCS = Path(__file__).resolve().parents[2] / "docs"
@@ -91,8 +92,15 @@ def _sql_engine():
 
 
 def _json(obj):
-    """One line of JSON: the text a chat client reads (an indented dump would double the bytes for nothing)."""
-    return json.dumps(obj, default=str)
+    """One line of JSON (an indented dump would double the bytes for nothing), led by a drawn table of every list of
+    records in it when there is one (racinglines/mcp/view.py): the table for a person reading the terminal, the JSON,
+    always the last block, for the CLI and any client that parses it."""
+    data = json.dumps(obj, default=str)
+    try:
+        table = V.render(obj)
+    except Exception:  # noqa: BLE001  (a view never costs the caller the data)
+        table = None
+    return [table, data] if table else data
 
 
 @contextmanager
@@ -223,19 +231,19 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
     srv = MCPServer(NAME, instructions=INSTRUCTIONS, log_level="WARNING", **kw)
 
     # --- orientation --------------------------------------------------------------------------------
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def overview() -> str:
         """What the database holds: sports, seasons, the live forecast per competition, model runs by kind, market
         links per exchange, venues, users and the next races. Call this first."""
         return _read(T.overview, viewer=_viewer())
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def describe_schema(table: str | None = None) -> str:
         """The database tables with one-line meanings, or one table's columns and types (for the sql tool)."""
         return _read(T.describe_schema, table=table)
 
     # --- data ---------------------------------------------------------------------------------------
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def list_events(sport: str | None = None, competition: str | None = None, season: int | None = None,
                     status: str | None = None, limit: int = 50, offset: int = 0) -> str:
         """Events (race weekends / rounds), newest first. sport: a sport code (f1, nascar, motogp, mtb_dh, ...)
@@ -243,23 +251,23 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         status: completed or scheduled. Each row has its id (for get_event) and source_key (e.g. 2026-15)."""
         return _read(T.list_events, sport=sport, competition=competition, season=season, status=status, limit=limit, offset=offset)
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def get_event(event_id: int | None = None, source_key: str | None = None, include: str = "results") -> str:
         """One event by id or source_key ('2026-15', '20260821_mtb'): its races and, per `include` (comma-separated:
         results, predictions, markets), the final classification, every stored prediction, the venues matrix."""
         return _read(T.get_event, event_id=event_id, source_key=source_key, include=include, viewer=_viewer())
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def search_athletes(q: str | None = None, limit: int = 50) -> str:
         """Drivers and riders by (part of) name, with result counts, last race and wins."""
         return _read(T.search_athletes, q=q, limit=limit)
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def get_athlete(athlete_id: int, include: str = "results") -> str:
         """One athlete with identifiers and, per `include` (results, predictions), their results and prediction history."""
         return _read(T.get_athlete, athlete_id=athlete_id, include=include)
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def list_markets(race_id: int | None = None, event_id: int | None = None, competition: str | None = None,
                      sport: str | None = None, kinds: str | None = None, limit: int = 50, offset: int = 0) -> str:
         """The market matrix: one row per outcome (kind x subject) with our fair value, each venue's quote (Polymarket,
@@ -272,7 +280,7 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         return _read(T.list_markets, race_id=race_id, event_id=event_id, competition=competition, sport=sport, kinds=kinds,
                      limit=limit, offset=offset, viewer=_viewer())
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def get_market_history(tokens: str | None = None, race_id: int | None = None, kind: str | None = None,
                            athlete_id: int | None = None, subject: str | None = None, exchange: str | None = None,
                            series: str = "prices", start: str | None = None, end: str | None = None,
@@ -285,33 +293,33 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         return _read(T.get_market_history, tokens=tokens, race_id=race_id, kind=kind, athlete_id=athlete_id, subject=subject,
                      exchange=exchange, series=series, start=start, end=end, resample=resample, limit=limit, offset=offset)
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def list_model_runs(kind: str | None = None, competition: str | None = None, sport: str | None = None,
                         season: int | None = None, limit: int = 50, offset: int = 0) -> str:
         """Stored model runs, newest first. kind: forecast (live prices), scenario, diagnostic (as-of a cutoff), backtest,
         sweep (a season traded on the exchange), season_strategy, season_checkpoints, walk_forward, candidate."""
         return _read(T.list_model_runs, kind=kind, competition=competition, sport=sport, season=season, limit=limit, offset=offset)
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def get_model_run(run_id: int, path: str | None = None) -> str:
         """One run: params, metrics and its prediction targets. Large metrics come back as a key map with sizes; path
         (e.g. 'metrics.weekends', 'metrics.weekends.3', 'params.settings') returns that part, paged when it is a list."""
         return _read(T.get_model_run, run_id=run_id, path=path)
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def get_predictions(run_id: int, target: str | None = None, top: int = 20, standings: bool = False) -> str:
         """A run's per-athlete probabilities (win, podium, top 10, make the Final, expected points) for one target (a race;
         omit to list the targets), or with standings=true its projected championship standings."""
         return _read(T.get_predictions, run_id=run_id, target=target, top=top, standings=standings)
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def get_forecast(competition: str | None = None, sport: str | None = None, category: str | None = None, top: int = 10) -> str:
         """The live forecast (the run the web app shows as our fair prices): the next races' top probabilities and the
         championship standings, per competition and category."""
         return _read(T.get_forecast, competition=competition, sport=sport, category=category, top=top)
 
     # --- strategy research ---------------------------------------------------------------------------
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def edge_finder(year: int = 2026, strategy: str | None = None, venue: str | None = None, limit: int = 50,
                     offset: int = 0) -> str:
         """The Lab's Edge Finder from saved sweeps: every configuration (a full set of sweep settings) with a full-season
@@ -320,24 +328,24 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         venue: polymarket or kalshi, the exchange the sweep traded (omit for all; each row names its venue)."""
         return _read(T.edge_finder, year=year, strategy=strategy, venue=venue, limit=limit, offset=offset)
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def list_candidates(limit: int = 50, offset: int = 0) -> str:
         """Named configuration x strategy candidates saved in the Lab (searches add theirs; the strategy profiles A and C)."""
         return _read(T.list_candidates, limit=limit, offset=offset)
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def list_diagnostics(limit: int = 50, offset: int = 0) -> str:
         """Events with as-of diagnostic runs (our prices at a cutoff before the race): the run ids and cutoffs per event.
         get_diagnostic(run_id) reads one; replay_maker(run_id, ...) re-quotes it."""
         return _read(T.list_diagnostics, limit=limit, offset=offset)
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def get_diagnostic(run_id: int, top: int = 25) -> str:
         """One diagnostic run: our prices vs Polymarket at the cutoff (and 24 h before), the edge per market, the paper
         strategy's P&L, Brier and log loss per kind for model and market, and the result."""
         return _read(T.get_diagnostic, run_id=run_id, top=top)
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def replay_maker(run_id: int, fill: str = "through", half_spread: float = 0.02, size: float = 50, max_pos: float = 250,
                      max_capital: float = 1000, skew: float = 1.0, max_disagree: float = 0.15, min_volume_24h: float = 100,
                      pull_min: float = 15, exchange: str = "polymarket", with_sweep: bool = False, top: int = 20) -> str:
@@ -351,7 +359,7 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
                      pull_min=pull_min, exchange=exchange, with_sweep=with_sweep, top=top)
 
     # --- paper trading, live events, change log ------------------------------------------------------
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def track_record(user: str, venue: str = "polymarket", sport: str | None = None) -> str:
         """A user's paper-trading record, one row per weekend: strategy, trades taken or fills, positions, P&L (settled or
         marked), backtest replay or live. venue: polymarket, kalshi (the maker's replay on Kalshi's tape), private, or all
@@ -359,14 +367,14 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         for all; NASCAR and MotoGP paper rows show where RACINGLINES_SPORT_PAPER is on). Users: see overview()."""
         return _read(T.track_record, user=user, venue=venue, sport=sport, viewer=_viewer())
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def list_positions(user: str, venue: str | None = None, event_key: str | None = None, open_only: bool = False,
                        limit: int = 50, offset: int = 0) -> str:
         """A user's paper positions (YES/NO shares, cash, mark, outcome, P&L) with totals per venue."""
         return _read(T.list_positions, user=user, venue=venue, event_key=event_key, open_only=open_only, limit=limit,
                      offset=offset, viewer=_viewer())
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def list_signals(user: str | None = None, event_key: str | None = None, status: str | None = None,
                      action: str | None = None, limit: int = 50, offset: int = 0) -> str:
         """Paper signals (what a strategy profile would do: buy/sell recommendations, quote/pull, paper fills), newest first.
@@ -375,42 +383,42 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
                      offset=offset, viewer=_viewer())
 
     # --- fantasy trading (F$ only; the Trade and History tabs) -------------------------------------------
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def fantasy_balance(user: str | None = None) -> str:
         """Your fantasy account: total F$ (the 1,000 plus both P&Ls), cash you can trade with now (shared with the
         strategy you follow), open hand trades at their mark, hand-trade P&L and strategy P&L. Hosted accounts see their
         own only; user is for the owner."""
         return _fantasy_read(T.fantasy_balance, user=user, viewer=_viewer())
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def fantasy_positions(user: str | None = None, open_only: bool = True, limit: int = 50, offset: int = 0) -> str:
         """Your hand-trade positions: market, side, shares, cost, fees, worth now, P&L; open_only=False adds the settled
         ones (outcome, payout)."""
         return _fantasy_read(T.fantasy_positions, user=user, open_only=open_only, limit=limit, offset=offset,
                              viewer=_viewer())
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def fantasy_orders(user: str | None = None, limit: int = 50, offset: int = 0) -> str:
         """Your orders by hand, newest first, with fills, average price, fee, and the reason for any refused order."""
         return _read(T.fantasy_orders, user=user, limit=limit, offset=offset, viewer=_viewer())
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def fantasy_leaderboard(limit: int = 50, offset: int = 0) -> str:
         """The fantasy leaderboard: rank, score (ROI x sqrt(trades)), ROI, trades and P&L. Never balances."""
         return _fantasy_read(T.fantasy_leaderboard, limit=limit, offset=offset)
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def fantasy_markets(q: str | None = None, limit: int = 50, offset: int = 0) -> str:
         """Markets you can trade with F$ now (F1 on Kalshi and Polymarket) with the best recorded YES bid and ask and
         the book's time. q searches the question, driver or event. Use market_link_id with fantasy_book and fantasy_order."""
         return _read(T.fantasy_markets, q=q, limit=limit, offset=offset, books=_books())
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def fantasy_book(market_link_id: int) -> str:
         """One market's latest recorded book, YES and NO sides, up to the 10 levels an order may walk."""
         return _read(T.fantasy_book, market_link_id=market_link_id, books=_books())
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def fantasy_order(market_link_id: int, side: str, action: str, shares: int, limit_price: float,
                       client_key: str | None = None, user: str | None = None) -> str:
         """Place one immediate-or-cancel F$ order on your own account, exactly as the Trade page does: side yes|no,
@@ -433,33 +441,33 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         """One base64 chunk of a pull_manifest file from byte `offset`; `done` says whether it was the last."""
         return _read(T.pull_chunk, pull_id=pull_id, name=name, offset=offset)
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def list_live_events(limit: int = 50, offset: int = 0) -> str:
         """Live private-book events: the settled ones (maker P&L vs the crowd and the demo taker, fills, volume) and the run
         folders on this machine, with whether one is live now."""
         return _read(T.list_live_events, limit=limit, offset=offset)
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def data_changes(sport: str | None = None, limit: int = 50, offset: int = 0) -> str:
         """The data change log: ingests that changed the race history, athlete merges and notes, newest first."""
         return _read(T.data_changes, sport=sport, limit=limit, offset=offset)
 
     # --- sportsbook slips ----------------------------------------------------------------------------
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def list_kinds(sport: str | None = None) -> str:
         """Every market kind (race winner, podium, top N, head-to-head, pole, sprint, props, ...) with the sports that
         model it: what a book's lines may name for map_book / price_book. sport: f1, nascar, motogp, ... to list only
         the kinds modeled there."""
         return _plain(T.list_kinds, sport=sport)
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def map_book(book: str) -> str:
         """Match a generic sportsbook's book (TOML text: [book] venue, event, sport, odds format; [[lines]] with kind,
         driver / opponent / team, odds; combos as legs; docs/sportsbook/slips.md) to exact races and athletes in the
         database. Each line and leg comes back mapped, or unmapped with the reason. Nothing is stored."""
         return _read(T.map_book, book=book)
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def price_book(book: str, run_ids: list[int] | None = None) -> str:
         """map_book, then price every leg and line: the book's implied probability, our model's (a stored model run:
         the app's own choice, or run_ids to pin one per competition), the linked prediction market's (Polymarket,
@@ -467,14 +475,14 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         simulations allow, and flagged otherwise. The two probabilities are never blended (owner decision)."""
         return _read(T.price_book, book=book, run_ids=run_ids)
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def settle_book(book: str) -> str:
         """map_book, then settle each leg and line from the stored results: won, lost, void, manual or pending, with
         the payout and profit per line at the book's odds."""
         return _read(T.settle_book, book=book)
 
     # --- sql ----------------------------------------------------------------------------------------
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def sql(query: str, limit: int = 50, offset: int = 0) -> str:
         """Run one read-only SQL query (SELECT / WITH ... SELECT / EXPLAIN) against the database, in a READ ONLY transaction
         with a 10 s timeout. The result is paged (limit at most 500; an outer LIMIT/OFFSET is applied for you). The users and
@@ -483,13 +491,13 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         return _read(T.sql, engine=_sql_engine(), query=query, limit=limit, offset=offset)
 
     # --- jobs ---------------------------------------------------------------------------------------
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def list_job_types() -> str:
         """The simulations run_job can queue (the Lab's job catalog) with their knobs, ranges and defaults, and every sweep
         setting (model, timing, taker, maker, markets) an Edge Finder sweep accepts."""
         return _plain(T.list_job_types)
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def run_job(job_type: str, params: dict | None = None) -> str:
         """Scenario: queue a simulation as a Lab job: f1_backtest, f1_scenario (a forward forecast saved as a scenario, never
         the live prices), f1_diagnostic (event '2026-15', cutoff '2026-09-25T13:30'), f1_sweep (year + settings: any sweep
@@ -500,17 +508,17 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         job id; get_job follows it and names the model run it saved (result_run_id)."""
         return _write(T.run_job, job_type=job_type, params=params, user_id=_owner()[0])
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def get_job(job_id: int, log_lines: int = 20) -> str:
         """A job's status (queued, running, done, failed), progress, the last log lines and result_run_id."""
         return _read(T.get_job, job_id=job_id, log_lines=log_lines, viewer=_owner()[1])
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def list_jobs(status: str | None = None, limit: int = 50, offset: int = 0) -> str:
         """Jobs, newest first (the Lab's and this server's)."""
         return _read(T.list_jobs, status=status, limit=limit, offset=offset, viewer=_owner()[1])
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def cancel_job(job_id: int) -> str:
         """Cancel a job that has not started yet."""
         return _write(T.cancel_job, job_id=job_id, viewer=_owner()[1])
