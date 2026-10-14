@@ -165,13 +165,15 @@ def _exchange(venue):
     return EXCHANGES[venue]
 
 
-def _venue(conn, links, start, end, venue="polymarket", group_target=None, event_key=None, tape=None):
+def _venue(conn, links, start, end, venue="polymarket", group_target=None, event_key=None, tape=None, levels=False):
     """The weekend's backtest venue: our recorded tape, or Probalytics' (F1's tag) when the tape_source setting
     (`tape`) or RACINGLINES_TAPE_SOURCE is probalytics (markets/probalytics.py; off by default)."""
     from racinglines.markets import probalytics as PB
     if PB.enabled(tape) and venue in PB.EXCHANGES:
         return PB.EXCHANGES[venue](conn, links, start, end, group_target or GROUP_TARGET, COHERENCE_TOL,
-                                   event_key=event_key, tag=PB.tag_of("f1"), book_stale=PB.book_stale_of("f1"))
+                                   event_key=event_key, tag=PB.tag_of("f1"), book_stale=PB.book_stale_of("f1"),
+                                   levels=levels, day_books=False)   # stage files for every weekend: one rule,
+                                                                     # and no day books in memory
     return _exchange(venue)(conn, links, start, end, group_target or GROUP_TARGET, COHERENCE_TOL, STALE)
 
 
@@ -202,8 +204,33 @@ def fetch_market_data(session, conn, sched, fidelity=5, force=False, echo=print)
         echo(f"progress {w['event_key']} {w['name']}: {n} price points, {k} trades")
 
 
+def book_fill(st):
+    """True when taker_fill = book: every order walks the full book, which only Probalytics' tape has (a ValueError
+    on any other tape)."""
+    from racinglines.markets import probalytics as PB
+    if st.get("taker_fill") != "book":
+        return False
+    if not PB.enabled(st.get("tape_source")):
+        raise ValueError("taker_fill = book walks the full book: it needs tape_source = probalytics")
+    return True
+
+
+def stage_levels(stage, venue, token, t):
+    """taker_fill = book: the stage's whole book (`bids` / `asks`, best first) for the taker to walk."""
+    b = venue.book_at(token, t) if hasattr(venue, "book_at") else None
+    if b is not None:
+        stage.update(bids=b["bids"], asks=b["asks"])
+    return stage
+
+
+def stage_quote(venue, token, t, max_spread=None):
+    """(the venue's (bid, ask) at t or None, whether it is wider than max_spread)."""
+    q = venue.quote(token, t)
+    return q, q is not None and max_spread is not None and q[1] - q[0] > max_spread + 1e-9
+
+
 def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None, venue="polymarket", rules=None,
-                    kinds=None, thin_depth=False, tol_by_kind=None, tape=None):
+                    kinds=None, thin_depth=False, tol_by_kind=None, tape=None, taker_fill=None, max_spread=None):
     """The weekend's tradeable markets for racinglines/markets/strategies/taker_weekend.py: per market, each stage's fair,
     exchange price and tradeable flag (what was knowable then) and the outcome (settlement). The exchange is a
     backtest venue (markets/venue_replay.py: Polymarket's recorded prices and trade tape, or Kalshi's with
@@ -228,7 +255,10 @@ def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None, 
     status = SR.race_status("f1", w["event_key"], SR.db_status(conn, rid)) if SR.enabled(rules) else None
     start, end = stage_runs[0][1] - timedelta(hours=1), max([w["race_start"], *(price_times or {}).values()])
     group_target = {**GROUP_TARGET, **{k: v for k, v in OPT_GROUP_TARGET.items() if k in (kinds or ())}}
-    venue = _venue(conn, links, start, end, venue, group_target, event_key=w["event_key"], tape=tape)
+    levels = taker_fill == "book"                           # every level of every book, for the walk
+    venue = _venue(conn, links, start, end, venue, group_target, event_key=w["event_key"], tape=tape, levels=levels)
+    if taker_fill in ("touch", "book") and hasattr(venue, "touch_quotes"):
+        venue.touch_quotes = True                           # Probalytics' Polymarket book: buy at the ask
     venue.tol_by_kind = dict(tol_by_kind or {})
     if thin_depth:
         venue.load_books(conn, start, end)
@@ -251,9 +281,13 @@ def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None, 
             open_ = STG.is_open(kind, t, w.get("closes", {"race_pole": w["qual_start"]}))
             ok = liquid and f is not None and open_ and coherent.get((kind, lab), True)
             stage = dict(label=lab, t=t, fair=f, price=price, tradeable=ok, open=open_)
-            q = venue.quote(link["token_id"], t)
+            q, wide = stage_quote(venue, link["token_id"], t, max_spread)
             if q is not None:                    # the taker buys at the ask and sells at the bid (Kalshi)
                 stage.update(bid=q[0], ask=q[1])
+            if wide:                             # max_spread: no market to fill at
+                stage.update(tradeable=False, wide=True)
+            if levels:
+                stage_levels(stage, venue, link["token_id"], t)
             if thin_depth and not liquid and price is not None and 0 < price < 1 and f is not None and open_ \
                     and coherent.get((kind, lab), True):
                 d = venue.touch_depth(link["token_id"], t)          # only the volume floor failed: is there size?
@@ -284,10 +318,13 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settin
     thin = st["thin_edge_mult"] is not None
     tol = SS.parse_map(st["coherence_tol_by_kind"])
     tape = st.get("tape_source")
+    fill, spread = st.get("taker_fill"), st.get("max_spread")
+    book_fill(st)                                           # taker_fill = book: Probalytics' tape or a ValueError
     markets = _memo(("markets", w["event_key"], rids, st["min_volume_24h"], venue, kinds, thin,
-                     tuple(sorted(tol.items())), tape),
+                     tuple(sorted(tol.items())), tape, fill, spread),
                     lambda: weekend_markets(conn, w, stage_runs, min_volume_24h=st["min_volume_24h"], venue=venue,
-                                            kinds=kinds, thin_depth=thin, tol_by_kind=tol, tape=tape))
+                                            kinds=kinds, thin_depth=thin, tol_by_kind=tol, tape=tape,
+                                            taker_fill=fill, max_spread=spread))
     if markets is None:
         return None
     markets = [m for m in markets if m["kind"] in st["market_kinds"]]
@@ -538,7 +575,7 @@ def taker_params(st):
                           stages=None if st["taker_stages"] == st.BY["taker_stages"].default else st["taker_stages"],
                           max_deployed=st["max_deployed"], thin_edge_mult=st["thin_edge_mult"],
                           kelly=st["kelly"], bankroll=st["bankroll"] if st["kelly"] is not None else None,
-                          root_unit=st.get("root_unit"),
+                          root_unit=st.get("root_unit"), fill="book" if st.get("taker_fill") == "book" else "price",
                           taker_fee=taker_fee(venue))
     if st["kelly"] is not None and st["bankroll"] is None:
         raise ValueError("kelly sizing needs a bankroll (the `bankroll` setting)")

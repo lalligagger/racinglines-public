@@ -330,3 +330,31 @@ def test_fill_error_walks_the_same_order_on_both_tapes(base, monkeypatch):
     assert r.true_px == pytest.approx((0.44 * 7 + 0.50 * 9) / 16) and r.true_n == 16
     s = FE.summarize(rows)["polymarket"]
     assert s["orders"] == len(rows) and s["both_filled"] >= 1
+
+
+def test_polymarket_touch_fill_and_the_spread_limit(base):
+    from racinglines.pipelines import sweep_settings as SS
+    from racinglines.pipelines import weekend_sweep as W
+    v = _pm(base)
+    assert v.quote("tokA", T) is None                           # taker_fill unset: trades at the mid, as before
+    v.touch_quotes = True                                       # taker_fill = touch
+    assert v.quote("tokA", T) == (pytest.approx(0.40), pytest.approx(0.44))
+    assert W.stage_quote(v, "tokA", T, None)[1] is False
+    assert W.stage_quote(v, "tokA", T, 0.05)[1] is False        # a 4c spread is inside 5c
+    assert W.stage_quote(v, "tokA", T, 0.03)[1] is True         # and wider than 3c: not tradeable
+    a, b = SS.Settings.from_dict({}), SS.Settings.from_dict({"taker_fill": "price"})
+    assert a["taker_fill"] is None and a.key == b.key          # unset = price: every existing job key unchanged
+    assert SS.Settings.from_dict({"taker_fill": "touch", "max_spread": 0.1}).key != a.key
+
+
+def test_sweeps_read_stage_files_even_where_day_books_exist(base, monkeypatch):
+    from racinglines.pipelines import weekend_sweep as W
+    (base / "books").mkdir()
+    _books(base / "books" / "2026-06-14_F1_POLYMARKET.parquet", [
+        dict(market_platform_id="0xc1", outcome_pid="tokA", timestamp="2026-06-14 11:30", bid_px=[0.10], bid_sz=[1.0],
+             ask_px=[0.20], ask_sz=[1.0])])
+    links = pd.DataFrame(dict(token_id=["tokA"], condition_id=["0xc1"], prediction=["race_win"]))
+    assert _pm(base).price("tokA", T) == pytest.approx(0.15)              # by default the day file wins
+    monkeypatch.setenv("PROBALYTICS_DATA", str(base))
+    v = W._venue(None, links, T.replace(hour=0), T, "polymarket", event_key="2026-07", tape="probalytics")
+    assert v.price("tokA", T) == pytest.approx(0.42)                      # a sweep: the stage file, as every weekend
