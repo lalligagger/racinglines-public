@@ -15,6 +15,24 @@ files in `data/archive/<sport>/` (both git-ignored; `data/raw` is the record, so
 without a copy). Since 2026-10-01 nothing under `data/` is in git, and production data lives on the VM: back up
 there with `vm.sh backup <purpose>`.
 
+## 2026-10-14 · Staging: Kalshi road cycling markets synced
+
+Database `racinglines_staging_demo` (the database staging serves since `vm.sh staging db demo`), 07:05Z, by the owner
+from the Mac. Production was not touched.
+
+**Why.** Owner, 2026-10-14: everything ready goes to staging tonight. Road cycling had no events or links on staging
+or production, so the Markets page hid it (`racinglines/web/board.py`: a sport with no forecast and no linked market
+is skipped), even for admins.
+
+**What.** `racinglines markets --exchange kalshi --sport road_cycling sync --closed`, run with staging's env files:
+53 events, 9,421 links, all new, 0 modelled, 9,421 unmatched (Kalshi cycling markets have no identity resolver yet,
+so no rider is matched and no fair price sits beside them). The sync wrote no `data_changes` row. `racinglines_staging`
+(staging's main database) was not changed: switching staging back with `vm.sh staging db main` hides these links again
+until the same sync runs there.
+
+**Backup** (on the VM, under `/opt/racinglines-staging/data/backups/db/`):
+`racinglines_staging_demo-before-road-cycling-kalshi-20261014T070459Z.sql.gz` (151 MB).
+
 ## 2026-10-13 · Production: cback's race-17 positions removed after the reset
 
 Database `racinglines` (production), 16:22Z, by the owner. Staging was not touched.
