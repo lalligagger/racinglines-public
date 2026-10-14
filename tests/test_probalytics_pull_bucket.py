@@ -85,3 +85,38 @@ def test_keep_local_and_missing_file_without_upload(pull):
     q = written(mod, out, "books/2026-07-16_CYC_KALSHI.parquet")
     q.unlink()                           # written, never uploaded, then lost: fetch it again
     assert not mod.current(q, "k1")
+
+
+def test_seed_from_bucket_marks_another_machines_files_present(pull, monkeypatch):
+    mod, out, _ = pull
+    pre = "gs://b/vendor/probalytics"
+    mac = [{"at": "2026-10-14T10:00:00+00:00", "file": f"books/2026-10-1{d}_F1_KALSHI.parquet", "rows": 5,
+            "bytes": 10, "links_key": "k1"} for d in (2, 3)]
+    mac.append({"at": "2026-10-14T10:00:00+00:00", "file": "books/2026-10-11_F1_KALSHI.parquet", "links_key": "k1"})
+    objects = [f"{pre}/{r['file']}" for r in mac[:2]] + [f"{pre}/MANIFEST.jsonl"]   # 10-11 never made it up
+    mine = written(mod, out, "fills/F1_KALSHI_2026-10.parquet")
+
+    def fake(cmd, **kw):
+        if cmd[2] == "cat":
+            return subprocess.CompletedProcess(cmd, 0, "".join(json.dumps(r) + "\n" for r in mac), "")
+        if cmd[2] == "ls":
+            return subprocess.CompletedProcess(cmd, 0, "\n".join(objects) + "\n", "")
+        raise AssertionError(cmd)
+
+    monkeypatch.setattr(mod.subprocess, "run", fake)
+    assert mod.seed_from_bucket() == 2
+    assert mod.current(out / "books/2026-10-12_F1_KALSHI.parquet", "k1")
+    assert not mod.current(out / "books/2026-10-12_F1_KALSHI.parquet", "k2")    # a wider link set still refetches
+    assert not mod.current(out / "books/2026-10-11_F1_KALSHI.parquet", "k1")    # listed but not in the bucket
+    assert mod.current(mine, "k1")                                                # our own rows survive the merge
+    assert mod.seed_from_bucket() == 0                                            # idempotent
+
+
+def test_seed_from_an_empty_bucket(pull, monkeypatch):
+    mod, out, _ = pull
+
+    def missing(cmd, **kw):
+        raise subprocess.CalledProcessError(1, cmd)
+
+    monkeypatch.setattr(mod.subprocess, "run", missing)
+    assert mod.seed_from_bucket() == 0
