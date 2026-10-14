@@ -1,5 +1,13 @@
 # VM reliability plan: monitoring, backups, deploys and incident runbooks
 
+!!! note "Historical plan (2026-10-14)"
+    Drafted on 29 Sep 2026 for the fantasy soft launch, and kept as the record. Of what it planned, the deploy
+    pause-and-resume, the recorder and schedule timers, the backup-first rule for every writing script and staging
+    on the same VM are built and described on [VM deploy](vm-deploy.md); the nightly dump push to the bucket is still
+    an open item ([todo](todo.md#staging-and-ci-deploys)), and the rest (an uptime monitor on a health route, scheduled
+    dumps, an on-call rota) has no counterpart in the repo today. The task ids, dates
+    and paste-ready blocks below are not current: use the `vm.sh` commands on [VM deploy](vm-deploy.md).
+
 racinglines.bet moves from the owner's Mac to one Compute Engine VM, `racinglines-vm` (e2-small, 2 GB, 30 GB
 disk, us-west1-b), on Wed 30 Sep, the day before round 16's book opens. Eight days later, on Thu 8 Oct, the same
 box is meant to take its first outside users: invited fantasy players, through the Singapore weekend. Today

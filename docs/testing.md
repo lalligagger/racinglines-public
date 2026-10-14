@@ -1,5 +1,7 @@
 # Testing
 
+> Three levels, fastest first: the quick check, the regression suite on pinned fixtures and goldens, and the live tests on the working database. All three run locally before any merge.
+
 <!-- readme: validation -->
 
 Three levels, fastest first:
@@ -19,41 +21,72 @@ Three levels, fastest first:
 
 <!-- /readme -->
 
-## Quick check (new setups)
+!!! warning "CI is not the golden check"
+    `.github/workflows/tests.yml` runs `python -m pytest -m "not live"` on every PR into `main` or `staging`, but
+    the pinned fixtures are not in the public repo, so every golden test skips there and the job still looks green.
+    CI runs no `racinglines check` and no `mkdocs build`. Run all three on a machine with `tests/fixtures/` (the
+    owner's Mac) before asking for a merge of anything that touches pricing
+    ([VM deploy: Ship a change](vm-deploy.md#ship-a-change)).
 
+## Before a merge
+
+### Step 1: the quick check
+
+```bash title="LOCAL (Mac)"
+racinglines check
 ```
-racinglines check                       # code on synthetic data + data endpoints + database
-racinglines check --offline --no-db     # code only
+
+Runs the real pipelines on small synthetic data (`racinglines/testing/synthetic.py`: a fake F1 season with
+practice, qualifying and race laps; downhill results files in ChronoRace's format; fake exchange tapes) and checks
+that the results make sense (probabilities sum as they should; the as-of view refuses a session still in progress;
+P&L accounting adds up; capital caps hold), then one tiny request to each data source (FastF1's schedule, the F1
+live-timing archive, ChronoRace, the Wikipedia calendar page, Polymarket's Gamma, CLOB and Data APIs), then that
+Postgres is reachable and the schema is at the latest migration. No data is downloaded or stored. The captured
+output of the offline form is on the [CLI reference](cli.md).
+
+```bash title="LOCAL (Mac): the variants"
+racinglines check --offline --no-db     # code only (what tests/test_quick.py runs)
 racinglines check --sport f1            # one sport
 ```
 
-- **Code:** runs the real pipelines on small synthetic data
-  (`racinglines/testing/synthetic.py`: a fake F1 season with practice,
-  qualifying and race laps; downhill results files in ChronoRace's format; fake
-  exchange tapes) and checks that the results make sense:
-    - probabilities sum as they should;
-    - the as-of view refuses a session still in progress;
-    - P&L accounting adds up;
-    - capital caps hold.
-- **Endpoints:** one tiny request to each data source: FastF1's schedule, the
-  F1 live-timing archive, ChronoRace, the Wikipedia calendar page, and
-  Polymarket's Gamma, CLOB and Data APIs.
-- **Database:** Postgres is reachable and the schema is at the latest migration.
-- **No data is downloaded or stored.**
+### Step 2: the regression suite
 
-## Regression suite
-
+```bash title="LOCAL (Mac)"
+python -m pytest -m "not live"
 ```
-python -m pytest -m "not live"                         # regression suite on the pinned fixtures, ~10 s
-python -m pytest                                       # everything, incl. live-database smoke tests, ~35 s
+
+The last line is pytest's summary: `N passed, M skipped`. On a checkout without `tests/fixtures/` the skips are
+the fixture tests (about 50); on the owner's Mac they are the few that need a network. Any golden mismatch fails
+with the path of the first differing value.
+
+### Step 3: the docs
+
+```bash title="LOCAL (Mac)"
+mkdocs build --strict
+```
+
+Prints nothing when clean; a broken link or anchor is a `WARNING` line and a non-zero exit. Needs
+`requirements-docs.txt` (mkdocs and mkdocs-material).
+
+### Step 4: everything, when the local database is up
+
+```bash title="LOCAL (Mac)"
+python -m pytest
+```
+
+Adds the 47 `live` tests: page smoke tests per role, Baku live-data checks, and the hot-token retention check.
+
+## Re-baselining a golden
+
+```bash title="LOCAL (Mac)"
 UPDATE_GOLDEN=1 python -m pytest -m "not live"         # re-baseline after an intended change; commit tests/golden
-python scripts/fetch_test_fixtures.py --refresh [--f1] [--mtb]   # rarely: rebuild the fixtures from today's data
 ```
 
-A fixture refresh pulls today's data (FastF1 revises laps after a race, new rounds get raced), so it
-changes golden outputs even with no code change. That's why it needs `--refresh`, is logged in the
-[data change log](data-changes.md), and goes in its own commit: fixtures and re-baselined goldens
-together, reviewed apart from code changes.
+!!! warning "Only in a deliberate promotion change"
+    `UPDATE_GOLDEN=1` rewrites the baseline every machine compares against. Use it only for a change meant to move
+    results, with a decision-log entry in the same change
+    ([F1 roadmap: promotion rule](f1-roadmap.md#5-promotion-rule-when-a-challenger-becomes-the-default)), and
+    review the diff of `tests/golden/` in the PR.
 
 Re-baselined 2026-10-06, no code or fixture change: `mtb_season_forecast` and `mtb_backtest`. As committed on
 2026-09-28 they failed at their own commit under Python 3.12 and 3.13, one or four BLAS threads and any hash seed,
@@ -61,77 +94,73 @@ so they were never reproducible from the repo (cause unknown, most likely the ma
 backtest's per-weekend tables are now compared sorted by rider, since riders tied at zero expected points swap
 places between library builds. The other five downhill goldens and every F1 golden are unchanged.
 
-```
-```
-
 ## No data in git
 
-Nothing data-shaped is committed except the minimal allow-listed set cloud sweeps
-need (see [What's in git](data.md#whats-in-git)), the test fixtures and the golden baselines.
-Never committed:
+Nothing data-shaped is committed except the minimal allow-listed set cloud sweeps need (see
+[What's in git](data.md#whats-in-git)), the test fixtures and the golden baselines. Never committed: the fixture
+build's raw downloads (`tests/fixtures/_work/`); downhill downloads, order books, run outputs, logs; derived tables.
 
-- the fixture build's raw downloads (`tests/fixtures/_work/`);
-- downhill downloads, order books, run outputs, logs;
-- derived tables.
-
-`.gitignore` covers `data/*` (then allow-lists `data/raw/f1`,
-`data/archive/markets/polymarket/{prices,trades,links}`, `data/archive/markets/kalshi/{prices,trades,links}`,
-`data/archive/db` and
-`data/runs/search`, then `tests/fixtures/` minus `_work/`), and data file types.
-`tests/test_no_data_in_git.py` fails if anything data-like outside the allow-list
-is tracked or about to be added.
+`.gitignore` covers `data/*` (then allow-lists `data/raw/f1`, `data/archive/markets/polymarket/{prices,trades,links}`,
+`data/archive/markets/kalshi/{prices,trades,links}`, `data/archive/db` and `data/runs/search`, then `tests/fixtures/`
+minus `_work/`), and data file types. `tests/test_no_data_in_git.py` fails if anything data-like outside the
+allow-list is tracked or about to be added.
 
 ## Pre-push hook
 
-`scripts/hooks/pre-push` runs before every push. Enable it once per clone with
-`git config core.hooksPath scripts/hooks`; skip it in an emergency with
-`git push --no-verify`. Steps, stopping at the first failure:
+`scripts/hooks/pre-push` runs before every push. Enable it once per clone:
 
-1. `python scripts/build_readme.py --check`: `README.md` matches the docs.
-2. `python -m mkdocs build --strict`: the docs build with no warnings (broken links
-   and anchors fail). Needs `requirements-docs.txt`.
+```bash title="LOCAL (Mac)"
+git config core.hooksPath scripts/hooks
+```
+
+Steps, stopping at the first failure:
+
+1. `python scripts/build_readme.py --check`: `README.md` matches the docs (the `<!-- readme: … -->` blocks).
+2. `python -m mkdocs build --strict`: the docs build with no warnings (broken links and anchors fail).
 3. `python -m pytest -q tests/test_no_data_in_git.py`: no data outside the allow-list.
 
-It uses `.venv/bin/python` when present, else `python3`.
+It uses `.venv/bin/python` when present, else `python3`. Skip it in an emergency with `git push --no-verify`.
 
 ## Fixtures: built locally from the public sources
 
-`scripts/fetch_test_fixtures.py` downloads only what the tests need from the
-original sources, into a throwaway database (`racinglines_fixtures`, rebuilt
-from the migrations), then builds `tests/fixtures/` with this repo's own
+`scripts/fetch_test_fixtures.py` downloads only what the tests need from the original sources, into a throwaway
+database (`racinglines_fixtures`, rebuilt from the migrations), then builds `tests/fixtures/` with this repo's own
 pipeline:
+
+```bash title="LOCAL (Mac)"
+python scripts/fetch_test_fixtures.py --refresh [--f1] [--mtb]   # rarely: rebuild the fixtures from today's data
+```
 
 | Flag | Downloads | Builds |
 |---|---|---|
 | `--f1` | FastF1: 2026 rounds 6–15 (qualifying, sprint, race, practice). Polymarket: Monza and Baku race markets (5-minute prices, trades) and the championship markets (hourly prices). | F1 model tables, Baku's raw session files, the Baku maker-replay tape with as-of fairs, two weekends of sweep markets, and ten season-strategy markets with their as-of decisions |
 | `--mtb` | ChronoRace: 18 World Cup events of 2025–26, Elite and Junior men | Two sample result files and the 2025–26 training slice |
 
-- **FastF1 is rate limited** (500 calls/hour), so a cold `--f1` run can take up
-  to an hour.
-- **Resumable:** raw downloads stay in `tests/fixtures/_work/`, so re-runs are
-  quick.
-- **Needs** Postgres (`docker compose up -d`). `FIXTURE_DATABASE_URL`
-  overrides the database.
+!!! warning "A fixture refresh changes golden outputs even with no code change"
+    It pulls today's data (FastF1 revises laps after a race, new rounds get raced). That's why it needs
+    `--refresh`, is logged in the [data change log](data-changes.md), and goes in its own commit: fixtures and
+    re-baselined goldens together, reviewed apart from code changes.
+
+- **FastF1 is rate limited** (500 calls/hour), so a cold `--f1` run can take up to an hour.
+- **Resumable:** raw downloads stay in `tests/fixtures/_work/`, so re-runs are quick.
+- **Needs** Postgres (`docker compose up -d`). `FIXTURE_DATABASE_URL` overrides the database.
 
 ## Golden baselines
 
-- **What they hold:** each stage writes a compact fingerprint of its output to
-  `tests/golden/<stage>.json`, compared within a relative tolerance of 1e-6.
-  Seeds are fixed and simulations small (1,000–2,000 runs).
-- **Committed** (since 2026-09-28; the repo is private): the goldens were local
-  before, so a code change could pass in the cloud and break only the owner's
-  baseline. The first shared baseline is the owner's of 2026-09-26, re-baselined
-  for the approved downhill defaults (prior_n 0.5, half-life 240 days, junior
-  weight 0.25), which changed the five downhill model goldens and nothing else.
-- **Workflow:** make changes and run the suite. Any output change fails with the
-  path of the first differing value; if intended, `UPDATE_GOLDEN=1` and commit
-  the golden diff with the change.
-- **Only code can change results:** new data arriving doesn't touch the pinned
-  fixtures; a `--refresh` does, on purpose.
-- **Ingest tests** build `racinglines_test` from the migrations and never touch
-  the live database (`TEST_DATABASE_URL` overrides).
-- **Live tests** read the live database and are marked `live` (47 tests): page
-  smoke tests, Baku live-data checks, and the hot-token retention check.
+- **What they hold:** each stage writes a compact fingerprint of its output to `tests/golden/<stage>.json`,
+  compared within a relative tolerance of 1e-6. Seeds are fixed and simulations small (1,000–2,000 runs).
+- **Committed** since 2026-09-28: the goldens were local before, so a code change could pass in the cloud and
+  break only the owner's baseline. The first shared baseline is the owner's of 2026-09-26, re-baselined for the
+  approved downhill defaults (prior_n 0.5, half-life 240 days, junior weight 0.25), which changed the five downhill
+  model goldens and nothing else.
+- **Workflow:** make changes and run the suite. Any output change fails with the path of the first differing
+  value; if intended, `UPDATE_GOLDEN=1` and commit the golden diff with the change.
+- **Only code can change results:** new data arriving doesn't touch the pinned fixtures; a `--refresh` does, on
+  purpose.
+- **Ingest tests** build `racinglines_test` from the migrations and never touch the live database
+  (`TEST_DATABASE_URL` overrides).
+- **Live tests** read the live database and are marked `live` (47 tests): page smoke tests, Baku live-data checks,
+  and the hot-token retention check.
 
 ## Stages covered
 
@@ -158,17 +187,11 @@ pipeline:
 | Downhill | Weekend simulation | `test_weekend_simulation` |
 | Downhill | Season forecast, backtest, walk-forward | `test_season_forecast`, `test_backtest`, `test_walk_forward` |
 
-**Rule tests** sit alongside the golden ones:
+**Rule tests** sit alongside the golden ones: leakage (sessions are usable only after they end, and no future data
+reaches a view); replay and strategy rules; limits and accounting; the Parquet store; job-form validation.
 
-- leakage: sessions are usable only after they end, and no future data reaches
-  a view;
-- replay and strategy rules;
-- limits and accounting;
-- the Parquet store;
-- job-form validation.
-
-The suite was checked by deliberately changing one constant at a time. Each
-change failed exactly the stages downstream of it:
+The suite was checked by deliberately changing one constant at a time. Each change failed exactly the stages
+downstream of it:
 
 | Change | Stages that failed |
 |---|---|
@@ -207,9 +230,39 @@ change failed exactly the stages downstream of it:
 | `test_variants.py` | 9 | Model variants and the comparison tools (paired ± 2 SE, reliability). |
 | `test_views.py` | 30 | Live: web app page smoke tests per role, and job-form validation. |
 
-Helpers: `conftest.py` (pinned inputs and the throwaway test database) and
-`golden.py` (golden-output comparison, `UPDATE_GOLDEN=1`).
+The table is the 2026-09-28 count; later PRs added files (among them `test_live_core.py`, `test_live_toy.py`,
+`test_staging_deploy.py`). `python -m pytest --co -q | tail -n 1` prints today's total. Helpers: `conftest.py`
+(pinned inputs and the throwaway test database) and `golden.py` (golden-output comparison, `UPDATE_GOLDEN=1`).
 
-Replay-vs-sweep parity on a real weekend needs the full database and minutes of
-pricing, so it is a script, not a test: `scripts/signals_parity.py` (see
-[CLI](cli.md#scripts)).
+Replay-vs-sweep parity on a real weekend needs the full database and minutes of pricing, so it is a script, not a
+test: `scripts/signals_parity.py` ([CLI reference](cli.md)).
+
+## Next steps
+
+<div class="grid cards" markdown>
+
+- **Ship a change**
+
+    ---
+
+    What runs where: local checks, the staging push, the merge that deploys.
+
+    [VM deploy](vm-deploy.md#ship-a-change)
+
+- **Contributing**
+
+    ---
+
+    Getting the fixtures, the local database and a first change.
+
+    [Contributing](contributing.md)
+
+- **Data changes**
+
+    ---
+
+    Where a fixture refresh and every database write is logged.
+
+    [Data changes](data-changes.md)
+
+</div>

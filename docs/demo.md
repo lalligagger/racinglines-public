@@ -1,8 +1,14 @@
 # Demo data packs
 
-`--demo [PACK]` on any command runs that command, unchanged, on a **demo store**: a separate Postgres database and
-data folder filled from a **data pack** by the real pipeline. The commands to run are in the
-[Quickstart](quickstart.md). This page is how it works and how to add a pack.
+> `--demo [PACK]` on any command runs that command, unchanged, on a demo store: a separate Postgres database and data folder filled from a data pack by the real pipeline.
+
+The commands to run are in the [Quickstart](quickstart.md). This page is how a demo store works, what the bundled
+`kart` pack holds, how the hosted demo store serves it, and how to add a pack of your own.
+
+!!! note "No demo branch anywhere"
+    There is no demo code path in any command, model or pipeline: the backtest is `pricing.backtest`, the forecast
+    `pricing.forecast`, the live book `pipelines/live_f1.py` with the real crowd and quoting, the book
+    `books/slips.py`. `--demo` only changes where the data comes from.
 
 ## What `--demo` does
 
@@ -15,10 +21,28 @@ One resolver (`racinglines/cli/source.py`, called by `racinglines/cli/__init__.p
 | `RACINGLINES_DATA` | the pack's data folder: raw files, archives, run outputs, live specs | `data/demo/<pack>/` (gitignored; `RACINGLINES_DEMO_DATA` overrides) |
 | `RACINGLINES_OFFLINE=1` | FastF1's servers are never called: the store's files are the record | (a general switch, also for machines without FastF1 access) |
 
-Then the command runs as it always does. There is no demo branch in any command, model or pipeline: the backtest is
-`pricing.backtest`, the forecast `pricing.forecast`, the live book `pipelines/live_f1.py` with the real crowd and
-quoting, the book `books/slips.py`. `PACK` defaults to `kart`; `--demo=PACK` works too. The first `--demo` command
-builds the store when it is missing or when the pack has changed (a Rich progress bar; a few minutes).
+Then the command runs as it always does. `PACK` defaults to `kart`; `--demo=PACK` works too. The first `--demo`
+command builds the store when it is missing or when the pack has changed (a Rich progress bar; about a minute). The
+store build is logged in the store's own data change log, as any ingest is:
+
+=== "Command"
+
+    --8<-- "examples/db-changes-demo.md:command"
+
+=== "Output"
+
+    --8<-- "examples/db-changes-demo.md:output"
+
+A pack can name its sport differently from the schema it is stored under, so its commands read naturally: the kart
+pack's `sport_name = "kart"` is why `racinglines model forecast kart --demo` is the F1 forecast, with F1's options:
+
+=== "Command"
+
+    --8<-- "examples/help-model-forecast-kart.md:command"
+
+=== "Output"
+
+    --8<-- "examples/help-model-forecast-kart.md:output"
 
 ## What a pack is
 
@@ -29,17 +53,24 @@ A folder with a `pack.toml` manifest, bundled under `racinglines/demo/packs/<nam
 |---|---|
 | `name`, `title`, `about` | the pack's name (what `--demo NAME` takes) and description |
 | `sport` | an **existing** sport schema (`sports/<sport>.toml`) the data is stored under: no new sport, no new schema |
+| `sport_name` | optional: what the quickstart's commands call the sport (`kart`, read as `f1`) |
 | `files` | a folder copied as is into the data folder (e.g. `raw/...` files a real ingest reads, live specs under `live/`) |
 | `[generator]` | optional: `entry = "module:function"` writing more data files into the data folder, and its `input` |
 | `[load] commands` | the real `racinglines ...` commands that load the data into the database, in order |
 | `[book] file` | the sportsbook book `racinglines book price --demo` prices when no FILE is given |
+| `[remote] mcp_url` | the pack's hosted demo server, for `--demo --remote` ([below](#the-hosted-demo-store)) |
 | `tagline` | optional: a line printed once the store is ready (a pack's flavour lives here, never in a command) |
-| `[[quickstart]]` | the pack's quickstart: `title`, `run` (the command), `about`, optional `section` (steps group under one heading per section, in first-seen order; none: one list); rendered into [Quickstart](quickstart.md) by `scripts/build_quickstart.py` (`--commands PACK [--section NAME]` lists them) and replayed by the web app's `/docs/quickstart/term` page (`Pack.sections()` in `racinglines/demo/store.py`) |
+| `[[quickstart]]` | the pack's quickstart: `title`, `run` (the command), `about`, optional `section` (steps group under one heading per section, in first-seen order; none: one list) and `record = false` for a step that is shown but never run; rendered into the [Quickstart](quickstart.md) by `scripts/build_quickstart.py` (`--commands PACK [--section NAME]` lists them) and replayed by the web app's `/docs/quickstart/term` page (`Pack.sections()` in `racinglines/demo/store.py`) |
 
-The store build (`racinglines/demo/store.py`): create the database (its name must contain `demo`), Alembic upgrade
-head and the seed (`racinglines db init`), copy the files, run the generator, run each load command as a
-subprocess on the store, record a `data_changes` line, write a marker (`demo-store.json`, a fingerprint of the pack
-and its generator). Adding a pack is adding a folder: no command, flag, schema, sport file or code path changes.
+The store build (`racinglines/demo/store.py`), in order:
+
+1. create the database (its name must contain `demo`), Alembic upgrade head and the seed (`racinglines db init`);
+2. copy the files;
+3. run the generator;
+4. run each load command as a subprocess on the store;
+5. record a `data_changes` line and write a marker (`demo-store.json`, a fingerprint of the pack and its generator).
+
+Adding a pack is adding a folder: no command, flag, schema, sport file or code path changes.
 `tests/test_demo_store.py` builds a second, tiny pack under `mtb_dh` (synthetic ChronoRace result files loaded by
 `racinglines data ingest mtb_dh`) and runs its backtest through the same code.
 
@@ -67,17 +98,35 @@ and its generator). Adding a pack is adding a folder: no command, flag, schema, 
 - `book.toml`: a generic sportsbook's lines on rounds 10 and 11, one per F1 pricing feature of `book price`.
 
 The synthetic exchanges are data like the rest: prices drawn around the generator's own odds with an exchange's
-noise and spread. No real exchange data is in any pack.
+noise and spread. No real exchange data is in any pack. What the store holds once built, by table:
+
+=== "Command"
+
+    --8<-- "examples/db-stats-demo.md:command"
+
+=== "Output"
+
+    --8<-- "examples/db-stats-demo.md:output"
 
 ## The hosted demo store
+
+!!! warning "Remote access is in testing"
+    racinglines.bet remote access is in testing (#aintcare mode). A review of venue and data-feed terms is pending,
+    so data served here is for testing only. Every command that connects to the hosted server prints this warning on
+    stderr ([Quickstart: Hosted](quickstart.md#which-way-in)).
 
 `--demo [PACK] --remote`, or `--demo` with `source = "remote"` in `~/.config/racinglines/cli.toml`, uses the pack's
 hosted store instead of a local one. The resolver builds nothing locally: it points the command's own `--remote`
 path at the pack's demo MCP server (`[remote] mcp_url` in `pack.toml`, `RACINGLINES_DEMO_MCP_URL` overrides it) and
-adds `--remote`. Only the commands the hosted server runs take it: `book map|price|settle` (the pack's book sent to
-the `map_book` / `price_book` / `settle_book` tools) and `model backtest|forecast f1|mtb_dh` (the command's Lab job,
-queued with `run_job` and followed with `get_job`; `racinglines/cli/remote.py`). `model backtest f1 --remote` without
-`--demo` runs the same way on whichever server `--remote` names.
+adds `--remote`. Only the commands the hosted server runs take it:
+
+| Command | How it runs on the hosted store |
+|---|---|
+| `book map \| price \| settle` | the pack's book sent to the `map_book` / `price_book` / `settle_book` tools |
+| `model backtest \| forecast f1 \| mtb_dh` | the command's Lab job, queued with `run_job` and followed with `get_job` (`racinglines/cli/remote.py`); the job's options only |
+| `db stats`, `live run`, `live report` | not available: these need a local store |
+
+`model backtest f1 --remote` without `--demo` runs the same way on whichever server `--remote` names.
 
 The server is the normal one with `--demo`: `racinglines mcp --http --port 8766 --demo kart` on the VM serves the
 kart store (its own database `racinglines_demo_kart` and `data/demo/kart/`, built by the same `store.build`), and its
@@ -86,7 +135,66 @@ job worker runs the jobs on it. Accounts, `rl_` tokens and OAuth sign-ins are re
 own: jobs are filed without an owner, so every signed-in caller sees the store's jobs and can cancel a queued one
 (acceptable on a synthetic store). Account-scoped reads (`overview`'s users, `track_record`, `list_positions`,
 `list_signals`, our maker's quotes in `list_markets`) show nothing to a non-admin caller there, because a caller's id
-belongs to production's users table, not the store's. `scripts/vm/demo_store.sh`
-builds it (`build`, backup first) and starts the server (`serve`); the owner runs both and adds the `mcp-demo`
-hostname to the tunnel. Remote access is in testing; every remote command prints the #aintcare warning
-([Quickstart: Remote](quickstart.md#4-remote-testing)).
+belongs to production's users table, not the store's. `scripts/vm/demo_store.sh` builds it (`build`, backup first)
+and starts the server (`serve`); the owner runs both and adds the `mcp-demo` hostname to the tunnel.
+
+## Add a pack of your own
+
+#### Step 1: Make the folder
+
+A folder named after the pack, bundled under `racinglines/demo/packs/<name>/` or anywhere on
+`RACINGLINES_DEMO_PACKS`, with a `pack.toml` naming an existing sport schema.
+
+#### Step 2: Bring the data
+
+Either files a real ingest reads (`files`), a generator that writes them (`[generator]`), or both. The kart pack's
+`world.toml` and `generate.py` are the worked example; the tiny `mtb_dh` pack in `tests/test_demo_store.py` is the
+smallest one.
+
+#### Step 3: Name the load commands
+
+`[load] commands`, in order: the same `racinglines data ingest ...` and `racinglines model forecast ... --save` a real
+database gets.
+
+#### Step 4: Write the quickstart
+
+`[[quickstart]]` entries, one per command. Then `python3 scripts/build_quickstart.py` renders them into the docs, and
+`python scripts/docs/capture_examples.py` (after adding them to `scripts/docs/examples.toml`) captures their real
+output for the page.
+
+#### Step 5: Run it
+
+```bash
+# LOCAL (Mac), or any machine with Postgres
+racinglines db stats --demo <name>          # builds the store, then prints what it holds
+```
+
+## Next steps
+
+<div class="grid cards" markdown>
+
+-   :material-rocket-launch: **Quickstart**
+
+    ---
+
+    The kart pack's commands with their real outputs, local or hosted.
+
+    [:octicons-arrow-right-24: Quickstart](quickstart.md)
+
+-   :material-robot: **MCP server**
+
+    ---
+
+    The hosted server the `--remote` commands reach, and how to connect a chat client to it.
+
+    [:octicons-arrow-right-24: MCP server](mcp.md)
+
+-   :material-book-open-variant: **Sportsbook slips**
+
+    ---
+
+    The book file `book map | price | settle` reads, and what the EV columns mean.
+
+    [:octicons-arrow-right-24: Sportsbook slips](sportsbook/slips.md)
+
+</div>

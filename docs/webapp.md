@@ -103,8 +103,9 @@ Strategy and its track record, Live, Settings and the landing page's sports line
 same gate), and only user-facing readers ask: the sport is still recorded, priced and settled, the CLI shows it, and nothing is
 deleted. Setting the key back to `"all"` shows it again; it is code, so the change is a deploy.
 
-MotoGP is admin-only for the Alpha (owner, 2026-10-11, "Hide for Alpha": the motogp.com terms keep its results and
-prices off user pages).
+MotoGP is shown to every signed-in user again (owner, 2026-10-14, data-terms review v0.2: MotoGP results and prices may
+reach Alpha users). It was admin-only from 2026-10-11 ("Hide for Alpha"). The terms-pending warning stays. Fantasy
+trading stays F1-only.
 
 ## Pages
 

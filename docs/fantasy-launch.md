@@ -1,5 +1,11 @@
 # Fantasy soft launch: sprint roadmap (29 Sep - 11 Oct 2026)
 
+!!! note "Historical (2026-10-14)"
+    This is the plan as written on 29 and 30 Sep. What shipped is the **fantasy league alpha** on production
+    (2026-10-12): four tabs, F$1,000 per account, hand trading on F1's recorded Kalshi and Polymarket books, five
+    strategy styles, a leaderboard, no makers on exchange markets. The current description is
+    [Alpha layout](alpha-layout.md); the open items are on the [Roadmap](todo.md#priorities).
+
 racinglines already prices F1 races, paper-trades them on Kalshi and Polymarket, and ran a live private book at
 Whistler against a simulated crowd. The owner asked for a sprint through next weekend: a soft launch of fantasy
 trading across every supported market, with players signing up as makers or takers and keeping that role for the

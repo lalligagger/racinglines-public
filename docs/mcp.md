@@ -1,44 +1,69 @@
 # MCP server
 
+> The app's data and simulations as typed tools for a chat client: run `racinglines mcp` locally, or connect Claude to `https://mcp.racinglines.bet/mcp` and sign in with your web-app account.
+
 `racinglines mcp` starts a [Model Context Protocol](https://modelcontextprotocol.io) server in the app's own
 Python environment, against the same database and Parquet archive the web app and the CLI use. A connected
-chat client (Claude Desktop, Claude Code, any MCP client) can then ask questions of the data and run the
-app's simulations through typed tools: "how did the maker do on Kalshi in 2025?", "what did we have for the
-Baku winner the evening before qualifying, and what did Polymarket say?", "replay that with a 3¢ spread",
-"sweep 2026 with the head-to-head threshold at 5 points and tell me when it's done".
+client (Claude Desktop, Claude Code, any MCP client) can then ask questions of the data and run the app's
+simulations: "how did the maker do on Kalshi in 2025?", "what did we have for the Baku winner the evening before
+qualifying, and what did Polymarket say?", "replay that with a 3¢ spread", "sweep 2026 with the head-to-head
+threshold at 5 points and tell me when it's done".
 
-It is a separate process that nothing starts for you: the web app, the CLI, the recorder and the signals are
-untouched. The code is `racinglines/mcp/` (`page.py` the result envelope, `tools.py` the tools as plain
-functions, `server.py` the registration and transports) and the command `racinglines/cli/mcp.py`.
+!!! note "A separate process"
+    Nothing starts the server for you: the web app, the CLI, the recorder and the signals are untouched. The code
+    is `racinglines/mcp/` (`page.py` the result envelope, `tools.py` the tools as plain functions, `server.py` the
+    registration and transports) and the command `racinglines/cli/mcp.py`.
+
+=== "Command"
+
+    --8<-- "examples/help-mcp.md:command"
+
+=== "Output"
+
+    --8<-- "examples/help-mcp.md:output"
 
 ## Getting access, as a user
 
-Two ways in. **Locally** you run the server yourself and there is no account: whoever can run the command on
-that machine is the owner. **Hosted** you connect to `https://mcp.racinglines.bet/mcp` and sign in with your
-web-app account (or use a token from Settings); your Claude then sees what the app's data shows and can queue what the Lab's
-Run form can queue, and every job it queues is filed under your account.
+### Which should I use?
 
-The `racinglines` CLI is an MCP client too, for the sportsbook commands: `racinglines book price FILE --remote`
-prices your book file on the hosted server with no database of your own ([From the command line](#from-the-command-line-racinglines-book-remote)).
+| | Local (stdio) | Hosted (racinglines.bet) | CLI `--remote` |
+|---|---|---|---|
+| Needs | the repo, a venv and a database of your own | a racinglines.bet account with MCP access (Pro or admin) | the same account, or an `rl_` token |
+| Account | none: whoever runs the command owns it | your web-app account; jobs filed under it | your web-app account |
+| Data | yours (`DATABASE_URL`, `RACINGLINES_DATA`) | the app's shared race data, forecasts and Lab research | the same, from the command line |
+| Status | ✓ | in testing (#aintcare, below) | in testing |
+| Best for | your own rebuilt data, admin tools, `sql` | asking Claude about the live data, queueing Lab jobs | pricing a book file, pulling data, scripting a tool call |
+
 Trying the CLI needs no MCP at all: `racinglines book price --demo` prices a synthetic sample book on a local demo
 store ([Quickstart](quickstart.md)).
 
 ### Local (stdio)
 
 The client launches `racinglines mcp` as a subprocess with your environment (`DATABASE_URL`,
-`RACINGLINES_DATA`), in the app's own venv:
+`RACINGLINES_DATA`), in the app's own venv. There is no account: whoever can run the command on that machine is
+the owner.
 
-```sh
-# Claude Code, in any folder:
-claude mcp add racinglines -e DATABASE_URL=$DATABASE_URL -- /path/to/racinglines/.venv/bin/racinglines mcp
-```
+=== "Claude Code"
 
-Claude Desktop (Settings > Developer > Edit config), the same idea:
+    ```bash
+    # LOCAL (Mac), in any folder
+    claude mcp add racinglines -e DATABASE_URL=$DATABASE_URL -- /path/to/racinglines/.venv/bin/racinglines mcp
+    ```
 
-```json
-{"mcpServers": {"racinglines": {"command": "/path/to/racinglines/.venv/bin/racinglines", "args": ["mcp"],
-                                 "env": {"DATABASE_URL": "postgresql+psycopg://racinglines:racinglines@localhost:5433/racinglines"}}}}
-```
+=== "Claude Desktop"
+
+    Settings > Developer > Edit config:
+
+    ```json
+    {"mcpServers": {"racinglines": {"command": "/path/to/racinglines/.venv/bin/racinglines", "args": ["mcp"],
+                                     "env": {"DATABASE_URL": "postgresql+psycopg://racinglines:racinglines@localhost:5433/racinglines"}}}}
+    ```
+
+=== "Any MCP client"
+
+    Launch `/path/to/racinglines/.venv/bin/racinglines mcp` as a stdio server with `DATABASE_URL` (and
+    `RACINGLINES_DATA` when your data folder is not the repo's `data/`) in its environment. `--db URL` names the
+    database instead; `--no-jobs` leaves queued Lab jobs to the web app's worker.
 
 ### Hosted (the VM)
 
@@ -56,38 +81,70 @@ private-book market details and jobs are scoped to their own account; another us
 grant access. Raw SQL, schema inspection and the data-change audit are admin-only. Admins and local stdio
 retain owner access. Saved model runs and research results are shared, as in the Lab.
 
-A sport whose schema says `audience = "admin"` (`sports.is_public`, the gate the web pages use too; MotoGP since 2026-10-11, for the
-Alpha) is hidden from
-every non-admin account: it is missing from every list (overview, events, markets, model runs, forecasts,
-diagnostics, paper records, kinds), and naming it, or one of its events, races, runs, tokens or its schema resource,
-or pricing a book on it, answers "not available". Admins and local stdio still see it.
+A sport whose schema says `audience = "admin"` (`sports.is_public`, the gate the web pages use too; road cycling
+since 2026-10-12, and MotoGP from 2026-10-11 until the owner cleared it on 2026-10-14) is hidden from every
+non-admin account: it is missing from every list (overview, events, markets, model runs, forecasts, diagnostics,
+paper records, kinds), and naming it, or one of its events, races, runs, tokens or its schema resource, or pricing
+a book on it, answers "not available". Admins and local stdio still see it.
 
-1. **Connect.** No token to copy: the client opens racinglines.bet in your browser, you sign in if you aren't
-   already, and press **Allow** once.
-   - claude.ai and Claude Desktop: Settings > Connectors > Add custom connector, name `racinglines`, URL
-     `https://mcp.racinglines.bet/mcp`, leave the OAuth fields empty, then Connect.
-   - Claude Code: `claude mcp add --transport http racinglines https://mcp.racinglines.bet/mcp`, then `/mcp`
-     inside Claude Code and pick racinglines to sign in. `claude mcp remove racinglines` forgets it.
-   - Any other MCP client: streamable HTTP, that URL; it finds the sign-in from the server's 401
-     (OAuth 2.1 with dynamic client registration and PKCE).
-2. **First questions.** "Call `overview` and summarize what's there" proves the whole path. Then something
-   with real content: "list the race_win markets for the next F1 round with our fair value against
-   Polymarket and Kalshi" (`list_markets`), or "queue a 3-race, 300-sim F1 backtest and tell me when it's
-   done" (`run_job`, then `get_job`; the job shows in the Lab's Jobs section under your name).
+#### Step 1: Connect
+
+No token to copy: the client opens racinglines.bet in your browser, you sign in if you aren't already, and press
+**Allow** once.
+
+=== "claude.ai and Claude Desktop"
+
+    Settings > Connectors > Add custom connector: name `racinglines`, URL `https://mcp.racinglines.bet/mcp`, leave
+    the OAuth fields empty, then Connect.
+
+=== "Claude Code"
+
+    ```bash
+    # LOCAL (Mac)
+    claude mcp add --transport http racinglines https://mcp.racinglines.bet/mcp
+    ```
+
+    Then `/mcp` inside Claude Code and pick racinglines to sign in. `claude mcp remove racinglines` forgets it.
+
+=== "Any MCP client"
+
+    Streamable HTTP at that URL; the client finds the sign-in from the server's 401 (OAuth 2.1 with dynamic client
+    registration and PKCE).
+
+=== "The CLI"
+
+    ```bash
+    # LOCAL (Mac): the first --remote opens the browser to sign in; later runs reuse the login
+    racinglines book price FILE --remote
+    racinglines remote tools                      # every tool this account may call
+    ```
+
+    The details, tokens and your own server: [From the command line](#from-the-command-line-racinglines-book-remote).
+
+#### Step 2: First questions
+
+"Call `overview` and summarize what's there" proves the whole path. Then something with real content: "list the
+race_win markets for the next F1 round with our fair value against Polymarket and Kalshi" (`list_markets`), or
+"queue a 3-race, 300-sim F1 backtest and tell me when it's done" (`run_job`, then `get_job`; the job shows in the
+Lab's Jobs section under your name).
 
 The client keeps an access token for an hour and refreshes it by itself for 30 days of disuse; after that,
 or after a disconnect, it asks you to sign in again. Settings lists where you've signed in from, and
 **Disconnect all** ends every sign-in of your account at once.
 
-**A token instead**, for scripts and clients without sign-in: Settings > Connect Claude (MCP) > **Get a token**
-(an admin can also issue one on the VM, below). It is `rl_` followed by 48 hex characters, shown once, and the
-card shows the `claude mcp add ... --header "Authorization: Bearer rl_..."` command with it filled in. A new
-one, or Revoke, stops the old one at once; it doesn't expire on its own. Keep it like a password.
+#### A token instead
 
-**Check the door** (any machine with curl): `401` without a token means the server is up; with your token
-expect `200`:
+For scripts and clients without sign-in: Settings > Connect Claude (MCP) > **Get a token** (an admin can also issue
+one on the VM, below). It is `rl_` followed by 48 hex characters, shown once, and the card shows the
+`claude mcp add ... --header "Authorization: Bearer rl_..."` command with it filled in. A new one, or Revoke, stops
+the old one at once; it doesn't expire on its own. Keep it like a password: never commit it.
 
-```sh
+#### Check the door
+
+Any machine with curl: `401` without a token means the server is up; with your token expect `200`:
+
+```bash
+# LOCAL (Mac), or anywhere
 curl -s -o /dev/null -w "%{http_code}\n" -X POST https://mcp.racinglines.bet/mcp
 curl -s -o /dev/null -w "%{http_code}\n" -X POST https://mcp.racinglines.bet/mcp \
   -H "Authorization: Bearer rl_YOUR_TOKEN" -H "Content-Type: application/json" \
@@ -105,7 +162,7 @@ and only one of them uses MCP:
 | `--remote` | Yes, the hosted server | Your book file, sent as text to the `map_book` / `price_book` / `settle_book` tools; the result is the same dict `--json` prints locally, rendered the same way (`racinglines/cli/remote.py`) |
 | `--local` (default) | No | Your own database (`--db`, `DATABASE_URL`) |
 
-```
+```bash
 # LOCAL (Mac): the first --remote opens the browser to sign in; later runs reuse the login
 racinglines book price FILE --remote --rich
 racinglines book logout                       # forget the login
@@ -121,7 +178,7 @@ Settings like any other sign-in, and **Disconnect all** ends it too. The same ac
 **A token instead** (scripts, machines with no browser): when `RACINGLINES_MCP_TOKEN` holds an `rl_` token, the CLI
 sends it as the bearer and skips the sign-in. Read it without echo:
 
-```
+```bash
 # LOCAL (Mac)
 read -rs -p "rl_ token: " RACINGLINES_MCP_TOKEN && echo && export RACINGLINES_MCP_TOKEN
 racinglines book price FILE --remote
@@ -130,7 +187,7 @@ racinglines book price FILE --remote
 **Your own server.** If you host the server yourself ([Once: host the server](#once-host-the-server)), point the CLI
 at it once and make `--remote` the default (`racinglines/cli/config.py`, `~/.config/racinglines/cli.toml`):
 
-```
+```bash
 # LOCAL (Mac)
 racinglines book config mcp_url https://mcp.example.com/mcp
 racinglines book config source remote          # plain `racinglines book price FILE` now goes there
@@ -139,6 +196,61 @@ racinglines book config source remote          # plain `racinglines book price F
 `--mcp-url` and `RACINGLINES_MCP_URL` override `mcp_url` for one run. A 401 means the token or login is wrong,
 revoked, or for an account without MCP access: `racinglines book logout` and run again to sign in afresh. Staging
 runs no MCP server, so `--remote` always means production unless you point it elsewhere.
+
+### More commands on the hosted server (`--remote`, `racinglines remote`, `data pull`)
+
+Beyond `book`, three ways reach the hosted server with the same sign-in (Core C53 and C51; the owner cleared exchange
+prices, books and trades and MotoGP for signed-in users on 2026-10-14; the #aintcare warning stays on every one).
+These commands need the hosted server, which the docs build cannot reach, so only their help is shown.
+
+**`--remote` on a command with a Lab job**: `model backtest|forecast f1|mtb_dh` (their usual flags), and
+`strategy sweep f1|nascar|motogp`, `strategy season-strategy f1`, `model diagnostic f1`, `model combo f1`, whose flags
+are the job's own knobs as the server's `list_job_types` names them (`--year 2025`, `--event 2026-15 --cutoff
+2026-09-25T13:30`), plus `--set NAME=VALUE` for a sweep setting. The job is queued with `run_job` and followed to
+the end, its log printed as it arrives.
+
+```bash
+# LOCAL (Mac)
+racinglines model backtest f1 --remote --races 3 --sims 300
+racinglines strategy sweep f1 --remote --year 2025 --set min_edge=0.08
+```
+
+**`racinglines remote`**: `tools` lists what the account may call; `call TOOL --ARG VALUE ...` calls any tool and
+prints its JSON (`--csv FILE` writes its rows); `job JOB_TYPE --KNOB VALUE` queues any Lab job and follows it.
+
+=== "Command"
+
+    --8<-- "examples/help-remote.md:command"
+
+=== "Output"
+
+    --8<-- "examples/help-remote.md:output"
+
+**`racinglines data pull SPORT [--since last|YYYY-MM-DD] [--no-markets]`**: one sport's shared data into your own
+database and data folder (`racinglines/db/pull.py`): every registry table, the sport's events, races, rounds,
+results, splits, laps, track profiles, source files and market links, its model runs (not candidates) with their
+predictions, and its exchange prices, trades and books by month. Never accounts, profiles, positions, signals,
+orders, fantasy rows or jobs. The first pull into a database is a fresh-database load (run `racinglines db init`
+on an empty one first: it refuses a database that already has model runs unless `--force`, and empties the pulled
+tables so the server's ids are kept); later pulls upsert by id, and `--since last` tops up from where that
+database's last pull of the sport stopped (`data/pulls/state.json`). Tools: `pull_manifest(sport, since)` and
+`pull_chunk(pull_id, name, offset)`, 4 MB a chunk; the server builds each file on first request
+(`data/pulls/server/`, removed after a day).
+
+```bash
+# LOCAL (Mac): a fresh local database, then F1's data from the hosted server
+racinglines db init
+racinglines data pull f1
+racinglines data pull f1 --since last          # later: a top-up
+```
+
+=== "Command"
+
+    --8<-- "examples/help-data-pull.md:command"
+
+=== "Output"
+
+    --8<-- "examples/help-data-pull.md:output"
 
 ## Giving access, as an admin
 
@@ -282,6 +394,7 @@ exchange, venues, users and the next races. Then:
 | `track_record(user, venue, sport)`, `list_positions(user, venue, event_key)`, `list_signals(user, event_key, status)` | Paper trading per account: the weekend record (Polymarket, Kalshi replay, private book; `venue='all'` lists one row per weekend and venue with a `venue` column and `totals` per venue; `sport` keeps one sport's weekends, NASCAR and MotoGP paper rows included where `RACINGLINES_SPORT_PAPER` is on), positions, signals. |
 | `fantasy_balance(user)`, `fantasy_positions(user, open_only)`, `fantasy_orders(user)`, `fantasy_leaderboard()`, `fantasy_markets(q)`, `fantasy_book(market_link_id)` | Fantasy trading (F$ only), as the Trade and History tabs show it: your F$ (total, cash shared with your strategy, both P&Ls), hand-trade positions, orders with refusal reasons, the leaderboard (P&L, ROI, score; never balances), the tradable markets with recorded prices, one market's 10-level book. Hosted non-admin callers read their own account only (`user` is for an admin or stdio). Resolved hand trades are paid out first, as the pages do. |
 | `fantasy_order(market_link_id, side, action, shares, limit_price, client_key)` | One immediate-or-cancel F$ order through `fantasy/exchange.place`, the Trade page's path: the shared F$1,000 balance check under the account's row lock, F$100 per order, depth 10, fresh book only, rate limit, an audit row tagged `via: mcp`. Over HTTP it always trades as the caller (admin included); over stdio `user` names the account. Demo accounts and a shared store's accounts are refused. Nothing reaches an exchange. |
+| `pull_manifest(sport, since)`, `pull_chunk(pull_id, name, offset)` | `racinglines data pull`: the files of one sport's pull (the registry, its race data, model runs and exchange history by month) and one base64 chunk of one of them. A hidden sport is not available. |
 | `list_live_events()`, `data_changes()` | Settled live private-book events and the run folders present; the data change log. |
 | `list_kinds(sport)`, `map_book(book)`, `price_book(book, run_ids)`, `settle_book(book)` | Sportsbook slips ([sportsbook/slips.md](sportsbook/slips.md)): every market kind with the sports that model it; then a generic sportsbook's book, passed as TOML text, mapped to exact races and athletes, priced (the book's, the model's and the linked prediction market's probability, EV against each, never blended) or settled from the stored results. Nothing is stored. |
 | `sql(query, limit, offset)` | Any `SELECT` (or `WITH ... SELECT`, `EXPLAIN`), in a `READ ONLY` transaction with a 10 s timeout, paged. The `users` and `orders` tables are not readable. |
@@ -324,6 +437,12 @@ Every tabular result goes through one envelope (`racinglines/mcp/page.py`):
   previewed with their size in lists and returned whole by the `get_*` tool for one row.
 - **`sql`:** an outer `LIMIT/OFFSET` is applied for you, plus the row and byte caps; one statement, reads only.
 - Results are one line of JSON (no indentation), which halves the bytes an indented dump would cost.
+- **Tables for the terminal:** a result that holds a list of records also comes with a drawn table of it
+  (`racinglines/mcp/view.py`, at most 30 rows and 12 columns per table), so Claude Code shows a table in the terminal.
+  The table is the first text block and the JSON is always the last one, which is the block the CLI's `--remote` path
+  parses. The tools return no `structuredContent`, so a client shows the text blocks. Colour is off by default because
+  escape codes are just noise to a client that shows text as is. `RACINGLINES_MCP_COLOR=1` on the server turns it on:
+  bold headers, signed EV, edge and P&L columns green above zero and red below.
 
 ## What it can't do
 
@@ -340,3 +459,33 @@ the resources), and the token lifecycle with the bearer check of the hosted mode
 127.0.0.1): with an `rl_` token, with a wrong one (401), and through the browser sign-in, its stored login and
 logout, and that the #aintcare testing warning is printed for remote and not for local or demo. `tests/test_demo_store.py`
 builds a demo store and prices the kart pack's book on it.
+
+## Next steps
+
+<div class="grid cards" markdown>
+
+-   :material-rocket-launch: **Quickstart**
+
+    ---
+
+    The CLI on a synthetic demo store, every command with its real output; the hosted way in beside it.
+
+    [:octicons-arrow-right-24: Quickstart](quickstart.md)
+
+-   :material-book-open-variant: **Sportsbook slips**
+
+    ---
+
+    The book file the `map_book`, `price_book` and `settle_book` tools read.
+
+    [:octicons-arrow-right-24: Sportsbook slips](sportsbook/slips.md)
+
+-   :material-flask: **The Lab**
+
+    ---
+
+    What `run_job` queues: backtests, scenarios, diagnostics, Edge Finder sweeps, season strategies.
+
+    [:octicons-arrow-right-24: Web app: the Lab](webapp.md)
+
+</div>

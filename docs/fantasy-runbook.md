@@ -1,5 +1,12 @@
 # Fantasy launch runbook: tasks, merges and launch-day blocks
 
+!!! note "Historical (2026-10-14)"
+    This is the sprint plan as drafted on 29 Sep 2026, kept as the record. What shipped is the **fantasy league
+    alpha** on production (2026-10-12): the current description is [Alpha layout](alpha-layout.md), the trading
+    engine is [Fantasy trading](fantasy-trading.md), and the VM-side scripts it left behind (`reset_fantasy.sh`,
+    `fantasy_setup.sh`) are on [VM deploy: Timers and jobs](vm-deploy.md#timers-and-jobs-on-the-vm). The task ids,
+    dates and go/no-go blocks below are not current.
+
 The working detail behind the [Fantasy soft launch](fantasy-launch.md) index: the day-by-day calendar, every task
 with its role, model and money flag, the merge sequence, the full decision table, the staging rehearsal, the
 go/no-go checklist, the launch, off-switch and rollback blocks, the risks and the report outline. The index holds

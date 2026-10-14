@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Polymarket market links sync: one pass, started every 5 minutes by racinglines-pm-sync.timer on the VM
-# (enable with `bash scripts/deploy/vm.sh record`, stop with `vm.sh record off`).
-# Syncs active Polymarket markets into market_links every 5 minutes during F1 race weekends, keeping
+# (enable with `bash scripts/deploy/vm.sh pm-sync`, stop with `vm.sh pm-sync off`, last passes: `vm.sh pm-sync status`).
+# Syncs active Polymarket markets into market_links every 5 minutes, every day (polling strategy below), keeping
 # prices fresh alongside live repricing strategy (every 5 min). Unlike the continuous markets-record
 # service (trades/books), this service syncs market links and updates current bid/ask from Gamma API.
 #

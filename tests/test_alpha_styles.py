@@ -59,7 +59,8 @@ def test_the_alpha_picker_shows_the_five_styles_by_name_and_no_codes(app_db, alp
         visible = re.sub(r"<[^>]+>", " ", body)                       # what a user reads, not attribute values
         assert not re.search(r"\bT\d+\b|\bTB\b", visible), who
         assert not any(str(escape(PF.PROFILES[c]["why"])) in page for c in PF.PROFILES)
-        assert "backtest, season P&amp;L at our standard sizing" in page and "2026 +1,376" in page
+        assert "backtest, season return on F$1,000 at our standard sizing" in page and "2026 +138%" in page
+        assert "+1,376" not in page                                    # ROI only, no dollars (owner, 2026-10-13)
         assert "in-sample: tuned on the same seasons it" in page
         assert "untested for this strategy" in page and "Kelly sizes each bet by how big the edge is" in page
         assert "above half Kelly" not in page.lower()                  # owner, 19:54Z: no swing warning

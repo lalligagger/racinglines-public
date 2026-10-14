@@ -1,0 +1,161 @@
+# The docs' captured examples: scripts/docs/capture_examples.py runs each command for real, in this order, and writes
+# docs/examples/<id>.md (the command and its exact output). Pages embed one with  --8<-- "examples/<id>.md"
+# (or ":command" / ":output" for one half). Never edit docs/examples/ by hand: change this file and re-run.
+#
+# Everything here runs offline on the kart demo pack (--demo: synthetic data, a separate database), so the order
+# matters: the store is built by the first --demo command, the forecast is saved before the book is priced, and the
+# live rehearsal runs before its report. Commands that need the network or the hosted server (--remote, data pull,
+# remote tools|call|job, check without --offline) are not captured.
+
+[setup]
+# Start from a fresh kart store: the first --demo example (db-stats-demo) then shows the build, and run numbers and
+# the data change log read the same on every capture. Only the demo store is dropped (racinglines_demo_kart and
+# data/demo/kart), never the main database. `--keep-demo` skips this.
+fresh_demo = ["kart"]
+
+[defaults]
+timeout = 1200
+# Rich layout without escape codes; one line per progress step (no redrawing bars); a fixed width so tables wrap the
+# same on every machine; no 5-minute heartbeat lines in the output (this script prints its own progress).
+# DATABASE_URL is docker-compose.yml's database: the demo store is a second database on the same server.
+env = { NO_COLOR = "1", TTY_INTERACTIVE = "0", COLUMNS = "100", RACINGLINES_PROGRESS_SEC = "0", PYTHONUNBUFFERED = "1", DATABASE_URL = "postgresql+psycopg://racinglines:racinglines@localhost:5433/racinglines" }
+
+# --- help pages ----------------------------------------------------------------------------------------------------
+
+[[example]]
+id = "help"
+command = "racinglines -h"
+
+[[example]]
+id = "help-data"
+command = "racinglines data -h"
+
+[[example]]
+id = "help-model"
+command = "racinglines model -h"
+
+[[example]]
+id = "help-strategy"
+command = "racinglines strategy -h"
+
+[[example]]
+id = "help-backtest"
+command = "racinglines backtest -h"
+
+[[example]]
+id = "help-markets"
+command = "racinglines markets -h"
+
+[[example]]
+id = "help-book"
+command = "racinglines book -h"
+
+[[example]]
+id = "help-db"
+command = "racinglines db -h"
+
+[[example]]
+id = "help-live"
+command = "racinglines live -h"
+
+[[example]]
+id = "help-remote"
+command = "racinglines remote -h"
+
+[[example]]
+id = "help-check"
+command = "racinglines check -h"
+
+[[example]]
+id = "help-weather"
+command = "racinglines weather -h"
+
+[[example]]
+id = "help-mcp"
+command = "racinglines mcp -h"
+
+[[example]]
+id = "help-users"
+command = "racinglines users -h"
+
+[[example]]
+id = "help-model-forecast-kart"
+command = "racinglines model forecast kart --demo -h"
+
+[[example]]
+id = "help-data-pull"
+command = "racinglines data pull f1 -h"
+
+[[example]]
+id = "help-model-backtest-kart"
+command = "racinglines model backtest kart --demo -h"
+
+# --- setup checks --------------------------------------------------------------------------------------------------
+
+[[example]]
+id = "check-offline-no-db"
+command = "racinglines check --offline --no-db"
+
+[[example]]
+id = "check-offline"
+command = "racinglines check --offline"
+
+# --- the quickstart on the kart demo pack (docs/quickstart.md) --------------------------------------------------------
+
+[[example]]
+id = "db-stats-demo"                       # the first --demo command: builds the store, then prints the stats
+command = "racinglines db stats --demo"
+
+[[example]]
+id = "model-backtest-kart-demo"
+command = "racinglines model backtest kart --demo"
+
+[[example]]
+id = "model-forecast-kart-demo"
+command = "racinglines model forecast kart --demo --save"
+
+[[example]]
+id = "live-run-kart-demo"
+command = "racinglines live run kart/demo-2026-09 --demo --simulate --no-fetch"
+head = 39                                  # the opening board and the first repricing (after FP1) ...
+tail = 28                                  # ... and the results board with the event's closing summary
+
+[[example]]
+id = "live-status-demo"                    # after the rehearsal: the event is settled
+command = "racinglines live status --demo"
+
+[[example]]
+id = "live-report-kart-demo"               # the event report (Markdown and charts; --pdf adds the PDF)
+command = "racinglines live report kart/demo-2026-09 --demo"
+
+# --- the pack's book (racinglines/demo/packs/kart/book.toml) -----------------------------------------------------------
+
+[[example]]
+id = "book-map-demo"
+command = "racinglines book map --demo"
+
+[[example]]
+id = "book-price-demo"
+command = "racinglines book price --demo"
+
+[[example]]
+id = "book-settle-demo"
+command = "racinglines book settle --demo"
+
+# --- other read-only looks at the demo store ---------------------------------------------------------------------------
+
+[[example]]
+id = "model-props-kart-demo"
+command = "racinglines model props kart 2026-10 --demo"
+
+[[example]]
+id = "backtest-coverage-demo"
+command = "racinglines backtest coverage --demo"
+
+[[example]]
+id = "db-changes-demo"
+command = "racinglines db changes --demo"
+
+[[example]]
+id = "strategy-profiles-demo"
+command = "racinglines strategy profiles f1 --demo"

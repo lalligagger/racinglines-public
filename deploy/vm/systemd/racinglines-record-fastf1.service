@@ -1,4 +1,4 @@
-# FastF1 session recorder, one pass (scripts/vm/record_fastf1.sh). Started by the .timer; enabled automatically during race weekends.
+# FastF1 session recorder, one pass (scripts/vm/record_fastf1.sh). Started by the .timer, which `bash scripts/deploy/vm.sh record fastf1 [on|off|status]` enables; a pass outside an F1 race weekend skips.
 # Logs: journalctl -u racinglines-record-fastf1, and data/runs/logs/record-fastf1.log
 [Unit]
 Description=racinglines FastF1 session recorder

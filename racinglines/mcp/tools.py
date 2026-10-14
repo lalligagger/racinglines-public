@@ -899,6 +899,28 @@ def list_live_events(conn, limit=None, offset=0):
                 sources=_sources(seen, model=True))
 
 
+def pull_manifest(conn, sport, since=None):
+    """C51 `racinglines data pull`: the files one sport's pull holds (db/pull.py: the registry, the sport's race data,
+    model runs and exchange prices, trades and books), built on request; pull_chunk fetches each. since: a UTC date
+    for a top-up. Never accounts, positions, signals, orders or jobs."""
+    from racinglines import sports
+    from racinglines.db import pull as PL
+    if sport not in sports.SPORT_CODES:
+        raise ValueError(f"unknown sport {sport!r}; one of {', '.join(sports.SPORT_CODES)}")
+    if sport in HIDDEN.get():
+        raise not_available(sport)
+    return PL.manifest(conn, sport, since=since)
+
+
+def pull_chunk(conn, pull_id, name, offset=0):
+    """One chunk (base64, at most db/pull.py CHUNK bytes) of a file of a pull_manifest, from byte `offset`."""
+    from racinglines.db import pull as PL
+    sport = str(pull_id).split("-", 1)[0]
+    if sport in HIDDEN.get():
+        raise not_available(sport)
+    return PL.chunk(conn, pull_id, name, offset=offset)
+
+
 def data_changes(conn, sport=None, limit=None, offset=0):
     df = data.q(conn, """SELECT id, at, sport, kind, summary, by, detail FROM data_changes
                          WHERE (CAST(:s AS text) IS NULL OR sport = CAST(:s AS text)) ORDER BY at DESC, id DESC""", s=sport)

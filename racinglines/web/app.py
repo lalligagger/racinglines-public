@@ -62,7 +62,7 @@ security = HTTPBasic(realm="racinglines", auto_error=False)
 SESSION_COOKIE = "rl_session"
 SESSION_HOURS = 12
 PUBLIC_PATHS = ("/login", "/signin", "/static", "/racinglines101", "/racinglines102", "/signup", "/forgot", "/pitch", "/mybets", "/term")
-PUBLIC_EXACT = {"/", "/docs/quickstart/term"}  # public by exact path only: the landing page; a prefix would open /docs/quickstart/term/../..
+PUBLIC_EXACT = {"/", "/docs/quickstart/term", "/llms.txt", "/llms-full.txt"}  # llms*.txt: the AI-readable docs index (llmstxt.org), built from the public docs only  # public by exact path only: the landing page; a prefix would open /docs/quickstart/term/../..
 
 # failed-login throttle: per client IP, MAX_FAILURES within FAILURE_WINDOW seconds -> 429
 MAX_FAILURES = 8

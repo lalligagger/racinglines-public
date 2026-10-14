@@ -164,7 +164,13 @@ def _exchange(venue):
     return EXCHANGES[venue]
 
 
-def _venue(conn, links, start, end, venue="polymarket", group_target=None):
+def _venue(conn, links, start, end, venue="polymarket", group_target=None, event_key=None):
+    """The weekend's backtest venue: our recorded tape, or Probalytics' when RACINGLINES_TAPE_SOURCE=probalytics
+    (markets/probalytics.py; off by default)."""
+    from racinglines.markets import probalytics as PB
+    if PB.enabled() and venue in PB.EXCHANGES:
+        return PB.EXCHANGES[venue](conn, links, start, end, group_target or GROUP_TARGET, COHERENCE_TOL,
+                                   event_key=event_key)
     return _exchange(venue)(conn, links, start, end, group_target or GROUP_TARGET, COHERENCE_TOL, STALE)
 
 
@@ -221,7 +227,7 @@ def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None, 
     status = SR.race_status("f1", w["event_key"], SR.db_status(conn, rid)) if SR.enabled(rules) else None
     start, end = stage_runs[0][1] - timedelta(hours=1), max([w["race_start"], *(price_times or {}).values()])
     group_target = {**GROUP_TARGET, **{k: v for k, v in OPT_GROUP_TARGET.items() if k in (kinds or ())}}
-    venue = _venue(conn, links, start, end, venue, group_target)
+    venue = _venue(conn, links, start, end, venue, group_target, event_key=w["event_key"])
     venue.tol_by_kind = dict(tol_by_kind or {})
     if thin_depth:
         venue.load_books(conn, start, end)

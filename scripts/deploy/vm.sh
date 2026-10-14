@@ -5,23 +5,33 @@
 #   bash scripts/deploy/vm.sh restore           # one time: bucket's data folders + database dump -> the VM
 #   bash scripts/deploy/vm.sh start [web]       # enable and start web, recorder, signals (web: the web app only);
 #                                               # on the Mac it first stops the Mac's recorder and signals agents
-#   bash scripts/deploy/vm.sh live <event> [off] # a live event on the VM: live/f1/<event>.toml's timer (a step every
-#                                               # 5 minutes) or live/mtb_dh/<event>.toml's poll loop; off: disable it
+#   bash scripts/deploy/vm.sh live <event> [off] # a live event on the VM: an F1 spec with a [window] turns on live
+#                                               # auto (below; it stops by itself a day after the results), one
+#                                               # without (a rehearsal) its own timer, a step every 5 minutes;
+#                                               # live/mtb_dh/<event>.toml: its poll loop; off: disable the per-event unit
 #   bash scripts/deploy/vm.sh live auto [off]    # every F1 event whose window is open, from the committed specs, one
 #                                               # step each every 5 minutes: no event is started or stopped by hand
 #   bash scripts/deploy/vm.sh record [off|status] # the Kalshi and OG.com recorder (scripts/vm/record_venues.sh): a pass
 #                                               # every 5 minutes (the first one backs the database up); status: last
 #                                               # passes and book snapshots per venue per 5 minutes
+#   bash scripts/deploy/vm.sh record fastf1 [on|off|status] # the FastF1 session recorder (scripts/vm/record_fastf1.sh):
+#                                               # a pass every 5 minutes on F1 race weekends; status: is-enabled,
+#                                               # next run, last passes and snapshots stored
 #   bash scripts/deploy/vm.sh pm-sync [off|status]# Polymarket market links sync (scripts/vm/pm_sync.sh): a pass
-#                                               # every 5 minutes during race weekends; status: last passes
-#   bash scripts/deploy/vm.sh forecast [off|status] # NASCAR and MotoGP forecast refresh: every 30 minutes during
-#                                               # race weekends, and F1 once per new race result; status: last passes
+#                                               # every 5 minutes, every day (WEEKEND_ONLY=1: race weekends only);
+#                                               # status: last passes
+#   bash scripts/deploy/vm.sh forecast [off|status] # forecast refresh (scripts/vm/forecast-refresh.sh): a pass every
+#                                               # 30 minutes; NASCAR and MotoGP forecasts only on their race weekends
+#                                               # (scripts/vm/race_weekend.sh), F1 once per new race result;
+#                                               # status: last passes
 #   bash scripts/deploy/vm.sh schedule [off|status] # session start times (scripts/vm/schedule_sync.sh): a dry run every
 #                                               # 6 hours, a backup and the write only when a session is added or moved
 #   bash scripts/deploy/vm.sh switch <NAME> on|off # an app switch (RACINGLINES_*, e.g. RACINGLINES_OG_VENUE) in
 #                                               # /etc/racinglines.env, web app restarted; never a trading flag
 #   bash scripts/deploy/vm.sh deploy [ref]      # checkout (default main), install, migrate, restart, smoke check
 #   bash scripts/deploy/vm.sh docs              # build the docs site on the VM (site/, served at /docs); deploy does it too
+#   bash scripts/deploy/vm.sh internal-docs <dir>   # copy a built book (its index.html folder) to data/internal-docs/ on
+#                                               # production and staging: /docs/internal/, admins only. Data, never in git
 #   bash scripts/deploy/vm.sh backup <purpose>  # the VM database to data/backups/db/racinglines-before-<purpose>-<UTC>.sql.gz
 #   bash scripts/deploy/vm.sh repoint           # one time: the VM checkout fetches from REPO_URL (fetch only, no file
 #                                               # touched); deploy refuses until the checkout's origin is REPO_URL
@@ -31,6 +41,13 @@
 #   bash scripts/deploy/vm.sh accounts [off]    # beta sign-up: back up the database, create the accounts schema and
 #                                               # fantasy-bucks ledger (racinglines users setup, idempotent), switch
 #                                               # RACINGLINES_SIGNUP on, check /signup; off: the switch off (the ledger stays)
+#   bash scripts/deploy/vm.sh postgres logical  # one time, before `mirror on`: production's Postgres with wal_level=logical
+#                                               # (restarts the database: seconds; timers paused and resumed like deploy)
+#   bash scripts/deploy/vm.sh mirror plan|on [data|accounts|all] | status | repair | off
+#                                               # staging as a live copy of production (racinglines/db/mirror.py): the
+#                                               # scope's tables follow production within seconds, staging's own rows
+#                                               # sit on top. plan: read-only preview; on: backs staging up first.
+#                                               # docs/vm-deploy.md "Staging: the data mirror"
 #   bash scripts/deploy/vm.sh staging setup [ref] | deploy [ref] [--db demo|main] | status | logs | reset | off | live <event>|auto [off]
 #   bash scripts/deploy/vm.sh staging demo-db build|status  # the season demo's own database racinglines_staging_demo
 #                                               # (scripts/vm/season_demo.sh, backup first; it persists across deploys)
@@ -96,20 +113,40 @@ case "${1:-}" in
     remote "sudo systemctl enable --now $units && systemctl --no-pager status $units | grep -E '●|Active'"
     ;;
   live)
-    ev="${2:-}"
+    ev="${2:-}"; pre=""
     # auto: every F1 event whose window is open, from the committed specs (no per-event start or stop by hand)
     if [ "$ev" = auto ]; then t="racinglines-live-auto.timer"
     elif [ -n "$ev" ] && [ -f "live/f1/$ev.toml" ]; then t="racinglines-live-f1@$ev.timer"
+      # an F1 spec with a [window]: live auto owns it, from an hour before the book opens to a day after the results
+      # (cli/live.py due_specs), so nothing is left stepping once it is complete; a per-event timer would step the
+      # settled event every 5 minutes until turned off. `off` still disables a per-event timer left on from before;
+      # a rehearsal spec (no [window]) keeps its own timer.
+      if [ "${3:-}" != off ] && grep -q '^\[window\]' "live/f1/$ev.toml"; then
+        log "$ev has a [window]: enabling live auto, which steps it until a day after its results (no per-event timer)"
+        t="racinglines-live-auto.timer"; pre="{ sudo systemctl disable --now racinglines-live-f1@$ev.timer 2>/dev/null || true; } && "
+      fi
     elif [ -n "$ev" ] && [ -f "live/mtb_dh/$ev.toml" ]; then t="racinglines-live-dh@$ev.service"   # the poll loop, no timer
     else echo "usage: vm.sh live <event>|auto [off], with live/f1/<event>.toml or live/mtb_dh/<event>.toml in the repo"; exit 1; fi
     if [ "${3:-}" = off ]; then
       remote "sudo systemctl disable --now $t && echo '$t: off'"
     else
       # before the book opens a step finds nothing due and exits, so enabling early is harmless
-      remote "sudo systemctl enable --now $t && systemctl --no-pager list-timers $t; systemctl --no-pager is-active $t"
+      remote "${pre}sudo systemctl enable --now $t && systemctl --no-pager list-timers $t; systemctl --no-pager is-active $t"
     fi
     ;;
   record)
+    if [ "${2:-}" = fastf1 ]; then
+      # the FastF1 session recorder (scripts/vm/record_fastf1.sh), F1 race weekends only. It has stored no row on the VM
+      # so far: F1's timing archive answers 403 there (docs/vm-deploy.md), and its log says BLOCKED when it does
+      t=racinglines-record-fastf1.timer
+      case "${3:-}" in
+        off) remote "sudo systemctl disable --now $t && echo '$t: off'" ;;
+        status) remote "systemctl is-enabled $t; systemctl --no-pager list-timers $t | head -n 2; cd $APP && sudo -u racinglines -H scripts/vm/record_fastf1.sh status" ;;
+        ""|on) remote "sudo systemctl enable --now $t && systemctl --no-pager list-timers $t" ;;
+        *) echo "usage: vm.sh record fastf1 [on|off|status]"; exit 1 ;;
+      esac
+      exit 0
+    fi
     t=racinglines-record-venues.timer
     case "${2:-}" in
       off) remote "sudo systemctl disable --now $t && echo '$t: off'" ;;
@@ -241,6 +278,26 @@ case "${1:-}" in
   docs)
     remote "cd $APP && sudo -u racinglines -H bash -s" < deploy/vm/build_docs.sh
     ;;
+  internal-docs)
+    # The internal onboarding book (a built Jupyter Book's _build/html): data, not code, so it never goes through git.
+    # Replaces data/internal-docs/ in production and staging; web/info_routes.py serves it to admins at /docs/internal/.
+    src="${2:?usage: vm.sh internal-docs <built html folder, e.g. ~/Documents/racinglines/jb/book/_build/html>}"
+    [ -f "$src/index.html" ] || { echo "no index.html in $src: build the book first (jupyter-book build <book>)"; exit 1; }
+    tgz="$(mktemp -d)/internal-docs.tgz"
+    COPYFILE_DISABLE=1 tar -czf "$tgz" -C "$src" .           # no macOS ._ files
+    log "copying $(du -h "$tgz" | cut -f1) to the VM"
+    gcloud compute scp "$tgz" "$VM:/tmp/internal-docs.tgz" --project "$PROJECT" --zone "$ZONE" --tunnel-through-iap
+    rm -rf "$(dirname "$tgz")"
+    remote 'set -e; chmod 644 /tmp/internal-docs.tgz
+      for app in /opt/racinglines /opt/racinglines-staging; do
+        [ -d "$app" ] || continue
+        sudo -u racinglines -H bash -c "set -e; t=$app/data/internal-docs; rm -rf \$t.new; mkdir -p \$t.new
+          tar -xzf /tmp/internal-docs.tgz -C \$t.new; rm -rf \$t.old; if [ -e \$t ]; then mv \$t \$t.old; fi
+          mv \$t.new \$t; rm -rf \$t.old; echo \"\$t: \$(find \$t -type f | wc -l) files\""
+      done
+      rm -f /tmp/internal-docs.tgz'
+    log "done: https://racinglines.bet/docs/internal/ and https://staging.racinglines.bet/docs/internal/ (admins only)"
+    ;;
   backup)
     purpose="${2:-}"; case "$purpose" in ""|*[!a-z0-9-]*) echo "usage: vm.sh backup <purpose> (lowercase letters, digits, -)"; exit 1 ;; esac
     remote "cd $APP && sudo -u racinglines -H bash -c 'set -euo pipefail; mkdir -p data/backups/db; b=data/backups/db/racinglines-before-$purpose-\$(date -u +%Y%m%dT%H%M%SZ).sql.gz; docker compose exec -T db pg_dump --no-owner --no-privileges -U racinglines racinglines | gzip -6 > \$b; ls -lh \$b'"
@@ -300,6 +357,62 @@ case "${1:-}" in
     bash "$SCRIPT_PATH" switch RACINGLINES_SIGNUP on
     remote "sleep 3; curl -s -o /dev/null -w 'GET /signup: %{http_code}\\n' http://127.0.0.1:8000/signup"
     log "sign-up is open at https://racinglines.bet/signup (accounts: /admin/users)"
+    ;;
+  postgres)
+    # One time, before `vm.sh mirror on` (docs/vm-deploy.md "Staging: the data mirror"): production's Postgres with
+    # wal_level=logical, so it can publish tables to staging. The setting needs a restart of the database container
+    # (seconds): the timers are paused and resumed as a deploy does, and the app services restart after it.
+    # max_slot_wal_keep_size caps what a stalled mirror can make production keep on disk (past it the mirror breaks,
+    # never production). No row is read or written.
+    [ "${2:-}" = logical ] || { echo "usage: vm.sh postgres logical"; exit 1; }
+    pgq() { as_app "docker compose exec -T db psql -U racinglines -d postgres -tAc \"$1\"" | tail -n 1; }
+    if [ "$(pgq 'SHOW wal_level')" = logical ]; then log "wal_level is already logical: nothing to do"; exit 0; fi
+    timers=$(remote "systemctl list-units --no-legend --plain --state=active 'racinglines-*.timer' | awk '{print \$1}'" | tr '\n' ' ')
+    steps=""; for u in $timers; do steps="$steps ${u%.timer}.service"; done
+    resume() { if [ -n "$timers" ]; then remote "sudo systemctl start $timers && sudo rm -f $PAUSED" && log "timers resumed: $timers"; fi; }
+    trap resume EXIT
+    if [ -n "$timers" ]; then
+      log "pausing: $timers"
+      remote "sudo mkdir -p ${PAUSED%/*} && echo '$timers' | sudo tee $PAUSED >/dev/null && sudo systemctl stop $timers"
+      remote "for i in \$(seq 60); do systemctl list-units --no-legend --plain --state=activating $steps | grep -q . || exit 0; sleep 5; done; echo 'a step is still running after 5 minutes: nothing changed'; exit 1"
+    fi
+    log "wal_level=logical, max_slot_wal_keep_size=2GB, then restarting the database container"
+    pgq "ALTER SYSTEM SET wal_level = logical" >/dev/null
+    pgq "ALTER SYSTEM SET max_slot_wal_keep_size = '2GB'" >/dev/null
+    as_app "docker compose restart db" >/dev/null
+    remote "cd $APP && for i in \$(seq 30); do sudo -u racinglines -H docker compose exec -T db pg_isready -U racinglines -q && exit 0; sleep 2; done; echo 'database not ready after 60 s'; exit 1"
+    remote "sudo systemctl try-restart $SERVICES racinglines-mcp racinglines-staging-web"
+    log "wal_level is now $(pgq 'SHOW wal_level')"
+    remote "sleep 3; cd $APP && bash scripts/deploy/smoke.sh http://127.0.0.1:8000"
+    ;;
+  mirror)
+    # Staging as a live copy of production (racinglines/db/mirror.py; docs/vm-deploy.md "Staging: the data mirror").
+    # Runs from staging's checkout with staging's env file. Production is reached by a read-only replication role; its
+    # catalog gets that role, a publication and a slot (on/off), and no production row is ever written.
+    STG=/opt/racinglines-staging
+    m() { remote "cd $STG && sudo -u racinglines -H bash -c 'set -a; . /etc/racinglines-staging.env; set +a; PYTHONUNBUFFERED=1 .venv/bin/python -m racinglines.db.mirror $1'"; }
+    scope="${3:-all}"
+    case "$scope" in data|accounts|all) ;; *) echo "scope: data | accounts | all"; exit 1 ;; esac
+    case "${2:-}" in
+      plan) m "plan --scope $scope" ;;
+      status|repair) m "$2" ;;
+      on)
+        log "backing up racinglines_staging first (staging rows production doesn't have as-is are replaced: mirror plan counts them)"
+        remote "cd $APP && sudo -u racinglines -H bash -c 'set -euo pipefail; mkdir -p $STG/data/backups/db; b=$STG/data/backups/db/racinglines_staging-before-mirror-\$(date -u +%Y%m%dT%H%M%SZ).sql.gz; docker compose exec -T db pg_dump --no-owner --no-privileges -U racinglines racinglines_staging | gzip -6 > \$b; ls -lh \$b'"
+        m "on --scope $scope"
+        # production's market archive (Parquet: the rows its recorder moves out of Postgres, which the mirror then
+        # deletes from staging too) is read in place; staging never archives (markets/store.py refuses)
+        log "staging reads production's data/archive in place"
+        remote "sudo -u racinglines -H bash -c 'set -e; t=$STG/data/archive; if [ -d \$t ] && [ ! -L \$t ]; then mv \$t \$t.pre-mirror; fi; ln -sfn $APP/data/archive \$t; ls -ld \$t'"
+        remote "sudo install -m 644 $STG/deploy/vm/systemd/racinglines-staging-mirror-check.* /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now racinglines-staging-mirror-check.timer && systemctl is-active racinglines-staging-mirror-check.timer"
+        ;;
+      off)
+        remote "sudo systemctl disable --now racinglines-staging-mirror-check.timer 2>/dev/null || true"
+        m off
+        log "staging keeps its rows as of now, and still reads production's data/archive"
+        ;;
+      *) echo "usage: vm.sh mirror plan [scope] | on [scope] | status | repair | off   (scope: data | accounts | all)"; exit 1 ;;
+    esac
     ;;
   staging)
     # Staging on the same VM (docs/vm-deploy.md "Staging"): /opt/racinglines-staging, racinglines_staging in production's
@@ -374,7 +487,7 @@ case "${1:-}" in
         esac
         ;;
       status)
-        remote "cd $STG 2>/dev/null && sudo -u racinglines -H git log -1 --format='staging: %h %s (%cr)' || echo 'staging: not set up'; systemctl --no-pager list-units '$SU*' 'racinglines-staging-live-*' ; systemctl --no-pager list-timers 'racinglines-staging-live-*' ; curl -s -o /dev/null -w 'GET http://127.0.0.1:8010/login: %{http_code}  X-Racinglines-Env: %header{x-racinglines-env}\n' http://127.0.0.1:8010/login || true"
+        remote "cd $STG 2>/dev/null && sudo -u racinglines -H git log -1 --format='staging: %h %s (%cr)' || echo 'staging: not set up'; systemctl --no-pager list-units '$SU*' 'racinglines-staging-live-*' 'racinglines-staging-mirror-*' ; systemctl --no-pager list-timers 'racinglines-staging-live-*' 'racinglines-staging-mirror-*' ; curl -s -o /dev/null -w 'GET http://127.0.0.1:8010/login: %{http_code}  X-Racinglines-Env: %header{x-racinglines-env}\n' http://127.0.0.1:8010/login || true"
         ;;
       logs)
         remote "sudo journalctl --no-pager -n 100 -u $SU"
@@ -384,15 +497,21 @@ case "${1:-}" in
         ;;
       live)
         # staging's own live run (its data folder and database), the twin of `vm.sh live`; production's are untouched
-        ev="${3:-}"
+        ev="${3:-}"; pre=""
         if [ "$ev" = auto ]; then u="racinglines-staging-live-auto"; t="${u}.timer"
         elif [ -n "$ev" ] && [ -f "live/f1/$ev.toml" ]; then u="racinglines-staging-live-f1@"; t="${u}$ev.timer"
+          # as `vm.sh live`: an F1 spec with a [window] is stepped by staging's live auto, not a per-event timer
+          if [ "${4:-}" != off ] && grep -q '^\[window\]' "live/f1/$ev.toml"; then
+            log "$ev has a [window]: enabling staging's live auto, which steps it until a day after its results"
+            u="racinglines-staging-live-auto"; t="${u}.timer"
+            pre="{ sudo systemctl disable --now racinglines-staging-live-f1@$ev.timer 2>/dev/null || true; } && "
+          fi
         elif [ -n "$ev" ] && [ -f "live/mtb_dh/$ev.toml" ]; then u="racinglines-staging-live-dh@"; t="${u}$ev.service"
         else echo "usage: vm.sh staging live <event>|auto [off], with live/f1/<event>.toml or live/mtb_dh/<event>.toml in the repo"; exit 1; fi
         if [ "${4:-}" = off ]; then
           remote "sudo systemctl disable --now $t && echo '$t: off'"
         else
-          remote "sudo install -m 644 $STG/deploy/vm/systemd/${u}.* /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now $t && systemctl --no-pager is-active $t"
+          remote "${pre}sudo install -m 644 $STG/deploy/vm/systemd/${u}.* /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now $t && systemctl --no-pager is-active $t"
         fi
         ;;
       *) echo "usage: vm.sh staging setup [ref] | deploy [ref] [--db demo|main] | db demo|main|status | demo-db build|status | status | logs | reset | off | live <event> [off]"; exit 1 ;;

@@ -507,7 +507,7 @@ def _mcp_client(engine, monkeypatch, who):
         async def go():
             async with Client(S.build(engine_url=url)) as client:
                 r = await client.call_tool(name, args)
-                t = r.content[0].text
+                t = r.content[-1].text
                 return ("error", t) if r.is_error else json.loads(t)
         try:
             return asyncio.run(go())

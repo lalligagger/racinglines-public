@@ -110,7 +110,7 @@ while true; do
       COPYFILE_DISABLE=1 tar --no-xattrs -czf "$tgz" -C "$LOCAL" "${all[@]}"
       gcloud compute scp "$tgz" "$VM:/tmp/f1_push_$EV.tgz" --project "$PROJECT" --zone "$ZONE" --tunnel-through-iap
       stg=""
-      [ -n "$STG_RAW" ] && stg=" && sudo -u racinglines mkdir -p $STG_RAW && sudo -u racinglines tar --warning=no-unknown-keyword -xzf /tmp/f1_push_$EV.tgz -C $STG_RAW && { ! systemctl is-enabled -q racinglines-staging-live-f1@$EV.timer || sudo systemctl start --no-block racinglines-staging-live-f1@$EV.service; } && echo 'on staging, files copied'"
+      [ -n "$STG_RAW" ] && stg=" && sudo -u racinglines mkdir -p $STG_RAW && sudo -u racinglines tar --warning=no-unknown-keyword -xzf /tmp/f1_push_$EV.tgz -C $STG_RAW && { ! { systemctl is-enabled -q racinglines-staging-live-f1@$EV.timer || systemctl is-enabled -q racinglines-staging-live-auto.timer; } || sudo systemctl start --no-block racinglines-staging-live-f1@$EV.service; } && echo 'on staging, files copied'"
       remote "sudo -u racinglines mkdir -p $REMOTE && sudo -u racinglines tar --warning=no-unknown-keyword -xzf /tmp/f1_push_$EV.tgz -C $REMOTE && { $INGEST; true; } && sudo systemctl start --no-block racinglines-live-f1@$EV.service && echo 'on the VM, live step started'$stg; rm -f /tmp/f1_push_$EV.tgz"
       rm -f "$tgz"
       printf '%s\n' "${new[@]}" >> "$PUSHED"
