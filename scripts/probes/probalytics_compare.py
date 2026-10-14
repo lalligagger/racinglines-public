@@ -53,6 +53,7 @@ def say(msg):
 def stage_rows(conn, w, venue):
     from racinglines.markets import probalytics as PB
     from racinglines.pipelines import weekend_sweep as W
+    stage_rows.venue = None
     rid = W._race_id(conn, w["event_key"])
     links = W._links(conn, rid, venue) if rid is not None else []
     if not len(links):
@@ -63,6 +64,7 @@ def stage_rows(conn, w, venue):
     theirs = PB.EXCHANGES[venue](conn, links, start, end, W.GROUP_TARGET, W.COHERENCE_TOL, event_key=w["event_key"])
     vk = ours.MARKET_KEY if venue == "kalshi" else "condition_id"
     rows = []
+    stage_rows.venue = theirs                             # book_rows reuses it: one load of their books per weekend
     for lab, t in w["stages"]:
         for m in links.to_dict("records"):
             tok = m["token_id"]
@@ -97,7 +99,8 @@ def book_rows(conn, w, venue):
     bk = MS.read(conn, "books", tokens=links["token_id"].tolist(), start=a, end=b, root=root)
     if not len(bk):
         return []
-    theirs = PB.EXCHANGES[venue](conn, links, start, end, W.GROUP_TARGET, W.COHERENCE_TOL, event_key=w["event_key"])
+    theirs = getattr(stage_rows, "venue", None) or PB.EXCHANGES[venue](
+        conn, links, start, end, W.GROUP_TARGET, W.COHERENCE_TOL, event_key=w["event_key"])
     rows = []
     for r in bk.itertuples():
         t = pd.Timestamp(r.ts).tz_convert("UTC").tz_localize(None) if pd.Timestamp(r.ts).tzinfo else pd.Timestamp(r.ts)
