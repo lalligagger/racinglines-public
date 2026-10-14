@@ -191,7 +191,8 @@ def _touch_frame(t, venue, key_col, levels):
     return out
 
 
-def read_books(venue, event_key, start, end, keys, base=None, tag=DEFAULT_TAG, levels=False, stale=BOOK_STALE):
+def read_books(venue, event_key, start, end, keys, base=None, tag=DEFAULT_TAG, levels=False, stale=BOOK_STALE,
+               day_books=True):
     """One row per snapshot of the keys' books over [start - stale, end]: key, ts (naive UTC), bid, ask,
     bid_size, ask_size (at the touch); with levels=True also bid_px, bid_sz, ask_px, ask_sz (every level, as pulled).
     The day files of the sport's `tag` when any were pulled for the window (locally or in the bucket), else the stage
@@ -206,6 +207,8 @@ def read_books(venue, event_key, start, end, keys, base=None, tag=DEFAULT_TAG, l
     out_cols = ["key", "ts", "bid", "ask", "bid_size", "ask_size"] + (list(LEVEL_COLS) if levels else [])
     a = pd.Timestamp(start) - stale
     days = [base / "books" / f"{d:%Y-%m-%d}_{tag}_{code}.parquet" for d in _days(a, pd.Timestamp(end))]
+    if not day_books:                 # the stage file only, as for every weekend without day books (sweeps)
+        days = []
     filt = [(key_col, "in", list(keys))]
     got = fetch(days, base)
     parts = []
@@ -261,13 +264,13 @@ class _Tape:
     book_stale = BOOK_STALE
 
     def _load(self, venue, event_key, links, start, end, book_key, fill_key, base=None, levels=False, tag=None,
-              book_stale=None):
+              book_stale=None, day_books=True):
         if book_stale is not None:
             self.book_stale = book_stale
         tag = tag or DEFAULT_TAG
         a, b = pd.Timestamp(start), pd.Timestamp(end)
         bk = read_books(venue, event_key, a, b, links[book_key].dropna().astype(str).unique(), base, tag=tag,
-                        levels=levels, stale=self.book_stale)
+                        levels=levels, stale=self.book_stale, day_books=day_books)
         fl = read_fills(venue, a - timedelta(hours=24), b, links[fill_key].dropna().astype(str).unique(), base, tag)
         self.pb_books = {k: g for k, g in bk.groupby("key")}
         self.pb_fills = {k: g for k, g in fl.groupby("key")}
@@ -322,14 +325,21 @@ class _Tape:
 
 
 class ProbalyticsPolymarket(_Tape, Polymarket):
-    """Polymarket on Probalytics' tape: price = the book's mid, trades at it (as ours trade at the price history)."""
+    """Polymarket on Probalytics' tape: price = the book's mid, trades at it (as ours trade at the price history);
+    with touch_quotes (the taker_fill = touch setting) its stages carry the book's touch, so the taker buys at the ask
+    and sells at the bid as on Kalshi."""
+
+    touch_quotes = False
+
+    def quote(self, token, t):
+        return self._touch(str(token), t) if self.touch_quotes else None
 
     def __init__(self, conn, links, start, end, group_target=None, coherence_tol=0.25, stale=None, event_key=None,
-                 base=None, levels=False, tag=None, book_stale=None):
+                 base=None, levels=False, tag=None, book_stale=None, day_books=True):
         self.links, self.stale = links, stale
         self.group_target, self.coherence_tol = group_target or {}, coherence_tol
         self._load("polymarket", event_key, links, start, end, "token_id", "condition_id", base, levels=levels, tag=tag,
-                   book_stale=book_stale)
+                   book_stale=book_stale, day_books=day_books)
 
     def price(self, token, t):
         q = self._touch(str(token), t)
@@ -343,11 +353,11 @@ class ProbalyticsKalshi(_Tape, Kalshi):
     """Kalshi on Probalytics' tape: the taker meets the book's touch; price = its mid."""
 
     def __init__(self, conn, links, start, end, group_target=None, coherence_tol=0.25, stale=None, event_key=None,
-                 base=None, levels=False, tag=None, book_stale=None):
+                 base=None, levels=False, tag=None, book_stale=None, day_books=True):
         self.links, self.stale = links, stale
         self.group_target, self.coherence_tol = group_target or {}, coherence_tol
         self._load("kalshi", event_key, links, start, end, "token_id", "token_id", base, levels=levels, tag=tag,
-                   book_stale=book_stale)
+                   book_stale=book_stale, day_books=day_books)
 
     def price(self, token, t):
         q = self._touch(str(token), t)

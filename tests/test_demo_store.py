@@ -257,7 +257,8 @@ def test_kart_quickstart_runs_on_the_store(demo_env):
     unchanged, on the demo store."""
     from racinglines.demo import store
     env, _ = demo_env
-    small = {"model backtest kart": ["--races", "3", "--sims", "300", "--track", "on"], "model forecast kart": ["--sims", "500"]}
+    small = {"model backtest kart": ["--races", "3", "--sims", "300", "--track", "on"], "model forecast kart": ["--sims", "500"],
+             "live run kart/demo-2026-09": ["--tick", "60"]}                 # hourly steps, not 5-minute ones
     outs = []
     for step in store.find("kart").quickstart:
         if not step.get("record", True):                                 # the install step: shown, never run

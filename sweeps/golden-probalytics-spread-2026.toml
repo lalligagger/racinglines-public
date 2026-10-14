@@ -1,0 +1,46 @@
+# The golden check on Probalytics' tape with the fill-fidelity settings of PR #205 (owner, 2026-10-14). The same jobs
+# as sweeps/golden-probalytics-2026.toml, with: as touch, and a stage whose quote is wider than 10 cents is not tradeable.
+# Compare with the mid-price run:
+#   python scripts/probes/probalytics_compare.py --results data/runs/search/golden-probalytics-2026 data/runs/search/golden-probalytics-spread-2026
+#
+#   TARGET=staging STAGING_DB=racinglines_staging_demo RACINGLINES_TAPE_SOURCE=probalytics MODE=search \
+#     QUEUE=sweeps/golden-probalytics-spread-2026.toml scripts/vm/overnight.sh   (a transient unit)
+#
+# Size: 12 runs, as golden-probalytics-2026.
+
+[search]
+name = "golden-probalytics-spread-2026"
+parallel = 2          # 2 vCPU, niced, beside prod's 5-minute recorders and signals
+grid = 8
+history_cache = true
+hours = 3.0
+grace_minutes = 20
+
+[report]
+target = 2026
+holdout = []
+top = 10
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+replicates = 3
+taker_fill = "touch"
+max_spread = 0.10
+note = "golden spread: profile A at 3 seeds, Polymarket"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+rounds = "5-17"
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+replicates = 3
+taker_fill = "touch"
+max_spread = 0.10
+note = "golden spread: profile A at 3 seeds, Kalshi from Canada"

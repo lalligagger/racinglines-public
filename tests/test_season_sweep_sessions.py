@@ -181,9 +181,11 @@ def run(test_engine, sport, **kw):
 # 11a6805) before the session schedule existed; re-pinned 2026-10-14 when the root_unit and bankroll_growth settings
 # arrived: the only difference from the old digests (5203bf105533..., a7ad8eeaa0ec...) is their two null entries in
 # params["settings"], every table and total byte-identical; re-pinned again the same day for tape_source's null entry
-# (with it removed, the output still hashes to the previous digests 6562cf8c..., bd89ddb3...)
-BASE = {"nascar": "04ed6e31a9e44456ab8a4210dd0556bc3751e416c223bfab7a4e1bab17a64632",
-        "motogp": "599758513c611b272ba156455e89cc706165893b63afdc543dd0321d7015d28c"}
+# (with it removed, the output still hashes to the previous digests 6562cf8c..., bd89ddb3...); and again for
+# taker_fill's and max_spread's null entries (with them removed, it hashes to 04ed6e31..., 59975851...); and again
+# for the taker's fill="price" param (with it removed, it hashes to 2c5e446d..., 6797e03b...)
+BASE = {"nascar": "e659d444e541b801836019255fd510fa343c82e01ebe72558554c1d616fa8cc6",
+        "motogp": "c3a1421d07f59917f5bec40307d138911af9626e2c805221b2624f3cbef67759"}
 
 
 @pytest.mark.parametrize("sport", ["nascar", "motogp"])
