@@ -53,8 +53,9 @@ def test_the_alpha_picker_shows_the_five_styles_by_name_and_no_codes(app_db, alp
     from racinglines.web import roles as R
     for who in ("ada", "bea"):
         client, csrf, page = _login(app_db, who)
-        labels = re.findall(r'<div class="style-card[^"]*">\s*<h3>([^<]+?)\s*(?:<|$)', page)
-        assert labels == [PF.ALPHA_STYLES[c]["label"] for c in PF.ALPHA_ORDER], who
+        cards = re.findall(r'<div class="style-card[^"]*">\s*<h3><span class="mt-badge mt-(\w+)"[^>]*>([MT])</span> ([^<]+?)\s*(?:<|$)', page)
+        assert [c[2] for c in cards] == [PF.ALPHA_STYLES[c]["label"] for c in PF.ALPHA_ORDER], who
+        assert all(c[:2] in (("taker", "T"), ("maker", "M")) for c in cards), who      # M/T badge (owner, 2026-10-14)
         body = page.split('<form method="post" action="/strategy/pick"', 1)[1]
         visible = re.sub(r"<[^>]+>", " ", body)                       # what a user reads, not attribute values
         assert not re.search(r"\bT\d+\b|\bTB\b", visible), who

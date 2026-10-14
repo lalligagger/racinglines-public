@@ -588,6 +588,9 @@ details.more > summary { font-size: 13px; color: var(--muted); padding: 4px 0; }
 .style-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin: 0 0 14px; }
 .style-card { display: grid; gap: 6px; align-content: start; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--card); }
 .style-card.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.mt-badge { display: inline-grid; place-items: center; width: 1.3em; height: 1.3em; border-radius: 4px; font-size: .75em; font-weight: 700; vertical-align: .12em; color: #fff; }
+.mt-badge.mt-taker { background: var(--accent); }
+.mt-badge.mt-maker { background: var(--fg); color: var(--bg); }
 .style-card h3 { margin: 0; font-size: 16px; }
 .style-card p { margin: 0; font-size: 13.5px; }
 .style-card .style-bt { display: grid; gap: 2px; }
