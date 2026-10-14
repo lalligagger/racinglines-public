@@ -358,3 +358,18 @@ def test_sweeps_read_stage_files_even_where_day_books_exist(base, monkeypatch):
     monkeypatch.setenv("PROBALYTICS_DATA", str(base))
     v = W._venue(None, links, T.replace(hour=0), T, "polymarket", event_key="2026-07", tape="probalytics")
     assert v.price("tokA", T) == pytest.approx(0.42)                      # a sweep: the stage file, as every weekend
+
+
+def test_walk_forward_picks_only_from_weekends_already_raced():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("wf", "scripts/probes/walk_forward.py")
+    WF = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(WF)
+    wk = lambda xs: {r: {"update_pnl": x} for r, x in enumerate(xs, 1)}         # noqa: E731
+    pool = {"a": dict(venue="polymarket", note="wf pool: min_edge 0.1", weekends=wk([0, 0, 0, 0])),
+            "b": dict(venue="polymarket", note="wf pool: min_edge 0.05", weekends=wk([0, 500, -50, 300]))}
+    w = WF.walk(pool, margin=100)
+    assert w["start"] == "a"                                                      # the default to begin with
+    assert [j for _, j in w["picks"]] == ["a", "a", "b", "b"]                    # b's round 2 is seen from round 3
+    assert w["wf_pnl"] == pytest.approx(-50 + 300)                               # not b's 500: it wasn't known yet
+    assert w["hindsight"] == ("b", 750)
