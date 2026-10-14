@@ -52,6 +52,14 @@ the next staging → main promotion (a draft until the owner says "promote"; the
 - [ ] **Next promotion: staging → main (draft until the owner says "promote").** Carries #188/#189:
       `record_fastf1.sh` executable (`vm.sh record fastf1 status` and the recorder's unit failed with "command not
       found" without it) and two data-change entries. Touches `scripts/vm/`, so it deploys production.
+- [ ] **Stage cutoffs from a session's actual end, not its scheduled end (owner, 2026-10-14: P0, review after the
+      day's fill-fidelity runs).** A stage's cutoff is the scheduled start + `[sessions.schedule]` minutes +
+      `[stages] lag_minutes` 30 (`racinglines/core/stages.py` `build`), and the model's data gate uses the same scheduled
+      end (`models/inputs/laps.py` `session_end`). A session that overran by more than 30 minutes (red flags, a delayed
+      start) is then priced with results the market had not seen yet: a future leak in every backtest and sweep, worst
+      at "after Quali". Same on both tapes, so the ours vs Probalytics A/B holds, but absolute P&L can be too high. First
+      step: list every 2026 session whose actual end (FastF1 session status, VM) is after its cutoff; then cut from the
+      actual end where it is known. The fill paths themselves read as of t (tested in `tests/test_book_fill.py`).
 - [ ] **CLV on every live and replayed fill (C4).** `racinglines backtest clv` covers stored paper bets; the sweep
       stats, `f1 reconcile`, `f1 scorecard` and the weekend report still read P&L only. G1 is judged on CLV: the plain
       mean per decided bet against the fill price (owner, 2026-10-07). [Paper trading](#paper-trading).
