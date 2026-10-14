@@ -44,6 +44,7 @@ from racinglines.markets.venue_replay import Kalshi, Polymarket
 ENV = "RACINGLINES_TAPE_SOURCE"
 BOOK_STALE = timedelta(hours=48)
 LEVEL_COLS = ("bid_px", "bid_sz", "ask_px", "ask_sz")
+BATCH_ROWS = 200_000   # book rows decoded at a time (read_books)
 DEFAULT_TAG = "F1"
 
 
@@ -173,27 +174,8 @@ def best_levels(px, sz, highest):
     return price, size
 
 
-def read_books(venue, event_key, start, end, keys, base=None, tag=DEFAULT_TAG, levels=False, stale=BOOK_STALE):
-    """One row per snapshot of the keys' books over [start - stale, end]: key, ts (naive UTC), bid, ask,
-    bid_size, ask_size (at the touch); with levels=True also bid_px, bid_sz, ask_px, ask_sz (every level, as pulled).
-    The day files of the sport's `tag` when any were pulled for the window (locally or in the bucket), else the stage
-    file (when there is an event_key)."""
-    import pyarrow.compute as pc
-    base = Path(base or root())
-    code = venue.upper()
-    key_col = "outcome_pid" if venue == "polymarket" else "market_platform_id"
-    cols = list(dict.fromkeys([key_col, "outcome_pid", "timestamp", *LEVEL_COLS]))
-    out_cols = ["key", "ts", "bid", "ask", "bid_size", "ask_size"] + (list(LEVEL_COLS) if levels else [])
-    a = pd.Timestamp(start) - stale
-    days = [base / "books" / f"{d:%Y-%m-%d}_{tag}_{code}.parquet" for d in _days(a, pd.Timestamp(end))]
-    filt = [(key_col, "in", list(keys))]
-    t = _read_table(days, cols, filt, base)
-    if t is None and event_key is not None:
-        t = _read_table([base / "stages" / f"{event_key}_{code}.parquet"], cols, filt, base)
-    if t is not None and venue == "kalshi":
-        t = t.filter(pc.equal(t["outcome_pid"], "yes"))
-    if t is None or not t.num_rows:
-        return pd.DataFrame(columns=out_cols)
+def _touch_frame(t, key_col, levels):
+    """One Arrow slice of book rows -> key, ts, bid, ask, bid_size, ask_size (+ the level columns with levels)."""
     bid, bid_size = best_levels(t["bid_px"], t["bid_sz"], highest=True)
     ask, ask_size = best_levels(t["ask_px"], t["ask_sz"], highest=False)
     out = pd.DataFrame(dict(key=t[key_col].to_pandas().astype(str).to_numpy(),
@@ -202,6 +184,54 @@ def read_books(venue, event_key, start, end, keys, base=None, tag=DEFAULT_TAG, l
     if levels:
         for c in LEVEL_COLS:
             out[c] = t[c].to_pandas().to_numpy()
+    return out
+
+
+def _book_frames(paths, cols, key_col, keys, venue, levels, base=None):
+    """The keys' rows of `paths` (fetched from the bucket first when set), reduced to the touch one record batch at a
+    time: a day of full-depth books is GBs of level lists once decoded, more than the VM holds for a weekend at once."""
+    import pyarrow as pa
+    import pyarrow.compute as pc
+    import pyarrow.parquet as pq
+    want = pa.array(sorted({str(k) for k in keys}), type=pa.string())
+    got = fetch(paths, base)
+    frames = []
+    try:
+        for p in map(Path, paths):
+            if not p.exists():
+                continue
+            for b in pq.ParquetFile(p).iter_batches(batch_size=BATCH_ROWS, columns=cols):
+                t = pa.Table.from_batches([b])
+                t = t.filter(pc.is_in(t[key_col].cast(pa.string()), value_set=want))
+                if venue == "kalshi" and t.num_rows:
+                    t = t.filter(pc.equal(t["outcome_pid"], "yes"))
+                if t.num_rows:
+                    frames.append(_touch_frame(t, key_col, levels))
+    finally:
+        _evict(got)
+    return frames
+
+
+def read_books(venue, event_key, start, end, keys, base=None, tag=DEFAULT_TAG, levels=False, stale=BOOK_STALE):
+    """One row per snapshot of the keys' books over [start - stale, end]: key, ts (naive UTC), bid, ask,
+    bid_size, ask_size (at the touch); with levels=True also bid_px, bid_sz, ask_px, ask_sz (every level, as pulled).
+    The day files of the sport's `tag` when any were pulled for the window (locally or in the bucket), else the stage
+    file (when there is an event_key). Read a batch at a time (_book_frames), so memory follows the keys' rows, not
+    the files' size."""
+    base = Path(base or root())
+    code = venue.upper()
+    key_col = "outcome_pid" if venue == "polymarket" else "market_platform_id"
+    cols = list(dict.fromkeys([key_col, "outcome_pid", "timestamp", *LEVEL_COLS]))
+    out_cols = ["key", "ts", "bid", "ask", "bid_size", "ask_size"] + (list(LEVEL_COLS) if levels else [])
+    a = pd.Timestamp(start) - stale
+    days = [base / "books" / f"{d:%Y-%m-%d}_{tag}_{code}.parquet" for d in _days(a, pd.Timestamp(end))]
+    frames = _book_frames(days, cols, key_col, keys, venue, levels, base)
+    if not frames and event_key is not None:
+        frames = _book_frames([base / "stages" / f"{event_key}_{code}.parquet"], cols, key_col, keys, venue, levels,
+                              base)
+    if not frames:
+        return pd.DataFrame(columns=out_cols)
+    out = pd.concat(frames, ignore_index=True)
     out = out.drop_duplicates(["key", "ts"], keep="last").sort_values(["key", "ts"], kind="stable")
     return out.reset_index(drop=True)
 

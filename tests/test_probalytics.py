@@ -56,6 +56,18 @@ def test_polymarket_mid_as_of_t_never_after(base):
     assert v.quote("tokA", T) is None                       # Polymarket trades at the price, as ours does
 
 
+def test_books_read_a_batch_at_a_time_give_the_same_rows(base, monkeypatch):
+    # the VM ran out of memory decoding a weekend of full-depth day books at once: read_books now streams batches
+    keys = ["tokA", "tokB", "tokZ"]
+    whole = PB.read_books("polymarket", "2026-07", T.replace(hour=0), T, keys, base)
+    k_whole = PB.read_books("kalshi", "2026-07", T.replace(hour=0), T, ["KXF1RACE-BARGP26-ANT"], base, levels=True)
+    monkeypatch.setattr(PB, "BATCH_ROWS", 1)
+    pd.testing.assert_frame_equal(PB.read_books("polymarket", "2026-07", T.replace(hour=0), T, keys, base), whole)
+    k_one = PB.read_books("kalshi", "2026-07", T.replace(hour=0), T, ["KXF1RACE-BARGP26-ANT"], base, levels=True)
+    pd.testing.assert_frame_equal(k_one, k_whole)
+    assert list(whole["key"]) == ["tokA", "tokA", "tokB"] and list(k_whole["bid"]) == [0.31]
+
+
 def test_stale_after_48_hours_and_exact_keys(base):
     v = _pm(base)
     assert v.price("tokB", T) is None                       # last snapshot 60 h before T
