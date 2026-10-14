@@ -1,5 +1,7 @@
 # racinglines
 
+> Fair prices and market-making tools for race-sport prediction markets, priced strictly as of any moment and tested on real market tapes.
+
 <!-- readme: tagline -->
 
 **Tools for an edge in race-sport prediction markets.** racinglines turns
@@ -20,6 +22,48 @@ edge yet that held up in a second season. Where every sport stands on every
 exchange: [Sports and exchanges](coverage.md).
 
 <!-- /readme -->
+
+## Start here
+
+<div class="grid cards" markdown>
+
+-   :material-rocket-launch: **Quickstart**
+
+    ---
+
+    Install, build a synthetic demo store and run the whole pipeline in about 5 minutes. Every command is shown
+    with the output it really printed.
+
+    [:octicons-arrow-right-24: Quickstart](quickstart.md)
+
+-   :material-web: **The app**
+
+    ---
+
+    [racinglines.bet](https://racinglines.bet): Markets, Trade, History and Lab. Click **Try the demo** to look
+    around, or sign up for the fantasy league alpha.
+
+    [:octicons-arrow-right-24: Web app](webapp.md)
+
+-   :material-console: **The CLI**
+
+    ---
+
+    One command, task first: `racinglines data | model | strategy | markets | book | live | db ...`, with
+    `--demo` on any of them.
+
+    [:octicons-arrow-right-24: CLI reference](cli.md)
+
+-   :material-robot: **MCP: ask Claude**
+
+    ---
+
+    The same data and simulations as typed tools, local over stdio or hosted at `mcp.racinglines.bet`, for
+    Claude Code, Claude Desktop or the CLI.
+
+    [:octicons-arrow-right-24: MCP server](mcp.md)
+
+</div>
 
 ## At a glance
 
@@ -59,8 +103,9 @@ backtests. The pages below have the details.
       and replays.
 
     The demo accounts can look but not trade (sign up to trade). Their track records are replays of real weekends,
-    and nothing a visitor changes in a demo session is kept. The [quickstart replay](https://racinglines.bet/docs/quickstart/term) shows the command line in the
-    browser, no sign-in needed.
+    and nothing a visitor changes in a demo session is kept. The
+    [quickstart replay](https://racinglines.bet/docs/quickstart/term) plays the command line in the browser, no
+    sign-in needed.
 2. **Run it locally**, then check the setup (about 10 seconds, nothing
    downloaded):
 
@@ -72,8 +117,8 @@ pip install -r requirements.txt && pip install -e .   # dependencies + the `raci
 racinglines check                                      # code, data endpoints, database (~10 s)
 ```
 
-The demo ([Quickstart](quickstart.md)): the real commands on a synthetic Mario Kart season, a separate database
-built on first use (needs Postgres: `docker compose up -d`):
+The demo ([Quickstart](quickstart.md), each command with its real output): the real commands on a synthetic Mario
+Kart season, a separate database built on first use (needs Postgres: `docker compose up -d`):
 
 ```
 racinglines model backtest kart --demo                 # every past race priced as of before it, scored
@@ -189,9 +234,12 @@ sports are summarised on one status page.
 | 3. **Downhill** | [Downhill model](model.md) | Log-time rider model, weekend formats, season simulation |
 | | [Downhill evaluation](evaluation.md) | 43-round walk-forward, per season and per event |
 | | [Downhill forecast](forecast.md) | The live 2026 title projection |
-| 4. **Web app** | [Web app](webapp.md) | Pages and routes, roles, demo accounts and sessions, the Lab, the private book, Polymarket orders |
+| 4. **Use it** | [Quickstart](quickstart.md) | The whole pipeline on a synthetic demo store, every command with its real output |
+| | [Web app](webapp.md) | Pages and routes, roles, demo accounts and sessions, the Lab, the private book, Polymarket orders |
+| | [CLI reference](cli.md) | Every group and command, its `-h` output and options |
+| | [MCP server](mcp.md) | The data and simulations as typed tools for Claude Code, Claude Desktop or the CLI |
 | | [Live events](live-events.md) | A race followed live: the live model, the maker's quotes, the private book's crowd, replay logs |
-| 5. **Operate** | [CLI reference](cli.md) | Every command and option, launchd agents, scripts |
+| 5. **Operate** | [VM deploy](vm-deploy.md) | How racinglines.bet is run: deploys, timers, staging, backups |
 | | [Cloud sweeps](cloud-sweep.md) | Running settings searches on a cloud machine |
 | | [Testing](testing.md) | Quick check, regression suite, fixtures, golden outputs |
 | 6. **Roadmap** | [Roadmap](todo.md) · [F1 live test](f1-live-roadmap.md) · [F1 roadmap](f1-roadmap.md) | What's next, in priority order; this week's F1 live test; the phased F1 plan with its ground rules |
@@ -209,7 +257,9 @@ We'd love to hear from you. The [contributor guide](contributing.md) says how to
 ## Building these docs
 
 The top-level `README.md` is the short version. Parts of it are generated
-from sections of these pages (see [Docs & README](cli.md#scriptsbuild_readmepy)).
+from sections of these pages (see [Docs & README](cli.md#scriptsbuild_readmepy)). The command outputs on these
+pages are captured by `scripts/docs/capture_examples.py` on the kart demo store (`scripts/docs/examples.toml`
+lists them) and embedded as snippets, never typed by hand.
 
 <!-- readme: docs-build -->
 

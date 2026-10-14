@@ -10,6 +10,11 @@ A generated block in the doc, replaced on every build:
     <!-- quickstart: kart -->
     <!-- /quickstart -->
 
+Each step is a heading with the pack's `about`, then the command. A step whose command is captured in
+scripts/docs/examples.toml (scripts/docs/capture_examples.py) is rendered as a "Command" / "Output" tab pair that
+embeds the captured file (pymdownx.snippets), so the page shows what the command really printed; any other step
+shows the command alone.
+
 Usage:
     python3 scripts/build_quickstart.py              # rewrite docs/quickstart.md's blocks
     python3 scripts/build_quickstart.py --check      # exit 1 if a block is out of date (tests/test_demo_store.py)
@@ -28,16 +33,36 @@ DOC = ROOT / "docs" / "quickstart.md"
 BLOCK = re.compile(r"(<!--\s*quickstart:\s*([\w-]+)\s*-->\n)(.*?)(<!--\s*/quickstart\s*-->)", re.S)
 
 
+EXAMPLES = ROOT / "scripts" / "docs" / "examples.toml"
+
+
+def captured():
+    """{command: example id} for every captured example (scripts/docs/examples.toml)."""
+    import tomllib
+    if not EXAMPLES.is_file():
+        return {}
+    return {e["command"]: e["id"] for e in tomllib.loads(EXAMPLES.read_text()).get("example", [])}
+
+
 def render(pack):
-    """The Markdown of one pack's quickstart: a numbered step per [[quickstart]] entry, each with its command, grouped
-    under a heading per `section` (first-seen order) when the pack names any; one plain list when it names none."""
+    """The Markdown of one pack's quickstart: a "Step N" heading per [[quickstart]] entry with its `about`, then the
+    command, as a Command / Output tab pair embedding the captured example when there is one, grouped under a heading
+    per `section` (first-seen order) when the pack names any; one plain list when it names none."""
+    ids = captured()
     out = []
     for name, steps in pack.sections():
         if name:
             out += [f"#### {name}", ""]
         for i, step in enumerate(steps, 1):
-            out += [f"**{i}. {step['title']}.** {step.get('about', '')}".rstrip(), "",
-                    "```", "# LOCAL (Mac), or any machine with Postgres", step["run"], "```", ""]
+            out += [f"### Step {i}: {step['title']}", ""]
+            if step.get("about"):
+                out += [step["about"], ""]
+            ex = ids.get(step["run"])
+            if ex:
+                out += ['=== "Command"', "", f'    --8<-- "examples/{ex}.md:command"', "",
+                        '=== "Output"', "", f'    --8<-- "examples/{ex}.md:output"', ""]
+            else:
+                out += ["```bash", "# LOCAL (Mac), or any machine with Postgres", step["run"], "```", ""]
     return "\n".join(out)
 
 

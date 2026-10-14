@@ -329,8 +329,8 @@ pip install -r requirements.txt && pip install -e .   # dependencies + the `raci
 racinglines check                                      # code, data endpoints, database (~10 s)
 ```
 
-The demo ([Quickstart](docs/quickstart.md)): the real commands on a synthetic Mario Kart season, a separate database
-built on first use (needs Postgres: `docker compose up -d`):
+The demo ([Quickstart](docs/quickstart.md), each command with its real output): the real commands on a synthetic Mario
+Kart season, a separate database built on first use (needs Postgres: `docker compose up -d`):
 
 ```
 racinglines model backtest kart --demo                 # every past race priced as of before it, scored
@@ -431,9 +431,12 @@ sports are summarised on one status page.
 | 3. **Downhill** | [Downhill model](docs/model.md) | Log-time rider model, weekend formats, season simulation |
 | | [Downhill evaluation](docs/evaluation.md) | 43-round walk-forward, per season and per event |
 | | [Downhill forecast](docs/forecast.md) | The live 2026 title projection |
-| 4. **Web app** | [Web app](docs/webapp.md) | Pages and routes, roles, demo accounts and sessions, the Lab, the private book, Polymarket orders |
+| 4. **Use it** | [Quickstart](docs/quickstart.md) | The whole pipeline on a synthetic demo store, every command with its real output |
+| | [Web app](docs/webapp.md) | Pages and routes, roles, demo accounts and sessions, the Lab, the private book, Polymarket orders |
+| | [CLI reference](docs/cli.md) | Every group and command, its `-h` output and options |
+| | [MCP server](docs/mcp.md) | The data and simulations as typed tools for Claude Code, Claude Desktop or the CLI |
 | | [Live events](docs/live-events.md) | A race followed live: the live model, the maker's quotes, the private book's crowd, replay logs |
-| 5. **Operate** | [CLI reference](docs/cli.md) | Every command and option, launchd agents, scripts |
+| 5. **Operate** | [VM deploy](docs/vm-deploy.md) | How racinglines.bet is run: deploys, timers, staging, backups |
 | | [Cloud sweeps](docs/cloud-sweep.md) | Running settings searches on a cloud machine |
 | | [Testing](docs/testing.md) | Quick check, regression suite, fixtures, golden outputs |
 | 6. **Roadmap** | [Roadmap](docs/todo.md) · [F1 live test](docs/f1-live-roadmap.md) · [F1 roadmap](docs/f1-roadmap.md) | What's next, in priority order; this week's F1 live test; the phased F1 plan with its ground rules |
