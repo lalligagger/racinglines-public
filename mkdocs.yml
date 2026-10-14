@@ -135,19 +135,20 @@ nav:
           - Input frames (engine E1): frames.md
   - Operate:
       - VM deploy: vm-deploy.md
-      - VM reliability: vm-reliability.md
       - Market tape (record and backfill): market-tape.md
       - Race weekend runbook: weekend-data-runbook.md
       - Live events: live-events.md
       - Overnight VM run: overnight-vm-run.md
       - Cloud sweeps: cloud-sweep.md
       - Testing: testing.md
-      - Fantasy launch runbook: fantasy-runbook.md
       - Email setup: email-setup.md
       - Plans:
           - Cloud build-out: cloud-buildout.md
           - Google Cloud proposal: google-cloud.md
           - Data off GitHub (plan): data-off-github.md
+      - Historical:
+          - VM reliability (pre-launch): vm-reliability.md
+          - Fantasy launch runbook: fantasy-runbook.md
   - Roadmap:
       - Priorities and open items: todo.md
       - Strategy 2026 (demo plan): strategy-2026.md

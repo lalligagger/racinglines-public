@@ -52,9 +52,9 @@ def render(pack):
     out = []
     for name, steps in pack.sections():
         if name:
-            out += [f"#### {name}", ""]
+            out += [f"### {name}", ""]
         for i, step in enumerate(steps, 1):
-            out += [f"### Step {i}: {step['title']}", ""]
+            out += [f"{'####' if name else '###'} Step {i}: {step['title']}", ""]
             if step.get("about"):
                 out += [step["about"], ""]
             ex = ids.get(step["run"])
