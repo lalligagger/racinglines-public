@@ -921,6 +921,16 @@ def pull_chunk(conn, pull_id, name, offset=0):
     return PL.chunk(conn, pull_id, name, offset=offset)
 
 
+def storage_status(conn, refresh=False):
+    """Where the data lives (racinglines/storage_status.py): the last snapshot of the VM's disk, data folders and
+    databases and the data bucket's prefixes. refresh=True starts a new snapshot in the background (the bucket listing
+    takes minutes); this call returns the last one either way. Sizes and counts only."""
+    from racinglines import storage_status as ST
+    started = ST.refresh_in_background(force=bool(refresh))
+    snap = ST.read()
+    return dict(snapshot=snap, age_seconds=ST.age_seconds(snap), refreshing=ST.refreshing() or started)
+
+
 def data_changes(conn, sport=None, limit=None, offset=0):
     df = data.q(conn, """SELECT id, at, sport, kind, summary, by, detail FROM data_changes
                          WHERE (CAST(:s AS text) IS NULL OR sport = CAST(:s AS text)) ORDER BY at DESC, id DESC""", s=sport)

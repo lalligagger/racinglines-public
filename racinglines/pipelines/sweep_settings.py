@@ -93,9 +93,17 @@ SETTINGS = [
                  "stake is capped at that size and only buys are made there. Empty = thin markets are skipped."),
     Setting("bankroll", "taker", "Starting bankroll ($)", "float", None, 10, 1e7,
             help="Bankroll-aware sizing: stakes scale with the balance after earlier weekends. Empty = fixed sizing."),
+    Setting("bankroll_growth", "taker", "Bankroll growth rule", "choice", None, choices=("linear", "sqrt"),
+            unset="linear",
+            help="With a bankroll: how stakes follow the balance. linear = balance / bankroll; sqrt = the square root "
+                 "of that (square-root staking: +300% -> 2x, -75% -> 0.5x, 0 once it's gone). Empty = linear."),
     Setting("kelly", "taker", "Kelly fraction", "float", None, 0.05, 1.0,
             help="With a bankroll: stake = this x the Kelly fraction x the current balance, at the touch, still capped "
                  "at the max stake per market (0.5 = half Kelly). Empty = linear sizing (stake per unit edge)."),
+    Setting("root_unit", "taker", "Root unit ($)", "float", None, 1, 5000,
+            help="The root unit system (Circles Off ep. 181): stake = this / sqrt(net odds) = this x sqrt(c / (1 - c)) "
+                 "for a contract costing c, instead of stake per unit edge: 1 unit at evens, 0.5 at 4/1, 2 at 1/4. Still "
+                 "capped at the max stake; scales with the bankroll like the linear rule. Not with Kelly. Empty = off."),
     Setting("max_deployed", "taker", "Max capital deployed per weekend ($)", "float", None, 1, 1e7,
             help="Across all markets; buys over the cap are cut to fit. Empty = no cap."),
     # --- maker ----------------------------------------------------------------------------------------

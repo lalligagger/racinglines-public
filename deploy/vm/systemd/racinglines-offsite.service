@@ -1,0 +1,20 @@
+# The VM's off-site copy, one pass (scripts/vm/offsite.sh): a nightly dump of production's database, then data/backups
+# (production's and staging's) and data/archive/markets synced to the primary bucket. Adds to the bucket, never deletes
+# there. Started by the .timer; enabled by vm.sh offsite.
+# Logs: journalctl -u racinglines-offsite, and data/runs/logs/offsite.log
+[Unit]
+Description=racinglines off-site copy to the bucket
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=racinglines
+WorkingDirectory=/opt/racinglines
+ExecStart=/opt/racinglines/scripts/vm/offsite.sh
+TimeoutStartSec=2h
+Nice=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=racinglines-offsite
+Environment=PYTHONUNBUFFERED=1
