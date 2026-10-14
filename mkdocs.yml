@@ -2,17 +2,83 @@ site_name: racinglines
 site_description: Data pipelines, race simulators and market-making tools for timed racing (UCI downhill, Formula 1)
 docs_dir: docs
 site_dir: site
+exclude_docs: |
+  examples/
+# docs/examples/ holds captured command output (scripts/docs/capture_examples.py) that pages embed with
+# --8<-- "examples/<id>.md"; the files are never pages of their own
 theme:
-  name: readthedocs
-  navigation_depth: 3
+  name: material
+  features:
+    - navigation.tabs        # top-level sections as tabs across the header
+    - navigation.sections    # second level shown as groups in the sidebar
+    - navigation.top         # "back to top" button
+    - navigation.footer      # previous / next page links
+    - navigation.indexes
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy      # copy button on every code block
+    - content.code.annotate
+    - content.tabs.link      # picking a tab ("Command" / "Output", "LOCAL" / "VM") picks it on every page
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+  font: false                # system fonts: no request to Google Fonts from behind the login
+  icon:
+    repo: fontawesome/brands/github
+repo_url: https://github.com/lalligagger/racinglines-public
+edit_uri: ""
 extra_css:
   - css/wide.css
 markdown_extensions:
   - admonition
+  - attr_list
+  - md_in_html
+  - tables
   - toc:
       permalink: true
-  - tables
-  - fenced_code
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:       # --8<-- "examples/<id>.md" embeds a captured command + output (scripts/docs/capture_examples.py)
+      base_path: [docs]
+      check_paths: true
+hooks:
+  - scripts/docs/llms_txt.py   # site/llms.txt, site/llms-full.txt and each page's .md source (llmstxt.org)
+extra:
+  llms:
+    title: racinglines
+    summary: >-
+      racinglines turns official race timing into win, podium, head-to-head and championship odds for race-sport
+      prediction markets (Formula 1 on Polymarket and Kalshi, UCI downhill mountain biking, NASCAR Cup and MotoGP),
+      priced strictly as of any moment and tested on real market tapes. These docs cover the data pipelines, the
+      pricing models and their evaluation, market making and paper trading, the sportsbook slip schema, the web app
+      and MCP server, the CLI (with a synthetic kart demo pack that runs offline), and how the production VM is run.
+    site_url: https://racinglines.bet/docs/
+    source_url: https://github.com/lalligagger/racinglines-public/blob/main/docs/
+    full_url: https://racinglines.bet/llms-full.txt
+    top_section: Overview
+    exclude: [internal/]       # the admin-only book never goes in; pages outside the nav never do either
 nav:
   - Overview: index.md
   - Quickstart (--demo): quickstart.md
