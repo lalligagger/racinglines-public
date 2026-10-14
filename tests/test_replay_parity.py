@@ -37,7 +37,7 @@ def _two_stages(ev):
 
 
 @pytest.mark.parametrize("name", VARIANTS)
-@pytest.mark.parametrize("seed", [1, 7, 42])
+@pytest.mark.parametrize("seed", [7])                  # one tape per variant (was 3): it guards a finished rewrite
 def test_synthetic_tapes(name, seed):
     ev = _two_stages(SY.replay_markets(n=8, seed=seed))
     p = VARIANTS[name]

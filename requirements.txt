@@ -37,6 +37,7 @@ rich==15.0.0
 
 # tests (python -m pytest)
 pytest==9.1.1
+pytest-xdist==3.8.0     # the suite runs on every core (pytest.ini: -n auto), one test database per worker
 
 # optional report generation
 Markdown==3.10.2

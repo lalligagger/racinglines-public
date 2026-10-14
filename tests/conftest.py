@@ -48,6 +48,11 @@ def require_market_fixtures(*names):
 
 
 TEST_DB = os.environ.get("TEST_DATABASE_URL", "postgresql+psycopg://racinglines:racinglines@localhost:5433/racinglines_test")
+_WORKER = os.environ.get("PYTEST_XDIST_WORKER")                   # gw0, gw1, ... under `pytest -n N`
+if _WORKER:                                                          # each worker gets its own test database
+    if os.environ.get("DATABASE_URL") == TEST_DB:                    # CI points both at it: keep them together
+        os.environ["DATABASE_URL"] = f"{TEST_DB}_{_WORKER}"
+    TEST_DB = f"{TEST_DB}_{_WORKER}"
 
 
 @pytest.fixture(scope="session")
@@ -143,6 +148,17 @@ def weekend_fixture():
             for s in m["stages"]:
                 s["t"] = pd.Timestamp(s["t"])
     return raw
+
+
+# The slowest files (pytest --durations): queued first, so under -n the run doesn't wait on one of them at the end
+SLOW_FIRST = ("test_demo_store.py", "test_no_old_cli_forms.py", "test_replay_parity.py", "test_season_sweep_sessions.py",
+              "test_sprint_stage.py", "test_mcp.py", "test_one_engine.py", "test_fantasy_trading.py", "test_algo_abc.py")
+
+
+def pytest_collection_modifyitems(config, items):
+    if os.environ.get("PYTEST_XDIST_WORKER") or config.getoption("numprocesses", None):
+        rank = {name: i for i, name in enumerate(SLOW_FIRST)}
+        items.sort(key=lambda it: rank.get(it.path.name, len(rank)))     # stable: file order kept otherwise
 
 
 @pytest.fixture(autouse=True)
