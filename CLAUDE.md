@@ -126,6 +126,10 @@ to use the budget.
    - **Scratch-harness check.** For CSS or JS only changes: make a throwaway `.html` inside the workspace that links the real `style.css` and inlines the real JS with hand-written sample data. Look at it, then delete it. Never commit it.
    - **Batch-then-go.** For UI rounds: 3 to 5 related fixes per commit, push and staging deploy.
    - **Red check, look first.** When a check goes red: first `gh run watch` and a direct `curl` of the page, then rerun failed jobs once, before assuming the code is wrong.
+   - **Every surface (owner, 2026-10-14).** A new core feature (a sizing rule, a sweep setting, a model option, a data
+     tool) ships to the CLI, the MCP server (a tool argument or `run_job` param, so `racinglines remote` reaches it) and
+     the web app (Lab form or page) in the same change, with a test per surface. If one is left out, the PR says which
+     and why. Settings in a `Setting` schema (`pipelines/sweep_settings.py`) reach all three on their own.
    - **Exact keys only (owner policy).** Links, alerts and counts use exact keys (`market_links.race_id` / `competition_id` foreign keys), never fuzzy or regex matching, unless the owner says so first. A heuristic resolver stays out of exact-match paths.
 
    **Merging is deploying (since 2026-10-01):** the live repo is the public `lalligagger/racinglines-public`, and
