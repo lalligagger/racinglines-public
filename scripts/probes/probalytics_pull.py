@@ -162,6 +162,43 @@ def current(path, key):
     return path.exists() and written_keys().get(str(path.relative_to(OUT))) == key
 
 
+SET = "F1"            # file tag: F1 = our linked markets (exact keys); F1X = F1 markets we have not linked (--set extra)
+EXTRA_MATCH = {       # discovery by series / text, only for the archive (links, alerts and counts stay exact-key)
+    "kalshi": "platform_id LIKE 'KXF1%'",
+    # F1 in the title or slug, or the description's resolution source ("the official Formula 1 website"), minus the
+    # other series and the F1 film / game (2026-10-14: 392 unlinked, mostly 2021-24 race markets)
+    "polymarket": ("(match(lower(concat(title, ' ', slug)), 'formula ?1|\\\\bf1\\\\b') "
+                   "OR match(lower(description), 'formula 1|formula one|formula1\\\\.com')) "
+                   "AND NOT match(lower(concat(title, ' ', slug, ' ', description)), 'formula 2|formula 3|\\\\bf2\\\\b|"
+                   "\\\\bf3\\\\b|formula e\\\\b|e-prix|indycar|motogp|moto ?gp|nascar|rotten tomatoes|box office|"
+                   "academy award|oscar|steam award|game of the year|\\\\bmovie\\\\b|\\\\bfilm\\\\b')"),
+}
+
+
+def market_map_extra(venue):
+    """{uuid: platform_id} of F1 markets on Probalytics that are not in our links (EXTRA_MATCH, parlays left out),
+    cached with their titles in links/probalytics_<venue>_f1x.json for review."""
+    cache = OUT / "links" / f"probalytics_{venue}_f1x.json"
+    linked, _ = market_map(venue)
+    key = "x" + hashlib.sha1(("\n".join(sorted(linked)) + EXTRA_MATCH[venue]).encode()).hexdigest()[:11]
+    if cache.exists():
+        c = json.loads(cache.read_text())
+        if c["key"] == key:
+            return c["map"], key
+    body = ch(f"SELECT toString(id), platform_id, title FROM markets WHERE platform = '{VENUES[venue]}' "
+              f"AND market_type != 'PARLAY' AND {EXTRA_MATCH[venue]}")
+    rows = [r for r in json.loads(body)["data"] if r[0] not in linked]
+    m = {u: p for u, p, _ in rows}
+    cache.write_text(json.dumps(dict(key=key, linked=len(linked), found=len(m), map=m,
+                                     titles={u: t for u, _, t in rows})))
+    log(f"{venue}: {len(m)} F1 markets on Probalytics not in our links (key {key})")
+    return m, key
+
+
+def markets_for(venue):
+    return market_map_extra(venue) if SET == "F1X" else market_map(venue)
+
+
 def market_map(venue):
     """{probalytics market uuid: platform_id} for our F1 markets, cached in links/probalytics_<venue>_f1.json."""
     cache = OUT / "links" / f"probalytics_{venue}_f1.json"
@@ -247,9 +284,9 @@ def months(a, b):
 def run_books(venues, start, end):
     jobs = []
     for v in venues:
-        m, key = market_map(v)
+        m, key = markets_for(v)
         for d in days(max(start, BOOKS_FROM[v]), end):
-            p = OUT / "books" / f"{d:%Y-%m-%d}_F1_{VENUES[v]}.parquet"
+            p = OUT / "books" / f"{d:%Y-%m-%d}_{SET}_{VENUES[v]}.parquet"
             if not current(p, key):
                 jobs.append((v, m, key, d, p))
     STATE["total"] = len(jobs)
@@ -265,10 +302,10 @@ def run_books(venues, start, end):
 def run_fills(venues, start, end):
     jobs = []
     for v in venues:
-        m, key = market_map(v)
+        m, key = markets_for(v)
         for mo in months(start, end):
             nxt = (mo + timedelta(days=32)).replace(day=1)
-            p = OUT / "fills" / f"F1_{VENUES[v]}_{mo:%Y-%m}.parquet"
+            p = OUT / "fills" / f"{SET}_{VENUES[v]}_{mo:%Y-%m}.parquet"
             # the current month is never final: refetch it each run
             if current(p, key) and nxt <= date.today():
                 continue
@@ -299,10 +336,10 @@ def run_stages(venues, year):
         by_ev.setdefault(ev, []).append((lab, t))
     jobs = []
     for v in venues:
-        m, key = market_map(v)
+        m, key = markets_for(v)
         for ev, stages in by_ev.items():
             stages = [(lab, t) for lab, t in stages if t.date() >= BOOKS_FROM[v]]
-            p = OUT / "stages" / f"{ev}_{VENUES[v]}.parquet"
+            p = OUT / "stages" / f"{ev}_{VENUES[v]}{'' if SET == 'F1' else '_' + SET}.parquet"
             if stages and not current(p, key):
                 jobs.append((v, m, key, ev, stages, p))
     STATE["total"] = len(jobs)
@@ -340,8 +377,12 @@ def main():
     ap.add_argument("--from", dest="start", type=date.fromisoformat, default=date(2025, 6, 1))
     ap.add_argument("--to", dest="end", type=date.fromisoformat, default=date.today())
     ap.add_argument("--year", type=int, default=2026)
+    ap.add_argument("--set", choices=["linked", "extra"], default="linked",
+                    help="linked: our F1 market_links (exact keys); extra: F1 markets on Probalytics we have not linked")
     a = ap.parse_args()
     venues = list(VENUES) if a.venue == "both" else [a.venue]
+    global SET
+    SET = "F1X" if a.set == "extra" else "F1"
     threading.Thread(target=heartbeat, daemon=True).start()
     log(f"probalytics_pull {a.what} {venues} -> {OUT}")
     {"books": lambda: run_books(venues, a.start, a.end), "fills": lambda: run_fills(venues, a.start, a.end),
