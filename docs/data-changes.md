@@ -15,6 +15,22 @@ files in `data/archive/<sport>/` (both git-ignored; `data/raw` is the record, so
 without a copy). Since 2026-10-01 nothing under `data/` is in git, and production data lives on the VM: back up
 there with `vm.sh backup <purpose>`.
 
+## 2026-10-13 · Production: cback's race-17 positions removed after the reset
+
+Database `racinglines` (production), 16:22Z, by the owner. Staging was not touched.
+
+**Why.** A signals pass loaded `cback`'s old strategy (T1) before the 12 Oct reset and wrote its race-17 results back
+36 seconds after it (08:25:57Z): 11 paper positions and 18 signals, F$ -369.20 on the leaderboard, never updated
+again. The guard in #172 stops a pass from writing back a strategy that was cleared or changed while it ran.
+
+**What.** One all-or-nothing `DO` block deleted `paper_positions` and `strategy_signals` for user 21, candidate 8855,
+event `2026-17`, refusing unless it found exactly 11 and 18 rows. It wrote a `data_changes` note naming the backup.
+Checked afterwards: cback has 0 positions and 0 signals, and is at 0 P&L on the leaderboard with every other player.
+
+**Backup** (on the VM, under `/opt/racinglines/data/backups/db/`): `racinglines-before-cback-cleanup-20261013T162256Z.sql.gz`.
+
+**Undo.** Restore that backup with `vm.sh restore`. This also undoes anything written after 16:22Z.
+
 ## 2026-10-12 · Staging: fantasy trading tables
 
 Database `racinglines_staging`, 22:28Z, by the owner after #160 merged:
