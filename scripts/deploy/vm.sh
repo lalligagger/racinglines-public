@@ -5,17 +5,25 @@
 #   bash scripts/deploy/vm.sh restore           # one time: bucket's data folders + database dump -> the VM
 #   bash scripts/deploy/vm.sh start [web]       # enable and start web, recorder, signals (web: the web app only);
 #                                               # on the Mac it first stops the Mac's recorder and signals agents
-#   bash scripts/deploy/vm.sh live <event> [off] # a live event on the VM: live/f1/<event>.toml's timer (a step every
-#                                               # 5 minutes) or live/mtb_dh/<event>.toml's poll loop; off: disable it
+#   bash scripts/deploy/vm.sh live <event> [off] # a live event on the VM: an F1 spec with a [window] turns on live
+#                                               # auto (below; it stops by itself a day after the results), one
+#                                               # without (a rehearsal) its own timer, a step every 5 minutes;
+#                                               # live/mtb_dh/<event>.toml: its poll loop; off: disable the per-event unit
 #   bash scripts/deploy/vm.sh live auto [off]    # every F1 event whose window is open, from the committed specs, one
 #                                               # step each every 5 minutes: no event is started or stopped by hand
 #   bash scripts/deploy/vm.sh record [off|status] # the Kalshi and OG.com recorder (scripts/vm/record_venues.sh): a pass
 #                                               # every 5 minutes (the first one backs the database up); status: last
 #                                               # passes and book snapshots per venue per 5 minutes
+#   bash scripts/deploy/vm.sh record fastf1 [on|off|status] # the FastF1 session recorder (scripts/vm/record_fastf1.sh):
+#                                               # a pass every 5 minutes on F1 race weekends; status: is-enabled,
+#                                               # next run, last passes and snapshots stored
 #   bash scripts/deploy/vm.sh pm-sync [off|status]# Polymarket market links sync (scripts/vm/pm_sync.sh): a pass
-#                                               # every 5 minutes during race weekends; status: last passes
-#   bash scripts/deploy/vm.sh forecast [off|status] # NASCAR and MotoGP forecast refresh: every 30 minutes during
-#                                               # race weekends, and F1 once per new race result; status: last passes
+#                                               # every 5 minutes, every day (WEEKEND_ONLY=1: race weekends only);
+#                                               # status: last passes
+#   bash scripts/deploy/vm.sh forecast [off|status] # forecast refresh (scripts/vm/forecast-refresh.sh): a pass every
+#                                               # 30 minutes; NASCAR and MotoGP forecasts only on their race weekends
+#                                               # (scripts/vm/race_weekend.sh), F1 once per new race result;
+#                                               # status: last passes
 #   bash scripts/deploy/vm.sh schedule [off|status] # session start times (scripts/vm/schedule_sync.sh): a dry run every
 #                                               # 6 hours, a backup and the write only when a session is added or moved
 #   bash scripts/deploy/vm.sh switch <NAME> on|off # an app switch (RACINGLINES_*, e.g. RACINGLINES_OG_VENUE) in
@@ -96,20 +104,40 @@ case "${1:-}" in
     remote "sudo systemctl enable --now $units && systemctl --no-pager status $units | grep -E '●|Active'"
     ;;
   live)
-    ev="${2:-}"
+    ev="${2:-}"; pre=""
     # auto: every F1 event whose window is open, from the committed specs (no per-event start or stop by hand)
     if [ "$ev" = auto ]; then t="racinglines-live-auto.timer"
     elif [ -n "$ev" ] && [ -f "live/f1/$ev.toml" ]; then t="racinglines-live-f1@$ev.timer"
+      # an F1 spec with a [window]: live auto owns it, from an hour before the book opens to a day after the results
+      # (cli/live.py due_specs), so nothing is left stepping once it is complete; a per-event timer would step the
+      # settled event every 5 minutes until turned off. `off` still disables a per-event timer left on from before;
+      # a rehearsal spec (no [window]) keeps its own timer.
+      if [ "${3:-}" != off ] && grep -q '^\[window\]' "live/f1/$ev.toml"; then
+        log "$ev has a [window]: enabling live auto, which steps it until a day after its results (no per-event timer)"
+        t="racinglines-live-auto.timer"; pre="{ sudo systemctl disable --now racinglines-live-f1@$ev.timer 2>/dev/null || true; } && "
+      fi
     elif [ -n "$ev" ] && [ -f "live/mtb_dh/$ev.toml" ]; then t="racinglines-live-dh@$ev.service"   # the poll loop, no timer
     else echo "usage: vm.sh live <event>|auto [off], with live/f1/<event>.toml or live/mtb_dh/<event>.toml in the repo"; exit 1; fi
     if [ "${3:-}" = off ]; then
       remote "sudo systemctl disable --now $t && echo '$t: off'"
     else
       # before the book opens a step finds nothing due and exits, so enabling early is harmless
-      remote "sudo systemctl enable --now $t && systemctl --no-pager list-timers $t; systemctl --no-pager is-active $t"
+      remote "${pre}sudo systemctl enable --now $t && systemctl --no-pager list-timers $t; systemctl --no-pager is-active $t"
     fi
     ;;
   record)
+    if [ "${2:-}" = fastf1 ]; then
+      # the FastF1 session recorder (scripts/vm/record_fastf1.sh), F1 race weekends only. It has stored no row on the VM
+      # so far: F1's timing archive answers 403 there (docs/vm-deploy.md), and its log says BLOCKED when it does
+      t=racinglines-record-fastf1.timer
+      case "${3:-}" in
+        off) remote "sudo systemctl disable --now $t && echo '$t: off'" ;;
+        status) remote "systemctl is-enabled $t; systemctl --no-pager list-timers $t | head -n 2; cd $APP && sudo -u racinglines -H scripts/vm/record_fastf1.sh status" ;;
+        ""|on) remote "sudo systemctl enable --now $t && systemctl --no-pager list-timers $t" ;;
+        *) echo "usage: vm.sh record fastf1 [on|off|status]"; exit 1 ;;
+      esac
+      exit 0
+    fi
     t=racinglines-record-venues.timer
     case "${2:-}" in
       off) remote "sudo systemctl disable --now $t && echo '$t: off'" ;;
@@ -384,15 +412,21 @@ case "${1:-}" in
         ;;
       live)
         # staging's own live run (its data folder and database), the twin of `vm.sh live`; production's are untouched
-        ev="${3:-}"
+        ev="${3:-}"; pre=""
         if [ "$ev" = auto ]; then u="racinglines-staging-live-auto"; t="${u}.timer"
         elif [ -n "$ev" ] && [ -f "live/f1/$ev.toml" ]; then u="racinglines-staging-live-f1@"; t="${u}$ev.timer"
+          # as `vm.sh live`: an F1 spec with a [window] is stepped by staging's live auto, not a per-event timer
+          if [ "${4:-}" != off ] && grep -q '^\[window\]' "live/f1/$ev.toml"; then
+            log "$ev has a [window]: enabling staging's live auto, which steps it until a day after its results"
+            u="racinglines-staging-live-auto"; t="${u}.timer"
+            pre="{ sudo systemctl disable --now racinglines-staging-live-f1@$ev.timer 2>/dev/null || true; } && "
+          fi
         elif [ -n "$ev" ] && [ -f "live/mtb_dh/$ev.toml" ]; then u="racinglines-staging-live-dh@"; t="${u}$ev.service"
         else echo "usage: vm.sh staging live <event>|auto [off], with live/f1/<event>.toml or live/mtb_dh/<event>.toml in the repo"; exit 1; fi
         if [ "${4:-}" = off ]; then
           remote "sudo systemctl disable --now $t && echo '$t: off'"
         else
-          remote "sudo install -m 644 $STG/deploy/vm/systemd/${u}.* /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now $t && systemctl --no-pager is-active $t"
+          remote "${pre}sudo install -m 644 $STG/deploy/vm/systemd/${u}.* /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now $t && systemctl --no-pager is-active $t"
         fi
         ;;
       *) echo "usage: vm.sh staging setup [ref] | deploy [ref] [--db demo|main] | db demo|main|status | demo-db build|status | status | logs | reset | off | live <event> [off]"; exit 1 ;;
