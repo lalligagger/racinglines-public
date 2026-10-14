@@ -9,7 +9,7 @@ Three levels, fastest first:
 | | Command | Checks | Time | Needs |
 |---|---|---|---|---|
 | **Quick check** | `racinglines check` | 21 checks: every pipeline on synthetic data, every data source, the database | ~10 s | nothing downloaded; network and Postgres optional |
-| **Regression suite** | `python -m pytest -m "not live"` | 1,552 tests (collected 2026-10-14): every pipeline stage on pinned F1 and downhill fixtures compared with golden outputs, plus the rule, connector, replay, signal and web tests | about 7 min on a 2-core cloud container without the fixtures | Postgres and the fixtures ([how to get them](contributing.md#data-in-this-repository); goldens are in git) |
+| **Regression suite** | `python -m pytest -m "not live"` | 1,552 tests (collected 2026-10-14): every pipeline stage on pinned F1 and downhill fixtures compared with golden outputs, plus the rule, connector, replay, signal and web tests | about 2 min on a 4-core cloud container without the fixtures (5 min in one process) | Postgres and the fixtures ([how to get them](contributing.md#data-in-this-repository); goldens are in git) |
 | **Everything** | `python -m pytest` | 1,613 tests, adding the 61 live tests on the working database: the web app's pages per role, Baku live data, retention | the above plus the live tests | the working database |
 
 - **Pinned:** the test fixtures (2 MB, built from FastF1, ChronoRace and Polymarket) and the golden
@@ -54,6 +54,11 @@ racinglines check --sport f1            # one sport
 ```bash title="LOCAL (Mac)"
 python -m pytest -m "not live"
 ```
+
+It runs on every core (`pytest.ini`: `-n auto --dist loadfile`, pytest-xdist from `requirements.txt`): each worker
+builds its own test database (`racinglines_test_gw0`, `_gw1`, ...) and takes whole files, the slowest first
+(`SLOW_FIRST` in `tests/conftest.py`). Add `-n 0` to run in one process, e.g. to debug one test with `pdb`. If pytest
+says `unrecognized arguments: -n`, the environment predates pytest-xdist: `pip install -r requirements.txt`.
 
 The last line is pytest's summary: `N passed, M skipped`. On a checkout without `tests/fixtures/` the skips are
 the fixture tests (about 50); on the owner's Mac they are the few that need a network. Any golden mismatch fails
