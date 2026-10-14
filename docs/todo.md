@@ -746,7 +746,7 @@ Each item below needs the owner's go; the ones touching the VM, DNS, the bucket 
       `smoke.sh` against staging and posts the result on the PR. Replaces today's staging smoke of whatever is live.
 - [ ] **STG-4 · verify, then production.** The owner checks staging (a short checklist per track: pages load,
       Markets board counts, paper rows), then merges; the merge deploys.
-- [ ] **STG-5 · an off-VM copy of the VM's data.** Today the VM's disk is the only copy of the newest database,
+- [ ] **STG-5 · an off-VM copy of the VM's data.** *(2026-10-14: built as `scripts/vm/offsite.sh` + `racinglines-offsite.timer`, `vm.sh offsite`; nightly prod dump, `data/backups` and `data/archive/markets` to the primary bucket. The VM can already write there. Restore drill and cloud-session read key still open.)* Today the VM's disk is the only copy of the newest database,
       `data/backups/`, and the market history the recorder's archive pass moved out of Postgres into
       `data/archive/markets/` (dumps alone no longer hold it). Steps: (1) `bucket.sh push` gets a VM mode: `pg_dump`
       through `docker compose exec -T db` instead of the Mac's `PG_BIN`; (2) the VM service account gets object
