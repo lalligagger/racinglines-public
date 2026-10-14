@@ -64,9 +64,35 @@ class TakerParams:
     bankroll: float | None = None                        # starting bankroll for Kelly; balance = bankroll x scale
     root_unit: float | None = None                       # root unit system: stake = root_unit x scale x sqrt(c / (1 - c))
                                                          # for a contract costing c, capped at max_stake x scale
+    fill: str = "price"                                  # "price": one price per order; "book": walk the stage's
+                                                         # book levels (stages with `asks` / `bids`, else "price")
     taker_fee: float = 0.0                               # the venue's taker fee rate: rate x contracts x P x (1 - P)
                                                          # per order, rounded up to the cent (Kalshi 0.07,
                                                          # Polymarket 0; venue_replay.EXCHANGES)
+
+
+def walk(levels, shares):
+    """(average price, shares filled) of taking `shares` through best-first [(price, size)] levels."""
+    left, paid = float(shares), 0.0
+    for px, size in levels:
+        take = min(left, float(size))
+        if take > 0:
+            paid += take * float(px)
+            left -= take
+        if left <= 1e-9:
+            break
+    filled = float(shares) - max(left, 0.0)
+    return (paid / filled if filled > 0 else None), filled
+
+
+def _book_side(s, side, buy):
+    """The stage's levels a trade takes, best first: buy YES = the asks, buy NO = 1 - the bids (highest bid first),
+    sell YES = the bids, sell NO = 1 - the asks (lowest ask first). None when the stage has no book."""
+    if "asks" not in s or "bids" not in s:
+        return None
+    if side == "YES":
+        return s["asks"] if buy else s["bids"]
+    return [(1 - p, q) for p, q in (s["bids"] if buy else s["asks"])]
 
 
 def _fee(rate, px, shares):
@@ -137,8 +163,19 @@ class _Market:
                     continue
                 if abs(d) < 1e-9:
                     continue
+                levels = _book_side(s, side, d > 0) if p.fill == "book" else None
+                if levels is not None:                       # walk the book: the spread and the slippage
+                    px, got = walk(levels, abs(d))
+                    if px is None:
+                        continue
+                    if got < abs(d) - 1e-9:                  # cut to what the book holds
+                        d = got if d > 0 else -got
+                        tgt = cur + d
+                        if abs(d) * px < p.min_trade and tgt != 0:
+                            continue
+                cost = 0.0 if levels is not None else p.cost
                 fee = _fee(p.taker_fee, px, d)
-                exec_px = px + p.cost + fee if d > 0 else max(px - p.cost - fee, 0.0)
+                exec_px = px + cost + fee if d > 0 else max(px - cost - fee, 0.0)
                 if room is not None and d > 0:
                     left = room - (self.deployed - before)
                     if d * exec_px > left:                   # cut the buy to fit under the cap
@@ -146,6 +183,9 @@ class _Market:
                         if d * px < p.min_trade:
                             continue
                         tgt = cur + d
+                        if levels is not None:               # a smaller order never walks deeper
+                            px = walk(levels, d)[0]
+                            exec_px = px + _fee(p.taker_fee, px, d)
                 self.cash -= d * exec_px
                 if side == "YES":
                     self.yes = tgt

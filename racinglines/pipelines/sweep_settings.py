@@ -131,11 +131,13 @@ SETTINGS = [
             help="Whose markets and recorded tape the strategies trade: polymarket (the default), kalshi "
                  "(its links, its tape read per market ticker, its maker fee) or og (OG.com: its links and tape, "
                  "its flat fee per contract on the taker's cost). Unset = polymarket."),
-    Setting("taker_fill", "markets", "Taker fill price", "choice", None, choices=("price", "touch"), unset="price",
+    Setting("taker_fill", "markets", "Taker fill price", "choice", None, choices=("price", "touch", "book"), unset="price",
             help="price = Polymarket stages trade at the venue's price (our 5-minute history, or Probalytics' book mid), "
                  "as before; touch = a venue that has a book quote gives every stage one, so the taker buys at the ask "
                  "and sells at the bid (Kalshi always does). Our own Polymarket tape has no quote, so it stays on price. "
-                 "Unset = price. Not tuned: no default change without a decision-log row."),
+                 "book = touch, and every order is walked level by level through Probalytics' full book at that "
+                 "moment (cut to what the book holds, no cost per share: the walk is the spread and the slippage); "
+                 "needs tape_source = probalytics. Unset = price. Not tuned: no default change without a decision-log row."),
     Setting("max_spread", "markets", "Max quoted spread ($)", "float", None, 0.01, 1.0,
             help="A stage whose quote is wider than this (ask - bid) is not tradeable: a 0.10 / 0.89 head-to-head book "
                  "has no market to fill at (backtest fill-error probe, 2026-10-14). Applies where stages carry a quote "
