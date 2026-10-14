@@ -82,6 +82,15 @@ the next staging → main promotion (a draft until the owner says "promote"; the
       prices still need the PCS results ingested and a forecast ([Road cycling](road-cycling.md)); admin only.
 - [ ] **`vm.sh internal-docs` has no staging-only mode.** It always copies to production and staging; a staging-only
       copy was done by hand on 14 Oct. Low priority.
+- [ ] **Stage cutoffs from actual session ends, not the schedule (owner, 2026-10-14: P0, for review after the
+      day's exit criteria).** `core/stages.build` sets each stage's cutoff at the session's scheduled start + its
+      scheduled length + `lag_minutes` (Quali: 60 min + 30). A session that overruns by more than the lag (red flags, a
+      delayed start) ends after its cutoff, so the model prices "after Quali" with results the market had not seen,
+      and every backtest that trades at that stage inherits the leak. Fix: cut at the session's recorded end (FastF1
+      session status / last lap timestamp, the same for every sport's results feed) plus the lag, and fall back to the
+      schedule only when no end is recorded; then a test with an overrun session, and a list of 2025-26 stages where
+      the actual end passed the scheduled cutoff (how much P&L each touched). Re-run the goldens after.
+      [F1 model](#f1-model).
 - [ ] **United States GP weekend (23–25 Oct), the first live weekend of the alpha with Polymarket race markets
       (266 links stored) and Kalshi's (expected 2 to 4 days out).** A, C and K paper-trade; the fantasy accounts trade
       by hand or follow a style; no code merges in the book window; Monday: `f1 reconcile`, `f1 scorecard`, and the
