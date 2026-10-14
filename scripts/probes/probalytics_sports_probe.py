@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.argv = sys.argv[:1] + ["fills"]                    # probalytics_pull parses nothing at import; keep argv harmless
+ARGV, sys.argv = sys.argv[1:], sys.argv[:1]            # probalytics_pull parses nothing at import; keep argv harmless
 import probalytics_pull as P                           # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -38,6 +38,9 @@ SPORTS = [
     ("le_mans_wec", r"le mans|\bwec\b|endurance championship|24 hours of|kxlemans"),
     ("rally_dakar", r"\brally\b|\bwrc\b|dakar"),
     ("road_cycling", r"tour de france|giro d|vuelta|cycling|paris-roubaix|milan-san ?remo|tour of flanders|\buci\b|kxtdf"),
+    # owner 2026-10-14: World Cup events and the World Championships; before MTB, whose "downhill" it shares
+    ("alpine_skiing", r"alpine|\bski\b|skiing|slalom|super-?g\b|world cup downhill|downhill (ski|race|world cup)|fis "
+                      r"|world ski championships|shiffrin|odermatt|kitzb|wengen|crans-montana|kxski|kxalpine"),
     ("mtb_downhill", r"mountain bike|downhill|\bmtb\b"),
     ("sailing", r"sailgp|america'?s cup|sailing"),
     ("golf", r"\bgolf|\bpga\b|lpga|liv golf|ryder cup|masters tournament|the masters|open championship|kxpga|kxgolf"),
@@ -80,6 +83,15 @@ def q(name, sql):
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--sports", default="", help="comma list: only these (e.g. alpine_skiing); default every sport")
+    a = ap.parse_args(ARGV)
+    global SPORTS, OUT
+    if a.sports:
+        keep = set(a.sports.split(","))
+        SPORTS = [x for x in SPORTS if x[0] in keep]
+        OUT = OUT.with_name(OUT.name + "-" + "-".join(sorted(keep)))
     OUT.mkdir(parents=True, exist_ok=True)
     cls = classify_sql()
     base = f"FROM markets WHERE market_type != 'PARLAY'"
