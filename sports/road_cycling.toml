@@ -88,7 +88,7 @@ h2h = true                        # store every pair's head-to-head (race_predic
 source = "procyclingstats"
 dir = "data/raw/road_cycling"
 pace_s = 2.0
-files = { itt = "itt_results_pcs.csv", road = "road_results_pcs.csv" }
+files = { itt = "itt_results_pcs.csv", road = "road_results_pcs.csv", stages = "stage_results_pcs.csv" }
 
 [results.itt]
 # Individual time trials: championships and national championships (one-day pages), and every ITT stage (stage
@@ -120,6 +120,35 @@ stage_race_gc = ["tour-down-under", "uae-tour", "paris-nice", "tirreno-adriatico
                  "volta-ao-algarve", "o-gran-camino", "tour-of-oman", "settimana-coppi-bartali",
                  "tour-de-l-ain", "vuelta-a-burgos", "arctic-race-of-norway", "tour-de-luxembourg",
                  "giro-di-sicilia", "tour-of-austria"]
+
+[results.stages]
+# Every stage of these stage races: the stage result and the GC after it (`racinglines data fetch cycling stages`,
+# pcs.fetch_stages), the history the stage-race GC model fits its time gaps and bonus seconds on. The main stage races
+# plus the short flat / time-trial races like the Eneco Tour (2026-10-13). A slug PCS doesn't know is logged as
+# FAILED and skipped; PCS answers 500 for one (current names checked on the Mac 2026-10-13).
+stage_races = ["tour-down-under", "uae-tour", "paris-nice", "tirreno-adriatico", "volta-a-catalunya",
+               "itzulia-basque-country", "tour-of-the-alps", "tour-de-romandie", "tour-auvergne-rhone-alpes", "tour-de-suisse",
+               "giro-d-italia", "tour-de-france", "vuelta-a-espana", "tour-de-pologne", "deutschland-tour",
+               "volta-ao-algarve", "gran-camino", "tour-of-oman", "settimana-internazionale-coppi-e-bartali", "tour-de-l-ain",
+               "vuelta-a-burgos", "arctic-race-of-norway", "tour-de-luxembourg", "giro-di-sicilia", "tour-of-austria",
+               "renewi-tour", "eneco-tour", "zlm-tour", "tour-of-belgium", "tour-of-denmark",
+               "tour-of-britain", "tour-of-norway", "tour-poitou-charentes-en-nouvelle-aquitaine",
+               "boucles-de-la-mayenne", "tour-de-wallonie", "4-jours-de-dunkerque", "etoile-de-besseges",
+               "tour-cycliste-international-la-provence", "vuelta-a-la-comunidad-valenciana", "ruta-del-sol",
+               "tour-of-slovenia", "czech-tour", "okolo-slovenska", "tour-of-guangxi", "tour-of-turkey"]
+
+[model.gc]
+# Stage-race GC (racinglines/models/cycling_gc.py): the sum of simulated stage gaps. First version 2026-10-13 for the
+# Eneco Tour; every value a priori until `racinglines model gc-backtest cycling` has run (decision log in docs/road-cycling.md).
+bonus = [10, 6, 4]                    # finish bonus seconds for places 1-3 (most stage races; an event's [gc] overrides)
+itt_kmh = 50.0                        # a time trial's winning speed, for its length in seconds
+abandon = 0.01                        # chance a rider abandons on a road stage
+incident_q = [0.85, 1.0]              # a road-model incident (bad day) finishes in this part of the field
+short_tt_km = 15.0                    # a time trial this short or shorter uses short_tt_noise_scale
+short_tt_noise_scale = 2.0            # walk-forward on 17 ITTs of 15 km or less since 2023 (2026-10-13): noise 2.0
+                                      # scored best (pair_ll 0.624 vs 0.657 at the ITT default 1.15); longer TTs keep 1.15
+field_size = 140                      # field filled with stand-ins up to this size when there is no start list
+classes = { p0 = "flat", p1 = "flat", p2 = "rolling", p3 = "hilly", p4 = "mountain", p5 = "mountain" }
 
 [model.itt]
 # Calibrated walk-forward on 73 strong-field ITTs 2021-26 (2026-10-05, decision log in docs/road-cycling.md).

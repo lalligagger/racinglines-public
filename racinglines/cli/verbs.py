@@ -22,7 +22,7 @@ GROUPS = {
         "pm-archive")),
     "model": ("pricing: forecasts, backtests, model comparisons, one-event diagnostics", (
         "forecast", "backtest", "walk-forward", "compare", "matrix", "diagnostic", "combo", "props", "sprint-check",
-        "season", "price", "reliability", "search")),
+        "season", "price", "gc-price", "gc-backtest", "reliability", "search")),
     "strategy": ("trading: replays against exchange tapes, season sweeps, paper signals, strategy searches", (
         "replay", "sweep", "season-replay", "season-strategy", "season-checkpoints", "scorecard", "signals",
         "demo-history", "reconcile", "profiles", "search", "search-report", "search-import", "search-analyze", "live")),

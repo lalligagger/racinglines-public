@@ -140,29 +140,29 @@ and starts the server (`serve`); the owner runs both and adds the `mcp-demo` hos
 
 ## Add a pack of your own
 
-#### Step 1: Make the folder
+### Step 1: Make the folder
 
 A folder named after the pack, bundled under `racinglines/demo/packs/<name>/` or anywhere on
 `RACINGLINES_DEMO_PACKS`, with a `pack.toml` naming an existing sport schema.
 
-#### Step 2: Bring the data
+### Step 2: Bring the data
 
 Either files a real ingest reads (`files`), a generator that writes them (`[generator]`), or both. The kart pack's
 `world.toml` and `generate.py` are the worked example; the tiny `mtb_dh` pack in `tests/test_demo_store.py` is the
 smallest one.
 
-#### Step 3: Name the load commands
+### Step 3: Name the load commands
 
 `[load] commands`, in order: the same `racinglines data ingest ...` and `racinglines model forecast ... --save` a real
 database gets.
 
-#### Step 4: Write the quickstart
+### Step 4: Write the quickstart
 
 `[[quickstart]]` entries, one per command. Then `python3 scripts/build_quickstart.py` renders them into the docs, and
 `python scripts/docs/capture_examples.py` (after adding them to `scripts/docs/examples.toml`) captures their real
 output for the page.
 
-#### Step 5: Run it
+### Step 5: Run it
 
 ```bash
 # LOCAL (Mac), or any machine with Postgres
