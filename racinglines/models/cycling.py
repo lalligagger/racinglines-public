@@ -78,7 +78,10 @@ def load_event(name):
     ev = tomllib.loads(p.read_text())
     ev["id"] = p.stem
     kind = ev["event"]["kind"]
-    ev["settings"] = {**model_block(kind)["defaults"], **ev.get("settings", {})}
+    if "stages" in ev:                                  # a stage race: each stage takes its own kind's settings
+        ev["settings"] = {k: {**model_block(k)["defaults"], **ev.get("settings", {}).get(k, {})} for k in ("itt", "road")}
+    else:
+        ev["settings"] = {**model_block(kind)["defaults"], **ev.get("settings", {})}
     return ev
 
 

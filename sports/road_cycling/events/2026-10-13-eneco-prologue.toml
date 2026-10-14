@@ -1,0 +1,137 @@
+# Eneco Tour 2026 prologue, Den Haag, 3.1 km flat ITT (cyclingflash.com race guide). Stage matchups from the owner's
+# board screenshots 2026-10-13 15:15Z. Used by scripts/oneoff/eneco_2026/joint_all.py.
+[event]
+name = "Eneco Tour prologue"
+kind = "itt"
+date = "2026-10-13"
+start_utc = "16:34"
+distance_km = 3.1
+vert_m = 6
+terrain = "flat"
+startlist_file = "eneco_prologue_2026_startlist.csv"
+
+[names]
+# label -> words that must all be in the rider's PCS name. From the GC event file where the label matches;
+# otherwise the board label's own words (first names not on the board are left out, not guessed).
+"Abma" = "abma"
+"Affini" = "edoardo affini"
+"Bittner" = "pavel bittner"
+"Campenaerts" = "victor campenaerts"
+"Crockett" = "crockett"
+"Dauphin" = "florian dauphin"
+"David Dekker" = "david dekker"
+"De Ceuster" = "de ceuster"
+"De Schuyteneer" = "steffen de schuyteneer"
+"De Vries" = "hartthijs de vries"
+"Desal" = "ceriel desal"
+"Dissel" = "dissel"
+"Donati" = "davide donati"
+"Eekhoff" = "nils eekhoff"
+"Egholm" = "kristian egholm"
+"Ethan Hayter" = "ethan hayter"
+"Fiorelli" = "filippo fiorelli"
+"Fisher-Black" = "finn fisher black"
+"Geeraerts" = "ferre geeraerts"
+"Grindley" = "grindley"
+"Groenewegen" = "dylan groenewegen"
+"Hoogendoorn" = "roy hoogendoorn"
+"Jarne van de Ven" = "jarne van de ven"
+"Jesse Kramer" = "jesse kramer"
+"Kerckhaert" = "jochem kerckhaert"
+"Kubis" = "lukas kubis"
+"Lanhove" = "milan lanhove"
+"Laporte" = "christophe laporte"
+"Marsman" = "tim marsman"
+"Matyas Kopecky" = "matyas kopecky"
+"Merlier" = "tim merlier"
+"Michiel Mouris" = "michiel mouris"
+"Michielsen" = "michielsen"
+"Mick Van Dijke" = "mick van dijke"
+"Oosterveld" = "oosterveld"
+"Paul Conor" = "paul conor"
+"Pepijn Reinderink" = "pepijn reinderink"
+"Pierre Thierry" = "pierre thierry"
+"Putz" = "sebastian putz"
+"Reinders" = "reinders"
+"Rutsch" = "jonas rutsch"
+"Schaper" = "schaper"
+"Schoonvelde" = "gijs schoonvelde"
+"Senechal" = "florian senechal"
+"Sentjens" = "sentjens"
+"Soderqvist" = "jakob soderqvist"
+"Stef Koning" = "stef koning"
+"Taillieu" = "taillieu"
+"Theuns" = "edward theuns"
+"Thijssen" = "gerben thijssen"
+"Tomas Kopecky" = "tomas kopecky"
+"Verburg" = "verburg"
+"Vercouillie" = "victor vercouillie"
+"Wessel Mouris" = "wessel mouris"
+
+[book.futures]
+"Soderqvist" = 3.00
+"Laporte" = 3.25
+"Ethan Hayter" = 3.25
+"Affini" = 7
+"Fisher-Black" = 13
+"Mick Van Dijke" = 26
+"Michiel Mouris" = 34
+"Taillieu" = 34
+"Eekhoff" = 34
+"Wessel Mouris" = 41
+"Egholm" = 51
+"Campenaerts" = 51
+"Bittner" = 67
+"Donati" = 81
+"Tomas Kopecky" = 81
+"David Dekker" = 101
+"Stef Koning" = 126
+"Lanhove" = 126
+"Abma" = 126
+"De Schuyteneer" = 126
+"Merlier" = 151
+"Marsman" = 201
+"Jarne van de Ven" = 201
+"Groenewegen" = 201
+"Rutsch" = 301
+"Senechal" = 301
+"Verburg" = 301
+"Geeraerts" = 301
+"Pierre Thierry" = 301
+"Oosterveld" = 301
+"Fiorelli" = 301
+"Pepijn Reinderink" = 301
+"Putz" = 301
+"Sentjens" = 301
+"Michielsen" = 501
+"Vercouillie" = 501
+"Grindley" = 501
+"Theuns" = 501
+"Kerckhaert" = 501
+"Thijssen" = 501
+"Reinders" = 501
+"Schoonvelde" = 501
+"Crockett" = 501
+"De Vries" = 501
+"Schaper" = 501
+"Desal" = 501
+"Dauphin" = 501
+"Paul Conor" = 501
+"De Ceuster" = 501
+"Hoogendoorn" = 501
+"Dissel" = 501
+"Jesse Kramer" = 751
+
+[book]
+matchups = [
+  { a = "Mick Van Dijke", a_odds = 1.57, b = "Wessel Mouris", b_odds = 2.25 },
+  { a = "Bittner", a_odds = 1.85, b = "De Schuyteneer", b_odds = 1.85 },
+  { a = "Laporte", a_odds = 1.45, b = "Fisher-Black", b_odds = 2.55 },
+  { a = "Lanhove", a_odds = 1.45, b = "Pepijn Reinderink", b_odds = 2.55 },
+  { a = "Egholm", a_odds = 1.85, b = "Michiel Mouris", b_odds = 1.85 },
+  { a = "David Dekker", a_odds = 1.85, b = "Kubis", b_odds = 1.85 },
+  { a = "Ethan Hayter", a_odds = 1.90, b = "Soderqvist", b_odds = 1.80 },
+  { a = "Merlier", a_odds = 1.67, b = "Groenewegen", b_odds = 2.07 },
+  { a = "Eekhoff", a_odds = 1.97, b = "Matyas Kopecky", b_odds = 1.72 },
+  { a = "Taillieu", a_odds = 1.47, b = "Abma", b_odds = 2.45 },
+]
