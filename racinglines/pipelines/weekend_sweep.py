@@ -165,13 +165,13 @@ def _exchange(venue):
     return EXCHANGES[venue]
 
 
-def _venue(conn, links, start, end, venue="polymarket", group_target=None, event_key=None):
-    """The weekend's backtest venue: our recorded tape, or Probalytics' when RACINGLINES_TAPE_SOURCE=probalytics
-    (markets/probalytics.py; off by default)."""
+def _venue(conn, links, start, end, venue="polymarket", group_target=None, event_key=None, tape=None):
+    """The weekend's backtest venue: our recorded tape, or Probalytics' (F1's tag) when the tape_source setting
+    (`tape`) or RACINGLINES_TAPE_SOURCE is probalytics (markets/probalytics.py; off by default)."""
     from racinglines.markets import probalytics as PB
-    if PB.enabled() and venue in PB.EXCHANGES:
+    if PB.enabled(tape) and venue in PB.EXCHANGES:
         return PB.EXCHANGES[venue](conn, links, start, end, group_target or GROUP_TARGET, COHERENCE_TOL,
-                                   event_key=event_key)
+                                   event_key=event_key, tag=PB.tag_of("f1"), book_stale=PB.book_stale_of("f1"))
     return _exchange(venue)(conn, links, start, end, group_target or GROUP_TARGET, COHERENCE_TOL, STALE)
 
 
@@ -203,7 +203,7 @@ def fetch_market_data(session, conn, sched, fidelity=5, force=False, echo=print)
 
 
 def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None, venue="polymarket", rules=None,
-                    kinds=None, thin_depth=False, tol_by_kind=None):
+                    kinds=None, thin_depth=False, tol_by_kind=None, tape=None):
     """The weekend's tradeable markets for racinglines/markets/strategies/taker_weekend.py: per market, each stage's fair,
     exchange price and tradeable flag (what was knowable then) and the outcome (settlement). The exchange is a
     backtest venue (markets/venue_replay.py: Polymarket's recorded prices and trade tape, or Kalshi's with
@@ -216,7 +216,7 @@ def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None, 
     brings its own group target). thin_depth: read the recorded order books, and mark a stage that fails only
     the volume floor `thin` with the size at the touch (`depth_yes` / `depth_no`); the stage stays
     `tradeable=False`, so nothing but a taker with thin_edge_mult reads it. tol_by_kind: {kind: coherence
-    tolerance} over COHERENCE_TOL."""
+    tolerance} over COHERENCE_TOL. tape: the tape_source setting (None = ours, unless RACINGLINES_TAPE_SOURCE)."""
     at = lambda lab, cutoff: (price_times or {}).get(lab, cutoff)          # noqa: E731
     from racinglines.db import reads as D
     from racinglines.markets import private_book as house
@@ -228,7 +228,7 @@ def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None, 
     status = SR.race_status("f1", w["event_key"], SR.db_status(conn, rid)) if SR.enabled(rules) else None
     start, end = stage_runs[0][1] - timedelta(hours=1), max([w["race_start"], *(price_times or {}).values()])
     group_target = {**GROUP_TARGET, **{k: v for k, v in OPT_GROUP_TARGET.items() if k in (kinds or ())}}
-    venue = _venue(conn, links, start, end, venue, group_target, event_key=w["event_key"])
+    venue = _venue(conn, links, start, end, venue, group_target, event_key=w["event_key"], tape=tape)
     venue.tol_by_kind = dict(tol_by_kind or {})
     if thin_depth:
         venue.load_books(conn, start, end)
@@ -283,10 +283,11 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settin
     kinds = KINDS + opt if opt else None                       # opt-in kinds only when asked for
     thin = st["thin_edge_mult"] is not None
     tol = SS.parse_map(st["coherence_tol_by_kind"])
+    tape = st.get("tape_source")
     markets = _memo(("markets", w["event_key"], rids, st["min_volume_24h"], venue, kinds, thin,
-                     tuple(sorted(tol.items()))),
+                     tuple(sorted(tol.items())), tape),
                     lambda: weekend_markets(conn, w, stage_runs, min_volume_24h=st["min_volume_24h"], venue=venue,
-                                            kinds=kinds, thin_depth=thin, tol_by_kind=tol))
+                                            kinds=kinds, thin_depth=thin, tol_by_kind=tol, tape=tape))
     if markets is None:
         return None
     markets = [m for m in markets if m["kind"] in st["market_kinds"]]

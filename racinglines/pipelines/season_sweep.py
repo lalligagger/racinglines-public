@@ -286,7 +286,7 @@ def replay_sweep(engine, sport, year, rounds=None, settings=None, echo=print):
                                                info={"field": field}), ms, np.random.default_rng(seed))
             else:
                 sims = stage_sims(model, hist, ms, r, field, stages, plan["sessions"], sport, seed)
-            v = P._venue(conn, venue, race_links, stages, sp)
+            v = P._venue(conn, venue, race_links, stages, sp, tape=st.get("tape_source"))
             v.tol_by_kind = dict(tol)
             if thin:
                 v.load_books(conn, min(t for _, t in stages) - timedelta(hours=1), max(t for _, t in stages))

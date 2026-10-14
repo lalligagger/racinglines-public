@@ -147,6 +147,15 @@ def kalshi_series(code):
     return tuple(load(code).get("markets", {}).get("kalshi", {}).get("series", ()))
 
 
+def probalytics(code):
+    """A sport's Probalytics tape ([markets.probalytics]: `tag`, the sport's name in the tape's file names, and
+    `book_stale_hours`), {} when it names none or there is no such sport."""
+    try:
+        return dict(load(code).get("markets", {}).get("probalytics", {}))
+    except FileNotFoundError:
+        return {}
+
+
 @cache
 def kalshi_kinds(code):
     """{Kalshi series ticker: prediction kind} a sport's schema names ([markets.kalshi] kinds), {} if none: the exact
