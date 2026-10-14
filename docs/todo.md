@@ -44,14 +44,14 @@ first package release (C56).
 ### P0 · now (14 Oct to the United States GP, 25 Oct)
 
 Each item names its PR or backlog number; "promotion pending" means it is on `staging` and reaches production with
-[PR #180](https://github.com/lalligagger/racinglines-public/pull/180) (owner merges; no migration, no trading flag;
-touches VM scripts and units, so ⚠️).
+the next staging → main promotion (a draft until the owner says "promote"; the owner merges).
 
-- [ ] **Promote staging to production (#180).** After the deploy: `vm.sh live auto` on and no per-event F1 timer
-      left; `vm.sh record fastf1 status`; the forecast-refresh timer's first pass files MotoGP's calendar into
-      production's database (it takes its own daily backup). What users see: MotoGP on Markets for every signed-in
-      account (`audience = "all"`, #179), MCP list results drawn as tables (#171), and `data pull` / `racinglines
-      remote` working against production (#179; they need the hosted MCP server, which only production runs).
+- [x] **Promote staging to production (#180), 2026-10-14.** Merged 06:50Z, prod deploy green 06:55Z (806278c).
+      Checked 17:00Z: live auto on, no per-event F1 timer, nothing paused; `record fastf1` disabled (no race this
+      week). The internal book is in `data/internal-docs/` on both sites (`vm.sh internal-docs`, 410 files).
+- [ ] **Next promotion: staging → main (draft until the owner says "promote").** Carries #188/#189:
+      `record_fastf1.sh` executable (`vm.sh record fastf1 status` and the recorder's unit failed with "command not
+      found" without it) and two data-change entries. Touches `scripts/vm/`, so it deploys production.
 - [ ] **CLV on every live and replayed fill (C4).** `racinglines backtest clv` covers stored paper bets; the sweep
       stats, `f1 reconcile`, `f1 scorecard` and the weekend report still read P&L only. G1 is judged on CLV: the plain
       mean per decided bet against the fill price (owner, 2026-10-07). [Paper trading](#paper-trading).
@@ -65,9 +65,19 @@ touches VM scripts and units, so ⚠️).
       owner's explicit go); `RACINGLINES_TAPE_SOURCE=probalytics` as a backtest venue; pass marks mid within 1¢ on 95%
       of snapshots, weekend P&L within 10% or $5, trades within 5%. The golden comparison runs on
       `racinglines_staging_demo`. The internal recorder stays primary (owner, 2026-10-12).
-- [ ] **Staging as a live mirror of production (#154, code merged, nothing on).** Owner, planned 15 Oct after the
-      Probalytics download: `vm.sh backup`, `vm.sh postgres logical` (restarts production's Postgres), `vm.sh mirror
-      plan`, `vm.sh mirror on`. Once on, no more `staging reset`. ⚠️ production database step.
+- [x] **Staging as a live mirror of production (#154), on since 2026-10-14 17:54Z** (scope `all`; 42 tables ready,
+      0 bytes behind at 18:31Z; [data changes](data-changes.md)). No more `staging reset`; `vm.sh mirror status` to
+      check. Open: the production backup's exact file name from `vm.sh backup staging-mirror` is not yet in the
+      data-change entry.
+- [ ] **Which database staging serves.** Still the season demo (`racinglines_staging_demo`), which the Probalytics
+      comparison (15 Oct) uses; the mirror fills `racinglines_staging`. `vm.sh staging db main` to show the mirrored
+      copy, `staging db demo` to go back (owner's call).
+- [ ] **Road cycling on production.** The Kalshi road cycling links (53 events, 9,421 links, 14 Oct) are only in
+      `racinglines_staging_demo`. Next: `vm.sh backup road-cycling-kalshi`, then `racinglines markets --exchange kalshi
+      --sport road_cycling sync --closed` on production; the mirror then carries them to `racinglines_staging`. Fair
+      prices still need the PCS results ingested and a forecast ([Road cycling](road-cycling.md)); admin only.
+- [ ] **`vm.sh internal-docs` has no staging-only mode.** It always copies to production and staging; a staging-only
+      copy was done by hand on 14 Oct. Low priority.
 - [ ] **United States GP weekend (23–25 Oct), the first live weekend of the alpha with Polymarket race markets
       (266 links stored) and Kalshi's (expected 2 to 4 days out).** A, C and K paper-trade; the fantasy accounts trade
       by hand or follow a style; no code merges in the book window; Monday: `f1 reconcile`, `f1 scorecard`, and the
