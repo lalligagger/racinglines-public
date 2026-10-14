@@ -1,8 +1,7 @@
-{% extends "base.html" %}{% from "_macros.html" import pnl_cls, bar, pct, venue_chips, new_badge, paper_banner, page_head, status_badge, source_note %}
+{% extends "base.html" %}{% from "_macros.html" import pnl_cls, bar, pct, venue_chips, new_badge, page_head, status_badge, source_note %}
 {% block title %}Markets{% endblock %}
 {% block content %}
 {% call page_head("Markets", "Every sport we price: what's next, what's live on each venue, and how we did lately.") %}<a href="/markets/polymarket">All Polymarket markets →</a>{% if kalshi %} <a href="/markets/kalshi">All Kalshi markets →</a>{% endif %}{% for v in schema_exchanges %} <a href="/markets/{{ v.code }}">All {{ v.name }} markets →</a>{% endfor %}{% if tapes %} <a href="/markets/tapes">Recorded tapes →</a>{% endif %}{% endcall %}
-{{ paper_banner(signals_nav) }}
 
 <div class="kpis">
   <div class="kpi"><div class="l">Exchange outcomes we price</div><div class="v">{{ h.outcomes }}</div><div class="s">{{ h.markets }} markets · {{ ("$" ~ "{:,.1f}M".format(h.volume / 1e6)) if h.volume >= 1e6 else (h.volume|money(false, false)) }} traded</div></div>
