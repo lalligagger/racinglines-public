@@ -303,6 +303,25 @@ def _display(v):
     return "" if v is None else str(v)
 
 
+@app.get("/admin/storage", response_class=HTMLResponse, dependencies=ADMIN)
+def admin_storage(request: Request):
+    """Where the data lives (racinglines/storage_status.py): the VM's disk, data folders and databases, and the data
+    bucket's prefixes, from the last snapshot. A stale or missing snapshot starts a background refresh."""
+    from racinglines import storage_status as ST
+    started = ST.refresh_in_background()
+    snap = ST.read()
+    return render(request, "admin_storage.html", snap=snap, age=ST.age_seconds(snap), refreshing=ST.refreshing() or started,
+                  human=ST.human, stale=ST.STALE_SECONDS)
+
+
+@app.post("/admin/storage", dependencies=[Depends(check_csrf), allow("admin")])
+def admin_storage_refresh(request: Request):
+    from racinglines import storage_status as ST
+    ST.refresh_in_background(force=True)
+    audit(request, "storage_refresh")
+    return RedirectResponse("/admin/storage", status_code=303)
+
+
 @app.get("/admin/db", response_class=HTMLResponse, dependencies=ADMIN)
 def admin_db(request: Request, c=Depends(conn)):
     tables = []
