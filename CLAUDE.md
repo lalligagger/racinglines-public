@@ -134,9 +134,10 @@ to use the budget.
    runs `vm.sh deploy <sha>` (pauses the live timers, checkout, install, `alembic upgrade head`, `db seed`, restart,
    resumes the timers, also when it fails before the checkout moved) and smoke-checks racinglines.bet. A change set
    that is only `docs/` and `*.md` files deploys nothing.
-   - **CI runs no pytest, no `racinglines check`, no `mkdocs build`.** Run them locally before asking for a merge
-     (below). The golden tests skip without `tests/fixtures/`, which the public repo doesn't carry: run them on the
-     owner's Mac for anything touching pricing.
+   - **CI runs `pytest -m "not live"` ([tests.yml](.github/workflows/tests.yml), PRs and pushes to `main` and
+     `staging`), but no `racinglines check` and no `mkdocs build`.** Run those locally before asking for a merge
+     (below). The golden tests skip without `tests/fixtures/`, which the public repo doesn't carry (also in CI): run
+     them on the owner's Mac for anything touching pricing.
    - Keep reviewable work in one feature-track branch and split it into small, ordered PRs as needed. Every merged
      code PR is a VM deploy, so batch them: merge a track's stack together, not one PR an hour.
    - Every PR description says whether merging it deploys, and names anything the VM needs after the deploy (a
@@ -315,7 +316,8 @@ Standing practice from the owner (2026-09-29), applied to every task, not one pa
   private `lalligagger/racinglines` is the old one; its PR numbers don't apply here. The VM checkout fetches from the
   public repo (`vm.sh repoint`, done 2026-10-01).
 - **CI:** merge to `main` = staging smoke + VM deploy + prod smoke ([VM deploy: The flow](docs/vm-deploy.md#the-flow)).
-  Docs-only merges deploy nothing. CI runs no tests. Cloud sessions can't push `.github/workflows/*`: ship a patch.
+  Docs-only merges deploy nothing. CI runs `pytest -m "not live"` only (fixture tests skip). Cloud sessions can't
+  push `.github/workflows/*`: ship a patch.
 - **Code only:** a deploy never restores, overwrites or deletes `data/`, the pitch images or database rows. Data and
   the database change only by ssh and scripts (`vm.sh backup|record|demo|switch|live`, `scripts/vm/*` as transient
   units, backup first) or the site's admin views. What lives where, and what that breaks (no off-VM copy of the
