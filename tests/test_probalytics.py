@@ -358,16 +358,3 @@ def test_sweeps_read_stage_files_even_where_day_books_exist(base, monkeypatch):
     monkeypatch.setenv("PROBALYTICS_DATA", str(base))
     v = W._venue(None, links, T.replace(hour=0), T, "polymarket", event_key="2026-07", tape="probalytics")
     assert v.price("tokA", T) == pytest.approx(0.42)                      # a sweep: the stage file, as every weekend
-
-
-def test_touch_and_book_fills_as_of_t_never_after(base):
-    from racinglines.pipelines import weekend_sweep as W
-    links = pd.DataFrame(dict(token_id=["tokA"], condition_id=["0xc1"], prediction=["race_win"]))
-    v = PB.ProbalyticsPolymarket(None, links, T.replace(hour=0), T, event_key="2026-07", base=base, levels=True)
-    v.touch_quotes = True                                   # taker_fill = touch / book
-    assert v.quote("tokA", T) == (pytest.approx(0.40), pytest.approx(0.44))     # the 11:00 book, not 12:30's
-    b = v.book_at("tokA", T)
-    assert b["ts"] <= T and b["asks"] == [(0.44, 7.0), (0.50, 9.0)]
-    st = W.stage_levels({}, v, "tokA", T)
-    assert st["asks"][0][0] == pytest.approx(0.44) and st["bids"][0][0] == pytest.approx(0.40)
-    assert v.quote("tokA", datetime(2026, 6, 14, 10, 0)) is None and v.book_at("tokA", datetime(2026, 6, 14, 10, 0)) is None

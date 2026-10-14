@@ -85,3 +85,31 @@ def test_book_reaches_the_cli_mcp_and_the_lab():
     jt = jobs.CATALOG["f1_sweep"]
     p = jobs.parse(jt, {"year": "2025", "taker_fill": "book"})
     assert p["settings"]["taker_fill"] == "book" and "--taker-fill" in jt.argv(p, "/runs/jobs/job_7.csv")
+
+
+def test_touch_and_book_on_probalytics_tape_read_as_of_t_never_after(tmp_path):
+    from datetime import datetime
+
+    import pandas as pd
+
+    from racinglines.markets import probalytics as PB
+    t = datetime(2026, 6, 14, 12, 0)
+    (tmp_path / "stages").mkdir()
+    (tmp_path / "fills").mkdir()
+    pm = dict(market_platform_id="0xc1", outcome_pid="tokA")
+    pd.DataFrame([
+        dict(pm, timestamp="2026-06-14 11:00", bid_px=[0.40, 0.38], bid_sz=[10.0, 5.0], ask_px=[0.44, 0.50],
+             ask_sz=[7.0, 9.0]),
+        dict(pm, timestamp="2026-06-14 12:30", bid_px=[0.90], bid_sz=[1.0], ask_px=[0.95], ask_sz=[1.0]),  # after t
+    ]).assign(timestamp=lambda d: pd.to_datetime(d["timestamp"], utc=True)).to_parquet(
+        tmp_path / "stages" / "2026-07_POLYMARKET.parquet")
+    links = pd.DataFrame(dict(token_id=["tokA"], condition_id=["0xc1"], prediction=["race_win"]))
+    v = PB.ProbalyticsPolymarket(None, links, t.replace(hour=0), t, event_key="2026-07", base=tmp_path, levels=True)
+    v.touch_quotes = True                                   # taker_fill = touch / book
+    assert v.quote("tokA", t) == (pytest.approx(0.40), pytest.approx(0.44))     # the 11:00 book, not 12:30's
+    b = v.book_at("tokA", t)
+    assert b["ts"] <= t and b["asks"] == [(0.44, 7.0), (0.50, 9.0)]
+    s = W.stage_levels(_stage(), v, "tokA", t)
+    assert s["asks"][0][0] == pytest.approx(0.44) and s["bids"][0][0] == pytest.approx(0.40)
+    early = datetime(2026, 6, 14, 10, 0)
+    assert v.quote("tokA", early) is None and v.book_at("tokA", early) is None          # nothing yet
