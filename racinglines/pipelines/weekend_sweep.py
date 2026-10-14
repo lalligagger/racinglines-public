@@ -202,8 +202,14 @@ def fetch_market_data(session, conn, sched, fidelity=5, force=False, echo=print)
         echo(f"progress {w['event_key']} {w['name']}: {n} price points, {k} trades")
 
 
+def stage_quote(venue, token, t, max_spread=None):
+    """(the venue's (bid, ask) at t or None, whether it is wider than max_spread)."""
+    q = venue.quote(token, t)
+    return q, q is not None and max_spread is not None and q[1] - q[0] > max_spread + 1e-9
+
+
 def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None, venue="polymarket", rules=None,
-                    kinds=None, thin_depth=False, tol_by_kind=None, tape=None):
+                    kinds=None, thin_depth=False, tol_by_kind=None, tape=None, taker_fill=None, max_spread=None):
     """The weekend's tradeable markets for racinglines/markets/strategies/taker_weekend.py: per market, each stage's fair,
     exchange price and tradeable flag (what was knowable then) and the outcome (settlement). The exchange is a
     backtest venue (markets/venue_replay.py: Polymarket's recorded prices and trade tape, or Kalshi's with
@@ -229,6 +235,8 @@ def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None, 
     start, end = stage_runs[0][1] - timedelta(hours=1), max([w["race_start"], *(price_times or {}).values()])
     group_target = {**GROUP_TARGET, **{k: v for k, v in OPT_GROUP_TARGET.items() if k in (kinds or ())}}
     venue = _venue(conn, links, start, end, venue, group_target, event_key=w["event_key"], tape=tape)
+    if taker_fill == "touch" and hasattr(venue, "touch_quotes"):
+        venue.touch_quotes = True                           # Probalytics' Polymarket book: buy at the ask
     venue.tol_by_kind = dict(tol_by_kind or {})
     if thin_depth:
         venue.load_books(conn, start, end)
@@ -251,9 +259,11 @@ def weekend_markets(conn, w, stage_runs, min_volume_24h=None, price_times=None, 
             open_ = STG.is_open(kind, t, w.get("closes", {"race_pole": w["qual_start"]}))
             ok = liquid and f is not None and open_ and coherent.get((kind, lab), True)
             stage = dict(label=lab, t=t, fair=f, price=price, tradeable=ok, open=open_)
-            q = venue.quote(link["token_id"], t)
+            q, wide = stage_quote(venue, link["token_id"], t, max_spread)
             if q is not None:                    # the taker buys at the ask and sells at the bid (Kalshi)
                 stage.update(bid=q[0], ask=q[1])
+            if wide:                             # max_spread: no market to fill at
+                stage.update(tradeable=False, wide=True)
             if thin_depth and not liquid and price is not None and 0 < price < 1 and f is not None and open_ \
                     and coherent.get((kind, lab), True):
                 d = venue.touch_depth(link["token_id"], t)          # only the volume floor failed: is there size?
@@ -284,10 +294,12 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settin
     thin = st["thin_edge_mult"] is not None
     tol = SS.parse_map(st["coherence_tol_by_kind"])
     tape = st.get("tape_source")
+    fill, spread = st.get("taker_fill"), st.get("max_spread")
     markets = _memo(("markets", w["event_key"], rids, st["min_volume_24h"], venue, kinds, thin,
-                     tuple(sorted(tol.items())), tape),
+                     tuple(sorted(tol.items())), tape, fill, spread),
                     lambda: weekend_markets(conn, w, stage_runs, min_volume_24h=st["min_volume_24h"], venue=venue,
-                                            kinds=kinds, thin_depth=thin, tol_by_kind=tol, tape=tape))
+                                            kinds=kinds, thin_depth=thin, tol_by_kind=tol, tape=tape,
+                                            taker_fill=fill, max_spread=spread))
     if markets is None:
         return None
     markets = [m for m in markets if m["kind"] in st["market_kinds"]]

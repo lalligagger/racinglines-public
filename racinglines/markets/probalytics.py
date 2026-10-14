@@ -322,7 +322,14 @@ class _Tape:
 
 
 class ProbalyticsPolymarket(_Tape, Polymarket):
-    """Polymarket on Probalytics' tape: price = the book's mid, trades at it (as ours trade at the price history)."""
+    """Polymarket on Probalytics' tape: price = the book's mid, trades at it (as ours trade at the price history);
+    with touch_quotes (the taker_fill = touch setting) its stages carry the book's touch, so the taker buys at the ask
+    and sells at the bid as on Kalshi."""
+
+    touch_quotes = False
+
+    def quote(self, token, t):
+        return self._touch(str(token), t) if self.touch_quotes else None
 
     def __init__(self, conn, links, start, end, group_target=None, coherence_tol=0.25, stale=None, event_key=None,
                  base=None, levels=False, tag=None, book_stale=None):
