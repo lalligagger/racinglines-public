@@ -306,7 +306,7 @@ Three levels, fastest first:
 | | Command | Checks | Time | Needs |
 |---|---|---|---|---|
 | **Quick check** | `racinglines check` | 21 checks: every pipeline on synthetic data, every data source, the database | ~10 s | nothing downloaded; network and Postgres optional |
-| **Regression suite** | `python -m pytest -m "not live"` | 1,552 tests (collected 2026-10-14): every pipeline stage on pinned F1 and downhill fixtures compared with golden outputs, plus the rule, connector, replay, signal and web tests | about 7 min on a 2-core cloud container without the fixtures | Postgres and the fixtures ([how to get them](docs/contributing.md#data-in-this-repository); goldens are in git) |
+| **Regression suite** | `python -m pytest -m "not live"` | 1,552 tests (collected 2026-10-14): every pipeline stage on pinned F1 and downhill fixtures compared with golden outputs, plus the rule, connector, replay, signal and web tests | about 2 min on a 4-core cloud container without the fixtures (5 min in one process) | Postgres and the fixtures ([how to get them](docs/contributing.md#data-in-this-repository); goldens are in git) |
 | **Everything** | `python -m pytest` | 1,613 tests, adding the 61 live tests on the working database: the web app's pages per role, Baku live data, retention | the above plus the live tests | the working database |
 
 - **Pinned:** the test fixtures (2 MB, built from FastF1, ChronoRace and Polymarket) and the golden
