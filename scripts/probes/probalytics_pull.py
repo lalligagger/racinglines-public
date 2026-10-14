@@ -24,6 +24,16 @@ written with; a wider set of markets refetches it), so a later, wider run fills 
     python scripts/probes/probalytics_pull.py books  --venue polymarket --from 2025-11-20
     python scripts/probes/probalytics_pull.py books  --venue kalshi     --from 2026-05-09
 
+To the bucket (the big data plan, library/engineering/2026-10-14-big-data-storage.md: from NASCAR on the pull runs on the VM,
+whose service account can write the bucket): with --to-bucket (or PROBALYTICS_BUCKET) each file is copied to the same
+relative path under that prefix as soon as it is written, the object's size is checked against the local file, the
+upload goes to MANIFEST.jsonl and the local copy is deleted (--keep-local keeps it), so the disk holds one file at a time.
+A file recorded as uploaded counts as present, so a rerun skips it. MANIFEST.jsonl itself is copied after each upload.
+
+    # VM: one venue-day at a time straight to the bucket
+    PROBALYTICS_ENV=/etc/racinglines-probalytics.env python scripts/probes/probalytics_pull.py books \
+      --to-bucket gs://racinglines-data-384052502248/vendor/probalytics --from 2026-05-09
+
 Credentials: .env.probalytics (PROBALYTICS_CH_USER / PROBALYTICS_CH_PASSWORD); never printed. A progress line goes to
 stderr at least every 5 minutes (CLAUDE.md, long-running jobs).
 """
@@ -37,6 +47,7 @@ import json
 import os
 import shutil
 import ssl
+import subprocess
 import sys
 import threading
 import time
@@ -57,6 +68,7 @@ CHUNK = 1500
 MIN_FREE_GB = float(os.environ.get("MIN_FREE_GB", "4"))   # the Mac had 9 GB free on 2026-10-13
 TIMEOUT = 900
 PROGRESS_SEC = int(os.environ.get("RACINGLINES_PROGRESS_SEC", "300"))
+BUCKET = {"to": os.environ.get("PROBALYTICS_BUCKET", "").rstrip("/"), "keep_local": False}
 
 
 def env():
@@ -146,20 +158,48 @@ def our_ids(venue):
     return sorted(ids)
 
 
-def written_keys():
-    """{file relative to OUT: the links key it was written with}, from MANIFEST.jsonl (the last entry wins)."""
+def entries():
+    """{file relative to OUT: its last MANIFEST.jsonl row}."""
     m = OUT / "MANIFEST.jsonl"
     out = {}
     if m.exists():
         for line in m.read_text().splitlines():
             r = json.loads(line)
-            out[r["file"]] = r.get("links_key")
+            out[r["file"]] = r
     return out
 
 
+def written_keys():
+    """{file relative to OUT: the links key it was written with} (the last entry wins)."""
+    return {f: r.get("links_key") for f, r in entries().items()}
+
+
 def current(path, key):
-    """The file exists and was written with this links key (a wider set of markets makes it stale)."""
-    return path.exists() and written_keys().get(str(path.relative_to(OUT))) == key
+    """The file was written with this links key (a wider set of markets makes it stale) and is still here, or was
+    uploaded to the bucket."""
+    r = entries().get(str(path.relative_to(OUT)))
+    return r is not None and r.get("links_key") == key and (path.exists() or bool(r.get("uploaded")))
+
+
+def gcloud(*args):
+    return subprocess.run(["gcloud", "storage", *args], check=True, capture_output=True, text=True).stdout.strip()
+
+
+def upload(path, **meta):
+    """path to the same relative path under BUCKET["to"]; the object's size must match before the local copy goes."""
+    rel = str(path.relative_to(OUT))
+    dest = f"{BUCKET['to']}/{rel}"
+    size = path.stat().st_size
+    gcloud("cp", "--quiet", str(path), dest)
+    got = gcloud("objects", "describe", dest, "--format=value(size)")
+    if got != str(size):
+        sys.exit(f"stopping: {dest} is {got or '?'} bytes in the bucket, {size} here; the local file is kept")
+    keep = BUCKET["keep_local"]
+    manifest(file=rel, bytes=size, uploaded=dest, local=keep, **meta)
+    if not keep:
+        path.unlink()
+    gcloud("cp", "--quiet", str(OUT / "MANIFEST.jsonl"), f"{BUCKET['to']}/MANIFEST.jsonl")
+    log(f"{path.name}: uploaded to {dest}" + ("" if keep else ", local copy deleted"))
 
 
 def market_map(venue):
@@ -228,6 +268,8 @@ def fetch(path, sql_for, m, size=CHUNK, **meta):
     size = path.stat().st_size
     manifest(file=str(path.relative_to(OUT)), rows=tab.num_rows, bytes=size, sec=round(time.time() - t, 1), **meta)
     log(f"{path.name}: {tab.num_rows:,} rows, {size / 1e6:.1f} MB, {time.time() - t:.0f}s")
+    if BUCKET["to"]:
+        upload(path, rows=tab.num_rows, **meta)
     return tab.num_rows
 
 
@@ -340,10 +382,15 @@ def main():
     ap.add_argument("--from", dest="start", type=date.fromisoformat, default=date(2025, 6, 1))
     ap.add_argument("--to", dest="end", type=date.fromisoformat, default=date.today())
     ap.add_argument("--year", type=int, default=2026)
+    ap.add_argument("--to-bucket", default=BUCKET["to"], help="gs:// prefix: upload each file, then delete it here")
+    ap.add_argument("--keep-local", action="store_true", help="with --to-bucket: keep the local copies")
     a = ap.parse_args()
+    BUCKET.update(to=a.to_bucket.rstrip("/"), keep_local=a.keep_local)
+    if BUCKET["to"] and not BUCKET["to"].startswith("gs://"):
+        ap.error("--to-bucket takes a gs:// prefix")
     venues = list(VENUES) if a.venue == "both" else [a.venue]
     threading.Thread(target=heartbeat, daemon=True).start()
-    log(f"probalytics_pull {a.what} {venues} -> {OUT}")
+    log(f"probalytics_pull {a.what} {venues} -> {OUT}" + (f" -> {BUCKET['to']}" if BUCKET["to"] else ""))
     {"books": lambda: run_books(venues, a.start, a.end), "fills": lambda: run_fills(venues, a.start, a.end),
      "stages": lambda: run_stages(venues, a.year)}[a.what]()
     log(f"done: {STATE['done']} of {STATE['total']} files in {(time.time() - T0) / 60:.0f} min")
