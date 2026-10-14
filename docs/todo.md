@@ -65,9 +65,11 @@ touches VM scripts and units, so ⚠️).
       owner's explicit go); `RACINGLINES_TAPE_SOURCE=probalytics` as a backtest venue; pass marks mid within 1¢ on 95%
       of snapshots, weekend P&L within 10% or $5, trades within 5%. The golden comparison runs on
       `racinglines_staging_demo`. The internal recorder stays primary (owner, 2026-10-12).
-- [ ] **Staging as a live mirror of production (#154, code merged, nothing on).** Owner, planned 15 Oct after the
-      Probalytics download: `vm.sh backup`, `vm.sh postgres logical` (restarts production's Postgres), `vm.sh mirror
-      plan`, `vm.sh mirror on`. Once on, no more `staging reset`. ⚠️ production database step.
+- [ ] **Staging mirror upkeep (#154; on since 2026-10-14 17:54Z, 42 tables, 0 bytes behind).** No more `staging
+      reset` while it is on. After any production migration, run `vm.sh mirror status`; a table production adds joins
+      only after `vm.sh mirror on` runs again (it refreshes the publication). Owner OK still needed to delete the
+      pre-mirror leftovers on the VM: `racinglines_staging-before-mirror-*.sql.gz` under staging's `data/backups/db/`
+      and `data/archive.pre-mirror` if it exists.
 - [ ] **United States GP weekend (23–25 Oct), the first live weekend of the alpha with Polymarket race markets
       (266 links stored) and Kalshi's (expected 2 to 4 days out).** A, C and K paper-trade; the fantasy accounts trade
       by hand or follow a style; no code merges in the book window; Monday: `f1 reconcile`, `f1 scorecard`, and the
@@ -178,7 +180,6 @@ Open decisions first, then the ones on record (so a thread never re-asks one).
 | Decision | When | Recommendation / status |
 |---|---|---|
 | Merge the promotion (#180) ⚠️ VM scripts and units | Now | Yes; then the post-deploy checks in P0 |
-| Turn the staging mirror on (#154): backup, `postgres logical` (restarts production's Postgres), `mirror plan`, `mirror on` ⚠️ | Planned 15 Oct, after the Probalytics download | Owner runs it; nothing until then |
 | C56: the "works the same" tolerance for the one engine, and whether the F1 switch waits for the Las Vegas GP | Before the first package release | Validate now, switch after Vegas (proposal, 2026-10-11) |
 | Probalytics download beyond F1 and NASCAR | Per sport | Only on the owner's explicit go for that sport (2026-10-14) |
 | Sizing rule | ~12 Nov | After 4–6 live weekends on real markets |
