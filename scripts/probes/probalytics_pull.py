@@ -31,7 +31,7 @@ upload goes to MANIFEST.jsonl and the local copy is deleted (--keep-local keeps 
 A file recorded as uploaded counts as present, so a rerun skips it. MANIFEST.jsonl itself is copied after each upload.
 
     # VM: one venue-day at a time straight to the bucket
-    PROBALYTICS_ENV=/opt/racinglines-staging/.env.probalytics python scripts/probes/probalytics_pull.py books \
+    PROBALYTICS_ENV=/etc/racinglines-probalytics.env python scripts/probes/probalytics_pull.py books \
       --to-bucket gs://racinglines-data-384052502248/vendor/probalytics --from 2026-05-09
 
 Credentials: .env.probalytics (PROBALYTICS_CH_USER / PROBALYTICS_CH_PASSWORD); never printed. A progress line goes to
