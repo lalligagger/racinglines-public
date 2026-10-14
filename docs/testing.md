@@ -9,8 +9,8 @@ Three levels, fastest first:
 | | Command | Checks | Time | Needs |
 |---|---|---|---|---|
 | **Quick check** | `racinglines check` | 21 checks: every pipeline on synthetic data, every data source, the database | ~10 s | nothing downloaded; network and Postgres optional |
-| **Regression suite** | `python -m pytest -m "not live"` | 174 tests: every pipeline stage on pinned F1 and downhill fixtures, compared with golden outputs | ~10 s | Postgres and the fixtures ([how to get them](contributing.md#data-in-this-repository); goldens are in git) |
-| **Everything** | `python -m pytest` | 221 tests, adding 47 live tests on the working database: the web app's pages per role, Baku live data, retention | ~35 s | the working database |
+| **Regression suite** | `python -m pytest -m "not live"` | 1,552 tests (collected 2026-10-14): every pipeline stage on pinned F1 and downhill fixtures compared with golden outputs, plus the rule, connector, replay, signal and web tests | about 7 min on a 2-core cloud container without the fixtures | Postgres and the fixtures ([how to get them](contributing.md#data-in-this-repository); goldens are in git) |
+| **Everything** | `python -m pytest` | 1,613 tests, adding the 61 live tests on the working database: the web app's pages per role, Baku live data, retention | the above plus the live tests | the working database |
 
 - **Pinned:** the test fixtures (2 MB, built from FastF1, ChronoRace and Polymarket) and the golden
   outputs, so every machine compares against the same baseline. The goldens are in git; the fixtures are not in
@@ -74,7 +74,7 @@ Prints nothing when clean; a broken link or anchor is a `WARNING` line and a non
 python -m pytest
 ```
 
-Adds the 47 `live` tests: page smoke tests per role, Baku live-data checks, and the hot-token retention check.
+Adds the 61 `live` tests (collected 2026-10-14): page smoke tests per role, Baku live-data checks, and the hot-token retention check.
 
 ## Re-baselining a golden
 
@@ -100,10 +100,11 @@ Nothing data-shaped is committed except the minimal allow-listed set cloud sweep
 [What's in git](data.md#whats-in-git)), the test fixtures and the golden baselines. Never committed: the fixture
 build's raw downloads (`tests/fixtures/_work/`); downhill downloads, order books, run outputs, logs; derived tables.
 
-`.gitignore` covers `data/*` (then allow-lists `data/raw/f1`, `data/archive/markets/polymarket/{prices,trades,links}`,
-`data/archive/markets/kalshi/{prices,trades,links}`, `data/archive/db` and `data/runs/search`, then `tests/fixtures/`
-minus `_work/`), and data file types. `tests/test_no_data_in_git.py` fails if anything data-like outside the
-allow-list is tracked or about to be added.
+`.gitignore` ignores `data/`, `reports/`, `site/` and the data file types (`*.parquet`, `*.csv`, …), and un-ignores
+only `tests/golden/` and `tests/fixtures/` (minus `_work/`). The allow-list of data paths that may be tracked at all
+(`data/raw/f1/fastf1/`, `data/archive/markets/{polymarket,kalshi}/{prices,trades,links}/`, `data/archive/db/`,
+`data/runs/search/`, the goldens and fixtures) is `ALLOWED_DATA` in `tests/test_no_data_in_git.py`, which fails if
+anything data-like outside it is tracked or about to be added.
 
 ## Pre-push hook
 
@@ -159,7 +160,7 @@ python scripts/fetch_test_fixtures.py --refresh [--f1] [--mtb]   # rarely: rebui
   purpose.
 - **Ingest tests** build `racinglines_test` from the migrations and never touch the live database
   (`TEST_DATABASE_URL` overrides).
-- **Live tests** read the live database and are marked `live` (47 tests): page smoke tests, Baku live-data checks,
+- **Live tests** read the live database and are marked `live` (61 tests on 2026-10-14): page smoke tests, Baku live-data checks,
   and the hot-token retention check.
 
 ## Stages covered
