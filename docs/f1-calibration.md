@@ -23,7 +23,7 @@ are not calibrated.
 | a number, 1 to 10 | that power at every stage (1 = off) |
 | `walk_forward` | the power from [sports/f1/calibration.toml](https://github.com/lalligagger/racinglines-public/blob/main/sports/f1/calibration.toml) for the price's cutoff and stage group |
 
-It is the same setting on every surface: `racinglines f1 sweep --calib-power walk_forward`, the Lab's sweep form
+It is the same setting on every surface: `racinglines strategy sweep f1 --calib-power walk_forward`, the Lab's sweep form
 (All settings → Model), and the MCP `run_job` settings object (`{"calib_power": "walk_forward"}`; `list_job_types`
 lists it).
 
@@ -47,8 +47,8 @@ it applies to every race after 2026-15 until the table is refitted.
 
 ```
 # LOCAL (Mac) or VM: the as-of prices it fits on come from an uncalibrated sweep
-python -m racinglines.cli.f1 --variant gridq+pretrain+reset sweep --year 2025 --no-fetch --reliability --sims 4000
-python -m racinglines.cli.f1 --variant gridq+pretrain+reset sweep --year 2026 --no-fetch --reliability --sims 4000
+racinglines strategy sweep f1 --variant gridq+pretrain+reset --year 2025 --no-fetch --reliability --sims 4000
+racinglines strategy sweep f1 --variant gridq+pretrain+reset --year 2026 --no-fetch --reliability --sims 4000
 python scripts/models/fit_calibration.py --sims 4000 --check
 ```
 

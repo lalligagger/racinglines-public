@@ -12,7 +12,7 @@
 #   nogrid  stages before it (pre-weekend, practice, sprint sessions)
 #   races   races in the fit
 # Source: scripts/models/fit_calibration.py --sims 4000 --check, on the as-of stage prices of the default model
-# (gridq+pretrain+reset, calib_power unset) from `racinglines f1 sweep --year 2025|2026 --sims 4000`, 39 Grands Prix
+# (gridq+pretrain+reset, calib_power unset) from `racinglines strategy sweep f1 --year 2025|2026 --sims 4000`, 39 Grands Prix
 # 2025-01 to 2026-15 (the cloud data bucket's database, built 2026-10-14). Refit on the VM after each race to add rows.
 # A cutoff before the first `from` gets no calibration (a = 1): fewer than 8 races to fit on.
 # Rebuild: docs/f1-calibration.md.

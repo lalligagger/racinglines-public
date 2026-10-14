@@ -52,12 +52,14 @@ def parse(value):
 
 
 def table_hash():
-    """Short hash of every sport's calibration table: part of the model key with walk_forward, so a refit table
+    """Short hash of every sport's fitted calibration rows: part of the model key with walk_forward, so a refit table
     prices afresh instead of reusing runs cached under the old one."""
     import hashlib
+    import json
     h = hashlib.sha1()
-    for path in sorted((ROOT / "sports").glob("*/calibration.toml")):
-        h.update(path.read_bytes())
+    for path in sorted((ROOT / "sports").glob("*/calibration.toml")):       # the fitted rows, not the comments
+        h.update(path.parent.name.encode())
+        h.update(json.dumps(tomllib.loads(path.read_text()).get("fit", []), sort_keys=True, default=str).encode())
     return h.hexdigest()[:8]
 
 
