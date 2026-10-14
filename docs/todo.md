@@ -800,6 +800,28 @@ Recommendations, in order; the first two are cheap and can start with the next r
 - [ ] **REP-7 · screenshots by script.** A Playwright script per report takes its screenshots at 1024 px and
       150% against staging (after STG-1), so they can be re-taken, not re-clicked.
 
+### Internal onboarding book (2026-10-14)
+
+The admin-only onboarding book (Jupyter Book) is served at `/docs/internal/` from `data/internal-docs` on the VM
+(route in `racinglines/web/info_routes.py`, copied by `vm.sh internal-docs`, on prod since #180). Its source is
+never in git: it lives in the project library (`library/onboarding/book`) and on the owner's Mac
+(`~/Documents/racinglines/jb/book`); build steps are in its `README.md`.
+
+- [ ] **BOOK-1 · put the first draft on the VM.** The Mac build is clean (14 Oct 07:03 UTC, with the DITL #1
+      timeline fix). Run `bash scripts/deploy/vm.sh internal-docs ~/Documents/racinglines/jb/book/_build/html`
+      from a checkout of `main` if it has not been run yet (not verified from the thread), then open
+      `racinglines.bet/docs/internal/` as an admin; anyone else should get a 404.
+- [ ] **BOOK-2 · owner review of the draft.** Every chapter carries a "Claude first draft (2026-10-14)" note; remove
+      each note once the owner has read that chapter.
+- [ ] **BOOK-3 · DITL #1 follow-ups.** (a) The owner decides whether the v4 joint prologue + GC paper slip goes
+      into DITL #1. (b) Only the book's copy of `ditl/core.md` has the timeline fix (betting closed about 16:00 to
+      16:02 UTC, window missed by about 56 minutes, not 24); the Mac source `core.md`, its timeline figure and the
+      internal PDF still count to the 16:34 start. (c) Add the paper result once the Eneco GC settles (18 Oct).
+- [ ] **BOOK-4 · missing sources.** The runs/f1 matrix artifact was not saved; `research/algo-abc` links
+      `img/pl-vs-global-win.png`, which was not found (only its script exists); 5 of the 8 recovered 24-hour report
+      figures are captures of the sign-in page; the Whistler, global-model sweep, Kalshi maker K and overnight sweep
+      report texts are still missing (see `sources/index.md` in the book).
+
 ## Business and collaborators
 
 - [ ] **2026 season report** (December): live weekends by venue and profile against their replays, the
