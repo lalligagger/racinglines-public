@@ -1,7 +1,7 @@
 """
 racinglines <group> <command> [SPORT] [options]
 
-    data      fetch | ingest | link | download | parse | record | ...   SPORT   (results, sessions, feeds)
+    data      fetch | ingest | link | download | parse | record | pull | ...   SPORT   (results, sessions, feeds)
     model     forecast | backtest | compare | diagnostic | props | ...   SPORT   (pricing)
     strategy  replay | sweep | season-replay | signals | scorecard | ...  SPORT   (trading against exchange tapes)
     backtest  walk-forward SPORT | coverage | clv   (the backtest core, any sport with a pricing model)
@@ -13,6 +13,7 @@ racinglines <group> <command> [SPORT] [options]
     web       serve the web app
     users     setup | list | add | reset-password | remove | deactivate | activate   (accounts, fantasy bucks)
     mcp       the MCP server: the data and simulations for a chat client (docs/mcp.md)
+    remote    tools | call | job | logout   (the hosted server's tools from the command line, docs/mcp.md)
     check     quick validation: code on synthetic data, data endpoints, database
 
 SPORT is f1, mtb_dh, nascar, motogp or cycling, e.g. `racinglines model forecast f1 --save`.
@@ -23,7 +24,8 @@ SPORT is f1, mtb_dh, nascar, motogp or cycling, e.g. `racinglines model forecast
 
 import sys
 
-GROUPS = ("data", "model", "strategy", "weather", "backtest", "markets", "book", "db", "live", "web", "users", "mcp", "check")
+GROUPS = ("data", "model", "strategy", "weather", "backtest", "markets", "book", "db", "live", "web", "users", "mcp", "remote",
+          "check")
 # the sport-first form (`racinglines f1 forecast`): deprecated, an alias for one version with a notice on stderr, not listed
 VERB_GROUPS = ("data", "model", "strategy")
 SPORT_FIRST = ("f1", "mtb_dh", "nascar", "motogp", "cycling")

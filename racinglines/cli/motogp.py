@@ -71,6 +71,9 @@ def main(argv=None):
                                                         "earlier (Bridgestone-era) seasons are a follow-up.")
     p.add_argument("--force", action="store_true", help="Ask again for files already stored.")
     p.add_argument("--dry-run", action="store_true", help="Count the requests a run would make; ask for nothing.")
+    p.add_argument("--refresh", action="store_true", help="Ask again for the season calendar (events.json) and the "
+                   "sessions of every started event with no finished race; take only finished sessions' "
+                   "classifications (the VM's forecast-refresh step).")
     p = sub.add_parser("ingest", help="Load the stored classifications into the database.")
     p.add_argument("--years", default="2016-2026")
     p.add_argument("--force", action="store_true", help="Rebuild events whose files have not changed.")
@@ -113,7 +116,7 @@ def main(argv=None):
 
     if args.cmd == "fetch":
         from racinglines.sources.motogp import fetch
-        counts = fetch.fetch(_years(args.years), force=args.force, dry_run=args.dry_run)
+        counts = fetch.fetch(_years(args.years), force=args.force, dry_run=args.dry_run, refresh=args.refresh)
         print("Would ask for" if args.dry_run else "Done:", counts)
         return 1 if counts["errors"] else 0
     if args.cmd == "compare":

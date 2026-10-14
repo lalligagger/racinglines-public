@@ -322,9 +322,10 @@ def run_all(engine, engine_url, sport, venues=None, users=None, profile_ref=None
             kelly[uid] = PF.sizing_of(prof)
         cache = {}
         for prof, uids in groups.values():
+            g = SG.guard(prof, venue, sport) if profile_ref is None else None
             prof = dict(prof, sport=sport)
             echo(f"{prof['name']} ({prof['strategy']}, {sport} on {venue}) for users {uids}")
             out = compute(engine, engine_url, prof, now=now, event=event, fetch=fetch, echo=echo, cache=cache)
             report.append(SG._run_one(engine, engine_url, prof, out, uids, rate, now, alert, echo, upcoming=None,
-                                      kelly=kelly))
+                                      kelly=kelly, guard=g))
     return report

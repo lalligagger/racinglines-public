@@ -4,6 +4,9 @@
 # after each race to keep pricing fresh, and the F1 forecast (the championship fairs) once per new F1 classification.
 #
 #   racinglines data fetch|ingest nascar --years <this year>     NASCAR results first (race weekends and Mondays UTC)
+#   racinglines data fetch motogp --years <this year> --refresh, then data ingest motogp --years <this year>
+#                                                            MotoGP calendar and results (race weekends and Mondays
+#                                                            UTC, else once per UTC day; motogp_results below)
 #   racinglines model forecast nascar --save --backup <path>
 #   racinglines model forecast motogp --save --backup <path>
 #   racinglines model forecast f1 --year <this year> --save        only when a race classification arrived since the last
@@ -109,7 +112,30 @@ results() {   # NASCAR results: fetch and ingest this season's feeds before the 
   fi
 }
 
+motogp_results() {   # MotoGP calendar and results: the season's events.json (including rounds not run yet, filed as
+  # scheduled events, so race_weekend.sh motogp can open the MotoGP forecast) and any finished session's
+  # classification. Every pass on a MotoGP race weekend and on Mondays UTC, else once per UTC day (the calendar has to
+  # land before the race-weekend gate can open). --refresh asks again for the calendar and for a weekend that has run
+  # since it was stored, and stores a session's classification only once it is FINISHED (sources/motogp/fetch.py).
+  local year t0=$SECONDS out today stamp="$STATE/motogp-results-day"
+  year=$(date -u +%Y); today=$(date -u +%Y-%m-%d)
+  if ! bash scripts/vm/race_weekend.sh motogp >/dev/null 2>&1 && [ "$(date -u +%u)" != 1 ] &&
+     [ "$(cat "$stamp" 2>/dev/null)" = "$today" ]; then
+    say "motogp results: done today, skipped"
+    return 0
+  fi
+  out=$(nice $R data fetch motogp --years "$year" --refresh 2>&1) ||
+    say "motogp results: fetch had errors, ingesting what is stored: $(echo "$out" | tail -n 2 | tr '\n' ' ')"
+  if out=$(nice $R data ingest motogp --years "$year" 2>&1); then
+    echo "$today" > "$stamp"
+    say "motogp results: $(echo "$out" | tail -n 1) ($((SECONDS - t0)) s)"
+  else
+    rc=1; say "motogp results: FAILED ($((SECONDS - t0)) s): $(echo "$out" | tail -n 3 | tr '\n' ' ')"
+  fi
+}
+
 results
+motogp_results
 run nascar
 run motogp
 f1

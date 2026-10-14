@@ -326,15 +326,24 @@ session is ingested and priced, the book closes at lights out and settles, and o
 nothing (nothing to turn off when an event is complete). `vm.sh live auto off` disables it; staging's twin is
 `vm.sh staging live auto`.
 
-From the Mac, `bash scripts/deploy/vm.sh live 2026-16` enables one F1 event's timer and `vm.sh live 2026-16 off`
-disables it. On the VM itself:
+**Prefer `live auto` for F1.** Live timers go off once an event is complete (owner rule), and only `live auto` does
+that by itself. From the Mac, `bash scripts/deploy/vm.sh live 2026-16` for a spec with a `[window]` therefore enables
+`racinglines-live-auto.timer` (and disables a `racinglines-live-f1@2026-16.timer` left on from before) instead of a
+per-event timer; staging's `vm.sh staging live 2026-16` does the same with its twin. Only a rehearsal spec (no
+`[window]`) still gets its own `racinglines-live-f1@<event>.timer`, which steps every 5 minutes until
+`vm.sh live <event> off`: a step on a settled event does nothing and prints
+`settled: nothing left to step (a per-event timer for it can go off: ...)`. An event that needs a step after live
+auto has dropped it (more than a day after its results) gets one by hand, with no timer left on. On the VM itself:
 ```sh
-sudo systemctl enable --now racinglines-live-f1@2026-16.timer     # F1: one step every 5 minutes
+sudo systemctl enable --now racinglines-live-auto.timer           # F1: every event whose window is open
+sudo systemctl start racinglines-live-f1@2026-16.service          # F1: one step of one event, now (no timer)
 sudo systemctl enable --now racinglines-live-dh@<event>           # downhill: the poll loop
-sudo systemctl disable --now racinglines-live-f1@2026-16.timer    # when the event is settled
+sudo systemctl disable --now racinglines-live-f1@2026-16.timer    # a per-event timer left on: off
 ```
 **F1 sessions come from the Mac (since 3 Oct 2026).** F1's timing archive answers 403 to the VM's cloud address, so
-FastF1 can't fetch there (the live step logs "waiting for the session's data" all weekend). During an F1 weekend, run
+FastF1 can't fetch there (the live step logs "waiting for the session's data" all weekend). The same block keeps the
+FastF1 session recorder (`racinglines-record-fastf1.timer`, `bash scripts/deploy/vm.sh record fastf1 [on|off|status]`)
+from storing anything: on a race weekend its log says `fastf1: BLOCKED` when the archive answers 403. During an F1 weekend, run
 `caffeinate -i bash scripts/deploy/f1_push.sh 2026-16` on the Mac, one process for both halves of the weekend, until the
 race is in:
 
@@ -371,7 +380,7 @@ the `staging` branch deploys staging and nothing else**. `main` keeps deploying 
 | Branch that deploys it | `main` (`main-merge-gate`) | `staging` (`staging-deploy`, `.github/workflows/staging.yml`) |
 | Checkout on the VM | `/opt/racinglines` | `/opt/racinglines-staging` |
 | Web app | `racinglines-web`, 127.0.0.1:8000 | `racinglines-staging-web`, 127.0.0.1:8010 |
-| Database | `racinglines` | `racinglines_staging`, in the same Postgres container, copied from production by `staging setup` / `staging reset` (`pg_dump \| psql`: production is only read) |
+| Database | `racinglines` | `racinglines_staging`, in the same Postgres container, copied from production by `staging setup` / `staging reset` (`pg_dump \| psql`: production is only read); kept current by the [data mirror](#staging-the-data-mirror) once it is on |
 | Settings | `/etc/racinglines.env` | `/etc/racinglines-staging.env`: production's switches and admin password, its own `DATABASE_URL`, data folder (`/opt/racinglines-staging/data`, empty: no archive Parquet, no pitch images), `APP_SECRET`, `RACINGLINES_URL`, `RACINGLINES_ENV=staging`, `WEB_PORT=8010`; **no trading flags, no ntfy topic, no alert webhook** |
 | Timers and other units | recorder, signals, live events, record-venues, MCP | only its own live events, by hand (`vm.sh staging live <event>`: `racinglines-staging-live-f1@` / `racinglines-staging-live-dh@`, its data folder and database); no recorder or signals (two recorders would split the book history) |
 | Live timing button (F1, `/live`) | off (`RACINGLINES_F1_STREAM` unset) | on by default: an opt-in websocket per viewer polling FastF1, or the Mac's relay while `f1_push.sh` runs, with a debug log (`racinglines/web/f1_live.py`) |
@@ -403,7 +412,7 @@ force push is fine there, `staging` is a deploy pointer, not history).
 | `staging deploy [ref]` | What CI runs on a merge to `staging` (above) |
 | `staging status` | The staging checkout's commit, the unit, and `GET /login` with its env header |
 | `staging logs` | `journalctl -u racinglines-staging-web` |
-| `staging reset` | Drop `racinglines_staging` and copy production's rows and live run folders (`data/runs/live`) again (production only read) |
+| `staging reset` | Drop `racinglines_staging` and copy production's rows and live run folders (`data/runs/live`) again (production only read). It wipes staging's own accounts and app state too, and refuses while the [mirror](#staging-the-data-mirror) is on |
 | `staging live <event> [off]` | Staging's own run of a live event (`live/f1/<event>.toml`: a step every 5 minutes; `live/mtb_dh/<event>.toml`: the poll loop), like `vm.sh live` for production; it carries on from the run folder `staging reset` copied |
 | `staging off` | Stop and disable the unit; the checkout, database and env file stay |
 
@@ -425,6 +434,31 @@ answered 404).
 
 Not done yet: Cloudflare Access in front of staging (today it has the app's own login, as production), the Mac's
 trycloudflare script (`scripts/deploy/staging.sh`, ad hoc only).
+
+### Season demo database
+
+A third database, `racinglines_staging_demo`, beside `racinglines_staging` in production's Postgres container (owner,
+2026-10-13: every user on a random strategy at various participation rates through the 2026 F1 season, its own
+database, kept, and picked by a switch on a staging deploy). It persists: deploys never drop or re-copy it.
+
+```
+# LOCAL (Mac): build it (a copy of production, only read, on the first run; a backup of the demo database first after that)
+bash scripts/deploy/vm.sh staging demo-db build          # SEED=2026 YEAR=2026 COPY=1 (re-copy) SOURCE=racinglines|racinglines_staging
+bash scripts/deploy/vm.sh staging demo-db status         # the unit, the log's tail, season-demo.done / .failed
+```
+
+```
+# LOCAL (Mac): the switch (it redeploys staging's current checkout against the chosen database)
+bash scripts/deploy/vm.sh staging db demo                # staging serves racinglines_staging_demo
+bash scripts/deploy/vm.sh staging db main                # back to racinglines_staging
+bash scripts/deploy/vm.sh staging deploy <ref> --db demo # a deploy that switches too
+```
+
+The switch is one file, `/etc/racinglines-staging-db.env` (`DATABASE_URL` of the demo database), which the staging web
+unit reads after `/etc/racinglines-staging.env` and `deploy/vm/staging/update.sh` migrates; with it absent staging is
+as before. CI's staging deploys leave it alone, so the choice holds until `vm.sh staging db main`. Staging's live units
+keep `racinglines_staging`. The demo itself is `racinglines users season-demo` (racinglines/fantasy/season_demo.py,
+writes only a database whose name contains "demo"), run by `scripts/vm/season_demo.sh`.
 
 ### Separate venvs
 
@@ -453,6 +487,67 @@ sudo systemctl restart racinglines-staging-web
 ```
 
 The first print names `/opt/racinglines/racinglines/__init__.py`, the second `/opt/racinglines-staging/racinglines/__init__.py`.
+
+### Staging: the data mirror
+
+**Why staging drifted.** `racinglines_staging` is a copy of production made once, by `staging setup` or `staging
+reset`. Staging runs no recorder, signals or pricing timers (two recorders would split the book history), so from the
+minute it was copied it missed every new market price, trade, book, model run and result production recorded, while
+it built up state of its own (test accounts, fantasy, jobs, trading tables). Catching up meant `staging reset`, which
+drops the whole database, that state with it. Copying production at every staging deploy has the same two problems:
+stale between deploys, and staging's own rows wiped each time.
+
+**The mirror** (`racinglines/db/mirror.py`, since 2026-10-12) keeps staging a live copy of production with Postgres
+logical replication: production publishes its tables, staging subscribes, and production's inserts, updates and
+deletes arrive in staging within seconds. Nothing to refresh, nothing copied at deploy. Production is only read: the
+subscription connects as `racinglines_mirror` (REPLICATION, SELECT on the mirrored tables, read-only by default); on
+and off add or drop that role, the publication `racinglines_staging_mirror` and its replication slot in production's
+catalog, and no production row is ever written. TRUNCATE is not published.
+
+**Scope** (`vm.sh mirror on <scope>`, default `all`, the owner's pick 2026-10-12):
+
+| Scope | What follows production | What stays staging's own |
+|---|---|---|
+| `data` | `mirror.DATA`: race history, athletes, model runs and predictions, market links, prices, trades, books, live events, data changes | users, the fantasy ledger, paper positions, signals, orders, the house book, activity, jobs |
+| `accounts` | `data` + users, email preferences, `accounts.fantasy_ledger` | paper positions, signals, orders, the house book, activity, jobs |
+| `all` | every table in `public` and `accounts` production has | jobs (staging's worker must never run production's queued jobs), `alembic_version` |
+
+A table only staging has (a migration production hasn't run yet, or `fantasy_setup.sh` tables) stays staging's until
+production has it and `mirror on` runs again. `mirror status` lists what is staging's own.
+
+**Staging can still write.** Its own rows in a mirrored table (a test account, a Lab job's model run, a reference row a
+staging deploy seeded first) take ids from 1,000,000,000 (`mirror.OFFSET`) up, so they never collide with production's.
+If production later gets the same unique key (say a new competition, seeded on staging first), replication would stop
+on the duplicate: `racinglines-staging-mirror-check.timer` runs `mirror repair` every 5 minutes, which makes staging's
+row production's, points staging's references at it, and replication carries on. Staging's edits to production's rows
+last until production changes that row. A staging migration that drops or renames a column on a mirrored table stops
+replication of that table until production runs the same migration (`mirror status` warns; production keeps at most
+2 GB of WAL for a stalled mirror, `max_slot_wal_keep_size`, then the mirror breaks, never production: `mirror off`,
+then `on`). The check timer also copies production's newer live run folders (`data/runs/live`) over staging's, and
+`mirror on` links staging's `data/archive` to production's, so staging reads the market history the recorder moved to
+Parquet; staging never archives (`markets.store.archive` refuses when `RACINGLINES_ENV=staging`).
+
+**Turning it on** (owner, in order; the first two are production changes):
+
+```
+# LOCAL (Mac): production backup, then wal_level=logical (restarts production's database: timers paused, seconds)
+bash scripts/deploy/vm.sh backup before-staging-mirror
+bash scripts/deploy/vm.sh postgres logical
+```
+
+```
+# LOCAL (Mac): read-only preview: per table, the staging rows production doesn't have as-is (replaced on first mirror)
+bash scripts/deploy/vm.sh mirror plan all
+```
+
+```
+# LOCAL (Mac): back up staging, subscribe (the first copy of about 2.6 GB runs in the background), check
+bash scripts/deploy/vm.sh mirror on all
+bash scripts/deploy/vm.sh mirror status
+```
+
+`vm.sh staging reset` refuses while the mirror is on (production holds a slot for staging's database): `mirror off`
+first. `mirror off` keeps staging's rows as of then.
 
 ## Later
 

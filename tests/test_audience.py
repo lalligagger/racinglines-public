@@ -1,5 +1,6 @@
-"""[sport] audience (owner, 2026-10-11, MotoGP "Hide for Alpha"): one schema key keeps a sport off every user page
-while admins, recording, pricing and the CLI keep it. Flipping the key back to "all" shows it again."""
+"""[sport] audience (owner, 2026-10-11, MotoGP "Hide for Alpha"; MotoGP shown again 2026-10-14): one schema key keeps a
+sport off every user page while admins, recording, pricing and the CLI keep it. Flipping the key back to "all" shows it
+again. The page tests hide MotoGP through the key (`motogp_hidden`): it is the sport with events, jobs and books to hide."""
 
 import re
 from datetime import date
@@ -15,8 +16,23 @@ from racinglines.web import audience as A
 ADMIN, PRO = dict(id=1, username="boss", role="admin"), dict(id=2, username="ada", role="pro")
 
 
+@pytest.fixture
+def motogp_hidden(monkeypatch):
+    """MotoGP's schema with audience = "admin", as it was for the Alpha from 2026-10-11 to 2026-10-14."""
+    real = SP.load
+    monkeypatch.setattr(SP, "load", lambda code: dict(real(code), sport=dict(real(code)["sport"], audience="admin"))
+                        if code == "motogp" else real(code))
+
+
 @pytest.mark.quick
-def test_the_schema_key_decides_and_admins_see_everything():
+def test_motogp_is_shown_to_alpha_users_again():
+    # owner, 2026-10-14 00:27Z (data-terms review v0.2, question 3): MotoGP results and prices may reach Alpha users
+    assert SP.audience("motogp") == "all" and SP.admin_only() == {"road_cycling"}
+    assert A.shown(PRO, "motogp") and A.shown(PRO, "motogp_wc") and A.shown(None, "motogp_wc")
+
+
+@pytest.mark.quick
+def test_the_schema_key_decides_and_admins_see_everything(motogp_hidden):
     assert SP.audience("motogp") == "admin" and SP.audience("f1") == "all" and SP.audience("nascar") == "all"
     assert SP.admin_only() == {"motogp", "road_cycling"}             # road cycling: PCS terms review (2026-10-12)
     assert SP.admin_only_competitions() == {"motogp_wc", "uci_road_wt"}
@@ -38,23 +54,23 @@ def test_flipping_the_key_back_shows_the_sport_again(monkeypatch):
 
     def load(code):
         s = real(code)
-        return dict(s, sport={k: v for k, v in s["sport"].items() if k != "audience"}) if code == "motogp" else s
+        return dict(s, sport={k: v for k, v in s["sport"].items() if k != "audience"}) if code == "road_cycling" else s
     monkeypatch.setattr(SP, "load", load)
-    assert SP.audience("motogp") == "all" and SP.admin_only() == {"road_cycling"} and A.shown(PRO, "motogp_wc")
+    assert SP.audience("road_cycling") == "all" and SP.admin_only() == frozenset() and A.shown(PRO, "uci_road_wt")
     monkeypatch.setattr(SP, "load", lambda code: dict(real(code), sport=dict(real(code)["sport"], audience="nobody")))
     with pytest.raises(ValueError):
         SP.audience("f1")
 
 
 @pytest.mark.quick
-def test_the_landing_page_leaves_a_hidden_sport_out():
+def test_the_landing_page_leaves_a_hidden_sport_out(motogp_hidden):
     from racinglines.web import app as WA
     page = TestClient(WA.app).get("/").text
     assert "Formula 1 · NASCAR Cup · UCI downhill" in page and "MotoGP" not in page
 
 
 @pytest.fixture
-def site(test_engine, monkeypatch):
+def site(test_engine, monkeypatch, motogp_hidden):
     """The web app on the test database: the registry seeded, one MotoGP and one F1 event, an admin and a pro."""
     from sqlalchemy import text
 

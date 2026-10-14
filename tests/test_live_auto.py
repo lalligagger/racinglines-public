@@ -34,7 +34,8 @@ def test_auto_steps_each_due_event_and_one_failure_does_not_stop_the_rest(tmp_pa
     monkeypatch.setattr(LV, "SPECS", tmp_path)
     stepped = []
 
-    def fake_step(args):
+    def fake_step(args, auto=False):
+        assert auto
         stepped.append(args.spec)
         if "2026-17" in args.spec:
             raise RuntimeError("boom")
@@ -52,7 +53,7 @@ def test_list_prints_the_open_events_only(tmp_path, monkeypatch, capsys):
     d.mkdir()
     _spec(d, "2026-17", "2026-10-09T07:30:00", "2026-10-11T15:00:00")
     monkeypatch.setattr(LV, "SPECS", tmp_path)
-    monkeypatch.setattr(L, "cmd_step", lambda args: (_ for _ in ()).throw(AssertionError("--list must not step")))
+    monkeypatch.setattr(L, "cmd_step", lambda args, auto=False: (_ for _ in ()).throw(AssertionError("--list must not step")))
     assert L.main(["auto", "--list", "--now", "2026-10-10T09:30"]) == 0
     assert capsys.readouterr().out == "2026-17\n"
 
@@ -65,3 +66,22 @@ def test_a_rehearsal_spec_without_a_window_never_runs_by_itself(tmp_path, monkey
     (d / "2026-15.toml").write_text('sport = "f1"\nevent = "2026-15"\nrun = "2026-15-rehearsal"\n')
     monkeypatch.setattr(LV, "SPECS", tmp_path)
     assert L.due_specs("f1", pd.Timestamp("2026-09-27T12:00")) == []
+
+
+def test_a_step_on_a_settled_event_says_how_to_turn_its_timer_off(tmp_path, monkeypatch, capsys):
+    """Owner rule: live timers go off once an event is complete. A per-event step on a settled event names the off
+    command; under live auto (which drops the event by itself) it just says settled."""
+    from types import SimpleNamespace
+
+    from racinglines.cli import live as L
+    from racinglines.pipelines import live_f1 as F
+    (tmp_path / "2026-17.toml").write_text('sport = "f1"\nevent = "2026-17"\n')
+    monkeypatch.setattr(L, "_step", lambda spec, args, now=None, cache=None: None)
+    monkeypatch.setattr(F, "status", lambda spec, now=None: dict(next=None, due=None, late_h=None, settled=True))
+    args = SimpleNamespace(spec=str(tmp_path / "2026-17.toml"), now=None)
+    assert L.cmd_step(args) == 0
+    out = capsys.readouterr().out
+    assert "2026-17: nothing new · settled: nothing left to step" in out
+    assert "vm.sh live 2026-17 off" in out
+    assert L.cmd_step(args, auto=True) == 0
+    assert capsys.readouterr().out == "2026-17: nothing new · settled\n"

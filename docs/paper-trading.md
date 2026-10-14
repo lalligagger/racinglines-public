@@ -36,6 +36,10 @@ The two profiles come from the params-4h cloud search (see
   signal window is open, the same window the engine runs in (`signals.in_weekend`: from `WEEKEND_LEAD`, 4 days, before
   the race start to `WEEKEND_TAIL`, 24 hours, after it), because the engine replays the weekend's stages with the
   profile's current settings and a change would rewrite the weekend's earlier calls.
+- **A completed event stops early.** Once the race result is stored and a profile's paper positions for the event
+  are all settled, a live pass skips the event instead of pricing it again for the rest of the 24-hour tail
+  (`signals.settled`). The race itself is never a stage (`sports/f1.toml` `[stages] until = "Race"`), so the last
+  stage of a raced weekend is "after Quali".
 - **Makers open for Alpha** (owner, 2026-10-12: "include maker strategies, we will see how it goes"; they had been
   closed on 2026-10-11): `profiles.MAKERS_OPEN` is `True`, so a pro account can pick maker C on `/strategy/pick` and the
   signal engine runs it. Set it `False` to close them again: then only an admin account can be assigned a maker

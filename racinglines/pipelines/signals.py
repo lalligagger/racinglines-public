@@ -243,6 +243,27 @@ def in_weekend(w, now):
     return w["race_start"] - WEEKEND_LEAD <= now <= w["race_start"] + WEEKEND_TAIL
 
 
+def settled(engine, profile, event_key, venue="polymarket"):
+    """True once the event's race result is stored and this profile's stored rows for it (every user's, this venue)
+    hold no open position: a live pass would only price the completed event again (the WEEKEND_TAIL day) and store
+    the same rows. A profile with nothing stored yet for the event, or no candidate id to find its rows by, is never
+    skipped (its first pass stores it)."""
+    if profile.get("candidate_id") is None:
+        return False
+    with engine.connect() as c:
+        return bool(c.execute(text("""
+            SELECT EXISTS (SELECT 1 FROM results r JOIN rounds ro ON ro.id = r.round_id JOIN races ra ON ra.id = ro.race_id
+                           JOIN events e ON e.id = ra.event_id WHERE e.source_key = :e AND ro.kind = 'race')
+               AND (EXISTS (SELECT 1 FROM paper_positions WHERE candidate_id IS NOT DISTINCT FROM :c AND event_key = :e
+                                                            AND venue = :v)
+                    OR EXISTS (SELECT 1 FROM strategy_signals WHERE candidate_id IS NOT DISTINCT FROM :c
+                                                                AND event_key = :e))
+               AND NOT EXISTS (SELECT 1 FROM paper_positions WHERE candidate_id IS NOT DISTINCT FROM :c
+                                 AND event_key = :e AND venue = :v AND outcome IS NULL
+                                 AND (yes_shares <> 0 OR no_shares <> 0))"""),
+            dict(e=event_key, c=profile.get("candidate_id"), v=venue or "polymarket")).scalar())
+
+
 def _missing_sessions(meas, w, now):
     """Sessions of this weekend that ended (plus the data lag) but aren't in the database yet, the race
     included (its result settles the paper positions)."""
@@ -438,6 +459,8 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
         return dict(base, note="no race weekend left this season")
     if live and not in_weekend(w, now):
         return dict(base, note=f"{w['name']}: signals start {(w['race_start'] - WEEKEND_LEAD):%a %d %b}")
+    if live and settled(engine, profile, w["event_key"], venue):
+        return dict(base, note=f"{w['name']}: complete, its paper positions settled: nothing left to price")
     cache = {} if cache is None else cache
     meas = cache["meas"] if "meas" in cache else run.Measurements.load(engine)
     if live and fetch:
@@ -697,18 +720,38 @@ def run_all(engine, engine_url, users=None, profile_ref=None, now=None, event="n
         if PF.is_combo(prof):
             echo(f"{prof['name']} (blend of {', '.join(m['code'] for m in prof['members'])}) for users {uids}")
             outs = compute_all(engine, engine_url, prof, now=now, event=event, fetch=fetch, echo=echo)
-            report += [_run_one(engine, engine_url, out["profile"], out, uids, rate, now, alert, echo, kelly=kelly)
-                       for out in outs]
+            report += [_run_one(engine, engine_url, out["profile"], out, uids, rate, now, alert, echo, kelly=kelly,
+                                guard=guard(prof, venue) if profile_ref is None else None) for out in outs]
             continue
         echo(f"{prof['name']} ({prof['strategy']}) for users {uids}")
         out = compute(engine, engine_url, prof, now=now, event=event, fetch=fetch, echo=echo)
-        report.append(_run_one(engine, engine_url, prof, out, uids, rate, now, alert, echo, kelly=kelly))
+        report.append(_run_one(engine, engine_url, prof, out, uids, rate, now, alert, echo, kelly=kelly,
+                               guard=guard(prof, venue) if profile_ref is None else None))
     return report
 
 
-def _run_one(engine, engine_url, prof, out, uids, rate, now, alert, echo, upcoming="f1", kelly=None):
+def guard(prof, venue="polymarket", sport=None):
+    """What _run_one re-checks before it stores: the group's profile (combo_key) and where it lives in users.prefs."""
+    from racinglines.pipelines import profiles as PF
+    return dict(key=combo_key(prof), venue=venue, sport=sport or PF.DEFAULT_SPORT)
+
+
+def still_assigned(conn, uids, key, venue="polymarket", sport=None):
+    """The users in `uids` who still run the profile `key` (combo_key), read with their rows locked FOR SHARE until the
+    caller's transaction ends. A pass loads the profiles first and computes for minutes; a fantasy reset
+    (web/accounts.reset, which locks the same rows FOR UPDATE) or a new pick in between would otherwise get the old
+    profile's positions written back (cback, race 17 of 2026: written 36 s after the 12 Oct reset)."""
+    from racinglines.pipelines import profiles as PF
+    k = PF.pref(venue, sport or PF.DEFAULT_SPORT)
+    rows = conn.execute(text(f"SELECT id, prefs->'{k}' FROM users WHERE id = ANY(:u) AND active ORDER BY id FOR SHARE"),
+                        dict(u=list(uids))).all()
+    return [uid for uid in uids if any(i == uid and p and combo_key(p) == key for i, p in rows)]
+
+
+def _run_one(engine, engine_url, prof, out, uids, rate, now, alert, echo, upcoming="f1", kelly=None, guard=None):
     """Store one computation for its users and alert the new signals. -> the report row. upcoming: price the next
-    races between weekends (price_upcoming, the F1 Markets page's calls); None for another sport's run."""
+    races between weekends (price_upcoming, the F1 Markets page's calls); None for another sport's run. guard (see
+    guard()): store only for the users who still run this profile when the store starts (still_assigned)."""
     from racinglines.markets import alerts
     if out.get("note"):
         echo(f"  {out['note']}")
@@ -720,8 +763,15 @@ def _run_one(engine, engine_url, prof, out, uids, rate, now, alert, echo, upcomi
     if not out["stages"]:
         return dict(profile=prof["name"], note=out.get("note"), new=0)
     with engine.begin() as c:
+        if guard is not None:
+            keep = still_assigned(c, uids, **guard)
+            if len(keep) < len(uids):
+                echo(f"  users {[u for u in uids if u not in keep]} no longer run {prof['name']}: not stored for them")
+            uids = keep
         new = {uid: store(c, uid, for_player(c, uid, out, kelly=(kelly or {}).get(uid)), follow_rate=rate[uid])
                for uid in uids}
+    if not uids:
+        return dict(profile=prof["name"], stage=out["stages"][-1][0], signals=len(out["signals"]), new=0)
     n_new = sum(len(v) for v in new.values())
     echo(f"  {out['event']['name']} · {out['stages'][-1][0]} · {len(out['signals'])} signals "
          f"({n_new} new) · {len(out['positions'])} positions")

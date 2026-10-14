@@ -1,0 +1,17 @@
+# Staging's mirror of production (racinglines/db/mirror.py; docs/vm-deploy.md "Staging: the data mirror"): unblock the
+# subscription if a staging-own row collides with a newer production row (staging rows only; production is read),
+# log its lag and errors (the unit fails when it needs a look, so `vm.sh staging status` shows it), and copy
+# production's newer live run folders (data/runs/live) over staging's.
+#   bash scripts/deploy/vm.sh mirror on | off      # installs and enables / disables the timer
+[Unit]
+Description=racinglines staging mirror check (repair, status, live run folders)
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=racinglines
+WorkingDirectory=/opt/racinglines-staging
+EnvironmentFile=/etc/racinglines-staging.env
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/bin/sh -c 'mkdir -p /opt/racinglines-staging/data/runs/live && if [ -d /opt/racinglines/data/runs/live ]; then cp -a -u /opt/racinglines/data/runs/live/. /opt/racinglines-staging/data/runs/live/; fi'
+ExecStart=/opt/racinglines-staging/.venv/bin/python -m racinglines.db.mirror repair

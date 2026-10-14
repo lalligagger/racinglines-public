@@ -288,3 +288,46 @@ def test_store_keeps_each_venues_rows_apart(test_engine):
         assert pos() == [("KXF1RACE-26AZE-VER", "kalshi"), ("tok", "polymarket")]
         SG.store(c, uid, dict(k, positions=[]))                 # and a Kalshi run only Kalshi's
         assert pos() == [("tok", "polymarket")]
+
+
+def test_a_completed_event_is_skipped_once_its_positions_settle(test_engine):
+    from datetime import date
+
+    from racinglines import sports
+    key, prof = "2096-7", dict(candidate_id=9601)
+    with test_engine.begin() as c:
+        code = sports.load("f1")["competition"]["code"]
+        comp = c.execute(text("SELECT id FROM competitions WHERE code = :c"), dict(c=code)).scalar()
+        if comp is None:
+            sid = c.execute(text("INSERT INTO sports (code, name) VALUES ('f1', 'F1') ON CONFLICT (code) DO UPDATE "
+                                 "SET code = EXCLUDED.code RETURNING id")).scalar()
+            lg = c.execute(text("INSERT INTO leagues (code, name) VALUES ('f1', 'F1') ON CONFLICT (code) DO UPDATE "
+                                "SET code = EXCLUDED.code RETURNING id")).scalar()
+            comp = c.execute(text("INSERT INTO competitions (code, name, league_id, sport_id) VALUES (:c, 'F1', :l, :s) "
+                                  "RETURNING id"), dict(c=code, l=lg, s=sid)).scalar()
+        cat = c.execute(text("INSERT INTO categories (competition_id, code, name) VALUES (:c, 'SET', 'settled test') "
+                             "RETURNING id"), dict(c=comp)).scalar()
+        sea = c.execute(text("INSERT INTO seasons (competition_id, year) VALUES (:c, 2096) RETURNING id"),
+                        dict(c=comp)).scalar()
+        ev = c.execute(text("INSERT INTO events (season_id, source, source_key, name, start_date) "
+                            "VALUES (:s, 'test', :k, 'Race', :d) RETURNING id"), dict(s=sea, k=key, d=date(2096, 5, 3))).scalar()
+        race = c.execute(text("INSERT INTO races (event_id, category_id) VALUES (:e, :c) RETURNING id"),
+                         dict(e=ev, c=cat)).scalar()
+        uid = c.execute(text("""INSERT INTO users (username, password_hash, role) VALUES ('settledtest', 'x', 'taker')
+                                RETURNING id""")).scalar()
+        assert not SG.settled(test_engine, prof, key)                    # nothing stored, no result: runs
+        c.execute(text("""INSERT INTO paper_positions (user_id, candidate_id, event_key, market_key, kind, yes_shares,
+                          no_shares, cash) VALUES (:u, 9601, :k, 'tok', 'race_win', 10, 0, -4)"""), dict(u=uid, k=key))
+    assert not SG.settled(test_engine, prof, key)                        # before the race result
+    with test_engine.begin() as c:
+        rnd = c.execute(text("INSERT INTO rounds (race_id, kind, ordinal) VALUES (:r, 'race', 1) RETURNING id"),
+                        dict(r=race)).scalar()
+        ath = c.execute(text("INSERT INTO athletes (display_name) VALUES ('Settled Test') RETURNING id")).scalar()
+        c.execute(text("INSERT INTO results (round_id, athlete_id, position, status) VALUES (:r, :a, 1, 'OK')"),
+                  dict(r=rnd, a=ath))
+    assert not SG.settled(test_engine, prof, key)                        # result in, position still open: one more pass
+    assert not SG.settled(test_engine, dict(candidate_id=None), key)     # no candidate id to find its rows by
+    with test_engine.begin() as c:
+        c.execute(text("UPDATE paper_positions SET outcome = true WHERE user_id = :u"), dict(u=uid))
+    assert SG.settled(test_engine, prof, key)                            # settled: the pass skips the event
+    assert not SG.settled(test_engine, prof, key, venue="kalshi")        # another venue's rows are its own
