@@ -30,6 +30,8 @@
 #                                               # /etc/racinglines.env, web app restarted; never a trading flag
 #   bash scripts/deploy/vm.sh deploy [ref]      # checkout (default main), install, migrate, restart, smoke check
 #   bash scripts/deploy/vm.sh docs              # build the docs site on the VM (site/, served at /docs); deploy does it too
+#   bash scripts/deploy/vm.sh internal-docs <dir>   # copy a built book (its index.html folder) to data/internal-docs/ on
+#                                               # production and staging: /docs/internal/, admins only. Data, never in git
 #   bash scripts/deploy/vm.sh backup <purpose>  # the VM database to data/backups/db/racinglines-before-<purpose>-<UTC>.sql.gz
 #   bash scripts/deploy/vm.sh repoint           # one time: the VM checkout fetches from REPO_URL (fetch only, no file
 #                                               # touched); deploy refuses until the checkout's origin is REPO_URL
@@ -275,6 +277,26 @@ case "${1:-}" in
     ;;
   docs)
     remote "cd $APP && sudo -u racinglines -H bash -s" < deploy/vm/build_docs.sh
+    ;;
+  internal-docs)
+    # The internal onboarding book (a built Jupyter Book's _build/html): data, not code, so it never goes through git.
+    # Replaces data/internal-docs/ in production and staging; web/info_routes.py serves it to admins at /docs/internal/.
+    src="${2:?usage: vm.sh internal-docs <built html folder, e.g. ~/Documents/racinglines/jb/book/_build/html>}"
+    [ -f "$src/index.html" ] || { echo "no index.html in $src: build the book first (jupyter-book build <book>)"; exit 1; }
+    tgz="$(mktemp -d)/internal-docs.tgz"
+    COPYFILE_DISABLE=1 tar -czf "$tgz" -C "$src" .           # no macOS ._ files
+    log "copying $(du -h "$tgz" | cut -f1) to the VM"
+    gcloud compute scp "$tgz" "$VM:/tmp/internal-docs.tgz" --project "$PROJECT" --zone "$ZONE" --tunnel-through-iap
+    rm -rf "$(dirname "$tgz")"
+    remote 'set -e; chmod 644 /tmp/internal-docs.tgz
+      for app in /opt/racinglines /opt/racinglines-staging; do
+        [ -d "$app" ] || continue
+        sudo -u racinglines -H bash -c "set -e; t=$app/data/internal-docs; rm -rf \$t.new; mkdir -p \$t.new
+          tar -xzf /tmp/internal-docs.tgz -C \$t.new; rm -rf \$t.old; if [ -e \$t ]; then mv \$t \$t.old; fi
+          mv \$t.new \$t; rm -rf \$t.old; echo \"\$t: \$(find \$t -type f | wc -l) files\""
+      done
+      rm -f /tmp/internal-docs.tgz'
+    log "done: https://racinglines.bet/docs/internal/ and https://staging.racinglines.bet/docs/internal/ (admins only)"
     ;;
   backup)
     purpose="${2:-}"; case "$purpose" in ""|*[!a-z0-9-]*) echo "usage: vm.sh backup <purpose> (lowercase letters, digits, -)"; exit 1 ;; esac

@@ -121,6 +121,7 @@ below, or through the site's admin views. (A deploy's own database writes are `a
 | Raw inputs (`data/raw/f1` FastF1 cache, `nascar`, `motogp`, `mtb_dh`) | no | yes | old bucket: `mtb_dh` only | the live steps and ingest commands fetch them |
 | Run folders (`data/runs/live`, `replay-grid`, `search`, `logs`) | no | yes | old bucket: `live`, `runs/f1` to 2026-09-28 | the units and scripts that write them |
 | Built docs (`site/`, served at `/docs`) | no | built by every `vm.sh deploy` and by `vm.sh docs` (`deploy/vm/build_docs.sh`) | no (rebuilt from the checkout) | a code merge's deploy; a docs-only merge deploys nothing, so run `vm.sh docs` after one |
+| Internal onboarding book (`data/internal-docs/`, served at `/docs/internal/` to admins only) | no, never: it quotes internal plans and contacts | yes, production and staging | the owner's Mac (the book's source and its `_build/html`) | `vm.sh internal-docs <built html folder>` from the Mac (added 2026-10-14) |
 | Pitch images (`racinglines/web/static/pitch/*.jpg`, used by `/pitch`) | no (`*.jpg` is ignored) | yes, untracked (kept by `untrack.sh`) | the owner's Mac | by hand (scp) |
 | Test fixtures (`tests/fixtures/`) | no; goldens (`tests/golden/`) yes | yes, untracked | the owner's Mac | `scripts/fetch_test_fixtures.py --refresh` (needs the exchanges and FastF1) |
 
