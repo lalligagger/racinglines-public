@@ -66,9 +66,13 @@ the next staging → main promotion (a draft until the owner says "promote"; the
       of snapshots, weekend P&L within 10% or $5, trades within 5%. The golden comparison runs on
       `racinglines_staging_demo`. The internal recorder stays primary (owner, 2026-10-12).
 - [x] **Staging as a live mirror of production (#154), on since 2026-10-14 17:54Z** (scope `all`; 42 tables ready,
-      0 bytes behind at 18:31Z; [data changes](data-changes.md)). No more `staging reset`; `vm.sh mirror status` to
-      check. Open: the production backup's exact file name from `vm.sh backup staging-mirror` is not yet in the
-      data-change entry.
+      0 bytes behind at 18:31Z; [data changes](data-changes.md)). Open: the production backup's exact file name from
+      `vm.sh backup staging-mirror` is not yet in the data-change entry.
+- [ ] **Staging mirror upkeep (#154; on since 2026-10-14 17:54Z, 42 tables, 0 bytes behind).** No more `staging
+      reset` while it is on. After any production migration, run `vm.sh mirror status`; a table production adds joins
+      only after `vm.sh mirror on` runs again (it refreshes the publication). Owner OK still needed to delete the
+      pre-mirror leftovers on the VM: `racinglines_staging-before-mirror-*.sql.gz` under staging's `data/backups/db/`
+      and `data/archive.pre-mirror` if it exists.
 - [ ] **Which database staging serves.** Still the season demo (`racinglines_staging_demo`), which the Probalytics
       comparison (15 Oct) uses; the mirror fills `racinglines_staging`. `vm.sh staging db main` to show the mirrored
       copy, `staging db demo` to go back (owner's call).
@@ -188,7 +192,6 @@ Open decisions first, then the ones on record (so a thread never re-asks one).
 | Decision | When | Recommendation / status |
 |---|---|---|
 | Merge the promotion (#180) ⚠️ VM scripts and units | Now | Yes; then the post-deploy checks in P0 |
-| Turn the staging mirror on (#154): backup, `postgres logical` (restarts production's Postgres), `mirror plan`, `mirror on` ⚠️ | Planned 15 Oct, after the Probalytics download | Owner runs it; nothing until then |
 | C56: the "works the same" tolerance for the one engine, and whether the F1 switch waits for the Las Vegas GP | Before the first package release | Validate now, switch after Vegas (proposal, 2026-10-11) |
 | Probalytics download beyond F1 and NASCAR | Per sport | Only on the owner's explicit go for that sport (2026-10-14) |
 | Sizing rule | ~12 Nov | After 4–6 live weekends on real markets |
