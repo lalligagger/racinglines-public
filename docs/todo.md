@@ -22,6 +22,21 @@ Tick items off where they are listed. Finished items move to [Done](#done) at th
 
 <!-- readme: todo-summary -->
 
+**Where things stand (14 Oct 2026).** [racinglines.bet](https://racinglines.bet) runs the **fantasy league alpha**:
+every signed-in account gets F$1,000 of fantasy money and four tabs, Markets, Trade, History and Lab
+([Alpha layout](alpha-layout.md)). Hand trading is F1 only; Markets shows F1, NASCAR and MotoGP. Polymarket lists F1
+race markets again; no real order is placed (the trading flags are unset,
+[Sports and exchanges](coverage.md)). From the command line, `--remote`, `racinglines remote` and `racinglines data
+pull SPORT` reach the hosted server, in testing, with a warning that the review of venue and data terms is still
+pending ([MCP server](mcp.md#more-commands-on-the-hosted-server-remote-racinglines-remote-data-pull)).
+
+The priority list below dates from the 28 Sep – 1 Oct sprint to the soft launch and has not been re-ranked since; it
+is kept as the record of that sprint. The sections after it hold the open items by area.
+
+<!-- /readme -->
+
+### Sprint to the soft launch (28 Sep – 8 Oct 2026)
+
 **The rule:** real markets first. Events are tiered ([Strategy 2026](strategy-2026.md#event-tiers)):
 **T1** a real market is listed, so paper-trade it with frozen profiles; **T2** a real market we don't
 model yet, so record its tape; **T3** no market anywhere, so run a simulated pool (private book). T3
@@ -132,8 +147,6 @@ branches, one PR per track (owner, 2026-09-30); the track is named on each item.
 - [ ] **U12** Move to Google Cloud; the first real V2 order only if the validation rules are met.
 - [ ] **U11** Downhill off-season: points validation (the top downhill item), then the rest of data and
       model ([Points validation](#points-validation), [Data](#data), [Model](#model)).
-
-<!-- /readme -->
 
 ## Race weekends to 31 December
 

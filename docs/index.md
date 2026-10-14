@@ -30,10 +30,10 @@ exchange: [Sports and exchanges](coverage.md).
 | 🏎️ **129 F1 races backtested** | 2021 to Azerbaijan 2026. Each race is priced before practice, before qualifying and after qualifying. After qualifying, top-10 Brier is **0.149** against 0.163 for a grid-only guess; the best variant also beats it on win and podium. |
 | 💹 **Every Polymarket F1 race weekend, replayed** | 38 weekends (2025 and 2026) on the real prices and trade tape. The default maker made **+$751** on $8,969 filled in 2026. |
 | ☁️ **1,161 strategy combinations searched** | A 4-hour cloud search found two setups that held up in both seasons: **A** (a taker, +$1,232 in 2026 / +$1,237 in 2025) and **C** (a maker, +$653 / +$835, the best Sharpe of any combination). |
-| 📡 **Live paper trading** | A and C run on every F1 weekend Polymarket lists, through 2027, stage by stage, with heat ratings, alerts and paper positions, through the same code as the backtest (checked trade for trade). Polymarket has listed no race since Baku (28 Aug 2026). |
-| 🔴 **Live events** | The Whistler downhill final (27 Sep 2026) followed live from UCI timing: rank probabilities after every update, a maker re-quoting every rider, 1,000 simulated private-book takers and a hype-picking demo taker, P&L by venue. F1 next: the Bahrain GP at Sepang (2–4 Oct 2026), a private book on all 100 usual race markets. |
-| 🏁 **Three exchanges, eight sports** | Polymarket, Kalshi and OG.com (OG.com read-only, from one schema file). F1 is the only sport with a real model and a backtest that held in a held-out season (on Polymarket). NASCAR on Kalshi: 2026 **+$4.2k to +$5.5k** in the taker replay but **−$242 to −$390** in 2025 in every setting, on spiky last-trade prices, so not robust. MotoGP: race win only, no held-out season. Both show in the app (status table, next races, an in-sample demo paper record on Kalshi). IndyCar, road cycling, Le Mans and SailGP: recorded tapes, no model. Of the 3 × 3 soft-launch grid (F1, NASCAR, MotoGP × Polymarket, Kalshi, OG.com), 7 cells hold data; MotoGP on Polymarket and OG.com are empty. [Status matrix](coverage.md#the-status-matrix). |
-| 🎮 **Fantasy trading, next** | An invite-only F1 soft launch with paper money (F$) is planned for Thu 8 Oct 2026 (Singapore), after CI, a staging host and sign-up are built. [Fantasy soft launch](fantasy-launch.md). |
+| 📡 **Live paper trading** | A and C run on every F1 weekend Polymarket lists, through 2027, stage by stage, with heat ratings, alerts and paper positions, through the same code as the backtest (checked trade for trade). Polymarket lists F1 race markets again: production's database holds them for every 2026 round from Italy (6 Sep) to Brazil (8 Nov), checked 2026-10-14. |
+| 🔴 **Live events** | The Whistler downhill final (27 Sep 2026) followed live from UCI timing: rank probabilities after every update, a maker re-quoting every rider, 1,000 simulated private-book takers and a hype-picking demo taker, P&L by venue. Live events and private books are admin-only while the fantasy alpha runs ([Alpha layout](alpha-layout.md)). |
+| 🏁 **Three exchanges, eight sports** | Polymarket, Kalshi and OG.com (OG.com read-only, from one schema file). F1 is the only sport with a real model and a backtest that held in a held-out season (on Polymarket). NASCAR on Kalshi: 2026 **+$4.2k to +$5.5k** in the taker replay but **−$242 to −$390** in 2025 in every setting, on spiky last-trade prices, so not robust. MotoGP: race win only, no held-out season. Both show to every signed-in user (MotoGP again since 2026-10-14). Road cycling is priced by the same engine, for admins only. IndyCar, Le Mans and SailGP: recorded tapes, no model. Of the 3 × 3 grid (F1, NASCAR, MotoGP × Polymarket, Kalshi, OG.com), 8 cells hold data; only MotoGP on OG.com is empty (OG.com doesn't list it). [Status matrix](coverage.md#the-status-matrix). |
+| 🎮 **Fantasy league alpha, open** | Every signed-in account gets F$1,000 of fantasy money: trade F1 markets by hand on the recorded order books, or follow one of five strategy styles, and climb the leaderboard. No real money, nothing reaches an exchange. [Alpha layout](alpha-layout.md), [Fantasy trading](fantasy-trading.md). |
 | 🚵 **43 downhill World Cup rounds** | 2021–2026, walk-forward. Error on who makes the Final is **38% lower** than a uniform guess (0.127 vs 0.204); the actual winner got **7.1%** on average, against ~1%. |
 | ✅ **Checks in seconds** | `racinglines check` runs 21 checks (code, every data source, database) in ~10 s; the regression suite runs 174 tests on pinned public fixtures and golden outputs. |
 
@@ -47,19 +47,20 @@ backtests. The pages below have the details.
 
 ## Try it
 
-1. **Open [racinglines.bet](https://racinglines.bet)** and click a demo button
-   (or log in with the password `password`); "I'm already confused." on the login
-   page opens a plain-language introduction:
-    - **Maker** (Markets · Strategy · Positions · My Book · Lab): our fair price
-      against every venue for each sport's next races and season; its strategy's
-      quotes, track record and decisions; backtests, the Edge Finder and strategy
-      replays;
-    - **Taker** (Markets · Strategy · Positions): every open Polymarket F1 market
-      with its strategy's call and heat; its track record and positions.
+1. **Open [racinglines.bet](https://racinglines.bet)** and click **Try the demo** (it signs in as the demo
+   maker), or sign up for the fantasy league alpha. **What is this?** on the same page opens
+   [Racinglines 101](https://racinglines.bet/racinglines101), a plain-language introduction. Signed in, the app has
+   four tabs:
+    - **Markets:** the prediction markets now, with our fair price against each venue for every sport you can see
+      (F1, NASCAR, MotoGP);
+    - **Trade:** fantasy trading in F$ on the recorded order books, one immediate-or-cancel order at a time (F1 only);
+    - **History:** your F$, every trade and order, your strategy's trades and the leaderboard;
+    - **Lab:** follow a strategy style and size it, its track record and positions, and the backtests, Edge Finder
+      and replays.
 
-    Both demo accounts carry a paper bankroll and a track record replayed from
-    real weekends. Demo sessions are disposable: nothing a visitor changes is
-    kept.
+    The demo accounts can look but not trade (sign up to trade). Their track records are replays of real weekends,
+    and nothing a visitor changes in a demo session is kept. The [quickstart replay](https://racinglines.bet/docs/quickstart/term) shows the command line in the
+    browser, no sign-in needed.
 2. **Run it locally**, then check the setup (about 10 seconds, nothing
    downloaded):
 
@@ -135,14 +136,14 @@ official timing ──> PostgreSQL ──> as-of model ──> simulated weekend
 - **Paper trades live:** strategy profiles (A, a taker; C, a maker) produce
   signals at every stage of a race weekend, with heat ratings for takers,
   alerts, paper fills and positions. No real orders are placed.
-- **Web app** ([racinglines.bet](https://racinglines.bet)):
-    - **Markets:** makers see our fair price against each venue; takers see
-      every Polymarket market with their strategy's call;
-    - **Strategy** and **Positions:** the account's calls, track record, bankroll,
-      P&L history and holdings;
-    - **My Book:** in-app markets a maker quotes;
-    - **Lab:** the Edge Finder, backtests, scenario forecasts, diagnostics and
-      strategy replays with your own settings.
+- **Web app** ([racinglines.bet](https://racinglines.bet)), laid out for the fantasy league alpha:
+    - **Markets:** our fair price against each venue for each sport's next races;
+    - **Trade** and **History:** fantasy trading in F$ on the recorded books, every trade, and the leaderboard;
+    - **Lab:** follow a strategy style, its track record and positions, and the Edge Finder, backtests, scenario
+      forecasts, diagnostics and strategy replays with your own settings.
+- **Reaches the hosted server from the command line:** `--remote` runs the book commands and Lab jobs on
+  racinglines.bet, `racinglines remote` calls any hosted tool, and `racinglines data pull SPORT` copies one sport's
+  shared data into your own database ([MCP server](mcp.md#more-commands-on-the-hosted-server-remote-racinglines-remote-data-pull)).
 
 <!-- /readme -->
 
@@ -241,13 +242,13 @@ plus mkdocs's other dependencies, then run `mkdocs build` and open
 
 | Path | |
 |---|---|
-| `racinglines/cli/` | The `racinglines` command: `f1`, `mtb_dh`, `markets`, `db`, `web`, `check` |
+| `racinglines/cli/` | The `racinglines` command, task first: `data`, `model`, `strategy`, `markets`, `book`, `live`, `db`, `web`, `mcp`, `remote`, `check` and more ([CLI reference](cli.md)) |
 | `racinglines/sources/` | Data sources: `fastf1/` (fetch, ingest), `chronorace/` (download, parse, ingest), `http.py` (paced, retried requests for every source) |
 | `racinglines/models/` | The one engine, `model_global.py` (every modelled sport's pricing model, its inputs declared in `sports/<code>.toml` [model]), and its input layers in `inputs/`: `laps.py`, `laps_pricing.py`, `practice.py`, `grid.py` (F1: car/driver pace, sectors, practice prior, race and season pricing), `run_times/` (downhill: log-time model, weekend and season simulation), `results.py` (finishing positions); `variants.py`, `props.py`, `evaluate.py` beside them |
 | `racinglines/markets/` | Exchanges and books: Polymarket `sync`/`trade`/`links`, Kalshi `client`/`sync`/`trade`, the Parquet `store`, `venues`, the `private_book`, new-market and signal `alerts`, and `strategies/` (maker replay, weekend taker, season) |
 | `racinglines/pipelines/` | Multi-stage runs: `weekend_sweep`, `sweep_settings`, `search` (settings searches), `season_strategy`, `season_checkpoints`, `profiles`, `signals` (live paper trading), `story` and `demo_history` (the demo accounts) |
 | `racinglines/db/` | Database: models, reads, queries, shared ingest helpers, the `snapshot`, registry of sports and venues |
-| `racinglines/web/` | The web app (`racinglines web`): Markets, Strategy, Positions, My Book, Lab, admin; demo sessions (`demo.py`); old-URL redirects (`legacy.py`) |
+| `racinglines/web/` | The web app (`racinglines web`): Markets, Trade, History, Lab and admin under the alpha layout (`layout.py`; the older pages are archived behind it); demo sessions (`demo.py`); old-URL redirects (`legacy.py`) |
 | `racinglines/testing/` | Synthetic data and the checks behind `racinglines check` |
 | `sports/*.toml`, `racinglines/sports.py` | Sport schemas: what differs between sports (sessions, points, categories, venues, markets), read by the code |
 | `racinglines/paths.py` | Where data lives (`data/raw`, `data/archive`, `data/runs`, `data/cache`) |

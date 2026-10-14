@@ -6,6 +6,7 @@ first and the sport is an argument:
 ```
 racinglines data      <command> SPORT   fetch | download | parse | ingest | link | events | startlist | probe | points
                                         record | inrace-backfill | pm-sync | pm-history | pm-trades | pm-record | ...
+racinglines data      pull SPORT        one sport's shared data from racinglines.bet into the local database
 racinglines model     <command> SPORT   forecast | backtest | walk-forward | compare | matrix | diagnostic | combo
                                         props | sprint-check | season | price | reliability | search (MotoGP)
 racinglines strategy  <command> SPORT   replay | sweep | season-replay | season-strategy | season-checkpoints
@@ -18,6 +19,7 @@ racinglines db        init | seed | stats | export | snapshot-export | snapshot-
 racinglines live      new | step | run | agent | status | report | settle | reprice
 racinglines web
 racinglines mcp      [--http] [--host H] [--port 8100] [--no-jobs] | token ACCOUNT [--revoke]     the MCP server
+racinglines remote   tools | call TOOL --ARG VALUE | job JOB_TYPE      any tool on racinglines.bet's MCP server (in testing)
 racinglines check    [--sport f1|mtb_dh] [--offline] [--no-db]    quick validation (see Testing)
 ```
 

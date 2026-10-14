@@ -32,7 +32,8 @@ racinglines needs a database, and none is configured (no DATABASE_URL, no `db` o
   1) local:  the Postgres of docker-compose.yml on localhost:5433; start it with one command, `docker compose up -d`
              (then every command works; add --demo for the synthetic demo store, docs/quickstart.md)
   2) remote: sign in to racinglines.bet (the browser opens on first use) and run `racinglines book map|price|settle`
-             on the hosted server (in testing); other commands still need a local database
+             on the hosted server, like `racinglines remote ...` and `--remote` on a Lab-job command (in testing);
+             other commands still need a local database
 Choose 1 or 2 [1]:
 ```
 
@@ -112,6 +113,21 @@ and trades per market; the kart pack carries quotes only, not a tape).
 
 `racinglines book price FILE --remote` runs the book commands on the hosted MCP server instead of a local database
 (sign-in through the browser the first time; [MCP: Hosted](mcp.md#hosted-the-vm)).
+
+The same sign-in reaches more of the hosted server
+([MCP: More commands on the hosted server](mcp.md#more-commands-on-the-hosted-server-remote-racinglines-remote-data-pull)):
+`--remote` on a command that has a Lab job (`model backtest|forecast f1|mtb_dh`, `strategy sweep f1|nascar|motogp`,
+`strategy season-strategy f1`, `model diagnostic f1`, `model combo f1`) runs it as the server's job;
+`racinglines remote tools`, `racinglines remote call TOOL --ARG VALUE` and `racinglines remote job JOB_TYPE` reach any
+tool your account may call; and `racinglines data pull SPORT` copies one sport's shared data (race data, model runs,
+exchange prices, trades and books; never accounts or positions) into your own database:
+
+```
+# LOCAL (Mac), or any machine with Postgres: a fresh local database, then F1's data from racinglines.bet
+racinglines db init
+racinglines data pull f1
+racinglines data pull f1 --since last          # later: a top-up
+```
 
 **The remote demo:** `--demo` together with `--remote` (or `--demo` with `source = "remote"`) sends the quickstart's
 hosted commands to the pack's hosted demo store (`racinglines mcp --http --demo` on the VM, over its own database built
