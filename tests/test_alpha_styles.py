@@ -137,3 +137,11 @@ def test_basic_runs_as_pro_only_under_the_alpha_layout(monkeypatch):
     assert (layout.role("basic"), layout.role("pro"), layout.role("admin")) == ("pro", "pro", "admin")
     monkeypatch.setenv("RACINGLINES_LAYOUT", "classic")
     assert layout.role("basic") == "basic"
+
+
+def test_markets_shows_no_strategy_or_pnl_banner(app_db, alpha):  # noqa: F811
+    """The followed style and its P&L stay on Lab and History, not above the Markets board (owner, 2026-10-14)."""
+    client, csrf, _ = _login(app_db, "ada")
+    _post(client, csrf, code="T1")
+    page = client.get("/markets").text
+    assert 'class="paper-banner"' not in page and "Fantasy account" not in page
