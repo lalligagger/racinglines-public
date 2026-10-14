@@ -249,7 +249,7 @@ def call(tool, arguments, server=None, tok=None, http_client=None, open_browser=
 
 
 def _parse(tool, r):
-    text = r.content[0].text if r.content else ""
+    text = r.content[-1].text if r.content else ""          # the JSON is the last block (a drawn table may lead it)
     if r.is_error:
         raise RemoteError(f"{tool}: {text}")
     return json.loads(text)

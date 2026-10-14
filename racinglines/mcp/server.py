@@ -421,14 +421,14 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         return _fantasy_write(market_link_id=market_link_id, side=side, action=action, shares=shares,
                               limit_price=limit_price, client_key=client_key, user=user)
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def pull_manifest(sport: str, since: str | None = None) -> str:
         """`racinglines data pull SPORT`: the files of one sport's pull (the registry, its race data, model runs and
         exchange prices, trades and books by month). since: a UTC date (YYYY-MM-DD) for a top-up. pull_chunk fetches
         each file. Never accounts, positions, signals, orders or jobs."""
         return _read(T.pull_manifest, sport=sport, since=since)
 
-    @srv.tool()
+    @srv.tool(structured_output=False)
     def pull_chunk(pull_id: str, name: str, offset: int = 0) -> str:
         """One base64 chunk of a pull_manifest file from byte `offset`; `done` says whether it was the last."""
         return _read(T.pull_chunk, pull_id=pull_id, name=name, offset=offset)
