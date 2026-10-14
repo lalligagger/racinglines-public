@@ -171,7 +171,8 @@ def _venue(conn, links, start, end, venue="polymarket", group_target=None, event
     from racinglines.markets import probalytics as PB
     if PB.enabled(tape) and venue in PB.EXCHANGES:
         return PB.EXCHANGES[venue](conn, links, start, end, group_target or GROUP_TARGET, COHERENCE_TOL,
-                                   event_key=event_key, tag=PB.tag_of("f1"), book_stale=PB.book_stale_of("f1"))
+                                   event_key=event_key, tag=PB.tag_of("f1"), book_stale=PB.book_stale_of("f1"),
+                                   day_books=False)       # stage files for every weekend: one rule, and no day books in memory
     return _exchange(venue)(conn, links, start, end, group_target or GROUP_TARGET, COHERENCE_TOL, STALE)
 
 
