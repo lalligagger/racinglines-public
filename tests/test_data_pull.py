@@ -204,3 +204,12 @@ def test_job_knobs_come_from_the_servers_catalog():
     with pytest.raises(RM.RemoteError, match="no job"):
         RM.knob_params("f1_nope", [], cat)
     assert "strategy sweep f1" in RM.runs_remotely() and "model diagnostic f1" in RM.runs_remotely()
+
+
+def test_inserts_stay_under_the_postgres_parameter_limit():
+    for ncols in (1, 5, 13, 19, 40, 200):
+        n = PL.rows_per_statement(ncols)
+        assert 1 <= n <= 5000 and n * ncols < PL.PG_MAX_PARAMS
+    assert PL.rows_per_statement(19) < 5000          # laps: 5,000 rows x 19 columns was 95,000 parameters
+    assert PL.rows_per_statement(3) == 5000          # narrow tables keep the old batch
+    assert PL.rows_per_statement(100_000) == 1       # never zero
