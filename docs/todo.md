@@ -44,14 +44,14 @@ first package release (C56).
 ### P0 · now (14 Oct to the United States GP, 25 Oct)
 
 Each item names its PR or backlog number; "promotion pending" means it is on `staging` and reaches production with
-[PR #180](https://github.com/lalligagger/racinglines-public/pull/180) (owner merges; no migration, no trading flag;
-touches VM scripts and units, so ⚠️).
+the next staging → main promotion (a draft until the owner says "promote"; the owner merges).
 
-- [ ] **Promote staging to production (#180).** After the deploy: `vm.sh live auto` on and no per-event F1 timer
-      left; `vm.sh record fastf1 status`; the forecast-refresh timer's first pass files MotoGP's calendar into
-      production's database (it takes its own daily backup). What users see: MotoGP on Markets for every signed-in
-      account (`audience = "all"`, #179), MCP list results drawn as tables (#171), and `data pull` / `racinglines
-      remote` working against production (#179; they need the hosted MCP server, which only production runs).
+- [x] **Promote staging to production (#180), 2026-10-14.** Merged 06:50Z, prod deploy green 06:55Z (806278c).
+      Checked 17:00Z: live auto on, no per-event F1 timer, nothing paused; `record fastf1` disabled (no race this
+      week). The internal book is in `data/internal-docs/` on both sites (`vm.sh internal-docs`, 410 files).
+- [ ] **Next promotion: staging → main (draft until the owner says "promote").** Carries #188/#189:
+      `record_fastf1.sh` executable (`vm.sh record fastf1 status` and the recorder's unit failed with "command not
+      found" without it) and two data-change entries. Touches `scripts/vm/`, so it deploys production.
 - [ ] **CLV on every live and replayed fill (C4).** `racinglines backtest clv` covers stored paper bets; the sweep
       stats, `f1 reconcile`, `f1 scorecard` and the weekend report still read P&L only. G1 is judged on CLV: the plain
       mean per decided bet against the fill price (owner, 2026-10-07). [Paper trading](#paper-trading).
@@ -65,9 +65,23 @@ touches VM scripts and units, so ⚠️).
       owner's explicit go); `RACINGLINES_TAPE_SOURCE=probalytics` as a backtest venue; pass marks mid within 1¢ on 95%
       of snapshots, weekend P&L within 10% or $5, trades within 5%. The golden comparison runs on
       `racinglines_staging_demo`. The internal recorder stays primary (owner, 2026-10-12).
-- [ ] **Staging as a live mirror of production (#154, code merged, nothing on).** Owner, planned 15 Oct after the
-      Probalytics download: `vm.sh backup`, `vm.sh postgres logical` (restarts production's Postgres), `vm.sh mirror
-      plan`, `vm.sh mirror on`. Once on, no more `staging reset`. ⚠️ production database step.
+- [x] **Staging as a live mirror of production (#154), on since 2026-10-14 17:54Z** (scope `all`; 42 tables ready,
+      0 bytes behind at 18:31Z; [data changes](data-changes.md)). Open: the production backup's exact file name from
+      `vm.sh backup staging-mirror` is not yet in the data-change entry.
+- [ ] **Staging mirror upkeep (#154; on since 2026-10-14 17:54Z, 42 tables, 0 bytes behind).** No more `staging
+      reset` while it is on. After any production migration, run `vm.sh mirror status`; a table production adds joins
+      only after `vm.sh mirror on` runs again (it refreshes the publication). Owner OK still needed to delete the
+      pre-mirror leftovers on the VM: `racinglines_staging-before-mirror-*.sql.gz` under staging's `data/backups/db/`
+      and `data/archive.pre-mirror` if it exists.
+- [ ] **Which database staging serves.** Still the season demo (`racinglines_staging_demo`), which the Probalytics
+      comparison (15 Oct) uses; the mirror fills `racinglines_staging`. `vm.sh staging db main` to show the mirrored
+      copy, `staging db demo` to go back (owner's call).
+- [ ] **Road cycling on production.** The Kalshi road cycling links (53 events, 9,421 links, 14 Oct) are only in
+      `racinglines_staging_demo`. Next: `vm.sh backup road-cycling-kalshi`, then `racinglines markets --exchange kalshi
+      --sport road_cycling sync --closed` on production; the mirror then carries them to `racinglines_staging`. Fair
+      prices still need the PCS results ingested and a forecast ([Road cycling](road-cycling.md)); admin only.
+- [ ] **`vm.sh internal-docs` has no staging-only mode.** It always copies to production and staging; a staging-only
+      copy was done by hand on 14 Oct. Low priority.
 - [ ] **United States GP weekend (23–25 Oct), the first live weekend of the alpha with Polymarket race markets
       (266 links stored) and Kalshi's (expected 2 to 4 days out).** A, C and K paper-trade; the fantasy accounts trade
       by hand or follow a style; no code merges in the book window; Monday: `f1 reconcile`, `f1 scorecard`, and the
@@ -178,7 +192,6 @@ Open decisions first, then the ones on record (so a thread never re-asks one).
 | Decision | When | Recommendation / status |
 |---|---|---|
 | Merge the promotion (#180) ⚠️ VM scripts and units | Now | Yes; then the post-deploy checks in P0 |
-| Turn the staging mirror on (#154): backup, `postgres logical` (restarts production's Postgres), `mirror plan`, `mirror on` ⚠️ | Planned 15 Oct, after the Probalytics download | Owner runs it; nothing until then |
 | C56: the "works the same" tolerance for the one engine, and whether the F1 switch waits for the Las Vegas GP | Before the first package release | Validate now, switch after Vegas (proposal, 2026-10-11) |
 | Probalytics download beyond F1 and NASCAR | Per sport | Only on the owner's explicit go for that sport (2026-10-14) |
 | Sizing rule | ~12 Nov | After 4–6 live weekends on real markets |
@@ -352,6 +365,14 @@ events are T3 unless a venue lists the event.
       [queue rule](market-making.md#the-queue-rule), tested on synthetic books, 2026-09-28,
       cloud build-out); running it needs several weekends of recorded books (Polymarket and, with U2, Kalshi).
 - [ ] Liquidity rewards as a replay P&L line; optional fractional-Kelly caps.
+- [ ] Record venue liquidity rewards (owner asked 2026-10-13; on hold, not merged): branch
+      `claude/project-thread-bg60pc` adds `racinglines markets --exchange polymarket|kalshi rewards`
+      (markets/rewards.py), run hourly by pm_sync.sh and record_venues.sh: each venue's reward programs on our open
+      markets, a row only when one starts, changes or ends, to `data/archive/markets/<exchange>/rewards/`; an empty
+      venue response is never saved. No migration. Next: rebase on main, open the PR. Probe 2026-10-13: Polymarket set
+      min size 50 / max spread 4.5¢ on 219 of 241 markets per race (Austin, Mexico, Brazil), but only one Austin market
+      paid ($0.001/day); Kalshi had no F1 race markets or incentive programs yet (the last ones: Bahrain pole,
+      target size 1,000, $100 per market). Re-check Kalshi `/incentive_programs?status=upcoming` from about 21 Oct.
 
 ## Models: the one engine
 
