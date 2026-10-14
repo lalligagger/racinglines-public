@@ -245,10 +245,108 @@ def call(tool, arguments, server=None, tok=None, http_client=None, open_browser=
         raise
     except Exception as ex:  # noqa: BLE001  (network, TLS, 401: one line the user can act on)
         raise RemoteError(f"{url(server)}: {_reason(ex, statuses)}") from ex
+    return _parse(tool, r)
+
+
+def _parse(tool, r):
     text = r.content[0].text if r.content else ""
     if r.is_error:
         raise RemoteError(f"{tool}: {text}")
     return json.loads(text)
+
+
+class Session:
+    """One signed-in MCP session for many calls (`data pull`'s chunks, a tool listing): call() opens a session per
+    call, which is a sign-in round trip each time. The session lives in one task of its own event loop in a thread
+    (the SDK's streams must be entered and left by the same task); call() hands it each request. Use it as a context
+    manager."""
+
+    def __init__(self, server=None, tok=None, http_client=None, open_browser=None):
+        import concurrent.futures
+        warn()
+        self.server, self._statuses = server, []
+        self.loop = asyncio.new_event_loop()
+        self._ready = concurrent.futures.Future()
+        self._thread = threading.Thread(target=self.loop.run_forever, daemon=True)
+        self._thread.start()
+        self._queue = None
+        self._main = asyncio.run_coroutine_threadsafe(self._run(tok, http_client, open_browser), self.loop)
+        try:
+            self._ready.result()
+        except Exception as ex:  # noqa: BLE001
+            self._stop()
+            raise RemoteError(f"{url(server)}: {_reason(ex, self._statuses)}") from ex
+
+    async def _run(self, tok, http_client, open_browser):
+        from mcp import ClientSession
+        from mcp.client.streamable_http import streamable_http_client
+        from mcp.shared._httpx_utils import create_mcp_http_client
+
+        async def seen(response):
+            if response.status_code >= 400:
+                self._statuses.append(response.status_code)
+        try:
+            bearer = tok or token()
+            client = http_client or (create_mcp_http_client(headers={"Authorization": f"Bearer {bearer}"}) if bearer
+                                     else create_mcp_http_client(auth=oauth(url(self.server), open_browser)))
+            client.event_hooks.setdefault("response", []).append(seen)
+            async with client, streamable_http_client(url(self.server), http_client=client) as streams:
+                async with ClientSession(streams[0], streams[1]) as session:
+                    await session.initialize()
+                    self._queue = asyncio.Queue()
+                    self._ready.set_result(None)
+                    while (item := await self._queue.get()) is not None:
+                        tool, args, fut = item
+                        try:
+                            fut.set_result(await (session.list_tools() if tool == "__list__" else
+                                                  session.call_tool(tool, args)))
+                        except Exception as ex:  # noqa: BLE001  (handed to the caller's thread)
+                            fut.set_exception(ex)
+        except Exception as ex:  # noqa: BLE001
+            if not self._ready.done():
+                self._ready.set_exception(ex)
+            else:
+                raise
+
+    def tools(self):
+        """The server's tools: [(name, description, input schema)]."""
+        import concurrent.futures
+        fut = concurrent.futures.Future()
+        self.loop.call_soon_threadsafe(self._queue.put_nowait, ("__list__", None, fut))
+        try:
+            r = fut.result()
+        except Exception as ex:  # noqa: BLE001
+            raise RemoteError(f"{url(self.server)}: {_reason(ex, self._statuses)}") from ex
+        return [(t.name, t.description or "", getattr(t, "input_schema", None) or getattr(t, "inputSchema", None) or {}) for t in r.tools]
+
+    def call(self, tool, arguments):
+        import concurrent.futures
+        fut = concurrent.futures.Future()
+        self.loop.call_soon_threadsafe(self._queue.put_nowait, (tool, arguments, fut))
+        try:
+            r = fut.result()
+        except Exception as ex:  # noqa: BLE001
+            raise RemoteError(f"{url(self.server)}: {_reason(ex, self._statuses)}") from ex
+        return _parse(tool, r)
+
+    def _stop(self):
+        self.loop.call_soon_threadsafe(self.loop.stop)
+        self._thread.join(5)
+
+    def close(self):
+        if self._queue is not None:
+            self.loop.call_soon_threadsafe(self._queue.put_nowait, None)
+            try:
+                self._main.result(10)
+            except Exception:  # noqa: BLE001  (closing: nothing left to report)
+                pass
+        self._stop()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
 
 
 def _reason(ex, statuses=()):
@@ -303,12 +401,68 @@ def _job_parser(job):
     return ap
 
 
+# more commands whose Lab job takes its knobs by name (C53): the flags are the job's own knobs, read from the server's
+# list_job_types (`--<knob> VALUE`, and `--set NAME=VALUE` for a sweep setting), so nothing here lists them twice
+AUTO_JOBS = {("f1", "sweep"): "f1_sweep", ("f1", "season-strategy"): "f1_season_strategy",
+             ("f1", "diagnostic"): "f1_diagnostic", ("f1", "combo"): "f1_combo",
+             ("nascar", "sweep"): "nascar_sweep", ("motogp", "sweep"): "motogp_sweep"}
+COMMAND_GROUP = {"backtest": "model", "forecast": "model", "diagnostic": "model", "combo": "model",
+                 "sweep": "strategy", "season-strategy": "strategy"}
+
+
+def runs_remotely():
+    """The `GROUP COMMAND SPORT` forms --remote takes."""
+    return [f"{COMMAND_GROUP[c]} {c} {s}" for s, c in [*JOBS, *AUTO_JOBS]]
+
+
+def knob_params(job_type, argv, catalog):
+    """(job type, params) from `--<knob> VALUE` flags (dashes or underscores) and `--set NAME=VALUE` (a sweep setting;
+    VALUE as JSON when it parses, else text), checked against `catalog` (list_job_types' job_types)."""
+    jt = next((j for j in catalog if j["job_type"] == job_type), None)
+    if jt is None:
+        raise RemoteError(f"the hosted server has no job {job_type!r} (or not for this account)")
+    knobs = {k["name"] for k in jt["knobs"] if k["name"] != "settings"}
+    takes_settings = any(k["name"] == "settings" for k in jt["knobs"])
+    params, settings, bad = {}, {}, []
+    args = [a for a in argv if a != "--remote"]
+    i = 0
+    while i < len(args):
+        a = args[i]
+        name, val = (a[2:].split("=", 1) + [None])[:2] if a.startswith("--") else (None, None)
+        if name is None:
+            bad.append(a)
+            i += 1
+            continue
+        if val is None:
+            if i + 1 >= len(args):
+                raise RemoteError(f"{a}: needs a value")
+            val, i = args[i + 1], i + 2
+        else:
+            i += 1
+        if name == "set" and takes_settings and "=" in val:
+            k, v = val.split("=", 1)
+            try:
+                settings[k.replace("-", "_")] = json.loads(v)
+            except ValueError:
+                settings[k.replace("-", "_")] = v
+        elif name.replace("-", "_") in knobs:
+            params[name.replace("-", "_")] = val
+        else:
+            bad.append(a)
+    if bad:
+        takes = sorted(f"--{k.replace('_', '-')}" for k in knobs) + (["--set NAME=VALUE"] if takes_settings else [])
+        raise RemoteError(f"{' '.join(bad)}: not a knob of {job_type} on the hosted server; it takes {', '.join(takes)}")
+    if settings:
+        params["settings"] = settings
+    return job_type, params
+
+
 def job_params(sport, command, argv):
     """(job type, params) for `model COMMAND SPORT argv --remote`. Raises RemoteError on a flag the job doesn't take."""
     job = JOBS.get((sport, command))
     if job is None:
-        raise RemoteError(f"model {command} {sport} doesn't run on the hosted server (it runs: "
-                          f"{', '.join(f'model {c} {s}' for s, c in JOBS)})")
+        raise RemoteError(f"{command} {sport} doesn't run on the hosted server (it runs: {', '.join(runs_remotely())}; "
+                          "anything else with an MCP tool: racinglines remote call TOOL, e.g. replay_maker)")
     known, extra = _job_parser(job).parse_known_args([a for a in argv if a != "--remote"])
     if extra:
         raise RemoteError(f"{' '.join(extra)}: local only; on the hosted server model {command} {sport} takes "
@@ -325,7 +479,18 @@ def run_model(sport, command, argv, server=None, out=None, poll=POLL_SEC, sleep=
     import time
     out = out or sys.stdout
     sleep = sleep or time.sleep
-    job, params = job_params(sport, command, argv)
+    if (sport, command) in AUTO_JOBS:
+        job, params = knob_params(AUTO_JOBS[(sport, command)], argv, call("list_job_types", {}, server)["job_types"])
+    else:
+        job, params = job_params(sport, command, argv)
+    return follow(job, params, server, out=out, poll=poll, sleep=sleep)
+
+
+def follow(job, params, server=None, out=None, poll=POLL_SEC, sleep=None):
+    """Queue job `job` with `params` on the hosted server, print its log as it arrives, -> 0 done, 1 failed."""
+    import time
+    out = out or sys.stdout
+    sleep = sleep or time.sleep
     q = call("run_job", dict(job_type=job, params=params), server)
     job_id = q["job_id"]
     print(f"queued {job} as job {job_id} on {url(server)} ({', '.join(f'{k}={v}' for k, v in q['params'].items())})",
@@ -349,3 +514,144 @@ def run_model(sport, command, argv, server=None, out=None, poll=POLL_SEC, sleep=
     print(f"job {job_id} {j['status']}" + (f": model run {run} on the hosted server (get_model_run({run}))" if run else
                                            f" ({j.get('progress')})"), file=sys.stderr, flush=True)
     return 0 if j["status"] == "done" else 1
+
+
+# --- `racinglines remote`: any hosted tool from the command line (C53) ---------------------------------------------
+# The raw-data read-outs and every other MCP tool without a CLI command of its own (owner, 2026-10-14: exchange prices,
+# books and trades may reach signed-in users; the terms-pending warning stays).
+
+CLI_HELP = """racinglines remote <command>   (the hosted server's MCP tools, signed in as for --remote)
+
+    tools                       the tools this account may call, with their arguments
+    call TOOL [--ARG VALUE ...] call one tool and print its JSON; --csv FILE writes its rows instead
+                                e.g. racinglines remote call get_market_history --race-id 812 --series trades
+                                     racinglines remote call list_live_events
+                                     racinglines remote call replay_maker --run-id 10833 --half-spread 0.03
+    job JOB_TYPE [--KNOB VALUE] queue a Lab job and follow its log (list_job_types names them; --set NAME=VALUE
+                                for a sweep setting), e.g. racinglines remote job f1_sweep --year 2025
+    logout                      forget the stored sign-in
+
+    --mcp-url URL               the server (default RACINGLINES_MCP_URL, else https://mcp.racinglines.bet/mcp)
+"""
+
+
+def _typed(value, schema):
+    """A command-line VALUE as the JSON type the tool's input schema gives (integer, number, boolean, array, object)."""
+    types = [schema.get("type")] + [s.get("type") for s in schema.get("anyOf", [])]
+    if "integer" in types:
+        try:
+            return int(value)
+        except ValueError:
+            pass
+    if "number" in types:
+        try:
+            return float(value)
+        except ValueError:
+            pass
+    if "boolean" in types and value.lower() in ("true", "false", "1", "0", "yes", "no"):
+        return value.lower() in ("true", "1", "yes")
+    if {"array", "object"} & set(types):
+        try:
+            return json.loads(value)
+        except ValueError:
+            pass
+    return value
+
+
+def tool_args(argv, schema):
+    """{arg: value} from `--arg VALUE` / `--arg=VALUE` flags, typed by the tool's input schema. RemoteError on an
+    argument the tool doesn't take."""
+    props = schema.get("properties", {})
+    out, i = {}, 0
+    while i < len(argv):
+        a = argv[i]
+        if not a.startswith("--"):
+            raise RemoteError(f"{a}: arguments are --NAME VALUE")
+        name, _, val = a[2:].partition("=")
+        if not _:
+            if i + 1 >= len(argv):
+                raise RemoteError(f"{a}: needs a value")
+            val, i = argv[i + 1], i + 1
+        i += 1
+        key = name.replace("-", "_")
+        if key not in props:
+            raise RemoteError(f"--{name}: not an argument; it takes {', '.join('--' + k.replace('_', '-') for k in props) or 'none'}")
+        out[key] = _typed(val, props[key])
+    return out
+
+
+def _rows(result):
+    """The first list of row dicts in a tool result (a paged envelope's rows), for --csv."""
+    if isinstance(result, list) and (not result or isinstance(result[0], dict)):
+        return result
+    if isinstance(result, dict):
+        if isinstance(result.get("rows"), list):
+            return result["rows"]
+        for v in result.values():
+            r = _rows(v)
+            if r is not None:
+                return r
+    return None
+
+
+def main(argv):
+    import argparse
+    import csv
+    args = list(argv)
+    server = None
+    if "--mcp-url" in args:
+        i = args.index("--mcp-url")
+        server, args = args[i + 1], args[:i] + args[i + 2:]
+    if not args or args[0] in ("-h", "--help"):
+        print(CLI_HELP)
+        return 0 if args else 2
+    cmd, rest = args[0], args[1:]
+    try:
+        if cmd == "logout":
+            print("signed out" if logout(server) else "no stored sign-in")
+            return 0
+        if cmd == "tools":
+            with Session(server) as s:
+                for name, desc, schema in sorted(s.tools()):
+                    params = ", ".join(schema.get("properties", {}))
+                    print(f"{name}({params})\n    {desc.splitlines()[0] if desc else ''}")
+            return 0
+        if cmd == "call":
+            if not rest:
+                print("usage: racinglines remote call TOOL [--ARG VALUE ...] [--csv FILE]", file=sys.stderr)
+                return 2
+            tool, rest = rest[0], rest[1:]
+            out_csv = None
+            if "--csv" in rest:
+                i = rest.index("--csv")
+                out_csv, rest = rest[i + 1], rest[:i] + rest[i + 2:]
+            with Session(server) as s:
+                schema = next((sc for n, _, sc in s.tools() if n == tool), None)
+                if schema is None:
+                    raise RemoteError(f"no tool {tool!r} on {url(server)} (racinglines remote tools lists them)")
+                result = s.call(tool, tool_args(rest, schema))
+            if out_csv:
+                rows = _rows(result)
+                if rows is None:
+                    raise RemoteError(f"{tool} returned no rows to write (print it without --csv)")
+                cols = list(dict.fromkeys(k for r in rows for k in r))
+                with open(out_csv, "w", newline="") as f:
+                    w = csv.DictWriter(f, fieldnames=cols)
+                    w.writeheader()
+                    w.writerows(rows)
+                print(f"{len(rows)} rows -> {out_csv}", file=sys.stderr)
+                if isinstance(result, dict) and result.get("truncated"):
+                    print(f"truncated: more rows from --offset {result.get('next_offset')}", file=sys.stderr)
+            else:
+                print(json.dumps(result, indent=1, default=str))
+            return 0
+        if cmd == "job":
+            if not rest:
+                print("usage: racinglines remote job JOB_TYPE [--KNOB VALUE ...] [--set NAME=VALUE ...]", file=sys.stderr)
+                return 2
+            job, params = knob_params(rest[0], rest[1:], call("list_job_types", {}, server)["job_types"])
+            return follow(job, params, server)
+    except RemoteError as e:
+        print(f"remote {cmd}: {e}", file=sys.stderr)
+        return 2
+    argparse.ArgumentParser(prog="racinglines remote").error(f"no command {cmd!r}: tools, call, job, logout")

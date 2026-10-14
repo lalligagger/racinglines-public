@@ -422,6 +422,18 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
                               limit_price=limit_price, client_key=client_key, user=user)
 
     @srv.tool()
+    def pull_manifest(sport: str, since: str | None = None) -> str:
+        """`racinglines data pull SPORT`: the files of one sport's pull (the registry, its race data, model runs and
+        exchange prices, trades and books by month). since: a UTC date (YYYY-MM-DD) for a top-up. pull_chunk fetches
+        each file. Never accounts, positions, signals, orders or jobs."""
+        return _read(T.pull_manifest, sport=sport, since=since)
+
+    @srv.tool()
+    def pull_chunk(pull_id: str, name: str, offset: int = 0) -> str:
+        """One base64 chunk of a pull_manifest file from byte `offset`; `done` says whether it was the last."""
+        return _read(T.pull_chunk, pull_id=pull_id, name=name, offset=offset)
+
+    @srv.tool()
     def list_live_events(limit: int = 50, offset: int = 0) -> str:
         """Live private-book events: the settled ones (maker P&L vs the crowd and the demo taker, fills, volume) and the run
         folders on this machine, with whether one is live now."""
