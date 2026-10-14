@@ -761,7 +761,8 @@ def test_hidden_sports_follow_the_schema_switch_and_spare_admins(monkeypatch):
     """sports.is_public ([sport] audience = "admin"): hidden from non-admin accounts; admins and stdio see every sport."""
     from racinglines import sports as SC
     assert T.hidden_sports(None) == frozenset() and T.hidden_sports(dict(role="admin")) == frozenset()
-    assert "motogp" in T.hidden_sports(dict(id=1, username="p", role="pro"))          # the Alpha switch, 2026-10-11
+    assert "road_cycling" in T.hidden_sports(dict(id=1, username="p", role="pro"))    # PCS terms review, 2026-10-12
+    assert "motogp" not in T.hidden_sports(dict(id=1, username="p", role="pro"))      # shown again, owner 2026-10-14
     monkeypatch.setattr(SC, "audience", lambda code: "admin" if code == "f1" else "all")
     assert T.hidden_sports(dict(role="pro")) == {"f1"} and T.hidden_sports(dict(role="admin")) == frozenset()
 

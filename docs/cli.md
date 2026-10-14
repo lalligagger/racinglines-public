@@ -387,7 +387,11 @@ the #aintcare warning), `--local` (the default);
 `--demo [PACK]` works on every command, not only `book`: it switches the data source to a demo store and nothing else
 ([Quickstart](quickstart.md), [Demo data packs](demo.md)); `--demo --remote` uses the pack's hosted demo store for the
 commands the hosted server runs. `model backtest|forecast f1|mtb_dh --remote` runs the command as the hosted server's
-Lab job (`run_job`, then `get_job` until it finishes, its log printed as it arrives; the job's options only).
+Lab job (`run_job`, then `get_job` until it finishes, its log printed as it arrives; the job's options only), and so
+do `strategy sweep f1|nascar|motogp`, `strategy season-strategy f1`, `model diagnostic f1` and `model combo f1`, with
+the job's knobs as flags (`--year 2025`, `--set NAME=VALUE`). `racinglines remote tools | call TOOL --ARG VALUE |
+job JOB_TYPE` reaches any hosted tool, and `racinglines data pull SPORT [--since last]` copies one sport's shared data
+into the local database ([MCP: More commands on the hosted server](mcp.md#more-commands-on-the-hosted-server-remote-racinglines-remote-data-pull)).
 When no database is configured, the first command that needs one asks once, local or remote, and saves the answer
 as `source` ([Quickstart: First run](quickstart.md#2-first-run-choose-where-the-data-comes-from)).
 
