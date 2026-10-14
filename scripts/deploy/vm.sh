@@ -39,6 +39,13 @@
 #   bash scripts/deploy/vm.sh accounts [off]    # beta sign-up: back up the database, create the accounts schema and
 #                                               # fantasy-bucks ledger (racinglines users setup, idempotent), switch
 #                                               # RACINGLINES_SIGNUP on, check /signup; off: the switch off (the ledger stays)
+#   bash scripts/deploy/vm.sh postgres logical  # one time, before `mirror on`: production's Postgres with wal_level=logical
+#                                               # (restarts the database: seconds; timers paused and resumed like deploy)
+#   bash scripts/deploy/vm.sh mirror plan|on [data|accounts|all] | status | repair | off
+#                                               # staging as a live copy of production (racinglines/db/mirror.py): the
+#                                               # scope's tables follow production within seconds, staging's own rows
+#                                               # sit on top. plan: read-only preview; on: backs staging up first.
+#                                               # docs/vm-deploy.md "Staging: the data mirror"
 #   bash scripts/deploy/vm.sh staging setup [ref] | deploy [ref] [--db demo|main] | status | logs | reset | off | live <event>|auto [off]
 #   bash scripts/deploy/vm.sh staging demo-db build|status  # the season demo's own database racinglines_staging_demo
 #                                               # (scripts/vm/season_demo.sh, backup first; it persists across deploys)
@@ -329,6 +336,62 @@ case "${1:-}" in
     remote "sleep 3; curl -s -o /dev/null -w 'GET /signup: %{http_code}\\n' http://127.0.0.1:8000/signup"
     log "sign-up is open at https://racinglines.bet/signup (accounts: /admin/users)"
     ;;
+  postgres)
+    # One time, before `vm.sh mirror on` (docs/vm-deploy.md "Staging: the data mirror"): production's Postgres with
+    # wal_level=logical, so it can publish tables to staging. The setting needs a restart of the database container
+    # (seconds): the timers are paused and resumed as a deploy does, and the app services restart after it.
+    # max_slot_wal_keep_size caps what a stalled mirror can make production keep on disk (past it the mirror breaks,
+    # never production). No row is read or written.
+    [ "${2:-}" = logical ] || { echo "usage: vm.sh postgres logical"; exit 1; }
+    pgq() { as_app "docker compose exec -T db psql -U racinglines -d postgres -tAc \"$1\"" | tail -n 1; }
+    if [ "$(pgq 'SHOW wal_level')" = logical ]; then log "wal_level is already logical: nothing to do"; exit 0; fi
+    timers=$(remote "systemctl list-units --no-legend --plain --state=active 'racinglines-*.timer' | awk '{print \$1}'" | tr '\n' ' ')
+    steps=""; for u in $timers; do steps="$steps ${u%.timer}.service"; done
+    resume() { if [ -n "$timers" ]; then remote "sudo systemctl start $timers && sudo rm -f $PAUSED" && log "timers resumed: $timers"; fi; }
+    trap resume EXIT
+    if [ -n "$timers" ]; then
+      log "pausing: $timers"
+      remote "sudo mkdir -p ${PAUSED%/*} && echo '$timers' | sudo tee $PAUSED >/dev/null && sudo systemctl stop $timers"
+      remote "for i in \$(seq 60); do systemctl list-units --no-legend --plain --state=activating $steps | grep -q . || exit 0; sleep 5; done; echo 'a step is still running after 5 minutes: nothing changed'; exit 1"
+    fi
+    log "wal_level=logical, max_slot_wal_keep_size=2GB, then restarting the database container"
+    pgq "ALTER SYSTEM SET wal_level = logical" >/dev/null
+    pgq "ALTER SYSTEM SET max_slot_wal_keep_size = '2GB'" >/dev/null
+    as_app "docker compose restart db" >/dev/null
+    remote "cd $APP && for i in \$(seq 30); do sudo -u racinglines -H docker compose exec -T db pg_isready -U racinglines -q && exit 0; sleep 2; done; echo 'database not ready after 60 s'; exit 1"
+    remote "sudo systemctl try-restart $SERVICES racinglines-mcp racinglines-staging-web"
+    log "wal_level is now $(pgq 'SHOW wal_level')"
+    remote "sleep 3; cd $APP && bash scripts/deploy/smoke.sh http://127.0.0.1:8000"
+    ;;
+  mirror)
+    # Staging as a live copy of production (racinglines/db/mirror.py; docs/vm-deploy.md "Staging: the data mirror").
+    # Runs from staging's checkout with staging's env file. Production is reached by a read-only replication role; its
+    # catalog gets that role, a publication and a slot (on/off), and no production row is ever written.
+    STG=/opt/racinglines-staging
+    m() { remote "cd $STG && sudo -u racinglines -H bash -c 'set -a; . /etc/racinglines-staging.env; set +a; PYTHONUNBUFFERED=1 .venv/bin/python -m racinglines.db.mirror $1'"; }
+    scope="${3:-all}"
+    case "$scope" in data|accounts|all) ;; *) echo "scope: data | accounts | all"; exit 1 ;; esac
+    case "${2:-}" in
+      plan) m "plan --scope $scope" ;;
+      status|repair) m "$2" ;;
+      on)
+        log "backing up racinglines_staging first (staging rows production doesn't have as-is are replaced: mirror plan counts them)"
+        remote "cd $APP && sudo -u racinglines -H bash -c 'set -euo pipefail; mkdir -p $STG/data/backups/db; b=$STG/data/backups/db/racinglines_staging-before-mirror-\$(date -u +%Y%m%dT%H%M%SZ).sql.gz; docker compose exec -T db pg_dump --no-owner --no-privileges -U racinglines racinglines_staging | gzip -6 > \$b; ls -lh \$b'"
+        m "on --scope $scope"
+        # production's market archive (Parquet: the rows its recorder moves out of Postgres, which the mirror then
+        # deletes from staging too) is read in place; staging never archives (markets/store.py refuses)
+        log "staging reads production's data/archive in place"
+        remote "sudo -u racinglines -H bash -c 'set -e; t=$STG/data/archive; if [ -d \$t ] && [ ! -L \$t ]; then mv \$t \$t.pre-mirror; fi; ln -sfn $APP/data/archive \$t; ls -ld \$t'"
+        remote "sudo install -m 644 $STG/deploy/vm/systemd/racinglines-staging-mirror-check.* /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now racinglines-staging-mirror-check.timer && systemctl is-active racinglines-staging-mirror-check.timer"
+        ;;
+      off)
+        remote "sudo systemctl disable --now racinglines-staging-mirror-check.timer 2>/dev/null || true"
+        m off
+        log "staging keeps its rows as of now, and still reads production's data/archive"
+        ;;
+      *) echo "usage: vm.sh mirror plan [scope] | on [scope] | status | repair | off   (scope: data | accounts | all)"; exit 1 ;;
+    esac
+    ;;
   staging)
     # Staging on the same VM (docs/vm-deploy.md "Staging"): /opt/racinglines-staging, racinglines_staging in production's
     # Postgres container, /etc/racinglines-staging.env, racinglines-staging-web on 127.0.0.1:8010. None of these commands
@@ -402,7 +465,7 @@ case "${1:-}" in
         esac
         ;;
       status)
-        remote "cd $STG 2>/dev/null && sudo -u racinglines -H git log -1 --format='staging: %h %s (%cr)' || echo 'staging: not set up'; systemctl --no-pager list-units '$SU*' 'racinglines-staging-live-*' ; systemctl --no-pager list-timers 'racinglines-staging-live-*' ; curl -s -o /dev/null -w 'GET http://127.0.0.1:8010/login: %{http_code}  X-Racinglines-Env: %header{x-racinglines-env}\n' http://127.0.0.1:8010/login || true"
+        remote "cd $STG 2>/dev/null && sudo -u racinglines -H git log -1 --format='staging: %h %s (%cr)' || echo 'staging: not set up'; systemctl --no-pager list-units '$SU*' 'racinglines-staging-live-*' 'racinglines-staging-mirror-*' ; systemctl --no-pager list-timers 'racinglines-staging-live-*' 'racinglines-staging-mirror-*' ; curl -s -o /dev/null -w 'GET http://127.0.0.1:8010/login: %{http_code}  X-Racinglines-Env: %header{x-racinglines-env}\n' http://127.0.0.1:8010/login || true"
         ;;
       logs)
         remote "sudo journalctl --no-pager -n 100 -u $SU"
