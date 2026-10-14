@@ -40,6 +40,15 @@ case "$TARGET" in
 esac
 DC() { (cd /opt/racinglines && docker compose "$@"); }
 set -a; . "$ENV_FILE"; set +a
+# STAGING_DB=racinglines_staging_demo (TARGET=staging only): the run, its backup and its writes go to the season demo
+# database instead of racinglines_staging (owner 2026-10-14: the golden check on Probalytics' tape runs on the demo copy,
+# which holds production's tape through Singapore). Any other name is refused.
+if [ -n "${STAGING_DB:-}" ]; then
+  case "$TARGET:$STAGING_DB" in
+    staging:racinglines_staging_demo) DB=$STAGING_DB; export DATABASE_URL="${DATABASE_URL%/*}/$DB" ;;
+    *) echo "STAGING_DB=$STAGING_DB refused: only racinglines_staging_demo, with TARGET=staging"; exit 2 ;;
+  esac
+fi
 export PYTHONUNBUFFERED=1   # the commands' own per-race and per-job lines reach the log as they happen, not in 8 KB blocks
 cd "$APP"
 MODE=${MODE:-dry}

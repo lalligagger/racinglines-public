@@ -169,3 +169,9 @@ def test_build_replays_each_players_draw(players_db, monkeypatch):
     SD.build(players_db, url, seed=11, now="2026-10-13", apply=True, echo=lambda m: None)   # rerun: same rows
     with players_db.connect() as c:
         assert c.execute(text("SELECT count(*) FROM strategy_signals")).scalar() == n
+
+
+def test_overnight_can_target_only_the_demo_database():
+    s = code((ROOT / "scripts/vm/overnight.sh").read_text())
+    assert "staging:racinglines_staging_demo) DB=$STAGING_DB" in s
+    assert s.index("STAGING_DB") > s.index('. "$ENV_FILE"')                 # after the env file, so it overrides it

@@ -3,6 +3,10 @@ Read-only pages: model runs, events, athletes, the built docs, the intro and the
 Split out of web/app.py, which imports this module to register the routes.
 """
 
+import os
+import posixpath
+from pathlib import Path
+
 import pandas as pd
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -11,6 +15,10 @@ from racinglines.web import audience as A
 from racinglines.web import roles as R
 from racinglines.web.app import ANY, PRO, allow, app, audit, check_csrf, conn, data, render, rows  # noqa: F401
 from racinglines.web.app import ROOT, SITE
+
+# The internal onboarding book (a built Jupyter Book), served at /docs/internal/ to admins only. It is data, not
+# code: it lives on the VM under data/internal-docs/ (vm.sh internal-docs copies it there) and never in git.
+INTERNAL_DOCS = Path(os.environ.get("RACINGLINES_INTERNAL_DOCS") or ROOT / "data" / "internal-docs")
 
 
 PRED_COLS = ["athlete", "nation", "win_prob", "podium_prob", "top10_prob", "make_final_prob", "exp_points"]
@@ -63,22 +71,44 @@ def pitch():
 
 
 
+@app.get("/llms.txt")
+@app.get("/llms-full.txt")
+def llms_txt(request: Request):
+    """The AI-readable docs index and full text (llmstxt.org), public by exact path: mkdocs writes them into site/ from
+    the nav's public pages only (never docs/internal or the project library)."""
+    from fastapi.responses import FileResponse
+    f = SITE / request.url.path.lstrip("/")
+    if not f.is_file():
+        raise HTTPException(404)
+    return FileResponse(f, media_type="text/plain; charset=utf-8")
+
+
 @app.get("/docs")
 def docs_root():
     return RedirectResponse("/docs/", status_code=307)
 
 
 @app.get("/docs/{path:path}")
-def docs(path: str):
-    """The built docs (site/), behind the same login."""
+def docs(request: Request, path: str):
+    """The built docs (site/), behind the same login. /docs/internal/... is the internal book (INTERNAL_DOCS), for
+    admins only: the path is normalized first, so /docs/quickstart/term/../../internal/ is caught too."""
     from fastapi.responses import FileResponse
-    f = (SITE / path).resolve()
-    if not f.is_relative_to(SITE.resolve()):
+    rel = posixpath.normpath("/" + path).lstrip("/")
+    base = SITE
+    if rel == "internal" or rel.startswith("internal/"):
+        u = getattr(request.state, "user", None)
+        if not u or R.canonical(u["role"]) != "admin":
+            raise HTTPException(404)                    # not 403: non-admins aren't told the book exists
+        if rel == "internal" and not path.endswith("/"):
+            return RedirectResponse("/docs/internal/", status_code=307)   # the book's relative links need the slash
+        base, path = INTERNAL_DOCS, rel[len("internal"):].lstrip("/")
+    f = (base / path).resolve()
+    if not f.is_relative_to(base.resolve()):
         raise HTTPException(404)
     if f.is_dir():
         f = f / "index.html"
     if not f.is_file():
-        if not SITE.is_dir():
+        if base is SITE and not SITE.is_dir():
             raise HTTPException(404, "Docs not built: run python -m mkdocs build -d site")
         raise HTTPException(404)
     return FileResponse(f)

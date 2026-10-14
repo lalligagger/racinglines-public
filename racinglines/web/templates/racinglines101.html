@@ -52,7 +52,7 @@ If our model says 45%, that's a bargain to a taker. To a maker, it's a sign to q
 </section>
 <section class="r-sec" id="strategies">
 <h3>The two demo strategies</h3>
-<p><b>Try the demo</b> opens the pro demo, the maker account running C. The demo taker, which follows A, signs in by name. In the app the two account tiers are <b>pro</b> (every maker and taker strategy, the private book and the Lab's backtests) and <b>basic</b> (a blend of three taker strategies drawn from the top of the taker list for each account, shown as &ldquo;Your picks&rdquo;, and never the model's numbers or which strategy made a pick).</p>
+<p><b>Try the demo</b> opens the pro demo, the maker account running C. The demo taker, which follows A, signs in by name. For the fantasy league alpha every account gets the same app: five strategy styles to follow in the Lab, built from strategies like these, and the Lab's backtests and research.</p>
 <div class="roles">
   <div class="role-card taker"><h3>A: the core taker</h3>
     <p>After each practice and qualifying session, reprices every race market. It buys only when the model and the crowd disagree by
@@ -160,7 +160,7 @@ by race weekend, and record the trades they <i>would</i> make at the real prices
     and it's labelled <i>backtest replay</i> in the app. The <b>demo maker</b> started 2025 on the default setup,
     switched twice mid-season to whatever the Edge Finder showed was working <i>so far</i>, then chose C for 2026 as the steadiest of the leaders.
     The <b>demo taker</b> has always followed A, taking about a third of its recommendations (the hotter ones more often).
-    Each account's Strategy page shows the whole story: cumulative paper P&amp;L, every decision and the evidence behind it, and every weekend.</li>
+    Each account's strategy page (in the Lab) shows the whole story: cumulative paper P&amp;L, every decision and the evidence behind it, and every weekend.</li>
 </ul>
 </section>
 <p class="term-next r-pager"><a href="#trade" data-term-tab="trade">← How we trade</a><a href="#use" data-term-tab="use">Next: Using the app →</a></p>
@@ -169,15 +169,13 @@ by race weekend, and record the trades they <i>would</i> make at the real prices
 <h2 class="term-part">Using the app</h2>
 <section class="r-sec" id="app">
 <h3>The web app</h3>
-<p>This site. Sign in to see the markets, the strategies and your positions. What you see depends on whether your account is a maker (pro) or a taker (basic).</p>
+<p>This site, laid out for the fantasy league alpha. Sign up and you get F$1,000 of fantasy money and four tabs; <b>Try the demo</b> shows the same tabs, and can look but not trade. No real money moves, and nothing reaches an exchange.</p>
 <div class="scroll"><table>
-<thead><tr><th class="l"></th><th class="l">Maker</th><th class="l">Taker</th></tr></thead><tbody>
-<tr><td class="l"><b>Markets</b></td><td class="l">Every upcoming race with our fair probabilities next to Polymarket's prices</td><td class="l">Every open Polymarket F1 market, with its strategy's call on each</td></tr>
-<tr><td class="l"><b>Strategy</b></td><td class="l">Where its quotes sit on each weekend, stage by stage, with the model's fair price and edge; its track record and the evidence behind each change of setup</td><td class="l">What to buy or sell, how many shares, the most to pay, and a <i>heat</i> rating (warm, hot, very hot); its track record</td></tr>
-<tr><td class="l"><b>Positions</b></td><td class="l">Its inventory in every market, paper fills, P&amp;L history, and where it would quote next</td><td class="l">Everything it holds and has held, P&amp;L history, and the next race's calls</td></tr>
-<tr><td class="l"><b>My book</b></td><td class="l">Its own in-app markets: opens them, sets the prices, watches its exposure</td><td class="l">Not available</td></tr>
-<tr><td class="l"><b>The Lab</b></td><td class="l">Backtests, the Edge Finder, model runs, race-by-race diagnostics</td><td class="l">Not available</td></tr>
-<tr><td class="l"><b>Can see the model?</b></td><td class="l"><b>Yes</b>: every fair price, every setting, every backtest</td><td class="l"><b>No</b>: heat says how strongly the model likes a trade, without revealing its numbers</td></tr>
+<thead><tr><th class="l">Tab</th><th class="l">What's on it</th></tr></thead><tbody>
+<tr><td class="l"><b>Markets</b></td><td class="l">The prediction markets now, with our fair probabilities next to each venue's prices, for F1, NASCAR and MotoGP</td></tr>
+<tr><td class="l"><b>Trade</b></td><td class="l">Pick an F1 market, see its recorded order book, and buy or sell in F$, one immediate-or-cancel order at a time</td></tr>
+<tr><td class="l"><b>History</b></td><td class="l">Your F$, every trade and order (refused ones with the reason), your strategy's trades, and the leaderboard</td></tr>
+<tr><td class="l"><b>Lab</b></td><td class="l">Follow one of five strategy styles and choose its sizing; its track record and positions; backtests, the Edge Finder and replays</td></tr>
 </tbody></table></div>
 </section>
 <section class="r-sec" id="cli">
@@ -192,6 +190,9 @@ by race weekend, and record the trades they <i>would</i> make at the real prices
 <p><code>--demo</code> runs the real engine on a made-up Mario Kart season, so you can try it without any race data of your own. Swap <code>kart</code> for
 <code>f1</code>, <code>nascar</code>, <code>motogp</code> or <code>mtb_dh</code> once you have the data. To watch it first, <a href="/docs/quickstart/term">the quickstart replay</a>
 replays the same commands in your browser.</p>
+<p>With a racinglines.bet account the command line also reaches the hosted server: <code>--remote</code> runs the book commands and Lab jobs there,
+<code>racinglines remote</code> calls any tool your account may use, and <code>racinglines data pull f1</code> copies one sport's shared data into your own database.
+It's in testing, and every remote command prints a warning that a review of venue and data terms is still pending.</p>
 </section>
 <section class="r-sec" id="mcp">
 <h3>Claude, through MCP</h3>

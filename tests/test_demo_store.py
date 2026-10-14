@@ -381,8 +381,8 @@ def test_quickstart_sections_group_with_no_code(tmp_path, monkeypatch):
     assert [(n, [s["title"] for s in steps]) for n, steps in pk.sections()] == \
         [("Model", ["Backtest", "Look at the store"]), ("Race week", ["Forecast"])]
     md = BQ.render(pk)
-    assert md.index("#### Model") < md.index("**1. Backtest.**") < md.index("**2. Look at the store.**") \
-        < md.index("#### Race week") < md.index("**1. Forecast.**")
+    assert md.index("### Model") < md.index("#### Step 1: Backtest") < md.index("#### Step 2: Look at the store") \
+        < md.index("### Race week") < md.index("#### Step 1: Forecast")
     assert "####" not in BQ.render(store.find("kart")) and [n for n, _ in store.find("kart").sections()] == [""]
     p = subprocess.run([sys.executable, str(ROOT / "scripts" / "build_quickstart.py"), "--commands", "tinydh",
                         "--section", "Race week"], capture_output=True, text=True, env=dict(os.environ))

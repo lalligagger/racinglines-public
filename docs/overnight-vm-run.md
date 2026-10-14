@@ -1,5 +1,14 @@
 # Overnight VM run
 
+> `scripts/vm/overnight.sh`: the long F1 searches, the NASCAR and MotoGP tape replays and the demo taker's story, run on the VM as one transient unit with a progress line every 5 minutes.
+
+!!! note "Historical plan, current script (2026-10-14)"
+    The plan below is the one written before the first run on 2026-09-30 and kept as the record, with the changes
+    that run forced folded in. The script and its modes ([What runs on the VM](#what-runs-on-the-vm)) are current
+    and are still how a long job runs on the VM: as a transient systemd unit, never in an SSH shell, backup first,
+    with the progress lines of [Progress updates](#progress-updates). The 3 × 3 matrix it set out to fill is
+    tracked on [Sports and exchanges](coverage.md) now.
+
 Status: **ran on 2026-09-30**, in four starts. The full results are in the report,
 `reports/2026-09-30-overnight-vm-run/report.md`; the data it wrote is in [Data changes](data-changes.md). The plan
 below is kept as it was written before the run, with the changes the run forced (the per-sport preflight, the progress
@@ -89,6 +98,34 @@ M1 to M4 give every row and every column at least one cell. After that, in order
 
 `scripts/vm/overnight.sh`, as a transient systemd unit (`rl-overnight`), in one of five modes. It replaces the
 `rl-backfill` script of the backfill handoff (revision 3) and drops its downhill walk-forward.
+
+### Step 1: the dry run
+
+Read-only: counts, cores, memory and disk, each sport's tape probe and last-race replay, and the F1 golden check.
+
+```bash title="VM (production)"
+sudo systemd-run --unit=rl-overnight --uid=racinglines --setenv=MODE=dry /opt/racinglines/scripts/vm/overnight.sh
+```
+
+A sport with 0 events or 0 Kalshi links with a race is flagged `NOT READY`; the run refuses to start while a
+`racinglines-live-*` unit is active.
+<!-- scripts/vm/overnight.sh header: MODE=dry, "NOT READY", "Refuses to start while a racinglines-live-* unit is active" -->
+
+### Step 2: a writing mode, staging first
+
+```bash title="VM (production)"
+sudo systemd-run --unit=rl-overnight-staging --uid=racinglines --setenv=TARGET=staging --setenv=MODE=replay /opt/racinglines-staging/scripts/vm/overnight.sh
+```
+
+### Step 3: follow it
+
+```bash title="VM (production)"
+journalctl -u rl-overnight-staging -f
+```
+
+Every writing mode backs up first and checks the dump's trailer. Log: `data/runs/logs/overnight-<mode>-<UTC>.log`;
+markers `overnight-<mode>.done` / `.failed`; the progress lines are in `overnight-progress.log`
+([Progress updates](#progress-updates)).
 
 **Staging.** `TARGET=staging` runs any mode against staging instead of production. It reads
 `/etc/racinglines-staging.env`, works in `/opt/racinglines-staging`, backs up and queries `racinglines_staging`

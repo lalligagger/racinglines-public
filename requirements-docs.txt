@@ -1,10 +1,13 @@
-# Docs site (mkdocs.yml + docs/). build_readme.py needs nothing beyond the standard library.
+# Docs site (mkdocs.yml + docs/), Material for MkDocs. build_readme.py needs nothing beyond the standard library.
 #   pip install -r requirements-docs.txt
-#   mkdocs serve   /   mkdocs build
+#   mkdocs serve   /   mkdocs build --strict
+# mkdocs-material pulls pymdown-extensions (tabs, snippets, superfences, details, highlight) and Pygments.
 #
 # On Python 3.14, mkdocs's watchdog dependency (used only by `mkdocs serve` live
 # reload) may have no prebuilt package and fail to build. Use Python <= 3.13, or:
-#   pip install --no-deps mkdocs==1.6.1 mkdocs-get-deps
-#   pip install click jinja2 markdown markupsafe pyyaml pyyaml-env-tag ghp-import mergedeep packaging pathspec platformdirs
-# and use `mkdocs build`.
+#   pip install --no-deps mkdocs==1.6.1 mkdocs-get-deps mkdocs-material==9.5.50 mkdocs-material-extensions
+#   pip install click jinja2 markdown markupsafe pyyaml pyyaml-env-tag ghp-import mergedeep packaging pathspec platformdirs \
+#     "pymdown-extensions>=10.2,<11" "pygments>=2.16" babel colorama paginate regex requests
+# and use `mkdocs build` (deploy/vm/build_docs.sh does exactly this when the plain install fails).
 mkdocs==1.6.1
+mkdocs-material==9.5.50
