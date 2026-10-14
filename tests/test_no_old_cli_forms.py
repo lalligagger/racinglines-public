@@ -7,6 +7,7 @@ Caught: `racinglines f1 forecast`, `racinglines nascar|motogp replay`, `racingli
 `racinglines <sport> forecast`, `$R nascar fetch`, `$R "$S" replay`, `${RACINGLINES} $sport forecast`, and argv lists such as
 `["-m", "racinglines", sport, "sweep"]` or `["racinglines", "f1", "--half-life", hl, "backtest"]`."""
 
+import functools
 import re
 import subprocess
 from pathlib import Path
@@ -30,7 +31,8 @@ ARGV = re.compile(r"[\"']racinglines[\"']\s*,\s*(?P<sport>[\"']" + SPORTS + r"[\
                   r"(?:\s*[\"']--" + SPORT_OPTS + r"[\"']\s*,\s*[^,\]]+,)*\s*[\"'](?P<cmd>[a-z][a-z-]+)[\"']")
 
 
-def _commands():
+@functools.cache
+def _commands():                                                   # once per run: the parser walk takes ~20 ms
     from racinglines.cli import verbs
     return set().union(*(verbs.commands(m) for m in verbs.MODULES)), set(verbs.GROUPS)
 
