@@ -29,6 +29,7 @@ qualifying, while the market moves after every session.
 """
 
 import copy
+import math
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import timedelta
@@ -451,9 +452,12 @@ def _memo(key, make):
     return copy.deepcopy(_SHARED[key])
 
 
-def bankroll_scale(start, balance):
-    """Stake multiplier for bankroll-aware sizing: the balance over the starting bankroll (0 once it's gone)."""
-    return max(balance, 0.0) / start
+def bankroll_scale(start, balance, growth=None):
+    """Stake multiplier for bankroll-aware sizing: the balance over the starting bankroll (0 once it's gone).
+    growth "sqrt" (the bankroll_growth setting): the square root of that, square-root staking, so stake = C x sqrt(balance)
+    x edge with C = stake_per_edge / sqrt(start): 1.0 at the start, 2.0 at 4x, 0.5 at a quarter, 0 once it's gone."""
+    r = max(balance, 0.0) / start
+    return math.sqrt(r) if growth == "sqrt" else r
 
 
 def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, reprice=False, taker=None, echo=print,
@@ -510,7 +514,7 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
 
     out = season(events, trade_event, st, params_list, STAGE_ORDER, total=len(sched), echo=echo)
     return dict(out, params=dict({k: v for k, v in base.__dict__.items() if k != "stages" and not
-                                  (k in ("scale", "max_deployed", "min_edge_by_kind", "thin_edge_mult", "kelly", "bankroll") and v == RB.TakerParams.__dataclass_fields__[k].default)},
+                                  (k in ("scale", "max_deployed", "min_edge_by_kind", "thin_edge_mult", "kelly", "bankroll", "root_unit") and v == RB.TakerParams.__dataclass_fields__[k].default)},
                                  sport="f1", venue=SS.venue_of(st), n_sims=st["sims"],
                                  variant=st["variant"], data_lag_min=DATA_LAG.seconds // 60,
                                  min_volume_24h=st["min_volume_24h"], coherence_tol=COHERENCE_TOL,
@@ -533,9 +537,12 @@ def taker_params(st):
                           stages=None if st["taker_stages"] == st.BY["taker_stages"].default else st["taker_stages"],
                           max_deployed=st["max_deployed"], thin_edge_mult=st["thin_edge_mult"],
                           kelly=st["kelly"], bankroll=st["bankroll"] if st["kelly"] is not None else None,
+                          root_unit=st.get("root_unit"),
                           taker_fee=taker_fee(venue))
     if st["kelly"] is not None and st["bankroll"] is None:
         raise ValueError("kelly sizing needs a bankroll (the `bankroll` setting)")
+    if st["kelly"] is not None and st.get("root_unit") is not None:
+        raise ValueError("pick one stake rule: kelly or root_unit, not both")
     return base, [RB.TakerParams(**{**base.__dict__, "mode": m}) for m in TAKER_MODES]
 
 
@@ -550,7 +557,8 @@ def season(events, trade_event, st, params_list, stage_order=(), total=None, ech
     markouts = {}                      # market kind -> maker's 60-min markout so far (as of each weekend)
     for ev in events:
         plist = params_list if st["bankroll"] is None else \
-            [replace(q, scale=bankroll_scale(st["bankroll"], balance[q.mode])) for q in params_list]
+            [replace(q, scale=bankroll_scale(st["bankroll"], balance[q.mode], st.get("bankroll_growth")))
+             for q in params_list]
         r = trade_event(ev, plist, [k for k, v in markouts.items() if v < 0])
         if r is None:
             continue
