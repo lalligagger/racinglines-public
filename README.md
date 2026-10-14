@@ -532,13 +532,18 @@ Priorities, then every open item: [`docs/todo.md`](docs/todo.md).
 
 **Where things stand (14 Oct 2026).** [racinglines.bet](https://racinglines.bet) runs the **fantasy league alpha**:
 every signed-in account gets F$1,000 of fantasy money and four tabs, Markets, Trade, History and Lab
-([Alpha layout](docs/alpha-layout.md)). Hand trading is F1 only; Markets shows F1, NASCAR and MotoGP. Polymarket lists F1
-race markets again; no real order is placed (the trading flags are unset,
-[Sports and exchanges](docs/coverage.md)). From the command line, `--remote`, `racinglines remote` and `racinglines data
+([Alpha layout](docs/alpha-layout.md)). Hand trading is F1 only, on the recorded Polymarket and Kalshi books; Markets shows
+F1, NASCAR and MotoGP. Polymarket lists F1 race markets again (rounds 13 to 20 are linked); no real order is placed
+(the trading flags are unset, [Sports and exchanges](docs/coverage.md)). The three recorders poll Polymarket, Kalshi and
+OG.com every 5 minutes, every day. From the command line, `--remote`, `racinglines remote` and `racinglines data
 pull SPORT` reach the hosted server, in testing, with a warning that the review of venue and data terms is still
 pending ([MCP server](docs/mcp.md#more-commands-on-the-hosted-server-remote-racinglines-remote-data-pull)).
 
-The priority list below dates from the 28 Sep – 1 Oct sprint to the soft launch and has not been re-ranked since; it
-is kept as the record of that sprint. The sections after it hold the open items by area.
+The goals (owner): **G1, October to early November, prove the edge**, closing-line value above +2% over 100 live
+bets; **G2, November to December**, real fills, venue capacity, more users; **G3, January to March 2027**, billing.
+The real-money gate stays at six or more live weekends. What is in flight now, in order: the staging-to-production
+promotion (PR #180: MotoGP for every signed-in user, `data pull`, `remote`, race-data triggers); CLV on every fill;
+the calibration check of every sport's model (C48); the Probalytics tape comparison (PR #181); the one engine for the
+first package release (C56).
 
 <!-- /include -->

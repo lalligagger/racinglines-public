@@ -23,8 +23,10 @@ Because books can't be recovered, the recorders below must never be off for long
 ## Recording it: the 5-minute recorders (every day, all day)
 
 Owner rule, 2026-10-07: market prices are polled every 5 minutes, every day, not only on race weekends
-(`WEEKEND_ONLY=1` restores the old gate). Since PR #91 (2026-10-08, merged into staging; prod gets it with the next
-staging-to-main merge), they also store trades every 15 minutes.
+(`WEEKEND_ONLY=1` restores the old gate). Since PR #91 (2026-10-08; on production since the 12 Oct promotion), they
+also store trades every 15 minutes. On 2026-10-14 production's Postgres held book snapshots on all three venues to
+04:49 UTC (Kalshi since 2026-09-30, Polymarket since 2026-10-03, OG.com since 2026-10-08) and the hot trade window
+since 9 Oct (Kalshi, OG.com) and 4 Oct (Polymarket F1); older rows are in the Parquet archive.
 
 | Unit (VM) | Script | Covers | Each pass |
 |---|---|---|---|

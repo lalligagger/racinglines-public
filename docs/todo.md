@@ -1,22 +1,23 @@
 # Roadmap
 
-The one place for what's next, across every sport and track, in priority order. It was rebuilt on
-2026-09-28 around the [strategy to the end of 2026](strategy-2026.md): **prove the demo maker and taker
-on real markets wherever they are listed**, and fall back to a simulated pool (a private book like
-Whistler's) only where no venue lists the event.
-
-Tick items off where they are listed. Finished items move to [Done](#done) at the bottom. Items tagged
-**U1**…**U12** are the strategy session's app updates; (F1-n) tags belong to the [F1 roadmap](f1-roadmap.md).
+The one place for what's next, across every sport and track, in priority order. Rebuilt on 2026-09-28 around the
+[strategy to the end of 2026](strategy-2026.md) and re-ranked on **2026-10-14** around the three goals the owner set
+(G1 to G3 below). Tick items off where they are listed. Finished items move to [Done](#done) at the bottom. Items
+tagged **U1**…**U13** are the strategy session's app updates, **C-numbers** are the Core backlog's (the project
+library, `library/core/2026-10-06-core-backlog.md`), **STG-n** the staging and CI items, and (F1-n) tags belong to
+the [F1 roadmap](f1-roadmap.md).
 
 | Plan | What it's for |
 |---|---|
 | **This page** | The priorities, the race-weekend calendar, owner decisions and every open item |
-| [Strategy 2026](strategy-2026.md) | The reasoning: where the demo record stands, how long each strategy takes to prove, event tiers, other sports for 2027 |
+| [Sports and exchanges](coverage.md) | The sport × venue grid with production's counts (links, tapes, models, backtests, paper), the gaps ranked with effort |
+| [Alpha layout](alpha-layout.md) | What the app shows today: Markets, Trade, History, Lab; styles, sizing, the leaderboard |
+| [Strategy 2026](strategy-2026.md) | The reasoning of 28 Sep: where the demo record stood, how long each strategy takes to prove, event tiers |
 | [Paper trading: validation plan](paper-trading.md#validation-plan) | The pre-registered rules every live weekend is judged by |
-| [F1 live test (round 16)](f1-live-roadmap.md) | The working plan for 2–4 Oct: build items, runbook, backup plans, decision log |
 | [F1 roadmap](f1-roadmap.md) | The F1 phases (F1-0 … F1-9), their ground rules and decision log |
 | [Engine roadmap](engine-roadmap.md) | Standard model inputs and outputs for every sport and exchange (E0 … E9), building on [Backtest core](backtest-core.md) |
-| [Coverage](coverage.md) | The sport × venue grid (history, backtested strategy, live strategy per cell), the gaps ranked with effort, and the device checks that settle the unverified cells |
+| [Parity rebuild](parity-rebuild.md) | Every valid sport × exchange × kind brought to the F1-on-Polymarket bar; the coverage counter (C0, built) |
+| [Market tape](market-tape.md) | What the recorders store, every 5 minutes, every day, and how to backfill a gap |
 
 ## Priorities
 
@@ -24,208 +25,197 @@ Tick items off where they are listed. Finished items move to [Done](#done) at th
 
 **Where things stand (14 Oct 2026).** [racinglines.bet](https://racinglines.bet) runs the **fantasy league alpha**:
 every signed-in account gets F$1,000 of fantasy money and four tabs, Markets, Trade, History and Lab
-([Alpha layout](alpha-layout.md)). Hand trading is F1 only; Markets shows F1, NASCAR and MotoGP. Polymarket lists F1
-race markets again; no real order is placed (the trading flags are unset,
-[Sports and exchanges](coverage.md)). From the command line, `--remote`, `racinglines remote` and `racinglines data
+([Alpha layout](alpha-layout.md)). Hand trading is F1 only, on the recorded Polymarket and Kalshi books; Markets shows
+F1, NASCAR and MotoGP. Polymarket lists F1 race markets again (rounds 13 to 20 are linked); no real order is placed
+(the trading flags are unset, [Sports and exchanges](coverage.md)). The three recorders poll Polymarket, Kalshi and
+OG.com every 5 minutes, every day. From the command line, `--remote`, `racinglines remote` and `racinglines data
 pull SPORT` reach the hosted server, in testing, with a warning that the review of venue and data terms is still
 pending ([MCP server](mcp.md#more-commands-on-the-hosted-server-remote-racinglines-remote-data-pull)).
 
-The priority list below dates from the 28 Sep – 1 Oct sprint to the soft launch and has not been re-ranked since; it
-is kept as the record of that sprint. The sections after it hold the open items by area.
+The goals (owner): **G1, October to early November, prove the edge**, closing-line value above +2% over 100 live
+bets; **G2, November to December**, real fills, venue capacity, more users; **G3, January to March 2027**, billing.
+The real-money gate stays at six or more live weekends. What is in flight now, in order: the staging-to-production
+promotion (PR #180: MotoGP for every signed-in user, `data pull`, `remote`, race-data triggers); CLV on every fill;
+the calibration check of every sport's model (C48); the Probalytics tape comparison (PR #181); the one engine for the
+first package release (C56).
 
 <!-- /readme -->
 
-### Sprint to the soft launch (28 Sep – 8 Oct 2026)
+### P0 · now (14 Oct to the United States GP, 25 Oct)
 
-**The rule:** real markets first. Events are tiered ([Strategy 2026](strategy-2026.md#event-tiers)):
-**T1** a real market is listed, so paper-trade it with frozen profiles; **T2** a real market we don't
-model yet, so record its tape; **T3** no market anywhere, so run a simulated pool (private book). T3
-proves the pricing, not an edge.
+Each item names its PR or backlog number; "promotion pending" means it is on `staging` and reaches production with
+[PR #180](https://github.com/lalligagger/racinglines-public/pull/180) (owner merges; no migration, no trading flag;
+touches VM scripts and units, so ⚠️).
 
-### Demo completion path (2026-10-01)
+- [ ] **Promote staging to production (#180).** After the deploy: `vm.sh live auto` on and no per-event F1 timer
+      left; `vm.sh record fastf1 status`; the forecast-refresh timer's first pass files MotoGP's calendar into
+      production's database (it takes its own daily backup). What users see: MotoGP on Markets for every signed-in
+      account (`audience = "all"`, #179), MCP list results drawn as tables (#171), and `data pull` / `racinglines
+      remote` working against production (#179; they need the hosted MCP server, which only production runs).
+- [ ] **CLV on every live and replayed fill (C4).** `racinglines backtest clv` covers stored paper bets; the sweep
+      stats, `f1 reconcile`, `f1 scorecard` and the weekend report still read P&L only. G1 is judged on CLV: the plain
+      mean per decided bet against the fill price (owner, 2026-10-07). [Paper trading](#paper-trading).
+- [ ] **Calibration by probability bucket, every sport (C48; owner, 2026-10-08: the next development once staging
+      is confirmed).** Favourites, mid-field and long shots, walk-forward against results and against closing prices
+      where recorded, for F1, NASCAR, MotoGP, downhill and road cycling. Evidence: Indonesia MotoGP, the model's top
+      three summed to 42.5% against Kalshi mids of 83.5%. Until it is done NASCAR and MotoGP prices are labelled
+      **unvalidated** and no pick rests on them alone. [Models](#models-the-one-engine).
+- [ ] **Probalytics tape: pull, compare, golden (#181, into staging).** Resumable F1 pull by exact key (owner,
+      2026-10-14: F1 complete, unlinked F1 markets included as data only, then NASCAR; any other sport only on the
+      owner's explicit go); `RACINGLINES_TAPE_SOURCE=probalytics` as a backtest venue; pass marks mid within 1¢ on 95%
+      of snapshots, weekend P&L within 10% or $5, trades within 5%. The golden comparison runs on
+      `racinglines_staging_demo`. The internal recorder stays primary (owner, 2026-10-12).
+- [ ] **Staging as a live mirror of production (#154, code merged, nothing on).** Owner, planned 15 Oct after the
+      Probalytics download: `vm.sh backup`, `vm.sh postgres logical` (restarts production's Postgres), `vm.sh mirror
+      plan`, `vm.sh mirror on`. Once on, no more `staging reset`. ⚠️ production database step.
+- [ ] **United States GP weekend (23–25 Oct), the first live weekend of the alpha with Polymarket race markets
+      (266 links stored) and Kalshi's (expected 2 to 4 days out).** A, C and K paper-trade; the fantasy accounts trade
+      by hand or follow a style; no code merges in the book window; Monday: `f1 reconcile`, `f1 scorecard`, and the
+      first DITL report for an F1 weekend.
+- [ ] **Sign-up terms acceptance** (`TERMS_VERSION`, planned in [Fantasy accounts](fantasy-accounts.md), not in
+      code). The data-terms review is done (owner, 2026-10-14: venue prices to signed-in users, MotoGP in the alpha and
+      `data pull` all allowed; the #aintcare warning stays); the sign-up page still records no acceptance.
 
-The live repo is the public `lalligagger/racinglines-public` since 2026-10-01, and **merging to `main` deploys to the
-VM** through GitHub Actions (`main-merge-gate`: staging smoke, `vm.sh deploy`, prod smoke; docs-only merges deploy
-nothing; CI runs no tests). Deploys carry code only; data and the database change on the VM through scripts and the
-admin views. The flow and what lives where: [VM deploy](vm-deploy.md#the-flow).
+### P1 · to the sizing review (~12 Nov)
 
-- **Before asking for a merge (local, CI doesn't run them):** `racinglines check`, `python -m pytest -m "not live"`,
-  `mkdocs build --strict`. Golden tests skip without `tests/fixtures/` (not in the public repo).
-- **Commit policy:** never leave a commit in an editor; use `git commit -m "..."` or `git commit --amend --no-edit`.
-- **Branch/merge flow:** one feature-track branch per sprint, PRs from it, the owner squash-merges with
-  `--delete-branch`. A merge is a deploy: batch them, keep them out of live race windows, and back up first for a
-  migration.
-- **Smoke gate:** valid sign-ins only. If an old wrong-password probe warmed the throttle, wait 15 minutes.
+- [ ] **The one engine for the first package release (C56).** Every modelled sport already prices with
+      `GlobalModel`; what remains is folding the laps core's qualifying, grid and practice knowledge into the results
+      core (F1 race-win Brier 0.1134 vs 0.1476 in the 2 Oct validation) and retiring `position_sim` and `TimedRuns`
+      as classes. Owner chose "compare first" (2026-10-11); open: the "works the same" tolerance and the timing
+      against G1 and the Las Vegas GP. Scope: the library's `core/2026-10-11-retire-f1-model-scope.md`.
+- [ ] **Recorder follow-ups:** read `backfill_tape.sh` results into the data-change log after each gap; alert when a
+      recorder misses a pass (the 1 to 2 Oct Kalshi outages were found a week later by the Probalytics comparison).
+- [ ] **NASCAR before the Chase finale (8 Nov):** the pre-race field from NASCAR's entry list (C46, Mac probe first),
+      start lists in the replay (C5), the replay's race spread (owner decision), and a replay on Polymarket's own
+      NASCAR tape, recorded since 7 Oct.
+- [ ] **MotoGP after the calendar lands:** sprint classifications (Mac probe first), champion classifiers and a
+      season sim ([Championship markets](championship-markets.md#what-pricing-motogps-champion-would-take)).
+- [ ] **STG items still open** ([Staging and CI deploys](#staging-and-ci-deploys)): STG-5 off-VM copy of the VM's
+      data (the disk is still the only copy), STG-7 fixtures for CI, STG-8 migration gate, STG-6, STG-9, STG-10,
+      STG-11. STG-2 (tests in CI) is partly done: CI runs pytest on PRs (PR #180 reports it green) but
+      `deploy-production` still does not need it (C17).
+- [ ] **Per-user bet books in the app (C55)** and the F1 race-week demos (C54), after the alpha's first weekends.
+- [ ] **Sizing review (~12 Nov)** after 4–6 live weekends on real markets ([Paper trading](#paper-trading)).
 
-**Where things stand (30 Sep 2026, evening; VM on `306a147`, #95 and #96 merged after it):** NASCAR and MotoGP went
-from tape-only listings to sports the production app shows end to end: results, Kalshi markets identified with their
-race, a simple-baseline price for NASCAR's next race, and an in-sample demo paper record on Strategy and Positions
-(`RACINGLINES_SPORT_STATUS=1` and `RACINGLINES_SPORT_PAPER=1`, both on on the VM). The owner's 3 × 3 soft-launch grid
-(F1, NASCAR, MotoGP × Polymarket, Kalshi, OG.com) has 7 of 9 cells filled; MotoGP × Polymarket (no linked markets) and
-MotoGP × OG.com (not listed) are empty. **The only held-out-robust strategy is still F1 profile A on Polymarket**, which
-has listed no F1 race since 28 Aug. Status per cell: [Sports and exchanges](coverage.md). The full day:
-[48-hour report](report-48h.md) (backfills into the web app, then the public repo and CI deploys).
+### P2 · to the Las Vegas GP (21 Nov) and year end
 
-**Where things stood (29 Sep 2026, after the overnight roadmap batch, PRs #23–#45 merged):** U1, U5, U6, U7, U8, U9,
-reconcile, the scorecard and the K sweep are built and merged (new behaviour behind switches, off by default). What
-is left before round 16 is on the VM and with the owner: the Kalshi recorder (U2), the VM cutover, freezing K, the
-loss cap and the tier call. Coverage of every sport × venue is in [Coverage](coverage.md).
+- [ ] **Las Vegas GP (21 Nov):** the milestone the owner set for real stakes ($2k to $10k, CLV-gated); only if the
+      [validation rules](paper-trading.md#validation-plan) and G1 are met, and never without the owner's explicit
+      sign-off on the trading flags in the same turn.
+- [ ] Qatar (29 Nov) and Abu Dhabi (6 Dec) may be cancelled: settle by each venue's rules (U8; the owner's two
+      assumptions still to confirm).
+- [ ] **Road cycling:** the stage-race GC model (draft #177, held by the owner), its calibrated settings' decision-log
+      rows (road noise 1.25, ITT noise 1.15, `road_gap_scale` 0.1, `short_tt_noise_scale` 2.0), a results source
+      whose terms allow it, then a first VM data step (backup first). Admin-only on the board until then.
+- [ ] **PyPI release** (preview written 2026-10-11; no PR until the owner's go): ships the single engine (C56),
+      Rich output by default, the kart demo offline, then our MCP by sign-in, then self-hosted.
+- [ ] 2026 season report (December); walk-forward re-selection of the profiles for 2027; **U10** pre-season testing
+      ingest; **U12** Google Cloud; **U11** downhill off-season ([Points validation](#points-validation), [Data](#data),
+      [Model](#model)); decide whether NASCAR and road cycling are 2027 sports.
 
-**Where things stood (28 Sep 2026):** no F1 race markets are open on either venue. Polymarket has
-listed no race since 28 Aug; Kalshi listed 2025 races only 2–4 days out, so it may still list round 16.
-The F1 championships are open and deep on both (drivers' ~$38M on Polymarket, ~$9M on Kalshi). Profile
-C makes money on Polymarket's tape and loses on Kalshi's.
+### Record: the sprint to the soft launch (28 Sep – 8 Oct 2026)
 
-**P0 · Sprint to the fantasy soft launch (to Thu 8 Oct), in this order.** Work is grouped into feature-track
-branches, one PR per track (owner, 2026-09-30); the track is named on each item.
+Kept as the record of that sprint; everything ticked below is in [Done](#done) with its PR.
 
-- [ ] **HIGH · Finish CI and the staging environment** (STG-1 to STG-11 in [Staging and CI deploys](#staging-and-ci-deploys)).
-      CI deploys merges to `main` since 2026-10-01, but runs no tests, smoke-checks staging rather than the PR, and
-      the VM's data has no off-VM copy. First: STG-5 (off-VM data copy), STG-2 (tests in CI), STG-8 (migration gate).
-      The fantasy staging rehearsal (STAGE-1, Wed 7 Oct) needs STG-1.
-- [ ] **Sign-up** (track `signup`; SEC-1, MAIL-1, ACC-1, ACC-3 from [Fantasy accounts](fantasy-accounts.md)): not
-      built. Copilot builds it locally Fri 2 – Sat 3 Oct behind `RACINGLINES_SIGNUP=off`; the `fantasy_schema_v1`
-      migration goes to the VM Tue 6 Oct (OWNER-8, backup and sign-off). Then the trading batch, STAGE-1, the go/no-go
-      Thu 8 Oct 12:00 PDT and invite-only sign-up at 18:00 PDT ([Fantasy soft launch](fantasy-launch.md)).
-- [ ] **Recorders on the VM** (track `recorders`): the Kalshi recorder (U2), a tapes timer for NASCAR's Chase and
-      MotoGP's last rounds (U9), an OG.com weekly `trades`/`history`/`books` timer (its API forgets after a month), and
-      a forecast refresh after each NASCAR race. New VM units, so each needs a backup and the owner's sign-off.
-- [ ] **Round 16 live paper** (2–4 Oct, Sepang): the F1 book opens about 01:30Z Fri 2 Oct; the demo taker (profile
-      A) paper-trades from round 16. No deploys around it. Owner calls: loss cap and tier.
-- [ ] **Coverage gaps in the 3 × 3** (track `sports-coverage`): MotoGP calendar ingest (upcoming events, so MotoGP gets
-      a next-race price; a Mac probe of the calendar endpoint first); Polymarket MotoGP links (tag slug unverified;
-      Mac probe first); `RACINGLINES_OG_VENUE=1` on the VM so the OG.com column shows (owner). MotoGP × OG.com stays
-      empty: OG.com lists no MotoGP.
-- [ ] **Champion replays after deploy** (#95, #96, merged 2026-09-30): deploy, then VM steps 5–7 of
-      `handoffs/2026-10-01-season-replays.md` (backup first; not during the round 16 book). They are the first backtest
-      of any OG.com cell.
-- [ ] **Progress lines** (owner rule, 2026-09-30): every long job, cloud, Mac or VM, prints a flushed progress line
-      at least every 5 minutes. The overnight run has per-step lines and a heartbeat since #99; the shared helper for
-      searches, replays and demo-history is PR #114 (open).
-- [ ] **Report reproducibility** (owner ask, 2026-09-30): REP-1 to REP-7 in PR #114 (a `SOURCES.md` per report,
-      one skeleton, `racinglines report build`, pinned inputs, scripted screenshots at 1024 px and 150% zoom).
+- [x] **Finish CI and the staging environment:** STG-1 (staging host), STG-3 (staging deploys), STG-4 (owner checks
+      staging, then promotes) built; the rest is in P1 above.
+- [x] **Sign-up** built (#146, the alpha fantasy launch on production 2026-10-12, with the fantasy reset).
+- [x] **Recorders on the VM:** Kalshi and OG.com books every 5 minutes (U2, 30 Sep; every day since 2026-10-07),
+      trades every 15 minutes, Polymarket NASCAR and MotoGP books (U9, #91), the forecast-refresh timer, the
+      schedule-sync timer (#169).
+- [x] **Round 16 live paper** (Sepang, 2–4 Oct) and **round 17** (Singapore, 9–11 Oct) ran on Polymarket's and
+      Kalshi's real markets; the Singapore /term parts are recorded (#157).
+- [x] **Coverage gaps in the 3 × 3:** Polymarket MotoGP links (209 on production); MotoGP calendar ingest built
+      (#134, promotion pending); the OG.com column on the VM.
+- [ ] **Champion replays after deploy** (#95, #96): merged 30 Sep, no run recorded ([Data changes](data-changes.md)).
+- [x] **Progress lines** on every long job (#99, #114).
+- [ ] **Report reproducibility** (REP-1 to REP-7): `SOURCES.md` by hand on every report since; the rest open
+      ([Reports](#reports-consistency-and-reproducibility)).
+- [x] **Fantasy soft launch:** shipped as the alpha layout (#160, #161) on 2026-10-12, F$ only, F1 hand trading.
 
-**P0 · This week (to Thu 1 Oct): be ready to trade round 16 on whichever venue lists it**
-
-- [ ] **U2** Kalshi recorder on the VM ([Exchanges](#exchanges)). Books every 5 minutes (plus OG.com) via `vm.sh record` (`scripts/vm/record_venues.sh`); open: a trades/tape pass and a continuous `markets record` mode.
-- [x] **U1** Kalshi in the signal engine, so A and C can paper-trade Kalshi's race markets (PR #34, merged 2026-09-29; [Exchanges](#exchanges)).
-- [x] **U6** Championship sleeve, paper only (PR #29, merged; `f1 season-strategy --paper`). Its first live rebalance is round 16's result ([Live events](#live-events)).
-- [ ] Freeze A and C and pre-register the rules in [Paper trading](paper-trading.md#validation-plan).
-- [ ] Round 16 checkpoints: both venues checked Wed 30 Sep; the tier chosen Thu 1 Oct 18:00 PDT
-      (T1 on Kalshi if it lists, otherwise T3, the private book); the book opens Thu 20:30 PDT.
-      Plan: [F1 live test](f1-live-roadmap.md).
-
-- [ ] **Fantasy soft launch (owner, 2026-09-29):** invite-gated F1 fantasy trading (F$ paper money only) from
-      Thu 8 Oct, Singapore (R17), with the VM reliability work before R16. Plan and owner dates:
-      [Fantasy soft launch](fantasy-launch.md); tasks and blocks in the [runbook](fantasy-runbook.md).
-
-**P1 · October (rounds 16–19): first live weekends on real markets**
-
-- [ ] **STG · high priority (owner, 2026-09-30): finish CI and a staging environment.** CI deploys `main` since
-      2026-10-01; tests in CI, a real staging deploy, an off-VM data copy, a migration gate and a live-window freeze
-      are open: STG-1 to STG-11 in [Staging and CI deploys](#staging-and-ci-deploys).
-- [x] **U5** Kalshi sprint markets before Singapore (11 Oct); built in PR #36, merged; on by default since 2026-10-06 (`RACINGLINES_KALSHI_SPRINTS=0` turns it off). Priced from the race's pole and win odds
-      until **U13**, the sprint stage, lands (in progress, [F1 model](#f1-model)).
-- [ ] **U3** Kalshi maker profile K: swept (PRs #38, #41, merged; K = `gbm`, 2¢, 10-pt filter, 25 shares, $400 volume floor); **freezing it is the owner's call** before the United States GP (25 Oct).
-- [x] **U7** Cross-venue disagreement log (PR #35, behind `RACINGLINES_DISAGREE`); **U8** settlement rules for relocated or cancelled races (PR #27, behind `RACINGLINES_CANCELLED_RACE_RULES`). Both merged; the owner's two assumptions for U8 are still to confirm.
-- [x] Per-weekend reconciliation (`f1 reconcile`, PR #37) and the pricing scorecard (`f1 scorecard`, PR #28), both merged; run them after every weekend ([Paper trading](#paper-trading)).
-- [ ] **U9** Record Kalshi's NASCAR (Chase, finale 8 Nov), MotoGP and IndyCar tapes: code merged (PR #26); first live run on the VM 2026-09-29 and NASCAR/MotoGP tapes pulled in the overnight run (2026-09-30). **Still open: a timer**, so each race is recorded without a hand run ([New sports](#new-sports)); in the soft-launch sprint's `recorders` track.
-- [ ] **Parallel track, owner (2026-09-28): the downhill [Data](#data) items are high priority for the next
-      cloud session** (Elite/Junior Women, start order, weather). They don't touch the F1 weekends. Most
-      need ChronoRace (`prod.chronorace.be`), which the cloud network blocks: allow it first, or run locally.
-
-**P2 · November (rounds 20–22): the sizing review**
-
-- [ ] About 12 Nov, after 4–6 live weekends: sizing decision and a walk-forward with rounds 16–20 added.
-- [ ] Qatar (29 Nov) and Abu Dhabi (6 Dec) may be cancelled: settle by each venue's rules (U8).
-
-**P3 · December: close 2026, set up 2027**
-
-- [ ] 2026 season report; walk-forward re-selection of A′, C′ and K′ for 2027, frozen before Australia.
-- [ ] **U10** F1 pre-season testing ingest; the `reset` and `gridq+pretrain` decisions for 2027.
-- [ ] Decide whether NASCAR joins in 2027, from the recorded tapes and the data-source review.
-- [ ] **U12** Move to Google Cloud; the first real V2 order only if the validation rules are met.
-- [ ] **U11** Downhill off-season: points validation (the top downhill item), then the rest of data and
-      model ([Points validation](#points-validation), [Data](#data), [Model](#model)).
+**Where things stood** on 30 Sep, 29 Sep and 28 Sep is in [Strategy 2026](strategy-2026.md#where-things-stand) and the
+[48-hour report](report-48h.md).
 
 ## Race weekends to 31 December
 
-One row per event, in date order. The full table with contingencies is in
-[Strategy 2026](strategy-2026.md#week-by-week). Every F1 weekend also runs the championship sleeve after
-the race, and the [weekend routine](#weekend-routine).
+One row per event, in date order, with what production already holds for it (2026-10-14). Every F1 weekend also
+runs the championship sleeve after the race, and the [weekend routine](#weekend-routine).
 
-- [ ] **2–4 Oct · F1 R16, Bahrain GP at Sepang.** T1 on Kalshi if listed (A, and C as a control);
-      otherwise T3 (`live/f1/2026-16.toml`). Optional: record SignalR during FP1. Mon 5 Oct: settle and
-      reconcile, and report with a fair-price scorecard ([F1 live test](f1-live-roadmap.md#9-after-the-weekend-mon-5-oct)).
-- [ ] **9–11 Oct · F1 R17, Singapore (sprint).** T1 on Kalshi if listed (needs U5); otherwise T3
-      (`live/f1/2026-17.toml`).
-- [ ] **October weekends · NASCAR Chase** (Las Vegas, Charlotte Roval, Phoenix, Talladega, Martinsville).
-      T2: record every Kalshi tape (U9).
-- [ ] **23–25 Oct · F1 R18, United States GP.** T1: A, C and K on Kalshi, and Polymarket if it's back.
-- [ ] **30 Oct – 1 Nov · F1 R19, Mexico City.** T1.
-- [ ] **6–8 Nov · F1 R20, São Paulo.** T1. **NASCAR finale, Homestead (8 Nov)** and **MotoGP Qatar**: T2.
+- [ ] **18 Oct · NASCAR Phoenix (Freeway Insurance 500).** Kalshi 200 links, Polymarket 43. Results core price
+      (unvalidated); the timers record and fetch results.
+- [ ] **23–25 Oct · F1 R18, United States GP.** T1 on Polymarket (266 links) and Kalshi when it lists. A, C and K
+      paper; the alpha's hand traders and styles. **25 Oct · NASCAR Talladega.**
+- [ ] **30 Oct – 1 Nov · F1 R19, Mexico City.** T1 (Polymarket 266 links). **NASCAR Martinsville.**
+- [ ] **6–8 Nov · F1 R20, São Paulo.** T1 (Polymarket 266 links). **NASCAR finale, Homestead (8 Nov).** MotoGP's
+      November rounds are recorded as T2 once the calendar is on production.
 - [ ] **~12 Nov · Sizing review** ([Paper trading](#paper-trading)).
-- [ ] **20–22 Nov · F1 R21, Las Vegas (Saturday race).** T1; check the night-time stage cut-offs.
-      **MotoGP Portugal**: T2.
-- [ ] **27–29 Nov · F1 R22, Qatar.** T1 once U8 is in; may be cancelled. **MotoGP Valencia (finale)**: T2.
-- [ ] **4–6 Dec · F1 R23, Abu Dhabi.** T1; championships settle. About 53% on Polymarket that it takes place.
+- [ ] **20–22 Nov · F1 R21, Las Vegas (Saturday race).** T1; check the night-time stage cut-offs; the CLV-gated
+      milestone.
+- [ ] **27–29 Nov · F1 R22, Qatar.** T1 once U8 is confirmed; may be cancelled.
+- [ ] **4–6 Dec · F1 R23, Abu Dhabi.** T1 (1 Kalshi link stored already); championships settle.
 
-**If Polymarket lists again:** A and C go live there at once, and it becomes the main record; Kalshi
-carries on alongside. **If neither venue lists F1 races:** every F1 weekend is T3 and the goal for 2026
-becomes proving the pricing (the scorecard), plus the championship sleeve and the disagreement log on
-the markets that are open. There are no downhill events left in 2026.
+**If Polymarket stops listing again:** Kalshi carries the record. **If neither venue lists an F1 race:** that weekend
+is T3 (the private book, admin-only) and proves the pricing, not an edge. There are no downhill events left in 2026.
 
 ### Weekend routine
 
 For every F1 weekend, T1 or T3:
 
-- [ ] Wed: check Kalshi and Polymarket for the race's markets; confirm they link to the event (not `unmodeled`).
+- [ ] Wed: check Kalshi and Polymarket for the race's markets; confirm they link to the event (not `unmodeled`);
+      `vm.sh record status` and `vm.sh pm-sync status` show no WARN.
 - [ ] Thu 18:00 PDT (or the equivalent before FP1): pick the tier and log it in the decision log.
-- [ ] Race weekend: the signal engine (T1) or the live engine (T3) runs unattended; no code changes except logged fixes.
-- [ ] After the race: settle; run the championship sleeve.
-- [ ] Monday: the reconciliation (live vs replay, T1) and the pricing scorecard (T1 and T3); flag a
+- [ ] Race weekend: the signal engine (T1) or the live engine (T3) runs unattended; no code merges in the book window
+      except logged fixes (staging deploys are allowed).
+- [ ] After the race: the signals pass settles the paper positions and stops (C59, promotion pending); run the
+      championship sleeve.
+- [ ] Monday: the reconciliation (live vs replay, T1) and the pricing scorecard (T1 and T3); the DITL report; flag a
       weekend outside the [validation rules](paper-trading.md#validation-plan) and explain it before the next.
 
 ## Owner decisions
 
-| Decision | When | Recommendation |
+Open decisions first, then the ones on record (so a thread never re-asks one).
+
+| Decision | When | Recommendation / status |
 |---|---|---|
-| Loss cap for round 16 (`max_loss = 500` in `live/f1/2026-16.toml`) | Before 1 Oct | Owner's call ([decision log](f1-live-roadmap.md#11-decision-log)) |
-| Freeze A and C as they are until 31 Dec | Now | Yes |
-| Profile A takes `rookie` | Now | No: keep A frozen |
-| Round 16: T1 on Kalshi or T3 | Thu 1 Oct 18:00 PDT | T1 if Kalshi lists |
+| Merge the promotion (#180) ⚠️ VM scripts and units | Now | Yes; then the post-deploy checks in P0 |
+| Turn the staging mirror on (#154): backup, `postgres logical` (restarts production's Postgres), `mirror plan`, `mirror on` ⚠️ | Planned 15 Oct, after the Probalytics download | Owner runs it; nothing until then |
+| C56: the "works the same" tolerance for the one engine, and whether the F1 switch waits for the Las Vegas GP | Before the first package release | Validate now, switch after Vegas (proposal, 2026-10-11) |
+| Probalytics download beyond F1 and NASCAR | Per sport | Only on the owner's explicit go for that sport (2026-10-14) |
 | Sizing rule | ~12 Nov | After 4–6 live weekends on real markets |
-| Add NASCAR for 2027 | December | Only if the tapes and data hold up |
-| Promote `gridq+pretrain`; keep `reset` for 2027 | December | Decide on the walk-forward |
-| `--unraced-format last` as the downhill default | Any time | See [Model](#model) |
-| Freeze Kalshi maker profile K (+$490 / +$659, [Kalshi history](kalshi-history.md#profile-k)) | Before 25 Oct | Yes, then no more tuning on Kalshi's 2025–26 tape |
+| Real stakes at the Las Vegas GP (21 Nov) | After G1 | Only if CLV > +2% over 100 live bets and the validation rules hold; the flags need the owner's word in the same turn |
 | U8 rules for a cancelled race: Polymarket 50/50 on head-to-heads, Kalshi NO versus void | Before Qatar (29 Nov) | Confirm against each venue's rules text |
-| Greenlight the coverage backlog: tape-only UCI road cycling schema (S), Polymarket tapes for NASCAR, MotoGP and IndyCar (M) | Any time | Cycling first: cheapest, and Kalshi holds the history |
-| Fable for High-tier work in CLAUDE.md, against the no-Fable rule | Settled 2026-09-30 | No Fable anywhere until the owner asks for a project-notes update |
-| Go on **STG-1 to STG-11**; first STG-5 (off-VM data copy: VM service account write access to the bucket), STG-2 (tests in CI), STG-8 (migration gate). Also: fixtures in git or bucket (STG-7), staging on the same VM or its own, keyless GCP auth or key, Cloudflare Access or password (STG-1) | Now: HIGH | Yes; STG-5 first: today the VM's disk is the only copy |
-| Next engine plan task after T5 | Any time | T2 |
-| Turn on `RACINGLINES_OG_VENUE=1` on the VM (the OG.com column) | Before the soft launch | Yes: read-only, fair-price indicator only |
-| Kalshi bid/ask candles re-pull (backup first) | Before any Kalshi taker result counts | Approved 2026-10-05: automate it on the VM |
-| Sign-off for new VM timers: Kalshi recorder (U2), tapes (U9), OG.com recorder, NASCAR forecast refresh | Before round 17 | Yes, one at a time, each with a backup |
-| Price-column migration and the audit scorecard (engine plan) | After round 16 | Owner's call; migration needs a backup and sign-off |
 | Replay race spread for NASCAR (2.0 places vs a measured ~7) | Before any NASCAR result is read as edge | Owner's call, with a decision-log entry |
-| Close draft #97 (superseded by #110) | Any time | Yes |
+| Road cycling: hold or merge the GC model (#177); which results source | Any time | Held by the owner (2026-10-13); decision-log rows first |
+| Add NASCAR (and road cycling) for 2027 | December | Only if the tapes, calibration and data terms hold up |
+| Promote `gridq+pretrain` as the F1 default; keep `reset` for 2027 | December | Decide on the walk-forward; live prices already use `gridq+pretrain+reset` through the profiles |
+| `--unraced-format last` as the downhill default | Any time | See [Model](#model) |
+| STG-5 off-VM data copy (VM service account write access to the bucket), STG-7 fixtures in git or bucket, STG-8 migration gate | High | Yes; STG-5 first: today the VM's disk is the only copy |
+| OG.com: confirm the $0.02 fee; per-GP contract rules | Before any OG.com result counts | From OG.com's fee schedule and the two recorded race weekends |
 | History purge for data off GitHub (force-push) | Last stage | Needs the owner's spoken OK in the same turn |
-| Open-Meteo's free API is non-commercial only ([Weather forecasts](weather.md)): paid plan, or MET Norway (free for commercial use, not built) | Before billing goes live (G3, 2027) | Stay on the free tier while there is no revenue; decide with the first paid tier |
-| Odds presentation names in the sportsbook schema: `decimal`, `american`, `fractional`, `cents` (Kalshi), `dollars` (Polymarket, OG.com), `prob` ([Sportsbook schema](sportsbook/index.md)) | After PR #69 merges | Owner checks the names; a rename is one line in `racinglines/books/schema.py` plus the docs table |
-| Fantasy soft launch decisions DEC-1 to DEC-23 ([Fantasy soft launch](fantasy-launch.md#decisions)) | Batch A Wed 30 Sep 18:00 PDT; B Mon 5 Oct; C Wed 7 Oct; go/no-go Thu 8 Oct 12:00 PDT | Per the [runbook's decision table](fantasy-runbook.md#decisions) |
+| Open-Meteo's free API is non-commercial only ([Weather forecasts](weather.md)) | Before billing (G3, 2027) | Stay on the free tier while there is no revenue |
+| Odds presentation names in the sportsbook schema ([Sportsbook schema](sportsbook/index.md)) | Any time | Owner checks the names; a rename is one line in `racinglines/books/schema.py` plus the docs table |
+
+**On record (don't re-ask):** no sport-specific models, only schemas that declare model inputs (2026-10-11, C56);
+no freezing of strategy profiles, every change logged with its date (2026-10-05); live books never freeze
+(2026-10-04); the real-money gate stays 6+ live weekends (2026-10-05); market prices polled every 5 minutes every day
+(2026-10-07); the internal recorder stays primary, Probalytics is a reference tape (2026-10-12); venue prices, MotoGP
+and `data pull` may reach signed-in users, the #aintcare warning stays (2026-10-14); MotoGP visible to the alpha
+(2026-10-14, reversing the 11 Oct hide); loss cap and tier for round 16 (decided in the
+[F1 live test decision log](f1-live-roadmap.md#11-decision-log)); Kalshi bid/ask candles re-pull automated on the VM
+(2026-10-05); new VM timers one at a time, each with a backup (2026-09-30); the OG.com column on the VM (read-only,
+2026-10-01); Fable only when the owner asks for a project-notes update (2026-09-30); close draft #97, superseded by
+#110 (2026-09-30).
 
 ## Exchanges
 
 Phase [F1-9](f1-roadmap.md#f1-9-more-exchanges-kalshi-others), pulled forward: Kalshi is the likeliest
 venue with live F1 race markets this year.
 
-- [ ] **U2 · P0 · Kalshi recorder on the VM.** Schedule `markets --exchange kalshi` sync (every 30 min on
-      race weekends, every 6 h otherwise), plus trades, books and history for the open F1 race and
-      championship markets, next to the Polymarket recorder (`deploy/` systemd units,
-      [VM deploy](vm-deploy.md)). First confirm the GCE VM can reach Kalshi's API (the cloud sandbox can't).
-      *Done when:* a race weekend's Kalshi books and trades land in the database and
-      `data/archive/markets/kalshi/` with nobody running a command.
+- [x] **U2 · P0 · Kalshi recorder on the VM.** Done: `racinglines-record-venues.timer` (`scripts/vm/record_venues.sh`)
+      snapshots every open Kalshi and OG.com market every 5 minutes, every day since 2026-10-07 (books since
+      2026-09-30: 923,282 Kalshi snapshots in production's Postgres on 2026-10-14), syncs hourly, stores the last two
+      hours of trades every 15 minutes, and reads OG.com's settlements hourly ([Market tape](market-tape.md)).
+      Original plan: `markets --exchange kalshi` sync every 30 min on race weekends, plus trades, books and history.
 - [x] **U1 · P0 · Kalshi in the signal engine** (PR #34, merged 2026-09-29) (F1-9's "done when"). `pipelines/signals.py`,
       `taker_weekend` and `maker_replay` read `exchange='kalshi'` markets for a profile whose new `venue`
       setting says so (default `polymarket`, optional, left out of `settings_key` while unset). Signals
@@ -243,7 +233,7 @@ venue with live F1 race markets this year.
       pass (a table or a view over `market_price_history`), with a report
       (`racinglines markets disagree --event …`) and a panel on the Markets page.
       *Done when:* the report lists the gaps above fees for the championship markets, day by day.
-- [ ] **OG.com follow-ups (new, from [Coverage](coverage.md#ogcom)):** (a) a VM recorder timer running `trades`, `history` and `books` at least weekly (S, the API forgets after about a month); (b) confirm the $0.02 fee in OG.com's fee schedule (S); (c) per-Grand-Prix `[[rules]]` in `exchanges/og.toml` once a live race market is seen (S); (d) join OG.com to the U7 log (S–M). (e) done: a `/markets/og` page and a generic per-schema-exchange route, plus `/markets/tapes` (PR #49; found by the 2026-09-29 spot-check, [Coverage](coverage.md#the-gaps-ranked)). (f) outcomes, built 2026-10-06 and not yet run on the VM, since the listing drops a settled instrument and 0 of 44 closed OG.com links had `resolved_yes` (2026-10-06): `markets --exchange og settle` reads the settlement feed (`get-expired-settlement-price`, probed from the Mac 2026-10-06), hourly in `record_venues.sh` ([Exchanges](exchanges.md#outcomes-the-settlement-feed)); the first passes backfill the 44 (at most 500 pages, about 12 days of feed, per pass; back up first).
+- [ ] **OG.com follow-ups (new, from [Coverage](coverage.md#ogcom)):** (a) done: the 5-minute recorder covers OG.com's books, trades and settlements since 2026-10-08 ([Market tape](market-tape.md)); (b) confirm the $0.02 fee in OG.com's fee schedule (S); (c) per-Grand-Prix `[[rules]]` in `exchanges/og.toml` once a live race market is seen (S); (d) join OG.com to the U7 log (S–M). (e) done: a `/markets/og` page and a generic per-schema-exchange route, plus `/markets/tapes` (PR #49; found by the 2026-09-29 spot-check, [Coverage](coverage.md#the-gaps-ranked)). (f) outcomes: `markets --exchange og settle` reads the settlement feed (`get-expired-settlement-price`, probed from the Mac 2026-10-06), hourly in `record_venues.sh` since 2026-10-08 ([Exchanges](exchanges.md#outcomes-the-settlement-feed)); on 2026-10-14 production holds 108 OG.com F1 links, 44 of them per-GP race markets (Malaysia and Singapore, closed), so (g) per-GP contract rules can now be written from the recorded names. (h) a replay on the two recorded race weekends: not run.
 - [ ] **Coinbase F1 weekend patch (temporary):** a public GraphQL fallback for this weekend's F1 race markets and
       event page, shown behind a schema switch and a short-term TODO. Future work: formal market mapping, driver/team
       resolution, stable persisted-query tracking, and a proper auth/key path if Coinbase exposes one for deeper history.
@@ -265,7 +255,9 @@ how it works: [Paper trading](paper-trading.md). Recommendations and paper fills
       [F1 roadmap](f1-roadmap.md#decision-log) and starts a new settings version with its own live count. Rules:
       [validation plan](paper-trading.md#validation-plan).
 - [ ] Run A (demo taker) and C (demo maker) live on every weekend Polymarket or Kalshi lists, through 2026
-      and into 2027. Built and scheduled for Polymarket (the signal engine); Kalshi needs U1.
+      and into 2027. Built and scheduled on both venues (the signal engine, every 5 minutes in a race window); ran on
+      rounds 16 and 17 (last stored signal: Singapore after qualifying, 2026-10-11 14:37Z). Under the alpha, every
+      account's followed style is a paper profile of its own, sized to F$1,000 ([Alpha layout](alpha-layout.md)).
 - [x] **U3 · P1 · Kalshi maker profile K** (sweep done; freezing is the owner's call). A sweep of the maker's settings on Kalshi's 2025–26 tape
       (spread, `max_disagree`, `size`, model `gbm` / `gridq+pretrain`, per-market `min_volume_24h`),
       judged on both seasons as `params-4h` was. Save the winner as the Lab candidate "K · Kalshi maker",
@@ -312,9 +304,8 @@ how it works: [Paper trading](paper-trading.md). Recommendations and paper fills
       24-hour Polymarket volume, so the preview should also show the venue's own 24-hour volume next to ours.
       *Done when:* it's a `racinglines f1` subcommand documented in `docs/cli.md`, and it shows the venue's
       volume.
-- [ ] **P2 · Stale line in `docs/coverage.md`** (owner, 2026-10-05). Its summary says Polymarket has listed no F1
-      race since 28 Aug 2026, but the Malaysia audit (round 16, 2026-10-04) linked 139 Polymarket tokens, titled
-      "Bahrain Grand Prix". Check which recent rounds Polymarket listed and correct the summary and the grid.
+- [x] **P2 · Stale line in `docs/coverage.md`** (owner, 2026-10-05). Fixed 2026-10-14: production holds Polymarket
+      race links for every 2026 round from Italy (13) to São Paulo (20); the page's counts are now dated.
 - [ ] **P2 · Sizing review (~12 Nov),** after 4–6 live weekends on real markets (T3 weekends don't count):
       walk-forward re-run of A, A-lite, C, K, B (#06) and A′ (#08) with rounds 16–20 added, then a sizing
       rule from `bankroll` / `max_deployed` (owner's call, e.g. A-lite → A).
@@ -326,12 +317,13 @@ how it works: [Paper trading](paper-trading.md). Recommendations and paper fills
 How it works: [Live events](live-events.md). First run: the Whistler downhill final, 27 Sep 2026. Live
 events are T3 unless a venue lists the event.
 
-- [ ] **F1 live test, round 16 (Bahrain GP at Sepang, 2–4 Oct 2026):** a mock private book on all of
-      Polymarket's usual race markets, updated at session ends. Runs as T3 unless Kalshi lists (then it's a
-      side demo next to the Kalshi paper trading). Build items B0–B8 and the runbook:
-      [F1 live test](f1-live-roadmap.md).
-- [ ] Singapore (round 17, sprint weekend, 11 Oct): the same run if no venue lists it. Code-ready: launch
-      spec `live/f1/2026-17.toml`; the sprint stages rehearsed on the Dutch GP (`live/f1/2026-12.toml`).
+- [x] **F1 live test, round 16 (Bahrain GP at Sepang, 2–4 Oct 2026)** and **round 17 (Singapore, 9–11 Oct)**: both
+      venues listed, so both ran as T1 paper weekends on the signal engine (Polymarket 183 and 272 links, Kalshi 165
+      and 314, OG.com 22 each); the Singapore picks and their path through the sessions are the /term parts 2 and 3
+      (#157). The private-book runbook stays ready for a weekend no venue lists: [F1 live test](f1-live-roadmap.md).
+- [x] Live timers are calendar-driven: `vm.sh live <event>` turns on `live auto` instead of a per-event timer (#134,
+      promotion pending), and the signals pass stops once the race result is in and the positions are settled (C59,
+      #175, promotion pending).
 - [x] **P1 · Launch specs for rounds 18–23** (PR #24, merged) (`live/f1/2026-18.toml` … `2026-23.toml`), used only on
       weekends no venue lists. Check Las Vegas's Saturday-night stage cut-offs.
 - [x] **U6 · P0 · Championship sleeve, paper only** (PR #29, merged; first live rebalance is after round 16). `f1 season-strategy` run live after each race on both
@@ -360,6 +352,30 @@ events are T3 unless a venue lists the event.
       [queue rule](market-making.md#the-queue-rule), tested on synthetic books, 2026-09-28,
       cloud build-out); running it needs several weekends of recorded books (Polymarket and, with U2, Kalshi).
 - [ ] Liquidity rewards as a replay P&L line; optional fractional-Kelly caps.
+
+## Models: the one engine
+
+Owner rule (2026-10-11): no sport-specific models, only schemas that declare model inputs and compatibility. Every
+modelled sport prices with `GlobalModel` and its schema's `[model] inputs` picks the core (F1 laps and sectors, downhill
+run times, the rest results); the old classes are challengers ([Backtest core](backtest-core.md#one-engine-schema-declared-inputs),
+[Sports and exchanges: model status](coverage.md#model-status-by-sport)).
+
+- [ ] **C56 · retire the sport-specific classes for the first package release.** The results core must take
+      qualifying, grid and practice as schema inputs before F1 can switch without losing accuracy (race-win Brier
+      0.1134 laps core vs 0.1476 results core, 2 Oct validation); downhill's `TimedRuns` the same way (C56c). Owner:
+      compare first; the F1 walk-forward comparison is production Lab jobs 1 to 4 (2026-10-11; two done, two failed).
+      Live F1 and downhill pricing unchanged until the owner's go.
+- [ ] **C48 · calibration by probability bucket, every sport** (the next development, owner 2026-10-08): favourites,
+      mid-field and long shots, walk-forward against results and against recorded closing prices; a schema-set
+      temperature or shrink toward the market if it fails, with a decision-log row. NASCAR and MotoGP prices are
+      **unvalidated** until then.
+- [ ] **NASCAR and MotoGP in the results core:** start lists instead of every driver ever seen (C5), fitted noise and
+      retirements (C6; `GlobalModel` handles retirements, C26), a real challenger (C7), head-to-head and top-20 kinds
+      live (C10), the pre-race field from the entry list (C46), `race_start_utc` for CLV (C42).
+- [ ] **A naive baseline (engine E7):** `market_implied`; Plackett-Luce was tested on 7 Oct and lost to the probit
+      engine in every sport, so it is not the baseline ([Novig and the bake-off](novig-and-model-bakeoff.md)).
+- [ ] **Decision-log rows still missing:** in-race `SIGMA = 3.0` and the live downhill constants (C12); the road
+      cycling GC settings (#177).
 
 ## F1 model
 
@@ -433,7 +449,7 @@ XC/enduro, alpine skiing. Rank by audience, data availability and exchange listi
 local-league plans. As of 2026-09 the ranking is led by exchange depth:
 [Strategy 2026](strategy-2026.md#other-racing-sports-for-2027).
 
-- [x] **U9 · P1 · Tape recording for other sports** (code, PR #26, merged). **First live run on the VM, 2026-09-29:** Kalshi NASCAR 13,599 links and 1.69M trades, MotoGP 322 links and 12k trades, IndyCar 1,374 links and 167k trades, all `unmodeled` ([Data changes](data-changes.md)). NASCAR and MotoGP tapes were pulled again for the replays in the overnight VM run (2026-09-30). A tapes timer is still open. Generalise the Kalshi sync to named series: NASCAR
+- [x] **U9 · P1 · Tape recording for other sports** (code, PR #26, merged). **First live run on the VM, 2026-09-29:** Kalshi NASCAR 13,599 links and 1.69M trades, MotoGP 322 links and 12k trades, IndyCar 1,374 links and 167k trades, all `unmodeled` ([Data changes](data-changes.md)). NASCAR and MotoGP tapes were pulled again for the replays in the overnight VM run (2026-09-30). The tapes timer is `record_venues.sh` (every 5 minutes, every day, since 2026-10-07). Generalise the Kalshi sync to named series: NASCAR
       Cup (`KXNASCAR*`, race and champion), MotoGP (`KXMOTOGP*`), IndyCar (`KXINDYCAR*`). Each under its own
       competition (a `sports/<code>.toml` entry with no model), links `unmodeled`, with prices, trades and
       books archived per exchange.
@@ -441,8 +457,8 @@ local-league plans. As of 2026-09 the ranking is led by exchange depth:
       from listing to settlement.
 - [x] **Polymarket tapes for NASCAR, MotoGP and IndyCar** (PR #51). The Polymarket sync now takes a named tape-only
       sport (`[markets.polymarket] tags` in `sports/<code>.toml`, links `unmodeled`, additive: no reset or delete path).
-      **The tag slugs are unverified against the live Gamma API**; `sync --tags SLUG …` overrides them, so the first VM
-      run can correct one without a code change. Not yet run on the VM ([Coverage](coverage.md#the-gaps-ranked)).
+      Running on the VM in `pm_sync.sh` (`PM_SPORTS`): production holds 1,721 NASCAR and 209 MotoGP Polymarket
+      links on 2026-10-14 ([Coverage](coverage.md#the-status-matrix)).
 - [x] **UCI road cycling, tape only** (schema, PR #50): `sports/road_cycling.toml` (competition `uci_road_wt`, Kalshi
       `KXCYCLING*`), plus `le_mans.toml` and `sailgp.toml` (Kalshi, and SailGP on OG.com). Not yet run on the VM:
       `markets --exchange kalshi --sport road_cycling sync --closed` pulls the 2026 grand tours Kalshi still serves. A
@@ -473,14 +489,15 @@ The database and API plumbing are in place and the source gate is complete: the 
       2026 Pro +$31.25, Basic +$7.70. In-sample: the settings were picked on the same seasons.
 - [x] **Next-race forecasts** (#112): `racinglines model forecast nascar` stored run #9068 (South Point 400); the board and
       race pages show its fair price. Undo: `racinglines model forecast nascar --undo 9068`.
-- [ ] **Forecast refresh after each race** (track `recorders`): today a forecast is stored once, by hand, so NASCAR's
-      price goes stale after each Chase race. A VM timer after results land; sign-off needed.
-- [ ] **MotoGP calendar ingest** (track `sports-coverage`): upcoming events from the MotoGP API, so MotoGP gets a
-      next-race forecast and a status row with a next race. A Mac probe of the calendar endpoint first (standing
-      practice in CLAUDE.md). Effort S–M.
-- [ ] **Polymarket MotoGP links** (track `sports-coverage`): the demo backfill stored nothing for MotoGP on Polymarket,
-      probably because no market is linked (unconfirmed). Probe the tag slug from the Mac, then sync with
-      `--tags SLUG` and link. Read back the Polymarket NASCAR demo totals (`vm.sh demo status`) at the same time.
+- [x] **Forecast refresh after each race:** `racinglines-forecast-refresh.timer` every 30 minutes fetches and ingests
+      NASCAR results on race weekends and Mondays, refreshes the NASCAR and MotoGP forecasts, and re-runs the F1
+      championship forecast once per new race result (#107; the daily backup it takes is logged in
+      [Data changes](data-changes.md)). Still open: the NASCAR pre-race field from the entry list (C46).
+- [ ] **MotoGP calendar ingest:** built in #134 (the forecast-refresh step fetches MotoGP's calendar and results
+      daily, every pass on MotoGP weekends; the probe passed), **promotion pending**: production holds no MotoGP round
+      after Austria (18 Sep) on 2026-10-14, so MotoGP has no next-race price until #180 deploys and the first pass runs.
+- [x] **Polymarket MotoGP links:** 209 on production (131 with a race, 29 open, 2026-10-14), synced by `pm_sync.sh`;
+      no replay or demo backfill on them yet.
 - [x] **Champion replays** (#95 F1 on Kalshi and OG.com, #96 NASCAR and MotoGP `season-replay` behind
       `RACINGLINES_SEASON_REPLAY=1`; merged 2026-09-30). Left: deploy, then the VM steps in
       `handoffs/2026-10-01-season-replays.md`. MotoGP flags SPRINT POINTS MISSING until sprints are ingested.
@@ -738,7 +755,33 @@ Recommendations, in order; the first two are cheap and can start with the next r
 
 ## Done
 
-Finished items, moved here from the sections above on 2026-09-28, with the dates they were done.
+Finished items, moved here from the sections above, with the dates they were done.
+
+### October 2026: the alpha, the recorders, the one engine (moved here 2026-10-14)
+
+- [x] **Fantasy league alpha on production** (2026-10-12): sign-up and accounts (#146), the alpha layout with four tabs,
+      five styles and F$1,000 sizing with Kelly (#160), settlement, leaderboard P&L and MCP trading tools (#161), the
+      Lab tab opening on Follow a strategy (#166), the landing page and sign-in (#144, #167). Everything else is
+      archived behind the layout switch ([Alpha layout](alpha-layout.md)).
+- [x] **Recorders every 5 minutes, every day** (owner rule 2026-10-07; #90, #91): Kalshi and OG.com books, trades every
+      15 minutes, Polymarket NASCAR and MotoGP books, `tape_check.sh` warnings, `backfill_tape.sh` for gaps
+      ([Market tape](market-tape.md)). Forecast-refresh (#107) and schedule-sync (#169) timers.
+- [x] **The one engine** (2026-10-11, #128): `GlobalModel` for every modelled sport with three cores, prices identical
+      to the old classes, which stay as challengers.
+- [x] **Rounds 16 and 17 paper-traded on real markets** on both venues; /term's Singapore parts (#152 to #157).
+- [x] **Racinglines 101** in three parts and the kart quickstart replay under `/docs` (#139, #142).
+- [x] **Sprint stage** (U13's core, PR #73) and **grid penalties** (PR #74), merged 2026-10-06.
+- [x] **CLV for stored paper bets:** `racinglines backtest clv` (C4, #81); the coverage counter `backtest coverage`
+      (C0, #81); `race_start_utc` for NASCAR (C42).
+- [x] **Deploy guards:** production and staging never share a venv (C57, #147); a deploy stops a long signals pass
+      instead of refusing (#149); the smoke check follows the alpha layout (#164).
+- [x] **Data-terms review** (owner, 2026-10-14): venue prices, MotoGP and `data pull` may reach signed-in users; the
+      #aintcare warning stays. **MotoGP back for the alpha, `data pull` (C51), `racinglines remote` (C53)** (#179,
+      promotion pending).
+- [x] **Season demo database for staging** (`racinglines_staging_demo`, #173, #174): built on the VM 2026-10-13, every
+      player on a random style through 2026; `vm.sh staging db demo|main` switches staging to it.
+- [x] **Staging mirror code** (#154, merged, not enabled); **MCP results as drawn tables** (#171).
+- [x] **Live trading history report** (3 to 12 Oct, the project library) and the first DITL report (13 Oct).
 
 ### Strategy session (2026-09-28)
 
