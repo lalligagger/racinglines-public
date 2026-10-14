@@ -3,11 +3,13 @@ classes (markets, view, price, quote, volume_24h, coherent, touch_depth, resolve
 scripts/probes/probalytics_pull.py writes, so a sweep can be re-run on their books and fills and compared with ours.
 
 Switched on for weekend_sweep's venues by RACINGLINES_TAPE_SOURCE=probalytics (off by default: nothing changes
-unless it is set). Read from $RACINGLINES_DATA/probalytics/:
+unless it is set). Read from $RACINGLINES_DATA/probalytics/ (or PROBALYTICS_DATA):
 
-    stages/<event_key>_<VENUE>.parquet     the book as of each stage cutoff (the last snapshot at or before it)
-    books/<YYYY-MM-DD>_F1_<VENUE>.parquet  every snapshot of a day, when pulled (preferred: the full timeline)
-    fills/F1_<VENUE>_<YYYY-MM>.parquet     every fill
+    stages/<event_key>_<VENUE>.parquet       the book as of each stage cutoff (the last snapshot at or before it)
+    books/<YYYY-MM-DD>_<TAG>_<VENUE>.parquet every snapshot of a day, when pulled (preferred: the full timeline)
+    fills/<TAG>_<VENUE>_<YYYY-MM>.parquet    every fill
+
+TAG is the pull's market set: F1 (our linked markets, the default), F1X (F1 markets we have not linked), CYC (cycling).
 
 What differs from our own tape, on purpose:
 - price() is the book's mid (best bid + best ask) / 2 where we read Polymarket's 5-minute price history; quote()
@@ -16,12 +18,21 @@ What differs from our own tape, on purpose:
   stale only after BOOK_STALE (48 hours, the stage files' lookback), not after venue_replay.STALE's 6 hours.
 - volume_24h() sums price x size of their fills (both outcomes of a Polymarket condition, one Kalshi ticker).
 Keys are exact: a Polymarket token is their outcome platform id, a Kalshi ticker their market platform id (YES book).
+
+Fills at the second of an order: with levels=True a venue keeps every level, book_at(token, t) gives the whole book
+as of t, and fantasy_book(venue, t) adapts it to fantasy/exchange.place's get_book, so a backtest prices an order by
+walking Probalytics' book at that moment instead of our latest 5-minute snapshot.
+
+From the bucket: with PROBALYTICS_BUCKET=gs://<bucket>/vendor/probalytics, a file missing under the data folder is
+fetched with `gcloud storage cp` (the Mac's login, the VM's service account) before it is read, and with
+PROBALYTICS_CACHE_EVICT=1 deleted again once it is loaded (the VM's disk holds a weekend, not the 19 GB archive).
 """
 
 from __future__ import annotations
 
 import os
-from datetime import timedelta
+import subprocess
+from datetime import timedelta, timezone
 from pathlib import Path
 
 import numpy as np
@@ -31,6 +42,7 @@ from racinglines.markets.venue_replay import Kalshi, Polymarket
 
 ENV = "RACINGLINES_TAPE_SOURCE"
 BOOK_STALE = timedelta(hours=48)
+LEVEL_COLS = ("bid_px", "bid_sz", "ask_px", "ask_sz")
 
 
 def enabled():
@@ -40,6 +52,10 @@ def enabled():
 def root():
     from racinglines.paths import DATA
     return Path(os.environ.get("PROBALYTICS_DATA", DATA / "probalytics"))
+
+
+def bucket():
+    return os.environ.get("PROBALYTICS_BUCKET", "").strip().rstrip("/")
 
 
 def _days(a, b):
@@ -56,50 +72,128 @@ def _months(a, b):
         m = (m + pd.Timedelta(days=32)).replace(day=1)
 
 
-def _read(paths, cols, filters):
+# --- the bucket -----------------------------------------------------------------------------------------------------
+
+_LISTED = {}       # bucket prefix -> the object names under it (one listing per prefix per process)
+
+
+def _listed(prefix):
+    if prefix not in _LISTED:
+        r = subprocess.run(["gcloud", "storage", "ls", f"{prefix}/"], capture_output=True, text=True, timeout=600)
+        _LISTED[prefix] = {x.rsplit("/", 1)[-1] for x in r.stdout.split()} if r.returncode == 0 else set()
+    return _LISTED[prefix]
+
+
+def fetch(paths, base=None):
+    """Copy the files of `paths` that are missing locally but in PROBALYTICS_BUCKET down to the same place under
+    base; -> the paths fetched (so the caller can evict them). Nothing happens without the bucket setting."""
+    b = bucket()
+    if not b:
+        return []
+    base = Path(base or root())
+    want = {}
+    for p in map(Path, paths):
+        if p.exists():
+            continue
+        rel = p.relative_to(base)
+        prefix = f"{b}/{rel.parent.as_posix()}"
+        if rel.name in _listed(prefix):
+            want.setdefault(p.parent, []).append(f"{prefix}/{rel.name}")
+    got = []
+    for d, urls in want.items():
+        d.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["gcloud", "storage", "cp", *urls, str(d)], check=True, capture_output=True, timeout=3600)
+        got += [d / u.rsplit("/", 1)[-1] for u in urls]
+    return got
+
+
+def _evict(paths):
+    if os.environ.get("PROBALYTICS_CACHE_EVICT", "").strip() == "1":
+        for p in paths:
+            Path(p).unlink(missing_ok=True)
+
+
+def _read_table(paths, cols, filters, base=None):
+    """The rows of `paths` (fetched from the bucket first when set) as one Arrow table, or None."""
+    import pyarrow as pa
     import pyarrow.parquet as pq
-    parts = [pq.read_table(p, columns=cols, filters=filters).to_pandas() for p in paths if p.exists()]
-    parts = [x for x in parts if len(x)]
-    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=cols)
+    got = fetch(paths, base)
+    try:
+        parts = [pq.read_table(p, columns=cols, filters=filters) for p in map(Path, paths) if p.exists()]
+    finally:
+        _evict(got)
+    parts = [x for x in parts if x.num_rows]
+    return pa.concat_tables(parts, promote_options="permissive") if parts else None
 
 
-def read_books(venue, event_key, start, end, keys, base=None):
+def _read(paths, cols, filters, base=None):
+    t = _read_table(paths, cols, filters, base)
+    return t.to_pandas() if t is not None else pd.DataFrame(columns=cols)
+
+
+# --- reads ----------------------------------------------------------------------------------------------------------
+
+def best_levels(px, sz, highest):
+    """(price, size at that price) of each row's best level, vectorized over Arrow list columns (a race weekend is
+    5-20M snapshots): the highest price for bids, the lowest for asks, whatever order the levels come in; NaN and 0
+    for an empty side. px and sz have the same shape (the pull writes both from one level array)."""
+    px = px.combine_chunks() if hasattr(px, "combine_chunks") else px
+    sz = sz.combine_chunks() if hasattr(sz, "combine_chunks") else sz
+    offs = np.asarray(px.offsets, dtype=np.int64)
+    offs = offs - offs[0]
+    vals = np.asarray(px.flatten(), dtype=float)
+    sizes = np.asarray(sz.flatten(), dtype=float)
+    lens = np.diff(offs)
+    price, size = np.full(len(lens), np.nan), np.zeros(len(lens))
+    ne = lens > 0
+    if ne.any():
+        starts = offs[:-1][ne]
+        price[ne] = (np.maximum if highest else np.minimum).reduceat(vals, starts)
+        at_best = vals == np.repeat(price, lens)
+        size[ne] = np.add.reduceat(np.where(at_best, sizes, 0.0), starts)
+    return price, size
+
+
+def read_books(venue, event_key, start, end, keys, base=None, tag="F1", levels=False):
     """One row per snapshot of the keys' books over [start - BOOK_STALE, end]: key, ts (naive UTC), bid, ask,
-    bid_size, ask_size (at the touch). The day files when any were pulled for the window, else the stage file."""
+    bid_size, ask_size (at the touch); with levels=True also bid_px, bid_sz, ask_px, ask_sz (every level, as pulled).
+    The day files when any were pulled for the window (locally or in the bucket), else the stage file."""
+    import pyarrow.compute as pc
     base = Path(base or root())
     code = venue.upper()
     key_col = "outcome_pid" if venue == "polymarket" else "market_platform_id"
-    cols = list(dict.fromkeys([key_col, "outcome_pid", "timestamp", "bid_px", "bid_sz", "ask_px", "ask_sz"]))
+    cols = list(dict.fromkeys([key_col, "outcome_pid", "timestamp", *LEVEL_COLS]))
+    out_cols = ["key", "ts", "bid", "ask", "bid_size", "ask_size"] + (list(LEVEL_COLS) if levels else [])
     a = pd.Timestamp(start) - BOOK_STALE
-    days = [base / "books" / f"{d:%Y-%m-%d}_F1_{code}.parquet" for d in _days(a, pd.Timestamp(end))]
+    days = [base / "books" / f"{d:%Y-%m-%d}_{tag}_{code}.parquet" for d in _days(a, pd.Timestamp(end))]
     filt = [(key_col, "in", list(keys))]
-    df = _read(days, cols, filt) if any(p.exists() for p in days) else pd.DataFrame()
-    if not len(df):
-        df = _read([base / "stages" / f"{event_key}_{code}.parquet"], cols, filt)
-    if venue == "kalshi" and len(df):
-        df = df[df["outcome_pid"] == "yes"]
-    out = pd.DataFrame(dict(key=df[key_col].astype(str) if len(df) else [],
-                            ts=pd.to_datetime(df["timestamp"], utc=True).dt.tz_localize(None) if len(df) else []))
-    if len(df):
-        def best(px, sz, pick):
-            if px is None or not len(px):
-                return np.nan, 0.0
-            i = int(pick(np.asarray(px)))
-            return float(px[i]), float(sz[i])
-        b = [best(p, s, np.argmax) for p, s in zip(df["bid_px"], df["bid_sz"])]
-        k = [best(p, s, np.argmin) for p, s in zip(df["ask_px"], df["ask_sz"])]
-        out["bid"], out["bid_size"] = [x[0] for x in b], [x[1] for x in b]
-        out["ask"], out["ask_size"] = [x[0] for x in k], [x[1] for x in k]
-    return out.drop_duplicates(["key", "ts"], keep="last").sort_values(["key", "ts"]).reset_index(drop=True)
+    t = _read_table(days, cols, filt, base)
+    if t is None:
+        t = _read_table([base / "stages" / f"{event_key}_{code}.parquet"], cols, filt, base)
+    if t is not None and venue == "kalshi":
+        t = t.filter(pc.equal(t["outcome_pid"], "yes"))
+    if t is None or not t.num_rows:
+        return pd.DataFrame(columns=out_cols)
+    bid, bid_size = best_levels(t["bid_px"], t["bid_sz"], highest=True)
+    ask, ask_size = best_levels(t["ask_px"], t["ask_sz"], highest=False)
+    out = pd.DataFrame(dict(key=t[key_col].to_pandas().astype(str).to_numpy(),
+                            ts=pd.to_datetime(t["timestamp"].to_pandas(), utc=True).dt.tz_localize(None).to_numpy(),
+                            bid=bid, ask=ask, bid_size=bid_size, ask_size=ask_size))
+    if levels:
+        for c in LEVEL_COLS:
+            out[c] = t[c].to_pandas().to_numpy()
+    out = out.drop_duplicates(["key", "ts"], keep="last").sort_values(["key", "ts"], kind="stable")
+    return out.reset_index(drop=True)
 
 
-def read_fills(venue, start, end, keys, base=None):
+def read_fills(venue, start, end, keys, base=None, tag="F1"):
     """key, ts (naive UTC), usd (price x size) of every fill of the keys (Polymarket condition ids or Kalshi
     tickers) over [start, end]."""
     base = Path(base or root())
     a, b = pd.Timestamp(start), pd.Timestamp(end)
-    paths = [base / "fills" / f"F1_{venue.upper()}_{m:%Y-%m}.parquet" for m in _months(a, b)]
-    df = _read(paths, ["market_platform_id", "timestamp", "price", "size"], [("market_platform_id", "in", list(keys))])
+    paths = [base / "fills" / f"{tag}_{venue.upper()}_{m:%Y-%m}.parquet" for m in _months(a, b)]
+    df = _read(paths, ["market_platform_id", "timestamp", "price", "size"], [("market_platform_id", "in", list(keys))],
+               base)
     ts = pd.to_datetime(df["timestamp"], utc=True).dt.tz_localize(None) if len(df) else pd.Series([], dtype="datetime64[ns]")
     out = pd.DataFrame(dict(key=df["market_platform_id"].astype(str) if len(df) else [], ts=ts,
                             usd=(df["price"] * df["size"]).astype(float) if len(df) else []))
@@ -107,14 +201,16 @@ def read_fills(venue, start, end, keys, base=None):
     return out.sort_values(["key", "ts"]).reset_index(drop=True)
 
 
+# --- the venues -----------------------------------------------------------------------------------------------------
+
 class _Tape:
     """The shared reads: books per key, fills per market."""
 
     book_stale = BOOK_STALE
 
-    def _load(self, venue, event_key, links, start, end, book_key, fill_key, base=None):
+    def _load(self, venue, event_key, links, start, end, book_key, fill_key, base=None, levels=False):
         a, b = pd.Timestamp(start), pd.Timestamp(end)
-        bk = read_books(venue, event_key, a, b, links[book_key].dropna().astype(str).unique(), base)
+        bk = read_books(venue, event_key, a, b, links[book_key].dropna().astype(str).unique(), base, levels=levels)
         fl = read_fills(venue, a - timedelta(hours=24), b, links[fill_key].dropna().astype(str).unique(), base)
         self.pb_books = {k: g for k, g in bk.groupby("key")}
         self.pb_fills = {k: g for k, g in fl.groupby("key")}
@@ -142,6 +238,9 @@ class _Tape:
         a, b = g["ts"].searchsorted(t - timedelta(hours=24)), g["ts"].searchsorted(t, side="right")
         return float(g["usd"].iloc[a:b].sum())
 
+    def _book_key(self, token):
+        return str(token)
+
     def touch_depth(self, token, t, max_age=None):
         r = self._book_at(self._book_key(token), t)
         if r is None:
@@ -151,18 +250,28 @@ class _Tape:
     def load_books(self, conn, start, end):
         """The books came with the tape (touch_depth reads them)."""
 
+    def book_at(self, token, t):
+        """The whole YES book of `token` as of t (naive UTC): dict(ts=the snapshot's time, bids, asks), each a list
+        of (price, size) best first (bids high to low, asks low to high), or None when there is no snapshot within
+        book_stale. Needs the venue built with levels=True."""
+        r = self._book_at(self._book_key(token), t)
+        if r is None or "bid_px" not in r:
+            return None
+
+        def side(px, sz, desc):
+            return sorted(((float(p), float(q)) for p, q in zip(px, sz) if q > 0), key=lambda x: x[0], reverse=desc)
+        return dict(ts=pd.Timestamp(r["ts"]).to_pydatetime(), bids=side(r["bid_px"], r["bid_sz"], True),
+                    asks=side(r["ask_px"], r["ask_sz"], False))
+
 
 class ProbalyticsPolymarket(_Tape, Polymarket):
     """Polymarket on Probalytics' tape: price = the book's mid, trades at it (as ours trade at the price history)."""
 
     def __init__(self, conn, links, start, end, group_target=None, coherence_tol=0.25, stale=None, event_key=None,
-                 base=None):
+                 base=None, levels=False):
         self.links, self.stale = links, stale
         self.group_target, self.coherence_tol = group_target or {}, coherence_tol
-        self._load("polymarket", event_key, links, start, end, "token_id", "condition_id", base)
-
-    def _book_key(self, token):
-        return str(token)
+        self._load("polymarket", event_key, links, start, end, "token_id", "condition_id", base, levels=levels)
 
     def price(self, token, t):
         q = self._touch(str(token), t)
@@ -176,13 +285,10 @@ class ProbalyticsKalshi(_Tape, Kalshi):
     """Kalshi on Probalytics' tape: the taker meets the book's touch; price = its mid."""
 
     def __init__(self, conn, links, start, end, group_target=None, coherence_tol=0.25, stale=None, event_key=None,
-                 base=None):
+                 base=None, levels=False):
         self.links, self.stale = links, stale
         self.group_target, self.coherence_tol = group_target or {}, coherence_tol
-        self._load("kalshi", event_key, links, start, end, "token_id", "token_id", base)
-
-    def _book_key(self, token):
-        return str(token)
+        self._load("kalshi", event_key, links, start, end, "token_id", "token_id", base, levels=levels)
 
     def price(self, token, t):
         q = self._touch(str(token), t)
@@ -196,3 +302,20 @@ class ProbalyticsKalshi(_Tape, Kalshi):
 
 
 EXCHANGES = {"polymarket": ProbalyticsPolymarket, "kalshi": ProbalyticsKalshi}
+
+
+def fantasy_book(venue, t):
+    """fantasy/exchange.place's get_book for a backtest order at time t: Probalytics' book as of t, from a venue built
+    with levels=True. Their snapshots are written on change, so a book stands until the next one: ts is reported as t
+    (place's 15-minute staleness check is about our recorder's lag, not this tape's) and the snapshot's own time is
+    kept as snapshot_ts; a book older than BOOK_STALE is None, which place refuses as book_unavailable."""
+    at = pd.Timestamp(t)
+    naive = at.tz_convert("UTC").tz_localize(None) if at.tzinfo else at
+    aware = (at if at.tzinfo else at.tz_localize("UTC")).to_pydatetime()
+
+    def get(token):
+        b = venue.book_at(token, naive)
+        if b is None:
+            return None
+        return dict(ts=aware, snapshot_ts=b["ts"].replace(tzinfo=timezone.utc), bids=b["bids"], asks=b["asks"])
+    return get
