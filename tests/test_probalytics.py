@@ -373,3 +373,31 @@ def test_walk_forward_picks_only_from_weekends_already_raced():
     assert [j for _, j in w["picks"]] == ["a", "a", "b", "b"]                    # b's round 2 is seen from round 3
     assert w["wf_pnl"] == pytest.approx(-50 + 300)                               # not b's 500: it wasn't known yet
     assert w["hindsight"] == ("b", 750)
+
+
+def test_no_read_at_t_sees_a_book_or_fill_one_second_later(tmp_path):
+    """The leakage rule for Probalytics' tape: everything a backtest reads at t (price, quote at the touch, the whole
+    book for a walk, the touch depth, the 24 h volume) comes from rows at or before t, never one second after."""
+    from racinglines.pipelines import weekend_sweep as W
+    (tmp_path / "books").mkdir()
+    (tmp_path / "fills").mkdir()
+    after = (T + pd.Timedelta(seconds=1)).strftime("%Y-%m-%d %H:%M:%S")
+    at = T.strftime("%Y-%m-%d %H:%M:%S")
+    pm = dict(market_platform_id="0xc1", outcome_pid="tokA")
+    _books(tmp_path / "books" / "2026-06-14_F1_POLYMARKET.parquet", [
+        dict(pm, timestamp=at, bid_px=[0.40], bid_sz=[10.0], ask_px=[0.44], ask_sz=[7.0]),
+        dict(pm, timestamp=after, bid_px=[0.90], bid_sz=[999.0], ask_px=[0.91], ask_sz=[999.0])])
+    pd.DataFrame([dict(fill_id=f"f{i}", market_platform_id="0xc1", timestamp=pd.Timestamp(ts, tz="UTC"), price=0.5,
+                       size=s) for i, (ts, s) in enumerate([(at, 10.0), (after, 1e6)])]).to_parquet(
+        tmp_path / "fills" / "F1_POLYMARKET_2026-06.parquet")
+    links = pd.DataFrame(dict(token_id=["tokA"], condition_id=["0xc1"], prediction=["race_win"]))
+    v = PB.ProbalyticsPolymarket(None, links, T.replace(hour=0), T + pd.Timedelta(hours=1), event_key="x",
+                                 base=tmp_path, levels=True)
+    v.touch_quotes = True
+    assert v.price("tokA", T) == pytest.approx(0.42)
+    assert v.quote("tokA", T) == (pytest.approx(0.40), pytest.approx(0.44))
+    assert W.stage_quote(v, "tokA", T, 0.10) == ((pytest.approx(0.40), pytest.approx(0.44)), False)
+    assert v.book_at("tokA", T)["asks"] == [(0.44, 7.0)]
+    assert v.touch_depth("tokA", T) == (pytest.approx(7.0), pytest.approx(10.0))
+    assert v.volume_24h("0xc1", T) == pytest.approx(5.0)                       # 0.5 x 10, not the 1e6 a second later
+    assert v.price("tokA", T + pd.Timedelta(seconds=1)) == pytest.approx(0.905)   # and it is there one second on
