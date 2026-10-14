@@ -362,6 +362,14 @@ events are T3 unless a venue lists the event.
       [queue rule](market-making.md#the-queue-rule), tested on synthetic books, 2026-09-28,
       cloud build-out); running it needs several weekends of recorded books (Polymarket and, with U2, Kalshi).
 - [ ] Liquidity rewards as a replay P&L line; optional fractional-Kelly caps.
+- [ ] Record venue liquidity rewards (owner asked 2026-10-13; on hold, not merged): branch
+      `claude/project-thread-bg60pc` adds `racinglines markets --exchange polymarket|kalshi rewards`
+      (markets/rewards.py), run hourly by pm_sync.sh and record_venues.sh: each venue's reward programs on our open
+      markets, a row only when one starts, changes or ends, to `data/archive/markets/<exchange>/rewards/`; an empty
+      venue response is never saved. No migration. Next: rebase on main, open the PR. Probe 2026-10-13: Polymarket set
+      min size 50 / max spread 4.5¢ on 219 of 241 markets per race (Austin, Mexico, Brazil), but only one Austin market
+      paid ($0.001/day); Kalshi had no F1 race markets or incentive programs yet (the last ones: Bahrain pole,
+      target size 1,000, $100 per market). Re-check Kalshi `/incentive_programs?status=upcoming` from about 21 Oct.
 
 ## Models: the one engine
 
