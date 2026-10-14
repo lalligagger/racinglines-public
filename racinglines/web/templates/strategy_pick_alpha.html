@@ -18,7 +18,7 @@
   <div class="style-cards">
   {% for o in opts %}
   <div class="style-card{{ ' on' if o.code == now }}">
-    <h3>{{ o.label }}{% if o.code == now %} <span class="pill good">following</span>{% endif %}</h3>
+    <h3><span class="mt-badge mt-{{ o.kind }}" title="{{ 'Maker: rests its own quotes and waits to be filled' if o.kind == 'maker' else 'Taker: buys at the price the market shows' }}" aria-label="{{ o.kind }}">{{ 'M' if o.kind == 'maker' else 'T' }}</span> {{ o.label }}{% if o.code == now %} <span class="pill good">following</span>{% endif %}</h3>
     <p>{{ o.blurb }}</p>
     <p class="style-bt"><span><span class="{{ 'good' if o.roi[0] >= 0 else 'bad' }}">2026 {{ "{:+.0%}".format(o.roi[0]) }}</span> · <span class="{{ 'good' if o.roi[1] >= 0 else 'bad' }}">2025 {{ "{:+.0%}".format(o.roi[1]) }}</span></span>
       <span class="legend">backtest, season return on F$1,000 at our standard sizing</span></p>
