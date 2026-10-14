@@ -76,6 +76,7 @@ def test_snapshot_vm_folders_backups_and_a_bucket_that_cannot_be_listed(tmp_path
     assert checks["VM → gs://b"]["state"] == "ok" and checks["VM → gs://nope"]["state"] == "bad"
     assert checks[f"Backups {data}"]["state"] == "ok"                       # the bucket's prod copy is newer
     assert f"Backups {other}" not in checks                                  # no dumps there, nothing to compare
+    assert checks["archive/ copy"]["state"] == "warn" and "behind" in checks["archive/ copy"]["text"]   # VM file is newer
     late = json.loads(json.dumps(snap))
     late["vm"]["roots"][0]["backups"]["newest_at"] = "2026-10-15T02:00:00+00:00"
     assert {h["check"]: h for h in ST.health(late)}[f"Backups {data}"]["state"] == "warn"

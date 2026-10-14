@@ -12,7 +12,7 @@ Where the data lives and how big it is: the VM's disk, data folders and database
 
 Listing a 20+ GB bucket and walking the archive is slow, so nothing here runs on a page load: `refresh()` writes a
 JSON snapshot (data/status/storage.json) that the admin Database page (/admin/db; owner, 2026-10-14), `racinglines db storage` and the MCP tool
-`storage_status` read, with `health()` (disk room, the bucket reachable, the VM's newest dumps also in the bucket).
+`storage_status` read, with `health()` (disk room, the bucket reachable, the VM's newest dumps and data folders also in the bucket).
 The page starts a background refresh when the snapshot is older than STALE_SECONDS.
 
 Sizes and counts only, never file contents: the bucket holds licensed vendor data (Probalytics, ToS section 5), so this
@@ -309,6 +309,18 @@ def health(snap):
         out.append(dict(check=f"VM → gs://{b['bucket']}", state="bad" if b.get("error") else "ok",
                         text=f"not listed: {b['error']}" if b.get("error") else
                         f"listed from the VM: {human(b['bytes'])}, {b['objects']:,} objects"))
+    tops = {p["prefix"].rstrip("/"): (b["bucket"], p) for b in reversed(snap.get("buckets", [])) for p in b.get("prefixes", [])}
+    for r in snap["vm"]["roots"]:
+        if "racinglines-staging" in r["path"]:
+            continue                                   # the bucket's data folders are prod's copies (bucket.sh FOLDERS)
+        for f in r["folders"]:
+            if f["name"] not in tops or f["name"] == "backups" or not f["newest"]:
+                continue
+            bucket, node = tops[f["name"]]
+            behind = (node["newest"] or "")[:19] < f["newest"][:19]
+            out.append(dict(check=f"{f['name']}/ copy", state="warn" if behind else "ok",
+                            text=f"newest on the VM {f['newest']}, in gs://{bucket}/{node['prefix']} {node['newest']}"
+                                 + (": the bucket is behind" if behind else "")))
     for r in snap["vm"]["roots"]:
         dumps = r["backups"]
         if not dumps["dumps"]:
@@ -319,7 +331,7 @@ def health(snap):
             out.append(dict(check=f"Backups {r['path']}", state="warn",
                             text=f"newest dump {dumps['newest']} ({dumps['newest_at']}); no backup folder in the bucket"))
             continue
-        behind = (node["newest"] or "") < (dumps["newest_at"] or "")[:19]
+        behind = (node["newest"] or "")[:19] < (dumps["newest_at"] or "")[:19]
         out.append(dict(check=f"Backups {r['path']}", state="warn" if behind else "ok",
                         text=f"newest dump {dumps['newest_at']}, newest in {where} {node['newest']}"
                              + (": the bucket is behind" if behind else "")))
