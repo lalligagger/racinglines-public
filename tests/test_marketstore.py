@@ -183,3 +183,21 @@ def test_bid_ask_survive_the_archive_and_old_files_read_as_null(tmp_path):
     MS.compact("prices", root=tmp_path)
     got = MS.read(None, "prices", tokens=[TOK], root=tmp_path)
     assert len(got) == 2 and got["ask"].tolist()[0] == 0.42
+
+
+def test_books_read_when_one_file_has_an_all_null_column(tmp_path):
+    """A file whose best_bid is all null types that column null; another with numbers used to fail the read
+    (ArrowNotImplementedError: cast double to null), which took down the race page's price chart."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    t0 = datetime(2026, 10, 5, 12, tzinfo=timezone.utc)
+    d = tmp_path / "books" / "month=2026-10"
+    d.mkdir(parents=True)
+    ts = pa.array([t0, t0 + timedelta(minutes=1)], pa.timestamp("us", tz="UTC"))
+    pq.write_table(pa.table({"token_id": [TOK, TOK], "ts": ts, "best_bid": pa.nulls(2), "best_ask": [0.6, 0.61],
+                             "bids": pa.nulls(2), "asks": pa.nulls(2)}), d / "part-a.parquet")
+    pq.write_table(pa.table({"token_id": [TOK], "ts": pa.array([t0 + timedelta(minutes=2)], ts.type),
+                             "best_bid": [0.55], "best_ask": [0.6], "bids": ['[["0.55", "10"]]'], "asks": ['[]']}),
+                   d / "part-b.parquet")
+    got = MS.read(None, "books", tokens=[TOK], root=tmp_path)
+    assert len(got) == 3 and got["best_bid"].tolist()[-1] == 0.55 and got["bids"].tolist()[-1] == '[["0.55", "10"]]'
