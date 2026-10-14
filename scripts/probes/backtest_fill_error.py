@@ -82,12 +82,14 @@ def order_rows(ours_px, book, side, stake, cost, fee_rate):
     vwap, filled = walk_vwap(levels, shares)
     truth = None if vwap is None else vwap + fee_per_share(fee_rate, vwap, filled)
     err = None if truth is None or truth <= 0 else (ours - truth) / truth * 100
-    return dict(side=side, stake=stake, shares=shares, ours=ours, truth=truth, touch=levels[0][0] if levels else None,
+    touch = levels[0][0] if levels else None
+    at_touch = None if touch is None else touch + fee_per_share(fee_rate, touch, shares)
+    return dict(side=side, stake=stake, shares=shares, ours=ours, truth=truth, touch=touch,
                 filled=filled / shares if shares else None, full=bool(vwap is not None and filled >= shares - 1e-6),
-                err_pct=err)
+                err_pct=err, touch_err_pct=None if not at_touch else (ours - at_touch) / at_touch * 100)
 
 
-def weekend_rows(conn, w, venue, stakes, cost):
+def weekend_rows(conn, w, venue, stakes, cost, min_volume_24h=None):
     from racinglines.markets import probalytics as PB
     from racinglines.pipelines import weekend_sweep as W
     rid = W._race_id(conn, w["event_key"])
@@ -100,6 +102,7 @@ def weekend_rows(conn, w, venue, stakes, cost):
                                  levels=True)
     rate = W.taker_fee(venue)
     c = W.taker_cost(cost, venue)
+    vol_min = W.MIN_VOLUME_24H if min_volume_24h is None else min_volume_24h
     rows = []
     for lab, t in w["stages"]:
         for m in links.to_dict("records"):
@@ -113,11 +116,13 @@ def weekend_rows(conn, w, venue, stakes, cost):
             else:
                 continue
             book = theirs.book_at(tok, t)
+            _, vol, liquid = ours.view(m, t, vol_min)           # what the backtest would trade: priced and liquid
             for side, px in buy.items():
                 if not BAND[0] <= px <= BAND[1]:
                     continue
                 base = dict(event=w["event_key"], venue=venue, stage=lab, t=t, token=tok, kind=m["prediction"],
-                            ours_px=px, quoted=q is not None, book=book is not None)
+                            ours_px=px, quoted=q is not None, book=book is not None, tradeable=bool(liquid),
+                            vol24=vol, fake_mid=bool(q is None and p == 0.5))
                 if book is None or not (book["asks"] if side == "YES" else book["bids"]):
                     rows += [dict(base, side=side, stake=s) for s in stakes]
                     continue
@@ -134,25 +139,31 @@ def band_of(px):
 
 def stats(g):
     e = pd.to_numeric(g["err_pct"], errors="coerce").dropna()
-    full = g["full"].fillna(False).astype(bool) if "full" in g else pd.Series(dtype=bool)
+    te = pd.to_numeric(g["touch_err_pct"], errors="coerce").dropna() if "touch_err_pct" in g else pd.Series(dtype=float)
+    walked = g[pd.to_numeric(g["filled"], errors="coerce").notna()] if "filled" in g else g.iloc[:0]
     return dict(orders=int(len(g)), with_book=int(g["book"].sum()), compared=int(len(e)),
                 median_err_pct=float(e.median()) if len(e) else None,
+                median_touch_err_pct=float(te.median()) if len(te) else None,
                 mean_err_pct=float(e.mean()) if len(e) else None,
                 median_abs_err_pct=float(e.abs().median()) if len(e) else None,
                 p90_abs_err_pct=float(e.abs().quantile(0.9)) if len(e) else None,
                 within_1pct=float((e.abs() <= 1).mean()) if len(e) else None,
                 optimistic=float((e < -1e-9).mean()) if len(e) else None,
-                not_full=int((~full[g["book"].astype(bool)]).sum()) if len(full) else 0)
+                not_full=int((~walked["full"].astype(bool)).sum()))      # of the orders walked (their side quotes)
 
 
 def summarize(df):
     out = {}
     for (v, s), g in df.groupby(["venue", "stake"]):
         key = f"{v} ${s:.0f}"
-        out[key] = dict(all=stats(g),
-                        by_stage={k: stats(x) for k, x in g.groupby("stage", sort=False)},
+        tr = g[g["tradeable"].astype(bool)] if "tradeable" in g else g
+        out[key] = dict(all=stats(g), tradeable=stats(tr),
+                        fake_mid=stats(g[g["fake_mid"].astype(bool)]) if "fake_mid" in g else None)
+        g = tr                                           # the breakdowns: the orders the backtest could make
+        out[key].update(by_stage={k: stats(x) for k, x in g.groupby("stage", sort=False)},
                         by_band={k: stats(x) for k, x in g.groupby(g["ours_px"].map(band_of))},
-                        by_side={k: stats(x) for k, x in g.groupby("side")})
+                        by_side={k: stats(x) for k, x in g.groupby("side")},
+                        by_kind={k: stats(x) for k, x in g.groupby("kind")})
     return out
 
 
@@ -166,21 +177,32 @@ def markdown(summary, args):
     lines = [f"# Fill-price error: our tape and fill logic against Probalytics' book ({args.year})", "",
              "error = (our backtest's fill price - the order walked through Probalytics' book at that second) / that, "
              "in %. Positive = the backtest paid more than the book asked (pessimistic); negative = it paid less "
-             "(optimistic). Every market and stage our tape prices, both sides, not only the trades a strategy took.",
-             "", "| venue, order | orders | compared | median err % | mean err % | median abs % | p90 abs % | "
-             "within 1% | optimistic | not filled in full |", "|---|---|---|---|---|---|---|---|---|---|"]
+             "(optimistic). touch err % = the same against their best price only (the spread, no depth). "
+             "Tradeable = what the backtest could trade (our tape prices it inside (0, 1) and its 24 h volume clears "
+             "the floor); the breakdowns below use those. Empty-book 0.50 = our price is the stored 0.50 an empty book "
+             "used to produce, with no quote.", ""]
+    for scope, title in (("tradeable", "Tradeable (the backtest's markets)"), ("all", "Every priced market"),
+                         ("fake_mid", "Our price is an empty book's 0.50")):
+        lines += [f"## {title}", "", "| venue, order | orders | compared | median err % | touch err % | mean err % | "
+                  "median abs % | p90 abs % | within 1% | optimistic | not filled in full |",
+                  "|---|---|---|---|---|---|---|---|---|---|---|"]
+        for k, s in summary.items():
+            a = s.get(scope)
+            if not a:
+                continue
+            lines.append(f"| {k} | {a['orders']} | {a['compared']} | {fmt(a['median_err_pct'])} "
+                         f"| {fmt(a.get('median_touch_err_pct'))} | {fmt(a['mean_err_pct'])} "
+                         f"| {fmt(a['median_abs_err_pct'])} | {fmt(a['p90_abs_err_pct'])} | {fmt(a['within_1pct'], True)} "
+                         f"| {fmt(a['optimistic'], True)} | {a['not_full']} |")
+        lines.append("")
     for k, s in summary.items():
-        a = s["all"]
-        lines.append(f"| {k} | {a['orders']} | {a['compared']} | {fmt(a['median_err_pct'])} | {fmt(a['mean_err_pct'])} "
-                     f"| {fmt(a['median_abs_err_pct'])} | {fmt(a['p90_abs_err_pct'])} | {fmt(a['within_1pct'], True)} "
-                     f"| {fmt(a['optimistic'], True)} | {a['not_full']} |")
-    for k, s in summary.items():
-        for part in ("by_stage", "by_band", "by_side"):
-            lines += ["", f"## {k}, {part.replace('_', ' ')}", "",
-                      "| | compared | median err % | median abs % | p90 abs % | within 1% | not full |",
-                      "|---|---|---|---|---|---|---|"]
+        for part in ("by_kind", "by_stage", "by_band", "by_side"):
+            lines += ["", f"## {k}, tradeable, {part.replace('_', ' ')}", "",
+                      "| | compared | median err % | touch err % | median abs % | p90 abs % | within 1% | not full |",
+                      "|---|---|---|---|---|---|---|---|"]
             for name, a in s[part].items():
-                lines.append(f"| {name} | {a['compared']} | {fmt(a['median_err_pct'])} | {fmt(a['median_abs_err_pct'])} "
+                lines.append(f"| {name} | {a['compared']} | {fmt(a['median_err_pct'])} "
+                             f"| {fmt(a.get('median_touch_err_pct'))} | {fmt(a['median_abs_err_pct'])} "
                              f"| {fmt(a['p90_abs_err_pct'])} | {fmt(a['within_1pct'], True)} | {a['not_full']} |")
     return "\n".join(lines) + "\n"
 

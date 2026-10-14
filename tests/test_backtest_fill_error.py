@@ -67,6 +67,9 @@ def test_a_weekend_end_to_end_on_a_stage_file(tmp_path, monkeypatch):
         def price(self, tok, t):
             return 0.42
 
+        def view(self, m, t, vol_min):
+            return 0.42, 80.0, vol_min <= 80.0
+
     monkeypatch.setattr(W, "_exchange", lambda venue: Ours)
     w = dict(event_key="2026-07", race_start=pd.Timestamp("2026-06-14 13:00"),
              stages=[("after Quali", pd.Timestamp("2026-06-14 12:00"))])
@@ -80,6 +83,10 @@ def test_a_weekend_end_to_end_on_a_stage_file(tmp_path, monkeypatch):
     s = FE.summarize(pd.DataFrame(rows))
     assert s["polymarket $42"]["all"]["compared"] == 2 and "after Quali" in s["polymarket $42"]["by_stage"]
     assert "Fill-price error" in FE.markdown(s, type("A", (), dict(year=2026)))
+    assert s["polymarket $42"]["tradeable"]["compared"] == 2 and s["polymarket $42"]["fake_mid"]["orders"] == 0
+    assert yes[42.0]["touch_err_pct"] == pytest.approx((0.43 - 0.44) / 0.44 * 100)   # the spread alone
+    thin = FE.weekend_rows(None, w, "polymarket", [2.1], 0.01, min_volume_24h=100.0)
+    assert not any(r["tradeable"] for r in thin)                       # under the volume floor: not tradeable
 
 
 def test_main_reads_the_stage_files_only(tmp_path, monkeypatch):
@@ -105,3 +112,14 @@ def test_main_reads_the_stage_files_only(tmp_path, monkeypatch):
     assert FE.main() == 1                                # no orders in this empty setup
     assert PB.root() == tmp_path / "out" / "probalytics-stages" and (PB.root() / "stages").is_symlink()
     assert "PROBALYTICS_BUCKET" not in os.environ
+
+
+def test_not_full_counts_only_orders_that_were_walked():
+    import pandas as pd
+    df = pd.DataFrame([dict(venue="polymarket", stake=50.0, stage="s", kind="race_h2h", side="YES", ours_px=0.5,
+                            book=True, tradeable=True, fake_mid=False, filled=1.0, full=True, err_pct=-1.0,
+                            touch_err_pct=-1.0),
+                       dict(venue="polymarket", stake=50.0, stage="s", kind="race_h2h", side="NO", ours_px=0.5,
+                            book=True, tradeable=True, fake_mid=False)])   # a book with no bids: nothing to walk
+    a = FE.summarize(df)["polymarket $50"]
+    assert a["all"]["not_full"] == 0 and a["by_kind"]["race_h2h"]["compared"] == 1
