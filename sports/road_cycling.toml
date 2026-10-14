@@ -46,9 +46,15 @@ kinds = ["race_win", "race_podium", "race_top5", "race_top10", "race_top20", "ra
 # Kalshi series tickers to sync, by prefix: every Sports series whose ticker starts with one of these
 # (`sync --series TICKER ...` overrides the list). Off by default: only `--sport road_cycling` syncs them.
 # These cover the Tour de France, Giro and Vuelta (grand-tour winner, stage, team and jersey markets). KXCYCLING
-# already matches the other three by prefix (series_for uses startswith); they are listed for the reader.
+# already matches the three KXCYCLING* series after it by prefix (series_for uses startswith); they are listed for the
+# reader. KXTOURDEFRANCE does not start with KXCYCLING, so it is listed on its own.
 # The sync's `--closed` flag pulls the settled 2026 history Kalshi still serves.
-series = ["KXCYCLING", "KXCYCLINGSTAGE", "KXCYCLINGTEAM", "KXCYCLINGJERSEY"]
+series = ["KXCYCLING", "KXCYCLINGSTAGE", "KXCYCLINGTEAM", "KXCYCLINGJERSEY", "KXTOURDEFRANCE"]
+
+[markets.probalytics]
+# Probalytics' tape for a backtest (markets/probalytics.py): the sport's name in its file names,
+# books/<YYYY-MM-DD>_CYC_<VENUE>.parquet and fills/CYC_<VENUE>_<YYYY-MM>.parquet
+tag = "CYC"
 
 # --- the one engine ---------------------------------------------------------------------------------------------------
 
