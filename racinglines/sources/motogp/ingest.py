@@ -29,6 +29,11 @@ so a DNS/DSQ/retired code found in a later season doesn't get silently mis-mappe
 sample before trusting DNF counts for a model.
 
 Idempotent like the NASCAR ingest: an event is rebuilt only when its classification file changes (sha256).
+
+Events not run yet (in the season's events.json, dated today or later, not a test) are filed as events with status
+"scheduled" and a race row but no rounds or results, as the NASCAR ingest files its race list (ingest_schedule), so
+scripts/vm/race_weekend.sh motogp can see the next round. A completed event is never touched; the event's own
+results later rebuild the same row (same source_key) as "completed".
 """
 
 import hashlib
@@ -318,10 +323,52 @@ def ingest_event(session, comp, cat, year, short_name, force=False):
     return f"{n} results"
 
 
-def ingest(session, years, force=False, echo=print):
+def ingest_schedule(session, comp, cat, year, today=None, force=False):
+    """File the season's events dated `today` or later (date_start, not a test) as scheduled events (a race row, no
+    rounds or results). A completed event is never touched. Returns the number written; 0 when events.json and
+    `today` have not changed since the last run."""
+    path = F.season_path(year) / "events.json"
+    if not path.exists():
+        return 0
+    today = today or date.today()
+    key = f"motogp:{year}-schedule"
+    h = hashlib.sha256(path.read_bytes() + today.isoformat().encode()).hexdigest()
+    src = session.scalars(select(m.SourceFile).filter_by(path=key)).first()
+    if src and src.sha256 == h and not force:
+        return 0
+    season = _upsert(session, m.Season, dict(competition_id=comp.id, year=year))
+    n = 0
+    for ev in _read_json(path) or []:
+        if ev.get("test") or not ev.get("date_start") or not ev.get("short_name"):
+            continue
+        day = date.fromisoformat(ev["date_start"][:10])
+        if day < today:
+            continue
+        skey = f"{year}-{ev['short_name']}"
+        old = session.scalars(select(m.Event).filter_by(season_id=season.id, source=SOURCE, source_key=skey)).first()
+        if old is not None and old.status == "completed":
+            continue
+        circuit = ev.get("circuit") or {}
+        nation = (ev.get("country") or {}).get("iso")
+        venue = resolve_venue(session, circuit["name"], country=nation) if circuit.get("name") else None
+        event = _upsert(session, m.Event, dict(season_id=season.id, source=SOURCE, source_key=skey),
+                        name=ev.get("name") or ev.get("sponsored_name"), start_date=day,
+                        venue_id=venue.id if venue else None, status="scheduled")
+        race = _upsert(session, m.Race, dict(event_id=event.id, category_id=cat.id))
+        race.format = dict(kind="motogp")
+        n += 1
+    _upsert(session, m.SourceFile, dict(path=key), sha256=h, parser=PARSER)
+    return n
+
+
+def ingest(session, years, force=False, echo=print, today=None):
     comp, cat = ensure_competition(session, SPORT)
     report = {}
     for year in years:
+        n = ingest_schedule(session, comp, cat, year, today=today, force=force)
+        session.commit()
+        if n:
+            echo(f"{year}: {n} events still to run filed as scheduled")
         for short_name in event_names(year):
             outcome = ingest_event(session, comp, cat, year, short_name, force=force)
             report[f"{year}-{short_name}"] = outcome

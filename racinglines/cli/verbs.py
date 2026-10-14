@@ -22,7 +22,7 @@ GROUPS = {
         "pm-archive")),
     "model": ("pricing: forecasts, backtests, model comparisons, one-event diagnostics", (
         "forecast", "backtest", "walk-forward", "compare", "matrix", "diagnostic", "combo", "props", "sprint-check",
-        "season", "price", "reliability", "search")),
+        "season", "price", "gc-price", "gc-backtest", "reliability", "search")),
     "strategy": ("trading: replays against exchange tapes, season sweeps, paper signals, strategy searches", (
         "replay", "sweep", "season-replay", "season-strategy", "season-checkpoints", "scorecard", "signals",
         "demo-history", "reconcile", "profiles", "search", "search-report", "search-import", "search-analyze", "live")),
@@ -166,6 +166,9 @@ def _help(group):
             sports, h = rows[c]
             h = SHARED.get(c, h) if len(sports) > 1 else h
             lines.append(f"    {c:<18} {' '.join(sports):<28} {h}")
+    if group == "data":
+        lines.append(f"    {'pull':<18} {'any sport':<28} One sport's shared data from the hosted server into the local "
+                     "database (racinglines data pull -h).")
     if group == "model":
         lines += ["", "No data yet? Add --demo to any command, e.g. `racinglines model backtest kart --demo`: the same"
                   " command on a synthetic demo store (docs/quickstart.md)."]
@@ -178,6 +181,9 @@ def main(group, argv):
         print(_help(group))
         return 0 if argv else 2
     cmd, rest = argv[0], argv[1:]
+    if group == "data" and cmd == "pull":            # every sport the same way, from the hosted server (cli/pull.py)
+        from racinglines.cli import pull
+        return pull.main(rest)
     if not rest or rest[0] not in SPORTS:
         offered = [m for m in MODULES if cmd in commands(m) and group_of(cmd, m) == group]
         elsewhere = sorted({group_of(cmd, m) for m in MODULES if cmd in commands(m)} - {group})
@@ -197,12 +203,12 @@ def main(group, argv):
         print(f"racinglines {group} {cmd}: not offered for {module}; `racinglines {group} -h` lists what is",
               file=sys.stderr)
         return 2
-    if group == "model" and "--remote" in rest and "-h" not in rest and "--help" not in rest:
+    if group in ("model", "strategy") and "--remote" in rest and "-h" not in rest and "--help" not in rest:
         from racinglines.cli import remote          # the command's Lab job on the hosted server (cli/remote.py)
         try:
             return remote.run_model(module, cmd, rest)
         except remote.RemoteError as e:
-            print(f"model {cmd} {module} --remote: {e}", file=sys.stderr)
+            print(f"{group} {cmd} {module} --remote: {e}", file=sys.stderr)
             return 2
     front, back = _hoist(parser_of(module), rest)
     return importlib.import_module(f"racinglines.cli.{module}").main(front + [cmd] + back)

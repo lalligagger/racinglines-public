@@ -66,6 +66,9 @@ as mkdir -p "$STG/data/runs/logs" "$STG/data/backups/db"
 log "database $DB (in production's Postgres container)"
 pg pg_isready -U racinglines >/dev/null || { echo "production's database container is not up"; exit 1; }
 if [ "${RESET_DB:-0}" = 1 ]; then
+  # with the mirror on, production holds a replication slot for this database: turn the mirror off first
+  mirrored=$(pg psql -U racinglines -d postgres -tAc "\"SELECT 1 FROM pg_subscription s JOIN pg_database d ON d.oid = s.subdbid WHERE d.datname = '$DB'\"" | tail -n 1)
+  [ "$mirrored" != 1 ] || { echo "the mirror is on for $DB: staging already follows production. To reset anyway: bash scripts/deploy/vm.sh mirror off first"; exit 1; }
   log "RESET_DB=1: dropping $DB"
   pg psql -U racinglines -d postgres -v ON_ERROR_STOP=1 -c "\"DROP DATABASE IF EXISTS $DB WITH (FORCE)\""
 fi

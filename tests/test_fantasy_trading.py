@@ -391,7 +391,8 @@ def test_nav_four_tabs_under_alpha_old_bar_under_classic(db, monkeypatch):
     nav = _main_nav(ada.get("/history").text)
     assert [h for h in re.findall(r'href="([^"]+)"', nav)] == ["/markets", "/trade", "/history", "/strategy/pick"]  # Lab opens on Follow a strategy (owner, 2026-10-13)
     page = ada.get("/history").text
-    assert 'href="/pitch"' not in page and 'href="/docs/"' not in page and "racinglines-public" in page
+    assert 'href="/pitch"' not in page and "racinglines-public" in page
+    assert 'href="/docs/" aria-label="racinglines docs"' in page          # the docs book beside GitHub (owner, 2026-10-14)
     assert 'href="/logout"' in page and 'href="/settings"' in page
     nav = _main_nav(_login("ola").get("/history").text)
     assert re.findall(r'href="([^"]+)"', nav) == ["/markets", "/trade", "/history", "/strategy/pick", "/admin"]
@@ -507,7 +508,7 @@ def _mcp_client(engine, monkeypatch, who):
         async def go():
             async with Client(S.build(engine_url=url)) as client:
                 r = await client.call_tool(name, args)
-                t = r.content[0].text
+                t = r.content[-1].text
                 return ("error", t) if r.is_error else json.loads(t)
         try:
             return asyncio.run(go())

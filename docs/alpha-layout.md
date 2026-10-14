@@ -42,7 +42,7 @@ recorded bid). The code is `fantasy/ledger.py` (`MIN_TRADES`, `TRADE_STATS`, `sc
 
 Under the alpha layout the picker is five **style cards** instead of the full list (owner, 2026-10-12 19:23-19:55Z,
 asking for variety over best performance). Each card has a name, one sentence for a first-timer, its 2026 and 2025
-backtests ("backtest, season P&L at our standard sizing", copied from the profile's `why` line) and a Follow button.
+backtests as a season return on F$1,000 ("backtest, season return on F$1,000 at our standard sizing": the profile's `why` P&L over the grant; no dollars, owner 2026-10-13) and a Follow button.
 
 | Style | Profile | Note |
 |---|---|---|

@@ -1,0 +1,171 @@
+# Eneco Tour 2026 (Netherlands, 13-18 Oct), overall (GC). Stages from wielerflits.nl and touretappe.nl (2026-10-13);
+# profile icons are our reading of the route (PCS had none in the cloud), bonus seconds the [model.gc] default.
+# Book: the owner's overall winner and overall matchup screenshots, 2026-10-13 15:15-15:17Z (the winner list is cut at
+# the screenshot's end). `racinglines model gc-price cycling 2026-10-13-eneco-tour-gc`.
+
+[event]
+name = "Eneco Tour (GC)"
+kind = "stage_race"
+date = "2026-10-13"
+start_utc = "16:34"
+pcs = "race/eneco-tour/2026"
+startlist_file = "eneco_tour_2026_startlist.csv"
+
+[[stages]]
+stage = "prologue"
+kind = "itt"
+distance_km = 3.1
+vert_m = 6
+
+[[stages]]
+stage = "stage-1"
+kind = "road"
+profile = "p1"
+distance_km = 120.8
+vert_m = 428
+
+[[stages]]
+stage = "stage-2"
+kind = "itt"
+distance_km = 13.6
+vert_m = 0
+
+[[stages]]
+stage = "stage-3"
+kind = "road"
+profile = "p3"
+distance_km = 119.6
+vert_m = 1021
+
+[[stages]]
+stage = "stage-4"
+kind = "road"
+profile = "p3"
+distance_km = 149.8
+
+[[stages]]
+stage = "stage-5"
+kind = "road"
+profile = "p2"
+distance_km = 149.2
+vert_m = 829
+
+[names]
+# label -> words that must all be in the rider's PCS name (ASCII-folded); full names from the board
+"Laporte" = "christophe laporte"
+"Fisher-Black" = "finn fisher black"
+"Soderqvist" = "jakob soderqvist"
+"Kubis" = "lukas kubis"
+"Mick Van Dijke" = "mick van dijke"
+"Ethan Hayter" = "ethan hayter"
+"Pepijn Reinderink" = "pepijn reinderink"
+"Tomas Kopecky" = "tomas kopecky"
+"Wessel Mouris" = "wessel mouris"
+"Fiorelli" = "filippo fiorelli"
+"Campenaerts" = "victor campenaerts"
+"Affini" = "edoardo affini"
+"Egholm" = "kristian egholm"
+"Rutsch" = "jonas rutsch"
+"Huising" = "menno huising"
+"Lanhove" = "milan lanhove"
+"Eekhoff" = "nils eekhoff"
+"Pierre Thierry" = "pierre thierry"
+"Kerckhaert" = "jochem kerckhaert"
+"Bittner" = "pavel bittner"
+"Van Den Broek" = "frank van den broek"
+"Michiel Mouris" = "michiel mouris"
+"Marsman" = "tim marsman"
+"Senechal" = "florian senechal"
+"Bolle" = "bert bolle"
+"De Schuyteneer" = "steffen de schuyteneer"
+"Donati" = "davide donati"
+"David Dekker" = "david dekker"
+"Theuns" = "edward theuns"
+"De Vries" = "hartthijs de vries"
+"Merlier" = "tim merlier"
+"Thijssen" = "gerben thijssen"
+"Groenewegen" = "dylan groenewegen"
+"Julius Van Den Berg" = "julius van den berg"
+"Dauphin" = "florian dauphin"
+"Van Hautegem" = "leander van hautegem"
+"Deweirdt" = "siebe deweirdt"
+"van Zanden" = "otto van zanden"
+"Van Der Hoorn" = "taco van der hoorn"
+"Goossens" = "simon goossens"
+"Putz" = "sebastian putz"
+"Avondts" = "mathis avondts"
+"Agricola" = "danijel agricola"
+"Jesse Kramer" = "jesse kramer"
+"Hoogendoorn" = "roy hoogendoorn"
+"Schoonvelde" = "gijs schoonvelde"
+"Ottema" = "rick ottema"
+"Geeraerts" = "ferre geeraerts"
+"Desal" = "ceriel desal"
+"Konings" = "roan konings"
+"Vercouillie" = "victor vercouillie"
+"Matyas Kopecky" = "matyas kopecky"
+
+[book.futures]
+"Laporte" = 1.67
+"Fisher-Black" = 5.0
+"Soderqvist" = 6.0
+"Kubis" = 13
+"Mick Van Dijke" = 15
+"Ethan Hayter" = 21
+"Pepijn Reinderink" = 21
+"Tomas Kopecky" = 41
+"Wessel Mouris" = 51
+"Fiorelli" = 51
+"Campenaerts" = 51
+"Affini" = 51
+"Egholm" = 67
+"Rutsch" = 67
+"Huising" = 101
+"Lanhove" = 101
+"Eekhoff" = 101
+"Pierre Thierry" = 151
+"Kerckhaert" = 151
+"Bittner" = 151
+"Van Den Broek" = 151
+"Michiel Mouris" = 201
+"Marsman" = 201
+"Senechal" = 201
+"Bolle" = 201
+"De Schuyteneer" = 201
+"Donati" = 201
+"David Dekker" = 301
+"Theuns" = 301
+"De Vries" = 301
+"Merlier" = 301
+"Thijssen" = 501
+"Groenewegen" = 501
+"Julius Van Den Berg" = 501
+"Dauphin" = 501
+"Van Hautegem" = 501
+"Deweirdt" = 501
+"van Zanden" = 751
+"Van Der Hoorn" = 751
+"Goossens" = 751
+"Putz" = 751
+"Avondts" = 751
+"Agricola" = 751
+"Jesse Kramer" = 751
+"Hoogendoorn" = 751
+"Schoonvelde" = 751
+"Ottema" = 751
+"Geeraerts" = 751
+"Desal" = 751
+"Konings" = 751
+"Vercouillie" = 751
+
+[book]
+matchups = [
+  { a = "Laporte", a_odds = 1.32, b = "Fisher-Black", b_odds = 3.10 },
+  { a = "Lanhove", a_odds = 1.72, b = "Pierre Thierry", b_odds = 1.97 },
+  { a = "Kubis", a_odds = 1.57, b = "Pepijn Reinderink", b_odds = 2.25 },
+  { a = "Soderqvist", a_odds = 1.57, b = "Ethan Hayter", b_odds = 2.25 },
+  { a = "Van Den Broek", a_odds = 1.57, b = "Bolle", b_odds = 2.25 },
+  { a = "Mick Van Dijke", a_odds = 1.67, b = "Rutsch", b_odds = 2.07 },
+  { a = "Fiorelli", a_odds = 1.85, b = "Huising", b_odds = 1.85 },
+  { a = "Matyas Kopecky", a_odds = 1.97, b = "Wessel Mouris", b_odds = 1.72 },
+]

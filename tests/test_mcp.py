@@ -153,7 +153,7 @@ def mcp(test_engine):
     def call(name, **args):
         async def go(client):
             r = await client.call_tool(name, args)
-            text = r.content[0].text
+            text = r.content[-1].text
             return ("error", text) if r.is_error else json.loads(text)
         return run(go)
 
@@ -162,6 +162,30 @@ def mcp(test_engine):
         yield call
     finally:
         S._URL = None
+
+
+def test_a_list_result_leads_with_a_drawn_table_and_ends_with_its_json(mcp):
+    async def go(client):
+        many = await client.call_tool("sql", {"query": "select * from (values ('a', 1), ('b', -2)) v(code, n)"})
+        one = await client.call_tool("get_job", {"job_id": -1})
+        return many, one
+    many, one = mcp.run(go)
+    assert not many.is_error and len(many.content) == 2 and many.structured_content is None
+    table, data = many.content[0].text, json.loads(many.content[1].text)
+    assert table.splitlines()[0].startswith("total ") and "┌" in table and "\x1b" not in table
+    assert all(r["code"] in table for r in data["rows"])
+    assert one.is_error                                    # errors stay one text block
+
+
+def test_the_view_draws_records_only_and_colours_on_request():
+    from racinglines.mcp import view as V
+    assert V.render({"job_id": 3, "status": "done"}) is None
+    rows = [{"name": f"r{i}", "ev_model": (-1) ** i * 0.1, "x": None} for i in range(V.MAX_ROWS + 5)]
+    plain = V.render({"total": len(rows), "lines": rows})
+    assert "lines" in plain and f"first {V.MAX_ROWS} of {len(rows)} rows" in plain and "\x1b" not in plain
+    assert "r0" in plain and f"r{V.MAX_ROWS}" not in plain
+    coloured = V.render({"lines": rows[:2]}, color=True)
+    assert "\x1b[32m" in coloured and "\x1b[31m" in coloured  # ev above zero green, below red
 
 
 def test_tools_are_registered_with_descriptions(mcp):
@@ -761,7 +785,8 @@ def test_hidden_sports_follow_the_schema_switch_and_spare_admins(monkeypatch):
     """sports.is_public ([sport] audience = "admin"): hidden from non-admin accounts; admins and stdio see every sport."""
     from racinglines import sports as SC
     assert T.hidden_sports(None) == frozenset() and T.hidden_sports(dict(role="admin")) == frozenset()
-    assert "motogp" in T.hidden_sports(dict(id=1, username="p", role="pro"))          # the Alpha switch, 2026-10-11
+    assert "road_cycling" in T.hidden_sports(dict(id=1, username="p", role="pro"))    # PCS terms review, 2026-10-12
+    assert "motogp" not in T.hidden_sports(dict(id=1, username="p", role="pro"))      # shown again, owner 2026-10-14
     monkeypatch.setattr(SC, "audience", lambda code: "admin" if code == "f1" else "all")
     assert T.hidden_sports(dict(role="pro")) == {"f1"} and T.hidden_sports(dict(role="admin")) == frozenset()
 

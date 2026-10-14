@@ -25,6 +25,9 @@ main() {
   STG=/opt/racinglines-staging
   ENVF=/etc/racinglines-staging.env
   DB=racinglines_staging
+  # the database switch (vm.sh staging db demo|main): this file, when present, overrides DATABASE_URL with the season
+  # demo's database (racinglines_staging_demo, scripts/vm/season_demo.sh); the web unit reads it after $ENVF
+  DBENV=/etc/racinglines-staging-db.env
   cd "$STG"
   venv_guard
   ref="${1:-staging}"
@@ -41,10 +44,11 @@ main() {
   .venv/bin/pip install --quiet -r requirements.txt -e .
   imports_here
 
-  set -a; . "$ENVF"; set +a
+  set -a; . "$ENVF"; [ -f "$DBENV" ] && . "$DBENV"; set +a
   case "$DATABASE_URL" in
     */$DB) ;;
-    *) echo "refusing to migrate: DATABASE_URL in $ENVF is not $DB"; exit 1 ;;
+    */${DB}_demo) DB=${DB}_demo; log "database switch: demo ($DB, $DBENV)" ;;
+    *) echo "refusing to migrate: DATABASE_URL in $ENVF / $DBENV is not $DB or ${DB}_demo"; exit 1 ;;
   esac
   [ "${RACINGLINES_ENV:-}" = staging ] || { echo "refusing: RACINGLINES_ENV in $ENVF is not staging"; exit 1; }
   log "alembic upgrade head ($DB)"

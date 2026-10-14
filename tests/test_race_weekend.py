@@ -119,12 +119,18 @@ def tape(tmp_path, exchange, ever, rows):
 
 
 def test_tape_check_flags_missing_and_stale_links(tmp_path):
-    rc, lines = tape(tmp_path, "kalshi", 5, r"e1|Event one|0|\ne2|Event two|12|5.2\ne3|Event three|9|1.0\n")
+    rc, lines = tape(tmp_path, "kalshi", 5, r"e1|Event one|0|0|\ne2|Event two|12|12|5.2\ne3|Event three|9|9|1.0\n")
     assert rc == 1
     assert lines[0] == "WARN kalshi f1 e1 Event one: no links with this race (sync, then link)"
     assert lines[1].startswith("WARN kalshi f1 e2 Event two: 12 links, last sync 5.2 h ago")
     assert lines[2].startswith("OK   kalshi f1 e3")
-    assert tape(tmp_path, "kalshi", 5, r"e3|Event three|9|1.0\n")[0] == 0
+    assert tape(tmp_path, "kalshi", 5, r"e3|Event three|9|9|1.0\n")[0] == 0
+
+
+def test_tape_check_passes_a_finished_event_whose_links_are_all_closed(tmp_path):
+    """Closed links are no longer synced (F1 2026-17, 2026-10-11): no open link is OK, not a stale WARN."""
+    rc, lines = tape(tmp_path, "kalshi", 5, r"e17|Singapore|314|0|\n")
+    assert (rc, lines) == (0, ["OK   kalshi f1 e17 Singapore: 314 links, all 314 links closed"])
 
 
 def test_tape_check_skips_an_exchange_without_race_markets(tmp_path):

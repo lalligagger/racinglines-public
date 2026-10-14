@@ -1,6 +1,7 @@
 {% extends "base_public.html" %}
 {% block title %}racinglines · sportsbook pricing for all racing disciplines{% endblock %}
 {% block main_class %}landing{% endblock %}
+{% block head %}<link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt">{% endblock %}
 {% block content %}
 {# The signed-out landing page (owner, 2026-10-08; reworked 2026-10-12): a one-line fantasy-alpha strip (sign up, one
    "Try the demo" button that signs in as the pro demo account, maker; the taker account still signs in by name), the business case, then a dated news feed. Signing in has its own page, /signin. No sportsbook, operator
@@ -93,4 +94,5 @@
   <p class="lp-follow"><a href="https://x.com/racinglines_bet" rel="noopener" target="_blank">Follow us on X</a>
     and on <a href="https://racinglinesdotbet.substack.com" rel="noopener" target="_blank">Substack</a>.</p>
 </section>
+<p class="lp-llms">For AI assistants: <a href="/llms.txt">llms.txt</a> · <a href="/llms-full.txt">llms-full.txt</a></p>
 {% endblock %}

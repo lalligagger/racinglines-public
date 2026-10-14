@@ -18,10 +18,10 @@
   <div class="style-cards">
   {% for o in opts %}
   <div class="style-card{{ ' on' if o.code == now }}">
-    <h3>{{ o.label }}{% if o.code == now %} <span class="pill good">following</span>{% endif %}</h3>
+    <h3><span class="mt-badge mt-{{ o.kind }}" title="{{ 'Maker: rests its own quotes and waits to be filled' if o.kind == 'maker' else 'Taker: buys at the price the market shows' }}" aria-label="{{ o.kind }}">{{ 'M' if o.kind == 'maker' else 'T' }}</span> {{ o.label }}{% if o.code == now %} <span class="pill good">following</span>{% endif %}</h3>
     <p>{{ o.blurb }}</p>
-    <p class="style-bt"><span><span class="{{ 'good' if o.backtest[0] >= 0 else 'bad' }}">2026 {{ "{:+,}".format(o.backtest[0]) }}</span> · <span class="{{ 'good' if o.backtest[1] >= 0 else 'bad' }}">2025 {{ "{:+,}".format(o.backtest[1]) }}</span></span>
-      <span class="legend">backtest, season P&amp;L at our standard sizing</span></p>
+    <p class="style-bt"><span><span class="{{ 'good' if o.roi[0] >= 0 else 'bad' }}">2026 {{ "{:+.0%}".format(o.roi[0]) }}</span> · <span class="{{ 'good' if o.roi[1] >= 0 else 'bad' }}">2025 {{ "{:+.0%}".format(o.roi[1]) }}</span></span>
+      <span class="legend">backtest, season return on F$1,000 at our standard sizing</span></p>
     {% if o.in_sample %}<p><span class="pill no">in-sample: tuned on the same seasons it's scored on</span></p>{% endif %}
     <button type="submit" name="code" value="{{ o.code }}" class="{{ 'primary' if o.code == chosen }}">Follow {{ o.label }}</button>
   </div>

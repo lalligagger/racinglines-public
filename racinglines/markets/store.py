@@ -26,6 +26,7 @@ still-open season-long markets. Everything else is stale and moves to Parquet.
 """
 
 import json
+import os
 import threading
 import time
 import uuid
@@ -53,7 +54,7 @@ STORES = {
     "trades": dict(table="market_trades", key=["tx_hash", "token_id", "wallet", "side", "price", "size"],
                    cols=["token_id", "condition_id", "outcome_index", "ts", "side", "price", "size", "tx_hash", "wallet"]),
     "books": dict(table="market_book_snapshots", key=["token_id", "ts"],
-                  cols=["token_id", "ts", "best_bid", "best_ask", "bids", "asks"]),
+                  cols=["token_id", "ts", "best_bid", "best_ask", "bids", "asks"], floats=["best_bid", "best_ask"]),
 }
 
 
@@ -77,10 +78,18 @@ def _dataset(name, root):
     if not path.exists() or not any(path.rglob("*.parquet")):
         return None
     d = ds.dataset(path, format="parquet", partitioning="hive")
-    missing = [c for c in STORES[name].get("floats", ()) if c not in d.schema.names]
-    if not missing:
+    # The schema is inferred from one file. A column that is all null there reads as type null, and a later file
+    # holding numbers then fails the read (cast double to null), so a null column gets its real type back.
+    floats = STORES[name].get("floats", ())
+    missing = [c for c in floats if c not in d.schema.names]
+    nulls = [i for i, f in enumerate(d.schema) if pa.types.is_null(f.type)]
+    if not missing and not nulls:
         return d
     schema = d.schema
+    for i in nulls:
+        f = schema.field(i)
+        t = pa.int64() if f.name == "outcome_index" else pa.float64() if f.name in (*floats, "price", "size") else pa.string()
+        schema = schema.set(i, pa.field(f.name, t))
     for c in missing:
         schema = schema.append(pa.field(c, pa.float64()))
     return ds.dataset(path, format="parquet", partitioning="hive", schema=schema)
@@ -236,6 +245,9 @@ def archive(engine, name, older_than=timedelta(hours=6), tokens=None, root=None,
     transaction commits). By default: rows older than `older_than`. With policy=True: every row
     that isn't hot (see hot_tokens), whatever its age. `tokens` limits it (tests). Rows go to their
     exchange's tree, or all to `root` when given. Returns rows moved."""
+    if root is None and os.environ.get("RACINGLINES_ENV") == "staging":
+        # staging reads production's archive in place (`vm.sh mirror on` links it): it never writes there
+        raise SystemExit("staging never archives: its data/archive is production's (docs/vm-deploy.md, Staging: the data mirror)")
     s = STORES[name]
     now = datetime.now(timezone.utc)
     keep_all, keep_recent = [], []
