@@ -1,11 +1,8 @@
-/* Use the screen: the readthedocs theme caps the text at 800px and pins it left on wide screens.
-   Fill the space next to the sidebar up to a readable max, centered beyond that. */
-.wy-nav-content-wrap { background: #fcfcfc; }
-.wy-nav-content { max-width: 1320px; margin: 0 auto !important; }
-@media screen and (min-width: 1100px) { .wy-nav-content { padding: 1.618em 2.5em; } }
-/* wide tables: let text cells wrap instead of forcing a horizontal scroll; numbers stay on one line */
-.wy-table-responsive table td, .wy-table-responsive table th { white-space: normal; }
-.rst-content table.docutils td, .rst-content table.docutils th { vertical-align: top; }
-.rst-content table.docutils { width: 100%; }
+/* Use the screen: Material caps the page grid at 61rem (about 1220px). Let it grow to a readable max on wide
+   screens, centered beyond that. */
+.md-grid { max-width: 1440px; }
+/* wide tables: let text cells wrap and fill the column; numbers stay on one line through their own cells */
+.md-typeset table:not([class]) { display: table; width: 100%; }
+.md-typeset table:not([class]) td, .md-typeset table:not([class]) th { vertical-align: top; }
 /* long unbroken names (module paths) in headings wrap instead of running off a phone screen */
-.rst-content h1, .rst-content h2, .rst-content h3, .rst-content h4 { overflow-wrap: anywhere; }
+.md-typeset h1, .md-typeset h2, .md-typeset h3, .md-typeset h4 { overflow-wrap: anywhere; }

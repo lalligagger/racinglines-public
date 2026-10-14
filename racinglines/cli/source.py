@@ -147,7 +147,8 @@ FIRST_RUN = """racinglines needs a database, and none is configured (no DATABASE
   1) local:  the Postgres of docker-compose.yml on localhost:5433; start it with one command, `docker compose up -d`
              (then every command works; add --demo for the synthetic demo store, docs/quickstart.md)
   2) remote: sign in to racinglines.bet (the browser opens on first use) and run `racinglines book map|price|settle`
-             on the hosted server (in testing); other commands still need a local database"""
+             on the hosted server, like `racinglines remote ...` and `--remote` on a Lab-job command (in testing);
+             other commands still need a local database"""
 
 
 def configured():
@@ -165,7 +166,7 @@ def default_url():
     src = cfg.get("source") or choose_first_run()
     if src == "remote":
         raise SystemExit("this command needs a database, and the defaults file's source is remote (racinglines.bet runs "
-                         "only `racinglines book map|price|settle`). Start a local one with `docker compose up -d` and "
+                         "`racinglines book map|price|settle`, `racinglines remote` and `--remote` Lab jobs). Start a local one with `docker compose up -d` and "
                          f"set `racinglines book config source local`, or set DATABASE_URL ({C.path()}).")
     return DEFAULT_URL
 

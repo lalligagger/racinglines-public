@@ -4,8 +4,12 @@ The plan for rebuilding every backtest and the paper-trading P&L with the F1-on-
 sport and exchange we cover. Staging first; prod only after the owner reviews staging. It also specifies **C0**, the
 read-only coverage counter that comes first. The owner's go, 2026-10-07: C0 only for now.
 
-**Status:** plan and C0 spec. Nothing built. Counts below come from a read-only query of the VM database on
-2026-10-07 at 04:10 UTC, made against `main` `c1b7277`. C0 replaces them with a command anyone can re-run.
+**Status (2026-10-14):** C0 is built: `racinglines backtest coverage` ([CLI](cli.md#racinglines-backtest-coverage),
+parity sprint PR #81, with C2, C3, C4, C5, C7, C9, C10, C11, C12 and C42), read-only, counts links, races and tapes
+per sport × exchange × kind × season over Postgres and the Parquet archive. The counts below are the ones the plan
+was written from (a read-only query of the VM database on 2026-10-07 at 04:10 UTC, against `main` `c1b7277`); run
+C0 on the VM for today's, and see [Sports and exchanges](coverage.md) for production's link counts on 2026-10-14.
+The rest of the packages are tracked on the [Roadmap](todo.md#models-the-one-engine).
 
 ## Sprint goal (owner, 2026-10-07)
 

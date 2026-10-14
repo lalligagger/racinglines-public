@@ -63,6 +63,18 @@ def pitch():
 
 
 
+@app.get("/llms.txt")
+@app.get("/llms-full.txt")
+def llms_txt(request: Request):
+    """The AI-readable docs index and full text (llmstxt.org), public by exact path: mkdocs writes them into site/ from
+    the nav's public pages only (never docs/internal or the project library)."""
+    from fastapi.responses import FileResponse
+    f = SITE / request.url.path.lstrip("/")
+    if not f.is_file():
+        raise HTTPException(404)
+    return FileResponse(f, media_type="text/plain; charset=utf-8")
+
+
 @app.get("/docs")
 def docs_root():
     return RedirectResponse("/docs/", status_code=307)
