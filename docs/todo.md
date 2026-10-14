@@ -193,6 +193,8 @@ Open decisions first, then the ones on record (so a thread never re-asks one).
 | OG.com: confirm the $0.02 fee; per-GP contract rules | Before any OG.com result counts | From OG.com's fee schedule and the two recorded race weekends |
 | History purge for data off GitHub (force-push) | Last stage | Needs the owner's spoken OK in the same turn |
 | Open-Meteo's free API is non-commercial only ([Weather forecasts](weather.md)) | Before billing (G3, 2027) | Stay on the free tier while there is no revenue |
+| Keep or retire the /term browser replay, now that the quickstart and demo pages show captured commands and outputs (`scripts/docs/capture_examples.py`) | Any time | Keep for now; retire once the docs pages cover its three parts (docs review, 2026-10-14) |
+| The docs' mailbox addresses ([Email setup](email-setup.md)) and the cloud service-account name ([Data](data.md)) are also in the public `/llms-full.txt` | Any time | Already public in the repo; owner to confirm they may stay, or the llms hook redacts them |
 | Odds presentation names in the sportsbook schema ([Sportsbook schema](sportsbook/index.md)) | Any time | Owner checks the names; a rename is one line in `racinglines/books/schema.py` plus the docs table |
 
 **On record (don't re-ask):** no sport-specific models, only schemas that declare model inputs (2026-10-11, C56);
