@@ -52,7 +52,7 @@ pnl = bank * (P @ (kelly * f))
 summary = dict(total_stake=float(picks["stake"].sum()), mean_pnl=float(pnl.mean()), p_loss=float((pnl < 0).mean()),
                p5=float(np.percentile(pnl, 5)), p95=float(np.percentile(pnl, 95)), worst=float(pnl.min()),
                best=float(pnl.max()), max_kkt_violation=float(np.max(grad[f <= 1e-9] - grad[f > 1e-9].mean()))
-               if (f > 1e-9).any() else None, unmatched_prologue=pr_bad, sims=int(len(pnl)))
+               if (f > 1e-9).any() and (f <= 1e-9).any() else None, unmatched_prologue=pr_bad, sims=int(len(pnl)))
 tab.to_csv(f"{out_dir}/all_lines.csv", index=False); picks.to_csv(f"{out_dir}/picks.csv", index=False)
 np.save(f"{out_dir}/pnl.npy", pnl); json.dump(summary, open(f"{out_dir}/summary.json", "w"), indent=1)
 print(tab.sort_values("ev", ascending=False).head(25).to_string(index=False, float_format="%.3f"))

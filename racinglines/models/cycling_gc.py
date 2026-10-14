@@ -156,6 +156,8 @@ def price_gc(ev, ids, start, fits, curves, sims=20000):
     g = {**gc_block(), **ev.get("gc", {})}
     m_itt, m_road, s_itt, s_road = fits
     on_list = list(start["rider_url"]) if len(start) else []
+    if on_list:                                         # a book rider missing from the start list is a non-starter:
+        ids = {k: u for k, u in ids.items() if u in set(on_list)}  # not simulated, and their lines are void
     field = list(dict.fromkeys(on_list + [ids[k] for k in C.labels(ev) if k in ids]))
     full, per_stage = simulate_gc(ev["stages"], field, m_itt, m_road, s_itt, s_road, curves, g, ev["event"]["date"],
                                   sims, field_size=max(len(field), int(ev["event"].get("field_size", g["field_size"]))),
