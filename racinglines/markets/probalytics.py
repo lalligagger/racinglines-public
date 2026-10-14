@@ -173,27 +173,13 @@ def best_levels(px, sz, highest):
     return price, size
 
 
-def read_books(venue, event_key, start, end, keys, base=None, tag=DEFAULT_TAG, levels=False, stale=BOOK_STALE):
-    """One row per snapshot of the keys' books over [start - stale, end]: key, ts (naive UTC), bid, ask,
-    bid_size, ask_size (at the touch); with levels=True also bid_px, bid_sz, ask_px, ask_sz (every level, as pulled).
-    The day files of the sport's `tag` when any were pulled for the window (locally or in the bucket), else the stage
-    file (when there is an event_key)."""
+def _touch_frame(t, venue, key_col, levels):
+    """One file's Arrow table -> the per-snapshot frame: the touch, plus the levels when asked for."""
     import pyarrow.compute as pc
-    base = Path(base or root())
-    code = venue.upper()
-    key_col = "outcome_pid" if venue == "polymarket" else "market_platform_id"
-    cols = list(dict.fromkeys([key_col, "outcome_pid", "timestamp", *LEVEL_COLS]))
-    out_cols = ["key", "ts", "bid", "ask", "bid_size", "ask_size"] + (list(LEVEL_COLS) if levels else [])
-    a = pd.Timestamp(start) - stale
-    days = [base / "books" / f"{d:%Y-%m-%d}_{tag}_{code}.parquet" for d in _days(a, pd.Timestamp(end))]
-    filt = [(key_col, "in", list(keys))]
-    t = _read_table(days, cols, filt, base)
-    if t is None and event_key is not None:
-        t = _read_table([base / "stages" / f"{event_key}_{code}.parquet"], cols, filt, base)
-    if t is not None and venue == "kalshi":
+    if venue == "kalshi":
         t = t.filter(pc.equal(t["outcome_pid"], "yes"))
-    if t is None or not t.num_rows:
-        return pd.DataFrame(columns=out_cols)
+    if not t.num_rows:
+        return None
     bid, bid_size = best_levels(t["bid_px"], t["bid_sz"], highest=True)
     ask, ask_size = best_levels(t["ask_px"], t["ask_sz"], highest=False)
     out = pd.DataFrame(dict(key=t[key_col].to_pandas().astype(str).to_numpy(),
@@ -202,18 +188,64 @@ def read_books(venue, event_key, start, end, keys, base=None, tag=DEFAULT_TAG, l
     if levels:
         for c in LEVEL_COLS:
             out[c] = t[c].to_pandas().to_numpy()
+    return out
+
+
+def read_books(venue, event_key, start, end, keys, base=None, tag=DEFAULT_TAG, levels=False, stale=BOOK_STALE):
+    """One row per snapshot of the keys' books over [start - stale, end]: key, ts (naive UTC), bid, ask,
+    bid_size, ask_size (at the touch); with levels=True also bid_px, bid_sz, ask_px, ask_sz (every level, as pulled).
+    The day files of the sport's `tag` when any were pulled for the window (locally or in the bucket), else the stage
+    file (when there is an event_key). One file is read and reduced at a time and the level lists are dropped unless
+    asked for: a race day's lists are gigabytes in memory (the VM's comparison was OOM-killed at Singapore on
+    2026-10-14 reading four days at once; per file, all 1,840 Polymarket tokens of those days peak at 2.1 GB)."""
+    import pyarrow.parquet as pq
+    base = Path(base or root())
+    code = venue.upper()
+    key_col = "outcome_pid" if venue == "polymarket" else "market_platform_id"
+    cols = list(dict.fromkeys([key_col, "outcome_pid", "timestamp", *LEVEL_COLS]))
+    out_cols = ["key", "ts", "bid", "ask", "bid_size", "ask_size"] + (list(LEVEL_COLS) if levels else [])
+    a = pd.Timestamp(start) - stale
+    days = [base / "books" / f"{d:%Y-%m-%d}_{tag}_{code}.parquet" for d in _days(a, pd.Timestamp(end))]
+    filt = [(key_col, "in", list(keys))]
+    got = fetch(days, base)
+    parts = []
+    try:
+        paths = [p for p in days if p.exists()]
+        if not paths and event_key is not None:
+            stage = base / "stages" / f"{event_key}_{code}.parquet"
+            got += fetch([stage], base)
+            paths = [stage] if stage.exists() else []
+        for p in paths:
+            f = _touch_frame(pq.read_table(p, columns=cols, filters=filt), venue, key_col, levels)
+            if f is not None and len(f):
+                parts.append(f)
+    finally:
+        _evict(got)
+    if not parts:
+        return pd.DataFrame(columns=out_cols)
+    out = pd.concat(parts, ignore_index=True)
     out = out.drop_duplicates(["key", "ts"], keep="last").sort_values(["key", "ts"], kind="stable")
     return out.reset_index(drop=True)
 
 
 def read_fills(venue, start, end, keys, base=None, tag=DEFAULT_TAG):
     """key, ts (naive UTC), usd (price x size) of every fill of the keys (Polymarket condition ids or Kalshi
-    tickers) over [start, end], from the sport's `tag` files."""
+    tickers) over [start, end], from the sport's `tag` files, one row per fill_id."""
     base = Path(base or root())
     a, b = pd.Timestamp(start), pd.Timestamp(end)
     paths = [base / "fills" / f"{tag}_{venue.upper()}_{m:%Y-%m}.parquet" for m in _months(a, b)]
-    df = _read(paths, ["market_platform_id", "timestamp", "price", "size"], [("market_platform_id", "in", list(keys))],
-               base)
+    cols = ["market_platform_id", "timestamp", "price", "size"]
+    got = fetch(paths, base)                     # fetched once here; _read below finds them local
+    try:
+        import pyarrow.parquet as pq
+        have = next((set(pq.read_schema(p).names) for p in map(Path, paths) if p.exists()), set())
+        df = _read(paths, cols + (["fill_id"] if "fill_id" in have else []), [("market_platform_id", "in", list(keys))],
+                   base)
+    finally:
+        _evict(got)
+    if len(df) and "fill_id" in df:
+        # their fills table repeats rows (2026-07 Kalshi F1: 97,432 exact duplicates of 298,487, the British GP twice)
+        df = df.drop_duplicates("fill_id")
     ts = pd.to_datetime(df["timestamp"], utc=True).dt.tz_localize(None) if len(df) else pd.Series([], dtype="datetime64[ns]")
     out = pd.DataFrame(dict(key=df["market_platform_id"].astype(str) if len(df) else [], ts=ts,
                             usd=(df["price"] * df["size"]).astype(float) if len(df) else []))
