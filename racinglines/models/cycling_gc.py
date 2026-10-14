@@ -136,6 +136,7 @@ def simulate_gc(stages, field, m_itt, m_road, s_itt, s_road, curves, g, date, si
         cv = _curves_before(curves, cls, date)
         draw = cv[rng.integers(len(cv), size=sims)]             # one past stage per simulated race
         gap = np.take_along_axis(draw, np.clip(np.rint(q * (len(QGRID) - 1)).astype(int), 0, len(QGRID) - 1), 1)
+        gap = gap * g.get("road_gap_scale", {}).get(cls, 1.0)  # per-class shrink of past gaps; 1 = as drawn
         gap = gap - np.where(rk <= len(bonus), bonus[np.clip(rk - 1, 0, len(bonus) - 1)], 0.0)
         aband = rng.random(t.shape) < g["abandon"]
         total += np.where(aband, np.inf, gap)
@@ -253,6 +254,8 @@ def backtest_gc(stages, itt_raw, road_raw, s_itt, s_road, since, sims=4000, sett
             continue
         col = {u: j for j, u in enumerate(starters)}
         order = [u for u in final["rider_url"] if u in col]
+        if len(order) < 30:                                     # the final GC riders are not this stage list's starters
+            continue
         t = np.where(np.isfinite(total), total, 1e12)[:, [col[u] for u in order]]
         sc = C.score(t)
         rows.append(dict(race=race, date=r["date"], stages=len(st), field=len(starters),
