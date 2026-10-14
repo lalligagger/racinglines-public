@@ -301,3 +301,32 @@ def test_duplicate_fill_rows_count_once(tmp_path):
     pd.DataFrame([row, row, dict(row, fill_id="f2", size=10.0)]).to_parquet(tmp_path / "fills" / "F1_KALSHI_2026-06.parquet")
     f = PB.read_fills("kalshi", T.replace(hour=0), T, ["KXF1RACE-BARGP26-ANT"], base=tmp_path)
     assert len(f) == 2 and f["usd"].sum() == pytest.approx(0.32 * 60)
+
+
+def test_fill_error_walks_the_same_order_on_both_tapes(base, monkeypatch):
+    import importlib.util
+    import json as _json
+
+    import numpy as np
+    from racinglines.markets import store as MS
+    from racinglines.pipelines import weekend_sweep as W
+    spec = importlib.util.spec_from_file_location("fill_error", "scripts/probes/fill_error.py")
+    FE = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(FE)
+    links = pd.DataFrame(dict(token_id=["tokA"], condition_id=["0xc1"], prediction=["race_win"]))
+    monkeypatch.setattr(W, "_race_id", lambda conn, ek: 1)
+    monkeypatch.setattr(W, "_links", lambda conn, rid, venue: links if venue == "polymarket" else links.iloc[:0])
+    ours = pd.DataFrame(dict(token_id=["tokA"], ts=[pd.Timestamp("2026-06-14 11:55", tz="UTC")],
+                             bids=[_json.dumps([[0.40, 10]])], asks=[_json.dumps([[0.45, 7], [0.50, 9]])]))
+    monkeypatch.setattr(MS, "read", lambda conn, name, **kw: ours)
+    monkeypatch.setattr(FE, "RANDOM_PER_WEEKEND", 0)
+    monkeypatch.setenv("PROBALYTICS_DATA", str(base))
+    w = dict(event_key="2026-07", stages=[("after Quali", datetime(2026, 6, 14, 12, 0))],
+             race_start=datetime(2026, 6, 14, 13, 0))
+    rows = pd.DataFrame(FE.orders_for(None, w, "polymarket", np.random.default_rng(0)))
+    r = rows[(rows.side == "yes") & (rows.stake == 10.0)].iloc[0]
+    assert (r.limit, r.shares) == (0.50, 20)                    # set from our book: best ask 0.45 + 0.05
+    assert r.our_px == pytest.approx((0.45 * 7 + 0.50 * 9) / 16) and r.our_n == 16
+    assert r.true_px == pytest.approx((0.44 * 7 + 0.50 * 9) / 16) and r.true_n == 16
+    s = FE.summarize(rows)["polymarket"]
+    assert s["orders"] == len(rows) and s["both_filled"] >= 1
