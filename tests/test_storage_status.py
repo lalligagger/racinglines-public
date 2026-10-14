@@ -71,6 +71,14 @@ def test_snapshot_vm_folders_backups_and_a_bucket_that_cannot_be_listed(tmp_path
     assert snap["vm"]["disk"]["free"] > 0 and snap["databases"] == []
     ok, bad = snap["buckets"]
     assert ok["bucket"] == "b" and ok["objects"] == 7 and bad == dict(bucket="nope", error="RuntimeError: AccessDenied")
+    checks = {h["check"]: h for h in ST.health(snap)}
+    assert checks["VM disk"]["state"] in ("ok", "warn")
+    assert checks["VM → gs://b"]["state"] == "ok" and checks["VM → gs://nope"]["state"] == "bad"
+    assert checks[f"Backups {data}"]["state"] == "ok"                       # the bucket's prod copy is newer
+    assert f"Backups {other}" not in checks                                  # no dumps there, nothing to compare
+    late = json.loads(json.dumps(snap))
+    late["vm"]["roots"][0]["backups"]["newest_at"] = "2026-10-15T02:00:00+00:00"
+    assert {h["check"]: h for h in ST.health(late)}[f"Backups {data}"]["state"] == "warn"
     text = "\n".join(ST.lines(snap))
     assert "gs://b  5.0 MB, 7 objects" in text and "vendor/probalytics/" in text and "not listed (RuntimeError" in text
     assert ST.age_seconds(snap) < 60 and ST.human(4_600_000_000) == "4.6 GB"
@@ -98,10 +106,11 @@ def test_database_sizes_page_cli_and_mcp_are_admin_only(app_db, tmp_path, monkey
     pro, admin = TestClient(app_db.app), TestClient(app_db.app)
     for client, name in ((pro, "ada"), (admin, "root")):
         client.post("/login", data=dict(username=name, password=f"{name}-password-1"), follow_redirects=False)
-    assert pro.get("/admin/storage", follow_redirects=False).status_code in (302, 303, 403, 404)
-    page = admin.get("/admin/storage").text
+    assert pro.get("/admin/db", follow_redirects=False).status_code in (302, 303, 403, 404)
+    assert admin.get("/admin/storage", follow_redirects=False).headers["location"] == "/admin/db#storage"
+    page = admin.get("/admin/db").text                                   # the owner's place for it (2026-10-14)
     assert "gs://b" in page and "vendor/probalytics/" in page and test_db in page and "Refresh now" in page
-    assert 'href="/admin/storage"' in admin.get("/admin/db").text
+    assert "VM → gs://b" in page and "VM over time" in page
 
     DB.main(["storage"])
     assert "gs://b  5.0 MB, 7 objects" in capsys.readouterr().out
@@ -112,3 +121,29 @@ def test_database_sizes_page_cli_and_mcp_are_admin_only(app_db, tmp_path, monkey
     with config.get_engine().connect() as c:
         out = T.storage_status(c)
     assert out["snapshot"]["taken_at"] == snap["taken_at"] and out["refreshing"] is False
+
+
+@pytest.mark.quick
+def test_vm_history_samples_series_and_trim(tmp_path, monkeypatch):
+    from racinglines import paths
+    from racinglines import vm_history as VH
+    monkeypatch.setattr(paths, "DATA", tmp_path)
+    s = VH.sample()
+    if s is None:
+        pytest.skip("no /proc here")
+    assert s["cpu"][1] >= s["cpu"][0] >= 0 and s["mem_total"] > s["mem_avail"] > 0 and len(s["load"]) == 3
+    base = dict(mem_total=100, mem_avail=40, load=[0.5, 0.4, 0.3], disk_total=200, disk_free=50)
+    rows = [dict(base, t=1000, cpu=[100, 1000]), dict(base, t=1300, cpu=[160, 1100]), dict(base, t=1600, cpu=[160, 1200])]
+    ser = VH.series(rows)
+    assert ser["cpu"] == [(1300, 60.0), (1600, 0.0)] and ser["mem"][0] == (1000, 60.0) and ser["disk"][0] == (1000, 75.0)
+    ch = VH.chart(ser["cpu"], ymax=100)
+    assert ch["last"] == 0.0 and ch["max"] == 60.0 and len(ch["dots"]) == 2 and VH.chart(ser["cpu"][:1]) is None
+    assert VH.chart(ser["load"])["ymax"] == 1.0
+    monkeypatch.setattr(VH, "KEEP_DAYS", 1)
+    keep = 86400 // VH.SAMPLE_SECONDS
+    for i in range(2 * keep + 1):
+        VH.append(dict(rows[0], t=1000 + i))
+    lines = VH.history_path().read_text().splitlines()
+    assert len(lines) <= 2 * keep and json.loads(lines[-1])["t"] == 1000 + 2 * keep
+    assert [c["key"] for c in VH.charts(days=10**6)] == ["cpu", "mem", "load", "disk"]
+    assert not VH.start_sampler()                                       # never under pytest

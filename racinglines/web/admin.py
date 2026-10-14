@@ -303,15 +303,9 @@ def _display(v):
     return "" if v is None else str(v)
 
 
-@app.get("/admin/storage", response_class=HTMLResponse, dependencies=ADMIN)
-def admin_storage(request: Request):
-    """Where the data lives (racinglines/storage_status.py): the VM's disk, data folders and databases, and the data
-    bucket's prefixes, from the last snapshot. A stale or missing snapshot starts a background refresh."""
-    from racinglines import storage_status as ST
-    started = ST.refresh_in_background()
-    snap = ST.read()
-    return render(request, "admin_storage.html", snap=snap, age=ST.age_seconds(snap), refreshing=ST.refreshing() or started,
-                  human=ST.human, stale=ST.STALE_SECONDS)
+@app.get("/admin/storage", dependencies=ADMIN)
+def admin_storage():
+    return RedirectResponse("/admin/db#storage", status_code=303)       # the storage status lives on /admin/db (owner)
 
 
 @app.post("/admin/storage", dependencies=[Depends(check_csrf), allow("admin")])
@@ -319,7 +313,7 @@ def admin_storage_refresh(request: Request):
     from racinglines import storage_status as ST
     ST.refresh_in_background(force=True)
     audit(request, "storage_refresh")
-    return RedirectResponse("/admin/storage", status_code=303)
+    return RedirectResponse("/admin/db#storage", status_code=303)
 
 
 @app.get("/admin/db", response_class=HTMLResponse, dependencies=ADMIN)
@@ -328,7 +322,14 @@ def admin_db(request: Request, c=Depends(conn)):
     for name in sorted(m.Base.metadata.tables):
         n = c.execute(text(f'SELECT count(*) FROM "{name}"')).scalar()
         tables.append(dict(name=name, rows=n))
-    return render(request, "admin_db.html", tables=tables)
+    # the storage status and the VM's history (owner, 2026-10-14: "keep adding to admin/db", VM and bucket health):
+    # racinglines/storage_status.py's snapshot (a stale or missing one refreshes in the background) and vm_history.py
+    from racinglines import storage_status as ST
+    from racinglines import vm_history as VH
+    started = ST.refresh_in_background()
+    snap = ST.read()
+    return render(request, "admin_db.html", tables=tables, snap=snap, age=ST.age_seconds(snap), health=ST.health(snap),
+                  refreshing=ST.refreshing() or started, human=ST.human, stale=ST.STALE_SECONDS, vm_charts=VH.charts())
 
 
 @app.get("/admin/db/{name}", response_class=HTMLResponse, dependencies=ADMIN)

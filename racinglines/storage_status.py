@@ -11,8 +11,9 @@ Where the data lives and how big it is: the VM's disk, data folders and database
               from `gcloud storage ls --long --recursive` (the VM's service account can list the bucket)
 
 Listing a 20+ GB bucket and walking the archive is slow, so nothing here runs on a page load: `refresh()` writes a
-JSON snapshot (data/status/storage.json) that the admin Storage page, `racinglines db storage` and the MCP tool
-`storage_status` read. The page starts a background refresh when the snapshot is older than STALE_SECONDS.
+JSON snapshot (data/status/storage.json) that the admin Database page (/admin/db; owner, 2026-10-14), `racinglines db storage` and the MCP tool
+`storage_status` read, with `health()` (disk room, the bucket reachable, the VM's newest dumps also in the bucket).
+The page starts a background refresh when the snapshot is older than STALE_SECONDS.
 
 Sizes and counts only, never file contents: the bucket holds licensed vendor data (Probalytics, ToS section 5), so this
 is admin-only everywhere it is shown.
@@ -253,7 +254,8 @@ def lines(snap):
     if not snap:
         return ["no storage snapshot yet: run `racinglines db storage --refresh`"]
     d = snap["vm"]["disk"]
-    out = [f"snapshot {snap['taken_at']} (took {snap.get('seconds')} s)", "",
+    out = [f"snapshot {snap['taken_at']} (took {snap.get('seconds')} s)", ""]
+    out += [f"[{h['state']:>4}] {h['check']}: {h['text']}" for h in health(snap)] + ["",
            f"VM disk: {human(d['free'])} free of {human(d['total'])} ({human(d['used'])} used)"]
     for r in snap["vm"]["roots"]:
         out.append(f"  {r['path']}  {human(r['bytes'])}")
@@ -274,4 +276,51 @@ def lines(snap):
             out.append(f"  {p['prefix']:<30} {human(p['bytes']):>9} {p['objects']:>9,} objects  newest {p['newest']}")
             for c in p["children"]:
                 out.append(f"    {c['prefix']:<28} {human(c['bytes']):>9} {c['objects']:>9,} objects  newest {c['newest']}")
+    return out
+
+
+LOW_DISK_BYTES = 5_000_000_000
+LOW_DISK_SHARE = 0.10
+
+
+def _bucket_backups(snap, root_path):
+    """The bucket folder a data root's backups are copied to: backups/staging/ for the staging checkout, else
+    backups/prod/ (the copy in docs/vm-deploy.md), and its node in the first listed bucket that has it."""
+    want = "backups/staging/" if "racinglines-staging" in root_path else "backups/prod/"
+    for b in snap.get("buckets", []):
+        for p in b.get("prefixes", []):
+            for c in p.get("children", []):
+                if c["prefix"] == want:
+                    return b["bucket"], c
+    return None, None
+
+
+def health(snap):
+    """VM and bucket health and the link between them, from a snapshot: [dict(check, state ok|warn|bad, text)].
+    Disk room, the bucket listed from here, and each data root's newest database dump also being in the bucket."""
+    if not snap:
+        return []
+    out = []
+    d = snap["vm"]["disk"]
+    low = d["free"] < LOW_DISK_BYTES or (d["total"] and d["free"] / d["total"] < LOW_DISK_SHARE)
+    out.append(dict(check="VM disk", state="warn" if low else "ok",
+                    text=f"{human(d['free'])} free of {human(d['total'])}" + (" (low)" if low else "")))
+    for b in snap.get("buckets", []):
+        out.append(dict(check=f"VM → gs://{b['bucket']}", state="bad" if b.get("error") else "ok",
+                        text=f"not listed: {b['error']}" if b.get("error") else
+                        f"listed from the VM: {human(b['bytes'])}, {b['objects']:,} objects"))
+    for r in snap["vm"]["roots"]:
+        dumps = r["backups"]
+        if not dumps["dumps"]:
+            continue
+        bucket, node = _bucket_backups(snap, r["path"])
+        where = f"gs://{bucket}/{node['prefix']}" if node else "the bucket"
+        if node is None:
+            out.append(dict(check=f"Backups {r['path']}", state="warn",
+                            text=f"newest dump {dumps['newest']} ({dumps['newest_at']}); no backup folder in the bucket"))
+            continue
+        behind = (node["newest"] or "") < (dumps["newest_at"] or "")[:19]
+        out.append(dict(check=f"Backups {r['path']}", state="warn" if behind else "ok",
+                        text=f"newest dump {dumps['newest_at']}, newest in {where} {node['newest']}"
+                             + (": the bucket is behind" if behind else "")))
     return out
