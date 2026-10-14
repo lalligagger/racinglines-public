@@ -117,7 +117,7 @@ def _sports_shown():
 def _read(fn, engine=None, **kw):
     """Call a tools.py function inside a READ ONLY transaction; anticipated errors become tool errors the client sees."""
     from mcp.server.mcpserver.exceptions import ToolError
-    if fn in (T.sql, T.describe_schema, T.data_changes):
+    if fn in (T.sql, T.describe_schema, T.data_changes, T.storage_status):
         _require_admin()
     try:
         with _sports_shown(), (engine or _engine()).begin() as c:
@@ -451,6 +451,14 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
     def data_changes(sport: str | None = None, limit: int = 50, offset: int = 0) -> str:
         """The data change log: ingests that changed the race history, athlete merges and notes, newest first."""
         return _read(T.data_changes, sport=sport, limit=limit, offset=offset)
+
+    @srv.tool(structured_output=False)
+    def storage_status(refresh: bool = False) -> str:
+        """Admin only. Where the data lives: the VM's disk (free / used), each data folder's size, files and newest file,
+        the database dumps, every database's size, and the data bucket per prefix (vendor/probalytics, backups/prod,
+        archive/, ...) with size, objects and newest object. From the last snapshot; refresh=True starts a new one in
+        the background (minutes). Sizes and counts only, never file contents."""
+        return _read(T.storage_status, refresh=refresh)
 
     # --- sportsbook slips ----------------------------------------------------------------------------
     @srv.tool(structured_output=False)

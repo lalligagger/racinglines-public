@@ -110,6 +110,12 @@ the next staging → main promotion (a draft until the owner says "promote"; the
       `deploy-production` still does not need it (C17).
 - [ ] **Per-user bet books in the app (C55)** and the F1 race-week demos (C54), after the alpha's first weekends.
 - [ ] **Sizing review (~12 Nov)** after 4–6 live weekends on real markets ([Paper trading](#paper-trading)).
+- [ ] **Web: race URLs by sport** (owner, 2026-10-14): race pages under their sport (`/f1/races/135` style) instead
+      of `/races/{id}`, with the old URLs redirecting (the `legacy.py` MOVED pattern) and template links updated.
+      Not started. The race page 500 behind the ask (an all-null Parquet column) is fixed in #184.
+- [ ] **Web: docs icon in the top bar** (owner question, 2026-10-14, unanswered): the book icon beside GitHub links to
+      `/docs/` today (#184). Open: switch it to the Jupyter Book logo and link the owner's Jupyter Book once it is
+      hosted (it is only served locally so far).
 
 ### P2 · to the Las Vegas GP (21 Nov) and year end
 

@@ -54,9 +54,14 @@ def when(v):
     return t.strftime("%Y-%m-%d %H:%M UTC") if (t.hour or t.minute) else t.strftime("%Y-%m-%d")
 
 
+def fmt_epoch(t):
+    """Epoch seconds as a short UTC time, like the web app's `fmt_epoch` filter."""
+    return pd.Timestamp(t, unit="s", tz="UTC").strftime("%-d %b %H:%MZ") if t else ""
+
+
 def template_env():
     env = Environment(loader=FileSystemLoader("racinglines/web/templates"))
-    env.filters.update(fmt=fmt, money=money, kind=kind, when=when)
+    env.filters.update(fmt=fmt, money=money, kind=kind, when=when, fmt_epoch=fmt_epoch)
     return env
 
 
