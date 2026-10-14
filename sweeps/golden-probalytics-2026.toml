@@ -1,0 +1,42 @@
+# The golden check against Probalytics (owner GO 2026-10-13): the same jobs as sweeps/golden-ours-2026.toml and
+# sweeps/golden-probalytics-2026.toml, one queue per tape so the outputs don't mix. This one: Probalytics' tape: run with RACINGLINES_TAPE_SOURCE=probalytics.
+# Compare: python scripts/probes/probalytics_compare.py --results data/runs/search/golden-ours-2026 \
+#            data/runs/search/golden-probalytics-2026     (each weekend's P&L within 10% or $5)
+#
+#   TARGET=staging MODE=search QUEUE=sweeps/golden-probalytics-2026.toml scripts/vm/overnight.sh   (a transient unit)
+#
+# Size: 2 jobs x 3 seeds, plus the baseline the search adds per season and venue at 3 seeds = 12 runs. 2025 is not here: Probalytics has no Kalshi books for 2025 and Polymarket books only
+# from 2025-11-20. Kalshi runs from Canada (round 5), Probalytics' first Kalshi books being 2026-05-09.
+
+[search]
+name = "golden-probalytics-2026"
+parallel = 2          # 2 vCPU, niced, beside prod's 5-minute recorders and signals
+grid = 8
+history_cache = true
+hours = 3.0
+grace_minutes = 20
+
+[report]
+target = 2026
+holdout = []
+top = 10
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+replicates = 3
+note = "golden: profile A at 3 seeds, Polymarket"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+rounds = "5-17"
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+replicates = 3
+note = "golden: profile A at 3 seeds, Kalshi from Canada"

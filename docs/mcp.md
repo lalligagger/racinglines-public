@@ -56,8 +56,8 @@ private-book market details and jobs are scoped to their own account; another us
 grant access. Raw SQL, schema inspection and the data-change audit are admin-only. Admins and local stdio
 retain owner access. Saved model runs and research results are shared, as in the Lab.
 
-A sport whose schema says `audience = "admin"` (`sports.is_public`, the gate the web pages use too; MotoGP since 2026-10-11, for the
-Alpha) is hidden from
+A sport whose schema says `audience = "admin"` (`sports.is_public`, the gate the web pages use too; road cycling since 2026-10-12, and MotoGP
+from 2026-10-11 until the owner cleared it on 2026-10-14) is hidden from
 every non-admin account: it is missing from every list (overview, events, markets, model runs, forecasts,
 diagnostics, paper records, kinds), and naming it, or one of its events, races, runs, tokens or its schema resource,
 or pricing a book on it, answers "not available". Admins and local stdio still see it.
@@ -139,6 +139,38 @@ racinglines book config source remote          # plain `racinglines book price F
 `--mcp-url` and `RACINGLINES_MCP_URL` override `mcp_url` for one run. A 401 means the token or login is wrong,
 revoked, or for an account without MCP access: `racinglines book logout` and run again to sign in afresh. Staging
 runs no MCP server, so `--remote` always means production unless you point it elsewhere.
+
+### More commands on the hosted server (`--remote`, `racinglines remote`, `data pull`)
+
+Beyond `book`, three ways reach the hosted server with the same sign-in (Core C53 and C51; the owner cleared exchange
+prices, books and trades and MotoGP for signed-in users on 2026-10-14; the #aintcare warning stays on every one):
+
+- **`--remote` on a command with a Lab job**: `model backtest|forecast f1|mtb_dh` (their usual flags), and
+  `strategy sweep f1|nascar|motogp`, `strategy season-strategy f1`, `model diagnostic f1`, `model combo f1`, whose flags
+  are the job's own knobs as the server's `list_job_types` names them (`--year 2025`, `--event 2026-15 --cutoff
+  2026-09-25T13:30`), plus `--set NAME=VALUE` for a sweep setting. The job is queued with `run_job` and followed to
+  the end, its log printed as it arrives.
+- **`racinglines remote`**: `tools` lists what the account may call; `call TOOL --ARG VALUE ...` calls any tool and
+  prints its JSON (`--csv FILE` writes its rows), e.g. `racinglines remote call get_market_history --race-id 812
+  --series trades`, `racinglines remote call replay_maker --run-id 10833`, `racinglines remote call list_live_events`;
+  `job JOB_TYPE --KNOB VALUE` queues any Lab job and follows it.
+- **`racinglines data pull SPORT [--since last|YYYY-MM-DD] [--no-markets]`**: one sport's shared data into your own
+  database and data folder (`racinglines/db/pull.py`): every registry table, the sport's events, races, rounds,
+  results, splits, laps, track profiles, source files and market links, its model runs (not candidates) with their
+  predictions, and its exchange prices, trades and books by month. Never accounts, profiles, positions, signals,
+  orders, fantasy rows or jobs. The first pull into a database is a fresh-database load (run `racinglines db init`
+  on an empty one first: it refuses a database that already has model runs unless `--force`, and empties the pulled
+  tables so the server's ids are kept); later pulls upsert by id, and `--since last` tops up from where that
+  database's last pull of the sport stopped (`data/pulls/state.json`). Tools: `pull_manifest(sport, since)` and
+  `pull_chunk(pull_id, name, offset)`, 4 MB a chunk; the server builds each file on first request
+  (`data/pulls/server/`, removed after a day).
+
+```
+# LOCAL (Mac): a fresh local database, then F1's data from the hosted server
+racinglines db init
+racinglines data pull f1
+racinglines data pull f1 --since last          # later: a top-up
+```
 
 ## Giving access, as an admin
 
@@ -282,6 +314,7 @@ exchange, venues, users and the next races. Then:
 | `track_record(user, venue, sport)`, `list_positions(user, venue, event_key)`, `list_signals(user, event_key, status)` | Paper trading per account: the weekend record (Polymarket, Kalshi replay, private book; `venue='all'` lists one row per weekend and venue with a `venue` column and `totals` per venue; `sport` keeps one sport's weekends, NASCAR and MotoGP paper rows included where `RACINGLINES_SPORT_PAPER` is on), positions, signals. |
 | `fantasy_balance(user)`, `fantasy_positions(user, open_only)`, `fantasy_orders(user)`, `fantasy_leaderboard()`, `fantasy_markets(q)`, `fantasy_book(market_link_id)` | Fantasy trading (F$ only), as the Trade and History tabs show it: your F$ (total, cash shared with your strategy, both P&Ls), hand-trade positions, orders with refusal reasons, the leaderboard (P&L, ROI, score; never balances), the tradable markets with recorded prices, one market's 10-level book. Hosted non-admin callers read their own account only (`user` is for an admin or stdio). Resolved hand trades are paid out first, as the pages do. |
 | `fantasy_order(market_link_id, side, action, shares, limit_price, client_key)` | One immediate-or-cancel F$ order through `fantasy/exchange.place`, the Trade page's path: the shared F$1,000 balance check under the account's row lock, F$100 per order, depth 10, fresh book only, rate limit, an audit row tagged `via: mcp`. Over HTTP it always trades as the caller (admin included); over stdio `user` names the account. Demo accounts and a shared store's accounts are refused. Nothing reaches an exchange. |
+| `pull_manifest(sport, since)`, `pull_chunk(pull_id, name, offset)` | `racinglines data pull`: the files of one sport's pull (the registry, its race data, model runs and exchange history by month) and one base64 chunk of one of them. A hidden sport is not available. |
 | `list_live_events()`, `data_changes()` | Settled live private-book events and the run folders present; the data change log. |
 | `list_kinds(sport)`, `map_book(book)`, `price_book(book, run_ids)`, `settle_book(book)` | Sportsbook slips ([sportsbook/slips.md](sportsbook/slips.md)): every market kind with the sports that model it; then a generic sportsbook's book, passed as TOML text, mapped to exact races and athletes, priced (the book's, the model's and the linked prediction market's probability, EV against each, never blended) or settled from the stored results. Nothing is stored. |
 | `sql(query, limit, offset)` | Any `SELECT` (or `WITH ... SELECT`, `EXPLAIN`), in a `READ ONLY` transaction with a 10 s timeout, paged. The `users` and `orders` tables are not readable. |
@@ -324,6 +357,12 @@ Every tabular result goes through one envelope (`racinglines/mcp/page.py`):
   previewed with their size in lists and returned whole by the `get_*` tool for one row.
 - **`sql`:** an outer `LIMIT/OFFSET` is applied for you, plus the row and byte caps; one statement, reads only.
 - Results are one line of JSON (no indentation), which halves the bytes an indented dump would cost.
+- **Tables for the terminal:** a result that holds a list of records also comes with a drawn table of it
+  (`racinglines/mcp/view.py`, at most 30 rows and 12 columns per table), so Claude Code shows a table in the terminal.
+  The table is the first text block and the JSON is always the last one, which is the block the CLI's `--remote` path
+  parses. The tools return no `structuredContent`, so a client shows the text blocks. Colour is off by default because
+  escape codes are just noise to a client that shows text as is. `RACINGLINES_MCP_COLOR=1` on the server turns it on:
+  bold headers, signed EV, edge and P&L columns green above zero and red below.
 
 ## What it can't do
 
