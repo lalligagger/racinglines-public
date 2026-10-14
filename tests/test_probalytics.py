@@ -345,3 +345,16 @@ def test_polymarket_touch_fill_and_the_spread_limit(base):
     a, b = SS.Settings.from_dict({}), SS.Settings.from_dict({"taker_fill": "price"})
     assert a["taker_fill"] is None and a.key == b.key          # unset = price: every existing job key unchanged
     assert SS.Settings.from_dict({"taker_fill": "touch", "max_spread": 0.1}).key != a.key
+
+
+def test_sweeps_read_stage_files_even_where_day_books_exist(base, monkeypatch):
+    from racinglines.pipelines import weekend_sweep as W
+    (base / "books").mkdir()
+    _books(base / "books" / "2026-06-14_F1_POLYMARKET.parquet", [
+        dict(market_platform_id="0xc1", outcome_pid="tokA", timestamp="2026-06-14 11:30", bid_px=[0.10], bid_sz=[1.0],
+             ask_px=[0.20], ask_sz=[1.0])])
+    links = pd.DataFrame(dict(token_id=["tokA"], condition_id=["0xc1"], prediction=["race_win"]))
+    assert _pm(base).price("tokA", T) == pytest.approx(0.15)              # by default the day file wins
+    monkeypatch.setenv("PROBALYTICS_DATA", str(base))
+    v = W._venue(None, links, T.replace(hour=0), T, "polymarket", event_key="2026-07", tape="probalytics")
+    assert v.price("tokA", T) == pytest.approx(0.42)                      # a sweep: the stage file, as every weekend
