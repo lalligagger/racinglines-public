@@ -79,7 +79,7 @@ exchange: [Sports and exchanges](coverage.md).
 | 🏁 **Three exchanges, eight sports** | Polymarket, Kalshi and OG.com (OG.com read-only, from one schema file). F1 is the only sport with a real model and a backtest that held in a held-out season (on Polymarket). NASCAR on Kalshi: 2026 **+$4.2k to +$5.5k** in the taker replay but **−$242 to −$390** in 2025 in every setting, on spiky last-trade prices, so not robust. MotoGP: race win only, no held-out season. Both show to every signed-in user (MotoGP again since 2026-10-14). Road cycling is priced by the same engine, for admins only. IndyCar, Le Mans and SailGP: recorded tapes, no model. Of the 3 × 3 grid (F1, NASCAR, MotoGP × Polymarket, Kalshi, OG.com), 8 cells hold data; only MotoGP on OG.com is empty (OG.com doesn't list it). [Status matrix](coverage.md#the-status-matrix). |
 | 🎮 **Fantasy league alpha, open** | Every signed-in account gets F$1,000 of fantasy money: trade F1 markets by hand on the recorded order books, or follow one of five strategy styles, and climb the leaderboard. No real money, nothing reaches an exchange. [Alpha layout](alpha-layout.md), [Fantasy trading](fantasy-trading.md). |
 | 🚵 **43 downhill World Cup rounds** | 2021–2026, walk-forward. Error on who makes the Final is **38% lower** than a uniform guess (0.127 vs 0.204); the actual winner got **7.1%** on average, against ~1%. |
-| ✅ **Checks in seconds** | `racinglines check` runs 21 checks (code, every data source, database) in ~10 s; the regression suite runs 174 tests on pinned public fixtures and golden outputs. |
+| ✅ **Checks in seconds** | `racinglines check` runs 21 checks (code, every data source, database) in ~10 s; the regression suite runs 1,552 tests (2026-10-14) on pinned public fixtures and golden outputs. |
 
 The goal isn't to out-predict the market everywhere: on race-winner odds
 Polymarket is about as sharp as the model (sharper after qualifying, and in 2025
@@ -189,6 +189,8 @@ official timing ──> PostgreSQL ──> as-of model ──> simulated weekend
 - **Reaches the hosted server from the command line:** `--remote` runs the book commands and Lab jobs on
   racinglines.bet, `racinglines remote` calls any hosted tool, and `racinglines data pull SPORT` copies one sport's
   shared data into your own database ([MCP server](mcp.md#more-commands-on-the-hosted-server-remote-racinglines-remote-data-pull)).
+  Remote access is in testing (#aintcare mode): the review of venue and data-feed terms is pending, so what the
+  server returns is for testing only, and every remote command prints that warning.
 
 <!-- /readme -->
 
