@@ -15,6 +15,30 @@ files in `data/archive/<sport>/` (both git-ignored; `data/raw` is the record, so
 without a copy). Since 2026-10-01 nothing under `data/` is in git, and production data lives on the VM: back up
 there with `vm.sh backup <purpose>`.
 
+## 2026-10-14 · Staging mirror on: racinglines_staging follows production
+
+Production's Postgres and `racinglines_staging`, 17:5xZ to 18:31Z, by the owner from the Mac (docs/vm-deploy.md
+"Staging: the data mirror"). No production row was written.
+
+**Why.** Owner, 2026-10-12 (thread "Staging and prod drift"): staging had drifted since its one-time copy; option A, a
+live mirror, scope `all`. Turned on 2026-10-14 after the Probalytics F1 download, as planned.
+
+**What.** `vm.sh backup staging-mirror`, `vm.sh postgres logical` (production's database restarted with
+`wal_level=logical`, timers paused and resumed), `vm.sh mirror plan all`, then `vm.sh mirror on all`. Production now
+has the publication `racinglines_staging_mirror` (42 tables), the read-only role `racinglines_mirror` and the slot
+`racinglines_staging_mirror`. `mirror on` cleared staging's copies of those 42 tables and subscribed to production's
+(the plan counted the staging-only rows replaced: 2 users, 4 fantasy ledger rows, 65,554 results, 21,882 market links,
+1,769 model runs, 17 data-change notes, among others); staging's own new rows take ids from 1,000,000,000. Staging reads
+production's `data/archive` through a symlink, and `racinglines-staging-mirror-check.timer` is enabled. Checked 18:31Z
+with `vm.sh mirror status`: 42 tables ready, 0 bytes behind, newest `model_runs` id 9957 and `market_trades` id
+27762398 on both sides. Not mirrored: `alembic_version`, `jobs`. `racinglines_staging_demo` (the database staging
+served at the time) was not touched. Undo: `vm.sh mirror off` (staging keeps its rows as of then).
+
+**Backups:** staging, under `/opt/racinglines-staging/data/backups/db/`:
+`racinglines_staging-before-mirror-20261014T175334Z.sql.gz` (164 MB). Production, under
+`/opt/racinglines/data/backups/db/`: `racinglines-before-staging-mirror-<UTC time>.sql.gz` from `vm.sh backup
+staging-mirror` (its exact time was not recorded here).
+
 ## 2026-10-14 · Staging: Kalshi road cycling markets synced
 
 Database `racinglines_staging_demo` (the database staging serves since `vm.sh staging db demo`), 07:05Z, by the owner
