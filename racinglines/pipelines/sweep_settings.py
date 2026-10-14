@@ -25,6 +25,7 @@ OPT_KINDS = ("race_top10",)          # opt-in market kinds: selectable in `marke
 DEFAULT_SEED = 42                # pricing.diagnostic's and the signal engine's seed
 VENUES = ("polymarket", "kalshi", "og")   # exchanges a sweep / the signal engine can trade (markets/venue_replay.py)
 DEFAULT_VENUE = "polymarket"
+TAPE_SOURCES = ("ours", "probalytics")   # whose recorded tape a backtest venue reads (markets/probalytics.py)
 STAGE_MODES = ("sessions", "weekend")   # where a sweep's stages come from (pipelines/season_sweep.py); F1: sessions
 
 
@@ -93,9 +94,17 @@ SETTINGS = [
                  "stake is capped at that size and only buys are made there. Empty = thin markets are skipped."),
     Setting("bankroll", "taker", "Starting bankroll ($)", "float", None, 10, 1e7,
             help="Bankroll-aware sizing: stakes scale with the balance after earlier weekends. Empty = fixed sizing."),
+    Setting("bankroll_growth", "taker", "Bankroll growth rule", "choice", None, choices=("linear", "sqrt"),
+            unset="linear",
+            help="With a bankroll: how stakes follow the balance. linear = balance / bankroll; sqrt = the square root "
+                 "of that (square-root staking: +300% -> 2x, -75% -> 0.5x, 0 once it's gone). Empty = linear."),
     Setting("kelly", "taker", "Kelly fraction", "float", None, 0.05, 1.0,
             help="With a bankroll: stake = this x the Kelly fraction x the current balance, at the touch, still capped "
                  "at the max stake per market (0.5 = half Kelly). Empty = linear sizing (stake per unit edge)."),
+    Setting("root_unit", "taker", "Root unit ($)", "float", None, 1, 5000,
+            help="The root unit system (Circles Off ep. 181): stake = this / sqrt(net odds) = this x sqrt(c / (1 - c)) "
+                 "for a contract costing c, instead of stake per unit edge: 1 unit at evens, 0.5 at 4/1, 2 at 1/4. Still "
+                 "capped at the max stake; scales with the bankroll like the linear rule. Not with Kelly. Empty = off."),
     Setting("max_deployed", "taker", "Max capital deployed per weekend ($)", "float", None, 1, 1e7,
             help="Across all markets; buys over the cap are cut to fit. Empty = no cap."),
     # --- maker ----------------------------------------------------------------------------------------
@@ -122,6 +131,10 @@ SETTINGS = [
             help="Whose markets and recorded tape the strategies trade: polymarket (the default), kalshi "
                  "(its links, its tape read per market ticker, its maker fee) or og (OG.com: its links and tape, "
                  "its flat fee per contract on the taker's cost). Unset = polymarket."),
+    Setting("tape_source", "markets", "Tape source", "choice", None, choices=TAPE_SOURCES, unset=TAPE_SOURCES[0],
+            help="Whose tape the venue is read from: ours (the recorder and archive, the default) or probalytics "
+                 "(Probalytics' books and fills under data/probalytics/, by the sport's [markets.probalytics] tag; "
+                 "markets/probalytics.py). RACINGLINES_TAPE_SOURCE=probalytics still switches it on too. Unset = ours."),
 ]
 BY_NAME = {s.name: s for s in SETTINGS}
 # The split (docs/backtest-core.md): the pricing model's own group, and the groups any sport's backtest shares
@@ -308,8 +321,9 @@ def add_arguments(parser, cls=None, skip=()):
         if s.name == "variant" or s.name in skip:
             continue
         dflt = ",".join(s.default) if s.type == "multi" else "not set" if s.default is None else s.default
-        kw = dict(default=None, help=f"{s.label} (default {dflt})."
-                                     + (f" {s.help}" if s.help else ""))
+        # argparse formats help with %, so a literal % (bankroll_growth's "+300%") must be doubled
+        hlp = f"{s.label} (default {dflt})." + (f" {s.help}" if s.help else "")
+        kw = dict(default=None, help=hlp.replace("%", "%%"))
         parser.add_argument("--" + s.name.replace("_", "-"), **kw)
 
 

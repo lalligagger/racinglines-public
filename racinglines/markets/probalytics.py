@@ -2,20 +2,21 @@
 classes (markets, view, price, quote, volume_24h, coherent, touch_depth, resolve), read from the Parquet files that
 scripts/probes/probalytics_pull.py writes, so a sweep can be re-run on their books and fills and compared with ours.
 
-Switched on for weekend_sweep's venues by RACINGLINES_TAPE_SOURCE=probalytics (off by default: nothing changes
-unless it is set). Read from $RACINGLINES_DATA/probalytics/ (or PROBALYTICS_DATA):
+Switched on for a backtest's venues (weekend_sweep's and position_replay's) by the sweep setting tape_source =
+"probalytics" or RACINGLINES_TAPE_SOURCE=probalytics (off by default: nothing changes unless one is set). Read from
+$RACINGLINES_DATA/probalytics/, by the sport's tag (sports/<code>.toml [markets.probalytics] tag, e.g. F1 or CYC):
 
-    stages/<event_key>_<VENUE>.parquet       the book as of each stage cutoff (the last snapshot at or before it)
+    stages/<event_key>_<VENUE>.parquet      the book as of each stage cutoff (the last snapshot at or before it)
     books/<YYYY-MM-DD>_<TAG>_<VENUE>.parquet every snapshot of a day, when pulled (preferred: the full timeline)
-    fills/<TAG>_<VENUE>_<YYYY-MM>.parquet    every fill
-
+    fills/<TAG>_<VENUE>_<YYYY-MM>.parquet   every fill
 TAG is the pull's market set: F1 (our linked markets, the default), F1X (F1 markets we have not linked), CYC (cycling).
 
 What differs from our own tape, on purpose:
 - price() is the book's mid (best bid + best ask) / 2 where we read Polymarket's 5-minute price history; quote()
   is the book's touch on both venues' Kalshi path, as ours is from our 5-minute Kalshi snapshots.
 - Their snapshots are written on change, not on a clock, so a snapshot stays the book until the next one: it is
-  stale only after BOOK_STALE (48 hours, the stage files' lookback), not after venue_replay.STALE's 6 hours.
+  stale only after BOOK_STALE (48 hours, the stage files' lookback; a sport's [markets.probalytics]
+  book_stale_hours overrides it), not after venue_replay.STALE's 6 hours.
 - volume_24h() sums price x size of their fills (both outcomes of a Polymarket condition, one Kalshi ticker).
 Keys are exact: a Polymarket token is their outcome platform id, a Kalshi ticker their market platform id (YES book).
 
@@ -43,10 +44,28 @@ from racinglines.markets.venue_replay import Kalshi, Polymarket
 ENV = "RACINGLINES_TAPE_SOURCE"
 BOOK_STALE = timedelta(hours=48)
 LEVEL_COLS = ("bid_px", "bid_sz", "ask_px", "ask_sz")
+DEFAULT_TAG = "F1"
 
 
-def enabled():
-    return os.environ.get(ENV, "").strip().lower() == "probalytics"
+def enabled(setting=None):
+    """Whether a backtest reads this tape: the sweep setting tape_source, else RACINGLINES_TAPE_SOURCE."""
+    return setting == "probalytics" or os.environ.get(ENV, "").strip().lower() == "probalytics"
+
+
+def tag_of(sport):
+    """The sport's name in the tape's file names (sports/<code>.toml [markets.probalytics] tag)."""
+    from racinglines import sports
+    tag = sports.probalytics(sport).get("tag")
+    if not tag:
+        raise ValueError(f"sport {sport!r}: no Probalytics tape (sports/{sport}.toml [markets.probalytics] tag)")
+    return str(tag)
+
+
+def book_stale_of(sport):
+    """How long a snapshot stays the sport's book: [markets.probalytics] book_stale_hours, else BOOK_STALE."""
+    from racinglines import sports
+    h = sports.probalytics(sport).get("book_stale_hours")
+    return BOOK_STALE if h is None else timedelta(hours=float(h))
 
 
 def root():
@@ -154,13 +173,27 @@ def best_levels(px, sz, highest):
     return price, size
 
 
-def _touch_frame(t, venue, key_col, levels):
-    """One file's Arrow table -> the per-snapshot frame (the touch, plus the levels when asked for)."""
+def read_books(venue, event_key, start, end, keys, base=None, tag=DEFAULT_TAG, levels=False, stale=BOOK_STALE):
+    """One row per snapshot of the keys' books over [start - stale, end]: key, ts (naive UTC), bid, ask,
+    bid_size, ask_size (at the touch); with levels=True also bid_px, bid_sz, ask_px, ask_sz (every level, as pulled).
+    The day files of the sport's `tag` when any were pulled for the window (locally or in the bucket), else the stage
+    file (when there is an event_key)."""
     import pyarrow.compute as pc
-    if venue == "kalshi":
+    base = Path(base or root())
+    code = venue.upper()
+    key_col = "outcome_pid" if venue == "polymarket" else "market_platform_id"
+    cols = list(dict.fromkeys([key_col, "outcome_pid", "timestamp", *LEVEL_COLS]))
+    out_cols = ["key", "ts", "bid", "ask", "bid_size", "ask_size"] + (list(LEVEL_COLS) if levels else [])
+    a = pd.Timestamp(start) - stale
+    days = [base / "books" / f"{d:%Y-%m-%d}_{tag}_{code}.parquet" for d in _days(a, pd.Timestamp(end))]
+    filt = [(key_col, "in", list(keys))]
+    t = _read_table(days, cols, filt, base)
+    if t is None and event_key is not None:
+        t = _read_table([base / "stages" / f"{event_key}_{code}.parquet"], cols, filt, base)
+    if t is not None and venue == "kalshi":
         t = t.filter(pc.equal(t["outcome_pid"], "yes"))
-    if not t.num_rows:
-        return None
+    if t is None or not t.num_rows:
+        return pd.DataFrame(columns=out_cols)
     bid, bid_size = best_levels(t["bid_px"], t["bid_sz"], highest=True)
     ask, ask_size = best_levels(t["ask_px"], t["ask_sz"], highest=False)
     out = pd.DataFrame(dict(key=t[key_col].to_pandas().astype(str).to_numpy(),
@@ -169,48 +202,13 @@ def _touch_frame(t, venue, key_col, levels):
     if levels:
         for c in LEVEL_COLS:
             out[c] = t[c].to_pandas().to_numpy()
-    return out
-
-
-def read_books(venue, event_key, start, end, keys, base=None, tag="F1", levels=False):
-    """One row per snapshot of the keys' books over [start - BOOK_STALE, end]: key, ts (naive UTC), bid, ask,
-    bid_size, ask_size (at the touch); with levels=True also bid_px, bid_sz, ask_px, ask_sz (every level, as pulled).
-    The day files when any were pulled for the window (locally or in the bucket), else the stage file. One file is
-    read and reduced at a time, and the level lists are dropped unless asked for: a race day's lists are gigabytes
-    in memory (the VM's comparison was killed at Singapore on 2026-10-14 reading four days at once)."""
-    import pyarrow.parquet as pq
-    base = Path(base or root())
-    code = venue.upper()
-    key_col = "outcome_pid" if venue == "polymarket" else "market_platform_id"
-    cols = list(dict.fromkeys([key_col, "outcome_pid", "timestamp", *LEVEL_COLS]))
-    out_cols = ["key", "ts", "bid", "ask", "bid_size", "ask_size"] + (list(LEVEL_COLS) if levels else [])
-    a = pd.Timestamp(start) - BOOK_STALE
-    days = [base / "books" / f"{d:%Y-%m-%d}_{tag}_{code}.parquet" for d in _days(a, pd.Timestamp(end))]
-    filt = [(key_col, "in", list(keys))]
-    got = fetch(days, base)
-    parts = []
-    try:
-        paths = [p for p in days if p.exists()] or []
-        if not paths:
-            stage = base / "stages" / f"{event_key}_{code}.parquet"
-            got += fetch([stage], base)
-            paths = [stage] if stage.exists() else []
-        for p in paths:
-            f = _touch_frame(pq.read_table(p, columns=cols, filters=filt), venue, key_col, levels)
-            if f is not None and len(f):
-                parts.append(f)
-    finally:
-        _evict(got)
-    if not parts:
-        return pd.DataFrame(columns=out_cols)
-    out = pd.concat(parts, ignore_index=True)
     out = out.drop_duplicates(["key", "ts"], keep="last").sort_values(["key", "ts"], kind="stable")
     return out.reset_index(drop=True)
 
 
-def read_fills(venue, start, end, keys, base=None, tag="F1"):
+def read_fills(venue, start, end, keys, base=None, tag=DEFAULT_TAG):
     """key, ts (naive UTC), usd (price x size) of every fill of the keys (Polymarket condition ids or Kalshi
-    tickers) over [start, end]."""
+    tickers) over [start, end], from the sport's `tag` files."""
     base = Path(base or root())
     a, b = pd.Timestamp(start), pd.Timestamp(end)
     paths = [base / "fills" / f"{tag}_{venue.upper()}_{m:%Y-%m}.parquet" for m in _months(a, b)]
@@ -230,10 +228,15 @@ class _Tape:
 
     book_stale = BOOK_STALE
 
-    def _load(self, venue, event_key, links, start, end, book_key, fill_key, base=None, levels=False):
+    def _load(self, venue, event_key, links, start, end, book_key, fill_key, base=None, levels=False, tag=None,
+              book_stale=None):
+        if book_stale is not None:
+            self.book_stale = book_stale
+        tag = tag or DEFAULT_TAG
         a, b = pd.Timestamp(start), pd.Timestamp(end)
-        bk = read_books(venue, event_key, a, b, links[book_key].dropna().astype(str).unique(), base, levels=levels)
-        fl = read_fills(venue, a - timedelta(hours=24), b, links[fill_key].dropna().astype(str).unique(), base)
+        bk = read_books(venue, event_key, a, b, links[book_key].dropna().astype(str).unique(), base, tag=tag,
+                        levels=levels, stale=self.book_stale)
+        fl = read_fills(venue, a - timedelta(hours=24), b, links[fill_key].dropna().astype(str).unique(), base, tag)
         self.pb_books = {k: g for k, g in bk.groupby("key")}
         self.pb_fills = {k: g for k, g in fl.groupby("key")}
 
@@ -290,10 +293,11 @@ class ProbalyticsPolymarket(_Tape, Polymarket):
     """Polymarket on Probalytics' tape: price = the book's mid, trades at it (as ours trade at the price history)."""
 
     def __init__(self, conn, links, start, end, group_target=None, coherence_tol=0.25, stale=None, event_key=None,
-                 base=None, levels=False):
+                 base=None, levels=False, tag=None, book_stale=None):
         self.links, self.stale = links, stale
         self.group_target, self.coherence_tol = group_target or {}, coherence_tol
-        self._load("polymarket", event_key, links, start, end, "token_id", "condition_id", base, levels=levels)
+        self._load("polymarket", event_key, links, start, end, "token_id", "condition_id", base, levels=levels, tag=tag,
+                   book_stale=book_stale)
 
     def price(self, token, t):
         q = self._touch(str(token), t)
@@ -307,10 +311,11 @@ class ProbalyticsKalshi(_Tape, Kalshi):
     """Kalshi on Probalytics' tape: the taker meets the book's touch; price = its mid."""
 
     def __init__(self, conn, links, start, end, group_target=None, coherence_tol=0.25, stale=None, event_key=None,
-                 base=None, levels=False):
+                 base=None, levels=False, tag=None, book_stale=None):
         self.links, self.stale = links, stale
         self.group_target, self.coherence_tol = group_target or {}, coherence_tol
-        self._load("kalshi", event_key, links, start, end, "token_id", "token_id", base, levels=levels)
+        self._load("kalshi", event_key, links, start, end, "token_id", "token_id", base, levels=levels, tag=tag,
+                   book_stale=book_stale)
 
     def price(self, token, t):
         q = self._touch(str(token), t)

@@ -165,3 +165,130 @@ def test_bucket_fetch_and_evict(base, tmp_path, monkeypatch):
     assert v.volume_24h("0xc1", T) == pytest.approx(7.0)
     assert ["gcloud", "storage", "cp"] in calls
     assert not any(local.rglob("*.parquet"))                          # evicted after loading
+# --- any sport: the schema's tape tag, and the tape_source setting on every surface ---------------------------
+
+def test_the_tag_and_staleness_come_from_the_sport_schema():
+    from datetime import timedelta
+    assert PB.tag_of("f1") == PB.DEFAULT_TAG == "F1" and PB.tag_of("road_cycling") == "CYC"
+    assert PB.book_stale_of("f1") == PB.BOOK_STALE == timedelta(hours=48)
+    with pytest.raises(ValueError, match="markets.probalytics"):
+        PB.tag_of("nascar")                                     # no tape named: an error, never F1's files
+
+
+@pytest.fixture
+def cyc(tmp_path):
+    """A road cycling day of Kalshi books and a month of fills under the CYC tag, and an F1 decoy of the same key."""
+    (tmp_path / "books").mkdir()
+    (tmp_path / "fills").mkdir()
+    k = dict(market_platform_id="KXCYCLING-TDF26-POG", outcome_pid="yes")
+    _books(tmp_path / "books" / "2026-07-26_CYC_KALSHI.parquet", [
+        dict(k, timestamp="2026-07-26 08:00", bid_px=[0.61], bid_sz=[5.0], ask_px=[0.65], ask_sz=[6.0])])
+    _books(tmp_path / "books" / "2026-07-26_F1_KALSHI.parquet", [
+        dict(k, timestamp="2026-07-26 09:00", bid_px=[0.10], bid_sz=[5.0], ask_px=[0.12], ask_sz=[6.0])])
+    pd.DataFrame([dict(market_platform_id=k["market_platform_id"], timestamp=pd.Timestamp("2026-07-26 07:00", tz="UTC"),
+                       price=0.6, size=10.0)]).to_parquet(tmp_path / "fills" / "CYC_KALSHI_2026-07.parquet")
+    return tmp_path
+
+
+def test_a_cyc_tape_is_read_by_its_tag(cyc):
+    t0, t1 = datetime(2026, 7, 26, 0, 0), datetime(2026, 7, 26, 12, 0)
+    key = ["KXCYCLING-TDF26-POG"]
+    bk = PB.read_books("kalshi", None, t0, t1, key, base=cyc, tag="CYC")
+    assert list(zip(bk["bid"], bk["ask"])) == [(pytest.approx(0.61), pytest.approx(0.65))]
+    assert list(PB.read_books("kalshi", None, t0, t1, key, base=cyc)["bid"]) == [pytest.approx(0.10)]   # F1's default
+    assert PB.read_fills("kalshi", t0, t1, key, base=cyc, tag="CYC")["usd"].tolist() == [pytest.approx(6.0)]
+    assert PB.read_fills("kalshi", t0, t1, key, base=cyc).empty                                 # no F1 fills there
+
+
+def test_position_replay_reads_the_sports_tape_by_the_setting(cyc, monkeypatch):
+    from racinglines.markets import venue_replay as VR
+    from racinglines.pipelines import position_replay as P
+    monkeypatch.delenv(PB.ENV, raising=False)
+    monkeypatch.setenv("PROBALYTICS_DATA", str(cyc))
+    links = pd.DataFrame(dict(token_id=["KXCYCLING-TDF26-POG"], condition_id=["KXCYCLING-TDF26"],
+                              prediction=["race_win"]))
+    stages = [("race day", pd.Timestamp("2026-07-26 10:00"))]
+    sp = dict(sport="road_cycling")
+
+    class Ours(VR.Kalshi):
+        def __init__(self, *a, **k):
+            self.ours = True
+    monkeypatch.setitem(VR.EXCHANGES, "kalshi", Ours)
+    assert getattr(P._venue(None, "kalshi", links, stages, sp), "ours", False)                 # off by default
+    assert getattr(P._venue(None, "kalshi", links, stages, sp, tape="ours"), "ours", False)
+    v = P._venue(None, "kalshi", links, stages, sp, tape="probalytics")
+    assert isinstance(v, PB.ProbalyticsKalshi) and v.book_stale == PB.BOOK_STALE
+    assert v.quote("KXCYCLING-TDF26-POG", stages[0][1]) == (pytest.approx(0.61), pytest.approx(0.65))
+    assert v.volume_24h("KXCYCLING-TDF26-POG", stages[0][1]) == pytest.approx(6.0)
+    monkeypatch.setenv(PB.ENV, "probalytics")                                                   # the env var still works
+    assert isinstance(P._venue(None, "kalshi", links, stages, sp), PB.ProbalyticsKalshi)
+    with pytest.raises(ValueError):                                                             # a sport with no tape
+        P._venue(None, "kalshi", links, stages, dict(sport="nascar"))
+
+
+def test_weekend_sweep_takes_the_setting_too(monkeypatch):
+    from racinglines.pipelines import weekend_sweep as W
+    monkeypatch.delenv(PB.ENV, raising=False)
+    links = pd.DataFrame(dict(token_id=[], condition_id=[], prediction=[]))
+    v = W._venue(None, links, T, T, "kalshi", event_key="2026-07", tape="probalytics")
+    assert isinstance(v, PB.ProbalyticsKalshi) and v.book_stale == PB.BOOK_STALE
+
+
+def test_tape_source_setting_stays_out_of_every_key_while_unset():
+    from racinglines.pipelines import sweep_settings as SS
+    d = SS.Settings.from_dict()
+    assert d["tape_source"] is None and d.key == "c107835cbced"           # the key test_sweep_settings pins
+    ours = SS.Settings.from_dict(dict(tape_source="ours"))
+    assert ours["tape_source"] is None and ours.key == d.key and ours.argv() == []
+    pb = SS.Settings.from_dict(dict(tape_source="probalytics"))
+    assert pb.key != d.key and pb.model_key == d.model_key and pb.argv() == ["--tape-source", "probalytics"]
+    with pytest.raises(ValueError):
+        SS.Settings.from_dict(dict(tape_source="betfair"))
+
+
+def test_tape_source_reaches_the_cli():
+    import argparse
+
+    from racinglines.pipelines import season_sweep as SW
+    from racinglines.pipelines import sweep_settings as SS
+    for cls in (SS.Settings, SW.settings_class("nascar")):
+        ap = argparse.ArgumentParser()
+        SS.add_arguments(ap, cls)
+        assert SS.from_args(ap.parse_args(["--tape-source", "probalytics"]), cls)["tape_source"] == "probalytics"
+        assert SS.from_args(ap.parse_args([]), cls)["tape_source"] is None
+
+
+def test_tape_source_reaches_mcp_run_job():
+    from racinglines.mcp import tools
+    for job in ("f1_sweep", "nascar_sweep"):
+        _, p = tools._job_params(job, {"year": "2025", "settings": {"tape_source": "probalytics"}})
+        assert p["settings"]["tape_source"] == "probalytics"
+    cat = tools.list_job_types()
+    assert any(x["name"] == "tape_source" for x in cat["sweep_settings"])
+    assert any(x["name"] == "tape_source" for x in cat["sport_sweep_settings"]["nascar"])
+
+
+def test_tape_source_reaches_the_lab_form():
+    from racinglines.pipelines import season_sweep as SW
+    from racinglines.pipelines import sweep_settings as SS
+    from racinglines.web import jobs
+    from racinglines.web.app import templates
+    for code in ("f1_sweep", "nascar_sweep"):
+        jt = jobs.CATALOG[code]
+        p = jobs.parse(jt, {"year": "2025", "tape_source": "probalytics"})
+        assert p["settings"]["tape_source"] == "probalytics"
+        assert jt.argv(p, "/runs/jobs/job_7.csv")[-2:] == ["--tape-source", "probalytics"]
+        assert "tape_source" not in jobs.parse(jt, {"year": "2025", "tape_source": "ours"})["settings"]
+    cls = SW.settings_class("nascar")
+    groups = [(g, dict(SS.GROUPS).get(g, g.title()), [x for x in cls.SPEC if x.group == g])
+              for g in dict.fromkeys(x.group for x in cls.SPEC)]
+    jt = jobs.CATALOG["nascar_sweep"]
+    html = templates.env.get_template("lab_sport_sweep_form.html").render(
+        jt=jt, sel_job=jt.code, sweep_form=dict(groups=groups, defaults=cls.from_dict().to_json(),
+                                                start=cls.from_dict().to_json(), year="2025"), csrf_token="t")
+    assert 'name="tape_source"' in html
+
+
+def test_road_cycling_syncs_the_tour_de_france_series():
+    from racinglines import sports
+    assert "KXTOURDEFRANCE" in sports.kalshi_series("road_cycling")       # KXCYCLING's prefix does not cover it

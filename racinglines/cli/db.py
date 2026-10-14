@@ -9,6 +9,8 @@ racinglines db <command>
     snapshot-import  Load that snapshot into a fresh database: an exact replica (same ids, same prices).
     merge-athletes   Merge two athletes that are the same person (e.g. a name change found by UCI ID).
     changes   The data change log: ingests that changed anything, merges, notes (--add "why" for a note).
+    storage   Where the data lives: VM disk, data folders, database sizes, the data bucket's prefixes (the admin
+              Storage page's snapshot; --refresh takes a new one, which lists the bucket and can take minutes).
 
 Connection: $DATABASE_URL, or --db URL (default: docker-compose.yml's database).
 """
@@ -150,6 +152,21 @@ def cmd_changes(args):
             print(f"{c.at:%Y-%m-%d %H:%M}  {c.sport or '-':7} {c.kind:15} {c.summary}  ({c.by or '?'})")
 
 
+def cmd_storage(args):
+    import json
+
+    from racinglines import storage_status as ST
+    if args.refresh:
+        with get_engine(args.db).connect() as conn:
+            snap = ST.refresh(conn)
+    else:
+        snap = ST.read()
+    if args.json:
+        print(json.dumps(snap, indent=1))
+        return
+    print("\n".join(ST.lines(snap)))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="racinglines db", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -176,6 +193,10 @@ def main(argv=None):
     p.add_argument("--sport", help="Only this sport (mtb_dh, f1); with --add, the note's sport.")
     p.add_argument("--limit", type=int, default=20)
     p.set_defaults(func=cmd_changes)
+    p = sub.add_parser("storage", help="VM disk, data folders, database sizes and the data bucket (last snapshot).")
+    p.add_argument("--refresh", action="store_true", help="Take a new snapshot first (lists the bucket: minutes).")
+    p.add_argument("--json", action="store_true", help="The snapshot as JSON.")
+    p.set_defaults(func=cmd_storage)
     args = ap.parse_args(argv)
     args.func(args)
 

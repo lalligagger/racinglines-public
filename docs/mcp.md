@@ -397,6 +397,7 @@ exchange, venues, users and the next races. Then:
 | `pull_manifest(sport, since)`, `pull_chunk(pull_id, name, offset)` | `racinglines data pull`: the files of one sport's pull (the registry, its race data, model runs and exchange history by month) and one base64 chunk of one of them. A hidden sport is not available. |
 | `list_live_events()`, `data_changes()` | Settled live private-book events and the run folders present; the data change log. |
 | `list_kinds(sport)`, `map_book(book)`, `price_book(book, run_ids)`, `settle_book(book)` | Sportsbook slips ([sportsbook/slips.md](sportsbook/slips.md)): every market kind with the sports that model it; then a generic sportsbook's book, passed as TOML text, mapped to exact races and athletes, priced (the book's, the model's and the linked prediction market's probability, EV against each, never blended) or settled from the stored results. Nothing is stored. |
+| `storage_status(refresh)` | Admin only. Where the data lives: VM disk, data folders, database dumps and sizes, and the data bucket per prefix (size, objects, newest), from the last snapshot (`racinglines db storage`, the admin Storage page); `refresh=true` starts a new one in the background. Sizes and counts only. |
 | `sql(query, limit, offset)` | Any `SELECT` (or `WITH ... SELECT`, `EXPLAIN`), in a `READ ONLY` transaction with a 10 s timeout, paged. The `users` and `orders` tables are not readable. |
 
 **Scenarios** (the only tools that write anything, and only what the Lab's Run form writes):

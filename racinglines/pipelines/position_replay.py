@@ -280,11 +280,17 @@ def coherence_tol(sp, venue):
     return float((sp.get("coherence_tol") or {}).get(venue, COHERENCE_TOL))
 
 
-def _venue(conn, venue, race_links, stages, sp):
+def _venue(conn, venue, race_links, stages, sp, tape=None):
+    """The race's backtest venue: our recorded tape, or Probalytics' (the sport's [markets.probalytics] tag) when the
+    tape_source setting (`tape`) or RACINGLINES_TAPE_SOURCE is probalytics (markets/probalytics.py; off by default)."""
+    from racinglines.markets import probalytics as PB
     from racinglines.markets.venue_replay import EXCHANGES
     start = min(t for _, t in stages) - timedelta(hours=1)
     end = max(t for _, t in stages) + timedelta(hours=1)
     gt = {k: int(v) for k, v in (sp.get("group_target") or {}).items()}
+    if PB.enabled(tape) and venue in PB.EXCHANGES:
+        return PB.EXCHANGES[venue](conn, race_links, start, end, gt, coherence_tol(sp, venue),
+                                   tag=PB.tag_of(sp["sport"]), book_stale=PB.book_stale_of(sp["sport"]))
     return EXCHANGES[venue](conn, race_links, start, end, gt, coherence_tol(sp, venue), STALE)
 
 

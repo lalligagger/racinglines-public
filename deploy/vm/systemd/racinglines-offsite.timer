@@ -1,0 +1,11 @@
+[Unit]
+Description=racinglines off-site copy to the bucket, nightly
+
+[Timer]
+OnCalendar=*-*-* 10:00:00 UTC
+Persistent=true
+AccuracySec=5min
+Unit=racinglines-offsite.service
+
+[Install]
+WantedBy=timers.target

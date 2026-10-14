@@ -26,7 +26,8 @@ Polymarket's rate is 0, so its results are unchanged.
 
 Sizing (both off by default, so results match the fixed sizing exactly):
     scale          multiplies the stake per edge and the per-market cap: bankroll-aware sizing
-                   passes current bankroll / starting bankroll (weekend_sweep.bankroll_scale)
+                   passes current bankroll / starting bankroll (weekend_sweep.bankroll_scale), or its
+                   square root under bankroll_growth = sqrt (square-root staking)
     max_deployed   a cap on the weekend's capital deployed across all markets (cash spent net of
                    cash received, per market, summed). Markets are then traded in time order
                    and a buy that would go over the cap is cut to fit (sells are always allowed)
@@ -61,6 +62,8 @@ class TakerParams:
     kelly: float | None = None                           # Kelly fraction (0.5 = half Kelly): stake = kelly x f* x
                                                          # balance, capped at max_stake x scale (None = linear sizing)
     bankroll: float | None = None                        # starting bankroll for Kelly; balance = bankroll x scale
+    root_unit: float | None = None                       # root unit system: stake = root_unit x scale x sqrt(c / (1 - c))
+                                                         # for a contract costing c, capped at max_stake x scale
     taker_fee: float = 0.0                               # the venue's taker fee rate: rate x contracts x P x (1 - P)
                                                          # per order, rounded up to the cent (Kalshi 0.07,
                                                          # Polymarket 0; venue_replay.EXCHANGES)
@@ -109,17 +112,18 @@ class _Market:
         if i in self.idx:
             thin = not s["tradeable"]            # a thin market: in idx only with edge >= thin_edge_mult x min_edge
             bid, ask = s.get("bid"), s.get("ask")
-            kb = (p.kelly, p.bankroll * p.scale) if p.kelly is not None and p.bankroll is not None else ()
+            kb = (p.kelly, p.bankroll * p.scale) if p.kelly is not None and p.bankroll is not None else (None, None)
+            ru = p.root_unit * p.scale if p.root_unit is not None else None
             if bid is not None and ask is not None:
                 ty = target_shares(s["fair"], ask, p.cost + p.taker_fee * ask * (1 - ask), p.min_edge,
-                                   p.stake_per_edge * p.scale, p.max_stake * p.scale, *kb)[0]
+                                   p.stake_per_edge * p.scale, p.max_stake * p.scale, *kb, root_unit=ru)[0]
                 tn = target_shares(s["fair"], bid, p.cost + p.taker_fee * bid * (1 - bid), p.min_edge,
-                                   p.stake_per_edge * p.scale, p.max_stake * p.scale, *kb)[1]
+                                   p.stake_per_edge * p.scale, p.max_stake * p.scale, *kb, root_unit=ru)[1]
                 buy, sell = {"YES": ask, "NO": 1 - bid}, {"YES": bid, "NO": 1 - ask}
             else:
                 ty, tn = target_shares(s["fair"], price, p.cost + p.taker_fee * price * (1 - price), p.min_edge,
                                        p.stake_per_edge * p.scale,
-                                       p.max_stake * p.scale, *kb)
+                                       p.max_stake * p.scale, *kb, root_unit=ru)
                 buy = sell = {"YES": price, "NO": 1 - price}
             if thin:                             # the book's size at the touch caps what can be bought
                 ty, tn = min(ty, s.get("depth_yes") or 0.0), min(tn, s.get("depth_no") or 0.0)

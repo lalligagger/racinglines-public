@@ -179,6 +179,8 @@ async def lifespan(app):
     threading.Thread(target=_warm_diagnostics, daemon=True).start()
     from racinglines.web import jobs
     jobs.start_worker()
+    from racinglines import vm_history
+    vm_history.start_sampler()                     # CPU, memory, load, disk every 5 min (admin Database page)
     yield
 
 
@@ -208,7 +210,13 @@ templates = Jinja2Templates(directory=HERE / "templates")
 from racinglines.web.formats import (LABELS, MONEY_COLS, SIGNED_MONEY_COLS, fmt, kind, money,  # noqa: E402,F401
                                      when)
 
-templates.env.filters.update(fmt=fmt, money=money, kind=kind, when=when)
+def fmt_epoch(t):
+    """Epoch seconds as a short UTC time: 14 Oct 20:05Z (the VM history charts)."""
+    from datetime import datetime, timezone
+    return datetime.fromtimestamp(t, timezone.utc).strftime("%-d %b %H:%MZ") if t else ""
+
+
+templates.env.filters.update(fmt=fmt, money=money, kind=kind, when=when, fmt_epoch=fmt_epoch)
 templates.env.globals["LABELS"] = LABELS              # short column headers for the `table` macro
 # Demo-only explanations (the demo accounts' story, the demo itself) render in `demo_context` bubbles
 # (_macros.html) tagged data-tag="demo-context". RACINGLINES_DEMO_CONTEXT=0 hides them all; for real users,

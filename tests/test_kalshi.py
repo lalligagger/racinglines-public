@@ -678,7 +678,8 @@ def test_market_only_sports_have_schemas_and_series():
         assert s["competition"]["code"] == comp and sports.kalshi_series(code) == (prefix,)
         assert s["markets"]["venues"] == venues
     for code, comp, series, venues in (
-            ("road_cycling", "uci_road_wt", ("KXCYCLING", "KXCYCLINGSTAGE", "KXCYCLINGTEAM", "KXCYCLINGJERSEY"), ["kalshi"]),
+            ("road_cycling", "uci_road_wt", ("KXCYCLING", "KXCYCLINGSTAGE", "KXCYCLINGTEAM", "KXCYCLINGJERSEY",
+                                             "KXTOURDEFRANCE"), ["kalshi"]),
             ("sailgp", "sailgp_champ", ("KXSAILGP", "KXSAILGPRACE"), ["kalshi", "og"])):
         s = sports.load(code)
         modeled = code == "road_cycling"                            # road cycling is on the one engine (2026-10-12)

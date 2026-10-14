@@ -286,7 +286,7 @@ def replay_sweep(engine, sport, year, rounds=None, settings=None, echo=print):
                                                info={"field": field}), ms, np.random.default_rng(seed))
             else:
                 sims = stage_sims(model, hist, ms, r, field, stages, plan["sessions"], sport, seed)
-            v = P._venue(conn, venue, race_links, stages, sp)
+            v = P._venue(conn, venue, race_links, stages, sp, tape=st.get("tape_source"))
             v.tol_by_kind = dict(tol)
             if thin:
                 v.load_books(conn, min(t for _, t in stages) - timedelta(hours=1), max(t for _, t in stages))
@@ -299,7 +299,7 @@ def replay_sweep(engine, sport, year, rounds=None, settings=None, echo=print):
     order = stage_labels(sport, mode) + (stage_labels(sport, "weekend") if mode == "sessions" else ())
     out = SW.season(events, trade_event, st, params_list, tuple(dict.fromkeys(order)), echo=echo)
     params = dict({k: v for k, v in base.__dict__.items() if k != "stages" and not
-                   (k in ("scale", "max_deployed", "min_edge_by_kind", "thin_edge_mult", "kelly", "bankroll")
+                   (k in ("scale", "max_deployed", "min_edge_by_kind", "thin_edge_mult", "kelly", "bankroll", "root_unit")
                     and v == SW.RB.TakerParams.__dataclass_fields__[k].default)},
                   sport=sport, venue=venue, model=model.name, stages_mode=mode,
                   n_sims=ms.get("sims"), stages=[list(x) for x in sp["stages"]], kinds=list(sp["kinds"]),

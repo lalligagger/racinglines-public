@@ -44,14 +44,14 @@ first package release (C56).
 ### P0 · now (14 Oct to the United States GP, 25 Oct)
 
 Each item names its PR or backlog number; "promotion pending" means it is on `staging` and reaches production with
-[PR #180](https://github.com/lalligagger/racinglines-public/pull/180) (owner merges; no migration, no trading flag;
-touches VM scripts and units, so ⚠️).
+the next staging → main promotion (a draft until the owner says "promote"; the owner merges).
 
-- [ ] **Promote staging to production (#180).** After the deploy: `vm.sh live auto` on and no per-event F1 timer
-      left; `vm.sh record fastf1 status`; the forecast-refresh timer's first pass files MotoGP's calendar into
-      production's database (it takes its own daily backup). What users see: MotoGP on Markets for every signed-in
-      account (`audience = "all"`, #179), MCP list results drawn as tables (#171), and `data pull` / `racinglines
-      remote` working against production (#179; they need the hosted MCP server, which only production runs).
+- [x] **Promote staging to production (#180), 2026-10-14.** Merged 06:50Z, prod deploy green 06:55Z (806278c).
+      Checked 17:00Z: live auto on, no per-event F1 timer, nothing paused; `record fastf1` disabled (no race this
+      week). The internal book is in `data/internal-docs/` on both sites (`vm.sh internal-docs`, 410 files).
+- [ ] **Next promotion: staging → main (draft until the owner says "promote").** Carries #188/#189:
+      `record_fastf1.sh` executable (`vm.sh record fastf1 status` and the recorder's unit failed with "command not
+      found" without it) and two data-change entries. Touches `scripts/vm/`, so it deploys production.
 - [ ] **CLV on every live and replayed fill (C4).** `racinglines backtest clv` covers stored paper bets; the sweep
       stats, `f1 reconcile`, `f1 scorecard` and the weekend report still read P&L only. G1 is judged on CLV: the plain
       mean per decided bet against the fill price (owner, 2026-10-07). [Paper trading](#paper-trading).
@@ -65,9 +65,23 @@ touches VM scripts and units, so ⚠️).
       owner's explicit go); `RACINGLINES_TAPE_SOURCE=probalytics` as a backtest venue; pass marks mid within 1¢ on 95%
       of snapshots, weekend P&L within 10% or $5, trades within 5%. The golden comparison runs on
       `racinglines_staging_demo`. The internal recorder stays primary (owner, 2026-10-12).
-- [ ] **Staging as a live mirror of production (#154, code merged, nothing on).** Owner, planned 15 Oct after the
-      Probalytics download: `vm.sh backup`, `vm.sh postgres logical` (restarts production's Postgres), `vm.sh mirror
-      plan`, `vm.sh mirror on`. Once on, no more `staging reset`. ⚠️ production database step.
+- [x] **Staging as a live mirror of production (#154), on since 2026-10-14 17:54Z** (scope `all`; 42 tables ready,
+      0 bytes behind at 18:31Z; [data changes](data-changes.md)). Open: the production backup's exact file name from
+      `vm.sh backup staging-mirror` is not yet in the data-change entry.
+- [ ] **Staging mirror upkeep (#154; on since 2026-10-14 17:54Z, 42 tables, 0 bytes behind).** No more `staging
+      reset` while it is on. After any production migration, run `vm.sh mirror status`; a table production adds joins
+      only after `vm.sh mirror on` runs again (it refreshes the publication). Owner OK still needed to delete the
+      pre-mirror leftovers on the VM: `racinglines_staging-before-mirror-*.sql.gz` under staging's `data/backups/db/`
+      and `data/archive.pre-mirror` if it exists.
+- [ ] **Which database staging serves.** Still the season demo (`racinglines_staging_demo`), which the Probalytics
+      comparison (15 Oct) uses; the mirror fills `racinglines_staging`. `vm.sh staging db main` to show the mirrored
+      copy, `staging db demo` to go back (owner's call).
+- [ ] **Road cycling on production.** The Kalshi road cycling links (53 events, 9,421 links, 14 Oct) are only in
+      `racinglines_staging_demo`. Next: `vm.sh backup road-cycling-kalshi`, then `racinglines markets --exchange kalshi
+      --sport road_cycling sync --closed` on production; the mirror then carries them to `racinglines_staging`. Fair
+      prices still need the PCS results ingested and a forecast ([Road cycling](road-cycling.md)); admin only.
+- [ ] **`vm.sh internal-docs` has no staging-only mode.** It always copies to production and staging; a staging-only
+      copy was done by hand on 14 Oct. Low priority.
 - [ ] **United States GP weekend (23–25 Oct), the first live weekend of the alpha with Polymarket race markets
       (266 links stored) and Kalshi's (expected 2 to 4 days out).** A, C and K paper-trade; the fantasy accounts trade
       by hand or follow a style; no code merges in the book window; Monday: `f1 reconcile`, `f1 scorecard`, and the
@@ -96,6 +110,12 @@ touches VM scripts and units, so ⚠️).
       `deploy-production` still does not need it (C17).
 - [ ] **Per-user bet books in the app (C55)** and the F1 race-week demos (C54), after the alpha's first weekends.
 - [ ] **Sizing review (~12 Nov)** after 4–6 live weekends on real markets ([Paper trading](#paper-trading)).
+- [ ] **Web: race URLs by sport** (owner, 2026-10-14): race pages under their sport (`/f1/races/135` style) instead
+      of `/races/{id}`, with the old URLs redirecting (the `legacy.py` MOVED pattern) and template links updated.
+      Not started. The race page 500 behind the ask (an all-null Parquet column) is fixed in #184.
+- [ ] **Web: docs icon in the top bar** (owner question, 2026-10-14, unanswered): the book icon beside GitHub links to
+      `/docs/` today (#184). Open: switch it to the Jupyter Book logo and link the owner's Jupyter Book once it is
+      hosted (it is only served locally so far).
 
 ### P2 · to the Las Vegas GP (21 Nov) and year end
 
@@ -178,7 +198,6 @@ Open decisions first, then the ones on record (so a thread never re-asks one).
 | Decision | When | Recommendation / status |
 |---|---|---|
 | Merge the promotion (#180) ⚠️ VM scripts and units | Now | Yes; then the post-deploy checks in P0 |
-| Turn the staging mirror on (#154): backup, `postgres logical` (restarts production's Postgres), `mirror plan`, `mirror on` ⚠️ | Planned 15 Oct, after the Probalytics download | Owner runs it; nothing until then |
 | C56: the "works the same" tolerance for the one engine, and whether the F1 switch waits for the Las Vegas GP | Before the first package release | Validate now, switch after Vegas (proposal, 2026-10-11) |
 | Probalytics download beyond F1 and NASCAR | Per sport | Only on the owner's explicit go for that sport (2026-10-14) |
 | Sizing rule | ~12 Nov | After 4–6 live weekends on real markets |
@@ -193,6 +212,8 @@ Open decisions first, then the ones on record (so a thread never re-asks one).
 | OG.com: confirm the $0.02 fee; per-GP contract rules | Before any OG.com result counts | From OG.com's fee schedule and the two recorded race weekends |
 | History purge for data off GitHub (force-push) | Last stage | Needs the owner's spoken OK in the same turn |
 | Open-Meteo's free API is non-commercial only ([Weather forecasts](weather.md)) | Before billing (G3, 2027) | Stay on the free tier while there is no revenue |
+| Keep or retire the /term browser replay, now that the quickstart and demo pages show captured commands and outputs (`scripts/docs/capture_examples.py`) | Any time | Keep for now; retire once the docs pages cover its three parts (docs review, 2026-10-14) |
+| The docs' mailbox addresses ([Email setup](email-setup.md)) and the cloud service-account name ([Data](data.md)) are also in the public `/llms-full.txt` | Any time | Already public in the repo; owner to confirm they may stay, or the llms hook redacts them |
 | Odds presentation names in the sportsbook schema ([Sportsbook schema](sportsbook/index.md)) | Any time | Owner checks the names; a rename is one line in `racinglines/books/schema.py` plus the docs table |
 
 **On record (don't re-ask):** no sport-specific models, only schemas that declare model inputs (2026-10-11, C56);
@@ -352,6 +373,14 @@ events are T3 unless a venue lists the event.
       [queue rule](market-making.md#the-queue-rule), tested on synthetic books, 2026-09-28,
       cloud build-out); running it needs several weekends of recorded books (Polymarket and, with U2, Kalshi).
 - [ ] Liquidity rewards as a replay P&L line; optional fractional-Kelly caps.
+- [ ] Record venue liquidity rewards (owner asked 2026-10-13; on hold, not merged): branch
+      `claude/project-thread-bg60pc` adds `racinglines markets --exchange polymarket|kalshi rewards`
+      (markets/rewards.py), run hourly by pm_sync.sh and record_venues.sh: each venue's reward programs on our open
+      markets, a row only when one starts, changes or ends, to `data/archive/markets/<exchange>/rewards/`; an empty
+      venue response is never saved. No migration. Next: rebase on main, open the PR. Probe 2026-10-13: Polymarket set
+      min size 50 / max spread 4.5¢ on 219 of 241 markets per race (Austin, Mexico, Brazil), but only one Austin market
+      paid ($0.001/day); Kalshi had no F1 race markets or incentive programs yet (the last ones: Bahrain pole,
+      target size 1,000, $100 per market). Re-check Kalshi `/incentive_programs?status=upcoming` from about 21 Oct.
 
 ## Models: the one engine
 
@@ -634,6 +663,42 @@ Downhill model.
       The 106-job `sweeps/kalshi-maker-k.toml` grid went from 59 to 21 minutes on 4 cores, same results.
       Left: the maker replay itself (`maker_replay.quote`/`PublicView`, about half of what remains).
 
+### Web UI: open items (from the "Web UI Improvements" thread, closed 2026-10-14)
+
+Interaction side of the web app (forms, auth and sessions, navigation, app-shell code). The full backlog with audit
+citations lives in the project library (`library/audit/2026-10-06-web-ui-backlog.md`). Checked against `staging`
+at `4905943` on 2026-10-14 where marked; the rest were last checked on 2026-10-06.
+
+- [ ] **S1 · CSRF is one global token** (`CSRF_TOKEN`, `check_csrf` in `racinglines/web/app.py`), the same for every
+      user and visible to the demo logins. It guards settings, MCP and admin writes and the order routes. Still true
+      2026-10-14. Money-adjacent: its own `work/web-security` branch, staging first.
+- [ ] **S2 · Login throttle trusts `cf-connecting-ip` / `x-forwarded-for`** from any client (`users.py`, `app.py`),
+      per-IP only, in-process dicts that never evict, no test. Still true 2026-10-14.
+- [ ] **S3 · `APP_SECRET` unset falls back to a random per-process secret** (`app.py`: sessions and CSRF break on
+      restart). Fail fast instead. Still true 2026-10-14.
+- [ ] **S4 · What sign-up's role may trigger** (DB-writing syncs, `diag_example`). Needs the owner's call; re-check
+      against the alpha layout, which runs basic as pro.
+- [ ] **S5 · Admin "create user" does not validate the role** (`admin.py` `admin_user_create`; the update path
+      does). Still true 2026-10-14.
+- [ ] **S6 · Demo guard redirects to the `Referer` header** (`demo.py:80`, off-site redirect possible). Still true
+      2026-10-14.
+- [ ] **S7 · Logout and password reset don't end other sessions** (stateless cookie). May need a per-user
+      counter column: a migration, so backup and owner sign-off.
+- [ ] **U1 · Self-serve strategy switching for pro users** (admin-only today). Needs an owner decision.
+- [ ] **U2 · Password change and a light/dark toggle in Settings** (`settings.html` has neither, 2026-10-14).
+- [ ] **U3 · Link the pro/basic comparison from the sign-in page.**
+- [ ] **U4 · Open the sport with a race in the next 7 days on /markets** without overriding remembered state
+      (shared with the Web View side).
+- [ ] **C2 · Web app sport-specific literals** (Lab job types, `'f1_wdc'` in views and templates) to schema-driven,
+      per the one-engine rule. C1 (split `app.py`) is mostly done: 883 lines on 2026-10-14, down from 1,550.
+- [ ] **`/demo/book` and `/demo/live` pages for the F1 race-week demos** (Core C54; plan
+      `library/engineering/2026-10-11-f1-race-week-demos/plan.md`, the Web UI side owns the replay behaviour). No such
+      routes on `staging` 2026-10-14.
+- [ ] **Maker `/positions` page speed:** the profiler `library/web/2026-10-11-positions-speed/profile_positions.py`
+      (run on the VM from the Mac) has never been run or its output never returned.
+- Standing limit (owner, 2026-10-11): further maker UI is drop-down entries and sub-setting inputs only, no new
+  components. Alpha settings stay as they are until about mid-November (owner, 2026-10-12).
+
 ## Staging and CI deploys
 
 **High priority** (owner, 2026-09-30; in [P1](#priorities)). Audited 2026-10-01 against the public repo, the
@@ -681,7 +746,7 @@ Each item below needs the owner's go; the ones touching the VM, DNS, the bucket 
       `smoke.sh` against staging and posts the result on the PR. Replaces today's staging smoke of whatever is live.
 - [ ] **STG-4 · verify, then production.** The owner checks staging (a short checklist per track: pages load,
       Markets board counts, paper rows), then merges; the merge deploys.
-- [ ] **STG-5 · an off-VM copy of the VM's data.** Today the VM's disk is the only copy of the newest database,
+- [ ] **STG-5 · an off-VM copy of the VM's data.** *(2026-10-14: built as `scripts/vm/offsite.sh` + `racinglines-offsite.timer`, `vm.sh offsite`; nightly prod dump, `data/backups` and `data/archive/markets` to the primary bucket. The VM can already write there. Restore drill and cloud-session read key still open.)* Today the VM's disk is the only copy of the newest database,
       `data/backups/`, and the market history the recorder's archive pass moved out of Postgres into
       `data/archive/markets/` (dumps alone no longer hold it). Steps: (1) `bucket.sh push` gets a VM mode: `pg_dump`
       through `docker compose exec -T db` instead of the Mac's `PG_BIN`; (2) the VM service account gets object
@@ -740,6 +805,28 @@ Recommendations, in order; the first two are cheap and can start with the next r
       snapshot and fails if a number changes; `UPDATE_GOLDEN=1`-style promotion when a change is meant.
 - [ ] **REP-7 · screenshots by script.** A Playwright script per report takes its screenshots at 1024 px and
       150% against staging (after STG-1), so they can be re-taken, not re-clicked.
+
+### Internal onboarding book (2026-10-14)
+
+The admin-only onboarding book (Jupyter Book) is served at `/docs/internal/` from `data/internal-docs` on the VM
+(route in `racinglines/web/info_routes.py`, copied by `vm.sh internal-docs`, on prod since #180). Its source is
+never in git: it lives in the project library (`library/onboarding/book`) and on the owner's Mac
+(`~/Documents/racinglines/jb/book`); build steps are in its `README.md`.
+
+- [ ] **BOOK-1 · put the first draft on the VM.** The Mac build is clean (14 Oct 07:03 UTC, with the DITL #1
+      timeline fix). Run `bash scripts/deploy/vm.sh internal-docs ~/Documents/racinglines/jb/book/_build/html`
+      from a checkout of `main` if it has not been run yet (not verified from the thread), then open
+      `racinglines.bet/docs/internal/` as an admin; anyone else should get a 404.
+- [ ] **BOOK-2 · owner review of the draft.** Every chapter carries a "Claude first draft (2026-10-14)" note; remove
+      each note once the owner has read that chapter.
+- [ ] **BOOK-3 · DITL #1 follow-ups.** (a) The owner decides whether the v4 joint prologue + GC paper slip goes
+      into DITL #1. (b) Only the book's copy of `ditl/core.md` has the timeline fix (betting closed about 16:00 to
+      16:02 UTC, window missed by about 56 minutes, not 24); the Mac source `core.md`, its timeline figure and the
+      internal PDF still count to the 16:34 start. (c) Add the paper result once the Eneco GC settles (18 Oct).
+- [ ] **BOOK-4 · missing sources.** The runs/f1 matrix artifact was not saved; `research/algo-abc` links
+      `img/pl-vs-global-win.png`, which was not found (only its script exists); 5 of the 8 recovered 24-hour report
+      figures are captures of the sign-in page; the Whistler, global-model sweep, Kalshi maker K and overnight sweep
+      report texts are still missing (see `sources/index.md` in the book).
 
 ## Business and collaborators
 
