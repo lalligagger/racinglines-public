@@ -655,6 +655,42 @@ Downhill model.
       The 106-job `sweeps/kalshi-maker-k.toml` grid went from 59 to 21 minutes on 4 cores, same results.
       Left: the maker replay itself (`maker_replay.quote`/`PublicView`, about half of what remains).
 
+### Web UI: open items (from the "Web UI Improvements" thread, closed 2026-10-14)
+
+Interaction side of the web app (forms, auth and sessions, navigation, app-shell code). The full backlog with audit
+citations lives in the project library (`library/audit/2026-10-06-web-ui-backlog.md`). Checked against `staging`
+at `4905943` on 2026-10-14 where marked; the rest were last checked on 2026-10-06.
+
+- [ ] **S1 · CSRF is one global token** (`CSRF_TOKEN`, `check_csrf` in `racinglines/web/app.py`), the same for every
+      user and visible to the demo logins. It guards settings, MCP and admin writes and the order routes. Still true
+      2026-10-14. Money-adjacent: its own `work/web-security` branch, staging first.
+- [ ] **S2 · Login throttle trusts `cf-connecting-ip` / `x-forwarded-for`** from any client (`users.py`, `app.py`),
+      per-IP only, in-process dicts that never evict, no test. Still true 2026-10-14.
+- [ ] **S3 · `APP_SECRET` unset falls back to a random per-process secret** (`app.py`: sessions and CSRF break on
+      restart). Fail fast instead. Still true 2026-10-14.
+- [ ] **S4 · What sign-up's role may trigger** (DB-writing syncs, `diag_example`). Needs the owner's call; re-check
+      against the alpha layout, which runs basic as pro.
+- [ ] **S5 · Admin "create user" does not validate the role** (`admin.py` `admin_user_create`; the update path
+      does). Still true 2026-10-14.
+- [ ] **S6 · Demo guard redirects to the `Referer` header** (`demo.py:80`, off-site redirect possible). Still true
+      2026-10-14.
+- [ ] **S7 · Logout and password reset don't end other sessions** (stateless cookie). May need a per-user
+      counter column: a migration, so backup and owner sign-off.
+- [ ] **U1 · Self-serve strategy switching for pro users** (admin-only today). Needs an owner decision.
+- [ ] **U2 · Password change and a light/dark toggle in Settings** (`settings.html` has neither, 2026-10-14).
+- [ ] **U3 · Link the pro/basic comparison from the sign-in page.**
+- [ ] **U4 · Open the sport with a race in the next 7 days on /markets** without overriding remembered state
+      (shared with the Web View side).
+- [ ] **C2 · Web app sport-specific literals** (Lab job types, `'f1_wdc'` in views and templates) to schema-driven,
+      per the one-engine rule. C1 (split `app.py`) is mostly done: 883 lines on 2026-10-14, down from 1,550.
+- [ ] **`/demo/book` and `/demo/live` pages for the F1 race-week demos** (Core C54; plan
+      `library/engineering/2026-10-11-f1-race-week-demos/plan.md`, the Web UI side owns the replay behaviour). No such
+      routes on `staging` 2026-10-14.
+- [ ] **Maker `/positions` page speed:** the profiler `library/web/2026-10-11-positions-speed/profile_positions.py`
+      (run on the VM from the Mac) has never been run or its output never returned.
+- Standing limit (owner, 2026-10-11): further maker UI is drop-down entries and sub-setting inputs only, no new
+  components. Alpha settings stay as they are until about mid-November (owner, 2026-10-12).
+
 ## Staging and CI deploys
 
 **High priority** (owner, 2026-09-30; in [P1](#priorities)). Audited 2026-10-01 against the public repo, the
