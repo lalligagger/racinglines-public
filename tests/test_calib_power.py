@@ -137,3 +137,28 @@ def test_unset_leaves_prices_and_key_unchanged(monkeypatch):
     assert cal.loc[fav, "win_prob"] > base.loc[fav, "win_prob"]
     assert (cal["podium_prob"] >= cal["win_prob"] - 1e-12).all()      # podium priced from the same resampled races
     assert cal["win_prob"].sum() == pytest.approx(1.0, abs=1e-6)
+
+
+def test_every_surface_takes_the_setting():
+    """CLI flag, MCP job catalogue, Lab sweep form and the Lab job parser (owner rule: every surface)."""
+    import argparse
+    from racinglines.mcp import tools
+    from racinglines.pipelines import sweep_settings as SS
+    from racinglines.web import jobs
+    from racinglines.web.app import templates
+    ap = argparse.ArgumentParser()
+    SS.add_arguments(ap)
+    assert ap.parse_args(["--calib-power", "walk_forward"]).calib_power == "walk_forward"
+    assert "calib_power" in {s["name"] for s in tools.list_job_types()["sweep_settings"]}
+    start = SS.Settings.from_dict({"calib_power": "walk_forward"}).to_json()
+    html = templates.env.get_template("lab_sweep_form.html").render(
+        jt=jobs.CATALOG["f1_sweep"], sel_job="f1_sweep", sweep_defaults=SS.Settings.from_dict().to_json(),
+        sweep_start=start, sweep_source="", knobs={}, candidates=[], sel_candidate=0,
+        sweep_groups=[(g, lab, [x for x in SS.SETTINGS if x.group == g]) for g, lab in SS.GROUPS],
+        model_choices=jobs.MODEL_CHOICES, variant_switches=jobs.variant_switches(),
+        exclusive_switches=jobs.EXCLUSIVE_SWITCHES, csrf=lambda: "")
+    assert 'name="calib_power" value="walk_forward"' in html and 'type="number"' not in html.split('name="calib_power"')[1][:40]
+    assert jobs.parse(jobs.CATALOG["f1_sweep"], {"year": "2026", "calib_power": "walk_forward"})["settings"] == \
+        {"calib_power": "walk_forward"}
+    _, parsed = tools._job_params("f1_sweep", {"year": "2026", "settings": {"calib_power": "walk_forward"}})
+    assert parsed["settings"]["calib_power"] == "walk_forward"
