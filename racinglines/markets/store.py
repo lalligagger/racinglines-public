@@ -53,7 +53,7 @@ STORES = {
     "trades": dict(table="market_trades", key=["tx_hash", "token_id", "wallet", "side", "price", "size"],
                    cols=["token_id", "condition_id", "outcome_index", "ts", "side", "price", "size", "tx_hash", "wallet"]),
     "books": dict(table="market_book_snapshots", key=["token_id", "ts"],
-                  cols=["token_id", "ts", "best_bid", "best_ask", "bids", "asks"]),
+                  cols=["token_id", "ts", "best_bid", "best_ask", "bids", "asks"], floats=["best_bid", "best_ask"]),
 }
 
 
@@ -77,10 +77,18 @@ def _dataset(name, root):
     if not path.exists() or not any(path.rglob("*.parquet")):
         return None
     d = ds.dataset(path, format="parquet", partitioning="hive")
-    missing = [c for c in STORES[name].get("floats", ()) if c not in d.schema.names]
-    if not missing:
+    # The schema is inferred from one file. A column that is all null there reads as type null, and a later file
+    # holding numbers then fails the read (cast double to null), so a null column gets its real type back.
+    floats = STORES[name].get("floats", ())
+    missing = [c for c in floats if c not in d.schema.names]
+    nulls = [i for i, f in enumerate(d.schema) if pa.types.is_null(f.type)]
+    if not missing and not nulls:
         return d
     schema = d.schema
+    for i in nulls:
+        f = schema.field(i)
+        t = pa.int64() if f.name == "outcome_index" else pa.float64() if f.name in (*floats, "price", "size") else pa.string()
+        schema = schema.set(i, pa.field(f.name, t))
     for c in missing:
         schema = schema.append(pa.field(c, pa.float64()))
     return ds.dataset(path, format="parquet", partitioning="hive", schema=schema)
