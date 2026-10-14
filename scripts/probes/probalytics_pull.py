@@ -29,6 +29,9 @@ whose service account can write the bucket): with --to-bucket (or PROBALYTICS_BU
 relative path under that prefix as soon as it is written, the object's size is checked against the local file, the
 upload goes to MANIFEST.jsonl and the local copy is deleted (--keep-local keeps it), so the disk holds one file at a time.
 A file recorded as uploaded counts as present, so a rerun skips it. MANIFEST.jsonl itself is copied after each upload.
+At the start of a --to-bucket run the bucket's MANIFEST.jsonl is merged into the local one, and every file it lists
+that is in the bucket is marked uploaded, so a machine that never pulled those files (the VM, after the Mac's archive
+was copied up) skips them instead of fetching them again. Only one machine should pull to a bucket at a time.
 
     # VM: one venue-day at a time straight to the bucket
     PROBALYTICS_ENV=/etc/racinglines-probalytics.env python scripts/probes/probalytics_pull.py books \
@@ -200,6 +203,30 @@ def upload(path, **meta):
         path.unlink()
     gcloud("cp", "--quiet", str(OUT / "MANIFEST.jsonl"), f"{BUCKET['to']}/MANIFEST.jsonl")
     log(f"{path.name}: uploaded to {dest}" + ("" if keep else ", local copy deleted"))
+
+
+def seed_from_bucket():
+    """Merge the bucket's MANIFEST.jsonl into ours (its rows first, so our own later rows still win), then mark each
+    listed file that is in the bucket as uploaded. Returns how many were marked."""
+    def lines(*args):
+        try:
+            return gcloud(*args).splitlines()
+        except subprocess.CalledProcessError:   # no manifest yet, or an empty prefix
+            return []
+    remote = [x for x in lines("cat", f"{BUCKET['to']}/MANIFEST.jsonl") if x.strip()]
+    have = set(lines("ls", f"{BUCKET['to']}/**"))
+    m = OUT / "MANIFEST.jsonl"
+    local = [x for x in (m.read_text().splitlines() if m.exists() else []) if x.strip()]
+    seen = set(remote)
+    m.write_text("".join(x + "\n" for x in remote + [x for x in local if x not in seen]))
+    marked = 0
+    for f, r in entries().items():
+        dest = f"{BUCKET['to']}/{f}"
+        if not r.get("uploaded") and dest in have:
+            manifest(**{k: v for k, v in r.items() if k != "at"}, uploaded=dest, local=(OUT / f).exists(), seeded=True)
+            marked += 1
+    log(f"bucket: {len(remote)} manifest rows, {len(have)} objects, {marked} files marked present")
+    return marked
 
 
 def market_map(venue):
@@ -389,6 +416,8 @@ def main():
     if BUCKET["to"] and not BUCKET["to"].startswith("gs://"):
         ap.error("--to-bucket takes a gs:// prefix")
     venues = list(VENUES) if a.venue == "both" else [a.venue]
+    if BUCKET["to"]:
+        seed_from_bucket()
     threading.Thread(target=heartbeat, daemon=True).start()
     log(f"probalytics_pull {a.what} {venues} -> {OUT}" + (f" -> {BUCKET['to']}" if BUCKET["to"] else ""))
     {"books": lambda: run_books(venues, a.start, a.end), "fills": lambda: run_fills(venues, a.start, a.end),
