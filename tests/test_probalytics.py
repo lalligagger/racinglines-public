@@ -98,3 +98,70 @@ def test_off_by_default(monkeypatch):
     assert called == {"ours": True}
     monkeypatch.setenv(PB.ENV, "probalytics")
     assert PB.enabled()
+
+
+def test_best_levels_matches_a_loop_whatever_the_level_order():
+    import numpy as np
+    import pyarrow as pa
+    rng = np.random.default_rng(7)
+    rows_px, rows_sz = [], []
+    for _ in range(300):
+        n = int(rng.integers(0, 6))
+        px = list(np.round(rng.uniform(0.01, 0.99, n), 2))
+        if n >= 2 and rng.random() < 0.3:
+            px[1] = px[0]                                   # a tie at the touch: sizes add
+        rows_px.append(px)
+        rows_sz.append(list(np.round(rng.uniform(1, 50, n), 1)))
+    px, sz = pa.array(rows_px, pa.list_(pa.float64())), pa.array(rows_sz, pa.list_(pa.float64()))
+    for highest in (True, False):
+        price, size = PB.best_levels(px.slice(5), sz.slice(5), highest)   # a sliced array: offsets don't start at 0
+        for i, (p, s) in enumerate(zip(rows_px[5:], rows_sz[5:])):
+            if not p:
+                assert np.isnan(price[i]) and size[i] == 0
+                continue
+            b = max(p) if highest else min(p)
+            assert price[i] == b
+            assert size[i] == pytest.approx(sum(q for x, q in zip(p, s) if x == b))
+
+
+def test_book_at_and_the_fantasy_get_book_walk_the_book_as_of_t(base):
+    from datetime import timezone
+
+    from racinglines.fantasy import exchange as EX
+    links = pd.DataFrame(dict(token_id=["tokA"], condition_id=["0xc1"], prediction=["race_win"]))
+    v = PB.ProbalyticsPolymarket(None, links, T.replace(hour=0), T, event_key="2026-07", base=base, levels=True)
+    b = v.book_at("tokA", T)
+    assert b["bids"] == [(0.40, 10.0), (0.38, 5.0)] and b["asks"] == [(0.44, 7.0), (0.50, 9.0)]
+    assert v.book_at("tokA", datetime(2026, 6, 14, 10, 0)) is None
+    got = PB.fantasy_book(v, T.replace(tzinfo=timezone.utc))("tokA")
+    assert got["ts"] == T.replace(tzinfo=timezone.utc) and got["snapshot_ts"].hour == 11
+    assert EX.walk(got["asks"], 10, 0.50, buy=True) == [(0.44, 7), (0.50, 3)]      # 7 at the touch, 3 one level up
+
+
+def test_bucket_fetch_and_evict(base, tmp_path, monkeypatch):
+    import shutil
+    import subprocess
+    remote = tmp_path / "remote"
+    shutil.copytree(base, remote)
+    local = tmp_path / "local"
+    local.mkdir()
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd[:3])
+        if cmd[2] == "ls":
+            d = remote / cmd[3].split("gs://b/pb/", 1)[1].rstrip("/")
+            out = "\n".join(f"gs://b/pb/{d.relative_to(remote).as_posix()}/{p.name}" for p in d.iterdir()) if d.exists() else ""
+            return subprocess.CompletedProcess(cmd, 0 if d.exists() else 1, out, "")
+        for u in cmd[3:-1]:
+            shutil.copy(remote / u.split("gs://b/pb/", 1)[1], cmd[-1])
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+    monkeypatch.setattr(PB.subprocess, "run", fake_run)
+    monkeypatch.setattr(PB, "_LISTED", {})
+    monkeypatch.setenv("PROBALYTICS_BUCKET", "gs://b/pb")
+    monkeypatch.setenv("PROBALYTICS_CACHE_EVICT", "1")
+    v = _pm(local)
+    assert v.price("tokA", T) == pytest.approx(0.42)                 # read from the fetched stage file
+    assert v.volume_24h("0xc1", T) == pytest.approx(7.0)
+    assert ["gcloud", "storage", "cp"] in calls
+    assert not any(local.rglob("*.parquet"))                          # evicted after loading

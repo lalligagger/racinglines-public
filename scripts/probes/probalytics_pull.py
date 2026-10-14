@@ -20,6 +20,10 @@ written with; a wider set of markets refetches it), so a later, wider run fills 
     python scripts/probes/probalytics_pull.py fills  --from 2025-06-01
     python scripts/probes/probalytics_pull.py books  --from 2026-09-01
     python scripts/probes/probalytics_pull.py stages --year 2026
+    # cycling (owner 2026-10-14, ahead of NASCAR): no market_links yet, so by series / race names
+    python scripts/probes/probalytics_pull.py fills  --set cycling --from 2025-01-01
+    python scripts/probes/probalytics_pull.py books  --set cycling --venue kalshi     --from 2026-05-09
+    python scripts/probes/probalytics_pull.py books  --set cycling --venue polymarket --from 2025-11-20
     # the rest of y, later (only missing days are fetched)
     python scripts/probes/probalytics_pull.py books  --venue polymarket --from 2025-11-20
     python scripts/probes/probalytics_pull.py books  --venue kalshi     --from 2026-05-09
@@ -229,6 +233,77 @@ def seed_from_bucket():
     return marked
 
 
+SET = "F1"            # file tag: F1 = our linked markets (exact keys); F1X = F1 markets we have not linked (--set extra)
+EXTRA_MATCH = {       # discovery by series / text, only for the archive (links, alerts and counts stay exact-key)
+    "kalshi": "platform_id LIKE 'KXF1%'",
+    # F1 in the title or slug, or the description's resolution source ("the official Formula 1 website"), minus the
+    # other series and the F1 film / game (2026-10-14: 392 unlinked, mostly 2021-24 race markets)
+    "polymarket": ("(match(lower(concat(title, ' ', slug)), 'formula ?1|\\\\bf1\\\\b') "
+                   "OR match(lower(description), 'formula 1|formula one|formula1\\\\.com')) "
+                   "AND NOT match(lower(concat(title, ' ', slug, ' ', description)), 'formula 2|formula 3|\\\\bf2\\\\b|"
+                   "\\\\bf3\\\\b|formula e\\\\b|e-prix|indycar|motogp|moto ?gp|nascar|rotten tomatoes|box office|"
+                   "academy award|oscar|steam award|game of the year|\\\\bmovie\\\\b|\\\\bfilm\\\\b')"),
+}
+
+
+def market_map_extra(venue):
+    """{uuid: platform_id} of F1 markets on Probalytics that are not in our links (EXTRA_MATCH, parlays left out),
+    cached with their titles in links/probalytics_<venue>_f1x.json for review."""
+    cache = OUT / "links" / f"probalytics_{venue}_f1x.json"
+    linked, _ = market_map(venue)
+    key = "x" + hashlib.sha1(("\n".join(sorted(linked)) + EXTRA_MATCH[venue]).encode()).hexdigest()[:11]
+    if cache.exists():
+        c = json.loads(cache.read_text())
+        if c["key"] == key:
+            return c["map"], key
+    body = ch(f"SELECT toString(id), platform_id, title FROM markets WHERE platform = '{VENUES[venue]}' "
+              f"AND market_type != 'PARLAY' AND {EXTRA_MATCH[venue]}")
+    rows = [r for r in json.loads(body)["data"] if r[0] not in linked]
+    m = {u: p for u, p, _ in rows}
+    cache.write_text(json.dumps(dict(key=key, linked=len(linked), found=len(m), map=m,
+                                     titles={u: t for u, _, t in rows})))
+    log(f"{venue}: {len(m)} F1 markets on Probalytics not in our links (key {key})")
+    return m, key
+
+
+# Other sports with no market_links yet, by discovery for the archive (owner 2026-10-14: cycling ahead of NASCAR):
+# Kalshi by series prefix, Polymarket by race and rider names, markets created since `since`
+_CYC_RACES = ("tour de france|giro d.italia|vuelta a espa|paris-roubaix|milan-san ?remo|tour of flanders|"
+              "ronde van vlaanderen|li.ge-bastogne|il lombardia|strade bianche|tour de suisse|dauphin|"
+              "world road (race )?championship|uci road|tour down under|paris-nice|tirreno|amstel gold|"
+              "fl.che wallonne|gent-wevelgem|klasikoa|tour of guangxi|grand prix cycliste|tour de pologne|cycling")
+DISCOVERY = {
+    "CYC": dict(since="2025-01-01", kalshi="(platform_id LIKE 'KXCYCLING%' OR platform_id LIKE 'KXTOURDEFRANCE%')",
+                polymarket=(f"match(lower(title), '{_CYC_RACES}') "
+                            "AND NOT match(lower(title), 'anyone say|trump say|ncaa|formula|nascar|motogp|indycar')")),
+}
+
+
+def market_map_discovery(venue, tag):
+    """{uuid: platform_id} of a DISCOVERY set, cached with titles in links/probalytics_<venue>_<tag>.json."""
+    d = DISCOVERY[tag]
+    cache = OUT / "links" / f"probalytics_{venue}_{tag.lower()}.json"
+    key = tag.lower() + hashlib.sha1((d[venue] + d["since"]).encode()).hexdigest()[:9]
+    if cache.exists():
+        c = json.loads(cache.read_text())
+        if c["key"] == key:
+            return c["map"], key
+    body = ch(f"SELECT toString(id), platform_id, title FROM markets WHERE platform = '{VENUES[venue]}' "
+              f"AND market_type != 'PARLAY' AND created_at >= '{d['since']}' AND {d[venue]}")
+    rows = list({r[0]: r for r in json.loads(body)["data"]}.values())
+    m = {u: p for u, p, _ in rows}
+    (OUT / "links").mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps(dict(key=key, found=len(m), map=m, titles={u: t for u, _, t in rows})))
+    log(f"{venue}: {len(m)} {tag} markets on Probalytics (key {key})")
+    return m, key
+
+
+def markets_for(venue):
+    if SET in DISCOVERY:
+        return market_map_discovery(venue, SET)
+    return market_map_extra(venue) if SET == "F1X" else market_map(venue)
+
+
 def market_map(venue):
     """{probalytics market uuid: platform_id} for our F1 markets, cached in links/probalytics_<venue>_f1.json."""
     cache = OUT / "links" / f"probalytics_{venue}_f1.json"
@@ -316,9 +391,9 @@ def months(a, b):
 def run_books(venues, start, end):
     jobs = []
     for v in venues:
-        m, key = market_map(v)
+        m, key = markets_for(v)
         for d in days(max(start, BOOKS_FROM[v]), end):
-            p = OUT / "books" / f"{d:%Y-%m-%d}_F1_{VENUES[v]}.parquet"
+            p = OUT / "books" / f"{d:%Y-%m-%d}_{SET}_{VENUES[v]}.parquet"
             if not current(p, key):
                 jobs.append((v, m, key, d, p))
     STATE["total"] = len(jobs)
@@ -334,10 +409,10 @@ def run_books(venues, start, end):
 def run_fills(venues, start, end):
     jobs = []
     for v in venues:
-        m, key = market_map(v)
+        m, key = markets_for(v)
         for mo in months(start, end):
             nxt = (mo + timedelta(days=32)).replace(day=1)
-            p = OUT / "fills" / f"F1_{VENUES[v]}_{mo:%Y-%m}.parquet"
+            p = OUT / "fills" / f"{SET}_{VENUES[v]}_{mo:%Y-%m}.parquet"
             # the current month is never final: refetch it each run
             if current(p, key) and nxt <= date.today():
                 continue
@@ -368,10 +443,10 @@ def run_stages(venues, year):
         by_ev.setdefault(ev, []).append((lab, t))
     jobs = []
     for v in venues:
-        m, key = market_map(v)
+        m, key = markets_for(v)
         for ev, stages in by_ev.items():
             stages = [(lab, t) for lab, t in stages if t.date() >= BOOKS_FROM[v]]
-            p = OUT / "stages" / f"{ev}_{VENUES[v]}.parquet"
+            p = OUT / "stages" / f"{ev}_{VENUES[v]}{'' if SET == 'F1' else '_' + SET}.parquet"
             if stages and not current(p, key):
                 jobs.append((v, m, key, ev, stages, p))
     STATE["total"] = len(jobs)
@@ -411,11 +486,16 @@ def main():
     ap.add_argument("--year", type=int, default=2026)
     ap.add_argument("--to-bucket", default=BUCKET["to"], help="gs:// prefix: upload each file, then delete it here")
     ap.add_argument("--keep-local", action="store_true", help="with --to-bucket: keep the local copies")
+    ap.add_argument("--set", choices=["linked", "extra", "cycling"], default="linked",
+                    help="linked: our F1 market_links (exact keys); extra: F1 markets on Probalytics we have not linked; "
+                         "cycling: road cycling by discovery (DISCOVERY['CYC'], files tagged CYC)")
     a = ap.parse_args()
     BUCKET.update(to=a.to_bucket.rstrip("/"), keep_local=a.keep_local)
     if BUCKET["to"] and not BUCKET["to"].startswith("gs://"):
         ap.error("--to-bucket takes a gs:// prefix")
     venues = list(VENUES) if a.venue == "both" else [a.venue]
+    global SET
+    SET = {"extra": "F1X", "cycling": "CYC"}.get(a.set, "F1")
     if BUCKET["to"]:
         seed_from_bucket()
     threading.Thread(target=heartbeat, daemon=True).start()
