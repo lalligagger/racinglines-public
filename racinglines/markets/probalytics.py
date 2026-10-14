@@ -230,12 +230,22 @@ def read_books(venue, event_key, start, end, keys, base=None, tag=DEFAULT_TAG, l
 
 def read_fills(venue, start, end, keys, base=None, tag=DEFAULT_TAG):
     """key, ts (naive UTC), usd (price x size) of every fill of the keys (Polymarket condition ids or Kalshi
-    tickers) over [start, end], from the sport's `tag` files."""
+    tickers) over [start, end], from the sport's `tag` files, one row per fill_id."""
     base = Path(base or root())
     a, b = pd.Timestamp(start), pd.Timestamp(end)
     paths = [base / "fills" / f"{tag}_{venue.upper()}_{m:%Y-%m}.parquet" for m in _months(a, b)]
-    df = _read(paths, ["market_platform_id", "timestamp", "price", "size"], [("market_platform_id", "in", list(keys))],
-               base)
+    cols = ["market_platform_id", "timestamp", "price", "size"]
+    got = fetch(paths, base)                     # fetched once here; _read below finds them local
+    try:
+        import pyarrow.parquet as pq
+        have = next((set(pq.read_schema(p).names) for p in map(Path, paths) if p.exists()), set())
+        df = _read(paths, cols + (["fill_id"] if "fill_id" in have else []), [("market_platform_id", "in", list(keys))],
+                   base)
+    finally:
+        _evict(got)
+    if len(df) and "fill_id" in df:
+        # their fills table repeats rows (2026-07 Kalshi F1: 97,432 exact duplicates of 298,487, the British GP twice)
+        df = df.drop_duplicates("fill_id")
     ts = pd.to_datetime(df["timestamp"], utc=True).dt.tz_localize(None) if len(df) else pd.Series([], dtype="datetime64[ns]")
     out = pd.DataFrame(dict(key=df["market_platform_id"].astype(str) if len(df) else [], ts=ts,
                             usd=(df["price"] * df["size"]).astype(float) if len(df) else []))

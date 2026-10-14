@@ -75,9 +75,13 @@ def stage_rows(conn, w, venue):
                              theirs_bid=tq[0] if tq else None, theirs_ask=tq[1] if tq else None,
                              ours_vol=ours.volume_24h(m[vk], t), theirs_vol=theirs.volume_24h(m[vk], t)))
     # trades over the weekend window: our tape's rows against their fills
-    n_ours = sum(len(g[(g["ts"] >= start) & (g["ts"] <= end)]) for g in ours.trades.values())
-    n_theirs = sum(len(g[(g["ts"] >= start) & (g["ts"] <= end)]) for g in theirs.pb_fills.values())
+    win = lambda g: g[(g["ts"] >= start) & (g["ts"] <= end)]                       # noqa: E731
+    n_ours = sum(len(win(g)) for g in ours.trades.values())
+    n_theirs = sum(len(win(g)) for g in theirs.pb_fills.values())
+    usd_ours = float(sum(win(g)["usd"].sum() for g in ours.trades.values()))
+    usd_theirs = float(sum(win(g)["usd"].sum() for g in theirs.pb_fills.values()))
     return rows, dict(event=w["event_key"], venue=venue, ours_trades=n_ours, theirs_trades=n_theirs,
+                      ours_usd=round(usd_ours), theirs_usd=round(usd_theirs),
                       markets=len(links))
 
 
@@ -128,12 +132,28 @@ def summarize(st, tr, bk):
                       theirs_only=int((s["ours"].isna() & s["theirs"].notna()).sum()),
                       price_share_within_1c=share, price_median_abs_diff=med,
                       price_pass=share is not None and share >= SHARE_MIN)
+        # Kalshi: our quote (book, else candle) against their touch; the "price" above is our candle close against
+        # their mid, two different things (Kalshi candles were missing for Singapore altogether)
+        q = s.dropna(subset=["ours_bid", "ours_ask", "theirs_bid", "theirs_ask"])
+        if len(q):
+            share_q, n_q, med_q = share_within((q["ours_bid"] + q["ours_ask"]) / 2, (q["theirs_bid"] + q["theirs_ask"]) / 2)
+            out[v].update(quote_points=n_q, quote_mid_share_within_1c=share_q, quote_mid_median_abs_diff=med_q,
+                          quote_bid_share_within_1c=share_within(q["ours_bid"], q["theirs_bid"])[0],
+                          quote_ask_share_within_1c=share_within(q["ours_ask"], q["theirs_ask"])[0],
+                          quote_pass=share_q is not None and share_q >= SHARE_MIN)
         t = tr[tr["venue"] == v] if len(tr) else tr
         if len(t):
-            t = t.assign(rel=(t["theirs_trades"] - t["ours_trades"]).abs() / t["ours_trades"].clip(lower=1))
+            # Kalshi: fills one for one with our tape, so counts; Polymarket: one transaction is several maker fills
+            # on their side and one trade on ours, so traded dollars
+            col = ("ours_trades", "theirs_trades") if v == "kalshi" else ("ours_usd", "theirs_usd")
+            both = t[(t[col[0]] > 0) & (t[col[1]] > 0)]
+            rel = (both[col[1]] - both[col[0]]).abs() / both[col[0]]
             out[v].update(trades_ours=int(t["ours_trades"].sum()), trades_theirs=int(t["theirs_trades"].sum()),
-                          trades_weekends_outside=t.loc[t["rel"] > TRADES_TOL, "event"].tolist(),
-                          trades_pass=bool((t["rel"] <= TRADES_TOL).all()))
+                          usd_ours=int(t["ours_usd"].sum()), usd_theirs=int(t["theirs_usd"].sum()), trades_measure=col[0][5:],
+                          trades_weekends_outside=both.loc[rel > TRADES_TOL, "event"].tolist(),
+                          trades_weekends_ours_missing=t.loc[t[col[0]] == 0, "event"].tolist(),
+                          trades_weekends_theirs_missing=t.loc[t[col[1]] == 0, "event"].tolist(),
+                          trades_pass=bool((rel <= TRADES_TOL).all()))
         b = bk[bk["venue"] == v] if len(bk) else bk
         if len(b):
             om, tm = (b["ours_bid"] + b["ours_ask"]) / 2, (b["theirs_bid"] + b["theirs_ask"]) / 2

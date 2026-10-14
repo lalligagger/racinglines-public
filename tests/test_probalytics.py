@@ -292,3 +292,12 @@ def test_tape_source_reaches_the_lab_form():
 def test_road_cycling_syncs_the_tour_de_france_series():
     from racinglines import sports
     assert "KXTOURDEFRANCE" in sports.kalshi_series("road_cycling")       # KXCYCLING's prefix does not cover it
+
+
+def test_duplicate_fill_rows_count_once(tmp_path):
+    (tmp_path / "fills").mkdir()
+    row = dict(fill_id="f1", market_platform_id="KXF1RACE-BARGP26-ANT", timestamp=pd.Timestamp("2026-06-14 10:00", tz="UTC"),
+               price=0.32, size=50.0)
+    pd.DataFrame([row, row, dict(row, fill_id="f2", size=10.0)]).to_parquet(tmp_path / "fills" / "F1_KALSHI_2026-06.parquet")
+    f = PB.read_fills("kalshi", T.replace(hour=0), T, ["KXF1RACE-BARGP26-ANT"], base=tmp_path)
+    assert len(f) == 2 and f["usd"].sum() == pytest.approx(0.32 * 60)
