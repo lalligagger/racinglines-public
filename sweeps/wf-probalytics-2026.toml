@@ -1,0 +1,163 @@
+# The walk-forward pool on Probalytics' tape (owner 2026-10-14: "a walk-fwd as soon as the prob data starts, fast"):
+# profile A at three minimum edges, with and without a 10-cent spread limit, buying at the touch, on Polymarket (every
+# 2026 weekend: their books start 2025-11-20) and Kalshi (from round 5: their books start 2026-05-09). Each setup runs
+# once as a season sweep; scripts/probes/walk_forward.py then picks a setup before every weekend from the weekends
+# raced so far (pipelines/story.py's rule) and scores the picks on the weekend that follows.
+#
+#   TARGET=staging STAGING_DB=racinglines_staging_demo MODE=search QUEUE=sweeps/wf-probalytics-2026.toml scripts/vm/overnight.sh
+#   python scripts/probes/walk_forward.py data/runs/search/wf-probalytics-2026
+#
+# Size: 12 jobs (2 venues x 3 edges x 2 spread rules) at 1 seed, plus the search's default baseline per venue = 14 runs.
+# One seed is under the takers' noise floor (about $400 a season): the walk-forward reads which setup leads, not by how
+# little. Needs #206 (tape_source, taker_fill, max_spread).
+
+[search]
+name = "wf-probalytics-2026"
+parallel = 2          # 2 vCPU, niced, beside prod's 5-minute recorders and signals
+grid = 8
+history_cache = true
+hours = 3.0
+grace_minutes = 20
+
+[report]
+target = 2026
+holdout = []
+top = 12
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.05
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+tape_source = "probalytics"
+taker_fill = "touch"
+note = "wf pool: polymarket min_edge 0.05"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.05
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+tape_source = "probalytics"
+taker_fill = "touch"
+max_spread = 0.1
+note = "wf pool: polymarket min_edge 0.05 max_spread 0.1"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+tape_source = "probalytics"
+taker_fill = "touch"
+note = "wf pool: polymarket min_edge 0.1"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+tape_source = "probalytics"
+taker_fill = "touch"
+max_spread = 0.1
+note = "wf pool: polymarket min_edge 0.1 max_spread 0.1"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.15
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+tape_source = "probalytics"
+taker_fill = "touch"
+note = "wf pool: polymarket min_edge 0.15"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.15
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+tape_source = "probalytics"
+taker_fill = "touch"
+max_spread = 0.1
+note = "wf pool: polymarket min_edge 0.15 max_spread 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+rounds = "5-17"
+variant = "gridq+pretrain+reset"
+min_edge = 0.05
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+tape_source = "probalytics"
+taker_fill = "touch"
+note = "wf pool: kalshi min_edge 0.05"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+rounds = "5-17"
+variant = "gridq+pretrain+reset"
+min_edge = 0.05
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+tape_source = "probalytics"
+taker_fill = "touch"
+max_spread = 0.1
+note = "wf pool: kalshi min_edge 0.05 max_spread 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+rounds = "5-17"
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+tape_source = "probalytics"
+taker_fill = "touch"
+note = "wf pool: kalshi min_edge 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+rounds = "5-17"
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+tape_source = "probalytics"
+taker_fill = "touch"
+max_spread = 0.1
+note = "wf pool: kalshi min_edge 0.1 max_spread 0.1"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+rounds = "5-17"
+variant = "gridq+pretrain+reset"
+min_edge = 0.15
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+tape_source = "probalytics"
+taker_fill = "touch"
+note = "wf pool: kalshi min_edge 0.15"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+rounds = "5-17"
+variant = "gridq+pretrain+reset"
+min_edge = 0.15
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+tape_source = "probalytics"
+taker_fill = "touch"
+max_spread = 0.1
+note = "wf pool: kalshi min_edge 0.15 max_spread 0.1"
