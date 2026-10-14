@@ -40,7 +40,9 @@ the live timers (below), but the web app restarts for a few seconds.
 
 The smoke check signs in as the demo accounts (`SMOKE_PASSWORD`, default the public demo password). It
 checks `/login`, that a request without credentials gets 401, the main pages for maker and taker, and that
-`/book/quotes` is maker-only. It makes GET requests only and never sends a wrong password (that would warm the
+`/book/quotes` is maker-only. Under the alpha layout (the app's `X-Racinglines-Layout: alpha` header,
+[Alpha layout](alpha-layout.md)) it checks `/trade` and `/history` instead and expects the archived `/live` and `/book`
+pages to answer 404. It makes GET requests only and never sends a wrong password (that would warm the
 app's 15-minute failed-login throttle).
 
 `staging.racinglines.bet` is the required public staging route. If the hostname is absent or misconfigured,
@@ -69,8 +71,10 @@ be repeated without reading the whole page.
 | `scripts/deploy/smoke.sh <url>` | The smoke check (any machine with curl) |
 | `vm.sh demo`, `demo extra`, `demo status` | The multi-sport demo. `demo`: writes `RACINGLINES_SPORT_STATUS=1` and `RACINGLINES_SPORT_PAPER=1` to `/etc/racinglines.env` (replacing any earlier lines for them), restarts the web app, then starts `scripts/vm/demo_setup.sh` as the transient unit `rl-demo` (refused while `rl-demo` is already running). The script refuses to start while a `racinglines-live-*` unit is active, backs up first (`data/backups/db/racinglines-before-demo-setup-<UTC>.sql.gz`, trailer checked), then for NASCAR and MotoGP (a sport with no settings grid under `data/runs/replay-grid/<sport>` is skipped with a `SKIP` line): the steps in `STEPS`, default `kalshi polymarket forecast`: `kalshi` prints the grid's selection and runs `demo-history --grid … --book best --users maker,taker` on Kalshi; `polymarket` the same on Polymarket's tape with the Kalshi grid's selection (`--venue polymarket --grid-venue kalshi`); `forecast` runs `<sport> forecast --save` (MotoGP has no scheduled race stored, so it stores nothing). `demo extra` runs only `polymarket forecast`. `demo status` shows the unit, the `demo-setup.done` / `.failed` markers and the latest log's key lines (`data/runs/logs/demo-setup-<UTC>.log`). Every write logs a `data_changes` row naming the backup; undo with `racinglines strategy demo-history <sport> --reset --users maker,taker --backup FILE` (per venue) and `<sport> forecast --undo RUN_ID`. Touches no trading flag, migration or bucket, and never the F1 demo history ([Paper trading](paper-trading.md#nascar-and-motogp-demo-in-sample-off-by-default)) |
 | `vm.sh switch <NAME> on\|off` | An app switch in `/etc/racinglines.env` (`RACINGLINES_*` only, e.g. `RACINGLINES_OG_VENUE`: the OG.com column and `/markets/og`), replacing any earlier line for it, then the web app restarted. Refuses any `*TRADING*` flag |
+| `vm.sh schedule`, `schedule off`, `schedule status` | Session start times kept loaded: enables `racinglines-schedule-sync.timer`, a pass of `scripts/vm/schedule_sync.sh` every 6 hours. Each pass dry-runs `racinglines data schedule <sport> --through <today + 70 days>` for `SPORTS` (default `f1`); only when that would add or move a session does it back the database up (`data/backups/db/racinglines-before-schedule-sync-<UTC>.sql.gz`, reused for 23 hours, named in a `data_changes` note) and run it with `--apply --backup`. A pass with nothing to change writes nothing. One line per sport per pass in the journal and `data/runs/logs/schedule-sync.log`; `schedule status` prints the last ones. Rollback: `racinglines data schedule f1 --undo --backup <dump>`. `vm.sh deploy` pauses and resumes it with the other timers |
 | `vm.sh record`, `record off`, `record status` | The Kalshi and OG.com recorder: enables `racinglines-record-venues.timer`, a pass of `scripts/vm/record_venues.sh` every 5 minutes. Each pass stores one order-book snapshot per open market for `kalshi:f1 og:f1 kalshi:nascar og:nascar kalshi:motogp` (`markets --exchange <x> --sport <s> books`) and, once an hour per pair, that pair's `sync` first (links and quotes upserted). Additive only, read-only APIs, no trading. The first pass on a box backs the database up (`data/backups/db/racinglines-before-record-venues-<UTC>.sql.gz`) and adds a `data_changes` note naming it. One line per pair per pass in the journal and `data/runs/logs/record-venues.log`; `record status` prints the last ones and the book snapshots stored per venue per 5 minutes. `vm.sh deploy` pauses and resumes it with the other timers |
 | `scripts/vm/reset_fantasy.sh` | The fantasy reset (owner, 2026-10-11), on the VM as the `racinglines` user: every active account but the demo `maker` and `taker` back to one 1,000-buck sign-up grant, with no paper positions, strategy signals, house-book bets or strategy profile (`racinglines users reset-fantasy`, `web/accounts.reset`). `TARGET=prod\|staging` (default staging); a dry run that prints the per-account counts unless `APPLY=1`, which takes a backup (`data/backups/db/<db>-before-fantasy-reset-<UTC>.sql.gz`, trailer checked), resets in one transaction and adds a `data_changes` note naming the backup. Rollback: restore that backup. Run after a race weekend's signal window closes (a day after the race) |
+| `scripts/vm/fantasy_setup.sh` | Fantasy trading setup (owner, 2026-10-12, staging only): `TARGET=staging\|prod` (default staging), takes a backup (`data/backups/db/<db>-before-fantasy-setup-<UTC>.sql.gz`, trailer checked), runs `racinglines users setup` (creates the manual-trading tables, idempotent; [Fantasy trading: First cut](fantasy-trading.md#first-cut-2026-10-12)) and adds a `data_changes` note naming the backup. A deploy never runs it |
 | `deploy/vm/setup.sh` | One-time VM setup, run by `vm.sh setup`: packages, the `racinglines` user, a read-only deploy key, `/opt/racinglines` on `main`, a Python 3.14 venv (uv), Postgres, `/etc/racinglines.env`, the units |
 | `deploy/vm/update.sh [ref]` | On the VM, run by `vm.sh deploy`: checkout, `pip install`, `alembic upgrade head`, `racinglines db seed` (reference rows for every sport schema, idempotent upserts). The only database writes a deploy makes |
 | `deploy/vm/build_docs.sh` | Piped over ssh by `vm.sh deploy` (after the timers resume) and `vm.sh docs`: builds `site/`, which the app serves at `/docs`, from the checkout's `docs/` (installs `requirements-docs.txt` into the venv the first time). Fail-soft: a failure logs a `docs:` line and the old site stays. Touches only `site/` and the venv |
@@ -421,6 +425,31 @@ answered 404).
 
 Not done yet: Cloudflare Access in front of staging (today it has the app's own login, as production), the Mac's
 trycloudflare script (`scripts/deploy/staging.sh`, ad hoc only).
+
+### Season demo database
+
+A third database, `racinglines_staging_demo`, beside `racinglines_staging` in production's Postgres container (owner,
+2026-10-13: every user on a random strategy at various participation rates through the 2026 F1 season, its own
+database, kept, and picked by a switch on a staging deploy). It persists: deploys never drop or re-copy it.
+
+```
+# LOCAL (Mac): build it (a copy of production, only read, on the first run; a backup of the demo database first after that)
+bash scripts/deploy/vm.sh staging demo-db build          # SEED=2026 YEAR=2026 COPY=1 (re-copy) SOURCE=racinglines|racinglines_staging
+bash scripts/deploy/vm.sh staging demo-db status         # the unit, the log's tail, season-demo.done / .failed
+```
+
+```
+# LOCAL (Mac): the switch (it redeploys staging's current checkout against the chosen database)
+bash scripts/deploy/vm.sh staging db demo                # staging serves racinglines_staging_demo
+bash scripts/deploy/vm.sh staging db main                # back to racinglines_staging
+bash scripts/deploy/vm.sh staging deploy <ref> --db demo # a deploy that switches too
+```
+
+The switch is one file, `/etc/racinglines-staging-db.env` (`DATABASE_URL` of the demo database), which the staging web
+unit reads after `/etc/racinglines-staging.env` and `deploy/vm/staging/update.sh` migrates; with it absent staging is
+as before. CI's staging deploys leave it alone, so the choice holds until `vm.sh staging db main`. Staging's live units
+keep `racinglines_staging`. The demo itself is `racinglines users season-demo` (racinglines/fantasy/season_demo.py,
+writes only a database whose name contains "demo"), run by `scripts/vm/season_demo.sh`.
 
 ### Separate venvs
 

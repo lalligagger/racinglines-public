@@ -401,7 +401,10 @@
     const show = r => {
       const out = pick.querySelector(`[data-out="${r.name}"]`), v = Number(r.value), u = r.dataset.unit;
       out.textContent = u === "pts" ? `${Math.round(v * 100)} pts` : u === "$" ? `$${v}` : `${v} ${u}`;
-      if (Math.abs(Number(r.dataset.base) - v) > 1e-9) out.textContent += " (adjusted)";
+      const moved = Math.abs(Number(r.dataset.base) - v) > 1e-9;
+      const note = r.parentElement.querySelector("[data-untested]");     // the alpha drawer: "untested" instead
+      if (note) note.hidden = !moved;
+      else if (moved) out.textContent += " (adjusted)";
     };
     const spread = pick.querySelector("[data-spread]");
     const roll = opt => {
@@ -416,8 +419,24 @@
       if (pre && Math.random() < k / 2) pre.checked = !pre.checked;
       pick.querySelector("[data-rolled]").value = "1";
     };
-    pick.querySelectorAll("input[type=range]:not([data-spread])").forEach(r => { r.addEventListener("input", () => show(r)); show(r); });
-    pick.querySelectorAll("[data-roll]").forEach(btn => { btn.hidden = false; btn.addEventListener("click", e => { e.preventDefault(); roll(btn.closest(".pick-opt")); }); });
+    pick.querySelectorAll("input[type=range]:not([data-spread]):not([data-kelly])").forEach(r => { r.addEventListener("input", () => show(r)); show(r); });
+    pick.querySelectorAll("[data-roll]").forEach(btn => { btn.hidden = false; btn.addEventListener("click", e => { e.preventDefault(); roll(btn.closest(".pick-opt, [data-tweak]")); }); });
+    // the alpha's Kelly slider: its percent and its tier ("nitty to degen", strategy_pick.KELLY_LABELS), quick picks
+    const kbox = pick.querySelector("[data-kelly-box]");
+    if (kbox) {
+      const k = kbox.querySelector("[data-kelly]"), tiers = JSON.parse(kbox.dataset.labels);
+      const showK = () => {
+        const v = Number(k.value);
+        kbox.querySelector("[data-kelly-out]").textContent = `${Math.round(v * 100)}%`;
+        kbox.querySelector("[data-kelly-label]").textContent = (tiers.find(t => v <= t[0] + 1e-9) || tiers[tiers.length - 1])[1];
+      };
+      k.addEventListener("input", showK);
+      kbox.querySelectorAll("[data-kelly-pick]").forEach(b => b.addEventListener("click", () => {
+        k.value = b.dataset.kellyPick; showK();
+        const kr = pick.querySelector("input[name=sizing][value=kelly]"); if (kr) kr.checked = true;
+      }));
+      showK();
+    }
     const any = pick.querySelector("[data-roll-any]");
     if (any) {
       pick.querySelector("[data-dice]").hidden = false;

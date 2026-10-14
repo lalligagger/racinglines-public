@@ -1,4 +1,4 @@
-{% from "_macros.html" import empty, chart, demo_context, kpi, pnl, pc, px %}
+{% from "_macros.html" import empty, chart, demo_context, kpi, pnl, pc, px, source_note %}
 {% macro t(ms) %}{% if ms %}{{ "%d:%06.3f"|format(ms // 60000, (ms % 60000) / 1000) }}{% endif %}{% endmacro %}
 {% if not snap %}
 <h1>Live</h1><p class="muted">No live event right now. The next downhill final will show here while it runs.</p>
@@ -12,6 +12,7 @@
   {% if snap.conditions %}<span>conditions <b>{{ snap.conditions }}</b></span>{% endif %}
   {% if mode == 'live' %}<span class="faint">refreshes itself</span>{% endif %}
 </div>
+{{ source_note(sport, none, none, snap.ts, model=true) }}
 {% if snap.waiting %}<div class="card accent" id="dh-waiting"><p><b>Before the final.</b> {{ snap.waiting }}.</p>
 {% for q in snap.qualifying or [] %}<h3>{{ q.title }}{% if q.running %} <span class="pill live">running</span>{% endif %}</h3>
 <div class="scroll" data-rows="12"><table><thead><tr><th>#</th><th class="l">Rider</th><th>Time</th><th>Gap</th><th class="l">Status</th></tr></thead><tbody>

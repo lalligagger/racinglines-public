@@ -32,3 +32,9 @@ standard_kinds = []               # nothing is priced, so the board has no colum
 # (`sync --series TICKER ...` overrides the list). Off by default: only `--sport sailgp` syncs them.
 # KXSAILGP already covers KXSAILGPRACE by prefix (series_for uses startswith); both are listed for the reader.
 series = ["KXSAILGP", "KXSAILGPRACE"]
+
+[sources]
+# The compact source note on every page, MCP answer, book render and report that shows this sport's data
+# (racinglines/attribution.py).
+# Results/timing feed(s) as data, taken from racinglines/sources/sailgp/__init__.py, fetch.py docstring.
+results = [{ name = "Wikipedia", url = "https://en.wikipedia.org" }]

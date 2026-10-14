@@ -74,6 +74,8 @@ def main(argv=None):
     p = sub.add_parser("ingest")
     p.add_argument("--years", default="2020-2026")
     p.add_argument("--force", action="store_true")
+    from racinglines.db import schedule as SCH
+    SCH.add_parser(sub, "f1")
     p = sub.add_parser("pm-sync")
     p.add_argument("--year", type=int, default=2026)
     p.add_argument("--closed", action="store_true", help="Also every closed event of that year (e.g. a past season).")
@@ -87,9 +89,12 @@ def main(argv=None):
                                                "stage's cutoff, like the sweep).")
     p.add_argument("--no-fetch", action="store_true", help="Don't refresh FastF1 / Polymarket data first.")
     p.add_argument("--no-alert", action="store_true")
-    p.add_argument("--venue", default="polymarket", choices=["polymarket", "kalshi", "og"],
+    p.add_argument("--venue", default=None, choices=["polymarket", "kalshi", "og"],
                    help="Whose profiles run (users' profiles for that exchange); polymarket, the default, is the "
-                        "5-minute timer's pass as before.")
+                        "5-minute timer's pass as before. With --asof and --profile: the exchange to replay on.")
+    p.add_argument("--book", default=None, metavar="OUT.toml",
+                   help="With --asof and one profile: also write the replay's entries as a book file "
+                        "(books/picks.py), for `racinglines book price|settle|export`. Refuses an existing file.")
     p = sub.add_parser("demo-history", help="Backfill the demo accounts' track record from backtest replays "
                                             "(pipelines/demo_history.py).")
     p.add_argument("--reset", action="store_true", help="Delete the existing backfill first.")
@@ -499,6 +504,18 @@ def _run(args):
         with get_session(args.db) as s:
             print("Done:", ingest(s, _years(args.years), force=args.force))
         return
+    if args.cmd == "schedule":
+        from racinglines.db import schedule as SCH
+        from racinglines.sources.fastf1 import fetch as FF
+        from racinglines.sources.fastf1 import ingest as FI
+
+        def plan(s, through, today):
+            counts = {}
+            for year in range(today.year, through.year + 1):
+                for k, v in FI.write_schedule(s, FF.event_schedule(year), year, through, today).items():
+                    counts[k] = counts.get(k, 0) + v
+            return counts
+        return SCH.run(args, "f1", FI.SOURCE, plan)
     if args.cmd == "inrace-backfill":
         from racinglines.pipelines import live_f1 as LF
         year, rnd = (int(x) for x in args.event.split("-"))
@@ -591,19 +608,39 @@ def _run(args):
         return
     if args.cmd == "signals":
         from racinglines.pipelines import signals as SG
+        if args.book and not (args.asof and args.profile):
+            raise SystemExit("--book needs --asof and --profile (one replay's entries)")
+        if args.book and os.path.exists(args.book):
+            raise SystemExit(f"--book {args.book}: exists, not overwritten")
         if args.asof:
             from racinglines.pipelines import profiles as PF
             with engine.connect() as c:
                 profs = [PF.load(c, args.profile)] if args.profile else [
-                    p for _, n, _, p in PF.assigned(c, venue=args.venue) if not args.user or n in args.user]
+                    p for _, n, _, p in PF.assigned(c, venue=args.venue or "polymarket")
+                    if not args.user or n in args.user]
+            outs = []
             for prof in profs:
                 for out in SG.compute_all(engine, args.db, prof, now=args.asof, event=args.event, live=False,
-                                          fetch=not args.no_fetch, echo=lambda m: print(m, flush=True)):
+                                          fetch=not args.no_fetch, echo=lambda m: print(m, flush=True),
+                                          venue=args.venue if args.profile else None):
                     print(SG.format_replay(out))
+                    outs.append(out)
+            if args.book:
+                from racinglines.books import picks as BP
+                if len(outs) != 1:
+                    raise SystemExit(f"--book: {len(outs)} replays (a blend profile); give one strategy's profile")
+                try:
+                    with engine.connect() as c:
+                        body, n, left = BP.book_toml(c, outs[0], args.asof)
+                except BP.PicksError as e:
+                    raise SystemExit(f"--book: {e}")
+                with open(args.book, "x") as f:
+                    f.write(body)
+                print(f"wrote {args.book}: {n} picks" + (f", {left} not written (see its header)" if left else ""))
             return
         rep = SG.run_all(engine, args.db, users=args.user, profile_ref=args.profile, event=args.event,
                          fetch=not args.no_fetch, alert=not args.no_alert, echo=lambda m: print(m, flush=True),
-                         venue=args.venue)
+                         venue=args.venue or "polymarket")
         if not rep:
             print("no user has a strategy profile (racinglines strategy profiles f1 --assign-demo)")
         return
@@ -650,7 +687,6 @@ def _run(args):
             # Show status of past passes and stored snapshots
             with engine.connect() as c:
                 log_file = "data/runs/logs/record-fastf1.log"
-                import os
                 if os.path.exists(log_file):
                     with open(log_file, "r") as f:
                         lines = f.readlines()

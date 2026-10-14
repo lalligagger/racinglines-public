@@ -37,7 +37,7 @@ def test_the_signal_engine_runs_makers_only_for_the_demo_accounts(monkeypatch):
     monkeypatch.setattr(PF, "assigned", lambda c, venue="polymarket": rows)
     ran = []
     monkeypatch.setattr(SG, "compute", lambda *a, **k: dict(stages=[]))
-    monkeypatch.setattr(SG, "_run_one", lambda e, u, prof, out, uids, *a: ran.append((prof["name"], uids)))
+    monkeypatch.setattr(SG, "_run_one", lambda e, u, prof, out, uids, *a, **k: ran.append((prof["name"], uids)))
 
     class Engine:
         @contextmanager

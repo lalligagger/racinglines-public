@@ -167,6 +167,28 @@ def _sport_filter(conn, sport=None, competition=None):
     raise ValueError(f"no sport {sport!r}; the database has {', '.join(sorted(set(of.values())))}")
 
 
+def _sources(sport=None, venues=None, run=None, as_of=None, model=False):
+    """The compact source note every answer with event, result or price data carries (racinglines/attribution.py):
+    {results: [{name, url}], prices: [venue names], fair: "racinglines model (run #N, as of ...)" or None, text}."""
+    from racinglines import attribution
+    n = attribution.note(sport, venues, run, as_of, model=model)
+    return {k: n[k] for k in ("results", "prices", "fair", "text")}
+
+
+def _token_sources(conn, toks, run=None):
+    """_sources for a list of market tokens: their sports and exchanges, read by exact token id."""
+    got = conn.execute(text("""SELECT DISTINCT co.code, ml.exchange FROM market_links ml
+                               JOIN competitions co ON co.id = ml.competition_id WHERE ml.token_id = ANY(:t)"""),
+                       dict(t=list(toks))).fetchall()
+    return _sources(sorted({r[0] for r in got}), sorted({r[1] for r in got}))
+
+
+def _run_competition(conn, run_id):
+    """The competition code of a model run, None when it has none."""
+    return conn.execute(text("""SELECT co.code FROM model_runs mr JOIN competitions co ON co.id = mr.competition_id
+                                WHERE mr.id = :r"""), dict(r=int(run_id))).scalar()
+
+
 def _usernames(conn):
     return {r[0]: int(r[1]) for r in conn.execute(text("SELECT username, id FROM users")).fetchall()}
 
@@ -270,7 +292,9 @@ def list_events(conn, sport=None, competition=None, season=None, status=None, li
                       id="event_ids")
     if status:
         df = df[df["status"] == status]
-    return P.page(df, limit=limit, offset=offset)
+    out = P.page(df, limit=limit, offset=offset)
+    out["sources"] = _sources(sorted(set(df["competition"].dropna())) if len(df) else _sport_filter(conn, sport, competition))
+    return out
 
 
 def get_event(conn, event_id=None, source_key=None, include="results", viewer=None):
@@ -299,6 +323,8 @@ def get_event(conn, event_id=None, source_key=None, include="results", viewer=No
         out["predictions"] = P.page(pr, limit=60, note="newest run first")
     if "markets" in wants:
         out["markets"] = {int(r): list_markets(conn, race_id=int(r), limit=40, viewer=viewer) for r in races["race_id"]}
+    shown = [v["venue"] for m in out.get("markets", {}).values() for v in m.get("venues", []) if v.get("listed")]
+    out["sources"] = _sources(ev.get("competition"), shown, model="predictions" in wants or "markets" in wants)
     return out
 
 
@@ -320,6 +346,8 @@ def get_athlete(conn, athlete_id, include="results"):
         out["results"] = P.page(_drop_hidden(conn, data.athlete_results(conn, athlete_id), event_id="event_ids"), limit=60)
     if "predictions" in wants:
         out["predictions"] = P.page(_drop_hidden(conn, data.athlete_predictions(conn, athlete_id), run="run_ids"), limit=60)
+    comps = data.athlete_competitions(conn, athlete_id) if comps is None else comps
+    out["sources"] = _sources(sorted(comps - (h["competitions"] if h else set())), model="predictions" in wants)
     return out
 
 
@@ -386,10 +414,14 @@ def list_markets(conn, race_id=None, event_id=None, competition=None, sport=None
         by_kind[r["kind"]] = by_kind.get(r["kind"], 0) + 1
     scope = dict(event_id=head["event_id"]) if race_id is not None else dict(competition=head["competition"])
     upcoming = race_id is None or head.get("status") != "completed"
-    return dict(**P.record(head), pricing=P.record(pricing or {}), outcomes_by_kind=by_kind,
+    venues = [dict(venue=v["venue"].code, listed=v["listed"], volume=v["volume"]) for v in V.venue_summary(df)] if len(df) else []
+    pr = pricing or {}
+    return dict(**P.record(head), pricing=P.record(pr), outcomes_by_kind=by_kind,
                 freshness=freshness(conn, upcoming=upcoming, **scope),
-                venues=[dict(venue=v["venue"].code, listed=v["listed"], volume=v["volume"]) for v in V.venue_summary(df)] if len(df) else [],
-                outcomes=P.page(rows, limit=limit, offset=offset))
+                venues=venues,
+                outcomes=P.page(rows, limit=limit, offset=offset),
+                sources=_sources(head["competition"], [v["venue"] for v in venues if v["listed"]], pr.get("run_id"),
+                                 pr.get("as_of"), model=pr.get("run_id") is not None or pr.get("as_of") is not None))
 
 
 def stale_hours():
@@ -534,7 +566,8 @@ def get_market_history(conn, tokens=None, race_id=None, kind=None, athlete_id=No
     return dict(tokens=[P.record(names.get(t, dict(token_id=t))) for t in toks], series=series,
                 window=dict(start=P.plain(df["ts"].min()), end=P.plain(df["ts"].max()), rows_read=int(len(df)),
                             bucket=str(step) if step is not None else None),
-                rows=P.page(out, limit=limit or 200, offset=offset, max_bytes=P.MAX_BYTES * 2))
+                rows=P.page(out, limit=limit or 200, offset=offset, max_bytes=P.MAX_BYTES * 2),
+                sources=_token_sources(conn, toks))
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -622,7 +655,8 @@ def get_predictions(conn, run_id, target=None, top=20, standings=False):
         target = targets["target"].iloc[0]
     df = data.race_predictions(conn, int(run_id), target, limit=P.clamp(top, 20))
     t = targets[targets["target"] == target]
-    return dict(target=P.record(t.iloc[0].to_dict()) if len(t) else dict(target=target), predictions=P.page(df, limit=top))
+    return dict(target=P.record(t.iloc[0].to_dict()) if len(t) else dict(target=target), predictions=P.page(df, limit=top),
+                sources=_sources(_run_competition(conn, run_id), run=int(run_id)))
 
 
 def get_forecast(conn, competition=None, sport=None, category=None, top=10):
@@ -647,7 +681,7 @@ def get_forecast(conn, competition=None, sport=None, category=None, top=10):
                               top=[P.record(x) for x in preds.to_dict("records")]))
         st = data.standings_predictions(conn, rid, limit=P.clamp(top, 10))
         out.append(dict(run=P.record(r), next_races=races, standings=[P.record(x) for x in st.to_dict("records")],
-                        targets=int(len(targets))))
+                        targets=int(len(targets)), sources=_sources(r.get("competition"), run=rid, as_of=r.get("created_at"))))
     return dict(forecasts=out)
 
 
@@ -720,7 +754,9 @@ def get_diagnostic(conn, run_id, top=25):
                 predictions=P.page(d["preds"].drop(columns=["extra"], errors="ignore"), limit=top, note="by win probability"),
                 markets=P.page(mk, limit=top, note="largest |edge| first"),
                 result=P.page(d["result"], limit=top),
-                paper_pnl=P.plain(mk["paper_pnl"].sum()) if len(mk) and "paper_pnl" in mk else None)
+                paper_pnl=P.plain(mk["paper_pnl"].sum()) if len(mk) and "paper_pnl" in mk else None,
+                sources=_sources(_run_competition(conn, run_id), ["polymarket"] if "pm_cut" in mk.columns else None,
+                                 int(run_id), d["cutoff"]))
 
 
 REPLAY_KNOBS = ("fill", "half_spread", "size", "max_pos", "max_capital", "skew", "max_disagree", "min_volume_24h", "pull_min")
@@ -783,7 +819,8 @@ def track_record(conn, user, venue="polymarket", sport=None, viewer=None):
         rows = tr(conn, uid, venue=venue)
         pnl = sum(r["pnl"] for r in rows)
         return dict(user=user, venue=venue, sport=sport, weekends=len(rows), pnl=P.plain(pnl), up=sum(1 for r in rows if r["pnl"] > 0),
-                    rows=P.page([{k: v for k, v in r.items() if k != "date"} for r in rows], limit=P.MAX_LIMIT))
+                    rows=P.page([{k: v for k, v in r.items() if k != "date"} for r in rows], limit=P.MAX_LIMIT),
+                    sources=_sources(sport, [venue], model=True))
     rows, totals = [], []
     for v in TRACK_RECORD_VENUES:
         part = tr(conn, uid, venue=v)
@@ -795,7 +832,8 @@ def track_record(conn, user, venue="polymarket", sport=None, viewer=None):
     rows.sort(key=lambda r: (r["event_key"], TRACK_RECORD_VENUES.index(r["venue"])))
     pnl = sum(r["pnl"] for r in rows)
     return dict(user=user, venue=venue, sport=sport, weekends=len({r["event_key"] for r in rows}), pnl=P.plain(pnl),
-                up=sum(1 for r in rows if r["pnl"] > 0), totals=totals, rows=P.page(rows, limit=P.MAX_LIMIT))
+                up=sum(1 for r in rows if r["pnl"] > 0), totals=totals, rows=P.page(rows, limit=P.MAX_LIMIT),
+                sources=_sources(sport, [x["venue"] for x in totals], model=True))
 
 
 def list_positions(conn, user, venue=None, event_key=None, open_only=False, limit=None, offset=0, viewer=None):
@@ -856,7 +894,9 @@ def list_live_events(conn, limit=None, offset=0):
     except Exception as ex:  # noqa: BLE001
         folders, state = [], f"unreadable: {ex}"
     folders = [f for f in folders if f["sport"] not in HIDDEN.get()]
-    return dict(state=state, settled=P.page(df, limit=limit, offset=offset), run_folders=[P.record(f) for f in folders][:20])
+    seen = sorted({*(df["sport"].dropna() if len(df) else ()), *(f["sport"] for f in folders if f.get("sport"))})
+    return dict(state=state, settled=P.page(df, limit=limit, offset=offset), run_folders=[P.record(f) for f in folders][:20],
+                sources=_sources(seen, model=True))
 
 
 def data_changes(conn, sport=None, limit=None, offset=0):
@@ -1136,3 +1176,165 @@ def settle_book(conn, book):
     """map_book plus each leg's result and each line's result, payout and profit from the stored results."""
     from racinglines.books import slips as B
     return P.plain(_guard_tree(conn, B.settle_book(conn, _guard_tree(conn, _book(book)))), preview=False)
+
+
+# ---------------------------------------------------------------------------------------------------
+# fantasy trading (F$ only: fantasy/exchange.py, fantasy/ledger.py; nothing reaches an exchange)
+# ---------------------------------------------------------------------------------------------------
+#
+# Guardrails: every read runs in the server's READ ONLY transaction and only on the caller's own account (a hosted
+# non-admin caller can't name another user; an admin or stdio may). The one write, fantasy_order, goes through
+# fantasy/exchange.place, the web Trade page's path: the account's row lock, the balance check against the shared
+# F$1,000, the per-order cap, the depth-10 walk, the rate limit, the audit row (tagged via=mcp). It always trades
+# as the caller over HTTP, admin included: nobody places an order on someone else's account. Demo accounts and an
+# account from another database (the shared-store viewer, id NO_ACCOUNT) are refused before anything is written.
+# Recorded books and resolutions come from fantasy/exchange.books_engine (read-only).
+
+FANTASY_HIDDEN = ("polymarket-takers",)             # the system account, as web/fantasy_routes.HIDDEN
+
+
+def _fantasy_on():
+    from racinglines.fantasy import ledger as FL
+    if not FL.on():
+        raise ValueError("fantasy trading is off on this server (RACINGLINES_FANTASY)")
+
+
+def _fantasy_ready(conn):
+    from racinglines.fantasy import ledger as FL
+    from racinglines.web import accounts as ACC
+    _fantasy_on()
+    if not (ACC.ready(conn) and FL.ready(conn)):
+        raise ValueError("fantasy trading isn't set up on this database yet (racinglines users setup)")
+
+
+def _fantasy_account(conn, user, viewer):
+    """(id, username) of the account a fantasy tool reads: the caller's own for a hosted non-admin, else `user`
+    (an admin or stdio may name anyone; omitted: the caller)."""
+    if viewer and user is None:
+        user = viewer.get("username")
+    uid, name = _account_id(conn, user, viewer)
+    if uid < 1:
+        raise ValueError("this server's accounts live in another database: no fantasy account here")
+    return uid, name
+
+
+def fantasy_balance(conn, user=None, viewer=None, books=None):
+    """One account's F$: total (the 1,000 plus both P&Ls), cash it can trade with now (shared with its strategy),
+    open hand trades at their mark, hand-trade P&L and the followed strategy's P&L."""
+    from racinglines.fantasy import exchange as FX
+    from racinglines.fantasy import ledger as FL
+    _fantasy_ready(conn)
+    uid, name = _fantasy_account(conn, user, viewer)
+    q = FX.quotes(books or conn.engine, FL.open_tokens(conn, uid))
+    return dict(user=name, **P.record(FL.summary(conn, uid, quotes=q)))
+
+
+def fantasy_positions(conn, user=None, open_only=True, limit=None, offset=0, viewer=None, books=None):
+    """One account's hand-trade positions: market, side, shares, cost, fees, worth now (the best recorded bid), P&L;
+    with open_only=False also the settled and closed ones (outcome, payout)."""
+    from racinglines.fantasy import exchange as FX
+    from racinglines.fantasy import ledger as FL
+    _fantasy_ready(conn)
+    uid, name = _fantasy_account(conn, user, viewer)
+    q = FX.quotes(books or conn.engine, FL.open_tokens(conn, uid))
+    keep = ("market_link_id", "exchange", "question", "group_title", "event_title", "kind", "side", "shares", "cost",
+            "fees", "value", "pnl", "status", "outcome", "payout", "settled_at", "updated_at")
+    rows = [{k: r.get(k) for k in keep} for r in FL.positions(conn, uid, open_only=open_only, quotes=q)]
+    return dict(user=name, positions=P.page(rows, limit=limit, offset=offset))
+
+
+def fantasy_orders(conn, user=None, limit=None, offset=0, viewer=None):
+    """One account's orders by hand, newest first, refused ones with their reason."""
+    from racinglines.fantasy import exchange as FX
+    from racinglines.fantasy import ledger as FL
+    _fantasy_ready(conn)
+    uid, name = _fantasy_account(conn, user, viewer)
+    rows = FL.orders(conn, uid, limit=P.MAX_LIMIT)
+    for r in rows:
+        r["reason_text"] = FX.TEXT.get(r["reject_reason"]) if r["reject_reason"] else None
+    return dict(user=name, orders=P.page(rows, limit=limit, offset=offset))
+
+
+def fantasy_leaderboard(conn, limit=None, offset=0, books=None):
+    """The leaderboard: score = ROI x sqrt(trades) (ROI = P&L over F$ staked), at least ledger.MIN_TRADES trades to
+    rank. P&L and ROI only, never a player's balance (owner, 2026-10-12)."""
+    from racinglines.fantasy import exchange as FX
+    from racinglines.fantasy import ledger as FL
+    from racinglines.web import demo
+    _fantasy_ready(conn)
+    board = FL.ranked(conn, hide=(*FANTASY_HIDDEN, *demo.DEMO_USERS), quotes=FX.quotes(books or conn.engine, FL.open_tokens(conn)))
+    keep = ("rank", "username", "score", "roi", "trades", "pnl", "manual_pnl", "strategy_pnl")
+    return dict(min_trades=FL.MIN_TRADES, rows=P.page([{k: r.get(k) for k in keep} for r in board], limit=limit, offset=offset))
+
+
+def fantasy_markets(conn, q=None, limit=None, offset=0, books=None):
+    """The markets a player may trade now (Formula 1 only for now, on Kalshi and Polymarket) with the best recorded YES bid and ask and
+    when that book was recorded; markets with no book in the last day are left out. q: a search on the question,
+    driver or event."""
+    from racinglines.fantasy import exchange as FX
+    _fantasy_on()
+    rows = FX.markets(conn, (q or "").strip()[:60])
+    quotes = FX.quotes(books or conn.engine, [m["token_id"] for m in rows])
+    out = []
+    for m in rows:
+        b, a, ts = quotes.get(m["token_id"], (None, None, None))
+        if ts is not None:
+            out.append(dict(market_link_id=m["id"], exchange=m["exchange"], kind=m["kind"], question=m["question"],
+                            subject=m["group_title"], event=m["event_title"], start_date=m["start_date"], bid=b, ask=a,
+                            book_ts=ts))
+    return dict(markets=P.page(out, limit=limit, offset=offset), max_stake=FX.MAX_STAKE, max_age_min=FX.MAX_AGE_MIN)
+
+
+def fantasy_book(conn, market_link_id, books=None):
+    """One tradable market's latest recorded book: YES bids and asks and the NO side derived from them, up to the
+    depth an order may walk (exchange.DEPTH = 10), with its age."""
+    from racinglines.fantasy import exchange as FX
+    _fantasy_on()
+    link = FX._link(conn, int(market_link_id))
+    if link is not None and not FX.sport_ok(link):
+        raise ValueError(FX.TEXT["sport_not_tradable"])
+    if link is None or link["exchange"] not in FX.EXCHANGES:
+        raise ValueError(f"no tradable market {market_link_id}")
+    book = FX.latest_book(books or conn.engine, link["token_id"])
+    if book is None:
+        return dict(market_link_id=int(market_link_id), book=None, note=FX.TEXT["book_unavailable"])
+    nb, na = FX.yes_to_no(book["bids"], book["asks"])
+    d = FX.DEPTH
+    return dict(market_link_id=int(market_link_id), exchange=link["exchange"], kind=link["prediction"], ts=book["ts"],
+                yes_bids=book["bids"][:d], yes_asks=book["asks"][:d], no_bids=nb[:d], no_asks=na[:d])
+
+
+def fantasy_order(engine, market_link_id, side, action, shares, limit_price, client_key=None, user=None, viewer=None):
+    """Place one immediate-or-cancel F$ order, as the web Trade page does (fantasy/exchange.place). Over HTTP it is
+    always the caller's own account (an admin too); over stdio (the owner) `user` names the account."""
+    from racinglines.fantasy import exchange as FX
+    from racinglines.fantasy import ledger as FL
+    from racinglines.web import demo
+    from racinglines.web import roles as R
+    _fantasy_on()
+    if viewer is not None:
+        if user is not None and user != viewer.get("username"):
+            raise ValueError("MCP orders are placed on your own account only")
+        if viewer["id"] < 1:
+            raise ValueError("this server's accounts live in another database: no fantasy account here")
+    elif user is None:
+        raise ValueError("which account? pass user (stdio is the owner's: name the account to trade as)")
+    with engine.connect() as c:
+        _fantasy_ready(c)
+        row = c.execute(text("SELECT id, username, role, active FROM users WHERE "
+                             + ("id = :i" if viewer is not None else "username = :n")),
+                        dict(i=(viewer or {}).get("id"), n=user)).mappings().first()
+    if row is None or not row["active"]:
+        raise ValueError("no active account to trade as")
+    who = dict(id=row["id"], username=row["username"], role=R.canonical(row["role"]), via="mcp")
+    if demo.is_demo(who):
+        raise ValueError("demo accounts look only; they can't trade")
+    if not FX.rate_ok(who["id"]):
+        raise ValueError(FX.TEXT["rate_limited"])
+    FX.settle(engine, FX.books_engine(engine))                          # pay out anything resolved first
+    r = FX.place(engine, who, market_link_id, side, action, shares, limit_price, client_key=client_key)
+    with engine.connect() as c:
+        cash = FL.available(c, who["id"])
+    return dict(user=who["username"], ok=r["ok"], order_id=r["order_id"], status=r["status"], reason=r["reason"],
+                message=r["message"] or None, fills=r["fills"], fee=P.plain(r["fee"]), position=r.get("position"),
+                cash=round(cash, 2))

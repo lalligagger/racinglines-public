@@ -60,9 +60,9 @@ def test_the_landing_is_a_strip_a_hero_and_a_dated_news_feed():
 
 
 @pytest.mark.quick
-def test_the_index_is_the_public_landing_and_a_signed_in_browser_goes_on_to_the_board(monkeypatch):
+def test_the_index_is_the_public_landing_also_when_signed_in(monkeypatch):
     """Owner, 2026-10-12: the landing page lives at "/" and is public; "/" is no longer a redirect to /markets for
-    everyone. A signed-in browser still lands on the board, and only "/" itself is public (not every path under it)."""
+    everyone. A signed-in browser sees it too (2026-10-13), and only "/" itself is public (not every path under it)."""
     from racinglines.web import app as A
     client = TestClient(A.app)
     r = client.get("/", headers={"accept": "text/html"}, follow_redirects=False)
@@ -70,8 +70,9 @@ def test_the_index_is_the_public_landing_and_a_signed_in_browser_goes_on_to_the_
     assert client.get("/markets", headers={"accept": "text/html"}, follow_redirects=False).headers["location"] == "/signin?next=/markets"
     assert client.get("/login").status_code == 200 and 'action="/login"' in client.get("/login").text   # smoke.sh's check
     monkeypatch.setattr(A, "_session", lambda cookie: (1, None))
-    r = client.get("/", follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == "/markets"
+    r = client.get("/", follow_redirects=False)              # signed in, the landing page still shows (owner, 2026-10-13)
+    assert r.status_code == 200 and 'class="lp-hero"' in r.text
+    assert 'href="/markets">Open the app</a>' in r.text and ">Sign in</a>" not in r.text
 
 
 @pytest.mark.quick

@@ -53,6 +53,7 @@ from racinglines.web import users as U  # noqa: E402
 from racinglines.pipelines import profiles as _PF  # noqa: E402
 from racinglines.web import ranges as _ranges  # noqa: E402
 from racinglines.web import roles as R  # noqa: E402
+from racinglines.web import layout as _layout  # noqa: E402
 
 _SECRET = os.environ.get("APP_SECRET") or secrets.token_hex(32)
 CSRF_TOKEN = hmac.new(_SECRET.encode(), b"csrf", hashlib.sha256).hexdigest()
@@ -112,7 +113,8 @@ def _session_user_id(cookie):
 
 
 def _user_dict(u):
-    return dict(id=u.id, username=u.username, role=R.canonical(u.role), display_name=u.display_name or u.username)
+    return dict(id=u.id, username=u.username, role=_layout.role(R.canonical(u.role)),   # alpha: basic runs as pro
+                display_name=u.display_name or u.username)
 
 
 def authenticate(request: Request, creds: HTTPBasicCredentials | None = Depends(security)):
@@ -127,6 +129,7 @@ def authenticate(request: Request, creds: HTTPBasicCredentials | None = Depends(
             u = U.get_user(s, user_id=uid)
             if u and u.active:
                 request.state.user = dict(_user_dict(u), sid=sid)
+                _layout.guard(request)                  # the alpha layout's archived pages (web/layout.py)
                 return request.state.user
     ip = client_ip(request)
     if creds:
@@ -136,6 +139,7 @@ def authenticate(request: Request, creds: HTTPBasicCredentials | None = Depends(
             u = U.authenticate(s, creds.username, creds.password)
             if u:
                 request.state.user = _user_dict(u)
+                _layout.guard(request)
                 return request.state.user
         _record_failure(ip)
         U.log(get_engine(), None, "login_failed", request, username=creds.username, via="basic")
@@ -224,6 +228,15 @@ if ENV_LABEL:
         response = await call_next(request)
         response.headers["X-Racinglines-Env"] = ENV_LABEL
         return response
+
+
+# X-Racinglines-Layout: alpha or classic (web/layout.py), so the smoke check knows whether live events and private books
+# are archived (404 to non-admins) or open, without a setting of its own.
+@app.middleware("http")
+async def _layout_header(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Racinglines-Layout"] = "alpha" if _layout.alpha() else "classic"
+    return response
 # Maintenance popup on the sign-in page and every app page, dismissed with "ok" once per browser session
 # (_site_notice.html). Set to "" to turn it off.
 MAINTENANCE_NOTICE = ""      # off since the landing rebuild (owner, 2026-10-08: "drop the modal"); text here turns it back on
@@ -232,6 +245,8 @@ templates.env.globals["signup_on"] = lambda: signup_on()                    # RA
 templates.env.globals["is_demo"] = lambda u: _demo.is_demo(u)
 from racinglines.web import audience as _audience  # noqa: E402  [sport] audience: which sports a user sees
 templates.env.globals["sport_shown"] = lambda code, user=None: _audience.shown(user, code)   # signed out: as a user
+from racinglines import attribution as _attribution  # noqa: E402  the one-line source note (_macros.html source_note)
+templates.env.globals["sources_note"] = _attribution.note
 
 
 def needs_email(user):
@@ -249,6 +264,9 @@ def needs_email(user):
 
 templates.env.globals["needs_email"] = needs_email
 templates.env.globals["ui_range"] = _ranges.ui_range                             # capped numeric inputs (web/ranges.py)
+from racinglines.fantasy import ledger as _FL  # noqa: E402
+templates.env.globals["fantasy_on"] = _FL.on                                    # /trade and /history (staging only)
+templates.env.globals["alpha_layout"] = _layout.alpha                           # the four-tab alpha bar (web/layout.py)
 templates.env.globals["makers_on"] = lambda: _PF.MAKERS_OPEN                   # on from 2026-10-12 (profiles.MAKERS_OPEN)
 # the stylesheet's and scripts' URLs carry the newest static file's mtime, so a change is a new URL: no stale copy from the browser or
 # Cloudflare's edge cache (read at render time)
@@ -381,10 +399,10 @@ SITE = ROOT / "site"     # the built docs (mkdocs build -d site; the pre-push ho
 
 @app.get("/", response_class=HTMLResponse)
 def landing_page(request: Request, next: str = "/"):
-    """The public landing page, at the site's index (owner, 2026-10-12). A signed-in browser goes on to the board."""
-    if _session(request.cookies.get(SESSION_COOKIE))[0] is not None:
-        return RedirectResponse("/markets", status_code=303)
-    return templates.TemplateResponse(request, "login.html", dict(next=next, support=SUPPORT_EMAIL))
+    """The public landing page, at the site's index (owner, 2026-10-12). A signed-in browser sees it too, with an
+    "Open the app" link in place of "Sign in" (owner, 2026-10-13: the Home link must reach the landing page)."""
+    signed_in = _session(request.cookies.get(SESSION_COOKIE))[0] is not None
+    return templates.TemplateResponse(request, "login.html", dict(next=next, support=SUPPORT_EMAIL, signed_in=signed_in))
 
 
 @app.get("/signin", response_class=HTMLResponse)
@@ -701,6 +719,7 @@ from racinglines.web import diag_routes  # noqa: E402,F401  (single-event diagno
 from racinglines.web import mybets  # noqa: E402,F401  (/mybets, the owner's bets calendar from the data folder)
 from racinglines.web import term_routes  # noqa: E402,F401  (/docs/quickstart/term, recorded CLI runs)
 from racinglines.web import strategy_pick  # noqa: E402,F401  (/strategy/pick, the account's own strategy)
+from racinglines.web import fantasy_routes  # noqa: E402,F401  (/trade, /history: fantasy trading; staging only)
 from racinglines.web.book_routes import bet_markets, polymarket_calls  # noqa: E402,F401  (used by views.py)
 
 

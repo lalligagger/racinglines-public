@@ -1,12 +1,13 @@
 {% extends "base.html" %}{% from "_macros.html" import empty, pnl_cls, chart, demo_context, kpi, pnl, page_head, flash %}
 {% block title %}Strategy{% endblock %}
-{% block content %}
+{% block content %}{% set simple = alpha_layout is defined and alpha_layout() %}{# the alpha's plain view: no venue tabs, sport select or How it chooses (web/layout.py) #}
+{% include "_lab_nav.html" %}
 {% call page_head("Strategy" ~ (" · " ~ viewer.username if viewer.id != user.id else ""), "The strategy this account runs: its calls on each race weekend, stage by stage, how it has done, and how it got here. Paper only: nothing is sent to an exchange.") %}
 {% if can_pick %}<a href="/strategy/pick">{{ "Change strategy" if profile else "Pick a strategy" }}</a> · {% endif %}<a href="/positions{{ '?venue=' ~ venue if venue }}">What it holds: Positions →</a>
-{%- if venue_tabs %}<nav class="tabs" aria-label="Which exchange's record"><a href="?{{ 'user=' ~ viewer.username if viewer.id != user.id }}"{% if not venue %} aria-current="page"{% endif %}>Polymarket</a>{% for k in venue_tabs %}<a href="?venue={{ k }}{{ '&user=' ~ viewer.username if viewer.id != user.id }}"{% if venue == k %} aria-current="page"{% endif %}>{{ venue_names.get(k, k) }}</a>{% endfor %}</nav>{% endif %}
+{%- if venue_tabs and not simple %}<nav class="tabs" aria-label="Which exchange's record"><a href="?{{ 'user=' ~ viewer.username if viewer.id != user.id }}"{% if not venue %} aria-current="page"{% endif %}>Polymarket</a>{% for k in venue_tabs %}<a href="?venue={{ k }}{{ '&user=' ~ viewer.username if viewer.id != user.id }}"{% if venue == k %} aria-current="page"{% endif %}>{{ venue_names.get(k, k) }}</a>{% endfor %}</nav>{% endif %}
 {% if users %}<form method="get" class="inline"><label><span>User</span><select name="user" data-autosubmit>
   {% for u in users %}<option {{ 'selected' if u == viewer.username }}>{{ u }}</option>{% endfor %}</select></label></form>{% endif %}
-{% if sport_options %}<form method="get" class="inline">
+{% if sport_options and not simple %}<form method="get" class="inline">
   {% if viewer.id != user.id %}<input type="hidden" name="user" value="{{ viewer.username }}">{% endif %}
   {% if venue %}<input type="hidden" name="venue" value="{{ venue }}">{% endif %}
   <label><span>Sport</span><select name="sport" data-autosubmit>
@@ -42,7 +43,7 @@
 <nav class="ptabs" data-tabs="strategy" role="tablist">
   <button type="button" role="tab" data-tab="record">Track record<span class="n">{{ k.weekends }} weekends</span></button>
   {% if cur %}<button type="button" role="tab" data-tab="weekend">{{ cur.event_name or cur.event_key }}<span class="n">{{ stages|length }} stages</span></button>{% endif %}
-  {% if acct.decisions or acct.taker %}<button type="button" role="tab" data-tab="how">How it chooses</button>{% endif %}
+  {% if (acct.decisions or acct.taker) and not simple %}<button type="button" role="tab" data-tab="how">How it chooses</button>{% endif %}
 </nav>
 
 <section data-panel="record">
@@ -94,7 +95,7 @@
 {% else %}{{ empty("No signals yet this weekend.") }}{% endfor %}
 </section>{% endif %}
 
-{% if acct.decisions %}<section data-panel="how" hidden>
+{% if acct.decisions and not simple %}<section data-panel="how" hidden>
 <div class="card"><h2>How this account has used racinglines</h2>
 {% call demo_context("This demo " ~ ("maker" if is_maker else "taker") ~ "'s rule.") %}It re-checks its setup in the Lab's <b>Edge Finder</b> at a few decision points, using only the weekends raced so far.
 Mid-season it follows the setup that has made the most, if the lead is over $100. Before a new season, a whole season's commitment, it takes every setup within
@@ -116,7 +117,7 @@ The tables below are that evidence, as the account saw it at each point.{% endca
 <p class="legend">Evidence: each setup's saved season sweep in the Edge Finder (every weekend priced from its own sessions, traded on Polymarket's real prices and trades). Open the <a href="/lab#demo-pool">Lab's F1 demo strategy history and pools</a> to see every candidate setup, all saved pool results, and {% if is_maker %}the M1–M3/C phase definitions{% else %}the TW1/TW2 phase definitions and the separate T1/A reference profile{% endif %}.</p>
 </div>
 </section>
-{% elif acct.taker %}{% set t = acct.taker %}<section data-panel="how" hidden>
+{% elif acct.taker and not simple %}{% set t = acct.taker %}<section data-panel="how" hidden>
 <div class="card"><h2>How this account uses racinglines</h2>
 <p>This account follows {% if profile.basic %}<b>its picks</b>, drawn from three of our taker strategies{% else %}the <b>{{ profile.name }}</b> signals{% endif %}: after every practice and qualifying session it gets a list of trades, each with a heat rating.
 A taker never sees the model's numbers, only what to trade, the size, the most to pay, and the heat.</p>

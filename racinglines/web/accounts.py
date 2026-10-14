@@ -46,9 +46,11 @@ PASSWORD_MIN, PASSWORD_MAX = 10, 128
 def setup(engine, backfill=True):
     """Create the accounts schema and ledger (idempotent). backfill: every active account without a signup grant
     gets one now, so every user starts with SIGNUP_GRANT. Returns the number of grants added."""
+    from racinglines.fantasy import ledger as FL
     with engine.begin() as c:
         for stmt in DDL:
             c.execute(text(stmt))
+        FL.setup(c)                          # the manual-trading tables (fantasy/ledger.py), same schema
         if not backfill:
             return 0
         return c.execute(text(f"""
@@ -82,11 +84,15 @@ PROFILE_KEYS = "SELECT k FROM jsonb_object_keys(coalesce(prefs, '{}'::jsonb)) k 
 
 def reset(conn, keep=KEEP, apply=False, note="reset"):
     """Every active account but `keep` back to one SIGNUP_GRANT, no trading history and no strategy: its fantasy_ledger
-    rows and HISTORY rows deleted, its strategy profiles removed, one signup grant written (`note`). The ledger is append-only everywhere else; this is the one
+    rows and HISTORY rows and manual trades (fantasy/ledger.TABLES) deleted, its strategy profiles removed, one signup grant written (`note`). The ledger is append-only everywhere else; this is the one
     deliberate rewrite, run on the VM after a backup (scripts/vm/reset_fantasy.sh). apply=False (the default) only
     counts. Returns one dict per account: id, username, kept, ledger rows and balance, its profiles (pref keys) and each
     HISTORY table's rows."""
-    users = conn.execute(text("SELECT id, username FROM users WHERE active ORDER BY id")).all()
+    from racinglines.fantasy import ledger as FL
+    # apply: lock the rows first, so a signals pass storing right now (signals.still_assigned, FOR SHARE) either commits
+    # before the deletes below or waits and then finds no profile; never positions written back after the reset
+    users = conn.execute(text("SELECT id, username FROM users WHERE active ORDER BY id"
+                              + (" FOR UPDATE" if apply else ""))).all()
     out = []
     for uid, name in users:
         row = dict(id=uid, username=name, kept=name in keep)
@@ -98,9 +104,14 @@ def reset(conn, keep=KEEP, apply=False, note="reset"):
         for table, col in HISTORY:
             row[table] = conn.execute(text(f"SELECT count(*) FROM {table} WHERE {col} = :u"), dict(u=uid)).scalar()
         out.append(row)
+        trading = FL.ready(conn)                 # manual trades (fantasy/ledger.py), once setup has created them
+        row["manual_orders"] = conn.execute(text("SELECT count(*) FROM accounts.fantasy_orders WHERE user_id = :u"),
+                                            dict(u=uid)).scalar() if trading else 0
         if apply and not row["kept"]:
             for table, col in HISTORY:
                 conn.execute(text(f"DELETE FROM {table} WHERE {col} = :u"), dict(u=uid))
+            for table in FL.TABLES if trading else ():
+                conn.execute(text(f"DELETE FROM accounts.{table} WHERE user_id = :u"), dict(u=uid))
             conn.execute(text("DELETE FROM accounts.fantasy_ledger WHERE user_id = :u"), dict(u=uid))
             conn.execute(text(f"UPDATE users SET prefs = coalesce(prefs, '{{}}'::jsonb) - ARRAY({PROFILE_KEYS}) WHERE id = :u"),
                          dict(u=uid))

@@ -1,9 +1,10 @@
-{% extends "base.html" %}{% from "_macros.html" import empty, paper_banner, demo_context, flash, page_head %}
+{% extends "base.html" %}{% from "_macros.html" import empty, paper_banner, demo_context, flash, page_head, source_note %}
 {% block title %}F1 (Polymarket){% endblock %}
 {% block content %}
 {{ page_head("F1 (Polymarket)", "Every open F1 market on Polymarket (" ~ n_markets ~ " outcomes; synced " ~ synced|fmt ~ ")" ~ (", with " ~ ("your picks' current call" if profile.basic else profile.name ~ "'s current call") ~ " on each: which side, how many shares, the most to pay, and how hot it is" if profile else "") ~ ". Prices are Polymarket's, per $1 payout.") }}
 {{ paper_banner(signals_nav) }}
 {{ flash(msg) }}
+{{ source_note("f1", ["polymarket"]) }}
 {% if sport_status %}{% include "_sport_status.html" %}{% endif %}
 {% if profile %}<p class="legend">Heat grades how much the model expects an entry to earn:
   <span class="heat h1">warm</span> <span class="heat h2">hot</span> <span class="heat h3">very hot</span>. It's a guide, not a promise.

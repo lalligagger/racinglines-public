@@ -105,6 +105,8 @@ its result, and the paper positions settle. Outside that window a run only notes
 racinglines strategy signals f1                                   # every user with a profile, the weekend in progress
 racinglines strategy signals f1 --profile A --user taker          # this profile, these users
 racinglines strategy signals f1 --event 2026-15 --asof 2026-09-27T12:00 --no-fetch   # replay (prints only)
+racinglines strategy signals f1 --profile A --event 2026-17 --venue kalshi --asof 2026-10-09T07:35Z --no-fetch \
+    --book picks.toml                                             # replay on Kalshi, its entries as a book file
 racinglines strategy signals f1 --no-alert                        # store, don't notify
 ```
 
@@ -114,6 +116,8 @@ racinglines strategy signals f1 --no-alert                        # store, don't
 | `--user` | Only these usernames |
 | `--event` | `next` (default), a round number, or `YEAR-ROUND` |
 | `--asof` | **Replay** at this UTC time: markets read at each stage's cutoff, exactly like the sweep; prints a table with our fair values and stores nothing |
+| `--venue` | `polymarket` (default), `kalshi` or `og`: whose stored profiles run; with `--asof` and `--profile`, the exchange the replay trades on (its links and tape) |
+| `--book OUT.toml` | With `--asof` and one `--profile`: also write the replay's buys as a book file (`racinglines/books/picks.py`) on that exchange, Kalshi in cents and Polymarket or OG.com in dollars, each at the price it was taken at with its cost as the stake, its market named by the link's exact athlete ids. Sells are counted, not written. Follow it with `racinglines book price OUT.toml --asof T` ([Sportsbook slips](sportsbook/slips.md)). Refuses an existing file |
 | `--no-fetch` | Don't refresh FastF1 or Polymarket data first |
 | `--no-alert` | Don't send alerts |
 

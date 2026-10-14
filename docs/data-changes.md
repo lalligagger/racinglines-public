@@ -15,6 +15,15 @@ files in `data/archive/<sport>/` (both git-ignored; `data/raw` is the record, so
 without a copy). Since 2026-10-01 nothing under `data/` is in git, and production data lives on the VM: back up
 there with `vm.sh backup <purpose>`.
 
+## 2026-10-12 · Staging: fantasy trading tables
+
+Database `racinglines_staging`, 22:28Z, by the owner after #160 merged:
+`sudo -u racinglines TARGET=staging bash /opt/racinglines-staging/scripts/vm/fantasy_setup.sh`. It created
+`accounts.fantasy_orders`, `fantasy_fills`, `fantasy_positions` and the ledger's ref columns; 0 grants were added
+(every account already had one). Backup: `data/backups/db/racinglines_staging-before-fantasy-setup-20261012T222831Z.sql.gz`
+(164 MB), named in a `data_changes` note. Rollback: restore that backup. Production was not touched. Staging's env
+file also gained `RACINGLINES_FANTASY_BOOKS_URL` (production's database, read-only) for the recorded books.
+
 ## 2026-10-12 · Production: fantasy reset for the Alpha Fantasy Launch
 
 Database `racinglines` (production), right after the Alpha deploy (#146, 1d646ae). Staging was not touched.

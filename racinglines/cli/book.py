@@ -41,6 +41,9 @@ price and export:
                            per race, markets/venues.pricing_run)
     --sims RACE_ID=FILE    an OutcomeSims archive (.npz, models/outcomes.save_sims) for a race: legs on that race are
                            priced jointly from it (repeatable)
+price:
+    --asof UTC             price as it stood then (follow a book through a weekend): the newest model run cut off by
+                           then and each exchange's last tape price by then, no bid/ask (local only)
 render (FILE = a book file, priced like `price`; or a cycling price output folder or CSV; or leave it out with
 --json-in):
     --style hud|card|agnostic   --image PNG   --out PATH.html   --png   --chrome PATH   --json-in PRICED.json
@@ -117,6 +120,10 @@ def _parser():
             s.add_argument("--run", type=int, action="append", default=[], help="a model run id (repeatable)")
             s.add_argument("--sims", action="append", default=[], metavar="RACE_ID=FILE",
                            help="simulations for one race, for joint same-race pricing (repeatable)")
+        if name == "price":
+            s.add_argument("--asof", default=None, metavar="UTC",
+                           help="price as it stood then: the newest model run cut off by then, each exchange's last "
+                                "tape price by then (local only; e.g. 2026-10-09T10:05Z)")
     v = sub.add_parser("view", help="Render a saved --json result with Rich (no database).")
     v.add_argument("file", help="the JSON a map, price or settle --json printed ('-' for stdin)")
     lo = sub.add_parser("logout", help="Forget the browser sign-in --remote keeps.")
@@ -173,14 +180,14 @@ def _runs(conn, ids):
     return out
 
 
-def run(cmd, book, conn, runs=(), sims=()):
+def run(cmd, book, conn, runs=(), sims=(), asof=None):
     """The command's result dict (what --json prints)."""
     from racinglines.books import slips as B
     B.readonly(conn)
     if cmd == "map":
         return B.map_book(conn, book)
     if cmd == "price":
-        return B.price_book(conn, book, runs=_runs(conn, runs), sims=_sims(sims))
+        return B.price_book(conn, book, runs=_runs(conn, runs), sims=_sims(sims), asof=asof)
     return B.settle_book(conn, book)
 
 
@@ -402,8 +409,8 @@ def main(argv=None):
         return _export(args, book)
     if args.remote:
         from racinglines.cli import remote
-        if (args.db and args.db != defaults.get("db")) or getattr(args, "sims", None):
-            print("book --remote: runs on the hosted server; --db and --sims are local only", file=sys.stderr)
+        if (args.db and args.db != defaults.get("db")) or getattr(args, "sims", None) or getattr(args, "asof", None):
+            print("book --remote: runs on the hosted server; --db, --sims and --asof are local only", file=sys.stderr)
             return 2
         try:
             out = remote.run(args.cmd, open(args.file).read(), args.mcp_url, getattr(args, "run", ()))
@@ -412,7 +419,8 @@ def main(argv=None):
             return 2
     else:
         with get_engine(args.db).connect() as conn:
-            out = run(args.cmd, book, conn, getattr(args, "run", ()), getattr(args, "sims", ()))
+            out = run(args.cmd, book, conn, getattr(args, "run", ()), getattr(args, "sims", ()),
+                      getattr(args, "asof", None))
             conn.rollback()
     if args.json:
         print(json.dumps(out, indent=2, default=str))

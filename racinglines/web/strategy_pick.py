@@ -14,6 +14,13 @@ timer runs (deploy/vm/systemd/racinglines-signals.service), and the library's st
 so on another sport they would fail or change (library/core/2026-10-11-strategies-per-sport.md). The others show as
 "coming soon" until Core adds per-sport strategies.
 
+Under the alpha layout (web/layout.alpha; owner, 2026-10-12 19:23-19:54Z; library/process/2026-10-12-alpha-lab-strategies.md)
+the page is the five style cards instead (profiles.ALPHA_STYLES, by name, for basic and pro alike; no makers, blend or
+other codes, and a save outside the five is refused unless the account is an admin), a sizing choice (Standard, or
+Kelly at a fraction), and one closed "tweak" drawer with two sliders (edge needed, market volume) and the dice for pro
+and admin; any tweak is untested, scored live from the next race weekend. alpha_picker() is the one switch: with it off
+the page is the classic one above, unchanged.
+
 Saving goes through profiles.assign (F1 on Polymarket, the slot the signal engine runs). The demo accounts keep the
 profiles assign_demo gives them: they see the page but can't save. The dice (owner, 2026-10-11 22:20Z: "let the user input
 RNG'ed values ... high temperature / lots of variation once we have a few dozen users") roll the sliders in the browser
@@ -29,6 +36,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from racinglines.pipelines import profiles as PF
 from racinglines.pipelines import sweep_settings as SS
 from racinglines.web import demo
+from racinglines.web import layout as L
 from racinglines.web import roles as R
 from racinglines.web.app import ANY, allow, app, audit, check_csrf, get_engine, render
 from racinglines.web.ranges import UI_RANGES
@@ -47,6 +55,72 @@ _T = {"taker": (("min_edge", "Minimum edge to take a price", 0.01, "pts"),
                 ("size", "Shares per quote", 5, "shares"))}
 TUNABLE = {k: tuple((n, label, *UI_RANGES[n], step, unit) for n, label, step, unit in v) for k, v in _T.items()}
 F1_SLOT = "f1:polymarket"
+
+# --- the alpha picker (alpha_picker) ---
+ALPHA_TWEAKS = ("min_edge", "min_volume_24h")       # the tweak drawer's two sliders, with TUNABLE's caps
+TWEAK = "tweak:"                                    # the drawer's field prefix: applied to the card picked
+# Sizing for a followed strategy (owner, 2026-10-12 19:53Z): Standard (stakes scaled to the player's F$1,000) or Kelly at
+# a fraction. The allowed values and their meaning live in profiles (SIZINGS, KELLY_RANGE); the signal engine reads
+# them through profiles.sizing_of (fantasy/sizing.py).
+SIZINGS = PF.SIZINGS
+KELLY = dict(lo=PF.KELLY_RANGE[0], hi=PF.KELLY_RANGE[1], step=0.05, default=0.25)
+KELLY_PICKS = (("Quarter", 0.25), ("Half", 0.50), ("Full", 1.00))
+# the label beside the Kelly slider, "nitty to degen", one emoji per tier (owner, 19:53-19:55Z): (highest fraction, label)
+KELLY_LABELS = ((0.25, "Nitty ☕"), (0.50, "Shark 🦈"), (0.80, "Spicy 🌡️"), (1.00, "Degen 🤠"))
+
+
+def alpha_picker():
+    """The one switch between the alpha picker and the classic page: the alpha layout (web/layout.alpha)."""
+    return L.alpha()
+
+
+def kelly_label(f):
+    return next(lab for top, lab in KELLY_LABELS if f <= top + 1e-9)
+
+
+def style_name(code, adjusted=False):
+    return PF.ALPHA_STYLES[code]["label"] + (" · adjusted" if adjusted else "")
+
+
+def display_name(profile):
+    """What the alpha page calls a running profile: its style's label when it came from one, else its name."""
+    if not profile:
+        return None
+    code = profile.get("base")
+    if code in PF.ALPHA_STYLES and not PF.is_combo(profile):
+        return style_name(code, bool(profile.get("adjusted")))
+    return profile.get("name")
+
+
+def alpha_options(user):
+    """The five style cards, in ALPHA_ORDER: [dict(code, label, blurb, backtest, roi, in_sample, sliders)]; sliders are
+    the drawer's two at the style's own values, for pro and admin only (a basic account runs a style as tuned). roi:
+    each season's backtest P&L as a return on the F$1,000 grant (standard sizing stakes a F$1,000 balance as the
+    backtests did); the card shows only that, never dollars (owner, 2026-10-13)."""
+    from racinglines.web.accounts import SIGNUP_GRANT
+    out = []
+    for code in PF.ALPHA_ORDER:
+        st = PF.ALPHA_STYLES[code]
+        sl = [x for x in tunables(PF.PROFILES[code])[0] if x["name"] in ALPHA_TWEAKS] if not R.is_basic(user) else []
+        out.append(dict(code=code, label=st["label"], blurb=st["blurb"], backtest=st["backtest"],
+                        roi=tuple(v / SIGNUP_GRANT for v in st["backtest"]), in_sample=bool(st.get("in_sample")), sliders=sl))
+    return out
+
+
+def sizing_of(form):
+    """(sizing, kelly) from the form, validated: sizing in SIZINGS, kelly a fraction in [0.10, 1.00], kept on its 5%
+    step. Raises ValueError with a message for the page."""
+    sizing = form.get("sizing") or "standard"
+    if sizing not in SIZINGS:
+        raise ValueError("pick Standard or Kelly sizing")
+    raw = form.get("kelly")
+    try:
+        k = KELLY["default"] if raw in (None, "") else float(raw)
+    except ValueError:
+        raise ValueError("the Kelly fraction must be a number") from None
+    if not (KELLY["lo"] - 1e-9 <= k <= KELLY["hi"] + 1e-9):
+        raise ValueError("the Kelly fraction must be between 10% and 100%")
+    return sizing, round(round(k / KELLY["step"]) * KELLY["step"], 2)
 
 
 def slots(user):
@@ -150,10 +224,45 @@ def pick_page(request: Request, msg: str = ""):
             if o["pre"] is not None:
                 o["pre"] = PRE in (st["taker_stages"] or ())
     w = open_weekend()
+    if alpha_picker():
+        return _alpha_page(request, me, profile, w, msg)
     return render(request, "strategy_pick.html", opts=opts, profile=profile, now=now,
                   chosen=now or (opts[0]["code"] if R.is_basic(me) else DEFAULT), locked=demo.is_demo(me) or bool(w),
                   demo_locked=demo.is_demo(me), weekend_note=lock_note(w) if w else "", msg=msg, basic=R.is_basic(me),
                   slots=slots(me))
+
+
+def _alpha_page(request, me, profile, w, msg):
+    opts = alpha_options(me)
+    now = profile.get("base") if profile and profile.get("base") in PF.ALPHA_STYLES and not PF.is_combo(profile) else None
+    chosen = now or PF.ALPHA_ORDER[0]
+    drawer = next(o for o in opts if o["code"] == chosen)["sliders"]
+    if now and profile.get("adjusted"):            # the drawer starts where the user left it
+        st = SS.Settings.from_dict(profile["settings"], strict=False)
+        drawer = [dict(x, value=min(max(float(st[x["name"]]), x["lo"]), x["hi"])) if st[x["name"]] is not None else x
+                  for x in drawer]
+    k = float((profile or {}).get("kelly") or KELLY["default"])
+    return render(request, "strategy_pick_alpha.html", opts=opts, profile=profile, running=display_name(profile),
+                  now=now, chosen=chosen, drawer=drawer, sizing=(profile or {}).get("sizing") or "standard", kelly=k,
+                  kelly_cfg=KELLY, kelly_picks=KELLY_PICKS, kelly_labels=KELLY_LABELS, kelly_label=kelly_label(k),
+                  locked=demo.is_demo(me) or bool(w), demo_locked=demo.is_demo(me),
+                  weekend_note=lock_note(w) if w else "", msg=msg, basic=R.is_basic(me))
+
+
+def _alpha_form(code, form, user):
+    """The drawer's fields ("tweak:<setting>", moved from "tweak_from:<setting>") as the classic per-code fields for
+    _adjusted; a basic account's tweaks are ignored (it runs a style as tuned)."""
+    if R.is_basic(user):
+        return {}
+    out = {}
+    for n in ALPHA_TWEAKS:
+        v, was = form.get(TWEAK + n), form.get("tweak_from:" + n)
+        try:
+            if v not in (None, "") and (was in (None, "") or abs(float(v) - float(was)) > 1e-9):
+                out[f"{code}:{n}"] = v
+        except ValueError:
+            continue
+    return out
 
 
 def _adjusted(code, form):
@@ -196,7 +305,17 @@ async def pick_save(request: Request, code: str = Form(""), rolled: str = Form("
     if w is not None:                               # a pick, a slider, a dice roll or a stop: all wait for the window
         return RedirectResponse("/strategy/pick?msg=Error: " + lock_note(w), status_code=303)
     form = await request.form()
-    allowed = {o["code"] for o in options(me)}
+    sizing = None
+    if alpha_picker():                              # the five styles; an admin may still save any code it could before
+        allowed = set(PF.ALPHA_ORDER) | ({o["code"] for o in options(me)} if R.canonical(me["role"]) == "admin" else set())
+        if code in PF.ALPHA_STYLES:
+            try:
+                sizing = sizing_of(form)
+            except ValueError as ex:
+                return RedirectResponse(f"/strategy/pick?msg=Error: {ex}.", status_code=303)
+            form = _alpha_form(code, form, me)
+    else:
+        allowed = {o["code"] for o in options(me)}
     with get_engine().begin() as c:
         old = PF.of_user(c, me["id"])
         if code == "none":
@@ -215,6 +334,8 @@ async def pick_save(request: Request, code: str = Form(""), rolled: str = Form("
                     settings, strict=False).to_json(), adjusted=moved, **({"rolled": True} if rolled == "1" else {}))
         if new is not None:
             new = dict(new, base=code)
+        if new is not None and sizing is not None:  # an alpha style: its name and the player's sizing
+            new = dict(new, name=style_name(code, bool(new.get("adjusted"))), sizing=sizing[0], kelly=sizing[1])
         if not R.allowed_profile(me["role"], new, user_id=me["id"]):
             return RedirectResponse("/strategy/pick?msg=Error: that strategy isn't open to this account.", status_code=303)
         PF.assign(c, me["id"], new)

@@ -31,7 +31,7 @@ def _exchange_board(request, c, user, exchange, event, show, closed, spread_pct,
     `sport`: a competition code (market_links.competition_id, exact match, no text/fuzzy matching) to narrow the
     list to one sport, e.g. from a Markets page "N new" link."""
     links = data.q(c, """
-        SELECT ml.*, a.display_name AS athlete FROM market_links ml LEFT JOIN athletes a ON a.id = ml.athlete_id
+        SELECT ml.*, a.display_name AS athlete, co.code AS note_competition FROM market_links ml LEFT JOIN athletes a ON a.id = ml.athlete_id
         LEFT JOIN competitions co ON co.id = ml.competition_id
         WHERE ml.exchange = :x AND (CAST(:closed AS int) = 1 OR NOT ml.closed)
           AND (CAST(:ev AS text) IS NULL OR ml.event_slug = CAST(:ev AS text))
@@ -74,7 +74,8 @@ def _exchange_board(request, c, user, exchange, event, show, closed, spread_pct,
     from racinglines.web import board as B
     recorders = B.recorder_status(c, [exchange]) if exchange != "polymarket" else None    # the Kalshi / schema recorders
     ctx = dict(events=events, show=show, closed=closed, spread_pct=spread_pct, msg=msg, synced=synced, event=event,
-               sport=sport, sport_name=V.SPORT_NAME.get(sport, sport) if sport else "", recorders=recorders)
+               sport=sport, sport_name=V.SPORT_NAME.get(sport, sport) if sport else "", recorders=recorders,
+               note_sports=sorted({x["note_competition"] for x in out if isinstance(x.get("note_competition"), str)}))   # for the source note
     if schema:
         venue = next(v for v in V.SCHEMA_EXCHANGES if v.code == exchange)
         return render(request, "exchange.html", mode="schema", venue=venue, fee=fee, **ctx,
