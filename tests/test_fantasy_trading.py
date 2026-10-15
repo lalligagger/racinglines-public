@@ -556,7 +556,6 @@ def test_mcp_fantasy_tools_are_own_account_and_trade_like_the_page(db, monkeypat
                                     limit_price=0.41)[1]
 
 
-
 def _follow_db(db, monkeypatch, weekend=None):
     """The alpha layout between race weekends (or inside `weekend`), for the page and the MCP tools alike."""
     from racinglines.fantasy import follow as FW
@@ -631,6 +630,124 @@ def test_mcp_follow_keeps_the_pages_gates_and_the_own_account_rule(db, monkeypat
     owner = _mcp_client(eng, monkeypatch, None)
     assert "which account" in owner("fantasy_follow", code="T1")[1]
     assert owner("fantasy_follow", code="T1", user="bea")["ok"] and _prefs(eng, "bea")["base"] == "T1"
+
+
+def _record(eng, token, ts=None):
+    """A recorded book for `token` the routes and the MCP tools read (no injection there)."""
+    with eng.begin() as c:
+        c.execute(text("""INSERT INTO market_book_snapshots (token_id, ts, best_bid, best_ask, bids, asks)
+                          VALUES (:t, :ts, 0.39, 0.41, CAST(:b AS jsonb), CAST(:a AS jsonb))"""),
+                  dict(t=token, ts=ts or datetime.now(timezone.utc) - timedelta(minutes=1), b=str(BIDS), a=str(ASKS)))
+
+
+def test_every_surface_says_when_a_market_closes(db, monkeypatch):
+    """closes_at on the market list, the MCP markets and book tools and the Trade page's header (exchange.closes_for,
+    closes_at for many links): the deciding round's stored start for a race link, null for a season future."""
+    from racinglines.fantasy import exchange as FX
+    eng, win, champ = db["engine"], db["links"]["win"], db["links"]["champ"]
+    _record(eng, "KX-WIN-VER")
+    _record(eng, "PM-CHAMP-VER")
+    FX._BOOKS.clear()
+    with eng.connect() as c:
+        close = {m["id"]: m["closes_at"] for m in FX.markets(c)}
+    assert close[win] == RACE and close[champ] is None
+    mcp = _mcp_client(eng, monkeypatch, dict(db["users"]["ada"], role="pro"))
+    rows = {m["market_link_id"]: m["closes_at"] for m in mcp("fantasy_markets")["markets"]["rows"]}
+    assert rows[win] == RACE.isoformat() and rows[champ] is None
+    assert mcp("fantasy_book", market_link_id=win)["closes_at"] == RACE.isoformat()
+    assert mcp("fantasy_book", market_link_id=champ)["closes_at"] is None
+    ada = _login("ada")
+    assert "closes 2026-10-25 12:00 UTC" in ada.get(f"/trade?link={win}").text
+    assert "season future, no close" in ada.get(f"/trade?link={champ}").text
+
+
+def test_quote_previews_an_order_on_every_surface_without_writing(db, monkeypatch):
+    """exchange.quote walks the latest recorded book as place does (the same steps, the same fee) and writes nothing;
+    fantasy_quote serves it over MCP and the Trade form shows it as the 'if filled now' line."""
+    from racinglines.fantasy import exchange as FX
+    eng, win, champ = db["engine"], db["links"]["win"], db["links"]["champ"]
+    _record(eng, "KX-WIN-VER")
+    _record(eng, "PM-CHAMP-VER")
+    FX._BOOKS.clear()
+    mcp = _mcp_client(eng, monkeypatch, dict(db["users"]["ada"], role="pro"))
+    q = mcp("fantasy_quote", market_link_id=win, side="yes", action="buy", shares=100, limit_price=0.42)
+    assert q["ok"] and q["user"] == "ada" and q["fills"] == [[0.41, 100]] and q["status"] == "filled"
+    assert q["avg_price"] == 0.41 and q["notional"] == 41.0 and q["fee"] == 1.7 and q["total"] == 42.7   # the worked example
+    assert q["cash"] == 1000 and q["book_ts"] and q["age_s"] < 120
+    refused = mcp("fantasy_quote", market_link_id=win, side="yes", action="buy", shares=10, limit_price=0.40)
+    assert not refused["ok"] and refused["reason"] == "no_liquidity" and refused["message"] == FX.TEXT["no_liquidity"]
+    assert mcp("fantasy_quote", market_link_id=champ, side="no", action="sell", shares=1, limit_price=0.5)["reason"] == "sell_exceeds_position"
+    assert _rows(eng, "SELECT count(*) FROM accounts.fantasy_orders")[0][0] == 0           # nothing written
+    assert _rows(eng, "SELECT count(*) FROM activity_log WHERE action LIKE 'fantasy_order%'")[0][0] == 0
+    r = mcp("fantasy_order", market_link_id=win, side="yes", action="buy", shares=100, limit_price=0.42)
+    assert r["ok"] and r["fills"] == q["fills"] and r["fee"] == q["fee"]                   # the order does what the quote said
+    assert "own account" in mcp("fantasy_quote", market_link_id=win, side="yes", action="buy", shares=1, limit_price=0.42, user="bea")[1]
+    # the Trade form: the page's defaults are quoted, ?shares=&limit_price= requote, Preview places nothing
+    ada = _login("ada")
+    page = ada.get(f"/trade?link={champ}").text
+    assert "If filled now:</b> buys 10 YES at an average of 0.410, F$4.10: costs F$4.10." in page
+    page = ada.get(f"/trade?link={champ}&shares=150&limit_price=0.41").text
+    assert 'value="150"' in page and "buys 120 of 150 YES" in page and "the rest isn't on the book" in page
+    assert "would be refused:</b> " + FX.TEXT["over_order_cap"] in ada.get(f"/trade?link={champ}&shares=500&limit_price=0.42").text
+    page = ada.get(f"/trade?link={champ}&shares=5&limit_price=0.40").text
+    assert "would be refused:</b> " + FX.TEXT["no_liquidity"] in page
+    csrf = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
+    r = ada.post("/fantasy/orders", data=dict(csrf_token=csrf, market_link_id=str(champ), side="yes", action="buy", shares="7",
+                                              limit_price="0.42", client_key="k1", preview="1"), follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == f"/trade?link={champ}&action=buy&side=yes&shares=7&limit_price=0.42"
+    assert "buys 7 YES at an average of 0.410" in ada.get(r.headers["location"]).text
+    assert _rows(eng, "SELECT count(*) FROM accounts.fantasy_orders WHERE market_link_id = :l", l=champ)[0][0] == 0
+
+
+def test_mcp_order_refusals_share_one_shape_rate_limit_included(db, monkeypatch):
+    """tools.fantasy_order: a rate-limited order is ok=false, reason rate_limited, message exchange.TEXT, like every
+    other refusal (not a tool error), with an audit row and no order row, as the Trade page's refusal; the web
+    flash is unchanged."""
+    from racinglines.fantasy import exchange as FX
+    eng, champ = db["engine"], db["links"]["champ"]
+    _record(eng, "PM-CHAMP-VER")
+    FX._BOOKS.clear()
+    monkeypatch.setattr(FX, "RATE_MINUTE", 1)
+    mcp = _mcp_client(eng, monkeypatch, dict(db["users"]["ada"], role="pro"))
+    assert mcp("fantasy_order", market_link_id=champ, side="yes", action="buy", shares=1, limit_price=0.41)["ok"]
+    r = mcp("fantasy_order", market_link_id=champ, side="yes", action="buy", shares=1, limit_price=0.41)
+    assert r == dict(user="ada", ok=False, order_id=None, status="rejected", reason="rate_limited",
+                     message=FX.TEXT["rate_limited"], fills=[], fee=0.0, position=None, cash=r["cash"])
+    assert r["cash"] == pytest.approx(1000 - 0.41)
+    assert _rows(eng, "SELECT count(*) FROM accounts.fantasy_orders WHERE user_id = :u", u=db["users"]["ada"]["id"]) == [(1,)]
+    assert _rows(eng, "SELECT detail->>'reason', detail->>'via' FROM activity_log WHERE action = 'fantasy_order_rejected'") == [("rate_limited", "mcp")]
+    FX._HITS.clear()
+    monkeypatch.setattr(FX, "RATE_MINUTE", 1)
+    ada = _login("ada")
+    page = ada.get(f"/trade?link={champ}").text
+    csrf = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
+    form = dict(csrf_token=csrf, market_link_id=str(champ), side="yes", action="buy", shares="1", limit_price="0.41")
+    assert "Bought%201%20YES" in ada.post("/fantasy/orders", data=dict(form, client_key="w1"), follow_redirects=False).headers["location"]
+    r = ada.post("/fantasy/orders", data=dict(form, client_key="w2"), follow_redirects=False)
+    assert r.status_code == 303 and "Error%3A%20Too%20many%20orders" in r.headers["location"]
+
+
+def test_history_lists_settled_trades(db, monkeypatch):
+    """/history shows the hand trades exchange.settle paid out (outcome, payout, when) in a Settled trades card, from
+    ledger.positions(open_only=False), the rows fantasy_positions(open_only=False) already serves over MCP."""
+    from racinglines.fantasy import exchange as FX
+    eng, ada, win = db["engine"], db["users"]["ada"], db["links"]["win"]
+    assert FX.place(eng, ada, win, "yes", "buy", 100, 0.42, now=NOW, get_book=book())["ok"]
+    assert FX.place(eng, ada, db["links"]["champ"], "yes", "buy", 10, 0.42, now=NOW, get_book=book())["ok"]
+    page = _login("ada").get("/history").text
+    assert "No settled trades yet" in page
+    with eng.begin() as c:
+        c.execute(text("UPDATE market_links SET resolved_yes = true WHERE id = :i"), dict(i=win))
+    page = _login("ada").get("/history").text                            # the page settles, then lists it
+    card = page.split("<h2>Settled trades", 1)[1].split("</div>\n\n", 1)[0]
+    assert "United States GP · Kalshi" in card and ">YES</td>" in card and ">100.00</td>" in card and "+$59.00" in card
+    assert "UTC" in card and card.count("<tr>") == 2                      # the champ trade stays open
+    opened = page.split("<h2>Open trades", 1)[1].split("<h2>Settled trades", 1)[0]
+    assert "Polymarket" in opened and "Kalshi" not in opened
+    mcp = _mcp_client(eng, monkeypatch, dict(ada, role="pro"))
+    rows = mcp("fantasy_positions", open_only=False)["positions"]["rows"]
+    assert [(r["status"], r["payout"]) for r in rows if r["market_link_id"] == win] == [("settled", 100.0)]
+
 
 def test_other_sports_are_view_only_with_a_notice(db):
     """Fantasy trading is F1 only for now (owner, 2026-10-12 23:07Z): a non-F1 market says so on Trade and is refused."""

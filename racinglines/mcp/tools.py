@@ -1300,9 +1300,10 @@ def fantasy_leaderboard(conn, limit=None, offset=0, books=None):
 
 
 def fantasy_markets(conn, q=None, limit=None, offset=0, books=None):
-    """The markets a player may trade now (Formula 1 only for now, on Kalshi and Polymarket) with the best recorded YES bid and ask and
-    when that book was recorded; markets with no book in the last day are left out. q: a search on the question,
-    driver or event."""
+    """The markets a player may trade now (Formula 1 only for now, on Kalshi and Polymarket) with the best recorded YES bid and ask,
+    when that book was recorded and when the market closes (closes_at: the deciding session's start, null for a season
+    future or when no start is stored); markets with no book in the last day are left out. q: a search on the
+    question, driver or event."""
     from racinglines.fantasy import exchange as FX
     _fantasy_on()
     rows = FX.markets(conn, (q or "").strip()[:60])
@@ -1312,14 +1313,15 @@ def fantasy_markets(conn, q=None, limit=None, offset=0, books=None):
         b, a, ts = quotes.get(m["token_id"], (None, None, None))
         if ts is not None:
             out.append(dict(market_link_id=m["id"], exchange=m["exchange"], kind=m["kind"], question=m["question"],
-                            subject=m["group_title"], event=m["event_title"], start_date=m["start_date"], bid=b, ask=a,
-                            book_ts=ts))
+                            subject=m["group_title"], event=m["event_title"], start_date=m["start_date"],
+                            closes_at=m["closes_at"], bid=b, ask=a, book_ts=ts))
     return dict(markets=P.page(out, limit=limit, offset=offset), max_stake=FX.MAX_STAKE, max_age_min=FX.MAX_AGE_MIN)
 
 
 def fantasy_book(conn, market_link_id, books=None):
     """One tradable market's latest recorded book: YES bids and asks and the NO side derived from them, up to the
-    depth an order may walk (exchange.DEPTH = 10), with its age."""
+    depth an order may walk (exchange.DEPTH = 10), with its time and the market's close (closes_at: null for a season
+    future or when no session start is stored)."""
     from racinglines.fantasy import exchange as FX
     _fantasy_on()
     link = FX._link(conn, int(market_link_id))
@@ -1327,20 +1329,19 @@ def fantasy_book(conn, market_link_id, books=None):
         raise ValueError(FX.TEXT["sport_not_tradable"])
     if link is None or link["exchange"] not in FX.EXCHANGES:
         raise ValueError(f"no tradable market {market_link_id}")
+    closes_at = FX.closes_for(conn, [link])[link["id"]]
     book = FX.latest_book(books or conn.engine, link["token_id"])
     if book is None:
-        return dict(market_link_id=int(market_link_id), book=None, note=FX.TEXT["book_unavailable"])
+        return dict(market_link_id=int(market_link_id), closes_at=P.plain(closes_at), book=None, note=FX.TEXT["book_unavailable"])
     nb, na = FX.yes_to_no(book["bids"], book["asks"])
     d = FX.DEPTH
-    return dict(market_link_id=int(market_link_id), exchange=link["exchange"], kind=link["prediction"], ts=book["ts"],
-                yes_bids=book["bids"][:d], yes_asks=book["asks"][:d], no_bids=nb[:d], no_asks=na[:d])
+    return dict(market_link_id=int(market_link_id), exchange=link["exchange"], kind=link["prediction"], ts=P.plain(book["ts"]),
+                closes_at=P.plain(closes_at), yes_bids=book["bids"][:d], yes_asks=book["asks"][:d], no_bids=nb[:d], no_asks=na[:d])
 
 
-def fantasy_order(engine, market_link_id, side, action, shares, limit_price, client_key=None, user=None, viewer=None):
-    """Place one immediate-or-cancel F$ order, as the web Trade page does (fantasy/exchange.place). Over HTTP it is
-    always the caller's own account (an admin too); over stdio (the owner) `user` names the account."""
-    from racinglines.fantasy import exchange as FX
-    from racinglines.fantasy import ledger as FL
+def _fantasy_trader(conn, user, viewer):
+    """The account an order or a quote is for (dict id, username, role, via=mcp): over HTTP the caller's own, admin
+    included; over stdio (the owner) `user` names it. Demo accounts and a shared store's accounts are refused."""
     from racinglines.web import demo
     from racinglines.web import roles as R
     _fantasy_on()
@@ -1351,18 +1352,46 @@ def fantasy_order(engine, market_link_id, side, action, shares, limit_price, cli
             raise ValueError("this server's accounts live in another database: no fantasy account here")
     elif user is None:
         raise ValueError("which account? pass user (stdio is the owner's: name the account to trade as)")
-    with engine.connect() as c:
-        _fantasy_ready(c)
-        row = c.execute(text("SELECT id, username, role, active FROM users WHERE "
-                             + ("id = :i" if viewer is not None else "username = :n")),
-                        dict(i=(viewer or {}).get("id"), n=user)).mappings().first()
+    _fantasy_ready(conn)
+    row = conn.execute(text("SELECT id, username, role, active FROM users WHERE "
+                            + ("id = :i" if viewer is not None else "username = :n")),
+                       dict(i=(viewer or {}).get("id"), n=user)).mappings().first()
     if row is None or not row["active"]:
         raise ValueError("no active account to trade as")
     who = dict(id=row["id"], username=row["username"], role=R.canonical(row["role"]), via="mcp")
     if demo.is_demo(who):
         raise ValueError("demo accounts look only; they can't trade")
+    return who
+
+
+def fantasy_quote(conn, market_link_id, side, action, shares, limit_price, user=None, viewer=None, books=None):
+    """What fantasy_order would do with this order right now, writing nothing (fantasy/exchange.quote: the same
+    checks, the same walk of the latest recorded book, the same fee): the fills, the average price, the fee, what
+    it would cost or bring, or the reason it would be refused. Read without the account's lock, so a quote that
+    fills can still be refused a moment later."""
+    from racinglines.fantasy import exchange as FX
+    who = _fantasy_trader(conn, user, viewer)
+    r = FX.quote(conn, who, market_link_id, side, action, shares, limit_price,
+                 get_book=lambda tok: FX.latest_book(books or conn.engine, tok))
+    r["fee"] = P.plain(r["fee"])
+    return dict(user=who["username"], **r)
+
+
+def fantasy_order(engine, market_link_id, side, action, shares, limit_price, client_key=None, user=None, viewer=None):
+    """Place one immediate-or-cancel F$ order, as the web Trade page does (fantasy/exchange.place). Over HTTP it is
+    always the caller's own account (an admin too); over stdio (the owner) `user` names the account. Every refusal
+    comes back in the one shape (ok=false, reason, message), the rate limit included (it writes an audit row and no
+    order row, as the Trade page's refusal does); a tool error is for a caller who can't trade at all."""
+    from racinglines.fantasy import exchange as FX
+    from racinglines.fantasy import ledger as FL
+    with engine.connect() as c:
+        who = _fantasy_trader(c, user, viewer)
     if not FX.rate_ok(who["id"]):
-        raise ValueError(FX.TEXT["rate_limited"])
+        with engine.begin() as c:
+            FX._audit(c, who, "fantasy_order_rejected", reason="rate_limited", link=market_link_id)
+            cash = FL.available(c, who["id"])
+        return dict(user=who["username"], ok=False, order_id=None, status="rejected", reason="rate_limited",
+                    message=FX.TEXT["rate_limited"], fills=[], fee=0.0, position=None, cash=round(cash, 2))
     FX.settle(engine, FX.books_engine(engine))                          # pay out anything resolved first
     r = FX.place(engine, who, market_link_id, side, action, shares, limit_price, client_key=client_key)
     with engine.connect() as c:
