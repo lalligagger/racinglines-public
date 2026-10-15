@@ -556,6 +556,82 @@ def test_mcp_fantasy_tools_are_own_account_and_trade_like_the_page(db, monkeypat
                                     limit_price=0.41)[1]
 
 
+
+def _follow_db(db, monkeypatch, weekend=None):
+    """The alpha layout between race weekends (or inside `weekend`), for the page and the MCP tools alike."""
+    from racinglines.fantasy import follow as FW
+    from racinglines.web import app as A  # noqa: F401  (registers the pages)
+    from racinglines.web import strategy_pick as SP
+    monkeypatch.setenv("RACINGLINES_LAYOUT", "alpha")
+    monkeypatch.setattr(FW, "open_weekend", lambda now=None, schedule=None: weekend)
+    monkeypatch.setattr(SP, "open_weekend", lambda now=None: weekend)
+
+
+def _prefs(eng, name):
+    return _rows(eng, "SELECT prefs->'strategy_profile' FROM users WHERE username = :n", n=name)[0][0]
+
+
+def test_mcp_follow_saves_the_same_profile_as_the_page(db, monkeypatch):
+    """fantasy_follow and /strategy/pick share fantasy/follow.follow (owner, 2026-10-14: every surface)."""
+    from racinglines.pipelines import profiles as PF
+    eng, u = db["engine"], db["users"]
+    _follow_db(db, monkeypatch)
+    mcp = _mcp_client(eng, monkeypatch, dict(u["ada"], role="pro"))
+    r = mcp("fantasy_follow", code="T1", sizing="kelly", kelly=0.5, min_edge=0.12, rolled=True)
+    assert r["ok"] and r["user"] == "ada" and r["reason"] is None and r["message"].startswith("Now running Steady")
+    assert r["profile"] == dict(base="T1", name="Steady · adjusted", sizing="kelly", kelly=0.5,
+                                adjusted={"min_edge": 0.12}, rolled=True)
+    client = _login("bea")
+    csrf = re.search(r'name="csrf_token" value="([^"]+)"', client.get("/strategy/pick").text).group(1)
+    client.post("/strategy/pick", data={"csrf_token": csrf, "code": "T1", "sizing": "kelly", "kelly": "0.5",
+                                        "tweak:min_edge": "0.12", "tweak_from:min_edge": "0.10", "rolled": "1"})
+    assert _prefs(eng, "ada") == _prefs(eng, "bea")                         # the same row, field for field
+    assert _rows(eng, "SELECT username, detail->>'via', detail->>'new' FROM activity_log WHERE action = 'strategy_pick' "
+                      "ORDER BY id") == [("ada", "mcp", "Steady · adjusted"), ("bea", None, "Steady · adjusted")]
+    read = mcp("fantasy_strategy")
+    assert read["user"] == "ada" and read["profile"]["base"] == "T1" and read["lock"] is None and not read["demo"]
+    assert [o["code"] for o in read["options"]] == list(PF.ALPHA_ORDER) and read["codes"] == [*PF.ALPHA_ORDER, "none"]
+    assert {s["name"] for s in read["options"][0]["sliders"]} == {"min_edge", "min_volume_24h"}
+    r = mcp("fantasy_follow", code="none")
+    assert r["ok"] and r["profile"] is None and _prefs(eng, "ada") is None
+
+
+def test_mcp_follow_keeps_the_pages_gates_and_the_own_account_rule(db, monkeypatch):
+    import pandas as pd
+
+    from racinglines.fantasy import follow as FW
+    from racinglines.web import demo
+    eng, u = db["engine"], db["users"]
+    _follow_db(db, monkeypatch)
+    mcp = _mcp_client(eng, monkeypatch, dict(u["ada"], role="pro"))
+    assert mcp("fantasy_follow", code="T2")["ok"]
+    before = _prefs(eng, "ada")
+    denied = mcp("fantasy_follow", code="T6", user="bea")                   # never another account over HTTP
+    assert denied[0] == "error" and "own account" in denied[1] and _prefs(eng, "bea") is None
+    r = mcp("fantasy_follow", code="T3")                                    # not one of the five
+    assert (r["ok"], r["reason"], r["message"]) == (False, "bad_code", "pick one of the strategies listed.")
+    assert mcp("fantasy_follow", code="T6", sizing="kelly", kelly=3)["reason"] == "bad_sizing"
+    gp = dict(name="Test GP", race_start=pd.Timestamp("2026-10-11 12:00"))
+    _follow_db(db, monkeypatch, weekend=gp)
+    r = mcp("fantasy_follow", code="none")
+    assert r["reason"] == "weekend_locked" and r["message"] == FW.lock_note(gp)
+    assert mcp("fantasy_strategy")["lock"] == dict(weekend="Test GP", reopens="2026-10-12T12:00:00",
+                                                   message=FW.lock_note(gp))
+    _follow_db(db, monkeypatch)
+    monkeypatch.setattr(demo, "DEMO_USERS", ("ada",))
+    assert mcp("fantasy_follow", code="T6")["reason"] == "demo_account"
+    assert _prefs(eng, "ada") == before                                     # every refusal wrote nothing
+    # an admin may read another account and follow the classic codes, but only for itself
+    with eng.begin() as c:
+        c.execute(text("UPDATE users SET role = 'admin' WHERE username = 'cal'"))
+    admin = _mcp_client(eng, monkeypatch, dict(u["cal"], role="admin"))
+    assert admin("fantasy_strategy", user="ada")["profile"]["base"] == "T2"
+    assert "T3" in admin("fantasy_strategy")["codes"] and admin("fantasy_follow", code="T3")["ok"]
+    assert "own account" in admin("fantasy_follow", code="T3", user="bea")[1]
+    owner = _mcp_client(eng, monkeypatch, None)
+    assert "which account" in owner("fantasy_follow", code="T1")[1]
+    assert owner("fantasy_follow", code="T1", user="bea")["ok"] and _prefs(eng, "bea")["base"] == "T1"
+
 def test_other_sports_are_view_only_with_a_notice(db):
     """Fantasy trading is F1 only for now (owner, 2026-10-12 23:07Z): a non-F1 market says so on Trade and is refused."""
     from racinglines.fantasy import exchange as FX

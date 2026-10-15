@@ -8,6 +8,8 @@ Every read tool runs in its own READ ONLY transaction. The job tools (run_job, c
 Run form writes: a `jobs` row; the job's subprocess saves a model run (forecasts as scenarios, never promoted).
 fantasy_order writes what the Trade page writes (fantasy/exchange.place, the caller's own account only), and the
 fantasy reads first pay out resolved hand trades as the Trade and History pages do (fantasy/exchange.settle).
+fantasy_follow writes what /strategy/pick writes (fantasy/follow.follow: the profile and an audit row, the caller's own
+account only).
 """
 
 import json
@@ -38,6 +40,8 @@ How to use it:
   track_record / list_positions / list_signals (paper trading), list_live_events, data_changes.
 - Fantasy trading (F$ only, your own account): fantasy_balance, fantasy_positions, fantasy_orders, fantasy_leaderboard,
   fantasy_markets, fantasy_book, and fantasy_order (one immediate-or-cancel order, as the Trade page places it).
+  fantasy_strategy shows the strategy you follow and the five styles; fantasy_follow follows one (or stops), as the
+  Strategy page does, never during a race weekend.
 - Anything else: sql(query) — read-only SELECT, paged. describe_schema() lists the tables.
 - Scenarios: list_job_types() then run_job(job_type, params) queues a Lab job (backtest, forecast scenario, event
   diagnostic, Edge Finder sweep, season strategy, downhill scenario/backtest); get_job(job_id) follows it and gives the
@@ -168,11 +172,12 @@ def _fantasy_read(fn, **kw):
     return _read(fn, books=_books(), **kw)
 
 
-def _fantasy_write(**kw):
-    """fantasy_order: one F$ order through fantasy/exchange.place, on the caller's own account (tools.fantasy_order)."""
+def _fantasy_write(fn=None, **kw):
+    """fantasy_order (the default: one F$ order through fantasy/exchange.place) or fantasy_follow (fantasy/follow.follow),
+    on the caller's own account."""
     from mcp.server.mcpserver.exceptions import ToolError
     try:
-        return _json(T.fantasy_order(_engine(), viewer=_viewer(), **kw))
+        return _json((fn or T.fantasy_order)(_engine(), viewer=_viewer(), **kw))
     except (ValueError, KeyError, TypeError) as ex:
         raise ToolError(str(ex)) from ex
 
@@ -428,6 +433,26 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         over stdio (the owner naming the account)."""
         return _fantasy_write(market_link_id=market_link_id, side=side, action=action, shares=shares,
                               limit_price=limit_price, client_key=client_key, user=user)
+
+    @srv.tool(structured_output=False)
+    def fantasy_strategy(user: str | None = None) -> str:
+        """The strategy you follow (style, sizing, Kelly fraction, tweaks; null when none), whether changes are paused
+        for a race weekend and until when, the five styles you can follow (label, blurb, backtest return on F$1,000,
+        maker or taker, the two tweak sliders with their ranges) and every code fantasy_follow takes. Hosted accounts
+        see their own only; user is for the owner."""
+        return _read(T.fantasy_strategy, user=user, viewer=_viewer())
+
+    @srv.tool(structured_output=False)
+    def fantasy_follow(code: str, sizing: str = "standard", kelly: float = 0.25, min_edge: float | None = None,
+                       min_volume_24h: float | None = None, rolled: bool = False, user: str | None = None) -> str:
+        """Follow a strategy on your own account, exactly as the Strategy page saves it: code one of the five styles
+        (T1, T2, T8, T6, T5; fantasy_strategy lists them) or "none" to stop. sizing standard|kelly, kelly a fraction
+        0.10-1.00 on a 5% step. min_edge (0.03-0.15) and min_volume_24h (0-400) tweak the style (clamped; untested,
+        scored live); rolled marks tweaks as random. Paused during a race weekend's signal window. A refusal comes back
+        as ok=false with a reason (demo_account, slot_not_open, weekend_locked, bad_sizing, bad_code, not_allowed,
+        rate_limited) and the page's message; nothing is written then. user: only over stdio (the owner)."""
+        return _fantasy_write(T.fantasy_follow, code=code, sizing=sizing, kelly=kelly, min_edge=min_edge,
+                              min_volume_24h=min_volume_24h, rolled=rolled, user=user)
 
     @srv.tool(structured_output=False)
     def pull_manifest(sport: str, since: str | None = None) -> str:

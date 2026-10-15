@@ -218,12 +218,21 @@ def adjusted(code, tweaks):
 
 # --- read and follow ------------------------------------------------------------------------------------------------
 
-def _summary(profile):
+def summary(profile):
+    """A saved profile as the MCP tools show it: dict(base, name, sizing, kelly, adjusted, rolled), or None."""
     if not profile:
         return None
     return dict(base=profile.get("base"), name=display_name(profile), sizing=profile.get("sizing") or "standard",
                 kelly=float(profile.get("kelly") or KELLY["default"]), adjusted=profile.get("adjusted") or None,
                 rolled=bool(profile.get("rolled")))
+
+
+def saved_message(new):
+    """The page's line after a save (new: the profile follow returned, None for a stop)."""
+    if new is None:
+        return "Stopped: nothing trades for this account until you pick again."
+    return (f"Now running {new['name']}. Its calls start when the next race weekend's signals open, four days before "
+            "the race.")
 
 
 def current(conn, user, now=None, weekend=_AUTO):
@@ -232,7 +241,7 @@ def current(conn, user, now=None, weekend=_AUTO):
     or None (between weekends)."""
     w = open_weekend(now) if weekend is _AUTO else weekend
     lock = dict(weekend=w["name"], reopens=reopens(w).isoformat(), message=lock_note(w)) if w else None
-    return dict(profile=_summary(PF.of_user(conn, user["id"])), lock=lock, demo=demo.is_demo(user))
+    return dict(profile=summary(PF.of_user(conn, user["id"])), lock=lock, demo=demo.is_demo(user))
 
 
 def follow(conn, user, code, sizing="standard", kelly=0.25, tweaks=None, rolled=False, slot=F1_SLOT, alpha=None,

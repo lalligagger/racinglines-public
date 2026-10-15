@@ -1370,3 +1370,77 @@ def fantasy_order(engine, market_link_id, side, action, shares, limit_price, cli
     return dict(user=who["username"], ok=r["ok"], order_id=r["order_id"], status=r["status"], reason=r["reason"],
                 message=r["message"] or None, fills=r["fills"], fee=P.plain(r["fee"]), position=r.get("position"),
                 cash=round(cash, 2))
+
+
+# --- following a strategy (fantasy/follow.py, the path /strategy/pick saves through) ---------------------------------
+#
+# fantasy_strategy reads what an account follows, the five style cards and the race-weekend lock; fantasy_follow
+# follows a style (or stops) on the caller's own account only, admin included, exactly as the page saves it: the same
+# gates and words (demo accounts, F1 on Polymarket, the weekend lock, sizing, the codes allowed, roles.allowed_profile),
+# the exchange rate limit, and a `strategy_pick` audit row tagged via=mcp. A refusal comes back as ok=false with its
+# reason and the page's message, nothing written. Codes: the five alpha styles and "none"; an admin also the classic
+# page's codes (follow.allowed_codes with alpha=True).
+
+def _follower(conn, uid):
+    """dict(id, username, role) for follow, with the role a web request runs as (web/layout.role); None if inactive."""
+    from racinglines.web import layout as L
+    from racinglines.web import roles as R
+    row = conn.execute(text("SELECT id, username, role, active FROM users WHERE id = :i"), dict(i=uid)).mappings().first()
+    if row is None or not row["active"]:
+        return None
+    return dict(id=row["id"], username=row["username"], role=L.role(R.canonical(row["role"])))
+
+
+def fantasy_strategy(conn, user=None, viewer=None):
+    """What one account follows (profile: base code, name, sizing, kelly, adjusted, rolled; None when nothing), the
+    race-weekend lock (weekend, reopens, message; None between weekends), the five style cards (options) and every
+    code it may pass to fantasy_follow, with the sizing choices."""
+    from racinglines.fantasy import follow as FW
+    from racinglines.pipelines import profiles as PF
+    _fantasy_ready(conn)
+    uid, name = _fantasy_account(conn, user, viewer)
+    who = _follower(conn, uid)
+    if who is None:
+        raise ValueError("no active account")
+    codes = FW.allowed_codes(who, alpha=True)
+    return dict(user=name, **FW.current(conn, who), options=FW.options(who),
+                codes=[*PF.ALPHA_ORDER, *sorted(codes - set(PF.ALPHA_ORDER)), "none"],
+                sizing=dict(choices=list(FW.SIZINGS), kelly_lo=FW.KELLY["lo"], kelly_hi=FW.KELLY["hi"],
+                            kelly_step=FW.KELLY["step"], kelly_default=FW.KELLY["default"]))
+
+
+def fantasy_follow(engine, code, sizing="standard", kelly=0.25, min_edge=None, min_volume_24h=None, rolled=False,
+                   user=None, viewer=None):
+    """Follow a strategy, or stop with code "none", as /strategy/pick saves it (fantasy/follow.follow). Over HTTP it is
+    always the caller's own account (an admin too); over stdio (the owner) `user` names the account."""
+    from racinglines.fantasy import exchange as FX
+    from racinglines.fantasy import follow as FW
+    from racinglines.pipelines import profiles as PF
+    _fantasy_on()
+    if viewer is not None:
+        if user is not None and user != viewer.get("username"):
+            raise ValueError("MCP strategy changes are made on your own account only")
+        if viewer["id"] < 1:
+            raise ValueError("this server's accounts live in another database: no fantasy account here")
+    elif user is None:
+        raise ValueError("which account? pass user (stdio is the owner's: name the account to follow for)")
+    with engine.connect() as c:
+        _fantasy_ready(c)
+        uid = viewer["id"] if viewer is not None else _user_id(c, user)
+        who = _follower(c, uid)
+    if who is None:
+        raise ValueError("no active account to follow for")
+    who["via"] = "mcp"
+    out = dict(user=who["username"], ok=False, reason=None, message=None, profile=None)
+    if not FX.rate_ok(who["id"]):
+        return dict(out, reason="rate_limited", message=FX.TEXT["rate_limited"])
+    tweaks = {k: v for k, v in (("min_edge", min_edge), ("min_volume_24h", min_volume_24h)) if v is not None}
+    try:
+        with engine.begin() as c:
+            old = PF.of_user(c, who["id"])
+            new = FW.follow(c, who, code, sizing=sizing, kelly=kelly, tweaks=tweaks, rolled=bool(rolled), alpha=True)
+            FX._audit(c, who, "strategy_pick", old=(old or {}).get("name"), new=(new or {}).get("name"),
+                      adjusted=(new or {}).get("adjusted"), rolled=bool((new or {}).get("rolled")))
+    except FW.FollowError as ex:
+        return dict(out, reason=ex.reason, message=ex.message)
+    return dict(out, ok=True, message=FW.saved_message(new), profile=FW.summary(new))

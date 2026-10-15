@@ -204,8 +204,5 @@ async def pick_save(request: Request, code: str = Form(""), rolled: str = Form("
                                 status_code=303)
     audit(request, "strategy_pick", old=(old or {}).get("name"), new=(new or {}).get("name"),
           adjusted=(new or {}).get("adjusted"), rolled=bool((new or {}).get("rolled")))
-    if new is None:
-        return RedirectResponse("/strategy/pick?msg=Stopped: nothing trades for this account until you pick again.",
-                                status_code=303)
-    return RedirectResponse("/strategy?msg=" + f"Now running {new['name']}. Its calls start when the next race "
-                            "weekend's signals open, four days before the race.", status_code=303)
+    return RedirectResponse(("/strategy/pick" if new is None else "/strategy") + "?msg=" + FW.saved_message(new),
+                            status_code=303)
