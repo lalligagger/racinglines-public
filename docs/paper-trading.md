@@ -454,6 +454,25 @@ separate trial.
 
 Any change to a profile makes a new profile with its own count.
 
+**Pre-registered as bet, every event to the end of the F1 season (owner, 2026-10-15 00:22Z).** "Whether or not I
+place the bets somewhere, if I give you a set of sports book lines we should lock in a single strategy before the event
+starts. Add'l bets can be placed after eg. Quals but everything must be done 'as bet' / as if the paper trades were a
+live test." So, for every F1 weekend from round 18 (United States GP, FP1 2026-10-23 17:30Z) to round 23:
+
+- **One strategy per event, written down before its first session:** the profile and its settings (or the Lab
+  candidate and its settings key), the venues and sportsbook lines it may trade, the fill rule and tape, and the
+  sizing, committed with a timestamp as a row in the register below. Settings tuned later count from their own
+  date: a new row for a later event, never an edit to an earlier one.
+- **Bets after a session are allowed** (e.g. after qualifying), placed by the same pre-registered strategy at the
+  prices of that moment, and recorded when placed, never back-filled.
+- **Scored as bet:** every paper trade is settled at the price it was recorded at, whether or not it was placed
+  anywhere. Nothing is dropped, re-priced or re-sized after the fact.
+- Backtests on seasons the settings were tuned on are in-sample diagnostics, not this test.
+
+| Event | Strategy (settings key) | Venues and lines | Registered (UTC) | Commit |
+| --- | --- | --- | --- | --- |
+| 2026-18 United States GP | to register before FP1, 2026-10-23 17:30Z | | | |
+
 **The rules:**
 
 1. **Each weekend against its replay.** Re-run the backtest's replay of the same weekend on the recorded

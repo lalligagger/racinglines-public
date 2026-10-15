@@ -285,7 +285,10 @@ how it works: [Paper trading](paper-trading.md). Recommendations and paper fills
 - [ ] **P0 · Pre-register the rules; profiles stay tunable (owner, 2026-10-05: no freezes).** A, C and K can
       be re-tuned at any time. Each change is recorded with its date in the
       [F1 roadmap](f1-roadmap.md#decision-log) and starts a new settings version with its own live count. Rules:
-      [validation plan](paper-trading.md#validation-plan).
+      [validation plan](paper-trading.md#validation-plan). **Owner, 2026-10-15: every paper trade to the end of the F1
+      season is pre-registered and scored as bet** (one strategy per event, written before its first session; bets
+      after a session allowed, by that strategy at that moment's prices). First entry: the United States GP, before FP1
+      2026-10-23 17:30Z, with the "Austin US GP planning" thread.
 - [ ] Run A (demo taker) and C (demo maker) live on every weekend Polymarket or Kalshi lists, through 2026
       and into 2027. Built and scheduled on both venues (the signal engine, every 5 minutes in a race window); ran on
       rounds 16 and 17 (last stored signal: Singapore after qualifying, 2026-10-11 14:37Z). Under the alpha, every
