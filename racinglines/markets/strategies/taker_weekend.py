@@ -95,6 +95,20 @@ def _book_side(s, side, buy):
     return [(1 - p, q) for p, q in (s["bids"] if buy else s["asks"])]
 
 
+def _within(levels, fair, min_edge, fee_rate, buy):
+    """The levels a book walk may take, best first, up to the first one past the edge (a limit order's price): a buy
+    only where fair - price - fee >= min_edge (the bar that sized it), a sale only where price - fee >= fair -
+    min_edge (no lower than the same margin under fair). fair is the side's own (1 - fair for NO). Without it a
+    thin book's far levels (0.99 asks, 0.01 bids) fill the rest of an order sized at the touch."""
+    out = []
+    for px, size in levels:
+        fee = fee_rate * px * (1 - px)
+        if (fair - px - fee < min_edge - 1e-9) if buy else (px - fee < fair - min_edge - 1e-9):
+            break
+        out.append((px, size))
+    return out
+
+
 def _fee(rate, px, shares):
     """The venue's taker fee per share for one order of `shares` at `px`: rate x contracts x P x (1 - P),
     rounded up to the cent per order (Kalshi's schedule); 0 when the rate is 0."""
@@ -164,6 +178,9 @@ class _Market:
                 if abs(d) < 1e-9:
                     continue
                 levels = _book_side(s, side, d > 0) if p.fill == "book" else None
+                if levels is not None:                       # a limit: never past the edge (see _within)
+                    levels = _within(levels, s["fair"] if side == "YES" else 1 - s["fair"], p.min_edge,
+                                     p.taker_fee, d > 0)
                 if levels is not None:                       # walk the book: the spread and the slippage
                     px, got = walk(levels, abs(d))
                     if px is None:
