@@ -414,6 +414,11 @@ run times, the rest results); the old classes are challengers ([Backtest core](b
       live (C10), the pre-race field from the entry list (C46), `race_start_utc` for CLV (C42).
 - [ ] **A naive baseline (engine E7):** `market_implied`; Plackett-Luce was tested on 7 Oct and lost to the probit
       engine in every sport, so it is not the baseline ([Novig and the bake-off](novig-and-model-bakeoff.md)); the extended model, one `rank_logit` challenger with ties, teams, `top_k` and a covariance, is F1-6, started narrowed on 2026-10-14 ([decision log](f1-roadmap.md#decision-log)).
+- [ ] **F1-6 · the `walk_forward` job has no `settings` parameter.** MCP `run_job` and the Lab form take a challenger
+      by name (`model`) but not its settings, so rank_logit's `top_k`, `tie_on`, `team_effects` and the rest reach only
+      the CLI (`backtest walk-forward --model rank_logit --top-k 3`) and the search jobs. The Lab also lists every
+      challenger for every sport and rejects a mismatch only at submit. Needed before the F1-6 comparison can be run
+      from the Lab or `racinglines remote` (every-surface rule).
 - [ ] **Decision-log rows still missing:** in-race `SIGMA = 3.0` and the live downhill constants (C12); the road
       cycling GC settings (#177).
 
