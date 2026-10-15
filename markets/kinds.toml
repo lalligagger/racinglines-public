@@ -15,7 +15,7 @@
 # Two kinds of payoff:
 #
 # 1. payoff = "<name>": a legacy payoff, one function each in racinglines/markets/kinds.py, inputs from the row:
-#      top_n        n            rank <= n and finished; settles on status OK and position <= n (absent: NO)
+#      top_n        n            rank <= n and finished; settles on status OK and position <= n (absent: void)
 #      stage_top_n  n, stage     an earlier round's order (sims.stage_rank[stage]) <= n; settles on <stage>_position
 #                                (qual_position for "qual")
 #      reached      stage        the entrant reached the round (sims.reached[stage]); settles on reached_<stage>

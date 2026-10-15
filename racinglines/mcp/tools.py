@@ -607,7 +607,7 @@ def compare_runs(conn, run_a, run_b, kinds=None, stage=None):
     c = res["counts"]
     return dict(run_a=int(run_a), run_b=int(run_b), kinds=kinds, stage=stage, diff="B - A (lower is better)",
                 paired=c["paired"], only_a=c["only_a"], only_b=c["only_b"], unsettled=res["unsettled"],
-                summary=P.page(res["summary"], limit=P.MAX_LIMIT))
+                unsettled_why=res["unsettled_why"], summary=P.page(res["summary"], limit=P.MAX_LIMIT))
 
 
 def _dig(obj, path):

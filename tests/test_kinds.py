@@ -97,10 +97,10 @@ RES = pd.DataFrame(dict(athlete_id=[1, 2, 3, 4, 5], position=[1, 2, 3, 4, 20], s
 
 
 @pytest.mark.parametrize("kind,ath,params,want", [
-    ("race_win", 1, None, True), ("race_win", 2, None, False), ("race_win", 9, None, False),
+    ("race_win", 1, None, True), ("race_win", 2, None, False), ("race_win", 9, None, None),
     ("race_podium", 3, None, True), ("race_podium", 4, None, False), ("race_top10", 5, None, False),
     ("race_pole", 2, None, True), ("race_pole", 1, None, False), ("race_pole", 4, None, None),
-    ("race_pole", 9, None, False),
+    ("race_pole", 9, None, None),
     ("race_h2h", 2, {"opponent_id": 1}, False), ("race_h2h", 4, {"opponent_id": 5}, True),
     ("race_h2h", 4, {"opponent_id": 9}, None),
     ("race_constructor_top", None, {"team": "a"}, True), ("race_constructor_top", None, {"team": "b"}, False),
@@ -113,6 +113,23 @@ def test_settlement(kind, ath, params, want):
 
 def test_settlement_without_results_is_undecided():
     assert K.settle("race_win", 1, None, RES.iloc[:0]) is None
+
+
+def test_an_entrant_the_result_does_not_list_is_undecided_not_no():
+    """Every legacy payoff (top_n, stage_top_n, h2h, reached, indicator, mover): an athlete with no row in the
+    classification settles None, never False, so a scorer leaves the row out instead of counting a loss and the
+    private book leaves the market open (docs/todo.md, cross-engine pairing, 2026-10-14). A declarative kind keeps
+    the `absent` policy its row in markets/kinds.toml declares (default void; race_top20 says NO)."""
+    res = RES.assign(reached_final=[True, True, False, False, False], race_fastest_lap=[False, True, False, False, False],
+                     grid=[3, 1, 2, 5, 4])
+    for kind in ("race_win", "race_podium", "race_top10", "race_pole", "race_make_final", "race_fastest_lap",
+                 "race_biggest_mover"):
+        assert K.settle(kind, 9, None, res) is None, kind
+        assert house.outcome_for(kind, 9, None, res) is None, kind
+        assert K.settle(kind, 1, None, res) is not None, kind         # a listed athlete still settles
+    assert K.settle("race_retire", 9, None, res) is None and K.settle("race_top20", 9, None, res) is False
+    assert K.settle("race_h2h", 1, {"opponent_id": 9}, res) is None and K.settle("race_h2h", 9, {"opponent_id": 1}, res) is None
+    assert K.settle("race_make_final", 3, None, res) is False and K.settle("race_biggest_mover", 2, None, res) is False
 
 
 # --- sportsbook classification kinds (docs/sportsbook/) -------------------------------------------------------

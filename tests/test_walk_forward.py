@@ -59,7 +59,7 @@ def test_downhill_results_settle_every_kind(dh):
     assert res["reached_final"].any() and (res["position"] == 1).sum() == 1
     winner = res.loc[res["position"] == 1, "athlete_id"].iloc[0]
     assert K.settle("race_win", winner, None, res) and K.settle("race_make_final", winner, None, res)
-    assert K.settle("race_make_final", "nobody", None, res) is False
+    assert K.settle("race_make_final", "nobody", None, res) is None     # not in the result: undecidable, not NO
     assert K.settle("race_make_final", winner, None, res.drop(columns="reached_final")) is None
 
 

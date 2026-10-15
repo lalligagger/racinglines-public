@@ -135,10 +135,12 @@ def to_records(sims, run_id, sport, model_id, season, event_id, event, stage, cu
     """Long-format prediction records for one event x stage: one row per kind x subject with the fair value,
     its Monte Carlo standard error sqrt(p(1-p)/n_sims) and n_sims. Every kind the simulations support
     (markets.kinds.summary: per-entrant kinds; head-to-heads for each pair once, as walk_forward.event_rows;
-    the top team when points and groups exist), or just `kinds`. `subject` is the athlete id (the group key
-    for group_top); `params` is JSON: {} | {"opponent_id": b} | {"team": g}."""
+    the top team when points and groups exist), or just `kinds`. `subject` is the athlete id in the one key of
+    db/records.athlete_key ("12", whether the entrants are 12 or the run-times core's "ath:12"; the group key for
+    group_top); `params` is JSON: {} | {"opponent_id": 12} | {"team": g}."""
     import json
 
+    from racinglines.db import records as REC
     from racinglines.markets import kinds as K
     n = sims.n_sims
     summ = K.summary(sims)
@@ -147,7 +149,7 @@ def to_records(sims, run_id, sport, model_id, season, event_id, event, stage, cu
 
     def add(kind, subject, params, p):
         p = float(p)
-        rows.append((kind, str(_py(subject)), json.dumps(params, sort_keys=True), p, _se(p, n)))
+        rows.append((kind, subject, json.dumps(params, sort_keys=True), p, _se(p, n)))
 
     for kind in want:
         k = K.KINDS.get(kind)
@@ -162,15 +164,15 @@ def to_records(sims, run_id, sport, model_id, season, event_id, event, stage, cu
             if kind not in summ:
                 continue
             for a, p in zip(sims.entrants, summ[kind]):
-                add(kind, a, {}, p)
+                add(kind, REC.subject_key(a), {}, p)
         elif k.payoff == "h2h":
             h = K.h2h_matrix(s)
             for i, a in enumerate(sims.entrants):
                 for j, b in enumerate(sims.entrants[i + 1:], i + 1):
-                    add(kind, a, {"opponent_id": _py(b)}, h[i, j])
+                    add(kind, REC.subject_key(a), {"opponent_id": REC.athlete_key(b)}, h[i, j])
         elif k.payoff == "group_top" and s.groups is not None and s.points is not None:
             for g, p in K.group_top(s).items():
-                add(kind, g, {"team": _py(g)}, p)
+                add(kind, str(_py(g)), {"team": _py(g)}, p)
     df = pd.DataFrame(rows, columns=["kind", "subject", "params", "fair", "se"])
     ts = pd.Timestamp(cutoff).as_unit("ns") if cutoff is not None else pd.NaT
     head = dict(run_id=int(run_id), sport=sport, model_id=model_id, season=None if season is None else int(season),
