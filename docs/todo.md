@@ -413,7 +413,7 @@ run times, the rest results); the old classes are challengers ([Backtest core](b
       retirements (C6; `GlobalModel` handles retirements, C26), a real challenger (C7), head-to-head and top-20 kinds
       live (C10), the pre-race field from the entry list (C46), `race_start_utc` for CLV (C42).
 - [ ] **A naive baseline (engine E7):** `market_implied`; Plackett-Luce was tested on 7 Oct and lost to the probit
-      engine in every sport, so it is not the baseline ([Novig and the bake-off](novig-and-model-bakeoff.md)).
+      engine in every sport, so it is not the baseline ([Novig and the bake-off](novig-and-model-bakeoff.md)); the extended model, one `rank_logit` challenger with ties, teams, `top_k` and a covariance, is F1-6, started narrowed on 2026-10-14 ([decision log](f1-roadmap.md#decision-log)).
 - [ ] **Decision-log rows still missing:** in-race `SIGMA = 3.0` and the live downhill constants (C12); the road
       cycling GC settings (#177).
 
