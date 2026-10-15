@@ -63,6 +63,10 @@ SETTINGS = [
     Setting("teammate_corr", "model", "Teammates share noise", "bool", True, target="model.TEAMMATE_CORR"),
     Setting("finish_rho_scale", "model", "Teammate finish correlation scale", "float", 1.0, 0, 2,
             target="model.FINISH_RHO_SCALE"),
+    Setting("calib_power", "model", "Win-price calibration power", "text", None,
+            help="Sharpen (above 1) the race-win prices as p^a, resampling the sims so every market follows "
+                 "(C48). A number, or walk_forward: the power fitted on earlier races only "
+                 "(sports/f1/calibration.toml). Empty = off.", target="model.CALIB_POWER"),
     Setting("reset_weight", "model", "Regulation-reset carry-over", "float", 0.25, 0, 1,
             help="With the reset switch: weight of earlier seasons' car data.", target="model.REG_RESET_WEIGHT"),
     Setting("seed", "model", "Monte Carlo seed", "int", None, 0, 2**31 - 1,
@@ -140,6 +144,9 @@ def _coerce(s, v):
         return s.default
     if s.unset is not None and v == s.unset:
         return s.default
+    if s.name == "calib_power":                      # off / walk_forward / a power (models/calibration.py)
+        from racinglines.models import calibration as CAL
+        return CAL.parse(v)
     if s.type == "float":
         return float(v)
     if s.type == "int":
@@ -219,7 +226,11 @@ class Settings(dict):
 
     def _key(self, names):
         names = [k for k in names if not (self.BY[k].default is None and self[k] is None)]   # unset optionals
-        blob = json.dumps({k: self[k] for k in names}, sort_keys=True, default=list)
+        vals = {k: self[k] for k in names}
+        if vals.get("calib_power") == "walk_forward":         # the fitted table is part of the pricing
+            from racinglines.models import calibration as CAL
+            vals["calib_power"] = f"walk_forward@{CAL.table_hash()}"
+        blob = json.dumps(vals, sort_keys=True, default=list)
         return hashlib.sha1(blob.encode()).hexdigest()[:12]
 
     @property
