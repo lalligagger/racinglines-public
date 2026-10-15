@@ -1,0 +1,45 @@
+# The per-event lock (docs/paper-trading.md, "The per-event lock"; owner, 2026-10-15). Copy to <year>-<round>.toml,
+# fill it in, commit and push BEFORE the event's first session. Afterwards only append [[addition]] (after a stage)
+# and [[correction]] entries; never edit or delete a line above. Every entry is scored as bet.
+
+event = "2026-18"                       # year-round, as in live/f1/ and the scorecard
+name = "United States Grand Prix"
+first_session_utc = ""                  # the first session's start (FP1), from the schedule
+locked_at_utc = ""                      # when this file was written; GitHub's push time is the proof
+locked_by = "owner"
+
+[strategy]                               # the one strategy that counts this weekend
+profile = "A"                            # A | C | K | a Lab candidate's name
+settings_key = ""                        # the profile's settings key (Lab / sweep_settings.Settings.key)
+code_commit = ""                         # git rev-parse HEAD on the branch the signals run from
+venues = ["polymarket", "kalshi"]
+bankroll = 1000.0                        # $ (or F$) the stakes scale to
+stake_rule = "profile default"           # e.g. linear per unit edge, capped at max_stake
+scored_on = "probalytics tape, taker_fill = touch"   # how the paper trades are priced and filled when scored
+
+# Sportsbook lines the owner handed over before the event (one block per line), and the bet planned on each.
+[[line]]
+book = ""                                # e.g. a sportsbook's name
+market = ""                              # e.g. race winner
+selection = ""                           # e.g. driver
+odds = ""                                # as quoted (American, decimal or fractional; say which)
+quoted_at_utc = ""
+bet = false                              # true = staked at these odds (as bet)
+stake = 0.0
+
+# After a stage only. Append; never edit.
+# [[addition]]
+# at_utc = "2026-10-24T22:10:00Z"
+# after_stage = "after Quali"
+# venue_or_book = "kalshi"
+# market = "KXF1RACE-USA26-VER"
+# side = "YES"
+# price_or_odds = "0.41"
+# stake = 25.0
+# why = ""
+
+# A correction never replaces an entry: it adds a dated note, and both are kept.
+# [[correction]]
+# at_utc = ""
+# refers_to = ""
+# note = ""

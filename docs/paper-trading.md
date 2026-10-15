@@ -481,6 +481,32 @@ Any change to a profile makes a new profile with its own count.
    first. `POLYMARKET_TRADING_ENABLED` and `KALSHI_TRADING_ENABLED` stay unset until the owner approves;
    order signing is on CLOB V2 but only dry-run tested (see [Web app](webapp.md#placing-orders)).
 
+### The per-event lock (owner, 2026-10-15, through the end of the 2026 F1 season)
+
+Every F1 weekend from the United States GP (round 18) to Abu Dhabi is a live test, whether or not any real bet is
+placed. Profiles stay tunable between weekends (owner, 2026-10-05: no freezes); within a weekend nothing moves
+after the fact.
+
+1. **One strategy, locked before the event starts.** Before FP1 (the event's first session), a lock file
+   `paper/locks/<year>-<round>.toml` is committed and pushed: the single strategy that counts for the weekend
+   (profile, its settings key, the code commit), the venues, the bankroll and stake rule, the tape and fill rule its
+   paper trades are scored on, and any sportsbook lines the owner supplied with the bets planned on them.
+   [paper/locks/TEMPLATE.toml](https://github.com/lalligagger/racinglines-public/blob/staging/paper/locks/TEMPLATE.toml)
+   is the format.
+2. **Additions only after a stage, as bet.** Further bets are allowed after a stage (FP1, FP2, FP3, sprint
+   qualifying, sprint, qualifying), each appended to the lock file as an `[[addition]]`: its UTC time, the price or
+   odds available then, the stake, the stage it follows. Committed and pushed before the next session starts.
+3. **Nothing is edited or deleted.** A mistake is corrected by a new dated `[[correction]]` entry; the original
+   stays and is scored.
+4. **Scored as bet.** Every entry at its recorded price or odds and stake: never re-priced, never back-filled,
+   never re-run with a later model or tape. Reported against the result and the closing line (CLV), the same way
+   whether the owner placed it anywhere or not.
+5. **Proof of time.** GitHub records each push; a commit's own timestamp can be set by hand, so the push is what
+   counts. Lock files go to the `paper-locks` branch (no PR, nothing deploys) unless the owner says otherwise.
+
+The automated profiles (A, C, K through the signal engine) already store each signal as of its time; the lock names
+which one is the weekend's strategy, and sportsbook bets the owner hands over are recorded by hand in the same file.
+
 **Status (28 Sep 2026):** no live T1 weekend yet. Polymarket has listed no race since round 15
 (28 Aug); Kalshi's live signals are Roadmap item U1. Round 16 is a private book unless Kalshi lists it
 ([F1 live test](f1-live-roadmap.md)).
