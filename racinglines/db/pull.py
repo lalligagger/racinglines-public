@@ -274,6 +274,14 @@ def fetch(call, m, out, echo=print):
     return got
 
 
+PG_MAX_PARAMS = 65535                      # one statement's bound parameters (psycopg / Postgres protocol limit)
+
+
+def rows_per_statement(ncols, chunk_rows=5000):
+    """Rows per INSERT: `chunk_rows`, cut so rows x columns stays under the parameter limit (laps has 19 columns)."""
+    return max(1, min(chunk_rows, (PG_MAX_PARAMS - 1000) // max(1, ncols)))
+
+
 def load(engine, folder, first=False, force=False, chunk_rows=5000):
     """Load a downloaded pull: the tables (first: emptied first, keeping the server's ids; else upserted by primary
     key) and the market files (appended to this data folder's archive; readers drop duplicates). -> {name: rows}."""
@@ -300,8 +308,9 @@ def load(engine, folder, first=False, force=False, chunk_rows=5000):
             rows = df.to_dict("records")
             tbl = meta.tables[t]
             pk = [col.name for col in tbl.primary_key.columns]
-            for i in range(0, len(rows), chunk_rows):
-                stmt = pg_insert(tbl).values(rows[i:i + chunk_rows])
+            step = rows_per_statement(len(tbl.columns), chunk_rows)
+            for i in range(0, len(rows), step):
+                stmt = pg_insert(tbl).values(rows[i:i + step])
                 upd = {col.name: stmt.excluded[col.name] for col in tbl.columns if col.name not in pk}
                 c.execute(stmt.on_conflict_do_update(index_elements=pk, set_=upd) if upd else stmt.on_conflict_do_nothing())
             if "id" in df.columns and len(df):
