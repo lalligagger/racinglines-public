@@ -273,3 +273,21 @@ The row builder (`ledger.rows`) returns dicts, so a database table can take the 
 
 Probabilities are fractions, and EV and payout are per unit staked. Tests: `tests/test_book_slips.py`, a synthetic
 book on F1, NASCAR and MotoGP races in the Postgres test database.
+
+## Jev decision-chain demo (research, paper only)
+
+`scripts/research/jev_book_demo.py` runs a layered [Jev](https://typesafe.ai) chain over a priced book as it stood
+before an event (`book price --asof`), then scores it against `book settle`. Jev sees only our fair price, the
+exchange price and the line (names withheld; Python does the EV arithmetic). Layers, each asked only if the one before
+passed: `plus_ev` (Noul, gate 0.70), `trust` (fair, exchange or neither; confidence gate 0.60), `sizing` (one of
+`flat_1u`, `kelly_eighth`, `kelly_quarter`, `kelly_half`, capped at 3 units of a 100-unit bankroll) and `final`
+(place or pass). The report compares it with take-all, +EV-on-both and quarter-Kelly baselines.
+
+```
+# LOCAL (Mac): plan only, no calls, nothing written
+.venv/bin/python scripts/research/jev_book_demo.py --priced PRICED.json --settled SETTLED.json --dry-run
+# LOCAL (Mac): real run, needs TYPESAFE_API_KEY; at most --budget calls (default 200), cached so a rerun resumes
+.venv/bin/python scripts/research/jev_book_demo.py --priced PRICED.json --settled SETTLED.json --out data/runs/jev_book_demo/run1
+```
+
+Gate values are untuned defaults, the sample is one event of hand-supplied lines, and nothing here is a trading claim.
