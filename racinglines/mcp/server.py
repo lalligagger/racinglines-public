@@ -409,13 +409,14 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
 
     @srv.tool(structured_output=False)
     def fantasy_markets(q: str | None = None, limit: int = 50, offset: int = 0) -> str:
-        """Markets you can trade with F$ now (F1 on Kalshi and Polymarket) with the best recorded YES bid and ask and
-        the book's time. q searches the question, driver or event. Use market_link_id with fantasy_book and fantasy_order."""
+        """Markets you can trade with F$ now (F1 on Kalshi and Polymarket) with the best recorded YES bid and ask, the
+        book's time and closes_at (when the market closes: the deciding session's start; null for a season future).
+        q searches the question, driver or event. Use market_link_id with fantasy_book, fantasy_quote and fantasy_order."""
         return _read(T.fantasy_markets, q=q, limit=limit, offset=offset, books=_books())
 
     @srv.tool(structured_output=False)
     def fantasy_book(market_link_id: int) -> str:
-        """One market's latest recorded book, YES and NO sides, up to the 10 levels an order may walk."""
+        """One market's latest recorded book, YES and NO sides, up to the 10 levels an order may walk, and closes_at."""
         return _read(T.fantasy_book, market_link_id=market_link_id, books=_books())
 
     @srv.tool(structured_output=False)

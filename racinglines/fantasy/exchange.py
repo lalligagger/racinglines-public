@@ -203,11 +203,12 @@ def rate_ok(user_id, now=None):
 
 def markets(c, search=""):
     """The links a player may trade now, newest events first: F1, Kalshi and Polymarket, open and unresolved, in the
-    tradable kinds. Closing times are checked when an order is placed. -> [dict]"""
+    tradable kinds, each with its close (`closes_at`, closes_for: None for a season future or an unknown one). Closing
+    times are enforced when an order is placed. -> [dict]"""
     kinds = sorted({k for ks in tradable().values() for k in ks})
     rs = c.execute(text("""
-        SELECT ml.id, ml.exchange, ml.token_id, ml.prediction AS kind, ml.question, ml.group_title, ml.outcome,
-               ml.event_title, ml.last_bid, ml.last_ask, e.start_date
+        SELECT ml.id, ml.exchange, ml.token_id, ml.prediction AS kind, ml.prediction, ml.race_id, ml.question,
+               ml.group_title, ml.outcome, ml.event_title, ml.last_bid, ml.last_ask, e.start_date, co.code AS competition
         FROM market_links ml JOIN competitions co ON co.id = ml.competition_id JOIN sports sp ON sp.id = co.sport_id
         LEFT JOIN races ra ON ra.id = ml.race_id LEFT JOIN events e ON e.id = ra.event_id
         WHERE sp.code = :sport AND ml.exchange = ANY(:x) AND ml.prediction = ANY(:k) AND ml.active AND NOT ml.closed
@@ -215,7 +216,11 @@ def markets(c, search=""):
           AND (:q = '' OR ml.question ILIKE :like OR ml.group_title ILIKE :like OR ml.event_title ILIKE :like)
         ORDER BY e.start_date NULLS LAST, ml.event_title, ml.exchange, ml.prediction, ml.group_title, ml.id"""),
         dict(sport=SPORT, x=list(EXCHANGES), k=kinds, q=search, like=f"%{search}%")).mappings().all()
-    return [dict(r) for r in rs]
+    out = [dict(r) for r in rs]
+    closes = closes_for(c, out)
+    for m in out:
+        m["closes_at"] = closes[m["id"]]
+    return out
 
 
 # --- the order ---------------------------------------------------------------------------------------------------
@@ -249,7 +254,44 @@ def closes_at(conn, link):
                 t = _close(b, there) if there is not None else None
     if t is None:
         raise Rejected("no_schedule")
+    return _aware(t)
+
+
+def _aware(t):
+    """A stored close (pandas, naive = UTC) as an aware UTC datetime; None stays None."""
+    if t is None:
+        return None
     return t.tz_localize("UTC").to_pydatetime() if getattr(t, "tzinfo", None) is None else t.to_pydatetime()
+
+
+def closes_for(conn, links):
+    """closes_at for many links at once, for a list or a page: {link id: close as aware UTC, or None}. Season futures
+    are None (no close); race links get the deciding round's stored start from one rounds query (pipelines/clv.closes),
+    then, for any still without one, the books database's link with the same token (staging, as closes_at); a race
+    link with no close anywhere is None here, where closes_at refuses it (an order on it is refused, the list still
+    shows it)."""
+    from racinglines.pipelines import clv
+    rows = [dict(lk) for lk in links]
+    race = [r for r in rows if r["prediction"] not in SEASON_KINDS and r.get("race_id") is not None]
+    local = clv.closes(conn, race) if race else {}
+    out = {}
+    for r in rows:
+        out[r["id"]] = (None if r["prediction"] in SEASON_KINDS or r.get("race_id") is None
+                        else local.get((int(r["race_id"]), r["prediction"]), (None, ""))[0])
+    missing = [r for r in rows if out[r["id"]] is None and r["prediction"] not in SEASON_KINDS and r.get("token_id")]
+    books = books_engine(conn.engine)
+    if missing and books is not conn.engine:
+        with books.connect() as b:
+            there = {}
+            for t in b.execute(text(_LINK_SQL + " WHERE ml.token_id = ANY(:t) ORDER BY ml.id"),
+                               dict(t=[r["token_id"] for r in missing])).mappings():
+                there.setdefault(t["token_id"], dict(t))
+            found = clv.closes(b, [t for t in there.values() if t["race_id"] is not None])
+        for r in missing:
+            t = there.get(r["token_id"])
+            if t is not None and t["race_id"] is not None:
+                out[r["id"]] = found.get((int(t["race_id"]), t["prediction"]), (None, ""))[0]
+    return {k: _aware(v) for k, v in out.items()}
 
 
 def _close(conn, link):

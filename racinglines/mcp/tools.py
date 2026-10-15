@@ -1300,9 +1300,10 @@ def fantasy_leaderboard(conn, limit=None, offset=0, books=None):
 
 
 def fantasy_markets(conn, q=None, limit=None, offset=0, books=None):
-    """The markets a player may trade now (Formula 1 only for now, on Kalshi and Polymarket) with the best recorded YES bid and ask and
-    when that book was recorded; markets with no book in the last day are left out. q: a search on the question,
-    driver or event."""
+    """The markets a player may trade now (Formula 1 only for now, on Kalshi and Polymarket) with the best recorded YES bid and ask,
+    when that book was recorded and when the market closes (closes_at: the deciding session's start, null for a season
+    future or when no start is stored); markets with no book in the last day are left out. q: a search on the
+    question, driver or event."""
     from racinglines.fantasy import exchange as FX
     _fantasy_on()
     rows = FX.markets(conn, (q or "").strip()[:60])
@@ -1312,14 +1313,15 @@ def fantasy_markets(conn, q=None, limit=None, offset=0, books=None):
         b, a, ts = quotes.get(m["token_id"], (None, None, None))
         if ts is not None:
             out.append(dict(market_link_id=m["id"], exchange=m["exchange"], kind=m["kind"], question=m["question"],
-                            subject=m["group_title"], event=m["event_title"], start_date=m["start_date"], bid=b, ask=a,
-                            book_ts=ts))
+                            subject=m["group_title"], event=m["event_title"], start_date=m["start_date"],
+                            closes_at=m["closes_at"], bid=b, ask=a, book_ts=ts))
     return dict(markets=P.page(out, limit=limit, offset=offset), max_stake=FX.MAX_STAKE, max_age_min=FX.MAX_AGE_MIN)
 
 
 def fantasy_book(conn, market_link_id, books=None):
     """One tradable market's latest recorded book: YES bids and asks and the NO side derived from them, up to the
-    depth an order may walk (exchange.DEPTH = 10), with its age."""
+    depth an order may walk (exchange.DEPTH = 10), with its time and the market's close (closes_at: null for a season
+    future or when no session start is stored)."""
     from racinglines.fantasy import exchange as FX
     _fantasy_on()
     link = FX._link(conn, int(market_link_id))
@@ -1327,13 +1329,14 @@ def fantasy_book(conn, market_link_id, books=None):
         raise ValueError(FX.TEXT["sport_not_tradable"])
     if link is None or link["exchange"] not in FX.EXCHANGES:
         raise ValueError(f"no tradable market {market_link_id}")
+    closes_at = FX.closes_for(conn, [link])[link["id"]]
     book = FX.latest_book(books or conn.engine, link["token_id"])
     if book is None:
-        return dict(market_link_id=int(market_link_id), book=None, note=FX.TEXT["book_unavailable"])
+        return dict(market_link_id=int(market_link_id), closes_at=P.plain(closes_at), book=None, note=FX.TEXT["book_unavailable"])
     nb, na = FX.yes_to_no(book["bids"], book["asks"])
     d = FX.DEPTH
-    return dict(market_link_id=int(market_link_id), exchange=link["exchange"], kind=link["prediction"], ts=book["ts"],
-                yes_bids=book["bids"][:d], yes_asks=book["asks"][:d], no_bids=nb[:d], no_asks=na[:d])
+    return dict(market_link_id=int(market_link_id), exchange=link["exchange"], kind=link["prediction"], ts=P.plain(book["ts"]),
+                closes_at=P.plain(closes_at), yes_bids=book["bids"][:d], yes_asks=book["asks"][:d], no_bids=nb[:d], no_asks=na[:d])
 
 
 def fantasy_order(engine, market_link_id, side, action, shares, limit_price, client_key=None, user=None, viewer=None):

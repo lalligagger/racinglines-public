@@ -138,6 +138,8 @@ def fantasy_trade(request: Request, link: int = 0, q: str = "", msg: str = "", a
                 sel = dict(sel)
                 full = FX._link(c, sel["id"])
                 sel["sport_ok"], sel["sport"] = FX.sport_ok(full), full["sport"]
+                sel["closes_at"] = FX.closes_for(c, [full])[full["id"]]
+                sel["season"] = full["prediction"] in FX.SEASON_KINDS
             if sel is not None and sel["sport_ok"]:
                 book = FX.latest_book(_books(), sel["token_id"])
                 if book:

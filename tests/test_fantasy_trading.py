@@ -556,6 +556,35 @@ def test_mcp_fantasy_tools_are_own_account_and_trade_like_the_page(db, monkeypat
                                     limit_price=0.41)[1]
 
 
+def _record(eng, token, ts=None):
+    """A recorded book for `token` the routes and the MCP tools read (no injection there)."""
+    with eng.begin() as c:
+        c.execute(text("""INSERT INTO market_book_snapshots (token_id, ts, best_bid, best_ask, bids, asks)
+                          VALUES (:t, :ts, 0.39, 0.41, CAST(:b AS jsonb), CAST(:a AS jsonb))"""),
+                  dict(t=token, ts=ts or datetime.now(timezone.utc) - timedelta(minutes=1), b=str(BIDS), a=str(ASKS)))
+
+
+def test_every_surface_says_when_a_market_closes(db, monkeypatch):
+    """closes_at on the market list, the MCP markets and book tools and the Trade page's header (exchange.closes_for,
+    closes_at for many links): the deciding round's stored start for a race link, null for a season future."""
+    from racinglines.fantasy import exchange as FX
+    eng, win, champ = db["engine"], db["links"]["win"], db["links"]["champ"]
+    _record(eng, "KX-WIN-VER")
+    _record(eng, "PM-CHAMP-VER")
+    FX._BOOKS.clear()
+    with eng.connect() as c:
+        close = {m["id"]: m["closes_at"] for m in FX.markets(c)}
+    assert close[win] == RACE and close[champ] is None
+    mcp = _mcp_client(eng, monkeypatch, dict(db["users"]["ada"], role="pro"))
+    rows = {m["market_link_id"]: m["closes_at"] for m in mcp("fantasy_markets")["markets"]["rows"]}
+    assert rows[win] == RACE.isoformat() and rows[champ] is None
+    assert mcp("fantasy_book", market_link_id=win)["closes_at"] == RACE.isoformat()
+    assert mcp("fantasy_book", market_link_id=champ)["closes_at"] is None
+    ada = _login("ada")
+    assert "closes 2026-10-25 12:00 UTC" in ada.get(f"/trade?link={win}").text
+    assert "season future, no close" in ada.get(f"/trade?link={champ}").text
+
+
 def test_other_sports_are_view_only_with_a_notice(db):
     """Fantasy trading is F1 only for now (owner, 2026-10-12 23:07Z): a non-F1 market says so on Trade and is refused."""
     from racinglines.fantasy import exchange as FX
