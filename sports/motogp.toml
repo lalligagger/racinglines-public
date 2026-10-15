@@ -14,7 +14,7 @@ model_family = "global"           # the one engine (racinglines/models/model_glo
 # MotoGP". Its settings are the model's a priori defaults (no [model.defaults]), none tuned.
 pricing_model = "racinglines.models.model_global:GlobalModel"
 # Other pricing models kept runnable (`racinglines backtest walk-forward motogp --model NAME`), by model_runs.model name
-challengers = { motogp_results = "racinglines.models.motogp_model:MotoGPRace", motogp_recent_form = "racinglines.models.motogp_model:MotoGPRaceChallenger" }
+challengers = { motogp_results = "racinglines.models.motogp_model:MotoGPRace", motogp_recent_form = "racinglines.models.motogp_model:MotoGPRaceChallenger", rank_logit = "racinglines.models.rank_logit.model:RankLogit" }
 calibration = "baseline"          # pages label its prices as baseline: settings untuned (docs/f1-roadmap.md decision log, 2026-10-07); drop once fitted on a held-out season
 display_order = 2
 # Who the web app shows MotoGP to: everyone ("all", the default). It was admin-only from 2026-10-11 ("Hide for Alpha",
@@ -87,6 +87,14 @@ group = "team"                   # results.team, for the optional team-form prio
 # drawn from past qualifying results, for race_pole (models/inputs/results.py; decision log 2026-10-07 "NASCAR pole and
 # fastest lap", provisional). Inert until qualifying is in the database: the VM backfill (C12b report) brings it
 sessions = ["qual"]
+
+[model.rank_logit.rankings]
+# The rank_logit challenger (racinglines/models/rank_logit/, docs/f1-roadmap.md F1-6, decision log 2026-10-14):
+# the round kinds that may become rankings and their default weights; the first with a positive weight is the
+# kind priced. Kinds at 0.0 are off until a run's `ranking_weights` sets them. Not tuned.
+race = 1.0
+sprint = 0.0
+qual = 0.0
 
 [replay]
 # The taker replay (racinglines/pipelines/position_replay.py; `racinglines strategy replay motogp`). Links stored before the

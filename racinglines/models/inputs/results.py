@@ -163,6 +163,13 @@ def _strengths(d):
     return d, np.where(fin, -_probit(q), np.nan), fin
 
 
+def dnf_rate(w, fin, Wall, Wf):
+    """Each entrant's retirement chance: their decayed non-finishes over decayed starts (Wall - Wf over Wall), shrunk
+    toward the field's decayed rate by DNF_PRIOR_N pseudo-starts. w, fin: the history rows' weights and finished flags."""
+    rbar = float(w[~fin].sum() / w.sum())
+    return (Wall - Wf + DNF_PRIOR_N * rbar) / (Wall + DNF_PRIOR_N)
+
+
 def _groups(hist, n, j, inf, field, ev):
     """Per entrant of `field`: its team (the group the team markets name), from the event's entry list
     (`ev.info["groups"]`) or else the entrant's latest team in the history before the event; an entrant with neither
@@ -239,16 +246,35 @@ class ResultsCore:
         if prior:
             params["pk"] = prior
         with get_engine(engine_url).connect() as conn:
-            df = pd.read_sql(text(f"""
-                SELECT s.year AS season, ev.id AS race, ev.name, ev.start_date::date AS date, r.athlete_id,
-                       r.position, r.status, {gsel}, {psel}
-                FROM results r JOIN rounds ro ON ro.id = r.round_id AND ro.kind = 'race'
-                JOIN races ra ON ra.id = ro.race_id JOIN events ev ON ev.id = ra.event_id
-                JOIN seasons s ON s.id = ev.season_id JOIN competitions co ON co.id = s.competition_id
-                WHERE co.code = :c AND ev.source = :src AND r.athlete_id IS NOT NULL
-                ORDER BY ev.start_date, ev.id, r.position NULLS LAST"""), conn, params=params)
+            df = pd.read_sql(text(self._kind_sql(f", {gsel}, {psel}")), conn,
+                             params=dict(params, k=self.cfg.get("kind", "race")))
             self.sides = self._load_sides(conn, params)
         return _frame(df)
+
+    def _kind_sql(self, cols=""):
+        """The results of one round kind (:k) of the competition (:c) and events.source (:src), one row per entrant
+        per race. Optional hooks (cfg, set by a model that needs them; unset gives the engine's query): race_key
+        "category" keys a race by event and category (events.source_key + "_" + categories.code, a sport with several
+        categories per event), times adds results.time_ms, source None reads every source of the competition."""
+        cfg = self.cfg or {}
+        by_cat = cfg.get("race_key") == "category"
+        key = ("ev.source_key || '_' || ca.code AS race, ev.name || ' ' || ca.code AS name" if by_cat
+               else "ev.id AS race, ev.name")
+        cols = (", r.time_ms" if cfg.get("times") else "") + cols
+        return f"""
+                SELECT s.year AS season, {key}, ev.start_date::date AS date, r.athlete_id,
+                       r.position, r.status{cols}
+                FROM results r JOIN rounds ro ON ro.id = r.round_id AND ro.kind = :k
+                JOIN races ra ON ra.id = ro.race_id JOIN events ev ON ev.id = ra.event_id
+                {"JOIN categories ca ON ca.id = ra.category_id " if by_cat else ""}JOIN seasons s ON s.id = ev.season_id
+                JOIN competitions co ON co.id = s.competition_id
+                WHERE co.code = :c {"AND ev.source = :src " if cfg.get("source") else ""}AND r.athlete_id IS NOT NULL
+                ORDER BY ev.start_date, {"race" if by_cat else "ev.id"}, r.position NULLS LAST"""
+
+    def _load_kind(self, conn, params, kind):
+        """One round kind's results as a frame in the race frame's shape."""
+        from sqlalchemy import text
+        return _frame(pd.read_sql(text(self._kind_sql()), conn, params=dict(params, k=kind)))
 
     def _load_sides(self, conn, params):
         """{name: frame}: each [model] sessions round kind's results, and the [model] best_lap order (best_lap_order
@@ -256,15 +282,7 @@ class ResultsCore:
         from sqlalchemy import text
         out = {}
         for kind in (self.cfg or {}).get("sessions") or []:
-            df = pd.read_sql(text("""
-                SELECT s.year AS season, ev.id AS race, ev.name, ev.start_date::date AS date, r.athlete_id,
-                       r.position, r.status
-                FROM results r JOIN rounds ro ON ro.id = r.round_id AND ro.kind = :k
-                JOIN races ra ON ra.id = ro.race_id JOIN events ev ON ev.id = ra.event_id
-                JOIN seasons s ON s.id = ev.season_id JOIN competitions co ON co.id = s.competition_id
-                WHERE co.code = :c AND ev.source = :src AND r.athlete_id IS NOT NULL
-                ORDER BY ev.start_date, ev.id, r.position NULLS LAST"""), conn, params=dict(params, k=kind))
-            out[kind] = _frame(df)
+            out[kind] = self._load_kind(conn, params, kind)
         kind = (self.cfg or {}).get("best_lap")
         if kind:
             df = pd.read_sql(text("""
@@ -371,9 +389,7 @@ class ResultsCore:
         sd = np.sqrt(settings["noise"] ** 2 + settings["uncertainty"] ** 2 / (Wf + 1.0))
         perf = mu + sd * rng.standard_normal((settings["sims"], k))
         if settings["dnf"]:
-            rbar = float(w[~fin].sum() / w.sum())
-            p_dnf = (Wall - Wf + DNF_PRIOR_N * rbar) / (Wall + DNF_PRIOR_N)
-            dnf = rng.random((settings["sims"], k)) < p_dnf
+            dnf = rng.random((settings["sims"], k)) < dnf_rate(w, fin, Wall, Wf)
         else:
             dnf = np.zeros((settings["sims"], k), bool)
         rank = np.argsort(np.argsort(-(perf - 1e3 * dnf), axis=1), axis=1) + 1

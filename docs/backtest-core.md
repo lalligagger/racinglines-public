@@ -102,7 +102,8 @@ How the schema drives it, with no `if sport == ...` anywhere (`racinglines/model
 - **Lower levels stay runnable.** `GlobalModel.for_sport(code, core="results")` is the engine at the results level
   (`backtest walk-forward f1 --model global`), with `[model.results.defaults]` if any. The engines F1 and downhill
   had before are `[sport] challengers` (`--model f1_sector_sim`, `--model timed_runs`): the same cores with the
-  code's settings.
+  code's settings. `--model rank_logit` (F1, NASCAR, MotoGP, downhill) is the one Plackett-Luce challenger: the
+  results core with a Davidson-Luce strength model ([F1-6](f1-roadmap.md#rank_logit)).
 
 **Price-preserving.** The cores keep the algorithms they had as separate models, so with the same seed and data the
 engine reproduces every price: F1 equals `race_model.PositionSim` and `laps_pricing.price_race`, downhill equals

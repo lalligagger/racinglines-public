@@ -311,6 +311,22 @@ uncertainty is wanted for maker spreads
 - Judged as a challenger under the promotion rule, or used only as a per-market
   uncertainty input for F1-4 spreads.
 
+#### rank_logit
+
+`racinglines backtest walk-forward <sport> --model rank_logit` (F1, NASCAR, MotoGP, downhill; also the Lab and MCP
+walk-forward job's `model`). It is the results core (`models/inputs/results.py`: loading, start lists, the
+days-before-the-event leakage rule, settlement and the same retirement draw) with a Davidson-Luce fit in place of
+the probit strength, refit per event and drawn by Gumbel-max. `[model.rank_logit.rankings]` in each schema lists the
+round kinds that may become rankings and their weights (the first with a positive weight is the kind priced: race,
+downhill's final); `ranking_weights` (`race=1,qual=1`) overrides them per run. Each past round is one ranking weighted
+by its kind's weight times 0.5^(age / `half_life_days`): classified entrants in order ([results] classified), the
+other starters an unordered tail. `tie_on = "time_ms"` ties identical classified times (`max_tie` caps the tie size),
+`top_k` keeps the first k places and moves the rest to the tail, `team_effects` adds a team log-worth ([model]
+group), `kind_sd` an athlete × round-kind offset (which also prices `race_pole` from qualifying strengths), and
+`sd_athlete`, `sd_team`, `delta_prior_mean` and `delta_prior_sd` are the normal priors. `cov` computes the Laplace
+covariance and `sd_scale` draws parameter uncertainty from it into every simulation. The defaults (race rankings,
+no ties, teams, truncation, kind offsets or covariance) are the 6–7 Oct fits; none is tuned.
+
 ### F1-7 (optional): In-race trading (reference model C2)
 
 **Status:** out of scope · **Start only if** the owner decides to trade during
