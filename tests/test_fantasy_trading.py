@@ -623,6 +623,34 @@ def test_quote_previews_an_order_on_every_surface_without_writing(db, monkeypatc
     assert _rows(eng, "SELECT count(*) FROM accounts.fantasy_orders WHERE market_link_id = :l", l=champ)[0][0] == 0
 
 
+def test_mcp_order_refusals_share_one_shape_rate_limit_included(db, monkeypatch):
+    """tools.fantasy_order: a rate-limited order is ok=false, reason rate_limited, message exchange.TEXT, like every
+    other refusal (not a tool error), with an audit row and no order row, as the Trade page's refusal; the web
+    flash is unchanged."""
+    from racinglines.fantasy import exchange as FX
+    eng, champ = db["engine"], db["links"]["champ"]
+    _record(eng, "PM-CHAMP-VER")
+    FX._BOOKS.clear()
+    monkeypatch.setattr(FX, "RATE_MINUTE", 1)
+    mcp = _mcp_client(eng, monkeypatch, dict(db["users"]["ada"], role="pro"))
+    assert mcp("fantasy_order", market_link_id=champ, side="yes", action="buy", shares=1, limit_price=0.41)["ok"]
+    r = mcp("fantasy_order", market_link_id=champ, side="yes", action="buy", shares=1, limit_price=0.41)
+    assert r == dict(user="ada", ok=False, order_id=None, status="rejected", reason="rate_limited",
+                     message=FX.TEXT["rate_limited"], fills=[], fee=0.0, position=None, cash=r["cash"])
+    assert r["cash"] == pytest.approx(1000 - 0.41)
+    assert _rows(eng, "SELECT count(*) FROM accounts.fantasy_orders WHERE user_id = :u", u=db["users"]["ada"]["id"]) == [(1,)]
+    assert _rows(eng, "SELECT detail->>'reason', detail->>'via' FROM activity_log WHERE action = 'fantasy_order_rejected'") == [("rate_limited", "mcp")]
+    FX._HITS.clear()
+    monkeypatch.setattr(FX, "RATE_MINUTE", 1)
+    ada = _login("ada")
+    page = ada.get(f"/trade?link={champ}").text
+    csrf = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
+    form = dict(csrf_token=csrf, market_link_id=str(champ), side="yes", action="buy", shares="1", limit_price="0.41")
+    assert "Bought%201%20YES" in ada.post("/fantasy/orders", data=dict(form, client_key="w1"), follow_redirects=False).headers["location"]
+    r = ada.post("/fantasy/orders", data=dict(form, client_key="w2"), follow_redirects=False)
+    assert r.status_code == 303 and "Error%3A%20Too%20many%20orders" in r.headers["location"]
+
+
 def test_other_sports_are_view_only_with_a_notice(db):
     """Fantasy trading is F1 only for now (owner, 2026-10-12 23:07Z): a non-F1 market says so on Trade and is refused."""
     from racinglines.fantasy import exchange as FX

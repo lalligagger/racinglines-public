@@ -434,7 +434,8 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         """Place one immediate-or-cancel F$ order on your own account, exactly as the Trade page does: side yes|no,
         action buy|sell, whole shares, limit_price 0.01-0.99. It fills against the latest recorded book (refused past
         15 minutes old) up to 10 levels at or better than your limit; the rest is cancelled. F$100 per order at most,
-        never more than your cash, never short. client_key makes a retry safe. Nothing reaches an exchange. user: only
+        never more than your cash, never short. Every refusal, the rate limit (10 a minute, 200 a day) included, is
+        ok=false with reason and message. client_key makes a retry safe. Nothing reaches an exchange. user: only
         over stdio (the owner naming the account)."""
         return _fantasy_write(market_link_id=market_link_id, side=side, action=action, shares=shares,
                               limit_price=limit_price, client_key=client_key, user=user)

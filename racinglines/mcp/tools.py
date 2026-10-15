@@ -1379,13 +1379,19 @@ def fantasy_quote(conn, market_link_id, side, action, shares, limit_price, user=
 
 def fantasy_order(engine, market_link_id, side, action, shares, limit_price, client_key=None, user=None, viewer=None):
     """Place one immediate-or-cancel F$ order, as the web Trade page does (fantasy/exchange.place). Over HTTP it is
-    always the caller's own account (an admin too); over stdio (the owner) `user` names the account."""
+    always the caller's own account (an admin too); over stdio (the owner) `user` names the account. Every refusal
+    comes back in the one shape (ok=false, reason, message), the rate limit included (it writes an audit row and no
+    order row, as the Trade page's refusal does); a tool error is for a caller who can't trade at all."""
     from racinglines.fantasy import exchange as FX
     from racinglines.fantasy import ledger as FL
     with engine.connect() as c:
         who = _fantasy_trader(c, user, viewer)
     if not FX.rate_ok(who["id"]):
-        raise ValueError(FX.TEXT["rate_limited"])
+        with engine.begin() as c:
+            FX._audit(c, who, "fantasy_order_rejected", reason="rate_limited", link=market_link_id)
+            cash = FL.available(c, who["id"])
+        return dict(user=who["username"], ok=False, order_id=None, status="rejected", reason="rate_limited",
+                    message=FX.TEXT["rate_limited"], fills=[], fee=0.0, position=None, cash=round(cash, 2))
     FX.settle(engine, FX.books_engine(engine))                          # pay out anything resolved first
     r = FX.place(engine, who, market_link_id, side, action, shares, limit_price, client_key=client_key)
     with engine.connect() as c:
