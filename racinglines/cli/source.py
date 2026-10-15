@@ -238,6 +238,8 @@ def use_remote_demo(ref, argv):
 def apply(argv):
     """The argv a command should parse, after the data source is set: `--demo [PACK]` is taken out (the commands don't
     know it) and the pack's store selected, local or hosted."""
+    if argv[:2] == ["strategy", "search-plan"] or (argv[:1] == ["f1"] and "search-plan" in argv):
+        return argv                 # no source to select; --demo must not build a database for a pure plan
     from racinglines.db import config as DBC
     DBC.fallback = default_url                       # the first-run choice, only when a command needs a database
     if "--plain" in argv:                            # the plain text instead of Rich output (racinglines/cli/tty.py)

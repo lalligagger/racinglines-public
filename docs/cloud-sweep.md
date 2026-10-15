@@ -54,6 +54,173 @@ bucket. It has no Kalshi, Polymarket or OG.com network access: everything it pri
 - **`racinglines strategy search-import f1 <results.json>`** loads a finished search's sweep runs into your local
   database (marked `params.source`), so they show up in the Lab's Edge Finder and Model variants.
 
+## Code-only next-run planner (LOCAL)
+
+`racinglines strategy search-plan f1 INPUT.json --budget N --dry-run` prints a JSON plan to stdout.
+Step 1 never launches a sweep, connects to the database, writes files, or calls Jev, even without
+`--dry-run`. The budget defaults to **0**. MCP and Lab integration are deferred for this local,
+code-only step; the existing search runner and its defaults are unchanged.
+The planner rejects `--demo` instead of building a synthetic database.
+
+Supply a snapshot with one explicit `year`, `stored_keys` (the `params.settings_key` values of
+already-stored F1 `kind='sweep'` runs for that year), and `candidates` (a list of settings dicts).
+There is no automatic database query. Missing settings take the schema defaults. Deduplication uses
+`Settings.from_dict(candidate).key` unchanged, including simulation count and seed. Stored keys
+and earlier duplicate candidates are skipped; the first new occurrence wins, in input order.
+Neither `data_key` nor weekends belong in settings. Research's `(config, taker mode)` identity and
+seed-collapsed report ids are not sweep-run identities.
+
+Example input (illustrative, not a tuned setting):
+
+```json
+{"year": 2026, "stored_keys": [], "candidates": [{}, {"min_edge": 0.08}]}
+```
+
+```bash title="LOCAL (Mac)"
+.venv/bin/racinglines strategy search-plan f1 INPUT.json --budget 2 --dry-run
+```
+
+An optional `history` list contains chronological completed outcomes:
+`{"settings_key": "...", "score": 12.0}`. Keys must be unique and belong to `stored_keys` for this
+year. `--stop-after K` enables stopping; it requires `--best-score X`, the best **before** this
+history. Higher scores are better. A score strictly more than `--margin M` above the running best
+resets the consecutive-miss count; equality is a miss. Every gain updates the best, even below the
+margin. The first K misses latch the stop and produce an empty plan; a later history entry cannot
+restart it. Pending, unscored candidates never count as misses. Stopping defaults off. The caller
+supplies the score metric and margin; no Jev scoring or noise-floor estimate is invented here.
+This planning threshold does not replace the held-out and noise-floor reporting rules below.
+
+The output carries the selected full settings and their keys, counts, running best, miss count,
+stop status, and reason (`stop_rule`, `budget`, or `exhausted`), with `execution_enabled: false`.
+It is a bounded candidate list for a later typed decision/scoring step, not a decision model.
+
+## Local Jev-guided auto-sweeper (research MVP)
+
+`scripts/research/auto_sweeper.py` adds the execution loop around a **finite, supplied pool**.
+Jev makes a typed Choice over exact settings ids plus `STOP`; Python owns validation,
+deduplication, budgets, scoring, process control and checkpoints. This matches the bounded
+decision workflow, not open-ended parameter generation. No settings are promoted to profiles
+or trading defaults. CLI-only research for now: MCP and Lab integration are deferred.
+
+The pool is a JSON list of **1 to 254 settings dictionaries**, with one common ranking simulation
+count and the default venue (Polymarket). Seed and simulations remain part of exact run identity.
+Duplicate normalized configurations are rejected. Pool order is normalized by exact key, so
+input reordering does not change warm-start compatibility. The target is 2026, held-out is 2025.
+Automatic pool generation, other venues/sports and unlimited searches are out of this MVP.
+
+### Plan without touching the database or Jev
+
+The standalone script defaults to dry-run and prints the required jobs. Neither a journal nor
+a lock is created, and no database, subprocess or SDK call is made. Without reading the database,
+this is an **upper bound** on work, not a promise that all listed jobs are new.
+
+```bash title="LOCAL (Mac)"
+.venv/bin/python scripts/research/auto_sweeper.py POOL.json
+```
+
+### Execute only after a local backup
+
+The first step is an operator-created backup of the **same local PostgreSQL database** the runner
+will use. Use the local PostgreSQL dump/restore procedure, record the backup and task in the data-change
+log, and keep the dump under `data/backups/db/`. The runner requires an existing nonempty backup file;
+it cannot verify that the file is a valid dump or belongs to the selected database. It refuses remote
+database URLs and demo stores. No VM command is involved.
+
+Execution requires `--execute`. Both budgets initially default to **0**:
+
+- `--budget N`: total sweep **attempts**, including missing baselines, both seasons and
+  higher-simulation confirmations. A failed or interrupted attempt still spends budget.
+- `--jev-budget N`: total chooser calls, counted before the request, with SDK retries disabled.
+  Failed or interrupted calls still spend budget. Cached completed choices are not charged again.
+
+```bash title="LOCAL (Mac)"
+.venv/bin/python scripts/research/auto_sweeper.py POOL.json --execute --journal data/runs/auto-sweeper/state.json --budget 8 --jev-budget 1 --backup BACKUP.sql.gz
+```
+
+With an ordinary non-baseline config, eight missing sweeps cover candidate and same-seed baseline,
+at ranking and confirmation fidelity, in both years. Shared or already-stored runs reduce that work.
+Every launch uses the existing `strategy sweep f1 --no-fetch --save` path. Exact committed sweep keys
+are reconciled before launches, including recovery when a child committed before its controller
+checkpoint. Legacy F1 runs without an explicit sport field are included. An already-stored partial
+sweep with a requested year/key **blocks execution**, unless a usable full-season counterpart exists;
+it is never silently treated as new. Malformed metrics, missing strategy P&L or mismatched
+candidate/baseline event coverage also block scoring rather than fabricating a result.
+The runner does not rerun a configuration merely because the tape has changed; a separate
+deliberate reproducibility study is needed for that.
+
+### Interrupt and warm-start
+
+Ctrl-C or SIGTERM terminates and reaps the directly owned sweep child and saves the journal.
+Progress is flushed at least once a minute while waiting. Only one controller for this workspace
+may execute at a time; a second journal or different working directory is not a way around that lock.
+The child inherits the repository-root lock: after abrupt controller death, it prevents another runner
+from starting until that child exits. Its PID is checkpointed as well; a possibly live/reused PID
+blocks restart for operator inspection and is never killed automatically.
+
+Resume with the **same pool, strategy, model, seasons, simulation counts, stop rule and journal**.
+The cached choice stays active while its target/held-out/confirmation work is incomplete. Omitted
+budgets keep their previous totals rather than resetting them:
+
+```bash title="LOCAL (Mac)"
+.venv/bin/python scripts/research/auto_sweeper.py POOL.json --execute --journal data/runs/auto-sweeper/state.json --backup BACKUP.sql.gz
+```
+
+After inspecting a failure or interruption, add `--retry-failed` to explicitly permit retry of
+uncommitted work. Recovered committed work is reused, not relaunched. To extend an exhausted budget,
+pass **new cumulative totals** and `--increase-budget`:
+
+```bash title="LOCAL (Mac)"
+.venv/bin/python scripts/research/auto_sweeper.py POOL.json --execute --journal data/runs/auto-sweeper/state.json --budget 24 --jev-budget 3 --increase-budget --backup BACKUP.sql.gz
+```
+
+The journal also binds to the local database host/port/name through a credential-free fingerprint
+and pins reused run ids. Changing databases or deleting/replacing pinned runs blocks resume.
+Do not delete or reset a journal to evade a budget. Pool changes require a new journal; exact stored
+runs still deduplicate across journals. This is restartable at completed-run boundaries, not a
+checkpoint of an individual Monte Carlo simulation. Abrupt process death can lose uncommitted compute
+or an unanswered API call. Inspect the journal and process state before retrying.
+
+### What guides Jev and what the output means
+
+The controller reuses `search_report.stats` and `search_report.rank`. Its scalar objective is:
+
+**target-season gain over the same-fidelity baseline + min(0, held-out gain over baseline)**.
+
+This is the report's baseline-gain ranking branch, not raw P&L. Held-out gains cannot compensate
+for weak target gains; held-out losses penalize the score. Existing verdicts and noise floors,
+higher-simulation confirmation, drawdown and concentration remain visible as separate evidence.
+Controller verdicts use the report's configured default noise floors ($150 taker / $350 maker),
+not a changing replicate estimate, so accumulating replicates cannot retrospectively change the
+controller's cached verdicts. The ordinary descriptive `search-report/` can measure replicate noise;
+its verdicts may differ and are labelled separately. This fixed-floor choice is an MVP limitation,
+not evidence that the default floor is sufficient for a particular search.
+A positive score is **not** proof of profit or confirmation. In particular, `robust` with
+`confirmed = no` must not be called a confirmed improvement. No metric or margin is tuned automatically.
+
+`--strategy` selects one existing sweep strategy, default `update`. `--confirm-sims` defaults to
+16,000 and must exceed the pool's ranking simulations. `--stop-after K` defaults off; after K
+consecutive **fully evaluated** configurations fail to improve the running best by strictly more
+than `--margin`, the loop stops. Small gains update the best without resetting the miss streak.
+Incomplete pairs never count as failures. Jev can also select `STOP`; exhausting the pool ends the loop.
+
+Next to the journal:
+
+| Output | Purpose |
+|---|---|
+| `state.json` | Atomic, durable budgets, choices/evidence, active configuration, attempts, evaluations and stop state |
+| `*.log` | Each sweep child's output, including failures |
+| `leaderboard.md`, `leaderboard.csv` | Exact configuration leaderboard using the controller's baseline-gain objective |
+| `search-report/` | Existing descriptive P&L report, curves, ranking, held-out and confirmation evidence |
+
+Reports are rebuilt after completed evaluations and on restart; the journal is the resume authority,
+not a partially written report. The search-report P&L ranking and the controller's gain ranking are
+deliberately labelled separately. No report authorizes real trading or model promotion.
+
+**Rollback is the final operator step if required:** stop the controller and its child, preserve the
+journal/logs for diagnosis, then restore the pre-run local backup through the documented restore
+procedure. The runner never restores or deletes database rows automatically. Inspect any journal
+whose recorded runs disappeared after restore; it must not silently launch replacements.
+
 ## One-time setup
 
 1. At [claude.ai/code](https://claude.ai/code), click the **cloud icon** in the row above the message box. It's

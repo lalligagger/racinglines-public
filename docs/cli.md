@@ -690,6 +690,7 @@ racinglines strategy season-strategy f1 --paper --venue {polymarket,kalshi} [--a
 racinglines strategy season-checkpoints f1 [--variants V1,V2] [--year 2026] [--entries 0,3,6] [--window 3] [--sims 5000] [--out MD] [--save]
 racinglines strategy replay f1 --runs 11,12,9 [--sweep]
 racinglines strategy search f1 QUEUE.toml [--leaderboard]
+racinglines strategy search-plan f1 INPUT.json [--budget 0] [--stop-after 0] [--best-score X] [--margin 0] [--dry-run]
 racinglines strategy search-report f1 QUEUE.toml
 racinglines strategy search-import f1 RESULTS.json
 ```
@@ -703,6 +704,15 @@ racinglines strategy search-import f1 RESULTS.json
 | `search QUEUE.toml` | Run a queue of season sweeps in parallel (`[search] parallel`, `hours`), each saved as a sweep run. The queue file (e.g. `sweeps/poc.toml`, `sweeps/params-4h.toml`) is re-read whenever a slot frees, so pending `[[job]]` entries can be edited while it runs. A job with `venue = "kalshi"` (or `"og"`) runs `sweep --venue kalshi` (the strategies on Kalshi's tape) and gets its own baseline on that venue; a job with `sport = "nascar"` (or `"motogp"`) and `kind = "sweep"` runs `racinglines strategy sweep <sport>` the same way (any sport whose schema has a `[sweep]` table and lists `"sweep"` in `[search] jobs`); its id and title carry the venue, and a `[[candidate]]` may carry it too (e.g. `sweeps/kalshi-maker-k.toml`). `[search] grid = N` runs up to N sweeps of the same season and model in one process (`sweep --grid`: the measurements, stage pricings, markets and maker tape are read once; every saved run is what its own process would save), and `history_cache = true` keeps rating histories in `data/cache/history/`; `parallel` defaults to every core. Writes `data/runs/search/<name>/` (`leaderboard.md`, `results.json`, `state.json`, logs). `--leaderboard` only rewrites the leaderboard from `state.json`. See [Cloud sweeps](cloud-sweep.md). |
 | `search-report QUEUE.toml` | Analyse a search's finished sweeps with the checks in [Backtest core](backtest-core.md#the-search-report): labels against the baseline in the target and held-out seasons beyond a noise floor (from seed replicates when the search ran them), same-fidelity baselines, confirmation at more simulations, P&L without the best event and without the best two, a shape label describing the record, not the risk (steady: still up without its best two events in every season; concentrated: up in every season but not without its best two in one; mixed: up in one season, down in another; losing: down in every season), and candidates with stable ids (`<strategy>-<settings_key>`). An optional `[report]` table in the queue sets `target`, `holdout`, `confirm_sims`, `rank_sims` (the simulation count combos are ranked at; default the settings' 4,000), `top`, `noise`. Writes `stats.csv`, `ranking.csv`, `pnl_curves.json`, `candidates/`, `candidates.toml` and `report.md` next to `state.json`. |
 | `search-import RESULTS.json` | Load a search's sweep runs (e.g. from a cloud session) into this database, marked with `params.source`. |
+| `search-plan INPUT.json` | Code-only F1 next-run plan from a year-labelled snapshot of stored keys and candidate settings. Deduplicate by the unchanged `Settings.key`, preserve input order and cap at `--budget` (default 0). Optional completed-score history enables `--stop-after K` with `--best-score X` and `--margin M`. Prints JSON only; no sweep, database connection, file write or Jev call, with or without `--dry-run`. See [Planner input and stop semantics](cloud-sweep.md#code-only-next-run-planner-local). |
+
+**Local auto-sweeper research CLI:** `.venv/bin/python scripts/research/auto_sweeper.py POOL.json`
+is dry-run by default. `--execute --budget N --jev-budget N --backup PATH` opts into serial,
+Jev-chosen sweeps with persistent cumulative budgets and an atomic resume journal. The supplied
+finite pool uses exact settings identities; missing same-fidelity baselines and confirmations
+also count against budget. See [Local Jev-guided auto-sweeper](cloud-sweep.md#local-jev-guided-auto-sweeper-research-mvp)
+for the score, interruption/restart, retry and backup/rollback rules. This standalone MVP is not a
+remote/MCP job or Lab control.
 
 **Sweep settings.** Every setting of the schema in
 `racinglines/pipelines/sweep_settings.py` is a `sweep` flag; the same schema drives the
