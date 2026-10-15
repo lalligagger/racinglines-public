@@ -1339,11 +1339,9 @@ def fantasy_book(conn, market_link_id, books=None):
                 closes_at=P.plain(closes_at), yes_bids=book["bids"][:d], yes_asks=book["asks"][:d], no_bids=nb[:d], no_asks=na[:d])
 
 
-def fantasy_order(engine, market_link_id, side, action, shares, limit_price, client_key=None, user=None, viewer=None):
-    """Place one immediate-or-cancel F$ order, as the web Trade page does (fantasy/exchange.place). Over HTTP it is
-    always the caller's own account (an admin too); over stdio (the owner) `user` names the account."""
-    from racinglines.fantasy import exchange as FX
-    from racinglines.fantasy import ledger as FL
+def _fantasy_trader(conn, user, viewer):
+    """The account an order or a quote is for (dict id, username, role, via=mcp): over HTTP the caller's own, admin
+    included; over stdio (the owner) `user` names it. Demo accounts and a shared store's accounts are refused."""
     from racinglines.web import demo
     from racinglines.web import roles as R
     _fantasy_on()
@@ -1354,16 +1352,38 @@ def fantasy_order(engine, market_link_id, side, action, shares, limit_price, cli
             raise ValueError("this server's accounts live in another database: no fantasy account here")
     elif user is None:
         raise ValueError("which account? pass user (stdio is the owner's: name the account to trade as)")
-    with engine.connect() as c:
-        _fantasy_ready(c)
-        row = c.execute(text("SELECT id, username, role, active FROM users WHERE "
-                             + ("id = :i" if viewer is not None else "username = :n")),
-                        dict(i=(viewer or {}).get("id"), n=user)).mappings().first()
+    _fantasy_ready(conn)
+    row = conn.execute(text("SELECT id, username, role, active FROM users WHERE "
+                            + ("id = :i" if viewer is not None else "username = :n")),
+                       dict(i=(viewer or {}).get("id"), n=user)).mappings().first()
     if row is None or not row["active"]:
         raise ValueError("no active account to trade as")
     who = dict(id=row["id"], username=row["username"], role=R.canonical(row["role"]), via="mcp")
     if demo.is_demo(who):
         raise ValueError("demo accounts look only; they can't trade")
+    return who
+
+
+def fantasy_quote(conn, market_link_id, side, action, shares, limit_price, user=None, viewer=None, books=None):
+    """What fantasy_order would do with this order right now, writing nothing (fantasy/exchange.quote: the same
+    checks, the same walk of the latest recorded book, the same fee): the fills, the average price, the fee, what
+    it would cost or bring, or the reason it would be refused. Read without the account's lock, so a quote that
+    fills can still be refused a moment later."""
+    from racinglines.fantasy import exchange as FX
+    who = _fantasy_trader(conn, user, viewer)
+    r = FX.quote(conn, who, market_link_id, side, action, shares, limit_price,
+                 get_book=lambda tok: FX.latest_book(books or conn.engine, tok))
+    r["fee"] = P.plain(r["fee"])
+    return dict(user=who["username"], **r)
+
+
+def fantasy_order(engine, market_link_id, side, action, shares, limit_price, client_key=None, user=None, viewer=None):
+    """Place one immediate-or-cancel F$ order, as the web Trade page does (fantasy/exchange.place). Over HTTP it is
+    always the caller's own account (an admin too); over stdio (the owner) `user` names the account."""
+    from racinglines.fantasy import exchange as FX
+    from racinglines.fantasy import ledger as FL
+    with engine.connect() as c:
+        who = _fantasy_trader(c, user, viewer)
     if not FX.rate_ok(who["id"]):
         raise ValueError(FX.TEXT["rate_limited"])
     FX.settle(engine, FX.books_engine(engine))                          # pay out anything resolved first

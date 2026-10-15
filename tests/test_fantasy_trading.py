@@ -585,6 +585,44 @@ def test_every_surface_says_when_a_market_closes(db, monkeypatch):
     assert "season future, no close" in ada.get(f"/trade?link={champ}").text
 
 
+def test_quote_previews_an_order_on_every_surface_without_writing(db, monkeypatch):
+    """exchange.quote walks the latest recorded book as place does (the same steps, the same fee) and writes nothing;
+    fantasy_quote serves it over MCP and the Trade form shows it as the 'if filled now' line."""
+    from racinglines.fantasy import exchange as FX
+    eng, win, champ = db["engine"], db["links"]["win"], db["links"]["champ"]
+    _record(eng, "KX-WIN-VER")
+    _record(eng, "PM-CHAMP-VER")
+    FX._BOOKS.clear()
+    mcp = _mcp_client(eng, monkeypatch, dict(db["users"]["ada"], role="pro"))
+    q = mcp("fantasy_quote", market_link_id=win, side="yes", action="buy", shares=100, limit_price=0.42)
+    assert q["ok"] and q["user"] == "ada" and q["fills"] == [[0.41, 100]] and q["status"] == "filled"
+    assert q["avg_price"] == 0.41 and q["notional"] == 41.0 and q["fee"] == 1.7 and q["total"] == 42.7   # the worked example
+    assert q["cash"] == 1000 and q["book_ts"] and q["age_s"] < 120
+    refused = mcp("fantasy_quote", market_link_id=win, side="yes", action="buy", shares=10, limit_price=0.40)
+    assert not refused["ok"] and refused["reason"] == "no_liquidity" and refused["message"] == FX.TEXT["no_liquidity"]
+    assert mcp("fantasy_quote", market_link_id=champ, side="no", action="sell", shares=1, limit_price=0.5)["reason"] == "sell_exceeds_position"
+    assert _rows(eng, "SELECT count(*) FROM accounts.fantasy_orders")[0][0] == 0           # nothing written
+    assert _rows(eng, "SELECT count(*) FROM activity_log WHERE action LIKE 'fantasy_order%'")[0][0] == 0
+    r = mcp("fantasy_order", market_link_id=win, side="yes", action="buy", shares=100, limit_price=0.42)
+    assert r["ok"] and r["fills"] == q["fills"] and r["fee"] == q["fee"]                   # the order does what the quote said
+    assert "own account" in mcp("fantasy_quote", market_link_id=win, side="yes", action="buy", shares=1, limit_price=0.42, user="bea")[1]
+    # the Trade form: the page's defaults are quoted, ?shares=&limit_price= requote, Preview places nothing
+    ada = _login("ada")
+    page = ada.get(f"/trade?link={champ}").text
+    assert "If filled now:</b> buys 10 YES at an average of 0.410, F$4.10: costs F$4.10." in page
+    page = ada.get(f"/trade?link={champ}&shares=150&limit_price=0.41").text
+    assert 'value="150"' in page and "buys 120 of 150 YES" in page and "the rest isn't on the book" in page
+    assert "would be refused:</b> " + FX.TEXT["over_order_cap"] in ada.get(f"/trade?link={champ}&shares=500&limit_price=0.42").text
+    page = ada.get(f"/trade?link={champ}&shares=5&limit_price=0.40").text
+    assert "would be refused:</b> " + FX.TEXT["no_liquidity"] in page
+    csrf = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
+    r = ada.post("/fantasy/orders", data=dict(csrf_token=csrf, market_link_id=str(champ), side="yes", action="buy", shares="7",
+                                              limit_price="0.42", client_key="k1", preview="1"), follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == f"/trade?link={champ}&action=buy&side=yes&shares=7&limit_price=0.42"
+    assert "buys 7 YES at an average of 0.410" in ada.get(r.headers["location"]).text
+    assert _rows(eng, "SELECT count(*) FROM accounts.fantasy_orders WHERE market_link_id = :l", l=champ)[0][0] == 0
+
+
 def test_other_sports_are_view_only_with_a_notice(db):
     """Fantasy trading is F1 only for now (owner, 2026-10-12 23:07Z): a non-F1 market says so on Trade and is refused."""
     from racinglines.fantasy import exchange as FX

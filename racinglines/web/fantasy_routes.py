@@ -3,8 +3,10 @@ The fantasy pages (owner, 2026-10-12 08:40Z, staging only): an account's F$ ("1k
 hand ("first-cut manual trading") next to following a strategy, and the leaderboard.
 
     /trade                 the tradable F1 markets with their recorded best prices; ?link=<id> opens one market's
-                           book and the order form (the alpha's Trade tab)
-    POST /fantasy/orders   one IOC paper order (fantasy/exchange.place), then back to the market with the result
+                           book and the order form (the alpha's Trade tab), with what the form's order would do if
+                           placed now (fantasy/exchange.quote; ?shares=&limit_price= requote it)
+    POST /fantasy/orders   one IOC paper order (fantasy/exchange.place), then back to the market with the result;
+                           with preview=1 nothing is placed: back to the form, requoted with its values
     /history               the alpha's History tab: your F$, every trade (by hand and by your strategy), F$ through
                            the run, and the leaderboard (ROI x sqrt(trades), fantasy/ledger.ranked)
     /fantasy, /fantasy/trade, /leaderboard   the first cut's addresses, redirected to the two above
@@ -16,7 +18,7 @@ nothing here reaches an exchange (fantasy/exchange.py). Split out of web/app.py,
 
 import logging
 import uuid
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from fastapi import Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -115,7 +117,8 @@ def fantasy_trade_old(request: Request):
 
 
 @app.get("/trade", response_class=HTMLResponse, dependencies=[allow(*ANY)])
-def fantasy_trade(request: Request, link: int = 0, q: str = "", msg: str = "", action: str = "buy", side: str = "yes"):
+def fantasy_trade(request: Request, link: int = 0, q: str = "", msg: str = "", action: str = "buy", side: str = "yes",
+                  shares: str = "", limit_price: str = ""):
     _gate()
     me = request.state.user
     if not _ready():
@@ -130,7 +133,9 @@ def fantasy_trade(request: Request, link: int = 0, q: str = "", msg: str = "", a
             b, a, ts = quotes.get(m["token_id"], (None, None, None))
             m.update(bid=b, ask=a, quoted=ts)
         markets = [m for m in markets if m["quoted"] is not None]          # recorded in the last day
-        sel = book = pos = None
+        sel = book = pos = quote = None
+        action = action if action in ("buy", "sell") else "buy"
+        side = side if side in ("yes", "no") else "yes"
         if link:
             sel = c.execute(text("""SELECT id, exchange, token_id, prediction AS kind, question, group_title, outcome,
                                            event_title FROM market_links WHERE id = :i"""), dict(i=link)).mappings().first()
@@ -147,6 +152,14 @@ def fantasy_trade(request: Request, link: int = 0, q: str = "", msg: str = "", a
                     book.update(no_bids=nb, no_asks=na)
                 held = [p for p in FL.positions(c, me["id"], open_only=True) if p["market_link_id"] == sel["id"]]
                 pos = held[0] if held else None
+            if book and not demo.is_demo(me):
+                # the form's values (the page's defaults unless the query names them) and what that order would do now
+                if not shares.strip():
+                    shares = f"{pos['shares']:g}" if pos and action == "sell" else "10"
+                if not limit_price.strip():
+                    lv = (book["asks"] if side == "yes" else book["no_asks"]) if action == "buy" else (book["bids"] if side == "yes" else book["no_bids"])
+                    limit_price = f"{lv[0][0]:.2f}" if lv else "0.50"
+                quote = FX.quote(c, me, sel["id"], side, action, shares, limit_price, get_book=lambda tok: book)
         cash = FL.available(c, me["id"])
     events = []
     for m in markets:
@@ -154,17 +167,20 @@ def fantasy_trade(request: Request, link: int = 0, q: str = "", msg: str = "", a
             events.append(dict(title=m["event_title"] or "Season", start=m["start_date"], markets=[]))
         events[-1]["markets"].append(m)
     return render(request, "fantasy_trade.html", ready=True, events=events, n=len(markets), sel=sel, book=book,
-                  pos=pos, cash=cash, q=q, msg=msg, action=action if action in ("buy", "sell") else "buy",
-                  side=side if side in ("yes", "no") else "yes", client_key=uuid.uuid4().hex, max_stake=FX.MAX_STAKE,
+                  pos=pos, cash=cash, q=q, msg=msg, action=action, side=side, shares=shares.strip()[:12],
+                  limit_price=limit_price.strip()[:8], quote=quote, client_key=uuid.uuid4().hex, max_stake=FX.MAX_STAKE,
                   max_age=FX.MAX_AGE_MIN, is_demo_user=demo.is_demo(me), note_sport=FX.SPORT, note_venues=list(FX.EXCHANGES))
 
 
 @app.post("/fantasy/orders", dependencies=[Depends(check_csrf), allow(*ANY)])
 def fantasy_order(request: Request, market_link_id: str = Form(""), side: str = Form(""), action: str = Form(""),
-                  shares: str = Form(""), limit_price: str = Form(""), client_key: str = Form("")):
+                  shares: str = Form(""), limit_price: str = Form(""), client_key: str = Form(""), preview: str = Form("")):
     _gate()
     me = request.state.user
     back = f"/trade?link={market_link_id}" if market_link_id.isdigit() else "/trade"
+    if preview and market_link_id.isdigit():                    # the Preview button: requote the form, place nothing
+        return RedirectResponse(f"{back}&{urlencode(dict(action=action, side=side, shares=shares.strip()[:12], limit_price=limit_price.strip()[:8]))}",
+                                status_code=303)
     if not _ready():
         msg = "Error: fantasy trading isn't set up yet."
     elif not FX.rate_ok(me["id"]):

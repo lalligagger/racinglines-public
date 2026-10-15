@@ -420,6 +420,15 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         return _read(T.fantasy_book, market_link_id=market_link_id, books=_books())
 
     @srv.tool(structured_output=False)
+    def fantasy_quote(market_link_id: int, side: str, action: str, shares: int, limit_price: float,
+                      user: str | None = None) -> str:
+        """What fantasy_order would do with this order right now, without placing it: the fills against the latest
+        recorded book at or better than your limit, the average price, the fee, the total it would cost (a buy) or
+        bring (a sale), or the reason it would be refused. Same arguments as fantasy_order; nothing is written."""
+        return _read(T.fantasy_quote, market_link_id=market_link_id, side=side, action=action, shares=shares,
+                     limit_price=limit_price, user=user, viewer=_viewer(), books=_books())
+
+    @srv.tool(structured_output=False)
     def fantasy_order(market_link_id: int, side: str, action: str, shares: int, limit_price: float,
                       client_key: str | None = None, user: str | None = None) -> str:
         """Place one immediate-or-cancel F$ order on your own account, exactly as the Trade page does: side yes|no,
