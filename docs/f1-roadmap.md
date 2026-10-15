@@ -327,6 +327,31 @@ group), `kind_sd` an athlete × round-kind offset (which also prices `race_pole`
 covariance and `sd_scale` draws parameter uncertainty from it into every simulation. The defaults (race rankings,
 no ties, teams, truncation, kind offsets or covariance) are the 6–7 Oct fits; none is tuned.
 
+**First comparison (2026-10-14, F1 only; report local-only at `reports/2026-10-14-rank-logit-walk-forward/`, run ids 1450–1468).**
+Walk-forward F1 2024–2026 at the results level (`--model global` as the baseline, seed 42, 2,000 sims, 65 events, 16,713
+paired fair values per comparison through `eval compare`; target 2026, held out 2024 and 2025). Log loss, diff against
+`global` ± 2 SE over events (`*` = interval excludes 0; negative favours `rank_logit`):
+
+| rank_logit setting | Win 2026 | Win 2024 | Win 2025 | Win, all | Head-to-head, all | Label |
+|---|---|---|---|---|---|---|
+| defaults (the 6–7 Oct fit) | +0.0143±0.0054* | +0.0084±0.0049* | +0.0093±0.0027* | +0.0103±0.0025* | +0.0079±0.0036* | not better (the 6 Oct win loss reproduces: 0.1572 vs 0.1468) |
+| `tie_on = "time_ms"` | identical to the defaults: F1 2023–26 race results have no tied classified times | | | | | no-op in F1 |
+| `ranking_weights = "race=1,qual=1"` | +0.0087±0.0047* | +0.0049±0.0034* | +0.0071±0.0023* | +0.0067±0.0020* | −0.0087±0.0036* (better every season) | win not better; **head-to-head robust** |
+| `top_k = 3` | −0.0062±0.0065 | −0.0006±0.0095 | −0.0078±0.0048* | −0.0047±0.0043* | +0.0046±0.0126 | not better |
+| `top_k = 3` + `team_effects` | −0.0084±0.0066* | −0.0013±0.0095 | −0.0107±0.0048* | −0.0066±0.0044* | +0.0004±0.0138 | win 2026-specific |
+| `top_k = 3` + qual (the sweep's pick on 2024–25) | −0.0051±0.0067 | −0.0030±0.0072 | −0.0107±0.0035* | −0.0064±0.0035* | +0.0052±0.0148 | not better on held-out 2026 |
+| `top_k = 5` + qual | −0.0050±0.0039* | −0.0043±0.0032* | −0.0065±0.0028* | −0.0053±0.0019* | +0.0033±0.0150 | **win robust, podium robust**, but not the pre-registered pick: *proposed, needs its own decision-log row and a fresh confirmation* |
+| `team_effects` alone | +0.0147±0.0055* | +0.0073±0.0050* | +0.0077±0.0030* | +0.0094±0.0027* | +0.0044±0.0041* | not better |
+
+The learns-nothing control is worse than everything (+0.0341±0.0071* on win). The `top_k` sweep's criterion was fixed before
+reading (lowest pooled 2024–25 win log loss, qualifying on): it picked k = 3, which is not better on 2026, so k = 5's result
+is read as a hypothesis, not a choice. **Pre-registered for NASCAR and MotoGP** (not run: the local pull needs the owner's
+sign-in): three runs each against `global`, the defaults, `ranking_weights = "race=1,qual=1"` with `tie_on = "time_ms"`
+(the ties live in NASCAR qualifying: 122 of 271 rounds; scored on `race_pole` too), and `top_k = 5` + qual; no sweep. The
+downhill runs are confounded (no results-level baseline, different fields, and the record-key bug in the roadmap) and carry no
+verdict. The staging-vs-branch check of the default `global` F1 run is byte-identical (3 CSVs, 16,713 fair values), so the
+results core's loading refactor in this batch changed no default price on real data.
+
 ### F1-7 (optional): In-race trading (reference model C2)
 
 **Status:** out of scope · **Start only if** the owner decides to trade during
