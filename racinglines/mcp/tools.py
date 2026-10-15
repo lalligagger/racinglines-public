@@ -591,6 +591,25 @@ def list_model_runs(conn, kind=None, competition=None, sport=None, season=None, 
     return P.page(df, limit=limit, offset=offset, note=f"kinds: {', '.join(RUN_KINDS)}")
 
 
+def compare_runs(conn, run_a, run_b, kinds=None, stage=None):
+    """Two saved runs paired by event on their prediction records (pipelines/eval_compare.py, `racinglines eval compare`):
+    per kind x season and pooled, log loss and Brier of each, B - A with its standard error over events and whether 0 is
+    outside ±2 SE. Read-only: nothing is written. Both runs need records (RACINGLINES_PREDICTION_RECORDS=1 with --save)."""
+    from racinglines.pipelines import eval_compare as EC
+    for rid in (run_a, run_b):
+        run = data.model_run(conn, int(rid))
+        if not run:
+            raise ValueError(f"no model run {rid}")
+        _guard(conn, "competitions", run["competition"], f"model run {rid}")
+    kinds = [k.strip() for k in kinds.split(",") if k.strip()] if isinstance(kinds, str) else kinds
+    res = EC.run(int(run_a), int(run_b), kinds=kinds or None, stage=stage, echo=lambda s: None, write=False,
+                 engine_url=conn.engine.url.render_as_string(hide_password=False))
+    c = res["counts"]
+    return dict(run_a=int(run_a), run_b=int(run_b), kinds=kinds, stage=stage, diff="B - A (lower is better)",
+                paired=c["paired"], only_a=c["only_a"], only_b=c["only_b"], unsettled=res["unsettled"],
+                summary=P.page(res["summary"], limit=P.MAX_LIMIT))
+
+
 def _dig(obj, path):
     cur = obj
     for part in [p for p in re.split(r"[./]", path) if p]:
