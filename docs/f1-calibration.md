@@ -25,7 +25,18 @@ are not calibrated.
 
 It is the same setting on every surface: `racinglines strategy sweep f1 --calib-power walk_forward`, the Lab's sweep form
 (All settings → Model), and the MCP `run_job` settings object (`{"calib_power": "walk_forward"}`; `list_job_types`
-lists it).
+lists it). The event diagnostic and combo
+prices take it too: `racinglines model diagnostic f1 ... --calib-power walk_forward`, `racinglines model combo f1
+... --calib-power walk_forward`, and the `calib_power` field of the Lab's Event diagnostic and Combo forms (and their
+MCP `run_job` params).
+
+To compare one event's prices without and with it, as of one cutoff (read-only, nothing saved):
+
+```
+# LOCAL (Mac) or VM
+python scripts/models/calib_ab.py --event 2026-18 --cutoff 2026-10-14T06:55 [--calib-power walk_forward] [--csv FILE]
+```
+
 
 ## The walk-forward table
 
