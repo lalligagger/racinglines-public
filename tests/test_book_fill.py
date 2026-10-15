@@ -113,3 +113,33 @@ def test_touch_and_book_on_probalytics_tape_read_as_of_t_never_after(tmp_path):
     assert s["asks"][0][0] == pytest.approx(0.44) and s["bids"][0][0] == pytest.approx(0.40)
     early = datetime(2026, 6, 14, 10, 0)
     assert v.quote("tokA", early) is None and v.book_at("tokA", early) is None          # nothing yet
+
+
+THIN = dict(bid=0.08, ask=0.20, bids=[(0.08, 50.0), (0.01, 500.0)], asks=[(0.20, 20.0), (0.99, 500.0)])
+
+
+def test_book_walk_stops_where_the_edge_runs_out():
+    # a thin book: 20 at the touch, then 0.99 asks. The order is sized at the touch ($50 / 0.21 = 238 shares) but
+    # only the 20 with edge fill; the rest is not traded, as a limit order would leave it
+    p = RB.TakerParams(min_edge=0.05, stake_per_edge=1000, max_stake=50, cost=0.01, fill="book")
+    m = RB._Market([_stage(fair=0.30, price=0.14, **THIN)], p)
+    m.step(0)
+    (tr,) = m.trades
+    assert tr["side"] == "YES" and tr["shares"] == pytest.approx(20) and tr["price"] == pytest.approx(0.20)
+
+
+def test_book_walk_sells_no_lower_than_the_margin_under_fair():
+    # long 100 YES, the fair falls to 0.10: sell down the bids only to fair - min_edge (0.05), not into 0.01
+    p = RB.TakerParams(min_edge=0.05, stake_per_edge=1000, max_stake=50, cost=0.01, fill="book")
+    m = RB._Market([_stage(fair=0.10, price=0.14, **THIN)], p)
+    m.yes = 100.0
+    m.step(0)
+    sells = [t for t in m.trades if t["side"] == "YES"]
+    assert len(sells) == 1 and sells[0]["shares"] == pytest.approx(-50) and sells[0]["price"] == pytest.approx(0.08)
+    assert m.yes == pytest.approx(50)
+
+
+def test_within_applies_the_fee_to_the_bar():
+    asks = [(0.40, 10.0), (0.44, 10.0)]
+    assert RB._within(asks, 0.50, 0.05, 0.0, True) == asks
+    assert RB._within(asks, 0.50, 0.05, 0.07, True) == [(0.40, 10.0)]           # 0.44 + 0.017 fee leaves 0.043
