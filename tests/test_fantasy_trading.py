@@ -651,6 +651,28 @@ def test_mcp_order_refusals_share_one_shape_rate_limit_included(db, monkeypatch)
     assert r.status_code == 303 and "Error%3A%20Too%20many%20orders" in r.headers["location"]
 
 
+def test_history_lists_settled_trades(db, monkeypatch):
+    """/history shows the hand trades exchange.settle paid out (outcome, payout, when) in a Settled trades card, from
+    ledger.positions(open_only=False), the rows fantasy_positions(open_only=False) already serves over MCP."""
+    from racinglines.fantasy import exchange as FX
+    eng, ada, win = db["engine"], db["users"]["ada"], db["links"]["win"]
+    assert FX.place(eng, ada, win, "yes", "buy", 100, 0.42, now=NOW, get_book=book())["ok"]
+    assert FX.place(eng, ada, db["links"]["champ"], "yes", "buy", 10, 0.42, now=NOW, get_book=book())["ok"]
+    page = _login("ada").get("/history").text
+    assert "No settled trades yet" in page
+    with eng.begin() as c:
+        c.execute(text("UPDATE market_links SET resolved_yes = true WHERE id = :i"), dict(i=win))
+    page = _login("ada").get("/history").text                            # the page settles, then lists it
+    card = page.split("<h2>Settled trades", 1)[1].split("</div>\n\n", 1)[0]
+    assert "United States GP · Kalshi" in card and ">YES</td>" in card and ">100.00</td>" in card and "+$59.00" in card
+    assert "UTC" in card and card.count("<tr>") == 2                      # the champ trade stays open
+    opened = page.split("<h2>Open trades", 1)[1].split("<h2>Settled trades", 1)[0]
+    assert "Polymarket" in opened and "Kalshi" not in opened
+    mcp = _mcp_client(eng, monkeypatch, dict(ada, role="pro"))
+    rows = mcp("fantasy_positions", open_only=False)["positions"]["rows"]
+    assert [(r["status"], r["payout"]) for r in rows if r["market_link_id"] == win] == [("settled", 100.0)]
+
+
 def test_other_sports_are_view_only_with_a_notice(db):
     """Fantasy trading is F1 only for now (owner, 2026-10-12 23:07Z): a non-F1 market says so on Trade and is refused."""
     from racinglines.fantasy import exchange as FX

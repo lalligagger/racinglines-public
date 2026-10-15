@@ -7,8 +7,8 @@ hand ("first-cut manual trading") next to following a strategy, and the leaderbo
                            placed now (fantasy/exchange.quote; ?shares=&limit_price= requote it)
     POST /fantasy/orders   one IOC paper order (fantasy/exchange.place), then back to the market with the result;
                            with preview=1 nothing is placed: back to the form, requoted with its values
-    /history               the alpha's History tab: your F$, every trade (by hand and by your strategy), F$ through
-                           the run, and the leaderboard (ROI x sqrt(trades), fantasy/ledger.ranked)
+    /history               the alpha's History tab: your F$, every trade (by hand, open and settled, and by your
+                           strategy), F$ through the run, and the leaderboard (ROI x sqrt(trades), fantasy/ledger.ranked)
     /fantasy, /fantasy/trade, /leaderboard   the first cut's addresses, redirected to the two above
 
 All of it is off unless fantasy/ledger.on() (RACINGLINES_FANTASY=1, or staging with the switch unset): 404 otherwise.
@@ -89,7 +89,10 @@ def history_page(request: Request, msg: str = ""):
     with get_engine().connect() as c:
         q = FX.quotes(_books(), FL.open_tokens(c, me["id"]))
         s = FL.summary(c, me["id"], quotes=q)
-        pos = FL.positions(c, me["id"], open_only=True, quotes=q)
+        every = FL.positions(c, me["id"], open_only=False, quotes=q)
+        pos = [p for p in every if p["status"] == "open" and p["shares"] > 0]
+        settled = [dict(p, pnl=round(p["payout"] - p["cost"], 2) if p["payout"] is not None else None)
+                   for p in every if p["status"] != "open"]             # paid out by exchange.settle (outcome, payout)
         recent = FL.orders(c, me["id"], limit=100)
         strat = _strategy_trades(c, me["id"])
         curve = FL.manual_curve(c, me["id"], quotes=q)
@@ -98,7 +101,7 @@ def history_page(request: Request, msg: str = ""):
     mine = next((r for r in board if r["username"] == me["username"]), None)
     chart = (line_chart({"hand": curve}, labels={"hand": "F$ by hand"}, include_zero=False,
                         markers=[(curve[-1][0], "now")]) if len(curve) >= 2 else None)   # the last point is at mark
-    return render(request, "history.html", ready=True, s=s, positions=pos, orders=recent, strat=strat, chart=chart,
+    return render(request, "history.html", ready=True, s=s, positions=pos, settled=settled, orders=recent, strat=strat, chart=chart,
                   profile=profile, mine=mine, rows=board, min_trades=FL.MIN_TRADES, msg=msg,
                   is_demo_user=demo.is_demo(me), reasons=FX.TEXT, note_sport=FX.SPORT, note_venues=list(FX.EXCHANGES))
 
