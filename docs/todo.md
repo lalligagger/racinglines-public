@@ -52,6 +52,14 @@ the next staging → main promotion (a draft until the owner says "promote"; the
 - [ ] **Next promotion: staging → main (draft until the owner says "promote").** Carries #188/#189:
       `record_fastf1.sh` executable (`vm.sh record fastf1 status` and the recorder's unit failed with "command not
       found" without it) and two data-change entries. Touches `scripts/vm/`, so it deploys production.
+- [ ] **Stage cutoffs from a session's actual end, not its scheduled end (owner, 2026-10-14: P0, review after the
+      day's fill-fidelity runs).** A stage's cutoff is the scheduled start + `[sessions.schedule]` minutes +
+      `[stages] lag_minutes` 30 (`racinglines/core/stages.py` `build`), and the model's data gate uses the same scheduled
+      end (`models/inputs/laps.py` `session_end`). A session that overran by more than 30 minutes (red flags, a delayed
+      start) is then priced with results the market had not seen yet: a future leak in every backtest and sweep, worst
+      at "after Quali". Same on both tapes, so the ours vs Probalytics A/B holds, but absolute P&L can be too high. First
+      step: list every 2026 session whose actual end (FastF1 session status, VM) is after its cutoff; then cut from the
+      actual end where it is known. The fill paths themselves read as of t (tested in `tests/test_book_fill.py`).
 - [ ] **CLV on every live and replayed fill (C4).** `racinglines backtest clv` covers stored paper bets; the sweep
       stats, `f1 reconcile`, `f1 scorecard` and the weekend report still read P&L only. G1 is judged on CLV: the plain
       mean per decided bet against the fill price (owner, 2026-10-07). [Paper trading](#paper-trading).
@@ -60,6 +68,9 @@ the next staging → main promotion (a draft until the owner says "promote"; the
       where recorded, for F1, NASCAR, MotoGP, downhill and road cycling. Evidence: Indonesia MotoGP, the model's top
       three summed to 42.5% against Kalshi mids of 83.5%. Until it is done NASCAR and MotoGP prices are labelled
       **unvalidated** and no pick rests on them alone. [Models](#models-the-one-engine).
+      **F1 (2026-10-14):** the sweep setting `calib_power` (`walk_forward`: fitted on earlier races only), off by
+      default, better log loss and P&L in 2025 and 2026 sweeps ([F1 calibration](f1-calibration.md)). Open: make it
+      the default (owner), the 10–20% bin still under-priced, the other sports.
 - [ ] **Probalytics tape: pull, compare, golden (#181, into staging).** Resumable F1 pull by exact key (owner,
       2026-10-14: F1 complete, unlinked F1 markets included as data only, then NASCAR; any other sport only on the
       owner's explicit go); `RACINGLINES_TAPE_SOURCE=probalytics` as a backtest venue; pass marks mid within 1¢ on 95%
@@ -82,15 +93,6 @@ the next staging → main promotion (a draft until the owner says "promote"; the
       prices still need the PCS results ingested and a forecast ([Road cycling](road-cycling.md)); admin only.
 - [ ] **`vm.sh internal-docs` has no staging-only mode.** It always copies to production and staging; a staging-only
       copy was done by hand on 14 Oct. Low priority.
-- [ ] **Stage cutoffs from actual session ends, not the schedule (owner, 2026-10-14: P0, for review after the
-      day's exit criteria).** `core/stages.build` sets each stage's cutoff at the session's scheduled start + its
-      scheduled length + `lag_minutes` (Quali: 60 min + 30). A session that overruns by more than the lag (red flags, a
-      delayed start) ends after its cutoff, so the model prices "after Quali" with results the market had not seen,
-      and every backtest that trades at that stage inherits the leak. Fix: cut at the session's recorded end (FastF1
-      session status / last lap timestamp, the same for every sport's results feed) plus the lag, and fall back to the
-      schedule only when no end is recorded; then a test with an overrun session, and a list of 2025-26 stages where
-      the actual end passed the scheduled cutoff (how much P&L each touched). Re-run the goldens after.
-      [F1 model](#f1-model).
 - [ ] **United States GP weekend (23–25 Oct), the first live weekend of the alpha with Polymarket race markets
       (266 links stored) and Kalshi's (expected 2 to 4 days out).** A, C and K paper-trade; the fantasy accounts trade
       by hand or follow a style; no code merges in the book window; Monday: `f1 reconcile`, `f1 scorecard`, and the

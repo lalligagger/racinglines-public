@@ -38,10 +38,13 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from racinglines.models import calibration as CAL
 from racinglines.models import outcomes as O
 from racinglines.models.inputs import laps as M
 from racinglines.models.inputs import grid as GP
 from racinglines.core.stats import brier, ranks
+
+CALIB_SEED = 20261014   # side stream of the calibration resample (models/calibration.py)
 
 ONE_MIN = pd.Timedelta(minutes=1)
 PRE_WEEKEND, PRE_QUALI, PRE_RACE = "pre_weekend", "pre_quali", "pre_race"
@@ -326,6 +329,9 @@ def price_race(meas, hist, cutoff, event_id, n_sims=10000, rng=None, use_track=T
     adjust, applied = grid_adjust(key, M.MAIN_STAGE, e, v.cutoff)
     sim = M.simulate_race(fm, e, tf, n_sims=n_sims, rng=rng, grid_known=grid is not None, points=points,
                           chaos_p=chaos_p, grid_adjust=adjust)
+    calib = CAL.power(M.CALIB_POWER, M.SPORT, v.cutoff, grid is not None)
+    if calib is not None:            # resampled on a side stream, so every other draw is unchanged
+        sim = CAL.apply(sim, calib, M._side_rng(rng, CALIB_SEED))
     stage_sims, stage_audit, stage_applied = price_stages(meas, v, event_id, e, fm, tf, rng, n_sims, chaos_p, stages,
                                                           key)
     applied += stage_applied
@@ -354,6 +360,8 @@ def price_race(meas, hist, cutoff, event_id, n_sims=10000, rng=None, use_track=T
                              practice_prior=sigma_q is not None,
                              training_races=int(hist.loc[hist["r_ts"] + M.RACE_DONE < v.cutoff, "event_id"].nunique())),
                   track=tf, sim=sim, entrants=e, model=fm)
+    if calib is not None:
+        extras["audit"]["calib_power"] = calib
     if stage_audit:
         extras["audit"]["stages"] = stage_audit
     if applied:
