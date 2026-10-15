@@ -117,3 +117,26 @@ def test_current_shows_the_profile_and_the_lock(db, monkeypatch):
                                   adjusted={"min_volume_24h": 200.0}, rolled=False)
     assert now["lock"] == dict(weekend="Test GP", reopens="2026-10-12T12:00:00", message=FW.lock_note(GP))
     assert [o["code"] for o in FW.options(_user("ada"))] == ["T1", "T2", "T8", "T6", "T5"]
+
+
+def test_a_style_with_a_pre_weekend_stage_saves_as_tuned_from_follow_and_the_page(db):
+    """Fixed 2026-10-14: T2 and T5 (pre-weekend in their stages) followed with no tweak saved as "· adjusted" with the
+    pre-weekend stage off, as the alpha drawer sends no pre-weekend field. Now they save as tuned, from either path."""
+    import re
+
+    from test_strategy_pick import _login
+
+    from racinglines.pipelines import profiles as PF
+    from racinglines.pipelines import sweep_settings as SS
+    from racinglines.web import roles as R
+    stages = lambda st: SS.Settings.from_dict(st, strict=False)["taker_stages"]          # noqa: E731
+    client, _, page = _login(db, "bea")
+    csrf = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
+    for code in ("T2", "T5"):
+        own = stages(PF.PROFILES[code]["settings"])
+        assert "pre-weekend" in own, code
+        client.post("/strategy/pick", data={"csrf_token": csrf, "code": code, "sizing": "standard"})
+        for p in (_follow("ada", code), _profile("bea")):
+            assert p["name"] == PF.ALPHA_STYLES[code]["label"] and not p.get("adjusted"), code
+            assert stages(p["settings"]) == own and R.is_alpha_style(p), code
+    assert _follow("ada", "T2", tweaks={"pre_weekend": False})["adjusted"] == {"pre_weekend": False}   # explicit: moves

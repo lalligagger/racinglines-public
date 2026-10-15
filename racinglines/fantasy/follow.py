@@ -190,7 +190,10 @@ def check_sizing(sizing=None, kelly=None):
 
 def adjusted(code, tweaks):
     """A strategy's settings with `tweaks` ({setting: value} for its sliders, and "pre_weekend" for its pre-weekend
-    toggle; other keys ignored), clamped to TUNABLE and stepped; -> (settings, {what moved}), {} when nothing moved."""
+    toggle, left as the strategy has it when absent; other keys ignored), clamped to TUNABLE and stepped;
+    -> (settings, {what moved}), {} when nothing moved. The classic page always passes pre_weekend (its checkbox sends
+    nothing when unticked: strategy_pick._classic_form); the alpha drawer and MCP never do, so a style followed with no
+    tweak saves as tuned (fixed 2026-10-14: T2 and T5, whose stages include pre-weekend, saved as "· adjusted")."""
     base = PF.PROFILES[code]
     st = dict(base["settings"])
     sl, pre = tunables(base)
@@ -205,7 +208,7 @@ def adjusted(code, tweaks):
         if abs(v - s["value"]) > 1e-9:
             st[s["name"]] = v
             moved[s["name"]] = v
-    if pre is not None:
+    if pre is not None and tweaks.get("pre_weekend") is not None:   # absent: as the strategy has it (the alpha drawer)
         want = tweaks.get("pre_weekend") in (True, "1")
         if want != pre:
             stages = list(SS.Settings.from_dict(base["settings"], strict=False)["taker_stages"] or SS.STAGES)
