@@ -68,6 +68,9 @@ the next staging → main promotion (a draft until the owner says "promote"; the
       where recorded, for F1, NASCAR, MotoGP, downhill and road cycling. Evidence: Indonesia MotoGP, the model's top
       three summed to 42.5% against Kalshi mids of 83.5%. Until it is done NASCAR and MotoGP prices are labelled
       **unvalidated** and no pick rests on them alone. [Models](#models-the-one-engine).
+      **F1 (2026-10-14):** the sweep setting `calib_power` (`walk_forward`: fitted on earlier races only), off by
+      default, better log loss and P&L in 2025 and 2026 sweeps ([F1 calibration](f1-calibration.md)). Open: make it
+      the default (owner), the 10–20% bin still under-priced, the other sports.
 - [ ] **Probalytics tape: pull, compare, golden (#181, into staging).** Resumable F1 pull by exact key (owner,
       2026-10-14: F1 complete, unlinked F1 markets included as data only, then NASCAR; any other sport only on the
       owner's explicit go); `RACINGLINES_TAPE_SOURCE=probalytics` as a backtest venue; pass marks mid within 1¢ on 95%
