@@ -211,3 +211,37 @@ def test_default_rank_logit_race_win_prices_are_pinned(toy_pl):
     sims = m.price(m.history(data, st), ev, st, np.random.default_rng(1))
     win = dict(zip(sims.entrants, (sims.rank == 1).mean(0)))
     assert {int(k): round(float(v), 6) for k, v in win.items()} == pytest.approx(PIN_WIN, abs=5e-7)
+
+
+# ---- 5. one subject key for every writer (docs/todo.md "Prediction records, cross-engine pairing") ----------------
+
+def test_the_default_model_rank_logit_and_a_run_times_style_writer_key_an_athlete_the_same(toy_pl):
+    """The toy sport's default model, `--model rank_logit` and the run-times core's shape of simulations (entrants
+    "ath:<id>", from_timed_runs) write the same (kind, subject, params) for the same athlete, so `eval compare`
+    pairs them: the subject is "<id>" and a head-to-head's opponent_id the int, whatever the engine."""
+    from racinglines.models import outcomes as O
+    race, qual = toy_frames()
+    own, rlm = RM.get("toy_pl"), toy_pl[1]()
+    data_own, data_rl = own.load(data=race, sides={"qual": qual}), rlm.load()
+    ev = own.events(data_own, own.Settings.from_dict({}), [2026])[2]
+    keys = ["kind", "subject", "params"]
+    frames_ = {}
+    for name, m, data in (("default", own, data_own), ("rank_logit", rlm, data_rl)):
+        st = m.Settings.from_dict(dict(seed=3, sims=200))
+        e = next(e for e in m.events(data, st, [2026]) if e.id == ev.id)
+        sims = m.price(m.history(data, st), e, st, np.random.default_rng(3))
+        if name == "default":                                  # the run-times core: the same draws, rider_id entrants
+            dh = O.from_timed_runs([f"ath:{a}" for a in sims.entrants],
+                                   dict(final_rank=sims.rank, qual_rank=sims.rank, made_final=sims.finished, points=None))
+            frames_["timed_runs"] = dh.to_records(3, "toy_pl", "timed_runs", 2026, e.id, e.name, "pre_race", e.cutoff,
+                                                  kinds=["race_win", "race_h2h"])
+        frames_[name] = sims.to_records(len(frames_) + 1, "toy_pl", name, 2026, e.id, e.name, "pre_race", e.cutoff,
+                                        kinds=["race_win", "race_h2h"])
+    want = frames_["default"][keys].sort_values(keys).reset_index(drop=True)
+    for name, f in frames_.items():
+        pd.testing.assert_frame_equal(f[keys].sort_values(keys).reset_index(drop=True), want, obj=name)
+    assert set(want.query("kind == 'race_win'")["subject"]) == {str(100 + i) for i in range(12)}
+    assert not want["subject"].str.startswith("ath:").any() and not want["params"].str.contains("ath:").any()
+    for n, f in frames_.items():                              # and every pair of writers pairs completely
+        c = EC.pair(frames_["default"], f)[1]
+        assert c["paired"] == len(want) and c["only_a"] == c["only_b"] == 0, n

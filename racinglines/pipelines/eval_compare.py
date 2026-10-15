@@ -7,9 +7,10 @@ and works in four steps, each a function of plain frames so it runs on any two r
 
     pair(a, b)               inner join on (event_id, stage, kind, subject, params); the rows only one run has are
                              counted and reported, never dropped silently
-    outcomes(paired, ...)    y per paired row from the official result, through the walk-forward's own settlement
+    settle_rows(paired, ...) y per paired row from the official result, through the walk-forward's own settlement
                              (markets.kinds.settle on the sport's pricing model's `results`); a row that can't settle
-                             is counted and left out
+                             (no result, an entrant the result doesn't list, an undecidable kind) is counted by
+                             reason, reported as "paired but not settled" and left out of the scores
     compare(paired_y)        log loss and Brier per row (the clip of core/calibration.py), the mean per event for A and
                              for B, and B - A per event
     summarize(per_event)     per kind, per kind x season and pooled over seasons: the mean of the per-event
@@ -77,26 +78,56 @@ def pair(records_a, records_b):
 
 # --- outcomes ------------------------------------------------------------------------------------
 
+NO_RESULT, NOT_IN_RESULT, UNDECIDED = "no result", "entrant not in the result", "undecidable"
+UNSETTLED = (NO_RESULT, NOT_IN_RESULT, UNDECIDED)
+
+
 def settle_rows(paired, results_for):
-    """The paired frame with a `y` column (1.0 / 0.0, NaN where the result can't settle the row). results_for(sport,
-    event_id) -> the official result in markets.kinds.settle's shape (columns athlete_id, position, status, ...) or None.
-    The settlement is markets.kinds.settle, the call core/walk_forward.event_rows makes: nothing is re-implemented."""
+    """The paired frame with a `y` column (1.0 / 0.0, NaN where the result can't settle the row) and `unsettled`, why
+    not: no result for the event, an entrant (subject or opponent) the result doesn't list, or a kind the result
+    can't decide (markets.kinds.settle's None). results_for(sport, event_id) -> the official result in
+    markets.kinds.settle's shape (columns athlete_id, position, status, ...) or None. The settlement is
+    markets.kinds.settle, the call core/walk_forward.event_rows makes: nothing is re-implemented. The record's subject
+    is the one key of db/records.athlete_key; the result's athlete ids are looked up through it, whatever shape the
+    sport's results carry."""
+    from racinglines.db import records as REC
     from racinglines.markets import kinds as K
     y = pd.Series(np.nan, index=paired.index, dtype=float)
+    why = pd.Series(None, index=paired.index, dtype=object)
     for (sport, event_id), g in paired.groupby(["sport", "event_id"], sort=False, dropna=False):
         res = results_for(sport, event_id)
         if res is None or res.empty:
+            why[g.index] = NO_RESULT
             continue
-        ids = {str(x): x for x in res["athlete_id"]}
+        ids = {}
+        for x in res["athlete_id"]:
+            ids.setdefault(REC.subject_key(x), x)
         for i, kind, subject, params in zip(g.index, g["kind"], g["subject"], g["params"]):
             p = json.loads(params)
             if "team" in p:                           # a top team: the group key is the subject, the athlete none
                 ok = K.settle(kind, None, p, res)
             else:
-                ok = K.settle(kind, ids.get(subject, subject), p or None, res)
-            if ok is not None:
+                a = ids.get(subject)
+                b = ids.get(REC.subject_key(p["opponent_id"])) if "opponent_id" in p else None
+                if a is None or ("opponent_id" in p and b is None):
+                    why[i] = NOT_IN_RESULT
+                    continue
+                if b is not None:
+                    p = dict(p, opponent_id=b)
+                ok = K.settle(kind, a, p or None, res)
+            if ok is None:
+                why[i] = UNDECIDED
+            else:
                 y[i] = float(bool(ok))
-    return paired.assign(y=y)
+    return paired.assign(y=y, unsettled=why)
+
+
+def unsettled_counts(paired_y):
+    """{reason: rows} over the paired rows with no y, in UNSETTLED's order, zero counts left out."""
+    if "unsettled" not in paired_y:
+        return {}
+    c = paired_y["unsettled"].value_counts()
+    return {r: int(c[r]) for r in UNSETTLED if r in c and c[r]}
 
 
 def db_results(engine_url=None):
@@ -174,7 +205,7 @@ def summarize(per_event):
 
 # --- the report ----------------------------------------------------------------------------------
 
-def format_markdown(summary, run_a, run_b, counts=None, unsettled=0):
+def format_markdown(summary, run_a, run_b, counts=None, unsettled=0, unsettled_why=None):
     stages = summary["stage"].nunique() if len(summary) else 0
     head = ["kind"] + (["stage"] if stages > 1 else []) + ["season", "n events", "logloss A", "logloss B", "diff ± 2 SE",
                                                            "Brier A", "Brier B", "diff ± 2 SE"]
@@ -196,7 +227,7 @@ def format_markdown(summary, run_a, run_b, counts=None, unsettled=0):
         lines += ["", f"Paired {counts['paired']} rows (A has {counts['n_a']}, B has {counts['n_b']}); "
                       f"only in A: {counts['only_a']}{_kinds(counts['only_a_kinds'])}; "
                       f"only in B: {counts['only_b']}{_kinds(counts['only_b_kinds'])}; "
-                      f"paired but not settled (left out of the scores): {unsettled}."]
+                      f"paired but not settled (left out of the scores): {unsettled}{_kinds(unsettled_why)}."]
     return "\n".join(lines)
 
 
@@ -205,7 +236,8 @@ def _kinds(d):
 
 
 def run(run_a, run_b, kinds=None, stage=None, out_dir=None, echo=print, results_for=None, engine_url=None, write=True):
-    """Compare two saved runs on their prediction records. Returns dict(paired, per_event, summary, counts, unsettled).
+    """Compare two saved runs on their prediction records. Returns dict(paired, per_event, summary, counts, unsettled,
+    unsettled_why: {reason: rows} of the paired rows left out of the scores).
     results_for: how a result is read (default: the sport's pricing model on engine_url, db_results). write=False
     (the MCP tool) writes nothing; otherwise compare.csv (per event) and compare.md (summary) go to out_dir, by default
     data/runs/eval/<run_a>-vs-<run_b>/."""
@@ -227,11 +259,12 @@ def run(run_a, run_b, kinds=None, stage=None, out_dir=None, echo=print, results_
     if not len(paired):
         echo(f"No records pair: run {run_a} has {counts['n_a']} rows and run {run_b} {counts['n_b']} after the filters, "
              f"and none share an (event, stage, kind, subject, params) key.")
-    paired_y = settle_rows(paired, results_for or db_results(engine_url)) if len(paired) else paired.assign(y=np.nan)
-    unsettled = int(paired_y["y"].isna().sum())
+    paired_y = settle_rows(paired, results_for or db_results(engine_url)) if len(paired) else \
+        paired.assign(y=np.nan, unsettled=None)
+    unsettled, why = int(paired_y["y"].isna().sum()), unsettled_counts(paired_y)
     per_event = compare(paired_y)
     summary = summarize(per_event)
-    md = format_markdown(summary, run_a, run_b, counts, unsettled)
+    md = format_markdown(summary, run_a, run_b, counts, unsettled, why)
     echo(md)
     if write:
         d = Path(out_dir) if out_dir else paths.runs("eval", f"{run_a}-vs-{run_b}", mkdir=False)
@@ -239,4 +272,5 @@ def run(run_a, run_b, kinds=None, stage=None, out_dir=None, echo=print, results_
         per_event.to_csv(d / "compare.csv", index=False)
         (d / "compare.md").write_text(md + "\n")
         echo(f"\nFiles -> {d}/")
-    return dict(paired=paired_y, per_event=per_event, summary=summary, counts=counts, unsettled=unsettled)
+    return dict(paired=paired_y, per_event=per_event, summary=summary, counts=counts, unsettled=unsettled,
+                unsettled_why=why)

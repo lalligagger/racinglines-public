@@ -251,7 +251,10 @@ def session_result(res, session):
 
 
 def settle(kind, athlete_id, params, res, group_key=None):
-    """YES/NO for a race market from the official classification (None if undecidable).
+    """YES/NO for a race market from the official classification (None if undecidable). An entrant the result
+    doesn't list is undecidable, never NO (2026-10-14; the declarative kinds' `absent = "void"` default and
+    position_replay.settle already said so): the walk-forward and `eval compare` leave the row unscored, the private
+    book leaves the market open (private_book.settle_from_results).
     group_key: maps a result's team_id to the group key the market names (F1: position_sim team_key).
     The n-th retirement kinds read a `laps_completed` column when the frame has one (the caller adds it; nothing here
     queries the database): the DNF with the fewest laps is first, every tied driver YES."""
@@ -272,12 +275,12 @@ def settle(kind, athlete_id, params, res, group_key=None):
         if col not in res:
             return None
         if athlete_id not in by.index or pd.isna(by.loc[athlete_id, col]):
-            return False if athlete_id not in by.index else None
+            return None
         return bool(by.loc[athlete_id, col] <= k.n)
     if k.payoff == "top_n":
         rows = res["athlete_id"] == athlete_id
         if not rows.any():
-            return False
+            return None
         return bool(P.top_n(res, k.n)[rows].iloc[0])        # the one top-n rule (payoffs.top_n): classified in the top n
     if k.payoff == "h2h":
         b = (params or {}).get("opponent_id")
@@ -292,19 +295,19 @@ def settle(kind, athlete_id, params, res, group_key=None):
         col = f"reached_{k.stage}"          # results that record the round (e.g. timed_runs: reached_final)
         if col not in res:
             return None
-        return bool(by.loc[athlete_id, col]) if athlete_id in by.index else False
+        return bool(by.loc[athlete_id, col]) if athlete_id in by.index else None
     if k.payoff == "indicator":
         # a yes/no the model draws (the fastest lap): settled from a column of that kind's name when the frame
         # carries one (models/model_global.py adds it from the race's laps), else undecidable
         if kind not in res or res[kind].isna().all():
             return None
-        return bool(by.loc[athlete_id, kind]) if athlete_id in by.index else False
+        return bool(by.loc[athlete_id, kind]) if athlete_id in by.index else None
     if k.payoff == "mover":
         won, _ = P.biggest_mover(res)        # from the stored starting grid (the frame's `grid`); None when it can't say
         if won is None:
             return None
         rows = res["athlete_id"] == athlete_id
-        return bool(won[rows].iloc[0]) if rows.any() else False
+        return bool(won[rows].iloc[0]) if rows.any() else None
     if k.payoff == "group_top":
         keys =res["team_id"].map(group_key) if group_key else res["team_id"]
         pts = res.assign(tk=keys).groupby("tk")["points"].sum()

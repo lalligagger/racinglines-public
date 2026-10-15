@@ -190,3 +190,46 @@ def test_f1_writer_archives_forecast_sims_but_not_stage_runs(tmp_path, monkeypat
     summ = K.summary(sims).set_index("athlete_id")
     w = REC.read(12).query("kind == 'race_win'").set_index("subject")["fair"]
     assert w[str(sims.entrants[0])] == summ.loc[sims.entrants[0], "race_win"]
+
+
+# --- one subject key for every writer (docs/todo.md "Prediction records, cross-engine pairing", 2026-10-14) ---------
+
+def test_athlete_key_is_one_shape_for_every_engine():
+    for x in (12, "12", "ath:12", np.int64(12), 12.0, " 12"):
+        assert REC.athlete_key(x) == 12 and REC.subject_key(x) == "12", x
+    assert REC.athlete_key("ferrari") == "ferrari" and REC.athlete_key("ath:rider-x") == "rider-x"
+    assert REC.athlete_key(None) is None and REC.athlete_key(-3) == -3 and REC.athlete_key("-3") == -3
+
+
+def test_the_run_times_style_writer_keys_an_athlete_as_the_results_core_does():
+    """The same simulations with entrants 101.. (the results core, rank_logit) and "ath:101".. (from_timed_runs, the
+    run-times core's rider_id) write the same (kind, subject, params) keys, head-to-heads included."""
+    sims = make_sims()
+    dh = O.OutcomeSims(entrants=[f"ath:{a}" for a in sims.entrants], rank=sims.rank, finished=sims.finished,
+                       stage_rank=sims.stage_rank, reached=sims.reached, points=sims.points, groups=sims.groups)
+    a, b = rec(sims), rec(dh)
+    keys = ["kind", "subject", "params"]
+    pd.testing.assert_frame_equal(a[keys], b[keys])
+    pd.testing.assert_frame_equal(a, b)
+    assert set(a.query("kind == 'race_win'")["subject"]) == {str(x) for x in sims.entrants}
+    h = a.query("kind == 'race_h2h'").iloc[0]
+    assert isinstance(json.loads(h["params"])["opponent_id"], int) and not h["subject"].startswith("ath:")
+
+
+def test_records_written_under_the_old_rider_key_read_in_the_one_key(tmp_path, monkeypatch):
+    """A predictions.parquet from before the convention ("ath:12" subjects and opponents) reads normalized; a file
+    already in the convention reads back byte-identical (the same object through normalize)."""
+    monkeypatch.setenv(REC.ROOT_ENV, str(tmp_path))
+    df = rec(make_sims())
+    old = df.copy()
+    drv = old["kind"] != "race_constructor_top"
+    old.loc[drv, "subject"] = "ath:" + old.loc[drv, "subject"]
+    old["params"] = old["params"].map(lambda p: json.dumps({"opponent_id": "ath:%d" % json.loads(p)["opponent_id"]})
+                                      if "opponent_id" in p else p)
+    assert (old["subject"] != df["subject"]).any() and (old["params"] != df["params"]).any()
+    (tmp_path / "21").mkdir()
+    old.to_parquet(tmp_path / "21" / "predictions.parquet", index=False)
+    pd.testing.assert_frame_equal(REC.read(21), df)
+    assert REC.normalize(df) is df
+    REC.write(22, df)
+    pd.testing.assert_frame_equal(REC.read(22), df)

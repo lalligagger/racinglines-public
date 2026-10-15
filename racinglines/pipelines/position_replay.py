@@ -216,8 +216,8 @@ def settle(kind, athlete_id, opponent_id, res):
     """YES / NO / None through the one settlement of every kind (markets/kinds.settle; top-n: payoffs.top_n, classified
     in the top n, so the replay, the season sweep and the walk-forward agree on a retirement or a disqualification).
     race_results marks who is classified by the sport's [results] classified rule (NASCAR: placed; MotoGP: status OK).
-    A market whose driver has no row in the classification stays unsettled here (None: the link may name a driver
-    the result doesn't list), where kinds.settle says NO for a top-n market."""
+    A market whose driver has no row in the classification stays unsettled (None: the link may name a driver the
+    result doesn't list), as kinds.settle says too."""
     from racinglines.markets import kinds as K
     from racinglines.markets import payoffs as PO
     if not (res["athlete_id"] == athlete_id).any():

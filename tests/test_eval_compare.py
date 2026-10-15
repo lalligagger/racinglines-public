@@ -196,3 +196,50 @@ def test_outcomes_match_the_walk_forward_on_the_toy_sport(toy):
     s = res["summary"]
     assert set(s["kind"]) == set(kinds) and (s["season"] == "all").sum() == 3
     assert (toy / "eval" / "compare.csv").exists()
+
+
+# --- paired but not settled, by reason; and the one subject key across engines ------------------------------------
+
+def test_an_entrant_the_result_does_not_list_is_reported_not_scored_as_a_loss(tmp_path, monkeypatch):
+    a, b = frames()
+    ghost = a[(a["kind"] == "race_win") & (a["subject"] == "10")].assign(subject="77", fair=.4)   # in both runs,
+    a2, b2 = pd.concat([a, ghost], ignore_index=True), pd.concat([b, ghost], ignore_index=True)   # never in a result
+    out = EC.settle_rows(EC.pair(a2, b2)[0], results_for)
+    g = out[out["subject"] == "77"]
+    assert len(g) == 5 and g["y"].isna().all()
+    assert set(g[g["event_id"] != "5"]["unsettled"]) == {EC.NOT_IN_RESULT} and (g[g["event_id"] == "5"]["unsettled"] == EC.NO_RESULT).all()
+    assert out[out["y"].notna()]["unsettled"].isna().all()
+    assert EC.unsettled_counts(out) == {EC.NO_RESULT: 9, EC.NOT_IN_RESULT: 4}
+    # a head-to-head against an unlisted opponent is the same: unsettled, not NO
+    h = pd.DataFrame([dict(sport="toy", season=2025, event_id=1, event="e1", stage="s", kind="race_h2h", subject="10",
+                           params='{"opponent_id": 77}', fair=.5, se=.01)])
+    assert EC.settle_rows(EC.pair(h, h)[0], results_for)["unsettled"].iloc[0] == EC.NOT_IN_RESULT
+    # the report names the reasons
+    monkeypatch.setattr(REC, "read", lambda rid: {1: a2, 2: b2}[rid])
+    lines = []
+    res = EC.run(1, 2, out_dir=tmp_path / "o", echo=lines.append, results_for=results_for)
+    assert res["unsettled"] == 13 and res["unsettled_why"] == {EC.NO_RESULT: 9, EC.NOT_IN_RESULT: 4}
+    assert "paired but not settled (left out of the scores): 13 (no result 9, entrant not in the result 4)." in "\n".join(lines)
+    assert "77" not in set(res["per_event"]["event_id"]) and res["per_event"]["n"].max() == 4   # never a scored row
+
+
+def test_runs_of_different_engines_pair_on_the_one_subject_key(tmp_path, monkeypatch):
+    """Run A written by a results-core model (subjects "10", opponents 11), run B by a run-times-style one ("ath:10",
+    "ath:11") before the convention: every row pairs and settles (the result lists plain ids)."""
+    monkeypatch.setenv(REC.ROOT_ENV, str(tmp_path / "records"))
+    a, _ = frames()
+    h2h = [dict(a.iloc[0].to_dict(), event_id=ev, event=f"e{ev}", season=season, kind="race_h2h", subject=str(x),
+                params=json.dumps({"opponent_id": y}), fair=.5) for ev, season in EVENTS.items() for x, y in ((10, 11), (12, 13))]
+    a = pd.concat([a, pd.DataFrame(h2h)], ignore_index=True)
+
+    def old_params(p):
+        d = json.loads(p)
+        return json.dumps({**d, "opponent_id": f"ath:{d['opponent_id']}"}) if "opponent_id" in d else p
+
+    b = a.assign(run_id=2, subject="ath:" + a["subject"], params=a["params"].map(old_params))
+    REC.write(1, a)
+    (tmp_path / "records" / "2").mkdir(parents=True)
+    b.to_parquet(tmp_path / "records" / "2" / "predictions.parquet", index=False)      # as an old writer left it
+    res = EC.run(1, 2, out_dir=tmp_path / "o", echo=lambda s: None, results_for=results_for)
+    assert res["counts"]["paired"] == len(a) == 50 and res["counts"]["only_a"] == res["counts"]["only_b"] == 0
+    assert res["unsettled_why"] == {EC.NO_RESULT: 10} and set(res["summary"]["kind"]) == {"race_win", "race_podium", "race_h2h"}

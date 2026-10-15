@@ -82,7 +82,7 @@ def test_head_to_head_with_an_unplaced_driver():
     assert K.settle("race_h2h", 5, {"opponent_id": 4}, RES) is False
     assert K.settle("race_h2h", 5, {"opponent_id": 6}, RES) is False           # neither placed: NO (walk-forward's)
     assert PR.settle("race_h2h", 4, 5, RES) is True and PR.settle("race_h2h", 5, 6, RES) is False
-    assert PR.settle("race_win", 99, None, RES) is None and K.settle("race_win", 99, None, RES) is False
+    assert PR.settle("race_win", 99, None, RES) is None and K.settle("race_win", 99, None, RES) is None   # both: unlisted
 
 
 # --- the biggest mover -------------------------------------------------------------------------------------------
@@ -97,7 +97,7 @@ def test_biggest_mover_from_the_stored_grid():
     assert [mover(RES, a) for a in range(1, 7)] == [True, False, False, True, False, False]   # tied: both YES
     res = RES.assign(grid=[2, 1, 6, 9, 3, 4])
     assert [mover(res, a) for a in (1, 4)] == [False, True]
-    assert mover(res, 99) is False
+    assert mover(res, 99) is None                 # not in the classification: undecidable, not NO
 
 
 @pytest.mark.quick

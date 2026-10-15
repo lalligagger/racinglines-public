@@ -419,10 +419,14 @@ run times, the rest results); the old classes are challengers ([Backtest core](b
       the CLI (`backtest walk-forward --model rank_logit --top-k 3`) and the search jobs. The Lab also lists every
       challenger for every sport and rejects a mismatch only at submit. Needed before the F1-6 comparison can be run
       from the Lab or `racinglines remote` (every-surface rule).
-- [ ] **Prediction records, cross-engine pairing (found by the F1-6 comparison, 2026-10-14):** record `subject` keys differ between
-      engines (the results core and `rank_logit` write `"1"`, the run-times core `"ath:1"`), so `eval compare` across engines
-      pairs nothing; and `markets.kinds.settle` returns False, not None, for an entrant the result doesn't know, so such rows
-      score as losses without warning. One key convention for every writer of records, and `settle` → None, with a test each.
+- [x] **Prediction records, cross-engine pairing (found by the F1-6 comparison, 2026-10-14; fixed the same day):** record
+      `subject` keys differed between engines (the results core and `rank_logit` wrote `"1"`, the run-times core `"ath:1"`), so
+      `eval compare` across engines paired nothing; and `markets.kinds.settle` returned False, not None, for an entrant the
+      result doesn't know, so such rows scored as losses without warning. Now one key for every writer
+      (`db/records.athlete_key`: `to_records` writes it, `records.read` applies it to older files), `settle` → None for the
+      legacy payoffs (the declarative kinds keep their declared `absent`), and `eval compare` counts "paired but not settled"
+      by reason ([Backtest core](backtest-core.md#prediction-records)). Side effect to know: a house market on a driver the
+      classification doesn't list now stays open instead of settling NO (`private_book.settle_from_results`).
 - [ ] **F1-6 confirmation on NASCAR and MotoGP** (pre-registered in [F1-6](f1-roadmap.md#f1-6-optional-plackett-luce-challenger-reference-model-b)):
       after `racinglines data pull nascar|motogp --no-markets` into the pull database (owner sign-in), three `rank_logit` runs per
       sport against `global`, `race_pole` included; then a decision-log row for `top_k`/qualifying if they hold.

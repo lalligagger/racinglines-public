@@ -149,7 +149,7 @@ kind x subject:
 | `run_id`, `sport`, `model_id` | the `model_runs.id`, the sport code, the model (`f1_sector_sim`, `timed_runs`) |
 | `season`, `event_id`, `event`, `stage`, `cutoff` | what was priced and as of when (`pre_race` for a walk-forward, the sweep's stage label for a stage run, the sport's pre label for a forecast) |
 | `kind` | a code from `racinglines/markets/kinds.py`, the one registry (`db/reads.PREDICTION_KINDS` is derived from it; the season-long standings kinds have `payoff="standings"` and are not priced from simulations) |
-| `subject`, `params` | the athlete id (the group key for a top team) and JSON: `{}`, `{"opponent_id": b}` for a head-to-head (each pair once), `{"team": g}` |
+| `subject`, `params` | the athlete id in one key for every engine, `db/records.athlete_key` ("12" as text, whether the model's entrants are `12` or the run-times core's `"ath:12"`; the group key for a top team) and JSON: `{}`, `{"opponent_id": 12}` for a head-to-head (each pair once, the int), `{"team": g}`. `records.read` applies the key to records written before it (2026-10-14), so old run-times records pair too |
 | `fair`, `se`, `n_sims` | the fair value, its Monte Carlo standard error sqrt(p(1-p)/n_sims), the simulations behind it |
 
 Writers: `run_walk_forward(save=True)`, `save_forecast` (forecast and scenario runs) and `save_diagnostic` (the
@@ -163,7 +163,9 @@ forecast (`mtb_dh forecast --save`) does not write records yet: its weekend simu
 `compare_runs`) scores two saved runs on these records, paired by event. It inner-joins the runs on (event, stage, kind,
 subject, params as canonical JSON) and reports the rows only one run has (never dropped silently); settles each paired
 row with the walk-forward's own call (`markets.kinds.settle` on the sport's pricing model's official `results`; a row that
-can't settle is counted and left out); scores log loss (the clip of `core/calibration.py`) and Brier per row; takes each
+can't settle is counted by reason under "paired but not settled" and left out: no result for the event, an entrant the
+result doesn't list, or a kind the result can't decide, which `settle` returns as None, never NO, for a legacy payoff
+since 2026-10-14 while a declarative kind keeps the `absent` policy its row in `markets/kinds.toml` declares); scores log loss (the clip of `core/calibration.py`) and Brier per row; takes each
 run's mean per event; and per kind, per kind x season and pooled over seasons gives the mean of the per-event differences
 B - A, its standard error over events (the standard deviation of the differences, one degree of freedom off, over the
 square root of the number of events) and whether 0 lies outside ±2 SE. Lower is better, so a negative difference favours
