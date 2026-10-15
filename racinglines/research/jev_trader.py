@@ -111,11 +111,16 @@ def argmax_option(options, probs, choice=None):
     return best
 
 
-def allocate_week(view, canaries, bankroll, ask, lots=LOTS):
-    """20 sequential calls of `ask(state, options)`; returns (table {id|CASH: lots}, transcript)."""
-    options = options_for(view)
+def allocate_week(view, canaries, bankroll, ask, lots=LOTS, max_lots=None):
+    """20 sequential calls of `ask(state, options)`; returns (table {id|CASH: lots}, transcript).
+
+    max_lots (opt-in position cap, default None = off): a strategy that already holds max_lots lots is dropped from the
+    options for the remaining lots, so the cap is enforced by the choice set, not by overriding Jev's answer. CASH is
+    always offered. With None the options and cache keys are exactly those of the pre-registered runs."""
+    base = options_for(view)
     table, transcript = {}, []
     for n in range(1, lots + 1):
+        options = base if max_lots is None else [o for o in base if o == CASH or table.get(o, 0) < max_lots]
         state = lot_state(view, bankroll, table)
         state["lots_left"] = lots - (n - 1)
         guard(state, canaries)

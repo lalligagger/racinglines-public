@@ -74,7 +74,7 @@ class Heartbeat:
         self._stop.set()
 
 
-def plan(u, rounds, bankroll, lots, model, cache_dir):
+def plan(u, rounds, bankroll, lots, model, cache_dir, max_lots=None):
     """No network. Leak-checks the first state of every week, replays the cache for the exact count still to make."""
     from racinglines.research import jev_trader as T
     for r in rounds:
@@ -88,7 +88,7 @@ def plan(u, rounds, bankroll, lots, model, cache_dir):
         return a
     try:
         for r in rounds:
-            table, _ = T.allocate_week(u.view(r), u.canaries(r), b, ask, lots)
+            table, _ = T.allocate_week(u.view(r), u.canaries(r), b, ask, lots, max_lots)
             b = T.account(u, {r: table}, [r], b)["path"][-1]
     except T.MissingCache:
         pass
@@ -97,17 +97,18 @@ def plan(u, rounds, bankroll, lots, model, cache_dir):
     return {"weeks": len(rounds), "requests": total, "cached": cached, "to_make": total - cached}
 
 
-def run_trader(u, *, bankroll=10000.0, weeks=None, lots=20, model="jev-latest", yes=False, dry_run=False,
+def run_trader(u, *, bankroll=10000.0, weeks=None, lots=20, max_share=None, model="jev-latest", yes=False, dry_run=False,
                out_dir=OUT, cache_dir=None, client_factory=None, confirm=input, argv=None, db_note="", out=print, subset="all", sizing="all"):
     from racinglines.research import jev_trader as T
     cache_dir = cache_dir or T.CACHE_DIR
+    max_lots = None if max_share is None else max(1, int(max_share * lots + 1e-9))
     rounds = list(u.rounds(2026))
     if weeks:
         rounds = rounds[:weeks]
     if not rounds:
         raise SystemExit("no 2026 rounds in this universe")
     out(f"universe: {json.dumps(u.meta(), default=str)}")
-    p = plan(u, rounds, bankroll, lots, model, cache_dir)
+    p = plan(u, rounds, bankroll, lots, model, cache_dir, max_lots)
     out(f"{p['weeks']} weeks x {lots} lots = {p['requests']} requests; {p['cached']} cached "
         f"(replayed from the start), {p['to_make']} to make; leak guard passed on every week's first state")
     if dry_run:
@@ -138,7 +139,7 @@ def run_trader(u, *, bankroll=10000.0, weeks=None, lots=20, model="jev-latest", 
                     raise SystemExit(f"stopped at week {wi}/{len(rounds)} lot {n[0]}/{lots}: "
                                      f"{type(ex).__name__}: {ex}")
 
-            table, tr = T.allocate_week(v, u.canaries(r), b, ask, lots)
+            table, tr = T.allocate_week(v, u.canaries(r), b, ask, lots, max_lots)
             tables[r] = table
             transcript += tr
             b = T.account(u, {r: table}, [r], b)["path"][-1]
@@ -181,6 +182,8 @@ def main(argv=None):
     ap.add_argument("--weeks", type=int, default=None, help="only the first N rounds (cheap trial)")
     ap.add_argument("--model", default="jev-latest")
     ap.add_argument("--lots", type=int, default=20)
+    ap.add_argument("--max-share", type=float, default=None,
+                    help="opt-in position cap: no strategy may hold more than this share of the bankroll in a week (e.g. 0.25); CASH is always allowed; default off (the pre-registered runs)")
     ap.add_argument("--sizing", choices=("all", "flat"), default="all",
                     help="flat drops the Kelly strategies (robustness run; their stored P&L assumes unlimited depth at the touch)")
     ap.add_argument("--subset", choices=("all", "untuned"), default="all",
@@ -203,7 +206,7 @@ def main(argv=None):
                                 + ("-flat" if args.sizing == "flat" else ""))
         out_dir.mkdir(parents=True, exist_ok=True)
         print(f"outputs: {out_dir}")
-    run_trader(u, out_dir=out_dir, subset=args.subset, sizing=args.sizing, bankroll=args.bankroll, weeks=args.weeks, lots=args.lots, model=args.model, yes=args.yes,
+    run_trader(u, out_dir=out_dir, subset=args.subset, sizing=args.sizing, max_share=args.max_share, bankroll=args.bankroll, weeks=args.weeks, lots=args.lots, model=args.model, yes=args.yes,
                dry_run=args.dry_run, argv=sys.argv, db_note=f"{len(runs)} sweep runs read (url not recorded)")
 
 

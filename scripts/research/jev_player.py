@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -73,6 +74,22 @@ def calendar(styles, sched):
     return cal
 
 
+KEY_FILE = Path.home() / ".config" / "racinglines" / "typesafe.env"
+
+
+def ensure_key():
+    """The TypeSafe key: TYPESAFE_API_KEY, else ~/.config/racinglines/typesafe.env (as scripts/research/jev_trader.py)."""
+    if os.environ.get("TYPESAFE_API_KEY"):
+        return
+    if KEY_FILE.exists():
+        for line in KEY_FILE.read_text().splitlines():
+            if line.startswith("TYPESAFE_API_KEY="):
+                os.environ["TYPESAFE_API_KEY"] = line.split("=", 1)[1].strip().strip("\"'")
+                print(f"key: read from {KEY_FILE}", file=sys.stderr)
+                return
+    sys.exit(f"No TYPESAFE_API_KEY and no TYPESAFE_API_KEY= line in {KEY_FILE}: export the key or save it there (mode 600).")
+
+
 def make_ask(args):
     if args.dry_run:
         return J.stand_in_ask
@@ -83,6 +100,7 @@ def make_ask(args):
         if hit is not None:
             return hit
         if "client" not in holder:
+            ensure_key()
             holder["client"] = J.make_client()
         return J.ask(state, client=holder["client"], model=args.model)
     return _ask
