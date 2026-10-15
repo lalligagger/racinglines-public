@@ -66,6 +66,11 @@ backtests as a season return on F$1,000 ("backtest, season return on F$1,000 at 
 - Makers, the TB blend and the other codes aren't offered. `POST /strategy/pick` refuses them for everyone but admins
   (`MAKERS_OPEN` is untouched, so the Edge Finder still shows makers).
 - Saves still pause during a race weekend's signal window.
+- **From MCP and the CLI** (2026-10-14): `fantasy_strategy` reads the same cards, the profile followed and the lock;
+  `fantasy_follow` saves through the same function as the page (`fantasy/follow.follow`), so a pick from either writes
+  the same profile row, with the same lock, refusals and words. It offers the five styles (admins also the other
+  codes) and the drawer's two tweaks, on the caller's own account only. `racinglines remote call fantasy_follow` reaches
+  it from a terminal ([MCP](mcp.md), [CLI: racinglines remote](cli.md#racinglines-remote)).
 - `/strategy` drops the venue tabs, the sport select and the "How it chooses" tab. Admins keep the user select.
 - The switch is `strategy_pick.alpha_picker()`. With the classic layout the page is unchanged.
 
