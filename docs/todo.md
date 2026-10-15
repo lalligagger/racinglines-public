@@ -413,7 +413,19 @@ run times, the rest results); the old classes are challengers ([Backtest core](b
       retirements (C6; `GlobalModel` handles retirements, C26), a real challenger (C7), head-to-head and top-20 kinds
       live (C10), the pre-race field from the entry list (C46), `race_start_utc` for CLV (C42).
 - [ ] **A naive baseline (engine E7):** `market_implied`; Plackett-Luce was tested on 7 Oct and lost to the probit
-      engine in every sport, so it is not the baseline ([Novig and the bake-off](novig-and-model-bakeoff.md)).
+      engine in every sport, so it is not the baseline ([Novig and the bake-off](novig-and-model-bakeoff.md)); the extended model, one `rank_logit` challenger with ties, teams, `top_k` and a covariance, is F1-6, started narrowed on 2026-10-14 ([decision log](f1-roadmap.md#decision-log)).
+- [ ] **F1-6 · the `walk_forward` job has no `settings` parameter.** MCP `run_job` and the Lab form take a challenger
+      by name (`model`) but not its settings, so rank_logit's `top_k`, `tie_on`, `team_effects` and the rest reach only
+      the CLI (`backtest walk-forward --model rank_logit --top-k 3`) and the search jobs. The Lab also lists every
+      challenger for every sport and rejects a mismatch only at submit. Needed before the F1-6 comparison can be run
+      from the Lab or `racinglines remote` (every-surface rule).
+- [ ] **Prediction records, cross-engine pairing (found by the F1-6 comparison, 2026-10-14):** record `subject` keys differ between
+      engines (the results core and `rank_logit` write `"1"`, the run-times core `"ath:1"`), so `eval compare` across engines
+      pairs nothing; and `markets.kinds.settle` returns False, not None, for an entrant the result doesn't know, so such rows
+      score as losses without warning. One key convention for every writer of records, and `settle` → None, with a test each.
+- [ ] **F1-6 confirmation on NASCAR and MotoGP** (pre-registered in [F1-6](f1-roadmap.md#f1-6-optional-plackett-luce-challenger-reference-model-b)):
+      after `racinglines data pull nascar|motogp --no-markets` into the pull database (owner sign-in), three `rank_logit` runs per
+      sport against `global`, `race_pole` included; then a decision-log row for `top_k`/qualifying if they hold.
 - [ ] **Decision-log rows still missing:** in-race `SIGMA = 3.0` and the live downhill constants (C12); the road
       cycling GC settings (#177).
 

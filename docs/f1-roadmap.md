@@ -303,13 +303,54 @@ all recorded tapes.
 
 ### F1-6 (optional): Plackett-Luce challenger (reference model B)
 
-**Status:** not started · **Start only if** F1-2 and F1-3 leave a gap, or per-market
+**Status:** started 2026-10-14, narrowed and provisional ([decision log](#decision-log) 2026-10-14, branch `track/models-pl`) · **Start only if** F1-2 and F1-3 leave a gap, or per-market
 uncertainty is wanted for maker spreads
 
-- `racinglines/models/rank_logit/` with PyMC or NumPyro as an optional extra.
+- `racinglines/models/rank_logit/`: one Davidson-Luce model in NumPy/SciPy (MAP by L-BFGS, analytic gradient); PyMC or NumPyro declined (decision log 2026-10-14).
 - Output feeds the same pricing path (see the structural-changes table).
 - Judged as a challenger under the promotion rule, or used only as a per-market
   uncertainty input for F1-4 spreads.
+
+#### rank_logit
+
+`racinglines backtest walk-forward <sport> --model rank_logit` (F1, NASCAR, MotoGP, downhill; also the Lab and MCP
+walk-forward job's `model`). It is the results core (`models/inputs/results.py`: loading, start lists, the
+days-before-the-event leakage rule, settlement and the same retirement draw) with a Davidson-Luce fit in place of
+the probit strength, refit per event and drawn by Gumbel-max. `[model.rank_logit.rankings]` in each schema lists the
+round kinds that may become rankings and their weights (the first with a positive weight is the kind priced: race,
+downhill's final); `ranking_weights` (`race=1,qual=1`) overrides them per run. Each past round is one ranking weighted
+by its kind's weight times 0.5^(age / `half_life_days`): classified entrants in order ([results] classified), the
+other starters an unordered tail. `tie_on = "time_ms"` ties identical classified times (`max_tie` caps the tie size),
+`top_k` keeps the first k places and moves the rest to the tail, `team_effects` adds a team log-worth ([model]
+group), `kind_sd` an athlete × round-kind offset (which also prices `race_pole` from qualifying strengths), and
+`sd_athlete`, `sd_team`, `delta_prior_mean` and `delta_prior_sd` are the normal priors. `cov` computes the Laplace
+covariance and `sd_scale` draws parameter uncertainty from it into every simulation. The defaults (race rankings,
+no ties, teams, truncation, kind offsets or covariance) are the 6–7 Oct fits; none is tuned.
+
+**First comparison (2026-10-14, F1 only; report local-only at `reports/2026-10-14-rank-logit-walk-forward/`, run ids 1450–1468).**
+Walk-forward F1 2024–2026 at the results level (`--model global` as the baseline, seed 42, 2,000 sims, 65 events, 16,713
+paired fair values per comparison through `eval compare`; target 2026, held out 2024 and 2025). Log loss, diff against
+`global` ± 2 SE over events (`*` = interval excludes 0; negative favours `rank_logit`):
+
+| rank_logit setting | Win 2026 | Win 2024 | Win 2025 | Win, all | Head-to-head, all | Label |
+|---|---|---|---|---|---|---|
+| defaults (the 6–7 Oct fit) | +0.0143±0.0054* | +0.0084±0.0049* | +0.0093±0.0027* | +0.0103±0.0025* | +0.0079±0.0036* | not better (the 6 Oct win loss reproduces: 0.1572 vs 0.1468) |
+| `tie_on = "time_ms"` | identical to the defaults: F1 2023–26 race results have no tied classified times | | | | | no-op in F1 |
+| `ranking_weights = "race=1,qual=1"` | +0.0087±0.0047* | +0.0049±0.0034* | +0.0071±0.0023* | +0.0067±0.0020* | −0.0087±0.0036* (better every season) | win not better; **head-to-head robust** |
+| `top_k = 3` | −0.0062±0.0065 | −0.0006±0.0095 | −0.0078±0.0048* | −0.0047±0.0043* | +0.0046±0.0126 | not better |
+| `top_k = 3` + `team_effects` | −0.0084±0.0066* | −0.0013±0.0095 | −0.0107±0.0048* | −0.0066±0.0044* | +0.0004±0.0138 | win 2026-specific |
+| `top_k = 3` + qual (the sweep's pick on 2024–25) | −0.0051±0.0067 | −0.0030±0.0072 | −0.0107±0.0035* | −0.0064±0.0035* | +0.0052±0.0148 | not better on held-out 2026 |
+| `top_k = 5` + qual | −0.0050±0.0039* | −0.0043±0.0032* | −0.0065±0.0028* | −0.0053±0.0019* | +0.0033±0.0150 | **win robust, podium robust**, but not the pre-registered pick: *proposed, needs its own decision-log row and a fresh confirmation* |
+| `team_effects` alone | +0.0147±0.0055* | +0.0073±0.0050* | +0.0077±0.0030* | +0.0094±0.0027* | +0.0044±0.0041* | not better |
+
+The learns-nothing control is worse than everything (+0.0341±0.0071* on win). The `top_k` sweep's criterion was fixed before
+reading (lowest pooled 2024–25 win log loss, qualifying on): it picked k = 3, which is not better on 2026, so k = 5's result
+is read as a hypothesis, not a choice. **Pre-registered for NASCAR and MotoGP** (not run: the local pull needs the owner's
+sign-in): three runs each against `global`, the defaults, `ranking_weights = "race=1,qual=1"` with `tie_on = "time_ms"`
+(the ties live in NASCAR qualifying: 122 of 271 rounds; scored on `race_pole` too), and `top_k = 5` + qual; no sweep. The
+downhill runs are confounded (no results-level baseline, different fields, and the record-key bug in the roadmap) and carry no
+verdict. The staging-vs-branch check of the default `global` F1 run is byte-identical (3 CSVs, 16,713 fair values), so the
+results core's loading refactor in this batch changed no default price on real data.
 
 ### F1-7 (optional): In-race trading (reference model C2)
 
@@ -475,6 +516,7 @@ signals, with leakage-rule tests like Polymarket's.
 | 2026-10-14 | 8 | **Optional, off by default, nothing chosen.** Square-root bankroll growth (owner's first handoff, 19:01Z; the episode's rule is the odds-based row above): the sweep setting `bankroll_growth` = `linear` (unset; today's `balance / bankroll`) or `sqrt` (its square root, so stake = C × √balance × edge with C = `stake_per_edge` / √bankroll). With `bankroll` set, a quadrupled balance doubles the stakes and one down 75% halves them; with `kelly`, Kelly sizes on √(balance × bankroll). It is a `Setting`, so the CLI (`--bankroll-growth`), the Lab sweep form and MCP `run_job` settings all take it. Unset keeps every combo key and result unchanged (`tests/test_sizing.py`). Choosing it waits for a sweep that compares it with linear and Kelly on P&L and max drawdown | Synthetic tests only; no sweep run yet | — |
 | 2026-10-14 | 8 | **Optional, off by default, nothing chosen.** Calibration power on the race-win prices (C48): the sweep setting `calib_power` maps win chances to p^a (renormalised) and resamples the sims so every market follows. `walk_forward` reads `sports/f1/calibration.toml`, fitted on earlier races only (grid 2.3, nogrid 2.1 after 2026-15; leak check: 31 cut points, no earlier row changed). 4,000-sim sweeps: race-win log loss 0.1694 → 0.1627 (2025), 0.2244 → 0.2194 (2026, market 0.2222); all 9 strategies' P&L better in both seasons ([F1 calibration](f1-calibration.md)) | The model is flat: 2025 drivers priced 5–10% won 2.0%. One power keeps podium, h2h and constructor prices coherent with the win price. Not the default: the base settings and the method were chosen with these seasons in view; promotion is the owner's call | — |
 | 2026-10-15 | 8 | **Per-event lock for paper trading, round 18 to the end of 2026.** One strategy is committed before each event's first session; additions only after a stage, each timestamped at the price then; nothing edited; scored as bet, sportsbook lines included ([Paper trading](paper-trading.md#the-per-event-lock-owner-2026-10-15-through-the-end-of-the-2026-f1-season)) | Owner, 2026-10-15: "everything must be done as bet, as if the paper trades were a live test". Tonight's golden and walk-forward runs are in-sample (profile A was tuned on 2026); only a pre-registered weekend is out of sample | Within a weekend, 2026-10-05's "profiles stay tunable" (they still change between weekends) |
+| 2026-10-14 | 6 | **Provisional, confirmed by the owner 2026-10-14 (staging first).** F1-6 starts, narrowed. One Plackett-Luce model, `racinglines/models/rank_logit/` (a `[sport] challengers` entry, `--model rank_logit`, every default price unchanged): one Davidson-Luce likelihood over rankings of blocks of entries, plain Plackett-Luce the special case. Variation is settings and schema, never a second class: `[model.rank_logit.rankings]` names the round kinds that become rankings and their weights (race, sprint, qual, stage, GC), `tie_on = "time_ms"`, `top_k` (only the first k places are chosen, the rest an unordered tail still in every denominator), `team_effects`, team entries (sum of member worths, prices `race_top_constructor` consistently), `kind_sd` (athlete × round-kind offset, 0 = off), the priors and `half_life_days`; a Laplace covariance is the per-market uncertainty input for F1-4. Defaults reproduce the 6–7 Oct fits (no ties, no teams, no truncation), so the comparison switches one extension on at a time, paired ±2 SE (E5 `eval compare`), on win, podium, top 10 and head-to-head, plus `race_pole` from NASCAR qualifying and the downhill Final. Ported from the owner's `pl_ext.py` prototype (brute-force likelihood and gradient checks pass). No `pltree`, no PyMC/NumPyro, no Weng-Lin/Elo (research only) | Plain Plackett-Luce lost the win market twice: 6 Oct `model_pl` (Hunter MM, half-life 240 d, `prior_weight` 3; win log loss F1 0.1556 vs 0.1476, NASCAR 0.1151 vs 0.1085, MotoGP 0.1620 vs 0.1608, no SEs; [Novig and the bake-off, Part 3](novig-and-model-bakeoff.md#part-3-plackett-luce-tested-2026-10-06-not-adopted), restored from commit `2c8bcb10`) and 7 Oct `research/algo_abc` (MAP, half-life 365 d, N(0, 1.5²) prior; worse on race win in all four sports, 95% CIs exclude 0; [engine roadmap E7](engine-roadmap.md)). Both already had a prior and time decay; neither had ties, team effects, team entries, `top_k` or a covariance. Ties occur where they would be priced (results with a time, 2026-10-14): NASCAR qualifying 122 of 271 rounds (largest 3), F1 qualifying 7 of 147, downhill 1–4 rounds per kind, races none. The win loss has a named mechanism (every place counts the same, one fixed Gumbel spread) that only `top_k` addresses; a rerun without it is expected to lose again. One model, not a library (owner, 2026-10-14): the one-engine rule (2026-10-11, C56) | Bake-off doc "not built (E7)"; F1-6 "PyMC or NumPyro" |
 
 ## Open questions
 

@@ -10,7 +10,7 @@ model_family = "global"           # the one engine (racinglines/models/model_glo
 pricing_model = "racinglines.models.model_global:GlobalModel"   # every modelled sport's (docs/backtest-core.md)
 # Downhill's engine before the one engine, kept runnable for comparisons (`racinglines backtest walk-forward mtb_dh
 # --model timed_runs`): the same run-times core and settings, so its prices equal the engine's (tests/test_one_engine.py)
-challengers = { timed_runs = "racinglines.models.race_model:TimedRuns" }
+challengers = { timed_runs = "racinglines.models.race_model:TimedRuns", rank_logit = "racinglines.models.rank_logit.model:RankLogit" }
 display_order = 5
 # Left off the Markets page (sections and calendar) for everyone, admins included (owner, 2026-10-12: "UCI road only. Hide
 # UCI DH for now"). Its own pages, the live viewer, recording and pricing are unchanged; delete this line to show it again.
@@ -59,6 +59,16 @@ half_life_days = 240.0            # HALF_LIFE_DAYS
 prior_n = 0.5                     # rider pace shrinkage toward the field median, in runs' weight (PRIOR_N)
 junior_weight = 0.25              # junior runs' training weight (CATEGORY_WEIGHTS["MJ"])
 train_scope = "all"
+
+[model.rank_logit.rankings]
+# The rank_logit challenger (racinglines/models/rank_logit/, docs/f1-roadmap.md F1-6, decision log 2026-10-14):
+# the round kinds that may become rankings and their default weights; the first with a positive weight is the
+# kind priced. Kinds at 0.0 are off until a run's `ranking_weights` sets them. Not tuned.
+final = 1.0
+semi = 0.0
+qual = 0.0
+qual1 = 0.0
+qual2 = 0.0
 
 [data]
 # the L1 input frames this sport's adapter (racinglines/frames/mtb_dh.py) builds from the tidy runs frame, docs/frames.md

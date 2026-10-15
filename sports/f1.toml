@@ -10,7 +10,7 @@ model_family = "global"           # the one engine (racinglines/models/model_glo
 pricing_model = "racinglines.models.model_global:GlobalModel"   # every modelled sport's (docs/backtest-core.md)
 # F1's engine before the one engine, kept runnable for comparisons (`racinglines backtest walk-forward f1 --model
 # f1_sector_sim`): the same laps core and settings, so its prices equal the engine's (tests/test_one_engine.py)
-challengers = { f1_sector_sim = "racinglines.models.race_model:PositionSim" }
+challengers = { f1_sector_sim = "racinglines.models.race_model:PositionSim", rank_logit = "racinglines.models.rank_logit.model:RankLogit" }
 display_order = 0
 results_modules = ["racinglines.sources.fastf1"]   # what fetches its results (`backtest coverage`)
 
@@ -53,6 +53,15 @@ driver_prior_n = 3.0              # driver-vs-teammate offset shrinkage, in race
 teammate_corr = true              # teammates share part of the noise (TEAMMATE_CORR)
 finish_rho_scale = 1.0            # share of the measured teammate finishing correlation (FINISH_RHO_SCALE)
 reset_weight = 0.25               # with the reset switch: weight of earlier seasons' car data (REG_RESET_WEIGHT)
+
+[model.rank_logit.rankings]
+# The rank_logit challenger (racinglines/models/rank_logit/, docs/f1-roadmap.md F1-6, decision log 2026-10-14):
+# the round kinds that may become rankings and their default weights; the first with a positive weight is the
+# kind priced. Kinds at 0.0 are off until a run's `ranking_weights` sets them. Not tuned.
+race = 1.0
+sprint = 0.0
+qual = 0.0
+sprint_qual = 0.0
 
 [data]
 # the L1 input frames this sport's adapter (racinglines/frames/f1.py) builds from Measurements, docs/frames.md.

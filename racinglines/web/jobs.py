@@ -125,9 +125,24 @@ def _sport_sweep_argv(sport):
     return argv
 
 
+def walk_forward_models():
+    """The walk-forward job's model choices: "own" (the sport's pricing model), "global" (the engine at the results
+    level) and every modelled sport's [sport] challengers (e.g. rank_logit); a challenger runs only for a sport that
+    names it (_walk_forward_argv checks)."""
+    from racinglines.models import race_model as RM
+    names = sorted({n for code in modeled_sports() for n in RM.challengers(code)})
+    return ["own", "global", *names]
+
+
 def _walk_forward_argv(p, out):
+    model = p["model"]
+    if model not in ("own", "global"):
+        from racinglines.models import race_model as RM
+        if model not in RM.challengers(p["sport"]):
+            raise ValueError(f"model {model!r} is not a challenger of {p['sport']} (sports/{p['sport']}.toml [sport] "
+                             f"challengers: {sorted(RM.challengers(p['sport']))})")
     return (["-m", "racinglines", "backtest", "walk-forward", p["sport"], "--save", "--out-dir", str(Path(out).with_suffix(""))]
-            + (["--model", "global"] if p["model"] == "global" else [])
+            + (["--model", model] if model != "own" else [])
             + (["--seasons", *p["seasons"].split()] if p["seasons"] else [])
             + (["--venue", p["venue"]] if p["venue"] != "none" else []))
 
@@ -197,8 +212,9 @@ CATALOG = {j.code: j for j in [
             [Knob("sport", "Sport", "choice", "f1", choices=modeled_sports()),
              Knob("venue", "Score against", "choice", "none", choices=["none", *MVM.VENUES],
                   help="An exchange's linked markets, priced at the same moment as the model."),
-             Knob("model", "Model", "choice", "own", choices=["own", "global"],
-                  help="own: the sport's pricing model; global: the sport-agnostic results model."),
+             Knob("model", "Model", "choice", "own", choices=walk_forward_models(),
+                  help="own: the sport's pricing model; global: the sport-agnostic results model; any other: a "
+                       "challenger the sport's schema names ([sport] challengers, e.g. rank_logit)."),
              Knob("seasons", "Seasons", "years", "", help="Blank: every season the model can score.")],
             _walk_forward_argv, "a few minutes per season", venues=(None, *MVM.VENUES)),
     JobType("f1_backtest", "f1", "Backtest", "Price past races as of just before qualifying and just before the race, "

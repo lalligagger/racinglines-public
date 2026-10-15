@@ -102,7 +102,8 @@ How the schema drives it, with no `if sport == ...` anywhere (`racinglines/model
 - **Lower levels stay runnable.** `GlobalModel.for_sport(code, core="results")` is the engine at the results level
   (`backtest walk-forward f1 --model global`), with `[model.results.defaults]` if any. The engines F1 and downhill
   had before are `[sport] challengers` (`--model f1_sector_sim`, `--model timed_runs`): the same cores with the
-  code's settings.
+  code's settings. `--model rank_logit` (F1, NASCAR, MotoGP, downhill) is the one Plackett-Luce challenger: the
+  results core with a Davidson-Luce strength model ([F1-6](f1-roadmap.md#rank_logit)).
 
 **Price-preserving.** The cores keep the algorithms they had as separate models, so with the same seed and data the
 engine reproduces every price: F1 equals `race_model.PositionSim` and `laps_pricing.price_race`, downhill equals
@@ -157,6 +158,17 @@ covers several events), is written for walk-forwards and forecasts only, never f
 added later be priced on an old run (`records.load_sims(run_id)` then `markets.kinds.fair`). The downhill
 forecast (`mtb_dh forecast --save`) does not write records yet: its weekend simulations do not leave
 `forecast_season`.
+
+`racinglines eval compare RUN_A RUN_B [--kinds k1,k2] [--stage LABEL] [--out DIR]` (engine roadmap E5; the MCP tool
+`compare_runs`) scores two saved runs on these records, paired by event. It inner-joins the runs on (event, stage, kind,
+subject, params as canonical JSON) and reports the rows only one run has (never dropped silently); settles each paired
+row with the walk-forward's own call (`markets.kinds.settle` on the sport's pricing model's official `results`; a row that
+can't settle is counted and left out); scores log loss (the clip of `core/calibration.py`) and Brier per row; takes each
+run's mean per event; and per kind, per kind x season and pooled over seasons gives the mean of the per-event differences
+B - A, its standard error over events (the standard deviation of the differences, one degree of freedom off, over the
+square root of the number of events) and whether 0 lies outside ±2 SE. Lower is better, so a negative difference favours
+B; one event has no standard error and is never marked. It prints a Markdown table and writes `compare.csv` (per event)
+and `compare.md` to `data/runs/eval/<A>-vs-<B>/`. The Lab has no page for it yet.
 
 ### Venues in a backtest
 

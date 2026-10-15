@@ -34,7 +34,8 @@ How to use it:
 - overview() first: sports, seasons, the live forecast, what runs and markets exist.
 - Data: list_events / get_event, search_athletes / get_athlete, list_markets (our fair value vs every venue per
   outcome), get_market_history (exchange prices, trades, books; resampled), list_model_runs / get_model_run /
-  get_predictions, get_forecast, edge_finder (sweep results per strategy), list_diagnostics / get_diagnostic,
+  get_predictions, compare_runs (two runs paired by event, ±2 SE), get_forecast, edge_finder (sweep results per
+  strategy), list_diagnostics / get_diagnostic,
   track_record / list_positions / list_signals (paper trading), list_live_events, data_changes.
 - Fantasy trading (F$ only, your own account): fantasy_balance, fantasy_positions, fantasy_orders, fantasy_leaderboard,
   fantasy_markets, fantasy_book, and fantasy_order (one immediate-or-cancel order, as the Trade page places it).
@@ -305,6 +306,13 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
         """One run: params, metrics and its prediction targets. Large metrics come back as a key map with sizes; path
         (e.g. 'metrics.weekends', 'metrics.weekends.3', 'params.settings') returns that part, paged when it is a list."""
         return _read(T.get_model_run, run_id=run_id, path=path)
+
+    @srv.tool(structured_output=False)
+    def compare_runs(run_a: int, run_b: int, kinds: str | None = None, stage: str | None = None) -> str:
+        """Two saved runs scored on the same outcomes, paired by event, from their prediction records: per kind and season
+        (and pooled), log loss and Brier of each, the difference B - A with its standard error over events and whether 0
+        is outside +-2 SE. kinds: comma-separated market kinds; stage: one stage label. Read-only."""
+        return _read(T.compare_runs, run_a=run_a, run_b=run_b, kinds=kinds, stage=stage)
 
     @srv.tool(structured_output=False)
     def get_predictions(run_id: int, target: str | None = None, top: int = 20, standings: bool = False) -> str:
