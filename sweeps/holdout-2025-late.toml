@@ -1,0 +1,59 @@
+# The 2025 holdout (owner yes, 2026-10-15 00:20Z): profile A on the only 2025 weekends where Probalytics has books and
+# that profile A's tuning never targeted (defaults-2026-10 had target 2026, holdout 2025): Las Vegas, Qatar and Abu Dhabi
+# 2025 (rounds 22-24; their Polymarket books start 2025-11-20, no Kalshi books for 2025). Polymarket only. One queue,
+# the tape set per job (tape_source), so ours and Probalytics' run side by side on the same three weekends:
+#   ours (one price, the old pipeline) / Probalytics at the ask / Probalytics at the ask + walk-forward calibration.
+#
+#   TARGET=staging STAGING_DB=racinglines_staging_demo MODE=search QUEUE=sweeps/holdout-2025-late.toml \
+#     scripts/vm/overnight.sh   (a transient unit; RACINGLINES_TAPE_SOURCE unset: each job names its tape)
+#
+# Size: 3 jobs x 3 seeds, plus the baseline at 3 seeds = 12 runs. Three weekends is small: read it as a direction,
+# not a number to trade on.
+
+[search]
+name = "holdout-2025-late"
+parallel = 2          # 2 vCPU, niced, beside prod's 5-minute recorders and signals
+grid = 8
+history_cache = true
+hours = 3.0
+grace_minutes = 20
+
+[report]
+target = 2025
+holdout = []
+top = 10
+
+[[job]]
+year = 2025
+rounds = "22-24"
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+replicates = 3
+note = "holdout 2025: profile A, our tape (old)"
+
+[[job]]
+year = 2025
+rounds = "22-24"
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+replicates = 3
+tape_source = "probalytics"
+taker_fill = "touch"
+note = "holdout 2025: profile A, Probalytics at the ask"
+
+[[job]]
+year = 2025
+rounds = "22-24"
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+replicates = 3
+tape_source = "probalytics"
+taker_fill = "touch"
+calib_power = "walk_forward"
+note = "holdout 2025: profile A, Probalytics at the ask, walk-forward calibration"
