@@ -162,3 +162,19 @@ def test_every_surface_takes_the_setting():
         {"calib_power": "walk_forward"}
     _, parsed = tools._job_params("f1_sweep", {"year": "2026", "settings": {"calib_power": "walk_forward"}})
     assert parsed["settings"]["calib_power"] == "walk_forward"
+
+
+def test_diagnostic_and_combo_jobs_take_the_power():
+    """The event diagnostic and combo jobs (Lab and MCP run_job) pass --calib-power to the CLI only when it is set."""
+    from racinglines.web import jobs
+    for code in ("f1_diagnostic", "f1_combo"):
+        jt = jobs.CATALOG[code]
+        form = {"event": "2026-15", "cutoff": "2026-09-20T10:00", "legs": '[{"kind": "race_win", "driver": "A"}, '
+                '{"kind": "race_podium", "driver": "A"}]'}
+        off = jobs.parse(jt, form)
+        assert off["calib_power"] is None and "--calib-power" not in jt.argv(off, None)
+        on = jobs.parse(jt, dict(form, calib_power="walk-forward"))
+        argv = jt.argv(on, None)
+        assert argv[argv.index("--calib-power") + 1] == "walk_forward"
+        with pytest.raises(ValueError):
+            jobs.parse(jt, dict(form, calib_power="0.2"))

@@ -244,6 +244,8 @@ def main(argv=None):
     p.add_argument("--sims", type=int, default=10000)
     p.add_argument("--no-track", action="store_true")
     p.add_argument("--save", action="store_true")
+    p.add_argument("--calib-power", default=None,
+                   help="Win-price calibration power (C48): walk_forward, a number from 1 to 10, or unset = off.")
     p = sub.add_parser("combo", help="Combo (same-game parlay) prices for one event (combo_job.py).")
     p.add_argument("--event", required=True, help="Season-round, e.g. 2026-17")
     p.add_argument("--cutoff", default=None, help="UTC as-of time, e.g. 2026-10-09T08:00 (default: now)")
@@ -253,6 +255,8 @@ def main(argv=None):
     p.add_argument("--sims", type=int, default=10000)
     p.add_argument("--no-track", action="store_true")
     p.add_argument("--save", action="store_true", help="Store as a model run (kind='combo').")
+    p.add_argument("--calib-power", default=None,
+                   help="Win-price calibration power (C48): walk_forward, a number from 1 to 10, or unset = off.")
     p = sub.add_parser("forecast")
     p.add_argument("--year", type=int, default=2026)
     p.add_argument("--sims", type=int, default=10000)
@@ -1089,6 +1093,10 @@ def _run(args):
     if args.half_life:
         run.M.HALF_LIFE_DAYS = args.half_life
     knobs = dict(half_life_days=run.M.HALF_LIFE_DAYS)
+    calib = None
+    if args.cmd in ("diagnostic", "combo") and args.calib_power:     # the sweep sets it through its Settings
+        from racinglines.models import calibration as CAL
+        calib = run.M.CALIB_POWER = CAL.parse(args.calib_power)
 
     if args.cmd == "compare":
         from racinglines.models import evaluate as EV
@@ -1181,7 +1189,8 @@ def _run(args):
         print(out[["driver", "team_key", "win_prob", "podium_prob", "top10_prob", "position", "status"]]
               .head(args.sims and 12).to_string(index=False, formatters=fmt))
         if args.save:
-            run_id = run.save_diagnostic(args.db, args.event, cutoff, summ, ex, args.sims, track_features=use_track)
+            run_id = run.save_diagnostic(args.db, args.event, cutoff, summ, ex, args.sims, track_features=use_track,
+                                         **({"calib_power": calib} if calib else {}))
             print(f"Saved diagnostic run {run_id}.")
         return
 
@@ -1205,7 +1214,8 @@ def _run(args):
                                         season=int(args.event.split("-")[0]),
                                         params=dict(event_key=args.event, cutoff=str(cutoff), sims=args.sims,
                                                     variant=args.variant, track_features=use_track, legs=args.legs,
-                                                    half_life_days=run.M.HALF_LIFE_DAYS),
+                                                    half_life_days=run.M.HALF_LIFE_DAYS,
+                                                    **({"calib_power": calib} if calib else {})),
                                         metrics=dict(metrics, audit=ex["audit"]))
             print(f"Saved combo run {run_id}.")
         return
