@@ -186,6 +186,11 @@ Run the full suite too when the local database is up. `UPDATE_GOLDEN=1` only in 
 per the [F1 roadmap](docs/f1-roadmap.md#5-promotion-rule-when-a-challenger-becomes-the-default), with a decision
 log entry in the same change.
 
+**Paper trading is locked per event (owner rule, 2026-10-15, through the end of the 2026 F1 season).** Before each
+F1 event's first session, one strategy is committed and pushed in `paper/locks/<year>-<round>.toml` (with any
+sportsbook lines the owner hands over); additions only after a stage, each timestamped at the price then; nothing
+edited or deleted; everything scored as bet, real money or not ([Paper trading: the per-event lock](docs/paper-trading.md)).
+
 **Live books never freeze (owner rule, 2026-10-04).** Not at qualifying, not at any other time of a race weekend:
 every update requotes from the latest fair until the book closes at lights out. Keep exchange prices and our fair
 values as fresh as possible, and warn when they may be out of sync. The only pause is a deploy's, for the deploy
