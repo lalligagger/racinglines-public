@@ -1,0 +1,1064 @@
+# Walk-forward calibration power for NASCAR race-win prices (C48 at the results level; racinglines/models/calibration.py,
+# docs/f1-calibration.md "Other sports"). Same rule as sports/f1/calibration.toml: p_i -> p_i^a / sum_j p_j^a, each
+# row fitted on the races finished before `from` (two days after the last race in the fit). NASCAR has no grid stage
+# in the results core, so grid = nogrid. Off unless `calib_power = walk_forward` is set.
+#
+# Fitted by scripts/vm/nascar_calibration.sh on the VM, run calibration-20261016T211903Z (staging 55364cc, seasons
+# 2023-2026, 4,000 sims, --check). Result (report library/bets/2026-10-phoenix-nascar/report/REPORT.md): winner log loss
+# 3.0959 -> 3.0918 over 146 races; on Kalshi 2026 race-win ECE 0.0212 -> 0.0113 but log loss 0.2358 -> 0.2370 and
+# taker P&L / CLV about unchanged. Not a default: no decision-log entry promotes it.
+[[fit]]
+from = 2023-03-21
+grid = 1.0
+nogrid = 1.0
+races = 8
+next_event = "658"
+
+[[fit]]
+from = 2023-03-28
+grid = 1.0
+nogrid = 1.0
+races = 9
+next_event = "659"
+
+[[fit]]
+from = 2023-04-04
+grid = 1.0
+nogrid = 1.0
+races = 10
+next_event = "660"
+
+[[fit]]
+from = 2023-04-11
+grid = 1.0
+nogrid = 1.0
+races = 11
+next_event = "661"
+
+[[fit]]
+from = 2023-04-18
+grid = 1.1
+nogrid = 1.1
+races = 12
+next_event = "662"
+
+[[fit]]
+from = 2023-04-25
+grid = 1.2
+nogrid = 1.2
+races = 13
+next_event = "663"
+
+[[fit]]
+from = 2023-05-03
+grid = 1.2
+nogrid = 1.2
+races = 14
+next_event = "664"
+
+[[fit]]
+from = 2023-05-09
+grid = 1.3
+nogrid = 1.3
+races = 15
+next_event = "665"
+
+[[fit]]
+from = 2023-05-16
+grid = 1.3
+nogrid = 1.3
+races = 16
+next_event = "666"
+
+[[fit]]
+from = 2023-05-23
+grid = 1.3
+nogrid = 1.3
+races = 17
+next_event = "667"
+
+[[fit]]
+from = 2023-05-23
+grid = 1.4
+nogrid = 1.4
+races = 18
+next_event = "668"
+
+[[fit]]
+from = 2023-05-31
+grid = 1.4
+nogrid = 1.4
+races = 19
+next_event = "669"
+
+[[fit]]
+from = 2023-06-06
+grid = 1.5
+nogrid = 1.5
+races = 20
+next_event = "670"
+
+[[fit]]
+from = 2023-06-13
+grid = 1.5
+nogrid = 1.5
+races = 21
+next_event = "671"
+
+[[fit]]
+from = 2023-06-27
+grid = 1.4
+nogrid = 1.4
+races = 22
+next_event = "672"
+
+[[fit]]
+from = 2023-07-04
+grid = 1.3
+nogrid = 1.3
+races = 23
+next_event = "673"
+
+[[fit]]
+from = 2023-07-11
+grid = 1.3
+nogrid = 1.3
+races = 24
+next_event = "674"
+
+[[fit]]
+from = 2023-07-19
+grid = 1.4
+nogrid = 1.4
+races = 25
+next_event = "675"
+
+[[fit]]
+from = 2023-07-25
+grid = 1.4
+nogrid = 1.4
+races = 26
+next_event = "676"
+
+[[fit]]
+from = 2023-08-01
+grid = 1.3
+nogrid = 1.3
+races = 27
+next_event = "677"
+
+[[fit]]
+from = 2023-08-08
+grid = 1.3
+nogrid = 1.3
+races = 28
+next_event = "678"
+
+[[fit]]
+from = 2023-08-15
+grid = 1.2
+nogrid = 1.2
+races = 29
+next_event = "679"
+
+[[fit]]
+from = 2023-08-22
+grid = 1.2
+nogrid = 1.2
+races = 30
+next_event = "680"
+
+[[fit]]
+from = 2023-08-28
+grid = 1.2
+nogrid = 1.2
+races = 31
+next_event = "681"
+
+[[fit]]
+from = 2023-09-05
+grid = 1.2
+nogrid = 1.2
+races = 32
+next_event = "682"
+
+[[fit]]
+from = 2023-09-12
+grid = 1.2
+nogrid = 1.2
+races = 33
+next_event = "683"
+
+[[fit]]
+from = 2023-09-18
+grid = 1.2
+nogrid = 1.2
+races = 34
+next_event = "684"
+
+[[fit]]
+from = 2023-09-26
+grid = 1.3
+nogrid = 1.3
+races = 35
+next_event = "685"
+
+[[fit]]
+from = 2023-10-03
+grid = 1.3
+nogrid = 1.3
+races = 36
+next_event = "686"
+
+[[fit]]
+from = 2023-10-10
+grid = 1.2
+nogrid = 1.2
+races = 37
+next_event = "687"
+
+[[fit]]
+from = 2023-10-17
+grid = 1.2
+nogrid = 1.2
+races = 38
+next_event = "688"
+
+[[fit]]
+from = 2023-10-24
+grid = 1.2
+nogrid = 1.2
+races = 39
+next_event = "689"
+
+[[fit]]
+from = 2023-10-31
+grid = 1.2
+nogrid = 1.2
+races = 40
+next_event = "690"
+
+[[fit]]
+from = 2023-11-07
+grid = 1.2
+nogrid = 1.2
+races = 41
+next_event = "691"
+
+[[fit]]
+from = 2024-02-06
+grid = 1.2
+nogrid = 1.2
+races = 42
+next_event = "692"
+
+[[fit]]
+from = 2024-02-17
+grid = 1.2
+nogrid = 1.2
+races = 43
+next_event = "693"
+
+[[fit]]
+from = 2024-02-17
+grid = 1.3
+nogrid = 1.3
+races = 44
+next_event = "694"
+
+[[fit]]
+from = 2024-02-21
+grid = 1.3
+nogrid = 1.3
+races = 45
+next_event = "695"
+
+[[fit]]
+from = 2024-02-27
+grid = 1.3
+nogrid = 1.3
+races = 46
+next_event = "696"
+
+[[fit]]
+from = 2024-03-05
+grid = 1.3
+nogrid = 1.3
+races = 47
+next_event = "697"
+
+[[fit]]
+from = 2024-03-12
+grid = 1.3
+nogrid = 1.3
+races = 48
+next_event = "698"
+
+[[fit]]
+from = 2024-03-19
+grid = 1.4
+nogrid = 1.4
+races = 49
+next_event = "699"
+
+[[fit]]
+from = 2024-03-26
+grid = 1.4
+nogrid = 1.4
+races = 50
+next_event = "700"
+
+[[fit]]
+from = 2024-04-02
+grid = 1.4
+nogrid = 1.4
+races = 51
+next_event = "701"
+
+[[fit]]
+from = 2024-04-09
+grid = 1.4
+nogrid = 1.4
+races = 52
+next_event = "702"
+
+[[fit]]
+from = 2024-04-16
+grid = 1.4
+nogrid = 1.4
+races = 53
+next_event = "703"
+
+[[fit]]
+from = 2024-04-23
+grid = 1.4
+nogrid = 1.4
+races = 54
+next_event = "704"
+
+[[fit]]
+from = 2024-04-30
+grid = 1.5
+nogrid = 1.5
+races = 55
+next_event = "705"
+
+[[fit]]
+from = 2024-05-07
+grid = 1.5
+nogrid = 1.5
+races = 56
+next_event = "706"
+
+[[fit]]
+from = 2024-05-14
+grid = 1.5
+nogrid = 1.5
+races = 57
+next_event = "707"
+
+[[fit]]
+from = 2024-05-21
+grid = 1.5
+nogrid = 1.5
+races = 58
+next_event = "708"
+
+[[fit]]
+from = 2024-05-21
+grid = 1.5
+nogrid = 1.5
+races = 59
+next_event = "709"
+
+[[fit]]
+from = 2024-05-28
+grid = 1.5
+nogrid = 1.5
+races = 60
+next_event = "710"
+
+[[fit]]
+from = 2024-06-04
+grid = 1.4
+nogrid = 1.4
+races = 61
+next_event = "711"
+
+[[fit]]
+from = 2024-06-11
+grid = 1.4
+nogrid = 1.4
+races = 62
+next_event = "712"
+
+[[fit]]
+from = 2024-06-18
+grid = 1.4
+nogrid = 1.4
+races = 63
+next_event = "713"
+
+[[fit]]
+from = 2024-06-25
+grid = 1.4
+nogrid = 1.4
+races = 64
+next_event = "714"
+
+[[fit]]
+from = 2024-07-02
+grid = 1.4
+nogrid = 1.4
+races = 65
+next_event = "715"
+
+[[fit]]
+from = 2024-07-09
+grid = 1.4
+nogrid = 1.4
+races = 66
+next_event = "716"
+
+[[fit]]
+from = 2024-07-16
+grid = 1.4
+nogrid = 1.4
+races = 67
+next_event = "717"
+
+[[fit]]
+from = 2024-07-23
+grid = 1.5
+nogrid = 1.5
+races = 68
+next_event = "718"
+
+[[fit]]
+from = 2024-08-13
+grid = 1.4
+nogrid = 1.4
+races = 69
+next_event = "719"
+
+[[fit]]
+from = 2024-08-20
+grid = 1.4
+nogrid = 1.4
+races = 70
+next_event = "720"
+
+[[fit]]
+from = 2024-08-26
+grid = 1.3
+nogrid = 1.3
+races = 71
+next_event = "721"
+
+[[fit]]
+from = 2024-09-03
+grid = 1.3
+nogrid = 1.3
+races = 72
+next_event = "722"
+
+[[fit]]
+from = 2024-09-10
+grid = 1.3
+nogrid = 1.3
+races = 73
+next_event = "723"
+
+[[fit]]
+from = 2024-09-17
+grid = 1.3
+nogrid = 1.3
+races = 74
+next_event = "724"
+
+[[fit]]
+from = 2024-09-23
+grid = 1.3
+nogrid = 1.3
+races = 75
+next_event = "725"
+
+[[fit]]
+from = 2024-10-01
+grid = 1.3
+nogrid = 1.3
+races = 76
+next_event = "726"
+
+[[fit]]
+from = 2024-10-08
+grid = 1.2
+nogrid = 1.2
+races = 77
+next_event = "727"
+
+[[fit]]
+from = 2024-10-15
+grid = 1.2
+nogrid = 1.2
+races = 78
+next_event = "728"
+
+[[fit]]
+from = 2024-10-22
+grid = 1.2
+nogrid = 1.2
+races = 79
+next_event = "729"
+
+[[fit]]
+from = 2024-10-29
+grid = 1.3
+nogrid = 1.3
+races = 80
+next_event = "730"
+
+[[fit]]
+from = 2024-11-05
+grid = 1.3
+nogrid = 1.3
+races = 81
+next_event = "731"
+
+[[fit]]
+from = 2024-11-12
+grid = 1.3
+nogrid = 1.3
+races = 82
+next_event = "732"
+
+[[fit]]
+from = 2025-02-04
+grid = 1.3
+nogrid = 1.3
+races = 83
+next_event = "733"
+
+[[fit]]
+from = 2025-02-15
+grid = 1.3
+nogrid = 1.3
+races = 84
+next_event = "734"
+
+[[fit]]
+from = 2025-02-15
+grid = 1.2
+nogrid = 1.2
+races = 85
+next_event = "735"
+
+[[fit]]
+from = 2025-02-18
+grid = 1.3
+nogrid = 1.3
+races = 86
+next_event = "736"
+
+[[fit]]
+from = 2025-02-25
+grid = 1.3
+nogrid = 1.3
+races = 87
+next_event = "737"
+
+[[fit]]
+from = 2025-03-04
+grid = 1.3
+nogrid = 1.3
+races = 88
+next_event = "738"
+
+[[fit]]
+from = 2025-03-11
+grid = 1.3
+nogrid = 1.3
+races = 89
+next_event = "739"
+
+[[fit]]
+from = 2025-03-18
+grid = 1.3
+nogrid = 1.3
+races = 90
+next_event = "740"
+
+[[fit]]
+from = 2025-03-25
+grid = 1.3
+nogrid = 1.3
+races = 91
+next_event = "741"
+
+[[fit]]
+from = 2025-04-01
+grid = 1.3
+nogrid = 1.3
+races = 92
+next_event = "742"
+
+[[fit]]
+from = 2025-04-08
+grid = 1.3
+nogrid = 1.3
+races = 93
+next_event = "743"
+
+[[fit]]
+from = 2025-04-15
+grid = 1.3
+nogrid = 1.3
+races = 94
+next_event = "744"
+
+[[fit]]
+from = 2025-04-29
+grid = 1.3
+nogrid = 1.3
+races = 95
+next_event = "745"
+
+[[fit]]
+from = 2025-05-06
+grid = 1.3
+nogrid = 1.3
+races = 96
+next_event = "746"
+
+[[fit]]
+from = 2025-05-13
+grid = 1.3
+nogrid = 1.3
+races = 97
+next_event = "747"
+
+[[fit]]
+from = 2025-05-20
+grid = 1.3
+nogrid = 1.3
+races = 98
+next_event = "748"
+
+[[fit]]
+from = 2025-05-20
+grid = 1.3
+nogrid = 1.3
+races = 99
+next_event = "749"
+
+[[fit]]
+from = 2025-05-27
+grid = 1.3
+nogrid = 1.3
+races = 100
+next_event = "750"
+
+[[fit]]
+from = 2025-06-03
+grid = 1.3
+nogrid = 1.3
+races = 101
+next_event = "751"
+
+[[fit]]
+from = 2025-06-10
+grid = 1.3
+nogrid = 1.3
+races = 102
+next_event = "752"
+
+[[fit]]
+from = 2025-06-17
+grid = 1.3
+nogrid = 1.3
+races = 103
+next_event = "753"
+
+[[fit]]
+from = 2025-06-24
+grid = 1.3
+nogrid = 1.3
+races = 104
+next_event = "754"
+
+[[fit]]
+from = 2025-06-30
+grid = 1.3
+nogrid = 1.3
+races = 105
+next_event = "755"
+
+[[fit]]
+from = 2025-07-08
+grid = 1.3
+nogrid = 1.3
+races = 106
+next_event = "756"
+
+[[fit]]
+from = 2025-07-15
+grid = 1.2
+nogrid = 1.2
+races = 107
+next_event = "757"
+
+[[fit]]
+from = 2025-07-22
+grid = 1.2
+nogrid = 1.2
+races = 108
+next_event = "758"
+
+[[fit]]
+from = 2025-07-29
+grid = 1.2
+nogrid = 1.2
+races = 109
+next_event = "759"
+
+[[fit]]
+from = 2025-08-05
+grid = 1.2
+nogrid = 1.2
+races = 110
+next_event = "760"
+
+[[fit]]
+from = 2025-08-12
+grid = 1.2
+nogrid = 1.2
+races = 111
+next_event = "761"
+
+[[fit]]
+from = 2025-08-18
+grid = 1.2
+nogrid = 1.2
+races = 112
+next_event = "762"
+
+[[fit]]
+from = 2025-08-25
+grid = 1.2
+nogrid = 1.2
+races = 113
+next_event = "763"
+
+[[fit]]
+from = 2025-09-02
+grid = 1.2
+nogrid = 1.2
+races = 114
+next_event = "764"
+
+[[fit]]
+from = 2025-09-09
+grid = 1.2
+nogrid = 1.2
+races = 115
+next_event = "765"
+
+[[fit]]
+from = 2025-09-15
+grid = 1.2
+nogrid = 1.2
+races = 116
+next_event = "766"
+
+[[fit]]
+from = 2025-09-23
+grid = 1.2
+nogrid = 1.2
+races = 117
+next_event = "767"
+
+[[fit]]
+from = 2025-09-30
+grid = 1.2
+nogrid = 1.2
+races = 118
+next_event = "768"
+
+[[fit]]
+from = 2025-10-07
+grid = 1.2
+nogrid = 1.2
+races = 119
+next_event = "769"
+
+[[fit]]
+from = 2025-10-14
+grid = 1.2
+nogrid = 1.2
+races = 120
+next_event = "770"
+
+[[fit]]
+from = 2025-10-28
+grid = 1.2
+nogrid = 1.2
+races = 121
+next_event = "771"
+
+[[fit]]
+from = 2025-11-04
+grid = 1.2
+nogrid = 1.2
+races = 122
+next_event = "778"
+
+[[fit]]
+from = 2026-02-06
+grid = 1.2
+nogrid = 1.2
+races = 123
+next_event = "779"
+
+[[fit]]
+from = 2026-02-14
+grid = 1.2
+nogrid = 1.2
+races = 124
+next_event = "780"
+
+[[fit]]
+from = 2026-02-14
+grid = 1.2
+nogrid = 1.2
+races = 125
+next_event = "781"
+
+[[fit]]
+from = 2026-02-17
+grid = 1.2
+nogrid = 1.2
+races = 126
+next_event = "782"
+
+[[fit]]
+from = 2026-02-24
+grid = 1.2
+nogrid = 1.2
+races = 127
+next_event = "783"
+
+[[fit]]
+from = 2026-03-03
+grid = 1.2
+nogrid = 1.2
+races = 128
+next_event = "784"
+
+[[fit]]
+from = 2026-03-10
+grid = 1.3
+nogrid = 1.3
+races = 129
+next_event = "785"
+
+[[fit]]
+from = 2026-03-17
+grid = 1.3
+nogrid = 1.3
+races = 130
+next_event = "786"
+
+[[fit]]
+from = 2026-03-24
+grid = 1.3
+nogrid = 1.3
+races = 131
+next_event = "787"
+
+[[fit]]
+from = 2026-03-31
+grid = 1.3
+nogrid = 1.3
+races = 132
+next_event = "788"
+
+[[fit]]
+from = 2026-04-14
+grid = 1.3
+nogrid = 1.3
+races = 133
+next_event = "789"
+
+[[fit]]
+from = 2026-04-21
+grid = 1.3
+nogrid = 1.3
+races = 134
+next_event = "790"
+
+[[fit]]
+from = 2026-04-28
+grid = 1.2
+nogrid = 1.2
+races = 135
+next_event = "791"
+
+[[fit]]
+from = 2026-05-05
+grid = 1.3
+nogrid = 1.3
+races = 136
+next_event = "792"
+
+[[fit]]
+from = 2026-05-12
+grid = 1.2
+nogrid = 1.2
+races = 137
+next_event = "793"
+
+[[fit]]
+from = 2026-05-19
+grid = 1.2
+nogrid = 1.2
+races = 138
+next_event = "794"
+
+[[fit]]
+from = 2026-05-26
+grid = 1.2
+nogrid = 1.2
+races = 139
+next_event = "795"
+
+[[fit]]
+from = 2026-06-02
+grid = 1.2
+nogrid = 1.2
+races = 140
+next_event = "796"
+
+[[fit]]
+from = 2026-06-09
+grid = 1.3
+nogrid = 1.3
+races = 141
+next_event = "797"
+
+[[fit]]
+from = 2026-06-16
+grid = 1.3
+nogrid = 1.3
+races = 142
+next_event = "798"
+
+[[fit]]
+from = 2026-06-23
+grid = 1.2
+nogrid = 1.2
+races = 143
+next_event = "799"
+
+[[fit]]
+from = 2026-06-30
+grid = 1.2
+nogrid = 1.2
+races = 144
+next_event = "800"
+
+[[fit]]
+from = 2026-07-07
+grid = 1.2
+nogrid = 1.2
+races = 145
+next_event = "801"
+
+[[fit]]
+from = 2026-07-14
+grid = 1.2
+nogrid = 1.2
+races = 146
+next_event = "802"
+
+[[fit]]
+from = 2026-07-21
+grid = 1.2
+nogrid = 1.2
+races = 147
+next_event = "803"
+
+[[fit]]
+from = 2026-07-28
+grid = 1.2
+nogrid = 1.2
+races = 148
+next_event = "804"
+
+[[fit]]
+from = 2026-08-11
+grid = 1.2
+nogrid = 1.2
+races = 149
+next_event = "805"
+
+[[fit]]
+from = 2026-08-17
+grid = 1.2
+nogrid = 1.2
+races = 150
+next_event = "806"
+
+[[fit]]
+from = 2026-08-25
+grid = 1.2
+nogrid = 1.2
+races = 151
+next_event = "807"
+
+[[fit]]
+from = 2026-08-31
+grid = 1.2
+nogrid = 1.2
+races = 152
+next_event = "808"
+
+[[fit]]
+from = 2026-09-08
+grid = 1.2
+nogrid = 1.2
+races = 153
+next_event = "809"
+
+[[fit]]
+from = 2026-09-15
+grid = 1.2
+nogrid = 1.2
+races = 154
+next_event = "810"
+
+[[fit]]
+from = 2026-09-21
+grid = 1.2
+nogrid = 1.2
+races = 155
+next_event = "811"
+
+[[fit]]
+from = 2026-09-29
+grid = 1.2
+nogrid = 1.2
+races = 156
+next_event = "772"
+
+[[fit]]
+from = 2026-10-06
+grid = 1.2
+nogrid = 1.2
+races = 157
+next_event = "773"
+
+[[fit]]
+from = 2026-10-13
+grid = 1.2
+nogrid = 1.2
+races = 158
