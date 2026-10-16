@@ -191,6 +191,26 @@ def _run(conn, rid):
     return dict(id=int(r[0]), params=r[1] or {}, metrics=r[2] or {}) if r else None
 
 
+def clv_of(metrics, strategy):
+    """A strategy's closing-line value from a saved sweep's metrics.clv (pipelines/clv.py sweep_summary): its
+    by_strategy row, or None (a sweep saved before CLV was, or one whose closes could not be read)."""
+    rows = ((metrics or {}).get("clv") or {}).get("by_strategy") or []
+    return next((r for r in rows if r.get("strategy") == strategy), None)
+
+
+def strategy_rows(metrics):
+    """A saved sweep's strategies side by side for its run page: P&L, amount bought or filled, weekends up (totals)
+    and closing-line value (metrics.clv): bets, decided, mean CLV in points and percent, share positive."""
+    out = []
+    for s, t in ((metrics or {}).get("totals") or {}).items():
+        c = clv_of(metrics, s) or {}
+        out.append(dict(strategy=s, pnl=t.get("pnl"), bought=t.get("bought"), weekends_up=t.get("weekends_up"),
+                        weekends=t.get("weekends"), bets=c.get("bets"), decided=c.get("decided"),
+                        mean_clv=c.get("mean_clv"), mean_clv_pct=c.get("mean_clv_pct"),
+                        positive_share=c.get("positive_share")))
+    return out
+
+
 def recap(weekends, strategy):
     """Full-season stats of one strategy from a sweep's per-weekend rows."""
     ws = sorted(weekends or [], key=lambda w: (w.get("round") or 0))
@@ -377,7 +397,8 @@ def build(conn, cs, year=2026, sport="f1", venue=None):
                     volume_label="filled" if maker else "bought", up=t["weekends_up"], weekends=t["weekends"],
                     run_id=run["id"], in_sample=s in IN_SAMPLE, settings=cfg["settings"].to_json(),
                     vs_base=(t["pnl"] - bt["pnl"]) if bt and key != default_key else None, same_data=same_data,
-                    vs_bench=(t["pnl"] - bench["pnl"]) if bench and not is_bench else None, is_bench=is_bench)
+                    vs_bench=(t["pnl"] - bench["pnl"]) if bench and not is_bench else None, is_bench=is_bench,
+                    clv=clv_of(run["metrics"], s))
         recaps.append(dict(card, **rc))
         if not is_bench:
             cards.append(card)

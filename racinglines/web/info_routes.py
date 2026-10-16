@@ -32,8 +32,15 @@ def run_detail(request: Request, run_id: int, c=Depends(conn)):
     if not run:
         raise HTTPException(404)
     A.guard(request.state.user, run["competition"])
+    raw = dict(run.get("metrics") or {})
+    if run["kind"] == "sweep" and raw.get("totals"):     # P&L and closing-line value per strategy, side by side
+        from racinglines.web import edge as EDGE
+        clv = raw.pop("clv", None)
+        raw = {"strategies": EDGE.strategy_rows(dict(raw, clv=clv)), **raw}
+        if isinstance(clv, dict):                          # metrics.clv's tables (pipelines/clv.py sweep_summary)
+            raw.update({f"clv {k}": v for k, v in clv.items()})
     metrics = {k: pd.DataFrame(v) if isinstance(v, list) else pd.DataFrame([v])
-               for k, v in (run.get("metrics") or {}).items()}
+               for k, v in raw.items()}
     targets = rows(data.run_race_targets(c, run_id))
     preds = [dict(t, table=rows(data.race_predictions(c, run_id, t["target"]))) for t in targets]
     return render(request, "run.html", run=run, metrics={k: (list(v.columns), rows(v)) for k, v in metrics.items()},
