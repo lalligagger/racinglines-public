@@ -183,9 +183,10 @@ def run(test_engine, sport, **kw):
 # params["settings"], every table and total byte-identical; re-pinned again the same day for tape_source's null entry
 # (with it removed, the output still hashes to the previous digests 6562cf8c..., bd89ddb3...); and again for
 # taker_fill's and max_spread's null entries (with them removed, it hashes to 04ed6e31..., 59975851...); and again
-# for the taker's fill="price" param (with it removed, it hashes to 2c5e446d..., 6797e03b...)
-BASE = {"nascar": "e659d444e541b801836019255fd510fa343c82e01ebe72558554c1d616fa8cc6",
-        "motogp": "c3a1421d07f59917f5bec40307d138911af9626e2c805221b2624f3cbef67759"}
+# for the taker's fill="price" param (with it removed, it hashes to 2c5e446d..., 6797e03b...); and again 2026-10-16
+# for sell_floor's null entries (with them removed, it hashes to e659d444..., c3a1421d...)
+BASE = {"nascar": "e6fc3512b7eba5b73624f0423b8d96b1ccc46527d40d45b8503b0c465f2657f0",
+        "motogp": "7e7d35ff24ce5e3cce9f4eb8014be0b2570002f4c454625955663bcdf5170c11"}
 
 
 @pytest.mark.parametrize("sport", ["nascar", "motogp"])

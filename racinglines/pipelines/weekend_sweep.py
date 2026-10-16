@@ -576,6 +576,7 @@ def taker_params(st):
                           max_deployed=st["max_deployed"], thin_edge_mult=st["thin_edge_mult"],
                           kelly=st["kelly"], bankroll=st["bankroll"] if st["kelly"] is not None else None,
                           root_unit=st.get("root_unit"), fill="book" if st.get("taker_fill") == "book" else "price",
+                          sell_floor=None if st.get("sell_floor") in (None, "none") else st.get("sell_floor"),
                           taker_fee=taker_fee(venue))
     if st["kelly"] is not None and st["bankroll"] is None:
         raise ValueError("kelly sizing needs a bankroll (the `bankroll` setting)")
