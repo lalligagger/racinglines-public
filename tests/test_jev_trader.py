@@ -336,3 +336,31 @@ def test_static_report_section_ranks_b_rules_top5_caveats_and_none_group():
     assert "rank 3 of 5 (top 60%)" in text
     for k in T.DECISION_BASELINES:
         assert T.BASELINE_NAMES[k] in text
+
+
+def test_position_cap_removes_a_full_strategy_from_the_options_and_keeps_cash():
+    # opt-in cap: once "A" holds max_lots, it is no longer offered; CASH always is
+    u = hand_universe()
+    seen = []
+
+    def always_a(state, options):
+        seen.append(list(options))
+        if "A" in options:
+            return {"choice": "A", "probabilities": {k: (0.9 if k == "A" else 0.05) for k in options}}
+        return {"choice": "CASH", "probabilities": {k: (0.9 if k == "CASH" else 0.05) for k in options}}
+
+    table, _ = T.allocate_week(u.view(1), set(), 10000, always_a, max_lots=5)
+    assert table.get("A", 0) == 5 and table["CASH"] == 15
+    assert "A" not in seen[-1] and T.CASH in seen[-1]          # the last request no longer offers A
+
+
+def test_no_cap_is_identical_to_the_pre_registered_options():
+    u = hand_universe()
+    seen = []
+
+    def record(state, options):
+        seen.append(list(options))
+        return {"choice": "A", "probabilities": {k: (0.9 if k == "A" else 0.05) for k in options}}
+
+    T.allocate_week(u.view(1), set(), 10000, record)            # default: max_lots None
+    assert all(o == ["A", "B", "C", T.CASH] for o in seen)

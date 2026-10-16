@@ -197,6 +197,13 @@ def main(argv=None):
     p = sub.add_parser("search")
     p.add_argument("queue", help="Queue file, e.g. sweeps/poc.toml (re-read while running: edit it to steer)")
     p.add_argument("--leaderboard", action="store_true", help="Only rewrite the leaderboard from state.json")
+    p = sub.add_parser("search-plan", help="Print a code-only sweep plan; never runs sweeps or writes to the database.")
+    p.add_argument("snapshot", help="JSON: year, stored_keys, candidates (settings dicts), optional completed history")
+    p.add_argument("--budget", type=int, default=0, help="Maximum new settings to plan (default 0)")
+    p.add_argument("--stop-after", type=int, default=0, help="Stop after K consecutive completed-score misses (default off)")
+    p.add_argument("--margin", type=float, default=0.0, help="Required improvement over the running best; higher is better")
+    p.add_argument("--best-score", type=float, default=None, help="Best score before the supplied history; required with --stop-after")
+    p.add_argument("--dry-run", action="store_true", help="Print the plan and exit (execution is disabled regardless)")
     p = sub.add_parser("search-report")
     p.add_argument("queue", help="The search's queue file: labels, noise floor, confirmations and candidates from its "
                                  "finished jobs (an optional [report] table configures it)")
@@ -289,6 +296,13 @@ def main(argv=None):
     from racinglines.cli.verbs import retitle
     retitle(ap, "f1")
     args = ap.parse_args(argv)
+    if args.cmd == "search-plan":
+        from racinglines.pipelines.search_plan import print_plan
+        try:
+            return print_plan(args.snapshot, budget=args.budget, stop_after=args.stop_after, margin=args.margin,
+                              best_score=args.best_score, dry_run=args.dry_run)
+        except (OSError, ValueError) as ex:
+            ap.error(str(ex))
     from racinglines.models import variants as V
     V.switches(args.variant)                         # fail fast on an unknown name
     with V.use(args.variant):

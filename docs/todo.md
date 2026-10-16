@@ -421,6 +421,12 @@ run times, the rest results); the old classes are challengers ([Backtest core](b
 
 Phased plan and ground rules: [F1 roadmap](f1-roadmap.md).
 
+- [ ] **Local Jev auto-sweeper (owner, 2026-10-15; `track/models-jev`).** Finite supplied pool,
+      exact sweep-key dedup, target/held-out search-report evidence, bounded runs/API calls and
+      interruptible durable resume. Code-only planner and mocked runner tests are built locally;
+      a real Jev/sweep end-to-end check still needs an owner-selected pool and local database backup.
+      No automatic promotion, VM action or real trading. [Usage and scope](cloud-sweep.md#local-jev-guided-auto-sweeper-research-mvp).
+
 - [ ] **P1 · Grid penalties (branch `work/grid-penalties`).** Confirmed penalties in `sports/f1/grid_penalties.toml`
       move the race's or sprint's starting grid before it is simulated ([F1 model](f1.md#model-racinglinesmodelsinputslapspy),
       "Grid penalties"); first row: Russell to the back for Singapore (2026-17). Re-price Singapore once it ships.
@@ -1064,4 +1070,3 @@ Finished items, moved here from the sections above, with the dates they were don
       on its own line (2026-09-28, cloud build-out).
 - [x] JSON API endpoints next to the pages: read-only events and athletes, behind the login,
       off unless `RACINGLINES_JSON_API=1` ([JSON API](webapp.md#json-api), 2026-09-28, cloud).
-

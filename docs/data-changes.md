@@ -15,6 +15,24 @@ files in `data/archive/<sport>/` (both git-ignored; `data/raw` is the record, so
 without a copy). Since 2026-10-01 nothing under `data/` is in git, and production data lives on the VM: back up
 there with `vm.sh backup <purpose>`.
 
+## 2026-10-14 · Season demo: Jev account created
+
+Database `racinglines_staging_demo`, 2026-10-15 02:33Z (14 Oct PDT), with the owner's explicit approval.
+Production `racinglines` and mirrored `racinglines_staging` were not targeted.
+
+**What.** Staging's `racinglines users add jev --role pro`, with `DATABASE_URL` guarded to end in
+`/racinglines_staging_demo`, created active pro user **22** and its signup grant. Read-only verification found
+exactly one active `jev` account, one grant row with `ref_table IS NULL`, and a grant sum of **F$1,000.00**.
+The demo's `data_changes` note **450** records the backup and rollback. No picks were written. A later
+`season-demo` rebuild can replace Jev's style and picks; write its intended picks after the last rebuild
+or explicitly exclude it first.
+
+**Backup** (validated gzip integrity and the PostgreSQL dump-complete trailer before creation):
+`/opt/racinglines-staging/data/backups/db/racinglines_staging_demo-before-jev-20261015T023207Z.sql.gz`
+(153 MB).
+
+**Undo.** Restore that backup into `racinglines_staging_demo` only; this also reverts subsequent demo changes.
+
 ## 2026-10-14 · Staging mirror on: racinglines_staging follows production
 
 Production's Postgres and `racinglines_staging`, 17:5xZ to 18:31Z, by the owner from the Mac (docs/vm-deploy.md
