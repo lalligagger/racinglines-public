@@ -338,8 +338,10 @@ def run_sweep(args, sport):
     if len(w):
         print(w[cols].to_string(index=False, float_format="{:.2f}".format))
     print("\n=== Totals ===")
+    from racinglines.pipelines import clv as CLV
     for k, v in out["totals"].items():
-        print(f"{k:11s} P&L {v['pnl']:+9.2f} on ${v['bought']:,.0f} · {v['weekends_up']}/{v['weekends']} races up")
+        print(f"{k:11s} P&L {v['pnl']:+9.2f} on ${v['bought']:,.0f} · {v['weekends_up']}/{v['weekends']} races up"
+              f" · {CLV.sweep_line(out.get('clv'), k)}")
     if len(out["by_kind"]):
         print("\n=== Update strategy by market kind ===")
         print(out["by_kind"].to_string(index=False, float_format="{:+.2f}".format))

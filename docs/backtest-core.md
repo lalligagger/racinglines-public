@@ -293,6 +293,15 @@ per bin (`racinglines/core/calibration.py`, shared by every sport). Pooled rows 
 stage it was tradeable, so they are correlated; compare model with market on the same rows rather than
 reading the absolute numbers.
 
+### Closing-line value in every sweep
+
+Every season sweep, of any sport and venue, also scores its trades against the close: each taker mode's trades and
+each maker variant's fills go through `racinglines/pipelines/clv.py` (the `racinglines backtest clv` rule: the venue's
+price when the market's deciding session starts, the YES price signed for the side held), and the saved run keeps
+the aggregate in `metrics.clv` (`by_strategy`, `by_stage`, `by_event`, `undecided`). It is an addition, not a
+setting: no key changes, and every other metric of a sweep is what it was. The owner's go/no-go line for real money is
+CLV above +2 % over 100 live bets; a sweep's CLV is the backtest's view of the same number.
+
 ### The search report
 
 `racinglines strategy search-report f1 QUEUE.toml` turns a finished search into labelled results

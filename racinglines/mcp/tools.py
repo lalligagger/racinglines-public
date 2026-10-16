@@ -691,7 +691,8 @@ def get_forecast(conn, competition=None, sport=None, category=None, top=10):
 
 def edge_finder(conn, year=2026, strategy=None, venue=None, limit=None, offset=0):
     """Every configuration with a full-season sweep of `year`, with the full-season recap of each strategy
-    (P&L, volume, weekends up, drawdown, consistency): what the Lab's Edge Finder shows, from saved runs only."""
+    (P&L, volume, weekends up, drawdown, consistency) and its closing-line value (`clv`: metrics.clv's by_strategy
+    row, None for a sweep saved before CLV was): what the Lab's Edge Finder shows, from saved runs only."""
     from racinglines.pipelines import sweep_settings as SS
     from racinglines.web import edge as E
     if venue and venue not in SS.VENUES:
@@ -710,7 +711,8 @@ def edge_finder(conn, year=2026, strategy=None, venue=None, limit=None, offset=0
             rc = E.recap(weekends, s)
             rows.append(dict(config=c["label"], settings_key=c["key"], run_id=c["run_id"],
                              venue=c["settings"]["venue"] or SS.DEFAULT_VENUE, strategy=s,
-                             strategy_label=E.STRATEGY_LABEL[s], **{k: v for k, v in rc.items()}))
+                             strategy_label=E.STRATEGY_LABEL[s], **{k: v for k, v in rc.items()},
+                             clv=E.clv_of((run or {}).get("metrics"), s)))
     rows.sort(key=lambda r: -(r["pnl"] or 0))
     return dict(year=int(year), venue=venue, configurations=len(cfgs), strategies={k: E.STRATEGY_LABEL[k] for k in strategies},
                 changed_settings={c["key"]: c["settings"].changed() for c in cfgs.values()},
