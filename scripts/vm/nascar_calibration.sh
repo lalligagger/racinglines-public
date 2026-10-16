@@ -8,19 +8,28 @@
 # copied to sports/<sport>/calibration.toml in this checkout and removed again at the end (never committed from here).
 #
 #   SPORT=nascar  SEASONS="2023 2024 2025 2026" (races fitted)  SIMS=4000  SWEEP_YEARS="2025 2026"
-#   VENUES="polymarket kalshi"  APP=/opt/racinglines-staging  ENV_FILE=/etc/racinglines-staging.env
+#   VENUES="polymarket kalshi" (scored in the fit report)  SWEEP_VENUES="kalshi" (swept)
+#   FILL="--taker-fill touch"  SELL_FLOORS="none edge"  APP=/opt/racinglines-staging  ENV_FILE=/etc/racinglines-staging.env
+#
+# Only Kalshi is swept by default: NASCAR's Polymarket race-win books are near-empty (Charlotte 2026: about $38 of taker
+# trades over the last 2.5 days across 38 drivers, prices that are mids of empty books summing to 9 to 17), so the
+# sweep's volume and coherence filters leave nothing to trade there. Each sweep runs with sell_floor none and edge
+# (#225; edge is in-sample only, so both are reported), calibration off and on.
 #
 # Run on the VM as a transient unit (prints a progress line at least every 5 minutes):
 #   sudo systemd-run --unit=rl-nascar-calib --uid=racinglines /opt/racinglines-staging/scripts/vm/nascar_calibration.sh
 #   journalctl -fu rl-nascar-calib
 # Output (needs closing-line value in the sweep, #223): data/runs/<sport>/calibration-<UTC>/ (fit.log, calibration.toml, report.md, races.csv, vs_<venue>.csv,
-# sweep-<year>-<venue>-<off|on>.txt, summary.md).
+# sweep-<year>-<venue>-floor_<none|edge>-calib_<off|on>.txt, summary.md).
 set -uo pipefail
 SPORT=${SPORT:-nascar}
 SEASONS=${SEASONS:-2023 2024 2025 2026}
 SIMS=${SIMS:-4000}
 SWEEP_YEARS=${SWEEP_YEARS:-2025 2026}
 VENUES=${VENUES:-polymarket kalshi}
+SWEEP_VENUES=${SWEEP_VENUES:-kalshi}
+FILL=${FILL:---taker-fill touch}
+SELL_FLOORS=${SELL_FLOORS:-none edge}
 APP=${APP:-/opt/racinglines-staging}
 ENV_FILE=${ENV_FILE:-/etc/racinglines-staging.env}
 set -a; . "$ENV_FILE"; set +a
@@ -56,16 +65,20 @@ else
 fi
 rc=0
 for y in $SWEEP_YEARS; do
-  for v in $VENUES; do
-    for mode in off on; do
-      f=$OUT/sweep-$y-$v-$mode.txt
-      extra=(); [ "$mode" = on ] && extra=(--calib-power walk_forward)
-      say "sweep $y $v calibration $mode: started"
-      if nice $R strategy sweep "$SPORT" --year "$y" --venue "$v" --reliability "${extra[@]}" > "$f" 2>&1; then
-        say "sweep $y $v calibration $mode: done"
-      else
-        rc=1; say "sweep $y $v calibration $mode: FAILED: $(tail -n 2 "$f" | tr '\n' ' ')"
-      fi
+  for v in $SWEEP_VENUES; do
+    for sf in $SELL_FLOORS; do
+      for mode in off on; do
+        name=$y-$v-floor_$sf-calib_$mode
+        f=$OUT/sweep-$name.txt
+        # shellcheck disable=SC2086
+        extra=($FILL --sell-floor "$sf"); [ "$mode" = on ] && extra+=(--calib-power walk_forward)
+        say "sweep $name: started"
+        if nice $R strategy sweep "$SPORT" --year "$y" --venue "$v" --reliability "${extra[@]}" > "$f" 2>&1; then
+          say "sweep $name: done"
+        else
+          rc=1; say "sweep $name: FAILED: $(tail -n 2 "$f" | tr '\n' ' ')"
+        fi
+      done
     done
   done
 done
@@ -76,6 +89,8 @@ done
   cat "$OUT/report.md"
   echo
   echo "## Season sweeps, calibration off and on (P&L and CLV per strategy, as the sweep prints them)"
+  echo
+  echo "Venues swept: $SWEEP_VENUES. Fill: $FILL. Sell floor: $SELL_FLOORS."
   for f in "$OUT"/sweep-*.txt; do
     echo
     echo "### $(basename "$f" .txt)"
