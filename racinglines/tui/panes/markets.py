@@ -182,9 +182,12 @@ class MarketsPane(Pane):
         rows = sorted(fmt.first_table(events, "events").rows, key=lambda r: str(r.get("start_date") or ""))
         options: list[tuple[str, str]] = []
         for r in rows:
+            event_id = r.get("id") if r.get("id") is not None else r.get("event_id")
+            if event_id is None:  # no exact key to open the matrix by: leave the row out, never "event:None"
+                continue
             name = str(r.get("name") or r.get("title") or r.get("source_key"))
             options.append((f"{str(r.get('start_date') or '')[:10]}  {r.get('competition', '')}  {name[:48]}",
-                            f"event:{r.get('id', r.get('event_id'))}"))
+                            f"event:{event_id}"))
         for comp in self.rl.competitions():
             options.append((f"Season-long  {comp}", f"comp:{comp}"))
         select = self.query_one("#mk-scope", Select)
@@ -198,6 +201,8 @@ class MarketsPane(Pane):
         kind, _, ident = event.value.partition(":")
         view = self.query_one("#mk-view", MarketsView)
         if kind == "event":
+            if not ident.isdigit():
+                return
             view.set_scope(event_id=int(ident))
         else:
             view.set_scope(competition=ident)

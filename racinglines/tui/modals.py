@@ -307,8 +307,13 @@ class MarketScreen(Dialog):
         args: dict[str, Any] = {"series": "prices", "resample": "1h", "limit": 200}
         if token:
             args["tokens"] = str(token)
+        elif self.row.get("athlete_id"):  # an exact key only: the server's `subject` is an ILIKE match
+            args.update(race_id=self.race_id, kind=self.row.get("kind"), athlete_id=self.row["athlete_id"],
+                        exchange=self.row.get("exchange"))
         else:
-            args.update(race_id=self.race_id, kind=self.row.get("kind"), subject=self.row.get("subject"))
+            self.query_one("#spark-caption", Static).update(
+                Text("no exact key for this outcome (no token, no athlete_id): no history shown.", style=fmt.DIM))
+            return
         if self.row.get("result") is None:  # upcoming: the last week, not the week before the race
             now = datetime.now(timezone.utc)
             args.update(start=(now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M"), end=now.strftime("%Y-%m-%dT%H:%M"))

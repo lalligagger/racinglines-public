@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from ..widgets import CButton, CInput, CSelect  # noqa: F401
 
+from rich.console import Group
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -12,8 +13,32 @@ from textual.widgets import Button, Input, RichLog, Select, Static, TabbedConten
 
 from .. import fmt
 from ..cli import run_cli
-from ..widgets import DataGrid, ObjectView, PagedGrid
+from ..modals import ConfirmScreen
+from ..widgets import DataGrid, ObjectView, PagedGrid, rich_kv_table
 from .base import Pane
+
+
+def pull_database_url() -> str:
+    """The database `racinglines data pull` will write, resolved as the CLI does (DATABASE_URL, else the defaults
+    file's `db`, else docker-compose's), password hidden. Never the first-run question: this runs under the TUI."""
+    import os
+
+    from sqlalchemy.engine import make_url
+
+    from racinglines.cli import config
+    from racinglines.db.config import DEFAULT_URL
+
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        try:
+            url = config.load().get("db")
+        except Exception:  # noqa: BLE001 - an unreadable defaults file: the pull itself will say so
+            url = None
+    url = url or DEFAULT_URL
+    try:
+        return make_url(url).render_as_string(hide_password=True)
+    except Exception:  # noqa: BLE001
+        return "(a database URL that did not parse)"
 
 
 class SqlEditor(TextArea):
@@ -117,8 +142,8 @@ class DataPane(Pane):
         if payload is not None:
             grid.load(fmt.first_table(payload, "rows", "result"))
 
-    async def _pull(self) -> None:
-        log = self.query_one("#dt-pull-log", RichLog)
+    def _confirm_pull(self) -> None:
+        """Data > Pull writes the local database: say which one, and ask, before anything runs."""
         sport = self.query_one("#dt-pull-sport", Select).value
         if not isinstance(sport, str):
             self.app.notify("Pick a sport to pull.", severity="warning")
@@ -127,6 +152,19 @@ class DataPane(Pane):
         args = ["data", "pull", sport] + (["--since", since] if since else [])
         if self.query_one("#dt-pull-what", Select).value == "no-markets":
             args.append("--no-markets")
+        body = Group(
+            rich_kv_table([("command", f"racinglines {' '.join(args)}"), ("database", pull_database_url())]),
+            Text("\nThis writes to that database. Take a dump first (data/backups/db/, docs/data-changes.md) "
+                 "if it holds anything you want to keep; the TUI makes no backup.", style=fmt.DIM))
+
+        def confirmed(ok: bool | None) -> None:
+            if ok:
+                self.run(self._pull(sport, args), group="pull")
+
+        self.app.push_screen(ConfirmScreen("Pull into this database?", body, "Pull"), confirmed)
+
+    async def _pull(self, sport: str, args: list[str]) -> None:
+        log = self.query_one("#dt-pull-log", RichLog)
         button = self.query_one("#dt-pull-cli", CButton)
         button.disabled = True
         log.write(f"$ racinglines {' '.join(args)}")
@@ -154,7 +192,7 @@ class DataPane(Pane):
         if bid == "dt-sql-run":
             self.run(self._run_sql(0), group="sql")
         elif bid == "dt-pull-cli":
-            self.run(self._pull(), group="pull")
+            self._confirm_pull()
 
     def on_data_grid_page_request(self, event: DataGrid.PageRequest) -> None:
         if event.grid.id == "dt-sql-grid":

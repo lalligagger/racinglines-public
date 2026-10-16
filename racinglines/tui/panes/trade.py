@@ -12,6 +12,7 @@ from rich.table import Table as RichTable
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
+from textual.css.query import NoMatches
 from textual.widgets import Button, Input, Label, Select, Static, Switch, TabbedContent, TabPane
 
 from .. import fmt
@@ -170,14 +171,29 @@ class TradePane(Pane):
     async def _load_book(self) -> None:
         if not self.market:
             return
-        book = await self.call("fantasy_book", market_link_id=int(self.market["market_link_id"]))
-        if isinstance(book, dict):
+        link_id = int(self.market["market_link_id"])
+        book = await self.call("fantasy_book", market_link_id=link_id)
+        # A poll that was in flight when another market was picked must not draw the old market's book.
+        if isinstance(book, dict) and self.market and int(self.market["market_link_id"]) == link_id:
             self.book = book
             self._render_book()
 
+    def _tab_active(self) -> bool:
+        """The Trade tab is the front tab and no dialog is over it. A hidden TabPane keeps `display` true on its
+        children, so this asks the app's TabbedContent instead."""
+        if not self.is_attached:
+            return False
+        try:
+            tab = self.query_ancestor(TabPane)
+            tabs = self.app.query_one("#tabs", TabbedContent)
+        except NoMatches:
+            return False
+        return tabs.active == tab.id and self.app.screen is self.screen
+
     def _auto_book(self) -> None:
-        if self.market and self.display and self.is_attached:
-            self.run(self._load_book(), group="book")
+        # Its own worker group: a tick must never cancel the selection's load (group "book").
+        if self.market and self._tab_active():
+            self.run(self._load_book(), group="book-poll")
 
     # ---------------------------------------------------------------- rendering
     def _side(self) -> str:

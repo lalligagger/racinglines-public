@@ -54,7 +54,17 @@ Orders are fantasy F$ and reach no exchange (`fantasy_order`). Before one is sen
 the recorded book (at most 10 levels, at or better than the limit) and asks to confirm. It blocks an order on a book
 older than the server's `max_age_min` (15), a buy over the `max_stake` cap (F$100) or beyond the cash, and gives each
 order a fresh `client_key` so a retry can't fill twice. "Search Trade" on a market outcome fills the Trade search
-with its subject: a search, not a link, since a fantasy market and a matrix outcome share no exact key.
+with its subject: a search, not a link, since a fantasy market and a matrix outcome share no exact key. The same
+rule holds in the market screen's price history: it is fetched by the venue's token, else by `athlete_id` (with the
+row's `exchange` when it has one), and an outcome with neither shows "no exact key" rather than a name match. The
+Trade book refreshes every 20 s only while the Trade tab is in front.
+
+## Data > Pull writes your database
+
+Pull runs `racinglines data pull SPORT` as a subprocess and **writes to the database it names**. The TUI asks first,
+showing the command and the database URL (password hidden), and makes no backup itself: take the dump before you
+confirm, as in [Data changes](data-changes.md) (`data/backups/db/racinglines-before-<task>-<UTC time>.sql.gz`). The pull
+is terminated if its worker is cancelled or the app quits.
 
 ## Lab: a sweep from an Edge Finder row
 

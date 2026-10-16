@@ -10,8 +10,25 @@ from racinglines.tui.backend import ConnectionSettings, McpBackend, ToolError
 STUB = Path(__file__).resolve().parent / "tui_stub_server.py"
 
 
+def _record_errlogs(monkeypatch, tmp_path):
+    """LOG_DIR in tmp_path, and every server.log handle the backend opens, so a test can see it closed."""
+    from racinglines.tui import backend as mod
+
+    monkeypatch.setattr(mod, "LOG_DIR", tmp_path)
+    opened = []
+    real = mod._open_errlog
+
+    def spy():
+        handle = real()
+        opened.append(handle)
+        return handle
+
+    monkeypatch.setattr(mod, "_open_errlog", spy)
+    return opened
+
+
 def test_stdio_round_trip(monkeypatch, tmp_path):
-    monkeypatch.setattr("racinglines.tui.backend.LOG_DIR", tmp_path)
+    opened = _record_errlogs(monkeypatch, tmp_path)
 
     async def go():
         backend = McpBackend(ConnectionSettings(stdio_argv=[sys.executable, str(STUB)], timeout=20))
@@ -29,16 +46,19 @@ def test_stdio_round_trip(monkeypatch, tmp_path):
         finally:
             await backend.close()
         assert not backend.connected
+        assert len(opened) == 1 and opened[0].closed  # close() leaves no server.log handle behind
 
     asyncio.run(go())
 
 
 def test_bad_command_is_a_clear_error(tmp_path, monkeypatch):
-    monkeypatch.setattr("racinglines.tui.backend.LOG_DIR", tmp_path)
+    opened = _record_errlogs(monkeypatch, tmp_path)
 
     async def go():
         backend = McpBackend(ConnectionSettings(stdio_argv=["definitely-not-racinglines", "mcp"]))
         with pytest.raises(ConnectionError, match="server log"):
             await backend.start()
+        await backend.close()
 
     asyncio.run(go())
+    assert opened and all(h.closed for h in opened)  # a failed start closes the log too

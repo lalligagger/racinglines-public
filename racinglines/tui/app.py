@@ -91,13 +91,14 @@ class RacinglinesApp(App):
         self.sub_title = f"connecting to {self.backend.label}…"
         self.run_worker(self._connect(), exclusive=True, group="connect", exit_on_error=False)
 
-    async def _connect(self) -> None:
+    async def _connect(self) -> bool:
+        """Start the backend; False (after telling the user) when it could not."""
         try:
             await self.backend.start()
         except Exception as exc:  # noqa: BLE001
             self.sub_title = "disconnected"
             self.notify(f"{exc}\nctrl+r tries again.", title="Can't reach racinglines", severity="error", timeout=15)
-            return
+            return False
         name = getattr(self.backend, "server_name", None)
         self.sub_title = f"{name or 'connected'}  {self.backend.label}"
         if self.remote_warning:  # cli/remote.py's warning: the hosted data is for testing only
@@ -108,6 +109,7 @@ class RacinglinesApp(App):
         if not self.query_one("#pane-home", Pane).loaded:
             self.query_one("#pane-home", Pane).ensure_loaded()
         self._active_pane().ensure_loaded()
+        return True
 
     async def on_unmount(self) -> None:
         await self.backend.close()
@@ -161,8 +163,8 @@ class RacinglinesApp(App):
     def action_reconnect(self) -> None:
         async def go() -> None:
             await self.backend.close()
-            await self._connect()
-            self._active_pane().refresh_data()
+            if await self._connect():
+                self._active_pane().refresh_data()
 
         self.run_worker(go(), exclusive=True, group="connect", exit_on_error=False)
 

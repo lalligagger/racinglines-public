@@ -40,7 +40,7 @@ async def _test_every_tab_loads_and_drills():
         for key, _, _ in TABS:
             app.action_tab(key)
             await settle(pilot)
-            shot(app, "{key}.svg")
+            shot(app, f"{key}.svg")
         tools = {t for t, _ in backend.calls}
         for needed in ("overview", "get_forecast", "list_markets", "list_events", "search_athletes",
                        "fantasy_balance", "fantasy_markets", "fantasy_positions", "track_record",
@@ -278,3 +278,186 @@ def test_paging_text_without_total():
     grid.table = fmt.to_table({"columns": ["id"], "rows": [{"id": 1}, {"id": 2}], "total": None,
                                "offset": 0, "next_offset": 2})
     assert "] for more" in grid.paging_text()
+
+
+def _row(**kw):
+    return {"kind": "race_win", "subject": "Max Verstappen", "fair": 0.15, "result": None, **kw}
+
+
+def test_market_history_uses_exact_keys_only():
+    asyncio.run(_test_market_history_uses_exact_keys_only())
+
+
+async def _test_market_history_uses_exact_keys_only():
+    backend = FakeBackend()
+    app = RacinglinesApp(backend)
+    async with app.run_test(size=(160, 48)) as pilot:
+        await settle(pilot)
+
+        def history_calls():
+            return [a for t, a in backend.calls if t == "get_market_history"]
+
+        # A token is the exact key.
+        app.push_screen(MarketScreen(_row(polymarket_token="6206", athlete_id=1143), 136, "polymarket"))
+        await settle(pilot)
+        assert history_calls()[-1]["tokens"] == "6206" and "subject" not in history_calls()[-1]
+        await pilot.press("escape")
+
+        # No token, but an athlete_id: by id (and the row's exchange), never by the ILIKE `subject`.
+        before = len(history_calls())
+        app.push_screen(MarketScreen(_row(athlete_id=1143, exchange="kalshi"), 136, "polymarket"))
+        await settle(pilot)
+        call = history_calls()[-1]
+        assert len(history_calls()) == before + 1
+        assert call["athlete_id"] == 1143 and call["race_id"] == 136 and call["kind"] == "race_win"
+        assert call["exchange"] == "kalshi" and "subject" not in call
+        await pilot.press("escape")
+
+        # Neither: no call at all, and the screen says why.
+        before = len(history_calls())
+        app.push_screen(MarketScreen(_row(), 136, "polymarket"))
+        await settle(pilot)
+        assert len(history_calls()) == before
+        assert "no exact key" in str(app.screen.query_one("#spark-caption").render())
+        await pilot.press("escape")
+
+
+class GatedBook(FakeBackend):
+    """fantasy_book waits for `gate`, so a test can see which workers are in flight."""
+
+    def __init__(self):
+        super().__init__()
+        self.gate = asyncio.Event()
+        self.gate.set()
+
+    async def call(self, tool, **args):
+        if tool == "fantasy_book":
+            await self.gate.wait()
+        return await super().call(tool, **args)
+
+
+def test_book_poll_runs_only_on_the_trade_tab_and_never_cancels_a_selection():
+    asyncio.run(_test_book_poll())
+
+
+async def _test_book_poll():
+    backend = GatedBook()
+    app = RacinglinesApp(backend)
+    async with app.run_test(size=(160, 48)) as pilot:
+        await settle(pilot)
+        pane = app.query_one("#pane-trade")
+        pane.market = {"market_link_id": 40423, "exchange": "polymarket", "question": "q"}
+
+        def books():
+            return [1 for t, _ in backend.calls if t == "fantasy_book"]
+
+        # Another tab in front: the tick is a no-op even though the pane's own display is true.
+        app.action_tab("markets")
+        await settle(pilot)
+        before = len(books())
+        pane._auto_book()
+        await settle(pilot)
+        assert len(books()) == before
+
+        # Trade in front: it polls, in its own worker group, so a selection in flight is not cancelled.
+        app.action_tab("trade")
+        await settle(pilot)
+        before = len(books())
+        backend.gate.clear()
+        pane.run(pane._select_market(), group="book")
+        pane._auto_book()
+        await pilot.pause(0.1)
+        groups = {w.group: w for w in app.workers if not w.is_finished}
+        assert {"pane-trade-book", "pane-trade-book-poll"} <= set(groups)
+        backend.gate.set()
+        await settle(pilot)
+        assert len(books()) == before + 2
+        assert pane.book.get("market_link_id") == 40423 and app.query_one("#tr-limit").value == "0.50"
+
+
+class OddEvents(FakeBackend):
+    async def call(self, tool, **args):
+        if tool == "list_events":
+            self.calls.append((tool, args))
+            return {"events": {"columns": ["id", "name", "start_date", "competition"], "rows": [
+                {"id": None, "name": "NO KEY", "start_date": "2026-01-01", "competition": "f1_wdc"},
+                {"name": "ALSO NO KEY", "start_date": "2026-01-02", "competition": "f1_wdc"},
+                {"id": 91, "name": "UNITED STATES GRAND PRIX 2026", "start_date": "2026-10-25",
+                 "competition": "f1_wdc"}], "total": 3}}
+        return await super().call(tool, **args)
+
+
+def test_markets_scope_skips_events_without_a_key():
+    asyncio.run(_test_markets_scope_skips_events_without_a_key())
+
+
+async def _test_markets_scope_skips_events_without_a_key():
+    from textual.widgets import Select
+
+    backend = OddEvents()
+    app = RacinglinesApp(backend)
+    async with app.run_test(size=(160, 48)) as pilot:
+        await settle(pilot)
+        app.action_tab("markets")
+        await settle(pilot)
+        assert app.query_one("#mk-scope", Select).value == "event:91"  # the keyless rows came first, and are gone
+        assert [a for t, a in backend.calls if t == "list_markets"][-1]["event_id"] == 91
+
+
+def test_pull_asks_first_names_the_database_and_stops_with_the_app(monkeypatch):
+    asyncio.run(_test_pull(monkeypatch))
+
+
+async def _test_pull(monkeypatch):
+    import sys
+
+    from textual.widgets import TabbedContent
+
+    from racinglines.tui import cli as run_mod
+    from racinglines.tui.modals import ConfirmScreen
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://rl:hunter2@dbhost:5433/racinglines_demo")
+    procs = []
+    real = asyncio.create_subprocess_exec
+
+    async def spy(*a, **k):
+        proc = await real(*a, **k)
+        procs.append(proc)
+        return proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spy)
+    monkeypatch.setattr(run_mod, "argv", lambda *a: [sys.executable, "-c", "import time; time.sleep(60)"])
+
+    app = RacinglinesApp(FakeBackend())
+    async with app.run_test(size=(160, 48)) as pilot:
+        await settle(pilot)
+        app.action_tab("data")
+        await settle(pilot)
+        app.query_one("#dt-tabs", TabbedContent).active = "dt-pull"
+        await settle(pilot)
+        app.query_one("#dt-pull-sport").value = "f1"
+        await settle(pilot)
+
+        app.query_one("#dt-pull-cli").press()
+        await settle(pilot)
+        assert isinstance(app.screen, ConfirmScreen)
+        from rich.console import Console
+        console = Console(width=120, record=True, file=open(os.devnull, "w"))
+        console.print(app.screen.query("Static").last().content)
+        text = console.export_text()
+        assert "racinglines_demo" in text and "dbhost" in text and "hunter2" not in text
+        assert "writes to that database" in text
+        await pilot.press("escape")  # declined: nothing ran
+        await settle(pilot)
+        assert procs == []
+
+        app.query_one("#dt-pull-cli").press()
+        await settle(pilot)
+        await pilot.press("y")
+        for _ in range(40):
+            if procs:
+                break
+            await pilot.pause(0.05)
+        assert len(procs) == 1 and procs[0].returncode is None
+    await asyncio.sleep(0.2)
+    assert procs[0].returncode is not None  # quitting the app stopped the pull

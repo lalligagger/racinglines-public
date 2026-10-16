@@ -80,3 +80,36 @@ def test_local_runs_racinglines_mcp_with_this_interpreter(monkeypatch):
     assert s.stdio_argv == [sys.executable, "-m", "racinglines", "mcp", "--db", "postgresql://localhost/rl", "--no-jobs"]
     assert s.label == "local: racinglines mcp --db postgresql://localhost/rl --no-jobs"
     assert seen["warning"] is None  # local data: no remote-access warning
+
+
+def test_run_cli_terminates_the_subprocess_when_cancelled(monkeypatch):
+    import asyncio
+
+    from racinglines.tui import cli as run_mod
+
+    procs = []
+    real = asyncio.create_subprocess_exec
+
+    async def spy(*a, **k):
+        proc = await real(*a, **k)
+        procs.append(proc)
+        return proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spy)
+    monkeypatch.setattr(run_mod, "argv", lambda *a: [sys.executable, "-c", "import time; print('up', flush=True); time.sleep(60)"])
+
+    async def go():
+        lines = []
+        task = asyncio.create_task(run_mod.run_cli(["data", "pull", "f1"], lines.append))
+        for _ in range(100):
+            if lines:
+                break
+            await asyncio.sleep(0.1)
+        assert lines == ["up"]
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        return procs[0]
+
+    proc = asyncio.run(go())
+    assert proc.returncode is not None  # not left running against the database

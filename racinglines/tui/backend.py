@@ -146,12 +146,16 @@ async def _http_transport(settings: ConnectionSettings):
         yield streams
 
 
-def _stdio_transport(argv: list[str]):
+def _open_errlog():
+    """The file the stdio server's stderr goes to: it must never reach the terminal, the TUI owns it. The caller
+    closes it."""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    return open(LOG_DIR / "server.log", "a", encoding="utf-8")  # noqa: SIM115
+
+
+def _stdio_transport(argv: list[str], errlog):
     from mcp.client.stdio import StdioServerParameters, stdio_client
 
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
-    # The server's stderr must never reach the terminal: the TUI owns it.
-    errlog = open(LOG_DIR / "server.log", "a", encoding="utf-8")  # noqa: SIM115
     env = {**os.environ, "RACINGLINES_PROGRESS_SEC": "0"}
     return stdio_client(StdioServerParameters(command=argv[0], args=argv[1:], env=env), errlog=errlog)
 
@@ -168,6 +172,7 @@ class McpBackend:
         self._stop = asyncio.Event()
         self._error: BaseException | None = None
         self._task: asyncio.Task | None = None
+        self._errlog: Any = None
 
     @property
     def connected(self) -> bool:
@@ -195,9 +200,12 @@ class McpBackend:
         from mcp import ClientSession
 
         self.settings.statuses.clear()
-        transport = (_stdio_transport(self.settings.stdio_argv) if self.settings.stdio_argv
-                     else _http_transport(self.settings))
         try:
+            if self.settings.stdio_argv:
+                self._errlog = _open_errlog()
+                transport = _stdio_transport(self.settings.stdio_argv, self._errlog)
+            else:
+                transport = _http_transport(self.settings)
             async with transport as streams:
                 read, write = streams[0], streams[1]
                 async with ClientSession(read, write) as session:
@@ -212,7 +220,14 @@ class McpBackend:
                 self._error = exc
         finally:
             self._session = None
+            self._close_errlog()  # after the child is gone, on a clean close and on a failed start alike
             self._ready.set()
+
+    def _close_errlog(self) -> None:
+        errlog, self._errlog = self._errlog, None
+        if errlog is not None:
+            with contextlib.suppress(OSError):
+                errlog.close()
 
     async def call(self, tool: str, **args: Any) -> Any:
         await self._ready.wait()
@@ -229,7 +244,7 @@ class McpBackend:
             with contextlib.suppress(BaseException):
                 await asyncio.wait_for(self._task, timeout=5)
         self._task = None
-
+        self._close_errlog()  # a task that outlived the wait is cancelled above; its handle goes either way
 
     def describe(self, exc: BaseException) -> str:
         """One line the user can act on: remote.py's wording (HTTP status, 401 advice), the stdio server's log path."""
