@@ -122,6 +122,7 @@ nav:
           - F1 model: f1.md
           - F1 evaluation: f1-evaluation.md
           - F1 forecast: f1-forecast.md
+          - F1 calibration: f1-calibration.md
           - Market making: market-making.md
           - Paper trading: paper-trading.md
           - Championship markets: championship-markets.md

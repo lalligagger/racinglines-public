@@ -40,7 +40,7 @@ LOG_MAX = 20_000
 class Knob:
     name: str
     label: str
-    type: str = "float"          # float | int | choice | text | datetime | event | years | legs (combo legs, JSON)
+    type: str = "float"          # float | int | choice | text | datetime | event | years | legs (combo legs, JSON) | calib
     default: object = None
     min: float | None = None
     max: float | None = None
@@ -163,11 +163,13 @@ def _combo_argv(p):
     return (["-m", "racinglines", "model", "combo", "f1", "--variant", p["variant"], "--half-life", str(p["half_life"]),
              "--event", p["event"], "--legs", p["legs"], "--sims", str(p["sims"]), "--save"]
             + ([] if p["cutoff"] == "now" else ["--cutoff", p["cutoff"]])
-            + (["--no-track"] if p["track"] == "off" else []))
+            + (["--no-track"] if p["track"] == "off" else [])
+            + (["--calib-power", p["calib_power"]] if p.get("calib_power") else []))
 
 
 def _f1_common(p, command):
-    return ["-m", "racinglines", "model", command, "f1", "--half-life", str(p["half_life"])]
+    return (["-m", "racinglines", "model", command, "f1", "--half-life", str(p["half_life"])]
+            + (["--calib-power", p["calib_power"]] if p.get("calib_power") else []))
 
 
 def _setting(name):
@@ -184,6 +186,7 @@ HALF_LIFE = Knob("half_life", _setting("half_life_days").label, "float", _settin
 
 def _sims(default, label="Simulations"):
     return Knob("sims", label, "int", default, _setting("sims").min, _setting("sims").max)
+CALIB = Knob("calib_power", _setting("calib_power").label, "calib", None, help=_setting("calib_power").help)
 F1_TRACK = Knob("track", "Track/sector features", "choice", "on", choices=["on", "off"],
                 help="Use the sector-type car model at each circuit.")
 
@@ -218,7 +221,7 @@ CATALOG = {j.code: j for j in [
     JobType("f1_diagnostic", "f1", "Event diagnostic", "Price one past race as of a cutoff (e.g. the evening before), "
             "then compare with Polymarket at that time and the result.",
             [Knob("event", "Event", "event"), Knob("cutoff", "As of (UTC)", "datetime"), HALF_LIFE,
-             _sims(10000), F1_TRACK],
+             _sims(10000), F1_TRACK, CALIB],
             lambda p, out: _f1_common(p, "diagnostic") + ["--event", p["event"], "--cutoff", p["cutoff"],
                                             "--sims", str(p["sims"]), "--save"]
             + (["--no-track"] if p["track"] == "off" else []),
@@ -235,7 +238,7 @@ CATALOG = {j.code: j for j in [
                        'needs (markets/combos.py)'),
              Knob("variant", "Model variant", "choice", combo_variants()[0], choices=combo_variants(),
                   help="the live book's variant plus flpos (the fastest lap from the simulated result) by default"),
-             HALF_LIFE, _sims(10000), F1_TRACK],
+             HALF_LIFE, _sims(10000), F1_TRACK, CALIB],
             lambda p, out: _combo_argv(p),
             "~1 min"),
     JobType("f1_sweep", "f1", "Edge Finder sweep (every weekend of the season)", "Every raced weekend of the "
@@ -340,6 +343,9 @@ def parse(job_type, form):
             out[k.name] = raw
         elif k.type == "legs":
             out[k.name] = parse_legs(raw)
+        elif k.type == "calib":                                  # off / walk_forward / a power (models/calibration.py)
+            from racinglines.models import calibration as CAL
+            out[k.name] = CAL.parse(raw)
         elif k.type == "datetime":
             if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", raw):
                 raise ValueError(f"{k.label}: use YYYY-MM-DDTHH:MM")
