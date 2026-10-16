@@ -1,0 +1,69 @@
+# The sale-floor A/B (owner, 2026-10-16: the #219 book-walk sale limit was ad hoc and must be reassessed). One change
+# per comparison, profile A at 3 seeds on Probalytics' tape, both venues:
+#   exit rule:  golden-probalytics-touch-2026 (touch, no floor)  vs  touch + sell_floor = edge  (this queue)
+#   depth:      touch + sell_floor = edge (this queue)  vs  golden-probalytics-book-2026 (book + #219's floor = edge)
+#   depth, no floor: golden-probalytics-touch-2026  vs  book + sell_floor = none (this queue: sells the touch level only)
+#
+#   TARGET=staging STAGING_DB=racinglines_staging_demo RACINGLINES_TAPE_SOURCE=probalytics MODE=search \
+#     QUEUE=sweeps/golden-probalytics-sellfloor-2026.toml scripts/vm/overnight.sh   (a transient unit)
+#
+# Size: 4 jobs x 3 replicates = 12 runs, plus the automatic baselines.
+
+[search]
+name = "golden-probalytics-sellfloor-2026"
+parallel = 2          # 2 vCPU, niced, beside prod's 5-minute recorders and signals
+grid = 8
+history_cache = true
+hours = 3.0
+grace_minutes = 20
+
+[report]
+target = 2026
+holdout = []
+top = 10
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+replicates = 3
+taker_fill = "touch"
+sell_floor = "edge"
+note = "sale-floor A/B, touch + floor edge: profile A at 3 seeds, Polymarket"
+
+[[job]]
+year = 2026
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+replicates = 3
+taker_fill = "book"
+note = "sale-floor A/B, book, no floor (touch level only): profile A at 3 seeds, Polymarket"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+rounds = "5-17"
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+replicates = 3
+taker_fill = "touch"
+sell_floor = "edge"
+note = "sale-floor A/B, touch + floor edge: profile A at 3 seeds, Kalshi from Canada"
+
+[[job]]
+year = 2026
+venue = "kalshi"
+rounds = "5-17"
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+replicates = 3
+taker_fill = "book"
+note = "sale-floor A/B, book, no floor (touch level only): profile A at 3 seeds, Kalshi from Canada"
