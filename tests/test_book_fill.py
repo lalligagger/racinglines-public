@@ -129,8 +129,8 @@ def test_book_walk_stops_where_the_edge_runs_out():
 
 
 def test_book_walk_sells_no_lower_than_the_margin_under_fair():
-    # long 100 YES, the fair falls to 0.10: sell down the bids only to fair - min_edge (0.05), not into 0.01
-    p = RB.TakerParams(min_edge=0.05, stake_per_edge=1000, max_stake=50, cost=0.01, fill="book")
+    # long 100 YES, the fair falls to 0.10: sell_floor = edge walks the bids only to fair - min_edge (0.05), not 0.01
+    p = RB.TakerParams(min_edge=0.05, stake_per_edge=1000, max_stake=50, cost=0.01, fill="book", sell_floor="edge")
     m = RB._Market([_stage(fair=0.10, price=0.14, **THIN)], p)
     m.yes = 100.0
     m.step(0)
@@ -143,3 +143,34 @@ def test_within_applies_the_fee_to_the_bar():
     asks = [(0.40, 10.0), (0.44, 10.0)]
     assert RB._within(asks, 0.50, 0.05, 0.0, True) == asks
     assert RB._within(asks, 0.50, 0.05, 0.07, True) == [(0.40, 10.0)]           # 0.44 + 0.017 fee leaves 0.043
+
+
+def _long_exit(floor, fill="book", **book):
+    # long 100 YES, the fair falls to 0.20 against a 0.08 bid: the target is flat, so the taker sells
+    p = RB.TakerParams(min_edge=0.05, stake_per_edge=1000, max_stake=50, cost=0.01, fill=fill, sell_floor=floor)
+    m = RB._Market([_stage(fair=0.20, price=0.14, **(book or dict(THIN)))], p)
+    m.yes = 100.0
+    m.step(0)
+    return [t for t in m.trades if t["side"] == "YES"]
+
+
+def test_no_sell_floor_sells_the_touch_level_only_in_book_mode():
+    (tr,) = _long_exit(None)
+    assert tr["shares"] == pytest.approx(-50) and tr["price"] == pytest.approx(0.08)   # never down to 0.01
+
+
+def test_sell_floor_blocks_sales_under_it_in_both_fills():
+    assert _long_exit("edge") == [] and _long_exit("fair") == []                       # 0.08 < 0.15 and < 0.20
+    touch = dict(bid=0.08, ask=0.20)                                                   # one price: no levels
+    (tr,) = _long_exit(None, fill="price", **touch)
+    assert tr["shares"] == pytest.approx(-100) and tr["price"] == pytest.approx(0.07)  # the bid less a cent
+    assert _long_exit("edge", fill="price", **touch) == []
+    assert len(_long_exit("edge", fill="price", bid=0.17, ask=0.20)) == 1              # 0.17 - 0.01 >= 0.15
+
+
+def test_sell_floor_setting_reaches_the_taker_and_stays_out_of_keys_when_unset():
+    assert W.taker_params(SS.Settings.from_dict(dict(sell_floor="edge")))[0].sell_floor == "edge"
+    assert W.taker_params(SS.Settings.from_dict({}))[0].sell_floor is None
+    base = dict(taker_fill="book", tape_source="probalytics")
+    assert SS.Settings.from_dict(dict(base, sell_floor="none")).key == SS.Settings.from_dict(base).key
+    assert SS.Settings.from_dict(dict(base, sell_floor="edge")).key != SS.Settings.from_dict(base).key
