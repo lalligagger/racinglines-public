@@ -13,7 +13,7 @@
 # Run on the VM as a transient unit (prints a progress line at least every 5 minutes):
 #   sudo systemd-run --unit=rl-nascar-calib --uid=racinglines /opt/racinglines-staging/scripts/vm/nascar_calibration.sh
 #   journalctl -fu rl-nascar-calib
-# Output: data/runs/<sport>/calibration-<UTC>/ (fit.log, calibration.toml, report.md, races.csv, vs_<venue>.csv,
+# Output (needs closing-line value in the sweep, #223): data/runs/<sport>/calibration-<UTC>/ (fit.log, calibration.toml, report.md, races.csv, vs_<venue>.csv,
 # sweep-<year>-<venue>-<off|on>.txt, summary.md).
 set -uo pipefail
 SPORT=${SPORT:-nascar}
@@ -82,6 +82,9 @@ done
     echo
     echo '```'
     grep -E "^=== $SPORT|P&L .* races up" "$f" || echo "(no totals: see the file)"
+    echo
+    # --reliability: Brier, log loss and ECE of the model and the market, every tradeable stage
+    awk '/^=== Calibration/{on=1} on&&/^=== /&&!/^=== Calibration/{on=0} on' "$f"
     echo '```'
   done
 } > "$OUT/summary.md"
