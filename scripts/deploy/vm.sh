@@ -296,14 +296,17 @@ case "${1:-}" in
     src="${2:?usage: vm.sh internal-docs <built html folder, e.g. ~/Documents/racinglines/jb/book/_build/html>}"
     [ -f "$src/index.html" ] || { echo "no index.html in $src: build the book first (jupyter-book build <book>)"; exit 1; }
     tgz="$(mktemp -d)/internal-docs.tgz"
-    COPYFILE_DISABLE=1 tar -czf "$tgz" -C "$src" .           # no macOS ._ files
+    # No macOS ._ files, and no extended attributes (com.apple.provenance and friends): bsdtar writes those as pax
+    # headers that the VM's GNU tar reports as "Ignoring unknown extended header keyword" on every file.
+    COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata -czf "$tgz" -C "$src" .
     log "copying $(du -h "$tgz" | cut -f1) to the VM"
     gcloud compute scp "$tgz" "$VM:/tmp/internal-docs.tgz" --project "$PROJECT" --zone "$ZONE" --tunnel-through-iap
     rm -rf "$(dirname "$tgz")"
+    # The racinglines user starts in /: it cannot read the caller's home, and find warns when it cannot return there.
     remote 'set -e; chmod 644 /tmp/internal-docs.tgz
       for app in /opt/racinglines /opt/racinglines-staging; do
         [ -d "$app" ] || continue
-        sudo -u racinglines -H bash -c "set -e; t=$app/data/internal-docs; rm -rf \$t.new; mkdir -p \$t.new
+        sudo -u racinglines -H bash -c "set -e; cd /; t=$app/data/internal-docs; rm -rf \$t.new; mkdir -p \$t.new
           tar -xzf /tmp/internal-docs.tgz -C \$t.new; rm -rf \$t.old; if [ -e \$t ]; then mv \$t \$t.old; fi
           mv \$t.new \$t; rm -rf \$t.old; echo \"\$t: \$(find \$t -type f | wc -l) files\""
       done
