@@ -87,7 +87,7 @@ def test_setting_parses_and_keys_the_table(monkeypatch):
     assert SS.Settings.from_dict(dict(calib_power="")).model_key == base.model_key            # unset: no key change
     wf = SS.Settings.from_dict(dict(calib_power="walk_forward")).model_key
     assert wf != base.model_key and SS.Settings.from_dict(dict(calib_power="2")).model_key == SS.Settings.from_dict(dict(calib_power="2.0")).model_key
-    monkeypatch.setattr(CAL, "table_hash", lambda: "refitted")                       # a refit table prices afresh
+    monkeypatch.setattr(CAL, "table_hash", lambda sport="f1": "refitted")                       # a refit table prices afresh
     assert SS.Settings.from_dict(dict(calib_power="walk_forward")).model_key != wf
 
 

@@ -217,3 +217,65 @@ def test_the_schema_binds_the_model_and_sets_its_defaults(toy):
         G.GlobalModel.for_sport("mtb_dh", core="results")       # downhill declares run times, no finishing positions
     with pytest.raises(ValueError, match="needs data"):
         G.GlobalModel().load()
+
+
+def test_calibration_power_sharpens_the_win_price_and_unset_changes_nothing(toy):
+    """calib_power (C48 at the results level): unset and a = 1 leave every draw identical; a = 2 moves the win shares
+    toward p^2 and the podium follows the win price (the resample keeps each drawn race whole)."""
+    from racinglines.models import calibration as CAL
+    m = RM.get("toy_global")
+    data = m.load(data=world())
+    field = sorted(data.loc[data["season"] == 2026, "athlete_id"].unique().tolist())[:20]
+    base, one, two = (price(m, data, field, **({"calib_power": c} if c else {})) for c in (None, "1", "2"))
+    assert np.array_equal(base.rank, one.rank) and np.array_equal(base.finished, one.finished)
+    p = (base.rank == 1).mean(0)
+    q = (two.rank == 1).mean(0)
+    target = CAL.win_power(p, 2.0)
+    top = int(np.argmax(p))
+    assert q[top] > p[top] + 0.05 and abs(q[top] - target[top]) < 0.05
+    assert (two.rank[:, top] <= 3).mean() > (base.rank[:, top] <= 3).mean()      # the podium follows
+    assert m.Settings.from_dict({}).model_key == m.Settings.from_dict({"calib_power": ""}).model_key
+
+
+def test_walk_forward_calibration_reads_the_sports_own_table(toy, monkeypatch):
+    """walk_forward uses sports/<sport>/calibration.toml for the price's cutoff, and its hash is in the model key."""
+    from racinglines.models import calibration as CAL
+    (toy / "sports" / "toy_global").mkdir()
+    (toy / "sports" / "toy_global" / "calibration.toml").write_text(
+        "[[fit]]\nfrom = 2025-06-01\ngrid = 2.0\nnogrid = 2.0\nraces = 8\n")
+    monkeypatch.setattr(CAL, "ROOT", toy)
+    CAL.table.cache_clear()
+    try:
+        m = RM.get("toy_global")
+        data = m.load(data=world())
+        field = sorted(data.loc[data["season"] == 2026, "athlete_id"].unique().tolist())[:20]
+        before = price(m, data, field, cutoff="2025-05-01", calib_power="walk_forward")
+        assert np.array_equal(before.rank, price(m, data, field, cutoff="2025-05-01").rank)   # before the first fit
+        after = price(m, data, field, calib_power="walk_forward")
+        assert np.array_equal(after.rank, price(m, data, field, calib_power="2.0").rank)
+        k1 = m.Settings.from_dict({"calib_power": "walk_forward"}).model_key
+        (toy / "sports" / "toy_global" / "calibration.toml").write_text(
+            "[[fit]]\nfrom = 2025-06-01\ngrid = 2.5\nnogrid = 2.5\nraces = 8\n")
+        assert m.Settings.from_dict({"calib_power": "walk_forward"}).model_key != k1
+    finally:
+        CAL.table.cache_clear()
+
+
+def test_fit_script_fits_a_results_sport_walk_forward_and_reports(toy, tmp_path):
+    """scripts/models/fit_calibration.py --sport: the walk-forward's race-win prices, one run per race and group, the
+    rows fitted on earlier races only, and the report's before/after table."""
+    import importlib.util
+    from racinglines import paths
+    spec = importlib.util.spec_from_file_location("fit_cal", paths.ROOT / "scripts" / "models" / "fit_calibration.py")
+    F = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(F)
+    from racinglines.models import calibration as CAL
+    keep = {}
+    df = F.load_walk_forward("toy_global", seasons=[2025, 2026], sims=300, keep=keep, data=world())
+    assert set(df["group"]) == {"grid", "nogrid"} and df["event_key"].nunique() == 20
+    assert (df.groupby("run")["won"].sum() == 1).all()
+    fits = CAL.fit_walk_forward(df)
+    assert len(fits) == 20 - CAL.MIN_RACES + 1 and all(f["grid"] == f["nogrid"] for f in fits)
+    F.report("toy_global", df, fits, keep["out"], tmp_path / "rep", venues=())
+    text = (tmp_path / "rep" / "report.md").read_text()
+    assert "| all |" in text and (tmp_path / "rep" / "races.csv").exists()

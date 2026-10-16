@@ -298,6 +298,7 @@ def replay_sweep(engine, sport, year, rounds=None, settings=None, echo=print):
 
     order = stage_labels(sport, mode) + (stage_labels(sport, "weekend") if mode == "sessions" else ())
     out = SW.season(events, trade_event, st, params_list, tuple(dict.fromkeys(order)), echo=echo)
+    SW.season_clv(engine, out, venue, sport, tuple(dict.fromkeys(order)), echo)
     params = dict({k: v for k, v in base.__dict__.items() if k != "stages" and not
                    (k in ("scale", "max_deployed", "min_edge_by_kind", "thin_edge_mult", "kelly", "bankroll", "root_unit")
                     and v == SW.RB.TakerParams.__dataclass_fields__[k].default)},
@@ -493,4 +494,5 @@ def save(engine_url, sport, year, rounds, out, reliability=False):
                                            by_stage=records(out["by_stage"]), by_kind=records(out["by_kind"]),
                                            scores=records(out["scores"]),
                                            **(dict(calibration=records(out["calibration"]),
-                                                   reliability=records(out["reliability"])) if reliability else {})))
+                                                   reliability=records(out["reliability"])) if reliability else {}),
+                                           **({"clv": out["clv"]} if out.get("clv") is not None else {})))

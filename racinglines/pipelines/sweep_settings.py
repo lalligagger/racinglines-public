@@ -258,7 +258,7 @@ class Settings(dict):
         vals = {k: self[k] for k in names}
         if vals.get("calib_power") == "walk_forward":         # the fitted table is part of the pricing
             from racinglines.models import calibration as CAL
-            vals["calib_power"] = f"walk_forward@{CAL.table_hash()}"
+            vals["calib_power"] = f"walk_forward@{CAL.table_hash(getattr(self, 'CALIB_SPORT', 'f1'))}"
         blob = json.dumps(vals, sort_keys=True, default=list)
         return hashlib.sha1(blob.encode()).hexdigest()[:12]
 

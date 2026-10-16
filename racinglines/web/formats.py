@@ -44,7 +44,7 @@ def fmt(value, col=""):
     if col in MONEY_COLS and isinstance(value, Real) and not isinstance(value, bool):
         return money(value, sign=col in SIGNED_MONEY_COLS)
     if isinstance(value, float):
-        if col.endswith("_prob") or col in ("model_prob", "edge", "quoted_share"):
+        if col.endswith("_prob") or col in ("model_prob", "edge", "quoted_share", "mean_clv_pct", "positive_share"):
             return f"{value:.1%}"
         if col.endswith("time_s"):
             mins, secs = divmod(value, 60)
