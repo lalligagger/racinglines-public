@@ -53,8 +53,9 @@ def test_the_alpha_picker_shows_the_five_styles_by_name_and_no_codes(app_db, alp
     from racinglines.web import roles as R
     for who in ("ada", "bea"):
         client, csrf, page = _login(app_db, who)
-        labels = re.findall(r'<div class="style-card[^"]*">\s*<h3>([^<]+?)\s*(?:<|$)', page)
-        assert labels == [PF.ALPHA_STYLES[c]["label"] for c in PF.ALPHA_ORDER], who
+        cards = re.findall(r'<div class="style-card[^"]*">\s*<h3><span class="mt-badge mt-(\w+)"[^>]*>([MT])</span> ([^<]+?)\s*(?:<|$)', page)
+        assert [c[2] for c in cards] == [PF.ALPHA_STYLES[c]["label"] for c in PF.ALPHA_ORDER], who
+        assert all(c[:2] in (("taker", "T"), ("maker", "M")) for c in cards), who      # M/T badge (owner, 2026-10-14)
         body = page.split('<form method="post" action="/strategy/pick"', 1)[1]
         visible = re.sub(r"<[^>]+>", " ", body)                       # what a user reads, not attribute values
         assert not re.search(r"\bT\d+\b|\bTB\b", visible), who
@@ -136,3 +137,11 @@ def test_basic_runs_as_pro_only_under_the_alpha_layout(monkeypatch):
     assert (layout.role("basic"), layout.role("pro"), layout.role("admin")) == ("pro", "pro", "admin")
     monkeypatch.setenv("RACINGLINES_LAYOUT", "classic")
     assert layout.role("basic") == "basic"
+
+
+def test_markets_shows_no_strategy_or_pnl_banner(app_db, alpha):  # noqa: F811
+    """The followed style and its P&L stay on Lab and History, not above the Markets board (owner, 2026-10-14)."""
+    client, csrf, _ = _login(app_db, "ada")
+    _post(client, csrf, code="T1")
+    page = client.get("/markets").text
+    assert 'class="paper-banner"' not in page and "Fantasy account" not in page

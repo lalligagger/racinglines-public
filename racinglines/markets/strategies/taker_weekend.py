@@ -26,7 +26,8 @@ Polymarket's rate is 0, so its results are unchanged.
 
 Sizing (both off by default, so results match the fixed sizing exactly):
     scale          multiplies the stake per edge and the per-market cap: bankroll-aware sizing
-                   passes current bankroll / starting bankroll (weekend_sweep.bankroll_scale)
+                   passes current bankroll / starting bankroll (weekend_sweep.bankroll_scale), or its
+                   square root under bankroll_growth = sqrt (square-root staking)
     max_deployed   a cap on the weekend's capital deployed across all markets (cash spent net of
                    cash received, per market, summed). Markets are then traded in time order
                    and a buy that would go over the cap is cut to fit (sells are always allowed)
@@ -61,9 +62,67 @@ class TakerParams:
     kelly: float | None = None                           # Kelly fraction (0.5 = half Kelly): stake = kelly x f* x
                                                          # balance, capped at max_stake x scale (None = linear sizing)
     bankroll: float | None = None                        # starting bankroll for Kelly; balance = bankroll x scale
+    root_unit: float | None = None                       # root unit system: stake = root_unit x scale x sqrt(c / (1 - c))
+                                                         # for a contract costing c, capped at max_stake x scale
+    fill: str = "price"                                  # "price": one price per order; "book": walk the stage's
+                                                         # book levels (stages with `asks` / `bids`, else "price")
+    sell_floor: str | None = None                        # the lowest a sale may fill (both fills): None = no floor
+                                                         # (one price: any bid; book: the touch level only), "fair"
+                                                         # = net of fee at or above fair, "edge" = at or above
+                                                         # fair - min_edge (see _floor_ok)
     taker_fee: float = 0.0                               # the venue's taker fee rate: rate x contracts x P x (1 - P)
                                                          # per order, rounded up to the cent (Kalshi 0.07,
                                                          # Polymarket 0; venue_replay.EXCHANGES)
+
+
+def walk(levels, shares):
+    """(average price, shares filled) of taking `shares` through best-first [(price, size)] levels."""
+    left, paid = float(shares), 0.0
+    for px, size in levels:
+        take = min(left, float(size))
+        if take > 0:
+            paid += take * float(px)
+            left -= take
+        if left <= 1e-9:
+            break
+    filled = float(shares) - max(left, 0.0)
+    return (paid / filled if filled > 0 else None), filled
+
+
+def _book_side(s, side, buy):
+    """The stage's levels a trade takes, best first: buy YES = the asks, buy NO = 1 - the bids (highest bid first),
+    sell YES = the bids, sell NO = 1 - the asks (lowest ask first). None when the stage has no book."""
+    if "asks" not in s or "bids" not in s:
+        return None
+    if side == "YES":
+        return s["asks"] if buy else s["bids"]
+    return [(1 - p, q) for p, q in (s["bids"] if buy else s["asks"])]
+
+
+def _floor_ok(px, fair, min_edge, floor, cost=0.0, fee_rate=0.0):
+    """A sale at px clears the sell_floor setting: net of cost and fee, at or above fair ("fair") or fair - min_edge
+    ("edge"); always with no floor. fair is the side's own (1 - fair for NO)."""
+    if floor is None:
+        return True
+    bar = fair if floor == "fair" else fair - min_edge
+    return px - cost - fee_rate * px * (1 - px) >= bar - 1e-9
+
+
+def _within(levels, fair, min_edge, fee_rate, buy, floor=None):
+    """The levels a book walk may take, best first, up to the first one past its limit. A buy is a limit order at
+    the edge: only where fair - price - fee >= min_edge (the bar that sized it), or a thin book's far levels (0.99
+    asks) fill the rest of an order sized at the touch. A sale walks down to the sell_floor (_floor_ok); with no
+    floor it takes the touch level only, as the one-price fill sells at the bid (never down a thin book to 0.01)."""
+    if not buy and floor is None:
+        return list(levels[:1])
+    out = []
+    for px, size in levels:
+        ok = (fair - px - fee_rate * px * (1 - px) >= min_edge - 1e-9) if buy else \
+            _floor_ok(px, fair, min_edge, floor, fee_rate=fee_rate)
+        if not ok:
+            break
+        out.append((px, size))
+    return out
 
 
 def _fee(rate, px, shares):
@@ -109,17 +168,18 @@ class _Market:
         if i in self.idx:
             thin = not s["tradeable"]            # a thin market: in idx only with edge >= thin_edge_mult x min_edge
             bid, ask = s.get("bid"), s.get("ask")
-            kb = (p.kelly, p.bankroll * p.scale) if p.kelly is not None and p.bankroll is not None else ()
+            kb = (p.kelly, p.bankroll * p.scale) if p.kelly is not None and p.bankroll is not None else (None, None)
+            ru = p.root_unit * p.scale if p.root_unit is not None else None
             if bid is not None and ask is not None:
                 ty = target_shares(s["fair"], ask, p.cost + p.taker_fee * ask * (1 - ask), p.min_edge,
-                                   p.stake_per_edge * p.scale, p.max_stake * p.scale, *kb)[0]
+                                   p.stake_per_edge * p.scale, p.max_stake * p.scale, *kb, root_unit=ru)[0]
                 tn = target_shares(s["fair"], bid, p.cost + p.taker_fee * bid * (1 - bid), p.min_edge,
-                                   p.stake_per_edge * p.scale, p.max_stake * p.scale, *kb)[1]
+                                   p.stake_per_edge * p.scale, p.max_stake * p.scale, *kb, root_unit=ru)[1]
                 buy, sell = {"YES": ask, "NO": 1 - bid}, {"YES": bid, "NO": 1 - ask}
             else:
                 ty, tn = target_shares(s["fair"], price, p.cost + p.taker_fee * price * (1 - price), p.min_edge,
                                        p.stake_per_edge * p.scale,
-                                       p.max_stake * p.scale, *kb)
+                                       p.max_stake * p.scale, *kb, root_unit=ru)
                 buy = sell = {"YES": price, "NO": 1 - price}
             if thin:                             # the book's size at the touch caps what can be bought
                 ty, tn = min(ty, s.get("depth_yes") or 0.0), min(tn, s.get("depth_no") or 0.0)
@@ -133,8 +193,24 @@ class _Market:
                     continue
                 if abs(d) < 1e-9:
                     continue
+                f_side = s["fair"] if side == "YES" else 1 - s["fair"]
+                levels = _book_side(s, side, d > 0) if p.fill == "book" else None
+                if levels is not None:                       # a limit: never past the edge or floor (_within)
+                    levels = _within(levels, f_side, p.min_edge, p.taker_fee, d > 0, p.sell_floor)
+                elif d < 0 and not _floor_ok(px, f_side, p.min_edge, p.sell_floor, p.cost, p.taker_fee):
+                    continue                                 # one price: the sale is under the floor
+                if levels is not None:                       # walk the book: the spread and the slippage
+                    px, got = walk(levels, abs(d))
+                    if px is None:
+                        continue
+                    if got < abs(d) - 1e-9:                  # cut to what the book holds
+                        d = got if d > 0 else -got
+                        tgt = cur + d
+                        if abs(d) * px < p.min_trade and tgt != 0:
+                            continue
+                cost = 0.0 if levels is not None else p.cost
                 fee = _fee(p.taker_fee, px, d)
-                exec_px = px + p.cost + fee if d > 0 else max(px - p.cost - fee, 0.0)
+                exec_px = px + cost + fee if d > 0 else max(px - cost - fee, 0.0)
                 if room is not None and d > 0:
                     left = room - (self.deployed - before)
                     if d * exec_px > left:                   # cut the buy to fit under the cap
@@ -142,6 +218,9 @@ class _Market:
                         if d * px < p.min_trade:
                             continue
                         tgt = cur + d
+                        if levels is not None:               # a smaller order never walks deeper
+                            px = walk(levels, d)[0]
+                            exec_px = px + _fee(p.taker_fee, px, d)
                 self.cash -= d * exec_px
                 if side == "YES":
                     self.yes = tgt

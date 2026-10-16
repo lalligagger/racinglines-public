@@ -387,7 +387,7 @@ def test_pro_mcp_scopes_accounts_and_jobs_and_blocks_admin_tools(mcp, monkeypatc
             denied = mcp(name, user="mcp-pro-other")
             assert denied[0] == "error" and "own account" in denied[1]
         for name, args in (("sql", dict(query="SELECT * FROM paper_positions")),
-                           ("describe_schema", {}), ("data_changes", {})):
+                           ("describe_schema", {}), ("data_changes", {}), ("storage_status", {})):
             denied = mcp(name, **args)
             assert denied[0] == "error" and "admin-only" in denied[1]
         mine = mcp("run_job", job_type="f1_backtest", params=dict(races=3, sims=300))

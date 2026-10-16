@@ -97,6 +97,7 @@ nav:
           - Fantasy trading: fantasy-trading.md
   - CLI:
       - CLI reference: cli.md
+      - Terminal app (racinglines tui): tui.md
       - Sportsbook schema (draft):
           - Schema, CLI and MCP surface: sportsbook/index.md
           - Slip EV (book map, price, settle): sportsbook/slips.md
@@ -122,6 +123,7 @@ nav:
           - F1 model: f1.md
           - F1 evaluation: f1-evaluation.md
           - F1 forecast: f1-forecast.md
+          - F1 calibration: f1-calibration.md
           - Market making: market-making.md
           - Paper trading: paper-trading.md
           - Championship markets: championship-markets.md

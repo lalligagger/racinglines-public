@@ -68,6 +68,7 @@ DRIVER_PRIOR_N = 3.0   # driver-vs-teammate offset shrinkage
 CAR_PACE = "mean"      # team sector pace from both drivers ("mean") or the team's best sectors ("best", old)
 TEAMMATE_CORR = True   # share part of the qualifying/finishing noise between teammates
 FINISH_RHO_SCALE = 1.0 # fraction of the measured teammate finishing correlation used in the simulation
+CALIB_POWER = None     # calibration power on the race-win prices (models/calibration.py, C48): None = off
 X_CENTER, X_SCALE = 250.0, 50.0
 
 # Challenger switches (docs/f1-roadmap.md, F1-2 / F1-3). The defaults reproduce the

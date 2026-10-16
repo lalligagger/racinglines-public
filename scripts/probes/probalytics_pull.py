@@ -20,9 +20,26 @@ written with; a wider set of markets refetches it), so a later, wider run fills 
     python scripts/probes/probalytics_pull.py fills  --from 2025-06-01
     python scripts/probes/probalytics_pull.py books  --from 2026-09-01
     python scripts/probes/probalytics_pull.py stages --year 2026
+    # cycling (owner 2026-10-14, ahead of NASCAR): no market_links yet, so by series / race names
+    python scripts/probes/probalytics_pull.py fills  --set cycling --from 2025-01-01
+    python scripts/probes/probalytics_pull.py books  --set cycling --venue kalshi     --from 2026-05-09
+    python scripts/probes/probalytics_pull.py books  --set cycling --venue polymarket --from 2025-11-20
     # the rest of y, later (only missing days are fetched)
     python scripts/probes/probalytics_pull.py books  --venue polymarket --from 2025-11-20
     python scripts/probes/probalytics_pull.py books  --venue kalshi     --from 2026-05-09
+
+To the bucket (the big data plan, library/engineering/2026-10-14-big-data-storage.md: from NASCAR on the pull runs on the VM,
+whose service account can write the bucket): with --to-bucket (or PROBALYTICS_BUCKET) each file is copied to the same
+relative path under that prefix as soon as it is written, the object's size is checked against the local file, the
+upload goes to MANIFEST.jsonl and the local copy is deleted (--keep-local keeps it), so the disk holds one file at a time.
+A file recorded as uploaded counts as present, so a rerun skips it. MANIFEST.jsonl itself is copied after each upload.
+At the start of a --to-bucket run the bucket's MANIFEST.jsonl is merged into the local one, and every file it lists
+that is in the bucket is marked uploaded, so a machine that never pulled those files (the VM, after the Mac's archive
+was copied up) skips them instead of fetching them again. Only one machine should pull to a bucket at a time.
+
+    # VM: one venue-day at a time straight to the bucket
+    PROBALYTICS_ENV=/etc/racinglines-probalytics.env python scripts/probes/probalytics_pull.py books \
+      --to-bucket gs://racinglines-data-384052502248/vendor/probalytics --from 2026-05-09
 
 Credentials: .env.probalytics (PROBALYTICS_CH_USER / PROBALYTICS_CH_PASSWORD); never printed. A progress line goes to
 stderr at least every 5 minutes (CLAUDE.md, long-running jobs).
@@ -37,6 +54,7 @@ import json
 import os
 import shutil
 import ssl
+import subprocess
 import sys
 import threading
 import time
@@ -57,6 +75,7 @@ CHUNK = 1500
 MIN_FREE_GB = float(os.environ.get("MIN_FREE_GB", "4"))   # the Mac had 9 GB free on 2026-10-13
 TIMEOUT = 900
 PROGRESS_SEC = int(os.environ.get("RACINGLINES_PROGRESS_SEC", "300"))
+BUCKET = {"to": os.environ.get("PROBALYTICS_BUCKET", "").rstrip("/"), "keep_local": False}
 
 
 def env():
@@ -146,20 +165,144 @@ def our_ids(venue):
     return sorted(ids)
 
 
-def written_keys():
-    """{file relative to OUT: the links key it was written with}, from MANIFEST.jsonl (the last entry wins)."""
+def entries():
+    """{file relative to OUT: its last MANIFEST.jsonl row}."""
     m = OUT / "MANIFEST.jsonl"
     out = {}
     if m.exists():
         for line in m.read_text().splitlines():
             r = json.loads(line)
-            out[r["file"]] = r.get("links_key")
+            out[r["file"]] = r
     return out
 
 
+def written_keys():
+    """{file relative to OUT: the links key it was written with} (the last entry wins)."""
+    return {f: r.get("links_key") for f, r in entries().items()}
+
+
 def current(path, key):
-    """The file exists and was written with this links key (a wider set of markets makes it stale)."""
-    return path.exists() and written_keys().get(str(path.relative_to(OUT))) == key
+    """The file was written with this links key (a wider set of markets makes it stale) and is still here, or was
+    uploaded to the bucket."""
+    r = entries().get(str(path.relative_to(OUT)))
+    return r is not None and r.get("links_key") == key and (path.exists() or bool(r.get("uploaded")))
+
+
+def gcloud(*args):
+    return subprocess.run(["gcloud", "storage", *args], check=True, capture_output=True, text=True).stdout.strip()
+
+
+def upload(path, **meta):
+    """path to the same relative path under BUCKET["to"]; the object's size must match before the local copy goes."""
+    rel = str(path.relative_to(OUT))
+    dest = f"{BUCKET['to']}/{rel}"
+    size = path.stat().st_size
+    gcloud("cp", "--quiet", str(path), dest)
+    got = gcloud("objects", "describe", dest, "--format=value(size)")
+    if got != str(size):
+        sys.exit(f"stopping: {dest} is {got or '?'} bytes in the bucket, {size} here; the local file is kept")
+    keep = BUCKET["keep_local"]
+    manifest(file=rel, bytes=size, uploaded=dest, local=keep, **meta)
+    if not keep:
+        path.unlink()
+    gcloud("cp", "--quiet", str(OUT / "MANIFEST.jsonl"), f"{BUCKET['to']}/MANIFEST.jsonl")
+    log(f"{path.name}: uploaded to {dest}" + ("" if keep else ", local copy deleted"))
+
+
+def seed_from_bucket():
+    """Merge the bucket's MANIFEST.jsonl into ours (its rows first, so our own later rows still win), then mark each
+    listed file that is in the bucket as uploaded. Returns how many were marked."""
+    def lines(*args):
+        try:
+            return gcloud(*args).splitlines()
+        except subprocess.CalledProcessError:   # no manifest yet, or an empty prefix
+            return []
+    remote = [x for x in lines("cat", f"{BUCKET['to']}/MANIFEST.jsonl") if x.strip()]
+    have = set(lines("ls", f"{BUCKET['to']}/**"))
+    m = OUT / "MANIFEST.jsonl"
+    local = [x for x in (m.read_text().splitlines() if m.exists() else []) if x.strip()]
+    seen = set(remote)
+    m.write_text("".join(x + "\n" for x in remote + [x for x in local if x not in seen]))
+    marked = 0
+    for f, r in entries().items():
+        dest = f"{BUCKET['to']}/{f}"
+        if not r.get("uploaded") and dest in have:
+            manifest(**{k: v for k, v in r.items() if k != "at"}, uploaded=dest, local=(OUT / f).exists(), seeded=True)
+            marked += 1
+    log(f"bucket: {len(remote)} manifest rows, {len(have)} objects, {marked} files marked present")
+    return marked
+
+
+SET = "F1"            # file tag: F1 = our linked markets (exact keys); F1X = F1 markets we have not linked (--set extra)
+EXTRA_MATCH = {       # discovery by series / text, only for the archive (links, alerts and counts stay exact-key)
+    "kalshi": "platform_id LIKE 'KXF1%'",
+    # F1 in the title or slug, or the description's resolution source ("the official Formula 1 website"), minus the
+    # other series and the F1 film / game (2026-10-14: 392 unlinked, mostly 2021-24 race markets)
+    "polymarket": ("(match(lower(concat(title, ' ', slug)), 'formula ?1|\\\\bf1\\\\b') "
+                   "OR match(lower(description), 'formula 1|formula one|formula1\\\\.com')) "
+                   "AND NOT match(lower(concat(title, ' ', slug, ' ', description)), 'formula 2|formula 3|\\\\bf2\\\\b|"
+                   "\\\\bf3\\\\b|formula e\\\\b|e-prix|indycar|motogp|moto ?gp|nascar|rotten tomatoes|box office|"
+                   "academy award|oscar|steam award|game of the year|\\\\bmovie\\\\b|\\\\bfilm\\\\b')"),
+}
+
+
+def market_map_extra(venue):
+    """{uuid: platform_id} of F1 markets on Probalytics that are not in our links (EXTRA_MATCH, parlays left out),
+    cached with their titles in links/probalytics_<venue>_f1x.json for review."""
+    cache = OUT / "links" / f"probalytics_{venue}_f1x.json"
+    linked, _ = market_map(venue)
+    key = "x" + hashlib.sha1(("\n".join(sorted(linked)) + EXTRA_MATCH[venue]).encode()).hexdigest()[:11]
+    if cache.exists():
+        c = json.loads(cache.read_text())
+        if c["key"] == key:
+            return c["map"], key
+    body = ch(f"SELECT toString(id), platform_id, title FROM markets WHERE platform = '{VENUES[venue]}' "
+              f"AND market_type != 'PARLAY' AND {EXTRA_MATCH[venue]}")
+    rows = [r for r in json.loads(body)["data"] if r[0] not in linked]
+    m = {u: p for u, p, _ in rows}
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps(dict(key=key, linked=len(linked), found=len(m), map=m,
+                                     titles={u: t for u, _, t in rows})))
+    log(f"{venue}: {len(m)} F1 markets on Probalytics not in our links (key {key})")
+    return m, key
+
+
+# Other sports with no market_links yet, by discovery for the archive (owner 2026-10-14: cycling ahead of NASCAR):
+# Kalshi by series prefix, Polymarket by race and rider names, markets created since `since`
+_CYC_RACES = ("tour de france|giro d.italia|vuelta a espa|paris-roubaix|milan-san ?remo|tour of flanders|"
+              "ronde van vlaanderen|li.ge-bastogne|il lombardia|strade bianche|tour de suisse|dauphin|"
+              "world road (race )?championship|uci road|tour down under|paris-nice|tirreno|amstel gold|"
+              "fl.che wallonne|gent-wevelgem|klasikoa|tour of guangxi|grand prix cycliste|tour de pologne|cycling")
+DISCOVERY = {
+    "CYC": dict(since="2025-01-01", kalshi="(platform_id LIKE 'KXCYCLING%' OR platform_id LIKE 'KXTOURDEFRANCE%')",
+                polymarket=(f"match(lower(title), '{_CYC_RACES}') "
+                            "AND NOT match(lower(title), 'anyone say|trump say|ncaa|formula|nascar|motogp|indycar')")),
+}
+
+
+def market_map_discovery(venue, tag):
+    """{uuid: platform_id} of a DISCOVERY set, cached with titles in links/probalytics_<venue>_<tag>.json."""
+    d = DISCOVERY[tag]
+    cache = OUT / "links" / f"probalytics_{venue}_{tag.lower()}.json"
+    key = tag.lower() + hashlib.sha1((d[venue] + d["since"]).encode()).hexdigest()[:9]
+    if cache.exists():
+        c = json.loads(cache.read_text())
+        if c["key"] == key:
+            return c["map"], key
+    body = ch(f"SELECT toString(id), platform_id, title FROM markets WHERE platform = '{VENUES[venue]}' "
+              f"AND market_type != 'PARLAY' AND created_at >= '{d['since']}' AND {d[venue]}")
+    rows = list({r[0]: r for r in json.loads(body)["data"]}.values())
+    m = {u: p for u, p, _ in rows}
+    (OUT / "links").mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps(dict(key=key, found=len(m), map=m, titles={u: t for u, _, t in rows})))
+    log(f"{venue}: {len(m)} {tag} markets on Probalytics (key {key})")
+    return m, key
+
+
+def markets_for(venue):
+    if SET in DISCOVERY:
+        return market_map_discovery(venue, SET)
+    return market_map_extra(venue) if SET == "F1X" else market_map(venue)
 
 
 def market_map(venue):
@@ -177,6 +320,7 @@ def market_map(venue):
         body = ch(f"SELECT toString(id), platform_id FROM markets WHERE platform = '{VENUES[venue]}' "
                   f"AND platform_id IN ({lst})")
         m.update({u: p for u, p in json.loads(body)["data"]})
+    cache.parent.mkdir(parents=True, exist_ok=True)      # a fresh data folder (the VM's first pull) has no links/
     cache.write_text(json.dumps(dict(key=key, ours=len(ids), found=len(m), map=m)))
     log(f"{venue}: {len(ids)} of our F1 markets, {len(m)} found in Probalytics (links key {key})")
     return m, key
@@ -228,6 +372,8 @@ def fetch(path, sql_for, m, size=CHUNK, **meta):
     size = path.stat().st_size
     manifest(file=str(path.relative_to(OUT)), rows=tab.num_rows, bytes=size, sec=round(time.time() - t, 1), **meta)
     log(f"{path.name}: {tab.num_rows:,} rows, {size / 1e6:.1f} MB, {time.time() - t:.0f}s")
+    if BUCKET["to"]:
+        upload(path, rows=tab.num_rows, **meta)
     return tab.num_rows
 
 
@@ -247,9 +393,9 @@ def months(a, b):
 def run_books(venues, start, end):
     jobs = []
     for v in venues:
-        m, key = market_map(v)
+        m, key = markets_for(v)
         for d in days(max(start, BOOKS_FROM[v]), end):
-            p = OUT / "books" / f"{d:%Y-%m-%d}_F1_{VENUES[v]}.parquet"
+            p = OUT / "books" / f"{d:%Y-%m-%d}_{SET}_{VENUES[v]}.parquet"
             if not current(p, key):
                 jobs.append((v, m, key, d, p))
     STATE["total"] = len(jobs)
@@ -265,10 +411,10 @@ def run_books(venues, start, end):
 def run_fills(venues, start, end):
     jobs = []
     for v in venues:
-        m, key = market_map(v)
+        m, key = markets_for(v)
         for mo in months(start, end):
             nxt = (mo + timedelta(days=32)).replace(day=1)
-            p = OUT / "fills" / f"F1_{VENUES[v]}_{mo:%Y-%m}.parquet"
+            p = OUT / "fills" / f"{SET}_{VENUES[v]}_{mo:%Y-%m}.parquet"
             # the current month is never final: refetch it each run
             if current(p, key) and nxt <= date.today():
                 continue
@@ -299,10 +445,13 @@ def run_stages(venues, year):
         by_ev.setdefault(ev, []).append((lab, t))
     jobs = []
     for v in venues:
-        m, key = market_map(v)
+        m, key = markets_for(v)
+        if not m:                        # no links/ files here (they are made on the Mac): nothing to look up
+            sys.exit(f"stopping: no {v} markets to pull. {OUT / 'links'} needs our_{v}_links.parquet or "
+                     f"db_f1_links.csv (run stages where those are, the Mac, or copy them here)")
         for ev, stages in by_ev.items():
             stages = [(lab, t) for lab, t in stages if t.date() >= BOOKS_FROM[v]]
-            p = OUT / "stages" / f"{ev}_{VENUES[v]}.parquet"
+            p = OUT / "stages" / f"{ev}_{VENUES[v]}{'' if SET == 'F1' else '_' + SET}.parquet"
             if stages and not current(p, key):
                 jobs.append((v, m, key, ev, stages, p))
     STATE["total"] = len(jobs)
@@ -340,10 +489,22 @@ def main():
     ap.add_argument("--from", dest="start", type=date.fromisoformat, default=date(2025, 6, 1))
     ap.add_argument("--to", dest="end", type=date.fromisoformat, default=date.today())
     ap.add_argument("--year", type=int, default=2026)
+    ap.add_argument("--to-bucket", default=BUCKET["to"], help="gs:// prefix: upload each file, then delete it here")
+    ap.add_argument("--keep-local", action="store_true", help="with --to-bucket: keep the local copies")
+    ap.add_argument("--set", choices=["linked", "extra", "cycling"], default="linked",
+                    help="linked: our F1 market_links (exact keys); extra: F1 markets on Probalytics we have not linked; "
+                         "cycling: road cycling by discovery (DISCOVERY['CYC'], files tagged CYC)")
     a = ap.parse_args()
+    BUCKET.update(to=a.to_bucket.rstrip("/"), keep_local=a.keep_local)
+    if BUCKET["to"] and not BUCKET["to"].startswith("gs://"):
+        ap.error("--to-bucket takes a gs:// prefix")
     venues = list(VENUES) if a.venue == "both" else [a.venue]
+    global SET
+    SET = {"extra": "F1X", "cycling": "CYC"}.get(a.set, "F1")
+    if BUCKET["to"]:
+        seed_from_bucket()
     threading.Thread(target=heartbeat, daemon=True).start()
-    log(f"probalytics_pull {a.what} {venues} -> {OUT}")
+    log(f"probalytics_pull {a.what} {venues} -> {OUT}" + (f" -> {BUCKET['to']}" if BUCKET["to"] else ""))
     {"books": lambda: run_books(venues, a.start, a.end), "fills": lambda: run_fills(venues, a.start, a.end),
      "stages": lambda: run_stages(venues, a.year)}[a.what]()
     log(f"done: {STATE['done']} of {STATE['total']} files in {(time.time() - T0) / 60:.0f} min")

@@ -178,9 +178,15 @@ def run(test_engine, sport, **kw):
 # --- "weekend": the base commit's output, unchanged ---------------------------------------------------------
 
 # canon(run(sport, stages unset)) on this world, computed on the base commit (origin/claude/project-thread-hm4wyb,
-# 11a6805) before the session schedule existed
-BASE = {"nascar": "5203bf105533aaccbe22f0bd04cde03f5e59d1e34f5dd5e06a8ea323939df1e5",
-        "motogp": "a7ad8eeaa0ec0cefe9e53ec734888c4c734f08e6b35380f2d8bf63dfdaa195f1"}
+# 11a6805) before the session schedule existed; re-pinned 2026-10-14 when the root_unit and bankroll_growth settings
+# arrived: the only difference from the old digests (5203bf105533..., a7ad8eeaa0ec...) is their two null entries in
+# params["settings"], every table and total byte-identical; re-pinned again the same day for tape_source's null entry
+# (with it removed, the output still hashes to the previous digests 6562cf8c..., bd89ddb3...); and again for
+# taker_fill's and max_spread's null entries (with them removed, it hashes to 04ed6e31..., 59975851...); and again
+# for the taker's fill="price" param (with it removed, it hashes to 2c5e446d..., 6797e03b...); and again 2026-10-16
+# for sell_floor's null entries (with them removed, it hashes to e659d444..., c3a1421d...)
+BASE = {"nascar": "e6fc3512b7eba5b73624f0423b8d96b1ccc46527d40d45b8503b0c465f2657f0",
+        "motogp": "7e7d35ff24ce5e3cce9f4eb8014be0b2570002f4c454625955663bcdf5170c11"}
 
 
 @pytest.mark.parametrize("sport", ["nascar", "motogp"])

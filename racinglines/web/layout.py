@@ -7,7 +7,7 @@ The alpha layout (owner, 2026-10-12 19:18-19:21Z): four tabs and nothing else.
     Lab       the advanced tools: following a strategy, its performance, backtests, research (templates/_lab_nav.html)
 
 "We will not include live events or private books at all for alpha version" (19:20Z), and the top bar's right side
-keeps only the GitHub badge and the account links (19:21Z). Those pages are archived, not deleted: their routes and
+keeps only the GitHub badge and the account links (19:21Z), plus a docs book icon beside GitHub (2026-10-14). Those pages are archived, not deleted: their routes and
 templates stay, and with the alpha layout off (RACINGLINES_LAYOUT=classic, or fantasy off, as on production today)
 the old bar comes back unchanged. With it on, live events and private books answer 404 except to admins, so they can
 be revisited. docs/alpha-layout.md lists what is hidden and how to bring it back.

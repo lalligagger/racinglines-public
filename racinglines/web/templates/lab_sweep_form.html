@@ -23,6 +23,8 @@
     {% elif s.type == 'map' %}<input name="{{ s.name }}" value="{{ v or '' }}" placeholder="not set, e.g. race_h2h=0.05" maxlength="200" autocomplete="off">
     {% elif s.type == 'choice' %}<select name="{{ s.name }}">{% for ch in s.choices %}<option {{ 'selected' if ch == v }}>{{ ch }}</option>{% endfor %}</select>
     {% elif s.type == 'multi' %}<input type="hidden" name="{{ s.name }}__present" value="1"><span class="checks">{% for ch in s.choices %}<label class="inline"><input type="checkbox" name="{{ s.name }}" value="{{ ch }}" {{ 'checked' if ch in v }}> {{ ch|replace('after ', '')|kind }}</label>{% endfor %}</span>
+    {% elif s.name == 'calib_power' %}<input name="calib_power" value="{{ v or '' }}" list="calib-choices" placeholder="not set, e.g. walk_forward or 2.0" maxlength="20" autocomplete="off">
+      <datalist id="calib-choices"><option value="walk_forward"></datalist>
     {% else %}<input name="{{ s.name }}" type="number" value="{{ '' if v is none else v }}" {% set r = ui_range(s.name, v, s.min, s.max) %}min="{{ r[0] }}" max="{{ r[1] }}" step="{{ '1' if s.type == 'int' else 'any' }}"{% if s.default is none %} placeholder="not set"{% endif %}>{% endif %}
     </label>{% endmacro %}
   <div class="jobform main-settings">{% for g, glabel, items in sweep_groups %}{% for s in items if s.name in essential %}{{ field(s) }}{% endfor %}{% endfor %}</div>

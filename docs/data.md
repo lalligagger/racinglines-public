@@ -78,6 +78,19 @@ bucket: the first piece of an eventual move to Google Cloud ([proposal](google-c
 | Key | `~/.config/racinglines/gcs-hmac.env` on the owner's machine (mode 600, never in git) |
 | Org policy | Service-account keys are blocked across the organization (Google's default); **allowed for this project only** (2026-09-28), for the cloud sessions' key |
 
+**The primary bucket (2026-10-14).** `gs://racinglines-data-384052502248` in project `racinglines` is the primary
+(owner, 2026-09-30, [Data off GitHub](data-off-github.md)); the bucket above is the old one cloud sessions read. The
+VM's service account (`racinglines-vm@racinglines.iam.gserviceaccount.com`) holds `storage.objectUser` on the primary.
+Besides the layout below, the primary holds:
+
+| Prefix | Holds | Written by |
+|---|---|---|
+| `backups/prod/`, `backups/staging/` | mirrors of the VM's `data/backups/` (pre-change dumps, nightly dumps) | `scripts/vm/offsite.sh` nightly (`vm.sh offsite`) |
+| `archive/markets/` | the recorder's Parquet history | `scripts/vm/offsite.sh` nightly |
+| `vendor/probalytics/` | the Probalytics pull, exactly as `scripts/probes/probalytics_pull.py` writes it. Licensed: never in the old bucket, never shown to users without Probalytics' written OK | the pull, from the Mac or the VM |
+
+Nothing writes deletes to the bucket; a VM copy of a dump is removed only once the bucket holds it at the same size.
+
 **Layout** (the same in `scripts/cloud/bucket.sh` and `bucket.py`):
 
 | Prefix | Local path | Holds |
