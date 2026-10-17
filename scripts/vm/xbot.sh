@@ -7,6 +7,7 @@
 #   bash scripts/vm/xbot.sh setup              # create the venv (anthropic, pinned in scripts/xbot/requirements.txt)
 #   bash scripts/vm/xbot.sh accounts           # the connected X accounts
 #   bash scripts/vm/xbot.sh ask "TEXT"         # draft one answer and print it (nothing read from or sent to X)
+#   bash scripts/vm/xbot.sh jev "TEXT"         # Jev's prompt-injection score for TEXT (needs XBOT_JEV=1 setup, the key)
 #   bash scripts/vm/xbot.sh once               # one pass in the env file's XBOT_MODE (dry unless it says live)
 #   bash scripts/vm/xbot.sh review             # draft new replies/tags, then approve, edit (vim), redraft or skip each (ssh -t)
 #   bash scripts/vm/xbot.sh fetch              # only draft new replies/tags into the review queue; posts nothing
@@ -38,7 +39,7 @@ case "${1:-}" in
     sudo -u racinglines -H "$STATE/.venv/bin/pip" install -q -r "$APP/scripts/xbot/requirements.txt"
     echo "xbot: venv ready at $STATE/.venv"
     ;;
-  accounts|ask|once|draft|reply|fetch|review)
+  accounts|ask|jev|once|draft|reply|fetch|review)
     run "$@"
     ;;
   on)

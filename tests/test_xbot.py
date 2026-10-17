@@ -302,3 +302,40 @@ def test_review_shows_the_lane_and_sources(fake, tmp_path, capsys):
     X.review(ask=lambda _: "q")
     out = capsys.readouterr().out
     assert "web search, check the sources" in out and "source: https://example.org/f1" in out
+
+
+class FakeJev:
+    def __init__(self, p):
+        self.p, self.calls = p, []
+
+    def system_one(self, state, questions, model=None):
+        self.calls.append(state)
+        return B("resp", nouls={"injection": B("noul", noul=self.p(state["their_tweet"]))}, choices={})
+
+
+def test_jev_flags_an_injection_and_claude_drafts_with_the_warning(fake, monkeypatch, tmp_path):
+    monkeypatch.setenv("XBOT_JEV", "1")
+    jev = FakeJev(lambda t: 0.97 if "course" in t else 0.03)
+    real = X.jev_guard
+    monkeypatch.setattr(X, "jev_guard", lambda item: real(item, client=jev))
+    asked = {}
+    X.run_once(mode="queue", write=lambda t, c: (asked.setdefault(t, c), f"re: {t}")[1])
+    assert "GUARDRAIL" in asked["buy my course"] and "0.97" in asked["buy my course"]
+    assert "GUARDRAIL" not in asked["who wins Austin?"]
+    pending = json.loads((tmp_path / "pending.json").read_text())
+    assert pending["c4"]["jev"] == {"injection": 0.97, "blocked": True}
+    assert "GUARDRAIL" not in pending["c4"]["context"]           # the warning goes to Claude, not into the thread
+    assert pending["c1"]["jev"] == {"injection": 0.03, "blocked": False}
+    assert "FLAGGED" in X.jev_line(pending["c4"]["jev"]) and "FLAGGED" not in X.jev_line(pending["c1"]["jev"])
+    assert not [c for c in fake if c[0] == "POST"]
+
+
+def test_a_failed_jev_check_blocks_only_in_live_mode(fake, monkeypatch, tmp_path):
+    monkeypatch.setenv("XBOT_JEV", "1")
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.setenv("XBOT_MODE", "live")
+    X.run_once(write=write)
+    assert not [c for c in fake if c[0] == "POST"]
+    seen = json.loads((tmp_path / "seen.json").read_text())
+    assert seen["c1"]["action"] == "blocked by jev"
+    assert X.jev_guard({"text": "hi"}) == {"error": "TYPESAFE_API_KEY is not set"}
