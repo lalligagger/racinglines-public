@@ -711,8 +711,8 @@ def run_all(engine, engine_url, users=None, profile_ref=None, now=None, event="n
     from racinglines.pipelines import profiles as PF
     with engine.connect() as c:
         targets = [(uid, prof) for uid, name, _, prof in PF.assigned(c, venue=venue) if not users or name in users]
+        names = {uid: name for uid, name, _, _ in PF.assigned(c, venue=venue)}
         if not PF.MAKERS_OPEN:                 # Alpha: makers run only for the demo accounts (profiles.MAKERS_OPEN)
-            names = {uid: name for uid, name, _, _ in PF.assigned(c, venue=venue)}
             skipped = [names[uid] for uid, prof in targets if PF.is_maker(prof) and names[uid] not in PF.DEMO]
             if skipped:
                 echo(f"maker strategies are closed for Alpha: skipped {', '.join(skipped)}")
@@ -728,15 +728,17 @@ def run_all(engine, engine_url, users=None, profile_ref=None, now=None, event="n
         kelly[uid] = PF.sizing_of(prof)                # a player's sizing choice (for_player; None = standard)
     report = []
     for prof, uids in groups.values():
+        # the Lab monitor accounts (profiles.ensure_monitors) are stored and scored like anyone, but alert nobody
+        alert_g = alert and any(not names.get(u, "").startswith(PF.MONITOR_PREFIX) for u in uids)
         if PF.is_combo(prof):
             echo(f"{prof['name']} (blend of {', '.join(m['code'] for m in prof['members'])}) for users {uids}")
             outs = compute_all(engine, engine_url, prof, now=now, event=event, fetch=fetch, echo=echo, cache=cache)
-            report += [_run_one(engine, engine_url, out["profile"], out, uids, rate, now, alert, echo, kelly=kelly,
+            report += [_run_one(engine, engine_url, out["profile"], out, uids, rate, now, alert_g, echo, kelly=kelly,
                                 guard=guard(prof, venue) if profile_ref is None else None) for out in outs]
             continue
         echo(f"{prof['name']} ({prof['strategy']}) for users {uids}")
         out = compute(engine, engine_url, prof, now=now, event=event, fetch=fetch, echo=echo, cache=cache)
-        report.append(_run_one(engine, engine_url, prof, out, uids, rate, now, alert, echo, kelly=kelly,
+        report.append(_run_one(engine, engine_url, prof, out, uids, rate, now, alert_g, echo, kelly=kelly,
                                guard=guard(prof, venue) if profile_ref is None else None))
     return report
 

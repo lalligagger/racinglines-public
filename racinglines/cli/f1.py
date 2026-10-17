@@ -117,6 +117,9 @@ def main(argv=None):
     p.add_argument("--markdown", action="store_true", help="Also print the block for the weekend report.")
     p = sub.add_parser("profiles", help="List strategy profiles; create A / C / K as Lab candidates if missing.")
     p.add_argument("--assign-demo", action="store_true", help="Demo taker -> A, demo maker -> C.")
+    p.add_argument("--monitors", action="store_true",
+                   help="One hidden account per Lab taker candidate (lab-<id>), assigned it, so the live signal pass "
+                        "paper-trades every taker. Writes users: take a backup first.")
     p.add_argument("--venue", default="polymarket", choices=["polymarket", "kalshi"],
                    help="With --assign-demo: kalshi assigns the demo maker K as its Kalshi profile "
                         "(users.prefs['strategy_profile_kalshi']) and leaves the Polymarket profiles alone.")
@@ -603,6 +606,9 @@ def _run(args):
             ids = PF.ensure_candidates(c)
             if args.assign_demo:
                 print("assigned:", PF.assign_demo(c, **({} if args.venue == "polymarket" else dict(venue=args.venue))))
+            if args.monitors:
+                for username, cid, created in PF.ensure_monitors(c):
+                    print(f"monitor {username} -> candidate #{cid}" + (" (created)" if created else ""))
             for code, i in ids.items():
                 pr = PF.PROFILES[code]
                 print(f"{code}  candidate #{i}  {pr['name']}" + (f"  [{pr['venue']}]" if pr.get("venue") else ""))

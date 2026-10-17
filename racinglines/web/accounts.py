@@ -131,7 +131,7 @@ def check_username(conn, username):
     """'' if the (lower-cased) username is free and valid, else the message to show."""
     if not USERNAME_RE.match(username):
         return "Usernames are 3 to 30 characters: lower-case letters, digits, '.', '_' or '-', starting with a letter or digit."
-    if username in RESERVED:
+    if username in RESERVED or username.startswith("lab-"):     # lab-<id>: the Lab monitor accounts (profiles.ensure_monitors)
         return "That username is reserved. Please pick another."
     if conn.execute(text("SELECT 1 FROM users WHERE lower(username) = :u"), dict(u=username)).first():
         return "That username is taken. Please pick another."
