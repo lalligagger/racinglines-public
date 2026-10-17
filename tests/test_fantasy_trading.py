@@ -661,6 +661,32 @@ def test_every_surface_says_when_a_market_closes(db, monkeypatch):
     assert "season future, no close" in ada.get(f"/trade?link={champ}").text
 
 
+def test_mcp_order_checks_the_live_venue_book_and_passes_its_refusal_through(db, monkeypatch):
+    """With RACINGLINES_FANTASY_BOOKS=live, fantasy_order over MCP fills against the venue's book at that moment
+    (live_book), not the recorded one, and a failed live fetch comes back as ok=false, book_unavailable."""
+    from datetime import datetime, timezone
+
+    from racinglines.fantasy import exchange as FX
+    eng, win = db["engine"], db["links"]["win"]
+    _record(eng, "KX-WIN-VER")                                             # recorded: best ask 0.41
+    FX._BOOKS.clear()
+    monkeypatch.setenv("RACINGLINES_FANTASY_BOOKS", "live")
+    calls = []
+
+    def live(exchange, token_id, transport=None):
+        calls.append((exchange, token_id))
+        return dict(ts=datetime.now(timezone.utc), bids=[(0.37, 500)], asks=[(0.39, 500)])
+    monkeypatch.setattr(FX, "live_book", live)
+    mcp = _mcp_client(eng, monkeypatch, dict(db["users"]["ada"], role="pro"))
+    r = mcp("fantasy_order", market_link_id=win, side="yes", action="buy", shares=10, limit_price=0.42)
+    assert r["ok"] and r["fills"] == [[0.39, 10]] and calls == [("kalshi", "KX-WIN-VER")]
+    monkeypatch.setattr(FX, "live_book", lambda exchange, token_id, transport=None: None)
+    r = mcp("fantasy_order", market_link_id=win, side="yes", action="buy", shares=10, limit_price=0.42)
+    assert not r["ok"] and r["reason"] == "book_unavailable" and r["message"] == FX.TEXT["book_unavailable"]
+    q = mcp("fantasy_quote", market_link_id=win, side="yes", action="buy", shares=10, limit_price=0.42)
+    assert q["ok"] and q["fills"] == [[0.41, 10]]                         # the quote stays on the recorded book
+
+
 def test_quote_previews_an_order_on_every_surface_without_writing(db, monkeypatch):
     """exchange.quote walks the latest recorded book as place does (the same steps, the same fee) and writes nothing;
     fantasy_quote serves it over MCP and the Trade form shows it as the 'if filled now' line."""
