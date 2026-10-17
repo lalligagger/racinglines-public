@@ -303,6 +303,30 @@ def _display(v):
     return "" if v is None else str(v)
 
 
+@app.get("/admin/monitors", response_class=HTMLResponse, dependencies=ADMIN)
+def admin_monitors(request: Request, c=Depends(conn)):
+    """Lab monitors (owner, 2026-10-17, takers only): one hidden lab-<candidate id> account per F1 taker candidate, each
+    following its candidate on Polymarket from now to the end of the season. Their paper record, from story.track_record
+    (the same as the MCP tool track_record(user="lab-<id>")), best P&L first."""
+    import pandas as pd
+
+    from racinglines.pipelines import story as S
+    prefix = getattr(PF, "MONITOR_PREFIX", "lab-")
+    users = rows(data.q(c, """SELECT id, username, display_name, created_at FROM users
+                              WHERE starts_with(username, :p) ORDER BY username""", p=prefix))
+    out = []
+    for u in users:
+        rec = sorted(S.track_record(c, u["id"], venue="polymarket"),          # by event_key there: by date here
+                     key=lambda r: (r["date"] is None, r["date"] or pd.Timestamp.min, r["event_key"]))
+        last = rec[-1] if rec else None
+        out.append(dict(u, name=(u["display_name"] or u["username"]).removeprefix("Lab monitor: "), weekends=len(rec),
+                        up=sum(1 for r in rec if r["pnl"] > 0), pnl=sum(r["pnl"] for r in rec),
+                        taken=sum(int(r["taken"] or 0) for r in rec), open=sum(1 for r in rec if not r["settled"]),
+                        last=last, record=rec))
+    out.sort(key=lambda m: (m["weekends"] == 0, -m["pnl"], m["username"]))
+    return render(request, "admin_monitors.html", monitors=out, prefix=prefix)
+
+
 @app.get("/admin/storage", dependencies=ADMIN)
 def admin_storage():
     return RedirectResponse("/admin/db#storage", status_code=303)       # the storage status lives on /admin/db (owner)
