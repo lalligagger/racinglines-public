@@ -10,13 +10,15 @@ with POST /v1/inbox/comments/{postId} and commentId). Zernio's /v1/inbox/mention
     python scripts/xbot/xbot.py accounts        # the connected X accounts (read-only)
     python scripts/xbot/xbot.py ask "TEXT"      # draft one answer, print it; nothing is read from or sent to X
     python scripts/xbot/xbot.py once            # one pass: every new comment gets a draft (dry) or a reply (live)
+    python scripts/xbot/xbot.py fetch           # draft every new reply and tag into the review queue; posts nothing
+    python scripts/xbot/xbot.py review          # fetch, then go through the queue: approve, edit (vim), skip, later
     python scripts/xbot/xbot.py draft TWEET     # draft an answer to TWEET (an id or x.com URL) into drafts/<id>.txt
     python scripts/xbot/xbot.py reply TWEET [FILE]  # post FILE (default drafts/<id>.txt) as a reply to TWEET, by hand
 
 Settings (env; on the VM /etc/racinglines-xbot.env, read by scripts/vm/xbot.sh):
     ZERNIO_API_KEY, ANTHROPIC_API_KEY   the two keys
     XBOT_MCP_TOKEN      the rl_ token of the account the bot reads racinglines as (`racinglines mcp token <account>`)
-    XBOT_MODE           dry (default: drafts go to the log, nothing is posted) or live
+    XBOT_MODE           dry (default: drafts go to the log, nothing is posted), live, or queue (drafts wait for review)
     XBOT_ACCOUNT_ID     the Zernio X account; default the first active X account
     XBOT_HANDLE         the handle tags are searched for; default the account's username
     XBOT_MAX_REPLIES    comments handled per pass, default 5; the rest wait for the next pass
@@ -33,6 +35,7 @@ Idempotency-Key, so a retried pass cannot post twice.
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -235,43 +238,79 @@ def log(d, **row):
     print(json.dumps(row), flush=True)
 
 
+def send(acct, route, text):
+    """Post `text` along a saved route: a reply on one of our posts, or a reply to a tweet that tagged us."""
+    if route["kind"] == "comment":
+        return post_reply(route["post"], acct, route["id"], text)
+    return reply_to_tweet(acct, route["id"], text)
+
+
+def load_pending(d):
+    p = d / "pending.json"
+    return json.loads(p.read_text()) if p.exists() else {}
+
+
+def save_pending(d, pending):
+    tmp = d / "pending.json.tmp"
+    tmp.write_text(json.dumps(pending, indent=1, sort_keys=True))
+    tmp.replace(d / "pending.json")
+
+
+def queue(d, item, reply):
+    """Save a draft for review (`review`): drafts/<id>.txt plus its entry in pending.json."""
+    f = d / "drafts" / f"{item['id']}.txt"
+    f.parent.mkdir(exist_ok=True)
+    f.write_text((reply or "SKIP") + "\n")
+    pending = load_pending(d)
+    pending[item["id"]] = dict(item, file=str(f), queued=pending.get(item["id"], {}).get("queued") or time.time_ns())
+    save_pending(d, pending)
+
+
+def now():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def run_once(mode=None, write=draft):
+    """One pass over new replies and tags. dry: drafts to the log; live: posts; queue: drafts wait for `review`."""
     mode = mode or os.environ.get("XBOT_MODE", "dry")
-    if mode not in ("dry", "live"):
-        sys.exit(f"xbot: XBOT_MODE must be dry or live, not {mode!r}")
+    if mode not in ("dry", "live", "queue"):
+        sys.exit(f"xbot: XBOT_MODE must be dry, live or queue, not {mode!r}")
     limit = int(os.environ.get("XBOT_MAX_REPLIES", "5"))
     since = datetime.now(timezone.utc) - timedelta(days=int(os.environ.get("XBOT_SINCE_DAYS", "7")))
     d, acct = state_dir(), account()
     handle = os.environ.get("XBOT_HANDLE") or acct.get("username", "").lstrip("@")
     acct = acct["_id"]
     seen, done = load_seen(d), 0
-    todo = []                                                  # (id, text, user, url, context, send)
+    todo = []
     for post in our_posts(acct, since):
         for c in comments(post["id"], acct):
-            todo.append((c["id"], c["message"], (c.get("from") or {}).get("username") or "", c.get("url"),
-                         post.get("content") or "",
-                         lambda r, p=post["id"], c=c["id"]: post_reply(p, acct, c, r)))
+            todo.append(dict(kind="comment", id=c["id"], post=post["id"], text=c["message"],
+                             user=(c.get("from") or {}).get("username") or "", url=c.get("url"),
+                             context=post.get("content") or ""))
     found = []
     if handle:
-        newest = seen.get("_search", {}).get("newest_id")
-        found = tags(acct, handle, newest)
+        # on demand (queue) it looks back the whole 7 days, so tweets a dry pass only drafted come back for review
+        found = tags(acct, handle, None if mode == "queue" else seen.get("_search", {}).get("newest_id"))
         for t in found:
-            todo.append((t["id"], t["text"], (t.get("author") or {}).get("username") or "",
-                         f"https://x.com/i/status/{t['id']}", "(they tagged us in their own post)",
-                         lambda r, t=t["id"]: reply_to_tweet(acct, t, r)))
-    for cid, text, who, url, context, send in todo:
-        if cid in seen:
+            todo.append(dict(kind="tag", id=t["id"], text=t["text"], user=(t.get("author") or {}).get("username") or "",
+                             url=f"https://x.com/i/status/{t['id']}", context="(they tagged us in their own post)"))
+    for item in todo:
+        if item["id"] in seen and not (mode == "queue" and seen[item["id"]].get("action") == "drafted"):
             continue
         if done >= limit:
             print(f"xbot: {limit} this pass; the rest wait for the next one", flush=True)
             break
-        reply = write(text, context)
-        action = "skipped" if reply is None else ("drafted" if mode == "dry" else "replied")
-        if reply is not None and mode == "live":
-            send(reply)
-        seen[cid] = dict(at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), action=action)
+        reply = write(item["text"], item["context"])
+        action = {"dry": "drafted", "live": "replied", "queue": "pending"}[mode] if reply is not None else "skipped"
+        if mode == "queue":
+            action = "pending"                    # a SKIP is queued too: you decide, not the model
+            queue(d, item, reply)
+        elif reply is not None and mode == "live":
+            send(acct, item, reply)
+        seen[item["id"]] = dict(at=now(), action=action)
         save_seen(d, seen)
-        log(d, mode=mode, action=action, comment=cid, user=who, text=text, url=url, reply=reply)
+        log(d, mode=mode, action=action, comment=item["id"], user=item["user"], text=item["text"], url=item["url"],
+            reply=reply)
         done += 1
     if handle:                       # search from the newest tag up to which every tag is handled (the cap can stop early)
         for t in found:
@@ -280,6 +319,60 @@ def run_once(mode=None, write=draft):
             seen["_search"] = dict(newest_id=t["id"])
     save_seen(d, seen)
     return done
+
+
+def editor():
+    import shutil
+    for e in (os.environ.get("EDITOR"), "vim", "vi", "nano"):
+        if e and shutil.which(e):
+            return e
+    sys.exit("xbot: no editor found (set EDITOR)")
+
+
+def review(ask=input, edit=None):
+    """Every pending draft, oldest first: [a]pprove (posts it), [e]dit in $EDITOR (vim), [s]kip (never answer),
+    [l]ater (keep it pending), [q]uit."""
+    import subprocess
+    edit = edit or (lambda f: subprocess.call([editor(), f]))
+    d = state_dir()
+    pending = load_pending(d)
+    if not pending:
+        print("xbot: nothing pending")
+        return 0
+    acct, posted = account_id(), 0
+    for i, (cid, item) in enumerate(sorted(pending.items(), key=lambda kv: kv[1].get("queued", 0)), 1):
+        f = Path(item["file"])
+        while True:
+            text = f.read_text().strip()
+            print(f"\n[{i}/{len(pending)}] {item['kind']} from @{item['user']}  {item.get('url') or ''}\n"
+                  f"  them: {item['text']}\n  ours ({len(text)} chars): {text}")
+            choice = (ask("[a]pprove  [e]dit  [s]kip  [l]ater  [q]uit > ") or "").strip().lower()[:1]
+            if choice == "e":
+                edit(str(f))
+                continue
+            if choice == "a":
+                if not text or text.upper() == "SKIP" or len(text) > 280:
+                    print(f"xbot: can't post {len(text)} chars{' (SKIP)' if text.upper() == 'SKIP' else ''}; edit it")
+                    continue
+                send(acct, item, text)
+                posted += 1
+                close_item(d, cid, "replied", item, text)
+            elif choice == "s":
+                close_item(d, cid, "skipped by hand", item, None)
+            elif choice == "q":
+                return posted
+            break
+    return posted
+
+
+def close_item(d, cid, action, item, text):
+    seen, pending = load_seen(d), load_pending(d)
+    seen[cid] = dict(at=now(), action=action)
+    pending.pop(cid, None)
+    save_seen(d, seen)
+    save_pending(d, pending)
+    log(d, mode="review", action=action, comment=cid, user=item.get("user"), text=item.get("text"),
+        url=item.get("url"), reply=text)
 
 
 def main(argv=None):
@@ -296,15 +389,16 @@ def main(argv=None):
         if not t.get("text"):
             sys.exit(f"xbot: could not read tweet {tweet}")
         reply = draft(t["text"], "(they tagged us in their own post)")
-        out = state_dir() / "drafts" / f"{tweet}.txt"
-        out.parent.mkdir(exist_ok=True)
-        out.write_text((reply or "SKIP") + "\n")
-        d, now = state_dir(), datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        d = state_dir()
+        item = dict(kind="tag", id=tweet, text=t["text"], user=(t.get("author") or {}).get("username") or "",
+                    url=f"https://x.com/i/status/{tweet}", context="(they tagged us in their own post)")
+        queue(d, item, reply)
+        out = d / "drafts" / f"{tweet}.txt"
         seen = load_seen(d)                                  # the timer leaves a hand-drafted tweet to you
-        seen.setdefault(tweet, dict(at=now, action="drafted by hand"))
+        seen.setdefault(tweet, dict(at=now(), action="pending"))
         save_seen(d, seen)
         print(f"@{(t.get('author') or {}).get('username', '?')}: {t['text']}\n---\n{reply or 'SKIP'}\n---\n"
-              f"saved to {out} ({len(reply or '')} chars); post it with: reply {tweet}")
+              f"saved to {out} ({len(reply or '')} chars); post it with `review` (or `reply {tweet}`)")
     elif cmd == "reply" and len(argv) in (2, 3):
         tweet = tweet_id(argv[1])
         f = Path(argv[2]) if len(argv) == 3 else state_dir() / "drafts" / f"{tweet}.txt"
@@ -318,11 +412,21 @@ def main(argv=None):
         if (seen.get(tweet) or {}).get("action", "").startswith("replied"):
             sys.exit(f"xbot: {tweet} was already answered ({seen[tweet]['action']} at {seen[tweet]['at']})")
         out = reply_to_tweet(account_id(), tweet, text)
-        seen[tweet] = dict(at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), action="replied by hand")
+        seen[tweet] = dict(at=now(), action="replied by hand")
         save_seen(d, seen)
+        pending = load_pending(d)
+        if pending.pop(tweet, None):
+            save_pending(d, pending)
         post = out.get("post") or {}
         log(d, mode="manual", action="replied", comment=tweet, reply=text, post=post.get("_id"),
             status=post.get("status"), platforms=post.get("platforms"))
+    elif cmd == "fetch":
+        n = run_once(mode="queue")
+        print(f"xbot: {n} new draft(s) waiting for review", flush=True)
+    elif cmd == "review":
+        if "--no-fetch" not in argv:
+            run_once(mode="queue")
+        print(f"xbot: {review()} reply(ies) posted", flush=True)
     elif cmd == "once":
         n = run_once()
         print(f"xbot: {n} comment(s) handled this pass ({os.environ.get('XBOT_MODE', 'dry')})", flush=True)

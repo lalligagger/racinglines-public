@@ -153,3 +153,38 @@ def test_draft_then_reply_posts_the_saved_draft(fake, monkeypatch, tmp_path, cap
     post = [c for c in fake if c[0] == "POST"][0][2]
     assert post["content"] == "Max (@x) is 15% on our model."
     assert post["platforms"][0]["platformSpecificData"]["replyToTweetId"] == "901"
+
+
+def test_review_approves_edits_and_skips(fake, monkeypatch, tmp_path):
+    X.run_once(mode="queue", write=write)
+    assert not [c for c in fake if c[0] == "POST"]               # queueing posts nothing
+    pending = json.loads((tmp_path / "pending.json").read_text())
+    assert sorted(pending) == ["899", "900", "c1", "c3", "c4"]
+    assert (tmp_path / "drafts" / "c4.txt").read_text() == "SKIP\n"   # a model SKIP still waits for you
+    # in the order queued: c1, c4, then c3 (nested), then tags 899, 900
+    answers = iter(["a", "e", "a", "s", "l", "q"])
+
+    def edit(f):
+        Path(f).write_text("edited by hand\n")
+
+    assert X.review(ask=lambda _: next(answers), edit=edit) == 2
+    posts = [c[2] for c in fake if c[0] == "POST"]
+    assert posts[0] == {"accountId": "acc1", "message": "re: who wins Austin?", "commentId": "c1"}
+    assert posts[1]["message"] == "edited by hand" and posts[1]["commentId"] == "c4"
+    seen = json.loads((tmp_path / "seen.json").read_text())
+    assert [seen[k]["action"] for k in ("c1", "c4", "c3")] == ["replied", "replied", "skipped by hand"]
+    left = json.loads((tmp_path / "pending.json").read_text())
+    assert sorted(left) == ["899", "900"]                        # 899 later, quit at 900
+
+
+def test_review_refuses_to_post_a_skip_or_an_overlong_draft(fake, tmp_path):
+    X.run_once(mode="queue", write=lambda t, c: None)
+    answers = iter(["a", "q"])
+    assert X.review(ask=lambda _: next(answers)) == 0
+    assert not [c for c in fake if c[0] == "POST"]
+
+
+def test_queue_requeues_what_a_dry_pass_only_drafted(fake, tmp_path):
+    X.run_once(mode="dry", write=write)
+    X.run_once(mode="queue", write=write)
+    assert sorted(json.loads((tmp_path / "pending.json").read_text())) == ["899", "900", "c1", "c3"]
