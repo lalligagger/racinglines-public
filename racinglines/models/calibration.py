@@ -51,13 +51,15 @@ def parse(value):
     return str(a)
 
 
-def table_hash():
-    """Short hash of every sport's fitted calibration rows: part of the model key with walk_forward, so a refit table
-    prices afresh instead of reusing runs cached under the old one."""
+def table_hash(sport="f1"):
+    """Short hash of `sport`'s fitted calibration rows (None: every sport's): part of the model key with walk_forward,
+    so a refit table prices afresh instead of reusing runs cached under the old one, and another sport's table
+    leaves the key alone."""
     import hashlib
     import json
     h = hashlib.sha1()
-    for path in sorted((ROOT / "sports").glob("*/calibration.toml")):       # the fitted rows, not the comments
+    pattern = f"{sport}/calibration.toml" if sport else "*/calibration.toml"
+    for path in sorted((ROOT / "sports").glob(pattern)):                    # the fitted rows, not the comments
         h.update(path.parent.name.encode())
         h.update(json.dumps(tomllib.loads(path.read_text()).get("fit", []), sort_keys=True, default=str).encode())
     return h.hexdigest()[:8]
@@ -105,13 +107,19 @@ def apply(sim, a, rng):
         return sim
     pos = sim["pos"]
     n_sims, n = pos.shape
-    winner = np.argmax(pos == 1, axis=1)
+    idx = resample_index(np.argmax(pos == 1, axis=1), n, a, rng)
+    return {k: (v[idx] if isinstance(v, np.ndarray) and v.ndim >= 1 and v.shape[0] == n_sims else v)
+            for k, v in sim.items()}
+
+
+def resample_index(winner, n, a, rng):
+    """The sims to keep (with repeats) so each entrant's win share becomes p^a renormalised. winner: the index of
+    each sim's winner (0..n-1). Draws only from `rng`."""
+    n_sims = len(winner)
     p = np.bincount(winner, minlength=n) / n_sims
     q = win_power(p, a)
     w = np.where(p[winner] > 0, q[winner] / np.where(p[winner] > 0, p[winner], 1), 0)
-    idx = rng.choice(n_sims, size=n_sims, replace=True, p=w / w.sum())
-    return {k: (v[idx] if isinstance(v, np.ndarray) and v.ndim >= 1 and v.shape[0] == n_sims else v)
-            for k, v in sim.items()}
+    return rng.choice(n_sims, size=n_sims, replace=True, p=w / w.sum())
 
 
 # --- fitting (walk-forward: each fit sees only races finished before it) ----------------------------------------

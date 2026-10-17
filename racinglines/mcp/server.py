@@ -329,7 +329,8 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
                     offset: int = 0) -> str:
         """The Lab's Edge Finder from saved sweeps: every configuration (a full set of sweep settings) with a full-season
         sweep of `year`, and each strategy's full-season recap (P&L, volume, weekends up, drawdown, consistency, fills and
-        markout for makers). Nothing is simulated. strategy: update, hold, last, early, maker, maker_flat, ... (omit for all).
+        markout for makers) with its closing-line value (clv: bets, decided, mean CLV in points and percent, share
+        positive). Nothing is simulated. strategy: update, hold, last, early, maker, maker_flat, ... (omit for all).
         venue: polymarket or kalshi, the exchange the sweep traded (omit for all; each row names its venue)."""
         return _read(T.edge_finder, year=year, strategy=strategy, venue=venue, limit=limit, offset=offset)
 

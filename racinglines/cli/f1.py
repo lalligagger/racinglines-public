@@ -354,7 +354,8 @@ def _save_sweep(args, out):
                                            scores=records(out["scores"]),
                                            **(dict(calibration=records(out["calibration"]),
                                                    reliability=records(out["reliability"]))
-                                              if args.reliability else {})))
+                                              if args.reliability else {}),
+                                           **({"clv": out["clv"]} if out.get("clv") is not None else {})))
 
 
 def _progress_echo(every=10):
@@ -956,6 +957,7 @@ def _run(args):
             print(f"Saved season checkpoints run {run_id}.")
         return
     if args.cmd == "sweep":
+        from racinglines.pipelines import clv as CLV
         from racinglines.pipelines import sweep_settings as SS
         from racinglines.pipelines import weekend_sweep as SW
         if args.half_life and args.half_life_days is None:              # the older global flag
@@ -978,7 +980,7 @@ def _run(args):
                                        echo=lambda m: print(m, flush=True))
                     for k, v in out["totals"].items():
                         print(f"{k:7s} P&L {v['pnl']:+9.2f} on ${v['bought']:,.0f} · "
-                              f"{v['weekends_up']}/{v['weekends']} weekends up")
+                              f"{v['weekends_up']}/{v['weekends']} weekends up · {CLV.sweep_line(out.get('clv'), k)}")
                     if args.save:
                         print(f"Saved sweep run {_save_sweep(args, out)} for job {e['job']}.", flush=True)
             return
@@ -992,7 +994,8 @@ def _run(args):
         print(w[cols].to_string(index=False, float_format="{:.2f}".format))
         print("\n=== Totals ===")
         for k, v in out["totals"].items():
-            print(f"{k:7s} P&L {v['pnl']:+9.2f} on ${v['bought']:,.0f} · {v['weekends_up']}/{v['weekends']} weekends up")
+            print(f"{k:7s} P&L {v['pnl']:+9.2f} on ${v['bought']:,.0f} · {v['weekends_up']}/{v['weekends']} weekends up"
+                  f" · {CLV.sweep_line(out.get('clv'), k)}")
         print("\n=== Update strategy: P&L of the trades made at each stage ===")
         print(out["by_stage"].to_string(index=False, float_format="{:+.2f}".format))
         print("\n=== By market ===")
@@ -1013,6 +1016,8 @@ def _run(args):
         w.to_csv(outdir / f"sweep_{args.year}_weekends.csv", index=False)
         if len(out["trades"]):
             out["trades"].to_csv(outdir / f"sweep_{args.year}_trades.csv", index=False)
+        if out.get("clv_bets") is not None and len(out["clv_bets"]):
+            out["clv_bets"].to_csv(outdir / f"sweep_{args.year}_clv_bets.csv", index=False)
         if args.save:
             print(f"Saved sweep run {_save_sweep(args, out)}.")
         return

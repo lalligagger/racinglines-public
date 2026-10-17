@@ -142,6 +142,11 @@ SETTINGS = [
                  "book = touch, and every order is walked level by level through Probalytics' full book at that "
                  "moment (cut to what the book holds, no cost per share: the walk is the spread and the slippage); "
                  "needs tape_source = probalytics. Unset = price. Not tuned: no default change without a decision-log row."),
+    Setting("sell_floor", "markets", "Taker sale floor", "choice", None, choices=("none", "fair", "edge"), unset="none",
+            help="The lowest price a taker sale (a rebalance down) may fill at, net of cost and fee: none = no floor "
+                 "(one-price fills sell at any bid; taker_fill = book sells the touch level only), fair = at or above "
+                 "our fair, edge = at or above fair - min_edge (each side its own fair). Applies to every taker_fill. "
+                 "Unset = none. Not tuned: no default change without a decision-log row."),
     Setting("max_spread", "markets", "Max quoted spread ($)", "float", None, 0.01, 1.0,
             help="A stage whose quote is wider than this (ask - bid) is not tradeable: a 0.10 / 0.89 head-to-head book "
                  "has no market to fill at (backtest fill-error probe, 2026-10-14). Applies where stages carry a quote "
@@ -253,7 +258,7 @@ class Settings(dict):
         vals = {k: self[k] for k in names}
         if vals.get("calib_power") == "walk_forward":         # the fitted table is part of the pricing
             from racinglines.models import calibration as CAL
-            vals["calib_power"] = f"walk_forward@{CAL.table_hash()}"
+            vals["calib_power"] = f"walk_forward@{CAL.table_hash(getattr(self, 'CALIB_SPORT', 'f1'))}"
         blob = json.dumps(vals, sort_keys=True, default=list)
         return hashlib.sha1(blob.encode()).hexdigest()[:12]
 

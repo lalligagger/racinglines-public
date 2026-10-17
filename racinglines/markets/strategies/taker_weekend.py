@@ -66,6 +66,10 @@ class TakerParams:
                                                          # for a contract costing c, capped at max_stake x scale
     fill: str = "price"                                  # "price": one price per order; "book": walk the stage's
                                                          # book levels (stages with `asks` / `bids`, else "price")
+    sell_floor: str | None = None                        # the lowest a sale may fill (both fills): None = no floor
+                                                         # (one price: any bid; book: the touch level only), "fair"
+                                                         # = net of fee at or above fair, "edge" = at or above
+                                                         # fair - min_edge (see _floor_ok)
     taker_fee: float = 0.0                               # the venue's taker fee rate: rate x contracts x P x (1 - P)
                                                          # per order, rounded up to the cent (Kalshi 0.07,
                                                          # Polymarket 0; venue_replay.EXCHANGES)
@@ -93,6 +97,32 @@ def _book_side(s, side, buy):
     if side == "YES":
         return s["asks"] if buy else s["bids"]
     return [(1 - p, q) for p, q in (s["bids"] if buy else s["asks"])]
+
+
+def _floor_ok(px, fair, min_edge, floor, cost=0.0, fee_rate=0.0):
+    """A sale at px clears the sell_floor setting: net of cost and fee, at or above fair ("fair") or fair - min_edge
+    ("edge"); always with no floor. fair is the side's own (1 - fair for NO)."""
+    if floor is None:
+        return True
+    bar = fair if floor == "fair" else fair - min_edge
+    return px - cost - fee_rate * px * (1 - px) >= bar - 1e-9
+
+
+def _within(levels, fair, min_edge, fee_rate, buy, floor=None):
+    """The levels a book walk may take, best first, up to the first one past its limit. A buy is a limit order at
+    the edge: only where fair - price - fee >= min_edge (the bar that sized it), or a thin book's far levels (0.99
+    asks) fill the rest of an order sized at the touch. A sale walks down to the sell_floor (_floor_ok); with no
+    floor it takes the touch level only, as the one-price fill sells at the bid (never down a thin book to 0.01)."""
+    if not buy and floor is None:
+        return list(levels[:1])
+    out = []
+    for px, size in levels:
+        ok = (fair - px - fee_rate * px * (1 - px) >= min_edge - 1e-9) if buy else \
+            _floor_ok(px, fair, min_edge, floor, fee_rate=fee_rate)
+        if not ok:
+            break
+        out.append((px, size))
+    return out
 
 
 def _fee(rate, px, shares):
@@ -163,7 +193,12 @@ class _Market:
                     continue
                 if abs(d) < 1e-9:
                     continue
+                f_side = s["fair"] if side == "YES" else 1 - s["fair"]
                 levels = _book_side(s, side, d > 0) if p.fill == "book" else None
+                if levels is not None:                       # a limit: never past the edge or floor (_within)
+                    levels = _within(levels, f_side, p.min_edge, p.taker_fee, d > 0, p.sell_floor)
+                elif d < 0 and not _floor_ok(px, f_side, p.min_edge, p.sell_floor, p.cost, p.taker_fee):
+                    continue                                 # one price: the sale is under the floor
                 if levels is not None:                       # walk the book: the spread and the slippage
                     px, got = walk(levels, abs(d))
                     if px is None:

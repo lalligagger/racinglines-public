@@ -65,6 +65,7 @@ MAKERS = {"maker": {},
           "maker_widen": dict(widen=True),                      # wider where earlier weekends' markouts were bad
           "maker_all": dict(flatten_before_qual=True, info_skew=2.0, widen=True)}
 WIDEN = 1.5                          # half-spread multiplier for widened market kinds
+FILL_COLS = ["ts", "cond", "side", "price", "qty", "mid", "kind", "subject", "run_id"]   # a maker fill, kept for CLV
 
 
 from racinglines.sources.fastf1.fetch import SCHEDULE_COLS  # noqa: E402,F401  (kept importable from here)
@@ -332,16 +333,18 @@ def weekend(conn, w, stage_runs, params_list, echo=print, widen_kinds=(), settin
     tape = lambda: _memo(("tape", w["event_key"], rids, st["fill"] == "queue", venue),          # noqa: E731
                          lambda: R.load_event(conn, list(rids), books=st["fill"] == "queue",
                                               **({} if venue == "polymarket" else dict(exchange=venue))))
-    return trade(markets, [lab for lab, _, _ in stage_runs], params_list, st, tape, widen_kinds, KINDS, echo)
+    return trade(markets, [lab for lab, _, _ in stage_runs], params_list, st, tape, widen_kinds, KINDS, echo,
+                 stage_of={rid: lab for lab, _, rid in stage_runs})
 
 
-def trade(markets, labels, params_list, st, tape, widen_kinds=(), kinds=KINDS, echo=print):
+def trade(markets, labels, params_list, st, tape, widen_kinds=(), kinds=KINDS, echo=print, stage_of=None):
     """Trade one event's markets, any sport: every taker mode of params_list (and the buy_all debug mode), the
     model and the market scored per stage and kind (`kinds`), the calibration rows, and the maker variants (MAKERS)
     replayed on the event's tape. markets: [dict(key, kind, subject, stages, outcome)] (weekend_markets, or
     season_sweep's); labels: the stage labels in order; tape(): the maker replay's event (markets, stages), raising
-    when the event has no tape. Returns dict(modes, trades, scores, calib, markets, tradeable_first / _last,
-    makers, markout_by_kind, maker)."""
+    when the event has no tape; stage_of: {the tape's stage run_id: label} (None: run_id i is labels[i]). Returns
+    dict(modes, trades, scores, calib, markets, tradeable_first / _last, makers, maker_fills (each maker variant's
+    fills with their stage label, for CLV), markout_by_kind, maker)."""
     from racinglines.pipelines import sweep_settings as SS
     venue = SS.venue_of(st)
     out = dict(modes={}, trades={})
@@ -375,7 +378,8 @@ def trade(markets, labels, params_list, st, tape, widen_kinds=(), kinds=KINDS, e
     out["tradeable_first"] = sum(m["stages"][0]["tradeable"] for m in markets)
     out["tradeable_last"] = sum(m["stages"][-1]["tradeable"] for m in markets)
     # maker replays through the same stages (conservative fills), one per setting
-    out["makers"], out["markout_by_kind"] = {}, {}
+    out["makers"], out["maker_fills"], out["markout_by_kind"] = {}, {}, {}
+    stage_of = stage_of if stage_of is not None else dict(enumerate(labels))
     try:
         from dataclasses import replace
 
@@ -398,6 +402,9 @@ def trade(markets, labels, params_list, st, tape, widen_kinds=(), kinds=KINDS, e
         s = sk.loc["total"]
         out["makers"][name] = dict(fills=int(s["fills"]), notional=float(s["notional"]), pnl=float(s["pnl"]),
                                    markout_60m=float(s["markout_60m"]), spread_pnl=float(s["spread_pnl"]))
+        f = rep["fills"]
+        out["maker_fills"][name] = f.reindex(columns=FILL_COLS).assign(
+            stage=f["run_id"].map(lambda i: stage_of.get(i, str(i))) if len(f) else None)
         if name == "maker":
             out["markout_by_kind"] = sk.drop(index="total")["markout_60m"].to_dict()
     out["maker"] = out["makers"].get("maker")
@@ -551,6 +558,7 @@ def run_sweep(engine, engine_url, year, rounds=None, n_sims=4000, fetch=True, re
                            settings=st)
 
     out = season(events, trade_event, st, params_list, STAGE_ORDER, total=len(sched), echo=echo)
+    season_clv(engine, out, SS.venue_of(st), "f1", STAGE_ORDER, echo)
     return dict(out, params=dict({k: v for k, v in base.__dict__.items() if k != "stages" and not
                                   (k in ("scale", "max_deployed", "min_edge_by_kind", "thin_edge_mult", "kelly", "bankroll", "root_unit") and v == RB.TakerParams.__dataclass_fields__[k].default)},
                                  sport="f1", venue=SS.venue_of(st), n_sims=st["sims"],
@@ -576,6 +584,7 @@ def taker_params(st):
                           max_deployed=st["max_deployed"], thin_edge_mult=st["thin_edge_mult"],
                           kelly=st["kelly"], bankroll=st["bankroll"] if st["kelly"] is not None else None,
                           root_unit=st.get("root_unit"), fill="book" if st.get("taker_fill") == "book" else "price",
+                          sell_floor=None if st.get("sell_floor") in (None, "none") else st.get("sell_floor"),
                           taker_fee=taker_fee(venue))
     if st["kelly"] is not None and st["bankroll"] is None:
         raise ValueError("kelly sizing needs a bankroll (the `bankroll` setting)")
@@ -589,9 +598,11 @@ def season(events, trade_event, st, params_list, stage_order=(), total=None, ech
     last_run_id, ...)]; trade_event(event, params_list, widen_kinds) -> trade()'s dict, or None (no markets).
     Bankroll-aware sizing carries each mode's balance from event to event; the maker_widen variant widens the
     kinds whose maker markouts were negative in EARLIER events. Returns dict(weekends, by_stage, by_kind, totals,
-    trades, scores, calibration, reliability)."""
+    trades, scores, calibration, reliability, strategy_trades: {strategy: every taker mode's trades and maker
+    variant's fills, with event_key and stage}, for season_clv)."""
     balance = {q.mode: st["bankroll"] for q in params_list}     # bankroll-aware sizing: each mode's balance
     rows, all_trades, all_scores, all_calib = [], [], [], []
+    by_strategy = {}                   # strategy -> [trades or fills per event], for CLV (season_clv)
     markouts = {}                      # market kind -> maker's 60-min markout so far (as of each weekend)
     for ev in events:
         plist = params_list if st["bankroll"] is None else \
@@ -617,6 +628,9 @@ def season(events, trade_event, st, params_list, stage_order=(), total=None, ech
         t = r["trades"]["update"]
         if len(t):
             all_trades.append(t.assign(event_key=ev["event_key"], event=ev["event"]))
+        for name, t in [*r["trades"].items(), *r.get("maker_fills", {}).items()]:
+            if len(t):
+                by_strategy.setdefault(name, []).append(t.assign(event_key=ev["event_key"]))
         all_scores += [dict(s, event_key=ev["event_key"]) for s in r["scores"]]
         all_calib += [dict(c, event_key=ev["event_key"]) for c in r["calib"]]
         echo(f"progress {len(rows)}/{total or len(events)} traded {ev['event_key']} {ev['event']}: "
@@ -646,4 +660,21 @@ def season(events, trade_event, st, params_list, stage_order=(), total=None, ech
                                 bought=float(weekends.get(spent, pd.Series(dtype=float)).fillna(0).sum()))
     return dict(weekends=weekends, by_stage=by_stage, by_kind=RB.by(trades, "kind"), totals=totals, trades=trades,
                 scores=score_stage, calibration=pd.concat([cal_all.assign(stage="all"), cal_stage], ignore_index=True),
-                reliability=rel)
+                reliability=rel, strategy_trades={k: pd.concat(v, ignore_index=True) for k, v in by_strategy.items()})
+
+
+def season_clv(engine, out, venue, sport, stage_order=(), echo=print):
+    """Closing-line value of a season's trades (pipelines/clv.py: every taker mode's trades and maker variant's
+    fills against the venue's price at each market's close, read from the database), set as out["clv"] (what
+    the saved run keeps as metrics.clv: per strategy, strategy x stage, strategy x event) and out["clv_bets"] (one
+    row per bet; not saved). Adds to the sweep, never changes it: a failure to read the closes is echoed and kept
+    as out["clv"] = dict(error=...), the sweep's own results stand."""
+    from racinglines.pipelines import clv as CLV
+    order = [*TAKER_MODES, *MAKERS, "buy_all"]
+    try:
+        out["clv"], out["clv_bets"] = CLV.sweep(engine, out.get("strategy_trades") or {}, venue, sport,
+                                                strategies=order, stages=stage_order)
+    except Exception as ex:  # noqa: BLE001  (CLV is an addition: the sweep's results stand without it)
+        echo(f"  CLV not computed: {type(ex).__name__}: {ex}")
+        out["clv"], out["clv_bets"] = dict(error=f"{type(ex).__name__}: {ex}"), None
+    return out

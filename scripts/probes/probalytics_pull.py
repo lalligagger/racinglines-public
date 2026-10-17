@@ -260,6 +260,7 @@ def market_map_extra(venue):
               f"AND market_type != 'PARLAY' AND {EXTRA_MATCH[venue]}")
     rows = [r for r in json.loads(body)["data"] if r[0] not in linked]
     m = {u: p for u, p, _ in rows}
+    cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps(dict(key=key, linked=len(linked), found=len(m), map=m,
                                      titles={u: t for u, _, t in rows})))
     log(f"{venue}: {len(m)} F1 markets on Probalytics not in our links (key {key})")
@@ -319,6 +320,7 @@ def market_map(venue):
         body = ch(f"SELECT toString(id), platform_id FROM markets WHERE platform = '{VENUES[venue]}' "
                   f"AND platform_id IN ({lst})")
         m.update({u: p for u, p in json.loads(body)["data"]})
+    cache.parent.mkdir(parents=True, exist_ok=True)      # a fresh data folder (the VM's first pull) has no links/
     cache.write_text(json.dumps(dict(key=key, ours=len(ids), found=len(m), map=m)))
     log(f"{venue}: {len(ids)} of our F1 markets, {len(m)} found in Probalytics (links key {key})")
     return m, key
@@ -444,6 +446,9 @@ def run_stages(venues, year):
     jobs = []
     for v in venues:
         m, key = markets_for(v)
+        if not m:                        # no links/ files here (they are made on the Mac): nothing to look up
+            sys.exit(f"stopping: no {v} markets to pull. {OUT / 'links'} needs our_{v}_links.parquet or "
+                     f"db_f1_links.csv (run stages where those are, the Mac, or copy them here)")
         for ev, stages in by_ev.items():
             stages = [(lab, t) for lab, t in stages if t.date() >= BOOKS_FROM[v]]
             p = OUT / "stages" / f"{ev}_{VENUES[v]}{'' if SET == 'F1' else '_' + SET}.parquet"

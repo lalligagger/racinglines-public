@@ -4,7 +4,9 @@ above +2 % over 100 live bets before real money). Read-only: it computes CLV on 
 
 A bet is one paper trade the signal engine stored (strategy_signals): a taker's buy or sell it followed
 (detail.followed not false, the track record's rule) or a maker's paper fill, on any sport and venue. A sweep's
-in-memory trades (season_sweep / weekend_sweep `trades`: token, stage time, side, price) go through from_trades().
+in-memory trades (season_sweep / weekend_sweep `trades`: token, stage time, side, price) go through from_trades(), its
+maker fills through from_fills(); sweep() is the CLV every sweep saves in its run's metrics.clv (per strategy, per
+strategy x stage and per strategy x event).
 
     CLV (points)   = direction x (close - entry), both as the YES token's price; direction +1 for YES exposure (a YES
                      buy, a NO sell, a maker's bid fill), -1 for NO exposure
@@ -105,6 +107,22 @@ def from_trades(trades, venue, sport=None, strategy="update", profile=None):
         event_key=t.get("event_key"), race_id=None, kind=t.get("kind"), subject=t.get("subject"), market_key=t["key"],
         stage=t.get("stage"), action=np.where(t["shares"] > 0, "buy", "sell"), side=t["side"], shares=t["shares"].abs(),
         entry_ts=t["t"], entry=t["price"], mid=t.get("mid")))
+    return out.reindex(columns=BET_COLS)
+
+
+def from_fills(fills, venue, sport=None, strategy="maker", profile=None):
+    """A maker replay's fills (maker_replay.replay: ts in ns, cond = the market key, side "buy" = its bid filled,
+    "sell" = its ask filled, price = the YES price, qty, mid; plus kind, subject, stage, event_key) as bet rows, as
+    the signal engine stores a paper fill (pipelines/signals.py: action "fill", side YES for a bid filled, NO for an
+    ask filled), for compute()."""
+    f = pd.DataFrame(fills)
+    if not len(f):
+        return pd.DataFrame(columns=BET_COLS)
+    out = pd.DataFrame(dict(
+        source="sweep", bet_id=range(len(f)), user=None, profile=profile, strategy=strategy, sport=sport, venue=venue,
+        event_key=f.get("event_key"), race_id=None, kind=f.get("kind"), subject=f.get("subject"), market_key=f["cond"],
+        stage=f.get("stage"), action="fill", side=np.where(f["side"] == "buy", "YES", "NO"), shares=f["qty"],
+        entry_ts=pd.to_datetime(f["ts"].astype("int64"), unit="ns"), entry=f["price"], mid=f.get("mid")))
     return out.reindex(columns=BET_COLS)
 
 
@@ -339,6 +357,71 @@ def aggregate(per_bet, by=GROUP):
 def run(conn, users=None, sport=None, venue=None, event=None, now=None):
     per = compute(conn, bets(conn, users, sport, venue, event), now=now)
     return dict(bets=per, summary=aggregate(per))
+
+
+# --- a sweep's CLV (season_sweep / weekend_sweep: the saved run's metrics.clv) ----------------------------------
+
+def sweep_bets(by_strategy, venue, sport=None):
+    """Bet rows for every strategy of a sweep. by_strategy: {strategy: a taker mode's trades (from_trades) or a maker
+    variant's fills (from_fills: the frame has `cond`)}, each with event_key and stage."""
+    parts = [from_fills(t, venue, sport, s) if "cond" in t else from_trades(t, venue, sport, s)
+             for s, t in by_strategy.items() if t is not None and len(t)]
+    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=BET_COLS)
+
+
+def _groups(per_bet, by):
+    """aggregate() without its closing 'all' row, as JSON-ready records."""
+    a = aggregate(per_bet, by)
+    a = a[~(a[list(by)] == "all").all(axis=1)] if len(a) else a
+    return json.loads(a.to_json(orient="records"))
+
+
+def sweep_summary(per_bet, strategies=(), stages=()):
+    """metrics.clv of a saved sweep, from compute()'s per-bet rows: dict(
+        by_strategy  one row per strategy: bets, decided, undecided, mean_clv (points), mean_clv_pct, positive_share
+                     (of decided bets), mean_mid_move
+        by_stage     per strategy: a row per stage, then its 'all' row (= its by_strategy row)
+        by_event     per strategy x event_key
+        undecided    {reason: bets} over every strategy)
+    strategies / stages: the order to list them in (others after, sorted)."""
+    if not len(per_bet):
+        return dict(by_strategy=[], by_stage=[], by_event=[], undecided={})
+    events = per_bet.assign(t=pd.to_datetime(per_bet["entry_ts"])).groupby("event_key")["t"].min().sort_values()
+    order = dict(strategy={s: i for i, s in enumerate(strategies)}, stage={s: i for i, s in enumerate(stages)},
+                 event_key={e: i for i, e in enumerate(events.index)})       # events in the order they were traded
+
+    def by_order(rows, *keys):
+        return sorted(rows, key=lambda r: tuple((order[k].get(r[k], len(order[k])), str(r[k])) for k in keys))
+    strat = by_order(_groups(per_bet, ("strategy",)), "strategy")
+    stage = by_order(_groups(per_bet, ("strategy", "stage")), "strategy", "stage")
+    rows = []
+    for s in strat:
+        rows += [r for r in stage if r["strategy"] == s["strategy"]] + [dict(s, stage="all")]
+    why = per_bet.loc[per_bet["status"] == "undecided", "reason"].value_counts()
+    return dict(by_strategy=strat, by_stage=rows,
+                by_event=by_order(_groups(per_bet, ("strategy", "event_key")), "strategy", "event_key"),
+                undecided={str(k): int(v) for k, v in why.items()})
+
+
+def sweep(engine, by_strategy, venue, sport=None, strategies=(), stages=(), now=None):
+    """A sweep's CLV against the database's closes: (sweep_summary, per-bet rows). Read-only."""
+    with engine.connect() as conn:
+        per = compute(conn, sweep_bets(by_strategy, venue, sport), now=now)
+    return sweep_summary(per, strategies, stages), per
+
+
+def sweep_line(clv, strategy):
+    """One strategy's CLV for a sweep's printed totals, from its metrics.clv (sweep_summary): mean CLV in percent and
+    points, the share of decided bets with a positive CLV, how many were decided."""
+    clv = clv or {}
+    if "error" in clv:
+        return "CLV not computed"
+    row = next((r for r in clv.get("by_strategy", []) if r["strategy"] == strategy), None)
+    if not row or not row.get("decided"):
+        return f"CLV n/a (0 of {(row or {}).get('bets', 0)} bets decided)"
+    pct = row.get("mean_clv_pct")
+    return (f"CLV {'n/a' if pct is None else f'{pct:+.2%}'} ({row['mean_clv']:+.4f}) · "
+            f"{row['positive_share']:.0%} positive of {row['decided']} decided")
 
 
 # --- output ----------------------------------------------------------------------------------------------------
