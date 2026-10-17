@@ -16,6 +16,7 @@ from textual.css.query import NoMatches
 from textual.widgets import Button, Input, Label, Select, Static, Switch, TabbedContent, TabPane
 
 from .. import fmt
+from ..layout import Divider
 from ..modals import ConfirmScreen, order_summary
 from ..widgets import DataGrid, KeyValues
 from .base import Pane, float_or_none, int_or_none
@@ -102,6 +103,7 @@ class TradePane(Pane):
             with Vertical(id="tr-left"):
                 yield CInput(placeholder="Search question, driver or event", id="tr-q")
                 yield DataGrid(id="tr-markets", columns=MARKET_COLS)
+            yield Divider("trade.h")
             with Vertical(id="tr-right"):
                 yield Static("Pick a market to see its book.", id="tr-book")
                 with Horizontal(classes="form-row"):
@@ -112,6 +114,7 @@ class TradePane(Pane):
                     yield CInput(placeholder="Limit 0.01–0.99", id="tr-limit", type="number")
                 yield Static(id="tr-est")
                 yield CButton("Place order", id="tr-place", variant="primary", disabled=True)
+        yield Divider("trade.v")
         with TabbedContent(id="tr-tabs"):
             with TabPane("Positions", id="tr-pos-tab"):
                 with Horizontal(classes="switch-row"):

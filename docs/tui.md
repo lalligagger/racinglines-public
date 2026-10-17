@@ -40,13 +40,39 @@ Lab jobs to the web app's worker.
 | 0 | Live: the private book's events and whether one is live now, refreshed every 30 s | `list_live_events` |
 | | Data: the change log, the schema, a read-only SQL console, and `racinglines data pull` (run as a subprocess) | `data_changes`, `describe_schema`, `sql` |
 
-Everywhere: `r` refreshes, `enter` opens a row, `[` and `]` page, `esc` goes back, `ctrl+r` reconnects, `?` lists the
-keys. A row that names a job, a model run (`run_id`, `result_run_id`, `last_run`, a change's `detail.run`), an event
+Everywhere: `r` refreshes, `enter` opens a row, `[` and `]` page, `esc` goes back, `ctrl+r` reconnects, `ctrl+l` turns
+[layout mode](#layout-mode) on and off, `?` lists the keys. A row that names a job, a model run (`run_id`, `result_run_id`, `last_run`, a change's `detail.run`), an event
 (`event_id`, `event_key`) or an athlete opens it. Lists the server pages (signals, positions, Edge Finder, diagnostics,
 the change log, SQL) page through it rather than loading everything.
 
 Colour has one meaning each: green in our favour (fair above market, profit), red against, purple the best on the
 board, amber stale. Settings (`min_edge`, `max_stake`, a sweep's knobs) print as written, never coloured as data.
+
+## Layout mode
+
+`ctrl+l` turns layout mode on: a bar under the header names the layout and the splits on this tab, and a divider
+shows between the two sides of each split. The other keys work as usual until `esc` or `ctrl+l` again.
+
+| In layout mode | |
+|---|---|
+| `←` `→` | move this tab's side-by-side split 5% (`shift` for 1%) |
+| `↑` `↓` | move this tab's stacked split 5% (`shift` for 1%) |
+| drag a divider | move that split with the mouse |
+| `s` | save into the current layout (on `default`, asks for a name) |
+| `a` | save as a new layout; an existing name is replaced |
+| `n` | switch to the next saved layout |
+| `x` | put this tab's splits back to the built-in sizes |
+
+| Split | Tab | Sides |
+|---|---|---|
+| `trade.h` | Trade | markets ↔ book and order form |
+| `trade.v` | Trade | markets and book ↕ positions, orders, leaderboard |
+| `lab.diag` | Lab > Diagnostics | diagnostic runs ↔ maker replay |
+| `book.h` | Sportsbook | the book's TOML ↔ the result |
+
+A side gets 10% to 90%. Layouts are kept in `~/.config/racinglines/tui-layouts.json` (`RACINGLINES_TUI_LAYOUTS`
+overrides the path) with the one last used, which the next start opens in. `default` is built in and can't be
+overwritten. Leaving layout mode without saving keeps the sizes until you quit.
 
 ## Trade
 
