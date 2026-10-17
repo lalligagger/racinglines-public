@@ -188,3 +188,47 @@ def test_queue_requeues_what_a_dry_pass_only_drafted(fake, tmp_path):
     X.run_once(mode="dry", write=write)
     X.run_once(mode="queue", write=write)
     assert sorted(json.loads((tmp_path / "pending.json").read_text())) == ["899", "900", "c1", "c3"]
+
+
+def test_a_tag_in_a_thread_reads_the_conversation_above_it(fake, monkeypatch, tmp_path):
+    real = X.zernio
+    parents = {"898": {"id": "898", "text": "Norris is the Austin favourite", "author": {"username": "yippeeosc"},
+                       "inReplyToTweetId": "897"},
+               "897": {"id": "897", "text": "who do you like this weekend?", "author": {"username": "fan"}}}
+    looked = []
+
+    def zernio(method, path, query=None, body=None, idempotency_key=None):
+        if path == "/twitter/search":
+            return {"tweets": [{"id": "900", "text": "@racinglines_bet @yippeeosc ok, what is ours?",
+                                "author": {"username": "whycanti_poker"}, "inReplyToTweetId": "898"}]}
+        if path == "/twitter/tweet":
+            looked.append(query["tweetId"])
+            return {"tweet": parents[query["tweetId"]]}
+        if path == "/inbox/comments":
+            return {"data": []}
+        return real(method, path, query, body, idempotency_key)
+
+    monkeypatch.setattr(X, "zernio", zernio)
+    got = []
+    X.run_once(mode="queue", write=lambda text, ctx: got.append(ctx) or "ours")
+    assert got == ["@fan: who do you like this weekend?\n@yippeeosc: Norris is the Austin favourite"]
+    monkeypatch.setenv("XBOT_THREAD_HOPS", "1")
+    assert X.thread_above("acc1", {"id": "900", "inReplyToTweetId": "898"}) == ["@yippeeosc: Norris is the Austin favourite"]
+    assert X.thread_above("acc1", {"id": "901"}) == []          # not a reply: nothing to read, no lookup
+    assert looked == ["898", "897", "898"]
+
+
+def test_a_nested_comment_sees_the_comments_above_it(fake):
+    c3 = [c for c in X.comments("p1", "acc1") if c["id"] == "c3"][0]
+    assert c3["_above"] == ["@fan: who wins Austin?"]
+    item = dict(kind="comment", post_text="Austin fair odds are up", above=c3["_above"])
+    assert X.context_for("acc1", item) == "Our post: Austin fair odds are up\n@fan: who wins Austin?"
+
+
+def test_review_redraft_reads_the_thread_again(fake, monkeypatch, tmp_path):
+    X.run_once(mode="queue", write=write)
+    monkeypatch.setattr(X, "context_for", lambda acct, item: "@yippeeosc: Norris 41%")
+    answers = iter(["r", "q"])
+    X.review(ask=lambda _: next(answers), write=lambda text, ctx: f"redrafted with {ctx}")
+    assert (tmp_path / "drafts" / "c1.txt").read_text() == "redrafted with @yippeeosc: Norris 41%\n"
+    assert not [c for c in fake if c[0] == "POST"]

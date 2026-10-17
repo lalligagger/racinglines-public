@@ -11,7 +11,7 @@ with POST /v1/inbox/comments/{postId} and commentId). Zernio's /v1/inbox/mention
     python scripts/xbot/xbot.py ask "TEXT"      # draft one answer, print it; nothing is read from or sent to X
     python scripts/xbot/xbot.py once            # one pass: every new comment gets a draft (dry) or a reply (live)
     python scripts/xbot/xbot.py fetch           # draft every new reply and tag into the review queue; posts nothing
-    python scripts/xbot/xbot.py review          # fetch, then go through the queue: approve, edit (vim), skip, later
+    python scripts/xbot/xbot.py review          # fetch, then go through the queue: approve, edit (vim), redraft, skip
     python scripts/xbot/xbot.py draft TWEET     # draft an answer to TWEET (an id or x.com URL) into drafts/<id>.txt
     python scripts/xbot/xbot.py reply TWEET [FILE]  # post FILE (default drafts/<id>.txt) as a reply to TWEET, by hand
 
@@ -23,6 +23,7 @@ Settings (env; on the VM /etc/racinglines-xbot.env, read by scripts/vm/xbot.sh):
     XBOT_HANDLE         the handle tags are searched for; default the account's username
     XBOT_MAX_REPLIES    comments handled per pass, default 5; the rest wait for the next pass
     XBOT_SINCE_DAYS     how far back to look at our posts, default 7
+    XBOT_THREAD_HOPS    tweets read up the conversation above a tag before drafting, default 4 (~$0.005 each); 0 = none
     XBOT_DENY           comma-separated words a reply must never contain (it is dropped and logged instead)
     XBOT_STATE          state folder, default /var/lib/racinglines-xbot (seen.json, log.jsonl)
 
@@ -53,7 +54,8 @@ READ_TOOLS = ["overview", "list_events", "get_event", "search_athletes", "get_at
 SYSTEM = f"""You run the @racinglines_bet account on X. racinglines.bet prices race sports (Formula 1, NASCAR, MotoGP,
 downhill mountain biking, road cycling) with its own model and compares those fair prices with prediction markets.
 
-Someone replied to one of our posts. Answer them in one tweet, using the racinglines tools for every number you give
+Someone replied to one of our posts or tagged us. You get the conversation above their tweet when there is one:
+read it to work out what they mean. Answer them in one tweet, using the racinglines tools for every number you give
 (fair probabilities, forecasts, market prices, track record). Rules:
 - At most {MAX_CHARS} characters. Plain text, no hashtags, at most one emoji.
 - Only state numbers a tool returned. If the tools don't have it, say so briefly.
@@ -134,14 +136,16 @@ def our_posts(acct, since):
 
 
 def comments(post_id, acct):
-    """Every comment on a post, its nested replies flattened in, without our own."""
-    flat, todo = [], list(zernio("GET", f"/inbox/comments/{urllib.parse.quote(post_id, safe='')}",
-                                 dict(accountId=acct, limit=100)).get("comments") or [])
+    """Every comment on a post, its nested replies flattened in, without our own. Each carries `_above`: the
+    comments it sits under, oldest first, as "@user: text" lines (ours included)."""
+    flat, todo = [], [(c, []) for c in zernio("GET", f"/inbox/comments/{urllib.parse.quote(post_id, safe='')}",
+                                              dict(accountId=acct, limit=100)).get("comments") or []]
     while todo:
-        c = todo.pop(0)
-        todo.extend(c.get("replies") or [])
+        c, above = todo.pop(0)
+        line = f"@{(c.get('from') or {}).get('username') or '?'}: {c.get('message') or ''}"
+        todo.extend((r, above + [line]) for r in c.get("replies") or [])
         if not (c.get("from") or {}).get("isOwner") and c.get("id") and c.get("message"):
-            flat.append(c)
+            flat.append(dict(c, _above=above))
     return flat
 
 
@@ -164,6 +168,32 @@ def lookup(acct, tweet):
     return zernio("GET", "/twitter/tweet", dict(accountId=acct, tweetId=tweet)).get("tweet") or {}
 
 
+def thread_above(acct, t, hops=None):
+    """The conversation above tweet `t`, oldest first, as "@user: text" lines: follows inReplyToTweetId up to `hops`
+    tweets (XBOT_THREAD_HOPS, default 4), one lookup each. Empty when `t` is not a reply."""
+    hops = int(os.environ.get("XBOT_THREAD_HOPS", "4")) if hops is None else hops
+    lines, parent = [], t.get("inReplyToTweetId")
+    while parent and len(lines) < hops:
+        try:
+            p = lookup(acct, parent)
+        except RuntimeError as e:                     # deleted, protected or unreadable: draft with what we have
+            print(f"xbot: could not read tweet {parent} above {t.get('id')}: {e}", file=sys.stderr)
+            break
+        if not p.get("text"):
+            break
+        lines.append(f"@{(p.get('author') or {}).get('username') or '?'}: {p['text']}")
+        parent = p.get("inReplyToTweetId")
+    return lines[::-1]
+
+
+def context_for(acct, item):
+    """What Claude reads above their tweet: our post and the comments it sits under, or the thread above a tag."""
+    if item["kind"] == "comment":
+        return "\n".join([f"Our post: {item.get('post_text') or '(not available)'}"] + item.get("above", []))
+    above = thread_above(acct, item.get("tweet") or {})
+    return "\n".join(above) if above else "(they tagged us in their own post)"
+
+
 def reply_to_tweet(acct, tweet, text):
     """A reply tweet to `tweet` (X allows it on posts that tag us or are ours): POST /v1/posts, published now."""
     return zernio("POST", "/posts", body=dict(content=text, publishNow=True, platforms=[dict(
@@ -184,7 +214,7 @@ def draft(comment_text, post_text=""):
     """The reply Claude writes, or None for SKIP (or a refusal)."""
     import anthropic
     client = anthropic.Anthropic(api_key=env("ANTHROPIC_API_KEY"))
-    msg = f"Our post:\n{post_text or '(not available)'}\n\nTheir reply:\n{comment_text}"
+    msg = f"The conversation above their tweet, oldest first:\n{post_text or '(not available)'}\n\nTheir tweet:\n{comment_text}"
     r = client.beta.messages.create(
         model=MODEL, max_tokens=16000, system=system_prompt(),
         output_config={"effort": "medium"},
@@ -286,20 +316,20 @@ def run_once(mode=None, write=draft):
         for c in comments(post["id"], acct):
             todo.append(dict(kind="comment", id=c["id"], post=post["id"], text=c["message"],
                              user=(c.get("from") or {}).get("username") or "", url=c.get("url"),
-                             context=post.get("content") or ""))
+                             post_text=post.get("content") or "", above=c.get("_above") or []))
     found = []
     if handle:
         # on demand (queue) it looks back the whole 7 days, so tweets a dry pass only drafted come back for review
         found = tags(acct, handle, None if mode == "queue" else seen.get("_search", {}).get("newest_id"))
         for t in found:
-            todo.append(dict(kind="tag", id=t["id"], text=t["text"], user=(t.get("author") or {}).get("username") or "",
-                             url=f"https://x.com/i/status/{t['id']}", context="(they tagged us in their own post)"))
+            todo.append(tag_item(t))
     for item in todo:
         if item["id"] in seen and not (mode == "queue" and seen[item["id"]].get("action") == "drafted"):
             continue
         if done >= limit:
             print(f"xbot: {limit} this pass; the rest wait for the next one", flush=True)
             break
+        item["context"] = context_for(acct, item)        # only for what gets drafted: a thread read costs
         reply = write(item["text"], item["context"])
         action = {"dry": "drafted", "live": "replied", "queue": "pending"}[mode] if reply is not None else "skipped"
         if mode == "queue":
@@ -321,6 +351,12 @@ def run_once(mode=None, write=draft):
     return done
 
 
+def tag_item(t):
+    return dict(kind="tag", id=t["id"], text=t["text"], user=(t.get("author") or {}).get("username") or "",
+                url=f"https://x.com/i/status/{t['id']}",
+                tweet=dict(id=t["id"], inReplyToTweetId=t.get("inReplyToTweetId")))
+
+
 def editor():
     import shutil
     for e in (os.environ.get("EDITOR"), "vim", "vi", "nano"):
@@ -329,9 +365,9 @@ def editor():
     sys.exit("xbot: no editor found (set EDITOR)")
 
 
-def review(ask=input, edit=None):
-    """Every pending draft, oldest first: [a]pprove (posts it), [e]dit in $EDITOR (vim), [s]kip (never answer),
-    [l]ater (keep it pending), [q]uit."""
+def review(ask=input, edit=None, write=None):
+    """Every pending draft, oldest first: [a]pprove (posts it), [e]dit in $EDITOR (vim), [r]edraft (read the
+    conversation again and let Claude write a new one), [s]kip (never answer), [l]ater (keep it pending), [q]uit."""
     import subprocess
     edit = edit or (lambda f: subprocess.call([editor(), f]))
     d = state_dir()
@@ -344,11 +380,19 @@ def review(ask=input, edit=None):
         f = Path(item["file"])
         while True:
             text = f.read_text().strip()
-            print(f"\n[{i}/{len(pending)}] {item['kind']} from @{item['user']}  {item.get('url') or ''}\n"
+            above = "".join(f"\n  above: {line}" for line in (item.get("context") or "").splitlines())
+            print(f"\n[{i}/{len(pending)}] {item['kind']} from @{item['user']}  {item.get('url') or ''}{above}\n"
                   f"  them: {item['text']}\n  ours ({len(text)} chars): {text}")
-            choice = (ask("[a]pprove  [e]dit  [s]kip  [l]ater  [q]uit > ") or "").strip().lower()[:1]
+            choice = (ask("[a]pprove  [e]dit  [r]edraft  [s]kip  [l]ater  [q]uit > ") or "").strip().lower()[:1]
             if choice == "e":
                 edit(str(f))
+                continue
+            if choice == "r":
+                if item["kind"] == "tag" and "tweet" not in item:      # queued before threads were read
+                    t = lookup(acct, cid)
+                    item["tweet"] = dict(id=cid, inReplyToTweetId=t.get("inReplyToTweetId"))
+                item["context"] = context_for(acct, item)
+                queue(d, item, (write or draft)(item["text"], item["context"]))
                 continue
             if choice == "a":
                 if not text or text.upper() == "SKIP" or len(text) > 280:
@@ -388,10 +432,10 @@ def main(argv=None):
         t = lookup(account_id(), tweet)
         if not t.get("text"):
             sys.exit(f"xbot: could not read tweet {tweet}")
-        reply = draft(t["text"], "(they tagged us in their own post)")
+        item = tag_item(dict(t, id=tweet))
+        item["context"] = context_for(account_id(), item)
+        reply = draft(t["text"], item["context"])
         d = state_dir()
-        item = dict(kind="tag", id=tweet, text=t["text"], user=(t.get("author") or {}).get("username") or "",
-                    url=f"https://x.com/i/status/{tweet}", context="(they tagged us in their own post)")
         queue(d, item, reply)
         out = d / "drafts" / f"{tweet}.txt"
         seen = load_seen(d)                                  # the timer leaves a hand-drafted tweet to you

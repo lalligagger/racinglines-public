@@ -8,7 +8,7 @@
 #   bash scripts/vm/xbot.sh accounts           # the connected X accounts
 #   bash scripts/vm/xbot.sh ask "TEXT"         # draft one answer and print it (nothing read from or sent to X)
 #   bash scripts/vm/xbot.sh once               # one pass in the env file's XBOT_MODE (dry unless it says live)
-#   bash scripts/vm/xbot.sh review             # draft new replies/tags, then approve, edit (vim) or skip each (needs ssh -t)
+#   bash scripts/vm/xbot.sh review             # draft new replies/tags, then approve, edit (vim), redraft or skip each (ssh -t)
 #   bash scripts/vm/xbot.sh fetch              # only draft new replies/tags into the review queue; posts nothing
 #   bash scripts/vm/xbot.sh draft TWEET        # draft an answer to TWEET (id or x.com URL); nothing is posted
 #   bash scripts/vm/xbot.sh reply TWEET [FILE] # post FILE, or that draft, as a reply to TWEET, by hand
