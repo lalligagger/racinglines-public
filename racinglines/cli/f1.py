@@ -1255,7 +1255,7 @@ def _run(args):
                           sigma_q=fm.sigma_q, drift=extras["drift"])
             run_id = run.save_forecast(args.db, args.year, per_event, standings, params, metrics=dict(
                 latest_data=extras["latest_data"], constructors=records(extras["constructors"]),
-                race_constructor_top=extras["race_constructor_top"]), kind="scenario" if args.scenario else "forecast")
+                race_constructor_top=extras["race_constructor_top"], car_gaps=extras["car_gaps"]), kind="scenario" if args.scenario else "forecast")
             log_forecast(args.db, run_id, args.year, per_event, meas, extras["cutoff"], args.sims, use_track,
                          variant=args.variant, scenario=args.scenario)
             print(f"\nSaved {'scenario' if args.scenario else 'forecast'} run {run_id}.")

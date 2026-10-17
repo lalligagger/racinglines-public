@@ -353,6 +353,7 @@ def price_race(meas, hist, cutoff, event_id, n_sims=10000, rng=None, use_track=T
     top = np.argmax(tpts + rng.random(tpts.shape) * 1e-3, axis=1)
     sessions = meas.sessions(event_id) if event_id is not None else {}
     extras = dict(constructor_top={t: float((top == i).mean()) for i, t in enumerate(teams)},
+                  car_gaps=M.car_gaps(snap, teams, tf),
                   audit=dict(cutoff=str(v.cutoff), latest_data=v.audit,
                              event_sessions={k: (None if ts is None or pd.isna(ts) else str(ts)) for k, ts in sessions.items()},
                              sessions_used=[k for k, ts in sessions.items() if ts is not None and pd.notna(ts) and ts < v.cutoff],
@@ -577,7 +578,7 @@ def forecast(meas, hist, year, cutoff=None, n_sims=10000, seed=42, schedule=None
     drift = M.season_drift(field_, n_sims, rng, team_sd, drv_sd)
     fm = M.fit_finish(hist, cutoff, no_practice=M.PRE_PRACTICE_TRAIN, grid_known=False)   # future races: no practice, no grid
     snap = M.snapshot(v.drivers, v.sectors, v.xmap, cutoff)
-    per_event, race_constructor_top = [], {}
+    per_event, race_constructor_top, car_gaps = [], {}, {}
     from racinglines.db.ingest import _slugify
     for ev in remaining.itertuples():
         venue = _slugify(ev.location)
@@ -590,6 +591,7 @@ def forecast(meas, hist, year, cutoff=None, n_sims=10000, seed=42, schedule=None
                                   use_track=use_track, stages=[k for k in M.SIM_SESSIONS if bool(getattr(ev, k, False))],
                                   event_key=f"{year}-{ev.round:02d}")
             race_constructor_top[f"{year}-{ev.round:02d}"] = ex["constructor_top"]
+            car_gaps[f"{year}-{ev.round:02d}"] = ex["car_gaps"]
             tf = ex["track"]
         else:
             summ, tf = None, M.venue_track_features(v.prof, venue, v.cutoff)
@@ -636,8 +638,8 @@ def forecast(meas, hist, year, cutoff=None, n_sims=10000, seed=42, schedule=None
         team_key=teams, team=[team_names.get(t, t) for t in teams], current_points=team_now.reindex(teams).fillna(0).to_numpy(),
         exp_points=team_total.mean(0), champion_prob=(trank == 1).mean(0), top3_prob=(trank <= 3).mean(0),
         exp_rank=trank.mean(0))).sort_values("exp_points", ascending=False).reset_index(drop=True)
-    extras = dict(constructors=constructors, race_constructor_top=race_constructor_top, cutoff=str(cutoff),
-                  latest_data=v.audit, drift=dict(team_sd=team_sd, driver_sd=drv_sd), model=fm)
+    extras = dict(constructors=constructors, race_constructor_top=race_constructor_top, car_gaps=car_gaps,
+                  cutoff=str(cutoff), latest_data=v.audit, drift=dict(team_sd=team_sd, driver_sd=drv_sd), model=fm)
     return per_event, standings, extras
 
 
@@ -719,7 +721,7 @@ def save_diagnostic(engine_url, event_key, cutoff, summ, ex, sims, **extra_param
                   coef=[float(c) for c in ex["model"].coef], sigma=ex["model"].sigma,
                   half_life_days=M.HALF_LIFE_DAYS, **extra_params)
     metrics = dict(audit=ex["audit"], track={k: float(v) for k, v in ex["track"].items()},
-                   race_constructor_top={event_key: ex["constructor_top"]})
+                   race_constructor_top={event_key: ex["constructor_top"]}, car_gaps={event_key: ex["car_gaps"]})
     per_event = [dict(round=rnd, name=None, official=None, location=None, date=None, sprint=False, summary=summ,
                       target=f"asof:{event_key}")]
     if records_enabled():             # stage runs write records but never archive the sims (D3)

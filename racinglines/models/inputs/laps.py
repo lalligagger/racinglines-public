@@ -484,6 +484,21 @@ def predict_paces(snap, entrants, tf):
     return e
 
 
+def car_gaps(snap, teams, tf):
+    """{team: {"race_pct", "qual_pct"}}: each car's predicted race-pace and qualifying deficit at this track,
+    as a % gap to the fastest of `teams` (0.0 = fastest). The car term only (a + b * x_track), no driver
+    offsets, so it is the car without its drivers' teammate-relative pace; unknown teams get the slow default."""
+    x = tf["x_track"] if snap.use_track else 0.0
+    out = {}
+    for name, table, base in (("race_pct", snap.team_r, snap.r0), ("qual_pct", snap.team_q, snap.q0)):
+        slow = max(v[0] for v in table.values()) if table else base
+        d = {t: table.get(t, (slow, 0.0))[0] + table.get(t, (slow, 0.0))[1] * x for t in teams}
+        best = min(d.values()) if d else 0.0
+        for t, v in d.items():
+            out.setdefault(t, {})[name] = round(100 * (v - best), 3)
+    return dict(sorted(out.items(), key=lambda kv: kv[1]["race_pct"]))
+
+
 # ---------------------------------------------------------------------------
 # Walk-forward feature table + finishing model
 # ---------------------------------------------------------------------------
