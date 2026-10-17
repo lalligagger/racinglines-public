@@ -3,7 +3,7 @@
 # keys in /etc/racinglines-xbot.env (root:racinglines 640, written with read -s, never in the repo). It touches no
 # database and no app code: a deploy neither starts nor stops it.
 #
-# Usage (as root on the VM, from /opt/racinglines):
+# Usage (as root on the VM; APP=<checkout> runs it from a checkout other than /opt/racinglines):
 #   bash scripts/vm/xbot.sh setup              # create the venv (anthropic, pinned in scripts/xbot/requirements.txt)
 #   bash scripts/vm/xbot.sh accounts           # the connected X accounts
 #   bash scripts/vm/xbot.sh ask "TEXT"         # draft one answer and print it (nothing read from or sent to X)
@@ -41,7 +41,7 @@ case "${1:-}" in
     min="${2:-5}"
     case "$min" in ''|*[!0-9]*) echo "xbot: minutes must be a number" >&2; exit 2 ;; esac
     systemctl stop "$UNIT.timer" "$UNIT.service" 2>/dev/null || true
-    systemd-run --unit "$UNIT" --on-calendar "*:0/$min" --timer-property=Persistent=false \
+    systemd-run --unit "$UNIT" --on-calendar "*:0/$min" --timer-property=Persistent=false --setenv=APP="$APP" \
       --property=TimeoutStartSec=4min /usr/bin/bash "$APP/scripts/vm/xbot.sh" once
     echo "xbot: a pass every $min min ($(grep -s '^XBOT_MODE=' "$ENV_FILE" || echo 'XBOT_MODE unset: dry'))"
     ;;
