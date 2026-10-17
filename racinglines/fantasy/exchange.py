@@ -203,11 +203,12 @@ def rate_ok(user_id, now=None):
 
 def markets(c, search=""):
     """The links a player may trade now, newest events first: F1, Kalshi and Polymarket, open and unresolved, in the
-    tradable kinds. Closing times are checked when an order is placed. -> [dict]"""
+    tradable kinds, each with its close (`closes_at`, closes_for: None for a season future or an unknown one). Closing
+    times are enforced when an order is placed. -> [dict]"""
     kinds = sorted({k for ks in tradable().values() for k in ks})
     rs = c.execute(text("""
-        SELECT ml.id, ml.exchange, ml.token_id, ml.prediction AS kind, ml.question, ml.group_title, ml.outcome,
-               ml.event_title, ml.last_bid, ml.last_ask, e.start_date
+        SELECT ml.id, ml.exchange, ml.token_id, ml.prediction AS kind, ml.prediction, ml.race_id, ml.question,
+               ml.group_title, ml.outcome, ml.event_title, ml.last_bid, ml.last_ask, e.start_date, co.code AS competition
         FROM market_links ml JOIN competitions co ON co.id = ml.competition_id JOIN sports sp ON sp.id = co.sport_id
         LEFT JOIN races ra ON ra.id = ml.race_id LEFT JOIN events e ON e.id = ra.event_id
         WHERE sp.code = :sport AND ml.exchange = ANY(:x) AND ml.prediction = ANY(:k) AND ml.active AND NOT ml.closed
@@ -215,7 +216,11 @@ def markets(c, search=""):
           AND (:q = '' OR ml.question ILIKE :like OR ml.group_title ILIKE :like OR ml.event_title ILIKE :like)
         ORDER BY e.start_date NULLS LAST, ml.event_title, ml.exchange, ml.prediction, ml.group_title, ml.id"""),
         dict(sport=SPORT, x=list(EXCHANGES), k=kinds, q=search, like=f"%{search}%")).mappings().all()
-    return [dict(r) for r in rs]
+    out = [dict(r) for r in rs]
+    closes = closes_for(c, out)
+    for m in out:
+        m["closes_at"] = closes[m["id"]]
+    return out
 
 
 # --- the order ---------------------------------------------------------------------------------------------------
@@ -249,7 +254,44 @@ def closes_at(conn, link):
                 t = _close(b, there) if there is not None else None
     if t is None:
         raise Rejected("no_schedule")
+    return _aware(t)
+
+
+def _aware(t):
+    """A stored close (pandas, naive = UTC) as an aware UTC datetime; None stays None."""
+    if t is None:
+        return None
     return t.tz_localize("UTC").to_pydatetime() if getattr(t, "tzinfo", None) is None else t.to_pydatetime()
+
+
+def closes_for(conn, links):
+    """closes_at for many links at once, for a list or a page: {link id: close as aware UTC, or None}. Season futures
+    are None (no close); race links get the deciding round's stored start from one rounds query (pipelines/clv.closes),
+    then, for any still without one, the books database's link with the same token (staging, as closes_at); a race
+    link with no close anywhere is None here, where closes_at refuses it (an order on it is refused, the list still
+    shows it)."""
+    from racinglines.pipelines import clv
+    rows = [dict(lk) for lk in links]
+    race = [r for r in rows if r["prediction"] not in SEASON_KINDS and r.get("race_id") is not None]
+    local = clv.closes(conn, race) if race else {}
+    out = {}
+    for r in rows:
+        out[r["id"]] = (None if r["prediction"] in SEASON_KINDS or r.get("race_id") is None
+                        else local.get((int(r["race_id"]), r["prediction"]), (None, ""))[0])
+    missing = [r for r in rows if out[r["id"]] is None and r["prediction"] not in SEASON_KINDS and r.get("token_id")]
+    books = books_engine(conn.engine)
+    if missing and books is not conn.engine:
+        with books.connect() as b:
+            there = {}
+            for t in b.execute(text(_LINK_SQL + " WHERE ml.token_id = ANY(:t) ORDER BY ml.id"),
+                               dict(t=[r["token_id"] for r in missing])).mappings():
+                there.setdefault(t["token_id"], dict(t))
+            found = clv.closes(b, [t for t in there.values() if t["race_id"] is not None])
+        for r in missing:
+            t = there.get(r["token_id"])
+            if t is not None and t["race_id"] is not None:
+                out[r["id"]] = found.get((int(t["race_id"]), t["prediction"]), (None, ""))[0]
+    return {k: _aware(v) for k, v in out.items()}
 
 
 def _close(conn, link):
@@ -331,6 +373,104 @@ def _existing(conn, user_id, client_key):
                 fee=float(sum(f for _, _, f in fills)))
 
 
+def _validate(c, user, link, side, action, shares, limit, now, demo):
+    """Step 1 of an order, no lock held: the input, the account's grant, the link and its close, the order cap.
+    -> (shares as int, limit rounded) or Rejected."""
+    n = _num(shares, 12)
+    p = _num(limit, 6)
+    if (side not in ("yes", "no") or action not in ("buy", "sell") or n is None or n != int(n) or n < 1
+            or p is None or not 0.01 <= p <= 0.99 or link is None):
+        raise Rejected("bad_input")
+    n, p = int(n), round(p, 4)
+    if demo or not L.has_grant(c, user["id"]):
+        raise Rejected("not_a_member")
+    check_link(c, link, now)
+    if action == "buy" and n * p > MAX_STAKE + 1e-9:
+        raise Rejected("over_order_cap")
+    return n, p
+
+
+def _levels(get_book, link, side, action, now):
+    """Step 2, no database lock held: the latest recorded book, refused when missing or older than MAX_AGE_MIN; the
+    side's levels the order walks (NO through yes_to_no), best first, and the snapshot the order row keeps.
+    -> (levels, snap) or Rejected."""
+    book = get_book(link["token_id"])
+    if book is None:
+        raise Rejected("book_unavailable")
+    ts = book["ts"] if book["ts"].tzinfo else book["ts"].replace(tzinfo=timezone.utc)
+    age = (now - ts).total_seconds()
+    if age > MAX_AGE_MIN * 60:
+        raise Rejected("stale_book")
+    bids, asks = book["bids"], book["asks"]
+    if side == "no":
+        bids, asks = yes_to_no(bids, asks)
+    lv = asks if action == "buy" else bids
+    snap = dict(ts=ts.isoformat(), age_s=round(age), side_walked=f"{side} {'asks' if action == 'buy' else 'bids'}",
+                levels=[list(x) for x in lv[:DEPTH]], best_bid=bids[0][0] if bids else None,
+                best_ask=asks[0][0] if asks else None)
+    return lv, snap
+
+
+def _fills(c, user, link, lid, side, action, n, p, lv, lock):
+    """Step 3's arithmetic: the account's position on the market (locked for an order, read for a quote), one side
+    per market, never short, the walk, the fee and the balance check. -> (fills, fee, held, cost) or Rejected."""
+    pos = c.execute(text(f"""SELECT yes_shares, no_shares, cost, status FROM accounts.fantasy_positions
+                            WHERE user_id = :u AND market_link_id = :l {"FOR UPDATE" if lock else ""}"""),
+                    dict(u=user["id"], l=lid)).first()
+    if pos is not None and pos[3] != "open":
+        raise Rejected("market_closed")                 # settled (settle below): paid out, nothing to trade
+    held_yes, held_no, cost = (float(pos[0]), float(pos[1]), float(pos[2])) if pos else (0.0, 0.0, 0.0)
+    held = held_yes if side == "yes" else held_no
+    if action == "buy" and (held_no if side == "yes" else held_yes) > 0:
+        raise Rejected("opposite_side_held")
+    if action == "sell" and n > held + 1e-9:
+        raise Rejected("sell_exceeds_position")
+    fills = walk(lv, n, p, buy=action == "buy")
+    if not fills:
+        raise Rejected("no_liquidity")
+    f = fee(link["exchange"], fills)
+    if action == "buy" and n * p + worst_fee(link["exchange"], n, p) > L.available(c, user["id"]) + 1e-9:
+        raise Rejected("insufficient_balance")
+    return fills, f, held, cost
+
+
+def _lid(link_id):
+    try:
+        return int(link_id)
+    except (TypeError, ValueError):
+        return None
+
+
+def quote(conn, user, link_id, side, action, shares, limit, now=None, get_book=None, demo=False):
+    """What place would do with this order now, writing nothing: the same three steps in the same order (input,
+    account, link and close, cap; the book and its age; the position's rules, the walk, the fee, the balance), read
+    without the account's lock, so a quote that fills can still be refused a moment later. -> dict(ok, reason, message,
+    status filled|partial, shares, limit, fills [(price, shares)], filled, avg_price, notional, fee, total (what a buy
+    costs, fee included, or a sale brings after it), book_ts, age_s, cash)."""
+    now = now or datetime.now(timezone.utc)
+    get_book = get_book or (lambda tok: latest_book(books_engine(conn.engine), tok))
+    side, action = str(side or "").lower(), str(action or "").lower()
+    lid = _lid(link_id)
+    out = dict(ok=False, reason=None, message="", status=None, shares=None, limit=None, fills=[], filled=0, avg_price=None,
+               notional=0.0, fee=0.0, total=0.0, book_ts=None, age_s=None, cash=None)
+    try:
+        link = _link(conn, lid) if lid is not None else None
+        n, p = _validate(conn, user, link, side, action, shares, limit, now, demo)
+        out.update(shares=n, limit=p, cash=round(L.available(conn, user["id"]), 2))
+        lv, snap = _levels(get_book, link, side, action, now)
+        out.update(book_ts=snap["ts"], age_s=snap["age_s"])
+        fills, f, _, _ = _fills(conn, user, link, lid, side, action, n, p, lv, lock=False)
+    except Rejected as ex:
+        out.update(reason=ex.reason, message=TEXT[ex.reason])
+        return out
+    got = sum(s for _, s in fills)
+    notional = sum(s * pr for pr, s in fills)
+    out.update(ok=True, status="filled" if got == n else "partial", fills=fills, filled=got,
+               avg_price=round(notional / got, 4), notional=round(notional, 2), fee=f,
+               total=round(notional + f if action == "buy" else notional - f, 2))
+    return out
+
+
 def place(engine, user, link_id, side, action, shares, limit, client_key=None, now=None, get_book=None, demo=False):
     """Place one IOC paper order for `user` (a dict with id, username, role). -> dict(ok, order_id, status, reason,
     message, fills [(price, shares)], fee, position). Every refusal after the rate limit writes a rejected
@@ -346,53 +486,26 @@ def place(engine, user, link_id, side, action, shares, limit, client_key=None, n
         prior = _existing(c, user["id"], client_key)
         if prior is not None:
             return prior
-    # 1. validate without a lock: input, account, link, close
-    link = None
-    try:
-        lid = int(link_id)
-    except (TypeError, ValueError):
-        lid = None
+    # 1. validate without a lock: input, account, link, close (_validate, shared with quote)
+    link, lid = None, _lid(link_id)
     with engine.begin() as c:
         try:
             if lid is not None:
                 link = _link(c, lid)
-            n = _num(shares, 12)
-            p = _num(limit, 6)
-            if (side not in ("yes", "no") or action not in ("buy", "sell") or n is None or n != int(n) or n < 1
-                    or p is None or not 0.01 <= p <= 0.99 or link is None):
-                raise Rejected("bad_input")
-            n, p = int(n), round(p, 4)
-            if demo or not L.has_grant(c, user["id"]):
-                raise Rejected("not_a_member")
-            check_link(c, link, now)
-            if action == "buy" and n * p > MAX_STAKE + 1e-9:
-                raise Rejected("over_order_cap")
+            n, p = _validate(c, user, link, side, action, shares, limit, now, demo)
         except Rejected as ex:
             out = _reject(c, user, lid, link, side, action, shares, limit, ex.reason, client_key)
             _audit(c, user, "fantasy_order_rejected", order_id=out["order_id"], reason=ex.reason, link=lid)
             return out
-    # 2. the book, with no database lock held
+    # 2. the book, with no database lock held (_levels)
     try:
-        book = get_book(link["token_id"])
-        if book is None:
-            raise Rejected("book_unavailable")
-        ts = book["ts"] if book["ts"].tzinfo else book["ts"].replace(tzinfo=timezone.utc)
-        age = (now - ts).total_seconds()
-        if age > MAX_AGE_MIN * 60:
-            raise Rejected("stale_book")
-        bids, asks = book["bids"], book["asks"]
-        if side == "no":
-            bids, asks = yes_to_no(bids, asks)
-        lv = asks if action == "buy" else bids
-        snap = dict(ts=ts.isoformat(), age_s=round(age), side_walked=f"{side} {'asks' if action == 'buy' else 'bids'}",
-                    levels=[list(x) for x in lv[:DEPTH]], best_bid=bids[0][0] if bids else None,
-                    best_ask=asks[0][0] if asks else None)
+        lv, snap = _levels(get_book, link, side, action, now)
     except Rejected as ex:
         with engine.begin() as c:
             out = _reject(c, user, lid, link, side, action, n, p, ex.reason, client_key)
             _audit(c, user, "fantasy_order_rejected", order_id=out["order_id"], reason=ex.reason, link=lid)
         return out
-    # 3. one transaction: lock the account, re-check, walk, write
+    # 3. one transaction: lock the account, re-check, walk (_fills, under the position's lock), write
     with engine.begin() as c:
         c.execute(text("SELECT id FROM users WHERE id = :u FOR UPDATE"), dict(u=user["id"]))
         prior = _existing(c, user["id"], client_key)           # a retry that raced the first attempt
@@ -401,23 +514,7 @@ def place(engine, user, link_id, side, action, shares, limit, client_key=None, n
         try:
             link = _link(c, lid)
             check_link(c, link, now)
-            pos = c.execute(text("""SELECT yes_shares, no_shares, cost, status FROM accounts.fantasy_positions
-                                    WHERE user_id = :u AND market_link_id = :l FOR UPDATE"""),
-                            dict(u=user["id"], l=lid)).first()
-            if pos is not None and pos[3] != "open":
-                raise Rejected("market_closed")                 # settled (settle below): paid out, nothing to trade
-            held_yes, held_no, cost = (float(pos[0]), float(pos[1]), float(pos[2])) if pos else (0.0, 0.0, 0.0)
-            held = held_yes if side == "yes" else held_no
-            if action == "buy" and (held_no if side == "yes" else held_yes) > 0:
-                raise Rejected("opposite_side_held")
-            if action == "sell" and n > held + 1e-9:
-                raise Rejected("sell_exceeds_position")
-            fills = walk(lv, n, p, buy=action == "buy")
-            if not fills:
-                raise Rejected("no_liquidity")
-            f = fee(link["exchange"], fills)
-            if action == "buy" and n * p + worst_fee(link["exchange"], n, p) > L.available(c, user["id"]) + 1e-9:
-                raise Rejected("insufficient_balance")
+            fills, f, held, cost = _fills(c, user, link, lid, side, action, n, p, lv, lock=True)
         except Rejected as ex:
             out = _reject(c, user, lid, link, side, action, n, p, ex.reason, client_key, book=snap)
             _audit(c, user, "fantasy_order_rejected", order_id=out["order_id"], reason=ex.reason, link=lid)

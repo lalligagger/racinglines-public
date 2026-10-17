@@ -695,7 +695,9 @@ at `4905943` on 2026-10-14 where marked; the rest were last checked on 2026-10-0
       2026-10-14.
 - [ ] **S7 · Logout and password reset don't end other sessions** (stateless cookie). May need a per-user
       counter column: a migration, so backup and owner sign-off.
-- [ ] **U1 · Self-serve strategy switching for pro users** (admin-only today). Needs an owner decision.
+- [x] **U1 · Self-serve strategy switching for pro users.** Done 2026-10-14: `/strategy/pick` for every account
+      (alpha layout), and the same pick from MCP (`fantasy_strategy`, `fantasy_follow`) and the CLI (`racinglines
+      remote call fantasy_follow`), one shared path in `fantasy/follow.py`.
 - [ ] **U2 · Password change and a light/dark toggle in Settings** (`settings.html` has neither, 2026-10-14).
 - [ ] **U3 · Link the pro/basic comparison from the sign-in page.**
 - [ ] **U4 · Open the sport with a race in the next 7 days on /markets** without overriding remembered state

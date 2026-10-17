@@ -189,6 +189,12 @@ def test_remote_call_and_its_typed_arguments(hosted, served, monkeypatch, tmp_pa
     assert RM.main(["call", "list_markets", "--nope", "1", "--mcp-url", url]) == 2
     assert "not an argument" in capsys.readouterr().err
     assert RM.main(["call", "no_such_tool", "--mcp-url", url]) == 2
+    sent = []                                       # follow a strategy from the terminal: typed by the server's schema
+    monkeypatch.setattr(RM.Session, "call", lambda self, tool, args: sent.append((tool, args)) or dict(ok=True))
+    assert RM.main(["call", "fantasy_follow", "--code", "T2", "--sizing", "kelly", "--kelly", "0.5", "--min-edge", "0.03",
+                    "--rolled", "true", "--mcp-url", url]) == 0
+    assert sent == [("fantasy_follow", dict(code="T2", sizing="kelly", kelly=0.5, min_edge=0.03, rolled=True))]
+    assert all(type(v) is t for v, t in zip(sent[0][1].values(), (str, str, float, float, bool)))
 
 
 @pytest.mark.quick

@@ -613,6 +613,20 @@ It needs racinglines.bet, so only its help is shown:
 
     --8<-- "examples/help-remote.md:output"
 
+**Follow a strategy from the terminal.** There is no separate verb: `remote call` reaches the two MCP tools behind
+`/strategy/pick` ([MCP](mcp.md), `fantasy/follow.py`), on your own account, with the page's gates (paused during a
+race weekend's signal window, demo accounts refused). Arguments are typed from the server's schema, so `--kelly 0.5`
+and `--min-edge 0.03` arrive as numbers and `--rolled true` as a boolean.
+
+```bash
+racinglines remote call fantasy_strategy                                      # what you follow, the five styles, the lock
+racinglines remote call fantasy_follow --code T2 --sizing kelly --kelly 0.5   # follow Head start at half Kelly
+racinglines remote call fantasy_follow --code T1 --min-edge 0.12              # Steady, tweaked (untested, scored live)
+racinglines remote call fantasy_follow --code none                            # stop: nothing trades until you pick again
+```
+
+A refusal prints `"ok": false` with its `reason` and the page's message.
+
 ### racinglines check
 
 Quick validation for new setups: the pipelines on synthetic data, one tiny request
