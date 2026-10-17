@@ -60,7 +60,7 @@ TEXT = {"bad_input": "Check the side, the shares (a whole number) and the limit 
         "market_closed": "This market is closed or already settled.",
         "session_started": "This market closed when its session started.",
         "no_schedule": "This market has no known closing time yet, so it can't be traded.",
-        "book_unavailable": "No order book has been recorded for this market yet.",
+        "book_unavailable": "The venue's order book couldn't be read just now (or none is recorded yet): try again in a moment.",
         "stale_book": f"The last recorded order book is more than {MAX_AGE_MIN:.0f} minutes old.",
         "no_liquidity": "Nothing on the book at your limit or better.",
         "over_order_cap": f"Orders are capped at F${MAX_STAKE:.0f} (shares x limit).",
