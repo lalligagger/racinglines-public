@@ -1,0 +1,2 @@
+anthropic==1.15.0
+typesafe-sdk==0.7.5        # Jev guardrail (XBOT_JEV=1); the SDK racinglines/research/jev_gate.py uses
