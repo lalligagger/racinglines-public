@@ -75,10 +75,6 @@ id = "help-mcp"
 command = "racinglines mcp -h"
 
 [[example]]
-id = "help-tui"
-command = "racinglines tui -h"
-
-[[example]]
 id = "help-users"
 command = "racinglines users -h"
 

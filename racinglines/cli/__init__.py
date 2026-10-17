@@ -13,7 +13,6 @@ racinglines <group> <command> [SPORT] [options]
     web       serve the web app
     users     setup | list | add | reset-password | remove | deactivate | activate   (accounts, fantasy bucks)
     mcp       the MCP server: the data and simulations for a chat client (docs/mcp.md)
-    tui       the web app's screens in the terminal, over MCP: hosted, or --local (docs/tui.md)
     remote    tools | call | job | logout   (the hosted server's tools from the command line, docs/mcp.md)
     check     quick validation: code on synthetic data, data endpoints, database
 
@@ -26,7 +25,7 @@ SPORT is f1, mtb_dh, nascar, motogp or cycling, e.g. `racinglines model forecast
 import sys
 
 GROUPS = ("data", "model", "strategy", "weather", "backtest", "markets", "book", "db", "live", "web", "users", "mcp", "remote",
-          "tui", "check")
+          "check")
 # the sport-first form (`racinglines f1 forecast`): deprecated, an alias for one version with a notice on stderr, not listed
 VERB_GROUPS = ("data", "model", "strategy")
 SPORT_FIRST = ("f1", "mtb_dh", "nascar", "motogp", "cycling")
@@ -52,7 +51,7 @@ def main(argv=None):
         print(__doc__)
         return 0 if argv and argv[0] in ("-h", "--help") else 2
     import importlib
-    if argv[0] not in ("web", "mcp", "tui"):       # servers and the full-screen TUI, not jobs: no heartbeat
+    if argv[0] not in ("web", "mcp"):              # servers, not jobs: no heartbeat
         from racinglines import progress
         progress.start(" ".join(a for a in argv[:3 if argv[0] in VERB_GROUPS else 2] if not a.startswith("-")))   # stderr, every 5 min (progress.py)
     from racinglines.cli import source

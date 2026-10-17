@@ -97,7 +97,6 @@ nav:
           - Fantasy trading: fantasy-trading.md
   - CLI:
       - CLI reference: cli.md
-      - Terminal app (racinglines tui): tui.md
       - Sportsbook schema (draft):
           - Schema, CLI and MCP surface: sportsbook/index.md
           - Slip EV (book map, price, settle): sportsbook/slips.md

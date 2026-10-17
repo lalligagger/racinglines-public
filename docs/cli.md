@@ -613,20 +613,6 @@ It needs racinglines.bet, so only its help is shown:
 
     --8<-- "examples/help-remote.md:output"
 
-### racinglines tui
-
-The web app's tabs in the terminal over one MCP session: the hosted server, signed in as for `--remote` (in testing:
-the #aintcare warning), or `--local` for this machine's database through `racinglines mcp` over stdio. See
-[Terminal app](tui.md).
-
-=== "Command"
-
-    --8<-- "examples/help-tui.md:command"
-
-=== "Output"
-
-    --8<-- "examples/help-tui.md:output"
-
 ### racinglines check
 
 Quick validation for new setups: the pipelines on synthetic data, one tiny request
