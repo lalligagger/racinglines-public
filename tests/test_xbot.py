@@ -123,3 +123,14 @@ def test_a_hand_reply_marks_the_tweet_so_the_bot_skips_it(fake, tmp_path):
     assert "900" not in [json.loads(l)["comment"] for l in (tmp_path / "log.jsonl").read_text().splitlines()[1:]]
     with pytest.raises(SystemExit):
         X.main(["reply", "900", str(tmp_path / "intro.txt")])
+
+
+def test_handles_file_feeds_the_prompt(monkeypatch, tmp_path):
+    f = tmp_path / "h.toml"
+    f.write_text('[handles]\n"Ada Racer" = "@adaracer"\n')
+    monkeypatch.setenv("XBOT_HANDLES", str(f))
+    assert X.system_prompt().endswith("HANDLES:\nAda Racer: @adaracer")
+    monkeypatch.setenv("XBOT_HANDLES", str(tmp_path / "missing.toml"))
+    assert X.system_prompt().endswith("HANDLES:\n(none listed)")
+    monkeypatch.delenv("XBOT_HANDLES")
+    assert X.system_prompt().endswith("(none listed)")       # the shipped file has no entries

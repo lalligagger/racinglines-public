@@ -1,0 +1,8 @@
+# X handles the bot may use for athletes, keyed by the full name exactly as the racinglines tools return it.
+# A listed athlete is named by first name and handle ("Max (@handle)"); anyone else by full name.
+# Add only handles checked on x.com: a wrong one tags a stranger in public.
+#
+# Example (not a real entry):
+# "Firstname Lastname" = "handle_without_at"
+
+[handles]
