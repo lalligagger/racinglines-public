@@ -47,6 +47,29 @@ def test_taker_signals_are_the_backtest_takers_trades():
     assert {p["market_key"] for p in pos} == {"race_h2h", "race_podium"}      # flat podium still listed (traded)
 
 
+
+@pytest.mark.parametrize("floor", [None, "none", "fair", "edge"])
+def test_live_taker_params_match_the_sweeps_for_the_same_settings(floor):
+    """The live pass reads sell_floor like the sweep (weekend_sweep.taker_params): same rule, same fees."""
+    from racinglines.pipelines import sweep_settings as SS
+    from racinglines.pipelines import weekend_sweep as WS
+    st = SS.Settings.from_dict(dict(min_edge=0.10, **({} if floor is None else dict(sell_floor=floor))))
+    live, (base, _) = SG.taker_params(st, "update", "polymarket"), WS.taker_params(st)
+    assert live.sell_floor == base.sell_floor == (None if floor in (None, "none") else floor)
+    assert (live.min_edge, live.cost, live.taker_fee, live.mode) == (base.min_edge, base.cost, base.taker_fee, "update")
+
+
+def test_live_sell_floor_keeps_update_from_selling_into_a_dip():
+    """Fair 0.60 -> 0.45 at a price of 0.30: update trims to the smaller edge, selling at 0.30 with no floor;
+    floor edge holds (0.30 is under fair - min edge = 0.35)."""
+    from racinglines.pipelines import sweep_settings as SS
+    wk = [_mk("race_win", [0.60, 0.45], [0.30, 0.30])]
+    def actions(**kw):
+        p = SG.taker_params(SS.Settings.from_dict(dict(min_edge=0.10, **kw)), "update", "polymarket")
+        return [s["action"] for s in SG.taker_signals(wk, p)[0]]
+    assert actions() == ["buy", "sell"]
+    assert actions(sell_floor="edge") == ["buy"]
+
 def test_truncate_stages():
     st = [dict(run_id=1, start=0, end=100, session_end=True), dict(run_id=2, start=100, end=200, session_end=True),
           dict(run_id=3, start=200, end=300, session_end=True)]

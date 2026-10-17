@@ -488,14 +488,10 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
             markets = WS.weekend_markets(c, w, runs, min_volume_24h=st["min_volume_24h"], price_times=price_times,
                                          venue=venue, kinds=WS.KINDS + opt if opt else None,
                                          thin_depth=st["thin_edge_mult"] is not None,
-                                         tol_by_kind=SS.parse_map(st["coherence_tol_by_kind"]))
+                                         tol_by_kind=SS.parse_map(st["coherence_tol_by_kind"]),
+                                         max_spread=st.get("max_spread"))
             markets = [m for m in markets or [] if m["kind"] in st["market_kinds"]]
-            p = RB.TakerParams(min_edge=st["min_edge"], stake_per_edge=st["stake_per_edge"], max_stake=st["max_stake"],
-                               cost=WS.taker_cost(st["cost"], venue), late_stages=st["late_stages"],
-                               min_edge_h2h=st["min_edge_h2h"],
-                               min_edge_by_kind=tuple(SS.parse_map(st["min_edge_by_kind"]).items()),
-                               stages=None if st["taker_stages"] == SS.STAGES else st["taker_stages"], mode=strategy,
-                               thin_edge_mult=st["thin_edge_mult"], taker_fee=WS.taker_fee(venue))
+            p = taker_params(st, strategy, venue)
             if scale != 1.0:
                 p = replace(p, scale=p.scale * scale)
             base["signals"], base["positions"] = taker_signals(markets, p)
@@ -507,6 +503,20 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
     if venue != "polymarket":                    # another exchange's rows say so (the default rows stay as they were)
         tag(base, detail=dict(venue=venue), position=dict(venue=venue))
     return base
+
+
+def taker_params(st, strategy, venue):
+    """The live taker's TakerParams from a profile's settings, as the sweep reads them for the same settings
+    (weekend_sweep): sell_floor and the stage filter max_spread (weekend_markets) apply live too. Not applied
+    live: max_deployed (see taker_signals), kelly / root_unit sizing, and taker_fill (the live pass prices
+    from our own tape)."""
+    return RB.TakerParams(min_edge=st["min_edge"], stake_per_edge=st["stake_per_edge"], max_stake=st["max_stake"],
+                          cost=WS.taker_cost(st["cost"], venue), late_stages=st["late_stages"],
+                          min_edge_h2h=st["min_edge_h2h"],
+                          min_edge_by_kind=tuple(SS.parse_map(st["min_edge_by_kind"]).items()),
+                          stages=None if st["taker_stages"] == SS.STAGES else st["taker_stages"], mode=strategy,
+                          thin_edge_mult=st["thin_edge_mult"], taker_fee=WS.taker_fee(venue),
+                          sell_floor=None if st.get("sell_floor") in (None, "none") else st.get("sell_floor"))
 
 
 def taker_inputs(markets, p):
