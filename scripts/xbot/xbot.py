@@ -9,6 +9,7 @@ GET /v1/inbox/comments/{postId}) and answers each new one (POST /v1/inbox/commen
     python scripts/xbot/xbot.py accounts        # the connected X accounts (read-only)
     python scripts/xbot/xbot.py ask "TEXT"      # draft one answer, print it; nothing is read from or sent to X
     python scripts/xbot/xbot.py once            # one pass: every new comment gets a draft (dry) or a reply (live)
+    python scripts/xbot/xbot.py reply TWEET FILE  # post FILE's text as a reply to TWEET (an id or x.com URL), by hand
 
 Settings (env; on the VM /etc/racinglines-xbot.env, read by scripts/vm/xbot.sh):
     ZERNIO_API_KEY, ANTHROPIC_API_KEY   the two keys
@@ -124,6 +125,15 @@ def post_reply(post_id, acct, comment_id, text):
                   body=dict(accountId=acct, message=text, commentId=comment_id), idempotency_key=f"xbot-{comment_id}")
 
 
+def tweet_id(s):
+    """A tweet id from an id or an x.com / twitter.com status URL."""
+    s = s.strip().split("?")[0].rstrip("/")
+    tail = s.rsplit("/status/", 1)[-1]
+    if not tail.isdigit():
+        sys.exit(f"xbot: not a tweet id or status URL: {s!r}")
+    return tail
+
+
 # --- Claude -------------------------------------------------------------------------------------------------------
 def draft(comment_text, post_text=""):
     """The reply Claude writes, or None for SKIP (or a refusal)."""
@@ -220,6 +230,14 @@ def main(argv=None):
             print(a.get("_id"), a.get("username"), "active" if a.get("isActive", True) else "inactive")
     elif cmd == "ask" and len(argv) > 1:
         print(draft(" ".join(argv[1:])) or "SKIP")
+    elif cmd == "reply" and len(argv) == 3:
+        tweet = tweet_id(argv[1])
+        text = Path(argv[2]).read_text().strip()
+        if not text or len(text) > 280:
+            sys.exit(f"xbot: the reply must be 1 to 280 characters, not {len(text)}")
+        out = zernio("POST", f"/inbox/comments/{tweet}", body=dict(accountId=account_id(), message=text),
+                     idempotency_key=f"xbot-manual-{tweet}")
+        log(state_dir(), mode="manual", action="replied", post=tweet, reply=text, result=out.get("data"))
     elif cmd == "once":
         n = run_once()
         print(f"xbot: {n} comment(s) handled this pass ({os.environ.get('XBOT_MODE', 'dry')})", flush=True)

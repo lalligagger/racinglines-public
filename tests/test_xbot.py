@@ -86,3 +86,10 @@ def test_bad_mode_stops(fake, monkeypatch):
     monkeypatch.setenv("XBOT_MODE", "yolo")
     with pytest.raises(SystemExit):
         X.run_once(write=write)
+
+
+def test_tweet_id_takes_an_id_or_a_status_url():
+    assert X.tweet_id("1846000000000000001") == "1846000000000000001"
+    assert X.tweet_id("https://x.com/opticsinspace/status/1846000000000000001?s=20") == "1846000000000000001"
+    with pytest.raises(SystemExit):
+        X.tweet_id("https://x.com/opticsinspace")
