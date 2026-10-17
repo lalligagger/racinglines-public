@@ -47,3 +47,23 @@ def test_the_signal_engine_runs_makers_only_for_the_demo_accounts(monkeypatch):
     SG.run_all(Engine(), "", echo=said.append)
     assert sorted(ran) == sorted([(PF.PROFILES["C"]["name"], [2]), (PF.PROFILES["A"]["name"], [3])])
     assert "skipped ada" in said[0]
+
+
+@pytest.mark.quick
+def test_lab_monitors_run_with_one_shared_cache_and_alert_nobody(monkeypatch):
+    """The lab-<id> monitor accounts (profiles.ensure_monitors) are stored like anyone but never alert; a group with a
+    real account still alerts. Every profile in the pass gets the same cache (one measurements load)."""
+    t2 = dict(PF.PROFILES["T2"], candidate_id=12)
+    rows = [(3, "taker", "basic", dict(PF.PROFILES["A"], candidate_id=1)), (40, "lab-1", "basic", dict(PF.PROFILES["A"], candidate_id=1)),
+            (41, "lab-12", "basic", t2)]
+    monkeypatch.setattr(PF, "assigned", lambda c, venue="polymarket": rows)
+    caches, ran = [], []
+    monkeypatch.setattr(SG, "compute", lambda *a, **k: caches.append(id(k["cache"])) or dict(stages=[]))
+    monkeypatch.setattr(SG, "_run_one", lambda e, u, prof, out, uids, rate, now, alert, *a, **k: ran.append((uids, alert)))
+
+    class Engine:
+        @contextmanager
+        def connect(self):
+            yield None
+    SG.run_all(Engine(), "", echo=lambda m: None)
+    assert sorted(ran) == [([3, 40], True), ([41], False)] and len(set(caches)) == 1

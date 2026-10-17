@@ -47,6 +47,29 @@ def test_taker_signals_are_the_backtest_takers_trades():
     assert {p["market_key"] for p in pos} == {"race_h2h", "race_podium"}      # flat podium still listed (traded)
 
 
+
+@pytest.mark.parametrize("floor", [None, "none", "fair", "edge"])
+def test_live_taker_params_match_the_sweeps_for_the_same_settings(floor):
+    """The live pass reads sell_floor like the sweep (weekend_sweep.taker_params): same rule, same fees."""
+    from racinglines.pipelines import sweep_settings as SS
+    from racinglines.pipelines import weekend_sweep as WS
+    st = SS.Settings.from_dict(dict(min_edge=0.10, **({} if floor is None else dict(sell_floor=floor))))
+    live, (base, _) = SG.taker_params(st, "update", "polymarket"), WS.taker_params(st)
+    assert live.sell_floor == base.sell_floor == (None if floor in (None, "none") else floor)
+    assert (live.min_edge, live.cost, live.taker_fee, live.mode) == (base.min_edge, base.cost, base.taker_fee, "update")
+
+
+def test_live_sell_floor_keeps_update_from_selling_into_a_dip():
+    """Fair 0.60 -> 0.45 at a price of 0.30: update trims to the smaller edge, selling at 0.30 with no floor;
+    floor edge holds (0.30 is under fair - min edge = 0.35)."""
+    from racinglines.pipelines import sweep_settings as SS
+    wk = [_mk("race_win", [0.60, 0.45], [0.30, 0.30])]
+    def actions(**kw):
+        p = SG.taker_params(SS.Settings.from_dict(dict(min_edge=0.10, **kw)), "update", "polymarket")
+        return [s["action"] for s in SG.taker_signals(wk, p)[0]]
+    assert actions() == ["buy", "sell"]
+    assert actions(sell_floor="edge") == ["buy"]
+
 def test_truncate_stages():
     st = [dict(run_id=1, start=0, end=100, session_end=True), dict(run_id=2, start=100, end=200, session_end=True),
           dict(run_id=3, start=200, end=300, session_end=True)]
@@ -235,6 +258,28 @@ def test_kalshi_profile_k_is_assigned_only_on_request(test_engine):
         assert kp["name"] == PF.PROFILES["K"]["name"] and kp["venue"] == "kalshi" and kp["candidate_id"] == ids["K"]
         assert [u for _, u, _, _ in PF.assigned(c)] == ["maker", "taker"]   # the engine's list is as before
 
+
+
+def test_monitor_accounts_cover_every_taker_candidate_and_nothing_else(test_engine):
+    """profiles --monitors: one lab-<id> account per F1 taker candidate, assigned it; makers get none; a second run
+    creates nothing; nobody can sign up as one."""
+    from racinglines.pipelines import profiles as PF
+    from racinglines.web import accounts as ACC
+    with test_engine.begin() as c:
+        c.execute(text("INSERT INTO sports (code, name) VALUES ('f1', 'F1') ON CONFLICT DO NOTHING"))
+        c.execute(text("INSERT INTO leagues (code, name) VALUES ('f1', 'F1') ON CONFLICT DO NOTHING"))
+        c.execute(text("""INSERT INTO competitions (code, name, league_id, sport_id)
+                          SELECT 'f1_wdc', 'F1', l.id, s.id FROM leagues l, sports s WHERE l.code = 'f1' AND s.code = 'f1'
+                          ON CONFLICT DO NOTHING"""))
+        ids = PF.ensure_candidates(c)
+        takers = {i for code, i in ids.items() if PF.PROFILES[code]["strategy"] in SG.WS.TAKER_MODES}
+        first = PF.ensure_monitors(c)
+        assert {cid for _, cid, _ in first} == takers and all(created for *_, created in first)
+        assert ids["C"] not in takers and ids["K"] not in takers
+        assert all(not created for *_, created in PF.ensure_monitors(c))          # idempotent
+        mon = {u: p["candidate_id"] for _, u, _, p in PF.assigned(c) if u.startswith(PF.MONITOR_PREFIX)}
+        assert mon == {f"lab-{i}": i for i in takers}
+        assert ACC.check_username(c, f"lab-{ids['A']}") and ACC.check_username(c, "lab-999999")   # reserved
 
 def test_maker_call_reads_the_profiles_volume_floor():
     """A maker profile's `maker_min_volume_24h` (K's $400) is the live volume floor, as in the replay;

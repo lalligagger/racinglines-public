@@ -488,14 +488,10 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
             markets = WS.weekend_markets(c, w, runs, min_volume_24h=st["min_volume_24h"], price_times=price_times,
                                          venue=venue, kinds=WS.KINDS + opt if opt else None,
                                          thin_depth=st["thin_edge_mult"] is not None,
-                                         tol_by_kind=SS.parse_map(st["coherence_tol_by_kind"]))
+                                         tol_by_kind=SS.parse_map(st["coherence_tol_by_kind"]),
+                                         max_spread=st.get("max_spread"))
             markets = [m for m in markets or [] if m["kind"] in st["market_kinds"]]
-            p = RB.TakerParams(min_edge=st["min_edge"], stake_per_edge=st["stake_per_edge"], max_stake=st["max_stake"],
-                               cost=WS.taker_cost(st["cost"], venue), late_stages=st["late_stages"],
-                               min_edge_h2h=st["min_edge_h2h"],
-                               min_edge_by_kind=tuple(SS.parse_map(st["min_edge_by_kind"]).items()),
-                               stages=None if st["taker_stages"] == SS.STAGES else st["taker_stages"], mode=strategy,
-                               thin_edge_mult=st["thin_edge_mult"], taker_fee=WS.taker_fee(venue))
+            p = taker_params(st, strategy, venue)
             if scale != 1.0:
                 p = replace(p, scale=p.scale * scale)
             base["signals"], base["positions"] = taker_signals(markets, p)
@@ -507,6 +503,20 @@ def compute(engine, engine_url, profile, now=None, event="next", live=True, fetc
     if venue != "polymarket":                    # another exchange's rows say so (the default rows stay as they were)
         tag(base, detail=dict(venue=venue), position=dict(venue=venue))
     return base
+
+
+def taker_params(st, strategy, venue):
+    """The live taker's TakerParams from a profile's settings, as the sweep reads them for the same settings
+    (weekend_sweep): sell_floor and the stage filter max_spread (weekend_markets) apply live too. Not applied
+    live: max_deployed (see taker_signals), kelly / root_unit sizing, and taker_fill (the live pass prices
+    from our own tape)."""
+    return RB.TakerParams(min_edge=st["min_edge"], stake_per_edge=st["stake_per_edge"], max_stake=st["max_stake"],
+                          cost=WS.taker_cost(st["cost"], venue), late_stages=st["late_stages"],
+                          min_edge_h2h=st["min_edge_h2h"],
+                          min_edge_by_kind=tuple(SS.parse_map(st["min_edge_by_kind"]).items()),
+                          stages=None if st["taker_stages"] == SS.STAGES else st["taker_stages"], mode=strategy,
+                          thin_edge_mult=st["thin_edge_mult"], taker_fee=WS.taker_fee(venue),
+                          sell_floor=None if st.get("sell_floor") in (None, "none") else st.get("sell_floor"))
 
 
 def taker_inputs(markets, p):
@@ -701,8 +711,8 @@ def run_all(engine, engine_url, users=None, profile_ref=None, now=None, event="n
     from racinglines.pipelines import profiles as PF
     with engine.connect() as c:
         targets = [(uid, prof) for uid, name, _, prof in PF.assigned(c, venue=venue) if not users or name in users]
+        names = {uid: name for uid, name, _, _ in PF.assigned(c, venue=venue)}
         if not PF.MAKERS_OPEN:                 # Alpha: makers run only for the demo accounts (profiles.MAKERS_OPEN)
-            names = {uid: name for uid, name, _, _ in PF.assigned(c, venue=venue)}
             skipped = [names[uid] for uid, prof in targets if PF.is_maker(prof) and names[uid] not in PF.DEMO]
             if skipped:
                 echo(f"maker strategies are closed for Alpha: skipped {', '.join(skipped)}")
@@ -711,21 +721,24 @@ def run_all(engine, engine_url, users=None, profile_ref=None, now=None, event="n
             prof = PF.load(c, profile_ref)
             targets = [(uid, prof) for uid, _ in targets]
     groups, rate, kelly = {}, {}, {}
+    cache = {}                         # one measurements load and one training history per model for the whole pass
     for uid, prof in targets:
         groups.setdefault(combo_key(prof), (prof, []))[1].append(uid)
         rate[uid] = prof.get("follow_rate")
         kelly[uid] = PF.sizing_of(prof)                # a player's sizing choice (for_player; None = standard)
     report = []
     for prof, uids in groups.values():
+        # the Lab monitor accounts (profiles.ensure_monitors) are stored and scored like anyone, but alert nobody
+        alert_g = alert and any(not names.get(u, "").startswith(PF.MONITOR_PREFIX) for u in uids)
         if PF.is_combo(prof):
             echo(f"{prof['name']} (blend of {', '.join(m['code'] for m in prof['members'])}) for users {uids}")
-            outs = compute_all(engine, engine_url, prof, now=now, event=event, fetch=fetch, echo=echo)
-            report += [_run_one(engine, engine_url, out["profile"], out, uids, rate, now, alert, echo, kelly=kelly,
+            outs = compute_all(engine, engine_url, prof, now=now, event=event, fetch=fetch, echo=echo, cache=cache)
+            report += [_run_one(engine, engine_url, out["profile"], out, uids, rate, now, alert_g, echo, kelly=kelly,
                                 guard=guard(prof, venue) if profile_ref is None else None) for out in outs]
             continue
         echo(f"{prof['name']} ({prof['strategy']}) for users {uids}")
-        out = compute(engine, engine_url, prof, now=now, event=event, fetch=fetch, echo=echo)
-        report.append(_run_one(engine, engine_url, prof, out, uids, rate, now, alert, echo, kelly=kelly,
+        out = compute(engine, engine_url, prof, now=now, event=event, fetch=fetch, echo=echo, cache=cache)
+        report.append(_run_one(engine, engine_url, prof, out, uids, rate, now, alert_g, echo, kelly=kelly,
                                guard=guard(prof, venue) if profile_ref is None else None))
     return report
 

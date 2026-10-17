@@ -60,7 +60,7 @@ TEXT = {"bad_input": "Check the side, the shares (a whole number) and the limit 
         "market_closed": "This market is closed or already settled.",
         "session_started": "This market closed when its session started.",
         "no_schedule": "This market has no known closing time yet, so it can't be traded.",
-        "book_unavailable": "No order book has been recorded for this market yet.",
+        "book_unavailable": "The venue's order book couldn't be read just now (or none is recorded yet): try again in a moment.",
         "stale_book": f"The last recorded order book is more than {MAX_AGE_MIN:.0f} minutes old.",
         "no_liquidity": "Nothing on the book at your limit or better.",
         "over_order_cap": f"Orders are capped at F${MAX_STAKE:.0f} (shares x limit).",
@@ -169,6 +169,54 @@ def latest_book(engine, token_id):
     if r is None:
         return None
     return dict(ts=r[0], bids=levels(r[1]), asks=levels(r[2]))
+
+
+LIVE_TIMEOUT = 5.0                 # s per live book request; a slow venue refuses the order (book_unavailable)
+
+
+def books_mode():
+    """RACINGLINES_FANTASY_BOOKS: "live" (default) checks every order against the venue's own book at that moment
+    (Kalshi GET /markets/{ticker}/orderbook, Polymarket CLOB GET /book; the public read-only endpoints the recorder
+    already reads every 5 minutes); "recorded" walks the latest recorded snapshot instead."""
+    return "recorded" if os.environ.get("RACINGLINES_FANTASY_BOOKS", "live").strip().lower() == "recorded" else "live"
+
+
+def live_book(exchange, token_id, transport=None):
+    """The venue's book now: dict(ts, bids, asks) in latest_book's shape (YES levels, best first), or None when the
+    request fails. transport (an httpx transport) replaces the network in tests."""
+    import httpx
+    try:
+        if exchange == "kalshi":
+            from racinglines.markets.kalshi import client as K
+            from racinglines.markets.kalshi import sync as KS
+            with K.Client(transport=transport) as kc:
+                kc.http.timeout = httpx.Timeout(LIVE_TIMEOUT)
+                r = kc.http.get(f"/markets/{token_id}/orderbook", params=dict(depth=DEPTH))
+                r.raise_for_status()
+                body = r.json()
+            row = KS.book_row(token_id, body.get("orderbook_fp") or body.get("orderbook") or {},
+                              datetime.now(timezone.utc), DEPTH)
+            return dict(ts=row["ts"], bids=levels(row["bids"]), asks=levels(row["asks"]))
+        if exchange == "polymarket":
+            from racinglines.markets.polymarket import sync as PS
+            with httpx.Client(base_url=PS.CLOB, timeout=LIVE_TIMEOUT, transport=transport) as c:
+                r = c.get("/book", params={"token_id": token_id})
+                r.raise_for_status()
+                b = r.json()
+            ts = datetime.fromtimestamp(int(b["timestamp"]) / 1000, tz=timezone.utc) if b.get("timestamp") \
+                else datetime.now(timezone.utc)
+            return dict(ts=ts, bids=levels(PS._levels(b.get("bids"), True)), asks=levels(PS._levels(b.get("asks"), False)))
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        return None
+    return None
+
+
+def book_getter(engine, link):
+    """place / quote's default get_book for this link: the venue's live book (books_mode "live"), else the latest
+    recorded one."""
+    if books_mode() == "live" and link is not None and link.get("exchange") in EXCHANGES:
+        return lambda tok: live_book(link["exchange"], tok)
+    return lambda tok: latest_book(books_engine(engine), tok)
 
 
 def quotes(engine, token_ids):
@@ -477,10 +525,9 @@ def place(engine, user, link_id, side, action, shares, limit, client_key=None, n
     fantasy_orders row and a `fantasy_order_rejected` audit row; a fill writes the order, one fantasy_fills row per
     level (the fee on the first), the position and the ledger rows (one `trade` per fill, one `fee` per order), all in
     one transaction holding the account's row lock. get_book(token_id) -> dict(ts, bids, asks) is injectable (tests);
-    by default the latest recorded book."""
+    by default book_getter: the venue's live book, or the latest recorded one with RACINGLINES_FANTASY_BOOKS=recorded."""
     now = now or datetime.now(timezone.utc)
     client_key = (client_key or "").strip()[:64] or None
-    get_book = get_book or (lambda tok: latest_book(books_engine(engine), tok))
     side, action = str(side or "").lower(), str(action or "").lower()
     with engine.begin() as c:
         prior = _existing(c, user["id"], client_key)
@@ -497,9 +544,9 @@ def place(engine, user, link_id, side, action, shares, limit, client_key=None, n
             out = _reject(c, user, lid, link, side, action, shares, limit, ex.reason, client_key)
             _audit(c, user, "fantasy_order_rejected", order_id=out["order_id"], reason=ex.reason, link=lid)
             return out
-    # 2. the book, with no database lock held (_levels)
+    # 2. the book, with no database lock held (_levels): the venue's own, live, unless injected or books_mode()
     try:
-        lv, snap = _levels(get_book, link, side, action, now)
+        lv, snap = _levels(get_book or book_getter(engine, link), link, side, action, now)
     except Rejected as ex:
         with engine.begin() as c:
             out = _reject(c, user, lid, link, side, action, n, p, ex.reason, client_key)

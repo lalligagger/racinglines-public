@@ -162,6 +162,13 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture(autouse=True)
+def _recorded_fantasy_books(monkeypatch):
+    """A fantasy order checks the venue's live book by default (fantasy/exchange.books_mode); tests read recorded
+    books unless they ask for "live" and fake the network."""
+    monkeypatch.setenv("RACINGLINES_FANTASY_BOOKS", "recorded")
+
+
+@pytest.fixture(autouse=True)
 def _fresh_exchange_breakdown():
     """markets/venues.exchange_breakdown caches its every-sport result for a minute per process: start each test
     without an earlier test's markets in it."""

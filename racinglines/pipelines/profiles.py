@@ -15,6 +15,7 @@ The two recommended by the params-4h cloud search (data/runs/search/params-4h/RE
 
     racinglines strategy profiles f1                      # list, and create A / C / K as Lab candidates if missing
     racinglines strategy profiles f1 --assign-demo        # demo taker -> A, demo maker -> C
+    racinglines strategy profiles f1 --monitors           # lab-<id>: one account per Lab taker candidate (backup first)
     racinglines strategy profiles f1 --assign-demo --venue kalshi   # demo maker -> K, as its Kalshi profile (explicit;
                                                            # nothing reads it until the signal engine runs Kalshi)
 
@@ -347,6 +348,40 @@ def assigned(conn, venue="polymarket", sport=DEFAULT_SPORT):
                                 WHERE active AND prefs ? '{key}' ORDER BY id""")).all()
     from racinglines.web.roles import canonical
     return [(i, u, canonical(r), p) for i, u, r, p in rows]
+
+
+MONITOR_PREFIX = "lab-"           # lab-<candidate id>: one hidden account per taker candidate (web/accounts reserves it)
+
+
+def taker_candidates(conn):
+    """[(candidate id, name)] of every F1 taker candidate in the Lab (the strategy is a taker mode; makers and other
+    sports' candidates are left out)."""
+    from racinglines.pipelines import weekend_sweep as WS
+    return [(i, p["name"]) for i, p in _candidates(conn)
+            if p.get("strategy") in WS.TAKER_MODES and (p.get("sport") or DEFAULT_SPORT) == DEFAULT_SPORT]
+
+
+def ensure_monitors(conn):
+    """One account per taker candidate, `lab-<id>`, assigned that candidate as its Polymarket profile, so the live
+    signal pass paper-trades every Lab taker and each keeps its own track record (owner, 2026-10-17: "takers only",
+    from Austin through the end of the year). The accounts can't sign in (a random password nobody holds) and have no
+    fantasy grant, so they are off the leaderboard and trade at the strategy's own sizing. Idempotent: an existing
+    account keeps its row and is re-assigned its candidate. -> [(username, candidate id, created)]"""
+    import secrets
+    from racinglines.web import users as U
+    out = []
+    for cid, name in taker_candidates(conn):
+        username = f"{MONITOR_PREFIX}{cid}"
+        uid = conn.execute(text("SELECT id FROM users WHERE username = :u"), dict(u=username)).scalar()
+        created = uid is None
+        if created:
+            uid = conn.execute(text("""INSERT INTO users (username, display_name, role, password_hash, active)
+                                       VALUES (:u, :d, 'basic', :h, true) RETURNING id"""),
+                               dict(u=username, d=f"Lab monitor: {name}"[:120],
+                                    h=U.hash_password(secrets.token_urlsafe(32)))).scalar()
+        assign(conn, uid, load(conn, cid))
+        out.append((username, cid, created))
+    return out
 
 
 def assign_demo(conn, venue="polymarket"):
