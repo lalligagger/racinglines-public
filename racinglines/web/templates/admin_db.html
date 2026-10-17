@@ -7,4 +7,5 @@
 <div class="card"><table><thead><tr><th class="l">Table</th><th>Rows</th></tr></thead><tbody>
 {% for t in tables %}<tr><td class="l"><a href="/admin/db/{{ t.name }}">{{ t.name }}</a></td><td>{{ t.rows }}</td></tr>{% endfor %}
 </tbody></table></div>
+{% include "_storage_status.html" %}
 {% endblock %}

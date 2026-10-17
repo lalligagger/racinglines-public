@@ -128,3 +128,28 @@ The 10 to 20% bin is still under-priced after calibration (z = 4.2), so one powe
 
 Optional and off by default (decision log, 2026-10-14). Making `walk_forward` the default goes through the
 [promotion rule](f1-roadmap.md#5-promotion-rule-when-a-challenger-becomes-the-default) and is the owner's call.
+
+## Other sports (the results level: NASCAR, MotoGP)
+
+The one engine's results core ([racinglines/models/inputs/results.py](https://github.com/lalligagger/racinglines-public/blob/main/racinglines/models/inputs/results.py))
+takes the same `calib_power` setting, off by default. The drawn races are resampled so each entrant's win share becomes
+p^a / Σ p^a, on a side generator, so unset (or a = 1) leaves every price and model key unchanged. The side
+classifications (pole, fastest lap) are not resampled. `walk_forward` reads `sports/<sport>/calibration.toml`; that
+table's hash is in the model key of that sport only, so a NASCAR table leaves F1's keys alone.
+
+The results level never knows the grid: its walk-forward prices each race once, at 00:00 UTC on race day, so the
+table's `grid` and `nogrid` columns are fitted on the same prices and are equal. The fit reads the walk-forward in
+memory instead of stored stage runs:
+
+```
+# VM (staging checkout; read-only: every connection is opened read-only)
+sudo systemd-run --unit=rl-nascar-calib --uid=racinglines /opt/racinglines-staging/scripts/vm/nascar_calibration.sh
+journalctl -fu rl-nascar-calib
+```
+
+[scripts/vm/nascar_calibration.sh](https://github.com/lalligagger/racinglines-public/blob/main/scripts/vm/nascar_calibration.sh)
+runs `scripts/models/fit_calibration.py --sport nascar --seasons 2023 2024 2025 2026 --check --report DIR` (the
+table, the leakage check, the race-win log loss before and after it per season and beside Polymarket's and Kalshi's
+price at the same cutoff), then `racinglines strategy sweep nascar` for 2025 and 2026 on each venue with calibration
+off and on, and writes `summary.md` with the log-loss tables and each sweep's P&L and CLV lines. No NASCAR table is in
+the repository until that run's table is reviewed and committed; until then `walk_forward` is off for NASCAR (a = 1).

@@ -26,6 +26,8 @@
 #                                               # status: last passes
 #   bash scripts/deploy/vm.sh schedule [off|status] # session start times (scripts/vm/schedule_sync.sh): a dry run every
 #                                               # 6 hours, a backup and the write only when a session is added or moved
+#   bash scripts/deploy/vm.sh offsite [off|status|run] # nightly off-site copy (scripts/vm/offsite.sh): prod dump, data/backups and
+#                                               # data/archive/markets to the primary bucket; adds there, never deletes
 #   bash scripts/deploy/vm.sh switch <NAME> on|off # an app switch (RACINGLINES_*, e.g. RACINGLINES_OG_VENUE) in
 #                                               # /etc/racinglines.env, web app restarted; never a trading flag
 #   bash scripts/deploy/vm.sh deploy [ref]      # checkout (default main), install, migrate, restart, smoke check
@@ -171,6 +173,16 @@ case "${1:-}" in
       status) remote "cd $APP && sudo -u racinglines -H scripts/vm/schedule_sync.sh status" ;;
       "") remote "sudo systemctl enable --now $t && systemctl --no-pager list-timers $t" ;;
       *) echo "usage: vm.sh schedule [off|status]"; exit 1 ;;
+    esac
+    ;;
+  offsite)
+    t=racinglines-offsite.timer
+    case "${2:-}" in
+      off) remote "sudo systemctl disable --now $t && echo '$t: off'" ;;
+      status) remote "cd $APP && sudo -u racinglines -H scripts/vm/offsite.sh status" ;;
+      run) remote "sudo systemctl start racinglines-offsite.service; cd $APP && sudo -u racinglines -H tail -n 8 data/runs/logs/offsite.log" ;;
+      "") remote "sudo systemctl enable --now $t && systemctl --no-pager list-timers $t" ;;
+      *) echo "usage: vm.sh offsite [off|status|run]"; exit 1 ;;
     esac
     ;;
   pm-sync)

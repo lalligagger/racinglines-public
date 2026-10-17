@@ -923,6 +923,16 @@ def pull_chunk(conn, pull_id, name, offset=0):
     return PL.chunk(conn, pull_id, name, offset=offset)
 
 
+def storage_status(conn, refresh=False):
+    """Where the data lives (racinglines/storage_status.py): the last snapshot of the VM's disk, data folders and
+    databases and the data bucket's prefixes. refresh=True starts a new snapshot in the background (the bucket listing
+    takes minutes); this call returns the last one either way. Sizes and counts only."""
+    from racinglines import storage_status as ST
+    started = ST.refresh_in_background(force=bool(refresh))
+    snap = ST.read()
+    return dict(snapshot=snap, age_seconds=ST.age_seconds(snap), refreshing=ST.refreshing() or started)
+
+
 def data_changes(conn, sport=None, limit=None, offset=0):
     df = data.q(conn, """SELECT id, at, sport, kind, summary, by, detail FROM data_changes
                          WHERE (CAST(:s AS text) IS NULL OR sport = CAST(:s AS text)) ORDER BY at DESC, id DESC""", s=sport)
@@ -1292,9 +1302,10 @@ def fantasy_leaderboard(conn, limit=None, offset=0, books=None):
 
 
 def fantasy_markets(conn, q=None, limit=None, offset=0, books=None):
-    """The markets a player may trade now (Formula 1 only for now, on Kalshi and Polymarket) with the best recorded YES bid and ask and
-    when that book was recorded; markets with no book in the last day are left out. q: a search on the question,
-    driver or event."""
+    """The markets a player may trade now (Formula 1 only for now, on Kalshi and Polymarket) with the best recorded YES bid and ask,
+    when that book was recorded and when the market closes (closes_at: the deciding session's start, null for a season
+    future or when no start is stored); markets with no book in the last day are left out. q: a search on the
+    question, driver or event."""
     from racinglines.fantasy import exchange as FX
     _fantasy_on()
     rows = FX.markets(conn, (q or "").strip()[:60])
@@ -1304,14 +1315,15 @@ def fantasy_markets(conn, q=None, limit=None, offset=0, books=None):
         b, a, ts = quotes.get(m["token_id"], (None, None, None))
         if ts is not None:
             out.append(dict(market_link_id=m["id"], exchange=m["exchange"], kind=m["kind"], question=m["question"],
-                            subject=m["group_title"], event=m["event_title"], start_date=m["start_date"], bid=b, ask=a,
-                            book_ts=ts))
+                            subject=m["group_title"], event=m["event_title"], start_date=m["start_date"],
+                            closes_at=m["closes_at"], bid=b, ask=a, book_ts=ts))
     return dict(markets=P.page(out, limit=limit, offset=offset), max_stake=FX.MAX_STAKE, max_age_min=FX.MAX_AGE_MIN)
 
 
 def fantasy_book(conn, market_link_id, books=None):
     """One tradable market's latest recorded book: YES bids and asks and the NO side derived from them, up to the
-    depth an order may walk (exchange.DEPTH = 10), with its age."""
+    depth an order may walk (exchange.DEPTH = 10), with its time and the market's close (closes_at: null for a season
+    future or when no session start is stored)."""
     from racinglines.fantasy import exchange as FX
     _fantasy_on()
     link = FX._link(conn, int(market_link_id))
@@ -1319,20 +1331,19 @@ def fantasy_book(conn, market_link_id, books=None):
         raise ValueError(FX.TEXT["sport_not_tradable"])
     if link is None or link["exchange"] not in FX.EXCHANGES:
         raise ValueError(f"no tradable market {market_link_id}")
+    closes_at = FX.closes_for(conn, [link])[link["id"]]
     book = FX.latest_book(books or conn.engine, link["token_id"])
     if book is None:
-        return dict(market_link_id=int(market_link_id), book=None, note=FX.TEXT["book_unavailable"])
+        return dict(market_link_id=int(market_link_id), closes_at=P.plain(closes_at), book=None, note=FX.TEXT["book_unavailable"])
     nb, na = FX.yes_to_no(book["bids"], book["asks"])
     d = FX.DEPTH
-    return dict(market_link_id=int(market_link_id), exchange=link["exchange"], kind=link["prediction"], ts=book["ts"],
-                yes_bids=book["bids"][:d], yes_asks=book["asks"][:d], no_bids=nb[:d], no_asks=na[:d])
+    return dict(market_link_id=int(market_link_id), exchange=link["exchange"], kind=link["prediction"], ts=P.plain(book["ts"]),
+                closes_at=P.plain(closes_at), yes_bids=book["bids"][:d], yes_asks=book["asks"][:d], no_bids=nb[:d], no_asks=na[:d])
 
 
-def fantasy_order(engine, market_link_id, side, action, shares, limit_price, client_key=None, user=None, viewer=None):
-    """Place one immediate-or-cancel F$ order, as the web Trade page does (fantasy/exchange.place). Over HTTP it is
-    always the caller's own account (an admin too); over stdio (the owner) `user` names the account."""
-    from racinglines.fantasy import exchange as FX
-    from racinglines.fantasy import ledger as FL
+def _fantasy_trader(conn, user, viewer):
+    """The account an order or a quote is for (dict id, username, role, via=mcp): over HTTP the caller's own, admin
+    included; over stdio (the owner) `user` names it. Demo accounts and a shared store's accounts are refused."""
     from racinglines.web import demo
     from racinglines.web import roles as R
     _fantasy_on()
@@ -1343,18 +1354,46 @@ def fantasy_order(engine, market_link_id, side, action, shares, limit_price, cli
             raise ValueError("this server's accounts live in another database: no fantasy account here")
     elif user is None:
         raise ValueError("which account? pass user (stdio is the owner's: name the account to trade as)")
-    with engine.connect() as c:
-        _fantasy_ready(c)
-        row = c.execute(text("SELECT id, username, role, active FROM users WHERE "
-                             + ("id = :i" if viewer is not None else "username = :n")),
-                        dict(i=(viewer or {}).get("id"), n=user)).mappings().first()
+    _fantasy_ready(conn)
+    row = conn.execute(text("SELECT id, username, role, active FROM users WHERE "
+                            + ("id = :i" if viewer is not None else "username = :n")),
+                       dict(i=(viewer or {}).get("id"), n=user)).mappings().first()
     if row is None or not row["active"]:
         raise ValueError("no active account to trade as")
     who = dict(id=row["id"], username=row["username"], role=R.canonical(row["role"]), via="mcp")
     if demo.is_demo(who):
         raise ValueError("demo accounts look only; they can't trade")
+    return who
+
+
+def fantasy_quote(conn, market_link_id, side, action, shares, limit_price, user=None, viewer=None, books=None):
+    """What fantasy_order would do with this order right now, writing nothing (fantasy/exchange.quote: the same
+    checks, the same walk of the latest recorded book, the same fee): the fills, the average price, the fee, what
+    it would cost or bring, or the reason it would be refused. Read without the account's lock, so a quote that
+    fills can still be refused a moment later."""
+    from racinglines.fantasy import exchange as FX
+    who = _fantasy_trader(conn, user, viewer)
+    r = FX.quote(conn, who, market_link_id, side, action, shares, limit_price,
+                 get_book=lambda tok: FX.latest_book(books or conn.engine, tok))
+    r["fee"] = P.plain(r["fee"])
+    return dict(user=who["username"], **r)
+
+
+def fantasy_order(engine, market_link_id, side, action, shares, limit_price, client_key=None, user=None, viewer=None):
+    """Place one immediate-or-cancel F$ order, as the web Trade page does (fantasy/exchange.place). Over HTTP it is
+    always the caller's own account (an admin too); over stdio (the owner) `user` names the account. Every refusal
+    comes back in the one shape (ok=false, reason, message), the rate limit included (it writes an audit row and no
+    order row, as the Trade page's refusal does); a tool error is for a caller who can't trade at all."""
+    from racinglines.fantasy import exchange as FX
+    from racinglines.fantasy import ledger as FL
+    with engine.connect() as c:
+        who = _fantasy_trader(c, user, viewer)
     if not FX.rate_ok(who["id"]):
-        raise ValueError(FX.TEXT["rate_limited"])
+        with engine.begin() as c:
+            FX._audit(c, who, "fantasy_order_rejected", reason="rate_limited", link=market_link_id)
+            cash = FL.available(c, who["id"])
+        return dict(user=who["username"], ok=False, order_id=None, status="rejected", reason="rate_limited",
+                    message=FX.TEXT["rate_limited"], fills=[], fee=0.0, position=None, cash=round(cash, 2))
     FX.settle(engine, FX.books_engine(engine))                          # pay out anything resolved first
     r = FX.place(engine, who, market_link_id, side, action, shares, limit_price, client_key=client_key)
     with engine.connect() as c:
@@ -1362,3 +1401,77 @@ def fantasy_order(engine, market_link_id, side, action, shares, limit_price, cli
     return dict(user=who["username"], ok=r["ok"], order_id=r["order_id"], status=r["status"], reason=r["reason"],
                 message=r["message"] or None, fills=r["fills"], fee=P.plain(r["fee"]), position=r.get("position"),
                 cash=round(cash, 2))
+
+
+# --- following a strategy (fantasy/follow.py, the path /strategy/pick saves through) ---------------------------------
+#
+# fantasy_strategy reads what an account follows, the five style cards and the race-weekend lock; fantasy_follow
+# follows a style (or stops) on the caller's own account only, admin included, exactly as the page saves it: the same
+# gates and words (demo accounts, F1 on Polymarket, the weekend lock, sizing, the codes allowed, roles.allowed_profile),
+# the exchange rate limit, and a `strategy_pick` audit row tagged via=mcp. A refusal comes back as ok=false with its
+# reason and the page's message, nothing written. Codes: the five alpha styles and "none"; an admin also the classic
+# page's codes (follow.allowed_codes with alpha=True).
+
+def _follower(conn, uid):
+    """dict(id, username, role) for follow, with the role a web request runs as (web/layout.role); None if inactive."""
+    from racinglines.web import layout as L
+    from racinglines.web import roles as R
+    row = conn.execute(text("SELECT id, username, role, active FROM users WHERE id = :i"), dict(i=uid)).mappings().first()
+    if row is None or not row["active"]:
+        return None
+    return dict(id=row["id"], username=row["username"], role=L.role(R.canonical(row["role"])))
+
+
+def fantasy_strategy(conn, user=None, viewer=None):
+    """What one account follows (profile: base code, name, sizing, kelly, adjusted, rolled; None when nothing), the
+    race-weekend lock (weekend, reopens, message; None between weekends), the five style cards (options) and every
+    code it may pass to fantasy_follow, with the sizing choices."""
+    from racinglines.fantasy import follow as FW
+    from racinglines.pipelines import profiles as PF
+    _fantasy_ready(conn)
+    uid, name = _fantasy_account(conn, user, viewer)
+    who = _follower(conn, uid)
+    if who is None:
+        raise ValueError("no active account")
+    codes = FW.allowed_codes(who, alpha=True)
+    return dict(user=name, **FW.current(conn, who), options=FW.options(who),
+                codes=[*PF.ALPHA_ORDER, *sorted(codes - set(PF.ALPHA_ORDER)), "none"],
+                sizing=dict(choices=list(FW.SIZINGS), kelly_lo=FW.KELLY["lo"], kelly_hi=FW.KELLY["hi"],
+                            kelly_step=FW.KELLY["step"], kelly_default=FW.KELLY["default"]))
+
+
+def fantasy_follow(engine, code, sizing="standard", kelly=0.25, min_edge=None, min_volume_24h=None, rolled=False,
+                   user=None, viewer=None):
+    """Follow a strategy, or stop with code "none", as /strategy/pick saves it (fantasy/follow.follow). Over HTTP it is
+    always the caller's own account (an admin too); over stdio (the owner) `user` names the account."""
+    from racinglines.fantasy import exchange as FX
+    from racinglines.fantasy import follow as FW
+    from racinglines.pipelines import profiles as PF
+    _fantasy_on()
+    if viewer is not None:
+        if user is not None and user != viewer.get("username"):
+            raise ValueError("MCP strategy changes are made on your own account only")
+        if viewer["id"] < 1:
+            raise ValueError("this server's accounts live in another database: no fantasy account here")
+    elif user is None:
+        raise ValueError("which account? pass user (stdio is the owner's: name the account to follow for)")
+    with engine.connect() as c:
+        _fantasy_ready(c)
+        uid = viewer["id"] if viewer is not None else _user_id(c, user)
+        who = _follower(c, uid)
+    if who is None:
+        raise ValueError("no active account to follow for")
+    who["via"] = "mcp"
+    out = dict(user=who["username"], ok=False, reason=None, message=None, profile=None)
+    if not FX.rate_ok(who["id"]):
+        return dict(out, reason="rate_limited", message=FX.TEXT["rate_limited"])
+    tweaks = {k: v for k, v in (("min_edge", min_edge), ("min_volume_24h", min_volume_24h)) if v is not None}
+    try:
+        with engine.begin() as c:
+            old = PF.of_user(c, who["id"])
+            new = FW.follow(c, who, code, sizing=sizing, kelly=kelly, tweaks=tweaks, rolled=bool(rolled), alpha=True)
+            FX._audit(c, who, "strategy_pick", old=(old or {}).get("name"), new=(new or {}).get("name"),
+                      adjusted=(new or {}).get("adjusted"), rolled=bool((new or {}).get("rolled")))
+    except FW.FollowError as ex:
+        return dict(out, reason=ex.reason, message=ex.message)
+    return dict(out, ok=True, message=FW.saved_message(new), profile=FW.summary(new))

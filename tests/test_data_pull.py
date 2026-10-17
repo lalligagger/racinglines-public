@@ -189,6 +189,12 @@ def test_remote_call_and_its_typed_arguments(hosted, served, monkeypatch, tmp_pa
     assert RM.main(["call", "list_markets", "--nope", "1", "--mcp-url", url]) == 2
     assert "not an argument" in capsys.readouterr().err
     assert RM.main(["call", "no_such_tool", "--mcp-url", url]) == 2
+    sent = []                                       # follow a strategy from the terminal: typed by the server's schema
+    monkeypatch.setattr(RM.Session, "call", lambda self, tool, args: sent.append((tool, args)) or dict(ok=True))
+    assert RM.main(["call", "fantasy_follow", "--code", "T2", "--sizing", "kelly", "--kelly", "0.5", "--min-edge", "0.03",
+                    "--rolled", "true", "--mcp-url", url]) == 0
+    assert sent == [("fantasy_follow", dict(code="T2", sizing="kelly", kelly=0.5, min_edge=0.03, rolled=True))]
+    assert all(type(v) is t for v, t in zip(sent[0][1].values(), (str, str, float, float, bool)))
 
 
 @pytest.mark.quick
@@ -204,3 +210,12 @@ def test_job_knobs_come_from_the_servers_catalog():
     with pytest.raises(RM.RemoteError, match="no job"):
         RM.knob_params("f1_nope", [], cat)
     assert "strategy sweep f1" in RM.runs_remotely() and "model diagnostic f1" in RM.runs_remotely()
+
+
+def test_inserts_stay_under_the_postgres_parameter_limit():
+    for ncols in (1, 5, 13, 19, 40, 200):
+        n = PL.rows_per_statement(ncols)
+        assert 1 <= n <= 5000 and n * ncols < PL.PG_MAX_PARAMS
+    assert PL.rows_per_statement(19) < 5000          # laps: 5,000 rows x 19 columns was 95,000 parameters
+    assert PL.rows_per_statement(3) == 5000          # narrow tables keep the old batch
+    assert PL.rows_per_statement(100_000) == 1       # never zero

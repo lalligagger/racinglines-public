@@ -47,6 +47,12 @@ rating prior; the same half-life, prior weight, noise and uncertainty as the rac
 A side classification is drawn only when its history has a result before the cutoff (else that kind stays unpriced),
 on a generator seeded from the shared one without advancing it, so the race prices, and every later race's, are the
 same with or without it.
+
+Calibration power (C48 for the results level, docs/f1-calibration.md "Other sports"): `calib_power` (off by default)
+makes the race's win chances p^a / sum p^a by resampling the drawn races (models/calibration.py), so every market
+priced from them (podium, top n, head-to-head, team) follows the win price. walk_forward reads
+sports/<sport>/calibration.toml, fitted on earlier races only (scripts/models/fit_calibration.py --sport). The side
+classifications are not resampled. The resample draws from a side generator, so unset leaves every price unchanged.
 """
 
 from statistics import NormalDist
@@ -56,6 +62,7 @@ import numpy as np
 import pandas as pd
 
 from racinglines.markets import payoffs as P
+from racinglines.models import calibration as CAL
 from racinglines.models import outcomes as O
 from racinglines.models.race_model import Event
 from racinglines.pipelines import sweep_settings as SS
@@ -76,11 +83,16 @@ SETTINGS = [
                help="Needs [model] prior in the schema. 0 = off."),
     SS.Setting("dnf", "model", "Model retirements", "bool", True,
                help="Draw retirements from each entrant's shrunk DNF rate; off = everyone finishes."),
+    SS.Setting("calib_power", "model", "Win-price calibration power", "text", None,
+               help="Sharpen (above 1) the race-win prices as p^a, resampling the sims so every market follows "
+                    "(C48). A number, or walk_forward: the power fitted on earlier races only "
+                    "(sports/<sport>/calibration.toml). Empty = off."),
     SS.Setting("seed", "model", "Monte Carlo seed", "int", None, 0, 2**31 - 1),
 ]
 
 MIN_FINISHERS = 4          # an event with fewer classified finishers is neither history nor priced
 SIDE_SEED = 7_401          # salt of the side classifications' generator (sessions, best lap)
+CALIB_SEED = 7_501         # salt of the calibration resample's generator
 DNF_PRIOR_N = 5.0          # pseudo-starts shrinking an entrant's DNF rate toward the field's
 REQUIRED = ("season", "race", "date", "athlete_id", "position", "status")
 _N = NormalDist()
@@ -210,7 +222,8 @@ class ResultsCore:
                 raise ValueError(f"sports/{sport}.toml: [model] {hook} is set but [model] inputs doesn't declare {need!r}")
         cfg = dict(competition=schema["competition"]["code"], source=source, group=m.get("group"), prior=m.get("prior"))
         cfg.update({k: v for k, v in dict(sessions=sessions, best_lap=best_lap).items() if v})   # only when named
-        return dict(cfg=cfg, Settings=_settings_class(defaults))
+        S = _settings_class(defaults)        # CALIB_SPORT: whose calibration table a walk_forward model key hashes
+        return dict(cfg=cfg, Settings=type(S.__name__, (S,), dict(CALIB_SPORT=sport)))
 
     sides = None                           # {name: results frame} of the side classifications, set by load()
 
@@ -378,6 +391,10 @@ class ResultsCore:
             dnf = np.zeros((settings["sims"], k), bool)
         rank = np.argsort(np.argsort(-(perf - 1e3 * dnf), axis=1), axis=1) + 1
         stage_rank, indicators = self._price_sides(getattr(hist, "sides", None) or {}, cut, field, settings, rng)
+        a = CAL.power(settings.get("calib_power"), self.sport, ev.cutoff, False)
+        if a is not None:                  # on a side generator: unset (or a = 1) leaves every draw unchanged
+            idx = CAL.resample_index(np.argmax(rank == 1, axis=1), k, a, _side_rng(rng, CALIB_SEED))
+            rank, dnf = rank[idx], dnf[idx]
         return O.OutcomeSims(entrants=[int(x) for x in field], rank=rank, finished=~dnf,
                              groups=_groups(hist, n, j, inf, field, ev), stage_rank=stage_rank, indicators=indicators)
 

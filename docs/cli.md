@@ -613,6 +613,20 @@ It needs racinglines.bet, so only its help is shown:
 
     --8<-- "examples/help-remote.md:output"
 
+**Follow a strategy from the terminal.** There is no separate verb: `remote call` reaches the two MCP tools behind
+`/strategy/pick` ([MCP](mcp.md), `fantasy/follow.py`), on your own account, with the page's gates (paused during a
+race weekend's signal window, demo accounts refused). Arguments are typed from the server's schema, so `--kelly 0.5`
+and `--min-edge 0.03` arrive as numbers and `--rolled true` as a boolean.
+
+```bash
+racinglines remote call fantasy_strategy                                      # what you follow, the five styles, the lock
+racinglines remote call fantasy_follow --code T2 --sizing kelly --kelly 0.5   # follow Head start at half Kelly
+racinglines remote call fantasy_follow --code T1 --min-edge 0.12              # Steady, tweaked (untested, scored live)
+racinglines remote call fantasy_follow --code none                            # stop: nothing trades until you pick again
+```
+
+A refusal prints `"ok": false` with its `reason` and the page's message.
+
 ### racinglines check
 
 Quick validation for new setups: the pipelines on synthetic data, one tiny request
@@ -732,6 +746,8 @@ baseline. The model variant is the group's `--variant`.
 | | `--max-stake` | 50 | Max stake per market ($). |
 | | `--cost` | 0.01 | Cost per share per trade ($). |
 | | `--bankroll` | not set | Bankroll-aware sizing: each taker mode starts with this bankroll, and its stakes scale with its balance after earlier weekends (`balance / bankroll`, 0 once it's gone). Unset = fixed sizing. |
+| | `--root-unit` | not set | The root unit system (Dan Abrams on Circles Off ep. 181): a taker's stake in a market is this unit over the square root of the net odds, `unit × √(c / (1 − c))` for a contract costing `c` (price plus cost), instead of `--stake-per-edge` × edge. One unit at evens, half a unit at 4/1 (`c` = 0.20), two units at 1/4 (`c` = 0.80). The edge only decides whether to bet (`--min-edge`). Still capped at `--max-stake`, and scales with `--bankroll` like the linear rule. Not with `--kelly`. Unset = off. |
+| | `--bankroll-growth` | linear | With `--bankroll`: how stakes follow the balance. `linear` = `balance / bankroll`; `sqrt` = its square root (square-root staking: stake = C × √balance × edge, with C = `--stake-per-edge` / √bankroll), so a bankroll that quadruples doubles the stakes and one down 75% halves them. With `--kelly`, Kelly sizes on √(balance × bankroll). Unset = linear. |
 | | `--kelly` | not set | Kelly sizing (needs `--bankroll`): a taker's stake in a market is this fraction × the Kelly fraction × its current balance, where the Kelly fraction is `(q − c) / (1 − c)` for a contract costing `c` (price plus cost, at the touch where there's a quote) that wins with probability `q`. Still capped at `--max-stake` × the bankroll scale per market and at `--max-deployed` per weekend. 0.5 = half Kelly. Unset = linear sizing. |
 | | `--thin-edge-mult` | not set | Trade a market under the volume floor when the edge is at least this many times the minimum edge and a recorded order book (at most 10 min old) shows size at the touch: buys only, stake capped at that size. Needs recorded books (`markets record`); without them nothing changes. Unset = thin markets are skipped. |
 | | `--max-deployed` | not set | Cap on the capital deployed across a weekend's markets ($). Markets are traded in time order; a buy over the cap is cut to fit. Unset = no cap. |

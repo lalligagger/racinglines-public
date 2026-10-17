@@ -129,6 +129,12 @@ weekend_kinds = ["race_win", "race_podium", "race_h2h", "race_constructor_top", 
 # its links through its [identity] resolver and [markets] kinds
 titles = true
 
+[markets.probalytics]
+# Probalytics' tape for a backtest (markets/probalytics.py): the sport's name in its file names,
+# books/<YYYY-MM-DD>_F1_<VENUE>.parquet and fills/F1_<VENUE>_<YYYY-MM>.parquet. book_stale_hours (default 48, the
+# pull's stage-file lookback): how long a snapshot stays the book, as their snapshots are written on change
+tag = "F1"
+
 [markets.kalshi.kinds]
 # Kalshi series ticker -> kind: the exact key a market's kind is read from before its titles (the titles still give the
 # Grand Prix). A series not listed is classified from its titles; KXF1SPRINTFASTLAP stays unmodeled on purpose (no
