@@ -264,3 +264,41 @@ def test_redraft_of_a_deleted_tweet_keeps_the_draft_and_review_goes_on(fake, mon
     answers = iter(["s", "s", "s", "r", "q"])                     # c1, c4, c3 skipped; redraft tag 899
     X.review(ask=lambda _: next(answers), write=lambda text, ctx: "never")
     assert (tmp_path / "drafts" / "899.txt").read_text() == "re: @racinglines_bet hi\n"
+
+
+class B:
+    def __init__(self, type, **kw):
+        self.type = type
+        self.__dict__.update(kw)
+
+
+def test_a_web_answer_is_marked_and_keeps_its_sources():
+    web = [B("server_tool_use", name="web_search"),
+           B("web_search_tool_result", content=[B("web_search_result", url="https://en.wikipedia.org/wiki/F1")])]
+    d = X.labelled("Hamilton has won on five continents.", web)
+    assert d == "Not our model: Hamilton has won on five continents." and d.lane == "web"
+    assert d.sources == ("https://en.wikipedia.org/wiki/F1",)
+    assert X.labelled("Not our model: already marked.", web) == "Not our model: already marked."
+    assert X.labelled("x" * 270, web) is None                  # the mark would push it over 280
+    m = X.labelled("Max (@x) is 15% on our model.", [B("mcp_tool_use", name="get_predictions")])
+    assert m.lane == "model" and m.sources == ()
+    assert X.labelled("both", web + [B("mcp_tool_use", name="overview")]).lane == "mixed"
+    assert X.labelled(None, web) is None
+
+
+def test_web_search_can_be_turned_off(monkeypatch):
+    assert "Web search is off" not in X.system_prompt()
+    monkeypatch.setenv("XBOT_WEB", "0")
+    assert "Web search is off" in X.system_prompt()
+
+
+def test_review_shows_the_lane_and_sources(fake, tmp_path, capsys):
+    def write(text, ctx):
+        d = X.Draft("Not our model: " + text)
+        d.lane, d.sources = "web", ("https://example.org/f1",)
+        return d
+    X.run_once(mode="queue", write=write)
+    assert json.loads((tmp_path / "pending.json").read_text())["c1"]["lane"] == "web"
+    X.review(ask=lambda _: "q")
+    out = capsys.readouterr().out
+    assert "web search, check the sources" in out and "source: https://example.org/f1" in out
