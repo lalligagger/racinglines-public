@@ -721,6 +721,7 @@ def run_all(engine, engine_url, users=None, profile_ref=None, now=None, event="n
             prof = PF.load(c, profile_ref)
             targets = [(uid, prof) for uid, _ in targets]
     groups, rate, kelly = {}, {}, {}
+    cache = {}                         # one measurements load and one training history per model for the whole pass
     for uid, prof in targets:
         groups.setdefault(combo_key(prof), (prof, []))[1].append(uid)
         rate[uid] = prof.get("follow_rate")
@@ -729,12 +730,12 @@ def run_all(engine, engine_url, users=None, profile_ref=None, now=None, event="n
     for prof, uids in groups.values():
         if PF.is_combo(prof):
             echo(f"{prof['name']} (blend of {', '.join(m['code'] for m in prof['members'])}) for users {uids}")
-            outs = compute_all(engine, engine_url, prof, now=now, event=event, fetch=fetch, echo=echo)
+            outs = compute_all(engine, engine_url, prof, now=now, event=event, fetch=fetch, echo=echo, cache=cache)
             report += [_run_one(engine, engine_url, out["profile"], out, uids, rate, now, alert, echo, kelly=kelly,
                                 guard=guard(prof, venue) if profile_ref is None else None) for out in outs]
             continue
         echo(f"{prof['name']} ({prof['strategy']}) for users {uids}")
-        out = compute(engine, engine_url, prof, now=now, event=event, fetch=fetch, echo=echo)
+        out = compute(engine, engine_url, prof, now=now, event=event, fetch=fetch, echo=echo, cache=cache)
         report.append(_run_one(engine, engine_url, prof, out, uids, rate, now, alert, echo, kelly=kelly,
                                guard=guard(prof, venue) if profile_ref is None else None))
     return report
