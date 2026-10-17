@@ -2,9 +2,10 @@
 X reply bot (experiment, 2026-10-17): answers replies to @racinglines_bet's posts with Claude, which looks the
 answer up through the hosted racinglines MCP server (mcp.racinglines.bet), and posts the answer through Zernio.
 
-Zernio's mentions API covers LinkedIn only, so the bot cannot see a tweet that tags the account out of the blue:
-it reads the comments (replies) on the account's own X posts (GET /v1/inbox/comments, then
-GET /v1/inbox/comments/{postId}) and answers each new one (POST /v1/inbox/comments/{postId} with commentId).
+Two sources, one answer each: tweets that tag the account (GET /v1/twitter/search for "@handle -from:handle",
+answered with POST /v1/posts and platformSpecificData.replyToTweetId; needs the X analytics capability on in
+Zernio), and replies on the account's own posts (GET /v1/inbox/comments, then /v1/inbox/comments/{postId}, answered
+with POST /v1/inbox/comments/{postId} and commentId). Zernio's /v1/inbox/mentions is LinkedIn-only, so not used.
 
     python scripts/xbot/xbot.py accounts        # the connected X accounts (read-only)
     python scripts/xbot/xbot.py ask "TEXT"      # draft one answer, print it; nothing is read from or sent to X
@@ -16,6 +17,7 @@ Settings (env; on the VM /etc/racinglines-xbot.env, read by scripts/vm/xbot.sh):
     XBOT_MCP_TOKEN      the rl_ token of the account the bot reads racinglines as (`racinglines mcp token <account>`)
     XBOT_MODE           dry (default: drafts go to the log, nothing is posted) or live
     XBOT_ACCOUNT_ID     the Zernio X account; default the first active X account
+    XBOT_HANDLE         the handle tags are searched for; default the account's username
     XBOT_MAX_REPLIES    comments handled per pass, default 5; the rest wait for the next pass
     XBOT_SINCE_DAYS     how far back to look at our posts, default 7
     XBOT_DENY           comma-separated words a reply must never contain (it is dropped and logged instead)
@@ -89,13 +91,18 @@ def x_accounts():
     return [a for a in zernio("GET", "/accounts").get("accounts", []) if a.get("platform") == "twitter"]
 
 
+def account():
+    """The Zernio X account the bot speaks as: XBOT_ACCOUNT_ID, else the first active one."""
+    accts = [a for a in x_accounts() if a.get("isActive", True)]
+    want = os.environ.get("XBOT_ACCOUNT_ID")
+    accts = [a for a in accts if a.get("_id") == want] if want else accts
+    if not accts:
+        sys.exit("xbot: no active X account is connected in Zernio" + (f" with id {want}" if want else ""))
+    return accts[0]
+
+
 def account_id():
-    if os.environ.get("XBOT_ACCOUNT_ID"):
-        return os.environ["XBOT_ACCOUNT_ID"]
-    live = [a for a in x_accounts() if a.get("isActive", True)]
-    if not live:
-        sys.exit("xbot: no active X account is connected in Zernio")
-    return live[0]["_id"]
+    return os.environ.get("XBOT_ACCOUNT_ID") or account()["_id"]
 
 
 def our_posts(acct, since):
@@ -123,6 +130,21 @@ def comments(post_id, acct):
 def post_reply(post_id, acct, comment_id, text):
     return zernio("POST", f"/inbox/comments/{urllib.parse.quote(post_id, safe='')}",
                   body=dict(accountId=acct, message=text, commentId=comment_id), idempotency_key=f"xbot-{comment_id}")
+
+
+def tags(acct, handle, since_id=None):
+    """Tweets from the last 7 days that tag @handle (not ours, not retweets), oldest first: GET /v1/twitter/search.
+    Needs the account's X analytics capability on in Zernio (403 X_ANALYTICS_NOT_ENABLED otherwise)."""
+    q = dict(accountId=acct, query=f"@{handle} -from:{handle} -is:retweet", limit=100, sortOrder="recency")
+    if since_id:
+        q["sinceId"] = since_id
+    return sorted(zernio("GET", "/twitter/search", q).get("tweets") or [], key=lambda t: int(t["id"]))
+
+
+def reply_to_tweet(acct, tweet, text):
+    """A reply tweet to `tweet` (X allows it on posts that tag us or are ours): POST /v1/posts, published now."""
+    return zernio("POST", "/posts", body=dict(content=text, publishNow=True, platforms=[dict(
+        platform="twitter", accountId=acct, platformSpecificData=dict(replyToTweetId=tweet))]))
 
 
 def tweet_id(s):
@@ -199,26 +221,44 @@ def run_once(mode=None, write=draft):
         sys.exit(f"xbot: XBOT_MODE must be dry or live, not {mode!r}")
     limit = int(os.environ.get("XBOT_MAX_REPLIES", "5"))
     since = datetime.now(timezone.utc) - timedelta(days=int(os.environ.get("XBOT_SINCE_DAYS", "7")))
-    d, acct = state_dir(), account_id()
+    d, acct = state_dir(), account()
+    handle = os.environ.get("XBOT_HANDLE") or acct.get("username", "").lstrip("@")
+    acct = acct["_id"]
     seen, done = load_seen(d), 0
+    todo = []                                                  # (id, text, user, url, context, send)
     for post in our_posts(acct, since):
         for c in comments(post["id"], acct):
-            if c["id"] in seen:
-                continue
-            if done >= limit:
-                print(f"xbot: {limit} comments this pass; the rest wait for the next one", flush=True)
-                save_seen(d, seen)
-                return done
-            who = (c.get("from") or {}).get("username") or ""
-            reply = write(c["message"], post.get("content") or "")
-            action = "skipped" if reply is None else ("drafted" if mode == "dry" else "replied")
-            if reply is not None and mode == "live":
-                post_reply(post["id"], acct, c["id"], reply)
-            seen[c["id"]] = dict(at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), action=action)
-            save_seen(d, seen)
-            log(d, mode=mode, action=action, post=post["id"], comment=c["id"], user=who, text=c["message"],
-                url=c.get("url"), reply=reply)
-            done += 1
+            todo.append((c["id"], c["message"], (c.get("from") or {}).get("username") or "", c.get("url"),
+                         post.get("content") or "",
+                         lambda r, p=post["id"], c=c["id"]: post_reply(p, acct, c, r)))
+    found = []
+    if handle:
+        newest = seen.get("_search", {}).get("newest_id")
+        found = tags(acct, handle, newest)
+        for t in found:
+            todo.append((t["id"], t["text"], (t.get("author") or {}).get("username") or "",
+                         f"https://x.com/i/status/{t['id']}", "(they tagged us in their own post)",
+                         lambda r, t=t["id"]: reply_to_tweet(acct, t, r)))
+    for cid, text, who, url, context, send in todo:
+        if cid in seen:
+            continue
+        if done >= limit:
+            print(f"xbot: {limit} this pass; the rest wait for the next one", flush=True)
+            break
+        reply = write(text, context)
+        action = "skipped" if reply is None else ("drafted" if mode == "dry" else "replied")
+        if reply is not None and mode == "live":
+            send(reply)
+        seen[cid] = dict(at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), action=action)
+        save_seen(d, seen)
+        log(d, mode=mode, action=action, comment=cid, user=who, text=text, url=url, reply=reply)
+        done += 1
+    if handle:                       # search from the newest tag up to which every tag is handled (the cap can stop early)
+        for t in found:
+            if t["id"] not in seen:
+                break
+            seen["_search"] = dict(newest_id=t["id"])
+    save_seen(d, seen)
     return done
 
 
@@ -235,9 +275,16 @@ def main(argv=None):
         text = Path(argv[2]).read_text().strip()
         if not text or len(text) > 280:
             sys.exit(f"xbot: the reply must be 1 to 280 characters, not {len(text)}")
-        out = zernio("POST", f"/inbox/comments/{tweet}", body=dict(accountId=account_id(), message=text),
-                     idempotency_key=f"xbot-manual-{tweet}")
-        log(state_dir(), mode="manual", action="replied", post=tweet, reply=text, result=out.get("data"))
+        d = state_dir()
+        seen = load_seen(d)
+        if tweet in seen:
+            sys.exit(f"xbot: {tweet} was already handled ({seen[tweet].get('action')})")
+        out = reply_to_tweet(account_id(), tweet, text)
+        seen[tweet] = dict(at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), action="replied by hand")
+        save_seen(d, seen)
+        post = out.get("post") or {}
+        log(d, mode="manual", action="replied", comment=tweet, reply=text, post=post.get("_id"),
+            status=post.get("status"), platforms=post.get("platforms"))
     elif cmd == "once":
         n = run_once()
         print(f"xbot: {n} comment(s) handled this pass ({os.environ.get('XBOT_MODE', 'dry')})", flush=True)

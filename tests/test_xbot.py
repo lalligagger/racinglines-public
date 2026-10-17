@@ -19,12 +19,22 @@ COMMENTS = {"comments": [
 ]}
 
 
+TAGS = {"tweets": [{"id": "900", "text": "@racinglines_bet who wins?", "author": {"username": "opticsinspace"}},
+                   {"id": "899", "text": "@racinglines_bet hi", "author": {"username": "fan"}}]}
+
+
 @pytest.fixture
 def fake(monkeypatch, tmp_path):
     calls = []
 
     def zernio(method, path, query=None, body=None, idempotency_key=None):
         calls.append((method, path, body, idempotency_key))
+        if path == "/accounts":
+            return {"accounts": [{"_id": "acc1", "platform": "twitter", "username": "racinglines_bet", "isActive": True}]}
+        if path == "/twitter/search":
+            calls[-1] = (method, path, query, None)
+            after = int((query or {}).get("sinceId") or 0)
+            return {"tweets": [t for t in TAGS["tweets"] if int(t["id"]) > after]}
         if path == "/inbox/comments":
             return POSTS
         if method == "GET":
@@ -44,10 +54,10 @@ def write(text, post):
 
 
 def test_dry_pass_drafts_everything_new_posts_nothing_and_skips_our_own(fake, tmp_path):
-    assert X.run_once(write=write) == 3
+    assert X.run_once(write=write) == 5
     assert not [c for c in fake if c[0] == "POST"]
     rows = [json.loads(l) for l in (tmp_path / "log.jsonl").read_text().splitlines()]
-    assert [(r["comment"], r["action"]) for r in rows] == [("c1", "drafted"), ("c4", "skipped"), ("c3", "drafted")]
+    assert [(r["comment"], r["action"]) for r in rows][:3] == [("c1", "drafted"), ("c4", "skipped"), ("c3", "drafted")]
     assert "c2" not in json.loads((tmp_path / "seen.json").read_text())
 
 
@@ -55,18 +65,27 @@ def test_live_pass_replies_once_per_comment_with_an_idempotency_key(fake, monkey
     monkeypatch.setenv("XBOT_MODE", "live")
     X.run_once(write=write)
     posts = [c for c in fake if c[0] == "POST"]
-    assert [(p[2]["commentId"], p[3]) for p in posts] == [("c1", "xbot-c1"), ("c3", "xbot-c3")]
+    assert [(p[2]["commentId"], p[3]) for p in posts[:2]] == [("c1", "xbot-c1"), ("c3", "xbot-c3")]
     assert posts[0][2] == {"accountId": "acc1", "message": "re: who wins Austin?", "commentId": "c1"}
+    tagged = [p[2] for p in posts if p[1] == "/posts"]           # tags answered oldest first, as replies to the tweet
+    assert [t["platforms"][0]["platformSpecificData"]["replyToTweetId"] for t in tagged] == ["899", "900"]
+    assert tagged[0]["publishNow"] is True and tagged[0]["platforms"][0]["accountId"] == "acc1"
     fake.clear()
     assert X.run_once(write=write) == 0                       # all seen: the second pass answers nothing
     assert not [c for c in fake if c[0] == "POST"]
+    assert [c[2]["sinceId"] for c in fake if c[1] == "/twitter/search"] == ["900"]
 
 
 def test_the_cap_leaves_the_rest_for_the_next_pass(fake, monkeypatch):
     monkeypatch.setenv("XBOT_MAX_REPLIES", "1")
     assert X.run_once(write=write) == 1
     assert X.run_once(write=write) == 1
-    assert sorted(json.loads((Path(X.state_dir()) / "seen.json").read_text())) == ["c1", "c4"]
+    seen = json.loads((Path(X.state_dir()) / "seen.json").read_text())
+    assert sorted(seen) == ["c1", "c4"]                      # no tag handled yet, so the search does not move on
+    for _ in range(3):
+        X.run_once(write=write)
+    seen = json.loads((Path(X.state_dir()) / "seen.json").read_text())
+    assert {"899", "900"} <= set(seen) and seen["_search"] == {"newest_id": "900"}
 
 
 def test_clean_drops_skip_long_and_denied_replies(monkeypatch):
@@ -93,3 +112,14 @@ def test_tweet_id_takes_an_id_or_a_status_url():
     assert X.tweet_id("https://x.com/opticsinspace/status/1846000000000000001?s=20") == "1846000000000000001"
     with pytest.raises(SystemExit):
         X.tweet_id("https://x.com/opticsinspace")
+
+
+def test_a_hand_reply_marks_the_tweet_so_the_bot_skips_it(fake, tmp_path):
+    (tmp_path / "intro.txt").write_text("hello X")
+    X.main(["reply", "https://x.com/opticsinspace/status/900", str(tmp_path / "intro.txt")])
+    assert json.loads((tmp_path / "seen.json").read_text())["900"]["action"] == "replied by hand"
+    fake.clear()
+    X.run_once(write=write)
+    assert "900" not in [json.loads(l)["comment"] for l in (tmp_path / "log.jsonl").read_text().splitlines()[1:]]
+    with pytest.raises(SystemExit):
+        X.main(["reply", "900", str(tmp_path / "intro.txt")])
